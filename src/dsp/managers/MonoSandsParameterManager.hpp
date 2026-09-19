@@ -12,15 +12,17 @@ struct MonoSandsParameterManager {
     // SpreadManager kept for the poly arrays / spread plumbing.
     SpreadManager spreadMgr;
 
-    // Base spread per SPREADABLE lane (REST, MELODY, OCTAVE only), 0..1.
+    // Base spread per SPREADABLE lane. Indexed by this manager's BUFFER lane order:
+    //   REST0 / MEL1 / OCT2 / LEG3 / ACC4 / VAR5 / QMIX6   (QMIX appended at buffer lane 6).
     // Set by per-lane trimpots, may be CV-modulated.
-    // LEGATO/ACCENT/VARIATION are mono-only — they have NO poly counterpart,
-    // so spread does not apply to them at all.
-    static constexpr int SPREAD_LANES = 6;   // index by editor lane order; eligibility via isSpreadLane
-    // Spreadable lanes: REST(0), MELODY(1), OCTAVE(2) and now ACCENT(4) — the poly-derived
+    // LEGATO/VARIATION are mono-only — they have NO poly counterpart, so spread does not
+    // apply to them at all. REST/MEL/OCT/ACCENT/QMIX are the poly-derived spreadable lanes.
+    static constexpr int QMIX_BUFFER_LANE = 6;   // this manager's buffer-lane slot for QMIX
+    static constexpr int SPREAD_LANES = 7;   // index by buffer lane order; eligibility via isSpreadLane
+    // Spreadable lanes: REST(0), MELODY(1), OCTAVE(2), ACCENT(4) and QMIX(6) — the poly-derived
     // lanes. LEGATO(3) and VARIATION(5) remain mono-only (raw draw, no spread).
     static constexpr bool isSpreadLane(int lane) {
-        return lane == 0 || lane == 1 || lane == 2 || lane == 4;
+        return lane == 0 || lane == 1 || lane == 2 || lane == 4 || lane == QMIX_BUFFER_LANE;
     }
     float laneSpread[SPREAD_LANES] = {};
 
@@ -40,7 +42,7 @@ struct MonoSandsParameterManager {
             laneSpread[lane] = rack::math::clamp(value, -1.f, 1.f);
     }
 
-    static constexpr int LANE_COUNT = 6;
+    static constexpr int LANE_COUNT = 7;   // REST/MEL/OCT/LEG/ACC/VAR + QMIX(6)
 
     float monoDraw(int lane, int step) const {
         switch (lane) {
@@ -50,6 +52,7 @@ struct MonoSandsParameterManager {
             case 3: return patternEngine->slewedLegato[step];
             case 4: return patternEngine->slewedAccent[step];
             case 5: return patternEngine->slewedVariation[step];
+            case 6: return patternEngine->slewedQmix[step];   // QMIX (buffer lane 6)
             default: return 0.5f;
         }
     }
@@ -67,6 +70,7 @@ struct MonoSandsParameterManager {
                 case 1: sum += patternEngine->slewedPolyMelody[v][step]; break;
                 case 2: sum += patternEngine->slewedPolyOctave[v][step]; break;
                 case 4: sum += patternEngine->slewedPolyAccent[v][step]; break;
+                case 6: sum += patternEngine->slewedPolyQmix[v][step]; break;   // QMIX
             }
         }
         return sum / (float)(1 + nPoly);
@@ -98,6 +102,7 @@ struct MonoSandsParameterManager {
             patternEngine->legatoRandom[i]    = spreadValue(3, i);
             patternEngine->accentRandom[i]    = spreadValue(4, i);
             patternEngine->variationRandom[i] = spreadValue(5, i);
+            patternEngine->qmixRandom[i]      = spreadValue(QMIX_BUFFER_LANE, i);  // QMIX (buffer lane 6)
         }
     }
 
@@ -127,9 +132,12 @@ struct MonoSandsParameterManager {
     // draw (no spread). LOR handles set the index window separately.
     void syncPatternEngineToEditor(SandsVisualEditorV4::VoiceState& editorState) {
         if (!patternEngine) return;
-        static const int laneMap[6] = {
+        // Buffer lane → editor lane. Buffer order is REST0/MEL1/OCT2/LEG3/ACC4/VAR5/QMIX6
+        // (QMIX appended at buffer lane 6, QMIX_BUFFER_LANE), mapped to its editor row.
+        static const int laneMap[LANE_COUNT] = {
             SandsVisualEditorV4::REST, SandsVisualEditorV4::MELODY, SandsVisualEditorV4::OCTAVE,
-            SandsVisualEditorV4::LEGATO, SandsVisualEditorV4::ACCENT, SandsVisualEditorV4::VARIATION
+            SandsVisualEditorV4::LEGATO, SandsVisualEditorV4::ACCENT, SandsVisualEditorV4::VARIATION,
+            SandsVisualEditorV4::QMIX
         };
         for (int l = 0; l < LANE_COUNT; ++l) {
             for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {

@@ -80,14 +80,20 @@ struct MonsoonStraitsExpander : Module {
         // parent stays authoritative (see getRest/getAccent in the parameter manager).
         configParam(MonsoonIds::REST_PARAM,  0.f, 1.f, 0.1f, "Voice 1 (mono) Rest Probability - follows Monsoon");
         configParam(MonsoonIds::ACCENT_KNOB, 0.f, 1.f, 0.f,  "Voice 1 (mono) Accent Probability - follows Monsoon");
+        // Voice 1 (mono) q-mix LEVEL mirror — like rest/accent above, this knob MIRRORS the parent
+        // Monsoon's QMIX_LEVEL_PARAM (driven from the widget each frame). Configured here so the param
+        // exists with range; the parent stays authoritative (the engine reads Monsoon's own knob).
+        configParam(MonsoonIds::QMIX_LEVEL_PARAM, 0.f, 1.f, 0.f, "Voice 1 (mono) Q-mix Level - follows Monsoon");
 
-        // Per-poly-voice REST + ACCENT probability knobs (voices 2..16 = 15 knobs each).
-        // Voice 1 (mono) rest/accent lives on the parent Monsoon.
+        // Per-poly-voice REST + ACCENT + Q-MIX knobs (voices 2..16 = 15 knobs each).
+        // Voice 1 (mono) rest/accent/q-mix lives on the parent Monsoon (mirrored above).
         for (int i = 0; i < 15; i++) {
             configParam(MonsoonIds::POLY_REST_PARAM_1 + i, 0.f, 1.f, 0.1f,
                         "Voice " + std::to_string(i + 2) + " Rest Probability");
             configParam(MonsoonIds::POLY_ACCENT_PARAM_1 + i, 0.f, 1.f, 0.f,
                         "Voice " + std::to_string(i + 2) + " Accent Probability");
+            configParam(MonsoonIds::POLY_QMIX_PARAM_1 + i, 0.f, 1.f, 0.f,
+                        "Voice " + std::to_string(i + 2) + " Q-mix Level");
         }
 
         configOutput(StraitsIds::POLY_GATE_OUT,           "Poly gate (16ch: ch1 = mono, ch2.. = poly)");

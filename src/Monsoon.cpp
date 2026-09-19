@@ -54,8 +54,8 @@ Monsoon::Monsoon() {
         // Unified LOR base store: identity default (len=16, off=0, rot=0) for every voice
         // slot and bank, matching the old per-voice configParam defaults.
         for (int slot = 0; slot < 16; ++slot)
-            for (int bank = 0; bank < 6; ++bank)
-                editor.lorBase[slot*18 + bank*3 + 0] = 16.f;
+            for (int bank = 0; bank < dotModular::SandsGrid::MONO_LANES; ++bank)
+                editor.lorBase[slot*21 + bank*3 + 0] = 16.f;  // stride 21 = 7 banks × 3
 
         // Seed RNGs with a random value — safe to call here (uses rack::random, not inputs[])
         rhythmSeedFloat = rack::random::uniform() * 10.f;
@@ -250,6 +250,15 @@ float Monsoon::getEffectivePolyAccent(int voiceIdx) {
     }
     return math::clamp(base, 0.f, 1.f);
 }
+// Per-voice q-mix LEVEL — mirrors rest/accent. There is NO Causeway q-mix CV path yet (mono q-mix
+// is also Rack-param only), so effective == base (the Straits knob). Kept as an effective/base pair
+// for symmetry and so a future Causeway q-mix CV can drop in exactly like rest/accent.
+float Monsoon::getBasePolyQmix(int voiceIdx) {
+    return paramManager ? paramManager->getPolyQmixLevel(voiceIdx) : 0.f;
+}
+float Monsoon::getEffectivePolyQmix(int voiceIdx) {
+    return math::clamp(getBasePolyQmix(voiceIdx), 0.f, 1.f);
+}
 
 // Voice-1 / MONO counterparts: apply the Causeway MONO attenuator to CV channel 0 (the mono
 // channel) of the Causeway CV inputs, added onto the mono base rest/accent. Mirrors the poly
@@ -432,6 +441,11 @@ float Monsoon::semitoneToVolts(int semitone) {
     void Monsoon::diceMelody() {
         melodyMode = 0;
         engine.pe.setPendingMelodyRoll();   // plain roll; reseed lives on RESET (Step 6)
+    }
+    void Monsoon::diceQmix() {
+        // Task 4 (QMIX): mirror diceMelody — plain roll on the q-mix stream (own Philox stream).
+        qmixMode = 0;
+        engine.pe.setPendingQmixRoll();
     }
 
     // Single definition of every die-action. Fired by G3 (menu-routed) and by
@@ -867,10 +881,12 @@ void Monsoon::process(const ProcessArgs& args) {
             modViz.big5Lane[4] = modViz.big5Lane[4] || causewayAccentMod;  // lane 4 = accent
             modViz.rhythmSlew = paramManager->getRhythmSlewNorm();
             modViz.melodySlew = paramManager->getMelodySlewNorm();
+            modViz.qmixSlew   = paramManager->getQmixSlewNorm();   // Task 4 (QMIX)
             modViz.rhythmMix  = paramManager->getRhythmMixNorm();
             modViz.melodyMix  = paramManager->getMelodyMixNorm();
+            modViz.qmixMix    = paramManager->getQmixMixNorm();    // Task 4 (QMIX)
             modViz.activeCv3  = paramManager->anyCv3Modulated();
-            for (int i = 0; i < 4; ++i) modViz.cv3Lane[i] = paramManager->cv3LaneModulated(i);
+            for (int i = 0; i < dotModular::SandsGrid::POLY_LANES; ++i) modViz.cv3Lane[i] = paramManager->cv3LaneModulated(i);
             for (int i = 0; i < 12; ++i) modViz.semitone[i] = paramManager->getSemitoneNorm(i);
             modViz.octaveLo   = paramManager->getOctaveLoNorm();
             modViz.octaveHi   = paramManager->getOctaveHiNorm();
@@ -880,7 +896,7 @@ void Monsoon::process(const ProcessArgs& args) {
 
         if (uiManager) {
             // Move these here from per-sample logic
-            uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending());
+            uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending(), engine.pe.isQmixSeedPending());
             uiManager->updateLockLight(locked);
             uiManager->updateMuteLight(muted);
             
@@ -906,20 +922,22 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // ── Button Processing (via UIManager) ──
         if (uiManager) {
-            bool rhythmTriggered, melodyTriggered;
-            if (uiManager->processDiceButtons(rhythmTriggered, melodyTriggered)) {
+            bool rhythmTriggered, melodyTriggered, qmixTriggered;
+            if (uiManager->processDiceButtons(rhythmTriggered, melodyTriggered, qmixTriggered)) {
                 // A dice press ROLLS (advance RNG, A/B morph) unless SEED is
                 // patched (then reproducible reseed). Shared with gate re-dice
-                // via diceRhythm()/diceMelody().
+                // via diceRhythm()/diceMelody()/diceQmix().
                 if (rhythmTriggered) diceRhythm();
                 if (melodyTriggered) diceMelody();
+                if (qmixTriggered)   diceQmix();   // Task 4 (QMIX)
             }
             // LastDice: roll stepping the index OPPOSITE to plain dice (previous draw).
             // Normal-mode only — the setters no-op on reversible streams.
-            bool lastDiceR, lastDiceM;
-            if (uiManager->processLastDiceButtons(lastDiceR, lastDiceM)) {
+            bool lastDiceR, lastDiceM, lastDiceQ;
+            if (uiManager->processLastDiceButtons(lastDiceR, lastDiceM, lastDiceQ)) {
                 if (lastDiceR) { rhythmMode = 0; engine.pe.setPendingRhythmLastRoll(); }
                 if (lastDiceM) { melodyMode = 0; engine.pe.setPendingMelodyLastRoll(); }
+                if (lastDiceQ) { qmixMode = 0; engine.pe.setPendingQmixLastRoll(); }   // Task 4 (QMIX)
             }
             if (uiManager->processLockButton()) {
                 locked = !locked;
@@ -1088,7 +1106,7 @@ void Monsoon::process(const ProcessArgs& args) {
         }
 
         // ── Assignable CV3 & Raffles Modulation (Throttled) ──
-        float cv3Mods[4] = {0.f, 0.f, 0.f, 0.f};
+        float cv3Mods[5] = {0.f, 0.f, 0.f, 0.f, 0.f};  // 5 poly lanes: REST/MEL/QMIX/OCT/ACC
         
         // 1. Main Panel CV3 (bipolar offset to selected target; was unipolar 0..5
         //    which rectified the negative half — an attenuverter implies bipolar).
@@ -1110,7 +1128,7 @@ void Monsoon::process(const ProcessArgs& args) {
         }
 
         // Apply final summed offsets to ParameterManager
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < dotModular::SandsGrid::POLY_LANES; ++i) {
             paramManager->setCv3Offset(i, clampv<float>(cv3Mods[i], -1.f, 1.f));
         }
     }

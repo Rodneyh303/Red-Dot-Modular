@@ -223,9 +223,10 @@ bool SequencerEngine::advancePlayhead(int dir) {
         // macroLOR_ fix generalised to laneTickV_. strand → this voice's LOR length:
         auto polyStrandLen = [&](int v, int strand) -> int {
             switch (strand) {
-                case dotModular::STRAND_RHYTHM:    return polyLenE(v, PL_REST);
                 case dotModular::STRAND_MELODY:    return polyLenE(v, PL_MELODY);
                 case dotModular::STRAND_OCTAVE:    return polyLenE(v, PL_OCTAVE);
+                case dotModular::STRAND_QMIX:      return polyLenE(v, PL_QMIX);
+                case dotModular::STRAND_RHYTHM:    return polyLenE(v, PL_REST);
                 case dotModular::STRAND_ACCENT:    return polyLenE(v, PL_ACCENT);
                 case dotModular::STRAND_VARIATION: return polyLOR(v, EDITOR_LANE_VARIATION, LOR_LEN);
                 case dotModular::STRAND_LEGATO:    return polyLOR(v, EDITOR_LANE_LEGATO, LOR_LEN);
@@ -392,7 +393,7 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
     return true; 
 }
 
-StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, const PatternInput& input, bool wasHeld, bool hadTail) {
+StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail) {
     lastLegatoProb_ = legatoProb;   // for the Rule 2 per-voice slur roll (read in executePolyVoice)
     // ── Fractional notes (1/4T=2.667, 1/8T=1.333, 1/32=0.5 steps) & legato/tie ──
     // These notes end MID-STEP (closed by the gateSecRemain seconds-timer), not on
@@ -438,12 +439,27 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     }
 
     int   sem    = 0;
+    // ── QMIX per-step source-select (mono/voice-0) ──────────────────────────────────────────────
+    // In quantiser modes, q-mix decides PER STEP whether the CV-out pitch comes from the quantised
+    // external CV2 (default) or the internally generated melody. The decision is the same q-mix draw
+    // the engine thresholds for result.qmixHit below: qmixUseGenerated == (r_qmix < qmixLevel).
+    //   qmixLevel 0 → never generated → always quantised CV2 (legacy behaviour).
+    //   qmixLevel 1 → always generated → ignore CV2.
+    //   in between → per-step probabilistic blend (generated notes gradually replace quantised ones).
+    // Gated by quantiserPitchSource so it is inert outside quantiser modes (A/B byte-identical).
+    // Computed HERE (before voicePitch) so it can steer the pitch source; result.qmixHit at the
+    // bottom of this function is set from the SAME decision on starting steps, and held/tied steps
+    // reuse the prior note's pitch (no fresh voicePitch draw) so the source latches — matching how
+    // qmixHit already inherits on non-starting steps.
+    const bool qmixUseGenerated = quantiserPitchSource && (r_qmix < input.qmixLevel);
     // QUANTISER (Q1): mono/voice-0 pitch = quantised external CV when in a quantiser mode, else the
     // internal melody+octave draw. voicePitch bypasses genPitchLive (no RNG/lane perturbation) when
-    // quantiserPitchSource is set; off = byte-identical legacy path.
+    // quantiserPitchSource is set; off = byte-identical legacy path. qmixUseGenerated forces the
+    // generated branch on a q-mix "use generated" step.
     float pitchV = voicePitch(0, sem, input,
                               pe.melodyRandom[getMelodyStep()],
-                              pe.octaveRandom[getOctaveStep()]);
+                              pe.octaveRandom[getOctaveStep()],
+                              /*forceGenerated=*/qmixUseGenerated);
 
     // ── Leading-edge legato (STEP 2, the only legato model) ──
     // The PREVIOUS starting note recorded, at its own onset, whether it intends to hold
@@ -553,6 +569,21 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         result.accented = lastStepResult.accented;
     }
 
+    // Task 4 (QMIX): threshold the mono q-mix draw against QMIX_LEVEL, mirroring accent. A "hit"
+    // fires when the draw crosses the level (draw < level); on sustains it inherits, on rests false.
+    // This is the SAME decision that steered the pitch source above (qmixUseGenerated): on a starting
+    // step qmixHit == "this note used the GENERATED pitch". A held/tied step reuses the prior note's
+    // pitch (no fresh voicePitch draw), so it inherits the prior qmixHit — the source latches with the
+    // note. Outside quantiser modes qmixUseGenerated is always false; qmixHit keeps its raw-draw
+    // semantics via the r_qmix<qmixLevel form (behaviour-inert there, matching prior code).
+    if (monoStarting) {
+        result.qmixHit = (r_qmix < input.qmixLevel);
+    } else if (result.decision == MonoDecision::Rest) {
+        result.qmixHit = false;
+    } else {
+        result.qmixHit = lastStepResult.qmixHit;
+    }
+
     // ── LEAD COMMITMENT (leading-edge legato) — sets the next note's prevSlur ─────
     // A note that is STARTING commits here (at its own onset) to hold its gate forward into
     // the next note, iff BOTH: (a) its own legato draw fires (r_legato_tie < legatoProb, or
@@ -626,6 +657,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     float r_rest   = monoStrand(dotModular::STRAND_RHYTHM)[getRhythmStep()];
     float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
     float r_accent = monoStrand(dotModular::STRAND_ACCENT)[getAccentStep()];  // New: accent strand
+    float r_qmix   = monoStrand(dotModular::STRAND_QMIX)[getQmixStep()];      // Task 4: q-mix strand
     
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
@@ -643,7 +675,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
     
-    result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, input, wasHeldMono, hadMonoTail);
+    result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
     result.stepped = true;
     result.wrapped = wrapped;
     // executeStep already assigned lastStepResult (BEFORE wrapped/stepped were set on the local
@@ -687,6 +719,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         float r_rest   = monoStrand(dotModular::STRAND_RHYTHM)[getRhythmStep()];
         float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
         float r_accent = monoStrand(dotModular::STRAND_ACCENT)[getAccentStep()];  // New: accent strand
+        float r_qmix   = monoStrand(dotModular::STRAND_QMIX)[getQmixStep()];      // Task 4: q-mix strand
         
         // Mode B: the note DURATION is Gate 1's width, so the INTERNAL note length is nullified
         // to a single 1/16 step (index 6 in NoteValues.hpp = 1.0 step). Using the controller's
@@ -731,7 +764,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         gs.holdRemain = 0.f;     gs.gatePulseRemain = -1;
         gsStep.holdRemain = 0.f; gsStep.gatePulseRemain = -1;
 
-        result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, input, wasHeldMono, hadMonoTail);
+        result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
         result.stepped = true;
         result.wrapped = wrapped;
         lastStepResult = result;   // re-sync wrapped/stepped (executeStep set lastStepResult before they were known)
@@ -792,12 +825,25 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         
         // Decide to Play: Draw pitch and follow mono's triggering behavior.
         int sem = 0;
+        // QMIX per-voice source-select (mirrors the mono path at executeStep): in a quantiser mode,
+        // this voice's q-mix draw decides quantised-external-CV vs internally-generated melody+octave.
+        //   r_qmix_voice < voice's qmixLevel → use GENERATED (mode-A pitch for this voice).
+        //   otherwise                        → use quantised external CV (its own channel).
+        // Draw at this voice's OWN q-mix LOR step (polyLaneTick + LEN/OFF/ROT), exactly like the
+        // rest/accent per-voice draws above use their strand. qmixUseGenerated is only ever true in
+        // quantiser modes (voicePitch gates forceGenerated on quantiserPitchSource); outside them
+        // it's inert and behaviour is byte-identical to the legacy poly path.
+        int qmixIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_QMIX), polyLenE(voiceIdx, PL_QMIX), polyOffE(voiceIdx, PL_QMIX), polyRotE(voiceIdx, PL_QMIX));
+        float r_qmix_voice = polyRandomSrc(voiceIdx, PL_QMIX)[qmixIdx];
+        bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice < v.qmixLevel);
         // QUANTISER (Q1): this voice's pitch = quantised external CV (its own channel) in quantiser
         // mode, else the internal melody+octave draw. voices[voiceIdx] is ENGINE voice voiceIdx+1
-        // (voice 0 is the mono/executeStep path), so read quantiserCV[voiceIdx+1].
+        // (voice 0 is the mono/executeStep path), so read quantiserCV[voiceIdx+1]. When
+        // qmixUseGenerated, forceGenerated pushes voicePitch through genPitchLive (mode-A pitch).
         float pitchV = voicePitch(voiceIdx + 1, sem, input,
                                   polyRandomSrc(voiceIdx, PL_MELODY)[melIdx],
-                                  polyRandomSrc(voiceIdx, PL_OCTAVE)[octIdx]);
+                                  polyRandomSrc(voiceIdx, PL_OCTAVE)[octIdx],
+                                  qmixUseGenerated);
         // Accent as a poly lane (modelled after rest): this voice draws its OWN accent at
         // its own accent LOR and compares to its own accentProb — not shared from mono.
         int accIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_ACCENT), polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
@@ -1122,6 +1168,7 @@ int SequencerEngine::getLegatoStep() const    { return getStrandIdx(laneTick_[do
 int SequencerEngine::getAccentStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_ACCENT],    lor(dotModular::STRAND_ACCENT,LOR_LEN), lor(dotModular::STRAND_ACCENT,LOR_OFF), lor(dotModular::STRAND_ACCENT,LOR_ROT)); }
 int SequencerEngine::getMelodyStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_MELODY],    lor(dotModular::STRAND_MELODY,LOR_LEN), lor(dotModular::STRAND_MELODY,LOR_OFF), lor(dotModular::STRAND_MELODY,LOR_ROT)); }
 int SequencerEngine::getOctaveStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_OCTAVE],    lor(dotModular::STRAND_OCTAVE,LOR_LEN), lor(dotModular::STRAND_OCTAVE,LOR_OFF), lor(dotModular::STRAND_OCTAVE,LOR_ROT)); }
+int SequencerEngine::getQmixStep() const      { return getStrandIdx(laneTick_[dotModular::STRAND_QMIX],      lor(dotModular::STRAND_QMIX,LOR_LEN),   lor(dotModular::STRAND_QMIX,LOR_OFF),   lor(dotModular::STRAND_QMIX,LOR_ROT)); }
 
 void SequencerEngine::syncVisuals(const PatternInput& in) {
     pe.refreshVisualCache(in);

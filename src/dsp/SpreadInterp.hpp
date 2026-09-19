@@ -35,11 +35,15 @@ struct SpreadInterp {
     static const float* monoBuf(const rack::Module* /*unused*/) { return nullptr; }
 
     // Per-lane accessor into the PatternEngine slewed draws.
+    // Lane index is the SPREAD/poly-engine lane: 0=REST 1=MELODY 2=OCTAVE 3=ACCENT 4=QMIX
+    // (== SequencerEngine::PL_ order). QMIX is a melody-family value lane; it reads its own
+    // slewedQmix / slewedPolyQmix twin buffers (present as of Task 4b).
     static float monoSlewed(const PatternEngine& pe, int lane, int step) {
         switch (lane) {
             case 0:  return pe.slewedRhythm[step];
             case 1:  return pe.slewedMelody[step];
             case 3:  return pe.slewedAccent[step];
+            case 4:  return pe.slewedQmix[step];
             default: return pe.slewedOctave[step];
         }
     }
@@ -48,6 +52,7 @@ struct SpreadInterp {
             case 0:  return pe.slewedPolyRhythm[voice][step];
             case 1:  return pe.slewedPolyMelody[voice][step];
             case 3:  return pe.slewedPolyAccent[voice][step];
+            case 4:  return pe.slewedPolyQmix[voice][step];
             default: return pe.slewedPolyOctave[voice][step];
         }
     }

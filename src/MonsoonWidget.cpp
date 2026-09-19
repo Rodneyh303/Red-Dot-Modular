@@ -480,27 +480,36 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmSlew;}, [](const Monsoon::ModViz& m){return m.cv3Lane[0];},0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<Trimpot>  ("param_DICE_SLEW_M_PARAM",   MonsoonIds::DICE_SLEW_M_PARAM,
             std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodySlew;}, [](const Monsoon::ModViz& m){return m.cv3Lane[1];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+        // Task 4 (QMIX): Slew Q mirrors Slew R/M (Trimpot + mod arc). TEMP position beside Slew M.
+        bindParam<Trimpot>  ("param_DICE_SLEW_Q_PARAM",   MonsoonIds::DICE_SLEW_Q_PARAM,
+            std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.qmixSlew;}, [](const Monsoon::ModViz& m){return m.cv3Lane[4];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<VCVButton>("param_DICE_R_PARAM",        MonsoonIds::DICE_R_PARAM);
         bindParam<VCVButton>("param_DICE_M_PARAM",        MonsoonIds::DICE_M_PARAM);
-        bindParam<TrialButton>("param_DICE_TRIAL_R_PARAM",  MonsoonIds::DICE_TRIAL_R_PARAM,
-            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
-        bindParam<TrialButton>("param_DICE_TRIAL_M_PARAM",  MonsoonIds::DICE_TRIAL_M_PARAM,
-            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
-        // Last dice / last trial — same TrialButton (dims + inert on reversible streams,
+        // Task 4 (QMIX): Dice Q mirrors Dice R/M (plain VCVButton — q-mix uses plain
+        // dice, not the removed Trial mechanism). Was param_DICE_TRIAL_R_PARAM.
+        bindParam<VCVButton>("param_DICE_Q_PARAM",        MonsoonIds::DICE_Q_PARAM);
+        // Last dice — same TrialButton (dims + inert on reversible streams,
         // which is correct since Last* is Normal-mode only). These warn-and-skip until
         // the panel SVG gains param_LAST_* markers (panels phase); harmless until then.
         bindParam<TrialButton>("param_LAST_DICE_R_PARAM",   MonsoonIds::LAST_DICE_R_PARAM,
             std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
         bindParam<TrialButton>("param_LAST_DICE_M_PARAM",   MonsoonIds::LAST_DICE_M_PARAM,
             std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
-        bindParam<TrialButton>("param_LAST_TRIAL_R_PARAM",  MonsoonIds::LAST_TRIAL_R_PARAM,
-            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
-        bindParam<TrialButton>("param_LAST_TRIAL_M_PARAM",  MonsoonIds::LAST_TRIAL_M_PARAM,
+        // Task 4 (QMIX): Last-Dice Q mirrors Last-Dice R/M. Was param_DICE_TRIAL_M_PARAM.
+        bindParam<TrialButton>("param_LAST_DICE_Q_PARAM",   MonsoonIds::LAST_DICE_Q_PARAM,
             std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
          bindParam<redDot::Scrub_Small_Cog>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
             std::function<void(redDot::Scrub_Small_Cog*)>([this, module](redDot::Scrub_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[2];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<redDot::Scrub_Small_Cog>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM,
             std::function<void(redDot::Scrub_Small_Cog*)>([this, module](redDot::Scrub_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodyMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[3];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+        // Task 4 (QMIX): Mix Q mirrors Mix R/M (Scrub_Small_Cog + mod arc). Was param_LAST_TRIAL_R_PARAM.
+        bindParam<redDot::Scrub_Small_Cog>("param_QMIX_MIX_PARAM", MonsoonIds::QMIX_MIX_PARAM,
+            std::function<void(redDot::Scrub_Small_Cog*)>([this, module](redDot::Scrub_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.qmixMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[4];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+        // Task 4 (QMIX): Q-mix LEVEL ("6th big knob") — no room in the top big-5 row yet, so
+        // the panel places it bottom-right (under ACCENT out, on the RESET jack row) as the small
+        // Straits-style knob (Scrub_Small_Cog). Plain level (no mod arc for now). Proper placement
+        // comes with the wider Monsoon redo.
+        bindParam<redDot::Scrub_Small_Cog>("param_QMIX_LEVEL_PARAM", MonsoonIds::QMIX_LEVEL_PARAM);
         bindParam<TL1105>("param_LOCK_PARAM",             MonsoonIds::LOCK_PARAM);
         bindParam<TL1105>("param_MUTE_PARAM",             MonsoonIds::MUTE_PARAM);
         bindParam<TL1105>("param_RESET_BUTTON_PARAM",     MonsoonIds::RESET_BUTTON_PARAM);
@@ -508,6 +517,16 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // Control-row lights (computed formula row)
         addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(rx(2), ROWYL)), module, MonsoonIds::RHYTHM_DICE_LIGHT));
         addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(rx(3), ROWYL)), module, MonsoonIds::MELODY_DICE_LIGHT));
+        // Task 4c: Dice Q pending light — twin of R/M. R/M lights are placed POSITIONALLY here
+        // (not SVG-bound), so no panel <circle> is required. Dice Q sits at its own panel spot
+        // (param_DICE_Q_PARAM), which may not equal the formula-row column, so anchor the light to
+        // that named shape's centre (mirrors the mode-light / labelAt derive-from-SVG pattern),
+        // falling back to rx(4) on the formula row if the shape can't be resolved.
+        {
+            Vec qpos = mm2px(Vec(rx(4), ROWYL));
+            if (NSVGshape* s = findNamed("param_DICE_Q_PARAM")) qpos = centerOf(s);
+            addChild(createLightCentered<MediumLight<GreenLight>>(qpos, module, MonsoonIds::QMIX_DICE_LIGHT));
+        }
         addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(rx(8),  ROWYL)), module, MonsoonIds::LOCK_LIGHT));
         addChild(createLightCentered<MediumLight<RedLight>>(  mm2px(Vec(rx(9),  ROWYL)), module, MonsoonIds::MUTE_LIGHT));
         addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(rx(10), ROWYL)), module, MonsoonIds::RESET_LIGHT));
@@ -882,6 +901,7 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         setNvgFontSize(2.7f); fillNvgColour(200,60,60);
         labelAt("param_DICE_R_PARAM", 6.5f, "DICE R");
         labelAt("param_DICE_M_PARAM", 6.5f, "DICE M");
+        labelAt("param_DICE_Q_PARAM", 6.5f, "DICE Q");   // Task 4 (QMIX)
         fillNvgColour(190,190,190);
         labelAt("param_LOCK_PARAM",         6.5f, "LOCK");
         labelAt("param_MUTE_PARAM",         6.5f, "MUTE");

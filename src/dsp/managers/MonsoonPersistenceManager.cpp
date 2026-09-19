@@ -79,6 +79,12 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "rhythmSeedPendingFloat", json_real(m->rhythmSeedPendingFloat));
     json_object_set_new(root, "melodySeedPending", json_boolean(m->melodySeedPending));
     json_object_set_new(root, "melodySeedPendingFloat", json_real(m->melodySeedPendingFloat));
+    // q-mix seed twins (Task 4d). NOTE: unlike rhythm/melody (whose seed lives on the Monsoon
+    // module), the q-mix seed lives on the ENGINE (pe.qmixSeedFloat/qmixSeedPending*), mirroring
+    // where the q-mix stream was added.
+    json_object_set_new(root, "qmixSeedFloat", json_real(m->engine.pe.qmixSeedFloat));
+    json_object_set_new(root, "qmixSeedPending", json_boolean(m->engine.pe.qmixSeedPending));
+    json_object_set_new(root, "qmixSeedPendingFloat", json_real(m->engine.pe.qmixSeedPendingFloat));
 
     // ── DNA Random Buffers (Pattern Stability) ──
     json_t* rrarr = json_array();
@@ -87,6 +93,7 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_t* mrarr = json_array();
     json_t* orarr = json_array();
     json_t* ararr = json_array();
+    json_t* qrarr = json_array();   // q-mix (Task 4d)
     for (int i = 0; i < 16; ++i) {
         json_array_append_new(rrarr, json_real(m->engine.pe.rhythmRandom[i]));
         json_array_append_new(vrarr, json_real(m->engine.pe.variationRandom[i]));
@@ -94,6 +101,7 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
         json_array_append_new(mrarr, json_real(m->engine.pe.melodyRandom[i]));
         json_array_append_new(orarr, json_real(m->engine.pe.octaveRandom[i]));
         json_array_append_new(ararr, json_real(m->engine.pe.accentRandom[i]));
+        json_array_append_new(qrarr, json_real(m->engine.pe.qmixRandom[i]));
     }
     json_object_set_new(root, "rhythmRandom", rrarr);
     json_object_set_new(root, "variationRandom", vrarr);
@@ -101,6 +109,7 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "melodyRandom", mrarr);
     json_object_set_new(root, "octaveRandom", orarr);
     json_object_set_new(root, "accentRandom", ararr);
+    json_object_set_new(root, "qmixRandom", qrarr);
 
     // ── Poly DNA Random Buffers ──
     json_t* prarr = json_array();
@@ -121,8 +130,10 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     {
         json_object_set_new(root, "slLatchedR", json_real(m->engine.pe.rhythmSlewLatched));
         json_object_set_new(root, "slLatchedM", json_real(m->engine.pe.melodySlewLatched));
+        json_object_set_new(root, "slLatchedQ", json_real(m->engine.pe.qmixSlewLatched));   // Task 4d
         json_object_set_new(root, "slFirstR", json_boolean(m->engine.pe.rhythmFirstDraw));
         json_object_set_new(root, "slFirstM", json_boolean(m->engine.pe.melodyFirstDraw));
+        json_object_set_new(root, "slFirstQ", json_boolean(m->engine.pe.qmixFirstDraw));    // Task 4d
         // Philox regeneration state: draw counter (stream position) + A<->B mix. With the
         // seed key (rhythm/melodySeedFloat), the committed A arrays above, and the latched
         // slew, this is the MINIMUM complete set to regenerate candidate B exactly on load
@@ -134,9 +145,12 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
             json_object_set_new(root, "drawCtrR", json_string(buf));
             snprintf(buf, sizeof(buf), "%lld", (long long)m->engine.pe.melodyDrawCtr);
             json_object_set_new(root, "drawCtrM", json_string(buf));
+            snprintf(buf, sizeof(buf), "%lld", (long long)m->engine.pe.qmixDrawCtr);   // Task 4d
+            json_object_set_new(root, "drawCtrQ", json_string(buf));
         }
         json_object_set_new(root, "mixLatchedR", json_real(m->engine.pe.rhythmMixLatched));
         json_object_set_new(root, "mixLatchedM", json_real(m->engine.pe.melodyMixLatched));
+        json_object_set_new(root, "mixLatchedQ", json_real(m->engine.pe.qmixMixLatched));   // Task 4d
     }
 
     // ── Rhythm and Pitch Arrays ──
@@ -163,24 +177,25 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     for (int i = 0; i < 96; ++i) json_array_append_new(va, json_real(m->editor.varlegAtten[i]));
     json_object_set_new(root, "editorVarlegAtten", va);
 
-    // MACRO owner (64) + send (256) + atten (256), migrated out of params[]. Tap re-homed to
-    // an expander param, so it persists via the normal Rack param path -- not here.
+    // MACRO owner (80) + send (320) + atten (320), migrated out of params[]. QMIX-widened to
+    // 5 poly lanes (was 64/256/256 at 4 lanes). Tap re-homed to an expander param (Rack path).
     json_t* mo = json_array();
-    for (int i = 0; i < 64; ++i) json_array_append_new(mo, json_real(m->editor.macroOwn[i]));
+    for (int i = 0; i < 80; ++i) json_array_append_new(mo, json_real(m->editor.macroOwn[i]));
     json_object_set_new(root, "editorMacroOwn", mo);
     json_t* ms = json_array();
-    for (int i = 0; i < 256; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));
+    for (int i = 0; i < 320; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));
     json_object_set_new(root, "editorMacroSend", ms);
     json_t* ma = json_array();
-    for (int i = 0; i < 256; ++i) json_array_append_new(ma, json_real(m->editor.macroAtten[i]));
+    for (int i = 0; i < 320; ++i) json_array_append_new(ma, json_real(m->editor.macroAtten[i]));
     json_object_set_new(root, "editorMacroAtten", ma);
 
     // V1 (East-alone) LOR/spread backup + its written-once guard.
+    // 336 = 16 slots × 7 banks × 3 (MONO_LANES=7 incl QMIX/VAR/LEG); spread 80 = 16 × 5 poly lanes.
     json_t* lb = json_array();
-    for (int i = 0; i < 288; ++i) json_array_append_new(lb, json_real(m->editor.lorBase[i]));
+    for (int i = 0; i < 336; ++i) json_array_append_new(lb, json_real(m->editor.lorBase[i]));
     json_object_set_new(root, "editorLorBase", lb);
     json_t* sp = json_array();
-    for (int i = 0; i < 64; ++i) json_array_append_new(sp, json_real(m->editor.spread[i]));
+    for (int i = 0; i < 80; ++i) json_array_append_new(sp, json_real(m->editor.spread[i]));
     json_object_set_new(root, "editorSpread", sp);
 
     // GLOBAL slice (MVC step 1). Macro's globals used to be params, which gave save/restore
@@ -190,13 +205,14 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
         for (int i = 0; i < n; ++i) json_array_append_new(j, json_real(a[i]));
         json_object_set_new(root, key, j);
     };
-    saveArr("editorGlobalLor",    m->editor.globalLor,    12);
-    saveArr("editorGlobalSpread", m->editor.globalSpread,  4);
-    saveArr("editorGlobalAtten",  m->editor.globalAtten,  16);
-    saveArr("editorGlobalTap",    m->editor.globalTap,     8);
-    saveArr("editorGlobalDir",    m->editor.globalDir,     4);
-    saveArr("editorMonoAtten",    m->editor.monoAtten,    24);
-    saveArr("editorMonoOwner",    m->editor.monoOwner,     4);
+    // Sizes track the QMIX-widened EditorState arrays: 5 poly lanes, 7 mono lanes.
+    saveArr("editorGlobalLor",    m->editor.globalLor,    15);   // 5 poly lanes × 3
+    saveArr("editorGlobalSpread", m->editor.globalSpread,  5);   // 5 poly lanes
+    saveArr("editorGlobalAtten",  m->editor.globalAtten,  20);   // 5 poly lanes × 4 cols
+    saveArr("editorGlobalTap",    m->editor.globalTap,    10);   // 5 poly lanes × 2
+    saveArr("editorGlobalDir",    m->editor.globalDir,     5);   // 5 poly lanes
+    saveArr("editorMonoAtten",    m->editor.monoAtten,    28);   // 7 mono lanes × 4 cols
+    saveArr("editorMonoOwner",    m->editor.monoOwner,     5);   // 5 poly lanes
 
     return root;
 }
@@ -285,6 +301,10 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "rhythmSeedPendingFloat")) m->rhythmSeedPendingFloat = (float)json_real_value(j);
     if (auto j = json_object_get(root, "melodySeedPending")) m->melodySeedPending = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "melodySeedPendingFloat")) m->melodySeedPendingFloat = (float)json_real_value(j);
+    // q-mix seed twins (Task 4d) — on the ENGINE (pe.*), not the module.
+    if (auto j = json_object_get(root, "qmixSeedFloat")) m->engine.pe.qmixSeedFloat = (float)json_real_value(j);
+    if (auto j = json_object_get(root, "qmixSeedPending")) m->engine.pe.qmixSeedPending = (bool)json_boolean_value(j);
+    if (auto j = json_object_get(root, "qmixSeedPendingFloat")) m->engine.pe.qmixSeedPendingFloat = (float)json_real_value(j);
 
     // ── DNA Random Buffers ──
     auto loadArr = [&](const char* name, float* target) {
@@ -301,6 +321,7 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     loadArr("melodyRandom", m->engine.pe.melodyRandom);
     loadArr("octaveRandom", m->engine.pe.octaveRandom);
     loadArr("accentRandom", m->engine.pe.accentRandom);
+    loadArr("qmixRandom", m->engine.pe.qmixRandom);   // Task 4d
 
     // ── Poly DNA Random Buffers ──
     // target is the unified random_ store (written per-element via polyRandom, since random_[1..15]
@@ -332,14 +353,18 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     {
         if (auto j=json_object_get(root,"slLatchedR")) m->engine.pe.rhythmSlewLatched=(float)json_real_value(j);
         if (auto j=json_object_get(root,"slLatchedM")) m->engine.pe.melodySlewLatched=(float)json_real_value(j);
+        if (auto j=json_object_get(root,"slLatchedQ")) m->engine.pe.qmixSlewLatched=(float)json_real_value(j);   // Task 4d
         if (auto j=json_object_get(root,"mixLatchedR")) m->engine.pe.rhythmMixLatched=(float)json_real_value(j);
         if (auto j=json_object_get(root,"mixLatchedM")) m->engine.pe.melodyMixLatched=(float)json_real_value(j);
-        m->engine.pe.rhythmFirstDraw = false; m->engine.pe.melodyFirstDraw = false;
+        if (auto j=json_object_get(root,"mixLatchedQ")) m->engine.pe.qmixMixLatched=(float)json_real_value(j);   // Task 4d
+        m->engine.pe.rhythmFirstDraw = false; m->engine.pe.melodyFirstDraw = false; m->engine.pe.qmixFirstDraw = false;
         if (auto j=json_object_get(root,"slFirstR")) m->engine.pe.rhythmFirstDraw=(bool)json_boolean_value(j);
         if (auto j=json_object_get(root,"slFirstM")) m->engine.pe.melodyFirstDraw=(bool)json_boolean_value(j);
+        if (auto j=json_object_get(root,"slFirstQ")) m->engine.pe.qmixFirstDraw=(bool)json_boolean_value(j);   // Task 4d
         if (auto j=json_object_get(root,"drawCtrR")) m->engine.pe.rhythmDrawCtr=(int64_t)strtoll(json_string_value(j),nullptr,10);
         if (auto j=json_object_get(root,"drawCtrM")) m->engine.pe.melodyDrawCtr=(int64_t)strtoll(json_string_value(j),nullptr,10);
-        m->engine.pe.rhythmSlewApplied = -1.f; m->engine.pe.melodySlewApplied = -1.f;
+        if (auto j=json_object_get(root,"drawCtrQ")) m->engine.pe.qmixDrawCtr=(int64_t)strtoll(json_string_value(j),nullptr,10);   // Task 4d
+        m->engine.pe.rhythmSlewApplied = -1.f; m->engine.pe.melodySlewApplied = -1.f; m->engine.pe.qmixSlewApplied = -1.f;
         m->pendingRegenB = true;   // finalize: re-apply counter post-seed, then recomputeEffective*
     }
 
@@ -379,27 +404,27 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     }
     if (auto j = json_object_get(root, "editorMacroOwn")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 64 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 80 && i < json_array_size(j); ++i)    // 16 × 5 poly lanes
                 m->editor.macroOwn[i] = (float)json_real_value(json_array_get(j, i));
     }
     if (auto j = json_object_get(root, "editorMacroSend")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 256 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 320 && i < json_array_size(j); ++i)   // 16 × 5 × 4 items
                 m->editor.macroSend[i] = (float)json_real_value(json_array_get(j, i));
     }
     if (auto j = json_object_get(root, "editorMacroAtten")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 256 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 320 && i < json_array_size(j); ++i)   // 16 × 5 × 4 cols
                 m->editor.macroAtten[i] = (float)json_real_value(json_array_get(j, i));
     }
     if (auto j = json_object_get(root, "editorLorBase")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 288 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 336 && i < json_array_size(j); ++i)   // 16 × 7 banks × 3
                 m->editor.lorBase[i] = (float)json_real_value(json_array_get(j, i));
     }
     if (auto j = json_object_get(root, "editorSpread")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 64 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 80 && i < json_array_size(j); ++i)    // 16 × 5 poly lanes
                 m->editor.spread[i] = (float)json_real_value(json_array_get(j, i));
     }
     auto loadArrN = [&](const char* key, float* a, int n) {
@@ -409,11 +434,12 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
                     a[i] = (float)json_real_value(json_array_get(j, i));
         }
     };
-    loadArrN("editorGlobalLor",    m->editor.globalLor,    12);
-    loadArrN("editorGlobalSpread", m->editor.globalSpread,  4);
-    loadArrN("editorGlobalAtten",  m->editor.globalAtten,  16);
-    loadArrN("editorGlobalTap",    m->editor.globalTap,     8);
-    loadArrN("editorGlobalDir",    m->editor.globalDir,     4);
-    loadArrN("editorMonoAtten",    m->editor.monoAtten,    24);
-    loadArrN("editorMonoOwner",    m->editor.monoOwner,     4);
+    // Sizes track the QMIX-widened EditorState arrays: 5 poly lanes, 7 mono lanes.
+    loadArrN("editorGlobalLor",    m->editor.globalLor,    15);   // 5 poly lanes × 3
+    loadArrN("editorGlobalSpread", m->editor.globalSpread,  5);   // 5 poly lanes
+    loadArrN("editorGlobalAtten",  m->editor.globalAtten,  20);   // 5 poly lanes × 4 cols
+    loadArrN("editorGlobalTap",    m->editor.globalTap,    10);   // 5 poly lanes × 2
+    loadArrN("editorGlobalDir",    m->editor.globalDir,     5);   // 5 poly lanes
+    loadArrN("editorMonoAtten",    m->editor.monoAtten,    28);   // 7 mono lanes × 4 cols
+    loadArrN("editorMonoOwner",    m->editor.monoOwner,     5);   // 5 poly lanes
 }

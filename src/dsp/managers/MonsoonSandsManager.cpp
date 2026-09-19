@@ -127,7 +127,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     expanderManager.fillPresence(topoIn, engine.numPolyVoices);   // single presence authority
     if (monoVis) {
         // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
-        for (int l = 0; l < 4; ++l)
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
             topoIn.monoV1Owner[l] = gMon ? gMon->getMonoOwner(l) : true;
     }
     const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
@@ -187,14 +187,14 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             int strand = dotModular::MONO_LANE_TO_STRAND[l];
             // MVC step 1d: LOR base is STORE-BACKED (editor.lorBase[kMonoSlot, bank, c]). Was
             // params[lenId/offId/rotId(l)] (removed). l is the EDITOR lane; bank = engine lane for
-            // poly (0..3), self for VAR/LEG (4,5) — East's lorBank. gMon resolves via monoVis so
+            // poly (0..4), self for VAR/LEG (5,6) — East's lorBank. gMon resolves via monoVis so
             // it's valid without Macro. Defaults (16/0/0) match the identity init if store is empty.
-            const int bLor = (l <= 3) ? dotModular::EDITOR_TO_ENGINE_LANE[l] : l;
+            const int bLor = dotModular::lorStoreBank(l);   // single canonical editor→lorBase bank (covers VAR/LEG)
             float baseLen = gMon ? gMon->getLorBase(dotModular::VoiceResolver::kMonoSlot, bLor, 0) : 16.f;
             float baseOff = gMon ? gMon->getLorBase(dotModular::VoiceResolver::kMonoSlot, bLor, 1) : 0.f;
             float baseRot = gMon ? gMon->getLorBase(dotModular::VoiceResolver::kMonoSlot, bLor, 2) : 0.f;
 
-            // V1 ownership (poly lanes only: editor 0..3 = MEL/OCT/REST/ACC). When
+            // V1 ownership (poly lanes only: editor 0..4 = MEL/OCT/QMIX/REST/ACC). When
             // Mono CEDES a lane (ownerDispId == 0) and Macro is attached, V1's base
             // comes from Macro's GLOBAL base for that lane instead of Mono's own LOR
             // edit — mirroring how poly voices switch base by ownerId. LEG/VAR (l>=4)
@@ -204,7 +204,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 // STEP 3b: delegated ⟺ topo.owner(0,l) == MACRO.
                 const bool delegated = (topo.owner(0, l) == dotModular::SandsTopology::Role::MACRO);
                 if (delegated) {
-                    int el = dotModular::EDITOR_TO_ENGINE_LANE[l];   // editor → poly engine lane
+                    int el = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[l];   // editor → poly engine lane
                     // Delegated → track Macro's base + the TAPPED CV delta (macroSendDelta),
                     // so the per-lane PRE/POST send tap controls how Macro's modulation
                     // reaches the delegated lane: PRE (tap=0) = raw CV even when the left
@@ -267,8 +267,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // A DELEGATED lane tracks Macro's value exclusively (set above) — it takes
             // neither East's CV nor the Macro SEND on top (that would double-count Macro's
             // modulation, already in the delegated base). Only OWNED lanes receive these.
-            if (l < 4 && monoOwnsLane) {
-                int eng = dotModular::EDITOR_TO_ENGINE_LANE[l];   // editor → engine lane (East CV jack)
+            if (l < dotModular::SandsGrid::POLY_LANES && monoOwnsLane) {
+                int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[l];   // editor → engine lane (East CV jack)
                 // Sum ALL mods (East CV + Macro send) onto the base, then clamp the END RESULT once.
                 baseLen = math::clamp(baseLen + eastDelta(eng, 0, 1.f, 16.f) + macroDelta(eng, 0),  1.f, 16.f);
                 baseOff = math::clamp(baseOff + eastDelta(eng, 1, 0.f, 15.f) + macroDelta(eng, 1),  0.f, 15.f);
@@ -298,7 +298,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // wired like the others (was previously skipped: loop l<3 + spreadEffective[3]=0,
             // so Mono accent spread did nothing). sprId(3)=accent base; East spread CV
             // jack cvId(3,3); Macro send/delta lane 3.
-            for (int l = 0; l < 4; ++l) {
+            for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
                 // Delegation: if Mono CEDES this poly spread lane to Macro, the spread
                 // tracks Macro's global spread (base + tapped send delta) exclusively —
                 // no Mono base, no Mono/East CV (parallel to the LOR delegation above).
@@ -381,12 +381,17 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         engine.pe, 1, i, engine.pe.slewedMelody[i], engine.spreadE(0, 1));
                     engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(
                         engine.pe, 2, i, engine.pe.slewedOctave[i], engine.spreadE(0, 2));
+                    // QMIX is a melody-family value lane (Task 4c): apply its own spread on the
+                    // melody axis. SpreadInterp lane 4 = QMIX (slewedQmix twin); engine spread
+                    // lane 4 = STRAND_QMIX (spreadE absorbs the engine→editor permutation).
+                    engine.pe.qmixRandom[i] = redDot::SpreadInterp::apply(
+                        engine.pe, 4, i, engine.pe.slewedQmix[i], engine.spreadE(0, 4));
                 }
             }
             }  // end if(sprR || sprM)
         //}
         // Drive all 6 mono strands via the single-source-of-truth lane map.
-        for (int l = 0; l < 6; ++l) readStrand(l);
+        for (int l = 0; l < dotModular::SandsGrid::MONO_LANES; ++l) readStrand(l);
 
     } else {
         // No Mono visual. If East is present and acting as the V1 editor (combo 3:
@@ -435,7 +440,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 const int kMono = dotModular::VoiceResolver::kMonoSlot;
                 // Lanes 0..3 (REST/MEL/OCT/ACC): Macro base when delegated, else base+CV+send blend.
                 for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-                    const int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];
+                    const int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
                     const int strand  = dotModular::MONO_LANE_TO_STRAND[el];
                     // SCOPE (LOCK_SCOPE_MENU): MELODY/OCTAVE strands = melody axis; else rhythm.
                     const bool lorMelAxis = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);
@@ -524,6 +529,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             const float spM = sprForLane(1);
             const float spO = sprForLane(2);
             const float spA = sprForLane(3);
+            const float spQ = sprForLane(4);   // QMIX (spread/engine lane 4)
             engine.pe.setSandsActive(true);
             for (int i = 0; i < 16; ++i) {
                 if (axR) {
@@ -535,6 +541,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 if (axM) {
                     engine.pe.melodyRandom[i] = redDot::SpreadInterp::apply(engine.pe, 1, i, engine.pe.slewedMelody[i], spM);
                     engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(engine.pe, 2, i, engine.pe.slewedOctave[i], spO);
+                    // QMIX is a melody-family value lane (Task 4c): apply on the melody axis.
+                    engine.pe.qmixRandom[i] = redDot::SpreadInterp::apply(engine.pe, 4, i, engine.pe.slewedQmix[i], spQ);
                 }
             }
             }   // end if (axR || axM) — spread only; V1 LOR above runs under lock too
@@ -607,8 +615,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         if (mSpR || mSpM) {
             const int nPoly = rack::math::clamp(engine.numPolyVoices, 0, 15);
             // Global spread level per lane (knob + CV), spread/engine-indexed 0..3.
-            float spv[4];
-            for (int lane = 0; lane < 4; ++lane) {
+            float spv[dotModular::SandsGrid::POLY_LANES];
+            for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
                 // Standalone Macro global spread — own CV only (same as publishGlobal), via the resolver.
                 redDot::SpreadResolver::Inputs ssin;
                 ssin.base = (gMon ? gMon->getGlobalSpread(lane) : 0.f);
