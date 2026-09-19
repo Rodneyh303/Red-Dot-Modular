@@ -1,18 +1,19 @@
 #include "PatternEngine.hpp"
 
 void PatternEngine::reset() {
-    rhythmSeedPending = melodySeedPending = false;
-    rhythmRollPending = melodyRollPending = false;
-    rhythmPendingLast = melodyPendingLast = false;
-    rhythmReseedRollPending = melodyReseedRollPending = false;
-    rhythmReseedRollFull = melodyReseedRollFull = false;
-    rhythmMode = melodyMode = 0;
-    rhythmSeedCached = melodySeedCached = false;
+    rhythmSeedPending = melodySeedPending = qmixSeedPending = false;
+    rhythmRollPending = melodyRollPending = qmixRollPending = false;
+    rhythmPendingLast = melodyPendingLast = qmixPendingLast = false;
+    rhythmReseedRollPending = melodyReseedRollPending = qmixReseedRollPending = false;
+    rhythmReseedRollFull = melodyReseedRollFull = qmixReseedRollFull = false;
+    rhythmMode = melodyMode = qmixMode = 0;
+    rhythmSeedCached = melodySeedCached = qmixSeedCached = false;
 
     // Initialise the addressable Philox draw engines from the current seed floats
     // (default 0 → a fixed reproducible starting sequence, counter at 0).
     seedRhythmPhilox(rhythmSeedFloat);
     seedMelodyPhilox(melodySeedFloat);
+    seedQmixPhilox(qmixSeedFloat);   // q-mix twin — its OWN STREAM_SOURCE_SELECT stream
 
     // strands must not be all-zero or module is silent until dice/phrase
     for (int i = 0; i < 16; ++i) {
