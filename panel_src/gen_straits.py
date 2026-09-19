@@ -50,12 +50,13 @@ THEMES = {
 }
 
 MARGIN   = 5.0
-SPINE_W  = 6.0                  # voice spine on the far left
-SPINE_CX = MARGIN + SPINE_W/2
-GAP      = 3.0                  # gap between the three banks
-# Three equal banks fill the remaining width right of the spine.
-BANKS_X0 = MARGIN + SPINE_W + 2.0
-BANK_W   = (W - BANKS_X0 - MARGIN - 2*GAP) / 3.0
+# Divider rails now sit in the GUTTERS BETWEEN banks (one per inter-group gap), not at the
+# far-left panel edge. So there's no dedicated left "spine" column any more — the banks start
+# near the left margin and the rails are derived from the gutter midpoints (see gutter_cx()).
+GAP      = 6.0                  # gap between banks — wide enough to host a divider rail
+NBANKS   = 3                   # rest, accent, qmix (rails auto-scale: one per (NBANKS-1) gap)
+BANKS_X0 = MARGIN + 2.0
+BANK_W   = (W - BANKS_X0 - MARGIN - (NBANKS-1)*GAP) / float(NBANKS)
 TOP      = 16.0
 N_ROWS   = 6                    # 3 cols x 6/6/4 (col-major: voices 1-6, 7-12, 13-16)
 COLS     = [6, 6, 4]
@@ -66,6 +67,12 @@ JACK_Y   = TOP + N_ROWS*ROW_H + 6.5   # 111.1mm; logo band below
 
 def bank_x0(idx):  # left edge of bank idx (0=rest,1=accent,2=qmix)
     return BANKS_X0 + idx*(BANK_W + GAP)
+
+def gutter_cx(idx):
+    # Midpoint of the gutter to the RIGHT of bank `idx` (i.e. between bank idx and idx+1).
+    # Derived from group geometry so the divider rail can never drift to the panel edge
+    # again, and so adding a 4th bank yields a 3rd rail automatically. Valid idx: 0..NBANKS-2.
+    return bank_x0(idx) + BANK_W + GAP/2.0
 
 def wave_field(A, t, x0, y0, w, h, colour, n=22):
     """Flowing contour lines (the straits' water) across (x0,y0,w,h). Dense field — many
@@ -130,14 +137,10 @@ def gen(dark):
         # bank colour marker (label text left implicit / drawn at runtime)
         A(f'<circle cx="{px(x0+BANK_W*0.5)}" cy="{px(TOP-6)}" r="{px(1.4)}" fill="{tint}"/>')
 
-    # ── voice spine 1..16 (far left) ──
-    A(f'<line x1="{px(SPINE_CX)}" y1="{px(TOP)}" x2="{px(SPINE_CX)}" y2="{px(TOP+N_ROWS*ROW_H)}" '
-      f'stroke="{t["spine"]}" stroke-width="{px(0.6)}"/>')
-
     # ── knob grid: per bank, 3 columns 6/6/4 = 16, COLUMN-major ──
     # col 0 = voices 1-6 (v0..5, v0 = mono at top-left), col 1 = 7-12, col 2 = 13-16
     # (4-knob col vertically centred: offset one row).
-    def bank(kind, x_base, col_face, col_ring, spine_col=False):
+    def bank(kind, x_base, col_face, col_ring):
         cw = BANK_W/3
         v = 0
         for c, nrows in enumerate(COLS):
@@ -148,15 +151,26 @@ def gen(dark):
                 mono = (v == 0)
                 knob(A, t, cx, cy, KNOB_R, col_face, col_ring, mono)
                 A(f'<circle id="param_{kind}_{v}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
-                # voice-number dots on the spine — drawn once (from the REST bank's first column,
-                # which aligns row-for-row with all three banks). Marks voices 1..6; mono distinct.
-                if spine_col and c == 0:
-                    A(f'<circle cx="{px(SPINE_CX)}" cy="{px(cy)}" r="{px(0.7)}" '
-                      f'fill="{t["spinedot"] if mono else t["spinehi"]}" fill-opacity="{1.0 if mono else 0.5}"/>')
                 v += 1
-    bank("rest",   bank_x0(0), t["restknob"], t["rest"], spine_col=True)
+    bank("rest",   bank_x0(0), t["restknob"], t["rest"])
     bank("accent", bank_x0(1), t["accknob"],  t["acc"])
     bank("qmix",   bank_x0(2), t["qmixknob"], t["qmix"])
+
+    # ── divider rails: ONE per inter-bank gutter (derived from group geometry via gutter_cx),
+    # so 3 banks → 2 rails and a future 4th bank would add a 3rd automatically. Each rail is a
+    # vertical line plus the six voice-row dots (voices 1..6, aligned to col-0 knob rows; mono
+    # distinct). Both rails are byte-identical in length/dot-count/spacing/alignment because they
+    # share the same y math — only x differs (the gutter midpoint). This replaces the old single
+    # far-left "spine", which regressed to the panel edge when the 3rd bank was added. ──
+    col0_row_cy = [GRID_TOP + ROW_H*(r + 0.5) for r in range(COLS[0])]   # col-0 = voices 1..6
+    for g in range(NBANKS - 1):
+        rx = gutter_cx(g)
+        A(f'<line x1="{px(rx)}" y1="{px(TOP)}" x2="{px(rx)}" y2="{px(TOP+N_ROWS*ROW_H)}" '
+          f'stroke="{t["spine"]}" stroke-width="{px(0.6)}"/>')
+        for r, cy in enumerate(col0_row_cy):
+            mono = (r == 0)
+            A(f'<circle cx="{px(rx)}" cy="{px(cy)}" r="{px(0.7)}" '
+              f'fill="{t["spinedot"] if mono else t["spinehi"]}" fill-opacity="{1.0 if mono else 0.5}"/>')
 
     # ── five poly-cable output jacks along the bottom ──
     # GATE (fused), STEP (un-fused), SLEG (step-legato: articulations inside slurs only),
