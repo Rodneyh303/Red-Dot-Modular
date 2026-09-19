@@ -1,5 +1,16 @@
 # BUILD SPEC: dot.modular CV->MPE utility module (for CC)
 
+> **STATUS: BUILT + code-reviewed 2026-09-03 (commit 60fd770) -- awaiting Rodney's Rack build + verify.**
+> Keppel ships the full CV->MPE-out: per-voice MPE Lower-Zone member channels, LRU voice->channel
+> allocation, RPN pitch-bend-sensitivity + MCM handshake, the nearest-note+bend split (MpeMath.hpp),
+> accent/VEL -> note-on velocity. The three formerly-open items are DONE: bend range 1..48; re-articulate
+> on range-exceed (default B, menu-toggleable, no boundary chatter); reverse-calc MONITOR output
+> (reconstructVolts, round-trip unit-tested <1 cent at any range -- test_MpeMath.cpp, commit d1b331c).
+> Residual is RUNTIME only: scope MONITOR vs PITCH in Rack; confirm a real MPE receiver/DAW accepts the
+> RPN handshake at range 48; the full out->DAW->MPE-in round-trip (<1-2 cents); and add the
+> `output_monitor` marker to the Keppel panel SVGs (Phase-2; the widget guards its absence). The body
+> below is the original build direction, kept for the design rationale.
+
 Build direction for the CV->MPE-out utility. Design rationale + resolution + complexity are in
 MICROTONAL_MIDI_MPE_DIRECTION.md; THIS is the build shape. Post-V1, but a self-contained module with
 ZERO engine coupling -- can be built independently any time.

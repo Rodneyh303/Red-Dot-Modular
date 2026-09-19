@@ -51,6 +51,7 @@ TESTS=(
   "test_lock_behaviour|$PE"
   "test_mode_b_gate|$SE $GS $PE"
   "test_modes_bcd|"
+  "test_modes_cd_microtonal|"
   "test_mono_dir_authority|"
   "test_MpeMath|"
   "test_multistep|"
