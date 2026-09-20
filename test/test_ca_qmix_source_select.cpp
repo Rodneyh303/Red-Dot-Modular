@@ -24,7 +24,8 @@ using namespace dotModular::ca;
 
 // ── Data-model constants MIRRORED from ChangeAlleyV2Ids (Monsoon.hpp) ────────────────────────────
 // These must stay in lockstep with the CA ids. SCATTER_TYPES=3 (rhythm=0, melody=1, q-mix=2) is the
-// DATA-MODEL type dimension (distinct from the panel TYPES=2). N_SCATTER = SIDES*SCATTER_TYPES*2 = 12.
+// DATA-MODEL type dimension. The panel TYPES now also = 3 (Plan A 3-stream), so TYPES==SCATTER_TYPES.
+// N_SCATTER = SIDES*SCATTER_TYPES*2 = 12.
 static constexpr int SIDES         = 2;
 static constexpr int SCATTER_TYPES = 3;
 static constexpr int N_SCATTER     = SIDES * SCATTER_TYPES * 2;   // 12

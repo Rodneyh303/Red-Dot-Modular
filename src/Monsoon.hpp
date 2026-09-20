@@ -1139,44 +1139,49 @@ namespace TemasekIds {
 // application code is shared.
 namespace ChangeAlleyV2Ids {
     static constexpr int N_VOICES = 16, N_POOLS = 2;
-    static constexpr int N_VERBS = 4, SIDES = 2, TYPES = 2, N_ROWS = N_VERBS * SIDES * TYPES;
-    // SCATTER_TYPES is the DATA-MODEL type dimension (rhythm=0, melody=1, q-mix=2). It is
-    // DELIBERATELY separate from TYPES (=2, the PANEL row/param dimension): the q-mix source-
-    // select plane + its scatter streams exist in the engine/data layer NOW, while the panel's
-    // physical q-mix row is a LATER layer (CA_PANEL_THREE_STREAM_LAYOUT.md). Keeping TYPES=2
-    // leaves N_ROWS / all param+input IDs / panel geometry untouched; SCATTER_TYPES=3 sizes the
-    // scatter counters + corrKeys + the qmixSrc plane at 2×3×2 = 12 streams (QMIX_LANE_PARITY
-    // §"The blend": the 8 scatter streams become 12). Ordering rhythm=0/melody=1/qmix=2 MUST stay
-    // consistent across key derivation, counter indexing, and the transform ci computation.
+    // PLAN A (CA_PANEL_THREE_STREAM_LAYOUT): the panel now carries 3 streams/row-group
+    // (rhythm=0, melody=1, q-mix=2), so TYPES=3 and N_ROWS = 4*2*3 = 24. TYPES is the PANEL
+    // row/param dimension; it now COINCIDES with SCATTER_TYPES (the data-model type dimension),
+    // so the two are kept equal — the q-mix panel row and the q-mix scatter stream are the same
+    // type index 2. Ordering rhythm=0/melody=1/qmix=2 MUST stay consistent across key derivation,
+    // counter indexing, the transform ci computation, and the panel row layout.
+    static constexpr int N_VERBS = 4, SIDES = 2, TYPES = 3, N_ROWS = N_VERBS * SIDES * TYPES;
+    // SCATTER_TYPES == TYPES now (both 3). Kept as a named constant where the *data-model* type
+    // dimension is meant (scatter counters/corrKeys/qmixSrc), so the two usages read distinctly.
     static constexpr int SCATTER_TYPES = 3;
     static constexpr int N_SCATTER = SIDES * SCATTER_TYPES * 2;   // 12 scatter streams
-    static constexpr int rowId(int verb, int side, int type) { return verb*4 + side*2 + type; }
+    // Row index generalized to the (verb,side,type) dims — NOT hardcoded 4/2 (old TYPES=2).
+    static constexpr int rowId(int verb, int side, int type) { return verb*SIDES*TYPES + side*TYPES + type; }
     enum Verb { V_COLLAPSE = 0, V_ROTATE = 1, V_REFLECT = 2, V_SCATTER = 3 };
 
     // DAW-exposed GENERATION params (latch under lock), then non-exposed momentary buttons.
+    // NOTE: LEADER/STEP are indexed by (side*TYPES+type) — i.e. one per SIDE×TYPE, NOT per row.
+    // COLLAPSE uses LEADER, ROTATE uses STEP; both span the SIDES*TYPES = 6 (side,type) slots.
+    // (Previously written as N_ROWS/2 which, at TYPES=2, happened to equal the used count but
+    //  actually over-allocated; now expressed as the true SIDES*TYPES dimension.)
     enum ParamIds {
-        GRAIN_START  = 0,                            // 16
-        LEADER_START = GRAIN_START  + N_ROWS,        // 8  (Collapse)
-        STEP_START   = LEADER_START + N_ROWS / 2,    // 8  (Rotate)
-        NUM_PARAMS   = STEP_START   + N_ROWS / 2,    // = 32  (DAW boundary)
-        BTN_START    = NUM_PARAMS,                   // 32 momentary buttons (16 rows x 2)
-        // 8 scatter REVERSE buttons (button twins of the SCATTER_BACK_DOM/COD jacks):
-        // 4 domain + 4 codomain across Intra/Inter x rhythm/melody. Fire scatterDelta = -1.
-        SCATTER_REV_BTN_START = BTN_START + N_ROWS * 2,   // 8 (= SIDES*TYPES*2)
-        NUM_PARAMS_TOTAL = SCATTER_REV_BTN_START + SIDES*TYPES*2    // = 72
+        GRAIN_START  = 0,                             // 24  (one grain knob per row)
+        LEADER_START = GRAIN_START  + N_ROWS,         // 6   (Collapse leader; per side×type)
+        STEP_START   = LEADER_START + SIDES*TYPES,    // 6   (Rotate step;   per side×type)
+        NUM_PARAMS   = STEP_START   + SIDES*TYPES,    // = 36 (DAW boundary)
+        BTN_START    = NUM_PARAMS,                    // 48 momentary buttons (24 rows x 2)
+        // Scatter REVERSE buttons (button twins of the SCATTER_BACK_DOM/COD jacks):
+        // domain + codomain across Intra/Inter x rhythm/melody/q-mix. Fire scatterDelta = -1.
+        SCATTER_REV_BTN_START = BTN_START + N_ROWS * 2,   // = SIDES*TYPES*2 = 12
+        NUM_PARAMS_TOTAL = SCATTER_REV_BTN_START + SIDES*TYPES*2    // = 108
     };
     enum InputIds {
-        DOMAIN_TRIG_START      = 0,                             // 16
-        CODOMAIN_TRIG_START    = DOMAIN_TRIG_START   + N_ROWS,  // 16
-        SCATTER_BACK_DOM_START = CODOMAIN_TRIG_START + N_ROWS,  // 4
-        SCATTER_BACK_COD_START = SCATTER_BACK_DOM_START + SIDES*TYPES, // 4
-        // Poly modulation, no attenuverters (§: Rodney): GRAIN poly maps 16 channels to the
-        // 16 grain knobs; STEP poly maps 8 channels to the 8 step knobs.
-        GRAIN_POLY_IN          = SCATTER_BACK_COD_START + SIDES*TYPES, // 1 (16ch)
-        STEP_POLY_IN           = GRAIN_POLY_IN + 1,                    // 1 (8ch)
-        NUM_INPUTS             = STEP_POLY_IN + 1                      // = 42
+        DOMAIN_TRIG_START      = 0,                             // 24
+        CODOMAIN_TRIG_START    = DOMAIN_TRIG_START   + N_ROWS,  // 24
+        SCATTER_BACK_DOM_START = CODOMAIN_TRIG_START + N_ROWS,  // 6 (SIDES*TYPES)
+        SCATTER_BACK_COD_START = SCATTER_BACK_DOM_START + SIDES*TYPES, // 6
+        // Poly modulation, no attenuverters (§: Rodney): GRAIN poly maps channels to the
+        // grain knobs; STEP poly maps channels to the step knobs.
+        GRAIN_POLY_IN          = SCATTER_BACK_COD_START + SIDES*TYPES, // 1
+        STEP_POLY_IN           = GRAIN_POLY_IN + 1,                    // 1
+        NUM_INPUTS             = STEP_POLY_IN + 1                      // = 62
     };
-    enum LightIds { PENDING_LIGHT_START = 0, NUM_LIGHTS = N_ROWS };  // 16
+    enum LightIds { PENDING_LIGHT_START = 0, NUM_LIGHTS = N_ROWS };  // 24
 
     struct PendingAction {
         bool  armed = false; int grain = 4; int leaderOrStep = 0;

@@ -124,7 +124,7 @@ struct MonsoonChangeAlleyV2 : Module {
         config(CA::NUM_PARAMS_TOTAL, CA::NUM_INPUTS, 0, CA::NUM_LIGHTS);
         static const char* VN[CA::N_VERBS] = {"Collapse","Rotate","Reflect","Scatter"};
         static const char* SN[CA::SIDES]   = {"Intra","Inter"};
-        static const char* PN[CA::TYPES]   = {"Rhythm","Melody"};
+        static const char* PN[CA::TYPES]   = {"Rhythm","Melody","Q-mix"};
         static const char* GL[] = {"1","2","4","8","16"};
         for (int v = 0; v < CA::N_VERBS; ++v)
           for (int sd = 0; sd < CA::SIDES; ++sd)
@@ -134,7 +134,7 @@ struct MonsoonChangeAlleyV2 : Module {
                 configSwitch(CA::GRAIN_START + r, 0.f, 4.f, 2.f, nm + " grain",
                              {GL[0],GL[1],GL[2],GL[3],GL[4]});
             }
-        for (int r = 0; r < CA::N_ROWS / 2; ++r) {
+        for (int r = 0; r < CA::SIDES * CA::TYPES; ++r) {   // one leader/step per side×type
             configParam(CA::LEADER_START + r, 0.f, 15.f, 0.f, "Leader offset")->snapEnabled = true;
             configParam(CA::STEP_START   + r, -7.f, 7.f, 1.f, "Step")->snapEnabled = true;
         }
@@ -147,8 +147,8 @@ struct MonsoonChangeAlleyV2 : Module {
         for (int i = 0; i < CA::SIDES * CA::TYPES; ++i) {
             configInput(CA::SCATTER_BACK_DOM_START + i, "Scatter domain back");
             configInput(CA::SCATTER_BACK_COD_START + i, "Scatter codomain back");
-            configButton(CA::SCATTER_REV_BTN_START + i,     "Scatter domain reverse");
-            configButton(CA::SCATTER_REV_BTN_START + 4 + i, "Scatter codomain reverse");
+            configButton(CA::SCATTER_REV_BTN_START + i,                       "Scatter domain reverse");
+            configButton(CA::SCATTER_REV_BTN_START + CA::SIDES*CA::TYPES + i, "Scatter codomain reverse");
         }
         configInput(CA::GRAIN_POLY_IN, "Grain poly CV (16ch -> 16 grain knobs; mono=all)");
         configInput(CA::STEP_POLY_IN,  "Step poly CV (ch 1-4 leader, 5-8 step; mono=all)");
@@ -217,7 +217,7 @@ struct MonsoonChangeAlleyV2 : Module {
         bool any = false;
         for (int row = 0; row < CA::N_ROWS; ++row) {
             if (!pendingRows[row].armed) continue;
-            if (axisMask & axisBitForType(row % 2)) { any = true; break; }   // panel rows: type = row % 2
+            if (axisMask & axisBitForType(row % CA::TYPES)) { any = true; break; }  // panel rows: type = row % TYPES
         }
         if (!any) return;
 
@@ -230,9 +230,11 @@ struct MonsoonChangeAlleyV2 : Module {
         for (int row = 0; row < CA::N_ROWS; ++row) {
             auto& p = pendingRows[row];
             if (!p.armed) continue;
-            const int verb = row / 4;
-            const int side = (row % 4) / 2;
-            const int type = row % 2;   // panel rows carry type 0=rhythm 1=melody; q-mix (2) via later panel row
+            // Decode (verb,side,type) from row using the current dims — NOT hardcoded 4/2
+            // (rowId = verb*SIDES*TYPES + side*TYPES + type; TYPES=3 now).
+            const int verb = row / (CA::SIDES * CA::TYPES);
+            const int side = (row / CA::TYPES) % CA::SIDES;
+            const int type = row % CA::TYPES;   // 0=rhythm 1=melody 2=q-mix (panel 3rd stream)
             // SCOPE (LOCK_SCOPE_MENU §6): only commit rows whose axis is in axisMask. Out-of-axis rows
             // stay armed (NOT applied, NOT cleared) so they fire at the next in-axis/unlock commit.
             if (!(axisMask & axisBitForType(type))) continue;
@@ -311,7 +313,7 @@ struct MonsoonChangeAlleyV2 : Module {
             if (sRevBtnDom[i].process(params[CA::SCATTER_REV_BTN_START + i].getValue() > 0.5f)) {
                 latchRow(r, CA::V_SCATTER, sd, ty, true);  pendingRows[r].scatterDelta = -1;
             }
-            if (sRevBtnCod[i].process(params[CA::SCATTER_REV_BTN_START + 4 + i].getValue() > 0.5f)) {
+            if (sRevBtnCod[i].process(params[CA::SCATTER_REV_BTN_START + CA::SIDES*CA::TYPES + i].getValue() > 0.5f)) {
                 latchRow(r, CA::V_SCATTER, sd, ty, false); pendingRows[r].scatterDelta = -1;
             }
           }
@@ -491,7 +493,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
 
         // Transform controls: intra (left) and inter (right), mirrored, jacks outside.
         for (int verb = 0; verb < CA::N_VERBS; ++verb)
-          for (int sub = 0; sub < 2; ++sub) {
+          for (int sub = 0; sub < CA::TYPES; ++sub) {   // 3 streams: rhythm, melody, q-mix
             const float y = rowY(verb, sub);
             for (int side = 0; side < 2; ++side) {
                 const bool flip = (side == 1);
@@ -541,14 +543,17 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                         module, CA::SCATTER_BACK_DOM_START + si));
                     addInput(createInputCentered<PJ301MPort>(mm2px(Vec(lx(J_BACK2, flip), y)),
                         module, CA::SCATTER_BACK_COD_START + si));
-                    // Reverse BUTTONS in the dom/cod columns: rhythm (sub 0) sits ABOVE its row,
-                    // melody (sub 1) sits BELOW its row. si = side*TYPES+sub selects the pair;
-                    // domain = REV_BTN_START+si, codomain = REV_BTN_START+4+si (mirrors process()).
-                    const float ry = (sub == 0) ? (y - REV_DY_ABOVE) : (y + REV_DY_BELOW);
+                    // Reverse BUTTONS in the dom/cod columns, one pair per scatter sub-row.
+                    // si = side*TYPES+sub selects the pair; domain = REV_BTN_START+si,
+                    // codomain = REV_BTN_START + SIDES*TYPES + si (mirrors process()/config).
+                    // Placement: rhythm (sub 0) ABOVE its row; melody (sub 1) & q-mix (sub 2)
+                    // BELOW, staggered so the two lower pairs don't overlap each other.
+                    const float ry = (sub == 0) ? (y - REV_DY_ABOVE)
+                                                 : (y + REV_DY_BELOW + (sub - 1) * CTRL_ROW_H);
                     addParam(createParamCentered<TL1105>(mm2px(Vec(lx(BTN_D, flip), ry)),
                         module, CA::SCATTER_REV_BTN_START + si));
                     addParam(createParamCentered<TL1105>(mm2px(Vec(lx(BTN_C, flip), ry)),
-                        module, CA::SCATTER_REV_BTN_START + 4 + si));
+                        module, CA::SCATTER_REV_BTN_START + CA::SIDES*CA::TYPES + si));
                 }
                 addParam(createParamCentered<TL1105>(mm2px(Vec(lx(BTN_D, flip), y)),
                     module, CA::BTN_START + r*2));
@@ -746,9 +751,10 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                 for (int hr = 0; hr < CA::N_ROWS; ++hr) {
                     const auto& h = module->pendingRows[hr];
                     if (!h.armed) continue;
-                    const int hType = hr % 2;
-                    NVGcolor hcol = (hType == 0) ? nvgRGBAf(0.95f,0.95f,0.94f,0.55f)
-                                                  : nvgRGBAf(0.83f,0.f,0.10f,0.55f);
+                    const int hType = hr % CA::TYPES;   // 0=rhythm 1=melody 2=q-mix
+                    NVGcolor hcol = (hType == 0) ? nvgRGBAf(0.95f,0.95f,0.94f,0.55f)   // rhythm=white
+                                  : (hType == 1) ? nvgRGBAf(0.83f,0.f,0.10f,0.55f)     // melody=red
+                                                 : nvgRGBAf(0.30f,0.75f,0.35f,0.55f);  // q-mix=green
                     const float sw = mm2px(Vec(0.45f,0)).x;
                     const float hw = mm2px(Vec(CELL_W * 0.5f, 0)).x;
                     const float hh = mm2px(Vec(0, CELL_H * 0.5f)).y;
