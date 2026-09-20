@@ -1025,11 +1025,16 @@ void Monsoon::process(const ProcessArgs& args) {
 
         if (expanderManager.cachedRafflesExpander) {
             rack::Module* cw = expanderManager.cachedRafflesExpander;
+            // Each Raffles gate routes to a DieAction via the co-located SoT map (kRafflesGateAction,
+            // beside RafflesInputIds + DieAction in Monsoon.hpp). Fixes the old fireDieAction(i) that
+            // treated the gate INDEX as a DieAction — two different orderings, so every gate misfired.
+            // DA_NONE gates are inert by design (removed Trial / LiveSrc / reseed-on-roll).
             for (int i = 0; i < 14; ++i) {
                 int in = MonsoonIds::RAFFLES_GATE_TRIAL_R + i;
                 if (cw->inputs[in].isConnected()
                     && rafflesGateTrig[i].process(cw->inputs[in].getVoltage(), 0.1f, 1.f)) {
-                    fireDieAction(i);
+                    const int act = kRafflesGateAction[i];
+                    if (act != DA_NONE) fireDieAction(act);
                 }
             }
         }
