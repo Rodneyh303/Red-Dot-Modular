@@ -1140,6 +1140,16 @@ namespace TemasekIds {
 namespace ChangeAlleyV2Ids {
     static constexpr int N_VOICES = 16, N_POOLS = 2;
     static constexpr int N_VERBS = 4, SIDES = 2, TYPES = 2, N_ROWS = N_VERBS * SIDES * TYPES;
+    // SCATTER_TYPES is the DATA-MODEL type dimension (rhythm=0, melody=1, q-mix=2). It is
+    // DELIBERATELY separate from TYPES (=2, the PANEL row/param dimension): the q-mix source-
+    // select plane + its scatter streams exist in the engine/data layer NOW, while the panel's
+    // physical q-mix row is a LATER layer (CA_PANEL_THREE_STREAM_LAYOUT.md). Keeping TYPES=2
+    // leaves N_ROWS / all param+input IDs / panel geometry untouched; SCATTER_TYPES=3 sizes the
+    // scatter counters + corrKeys + the qmixSrc plane at 2×3×2 = 12 streams (QMIX_LANE_PARITY
+    // §"The blend": the 8 scatter streams become 12). Ordering rhythm=0/melody=1/qmix=2 MUST stay
+    // consistent across key derivation, counter indexing, and the transform ci computation.
+    static constexpr int SCATTER_TYPES = 3;
+    static constexpr int N_SCATTER = SIDES * SCATTER_TYPES * 2;   // 12 scatter streams
     static constexpr int rowId(int verb, int side, int type) { return verb*4 + side*2 + type; }
     enum Verb { V_COLLAPSE = 0, V_ROTATE = 1, V_REFLECT = 2, V_SCATTER = 3 };
 

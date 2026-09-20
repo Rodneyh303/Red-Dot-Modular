@@ -29,6 +29,14 @@ namespace CA = ChangeAlleyV2Ids;
 struct MonsoonChangeAlleyV2 : Module {
     uint8_t rhythmSrc[CA::N_VOICES];
     uint8_t melodySrc[CA::N_VOICES];
+    // Q-MIX source-select plane (QMIX_LANE_PARITY §"The blend"): the NEW green plane, a full
+    // parity sibling of rhythm(white)/melody(red). Row-radio like the other two: qmixSrc[v] holds
+    // the ONE source column voice v consumes for its q-mix PROBABILITY. Downstream of CA the
+    // per-voice blend mux reads caQmixSrc[v] to scatter WHICH voice's q-mix each voice thresholds
+    // on. Default identity (qmixSrc[v]=v) → the Straits per-voice level reads exactly as before.
+    // The PANEL's physical q-mix pin ROW is a later layer (CA_PANEL_THREE_STREAM_LAYOUT.md); this
+    // field + its persistence/undo/scatter are wired NOW so the panel layer only adds click+render.
+    uint8_t qmixSrc[CA::N_VOICES];
 
     // ── Shared-CA pairing (CA_SHARED_EXPANDER_BUILD.md) ──────────────────────────────────────
     // Self-assigned lowest-free number (1..N) so a second Monsoon can bind this CA by id, rack-wide
@@ -64,7 +72,11 @@ struct MonsoonChangeAlleyV2 : Module {
     // stream -- the SAME model as the main dice draw counters. Forward jack = counter++, back jack =
     // counter-- (negative allowed; Philox is a keyed bijection). The transform draws rng.at(position)
     // so at(N-1) returns the previous draw EXACTLY -- no reseeding. See CA_DICE_COUNTER_MODEL.md.
-    int64_t scatterCounter[CA::SIDES * CA::TYPES * 2] = {};
+    // Sized N_SCATTER = SIDES*SCATTER_TYPES*2 = 12 (was 8): rhythm/melody/q-mix × dom/cod ×
+    // intra/inter. SCATTER_TYPES=3 (not TYPES=2) so q-mix gets CA scatter parity without touching
+    // the panel row/param geometry. Indexing: ci = (side*SCATTER_TYPES + type)*2 + (dom?0:1),
+    // type 0=rhythm 1=melody 2=qmix — kept consistent with corrKey + transform apply below.
+    int64_t scatterCounter[CA::N_SCATTER] = {};
 
     // One Philox KEY per scatter stream (8 = the counters' Intra/Inter x r/m x dom/cod), mirroring
     // the 2 main-dice RNGs. INTERNAL seeding = 8 INDEPENDENT random keys (different per stream, like
@@ -72,9 +84,9 @@ struct MonsoonChangeAlleyV2 : Module {
     // draw builds a transient PhiloxRng from corrKey[ci] and reads at(scatterCounter[ci]) -- the
     // counter is the addressable position, so counter-- rewinds exactly. Keys persist so saved
     // patches reproduce future scatters. See CA_DICE_COUNTER_MODEL.md.
-    uint64_t corrKey[CA::SIDES * CA::TYPES * 2] = {};
+    uint64_t corrKey[CA::N_SCATTER] = {};
     void seedCorrKeysInternal() {
-        for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) corrKey[i] = rack::random::u64();
+        for (int i = 0; i < CA::N_SCATTER; ++i) corrKey[i] = rack::random::u64();
     }
     // Derive all correlation keys from an external seed value (0..10) supplied by the
     // adjacent (owner) Monsoon on its reset+reseed gesture. The SAME seed value that seeds
@@ -83,7 +95,7 @@ struct MonsoonChangeAlleyV2 : Module {
     // the same seed derive identical corrKey[] -> identical scatter (cross-instance sharing).
     // See PHILOX_KEY_DERIVATION_AND_CA_SEED.md Finding 2.
     void reseedCorrKeys(float seedValue) {
-        for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i)
+        for (int i = 0; i < CA::N_SCATTER; ++i)
             corrKey[i] = redDot::seed::deriveKey(seedValue, redDot::seed::STREAM_CA + (uint64_t)i);
     }
 
@@ -96,10 +108,12 @@ struct MonsoonChangeAlleyV2 : Module {
     struct TransformUndoSnapshot {
         uint8_t  beforeR[CA::N_VOICES];
         uint8_t  beforeM[CA::N_VOICES];
+        uint8_t  beforeQ[CA::N_VOICES];   // q-mix plane (parity with R/M)
         uint8_t  afterR[CA::N_VOICES];
         uint8_t  afterM[CA::N_VOICES];
-        int64_t counterBefore[CA::SIDES * CA::TYPES * 2];
-        int64_t counterAfter [CA::SIDES * CA::TYPES * 2];
+        uint8_t  afterQ[CA::N_VOICES];
+        int64_t counterBefore[CA::N_SCATTER];
+        int64_t counterAfter [CA::N_SCATTER];
     };
     static constexpr int UNDO_RING = 16;
     TransformUndoSnapshot undoRing[UNDO_RING];
@@ -189,37 +203,44 @@ struct MonsoonChangeAlleyV2 : Module {
     // holds the state also owns its mutation (and, next, its undo snapshot). `active` is the
     // active voice count (numPolyVoices+1, clamped >=1).
     // axisMask (LOCK_SCOPE_MENU §6): which axes may commit THIS call. bit0 = rhythm rows (type==0),
-    // bit1 = melody rows (type==1). Default 0b11 = both (normal unlock/boundary fire). Under a live-
-    // under-lock scatter, the manager passes only the opted-live axis, so out-of-axis armed rows stay
-    // pending (they commit later at the real unlock/boundary). Preserves the "one commit = one undo"
-    // rule per fire: the snapshot brackets exactly the rows applied THIS call.
-    void applyPendingTransforms(int active, unsigned axisMask = 0b11u) {
+    // bit1 = melody rows (type==1), bit2 = q-mix rows (type==2). Default 0b111 = all (normal unlock/
+    // boundary fire). Under a live-under-lock scatter, the manager passes only the opted-live axis, so
+    // out-of-axis armed rows stay pending (they commit later at the real unlock/boundary). Preserves
+    // the "one commit = one undo" rule per fire: the snapshot brackets exactly the rows applied THIS
+    // call. Q-mix bit (0b100) is parity groundwork: the CURRENT panel only produces rhythm/melody rows
+    // (type 0/1), so type==2 rows only arrive once the panel layer adds the q-mix pin row — the mask +
+    // apply handle it now so no engine change is needed then.
+    void applyPendingTransforms(int active, unsigned axisMask = 0b111u) {
+        // axis bit for a row's type: 0=rhythm→0b001, 1=melody→0b010, 2=qmix→0b100.
+        auto axisBitForType = [](int type) -> unsigned { return 1u << type; };
         // Any armed row this call whose AXIS is in the mask?  If none, nothing to snapshot or apply.
         bool any = false;
         for (int row = 0; row < CA::N_ROWS; ++row) {
             if (!pendingRows[row].armed) continue;
-            const unsigned axisBit = (row % 2 == 0) ? 0b01u : 0b10u;   // type = row % 2 (0=rhythm,1=melody)
-            if (axisMask & axisBit) { any = true; break; }
+            if (axisMask & axisBitForType(row % 2)) { any = true; break; }   // panel rows: type = row % 2
         }
         if (!any) return;
 
         // Snapshot BEFORE (whole pin matrix + scatter counters). One phrase-boundary commit = one
         // undo step (mirrors ResetPinsAction: a multi-change gesture is a single snapshot).
         TransformUndoSnapshot snap;
-        for (int v = 0; v < CA::N_VOICES; ++v) { snap.beforeR[v] = rhythmSrc[v]; snap.beforeM[v] = melodySrc[v]; }
-        for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) snap.counterBefore[i] = scatterCounter[i];
+        for (int v = 0; v < CA::N_VOICES; ++v) { snap.beforeR[v] = rhythmSrc[v]; snap.beforeM[v] = melodySrc[v]; snap.beforeQ[v] = qmixSrc[v]; }
+        for (int i = 0; i < CA::N_SCATTER; ++i) snap.counterBefore[i] = scatterCounter[i];
 
         for (int row = 0; row < CA::N_ROWS; ++row) {
             auto& p = pendingRows[row];
             if (!p.armed) continue;
             const int verb = row / 4;
             const int side = (row % 4) / 2;
-            const int type = row % 2;
+            const int type = row % 2;   // panel rows carry type 0=rhythm 1=melody; q-mix (2) via later panel row
             // SCOPE (LOCK_SCOPE_MENU §6): only commit rows whose axis is in axisMask. Out-of-axis rows
             // stay armed (NOT applied, NOT cleared) so they fire at the next in-axis/unlock commit.
-            if (!(axisMask & ((type == 0) ? 0b01u : 0b10u))) continue;
-            uint8_t* tbl   = (type == 0) ? rhythmSrc : melodySrc;
-            const int ci   = (side * CA::TYPES + type) * 2 + (p.isDomain ? 0 : 1);
+            if (!(axisMask & axisBitForType(type))) continue;
+            // Table + scatter index by type: 0=rhythm 1=melody 2=qmix (parity, kept consistent with the
+            // corrKey/scatterCounter ordering). ci uses SCATTER_TYPES so the q-mix streams (type 2) are
+            // addressable NOW even though the current panel only fires type 0/1.
+            uint8_t* tbl   = (type == 0) ? rhythmSrc : (type == 1) ? melodySrc : qmixSrc;
+            const int ci   = (side * CA::SCATTER_TYPES + type) * 2 + (p.isDomain ? 0 : 1);
             if (verb == CA::V_SCATTER)
                 scatterCounter[ci] += (int64_t)p.scatterDelta;   // +1 fwd jack, -1 back jack
             dotModular::ca::applyCorrelation(
@@ -231,8 +252,8 @@ struct MonsoonChangeAlleyV2 : Module {
         }
 
         // Snapshot AFTER, and publish to the ring for the UI thread to turn into a history action.
-        for (int v = 0; v < CA::N_VOICES; ++v) { snap.afterR[v] = rhythmSrc[v]; snap.afterM[v] = melodySrc[v]; }
-        for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) snap.counterAfter[i] = scatterCounter[i];
+        for (int v = 0; v < CA::N_VOICES; ++v) { snap.afterR[v] = rhythmSrc[v]; snap.afterM[v] = melodySrc[v]; snap.afterQ[v] = qmixSrc[v]; }
+        for (int i = 0; i < CA::N_SCATTER; ++i) snap.counterAfter[i] = scatterCounter[i];
         const uint32_t h = undoHead.load(std::memory_order_relaxed);
         const uint32_t t = undoTail.load(std::memory_order_acquire);
         if (h - t < (uint32_t)UNDO_RING) {           // drop if UI hasn't drained (never in practice)
@@ -301,8 +322,8 @@ struct MonsoonChangeAlleyV2 : Module {
     // by an explicit reset+reseed from Monsoon (reseedCorrKeys). Conflating them would silently
     // change scatter streams on every matrix reset. See PHILOX_KEY_DERIVATION_AND_CA_SEED.md.
     void resetToIdentity() {
-        for (int v = 0; v < CA::N_VOICES; ++v) { rhythmSrc[v] = v; melodySrc[v] = v; }
-        for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) scatterCounter[i] = 0;
+        for (int v = 0; v < CA::N_VOICES; ++v) { rhythmSrc[v] = v; melodySrc[v] = v; qmixSrc[v] = v; }
+        for (int i = 0; i < CA::N_SCATTER; ++i) scatterCounter[i] = 0;
         // NO key re-derivation here (moved out — see comment above).
     }
 
@@ -316,9 +337,10 @@ struct MonsoonChangeAlleyV2 : Module {
         };
         save("rhythmSrc", rhythmSrc);
         save("melodySrc", melodySrc);
+        save("qmixSrc",   qmixSrc);   // q-mix source-select plane (parity with rhythm/melody)
         json_object_set_new(root, "pairId", json_integer(pairId));   // shared-CA pairing (CA_SHARED_EXPANDER)
         {   json_t* ck = json_array();
-            for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i)
+            for (int i = 0; i < CA::N_SCATTER; ++i)
                 json_array_append_new(ck, json_integer((json_int_t)corrKey[i]));
             json_object_set_new(root, "corrKey", ck);
         }
@@ -339,11 +361,20 @@ struct MonsoonChangeAlleyV2 : Module {
         };
         load("rhythmSrc", rhythmSrc);
         load("melodySrc", melodySrc);
+        load("qmixSrc",   qmixSrc);   // missing in old patches → resetToIdentity left it identity (qmixSrc[v]=v)
         if (json_t* ck = json_object_get(root, "corrKey")) {
-            for (int i = 0; i < CA::SIDES * CA::TYPES * 2 && i < (int)json_array_size(ck); ++i) {
+            // NOTE (pre-release, acceptable): bumping the scatter dimension 8→12 (SCATTER_TYPES 2→3)
+            // reindexes the melody corrKey/scatterCounter slots, so a patch saved with the OLD 8-stream
+            // corrKey will load its first 8 keys into the new 12-slot layout — the melody scatter stream
+            // is NOT bit-reproducible across this change. Called out in the commit; no old public patches.
+            for (int i = 0; i < CA::N_SCATTER && i < (int)json_array_size(ck); ++i) {
                 json_t* v = json_array_get(ck, i);
                 if (json_is_integer(v)) corrKey[i] = (uint64_t)json_integer_value(v);
             }
+            // Keys beyond the saved count (q-mix streams in an old patch) keep the entropy set by
+            // resetToIdentity()→(ctor seed) — but resetToIdentity no longer seeds, so top up any unset.
+            for (int i = (int)json_array_size(ck); i < CA::N_SCATTER; ++i)
+                corrKey[i] = rack::random::u64();
         } else {
             // Old patch saved before corrKey persistence (or before this fix): resetToIdentity()
             // no longer seeds keys, so give this instance valid entropy keys rather than all-zero.
@@ -893,17 +924,17 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
     // resolution discipline as StoreEditAction (survives deletion; no-ops while gone).
     struct ResetPinsAction : rack::history::Action {
         int64_t moduleId;
-        uint8_t oldR[CA::N_VOICES], oldM[CA::N_VOICES];
+        uint8_t oldR[CA::N_VOICES], oldM[CA::N_VOICES], oldQ[CA::N_VOICES];
         ResetPinsAction(MonsoonChangeAlleyV2* m) : moduleId(m->id) {
             name = "reset pins to identity";
-            for (int v = 0; v < CA::N_VOICES; ++v) { oldR[v] = m->rhythmSrc[v]; oldM[v] = m->melodySrc[v]; }
+            for (int v = 0; v < CA::N_VOICES; ++v) { oldR[v] = m->rhythmSrc[v]; oldM[v] = m->melodySrc[v]; oldQ[v] = m->qmixSrc[v]; }
         }
         MonsoonChangeAlleyV2* resolve() {
             return dynamic_cast<MonsoonChangeAlleyV2*>(APP->engine->getModule(moduleId));
         }
         void undo() override {
             if (auto* m = resolve())
-                for (int v = 0; v < CA::N_VOICES; ++v) { m->rhythmSrc[v] = oldR[v]; m->melodySrc[v] = oldM[v]; }
+                for (int v = 0; v < CA::N_VOICES; ++v) { m->rhythmSrc[v] = oldR[v]; m->melodySrc[v] = oldM[v]; m->qmixSrc[v] = oldQ[v]; }
         }
         void redo() override {
             if (auto* m = resolve()) m->resetToIdentity();
@@ -915,24 +946,24 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
     // actions. Same module-id resolution discipline as ResetPinsAction (survives deletion).
     struct TransformUndoAction : rack::history::Action {
         int64_t  moduleId;
-        uint8_t  beforeR[CA::N_VOICES], beforeM[CA::N_VOICES];
-        uint8_t  afterR[CA::N_VOICES],  afterM[CA::N_VOICES];
-        int64_t counterBefore[CA::SIDES * CA::TYPES * 2];
-        int64_t counterAfter [CA::SIDES * CA::TYPES * 2];
+        uint8_t  beforeR[CA::N_VOICES], beforeM[CA::N_VOICES], beforeQ[CA::N_VOICES];
+        uint8_t  afterR[CA::N_VOICES],  afterM[CA::N_VOICES],  afterQ[CA::N_VOICES];
+        int64_t counterBefore[CA::N_SCATTER];
+        int64_t counterAfter [CA::N_SCATTER];
         TransformUndoAction() { name = "Change Alley transform"; }
         MonsoonChangeAlleyV2* resolve() {
             return dynamic_cast<MonsoonChangeAlleyV2*>(APP->engine->getModule(moduleId));
         }
         void undo() override {
             if (auto* m = resolve()) {
-                for (int v = 0; v < CA::N_VOICES; ++v) { m->rhythmSrc[v] = beforeR[v]; m->melodySrc[v] = beforeM[v]; }
-                for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) m->scatterCounter[i] = counterBefore[i];
+                for (int v = 0; v < CA::N_VOICES; ++v) { m->rhythmSrc[v] = beforeR[v]; m->melodySrc[v] = beforeM[v]; m->qmixSrc[v] = beforeQ[v]; }
+                for (int i = 0; i < CA::N_SCATTER; ++i) m->scatterCounter[i] = counterBefore[i];
             }
         }
         void redo() override {
             if (auto* m = resolve()) {
-                for (int v = 0; v < CA::N_VOICES; ++v) { m->rhythmSrc[v] = afterR[v]; m->melodySrc[v] = afterM[v]; }
-                for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) m->scatterCounter[i] = counterAfter[i];
+                for (int v = 0; v < CA::N_VOICES; ++v) { m->rhythmSrc[v] = afterR[v]; m->melodySrc[v] = afterM[v]; m->qmixSrc[v] = afterQ[v]; }
+                for (int i = 0; i < CA::N_SCATTER; ++i) m->scatterCounter[i] = counterAfter[i];
             }
         }
     };
@@ -951,10 +982,10 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                 auto* act = new TransformUndoAction();
                 act->moduleId = ca->id;
                 for (int v = 0; v < CA::N_VOICES; ++v) {
-                    act->beforeR[v] = snap.beforeR[v]; act->beforeM[v] = snap.beforeM[v];
-                    act->afterR[v]  = snap.afterR[v];  act->afterM[v]  = snap.afterM[v];
+                    act->beforeR[v] = snap.beforeR[v]; act->beforeM[v] = snap.beforeM[v]; act->beforeQ[v] = snap.beforeQ[v];
+                    act->afterR[v]  = snap.afterR[v];  act->afterM[v]  = snap.afterM[v];  act->afterQ[v]  = snap.afterQ[v];
                 }
-                for (int i = 0; i < CA::SIDES * CA::TYPES * 2; ++i) {
+                for (int i = 0; i < CA::N_SCATTER; ++i) {
                     act->counterBefore[i] = snap.counterBefore[i];
                     act->counterAfter[i]  = snap.counterAfter[i];
                 }

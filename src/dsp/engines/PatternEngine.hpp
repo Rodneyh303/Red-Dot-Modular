@@ -142,6 +142,11 @@ struct PatternEngine {
     // melody pin; RHYTHM/ACCENT/VARIATION/LEGATO = rhythm pin. Identity = no-op.
     uint8_t caRhythmSrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
     uint8_t caMelodySrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+    // Q-mix source-select plane (QMIX_LANE_PARITY §"The blend"): the NEW green pin plane staged from
+    // MonsoonChangeAlleyV2::qmixSrc. STRAND_QMIX's slewed buffer + the downstream per-voice blend
+    // THRESHOLD ride THIS array (not caRhythmSrc), so a voice can consume another voice's q-mix
+    // probability — CA parity for q-mix. Identity default = no-op (Straits per-voice level as before).
+    uint8_t caQmixSrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
 
     // ── Shared tuning table (Sikit Phase 1) ─────────────────────────────────────────────────────
     // The degree->voltage map read by genPitchLive (mono + all poly voices — single source of truth).
@@ -151,9 +156,25 @@ struct PatternEngine {
     dotModular::TuningTable tuning;
 
     inline int caSrcRow(int row, int strand) const {
-        const bool mel = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);
         const int r = (row >= 0 && row < 16) ? row : 0;
+        // Q-mix rides its OWN green plane (parity with white=rhythm / red=melody). MELODY/OCTAVE ride
+        // the melody plane; everything else (RHYTHM/ACCENT/VARIATION/LEGATO) rides the rhythm plane.
+        if (strand == dotModular::STRAND_QMIX) return (int)caQmixSrc[r];
+        const bool mel = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);
         return mel ? (int)caMelodySrc[r] : (int)caRhythmSrc[r];
+    }
+    // Per-voice q-mix source row for the downstream blend THRESHOLD (which voice's q-mix probability
+    // consuming voice `row` reads). row 0 = mono/voice-0, rows 1..15 = poly V2..V16. Identity default.
+    inline int caQmixSrcRow(int row) const {
+        const int r = (row >= 0 && row < 16) ? row : 0;
+        return (int)caQmixSrc[r];
+    }
+    // Per-voice input-CV source row for the blend's QUANTISED-INPUT operand: it rides CA's MELODY
+    // plane (QMIX_LANE_PARITY §"The blend" step 2 — "input CV = a CA melody source"), so a voice can
+    // quantise another voice's input line. Identity default = each voice reads its own input CV.
+    inline int caInputCvSrcRow(int row) const {
+        const int r = (row >= 0 && row < 16) ? row : 0;
+        return (int)caMelodySrc[r];
     }
 
     // Remap the slewed buffers by pins, ONCE per cycle, BEFORE spread (called from

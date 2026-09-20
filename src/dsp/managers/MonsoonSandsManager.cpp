@@ -39,7 +39,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         for (int v = 0; v < 16; ++v) {
             engine.pe.caRhythmSrc[v] = v2->rhythmSrc[v];   // stage current pins (applied by remap below)
             engine.pe.caMelodySrc[v] = v2->melodySrc[v];
-            if (v2->rhythmSrc[v] != v || v2->melodySrc[v] != v) identity = false;
+            engine.pe.caQmixSrc[v]   = v2->qmixSrc[v];     // q-mix green plane (parity; blend threshold + slewedQmix route)
+            if (v2->rhythmSrc[v] != v || v2->melodySrc[v] != v || v2->qmixSrc[v] != v) identity = false;
         }
         // Pins LATCH (LOCK_SEMANTICS §9: correlation config, shapes draws PRE-spread). Under lock,
         // HOLD the pre-lock remapped slewed buffers: skip the recompute+remap AND the sig capture, so
@@ -74,7 +75,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             }
         }
     } else {
-        for (int v = 0; v < 16; ++v) { engine.pe.caRhythmSrc[v] = (uint8_t)v; engine.pe.caMelodySrc[v] = (uint8_t)v; }
+        for (int v = 0; v < 16; ++v) { engine.pe.caRhythmSrc[v] = (uint8_t)v; engine.pe.caMelodySrc[v] = (uint8_t)v; engine.pe.caQmixSrc[v] = (uint8_t)v; }
     }
     // ── Expander-presence / activity flags (names chosen to avoid the old trap) ──
     //   hasMonoVisual    : the SANDS MONO editor is attached (NOT "any visual"; NOT Macro).
