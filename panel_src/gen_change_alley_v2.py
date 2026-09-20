@@ -41,7 +41,8 @@ N_STREAMS = 3                      # Q5 q-mix: 3rd stream (melody, rhythm, q-mix
 # This is the "try tighter pitch first" attempt; if jacks read too cramped -> Plan B (smaller jack SVG).
 ROW_H     = 8.0
 GROUP_GAP = 1.5
-ROW_TOP   = 14.0
+ROW_TOP   = 9.0                   # pulled up (was 14.0) after screws moved to the panel edge,
+                                  # reclaiming ~5mm of top margin. MUST MATCH MonsoonChangeAlleyV2.hpp CTRL_TOP.
 BOTTOM_OFFSET = 6.0               # was 9.0 — gap from last row to the bottom poly-jack cluster
 
 def rowY(v, s): return ROW_TOP + v*(N_STREAMS*ROW_H+GROUP_GAP) + s*ROW_H + ROW_H*0.5

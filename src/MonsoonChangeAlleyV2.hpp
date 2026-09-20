@@ -421,7 +421,9 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
     static constexpr int   N_STREAMS    = 3;
     static constexpr float CTRL_ROW_H   = 8.0f;
     static constexpr float GROUP_GAP    = 1.5f;
-    static constexpr float CTRL_TOP     = 14.0f;
+    static constexpr float CTRL_TOP     = 9.0f;   // pulled up (was 14.0) after screws moved to the edge,
+                                                  // reclaiming ~5mm of top margin for the 12 rows. MUST
+                                                  // MATCH gen_change_alley_v2.py ROW_TOP.
     static constexpr float BOTTOM_OFFSET = 6.0f;   // gap from last row to the bottom poly-jack cluster
     static float rowY(int verb, int sub) {
         return CTRL_TOP + verb*(N_STREAMS*CTRL_ROW_H + GROUP_GAP) + sub*CTRL_ROW_H + CTRL_ROW_H*0.5f;
@@ -459,14 +461,17 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
         panelSvgDark  = APP->window->loadSvg(dark);
         panelSvgLight = APP->window->loadSvg(light);
         setPanel(Svg::load(dark));
-        // Screws inset to the rails: RACK_GRID_WIDTH is 5.08mm, and Rack's own convention
-        // is half a hole from the edges. 1.5mm put them partly off the panel edge.
-        // Screws on the rails. RACK_GRID_HEIGHT is 128.5mm; a screw is ~5.5mm across, so the
-        // bottom pair must sit ~5mm above the edge to stay on-panel (2.5mm clipped it).
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(7.5,          5.0))));
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 7.5,  5.0))));
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(7.5,          PH_MM - 5.0))));
-        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - 7.5,  PH_MM - 5.0))));
+        // Screws pulled toward the edges to reclaim interior height for the 12 rows/side.
+        // ScrewSilver's origin is its TOP-LEFT; the head is ~5.08mm across. y is the corner,
+        // so y=2.0 => head spans 2.0..7.1mm (fully on-panel, within the mounting-rail zone);
+        // the bottom pair mirrors that at PH-7.1..PH-2.0. This is tighter than the old 5.0mm
+        // inset (which wasted ~3mm top and bottom) while staying on-panel and rail-mountable.
+        static constexpr float SCREW_INSET_X = 7.5f;
+        static constexpr float SCREW_INSET_Y = 2.0f;
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(SCREW_INSET_X,         SCREW_INSET_Y))));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - SCREW_INSET_X, SCREW_INSET_Y))));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(SCREW_INSET_X,         PH_MM - 7.1f))));
+        addChild(createWidget<ScrewSilver>(mm2px(Vec(PW_MM - SCREW_INSET_X, PH_MM - 7.1f))));
 
         // Mod arc factory: overlay a red arc on a knob showing where poly CV pushes it.
         // getSetNorm = knob's own value; getModNorm = resolved knob+CV; gated on the
