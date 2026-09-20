@@ -10,6 +10,13 @@ static_assert((uint32_t)dotModular::SB_SANDS_M == (1u << 3), "dirLive_ kSandsM o
 // LockManager include). Pin them here too.
 static_assert((uint32_t)dotModular::SB_DICE_R == (1u << 8), "diceLiveR bit out of sync with ScopeBit");
 static_assert((uint32_t)dotModular::SB_DICE_M == (1u << 9), "diceLiveM bit out of sync with ScopeBit");
+// q-mix own axis: updatePatternInput hard-codes 1<<11 (diceLiveQ) and the A/B latch hard-codes 1<<10
+// (SB_ABRESEED_Q); Monsoon.cpp handleRestart also hard-codes 1<<10. Pin all three here.
+static_assert((uint32_t)dotModular::SB_DICE_Q == (1u << 11), "diceLiveQ bit out of sync with ScopeBit");
+static_assert((uint32_t)dotModular::SB_ABRESEED_Q == (1u << 10), "abReseedQ bit out of sync with ScopeBit");
+// q-mix Change Alley + Sands DNA own axes: the manager gates hard-code 1<<12 / 1<<13. Pin them.
+static_assert((uint32_t)dotModular::SB_CA_Q == (1u << 12), "SB_CA_Q bit out of sync with ScopeBit");
+static_assert((uint32_t)dotModular::SB_SANDS_Q == (1u << 13), "SB_SANDS_Q bit out of sync with ScopeBit");
 #include "../../Monsoon.hpp"
 #include "../../MonsoonCausewayPolyExpander.hpp"
 #include "../../MonsoonStraitsExpander.hpp"   // Q2: poly quantiser CV-in (StraitsIds::QUANT_CV_INPUT)
@@ -128,6 +135,8 @@ void ModeController::updatePatternInput() {
         && (engine.scopeLiveMask & (1u << 8)) != 0;   // == dotModular::SB_DICE_R
     currentPatternInput.diceLiveM = engine.locked
         && (engine.scopeLiveMask & (1u << 9)) != 0;   // == dotModular::SB_DICE_M
+    currentPatternInput.diceLiveQ = engine.locked
+        && (engine.scopeLiveMask & (1u << 11)) != 0;  // == dotModular::SB_DICE_Q (q-mix own axis)
     currentPatternInput.rhythmSlew        = paramManager.getRhythmSlew();
     currentPatternInput.melodySlew        = paramManager.getMelodySlew();
     currentPatternInput.qmixSlew          = paramManager.getQmixSlew();   // Task 4 (QMIX)
@@ -154,16 +163,19 @@ void ModeController::updatePatternInput() {
     {
         const bool abR = dotModular::LockManager::liveNow(dotModular::Control::ABMix, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
         const bool abM = dotModular::LockManager::liveNow(dotModular::Control::ABMix, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
-        if (abR || abM)
-            // q-mix latches under the melody (abM) gate — it's melody family. Passes qmix mix/slew
-            // and applyQmix=abM so the q-mix A/B blend freezes/frees with melody's scope bit.
+        // q-mix A/B latches on its OWN axis (SB_ABRESEED_Q), not melody's. ABMix is LATCH, so this is
+        // !locked OR the q-mix bit opted live — evaluated directly on the bit (scopeBitFor's melodyAxis
+        // bool can't express a third axis).
+        const bool abQ = !engine.locked
+                       || (engine.scopeLiveMask & (1u << 10)) != 0;   // == dotModular::SB_ABRESEED_Q
+        if (abR || abM || abQ)
             engine.pe.latchMix(currentPatternInput.rhythmMix,
                                currentPatternInput.melodyMix,
                                currentPatternInput.qmixMix,
                                currentPatternInput.rhythmSlew,
                                currentPatternInput.melodySlew,
                                currentPatternInput.qmixSlew,
-                               /*applyRhythm=*/abR, /*applyMelody=*/abM, /*applyQmix=*/abM);
+                               /*applyRhythm=*/abR, /*applyMelody=*/abM, /*applyQmix=*/abQ);
     }
     if (mainModule) {
         // seedConnected IS read elsewhere (realtime !seedConnected checks). The former

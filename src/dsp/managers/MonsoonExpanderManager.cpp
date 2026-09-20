@@ -510,7 +510,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 }
                 qmixInterp = combineSpread(PL::PL_QMIX, qmixInterp);   // owner + Macro-CV blend (spread)
                 if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_QMIX] = qmixInterp;   // → editor display
-                if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true)) {   // QMIX = melody axis
+                if (!engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0) {   // QMIX = its OWN axis (SB_SANDS_Q)
                     for (int j = 0; j < 16; j++) {
                         engine.pe.polyRandom(v, PL::PL_QMIX)[j] = redDot::SpreadInterp::apply(
                             engine.pe, PL::PL_QMIX, j, engine.pe.slewedPolyQmix[v][j], qmixInterp);
@@ -600,7 +600,8 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         // sub-loop inside keeps its OWN per-strand Lor gate (LOR runs under lock; spread does not).
         const bool msR = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
         const bool msM = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
-        if (msR || msM) {
+        const bool msQ = !engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0;   // == dotModular::SB_SANDS_Q (q-mix own axis)
+        if (msR || msM || msQ) {
             // V1 (mono final arrays + mono strand LOR): Macro owns V1 too when it is the
             // sole visual. The hasMonoVisual block (which normally does this) is skipped
             // with no Mono editor, so apply Macro's global LOR/spread to the mono strand
@@ -629,17 +630,26 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                     if (msM) {
                         engine.pe.melodyRandom[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_MELODY, j, engine.pe.slewedMelody[j], spM);
                         engine.pe.octaveRandom[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_OCTAVE, j, engine.pe.slewedOctave[j], spO);
-                        engine.pe.qmixRandom[j]   = redDot::SpreadInterp::apply(engine.pe, PL::PL_QMIX,   j, engine.pe.slewedQmix[j],   spQ);   // QMIX = melody axis
+                    }
+                    if (msQ) {
+                        engine.pe.qmixRandom[j]   = redDot::SpreadInterp::apply(engine.pe, PL::PL_QMIX,   j, engine.pe.slewedQmix[j],   spQ);   // QMIX own axis (SB_SANDS_Q)
                     }
                 }
-                // Mono strand LOR from Macro globals (REST/MEL/OCT/ACC strands).
-                // Note: These are in ENGINE lane order (REST=0, MEL=1, OCT=2, ACC=3), not editor order.
-                static const int STRND[4] = { dotModular::STRAND_RHYTHM, dotModular::STRAND_MELODY,
-                                              dotModular::STRAND_OCTAVE, dotModular::STRAND_ACCENT };
+                // Mono strand LOR from Macro globals (REST/MEL/OCT/ACC/QMIX strands).
+                // Note: These are in ENGINE lane order (REST=0, MEL=1, OCT=2, ACC=3, QMIX=4), not editor order.
+                // BUGFIX (QMIX widening): the loop runs lane<POLY_LANES(5) but STRND was 4 elements —
+                // lane==4 (QMIX) read STRND[4] out of bounds. Extended to 5 with STRAND_QMIX.
+                static const int STRND[5] = { dotModular::STRAND_RHYTHM, dotModular::STRAND_MELODY,
+                                              dotModular::STRAND_OCTAVE, dotModular::STRAND_ACCENT,
+                                              dotModular::STRAND_QMIX };
                 for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
-                    // SCOPE (LOCK_SCOPE_MENU): per-strand R/M — MELODY/OCTAVE = melody axis.
+                    // SCOPE (LOCK_SCOPE_MENU): per-strand — MELODY/OCTAVE = melody axis; QMIX = its OWN
+                    // axis (SB_SANDS_Q); else rhythm.
                     const bool lorMelAxis = (STRND[lane] == dotModular::STRAND_MELODY || STRND[lane] == dotModular::STRAND_OCTAVE);
-                    if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelAxis))   // LOR LATCH: skip re-push under lock
+                    const bool lorLive = (STRND[lane] == dotModular::STRAND_QMIX)
+                        ? (!engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0)   // == dotModular::SB_SANDS_Q
+                        : dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelAxis);
+                    if (lorLive)   // LOR LATCH: skip re-push under lock
                     engine.setStrand(StrandWriter::MACRO, STRND[lane],
                                      (int)std::round(macroVis->macroBase[lane][0]),
                                      (int)std::round(macroVis->macroBase[lane][1]),

@@ -56,22 +56,26 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         // buffers, so the split is exact). A frozen axis is skipped, holding its pre-lock pinned values.
         const bool pinR = dotModular::LockManager::liveNow(dotModular::Control::Pins, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
         const bool pinM = dotModular::LockManager::liveNow(dotModular::Control::Pins, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
-        if (pinR || pinM) {
+        // q-mix pins ride their OWN axis (SB_CA_Q, green plane), independent of melody. Pins is LATCH,
+        // so !locked OR the q-mix CA bit opted live. Evaluated on the bit directly (third axis).
+        const bool pinQ = !engine.locked
+                        || (engine.scopeLiveMask & (1u << 12)) != 0;   // == dotModular::SB_CA_Q
+        if (pinR || pinM || pinQ) {
             if (!identity) {
                 // FLICKER FIX (SANDS_SCATTER_FLICKER_DIAGNOSIS): only re-derive+remap when the pins or
                 // the underlying slewed content actually changed. Running it every block rewrote the
                 // slewed buffers in place under the UI reader -> REST/ACCENT flicker. When unchanged,
                 // last cycle's remapped buffers are already correct, so skip the churn. (The combined
-                // sig decides WHEN to recompute; pinR/pinM decide WHICH families — a frozen axis's src
-                // can't change under lock, so the combined sig firing on the live axis is harmless.)
-                if (remapSigChanged_(v2->rhythmSrc, v2->melodySrc, /*identity=*/false)) {
+                // sig decides WHEN to recompute; pinR/pinM/pinQ decide WHICH families — a frozen axis's
+                // src can't change under lock, so the combined sig firing on a live axis is harmless.)
+                if (remapSigChanged_(v2->rhythmSrc, v2->melodySrc, v2->qmixSrc, /*identity=*/false)) {
                     engine.pe.forceRecomputeSlewed();
-                    engine.pe.remapSlewedByPins(pinR, pinM);
-                    captureRemapSig_(v2->rhythmSrc, v2->melodySrc, /*identity=*/false);
+                    engine.pe.remapSlewedByPins(pinR, pinM, pinQ);
+                    captureRemapSig_(v2->rhythmSrc, v2->melodySrc, v2->qmixSrc, /*identity=*/false);
                 }
             } else {
                 // Pins returned to identity: mark it so the next non-identity is treated as a change.
-                captureRemapSig_(v2->rhythmSrc, v2->melodySrc, /*identity=*/true);
+                captureRemapSig_(v2->rhythmSrc, v2->melodySrc, v2->qmixSrc, /*identity=*/true);
             }
         }
     } else {
@@ -282,8 +286,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // feeds baseLen above, and freezing the apply freezes that selection's effect too.
             // SCOPE (LOCK_SCOPE_MENU): per-strand R/M — MELODY/OCTAVE strands are the melody axis,
             // the rest (RHYTHM/VAR/LEG/ACCENT) rhythm. `strand` is the engine strand for this lane.
+            // q-mix is its OWN Sands axis (SB_SANDS_Q), not rhythm (the old lorMelodyAxis=false
+            // default put STRAND_QMIX on the rhythm bit — split-brain vs its melody-axis spread).
             const bool lorMelodyAxis = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);
-            if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelodyAxis)) {
+            const bool lorLive = (strand == dotModular::STRAND_QMIX)
+                ? (!engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0)   // == dotModular::SB_SANDS_Q
+                : dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelodyAxis);
+            if (lorLive) {
                 engine.setStrand(StrandWriter::MONO, strand,
                                  (int)std::round(baseLen),
                                  (int)std::round(baseOff),
@@ -367,7 +376,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // stays true, so the frozen arrays are NOT overwritten by the raw draw either).
             const bool sprR = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
             const bool sprM = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
-            if (sprR || sprM) {
+            // QMIX is its OWN axis (SB_SANDS_Q), not melody. Spread is LATCH: !locked OR the q-mix bit.
+            const bool sprQ = !engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0;   // == dotModular::SB_SANDS_Q
+            if (sprR || sprM || sprQ) {
             for (int i = 0; i < 16; ++i) {
                 if (sprR) {
                     engine.pe.rhythmRandom[i] = redDot::SpreadInterp::apply(
@@ -382,14 +393,15 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         engine.pe, 1, i, engine.pe.slewedMelody[i], engine.spreadE(0, 1));
                     engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(
                         engine.pe, 2, i, engine.pe.slewedOctave[i], engine.spreadE(0, 2));
-                    // QMIX is a melody-family value lane (Task 4c): apply its own spread on the
-                    // melody axis. SpreadInterp lane 4 = QMIX (slewedQmix twin); engine spread
-                    // lane 4 = STRAND_QMIX (spreadE absorbs the engine→editor permutation).
+                }
+                if (sprQ) {
+                    // QMIX spread on its OWN axis. SpreadInterp lane 4 = QMIX (slewedQmix twin);
+                    // engine spread lane 4 = STRAND_QMIX (spreadE absorbs engine→editor permutation).
                     engine.pe.qmixRandom[i] = redDot::SpreadInterp::apply(
                         engine.pe, 4, i, engine.pe.slewedQmix[i], engine.spreadE(0, 4));
                 }
             }
-            }  // end if(sprR || sprM)
+            }  // end if(sprR || sprM || sprQ)
         //}
         // Drive all 6 mono strands via the single-source-of-truth lane map.
         for (int l = 0; l < dotModular::SandsGrid::MONO_LANES; ++l) readStrand(l);
@@ -444,9 +456,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                     const int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
                     const int strand  = dotModular::MONO_LANE_TO_STRAND[el];
                     // SCOPE (LOCK_SCOPE_MENU): MELODY/OCTAVE strands = melody axis; else rhythm.
+                    // q-mix is its OWN axis (SB_SANDS_Q), not rhythm (fixes the split-brain vs spread).
                     const bool lorMelAxis = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);
+                    const bool lorLive = (strand == dotModular::STRAND_QMIX)
+                        ? (!engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0)   // == dotModular::SB_SANDS_Q
+                        : dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelAxis);
                     if (monoOwnedByMacro(engLane)) {
-                        if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelAxis))   // LOR LATCH: skip re-push under lock
+                        if (lorLive)   // LOR LATCH: skip re-push under lock
                         engine.setStrand(StrandWriter::EAST, strand,
                             (int)std::round(macroVis->macroBase[engLane][0] + macroVis->macroCVDelta[engLane][0]),
                             (int)std::round(macroVis->macroBase[engLane][1] + macroVis->macroCVDelta[engLane][1]),
@@ -472,7 +488,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         }
                         return rack::math::clamp(base + sendBlend(item), lo, hi);
                     };
-                    if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelAxis))   // LOR LATCH: skip re-push under lock
+                    if (lorLive)   // LOR LATCH: skip re-push under lock (q-mix on SB_SANDS_Q)
                     engine.setStrand(StrandWriter::EAST, strand,
                         (int)std::round(addCV(len, 0, 1.f, 16.f)),
                         (int)std::round(addCV(off, 1, 0.f, 15.f)),
@@ -507,7 +523,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // lane (not axis flags) — distinct from these axis bools.
             const bool axR = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
             const bool axM = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
-            if (axR || axM) {
+            const bool axQ = !engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0;   // == dotModular::SB_SANDS_Q (q-mix own axis)
+            if (axR || axM || axQ) {
             auto sprForLane = [&](int lane)->float {
                 if (monoOwnedByMacro(lane))
                     return rack::math::clamp(macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3], -1.f, 1.f);
@@ -542,7 +559,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 if (axM) {
                     engine.pe.melodyRandom[i] = redDot::SpreadInterp::apply(engine.pe, 1, i, engine.pe.slewedMelody[i], spM);
                     engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(engine.pe, 2, i, engine.pe.slewedOctave[i], spO);
-                    // QMIX is a melody-family value lane (Task 4c): apply on the melody axis.
+                }
+                if (axQ) {
+                    // QMIX spread on its OWN axis (SB_SANDS_Q).
                     engine.pe.qmixRandom[i] = redDot::SpreadInterp::apply(engine.pe, 4, i, engine.pe.slewedQmix[i], spQ);
                 }
             }
@@ -676,25 +695,28 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
 // The remapped slewed buffers are a pure function of (pins, draw counters, mix, slew). Re-run the
 // forceRecomputeSlewed()+remapSlewedByPins() pair only when that signature changes; otherwise the
 // buffers from last cycle are already correct and re-running just churns them under the UI reader.
-bool MonsoonSandsManager::remapSigChanged_(const uint8_t* rSrc, const uint8_t* mSrc, bool identity) const {
+bool MonsoonSandsManager::remapSigChanged_(const uint8_t* rSrc, const uint8_t* mSrc, const uint8_t* qSrc, bool identity) const {
     auto& pe = engine.pe;
     if (identity != lastRemap_.wasIdentity)               return true;
     if (pe.rhythmDrawCtr != lastRemap_.rCtr)              return true;
     if (pe.melodyDrawCtr != lastRemap_.mCtr)              return true;
+    if (pe.qmixDrawCtr   != lastRemap_.qCtr)              return true;
     if (pe.rhythmMixLatched  != lastRemap_.rMix)          return true;
     if (pe.melodyMixLatched  != lastRemap_.mMix)          return true;
+    if (pe.qmixMixLatched    != lastRemap_.qMix)          return true;
     if (pe.rhythmSlewLatched != lastRemap_.rSlew)         return true;
     if (pe.melodySlewLatched != lastRemap_.mSlew)         return true;
+    if (pe.qmixSlewLatched   != lastRemap_.qSlew)         return true;
     for (int v = 0; v < 16; ++v)
-        if (rSrc[v] != lastRemap_.rSrc[v] || mSrc[v] != lastRemap_.mSrc[v]) return true;
+        if (rSrc[v] != lastRemap_.rSrc[v] || mSrc[v] != lastRemap_.mSrc[v] || qSrc[v] != lastRemap_.qSrc[v]) return true;
     return false;
 }
 
-void MonsoonSandsManager::captureRemapSig_(const uint8_t* rSrc, const uint8_t* mSrc, bool identity) {
+void MonsoonSandsManager::captureRemapSig_(const uint8_t* rSrc, const uint8_t* mSrc, const uint8_t* qSrc, bool identity) {
     auto& pe = engine.pe;
-    for (int v = 0; v < 16; ++v) { lastRemap_.rSrc[v] = rSrc[v]; lastRemap_.mSrc[v] = mSrc[v]; }
-    lastRemap_.rCtr = pe.rhythmDrawCtr;  lastRemap_.mCtr = pe.melodyDrawCtr;
-    lastRemap_.rMix = pe.rhythmMixLatched;  lastRemap_.mMix = pe.melodyMixLatched;
-    lastRemap_.rSlew = pe.rhythmSlewLatched; lastRemap_.mSlew = pe.melodySlewLatched;
+    for (int v = 0; v < 16; ++v) { lastRemap_.rSrc[v] = rSrc[v]; lastRemap_.mSrc[v] = mSrc[v]; lastRemap_.qSrc[v] = qSrc[v]; }
+    lastRemap_.rCtr = pe.rhythmDrawCtr;  lastRemap_.mCtr = pe.melodyDrawCtr;  lastRemap_.qCtr = pe.qmixDrawCtr;
+    lastRemap_.rMix = pe.rhythmMixLatched;  lastRemap_.mMix = pe.melodyMixLatched;  lastRemap_.qMix = pe.qmixMixLatched;
+    lastRemap_.rSlew = pe.rhythmSlewLatched; lastRemap_.mSlew = pe.melodySlewLatched; lastRemap_.qSlew = pe.qmixSlewLatched;
     lastRemap_.wasIdentity = identity;
 }

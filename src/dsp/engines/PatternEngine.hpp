@@ -62,6 +62,7 @@ struct PatternInput {
     // engine.scopeLiveMask in updatePatternInput. false when unlocked-irrelevant / whole-module lock.
     bool  diceLiveR        = false;   // rhythm dice stream allowed to redraw under lock
     bool  diceLiveM        = false;   // melody dice stream allowed to redraw under lock
+    bool  diceLiveQ        = false;   // q-mix dice stream allowed to redraw under lock (own axis, SB_DICE_Q)
     // Playable dice slew (0..1) per group. Latched at step 0; morphs the
     // effective pattern between the locked (A) and candidate (B) draws.
     float rhythmSlew       = 1.f;
@@ -186,12 +187,16 @@ struct PatternEngine {
     // frozen axis (do* false) leaves its slewed + random_ arrays untouched, holding the pre-lock
     // pinned values. Default true/true = remap both (unlocked). The families are fully independent
     // (separate src arrays + separate buffers), so the per-axis freeze is exact.
-    void remapSlewedByPins(bool doR = true, bool doM = true) {
+    // doQ (SB_CA_Q): q-mix rides its OWN green pin plane (caQmixSrc), gated independently of the
+    // melody plane. Defaults true (unlocked / callers pre-dating q-mix behave as before, but q-mix
+    // now only remaps when doQ AND its own plane is non-identity).
+    void remapSlewedByPins(bool doR = true, bool doM = true, bool doQ = true) {
         // Fast identity skip — only over the families we would actually remap.
         bool identity = true;
         for (int v = 0; v < 16 && identity; ++v) {
             if (doR && caRhythmSrc[v] != v) identity = false;
             if (doM && caMelodySrc[v] != v) identity = false;
+            if (doQ && caQmixSrc[v]   != v) identity = false;
         }
         if (identity) return;
 
@@ -246,6 +251,8 @@ struct PatternEngine {
             if (doM) {
                 slewedMelody[i] = pickMono(caSrcRow(0, dotModular::STRAND_MELODY), dotModular::STRAND_MELODY, i);
                 slewedOctave[i] = pickMono(caSrcRow(0, dotModular::STRAND_OCTAVE), dotModular::STRAND_OCTAVE, i);
+            }
+            if (doQ) {
                 slewedQmix[i]   = pickMono(caSrcRow(0, dotModular::STRAND_QMIX),   dotModular::STRAND_QMIX,   i);
             }
         }
@@ -265,6 +272,8 @@ struct PatternEngine {
                 if (doM) {
                     slewedPolyMelody[v][i] = pickMono(sM, dotModular::STRAND_MELODY, i);
                     slewedPolyOctave[v][i] = pickMono(sO, dotModular::STRAND_OCTAVE, i);
+                }
+                if (doQ) {
                     slewedPolyQmix[v][i]   = pickMono(sQ, dotModular::STRAND_QMIX,   i);
                 }
             }
@@ -288,6 +297,8 @@ struct PatternEngine {
             }
             if (doM) {
                 melodyRandom[i]=slewedMelody[i]; octaveRandom[i]=slewedOctave[i];
+            }
+            if (doQ) {
                 qmixRandom[i]=slewedQmix[i];
             }
             for (int v=0;v<15;v++){
@@ -298,6 +309,8 @@ struct PatternEngine {
                 if (doM) {
                     polyRandom(v, PL_MELODY)[i]=slewedPolyMelody[v][i];
                     polyRandom(v, PL_OCTAVE)[i]=slewedPolyOctave[v][i];
+                }
+                if (doQ) {
                     polyRandom(v, PL_QMIX)[i]=slewedPolyQmix[v][i];
                 }
             }
@@ -448,11 +461,11 @@ struct PatternEngine {
     // (Philox exposes no key getter); restoring it re-derives the exact key.
     struct DiceUndoCapture {
         bool    valid  = false;
-        bool    movedR = false, movedM = false;
-        float   rSeedBefore = 0.f, mSeedBefore = 0.f;
-        int64_t rCtrBefore  = 0,   mCtrBefore  = 0;
-        float   rSeedAfter  = 0.f, mSeedAfter  = 0.f;
-        int64_t rCtrAfter   = 0,   mCtrAfter   = 0;
+        bool    movedR = false, movedM = false, movedQ = false;
+        float   rSeedBefore = 0.f, mSeedBefore = 0.f, qSeedBefore = 0.f;
+        int64_t rCtrBefore  = 0,   mCtrBefore  = 0,   qCtrBefore  = 0;
+        float   rSeedAfter  = 0.f, mSeedAfter  = 0.f, qSeedAfter  = 0.f;
+        int64_t rCtrAfter   = 0,   mCtrAfter   = 0,   qCtrAfter   = 0;
     };
     DiceUndoCapture diceUndoPending;
 

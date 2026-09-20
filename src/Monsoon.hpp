@@ -989,9 +989,9 @@ struct Monsoon : Module {
     // drains the ring and pushes one Rack history action per roll. APP->history->push is
     // UI-thread-only, hence the handoff -- identical pattern to Change Alley's TransformUndo ring.
     struct DiceUndoSnapshot {
-        bool    movedR, movedM;
-        float   rSeedBefore, mSeedBefore, rSeedAfter, mSeedAfter;
-        int64_t rCtrBefore,  mCtrBefore,  rCtrAfter,  mCtrAfter;
+        bool    movedR, movedM, movedQ;
+        float   rSeedBefore, mSeedBefore, qSeedBefore, rSeedAfter, mSeedAfter, qSeedAfter;
+        int64_t rCtrBefore,  mCtrBefore,  qCtrBefore,  rCtrAfter,  mCtrAfter,  qCtrAfter;
     };
     static constexpr int DICE_UNDO_RING = 16;
     DiceUndoSnapshot diceUndoRing[DICE_UNDO_RING];
@@ -1022,6 +1022,13 @@ struct Monsoon : Module {
         engine.pe.melodySeedFloat = seedFloat;
         engine.pe.seedMelodyPhilox(seedFloat);
         engine.pe.melodyDrawCtr = ctr;
+    }
+    // q-mix twin of restoreMelodyDice — re-derive the q-mix Philox key from the seed float, then
+    // restore the counter (seed*Philox zeros it, so set ctr AFTER). Used by DiceUndoAction.
+    void restoreQmixDice(float seedFloat, int64_t ctr) {
+        engine.pe.qmixSeedFloat = seedFloat;
+        engine.pe.seedQmixPhilox(seedFloat);
+        engine.pe.qmixDrawCtr = ctr;
     }
 
     void process(const ProcessArgs& args) override;

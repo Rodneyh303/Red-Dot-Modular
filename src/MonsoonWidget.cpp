@@ -709,9 +709,19 @@ struct DiceUndoAction : rack::history::Action {
     // Rack prepends "Undo "/"Redo " to name, so set the stream-specific remainder. A single dice
     // press moves one stream; a combined gesture (if any) moves both.
     void setName() {
-        name = s.movedR && s.movedM ? "Rhythm & Melody Dice Roll"
-             : s.movedM             ? "Melody Dice Roll"
-                                    : "Rhythm Dice Roll";
+        // Compose from whichever streams moved (a single dice press moves one; combined gestures more).
+        int n = (int)s.movedR + (int)s.movedM + (int)s.movedQ;
+        if (n >= 2) {
+            std::string parts;
+            if (s.movedR) parts += "Rhythm";
+            if (s.movedM) parts += (parts.empty() ? "" : " & ") + std::string("Melody");
+            if (s.movedQ) parts += (parts.empty() ? "" : " & ") + std::string("Q-mix");
+            name = parts + " Dice Roll";
+        } else {
+            name = s.movedM ? "Melody Dice Roll"
+                 : s.movedQ ? "Q-mix Dice Roll"
+                            : "Rhythm Dice Roll";
+        }
     }
     Monsoon* resolve() { return dynamic_cast<Monsoon*>(APP->engine->getModule(moduleId)); }
     void apply(bool before) {
@@ -720,6 +730,8 @@ struct DiceUndoAction : rack::history::Action {
                                                before ? s.rCtrBefore  : s.rCtrAfter);
             if (s.movedM) m->restoreMelodyDice(before ? s.mSeedBefore : s.mSeedAfter,
                                                before ? s.mCtrBefore  : s.mCtrAfter);
+            if (s.movedQ) m->restoreQmixDice(before ? s.qSeedBefore : s.qSeedAfter,
+                                             before ? s.qCtrBefore  : s.qCtrAfter);
         }
     }
     void undo() override { apply(/*before=*/true);  }
@@ -1031,10 +1043,10 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 void onAction(const event::Action&) override { if (module) module->engine.scopeLiveMask = maskValue; }
             };
             const uint32_t ALL = dotModular::SB_BIG5_R | dotModular::SB_SCALE_M
-                               | dotModular::SB_SANDS_R | dotModular::SB_SANDS_M
-                               | dotModular::SB_CA_R | dotModular::SB_CA_M
-                               | dotModular::SB_ABRESEED_R | dotModular::SB_ABRESEED_M
-                               | dotModular::SB_DICE_R | dotModular::SB_DICE_M;
+                               | dotModular::SB_SANDS_R | dotModular::SB_SANDS_M | dotModular::SB_SANDS_Q
+                               | dotModular::SB_CA_R | dotModular::SB_CA_M | dotModular::SB_CA_Q
+                               | dotModular::SB_ABRESEED_R | dotModular::SB_ABRESEED_M | dotModular::SB_ABRESEED_Q
+                               | dotModular::SB_DICE_R | dotModular::SB_DICE_M | dotModular::SB_DICE_Q;
             menu->addChild(createSubmenuItem("Lock scope — keep live under lock", "", [=](ui::Menu* sm) {
                 auto addBit = [&](const char* label, uint32_t b) {
                     auto* it = createMenuItem<ScopeBitItem>(label); it->module = m; it->bit = b; sm->addChild(it);
@@ -1046,15 +1058,19 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 sm->addChild(new ui::MenuSeparator);
                 addBit("Sands DNA — rhythm",  dotModular::SB_SANDS_R);
                 addBit("Sands DNA — melody",  dotModular::SB_SANDS_M);
+                addBit("Sands DNA — q-mix",   dotModular::SB_SANDS_Q);
                 sm->addChild(new ui::MenuSeparator);
                 addBit("Change Alley — rhythm", dotModular::SB_CA_R);
                 addBit("Change Alley — melody", dotModular::SB_CA_M);
+                addBit("Change Alley — q-mix",  dotModular::SB_CA_Q);
                 sm->addChild(new ui::MenuSeparator);
                 addBit("A/B mix + Reseed — rhythm", dotModular::SB_ABRESEED_R);
                 addBit("A/B mix + Reseed — melody", dotModular::SB_ABRESEED_M);
+                addBit("A/B mix + Reseed — q-mix", dotModular::SB_ABRESEED_Q);
                 sm->addChild(new ui::MenuSeparator);
                 addBit("Dice — rhythm (roll/live under lock)", dotModular::SB_DICE_R);
                 addBit("Dice — melody (roll/live under lock)", dotModular::SB_DICE_M);
+                addBit("Dice — q-mix (roll/live under lock)", dotModular::SB_DICE_Q);
                 sm->addChild(new ui::MenuSeparator);
                 { auto* it = createMenuItem<ScopePresetItem>("Whole module (freeze all)"); it->module = m; it->maskValue = 0u; sm->addChild(it); }
                 { auto* it = createMenuItem<ScopePresetItem>("Free all prep");             it->module = m; it->maskValue = ALL; sm->addChild(it); }
@@ -1201,7 +1217,7 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "Gate 3 (assignable mod)"; sub->addChild(l);
               const char* n3[] = {"Re-dice rhythm","Re-dice melody","Toggle reseed-on-restart",
-                                  "Toggle rhythm live source","Toggle melody live source"};
+                                  "Toggle rhythm dice\u2194live","Toggle melody dice\u2194live"};
               for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n3[v]);it->module=m;it->target=&m->gate3Target;it->value=v;sub->addChild(it);} }
         }));
 

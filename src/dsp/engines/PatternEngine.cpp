@@ -360,9 +360,9 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
 
 // q-mix twin of redrawMelody — advance the q-mix draw, recompute effective, cache source.
 void PatternEngine::redrawQmix(const PatternInput& in) {
-    // NOTE: q-mix draws under the MELODY dice-live gate (melody family). Mirrors redrawMelody's
-    // lock guard so a locked module with melody opted live also draws q-mix.
-    if (in.locked && !in.diceLiveM) return;
+    // NOTE: q-mix draws under its OWN dice-live gate (SB_DICE_Q), independent of melody. Under lock
+    // it draws only if q-mix was opted live (frozen otherwise), mirroring redrawMelody's own guard.
+    if (in.locked && !in.diceLiveQ) return;
     const bool first = qmixFirstDraw;
     qmixFirstDraw = false;
 
@@ -446,10 +446,11 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     // live under lock (LOCK_SCOPE_MENU §6). Then that stream's ROLL / live-mode reroll may still draw,
     // while seeds/reseed-rolls stay frozen (those are Reseed-scoped). If locked and NEITHER dice
     // stream is live, nothing to do — early-out preserves the pre-menu behaviour exactly.
-    if (in.locked && !in.diceLiveR && !in.diceLiveM) return;
+    if (in.locked && !in.diceLiveR && !in.diceLiveM && !in.diceLiveQ) return;
     // Per-stream "may this stream draw now?": unlocked, OR this stream's dice bit is opted live.
     const bool drawAllowedR = !in.locked || in.diceLiveR;
     const bool drawAllowedM = !in.locked || in.diceLiveM;
+    const bool drawAllowedQ = !in.locked || in.diceLiveQ;   // q-mix own axis (SB_DICE_Q)
 
     // ── Dice-undo capture (item 4): a USER ROLL is exactly rhythmRollPending / melodyRollPending
     // at THIS commit. Realtime-mode auto-redraw sets neither (it uses rhythmMode==1); reset/reseed
@@ -458,12 +459,15 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     // (seedFloat, counter) around each moved stream's redraw. Published by Monsoon::onPhraseBoundary_.
     const bool undoR = rhythmRollPending;
     const bool undoM = melodyRollPending;
-    if (undoR || undoM) {
+    const bool undoQ = qmixRollPending;
+    if (undoR || undoM || undoQ) {
         diceUndoPending.valid  = true;
         diceUndoPending.movedR = undoR;
         diceUndoPending.movedM = undoM;
+        diceUndoPending.movedQ = undoQ;
         diceUndoPending.rSeedBefore = rhythmSeedFloat; diceUndoPending.rCtrBefore = rhythmDrawCtr;
         diceUndoPending.mSeedBefore = melodySeedFloat; diceUndoPending.mCtrBefore = melodyDrawCtr;
+        diceUndoPending.qSeedBefore = qmixSeedFloat;   diceUndoPending.qCtrBefore = qmixDrawCtr;
     }
 
     // Redraw if: a seed is pending (reproducible reseed, A=B), a ROLL is pending
@@ -478,8 +482,8 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
                                           || rhythmRollPending || (rhythmMode == 1));
     bool shouldRedrawM = drawAllowedM && (((!in.locked) && (melodySeedPending || melodyReseedRollPending))
                                           || melodyRollPending || (melodyMode == 1));
-    // q-mix draws under the MELODY dice-live gate (melody family), mirroring shouldRedrawM.
-    bool shouldRedrawQ = drawAllowedM && (((!in.locked) && (qmixSeedPending || qmixReseedRollPending))
+    // q-mix draws under its OWN dice-live gate (SB_DICE_Q), independent of melody.
+    bool shouldRedrawQ = drawAllowedQ && (((!in.locked) && (qmixSeedPending || qmixReseedRollPending))
                                           || qmixRollPending || (qmixMode == 1));
 
     if (!in.locked && rhythmSeedPending) {
@@ -524,15 +528,16 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
         if (qmixReseedRollFull) { seedQmixPhiloxFull(); }
         else { qmixSeedFloat = qmixReseedRollFloat; seedQmixPhilox(qmixSeedFloat); }
     }
-    if (drawAllowedM) { qmixRollPending = false; qmixReseedRollPending = false; }
+    if (drawAllowedQ) { qmixRollPending = false; qmixReseedRollPending = false; }
     if (shouldRedrawQ) redrawQmix(in);
-    if (drawAllowedM) qmixPendingLast = false;   // one-shot: consumed only if this stream drew (held otherwise)
+    if (drawAllowedQ) qmixPendingLast = false;   // one-shot: consumed only if this stream drew (held otherwise)
 
     // ── Dice-undo capture (item 4): record the AFTER (seedFloat, counter) now that the roll's
     // redraw has advanced the counter. Only the moved streams matter; the other's before==after.
     if (diceUndoPending.valid) {
         diceUndoPending.rSeedAfter = rhythmSeedFloat; diceUndoPending.rCtrAfter = rhythmDrawCtr;
         diceUndoPending.mSeedAfter = melodySeedFloat; diceUndoPending.mCtrAfter = melodyDrawCtr;
+        diceUndoPending.qSeedAfter = qmixSeedFloat;   diceUndoPending.qCtrAfter = qmixDrawCtr;
         // diceUndoPending stays valid=true until the owner (Monsoon::onPhraseBoundary_) drains it.
     }
 

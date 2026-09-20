@@ -378,7 +378,11 @@ float Monsoon::semitoneToVolts(int semitone) {
         // which have no independent rhythm/melody split at the key level).
         const bool reseedR = dotModular::LockManager::liveNow(dotModular::Control::Reseed, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
         const bool reseedM = dotModular::LockManager::liveNow(dotModular::Control::Reseed, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
-        if (reseedR || reseedM) {
+        // q-mix reseeds on its OWN axis (SB_ABRESEED_Q), no longer riding R-or-M. Reseed is LATCH, so
+        // !locked OR the q-mix bit opted live. Evaluated on the bit directly (third axis, not melodyAxis).
+        const bool reseedQ = !engine.locked
+                           || (engine.scopeLiveMask & (1u << 10)) != 0;   // == dotModular::SB_ABRESEED_Q
+        if (reseedR || reseedM || reseedQ) {
             if (reseedOnRestart) {
                 // Only use the SEED-CV (reproducible, A=B) path when the SEED
                 // input is actually present. Unpatched → internal entropy via the
@@ -391,7 +395,7 @@ float Monsoon::semitoneToVolts(int semitone) {
                     const float s = sampleSeedFromSource();
                     if (reseedR) engine.pe.setPendingRhythmSeed(s);
                     if (reseedM) engine.pe.setPendingMelodySeed(s);
-                    engine.pe.setPendingQmixSeed(s);   // q-mix shares the single SEED jack, ungated — consistent with CA (from feat/qmix-rng-stream)
+                    if (reseedQ) engine.pe.setPendingQmixSeed(s);   // q-mix own axis (SB_ABRESEED_Q); shares the single SEED jack value
                     if (expanderManager.cachedChangeAlleyV2)
                         expanderManager.cachedChangeAlleyV2->reseedCorrKeys(s);
                 } else {
@@ -399,7 +403,7 @@ float Monsoon::semitoneToVolts(int semitone) {
                     if (reseedM) engine.pe.setPendingMelodyReseedRoll(0.f, /*full=*/true);
                     // CA mirrors rhythm/melody: unpatched -> full internal entropy (not the
                     // lossy 0..10 float), keeping all three families consistent.
-                    engine.pe.setPendingQmixReseedRoll(0.f, /*full=*/true);   // q-mix — consistent with CA (from feat/qmix-rng-stream)
+                    if (reseedQ) engine.pe.setPendingQmixReseedRoll(0.f, /*full=*/true);   // q-mix own axis (SB_ABRESEED_Q)
                     if (expanderManager.cachedChangeAlleyV2)
                         expanderManager.cachedChangeAlleyV2->seedCorrKeysInternal();
                 }
@@ -485,11 +489,11 @@ void Monsoon::onPhraseBoundary_() {
     if (engine.pe.diceUndoPending.valid) {
         const auto& c = engine.pe.diceUndoPending;
         DiceUndoSnapshot s;
-        s.movedR = c.movedR;         s.movedM = c.movedM;
-        s.rSeedBefore = c.rSeedBefore; s.mSeedBefore = c.mSeedBefore;
-        s.rSeedAfter  = c.rSeedAfter;  s.mSeedAfter  = c.mSeedAfter;
-        s.rCtrBefore  = c.rCtrBefore;  s.mCtrBefore  = c.mCtrBefore;
-        s.rCtrAfter   = c.rCtrAfter;   s.mCtrAfter   = c.mCtrAfter;
+        s.movedR = c.movedR;         s.movedM = c.movedM;         s.movedQ = c.movedQ;
+        s.rSeedBefore = c.rSeedBefore; s.mSeedBefore = c.mSeedBefore; s.qSeedBefore = c.qSeedBefore;
+        s.rSeedAfter  = c.rSeedAfter;  s.mSeedAfter  = c.mSeedAfter;  s.qSeedAfter  = c.qSeedAfter;
+        s.rCtrBefore  = c.rCtrBefore;  s.mCtrBefore  = c.mCtrBefore;  s.qCtrBefore  = c.qCtrBefore;
+        s.rCtrAfter   = c.rCtrAfter;   s.mCtrAfter   = c.mCtrAfter;   s.qCtrAfter   = c.qCtrAfter;
         publishDiceUndo(s);
         engine.pe.diceUndoPending.valid = false;   // consumed
     }
