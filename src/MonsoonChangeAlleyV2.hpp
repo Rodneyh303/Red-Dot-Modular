@@ -150,8 +150,8 @@ struct MonsoonChangeAlleyV2 : Module {
             configButton(CA::SCATTER_REV_BTN_START + i,                       "Scatter domain reverse");
             configButton(CA::SCATTER_REV_BTN_START + CA::SIDES*CA::TYPES + i, "Scatter codomain reverse");
         }
-        configInput(CA::GRAIN_POLY_IN, "Grain poly CV (16ch -> 16 grain knobs; mono=all)");
-        configInput(CA::STEP_POLY_IN,  "Step poly CV (ch 1-4 leader, 5-8 step; mono=all)");
+        // GRAIN_POLY_IN / STEP_POLY_IN removed (CA_PANEL_THREE_STREAM_LAYOUT): didn't scale to
+        // the 3rd stream; the per-row grain/leader/step knobs remain the sole value source.
         resetToIdentity();
         seedCorrKeysInternal();   // fresh module: no seed known yet, entropy keys are correct
     }
@@ -176,20 +176,17 @@ struct MonsoonChangeAlleyV2 : Module {
         p.isInter  = (side == 1);
         // Grain = knob + poly CV (channel = row). No attenuverter (§ Rodney): 16 channels
         // map straight to the 16 grain knobs. CV is added in knob-detent units (0..4).
+        // Grain from the per-row knob only (poly-CV mod removed, CA_PANEL_THREE_STREAM_LAYOUT).
         float gv = params[CA::GRAIN_START + r].getValue();
-        gv += polyCV(inputs[CA::GRAIN_POLY_IN], r) * 0.4f;   // ~2V per detent, mono-normalled
         p.grain    = grainFromKnob(gv);
         if      (verb == CA::V_COLLAPSE) {
-            const int li = side*CA::TYPES + type;           // 0..3 -> STEP poly ch 1..4
+            const int li = side*CA::TYPES + type;
             float lv = params[CA::LEADER_START + li].getValue();
-            lv += polyCV(inputs[CA::STEP_POLY_IN], li);      // 1V per leader step
             p.leaderOrStep = (int)std::lround(lv);
         }
         else if (verb == CA::V_ROTATE)
             {   const int si = side*CA::TYPES + type;
-                const int sch = 4 + si;                      // 4..7 -> STEP poly ch 5..8
                 float sv = params[CA::STEP_START + si].getValue();
-                sv += polyCV(inputs[CA::STEP_POLY_IN], sch); // 1V per step
                 p.leaderOrStep = (int)std::lround(sv); }
         else
             p.leaderOrStep = 0;
@@ -420,10 +417,10 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
     // Jack well is r=3.9 (Ø7.8); ROW_H=8.0 is the jack-floor pitch (jacks touch at 0.2mm gap).
     static constexpr int   N_STREAMS    = 3;
     static constexpr float CTRL_ROW_H   = 8.0f;
-    static constexpr float GROUP_GAP    = 1.5f;
-    static constexpr float CTRL_TOP     = 9.0f;   // pulled up (was 14.0) after screws moved to the edge,
-                                                  // reclaiming ~5mm of top margin for the 12 rows. MUST
-                                                  // MATCH gen_change_alley_v2.py ROW_TOP.
+    // GROUP_GAP widened 1.5->3.5 (poly jacks cut + logo moved to top freed the space): each op-group
+    // now has a CLEAR BAND above it for its INTRA/INTER label. MUST MATCH gen_change_alley_v2.py.
+    static constexpr float GROUP_GAP    = 3.5f;
+    static constexpr float CTRL_TOP     = 11.0f;  // first row below the top logo/title band. MUST MATCH ROW_TOP.
     static constexpr float BOTTOM_OFFSET = 6.0f;   // gap from last row to the bottom poly-jack cluster
     static float rowY(int verb, int sub) {
         return CTRL_TOP + verb*(N_STREAMS*CTRL_ROW_H + GROUP_GAP) + sub*CTRL_ROW_H + CTRL_ROW_H*0.5f;
@@ -514,8 +511,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     const int gr = r;
                     addArc(k, CA::GRAIN_START + r, [mod, gr]() -> float {
                         if (!mod) return 0.f;
-                        float v = mod->params[CA::GRAIN_START + gr].getValue()
-                                + MonsoonChangeAlleyV2::polyCV(mod->inputs[CA::GRAIN_POLY_IN], gr) * 0.4f;
+                        float v = mod->params[CA::GRAIN_START + gr].getValue();
                         return rack::math::clamp(v / 4.f, 0.f, 1.f);   // 0..4 detents -> 0..1
                     }); }
                 if (verb == CA::V_COLLAPSE) {
@@ -526,8 +522,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     addParam(k);
                     addArc(k, CA::LEADER_START + li, [mod, li]() -> float {
                         if (!mod) return 0.f;
-                        float v = mod->params[CA::LEADER_START + li].getValue()
-                                + MonsoonChangeAlleyV2::polyCV(mod->inputs[CA::STEP_POLY_IN], li);
+                        float v = mod->params[CA::LEADER_START + li].getValue();
                         return rack::math::clamp(v / 15.f, 0.f, 1.f);   // leader 0..15
                     });
                 } else if (verb == CA::V_ROTATE) {
@@ -538,8 +533,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     addParam(k);
                     addArc(k, CA::STEP_START + sIdx, [mod, sIdx]() -> float {
                         if (!mod) return 0.f;
-                        float v = mod->params[CA::STEP_START + sIdx].getValue()   // -7..7
-                                + MonsoonChangeAlleyV2::polyCV(mod->inputs[CA::STEP_POLY_IN], 4 + sIdx);
+                        float v = mod->params[CA::STEP_START + sIdx].getValue();   // -7..7
                         return rack::math::clamp((v + 7.f) / 14.f, 0.f, 1.f);
                     });
                 } else if (verb == CA::V_SCATTER) {
@@ -569,16 +563,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
             }
           }
 
-        // Two poly modulation inputs, bottom-right under the last REFLECT row.
-        {
-            // MUST match gen_change_alley_v2.py: by = lastBottom()+BOTTOM_OFFSET, rx = PW-MARGIN-4.45
-            const float by = rowY(CA::N_VERBS - 1, N_STREAMS - 1) + CTRL_ROW_H * 0.5f + BOTTOM_OFFSET;
-            const float rx = PW_MM - MARGIN - 4.45f;
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(rx,         by)),
-                     module, CA::STEP_POLY_IN));
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(rx - 10.0f, by)),
-                     module, CA::GRAIN_POLY_IN));
-        }
+        // (Poly-mod inputs removed — CA_PANEL_THREE_STREAM_LAYOUT. Bottom-right is now free.)
 
         auto* ov = new PinOverlay(module);
         ov->box.pos  = Vec(0, 0);
@@ -685,7 +670,10 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     nvgFontSize(vg, mm2px(Vec(2.7f,0)).x);
                     nvgFillColor(vg, inkdim);
                     for (int t2 = 0; t2 < 4; ++t2) {
-                        float gy = mm2px(Vec(0, rowY(t2, 0) - CTRL_ROW_H*0.5f - 1.4f)).y;
+                        // Baseline sits in the GROUP_GAP band ABOVE this group's first row.
+                        // With GROUP_GAP=3.5 there is now a clear band; -2.0 centres the label
+                        // in it so it no longer overlaps the previous group's 3rd (q-mix) row.
+                        float gy = mm2px(Vec(0, rowY(t2, 0) - CTRL_ROW_H*0.5f - 2.0f)).y;
                         char lbl[24];
                         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BASELINE);
                         snprintf(lbl, sizeof(lbl), "%s INTRA", TN[t2]);
@@ -694,39 +682,29 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                         snprintf(lbl, sizeof(lbl), "%s INTER", TN[t2]);
                         nvgText(vg, mm2px(Vec(PW_MM - MARGIN, 0)).x, gy, lbl, NULL);
                     }
-                    // Bottom-right cluster: GRAIN/STEP jack captions + VERTICAL legend.
+                    // HORIZONTAL legend, centred UNDER the pin matrix: rhythm / melody / q-mix
+                    // in a single row (was a vertical stack bottom-right; the poly jacks that
+                    // shared that corner are gone). Colours from the SHARED accessors so the
+                    // legend == matrix pins.
                     {
-                        const float by = rowY(CA::N_VERBS - 1, N_STREAMS - 1) + CTRL_ROW_H*0.5f + BOTTOM_OFFSET;
-                        const float rx = PW_MM - MARGIN - 4.45f;
-                        // captions ABOVE the jacks
-                        nvgFontSize(vg, mm2px(Vec(2.3f,0)).x);
-                        nvgFillColor(vg, inkdim);
-                        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BASELINE);
-                        float capY = mm2px(Vec(0, by - 4.5f)).y;
-                        nvgText(vg, mm2px(Vec(rx, 0)).x,          capY, "STEP",  NULL);
-                        nvgText(vg, mm2px(Vec(rx - 10.0f, 0)).x,  capY, "GRAIN", NULL);
-                        // VERTICAL legend, enlarged, to the LEFT of the jacks
+                        const float legendY = MY_MM + MH_MM + 3.4f;   // just below the matrix
+                        const float mcx     = MX_MM + MW_MM * 0.5f;   // matrix centre x
+                        const float sw      = mm2px(Vec(1.3f,0)).x;
                         nvgFontSize(vg, mm2px(Vec(2.8f,0)).x);
                         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-                        const float lgX = mm2px(Vec(rx - 10.0f - 22.0f, 0)).x;
-                        const float sw  = mm2px(Vec(1.3f,0)).x;
-                        // Three swatches (rhythm/melody/q-mix), evenly spaced around `by`.
-                        // Colours come from the SHARED accessors so legend == matrix pins.
-                        float r1Y = mm2px(Vec(0, by - 3.6f)).y;
-                        float r2Y = mm2px(Vec(0, by       )).y;
-                        float r3Y = mm2px(Vec(0, by + 3.6f)).y;
-                        nvgBeginPath(vg); nvgCircle(vg, lgX, r1Y, sw);
-                        nvgFillColor(vg, pinRhythm()); nvgFill(vg);
-                        nvgFillColor(vg, inkdim);
-                        nvgText(vg, lgX + mm2px(Vec(2.4f,0)).x, r1Y, "rhythm", NULL);
-                        nvgBeginPath(vg); nvgCircle(vg, lgX, r2Y, sw);
-                        nvgFillColor(vg, pinMelody()); nvgFill(vg);
-                        nvgFillColor(vg, inkdim);
-                        nvgText(vg, lgX + mm2px(Vec(2.4f,0)).x, r2Y, "melody", NULL);
-                        nvgBeginPath(vg); nvgCircle(vg, lgX, r3Y, sw);
-                        nvgFillColor(vg, pinQmix()); nvgFill(vg);
-                        nvgFillColor(vg, inkdim);
-                        nvgText(vg, lgX + mm2px(Vec(2.4f,0)).x, r3Y, "q-mix", NULL);
+                        const float ly = mm2px(Vec(0, legendY)).y;
+                        struct Sw { NVGcolor c; const char* t; };
+                        const Sw sws[3] = { {pinRhythm(),"rhythm"}, {pinMelody(),"melody"}, {pinQmix(),"q-mix"} };
+                        // Lay the three swatch+label groups evenly across the matrix width.
+                        const float slotW = MW_MM / 3.0f;
+                        for (int i = 0; i < 3; ++i) {
+                            const float gx = mm2px(Vec(MX_MM + slotW*(i + 0.5f) - 7.0f, 0)).x;
+                            nvgBeginPath(vg); nvgCircle(vg, gx, ly, sw);
+                            nvgFillColor(vg, sws[i].c); nvgFill(vg);
+                            nvgFillColor(vg, inkdim);
+                            nvgText(vg, gx + mm2px(Vec(2.4f,0)).x, ly, sws[i].t, NULL);
+                        }
+                        (void)mcx;
                     }
                     // Title + legend
                     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BASELINE);
@@ -734,16 +712,14 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     nvgFillColor(vg, ink);
                     nvgText(vg, box.size.x * 0.5f, mm2px(Vec(0,6.0f)).y, "CHANGE ALLEY", NULL);
 
-                    // ── Connect indicator: a small state dot to the RIGHT of the SVG
-                    //    logo (which draws the wordmark itself). BRIGHT red w/ halo =
-                    //    connected + claimed; HOLLOW = not. No wordmark here — the panel
-                    //    SVG embeds the real dot.modular logo. ──
+                    // ── Connect indicator: a small state dot beside the TOP title.
+                    //    BRIGHT red w/ halo = connected + claimed; HOLLOW = not. The panel
+                    //    SVG embeds the real dot.modular logo (now at the top). ──
                     {
                         bool connected = module && redDot::isConnectedAndClaimed(module);
-                        // Connect dot beside the LHS logo (generator places logo at MARGIN,
-                        // under the last REFLECT row).
-                        float mx = mm2px(Vec(MARGIN + 36.0f, 0)).x;
-                        float myv = mm2px(Vec(0, rowY(CA::N_VERBS-1, N_STREAMS-1) + CTRL_ROW_H*0.5f + BOTTOM_OFFSET + 5.5f)).y;
+                        // Connect dot to the RIGHT of the "CHANGE ALLEY" title (top band).
+                        float mx = box.size.x * 0.5f + mm2px(Vec(30.0f, 0)).x;
+                        float myv = mm2px(Vec(0, 4.6f)).y;
                         if (connected) {
                             nvgBeginPath(vg); nvgCircle(vg, mx, myv, 3.6f);
                             nvgFillColor(vg, nvgRGBA(0xd4,0x00,0x1a,0x30)); nvgFill(vg);

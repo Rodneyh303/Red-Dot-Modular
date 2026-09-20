@@ -1175,11 +1175,10 @@ namespace ChangeAlleyV2Ids {
         CODOMAIN_TRIG_START    = DOMAIN_TRIG_START   + N_ROWS,  // 24
         SCATTER_BACK_DOM_START = CODOMAIN_TRIG_START + N_ROWS,  // 6 (SIDES*TYPES)
         SCATTER_BACK_COD_START = SCATTER_BACK_DOM_START + SIDES*TYPES, // 6
-        // Poly modulation, no attenuverters (§: Rodney): GRAIN poly maps channels to the
-        // grain knobs; STEP poly maps channels to the step knobs.
-        GRAIN_POLY_IN          = SCATTER_BACK_COD_START + SIDES*TYPES, // 1
-        STEP_POLY_IN           = GRAIN_POLY_IN + 1,                    // 1
-        NUM_INPUTS             = STEP_POLY_IN + 1                      // = 62
+        // GRAIN_POLY_IN / STEP_POLY_IN removed (CA_PANEL_THREE_STREAM_LAYOUT): the two poly-CV
+        // mod inputs were designed for the 2-stream world and don't scale to the 3rd (q-mix)
+        // stream; cut to reclaim the bottom-right edge. The per-row grain/leader/step KNOBS stay.
+        NUM_INPUTS             = SCATTER_BACK_COD_START + SIDES*TYPES  // = 60
     };
     enum LightIds { PENDING_LIGHT_START = 0, NUM_LIGHTS = N_ROWS };  // 24
 

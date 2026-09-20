@@ -39,11 +39,15 @@ N_STREAMS = 3                      # Q5 q-mix: 3rd stream (melody, rhythm, q-mix
 # Jack well is r=3.9 (Ø7.8); ROW_H=8.0 is the jack-floor pitch (jacks touch at 0.2mm gap).
 # GROUP_GAP shrunk 6.8->1.5 (groups barely separate); ROW_TOP 21->14; bottom offset 9->6.
 # This is the "try tighter pitch first" attempt; if jacks read too cramped -> Plan B (smaller jack SVG).
-ROW_H     = 8.0
-GROUP_GAP = 1.5
-ROW_TOP   = 9.0                   # pulled up (was 14.0) after screws moved to the panel edge,
-                                  # reclaiming ~5mm of top margin. MUST MATCH MonsoonChangeAlleyV2.hpp CTRL_TOP.
-BOTTOM_OFFSET = 6.0               # was 9.0 — gap from last row to the bottom poly-jack cluster
+ROW_H     = 8.0                   # jack-floor pitch (jacks touch at 0.2mm gap) — kept at the floor.
+# GROUP_GAP widened 1.5->3.5: the poly jacks + bottom logo were cut and the logo moved to the top,
+# freeing vertical space; spend it on a CLEAR BAND between op-groups so each INTRA/INTER label sits
+# clear of the group above (was overlapping). MUST MATCH MonsoonChangeAlleyV2.hpp GROUP_GAP.
+GROUP_GAP = 3.5
+ROW_TOP   = 11.0                  # first row starts below the top logo/title band. MUST MATCH CTRL_TOP.
+BOTTOM_OFFSET = 6.0               # (retained for lastBottom(); bottom cluster itself removed)
+LOGO_TOP_Y = 3.0                  # dot.modular wordmark at the TOP (matches Monsoon/West placement)
+LOGO_W     = 34.0
 
 def rowY(v, s): return ROW_TOP + v*(N_STREAMS*ROW_H+GROUP_GAP) + s*ROW_H + ROW_H*0.5
 def lastBottom(): return rowY(N_VERBS-1,N_STREAMS-1) + ROW_H*0.5
@@ -84,12 +88,10 @@ def gen(dark):
                     E(f'<circle cx="{px(lx(bx,flip)):.1f}" cy="{px(ry):.1f}" r="{px(2.6):.1f}" fill="{t["frame"]}" stroke="{t["dim"]}" stroke-width="{px(0.5):.2f}"/>')
                 E(f'<circle cx="{px(lx(LIGHT,flip)):.1f}" cy="{px(ry):.1f}" r="{px(1.3):.1f}" fill="{t["well"]}" stroke="{t["dim"]}" stroke-width="{px(0.3):.2f}"/>')
 
-    # bottom cluster: logo LEFT clear of jacks; poly jacks RIGHT; legend between
-    by = lastBottom() + BOTTOM_OFFSET
-    E(logo_embed(dark, MARGIN, by, 30.0))
-    rx = PW_MM - MARGIN - 4.45
-    E(jack(rx,       by, t))        # STEP poly
-    E(jack(rx - 10.0, by, t))       # GRAIN poly
+    # dot.modular wordmark at the TOP (matches Monsoon/West); centred horizontally.
+    # (The old bottom cluster — logo + 2 poly jacks — is REMOVED: the poly-mod inputs were
+    #  cut per CA_PANEL_THREE_STREAM_LAYOUT, freeing the bottom for the matrix legend.)
+    E(logo_embed(dark, (PW_MM - LOGO_W) / 2.0, LOGO_TOP_Y, LOGO_W))
 
     out=os.path.join(os.path.dirname(__file__),"..","res","panels")
     os.makedirs(out,exist_ok=True)
