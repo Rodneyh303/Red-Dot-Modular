@@ -439,18 +439,20 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     }
 
     int   sem    = 0;
-    // ── QMIX per-step source-select (mono/voice-0) ──────────────────────────────────────────────
+    // ── QMIX per-step source-select (mono/voice-0), CA-routed downstream of Change Alley ─────────
     // In quantiser modes, q-mix decides PER STEP whether the CV-out pitch comes from the quantised
-    // external CV2 (default) or the internally generated melody. The decision is the same q-mix draw
-    // the engine thresholds for result.qmixHit below: qmixUseGenerated == (r_qmix < qmixLevel).
-    //   qmixLevel 0 → never generated → always quantised CV2 (legacy behaviour).
-    //   qmixLevel 1 → always generated → ignore CV2.
-    //   in between → per-step probabilistic blend (generated notes gradually replace quantised ones).
-    // Gated by quantiserPitchSource so it is inert outside quantiser modes (A/B byte-identical).
-    // Computed HERE (before voicePitch) so it can steer the pitch source; result.qmixHit at the
-    // bottom of this function is set from the SAME decision on starting steps, and held/tied steps
-    // reuse the prior note's pitch (no fresh voicePitch draw) so the source latches — matching how
-    // qmixHit already inherits on non-starting steps.
+    // external CV (default) or the internally generated melody. Per QMIX_LANE_PARITY §"The blend"
+    // BOTH mux operands and the threshold are CA outputs (positioned AFTER CA):
+    //   • THRESHOLD  — r_qmix is drawn from the q-mix probability array, which is scattered by the
+    //     green qmixSrc plane (caQmixSrc): PatternEngine::remapSlewedByPins remaps slewedQmix by
+    //     caSrcRow(row, STRAND_QMIX) → caQmixSrc, so the draw voice-0 thresholds on is already the
+    //     CA-selected source voice's q-mix. No extra indexing here (would double-permute).
+    //   • INPUT-CV operand — routed inside voicePitch via caInputCvSrcRow (CA melody plane).
+    //   • GENERATED operand — genPitchLive, unchanged.
+    // Level scales the probability; qmixSrc scatters WHICH voice's q-mix. Identity qmixSrc + level 0
+    // → always quantised input (legacy), level 1 → always generated. Gated by quantiserPitchSource so
+    // it is inert outside quantiser modes (A/B byte-identical). Computed HERE (before voicePitch) so
+    // it steers the pitch source; result.qmixHit below uses the SAME decision on starting steps.
     const bool qmixUseGenerated = quantiserPitchSource && (r_qmix < input.qmixLevel);
     // QUANTISER (Q1): mono/voice-0 pitch = quantised external CV when in a quantiser mode, else the
     // internal melody+octave draw. voicePitch bypasses genPitchLive (no RNG/lane perturbation) when
@@ -825,14 +827,21 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         
         // Decide to Play: Draw pitch and follow mono's triggering behavior.
         int sem = 0;
-        // QMIX per-voice source-select (mirrors the mono path at executeStep): in a quantiser mode,
-        // this voice's q-mix draw decides quantised-external-CV vs internally-generated melody+octave.
+        // QMIX per-voice source-select (mirrors the mono path at executeStep), CA-routed downstream of
+        // Change Alley. Per QMIX_LANE_PARITY §"The blend" BOTH operands + the threshold are CA outputs:
+        //   • THRESHOLD  — r_qmix_voice is drawn from polyRandomSrc(v, PL_QMIX), which is ALREADY
+        //     scattered by the green qmixSrc plane: remapSlewedByPins remaps slewedPolyQmix by
+        //     caSrcRow(row, STRAND_QMIX) → caQmixSrc, so this voice thresholds on the CA-selected
+        //     SOURCE voice's q-mix probability. No extra caQmixSrc indexing here (would double-permute).
+        //   • INPUT-CV operand — routed inside voicePitch via caInputCvSrcRow (CA melody plane), so a
+        //     voice can quantise another voice's input line.
+        //   • GENERATED operand — melody+octave draw (also CA-remapped), unchanged.
         //   r_qmix_voice < voice's qmixLevel → use GENERATED (mode-A pitch for this voice).
-        //   otherwise                        → use quantised external CV (its own channel).
-        // Draw at this voice's OWN q-mix LOR step (polyLaneTick + LEN/OFF/ROT), exactly like the
-        // rest/accent per-voice draws above use their strand. qmixUseGenerated is only ever true in
-        // quantiser modes (voicePitch gates forceGenerated on quantiserPitchSource); outside them
-        // it's inert and behaviour is byte-identical to the legacy poly path.
+        //   otherwise                        → use CA-routed quantised external CV.
+        // Level scales the probability; qmixSrc scatters WHICH voice's q-mix. Identity qmixSrc + level 0
+        // → always quantised input, level 1 → always generated (the knob reads as before at identity).
+        // qmixUseGenerated is only ever true in quantiser modes (voicePitch gates forceGenerated on
+        // quantiserPitchSource); outside them it's inert and byte-identical to the legacy poly path.
         int qmixIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_QMIX), polyLenE(voiceIdx, PL_QMIX), polyOffE(voiceIdx, PL_QMIX), polyRotE(voiceIdx, PL_QMIX));
         float r_qmix_voice = polyRandomSrc(voiceIdx, PL_QMIX)[qmixIdx];
         bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice < v.qmixLevel);

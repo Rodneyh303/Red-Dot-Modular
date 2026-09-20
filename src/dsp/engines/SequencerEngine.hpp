@@ -552,8 +552,19 @@ struct SequencerEngine {
                      bool forceGenerated = false) {
         if (quantiserPitchSource && !forceGenerated) {
             const int vi = (voiceIdx < 0) ? 0 : (voiceIdx > 15 ? 15 : voiceIdx);
-            float v = quantize(quantiserCV[vi]);
+            // CA-routed input CV (QMIX_LANE_PARITY §"The blend" step 2): the external input CV rides
+            // CA's MELODY source plane, so a voice can quantise ANOTHER voice's input line. voiceIdx is
+            // the ENGINE voice (0=mono/V1, k=poly V(k+1)) — the SAME indexing as the CA pin rows — so
+            // caInputCvSrcRow(vi) maps directly. Identity default = each voice reads its own CV (the
+            // exact legacy quantiserCV[vi]); byte-identical when caMelodySrc is identity.
+            const int srcVi = pe.caInputCvSrcRow(vi);
+            const int rvi = (srcVi < 0) ? 0 : (srcVi > 15 ? 15 : srcVi);
+            float v = quantize(quantiserCV[rvi]);
             float frac = v - std::floor(v);
+            // markSemi correctness (QMIX_LANE_PARITY §"one correctness rule"): the QUANTISED branch
+            // names its degree in outSem, and the generated branch does so via genPitchLive — so the
+            // caller's triggerNote/slideNote/extendHold marks lastSemitone from WHICHEVER value the mux
+            // picked. "What we picked" and "what CA/Lantern see" never drift.
             outSem = pe.tuning.isDefault12TET ? (int(std::round(frac * 12.f)) % 12)
                                               : pe.tuning.nearestDegree(frac);
             return v;
