@@ -602,6 +602,14 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
         }
 
         // A pin that reads as a physical peg: soft drop shadow, flat colour body,
+        // Shared stream colours: legend swatches, matrix pins, and the pending-highlight ALL
+        // pull from these so the three agree. rhythm=white, melody=red, q-mix=green ("green plane",
+        // CA_PANEL_THREE_STREAM_LAYOUT / QMIX_LANE_PARITY). The q-mix pin RENDER + green-pin click
+        // are a later layer; the COLOUR is defined here now so the legend + future dots match.
+        static NVGcolor pinRhythm() { return nvgRGBf(0.95f,0.95f,0.94f); }
+        static NVGcolor pinMelody() { return nvgRGBf(0.83f,0.f,0.10f); }
+        static NVGcolor pinQmix()   { return nvgRGBf(0.30f,0.75f,0.35f); }
+
         // a rim a shade darker, and an offset specular highlight. col = body colour.
         static void drawPin(NVGcontext* vg, float cx, float cy, float r,
                             NVGcolor body, float alpha) {
@@ -702,16 +710,23 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
                         const float lgX = mm2px(Vec(rx - 10.0f - 22.0f, 0)).x;
                         const float sw  = mm2px(Vec(1.3f,0)).x;
-                        float r1Y = mm2px(Vec(0, by - 2.2f)).y;
-                        float r2Y = mm2px(Vec(0, by + 2.2f)).y;
+                        // Three swatches (rhythm/melody/q-mix), evenly spaced around `by`.
+                        // Colours come from the SHARED accessors so legend == matrix pins.
+                        float r1Y = mm2px(Vec(0, by - 3.6f)).y;
+                        float r2Y = mm2px(Vec(0, by       )).y;
+                        float r3Y = mm2px(Vec(0, by + 3.6f)).y;
                         nvgBeginPath(vg); nvgCircle(vg, lgX, r1Y, sw);
-                        nvgFillColor(vg, nvgRGBf(0.95f,0.95f,0.94f)); nvgFill(vg);
+                        nvgFillColor(vg, pinRhythm()); nvgFill(vg);
                         nvgFillColor(vg, inkdim);
                         nvgText(vg, lgX + mm2px(Vec(2.4f,0)).x, r1Y, "rhythm", NULL);
                         nvgBeginPath(vg); nvgCircle(vg, lgX, r2Y, sw);
-                        nvgFillColor(vg, nvgRGBf(0.83f,0.f,0.10f)); nvgFill(vg);
+                        nvgFillColor(vg, pinMelody()); nvgFill(vg);
                         nvgFillColor(vg, inkdim);
                         nvgText(vg, lgX + mm2px(Vec(2.4f,0)).x, r2Y, "melody", NULL);
+                        nvgBeginPath(vg); nvgCircle(vg, lgX, r3Y, sw);
+                        nvgFillColor(vg, pinQmix()); nvgFill(vg);
+                        nvgFillColor(vg, inkdim);
+                        nvgText(vg, lgX + mm2px(Vec(2.4f,0)).x, r3Y, "q-mix", NULL);
                     }
                     // Title + legend
                     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BASELINE);
@@ -757,9 +772,10 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     const auto& h = module->pendingRows[hr];
                     if (!h.armed) continue;
                     const int hType = hr % CA::TYPES;   // 0=rhythm 1=melody 2=q-mix
-                    NVGcolor hcol = (hType == 0) ? nvgRGBAf(0.95f,0.95f,0.94f,0.55f)   // rhythm=white
-                                  : (hType == 1) ? nvgRGBAf(0.83f,0.f,0.10f,0.55f)     // melody=red
-                                                 : nvgRGBAf(0.30f,0.75f,0.35f,0.55f);  // q-mix=green
+                    NVGcolor hcol = (hType == 0) ? pinRhythm()
+                                  : (hType == 1) ? pinMelody()
+                                                 : pinQmix();
+                    hcol.a = 0.55f;   // highlight alpha (shared hue, translucent band)
                     const float sw = mm2px(Vec(0.45f,0)).x;
                     const float hw = mm2px(Vec(CELL_W * 0.5f, 0)).x;
                     const float hh = mm2px(Vec(0, CELL_H * 0.5f)).y;
@@ -805,8 +821,8 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     bool rIdentity = hasR && (col == row);
                     bool mIdentity = hasM && (col == row);
 
-                    NVGcolor white = nvgRGBf(0.95f,0.95f,0.94f);
-                    NVGcolor red   = nvgRGBf(0.83f,0.f,0.10f);
+                    NVGcolor white = pinRhythm();
+                    NVGcolor red   = pinMelody();
                     if (hasR && hasM) {
                         // Concentric: white peg with a red inset dot on top
                         drawPin(vg, c.x, c.y, ro, white, rIdentity ? 0.72f*alpha : alpha);
