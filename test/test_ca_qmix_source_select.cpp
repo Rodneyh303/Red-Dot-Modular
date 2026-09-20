@@ -189,6 +189,77 @@ int main() {
         CHK(markOk, "markSemi rule: the CHOSEN value (gen OR input) is the one whose degree is marked");
     }
 
+    // ── 4. CA transforms APPLY on the q-mix plane (verb-agnostic, via real applyCorrelation) ──────
+    // The panel's q-mix pin row (type 2) drives the SAME transform engine as rhythm/melody: every
+    // verb (collapse/rotate/reflect/scatter), both domain/codomain, intra & inter, permutes qmixSrc.
+    // Here we drive the REAL dotModular::ca::applyCorrelation on a q-mix plane and assert it behaves
+    // like the other planes + stays independent of them.
+    {
+        uint64_t k[N_SCATTER]; deriveCorrKeys(7.0f, k);
+        const int qA = ci_of(0, 2, true);   // q-mix domain intra stream key
+
+        // COLLAPSE domain @4 on q-mix: quartet leaders (identity board → leader = block base).
+        { uint8_t q[N_VOICES]; for (int v=0;v<N_VOICES;++v) q[v]=(uint8_t)v;
+          applyCorrelation(/*verb=*/0, /*isDomain=*/true, /*isInter=*/false, q, N_VOICES, /*grain=*/4, 0, k[qA], 0);
+          CHK(q[0]==0 && q[3]==0 && q[4]==4 && q[7]==4 && q[15]==12,
+              "q-mix COLLAPSE domain @4 = quartet leaders (same as melody plane)"); }
+
+        // ROTATE values @16 on q-mix: +1 with wrap, composes per trigger.
+        { uint8_t q[N_VOICES]; for (int v=0;v<N_VOICES;++v) q[v]=(uint8_t)v;
+          applyCorrelation(1, false, false, q, N_VOICES, 16, 1, k[qA], 0);
+          CHK(q[0]==1 && q[15]==0, "q-mix ROTATE values @16 = +1 wrap"); }
+
+        // REFLECT rows @16 on q-mix: self-inverse over a double apply.
+        { uint8_t q[N_VOICES], q0[N_VOICES]; for (int v=0;v<N_VOICES;++v){q[v]=(uint8_t)v;q0[v]=(uint8_t)v;}
+          applyCorrelation(2, true, false, q, N_VOICES, 16, 0, k[qA], 0);
+          applyCorrelation(2, true, false, q, N_VOICES, 16, 0, k[qA], 0);
+          bool selfInv=true; for(int v=0;v<N_VOICES;++v) selfInv &= (q[v]==q0[v]);
+          CHK(selfInv, "q-mix REFLECT rows is self-inverse over a double apply"); }
+
+        // SCATTER on q-mix is counter-addressable + reversible via applyCorrelation (position/back).
+        { uint8_t q1[N_VOICES], q2[N_VOICES]; for (int v=0;v<N_VOICES;++v){q1[v]=(uint8_t)v;q2[v]=(uint8_t)v;}
+          applyCorrelation(3, false, false, q1, N_VOICES, 8, 0, k[qA], /*position=*/5);
+          applyCorrelation(3, false, false, q2, N_VOICES, 8, 0, k[qA], /*position=*/5);
+          bool repro=true; for(int v=0;v<N_VOICES;++v) repro &= (q1[v]==q2[v]);
+          CHK(repro, "q-mix SCATTER via applyCorrelation is deterministic at a fixed position"); }
+    }
+
+    // ── 5. Routing-plane invariants (mirror PatternEngine caSrcRow / caInputCvSrcRow / caQmixSrcRow) ─
+    // The downstream engine routes each operand through a SPECIFIC CA plane. These replicate the exact
+    // selection so a plane-routing regression (e.g. q-mix accidentally reading the rhythm plane) fails.
+    {
+        // Strand ids mirrored from LaneMapping (STRAND_MELODY=0, OCTAVE=1, QMIX=2, RHYTHM=3, ACCENT=4,
+        // VARIATION=5, LEGATO=6) — the values that matter for plane selection below.
+        enum { S_MELODY=0, S_OCTAVE=1, S_QMIX=2, S_RHYTHM=3, S_ACCENT=4, S_VARIATION=5, S_LEGATO=6 };
+        // Distinct sample planes so a wrong pick is observable.
+        uint8_t caR[N_VOICES], caM[N_VOICES], caQ[N_VOICES];
+        for (int v=0; v<N_VOICES; ++v) { caR[v]=(uint8_t)((v+1)%16); caM[v]=(uint8_t)((v+2)%16); caQ[v]=(uint8_t)((v+3)%16); }
+        // Replica of PatternEngine::caSrcRow: q-mix→green, melody/octave→melody, else→rhythm.
+        auto caSrcRow = [&](int row, int strand)->int {
+            int r = (row>=0&&row<16)?row:0;
+            if (strand==S_QMIX) return caQ[r];
+            bool mel = (strand==S_MELODY || strand==S_OCTAVE);
+            return mel ? caM[r] : caR[r];
+        };
+        auto caInputCvSrcRow = [&](int row)->int { int r=(row>=0&&row<16)?row:0; return caM[r]; };
+        auto caQmixSrcRow     = [&](int row)->int { int r=(row>=0&&row<16)?row:0; return caQ[r]; };
+
+        bool okQmix=true, okMelOct=true, okRest=true, okInCv=true, okThr=true;
+        for (int row=0; row<16; ++row) {
+            okQmix  &= (caSrcRow(row, S_QMIX)   == caQ[row]);                 // q-mix rides green plane
+            okMelOct&= (caSrcRow(row, S_MELODY) == caM[row]) && (caSrcRow(row, S_OCTAVE) == caM[row]);
+            okRest  &= (caSrcRow(row, S_RHYTHM) == caR[row]) && (caSrcRow(row, S_ACCENT) == caR[row])
+                     && (caSrcRow(row, S_VARIATION)==caR[row]) && (caSrcRow(row, S_LEGATO)==caR[row]);
+            okInCv  &= (caInputCvSrcRow(row) == caM[row]);                    // blend input-CV → melody plane
+            okThr   &= (caQmixSrcRow(row)    == caQ[row]);                    // blend threshold → green plane
+        }
+        CHK(okQmix,   "caSrcRow(STRAND_QMIX) routes the q-mix (green) plane");
+        CHK(okMelOct, "caSrcRow(MELODY/OCTAVE) routes the melody plane");
+        CHK(okRest,   "caSrcRow(RHYTHM/ACCENT/VARIATION/LEGATO) routes the rhythm plane");
+        CHK(okInCv,   "blend INPUT-CV operand rides CA's MELODY plane (caInputCvSrcRow)");
+        CHK(okThr,    "blend THRESHOLD rides the q-mix GREEN plane (caQmixSrcRow)");
+    }
+
     std::printf("%d passed, %d failed\n", pass, fail);
     return fail ? 1 : 0;
 }

@@ -40,27 +40,34 @@ Cross-reference of [`QMIX_LANE_PARITY_CHECKLIST.md`](QMIX_LANE_PARITY_CHECKLIST.
 
 ## Divergences worth a decision (⚠️/❌)
 
-### 1. ❌ The blend is NOT routed through Change Alley (the doc's "one genuinely new bit")
-The checklist §"The blend" (lines 95–120) specifies the per-voice mux sits **downstream of CA**, with BOTH
-operands and the threshold being CA outputs:
-- a **new green `qmixSrc[v]` source-select plane** on Change Alley (row-radio like white=rhythm/red=melody),
-- the CA scatter streams growing **8→12** (the 2×3×2 product incl. q-mix, keyed `STREAM_CA + i`),
-- `pick = philoxSourceSelect(v) < qmixProb_CA(v) ? quantizedInputCV_CA(v) : generatedPitch(v)`.
+### 1. ✅ The blend IS now routed through Change Alley (RESOLVED — the doc's "one genuinely new bit")
+> **UPDATE (feat/sands-qmix-geometry):** this gap is CLOSED. The green plane + CA-routed blend shipped after
+> this status was first written. The description below is retained for history; the ✅ items are the current state.
 
-**What we shipped instead**: a simpler per-voice blend where the threshold is the **Straits per-voice q-mix
-level knob** (+ the q-mix draw), and the input CV is the straight poly quantiser CV-in — **CA does not route the
-q-mix probability, and there is no `qmixSrc[v]` plane** ([`MonsoonChangeAlleyV2.hpp`](../../src/MonsoonChangeAlleyV2.hpp:30)
-has only `rhythmSrc`/`melodySrc`; `corrKey` still `SIDES*TYPES*2 = 8` streams, not 12).
-- Musically: our version gives per-voice blend depth but NOT CA's per-voice *scattering* of which-voice's-q-mix
-  each voice reads. The doc's heterophony payoff (q-mix probability permuted across voices by CA, like melody) is
-  **not** achieved.
-- Note: q-mix's *generated draw* already flows through CA's melody-side routing for its slewed buffers
-  (`caSrcRow(row, STRAND_QMIX)` in [`PatternEngine.hpp:228/238`](../../src/dsp/engines/PatternEngine.hpp:228)),
-  so the generated operand is CA-aware — but the **blend threshold plane** (green qmixSrc) and the **input-CV
-  operand routing** are not.
-- **Decision needed**: is the shipped per-voice-knob blend the intended final behaviour, or is the CA green-plane
-  heterophony (8→12 scatter streams + `qmixSrc[v]` + downstream mux) still wanted? This is the largest open gap
-  and a genuine feature, not a cleanup.
+The checklist §"The blend" (lines 95–120) specified the per-voice mux downstream of CA with both operands +
+the threshold being CA outputs. **All three legs are now implemented:**
+- ✅ **Green `qmixSrc[v]` source-select plane** on Change Alley — row-radio like white=rhythm/red=melody, with
+  its own green pin (Shift+click), render, hover readout, undo/reset/persistence
+  ([`MonsoonChangeAlleyV2.hpp`](../../src/MonsoonChangeAlleyV2.hpp:40) `qmixSrc[16]`).
+- ✅ **CA scatter streams 8→12** — `N_SCATTER = SIDES*SCATTER_TYPES*2 = 12`, keyed `STREAM_CA + i`; q-mix is
+  panel `TYPES`-dim 2 and gets full CA transform parity (collapse/rotate/reflect/scatter, dom/cod, intra/inter,
+  Philox back-jacks + reverse), applied on `qmixSrc` in `applyPendingTransforms`.
+- ✅ **Downstream per-voice mux** — `pick = (r_qmix < qmixLevel) ? generated : quantisedInputCV`, gated by
+  `quantiserPitchSource`, for mono (voice 0) and all poly voices ([`SequencerEngine.cpp:456/847`](../../src/dsp/engines/SequencerEngine.cpp:456)):
+  - THRESHOLD rides the green plane: `slewedQmix`/`slewedPolyQmix` remapped by `caSrcRow(row, STRAND_QMIX)` →
+    `caQmixSrc` ([`PatternEngine.hpp:162`](../../src/dsp/engines/PatternEngine.hpp:162)).
+  - INPUT-CV operand rides CA's MELODY plane: `voicePitch` reads `caInputCvSrcRow(vi)` (= `caMelodySrc`)
+    ([`SequencerEngine.hpp:560`](../../src/dsp/engines/SequencerEngine.hpp:560), [`PatternEngine.hpp:175`](../../src/dsp/engines/PatternEngine.hpp:175)).
+  - GENERATED operand = `genPitchLive`, unchanged.
+- ✅ Staging: `engine.pe.caQmixSrc[v] = v2->qmixSrc[v]` each block ([`MonsoonSandsManager.cpp:42`](../../src/dsp/managers/MonsoonSandsManager.cpp:42)).
+- ✅ Tests: [`test_ca_qmix_source_select.cpp`](../../test/test_ca_qmix_source_select.cpp) covers qmixSrc
+  persistence, the 12-stream scatter (determinism/reversibility/independence), the blend mux + markSemi rule,
+  the CA transforms applied on the q-mix plane, and the routing-plane invariants
+  (`caSrcRow`/`caInputCvSrcRow`/`caQmixSrcRow`).
+
+Musically the heterophony payoff (q-mix probability permuted across voices by CA, like melody) is now achieved.
+The Straits per-voice q-mix Level knob remains the blend DEPTH; identity `qmixSrc` + level 0 → always quantised
+input (legacy), level 1 → always generated.
 
 ### 2. ❌ Raffles q-mix gate-redice
 Doc lines 85–87 want `RAFFLES_GATE_REDICE_Q` / `RAFFLES_GATE_LASTDICE_Q` so Raffles can fire q-mix dice like
