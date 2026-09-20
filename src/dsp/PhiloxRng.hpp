@@ -96,8 +96,9 @@ namespace seed {
     constexpr uint64_t STREAM_RHYTHM = 0, STREAM_MELODY = 1, STREAM_CA = 2;
     // STREAM_SOURCE_SELECT (q-mix): the per-voice generated-vs-external source pick is its
     // OWN Philox stream, S+3 in the additive model — decorrelated from rhythm/melody/CA so
-    // "which notes" (q-mix) varies independently of "where they interleave" (melody). Reserved
-    // now; wired when the q-mix lane lands (editor lane 2 — see dsp/LaneMapping.hpp).
+    // "which notes" (q-mix) varies independently of "where they interleave" (melody). The
+    // q-mix lane is wired in the geometry branch (editor lane 2 — see dsp/LaneMapping.hpp);
+    // reseed is its OWN action and it shares the single SEED jack (consistent with CA).
     constexpr uint64_t STREAM_SOURCE_SELECT = 3;
     // seedFloat 0..10 → 64-bit key for the given stream. Same float + different stream
     // → different key. seed64() conditions the key again via philoxMakeKey, so a small
@@ -112,7 +113,10 @@ namespace seed {
 // ── PhiloxRng ─────────────────────────────────────────────────────────────────
 // Stateful facade over the stateless core, same surface as SquaresRng. The 64-bit
 // stream position is packed into ctr[0..1]; ctr[2..3] carry a fixed nonce (0) so
-// the full 128-bit counter space is available if ever needed.
+// the full 128-bit counter space is available if ever needed. The nonce is UNUSED and stays so:
+// per-voice is cursor-packed (rhythm/melody), CA separates by key, and the dice is PER-STREAM
+// (rhythm/melody/CA/qmix each) never per-voice — so per-voice nonce addressing buys nothing. See
+// docs/design/PHILOX_NONCE_ADDRESSING.md.
 struct PhiloxRng {
     // ── Standard C++ UniformRandomBitGenerator interface ───────────────────────
     // Satisfies the named requirement, so PhiloxRng can be passed to any
