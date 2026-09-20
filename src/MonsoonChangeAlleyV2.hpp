@@ -877,26 +877,45 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                 float alpha = active ? 1.f : 0.4f;
                 uint8_t rSrc = module->rhythmSrc[row];
                 uint8_t mSrc = module->melodySrc[row];
+                uint8_t qSrc = module->qmixSrc[row];
 
                 for (int col = 0; col < CA::N_VOICES; ++col) {
                     Vec c = cellCentre(row, col);
                     bool hasR = (rSrc == (uint8_t)col);
                     bool hasM = (mSrc == (uint8_t)col);
+                    bool hasQ = (qSrc == (uint8_t)col);
                     bool rIdentity = hasR && (col == row);
                     bool mIdentity = hasM && (col == row);
+                    bool qIdentity = hasQ && (col == row);
 
                     NVGcolor white = pinRhythm();
                     NVGcolor red   = pinMelody();
-                    if (hasR && hasM) {
-                        // Concentric: white peg with a red inset dot on top
-                        drawPin(vg, c.x, c.y, ro, white, rIdentity ? 0.72f*alpha : alpha);
-                        NVGcolor ic = red; ic.a = (mIdentity ? 0.72f : 1.f) * alpha;
-                        nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, ri);
-                        nvgFillColor(vg, ic); nvgFill(vg);
-                    } else if (hasR) {
-                        drawPin(vg, c.x, c.y, ro, white, rIdentity ? 0.72f*alpha : alpha);
-                    } else if (hasM) {
-                        drawPin(vg, c.x, c.y, ro, red, mIdentity ? 0.72f*alpha : alpha);   // same size as rhythm
+                    NVGcolor green = pinQmix();
+                    // Concentric EMS render: outer white peg (rhythm) -> mid red dot (melody) ->
+                    // inner green dot (q-mix). Any subset can be present; a lone plane draws at its
+                    // own layer so it's still visible. rq = q-mix centre radius (smaller than ri).
+                    const float rq = ri * 0.62f;
+                    if (hasR || hasM || hasQ) {
+                        // base peg: white if rhythm present, else the outermost present plane's colour
+                        if (hasR) {
+                            drawPin(vg, c.x, c.y, ro, white, rIdentity ? 0.72f*alpha : alpha);
+                        } else if (hasM) {
+                            drawPin(vg, c.x, c.y, ro, red, mIdentity ? 0.72f*alpha : alpha);
+                        } else { // q-mix only
+                            drawPin(vg, c.x, c.y, ro, green, qIdentity ? 0.72f*alpha : alpha);
+                        }
+                        // mid red dot if melody present AND a rhythm peg is under it
+                        if (hasM && hasR) {
+                            NVGcolor ic = red; ic.a = (mIdentity ? 0.72f : 1.f) * alpha;
+                            nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, ri);
+                            nvgFillColor(vg, ic); nvgFill(vg);
+                        }
+                        // inner green dot if q-mix present AND something is under it (peg is R or M)
+                        if (hasQ && (hasR || hasM)) {
+                            NVGcolor gc = green; gc.a = (qIdentity ? 0.72f : 1.f) * alpha;
+                            nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, rq);
+                            nvgFillColor(vg, gc); nvgFill(vg);
+                        }
                     } else {
                         // Empty — very faint ghost
                         nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, ro * 0.55f);
@@ -938,10 +957,11 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     // Typed readout: states RHYTHM or MELODY (the gesture that would fire)
                     // per current mouse expectation: plain hover previews rhythm; the melody
                     // half is stated so the mapping reads even before clicking. Both shown.
-                    char buf[64];
+                    char buf[80];
                     uint8_t rs = module->rhythmSrc[hoverRow], ms = module->melodySrc[hoverRow];
-                    snprintf(buf, sizeof(buf), "v%d  rhythm<-v%d  melody<-v%d",
-                             hoverRow + 1, rs + 1, ms + 1);
+                    uint8_t qs = module->qmixSrc[hoverRow];
+                    snprintf(buf, sizeof(buf), "v%d  rhythm<-v%d  melody<-v%d  q-mix<-v%d",
+                             hoverRow + 1, rs + 1, ms + 1, qs + 1);
                     nvgFontFaceId(vg, font->handle);
                     nvgFontSize(vg, mm2px(Vec(3.4f,0)).x);          // was 2.6 — readable now
                     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
@@ -975,29 +995,36 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
             TransparentWidget::onLeave(e);
         }
 
-        // Row-radio click: left=rhythm, right/ctrl=melody
-        // Clicking cell (row, col) sets rhythmSrc[row]=col or melodySrc[row]=col.
-        // Row-radio is automatic: src[row] holds exactly one value — this overwrites it.
+        // Row-radio click: left=rhythm, right/Ctrl=melody, Shift=q-mix (green, either button).
+        // Clicking cell (row, col) sets rhythmSrc/melodySrc/qmixSrc[row]=col. Row-radio is
+        // automatic: each table's src[row] holds exactly one value — this overwrites it.
         void onButton(const event::Button& e) override {
             if (!module || e.action != GLFW_PRESS) { TransparentWidget::onButton(e); return; }
-            bool setMelody = (e.button == GLFW_MOUSE_BUTTON_RIGHT) || (e.mods & RACK_MOD_CTRL);
+            // plane: 0=rhythm, 1=melody, 2=q-mix. Shift wins (either mouse button); else
+            // right/Ctrl=melody; else left=rhythm.
+            int plane = 0;
+            if (e.mods & RACK_MOD_SHIFT)                                             plane = 2;
+            else if ((e.button == GLFW_MOUSE_BUTTON_RIGHT) || (e.mods & RACK_MOD_CTRL)) plane = 1;
             for (int row = 0; row < CA::N_VOICES; ++row) {
                 for (int col = 0; col < CA::N_VOICES; ++col) {
                     if (!hitCell(e.pos, row, col)) continue;
-                    // Store-backed + undoable: the pin tables are NOT params (zero DAW
-                    // slots -- DAW_PARAM_AUDIT), so undo goes through StoreEditAction.
-                    // The action targets the EXPANDER's module id and bakes (row, which
-                    // table) into the setter, so undo lands on the row actually edited
-                    // no matter what has happened since. Equal old/new never records.
+                    // Store-backed + undoable: the pin tables are NOT params (zero DAW slots --
+                    // DAW_PARAM_AUDIT), so undo goes through StoreEditAction. The action targets the
+                    // module id and bakes (row, plane) into the setter, so undo lands on the row/plane
+                    // actually edited. Equal old/new never records.
                     {
-                        float oldV = setMelody ? (float)module->melodySrc[row]
-                                               : (float)module->rhythmSrc[row];
+                        uint8_t* tbl = (plane == 0) ? module->rhythmSrc
+                                     : (plane == 1) ? module->melodySrc : module->qmixSrc;
+                        const char* nm = (plane == 0) ? "move rhythm pin"
+                                       : (plane == 1) ? "move melody pin" : "move q-mix pin";
+                        float oldV = (float)tbl[row];
                         redDot::applyAndPushStoreEdit<MonsoonChangeAlleyV2>(
-                            module,
-                            setMelody ? "move melody pin" : "move rhythm pin",
-                            [row, setMelody](MonsoonChangeAlleyV2& m, float v) {
+                            module, nm,
+                            [row, plane](MonsoonChangeAlleyV2& m, float v) {
                                 uint8_t c = (uint8_t)math::clamp((int)std::lround(v), 0, CA::N_VOICES - 1);
-                                (setMelody ? m.melodySrc : m.rhythmSrc)[row] = c;
+                                uint8_t* t = (plane == 0) ? m.rhythmSrc
+                                           : (plane == 1) ? m.melodySrc : m.qmixSrc;
+                                t[row] = c;
                             },
                             oldV, (float)col);
                     }
@@ -1109,7 +1136,8 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                 // Skip the no-op (already identity) so undo history stays clean.
                 bool isIdentity = true;
                 for (int v = 0; v < CA::N_VOICES; ++v)
-                    if (module->rhythmSrc[v] != v || module->melodySrc[v] != v) { isIdentity = false; break; }
+                    if (module->rhythmSrc[v] != v || module->melodySrc[v] != v
+                        || module->qmixSrc[v] != v) { isIdentity = false; break; }
                 if (isIdentity) return;
                 auto* act = new ResetPinsAction(module);
                 module->resetToIdentity();
