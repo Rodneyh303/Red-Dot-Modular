@@ -173,9 +173,13 @@ struct SequencerEngine {
     // endpoint for one extra step (repeat) before flipping. See plans/lane_direction_ui.md.
     enum class LaneDir : uint8_t { Forward = 0, Reverse = 1, Pendulum = 2, PingPong = 3 };
     enum class LaneFlipQuant { StepEdge, Phrase };
-    int laneTick_[dotModular::NUM_STRANDS]        = {0,0,0,0,0,0};
-    int laneSign_[dotModular::NUM_STRANDS]        = {1,1,1,1,1,1};   // derived from laneDir_ (+1/-1)
-    int laneSignPending_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1};
+    // NUM_STRANDS-sized (7 with QMIX). The SIGN arrays MUST default +1 for every strand — a 6-element
+    // brace on a 7-element array (the accent anti-pattern, QMIX_LANE_PARITY_CHECKLIST.md) value-inited
+    // strand 6 (LEGATO) to 0 until the first reset(). Braces now list all 7 so adding an 8th strand can't
+    // silently drop it (and mismatches the count visibly if not updated).
+    int laneTick_[dotModular::NUM_STRANDS]        = {0,0,0,0,0,0,0};
+    int laneSign_[dotModular::NUM_STRANDS]        = {1,1,1,1,1,1,1};   // derived from laneDir_ (+1/-1)
+    int laneSignPending_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1,1};
     LaneDir laneDir_[dotModular::NUM_STRANDS]        = {};   // default Forward
     LaneDir laneDirPending_[dotModular::NUM_STRANDS] = {};
     bool lanePendulum_[dotModular::NUM_STRANDS]   = {false,false,false,false,false,false}; // derived: Pendulum/PingPong
@@ -228,7 +232,7 @@ struct SequencerEngine {
     // Macro's widget reads this for its playhead, so Macro's display always reflects
     // Macro's DirCell, even when Mono owns the lane (engine's laneTick_ follows Mono).
     int macroLaneTick_[dotModular::NUM_STRANDS] = {};
-    int macroLaneSign_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1};
+    int macroLaneSign_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1,1};   // NUM_STRANDS-sized (was 6-elem → LEGATO=0 pre-reset)
     LaneDir macroLaneDir_[dotModular::NUM_STRANDS] = {};
     bool macroPingPongHold_[dotModular::NUM_STRANDS] = {};
     int macroLOR_[5] = {16,16,16,16,16};  // Macro's own LOR lengths (lanes 0..4: REST/MEL/OCT/ACC/QMIX) for bounce
