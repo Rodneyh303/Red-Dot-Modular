@@ -24,15 +24,9 @@ DIR_X = 212.0       # direction cell column (Fwd/Rev/Pend/PingPong), right of ow
 DELEG_MOD_X = 220.0 # delegation gate-mod jack column (gate flips local/delegated)
 DIR_MOD_X = 228.0   # direction gate-mod jack column (gate cycles Fwd→Rev→Pend→PingPong)
 PROB_OUT_X = 236.0  # right-strip jack column, pushed right by the mod jack columns (matches hpp)
-# QMIX GEOMETRY (Option B): q-mix is a PLAIN lane at editor slot 2 (after MEL/OCT), LANE_H=13,
-# editor extends DOWN into the band above the MBS mark (ED_H 91 → bottom 14+91=105).
-# Mirrors src/ui/SandsGrid.hpp EAST_LANES=7, POLY_LANES=5, LANE_H=13. NO gap: every editor row
-# 0..6 (MEL/OCT/QMIX/REST/ACC/VAR/LEG) gets its full control complement, indexed by EDITOR lane
-# exactly as the C++ binds (cvId/attenDispId/SPREAD_R..Q are editor-lane indexed).
-ED_H = 91.0   # 7 lanes x 13mm
-ED_LANES = 7  # editor lanes drawn
-POLY_LANES = 5  # spread lanes (MEL/OCT/QMIX/REST/ACC) — full 4-CV+4-atten+spread complement
-ED_LANE_H = ED_H / ED_LANES   # 13
+ED_H = 91.0   # OPT-B: 7 lanes x 13mm — East adds Q-MIX at index 2 (MEL/OCT/QMIX/REST/ACC/VAR/LEG); editor 14->105, ~6mm above MBS
+ED_LANES = 7  # OPT-B: editor lanes drawn (Q-MIX added at index 2); control rows still N=4 spread lanes (q-mix control wiring = follow-up)
+ED_LANE_H = ED_H / ED_LANES
 # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY):
 # each lane's CV jacks + attens sit beside the visual lane they modulate. Row == editor lane
 # (no ESLOT remap — q-mix is a real lane, not a preview gap).
