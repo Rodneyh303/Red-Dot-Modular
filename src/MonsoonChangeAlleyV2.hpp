@@ -64,9 +64,19 @@ struct MonsoonChangeAlleyV2 : Module {
     rack::dsp::BooleanTrigger btnTrig  [CA::N_ROWS * 2];
     rack::dsp::SchmittTrigger sBackDom [CA::SIDES * CA::TYPES];
     rack::dsp::SchmittTrigger sBackCod [CA::SIDES * CA::TYPES];
-    // Button twins of the back-jacks: 4 domain + 4 codomain reverse buttons (scatterDelta = -1).
+    // Button twins of the back-jacks: domain + codomain reverse buttons (scatterDelta = -1).
     rack::dsp::BooleanTrigger sRevBtnDom [CA::SIDES * CA::TYPES];
     rack::dsp::BooleanTrigger sRevBtnCod [CA::SIDES * CA::TYPES];
+    // TRUE-REVERSE (CA_DICE_COUNTER_MODEL): one jack + one button per SCATTER stream-row × side.
+    // Distinct from Philox dice-reverse (scatterDelta=-1): true-reverse walks the committed pin-state
+    // TRAJECTORY backward (phrase-granular). Clocked/performance = modulation-class (no undo push).
+    // NOTE: the trajectory-replay ENGINE (a deeper state-history buffer, per the doc's true-reverse
+    // proposal + buffer-size section) is a SEPARATE build; here we add the CONTROLS + trigger
+    // detection + a pending request flag. See trueRevRequested[] below.
+    rack::dsp::SchmittTrigger  sTrueRevIn  [CA::SIDES * CA::TYPES];
+    rack::dsp::BooleanTrigger  sTrueRevBtn [CA::SIDES * CA::TYPES];
+    // Set when a true-reverse jack/button fires; drained by the (future) trajectory-replay engine.
+    bool trueRevRequested[CA::SIDES * CA::TYPES] = {};
     // Scatter draw counters: 8 = Intra/Inter x rhythm/melody x domain/codomain (the panel's separate
     // scatter jacks). Each is a SIGNED int64 addressable POSITION in its own domain-separated Philox
     // stream -- the SAME model as the main dice draw counters. Forward jack = counter++, back jack =
@@ -149,6 +159,8 @@ struct MonsoonChangeAlleyV2 : Module {
             configInput(CA::SCATTER_BACK_COD_START + i, "Scatter codomain back");
             configButton(CA::SCATTER_REV_BTN_START + i,                       "Scatter domain reverse");
             configButton(CA::SCATTER_REV_BTN_START + CA::SIDES*CA::TYPES + i, "Scatter codomain reverse");
+            configButton(CA::TRUE_REV_BTN_START + i, "True reverse (replay scatter state trajectory back)");
+            configInput (CA::TRUE_REV_IN_START  + i, "True reverse trigger");
         }
         // GRAIN_POLY_IN / STEP_POLY_IN removed (CA_PANEL_THREE_STREAM_LAYOUT): didn't scale to
         // the 3rd stream; the per-row grain/leader/step knobs remain the sole value source.
@@ -313,6 +325,15 @@ struct MonsoonChangeAlleyV2 : Module {
             if (sRevBtnCod[i].process(params[CA::SCATTER_REV_BTN_START + CA::SIDES*CA::TYPES + i].getValue() > 0.5f)) {
                 latchRow(r, CA::V_SCATTER, sd, ty, false); pendingRows[r].scatterDelta = -1;
             }
+            // TRUE-REVERSE (CA_DICE_COUNTER_MODEL): jack + button, per scatter stream-row × side.
+            // Sets a per-stream request flag. The trajectory-replay ENGINE (deeper state-history
+            // buffer walked backward, phrase-granular; buffer depth + momentary/toggle are the doc's
+            // open design questions) is a SEPARATE build that will DRAIN this flag. Modulation-class:
+            // when built, its commit must NOT push undo history (clocked/performance, per the doc).
+            if (sTrueRevIn [i].process(inputs[CA::TRUE_REV_IN_START + i].getVoltage(), 0.1f, 1.f))
+                trueRevRequested[i] = true;
+            if (sTrueRevBtn[i].process(params[CA::TRUE_REV_BTN_START + i].getValue() > 0.5f))
+                trueRevRequested[i] = true;
           }
     }
 
@@ -387,25 +408,32 @@ struct MonsoonChangeAlleyV2 : Module {
 // ── Widget ───────────────────────────────────────────────────────────────────
 struct MonsoonChangeAlleyV2Widget : ModuleWidget {
 
-    // Geometry -- MUST MATCH gen_change_alley_v2.py (48HP: V1-size grid, generous controls)
-    static constexpr float PW_MM   = 48.f * 5.08f;
+    // Geometry -- MUST MATCH gen_change_alley_v2.py. 60HP: width DERIVED from the widest (SCATTER)
+    // row = 5 jacks + 5 buttons + 1 grain dial + 1 light per side. Jacks/dial at 8.5mm pitch,
+    // buttons clustered at 6.0mm; matrix kept at 99.6mm. Generator computes HP from these; the
+    // constants below MUST equal the generator's (JACK_P=8.5, BTN_P=6.0, gutter=10.6).
+    static constexpr float PW_MM   = 60.f * 5.08f;   // 304.8mm (generator-derived)
     static constexpr float PH_MM   = 128.5f;
     static constexpr float MARGIN  = 6.0f;
-    static constexpr float J_DOM   = MARGIN +  0.0f;
-    static constexpr float J_COD   = MARGIN +  9.5f;
-    static constexpr float KNOB1   = MARGIN + 18.5f;   // grain
-    static constexpr float KNOB2   = MARGIN + 27.0f;   // leader/step/scatter dom-back
-    static constexpr float J_BACK2 = MARGIN + 34.5f;   // scatter cod-back
-    static constexpr float BTN_D   = MARGIN + 42.5f;
-    static constexpr float BTN_C   = MARGIN + 48.5f;
-    // Scatter REVERSE buttons: a row ~6.9mm ABOVE the scatter-rhythm row (rhythm's dom+cod reverse)
-    // and a row ~6.1mm BELOW the scatter-melody row (melody's dom+cod reverse). Same BTN_D/BTN_C
-    // columns as the forward buttons, so each reverse button sits in its dom/cod column.
-    static constexpr float REV_DY_ABOVE = 6.9f;   // above scatter-rhythm row
-    static constexpr float REV_DY_BELOW = 6.1f;   // below scatter-melody row
-    static constexpr float LIGHT_X = MARGIN + 54.0f;
-    static constexpr float CTRL_W  = LIGHT_X + 2.5f;   // 62.5
-    static constexpr float GUTTER  = 9.6f;
+    static constexpr float JACK_P  = 8.5f;
+    static constexpr float BTN_P   = 6.0f;
+    static constexpr float J_HALF  = 4.25f;
+    // Jack/dial group (outer→inner), 5 columns at JACK_P:
+    static constexpr float J_DOM   = MARGIN + J_HALF;          // fwd domain trig jack
+    static constexpr float J_COD   = J_DOM  + JACK_P;          // fwd codomain trig jack
+    static constexpr float KNOB1   = J_COD  + JACK_P;          // grain dial (all verbs)
+    static constexpr float KNOB2   = KNOB1  + JACK_P;          // leader/step dial OR scatter dom-back jack
+    static constexpr float J_BACK2 = KNOB2  + JACK_P;          // scatter cod-back jack
+    // Button cluster (after a jack→button gap), 5 buttons at BTN_P — Philox reverse is now ON-ROW:
+    static constexpr float BTN_D   = J_BACK2 + (J_HALF + 3.0f);// fwd domain fire
+    static constexpr float BTN_C   = BTN_D  + BTN_P;           // fwd codomain fire
+    static constexpr float REV_D   = BTN_C  + BTN_P;           // Philox reverse domain (was jammed)
+    static constexpr float REV_C   = REV_D  + BTN_P;           // Philox reverse codomain
+    static constexpr float TRUE_REV_BTN_X = REV_C + BTN_P;     // true-reverse button
+    static constexpr float TRUE_REV_IN_X  = TRUE_REV_BTN_X + (3.0f + J_HALF);  // true-reverse jack
+    static constexpr float LIGHT_X = TRUE_REV_IN_X + 5.25f;
+    static constexpr float CTRL_W  = LIGHT_X + 4.0f;           // 92.0
+    static constexpr float GUTTER  = (PW_MM - 2.f*CTRL_W - 99.6f) / 2.f;   // 10.6 (matrix kept 99.6)
     static constexpr float MX_MM   = CTRL_W + GUTTER;
     static constexpr float MW_MM   = PW_MM - 2.f * (CTRL_W + GUTTER);
     static constexpr float CELL_W  = MW_MM / CA::N_VOICES;
@@ -542,17 +570,17 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                         module, CA::SCATTER_BACK_DOM_START + si));
                     addInput(createInputCentered<PJ301MPort>(mm2px(Vec(lx(J_BACK2, flip), y)),
                         module, CA::SCATTER_BACK_COD_START + si));
-                    // Reverse BUTTONS in the dom/cod columns, one pair per scatter sub-row.
-                    // si = side*TYPES+sub selects the pair; domain = REV_BTN_START+si,
-                    // codomain = REV_BTN_START + SIDES*TYPES + si (mirrors process()/config).
-                    // Placement: rhythm (sub 0) ABOVE its row; melody (sub 1) & q-mix (sub 2)
-                    // BELOW, staggered so the two lower pairs don't overlap each other.
-                    const float ry = (sub == 0) ? (y - REV_DY_ABOVE)
-                                                 : (y + REV_DY_BELOW + (sub - 1) * CTRL_ROW_H);
-                    addParam(createParamCentered<TL1105>(mm2px(Vec(lx(BTN_D, flip), ry)),
+                    // Philox reverse BUTTONS — now ON-ROW at their own columns (REV_D/REV_C),
+                    // no longer jammed above/below (the widen pass gave them dedicated columns).
+                    addParam(createParamCentered<TL1105>(mm2px(Vec(lx(REV_D, flip), y)),
                         module, CA::SCATTER_REV_BTN_START + si));
-                    addParam(createParamCentered<TL1105>(mm2px(Vec(lx(BTN_C, flip), ry)),
+                    addParam(createParamCentered<TL1105>(mm2px(Vec(lx(REV_C, flip), y)),
                         module, CA::SCATTER_REV_BTN_START + CA::SIDES*CA::TYPES + si));
+                    // TRUE-REVERSE button + jack (CA_DICE_COUNTER_MODEL), on-row, inner columns.
+                    addParam(createParamCentered<TL1105>(mm2px(Vec(lx(TRUE_REV_BTN_X, flip), y)),
+                        module, CA::TRUE_REV_BTN_START + si));
+                    addInput(createInputCentered<PJ301MPort>(mm2px(Vec(lx(TRUE_REV_IN_X, flip), y)),
+                        module, CA::TRUE_REV_IN_START + si));
                 }
                 addParam(createParamCentered<TL1105>(mm2px(Vec(lx(BTN_D, flip), y)),
                     module, CA::BTN_START + r*2));

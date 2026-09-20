@@ -1168,17 +1168,25 @@ namespace ChangeAlleyV2Ids {
         // Scatter REVERSE buttons (button twins of the SCATTER_BACK_DOM/COD jacks):
         // domain + codomain across Intra/Inter x rhythm/melody/q-mix. Fire scatterDelta = -1.
         SCATTER_REV_BTN_START = BTN_START + N_ROWS * 2,   // = SIDES*TYPES*2 = 12
-        NUM_PARAMS_TOTAL = SCATTER_REV_BTN_START + SIDES*TYPES*2    // = 108
+        // TRUE-REVERSE buttons (CA_DICE_COUNTER_MODEL "PROPOSAL: add a TRUE REVERSE"): one per
+        // SCATTER stream-row × side = SIDES*TYPES = 6. Trajectory-replay of committed pin-states
+        // backward (phrase-granular), distinct from Philox dice-reverse (scatterDelta=-1) and from
+        // edit-undo. Clocked/performance = MODULATION-class: commits WITHOUT pushing undo history.
+        TRUE_REV_BTN_START    = SCATTER_REV_BTN_START + SIDES*TYPES*2,   // 6
+        NUM_PARAMS_TOTAL = TRUE_REV_BTN_START + SIDES*TYPES    // = 114
     };
     enum InputIds {
         DOMAIN_TRIG_START      = 0,                             // 24
         CODOMAIN_TRIG_START    = DOMAIN_TRIG_START   + N_ROWS,  // 24
         SCATTER_BACK_DOM_START = CODOMAIN_TRIG_START + N_ROWS,  // 6 (SIDES*TYPES)
         SCATTER_BACK_COD_START = SCATTER_BACK_DOM_START + SIDES*TYPES, // 6
+        // TRUE-REVERSE trigger jacks: CV twin of the true-reverse buttons, one per SCATTER
+        // stream-row × side = SIDES*TYPES = 6 (CA_DICE_COUNTER_MODEL true-reverse proposal).
+        TRUE_REV_IN_START      = SCATTER_BACK_COD_START + SIDES*TYPES, // 6
         // GRAIN_POLY_IN / STEP_POLY_IN removed (CA_PANEL_THREE_STREAM_LAYOUT): the two poly-CV
         // mod inputs were designed for the 2-stream world and don't scale to the 3rd (q-mix)
         // stream; cut to reclaim the bottom-right edge. The per-row grain/leader/step KNOBS stay.
-        NUM_INPUTS             = SCATTER_BACK_COD_START + SIDES*TYPES  // = 60
+        NUM_INPUTS             = TRUE_REV_IN_START + SIDES*TYPES  // = 66
     };
     enum LightIds { PENDING_LIGHT_START = 0, NUM_LIGHTS = N_ROWS };  // 24
 
