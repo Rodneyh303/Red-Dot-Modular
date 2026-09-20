@@ -1168,27 +1168,35 @@ namespace ChangeAlleyV2Ids {
         // Scatter REVERSE buttons (button twins of the SCATTER_BACK_DOM/COD jacks):
         // domain + codomain across Intra/Inter x rhythm/melody/q-mix. Fire scatterDelta = -1.
         SCATTER_REV_BTN_START = BTN_START + N_ROWS * 2,   // = SIDES*TYPES*2 = 12
-        // TRUE-REVERSE buttons (CA_DICE_COUNTER_MODEL "PROPOSAL: add a TRUE REVERSE"): one per
-        // SCATTER stream-row × side = SIDES*TYPES = 6. Trajectory-replay of committed pin-states
-        // backward (phrase-granular), distinct from Philox dice-reverse (scatterDelta=-1) and from
-        // edit-undo. Clocked/performance = MODULATION-class: commits WITHOUT pushing undo history.
-        TRUE_REV_BTN_START    = SCATTER_REV_BTN_START + SIDES*TYPES*2,   // 6
-        NUM_PARAMS_TOTAL = TRUE_REV_BTN_START + SIDES*TYPES    // = 114
+        // TRUE-REVERSE buttons (CA_DICE_COUNTER_MODEL "PROPOSAL: add a TRUE REVERSE"): VERB-AGNOSTIC
+        // and per-STREAM, NOT scatter-only and NOT split by side/dom-cod. The committed pin STATE is
+        // ONE array per stream (rhythmSrc/melodySrc/qmixSrc, whole 16-voice matrix — Intra/Inter and
+        // domain/codomain are already baked into the recorded state), so ONE control per stream (=
+        // TYPES = 3) restores both axes and all four verbs. Splitting would synthesise states that
+        // never existed. Trajectory-replay of committed states backward (phrase-granular); distinct
+        // from Philox dice-reverse (axis-specific, scatterDelta=-1) and from edit-undo. Clocked =
+        // MODULATION-class: commits WITHOUT pushing undo history.
+        TRUE_REV_BTN_START    = SCATTER_REV_BTN_START + SIDES*TYPES*2,   // 3 (one per stream)
+        NUM_PARAMS_TOTAL = TRUE_REV_BTN_START + TYPES    // = 111
     };
     enum InputIds {
         DOMAIN_TRIG_START      = 0,                             // 24
         CODOMAIN_TRIG_START    = DOMAIN_TRIG_START   + N_ROWS,  // 24
         SCATTER_BACK_DOM_START = CODOMAIN_TRIG_START + N_ROWS,  // 6 (SIDES*TYPES)
         SCATTER_BACK_COD_START = SCATTER_BACK_DOM_START + SIDES*TYPES, // 6
-        // TRUE-REVERSE trigger jacks: CV twin of the true-reverse buttons, one per SCATTER
-        // stream-row × side = SIDES*TYPES = 6 (CA_DICE_COUNTER_MODEL true-reverse proposal).
-        TRUE_REV_IN_START      = SCATTER_BACK_COD_START + SIDES*TYPES, // 6
+        // TRUE-REVERSE trigger jacks: CV twin of the true-reverse buttons, one per STREAM = TYPES = 3
+        // (verb-agnostic, per-stream — see TRUE_REV_BTN_START note; not scatter/side/dom-cod split).
+        TRUE_REV_IN_START      = SCATTER_BACK_COD_START + SIDES*TYPES, // 3
         // GRAIN_POLY_IN / STEP_POLY_IN removed (CA_PANEL_THREE_STREAM_LAYOUT): the two poly-CV
         // mod inputs were designed for the 2-stream world and don't scale to the 3rd (q-mix)
         // stream; cut to reclaim the bottom-right edge. The per-row grain/leader/step KNOBS stay.
-        NUM_INPUTS             = TRUE_REV_IN_START + SIDES*TYPES  // = 66
+        NUM_INPUTS             = TRUE_REV_IN_START + TYPES  // = 63
     };
-    enum LightIds { PENDING_LIGHT_START = 0, NUM_LIGHTS = N_ROWS };  // 24
+    enum LightIds {
+        PENDING_LIGHT_START = 0,                              // 24 (one per row, verb pending)
+        TRUE_REV_LIGHT_START = PENDING_LIGHT_START + N_ROWS,  // 3 (one per stream true-reverse pending)
+        NUM_LIGHTS = TRUE_REV_LIGHT_START + TYPES             // = 27
+    };
 
     struct PendingAction {
         bool  armed = false; int grain = 4; int leaderOrStep = 0;

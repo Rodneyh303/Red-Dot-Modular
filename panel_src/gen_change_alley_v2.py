@@ -30,15 +30,14 @@ J_COD   = J_DOM  + JACK_P                 # fwd codomain trig jack
 KNOB1   = J_COD  + JACK_P                 # grain dial (all verbs)
 KNOB2   = KNOB1  + JACK_P                 # leader/step dial OR scatter domain-back jack
 J_BACK2 = KNOB2  + JACK_P                 # scatter codomain-back jack
-# Button cluster (after a jack→button gap): 5 buttons at BTN_P.
+# Button cluster (after a jack→button gap): 4 buttons at BTN_P — fwd + Philox reverse (dom/cod).
+# (True-reverse is NOT on this row — it's a centred per-stream group beneath the matrix.)
 BTN_D   = J_BACK2 + (J_HALF + 3.0)        # fwd domain fire
 BTN_C   = BTN_D  + BTN_P                  # fwd codomain fire
-REV_D   = BTN_C  + BTN_P                  # Philox reverse domain (ON-ROW now, was jammed)
+REV_D   = BTN_C  + BTN_P                  # Philox reverse domain (ON-ROW)
 REV_C   = REV_D  + BTN_P                  # Philox reverse codomain
-TRUE_REV_BTN = REV_C + BTN_P             # true-reverse button
-# True-reverse jack (jack pitch clearance from the button cluster), then the pending light.
-TRUE_REV_IN  = TRUE_REV_BTN + (3.0 + J_HALF)
-LIGHT   = TRUE_REV_IN + 5.25
+# pending light after a button→light gap
+LIGHT   = REV_C + (3.0 + J_HALF)
 CTRL_W  = LIGHT + 4.0
 
 GRID_W  = 99.6            # matrix kept at its established size (cells 6.23mm × 16)
@@ -50,7 +49,8 @@ PW_MM   = HP * 5.08
 GUTTER  = (PW_MM - 2 * CTRL_W - GRID_W) / 2.0
 GRID_X  = CTRL_W + GUTTER
 CELL    = GRID_W / 16.0
-GRID_Y  = 20.0
+GRID_Y  = 16.0            # matrix top: 1..16 number row level with COLLAPSE first jack row.
+                         # MUST MATCH MonsoonChangeAlleyV2.hpp MY_MM.
 GRID_H  = CELL * 16.0
 
 N_VERBS   = 4
@@ -60,14 +60,19 @@ N_STREAMS = 3                      # Q5 q-mix: 3rd stream (melody, rhythm, q-mix
 # GROUP_GAP shrunk 6.8->1.5 (groups barely separate); ROW_TOP 21->14; bottom offset 9->6.
 # This is the "try tighter pitch first" attempt; if jacks read too cramped -> Plan B (smaller jack SVG).
 ROW_H     = 8.0                   # jack-floor pitch (jacks touch at 0.2mm gap) — kept at the floor.
-# GROUP_GAP widened 1.5->3.5: the poly jacks + bottom logo were cut and the logo moved to the top,
-# freeing vertical space; spend it on a CLEAR BAND between op-groups so each INTRA/INTER label sits
-# clear of the group above (was overlapping). MUST MATCH MonsoonChangeAlleyV2.hpp GROUP_GAP.
-GROUP_GAP = 3.5
+# GROUP_GAP widened to 4.5: gives each op-group's INTRA/INTER label a real CLEAR BAND above it so it
+# no longer overlaps the group above's 3rd (q-mix) row. Reclaimed vertical room (matrix pulled up,
+# legend moved to the side) pays for it. MUST MATCH MonsoonChangeAlleyV2.hpp GROUP_GAP.
+GROUP_GAP = 4.5
 ROW_TOP   = 11.0                  # first row starts below the top logo/title band. MUST MATCH CTRL_TOP.
 BOTTOM_OFFSET = 6.0               # (retained for lastBottom(); bottom cluster itself removed)
-LOGO_TOP_Y = 3.0                  # dot.modular wordmark at the TOP (matches Monsoon/West placement)
-LOGO_W     = 34.0
+LOGO_TOP_Y = 3.0                  # dot.modular wordmark at the TOP, LEFT of the CHANGE ALLEY title
+LOGO_W     = 30.0
+# True-reverse group: 3 jack+button pairs (rhythm/melody/q-mix), CENTRED beneath the pin matrix.
+# Verb-agnostic, per-stream — belongs to neither Intra nor Inter, hence centred (the L/R geometry
+# IS the Intra/Inter split). Colour-coded to the stream legend by the widget.
+TRUEREV_PAIR_DX = 9.0             # jack↔button spacing within a stream pair (loosened)
+TRUEREV_GROUP_DX = 34.0          # centre-to-centre between stream groups (loosened)
 
 def rowY(v, s): return ROW_TOP + v*(N_STREAMS*ROW_H+GROUP_GAP) + s*ROW_H + ROW_H*0.5
 def lastBottom(): return rowY(N_VERBS-1,N_STREAMS-1) + ROW_H*0.5
@@ -107,19 +112,28 @@ def gen(dark):
                 if verb in (0,1): E(trim(lx(KNOB2,flip),ry,t,t["gold"]))
                 elif verb==3:
                     # SCATTER: dom/cod back jacks, then ON-ROW Philox reverse buttons (no longer
-                    # jammed above/below), plus the true-reverse button + jack (CA_DICE_COUNTER_MODEL).
+                    # jammed above/below). True-reverse is NOT here — it's a centred per-stream group
+                    # beneath the matrix. Scatter keeps only its axis-specific dice fwd/rev.
                     E(jack(lx(KNOB2,flip),ry,t)); E(jack(lx(J_BACK2,flip),ry,t))
                     btn(lx(REV_D,flip),ry); btn(lx(REV_C,flip),ry)
-                    btn(lx(TRUE_REV_BTN,flip),ry)
-                    E(jack(lx(TRUE_REV_IN,flip),ry,t))
                 # forward dom/cod fire buttons (all verbs)
                 btn(lx(BTN_D,flip),ry); btn(lx(BTN_C,flip),ry)
                 E(f'<circle cx="{px(lx(LIGHT,flip)):.1f}" cy="{px(ry):.1f}" r="{px(1.3):.1f}" fill="{t["well"]}" stroke="{t["dim"]}" stroke-width="{px(0.3):.2f}"/>')
 
-    # dot.modular wordmark at the TOP (matches Monsoon/West); centred horizontally.
-    # (The old bottom cluster — logo + 2 poly jacks — is REMOVED: the poly-mod inputs were
-    #  cut per CA_PANEL_THREE_STREAM_LAYOUT, freeing the bottom for the matrix legend.)
-    E(logo_embed(dark, (PW_MM - LOGO_W) / 2.0, LOGO_TOP_Y, LOGO_W))
+    # dot.modular wordmark at the TOP, to the LEFT of the CHANGE ALLEY title (was centred and
+    # overlapped the title). Title is widget-drawn centred; logo sits left of centre.
+    E(logo_embed(dark, GRID_X, LOGO_TOP_Y, LOGO_W))
+
+    # TRUE-REVERSE group markers: 3 jack+button pairs (rhythm/melody/q-mix), CENTRED beneath the
+    # matrix. Row sits below the matrix + the (widget-drawn) legend. Colour-coding is widget-drawn.
+    trY = PH_MM - 5.0     # anchored near the bottom edge (centred group clears the corner screws)
+    gcx = GRID_X + GRID_W * 0.5
+    for s in range(N_STREAMS):
+        cx = gcx + (s - 1) * TRUEREV_GROUP_DX
+        E(jack(cx - TRUEREV_PAIR_DX*0.5, trY, t))    # true-reverse jack
+        E(f'<circle cx="{px(cx + TRUEREV_PAIR_DX*0.5):.1f}" cy="{px(trY):.1f}" r="{px(2.6):.1f}" fill="{t["frame"]}" stroke="{t["dim"]}" stroke-width="{px(0.5):.2f}"/>')  # button
+        # pending lamp well in line with the jack+button (same y), spaced RIGHT of the button
+        E(f'<circle cx="{px(cx + TRUEREV_PAIR_DX*0.5 + 7.5):.1f}" cy="{px(trY):.1f}" r="{px(1.3):.1f}" fill="{t["well"]}" stroke="{t["dim"]}" stroke-width="{px(0.3):.2f}"/>')
 
     out=os.path.join(os.path.dirname(__file__),"..","res","panels")
     os.makedirs(out,exist_ok=True)

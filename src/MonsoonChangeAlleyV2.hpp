@@ -19,6 +19,7 @@
 #include "ui/StoreEditAction.hpp"   // pin edits: store-backed, undoable (DAW_PARAM_AUDIT 5b)
 #include "dsp/ChangeAlleyTransforms.hpp"   // ca::applyCorrelation (transform apply owned here)
 #include "ui/IntertropicalPairing.hpp"     // shared pairing: assignPairIdT / resolveFollowedT<T>
+#include "ui/ConnectMark.hpp"              // shared dot.modular connect indicator (same as other panels)
 
 using namespace rack;
 // NOT 'using namespace ChangeAlleyIds' — Monsoon.hpp exposes MonsoonIds with the same
@@ -67,16 +68,19 @@ struct MonsoonChangeAlleyV2 : Module {
     // Button twins of the back-jacks: domain + codomain reverse buttons (scatterDelta = -1).
     rack::dsp::BooleanTrigger sRevBtnDom [CA::SIDES * CA::TYPES];
     rack::dsp::BooleanTrigger sRevBtnCod [CA::SIDES * CA::TYPES];
-    // TRUE-REVERSE (CA_DICE_COUNTER_MODEL): one jack + one button per SCATTER stream-row × side.
-    // Distinct from Philox dice-reverse (scatterDelta=-1): true-reverse walks the committed pin-state
-    // TRAJECTORY backward (phrase-granular). Clocked/performance = modulation-class (no undo push).
+    // TRUE-REVERSE (CA_DICE_COUNTER_MODEL): one jack + one button per STREAM (rhythm/melody/q-mix =
+    // TYPES = 3), VERB-AGNOSTIC. The committed pin STATE is one whole-matrix array per stream, so a
+    // single control per stream restores both Intra/Inter AND domain/codomain (they're baked into the
+    // recorded state) across all four verbs. Distinct from Philox dice-reverse (axis-specific,
+    // scatterDelta=-1): true-reverse walks the committed pin-state TRAJECTORY backward (phrase-
+    // granular). Clocked/performance = modulation-class (no undo push).
     // NOTE: the trajectory-replay ENGINE (a deeper state-history buffer, per the doc's true-reverse
     // proposal + buffer-size section) is a SEPARATE build; here we add the CONTROLS + trigger
-    // detection + a pending request flag. See trueRevRequested[] below.
-    rack::dsp::SchmittTrigger  sTrueRevIn  [CA::SIDES * CA::TYPES];
-    rack::dsp::BooleanTrigger  sTrueRevBtn [CA::SIDES * CA::TYPES];
-    // Set when a true-reverse jack/button fires; drained by the (future) trajectory-replay engine.
-    bool trueRevRequested[CA::SIDES * CA::TYPES] = {};
+    // detection + a per-stream pending request flag. See trueRevRequested[] below.
+    rack::dsp::SchmittTrigger  sTrueRevIn  [CA::TYPES];
+    rack::dsp::BooleanTrigger  sTrueRevBtn [CA::TYPES];
+    // Set when a true-reverse jack/button fires (index = stream/type); drained by the future engine.
+    bool trueRevRequested[CA::TYPES] = {};
     // Scatter draw counters: 8 = Intra/Inter x rhythm/melody x domain/codomain (the panel's separate
     // scatter jacks). Each is a SIGNED int64 addressable POSITION in its own domain-separated Philox
     // stream -- the SAME model as the main dice draw counters. Forward jack = counter++, back jack =
@@ -159,8 +163,12 @@ struct MonsoonChangeAlleyV2 : Module {
             configInput(CA::SCATTER_BACK_COD_START + i, "Scatter codomain back");
             configButton(CA::SCATTER_REV_BTN_START + i,                       "Scatter domain reverse");
             configButton(CA::SCATTER_REV_BTN_START + CA::SIDES*CA::TYPES + i, "Scatter codomain reverse");
-            configButton(CA::TRUE_REV_BTN_START + i, "True reverse (replay scatter state trajectory back)");
-            configInput (CA::TRUE_REV_IN_START  + i, "True reverse trigger");
+        }
+        // True-reverse: ONE jack + ONE button per STREAM (verb-agnostic, restores the whole per-
+        // stream state trajectory backward). PN[ty] = Rhythm/Melody/Q-mix.
+        for (int ty = 0; ty < CA::TYPES; ++ty) {
+            configButton(CA::TRUE_REV_BTN_START + ty, std::string("True reverse ") + PN[ty]);
+            configInput (CA::TRUE_REV_IN_START  + ty, std::string("True reverse ") + PN[ty] + " trigger");
         }
         // GRAIN_POLY_IN / STEP_POLY_IN removed (CA_PANEL_THREE_STREAM_LAYOUT): didn't scale to
         // the 3rd stream; the per-row grain/leader/step knobs remain the sole value source.
@@ -222,6 +230,20 @@ struct MonsoonChangeAlleyV2 : Module {
     void applyPendingTransforms(int active, unsigned axisMask = 0b111u) {
         // axis bit for a row's type: 0=rhythm→0b001, 1=melody→0b010, 2=qmix→0b100.
         auto axisBitForType = [](int type) -> unsigned { return 1u << type; };
+        // TRUE-REVERSE consume at the PHRASE BOUNDARY (same commit gesture as the verbs): a queued
+        // per-stream request commits + clears its pending lamp here. Gated by the SAME axisMask as
+        // verbs (bit ty = stream). The trajectory-replay ENGINE is deferred (CA_DICE_COUNTER_MODEL:
+        // buffer depth + momentary/toggle open); this consumes the queue + lamp with correct
+        // boundary timing so the affordance matches the verbs now. When the engine lands it walks
+        // the committed-state trajectory back one entry per consumed request (modulation-class: it
+        // must NOT push undo). Runs before the verb early-return so it fires even with no armed rows.
+        for (int ty = 0; ty < CA::TYPES; ++ty) {
+            if (!trueRevRequested[ty]) continue;
+            if (!(axisMask & axisBitForType(ty))) continue;   // out-of-axis: stay queued (like verbs)
+            trueRevRequested[ty] = false;
+            lights[CA::TRUE_REV_LIGHT_START + ty].setBrightness(0.f);
+            // TODO(true-reverse engine): step this stream's committed-state trajectory back by one.
+        }
         // Any armed row this call whose AXIS is in the mask?  If none, nothing to snapshot or apply.
         bool any = false;
         for (int row = 0; row < CA::N_ROWS; ++row) {
@@ -325,16 +347,25 @@ struct MonsoonChangeAlleyV2 : Module {
             if (sRevBtnCod[i].process(params[CA::SCATTER_REV_BTN_START + CA::SIDES*CA::TYPES + i].getValue() > 0.5f)) {
                 latchRow(r, CA::V_SCATTER, sd, ty, false); pendingRows[r].scatterDelta = -1;
             }
-            // TRUE-REVERSE (CA_DICE_COUNTER_MODEL): jack + button, per scatter stream-row × side.
-            // Sets a per-stream request flag. The trajectory-replay ENGINE (deeper state-history
-            // buffer walked backward, phrase-granular; buffer depth + momentary/toggle are the doc's
-            // open design questions) is a SEPARATE build that will DRAIN this flag. Modulation-class:
-            // when built, its commit must NOT push undo history (clocked/performance, per the doc).
-            if (sTrueRevIn [i].process(inputs[CA::TRUE_REV_IN_START + i].getVoltage(), 0.1f, 1.f))
-                trueRevRequested[i] = true;
-            if (sTrueRevBtn[i].process(params[CA::TRUE_REV_BTN_START + i].getValue() > 0.5f))
-                trueRevRequested[i] = true;
           }
+        // TRUE-REVERSE (CA_DICE_COUNTER_MODEL): one jack + one button PER STREAM (verb-agnostic;
+        // NOT per side/dom-cod). Sets a per-stream request flag. The trajectory-replay ENGINE
+        // (deeper state-history buffer walked backward, phrase-granular; buffer depth + momentary/
+        // toggle are the doc's open design questions) is a SEPARATE build that will DRAIN this flag.
+        // Modulation-class: when built, its commit must NOT push undo history (clocked/performance).
+        for (int ty = 0; ty < CA::TYPES; ++ty) {
+            // Trigger/button ARMS the per-stream true-reverse (queued), lighting its pending lamp —
+            // reusing the SAME pending-lamp + phrase-boundary-commit gesture as the other CA verbs.
+            // Re-press while queued is a NO-OP re-arm (matches latchRow's idempotent verb re-arm:
+            // it re-sets armed=true without cancelling), NOT a cancel.
+            bool fired = false;
+            if (sTrueRevIn [ty].process(inputs[CA::TRUE_REV_IN_START + ty].getVoltage(), 0.1f, 1.f)) fired = true;
+            if (sTrueRevBtn[ty].process(params[CA::TRUE_REV_BTN_START + ty].getValue() > 0.5f))       fired = true;
+            if (fired) {
+                trueRevRequested[ty] = true;
+                lights[CA::TRUE_REV_LIGHT_START + ty].setBrightness(1.f);   // queued (pending) lamp
+            }
+        }
     }
 
     // STRUCTURAL reset only: pin matrix -> identity, scatter counters -> 0. Does NOT re-key.
@@ -408,11 +439,12 @@ struct MonsoonChangeAlleyV2 : Module {
 // ── Widget ───────────────────────────────────────────────────────────────────
 struct MonsoonChangeAlleyV2Widget : ModuleWidget {
 
-    // Geometry -- MUST MATCH gen_change_alley_v2.py. 60HP: width DERIVED from the widest (SCATTER)
-    // row = 5 jacks + 5 buttons + 1 grain dial + 1 light per side. Jacks/dial at 8.5mm pitch,
-    // buttons clustered at 6.0mm; matrix kept at 99.6mm. Generator computes HP from these; the
-    // constants below MUST equal the generator's (JACK_P=8.5, BTN_P=6.0, gutter=10.6).
-    static constexpr float PW_MM   = 60.f * 5.08f;   // 304.8mm (generator-derived)
+    // Geometry -- MUST MATCH gen_change_alley_v2.py. Width DERIVED from the widest (SCATTER) row =
+    // 4 jacks + 4 buttons + 1 grain dial + 1 light per side (true-reverse is NOT here — it's a
+    // centred per-stream group beneath the matrix). Jacks/dial at 8.5mm pitch, buttons clustered
+    // at 6.0mm; matrix kept at 99.6mm. Generator computes HP (now 56) from these; constants below
+    // MUST equal the generator's.
+    static constexpr float PW_MM   = 56.f * 5.08f;   // 284.48mm (generator-derived; see note)
     static constexpr float PH_MM   = 128.5f;
     static constexpr float MARGIN  = 6.0f;
     static constexpr float JACK_P  = 8.5f;
@@ -424,30 +456,33 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
     static constexpr float KNOB1   = J_COD  + JACK_P;          // grain dial (all verbs)
     static constexpr float KNOB2   = KNOB1  + JACK_P;          // leader/step dial OR scatter dom-back jack
     static constexpr float J_BACK2 = KNOB2  + JACK_P;          // scatter cod-back jack
-    // Button cluster (after a jack→button gap), 5 buttons at BTN_P — Philox reverse is now ON-ROW:
+    // Button cluster (after a jack→button gap), 4 buttons at BTN_P — fwd + Philox reverse (ON-ROW):
     static constexpr float BTN_D   = J_BACK2 + (J_HALF + 3.0f);// fwd domain fire
     static constexpr float BTN_C   = BTN_D  + BTN_P;           // fwd codomain fire
-    static constexpr float REV_D   = BTN_C  + BTN_P;           // Philox reverse domain (was jammed)
+    static constexpr float REV_D   = BTN_C  + BTN_P;           // Philox reverse domain
     static constexpr float REV_C   = REV_D  + BTN_P;           // Philox reverse codomain
-    static constexpr float TRUE_REV_BTN_X = REV_C + BTN_P;     // true-reverse button
-    static constexpr float TRUE_REV_IN_X  = TRUE_REV_BTN_X + (3.0f + J_HALF);  // true-reverse jack
-    static constexpr float LIGHT_X = TRUE_REV_IN_X + 5.25f;
-    static constexpr float CTRL_W  = LIGHT_X + 4.0f;           // 92.0
-    static constexpr float GUTTER  = (PW_MM - 2.f*CTRL_W - 99.6f) / 2.f;   // 10.6 (matrix kept 99.6)
+    static constexpr float LIGHT_X = REV_C + (3.0f + J_HALF);
+    static constexpr float CTRL_W  = LIGHT_X + 4.0f;
+    static constexpr float GUTTER  = (PW_MM - 2.f*CTRL_W - 99.6f) / 2.f;   // matrix kept 99.6
     static constexpr float MX_MM   = CTRL_W + GUTTER;
     static constexpr float MW_MM   = PW_MM - 2.f * (CTRL_W + GUTTER);
+    // True-reverse group (centred beneath the matrix): 3 jack+button pairs, per stream.
+    static constexpr float TRUEREV_PAIR_DX  = 9.0f;   // jack↔button within a stream pair (loosened)
+    static constexpr float TRUEREV_GROUP_DX = 34.0f;  // centre-to-centre between stream groups (loosened)
     static constexpr float CELL_W  = MW_MM / CA::N_VOICES;
     static constexpr float CELL_H  = CELL_W;
-    static constexpr float MY_MM   = 20.0f;
+    static constexpr float MY_MM   = 16.0f;   // matrix top: the 1..16 column-number row (drawn at
+                                              // MY_MM-1.6) sits level with the COLLAPSE first jack row
+                                              // (rowY(0,0)=15). MUST MATCH gen_change_alley_v2.py GRID_Y.
     static constexpr float MH_MM   = CELL_H * CA::N_VOICES;
     // Q5 q-mix: 3 streams (rhythm, melody, q-mix) -> 12 rows/side. PLAN A (CA_PANEL_THREE_STREAM_LAYOUT):
     // tighten row pitch to fit 12 rows in 128.5mm with stock PJ301M jacks. MUST MATCH gen_change_alley_v2.py.
     // Jack well is r=3.9 (Ø7.8); ROW_H=8.0 is the jack-floor pitch (jacks touch at 0.2mm gap).
     static constexpr int   N_STREAMS    = 3;
     static constexpr float CTRL_ROW_H   = 8.0f;
-    // GROUP_GAP widened 1.5->3.5 (poly jacks cut + logo moved to top freed the space): each op-group
-    // now has a CLEAR BAND above it for its INTRA/INTER label. MUST MATCH gen_change_alley_v2.py.
-    static constexpr float GROUP_GAP    = 3.5f;
+    // GROUP_GAP widened to 4.5: gives each op-group's INTRA/INTER label a real clear band above it
+    // (reclaimed room from matrix-up + legend-to-side pays for it). MUST MATCH gen_change_alley_v2.py.
+    static constexpr float GROUP_GAP    = 4.5f;
     static constexpr float CTRL_TOP     = 11.0f;  // first row below the top logo/title band. MUST MATCH ROW_TOP.
     static constexpr float BOTTOM_OFFSET = 6.0f;   // gap from last row to the bottom poly-jack cluster
     static float rowY(int verb, int sub) {
@@ -570,17 +605,13 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                         module, CA::SCATTER_BACK_DOM_START + si));
                     addInput(createInputCentered<PJ301MPort>(mm2px(Vec(lx(J_BACK2, flip), y)),
                         module, CA::SCATTER_BACK_COD_START + si));
-                    // Philox reverse BUTTONS — now ON-ROW at their own columns (REV_D/REV_C),
-                    // no longer jammed above/below (the widen pass gave them dedicated columns).
+                    // Philox reverse BUTTONS — ON-ROW at their own columns (REV_D/REV_C), no longer
+                    // jammed above/below. (True-reverse is NOT here — it's a centred per-stream group
+                    // beneath the matrix; see below. Scatter keeps only its axis-specific dice fwd/rev.)
                     addParam(createParamCentered<TL1105>(mm2px(Vec(lx(REV_D, flip), y)),
                         module, CA::SCATTER_REV_BTN_START + si));
                     addParam(createParamCentered<TL1105>(mm2px(Vec(lx(REV_C, flip), y)),
                         module, CA::SCATTER_REV_BTN_START + CA::SIDES*CA::TYPES + si));
-                    // TRUE-REVERSE button + jack (CA_DICE_COUNTER_MODEL), on-row, inner columns.
-                    addParam(createParamCentered<TL1105>(mm2px(Vec(lx(TRUE_REV_BTN_X, flip), y)),
-                        module, CA::TRUE_REV_BTN_START + si));
-                    addInput(createInputCentered<PJ301MPort>(mm2px(Vec(lx(TRUE_REV_IN_X, flip), y)),
-                        module, CA::TRUE_REV_IN_START + si));
                 }
                 addParam(createParamCentered<TL1105>(mm2px(Vec(lx(BTN_D, flip), y)),
                     module, CA::BTN_START + r*2));
@@ -591,7 +622,34 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
             }
           }
 
-        // (Poly-mod inputs removed — CA_PANEL_THREE_STREAM_LAYOUT. Bottom-right is now free.)
+        // TRUE-REVERSE group: 3 jack+button pairs (rhythm/melody/q-mix), CENTRED beneath the matrix.
+        // Verb-agnostic, per-stream (index = type). MUST MATCH gen_change_alley_v2.py (trY/gcx).
+        {
+            // Centred group anchored near the BOTTOM edge (the corner screws are at x=±7.5, so a
+            // centred cluster clears them). Loose horizontal spread — uses the space below the matrix.
+            const float trY = PH_MM - 5.0f;
+            const float gcx = MX_MM + MW_MM * 0.5f;
+            for (int ty = 0; ty < CA::TYPES; ++ty) {
+                const float cx = gcx + (ty - 1) * TRUEREV_GROUP_DX;
+                addInput(createInputCentered<PJ301MPort>(
+                    mm2px(Vec(cx - TRUEREV_PAIR_DX*0.5f, trY)), module, CA::TRUE_REV_IN_START + ty));
+                addParam(createParamCentered<TL1105>(
+                    mm2px(Vec(cx + TRUEREV_PAIR_DX*0.5f, trY)), module, CA::TRUE_REV_BTN_START + ty));
+                // Pending lamp — SAME widget as the verb pending lights; lit when queued, cleared at
+                // the phrase boundary. In line with the jack+button (same y), just RIGHT of the button.
+                addChild(createLightCentered<SmallLight<RedLight>>(
+                    mm2px(Vec(cx + TRUEREV_PAIR_DX*0.5f + 7.5f, trY)), module, CA::TRUE_REV_LIGHT_START + ty));
+            }
+        }
+
+        // Shared dot.modular CONNECT indicator (same marker as other panels): in the lower band,
+        // between the bottom-left legend and the centred TRUE REVERSE group, at the legend's height.
+        // Kept LEFT of the true-reverse jacks so it doesn't overlap the rhythm true-rev jack.
+        {
+            const float lgY = rowY(CA::N_VERBS-1, N_STREAMS-1) + CTRL_ROW_H*0.5f + 4.0f;
+            const float cmx = J_COD + 3*18.0f + 4.0f;   // just right of the 3-swatch legend row
+            addChild(redDot::makeConnectMark(module, mm2px(Vec(cmx, lgY)), mm2px(Vec(6.0f,0)).x));
+        }
 
         auto* ov = new PinOverlay(module);
         ov->box.pos  = Vec(0, 0);
@@ -697,11 +755,13 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     static constexpr const char* TN[4] = {"COLLAPSE","ROTATE","REFLECT","SCATTER"};
                     nvgFontSize(vg, mm2px(Vec(2.7f,0)).x);
                     nvgFillColor(vg, inkdim);
+                    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
                     for (int t2 = 0; t2 < 4; ++t2) {
-                        // Baseline sits in the GROUP_GAP band ABOVE this group's first row.
-                        // With GROUP_GAP=3.5 there is now a clear band; -2.0 centres the label
-                        // in it so it no longer overlaps the previous group's 3rd (q-mix) row.
-                        float gy = mm2px(Vec(0, rowY(t2, 0) - CTRL_ROW_H*0.5f - 2.0f)).y;
+                        // MIDDLE-aligned at the CENTRE of the GROUP_GAP band above this group's
+                        // first row — so the label sits squarely in the gap, clear of both the row
+                        // above and this group's first row. 2.2mm font fits the 4.5mm band.
+                        float gy = mm2px(Vec(0, rowY(t2, 0) - CTRL_ROW_H*0.5f - GROUP_GAP*0.5f)).y;
+                        nvgFontSize(vg, mm2px(Vec(2.2f,0)).x);
                         char lbl[24];
                         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BASELINE);
                         snprintf(lbl, sizeof(lbl), "%s INTRA", TN[t2]);
@@ -710,29 +770,46 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                         snprintf(lbl, sizeof(lbl), "%s INTER", TN[t2]);
                         nvgText(vg, mm2px(Vec(PW_MM - MARGIN, 0)).x, gy, lbl, NULL);
                     }
-                    // HORIZONTAL legend, centred UNDER the pin matrix: rhythm / melody / q-mix
-                    // in a single row (was a vertical stack bottom-right; the poly jacks that
-                    // shared that corner are gone). Colours from the SHARED accessors so the
-                    // legend == matrix pins.
+                    // HORIZONTAL legend (rhythm / melody / q-mix in one row), below the INTRA (left)
+                    // control block, NOT overlapping the matrix. Colours from the SHARED accessors so
+                    // the legend == matrix pins.
                     {
-                        const float legendY = MY_MM + MH_MM + 3.4f;   // just below the matrix
-                        const float mcx     = MX_MM + MW_MM * 0.5f;   // matrix centre x
-                        const float sw      = mm2px(Vec(1.3f,0)).x;
-                        nvgFontSize(vg, mm2px(Vec(2.8f,0)).x);
+                        const float lgY = rowY(CA::N_VERBS-1, N_STREAMS-1) + CTRL_ROW_H*0.5f + 4.0f;
+                        const float sw  = mm2px(Vec(1.3f,0)).x;
+                        nvgFontSize(vg, mm2px(Vec(2.4f,0)).x);
                         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-                        const float ly = mm2px(Vec(0, legendY)).y;
+                        const float ly = mm2px(Vec(0, lgY)).y;
                         struct Sw { NVGcolor c; const char* t; };
                         const Sw sws[3] = { {pinRhythm(),"rhythm"}, {pinMelody(),"melody"}, {pinQmix(),"q-mix"} };
-                        // Lay the three swatch+label groups evenly across the matrix width.
-                        const float slotW = MW_MM / 3.0f;
+                        float x = J_COD;   // first swatch under the 2nd jack column (clears the corner screw)
                         for (int i = 0; i < 3; ++i) {
-                            const float gx = mm2px(Vec(MX_MM + slotW*(i + 0.5f) - 7.0f, 0)).x;
-                            nvgBeginPath(vg); nvgCircle(vg, gx, ly, sw);
+                            const float cx = mm2px(Vec(x, 0)).x;
+                            nvgBeginPath(vg); nvgCircle(vg, cx, ly, sw);
                             nvgFillColor(vg, sws[i].c); nvgFill(vg);
                             nvgFillColor(vg, inkdim);
-                            nvgText(vg, gx + mm2px(Vec(2.4f,0)).x, ly, sws[i].t, NULL);
+                            nvgText(vg, cx + mm2px(Vec(2.2f,0)).x, ly, sws[i].t, NULL);
+                            x += 18.0f;   // horizontal spacing between swatch+label groups
                         }
-                        (void)mcx;
+                    }
+                    // TRUE-REVERSE group label + per-stream colour rings (match the legend colours,
+                    // so the 3 centred pairs read as rhythm/melody/q-mix). MUST MATCH the bind +
+                    // generator geometry (trY / gcx / TRUEREV_*).
+                    {
+                        const float trY = PH_MM - 5.0f;   // MUST MATCH the bind + generator
+                        const float gcx = MX_MM + MW_MM * 0.5f;
+                        nvgFontSize(vg, mm2px(Vec(2.6f,0)).x);
+                        nvgFillColor(vg, inkdim);
+                        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BASELINE);
+                        nvgText(vg, mm2px(Vec(gcx, 0)).x, mm2px(Vec(0, trY - 6.0f)).y, "TRUE REVERSE", NULL);
+                        // Colour rings around the BUTTONS (smaller, right of each pair) — not the jacks.
+                        const NVGcolor sc[3] = { pinRhythm(), pinMelody(), pinQmix() };
+                        for (int ty = 0; ty < 3; ++ty) {
+                            const float cx = gcx + (ty - 1) * TRUEREV_GROUP_DX + TRUEREV_PAIR_DX*0.5f;
+                            nvgBeginPath(vg);
+                            nvgCircle(vg, mm2px(Vec(cx, 0)).x, mm2px(Vec(0, trY)).y, mm2px(Vec(3.3f,0)).x);
+                            NVGcolor rc = sc[ty]; rc.a = 0.7f;
+                            nvgStrokeColor(vg, rc); nvgStrokeWidth(vg, mm2px(Vec(0.6f,0)).x); nvgStroke(vg);
+                        }
                     }
                     // Title + legend
                     nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BASELINE);
@@ -740,25 +817,8 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
                     nvgFillColor(vg, ink);
                     nvgText(vg, box.size.x * 0.5f, mm2px(Vec(0,6.0f)).y, "CHANGE ALLEY", NULL);
 
-                    // ── Connect indicator: a small state dot beside the TOP title.
-                    //    BRIGHT red w/ halo = connected + claimed; HOLLOW = not. The panel
-                    //    SVG embeds the real dot.modular logo (now at the top). ──
-                    {
-                        bool connected = module && redDot::isConnectedAndClaimed(module);
-                        // Connect dot to the RIGHT of the "CHANGE ALLEY" title (top band).
-                        float mx = box.size.x * 0.5f + mm2px(Vec(30.0f, 0)).x;
-                        float myv = mm2px(Vec(0, 4.6f)).y;
-                        if (connected) {
-                            nvgBeginPath(vg); nvgCircle(vg, mx, myv, 3.6f);
-                            nvgFillColor(vg, nvgRGBA(0xd4,0x00,0x1a,0x30)); nvgFill(vg);
-                            nvgBeginPath(vg); nvgCircle(vg, mx, myv, 2.2f);
-                            nvgFillColor(vg, nvgRGB(0xd4,0x00,0x1a)); nvgFill(vg);
-                        } else {
-                            nvgBeginPath(vg); nvgCircle(vg, mx, myv, 2.2f);
-                            nvgStrokeColor(vg, nvgRGBA(0xd4,0x00,0x1a,0x70));
-                            nvgStrokeWidth(vg, 1.0f); nvgStroke(vg);
-                        }
-                    }
+                    // (Connect indicator is a shared redDot::ConnectMark child widget added in the
+                    //  ModuleWidget ctor — bottom, between the legend and TRUE REVERSE. Not drawn here.)
                 }
             }
             if (!module) return;
