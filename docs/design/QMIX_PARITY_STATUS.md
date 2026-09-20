@@ -89,6 +89,37 @@ Doc line 79 lists `DICE_TRIAL_{R,M}` in the per-stream dice family. Those Trial 
 ALL lanes, not just skipped for q-mix. So q-mix has the *current* full family (Dice/Last-Dice/Mix/Slew); there is
 no q-mix Trial because Trial no longer exists. **Consistent — no action** (the checklist predates the Trial removal).
 
+## Test-suite status (the 2 reds are STALE QMIX-lane tests, not regressions — but they ARE ours to fix)
+`test/run_all.sh` = 37 pass / 2 fail. Both failures are **pre-existing relative to the RNG merge** (they fail
+identically on pre-merge `0d46db3`), but they are **stale because of the QMIX lane renumber we shipped** — i.e.
+QMIX-caused test debt, not "unrelated." The parity checklist explicitly requires "the whole unit suite stays
+green" (line 67), so these should be updated to the QMIX lane order as part of finishing q-mix:
+- **`test_SandsTopology.cpp`** — asserts the PRE-QMIX lane numbers: `owner(0,4)==MONO "VAR (lane4)"` and
+  `owner(0,5)==MONO "LEG (lane5)"` (:50-51) and `owner(1,4)==NONE "poly has no VAR lane"` (:81). After QMIX,
+  VAR=5/LEG=6 and lane 4 = ACCENT (a real poly lane). The TEST is wrong, the code is right. Fix: renumber the
+  test's VAR→5/LEG→6 and update the "poly lane 4" case to ACCENT (poly) semantics.
+- **`test_probmod_roundtrip.cpp`** — pins the pre-QMIX model: `kStrands[6]` with the old order comment
+  `RHYTHM=2` (:50-55, now QMIX=2/RHYTHM=3), loops poly editor lanes `ed<4` while `PL_LANES` is now 5, and uses
+  the OLD 4-lane `EDITOR_TO_ENGINE_LANE`/`ENGINE_LANE_TO_EDITOR` tables (:135/148/189) rather than the
+  `*_QMIX` 5-lane tables. Fix: extend to 7 strands (incl. QMIX) + 5 poly lanes and the QMIX-aware tables, keeping
+  it a faithful round-trip oracle. **Care**: this is the LOR/spread "regression oracle" — update it to the NEW
+  correct model deliberately (don't just make it pass), so it still catches real leakage.
+- These two are also the reason the parity doc's item-1 hardening note matters: they'd have caught lane drift if
+  they'd been kept current. Recommend a dedicated "update QMIX-stale unit tests" commit, separate from the merge.
+
+## Test-runner hygiene: 3 entries reference MISSING files (silently skipped = false coverage)
+`test/run_all.sh`'s `TESTS` list names three tests whose `.cpp` does **not** exist in `test/`, so the runner
+prints `? (missing file)` and skips them — they neither pass nor fail (vacuous), hiding lost coverage:
+- `test_ScaleMaskArbiter` ([run_all.sh:39](../../test/run_all.sh:39)) — no `test/test_ScaleMaskArbiter.cpp`.
+- `test_quantize_engine` ([run_all.sh:64](../../test/run_all.sh:64)) — no `test/test_quantize_engine.cpp`.
+- `test_quantize_phrasing` ([run_all.sh:65](../../test/run_all.sh:65)) — no `test/test_quantize_phrasing.cpp`.
+Unrelated to the RNG merge (the merge only ADDED `test_qmix_rng` to the list). Either these tests were
+deleted/renamed without updating the runner, or listed-but-never-added. **Per file**: (a) restore if it existed
+and is wanted — `git log --diff-filter=D -- test/<name>.cpp` to find when it vanished — or (b) drop the stale
+`TESTS` entry so the runner stops advertising coverage it doesn't have. NOTE: the two `test_quantize_*` names
+overlap the quantiser-mode pitch path that the q-mix source-select now modifies (Mode C/D/F) — worth confirming
+they weren't lost right where q-mix needs coverage most.
+
 ## Recommended next steps (priority order)
 1. **Decide the CA-blend question (item 1)** — it's the doc's headline "genuinely new bit" and the only large gap.
    If wanted: spec the green `qmixSrc[v]` plane + 8→12 scatter streams + downstream mux, keeping the current
