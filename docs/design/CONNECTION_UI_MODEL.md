@@ -287,3 +287,39 @@ explicit selection is the override that appears only when there's ambiguity.
 built), PERSISTENCE of the chosen binding across save/load, and graceful handling when a bound device is
 DELETED or missing on reload. These are the hard parts of any selection-based system and where the reusable
 lessons live. [OPEN — read src/ before implementing.]
+
+## 13. monome-rack ENGINEERING lessons (from source/API, not just UX)
+
+Structure: a `GridConnection` abstraction with two impls — `SerialOscGridConnection` (hardware, via
+serialosc) and `VirtualGridConnection` (in-Rack). Devices enumerated from a registry; each device carries
+a serial-number identity; consumer selects one from the enumerated list. API shows `enumerate_devices()`,
+`DeviceChangeEvent::Added/Removed` callbacks, and `MonomeDevice` (type + serial + port).
+
+Four lessons:
+1. **Registry/enumeration layer.** Binding is NOT module→module direct — a middle layer maintains "what
+   targets exist now" and the consumer selects from it. For us: don't have each expander walk the chain;
+   have a REGISTRY OF MONSOONS expanders select from. We already have the seed — MonsoonExpanderManager +
+   presentPairIds() — so this formalises what partially exists.
+2. **Add/removed lifecycle is first-class.** monome has device Added/Removed events because grids get
+   plugged/unplugged. Our equivalent = Monsoons added/deleted from the patch. A bound expander MUST handle
+   its host vanishing gracefully (fall back to unbound; never crash or silently mis-bind). Design the
+   unbind path from the start.
+3. **Stable-ID persistence.** Identity = device serial, stable/unique, persists across reload; that's what
+   the saved patch stores. Our equivalent = pairId. Store the binding by stable ID; DISPLAY the colour/
+   number, not the raw ID (monome shows the serial only because it has nothing better — we have colour).
+
+4. **THE LESSON THAT DOES NOT TRANSFER (important):** monome's always-explicit selection exists because
+   grids are EXTERNAL, discovered over a network protocol, with NO spatial relationship — adjacency was
+   never available, so explicit selection was forced. WE HAVE ADJACENCY FOR FREE (modules are physically
+   neighbours). So do NOT wholesale-adopt always-explicit binding — that forces config onto every simple
+   one-Monsoon rig that currently works with zero setup.
+
+**Refined model:** ADJACENCY as the zero-config default (which monome couldn't have) + explicit
+REGISTRY-SELECTION as the disambiguation override only when >1 Monsoon is reachable (built the way monome
+does it: registry, Added/Removed lifecycle, stable-ID persistence, graceful unbind). monome's rigour for
+the hard case; adjacency's zero-config for the common case. Better than either alone.
+
+Concretely for Q2 (one discovery rule): the rule becomes "if exactly one Monsoon reachable → bind it
+(adjacency, zero-config); if >1 reachable → use the stored explicit selection, else prompt/most-recent;
+if the bound one disappears → unbind gracefully and re-evaluate." Order-independent, and simple rigs never
+see a menu.
