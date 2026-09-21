@@ -144,3 +144,62 @@ Guard rails:
 
 ## Status
 Plan only — not yet built. Seed sharing explicitly out of scope (Rodney).
+
+---
+
+## PRIMARY MONSOON — single owner for ALL asymmetric operations (Rodney, spec)
+
+When two (or more) Monsoons share one CA, exactly ONE is the **PRIMARY**. There is a single primary
+for everything — NOT a per-operation owner. This supersedes the earlier "first sync() caller this block
+wins" language for anything the user can observe or that must be reproducible; that scheduler-order rule
+may stay ONLY as an internal tie-break for the pin-mutation write (both Monsoons read the same result, so
+it's invisible there), but it does NOT determine the primary.
+
+### Why one primary (not per-op owner)
+Pin CORRELATION is symmetric: `rhythmSrc`/`melodySrc` are written once and read by every sharing Monsoon,
+so all of them get identical correlation for free. That half needs no owner. But some operations are
+inherently asymmetric — they mutate CA's single shared state, or CA reads a value back FROM a Monsoon —
+and cannot come from two hosts at once. All such operations follow the SAME primary, so the user learns
+one fact ("this Monsoon is primary") rather than a different owner per feature.
+
+Asymmetric operations that follow the primary:
+- **Reseed-on-restart** — reseeding changes the shared Philox correlation keys (`reseedCorrKeys`). Only the
+  primary's restart reseeds. A secondary's restart does NOT reseed CA. (This is the feature that forced
+  this spec: a non-deterministic owner would make "which restart reseeds" non-deterministic and break
+  reproducibility.)
+- **Theme / lightTheme** — CA follows the PRIMARY Monsoon's light/dark flag. (Was "the connected Monsoon";
+  make it the primary explicitly.)
+- **Pin mutation** (`applyPendingTransforms`) — applied once per block. Keep the existing
+  `transformsAppliedThisBlock` first-caller guard as the mechanism, but the intended owner is the primary;
+  since both Monsoons read the identical result, scheduler-order first-caller remains an acceptable
+  internal implementation of "applied once" and needs no change for correctness.
+- **Owner voice count** (`vActive` = numPolyVoices+1) — CA's operating voice count is the PRIMARY's.
+- Any future op that mutates shared CA state or reads back from a host: follows the primary. Default rule.
+
+### How the primary is chosen — DETERMINISTIC
+The primary MUST be deterministic (not scheduler-order). Rule: **lowest `pairId` among the Monsoons bound
+to this CA is primary.** Rationale: pairId is rack-wide, so it survives cross-row rigs where "adjacent"
+is fuzzy (the shared-CA feature explicitly supports Monsoons on different rows); it is stable across
+re-scan; and it already has a visible token (`pairColour(pairId)`). Ties cannot occur (pairId unique).
+Fallback when no pairId override is in play (pure adjacency, followCA==0): right-first via
+`findMonsoonEitherSide` — consistent with every other expander's host binding, so reseed/theme inherit the
+same owner as pitch/gate already do.
+
+### The user MUST be able to see which Monsoon is primary — REQUIRED, not optional
+This revises Step 2's "pair badge optional / shared-access hint NOT needed" — that was correct while ONLY
+pins (symmetric) were shared, but reseed + theme are asymmetric and otherwise invisible, so ownership must
+be shown:
+- **Promote the pair badge to REQUIRED on CA and on each sharing Monsoon.** Reuse `pairColour(pairId)`.
+- **The badge shows role directionally:** the PRIMARY Monsoon shows a FILLED/ringed badge; each SECONDARY
+  (reader) shows a HOLLOW badge of the same pair colour. CA shows the pair colour. So "which is primary"
+  is answerable at a glance — directly the gap the user raised.
+- CA's existing connect dot (filled=connected+claimed / hollow=not) stays; the pair badge is the ADDITION
+  that carries primary-vs-secondary, which the connect dot does not encode.
+
+### One-line contract
+Both Monsoons share CA's correlation equally; the PRIMARY (lowest pairId; else right-first adjacency)
+additionally owns reseed-on-restart, theme, mutation, and voice count; the pair badge shows primary
+(filled) vs secondary (hollow).
+
+Status: SPEC (Rodney). Folds in the reseed-on-restart ownership decision. Build alongside Step 4 +
+the reseed feature; the badge is now part of the shared-CA deliverable, not optional.

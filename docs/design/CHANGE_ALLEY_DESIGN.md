@@ -1,5 +1,15 @@
 # Change Alley — a pin-matrix expander reallocating probability streams between voices
 
+> **DEFERRAL (Rodney): the INTRA/INTER SUBMATRIX GRIDS (2x2/2x2/3x3, "self-reference"/CCA) are
+> deferred to a possible POP-OUT SUBPANEL on CA (context-menu / expandable overlay), explicitly NOT on
+> the faceplate.** They are second-order block-structure controls, set up occasionally, not
+> patched/performed live -- exactly what belongs behind a pop-out. This costs zero HP on the fixed 3U
+> faceplate and therefore RETIRES the last reason Plan B (the 40HP / 6-column reorg) existed: with the
+> submatrix off-faceplate, Plan A is the actual panel, not a stopgap. Priority: LOW -- downstream of
+> q-mix poly, the CA output side, and the correlation pairs; better designed AFTER the core works.
+> The panel-real-estate reasoning below predates this decision -- read it in that light.
+
+
 Status: DESIGN. No code. Companion doc style: FULLERTON_DESIGN.md.
 
 ## 0. Naming — load-bearing, not trivia
