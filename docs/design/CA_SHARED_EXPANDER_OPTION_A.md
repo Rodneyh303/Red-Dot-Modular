@@ -31,6 +31,13 @@ the pointer, and reads rhythmSrc/melodySrc. No change to the walk algorithm need
 are laid out so both Monsoons can find the CA -- the toggle is what permits it.
 
 ### 3. Owner vs reader distinction (CRITICAL -- only one Monsoon calls applyPendingTransforms)
+
+> **SUPERSEDED FOR OBSERVABLE/REPRODUCIBLE OPS — see CA_SHARED_EXPANDER_BUILD.md "PRIMARY MONSOON".**
+> "First caller this block wins" is fine ONLY as an internal tie-break for the pin-mutation write (both
+> Monsoons read the identical result). It does NOT determine the PRIMARY. There is one deterministic
+> primary (lowest pairId; else right-first adjacency) that owns ALL asymmetric ops — reseed-on-restart,
+> theme, mutation, voice count — and a REQUIRED pair badge shows primary (filled) vs secondary (hollow).
+
 rhythmSrc/melodySrc: written once by CA's process(), read-only from both Monsoons. SAFE.
 applyPendingTransforms(vActive): MUTATES the CA's state (applies pending scatter/transforms).
 Must only be called by ONE Monsoon per block -- the OWNER (the primary/adjacent Monsoon).
