@@ -216,6 +216,14 @@ CA-specific.
 
 Cases the current models DON'T express, worth weighing for musical value vs complexity. NOT commitments.
 
+>   **RESOLVED (Rodney): do NOT build cross-feed or shared Sands.** Two Monsoons seeded identically
+>   produce identical probabilities by construction (deterministic Philox spine), so each can keep its
+>   OWN Sands reading its own local copy and modulate it same or differently — correlation WITHOUT
+>   shared mutable state, no primary, no asymmetric edge. Establish the shared determinism domain with a
+>   SEEDER expander (see SEEDER_EXPANDER_CONCEPT.md). Live coupling (A's runtime deviation shows up in B)
+>   is the only thing seed-sharing can't express — rarer/less musical, left unbuilt. This retires the
+>   cross-feed wish below; kept for the record.
+
 - **[WISH] Cross-feed: an expander bound to a PRIMARY Monsoon but ALSO feeding a SECOND Monsoon**
   (e.g. Sands feeding probabilities to another Monsoon while owned by its primary). This breaks Model A's
   one-expander→one-host assumption: the expander now has a primary host (full claim) AND a secondary host
