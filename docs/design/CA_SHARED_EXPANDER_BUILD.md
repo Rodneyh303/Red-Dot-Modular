@@ -174,6 +174,10 @@ Asymmetric operations that follow the primary:
   since both Monsoons read the identical result, scheduler-order first-caller remains an acceptable
   internal implementation of "applied once" and needs no change for correctness.
 - **Owner voice count** (`vActive` = numPolyVoices+1) — CA's operating voice count is the PRIMARY's.
+- **Lock-mode participation + mod-ring display** — lock mode's store->engine commit is a write to CA's
+  shared state; only the PRIMARY sets CA's lock participation, and the mod-ring (if shown) is driven by the
+  primary only (single display authority). Set via CA context menu, active on primary authority only.
+  See LOCK_MODE_PLAN.md "Multi-Monsoon". 
 - Any future op that mutates shared CA state or reads back from a host: follows the primary. Default rule.
 
 ### How the primary is chosen — DETERMINISTIC
