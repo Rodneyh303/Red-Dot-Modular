@@ -146,3 +146,96 @@ A single connect dot can carry (a) only. (b)/(c)/(d) each need MORE: identity to
 ## 8. Suggested next step (not a decision)
 Answer Q1–Q2 first — group-vs-edge and one-discovery-rule — because every other question depends on
 them. Then Q6 (vocabulary). Then this becomes a spec and the CA primary badge falls out as a consumer.
+
+---
+
+## 9. THE THREE CONNECTION MODELS ALREADY IN THE CODE (inventory finding, Rodney)
+
+Connection isn't one model implemented inconsistently — it's THREE distinct models. Unification means
+naming them and making discovery + UI consistent WITHIN each, not collapsing them into one.
+
+**Model A — Claimed singleton per type (many expanders → one Monsoon).**
+`isClaimedExpander` (VisualExpanderHelpers.hpp) checks identity against ONE cached slot per type in
+`MonsoonExpanderManager` (cachedPolyVoiceExpander, cachedSandsVisualExpander, cachedCausewayPolyExpander,
+cachedChangiExpander, cachedChangeAlleyV2, …). A second of the same type reaches the Monsoon but
+`isConnectedAndClaimed` returns false → greys out. Enforces "one of each type per Monsoon."
+Members: Straits, Sands (mono/east/macro — plus the Sands TOPOLOGY class for their interactions),
+Causeway, Junction, Changi/T2/T3, Shophouse, Scale.
+
+**Model B — Contended exclusive resource (several types → one shared slot, one winner).**
+The TUNING SOURCE. Sikit AND Colonnades/Duo compete for ONE claim via `claimAsTuningSource`; loser greys.
+Resolution: order-of-discovery, Sikit preferred (`cachedSikit ? sikit : colonnades`, Monsoon.cpp ~102).
+`maskAuthored` cleared when the claimant isn't the mask-authoring Micro. This is why "one Colonnades OR
+Duo, not both, and not alongside Sikit" — they all contend for a single tuning authority.
+Members: Sikit, Colonnades, Colonnades Duo (and Interchange half-claim: first-bound claims a half,
+later ones on that half inert — a sub-variant).
+
+**Model C — Observer / reachability (no claim).**
+Lights on REACHABILITY ("can I see a Monsoon/Straits system"), NOT on claim — observers have no claim
+slot and "can't scale to N pairs" (Intertropical.cpp ~579). This is why MULTIPLE instances work.
+Members: Intertropical (many — many arrangements), Lantern, Sikit-as-observer paths.
+
+### Cardinality table (per Monsoon unless noted)
+| Module | Cardinality | Model | Notes |
+|---|---|---|---|
+| Straits | 1 | A | |
+| Sands mono / east / macro | 1 each | A | + Sands topology resolver class |
+| Causeway | 1 | A | |
+| Junction / Changi / T2 / T3 / Shophouse | 1 each | A | |
+| Sikit | 1 winner \ | B | contends tuning w/ Colonnades |
+| Colonnades / Duo | 1 winner, not both | B | contends tuning w/ Sikit |
+| Interchange | 1 per half (2) | B-variant | first-bound claims a half |
+| Intertropical | MANY | C | many arrangements |
+| Lantern | MANY | C | pure observer |
+| Change Alley | SHARED across N Monsoons | A-inverted | one CA, many Monsoons → needs PRIMARY |
+
+## 10. WHO NEEDS A DESIGNATED PRIMARY — the predicate (Rodney's question)
+
+**Primary is needed iff a SINGLE instance is reachable by MULTIPLE Monsoons AND performs an ASYMMETRIC
+operation (mutates shared state, or reads a value back FROM a host).**
+
+Applying it:
+- **Models A and B** are the OPPOSITE topology (many expanders → one Monsoon). Exclusivity runs the other
+  way (the Monsoon picks one claimant), so there is no primary question — there's a CLAIMANT question,
+  already solved. Not primary.
+- **Model C observers** never need a primary — read-only, each instance binds its own host. Permanently
+  exempt.
+- **Shared mutators** (one instance, many Monsoons) — the ONLY case. Today **CA is the only such module.**
+
+So: **CA is the only module needing a primary today.** The rule generalises to any future shared mutator.
+
+### Colonnades sharing — [OPEN, worth deciding]
+Colonnades is Model B (contended, one winner per Monsoon) today, NOT shared. But two Monsoons on ONE
+tuning authority is plausible (shared microtonal scale across a polymeter rig). IF allowed, tuning
+publish is a MUTATION, so shared-Colonnades would need a primary exactly like CA — or the same
+"both read, one writes" split. Decision: is tuning a shareable resource? If yes, it's the second module
+in the "shared mutator → needs primary" class, and the primary machinery should be built generic, not
+CA-specific.
+
+## 11. "NICE TO HAVE" connections — expressiveness wishlist (Rodney)
+
+Cases the current models DON'T express, worth weighing for musical value vs complexity. NOT commitments.
+
+- **[WISH] Cross-feed: an expander bound to a PRIMARY Monsoon but ALSO feeding a SECOND Monsoon**
+  (e.g. Sands feeding probabilities to another Monsoon while owned by its primary). This breaks Model A's
+  one-expander→one-host assumption: the expander now has a primary host (full claim) AND a secondary host
+  (partial, read-only feed). It's a DIRECTED, TYPED, ASYMMETRIC edge — "feeds probabilities to" is not the
+  same edge as "is claimed by." Musically real (share a generative dimension across two sequencers without
+  duplicating the source). Complexity: MODERATE-HIGH — needs (a) per-edge role/type, not per-node identity
+  (reinforces the edge-anchored answer to Q1), (b) a rule for what a secondary may READ vs DRIVE, (c) UI to
+  show a node with two differently-roled edges. This is the strongest argument that the underlying model is
+  a directed typed multigraph, with the singleton/claim cases as a constrained subset.
+- **[WISH] Shared Colonnades** (see §10) — one tuning authority, many Monsoons. Same shape as shared CA.
+- **[WISH] Expander bound to a system reachable only across rows** — pairId is rack-wide but host binding
+  is same-row; a nice-to-have is binding a generation expander to a Monsoon on another row (Q4).
+
+### Is the Sands cross-feed too complex?
+Not conceptually — it's the same "one instance, asymmetric edges to multiple hosts" shape as shared CA,
+just with the multiplicity on the EXPANDER side (feeds many) rather than the host side (owned by many).
+Both point at the SAME underlying model: directed, typed, asymmetric edges; primary/claim as one edge
+role among several. So the honest read: don't special-case it. If the connection model is built
+edge-anchored (Q1) with typed roles (claim / feed / observe) and a primary predicate (§10), Sands
+cross-feed and shared CA and shared Colonnades are all the SAME feature seen from different sides —
+and the model expresses all three without bespoke code. If instead the model stays node-anchored
+(one pairId per module), every one of these is a special case and the complexity is real. The
+cross-feed wish is therefore a strong vote for edge-anchored — it's the test case that decides Q1.
