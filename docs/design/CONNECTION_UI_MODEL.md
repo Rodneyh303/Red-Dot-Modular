@@ -146,3 +146,180 @@ A single connect dot can carry (a) only. (b)/(c)/(d) each need MORE: identity to
 ## 8. Suggested next step (not a decision)
 Answer Q1–Q2 first — group-vs-edge and one-discovery-rule — because every other question depends on
 them. Then Q6 (vocabulary). Then this becomes a spec and the CA primary badge falls out as a consumer.
+
+---
+
+## 9. THE THREE CONNECTION MODELS ALREADY IN THE CODE (inventory finding, Rodney)
+
+Connection isn't one model implemented inconsistently — it's THREE distinct models. Unification means
+naming them and making discovery + UI consistent WITHIN each, not collapsing them into one.
+
+**Model A — Claimed singleton per type (many expanders → one Monsoon).**
+`isClaimedExpander` (VisualExpanderHelpers.hpp) checks identity against ONE cached slot per type in
+`MonsoonExpanderManager` (cachedPolyVoiceExpander, cachedSandsVisualExpander, cachedCausewayPolyExpander,
+cachedChangiExpander, cachedChangeAlleyV2, …). A second of the same type reaches the Monsoon but
+`isConnectedAndClaimed` returns false → greys out. Enforces "one of each type per Monsoon."
+Members: Straits, Sands (mono/east/macro — plus the Sands TOPOLOGY class for their interactions),
+Causeway, Junction, Changi/T2/T3, Shophouse, Scale.
+
+**Model B — Contended exclusive resource (several types → one shared slot, one winner).**
+The TUNING SOURCE. Sikit AND Colonnades/Duo compete for ONE claim via `claimAsTuningSource`; loser greys.
+Resolution: order-of-discovery, Sikit preferred (`cachedSikit ? sikit : colonnades`, Monsoon.cpp ~102).
+`maskAuthored` cleared when the claimant isn't the mask-authoring Micro. This is why "one Colonnades OR
+Duo, not both, and not alongside Sikit" — they all contend for a single tuning authority.
+Members: Sikit, Colonnades, Colonnades Duo (and Interchange half-claim: first-bound claims a half,
+later ones on that half inert — a sub-variant).
+
+**Model C — Observer / reachability (no claim).**
+Lights on REACHABILITY ("can I see a Monsoon/Straits system"), NOT on claim — observers have no claim
+slot and "can't scale to N pairs" (Intertropical.cpp ~579). This is why MULTIPLE instances work.
+Members: Intertropical (many — many arrangements), Lantern, Sikit-as-observer paths.
+
+### Cardinality table (per Monsoon unless noted)
+| Module | Cardinality | Model | Notes |
+|---|---|---|---|
+| Straits | 1 | A | |
+| Sands mono / east / macro | 1 each | A | + Sands topology resolver class |
+| Causeway | 1 | A | |
+| Junction / Changi / T2 / T3 / Shophouse | 1 each | A | |
+| Sikit | 1 winner \ | B | contends tuning w/ Colonnades |
+| Colonnades / Duo | 1 winner, not both | B | contends tuning w/ Sikit |
+| Interchange | 1 per half (2) | B-variant | first-bound claims a half |
+| Intertropical | MANY | C | many arrangements |
+| Lantern | MANY | C | pure observer |
+| Change Alley | SHARED across N Monsoons | A-inverted | one CA, many Monsoons → needs PRIMARY |
+
+## 10. WHO NEEDS A DESIGNATED PRIMARY — the predicate (Rodney's question)
+
+**Primary is needed iff a SINGLE instance is reachable by MULTIPLE Monsoons AND performs an ASYMMETRIC
+operation (mutates shared state, or reads a value back FROM a host).**
+
+Applying it:
+- **Models A and B** are the OPPOSITE topology (many expanders → one Monsoon). Exclusivity runs the other
+  way (the Monsoon picks one claimant), so there is no primary question — there's a CLAIMANT question,
+  already solved. Not primary.
+- **Model C observers** never need a primary — read-only, each instance binds its own host. Permanently
+  exempt.
+- **Shared mutators** (one instance, many Monsoons) — the ONLY case. Today **CA is the only such module.**
+
+So: **CA is the only module needing a primary today.** The rule generalises to any future shared mutator.
+
+### Colonnades sharing — [OPEN, worth deciding]
+Colonnades is Model B (contended, one winner per Monsoon) today, NOT shared. But two Monsoons on ONE
+tuning authority is plausible (shared microtonal scale across a polymeter rig). IF allowed, tuning
+publish is a MUTATION, so shared-Colonnades would need a primary exactly like CA — or the same
+"both read, one writes" split. Decision: is tuning a shareable resource? If yes, it's the second module
+in the "shared mutator → needs primary" class, and the primary machinery should be built generic, not
+CA-specific.
+
+## 11. "NICE TO HAVE" connections — expressiveness wishlist (Rodney)
+
+Cases the current models DON'T express, worth weighing for musical value vs complexity. NOT commitments.
+
+>   **RESOLVED (Rodney): do NOT build cross-feed or shared Sands.** Two Monsoons seeded identically
+>   produce identical probabilities by construction (deterministic Philox spine), so each can keep its
+>   OWN Sands reading its own local copy and modulate it same or differently — correlation WITHOUT
+>   shared mutable state, no primary, no asymmetric edge. Establish the shared determinism domain with a
+>   SEEDER expander (see SEEDER_EXPANDER_CONCEPT.md). Live coupling (A's runtime deviation shows up in B)
+>   is the only thing seed-sharing can't express — rarer/less musical, left unbuilt. This retires the
+>   cross-feed wish below; kept for the record.
+
+- **[WISH] Cross-feed: an expander bound to a PRIMARY Monsoon but ALSO feeding a SECOND Monsoon**
+  (e.g. Sands feeding probabilities to another Monsoon while owned by its primary). This breaks Model A's
+  one-expander→one-host assumption: the expander now has a primary host (full claim) AND a secondary host
+  (partial, read-only feed). It's a DIRECTED, TYPED, ASYMMETRIC edge — "feeds probabilities to" is not the
+  same edge as "is claimed by." Musically real (share a generative dimension across two sequencers without
+  duplicating the source). Complexity: MODERATE-HIGH — needs (a) per-edge role/type, not per-node identity
+  (reinforces the edge-anchored answer to Q1), (b) a rule for what a secondary may READ vs DRIVE, (c) UI to
+  show a node with two differently-roled edges. This is the strongest argument that the underlying model is
+  a directed typed multigraph, with the singleton/claim cases as a constrained subset.
+- **[WISH] Shared Colonnades** (see §10) — one tuning authority, many Monsoons. Same shape as shared CA.
+- **[WISH] Expander bound to a system reachable only across rows** — pairId is rack-wide but host binding
+  is same-row; a nice-to-have is binding a generation expander to a Monsoon on another row (Q4).
+
+### Is the Sands cross-feed too complex?
+Not conceptually — it's the same "one instance, asymmetric edges to multiple hosts" shape as shared CA,
+just with the multiplicity on the EXPANDER side (feeds many) rather than the host side (owned by many).
+Both point at the SAME underlying model: directed, typed, asymmetric edges; primary/claim as one edge
+role among several. So the honest read: don't special-case it. If the connection model is built
+edge-anchored (Q1) with typed roles (claim / feed / observe) and a primary predicate (§10), Sands
+cross-feed and shared CA and shared Colonnades are all the SAME feature seen from different sides —
+and the model expresses all three without bespoke code. If instead the model stays node-anchored
+(one pairId per module), every one of these is a special case and the complexity is real. The
+cross-feed wish is therefore a strong vote for edge-anchored — it's the test case that decides Q1.
+
+---
+
+## 12. Ecosystem precedent — monome-rack (Dewb), and the ID lesson
+
+Verified from the monome-rack README (github.com/Dewb/monome-rack). Its module↔grid binding is the
+pattern that fixes our bug class:
+
+**Mechanism (TAKE this):** right-click a module (e.g. white whale) → SELECT a grid device from a list →
+"it should light up". Select a hardware grid instead → the virtual one "goes dark". So binding is:
+- EXPLICIT (user picks target from a context menu), not spatial/adjacency
+- POSITION-INDEPENDENT (reordering modules cannot change it — position was never the binding)
+- CONFIRMED VISUALLY (light up / go dark = which device this consumer is bound to)
+
+This directly answers our Q2 for the ambiguous cases: replace "walk left/right, first Monsoon wins" with
+"consumer chose its host". MSIC-vs-MSCI and C-M-M-C both dissolve because position stops being the rule.
+
+**IDs (REJECT this part — Rodney's observation):** monome-rack's device IDs are long, opaque,
+hex-ish/random-looking strings — machine identity. Fine for monome (bind ONE module to ONE grid once, via
+the menu, never look at the ID again). Does NOT scale to OUR case: multiple Monsoons where the user must
+track which expander is bound to which AT A GLANCE, continuously, on the panel. An opaque ID can't be
+eyeballed.
+
+**Synthesis — best of both:** monome's SELECTION MECHANISM + our pairId/pairColour IDENTITY.
+- Bind by explicit menu choice (monome), NOT adjacency.
+- Identify by COLOUR + small integer (ours), NOT opaque hex. A colour badge is glanceable; a hex string
+  is not. Our existing pairColour badge is exactly the human-friendly token monome lacks.
+- Result: right-click Colonnades → pick "Monsoon (teal) / #2" → teal badge confirms. Position-independent,
+  human-legible, continuously visible. Strictly better than either system alone.
+
+This also informs Q1: selection-based binding is naturally EDGE-ish (a chosen consumer→host link), but the
+IDENTITY shown can stay NODE-anchored (pairId/colour per host). So we can keep node-anchored identity
+(simpler, and enough now that cross-feed is retired) while borrowing edge-style EXPLICIT binding for the
+multi-host disambiguation. Adjacency stays as the zero-config default for the common one-Monsoon rig;
+explicit selection is the override that appears only when there's ambiguity.
+
+**Still to verify from monome-rack src/ (engineering, not UX):** device ENUMERATION (how the list is
+built), PERSISTENCE of the chosen binding across save/load, and graceful handling when a bound device is
+DELETED or missing on reload. These are the hard parts of any selection-based system and where the reusable
+lessons live. [OPEN — read src/ before implementing.]
+
+## 13. monome-rack ENGINEERING lessons (from source/API, not just UX)
+
+Structure: a `GridConnection` abstraction with two impls — `SerialOscGridConnection` (hardware, via
+serialosc) and `VirtualGridConnection` (in-Rack). Devices enumerated from a registry; each device carries
+a serial-number identity; consumer selects one from the enumerated list. API shows `enumerate_devices()`,
+`DeviceChangeEvent::Added/Removed` callbacks, and `MonomeDevice` (type + serial + port).
+
+Four lessons:
+1. **Registry/enumeration layer.** Binding is NOT module→module direct — a middle layer maintains "what
+   targets exist now" and the consumer selects from it. For us: don't have each expander walk the chain;
+   have a REGISTRY OF MONSOONS expanders select from. We already have the seed — MonsoonExpanderManager +
+   presentPairIds() — so this formalises what partially exists.
+2. **Add/removed lifecycle is first-class.** monome has device Added/Removed events because grids get
+   plugged/unplugged. Our equivalent = Monsoons added/deleted from the patch. A bound expander MUST handle
+   its host vanishing gracefully (fall back to unbound; never crash or silently mis-bind). Design the
+   unbind path from the start.
+3. **Stable-ID persistence.** Identity = device serial, stable/unique, persists across reload; that's what
+   the saved patch stores. Our equivalent = pairId. Store the binding by stable ID; DISPLAY the colour/
+   number, not the raw ID (monome shows the serial only because it has nothing better — we have colour).
+
+4. **THE LESSON THAT DOES NOT TRANSFER (important):** monome's always-explicit selection exists because
+   grids are EXTERNAL, discovered over a network protocol, with NO spatial relationship — adjacency was
+   never available, so explicit selection was forced. WE HAVE ADJACENCY FOR FREE (modules are physically
+   neighbours). So do NOT wholesale-adopt always-explicit binding — that forces config onto every simple
+   one-Monsoon rig that currently works with zero setup.
+
+**Refined model:** ADJACENCY as the zero-config default (which monome couldn't have) + explicit
+REGISTRY-SELECTION as the disambiguation override only when >1 Monsoon is reachable (built the way monome
+does it: registry, Added/Removed lifecycle, stable-ID persistence, graceful unbind). monome's rigour for
+the hard case; adjacency's zero-config for the common case. Better than either alone.
+
+Concretely for Q2 (one discovery rule): the rule becomes "if exactly one Monsoon reachable → bind it
+(adjacency, zero-config); if >1 reachable → use the stored explicit selection, else prompt/most-recent;
+if the bound one disappears → unbind gracefully and re-evaluate." Order-independent, and simple rigs never
+see a menu.
