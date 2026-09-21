@@ -116,7 +116,8 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         //   live-under-lock => only the axes whose CA scope bit is set.
         const bool caLiveR = engine.locked && (engine.scopeLiveMask & (1u << 4)) != 0;   // SB_CA_R
         const bool caLiveM = engine.locked && (engine.scopeLiveMask & (1u << 5)) != 0;   // SB_CA_M
-        const bool fireNow = caQueueFires || caLiveR || caLiveM;
+        const bool caLiveQ = engine.locked && (engine.scopeLiveMask & (1u << 12)) != 0;  // SB_CA_Q (q-mix)
+        const bool fireNow = caQueueFires || caLiveR || caLiveM || caLiveQ;
         // OWNER GUARD (CA_SHARED_EXPANDER_BUILD §Step4): applyPendingTransforms MUTATES the CA's pins,
         // so with a SHARED CA only ONE Monsoon may call it per block. The CA resets
         // transformsAppliedThisBlock at the top of its process(); the FIRST sync() to apply sets it,
@@ -124,11 +125,16 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         // SandsManager::processDNA, unchanged). Single-CA patches: the sole owner sets it once — inert.
         if (fireNow && !v2->transformsAppliedThisBlock) {
             const int vActive = std::max(1, engine.numPolyVoices + 1);   // OWNER's voice count = CA operating count
-            // Which axes commit this call: queue fire => both; else only the live-under-lock axes.
-            const unsigned axisMask = caQueueFires ? 0b11u
-                                    : ((caLiveR ? 0b01u : 0u) | (caLiveM ? 0b10u : 0u));
+            // Which axes commit this call: queue fire => all three (rhythm/melody/q-mix); else only
+            // the live-under-lock axes. BUGFIX: the queue-fire mask was 0b11 (rhythm+melody only), so
+            // q-mix rows (type==2 → bit 0b100) never satisfied applyPendingTransforms's axis gate —
+            // they queued, lit the pending lamp, but never committed or cleared. Now 0b111, with a
+            // caLiveQ term for the live-under-lock branch (SB_CA_Q).
+            const unsigned axisMask = caQueueFires
+                ? 0b111u
+                : ((caLiveR ? 0b001u : 0u) | (caLiveM ? 0b010u : 0u) | (caLiveQ ? 0b100u : 0u));
             // Apply is OWNED by the CA module (applyPendingTransforms); the manager decides WHEN and
-            // (now) which AXES. rhythm rows (type==0) gated by bit0, melody rows (type==1) by bit1.
+            // which AXES. rhythm rows (type==0) → bit0, melody (type==1) → bit1, q-mix (type==2) → bit2.
             v2->applyPendingTransforms(vActive, axisMask);
             v2->transformsAppliedThisBlock = true;   // first caller this block = the owner
         }
