@@ -88,8 +88,13 @@ is a WRITE to CA's shared state, so it cannot be driven by both hosts — one lo
 incoherent commit state for CA's shared pins. Therefore:
 - **Only the PRIMARY Monsoon** (CA_SHARED_EXPANDER_BUILD.md "PRIMARY MONSOON": lowest pairId, else
   right-first adjacency) sets CA's lock-mode PARTICIPATION.
-- **Mod-ring display** (if applicable) is likewise driven by the PRIMARY only — it's a single display
-  authority reading back shared state; two drivers would fight.
+- **CORRECTION (Rodney): mod ring is NOT primary-gated.** The "mod ring" is the STANDARD per-knob Rack
+  modulation ring already used across the suite (arc showing a knob param's live CV modulation vs its set
+  position). CA's knob params are CA-LOCAL and single-valued; the CV modulating a CA knob is whatever is
+  patched to that knob's input, independent of how many Monsoons read CA. So the ring shows one true thing
+  and every Monsoon sees the same ring — it is a READ of a CA-local param, not a write to shared state.
+  Do NOT gate it on primary. (This supersedes the earlier line here that grouped mod ring with lock
+  participation — that conflated a shared-state WRITE with a local-param READ.)
 - Both are set via CA context menu, but the menu items are ACTIVE only on the primary's authority;
   secondary Monsoons do not toggle CA lock/participation.
 This is the same §10 predicate as reseed/theme: asymmetric op on shared state -> primary owns it. Adds
