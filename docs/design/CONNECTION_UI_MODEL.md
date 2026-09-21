@@ -247,3 +247,43 @@ cross-feed and shared CA and shared Colonnades are all the SAME feature seen fro
 and the model expresses all three without bespoke code. If instead the model stays node-anchored
 (one pairId per module), every one of these is a special case and the complexity is real. The
 cross-feed wish is therefore a strong vote for edge-anchored — it's the test case that decides Q1.
+
+---
+
+## 12. Ecosystem precedent — monome-rack (Dewb), and the ID lesson
+
+Verified from the monome-rack README (github.com/Dewb/monome-rack). Its module↔grid binding is the
+pattern that fixes our bug class:
+
+**Mechanism (TAKE this):** right-click a module (e.g. white whale) → SELECT a grid device from a list →
+"it should light up". Select a hardware grid instead → the virtual one "goes dark". So binding is:
+- EXPLICIT (user picks target from a context menu), not spatial/adjacency
+- POSITION-INDEPENDENT (reordering modules cannot change it — position was never the binding)
+- CONFIRMED VISUALLY (light up / go dark = which device this consumer is bound to)
+
+This directly answers our Q2 for the ambiguous cases: replace "walk left/right, first Monsoon wins" with
+"consumer chose its host". MSIC-vs-MSCI and C-M-M-C both dissolve because position stops being the rule.
+
+**IDs (REJECT this part — Rodney's observation):** monome-rack's device IDs are long, opaque,
+hex-ish/random-looking strings — machine identity. Fine for monome (bind ONE module to ONE grid once, via
+the menu, never look at the ID again). Does NOT scale to OUR case: multiple Monsoons where the user must
+track which expander is bound to which AT A GLANCE, continuously, on the panel. An opaque ID can't be
+eyeballed.
+
+**Synthesis — best of both:** monome's SELECTION MECHANISM + our pairId/pairColour IDENTITY.
+- Bind by explicit menu choice (monome), NOT adjacency.
+- Identify by COLOUR + small integer (ours), NOT opaque hex. A colour badge is glanceable; a hex string
+  is not. Our existing pairColour badge is exactly the human-friendly token monome lacks.
+- Result: right-click Colonnades → pick "Monsoon (teal) / #2" → teal badge confirms. Position-independent,
+  human-legible, continuously visible. Strictly better than either system alone.
+
+This also informs Q1: selection-based binding is naturally EDGE-ish (a chosen consumer→host link), but the
+IDENTITY shown can stay NODE-anchored (pairId/colour per host). So we can keep node-anchored identity
+(simpler, and enough now that cross-feed is retired) while borrowing edge-style EXPLICIT binding for the
+multi-host disambiguation. Adjacency stays as the zero-config default for the common one-Monsoon rig;
+explicit selection is the override that appears only when there's ambiguity.
+
+**Still to verify from monome-rack src/ (engineering, not UX):** device ENUMERATION (how the list is
+built), PERSISTENCE of the chosen binding across save/load, and graceful handling when a bound device is
+DELETED or missing on reload. These are the hard parts of any selection-based system and where the reusable
+lessons live. [OPEN — read src/ before implementing.]
