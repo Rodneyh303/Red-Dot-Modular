@@ -207,3 +207,16 @@ additionally owns reseed-on-restart, theme, mutation, and voice count; the pair 
 
 Status: SPEC (Rodney). Folds in the reseed-on-restart ownership decision. Build alongside Step 4 +
 the reseed feature; the badge is now part of the shared-CA deliverable, not optional.
+
+### Mod-ring SCOPE menu: only the CA ENTRY defers to primary (Rodney)
+Monsoon's context menu has a mod-ring-SCOPE setting listing several expanders (Sands, Causeway, …, and
+CA) — "which expanders show mod rings". It is one-per-Monsoon and fully coherent for every SINGLE-OWNER
+expander (Model A: one host each) — those entries are unaffected, each Monsoon controls its own.
+Only the **CA entry** is ambiguous, because CA is the one SHARED expander: two Monsoons sharing a CA could
+set opposite CA-scope choices, and CA's single knob display can't obey both.
+Rule (narrow): within the mod-ring-scope menu, the **CA entry defers to the PRIMARY** — a secondary
+Monsoon's CA entry greys out / does nothing; only the primary's CA-scope choice governs whether CA shows
+mod rings. Every other entry in the menu is untouched.
+NOTE distinction: the mod RING itself is a CA-local param read, same for all Monsoons, NOT primary-gated
+(see LOCK_MODE_PLAN.md correction). What's primary-owned here is only the per-Monsoon SCOPE SETTING's CA
+entry — the choice of whether this Monsoon's scope control governs the shared CA. Setting, not ring.
