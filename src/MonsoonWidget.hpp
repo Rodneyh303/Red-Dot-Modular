@@ -35,7 +35,7 @@ struct MonsoonWidget : ModuleWidget, dotModular::Compose<MonsoonWidget, dotModul
     void appendContextMenu(ui::Menu* menu) override;
     void step() override;  // forwards to kitStep() for dev live-reload
 
-    static constexpr float W_MM = 203.2f; // Updated to 40HP (172.72 + 30.48)
+    static constexpr float W_MM = 228.6f; // 45HP (was 203.2 / 40HP) — see panel_src/monsoon_art.py W_MM
     static constexpr float SL_TOP = 45.f; //top of slider
     static constexpr float SLH = 29.5f; //slider hieght, used for label positioning
 

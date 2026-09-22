@@ -29,8 +29,13 @@ import math, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-W_MM, H_MM = 203.2, 128.5          # 40HP
-S75 = 600 / 203.2
+W_MM, H_MM = 228.6, 128.5          # 45HP (was 203.2 / 40HP)
+# The whole RIGHT-HAND CLUSTER shifts by this so its internal spacing is unchanged; the extra
+# width opens up on the right (6.4mm gap between the new 6th Big-Five ring and the Flyer). Applied
+# to FLYER_C, PHASE_X0, MODE_PARAM_XY, MODE_LIGHT_X and STATUS_DOT. The lower-right rail drops and
+# the jack rows are deliberately NOT shifted — the freed ~25mm there is reserved for the dice pass.
+DX_RIGHT = 25.4
+S75 = 600 / 203.2                  # px-per-mm UNCHANGED (still authored/emitted at the same dpi)
 S96 = 768 / 203.2
 
 
@@ -77,18 +82,18 @@ CLOUDS = [(15, 10, 14, 7), (28, 8, 18, 8), (42, 11, 14, 7), (55, 9, 16, 7), (8, 
           (68, 10, 16, 6), (80, 16, 10, 5), (135, 8, 18, 7), (150, 6, 14, 6), (165, 9, 16, 5),
           (178, 7, 10, 5)]
 
-BIG5_X0, BIG5_PITCH, BIG5_N, BIG5_Y = 16.0, 26.0, 5, 22.0   # Big-Five knob row
+BIG5_X0, BIG5_PITCH, BIG5_N, BIG5_Y = 16.0, 26.0, 6, 22.0   # Big-Five knob row (now 6: q-mix LEVEL is the 6th)
 BIG5_R_OUT, BIG5_R_IN = 11.0, 7.5
 
-PHASE_X0, PHASE_PITCH, PHASE_N, PHASE_Y = 148.0, 15.0, 3, 58.0   # BPM / LEN / OFFSET
+PHASE_X0, PHASE_PITCH, PHASE_N, PHASE_Y = 148.0 + DX_RIGHT, 15.0, 3, 58.0   # BPM / LEN / OFFSET (right cluster: +DX_RIGHT)
 PHASE_R_OUT, PHASE_R_IN = 6.0, 4.0
 
-FLYER_C = (162.0, 30.0)             # Singapore Flyer = 16-step LED ring
+FLYER_C = (162.0 + DX_RIGHT, 30.0)  # Singapore Flyer = 16-step LED ring (right cluster: +DX_RIGHT)
 FLYER_GLOW = [(20, "0.022"), (16, "0.027"), (12, "0.045"), (8, "0.047"), (4, "0.050")]
 FLYER_R, FLYER_R_OUTER = 20.0, 24.0
 FLYER_SPOKES, FLYER_SPOKE_R0, FLYER_SPOKE_R1 = 16, 18.5, 23.0
 
-RAIL_X0, RAIL_X1 = 8.0, 195.2       # red skyway rails
+RAIL_X0, RAIL_X1 = 8.0, W_MM - 8.0  # red skyway rails (keeps the 8mm right margin at any width)
 RAIL_YS = (42.0, 78.0, 98.0)
 BIG5_DROP_TOP = 33.0                # knob -> rail drop lines
 LOWER_DROP_X0, LOWER_DROP_PITCH, LOWER_DROP_N, LOWER_DROP_BOT = 104.0, 18.0, 5, 100.1
@@ -96,9 +101,12 @@ LOWER_DROP_X0, LOWER_DROP_PITCH, LOWER_DROP_N, LOWER_DROP_BOT = 104.0, 18.0, 5, 
 DIVIDER_YS = (14.0, 42.0, 78.0, 98.0, 113.0)
 DIVIDER_VX = 93.0                   # dashed vertical, from 98mm to the ground
 
-STATUS_DOT = (199.2, 4.0, _w(4.0))  # red dot, top-right
+STATUS_DOT = (199.2 + DX_RIGHT, 4.0, _w(4.0))  # red dot, top-right (right cluster: +DX_RIGHT)
 
-LOGO_POS_MM = (290.8 / S96, 2.0 / S96)   # origin of the 717x190 logo space (live placement)
+# origin of the 717x190 logo space (live placement) + DX_RIGHT/2 so the wordmark stays centred on
+# the WIDER panel. [TASTE — Rodney to judge from the render: keep this (centred on the panel) vs
+# centring it over the six Big-Five knobs instead.]
+LOGO_POS_MM = (290.8 / S96 + DX_RIGHT / 2, 2.0 / S96)
 LOGO_SCALE_MM = 0.26 / S96               # logo units -> mm
 
 # Supertrees: (trunk_cx, canopy_cx, height, base_width) — see supertree_geometry()
@@ -190,10 +198,15 @@ def base_art(S=S75, theme="dark"):
     e.rect(0, 0, W_MM, H_MM, t["bg"])
     for k in range(SKY_BANDS):
         e.rect(0, k * SKY_BAND_MM, W_MM, SKY_BAND_MM, t["sky"], f"{0.95 - 0.1 * k:.3f}")
+    # Right-hand clouds (cx > 100) ride with the shifted right cluster; left clouds stay put.
     for cx, cy, rx, ry in CLOUDS:
-        e.ellipse(cx, cy, rx, ry, fill=t["cloud"], op=t["cloud_op"])
+        e.ellipse(cx + (DX_RIGHT if cx > 100 else 0), cy, rx, ry, fill=t["cloud"], op=t["cloud_op"])
 
-    geos = [supertree_geometry(*tr) for tr in TREES]
+    # Supertrees spread PROPORTIONALLY across the new width (trunk + canopy x scaled by
+    # W_MM/203.2); heights/base-widths unchanged. [TASTE — Rodney to judge from the render:
+    # this proportional spread vs keeping the original positions and adding a 7th tree on the right.]
+    tree_sx = W_MM / 203.2
+    geos = [supertree_geometry(tcx * tree_sx, ccx * tree_sx, h, bw) for (tcx, ccx, h, bw) in TREES]
     for g in geos:                                   # tree fill layer
         e.polygon(g["trunk"], fill=t["tree_fill"], op="0.78")
         e.ellipse(*g["canopy"], fill=t["tree_fill"], op="0.78")
@@ -267,42 +280,66 @@ def logo(S=S75, theme="dark"):
 # ══ LAYOUT TABLE — every control, light and jack. THE single source for positions. ════════════════
 # Emitted as the SVG `components` layer (kit anchors: MonsoonWidget binds by id via SvgPanelKit), and
 # the visible control wells in `cluster-art` are derived from the SAME entries — they cannot drift.
-# Reproduces the CURRENT panel exactly (incl. the Sept-19 q-mix hand edits). Known oddities kept
-# faithfully, to be revisited with the dice/phase rework:
+# The control row was cleaned up (see ROW below): the old uniform 12-slot ROW, the q-mix sub-row
+# ROW2, and the dice lights' separate row are now ONE row at y=87 with explicit per-control x.
+# Remaining known oddities, to be revisited later:
 #   * BPM/LEN/OFFSET knobs sit at y=60 but their rings (PHASE_Y) are centred at y=58.
-#   * QMIX_DICE_LIGHT is centred ON its button (87); its twins RHYTHM/MELODY_DICE_LIGHT sit on the
-#     light row (93) below theirs.
-#   * QMIX_LEVEL knob occupies an output-jack slot (182,120) and has no well.
 #   * PHASE_PARAM (Mode E phase knob) is a TEMPORARY placement at (178,72).
-#   * ROW2 (q-mix sub-row, hand-placed Sept 19 at exactly 280px = 94.83mm) COLLIDES with the light
-#     row: RHYTHM/MELODY_DICE_LIGHT (y=93) sit 1.8mm above LAST_DICE_R/M (y=94.83). No wells.
-MODE_PARAM_XY = (194.0, 60.0)
-MODE_LIGHT_X, MODE_LIGHT_Y0, MODE_LIGHT_PITCH = 197.5, 13.0, 9.0
+# Moved straight down 10mm (60->70): the old y=60 spot overlapped the "F" mode key-cap; y=70
+# clears the "phase quant" caption and sits above the rail at y=78. (x still right-cluster +DX_RIGHT.)
+MODE_PARAM_XY = (194.0 + DX_RIGHT, 70.0)                    # right cluster: +DX_RIGHT
+MODE_LIGHT_X, MODE_LIGHT_Y0, MODE_LIGHT_PITCH = 197.5 + DX_RIGHT, 13.0, 9.0   # right cluster: +DX_RIGHT
 
-BIG5_IDS = ["NOTE_VALUE_PARAM", "VARIATION_PARAM", "LEGATO_PARAM", "REST_PARAM", "ACCENT_KNOB"]
+# Six Big-Five knobs: q-mix LEVEL is now the 6th (lands at x=BIG5_X0+5*26=146, y=22 via layout()).
+# Its ring/drop-line/rail-dot follow automatically from BIG5_N=6. Anchor id kept param_QMIX_LEVEL_PARAM.
+BIG5_IDS = ["NOTE_VALUE_PARAM", "VARIATION_PARAM", "LEGATO_PARAM", "REST_PARAM", "ACCENT_KNOB",
+            "QMIX_LEVEL_PARAM"]
 PHASE_KNOB_IDS = ["BPM_PARAM", "PATTERN_LENGTH_PARAM", "PATTERN_OFFSET_PARAM"]
 PHASE_KNOB_Y = 60.0
 
-ROW_X0, ROW_PITCH, ROW_Y, ROW_LIGHT_Y = 12.0, 16.7, 87.0, 93.0     # 12-slot control row
-# (param id, well kind, light id or None, light on button?)
+# ── ONE clean control row (was: uniform 12-slot ROW at x=12+16.7i, the q-mix sub-row ROW2 at
+#    y=94.83, and the dice lights' separate row). Now a single row at y=87 with EXPLICIT per-
+#    control x (mm) — the six groups use different pitches, so there is NO uniform-pitch formula.
+#    Grouping / x-values chosen so DICE_R lines up with the RUN input jack column below (x=15) and
+#    the row is balanced (~14mm margin each side) on the 45HP panel.
+ROW_Y, ROW_LIGHT_Y = 87.0, 93.0
+# (param id, x_mm, well kind). kind ∈ seat_red|seat_gold (dice buttons), trim (slew),
+#  mix (A/B mix), util (utility button). BOTH buttons of each dice triple get a seat in the
+#  stream colour (R/M red, Q gold). LAST_DICE_R/M and DICE_SLEW_Q gain wells they never had.
 ROW = [
-    ("DICE_SLEW_R_PARAM",  "trim",  None, False),
-    ("DICE_SLEW_M_PARAM",  "trim",  None, False),
-    ("DICE_R_PARAM",       "seat_red",  "RHYTHM_DICE_LIGHT", False),
-    ("DICE_M_PARAM",       "seat_red",  "MELODY_DICE_LIGHT", False),
-    ("DICE_Q_PARAM",       "seat_gold", "QMIX_DICE_LIGHT",   True),
-    ("LAST_DICE_Q_PARAM",  "seat_gold", None, False),
-    ("RHYTHM_MIX_PARAM",   "mix",   None, False),
-    ("MELODY_MIX_PARAM",   "mix",   None, False),
-    ("LOCK_PARAM",         "util",  "LOCK_LIGHT",     False),
-    ("MUTE_PARAM",         "util",  "MUTE_LIGHT",     False),
-    ("RESET_BUTTON_PARAM", "util",  "RESET_LIGHT",    False),
-    ("RUN_GATE_PARAM",     "util",  "RUN_GATE_LIGHT", False),
+    ("DICE_R_PARAM",        15.0,  "seat_red"),   # rhythm dice
+    ("LAST_DICE_R_PARAM",   28.0,  "seat_red"),
+    ("DICE_M_PARAM",        39.0,  "seat_red"),   # melody dice
+    ("LAST_DICE_M_PARAM",   52.0,  "seat_red"),
+    ("DICE_Q_PARAM",        63.0,  "seat_gold"),  # q-mix dice
+    ("LAST_DICE_Q_PARAM",   76.0,  "seat_gold"),
+    ("DICE_SLEW_R_PARAM",   90.0,  "trim"),       # slew
+    ("DICE_SLEW_M_PARAM",  103.0,  "trim"),
+    ("DICE_SLEW_Q_PARAM",  116.0,  "trim"),
+    ("RHYTHM_MIX_PARAM",   130.0,  "mix"),        # A/B mix
+    ("MELODY_MIX_PARAM",   143.0,  "mix"),
+    ("QMIX_MIX_PARAM",     156.0,  "mix"),
+    ("LOCK_PARAM",         170.0,  "util"),       # utility
+    ("MUTE_PARAM",         185.0,  "util"),
+    ("RESET_BUTTON_PARAM", 200.0,  "util"),
+    ("RUN_GATE_PARAM",     215.0,  "util"),
 ]
 
-# q-mix sub-row under slots 2-5 (same column grid): (slot, param id)
-ROW2_Y = 280.0 / S75
-ROW2 = [(2, "LAST_DICE_R_PARAM"), (3, "LAST_DICE_M_PARAM"), (4, "QMIX_MIX_PARAM"), (5, "DICE_SLEW_Q_PARAM")]
+# Dice lamps sit INLINE at y=87, between each stream's NEXT and LAST buttons: (light id, x_mm).
+# (Fixes the old oddity: the Q light sat ON its button while R/M lights sat 6mm below theirs.)
+ROW_DICE_LIGHTS = [
+    ("RHYTHM_DICE_LIGHT", 21.5),
+    ("MELODY_DICE_LIGHT", 45.5),
+    ("QMIX_DICE_LIGHT",   69.5),
+]
+# Utility lamps stay directly BELOW their buttons at y=93: (light id, param id it sits under).
+ROW_UTIL_LIGHTS = [
+    ("LOCK_LIGHT",     "LOCK_PARAM"),
+    ("MUTE_LIGHT",     "MUTE_PARAM"),
+    ("RESET_LIGHT",    "RESET_BUTTON_PARAM"),
+    ("RUN_GATE_LIGHT", "RUN_GATE_PARAM"),
+]
+ROW_X = {p: x for p, x, _ in ROW}   # id -> x lookup (utility lamps + labels read this)
 
 JACK_PITCH, JACK_Y = 17.0, (105.0, 120.0)
 IN_X0, OUT_X0 = 15.0, 114.0
@@ -310,10 +347,13 @@ INPUTS = [["RUN_GATE_INPUT", "RESET_TRIGGER_INPUT", "SEED_INPUT", "GATE1_INPUT",
           ["CLK_INPUT", "LENGTH_INPUT", "OFFSET_INPUT", "CV1_INPUT", "CV2_INPUT", "CV3_MOD_INPUT"]]
 OUTPUTS = [["GATE_OUTPUT", "TIE_OUTPUT", "LEGATO_OUTPUT", "TIE_OR_LEGATO_OUTPUT", "ACCENT_OUTPUT"],
            ["CV_OUTPUT", "SEED_OUTPUT", "RUN_GATE_OUTPUT", "RESET_TRIGGER_OUTPUT"]]
-QMIX_LEVEL_XY = (OUT_X0 + 4 * JACK_PITCH, JACK_Y[1])     # knob in the 5th bottom output slot
+# (QMIX_LEVEL_XY removed: q-mix LEVEL is now the 6th Big-Five knob (BIG5_IDS), not an output-slot
+#  knob. The freed 5th bottom-output slot at (182,120) is reserved for the dice/jack pass.)
 
 STEP_LEDS, STEP_LED_R = 16, 14.0                          # on the Flyer, centred FLYER_C
-PHASE_PARAM_XY = (178.0, 72.0)                            # TEMPORARY (see note above)
+# Mode E phase knob: one 15mm step LEFT of BPM on the phase row (was jammed under the BPM label).
+# Defined relative to the phase row so it tracks it. No base-art ring (it's the smaller cog).
+PHASE_PARAM_XY = (PHASE_X0 - PHASE_PITCH, PHASE_KNOB_Y)   # = (158.4, 60.0)
 
 ANCHOR_R_PX = 3.0                                         # anchors are invisible; radius is nominal
 
@@ -328,17 +368,15 @@ def layout():
     A += [(f"param_{n}", x, FADER_Y_MM) for n, x in zip(names, FADERS_MM)]
     A += [(f"param_{n}", BIG5_X0 + i * BIG5_PITCH, BIG5_Y) for i, n in enumerate(BIG5_IDS)]
     A += [(f"param_{n}", PHASE_X0 + i * PHASE_PITCH, PHASE_KNOB_Y) for i, n in enumerate(PHASE_KNOB_IDS)]
-    A += [(f"param_{p}", ROW_X0 + i * ROW_PITCH, ROW_Y) for i, (p, _, _, _) in enumerate(ROW)]
-    A += [(f"param_{p}", ROW_X0 + slot * ROW_PITCH, ROW2_Y) for slot, p in ROW2]
+    A += [(f"param_{p}", x, ROW_Y) for p, x, _ in ROW]
     for r, row in enumerate(INPUTS):
         A += [(f"input_{n}", IN_X0 + i * JACK_PITCH, JACK_Y[r]) for i, n in enumerate(row)]
     for r, row in enumerate(OUTPUTS):
         A += [(f"output_{n}", OUT_X0 + i * JACK_PITCH, JACK_Y[r]) for i, n in enumerate(row)]
-    A.append(("param_QMIX_LEVEL_PARAM", *QMIX_LEVEL_XY))
-    # NEW anchors — replace the widget's remaining hardcoded placements
-    for i, (p, _, light, on_btn) in enumerate(ROW):
-        if light:
-            A.append((f"light_{light}", ROW_X0 + i * ROW_PITCH, ROW_Y if on_btn else ROW_LIGHT_Y))
+    # (param_QMIX_LEVEL_PARAM is now emitted by the BIG5_IDS loop above as the 6th knob.)
+    # Dice lamps INLINE at y=87 (between NEXT and LAST); utility lamps at y=93 below their buttons.
+    A += [(f"light_{lid}", x, ROW_Y) for lid, x in ROW_DICE_LIGHTS]
+    A += [(f"light_{lid}", ROW_X[p], ROW_LIGHT_Y) for lid, p in ROW_UTIL_LIGHTS]
     fx, fy = FLYER_C
     for i in range(STEP_LEDS):
         a = i / STEP_LEDS * 2 * math.pi - math.pi / 2
@@ -373,8 +411,7 @@ def cluster_art(S=S75, theme="dark"):
     t = THEMES[theme]
     px1, px09 = 1.0 / S75, 0.9 / S75          # authored as 1px / 0.9px at 75dpi
     e = _E(S)
-    for i, (_, kind, _, _) in enumerate(ROW):
-        x = ROW_X0 + i * ROW_PITCH
+    for _, x, kind in ROW:
         if kind.startswith("seat"):
             col = t["seat_red"] if kind == "seat_red" else t["seat_gold"]
             e.o.append(f'<rect x="{e.P(x-SEAT/2)}" y="{e.P(ROW_Y-SEAT/2)}" width="{e.P(SEAT)}" '
