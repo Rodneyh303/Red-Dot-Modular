@@ -13,11 +13,13 @@ Makes "accurate" measurable for the Monsoon reverse-engineer (MONSOON_PANEL_REVE
   differing region — so you can see WHERE it's wrong, not just that it is.
 - Writes a triptych PNG: live | candidate | amplified diff (red = mismatch).
 
-Caveat: cairosvg is a proxy for Rack's nanosvg. The live panel is nanosvg-safe (no gradients/patterns/
-url()/text), so for this panel the proxy is fair for the SVG layer. Runtime-drawn framing/labels
-(MonsoonWidget::draw) are NOT in either SVG and cannot be checked here.
+--renderer nanosvg (DEFAULT) renders with nanosvg — the parser Rack uses — via panel_src/tools/nsvgrender
+(build with panel_src/tools/build_nsvgrender.sh). Use it: cairosvg follows browser rules and gets opacity
+WRONG for Rack (nanosvg does not compound opacity through <g>; the innermost opacity wins).
+--renderer cairo is kept for comparison. Runtime-drawn framing/labels (MonsoonWidget::draw) are in
+neither SVG and cannot be checked here.
 """
-import argparse, io, re, sys
+import argparse, io, os, re, subprocess, sys, tempfile
 import cairosvg
 import numpy as np
 from PIL import Image
@@ -35,10 +37,25 @@ def viewbox(svg: str):
     return w, h
 
 
-def render(svg: str, W: int, H: int) -> np.ndarray:
-    png = cairosvg.svg2png(bytestring=svg.encode(), output_width=W, output_height=H,
-                           background_color="#000000")
-    return np.asarray(Image.open(io.BytesIO(png)).convert("RGB"), dtype=np.int16)
+NSVG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "nsvgrender")
+
+
+def render(svg: str, W: int, H: int, renderer: str = "nanosvg") -> np.ndarray:
+    if renderer == "cairo":
+        png = cairosvg.svg2png(bytestring=svg.encode(), output_width=W, output_height=H,
+                               background_color="#000000")
+        return np.asarray(Image.open(io.BytesIO(png)).convert("RGB"), dtype=np.int16)
+    if not os.path.exists(NSVG):
+        sys.exit("nsvgrender missing — run panel_src/tools/build_nsvgrender.sh")
+    with tempfile.TemporaryDirectory() as d:
+        src, out = os.path.join(d, "p.svg"), os.path.join(d, "p.rgba")
+        open(src, "w").write(svg)
+        w, h = viewbox(svg)
+        wh = subprocess.run([NSVG, src, out, str(W / w)], capture_output=True, text=True).stdout.split()
+        rw, rh = int(wh[0]), int(wh[1])
+        a = np.frombuffer(open(out, "rb").read(), dtype=np.uint8).reshape(rh, rw, 4).astype(np.int32)
+        rgb = (a[..., :3] * a[..., 3:4] // 255).astype(np.int16)   # over black
+        return rgb[:H, :W] if rh >= H and rw >= W else np.pad(rgb, ((0, H-rh), (0, W-rw), (0, 0)))
 
 
 def main():
@@ -47,6 +64,7 @@ def main():
     ap.add_argument("--scale", type=float, default=3.0)
     ap.add_argument("--out", default="/tmp/panel_diff.png")
     ap.add_argument("--no-components", action="store_true")
+    ap.add_argument("--renderer", choices=["nanosvg", "cairo"], default="nanosvg")
     a = ap.parse_args()
 
     s1 = open(a.live).read(); s2 = open(a.cand).read()
@@ -54,12 +72,12 @@ def main():
         s1, s2 = strip_kit(s1), strip_kit(s2)
     w, h = viewbox(s1)
     W, H = int(round(w * a.scale)), int(round(h * a.scale))
-    A, B = render(s1, W, H), render(s2, W, H)
+    A, B = render(s1, W, H, a.renderer), render(s2, W, H, a.renderer)
 
     d = np.abs(A - B).max(axis=2)
     bad = d > TOL
     pct = 100.0 * bad.mean()
-    print(f"render {W}x{H}  differing pixels: {pct:.3f}%  mean|d|: {np.abs(A-B).mean():.2f}  max|d|: {int(d.max())}")
+    print(f"[{a.renderer}] render {W}x{H}  differing pixels: {pct:.3f}%  mean|d|: {np.abs(A-B).mean():.2f}  max|d|: {int(d.max())}")
     if bad.any():
         ys, xs = np.where(bad)
         print(f"diff bbox (viewBox units): x {xs.min()/a.scale:.1f}-{xs.max()/a.scale:.1f}  "
