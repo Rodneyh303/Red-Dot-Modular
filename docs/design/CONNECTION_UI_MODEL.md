@@ -1,5 +1,10 @@
 # Connection / binding model — scoping doc (Rodney)
 
+> **SUPERSEDED (in part) by CONNECTION_MODEL_SPEC.md** — Q1 (node-anchored identity), Q2 (segment rule /
+> claim-by-scan; CA shareable), and Q6 (badge suppressed for single-Monsoon rigs) are now DECIDED there.
+> This doc remains the inventory/scoping record and the source for the still-[OPEN] items. Where the two
+> disagree, the SPEC wins.
+
 STATUS: SCOPING. Not a spec yet. Written to STOP piecemeal growth of connection UI and define it
 systematically before more connection code (including the shared-CA "PRIMARY MONSOON" badge in
 CA_SHARED_EXPANDER_BUILD.md, which should become a CONSUMER of the model defined here, not its own
