@@ -328,3 +328,59 @@ Concretely for Q2 (one discovery rule): the rule becomes "if exactly one Monsoon
 (adjacency, zero-config); if >1 reachable → use the stored explicit selection, else prompt/most-recent;
 if the bound one disappears → unbind gracefully and re-evaluate." Order-independent, and simple rigs never
 see a menu.
+
+---
+
+## 14. Identity, group colour, the 8-Monsoon cap, and the two binding TIERS (Rodney)
+
+### Identity scheme (decided direction)
+- **Store bindings by a stable, hidden machine handle** (Rack module id / derived pairId). Survives
+  save/load and reordering. NEVER shown to the user (monome's mistake was exposing the opaque serial).
+- **Identify visually by GROUP COLOUR carried on the CONNECT MARK** — reuse the existing mark rather than
+  adding a badge. The mark currently red = connected; generalise: **grey/hollow = unbound; filled in the
+  GROUP COLOUR = bound to that group.** Colour specialises the existing connected/unbound signal, it does
+  not replace the bound-vs-unbound distinction (filled vs hollow still carries that).
+- **Keep the small group NUMBER on the mark as a secondary/fallback** — colour is primary and glanceable,
+  the number disambiguates for colour-blind users. (With the 8-cap below, colour never WRAPS, so the
+  number is purely an accessibility/text fallback, not needed for uniqueness.)
+- **Optional user NAME override** (e.g. "Bass", "Lead") shown in menus in place of the auto label; falls
+  back to the auto identity if unset. Selection menus show "Monsoon A (teal)" / "Lead (teal)" — never a
+  raw id.
+- **Group anchored on the HOST (Monsoon).** The Monsoon owns colour+id; expanders INHERIT it by binding.
+  Rationale: the Monsoon is the stable centre; expanders come and go; "which host" is what users ask.
+- **Shared module = the exception to one-mark-one-colour.** A CA bound to 2 Monsoons shows BOTH groups
+  (split mark / two colours or two small numbers) — honest about being shared; ties to the PRIMARY spec.
+
+### Hard cap: 8 connection-participating Monsoons
+- **Cap at 8** — matches the 8-wide pairColour palette, so colour is GUARANTEED unique per group (no
+  wrap). This is the main payoff: colour alone becomes a complete identifier.
+- Also bounds everything count-scaled: primary selection, group enumeration, the registry, shared-CA reach.
+- **8 is a ceiling far above real use** (8 sequencer cores = 128 voices), so users never hit it — it
+  disciplines the implementation, not the user.
+- **Enforce on connection PARTICIPATION, not module instantiation.** A 9th Monsoon may be PLACED (don't
+  block Rack module creation) but does NOT get a group colour / connection-system slot: its connect marks
+  stay grey, tooltip "connection limit reached". NEVER let the 9th silently reuse colour 1 — that
+  reintroduces the ambiguity the cap exists to kill. Graceful, visible degradation.
+- **The 8-cap and the 8-palette are LOCKED TOGETHER** — change one ⇒ change the other, or the
+  "colour is unique" guarantee breaks. Record the dependency.
+
+### Two binding TIERS — different UI defaults
+1. **Adjacency-default, override-on-ambiguity.** Singleton expanders (Straits, Sands, Causeway, …): one
+   per Monsoon, adjacency almost always correct; a selection menu appears ONLY when >1 Monsoon contends.
+   Zero-config in the common rig.
+2. **Selection-REQUIRED.** Observer/tap modules facing a FIELD OF SAME-TYPE PEERS — no default is correct
+   even in principle, because the peers are equals by design:
+   - **Lantern** — can observe a Straits OR an Intertropical, and (since MULTIPLE Intertropicals are
+     allowed) WHICH instance. TWO-AXIS pick: first the SOURCE TYPE (Straits vs Intertropical), then the
+     INSTANCE within that type. Structure the menu that way, not a flat mixed list. Lantern's own connect
+     mark reads as "bound into group B, watching <arranger/voices>".
+   - **Change Alley** — with multiple Intertropicals / arranged views, which view it reaches is an
+     explicit pick, not adjacency.
+   These are where the monome-style selection is the PRIMARY mechanism, not an override.
+
+### Consequence for build order
+The selection-REQUIRED tier is BROKEN without the mechanism (Lantern silently shows the wrong peer today);
+the adjacency tier keeps working until reached. So build the selection UI FIRST for Lantern + CA. And it
+MUST persist + degrade gracefully (monome lesson §13): a selected source that is deleted → the consumer
+shows "source removed — pick another" (via stable id), never silently falls back to a wrong peer or blanks
+without reason.

@@ -81,3 +81,22 @@ the module goes silent/unresponsive mid-performance. Candidates, each needs a ru
 4. Visual lock state (reuse the dimming).
 5. Test: lock, make edits (silent), unlock (pattern changes at once); clock never stops; CV
    keeps modulating.
+
+## Multi-Monsoon (shared CA): only the PRIMARY governs CA lock participation (Rodney)
+When a CA is shared by 2+ Monsoons (CA_SHARED_EXPANDER_BUILD.md), lock mode's store->engine commit
+is a WRITE to CA's shared state, so it cannot be driven by both hosts — one locked + one unlocked is an
+incoherent commit state for CA's shared pins. Therefore:
+- **Only the PRIMARY Monsoon** (CA_SHARED_EXPANDER_BUILD.md "PRIMARY MONSOON": lowest pairId, else
+  right-first adjacency) sets CA's lock-mode PARTICIPATION.
+- **CORRECTION (Rodney): mod ring is NOT primary-gated.** The "mod ring" is the STANDARD per-knob Rack
+  modulation ring already used across the suite (arc showing a knob param's live CV modulation vs its set
+  position). CA's knob params are CA-LOCAL and single-valued; the CV modulating a CA knob is whatever is
+  patched to that knob's input, independent of how many Monsoons read CA. So the ring shows one true thing
+  and every Monsoon sees the same ring — it is a READ of a CA-local param, not a write to shared state.
+  Do NOT gate it on primary. (This supersedes the earlier line here that grouped mod ring with lock
+  participation — that conflated a shared-state WRITE with a local-param READ.)
+- Both are set via CA context menu, but the menu items are ACTIVE only on the primary's authority;
+  secondary Monsoons do not toggle CA lock/participation.
+This is the same §10 predicate as reseed/theme: asymmetric op on shared state -> primary owns it. Adds
+lock-participation and mod-ring to the primary's owned set (alongside reseed-on-restart, theme, pin
+mutation, voice count). Build alongside lock mode + the shared-CA primary work; not before CA has outputs.

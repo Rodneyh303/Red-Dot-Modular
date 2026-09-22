@@ -174,6 +174,10 @@ Asymmetric operations that follow the primary:
   since both Monsoons read the identical result, scheduler-order first-caller remains an acceptable
   internal implementation of "applied once" and needs no change for correctness.
 - **Owner voice count** (`vActive` = numPolyVoices+1) — CA's operating voice count is the PRIMARY's.
+- **Lock-mode participation** — lock mode's store->engine commit is a write to CA's shared state; only the
+  PRIMARY sets CA's lock participation. Set via CA context menu, active on primary authority only.
+  See LOCK_MODE_PLAN.md "Multi-Monsoon". (NOTE: the standard per-knob MOD RING is NOT primary-gated — it's
+  a read of a CA-local param's live CV, same for every Monsoon.) 
 - Any future op that mutates shared CA state or reads back from a host: follows the primary. Default rule.
 
 ### How the primary is chosen — DETERMINISTIC
@@ -203,3 +207,16 @@ additionally owns reseed-on-restart, theme, mutation, and voice count; the pair 
 
 Status: SPEC (Rodney). Folds in the reseed-on-restart ownership decision. Build alongside Step 4 +
 the reseed feature; the badge is now part of the shared-CA deliverable, not optional.
+
+### Mod-ring SCOPE menu: only the CA ENTRY defers to primary (Rodney)
+Monsoon's context menu has a mod-ring-SCOPE setting listing several expanders (Sands, Causeway, …, and
+CA) — "which expanders show mod rings". It is one-per-Monsoon and fully coherent for every SINGLE-OWNER
+expander (Model A: one host each) — those entries are unaffected, each Monsoon controls its own.
+Only the **CA entry** is ambiguous, because CA is the one SHARED expander: two Monsoons sharing a CA could
+set opposite CA-scope choices, and CA's single knob display can't obey both.
+Rule (narrow): within the mod-ring-scope menu, the **CA entry defers to the PRIMARY** — a secondary
+Monsoon's CA entry greys out / does nothing; only the primary's CA-scope choice governs whether CA shows
+mod rings. Every other entry in the menu is untouched.
+NOTE distinction: the mod RING itself is a CA-local param read, same for all Monsoons, NOT primary-gated
+(see LOCK_MODE_PLAN.md correction). What's primary-owned here is only the per-Monsoon SCOPE SETTING's CA
+entry — the choice of whether this Monsoon's scope control governs the shared CA. Setting, not ring.
