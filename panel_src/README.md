@@ -41,7 +41,7 @@ write to non-active outputs (see "Do NOT run" below).
 |--------------------------------|------------------------------------------------------------------------|----------------------------------------|-----------|
 | Sands **East**                 | `StraitsEastSandsVisual_48HP.svg` (+ `_light`)                          | `python panel_src/gen_east_clean.py`   | generator |
 | Sands **Macro** + **Mono**     | `StraitsSandsMacroVisual_48HP.svg`, `SandsMonoVisual_48HP.svg` (+`_light`) | `python panel_src/gen_macro_mono.py`   | generator |
-| **Monsoon** (main)             | `Monsoon_panel_dark_monsoon.svg`, `Monsoon_panel_light_monsoon.svg`     | **hand-edited SVG — no generator**     | manual    |
+| **Monsoon** (main)             | `Monsoon_panel_dark_monsoon.svg`, `Monsoon_panel_light_monsoon.svg`     | `python panel_src/monsoon_art.py`      | generator |
 
 Order does not matter between panels; each command is independent and fully
 overwrites its own output(s). Run the two Sands generators after any change to
@@ -56,12 +56,20 @@ exactly (`StraitsEastSandsVisual.cpp`, `StraitsSandsMacroVisual.cpp`; the Mono
 widget places controls positionally, so its markers are advisory). They both
 `import dotmod_design as D` (shared helpers).
 
-### Monsoon panel is HAND-MAINTAINED — do NOT regenerate it with a script
-The active Monsoon panels (`Monsoon_panel_{dark,light}_monsoon.svg`) are the
-richer, hand-tuned 568-element artwork with a VISIBLE `components` layer whose
-ids are `param_*`/`input_*`/`output_*`/`light_*` prefixed, `r="3"`, in 75-DPI
-px. To add/rename/move a Monsoon control marker, EDIT THE TWO SVGs DIRECTLY
-(keep dark and light identical). There is no round-trip generator for them.
+### Monsoon generator (`monsoon_art.py`) — the panel is GENERATED now; do not hand-edit
+Reverse-engineered from the former hand-maintained panels and verified against them under nanosvg
+(see docs/design/MONSOON_PANEL_REVERSE_ENGINEER.md). mm-native, native 75 DPI, no scale wrapper,
+every element carries its own paint/opacity (nanosvg does NOT compound opacity through `<g>`).
+ONE layout table in the file drives BOTH the visible control wells and the `components` layer
+(SvgPanelKit `param_*`/`input_*`/`output_*`/`light_*`, `r="3"`, visible — never `display:none`).
+To add/move a Monsoon control: edit the layout table, re-run, keep the C++ bind ids in step.
+Verify changes with `python panel_src/panel_diff.py OLD.svg NEW.svg` (renders with nanosvg — build
+it once with `panel_src/tools/build_nsvgrender.sh`).
+
+**Superseded by monsoon_art.py — do NOT run on the generated panels** (they rewrite layers in place
+and would clobber the generated ones): `embed_cluster_art.py`, `fader_level_markers.py`,
+`mode_column.py`, `degradient_monsoon.py`; and `supertree.py` is an old approximation (10 fronds,
+fake gradient) — the exact rules live in monsoon_art.py.
 
 ### Do NOT run (stale / wrong-output — these caused a "no controls render" regression)
 - `embed_monsoon.py` + `embed_components.py` — write UNprefixed ids (e.g.

@@ -74,17 +74,51 @@ positions only via `findNamed()/centerOf()`. So:
   fix `res/logo` to this layering → fixes every `logo_embed()` panel.
 - **Tree 4 bug fixed** (canopy was 4mm off its trunk). The only intentional divergence.
 
-## Status (step 3 progress)
-Base art DONE in `panel_src/monsoon_art.py`: background, sky, clouds, Supertrees, rails+dots, dividers,
-Big-Five rings, phase rings, Flyer (glow, rings, spokes), fader ticks, status dot, logo.
-Verified vs live under nanosvg: 0.015% differing — ALL of it the tree-4 fix (304px) + 1 sub-pixel speck.
-Remaining for step 3: absorb `cluster-art` (embed_cluster_art.py) and the `components` anchors
-(embed_monsoon.py + mode_column.py + fader_level_markers.py) into one layout table; light theme.
+## Status — step 3 COMPLETE: the Monsoon panel is generated
+`python panel_src/monsoon_art.py` writes the ACTIVE `res/panels/Monsoon_panel_{dark,light}_monsoon.svg`.
+One mm layout table drives base art, control wells (`cluster-art`) and kit anchors (`components`).
+Verified vs the former hand panels under nanosvg — dark 0.038%, light 0.085% differing, ALL of it:
+  * tree-4 canopy fix (intentional), and
+  * 0.1px coordinate rounding in the old embed_cluster_art.py on seat/MIX well edges (generator is exact;
+    proven by re-rounding -> 0 diff).
+All 67 existing kit anchors reproduced with 0.000px error, so MonsoonWidget binds unchanged.
+Light theme measured: same geometry, recoloured, and 7 opacities differ (in THEMES).
+Former post-processing scripts are superseded — see panel_src/README.md (do NOT run them).
+
+## 6th Big-Five knob (q-mix) — measured constraint
+At the current 26mm pitch the 6th knob sits at x=146 and its ring overlaps the Flyer ring by 17mm.
+Six knobs in the existing 16..120 span needs 20.8mm pitch < 22mm ring diameter — also collides.
+=> GROW THE PANEL: shift Flyer + phase knobs + mode column right by >= 19mm => +4HP min (44HP),
+   +5HP comfortable (45HP). In the generator: W_MM, FLYER_C, PHASE_X0, MODE_* , RAIL/DIVIDER extents,
+   BIG5_N=6 + BIG5_IDS += the q-mix param. Everything tied to the table follows.
+
+## CC HANDOFF (step 4) — move MonsoonWidget fully onto the kit
+New anchors now in the panel (24), ready to bind:
+  * control-row lights: light_RHYTHM_DICE_LIGHT, light_MELODY_DICE_LIGHT, light_QMIX_DICE_LIGHT,
+    light_LOCK_LIGHT, light_MUTE_LIGHT, light_RESET_LIGHT, light_RUN_GATE_LIGHT
+  * 16 step LEDs: light_STEP0_LIGHT .. light_STEP15_LIGHT (Flyer, r=14)
+  * param_PHASE_PARAM (Mode E phase knob — currently a TEMPORARY hardcoded (178,72))
+Replace the widget's hardcoded mm with anchor binds / anchor-relative drawing:
+  * the 7 row lights (rx(i), ROWYL) and 16 step lights (RCX/RCY/RLED formula) -> bind by id
+  * PHASE_PARAM createParamCentered(mm2px(178,72)) -> bindParam("param_PHASE_PARAM")
+  * LABELS still in raw mm -> derive from existing anchors (labelAt/centerOf):
+      - dial arc labels arcLabel(16/42/68/94/120, 22, ...) -> Big-Five param anchors
+      - control-row labels rowLbl(12+i*16.7, 81)          -> cluster param anchors
+      - note names + fader numerals (7.5+i*9)             -> param_SEMIn anchors
+      - LO / HI (119/128, 43)                             -> param_OCT_LO/HI anchors
+      - "MODE" title (193, 6)                             -> relative to light_MODE_A_LIGHT
+  * STALE LABELS: slots 4-5 still read "TRIAL R"/"TRIAL M"; since 7b17019 they are DICE_Q /
+    LAST_DICE_Q (cause of the "DICE Q" / "TRIAL R" overlap in Rodney's screenshot).
+Known layout oddities reproduced faithfully — for the dice/phase rework, NOT to fix silently:
+  * BPM/LEN/OFFSET knobs at y=60, their rings centred y=58 (2mm off).
+  * QMIX_DICE_LIGHT centred ON its button; its twins R/M dice lights sit 6mm below theirs (y=93).
+  * q-mix sub-row (LAST_DICE_R/M, QMIX_MIX, DICE_SLEW_Q at y=94.83) collides with the light row (93).
+  * QMIX_LEVEL knob occupies output slot (182,120), no well.
 
 ## Steps
 1. ✅ Map (this doc).
 2. ✅ Render-diff harness (nanosvg default): cairosvg render live vs generated, pixel diff → "accurate" = measurable.
-3. Generator: consolidate the 5 scripts + extract hand base art into parametric code; one mm unit;
+3. ✅ Generator: consolidate the 5 scripts + extract hand base art into parametric code; one mm unit;
    iterate to near-zero diff against live. (Container-friendly: SVG layer only.)
 4. [CC] Switch MonsoonWidget fully onto the kit: replace the 26 mm2px placements with findNamed binds;
    move draw() framing/labels to read anchors. Needs Rack build.
