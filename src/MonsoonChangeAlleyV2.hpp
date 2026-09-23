@@ -447,14 +447,18 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
     // centred per-stream group beneath the matrix). Jacks/dial at 8.5mm pitch, buttons clustered
     // at 6.0mm; matrix kept at 99.6mm. Generator computes HP (now 56) from these; constants below
     // MUST equal the generator's.
-    static constexpr float PW_MM   = 56.f * 5.08f;   // 284.48mm (generator-derived; see note)
+    static constexpr float PW_MM   = 59.f * 5.08f;   // 299.72mm (generator-derived; CA widen for the
+                                                     // expression pair columns — MUST MATCH the HP the
+                                                     // generator prints: 56 → 59 after +1 jack col/side)
     static constexpr float PH_MM   = 128.5f;
     static constexpr float MARGIN  = 6.0f;
     static constexpr float JACK_P  = 8.5f;
     static constexpr float BTN_P   = 6.0f;
     static constexpr float J_HALF  = 4.25f;
-    // Jack/dial group (outer→inner), 5 columns at JACK_P:
-    static constexpr float J_DOM   = MARGIN + J_HALF;          // fwd domain trig jack
+    // Correlation EXPRESSION pair column (outermost each side); control group shifts inboard by JACK_P.
+    static constexpr float EXPR_X  = MARGIN + J_HALF;          // IN (left) / OUT (right, via lx)
+    // Jack/dial group (outer→inner), 5 columns at JACK_P, offset past the expression column:
+    static constexpr float J_DOM   = EXPR_X + JACK_P;          // fwd domain trig jack (was MARGIN+J_HALF)
     static constexpr float J_COD   = J_DOM  + JACK_P;          // fwd codomain trig jack
     static constexpr float KNOB1   = J_COD  + JACK_P;          // grain dial (all verbs)
     static constexpr float KNOB2   = KNOB1  + JACK_P;          // leader/step dial OR scatter dom-back jack
@@ -620,14 +624,10 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
             bindLight<SmallLight<RedLight>>("light_truerev_" + TY, CA::TRUE_REV_LIGHT_START + ty);
         }
 
-        // Shared dot.modular CONNECT indicator (same marker as other panels): in the lower band,
-        // between the bottom-left legend and the centred TRUE REVERSE group, at the legend's height.
-        // Kept LEFT of the true-reverse jacks so it doesn't overlap the rhythm true-rev jack.
-        {
-            const float lgY = rowY(CA::N_VERBS-1, N_STREAMS-1) + CTRL_ROW_H*0.5f + 4.0f;
-            const float cmx = J_COD + 3*18.0f + 4.0f;   // just right of the 3-swatch legend row
-            addChild(redDot::makeConnectMark(module, mm2px(Vec(cmx, lgY)), mm2px(Vec(6.0f,0)).x));
-        }
+        // (Bottom-centre ConnectMark REMOVED — replaced by the top-right 8-slot host connect row
+        //  (CONNECTION_UI_MODEL §14 / CA_SHARED_EXPANDER_BUILD): slot k = pairId k, filled in
+        //  pairColour(k) when connected, primary on a second axis. The 8 slot WELLS are panel art
+        //  (light_hostslot_{k} anchors); the filled/primary rendering + primary menu land next.)
 
         auto* ov = new PinOverlay(module);
         ov->box.pos  = Vec(0, 0);

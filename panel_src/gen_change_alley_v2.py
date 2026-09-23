@@ -24,8 +24,14 @@ JACK_P   = 8.5             # jack / dial column pitch (PJ301M Ø7.8 + breathing)
 BTN_P    = 6.0            # button cluster pitch (tighter — buttons are small)
 J_HALF   = 4.25           # half a jack, for edge clearance
 
-# Jack/dial group (outer→inner): 5 columns at JACK_P.
-J_DOM   = MARGIN + J_HALF                 # fwd domain trig jack
+# ── Correlation EXPRESSION pair column (CA_EXPRESSION_CV_CORRELATION.md) ──────────────────────
+# ONE new OUTERMOST jack column each side: 8 poly INs far-left, 8 poly OUTs far-right (the right
+# side is the left mirrored via lx()). The existing control group shifts inboard by one JACK_P so
+# the expression column owns the outer edge; the shift propagates through CTRL_W → PW_RAW → HP.
+EXPR_X  = MARGIN + J_HALF                  # outermost expression jack column (IN left / OUT right)
+
+# Jack/dial group (outer→inner): 5 columns at JACK_P, now offset inboard past the expression column.
+J_DOM   = EXPR_X  + JACK_P                 # fwd domain trig jack (was MARGIN+J_HALF)
 J_COD   = J_DOM  + JACK_P                 # fwd codomain trig jack
 KNOB1   = J_COD  + JACK_P                 # grain dial (all verbs)
 KNOB2   = KNOB1  + JACK_P                 # leader/step dial OR scatter domain-back jack
@@ -72,6 +78,29 @@ ROW_TOP   = 11.0                  # first row starts below the top logo/title ba
 BOTTOM_OFFSET = 6.0               # (retained for lastBottom(); bottom cluster itself removed)
 LOGO_TOP_Y = 3.0                  # dot.modular wordmark at the TOP, LEFT of the CHANGE ALLEY title
 LOGO_W     = 30.0
+
+# ── Expression pair rows (CA_EXPRESSION_CV_CORRELATION.md) ────────────────────────────────────
+# 8 rows down each outer column, grouped 3 rhythm / 3 melody / 2 q-mix, separated by the SAME
+# GROUP_GAP the verb blocks use so the streams read as blocks. IN row k (far left) and OUT row k
+# (far right) share a y, so a row reads as one pair. Ring colour by stream (matches the pin legend
+# + true-reverse rings): rhythm white, melody red, q-mix green.
+EXPR_GROUPS = [3, 3, 2]           # rhythm, melody, q-mix  (== the fixed 3/3/2 pair allocation)
+EXPR_RING = {0: "#f2f2f0", 1: None, 2: "#4cbf59"}   # 1(melody)=t["red"] filled in per-theme at draw
+EXPR_TOP    = GRID_Y + 4.0        # first expression jack, a touch below the matrix top
+EXPR_ROW_H  = 10.5                # comfortable pitch over the matrix's ~99.6mm vertical extent
+def exprRowY(k):
+    # k = 0..7 across the 3/3/2 groups; add one GROUP_GAP per group boundary crossed.
+    grp = 0 if k < 3 else (1 if k < 6 else 2)
+    return EXPR_TOP + k*EXPR_ROW_H + grp*GROUP_GAP + EXPR_ROW_H*0.5
+def exprStream(k):                # which stream row k belongs to (0=rhythm,1=melody,2=q-mix)
+    return 0 if k < 3 else (1 if k < 6 else 2)
+
+# ── 8-slot host connect-mark row (CONNECTION_UI_MODEL §14, CA_SHARED_EXPANDER_BUILD) ──────────
+# Slot k IS pairId k (fixed, never packed). Top-right, one contiguous row, right-aligned to the
+# margin. Filled state / primary ring are widget-drawn; the generator only emits well + anchor.
+HOSTSLOT_R    = 1.6               # mark radius (mm)
+HOSTSLOT_P    = 3.2               # slot pitch (mm) — 8 slots ≈ 25mm
+HOSTSLOT_Y    = 6.0              # top band; see COLLAPSE-INTER clearance note in gen()
 # True-reverse group: 3 jack+button pairs (rhythm/melody/q-mix), CENTRED beneath the pin matrix.
 # Verb-agnostic, per-stream — belongs to neither Intra nor Inter, hence centred (the L/R geometry
 # IS the Intra/Inter split). Colour-coded to the stream legend by the widget.
@@ -146,6 +175,32 @@ def gen(dark):
     # dot.modular wordmark at the TOP, to the LEFT of the CHANGE ALLEY title (was centred and
     # overlapped the title). Title is widget-drawn centred; logo sits left of centre.
     E(logo_embed(dark, GRID_X, LOGO_TOP_Y, LOGO_W))
+
+    # ── Correlation EXPRESSION pairs: 8 poly INs (far left) + 8 poly OUTs (far right) ────────────
+    # Row k: IN at EXPR_X, OUT at lx(EXPR_X) (mirror). Ring colour by stream. Well = a jack well
+    # with a coloured ring override (rhythm white / melody red / q-mix green).
+    def expr_well(x, y, ring):
+        return (f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(3.9):.1f}" '
+                f'fill="{t["jackwell"]}" stroke="{ring}" stroke-width="1.4"/>')
+    for k in range(8):
+        y = exprRowY(k)
+        ring = EXPR_RING[exprStream(k)] or t["red"]   # melody → theme red
+        E(expr_well(EXPR_X,           y, ring)); A(f"input_expr_{k}",  EXPR_X,           y)
+        E(expr_well(lx(EXPR_X, True), y, ring)); A(f"output_expr_{k}", lx(EXPR_X, True), y)
+
+    # ── 8-slot host connect-mark row, top-right, right-aligned to the margin ─────────────────────
+    # Slot k = pairId k (fixed). Well only here; filled/primary is widget-drawn. Right-aligned so
+    # slot 7 sits ~MARGIN from the right edge; slots run leftward. CLEARANCE from the COLLAPSE-INTER
+    # group label (widget-drawn in the GROUP_GAP band above rowY(0,0) on the right side): that label
+    # centre is ~y=CTRL_TOP-GROUP_GAP/2 ≈ 8.75mm with ~2.2mm glyph → its top ~7.6mm. The mark row is
+    # at HOSTSLOT_Y=6.0 (mark top ~4.4mm), leaving ≥3mm below the marks to the label — and the marks
+    # sit in the far-right corner where no group label reaches. (Reported clearance: ≈3.2mm vertical
+    # to the label band + full horizontal separation; headroom to enlarge that font later.)
+    for k in range(8):
+        x = PW_MM - MARGIN - (7 - k) * HOSTSLOT_P
+        E(f'<circle cx="{px(x):.1f}" cy="{px(HOSTSLOT_Y):.1f}" r="{px(HOSTSLOT_R):.1f}" '
+          f'fill="{t["well"]}" stroke="{t["dim"]}" stroke-width="{px(0.3):.2f}"/>')
+        A(f"light_hostslot_{k}", x, HOSTSLOT_Y)
 
     # TRUE-REVERSE group markers: 3 jack+button pairs (rhythm/melody/q-mix), CENTRED beneath the
     # matrix. Row sits below the matrix + the (widget-drawn) legend. Colour-coding is widget-drawn.
