@@ -8,6 +8,7 @@
 #include "ui/IntertropicalPairing.hpp"     // shared-CA: presentPairIdsT template
 #include "ui/OutputAccent.hpp"
 #include "ui/ModArcOverlay.hpp"
+#include "ui/HostBadge.hpp"                 // shared connection-identity badge (CONNECTION_MODEL_SPEC §4)
 #include "dsp/managers/MonsoonScaleManager.hpp"
 
 using namespace rack;
@@ -577,6 +578,21 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // now emits param_PHASE_PARAM, so it binds like every other control. Plain small cog,
         // no theme swap (fine for this control). Placement lives in the generator table.
         bindParam<redDot::Dark_Small_Cog>("param_PHASE_PARAM", MonsoonIds::PHASE_PARAM);
+
+        // ── Host-identity badge (CONNECTION_MODEL_SPEC §2/§4) ────────────────────────────────────
+        // The Monsoon shows its OWN pairId colour+number so a bound expander's matching badge can be
+        // verified by eye. Suppressed automatically when <2 Monsoons (HostBadge::draw), so the common
+        // single-Monsoon rig is visually unchanged. Placed top-right, near the status dot; always
+        // primary (a host is never "secondary"). Anchor-free (STATUS_DOT is base art, not a kit anchor):
+        // positioned in mm to sit just left of the top-right dot.
+        {
+            Monsoon* mm = dynamic_cast<Monsoon*>(module);
+            auto* badge = redDot::makeHostBadge(
+                mm2px(Vec(W_MM - 6.0f, 6.0f)), mm2px(4.0f),
+                [mm]() { return mm ? mm->pairId : 0; },
+                [mm]() { return mm && mm->lightTheme; });
+            addChild(badge);
+        }
     }
 
 void MonsoonWidget::applyTheme() {

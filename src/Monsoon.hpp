@@ -627,6 +627,20 @@ struct Monsoon : Module {
     // The ExpanderManager applies this as a discovery override after the adjacency walk. Persisted.
     int followCA = 0;
 
+    // ── Host identity (CONNECTION_MODEL_SPEC.md §2, node-anchored) ────────────────────────────────
+    // Each Monsoon owns a small pairId (1..8), lowest-unused, persisted, stable across reload — the
+    // SAME scheme as Intertropical/CA (assignPairIdT<Monsoon>). Bound expanders DISPLAY this via
+    // pairColour(pairId); the Monsoon owns identity, they inherit it. The colour+number badge only
+    // renders when 2+ Monsoons exist (§4/Q6); single-Monsoon rigs show a plain connect dot.
+    //   pairId == 0 → NOT participating: either not yet assigned, OR the 8-cap was hit (a 9th Monsoon
+    //   may be placed but gets no colour/slot and NEVER reuses colour 1 — §14 8-cap ↔ 8-palette lock).
+    // Assigned lazily in updateExpanderPointers() (control rate; NOT ctor — getModuleIds re-lock).
+    int  pairId = 0;
+    bool pairChecked = false;   // one-shot clash-scan latch (mirrors Intertropical::pairChecked); runtime only
+    // Hard cap: 8 connection-participating Monsoons = the 8-hue pairColour palette, so colour is a
+    // COMPLETE unique identifier (never wraps). Locked to the palette width in IntertropicalPairing.hpp.
+    static constexpr int kMaxParticipatingMonsoons = 8;
+
     // ── Tuning delegation (Sikit Phase 1, MICRO_TUNING_INTEGRATION_PLAN §F) ──────────────────────
     // The shared TuningTable lives on the engine (engine.pe.tuning). A tuning-authoring expander
     // (Sikit now; a Micro later) may CLAIM the role of tuning source and publish cents[] into it.

@@ -61,6 +61,7 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "lockScope", json_integer((int)m->lockManager.scope));
     json_object_set_new(root, "lockScopeLiveMask", json_integer((json_int_t)m->engine.scopeLiveMask)); // LOCK_SCOPE_MENU
     json_object_set_new(root, "followCA", json_integer(m->followCA));   // shared Change Alley (CA_SHARED_EXPANDER)
+    json_object_set_new(root, "pairId", json_integer(m->pairId));       // host identity (CONNECTION_MODEL_SPEC §2)
     json_object_set_new(root, "muted", json_boolean(m->muted));
 
     // ── Engine State ──
@@ -283,6 +284,10 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "lockScope")) m->lockManager.scope = (dotModular::LockManager::LockScope)json_integer_value(j);
     if (auto j = json_object_get(root, "lockScopeLiveMask")) m->engine.scopeLiveMask = (uint32_t)json_integer_value(j); // LOCK_SCOPE_MENU; missing key => 0 = whole-module lock
     if (auto j = json_object_get(root, "followCA")) m->followCA = (int)json_integer_value(j);   // shared CA; missing => 0 = Auto adjacency
+    if (auto j = json_object_get(root, "pairId")) {   // host identity; missing => 0 => reassigned lowest-free in updateExpanderPointers()
+        m->pairId = (int)json_integer_value(j);
+        m->pairChecked = false;   // re-validate against the loaded rack (clash/cap) on the next control-rate scan
+    }
     if (auto j = json_object_get(root, "muted")) m->muted = (bool)json_boolean_value(j);
 
     // ── Engine State ──
