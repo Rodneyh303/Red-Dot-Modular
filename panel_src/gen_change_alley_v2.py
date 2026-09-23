@@ -43,12 +43,16 @@ J_DOM   = (MARGIN + J_HALF) + JACK_P       # fwd domain trig jack (control block
 S_PX      = 75.0 / 25.4                    # px per mm (matches dotmod_design.px)
 RING_JACK = 3.9 + (1.0 / S_PX) * 0.5       # existing jack ring outer radius (r=3.9, stroke 1px)
 RING_EXPR = 3.9 + (1.4 / S_PX) * 0.5       # expression well ring outer radius (r=3.9, stroke 1.4px)
-BREATHE   = JACK_P - 2.0 * RING_JACK        # normal ring-to-ring gap between adjacent jacks
-EXPR_X_MAX = J_DOM - (RING_EXPR + RING_JACK + BREATHE)  # outermost x before the ring overlaps J_DOM (a)
-EXPR_X_MIN = MARGIN + RING_EXPR                         # innermost x that keeps the rim MARGIN off edge (b)
-EXPR_X     = max(EXPR_X_MIN, EXPR_X_MAX)                # sit at the overlap limit — as far OUT as (a) allows,
-                                                       # never past the edge-margin floor (b)
-assert EXPR_X >= EXPR_X_MIN - 1e-6, "expr column would clip the panel edge"
+# Place the expression column so the leftover space in the edge→J_DOM gutter is SPLIT EVENLY between
+# the outboard (edge) side and the inboard (toward J_DOM) side — measured RING-to-RING. This avoids
+# both failure modes: a big MARGIN pushes it inboard and jams it against J_DOM (0.36mm gap); a hard
+# overlap-limit leaves all the slack outboard. Even split reads balanced and never overlaps.
+#   free = (J_DOM - RING_JACK)  - 0  (edge)  - 2*RING_EXPR   → distributed to edge_gap == inner_gap
+GUTTER_SPAN = J_DOM - RING_JACK             # panel edge (0) → J_DOM ring inner rim
+FREE        = GUTTER_SPAN - 2.0 * RING_EXPR # slack left after the expr ring sits in the gutter
+GAP_EACH    = FREE * 0.5                     # equal outboard (edge) and inboard (to J_DOM) gap
+EXPR_X      = GAP_EACH + RING_EXPR           # ring rim = GAP_EACH off the edge; centre = +RING_EXPR
+assert EXPR_X - RING_EXPR > 0.5, "expr column too close to the panel edge"
 J_COD   = J_DOM  + JACK_P                 # fwd codomain trig jack
 KNOB1   = J_COD  + JACK_P                 # grain dial (all verbs)
 KNOB2   = KNOB1  + JACK_P                 # leader/step dial OR scatter domain-back jack
@@ -259,9 +263,9 @@ def gen(dark):
     edge_clear  = left_x - RING_EXPR                                   # rim -> panel edge
     inner_clear = (J_DOM - left_x) - (RING_EXPR + RING_JACK)           # expr rim -> J_DOM rim
     print(f"  expr cols: PW={PW_MM:.2f}  left_x={left_x:.3f}  right_x={right_x:.3f}  (mirror OK)")
-    print(f"  RING_EXPR={RING_EXPR:.3f}  RING_JACK={RING_JACK:.3f}  BREATHE(norm jack gap)={BREATHE:.3f}")
-    print(f"  edge clearance (rim->edge)={edge_clear:.3f}mm (>= MARGIN {MARGIN})  "
-          f"inner clearance (rim->J_DOM rim)={inner_clear:.3f}mm (>= BREATHE)")
+    print(f"  RING_EXPR={RING_EXPR:.3f}  RING_JACK={RING_JACK:.3f}  (gaps split evenly, GAP_EACH={GAP_EACH:.3f})")
+    print(f"  edge clearance (rim->edge)={edge_clear:.3f}mm   "
+          f"inner clearance (rim->J_DOM rim)={inner_clear:.3f}mm")
 
 if __name__=="__main__":
     gen(True); gen(False)
