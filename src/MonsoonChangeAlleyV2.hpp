@@ -382,6 +382,28 @@ struct MonsoonChangeAlleyV2 : Module {
                 lights[CA::TRUE_REV_LIGHT_START + ty].setBrightness(1.f);   // queued (pending) lamp
             }
         }
+
+        // ── Correlation EXPRESSION pairs (CA_EXPRESSION_CV_CORRELATION.md) ───────────────────────
+        // Each pair is a pass-through ROUTER: poly-CV OUT = poly-CV IN with its 16 voice channels
+        // permuted by that stream's LIVE voice table (the SAME src[] the notes/Keppel consume, so the
+        // expression stays in one voice frame). GATHER form: consuming voice `row` pulls the envelope
+        // of its source voice src[row] — out[row] = in[src[row]] — i.e. "voice 1's envelope goes where
+        // voice 3's note went." Tables change only at phrase granularity; the per-sample cost is a
+        // 16-ch copy through a lookup. Pair→stream allocation 3 rhythm / 3 melody / 2 q-mix (== the
+        // panel layout / configInput labels). Unpatched IN → 0-channel (silent) OUT, not identity.
+        for (int k = 0; k < 8; ++k) {
+            const uint8_t* src = (k < 3) ? rhythmSrc : (k < 6) ? melodySrc : qmixSrc;
+            rack::Input&  in  = inputs [CA::EXPR_IN_START  + k];
+            rack::Output& out = outputs[CA::EXPR_OUT_START + k];
+            const int nIn = in.getChannels();
+            if (nIn <= 0) { out.setChannels(0); continue; }   // unpatched → silent, not identity
+            out.setChannels(CA::N_VOICES);                    // 16-ch poly out
+            for (int row = 0; row < CA::N_VOICES; ++row) {
+                const int s = src[row];                       // source voice this row consumes (0..15)
+                // Read the source channel if the IN cable carries it; missing higher channels read 0.
+                out.setVoltage((s < nIn) ? in.getVoltage(s) : 0.f, row);
+            }
+        }
     }
 
     // STRUCTURAL reset only: pin matrix -> identity, scatter counters -> 0. Does NOT re-key.
