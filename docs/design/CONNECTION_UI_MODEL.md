@@ -384,3 +384,35 @@ the adjacency tier keeps working until reached. So build the selection UI FIRST 
 MUST persist + degrade gracefully (monome lesson §13): a selected source that is deleted → the consumer
 shows "source removed — pick another" (via stable id), never silently falls back to a wrong peer or blanks
 without reason.
+
+---
+
+## 15. Tier-2 visualisation: Lantern (and any pair-follower) — mirror the target's badge (Rodney)
+
+Tier 2 = selection-required modules facing a field of same-type peers (§14). CA's 8-slot row does NOT
+transfer: CA's targets are HOSTS (<=8, pairId-indexed), Lantern's are PEERS inside a group.
+
+**Selection already exists — only the DISPLAY is missing.** Lantern persists two axes today:
+`sourceMode` (0 = Monsoon/Straits raw voices, 1 = Intertropical routed output) and `followIT`
+(0 = auto-nearest, >0 = that pairId, resolved rack-wide via `resolveFollowedIT`). Menus come from
+`presentPairIdsT`. `assignPairIdT` gives each Intertropical a UNIQUE, persisted id (global lowest
+unused, 1..N) — so "IT 3" names exactly one module. Nothing new is needed to choose; build the badge.
+
+**The display: one badge, four states, all reusing `pairColour` + `drawPairBadge`.**
+| State | Draw | Reads as |
+|---|---|---|
+| sourceMode 0 (Monsoon/Straits voices) | NO pair badge — just the host connect mark in the group colour | "watching raw voices of this group" |
+| sourceMode 1, pinned (`followIT = k`) | The SAME badge the target Intertropical draws: `pairColour(k)` + number k, FILLED | "watching IT 3" — confirmed by matching the identical badge on that module |
+| sourceMode 1, AUTO (`followIT = 0`) | The RESOLVED instance's badge, but HOLLOW/outlined (or with a small dot) | "currently IT 3, by proximity" — NOT pinned |
+| sourceMode 1, unresolved (pinned id absent / no IT found) | Empty or struck badge, never a blank corner | "source removed — pick another" (monome lesson §13) |
+
+Why mirroring beats inventing a scheme: the user verifies a binding by matching two IDENTICAL badges
+across the rack — no legend, no decoding, and it works precisely because pairId is unique and persisted.
+A "V"/"A" glyph next to the mark is optional; badge-presence already separates the two source types.
+
+**AUTO vs PINNED must be visually distinct** — the one genuinely new requirement. They behave
+identically until the rack changes, then auto re-resolves and pinned does not. Without the distinction a
+user who moved modules cannot tell why their Lantern changed source.
+
+**Generalises:** Changi T3 (and any future follower) uses the same pairing helpers, so this badge
+language covers them too — one visual convention for "which peer am I following".
