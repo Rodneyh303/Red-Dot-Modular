@@ -32,10 +32,23 @@ J_HALF   = 4.25           # half a jack, for edge clearance
 # J_DOM keeps its old relationship (one JACK_P in from where the outer edge margin sits) so the
 # control block is unchanged; the expression column is then CENTRED in the gap left of it (Fix 3).
 J_DOM   = (MARGIN + J_HALF) + JACK_P       # fwd domain trig jack (control block start)
-# Expression CV column sits INBOARD, nearer the INTRA jack column (J_DOM) than the panel edge, so it
-# reads as belonging to the control block rather than floating at the margin — the larger gap is left
-# OUTSIDE it toward the edge. One partial jack-pitch in from J_DOM. Mirrored right via lx().
-EXPR_X  = J_DOM - JACK_P * 0.7            # edge gap ≈12.8mm > inner gap ≈6.0mm to J_DOM
+# Expression CV column sits OUTWARD, as close to the panel edge as the margin allows, so the visible
+# gap falls INBOARD (between it and the INTRA jack column) rather than outboard. Spacing is computed
+# from the coloured stream RING radius (the widest part — well radius + half its stroke), NOT the jack
+# barrel: the rings are what collide, so a barrel-based gap looks fine in arithmetic but overlaps in
+# the render (that was the bug). Two constraints, take the OUTERmost x that satisfies both:
+#   (a) no ring overlap with J_DOM: (J_DOM - EXPR_X) >= RING_EXPR + RING_JACK + BREATHE
+#   (b) ring rim >= MARGIN from the panel edge: EXPR_X - RING_EXPR >= MARGIN
+# BREATHE = the normal gap two adjacent jacks already have at JACK_P pitch (ring-to-ring).
+S_PX      = 75.0 / 25.4                    # px per mm (matches dotmod_design.px)
+RING_JACK = 3.9 + (1.0 / S_PX) * 0.5       # existing jack ring outer radius (r=3.9, stroke 1px)
+RING_EXPR = 3.9 + (1.4 / S_PX) * 0.5       # expression well ring outer radius (r=3.9, stroke 1.4px)
+BREATHE   = JACK_P - 2.0 * RING_JACK        # normal ring-to-ring gap between adjacent jacks
+EXPR_X_MAX = J_DOM - (RING_EXPR + RING_JACK + BREATHE)  # outermost x before the ring overlaps J_DOM (a)
+EXPR_X_MIN = MARGIN + RING_EXPR                         # innermost x that keeps the rim MARGIN off edge (b)
+EXPR_X     = max(EXPR_X_MIN, EXPR_X_MAX)                # sit at the overlap limit — as far OUT as (a) allows,
+                                                       # never past the edge-margin floor (b)
+assert EXPR_X >= EXPR_X_MIN - 1e-6, "expr column would clip the panel edge"
 J_COD   = J_DOM  + JACK_P                 # fwd codomain trig jack
 KNOB1   = J_COD  + JACK_P                 # grain dial (all verbs)
 KNOB2   = KNOB1  + JACK_P                 # leader/step dial OR scatter domain-back jack
@@ -239,6 +252,16 @@ def gen(dark):
     open(os.path.join(out,f"ChangeAlleyV2_panel_{th}.svg"),"w").write(
         svg_open(px(PW_MM),px(PH_MM))+"\n"+"\n".join(els)+"\n"+comps+"\n</svg>\n")
     print(f"ChangeAlleyV2 {th}: {HP}HP grid {GRID_W:.1f}mm cell {CELL:.2f}mm ctrl {CTRL_W:.1f}mm/side  anchors={len(anchors)}")
+    # Expression-column geometry report (RING-based, per the brief) + exact-mirror assertion.
+    left_x  = EXPR_X
+    right_x = lx(EXPR_X, True)
+    assert abs(left_x - (PW_MM - right_x)) < 1e-9, "expr columns not exact mirrors"
+    edge_clear  = left_x - RING_EXPR                                   # rim -> panel edge
+    inner_clear = (J_DOM - left_x) - (RING_EXPR + RING_JACK)           # expr rim -> J_DOM rim
+    print(f"  expr cols: PW={PW_MM:.2f}  left_x={left_x:.3f}  right_x={right_x:.3f}  (mirror OK)")
+    print(f"  RING_EXPR={RING_EXPR:.3f}  RING_JACK={RING_JACK:.3f}  BREATHE(norm jack gap)={BREATHE:.3f}")
+    print(f"  edge clearance (rim->edge)={edge_clear:.3f}mm (>= MARGIN {MARGIN})  "
+          f"inner clearance (rim->J_DOM rim)={inner_clear:.3f}mm (>= BREATHE)")
 
 if __name__=="__main__":
     gen(True); gen(False)

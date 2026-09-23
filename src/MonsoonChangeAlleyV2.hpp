@@ -458,9 +458,11 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
     // Jack/dial group (outer→inner), 5 columns at JACK_P, offset inboard past the expression column.
     // MUST MATCH gen_change_alley_v2.py: J_DOM = (MARGIN+J_HALF)+JACK_P; EXPR_X centred in the gutter.
     static constexpr float J_DOM   = (MARGIN + J_HALF) + JACK_P;   // fwd domain trig jack (block start)
-    // Correlation EXPRESSION pair column, INBOARD near J_DOM (larger gap left outside toward the edge),
-    // so it reads as part of the control block. MUST MATCH gen_change_alley_v2.py.
-    static constexpr float EXPR_X  = J_DOM - JACK_P * 0.7f;        // IN (left) / OUT (right, via lx)
+    // Correlation EXPRESSION pair column, OUTWARD toward the panel edge — as far out as the no-overlap
+    // rule allows (RING-based, not barrel): its coloured ring sits BREATHE (the normal adjacent-jack
+    // gap ≈0.36mm) off the J_DOM ring on the inboard side, and ~MARGIN off the panel edge outboard.
+    // Value is generator-computed (max(edge-limit, overlap-limit)); MUST MATCH gen_change_alley_v2.py.
+    static constexpr float EXPR_X  = 10.182f;                      // IN (left) / OUT (right, via lx)
     static constexpr float J_COD   = J_DOM  + JACK_P;          // fwd codomain trig jack
     static constexpr float KNOB1   = J_COD  + JACK_P;          // grain dial (all verbs)
     static constexpr float KNOB2   = KNOB1  + JACK_P;          // leader/step dial OR scatter dom-back jack
