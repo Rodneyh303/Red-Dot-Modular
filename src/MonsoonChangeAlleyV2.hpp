@@ -136,7 +136,7 @@ struct MonsoonChangeAlleyV2 : Module {
     std::atomic<uint32_t> undoTail{0};   // consumer (UI) reads, then advances
 
     MonsoonChangeAlleyV2() {
-        config(CA::NUM_PARAMS_TOTAL, CA::NUM_INPUTS, 0, CA::NUM_LIGHTS);
+        config(CA::NUM_PARAMS_TOTAL, CA::NUM_INPUTS, CA::NUM_OUTPUTS, CA::NUM_LIGHTS);
         static const char* VN[CA::N_VERBS] = {"Collapse","Rotate","Reflect","Scatter"};
         static const char* SN[CA::SIDES]   = {"Intra","Inter"};
         static const char* PN[CA::TYPES]   = {"Rhythm","Melody","Q-mix"};
@@ -173,6 +173,21 @@ struct MonsoonChangeAlleyV2 : Module {
         }
         // GRAIN_POLY_IN / STEP_POLY_IN removed (CA_PANEL_THREE_STREAM_LAYOUT): didn't scale to
         // the 3rd stream; the per-row grain/leader/step knobs remain the sole value source.
+
+        // Correlation EXPRESSION pairs (CA_EXPRESSION_CV_CORRELATION.md): 8 poly-CV in/out pairs,
+        // allocated 3 rhythm / 3 melody / 2 q-mix by index. Label each by stream + ordinal within
+        // that stream. OUT k = IN k permuted by the stream's live voice table (DSP: Phase 3).
+        {
+            static const char* ES[3] = {"Rhythm", "Melody", "Q-mix"};
+            static const int   EN[3] = {3, 3, 2};           // pairs per stream (== EXPR_GROUPS)
+            int k = 0;
+            for (int s = 0; s < 3; ++s)
+                for (int j = 0; j < EN[s]; ++j, ++k) {
+                    std::string tag = std::string(ES[s]) + " expr " + std::to_string(j + 1);
+                    configInput (CA::EXPR_IN_START  + k, tag + " in");
+                    configOutput(CA::EXPR_OUT_START + k, tag + " out");
+                }
+        }
         resetToIdentity();
         seedCorrKeysInternal();   // fresh module: no seed known yet, entropy keys are correct
     }
@@ -626,6 +641,14 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
             bindInput<PJ301MPort>("input_truerev_" + TY, CA::TRUE_REV_IN_START + ty);
             bindParam<TL1105>    ("param_truerev_" + TY, CA::TRUE_REV_BTN_START + ty);
             bindLight<SmallLight<RedLight>>("light_truerev_" + TY, CA::TRUE_REV_LIGHT_START + ty);
+        }
+
+        // Correlation EXPRESSION pairs (CA_EXPRESSION_CV_CORRELATION.md): 8 poly-CV in/out pairs bound
+        // by name to the outer columns' anchors. IN far-left, OUT far-right, row-aligned per k.
+        for (int k = 0; k < 8; ++k) {
+            const std::string K = std::to_string(k);
+            bindInput <PJ301MPort>("input_expr_"  + K, CA::EXPR_IN_START  + k);
+            bindOutput<PJ301MPort>("output_expr_" + K, CA::EXPR_OUT_START + k);
         }
 
         // (Bottom-centre ConnectMark REMOVED — replaced by the top-right 8-slot host connect row

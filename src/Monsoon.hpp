@@ -1246,7 +1246,17 @@ namespace ChangeAlleyV2Ids {
         // GRAIN_POLY_IN / STEP_POLY_IN removed (CA_PANEL_THREE_STREAM_LAYOUT): the two poly-CV
         // mod inputs were designed for the 2-stream world and don't scale to the 3rd (q-mix)
         // stream; cut to reclaim the bottom-right edge. The per-row grain/leader/step KNOBS stay.
-        NUM_INPUTS             = TRUE_REV_IN_START + TYPES  // = 63
+        // Correlation EXPRESSION pair INPUTS (CA_EXPRESSION_CV_CORRELATION.md): 8 poly-CV ins, one per
+        // pair, allocated 3 rhythm / 3 melody / 2 q-mix by index (k=0..7). Each is 16-ch poly in.
+        EXPR_IN_START          = TRUE_REV_IN_START + TYPES, // 3 (=63)
+        NUM_INPUTS             = EXPR_IN_START + 8          // = 71
+    };
+    enum OutputIds {
+        // Correlation EXPRESSION pair OUTPUTS: 8 poly-CV outs, row-aligned with EXPR_IN_START. OUT k =
+        // IN k with its 16 voice channels permuted by that pair's stream table (rhythm/melody/q-mix).
+        // This is CA's FIRST output side (config was (…, NUM_INPUTS, 0, …) before).
+        EXPR_OUT_START         = 0,
+        NUM_OUTPUTS            = EXPR_OUT_START + 8         // = 8
     };
     enum LightIds {
         PENDING_LIGHT_START = 0,                              // 24 (one per row, verb pending)
