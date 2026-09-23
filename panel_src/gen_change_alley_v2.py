@@ -55,6 +55,10 @@ GRID_H  = CELL * 16.0
 
 N_VERBS   = 4
 N_STREAMS = 3                      # Q5 q-mix: 3rd stream (melody, rhythm, q-mix) -> 12 rows/side
+SIDES     = 2
+TYPES     = 3                      # rhythm=0, melody=1, q-mix=2 (== ChangeAlleyV2Ids::TYPES)
+V_COLLAPSE, V_ROTATE, V_REFLECT, V_SCATTER = 0, 1, 2, 3
+def rowId(verb, side, typ): return verb*SIDES*TYPES + side*TYPES + typ   # MUST MATCH CA::rowId
 # PLAN A (CA_PANEL_THREE_STREAM_LAYOUT): tighten row pitch to fit 12 rows in 128.5mm.
 # Jack well is r=3.9 (Ø7.8); ROW_H=8.0 is the jack-floor pitch (jacks touch at 0.2mm gap).
 # GROUP_GAP shrunk 6.8->1.5 (groups barely separate); ROW_TOP 21->14; bottom offset 9->6.
@@ -92,6 +96,11 @@ def pal(dark):
 
 def gen(dark):
     t=pal(dark); els=[]; E=els.append
+    # ── Kit anchors (components layer): invisible id'd circles the widget binds BY NAME (Option
+    # B-full — CA joins the SvgPanelKit pattern like Monsoon). Emitted at the SAME mm the art draws,
+    # from the SAME loops, so art and binding can't drift. ids MUST MATCH the widget's bind names.
+    anchors=[]
+    def A(i, x, y): anchors.append(f'<circle id="{i}" cx="{px(x):.2f}" cy="{px(y):.2f}" r="1" fill="none" stroke="none"/>')
     E(f'<rect width="{px(PW_MM):.1f}" height="{px(PH_MM):.1f}" fill="{t["body"]}"/>')
     E(f'<rect x="{px(GRID_X):.1f}" y="{px(GRID_Y):.1f}" width="{px(GRID_W):.1f}" height="{px(GRID_H):.1f}" fill="{t["well"]}" stroke="{t["edborder"]}" stroke-width="{px(0.4):.2f}"/>')
     for i in range(1,16):
@@ -107,18 +116,32 @@ def gen(dark):
             ry=rowY(verb,sub)
             for side in range(2):
                 flip=(side==1)
+                r  = rowId(verb, side, sub)          # MUST MATCH CA::rowId(verb,side,sub)
+                si = side*TYPES + sub                 # scatter-back / leader / step index
                 E(jack(lx(J_DOM,flip),ry,t)); E(jack(lx(J_COD,flip),ry,t))
-                E(trim(lx(KNOB1,flip),ry,t,t["gold"]))
-                if verb in (0,1): E(trim(lx(KNOB2,flip),ry,t,t["gold"]))
-                elif verb==3:
+                A(f"input_domain_{r}",   lx(J_DOM,flip), ry)
+                A(f"input_codomain_{r}", lx(J_COD,flip), ry)
+                E(trim(lx(KNOB1,flip),ry,t,t["gold"])); A(f"param_grain_{r}", lx(KNOB1,flip), ry)
+                if verb==V_COLLAPSE:
+                    E(trim(lx(KNOB2,flip),ry,t,t["gold"])); A(f"param_leader_{si}", lx(KNOB2,flip), ry)
+                elif verb==V_ROTATE:
+                    E(trim(lx(KNOB2,flip),ry,t,t["gold"])); A(f"param_step_{si}", lx(KNOB2,flip), ry)
+                elif verb==V_SCATTER:
                     # SCATTER: dom/cod back jacks, then ON-ROW Philox reverse buttons (no longer
                     # jammed above/below). True-reverse is NOT here — it's a centred per-stream group
                     # beneath the matrix. Scatter keeps only its axis-specific dice fwd/rev.
                     E(jack(lx(KNOB2,flip),ry,t)); E(jack(lx(J_BACK2,flip),ry,t))
+                    A(f"input_scback_dom_{si}", lx(KNOB2,flip),  ry)
+                    A(f"input_scback_cod_{si}", lx(J_BACK2,flip), ry)
                     btn(lx(REV_D,flip),ry); btn(lx(REV_C,flip),ry)
+                    A(f"param_screv_d_{si}", lx(REV_D,flip), ry)
+                    A(f"param_screv_c_{si}", lx(REV_C,flip), ry)
                 # forward dom/cod fire buttons (all verbs)
                 btn(lx(BTN_D,flip),ry); btn(lx(BTN_C,flip),ry)
+                A(f"param_btnD_{r}", lx(BTN_D,flip), ry)
+                A(f"param_btnC_{r}", lx(BTN_C,flip), ry)
                 E(f'<circle cx="{px(lx(LIGHT,flip)):.1f}" cy="{px(ry):.1f}" r="{px(1.3):.1f}" fill="{t["well"]}" stroke="{t["dim"]}" stroke-width="{px(0.3):.2f}"/>')
+                A(f"light_pending_{r}", lx(LIGHT,flip), ry)
 
     # dot.modular wordmark at the TOP, to the LEFT of the CHANGE ALLEY title (was centred and
     # overlapped the title). Title is widget-drawn centred; logo sits left of centre.
@@ -130,17 +153,24 @@ def gen(dark):
     gcx = GRID_X + GRID_W * 0.5
     for s in range(N_STREAMS):
         cx = gcx + (s - 1) * TRUEREV_GROUP_DX
-        E(jack(cx - TRUEREV_PAIR_DX*0.5, trY, t))    # true-reverse jack
-        E(f'<circle cx="{px(cx + TRUEREV_PAIR_DX*0.5):.1f}" cy="{px(trY):.1f}" r="{px(2.6):.1f}" fill="{t["frame"]}" stroke="{t["dim"]}" stroke-width="{px(0.5):.2f}"/>')  # button
+        jx = cx - TRUEREV_PAIR_DX*0.5
+        bx = cx + TRUEREV_PAIR_DX*0.5
+        E(jack(jx, trY, t))    # true-reverse jack
+        E(f'<circle cx="{px(bx):.1f}" cy="{px(trY):.1f}" r="{px(2.6):.1f}" fill="{t["frame"]}" stroke="{t["dim"]}" stroke-width="{px(0.5):.2f}"/>')  # button
         # pending lamp well in line with the jack+button (same y), spaced RIGHT of the button
-        E(f'<circle cx="{px(cx + TRUEREV_PAIR_DX*0.5 + 7.5):.1f}" cy="{px(trY):.1f}" r="{px(1.3):.1f}" fill="{t["well"]}" stroke="{t["dim"]}" stroke-width="{px(0.3):.2f}"/>')
+        E(f'<circle cx="{px(bx + 7.5):.1f}" cy="{px(trY):.1f}" r="{px(1.3):.1f}" fill="{t["well"]}" stroke="{t["dim"]}" stroke-width="{px(0.3):.2f}"/>')
+        A(f"input_truerev_{s}", jx,       trY)
+        A(f"param_truerev_{s}", bx,       trY)
+        A(f"light_truerev_{s}", bx + 7.5, trY)
 
     out=os.path.join(os.path.dirname(__file__),"..","res","panels")
     os.makedirs(out,exist_ok=True)
     th="dark" if dark else "light"
+    comps = '<g inkscape:label="components" inkscape:groupmode="layer" id="components">\n' \
+            + "\n".join(anchors) + "\n</g>"
     open(os.path.join(out,f"ChangeAlleyV2_panel_{th}.svg"),"w").write(
-        svg_open(px(PW_MM),px(PH_MM))+"\n"+"\n".join(els)+"\n</svg>\n")
-    print(f"ChangeAlleyV2 {th}: {HP}HP grid {GRID_W:.1f}mm cell {CELL:.2f}mm ctrl {CTRL_W:.1f}mm/side")
+        svg_open(px(PW_MM),px(PH_MM))+"\n"+"\n".join(els)+"\n"+comps+"\n</svg>\n")
+    print(f"ChangeAlleyV2 {th}: {HP}HP grid {GRID_W:.1f}mm cell {CELL:.2f}mm ctrl {CTRL_W:.1f}mm/side  anchors={len(anchors)}")
 
 if __name__=="__main__":
     gen(True); gen(False)

@@ -20,6 +20,7 @@
 #include "dsp/ChangeAlleyTransforms.hpp"   // ca::applyCorrelation (transform apply owned here)
 #include "ui/IntertropicalPairing.hpp"     // shared pairing: assignPairIdT / resolveFollowedT<T>
 #include "ui/ConnectMark.hpp"              // shared dot.modular connect indicator (same as other panels)
+#include "ui/SvgPanelKit.hpp"             // Option B-full: bind ports/params/lights by name from anchors
 
 using namespace rack;
 // NOT 'using namespace ChangeAlleyIds' — Monsoon.hpp exposes MonsoonIds with the same
@@ -437,7 +438,9 @@ struct MonsoonChangeAlleyV2 : Module {
 };
 
 // ── Widget ───────────────────────────────────────────────────────────────────
-struct MonsoonChangeAlleyV2Widget : ModuleWidget {
+struct MonsoonChangeAlleyV2Widget : ModuleWidget,
+    dotModular::Compose<MonsoonChangeAlleyV2Widget,
+                        dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
 
     // Geometry -- MUST MATCH gen_change_alley_v2.py. Width DERIVED from the widest (SCATTER) row =
     // 4 jacks + 4 buttons + 1 grain dial + 1 light per side (true-reverse is NOT here — it's a
@@ -520,7 +523,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
         std::string light = asset::plugin(pluginInstance, "res/panels/ChangeAlleyV2_panel_light.svg");
         panelSvgDark  = APP->window->loadSvg(dark);
         panelSvgLight = APP->window->loadSvg(light);
-        setPanel(Svg::load(dark));
+        loadPanel(dark);   // kit: sets the panel AND caches the components-layer anchors for bind-by-name
         // Screws pulled toward the edges to reclaim interior height for the 12 rows/side.
         // ScrewSilver's origin is its TOP-LEFT; the head is ~5.08mm across. y is the corner,
         // so y=2.0 => head spans 2.0..7.1mm (fully on-panel, within the mounting-rail zone);
@@ -556,90 +559,65 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
             addChild(arc);
         };
 
-        // Transform controls: intra (left) and inter (right), mirrored, jacks outside.
+        // Transform controls: bound BY NAME from the components-layer anchors (Option B-full). The
+        // widget no longer computes mm — the generator owns geometry; ids MUST MATCH the anchor names
+        // gen_change_alley_v2.py emits (input_domain_{r}, param_grain_{r}, …). Same loop structure as
+        // the generator, so the two stay in lockstep. addArc runs inside the knob config lambda.
         for (int verb = 0; verb < CA::N_VERBS; ++verb)
           for (int sub = 0; sub < CA::TYPES; ++sub) {   // 3 streams: rhythm, melody, q-mix
-            const float y = rowY(verb, sub);
             for (int side = 0; side < 2; ++side) {
-                const bool flip = (side == 1);
-                const int r = CA::rowId(verb, side, sub);
-                addInput(createInputCentered<PJ301MPort>(
-                    mm2px(Vec(lx(J_DOM, flip), y)), module, CA::DOMAIN_TRIG_START + r));
-                addInput(createInputCentered<PJ301MPort>(
-                    mm2px(Vec(lx(J_COD, flip), y)), module, CA::CODOMAIN_TRIG_START + r));
-                {   auto* k = createParamCentered<Trimpot>(
-                        mm2px(Vec(lx(KNOB1, flip), y)), module, CA::GRAIN_START + r);
-                    if (k->getParamQuantity()) k->getParamQuantity()->snapEnabled = true;
-                    addParam(k);
-                    const int gr = r;
-                    addArc(k, CA::GRAIN_START + r, [mod, gr]() -> float {
-                        if (!mod) return 0.f;
-                        float v = mod->params[CA::GRAIN_START + gr].getValue();
-                        return rack::math::clamp(v / 4.f, 0.f, 1.f);   // 0..4 detents -> 0..1
-                    }); }
+                const int r  = CA::rowId(verb, side, sub);
+                const int si = side*CA::TYPES + sub;      // scatter-back / leader / step index
+                const std::string R = std::to_string(r), SI = std::to_string(si);
+                bindInput<PJ301MPort>("input_domain_"   + R, CA::DOMAIN_TRIG_START   + r);
+                bindInput<PJ301MPort>("input_codomain_" + R, CA::CODOMAIN_TRIG_START + r);
+                bindParam<Trimpot>("param_grain_" + R, CA::GRAIN_START + r,
+                    std::function<void(Trimpot*)>([this, mod, r, &addArc](Trimpot* k){
+                        if (k->getParamQuantity()) k->getParamQuantity()->snapEnabled = true;
+                        addArc(k, CA::GRAIN_START + r, [mod, r]() -> float {
+                            if (!mod) return 0.f;
+                            float v = mod->params[CA::GRAIN_START + r].getValue();
+                            return rack::math::clamp(v / 4.f, 0.f, 1.f);   // 0..4 detents -> 0..1
+                        }); }));
                 if (verb == CA::V_COLLAPSE) {
-                    const int li = side*CA::TYPES + sub;      // STEP poly ch 1..4
-                    auto* k = createParamCentered<Trimpot>(mm2px(Vec(lx(KNOB2, flip), y)),
-                        module, CA::LEADER_START + li);
-                    if (k->getParamQuantity()) k->getParamQuantity()->snapEnabled = true;
-                    addParam(k);
-                    addArc(k, CA::LEADER_START + li, [mod, li]() -> float {
-                        if (!mod) return 0.f;
-                        float v = mod->params[CA::LEADER_START + li].getValue();
-                        return rack::math::clamp(v / 15.f, 0.f, 1.f);   // leader 0..15
-                    });
+                    bindParam<Trimpot>("param_leader_" + SI, CA::LEADER_START + si,
+                        std::function<void(Trimpot*)>([this, mod, si, &addArc](Trimpot* k){
+                            if (k->getParamQuantity()) k->getParamQuantity()->snapEnabled = true;
+                            addArc(k, CA::LEADER_START + si, [mod, si]() -> float {
+                                if (!mod) return 0.f;
+                                float v = mod->params[CA::LEADER_START + si].getValue();
+                                return rack::math::clamp(v / 15.f, 0.f, 1.f);   // leader 0..15
+                            }); }));
                 } else if (verb == CA::V_ROTATE) {
-                    const int sIdx = side*CA::TYPES + sub;
-                    auto* k = createParamCentered<Trimpot>(mm2px(Vec(lx(KNOB2, flip), y)),
-                        module, CA::STEP_START + sIdx);
-                    if (k->getParamQuantity()) k->getParamQuantity()->snapEnabled = true;
-                    addParam(k);
-                    addArc(k, CA::STEP_START + sIdx, [mod, sIdx]() -> float {
-                        if (!mod) return 0.f;
-                        float v = mod->params[CA::STEP_START + sIdx].getValue();   // -7..7
-                        return rack::math::clamp((v + 7.f) / 14.f, 0.f, 1.f);
-                    });
+                    bindParam<Trimpot>("param_step_" + SI, CA::STEP_START + si,
+                        std::function<void(Trimpot*)>([this, mod, si, &addArc](Trimpot* k){
+                            if (k->getParamQuantity()) k->getParamQuantity()->snapEnabled = true;
+                            addArc(k, CA::STEP_START + si, [mod, si]() -> float {
+                                if (!mod) return 0.f;
+                                float v = mod->params[CA::STEP_START + si].getValue();   // -7..7
+                                return rack::math::clamp((v + 7.f) / 14.f, 0.f, 1.f);
+                            }); }));
                 } else if (verb == CA::V_SCATTER) {
-                    const int si = side*CA::TYPES + sub;
-                    addInput(createInputCentered<PJ301MPort>(mm2px(Vec(lx(KNOB2, flip), y)),
-                        module, CA::SCATTER_BACK_DOM_START + si));
-                    addInput(createInputCentered<PJ301MPort>(mm2px(Vec(lx(J_BACK2, flip), y)),
-                        module, CA::SCATTER_BACK_COD_START + si));
-                    // Philox reverse BUTTONS — ON-ROW at their own columns (REV_D/REV_C), no longer
-                    // jammed above/below. (True-reverse is NOT here — it's a centred per-stream group
-                    // beneath the matrix; see below. Scatter keeps only its axis-specific dice fwd/rev.)
-                    addParam(createParamCentered<TL1105>(mm2px(Vec(lx(REV_D, flip), y)),
-                        module, CA::SCATTER_REV_BTN_START + si));
-                    addParam(createParamCentered<TL1105>(mm2px(Vec(lx(REV_C, flip), y)),
-                        module, CA::SCATTER_REV_BTN_START + CA::SIDES*CA::TYPES + si));
+                    bindInput<PJ301MPort>("input_scback_dom_" + SI, CA::SCATTER_BACK_DOM_START + si);
+                    bindInput<PJ301MPort>("input_scback_cod_" + SI, CA::SCATTER_BACK_COD_START + si);
+                    // Philox reverse BUTTONS — ON-ROW at their own columns (screv_d/screv_c). (True-
+                    // reverse is NOT here — it's a centred per-stream group beneath the matrix.)
+                    bindParam<TL1105>("param_screv_d_" + SI, CA::SCATTER_REV_BTN_START + si);
+                    bindParam<TL1105>("param_screv_c_" + SI, CA::SCATTER_REV_BTN_START + CA::SIDES*CA::TYPES + si);
                 }
-                addParam(createParamCentered<TL1105>(mm2px(Vec(lx(BTN_D, flip), y)),
-                    module, CA::BTN_START + r*2));
-                addParam(createParamCentered<TL1105>(mm2px(Vec(lx(BTN_C, flip), y)),
-                    module, CA::BTN_START + r*2 + 1));
-                addChild(createLightCentered<SmallLight<RedLight>>(
-                    mm2px(Vec(lx(LIGHT_X, flip), y)), module, CA::PENDING_LIGHT_START + r));
+                bindParam<TL1105>("param_btnD_" + R, CA::BTN_START + r*2);
+                bindParam<TL1105>("param_btnC_" + R, CA::BTN_START + r*2 + 1);
+                bindLight<SmallLight<RedLight>>("light_pending_" + R, CA::PENDING_LIGHT_START + r);
             }
           }
 
         // TRUE-REVERSE group: 3 jack+button pairs (rhythm/melody/q-mix), CENTRED beneath the matrix.
-        // Verb-agnostic, per-stream (index = type). MUST MATCH gen_change_alley_v2.py (trY/gcx).
-        {
-            // Centred group anchored near the BOTTOM edge (the corner screws are at x=±7.5, so a
-            // centred cluster clears them). Loose horizontal spread — uses the space below the matrix.
-            const float trY = PH_MM - 5.0f;
-            const float gcx = MX_MM + MW_MM * 0.5f;
-            for (int ty = 0; ty < CA::TYPES; ++ty) {
-                const float cx = gcx + (ty - 1) * TRUEREV_GROUP_DX;
-                addInput(createInputCentered<PJ301MPort>(
-                    mm2px(Vec(cx - TRUEREV_PAIR_DX*0.5f, trY)), module, CA::TRUE_REV_IN_START + ty));
-                addParam(createParamCentered<TL1105>(
-                    mm2px(Vec(cx + TRUEREV_PAIR_DX*0.5f, trY)), module, CA::TRUE_REV_BTN_START + ty));
-                // Pending lamp — SAME widget as the verb pending lights; lit when queued, cleared at
-                // the phrase boundary. In line with the jack+button (same y), just RIGHT of the button.
-                addChild(createLightCentered<SmallLight<RedLight>>(
-                    mm2px(Vec(cx + TRUEREV_PAIR_DX*0.5f + 7.5f, trY)), module, CA::TRUE_REV_LIGHT_START + ty));
-            }
+        // Verb-agnostic, per-stream (index = type). Bound BY NAME (input/param/light_truerev_{ty}).
+        for (int ty = 0; ty < CA::TYPES; ++ty) {
+            const std::string TY = std::to_string(ty);
+            bindInput<PJ301MPort>("input_truerev_" + TY, CA::TRUE_REV_IN_START + ty);
+            bindParam<TL1105>    ("param_truerev_" + TY, CA::TRUE_REV_BTN_START + ty);
+            bindLight<SmallLight<RedLight>>("light_truerev_" + TY, CA::TRUE_REV_LIGHT_START + ty);
         }
 
         // Shared dot.modular CONNECT indicator (same marker as other panels): in the lower band,
@@ -1088,6 +1066,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget {
 
     void step() override {
         ModuleWidget::step();
+        kitStep();          // kit: dev live-reload poll (Option B-full)
         if (!module) return;
 
         // Drain the transform-undo ring produced on the audio thread. Each snapshot becomes one
