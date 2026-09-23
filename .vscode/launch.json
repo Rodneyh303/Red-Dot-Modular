@@ -1,0 +1,26 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug VCV Rack Plugin",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "C:/Program Files/VCV/Rack2Pro/Rack.exe", 
+            "args": ["-d"],
+            "stopAtEntry": false,
+            "cwd": "C:/Program Files/VCV/Rack2Pro",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:/msys64/mingw64/bin/gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "Install VCV Plugin"
+        }
+    ]
+}

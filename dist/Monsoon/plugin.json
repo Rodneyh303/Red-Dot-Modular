@@ -1,0 +1,228 @@
+{
+  "slug": "Monsoon",
+  "name": "Monsoon",
+  "version": "2.0.1",
+  "license": "proprietary",
+  "author": "Dr Rodney Hoskinson",
+  "brand": "dot.modular",
+  "modules": [
+    {
+      "slug": "Monsoon",
+      "name": "Monsoon",
+      "description": "VCV plugin inspired by Vermona meloDICER: stochastic melody & rhythm with edit-menu features",
+      "tags": [
+        "Sequencer",
+        "Random",
+        "Quantizer"
+      ]
+    },
+    {
+      "slug": "MonsoonInterchangeExpander",
+      "name": "MonsoonInterchangeExpander",
+      "description": "Semitone and Octave CV Modulation Expander",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
+      "slug": "Raffles",
+      "name": "Raffles",
+      "description": "Dice/draw-generation modulation expander (slew/mix CV + die-action gates)",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
+      "slug": "Junction",
+      "name": "Junction",
+      "description": "Big-5 pattern-knob CV modulation expander (note value, variation, legato, rest, accent)",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
+      "slug": "Straits",
+      "name": "Straits",
+      "description": "Poly base expander \u2014 per-voice REST/ACCENT probability + 16ch poly-cable outs (gate/CV/accent, ch1=mono)",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
+      "slug": "Causeway",
+      "name": "Causeway",
+      "description": "Poly CV modulation \u2014 16ch REST + ACCENT modulation CV in (ch1=mono) with attenuverters",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
+      "slug": "ChangiT1",
+      "name": "Changi T1",
+      "description": "Per-voice output \u2014 all 16 voices (mono/voice 1 + poly voices 2..16) broken out to individual gate/CV/accent jacks",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
+      "slug": "ChangiT2",
+      "name": "Changi T2",
+      "description": "Per-voice articulation output \u2014 all 16 voices (mono/voice 1 + poly voices 2..16) broken out to individual step-gate and step-legato jacks",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
+      "slug": "ChangiT3",
+      "name": "Changi T3",
+      "description": "Intertropical arranged-output breakout \u2014 8 channels \u00d7 gate/CV/accent/step/step-legato (40 jacks), organized by channel; CV post-transpose. Pairs with an Intertropical.",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
+      "slug": "Shophouse",
+      "name": "Shophouse",
+      "description": "Scale expander \u2014 4-front scale list, click-a-shutter root, boundary-quantised modulation, Conservation lock",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Quantizer"
+      ]
+    },
+    {
+      "slug": "Colonnades",
+      "name": "Colonnades",
+      "description": "Tuning + scale authoring expander \u2014 12 per-degree weight faders (scale mask) + cents knobs (tuning); load Scala .scl; Monsoon's note faders delegate",
+      "tags": [
+        "Expander",
+        "Tuning",
+        "Quantizer"
+      ]
+    },
+    {
+      "slug": "ColonnadesDuo",
+      "name": "Colonnades Duo",
+      "description": "24-tone tuning + scale authoring expander \u2014 24 per-degree weight faders (scale mask) + cents knobs (tuning) in one row; load Scala .scl / .dmtune; Monsoon's note faders delegate",
+      "tags": [
+        "Expander",
+        "Tuning",
+        "Quantizer"
+      ]
+    },
+    {
+      "slug": "Sikit",
+      "name": "Sikit",
+      "description": "Tuning expander \u2014 12 per-degree cents knobs retune Monsoon's 12-TET; load 12-note Scala .scl; scale mask stays with Monsoon",
+      "tags": [
+        "Expander",
+        "Tuning",
+        "Quantizer"
+      ]
+    },
+    {
+      "slug": "MonsoonSandsVisualExpander",
+      "name": "Sands Visual",
+      "description": "Monsoon Probability Visualisation, Manipulation, and Modulation Expander",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random",
+        "Visual"
+      ]
+    },
+    {
+      "slug": "StraitsEastSandsVisual",
+      "name": "Straits East Sands Visual",
+      "description": "Monsoon Polyphonic Per Channel Probability Visualisation, Manipulation, and Modulation Expander \u2014 all 15 poly voices (V2-V16)",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random",
+        "Visual",
+        "Polyphonic"
+      ]
+    },
+    {
+      "slug": "StraitsSandsMacroVisual",
+      "name": "Straits Sands Macro Visual",
+      "description": "Monsoon Polyphonic Global Macro Probability Visualisation, Manipulation, and Modulation Expander",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random",
+        "Visual",
+        "Polyphonic"
+      ]
+    },
+    {
+      "slug": "Lantern",
+      "name": "Lantern",
+      "description": "Read-only note-output visualiser for Monsoon \u2014 16-lane display of notes, ties, legato and accents",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Visual",
+        "Polyphonic"
+      ]
+    },
+    {
+      "slug": "ChangeAlleyV2",
+      "name": "Change Alley V2",
+      "description": "Pin matrix with built-in transforms: Collapse/Rotate/Reflect/Scatter, domain and codomain, intra and inter block, applied at phrase boundaries. Single-module alternative to Change Alley + Temasek.",
+      "tags": [
+        "Expander",
+        "Random",
+        "Sequencer"
+      ]
+    },
+    {
+      "slug": "Intertropical",
+      "name": "Intertropical",
+      "description": "Scene sequencer / voice arranger for Monsoon: 8 scenes of per-voice opt-in with per-scene repeats, routed to poly outputs. Advances on phrase-boundary crossings.",
+      "tags": [
+        "Sequencer",
+        "Polyphonic",
+        "Switch",
+        "Expander"
+      ]
+    },
+    {
+      "slug": "MonsoonShophouseMicro",
+      "name": "Shophouse Micro",
+      "description": "Tuning+scale scene modulator for Colonnades / Colonnades Duo. Holds up to four .dmtune fronts (two in 24-tone mode); selects the active front from an index CV, committing at phrase boundaries. The active front overwrites the host's tuning+scale for that phrase.",
+      "tags": [
+        "Expander",
+        "Tuning",
+        "Quantizer"
+      ]
+    },
+    {
+      "slug": "Keppel",
+      "name": "Keppel",
+      "description": "Poly microtonal CV to MPE MIDI-out utility. Converts a polyphonic pitch+gate pair into MPE Lower-Zone output: each voice is assigned a member channel with per-voice pitch bend for exact microtonal reconstruction. Sends the MPE configuration handshake (MCM + pitch-bend sensitivity) and bend-before-note-on.",
+      "tags": [
+        "MIDI",
+        "Polyphonic",
+        "External",
+        "Utility"
+      ]
+    }
+  ]
+}

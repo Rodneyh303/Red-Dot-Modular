@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="380" viewBox="0 0 120 380">
+<rect width="120" height="380" fill="#dcdcdc"/>
+<rect x="0" y="0" width="120" height="3" fill="#d4001a"/>
+<rect x="0" y="377" width="120" height="3" fill="#d4001a"/>
+<g>
+<path d="M 0 118.1 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0" fill="none" stroke="#c89090" stroke-width="1.0" stroke-opacity="0.7"/>
+<path d="M 0 127.0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0" fill="none" stroke="#c89090" stroke-width="1.0" stroke-opacity="0.5499999999999999"/>
+<path d="M 0 135.8 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0 q 8.9 -4.7 17.7 0 q 8.9 4.7 17.7 0" fill="none" stroke="#c89090" stroke-width="1.0" stroke-opacity="0.39999999999999997"/>
+</g>
+<g>
+<path d="M 20.8 117.6 Q 60.0 133.8 99.2 117.6 L 92.2 112.6 L 27.8 112.6 Z" fill="#d4001a"/>
+<line x1="69.2" y1="113.0" x2="69.2" y2="57.8" stroke="#bcbcbc" stroke-width="1.4"/>
+<line x1="43.9" y1="113.0" x2="43.9" y2="67.0" stroke="#bcbcbc" stroke-width="1.2"/>
+<line x1="20.8" y1="115.3" x2="4.7" y2="106.1" stroke="#bcbcbc" stroke-width="1.2"/>
+<path d="M 69.2 57.8 L 69.2 110.7 L 94.5 110.7 Z" fill="#c0001a" fill-opacity="0.95"/>
+<path d="M 43.9 67.0 L 43.9 110.7 L 64.6 110.7 Z" fill="#c0001a" fill-opacity="0.9"/>
+<path d="M 69.2 57.8 L 69.2 80.8 L 85.3 80.8 Z" fill="#c0001a" fill-opacity="0.8"/>
+<path d="M 43.9 67.0 L 4.7 106.1 L 18.5 106.1 Z" fill="#c0001a" fill-opacity="0.55"/>
+<path d="M 43.9 67.0 L 4.7 106.1 L 25.5 106.1 Z" fill="#c0001a" fill-opacity="0.67"/>
+<path d="M 43.9 67.0 L 4.7 106.1 L 32.4 106.1 Z" fill="#c0001a" fill-opacity="0.79"/>
+</g>
+<g id="components">
+<circle id="input_JUNCTION_NOTEVAL_CV" cx="41.3" cy="200.8" r="10.6" fill="#e8e2d6" stroke="#c0b8a8" stroke-width="1.2"/><circle cx="41.3" cy="200.8" r="5.9" fill="none" stroke="#d4001a" stroke-width="0.7" opacity="0.5"/>
+<circle id="param_JUNCTION_NOTEVAL_ATT" cx="88.6" cy="200.8" r="9.4" fill="#e8e2d6" stroke="#b07d00" stroke-width="1.4"/><line x1="88.6" y1="197.8" x2="88.6" y2="193.1" stroke="#d4001a" stroke-width="1.3" stroke-linecap="round"/>
+<circle id="input_JUNCTION_VARIATION_CV" cx="41.3" cy="236.2" r="10.6" fill="#e8e2d6" stroke="#c0b8a8" stroke-width="1.2"/><circle cx="41.3" cy="236.2" r="5.9" fill="none" stroke="#d4001a" stroke-width="0.7" opacity="0.5"/>
+<circle id="param_JUNCTION_VARIATION_ATT" cx="88.6" cy="236.2" r="9.4" fill="#e8e2d6" stroke="#b07d00" stroke-width="1.4"/><line x1="88.6" y1="233.3" x2="88.6" y2="228.5" stroke="#d4001a" stroke-width="1.3" stroke-linecap="round"/>
+<circle id="input_JUNCTION_LEGATO_CV" cx="41.3" cy="271.7" r="10.6" fill="#e8e2d6" stroke="#c0b8a8" stroke-width="1.2"/><circle cx="41.3" cy="271.7" r="5.9" fill="none" stroke="#d4001a" stroke-width="0.7" opacity="0.5"/>
+<circle id="param_JUNCTION_LEGATO_ATT" cx="88.6" cy="271.7" r="9.4" fill="#e8e2d6" stroke="#b07d00" stroke-width="1.4"/><line x1="88.6" y1="268.7" x2="88.6" y2="264.0" stroke="#d4001a" stroke-width="1.3" stroke-linecap="round"/>
+<circle id="input_JUNCTION_REST_CV" cx="41.3" cy="307.1" r="10.6" fill="#e8e2d6" stroke="#c0b8a8" stroke-width="1.2"/><circle cx="41.3" cy="307.1" r="5.9" fill="none" stroke="#d4001a" stroke-width="0.7" opacity="0.5"/>
+<circle id="param_JUNCTION_REST_ATT" cx="88.6" cy="307.1" r="9.4" fill="#e8e2d6" stroke="#b07d00" stroke-width="1.4"/><line x1="88.6" y1="304.1" x2="88.6" y2="299.4" stroke="#d4001a" stroke-width="1.3" stroke-linecap="round"/>
+<circle id="input_JUNCTION_ACCENT_CV" cx="41.3" cy="342.5" r="10.6" fill="#e8e2d6" stroke="#c0b8a8" stroke-width="1.2"/><circle cx="41.3" cy="342.5" r="5.9" fill="none" stroke="#d4001a" stroke-width="0.7" opacity="0.5"/>
+<circle id="param_JUNCTION_ACCENT_ATT" cx="88.6" cy="342.5" r="9.4" fill="#e8e2d6" stroke="#b07d00" stroke-width="1.4"/><line x1="88.6" y1="339.6" x2="88.6" y2="334.8" stroke="#d4001a" stroke-width="1.3" stroke-linecap="round"/>
+<circle id="light_connect" cx="59.1" cy="366.1" r="0.5" fill="#000000" fill-opacity="0"/>
+</g>
+</svg>

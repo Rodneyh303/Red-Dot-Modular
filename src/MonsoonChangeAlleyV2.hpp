@@ -45,6 +45,44 @@ struct MonsoonChangeAlleyV2 : Module {
     // (mirrors Intertropical::pairId). Assigned lazily in process() — NOT ctor (getModuleIds re-lock
     // deadlock). Persisted; immutable once set; gaps ok. 0 = not yet assigned.
     int pairId = 0;
+    // ── Shared-CA PRIMARY designation (CA_SHARED_EXPANDER_BUILD "8 slot marks + context-menu primary")
+    // When 2+ Monsoons share this CA, exactly one is PRIMARY (owns reseed/theme/mutation/voice-count).
+    // primaryPairId = the user's chosen host pairId, or 0 = AUTO (lowest connected pairId). Persisted so
+    // the choice is deterministic across load (reseed-on-restart needs that). If the chosen host is
+    // absent, we AUTO-PROMOTE to the lowest connected pairId for behaviour but REMEMBER this value, so
+    // the designation returns if that host comes back. Runtime helpers below resolve the effective one.
+    int primaryPairId = 0;
+
+    // The pairIds of every Monsoon currently bound to THIS CA (its scan cached us). Rebuilt at control
+    // rate by refreshConnectedHosts(); read by the widget's 8-slot row + primary menu. Sorted ascending.
+    std::vector<int> connectedHostIds_;
+
+    // Which pairId is EFFECTIVELY primary right now: the designation if it's connected, else the lowest
+    // connected id (auto-promote), else 0 (none connected). Does NOT mutate primaryPairId (the user's
+    // choice is remembered even while its host is away).
+    int effectivePrimary() const {
+        if (connectedHostIds_.empty()) return 0;
+        if (primaryPairId > 0)
+            for (int id : connectedHostIds_) if (id == primaryPairId) return primaryPairId;
+        return connectedHostIds_.front();   // sorted → lowest connected = auto default / promotion
+    }
+    rack::dsp::ClockDivider hostScanDiv_;   // control-rate rebuild of connectedHostIds_
+
+    // Rebuild connectedHostIds_ = pairIds of every Monsoon whose expander scan cached THIS CA (covers
+    // both adjacency and explicit followCA — both resolve into cachedChangeAlleyV2). Rack-wide walk,
+    // control-rate only. A capped/unassigned host (pairId 0) is skipped for the slot row (no colour).
+    void refreshConnectedHosts() {
+        connectedHostIds_.clear();
+        if (!(APP && APP->engine)) return;
+        for (int64_t id : APP->engine->getModuleIds()) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (!m) continue;
+            if (auto* mon = dynamic_cast<Monsoon*>(m))
+                if (mon->expanderManager.cachedChangeAlleyV2 == this && mon->pairId > 0)
+                    connectedHostIds_.push_back(mon->pairId);
+        }
+        std::sort(connectedHostIds_.begin(), connectedHostIds_.end());
+    }
     // One-shot latch: the rack-wide getModuleIds() clash-scan below runs EXACTLY ONCE per module
     // lifetime (mirrors Intertropical::pairChecked). Without this the scan ran every sample — an
     // O(rack size) walk at 48 kHz — the CPU spike. Runtime only (not persisted).
@@ -190,6 +228,7 @@ struct MonsoonChangeAlleyV2 : Module {
         }
         resetToIdentity();
         seedCorrKeysInternal();   // fresh module: no seed known yet, entropy keys are correct
+        hostScanDiv_.setDivision(1024);   // ~47 Hz @ 48 kHz: control-rate host enumeration (§3b)
     }
 
     static int grainFromKnob(float v) {
@@ -329,6 +368,10 @@ struct MonsoonChangeAlleyV2 : Module {
             }
             if (pairId <= 0 || clash) pairId = redDot::assignPairIdT<MonsoonChangeAlleyV2>(this);
         }
+        // Enumerate the Monsoons bound to THIS CA at control rate (§3b): feeds the 8-slot connect-mark
+        // row + the primary-selector menu. Rack-wide getModuleIds() walk is too costly per-sample, so
+        // it's divided; the first block runs immediately (divider fires on the initial count).
+        if (hostScanDiv_.process()) refreshConnectedHosts();
         // Owner guard: reset each block; the first ExpanderManager::sync() that applies transforms
         // sets it, so a second (reader) Monsoon skips the mutation. See CA_SHARED_EXPANDER_BUILD §Step4.
         transformsAppliedThisBlock = false;
@@ -428,6 +471,7 @@ struct MonsoonChangeAlleyV2 : Module {
         save("melodySrc", melodySrc);
         save("qmixSrc",   qmixSrc);   // q-mix source-select plane (parity with rhythm/melody)
         json_object_set_new(root, "pairId", json_integer(pairId));   // shared-CA pairing (CA_SHARED_EXPANDER)
+        json_object_set_new(root, "primaryPairId", json_integer(primaryPairId));  // §3b user primary (0=auto-lowest)
         {   json_t* ck = json_array();
             for (int i = 0; i < CA::N_SCATTER; ++i)
                 json_array_append_new(ck, json_integer((json_int_t)corrKey[i]));
@@ -439,6 +483,7 @@ struct MonsoonChangeAlleyV2 : Module {
     void dataFromJson(json_t* root) override {
         resetToIdentity();
         if (json_t* pj = json_object_get(root, "pairId")) pairId = (int)json_integer_value(pj);  // shared-CA (missing => 0 => reassigned in process())
+        if (json_t* pp = json_object_get(root, "primaryPairId")) primaryPairId = (int)json_integer_value(pp);  // §3b user primary (missing => 0 => auto-lowest)
         auto load = [&](const char* k, uint8_t* a) {
             json_t* arr = json_object_get(root, k);
             if (!arr) return;
@@ -674,15 +719,68 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
         }
 
         // (Bottom-centre ConnectMark REMOVED — replaced by the top-right 8-slot host connect row
-        //  (CONNECTION_UI_MODEL §14 / CA_SHARED_EXPANDER_BUILD): slot k = pairId k, filled in
-        //  pairColour(k) when connected, primary on a second axis. The 8 slot WELLS are panel art
-        //  (light_hostslot_{k} anchors); the filled/primary rendering + primary menu land next.)
+        //  (CONNECTION_UI_MODEL §14 / CA_SHARED_EXPANDER_BUILD): slot k = pairId (k+1), filled in
+        //  pairColour(k+1) when connected, primary on a second axis (an outer ring). The 8 slot WELLS
+        //  are panel art (light_hostslot_{k} anchors); the filled/primary rendering is HostSlotRow.)
+        auto* slots = new HostSlotRow(this, module);
+        slots->box.pos  = Vec(0, 0);
+        slots->box.size = box.size;
+        addChild(slots);
 
         auto* ov = new PinOverlay(module);
         ov->box.pos  = Vec(0, 0);
         ov->box.size = box.size;
         addChild(ov);
     }
+
+    // ── 8-slot host connect-mark row (§3b) ───────────────────────────────────────────────────────
+    // Slot k = host pairId (k+1). Filled in pairColour(k+1) when that Monsoon is bound to this CA;
+    // a dim hollow well otherwise. The EFFECTIVE PRIMARY gets a second visual axis: a bright outer
+    // ring (colour-independent, so it reads even when its fill colour is muted). Anchor centres are
+    // queried from the panel kit each frame (findNamed → centerOf), so the row tracks any panel
+    // widening with zero widget maths. Draw-only (the primary is CHOSEN from the context menu).
+    struct HostSlotRow : widget::TransparentWidget {
+        MonsoonChangeAlleyV2Widget* owner;   // for kit anchor lookup (centerOf/findNamed)
+        MonsoonChangeAlleyV2*       module;
+        HostSlotRow(MonsoonChangeAlleyV2Widget* o, MonsoonChangeAlleyV2* m) : owner(o), module(m) {}
+
+        void draw(const DrawArgs& args) override {
+            widget::TransparentWidget::draw(args);
+            if (!module) return;
+            NVGcontext* vg = args.vg;
+            const int eff = module->effectivePrimary();   // 0 = none connected
+            for (int k = 0; k < 8; ++k) {
+                NSVGshape* s = owner->findNamed("light_hostslot_" + std::to_string(k));
+                if (!s) continue;
+                const Vec c = owner->centerOf(s);
+                const int id = k + 1;                      // slot k → pairId (k+1)
+                bool connected = false;
+                for (int hid : module->connectedHostIds_) if (hid == id) { connected = true; break; }
+                const float rFill = mm2px(1.35f);          // inside the 1.7mm well
+                if (connected) {
+                    NVGcolor col = redDot::pairColour(id);
+                    nvgBeginPath(vg);
+                    nvgCircle(vg, c.x, c.y, rFill);
+                    nvgFillColor(vg, col);
+                    nvgFill(vg);
+                } else {
+                    // dim empty: a faint hollow dot so the 8 slots stay countable
+                    nvgBeginPath(vg);
+                    nvgCircle(vg, c.x, c.y, rFill);
+                    nvgFillColor(vg, nvgRGBA(0x40, 0x40, 0x40, 0x60));
+                    nvgFill(vg);
+                }
+                // PRIMARY second axis: bright outer ring around the effective-primary slot.
+                if (eff == id) {
+                    nvgBeginPath(vg);
+                    nvgCircle(vg, c.x, c.y, mm2px(2.0f));
+                    nvgStrokeColor(vg, nvgRGBA(0xff, 0xff, 0xff, 0xe0));
+                    nvgStrokeWidth(vg, mm2px(0.35f));
+                    nvgStroke(vg);
+                }
+            }
+        }
+    };
 
     // TransparentWidget, NOT Opaque: an opaque overlay sized to the module box consumed
     // every left-press, leaving nowhere to grab the panel for dragging (and blocked the
@@ -1164,6 +1262,30 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
         auto* module = dynamic_cast<MonsoonChangeAlleyV2*>(this->module);
         if (!module) return;
         menu->addChild(new MenuSeparator);
+        // ── Primary host selector (§3b) ──────────────────────────────────────────────────────────
+        // Radio of the connected Monsoons (by pairId) + an AUTO entry. The chosen id is PERSISTED
+        // (primaryPairId); AUTO (0) = lowest connected. Only shown when 2+ hosts share this CA (a
+        // single host is unambiguously primary — no choice to make). effectivePrimary() resolves the
+        // runtime owner (auto-promotes if the chosen host is absent, remembering the designation).
+        if (module->connectedHostIds_.size() >= 2) {
+            menu->addChild(createSubmenuItem("Primary Monsoon", "",
+                [module](Menu* sub) {
+                    const int eff = module->effectivePrimary();
+                    sub->addChild(createCheckMenuItem(
+                        "Auto (lowest connected)", "",
+                        [module]() { return module->primaryPairId == 0; },
+                        [module]() { module->primaryPairId = 0; }));
+                    for (int id : module->connectedHostIds_) {
+                        std::string lbl = "Monsoon " + std::to_string(id)
+                                        + (id == eff ? "  (primary)" : "");
+                        sub->addChild(createCheckMenuItem(
+                            lbl, "",
+                            [module, id]() { return module->primaryPairId == id; },
+                            [module, id]() { module->primaryPairId = id; }));
+                    }
+                }));
+            menu->addChild(new MenuSeparator);
+        }
         menu->addChild(createMenuItem("Reset to identity diagonal", "",
             [module]() {
                 // Skip the no-op (already identity) so undo history stays clean.

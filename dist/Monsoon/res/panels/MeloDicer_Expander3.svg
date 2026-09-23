@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="192"
+   height="485.66928"
+   viewBox="0 0 65.024 164.47962"
+   version="1.1"
+   id="svg897"
+   sodipodi:docname="MeloDicer_Expander3.svg"
+   inkscape:version="1.2.2 (732a01da63, 2022-12-09)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview899"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="true"
+     inkscape:zoom="1.0779327"
+     inkscape:cx="191.10655"
+     inkscape:cy="176.72717"
+     inkscape:window-width="1920"
+     inkscape:window-height="992"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg897">
+    <inkscape:grid
+       type="xygrid"
+       id="grid275"
+       originx="0"
+       originy="-0.0001454261" />
+  </sodipodi:namedview>
+  <defs
+     id="defs21">
+    <pattern
+       inkscape:collect="always"
+       xlink:href="#grain"
+       id="pattern1059"
+       patternTransform="matrix(0.37647058,0,0,1.28,0,-1.4542643e-4)" />
+    <pattern
+       id="grain"
+       x="0"
+       y="0"
+       width="172.72"
+       height="0.2"
+       patternUnits="userSpaceOnUse">
+      <rect
+         width="172.72"
+         height="0.2"
+         fill="#1a1a1a"
+         id="rect2" />
+      <rect
+         y="0.110"
+         width="172.72"
+         height="0.050"
+         fill="#222222"
+         opacity="0.35"
+         id="rect4" />
+    </pattern>
+    <radialGradient
+       id="jg"
+       cx="0.36000001"
+       cy="0.30000001"
+       r="0.62">
+      <stop
+         offset="0%"
+         stop-color="#585858"
+         id="stop7" />
+      <stop
+         offset="50%"
+         stop-color="#282828"
+         id="stop9" />
+      <stop
+         offset="100%"
+         stop-color="#080808"
+         id="stop11" />
+    </radialGradient>
+    <radialGradient
+       id="jgo"
+       cx="0.36000001"
+       cy="0.30000001"
+       r="0.62">
+      <stop
+         offset="0%"
+         stop-color="#806020"
+         id="stop14" />
+      <stop
+         offset="50%"
+         stop-color="#402808"
+         id="stop16" />
+      <stop
+         offset="100%"
+         stop-color="#080400"
+         id="stop18" />
+    </radialGradient>
+  </defs>
+  <rect
+     width="65.024002"
+     height="164.48"
+     fill="#1a1a1a"
+     id="rect23"
+     x="0"
+     y="-0.00014542643"
+     style="stroke-width:0.694177" />
+  <rect
+     width="65.024002"
+     height="164.48"
+     fill="url(#grain)"
+     id="rect25"
+     x="0"
+     y="-0.00014542643"
+     style="fill:url(#pattern1059);stroke-width:0.694176" />
+  <rect
+     x="0.34685785"
+     y="0.34671241"
+     width="64.330284"
+     height="163.78629"
+     fill="none"
+     stroke="#0a0a0a"
+     stroke-width="0.693713"
+     id="rect27" />
+  <circle
+     cx="4.5"
+     cy="4.4998546"
+     r="3.5999999"
+     fill="#252525"
+     stroke="#0a0a0a"
+     stroke-width="0.5"
+     id="circle29" />
+  <circle
+     cx="4.5"
+     cy="4.4998546"
+     r="2.2"
+     fill="#1e1e1e"
+     stroke="#333333"
+     stroke-width="0.3"
+     id="circle31" />
+  <line
+     x1="3.51"
+     y1="3.5098546"
+     x2="5.4899998"
+     y2="5.4898543"
+     stroke="#444444"
+     stroke-width="0.4"
+     stroke-linecap="round"
+     id="line33" />
+  <line
+     x1="3.51"
+     y1="5.4898543"
+     x2="5.4899998"
+     y2="3.5098546"
+     stroke="#444444"
+     stroke-width="0.4"
+     stroke-linecap="round"
+     id="line35" />
+  <circle
+     cx="61.450001"
+     cy="4.4998546"
+     r="3.5999999"
+     fill="#252525"
+     stroke="#0a0a0a"
+     stroke-width="0.5"
+     id="circle37" />
+  <circle
+     cx="61.450001"
+     cy="4.4998546"
+     r="2.2"
+     fill="#1e1e1e"
+     stroke="#333333"
+     stroke-width="0.3"
+     id="circle39" />
+  <line
+     x1="60.459995"
+     y1="3.5098546"
+     x2="62.440006"
+     y2="5.4898543"
+     stroke="#444444"
+     stroke-width="0.4"
+     stroke-linecap="round"
+     id="line41" />
+  <line
+     x1="60.459995"
+     y1="5.4898543"
+     x2="62.440006"
+     y2="3.5098546"
+     stroke="#444444"
+     stroke-width="0.4"
+     stroke-linecap="round"
+     id="line43" />
+  <circle
+     cx="4.5"
+     cy="157.44971"
+     r="3.5999999"
+     fill="#252525"
+     stroke="#0a0a0a"
+     stroke-width="0.5"
+     id="circle45" />
+  <circle
+     cx="4.5"
+     cy="155.94971"
+     r="2.2"
+     fill="#1e1e1e"
+     stroke="#333333"
+     stroke-width="0.3"
+     id="circle47" />
+  <line
+     x1="3.51"
+     y1="153.79971"
+     x2="5.4899998"
+     y2="155.77971"
+     stroke="#444444"
+     stroke-width="0.4"
+     stroke-linecap="round"
+     id="line49" />
+  <line
+     x1="3.51"
+     y1="155.77971"
+     x2="5.4899998"
+     y2="153.79971"
+     stroke="#444444"
+     stroke-width="0.4"
+     stroke-linecap="round"
+     id="line51" />
+  <circle
+     cx="61.450001"
+     cy="157.44971"
+     r="3.5999999"
+     fill="#252525"
+     stroke="#0a0a0a"
+     stroke-width="0.5"
+     id="circle53" />
+  <circle
+     cx="61.450077"
+     cy="155.94971"
+     r="2.2"
+     fill="#1e1e1e"
+     stroke="#333333"
+     stroke-width="0.3"
+     id="circle55" />
+  <line
+     x1="60.459995"
+     y1="153.79971"
+     x2="62.440006"
+     y2="155.77971"
+     stroke="#444444"
+     stroke-width="0.4"
+     stroke-linecap="round"
+     id="line57" />
+  <line
+     x1="60.459995"
+     y1="155.77968"
+     x2="62.440006"
+     y2="153.79971"
+     stroke="#444444"
+     stroke-width="0.4"
+     stroke-linecap="round"
+     id="line59" />
+  <rect
+     x="0"
+     y="-0.00014542643"
+     width="65.024002"
+     height="10.5"
+     fill="#141414"
+     id="rect61"
+     style="stroke-width:0.613572" />
+  <line
+     x1="2"
+     y1="10.499855"
+     x2="65.023361"
+     y2="10.499855"
+     stroke="#2a2a2a"
+     stroke-width="0.305589"
+     id="line63" />
+  <circle
+     cx="8.5"
+     cy="5.2498546"
+     r="2.5999999"
+     fill="#cc2222"
+     id="circle65" />
+</svg>

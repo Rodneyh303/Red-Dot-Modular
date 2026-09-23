@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- 
+  Monsoon - Main Stochastic Sequencer (EXPANDED)
+  Light Theme Panel (203.2mm width, ~40 HP)
+  
+  Now with proper spacing for:
+  • 6 main stochastic knobs (Note, Variation, Legato, Rest, Accent, Transpose)
+  • 3 sequencer knobs (BPM, Pattern Length, Pattern Offset)
+  • Mode selector
+  • 5 modulation inputs
+  • 11 outputs (including new accent, legato, tie, leg|tie)
+  
+  Expanded from 34 HP (172.72mm) to 40 HP (203.2mm) for comfort
+  
+  Peranakan lattice pattern rendered by C++ (not in SVG)
+  This SVG provides: Background, labels, component guides
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 203.2 380">
+  <defs>
+    <linearGradient id="panelEdgeLtMonsoonExp" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.05" />
+      <stop offset="50%" style="stop-color:#ffffff;stop-opacity:0" />
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0.05" />
+    </linearGradient>
+  </defs>
+  
+  <!-- PANEL BACKGROUND (Light Theme) -->
+  <rect width="203.2" height="380" fill="#232323"/>
+  
+  <!-- Edge Highlight -->
+  <rect width="203.2" height="380" fill="url(#panelEdgeLtMonsoonExp)" opacity="0.8"/>
+  
+  <!-- ============================================================================
+       HEADER / BRANDING
+       ============================================================================ -->
+  
+  <text x="101.6" y="18" font-size="14" font-weight="bold" font-family="monospace" 
+        text-anchor="middle" fill="#e4e4e7" letter-spacing="1.2">
+    MONSOON
+  </text>
+  
+  <text x="101.6" y="31" font-size="8" font-family="monospace" 
+        text-anchor="middle" fill="#888" letter-spacing="0.5">
+    mono stochastic sequencer | 40 hp
+  </text>
+  
+  <!-- Brand Accent (Red Dot) -->
+  <circle cx="193.2" cy="12" r="2.5" fill="#dc2626"/>
+  
+  <!-- ============================================================================
+       MAIN PARAMETER ROW (Top controls)
+       ============================================================================ -->
+  
+  <!-- Row 1: Stochastic Parameters -->
+  <text x="25" y="55" font-size="8" font-family="monospace" text-anchor="middle" 
+        fill="#e4e4e7" font-weight="bold">STOCHASTIC</text>
+  
+  <!-- NOTE VALUE Knob (Large) -->
+  <circle cx="18" cy="72" r="10" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="18" y="96" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">note</text>
+  
+  <!-- VARIATION Knob (Large) -->
+  <circle cx="50" cy="72" r="10" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="50" y="96" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">var</text>
+  
+  <!-- LEGATO Knob (Large) -->
+  <circle cx="82" cy="72" r="10" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="82" y="96" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">legato</text>
+  
+  <!-- REST Knob (Medium) -->
+  <circle cx="112" cy="72" r="9" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="112" y="96" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">rest</text>
+  
+  <!-- ACCENT Knob (Medium) -->
+  <circle cx="142" cy="72" r="9" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="142" y="96" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">accent</text>
+  
+  <!-- TRANSPOSE Knob (Medium) -->
+  <circle cx="172" cy="72" r="9" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="172" y="96" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">transpose</text>
+  
+  <!-- ============================================================================
+       SEQUENCER PARAMETERS ROW (Second controls)
+       ============================================================================ -->
+  
+  <text x="40" y="125" font-size="8" font-family="monospace" text-anchor="middle" 
+        fill="#e4e4e7" font-weight="bold">SEQUENCER</text>
+  
+  <!-- BPM Knob -->
+  <circle cx="50" cy="142" r="8" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="50" y="163" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">bpm</text>
+  
+  <!-- PATTERN LENGTH Knob -->
+  <circle cx="82" cy="142" r="8" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="82" y="163" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">len</text>
+  
+  <!-- PATTERN OFFSET Knob -->
+  <circle cx="114" cy="142" r="8" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="114" y="163" font-size="6" font-family="monospace" text-anchor="middle" fill="#888">off</text>
+  
+  <!-- MODE/TIMING Controls (right side) -->
+  <text x="170" y="140" font-size="6" font-family="monospace" text-anchor="middle" fill="#666">mode</text>
+  <rect x="155" y="150" width="30" height="10" rx="1" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  
+  <!-- ============================================================================
+       CONTROL & INPUT SECTION
+       ============================================================================ -->
+  
+  <text x="101.6" y="195" font-size="8" font-family="monospace" text-anchor="middle" 
+        fill="#e4e4e7" font-weight="bold">CONTROL INPUTS</text>
+  
+  <!-- Clock/Gate Inputs (top section) -->
+  <circle cx="20" cy="212" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="20" y="232" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">clock</text>
+  
+  <circle cx="50" cy="212" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="50" y="232" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">reset</text>
+  
+  <circle cx="80" cy="212" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="80" y="232" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">gate1</text>
+  
+  <circle cx="110" cy="212" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="110" y="232" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">gate2</text>
+  
+  <circle cx="140" cy="212" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="140" y="232" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">cv2</text>
+  
+  <!-- ============================================================================
+       OUTPUT SECTION (Bottom row - expanded)
+       ============================================================================ -->
+  
+  <text x="101.6" y="272" font-size="8" font-family="monospace" text-anchor="middle" 
+        fill="#e4e4e7" font-weight="bold">OUTPUTS (11 JACKS)</text>
+  
+  <!-- Output jacks (PJ301M ports) in two rows -->
+  <!-- Row 1: 6 outputs -->
+  <circle cx="18" cy="292" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="18" y="311" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">seed</text>
+  
+  <circle cx="42" cy="292" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="42" y="311" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">run</text>
+  
+  <circle cx="66" cy="292" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="66" y="311" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">rst</text>
+  
+  <circle cx="90" cy="292" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="90" y="311" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">gate</text>
+  
+  <circle cx="114" cy="292" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="114" y="311" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">cv</text>
+  
+  <circle cx="138" cy="292" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="138" y="311" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">legato</text>
+  
+  <!-- Row 2: 5 outputs -->
+  <circle cx="30" cy="328" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="30" y="347" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">tie</text>
+  
+  <circle cx="66" cy="328" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="66" y="347" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">accent</text>
+  
+  <circle cx="102" cy="328" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="102" y="347" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">leg|tie</text>
+  
+  <circle cx="138" cy="328" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="138" y="347" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">spare1</text>
+  
+  <circle cx="174" cy="328" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="2,1" opacity="0.6"/>
+  <text x="174" y="347" font-size="5" font-family="monospace" text-anchor="middle" fill="#888">spare2</text>
+  
+  <!-- ============================================================================
+       EXPANDER HINTS & FOOTER
+       ============================================================================ -->
+  
+  <!-- Visual hint for expander connection -->
+  <line x1="203.2" y1="100" x2="203.2" y2="300" stroke="#444" stroke-width="0.5" stroke-dasharray="3,2" opacity="0.4"/>
+  
+  <text x="101.6" y="378" font-size="5" font-family="monospace" text-anchor="middle" fill="#aaa" letter-spacing="1">
+    red dot | 40 hp expanded
+  </text>
+</svg>
