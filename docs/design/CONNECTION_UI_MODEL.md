@@ -459,3 +459,31 @@ Every "can X connect to multiple / be shared / be retargeted" question is now re
 - Interchange targeting + summing — this section.
 The remaining connection work is the ONE unified discovery rule (§ Q2: adjacency default + explicit
 selection on ambiguity + graceful unbind) and building the display/selection UI; the MODEL is complete.
+
+---
+
+## 17. Connect-mark placement convention — and CA is the deliberate exception (Rodney)
+
+**Suite convention: ONE connect mark, in a reserved panel CORNER, same place on every module.**
+What makes the indicator learnable is finding it in the SAME spot everywhere. Placement relative to a
+title/logo lockup is NOT the convention: it only works on modules with a wide, half-empty header, and a
+centred group makes the mark DRIFT horizontally whenever the title text length changes — a status
+indicator that moves is harder to find than one at a fixed offset from a corner. Identity (logo/title)
+and status (connect marks) stay separate elements.
+
+**CA is the EXCEPTION — 8 slot marks, top-right corner.** Do not "fix" this inconsistency later:
+- CA is the only module that can be SHARED BY MULTIPLE MONSOONS (up to the 8 cap), so it is the only one
+  with more than one host to show. Every other module binds ONE host and needs ONE mark.
+- CA is also by far the largest panel (60HP after the correlation-pair columns), i.e. the only one with
+  room for a full 8-wide row without crowding.
+Rules for CA's row: contiguous (never split 4+4 — splitting across the panel makes slots 4 and 5 read as
+unrelated, and left/right placement falsely implies an INTRA/INTER association, which hosts have nothing
+to do with); slot k IS pairId k, fixed, never packed; filled in `pairColour(k)` = connected, dim = empty;
+primary on a second visual axis (ring/tick, not brightness); right-aligned to the margin with GENEROUS
+clearance from the COLLAPSE INTER label (Rodney wants headroom to enlarge that font later). CA's former
+single bottom-centre mark is removed — the row replaces it.
+
+**Everyone else:** one mark, in the reserved corner, per §14 (grey/hollow = unbound, filled in the host's
+`pairColour` = bound, small number as the colour-blind fallback). Pair-FOLLOWERS (Lantern, Changi T3)
+additionally draw the followed peer's badge per §15 — that is a different indicator from the host
+connect mark and does not change this convention.
