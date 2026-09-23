@@ -416,3 +416,46 @@ user who moved modules cannot tell why their Lantern changed source.
 
 **Generalises:** Changi T3 (and any future follower) uses the same pairing helpers, so this badge
 language covers them too — one visual convention for "which peer am I following".
+
+---
+
+## 16. Interchange targeting + summing rule (Rodney) — and multi-connection coverage CLOSED
+
+### Interchange: fader modulation, one active per target, never summed
+Interchange has TWO modulation roles; in BOTH, exactly one is active per target — extras are inert, NOT
+summed:
+- **Monsoon pitch faders** (12 semis + 2 octaves): read from a SINGLE `*cachedExpander`
+  (MonsoonParameterManager.cpp ~126-170). First-found wins; a second Interchange on the Monsoon is
+  simply not read. WHOLE target — no half concept.
+- **Micro (Colonnades/Duo) WEIGHT faders** (3C-ii): the `halfClaimed[]` rule (MicroTuning.cpp ~117-141).
+  An Interchange drives one 12-degree HALF (`halfIdx*12`); first-bound claims a half, extras on that
+  half inert. The Micro is the SINGLE WRITER of weight[]; Interchange stays passive. Mod-arcs already
+  visualise the deviation.
+
+Consequences:
+- **"Interchange modulates Colonnades faders" = the WEIGHT faders, and it is BUILT** (Micro-bound, not
+  Monsoon). NOT the cents/tuning — Rodney confirmed faders, not tuning.
+- **"Duo needs 2" is the half rule, already built**: 24 degrees = two halves = two Interchanges, one per
+  bank; a 12-tone Micro's second half doesn't exist so a 2nd Interchange there is inert.
+- **Asymmetry to note**: two Interchanges are useful on a Duo (different halves) but on Monsoon are
+  one-wins-one-inert (no half split for 12 semis + 2 octaves). Splitting Monsoon's faders across two
+  Interchanges would be NEW work; today it's single-writer/whole.
+
+OPEN (small, both fit the tier-2 selection + display machinery):
+1. **Target selector** — let an Interchange choose {Monsoon pitch faders} vs {the bound Micro's weights}
+   (the "instead of Monsoon" ask). Same selection pattern as Lantern's source choice.
+2. **Half indicator** — on a Duo with two Interchanges, the connection display shows which HALF each
+   drives (upper/lower, or degrees 1-12 / 13-24), so it isn't guesswork.
+
+### Multi-connection coverage — CLOSED (Rodney)
+Every "can X connect to multiple / be shared / be retargeted" question is now resolved and documented:
+- Sands cardinality (1/type/Monsoon), Straits (1), Sikit (1), Colonnades XOR Duo (1) — §9 claim models.
+- CA shared by N Monsoons + PRIMARY (user-designated, persisted) — CA_SHARED_EXPANDER_BUILD.md, §14, §10.
+- Multiple Intertropicals: many arranged views of ONE frame; NOT merged; Lantern/CA select among them — §15.
+- Shared generation across Monsoons: SEEDER broadcast + shared CV, NOT shared Sands/cross-feed —
+  SEEDER_EXPANDER_CONCEPT.md.
+- Shared tuning: broadcast (duplicate authorities/same scale); real sharing only for LIVE Shophouse —
+  SHARED_TUNING_AUTHORITY_NOTE.md.
+- Interchange targeting + summing — this section.
+The remaining connection work is the ONE unified discovery rule (§ Q2: adjacency default + explicit
+selection on ambiguity + graceful unbind) and building the display/selection UI; the MODEL is complete.
