@@ -32,9 +32,10 @@ J_HALF   = 4.25           # half a jack, for edge clearance
 # J_DOM keeps its old relationship (one JACK_P in from where the outer edge margin sits) so the
 # control block is unchanged; the expression column is then CENTRED in the gap left of it (Fix 3).
 J_DOM   = (MARGIN + J_HALF) + JACK_P       # fwd domain trig jack (control block start)
-# Expression CV column CENTRED midway between the panel edge (x=0) and the INTRA jack column (J_DOM),
-# so it sits in the middle of that gutter rather than hard against the margin. Mirrored right via lx().
-EXPR_X  = J_DOM * 0.5
+# Expression CV column sits INBOARD, nearer the INTRA jack column (J_DOM) than the panel edge, so it
+# reads as belonging to the control block rather than floating at the margin — the larger gap is left
+# OUTSIDE it toward the edge. One partial jack-pitch in from J_DOM. Mirrored right via lx().
+EXPR_X  = J_DOM - JACK_P * 0.7            # edge gap ≈12.8mm > inner gap ≈6.0mm to J_DOM
 J_COD   = J_DOM  + JACK_P                 # fwd codomain trig jack
 KNOB1   = J_COD  + JACK_P                 # grain dial (all verbs)
 KNOB2   = KNOB1  + JACK_P                 # leader/step dial OR scatter domain-back jack
@@ -52,7 +53,9 @@ CTRL_W  = LIGHT + 4.0
 GRID_W  = 99.6            # matrix kept at its established size (cells 6.23mm × 16)
 GUTTER0 = 9.6            # nominal gutter (adjusted after HP rounding)
 PW_RAW  = 2 * (CTRL_W + GUTTER0) + GRID_W
-HP      = int(math.ceil(PW_RAW / 5.08))
+# Round UP to a full HP, then bump to at least 60HP (Rodney: land on the round number). The extra
+# slack over PW_RAW is absorbed SYMMETRICALLY into the two gutters below, so the layout stays centred.
+HP      = max(60, int(math.ceil(PW_RAW / 5.08)))
 PW_MM   = HP * 5.08
 # Absorb the rounding slack into the gutter so the matrix stays 99.6 and columns keep their pitch.
 GUTTER  = (PW_MM - 2 * CTRL_W - GRID_W) / 2.0
@@ -99,14 +102,19 @@ def exprStream(k):                # which stream row k belongs to (0=rhythm,1=me
     return 0 if k < 3 else (1 if k < 6 else 2)
 
 # ── 8-slot host connect-mark row (CONNECTION_UI_MODEL §14, CA_SHARED_EXPANDER_BUILD) ──────────
-# Slot k IS pairId k (fixed, never packed). CENTRED in the header over the matrix (NOT pinned to the
-# right margin — the old right-aligned row jammed into COLLAPSE INTER). Spread at a countable pitch so
-# the eight read individually, not as one bar. Filled state / primary ring are widget-drawn; the
-# generator emits only the well + anchor. Centre x is derived from the matrix block (see gen()).
+# Slot k IS pairId k (fixed, never packed). Sits in the header band to the RIGHT of the centred
+# "CHANGE ALLEY" title, in the gap before the COLLAPSE INTER label — overlapping NEITHER. x is derived
+# from the title's right edge + a gap (not an absolute), so it tracks the title on any width change.
+# Spread at a countable pitch so the eight read individually, not as one bar. Filled state / primary
+# ring are widget-drawn; the generator emits only the well + anchor.
 HOSTSLOT_R    = 1.7               # mark radius (mm)
 HOSTSLOT_P    = 6.0               # slot pitch (mm) — 8 slots ≈ 42mm, individually countable
-HOSTSLOT_Y    = 7.0              # header band; well below the top edge, clear of the verb labels
-                                 # which now sit over the side blocks (far left/right), not centre.
+HOSTSLOT_Y    = 6.0              # header band, level with the title baseline row
+# Title "CHANGE ALLEY" is widget-drawn CENTRED at PW/2, 3.6mm font. Estimate its half-width so the
+# mark row can start clear of its right edge. 12 glyphs × ~0.62×font ≈ 27mm → half ≈ 13.5mm; budget
+# 15mm so a slightly wider render still clears. (Widget owns the exact text; this is the layout budget.)
+TITLE_HALF_W  = 15.0
+TITLE_GAP     = 6.0              # clear gap between title right edge and the first mark
 # True-reverse group: 3 jack+button pairs (rhythm/melody/q-mix), CENTRED beneath the pin matrix.
 # Verb-agnostic, per-stream — belongs to neither Intra nor Inter, hence centred (the L/R geometry
 # IS the Intra/Inter split). Colour-coded to the stream legend by the widget.
@@ -194,17 +202,13 @@ def gen(dark):
         E(expr_well(EXPR_X,           y, ring)); A(f"input_expr_{k}",  EXPR_X,           y)
         E(expr_well(lx(EXPR_X, True), y, ring)); A(f"output_expr_{k}", lx(EXPR_X, True), y)
 
-    # ── 8-slot host connect-mark row, CENTRED in the header over the matrix ──────────────────────
-    # Slot k = pairId k (fixed, contiguous). Centre x = matrix centre (block-derived, so it moves with
-    # any width change). Spread at HOSTSLOT_P=6.0 → the eight are individually countable, not a bar.
-    # CLEARANCE from COLLAPSE INTER: that label now sits over the RIGHT control block (centre x ≈
-    # PW_MM - (BTN_D+REV_C)/2 ≈ far right), while this row is centred on the matrix — so they are
-    # horizontally ~40mm+ apart (no overlap possible) regardless of the label's font size. Vertically
-    # the marks are at y=7.0 and the verb-label band is at y≈4.75, both in the header but far apart in
-    # x. (Reported clearance: full horizontal separation ≈40mm centre-to-centre + the row sits over the
-    # matrix where no verb label reaches — ample headroom to enlarge the COLLAPSE INTER font later.)
-    hs_cx = GRID_X + GRID_W * 0.5                     # matrix centre (block-derived)
-    hs_x0 = hs_cx - (8 - 1) * HOSTSLOT_P * 0.5        # left end so the 8 slots straddle the centre
+    # ── 8-slot host connect-mark row, RIGHT of the centred title, before COLLAPSE INTER ──────────
+    # Slot k = pairId k (fixed, contiguous). First mark at (title right edge + TITLE_GAP); run right at
+    # HOSTSLOT_P. x derived from the title (PW/2 + TITLE_HALF_W), NOT an absolute — tracks any widening.
+    # The COLLAPSE INTER label is block-derived at PW - (BTN_D+REV_C)/2; the row is placed left of it
+    # with a reported clearance (see ca_clearance.py). If the row's right end would reach the label, the
+    # header band is too narrow and we'd drop to the outer margin — but at 60HP it fits comfortably.
+    hs_x0 = PW_MM * 0.5 + TITLE_HALF_W + TITLE_GAP + HOSTSLOT_R   # first mark centre, clear of title
     for k in range(8):
         x = hs_x0 + k * HOSTSLOT_P
         E(f'<circle cx="{px(x):.1f}" cy="{px(HOSTSLOT_Y):.1f}" r="{px(HOSTSLOT_R):.1f}" '

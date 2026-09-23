@@ -447,9 +447,9 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
     // centred per-stream group beneath the matrix). Jacks/dial at 8.5mm pitch, buttons clustered
     // at 6.0mm; matrix kept at 99.6mm. Generator computes HP (now 56) from these; constants below
     // MUST equal the generator's.
-    static constexpr float PW_MM   = 59.f * 5.08f;   // 299.72mm (generator-derived; CA widen for the
-                                                     // expression pair columns — MUST MATCH the HP the
-                                                     // generator prints: 56 → 59 after +1 jack col/side)
+    static constexpr float PW_MM   = 60.f * 5.08f;   // 304.80mm — forced to a round 60HP (generator
+                                                     // max(60, ceil(...))); slack absorbed symmetrically
+                                                     // into the two gutters. MUST MATCH the generator.
     static constexpr float PH_MM   = 128.5f;
     static constexpr float MARGIN  = 6.0f;
     static constexpr float JACK_P  = 8.5f;
@@ -458,8 +458,9 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
     // Jack/dial group (outer→inner), 5 columns at JACK_P, offset inboard past the expression column.
     // MUST MATCH gen_change_alley_v2.py: J_DOM = (MARGIN+J_HALF)+JACK_P; EXPR_X centred in the gutter.
     static constexpr float J_DOM   = (MARGIN + J_HALF) + JACK_P;   // fwd domain trig jack (block start)
-    // Correlation EXPRESSION pair column, CENTRED midway between the panel edge and J_DOM (Fix 3).
-    static constexpr float EXPR_X  = J_DOM * 0.5f;                 // IN (left) / OUT (right, via lx)
+    // Correlation EXPRESSION pair column, INBOARD near J_DOM (larger gap left outside toward the edge),
+    // so it reads as part of the control block. MUST MATCH gen_change_alley_v2.py.
+    static constexpr float EXPR_X  = J_DOM - JACK_P * 0.7f;        // IN (left) / OUT (right, via lx)
     static constexpr float J_COD   = J_DOM  + JACK_P;          // fwd codomain trig jack
     static constexpr float KNOB1   = J_COD  + JACK_P;          // grain dial (all verbs)
     static constexpr float KNOB2   = KNOB1  + JACK_P;          // leader/step dial OR scatter dom-back jack
