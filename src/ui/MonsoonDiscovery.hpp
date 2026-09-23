@@ -53,7 +53,12 @@ inline bool isSuiteChainModel(const rack::Model* m) {
         || m == modelMonsoonSandsVisualExpander
         || m == modelStraitsEastSandsVisual
         || m == modelStraitsSandsMacroVisual
-        || m == modelLantern;   // observer — hop-only (never a boundary, never a host)
+        || m == modelLantern       // observer — hop-only (never a boundary, never a host)
+        || m == modelIntertropical;// arranger/observer (Model C: reads via findMonsoonEitherSide/
+                                   //   getHost, has no claim slot). Was MISSING → a standalone
+                                   //   Intertropical mid-chain acted as a foreign boundary and
+                                   //   un-bound everything past it (e.g. M-Lantern-IT-Straits
+                                   //   dimmed Straits; M-Lantern-IT-IT dimmed the 2nd IT). Hop-only.
 }
 
 // ── Templated one-direction segment walk ────────────────────────────────────────────────────────

@@ -48,6 +48,7 @@ extern rack::Model* modelMonsoonDeepStraitsSandsWest;
 extern rack::Model* modelStraitsEastSandsVisual;
 extern rack::Model* modelStraitsSandsMacroVisual;
 extern rack::Model* modelLantern;   // note-output visualiser — suite member, hop-only (see scan)
+extern rack::Model* modelIntertropical;   // arranger/observer — suite member, hop-only (see scan)
 
 /**
  * ExpanderManager handles the discovery and caching of Monsoon expander modules.
@@ -205,7 +206,8 @@ struct MonsoonExpanderManager {
                     if (!cachedMacroSandsVisual) cachedMacroSandsVisual = reinterpret_cast<StraitsSandsMacroVisual*>(curr);
                     macroSandsVisualCount++;
                 } else if (curr->model == modelLantern
-                        || curr->model == modelMonsoonChangiT3Expander) {
+                        || curr->model == modelMonsoonChangiT3Expander
+                        || curr->model == modelIntertropical) {
                     // Observer / follower suite modules (Lantern; Changi T3). NOT expanders Monsoon
                     // claims — they read FROM the system (Lantern via findMonsoonEitherSide, T3 via
                     // IntertropicalPairing), never the reverse, so they get no cache slot. But they
