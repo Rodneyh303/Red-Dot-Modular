@@ -455,10 +455,11 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
     static constexpr float JACK_P  = 8.5f;
     static constexpr float BTN_P   = 6.0f;
     static constexpr float J_HALF  = 4.25f;
-    // Correlation EXPRESSION pair column (outermost each side); control group shifts inboard by JACK_P.
-    static constexpr float EXPR_X  = MARGIN + J_HALF;          // IN (left) / OUT (right, via lx)
-    // Jack/dial group (outer→inner), 5 columns at JACK_P, offset past the expression column:
-    static constexpr float J_DOM   = EXPR_X + JACK_P;          // fwd domain trig jack (was MARGIN+J_HALF)
+    // Jack/dial group (outer→inner), 5 columns at JACK_P, offset inboard past the expression column.
+    // MUST MATCH gen_change_alley_v2.py: J_DOM = (MARGIN+J_HALF)+JACK_P; EXPR_X centred in the gutter.
+    static constexpr float J_DOM   = (MARGIN + J_HALF) + JACK_P;   // fwd domain trig jack (block start)
+    // Correlation EXPRESSION pair column, CENTRED midway between the panel edge and J_DOM (Fix 3).
+    static constexpr float EXPR_X  = J_DOM * 0.5f;                 // IN (left) / OUT (right, via lx)
     static constexpr float J_COD   = J_DOM  + JACK_P;          // fwd codomain trig jack
     static constexpr float KNOB1   = J_COD  + JACK_P;          // grain dial (all verbs)
     static constexpr float KNOB2   = KNOB1  + JACK_P;          // leader/step dial OR scatter dom-back jack
@@ -730,10 +731,17 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
                     }
                     // Verb labels BOTH sides: "COLLAPSE INTRA" left, "COLLAPSE INTER" right.
                     // Panel row order is Collapse, Rotate, Reflect, Scatter (matches V_*).
+                    //
+                    // FIX (2nd widening disturbed these): x is DERIVED FROM THE BLOCK each label
+                    // belongs to — the centre of that side's button cluster — NOT from the panel edge
+                    // (the old MARGIN / PW_MM-MARGIN pinned INTER to the right edge, so widening pushed
+                    // it onto the expression jacks). blockCx is the mm centre of the button columns
+                    // (BTN_D..REV_C); lx() mirrors it to each side. Centre-aligned over the block. Now
+                    // ANY future width change moves the labels with their blocks automatically.
                     static constexpr const char* TN[4] = {"COLLAPSE","ROTATE","REFLECT","SCATTER"};
-                    nvgFontSize(vg, mm2px(Vec(2.7f,0)).x);
+                    const float blockCx = (BTN_D + REV_C) * 0.5f;   // button-cluster centre (INTRA frame)
                     nvgFillColor(vg, inkdim);
-                    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+                    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BASELINE);
                     for (int t2 = 0; t2 < 4; ++t2) {
                         // MIDDLE-aligned at the CENTRE of the GROUP_GAP band above this group's
                         // first row — so the label sits squarely in the gap, clear of both the row
@@ -741,12 +749,10 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
                         float gy = mm2px(Vec(0, rowY(t2, 0) - CTRL_ROW_H*0.5f - GROUP_GAP*0.5f)).y;
                         nvgFontSize(vg, mm2px(Vec(2.2f,0)).x);
                         char lbl[24];
-                        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BASELINE);
                         snprintf(lbl, sizeof(lbl), "%s INTRA", TN[t2]);
-                        nvgText(vg, mm2px(Vec(MARGIN, 0)).x, gy, lbl, NULL);
-                        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BASELINE);
+                        nvgText(vg, mm2px(Vec(lx(blockCx, false), 0)).x, gy, lbl, NULL);   // left block
                         snprintf(lbl, sizeof(lbl), "%s INTER", TN[t2]);
-                        nvgText(vg, mm2px(Vec(PW_MM - MARGIN, 0)).x, gy, lbl, NULL);
+                        nvgText(vg, mm2px(Vec(lx(blockCx, true),  0)).x, gy, lbl, NULL);   // right block (mirror)
                     }
                     // HORIZONTAL legend (rhythm / melody / q-mix in one row), below the INTRA (left)
                     // control block, NOT overlapping the matrix. Colours from the SHARED accessors so

@@ -28,10 +28,13 @@ J_HALF   = 4.25           # half a jack, for edge clearance
 # ONE new OUTERMOST jack column each side: 8 poly INs far-left, 8 poly OUTs far-right (the right
 # side is the left mirrored via lx()). The existing control group shifts inboard by one JACK_P so
 # the expression column owns the outer edge; the shift propagates through CTRL_W → PW_RAW → HP.
-EXPR_X  = MARGIN + J_HALF                  # outermost expression jack column (IN left / OUT right)
-
-# Jack/dial group (outer→inner): 5 columns at JACK_P, now offset inboard past the expression column.
-J_DOM   = EXPR_X  + JACK_P                 # fwd domain trig jack (was MARGIN+J_HALF)
+# Jack/dial group (outer→inner): 5 columns at JACK_P, offset inboard past the expression column.
+# J_DOM keeps its old relationship (one JACK_P in from where the outer edge margin sits) so the
+# control block is unchanged; the expression column is then CENTRED in the gap left of it (Fix 3).
+J_DOM   = (MARGIN + J_HALF) + JACK_P       # fwd domain trig jack (control block start)
+# Expression CV column CENTRED midway between the panel edge (x=0) and the INTRA jack column (J_DOM),
+# so it sits in the middle of that gutter rather than hard against the margin. Mirrored right via lx().
+EXPR_X  = J_DOM * 0.5
 J_COD   = J_DOM  + JACK_P                 # fwd codomain trig jack
 KNOB1   = J_COD  + JACK_P                 # grain dial (all verbs)
 KNOB2   = KNOB1  + JACK_P                 # leader/step dial OR scatter domain-back jack
@@ -96,11 +99,14 @@ def exprStream(k):                # which stream row k belongs to (0=rhythm,1=me
     return 0 if k < 3 else (1 if k < 6 else 2)
 
 # ── 8-slot host connect-mark row (CONNECTION_UI_MODEL §14, CA_SHARED_EXPANDER_BUILD) ──────────
-# Slot k IS pairId k (fixed, never packed). Top-right, one contiguous row, right-aligned to the
-# margin. Filled state / primary ring are widget-drawn; the generator only emits well + anchor.
-HOSTSLOT_R    = 1.6               # mark radius (mm)
-HOSTSLOT_P    = 3.2               # slot pitch (mm) — 8 slots ≈ 25mm
-HOSTSLOT_Y    = 6.0              # top band; see COLLAPSE-INTER clearance note in gen()
+# Slot k IS pairId k (fixed, never packed). CENTRED in the header over the matrix (NOT pinned to the
+# right margin — the old right-aligned row jammed into COLLAPSE INTER). Spread at a countable pitch so
+# the eight read individually, not as one bar. Filled state / primary ring are widget-drawn; the
+# generator emits only the well + anchor. Centre x is derived from the matrix block (see gen()).
+HOSTSLOT_R    = 1.7               # mark radius (mm)
+HOSTSLOT_P    = 6.0               # slot pitch (mm) — 8 slots ≈ 42mm, individually countable
+HOSTSLOT_Y    = 7.0              # header band; well below the top edge, clear of the verb labels
+                                 # which now sit over the side blocks (far left/right), not centre.
 # True-reverse group: 3 jack+button pairs (rhythm/melody/q-mix), CENTRED beneath the pin matrix.
 # Verb-agnostic, per-stream — belongs to neither Intra nor Inter, hence centred (the L/R geometry
 # IS the Intra/Inter split). Colour-coded to the stream legend by the widget.
@@ -188,16 +194,19 @@ def gen(dark):
         E(expr_well(EXPR_X,           y, ring)); A(f"input_expr_{k}",  EXPR_X,           y)
         E(expr_well(lx(EXPR_X, True), y, ring)); A(f"output_expr_{k}", lx(EXPR_X, True), y)
 
-    # ── 8-slot host connect-mark row, top-right, right-aligned to the margin ─────────────────────
-    # Slot k = pairId k (fixed). Well only here; filled/primary is widget-drawn. Right-aligned so
-    # slot 7 sits ~MARGIN from the right edge; slots run leftward. CLEARANCE from the COLLAPSE-INTER
-    # group label (widget-drawn in the GROUP_GAP band above rowY(0,0) on the right side): that label
-    # centre is ~y=CTRL_TOP-GROUP_GAP/2 ≈ 8.75mm with ~2.2mm glyph → its top ~7.6mm. The mark row is
-    # at HOSTSLOT_Y=6.0 (mark top ~4.4mm), leaving ≥3mm below the marks to the label — and the marks
-    # sit in the far-right corner where no group label reaches. (Reported clearance: ≈3.2mm vertical
-    # to the label band + full horizontal separation; headroom to enlarge that font later.)
+    # ── 8-slot host connect-mark row, CENTRED in the header over the matrix ──────────────────────
+    # Slot k = pairId k (fixed, contiguous). Centre x = matrix centre (block-derived, so it moves with
+    # any width change). Spread at HOSTSLOT_P=6.0 → the eight are individually countable, not a bar.
+    # CLEARANCE from COLLAPSE INTER: that label now sits over the RIGHT control block (centre x ≈
+    # PW_MM - (BTN_D+REV_C)/2 ≈ far right), while this row is centred on the matrix — so they are
+    # horizontally ~40mm+ apart (no overlap possible) regardless of the label's font size. Vertically
+    # the marks are at y=7.0 and the verb-label band is at y≈4.75, both in the header but far apart in
+    # x. (Reported clearance: full horizontal separation ≈40mm centre-to-centre + the row sits over the
+    # matrix where no verb label reaches — ample headroom to enlarge the COLLAPSE INTER font later.)
+    hs_cx = GRID_X + GRID_W * 0.5                     # matrix centre (block-derived)
+    hs_x0 = hs_cx - (8 - 1) * HOSTSLOT_P * 0.5        # left end so the 8 slots straddle the centre
     for k in range(8):
-        x = PW_MM - MARGIN - (7 - k) * HOSTSLOT_P
+        x = hs_x0 + k * HOSTSLOT_P
         E(f'<circle cx="{px(x):.1f}" cy="{px(HOSTSLOT_Y):.1f}" r="{px(HOSTSLOT_R):.1f}" '
           f'fill="{t["well"]}" stroke="{t["dim"]}" stroke-width="{px(0.3):.2f}"/>')
         A(f"light_hostslot_{k}", x, HOSTSLOT_Y)
