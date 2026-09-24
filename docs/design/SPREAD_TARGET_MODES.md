@@ -90,10 +90,15 @@ DECIDED: reuse that pattern — **Monsoon context menu, single source of truth, 
 - **PER LANE, not global (Rodney).** The lanes are independent, so "melody follows CA, rhythm stays
   anchored to V1" IS the musical control; one global setting would couple decisions with no reason to be
   coupled. Cost is a few menu rows — cheap against that.
-- UI: a "Spread target" SUBMENU with one two-state row per spread lane (REST, MELODY, OCTAVE, ACCENT).
+- UI: a "Spread target" SUBMENU with one two-state row per spread lane — REST, MELODY, OCTAVE, ACCENT
+  and **QMIX**.
 - Persist in JSON like the old flag did.
-- CONFIRM: q-mix is a melody-family value lane with its own slewed buffers (slewedQmix /
-  slewedPolyQmix) — does it get its own row, or follow MELODY's setting?
+- **Q-MIX GETS ITS OWN ROW (Rodney)** — same treatment as every other lane, not shared with MELODY.
+  It is first-class throughout (own Philox stream, own dice/reseed, full Raffles parity, its own
+  slewedQmix / slewedPolyQmix buffers); a shared row would be the one exception. So 5 rows, and
+  q-mix can follow CA while melody stays anchored to V1 (or vice versa) — which is the point, since
+  q-mix is the per-voice seq<->quantise blend and correlating WHICH voices sit where on that axis is
+  exactly what the QM correlation pairs are for.
 
 ## Other OPEN items (small)
 - **Keep the anchor PRE-spread** (as the code does now): correlation is then one hop only and cycle-proof.
