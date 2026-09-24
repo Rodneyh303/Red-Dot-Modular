@@ -58,7 +58,8 @@ struct SpreadManager {
   // Spread values: [voice][lane]
   // For macro: all voices use same spread (but we store separately for flexibility)
   // For per-voice: each voice has own spread
-  std::array<std::array<float, 4>, 8> spread = {};  // [8 voices][4 lanes: REST/MEL/OCT/ACC]
+  // Lane order is the SPREAD/poly-engine order: 0=REST 1=MEL 2=OCT 3=ACC 4=QMIX (PL_QMIX).
+  std::array<std::array<float, 5>, 8> spread = {};  // [8 voices][5 lanes: REST/MEL/OCT/ACC/QMIX]
 
   // ── Average-poly display cache ───────────────────────────────────────────
   // calculateAveragePolyValue() was called 48x/UI-frame (3 lanes x 16 steps),
@@ -66,7 +67,7 @@ struct SpreadManager {
   // voices). The averaged grid only changes when the poly arrays or the active
   // voice count change, so cache the 3x16 grid and rebuild it at most once per
   // frame, and only when a cheap checksum of the inputs differs.
-  mutable std::array<std::array<float, 16>, 4> avgCache_ = {};
+  mutable std::array<std::array<float, 16>, 5> avgCache_ = {};
   mutable float avgChecksum_ = -1.f;
   mutable int   avgValid_ = 0;
   
@@ -74,7 +75,7 @@ struct SpreadManager {
     : patternEngine(pe), numVoices(nVoices), startVoiceIdx(startVoice) {
     // Initialize spreads to 0 (no interpolation)
     for (int v = 0; v < 8; ++v) {
-      for (int l = 0; l < 4; ++l) {
+      for (int l = 0; l < 5; ++l) {
         spread[v][l] = 0.0f;
       }
     }
@@ -90,16 +91,16 @@ struct SpreadManager {
   
   
   void setSpread(int voiceIdx, int lane, float value) {
-    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 4) {
+    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 5) {
       spread[voiceIdx][lane] = rack::math::clamp(value, -1.0f, 1.0f);
     }
   }
   
   float getSpread(int voiceIdx, int lane) const {
-    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 4) {
+    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 5) {
       return spread[voiceIdx][lane];
     } // Default to 0.0f if out of bounds, meaning no spread
-    return 0.0f; 
+    return 0.0f;
   }
   
   // Set macro spread (same for all voices)
@@ -143,7 +144,7 @@ struct SpreadManager {
    *   Calculates average of polyRhythmRandom[0-5] (voices 9-14)
    */
   float calculateAveragePolyValue(int lane, int step) const {
-    if (!patternEngine || step < 0 || step >= 16 || lane < 0 || lane > 3) return 0.5f;
+    if (!patternEngine || step < 0 || step >= 16 || lane < 0 || lane > 4) return 0.5f;
     refreshAverageCache_();
     return avgCache_[lane][step];
   }
@@ -157,7 +158,7 @@ struct SpreadManager {
     int activeVoiceCount = std::min(getActiveVoiceCount(), numVoices);
     if (activeVoiceCount <= 0) {
       if (avgValid_ && avgChecksum_ == 0.f) return;
-      for (int l = 0; l < 4; ++l) for (int s = 0; s < 16; ++s) avgCache_[l][s] = 0.5f;
+      for (int l = 0; l < 5; ++l) for (int s = 0; s < 16; ++s) avgCache_[l][s] = 0.5f;
       avgChecksum_ = 0.f; avgValid_ = 1; return;
     }
     // Cheap checksum: active count + a few sampled cells. Catches re-rolls and
@@ -171,17 +172,19 @@ struct SpreadManager {
 
     const float inv = 1.f / activeVoiceCount;
     for (int s = 0; s < 16; ++s) {
-      float r = 0.f, m = 0.f, o = 0.f, a = 0.f;
+      float r = 0.f, m = 0.f, o = 0.f, a = 0.f, q = 0.f;
       for (int v = 0; v < activeVoiceCount; ++v) {
         r += patternEngine->polyRandom(v, SequencerEngine::PL_REST)[s];
         m += patternEngine->polyRandom(v, SequencerEngine::PL_MELODY)[s];
         o += patternEngine->polyRandom(v, SequencerEngine::PL_OCTAVE)[s];
         a += patternEngine->polyRandom(v, SequencerEngine::PL_ACCENT)[s];
+        q += patternEngine->polyRandom(v, SequencerEngine::PL_QMIX)[s];
       }
       avgCache_[0][s] = r * inv;
       avgCache_[1][s] = m * inv;
       avgCache_[2][s] = o * inv;
       avgCache_[3][s] = a * inv;
+      avgCache_[4][s] = q * inv;
     }
     avgChecksum_ = cs; avgValid_ = 1;
   }
@@ -218,6 +221,8 @@ struct SpreadManager {
         return patternEngine->octaveRandom[step];
       case 3:  // ACCENT
         return patternEngine->accentRandom[step];
+      case 4:  // QMIX
+        return patternEngine->qmixRandom[step];
       default:
         return 0.5f;
     }
@@ -230,7 +235,7 @@ struct SpreadManager {
    */
   float getOriginalValue(int voiceIdx, int lane, int step) const {
     if (!patternEngine || voiceIdx < 0 || voiceIdx >= numVoices) return 0.5f;
-    if (lane < 0 || lane > 3 || step < 0 || step >= 16) return 0.5f;
+    if (lane < 0 || lane > 4 || step < 0 || step >= 16) return 0.5f;
     
     switch (lane) {
       case 0:  // REST
@@ -241,6 +246,8 @@ struct SpreadManager {
         return patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_OCTAVE)[step];
       case 3:  // ACCENT
         return patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_ACCENT)[step];
+      case 4:  // QMIX
+        return patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_QMIX)[step];
       default:
         return 0.5f;
     }
@@ -399,7 +406,7 @@ struct MacroSpreadManager : public SpreadManager {
   
   // Override: set spread applies to all voices
   void setSpread(int lane, float value) {
-    if (lane >= 0 && lane < 4) {
+    if (lane >= 0 && lane < 5) {
       float clamped = rack::math::clamp(value, -1.0f, 1.0f);
       for (int v = 0; v < numVoices; ++v) {
         SpreadManager::setSpread(v, lane, clamped);

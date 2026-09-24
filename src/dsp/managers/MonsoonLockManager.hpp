@@ -51,6 +51,13 @@ enum ScopeBit : uint32_t {
     SB_ABRESEED_M     = 1u << 7,   // A/B mix + reseed (melody stream)
     SB_DICE_R         = 1u << 8,   // rhythm dice redraw (incl. live-mode per-cycle reroll) under lock
     SB_DICE_M         = 1u << 9,   // melody dice redraw (incl. live-mode per-cycle reroll) under lock
+    // q-mix is its OWN axis (not "melody family"): its dice draw + A/B mix/reseed freeze/free
+    // independently of melody. Was previously grouped under SB_DICE_M / SB_ABRESEED_M as an
+    // undocumented implementation default; split out so q-mix is lockable as its own stream.
+    SB_ABRESEED_Q     = 1u << 10,  // A/B mix + reseed (q-mix stream)
+    SB_DICE_Q         = 1u << 11,  // q-mix dice redraw (incl. live-mode per-cycle reroll) under lock
+    SB_CA_Q           = 1u << 12,  // Change Alley q-mix: green pin plane (qmixSrc) — own axis
+    SB_SANDS_Q        = 1u << 13,  // Sands DNA q-mix: spread on the q-mix value lane — own axis
 };
 
 // Controls that have a lock category. This enum is the vocabulary call sites use with liveNow().

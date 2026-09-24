@@ -48,6 +48,7 @@ extern rack::Model* modelMonsoonDeepStraitsSandsWest;
 extern rack::Model* modelStraitsEastSandsVisual;
 extern rack::Model* modelStraitsSandsMacroVisual;
 extern rack::Model* modelLantern;   // note-output visualiser — suite member, hop-only (see scan)
+extern rack::Model* modelIntertropical;   // arranger/observer — suite member, hop-only (see scan)
 
 /**
  * ExpanderManager handles the discovery and caching of Monsoon expander modules.
@@ -204,13 +205,16 @@ struct MonsoonExpanderManager {
                 } else if (curr->model == modelStraitsSandsMacroVisual) {
                     if (!cachedMacroSandsVisual) cachedMacroSandsVisual = reinterpret_cast<StraitsSandsMacroVisual*>(curr);
                     macroSandsVisualCount++;
-                } else if (curr->model == modelLantern) {
-                    // Lantern is a suite note-output visualiser, NOT an expander Monsoon claims
-                    // (it reads FROM Monsoon via findMonsoonEitherSide, never the reverse). But it
-                    // lives in the chain — often placed between Monsoon and other expanders — so
-                    // recognise it here to HOP through, instead of stopping at it (Rule 1). Without
-                    // this, modules to the right/left of Lantern were never cached → ConnectMarks
-                    // showed disconnected. No cache slot: Monsoon reads no expander data from it.
+                } else if (curr->model == modelLantern
+                        || curr->model == modelMonsoonChangiT3Expander
+                        || curr->model == modelIntertropical) {
+                    // Observer / follower suite modules (Lantern; Changi T3). NOT expanders Monsoon
+                    // claims — they read FROM the system (Lantern via findMonsoonEitherSide, T3 via
+                    // IntertropicalPairing), never the reverse, so they get no cache slot. But they
+                    // live in the chain (often placed between Monsoon and other expanders), so HOP
+                    // through them instead of stopping (Rule 1). Without this, anything past an
+                    // observer was never cached → ConnectMarks showed disconnected. Kept in LOCKSTEP
+                    // with MonsoonDiscovery.hpp isSuiteChainModel (both must agree suite-vs-foreign).
                 } else break;   // Rule 1: stop at first foreign module.
 
                 // (No early-out. Chains are at most depth-8 per side, so the cost of always

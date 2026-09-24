@@ -1,5 +1,10 @@
 # Connection / binding model — scoping doc (Rodney)
 
+> **SUPERSEDED (in part) by CONNECTION_MODEL_SPEC.md** — Q1 (node-anchored identity), Q2 (segment rule /
+> claim-by-scan; CA shareable), and Q6 (badge suppressed for single-Monsoon rigs) are now DECIDED there.
+> This doc remains the inventory/scoping record and the source for the still-[OPEN] items. Where the two
+> disagree, the SPEC wins.
+
 STATUS: SCOPING. Not a spec yet. Written to STOP piecemeal growth of connection UI and define it
 systematically before more connection code (including the shared-CA "PRIMARY MONSOON" badge in
 CA_SHARED_EXPANDER_BUILD.md, which should become a CONSUMER of the model defined here, not its own
@@ -379,3 +384,106 @@ the adjacency tier keeps working until reached. So build the selection UI FIRST 
 MUST persist + degrade gracefully (monome lesson §13): a selected source that is deleted → the consumer
 shows "source removed — pick another" (via stable id), never silently falls back to a wrong peer or blanks
 without reason.
+
+---
+
+## 15. Tier-2 visualisation: Lantern (and any pair-follower) — mirror the target's badge (Rodney)
+
+Tier 2 = selection-required modules facing a field of same-type peers (§14). CA's 8-slot row does NOT
+transfer: CA's targets are HOSTS (<=8, pairId-indexed), Lantern's are PEERS inside a group.
+
+**Selection already exists — only the DISPLAY is missing.** Lantern persists two axes today:
+`sourceMode` (0 = Monsoon/Straits raw voices, 1 = Intertropical routed output) and `followIT`
+(0 = auto-nearest, >0 = that pairId, resolved rack-wide via `resolveFollowedIT`). Menus come from
+`presentPairIdsT`. `assignPairIdT` gives each Intertropical a UNIQUE, persisted id (global lowest
+unused, 1..N) — so "IT 3" names exactly one module. Nothing new is needed to choose; build the badge.
+
+**The display: one badge, four states, all reusing `pairColour` + `drawPairBadge`.**
+| State | Draw | Reads as |
+|---|---|---|
+| sourceMode 0 (Monsoon/Straits voices) | NO pair badge — just the host connect mark in the group colour | "watching raw voices of this group" |
+| sourceMode 1, pinned (`followIT = k`) | The SAME badge the target Intertropical draws: `pairColour(k)` + number k, FILLED | "watching IT 3" — confirmed by matching the identical badge on that module |
+| sourceMode 1, AUTO (`followIT = 0`) | The RESOLVED instance's badge, but HOLLOW/outlined (or with a small dot) | "currently IT 3, by proximity" — NOT pinned |
+| sourceMode 1, unresolved (pinned id absent / no IT found) | Empty or struck badge, never a blank corner | "source removed — pick another" (monome lesson §13) |
+
+Why mirroring beats inventing a scheme: the user verifies a binding by matching two IDENTICAL badges
+across the rack — no legend, no decoding, and it works precisely because pairId is unique and persisted.
+A "V"/"A" glyph next to the mark is optional; badge-presence already separates the two source types.
+
+**AUTO vs PINNED must be visually distinct** — the one genuinely new requirement. They behave
+identically until the rack changes, then auto re-resolves and pinned does not. Without the distinction a
+user who moved modules cannot tell why their Lantern changed source.
+
+**Generalises:** Changi T3 (and any future follower) uses the same pairing helpers, so this badge
+language covers them too — one visual convention for "which peer am I following".
+
+---
+
+## 16. Interchange targeting + summing rule (Rodney) — and multi-connection coverage CLOSED
+
+### Interchange: fader modulation, one active per target, never summed
+Interchange has TWO modulation roles; in BOTH, exactly one is active per target — extras are inert, NOT
+summed:
+- **Monsoon pitch faders** (12 semis + 2 octaves): read from a SINGLE `*cachedExpander`
+  (MonsoonParameterManager.cpp ~126-170). First-found wins; a second Interchange on the Monsoon is
+  simply not read. WHOLE target — no half concept.
+- **Micro (Colonnades/Duo) WEIGHT faders** (3C-ii): the `halfClaimed[]` rule (MicroTuning.cpp ~117-141).
+  An Interchange drives one 12-degree HALF (`halfIdx*12`); first-bound claims a half, extras on that
+  half inert. The Micro is the SINGLE WRITER of weight[]; Interchange stays passive. Mod-arcs already
+  visualise the deviation.
+
+Consequences:
+- **"Interchange modulates Colonnades faders" = the WEIGHT faders, and it is BUILT** (Micro-bound, not
+  Monsoon). NOT the cents/tuning — Rodney confirmed faders, not tuning.
+- **"Duo needs 2" is the half rule, already built**: 24 degrees = two halves = two Interchanges, one per
+  bank; a 12-tone Micro's second half doesn't exist so a 2nd Interchange there is inert.
+- **Asymmetry to note**: two Interchanges are useful on a Duo (different halves) but on Monsoon are
+  one-wins-one-inert (no half split for 12 semis + 2 octaves). Splitting Monsoon's faders across two
+  Interchanges would be NEW work; today it's single-writer/whole.
+
+OPEN (small, both fit the tier-2 selection + display machinery):
+1. **Target selector** — let an Interchange choose {Monsoon pitch faders} vs {the bound Micro's weights}
+   (the "instead of Monsoon" ask). Same selection pattern as Lantern's source choice.
+2. **Half indicator** — on a Duo with two Interchanges, the connection display shows which HALF each
+   drives (upper/lower, or degrees 1-12 / 13-24), so it isn't guesswork.
+
+### Multi-connection coverage — CLOSED (Rodney)
+Every "can X connect to multiple / be shared / be retargeted" question is now resolved and documented:
+- Sands cardinality (1/type/Monsoon), Straits (1), Sikit (1), Colonnades XOR Duo (1) — §9 claim models.
+- CA shared by N Monsoons + PRIMARY (user-designated, persisted) — CA_SHARED_EXPANDER_BUILD.md, §14, §10.
+- Multiple Intertropicals: many arranged views of ONE frame; NOT merged; Lantern/CA select among them — §15.
+- Shared generation across Monsoons: SEEDER broadcast + shared CV, NOT shared Sands/cross-feed —
+  SEEDER_EXPANDER_CONCEPT.md.
+- Shared tuning: broadcast (duplicate authorities/same scale); real sharing only for LIVE Shophouse —
+  SHARED_TUNING_AUTHORITY_NOTE.md.
+- Interchange targeting + summing — this section.
+The remaining connection work is the ONE unified discovery rule (§ Q2: adjacency default + explicit
+selection on ambiguity + graceful unbind) and building the display/selection UI; the MODEL is complete.
+
+---
+
+## 17. Connect-mark placement convention — and CA is the deliberate exception (Rodney)
+
+**Suite convention: ONE connect mark, in a reserved panel CORNER, same place on every module.**
+What makes the indicator learnable is finding it in the SAME spot everywhere. Placement relative to a
+title/logo lockup is NOT the convention: it only works on modules with a wide, half-empty header, and a
+centred group makes the mark DRIFT horizontally whenever the title text length changes — a status
+indicator that moves is harder to find than one at a fixed offset from a corner. Identity (logo/title)
+and status (connect marks) stay separate elements.
+
+**CA is the EXCEPTION — 8 slot marks, top-right corner.** Do not "fix" this inconsistency later:
+- CA is the only module that can be SHARED BY MULTIPLE MONSOONS (up to the 8 cap), so it is the only one
+  with more than one host to show. Every other module binds ONE host and needs ONE mark.
+- CA is also by far the largest panel (60HP after the correlation-pair columns), i.e. the only one with
+  room for a full 8-wide row without crowding.
+Rules for CA's row: contiguous (never split 4+4 — splitting across the panel makes slots 4 and 5 read as
+unrelated, and left/right placement falsely implies an INTRA/INTER association, which hosts have nothing
+to do with); slot k IS pairId k, fixed, never packed; filled in `pairColour(k)` = connected, dim = empty;
+primary on a second visual axis (ring/tick, not brightness); right-aligned to the margin with GENEROUS
+clearance from the COLLAPSE INTER label (Rodney wants headroom to enlarge that font later). CA's former
+single bottom-centre mark is removed — the row replaces it.
+
+**Everyone else:** one mark, in the reserved corner, per §14 (grey/hollow = unbound, filled in the host's
+`pairColour` = bound, small number as the colour-blind fallback). Pair-FOLLOWERS (Lantern, Changi T3)
+additionally draw the followed peer's badge per §15 — that is a different indicator from the host
+connect mark and does not change this convention.

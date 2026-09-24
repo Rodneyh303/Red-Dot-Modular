@@ -1,0 +1,1117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="203.2mm" height="128.5mm"
+     viewBox="0 0 203.2 128.5">
+<defs>
+  <pattern id="brush" x="0" y="0" width="2" height="0.5" patternUnits="userSpaceOnUse">
+    <rect width="2" height="0.5" fill="#242424"/>
+    <rect y="0.24" width="2" height="0.13" fill="#2c2c2c" opacity="0.55"/>
+</pattern>
+  <pattern id="brush2" x="0" y="0" width="1" height="2.4" patternUnits="userSpaceOnUse">
+    <rect width="1" height="2.4" fill="none"/>
+    <rect y="0" width="1" height="0.5" fill="#1c1c1c" opacity="0.12"/>
+</pattern>
+  <radialGradient id="recess_knob" cx="50%" cy="45%" r="55%">
+    <stop offset="0%"   stop-color="#171717"/>
+    <stop offset="70%"  stop-color="#111111"/>
+    <stop offset="100%" stop-color="#0c0c0c"/>
+  </radialGradient>
+  <radialGradient id="recess_port" cx="50%" cy="45%" r="55%">
+    <stop offset="0%"   stop-color="#141414"/>
+    <stop offset="100%" stop-color="#0a0a0a"/>
+  </radialGradient>
+  <linearGradient id="recess_slider" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%"   stop-color="#0f0f0f"/>
+    <stop offset="40%"  stop-color="#181818"/>
+    <stop offset="60%"  stop-color="#181818"/>
+    <stop offset="100%" stop-color="#0f0f0f"/>
+  </linearGradient>
+  <linearGradient id="recess_btn" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%"   stop-color="#131313"/>
+    <stop offset="100%" stop-color="#0d0d0d"/>
+  </linearGradient>
+  <linearGradient id="section_bg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%"   stop-color="#202020"/>
+    <stop offset="100%" stop-color="#1a1a1a"/>
+  </linearGradient>
+  <filter id="inset_shadow" x="-10%" y="-10%" width="120%" height="120%">
+    <feDropShadow dx="0" dy="0.4" stdDeviation="0.7"
+                  flood-color="#000000" flood-opacity="0.85"/>
+  </filter>
+  <filter id="ring_shadow" x="-20%" y="-20%" width="140%" height="140%">
+    <feDropShadow dx="0" dy="0.8" stdDeviation="1.2"
+                  flood-color="#000000" flood-opacity="0.7"/>
+  </filter>
+  <filter id="led_glow" x="-100%" y="-100%" width="300%" height="300%">
+    <feGaussianBlur stdDeviation="1.0" result="b"/>
+    <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <clipPath id="panel">
+    <rect width="203.2" height="128.5" rx="3.5"/>
+  </clipPath>
+</defs>
+<g clip-path="url(#panel)">
+  <rect width="203.2" height="128.5" fill="#141414"/>
+  <rect width="203.2" height="128.5" fill="url(#brush)"/>
+  <rect width="203.2" height="128.5" fill="url(#brush2)" opacity="0.35"/>
+  <rect width="203.2" height="128.5" fill="none"
+    style="filter:drop-shadow(0 0 8mm rgba(0,0,0,0.5)) inset"/>
+</g>
+<rect width="203.2" height="128.5" rx="3.5" fill="none"
+      stroke="#3a3a3a" stroke-width="0.8"/>
+<rect x="1.2" y="1.2" width="200.8" height="126.1" rx="2.8" fill="none"
+      stroke="#282828" stroke-width="0.4"/>
+<circle cx="6" cy="6" r="4.2" fill="#181818" stroke="#363636" stroke-width="0.7"/>
+<circle cx="6" cy="6" r="2.6" fill="#1e1e1e" stroke="#444" stroke-width="0.4"/>
+<line x1="4.94" y1="4.94" x2="7.06" y2="7.06"
+      stroke="#585858" stroke-width="0.55" stroke-linecap="round"/>
+<line x1="4.94" y1="7.06" x2="7.06" y2="4.94"
+      stroke="#585858" stroke-width="0.55" stroke-linecap="round"/>
+<circle cx="197.2" cy="6" r="4.2" fill="#181818" stroke="#363636" stroke-width="0.7"/>
+<circle cx="197.2" cy="6" r="2.6" fill="#1e1e1e" stroke="#444" stroke-width="0.4"/>
+<line x1="196.14" y1="4.94" x2="198.26" y2="7.06"
+      stroke="#585858" stroke-width="0.55" stroke-linecap="round"/>
+<line x1="196.14" y1="7.06" x2="198.26" y2="4.94"
+      stroke="#585858" stroke-width="0.55" stroke-linecap="round"/>
+<circle cx="6" cy="122.5" r="4.2" fill="#181818" stroke="#363636" stroke-width="0.7"/>
+<circle cx="6" cy="122.5" r="2.6" fill="#1e1e1e" stroke="#444" stroke-width="0.4"/>
+<line x1="4.94" y1="121.44" x2="7.06" y2="123.56"
+      stroke="#585858" stroke-width="0.55" stroke-linecap="round"/>
+<line x1="4.94" y1="123.56" x2="7.06" y2="121.44"
+      stroke="#585858" stroke-width="0.55" stroke-linecap="round"/>
+<circle cx="197.2" cy="122.5" r="4.2" fill="#181818" stroke="#363636" stroke-width="0.7"/>
+<circle cx="197.2" cy="122.5" r="2.6" fill="#1e1e1e" stroke="#444" stroke-width="0.4"/>
+<line x1="196.14" y1="121.44" x2="198.26" y2="123.56"
+      stroke="#585858" stroke-width="0.55" stroke-linecap="round"/>
+<line x1="196.14" y1="123.56" x2="198.26" y2="121.44"
+      stroke="#585858" stroke-width="0.55" stroke-linecap="round"/>
+<rect x="0" y="0" width="203.2" height="14.5" rx="3.5" fill="#181818"/>
+<rect x="0" y="11" width="203.2" height="3.5" fill="#181818"/>
+<line x1="0" y1="14" x2="203.2" y2="14" stroke="#303030" stroke-width="0.5"/>
+<circle cx="12" cy="7.2" r="3.2" fill="#cc2222"/>
+<circle cx="11.1" cy="6.3" r="1.0" fill="white" opacity="0.28"/>
+<text x="19" y="10.2" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="5.8" font-weight="600" letter-spacing="0.4" fill="#c8c8c8">Red Dot Modular</text>
+<text x="94" y="10.2" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="5.8" font-weight="300" letter-spacing="1.0" fill="#5a5a5a"> — Ultra Pro v2</text>
+<rect x="4" y="15" width="195.2" height="30" rx="2.5"
+      fill="url(#section_bg)" stroke="#2e2e2e" stroke-width="0.45"/>
+<rect x="4.5" y="15.4" width="194.2" height="0.8" rx="1.0"
+      fill="white" opacity="0.03"/>
+<circle cx="20" cy="30" r="11.70"
+        fill="#0f0f0f" filter="url(#ring_shadow)"/>
+<circle cx="20" cy="30" r="11.20"
+        fill="none" stroke="#2e2e2e" stroke-width="1.4"/>
+<circle cx="20" cy="30" r="10.80"
+        fill="none" stroke="#484848" stroke-width="0.3"/>
+<circle cx="20" cy="30" r="9.00"
+        fill="url(#recess_knob)" filter="url(#inset_shadow)"/>
+<circle cx="20" cy="30" r="5.40"
+        fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+<text x="20" y="44.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.8" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">NOTE</text>
+<line x1="11.66" y1="38.34" x2="10.81" y2="39.19"
+      stroke="#3e3e3e" stroke-width="0.5"/>
+<line x1="8.78" y1="33.65" x2="8.30" y2="33.80"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="8.35" y1="28.15" x2="7.85" y2="28.08"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="10.45" y1="23.06" x2="10.05" y2="22.77"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="14.64" y1="19.49" x2="14.42" y2="19.04"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="20.00" y1="18.20" x2="20.00" y2="17.00"
+      stroke="#3e3e3e" stroke-width="0.5"/>
+<line x1="25.36" y1="19.49" x2="25.58" y2="19.04"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="29.55" y1="23.06" x2="29.95" y2="22.77"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="31.65" y1="28.15" x2="32.15" y2="28.08"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="31.22" y1="33.65" x2="31.70" y2="33.80"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="28.34" y1="38.34" x2="29.19" y2="39.19"
+      stroke="#3e3e3e" stroke-width="0.5"/>
+<circle cx="52" cy="30" r="11.70"
+        fill="#0f0f0f" filter="url(#ring_shadow)"/>
+<circle cx="52" cy="30" r="11.20"
+        fill="none" stroke="#2e2e2e" stroke-width="1.4"/>
+<circle cx="52" cy="30" r="10.80"
+        fill="none" stroke="#484848" stroke-width="0.3"/>
+<circle cx="52" cy="30" r="9.00"
+        fill="url(#recess_knob)" filter="url(#inset_shadow)"/>
+<circle cx="52" cy="30" r="5.40"
+        fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+<text x="52" y="44.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.8" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">VAR</text>
+<line x1="43.66" y1="38.34" x2="42.81" y2="39.19"
+      stroke="#3e3e3e" stroke-width="0.5"/>
+<line x1="40.78" y1="33.65" x2="40.30" y2="33.80"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="40.35" y1="28.15" x2="39.85" y2="28.08"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="42.45" y1="23.06" x2="42.05" y2="22.77"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="46.64" y1="19.49" x2="46.42" y2="19.04"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="52.00" y1="18.20" x2="52.00" y2="17.00"
+      stroke="#3e3e3e" stroke-width="0.5"/>
+<line x1="57.36" y1="19.49" x2="57.58" y2="19.04"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="61.55" y1="23.06" x2="61.95" y2="22.77"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="63.65" y1="28.15" x2="64.15" y2="28.08"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="63.22" y1="33.65" x2="63.70" y2="33.80"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="60.34" y1="38.34" x2="61.19" y2="39.19"
+      stroke="#3e3e3e" stroke-width="0.5"/>
+<circle cx="110" cy="30" r="11.70"
+        fill="#0f0f0f" filter="url(#ring_shadow)"/>
+<circle cx="110" cy="30" r="11.20"
+        fill="none" stroke="#2e2e2e" stroke-width="1.4"/>
+<circle cx="110" cy="30" r="10.80"
+        fill="none" stroke="#484848" stroke-width="0.3"/>
+<circle cx="110" cy="30" r="9.00"
+        fill="url(#recess_knob)" filter="url(#inset_shadow)"/>
+<circle cx="110" cy="30" r="5.40"
+        fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+<text x="110" y="44.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.8" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">LEG</text>
+<line x1="101.66" y1="38.34" x2="100.81" y2="39.19"
+      stroke="#3e3e3e" stroke-width="0.5"/>
+<line x1="98.78" y1="33.65" x2="98.30" y2="33.80"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="98.35" y1="28.15" x2="97.85" y2="28.08"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="100.45" y1="23.06" x2="100.05" y2="22.77"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="104.64" y1="19.49" x2="104.42" y2="19.04"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="110.00" y1="18.20" x2="110.00" y2="17.00"
+      stroke="#3e3e3e" stroke-width="0.5"/>
+<line x1="115.36" y1="19.49" x2="115.58" y2="19.04"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="119.55" y1="23.06" x2="119.95" y2="22.77"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="121.65" y1="28.15" x2="122.15" y2="28.08"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="121.22" y1="33.65" x2="121.70" y2="33.80"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="118.34" y1="38.34" x2="119.19" y2="39.19"
+      stroke="#3e3e3e" stroke-width="0.5"/>
+<circle cx="170" cy="30" r="11.70"
+        fill="#0f0f0f" filter="url(#ring_shadow)"/>
+<circle cx="170" cy="30" r="11.20"
+        fill="none" stroke="#2e2e2e" stroke-width="1.4"/>
+<circle cx="170" cy="30" r="10.80"
+        fill="none" stroke="#484848" stroke-width="0.3"/>
+<circle cx="170" cy="30" r="9.00"
+        fill="url(#recess_knob)" filter="url(#inset_shadow)"/>
+<circle cx="170" cy="30" r="5.40"
+        fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+<text x="170" y="44.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.8" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">BPM</text>
+<line x1="161.66" y1="38.34" x2="160.81" y2="39.19"
+      stroke="#3e3e3e" stroke-width="0.5"/>
+<line x1="158.78" y1="33.65" x2="158.30" y2="33.80"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="158.35" y1="28.15" x2="157.85" y2="28.08"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="160.45" y1="23.06" x2="160.05" y2="22.77"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="164.64" y1="19.49" x2="164.42" y2="19.04"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="170.00" y1="18.20" x2="170.00" y2="17.00"
+      stroke="#3e3e3e" stroke-width="0.5"/>
+<line x1="175.36" y1="19.49" x2="175.58" y2="19.04"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="179.55" y1="23.06" x2="179.95" y2="22.77"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="181.65" y1="28.15" x2="182.15" y2="28.08"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="181.22" y1="33.65" x2="181.70" y2="33.80"
+      stroke="#2e2e2e" stroke-width="0.35"/>
+<line x1="178.34" y1="38.34" x2="179.19" y2="39.19"
+      stroke="#3e3e3e" stroke-width="0.5"/>
+<text x="20" y="19" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.2" font-weight="500" letter-spacing="1.5"
+      fill="#444444" text-anchor="middle">— NOTE —</text>
+<text x="52" y="19" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.2" font-weight="500" letter-spacing="1.5"
+      fill="#444444" text-anchor="middle">— VAR —</text>
+<text x="110" y="19" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.2" font-weight="500" letter-spacing="1.5"
+      fill="#444444" text-anchor="middle">— LEG —</text>
+<text x="170" y="19" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.2" font-weight="500" letter-spacing="1.5"
+      fill="#444444" text-anchor="middle">— BPM —</text>
+<rect x="4" y="47" width="92" height="52" rx="2.2"
+      fill="url(#section_bg)" stroke="#2e2e2e" stroke-width="0.45"/>
+<rect x="4.5" y="47.4" width="91.0" height="0.8" rx="0.9"
+      fill="white" opacity="0.03"/>
+<rect x="99" y="47" width="72" height="52" rx="2.2"
+      fill="url(#section_bg)" stroke="#2e2e2e" stroke-width="0.45"/>
+<rect x="99.5" y="47.4" width="71.0" height="0.8" rx="0.9"
+      fill="white" opacity="0.03"/>
+<rect x="173" y="47" width="26.19999999999999" height="52" rx="2.2"
+      fill="url(#section_bg)" stroke="#2e2e2e" stroke-width="0.45"/>
+<rect x="173.5" y="47.4" width="25.2" height="0.8" rx="0.9"
+      fill="white" opacity="0.03"/>
+<circle cx="48" cy="73" r="30.0"
+        fill="#141414" stroke="#252525" stroke-width="0.6"
+        filter="url(#inset_shadow)"/>
+<circle cx="48" cy="73" r="16" fill="#1a1a1a" stroke="#2a2a2a" stroke-width="0.5"/>
+<circle cx="48" cy="73" r="22.0"
+        fill="none" stroke="#1e1e1e" stroke-width="12.0" opacity="0.5"/>
+<circle cx="48.0" cy="51.0" r="2.60" fill="#0a0a0a"/>
+<circle cx="48.0" cy="51.0" r="2.00" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="48.0" cy="51.0" r="2.00" fill="#ff3322" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="48.0" y="62.5" font-family="Arial" font-size="2.8"
+      fill="#545454" text-anchor="middle">1</text>
+<line x1="48.00" y1="43.20" x2="48.00" y2="40.50"
+      stroke="#4a4a4a" stroke-width="0.7"/>
+<circle cx="56.419035512031975" cy="52.67465028475169" r="2.20" fill="#0a0a0a"/>
+<circle cx="56.419035512031975" cy="52.67465028475169" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="56.419035512031975" cy="52.67465028475169" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="52.4" y="63.4" font-family="Arial" font-size="2.8"
+      fill="#333333" text-anchor="middle">2</text>
+<line x1="59.40" y1="45.47" x2="59.79" y2="44.54"
+      stroke="#303030" stroke-width="0.4"/>
+<circle cx="63.55634918610404" cy="57.44365081389596" r="2.20" fill="#0a0a0a"/>
+<circle cx="63.55634918610404" cy="57.44365081389596" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="63.55634918610404" cy="57.44365081389596" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="56.1" y="65.9" font-family="Arial" font-size="2.8"
+      fill="#333333" text-anchor="middle">3</text>
+<line x1="69.07" y1="51.93" x2="69.78" y2="51.22"
+      stroke="#303030" stroke-width="0.4"/>
+<circle cx="68.32534971524831" cy="64.58096448796803" r="2.20" fill="#0a0a0a"/>
+<circle cx="68.32534971524831" cy="64.58096448796803" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="68.32534971524831" cy="64.58096448796803" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="58.6" y="69.6" font-family="Arial" font-size="2.8"
+      fill="#333333" text-anchor="middle">4</text>
+<line x1="75.53" y1="61.60" x2="76.46" y2="61.21"
+      stroke="#303030" stroke-width="0.4"/>
+<circle cx="70.0" cy="73.0" r="2.60" fill="#0a0a0a"/>
+<circle cx="70.0" cy="73.0" r="2.00" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="70.0" cy="73.0" r="2.00" fill="#ff3322" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="59.5" y="74.0" font-family="Arial" font-size="2.8"
+      fill="#545454" text-anchor="middle">5</text>
+<line x1="77.80" y1="73.00" x2="80.50" y2="73.00"
+      stroke="#4a4a4a" stroke-width="0.7"/>
+<circle cx="68.32534971524831" cy="81.41903551203197" r="2.20" fill="#0a0a0a"/>
+<circle cx="68.32534971524831" cy="81.41903551203197" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="68.32534971524831" cy="81.41903551203197" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="58.6" y="78.4" font-family="Arial" font-size="2.8"
+      fill="#333333" text-anchor="middle">6</text>
+<line x1="75.53" y1="84.40" x2="76.46" y2="84.79"
+      stroke="#303030" stroke-width="0.4"/>
+<circle cx="63.55634918610404" cy="88.55634918610404" r="2.20" fill="#0a0a0a"/>
+<circle cx="63.55634918610404" cy="88.55634918610404" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="63.55634918610404" cy="88.55634918610404" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="56.1" y="82.1" font-family="Arial" font-size="2.8"
+      fill="#333333" text-anchor="middle">7</text>
+<line x1="69.07" y1="94.07" x2="69.78" y2="94.78"
+      stroke="#303030" stroke-width="0.4"/>
+<circle cx="56.419035512031975" cy="93.32534971524831" r="2.20" fill="#0a0a0a"/>
+<circle cx="56.419035512031975" cy="93.32534971524831" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="56.419035512031975" cy="93.32534971524831" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="52.4" y="84.6" font-family="Arial" font-size="2.8"
+      fill="#333333" text-anchor="middle">8</text>
+<line x1="59.40" y1="100.53" x2="59.79" y2="101.46"
+      stroke="#303030" stroke-width="0.4"/>
+<circle cx="48.0" cy="95.0" r="2.60" fill="#0a0a0a"/>
+<circle cx="48.0" cy="95.0" r="2.00" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="48.0" cy="95.0" r="2.00" fill="#ff3322" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="48.0" y="85.5" font-family="Arial" font-size="2.8"
+      fill="#545454" text-anchor="middle">9</text>
+<line x1="48.00" y1="102.80" x2="48.00" y2="105.50"
+      stroke="#4a4a4a" stroke-width="0.7"/>
+<circle cx="39.580964487968025" cy="93.32534971524831" r="2.20" fill="#0a0a0a"/>
+<circle cx="39.580964487968025" cy="93.32534971524831" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="39.580964487968025" cy="93.32534971524831" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="43.6" y="84.6" font-family="Arial" font-size="2.8"
+      fill="#333333" text-anchor="middle">10</text>
+<line x1="36.60" y1="100.53" x2="36.21" y2="101.46"
+      stroke="#303030" stroke-width="0.4"/>
+<circle cx="32.44365081389596" cy="88.55634918610404" r="2.20" fill="#0a0a0a"/>
+<circle cx="32.44365081389596" cy="88.55634918610404" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="32.44365081389596" cy="88.55634918610404" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="39.9" y="82.1" font-family="Arial" font-size="2.8"
+      fill="#333333" text-anchor="middle">11</text>
+<line x1="26.93" y1="94.07" x2="26.22" y2="94.78"
+      stroke="#303030" stroke-width="0.4"/>
+<circle cx="27.674650284751692" cy="81.41903551203198" r="2.20" fill="#0a0a0a"/>
+<circle cx="27.674650284751692" cy="81.41903551203198" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="27.674650284751692" cy="81.41903551203198" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="37.4" y="78.4" font-family="Arial" font-size="2.8"
+      fill="#333333" text-anchor="middle">12</text>
+<line x1="20.47" y1="84.40" x2="19.54" y2="84.79"
+      stroke="#303030" stroke-width="0.4"/>
+<circle cx="26.0" cy="73.0" r="2.60" fill="#0a0a0a"/>
+<circle cx="26.0" cy="73.0" r="2.00" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="26.0" cy="73.0" r="2.00" fill="#ff3322" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="36.5" y="74.0" font-family="Arial" font-size="2.8"
+      fill="#545454" text-anchor="middle">13</text>
+<line x1="18.20" y1="73.00" x2="15.50" y2="73.00"
+      stroke="#4a4a4a" stroke-width="0.7"/>
+<circle cx="27.67465028475169" cy="64.58096448796803" r="2.20" fill="#0a0a0a"/>
+<circle cx="27.67465028475169" cy="64.58096448796803" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="27.67465028475169" cy="64.58096448796803" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="37.4" y="69.6" font-family="Arial" font-size="2.8"
+      fill="#333333" text-anchor="middle">14</text>
+<line x1="20.47" y1="61.60" x2="19.54" y2="61.21"
+      stroke="#303030" stroke-width="0.4"/>
+<circle cx="32.44365081389595" cy="57.44365081389596" r="2.20" fill="#0a0a0a"/>
+<circle cx="32.44365081389595" cy="57.44365081389596" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="32.44365081389595" cy="57.44365081389596" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="39.9" y="65.9" font-family="Arial" font-size="2.8"
+      fill="#333333" text-anchor="middle">15</text>
+<line x1="26.93" y1="51.93" x2="26.22" y2="51.22"
+      stroke="#303030" stroke-width="0.4"/>
+<circle cx="39.58096448796803" cy="52.67465028475169" r="2.20" fill="#0a0a0a"/>
+<circle cx="39.58096448796803" cy="52.67465028475169" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="39.58096448796803" cy="52.67465028475169" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<text x="43.6" y="63.4" font-family="Arial" font-size="2.8"
+      fill="#333333" text-anchor="middle">16</text>
+<line x1="36.60" y1="45.47" x2="36.21" y2="44.54"
+      stroke="#303030" stroke-width="0.4"/>
+<text x="48.0" y="38.2" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.8" font-weight="600" letter-spacing="0.35"
+      fill="#484848" text-anchor="middle">1</text>
+<text x="84.0" y="74.2" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.8" font-weight="600" letter-spacing="0.35"
+      fill="#484848" text-anchor="middle">4</text>
+<text x="48.0" y="110.2" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.8" font-weight="600" letter-spacing="0.35"
+      fill="#484848" text-anchor="middle">7</text>
+<text x="12.0" y="74.2" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.8" font-weight="600" letter-spacing="0.35"
+      fill="#484848" text-anchor="middle">10</text>
+<rect x="104.00" y="46.00" width="18.0" height="14.0" rx="2.0"
+      fill="url(#recess_btn)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<text x="127.0" y="54.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.8" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">DICE R</text>
+<rect x="106.00" y="64.50" width="14.0" height="11.0" rx="2.0"
+      fill="url(#recess_btn)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<text x="125.0" y="71.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.8" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">LOCK</text>
+<rect x="106.00" y="79.00" width="14.0" height="10.0" rx="2.0"
+      fill="url(#recess_btn)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<text x="125.0" y="85.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.8" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">MUTE</text>
+<rect x="106.00" y="93.00" width="14.0" height="10.0" rx="2.0"
+      fill="url(#recess_btn)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<text x="125.0" y="99.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.8" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">RESET</text>
+<rect x="106.00" y="106.50" width="14.0" height="11.0" rx="2.0"
+      fill="url(#recess_btn)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<text x="125.0" y="113.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.8" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">RUN</text>
+<circle cx="157" cy="53" r="2.10" fill="#0a0a0a"/>
+<circle cx="157" cy="53" r="1.50" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="157" cy="53" r="1.50" fill="#ffaa00" opacity="0.08"
+        filter="url(#led_glow)"/>
+<circle cx="157" cy="57" r="2.10" fill="#0a0a0a"/>
+<circle cx="157" cy="57" r="1.50" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="157" cy="57" r="1.50" fill="#333" opacity="0.08"
+        filter="url(#led_glow)"/>
+<circle cx="157" cy="62" r="2.10" fill="#0a0a0a"/>
+<circle cx="157" cy="62" r="1.50" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="157" cy="62" r="1.50" fill="#ffaa00" opacity="0.08"
+        filter="url(#led_glow)"/>
+<circle cx="157" cy="66" r="2.10" fill="#0a0a0a"/>
+<circle cx="157" cy="66" r="1.50" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="157" cy="66" r="1.50" fill="#333" opacity="0.08"
+        filter="url(#led_glow)"/>
+<circle cx="157" cy="71" r="2.10" fill="#0a0a0a"/>
+<circle cx="157" cy="71" r="1.50" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="157" cy="71" r="1.50" fill="#ffaa00" opacity="0.08"
+        filter="url(#led_glow)"/>
+<circle cx="188" cy="62" r="8.70"
+        fill="#0f0f0f" filter="url(#ring_shadow)"/>
+<circle cx="188" cy="62" r="8.20"
+        fill="none" stroke="#2e2e2e" stroke-width="1.4"/>
+<circle cx="188" cy="62" r="7.80"
+        fill="none" stroke="#484848" stroke-width="0.3"/>
+<circle cx="188" cy="62" r="6.50"
+        fill="url(#recess_knob)" filter="url(#inset_shadow)"/>
+<circle cx="188" cy="62" r="3.90"
+        fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+<text x="188" y="72.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.6" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">LEN</text>
+<line x1="181.64" y1="68.36" x2="180.58" y2="69.42"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="179.17" y1="63.76" x2="178.39" y2="63.91"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="179.69" y1="58.56" x2="178.95" y2="58.25"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="183.00" y1="54.52" x2="182.56" y2="53.85"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="188.00" y1="53.00" x2="188.00" y2="51.50"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="193.00" y1="54.52" x2="193.44" y2="53.85"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="196.31" y1="58.56" x2="197.05" y2="58.25"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="196.83" y1="63.76" x2="197.61" y2="63.91"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="194.36" y1="68.36" x2="195.42" y2="69.42"
+      stroke="#323232" stroke-width="0.4"/>
+<circle cx="188" cy="86" r="8.70"
+        fill="#0f0f0f" filter="url(#ring_shadow)"/>
+<circle cx="188" cy="86" r="8.20"
+        fill="none" stroke="#2e2e2e" stroke-width="1.4"/>
+<circle cx="188" cy="86" r="7.80"
+        fill="none" stroke="#484848" stroke-width="0.3"/>
+<circle cx="188" cy="86" r="6.50"
+        fill="url(#recess_knob)" filter="url(#inset_shadow)"/>
+<circle cx="188" cy="86" r="3.90"
+        fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+<text x="188" y="96.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.6" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">OFF</text>
+<line x1="181.64" y1="92.36" x2="180.58" y2="93.42"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="179.17" y1="87.76" x2="178.39" y2="87.91"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="179.69" y1="82.56" x2="178.95" y2="82.25"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="183.00" y1="78.52" x2="182.56" y2="77.85"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="188.00" y1="77.00" x2="188.00" y2="75.50"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="193.00" y1="78.52" x2="193.44" y2="77.85"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="196.31" y1="82.56" x2="197.05" y2="82.25"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="196.83" y1="87.76" x2="197.61" y2="87.91"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="194.36" y1="92.36" x2="195.42" y2="93.42"
+      stroke="#323232" stroke-width="0.4"/>
+<line x1="175" y1="74.5" x2="199.2" y2="74.5" stroke="#363636" stroke-width="0.4" opacity="0.5"/>
+<line x1="175" y1="75.0" x2="199.2" y2="75.0" stroke="#1e1e1e" stroke-width="0.25" opacity="0.5"/>
+<text x="188" y="76.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="2.8" font-weight="500" letter-spacing="1.2"
+      fill="#444444" text-anchor="middle">— LEN —</text>
+<text x="188" y="98.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="2.8" font-weight="500" letter-spacing="1.2"
+      fill="#444444" text-anchor="middle">— OFF —</text>
+<rect x="4" y="72" width="195.2" height="52.0" rx="2.2"
+      fill="url(#section_bg)" stroke="#2e2e2e" stroke-width="0.45"/>
+<rect x="4.5" y="72.4" width="194.2" height="0.8" rx="0.9"
+      fill="white" opacity="0.03"/>
+<line x1="4" y1="73" x2="199.2" y2="73" stroke="#363636" stroke-width="0.4" opacity="0.5"/>
+<line x1="4" y1="73.5" x2="199.2" y2="73.5" stroke="#1e1e1e" stroke-width="0.25" opacity="0.5"/>
+<text x="81.6" y="76.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.0" font-weight="500" letter-spacing="1.5"
+      fill="#444444" text-anchor="middle">SEMITONE PROBABILITY</text>
+<rect x="7.00" y="77.00" width="6.0" height="34.0" rx="2.2"
+      fill="url(#recess_slider)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<rect x="9.50" y="78.00" width="1" height="32.0" rx="0.5"
+      fill="#0c0c0c" stroke="#1e1e1e" stroke-width="0.2"/>
+<line x1="8.40" y1="79.00" x2="9.40" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="10.60" y1="79.00" x2="11.60" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="8.40" y1="86.50" x2="9.40" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="10.60" y1="86.50" x2="11.60" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="8.40" y1="94.00" x2="9.40" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="10.60" y1="94.00" x2="11.60" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="8.40" y1="101.50" x2="9.40" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="10.60" y1="101.50" x2="11.60" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="8.40" y1="109.00" x2="9.40" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="10.60" y1="109.00" x2="11.60" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<text x="10.0" y="75.0" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.4" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">C</text>
+<circle cx="10.0" cy="114.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="10.0" cy="114.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="10.0" cy="114.0" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<rect x="18.50" y="77.00" width="6.0" height="34.0" rx="2.2"
+      fill="url(#recess_slider)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<rect x="21.00" y="78.00" width="1" height="32.0" rx="0.5"
+      fill="#0c0c0c" stroke="#1e1e1e" stroke-width="0.2"/>
+<line x1="19.90" y1="79.00" x2="20.90" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="22.10" y1="79.00" x2="23.10" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="19.90" y1="86.50" x2="20.90" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="22.10" y1="86.50" x2="23.10" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="19.90" y1="94.00" x2="20.90" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="22.10" y1="94.00" x2="23.10" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="19.90" y1="101.50" x2="20.90" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="22.10" y1="101.50" x2="23.10" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="19.90" y1="109.00" x2="20.90" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="22.10" y1="109.00" x2="23.10" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<text x="21.5" y="75.0" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.4" font-weight="400" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">C#</text>
+<circle cx="21.5" cy="114.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="21.5" cy="114.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="21.5" cy="114.0" r="1.60" fill="#ff3322" opacity="0.08"
+        filter="url(#led_glow)"/>
+<rect x="30.00" y="77.00" width="6.0" height="34.0" rx="2.2"
+      fill="url(#recess_slider)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<rect x="32.50" y="78.00" width="1" height="32.0" rx="0.5"
+      fill="#0c0c0c" stroke="#1e1e1e" stroke-width="0.2"/>
+<line x1="31.40" y1="79.00" x2="32.40" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="33.60" y1="79.00" x2="34.60" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="31.40" y1="86.50" x2="32.40" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="33.60" y1="86.50" x2="34.60" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="31.40" y1="94.00" x2="32.40" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="33.60" y1="94.00" x2="34.60" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="31.40" y1="101.50" x2="32.40" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="33.60" y1="101.50" x2="34.60" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="31.40" y1="109.00" x2="32.40" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="33.60" y1="109.00" x2="34.60" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<text x="33.0" y="75.0" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.4" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">D</text>
+<circle cx="33.0" cy="114.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="33.0" cy="114.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="33.0" cy="114.0" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<rect x="41.50" y="77.00" width="6.0" height="34.0" rx="2.2"
+      fill="url(#recess_slider)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<rect x="44.00" y="78.00" width="1" height="32.0" rx="0.5"
+      fill="#0c0c0c" stroke="#1e1e1e" stroke-width="0.2"/>
+<line x1="42.90" y1="79.00" x2="43.90" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="45.10" y1="79.00" x2="46.10" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="42.90" y1="86.50" x2="43.90" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="45.10" y1="86.50" x2="46.10" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="42.90" y1="94.00" x2="43.90" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="45.10" y1="94.00" x2="46.10" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="42.90" y1="101.50" x2="43.90" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="45.10" y1="101.50" x2="46.10" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="42.90" y1="109.00" x2="43.90" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="45.10" y1="109.00" x2="46.10" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<text x="44.5" y="75.0" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.4" font-weight="400" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">D#</text>
+<circle cx="44.5" cy="114.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="44.5" cy="114.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="44.5" cy="114.0" r="1.60" fill="#ff3322" opacity="0.08"
+        filter="url(#led_glow)"/>
+<rect x="53.00" y="77.00" width="6.0" height="34.0" rx="2.2"
+      fill="url(#recess_slider)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<rect x="55.50" y="78.00" width="1" height="32.0" rx="0.5"
+      fill="#0c0c0c" stroke="#1e1e1e" stroke-width="0.2"/>
+<line x1="54.40" y1="79.00" x2="55.40" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="56.60" y1="79.00" x2="57.60" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="54.40" y1="86.50" x2="55.40" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="56.60" y1="86.50" x2="57.60" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="54.40" y1="94.00" x2="55.40" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="56.60" y1="94.00" x2="57.60" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="54.40" y1="101.50" x2="55.40" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="56.60" y1="101.50" x2="57.60" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="54.40" y1="109.00" x2="55.40" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="56.60" y1="109.00" x2="57.60" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<text x="56.0" y="75.0" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.4" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">E</text>
+<circle cx="56.0" cy="114.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="56.0" cy="114.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="56.0" cy="114.0" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<rect x="64.50" y="77.00" width="6.0" height="34.0" rx="2.2"
+      fill="url(#recess_slider)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<rect x="67.00" y="78.00" width="1" height="32.0" rx="0.5"
+      fill="#0c0c0c" stroke="#1e1e1e" stroke-width="0.2"/>
+<line x1="65.90" y1="79.00" x2="66.90" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="68.10" y1="79.00" x2="69.10" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="65.90" y1="86.50" x2="66.90" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="68.10" y1="86.50" x2="69.10" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="65.90" y1="94.00" x2="66.90" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="68.10" y1="94.00" x2="69.10" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="65.90" y1="101.50" x2="66.90" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="68.10" y1="101.50" x2="69.10" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="65.90" y1="109.00" x2="66.90" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="68.10" y1="109.00" x2="69.10" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<text x="67.5" y="75.0" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.4" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">F</text>
+<circle cx="67.5" cy="114.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="67.5" cy="114.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="67.5" cy="114.0" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<rect x="76.00" y="77.00" width="6.0" height="34.0" rx="2.2"
+      fill="url(#recess_slider)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<rect x="78.50" y="78.00" width="1" height="32.0" rx="0.5"
+      fill="#0c0c0c" stroke="#1e1e1e" stroke-width="0.2"/>
+<line x1="77.40" y1="79.00" x2="78.40" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="79.60" y1="79.00" x2="80.60" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="77.40" y1="86.50" x2="78.40" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="79.60" y1="86.50" x2="80.60" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="77.40" y1="94.00" x2="78.40" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="79.60" y1="94.00" x2="80.60" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="77.40" y1="101.50" x2="78.40" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="79.60" y1="101.50" x2="80.60" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="77.40" y1="109.00" x2="78.40" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="79.60" y1="109.00" x2="80.60" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<text x="79.0" y="75.0" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.4" font-weight="400" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">F#</text>
+<circle cx="79.0" cy="114.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="79.0" cy="114.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="79.0" cy="114.0" r="1.60" fill="#ff3322" opacity="0.08"
+        filter="url(#led_glow)"/>
+<rect x="87.50" y="77.00" width="6.0" height="34.0" rx="2.2"
+      fill="url(#recess_slider)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<rect x="90.00" y="78.00" width="1" height="32.0" rx="0.5"
+      fill="#0c0c0c" stroke="#1e1e1e" stroke-width="0.2"/>
+<line x1="88.90" y1="79.00" x2="89.90" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="91.10" y1="79.00" x2="92.10" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="88.90" y1="86.50" x2="89.90" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="91.10" y1="86.50" x2="92.10" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="88.90" y1="94.00" x2="89.90" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="91.10" y1="94.00" x2="92.10" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="88.90" y1="101.50" x2="89.90" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="91.10" y1="101.50" x2="92.10" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="88.90" y1="109.00" x2="89.90" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="91.10" y1="109.00" x2="92.10" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<text x="90.5" y="75.0" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.4" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">G</text>
+<circle cx="90.5" cy="114.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="90.5" cy="114.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="90.5" cy="114.0" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<rect x="99.00" y="77.00" width="6.0" height="34.0" rx="2.2"
+      fill="url(#recess_slider)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<rect x="101.50" y="78.00" width="1" height="32.0" rx="0.5"
+      fill="#0c0c0c" stroke="#1e1e1e" stroke-width="0.2"/>
+<line x1="100.40" y1="79.00" x2="101.40" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="102.60" y1="79.00" x2="103.60" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="100.40" y1="86.50" x2="101.40" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="102.60" y1="86.50" x2="103.60" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="100.40" y1="94.00" x2="101.40" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="102.60" y1="94.00" x2="103.60" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="100.40" y1="101.50" x2="101.40" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="102.60" y1="101.50" x2="103.60" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="100.40" y1="109.00" x2="101.40" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="102.60" y1="109.00" x2="103.60" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<text x="102.0" y="75.0" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.4" font-weight="400" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">G#</text>
+<circle cx="102.0" cy="114.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="102.0" cy="114.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="102.0" cy="114.0" r="1.60" fill="#ff3322" opacity="0.08"
+        filter="url(#led_glow)"/>
+<rect x="110.50" y="77.00" width="6.0" height="34.0" rx="2.2"
+      fill="url(#recess_slider)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<rect x="113.00" y="78.00" width="1" height="32.0" rx="0.5"
+      fill="#0c0c0c" stroke="#1e1e1e" stroke-width="0.2"/>
+<line x1="111.90" y1="79.00" x2="112.90" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="114.10" y1="79.00" x2="115.10" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="111.90" y1="86.50" x2="112.90" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="114.10" y1="86.50" x2="115.10" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="111.90" y1="94.00" x2="112.90" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="114.10" y1="94.00" x2="115.10" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="111.90" y1="101.50" x2="112.90" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="114.10" y1="101.50" x2="115.10" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="111.90" y1="109.00" x2="112.90" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="114.10" y1="109.00" x2="115.10" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<text x="113.5" y="75.0" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.4" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">A</text>
+<circle cx="113.5" cy="114.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="113.5" cy="114.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="113.5" cy="114.0" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<rect x="122.00" y="77.00" width="6.0" height="34.0" rx="2.2"
+      fill="url(#recess_slider)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<rect x="124.50" y="78.00" width="1" height="32.0" rx="0.5"
+      fill="#0c0c0c" stroke="#1e1e1e" stroke-width="0.2"/>
+<line x1="123.40" y1="79.00" x2="124.40" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="125.60" y1="79.00" x2="126.60" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="123.40" y1="86.50" x2="124.40" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="125.60" y1="86.50" x2="126.60" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="123.40" y1="94.00" x2="124.40" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="125.60" y1="94.00" x2="126.60" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="123.40" y1="101.50" x2="124.40" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="125.60" y1="101.50" x2="126.60" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="123.40" y1="109.00" x2="124.40" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="125.60" y1="109.00" x2="126.60" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<text x="125.0" y="75.0" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.4" font-weight="400" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">A#</text>
+<circle cx="125.0" cy="114.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="125.0" cy="114.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="125.0" cy="114.0" r="1.60" fill="#ff3322" opacity="0.08"
+        filter="url(#led_glow)"/>
+<rect x="133.50" y="77.00" width="6.0" height="34.0" rx="2.2"
+      fill="url(#recess_slider)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<rect x="136.00" y="78.00" width="1" height="32.0" rx="0.5"
+      fill="#0c0c0c" stroke="#1e1e1e" stroke-width="0.2"/>
+<line x1="134.90" y1="79.00" x2="135.90" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="137.10" y1="79.00" x2="138.10" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="134.90" y1="86.50" x2="135.90" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="137.10" y1="86.50" x2="138.10" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="134.90" y1="94.00" x2="135.90" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="137.10" y1="94.00" x2="138.10" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="134.90" y1="101.50" x2="135.90" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="137.10" y1="101.50" x2="138.10" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="134.90" y1="109.00" x2="135.90" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="137.10" y1="109.00" x2="138.10" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<text x="136.5" y="75.0" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.4" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">B</text>
+<circle cx="136.5" cy="114.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="136.5" cy="114.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="136.5" cy="114.0" r="1.60" fill="#22dd55" opacity="0.08"
+        filter="url(#led_glow)"/>
+<rect x="149.0" y="73" width="18" height="49.0" rx="2"
+      fill="url(#section_bg)" stroke="#2e2e2e" stroke-width="0.45"/>
+<rect x="149.5" y="73.4" width="17.0" height="0.8" rx="0.8"
+      fill="white" opacity="0.03"/>
+<rect x="152.00" y="77.00" width="6.0" height="34.0" rx="2.2"
+      fill="url(#recess_slider)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<rect x="154.50" y="78.00" width="1" height="32.0" rx="0.5"
+      fill="#0c0c0c" stroke="#1e1e1e" stroke-width="0.2"/>
+<line x1="153.40" y1="79.00" x2="154.40" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="155.60" y1="79.00" x2="156.60" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="153.40" y1="86.50" x2="154.40" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="155.60" y1="86.50" x2="156.60" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="153.40" y1="94.00" x2="154.40" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="155.60" y1="94.00" x2="156.60" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="153.40" y1="101.50" x2="154.40" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="155.60" y1="101.50" x2="156.60" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="153.40" y1="109.00" x2="154.40" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="155.60" y1="109.00" x2="156.60" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<text x="155.0" y="75.0" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.0" font-weight="500" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">OCT</text>
+<text x="155.0" y="71.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.0" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">LO</text>
+<rect x="167.0" y="73" width="18" height="49.0" rx="2"
+      fill="url(#section_bg)" stroke="#2e2e2e" stroke-width="0.45"/>
+<rect x="167.5" y="73.4" width="17.0" height="0.8" rx="0.8"
+      fill="white" opacity="0.03"/>
+<rect x="170.00" y="77.00" width="6.0" height="34.0" rx="2.2"
+      fill="url(#recess_slider)" stroke="#252525" stroke-width="0.5"
+      filter="url(#inset_shadow)"/>
+<rect x="172.50" y="78.00" width="1" height="32.0" rx="0.5"
+      fill="#0c0c0c" stroke="#1e1e1e" stroke-width="0.2"/>
+<line x1="171.40" y1="79.00" x2="172.40" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="173.60" y1="79.00" x2="174.60" y2="79.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="171.40" y1="86.50" x2="172.40" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="173.60" y1="86.50" x2="174.60" y2="86.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="171.40" y1="94.00" x2="172.40" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="173.60" y1="94.00" x2="174.60" y2="94.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="171.40" y1="101.50" x2="172.40" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="173.60" y1="101.50" x2="174.60" y2="101.50"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="171.40" y1="109.00" x2="172.40" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<line x1="173.60" y1="109.00" x2="174.60" y2="109.00"
+      stroke="#303030" stroke-width="0.35"/>
+<rect x="170.0" y="90.6"
+      width="6" height="11.9" rx="0.8"
+      fill="#cc2222" opacity="0.5"/>
+<text x="173.0" y="75.0" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.0" font-weight="500" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">OCT</text>
+<text x="173.0" y="71.5" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="3.0" font-weight="600" letter-spacing="0.35"
+      fill="#666666" text-anchor="middle">HI</text>
+<rect x="187.2" y="73.5" width="12" height="7" rx="1.8"
+      fill="url(#recess_btn)" stroke="#252525" stroke-width="0.45"/>
+<text x="193.2" y="78.2" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="4.2" font-weight="700" letter-spacing="0.35"
+      fill="#c8c8c8" text-anchor="middle">A</text>
+<circle cx="202.2" cy="77.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="202.2" cy="77.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<circle cx="202.2" cy="77.0" r="1.60" fill="#ffaa00" opacity="0.08"
+        filter="url(#led_glow)"/>
+<rect x="187.2" y="83.5" width="12" height="7" rx="1.8"
+      fill="url(#recess_btn)" stroke="#252525" stroke-width="0.45"/>
+<text x="193.2" y="88.2" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="4.2" font-weight="700" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">B</text>
+<circle cx="202.2" cy="87.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="202.2" cy="87.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<rect x="187.2" y="93.5" width="12" height="7" rx="1.8"
+      fill="url(#recess_btn)" stroke="#252525" stroke-width="0.45"/>
+<text x="193.2" y="98.2" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="4.2" font-weight="700" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">C</text>
+<circle cx="202.2" cy="97.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="202.2" cy="97.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<rect x="187.2" y="103.5" width="12" height="7" rx="1.8"
+      fill="url(#recess_btn)" stroke="#252525" stroke-width="0.45"/>
+<text x="193.2" y="108.2" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="4.2" font-weight="700" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">D</text>
+<circle cx="202.2" cy="107.0" r="2.20" fill="#0a0a0a"/>
+<circle cx="202.2" cy="107.0" r="1.60" fill="#0e0e0e" stroke="#222" stroke-width="0.3"/>
+<rect x="4" y="104" width="195.2" height="22" rx="2"
+      fill="url(#section_bg)" stroke="#2e2e2e" stroke-width="0.45"/>
+<rect x="4.5" y="104.4" width="194.2" height="0.8" rx="0.8"
+      fill="white" opacity="0.03"/>
+<line x1="4" y1="105" x2="199.2" y2="105" stroke="#363636" stroke-width="0.4" opacity="0.5"/>
+<line x1="4" y1="105.5" x2="199.2" y2="105.5" stroke="#1e1e1e" stroke-width="0.25" opacity="0.5"/>
+<polygon points="18.04,117.09 15.09,120.04 10.91,120.04 7.96,117.09 7.96,112.91 10.91,109.96 15.09,109.96 18.04,112.91" fill="#111" stroke="#2a2a2a" stroke-width="0.5"
+         filter="url(#inset_shadow)"/>
+<circle cx="13" cy="115" r="4.25"
+        fill="url(#recess_port)" stroke="#1e1e1e" stroke-width="0.4"/>
+<text x="13" y="122.8" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="2.9" font-weight="500" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">CLK</text>
+<polygon points="33.04,117.09 30.09,120.04 25.91,120.04 22.96,117.09 22.96,112.91 25.91,109.96 30.09,109.96 33.04,112.91" fill="#111" stroke="#2a2a2a" stroke-width="0.5"
+         filter="url(#inset_shadow)"/>
+<circle cx="28" cy="115" r="4.25"
+        fill="url(#recess_port)" stroke="#1e1e1e" stroke-width="0.4"/>
+<text x="28" y="122.8" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="2.9" font-weight="500" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">G1</text>
+<polygon points="48.04,117.09 45.09,120.04 40.91,120.04 37.96,117.09 37.96,112.91 40.91,109.96 45.09,109.96 48.04,112.91" fill="#111" stroke="#2a2a2a" stroke-width="0.5"
+         filter="url(#inset_shadow)"/>
+<circle cx="43" cy="115" r="4.25"
+        fill="url(#recess_port)" stroke="#1e1e1e" stroke-width="0.4"/>
+<text x="43" y="122.8" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="2.9" font-weight="500" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">G2</text>
+<polygon points="63.04,117.09 60.09,120.04 55.91,120.04 52.96,117.09 52.96,112.91 55.91,109.96 60.09,109.96 63.04,112.91" fill="#111" stroke="#2a2a2a" stroke-width="0.5"
+         filter="url(#inset_shadow)"/>
+<circle cx="58" cy="115" r="4.25"
+        fill="url(#recess_port)" stroke="#1e1e1e" stroke-width="0.4"/>
+<text x="58" y="122.8" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="2.9" font-weight="500" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">CV1</text>
+<polygon points="78.04,117.09 75.09,120.04 70.91,120.04 67.96,117.09 67.96,112.91 70.91,109.96 75.09,109.96 78.04,112.91" fill="#111" stroke="#2a2a2a" stroke-width="0.5"
+         filter="url(#inset_shadow)"/>
+<circle cx="73" cy="115" r="4.25"
+        fill="url(#recess_port)" stroke="#1e1e1e" stroke-width="0.4"/>
+<text x="73" y="122.8" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="2.9" font-weight="500" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">CV2</text>
+<polygon points="95.04,117.09 92.09,120.04 87.91,120.04 84.96,117.09 84.96,112.91 87.91,109.96 92.09,109.96 95.04,112.91" fill="#111" stroke="#2a2a2a" stroke-width="0.5"
+         filter="url(#inset_shadow)"/>
+<circle cx="90" cy="115" r="4.25"
+        fill="url(#recess_port)" stroke="#1e1e1e" stroke-width="0.4"/>
+<text x="90" y="122.8" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="2.9" font-weight="500" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">RUN</text>
+<polygon points="110.04,117.09 107.09,120.04 102.91,120.04 99.96,117.09 99.96,112.91 102.91,109.96 107.09,109.96 110.04,112.91" fill="#111" stroke="#2a2a2a" stroke-width="0.5"
+         filter="url(#inset_shadow)"/>
+<circle cx="105" cy="115" r="4.25"
+        fill="url(#recess_port)" stroke="#1e1e1e" stroke-width="0.4"/>
+<text x="105" y="122.8" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="2.9" font-weight="500" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">RESET</text>
+<polygon points="125.04,117.09 122.09,120.04 117.91,120.04 114.96,117.09 114.96,112.91 117.91,109.96 122.09,109.96 125.04,112.91" fill="#111" stroke="#2a2a2a" stroke-width="0.5"
+         filter="url(#inset_shadow)"/>
+<circle cx="120" cy="115" r="4.25"
+        fill="url(#recess_port)" stroke="#1e1e1e" stroke-width="0.4"/>
+<text x="120" y="122.8" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="2.9" font-weight="500" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">SEED</text>
+<polygon points="142.04,117.09 139.09,120.04 134.91,120.04 131.96,117.09 131.96,112.91 134.91,109.96 139.09,109.96 142.04,112.91" fill="#111" stroke="#2a2a2a" stroke-width="0.5"
+         filter="url(#inset_shadow)"/>
+<circle cx="137" cy="115" r="4.25"
+        fill="url(#recess_port)" stroke="#1e1e1e" stroke-width="0.4"/>
+<text x="137" y="122.8" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="2.9" font-weight="500" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">LENGTH</text>
+<polygon points="159.04,117.09 156.09,120.04 151.91,120.04 148.96,117.09 148.96,112.91 151.91,109.96 156.09,109.96 159.04,112.91" fill="#111" stroke="#2a2a2a" stroke-width="0.5"
+         filter="url(#inset_shadow)"/>
+<circle cx="154" cy="115" r="4.25"
+        fill="url(#recess_port)" stroke="#1e1e1e" stroke-width="0.4"/>
+<text x="154" y="122.8" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="2.9" font-weight="500" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">OFFSET</text>
+<line x1="163" y1="106" x2="163" y2="124.5" stroke="#363636" stroke-width="0.5"/>
+<polygon points="175.04,117.09 172.09,120.04 167.91,120.04 164.96,117.09 164.96,112.91 167.91,109.96 172.09,109.96 175.04,112.91" fill="#111" stroke="#2a2a2a" stroke-width="0.5"
+         filter="url(#inset_shadow)"/>
+<circle cx="170" cy="115" r="4.25"
+        fill="url(#recess_port)" stroke="#1e1e1e" stroke-width="0.4"/>
+<circle cx="170" cy="115" r="2.76"
+        fill="none" stroke="#6b4d15" stroke-width="0.5" opacity="0.6"/>
+<text x="170" y="122.8" font-family="'Helvetica Neue',Arial,sans-serif"
+      font-size="2.9" font-weight="500" letter-spacing="0.35"
+      fill="#444444" text-anchor="middle">CV</text>
+<path d="M 163,109.0 A 4,4 0 0,1 163,121.0"
+      fill="none" stroke="#4a3010" stroke-width="1.0" opacity="0.5"/>
+<rect x="0" y="119.5" width="203.2" height="9" rx="1" fill="#181818" opacity="0.6"/>
+</svg>

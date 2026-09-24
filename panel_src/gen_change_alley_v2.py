@@ -11,35 +11,135 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dotmod_design import px, svg_open, logo_embed, jack, trim
 
-HP     = 48
-PW_MM  = HP * 5.08
 PH_MM  = 128.5
+import math
 
-MARGIN  = 6.0
-J_DOM   = MARGIN +  0.0
-J_COD   = MARGIN +  9.5
-KNOB1   = MARGIN + 18.5     # grain (all verbs)
-KNOB2   = MARGIN + 27.0     # leader / step / scatter domain-back
-J_BACK2 = MARGIN + 34.5     # scatter codomain-back only
-BTN_D   = MARGIN + 42.5
-BTN_C   = MARGIN + 48.5
-LIGHT   = MARGIN + 54.0
-CTRL_W  = LIGHT + 2.5       # 62.5
+# ── HP DERIVED from the widest row's component count (CA widen pass) ────────────────────────
+# The widest row is SCATTER: 5 jacks + 5 buttons + 1 grain dial + 1 light per side. We lay the
+# columns at element-appropriate pitch (jacks/dial 8.5mm, buttons clustered 6.0mm), measure the
+# control-strip width, keep the 16×16 matrix at its established ~99.6mm, then round UP to whole HP
+# and absorb the slack into the gutter. So HP is COMPUTED, not chosen.
+MARGIN   = 6.0
+JACK_P   = 8.5             # jack / dial column pitch (PJ301M Ø7.8 + breathing)
+BTN_P    = 6.0            # button cluster pitch (tighter — buttons are small)
+J_HALF   = 4.25           # half a jack, for edge clearance
 
-GUTTER  = 9.6
+# ── Correlation EXPRESSION pair column (CA_EXPRESSION_CV_CORRELATION.md) ──────────────────────
+# ONE new OUTERMOST jack column each side: 8 poly INs far-left, 8 poly OUTs far-right (the right
+# side is the left mirrored via lx()). The existing control group shifts inboard by one JACK_P so
+# the expression column owns the outer edge; the shift propagates through CTRL_W → PW_RAW → HP.
+# Jack/dial group (outer→inner): 5 columns at JACK_P, offset inboard past the expression column.
+# J_DOM keeps its old relationship (one JACK_P in from where the outer edge margin sits) so the
+# control block is unchanged; the expression column is then CENTRED in the gap left of it (Fix 3).
+J_DOM   = (MARGIN + J_HALF) + JACK_P       # fwd domain trig jack (control block start)
+# Expression CV column sits OUTWARD, as close to the panel edge as the margin allows, so the visible
+# gap falls INBOARD (between it and the INTRA jack column) rather than outboard. Spacing is computed
+# from the coloured stream RING radius (the widest part — well radius + half its stroke), NOT the jack
+# barrel: the rings are what collide, so a barrel-based gap looks fine in arithmetic but overlaps in
+# the render (that was the bug). Two constraints, take the OUTERmost x that satisfies both:
+#   (a) no ring overlap with J_DOM: (J_DOM - EXPR_X) >= RING_EXPR + RING_JACK + BREATHE
+#   (b) ring rim >= MARGIN from the panel edge: EXPR_X - RING_EXPR >= MARGIN
+# BREATHE = the normal gap two adjacent jacks already have at JACK_P pitch (ring-to-ring).
+S_PX      = 75.0 / 25.4                    # px per mm (matches dotmod_design.px)
+RING_JACK = 3.9 + (1.0 / S_PX) * 0.5       # existing jack ring outer radius (r=3.9, stroke 1px)
+RING_EXPR = 3.9 + (1.4 / S_PX) * 0.5       # expression well ring outer radius (r=3.9, stroke 1.4px)
+# Place the expression column so the leftover space in the edge→J_DOM gutter is SPLIT EVENLY between
+# the outboard (edge) side and the inboard (toward J_DOM) side — measured RING-to-RING. This avoids
+# both failure modes: a big MARGIN pushes it inboard and jams it against J_DOM (0.36mm gap); a hard
+# overlap-limit leaves all the slack outboard. Even split reads balanced and never overlaps.
+#   free = (J_DOM - RING_JACK)  - 0  (edge)  - 2*RING_EXPR   → distributed to edge_gap == inner_gap
+GUTTER_SPAN = J_DOM - RING_JACK             # panel edge (0) → J_DOM ring inner rim
+FREE        = GUTTER_SPAN - 2.0 * RING_EXPR # slack left after the expr ring sits in the gutter
+GAP_EACH    = FREE * 0.5                     # equal outboard (edge) and inboard (to J_DOM) gap
+EXPR_X      = GAP_EACH + RING_EXPR           # ring rim = GAP_EACH off the edge; centre = +RING_EXPR
+assert EXPR_X - RING_EXPR > 0.5, "expr column too close to the panel edge"
+J_COD   = J_DOM  + JACK_P                 # fwd codomain trig jack
+KNOB1   = J_COD  + JACK_P                 # grain dial (all verbs)
+KNOB2   = KNOB1  + JACK_P                 # leader/step dial OR scatter domain-back jack
+J_BACK2 = KNOB2  + JACK_P                 # scatter codomain-back jack
+# Button cluster (after a jack→button gap): 4 buttons at BTN_P — fwd + Philox reverse (dom/cod).
+# (True-reverse is NOT on this row — it's a centred per-stream group beneath the matrix.)
+BTN_D   = J_BACK2 + (J_HALF + 3.0)        # fwd domain fire
+BTN_C   = BTN_D  + BTN_P                  # fwd codomain fire
+REV_D   = BTN_C  + BTN_P                  # Philox reverse domain (ON-ROW)
+REV_C   = REV_D  + BTN_P                  # Philox reverse codomain
+# pending light after a button→light gap
+LIGHT   = REV_C + (3.0 + J_HALF)
+CTRL_W  = LIGHT + 4.0
+
+GRID_W  = 99.6            # matrix kept at its established size (cells 6.23mm × 16)
+GUTTER0 = 9.6            # nominal gutter (adjusted after HP rounding)
+PW_RAW  = 2 * (CTRL_W + GUTTER0) + GRID_W
+# Round UP to a full HP, then bump to at least 60HP (Rodney: land on the round number). The extra
+# slack over PW_RAW is absorbed SYMMETRICALLY into the two gutters below, so the layout stays centred.
+HP      = max(60, int(math.ceil(PW_RAW / 5.08)))
+PW_MM   = HP * 5.08
+# Absorb the rounding slack into the gutter so the matrix stays 99.6 and columns keep their pitch.
+GUTTER  = (PW_MM - 2 * CTRL_W - GRID_W) / 2.0
 GRID_X  = CTRL_W + GUTTER
-GRID_W  = PW_MM - 2 * (CTRL_W + GUTTER)
 CELL    = GRID_W / 16.0
-GRID_Y  = 20.0
+GRID_Y  = 16.0            # matrix top: 1..16 number row level with COLLAPSE first jack row.
+                         # MUST MATCH MonsoonChangeAlleyV2.hpp MY_MM.
 GRID_H  = CELL * 16.0
 
 N_VERBS   = 4
-ROW_H     = 9.0
-GROUP_GAP = 6.8
-ROW_TOP   = 21.0
+N_STREAMS = 3                      # Q5 q-mix: 3rd stream (melody, rhythm, q-mix) -> 12 rows/side
+SIDES     = 2
+TYPES     = 3                      # rhythm=0, melody=1, q-mix=2 (== ChangeAlleyV2Ids::TYPES)
+V_COLLAPSE, V_ROTATE, V_REFLECT, V_SCATTER = 0, 1, 2, 3
+def rowId(verb, side, typ): return verb*SIDES*TYPES + side*TYPES + typ   # MUST MATCH CA::rowId
+# PLAN A (CA_PANEL_THREE_STREAM_LAYOUT): tighten row pitch to fit 12 rows in 128.5mm.
+# Jack well is r=3.9 (Ø7.8); ROW_H=8.0 is the jack-floor pitch (jacks touch at 0.2mm gap).
+# GROUP_GAP shrunk 6.8->1.5 (groups barely separate); ROW_TOP 21->14; bottom offset 9->6.
+# This is the "try tighter pitch first" attempt; if jacks read too cramped -> Plan B (smaller jack SVG).
+ROW_H     = 8.0                   # jack-floor pitch (jacks touch at 0.2mm gap) — kept at the floor.
+# GROUP_GAP widened to 4.5: gives each op-group's INTRA/INTER label a real CLEAR BAND above it so it
+# no longer overlaps the group above's 3rd (q-mix) row. Reclaimed vertical room (matrix pulled up,
+# legend moved to the side) pays for it. MUST MATCH MonsoonChangeAlleyV2.hpp GROUP_GAP.
+GROUP_GAP = 4.5
+ROW_TOP   = 11.0                  # first row starts below the top logo/title band. MUST MATCH CTRL_TOP.
+BOTTOM_OFFSET = 6.0               # (retained for lastBottom(); bottom cluster itself removed)
+LOGO_TOP_Y = 3.0                  # dot.modular wordmark at the TOP, LEFT of the CHANGE ALLEY title
+LOGO_W     = 30.0
 
-def rowY(v, s): return ROW_TOP + v*(2.0*ROW_H+GROUP_GAP) + s*ROW_H + ROW_H*0.5
-def lastBottom(): return rowY(N_VERBS-1,1) + ROW_H*0.5
+# ── Expression pair rows (CA_EXPRESSION_CV_CORRELATION.md) ────────────────────────────────────
+# 8 rows down each outer column, grouped 3 rhythm / 3 melody / 2 q-mix, separated by the SAME
+# GROUP_GAP the verb blocks use so the streams read as blocks. IN row k (far left) and OUT row k
+# (far right) share a y, so a row reads as one pair. Ring colour by stream (matches the pin legend
+# + true-reverse rings): rhythm white, melody red, q-mix green.
+EXPR_GROUPS = [3, 3, 2]           # rhythm, melody, q-mix  (== the fixed 3/3/2 pair allocation)
+EXPR_RING = {0: "#f2f2f0", 1: None, 2: "#4cbf59"}   # 1(melody)=t["red"] filled in per-theme at draw
+EXPR_TOP    = GRID_Y + 4.0        # first expression jack, a touch below the matrix top
+EXPR_ROW_H  = 10.5                # comfortable pitch over the matrix's ~99.6mm vertical extent
+def exprRowY(k):
+    # k = 0..7 across the 3/3/2 groups; add one GROUP_GAP per group boundary crossed.
+    grp = 0 if k < 3 else (1 if k < 6 else 2)
+    return EXPR_TOP + k*EXPR_ROW_H + grp*GROUP_GAP + EXPR_ROW_H*0.5
+def exprStream(k):                # which stream row k belongs to (0=rhythm,1=melody,2=q-mix)
+    return 0 if k < 3 else (1 if k < 6 else 2)
+
+# ── 8-slot host connect-mark row (CONNECTION_UI_MODEL §14, CA_SHARED_EXPANDER_BUILD) ──────────
+# Slot k IS pairId k (fixed, never packed). Sits in the header band to the RIGHT of the centred
+# "CHANGE ALLEY" title, in the gap before the COLLAPSE INTER label — overlapping NEITHER. x is derived
+# from the title's right edge + a gap (not an absolute), so it tracks the title on any width change.
+# Spread at a countable pitch so the eight read individually, not as one bar. Filled state / primary
+# ring are widget-drawn; the generator emits only the well + anchor.
+HOSTSLOT_R    = 1.7               # mark radius (mm)
+HOSTSLOT_P    = 6.0               # slot pitch (mm) — 8 slots ≈ 42mm, individually countable
+HOSTSLOT_Y    = 6.0              # header band, level with the title baseline row
+# Title "CHANGE ALLEY" is widget-drawn CENTRED at PW/2, 3.6mm font. Estimate its half-width so the
+# mark row can start clear of its right edge. 12 glyphs × ~0.62×font ≈ 27mm → half ≈ 13.5mm; budget
+# 15mm so a slightly wider render still clears. (Widget owns the exact text; this is the layout budget.)
+TITLE_HALF_W  = 15.0
+TITLE_GAP     = 6.0              # clear gap between title right edge and the first mark
+# True-reverse group: 3 jack+button pairs (rhythm/melody/q-mix), CENTRED beneath the pin matrix.
+# Verb-agnostic, per-stream — belongs to neither Intra nor Inter, hence centred (the L/R geometry
+# IS the Intra/Inter split). Colour-coded to the stream legend by the widget.
+TRUEREV_PAIR_DX = 9.0             # jack↔button spacing within a stream pair (loosened)
+TRUEREV_GROUP_DX = 34.0          # centre-to-centre between stream groups (loosened)
+
+def rowY(v, s): return ROW_TOP + v*(N_STREAMS*ROW_H+GROUP_GAP) + s*ROW_H + ROW_H*0.5
+def lastBottom(): return rowY(N_VERBS-1,N_STREAMS-1) + ROW_H*0.5
 def lx(x, flip): return (PW_MM - x) if flip else x
 
 def pal(dark):
@@ -56,6 +156,11 @@ def pal(dark):
 
 def gen(dark):
     t=pal(dark); els=[]; E=els.append
+    # ── Kit anchors (components layer): invisible id'd circles the widget binds BY NAME (Option
+    # B-full — CA joins the SvgPanelKit pattern like Monsoon). Emitted at the SAME mm the art draws,
+    # from the SAME loops, so art and binding can't drift. ids MUST MATCH the widget's bind names.
+    anchors=[]
+    def A(i, x, y): anchors.append(f'<circle id="{i}" cx="{px(x):.2f}" cy="{px(y):.2f}" r="1" fill="none" stroke="none"/>')
     E(f'<rect width="{px(PW_MM):.1f}" height="{px(PH_MM):.1f}" fill="{t["body"]}"/>')
     E(f'<rect x="{px(GRID_X):.1f}" y="{px(GRID_Y):.1f}" width="{px(GRID_W):.1f}" height="{px(GRID_H):.1f}" fill="{t["well"]}" stroke="{t["edborder"]}" stroke-width="{px(0.4):.2f}"/>')
     for i in range(1,16):
@@ -63,33 +168,104 @@ def gen(dark):
         E(f'<line x1="{px(gx):.1f}" y1="{px(GRID_Y):.1f}" x2="{px(gx):.1f}" y2="{px(GRID_Y+GRID_H):.1f}" stroke="{t["gridln"]}" stroke-width="{px(0.2):.2f}"/>')
         E(f'<line x1="{px(GRID_X):.1f}" y1="{px(gy):.1f}" x2="{px(GRID_X+GRID_W):.1f}" y2="{px(gy):.1f}" stroke="{t["gridln"]}" stroke-width="{px(0.2):.2f}"/>')
 
+    def btn(cx, ry):
+        E(f'<circle cx="{px(cx):.1f}" cy="{px(ry):.1f}" r="{px(2.6):.1f}" fill="{t["frame"]}" stroke="{t["dim"]}" stroke-width="{px(0.5):.2f}"/>')
+
     for verb in range(N_VERBS):
-        for sub in range(2):
+        for sub in range(N_STREAMS):
             ry=rowY(verb,sub)
             for side in range(2):
                 flip=(side==1)
+                r  = rowId(verb, side, sub)          # MUST MATCH CA::rowId(verb,side,sub)
+                si = side*TYPES + sub                 # scatter-back / leader / step index
                 E(jack(lx(J_DOM,flip),ry,t)); E(jack(lx(J_COD,flip),ry,t))
-                E(trim(lx(KNOB1,flip),ry,t,t["gold"]))
-                if verb in (0,1): E(trim(lx(KNOB2,flip),ry,t,t["gold"]))
-                elif verb==3:
+                A(f"input_domain_{r}",   lx(J_DOM,flip), ry)
+                A(f"input_codomain_{r}", lx(J_COD,flip), ry)
+                E(trim(lx(KNOB1,flip),ry,t,t["gold"])); A(f"param_grain_{r}", lx(KNOB1,flip), ry)
+                if verb==V_COLLAPSE:
+                    E(trim(lx(KNOB2,flip),ry,t,t["gold"])); A(f"param_leader_{si}", lx(KNOB2,flip), ry)
+                elif verb==V_ROTATE:
+                    E(trim(lx(KNOB2,flip),ry,t,t["gold"])); A(f"param_step_{si}", lx(KNOB2,flip), ry)
+                elif verb==V_SCATTER:
+                    # SCATTER: dom/cod back jacks, then ON-ROW Philox reverse buttons (no longer
+                    # jammed above/below). True-reverse is NOT here — it's a centred per-stream group
+                    # beneath the matrix. Scatter keeps only its axis-specific dice fwd/rev.
                     E(jack(lx(KNOB2,flip),ry,t)); E(jack(lx(J_BACK2,flip),ry,t))
-                for bx in (BTN_D,BTN_C):
-                    E(f'<circle cx="{px(lx(bx,flip)):.1f}" cy="{px(ry):.1f}" r="{px(2.6):.1f}" fill="{t["frame"]}" stroke="{t["dim"]}" stroke-width="{px(0.5):.2f}"/>')
+                    A(f"input_scback_dom_{si}", lx(KNOB2,flip),  ry)
+                    A(f"input_scback_cod_{si}", lx(J_BACK2,flip), ry)
+                    btn(lx(REV_D,flip),ry); btn(lx(REV_C,flip),ry)
+                    A(f"param_screv_d_{si}", lx(REV_D,flip), ry)
+                    A(f"param_screv_c_{si}", lx(REV_C,flip), ry)
+                # forward dom/cod fire buttons (all verbs)
+                btn(lx(BTN_D,flip),ry); btn(lx(BTN_C,flip),ry)
+                A(f"param_btnD_{r}", lx(BTN_D,flip), ry)
+                A(f"param_btnC_{r}", lx(BTN_C,flip), ry)
                 E(f'<circle cx="{px(lx(LIGHT,flip)):.1f}" cy="{px(ry):.1f}" r="{px(1.3):.1f}" fill="{t["well"]}" stroke="{t["dim"]}" stroke-width="{px(0.3):.2f}"/>')
+                A(f"light_pending_{r}", lx(LIGHT,flip), ry)
 
-    # bottom cluster: logo LEFT clear of jacks; poly jacks RIGHT; legend between
-    by = lastBottom() + 9.0
-    E(logo_embed(dark, MARGIN, by, 30.0))
-    rx = PW_MM - MARGIN - 4.45
-    E(jack(rx,       by, t))        # STEP poly
-    E(jack(rx - 10.0, by, t))       # GRAIN poly
+    # dot.modular wordmark at the TOP, to the LEFT of the CHANGE ALLEY title (was centred and
+    # overlapped the title). Title is widget-drawn centred; logo sits left of centre.
+    E(logo_embed(dark, GRID_X, LOGO_TOP_Y, LOGO_W))
+
+    # ── Correlation EXPRESSION pairs: 8 poly INs (far left) + 8 poly OUTs (far right) ────────────
+    # Row k: IN at EXPR_X, OUT at lx(EXPR_X) (mirror). Ring colour by stream. Well = a jack well
+    # with a coloured ring override (rhythm white / melody red / q-mix green).
+    def expr_well(x, y, ring):
+        return (f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(3.9):.1f}" '
+                f'fill="{t["jackwell"]}" stroke="{ring}" stroke-width="1.4"/>')
+    for k in range(8):
+        y = exprRowY(k)
+        ring = EXPR_RING[exprStream(k)] or t["red"]   # melody → theme red
+        E(expr_well(EXPR_X,           y, ring)); A(f"input_expr_{k}",  EXPR_X,           y)
+        E(expr_well(lx(EXPR_X, True), y, ring)); A(f"output_expr_{k}", lx(EXPR_X, True), y)
+
+    # ── 8-slot host connect-mark row, RIGHT of the centred title, before COLLAPSE INTER ──────────
+    # Slot k = pairId k (fixed, contiguous). First mark at (title right edge + TITLE_GAP); run right at
+    # HOSTSLOT_P. x derived from the title (PW/2 + TITLE_HALF_W), NOT an absolute — tracks any widening.
+    # The COLLAPSE INTER label is block-derived at PW - (BTN_D+REV_C)/2; the row is placed left of it
+    # with a reported clearance (see ca_clearance.py). If the row's right end would reach the label, the
+    # header band is too narrow and we'd drop to the outer margin — but at 60HP it fits comfortably.
+    hs_x0 = PW_MM * 0.5 + TITLE_HALF_W + TITLE_GAP + HOSTSLOT_R   # first mark centre, clear of title
+    for k in range(8):
+        x = hs_x0 + k * HOSTSLOT_P
+        E(f'<circle cx="{px(x):.1f}" cy="{px(HOSTSLOT_Y):.1f}" r="{px(HOSTSLOT_R):.1f}" '
+          f'fill="{t["well"]}" stroke="{t["dim"]}" stroke-width="{px(0.3):.2f}"/>')
+        A(f"light_hostslot_{k}", x, HOSTSLOT_Y)
+
+    # TRUE-REVERSE group markers: 3 jack+button pairs (rhythm/melody/q-mix), CENTRED beneath the
+    # matrix. Row sits below the matrix + the (widget-drawn) legend. Colour-coding is widget-drawn.
+    trY = PH_MM - 5.0     # anchored near the bottom edge (centred group clears the corner screws)
+    gcx = GRID_X + GRID_W * 0.5
+    for s in range(N_STREAMS):
+        cx = gcx + (s - 1) * TRUEREV_GROUP_DX
+        jx = cx - TRUEREV_PAIR_DX*0.5
+        bx = cx + TRUEREV_PAIR_DX*0.5
+        E(jack(jx, trY, t))    # true-reverse jack
+        E(f'<circle cx="{px(bx):.1f}" cy="{px(trY):.1f}" r="{px(2.6):.1f}" fill="{t["frame"]}" stroke="{t["dim"]}" stroke-width="{px(0.5):.2f}"/>')  # button
+        # pending lamp well in line with the jack+button (same y), spaced RIGHT of the button
+        E(f'<circle cx="{px(bx + 7.5):.1f}" cy="{px(trY):.1f}" r="{px(1.3):.1f}" fill="{t["well"]}" stroke="{t["dim"]}" stroke-width="{px(0.3):.2f}"/>')
+        A(f"input_truerev_{s}", jx,       trY)
+        A(f"param_truerev_{s}", bx,       trY)
+        A(f"light_truerev_{s}", bx + 7.5, trY)
 
     out=os.path.join(os.path.dirname(__file__),"..","res","panels")
     os.makedirs(out,exist_ok=True)
     th="dark" if dark else "light"
+    comps = '<g inkscape:label="components" inkscape:groupmode="layer" id="components">\n' \
+            + "\n".join(anchors) + "\n</g>"
     open(os.path.join(out,f"ChangeAlleyV2_panel_{th}.svg"),"w").write(
-        svg_open(px(PW_MM),px(PH_MM))+"\n"+"\n".join(els)+"\n</svg>\n")
-    print(f"ChangeAlleyV2 {th}: {HP}HP grid {GRID_W:.1f}mm cell {CELL:.2f}mm ctrl {CTRL_W:.1f}mm/side")
+        svg_open(px(PW_MM),px(PH_MM))+"\n"+"\n".join(els)+"\n"+comps+"\n</svg>\n")
+    print(f"ChangeAlleyV2 {th}: {HP}HP grid {GRID_W:.1f}mm cell {CELL:.2f}mm ctrl {CTRL_W:.1f}mm/side  anchors={len(anchors)}")
+    # Expression-column geometry report (RING-based, per the brief) + exact-mirror assertion.
+    left_x  = EXPR_X
+    right_x = lx(EXPR_X, True)
+    assert abs(left_x - (PW_MM - right_x)) < 1e-9, "expr columns not exact mirrors"
+    edge_clear  = left_x - RING_EXPR                                   # rim -> panel edge
+    inner_clear = (J_DOM - left_x) - (RING_EXPR + RING_JACK)           # expr rim -> J_DOM rim
+    print(f"  expr cols: PW={PW_MM:.2f}  left_x={left_x:.3f}  right_x={right_x:.3f}  (mirror OK)")
+    print(f"  RING_EXPR={RING_EXPR:.3f}  RING_JACK={RING_JACK:.3f}  (gaps split evenly, GAP_EACH={GAP_EACH:.3f})")
+    print(f"  edge clearance (rim->edge)={edge_clear:.3f}mm   "
+          f"inner clearance (rim->J_DOM rim)={inner_clear:.3f}mm")
 
 if __name__=="__main__":
     gen(True); gen(False)

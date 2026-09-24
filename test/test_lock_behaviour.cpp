@@ -402,6 +402,111 @@ int main(){
     });
 
     // ─────────────────────────────────────────────────────────────────────────
+    SUITE("q-mix as an INDEPENDENT lock axis (SB_DICE_Q / SB_CA_Q)");
+    // ─────────────────────────────────────────────────────────────────────────
+    // q-mix is a full 3rd axis: its dice draw + CA pin remap freeze/free on their OWN
+    // scope bits, NOT melody's. These guard against a future refactor re-coupling q-mix
+    // to melody (the "split-brain" bug that was fixed when the axis was introduced).
+
+    // A locked PatternInput with per-axis dice-live flags set explicitly.
+    auto locked_dice = [](bool r, bool m, bool q) {
+        PatternInput in = locked_in();
+        in.diceLiveR = r; in.diceLiveM = m; in.diceLiveQ = q;
+        return in;
+    };
+
+    TEST("Locked + diceLiveQ=false freezes the q-mix draw (counter held)", {
+        auto pe=seeded(3.f,4.f);
+        pe.applyPendingSeedsAndRedraw(unlocked());   // initial draw
+        const int64_t q0 = pe.qmixDrawCtr;
+        pe.qmixRollPending = true;                   // arm a q-mix roll
+        pe.applyPendingSeedsAndRedraw(locked_dice(false,false,false));  // whole-module lock
+        EXPECT_EQ(pe.qmixDrawCtr, q0);               // q-mix stayed frozen
+        EXPECT(pe.qmixRollPending);                  // roll held, not consumed (fires at unlock)
+    });
+
+    TEST("Locked + diceLiveQ=true redraws q-mix while melody stays frozen", {
+        auto pe=seeded(3.f,4.f);
+        // PRIME with a real roll (unlocked) so firstDraw is consumed on BOTH streams — the FIRST
+        // draw is the A=B baseline at ctr 0 and legitimately does not advance (redrawMelody/Qmix:
+        // `if(!first) advance`). Subsequent rolls advance, which is what we assert below.
+        pe.melodyRollPending = true; pe.qmixRollPending = true;
+        pe.applyPendingSeedsAndRedraw(unlocked());
+        const int64_t q0 = pe.qmixDrawCtr, m0 = pe.melodyDrawCtr;
+        pe.qmixRollPending = true; pe.melodyRollPending = true;   // arm BOTH again
+        // Only q-mix opted live under lock; melody frozen.
+        pe.applyPendingSeedsAndRedraw(locked_dice(false,false,true));
+        EXPECT_NE(pe.qmixDrawCtr, q0);               // q-mix advanced
+        EXPECT_EQ(pe.melodyDrawCtr, m0);             // melody stayed frozen
+        EXPECT(pe.melodyRollPending);                // melody roll held for unlock
+    });
+
+    TEST("Locked + diceLiveM=true redraws melody while q-mix stays frozen (converse)", {
+        auto pe=seeded(3.f,4.f);
+        pe.melodyRollPending = true; pe.qmixRollPending = true;   // prime (consume firstDraw)
+        pe.applyPendingSeedsAndRedraw(unlocked());
+        const int64_t q0 = pe.qmixDrawCtr, m0 = pe.melodyDrawCtr;
+        pe.qmixRollPending = true; pe.melodyRollPending = true;
+        pe.applyPendingSeedsAndRedraw(locked_dice(false,true,false));
+        EXPECT_NE(pe.melodyDrawCtr, m0);             // melody advanced
+        EXPECT_EQ(pe.qmixDrawCtr, q0);               // q-mix stayed frozen
+        EXPECT(pe.qmixRollPending);                  // q-mix roll held for unlock
+    });
+
+    TEST("CA remapSlewedByPins(doQ=true only) remaps q-mix, leaves rhythm/melody untouched", {
+        PatternEngine pe;
+        // Seed distinct, known mono slewed buffers so a wrong-plane copy is observable.
+        for(int i=0;i<16;++i){
+            pe.slewedRhythm[i] = 0.10f + 0.01f*i;
+            pe.slewedMelody[i] = 0.50f + 0.01f*i;
+            pe.slewedQmix[i]   = 0.90f - 0.01f*i;
+        }
+        // Give poly voice 0 a DISTINCT q-mix buffer so a cross-voice borrow is observable.
+        const float polyQ0 = 0.123f;
+        for(int i=0;i<16;++i) pe.slewedPolyQmix[0][i] = polyQ0;
+        // q-mix plane: mono row 0 borrows poly voice 0 (src=1 → poly v-1=0). Others identity.
+        for(int v=0;v<16;++v){ pe.caRhythmSrc[v]=v; pe.caMelodySrc[v]=v; pe.caQmixSrc[v]=v; }
+        pe.caQmixSrc[0]=1;   // mono row 0 sources poly voice 0's q-mix
+        const float rBefore0 = pe.slewedRhythm[0], mBefore0 = pe.slewedMelody[0];
+        // Only the q-mix axis remaps.
+        pe.remapSlewedByPins(/*doR=*/false, /*doM=*/false, /*doQ=*/true);
+        // q-mix row 0 took poly voice 0's value (cross-voice borrow via the green plane)...
+        EXPECT_NEAR(pe.slewedQmix[0], polyQ0, 1e-6f);
+        // ...while rhythm/melody are byte-identical (their axes were NOT remapped).
+        EXPECT_NEAR(pe.slewedRhythm[0], rBefore0, 1e-6f);
+        EXPECT_NEAR(pe.slewedMelody[0], mBefore0, 1e-6f);
+    });
+
+    TEST("CA remapSlewedByPins(doQ=false) holds the q-mix plane frozen", {
+        PatternEngine pe;
+        for(int i=0;i<16;++i) pe.slewedQmix[i] = 0.90f - 0.01f*i;
+        for(int i=0;i<16;++i) pe.slewedPolyQmix[0][i] = 0.123f;
+        for(int v=0;v<16;++v){ pe.caRhythmSrc[v]=v; pe.caMelodySrc[v]=v; pe.caQmixSrc[v]=v; }
+        pe.caQmixSrc[0]=1;   // non-identity q-mix plane...
+        const float qWas0 = pe.slewedQmix[0];
+        // ...but doQ=false: q-mix must NOT be remapped.
+        pe.remapSlewedByPins(/*doR=*/true, /*doM=*/true, /*doQ=*/false);
+        EXPECT_NEAR(pe.slewedQmix[0], qWas0, 1e-6f);
+    });
+
+    TEST("q-mix seed → Philox key + counter round-trip is reproducible (undo primitive)", {
+        // The primitive restoreQmixDice relies on: re-deriving the key from the seed float and
+        // restoring the counter reproduces the exact draw. seedQmixPhilox zeros the counter.
+        PatternEngine a; a.seedQmixPhilox(5.5f);
+        // Advance to a known position and sample.
+        a.qmixDrawCtr = 7; a.beginQmixDraw();
+        const float sample = a.philoxQmix();
+        // Fresh engine: re-derive the SAME key from the seed, restore the SAME counter → same draw.
+        PatternEngine b; b.seedQmixPhilox(5.5f);   // zeros counter as a side effect
+        b.qmixDrawCtr = 7; b.beginQmixDraw();
+        EXPECT_NEAR(b.philoxQmix(), sample, 1e-9f);
+        // A DIFFERENT seed must yield a different key (stream identity, not accidental match).
+        PatternEngine c; c.seedQmixPhilox(6.5f);
+        c.qmixDrawCtr = 7; c.beginQmixDraw();
+        EXPECT_NE(c.philoxQmix(), sample);
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
     std::cout<<"\n"<<std::string(54,'=')<<"\n";
     std::cout<<"\033[32m"<<s_pass<<" passed\033[0m  ";
     if(s_fail>0)std::cout<<"\033[31m"<<s_fail<<" failed\033[0m";

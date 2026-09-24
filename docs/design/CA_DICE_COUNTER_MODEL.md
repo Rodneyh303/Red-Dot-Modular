@@ -378,3 +378,33 @@ user-armed only), :158-184 (latchRow -- armed by user button/pin OR by modulatio
 lives at arming), :188-220 (applyPendingTransforms shared commit path), the prior two corrections (this is
 the finer-grained truth: not 'all undoable', not 'true-reverse specially excluded' -- but 'user-class
 undoable, modulation-class not, true-reverse is modulation-class')." 
+
+## TRUE REVERSE — build status: front end DONE, ENGINE NOT BUILT (audit, Rodney)
+
+**Built already** (verified in code):
+- Panel: the centred per-stream group beneath the pin matrix — 3 jack+button pairs (rhythm/melody/q-mix),
+  emitted by `panel_src/gen_change_alley_v2.py` (TRUEREV_* markers), stream-coloured rings.
+- Params/IO: `CA::TRUE_REV_BTN_START` + `CA::TRUE_REV_IN_START` per stream, configured with labels
+  (`MonsoonChangeAlleyV2.hpp` ~167-171).
+- Gesture: jack OR button ARMS a queued per-stream true-reverse and lights its pending lamp
+  (`TRUE_REV_LIGHT_START`); the queue is CONSUMED AT THE PHRASE BOUNDARY — the same commit gesture as
+  the verbs (~233-245, ~351-366). Lamp clears on consume.
+
+**NOT built — the trajectory-replay engine.** `MonsoonChangeAlleyV2.hpp:245` is literally
+`TODO(true-reverse engine): step this stream's committed-state trajectory back by one`, and the note at
+~77 records that the deeper state-history buffer is future work. So today the control ARMS, LAMPS and
+CLEARS but moves nothing.
+
+**What the engine needs:**
+1. A **per-stream ring of COMMITTED pin states** (`src[N_VOICES]` for rhythm / melody / q-mix), pushed
+   ONCE per phrase-boundary commit, AFTER the verbs apply — it records RESULTS, not causes. That is what
+   makes true-reverse verb-agnostic and able to step back through a lossy collapse (the reason trajectory
+   replay was chosen over transform inversion).
+2. **Bounded depth** — still [OPEN]. Cost is tiny: 3 streams x 16 bytes x depth (256 phrases ~= 12 kB),
+   so be generous.
+3. **Pop-and-restore** on consume, replacing the TODO.
+4. Must be **distinct from** the 16-slot SPSC expander hand-off ring AND from Monsoon's `diceUndoRing`
+   (different mechanisms: hand-off, and dice undo).
+5. **End-of-buffer behaviour** — [OPEN]; stop (not wrap) is the safer default.
+
+Independent of the connection rework and the q-mix build — can be scheduled any time.

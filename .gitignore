@@ -40,3 +40,4 @@ panel_src/_*.svg
 /res/RDM_TrimDark_Slot.svg
 /res/old
 /src/res
+.git-commit-msg.tmp

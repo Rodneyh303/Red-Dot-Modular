@@ -58,6 +58,14 @@ Poly outputs for GATE, CV, ACCENT, LEGATO, SLEG. As Monsoon plays, Intertropical
 the voices in the active scene to these outputs. A graphical sequential switch: the scene mask
 gates which of the 16 voices reach the poly outs.
 
+**Planned (after q-mix + CA output side): correlated-expression outs.** Intertropical will also grab
+CA's correlated poly-CV outs off the chain (`host->expanderManager.cachedChangeAlleyV2`, same idiom as
+`cachedPolyVoiceExpander`) and route them through the SAME voice→slot→output mapping as the notes, so
+per-voice MPE expression stays aligned with its note through the collapse. The CA CV follows the note
+mapping EXACTLY — no separate expression routing (musically empty; would re-introduce a second voice
+frame). Expression outs skip the per-output pitch transpose. Full spec + rationale:
+[[CA_EXPRESSION_CV_CORRELATION]] "Routing through Intertropical".
+
 ## Advance: boundary crossings, phase-aware
 - Repeat count = number of phrase-boundary CROSSINGS (NOT forward steps), in EITHER direction,
   because phase drive can run the sequencer backward. Counting crossings is the phase-coherent

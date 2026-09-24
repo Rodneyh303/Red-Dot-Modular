@@ -19,16 +19,16 @@ namespace SandsMonoVisualIds {
     static constexpr float DELEG_MOD_X = 228.f; // delegation gate-mod jack column
     static constexpr float PROB_OUT_X = 236.f;  // output jack column (pushed right by mod columns)
     // Grid now comes from ui/SandsGrid.hpp so Mono, East and Macro cannot drift apart.
-    // ROW_BOT 108 -> 98: lane height 15.667 -> 14, matching East/Macro's lanes exactly.
+    // Option B: LANE_H=13, 7 lanes (q-mix at slot 2) → ROW_BOT 105.
     static constexpr float ED_Y     = dotModular::SandsGrid::LANE_TOP;      // 14
     static constexpr float ROW_TOP  = dotModular::SandsGrid::LANE_TOP;      // 14
-    static constexpr float ROW_BOT  = dotModular::SandsGrid::monoBottom();  // 98 (was 108)
-    static constexpr int   N_LANES  = dotModular::SandsGrid::MONO_LANES;    // 6
-    static constexpr int   N_SPREAD_LANES = 4;  // REST, MELODY, OCTAVE, ACCENT
-    // Spread control index (0..3 = REST/MEL/OCT/ACCENT) → editor lane.
-    // Shares the poly engine→editor mapping (dsp/LaneMapping.hpp): REST=2, MEL=0,
-    // OCT=1, ACCENT=3. Single source of truth — do not redefine here.
-    static constexpr const int* SPREAD_LANE_TO_EDITOR = dotModular::ENGINE_LANE_TO_EDITOR;
+    static constexpr float ROW_BOT  = dotModular::SandsGrid::monoBottom();  // 105 (7×13)
+    static constexpr int   N_LANES  = dotModular::SandsGrid::MONO_LANES;    // 7
+    static constexpr int   N_SPREAD_LANES = 5;  // REST, MELODY, OCTAVE, ACCENT, QMIX
+    // Spread control index (0..4 = poly engine lane REST/MEL/OCT/ACC/QMIX) → editor lane.
+    // Shares the QMIX poly engine→editor mapping (dsp/LaneMapping.hpp): REST=3, MEL=0,
+    // OCT=1, ACC=4, QMIX=2. Single source of truth — do not redefine here.
+    static constexpr const int* SPREAD_LANE_TO_EDITOR = dotModular::ENGINE_LANE_TO_EDITOR_QMIX;
 
     // Column X positions (mm)
     // LOR CV jacks (all 6 lanes): LEN/OFF/ROT
@@ -46,32 +46,28 @@ namespace SandsMonoVisualIds {
 
     // ── Param IDs ─────────────────────────────────────────────────────────
     enum ParamId {
-        // LOR handle params: 6 lanes × 3 (LEN/OFF/ROT) = 18 (0-17).
-        // EDITOR ORDER (MEL,OCT,REST,ACC,VAR,LEG) — same order the editor shows and
+        // LOR handle params: 7 editor lanes × 3 (LEN/OFF/ROT) = 21 (0-20). QMIX-widened.
+        // EDITOR ORDER (MEL,OCT,QMIX,REST,ACC,VAR,LEG) — same order the editor shows and
         // the engine strands use, so lenId(editorLane) reads directly with no remap.
         LEN_MELODY = 0, OFF_MELODY, ROT_MELODY,
         LEN_OCTAVE,     OFF_OCTAVE,     ROT_OCTAVE,
+        LEN_QMIX,       OFF_QMIX,       ROT_QMIX,
         LEN_REST,       OFF_REST,       ROT_REST,
         LEN_ACCENT,     OFF_ACCENT,     ROT_ACCENT,
         LEN_VARIATION,  OFF_VARIATION,  ROT_VARIATION,
         LEN_LEGATO,     OFF_LEGATO,     ROT_LEGATO,
-        // Spread base trimpots: poly lanes in ENGINE order REST/MEL/OCT/ACCENT — kept
-        // in engine order because the spread path shares SPREAD_LANE_TO_EDITOR with the
-        // poly engine (which is NOT being renumbered in this step). sprId(l) takes a
-        // spread index 0-3, mapped to editor via SPREAD_LANE_TO_EDITOR.
-        SPR_REST, SPR_MELODY, SPR_OCTAVE, SPR_ACCENT,
-        // Attenuverters: 18 LOR (6 lanes × 3) + 4 spread = 22
-        ATTEN_START,                       // 22 .. 39  (18 LOR attens)
-        SPR_ATTEN_START = ATTEN_START + 18, // 40 .. 43  (4 spread attens)
-        // V1 ownership: per poly lane (MEL/OCT/REST/ACC, EDITOR order), latch
-        // 0 = Macro owns V1's base for this lane (global base), 1 = Mono owns it
-        // (this expander's own LOR edit). LEG/VAR are mono-only → always Mono-owned,
-        // no owner param. Mono is single-voice (V1), so no per-voice bank needed.
-        OWN_DISP_START = SPR_ATTEN_START + 4,   // 44 .. 47
-        // Direction display proxy (mono direction, 6 lanes). DirCell writes here;
-        // widget step() syncs to engine.laneDirPending_.
-        DIR_DISP_START = OWN_DISP_START + 4,    // 48 .. 53
-        NUM_PARAMS = DIR_DISP_START + 6
+        // Spread base trimpots: 5 poly lanes (REST/MEL/OCT/ACC/QMIX). sprId(l) takes a
+        // spread index 0..4, mapped to editor via SPREAD_LANE_TO_EDITOR_QMIX.
+        SPR_REST, SPR_MELODY, SPR_OCTAVE, SPR_ACCENT, SPR_QMIX,
+        // Attenuverters: 21 LOR (7 lanes × 3) + 5 spread.
+        ATTEN_START,                        // 26 .. 46  (21 LOR attens: 7 lanes × 3)
+        SPR_ATTEN_START = ATTEN_START + 21, // 47 .. 51  (5 spread attens)
+        // V1 ownership: per poly lane (MEL/OCT/QMIX/REST/ACC, EDITOR order), latch
+        // 0 = Macro owns V1's base for this lane, 1 = Mono owns it. LEG/VAR mono-only.
+        OWN_DISP_START = SPR_ATTEN_START + 5,   // 52 .. 56  (5 poly lanes)
+        // Direction display proxy (mono direction, 7 lanes).
+        DIR_DISP_START = OWN_DISP_START + 5,    // 57 .. 63
+        NUM_PARAMS = DIR_DISP_START + 7
     };
     // V1 owner display proxy: poly lane (editor order 0=MEL 1=OCT 2=REST 3=ACC).
     inline int ownerDispId(int polyLaneEditor) { return OWN_DISP_START + polyLaneEditor; }
@@ -85,8 +81,10 @@ namespace SandsMonoVisualIds {
     // Mono module and an ENGINE lane, returns true iff Macro owns that lane (delegated).
     // Returns false if mod is null. (param <= 0.5 == Macro owns; > 0.5 == Mono/local owns.)
     inline bool monoMacroOwnsEngineLane(rack::Module* mod, int engineLane) {
-        if (!mod || engineLane < 0 || engineLane >= 4) return false;
-        int editorLane = dotModular::ENGINE_LANE_TO_EDITOR[engineLane];
+        // engineLane is a poly lane 0..4 (REST/MEL/OCT/ACC/QMIX). Use the QMIX-aware table so
+        // PL_QMIX(4) resolves to editor lane 2 rather than being rejected by the old `>= 4` guard.
+        if (!mod || engineLane < 0 || engineLane >= dotModular::SandsGrid::POLY_LANES) return false;
+        int editorLane = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engineLane];
         // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
         // Returns true iff Macro owns (delegated); no Monsoon → treat as Mono-owned (not delegated).
         Monsoon* m = redDot::findMonsoonEitherSide(mod);
@@ -95,30 +93,30 @@ namespace SandsMonoVisualIds {
 
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
-        // 18 LOR CV jacks (6 lanes × 3) + 4 spread CV jacks (REST/MEL/OCT/ACCENT) = 22
-        CV_START = 0,                       // 0 .. 17
-        SPR_CV_START = CV_START + 18,       // 18 .. 21
-        DIR_MOD_START = SPR_CV_START + 4,   // = 22 — direction gate-mod (6 mono jacks)
-        DELEG_MOD_START = DIR_MOD_START + 6, // = 28 — delegation gate-mod (4 mono jacks)
-        NUM_INPUTS = DELEG_MOD_START + 4    // = 32
+        // 21 LOR CV jacks (7 lanes × 3) + 5 spread CV jacks (REST/MEL/QMIX/OCT/ACC) = 26
+        CV_START = 0,                       // 0 .. 20
+        SPR_CV_START = CV_START + 21,       // 21 .. 25 (5 poly lanes with spread)
+        DIR_MOD_START = SPR_CV_START + 5,   // = 26 — direction gate-mod (7 mono jacks)
+        DELEG_MOD_START = DIR_MOD_START + 7, // = 33 — delegation gate-mod (5 poly jacks)
+        NUM_INPUTS = DELEG_MOD_START + 5    // = 38
     };
     static inline int dirModId(int lane) { return DIR_MOD_START + lane; }
     static inline int delegModId(int lane) { return DELEG_MOD_START + lane; }
 
     // ── Output IDs ────────────────────────────────────────────────────────
     enum OutputId {
-        // Per-lane probability CV out (editor lane order REST/MEL/OCT/LEG/ACC/VAR):
+        // Per-lane probability CV out (editor lane order MEL/OCT/REST/ACC/QMIX/VAR/LEG):
         // the final post-everything (A/B mix + spread + LOR) probability the playhead
         // goes over at the current step for that lane. S&H or continuous (menu).
-        PROB_OUT_START = 0,                 // 0 .. 5
-        NUM_OUTPUTS = PROB_OUT_START + 6
+        PROB_OUT_START = 0,                 // 0 .. 6 (7 mono lanes)
+        NUM_OUTPUTS = PROB_OUT_START + 7
     };
 
     // ── Helpers ───────────────────────────────────────────────────────────
     inline int lenId(int l) { return LEN_MELODY + l * 3; }     // l = EDITOR lane now
     inline int offId(int l) { return LEN_MELODY + l * 3 + 1; }
     inline int rotId(int l) { return LEN_MELODY + l * 3 + 2; }
-    inline int sprId(int l) { return SPR_REST + l; }          // l: 0-3 spread index (engine order)
+    inline int sprId(int l) { return SPR_REST + l; }          // l: 0-4 spread index (poly engine order)
 
     // LOR atten/CV: lane 0-5, param 0=LEN,1=OFF,2=ROT
     inline int attenId(int lane, int param) { return ATTEN_START + lane*3 + param; }
@@ -139,8 +137,8 @@ struct MonsoonSandsVisualExpander : Module {
     // Probability CV out config (persisted): scale 0=0..1V, 1=0..5V, 2=0..10V;
     // sampleHold true = latch the value at each 16th step start (the decision value),
     // false = continuous (the live modulated surface within the bar).
-    float probHeld[6] = {};         // latched per-lane value for S&H mode
-    int   probLastStep[6] = {-1,-1,-1,-1,-1,-1};  // last step latched per lane
+    float probHeld[dotModular::SandsGrid::MONO_LANES] = {};         // latched per-lane value for S&H mode
+    int   probLastStep[dotModular::SandsGrid::MONO_LANES] = {-1,-1,-1,-1,-1,-1,-1};  // last step latched per lane
 
     MonsoonSandsVisualExpander() {
         using namespace SandsMonoVisualIds;
@@ -153,7 +151,7 @@ struct MonsoonSandsVisualExpander : Module {
             configOutput(PROB_OUT_START + l, std::string("Probability ") +
                 (const char*[]){"MEL","OCT","REST","ACC","VAR","LEG"}[l]);
 
-        static const char* names[6]  = {"MEL","OCT","REST","ACC","VAR","LEG"};
+        static const char* names[dotModular::SandsGrid::MONO_LANES]  = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
         static const char* lnames[3] = {"Len","Off","Rot"};
 
         // LOR + atten group: ALL STORE-BACKED (MVC step 1d). lenId/offId/rotId/attenId ids are
@@ -193,7 +191,7 @@ struct MonsoonSandsVisualExpander : Module {
     // PERF: chain walk is control-rate work (Rodney audit item 3).
     Monsoon* cachedMon_ = nullptr;
     rack::dsp::ClockDivider monLookupDiv;
-    bool dirModPrev[6] = {};
+    bool dirModPrev[dotModular::SandsGrid::MONO_LANES] = {};
     bool delegModPrev[4] = {};
 
     json_t* dataToJson() override {

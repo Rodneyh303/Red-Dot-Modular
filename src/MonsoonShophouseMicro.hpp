@@ -48,7 +48,10 @@ struct MonsoonShophouseMicro : Module {
 
     MonsoonShophouseMicro() {
         using namespace ShophouseMicroIds;
-        config(NUM_PARAMS, NUM_INPUTS, 0, 0);
+        // Fully-qualify these two: once this header is pulled into a TU that also sees another Ids
+        // namespace (e.g. via MicroTuning/Interchange), the unqualified NUM_PARAMS/NUM_INPUTS become
+        // ambiguous. The rest of the ctor uses distinctly-named enums, so they stay on the `using`.
+        config(ShophouseMicroIds::NUM_PARAMS, ShophouseMicroIds::NUM_INPUTS, 0, 0);
         configSwitch(CONSERVATION_PARAM, 0.f, 1.f, 0.f, "Conservation", {"Guide", "Enforce"});
         configParam(INDEX_CV_ATT_PARAM, -1.f, 1.f, 1.f, "Index CV attenuverter");
         configInput(INDEX_CV_INPUT, "Scene index CV (sampled at phrase boundary)");

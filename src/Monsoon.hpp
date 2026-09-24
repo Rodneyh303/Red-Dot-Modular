@@ -138,7 +138,28 @@ namespace MonsoonIds {
         POLY_ACCENT_PARAM_13,
         POLY_ACCENT_PARAM_14,
         POLY_ACCENT_PARAM_15,
-        
+
+        // Poly Q-mix LEVEL (15 voices) — q-mix as a per-voice lane, parallel to rest/accent.
+        // Voices 2..16 = 15 knobs; voice 1 (mono) q-mix level lives on Monsoon's QMIX_LEVEL_PARAM
+        // (no new voice-1 param, mirroring how REST_PARAM/ACCENT_KNOB serve voice 1 for rest/accent).
+        // Appended after ACCENT (stable ids — never renumber). Straits owns these knobs (see
+        // MonsoonStraitsExpander); the engine reads them per voice via getQmixLevelForVoice.
+        POLY_QMIX_PARAM_1,
+        POLY_QMIX_PARAM_2,
+        POLY_QMIX_PARAM_3,
+        POLY_QMIX_PARAM_4,
+        POLY_QMIX_PARAM_5,
+        POLY_QMIX_PARAM_6,
+        POLY_QMIX_PARAM_7,
+        POLY_QMIX_PARAM_8,
+        POLY_QMIX_PARAM_9,
+        POLY_QMIX_PARAM_10,
+        POLY_QMIX_PARAM_11,
+        POLY_QMIX_PARAM_12,
+        POLY_QMIX_PARAM_13,
+        POLY_QMIX_PARAM_14,
+        POLY_QMIX_PARAM_15,
+
         // Rest Probability Modulation Attenuverters (15 voices) - NEW
 
         // Accent Probability Modulation Attenuverters (15 voices) - NEW
@@ -184,18 +205,29 @@ namespace MonsoonIds {
         RHYTHM_MIX_PARAM,
         MELODY_MIX_PARAM,
 
-        // Trial/audition dice (rhythm, melody): roll a fresh candidate B with A
-        // ANCHORED (no promote), so the user auditions candidates against a fixed
-        // A. The regular dice (DICE_R/M_PARAM) commits B→A (main mode).
-        DICE_TRIAL_R_PARAM,
-        DICE_TRIAL_M_PARAM,
-        // LastDice / LastTrial: step the draw index opposite to dice/trial (Philox
-        // addressability). Normal-mode only — blocked on reversible streams. Grouped
-        // with their dice/trial siblings.
+        // ── Task 4 repurpose (Trial → QMIX) ──────────────────────────────────
+        // The former Trial params (DICE_TRIAL_R/M_PARAM, LAST_TRIAL_R/M_PARAM)
+        // are no longer used. Their 4 enum slots are repurposed IN PLACE (enum
+        // positions/order unchanged so no later param IDs shift) to give the
+        // QMIX stream its own playable dice/mix/slew, mirroring the R/M pattern
+        // (DICE_R/M_PARAM, LAST_DICE_R/M_PARAM, RHYTHM/MELODY_MIX_PARAM,
+        // DICE_SLEW_R/M_PARAM). QMIX draws from its OWN Philox stream.
+        DICE_Q_PARAM,        // was DICE_TRIAL_R_PARAM
+        LAST_DICE_Q_PARAM,   // was DICE_TRIAL_M_PARAM
+        // QMIX A<->B blend (mirror RHYTHM_MIX_PARAM/MELODY_MIX_PARAM).
+        QMIX_MIX_PARAM,      // was LAST_TRIAL_R_PARAM
+        // QMIX dice slew (mirror DICE_SLEW_R/M_PARAM).
+        DICE_SLEW_Q_PARAM,   // was LAST_TRIAL_M_PARAM
+        // LastDice: step the draw index opposite to dice (Philox addressability).
+        // Normal-mode only — blocked on reversible streams. Grouped with dice.
         LAST_DICE_R_PARAM,
         LAST_DICE_M_PARAM,
-        LAST_TRIAL_R_PARAM,
-        LAST_TRIAL_M_PARAM,
+
+        // Q-mix LEVEL (the "6th big knob"): the level the q-mix probability compares
+        // against on the mono voice. Appended (stable id). No room in the top big-5 row
+        // yet — panel places it bottom-right (under ACCENT out, on the RESET jack row) as
+        // a small Straits-style knob; proper placement comes with the wider Monsoon redo.
+        QMIX_LEVEL_PARAM,
 
         // ── MACRO ranges (OWN 64, SEND 256, ATTEN 256, TAP 8 = 584) MIGRATED OUT of params[]
         //    to Monsoon::editor.macroOwn/macroSend/macroAtten (accessors getMacroOwn/…); tap re-homed to a Macro param;
@@ -444,6 +476,11 @@ namespace MonsoonIds {
         RESET_LIGHT = POLY_EXPANDER_LIGHT + 2,
         RUN_GATE_LIGHT,
 
+        // QMIX dice pending light — twin of RHYTHM/MELODY_DICE_LIGHT. Appended at the END
+        // (stable ids) so no existing light slot shifts. Lit while a Dice Q seed is armed
+        // (between press and the phrase boundary), like R/M.
+        QMIX_DICE_LIGHT,
+
         NUM_LIGHTS
     };
 
@@ -531,6 +568,7 @@ struct Monsoon : Module {
     // AND by Raffles's dedicated gates (and any future source). DRY: add an
     // action here and every gate source can use it.
     enum DieAction {
+        DA_NONE = -1,                        // sentinel: an inert gate (fires no action)
         DA_REDICE_R = 0, DA_REDICE_M,
         DA_LIVESTATIC_R, DA_LIVESTATIC_M,    // toggle live<->static (rhythmMode)
         DA_RESEED_RESTART,
@@ -538,6 +576,40 @@ struct Monsoon : Module {
         DA_NUM
     };
     void fireDieAction(int a);   // defined in Monsoon.cpp
+
+    // ── Raffles gate → DieAction map (SoT, LaneMapping-style) ────────────────────────────────
+    // Two intentionally-different orderings: the Raffles gate order is fixed by the PANEL jack
+    // layout (RafflesInputIds, from raffles.json); DieAction is the shared action vocabulary
+    // (also routed by Gate-3's g3map[]). They cannot be forced equal, so this table is the ONE
+    // explicit bridge — co-located with both enums so a renumber of either can't silently drift
+    // (the static_asserts below trip instead). Indexed by gate slot i = (RAFFLES_GATE_TRIAL_R+i).
+    // DA_NONE = inert gate: TRIAL/LASTTRIAL (Trial mechanism removed), LIVESRC (old main/trial
+    // source switch, meaningless without Trial), RESEED_ROLL (reseed-on-roll removed; reseed
+    // lives on RESET). Mirrors dsp/LaneMapping.hpp's "single source for two orderings" discipline.
+    static constexpr int kRafflesGateAction[14] = {
+        /* 0  TRIAL_R        */ DA_NONE,
+        /* 1  TRIAL_M        */ DA_NONE,
+        /* 2  REDICE_R       */ DA_REDICE_R,
+        /* 3  REDICE_M       */ DA_REDICE_M,
+        /* 4  LIVESRC_R      */ DA_NONE,
+        /* 5  LIVESRC_M      */ DA_NONE,
+        /* 6  LIVESTATIC_R   */ DA_LIVESTATIC_R,
+        /* 7  LIVESTATIC_M   */ DA_LIVESTATIC_M,
+        /* 8  RESEED_ROLL    */ DA_NONE,
+        /* 9  RESEED_RESTART */ DA_RESEED_RESTART,
+        /* 10 LASTDICE_R     */ DA_LASTDICE_R,
+        /* 11 LASTDICE_M     */ DA_LASTDICE_M,
+        /* 12 LASTTRIAL_R    */ DA_NONE,
+        /* 13 LASTTRIAL_M    */ DA_NONE,
+    };
+    // Pin the table length to the gate count, and spot-check the live mappings so a future
+    // reorder of RafflesInputIds OR DieAction fails the build rather than misfiring in the field.
+    static_assert((int)MonsoonIds::NUM_RAFFLES_INPUTS - (int)MonsoonIds::RAFFLES_GATE_TRIAL_R == 14,
+                  "kRafflesGateAction length must equal the Raffles gate count");
+    static_assert(kRafflesGateAction[2] == DA_REDICE_R && kRafflesGateAction[3] == DA_REDICE_M,
+                  "Raffles REDICE gates must map to DA_REDICE_R/M");
+    static_assert(kRafflesGateAction[9] == DA_RESEED_RESTART,
+                  "Raffles RESEED_RESTART gate must map to DA_RESEED_RESTART");
     int gate1Assign = 0;
     int gate2Assign = 1;
     bool invertMuteLogic = false;
@@ -554,6 +626,20 @@ struct Monsoon : Module {
     //   >0 = the CA whose pairId matches, ANYWHERE in the rack (cross-row sharing).
     // The ExpanderManager applies this as a discovery override after the adjacency walk. Persisted.
     int followCA = 0;
+
+    // ── Host identity (CONNECTION_MODEL_SPEC.md §2, node-anchored) ────────────────────────────────
+    // Each Monsoon owns a small pairId (1..8), lowest-unused, persisted, stable across reload — the
+    // SAME scheme as Intertropical/CA (assignPairIdT<Monsoon>). Bound expanders DISPLAY this via
+    // pairColour(pairId); the Monsoon owns identity, they inherit it. The colour+number badge only
+    // renders when 2+ Monsoons exist (§4/Q6); single-Monsoon rigs show a plain connect dot.
+    //   pairId == 0 → NOT participating: either not yet assigned, OR the 8-cap was hit (a 9th Monsoon
+    //   may be placed but gets no colour/slot and NEVER reuses colour 1 — §14 8-cap ↔ 8-palette lock).
+    // Assigned lazily in updateExpanderPointers() (control rate; NOT ctor — getModuleIds re-lock).
+    int  pairId = 0;
+    bool pairChecked = false;   // one-shot clash-scan latch (mirrors Intertropical::pairChecked); runtime only
+    // Hard cap: 8 connection-participating Monsoons = the 8-hue pairColour palette, so colour is a
+    // COMPLETE unique identifier (never wraps). Locked to the palette width in IntertropicalPairing.hpp.
+    static constexpr int kMaxParticipatingMonsoons = 8;
 
     // ── Tuning delegation (Sikit Phase 1, MICRO_TUNING_INTEGRATION_PLAN §F) ──────────────────────
     // The shared TuningTable lives on the engine (engine.pe.tuning). A tuning-authoring expander
@@ -615,6 +701,7 @@ struct Monsoon : Module {
         // Slew + mix effective values, normalised 0..1 (all native 0..1).
         // Modulated via CV3 (cv3Offsets). activeCv3 gates their arcs.
         float rhythmSlew = 0.f, melodySlew = 0.f, rhythmMix = 0.f, melodyMix = 0.f;
+        float qmixSlew = 0.f, qmixMix = 0.f;   // Task 4 (QMIX slew/mix)
         bool  activeCv3 = false;
         // Pitch sliders: 12 semitone (0..1) + octave lo/hi (normalised /8).
         // Modulated via the Interchange expander CV (+ CV1 for octaves).
@@ -627,7 +714,7 @@ struct Monsoon : Module {
         // a sibling lane is modulated. Kept at struct END to avoid shifting the
         // offsets of the fields above (ABI hygiene for incremental builds).
         bool  big5Lane[5] = {false,false,false,false,false};
-        bool  cv3Lane[4]  = {false,false,false,false};
+        bool  cv3Lane[5]  = {false,false,false,false,false};  // 5 poly lanes: REST/MEL/OCT/ACC/QMIX
         // Per-lane pitch flags: 0..11 = semitones, 12 = octaveLo, 13 = octaveHi.
         bool  pitchLane[14] = {false};
     } modViz;
@@ -659,65 +746,62 @@ struct Monsoon : Module {
         // CONVENTION: VoiceResolver::voiceSlot (mono = slot 0). Verified against call sites.
         // index = v*6 + lane*3 + col  (== old VARLEG_ATTEN_START + v*6 + lane*3 + col).
         float varlegAtten[96] = {0};
-        // macroOwn: owner per lane(0..3). INDEXING IS POLY-BANK, NOT voiceSlot:
+        // macroOwn: owner per poly lane(0..4, QMIX-widened). INDEXING IS POLY-BANK, NOT voiceSlot:
         //   v = 0..14  -> V2..V16 (poly bank index)
         //   v = 15     -> V1/mono   (see getMonoMacroOwn/setMonoMacroOwn)
-        // index = v*4 + lane. NOTE this differs from lorBase/spread/varlegAtten/macroSend/
-        // macroAtten, which all use VoiceResolver::voiceSlot (mono = slot 0). Scheduled for
-        // reconciliation — see docs/design/MVC_UNIFICATION.md step 1. (The previous comment
-        // claimed "v=0..15 voice-slot, 15=mono", which is self-contradictory: voiceSlot(V1)
-        // is 0, so this array is NOT on the voiceSlot convention.)
-        float macroOwn[64] = {0};
-        // macroSend: Macro-CV blend send per (v=0..15)×lane(0..3)×item(0..3). index=(v*4+lane)*4+item.
+        // index = v*5 + lane. NOTE this differs from lorBase/spread/varlegAtten/macroSend/
+        // macroAtten, which all use VoiceResolver::voiceSlot (mono = slot 0).
+        float macroOwn[80] = {0};    // 16 × 5 poly lanes (was 64 = 16 × 4, pre-QMIX)
+        // macroSend: Macro-CV blend send per (v=0..15)×lane(0..4)×item(0..3). index=(v*5+lane)*4+item.
         // CONVENTION: VoiceResolver::voiceSlot (mono = slot 0). Verified against call sites.
-        float macroSend[256] = {0};
-        // macroAtten: atten depth per (v=0..15)×(lane*4+col, 16 wide). index = v*16 + lane*4+col.
+        float macroSend[320] = {0};  // 16 × 5 lanes × 4 items (was 256 = 16 × 4 × 4)
+        // macroAtten: atten depth per (v=0..15)×(lane*4+col, 20 wide). index = v*20 + lane*4+col.
         // CONVENTION: VoiceResolver::voiceSlot (mono = slot 0). Verified against call sites.
-        float macroAtten[256] = {0};
+        float macroAtten[320] = {0}; // 16 × 5 lanes × 4 cols (was 256 = 16 × 4 × 4)
         // Unified per-voice LOR base store (Stage 1 of the MVC unification). Indexed by
         // voiceSlot (0 = V1/mono, 1..15 = V2..V16) × bank (0=REST/DNA 1=MEL 2=OCT 3=ACC
         // 4=VAR 5=LEG) × (0=len 1=off 2=rot). This is the SINGLE home for every voice's
         // editable LOR base, replacing the per-voice East params (POLY_*_VOICE_1_LEN) and the
         // old V1-only eastV1Lor. Identity-initialised (len=16) in the Monsoon constructor.
-        float lorBase[288] = {0};     // 16 slots × 6 banks × 3
+        float lorBase[336] = {0};     // 16 slots × 7 banks × 3 (MONO_LANES=7: MEL/OCT/REST/ACC/QMIX/VAR/LEG)
         // Unified per-voice SPREAD store (Stage 1b). Same slot convention as lorBase
-        // (0 = V1/mono, 1..15 = V2..V16) × lane 0..3 (REST/MEL/OCT/ACC — spread does not
+        // (0 = V1/mono, 1..15 = V2..V16) × lane 0..4 (REST/MEL/QMIX/OCT/ACC — spread does not
         // apply to VAR/LEG). Zero-init = no spread, matching the old configParam default.
         // Replaces the per-voice interp params AND the old V1-only eastV1Spread. V1 is slot 0.
-        float spread[64] = {0};       // 16 slots × 4 lanes
+        float spread[80] = {0};       // 16 slots × 5 poly lanes
 
         // ── GLOBAL slice (MVC_UNIFICATION step 1) ────────────────────────────────────
         // Macro's scope. Previously these lived in Macro's params[] and the engine read
         // them off the module directly — i.e. for global scope the VIEW was the MODEL,
         // the one real MVC break. They now live here, so Macro is a view like East/Mono.
         // Lane order 0..3 = REST, MELODY, OCTAVE, ACCENT (Macro has no VAR/LEG scope).
-        float globalLor[12]    = {0};   // lane*3 + c   (c: 0=len 1=off 2=rot)
-        float globalSpread[4]  = {0};   // lane
-        float globalAtten[16]  = {0};   // lane*4 + col (col 0..2 = LOR items, 3 = spread)
-        float globalTap[8]     = {0};   // lane*2 + (0 = LOR tap, 1 = spread tap)
-        float globalDir[4]     = {0};   // lane
+        float globalLor[15]    = {0};   // 5 poly lanes × 3 (lane*3 + c, c: 0=len 1=off 2=rot)
+        float globalSpread[5]  = {0};   // 5 poly lanes: REST/MEL/OCT/ACC/QMIX
+        float globalAtten[20]  = {0};   // 5 poly lanes × 4 cols (lane*4 + col, col 0..2 = LOR items, 3 = spread)
+        float globalTap[10]    = {0};   // 5 poly lanes × 2 (lane*2 + (0 = LOR tap, 1 = spread tap))
+        float globalDir[5]     = {0};   // 5 poly lanes: REST/MEL/OCT/ACC/QMIX
 
-        //  MONO slice (MVC step 1: Mono Sands de-param) 
+        //  MONO slice (MVC step 1: Mono Sands de-param)
         // Mono Sands' per-module CV attenuverters, in ONE array like Macro's globalAtten:
-        // 6 lanes x 4 cols where cols 0..2 are the LOR attens (len/off/rot) and col 3 is the
-        // spread atten (meaningful only on the 4 spread lanes REST/MEL/OCT/ACC; unused on
-        // VAR/LEG). Lane order is EDITOR (MEL/OCT/REST/ACC/VAR/LEG), matching attenId. Unlike
+        // 7 lanes x 4 cols where cols 0..2 are the LOR attens (len/off/rot) and col 3 is the
+        // spread atten (meaningful only on the 5 spread lanes REST/MEL/QMIX/OCT/ACC; unused on
+        // VAR/LEG). Lane order is EDITOR (MEL/OCT/REST/ACC/QMIX/VAR/LEG), matching attenId. Unlike
         // LOR and spread (which reuse the unified lorBase[0]/spread[0] mono slot), the attens
         // had NO store -- the engine read them straight from params. This is their home.
-        float monoAtten[24]    = {0};   // lane*4 + col (col 0..2 = LOR items, 3 = spread)
+        float monoAtten[28]    = {0};   // 7 mono lanes × 4 cols (lane*4 + col, col 0..2 = LOR items, 3 = spread)
         // Mono V1 ownership per poly lane (MEL/OCT/REST/ACC): 0 = Macro owns V1's base for
         // this lane, 1 = Mono owns it. Was a param (ownerDispId), cross-read by Macro.
-        float monoOwner[4]     = {1,1,1,1};  // default: Mono owns (matches configSwitch default 1)
+        float monoOwner[5]     = {1,1,1,1,1};  // 5 poly lanes: REST/MEL/OCT/ACC/QMIX (default: Mono owns)
     } editor;
 
-    // Unified LOR base accessors. slot = voiceSlot (0 = V1/mono), bank 0..5, c 0..2.
-    float getLorBase(int slot, int bank, int c) const { return editor.lorBase[slot*18 + bank*3 + c]; }
-    void  setLorBase(int slot, int bank, int c, float x) { editor.lorBase[slot*18 + bank*3 + c] = x; }
+    // Unified LOR base accessors. slot = voiceSlot (0 = V1/mono), bank 0..6, c 0..2.
+    float getLorBase(int slot, int bank, int c) const { return editor.lorBase[slot*21 + bank*3 + c]; }
+    void  setLorBase(int slot, int bank, int c, float x) { editor.lorBase[slot*21 + bank*3 + c] = x; }
     // Unified spread accessors. slot = voiceSlot (0 = V1/mono), lane 0..3.
     // ── GLOBAL slice accessors (Macro's scope) ──────────────────────────────────────
     // lane 0..3 = REST/MELODY/OCTAVE/ACCENT. Bounds-guarded: a bad lane returns 0 rather
     // than reading past the array (these are read on the audio thread every cycle).
-    static bool gLaneOk(int lane) { return lane >= 0 && lane < 4; }
+    static bool gLaneOk(int lane) { return lane >= 0 && lane < 5; }  // 5 poly lanes
     float getGlobalLor(int lane, int c) const {
         return (gLaneOk(lane) && c >= 0 && c < 3) ? editor.globalLor[lane*3 + c] : 0.f; }
     void  setGlobalLor(int lane, int c, float x) {
@@ -740,26 +824,27 @@ struct Monsoon : Module {
     // Mirrors Macro's getGlobalAtten(lane, col) exactly -- one array, col 3 is the spread
     // atten. Spread atten is meaningful only on the 4 spread lanes; VAR/LEG col 3 is unused.
     float getMonoAtten(int lane, int col) const {
-        return (lane >= 0 && lane < 6 && col >= 0 && col < 4) ? editor.monoAtten[lane*4 + col] : 0.f; }
+        return (lane >= 0 && lane < 7 && col >= 0 && col < 4) ? editor.monoAtten[lane*4 + col] : 0.f; }  // 7 mono lanes
     void  setMonoAtten(int lane, int col, float x) {
-        if (lane >= 0 && lane < 6 && col >= 0 && col < 4) editor.monoAtten[lane*4 + col] = x; }
+        if (lane >= 0 && lane < 7 && col >= 0 && col < 4) editor.monoAtten[lane*4 + col] = x; }  // 7 mono lanes
     bool  getMonoOwner(int lane) const {
-        return (lane >= 0 && lane < 4) ? (editor.monoOwner[lane] > 0.5f) : true; }
+        return (lane >= 0 && lane < 5) ? (editor.monoOwner[lane] > 0.5f) : true; }  // 5 poly lanes
     void  setMonoOwner(int lane, bool mono) {
-        if (lane >= 0 && lane < 4) editor.monoOwner[lane] = mono ? 1.f : 0.f; }
+        if (lane >= 0 && lane < 5) editor.monoOwner[lane] = mono ? 1.f : 0.f; }  // 5 poly lanes
 
-    float getSpread(int slot, int lane) const { return editor.spread[slot*4 + lane]; }
-    void  setSpread(int slot, int lane, float x) { editor.spread[slot*4 + lane] = x; }
+    float getSpread(int slot, int lane) const { return editor.spread[slot*5 + lane]; }  // 5 poly lanes
+    void  setSpread(int slot, int lane, float x) { editor.spread[slot*5 + lane] = x; }  // 5 poly lanes
 
-    // MACRO accessors (mirror old ownerId/sendId/attenId/tapId index math).
-    float getMacroOwn(int v, int lane) const { return editor.macroOwn[v*4 + lane]; }
-    void  setMacroOwn(int v, int lane, float x) { editor.macroOwn[v*4 + lane] = x; }
-    float getMonoMacroOwn(int lane) const { return editor.macroOwn[15*4 + lane]; }
-    void  setMonoMacroOwn(int lane, float x) { editor.macroOwn[15*4 + lane] = x; }
-    float getMacroSend(int v, int lane, int item) const { return editor.macroSend[(v*4 + lane)*4 + item]; }
-    void  setMacroSend(int v, int lane, int item, float x) { editor.macroSend[(v*4 + lane)*4 + item] = x; }
-    float getMacroAtten(int v, int laneCol) const { return editor.macroAtten[v*16 + laneCol]; }
-    void  setMacroAtten(int v, int laneCol, float x) { editor.macroAtten[v*16 + laneCol] = x; }
+    // MACRO accessors — stride 5 poly lanes (QMIX-widened; was 4). laneCol spans lane*4+col over
+    // 5 lanes → row stride 20 for macroAtten (was 16). lane 0..4, item/col 0..3, v 0..15.
+    float getMacroOwn(int v, int lane) const { return editor.macroOwn[v*5 + lane]; }
+    void  setMacroOwn(int v, int lane, float x) { editor.macroOwn[v*5 + lane] = x; }
+    float getMonoMacroOwn(int lane) const { return editor.macroOwn[15*5 + lane]; }
+    void  setMonoMacroOwn(int lane, float x) { editor.macroOwn[15*5 + lane] = x; }
+    float getMacroSend(int v, int lane, int item) const { return editor.macroSend[(v*5 + lane)*4 + item]; }
+    void  setMacroSend(int v, int lane, int item, float x) { editor.macroSend[(v*5 + lane)*4 + item] = x; }
+    float getMacroAtten(int v, int laneCol) const { return editor.macroAtten[v*20 + laneCol]; }
+    void  setMacroAtten(int v, int laneCol, float x) { editor.macroAtten[v*20 + laneCol] = x; }
 
     // LANE_DIR accessors — the ONE place the index math lives (mirrors old dirId/monoDirId).
     float getLaneDir(int v, int lane) const { return editor.laneDir[v*6 + lane]; }
@@ -808,6 +893,7 @@ struct Monsoon : Module {
 
     int& rhythmMode = engine.pe.rhythmMode;
     int& melodyMode = engine.pe.melodyMode;
+    int& qmixMode   = engine.pe.qmixMode;   // Task 4 (QMIX)
     int& startStep = engine.startStep;
     int& endStep = engine.endStep;
     int& stepIndex = engine.stepIndex;
@@ -894,6 +980,10 @@ struct Monsoon : Module {
     float getBasePolyAccent(int voiceIdx);
     float getEffectivePolyRest(int voiceIdx);
     float getEffectivePolyAccent(int voiceIdx);
+    // Per-voice q-mix LEVEL (Task 4 poly), mirroring rest/accent. No Causeway q-mix CV yet, so
+    // effective == base (the Straits knob). Voice-1/mono q-mix level is QMIX_LEVEL_PARAM.
+    float getBasePolyQmix(int voiceIdx);
+    float getEffectivePolyQmix(int voiceIdx);
     float getEffectiveMonoRest(float base);
     float getEffectiveMonoAccent(float base);
 
@@ -921,6 +1011,7 @@ struct Monsoon : Module {
     // sample-and-hold a reproducible seed. Keeps all dice triggers consistent.
     void diceRhythm();
     void diceMelody();
+    void diceQmix();   // Task 4 (QMIX dice)
     void onPhraseBoundary_();
     // Shophouse scale modulation is boundary-quantised (like slew): a scale/root edit stages here
     // and commits to the mask on the next phrase boundary (wrapped), never mid-phrase.
@@ -947,9 +1038,9 @@ struct Monsoon : Module {
     // drains the ring and pushes one Rack history action per roll. APP->history->push is
     // UI-thread-only, hence the handoff -- identical pattern to Change Alley's TransformUndo ring.
     struct DiceUndoSnapshot {
-        bool    movedR, movedM;
-        float   rSeedBefore, mSeedBefore, rSeedAfter, mSeedAfter;
-        int64_t rCtrBefore,  mCtrBefore,  rCtrAfter,  mCtrAfter;
+        bool    movedR, movedM, movedQ;
+        float   rSeedBefore, mSeedBefore, qSeedBefore, rSeedAfter, mSeedAfter, qSeedAfter;
+        int64_t rCtrBefore,  mCtrBefore,  qCtrBefore,  rCtrAfter,  mCtrAfter,  qCtrAfter;
     };
     static constexpr int DICE_UNDO_RING = 16;
     DiceUndoSnapshot diceUndoRing[DICE_UNDO_RING];
@@ -980,6 +1071,13 @@ struct Monsoon : Module {
         engine.pe.melodySeedFloat = seedFloat;
         engine.pe.seedMelodyPhilox(seedFloat);
         engine.pe.melodyDrawCtr = ctr;
+    }
+    // q-mix twin of restoreMelodyDice — re-derive the q-mix Philox key from the seed float, then
+    // restore the counter (seed*Philox zeros it, so set ctr AFTER). Used by DiceUndoAction.
+    void restoreQmixDice(float seedFloat, int64_t ctr) {
+        engine.pe.qmixSeedFloat = seedFloat;
+        engine.pe.seedQmixPhilox(seedFloat);
+        engine.pe.qmixDrawCtr = ctr;
     }
 
     void process(const ProcessArgs& args) override;
@@ -1097,34 +1195,74 @@ namespace TemasekIds {
 // application code is shared.
 namespace ChangeAlleyV2Ids {
     static constexpr int N_VOICES = 16, N_POOLS = 2;
-    static constexpr int N_VERBS = 4, SIDES = 2, TYPES = 2, N_ROWS = N_VERBS * SIDES * TYPES;
-    static constexpr int rowId(int verb, int side, int type) { return verb*4 + side*2 + type; }
+    // PLAN A (CA_PANEL_THREE_STREAM_LAYOUT): the panel now carries 3 streams/row-group
+    // (rhythm=0, melody=1, q-mix=2), so TYPES=3 and N_ROWS = 4*2*3 = 24. TYPES is the PANEL
+    // row/param dimension; it now COINCIDES with SCATTER_TYPES (the data-model type dimension),
+    // so the two are kept equal — the q-mix panel row and the q-mix scatter stream are the same
+    // type index 2. Ordering rhythm=0/melody=1/qmix=2 MUST stay consistent across key derivation,
+    // counter indexing, the transform ci computation, and the panel row layout.
+    static constexpr int N_VERBS = 4, SIDES = 2, TYPES = 3, N_ROWS = N_VERBS * SIDES * TYPES;
+    // SCATTER_TYPES == TYPES now (both 3). Kept as a named constant where the *data-model* type
+    // dimension is meant (scatter counters/corrKeys/qmixSrc), so the two usages read distinctly.
+    static constexpr int SCATTER_TYPES = 3;
+    static constexpr int N_SCATTER = SIDES * SCATTER_TYPES * 2;   // 12 scatter streams
+    // Row index generalized to the (verb,side,type) dims — NOT hardcoded 4/2 (old TYPES=2).
+    static constexpr int rowId(int verb, int side, int type) { return verb*SIDES*TYPES + side*TYPES + type; }
     enum Verb { V_COLLAPSE = 0, V_ROTATE = 1, V_REFLECT = 2, V_SCATTER = 3 };
 
     // DAW-exposed GENERATION params (latch under lock), then non-exposed momentary buttons.
+    // NOTE: LEADER/STEP are indexed by (side*TYPES+type) — i.e. one per SIDE×TYPE, NOT per row.
+    // COLLAPSE uses LEADER, ROTATE uses STEP; both span the SIDES*TYPES = 6 (side,type) slots.
+    // (Previously written as N_ROWS/2 which, at TYPES=2, happened to equal the used count but
+    //  actually over-allocated; now expressed as the true SIDES*TYPES dimension.)
     enum ParamIds {
-        GRAIN_START  = 0,                            // 16
-        LEADER_START = GRAIN_START  + N_ROWS,        // 8  (Collapse)
-        STEP_START   = LEADER_START + N_ROWS / 2,    // 8  (Rotate)
-        NUM_PARAMS   = STEP_START   + N_ROWS / 2,    // = 32  (DAW boundary)
-        BTN_START    = NUM_PARAMS,                   // 32 momentary buttons (16 rows x 2)
-        // 8 scatter REVERSE buttons (button twins of the SCATTER_BACK_DOM/COD jacks):
-        // 4 domain + 4 codomain across Intra/Inter x rhythm/melody. Fire scatterDelta = -1.
-        SCATTER_REV_BTN_START = BTN_START + N_ROWS * 2,   // 8 (= SIDES*TYPES*2)
-        NUM_PARAMS_TOTAL = SCATTER_REV_BTN_START + SIDES*TYPES*2    // = 72
+        GRAIN_START  = 0,                             // 24  (one grain knob per row)
+        LEADER_START = GRAIN_START  + N_ROWS,         // 6   (Collapse leader; per side×type)
+        STEP_START   = LEADER_START + SIDES*TYPES,    // 6   (Rotate step;   per side×type)
+        NUM_PARAMS   = STEP_START   + SIDES*TYPES,    // = 36 (DAW boundary)
+        BTN_START    = NUM_PARAMS,                    // 48 momentary buttons (24 rows x 2)
+        // Scatter REVERSE buttons (button twins of the SCATTER_BACK_DOM/COD jacks):
+        // domain + codomain across Intra/Inter x rhythm/melody/q-mix. Fire scatterDelta = -1.
+        SCATTER_REV_BTN_START = BTN_START + N_ROWS * 2,   // = SIDES*TYPES*2 = 12
+        // TRUE-REVERSE buttons (CA_DICE_COUNTER_MODEL "PROPOSAL: add a TRUE REVERSE"): VERB-AGNOSTIC
+        // and per-STREAM, NOT scatter-only and NOT split by side/dom-cod. The committed pin STATE is
+        // ONE array per stream (rhythmSrc/melodySrc/qmixSrc, whole 16-voice matrix — Intra/Inter and
+        // domain/codomain are already baked into the recorded state), so ONE control per stream (=
+        // TYPES = 3) restores both axes and all four verbs. Splitting would synthesise states that
+        // never existed. Trajectory-replay of committed states backward (phrase-granular); distinct
+        // from Philox dice-reverse (axis-specific, scatterDelta=-1) and from edit-undo. Clocked =
+        // MODULATION-class: commits WITHOUT pushing undo history.
+        TRUE_REV_BTN_START    = SCATTER_REV_BTN_START + SIDES*TYPES*2,   // 3 (one per stream)
+        NUM_PARAMS_TOTAL = TRUE_REV_BTN_START + TYPES    // = 111
     };
     enum InputIds {
-        DOMAIN_TRIG_START      = 0,                             // 16
-        CODOMAIN_TRIG_START    = DOMAIN_TRIG_START   + N_ROWS,  // 16
-        SCATTER_BACK_DOM_START = CODOMAIN_TRIG_START + N_ROWS,  // 4
-        SCATTER_BACK_COD_START = SCATTER_BACK_DOM_START + SIDES*TYPES, // 4
-        // Poly modulation, no attenuverters (§: Rodney): GRAIN poly maps 16 channels to the
-        // 16 grain knobs; STEP poly maps 8 channels to the 8 step knobs.
-        GRAIN_POLY_IN          = SCATTER_BACK_COD_START + SIDES*TYPES, // 1 (16ch)
-        STEP_POLY_IN           = GRAIN_POLY_IN + 1,                    // 1 (8ch)
-        NUM_INPUTS             = STEP_POLY_IN + 1                      // = 42
+        DOMAIN_TRIG_START      = 0,                             // 24
+        CODOMAIN_TRIG_START    = DOMAIN_TRIG_START   + N_ROWS,  // 24
+        SCATTER_BACK_DOM_START = CODOMAIN_TRIG_START + N_ROWS,  // 6 (SIDES*TYPES)
+        SCATTER_BACK_COD_START = SCATTER_BACK_DOM_START + SIDES*TYPES, // 6
+        // TRUE-REVERSE trigger jacks: CV twin of the true-reverse buttons, one per STREAM = TYPES = 3
+        // (verb-agnostic, per-stream — see TRUE_REV_BTN_START note; not scatter/side/dom-cod split).
+        TRUE_REV_IN_START      = SCATTER_BACK_COD_START + SIDES*TYPES, // 3
+        // GRAIN_POLY_IN / STEP_POLY_IN removed (CA_PANEL_THREE_STREAM_LAYOUT): the two poly-CV
+        // mod inputs were designed for the 2-stream world and don't scale to the 3rd (q-mix)
+        // stream; cut to reclaim the bottom-right edge. The per-row grain/leader/step KNOBS stay.
+        // Correlation EXPRESSION pair INPUTS (CA_EXPRESSION_CV_CORRELATION.md): 8 poly-CV ins, one per
+        // pair, allocated 3 rhythm / 3 melody / 2 q-mix by index (k=0..7). Each is 16-ch poly in.
+        EXPR_IN_START          = TRUE_REV_IN_START + TYPES, // 3 (=63)
+        NUM_INPUTS             = EXPR_IN_START + 8          // = 71
     };
-    enum LightIds { PENDING_LIGHT_START = 0, NUM_LIGHTS = N_ROWS };  // 16
+    enum OutputIds {
+        // Correlation EXPRESSION pair OUTPUTS: 8 poly-CV outs, row-aligned with EXPR_IN_START. OUT k =
+        // IN k with its 16 voice channels permuted by that pair's stream table (rhythm/melody/q-mix).
+        // This is CA's FIRST output side (config was (…, NUM_INPUTS, 0, …) before).
+        EXPR_OUT_START         = 0,
+        NUM_OUTPUTS            = EXPR_OUT_START + 8         // = 8
+    };
+    enum LightIds {
+        PENDING_LIGHT_START = 0,                              // 24 (one per row, verb pending)
+        TRUE_REV_LIGHT_START = PENDING_LIGHT_START + N_ROWS,  // 3 (one per stream true-reverse pending)
+        NUM_LIGHTS = TRUE_REV_LIGHT_START + TYPES             // = 27
+    };
 
     struct PendingAction {
         bool  armed = false; int grain = 4; int leaderOrStep = 0;

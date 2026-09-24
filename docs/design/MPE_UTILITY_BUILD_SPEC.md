@@ -1,5 +1,16 @@
 # BUILD SPEC: dot.modular CV->MPE utility module (for CC)
 
+> **STATUS: BUILT + code-reviewed 2026-09-03 (commit 60fd770) -- awaiting Rodney's Rack build + verify.**
+> Keppel ships the full CV->MPE-out: per-voice MPE Lower-Zone member channels, LRU voice->channel
+> allocation, RPN pitch-bend-sensitivity + MCM handshake, the nearest-note+bend split (MpeMath.hpp),
+> accent/VEL -> note-on velocity. The three formerly-open items are DONE: bend range 1..48; re-articulate
+> on range-exceed (default B, menu-toggleable, no boundary chatter); reverse-calc MONITOR output
+> (reconstructVolts, round-trip unit-tested <1 cent at any range -- test_MpeMath.cpp, commit d1b331c).
+> Residual is RUNTIME only: scope MONITOR vs PITCH in Rack; confirm a real MPE receiver/DAW accepts the
+> RPN handshake at range 48; the full out->DAW->MPE-in round-trip (<1-2 cents); and add the
+> `output_monitor` marker to the Keppel panel SVGs (Phase-2; the widget guards its absence). The body
+> below is the original build direction, kept for the design rationale.
+
 Build direction for the CV->MPE-out utility. Design rationale + resolution + complexity are in
 MICROTONAL_MIDI_MPE_DIRECTION.md; THIS is the build shape. Post-V1, but a self-contained module with
 ZERO engine coupling -- can be built independently any time.
@@ -67,9 +78,130 @@ For each active voice i (0..channels-1):
   voices > available members (steal oldest) and re-trigger. Keep a voice->channel table.
 - **Message ordering**: bend before note-on (above). Note-off frees channel AFTER sending note-off.
 
+## Per-voice expression X / Y / Z (gate-bounded, but CONTINUOUS within) -- PARKED, after q-mix
+This is what turns Keppel from "generative notes + bend" into a full generative MPE EXPRESSION source.
+Adds two per-voice poly-CV inputs (Y=slide/timbre, Z=pressure) alongside the existing note+bend+velocity.
+Design conversation 2026-09-xx. Sequenced AFTER q-mix (feeds from the correlated poly-CV pairs in
+[[CA_EXPRESSION_CV_CORRELATION]]). Zero engine coupling -- Keppel just receives poly CV.
+
+**Gate model -- the key subtlety.** The in-gate = the note LIFETIME = the window in which ALL of X/Y/Z
+are transmitted for that voice. But the gate means "this voice's note is ALIVE, keep streaming its
+expression" -- NOT "sample X/Y/Z at the gate edge". So X/Y/Z are gate-BOUNDED but CONTINUOUS within the
+gate, not latched at note-on. The three do NOT all behave identically inside the window:
+
+- **Z (pressure -> channel pressure / aftertouch on the member channel).** The most continuous. Rests
+  near ZERO at note-on, evolves the WHOLE time the note is held, falls toward zero on release. Its whole
+  point is the contour DURING hold -- a Monsoon/Intertropical envelope keyed off the gate is exactly the
+  model. Do NOT sample-and-hold. Per-voice member channel already owned, so channel pressure IS per-note
+  pressure.
+- **Y (timbre / "slide" -> CC74 on the member channel).** Continuous during hold like Z, BUT conventional
+  rest value is NEUTRAL/CENTER (~64), not zero. Meaningful to set at note-on (initial timbre) then move
+  during the note. So: continuous like Z but neutral rest, not zero rest.
+- **X (pitch bend).** Continuous during hold too (the glide), but DIFFERENT IN KIND: it's DERIVED from the
+  pitch CV relative to the latched note (the note+bend split + re-articulation-on-range-exceed), not an
+  independent patched-in envelope. Already handled in Keppel's pitch path. Note-bounded like the others.
+- **Velocity.** The ODD ONE OUT: a true ONE-SHOT at note-on (strike velocity), not continuous. (Release
+  velocity exists in MIDI but Rack doesn't really surface it -> note-on only is fine.) In the two-layer
+  structure below, velocity's accent layer (B) IS the poly TB-303 accent -- unaccented = A, accented =
+  A + accent-boost -- so 2-level accent stops being a special case and becomes the same pattern as
+  accent-Y and accent-Z.
+
+**Two-layer input structure: MAIN + ACCENT, summed (the clean generalization).** Each expression
+dimension (velocity, X, Y, Z) gets TWO gated CV input paths, summed per voice:
+- **Layer A -- main-gated:** base expression, alive the whole note (generated or patched envelope over
+  the note lifetime).
+- **Layer B -- accent-gated:** a second envelope active only during the ACCENT gate -- an ADDITIVE
+  contribution that appears on accented notes.
+- **OUT = A + B** per voice, summed around the dimension's REST point, clamped to range.
+
+So unaccented note = just A; accented note = A + B (a deeper swell / brighter timbre / extra pressure /
+velocity boost added ON TOP of the base, exactly during the accent). Summing is the right primitive: no
+mode switches, no scale-vs-gate distinction -- just add two gated signals. The ROUTING is the config
+(patch B into only Y for accent-timbre-only; patch all three for full accent expression) -- patchable,
+not menued, which kills the combinatorics. Same "general mechanism, specificity injected by patching"
+idiom as the rest of the system. Non-generated A or B = intentional player refinement layered over
+generation (the composed<->generated gradient, now on the expression axis).
+
+Build-decisions to pin (from the design conversation):
+- **Sum around the REST point, per dimension.** X sums as bipolar deviations around 0; Z sums as unipolar
+  from 0; **Y sums as bipolar deviations from CENTER** (~64) -- NOT raw values, or two neutral signals
+  would sum to double-neutral. This is the subtle one.
+- **Clamp at the rails, deliberately.** A + B can exceed range. Hard-clamp at the ceiling (simple). For
+  **X specifically**, a summed bend that blows past +/-range feeds the EXISTING re-articulation-on-exceed
+  logic -- coherent, not a special case: a big accent that pushes bend past the range just re-articulates.
+- **Accent NEVER bounds notes.** The MAIN gate is the sole note boundary. Layer B is windowed by the
+  accent gate INSIDE a live main-gate note; an accent gate firing outside a main note contributes nothing
+  (no note to express on). Accent windows/adds to expression; it never creates, extends, or ends a note.
+- **Opinionated defaults** so it's expressive out of the box without wiring a truth table (e.g. accent
+  adds to velocity + Y by default; full A/B matrix available but not required).
+
+**Practical transmit sequence:**
+- note-on: send note, then the INITIAL Y/Z values (Y from its neutral-referenced CV, Z from ~0).
+- during hold: STREAM Y/Z as they move -- control-rate, rate-limited + dedupe-on-change (same throttle
+  pattern as bend; CC74 + channel pressure are control-rate, sending every sample floods the stream).
+- note-off: send note-off; conventionally let Z fall / release.
+- **Rest values differ per input:** Z rests ~0 (no pressure), Y rests neutral/center. -> per-input
+  range/offset/polarity control (Z unipolar 0..+; Y bipolar around center). Maps ±5V or 0-10V sources.
+
+**Correctness -- carry expression across re-articulation / LRU realloc.** A gate window can SPAN a
+re-articulation (the range-exceed retrigger) or an LRU channel reassignment. On re-articulate/realloc, Y/Z
+must CONTINUE on the new channel WITHOUT discontinuity -- do NOT reset Y/Z to rest. Carry the current
+values onto the new note so a big pitch slide doesn't audibly drop pressure/timbre mid-gesture. (Same
+voice->channel map Keppel already tracks for bend -- one map, all of note/bend/Y/Z/vel follow it.)
+
+**Receiver-dependent, opt-in.** Only MPE-aware destinations respond to CC74 / poly pressure -> pure
+upside, never a regression. Extend the reverse-calc monitor to reconstruct Y/Z too, so the round-trip
+test covers full expression, not just bend.
+
+**Source (after q-mix):** Y/Z envelopes come from Monsoon/Intertropical poly gates, optionally routed
+through the CA correlated poly-CV pairs ([[CA_EXPRESSION_CV_CORRELATION]]) so expression correlates with
+the pitch material by the same order/chaos machinery. Open build decision: Y/Z as simple poly-CV
+PASS-THROUGHS (patch external envelopes in -- decoupled, spec-faithful, PREFERRED) vs a bundled minimal
+per-voice envelope keyed off the gate (convenient but pulls engine-ish behavior into the utility).
+
+### X input (expressive bend): promote X from DERIVED-ONLY to DERIVED + patchable, summed (Rodney)
+The X bullet above treats bend as derived-only (tuning residual + legato from the pitch path). That
+leaves a gap for the CLEAREST target user: **someone with an MPE VST but no MPE hardware controller,
+playing in plain 12-TET.** Their tuning residual is ~0 (already on semitones), so a derived-only X gives
+them NO way to make the signature MPE gesture -- the per-note bend/vibrato. That gesture is the first
+thing that audience reaches for. So X gets a patchable per-voice poly-CV INPUT too, making it symmetric
+with Y and Z (all three: derived/rest baseline + patchable CV, summed).
+
+**Total bend per voice = tuning residual (derived from pitch path) + user X-CV + accent layer B,
+summed around 0, clamped to bend range; past-range feeds the EXISTING re-articulation logic.**
+No new mechanism -- this is the same two-layer summed structure already specced for Y/Z (and velocity),
+now applied to X. "Sum around rest, clamp at rails, overflow re-articulates" already exists.
+
+Three modes fall out of ONE design (no menu -- it's just what's patched):
+- **X-in UNPATCHED** -> pure tuning/legato bend. The microtonal case, unchanged from the bullet above.
+- **12-TET pitch + X-in PATCHED** -> expressive bends on a normal scale. THE case for the no-controller
+  user: patch an LFO for vibrato, an envelope for a scoop/fall, S&H for per-note micro-bends. This is the
+  gap-closer.
+- **Microtonal + X-in PATCHED** -> arbitrary tuning WITH vibrato/expression on top. Hard to get any other
+  way; falls out for free from the sum.
+
+Build-decisions to pin:
+- **User X-CV is added as a raw bend/semitone contribution AFTER the note+residual decomposition** -- it
+  is EXPRESSIVE pitch, not scale-degree pitch, so it must NOT pass through the tuning quantiser. Quantising
+  the vibrato would defeat the point.
+- **Shared headroom is real and honest, not a bug.** Residual and user X-CV spend the SAME finite bend
+  range. Wide microtonal deviation + wide expressive bend compete -> you hit the rail (and re-articulate)
+  sooner. That's the true physics of MPE bend. Consequence: the bend-range setting (the 2 vs +/-48
+  discussion) now governs BOTH uses, and Keppel + receiver must still agree on it (already flagged
+  elsewhere -- this just adds a second consumer of the same budget).
+- Rest point for X-CV = 0 (bipolar around no-bend), same as the derived residual -> they sum cleanly.
+- Accent layer B on X unchanged: a summed bend past +/-range re-articulates, as already specced.
+
+**Manual angle (worth a README line):** "Have an MPE synth but no MPE controller? Patch pitch expression
+into X and Keppel plays per-note bends your keyboard can't -- generative, and reproducible."
+
 ## Params / UI (minimal)
 - Bend range (semitones): default 2, small range (1..12). Menu or knob.
-- Velocity source: fixed default (e.g. 100), OR an optional poly velocity CV input (v2).
+- Velocity source: fixed default (e.g. 100), OR poly velocity CV. Two-layer (see expression section):
+  Layer A = base velocity (fixed / continuous CV); Layer B (accent-gated) = the accent boost, USER-SET
+  depth (the 303 accent-depth knob). OUT = A + B clamped. 2-level accent = the special case A + boost.
+- Y (CC74) / Z (pressure) poly-CV inputs: each also two-layer (main CV-A + accent-gated CV-B, summed).
+  Per-input range/offset/polarity (Z unipolar from 0; Y bipolar around center; sum around rest point).
 - MIDI device/port: the Core CV-MIDI output UI pattern.
 - (menu) Latch vs continuous bend (v1 latch).
 - (menu) MPE zone size if not fixed at 15 members.

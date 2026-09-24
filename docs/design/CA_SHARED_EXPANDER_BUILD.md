@@ -220,3 +220,35 @@ mod rings. Every other entry in the menu is untouched.
 NOTE distinction: the mod RING itself is a CA-local param read, same for all Monsoons, NOT primary-gated
 (see LOCK_MODE_PLAN.md correction). What's primary-owned here is only the per-Monsoon SCOPE SETTING's CA
 entry — the choice of whether this Monsoon's scope control governs the shared CA. Setting, not ring.
+
+### CA connection display: 8 slot marks + context-menu primary (Rodney)
+Supersedes the earlier "split mark" sketch for the shared case (CONNECTION_UI_MODEL.md §14).
+
+**Display — a row of UP TO 8 connect marks on the CA panel.**
+- **Slot k IS pairId k** — fixed, never packed left-to-right. Slot colour is therefore constant
+  (`pairColour(k)`): slot 1 periwinkle, slot 2 teal, ... Marks never move when a Monsoon is added or
+  removed, so the row is learnable and stable. Packing would reshuffle on every change — exactly the
+  instability this rework exists to remove.
+- **Filled in the slot colour = that Monsoon is connected. Dim/hollow = empty slot.** The row therefore
+  shows BOTH how many hosts are attached and WHICH — and, since it is 8 wide, the 8-Monsoon cap is
+  self-documenting on the panel.
+- **Primary is marked on a SECOND visual axis** — a ring around the mark or a small tick above it, NOT
+  brighter/bigger (which reads as ambiguous next to a merely-connected slot).
+- Footprint: 8 marks at ~2mm + spacing ≈ 25mm; fits near CA's existing connect mark.
+
+**Setting — CONTEXT MENU (not click-the-mark).**
+The marks are display only. A 2mm click target invites accidental primary changes and adds hit-testing
+to a decoration; the menu is unambiguous, discoverable, and is already where CA's lock participation and
+mod-ring scope live.
+- List only CONNECTED hosts, identified by name+colour ("Monsoon 3 (amber)", or the user's name override
+  if set) — NOT by bare slot number, which makes the user do the lookup.
+- Radio-style group with the current primary ticked: the menu then also answers "which is primary?"
+  without decoding the marks.
+
+**Primary selection rule (revises "lowest pairId" to a user choice, still deterministic).**
+- DEFAULT: lowest connected pairId.
+- The user may designate any connected slot as primary; the choice PERSISTS in the patch (so it stays
+  deterministic across load — the property reseed-on-restart requires).
+- If the primary disappears: AUTO-PROMOTE to the lowest connected pairId and reflect it in the row
+  (never leave CA with no primary). REMEMBER the user's designation in case that host returns —
+  patches get rearranged.

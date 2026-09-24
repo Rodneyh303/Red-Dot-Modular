@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 203.2 380" width="203.2mm" height="380mm">
+  <defs>
+    <linearGradient id="brushed" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.12"/>
+      <stop offset="50%" style="stop-color:#ffffff;stop-opacity:0"/>
+      <stop offset="100%" style="stop-color:#000000;stop-opacity:0.12"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- PANEL BACKGROUND -->
+  <rect width="203.2" height="380" fill="#1a1a1a"/>
+  
+  <!-- PANEL BORDER -->
+  <rect x="0.5" y="0.5" width="202.2" height="379" fill="none" stroke="#0a0a0a" stroke-width="1"/>
+  
+  <!-- HEADER AREA -->
+  <rect x="0" y="0" width="203.2" height="16" fill="#141414"/>
+  <line x1="2" y1="16" x2="201.2" y2="16" stroke="#2a2a2a" stroke-width="0.5"/>
+  
+  <!-- RED DOT BRANDING -->
+  <circle cx="12" cy="8" r="3.5" fill="#dc2626"/>
+  
+  <!-- TITLE -->
+  <text x="101.6" y="13" font-size="8" font-family="monospace" text-anchor="middle" fill="#e4e4e7" font-weight="bold">MONSOON</text>
+  
+  <!-- ===== SECTION 1: STOCHASTIC PARAMETERS ===== -->
+  <text x="10" y="35" font-size="5.5" font-family="monospace" fill="#999" font-weight="bold">STOCHASTIC</text>
+  
+  <!-- 6 Large knobs: Note, Variation, Legato, Rest, Accent, Transpose -->
+  <circle cx="22" cy="55" r="9.5" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="22" y="73" font-size="4.5" font-family="monospace" text-anchor="middle" fill="#888">note</text>
+  
+  <circle cx="52" cy="55" r="9.5" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="52" y="73" font-size="4.5" font-family="monospace" text-anchor="middle" fill="#888">var</text>
+  
+  <circle cx="82" cy="55" r="9.5" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="82" y="73" font-size="4.5" font-family="monospace" text-anchor="middle" fill="#888">leg</text>
+  
+  <circle cx="112" cy="55" r="9.5" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="112" y="73" font-size="4.5" font-family="monospace" text-anchor="middle" fill="#888">rest</text>
+  
+  <circle cx="142" cy="55" r="9.5" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="142" y="73" font-size="4.5" font-family="monospace" text-anchor="middle" fill="#888">acc</text>
+  
+  <circle cx="172" cy="55" r="9.5" fill="none" stroke="#444" stroke-width="0.5" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="172" y="73" font-size="4.5" font-family="monospace" text-anchor="middle" fill="#888">xpose</text>
+  
+  <!-- ===== SECTION 2: SEQUENCER CONTROLS ===== -->
+  <text x="10" y="100" font-size="5.5" font-family="monospace" fill="#999" font-weight="bold">SEQUENCER</text>
+  
+  <!-- 3 Medium knobs: BPM, Length, Offset -->
+  <circle cx="40" cy="120" r="8" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="40" y="137" font-size="4" font-family="monospace" text-anchor="middle" fill="#888">bpm</text>
+  
+  <circle cx="82" cy="120" r="8" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="82" y="137" font-size="4" font-family="monospace" text-anchor="middle" fill="#888">len</text>
+  
+  <circle cx="124" cy="120" r="8" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="124" y="137" font-size="4" font-family="monospace" text-anchor="middle" fill="#888">off</text>
+  
+  <!-- Mode selector (small button) -->
+  <rect x="155" y="115" width="32" height="9" rx="1" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="171" y="131" font-size="3.5" font-family="monospace" text-anchor="middle" fill="#888">mode</text>
+  
+  <!-- ===== SECTION 3: STEP DISPLAY / PATTERN VISUAL ===== -->
+  <rect x="10" y="155" width="183.2" height="70" fill="none" stroke="#2a2a2a" stroke-width="0.5"/>
+  <text x="15" y="167" font-size="5" font-family="monospace" fill="#666" font-weight="bold">PATTERN</text>
+  
+  <!-- 16-step circular display indicator area -->
+  <g opacity="0.4">
+    <!-- Placeholder for step circle: 16 dots arranged in circle -->
+    <!-- Center: ~101.6, 200 -->
+    <!-- Radius: ~35mm -->
+    
+    <!-- Step 1 (top) -->
+    <circle cx="101.6" cy="167" r="2" fill="#444"/>
+    <!-- Step 2 -->
+    <circle cx="129" cy="175" r="2" fill="#444"/>
+    <!-- Step 3 -->
+    <circle cx="147" cy="195" r="2" fill="#444"/>
+    <!-- Step 4 (right) -->
+    <circle cx="155" cy="220" r="2" fill="#444"/>
+    <!-- Step 5 -->
+    <circle cx="147" cy="245" r="2" fill="#444"/>
+    <!-- Step 6 -->
+    <circle cx="129" cy="225" r="2" fill="#444"/>
+    <!-- Step 7 (bottom) -->
+    <circle cx="101.6" cy="233" r="2" fill="#444"/>
+    <!-- Step 8 -->
+    <circle cx="74" cy="225" r="2" fill="#444"/>
+    <!-- Step 9 -->
+    <circle cx="56" cy="205" r="2" fill="#444"/>
+    <!-- Step 10 (left) -->
+    <circle cx="48" cy="180" r="2" fill="#444"/>
+    
+    <!-- Inner indicators -->
+    <circle cx="101.6" cy="200" r="8" fill="none" stroke="#444" stroke-width="0.3"/>
+  </g>
+  
+  <text x="101.6" y="215" font-size="4" font-family="monospace" text-anchor="middle" fill="#666">steps 1-16</text>
+  
+  <!-- ===== SECTION 4: INPUT CONTROLS ===== -->
+  <line x1="10" y1="240" x2="193.2" y2="240" stroke="#2a2a2a" stroke-width="0.5"/>
+  <text x="10" y="255" font-size="5" font-family="monospace" fill="#999" font-weight="bold">INPUTS</text>
+  
+  <!-- Clock, Reset, Gate1, Gate2, CV2 -->
+  <circle cx="28" cy="275" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="28" y="291" font-size="3.5" font-family="monospace" text-anchor="middle" fill="#888">clk</text>
+  
+  <circle cx="56" cy="275" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="56" y="291" font-size="3.5" font-family="monospace" text-anchor="middle" fill="#888">rst</text>
+  
+  <circle cx="84" cy="275" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="84" y="291" font-size="3.5" font-family="monospace" text-anchor="middle" fill="#888">g1</text>
+  
+  <circle cx="112" cy="275" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="112" y="291" font-size="3.5" font-family="monospace" text-anchor="middle" fill="#888">g2</text>
+  
+  <circle cx="140" cy="275" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="140" y="291" font-size="3.5" font-family="monospace" text-anchor="middle" fill="#888">cv</text>
+  
+  <!-- ===== SECTION 5: OUTPUTS ===== -->
+  <line x1="10" y1="315" x2="193.2" y2="315" stroke="#2a2a2a" stroke-width="0.5"/>
+  <text x="10" y="330" font-size="5" font-family="monospace" fill="#999" font-weight="bold">OUTPUTS</text>
+  
+  <!-- Gate, Note, CV, Accent, Legato, Tie + spares -->
+  <circle cx="22" cy="355" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="22" y="368" font-size="3" font-family="monospace" text-anchor="middle" fill="#888">g</text>
+  
+  <circle cx="40" cy="355" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="40" y="368" font-size="3" font-family="monospace" text-anchor="middle" fill="#888">n</text>
+  
+  <circle cx="58" cy="355" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="58" y="368" font-size="3" font-family="monospace" text-anchor="middle" fill="#888">cv</text>
+  
+  <circle cx="76" cy="355" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="76" y="368" font-size="3" font-family="monospace" text-anchor="middle" fill="#888">ac</text>
+  
+  <circle cx="94" cy="355" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="94" y="368" font-size="3" font-family="monospace" text-anchor="middle" fill="#888">lg</text>
+  
+  <circle cx="112" cy="355" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="112" y="368" font-size="3" font-family="monospace" text-anchor="middle" fill="#888">t</text>
+  
+  <circle cx="130" cy="355" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="130" y="368" font-size="3" font-family="monospace" text-anchor="middle" fill="#888">s1</text>
+  
+  <circle cx="148" cy="355" r="4.5" fill="none" stroke="#444" stroke-width="0.4" stroke-dasharray="1.5,1" opacity="0.7"/>
+  <text x="148" y="368" font-size="3" font-family="monospace" text-anchor="middle" fill="#888">s2</text>
+  
+  <!-- Expander hint -->
+  <line x1="193.2" y1="280" x2="193.2" y2="360" stroke="#2a2a2a" stroke-width="1" stroke-dasharray="3,2" opacity="0.4"/>
+  <text x="199" y="320" font-size="3" font-family="monospace" text-anchor="end" fill="#666">exp</text>
+  
+  <!-- FOOTER -->
+  <text x="101.6" y="378" font-size="3.5" font-family="monospace" text-anchor="middle" fill="#666">40 hp | stochastic sequencer</text>
+  
+</svg>

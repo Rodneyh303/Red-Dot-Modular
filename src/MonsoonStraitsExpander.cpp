@@ -40,7 +40,9 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
     int lastThemeLight = -1;
 
     // Per-voice mod-arc overlays, queued during binding and attached after. lane 0 = REST,
-    // lane 1 = ACCENT. Each arc shows the effective (Causeway-modulated) value vs the set value.
+    // lane 1 = ACCENT, lane 2 = QMIX. Each arc shows the effective (Causeway-modulated) value vs
+    // the set value. QMIX has no Causeway CV yet (effective == base), so its arc is never active
+    // — but it is queued for parity so a future q-mix CV drops in exactly like rest/accent.
     std::vector<std::tuple<rack::ParamWidget*, int, int>> pendingArcs;  // (knob, voice, lane)
     void queueArc(rack::ParamWidget* knob, int voice, int lane) {
         if (knob) pendingArcs.push_back({knob, voice, lane});
@@ -138,6 +140,18 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                 };
                 queueArc(k, -1, 1);
             }));
+        // ── voice 0 = mono Q-MIX: LOCKED knob that MIRRORS the parent Monsoon's QMIX_LEVEL_PARAM,
+        //    exactly like the mono rest/accent mirrors above. No mod-arc: q-mix has no Causeway CV
+        //    path (effective == set), so there is nothing for an arc to show. ──
+        bindParam<redDot::Themed_Compact_Cog_Dim>("param_qmix_0", MonsoonIds::QMIX_LEVEL_PARAM,
+            std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this](redDot::Themed_Compact_Cog_Dim* k){
+                k->lightWhen = [this](){ return themeLight_; };
+                k->lockWhen = [](){ return true; };
+                k->displayValueFn = [this]() -> float {
+                    Monsoon* m = redDot::findMonsoonEitherSide(module);
+                    return m ? m->params[MonsoonIds::QMIX_LEVEL_PARAM].getValue() : NAN;
+                };
+            }));
         // ── voices 1..15 = poly. Param = POLY_*_PARAM_1 + (i-1); arc voice index = poly index (i-1),
         //    which maps to getBasePolyRest(0..14). Themed_Compact_Cog_Dim (not plain) so each
         //    poly knob can dim when its voice is above Monsoon's active count -- lit = live. ──
@@ -163,6 +177,15 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                     k->dimWhen   = dimIfInactive;
                     k->lockWhen  = dimIfInactive;   // inactive voice → inoperative (was draggable)
                     queueArc(k, polyIdx, 1);
+                }));
+            // Per-voice Q-MIX level knob, mirroring rest/accent above (same knob type, same
+            // dim/lock-when-inactive). No mod-arc queued: q-mix has no Causeway CV path yet, so
+            // there is no effective-vs-set to draw (unlike rest/accent).
+            bindParam<redDot::Themed_Compact_Cog_Dim>("param_qmix_"   + r, MonsoonIds::POLY_QMIX_PARAM_1   + polyIdx,
+                std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this, dimIfInactive](redDot::Themed_Compact_Cog_Dim* k){
+                    k->lightWhen = [this](){ return themeLight_; };
+                    k->dimWhen   = dimIfInactive;
+                    k->lockWhen  = dimIfInactive;   // inactive voice → inoperative (was draggable)
                 }));
         }
 

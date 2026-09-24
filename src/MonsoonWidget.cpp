@@ -8,6 +8,7 @@
 #include "ui/IntertropicalPairing.hpp"     // shared-CA: presentPairIdsT template
 #include "ui/OutputAccent.hpp"
 #include "ui/ModArcOverlay.hpp"
+#include "ui/HostBadge.hpp"                 // shared connection-identity badge (CONNECTION_MODEL_SPEC §4)
 #include "dsp/managers/MonsoonScaleManager.hpp"
 
 using namespace rack;
@@ -444,16 +445,15 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
                 [](const Monsoon& mm){ return mm.modVizMonsoonMelody; });
         }
 
-        // ── 16-step light ring: enlarged, cx=162 cy=30 r=18 ──────────────────
-        {
-            const float RCX=162.f, RCY=30.f, RLED=14.f;
-            for (int i = 0; i < 16; ++i) {
-                float ang = float(i)/16.f * 2.f*M_PI - M_PI/2.f;
-                float lx  = RCX + RLED*std::cos(ang);
-                float ly  = RCY + RLED*std::sin(ang);
-                if (i%4==0) addChild(createLightCentered<SmallLight<RedLight>>(  mm2px(Vec(lx,ly)), module, MonsoonIds::STEP_LIGHTS_START+i));
-                else        addChild(createLightCentered<SmallLight<GreenLight>>(mm2px(Vec(lx,ly)), module, MonsoonIds::STEP_LIGHTS_START+i));
-            }
+        // ── 16-step light ring (Flyer): bound by name from the panel anchors ──
+        // Was a C++ formula (RCX/RCY/RLED at 162,30,r14). Now each LED binds to its
+        // light_STEPn_LIGHT anchor emitted by monsoon_art.py, so the ring geometry
+        // lives in the generator table (single source of truth). Colour pattern is
+        // preserved: every 4th step (downbeat) is red, the rest green.
+        for (int i = 0; i < 16; ++i) {
+            const std::string id = "light_STEP" + std::to_string(i) + "_LIGHT";
+            if (i % 4 == 0) bindLight<SmallLight<RedLight>>  (id, MonsoonIds::STEP_LIGHTS_START + i);
+            else            bindLight<SmallLight<GreenLight>>(id, MonsoonIds::STEP_LIGHTS_START + i);
         }
 
         // ── Mode button + lights: right strip, bound by ANCHOR ────────────────
@@ -466,52 +466,58 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
             bindLight<MediumLight<YellowLight>>("light_MODE_" + std::string(1, char('A'+i)) + "_LIGHT",
                                                 MonsoonIds::MODE_A_LIGHT + i);
 
-        // ── Single control row at y=87: all dice/slew/mix + utility aligned ──
-        // ── EXPERIMENT: bottom 3 rows bound by NAME from the panel SVG ───────
-        // Discrete controls bind by name via the variadic Compose<> SvgPanelKit.
-        // The control-row LIGHTS stay C++-computed (a cheap formula row at ROWYL),
-        // same principle as the step ring — wrong job for name-binding.
-        const float ROWYL = 93.f;
-        const float RX0 = 12.f, RXP = 16.7f;
-        auto rx = [&](int i){ return RX0 + i * RXP; };
-
+        // ── Single control row: all dice/slew/mix + utility, bound by NAME ───
+        // Discrete controls AND their row lights now bind by name via the panel
+        // anchors (the light formula row at y=93 is retired — the 7 control-row
+        // lights have light_*_LIGHT anchors from monsoon_art.py).
         // Control row params (positions from SVG; widget types preserved)
         bindParam<Trimpot>  ("param_DICE_SLEW_R_PARAM",   MonsoonIds::DICE_SLEW_R_PARAM,
             std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmSlew;}, [](const Monsoon::ModViz& m){return m.cv3Lane[0];},0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<Trimpot>  ("param_DICE_SLEW_M_PARAM",   MonsoonIds::DICE_SLEW_M_PARAM,
             std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodySlew;}, [](const Monsoon::ModViz& m){return m.cv3Lane[1];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+        // Task 4 (QMIX): Slew Q mirrors Slew R/M (Trimpot + mod arc). TEMP position beside Slew M.
+        bindParam<Trimpot>  ("param_DICE_SLEW_Q_PARAM",   MonsoonIds::DICE_SLEW_Q_PARAM,
+            std::function<void(Trimpot*)>([this, module](Trimpot* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.qmixSlew;}, [](const Monsoon::ModViz& m){return m.cv3Lane[4];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<VCVButton>("param_DICE_R_PARAM",        MonsoonIds::DICE_R_PARAM);
         bindParam<VCVButton>("param_DICE_M_PARAM",        MonsoonIds::DICE_M_PARAM);
-        bindParam<TrialButton>("param_DICE_TRIAL_R_PARAM",  MonsoonIds::DICE_TRIAL_R_PARAM,
-            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
-        bindParam<TrialButton>("param_DICE_TRIAL_M_PARAM",  MonsoonIds::DICE_TRIAL_M_PARAM,
-            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
-        // Last dice / last trial — same TrialButton (dims + inert on reversible streams,
+        // Task 4 (QMIX): Dice Q mirrors Dice R/M (plain VCVButton — q-mix uses plain
+        // dice, not the removed Trial mechanism). Was param_DICE_TRIAL_R_PARAM.
+        bindParam<VCVButton>("param_DICE_Q_PARAM",        MonsoonIds::DICE_Q_PARAM);
+        // Last dice — same TrialButton (dims + inert on reversible streams,
         // which is correct since Last* is Normal-mode only). These warn-and-skip until
         // the panel SVG gains param_LAST_* markers (panels phase); harmless until then.
         bindParam<TrialButton>("param_LAST_DICE_R_PARAM",   MonsoonIds::LAST_DICE_R_PARAM,
             std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
         bindParam<TrialButton>("param_LAST_DICE_M_PARAM",   MonsoonIds::LAST_DICE_M_PARAM,
             std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
-        bindParam<TrialButton>("param_LAST_TRIAL_R_PARAM",  MonsoonIds::LAST_TRIAL_R_PARAM,
-            std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = false; }));
-        bindParam<TrialButton>("param_LAST_TRIAL_M_PARAM",  MonsoonIds::LAST_TRIAL_M_PARAM,
+        // Task 4 (QMIX): Last-Dice Q mirrors Last-Dice R/M. Was param_DICE_TRIAL_M_PARAM.
+        bindParam<TrialButton>("param_LAST_DICE_Q_PARAM",   MonsoonIds::LAST_DICE_Q_PARAM,
             std::function<void(TrialButton*)>([](TrialButton* b){ b->isMelody = true; }));
          bindParam<redDot::Scrub_Small_Cog>("param_RHYTHM_MIX_PARAM", MonsoonIds::RHYTHM_MIX_PARAM,
             std::function<void(redDot::Scrub_Small_Cog*)>([this, module](redDot::Scrub_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.rhythmMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[2];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
         bindParam<redDot::Scrub_Small_Cog>("param_MELODY_MIX_PARAM", MonsoonIds::MELODY_MIX_PARAM,
             std::function<void(redDot::Scrub_Small_Cog*)>([this, module](redDot::Scrub_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.melodyMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[3];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+        // Task 4 (QMIX): Mix Q mirrors Mix R/M (Scrub_Small_Cog + mod arc). Was param_LAST_TRIAL_R_PARAM.
+        bindParam<redDot::Scrub_Small_Cog>("param_QMIX_MIX_PARAM", MonsoonIds::QMIX_MIX_PARAM,
+            std::function<void(redDot::Scrub_Small_Cog*)>([this, module](redDot::Scrub_Small_Cog* k){ queueModArc(this, module, k, [](const Monsoon::ModViz& m){return m.qmixMix;}, [](const Monsoon::ModViz& m){return m.cv3Lane[4];}, 0.30f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+        // Task 4 (QMIX): Q-mix LEVEL is now the 6th BIG-FIVE knob (panel widened to 45HP, monsoon_art.py
+        // BIG5_IDS). It is therefore bound in the theme-branched Big-Five block in applyTheme() with the
+        // same Medium_Cog class + mod ring as ACCENT — NOT here in the control row.
         bindParam<TL1105>("param_LOCK_PARAM",             MonsoonIds::LOCK_PARAM);
         bindParam<TL1105>("param_MUTE_PARAM",             MonsoonIds::MUTE_PARAM);
         bindParam<TL1105>("param_RESET_BUTTON_PARAM",     MonsoonIds::RESET_BUTTON_PARAM);
         bindParam<TL1105>("param_RUN_GATE_PARAM",         MonsoonIds::RUN_GATE_PARAM);
-        // Control-row lights (computed formula row)
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(rx(2), ROWYL)), module, MonsoonIds::RHYTHM_DICE_LIGHT));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(rx(3), ROWYL)), module, MonsoonIds::MELODY_DICE_LIGHT));
-        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(rx(8),  ROWYL)), module, MonsoonIds::LOCK_LIGHT));
-        addChild(createLightCentered<MediumLight<RedLight>>(  mm2px(Vec(rx(9),  ROWYL)), module, MonsoonIds::MUTE_LIGHT));
-        addChild(createLightCentered<MediumLight<BlueLight>>( mm2px(Vec(rx(10), ROWYL)), module, MonsoonIds::RESET_LIGHT));
-        addChild(createLightCentered<MediumLight<GreenLight>>(mm2px(Vec(rx(11), ROWYL)), module, MonsoonIds::RUN_GATE_LIGHT));
+        // Control-row lights — bound by name from the panel anchors (was a C++
+        // formula row at y=93 keyed off rx(i)). monsoon_art.py emits one
+        // light_*_LIGHT anchor per row light, so the light positions now track the
+        // generator table and can't drift from the buttons they annotate.
+        bindLight<MediumLight<GreenLight>>("light_RHYTHM_DICE_LIGHT", MonsoonIds::RHYTHM_DICE_LIGHT);
+        bindLight<MediumLight<GreenLight>>("light_MELODY_DICE_LIGHT", MonsoonIds::MELODY_DICE_LIGHT);
+        bindLight<MediumLight<GreenLight>>("light_QMIX_DICE_LIGHT",   MonsoonIds::QMIX_DICE_LIGHT);
+        bindLight<MediumLight<BlueLight>> ("light_LOCK_LIGHT",        MonsoonIds::LOCK_LIGHT);
+        bindLight<MediumLight<RedLight>>  ("light_MUTE_LIGHT",        MonsoonIds::MUTE_LIGHT);
+        bindLight<MediumLight<BlueLight>> ("light_RESET_LIGHT",       MonsoonIds::RESET_LIGHT);
+        bindLight<MediumLight<GreenLight>>("light_RUN_GATE_LIGHT",    MonsoonIds::RUN_GATE_LIGHT);
 
         // Inputs (two rows) — bound by name
         bindInput<PJ301MPort>("input_RUN_GATE_INPUT",      MonsoonIds::RUN_GATE_INPUT);
@@ -566,15 +572,27 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // builds the as-yet-unflushed (slew/mix/slider) overlays.
         flushModArcs(this, dynamic_cast<Monsoon*>(module));
 
-        // ── TEMPORARY: Mode E phase knob at a FIXED position (no panel marker yet). ──
+        // ── Mode E phase knob — now bound by name from the panel anchor. ──
         // In the CONSTRUCTOR (added once), NOT applyTheme() (which re-runs on theme toggle
-        // and would stack duplicates). Placed below the OFFSET knob so it's clickable for
-        // host-parameter mapping -- VCV binds host automation slots to on-screen controls,
-        // so PHASE_PARAM needs a visible knob before Bitwig can map/modulate it. Position is
-        // provisional; the real placement comes with the Monsoon panel rejig (TIE-jack
-        // cleanup + STEP/SLEG). Plain small cog, no theme swap (fine for a test control).
-        addParam(createParamCentered<redDot::Dark_Small_Cog>(
-            mm2px(Vec(178.0f, 72.0f)), module, MonsoonIds::PHASE_PARAM));
+        // and would stack duplicates). Was a TEMPORARY hardcoded mm2px(178,72); monsoon_art.py
+        // now emits param_PHASE_PARAM, so it binds like every other control. Plain small cog,
+        // no theme swap (fine for this control). Placement lives in the generator table.
+        bindParam<redDot::Dark_Small_Cog>("param_PHASE_PARAM", MonsoonIds::PHASE_PARAM);
+
+        // ── Host-identity badge (CONNECTION_MODEL_SPEC §2/§4) ────────────────────────────────────
+        // The Monsoon shows its OWN pairId colour+number so a bound expander's matching badge can be
+        // verified by eye. Suppressed automatically when <2 Monsoons (HostBadge::draw), so the common
+        // single-Monsoon rig is visually unchanged. Placed top-right, near the status dot; always
+        // primary (a host is never "secondary"). Anchor-free (STATUS_DOT is base art, not a kit anchor):
+        // positioned in mm to sit just left of the top-right dot.
+        {
+            Monsoon* mm = dynamic_cast<Monsoon*>(module);
+            auto* badge = redDot::makeHostBadge(
+                mm2px(Vec(W_MM - 6.0f, 6.0f)), mm2px(4.0f),
+                [mm]() { return mm ? mm->pairId : 0; },
+                [mm]() { return mm && mm->lightTheme; });
+            addChild(badge);
+        }
     }
 
 void MonsoonWidget::applyTheme() {
@@ -651,6 +669,12 @@ void MonsoonWidget::applyTheme() {
                 std::function<void(redDot::Dark_Medium_Cog*)>([this, m](redDot::Dark_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.big5Lane[3];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
             bindParam<redDot::Dark_Medium_Cog>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
                 std::function<void(redDot::Dark_Medium_Cog*)>([this, m](redDot::Dark_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.big5Lane[4];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            // Q-mix LEVEL — the 6th Big-Five knob (same Dark_Medium_Cog + mod-ring treatment as ACCENT).
+            // NOTE: ModViz has no q-mix-LEVEL modulation field yet (big5Lane is sized 5), so the arc's
+            // isActive is FALSE — the ring is wired identically but won't draw until q-mix-level mod
+            // plumbing lands. getModNorm reads the param's own value as a harmless placeholder.
+            bindParam<redDot::Dark_Medium_Cog>("param_QMIX_LEVEL_PARAM",     MonsoonIds::QMIX_LEVEL_PARAM,
+                std::function<void(redDot::Dark_Medium_Cog*)>([this, m](redDot::Dark_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return 0.f;}, [](const Monsoon::ModViz& v){return false;}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
 
             bindParam<redDot::Dark_Small_Cog>     ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
             bindParam<redDot::Dark_Small_Cog>     ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
@@ -666,6 +690,9 @@ void MonsoonWidget::applyTheme() {
                 std::function<void(redDot::OffWhite_Medium_Cog*)>([this, m](redDot::OffWhite_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.rest;}, [](const Monsoon::ModViz& v){return v.big5Lane[3];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
             bindParam<redDot::OffWhite_Medium_Cog>("param_ACCENT_KNOB",          MonsoonIds::ACCENT_KNOB,
                 std::function<void(redDot::OffWhite_Medium_Cog*)>([this, m](redDot::OffWhite_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return v.accent;}, [](const Monsoon::ModViz& v){return v.big5Lane[4];}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
+            // Q-mix LEVEL — 6th Big-Five knob (light theme twin; see the dark-branch note on the null arc).
+            bindParam<redDot::OffWhite_Medium_Cog>("param_QMIX_LEVEL_PARAM",     MonsoonIds::QMIX_LEVEL_PARAM,
+                std::function<void(redDot::OffWhite_Medium_Cog*)>([this, m](redDot::OffWhite_Medium_Cog* k){ queueModArc(this, m, k, [](const Monsoon::ModViz& v){return 0.f;}, [](const Monsoon::ModViz& v){return false;}, 0.50f, [](const Monsoon& mm){return mm.modVizMonsoonOther;}); }));
 
             bindParam<redDot::Dark_Small_Cog>      ("param_BPM_PARAM",            MonsoonIds::BPM_PARAM);
             bindParam<redDot::Dark_Small_Cog>      ("param_PATTERN_LENGTH_PARAM", MonsoonIds::PATTERN_LENGTH_PARAM);
@@ -690,9 +717,19 @@ struct DiceUndoAction : rack::history::Action {
     // Rack prepends "Undo "/"Redo " to name, so set the stream-specific remainder. A single dice
     // press moves one stream; a combined gesture (if any) moves both.
     void setName() {
-        name = s.movedR && s.movedM ? "Rhythm & Melody Dice Roll"
-             : s.movedM             ? "Melody Dice Roll"
-                                    : "Rhythm Dice Roll";
+        // Compose from whichever streams moved (a single dice press moves one; combined gestures more).
+        int n = (int)s.movedR + (int)s.movedM + (int)s.movedQ;
+        if (n >= 2) {
+            std::string parts;
+            if (s.movedR) parts += "Rhythm";
+            if (s.movedM) parts += (parts.empty() ? "" : " & ") + std::string("Melody");
+            if (s.movedQ) parts += (parts.empty() ? "" : " & ") + std::string("Q-mix");
+            name = parts + " Dice Roll";
+        } else {
+            name = s.movedM ? "Melody Dice Roll"
+                 : s.movedQ ? "Q-mix Dice Roll"
+                            : "Rhythm Dice Roll";
+        }
     }
     Monsoon* resolve() { return dynamic_cast<Monsoon*>(APP->engine->getModule(moduleId)); }
     void apply(bool before) {
@@ -701,6 +738,8 @@ struct DiceUndoAction : rack::history::Action {
                                                before ? s.rCtrBefore  : s.rCtrAfter);
             if (s.movedM) m->restoreMelodyDice(before ? s.mSeedBefore : s.mSeedAfter,
                                                before ? s.mCtrBefore  : s.mCtrAfter);
+            if (s.movedQ) m->restoreQmixDice(before ? s.qSeedBefore : s.qSeedAfter,
+                                             before ? s.qCtrBefore  : s.qCtrAfter);
         }
     }
     void undo() override { apply(/*before=*/true);  }
@@ -767,6 +806,15 @@ void MonsoonWidget::draw(const DrawArgs& args) {
             }
         };
 
+        // Anchor centre in MM space (labels below work in mm, then mm2px once). Falls back to
+        // the passed (fx,fy) if the shape is missing, so a not-yet-emitted anchor degrades to
+        // the old fixed spot instead of vanishing. mmPerPx = 1 / mm2px(1).
+        const float mmPerPx = 1.f / mm2px(1.f);
+        auto centerMM = [&](const char* shapeId, float fx, float fy) -> Vec {
+            if (NSVGshape* s = findNamed(shapeId)) { Vec c = centerOf(s); return Vec(c.x * mmPerPx, c.y * mmPerPx); }
+            return Vec(fx, fy);
+        };
+
         // Knob names sit BELOW each dial's own arc labels (1/1, 1/32, 0%, 100%), which the
         // arcLabel() calls place at r*sin(45 deg) ~= 8.5-9.5mm under the knob centre. At dy=12
         // the name spanned 10.3..13.7mm and nearly touched them; 14.5 leaves ~2-3mm clear.
@@ -776,9 +824,14 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         labelAt("param_LEGATO_PARAM",     14.5f, "LEGATO");
         labelAt("param_REST_PARAM",       14.5f, "REST");
         labelAt("param_ACCENT_KNOB",      14.5f, "ACCENT");
+        labelAt("param_QMIX_LEVEL_PARAM", 14.5f, "QMIX");   // 6th Big-Five knob
 
-        auto arcLabel = [&](float cx_mm, float cy_mm, float r_mm, float angle_deg, const char* text, int ri=160, int gi=160, int bi=160) {
-            float a=angle_deg*float(M_PI)/180.f, tx=cx_mm+r_mm*std::cos(a), ty=cy_mm+r_mm*std::sin(a);
+        // arcLabel now takes the knob's SVG anchor id (+ fallback mm) instead of raw cx/cy,
+        // so each dial's arc labels track the knob position from the generator table. cy is
+        // read from the anchor too (dials share y=22 today, but this no longer hardcodes it).
+        auto arcLabel = [&](const char* anchorId, float fx_mm, float fy_mm, float r_mm, float angle_deg, const char* text, int ri=160, int gi=160, int bi=160) {
+            Vec c = centerMM(anchorId, fx_mm, fy_mm);
+            float a=angle_deg*float(M_PI)/180.f, tx=c.x+r_mm*std::cos(a), ty=c.y+r_mm*std::sin(a);
             nvgSave(vg); nvgTranslate(vg,mm2px(tx),mm2px(ty)); nvgRotate(vg,a+float(M_PI)/2.f);
             if(lt){auto inv=[](int v){return std::max(0,220-v);}; bool isGrey=(std::abs(ri-gi)<20&&std::abs(gi-bi)<20); if(isGrey){ri=inv(ri);gi=inv(gi);bi=inv(bi);}else{ri=ri*7/10;gi=gi*7/10;bi=bi*7/10;}}
             nvgFillColor(vg,nvgRGBA(ri,gi,bi,200)); nvgTextAlign(vg,NVG_ALIGN_CENTER|NVG_ALIGN_MIDDLE);
@@ -786,41 +839,69 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         };
 
         setNvgFontSize(2.5f);
-        { for(int i=0;i<NUM_NOTE_VALUES;++i) arcLabel(16.f,22.f,13.5f,-225.f+i*(270.f/(NUM_NOTE_VALUES-1)),NOTE_VALUES[i].label,150,150,135); }
+        { for(int i=0;i<NUM_NOTE_VALUES;++i) arcLabel("param_NOTE_VALUE_PARAM",16.f,22.f,13.5f,-225.f+i*(270.f/(NUM_NOTE_VALUES-1)),NOTE_VALUES[i].label,150,150,135); }
         setNvgFontSize(2.8f);
-        arcLabel(42.f,22.f,13.f,-225.f,"LONGER",130,130,120); arcLabel(42.f,22.f,13.f,45.f,"SHORTER",130,130,120);
-        arcLabel(68.f,22.f,12.f,-225.f,"0%",130,130,120);     arcLabel(68.f,22.f,12.f,45.f,"100%",130,130,120);
-        arcLabel(94.f,22.f,12.f,-225.f,"0%",130,130,120);     arcLabel(94.f,22.f,12.f,45.f,"100%",130,130,120);
-        arcLabel(120.f,22.f,12.f,-225.f,"0%",130,130,120);     arcLabel(120.f,22.f,12.f,45.f,"100%",130,130,120);
+        arcLabel("param_VARIATION_PARAM",42.f,22.f,13.f,-225.f,"LONGER",130,130,120); arcLabel("param_VARIATION_PARAM",42.f,22.f,13.f,45.f,"SHORTER",130,130,120);
+        arcLabel("param_LEGATO_PARAM",68.f,22.f,12.f,-225.f,"0%",130,130,120);        arcLabel("param_LEGATO_PARAM",68.f,22.f,12.f,45.f,"100%",130,130,120);
+        arcLabel("param_REST_PARAM",94.f,22.f,12.f,-225.f,"0%",130,130,120);          arcLabel("param_REST_PARAM",94.f,22.f,12.f,45.f,"100%",130,130,120);
+        arcLabel("param_ACCENT_KNOB",120.f,22.f,12.f,-225.f,"0%",130,130,120);        arcLabel("param_ACCENT_KNOB",120.f,22.f,12.f,45.f,"100%",130,130,120);
+        arcLabel("param_QMIX_LEVEL_PARAM",146.f,22.f,12.f,-225.f,"0%",130,130,120);   arcLabel("param_QMIX_LEVEL_PARAM",146.f,22.f,12.f,45.f,"100%",130,130,120);
 
         // Seq knob labels (below ring)
         setNvgFontSize(3.2f); fillNvgColour(170,170,170);
         labelAt("param_BPM_PARAM", 12.f, "BPM"); labelAt("param_PATTERN_LENGTH_PARAM", 12.f, "LEN"); labelAt("param_PATTERN_OFFSET_PARAM", 12.f, "OFFSET");
+        // Mode E phase knob — now one step left of BPM on the phase row; label matches the others.
+        labelAt("param_PHASE_PARAM", 12.f, "PHASE");
 
-        // ── Control-row labels (single row at y=87; lights/labels above) ──────
-        // Slots: SLEW R/M, DICE R/M, TRIAL R/M, MIX R/M, LOCK, MUTE, RESET, RUN.
-        // rx(i) = 12 + i*16.7. Labels sit just above the row (y≈81).
+        // ── Control-row labels — ONE per control, centred ABOVE it (y≈81), anchor-relative ──
+        // The row was consolidated into a single y=87 row (panel_src/monsoon_art.py ROW). Every
+        // label anchors to the param it annotates (labelAt) so it tracks the generator table.
+        // dy = -6 puts the baseline ~6mm above each control centre (row y=87 → labels ~y=81).
+        // NB: the dice lamps get NO label (they sit inline between NEXT and LAST); utilities are
+        // labelled here too — the old red "DICE R/M/Q" below-labels and the stale "TRIAL"/duplicate
+        // MIX-below text are removed so there is exactly one label per control.
         setNvgFontSize(2.4f); fillNvgColour(150,150,140);
-        auto rowLbl=[&](int i,const char* s){ writeNvgText(12.f+i*16.7f, 81.f, s); };
-        rowLbl(0,"SLEW R"); rowLbl(1,"SLEW M");
-        rowLbl(2,"DICE R"); rowLbl(3,"DICE M");
-        rowLbl(4,"TRIAL R"); rowLbl(5,"TRIAL M");
-        rowLbl(6,"MIX R"); rowLbl(7,"MIX M");
-        rowLbl(8,"LOCK"); rowLbl(9,"MUTE"); rowLbl(10,"RESET"); rowLbl(11,"RUN");
+        labelAt("param_DICE_R_PARAM",       -6.f, "DICE R");
+        labelAt("param_LAST_DICE_R_PARAM",  -6.f, "LAST R");
+        labelAt("param_DICE_M_PARAM",       -6.f, "DICE M");
+        labelAt("param_LAST_DICE_M_PARAM",  -6.f, "LAST M");
+        labelAt("param_DICE_Q_PARAM",       -6.f, "DICE Q");
+        labelAt("param_LAST_DICE_Q_PARAM",  -6.f, "LAST Q");
+        labelAt("param_DICE_SLEW_R_PARAM",  -6.f, "SLEW R");
+        labelAt("param_DICE_SLEW_M_PARAM",  -6.f, "SLEW M");
+        labelAt("param_DICE_SLEW_Q_PARAM",  -6.f, "SLEW Q");
+        labelAt("param_RHYTHM_MIX_PARAM",   -6.f, "MIX R");
+        labelAt("param_MELODY_MIX_PARAM",   -6.f, "MIX M");
+        labelAt("param_QMIX_MIX_PARAM",     -6.f, "MIX Q");
+        labelAt("param_LOCK_PARAM",         -6.f, "LOCK");
+        labelAt("param_MUTE_PARAM",         -6.f, "MUTE");
+        labelAt("param_RESET_BUTTON_PARAM", -6.f, "RESET");
+        labelAt("param_RUN_GATE_PARAM",     -6.f, "RUN");
 
-        // Semitone note labels
+        // Semitone note + numeral labels: X now derived from each fader's param_SEMIi_PARAM
+        // anchor (was raw 7.5+i*9). Y stays a label-row constant (names at 43, numerals just
+        // under the travel) — those are text rows, not control positions. Fallback keeps the
+        // old x if an anchor is missing.
         setNvgFontSize(3.0f);
         const char* sn[12]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
-        for(int i=0;i<12;++i){ fillNvgColour(200,200,200); writeNvgText(7.5f+i*9.f,43.f,sn[i]); }
+        for(int i=0;i<12;++i){
+            fillNvgColour(200,200,200);
+            const std::string id = "param_SEMI" + std::to_string(i) + "_PARAM";
+            writeNvgText(centerMM(id.c_str(), 7.5f+i*9.f, 43.f).x, 43.f, sn[i]);
+        }
         // Fader numerals: sit just under the sliders. They used to be at SL_TOP+SLH+6 = 80.5mm,
         // i.e. 0.5mm from the control-row labels at y=81 -- hence the overlap with SLEW/DICE/
         // TRIAL. Pulled up to 2.8mm below the travel, which leaves ~3.7mm clear of that row.
         // Brightness raised 85 -> 165: at 85 they read far fainter than the note names above.
         setNvgFontSize(2.7f); fillNvgColour(165,165,165);
         const char* nums[12]={"1","2","3","4","5","6","7","8","9","10","11","12"};
-        for(int i=0;i<12;++i) writeNvgText(7.5f+i*9.f, SL_TOP+SLH+2.8f, nums[i]);
+        for(int i=0;i<12;++i){
+            const std::string id = "param_SEMI" + std::to_string(i) + "_PARAM";
+            writeNvgText(centerMM(id.c_str(), 7.5f+i*9.f, 0.f).x, SL_TOP+SLH+2.8f, nums[i]);
+        }
         setNvgFontSize(2.9f); fillNvgColour(38,166,154);
-        writeNvgText(119.f,43.f,"LO"); writeNvgText(128.f,43.f,"HI");
+        writeNvgText(centerMM("param_OCT_LO_PARAM", 119.f, 43.f).x, 43.f, "LO");
+        writeNvgText(centerMM("param_OCT_HI_PARAM", 128.f, 43.f).x, 43.f, "HI");
 
         // Slider level ticks are SVG panel art now, emitted by
         // panel_src/fader_level_markers.py from the same loop as the fader anchors.
@@ -842,8 +923,13 @@ void MonsoonWidget::draw(const DrawArgs& args) {
             const float BOX_W  =  5.5f, BOX_H = 5.5f;
             const float TXT_DX = -3.5f, TXT_DY = 4.6f;   // description, relative to the LED
 
+            // "MODE" title derived from the Mode-A light anchor (was raw 193,6). Sits above the
+            // top LED of the mode column, so it tracks the column position from the generator.
             setNvgFontSize(3.2f); fillNvgColour(210,210,210);
-            writeNvgText(193.f, 6.f, "MODE");
+            {
+                Vec a = centerMM("light_MODE_A_LIGHT", 193.f, 12.f);
+                writeNvgText(a.x, a.y - 6.f, "MODE");
+            }
 
             for (int i = 0; i < 6; ++i) {
                 const std::string id = "light_MODE_" + std::string(1, char('A'+i)) + "_LIGHT";
@@ -878,15 +964,9 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         //    so they can never fall behind a control reorg again. (labelAt is
         //    defined above.) ───────────────────────────────────────────────────
 
-        // Control-row button labels (below each control)
-        setNvgFontSize(2.7f); fillNvgColour(200,60,60);
-        labelAt("param_DICE_R_PARAM", 6.5f, "DICE R");
-        labelAt("param_DICE_M_PARAM", 6.5f, "DICE M");
-        fillNvgColour(190,190,190);
-        labelAt("param_LOCK_PARAM",         6.5f, "LOCK");
-        labelAt("param_MUTE_PARAM",         6.5f, "MUTE");
-        labelAt("param_RESET_BUTTON_PARAM", 6.5f, "RESET");
-        labelAt("param_RUN_GATE_PARAM",     6.5f, "RUN");
+        // (Control-row button labels moved ABOVE their controls into the single consolidated
+        //  block earlier — DICE R/M/Q, LOCK/MUTE/RESET/RUN etc. are all labelled once at y≈81.
+        //  The old red DICE-below text and duplicate below-labels were removed for the clean row.)
 
         // Jack labels (above each jack) — names now MATCH the reorganised jacks
         // (incl. the added GATE3 / CV3), because they read the same shapes.
@@ -1011,10 +1091,10 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 void onAction(const event::Action&) override { if (module) module->engine.scopeLiveMask = maskValue; }
             };
             const uint32_t ALL = dotModular::SB_BIG5_R | dotModular::SB_SCALE_M
-                               | dotModular::SB_SANDS_R | dotModular::SB_SANDS_M
-                               | dotModular::SB_CA_R | dotModular::SB_CA_M
-                               | dotModular::SB_ABRESEED_R | dotModular::SB_ABRESEED_M
-                               | dotModular::SB_DICE_R | dotModular::SB_DICE_M;
+                               | dotModular::SB_SANDS_R | dotModular::SB_SANDS_M | dotModular::SB_SANDS_Q
+                               | dotModular::SB_CA_R | dotModular::SB_CA_M | dotModular::SB_CA_Q
+                               | dotModular::SB_ABRESEED_R | dotModular::SB_ABRESEED_M | dotModular::SB_ABRESEED_Q
+                               | dotModular::SB_DICE_R | dotModular::SB_DICE_M | dotModular::SB_DICE_Q;
             menu->addChild(createSubmenuItem("Lock scope — keep live under lock", "", [=](ui::Menu* sm) {
                 auto addBit = [&](const char* label, uint32_t b) {
                     auto* it = createMenuItem<ScopeBitItem>(label); it->module = m; it->bit = b; sm->addChild(it);
@@ -1026,15 +1106,19 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 sm->addChild(new ui::MenuSeparator);
                 addBit("Sands DNA — rhythm",  dotModular::SB_SANDS_R);
                 addBit("Sands DNA — melody",  dotModular::SB_SANDS_M);
+                addBit("Sands DNA — q-mix",   dotModular::SB_SANDS_Q);
                 sm->addChild(new ui::MenuSeparator);
                 addBit("Change Alley — rhythm", dotModular::SB_CA_R);
                 addBit("Change Alley — melody", dotModular::SB_CA_M);
+                addBit("Change Alley — q-mix",  dotModular::SB_CA_Q);
                 sm->addChild(new ui::MenuSeparator);
                 addBit("A/B mix + Reseed — rhythm", dotModular::SB_ABRESEED_R);
                 addBit("A/B mix + Reseed — melody", dotModular::SB_ABRESEED_M);
+                addBit("A/B mix + Reseed — q-mix", dotModular::SB_ABRESEED_Q);
                 sm->addChild(new ui::MenuSeparator);
                 addBit("Dice — rhythm (roll/live under lock)", dotModular::SB_DICE_R);
                 addBit("Dice — melody (roll/live under lock)", dotModular::SB_DICE_M);
+                addBit("Dice — q-mix (roll/live under lock)", dotModular::SB_DICE_Q);
                 sm->addChild(new ui::MenuSeparator);
                 { auto* it = createMenuItem<ScopePresetItem>("Whole module (freeze all)"); it->module = m; it->maskValue = 0u; sm->addChild(it); }
                 { auto* it = createMenuItem<ScopePresetItem>("Free all prep");             it->module = m; it->maskValue = ALL; sm->addChild(it); }
@@ -1181,7 +1265,7 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "Gate 3 (assignable mod)"; sub->addChild(l);
               const char* n3[] = {"Re-dice rhythm","Re-dice melody","Toggle reseed-on-restart",
-                                  "Toggle rhythm live source","Toggle melody live source"};
+                                  "Toggle rhythm dice\u2194live","Toggle melody dice\u2194live"};
               for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n3[v]);it->module=m;it->target=&m->gate3Target;it->value=v;sub->addChild(it);} }
         }));
 

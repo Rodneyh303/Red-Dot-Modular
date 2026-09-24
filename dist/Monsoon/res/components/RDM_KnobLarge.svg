@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- 
+  RDM_KnobLarge - 19mm Diameter Knob
+  Matte Brushed Aluminum with Crimson Indicator
+  
+  Physical equivalent: ~18-21mm on Eurorack panel
+  For: Main parameters (Note Value, Variation, Legato, etc.)
+  
+  The indicator line (crimson) rotates with parameter value
+  Render as SVG component in VCV Rack widget system
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">
+  <defs>
+    <linearGradient id="matteBrushedLarge" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.12" />
+      <stop offset="25%" style="stop-color:#ffffff;stop-opacity:0.03" />
+      <stop offset="50%" style="stop-color:#ffffff;stop-opacity:0" />
+      <stop offset="75%" style="stop-color:#000000;stop-opacity:0.05" />
+      <stop offset="100%" style="stop-color:#000000;stop-opacity:0.15" />
+    </linearGradient>
+    
+    <radialGradient id="rimLightLarge" cx="35%" cy="35%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.25" />
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0" />
+    </radialGradient>
+    
+    <radialGradient id="insetShadowLarge" cx="50%" cy="50%">
+      <stop offset="0%" style="stop-color:#000000;stop-opacity:0" />
+      <stop offset="100%" style="stop-color:#000000;stop-opacity:0.2" />
+    </radialGradient>
+  </defs>
+
+  <!-- Outer barrel/rim (matte aluminum) -->
+  <circle cx="30" cy="30" r="21" fill="#3a3a3a" stroke="#2a2a2a" stroke-width="0.6"/>
+  
+  <!-- Matte brushed surface -->
+  <circle cx="30" cy="30" r="20.5" fill="#2f2f2f"/>
+  <circle cx="30" cy="30" r="20.5" fill="url(#matteBrushedLarge)" opacity="0.8"/>
+  
+  <!-- Rim light (subtle highlight for depth) -->
+  <circle cx="30" cy="30" r="20" fill="url(#rimLightLarge)" opacity="0.6"/>
+  
+  <!-- Inset shadow (3D depth effect) -->
+  <circle cx="30" cy="30" r="20" fill="url(#insetShadowLarge)"/>
+  
+  <!-- Center accent ring (visual anchor) -->
+  <circle cx="30" cy="30" r="16" fill="none" stroke="#1a1a1a" stroke-width="0.5"/>
+  
+  <!-- Indicator line - CRIMSON (rotates with parameter)
+       Position: top (0°), rotates clockwise
+       This line should be rotated by C++ based on parameter value
+       Range: typically -135° to +135° (270° total range)
+  -->
+  <line x1="30" y1="11" x2="30" y2="5" stroke="#dc2626" stroke-width="2" stroke-linecap="round"/>
+  
+  <!-- Tick marks (subtle reference points) -->
+  <g stroke="#555" stroke-width="0.4" opacity="0.5" stroke-linecap="round">
+    <line x1="30" y1="9" x2="30" y2="12" />
+    <line x1="42.5" y1="30" x2="46" y2="30" />
+    <line x1="30" y1="51" x2="30" y2="48" />
+    <line x1="17.5" y1="30" x2="14" y2="30" />
+  </g>
+  
+  <!-- Optional: Center dot (touch point) -->
+  <circle cx="30" cy="30" r="1.5" fill="#555" opacity="0.3"/>
+</svg>
