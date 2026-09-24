@@ -122,8 +122,11 @@ float ParameterManager::getQmixMix() const { return clampv(readParam_(QMIX_MIX_P
 float ParameterManager::getOctaveLo() const {
     float v = readParam_(OCT_LO_PARAM, 0.f, 8.f);
     
-    // Apply expander CV if connected
-    if (cachedExpander && *cachedExpander && (*cachedExpander)->inputs[EXPANDER_OCT_LO_CV_INPUT].isConnected()) {
+    // Apply expander CV if connected AND this Interchange targets Monsoon (§16 item 1: an AUTO
+    // Interchange bound to a Micro drives the Micro's weights instead, so it must NOT also push
+    // Monsoon's octave faders — drivesMonsoonCached() gates that).
+    if (cachedExpander && *cachedExpander && (*cachedExpander)->drivesMonsoonCached()
+        && (*cachedExpander)->inputs[EXPANDER_OCT_LO_CV_INPUT].isConnected()) {
         float att = (*cachedExpander)->params[EXPANDER_OCT_LO_ATTENUVERTER].getValue();
         float cv = (*cachedExpander)->inputs[EXPANDER_OCT_LO_CV_INPUT].getVoltage();
         v += (cv * att) / 10.0f * 8.0f;
@@ -138,8 +141,9 @@ float ParameterManager::getOctaveLo() const {
 float ParameterManager::getOctaveHi() const {
     float v = readParam_(OCT_HI_PARAM, 0.f, 8.f);
     
-    // Apply expander CV if connected
-    if (cachedExpander && *cachedExpander && (*cachedExpander)->inputs[EXPANDER_OCT_HI_CV_INPUT].isConnected()) {
+    // Apply expander CV if connected AND targeting Monsoon (§16 item 1 — see getOctaveLo).
+    if (cachedExpander && *cachedExpander && (*cachedExpander)->drivesMonsoonCached()
+        && (*cachedExpander)->inputs[EXPANDER_OCT_HI_CV_INPUT].isConnected()) {
         float att = (*cachedExpander)->params[EXPANDER_OCT_HI_ATTENUVERTER].getValue();
         float cv = (*cachedExpander)->inputs[EXPANDER_OCT_HI_CV_INPUT].getVoltage();
         v += (cv * att) / 10.0f * 8.0f;
@@ -161,8 +165,10 @@ float ParameterManager::getSemitone(int semIdx) const {
     // Get base semitone probability from main knob
     float v = readParam_(SEMI0_PARAM + semIdx, 0.f, 1.f);
     
-    // Apply expander CV if connected
-    if (cachedExpander && *cachedExpander) {
+    // Apply expander CV if connected AND targeting Monsoon (§16 item 1 — see getOctaveLo). When an
+    // AUTO Interchange is bound to a Micro it modulates the Micro's weight faders instead; the Micro
+    // is the single writer there, so Monsoon's semi faders must not also move.
+    if (cachedExpander && *cachedExpander && (*cachedExpander)->drivesMonsoonCached()) {
         auto& expanderParams = (*cachedExpander)->params;
         auto& expanderInputs = (*cachedExpander)->inputs;
         

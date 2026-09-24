@@ -144,16 +144,16 @@ build/src/Monsoon.cpp.o: src/Monsoon.cpp \
  src/dsp/managers/MonsoonTimingController.hpp \
  src/dsp/managers/MonsoonCVRouter.hpp \
  src/dsp/managers/MonsoonOutputGenerator.hpp src/MonsoonWidget.hpp \
- src/ui/SvgPanelKit.hpp src/ui/Controls.hpp \
+ src/ui/SvgPanelKit.hpp src/ui/Controls.hpp src/MicroTuning.hpp \
+ src/ui/IntertropicalPairing.hpp src/ui/../Intertropical.hpp \
+ src/ui/../dsp/VoiceResolver.hpp src/ui/../ui/VisualExpanderHelpers.hpp \
+ src/ui/../ui/SandsVisualEditorV4.hpp src/ui/../ui/MonsoonDiscovery.hpp \
  src/MonsoonStraitsExpander.hpp src/MonsoonCausewayPolyExpander.hpp \
  src/MonsoonChangiExpander.hpp src/MonsoonChangiT2Expander.hpp \
  src/MonsoonChangiT3Expander.hpp src/MonsoonShophouseExpander.hpp \
  src/dsp/ScaleList.hpp src/MonsoonChangeAlleyV2.hpp \
- src/ui/VisualExpanderHelpers.hpp src/ui/SandsVisualEditorV4.hpp \
- src/ui/MonsoonDiscovery.hpp src/ui/ModArcOverlay.hpp \
- src/ui/StoreEditAction.hpp src/dsp/ChangeAlleyTransforms.hpp \
- src/ui/IntertropicalPairing.hpp src/ui/../Intertropical.hpp \
- src/ui/../dsp/VoiceResolver.hpp src/ui/ConnectMark.hpp \
+ src/ui/ModArcOverlay.hpp src/ui/StoreEditAction.hpp \
+ src/dsp/ChangeAlleyTransforms.hpp src/ui/ConnectMark.hpp \
  src/StraitsEastSandsVisual.hpp src/ui/SandsGrid.hpp \
  src/StraitsSandsMacroVisual.hpp src/ui/StoreBound.hpp \
  src/dsp/managers/MonsoonConfigurator.hpp
@@ -308,6 +308,13 @@ src/dsp/managers/MonsoonOutputGenerator.hpp:
 src/MonsoonWidget.hpp:
 src/ui/SvgPanelKit.hpp:
 src/ui/Controls.hpp:
+src/MicroTuning.hpp:
+src/ui/IntertropicalPairing.hpp:
+src/ui/../Intertropical.hpp:
+src/ui/../dsp/VoiceResolver.hpp:
+src/ui/../ui/VisualExpanderHelpers.hpp:
+src/ui/../ui/SandsVisualEditorV4.hpp:
+src/ui/../ui/MonsoonDiscovery.hpp:
 src/MonsoonStraitsExpander.hpp:
 src/MonsoonCausewayPolyExpander.hpp:
 src/MonsoonChangiExpander.hpp:
@@ -316,15 +323,9 @@ src/MonsoonChangiT3Expander.hpp:
 src/MonsoonShophouseExpander.hpp:
 src/dsp/ScaleList.hpp:
 src/MonsoonChangeAlleyV2.hpp:
-src/ui/VisualExpanderHelpers.hpp:
-src/ui/SandsVisualEditorV4.hpp:
-src/ui/MonsoonDiscovery.hpp:
 src/ui/ModArcOverlay.hpp:
 src/ui/StoreEditAction.hpp:
 src/dsp/ChangeAlleyTransforms.hpp:
-src/ui/IntertropicalPairing.hpp:
-src/ui/../Intertropical.hpp:
-src/ui/../dsp/VoiceResolver.hpp:
 src/ui/ConnectMark.hpp:
 src/StraitsEastSandsVisual.hpp:
 src/ui/SandsGrid.hpp:

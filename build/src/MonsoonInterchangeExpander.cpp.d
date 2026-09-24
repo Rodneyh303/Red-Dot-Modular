@@ -145,11 +145,11 @@ build/src/MonsoonInterchangeExpander.cpp.o: \
  src/dsp/managers/MonsoonTimingController.hpp \
  src/dsp/managers/MonsoonCVRouter.hpp \
  src/dsp/managers/MonsoonOutputGenerator.hpp src/MonsoonWidget.hpp \
- src/ui/SvgPanelKit.hpp src/ui/Controls.hpp src/ui/RedScrew.hpp \
- src/ui/ConnectMark.hpp src/ui/VisualExpanderHelpers.hpp \
- src/ui/SandsVisualEditorV4.hpp src/ui/MonsoonDiscovery.hpp \
- src/MicroTuning.hpp src/ui/IntertropicalPairing.hpp \
- src/ui/../Intertropical.hpp src/ui/../dsp/VoiceResolver.hpp
+ src/ui/SvgPanelKit.hpp src/ui/Controls.hpp src/MicroTuning.hpp \
+ src/ui/IntertropicalPairing.hpp src/ui/../Intertropical.hpp \
+ src/ui/../dsp/VoiceResolver.hpp src/ui/../ui/VisualExpanderHelpers.hpp \
+ src/ui/../ui/SandsVisualEditorV4.hpp src/ui/../ui/MonsoonDiscovery.hpp \
+ src/ui/RedScrew.hpp src/ui/ConnectMark.hpp
 C:/Users/rodney/Documents/Rackbuild/Rack-SDK/include/rack.hpp:
 C:/Users/rodney/Documents/Rackbuild/Rack-SDK/include/common.hpp:
 C:/Users/rodney/Documents/Rackbuild/Rack-SDK/include/arch.hpp:
@@ -301,12 +301,12 @@ src/dsp/managers/MonsoonOutputGenerator.hpp:
 src/MonsoonWidget.hpp:
 src/ui/SvgPanelKit.hpp:
 src/ui/Controls.hpp:
-src/ui/RedScrew.hpp:
-src/ui/ConnectMark.hpp:
-src/ui/VisualExpanderHelpers.hpp:
-src/ui/SandsVisualEditorV4.hpp:
-src/ui/MonsoonDiscovery.hpp:
 src/MicroTuning.hpp:
 src/ui/IntertropicalPairing.hpp:
 src/ui/../Intertropical.hpp:
 src/ui/../dsp/VoiceResolver.hpp:
+src/ui/../ui/VisualExpanderHelpers.hpp:
+src/ui/../ui/SandsVisualEditorV4.hpp:
+src/ui/../ui/MonsoonDiscovery.hpp:
+src/ui/RedScrew.hpp:
+src/ui/ConnectMark.hpp:

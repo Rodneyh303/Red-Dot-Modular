@@ -136,7 +136,11 @@ addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::
         auto* mod = dynamic_cast<MonsoonInterchangeExpander*>(module);
         if (!mod) return;
         MicroTuningModule* hub = redDot::resolveFollowedT<MicroTuningModule>(mod, mod->followTarget);
-        if (!hub || hub->pairId <= 0) return;               // not bound → no badge (Monsoon-fader use only)
+        const bool microBound = (hub && hub->pairId > 0);
+        // Show the Micro badge only when this Interchange ACTUALLY drives that Micro (§16 item 1): a
+        // Micro is reachable AND the target mode routes to it. In "Monsoon only" mode we suppress the
+        // badge so it never implies a binding the CV isn't honouring.
+        if (!microBound || !mod->drivesMicro(microBound)) return;
 
         const int half   = (mod->targetHalf == 2) ? 2 : 1;
         const bool exists = (hub->nDegrees >= half * 12);   // does this half's 12 degrees exist?
@@ -184,6 +188,24 @@ addInput(createInputCentered<PJ301MPort>(Vec(222.0f, octY), module, MonsoonIds::
     void appendContextMenu(Menu* menu) override {
         auto* mod = dynamic_cast<MonsoonInterchangeExpander*>(module);
         if (!mod) return;
+        menu->addChild(new MenuSeparator);
+
+        // §16 item 1: WHERE this Interchange's CV goes. AUTO = the Micro if one is bound, else Monsoon.
+        menu->addChild(createMenuLabel("CV target"));
+        struct TargetItem : MenuItem {
+            MonsoonInterchangeExpander* m; int mode;
+            void onAction(const event::Action&) override { m->targetMode = mode; }
+        };
+        const char* TN[3] = { "Auto (Micro if bound, else Monsoon)",
+                              "Monsoon pitch faders only",
+                              "Colonnades / Duo weights only" };
+        for (int i = 0; i < 3; ++i) {
+            auto* it = new TargetItem();
+            it->m = mod; it->mode = i; it->text = TN[i];
+            it->rightText = CHECKMARK(mod->targetMode == i);
+            menu->addChild(it);
+        }
+
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuLabel("Modulate a Colonnades / Duo"));
 

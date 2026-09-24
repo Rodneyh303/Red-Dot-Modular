@@ -151,6 +151,13 @@ build/src/dsp/managers/MonsoonUIManager.cpp.o: \
  src/dsp/managers/../../ui/SvgPanelKit.hpp \
  src/dsp/managers/../../ui/Controls.hpp \
  src/dsp/managers/../../MonsoonInterchangeExpander.hpp \
+ src/dsp/managers/../../MicroTuning.hpp \
+ src/dsp/managers/../../ui/IntertropicalPairing.hpp \
+ src/dsp/managers/../../ui/../Intertropical.hpp \
+ src/dsp/managers/../../ui/../dsp/VoiceResolver.hpp \
+ src/dsp/managers/../../ui/../ui/VisualExpanderHelpers.hpp \
+ src/dsp/managers/../../ui/../ui/SandsVisualEditorV4.hpp \
+ src/dsp/managers/../../ui/../ui/MonsoonDiscovery.hpp \
  src/dsp/managers/../../MonsoonStraitsExpander.hpp
 src/dsp/managers/MonsoonUIManager.hpp:
 C:/Users/rodney/Documents/Rackbuild/Rack-SDK/include/rack.hpp:
@@ -303,4 +310,11 @@ src/dsp/managers/../../MonsoonWidget.hpp:
 src/dsp/managers/../../ui/SvgPanelKit.hpp:
 src/dsp/managers/../../ui/Controls.hpp:
 src/dsp/managers/../../MonsoonInterchangeExpander.hpp:
+src/dsp/managers/../../MicroTuning.hpp:
+src/dsp/managers/../../ui/IntertropicalPairing.hpp:
+src/dsp/managers/../../ui/../Intertropical.hpp:
+src/dsp/managers/../../ui/../dsp/VoiceResolver.hpp:
+src/dsp/managers/../../ui/../ui/VisualExpanderHelpers.hpp:
+src/dsp/managers/../../ui/../ui/SandsVisualEditorV4.hpp:
+src/dsp/managers/../../ui/../ui/MonsoonDiscovery.hpp:
 src/dsp/managers/../../MonsoonStraitsExpander.hpp:

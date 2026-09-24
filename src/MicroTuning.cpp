@@ -105,7 +105,11 @@ void MicroTuningModule::process(const ProcessArgs&) {
                 if (auto* ix = dynamic_cast<MonsoonInterchangeExpander*>(m)) {
                     const bool bound = (ix->followTarget > 0) ? (ix->followTarget == pairId)
                                      : (redDot::findPairHubEitherSide<MicroTuningModule>(ix) == this);
-                    if (bound) boundInterchanges_.push_back(ix);
+                    // §16 item 1 (target selector): only take Interchanges that actually TARGET the Micro.
+                    // `bound` is the microBound predicate from this Interchange's view; drivesMicro()
+                    // resolves AUTO (Micro when bound) and the explicit Monsoon-only/Micro-only modes.
+                    // A Monsoon-only Interchange is skipped here so it no longer drives the weight faders.
+                    if (bound && ix->drivesMicro(bound)) boundInterchanges_.push_back(ix);
                 } else if (auto* sm = dynamic_cast<MonsoonShophouseMicro*>(m)) {
                     // First Shophouse Micro whose nearest host is OUR Monsoon (adjacency binding).
                     if (!boundShophouseMicro_ && redDot::findMonsoonEitherSide(sm) == mon)

@@ -144,10 +144,10 @@ build/src/MicroTuning.cpp.o: src/MicroTuning.cpp \
  src/dsp/managers/MonsoonCVRouter.hpp \
  src/dsp/managers/MonsoonOutputGenerator.hpp src/MonsoonWidget.hpp \
  src/ui/Controls.hpp src/MonsoonInterchangeExpander.hpp \
- src/MonsoonShophouseMicro.hpp src/dsp/TuningList.hpp \
  src/ui/IntertropicalPairing.hpp src/ui/../Intertropical.hpp \
  src/ui/../dsp/VoiceResolver.hpp src/ui/../ui/VisualExpanderHelpers.hpp \
  src/ui/../ui/SandsVisualEditorV4.hpp src/ui/../ui/MonsoonDiscovery.hpp \
+ src/MonsoonShophouseMicro.hpp src/dsp/TuningList.hpp \
  src/ui/ConnectMark.hpp src/ui/WrappingMenuLabel.hpp \
  src/tuning/ScalaFile.hpp \
  C:/Users/rodney/Documents/Rackbuild/Rack-SDK/dep/include/osdialog.h \
@@ -304,14 +304,14 @@ src/dsp/managers/MonsoonOutputGenerator.hpp:
 src/MonsoonWidget.hpp:
 src/ui/Controls.hpp:
 src/MonsoonInterchangeExpander.hpp:
-src/MonsoonShophouseMicro.hpp:
-src/dsp/TuningList.hpp:
 src/ui/IntertropicalPairing.hpp:
 src/ui/../Intertropical.hpp:
 src/ui/../dsp/VoiceResolver.hpp:
 src/ui/../ui/VisualExpanderHelpers.hpp:
 src/ui/../ui/SandsVisualEditorV4.hpp:
 src/ui/../ui/MonsoonDiscovery.hpp:
+src/MonsoonShophouseMicro.hpp:
+src/dsp/TuningList.hpp:
 src/ui/ConnectMark.hpp:
 src/ui/WrappingMenuLabel.hpp:
 src/tuning/ScalaFile.hpp:
