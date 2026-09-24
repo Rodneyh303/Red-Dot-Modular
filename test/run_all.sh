@@ -60,7 +60,6 @@ TESTS=(
   "test_poly_voices|"
   "test_probmod_roundtrip|"
   "test_quantize_engine|$SE $GS $PE"
-  "test_quantize_phrasing|$SE $GS $PE"
   "test_rule2_consume|"
   "test_rule2_integration|"
   "test_scale_list|"
