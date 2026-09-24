@@ -646,18 +646,17 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // being painted over with the panel background here, which is why the V1
         // trimpots "disappeared" even though the widgets were visible.)
 
-        // Macro box shrink (Option B follow-up): BLEND_TOP 82→85, BLEND_H 38→35, moved down into
-        // the space reclaimed by the shorter 13mm lanes. GROUP_W=ED_W/5 (q-mix is a full 5th lane —
-        // was ED_W/4, a 4-lane leftover that mis-placed every label). Mirrors gen_macro_mono.py.
-        const float BLEND_TOP=85.f, SEND_Y0=10.f, SEND_DY=9.f, SEND_DX=6.f, BGAP=2.5f;
-        const float GROUP_W = ED_W/5.f;
-        // Labels in DISPLAY order (matching gen_macro_mono.py DISPLAY_ORDER = editor
-        // order MEL/OCT/REST/ACC). The SVG already places the send groups left-to-right
-        // in this order; the labels must match. (Previously laneName was indexed by
-        // physical position in ENGINE order, so e.g. the MEL group was mislabelled
-        // "REST" — the off-by-mapping the user saw: "REST" group drove melody.)
-        const char* laneName[dotModular::SandsGrid::POLY_LANES] = { "MELODY", "OCTAVE", "QMIX", "REST", "ACCENT" };  // editor/display order
+        // GEOMETRY IS OWNED BY THE GENERATOR. Every MIX-IN label position is derived from the
+        // panel-kit anchors gen_macro_mono.py emits — group header from label_mixin_<el> (editor
+        // order), the four send items from param_send_<eng>_<item>, the two taps from
+        // param_taplor_<eng>/param_tapspr_<eng>. NOTHING is recomputed from GROUP_W/BLEND_* here, so
+        // re-running the generator can never drift the labels off the boxes (the ED_W/4-vs-ED_W/5
+        // bug that recurred 3×). label_mixin_<el> is editor-ordered; the send/tap anchors are engine-
+        // ordered (getMacroSend/getGlobalTap are engine-indexed), so convert el→eng for those.
+        const char* laneName[dotModular::SandsGrid::POLY_LANES] = { "MELODY", "OCTAVE", "QMIX", "REST", "ACCENT" };  // editor order
         const char* itemName[4] = { "LEN", "OFF", "ROT", "SPR" };
+        static_assert(sizeof(laneName)/sizeof(laneName[0]) == dotModular::SandsGrid::POLY_LANES,
+                      "MIX-IN lane-name table must be one per poly lane");
 
         bool isLight = false;
         if (auto* mon = getMonsoon()) isLight = mon->lightTheme;
@@ -670,35 +669,47 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         NVGcolor head = isLight ? nvgRGB(40,44,52) : nvgRGB(210,214,222);
         NVGcolor item = isLight ? nvgRGB(150,120,20) : nvgRGB(190,160,60);
 
-        nvgFontSize(vg, 8.0f);
-        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
-        nvgFillColor(vg, head);
-        // "MIX IN" label baseline at ~83.5mm (moved down ~3mm with the box).
-        nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 1.5f), "MIX IN", nullptr);
+        // "MIX IN" header: anchor its baseline just above the first group's header anchor, so it
+        // tracks the box row without a BLEND_TOP literal.
+        auto anchorMM = [&](const std::string& name, bool& ok) -> Vec {
+            if (NSVGshape* s = findNamed(name)) { ok = true; return centerOf(s); }   // px
+            ok = false; return Vec(0, 0);
+        };
+        {
+            bool ok0 = false; Vec g0 = anchorMM("label_mixin_0", ok0);
+            nvgFontSize(vg, 8.0f);
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
+            nvgFillColor(vg, head);
+            const float baselineY = ok0 ? (g0.y - mm2px(5.5f)) : mm2px(83.5f);
+            nvgText(vg, mm2px(ED_X), baselineY, "MIX IN", nullptr);
+        }
 
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            float gx = ED_X + l*GROUP_W + BGAP*0.5f;
-            float gw = GROUP_W - BGAP;
-            float gcx = gx + gw*0.5f;
-            nvgFontSize(vg, 7.0f);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFillColor(vg, head);
-            nvgText(vg, mm2px(gcx), mm2px(BLEND_TOP + 4.0f), laneName[l], nullptr);
+            const int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[l];   // send/tap anchors are engine-ordered
+            // Group header — from the editor-ordered label_mixin_<l> anchor.
+            bool okH = false; Vec gH = anchorMM("label_mixin_" + std::to_string(l), okH);
+            if (okH) {
+                nvgFontSize(vg, 7.0f);
+                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+                nvgFillColor(vg, head);
+                nvgText(vg, gH.x, gH.y, laneName[l], nullptr);
+            }
+            // Send-item labels — one under each param_send_<eng>_<item> anchor.
             nvgFontSize(vg, 5.0f);
             nvgFillColor(vg, item);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
             for (int it = 0; it < 4; ++it) {
-                float cxs = gcx + ((it % 2)==0 ? -SEND_DX : SEND_DX);
-                float cys = BLEND_TOP + SEND_Y0 + (it / 2)*SEND_DY;
-                nvgText(vg, mm2px(cxs), mm2px(cys + 4.4f), itemName[it], nullptr);
+                bool okS = false;
+                Vec s = anchorMM("param_send_" + std::to_string(eng) + "_" + std::to_string(it), okS);
+                if (okS) nvgText(vg, s.x, s.y + mm2px(4.4f), itemName[it], nullptr);
             }
-            // Row 3: the two PRE/POST CV taps. These had NO on-panel label -- only the
-            // configParam tooltip named them -- so de-paramming left them unidentifiable
-            // (Rodney). Labelled here in the same style as the send items above.
+            // PRE/POST CV taps — LOR (param_taplor_<eng>) + SPR (param_tapspr_<eng>).
             {
-                const float TAP_ROW_DY = SEND_DY;
-                const float tapY = BLEND_TOP + SEND_Y0 + 2*TAP_ROW_DY;
-                nvgText(vg, mm2px(gcx - SEND_DX), mm2px(tapY + 4.4f), "LOR",  nullptr);
-                nvgText(vg, mm2px(gcx + SEND_DX), mm2px(tapY + 4.4f), "SPR",  nullptr);
+                bool okL = false, okSp = false;
+                Vec lTap = anchorMM("param_taplor_" + std::to_string(eng), okL);
+                Vec sTap = anchorMM("param_tapspr_" + std::to_string(eng), okSp);
+                if (okL)  nvgText(vg, lTap.x, lTap.y + mm2px(4.4f), "LOR", nullptr);
+                if (okSp) nvgText(vg, sTap.x, sTap.y + mm2px(4.4f), "SPR", nullptr);
             }
         }
     }

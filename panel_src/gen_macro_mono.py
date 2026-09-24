@@ -68,9 +68,13 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     #    inversion). 3 demarked groups (REST/MEL/OCT) below the editor, each a 2×2
     #    Len/Off/Rot/Spr send grid. "per voice, how much of Macro's global CV reaches
     #    this voice." Geometry shared with the widget labels in
-    #    StraitsSandsMacroVisual::draw — keep in lockstep:
-    #      BLEND_TOP=72 BLEND_H=36 GAP=3.5 SEND_Y0=12 SEND_DY=11 SEND_DX=7
-    BLEND_TOP=82.0; BLEND_H=37.0; BGAP=2.5; GROUP_W=ED_W/4.0  # 4 groups; taller for the tap row 3
+    #    StraitsSandsMacroVisual::draw. GEOMETRY IS OWNED HERE: the generator emits a
+    #    label_mixin_<editorLane> anchor per group (+ reuses the param_send_/taplor/tapspr
+    #    anchors for the item labels), and draw() derives every label position from
+    #    centerOf(findNamed(...)) — NOT by recomputing GROUP_W/BLEND_*. So these constants
+    #    live in ONE place; re-running the generator can no longer drift the labels off the
+    #    boxes (the ED_W/4-vs-ED_W/5 bug that recurred 3×).
+    BLEND_TOP=85.0; BLEND_H=35.0; BGAP=2.5; GROUP_W=ED_W/float(ED_LANES)  # 5 groups (q-mix is a full lane)
     SEND_Y0=10.0; SEND_DY=9.0; SEND_DX=6.0                   # DX 7→6 for narrower groups
     TAP_ROW_DY=9.0                                            # row 3 (taps) below the 2 send rows
     A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["accent"]}" stroke-width="1.0" opacity="0.6"/>')
@@ -79,9 +83,11 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     # (param_send_<editorLane>_<item>, param_taplor/tapspr_<editorLane>). No engine remap.
     MIX_XY=[None]*ED_LANES   # indexed by EDITOR lane
     TAP_XY=[None]*ED_LANES   # P9b: [LOR tap, spread tap] per EDITOR lane
+    LABEL_MIXIN_XY=[None]*ED_LANES   # group-header label anchor per EDITOR lane
     for el in range(ED_LANES):
         gx=ED_X+el*GROUP_W+BGAP*0.5; gw=GROUP_W-BGAP; gcx=gx+gw*0.5
         A(f'<rect x="{px(gx):.1f}" y="{px(BLEND_TOP):.1f}" width="{px(gw):.1f}" height="{px(BLEND_H):.1f}" rx="{px(1.4):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.92"/>')
+        LABEL_MIXIN_XY[el]=(gcx, BLEND_TOP+4.0)   # group-name label centre (matches old draw() gcx, BLEND_TOP+4)
         A(f'<line x1="{px(gx+2):.1f}" y1="{px(BLEND_TOP+7.5):.1f}" x2="{px(gx+gw-2):.1f}" y2="{px(BLEND_TOP+7.5):.1f}" stroke="{t["edborder"]}" stroke-width="0.6" opacity="0.6"/>')
         lane_sends=[]
         for item in range(4):
@@ -125,6 +131,12 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
         (lx,ly),(sx,sy) = TAP_XY[el]
         A(f'<circle id="param_taplor_{eng}" cx="{px(lx):.2f}" cy="{px(ly):.2f}" r="0.5" fill="none" stroke="none"/>')
         A(f'<circle id="param_tapspr_{eng}" cx="{px(sx):.2f}" cy="{px(sy):.2f}" r="0.5" fill="none" stroke="none"/>')
+    # Group-header label anchors (EDITOR order — the group name MEL/OCT/QMIX/REST/ACC). draw()
+    # reads centerOf(findNamed("label_mixin_<el>")) instead of recomputing ED_X+el*GROUP_W, so the
+    # header + its item labels can never drift off the boxes when GROUP_W/BLEND_* change here.
+    for el in range(ED_LANES):
+        gcx, gy = LABEL_MIXIN_XY[el]
+        A(f'<circle id="label_mixin_{el}" cx="{px(gcx):.2f}" cy="{px(gy):.2f}" r="0.5" fill="none" stroke="none"/>')
     # Direction cells (param_dir_<editorLane>) + gate-mod jacks (input_dir_mod_<editorLane>) —
     # these ARE editor-lane indexed in the C++ (getGlobalDir(editorLane)), so keep `el`.
     for el in range(ED_LANES):
