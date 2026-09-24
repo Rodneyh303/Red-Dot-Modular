@@ -242,7 +242,12 @@ bool SequencerEngine::advancePlayhead(int dir) {
             }
         }
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-            const int mlen = std::max(1, (l < 4) ? macroLOR_[l] : strandLen(l));
+            // macroLOR_ is EDITOR-lane indexed for the POLY lanes (0..4 = MEL/OCT/QMIX/REST/ACC);
+            // VAR/LEG (5/6) have no global LOR, so they use the mono strandLen. The bound was `< 4`,
+            // which both DROPPED ACCENT (strand 4, a real poly lane) and would have dropped q-mix's
+            // macroLOR had the strands not been editor-aligned — use POLY_LANE_COUNT so every poly
+            // lane (incl. q-mix + accent) reads its Macro length.
+            const int mlen = std::max(1, (l < dotModular::POLY_LANE_COUNT) ? macroLOR_[l] : strandLen(l));
             recomp(macroLaneDir_[l], mlen, macroLaneTick_[l], macroLaneSign_[l]);
         }
     }

@@ -205,7 +205,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // edit — mirroring how poly voices switch base by ownerId. LEG/VAR (l>=4)
             // are mono-only and always Mono-owned. (macroBase is published later in
             // this same block → one control-block lag, same as the macroMix delta.)
-            if (l < 4 && hasMacro && macroVis) {
+            // POLY_LANE_COUNT (5) not 4: editor lanes 0..4 = MEL/OCT/QMIX/REST/ACC are ALL poly
+            // lanes and can be delegated to Macro; the old `< 4` dropped ACCENT (editor lane 4).
+            if (l < dotModular::POLY_LANE_COUNT && hasMacro && macroVis) {
                 // STEP 3b: delegated ⟺ topo.owner(0,l) == MACRO.
                 const bool delegated = (topo.owner(0, l) == dotModular::SandsTopology::Role::MACRO);
                 if (delegated) {
@@ -618,10 +620,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // spread display reads the CV-applied global spread (base+CV, no blend)
             macroVis->spreadEffective[lane] = cvSpr;
         };
-        publishGlobal(0);
-        publishGlobal(1);
-        publishGlobal(2);
-        publishGlobal(3);   // accent lane (Stage 6)
+        // Publish EVERY poly lane's global LOR+spread, incl. QMIX (PL_QMIX=4). The manual unroll
+        // stopped at 3 (accent), so q-mix's macroBase[4] stayed zero → Macro's q-mix LOR knob and
+        // spread had no effect on the observed probability. Loop over POLY_LANES so it can't drop a
+        // lane again (matches the OUTPUT-application loops below at PL_LANES).
+        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
+            publishGlobal(lane);   // 0 REST, 1 MEL, 2 OCT, 3 ACC, 4 QMIX
 
         // Output application: only when Macro actually drives real output voices (Straits attached
         // with poly active). When macroDrivesOutput, East's per-voice sync (runs after) combines
