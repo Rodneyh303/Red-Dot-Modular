@@ -712,15 +712,17 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     if (monLookupDiv.process()) cachedMon_ = redDot::findMonsoonEitherSide(this);
     Monsoon* mon = cachedMon_;
     if (!mon) {
-        for (int l = 0; l < 4; ++l) { outputs[PROB_OUT_REST + l].setChannels(1);
-                                      outputs[PROB_OUT_REST + l].setVoltage(0.f); }
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
+            outputs[PROB_OUT_REST + l].setChannels(1);
+            outputs[PROB_OUT_REST + l].setVoltage(0.f);
+        }
         return;
     }
     // ── Gate edge detection for dir_mod inputs ────────────────────────────
     // Mono jacks (1 channel). Rising edge cycles Fwd→Rev→Pend→PingPong→Fwd.
     // Cycles the dirDispId display proxy param; the widget's step() syncs to engine.
     {
-        for (int lane = 0; lane < 4; ++lane) {
+        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
             auto& in = inputs[dirModId(lane)];
             if (!in.isConnected()) continue;
             bool high = in.getVoltage(0) > 1.f;
@@ -740,7 +742,7 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     const int nCh = 1 + nV;
     const int gs = eng.stepIndex;
     dotModular::VoiceResolver resolver(eng);
-    for (int l = 0; l < 4; ++l) {
+    for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // 5 poly lanes incl QMIX
         auto& out = outputs[PROB_OUT_REST + l];
         out.setChannels(nCh < 1 ? 1 : nCh);
         // Macro's OWN global LOR step for this lane (from macroBase+CVDelta — identical

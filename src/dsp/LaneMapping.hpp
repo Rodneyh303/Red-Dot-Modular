@@ -69,25 +69,14 @@ constexpr int MONO_LANE_TO_STRAND[7] = {
 constexpr int MONO_PARAM_TO_EDITOR[7] = { 0, 1, 2, 3, 4, 5, 6 };
 constexpr int EDITOR_TO_MONO_PARAM[7] = { 0, 1, 2, 3, 4, 5, 6 };
 
-// Poly engine lane index (0=REST 1=MELODY 2=OCTAVE 3=ACCENT — the order used
-// by East/Macro lorId, engine.polyLen[v][lane], macroBase[lane], and the
-// VoiceResolver lane argument) → editor lane index.
-//   engine 0 REST   → editor 2
-//   engine 1 MELODY → editor 0
-//   engine 2 OCTAVE → editor 1
-//   engine 3 ACCENT → editor 3
-constexpr int ENGINE_LANE_TO_EDITOR[4] = { 2, 0, 1, 3 };
-
-// Inverse: EDITOR poly lane → poly ENGINE lane (for macroBase[lane] indexing).
-//   editor 0 MELODY → engine 1
-//   editor 1 OCTAVE → engine 2
-//   editor 2 REST   → engine 0
-//   editor 3 ACCENT → engine 3
-constexpr int EDITOR_TO_ENGINE_LANE[4] = { 1, 2, 0, 3 };
-
-// Spread lanes (REST/MEL/OCT/ACCENT) share the poly engine→editor mapping.
-// Alias kept for call-site readability where "spread lane" is the natural term.
-constexpr const int* SPREAD_LANE_TO_EDITOR = ENGINE_LANE_TO_EDITOR;
+// ── OLD 4-wide poly bridge tables DELETED (q-mix regression, SANDS_LANE_INDEX_AUDIT) ──────────
+// The pre-q-mix ENGINE_LANE_TO_EDITOR[4] = {2,0,1,3}, EDITOR_TO_ENGINE_LANE[4] = {1,2,0,3} and the
+// SPREAD_LANE_TO_EDITOR alias to the former have been REMOVED. They had NO index for editor lane 2
+// (q-mix), so any straggler using them made q-mix the one unselectable lane on East/Macro. Every live
+// consumer now routes through the q-mix-aware *_QMIX tables below (verified: zero dotModular::-qualified
+// reads of the bare names remain). Deleting them — not just leaving them unused — is the fix: the audit
+// records this exact "two generations of the table coexist" class biting repeatedly. There is now ONE
+// poly bridge (the _QMIX pair) and it is length-guarded by the static_asserts after it.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // q-mix lane (ACTIVE — q-mix strand is now live) ───────────────────────────────
@@ -158,6 +147,21 @@ static_assert(varlegStoreBank(0) == 5 && varlegStoreBank(1) == 6, "varleg banks:
 
 static_assert(MONO_LANE_TO_STRAND[QMIX_EDITOR_LANE] == STRAND_QMIX, "qmix is strand 2 (editor-aligned)");
 static_assert(ENGINE_LANE_TO_EDITOR_QMIX[4] == 2 && EDITOR_TO_ENGINE_LANE_QMIX[2] == 4, "qmix poly<->editor round-trip");
+
+// LENGTH GUARDS (the point of deleting the old tables): tie each bridge table's width to the lane
+// count so the NEXT lane-count change fails to COMPILE instead of silently dropping a lane — the exact
+// recurrence the audit records. ENGINE_LANE_TO_EDITOR_QMIX is one entry per POLY lane;
+// EDITOR_TO_ENGINE_LANE_QMIX + MONO_LANE_TO_STRAND are one per EDITOR lane.
+static_assert(sizeof(ENGINE_LANE_TO_EDITOR_QMIX) / sizeof(int) == POLY_LANE_COUNT,
+              "ENGINE_LANE_TO_EDITOR_QMIX must have one entry per poly lane (POLY_LANE_COUNT)");
+static_assert(sizeof(EDITOR_TO_ENGINE_LANE_QMIX) / sizeof(int) == EDITOR_LANE_COUNT,
+              "EDITOR_TO_ENGINE_LANE_QMIX must have one entry per editor lane (EDITOR_LANE_COUNT)");
+static_assert(sizeof(MONO_LANE_TO_STRAND) / sizeof(int) == EDITOR_LANE_COUNT,
+              "MONO_LANE_TO_STRAND must have one entry per editor lane (EDITOR_LANE_COUNT)");
+// Every editor lane 0..POLY_LANE_COUNT-1 has a REAL poly engine lane; VAR/LEG are exactly POLY_NONE.
+static_assert(EDITOR_TO_ENGINE_LANE_QMIX[POLY_LANE_COUNT - 1] != POLY_NONE
+              && EDITOR_TO_ENGINE_LANE_QMIX[POLY_LANE_COUNT] == POLY_NONE,
+              "poly editor lanes map to a real engine lane; the first mono-only lane is POLY_NONE");
 
 // ─── NOTE: ALIGN THE ORDERS WHERE POSSIBLE ───────────────────────────────────
 // Of the orderings in the header block, three are already collapsed to identity (engine

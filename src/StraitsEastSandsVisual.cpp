@@ -106,8 +106,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // V1 / mono tab: MOD = the EFFECTIVE V1 spread on this lane, matching
                     // the manager's sprForLane: delegated → Macro base+CVdelta; owned →
                     // East knob + East V1 spread CV + Macro send blend. lane = spread index
-                    // 0=REST,1=MEL,2=OCT,3=ACC; CV jack cvId(lane,3).
-                    if (lane < 0 || lane >= 4) return 0.5f;
+                    // 0=REST,1=MEL,2=OCT,3=ACC,4=Q-MIX; CV jack cvId(lane,3).
+                    if (lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return 0.5f;
                     Monsoon* mon = findMonsoonEitherSide(mod);
                     auto* macroVis = mon ? mon->expanderManager.cachedMacroSandsVisual : nullptr;
                     bool delegated = macroVis && !eastOwnsLane(lane);   // MVC step 1d: store-backed
@@ -116,7 +116,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         sp = macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3];
                     } else {
                         int pid = (lane==0) ? (int)SPREAD_R : (lane==1) ? (int)SPREAD_M
-                                : (lane==2) ? (int)SPREAD_O : (int)SPREAD_A;
+                                : (lane==2) ? (int)SPREAD_O : (lane==3) ? (int)SPREAD_A
+                                : (int)SPREAD_Q;   // lane 4 = Q-MIX (was folded onto SPREAD_A)
                         sp = mod->params[pid].getValue();   // bipolar -1..1
                         if (mod->inputs[cvId(lane,3)].isConnected()) {
                             float att = (redDot::findMonsoonEitherSide(mod) ? redDot::findMonsoonEitherSide(mod)->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + 3) : 0.f);
@@ -145,7 +146,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // with Macro spread CV live, OR owned lane with a non-zero send AND
                     // Macro spread CV live (matches poly macroBlend; static blend excluded
                     // to avoid the manual-turn red-residue race).
-                    if (lane < 0 || lane >= 4) return false;
+                    if (lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return false;
                     if (mod->inputs[cvId(lane,3)].isConnected()) return true;
                     auto* macroVis = mon->expanderManager.cachedMacroSandsVisual;
                     // MVC step 1d: delegated ⟺ !eastOwnsLane (store-backed). Helper covers
@@ -218,7 +219,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // EAST_EXTRA_LANES.md stage 1: show all six lanes (VARIATION/LEGATO added), on the same
         // 14..98 band as Mono. Mode stays POLY (all mode==POLY logic unchanged); only the lane
         // count is overridden. Lanes 4/5 are LOCKED below — display-only, nothing reads them.
-        visualEditor->setLaneCount(dotModular::SandsGrid::EAST_LANES);   // 6
+        visualEditor->setLaneCount(dotModular::SandsGrid::EAST_LANES);   // 7 (MEL/OCT/QMIX/REST/ACC/VAR/LEG)
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         // Lanes fill the box evenly (no internal padding) so the live lanes line
