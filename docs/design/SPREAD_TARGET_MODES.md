@@ -1,6 +1,6 @@
 # Spread target modes — graded correlation (Rodney)
 
-STATUS: DESIGN, agreed in discussion. One open question (mode switching UI). Not built.
+STATUS: DESIGN, DECIDED. Two modes, per lane, Monsoon context menu. Not built.
 
 ## The change in one line
 Spread's interpolation TARGET is hardwired to voice 1. Make it selectable — and in particular let it
@@ -14,13 +14,20 @@ full negative = exact complement of V1. Amount is already PER (voice, lane).
 (The former AVERAGE_POLY target was removed — the mean of N iid draws concentrates at 0.5, so full
 spread collapsed everything to mush. Targeting the mono draw gives unison, a real destination.)
 
-## Three target modes
-1. **Fixed V1** — today's behaviour; the degenerate case, keep as default.
-2. **User-chosen fixed voice** — anchor = any voice k. Useful when CA isn't in the chain, and it lets
-   spread agree with a CA collapse that nominated a leader other than V1 (today they disagree, so
-   "partial collapse toward the CA leader" is not expressible).
-3. **Follow CA** — anchor = `src[v]`, the voice CA says v is correlated to. Spread then means "how
+## Two target modes (DECIDED — Rodney)
+1. **Anchor V1** — today's behaviour. Default.
+2. **Follow CA** — anchor = `src[v]`, the voice CA says v is correlated to. Spread then means "how
    strongly do I adhere to MY OWN leader". This is the mode that pays off.
+
+**A user-chosen fixed voice (anchor = any voice k) was CONSIDERED AND DROPPED.** It bought only an
+anchor other than V1 when CA is absent — and CA is core to the suite, not optional, so anyone reaching
+for graded correlation has it. Where CA IS present a fixed arbitrary anchor is strictly WORSE than
+follow-CA: it can't track the leader when pins move, and it gives one hub where follow-CA gives the
+whole structure. It also cost a 1..16 target-voice submenu on top of the mode item. Little is lost.
+
+Dropping it CLOSES two open questions: there is no target INDEX any more (so no "which frame is it named
+in" problem — the anchor is read from `src[v]`), and the fallback rule shrinks to "CA absent, or no table
+for that stream → anchor V1", i.e. exactly today's behaviour.
 
 ## Why follow-CA is the right shape
 **CA sets WHO (binary, one source per voice). Spread sets HOW MUCH (continuous, signed).** Neither
@@ -78,20 +85,25 @@ PRECEDENT: the earlier 2-option spread target (Average Poly / Mono Draw) was a *
 item and the **single source of truth**, mirrored onto the engine so every visual SpreadManager read it
 (replacing per-visual `interpUseMono` flags). When AVERAGE_POLY was deleted the field went with it —
 `Monsoon.hpp:658` still carries the ORPHANED COMMENT describing it (clean that up).
-Proposal: reuse that pattern — Monsoon context menu, single source of truth, mirrored to the engine.
-Sub-questions:
-- **Global or per-lane?** Global is simpler and matches the precedent; per-lane would allow different
-  anchors per lane (e.g. melody follows CA, rhythm anchored to V1) at the cost of 4-5x the UI.
-- Mode 2 needs a TARGET VOICE picker as well as a mode (submenu 1..16, or a param).
+DECIDED: reuse that pattern — **Monsoon context menu, single source of truth, mirrored to the engine**
+(never per-visual flags: that is what diverged last time), **PER LANE**.
+- **PER LANE, not global (Rodney).** The lanes are independent, so "melody follows CA, rhythm stays
+  anchored to V1" IS the musical control; one global setting would couple decisions with no reason to be
+  coupled. Cost is a few menu rows — cheap against that.
+- UI: a "Spread target" SUBMENU with one two-state row per spread lane (REST, MELODY, OCTAVE, ACCENT).
 - Persist in JSON like the old flag did.
+- CONFIRM: q-mix is a melody-family value lane with its own slewed buffers (slewedQmix /
+  slewedPolyQmix) — does it get its own row, or follow MELODY's setting?
 
 ## Other OPEN items (small)
-- **Which frame is a fixed target index in** — pre-CA (Straits voice) or post-CA? For composing with
-  collapse it should be named in the same frame as CA's leader, or the anchor drifts when pins move.
-- **Fallback** when the chosen target ≥ active voice count → fall back to voice 1 (today's behaviour).
 - **Keep the anchor PRE-spread** (as the code does now): correlation is then one hop only and cycle-proof.
   Using the leader's POST-spread value would propagate transitively and become ill-defined the moment
   CA's pins form a cycle — which a permutation easily does. One hop is the deliberate choice; its cost is
   that a chain 1→2→3 gives corr(1,3)=0.
 - Manual pins are overwritten when a verb fires on that stream — lock mode protects a hand-authored
   partition.
+- Clean up the ORPHANED comment at `Monsoon.hpp:658` (describes the deleted Average Poly / Mono Draw
+  field) when this lands.
+
+---
+Origin: the idea arrived on Rodney's walk to the MRT, morning commute.
