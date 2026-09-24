@@ -810,7 +810,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         const int engLane = (lane >= 0 && lane < dotModular::SandsGrid::POLY_LANES)
                           ? dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane] : lane;
         const bool macroOwns = !eastOwnsLane(engLane);   // MVC step 1d: store-backed (engine lane)
-        static const char* laneNames[5] = { "MELODY", "OCTAVE", "Q-MIX", "REST", "ACCENT" };
+        static const char* laneNames[dotModular::SandsGrid::POLY_LANES] =
+            { "MELODY", "OCTAVE", "Q-MIX", "REST", "ACCENT" };   // EDITOR order (lane is an editor lane)
+        static_assert(sizeof(laneNames)/sizeof(laneNames[0]) == dotModular::SandsGrid::POLY_LANES,
+                      "ownership-menu lane-name table must be one per poly lane");
         const char* ln = (lane >= 0 && lane < dotModular::SandsGrid::POLY_LANES) ? laneNames[lane] : "?";
 
         Menu* menu = createMenu();
