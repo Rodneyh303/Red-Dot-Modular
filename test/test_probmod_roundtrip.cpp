@@ -47,18 +47,20 @@ static int g_pass = 0, g_fail = 0;
 
 namespace SR = dotModular;   // STRAND_* enum lives in dotModular
 
-// The 6 mono strands in enum order (MEL=0,OCT=1,RHYTHM=2,ACC=3,VAR=4,LEG=5).
-static const int kStrands[6] = {
-    SR::STRAND_MELODY, SR::STRAND_OCTAVE, SR::STRAND_RHYTHM,
+// The 7 mono strands in QMIX-widened enum order (MEL=0,OCT=1,QMIX=2,RHYTHM=3,ACC=4,VAR=5,LEG=6).
+// (Was 6 pre-QMIX with RHYTHM=2; QMIX inserted at 2 shifted RHYTHM→3, ACC→4, VAR→5, LEG→6.)
+static const int kStrands[7] = {
+    SR::STRAND_MELODY, SR::STRAND_OCTAVE, SR::STRAND_QMIX, SR::STRAND_RHYTHM,
     SR::STRAND_ACCENT, SR::STRAND_VARIATION, SR::STRAND_LEGATO
 };
-static const char* kStrandName[6] = { "MELODY","OCTAVE","RHYTHM","ACCENT","VARIATION","LEGATO" };
+static const char* kStrandName[7] = { "MELODY","OCTAVE","QMIX","RHYTHM","ACCENT","VARIATION","LEGATO" };
+static constexpr int kNStrands = 7;
 
 // Unique sentinels per (item, strand) so any cross-strand or cross-item leak is caught.
 // item: 0=len 1=off 2=rot. Kept in the legal-ish range but distinct.
 static int monoSentinel(int item, int strandEnum) { return 100 + item * 10 + strandEnum; }
 // Poly: unique per (item, bank, lane).
-static int polySentinel(int item, int bank, int lane) { return 1000 + item*300 + bank*4 + lane; }
+static int polySentinel(int item, int bank, int lane) { return 1000 + item*300 + bank*5 + lane; }  // *5: 5 poly lanes (QMIX)
 
 int main() {
     using VR = dotModular::VoiceResolver;
@@ -81,14 +83,14 @@ int main() {
     SequencerEngine eng;
 
     // ── 1. MONO LOR round-trips through strand*Ref / strand* ───────────────────
-    SUITE("Mono LOR: set via strand*Ref, read via strand* — all 6 strands, no leak");
+    SUITE("Mono LOR: set via strand*Ref, read via strand* — all 7 strands, no leak");
     // Write every strand/item to a unique sentinel.
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < kNStrands; ++i) {
         eng.strandLenRef(kStrands[i]) = monoSentinel(0, kStrands[i]);
         eng.strandOffRef(kStrands[i]) = monoSentinel(1, kStrands[i]);
         eng.strandRotRef(kStrands[i]) = monoSentinel(2, kStrands[i]);
     }
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < kNStrands; ++i) {
         TEST(std::string("mono LEN round-trips for ") + kStrandName[i], {
             EXPECT_EQ(eng.strandLen(kStrands[i]), monoSentinel(0, kStrands[i]));
         });
@@ -125,14 +127,14 @@ int main() {
     });
 
     // ── 2a. Editor-order poly accessor: pins the editor→engine lane conversion ──
-    // The unified [16][6] storage is EDITOR-ordered. polyLOR/polyLORRef present the (engine-ordered)
-    // poly storage in editor order. Assert the conversion matches EDITOR_TO_ENGINE_LANE exactly, so a
-    // lane-swap in the Step-2b physical merge is caught here.
-    SUITE("Poly LOR editor-order accessor: editorLane→PL_ engine lane conversion is correct");
-    TEST("polyLOR(bank, editorLane, item) reads the EDITOR_TO_ENGINE_LANE-mapped engine cell", {
+    // The unified [16][7] storage is EDITOR-ordered. polyLOR/polyLORRef present the (engine-ordered)
+    // poly storage in editor order. Assert the conversion matches EDITOR_TO_ENGINE_LANE_QMIX exactly
+    // (5 poly editor lanes incl. QMIX), so a lane-swap in the physical merge is caught here.
+    SUITE("Poly LOR editor-order accessor: editorLane→PL_ engine lane conversion is correct (QMIX, 5 lanes)");
+    TEST("polyLOR(bank, editorLane, item) reads the EDITOR_TO_ENGINE_LANE_QMIX-mapped engine cell", {
         for (int b = 0; b < 15; ++b)
-            for (int ed = 0; ed < 4; ++ed) {
-                int engLane = dotModular::EDITOR_TO_ENGINE_LANE[ed];
+            for (int ed = 0; ed < SequencerEngine::PL_LANES; ++ed) {   // 5 poly editor lanes (PL_LANES incl QMIX)
+                int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[ed];
                 // reading via editor lane `ed` must return the sentinel stored at engine lane `engLane`
                 EXPECT_EQ(eng.polyLOR(b, ed, SequencerEngine::LOR_LEN), polySentinel(0, b, engLane));
                 EXPECT_EQ(eng.polyLOR(b, ed, SequencerEngine::LOR_OFF), polySentinel(1, b, engLane));
@@ -141,12 +143,12 @@ int main() {
     });
     TEST("polyLORRef(editorLane) and polyLenE(engineLane) address the SAME unified cell", {
         // write via the editor-order ref at editor lane ed; the engine-order accessor at the
-        // corresponding engine lane (EDITOR_TO_ENGINE_LANE[ed]) must read the same value, and the
+        // corresponding engine lane (EDITOR_TO_ENGINE_LANE_QMIX[ed]) must read the same value, and the
         // editor-order reader must round-trip. Proves the two accessor families agree post-merge.
         for (int b = 0; b < 15; ++b)
-            for (int ed = 0; ed < 4; ++ed) {
-                int engLane = dotModular::EDITOR_TO_ENGINE_LANE[ed];
-                int val = 7000 + b*4 + ed;
+            for (int ed = 0; ed < SequencerEngine::PL_LANES; ++ed) {
+                int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[ed];
+                int val = 7000 + b*5 + ed;
                 eng.polyLORRef(b, ed, SequencerEngine::LOR_LEN) = val;
                 EXPECT_EQ(eng.polyLOR(b, ed, SequencerEngine::LOR_LEN), val);   // editor round-trip
                 EXPECT_EQ(eng.polyLenE(b, engLane), val);                       // engine accessor agrees
@@ -161,14 +163,14 @@ int main() {
     //       distinct SLOTS after unification: slot 0 vs slots 1..15) ────────────
     SUITE("Mono and poly storage are independent (writing one never disturbs the other)");
     TEST("mono values intact after all poly writes", {
-        for (int i = 0; i < 6; ++i) {
+        for (int i = 0; i < kNStrands; ++i) {
             EXPECT_EQ(eng.strandLen(kStrands[i]), monoSentinel(0, kStrands[i]));
             EXPECT_EQ(eng.strandOff(kStrands[i]), monoSentinel(1, kStrands[i]));
             EXPECT_EQ(eng.strandRot(kStrands[i]), monoSentinel(2, kStrands[i]));
         }
     });
     TEST("re-writing mono does not perturb any poly cell", {
-        for (int i = 0; i < 6; ++i) eng.strandLenRef(kStrands[i]) = monoSentinel(0, kStrands[i]) + 1;
+        for (int i = 0; i < kNStrands; ++i) eng.strandLenRef(kStrands[i]) = monoSentinel(0, kStrands[i]) + 1;
         for (int b = 0; b < 15; ++b)
             for (int l = 0; l < SequencerEngine::PL_LANES; ++l)
                 EXPECT_EQ(eng.polyLenE(b, l), polySentinel(0, b, l));
@@ -177,26 +179,26 @@ int main() {
     // ── 4. Spread storage on the engine (B-corrected): spread[16][6] editor-ordered, accessed
     //       engine-order via spreadE/spreadERef. Pins the engine→editor conversion so the migration
     //       of mono spread from the visual onto the engine is provably permutation-correct. ───────
-    SUITE("Spread engine storage: spreadERef(slot,engLane) round-trips + editor↔engine agree");
-    TEST("spreadERef writes the ENGINE_LANE_TO_EDITOR-mapped cell; spreadE reads it back", {
+    SUITE("Spread engine storage: spreadERef(slot,engLane) round-trips + editor↔engine agree (QMIX, 5 lanes)");
+    TEST("spreadERef writes the ENGINE_LANE_TO_EDITOR_QMIX-mapped cell; spreadE reads it back", {
         for (int slot = 0; slot < SequencerEngine::kVoiceSlots; ++slot)
-            for (int engLane = 0; engLane < 4; ++engLane) {
+            for (int engLane = 0; engLane < SequencerEngine::PL_LANES; ++engLane) {   // 5 spread lanes incl QMIX
                 float val = 0.01f * slot + 0.001f * engLane - 0.5f;   // distinct bipolar sentinel
                 eng.spreadERef(slot, engLane) = val;
                 // engine accessor round-trips
                 EXPECT_NEAR(eng.spreadE(slot, engLane), val);
-                // and it landed at the editor-lane cell ENGINE_LANE_TO_EDITOR[engLane]
-                EXPECT_NEAR(eng.spread[slot][dotModular::ENGINE_LANE_TO_EDITOR[engLane]], val);
+                // and it landed at the editor-lane cell ENGINE_LANE_TO_EDITOR_QMIX[engLane]
+                EXPECT_NEAR(eng.spread[slot][dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane]], val);
             }
     });
     TEST("distinct slots/lanes never alias (no cross-voice / cross-lane spread leak)", {
         for (int slot = 0; slot < SequencerEngine::kVoiceSlots; ++slot)
-            for (int engLane = 0; engLane < 4; ++engLane)
+            for (int engLane = 0; engLane < SequencerEngine::PL_LANES; ++engLane)
                 EXPECT_NEAR(eng.spreadE(slot, engLane), 0.01f * slot + 0.001f * engLane - 0.5f);
     });
     TEST("spread storage is independent of lorStore_ (writing spread leaves LOR intact)", {
         // LOR mono slot-0 sentinels from suite 1 must survive spread writes above.
-        for (int i = 0; i < 6; ++i)
+        for (int i = 0; i < kNStrands; ++i)
             EXPECT_EQ(eng.strandLen(kStrands[i]), monoSentinel(0, kStrands[i]) + 1); // +1 from suite-3 rewrite
     });
 

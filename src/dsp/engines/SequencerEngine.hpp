@@ -32,6 +32,7 @@ struct StepResult {
     bool stepped = false;   // true if a step edge actually fired this sample
     bool wrapped = false;   // true if the phrase boundary wrapped
     bool accented = false;  // true if this step is accented (NEW)
+    bool qmixHit  = false;  // Task 4: true if the mono q-mix draw crossed QMIX_LEVEL this step
     int  forStep = -1;      // the stepIndex this result was computed for (Lantern pairs decision→column)
 };
 
@@ -42,6 +43,10 @@ struct PolyVoice {
     GateState gsStep;   // STEP mirror: same calls as gs but continuations re-struck (no fusion)
     float restProb = 0.0f;
     float accentProb = 0.0f;   // per-voice accent probability (accent as a poly lane)
+    float qmixLevel = 0.0f;    // per-voice q-mix LEVEL (Task 4 poly): the level this voice's q-mix
+                               // draw is thresholded against. 0 = always quantised (legacy), 1 =
+                               // always generated. Mirrors restProb/accentProb (per-voice decision
+                               // cache written by ModeController from getEffectivePolyQmix).
     bool  accented = false;    // result of this voice's own accent draw this step
     // Rule 2 (EAST_EXTRA_LANES §4d): latched at the mono chain onset — true if this voice
     // PLAYED (vs rested) when mono started the gate, and held for the chain's life. It, not
@@ -168,9 +173,13 @@ struct SequencerEngine {
     // endpoint for one extra step (repeat) before flipping. See plans/lane_direction_ui.md.
     enum class LaneDir : uint8_t { Forward = 0, Reverse = 1, Pendulum = 2, PingPong = 3 };
     enum class LaneFlipQuant { StepEdge, Phrase };
-    int laneTick_[dotModular::NUM_STRANDS]        = {0,0,0,0,0,0};
-    int laneSign_[dotModular::NUM_STRANDS]        = {1,1,1,1,1,1};   // derived from laneDir_ (+1/-1)
-    int laneSignPending_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1};
+    // NUM_STRANDS-sized (7 with QMIX). The SIGN arrays MUST default +1 for every strand — a 6-element
+    // brace on a 7-element array (the accent anti-pattern, QMIX_LANE_PARITY_CHECKLIST.md) value-inited
+    // strand 6 (LEGATO) to 0 until the first reset(). Braces now list all 7 so adding an 8th strand can't
+    // silently drop it (and mismatches the count visibly if not updated).
+    int laneTick_[dotModular::NUM_STRANDS]        = {0,0,0,0,0,0,0};
+    int laneSign_[dotModular::NUM_STRANDS]        = {1,1,1,1,1,1,1};   // derived from laneDir_ (+1/-1)
+    int laneSignPending_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1,1};
     LaneDir laneDir_[dotModular::NUM_STRANDS]        = {};   // default Forward
     LaneDir laneDirPending_[dotModular::NUM_STRANDS] = {};
     bool lanePendulum_[dotModular::NUM_STRANDS]   = {false,false,false,false,false,false}; // derived: Pendulum/PingPong
@@ -223,10 +232,10 @@ struct SequencerEngine {
     // Macro's widget reads this for its playhead, so Macro's display always reflects
     // Macro's DirCell, even when Mono owns the lane (engine's laneTick_ follows Mono).
     int macroLaneTick_[dotModular::NUM_STRANDS] = {};
-    int macroLaneSign_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1};
+    int macroLaneSign_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1,1};   // NUM_STRANDS-sized (was 6-elem → LEGATO=0 pre-reset)
     LaneDir macroLaneDir_[dotModular::NUM_STRANDS] = {};
     bool macroPingPongHold_[dotModular::NUM_STRANDS] = {};
-    int macroLOR_[4] = {16,16,16,16};  // Macro's own LOR lengths (lanes 0..3) for bounce
+    int macroLOR_[5] = {16,16,16,16,16};  // Macro's own LOR lengths (lanes 0..4: REST/MEL/OCT/ACC/QMIX) for bounce
     // Per-voice per-strand accumulated tick (poly analogue of laneTick_). Advanced in advancePlayhead
     // by dir * polyLaneSign(v, s) — the effective sign is the voice's OWN, i.e. ABSOLUTE, not
     // relative to mono. laneSignV_ = +1 (default) = Forward; -1 = Reverse. A voice therefore does
@@ -277,10 +286,10 @@ struct SequencerEngine {
     // alongside the poly arrays. Item order is fixed by MonoItem below. Access via strandLen/Off/Rot
     // + …Ref (unchanged signatures); direct callers use lorRef(strand, item).
     // ── Unified probability-modifier LOR storage (Step 2b-ii) ────────────────────
-    // ONE array for all 16 voices × 6 editor lanes × 3 items, replacing the separate monoLOR[6][3]
-    // and polyLen/Off/Rot[15][4]. Indexed [voiceSlot][editorLane][item] where
+    // ONE array for all 16 voices × 7 editor lanes × 3 items, replacing the separate monoLOR[7][3]
+    // and polyLen/Off/Rot[15][5]. Indexed [voiceSlot][editorLane][item] where
     //   voiceSlot = VoiceResolver::voiceSlot(v):  slot 0 = V1 (mono), slots 1..15 = V2..V16 (poly);
-    //   editorLane 0..5 = MEL,OCT,REST,ACC,VAR,LEG (poly uses only 0..3; VAR/LEG are mono-only);
+    //   editorLane 0..6 = MEL,OCT,QMIX,REST,ACC,VAR,LEG (poly uses 0..4; VAR/LEG are mono-only);
     //   item = MonoItem {LOR_LEN,LOR_OFF,LOR_ROT}.
     // This is the storage layer finally matching the VoiceResolver addressing layer. All access goes
     // through the accessors below — mono via lor()/lorRef() (editor lane == strand), poly via the
@@ -295,14 +304,14 @@ struct SequencerEngine {
     int        lor   (int strand, int item) const { return lorStore_[0][strandClamp(strand)][item]; }
     static int strandClamp(int s) { return (s >= 0 && s < dotModular::NUM_STRANDS) ? s : dotModular::STRAND_RHYTHM; }
 
-    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_LANES = 4 };
+    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_QMIX = 4, PL_LANES = 5 };
 
     // ── EAST_EXTRA_LANES stage 2: per-voice ARTICULATION (clamped) ─────────────────────────────
     // VARIATION/LEGATO are mono STRANDS, not poly lanes, so they have no PL_ id and CANNOT be
-    // addressed via polyLenE()/editorLane() (that masks & 3 and would alias VAR->REST). Use the
+    // addressed via polyLenE()/editorLane() (that masks & 7 and would alias VAR->QMIX). Use the
     // editor-order accessors polyLOR/polyLORRef, which mask & 7.
-    static constexpr int EDITOR_LANE_VARIATION = 4;
-    static constexpr int EDITOR_LANE_LEGATO    = 5;
+    static constexpr int EDITOR_LANE_VARIATION = 5;
+    static constexpr int EDITOR_LANE_LEGATO    = 6;
 
     // OFF by default: every poly voice uses mono's nvIdx exactly, as before. Even when ON, the
     // per-voice LOR defaults to identity (len 16, off 0, rot 0), so voices read mono's own
@@ -339,15 +348,19 @@ struct SequencerEngine {
     int nvIdxForVoice(int bank, const PatternInput& input) const;
 
     // The single engine→editor lane conversion. The modifier stores (lorStore_, spread) are editor-
-    // ordered; every accessor that takes an engine PL_ lane converts through HERE — one definition
-    // instead of the ENGINE_LANE_TO_EDITOR[engLane&3] formula previously inlined in each accessor.
-    // engLane is a POLY lane (PL_REST/PL_MELODY/PL_OCTAVE/PL_ACCENT) — 0..3 ONLY. VARIATION and
-    // LEGATO are mono strands, NOT poly lanes (PL_LANES == 4), so they have no engine-order id.
-    // The `& 3` therefore cannot be reached with 4/5 by correct code — but if it were, it would
-    // silently alias VAR->REST and LEG->MELODY. For per-voice VAR/LEG LOR use the EDITOR-order
-    // accessors polyLOR/polyLORRef (they mask & 7 and index lorStore_ directly). See
-    // docs/design/EAST_EXTRA_LANES.md.
-    static int editorLane(int engLane) { return dotModular::ENGINE_LANE_TO_EDITOR[engLane & 3]; }
+    // ordered; every accessor that takes an engine PL_ lane converts through HERE — one definition.
+    // engLane is a POLY lane: PL_REST/PL_MELODY/PL_OCTAVE/PL_ACCENT/PL_QMIX = 0..4 (PL_LANES == 5).
+    // Uses the QMIX-aware table so PL_QMIX(4) → editor 2 explicitly (the old `& 3` formula aliased
+    // 4→0 and only landed on editor 2 by coincidence). VARIATION/LEGATO are mono strands, NOT poly
+    // lanes, so they have no engine-order id; for their per-voice LOR use the EDITOR-order accessors
+    // polyLOR/polyLORRef (they mask & 7 and index lorStore_ directly). See EAST_EXTRA_LANES.md.
+    static int editorLane(int engLane) {
+        // 5 = PL_LANES (poly lanes incl QMIX). Literal, not SandsGrid::POLY_LANES, to keep this
+        // low-level engine header free of the UI SandsGrid include (only LaneMapping is pulled in).
+        return (engLane >= 0 && engLane < 5)
+                   ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane]
+                   : dotModular::ENGINE_LANE_TO_EDITOR_QMIX[0];   // fallback → REST's editor lane
+    }
 
     // Editor-order poly accessors: bank b → slot b+1, editorLane indexes the unified array directly
     // (storage IS editor order now — no permutation).
@@ -404,14 +417,14 @@ struct SequencerEngine {
     // top of each process block via beginStrandWriteBlock(). setStrand() records the
     // writer and, in debug, asserts no second role writes the same strand in one block.
     // Strand index domain is dotModular::STRAND_* (0..5). NONE means "not yet written".
-    StrandWriter strandWriter[6] = { StrandWriter::NONE };
+    StrandWriter strandWriter[dotModular::NUM_STRANDS] = { StrandWriter::NONE };   // 7 strands incl QMIX
 
     // Generalised single-writer detector for non-strand shared fields (debug-only). Reset with the
     // strand ledger at the top of each process block.
     WriteLedger writeLedger;
 
     void beginStrandWriteBlock() {
-        for (int i = 0; i < 6; ++i) strandWriter[i] = StrandWriter::NONE;
+        for (int i = 0; i < dotModular::NUM_STRANDS; ++i) strandWriter[i] = StrandWriter::NONE;
         writeLedger.beginBlock();
     }
 
@@ -420,7 +433,7 @@ struct SequencerEngine {
     // (len clamped 1..16; off/rot wrapped 0..15 — same normalisation the call sites did.)
     void setStrand(StrandWriter role, int strand, int len, int off, int rot) {
 #ifndef NDEBUG
-        if (strand >= 0 && strand < 6) {
+        if (strand >= 0 && strand < dotModular::NUM_STRANDS) {
             StrandWriter prev = strandWriter[strand];
             if (prev != StrandWriter::NONE && prev != role) {
                 // Two different producers wrote the same strand this block — the exact
@@ -450,7 +463,7 @@ struct SequencerEngine {
             strandWriter[strand] = role;
         }
 #endif
-        if (strand >= 0 && strand < 6) {
+        if (strand >= 0 && strand < dotModular::NUM_STRANDS) {
             strandLenRef(strand) = rack::math::clamp(len, 1, 16);
             strandOffRef(strand) = ((off % 16) + 16) % 16;
             strandRotRef(strand) = ((rot % 16) + 16) % 16;
@@ -479,8 +492,10 @@ struct SequencerEngine {
     static inline int polyLaneToStrand(int polyLane) {
         return (polyLane == PL_REST)   ? dotModular::STRAND_RHYTHM
              : (polyLane == PL_MELODY) ? dotModular::STRAND_MELODY
+             : (polyLane == PL_OCTAVE) ? dotModular::STRAND_OCTAVE
              : (polyLane == PL_ACCENT) ? dotModular::STRAND_ACCENT
-                                       : dotModular::STRAND_OCTAVE;
+             : (polyLane == PL_QMIX)   ? dotModular::STRAND_QMIX
+                                       : dotModular::STRAND_RHYTHM;  // fallback
     }
     // Mono reads by STRAND — plain own bank (random_[0][strand]); remap is upstream.
     inline const float (&monoStrand(int strand) const)[16] {
@@ -524,11 +539,32 @@ struct SequencerEngine {
     // The sounding pitch for a voice at its onset: quantised external CV in quantiser mode, else the
     // internal draw via genPitchLive. `voiceIdx` 0..15 (0 = mono/voice-0). outSem = the sounding degree
     // (for flash LEDs). r_semi/r_oct = the voice's melody/octave draws (used only in the internal path).
-    float voicePitch(int voiceIdx, int& outSem, const PatternInput& input, float r_semi, float r_oct) {
-        if (quantiserPitchSource) {
+    //
+    // QMIX per-step source-select (mono/voice-0 only): when quantiserPitchSource is set AND
+    // forceGenerated is true, this step takes the INTERNALLY GENERATED pitch (genPitchLive, the pitch
+    // mode A would produce) INSTEAD of the quantised external CV — the q-mix "use generated" branch.
+    // forceGenerated is the mono q-mix decision (r_qmix < qmixLevel); it is only ever true in
+    // quantiser modes (quantiserPitchSource gates it). When forceGenerated is false (the default,
+    // and always for poly voices) behaviour is byte-identical to the legacy path. The generated
+    // branch flows through genPitchLive, which writes outSem the same way mode A does, so
+    // lastSemitone/LED/degree naming stay correct for generated notes.
+    float voicePitch(int voiceIdx, int& outSem, const PatternInput& input, float r_semi, float r_oct,
+                     bool forceGenerated = false) {
+        if (quantiserPitchSource && !forceGenerated) {
             const int vi = (voiceIdx < 0) ? 0 : (voiceIdx > 15 ? 15 : voiceIdx);
-            float v = quantize(quantiserCV[vi]);
+            // CA-routed input CV (QMIX_LANE_PARITY §"The blend" step 2): the external input CV rides
+            // CA's MELODY source plane, so a voice can quantise ANOTHER voice's input line. voiceIdx is
+            // the ENGINE voice (0=mono/V1, k=poly V(k+1)) — the SAME indexing as the CA pin rows — so
+            // caInputCvSrcRow(vi) maps directly. Identity default = each voice reads its own CV (the
+            // exact legacy quantiserCV[vi]); byte-identical when caMelodySrc is identity.
+            const int srcVi = pe.caInputCvSrcRow(vi);
+            const int rvi = (srcVi < 0) ? 0 : (srcVi > 15 ? 15 : srcVi);
+            float v = quantize(quantiserCV[rvi]);
             float frac = v - std::floor(v);
+            // markSemi correctness (QMIX_LANE_PARITY §"one correctness rule"): the QUANTISED branch
+            // names its degree in outSem, and the generated branch does so via genPitchLive — so the
+            // caller's triggerNote/slideNote/extendHold marks lastSemitone from WHICHEVER value the mux
+            // picked. "What we picked" and "what CA/Lantern see" never drift.
             outSem = pe.tuning.isDefault12TET ? (int(std::round(frac * 12.f)) % 12)
                                               : pe.tuning.nearestDegree(frac);
             return v;
@@ -590,8 +626,10 @@ struct SequencerEngine {
     static int polyLaneStrand(int polyLane) {
         return (polyLane == PL_REST)   ? dotModular::STRAND_RHYTHM
              : (polyLane == PL_MELODY) ? dotModular::STRAND_MELODY
+             : (polyLane == PL_OCTAVE) ? dotModular::STRAND_OCTAVE
              : (polyLane == PL_ACCENT) ? dotModular::STRAND_ACCENT
-                                       : dotModular::STRAND_OCTAVE;
+             : (polyLane == PL_QMIX)   ? dotModular::STRAND_QMIX
+                                       : dotModular::STRAND_RHYTHM;  // fallback
     }
     // Per-voice tick for an engine poly lane. The voice's direction is ABSOLUTE (its own DirCell),
     // so this tracks mono's laneTick_[strand] only while both the voice and mono's lane are
@@ -617,8 +655,10 @@ struct SequencerEngine {
     inline float masterLaneProbability(int polyLane) const {
         int strand = (polyLane == PL_REST)   ? dotModular::STRAND_RHYTHM
                    : (polyLane == PL_MELODY) ? dotModular::STRAND_MELODY
+                   : (polyLane == PL_OCTAVE) ? dotModular::STRAND_OCTAVE
                    : (polyLane == PL_ACCENT) ? dotModular::STRAND_ACCENT
-                                             : dotModular::STRAND_OCTAVE;
+                   : (polyLane == PL_QMIX)   ? dotModular::STRAND_QMIX
+                                             : dotModular::STRAND_RHYTHM;  // fallback
         return pe.finalRandomByStrand(strand, masterLaneStep(polyLane));
     }
 
@@ -630,9 +670,10 @@ struct SequencerEngine {
     int getAccentStep() const;  // NEW: accent strand DNA index
     int getMelodyStep() const;
     int getOctaveStep() const;
+    int getQmixStep() const;    // Task 4: q-mix strand DNA index (mono)
 
     bool shouldTriggerStep(int ppqn) const;
-    StepResult executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, const PatternInput& input, bool wasHeld, bool hadTail);
+    StepResult executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
     StepResult executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir = +1);
     StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input);

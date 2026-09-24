@@ -144,3 +144,111 @@ Guard rails:
 
 ## Status
 Plan only — not yet built. Seed sharing explicitly out of scope (Rodney).
+
+---
+
+## PRIMARY MONSOON — single owner for ALL asymmetric operations (Rodney, spec)
+
+When two (or more) Monsoons share one CA, exactly ONE is the **PRIMARY**. There is a single primary
+for everything — NOT a per-operation owner. This supersedes the earlier "first sync() caller this block
+wins" language for anything the user can observe or that must be reproducible; that scheduler-order rule
+may stay ONLY as an internal tie-break for the pin-mutation write (both Monsoons read the same result, so
+it's invisible there), but it does NOT determine the primary.
+
+### Why one primary (not per-op owner)
+Pin CORRELATION is symmetric: `rhythmSrc`/`melodySrc` are written once and read by every sharing Monsoon,
+so all of them get identical correlation for free. That half needs no owner. But some operations are
+inherently asymmetric — they mutate CA's single shared state, or CA reads a value back FROM a Monsoon —
+and cannot come from two hosts at once. All such operations follow the SAME primary, so the user learns
+one fact ("this Monsoon is primary") rather than a different owner per feature.
+
+Asymmetric operations that follow the primary:
+- **Reseed-on-restart** — reseeding changes the shared Philox correlation keys (`reseedCorrKeys`). Only the
+  primary's restart reseeds. A secondary's restart does NOT reseed CA. (This is the feature that forced
+  this spec: a non-deterministic owner would make "which restart reseeds" non-deterministic and break
+  reproducibility.)
+- **Theme / lightTheme** — CA follows the PRIMARY Monsoon's light/dark flag. (Was "the connected Monsoon";
+  make it the primary explicitly.)
+- **Pin mutation** (`applyPendingTransforms`) — applied once per block. Keep the existing
+  `transformsAppliedThisBlock` first-caller guard as the mechanism, but the intended owner is the primary;
+  since both Monsoons read the identical result, scheduler-order first-caller remains an acceptable
+  internal implementation of "applied once" and needs no change for correctness.
+- **Owner voice count** (`vActive` = numPolyVoices+1) — CA's operating voice count is the PRIMARY's.
+- **Lock-mode participation** — lock mode's store->engine commit is a write to CA's shared state; only the
+  PRIMARY sets CA's lock participation. Set via CA context menu, active on primary authority only.
+  See LOCK_MODE_PLAN.md "Multi-Monsoon". (NOTE: the standard per-knob MOD RING is NOT primary-gated — it's
+  a read of a CA-local param's live CV, same for every Monsoon.) 
+- Any future op that mutates shared CA state or reads back from a host: follows the primary. Default rule.
+
+### How the primary is chosen — DETERMINISTIC
+The primary MUST be deterministic (not scheduler-order). Rule: **lowest `pairId` among the Monsoons bound
+to this CA is primary.** Rationale: pairId is rack-wide, so it survives cross-row rigs where "adjacent"
+is fuzzy (the shared-CA feature explicitly supports Monsoons on different rows); it is stable across
+re-scan; and it already has a visible token (`pairColour(pairId)`). Ties cannot occur (pairId unique).
+Fallback when no pairId override is in play (pure adjacency, followCA==0): right-first via
+`findMonsoonEitherSide` — consistent with every other expander's host binding, so reseed/theme inherit the
+same owner as pitch/gate already do.
+
+### The user MUST be able to see which Monsoon is primary — REQUIRED, not optional
+This revises Step 2's "pair badge optional / shared-access hint NOT needed" — that was correct while ONLY
+pins (symmetric) were shared, but reseed + theme are asymmetric and otherwise invisible, so ownership must
+be shown:
+- **Promote the pair badge to REQUIRED on CA and on each sharing Monsoon.** Reuse `pairColour(pairId)`.
+- **The badge shows role directionally:** the PRIMARY Monsoon shows a FILLED/ringed badge; each SECONDARY
+  (reader) shows a HOLLOW badge of the same pair colour. CA shows the pair colour. So "which is primary"
+  is answerable at a glance — directly the gap the user raised.
+- CA's existing connect dot (filled=connected+claimed / hollow=not) stays; the pair badge is the ADDITION
+  that carries primary-vs-secondary, which the connect dot does not encode.
+
+### One-line contract
+Both Monsoons share CA's correlation equally; the PRIMARY (lowest pairId; else right-first adjacency)
+additionally owns reseed-on-restart, theme, mutation, and voice count; the pair badge shows primary
+(filled) vs secondary (hollow).
+
+Status: SPEC (Rodney). Folds in the reseed-on-restart ownership decision. Build alongside Step 4 +
+the reseed feature; the badge is now part of the shared-CA deliverable, not optional.
+
+### Mod-ring SCOPE menu: only the CA ENTRY defers to primary (Rodney)
+Monsoon's context menu has a mod-ring-SCOPE setting listing several expanders (Sands, Causeway, …, and
+CA) — "which expanders show mod rings". It is one-per-Monsoon and fully coherent for every SINGLE-OWNER
+expander (Model A: one host each) — those entries are unaffected, each Monsoon controls its own.
+Only the **CA entry** is ambiguous, because CA is the one SHARED expander: two Monsoons sharing a CA could
+set opposite CA-scope choices, and CA's single knob display can't obey both.
+Rule (narrow): within the mod-ring-scope menu, the **CA entry defers to the PRIMARY** — a secondary
+Monsoon's CA entry greys out / does nothing; only the primary's CA-scope choice governs whether CA shows
+mod rings. Every other entry in the menu is untouched.
+NOTE distinction: the mod RING itself is a CA-local param read, same for all Monsoons, NOT primary-gated
+(see LOCK_MODE_PLAN.md correction). What's primary-owned here is only the per-Monsoon SCOPE SETTING's CA
+entry — the choice of whether this Monsoon's scope control governs the shared CA. Setting, not ring.
+
+### CA connection display: 8 slot marks + context-menu primary (Rodney)
+Supersedes the earlier "split mark" sketch for the shared case (CONNECTION_UI_MODEL.md §14).
+
+**Display — a row of UP TO 8 connect marks on the CA panel.**
+- **Slot k IS pairId k** — fixed, never packed left-to-right. Slot colour is therefore constant
+  (`pairColour(k)`): slot 1 periwinkle, slot 2 teal, ... Marks never move when a Monsoon is added or
+  removed, so the row is learnable and stable. Packing would reshuffle on every change — exactly the
+  instability this rework exists to remove.
+- **Filled in the slot colour = that Monsoon is connected. Dim/hollow = empty slot.** The row therefore
+  shows BOTH how many hosts are attached and WHICH — and, since it is 8 wide, the 8-Monsoon cap is
+  self-documenting on the panel.
+- **Primary is marked on a SECOND visual axis** — a ring around the mark or a small tick above it, NOT
+  brighter/bigger (which reads as ambiguous next to a merely-connected slot).
+- Footprint: 8 marks at ~2mm + spacing ≈ 25mm; fits near CA's existing connect mark.
+
+**Setting — CONTEXT MENU (not click-the-mark).**
+The marks are display only. A 2mm click target invites accidental primary changes and adds hit-testing
+to a decoration; the menu is unambiguous, discoverable, and is already where CA's lock participation and
+mod-ring scope live.
+- List only CONNECTED hosts, identified by name+colour ("Monsoon 3 (amber)", or the user's name override
+  if set) — NOT by bare slot number, which makes the user do the lookup.
+- Radio-style group with the current primary ticked: the menu then also answers "which is primary?"
+  without decoding the marks.
+
+**Primary selection rule (revises "lowest pairId" to a user choice, still deterministic).**
+- DEFAULT: lowest connected pairId.
+- The user may designate any connected slot as primary; the choice PERSISTS in the patch (so it stays
+  deterministic across load — the property reseed-on-restart requires).
+- If the primary disappears: AUTO-PROMOTE to the lowest connected pairId and reflect it in the row
+  (never leave CA with no primary). REMEMBER the user's designation in case that host returns —
+  patches get rearranged.

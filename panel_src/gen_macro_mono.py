@@ -11,14 +11,14 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     # the same spread job but GLOBAL (3 lanes) rather than per-lane. Must match
     # StraitsSandsMacroVisual.hpp: COL_J1=8 J2=18 A1=30 A2=39 SPREAD_X=49 ED_X=58.
     t=theme(dark); H_MM=128.5; PW,PH=px(W_MM),px(H_MM)
-    N=4   # 4 lanes, one row each
+    N=5   # OPT-B: 5 lanes (Q-MIX at index 2), one row each
     # Extra top margin so the view-tab row isn't crammed against the panel top
     # edge. 0.5 cm = 5 mm. Mirror TAB_TOP_OFFSET_MM in StraitsSandsMacroVisualWidget.
         # Mirrors src/ui/SandsGrid.hpp — tabs sit ABOVE the grid (3..13mm), lane 0 starts at 14.
     TAB_TOP, TAB_ROW_H = 3.0, 5.0
     TAB_TOP_OFFSET_MM = 5.0
     # Mirrors src/ui/SandsGrid.hpp: lane 0 at 14mm, 4 lanes x 14mm = 56 (tabs live above, 3..13).
-    ED_X=88.; ED_W=111.; OWNER_X=205.; DIR_X=212.; DIR_MOD_X=220.; PROB_OUT_X=236.; ED_Y=14.; ED_H=56.
+    ED_X=88.; ED_W=111.; OWNER_X=205.; DIR_X=212.; DIR_MOD_X=220.; PROB_OUT_X=236.; ED_Y=14.; ED_H=65.   # OPT-B: 5 lanes x 13mm, editor 14->79
     ED_LANE_H=ED_H/N
     # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY).
     def rowY(r): return ED_Y+(r+0.5)*ED_LANE_H
@@ -36,21 +36,23 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     # Identity artwork in the BOTTOM-LEFT corner (vs East's lower-right) so the
     # two near-identical 42HP panels read apart at a glance. Bottom-left is free
     # on Macro (send grids live in the right section).
-    A(D.helix_sands(4.0, 76.0, 74.0, 35.0, t, op=0.95))   # Sands Helix hero mark, bottom-left pocket (moved down 6mm so its MBS motif reads lower; wordmark moved the same amount)
+    A(D.helix_sands(4.0, 82.0, 74.0, 33.0, t, op=0.95))   # Sands Helix hero mark, bottom-left pocket (moved down 6mm so its MBS motif reads lower; wordmark moved the same amount)
     # (MBS identity mark removed — the Helix already carries an MBS motif in its background,
     #  and it collided with the bottom-left wordmark. The Helix alone is the identity art here.)
     A(D.accent_rules(PW,t))
-    gx,gy=1.5,rowY(0)-ED_LANE_H*0.5-3.0; gw,gh=(SPREAD_X+6.0)-gx,(rowY(N-1)+ED_LANE_H*0.5+3.0)-gy  # gx clears leftmost jack
+    gx,gy=1.5,ctrlY(0)-ED_LANE_H*0.5-3.0; gw,gh=(SPREAD_X+6.0)-gx,(ctrlY(N-1)+ED_LANE_H*0.5+3.0)-gy  # gx clears leftmost jack
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
-    A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=4))
-    A(D.owner_block(OWNER_X, [rowY(r) for r in range(N)], ED_X+ED_W, t, cell_w_mm=6.0))
+    A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=5))
+    A(D.owner_block(OWNER_X, [ctrlY(r) for r in range(N)], ED_X+ED_W, t, cell_w_mm=6.0))
     A('</g>')
     A('<g inkscape:label="branding" inkscape:groupmode="layer">')
-    A(D.logo_embed(dark, x_mm=11.0, y_mm=113.0, target_w_mm=42.0))
+    A(D.logo_embed(dark, x_mm=200.0, y_mm=122.0, target_w_mm=40.0))   # bottom-RIGHT (opposite the helix)
     A('</g>')
     A('<g inkscape:label="control-graphics" inkscape:groupmode="layer">')
-    for row in range(4):
-        y=rowY(row)
+    # 5 editor lanes (MEL/OCT/QMIX/REST/ACC), q-mix a PLAIN lane at row 2. Row == editor lane
+    # (no ESLOT/DISPLAY_ORDER remap); 4 CV jacks + 4 attens + spread base each.
+    for el in range(ED_LANES):
+        y=rowY(el)
         for x in JACK_X:  A(D.jack(x,y,t))
         for x in ATTEN_X: A(D.trim(x,y,t,t["gold"]))
         A(D.trim(SPREAD_X,y,t,t["wellring"]))
@@ -60,16 +62,17 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     #    this voice." Geometry shared with the widget labels in
     #    StraitsSandsMacroVisual::draw — keep in lockstep:
     #      BLEND_TOP=72 BLEND_H=36 GAP=3.5 SEND_Y0=12 SEND_DY=11 SEND_DX=7
-    BLEND_TOP=72.0; BLEND_H=47.0; BGAP=2.5; GROUP_W=ED_W/4.0  # 4 groups; taller for the tap row 3
-    SEND_Y0=12.0; SEND_DY=11.0; SEND_DX=6.0                   # DX 7→6 for narrower groups
-    TAP_ROW_DY=11.0                                            # row 3 (taps) below the 2 send rows
+    BLEND_TOP=82.0; BLEND_H=37.0; BGAP=2.5; GROUP_W=ED_W/4.0  # 4 groups; taller for the tap row 3
+    SEND_Y0=10.0; SEND_DY=9.0; SEND_DX=6.0                   # DX 7→6 for narrower groups
+    TAP_ROW_DY=9.0                                            # row 3 (taps) below the 2 send rows
     A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["accent"]}" stroke-width="1.0" opacity="0.6"/>')
-    # Blend groups drawn in display order (left-to-right: MEL/OCT/REST/ACC)
-    MIX_XY=[None]*4   # indexed by engine lane
-    TAP_XY=[None]*4   # P9b: [LOR tap, spread tap] per engine lane
-    for g in range(4):
-        l=DISPLAY_ORDER[g]   # engine lane
-        gx=ED_X+g*GROUP_W+BGAP*0.5; gw=GROUP_W-BGAP; gcx=gx+gw*0.5
+    # Blend groups drawn in EDITOR order (left-to-right: MEL/OCT/QMIX/REST/ACC). Group index g
+    # IS the editor lane — send/tap markers below are editor-lane indexed to match the C++ binds
+    # (param_send_<editorLane>_<item>, param_taplor/tapspr_<editorLane>). No engine remap.
+    MIX_XY=[None]*ED_LANES   # indexed by EDITOR lane
+    TAP_XY=[None]*ED_LANES   # P9b: [LOR tap, spread tap] per EDITOR lane
+    for el in range(ED_LANES):
+        gx=ED_X+el*GROUP_W+BGAP*0.5; gw=GROUP_W-BGAP; gcx=gx+gw*0.5
         A(f'<rect x="{px(gx):.1f}" y="{px(BLEND_TOP):.1f}" width="{px(gw):.1f}" height="{px(BLEND_H):.1f}" rx="{px(1.4):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.92"/>')
         A(f'<line x1="{px(gx+2):.1f}" y1="{px(BLEND_TOP+7.5):.1f}" x2="{px(gx+gw-2):.1f}" y2="{px(BLEND_TOP+7.5):.1f}" stroke="{t["edborder"]}" stroke-width="0.6" opacity="0.6"/>')
         lane_sends=[]
@@ -78,55 +81,48 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
             cys=BLEND_TOP+SEND_Y0+(item//2)*SEND_DY
             A(D.trim(cxs,cys,t,t["gold"]))
             lane_sends.append((cxs,cys))
-        MIX_XY[l]=lane_sends
-        # P9b: row 3 = the two CV taps for this lane group — LOR (left) + SPREAD (right),
-        # full-size trimpots. A faint divider separates them from the sends above.
+        MIX_XY[el]=lane_sends
+        # P9b: row 3 = the two CV taps for this lane group — LOR (left) + SPREAD (right).
         tap_y = BLEND_TOP+SEND_Y0+2*TAP_ROW_DY
         A(f'<line x1="{px(gx+2):.1f}" y1="{px(tap_y-5.5):.1f}" x2="{px(gx+gw-2):.1f}" y2="{px(tap_y-5.5):.1f}" stroke="{t["edborder"]}" stroke-width="0.6" opacity="0.6"/>')
         A(D.trim(gcx-SEND_DX, tap_y, t, t["wellring"]))   # LOR tap
         A(D.trim(gcx+SEND_DX, tap_y, t, t["wellring"]))   # spread tap
-        TAP_XY[l]=[(gcx-SEND_DX,tap_y),(gcx+SEND_DX,tap_y)]
+        TAP_XY[el]=[(gcx-SEND_DX,tap_y),(gcx+SEND_DX,tap_y)]
     A('</g>')
-    # ── SvgPanelKit component layer: named markers at every control centre, so a
-    #    widget can bind by id later. Indices mirror StraitsSandsMacroVisual.hpp:
-    #    cvId(r,c)=CV_START(0)+r*2+c (inputs), attenId(r,c)=ATTEN_START(3)+r*2+c
-    #    (params), SPREAD_REST/MEL/OCT = 0/1/2 (params). ──
+    # ── SvgPanelKit component layer. ALL ids EDITOR-lane indexed, matching StraitsSandsMacroVisual
+    #    .cpp binds exactly (editor lane el: 0 MEL,1 OCT,2 QMIX,3 REST,4 ACC — no DISPLAY_ORDER remap):
+    #      cvId(el,c)   = CV_START(0)    + el*4 + c   inputs 0..19
+    #      attenId(el,c)= ATTEN_START(5) + el*4 + c   params 5..24   (SPREAD_REST..QMIX = 0..4)
+    #      spread base  = param el (SPREAD_REST..QMIX positional by editor lane)
+    #      prob out     = output_{el}   (C++ binds "output_"+std::to_string(PROB_OUT_REST+el))
+    #      param_send_<el>_<item>, param_taplor_/tapspr_<el>, param_dir_<el>, input_dir_mod_<el>. ──
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
-    # Components in display order; engine lane from DISPLAY_ORDER.
-    for row in range(4):
-        lane=DISPLAY_ORDER[row]   # engine lane
-        y=rowY(row)
-        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+lane*4+p, x, y))
-        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 4+lane*4+p, x, y))
-        A(D.kit_shape("param", lane, SPREAD_X, y))  # SPREAD engine lane
-        # (P9b: the in-row per-lane tap was removed — taps now live as a 3rd row in the
-        # send groups below the lanes; see param_taplor_/param_tapspr_ markers there.)
-        # poly probability CV out — right strip, at this lane's row (engine lane = PROB_OUT_REST+lane)
-        A(D.kit_shape("output", lane, PROB_OUT_X, y))
-    # Macro→voice mix-in send markers (bound to sendDispId display proxies).
-    for g in range(4):
-        l=DISPLAY_ORDER[g]   # engine lane
+    # ENGINE-lane-indexed groups (cv/atten/spread/prob) sit at the EDITOR row `el` but carry the
+    # id for engine lane `eng` = EDITOR_TO_ENGINE[el] — because the C++ store accessors
+    # (getGlobalAtten/Spread, PROB_OUT_REST+lane) are engine-indexed. Using `el` here put REST's
+    # spread on the melody row etc. (the reported bug).
+    for el in range(ED_LANES):
+        y=rowY(el); eng=EDITOR_TO_ENGINE[el]
+        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0 + eng*4 + p, x, y))   # cvId(eng,c)
+        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 5 + eng*4 + p, x, y))   # attenId(eng,c)=ATTEN_START(5)+..
+        A(D.kit_shape("param", eng, SPREAD_X, y))    # SPREAD_REST..QMIX = param eng (engine lane)
+        A(D.kit_shape("output", eng, PROB_OUT_X, y)) # output_{eng} (PROB_OUT_REST+eng, engine lane)
+    # Macro→voice mix-in send markers + PRE/POST taps — also ENGINE-lane indexed
+    # (getMacroSend(slot, lane, item) / getGlobalTap(lane,..) are engine order), at editor row.
+    for el in range(ED_LANES):
+        eng=EDITOR_TO_ENGINE[el]
         for item in range(4):
-            cxs,cys = MIX_XY[l][item]
-            A(f'<circle id="param_send_{l}_{item}" cx="{px(cxs):.2f}" cy="{px(cys):.2f}" r="0.5" fill="none" stroke="none"/>')
-        # P9b: the two CV-tap markers for this lane group (LOR, spread).
-        (lx,ly),(sx,sy) = TAP_XY[l]
-        A(f'<circle id="param_taplor_{l}" cx="{px(lx):.2f}" cy="{px(ly):.2f}" r="0.5" fill="none" stroke="none"/>')
-        A(f'<circle id="param_tapspr_{l}" cx="{px(sx):.2f}" cy="{px(sy):.2f}" r="0.5" fill="none" stroke="none"/>')
-    # Direction cells (param_dir_<lane>) — per-lane direction toggle, at DIR_X, one per lane.
-    # Uses EDITOR lane order (row 0..3 = MEL/OCT/REST/ACC), matching East's convention
-    # and the C++ dirDispId(editorLane). NOT engine lane order — avoids the conversion
-    # that other kit markers (cvId/attenId) require via DISPLAY_ORDER.
-    for row in range(4):
-        A(f'<circle id="param_dir_{row}" cx="{px(DIR_X):.2f}" cy="{px(rowY(row)):.2f}" '
+            cxs,cys = MIX_XY[el][item]
+            A(f'<circle id="param_send_{eng}_{item}" cx="{px(cxs):.2f}" cy="{px(cys):.2f}" r="0.5" fill="none" stroke="none"/>')
+        (lx,ly),(sx,sy) = TAP_XY[el]
+        A(f'<circle id="param_taplor_{eng}" cx="{px(lx):.2f}" cy="{px(ly):.2f}" r="0.5" fill="none" stroke="none"/>')
+        A(f'<circle id="param_tapspr_{eng}" cx="{px(sx):.2f}" cy="{px(sy):.2f}" r="0.5" fill="none" stroke="none"/>')
+    # Direction cells (param_dir_<editorLane>) + gate-mod jacks (input_dir_mod_<editorLane>) —
+    # these ARE editor-lane indexed in the C++ (getGlobalDir(editorLane)), so keep `el`.
+    for el in range(ED_LANES):
+        A(f'<circle id="param_dir_{el}" cx="{px(DIR_X):.2f}" cy="{px(rowY(el)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
-    # Direction gate-mod jacks (input_dir_mod_<lane>) — mono, gate cycles direction.
-    for row in range(4):
-        A(f'<circle id="input_dir_mod_{row}" cx="{px(DIR_MOD_X):.2f}" cy="{px(rowY(row)):.2f}" '
-          f'r="0.5" fill="none" stroke="none"/>')
-    # Probability-out jacks (output_prob_<lane>) — 4 poly prob CV outs.
-    for row in range(4):
-        A(f'<circle id="output_prob_{row}" cx="{px(PROB_OUT_X):.2f}" cy="{px(rowY(row)):.2f}" '
+        A(f'<circle id="input_dir_mod_{el}" cx="{px(DIR_MOD_X):.2f}" cy="{px(rowY(el)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
     A('</g>')
     A('</svg>')
@@ -135,15 +131,15 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
 def gen_mono(dark):
     t=theme(dark); W_MM,H_MM=243.84,128.5; PW,PH=px(W_MM),px(H_MM)   # 48HP (44 + 4HP for mod + prob_out jacks)
     # Mirrors src/ui/SandsGrid.hpp: 6 lanes x 14mm from 14 → bottom 98 (was 108, laneH 15.667).
-    ROW_TOP,ROW_BOT,N=14.,98.,6
+    ROW_TOP,ROW_BOT,N=14.,105.,7   # OPT-B: 7 lanes x 13mm (Q-MIX at index 2); editor 14->105, into the space above MBS
     def laneY(l): return ROW_TOP+(l+0.5)*(ROW_BOT-ROW_TOP)/N
     # Geometry MUST match MonsoonSandsVisualExpander.hpp:
     #   JACK_X={6,15,24}  ATTEN_X={34,43,52}  (all 6 lanes)
     #   spread (lanes 0-2 REST/MEL/OCT): SPR_BASE_X=62, SPR_CV_X=71, SPR_ATTEN_X=80
     JACK_X=[6.,15.,24.]; ATTEN_X=[34.,43.,52.]
     SPR_BASE_X,SPR_CV_X,SPR_ATTEN_X=62.,71.,80.
-    N_SPREAD=4                                  # REST/MEL/OCT + ACCENT (poly lanes)
-    SPR_TO_EDITOR=[2,0,1,3]                      # spread index (REST/MEL/OCT/ACCENT) → editor lane; matches cpp ENGINE_LANE_TO_EDITOR
+    N_SPREAD=5                                   # REST/MEL/OCT/ACC/QMIX (poly lanes)
+    SPR_TO_EDITOR=[3,0,1,4,2]                    # spread idx (poly engine REST/MEL/OCT/ACC/QMIX) → editor lane; matches cpp ENGINE_LANE_TO_EDITOR_QMIX
     # Jack columns follow the TOGGLE order left->right (owner cell at OWNER_X, then dir cell
     # at DIR_X), so deleg_mod sits under the owner cell and dir_mod under the dir cell instead
     # of crossing over.
@@ -163,19 +159,22 @@ def gen_mono(dark):
     # separator between the jack cluster and the attenuverter cluster.
     gx,gy=1.5,ROW_TOP-4.0; gw,gh=(ATTEN_X[-1]+6.0)-gx,(ROW_BOT+2.0)-(ROW_TOP-4.0)  # gx clears leftmost jack
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
-    A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=6))
-    A(D.owner_block(OWNER_X, [laneY(l) for l in range(4)], ED_X+ED_W, t, cell_w_mm=(ED_W-2*6.0)/16.0, draw_cells=False))
+    A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=7))
+    A(D.owner_block(OWNER_X, [ctrlY(l) for l in range(4)], ED_X+ED_W, t, cell_w_mm=(ED_W-2*6.0)/16.0, draw_cells=False))
     A('</g>')
     A('<g inkscape:label="branding" inkscape:groupmode="layer">')
-    A(D.logo_embed(dark, x_mm=11.0, y_mm=113.0, target_w_mm=42.0))
+    A(D.logo_embed(dark, x_mm=200.0, y_mm=122.0, target_w_mm=40.0))   # bottom-RIGHT (opposite the helix)
     A('</g>')
     A('<g inkscape:label="control-graphics" inkscape:groupmode="layer">')
-    for lane in range(6):
-        y=laneY(lane)
+    # 7 editor lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG): 3 CV jacks + 3 attens each. q-mix a PLAIN
+    # lane at row 2 (no ESLOT gap, no separate special-case block).
+    for lane in range(N):
+        y=ctrlY(lane)
         for x in JACK_X:  A(D.jack(x,y,t))
         for x in ATTEN_X: A(D.trim(x,y,t,t["gold"]))
+    # 5 spread lanes (REST/MEL/OCT/ACC/QMIX) placed on their editor rows via SPR_TO_EDITOR.
     for sidx in range(N_SPREAD):
-        y=laneY(SPR_TO_EDITOR[sidx])
+        y=ctrlY(SPR_TO_EDITOR[sidx])
         A(D.trim(SPR_BASE_X,y,t,t["wellring"]))
         A(D.jack(SPR_CV_X,y,t))
         A(D.trim(SPR_ATTEN_X,y,t,t["gold"]))
@@ -187,36 +186,35 @@ def gen_mono(dark):
     #    spread CV   SPR_CV_START(18) + l         = inputs 18..20
     #    spread atten SPR_ATTEN_START(39) + l     = params 39..41
     #    (LEN/OFF/ROT params 0-17 have no physical knob — editor-driven — so no marker.) ──
+    # ── SvgPanelKit component markers. NOTE: the Mono widget places its controls POSITIONALLY
+    #    (addInput/addOutput createXxxCentered at rowY()), not by SVG-shape lookup, so these
+    #    markers are advisory. Still emitted editor-lane indexed for tooling/consistency, matching
+    #    MonsoonSandsVisualExpander.hpp (QMIX-widened): cvId(el,p)=el*3+p (inputs 0..20),
+    #    attenId(el,p)=ATTEN_START(26)+el*3+p, SPR base=SPR_REST(21)+si, SPR_CV=SPR_CV_START(21)+si,
+    #    SPR atten=SPR_ATTEN_START(47)+si. el 0..6, si 0..4 (SPR_TO_EDITOR = ENGINE_LANE_TO_EDITOR_QMIX).
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
-    # Physical rows are laid out in EDITOR display order (MELODY/OCTAVE/REST/
-    # ACCENT/VARIATION/LEGATO = editor lanes 0..5), matching the editor lanes +
-    # labels that share these rows. The LOR params are now EDITOR-ordered
-    # (LEN_MELODY=0, OCT, REST, ACC, VAR, LEG) — same as the display rows — so we
-    # bind each row's jacks/attens at the editor index directly (no remap).
-    for row in range(6):
-        y=laneY(row)
-        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0+row*3+p, x, y))
-        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 22+row*3+p, x, y))
+    for el in range(N):
+        y=ctrlY(el)
+        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0 + el*3 + p, x, y))   # cvId(el,p)
+        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 26 + el*3 + p, x, y))  # attenId(el,p)=ATTEN_START(26)+..
     for sidx in range(N_SPREAD):
-        y=laneY(SPR_TO_EDITOR[sidx])
-        A(D.kit_shape("param", 18+sidx, SPR_BASE_X, y))   # SPR_REST/MEL/OCT/ACCENT (18..21, engine order)
-        A(D.kit_shape("input", 18+sidx, SPR_CV_X, y))     # SPR_CV (18..21)
-        A(D.kit_shape("param", 40+sidx, SPR_ATTEN_X, y))  # SPR_ATTEN (40..43)
-    # Direction cells (param_dir_<lane>) — per-lane direction toggle, at DIR_X, one per lane (0..5).
-    for lane in range(6):
-        A(f'<circle id="param_dir_{lane}" cx="{px(DIR_X):.2f}" cy="{px(laneY(lane)):.2f}" '
+        y=ctrlY(SPR_TO_EDITOR[sidx])
+        A(D.kit_shape("param", 21+sidx, SPR_BASE_X, y))   # SPR_REST..QMIX (21..25)
+        A(D.kit_shape("input", 21+sidx, SPR_CV_X, y))     # SPR_CV_START (21..25)
+        A(D.kit_shape("param", 47+sidx, SPR_ATTEN_X, y))  # SPR_ATTEN_START (47..51)
+    # Direction cells + gate-mod jacks — one per editor lane 0..6.
+    for lane in range(N):
+        A(f'<circle id="param_dir_{lane}" cx="{px(DIR_X):.2f}" cy="{px(ctrlY(lane)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
-    # Direction gate-mod jacks (input_dir_mod_<lane>) — mono, gate cycles direction. 6 lanes.
-    for lane in range(6):
-        A(f'<circle id="input_dir_mod_{lane}" cx="{px(DIR_MOD_X):.2f}" cy="{px(laneY(lane)):.2f}" '
+        A(f'<circle id="input_dir_mod_{lane}" cx="{px(DIR_MOD_X):.2f}" cy="{px(ctrlY(lane)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
-    # Delegation gate-mod jacks (input_deleg_mod_<lane>) — mono, gate flips delegation. Lanes 0..3.
-    for lane in range(4):
-        A(f'<circle id="input_deleg_mod_{lane}" cx="{px(DELEG_MOD_X):.2f}" cy="{px(laneY(lane)):.2f}" '
+    # Delegation gate-mod jacks — poly lanes 0..4 (MEL/OCT/QMIX/REST/ACC).
+    for lane in range(N_SPREAD):
+        A(f'<circle id="input_deleg_mod_{lane}" cx="{px(DELEG_MOD_X):.2f}" cy="{px(ctrlY(lane)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
-    # Probability-out jacks (output_prob_<lane>) — 6 mono prob CV outs.
-    for lane in range(6):
-        A(f'<circle id="output_prob_{lane}" cx="{px(PROB_OUT_X):.2f}" cy="{px(laneY(lane)):.2f}" '
+    # Probability-out jacks — 7 mono prob CV outs.
+    for lane in range(N):
+        A(f'<circle id="output_prob_{lane}" cx="{px(PROB_OUT_X):.2f}" cy="{px(ctrlY(lane)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
     A('</g>')
     A('</svg>')

@@ -1,0 +1,29 @@
+commit 0196a10f9226e411080f035de6bf607c41c5943e
+Author: Rodney Hoskinson <rodneyh303@outlook.com>
+Date:   Sat Sep 19 16:41:20 2026 +0800
+
+    Fix QMIX lane-mapping regressions across Sands (delegation, spread rows, VAR/LEG LOR) + harden LaneMapping
+    
+    Root cause: QMIX widened editor order to 7 (MEL/OCT/QMIX/REST/ACC/VAR/LEG) and poly to 5, but several sites kept pre-QMIX indices. Fixes: (1) generators emit engine-lane spread/prob/atten/send/tap ids at editor rows via EDITOR_TO_ENGINE (Macro cv/atten/spread; East spread) - fixes 'melody row controls REST spread' mislabel; SVGs regenerated. (2) SandsTopology::owner() VAR/LEG cutoff >=4 -> >=kPolyLanes(5), guard >6 (ACC is now a delegable poly lane). (3) East owner cells editor->engine (EDITOR_TO_ENGINE_LANE_QMIX) in get/setMacroOwn/MonoMacroOwn + menu + owner light; VAR/LEG owner cells param_owner_5/6 (were 4/5, collided with ACCENT's param_owner_4 -> fixes ACCENT delegation + stray LEGATO cell); DirCell VAR/LEG vl=lane-POLY_LANES (was lane-4) -> LEG direction operates. (4) Mono DirCell lock cutoff >=POLY_LANES. (5) Poly VAR/LEG LOR store-bank vl+4 -> canonical helper (was reading QMIX's bank into VAR -> 'editing QMIX also edits LEGATO' + poly VAR/LEG edits never took). HARDENING (prevents the bug class): dsp/LaneMapping.hpp gains the single canonical lorStoreBank(editorLane)/varlegStoreBank(vl) + POLY_LANE_COUNT/EDITOR_LANE_COUNT with static_asserts on the exact banks; East lorBank/Mono bLor/MonsoonExpanderManager varleg all route through it (no more vl+magic); SandsGrid.hpp cross-header static_assert ties its lane counts to LaneMapping's so they can't diverge. Verified clean in Rack.
+
+diff --git a/src/MonsoonSandsVisualExpander.cpp b/src/MonsoonSandsVisualExpander.cpp
+index 557c006..506ce86 100644
+--- a/src/MonsoonSandsVisualExpander.cpp
++++ b/src/MonsoonSandsVisualExpander.cpp
+@@ -312,11 +312,13 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
+                     [dcLane](Monsoon& mm, float val) { mm.setMonoLaneDir(dcLane, val); },
+                     (float)oldV, (float)newV);
+             };
+-            // Lanes 0..3: locked when delegated to Macro (ownerDispId <= 0.5 = Macro owns).
+-            // Lanes 4..5 (VAR/LEG): always settable (Mono always owns them).
++            // Lanes 0..4 (MEL/OCT/QMIX/REST/ACC): locked when delegated to Macro (getMonoOwner
++            // <= 0.5 = Macro owns). Lanes 5..6 (VAR/LEG): always settable (Mono always owns them).
++            // NOTE: after the QMIX widening ACC is editor lane 4 (a delegable poly lane) and
++            // VAR/LEG are 5/6, so the cutoff is POLY_LANES (5), not the old hardcoded 4.
+             dc->lockWhen = [this, lane]() {
+                 if (!getMonsoon()) return true;
+-                if (lane >= 4) return false;  // VAR/LEG always Mono-owned
++                if (lane >= dotModular::SandsGrid::POLY_LANES) return false;  // VAR/LEG always Mono-owned
+                 return !getMonsoon()->getMonoOwner(lane);  // Macro owns (delegated) → locked
+             };
+             addChild(dc);

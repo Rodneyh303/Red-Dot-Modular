@@ -40,3 +40,9 @@ panel_src/_*.svg
 /res/RDM_TrimDark_Slot.svg
 /res/old
 /src/res
+.git-commit-msg.tmp
+
+# ── Build artifacts (should never be tracked) ────────────────────────────────
+/build/
+/plugin.dll
+/dist/

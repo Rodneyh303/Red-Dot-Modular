@@ -2,6 +2,7 @@
 #include <rack.hpp>
 #include "../Monsoon.hpp"
 #include "SandsVisualEditorV4.hpp"
+#include "MonsoonDiscovery.hpp"   // segment-rule walk (CONNECTION_MODEL_SPEC.md §1)
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -18,24 +19,27 @@ inline Monsoon* findMonsoon(rack::Module* startRight, int maxDepth = 12) {
     return nullptr;
 }
 
-// ── Chain-walk: find Monsoon on EITHER side ──────────────────────────────────
-// Walks right first, then left, hopping any intermediate modules (e.g. an
-// Interchange placed between a Sands editor and Monsoon). Use this from visual
-// expanders so they bind to the host regardless of which side they sit on and
-// regardless of what sits between them and Monsoon.
+// ── Chain-walk: find Monsoon on EITHER side (SEGMENT RULE) ───────────────────
+// CONNECTION_MODEL_SPEC.md §1: an expander binds to the Monsoon in its SEGMENT —
+// the run of modules reachable by expander hops, bounded on each side by the
+// first FOREIGN module (a non-suite module) OR the next Monsoon. Walk right, then
+// left; each side stops at a foreign boundary and returns the first Monsoon it
+// reaches. Recognised suite modules (Interchange, Lantern, Sikit, …) are hopped
+// THROUGH, so a suite module between this expander and its Monsoon does not block
+// binding — but a foreign module does (correctly: they're in different segments).
+//
+// This REPLACES the old right-first walk-through-anything behaviour whose result
+// depended on row ORDER (CONNECTION_UI_MODEL.md §4 bug class). The result is now a
+// function of TOPOLOGY, not position: reordering the row cannot change the lit set.
 inline Monsoon* findMonsoonEitherSide(rack::Module* self, int maxDepth = 12) {
-    if (!self) return nullptr;
-    Module* curr = self->rightExpander.module;
-    for (int d = 0; curr && d < maxDepth; ++d) {
-        if (auto* m = dynamic_cast<Monsoon*>(curr)) return m;
-        curr = curr->rightExpander.module;
-    }
-    curr = self->leftExpander.module;
-    for (int d = 0; curr && d < maxDepth; ++d) {
-        if (auto* m = dynamic_cast<Monsoon*>(curr)) return m;
-        curr = curr->leftExpander.module;
-    }
-    return nullptr;
+    rack::Module* host = findHostBothSides(
+        self,
+        [](rack::Module* m) { return m->leftExpander.module; },
+        [](rack::Module* m) { return m->rightExpander.module; },
+        [](rack::Module* m) { return dynamic_cast<Monsoon*>(m) != nullptr; },  // isHost
+        [](rack::Module* m) { return isSuiteChainModel(m->model); },           // isSuite (hop-through)
+        maxDepth);
+    return dynamic_cast<Monsoon*>(host);
 }
 
 // True only if `self` is the expander Monsoon has actually CLAIMED for its type.

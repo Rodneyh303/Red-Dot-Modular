@@ -143,7 +143,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         visualEditor->onLorCommit = [this](int lane, const int before[3], const int after[3]) {
             auto* m = getMonsoon(); if (!m) return;
             const int slot = dotModular::VoiceResolver::kMonoSlot;
-            const int bank = (lane <= 3) ? dotModular::EDITOR_TO_ENGINE_LANE[lane] : lane;
+            const int bank = (lane <= 4) ? dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane] : lane;
             const int bef0=before[0],bef1=before[1],bef2=before[2];
             const int aft0=after[0], aft1=after[1], aft2=after[2];
             // Capturing visualEditor is safe here: a store-edit history action does NOT destroy
@@ -158,7 +158,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                     mm.setLorBase(slot, bank, 0, (float)L);
                     mm.setLorBase(slot, bank, 1, (float)O);
                     mm.setLorBase(slot, bank, 2, (float)R);
-                    if (ed && lane >= 0 && lane < 6) {
+                    if (ed && lane >= 0 && lane < dotModular::SandsGrid::MONO_LANES) {
                         ed->currentState.lanes[lane].length   = L;
                         ed->currentState.lanes[lane].offset   = O;
                         ed->currentState.lanes[lane].rotation = R;
@@ -172,7 +172,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // CV-depth attens are STORE-BACKED StoreKnobs (de-parammed, MVC step 1d): editor.monoAtten
         // is EDITOR-lane-indexed, col 0..2 = LEN/OFF/ROT. lane here is the editor lane (0..5).
         // The CV jacks (inputs) stay; the LOR base (lenId/offId/rotId) is a separate group.
-        static const char* LN[6] = {"MEL","OCT","REST","ACC","VAR","LEG"};
+        static const char* LN[dotModular::SandsGrid::MONO_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
         static const char* PN[3] = {"Len","Off","Rot"};
         for (int lane = 0; lane < N_LANES; ++lane) {
             float y = rowY(lane);
@@ -197,7 +197,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             // spread ATTEN uses EDITOR lane in editor.monoAtten — do not mix (MVC lane trap).
             int editorLane = SPREAD_LANE_TO_EDITOR[l];
             float y = rowY(editorLane);
-            const char* SN[4] = {"REST","MEL","OCT","ACC"};
+            const char* SN[5] = {"REST","MEL","OCT","ACC","QMIX"};
             const std::string nm = SN[l];
             const int spLane = l;
             const int edLane = editorLane;
@@ -249,9 +249,9 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // One per poly lane (editor rows 0..3 = MEL/OCT/REST/ACC), in the SRC
         // column right of the editor. FILLED = Macro owns V1's base for this lane,
         // OUTLINE = Mono owns (its own LOR edit). Click toggles. Inert+dimmed when
-        // no Macro is attached (nothing to cede to). LEG/VAR (rows 4/5) are
+        // no Macro is attached (nothing to cede to). LEG/VAR (rows 5/6) are
         // mono-only → no owner cell.
-        for (int l = 0; l < 4; ++l) {
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
             // STORE-BACKED (MVC step 1d): OwnerCell reads/writes editor.monoOwner via
             // get/setMonoOwner — the same store the manager reads (topoIn.monoV1Owner) and that
             // persists (editorMonoOwner). Was the ownerDispId param (removed). Bare widget, no paramId.
@@ -281,12 +281,13 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // ── Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong).
         // Mono is the master strand editor → DirCell sets the MONO direction (laneDirPending_).
         // Locked when no Monsoon is attached (nothing to drive).
-        static const NVGcolor dirCol[6] = {
+        static const NVGcolor dirCol[dotModular::SandsGrid::MONO_LANES] = {
             nvgRGB(0xd4,0xaf,0x37), nvgRGB(0xb8,0x86,0x0b),  // MEL gold, OCT dark gold
+            nvgRGB(0x80,0x60,0xc0),  // QMIX purple
             nvgRGB(0x50,0x50,0x50), nvgRGB(0xff,0x95,0x00),  // REST grey, ACC orange
             nvgRGB(0xff,0x6b,0x6b), nvgRGB(0x26,0xa6,0x9a)   // VAR red, LEG teal
         };
-        for (int lane = 0; lane < 6; ++lane) {
+        for (int lane = 0; lane < dotModular::SandsGrid::MONO_LANES; ++lane) {
             // STORE-BACKED (MVC step 1d): DirCell reads/writes editor.laneDir[15*6+lane] via
             // get/setMonoLaneDir — the same store the manager reads (monoDirAuthority) and that
             // persists (editorLaneDir). Was the dirDispId param (removed). Bare widget, no paramId.
@@ -311,22 +312,24 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                     [dcLane](Monsoon& mm, float val) { mm.setMonoLaneDir(dcLane, val); },
                     (float)oldV, (float)newV);
             };
-            // Lanes 0..3: locked when delegated to Macro (ownerDispId <= 0.5 = Macro owns).
-            // Lanes 4..5 (VAR/LEG): always settable (Mono always owns them).
+            // Lanes 0..4 (MEL/OCT/QMIX/REST/ACC): locked when delegated to Macro (getMonoOwner
+            // <= 0.5 = Macro owns). Lanes 5..6 (VAR/LEG): always settable (Mono always owns them).
+            // NOTE: after the QMIX widening ACC is editor lane 4 (a delegable poly lane) and
+            // VAR/LEG are 5/6, so the cutoff is POLY_LANES (5), not the old hardcoded 4.
             dc->lockWhen = [this, lane]() {
                 if (!getMonsoon()) return true;
-                if (lane >= 4) return false;  // VAR/LEG always Mono-owned
+                if (lane >= dotModular::SandsGrid::POLY_LANES) return false;  // VAR/LEG always Mono-owned
                 return !getMonsoon()->getMonoOwner(lane);  // Macro owns (delegated) → locked
             };
             addChild(dc);
         }
 
         // Direction gate-mod jacks — mono, gate cycles Fwd→Rev→Pend→PingPong.
-        for (int lane = 0; lane < 6; ++lane)
+        for (int lane = 0; lane < dotModular::SandsGrid::MONO_LANES; ++lane)
             addInput(createInputCentered<PJ301MPort>(
                 mm2px(Vec(DIR_MOD_X, rowY(lane))), mod, dirModId(lane)));
-        // Delegation gate-mod jacks — mono, gate flips local/delegated. Lanes 0..3.
-        for (int lane = 0; lane < 4; ++lane)
+        // Delegation gate-mod jacks — mono, gate flips local/delegated. Lanes 0..4 (poly lanes).
+        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
             addInput(createInputCentered<PJ301MPort>(
                 mm2px(Vec(DELEG_MOD_X, rowY(lane))), mod, delegModId(lane)));
 
@@ -360,7 +363,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             mon->expanderManager.fillPresence(in, mon->engine.numPolyVoices);
         }
         if (auto* mon = getMonsoon()) {
-            for (int l = 0; l < 4; ++l)   // Mono owner is STORE-BACKED (editor.monoOwner), editor-ordered.
+            for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)   // Mono owner is STORE-BACKED (editor.monoOwner), editor-ordered.
                 in.monoV1Owner[l] = mon->getMonoOwner(l);
         }
         return dotModular::SandsTopology::build(in);
@@ -388,12 +391,12 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
 
         // ── One-time initialisation from saved params ─────────────────────
         if (!initialized) {
-            for (int l = 0; l < 6; ++l) {
+            for (int l = 0; l < dotModular::SandsGrid::MONO_LANES; ++l) {
                 // MVC step 1d: LOR base is STORE-BACKED (editor.lorBase[kMonoSlot, bank, c]).
                 // bank = engine lane for poly (0..3), self for VAR/LEG (4,5) — same as East's
                 // lorBank. Was params[lenId/offId/rotId(l)] (now removed). One-time seed from the
                 // persisted store (lorBase loads in fromJson before step() runs).
-                const int b = (l <= 3) ? dotModular::EDITOR_TO_ENGINE_LANE[l] : l;
+                const int b = (l <= 4) ? dotModular::EDITOR_TO_ENGINE_LANE_QMIX[l] : l;
                 visualEditor->currentState.lanes[l].length   = (int)std::round(monsoon->getLorBase(dotModular::VoiceResolver::kMonoSlot, b, 0));
                 visualEditor->currentState.lanes[l].offset   = (int)std::round(monsoon->getLorBase(dotModular::VoiceResolver::kMonoSlot, b, 1));
                 visualEditor->currentState.lanes[l].rotation = (int)std::round(monsoon->getLorBase(dotModular::VoiceResolver::kMonoSlot, b, 2));
@@ -424,16 +427,16 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // laneEditBlockedFn desync class, closed.
         const auto ownTopo = buildV1Topo();
         auto laneDelegated = [&](int el) -> bool {
-            if (el < 0 || el >= 4) return false;
+            if (el < 0 || el >= dotModular::SandsGrid::POLY_LANES) return false;
             return !ownTopo.editableOn(dotModular::SandsTopology::Role::MONO, 0, el);
         };
-        for (int l = 0; l < 6; ++l) {
+        for (int l = 0; l < dotModular::SandsGrid::MONO_LANES; ++l) {
             if (laneDelegated(l)) continue;   // delegated → tracks Macro, don't write Mono's store
             const auto& lane = visualEditor->currentState.lanes[l];
             // MVC step 1d: editor → STORE (editor.lorBase[kMonoSlot, bank, c]). Was params[lenId/
             // offId/rotId(l)]. bank = engine lane for poly, self for VAR/LEG (East's lorBank).
             if (monForOwn) {
-                const int b = (l <= 3) ? dotModular::EDITOR_TO_ENGINE_LANE[l] : l;
+                const int b = (l <= 4) ? dotModular::EDITOR_TO_ENGINE_LANE_QMIX[l] : l;
                 monForOwn->setLorBase(dotModular::VoiceResolver::kMonoSlot, b, 0, (float)lane.length);
                 monForOwn->setLorBase(dotModular::VoiceResolver::kMonoSlot, b, 1, (float)lane.offset);
                 monForOwn->setLorBase(dotModular::VoiceResolver::kMonoSlot, b, 2, (float)lane.rotation);
@@ -443,10 +446,11 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // so Macro's modulation is reflected on Mono too (combo 6/G6) — not just the
         // static base. macroCVDelta is the true POST delta (Macro's own display value);
         // matches what Macro shows for the same lane. editor → engine lane for macro arrays.
+        // Now 5 poly lanes: MEL/OCT/QMIX/REST/ACC (editor order).
         if (macroForOwn) {
-            for (int el = 0; el < 4; ++el) {
+            for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
                 if (!laneDelegated(el)) continue;
-                int eng = dotModular::EDITOR_TO_ENGINE_LANE[el];
+                int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
                 int mLen = (int)std::round(macroForOwn->macroBase[eng][0] + macroForOwn->macroSendDelta[eng][0]);
                 int mOff = (int)std::round(macroForOwn->macroBase[eng][1] + macroForOwn->macroSendDelta[eng][1]);
                 int mRot = (int)std::round(macroForOwn->macroBase[eng][2] + macroForOwn->macroSendDelta[eng][2]);
@@ -455,11 +459,16 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         }
 
         // ── Per-lane base spread. spreadEffective[] is SPREAD/engine-indexed
-        // (0=REST,1=MEL,2=OCT,3=ACC). setLaneSpread expects the PatternEngine BUFFER
-        // lane order (REST=0,MEL=1,OCT=2,LEG=3,ACC=4,VAR=5). Map spread idx → buffer
+        // (0=REST,1=MEL,2=OCT,3=ACC,4=QMIX). setLaneSpread expects the PatternEngine BUFFER
+        // lane order (REST=0,MEL=1,OCT=2,LEG=3,ACC=4,VAR=5,QMIX=6). Map spread idx → buffer
         // lane explicitly so neither side is read with the wrong convention. (This was
         // the per-lane analogue of the spread-arc off-by-one.)
-        static const int SPREAD_TO_BUFFER[4] = { 0, 1, 2, 4 };  // REST,MEL,OCT,ACCENT
+        // Task 4c: QMIX (spread idx 4 → buffer lane 6) now wired — engine q-mix draw buffers
+        // (slewedQmix/slewedPolyQmix, Task 4b) and SpreadManager are QMIX-aware, so the 5th
+        // SPREAD_TO_BUFFER entry is live and the loop runs the full N_SPREAD_LANES.
+        static const int N_SPREAD_LANES = 5;
+        static const int SPREAD_TO_BUFFER[N_SPREAD_LANES] =
+            { 0, 1, 2, 4, MonoSandsParameterManager::QMIX_BUFFER_LANE };  // REST,MEL,OCT,ACCENT,QMIX
         for (int l = 0; l < N_SPREAD_LANES; ++l) {
             paramMgr->setLaneSpread(SPREAD_TO_BUFFER[l], monsoon->engine.spreadE(0, l));  // engine state (slot 0)
         }
@@ -484,8 +493,8 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // indexable strand accessors. No hardcoded permutation here, so this can
         // never drift from readStrand() again.
         auto& eng = monsoon->engine;
-        int effLen[6], effOff[6], effRot[6];
-        for (int l = 0; l < 6; ++l) {
+        int effLen[dotModular::SandsGrid::MONO_LANES], effOff[dotModular::SandsGrid::MONO_LANES], effRot[dotModular::SandsGrid::MONO_LANES];
+        for (int l = 0; l < dotModular::SandsGrid::MONO_LANES; ++l) {
             int strand = dotModular::MONO_LANE_TO_STRAND[l];
             effLen[l] = eng.strandLen(strand);
             effOff[l] = eng.strandOff(strand);
@@ -495,9 +504,9 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // Per-lane direction cue: each mono strand's effective trail direction is the global
         // play direction times its own lane sign (reverse / pendulum flips it). Display lane
         // index == strand index (MEL/OCT/REST/ACC/VAR/LEG).
-        for (int l = 0; l < 6; ++l)
+        for (int l = 0; l < dotModular::SandsGrid::MONO_LANES; ++l)
             visualEditor->setLanePlayDir(l, monsoon->engine.lastPlayDir * monsoon->engine.laneSign_[l]);
-        for (int l = 0; l < 6; ++l) {
+        for (int l = 0; l < dotModular::SandsGrid::MONO_LANES; ++l) {
             int strand = dotModular::MONO_LANE_TO_STRAND[l];
             visualEditor->currentState.lanes[l].setDisplayLOR(effLen[l], effOff[l], effRot[l]);
             // Playhead POSITION follows THIS lane's own accumulated tick, so a reversed /
@@ -517,14 +526,14 @@ void MonsoonSandsVisualExpander::process(const ProcessArgs&) {
     if (monLookupDiv.process()) cachedMon_ = redDot::findMonsoonEitherSide(this);
     Monsoon* monsoon = cachedMon_;
     if (!monsoon) {
-        for (int l = 0; l < 6; ++l) outputs[PROB_OUT_START + l].setVoltage(0.f);
+        for (int l = 0; l < dotModular::SandsGrid::MONO_LANES; ++l) outputs[PROB_OUT_START + l].setVoltage(0.f);
         return;
     }
     // ── Gate edge detection for dir_mod and deleg_mod inputs ─────────────
     // Mono jacks (1 channel). Direction cycles Fwd→Rev→Pend→PingPong→Fwd.
     // Delegation flips local/delegated (ownerDispId for lanes 0..3).
     {
-        for (int lane = 0; lane < 6; ++lane) {
+        for (int lane = 0; lane < dotModular::SandsGrid::MONO_LANES; ++lane) {
             auto& in = inputs[dirModId(lane)];
             if (!in.isConnected()) continue;
             bool high = in.getVoltage(0) > 1.f;
@@ -537,7 +546,7 @@ void MonsoonSandsVisualExpander::process(const ProcessArgs&) {
             }
             dirModPrev[lane] = high;
         }
-        for (int lane = 0; lane < 4; ++lane) {
+        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
             auto& in = inputs[delegModId(lane)];
             if (!in.isConnected()) continue;
             bool high = in.getVoltage(0) > 1.f;
@@ -551,7 +560,7 @@ void MonsoonSandsVisualExpander::process(const ProcessArgs&) {
     auto& eng = monsoon->engine;
     const float scaleV = (monsoon->probOutScale == 0) ? 1.f : (monsoon->probOutScale == 1) ? 5.f : 10.f;
     const bool sh = monsoon->probOutSampleHold;
-    for (int l = 0; l < 6; ++l) {
+    for (int l = 0; l < dotModular::SandsGrid::MONO_LANES; ++l) {
         int strand = dotModular::MONO_LANE_TO_STRAND[l];
         // Lane's post-LOR step — read each lane's OWN tick so a reversed / pendulum lane's CV
         // matches the cell the engine reads (laneTick_ is always >= 0, so no not-started -1).

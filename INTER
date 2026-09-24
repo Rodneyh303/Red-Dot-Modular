@@ -1,0 +1,4 @@
+PW_MM=299.7  EXPR_X=9.38  J_DOM=18.75 (EXPR centred in 18.75mm gutter)
+mark row: centre x=149.9, spans 128.9..170.9 (pitch 6.0), y=7.0
+COLLAPSE INTER label centre x=230.7 (block-derived)
+horizontal clearance mark-row-right-edge - label = 58.2 mm

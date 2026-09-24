@@ -1,0 +1,21 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "Build VCV Plugin",
+            "command": "make",
+            "args": [],
+            "options": {
+                "env": {
+                    "RACK_DIR": "C:/Users/rodney/Documents/Rackbuild/Rack-SDK" 
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"]
+        }
+    ]
+}

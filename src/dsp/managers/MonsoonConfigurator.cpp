@@ -17,6 +17,9 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->configParam(LEGATO_PARAM,      0.f, 1.f, 0.00f, "Legato probability");
     m->configParam(REST_PARAM,        0.f, 1.f, 0.00f, "Rest probability");
     m->configParam(ACCENT_KNOB,       0.f, 1.f, 0.00f, "Accent gate probability");
+    // Q-mix LEVEL ("6th big knob"): the level the mono voice's q-mix probability
+    // compares against. Same 0..1 probability domain as the other big-5 knobs.
+    m->configParam(QMIX_LEVEL_PARAM,  0.f, 1.f, 0.00f, "Q-mix level");
     m->configParam(TRANSPOSE_PARAM,  -12.f, 12.f, 0.f, "Transpose (semitones)");
     
     // Main window controls (Always present)
@@ -43,16 +46,18 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->configButton(DICE_M_PARAM, "Dice melody");
     //slew defaults to 100% for melody, common case and aligns with meloDicer which does not have slew.
     m->configParam(DICE_SLEW_M_PARAM, 0.f, 1.f, 1.f, "Melody dice slew", "%", 0.f, 100.f);
-    m->configButton(DICE_TRIAL_R_PARAM, "Trial rhythm (audition vs fixed A)");
-    m->configButton(DICE_TRIAL_M_PARAM, "Trial melody (audition vs fixed A)");
+    // Task 4 (Trial→QMIX repurpose): the QMIX stream gets its own dice/slew/mix,
+    // mirroring rhythm/melody. Slew defaults to 100% B like R/M.
+    m->configButton(DICE_Q_PARAM, "Dice q-mix");
+    m->configParam(DICE_SLEW_Q_PARAM, 0.f, 1.f, 1.f, "Q-mix dice slew", "%", 0.f, 100.f);
     m->configButton(LAST_DICE_R_PARAM,  "Last dice rhythm (previous draw)");
     m->configButton(LAST_DICE_M_PARAM,  "Last dice melody (previous draw)");
-    m->configButton(LAST_TRIAL_R_PARAM, "Last trial rhythm (previous candidate)");
-    m->configButton(LAST_TRIAL_M_PARAM, "Last trial melody (previous candidate)");
-    //mix defaults to 100% B, so that dice+trial defaults to auditioning a new pattern rather than blending with the existing one.
+    m->configButton(LAST_DICE_Q_PARAM,  "Last dice q-mix (previous draw)");
+    //mix defaults to 100% B, so that dice defaults to auditioning a new pattern rather than blending with the existing one.
     //mix of 100% mirrors MeloDicer which does not have mix.
     m->configParam(RHYTHM_MIX_PARAM, 0.f, 1.f, 1.f, "Rhythm A>B mix", "%", 0.f, 100.f);
     m->configParam(MELODY_MIX_PARAM, 0.f, 1.f, 1.f, "Melody A>B mix", "%", 0.f, 100.f);
+    m->configParam(QMIX_MIX_PARAM, 0.f, 1.f, 1.f, "Q-mix A>B mix", "%", 0.f, 100.f);
 
     // Mode E manual phase (full range = one upward ramp = one bar). Fallback when CV1
     // is unpatched; automatable by a host to drive Mode E from a DAW phase modulator.

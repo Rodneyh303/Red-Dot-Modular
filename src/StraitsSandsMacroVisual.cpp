@@ -92,11 +92,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 return rack::math::clamp((mon->getGlobalSpread(lane) + 1.f) * 0.5f, 0.f, 1.f);
             };
             arc->getModNorm = [mm, lane]() -> float {
-                if (!mm || lane < 0 || lane >= 3) return 0.5f;
+                if (!mm || lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return 0.5f;
                 return rack::math::clamp((mm->spreadEffective[lane] + 1.f) * 0.5f, 0.f, 1.f);
             };
             arc->isActive = [mm, lane]() -> bool {
-                if (!mm || lane < 0 || lane >= 3) return false;
+                if (!mm || lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return false;
                 Monsoon* mon = findMonsoonEitherSide(mm);
                 if (!mon || !mon->modVizMacro) return false;
                 // Gate on the spread CV jack actually being connected — NOT a
@@ -161,8 +161,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // history action; refresh the editor cache too (store->editor seed is event-driven).
         visualEditor->onLorCommit = [this](int lane, const int before[3], const int after[3]) {
             auto* m = getMonsoon(); if (!m) return;
-            if (lane < 0 || lane > 3) return;   // only MEL/OCT/REST/ACC have global LOR
-            const int engLane = dotModular::EDITOR_TO_ENGINE_LANE[lane];
+            if (lane < 0 || lane > 4) return;   // only MEL/OCT/REST/ACC/QMIX have global LOR (5 poly lanes)
+            const int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane];
             const int bef0=before[0],bef1=before[1],bef2=before[2];
             const int aft0=after[0], aft1=after[1], aft2=after[2];
             auto* ed = visualEditor;
@@ -188,23 +188,23 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                                        return m && m->lightTheme; };
         };
 
-        // 4 poly probability CV outs (output_PROB_OUT_REST..+3), aligned to lane rows.
-        for (int l = 0; l < 4; ++l)
+        // 5 poly probability CV outs (output_PROB_OUT_REST..+4), aligned to lane rows.
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
             bindOutput<redDot::GoldPolyPort>(
                 "output_" + std::to_string(StraitsMacroVisualIds::PROB_OUT_REST + l),
                 StraitsMacroVisualIds::PROB_OUT_REST + l,
                 std::function<void(redDot::GoldPolyPort*)>(themeOut));
 
-        // ── Left section: 4 lanes × (4 CV jacks + 4 attens + 1 spread) ──
+        // ── Left section: 5 poly lanes × (4 CV jacks + 4 attens + 1 spread) ──
         // input_{cvId(lane,c)}  param_{attenId(lane,c)}  param_{SPREAD_REST+lane}
-        for (int lane = 0; lane < 4; ++lane) {
+        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
             for (int c = 0; c < 4; ++c)
                 bindInput<PJ301MPort>("input_" + std::to_string(cvId(lane,c)), cvId(lane,c));
             // STORE-BACKED (MVC step 1d): the global attenuverters are no longer params.
             // Monsoon (which owns the store) is resolved lazily -- it may not be attached
             // when the widget is built, and can be attached/detached later.
             for (int c = 0; c < 4; ++c) {
-                static const char* LN[4] = {"REST","MEL","OCT","ACC"};
+                static const char* LN[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX"};
                 static const char* CN[4] = {"Length","Offset","Rotation","Spread"};
                 const std::string albl = std::string(LN[lane]) + " " + CN[c] + " CV depth";
                 auto* k = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
@@ -221,9 +221,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // Per-lane global SPREAD trimpots (param_SPREAD_REST..+3 = lanes 0..3).
         // STORE-BACKED (MVC step 1d). The mod-arcs were decoupled from paramId earlier, so
         // pendingSpreadArcs takes a Widget* and the arc reads getGlobalSpread(lane).
-        static const int spreadPid[4] = { SPREAD_REST, SPREAD_MELODY, SPREAD_OCTAVE, SPREAD_ACCENT };
-        for (int lane = 0; lane < 4; ++lane) {
-            static const char* LN[4] = {"REST","MEL","OCT","ACC"};
+        static const int spreadPid[dotModular::SandsGrid::POLY_LANES] = { SPREAD_REST, SPREAD_MELODY, SPREAD_OCTAVE, SPREAD_ACCENT, SPREAD_QMIX };
+        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
+            static const char* LN[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX"};
             auto* sp = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_" + std::to_string(spreadPid[lane]), storeResolver(),
                 -1.f, 1.f, 0.f, std::string(LN[lane]) + " spread",
@@ -240,7 +240,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // the per-voice load/store sync dance (with its clobber guard) entirely -- the knob
         // is the store's editing surface directly. slot = voiceSlot(viewVoice+1), matching the
         // engine's getMacroSend(slot,...) read and the persisted macroSend[256].
-        for (int lane = 0; lane < 4; ++lane)
+        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
             for (int item = 0; item < 4; ++item) {
                 redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                     "param_send_" + std::to_string(lane) + "_" + std::to_string(item),
@@ -259,8 +259,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // P9b: the two PRE/POST CV taps per lane (3rd row of each send group) —
         // param_taplor_{lane} → tapLorId, param_tapspr_{lane} → tapSprId.
         // STORE-BACKED (MVC step 1d). globalTap index: 0 = LOR tap, 1 = spread tap.
-        for (int lane = 0; lane < 4; ++lane) {
-            static const char* LN[4] = {"REST","MEL","OCT","ACC"};
+        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
+            static const char* LN[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX"};
             redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_taplor_" + std::to_string(lane), storeResolver(),
                 0.f, 1.f, 1.f, std::string(LN[lane]) + " LOR send tap (PRE-POST)",
@@ -277,11 +277,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // Macro is the global editor → DirCell sets the MONO direction (laneDirPending_).
         // Kit markers use EDITOR lane order (row 0..3 = MEL/OCT/REST/ACC), matching East.
         // Locked when no Monsoon or when Mono is present (Mono is the authority).
-        static const NVGcolor editorDirCol[4] = {
+        static const NVGcolor editorDirCol[dotModular::SandsGrid::POLY_LANES] = {
             nvgRGB(0xd4,0xaf,0x37), nvgRGB(0xb8,0x86,0x0b),  // MEL gold, OCT dark gold
+            nvgRGB(0x80,0x60,0xc0),  // QMIX purple
             nvgRGB(0x50,0x50,0x50), nvgRGB(0xff,0x95,0x00)   // REST grey, ACC orange
         };
-        for (int lane = 0; lane < 4; ++lane) {
+        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
             // STORE-BACKED (MVC step 1: direction de-param). The DirCell reads/writes
             // editor.globalDir via get/setGlobalDir instead of the dirDispId param -- the same
             // array the engine reads (MonsoonExpanderManager getGlobalDir) and persists
@@ -322,7 +323,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 p->lightTheme = [mod_]() { Monsoon* m = mod_ ? redDot::findMonsoonEitherSide(mod_) : nullptr;
                                           return m && m->lightTheme; };
             };
-            for (int lane = 0; lane < 4; ++lane)
+            for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
                 bindInput<redDot::GoldPolyPort>("input_dir_mod_" + std::to_string(lane),
                     dirModId(lane), std::function<void(redDot::GoldPolyPort*)>(themeIn));
         }
@@ -365,14 +366,14 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             mon->expanderManager.fillPresence(in, mon->engine.numPolyVoices);  // single authority
             // MVC step 1d: Mono's owner is STORE-BACKED (editor.monoOwner via getMonoOwner).
             // mon IS the Monsoon store owner; was mv->params[ownerDispId(l)].
-            for (int l = 0; l < 4; ++l)
+            for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
                 in.monoV1Owner[l] = mon->getMonoOwner(l);
         }
         return dotModular::SandsTopology::build(in);
     }
 
     // LOR is STORE-BACKED (MVC step 1: LOR de-param). Macro's GLOBAL LOR lives in the store's
-    // dedicated globalLor[12] array (lane*3 + c), NOT East's per-slot lorBase[288] -- Macro's
+    // dedicated globalLor[12] array (lane*3 + c), NOT East's per-slot lorBase[336] -- Macro's
     // LOR is global, not per-voice. globalLor is the array the ENGINE already reads
     // (MonsoonSandsManager getGlobalLor) and that already persists (PersistenceManager
     // editorGlobalLor). The 12 globalDnaId params were a redundant mirror of it; removing them
@@ -381,8 +382,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     void saveLOR() {
         if (!module || !visualEditor) return;
         auto* mm = getMonsoon(); if (!mm) return;
-        for (int l = 0; l < 4; ++l) {   // l = engine lane
-            const auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR[l]];
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // l = engine lane
+            const auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR_QMIX[l]];
             mm->setGlobalLor(l, 0, (float)lane.length);
             mm->setGlobalLor(l, 1, (float)lane.offset);
             mm->setGlobalLor(l, 2, (float)lane.rotation);
@@ -391,8 +392,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     void loadLOR() {
         if (!module || !visualEditor) return;
         auto* mm = getMonsoon(); if (!mm) return;
-        for (int l = 0; l < 4; ++l) {   // l = engine lane
-            auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR[l]];
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // l = engine lane
+            auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR_QMIX[l]];
             lane.length   = std::max(1,(int)std::round(mm->getGlobalLor(l, 0)));
             lane.offset   = (int)std::round(mm->getGlobalLor(l, 1));
             lane.rotation = (int)std::round(mm->getGlobalLor(l, 2));
@@ -544,8 +545,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // writes on East-owned lanes → leak). One-way borrowing: Macro never borrows East.
         // lane = engine PL lane; el = editor lane it displays into; pv = poly bank index.
         if (!onMonoTab) {
-            for (int lane = 0; lane < 4; ++lane) {
-                int el = dotModular::ENGINE_LANE_TO_EDITOR[lane];
+            for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
+                int el = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[lane];
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[el].probabilities[s] =
                         macroOwnProbability(lane, s, /*mono=*/false, /*polyVoice=*/pv);
@@ -562,8 +563,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // East-owned lane, leaking East's modulation into Macro's display). One-way
             // borrowing: Macro never borrows East. el = EDITOR lane; macroOwnProbability wants
             // the ENGINE PL lane → EDITOR_TO_ENGINE_LANE[el].
-            for (int el = 0; el < 4; ++el) {
-                const int engLane = dotModular::EDITOR_TO_ENGINE_LANE[el];
+            for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+                const int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[el].probabilities[s] =
                         macroOwnProbability(engLane, s, /*mono=*/true, /*polyVoice=*/0);
@@ -581,8 +582,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // loadLOR; this overlay now matches them.)
         auto& eng = monsoon->engine;
         // Per-lane direction cue: use Macro's OWN macroLaneSign_ (always follows Macro's DirCell)
-        for (int l = 0; l < 4; ++l) {
-            int el = dotModular::ENGINE_LANE_TO_EDITOR[l];
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
+            int el = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[l];
             int strand = dotModular::MONO_LANE_TO_STRAND[el];
             visualEditor->setLanePlayDir(el, eng.lastPlayDir * eng.macroLaneSign_[strand]);
         }
@@ -613,13 +614,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // who owns the lane downstream (same principle as the poly display). Previously
             // the tab1Mono branch showed MONO's LOR for Mono-owned lanes (and only 3 lanes,
             // missing accent), so Macro's V1 page reflected Mono instead of Macro. l =
-            // engine lane (0=REST 1=MEL 2=OCT 3=ACC) → editor lane.
-            for (int l = 0; l < 4; ++l) {
+            // engine lane (0=REST 1=MEL 2=OCT 3=ACC 4=QMIX) → editor lane.
+            for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
                 int ownLen = (int)std::lround(mod->macroBase[l][0] + mod->macroCVDelta[l][0]);
                 int ownOff = (int)std::lround(mod->macroBase[l][1] + mod->macroCVDelta[l][1]);
                 int ownRot = (int)std::lround(mod->macroBase[l][2] + mod->macroCVDelta[l][2]);
                 ownLen = std::max(1, ownLen);
-                int el = dotModular::ENGINE_LANE_TO_EDITOR[l];
+                int el = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[l];
                 visualEditor->currentState.lanes[el].setDisplayLOR(ownLen, ownOff, ownRot);
                 // Use Macro's OWN macroLaneTick_ — advanced by the engine in advancePlayhead
                 // using Macro's direction (macroLaneDir_), with full bounce support for
@@ -634,8 +635,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     }
 
     // Mix-in send group labels (NanoVG; panel carries no baked text). Geometry MUST
-    // match the send grids in gen_macro_mono.py and the widget knob placement above:
-    // BLEND_TOP=72 SEND_Y0=12 SEND_DY=11 SEND_DX=7, groups at ED_X + lane*ED_W/3.
+    // match the send grids in gen_macro_mono.py (gen_macro) EXACTLY — keep in lockstep:
+    //   BLEND_TOP=85 BLEND_H=35 SEND_Y0=10 SEND_DY=9 SEND_DX=6 GROUP_W=ED_W/5 (5 lanes incl QMIX).
     void draw(const DrawArgs& args) override {
         ModuleWidget::draw(args);
         NVGcontext* vg = args.vg;
@@ -645,16 +646,17 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // being painted over with the panel background here, which is why the V1
         // trimpots "disappeared" even though the widgets were visible.)
 
-        // Lanes now end at SandsGrid::polyBottom() = 70. Send group shrunk (DY 11->9.5) and moved
-        // down (BLEND_TOP 72->76) into the unused space below the tap knobs, per Rodney.
-        const float BLEND_TOP=76.f, SEND_Y0=10.f, SEND_DY=9.5f, SEND_DX=6.f, BGAP=2.5f;
-        const float GROUP_W = ED_W/4.f;
+        // Macro box shrink (Option B follow-up): BLEND_TOP 82→85, BLEND_H 38→35, moved down into
+        // the space reclaimed by the shorter 13mm lanes. GROUP_W=ED_W/5 (q-mix is a full 5th lane —
+        // was ED_W/4, a 4-lane leftover that mis-placed every label). Mirrors gen_macro_mono.py.
+        const float BLEND_TOP=85.f, SEND_Y0=10.f, SEND_DY=9.f, SEND_DX=6.f, BGAP=2.5f;
+        const float GROUP_W = ED_W/5.f;
         // Labels in DISPLAY order (matching gen_macro_mono.py DISPLAY_ORDER = editor
         // order MEL/OCT/REST/ACC). The SVG already places the send groups left-to-right
         // in this order; the labels must match. (Previously laneName was indexed by
         // physical position in ENGINE order, so e.g. the MEL group was mislabelled
         // "REST" — the off-by-mapping the user saw: "REST" group drove melody.)
-        const char* laneName[4] = { "MELODY", "OCTAVE", "REST", "ACCENT" };  // editor/display order
+        const char* laneName[dotModular::SandsGrid::POLY_LANES] = { "MELODY", "OCTAVE", "QMIX", "REST", "ACCENT" };  // editor/display order
         const char* itemName[4] = { "LEN", "OFF", "ROT", "SPR" };
 
         bool isLight = false;
@@ -671,9 +673,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         nvgFontSize(vg, 8.0f);
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
         nvgFillColor(vg, head);
-        nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 3.5f), "MIX IN", nullptr);
+        // "MIX IN" label baseline at ~83.5mm (moved down ~3mm with the box).
+        nvgText(vg, mm2px(ED_X), mm2px(BLEND_TOP - 1.5f), "MIX IN", nullptr);
 
-        for (int l = 0; l < 4; ++l) {
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
             float gx = ED_X + l*GROUP_W + BGAP*0.5f;
             float gw = GROUP_W - BGAP;
             float gcx = gx + gw*0.5f;

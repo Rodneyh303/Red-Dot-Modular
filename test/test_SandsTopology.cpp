@@ -47,8 +47,10 @@ int main() {
         CHECK(!t.lockedOn (Role::MONO,  0,0),       "NOT locked on Mono panel");
         CHECK(t.writesEngine(Role::MONO, 0,0),      "MONO writes engine V1");
         CHECK(!t.writesEngine(Role::MACRO,0,0),     "MACRO does NOT write engine V1 (the fix)");
-        CHECK(t.owner(0,4) == Role::MONO,           "VAR (lane4) mono-only -> MONO");
-        CHECK(t.owner(0,5) == Role::MONO,           "LEG (lane5) mono-only -> MONO");
+        CHECK(t.owner(0,2) == Role::MONO,           "QMIX (lane2) delegable, not ceded -> MONO");
+        CHECK(t.owner(0,4) == Role::MONO,           "ACCENT (lane4) delegable, not ceded -> MONO");
+        CHECK(t.owner(0,5) == Role::MONO,           "VAR (lane5) mono-only -> MONO");
+        CHECK(t.owner(0,6) == Role::MONO,           "LEG (lane6) mono-only -> MONO");
     }
 
     std::printf("== MONO_PLUS_MACRO with melody lane CEDED to Macro ==\n");
@@ -72,13 +74,14 @@ int main() {
     std::printf("== EAST_PLUS_MACRO poly ownership (per voice/lane) ==\n");
     {
         auto i = base(false,true,true);
-        for (int v=0; v<15; ++v) for (int l=0;l<4;++l) i.eastPolyOwner[v][l] = true; // East owns all
+        for (int v=0; v<15; ++v) for (int l=0;l<5;++l) i.eastPolyOwner[v][l] = true; // East owns all 5 poly lanes
         i.eastPolyOwner[2][1] = false;   // voice index 2 (=V4), octave ceded to Macro
         auto t = SandsTopology::build(i);
         CHECK(t.owner(3,1) == Role::MACRO,          "V4 octave ceded -> MACRO (voice 3 = poly idx 2)");
         CHECK(t.owner(3,0) == Role::EAST,           "V4 melody still EAST");
         CHECK(t.owner(1,0) == Role::EAST,           "V2 melody EAST");
-        CHECK(t.owner(1,4) == Role::NONE,           "poly has no VAR lane -> NONE");
+        CHECK(t.owner(1,4) == Role::EAST,           "V2 ACCENT (lane4) is a poly lane -> EAST");
+        CHECK(t.owner(1,5) == Role::NONE,           "poly has no VAR lane (5) -> NONE");
     }
 
     std::printf("\n%s (%d failures)\n", failures ? "TESTS FAILED" : "ALL TESTS PASSED", failures);

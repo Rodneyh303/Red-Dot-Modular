@@ -55,8 +55,8 @@ namespace StraitsMacroVisualIds {
 
     // ── Param IDs ─────────────────────────────────────────────────────────
     enum SpreadParamId {
-        // Display spread trimpots (0-2)
-        SPREAD_REST = 0, SPREAD_MELODY, SPREAD_OCTAVE, SPREAD_ACCENT,  // already added
+        // Display spread trimpots (0-4)
+        SPREAD_REST = 0, SPREAD_MELODY, SPREAD_OCTAVE, SPREAD_ACCENT, SPREAD_QMIX,
         // 16 attenuverters: lane l, col c → ATTEN_START + l*4 + c (4-19)
         ATTEN_START,
         // Direction display proxy: 4 lanes (MEL/OCT/REST/ACC). DirCell writes here;
@@ -108,9 +108,9 @@ namespace StraitsMacroVisualIds {
 
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
-        CV_START = 0,
-        DIR_MOD_START = CV_START + 16,   // = 16 — direction gate-mod (4 mono jacks)
-        NUM_INPUTS = DIR_MOD_START + 4   // = 20
+        CV_START = 0,                    // 5 poly lanes × 4 cols (LEN/OFF/ROT/SPR) = 20 (0..19)
+        DIR_MOD_START = CV_START + 20,   // = 20 — direction gate-mod (5 poly lanes, 20..24)
+        NUM_INPUTS = DIR_MOD_START + 5   // = 25  (QMIX-widened; was 20 at 4 lanes)
     };
     static inline int dirModId(int lane) { return DIR_MOD_START + lane; }
     static inline int cvId(int lane, int c) { return CV_START + lane*4 + c; }
@@ -119,7 +119,7 @@ namespace StraitsMacroVisualIds {
     // 3 poly probability CV outs (REST/MEL/OCT): ch1 reserved (future mono tab),
     // ch2..1+nVoices = per-voice ensemble.
     enum OutputId {
-        PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_ACC,
+        PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_ACC, PROB_OUT_QMIX,
         NUM_OUTPUTS
     };
 
@@ -136,8 +136,9 @@ namespace StraitsMacroVisualIds {
     inline int sprId(int lane) {
         if (lane == 0) return SPREAD_REST;
         if (lane == 1) return SPREAD_MELODY;
+        if (lane == 2) return SPREAD_OCTAVE;
         if (lane == 3) return SPREAD_ACCENT;
-        return              SPREAD_OCTAVE;
+        return              SPREAD_QMIX;  // lane 4
     }
     // param 0=LEN,1=OFF,2=ROT → lorId; param 3=SPR → sprId
     inline float targetLo(int param) { return param == 0 ? 1.f : 0.f; }
@@ -193,14 +194,14 @@ struct StraitsSandsMacroVisual : Module {
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
         monLookupDiv.setDivision(8);   // topology changes are control-rate
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
-        { static const char* ln[4] = {"REST","MEL","OCT","ACC"};
-          for (int l = 0; l < 4; ++l)
+        { static const char* ln[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX"};
+          for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
             configOutput(StraitsMacroVisualIds::PROB_OUT_REST + l,
                 std::string("Probability ") + ln[l] + " (poly: ch2+ voices)"); }
 
-        static const char* laneNames[4] = {"REST","MEL","OCT","ACC"};
+        static const char* laneNames[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX"};
         static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
-        for (int lane=0; lane<4; ++lane) {
+        for (int lane=0; lane<dotModular::SandsGrid::POLY_LANES; ++lane) {
             // P9b: TWO PRE/POST taps per lane — LOR (LEN/OFF/ROT) and SPREAD. Default
             // 1.0 (POST = send draws attenuated CV). 0.0 = PRE (raw CV pre-atten).
             for (int c=0; c<4; ++c) {
@@ -227,8 +228,8 @@ struct StraitsSandsMacroVisual : Module {
         // write the live view voice's slot directly, so no display proxy and no sync dance.
         // Ids kept declared so the enum does not renumber, matching LOR/direction/attenuverters.
         // Direction display proxies (4 poly lanes). DirCell writes 0..3 = Fwd/Rev/Pend/PingPong.
-        static const char* dirNames[4] = {"MEL","OCT","REST","ACC"};
-        for (int l = 0; l < 4; ++l) {
+        static const char* dirNames[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC"};
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
             // dirDispId is STORE-BACKED (MVC step 1: direction de-param) -- no configParam,
             // not host-exposed. Direction lives in editor.globalDir[4] (engine-read,
             // persisted); the store-backed DirCell is the reader/writer. Id kept declared so
@@ -243,29 +244,30 @@ struct StraitsSandsMacroVisual : Module {
     // PERF: chain walk is control-rate work (Rodney audit item 3).
     Monsoon* cachedMon_ = nullptr;
     rack::dsp::ClockDivider monLookupDiv;
-    bool dirModPrev[4] = {};
+    bool dirModPrev[dotModular::SandsGrid::POLY_LANES] = {};
 
     // S&H latch state for the poly prob outs: [lane][channel] (ch0 reserved, 1..15 voices).
-    float probHeld[4][16] = {};
-    int   probLastStep[4][16];
+    float probHeld[dotModular::SandsGrid::POLY_LANES][16] = {};
+    int   probLastStep[dotModular::SandsGrid::POLY_LANES][16];
 
     // CV-applied global spread per lane (0=REST,1=MEL,2=OCT). processDNA writes
     // these from base + spread CV; the display reads them so spread CV is visible
     // WITHOUT moving the base knob (the old code wrote the modulated value back to
     // the SPREAD_* param, which dragged the knob — fixed).
-    float spreadEffective[4] = {0.f, 0.f, 0.f, 0.f};
+    float spreadEffective[dotModular::SandsGrid::POLY_LANES] = {0.f, 0.f, 0.f, 0.f, 0.f};
 
     // Per (lane, item) split of Macro's global contribution, published by
     // processDNA::applyGlobal for the Macro/East blend equation. item: 0=LEN
     // 1=OFF 2=ROT 3=SPR. macroBase = the knob value (no CV); macroCVDelta = the
     // CV-only contribution (already scaled by Macro's own attenuverter). East's
     // sync reads these: value = base(owner) + eastCV + macroCVDelta·blendSend.
-    float macroBase[4][4]    = {};
-    float macroCVDelta[4][4] = {};
+    // Now 5 poly lanes: REST/MELODY/OCTAVE/ACCENT/QMIX (engine lane order).
+    float macroBase[5][4]    = {};
+    float macroCVDelta[5][4] = {};
     // P9: the send PRE/POST tap applies ONLY to what the sends distribute, not to
     // Macro's own LOR/spread display (which always uses the true POST macroCVDelta).
     // macroSendDelta = the tapped CV delta the East/Mono send mix-ins read.
-    float macroSendDelta[4][4] = {};
+    float macroSendDelta[5][4] = {};
 
     json_t* dataToJson() override {
         json_t* r = json_object();

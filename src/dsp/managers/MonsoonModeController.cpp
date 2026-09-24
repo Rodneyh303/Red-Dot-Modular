@@ -10,6 +10,13 @@ static_assert((uint32_t)dotModular::SB_SANDS_M == (1u << 3), "dirLive_ kSandsM o
 // LockManager include). Pin them here too.
 static_assert((uint32_t)dotModular::SB_DICE_R == (1u << 8), "diceLiveR bit out of sync with ScopeBit");
 static_assert((uint32_t)dotModular::SB_DICE_M == (1u << 9), "diceLiveM bit out of sync with ScopeBit");
+// q-mix own axis: updatePatternInput hard-codes 1<<11 (diceLiveQ) and the A/B latch hard-codes 1<<10
+// (SB_ABRESEED_Q); Monsoon.cpp handleRestart also hard-codes 1<<10. Pin all three here.
+static_assert((uint32_t)dotModular::SB_DICE_Q == (1u << 11), "diceLiveQ bit out of sync with ScopeBit");
+static_assert((uint32_t)dotModular::SB_ABRESEED_Q == (1u << 10), "abReseedQ bit out of sync with ScopeBit");
+// q-mix Change Alley + Sands DNA own axes: the manager gates hard-code 1<<12 / 1<<13. Pin them.
+static_assert((uint32_t)dotModular::SB_CA_Q == (1u << 12), "SB_CA_Q bit out of sync with ScopeBit");
+static_assert((uint32_t)dotModular::SB_SANDS_Q == (1u << 13), "SB_SANDS_Q bit out of sync with ScopeBit");
 #include "../../Monsoon.hpp"
 #include "../../MonsoonCausewayPolyExpander.hpp"
 #include "../../MonsoonStraitsExpander.hpp"   // Q2: poly quantiser CV-in (StraitsIds::QUANT_CV_INPUT)
@@ -37,6 +44,10 @@ void ModeController::updatePolyVoiceRest_() {
     for (int i = 0; i < engine.numPolyVoices; ++i) {
         engine.voices[i].restProb   = mainModule->getEffectivePolyRest(i);
         engine.voices[i].accentProb = mainModule->getEffectivePolyAccent(i);
+        // Task 4 (poly QMIX): per-voice q-mix LEVEL, mirroring rest/accent. The engine reads
+        // voices[i].qmixLevel per-step in executePolyVoice's source-select. getEffectivePolyQmix
+        // is the single resolver (Straits knob; no Causeway q-mix CV yet).
+        engine.voices[i].qmixLevel  = mainModule->getEffectivePolyQmix(i);
     }
     polyVoiceCachePrimed_ = true;
 }
@@ -106,6 +117,8 @@ void ModeController::updatePatternInput() {
         // redundant re-fetch in executeModeE/A). Causeway-modulated effective value, mirroring rest.
         currentPatternInput.accentProb    = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
                                                        : paramManager.getAccent();
+        // Task 4 (QMIX): mono q-mix threshold level (Rack param; no CV/Causeway path yet).
+        currentPatternInput.qmixLevel     = paramManager.getQmixLevel();
     }
     if (octLive) {   // OctaveRange LATCH — hold OCT LO/HI under lock (see pitch-axis note above)
         currentPatternInput.octaveLo      = paramManager.getOctaveLo();
@@ -122,10 +135,14 @@ void ModeController::updatePatternInput() {
         && (engine.scopeLiveMask & (1u << 8)) != 0;   // == dotModular::SB_DICE_R
     currentPatternInput.diceLiveM = engine.locked
         && (engine.scopeLiveMask & (1u << 9)) != 0;   // == dotModular::SB_DICE_M
+    currentPatternInput.diceLiveQ = engine.locked
+        && (engine.scopeLiveMask & (1u << 11)) != 0;  // == dotModular::SB_DICE_Q (q-mix own axis)
     currentPatternInput.rhythmSlew        = paramManager.getRhythmSlew();
     currentPatternInput.melodySlew        = paramManager.getMelodySlew();
+    currentPatternInput.qmixSlew          = paramManager.getQmixSlew();   // Task 4 (QMIX)
     currentPatternInput.rhythmMix         = paramManager.getRhythmMix();
     currentPatternInput.melodyMix         = paramManager.getMelodyMix();
+    currentPatternInput.qmixMix           = paramManager.getQmixMix();    // Task 4 (QMIX)
     // Junction expander: 5 big-5 CV (x attenuverter) -> offsets the param getters add.
     // CV normalised 0..10V -> 0..1, scaled bipolar by the attenuverter.
     paramManager.clearJunctionOffsets();
@@ -146,12 +163,19 @@ void ModeController::updatePatternInput() {
     {
         const bool abR = dotModular::LockManager::liveNow(dotModular::Control::ABMix, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
         const bool abM = dotModular::LockManager::liveNow(dotModular::Control::ABMix, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
-        if (abR || abM)
+        // q-mix A/B latches on its OWN axis (SB_ABRESEED_Q), not melody's. ABMix is LATCH, so this is
+        // !locked OR the q-mix bit opted live — evaluated directly on the bit (scopeBitFor's melodyAxis
+        // bool can't express a third axis).
+        const bool abQ = !engine.locked
+                       || (engine.scopeLiveMask & (1u << 10)) != 0;   // == dotModular::SB_ABRESEED_Q
+        if (abR || abM || abQ)
             engine.pe.latchMix(currentPatternInput.rhythmMix,
                                currentPatternInput.melodyMix,
+                               currentPatternInput.qmixMix,
                                currentPatternInput.rhythmSlew,
                                currentPatternInput.melodySlew,
-                               /*applyRhythm=*/abR, /*applyMelody=*/abM);
+                               currentPatternInput.qmixSlew,
+                               /*applyRhythm=*/abR, /*applyMelody=*/abM, /*applyQmix=*/abQ);
     }
     if (mainModule) {
         // seedConnected IS read elsewhere (realtime !seedConnected checks). The former

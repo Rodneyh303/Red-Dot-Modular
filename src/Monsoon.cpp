@@ -34,6 +34,7 @@
 #include "StraitsSandsMacroVisual.hpp"        // Visual DNA editor (Macro)
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
+#include "ui/IntertropicalPairing.hpp"   // assignPairIdT<Monsoon> / resolveFollowedT (host identity + shared-CA)
 #include "dsp/managers/MonsoonConfigurator.hpp"
 #include "dsp/engines/PatternEngine.hpp"
 #include "dsp/gates/GateState.hpp"
@@ -54,8 +55,8 @@ Monsoon::Monsoon() {
         // Unified LOR base store: identity default (len=16, off=0, rot=0) for every voice
         // slot and bank, matching the old per-voice configParam defaults.
         for (int slot = 0; slot < 16; ++slot)
-            for (int bank = 0; bank < 6; ++bank)
-                editor.lorBase[slot*18 + bank*3 + 0] = 16.f;
+            for (int bank = 0; bank < dotModular::SandsGrid::MONO_LANES; ++bank)
+                editor.lorBase[slot*21 + bank*3 + 0] = 16.f;  // stride 21 = 7 banks × 3
 
         // Seed RNGs with a random value — safe to call here (uses rack::random, not inputs[])
         rhythmSeedFloat = rack::random::uniform() * 10.f;
@@ -82,6 +83,30 @@ Monsoon::Monsoon() {
 
 void Monsoon::updateExpanderPointers() {
     expanderManager.update(this);
+
+    // ── Host identity self-assign (CONNECTION_MODEL_SPEC.md §2 + §14 8-cap) ──────────────────────
+    // Lowest-free pairId (1..8) across all Monsoons, once per lifetime (mirrors Intertropical/CA),
+    // NOT in the ctor (getModuleIds re-lock). Runs at control rate (this is the control-rate scan).
+    // 8-cap: assignPairIdT returns the lowest gap, which can exceed 8 with a 9th+ Monsoon; in that
+    // case leave pairId = 0 (NOT participating — no colour/slot, and crucially NEVER colour 1, which
+    // a wrap would reuse). Re-checks each time until a slot frees (pairChecked latches only a SUCCESSFUL
+    // assignment) so a 9th promotes automatically when an earlier Monsoon is removed.
+    if (!pairChecked) {
+        bool clash = false;
+        if (APP && APP->engine) {
+            for (int64_t mid : APP->engine->getModuleIds()) {
+                rack::Module* om = APP->engine->getModule(mid);
+                if (!om || om == this) continue;
+                if (auto* mm = dynamic_cast<Monsoon*>(om))
+                    if (mm->pairId > 0 && mm->pairId == pairId) { clash = true; break; }
+            }
+        }
+        if (pairId <= 0 || pairId > kMaxParticipatingMonsoons || clash) {
+            int cand = redDot::assignPairIdT<Monsoon>(this);   // lowest 1..N free
+            pairId = (cand <= kMaxParticipatingMonsoons) ? cand : 0;   // >8 → unparticipating (no colour)
+        }
+        if (pairId > 0) pairChecked = true;   // latch only on success; a capped-out Monsoon keeps retrying
+    }
     // Shared Change Alley (CA_SHARED_EXPANDER_BUILD §Step4): followCA>0 OVERRIDES the adjacency-cached
     // CA with the rack-wide pairId match, so a second (reader) Monsoon can bind a CA on another row.
     // followCA==0 keeps the adjacency result (today's behaviour). Runs at control rate (this is called
@@ -250,6 +275,15 @@ float Monsoon::getEffectivePolyAccent(int voiceIdx) {
     }
     return math::clamp(base, 0.f, 1.f);
 }
+// Per-voice q-mix LEVEL — mirrors rest/accent. There is NO Causeway q-mix CV path yet (mono q-mix
+// is also Rack-param only), so effective == base (the Straits knob). Kept as an effective/base pair
+// for symmetry and so a future Causeway q-mix CV can drop in exactly like rest/accent.
+float Monsoon::getBasePolyQmix(int voiceIdx) {
+    return paramManager ? paramManager->getPolyQmixLevel(voiceIdx) : 0.f;
+}
+float Monsoon::getEffectivePolyQmix(int voiceIdx) {
+    return math::clamp(getBasePolyQmix(voiceIdx), 0.f, 1.f);
+}
 
 // Voice-1 / MONO counterparts: apply the Causeway MONO attenuator to CV channel 0 (the mono
 // channel) of the Causeway CV inputs, added onto the mono base rest/accent. Mirrors the poly
@@ -369,7 +403,11 @@ float Monsoon::semitoneToVolts(int semitone) {
         // which have no independent rhythm/melody split at the key level).
         const bool reseedR = dotModular::LockManager::liveNow(dotModular::Control::Reseed, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
         const bool reseedM = dotModular::LockManager::liveNow(dotModular::Control::Reseed, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
-        if (reseedR || reseedM) {
+        // q-mix reseeds on its OWN axis (SB_ABRESEED_Q), no longer riding R-or-M. Reseed is LATCH, so
+        // !locked OR the q-mix bit opted live. Evaluated on the bit directly (third axis, not melodyAxis).
+        const bool reseedQ = !engine.locked
+                           || (engine.scopeLiveMask & (1u << 10)) != 0;   // == dotModular::SB_ABRESEED_Q
+        if (reseedR || reseedM || reseedQ) {
             if (reseedOnRestart) {
                 // Only use the SEED-CV (reproducible, A=B) path when the SEED
                 // input is actually present. Unpatched → internal entropy via the
@@ -382,6 +420,7 @@ float Monsoon::semitoneToVolts(int semitone) {
                     const float s = sampleSeedFromSource();
                     if (reseedR) engine.pe.setPendingRhythmSeed(s);
                     if (reseedM) engine.pe.setPendingMelodySeed(s);
+                    if (reseedQ) engine.pe.setPendingQmixSeed(s);   // q-mix own axis (SB_ABRESEED_Q); shares the single SEED jack value
                     if (expanderManager.cachedChangeAlleyV2)
                         expanderManager.cachedChangeAlleyV2->reseedCorrKeys(s);
                 } else {
@@ -389,6 +428,7 @@ float Monsoon::semitoneToVolts(int semitone) {
                     if (reseedM) engine.pe.setPendingMelodyReseedRoll(0.f, /*full=*/true);
                     // CA mirrors rhythm/melody: unpatched -> full internal entropy (not the
                     // lossy 0..10 float), keeping all three families consistent.
+                    if (reseedQ) engine.pe.setPendingQmixReseedRoll(0.f, /*full=*/true);   // q-mix own axis (SB_ABRESEED_Q)
                     if (expanderManager.cachedChangeAlleyV2)
                         expanderManager.cachedChangeAlleyV2->seedCorrKeysInternal();
                 }
@@ -433,6 +473,11 @@ float Monsoon::semitoneToVolts(int semitone) {
         melodyMode = 0;
         engine.pe.setPendingMelodyRoll();   // plain roll; reseed lives on RESET (Step 6)
     }
+    void Monsoon::diceQmix() {
+        // Task 4 (QMIX): mirror diceMelody — plain roll on the q-mix stream (own Philox stream).
+        qmixMode = 0;
+        engine.pe.setPendingQmixRoll();
+    }
 
     // Single definition of every die-action. Fired by G3 (menu-routed) and by
     // Raffles's dedicated gates (and any future source) — DRY.
@@ -469,11 +514,11 @@ void Monsoon::onPhraseBoundary_() {
     if (engine.pe.diceUndoPending.valid) {
         const auto& c = engine.pe.diceUndoPending;
         DiceUndoSnapshot s;
-        s.movedR = c.movedR;         s.movedM = c.movedM;
-        s.rSeedBefore = c.rSeedBefore; s.mSeedBefore = c.mSeedBefore;
-        s.rSeedAfter  = c.rSeedAfter;  s.mSeedAfter  = c.mSeedAfter;
-        s.rCtrBefore  = c.rCtrBefore;  s.mCtrBefore  = c.mCtrBefore;
-        s.rCtrAfter   = c.rCtrAfter;   s.mCtrAfter   = c.mCtrAfter;
+        s.movedR = c.movedR;         s.movedM = c.movedM;         s.movedQ = c.movedQ;
+        s.rSeedBefore = c.rSeedBefore; s.mSeedBefore = c.mSeedBefore; s.qSeedBefore = c.qSeedBefore;
+        s.rSeedAfter  = c.rSeedAfter;  s.mSeedAfter  = c.mSeedAfter;  s.qSeedAfter  = c.qSeedAfter;
+        s.rCtrBefore  = c.rCtrBefore;  s.mCtrBefore  = c.mCtrBefore;  s.qCtrBefore  = c.qCtrBefore;
+        s.rCtrAfter   = c.rCtrAfter;   s.mCtrAfter   = c.mCtrAfter;   s.qCtrAfter   = c.qCtrAfter;
         publishDiceUndo(s);
         engine.pe.diceUndoPending.valid = false;   // consumed
     }
@@ -867,10 +912,12 @@ void Monsoon::process(const ProcessArgs& args) {
             modViz.big5Lane[4] = modViz.big5Lane[4] || causewayAccentMod;  // lane 4 = accent
             modViz.rhythmSlew = paramManager->getRhythmSlewNorm();
             modViz.melodySlew = paramManager->getMelodySlewNorm();
+            modViz.qmixSlew   = paramManager->getQmixSlewNorm();   // Task 4 (QMIX)
             modViz.rhythmMix  = paramManager->getRhythmMixNorm();
             modViz.melodyMix  = paramManager->getMelodyMixNorm();
+            modViz.qmixMix    = paramManager->getQmixMixNorm();    // Task 4 (QMIX)
             modViz.activeCv3  = paramManager->anyCv3Modulated();
-            for (int i = 0; i < 4; ++i) modViz.cv3Lane[i] = paramManager->cv3LaneModulated(i);
+            for (int i = 0; i < dotModular::SandsGrid::POLY_LANES; ++i) modViz.cv3Lane[i] = paramManager->cv3LaneModulated(i);
             for (int i = 0; i < 12; ++i) modViz.semitone[i] = paramManager->getSemitoneNorm(i);
             modViz.octaveLo   = paramManager->getOctaveLoNorm();
             modViz.octaveHi   = paramManager->getOctaveHiNorm();
@@ -880,7 +927,7 @@ void Monsoon::process(const ProcessArgs& args) {
 
         if (uiManager) {
             // Move these here from per-sample logic
-            uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending());
+            uiManager->updateDiceLights(engine.pe.isRhythmSeedPending(), engine.pe.isMelodySeedPending(), engine.pe.isQmixSeedPending());
             uiManager->updateLockLight(locked);
             uiManager->updateMuteLight(muted);
             
@@ -906,20 +953,22 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // ── Button Processing (via UIManager) ──
         if (uiManager) {
-            bool rhythmTriggered, melodyTriggered;
-            if (uiManager->processDiceButtons(rhythmTriggered, melodyTriggered)) {
+            bool rhythmTriggered, melodyTriggered, qmixTriggered;
+            if (uiManager->processDiceButtons(rhythmTriggered, melodyTriggered, qmixTriggered)) {
                 // A dice press ROLLS (advance RNG, A/B morph) unless SEED is
                 // patched (then reproducible reseed). Shared with gate re-dice
-                // via diceRhythm()/diceMelody().
+                // via diceRhythm()/diceMelody()/diceQmix().
                 if (rhythmTriggered) diceRhythm();
                 if (melodyTriggered) diceMelody();
+                if (qmixTriggered)   diceQmix();   // Task 4 (QMIX)
             }
             // LastDice: roll stepping the index OPPOSITE to plain dice (previous draw).
             // Normal-mode only — the setters no-op on reversible streams.
-            bool lastDiceR, lastDiceM;
-            if (uiManager->processLastDiceButtons(lastDiceR, lastDiceM)) {
+            bool lastDiceR, lastDiceM, lastDiceQ;
+            if (uiManager->processLastDiceButtons(lastDiceR, lastDiceM, lastDiceQ)) {
                 if (lastDiceR) { rhythmMode = 0; engine.pe.setPendingRhythmLastRoll(); }
                 if (lastDiceM) { melodyMode = 0; engine.pe.setPendingMelodyLastRoll(); }
+                if (lastDiceQ) { qmixMode = 0; engine.pe.setPendingQmixLastRoll(); }   // Task 4 (QMIX)
             }
             if (uiManager->processLockButton()) {
                 locked = !locked;
@@ -1001,11 +1050,16 @@ void Monsoon::process(const ProcessArgs& args) {
 
         if (expanderManager.cachedRafflesExpander) {
             rack::Module* cw = expanderManager.cachedRafflesExpander;
+            // Each Raffles gate routes to a DieAction via the co-located SoT map (kRafflesGateAction,
+            // beside RafflesInputIds + DieAction in Monsoon.hpp). Fixes the old fireDieAction(i) that
+            // treated the gate INDEX as a DieAction — two different orderings, so every gate misfired.
+            // DA_NONE gates are inert by design (removed Trial / LiveSrc / reseed-on-roll).
             for (int i = 0; i < 14; ++i) {
                 int in = MonsoonIds::RAFFLES_GATE_TRIAL_R + i;
                 if (cw->inputs[in].isConnected()
                     && rafflesGateTrig[i].process(cw->inputs[in].getVoltage(), 0.1f, 1.f)) {
-                    fireDieAction(i);
+                    const int act = kRafflesGateAction[i];
+                    if (act != DA_NONE) fireDieAction(act);
                 }
             }
         }
@@ -1088,7 +1142,7 @@ void Monsoon::process(const ProcessArgs& args) {
         }
 
         // ── Assignable CV3 & Raffles Modulation (Throttled) ──
-        float cv3Mods[4] = {0.f, 0.f, 0.f, 0.f};
+        float cv3Mods[5] = {0.f, 0.f, 0.f, 0.f, 0.f};  // 5 poly lanes: REST/MEL/QMIX/OCT/ACC
         
         // 1. Main Panel CV3 (bipolar offset to selected target; was unipolar 0..5
         //    which rectified the negative half — an attenuverter implies bipolar).
@@ -1110,7 +1164,7 @@ void Monsoon::process(const ProcessArgs& args) {
         }
 
         // Apply final summed offsets to ParameterManager
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < dotModular::SandsGrid::POLY_LANES; ++i) {
             paramManager->setCv3Offset(i, clampv<float>(cv3Mods[i], -1.f, 1.f));
         }
     }

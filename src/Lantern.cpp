@@ -1255,6 +1255,66 @@ struct LanternDisplay : widget::Widget {
     static NVGcolor accentColour() { return nvgRGB(0xd4, 0x00, 0x1a); }       // Singapore red overlay
 };
 
+// ── Follower badge (CONNECTION_MODEL_SPEC §15) ───────────────────────────────
+// Draws which Intertropical this Lantern follows, mirroring that IT's own drawPairBadge so the two
+// can be matched by eye. Four states (see the call site in the ctor). Reads the module's persisted
+// sourceMode/followIT and the control-rate-cached resolved IT (cachedIT_); no scanning in draw.
+struct FollowBadge : rack::widget::Widget {
+    Lantern* module = nullptr;
+
+    void draw(const DrawArgs& args) override {
+        if (!module || module->sourceMode != 1) return;   // raw-voices mode → no pair badge at all
+
+        // Pinned intent vs the actually-resolved instance. cachedIT_ is refreshed at control rate in
+        // process() for sourceMode==1 (resolveFollowedIT: followIT>0 by id, else nearest).
+        const int pinned   = module->followIT;             // 0 = auto, >0 = pinned id
+        Intertropical* it  = module->cachedIT_;
+        const int resolved = it ? it->pairId : 0;
+
+        NVGcontext* vg = args.vg;
+        const float cx = box.size.x * 0.5f, cy = box.size.y * 0.5f;
+        const float r  = std::min(box.size.x, box.size.y) * 0.5f;
+
+        // Unresolved: pinned to (or auto-seeking) an IT that isn't present → struck badge, never blank.
+        if (resolved <= 0) {
+            nvgBeginPath(vg); nvgCircle(vg, cx, cy, r);
+            nvgStrokeColor(vg, nvgRGBA(0x88, 0x88, 0x88, 0xc0));
+            nvgStrokeWidth(vg, std::max(1.0f, r * 0.22f)); nvgStroke(vg);
+            nvgBeginPath(vg);                              // diagonal strike
+            nvgMoveTo(vg, cx - r * 0.6f, cy - r * 0.6f);
+            nvgLineTo(vg, cx + r * 0.6f, cy + r * 0.6f);
+            nvgStrokeColor(vg, nvgRGBA(0xb0, 0x50, 0x50, 0xe0));
+            nvgStrokeWidth(vg, std::max(1.0f, r * 0.22f)); nvgStroke(vg);
+            return;
+        }
+
+        const NVGcolor col = redDot::pairColour(resolved);
+        const bool isPinned = (pinned > 0);
+        // MIRROR the target IT's drawPairBadge EXACTLY when PINNED (Intertropical.cpp:402) so the two
+        // read as one binding: filled disc in pairColour(id), black number, same font-to-radius ratio
+        // (IT uses mm2px(3.2)/mm2px(3.0) ≈ 1.067·r and a +0.067·r vertical nudge). AUTO must be
+        // visually distinct (§15 "AUTO vs PINNED must be visually distinct"): a HOLLOW ring in the
+        // same colour + a small centre dot, so proximity-resolved never looks like a pinned disc.
+        if (isPinned) {                                    // PINNED → filled disc (matches the target)
+            nvgBeginPath(vg); nvgCircle(vg, cx, cy, r);
+            nvgFillColor(vg, col); nvgFill(vg);
+        } else {                                            // AUTO (by proximity) → hollow ring only
+            // A hollow ring vs a filled disc is the unambiguous AUTO/PINNED split (§15). No centre dot:
+            // the pair-colour digit is drawn at centre and a same-colour dot underneath it would muddy
+            // legibility. The empty interior IS the "not pinned" signal.
+            nvgBeginPath(vg); nvgCircle(vg, cx, cy, r);
+            nvgStrokeColor(vg, col); nvgStrokeWidth(vg, std::max(1.0f, r * 0.28f)); nvgStroke(vg);
+        }
+        char b[8]; snprintf(b, sizeof(b), "%d", resolved);
+        nvgFontSize(vg, r * (3.2f / 3.0f));                // == IT badge ratio, so the digit matches
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        // PINNED: black digit on the filled disc (identical to the target). AUTO: keep the digit black
+        // ONLY if legible over the hollow centre — here the centre is panel, so use the pair colour.
+        nvgFillColor(vg, isPinned ? nvgRGBA(0x0a, 0x0a, 0x0a, 0xff) : col);
+        nvgText(vg, cx, cy + r * (0.2f / 3.0f), b, nullptr);
+    }
+};
+
 // ── Module widget ────────────────────────────────────────────────────────────
 struct LanternWidget : ModuleWidget {
     // Panel theme. Lantern_panel_light.svg has existed and shipped all along -- this widget
@@ -1336,6 +1396,24 @@ struct LanternWidget : ModuleWidget {
                      Lantern::ROLL_SCROLL_MAX, {"Oct 0-4","Oct 1-5","Oct 2-6","Oct 3-7","Oct 4-8"});
         addStoreKnob(95.f,            &Lantern::rollColor,  "Roll colour",
                      2, {"By role","By voice","By note"});
+
+        // ── Follower badge (CONNECTION_MODEL_SPEC §15) — which peer this Lantern watches ──────────
+        // Selection already exists (sourceMode / followIT); this is DISPLAY only. Four states, all
+        // reusing pairColour so the badge MATCHES the target Intertropical's own drawPairBadge:
+        //   • sourceMode 0 (raw Monsoon/Straits voices) → NO badge (host ConnectMark carries it).
+        //   • sourceMode 1 pinned (followIT=k, resolves) → FILLED pairColour(k) + number k.
+        //   • sourceMode 1 auto  (followIT=0, resolves)  → HOLLOW ring of the resolved id (proximity,
+        //                                                   not pinned — the one genuinely new state).
+        //   • sourceMode 1 unresolved (pinned id absent / none) → STRUCK badge ("source removed").
+        // Top-left at (3,3)mm to line up by eye with Intertropical's badge.
+        {
+            auto* lm = module;
+            auto* badge = new FollowBadge();
+            badge->module = lm;
+            badge->box.pos  = mm2px(Vec(3.f, 3.f));
+            badge->box.size = mm2px(Vec(6.f, 6.f));
+            addChild(badge);
+        }
     }
     void step() override {
         ModuleWidget::step();
