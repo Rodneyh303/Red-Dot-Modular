@@ -112,3 +112,34 @@ DECIDED: reuse that pattern — **Monsoon context menu, single source of truth, 
 
 ---
 Origin: the idea arrived on Rodney's walk to the MRT, morning commute.
+
+## Time-varying structure (everything above is a SNAPSHOT)
+Three timescales, and the split is what keeps it audible:
+- **Amounts glide** — spread amounts are CV-modulatable, so ensemble TIGHTNESS moves continuously.
+- **Shape steps** — verbs mutate the pin map at PHRASE BOUNDARIES, so the GROUPING jumps: a section
+  becomes a chain, two groups merge, a leader changes.
+- **Trajectory reverses** — true reverse (CA_DICE_COUNTER_MODEL.md) walks the committed shapes BACKWARD.
+  The sequence of structures becomes a playable object; that is form, not modulation.
+The discrete/continuous split is not a limitation — the ear needs a grouping to PERSIST to hear it as one.
+Stable within the phrase, re-dealt between, is exactly what makes the structure perceptible; continuously
+morphing maps would read as mush.
+
+## Correlated spread modulators (via the CA poly in/out pairs) — closes the circle
+Patch any modulation into a CA pair's poly IN, take the poly OUT into the SPREAD AMOUNT CV. Each voice's
+ADHERENCE is then modulated by the voice-permuted version of that signal: the STRENGTH of correlation is
+distributed by the same table that defines WHO is correlated.
+- **Which pair you tap sets the character.** A RHYTHM pair permutes adherence the way the gates are
+  permuted → "tighten whoever currently carries the groove". A MELODY pair → "tighten whoever carries
+  the line". Genuinely different musical statements.
+- **Self-referential version:** feed a MELODY pair's output into the MELODY lane's spread amounts. The
+  correlation's own permutation then decides how strongly each voice adheres to that same correlation —
+  when CA scatters, grouping and tightness reshuffle in lockstep. The structure grades itself. (This is
+  the level-crossing shape the instrument keeps producing: the correlator's output controlling the
+  correlator.)
+- **Bipolar caution:** spread is signed, so a bipolar source makes voices flip between adherent and
+  MIRROR as it crosses zero — strong; usually wants attenuation.
+- **Frame rule applies:** if the voices are arranged by Intertropical, take the spread modulation from
+  the INTERTROPICAL tap, not the CA tap — otherwise tightness is distributed in VOICE space while the
+  notes are in PART space ("tap at the same stage your carrier comes from",
+  CORRELATED_POLY_MODULATION.md).
+Uses only things that already exist once the CA pairs are built.
