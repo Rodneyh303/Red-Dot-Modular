@@ -1,6 +1,7 @@
 #pragma once
 #include <rack.hpp>
 #include "ui/SandsGrid.hpp"
+#include "ui/SandsLaneNames.hpp"   // canonical EDITOR / SPREAD lane-name tables (q-mix-correct)
 #include "Monsoon.hpp"
 
 using namespace rack;
@@ -215,15 +216,18 @@ struct StraitsEastSandsVisual : Module {
         // to/from the per-voice MACRO_OWN/SEND params on voice switch). Owner is
         // an on/off switch (off=Macro owns base, on=East owns). Sends -1..1
         // default unity (Macro CV reaches the voice; turn down to localise).
-        const char* laneNm[4] = {"REST","MEL","OCT","ACC"};
+        // (Dead: consumed only by (void)laneNm below — kept as the SPREAD-order table for parity.)
+        const char* const* laneNm = dotModular::SandsLaneNames::SPREAD;   // [POLY_LANES], spread order
         // V1 ownership (poly lanes 0..3): STORE-BACKED (MVC step 1d). ownerDispId ids KEPT (name
         // panel slots) but reserve NO param slots — OwnerCell reads/writes editor.macroOwn via
         // get/setMacroOwn (poly) / get/setMonoMacroOwn (V1) live per tab. No configSwitch.
         (void)laneNm;
 
-        static const char* laneNames[4] = {"REST","MEL","OCT","ACC"};
+        // cvId(lane,c) is indexed by SPREAD/poly-engine lane (lane 0=REST); label from the canonical
+        // SPREAD table (q-mix appended at index 4). paramNames are the 4 COLUMNS (Len/Off/Rot/Spr).
+        static const char* const* laneNames = dotModular::SandsLaneNames::SPREAD;   // [POLY_LANES], spread order
         static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
-        for (int lane=0; lane<4; ++lane)
+        for (int lane=0; lane<dotModular::SandsGrid::POLY_LANES; ++lane)
             // CV-depth attens: STORE-BACKED (MVC step 1d). attenDispId ids KEPT (name panel slots)
             // but reserve NO param slots — StoreKnob reads/writes editor.macroAtten[currentSlot()]
             // live per tab. Only the CV jack (input) is configured here.
@@ -296,14 +300,16 @@ struct StraitsEastSandsVisual : Module {
         // Direction gate-mod inputs (poly: ch1=mono, ch2+=voices). Gate cycles Fwd→Rev→Pend→PingPong.
         // Delegation gate-mod inputs (poly: ch1=mono, ch2+=voices). Gate flips local/delegated.
         {
-            const char* laneNm[6] = {"MEL","OCT","REST","ACC","VAR","LEG"};
-            // Direction (6 lanes): STORE-BACKED (MVC step 1d). dirDispId ids KEPT (name panel
+            // dir/deleg gate-mod jacks are per EDITOR lane (0..6 = MEL/OCT/QMIX/REST/ACC/VAR/LEG),
+            // so label from the canonical EDITOR table (q-mix at index 2), bound by EAST_LANES.
+            const char* const* laneNm = dotModular::SandsLaneNames::EDITOR;   // [EAST_LANES], editor order
+            // Direction (7 lanes): STORE-BACKED (MVC step 1d). dirDispId ids KEPT (name panel
             // slots) but reserve NO param slots — DirCell reads/writes editor.laneDir via
             // get/setLaneDir (poly) or get/setMonoLaneDir (V1), live per tab. Only the gate-mod jack here.
-            for (int lane=0; lane<6; ++lane) {
+            for (int lane=0; lane<dotModular::SandsGrid::EAST_LANES; ++lane) {
                 configInput(dirModId(lane), std::string(laneNm[lane])+" direction gate-mod (poly)");
             }
-            for (int lane=0; lane<6; ++lane)
+            for (int lane=0; lane<dotModular::SandsGrid::EAST_LANES; ++lane)
                 configInput(delegModId(lane), std::string(laneNm[lane])+" delegation gate-mod (poly)");
         }
    }

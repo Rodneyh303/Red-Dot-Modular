@@ -12,6 +12,14 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     # StraitsSandsMacroVisual.hpp: COL_J1=8 J2=18 A1=30 A2=39 SPREAD_X=49 ED_X=58.
     t=theme(dark); H_MM=128.5; PW,PH=px(W_MM),px(H_MM)
     N=5   # OPT-B: 5 lanes (Q-MIX at index 2), one row each
+    ED_LANES=N   # explicit local so the draw/component loops below can't pick up a leaked module-
+                 # scope ED_LANES (East's 7) — the "Macro missing a row / labels mixed up" root cause.
+    # editor row → poly engine/spread lane (MEL->1 OCT->2 QMIX->4 REST->0 ACC->3). Mirrors
+    # dotModular::EDITOR_TO_ENGINE_LANE_QMIX (dsp/LaneMapping.hpp). cv/atten/spread/prob ids are
+    # engine-ordered, so emit them at the editor row via this table (using `el` put REST's spread on
+    # the melody row etc). Defined HERE (was implicitly leaked) so gen_macro is self-contained.
+    EDITOR_TO_ENGINE=[1,2,4,0,3]
+    assert len(EDITOR_TO_ENGINE)==ED_LANES, "EDITOR_TO_ENGINE must have one entry per editor lane"
     # Extra top margin so the view-tab row isn't crammed against the panel top
     # edge. 0.5 cm = 5 mm. Mirror TAB_TOP_OFFSET_MM in StraitsSandsMacroVisualWidget.
         # Mirrors src/ui/SandsGrid.hpp — tabs sit ABOVE the grid (3..13mm), lane 0 starts at 14.
@@ -22,9 +30,9 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
     ED_LANE_H=ED_H/N
     # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY).
     def rowY(r): return ED_Y+(r+0.5)*ED_LANE_H
-    # Display order: row i → engine lane (MEL/OCT/REST/ACC top-to-bottom)
-    DISPLAY_ORDER=[1,2,0,3]   # row0=MEL(eng1), row1=OCT(eng2), row2=REST(eng0), row3=ACC(eng3)
-    LANE_NAMES_D=["MELODY","OCTAVE","REST","ACCENT"]
+    ctrlY = rowY   # alias: a few sites below use ctrlY (as gen_mono does); same lane-centre.
+    # (Removed the stale 4-entry DISPLAY_ORDER / LANE_NAMES_D — pre-q-mix leftovers. Rows are
+    #  editor lanes 0..4 directly (MEL/OCT/QMIX/REST/ACC); no display remap, no local label table.)
     # 4 CV jacks + 4 attens + spread base — columns match SandsMonoVisual, ED_X=88
     JACK_X=[6.,15.,24.,33.]            # LEN/OFF/ROT/SPR-cv
     ATTEN_X=[43.,52.,61.,70.]          # LEN/OFF/ROT/SPR depth
@@ -133,6 +141,7 @@ def gen_mono(dark):
     # Mirrors src/ui/SandsGrid.hpp: 6 lanes x 14mm from 14 → bottom 98 (was 108, laneH 15.667).
     ROW_TOP,ROW_BOT,N=14.,105.,7   # OPT-B: 7 lanes x 13mm (Q-MIX at index 2); editor 14->105, into the space above MBS
     def laneY(l): return ROW_TOP+(l+0.5)*(ROW_BOT-ROW_TOP)/N
+    ctrlY = laneY   # alias: control/marker rows use ctrlY; identical to the lane centre.
     # Geometry MUST match MonsoonSandsVisualExpander.hpp:
     #   JACK_X={6,15,24}  ATTEN_X={34,43,52}  (all 6 lanes)
     #   spread (lanes 0-2 REST/MEL/OCT): SPR_BASE_X=62, SPR_CV_X=71, SPR_ATTEN_X=80

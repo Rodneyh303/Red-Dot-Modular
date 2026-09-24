@@ -1,6 +1,7 @@
 #pragma once
 #include <rack.hpp>
 #include "ui/SandsGrid.hpp"
+#include "ui/SandsLaneNames.hpp"   // canonical EDITOR / SPREAD lane-name tables (q-mix-correct)
 #include "Monsoon.hpp"
 #include "dsp/LaneMapping.hpp"   // ENGINE_LANE_TO_EDITOR / MONO_PARAM_TO_EDITOR — single source of truth
 #include "ui/VisualExpanderHelpers.hpp"  // findMonsoonEitherSide (monoMacroOwnsEngineLane store read)
@@ -147,18 +148,21 @@ struct MonsoonSandsVisualExpander : Module {
         // id enums (LEN_MELODY…NUM_PARAMS) stay declared (they name panel slots) but reserve none.
         config(0, SandsMonoVisualIds::NUM_INPUTS, SandsMonoVisualIds::NUM_OUTPUTS, 0);
         monLookupDiv.setDivision(8);   // topology changes are control-rate
-        for (int l = 0; l < 6; ++l)
+        // PROB_OUT ids are EDITOR-ordered (one per editor lane MEL/OCT/QMIX/REST/ACC/VAR/LEG),
+        // so label from the canonical EDITOR table (q-mix at index 2). Loop bound = MONO_LANES.
+        for (int l = 0; l < dotModular::SandsGrid::MONO_LANES; ++l)
             configOutput(PROB_OUT_START + l, std::string("Probability ") +
-                (const char*[]){"MEL","OCT","REST","ACC","VAR","LEG"}[l]);
+                dotModular::SandsLaneNames::EDITOR[l]);
 
-        static const char* names[dotModular::SandsGrid::MONO_LANES]  = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
+        // Local alias kept for the CV/dir loops below; IS the canonical EDITOR table now.
+        static const char* const* names = dotModular::SandsLaneNames::EDITOR;   // [MONO_LANES], editor order
         static const char* lnames[3] = {"Len","Off","Rot"};
 
         // LOR + atten group: ALL STORE-BACKED (MVC step 1d). lenId/offId/rotId/attenId ids are
         // KEPT (they name panel slots) but reserve NO param slots — LOR base lives in
         // editor.lorBase[kMonoSlot] (grid-edited via the visualEditor), attens in editor.monoAtten.
         // Only the CV jacks (inputs, not host-exposed) are configured here.
-        for (int l = 0; l < 6; ++l) {
+        for (int l = 0; l < dotModular::SandsGrid::MONO_LANES; ++l) {
             for (int p = 0; p < 3; ++p) {  // LEN/OFF/ROT
                 configInput(cvId(l, p),
                             std::string(names[l])+" "+lnames[p]+" CV");
@@ -178,12 +182,14 @@ struct MonsoonSandsVisualExpander : Module {
         // Direction (6 lanes): STORE-BACKED (MVC step 1d). dirDispId ids KEPT (name panel slots)
         // but reserve NO param slots — DirCell reads/writes editor.laneDir[15*6+lane] via
         // get/setMonoLaneDir (persisted as editorLaneDir). Only the gate-mod jack (input) is here.
-        for (int l = 0; l < 6; ++l) {
+        for (int l = 0; l < dotModular::SandsGrid::MONO_LANES; ++l) {
             configInput(dirModId(l), std::string(names[l]) + " direction gate-mod");
         }
-        const char* delegNm[4] = {"MEL","OCT","REST","ACC"};
-        for (int l = 0; l < 4; ++l)
-            configInput(delegModId(l), std::string(delegNm[l]) + " delegation gate-mod");
+        // Delegation targets are the POLY lanes (editor 0..4). Label from EDITOR_POLY (q-mix at 2),
+        // bound by POLY_LANES so a lane-count change can't leave this at 4 again.
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
+            configInput(delegModId(l),
+                        std::string(dotModular::SandsLaneNames::EDITOR_POLY[l]) + " delegation gate-mod");
     }
     void process(const ProcessArgs&) override;   // defined in .cpp (needs calcPlayhead)
 
@@ -192,7 +198,7 @@ struct MonsoonSandsVisualExpander : Module {
     Monsoon* cachedMon_ = nullptr;
     rack::dsp::ClockDivider monLookupDiv;
     bool dirModPrev[dotModular::SandsGrid::MONO_LANES] = {};
-    bool delegModPrev[4] = {};
+    bool delegModPrev[dotModular::SandsGrid::POLY_LANES] = {};
 
     json_t* dataToJson() override {
         json_t* root = json_object();

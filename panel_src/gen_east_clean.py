@@ -25,7 +25,9 @@ DELEG_MOD_X = 220.0 # delegation gate-mod jack column (gate flips local/delegate
 DIR_MOD_X = 228.0   # direction gate-mod jack column (gate cycles Fwd→Rev→Pend→PingPong)
 PROB_OUT_X = 236.0  # right-strip jack column, pushed right by the mod jack columns (matches hpp)
 ED_H = 91.0   # OPT-B: 7 lanes x 13mm — East adds Q-MIX at index 2 (MEL/OCT/QMIX/REST/ACC/VAR/LEG); editor 14->105, ~6mm above MBS
-ED_LANES = 7  # OPT-B: editor lanes drawn (Q-MIX added at index 2); control rows still N=4 spread lanes (q-mix control wiring = follow-up)
+ED_LANES = 7  # OPT-B: editor lanes drawn (Q-MIX added at index 2)
+POLY_LANES = 5  # spread/poly lanes (MEL/OCT/QMIX/REST/ACC) — the rows with CV/atten/spread/prob.
+                # Mirrors dotModular::SandsGrid::POLY_LANES; VAR/LEG (editor 5,6) are mono-only.
 ED_LANE_H = ED_H / ED_LANES
 # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY):
 # each lane's CV jacks + attens sit beside the visual lane they modulate. Row == editor lane
@@ -39,6 +41,7 @@ def ctrlY(k): return rowY(k)   # control/marker row for editor lane k (identity)
 # ENGINE id at the editor row; cv/atten stay editor-indexed. Emitting editor ids for spread put
 # REST's spread on the MEL row (the reported East mixup).
 EDITOR_TO_ENGINE=[1,2,4,0,3]   # MEL->1 OCT->2 QMIX->4 REST->0 ACC->3
+assert len(EDITOR_TO_ENGINE) == POLY_LANES, "EDITOR_TO_ENGINE has one entry per poly lane"
 # 4 CV jacks + 4 attens + spread base — columns match SandsMonoVisual, ED_X=88
 JACK_X  = [6.0, 15.0, 24.0, 33.0]   # LEN/OFF/ROT/SPR-cv
 ATTEN_X = [43.0, 52.0, 61.0, 70.0]  # LEN/OFF/ROT/SPR depth
