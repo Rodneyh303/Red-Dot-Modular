@@ -1290,18 +1290,28 @@ struct FollowBadge : rack::widget::Widget {
 
         const NVGcolor col = redDot::pairColour(resolved);
         const bool isPinned = (pinned > 0);
+        // MIRROR the target IT's drawPairBadge EXACTLY when PINNED (Intertropical.cpp:402) so the two
+        // read as one binding: filled disc in pairColour(id), black number, same font-to-radius ratio
+        // (IT uses mm2px(3.2)/mm2px(3.0) ≈ 1.067·r and a +0.067·r vertical nudge). AUTO must be
+        // visually distinct (§15 "AUTO vs PINNED must be visually distinct"): a HOLLOW ring in the
+        // same colour + a small centre dot, so proximity-resolved never looks like a pinned disc.
         if (isPinned) {                                    // PINNED → filled disc (matches the target)
             nvgBeginPath(vg); nvgCircle(vg, cx, cy, r);
             nvgFillColor(vg, col); nvgFill(vg);
-        } else {                                            // AUTO (by proximity) → hollow ring
+        } else {                                            // AUTO (by proximity) → hollow ring only
+            // A hollow ring vs a filled disc is the unambiguous AUTO/PINNED split (§15). No centre dot:
+            // the pair-colour digit is drawn at centre and a same-colour dot underneath it would muddy
+            // legibility. The empty interior IS the "not pinned" signal.
             nvgBeginPath(vg); nvgCircle(vg, cx, cy, r);
             nvgStrokeColor(vg, col); nvgStrokeWidth(vg, std::max(1.0f, r * 0.28f)); nvgStroke(vg);
         }
         char b[8]; snprintf(b, sizeof(b), "%d", resolved);
-        nvgFontSize(vg, r * 1.5f);
+        nvgFontSize(vg, r * (3.2f / 3.0f));                // == IT badge ratio, so the digit matches
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        // PINNED: black digit on the filled disc (identical to the target). AUTO: keep the digit black
+        // ONLY if legible over the hollow centre — here the centre is panel, so use the pair colour.
         nvgFillColor(vg, isPinned ? nvgRGBA(0x0a, 0x0a, 0x0a, 0xff) : col);
-        nvgText(vg, cx, cy + r * 0.06f, b, nullptr);
+        nvgText(vg, cx, cy + r * (0.2f / 3.0f), b, nullptr);
     }
 };
 
