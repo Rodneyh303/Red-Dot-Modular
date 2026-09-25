@@ -11,39 +11,17 @@ using namespace rack;
 namespace SandsMonoVisualIds {
 
     // ── Panel ────────────────────────────────────────────────────────────
-    static constexpr float W_MM     = 243.84f;  // 48HP (44 + 4HP for dir_mod + deleg_mod + prob_out)
-    static constexpr float ED_X     = 88.f;
-    static constexpr float ED_W     = 111.f;    // editor width (fixed; no longer tied to PROB_OUT_X)
-    static constexpr float OWNER_X    = 205.f;  // owner cell column (matches East/Macro)
-    static constexpr float DIR_X      = 212.f;  // direction cell column (matches East/Macro)
-    static constexpr float DIR_MOD_X   = 220.f; // direction gate-mod jack column
-    static constexpr float DELEG_MOD_X = 228.f; // delegation gate-mod jack column
-    static constexpr float PROB_OUT_X = 236.f;  // output jack column (pushed right by mod columns)
-    // Grid now comes from ui/SandsGrid.hpp so Mono, East and Macro cannot drift apart.
-    // Option B: LANE_H=13, 7 lanes (q-mix at slot 2) → ROW_BOT 105.
-    static constexpr float ED_Y     = dotModular::SandsGrid::LANE_TOP;      // 14
-    static constexpr float ROW_TOP  = dotModular::SandsGrid::LANE_TOP;      // 14
-    static constexpr float ROW_BOT  = dotModular::SandsGrid::monoBottom();  // 105 (7×13)
-    static constexpr int   N_LANES  = dotModular::SandsGrid::MONO_LANES;    // 7
-    static constexpr int   N_SPREAD_LANES = 5;  // REST, MELODY, OCTAVE, ACCENT, QMIX
+    // Geometry is now SINGLE-SOURCED in the generator (panel_src/gen_macro_mono.py::
+    // gen_mono). The widget binds every control by name via SvgPanelKit (loadPanel +
+    // centerOf(findNamed(...))) and no longer carries a duplicate copy of the column
+    // X positions / rowY() — those drifted against the generator and were the root of
+    // the q-mix regression class. The anchor-vs-bind audit (test/audit_anchor_bind.py)
+    // enforces that the panel anchors and the widget binds stay 1:1.
+    static constexpr float W_MM = 243.84f;  // panel width (connect-mark centring only)
     // Spread control index (0..4 = poly engine lane REST/MEL/OCT/ACC/QMIX) → editor lane.
     // Shares the QMIX poly engine→editor mapping (dsp/LaneMapping.hpp): REST=3, MEL=0,
     // OCT=1, ACC=4, QMIX=2. Single source of truth — do not redefine here.
     static constexpr const int* SPREAD_LANE_TO_EDITOR = dotModular::ENGINE_LANE_TO_EDITOR_QMIX;
-
-    // Column X positions (mm)
-    // LOR CV jacks (all 6 lanes): LEN/OFF/ROT
-    static constexpr float JACK_X[3]  = {6.f, 15.f, 24.f};
-    // LOR attenuverters (all 6 lanes)
-    static constexpr float ATTEN_X[3] = {34.f, 43.f, 52.f};
-    // Spread group (REST/MEL/OCT lanes only): base trimpot, CV jack, atten
-    static constexpr float SPR_BASE_X  = 62.f;
-    static constexpr float SPR_CV_X    = 71.f;
-    static constexpr float SPR_ATTEN_X = 80.f;
-
-    static inline float rowY(int lane) {
-        return ROW_TOP + (lane + 0.5f) * (ROW_BOT - ROW_TOP) / N_LANES;
-    }
 
     // ── Param IDs ─────────────────────────────────────────────────────────
     enum ParamId {
@@ -172,7 +150,7 @@ struct MonsoonSandsVisualExpander : Module {
         // the panel slots) but reserve NO param slots — the widgets are StoreKnobs bound to
         // editor.spread[kMonoSlot,l] (base) and editor.monoAtten[editorLane,3] (atten). Only the
         // CV jack (an input, not host-exposed) is configured here.
-        for (int l = 0; l < N_SPREAD_LANES; ++l) {
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
             const char* nm = names[SPREAD_LANE_TO_EDITOR[l]];
             configInput(sprCvId(l), std::string(nm)+" Spread CV");
         }

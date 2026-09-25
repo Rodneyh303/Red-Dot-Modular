@@ -30,12 +30,13 @@ extern Model* modelMonsoon;
 extern Model* modelMonsoonSandsExpander;
 
 // ── Widget ────────────────────────────────────────────────────────────────────
-struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
+struct MonsoonSandsVisualExpanderWidget : ModuleWidget,
+    dotModular::Compose<MonsoonSandsVisualExpanderWidget,
+                        dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     SandsVisualEditorV4*       visualEditor = nullptr;
     MonoSandsParameterManager* paramMgr     = nullptr;
     bool                       initialized  = false;
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
-    rack::app::SvgPanel* panelWidget = nullptr;
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
@@ -107,9 +108,13 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
                             "res/panels/SandsMonoVisual_48HP.svg"));
         panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance,
                             "res/panels/SandsMonoVisual_48HP_light.svg"));
-        panelWidget = createPanel(asset::plugin(pluginInstance,
+        // Bind-by-name: loadPanel populates the SvgPanelKit shape cache so every
+        // control is placed via centerOf(findNamed(...)) from the generated anchors.
+        // The generator (gen_macro_mono.py::gen_mono) is now the SINGLE geometry
+        // source; the widget no longer places anything with mm2px. The anchor-vs-bind
+        // audit (test/audit_anchor_bind.py) enforces 1:1 anchor↔bind.
+        loadPanel(asset::plugin(pluginInstance,
                             "res/panels/SandsMonoVisual_48HP.svg"));
-        setPanel(panelWidget);
 
         redDot::addRedScrews(this);
 
@@ -118,8 +123,12 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // Editor lane band == the left-control band (ROW_TOP..ROW_BOT) so the live
         // lanes line up with the left jacks/attens. With zero internal padding the
         // editor divides this box evenly by laneCount, exactly matching rowY().
-        visualEditor->box.pos  = mm2px(Vec(ED_X, ROW_TOP));
-        visualEditor->box.size = mm2px(Vec(ED_W, ROW_BOT - ROW_TOP));
+        // Editor box derives from the panel's recess anchor (single geometry source).
+        if (auto* rec = findNamed("param_editor_recess")) {
+            Rect rb = boundsOf(rec);
+            visualEditor->box.pos  = rb.pos;
+            visualEditor->box.size = rb.size;
+        }
         // Lanes fill the box evenly (no padding) so the live 6 lanes align with
         // the painted lanes + the left jacks/attens (which divide the band evenly).
         // MONO label suppressed (would land on lane 0); lane labels stay.
@@ -174,14 +183,14 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // The CV jacks (inputs) stay; the LOR base (lenId/offId/rotId) is a separate group.
         static const char* LN[dotModular::SandsGrid::MONO_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
         static const char* PN[3] = {"Len","Off","Rot"};
-        for (int lane = 0; lane < N_LANES; ++lane) {
-            float y = rowY(lane);
+        for (int lane = 0; lane < dotModular::SandsGrid::MONO_LANES; ++lane) {
             for (int p = 0; p < 3; ++p) {  // LEN/OFF/ROT
-                addInput(createInputCentered<PJ301MPort>(
-                    mm2px(Vec(JACK_X[p],  y)), mod, cvId(lane, p)));
+                bindInput<PJ301MPort>("input_cv_" + std::to_string(lane) + "_" + std::to_string(p),
+                    cvId(lane, p));
                 const int attLane = lane, attCol = p;
-                redDot::placeStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                    Vec(ATTEN_X[p], y), [this](){ return getMonsoon(); },
+                redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                    "param_atten_" + std::to_string(lane) + "_" + std::to_string(p),
+                    [this](){ return getMonsoon(); },
                     -1.f, 1.f, 0.f, std::string(LN[lane])+" "+PN[p]+" depth",
                     [attLane, attCol](Monsoon& m)          { return m.getMonoAtten(attLane, attCol); },
                     [attLane, attCol](Monsoon& m, float v) { m.setMonoAtten(attLane, attCol, v); });
@@ -191,12 +200,13 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // ── Spread group: base trimpot + CV jack + atten ──────────────────
         // REST/MEL/OCT + ACCENT (the poly-derived lanes). Each spread control sits on its
         // editor-lane row (accent on row 4, skipping LEGATO at 3). LEG/VAR are mono-only.
-        for (int l = 0; l < N_SPREAD_LANES; ++l) {
-            // l is the SPREAD/engine lane (REST=0,MEL=1,OCT=2,ACC=3); editorLane is its editor
-            // row (MEL=0,OCT=1,REST=2,ACC=3). spread BASE uses engine lane in editor.spread;
-            // spread ATTEN uses EDITOR lane in editor.monoAtten — do not mix (MVC lane trap).
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
+            // l is the SPREAD/engine lane (REST=0,MEL=1,OCT=2,ACC=3,QMIX=4); editorLane is its
+            // editor row. spread BASE uses engine lane in editor.spread; spread ATTEN uses
+            // EDITOR lane in editor.monoAtten — do not mix (MVC lane trap). All three controls
+            // bind to anchors named by the SPREAD index l (the generator emits param_spr_<l>,
+            // input_sprcv_<l>, param_spratten_<l> placed on the editor row via SPR_TO_EDITOR).
             int editorLane = SPREAD_LANE_TO_EDITOR[l];
-            float y = rowY(editorLane);
             const char* SN[5] = {"REST","MEL","OCT","ACC","QMIX"};
             const std::string nm = SN[l];
             const int spLane = l;
@@ -206,37 +216,38 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             // DimmableTrimpot had: lock + show Macro's spread (base + tapped send delta) while
             // delegated, WITHOUT touching the stored value — so reclaiming the lane reverts to
             // Mono's own spread. StoreKnob already supports lockWhen/displayValueFn (StoreBound.hpp).
-            auto* sp = redDot::placeStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                Vec(SPR_BASE_X, y), [this](){ return getMonsoon(); },
+            auto* sp = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                "param_spr_" + std::to_string(l), [this](){ return getMonsoon(); },
                 -1.f, 1.f, 0.f, nm + " spread",
                 [spLane](Monsoon& m)          { return m.getSpread(dotModular::VoiceResolver::kMonoSlot, spLane); },
                 [spLane](Monsoon& m, float v) { m.setSpread(dotModular::VoiceResolver::kMonoSlot, spLane, v); });
-            sp->lockWhen = [this, edLane]() -> bool {
-                if (!module) return false;
-                return buildV1Topo().lockedOn(dotModular::SandsTopology::Role::MONO, 0, edLane);
-            };
-            sp->displayValueFn = [this, spLane, edLane]() -> float {
-                if (!module) return std::numeric_limits<float>::quiet_NaN();
-                auto* mon = getMonsoon();
-                auto* macroVis = mon ? mon->expanderManager.cachedMacroSandsVisual : nullptr;
-                // Delegated ⟺ topology says Macro owns this V1 lane — the SAME authority the
-                // lock reads (lockedOn/owner), so lock and display can't disagree.
-                const bool delegated =
-                    buildV1Topo().owner(0, edLane) == dotModular::SandsTopology::Role::MACRO;
-                if (!macroVis || !delegated)
-                    return std::numeric_limits<float>::quiet_NaN();   // not delegated → show own value
-                return rack::math::clamp(macroVis->macroBase[spLane][3]
-                                         + macroVis->macroSendDelta[spLane][3], -1.f, 1.f);
-            };
-            // Store the SPREAD index l (engine order REST/MEL/OCT/ACC): the arc looks up
-            // getSpread(kMonoSlot, l) and sprCvId() by l. (The knob sits on the editor row via y.)
+            if (sp) {
+                sp->lockWhen = [this, edLane]() -> bool {
+                    if (!module) return false;
+                    return buildV1Topo().lockedOn(dotModular::SandsTopology::Role::MONO, 0, edLane);
+                };
+                sp->displayValueFn = [this, spLane, edLane]() -> float {
+                    if (!module) return std::numeric_limits<float>::quiet_NaN();
+                    auto* mon = getMonsoon();
+                    auto* macroVis = mon ? mon->expanderManager.cachedMacroSandsVisual : nullptr;
+                    // Delegated ⟺ topology says Macro owns this V1 lane — the SAME authority the
+                    // lock reads (lockedOn/owner), so lock and display can't disagree.
+                    const bool delegated =
+                        buildV1Topo().owner(0, edLane) == dotModular::SandsTopology::Role::MACRO;
+                    if (!macroVis || !delegated)
+                        return std::numeric_limits<float>::quiet_NaN();   // not delegated → show own value
+                    return rack::math::clamp(macroVis->macroBase[spLane][3]
+                                             + macroVis->macroSendDelta[spLane][3], -1.f, 1.f);
+                };
+            }
+            // Store the SPREAD index l (engine order REST/MEL/OCT/ACC/QMIX): the arc looks up
+            // getSpread(kMonoSlot, l) and sprCvId() by l. (The knob sits on the editor row.)
             pendingSpreadArcs.push_back({sp, l});
-            addInput(createInputCentered<PJ301MPort>(
-                mm2px(Vec(SPR_CV_X, y)), mod, sprCvId(l)));
+            bindInput<PJ301MPort>("input_sprcv_" + std::to_string(l), sprCvId(l));
             // ── Spread ATTEN: StoreKnob (de-parammed, plain — no lock, matching the prior
             // Trimpot). monoAtten is EDITOR-lane-indexed (col 3 = spread atten), so use edLane.
-            redDot::placeStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                Vec(SPR_ATTEN_X, y), [this](){ return getMonsoon(); },
+            redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                "param_spratten_" + std::to_string(l), [this](){ return getMonsoon(); },
                 -1.f, 1.f, 0.f, nm + " spread depth",
                 [edLane](Monsoon& m)          { return m.getMonoAtten(edLane, 3); },
                 [edLane](Monsoon& m, float v) { m.setMonoAtten(edLane, 3, v); });
@@ -251,31 +262,35 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         // OUTLINE = Mono owns (its own LOR edit). Click toggles. Inert+dimmed when
         // no Macro is attached (nothing to cede to). LEG/VAR (rows 5/6) are
         // mono-only → no owner cell.
+        // Cell size derives from the anchor-placed editor box (single geometry source):
+        // 16 steps across the editor's inner width (6mm padding each side), 0.9 lane-high.
+        const float editStepW = (visualEditor->box.size.x - mm2px(2.f*6.f)) / 16.f;
+        const float editLaneH = visualEditor->box.size.y / (float)dotModular::SandsGrid::MONO_LANES;
+        const Vec   cellSize   = Vec(editStepW, editLaneH * 0.9f);
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
             // STORE-BACKED (MVC step 1d): OwnerCell reads/writes editor.monoOwner via
             // get/setMonoOwner — the same store the manager reads (topoIn.monoV1Owner) and that
             // persists (editorMonoOwner). Was the ownerDispId param (removed). Bare widget, no paramId.
-            auto* oc = new OwnerCell();
-            oc->laneCol = sandsLaneColorEditor(l);
-            const float stepW   = (ED_W - 2.f*6.f) / 16.f;          // editor padding=6, 16 steps
-            const float monoLaneH = (ROW_BOT - ROW_TOP) / N_LANES;  // 6 lanes
-            oc->box.size = mm2px(Vec(stepW, monoLaneH * 0.9f));
-            oc->box.pos  = mm2px(Vec(OWNER_X, rowY(l))).minus(oc->box.size.div(2.f));
+            // Bound to param_owner_<l> (config-first centring establishes box.size before centre).
             const int ocLane = l;
-            oc->getOwnsFn = [this, ocLane]() { auto* m = getMonsoon(); return m ? m->getMonoOwner(ocLane) : true; };
-            oc->setOwnsFn = [this, ocLane](bool b) { if (auto* m = getMonsoon()) m->setMonoOwner(ocLane, b); };
-            // Undo hook: route an ownership toggle through Rack history (Ctrl+Z).
-            oc->pushUndoFn = [this, ocLane](bool oldB, bool newB) {
-                auto* m = getMonsoon(); if (!m) return;
-                redDot::applyAndPushStoreEdit<Monsoon>(m, "lane owner",
-                    [ocLane](Monsoon& mm, float val) { mm.setMonoOwner(ocLane, val > 0.5f); },
-                    oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
-            };
-            oc->lockWhen = [this]() {   // condition 2: no Macro → can't delegate
-                auto* mon = getMonsoon();
-                return !(mon && mon->expanderManager.cachedMacroSandsVisual != nullptr);
-            };
-            addChild(oc);
+            bindWidget<OwnerCell>("param_owner_" + std::to_string(l),
+                std::function<void(OwnerCell*)>([this, ocLane, cellSize](OwnerCell* oc) {
+                    oc->laneCol = sandsLaneColorEditor(ocLane);
+                    oc->box.size = cellSize;
+                    oc->getOwnsFn = [this, ocLane]() { auto* m = getMonsoon(); return m ? m->getMonoOwner(ocLane) : true; };
+                    oc->setOwnsFn = [this, ocLane](bool b) { if (auto* m = getMonsoon()) m->setMonoOwner(ocLane, b); };
+                    // Undo hook: route an ownership toggle through Rack history (Ctrl+Z).
+                    oc->pushUndoFn = [this, ocLane](bool oldB, bool newB) {
+                        auto* m = getMonsoon(); if (!m) return;
+                        redDot::applyAndPushStoreEdit<Monsoon>(m, "lane owner",
+                            [ocLane](Monsoon& mm, float val) { mm.setMonoOwner(ocLane, val > 0.5f); },
+                            oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
+                    };
+                    oc->lockWhen = [this]() {   // condition 2: no Macro → can't delegate
+                        auto* mon = getMonsoon();
+                        return !(mon && mon->expanderManager.cachedMacroSandsVisual != nullptr);
+                    };
+                }));
         }
 
         // ── Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong).
@@ -291,53 +306,46 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
             // STORE-BACKED (MVC step 1d): DirCell reads/writes editor.laneDir[15*6+lane] via
             // get/setMonoLaneDir — the same store the manager reads (monoDirAuthority) and that
             // persists (editorLaneDir). Was the dirDispId param (removed). Bare widget, no paramId.
-            auto* dc = new DirCell();
-            dc->laneCol = dirCol[lane];
-            const float stepW = (ED_W - 2.f*6.f) / 16.f;
-            const float monoLaneH = (ROW_BOT - ROW_TOP) / N_LANES;
-            dc->box.size = mm2px(Vec(stepW, monoLaneH * 0.9f));
-            dc->box.pos  = mm2px(Vec(DIR_X, rowY(lane))).minus(dc->box.size.div(2.f));
+            // Bound to param_dir_<lane> (config-first centring establishes box.size before centre).
             const int dcLane = lane;
-            dc->getStateFn = [this, dcLane]() {
-                auto* m = getMonsoon(); return m ? (int)std::lround(m->getMonoLaneDir(dcLane)) : 0;
-            };
-            dc->setStateFn = [this, dcLane](int v) {
-                if (auto* m = getMonsoon()) m->setMonoLaneDir(dcLane, (float)v);
-            };
-            // Undo hook: route a direction cycle through Rack history (Ctrl+Z). Mono is always
-            // the mono tab (no poly), so the store target is simply setMonoLaneDir(dcLane).
-            dc->pushUndoFn = [this, dcLane](int oldV, int newV) {
-                auto* m = getMonsoon(); if (!m) return;
-                redDot::applyAndPushStoreEdit<Monsoon>(m, "direction",
-                    [dcLane](Monsoon& mm, float val) { mm.setMonoLaneDir(dcLane, val); },
-                    (float)oldV, (float)newV);
-            };
-            // Lanes 0..4 (MEL/OCT/QMIX/REST/ACC): locked when delegated to Macro (getMonoOwner
-            // <= 0.5 = Macro owns). Lanes 5..6 (VAR/LEG): always settable (Mono always owns them).
-            // NOTE: after the QMIX widening ACC is editor lane 4 (a delegable poly lane) and
-            // VAR/LEG are 5/6, so the cutoff is POLY_LANES (5), not the old hardcoded 4.
-            dc->lockWhen = [this, lane]() {
-                if (!getMonsoon()) return true;
-                if (lane >= dotModular::SandsGrid::POLY_LANES) return false;  // VAR/LEG always Mono-owned
-                return !getMonsoon()->getMonoOwner(lane);  // Macro owns (delegated) → locked
-            };
-            addChild(dc);
+            bindWidget<DirCell>("param_dir_" + std::to_string(lane),
+                std::function<void(DirCell*)>([this, dcLane, cellSize](DirCell* dc) {
+                    dc->laneCol = dirCol[dcLane];   // dirCol is a block-local static → no capture needed
+                    dc->box.size = cellSize;
+                    dc->getStateFn = [this, dcLane]() {
+                        auto* m = getMonsoon(); return m ? (int)std::lround(m->getMonoLaneDir(dcLane)) : 0;
+                    };
+                    dc->setStateFn = [this, dcLane](int v) {
+                        if (auto* m = getMonsoon()) m->setMonoLaneDir(dcLane, (float)v);
+                    };
+                    // Undo hook: route a direction cycle through Rack history (Ctrl+Z). Mono is always
+                    // the mono tab (no poly), so the store target is simply setMonoLaneDir(dcLane).
+                    dc->pushUndoFn = [this, dcLane](int oldV, int newV) {
+                        auto* m = getMonsoon(); if (!m) return;
+                        redDot::applyAndPushStoreEdit<Monsoon>(m, "direction",
+                            [dcLane](Monsoon& mm, float val) { mm.setMonoLaneDir(dcLane, val); },
+                            (float)oldV, (float)newV);
+                    };
+                    // Lanes 0..4 (MEL/OCT/QMIX/REST/ACC): locked when delegated to Macro (getMonoOwner
+                    // <= 0.5 = Macro owns). Lanes 5..6 (VAR/LEG): always settable (Mono always owns them).
+                    // NOTE: after the QMIX widening ACC is editor lane 4 (a delegable poly lane) and
+                    // VAR/LEG are 5/6, so the cutoff is POLY_LANES (5), not the old hardcoded 4.
+                    dc->lockWhen = [this, dcLane]() {
+                        if (!getMonsoon()) return true;
+                        if (dcLane >= dotModular::SandsGrid::POLY_LANES) return false;  // VAR/LEG always Mono-owned
+                        return !getMonsoon()->getMonoOwner(dcLane);  // Macro owns (delegated) → locked
+                    };
+                }));
         }
 
-        // Direction gate-mod jacks — mono, gate cycles Fwd→Rev→Pend→PingPong.
-        for (int lane = 0; lane < dotModular::SandsGrid::MONO_LANES; ++lane)
-            addInput(createInputCentered<PJ301MPort>(
-                mm2px(Vec(DIR_MOD_X, rowY(lane))), mod, dirModId(lane)));
-        // Delegation gate-mod jacks — mono, gate flips local/delegated. Lanes 0..4 (poly lanes).
-        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
-            addInput(createInputCentered<PJ301MPort>(
-                mm2px(Vec(DELEG_MOD_X, rowY(lane))), mod, delegModId(lane)));
-
-        // Per-lane probability CV outs — one jack right of each of the 6 lane rows.
-        for (int l = 0; l < N_LANES; ++l) {
-            addOutput(createOutputCentered<PJ301MPort>(
-                mm2px(Vec(PROB_OUT_X, rowY(l))), mod, PROB_OUT_START + l));
-        }
+        // Direction gate-mod jacks — mono, gate cycles Fwd→Rev→Pend→PingPong (7 mono lanes).
+        // Delegation gate-mod jacks — mono, gate flips local/delegated (5 poly lanes).
+        // Per-lane probability CV outs — one jack right of each of the 7 lane rows.
+        // Count-driven prefix binders keep the loop bound tied to SandsGrid (can't drift) and
+        // the ids contiguous (dirModId/delegModId/PROB_OUT are sequential from their START).
+        bindInputsN<PJ301MPort>("input_dir_mod_",   dotModular::SandsGrid::MONO_LANES, DIR_MOD_START);
+        bindInputsN<PJ301MPort>("input_deleg_mod_", dotModular::SandsGrid::POLY_LANES, DELEG_MOD_START);
+        bindOutputsN<PJ301MPort>("output_prob_",    dotModular::SandsGrid::MONO_LANES, PROB_OUT_START);
 
         // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
         {
@@ -379,7 +387,14 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget {
         int wantLight = monsoon->lightTheme ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;
-            if (panelWidget) panelWidget->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+            // Panel is the SvgPanel child created by loadPanel()/setPanel — locate it to
+            // swap the theme background (same idiom as East/Macro; panelWidget member dropped).
+            for (Widget* child : children) {
+                if (auto* sp = dynamic_cast<app::SvgPanel*>(child)) {
+                    sp->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+                    break;
+                }
+            }
             if (visualEditor) visualEditor->setTheme(wantLight != 0);
         }
 

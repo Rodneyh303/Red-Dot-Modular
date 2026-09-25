@@ -200,43 +200,53 @@ def gen_mono(dark):
         A(D.jack(SPR_CV_X,y,t))
         A(D.trim(SPR_ATTEN_X,y,t,t["gold"]))
     A('</g>')
-    # ── SvgPanelKit component layer. Indices mirror MonsoonSandsVisualExpander.hpp:
-    #    CV jacks   cvId(lane,p)   = CV_START(0)  + lane*3 + p   inputs 0..17
-    #    attens     attenId(lane,p)= ATTEN_START(21)+ lane*3 + p  params 21..38
-    #    spread base SPR_REST/MEL/OCT = params 18..20
-    #    spread CV   SPR_CV_START(18) + l         = inputs 18..20
-    #    spread atten SPR_ATTEN_START(39) + l     = params 39..41
-    #    (LEN/OFF/ROT params 0-17 have no physical knob — editor-driven — so no marker.) ──
-    # ── SvgPanelKit component markers. NOTE: the Mono widget places its controls POSITIONALLY
-    #    (addInput/addOutput createXxxCentered at rowY()), not by SVG-shape lookup, so these
-    #    markers are advisory. Still emitted editor-lane indexed for tooling/consistency, matching
-    #    MonsoonSandsVisualExpander.hpp (QMIX-widened): cvId(el,p)=el*3+p (inputs 0..20),
-    #    attenId(el,p)=ATTEN_START(26)+el*3+p, SPR base=SPR_REST(21)+si, SPR_CV=SPR_CV_START(21)+si,
-    #    SPR atten=SPR_ATTEN_START(47)+si. el 0..6, si 0..4 (SPR_TO_EDITOR = ENGINE_LANE_TO_EDITOR_QMIX).
+    # ── SvgPanelKit component (anchor) layer — THE SINGLE GEOMETRY SOURCE. ────────
+    # The widget binds every control by name via SvgPanelKit (loadPanel + findNamed);
+    # it no longer places anything with mm2px. Anchors are DESCRIPTIVE (not bare-
+    # numeric) so StoreKnobs — which carry no paramId — can be bound by bindWidget.
+    # All editor-lane indexed, all visible (fill/stroke none, never display:none).
+    # The anchor-vs-bind audit (test/audit_anchor_bind.py) enforces 1:1 anchor↔bind.
+    def named(kind_name, x, y):
+        A(f'<circle id="{kind_name}" cx="{px(x):.2f}" cy="{px(y):.2f}" '
+          f'r="0.5" fill="none" stroke="none"/>')
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
+    # LOR CV jacks + attenuverters — 7 editor lanes × 3 (LEN/OFF/ROT).
+    #   input_cv_<el>_<col>      = cvId(el,col)   (bindInput)
+    #   param_atten_<el>_<col>   StoreKnob        (bindWidget)
     for el in range(N):
         y=ctrlY(el)
-        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0 + el*3 + p, x, y))   # cvId(el,p)
-        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 26 + el*3 + p, x, y))  # attenId(el,p)=ATTEN_START(26)+..
+        for col,x in enumerate(JACK_X):  named(f"input_cv_{el}_{col}", x, y)
+        for col,x in enumerate(ATTEN_X): named(f"param_atten_{el}_{col}", x, y)
+    # Spread group — 5 poly lanes (REST/MEL/OCT/ACC/QMIX) on their editor rows.
+    #   param_spr_<sidx>     spread base StoreKnob (bindWidget)
+    #   input_sprcv_<sidx>   spread CV jack        (bindInput, id sprCvId(sidx))
+    #   param_spratten_<sidx> spread atten StoreKnob (bindWidget)
     for sidx in range(N_SPREAD):
         y=ctrlY(SPR_TO_EDITOR[sidx])
-        A(D.kit_shape("param", 21+sidx, SPR_BASE_X, y))   # SPR_REST..QMIX (21..25)
-        A(D.kit_shape("input", 21+sidx, SPR_CV_X, y))     # SPR_CV_START (21..25)
-        A(D.kit_shape("param", 47+sidx, SPR_ATTEN_X, y))  # SPR_ATTEN_START (47..51)
-    # Direction cells + gate-mod jacks — one per editor lane 0..6.
-    for lane in range(N):
-        A(f'<circle id="param_dir_{lane}" cx="{px(DIR_X):.2f}" cy="{px(ctrlY(lane)):.2f}" '
-          f'r="0.5" fill="none" stroke="none"/>')
-        A(f'<circle id="input_dir_mod_{lane}" cx="{px(DIR_MOD_X):.2f}" cy="{px(ctrlY(lane)):.2f}" '
-          f'r="0.5" fill="none" stroke="none"/>')
-    # Delegation gate-mod jacks — poly lanes 0..4 (MEL/OCT/QMIX/REST/ACC).
+        named(f"param_spr_{sidx}",      SPR_BASE_X,  y)
+        named(f"input_sprcv_{sidx}",    SPR_CV_X,    y)
+        named(f"param_spratten_{sidx}", SPR_ATTEN_X, y)
+    # V1 ownership cells — poly lanes 0..4 (bare OwnerCell, bindChild). Previously had
+    # NO anchor at all (the widget placed them by mm2px only) — now a real anchor.
     for lane in range(N_SPREAD):
-        A(f'<circle id="input_deleg_mod_{lane}" cx="{px(DELEG_MOD_X):.2f}" cy="{px(ctrlY(lane)):.2f}" '
-          f'r="0.5" fill="none" stroke="none"/>')
-    # Probability-out jacks — 7 mono prob CV outs.
+        named(f"param_owner_{lane}", OWNER_X, ctrlY(lane))
+    # Direction cells + gate-mod jacks — one per editor lane 0..6.
+    #   param_dir_<lane>     DirCell bare widget   (bindChild)
+    #   input_dir_mod_<lane> gate-mod jack         (bindInput, dirModId)
     for lane in range(N):
-        A(f'<circle id="output_prob_{lane}" cx="{px(PROB_OUT_X):.2f}" cy="{px(ctrlY(lane)):.2f}" '
-          f'r="0.5" fill="none" stroke="none"/>')
+        named(f"param_dir_{lane}",     DIR_X,     ctrlY(lane))
+        named(f"input_dir_mod_{lane}", DIR_MOD_X, ctrlY(lane))
+    # Delegation gate-mod jacks — poly lanes 0..4 (bindInput, delegModId).
+    for lane in range(N_SPREAD):
+        named(f"input_deleg_mod_{lane}", DELEG_MOD_X, ctrlY(lane))
+    # Probability-out jacks — 7 mono prob CV outs (bindOutput, PROB_OUT_START).
+    for lane in range(N):
+        named(f"output_prob_{lane}", PROB_OUT_X, ctrlY(lane))
+    # Editor recess box anchor — the live SandsVisualEditorV4 is sized/placed from
+    # boundsOf(findNamed("param_editor_recess")). Radius encodes half-extents so the
+    # widget can recover box.size from the anchor bounds (cx±rx, cy±ry via nanosvg).
+    A(f'<rect id="param_editor_recess" x="{px(ED_X):.2f}" y="{px(ED_Y):.2f}" '
+      f'width="{px(ED_W):.2f}" height="{px(ED_H):.2f}" fill="none" stroke="none"/>')
     A('</g>')
     A('</svg>')
     return "\n".join(L)

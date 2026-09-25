@@ -243,6 +243,31 @@ struct Bind {
         (bindLight<W>(prefix + std::to_string(i++), ids), ...);
     }
 
+    // ── COUNT-DRIVEN prefix binders (runtime count, contiguous ids) ──────────
+    // For control rows whose length is a runtime constant (e.g. a SandsGrid lane
+    // count) rather than a compile-time pack. Binds prefix+"0".. prefix+(count-1)
+    // to startId.. startId+count-1. This keeps the "single geometry source" rule
+    // AND the "no hardcoded lane count" rule: the caller passes SandsGrid::MONO_LANES
+    // etc., so the loop bound can never drift from the grid. config runs on each.
+    template <class W>
+    void bindInputsN(const std::string& prefix, int count, int startId,
+                     std::function<void(W*)> config = nullptr) {
+        for (int i = 0; i < count; ++i)
+            bindInput<W>(prefix + std::to_string(i), startId + i, config);
+    }
+    template <class W>
+    void bindOutputsN(const std::string& prefix, int count, int startId,
+                      std::function<void(W*)> config = nullptr) {
+        for (int i = 0; i < count; ++i)
+            bindOutput<W>(prefix + std::to_string(i), startId + i, config);
+    }
+    template <class W>
+    void bindParamsN(const std::string& prefix, int count, int startId,
+                     std::function<void(W*)> config = nullptr) {
+        for (int i = 0; i < count; ++i)
+            bindParam<W>(prefix + std::to_string(i), startId + i, config);
+    }
+
 // bindLightParamsContiguous<LightSlider>("fader_", P_FADER_START, L_LED_START,
 //     [](LightSlider* w) { /* Custom behavior for fader_0 */ },
 //     [](LightSlider* w) { /* Custom behavior for fader_1 */ },

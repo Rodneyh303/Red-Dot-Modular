@@ -109,8 +109,23 @@ done
 
 echo "-----"
 echo "suites: $((pass+fail))  passed: $pass  failed: $fail  (test_MeloDicer excluded: needs real SDK)"
-if [ $fail -gt 0 ]; then
-  echo "FAILED: ${failed_names[*]}"
+
+# ── anchor-vs-bind audit (SvgPanelKit geometry guard) ─────────────────────────
+# Every generated panel anchor must have a widget bind and vice-versa; catches the
+# "control is missing / panel and widget drifted" bug class as a suite failure.
+# Skipped by the name filter unless the filter matches "audit".
+audit_fail=0
+if [ -z "$filter" ] || [[ "audit" == *"$filter"* ]]; then
+  echo "anchor/bind audit:"
+  if ! python3 "$here/audit_anchor_bind.py"; then
+    audit_fail=1
+  fi
+  echo "-----"
+fi
+
+if [ $fail -gt 0 ] || [ $audit_fail -ne 0 ]; then
+  [ $fail -gt 0 ] && echo "FAILED: ${failed_names[*]}"
+  [ $audit_fail -ne 0 ] && echo "FAILED: anchor/bind audit"
   exit 1
 fi
 echo "all green"
