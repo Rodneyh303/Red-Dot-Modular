@@ -11,9 +11,14 @@ it for exactly this reason, without noticing the milder cases).
 
 ## Where uniformity is lost today
 Linearity preserves the RANGE, not the SHAPE. Both of these are linear and both concentrate:
-- **A/B mix** interpolates on PAST DRAWS (Rodney) — so A and B are two INDEPENDENT uniforms from the
-  same stream at different counter positions, and `(1-m)·A + m·B` is TRIANGULAR (at m=0.5, peaked at
-  0.5, half the variance, no mass at the extremes). No shortcut: it is not affine-on-a-constant.
+- **A/B mix** interpolates on PAST DRAWS, travelling back over the last 6 pairs as a CHAIN (Rodney) —
+  at any mix position it blends the TWO ADJACENT draws in that chain. So each output combines exactly
+  two independent uniforms: TRIANGULAR (at m=0.5, peaked at 0.5, half the variance, no mass at the
+  extremes). Not affine-on-a-constant, so it does need fixing — but this is the BENIGN case: the
+  6-pair chain gives reach back through history WITHOUT compounding concentration, because the
+  distribution never sees more than two draws at once. (Had it blended all 6 pairs at once — ~12
+  independent draws — CLT would give near-Gaussian with ~1/12 the variance, i.e. AVERAGE_POLY's failure
+  in all but name, and A/B mix would have been the single largest distorter in the chain. It isn't.)
 - **Slew** is a one-pole across steps = a weighted sum of many past draws → tends to a bell about 0.5 by
   CLT as the time constant grows.
 - **Spread** itself: the convex mix `(1-a)d + a·t` has variance `(1-a)²+a²`, which DIPS TO 0.5 at
