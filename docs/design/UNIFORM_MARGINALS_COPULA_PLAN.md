@@ -26,6 +26,12 @@ Linearity preserves the RANGE, not the SHAPE. Both of these are linear and both 
   easy to misread as the pattern "settling".
   Musically this is the RIGHT behaviour and must be preserved: a pattern MORPHS between phrases rather
   than being redrawn — recognisable evolution, not fresh randomness.
+  **Control is BIPOLAR: -1 = previous draw, +1 = current draw (Rodney)** — so the CENTRE of the knob is
+  the 50/50 blend, i.e. EXACTLY where the triangular concentration peaks, while both ENDS are clean (a
+  single draw, still uniform). The neutral-looking middle is today's most distorted setting — the
+  opposite of the usual intuition. The copula fix removes the anomaly: the knob maps to alpha directly,
+  so the centre gives correlation 0.5 with a genuinely uniform marginal, and every position is
+  well-behaved.
 - **Spread** itself: the convex mix `(1-a)d + a·t` has variance `(1-a)²+a²`, which DIPS TO 0.5 at
   mid-spread — mid-range voices visibly flatter (contrast loss). The variance-preserving alternative
   overshoots [0,1]: measured ~8.6% of steps clip at ρ≈0.7, piling mass at 0 and 1.
