@@ -20,9 +20,14 @@ namespace StraitsMacroVisualIds {
     static constexpr float DIR_X      = 212.f;  // direction cell column (matches East)
     static constexpr float DIR_MOD_X  = 220.f;  // direction gate-mod jack column
     static constexpr float PROB_OUT_X = 236.f;  // poly prob-out jack column (aligned with East/Mono)
-    static constexpr float ROW_TOP = 14.f;
-    static constexpr float ROW_BOT = 108.f;
-    static constexpr int   N_ROWS  = 4;         // 1 row per lane (REST/MEL/OCT/ACCENT)
+    // Bound to the grid so Mono/East/Macro cannot drift (mirrors East). Option B: LANE_H=13,
+    // 5 poly lanes (MEL/OCT/QMIX/REST/ACC). Was a stale hardcoded ROW_BOT=108 / N_ROWS=4
+    // (pre-QMIX "REST/MEL/OCT/ACCENT"); nothing reads these now, but keep them grid-derived
+    // so the file can never re-introduce a 4-lane assumption.
+    static constexpr float ROW_TOP = dotModular::SandsGrid::LANE_TOP;      // 14
+    static constexpr float ROW_BOT = dotModular::SandsGrid::polyBottom();  // 79 (5×13)
+    static constexpr int   N_ROWS  = dotModular::SandsGrid::POLY_LANES;    // 5 (MEL/OCT/QMIX/REST/ACC)
+    static_assert(N_ROWS == 5, "Macro has 5 poly lanes after the q-mix widening");
     // Mono-style: 4 CV jacks (LEN/OFF/ROT/SPR-cv) + 4 attens + 1 spread-base trimpot per lane.
     // Column layout and ED_X=88 match SandsMonoVisual exactly.
     static constexpr float COL_J1 = 6.f;    // LEN CV in
