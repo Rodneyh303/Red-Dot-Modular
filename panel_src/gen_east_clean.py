@@ -239,34 +239,34 @@ def gen(dark):
     #    to OwnerCell). The Macro mix-in sends had already moved to the Macro panel,
     #    so this band held nothing but the old owner latch and is gone entirely.
     A('</g>')
-    # ── SvgPanelKit component layer. ALL ids are EDITOR-lane indexed, matching the C++ binds in
-    #    StraitsEastSandsVisual.cpp exactly (no engine-order DISPLAY_ORDER remap — that was the
-    #    "shape not found" root cause). editor lane el: 0 MEL,1 OCT,2 QMIX,3 REST,4 ACC,5 VAR,6 LEG.
-    #      cvId(el,c)        = CV_START(0)      + el*4 + c   inputs 0..19   (5 spread lanes × 4)
-    #      attenDispId(el,c) = ATTEN_START(4)   + el*4 + c   params 4..23
-    #      SPREAD_R/M/O/A/Q  = params 0..4  (positional by editor lane — sprPid[] in the cpp)
-    #      varlegCvId(vl,c)  = VARLEG_CV_START(20)        + vl*3 + c  inputs 20..25 (vl 0=VAR,1=LEG)
-    #      varlegAttDispId   = VARLEG_ATTEN_DISP_START(20)+ vl*3 + c  params 20..25
-    #      dirModId(el)=DIR_MOD_START(26)+el  delegModId(el)=DELEG_MOD_START(33)+el  (el 0..6)
-    #      output_prob_<el>, param_owner_<el>, param_dir_<el> — all editor lane. ──
-    def kit_shape(kind, idx, x, y):
-        A(f'<circle id="{kind}_{idx}" cx="{px(x):.2f}" cy="{px(y):.2f}" r="0.5" fill="none" stroke="none"/>')
+    # ── SvgPanelKit component (anchor) layer — THE SINGLE GEOMETRY SOURCE. ────────
+    # DESCRIPTIVE, editor-lane-indexed names (matching Sands Mono). This replaces the
+    # old numeric id-in-name convention (input_<cvId>/param_<attenDispId|SPREAD>),
+    # whose param_ family COLLIDED — param_4 was both SPREAD_Q and attenDispId(0,0)'s
+    # neighbour via an off-by-one (generator atten base 4 vs C++ ATTEN_START 5) — which
+    # shifted every atten one column and is the "wrong labels / missing controls" bug.
+    # The widget binds each of these by name; the anchor-vs-bind audit enforces 1:1.
+    # editor lane el: 0 MEL,1 OCT,2 QMIX,3 REST,4 ACC,5 VAR,6 LEG.
+    def named(name, x, y):
+        A(f'<circle id="{name}" cx="{px(x):.2f}" cy="{px(y):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
-    # 5 spread lanes (editor 0..4 incl QMIX at 2): CV jacks + attens + spread base.
-    # cv/atten are EDITOR-lane indexed (cvId(el,c)/attenDispId(el,c) + getMacroAtten by editor
-    # lane) — keep el. SPREAD is ENGINE/spread-lane indexed (sprPid[]/getSpread(slot,spreadLane),
-    # REST=0) — emit param_<eng> at the editor row so the REST-spread knob lands on the REST row.
+    # 5 poly lanes (editor 0..4 incl QMIX at 2): CV jacks (LEN/OFF/ROT/SPR) + attens + spread base.
+    #   input_cv_<el>_<c>     CV jack        (bindInput, cvId(el,c))
+    #   param_atten_<el>_<c>  atten StoreKnob(bindStoreKnob)
+    #   param_spr_<el>        spread base StoreKnob at the editor row (bindStoreKnob)
     for el in range(POLY_LANES):
-        y=rowY(el); eng=EDITOR_TO_ENGINE[el]
-        for p,x in enumerate(JACK_X):  kit_shape("input", 0 + el*4 + p, x, y)   # cvId(el,c) — editor lane
-        for p,x in enumerate(ATTEN_X): kit_shape("param", 4 + el*4 + p, x, y)   # attenDispId(el,c) — editor lane
-        kit_shape("param", eng, SPREAD_X, y)   # SPREAD_R..Q = param <engine lane> (positional at editor row)
+        y=rowY(el)
+        for c,x in enumerate(JACK_X):  named(f"input_cv_{el}_{c}",    x, y)
+        for c,x in enumerate(ATTEN_X): named(f"param_atten_{el}_{c}", x, y)
+        named(f"param_spr_{el}", SPREAD_X, y)
     # VARIATION (editor 5) / LEGATO (editor 6): VAR/LEG CV jacks + depth attens (LEN/OFF/ROT).
+    #   input_varlegcv_<vl>_<c>     CV jack (bindInput, varlegCvId)
+    #   param_varlegatten_<vl>_<c>  atten StoreKnob (bindStoreKnob)
     for vl in range(2):
         y=rowY(POLY_LANES+vl)   # editor rows 5,6
         for c in range(3):
-            kit_shape("input", 20 + vl*3 + c, JACK_X[c], y)   # varlegCvId(vl,c)
-            kit_shape("param", 20 + vl*3 + c, ATTEN_X[c], y)  # varlegAttDispId(vl,c)
+            named(f"input_varlegcv_{vl}_{c}",    JACK_X[c],  y)
+            named(f"param_varlegatten_{vl}_{c}", ATTEN_X[c], y)
     # Owner cells (param_owner_<editorLane>) — 5 poly (0..4) + VAR/LEG (5,6). All editor lane.
     for el in range(ED_LANES):
         A(f'<circle id="param_owner_{el}" cx="{px(OWNER_X):.2f}" cy="{px(rowY(el)):.2f}" '

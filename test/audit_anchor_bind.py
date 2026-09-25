@@ -66,11 +66,29 @@ MODULES = {
             "output_prob_": 7,
         },
     },
+    "sands_east": {
+        "widget": ["src/StraitsEastSandsVisual.cpp"],
+        "panel": "res/panels/StraitsEastSandsVisual_48HP.svg",
+        # Migrated to DESCRIPTIVE anchors (matches Mono) — the old numeric param_/input_
+        # convention collided (param_4 = SPREAD_Q AND an atten slot via a base-4-vs-5
+        # off-by-one). Per-family counts now pin every control.
+        "counts": {
+            "input_cv_": 20,          # 5 poly lanes × 4 (LEN/OFF/ROT/SPR)
+            "param_atten_": 20,
+            "param_spr_": 5,          # 5 poly spread bases (editor-lane indexed)
+            "input_varlegcv_": 6,     # VAR/LEG × 3 (LEN/OFF/ROT)
+            "param_varlegatten_": 6,
+            "param_owner_": 7,        # 5 poly (incl QMIX) + VAR/LEG
+            "param_dir_": 7,
+            "input_dir_mod_": 7,
+            "input_deleg_mod_": 7,
+            "output_prob_": 5,        # 5 poly prob outs (incl QMIX)
+        },
+    },
 }
 
 # Modules known NOT yet migrated — documented, not audited (no false green either).
 UNMIGRATED = {
-    "sands_east": "Stage 2: loadPanel() present but partial binds; audit-driven gap close pending.",
     "sands_macro": "Stage 3: MIX-IN block anchor-derived; residual mm2px placements pending.",
 }
 

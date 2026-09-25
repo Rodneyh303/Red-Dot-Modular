@@ -332,7 +332,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                                           return m && m->lightTheme; };
             };
             for (int c = 0; c < 4; ++c)
-                bindInput<redDot::GoldPolyPort>("input_" + std::to_string(cvId(r,c)), cvId(r,c),
+                bindInput<redDot::GoldPolyPort>(
+                    "input_cv_" + std::to_string(r) + "_" + std::to_string(c), cvId(r,c),
                     std::function<void(redDot::GoldPolyPort*)>(themeCfg));
             // CV-depth attenuverters: STORE-BACKED (MVC step 1d). East's own controls, always
             // live. Live slot resolution: currentSlot() (0=V1, 1..15=poly) per-call, so a tab
@@ -342,7 +343,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             for (int c = 0; c < 4; ++c) {
                 const int aLane = r, aCol = c;
                 redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                    "param_" + std::to_string(attenDispId(r,c)),
+                    "param_atten_" + std::to_string(r) + "_" + std::to_string(c),
                     [this](){ return getMonsoon(); },
                     -1.f, 1.f, 0.f, std::string(LN[r])+" "+CN[c]+" depth",
                     [this, aLane, aCol](Monsoon& m)          { return m.getMacroAtten(currentSlot(), aLane*4 + aCol); },
@@ -361,7 +362,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             };
             for (int lane = 0; lane < 2; ++lane)
                 for (int c = 0; c < 3; ++c)
-                    bindInput<redDot::GoldPolyPort>("input_" + std::to_string(varlegCvId(lane,c)),
+                    bindInput<redDot::GoldPolyPort>(
+                        "input_varlegcv_" + std::to_string(lane) + "_" + std::to_string(c),
                         varlegCvId(lane,c), std::function<void(redDot::GoldPolyPort*)>(themeCfg));
             // VAR/LEG CV-depth: STORE-BACKED (MVC step 1d). editor.varlegAtten[currentSlot(), lane, col]
             // (V1 → slot 0; poly → polySlot). Live slot resolution per tab. Was varlegAttDispId param.
@@ -371,7 +373,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 for (int c = 0; c < 3; ++c) {
                     const int vlLane = lane, vlCol = c;
                     redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                        "param_" + std::to_string(varlegAttDispId(lane,c)),
+                        "param_varlegatten_" + std::to_string(lane) + "_" + std::to_string(c),
                         [this](){ return getMonsoon(); },
                         -1.f, 1.f, 0.f, std::string(vlN[lane])+" "+vlC[c]+" depth",
                         [this, vlLane, vlCol](Monsoon& m)          { return m.getVarlegAtten(currentSlot(), vlLane, vlCol); },
@@ -381,11 +383,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // Spread base: STORE-BACKED (MVC step 1d). editor.spread[currentSlot(), lane] (V1 → slot 0
         // = Mono's spread, locked; poly → polySlot). The per-frame push syncs editor.spread →
         // SpreadManager (the engine's poly spread source). lockWhen/displayValueFn carry over.
-        static const int sprPid[dotModular::SandsGrid::POLY_LANES] = { SPREAD_R, SPREAD_M, SPREAD_O, SPREAD_A, SPREAD_Q };
+        // (sprPid removed: the spread base now binds by the DESCRIPTIVE anchor
+        //  param_spr_<editorLane>, not the numeric SpreadParamId — the numeric name
+        //  collided with the atten family. The param id is still SPREAD_R+lane implicitly
+        //  via the store get/set below, keyed by editor lane.)
         static const char* sprN[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","Q-MIX"};
         for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
             auto* k = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                "param_" + std::to_string(sprPid[lane]),
+                "param_spr_" + std::to_string(lane),
                 [this](){ return getMonsoon(); },
                 -1.f, 1.f, 0.f, std::string(sprN[lane]) + " spread",
                 [this, lane](Monsoon& m)          { return m.getSpread(currentSlot(), lane); },
