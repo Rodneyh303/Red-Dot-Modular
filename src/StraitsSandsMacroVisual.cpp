@@ -188,89 +188,87 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                                        return m && m->lightTheme; };
         };
 
-        // 5 poly probability CV outs (output_PROB_OUT_REST..+4), aligned to lane rows.
-        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
+        // ── CRITICAL lane-order note ──────────────────────────────────────────
+        // The panel ROWS are EDITOR order (top→bottom: MEL,OCT,QMIX,REST,ACC) and the
+        // anchors are editor-lane indexed (param_*_<el>). But EVERY store accessor here
+        // (getGlobalSpread/Atten/Tap, getMacroSend, cvId, PROB_OUT_REST) and the label
+        // arrays are ENGINE order (REST,MEL,OCT,ACC,QMIX). So for each editor row `el`
+        // we MUST convert el→engine lane via EDITOR_TO_ENGINE_LANE_QMIX and use THAT for
+        // the store + label. Passing `el` straight through was the "top row is MELODY but
+        // the knob is labelled/modulates REST" bug. Anchor name stays <el>.
+        auto EL2ENG = [](int el){ return dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el]; };
+        // Editor-ordered lane names for tooltips (top→bottom).
+        static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC"};
+
+        // 5 poly probability CV outs — jack on editor row el drives engine lane's prob out.
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el)
             bindOutput<redDot::GoldPolyPort>(
-                "output_" + std::to_string(StraitsMacroVisualIds::PROB_OUT_REST + l),
-                StraitsMacroVisualIds::PROB_OUT_REST + l,
+                "output_prob_" + std::to_string(el),
+                StraitsMacroVisualIds::PROB_OUT_REST + EL2ENG(el),
                 std::function<void(redDot::GoldPolyPort*)>(themeOut));
 
         // ── Left section: 5 poly lanes × (4 CV jacks + 4 attens + 1 spread) ──
-        // input_{cvId(lane,c)}  param_{attenId(lane,c)}  param_{SPREAD_REST+lane}
-        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
+        // Anchor row = editor lane el; store/id = engine lane eng.
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+            const int eng = EL2ENG(el);
             for (int c = 0; c < 4; ++c)
-                bindInput<PJ301MPort>("input_" + std::to_string(cvId(lane,c)), cvId(lane,c));
-            // STORE-BACKED (MVC step 1d): the global attenuverters are no longer params.
-            // Monsoon (which owns the store) is resolved lazily -- it may not be attached
-            // when the widget is built, and can be attached/detached later.
+                bindInput<PJ301MPort>(
+                    "input_cv_" + std::to_string(el) + "_" + std::to_string(c), cvId(eng,c));
+            // STORE-BACKED (MVC step 1d): global attenuverters (engine-indexed store).
             for (int c = 0; c < 4; ++c) {
-                static const char* LN[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX"};
                 static const char* CN[4] = {"Length","Offset","Rotation","Spread"};
-                const std::string albl = std::string(LN[lane]) + " " + CN[c] + " CV depth";
+                const std::string albl = std::string(EDN[el]) + " " + CN[c] + " CV depth";
                 auto* k = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                    "param_" + std::to_string(attenId(lane,c)), storeResolver(),
+                    "param_atten_" + std::to_string(el) + "_" + std::to_string(c), storeResolver(),
                     -1.f, 1.f, 0.f, albl,
-                    [lane, c](Monsoon& m)          { return m.getGlobalAtten(lane, c); },
-                    [lane, c](Monsoon& m, float v) { m.setGlobalAtten(lane, c, v); });
+                    [eng, c](Monsoon& m)          { return m.getGlobalAtten(eng, c); },
+                    [eng, c](Monsoon& m, float v) { m.setGlobalAtten(eng, c, v); });
                 if (k) leftAttenuverters.push_back(k);
             }
-            // P9b: the two PRE/POST send taps per lane live in the send groups below the
-            // lanes (3rd row) — bound by name there, not here. (see send-group binds.)
         }
 
-        // Per-lane global SPREAD trimpots (param_SPREAD_REST..+3 = lanes 0..3).
-        // STORE-BACKED (MVC step 1d). The mod-arcs were decoupled from paramId earlier, so
-        // pendingSpreadArcs takes a Widget* and the arc reads getGlobalSpread(lane).
-        static const int spreadPid[dotModular::SandsGrid::POLY_LANES] = { SPREAD_REST, SPREAD_MELODY, SPREAD_OCTAVE, SPREAD_ACCENT, SPREAD_QMIX };
-        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
-            static const char* LN[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX"};
+        // Per-lane global SPREAD trimpots — anchor param_spr_<el>, store engine lane.
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+            const int eng = EL2ENG(el);
             auto* sp = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                "param_" + std::to_string(spreadPid[lane]), storeResolver(),
-                -1.f, 1.f, 0.f, std::string(LN[lane]) + " spread",
-                [lane](Monsoon& m)          { return m.getGlobalSpread(lane); },
-                [lane](Monsoon& m, float v) { m.setGlobalSpread(lane, v); });
-            if (sp) pendingSpreadArcs.push_back({sp, lane});
+                "param_spr_" + std::to_string(el), storeResolver(),
+                -1.f, 1.f, 0.f, std::string(EDN[el]) + " spread",
+                [eng](Monsoon& m)          { return m.getGlobalSpread(eng); },
+                [eng](Monsoon& m, float v) { m.setGlobalSpread(eng, v); });
+            if (sp) pendingSpreadArcs.push_back({sp, eng});   // arc reads engine-lane spread
         }
 
-        // Macro→voice MIX-IN send 2×2 grids — bound to param_send_{lane}_{item}
-        // Macro voice MIX-IN send 4x4 grid. STORE-BACKED (MVC step 1: sends de-param): each
-        // trimpot reads/writes editor.macroSend for the CURRENTLY VIEWED voice, resolved LIVE
-        // (viewVoice can change when the voice tab switches, and the same knob must then edit
-        // a different store slot). This replaces the old sendDispId display-proxy params and
-        // the per-voice load/store sync dance (with its clobber guard) entirely -- the knob
-        // is the store's editing surface directly. slot = voiceSlot(viewVoice+1), matching the
-        // engine's getMacroSend(slot,...) read and the persisted macroSend[256].
-        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
+        // Macro→voice MIX-IN send 2×2 grids — anchor param_send_<el>_<item>, store engine lane.
+        // STORE-BACKED: reads/writes editor.macroSend for the viewed voice (slot resolved LIVE).
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el)
             for (int item = 0; item < 4; ++item) {
+                const int eng = EL2ENG(el);
                 redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                    "param_send_" + std::to_string(lane) + "_" + std::to_string(item),
+                    "param_send_" + std::to_string(el) + "_" + std::to_string(item),
                     storeResolver(), -1.f, 1.f, 0.f,
-                    "L" + std::to_string(lane) + " mix-in " + std::to_string(item)
-                        + " (viewed voice)",
-                    [this, lane, item](Monsoon& m) {
+                    std::string(EDN[el]) + " mix-in " + std::to_string(item) + " (viewed voice)",
+                    [this, eng, item](Monsoon& m) {
                         const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
-                        return m.getMacroSend(slot, lane, item);
+                        return m.getMacroSend(slot, eng, item);
                     },
-                    [this, lane, item](Monsoon& m, float v) {
+                    [this, eng, item](Monsoon& m, float v) {
                         const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
-                        m.setMacroSend(slot, lane, item, v);
+                        m.setMacroSend(slot, eng, item, v);
                     });
             }
-        // P9b: the two PRE/POST CV taps per lane (3rd row of each send group) —
-        // param_taplor_{lane} → tapLorId, param_tapspr_{lane} → tapSprId.
-        // STORE-BACKED (MVC step 1d). globalTap index: 0 = LOR tap, 1 = spread tap.
-        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
-            static const char* LN[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX"};
+        // PRE/POST CV taps per lane — anchor param_taplor_/tapspr_<el>, store engine lane.
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+            const int eng = EL2ENG(el);
             redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                "param_taplor_" + std::to_string(lane), storeResolver(),
-                0.f, 1.f, 1.f, std::string(LN[lane]) + " LOR send tap (PRE-POST)",
-                [lane](Monsoon& m)          { return m.getGlobalTap(lane, 0); },
-                [lane](Monsoon& m, float v) { m.setGlobalTap(lane, 0, v); });
+                "param_taplor_" + std::to_string(el), storeResolver(),
+                0.f, 1.f, 1.f, std::string(EDN[el]) + " LOR send tap (PRE-POST)",
+                [eng](Monsoon& m)          { return m.getGlobalTap(eng, 0); },
+                [eng](Monsoon& m, float v) { m.setGlobalTap(eng, 0, v); });
             redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                "param_tapspr_" + std::to_string(lane), storeResolver(),
-                0.f, 1.f, 1.f, std::string(LN[lane]) + " spread send tap (PRE-POST)",
-                [lane](Monsoon& m)          { return m.getGlobalTap(lane, 1); },
-                [lane](Monsoon& m, float v) { m.setGlobalTap(lane, 1, v); });
+                "param_tapspr_" + std::to_string(el), storeResolver(),
+                0.f, 1.f, 1.f, std::string(EDN[el]) + " spread send tap (PRE-POST)",
+                [eng](Monsoon& m)          { return m.getGlobalTap(eng, 1); },
+                [eng](Monsoon& m, float v) { m.setGlobalTap(eng, 1, v); });
         }
 
         // ── Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong).
@@ -282,33 +280,31 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             nvgRGB(0x80,0x60,0xc0),  // QMIX purple
             nvgRGB(0x50,0x50,0x50), nvgRGB(0xff,0x95,0x00)   // REST grey, ACC orange
         };
-        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             // STORE-BACKED (MVC step 1: direction de-param). The DirCell reads/writes
-            // editor.globalDir via get/setGlobalDir instead of the dirDispId param -- the same
-            // array the engine reads (MonsoonExpanderManager getGlobalDir) and persists
-            // (editorGlobalDir). `lane` is the EDITOR lane (row 0..3 = MEL/OCT/REST/ACC),
-            // matching both the kit marker order and the manager's getGlobalDir(el) read.
-            // No undo, matching East/Mono's still-param-backed DirCells (cycling cells have
-            // never had undo). bindWidget places a bare widget with no paramId.
+            // editor.globalDir via get/setGlobalDir. globalDir is ENGINE-indexed
+            // (REST/MEL/OCT/ACC/QMIX) — the manager reads getGlobalDir(engineLane) — but the
+            // panel ROW is EDITOR order. So the cell on editor row `el` must target engine lane
+            // eng = EDITOR_TO_ENGINE_LANE_QMIX[el]. (Was passing `el` straight in → the direction
+            // cell on the MELODY row drove REST's direction.) Anchor stays param_dir_<el>.
+            const int eng = EL2ENG(el);
             bindWidget<DirCell>(
-                "param_dir_" + std::to_string(lane),
-                std::function<void(DirCell*)>([this, lane](DirCell* w) {
-                    w->laneCol = editorDirCol[lane];
+                "param_dir_" + std::to_string(el),
+                std::function<void(DirCell*)>([this, el, eng](DirCell* w) {
+                    w->laneCol = editorDirCol[el];
                     const float stepW = (ED_W - 2.f*6.f) / 16.f;
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
-                    w->getStateFn = [this, lane]() -> int {
+                    w->getStateFn = [this, eng]() -> int {
                         auto* mm = getMonsoon();
-                        return mm ? (int)std::lround(mm->getGlobalDir(lane)) & 3 : 0;
+                        return mm ? (int)std::lround(mm->getGlobalDir(eng)) & 3 : 0;
                     };
-                    w->setStateFn = [this, lane](int v) {
-                        if (auto* mm = getMonsoon()) mm->setGlobalDir(lane, (float)(v & 3));
+                    w->setStateFn = [this, eng](int v) {
+                        if (auto* mm = getMonsoon()) mm->setGlobalDir(eng, (float)(v & 3));
                     };
-                    // Undo hook: route a direction cycle through Rack history (Ctrl+Z).
-                    // Macro's direction store target is the GLOBAL dir for the lane.
-                    w->pushUndoFn = [this, lane](int oldV, int newV) {
+                    w->pushUndoFn = [this, eng](int oldV, int newV) {
                         auto* mm = getMonsoon(); if (!mm) return;
                         redDot::applyAndPushStoreEdit<Monsoon>(mm, "direction",
-                            [lane](Monsoon& m, float val) { m.setGlobalDir(lane, val); },
+                            [eng](Monsoon& m, float val) { m.setGlobalDir(eng, val); },
                             (float)(oldV & 3), (float)(newV & 3));
                     };
                     w->lockWhen = [this]() { return !getMonsoon(); };
@@ -647,12 +643,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // trimpots "disappeared" even though the widgets were visible.)
 
         // GEOMETRY IS OWNED BY THE GENERATOR. Every MIX-IN label position is derived from the
-        // panel-kit anchors gen_macro_mono.py emits — group header from label_mixin_<el> (editor
-        // order), the four send items from param_send_<eng>_<item>, the two taps from
-        // param_taplor_<eng>/param_tapspr_<eng>. NOTHING is recomputed from GROUP_W/BLEND_* here, so
+        // panel-kit anchors gen_macro_mono.py emits — ALL now EDITOR-lane indexed (Stage 3 unified
+        // Macro on descriptive editor-order anchors, matching the widget binds): group header from
+        // label_mixin_<el>, the four send items from param_send_<el>_<item>, the two taps from
+        // param_taplor_<el>/param_tapspr_<el>. NOTHING is recomputed from GROUP_W/BLEND_* here, so
         // re-running the generator can never drift the labels off the boxes (the ED_W/4-vs-ED_W/5
-        // bug that recurred 3×). label_mixin_<el> is editor-ordered; the send/tap anchors are engine-
-        // ordered (getMacroSend/getGlobalTap are engine-indexed), so convert el→eng for those.
+        // bug that recurred 3×). The store accessors (getMacroSend/getGlobalTap) remain engine-
+        // indexed and are keyed inside the bind closures — only the ANCHOR NAMES are editor order.
         const char* laneName[dotModular::SandsGrid::POLY_LANES] = { "MELODY", "OCTAVE", "QMIX", "REST", "ACCENT" };  // editor order
         const char* itemName[4] = { "LEN", "OFF", "ROT", "SPR" };
         static_assert(sizeof(laneName)/sizeof(laneName[0]) == dotModular::SandsGrid::POLY_LANES,
@@ -685,7 +682,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         }
 
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            const int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[l];   // send/tap anchors are engine-ordered
+            // All MIX-IN anchors are EDITOR-lane indexed (Stage 3), so index every one by l.
             // Group header — from the editor-ordered label_mixin_<l> anchor.
             bool okH = false; Vec gH = anchorMM("label_mixin_" + std::to_string(l), okH);
             if (okH) {
@@ -694,20 +691,20 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 nvgFillColor(vg, head);
                 nvgText(vg, gH.x, gH.y, laneName[l], nullptr);
             }
-            // Send-item labels — one under each param_send_<eng>_<item> anchor.
+            // Send-item labels — one under each param_send_<l>_<item> anchor.
             nvgFontSize(vg, 5.0f);
             nvgFillColor(vg, item);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
             for (int it = 0; it < 4; ++it) {
                 bool okS = false;
-                Vec s = anchorMM("param_send_" + std::to_string(eng) + "_" + std::to_string(it), okS);
+                Vec s = anchorMM("param_send_" + std::to_string(l) + "_" + std::to_string(it), okS);
                 if (okS) nvgText(vg, s.x, s.y + mm2px(4.4f), itemName[it], nullptr);
             }
-            // PRE/POST CV taps — LOR (param_taplor_<eng>) + SPR (param_tapspr_<eng>).
+            // PRE/POST CV taps — LOR (param_taplor_<l>) + SPR (param_tapspr_<l>).
             {
                 bool okL = false, okSp = false;
-                Vec lTap = anchorMM("param_taplor_" + std::to_string(eng), okL);
-                Vec sTap = anchorMM("param_tapspr_" + std::to_string(eng), okSp);
+                Vec lTap = anchorMM("param_taplor_" + std::to_string(l), okL);
+                Vec sTap = anchorMM("param_tapspr_" + std::to_string(l), okSp);
                 if (okL)  nvgText(vg, lTap.x, lTap.y + mm2px(4.4f), "LOR", nullptr);
                 if (okSp) nvgText(vg, sTap.x, sTap.y + mm2px(4.4f), "SPR", nullptr);
             }
@@ -733,17 +730,21 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     // Mono jacks (1 channel). Rising edge cycles Fwd→Rev→Pend→PingPong→Fwd.
     // Cycles the dirDispId display proxy param; the widget's step() syncs to engine.
     {
-        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
-            auto& in = inputs[dirModId(lane)];
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+            // dirModId(el) is the jack on editor row el; globalDir is ENGINE-indexed, so
+            // cycle engine lane eng = EDITOR_TO_ENGINE_LANE_QMIX[el]. (Was cycling el directly →
+            // the MELODY-row gate advanced REST's direction.)
+            const int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
+            auto& in = inputs[dirModId(el)];
             if (!in.isConnected()) continue;
             bool high = in.getVoltage(0) > 1.f;
-            if (high && !dirModPrev[lane]) {
+            if (high && !dirModPrev[el]) {
                 if (auto* mm = redDot::findMonsoonEitherSide(this)) {
-                    int cur = (int)std::lround(mm->getGlobalDir(lane));
-                    mm->setGlobalDir(lane, (float)((cur + 1) % 4));
+                    int cur = (int)std::lround(mm->getGlobalDir(eng));
+                    mm->setGlobalDir(eng, (float)((cur + 1) % 4));
                 }
             }
-            dirModPrev[lane] = high;
+            dirModPrev[el] = high;
         }
     }
     const float scaleV = (mon->probOutScale == 0) ? 1.f : (mon->probOutScale == 1) ? 5.f : 10.f;

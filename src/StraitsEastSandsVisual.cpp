@@ -320,12 +320,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             }
         }
 
-        // ── Controls bound by id from the SVG kit (#components in
-        //    gen_east_clean.py). Marker index == enum value:
-        //      input_<n>  n = cvId(lane,c) = 0 + lane*4 + c  (CV jacks, 0..15, 4 per lane)
-        //      param_<n>  n = attenDispId(lane,c) = 4 + lane*4 + c (attens, 4..19)
-        //      param_<n>  n = SPREAD_R/M/O/A = 0/1/2/3              (spread trimpots)
-        for (int r = 0; r < dotModular::SandsGrid::POLY_LANES; ++r) {
+        // ── CRITICAL lane-order note (mirrors Macro) ─────────────────────────
+        // Panel ROWS + anchors are EDITOR order (top→bottom MEL,OCT,QMIX,REST,ACC), but
+        // EVERY store accessor is ENGINE order: the DSP reads getMacroAtten(slot, PL_x*4+c),
+        // getSpread(slot, PL_x), cvId(PL_x, ..) with engine PL_ constants. So for each editor
+        // row `el` convert el→engine via EDITOR_TO_ENGINE_LANE_QMIX and use THAT for the store,
+        // the CV jack id, and the label. Passing `el` straight through was the "MELODY row is
+        // labelled/modulates REST" bug. Anchor name stays <el>.
+        auto EL2ENG = [](int el){ return dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el]; };
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+            const int eng = EL2ENG(el);
             Module* mod = module;
             auto themeCfg = [mod](redDot::GoldPolyPort* p) {
                 p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
@@ -333,21 +337,19 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             };
             for (int c = 0; c < 4; ++c)
                 bindInput<redDot::GoldPolyPort>(
-                    "input_cv_" + std::to_string(r) + "_" + std::to_string(c), cvId(r,c),
+                    "input_cv_" + std::to_string(el) + "_" + std::to_string(c), cvId(eng,c),
                     std::function<void(redDot::GoldPolyPort*)>(themeCfg));
-            // CV-depth attenuverters: STORE-BACKED (MVC step 1d). East's own controls, always
-            // live. Live slot resolution: currentSlot() (0=V1, 1..15=poly) per-call, so a tab
-            // switch re-targets the same knob (no proxy + flush). Was the attenDispId param.
-            static const char* LN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC"};
+            // CV-depth attenuverters: STORE-BACKED, engine-indexed store, editor-ordered label.
+            static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC"};
             static const char* CN[4] = {"Len","Off","Rot","Spr"};
             for (int c = 0; c < 4; ++c) {
-                const int aLane = r, aCol = c;
+                const int aEng = eng, aCol = c;
                 redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                    "param_atten_" + std::to_string(r) + "_" + std::to_string(c),
+                    "param_atten_" + std::to_string(el) + "_" + std::to_string(c),
                     [this](){ return getMonsoon(); },
-                    -1.f, 1.f, 0.f, std::string(LN[r])+" "+CN[c]+" depth",
-                    [this, aLane, aCol](Monsoon& m)          { return m.getMacroAtten(currentSlot(), aLane*4 + aCol); },
-                    [this, aLane, aCol](Monsoon& m, float v) { m.setMacroAtten(currentSlot(), aLane*4 + aCol, v); });
+                    -1.f, 1.f, 0.f, std::string(EDN[el])+" "+CN[c]+" depth",
+                    [this, aEng, aCol](Monsoon& m)          { return m.getMacroAtten(currentSlot(), aEng*4 + aCol); },
+                    [this, aEng, aCol](Monsoon& m, float v) { m.setMacroAtten(currentSlot(), aEng*4 + aCol, v); });
             }
         }
 
@@ -387,18 +389,21 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //  param_spr_<editorLane>, not the numeric SpreadParamId — the numeric name
         //  collided with the atten family. The param id is still SPREAD_R+lane implicitly
         //  via the store get/set below, keyed by editor lane.)
-        static const char* sprN[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","Q-MIX"};
-        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
+        // Spread base — anchor param_spr_<el> (editor row), store getSpread(slot, engine lane),
+        // editor-ordered label. Same el→engine conversion as the attens above.
+        static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC"};
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+            const int eng = EL2ENG(el);
             auto* k = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                "param_spr_" + std::to_string(lane),
+                "param_spr_" + std::to_string(el),
                 [this](){ return getMonsoon(); },
-                -1.f, 1.f, 0.f, std::string(sprN[lane]) + " spread",
-                [this, lane](Monsoon& m)          { return m.getSpread(currentSlot(), lane); },
-                [this, lane](Monsoon& m, float v) { m.setSpread(currentSlot(), lane, v); });
+                -1.f, 1.f, 0.f, std::string(EDN[el]) + " spread",
+                [this, eng](Monsoon& m)          { return m.getSpread(currentSlot(), eng); },
+                [this, eng](Monsoon& m, float v) { m.setSpread(currentSlot(), eng, v); });
             if (k) {
-                k->lockWhen = [this, lane]() { return laneOwnedByMacroTopo(lane) || tab1MonoMirror(); };
-                k->displayValueFn = [this, lane]() { return spreadDisplayValue(lane); };
-                pendingSpreadArcs.push_back({k, lane});
+                k->lockWhen = [this, eng]() { return laneOwnedByMacroTopo(eng) || tab1MonoMirror(); };
+                k->displayValueFn = [this, eng]() { return spreadDisplayValue(eng); };
+                pendingSpreadArcs.push_back({k, eng});   // arc reads engine-lane spread
             }
         }
 

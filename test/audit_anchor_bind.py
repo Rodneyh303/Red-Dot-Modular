@@ -85,11 +85,27 @@ MODULES = {
             "output_prob_": 5,        # 5 poly prob outs (incl QMIX)
         },
     },
+    "sands_macro": {
+        "widget": ["src/StraitsSandsMacroVisual.cpp"],
+        "panel": "res/panels/StraitsSandsMacroVisual_48HP.svg",
+        # Descriptive families after Stage 3 migration.
+        "counts": {
+            "input_cv_": 20,          # 5 poly lanes × 4 (LEN/OFF/ROT/SPR)
+            "param_atten_": 20,
+            "param_spr_": 5,          # 5 poly spread bases
+            "output_prob_": 5,
+            "param_send_": 20,        # 5 lanes × 4 mix-in items
+            "param_taplor_": 5,
+            "param_tapspr_": 5,
+            "label_mixin_": 5,
+            "param_dir_": 5,
+            "input_dir_mod_": 5,
+        },
+    },
 }
 
 # Modules known NOT yet migrated — documented, not audited (no false green either).
 UNMIGRATED = {
-    "sands_macro": "Stage 3: MIX-IN block anchor-derived; residual mm2px placements pending.",
 }
 
 
@@ -129,7 +145,15 @@ _BIND_SITE_RE = re.compile(
     r'\b(bind(?:Param|Input|Output|Light|LightParam|Widget|Child|StoreKnob'
     r'|Params|Inputs|Outputs|Lights|ParamsN|InputsN|OutputsN))\s*'
     r'(?:<[^>]*>)?\s*\(', re.DOTALL)
-_FINDNAMED_RE = re.compile(r'\bfindNamed\s*\(\s*"([^"]+)"')
+# Direct anchor consumption (not a widget bind) — labels + editor recess. Covers
+# (replaces the old literal-only findNamed matcher)
+# findNamed(...) and any thin wrapper (e.g. draw()'s anchorMM(...)) that forwards a
+# name to findNamed. Two forms: a LITERAL name, or a "prefix_" + index concatenation.
+# Literal: a quoted name NOT followed by (optional ws then '+'). The lookahead must
+# sit RIGHT AFTER the closing quote — a leading \s* would backtrack to zero and defeat
+# the negative lookahead, mis-classifying a prefix ("x_" + i) as a literal.
+_CONSUME_LITERAL_RE = re.compile(r'\b(?:findNamed|anchorMM)\s*\(\s*"([^"]+)"(?!\s*\+)')
+_CONSUME_PREFIX_RE  = re.compile(r'\b(?:findNamed|anchorMM)\s*\(\s*"([^"]+)"\s*\+')
 # Explicit prefix binders: their leading string is ALWAYS a prefix (count/pack forms).
 _PREFIX_FAMILIES = ("bindParams", "bindInputs", "bindOutputs", "bindLights",
                     "bindParamsN", "bindInputsN", "bindOutputsN")
@@ -157,8 +181,10 @@ def read_binds(widget_paths):
     for wp in widget_paths:
         with open(p(wp), encoding="utf-8") as f:
             text = f.read()
-        # findNamed(...) direct consumption (labels, editor recess, etc.).
-        exact.update(_FINDNAMED_RE.findall(text))
+        # findNamed/anchorMM direct consumption (labels, editor recess, etc.) —
+        # literal names and "prefix_" + index concatenations both count.
+        exact.update(_CONSUME_LITERAL_RE.findall(text))
+        prefixes.update(_CONSUME_PREFIX_RE.findall(text))
         for m in _BIND_SITE_RE.finditer(text):
             method = m.group(1)                  # e.g. "bindInput", "bindInputsN"
             family_is_prefix = method in _PREFIX_FAMILIES

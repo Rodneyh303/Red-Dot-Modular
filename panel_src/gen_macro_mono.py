@@ -103,34 +103,33 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
         A(D.trim(gcx+SEND_DX, tap_y, t, t["wellring"]))   # spread tap
         TAP_XY[el]=[(gcx-SEND_DX,tap_y),(gcx+SEND_DX,tap_y)]
     A('</g>')
-    # ── SvgPanelKit component layer. ALL ids EDITOR-lane indexed, matching StraitsSandsMacroVisual
-    #    .cpp binds exactly (editor lane el: 0 MEL,1 OCT,2 QMIX,3 REST,4 ACC — no DISPLAY_ORDER remap):
-    #      cvId(el,c)   = CV_START(0)    + el*4 + c   inputs 0..19
-    #      attenId(el,c)= ATTEN_START(5) + el*4 + c   params 5..24   (SPREAD_REST..QMIX = 0..4)
-    #      spread base  = param el (SPREAD_REST..QMIX positional by editor lane)
-    #      prob out     = output_{el}   (C++ binds "output_"+std::to_string(PROB_OUT_REST+el))
-    #      param_send_<el>_<item>, param_taplor_/tapspr_<el>, param_dir_<el>, input_dir_mod_<el>. ──
+    # ── SvgPanelKit component (anchor) layer — THE SINGLE GEOMETRY SOURCE. ────────
+    # DESCRIPTIVE, EDITOR-lane-indexed names (matches Sands Mono + East). This replaces
+    # the old numeric id-in-name convention (input_<cvId>/param_<attenId|SPREAD>), which
+    # mixed engine-lane ids into the NAME while the C++ binds by EDITOR lane — a latent
+    # editor-vs-engine mismatch of exactly the kind that broke East. The widget binds
+    # each by name; the anchor-vs-bind audit enforces 1:1.
+    # editor lane el: 0 MEL,1 OCT,2 QMIX,3 REST,4 ACC.
+    def named(name, x, y):
+        A(f'<circle id="{name}" cx="{px(x):.2f}" cy="{px(y):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
-    # ENGINE-lane-indexed groups (cv/atten/spread/prob) sit at the EDITOR row `el` but carry the
-    # id for engine lane `eng` = EDITOR_TO_ENGINE[el] — because the C++ store accessors
-    # (getGlobalAtten/Spread, PROB_OUT_REST+lane) are engine-indexed. Using `el` here put REST's
-    # spread on the melody row etc. (the reported bug).
+    # Left section: CV jacks (LEN/OFF/ROT/SPR) + attens + spread base + prob out, per editor lane.
+    #   input_cv_<el>_<c> / param_atten_<el>_<c> / param_spr_<el> / output_prob_<el>
     for el in range(ED_LANES):
-        y=rowY(el); eng=EDITOR_TO_ENGINE[el]
-        for p,x in enumerate(JACK_X):  A(D.kit_shape("input", 0 + eng*4 + p, x, y))   # cvId(eng,c)
-        for p,x in enumerate(ATTEN_X): A(D.kit_shape("param", 5 + eng*4 + p, x, y))   # attenId(eng,c)=ATTEN_START(5)+..
-        A(D.kit_shape("param", eng, SPREAD_X, y))    # SPREAD_REST..QMIX = param eng (engine lane)
-        A(D.kit_shape("output", eng, PROB_OUT_X, y)) # output_{eng} (PROB_OUT_REST+eng, engine lane)
-    # Macro→voice mix-in send markers + PRE/POST taps — also ENGINE-lane indexed
-    # (getMacroSend(slot, lane, item) / getGlobalTap(lane,..) are engine order), at editor row.
+        y=rowY(el)
+        for c,x in enumerate(JACK_X):  named(f"input_cv_{el}_{c}",    x, y)
+        for c,x in enumerate(ATTEN_X): named(f"param_atten_{el}_{c}", x, y)
+        named(f"param_spr_{el}",  SPREAD_X,   y)
+        named(f"output_prob_{el}", PROB_OUT_X, y)
+    # Macro→voice mix-in send markers + PRE/POST taps — editor-lane indexed (the C++ binds
+    # param_send_<el>_<item> / param_taplor_<el> / param_tapspr_<el> by editor lane).
     for el in range(ED_LANES):
-        eng=EDITOR_TO_ENGINE[el]
         for item in range(4):
             cxs,cys = MIX_XY[el][item]
-            A(f'<circle id="param_send_{eng}_{item}" cx="{px(cxs):.2f}" cy="{px(cys):.2f}" r="0.5" fill="none" stroke="none"/>')
+            named(f"param_send_{el}_{item}", cxs, cys)
         (lx,ly),(sx,sy) = TAP_XY[el]
-        A(f'<circle id="param_taplor_{eng}" cx="{px(lx):.2f}" cy="{px(ly):.2f}" r="0.5" fill="none" stroke="none"/>')
-        A(f'<circle id="param_tapspr_{eng}" cx="{px(sx):.2f}" cy="{px(sy):.2f}" r="0.5" fill="none" stroke="none"/>')
+        named(f"param_taplor_{el}", lx, ly)
+        named(f"param_tapspr_{el}", sx, sy)
     # Group-header label anchors (EDITOR order — the group name MEL/OCT/QMIX/REST/ACC). draw()
     # reads centerOf(findNamed("label_mixin_<el>")) instead of recomputing ED_X+el*GROUP_W, so the
     # header + its item labels can never drift off the boxes when GROUP_W/BLEND_* change here.
