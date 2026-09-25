@@ -9,32 +9,34 @@ value's own distribution. Today they change the distribution, which is a bug in 
 disease that killed AVERAGE_POLY (averaging N independent draws concentrates at 0.5 → mush; we removed
 it for exactly this reason, without noticing the milder cases).
 
-## Where uniformity is lost today
-Linearity preserves the RANGE, not the SHAPE. Both of these are linear and both concentrate:
-- **A/B mix** interpolates on PAST DRAWS, travelling back over the last 6 pairs as a CHAIN (Rodney) —
-  at any mix position it blends the TWO ADJACENT draws in that chain. So each output combines exactly
-  two independent uniforms: TRIANGULAR (at m=0.5, peaked at 0.5, half the variance, no mass at the
-  extremes). Not affine-on-a-constant, so it does need fixing — but this is the BENIGN case: the
-  6-pair chain gives reach back through history WITHOUT compounding concentration, because the
-  distribution never sees more than two draws at once. (Had it blended all 6 pairs at once — ~12
-  independent draws — CLT would give near-Gaussian with ~1/12 the variance, i.e. AVERAGE_POLY's failure
-  in all but name, and A/B mix would have been the single largest distorter in the chain. It isn't.)
-- **Slew is PHRASE MEMORY, not a per-step smoother (Rodney).** For each STEP POSITION it blends how much
-  of LAST PHRASE's value vs THIS PHRASE's fresh draw. One phrase of it mixes two independent uniforms →
-  triangular; because it is recursive ACROSS PHRASES, a high setting accumulates many past phrases at
-  that step position and drifts toward 0.5 over time. Same concentration failure, on a PHRASE clock —
-  easy to misread as the pattern "settling".
-  Musically this is the RIGHT behaviour and must be preserved: a pattern MORPHS between phrases rather
-  than being redrawn — recognisable evolution, not fresh randomness.
-  **Control is BIPOLAR: -1 = previous draw, +1 = current draw (Rodney)** — so the CENTRE of the knob is
-  the 50/50 blend, i.e. EXACTLY where the triangular concentration peaks, while both ENDS are clean (a
-  single draw, still uniform). The neutral-looking middle is today's most distorted setting — the
-  opposite of the usual intuition. The copula fix removes the anomaly: the knob maps to alpha directly,
-  so the centre gives correlation 0.5 with a genuinely uniform marginal, and every position is
-  well-behaved.
-- **Spread** itself: the convex mix `(1-a)d + a·t` has variance `(1-a)²+a²`, which DIPS TO 0.5 at
-  mid-spread — mid-range voices visibly flatter (contrast loss). The variance-preserving alternative
-  overshoots [0,1]: measured ~8.6% of steps clip at ρ≈0.7, piling mass at 0 and 1.
+## Where uniformity is lost today — CODE-ACCURATE (re-checked against PatternEngine)
+Earlier drafts of this doc described these stages wrongly; corrected here from
+`PatternEngine.cpp:recomputeEffective*` and `PatternEngine.hpp:patternRhythmAt/MelodyAt/QmixAt`.
+
+**The two stages are SCRUB and SLEW, and they are not what their names suggest:**
+- **MIX is repurposed as SCRUB** (`s = mix * 6`, so 0..6): it selects a POSITION back through the last 6
+  draws — `patternXAt(N-f)` and `patternXAt(N-f-1)` — and interpolates between them by the fraction.
+  This is "interpolate over past draws, back 6" (Rodney).
+- **SLEW is the SMOOTHING WIDTH** of a geometric moving average, not a current-vs-next blend: a 7-tap
+  window over consecutive draw positions `M .. M-6` with weights `(1-slew)^j`, normalised
+  (`SCRUB_K = 6`).
+
+**Distribution consequences (severity order):**
+1. **slew = 0 is the BIGGEST distorter in the whole chain** — all weights equal, i.e. an EQUAL AVERAGE OF
+   7 INDEPENDENT DRAWS: variance ~1/7, strongly concentrated at 0.5, near-Gaussian. This is exactly
+   AVERAGE_POLY's failure mode, still alive inside the slew control. (It also explains why low slew reads
+   as "no change": consecutive positions share 6 of their 7 draws, so the walk is highly autocorrelated —
+   which is the wanted musical behaviour; only the marginal collapse is the bug.)
+2. **slew = 1 is CLEAN** — weights collapse to `[1,0,0,...]`, a single draw, still uniform.
+3. **SCRUB's distortion is CONDITIONAL ON SLEW, not additive.** It blends two ADJACENT windows which
+   share 6 of 7 draws, so at low slew they are nearly identical and blending barely concentrates at all.
+   Only at slew = 1 are the two positions independent draws, giving the triangular case at mid-scrub.
+4. **Spread**: the convex mix `(1-a)d + a·t` has variance `(1-a)²+a²`, dipping to HALF at mid-spread —
+   contrast loss. The variance-preserving alternative overshoots [0,1] (~8.6% of steps clip at rho~0.7).
+
+**PROPERTY TO PRESERVE: both stages are PURE FUNCTIONS OF POSITION** ("pure fn of pos -> reversible"),
+which is what makes SCRUB work and keeps the walk re-derivable. The copula rework must therefore derive
+its latent FROM POSITION as well — no running/carried state — or scrub and reversibility break.
 
 ## The fix: do all distribution-shaping in NORMAL space, map back to uniform
 One `Φ`/`Φ⁻¹` pair serves every stage.
@@ -54,17 +56,20 @@ z = (1-m)·Φ⁻¹(A) + m·Φ⁻¹(B);   r = Φ( z / √((1-m)² + m²) )
 ```
 Exactly uniform for every m; m still reads as "how much B".
 
-**Slew → AR(1) on the latent, PHRASE TO PHRASE at a fixed step index:**
+**Slew → normal-space WEIGHTED WINDOW (keeps the pure-function-of-position property):**
 ```
-z_p[j] = α·z_{p-1}[j] + √(1-α²)·Φ⁻¹(u_p[j]);   r_p[j] = Φ(z_p[j])
+z(M) = Σ_j w_j·Φ⁻¹(u_{M-j}) / √(Σ_j w_j²),   w_j = (1-slew)^j,  j = 0..6
+r(M) = Φ( z(M) )
 ```
-Every value exactly uniform; the SAME STEP in consecutive phrases correlated at α. Note the latent state
-is per (STREAM, STEP) — 16 latents per stream — not a single running value. The phrase-memory morphing
-behaviour is preserved exactly; only the marginal drift is removed.
+Identical window and weights to today, but summed in NORMAL space and normalised by `√(Σ w²)` instead of
+`Σ w`. Result is EXACTLY uniform for every slew setting — including slew = 0, where today it collapses to
+variance ~1/7 — while the autocorrelation between neighbouring positions (the musical "slow walk") is
+unchanged. Still a pure function of position, so SCRUB and reversibility survive.
+SCRUB then interpolates two adjacent `z(M)` values in normal space and maps through `Φ` once at the end.
 
 ## A/B mix and slew are the SAME job — collapse them (Rodney)
-Both are TEMPORAL interpolation between draws: A/B mix is a two-tap crossfade along a 6-pair chain of
-past draws; slew is phrase memory (last phrase vs this phrase, per step position). In the rework they become ONE normal-space temporal stage rather than two
+Both are TEMPORAL operations over the SAME draw sequence: SCRUB picks a position (and interpolates
+between two adjacent ones); SLEW sets how wide a window is averaged at that position. In the rework they become ONE normal-space temporal stage rather than two
 separate fixes — less work, and one fewer place for uniformity to leak. Keep both user controls (mix
 position, slew time) as parameters OF that single stage; they need not become one knob.
 
