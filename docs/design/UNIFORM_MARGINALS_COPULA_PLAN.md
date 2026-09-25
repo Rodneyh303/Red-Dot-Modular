@@ -118,6 +118,20 @@ Linear mixing blurred these: changing "how much" also changed "what each voice i
 Bonus: with ρ as the parameter a sweep is recallable and notatable — "melody ρ 0.3 → 0.9 over eight bars"
 is an instruction, not a knob gesture.
 
+## Dependence parameters: rho per LANE, alpha per STREAM — and no term structure
+- **Cross-voice correlation (rho) is PER LANE** — lanes are what you shape per voice (5 of them).
+- **Temporal correlation (alpha) is PER STREAM — R / M / Q (Rodney)**, not per lane: slew is a
+  per-stream control, and temporal dependence belongs with the DRAW SOURCE. Lanes inherit their
+  stream's alpha (rhythm family lanes share one, melody's share another, q-mix its own). Three alphas.
+- **ONE alpha is enough — deliberately NOT a correlation term structure.** A term structure (rho varying
+  with LAG, e.g. AR(p)) would add one thing a single pole cannot: a RESURGENCE at a chosen lag —
+  decorrelate fast, then re-cohere at lag 16. Not built, because (a) the musically useful axis is
+  correlation varying with MUSICAL TIME, which we already get by modulating rho (and alpha) on a synced
+  clock, and (b) phrase-scale recurrence is already expressible EXACTLY via the seed machinery
+  (reset-as-loop, counter offset) rather than statistically — and "slightly more likely to resemble the
+  step 16 ago" is far weaker perceptually than actually repeating the phrase.
+  Recorded as a DECISION, not an omission, so nobody adds an AR(p) assuming it was never considered.
+
 ## Do it on a branch
 Changes the generated distribution, so it needs LISTENING, not just reasoning. Land the Sands kit
 migration and the q-mix/CA work first. Regression: verify marginals are uniform (histogram the draws per
