@@ -143,3 +143,48 @@ distributed by the same table that defines WHO is correlated.
   notes are in PART space ("tap at the same stage your carrier comes from",
   CORRELATED_POLY_MODULATION.md).
 Uses only things that already exist once the CA pairs are built.
+
+---
+
+## CORRECTION (Rodney): follow-CA as first specced is a NO-OP — and the fix
+
+**The bug.** `PatternEngine.hpp:139`: CA's pins remap the SLEWED buffers **post A/B-mix, post-slew,
+PRE-spread**. So by the time spread runs, voice v ALREADY holds `src[v]`'s material. Under follow-CA the
+anchor would be `src[v]` — the value the voice is already carrying — so `d == t` and
+`r = (1-a)·d + a·t = d` for EVERY amount. Pin voice 2 to 3, the editor shows 3, and spread does nothing.
+Caught before build.
+
+**The fix: keep the voice's OWN pre-remap draw available at the spread stage** (one extra
+16 x lanes buffer — trivial). Spread then interpolates between the two endpoints that the remap
+currently destroys one of:
+```
+own    = this voice's own pre-remap slewed draw
+leader = the post-remap value (i.e. src[v]'s material)
+r      = (1-|a|)·own + |a|·(a >= 0 ? leader : 1 - leader)
+```
+Alternative considered and NOT chosen: move the remap AFTER spread. Conceptually cleaner but reverses an
+ordering everything downstream assumes — higher risk for no extra capability.
+
+**Polarity — PROPOSAL 1 restored (Rodney's call, and the intellectually satisfying one):**
+| amount | result | correlation |
+|---|---|---|
+| `a = 0`  | the voice's OWN draw | 0 — uncorrelated |
+| `a = +1` | its LEADER's material | +1 — full adherence |
+| `a = -1` | the COMPLEMENT of its leader | -1 — interlocking / hocket |
+Clean separation, one semantics per control: **the PIN says WHERE, SPREAD says HOW MUCH, the SIGN says
+opposition.** This keeps interlocking (kotekan/hocket), which the "complement of own draw" variant would
+have lost — the complement of an independent draw has no audible relationship to the leader.
+
+**Consequence to design around (NEW behaviour, not a regression):** on a follow-CA lane the pin alone
+now does NOTHING until spread is dialled up — CA's verbs become inaudible at `a = 0`. That is correct
+under "spread = how much", but it will read as "CA is broken" on a fresh patch. Mitigation: when a lane
+is switched to follow-CA, initialise that lane's spread amounts to FULL (+1) so enabling the mode
+preserves today's "pins take effect" feel, and the user dials DOWN to loosen. [OPEN - confirm]
+(Back-compat is a non-issue: no public release yet.)
+
+**Anchor-V1 mode is still needed** — with no CA in the chain `src[]` is identity, so every voice targets
+itself and follow-CA is a no-op by construction. Anchor V1 remains the sensible default for CA-less racks.
+
+**Editor display note:** because the remap is pre-spread, the Sands editor shows POST-CA material — a
+voice pinned to another displays that other voice's bars. Worth saying so in the lane tooltip, since the
+per-voice spread amount is then being set on material that is not that voice's own draw.
