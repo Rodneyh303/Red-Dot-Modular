@@ -327,7 +327,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // row `el` convert el→engine via EDITOR_TO_ENGINE_LANE_QMIX and use THAT for the store,
         // the CV jack id, and the label. Passing `el` straight through was the "MELODY row is
         // labelled/modulates REST" bug. Anchor name stays <el>.
-        auto EL2ENG = [](int el){ return dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el]; };
+        // Strong-typed conversion: editor row → engine lane (the one place editor↔engine
+        // crosses). Using EditorLane/EngineLane here would make a raw-int mixup not compile;
+        // .v hands the index to the still-int-keyed store/port APIs.
+        auto EL2ENG = [](int el){ return dotModular::toEngine(dotModular::EditorLane(el)).v; };
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             const int eng = EL2ENG(el);
             Module* mod = module;

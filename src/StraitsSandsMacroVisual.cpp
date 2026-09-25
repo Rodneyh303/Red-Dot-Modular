@@ -196,7 +196,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // we MUST convert el→engine lane via EDITOR_TO_ENGINE_LANE_QMIX and use THAT for
         // the store + label. Passing `el` straight through was the "top row is MELODY but
         // the knob is labelled/modulates REST" bug. Anchor name stays <el>.
-        auto EL2ENG = [](int el){ return dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el]; };
+        // Strong-typed conversion: editor row → engine lane (the single editor↔engine crossing).
+        // EditorLane/EngineLane make a raw-int mixup a compile error; .v feeds the int-keyed store.
+        auto EL2ENG = [](int el){ return dotModular::toEngine(dotModular::EditorLane(el)).v; };
         // Editor-ordered lane names for tooltips (top→bottom).
         static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC"};
 

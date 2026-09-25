@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>   // uint64_t (QMIX_STREAM_KEY) — keep this header self-contained
 //
 // LaneMapping.hpp — SINGLE SOURCE OF TRUTH for the visual-editor lane order
 // vs. the engine strand order.
@@ -162,6 +163,43 @@ static_assert(sizeof(MONO_LANE_TO_STRAND) / sizeof(int) == EDITOR_LANE_COUNT,
 static_assert(EDITOR_TO_ENGINE_LANE_QMIX[POLY_LANE_COUNT - 1] != POLY_NONE
               && EDITOR_TO_ENGINE_LANE_QMIX[POLY_LANE_COUNT] == POLY_NONE,
               "poly editor lanes map to a real engine lane; the first mono-only lane is POLY_NONE");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STRONG LANE TYPES — make "editor lane vs engine lane" a COMPILE-TIME distinction.
+//
+// The recurring Sands bug ("the MELODY row modulates/labels REST") was ALWAYS the same
+// shape: a lane index in EDITOR order (panel rows MEL,OCT,QMIX,REST,ACC) fed straight
+// into an ENGINE-order store (REST,MEL,OCT,ACC,QMIX). Both were bare `int`, so the
+// compiler couldn't see it and it only surfaced by hovering a knob in Rack.
+//
+// EditorLane / EngineLane are one-int strong typedefs:
+//   • construct EXPLICITLY only (no int → EditorLane silently),
+//   • do NOT convert to each other or to int implicitly (mixing them won't compile),
+//   • expose .v to reach the raw index for the still-int-keyed store/port APIs,
+//   • bridge ONLY through toEngine()/toEditor(), the single named conversion that
+//     consults the *_QMIX tables above.
+// Adoption is OPT-IN: existing int call sites keep compiling; UI code takes an
+// EditorLane row and calls toEngine(row).v for the store. See test/test_lane_types.cpp.
+struct EngineLane { int v; explicit constexpr EngineLane(int lane) : v(lane) {} };
+struct EditorLane { int v; explicit constexpr EditorLane(int lane) : v(lane) {} };
+
+// Editor row → engine lane. Poly editor lanes map through the QMIX table; VAR/LEG
+// (mono-only) have no engine lane → EngineLane{POLY_NONE}.
+constexpr EngineLane toEngine(EditorLane el) {
+    return EngineLane((el.v >= 0 && el.v < POLY_LANE_COUNT)
+                          ? EDITOR_TO_ENGINE_LANE_QMIX[el.v] : POLY_NONE);
+}
+// Engine lane → editor row (poly lanes only; engine has no VAR/LEG).
+constexpr EditorLane toEditor(EngineLane eng) {
+    return EditorLane((eng.v >= 0 && eng.v < POLY_LANE_COUNT)
+                          ? ENGINE_LANE_TO_EDITOR_QMIX[eng.v] : POLY_NONE);
+}
+
+static_assert(toEngine(EditorLane(0)).v == 1, "editor MELODY -> engine 1");
+static_assert(toEngine(EditorLane(2)).v == 4, "editor QMIX -> engine 4");
+static_assert(toEngine(EditorLane(3)).v == 0, "editor REST -> engine 0");
+static_assert(toEditor(toEngine(EditorLane(2))).v == 2, "editor->engine->editor round-trips (QMIX)");
+static_assert(toEngine(EditorLane(5)).v == POLY_NONE, "VAR is mono-only (no engine lane)");
 
 // ─── NOTE: ALIGN THE ORDERS WHERE POSSIBLE ───────────────────────────────────
 // Of the orderings in the header block, three are already collapsed to identity (engine
