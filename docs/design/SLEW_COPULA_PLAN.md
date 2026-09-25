@@ -138,10 +138,17 @@ win there than the ~5x seen on glibc).
 **Rules:**
 1. **Build the table at static-init from the EXACT `Phi`** — one source of truth, no transcribed
    constants.
-2. **Use it ONLY in the slew readout.** Keep exact `Phi` for `PhiInv`'s Halley step, for spread, and
-   for tests of the primitives.
+2. **Use it for the whole PROBABILITY PIPELINE — the slew readout AND spread's `mix2`** (Rodney:
+   "slew readout only?" — that split was arbitrary). Both produce probability values for the same
+   float lanes, with the same ~1e-7 need, the same monotonicity requirement and the same uniform-
+   marginal guarantee; running two different `Phi` implementations over one pipeline would give
+   subtly different values from two functions doing the same job, for no benefit.
+   **Keep the EXACT `Phi` for (a) `PhiInv`'s Halley refinement** — it needs full precision or the
+   refinement converges only to LUT accuracy and the 1e-15 round-trip test fails — **and (b) the
+   unit tests of the primitives themselves.**
+   The line is PROBABILITY VALUES (LUT) vs INTERNAL PRECISION (exact), not slew vs spread.
 3. **The distribution tests (KS / chi-square / marginal) MUST run through whichever `Phi` actually
-   ships in the slew path.** Otherwise the tests stop testing the product. A 9e-8 error will not
+   ships in the probability pipeline.** Otherwise the tests stop testing the product. A 9e-8 error will not
    move a KS result, but the test must exercise the real function.
 
 **What this does NOT fix, and why:** advancing one position shifts every weight onto a different
