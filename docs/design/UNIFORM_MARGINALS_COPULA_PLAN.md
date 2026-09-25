@@ -97,6 +97,27 @@ Consequences:
 - ρ is notatable/recallable: "melody ρ 0.3 → 0.9 over eight bars" is a real instruction, not a knob
   gesture.
 
+## The payoff: spread MODULATION becomes literal time-varying correlation (Rodney)
+Correctness is not the only reason to do this. Today a CV sweep of spread moves a knob whose relation to
+correlation is CONCAVE (`k(a)`: 0.5 → 0.71) and which also changes CONTRAST on the way (variance dips to
+half at mid-spread) — so part of what you hear is the marginals flattening, not the relationship moving,
+and you cannot say what correlation the sweep passed through. After the rework **the CV *is* ρ**: a ramp
+0 → 1 is a linear ramp of correlation from independent to unison, marginals untouched throughout, so
+every voice keeps its own character and ONLY the relationships move.
+
+This sharpens the correlated-spread-modulator patch (SPREAD_TARGET_MODES.md): a CA pair's poly OUT into
+the spread CV now sends a **correlation field** — each voice's ρ set by a voice-permuted signal, in
+honest units.
+
+And it keeps the three timescales cleanly separated, which is what makes the structure legible:
+- pin map **steps** at phrase boundaries — WHO is related
+- ρ **glides** continuously under CV — HOW MUCH
+- marginals **never move** — WHAT EACH VOICE IS LIKE
+Linear mixing blurred these: changing "how much" also changed "what each voice is like".
+
+Bonus: with ρ as the parameter a sweep is recallable and notatable — "melody ρ 0.3 → 0.9 over eight bars"
+is an instruction, not a knob gesture.
+
 ## Do it on a branch
 Changes the generated distribution, so it needs LISTENING, not just reasoning. Land the Sands kit
 migration and the q-mix/CA work first. Regression: verify marginals are uniform (histogram the draws per
