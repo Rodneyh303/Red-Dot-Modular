@@ -19,8 +19,13 @@ Linearity preserves the RANGE, not the SHAPE. Both of these are linear and both 
   distribution never sees more than two draws at once. (Had it blended all 6 pairs at once — ~12
   independent draws — CLT would give near-Gaussian with ~1/12 the variance, i.e. AVERAGE_POLY's failure
   in all but name, and A/B mix would have been the single largest distorter in the chain. It isn't.)
-- **Slew** is a one-pole across steps = a weighted sum of many past draws → tends to a bell about 0.5 by
-  CLT as the time constant grows.
+- **Slew is PHRASE MEMORY, not a per-step smoother (Rodney).** For each STEP POSITION it blends how much
+  of LAST PHRASE's value vs THIS PHRASE's fresh draw. One phrase of it mixes two independent uniforms →
+  triangular; because it is recursive ACROSS PHRASES, a high setting accumulates many past phrases at
+  that step position and drifts toward 0.5 over time. Same concentration failure, on a PHRASE clock —
+  easy to misread as the pattern "settling".
+  Musically this is the RIGHT behaviour and must be preserved: a pattern MORPHS between phrases rather
+  than being redrawn — recognisable evolution, not fresh randomness.
 - **Spread** itself: the convex mix `(1-a)d + a·t` has variance `(1-a)²+a²`, which DIPS TO 0.5 at
   mid-spread — mid-range voices visibly flatter (contrast loss). The variance-preserving alternative
   overshoots [0,1]: measured ~8.6% of steps clip at ρ≈0.7, piling mass at 0 and 1.
@@ -43,19 +48,17 @@ z = (1-m)·Φ⁻¹(A) + m·Φ⁻¹(B);   r = Φ( z / √((1-m)² + m²) )
 ```
 Exactly uniform for every m; m still reads as "how much B".
 
-**Slew → AR(1) on the latent** (temporal correlation, not smoothing):
+**Slew → AR(1) on the latent, PHRASE TO PHRASE at a fixed step index:**
 ```
-z_t = α·z_{t-1} + √(1-α²)·Φ⁻¹(u_t);   r_t = Φ(z_t)
+z_p[j] = α·z_{p-1}[j] + √(1-α²)·Φ⁻¹(u_p[j]);   r_p[j] = Φ(z_p[j])
 ```
-Every `r_t` exactly uniform, consecutive steps correlated at α.
-**Behaviour change to accept deliberately:** this is a CORRELATED GENERATOR, not a smoother. Values no
-longer glide between steps — each step is a fresh draw that RESEMBLES its predecessor. If the musical
-intent is "the probability drifts gradually", that survives; if it is "the value ramps smoothly", apply
-the ramp as display/CV smoothing AFTER the uniform value is chosen, not inside the distribution.
+Every value exactly uniform; the SAME STEP in consecutive phrases correlated at α. Note the latent state
+is per (STREAM, STEP) — 16 latents per stream — not a single running value. The phrase-memory morphing
+behaviour is preserved exactly; only the marginal drift is removed.
 
 ## A/B mix and slew are the SAME job — collapse them (Rodney)
-Both are TEMPORAL interpolation between draws: A/B mix is a two-tap crossfade between past draws, slew is
-a one-pole across steps. In the rework they become ONE normal-space temporal stage rather than two
+Both are TEMPORAL interpolation between draws: A/B mix is a two-tap crossfade along a 6-pair chain of
+past draws; slew is phrase memory (last phrase vs this phrase, per step position). In the rework they become ONE normal-space temporal stage rather than two
 separate fixes — less work, and one fewer place for uniformity to leak. Keep both user controls (mix
 position, slew time) as parameters OF that single stage; they need not become one knob.
 
@@ -116,12 +119,14 @@ And it keeps the three timescales cleanly separated, which is what makes the str
 Linear mixing blurred these: changing "how much" also changed "what each voice is like".
 
 Bonus: with ρ as the parameter a sweep is recallable and notatable — "melody ρ 0.3 → 0.9 over eight bars"
-is an instruction, not a knob gesture.
+is an instruction, not a knob gesture. Time-varying correlation is then simply whatever you patch into
+the CV: e.g. a ramp across two phrases takes the ensemble from independent to unison over that span.
 
 ## Dependence parameters: rho per LANE, alpha per STREAM — and no term structure
 - **Cross-voice correlation (rho) is PER LANE** — lanes are what you shape per voice (5 of them).
 - **Temporal correlation (alpha) is PER STREAM — R / M / Q (Rodney)**, not per lane: slew is a
-  per-stream control, and temporal dependence belongs with the DRAW SOURCE. Lanes inherit their
+  per-stream control, and temporal dependence belongs with the DRAW SOURCE. Its time base is the
+  PHRASE (per step position), not the step. Lanes inherit their
   stream's alpha (rhythm family lanes share one, melody's share another, q-mix its own). Three alphas.
 - **ONE alpha is enough — deliberately NOT a correlation term structure.** A term structure (rho varying
   with LAG, e.g. AR(p)) would add one thing a single pole cannot: a RESURGENCE at a chosen lag —
