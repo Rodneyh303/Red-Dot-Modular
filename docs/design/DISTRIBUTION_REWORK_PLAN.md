@@ -32,10 +32,15 @@ intent). Change only the summation:
 - linear `SUM w_j·u` normalised by `SUM w` → normal-space `SUM w_j·PhiInv(u)` normalised by
   `SQRT(SUM w^2)`, then one `Phi`. Use `MovingAverageCopula`.
 - `r == 0` must stay BIT-IDENTICAL to the legacy draw, asserted through the engine path.
-- Carried-state window (head + tail, `step(±1)` via the Philox bijection). **Recompute the full
-  K-term sum every step — NEVER a running sum**, or reversal stops being bit-exact.
-- Cache `PhiInv(u)` beside each carried draw (pure function of the draw ⇒ reversal-neutral). Without
-  it this is ~16 steps x 64 taps of PhiInv per stream per draw.
+- **NO carried-state window class.** The draws are directly addressable —
+  `philoxRhythmAt(pos,cursor) = atUniform(pos*DRAW_CHUNK + cursor)` — so read
+  `rawDraw*PatternAt(pos - j)` for j = 0..K-1, exactly as the existing 7-tap loop does. An earlier
+  revision of SLEW_COPULA_PLAN wrongly called for a head/tail bijection-stepped window; that would
+  add state to a stateless design. Still: **recompute the full K-term sum every position, never a
+  running sum.**
+- **Measure the cost first.** Each `rawDraw*PatternAt` is ~500 Philox calls; K=64 makes ~32k per
+  position vs ~3.5k today. Cache drawn patterns (and their `PhiInv`) by position — pure functions of
+  pos, so reversal-neutral — or reconsider K. Report before wiring.
 - `K` and `R_MAX` are ONE decision: truncation is negligible while `K >= 2/(1-R_MAX)`. Keep K=64 /
   R_MAX=0.97 for now; if the top of the travel feels not-still-enough, move to K=128 / R_MAX=0.99
   TOGETHER. (Achievable lag-1 saturates at exactly (K-1)/K, so R_MAX alone just makes a dead zone.)

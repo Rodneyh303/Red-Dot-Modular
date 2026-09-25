@@ -1,8 +1,13 @@
 # Slew via moving-average Gaussian copula — plan (master)
 
-REVISED for the **carried-state Philox chain**. The earlier draft assumed `u(n)` was a pure function
-of `n` (directly addressable); it is not — the chain is Philox-keyed-by-Philox with carried state,
-so the window must be carried and stepped by the bijection. See also
+**CORRECTION (checked against the code): the draws ARE directly addressable — there is no carried
+state to work around, and no window class is needed.** `philoxRhythmAt(pos, cursor)` is
+`rhythmPhilox.atUniform(pos*DRAW_CHUNK + cursor)`, and `rawDraw*PatternAt(pos)` walks the cursor
+across that chunk, so ANY pos (including negative) is computable directly. This is exactly what
+`DICE_SCRUB_SLEW_B2.md` specified ("no chain, no stored walk state"). An earlier revision of this
+doc wrongly proposed a carried head/tail window stepped by the bijection — that would ADD state to
+a design whose whole point is having none. Do not build it. (The confusion: the LIVE draw path
+`rhythmCursor++` is stateful, but the ADDRESSED path is not — two different entry points.) See also
 `UNIFORM_MARGINALS_COPULA_PLAN.md` (why), `DICE_SCRUB_SLEW_B2.md` (the B2 readout this replaces),
 `SPREAD_TARGET_MODES.md` (the other consumer of the same primitive).
 
@@ -50,15 +55,17 @@ average has ~1/K the variance: AVERAGE_POLY's failure mode).
 
 ## The work
 
-### 1. Carried-state window class (the new part)
-The draw chain has carried state, so the window cannot be addressed by index. Wrap it:
-- Carry **head `S_n`** and **tail `S_{n-K+1}`**; `step(+1)` / `step(-1)` advance both with `F` /
-  `F^-1` (the Philox bijection). The window is derivable from the head alone.
-- **Recompute the full K-term sum every step — never a running sum.** A running sum accumulates
-  float error asymmetrically and makes reversal non-bit-exact. This is the single most important
-  implementation rule here.
-- Expose `step(int dir)` and a view of the K uniforms, newest first, to feed
-  `MovingAverageCopula::apply`.
+### 1. Readout only — no window class
+Feed `MovingAverageCopula::apply` from a loop over `rawDraw*PatternAt(pos - j)`, j = 0..K-1 —
+exactly as the existing 7-tap loop does with `SCRUB_K`. No carried state, no bijection stepping,
+no head/tail. Reversibility comes free from direct addressing, as it does today.
+- **Recompute the full K-term sum at every position — never a running sum.** (Still the rule; with
+  direct addressing there is no temptation to carry one.)
+- **COST — the real open question at K = 64.** Each `rawDraw*PatternAt` fills a whole draw
+  (16 steps x several lanes x 15 voices ~ 500 Philox calls). 64 of those is ~32k Philox evaluations
+  per position, against ~3.5k for today's 7 taps. Measure it. Mitigations, in order: cache drawn
+  patterns by position (they are pure functions of pos, so caching is reversal-neutral); cache
+  `PhiInv` of each cached value; or reconsider K. Report before wiring.
 
 ### 2. Readout
 Call `MovingAverageCopula::apply(window, r)`. Keep `r == 0` on the exact legacy path (the class
