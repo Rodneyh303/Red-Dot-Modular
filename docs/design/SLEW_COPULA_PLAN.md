@@ -135,6 +135,18 @@ win there than the ~5x seen on glibc).
 - Saturates to 0/1 beyond |z| = 6 (correct to ~1e-9), and the half-range symmetry means no accuracy
   loss on the negative side.
 
+**The rule, stated neatly (Rodney): IF IT'S CACHED, IT CAN AFFORD TO BE EXACT.**
+The accuracy split falls out of the caching structure — it is not a policy anyone has to remember:
+
+| call site | cacheable? | frequency | precision needed | use |
+|---|---|---|---|---|
+| `Phi` inside `PhiInv`'s Halley step | YES — `PhiInv` is cached per draw value | 544 on a new position; 34,816 on a cold build | full (or the refinement converges only to LUT accuracy and the 1e-15 round-trip test fails) | **exact `Phi`** |
+| `Phi` at the end of the slew readout | NO — advancing one position moves every weight onto a different draw, so all 544 `z` change | every position, incl. every frame while scrub-dragging | ~1e-7 (float probability lane) | **LUT** |
+| `Phi` in spread's `mix2` | NO — `z` depends on the live rho | per voice per lane | ~1e-7 (same lanes) | **LUT** |
+| `Phi` in the primitive unit tests | n/a | n/a | reference | **exact `Phi`** |
+
+So: cached and accuracy-critical -> exact; uncacheable, hot and float-precision -> LUT.
+
 **Rules:**
 1. **Build the table at static-init from the EXACT `Phi`** — one source of truth, no transcribed
    constants.
