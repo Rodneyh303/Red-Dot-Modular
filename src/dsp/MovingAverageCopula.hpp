@@ -65,7 +65,10 @@ public:
         weights(r, w);
         double s = 0.0;
         for (std::size_t j = 0; j < K; ++j) s += w[j] * z[j];
-        return copula::Phi(s);
+        // The readout's final Phi is UNCACHEABLE (z = Σ w_j·z_j depends on r, which varies) and hot
+        // (544×/window) and feeds a float lane → LUT (PhiFast), not the exact erfc Phi. The cached
+        // path (PhiInv) keeps the exact Phi. r==0 never reaches here, so bit-identity is untouched.
+        return copula::PhiFast(s);
     }
 
     /// Analytic lag-m correlation of the output series for a constant r (dot product of the
