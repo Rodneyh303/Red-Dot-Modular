@@ -30,6 +30,7 @@ SE="src/dsp/engines/SequencerEngine.cpp"
 TESTS=(
   "test_12tet_identity|$SE $GS $PE"
   "test_GateState|$GS"
+  "test_GaussianCopula|"
   "test_PatternEngine|$PE"
   "test_PhiloxRng|"
   "test_SandsTopology|"

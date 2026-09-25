@@ -1,113 +1,93 @@
-# Plan: `SlewedDraw` — stateless, distribution-preserving slew (proof of concept)
+# Slew via moving-average Gaussian copula — plan (master)
 
-## Goal
+REVISED for the **carried-state Philox chain**. The earlier draft assumed `u(n)` was a pure function
+of `n` (directly addressable); it is not — the chain is Philox-keyed-by-Philox with carried state,
+so the window must be carried and stepped by the bijection. See also
+`UNIFORM_MARGINALS_COPULA_PLAN.md` (why), `DICE_SCRUB_SLEW_B2.md` (the B2 readout this replaces),
+`SPREAD_TARGET_MODES.md` (the other consumer of the same primitive).
 
-Build a standalone, header-only C++17 class that demonstrates the new slew design, plus a unit-test suite and a small demo. **No integration into any module in this pass.**
+## Intent (Rodney)
+Slew controls **how far the next draw can move from the last one**.
+Requirements: **stateless-at-readout / reversible**, **preserve the lane's distribution**,
+**controlled motion**.
 
-Slew is meant to control how far the next draw can move from the last one, subject to three constraints:
+## ALREADY BUILT AND GREEN on master — do not re-implement
+- `src/dsp/GaussianCopula.hpp` — `Phi` (erfc form), `PhiInv` (Acklam + one Halley step; round trip
+  ~1e-15 — supersedes the AS241 note in the old draft), `combine(u, w, n)`, and
+  `mix2(own, leader, rho)` for SPREAD (rho = +1 -> leader, -1 -> exactly `1 - leader`, 0 -> own, so
+  the legacy `1-p` mirror special case disappears).
+- `src/dsp/MovingAverageCopula.hpp` — `K = 64`, `R_MAX = 0.97`, geometric weights `w_j ∝ r^j`
+  L2-normalised (`SUM w^2 == 1`); `apply(u, r)`, `weights(r, w)`, `lagCorr(r, m)` (analytic).
+- `test/test_GaussianCopula.cpp` — registered in `test/run_all.sh`, suite green. Covers: Phi/PhiInv
+  round trip; `SUM w^2 == 1`; **r == 0 bit-identity**; uniform marginal at r = 0/0.3/0.6/0.9/0.97
+  (mean, variance ~1/12, KS **after thinning by K**); empirical lag-m vs analytic; `mix2` endpoints;
+  determinism.
+  NOTE on the KS test: KS assumes independent samples, but consecutive outputs are autocorrelated BY
+  DESIGN, so the raw series over-rejects at high r. Thin by K (samples ≥ K apart share no source
+  draws) — this is why the old draft's "thin by K" instruction is mandatory, not optional.
 
-- **Stateless / reversible.** The output for step `n` is a pure function of `n`. Stepping forward, backward, scrubbing and jumping must all give identical results.
-- **Distribution-preserving.** The lane's note distribution must be exactly unchanged at every slew setting.
-- **Controlled motion.** Slew sets the serial correlation between consecutive draws.
-
-## Design (source of truth for the tests)
-
-Let `u(n)` be the existing per-step uniform draw. It is a black box: whatever the Philox pipeline currently produces (including Philox-keyed-by-Philox). The only assumption is that it is a pure function of `n`.
-
+## Model
 ```
-if r == 0:  return u(n)                                   // legacy, bit-identical
-z(n) = sum_{j=0}^{K-1} w_j(r) * PhiInv(u(n - j))
-return Phi(z(n))                                           // exactly Uniform(0,1)
+r == 0 -> return the legacy draw u_n BIT-IDENTICALLY        (no migration, no behaviour change)
+r  > 0 -> z_n = SUM_{j<K} w_j(r)·PhiInv(u_{n-j}),  w_j ∝ r^j,  SUM w^2 = 1
+          out = Phi(z_n)  -> EXACTLY uniform -> existing lane quantile unchanged
 ```
+`K = 64`, `r` clamped to `[0, 0.97]`, non-finite r treated as 0. Lag-m correlation is the analytic
+dot product `SUM_j w_j·w_{j+m}`; lag ≥ K is exactly 0. As K grows lag-1 -> r, so the knob reads as
+**"correlation with the previous draw"**.
 
-**Weights.** `w_j ∝ r^j` for `j < K`, normalized so that `sum w_j^2 = 1`. Because z is then a unit-norm sum of i.i.d. N(0,1) variables, z(n) is exactly N(0,1), the output is exactly uniform, and the lane's existing quantile reproduces its note weights exactly.
+**KEY PROPERTY: `r` enters ONLY at readout, never the chain.** The chain therefore reverses exactly
+under ANY slew modulation — no constant-slew requirement (unlike recursive slews). Output replay on
+reverse is exact **iff `r(n)` is reproducible at step n** (lane-driven, not live CV) — state that in
+the UI/docs.
 
-**Motion.** The lag-1 correlation of z is `rho1(r) = sum_j w_j * w_{j+1}`, computed analytically and exposed by the class. The correlation at lag ≥ K is exactly 0.
+REJECTED, do not reintroduce: clamping a variance-preserving linear mix (piles mass at the edges);
+truncating the window (under-weights edges, breaks pure-function-of-position — and
+`DICE_SCRUB_SLEW_B2.md` forbids origin truncation: always read the full K, into NEGATIVE counters,
+since Philox is a bijection over the signed space); AR(1)/recursive (carries state, unstable
+backward, degenerate at rho = 0); linear averaging of the window (today's bug — an equal K-tap
+average has ~1/K the variance: AVERAGE_POLY's failure mode).
 
-**Parameters.**
-- `K = 64` (`constexpr`).
-- `r` is clamped to `[0, 0.97]`. A non-finite `r` is treated as 0.
+## The work
 
-**Optional period `L`.** When `L > 0`, index the draws as `u(((n - j) mod L + L) mod L)`, using positive modulo. The output is then exactly periodic, and the window wraps smoothly across the loop point.
+### 1. Carried-state window class (the new part)
+The draw chain has carried state, so the window cannot be addressed by index. Wrap it:
+- Carry **head `S_n`** and **tail `S_{n-K+1}`**; `step(+1)` / `step(-1)` advance both with `F` /
+  `F^-1` (the Philox bijection). The window is derivable from the head alone.
+- **Recompute the full K-term sum every step — never a running sum.** A running sum accumulates
+  float error asymmetrically and makes reversal non-bit-exact. This is the single most important
+  implementation rule here.
+- Expose `step(int dir)` and a view of the K uniforms, newest first, to feed
+  `MovingAverageCopula::apply`.
 
-**Phi and PhiInv.**
-- `Phi(z) = 0.5 * erfc(-z / sqrt(2))`.
-- `PhiInv` uses Wichura AS241 in double precision.
-- Clamp u to `[2^-53, 1 - 2^-53]` before `PhiInv`.
+### 2. Readout
+Call `MovingAverageCopula::apply(window, r)`. Keep `r == 0` on the exact legacy path (the class
+already returns `u[0]` bitwise, but assert it through the ENGINE path too).
 
-## API sketch
+### 3. Scrub and K are different things
+B2 used `SCRUB_K = 6` for BOTH the scrub span and the smoothing window. Scrub still spans 6 positions
+(`s = mix*6`); the copula window is `K = 64`. Do not conflate them. Scrub interpolates two adjacent
+positions — do that interpolation in NORMAL space (blend the two `z` values, then `Phi` once), not on
+the two uniform outputs.
 
-```cpp
-namespace dotmod {
-double Phi(double z);
-double PhiInv(double u);
+### 4. All three streams
+Slew is per STREAM (R / M / Q), not per lane; lanes inherit their stream's r. Precompute
+`weights(r)` once per (stream, position) — not per lane, not per voice.
 
-class SlewedDraw {
-public:
-    static constexpr int K = 64;
-    static constexpr double kRMax = 0.97;
-    void   setSlew(double r);           // clamp + precompute weights
-    void   setPeriod(int64_t L);        // 0 = no period
-    double lag1() const;                // analytic rho1
-    const std::array<double, K>& weights() const;
-    template <class U> double operator()(int64_t n, U&& u) const; // u: int64_t -> double
-};
-}
-```
+## Tests to add with the wiring
+1. **Legacy bit-identity at r = 0 through the real engine path** (not just the copula unit).
+2. **Reversibility:** random ± walks return **bitwise** to the start, including with `r` varying per
+   step; forward/backward/shuffled evaluation agree; large and negative counters work.
+3. **Distribution preserved through the engine:** thin by K, then KS (α = 0.01) and a 100-bin
+   chi-square; also map through a lumpy 7-note weighted quantile and chi-square the note histogram.
+4. **Motion:** empirical lag-1 of `PhiInv(output)` matches `lagCorr(r,1)` within 4 standard errors;
+   lag-K ≈ 0; mean |Δnote| non-increasing in r.
+5. **Periodicity:** with a loop length set, `out(n) == out(n+L)` bitwise and no discontinuity in the
+   lag-1 statistic at the seam.
 
-The class must have no mutable state that affects output, and no caching in v1.
-
-## Steps for Claude Code
-
-0. **Recon first, write nothing.** On `feat/microtonal`, locate:
-   - the Philox implementation;
-   - the current per-step draw path (how the counter is formed, and which output word and bits-to-uniform conversion are used);
-   - the existing test harness and its conventions.
-
-   Report back, and flag it if the counter is a draw count rather than a step index.
-1. **Branch.** Create `feat/slew-copula` off `feat/microtonal`.
-2. **`Phi` / `PhiInv`.** Implement them with their tests, then commit (`feat(engine): add Phi/PhiInv ...`).
-3. **`SlewedDraw`.** Implement the class with its tests, then commit.
-4. **Demo.** Write `slew_demo`: for r ∈ {0, 0.5, 0.9, 0.97}, print a 64-step note sequence using a 7-note weighted scale, the note histogram, and the empirical versus analytic lag-1 correlation. Add a CSV output option for plotting. Commit.
-5. **Report.** Give test results, ns per call at K = 64, and any deviations from this plan. Stop there.
-
-Constraints:
-- Plain `g++` / MinGW, C++17, and no Rack includes.
-- In tests, `u(n)` should use the repo's Philox if it builds standalone; otherwise use a clearly marked pure-hash test double.
-- Use conventional commit prefixes with detailed bodies.
-
-## Tests
-
-Write each test once, from the design above. If a test fails, investigate the source truth. Do not loosen a threshold without a written justification.
-
-1. **Phi / PhiInv reference values.**
-   - Φ(0) = 0.5.
-   - Φ(1.959963984540054) = 0.975, and PhiInv(0.975) = 1.959963984540054 to within 1e-14.
-   - PhiInv(1e-10) = -6.361340902404056 to within 1e-12.
-   - Round trip `|Phi(PhiInv(u)) - u| ≤ 1e-14 * max(u, 1-u)` on a grid that includes the tails.
-   - Both functions are strictly monotone on the grid.
-2. **Weights.**
-   - `sum w^2 = 1` to within 1e-15 for r on a grid.
-   - At r = 0, w = [1, 0, …].
-   - `lag1()` is strictly increasing in r.
-   - Clamping works: r < 0 gives 0, r > kRMax gives kRMax, and NaN gives 0.
-3. **Legacy identity.** At r = 0, the output is **bit-identical** to `u(n)` for n in [-1000, 100000].
-4. **Reversibility.**
-   - Evaluating forward (0..N), backward (N..0) and in a shuffled order gives bitwise-equal results.
-   - Two independent instances give equal results.
-   - Large n near 2^62 and negative n both work.
-5. **Distribution preservation.** For r ∈ {0, 0.3, 0.6, 0.9, 0.97}:
-   - Run 10^6 steps and **thin by K**. MA(K) samples at least K apart are exactly independent, so a standard KS test at α = 0.01 is valid.
-   - Run a chi-square test on 100 bins.
-   - Map through a lumpy 7-note weighted quantile and chi-square the note histogram against the weights.
-6. **Motion.**
-   - The empirical lag-1 correlation of `PhiInv(output)` matches `lag1()` to within 4 standard errors.
-   - The empirical lag-K correlation is ≈ 0.
-   - The mean |Δnote| is non-increasing in r across the grid.
-7. **Periodicity.** With L set, `out(n) == out(n + L)` bitwise, and there is no discontinuity in the lag-1 statistic at the loop seam.
-
-## Open decisions (leave as-is, flag in report)
-
-- Whether K = 64 and rMax = 0.97 are the right values. Truncation makes ρ1 < r near the top of the range.
-- How the knob maps to r: linear in r, or inverted so the knob sets the target ρ1 directly.
+## Open decisions (flag in the report, do not silently choose)
+- Whether `K = 64` and `R_MAX = 0.97` are right. Truncation makes rho1 < r near the top.
+- Knob mapping: linear in r, or inverted so the knob sets target rho1 directly.
 - Whether the lane's pitch ordering in the quantile gives the perceived motion we want.
+- Cost: 64 PhiInv per position per stream. Measure ns/step; if it bites, cache `PhiInv(u)` alongside
+  the carried window (it is a pure function of the draw, so caching is safe and reversal-neutral).
