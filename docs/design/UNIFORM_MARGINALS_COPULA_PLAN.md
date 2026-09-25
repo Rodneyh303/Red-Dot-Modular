@@ -11,10 +11,9 @@ it for exactly this reason, without noticing the milder cases).
 
 ## Where uniformity is lost today
 Linearity preserves the RANGE, not the SHAPE. Both of these are linear and both concentrate:
-- **A/B mix** `(1-m)·A + m·B` blends two INDEPENDENT uniforms → TRIANGULAR (at m=0.5, peaked at 0.5,
-  half the variance, no mass at the extremes).
-  (CHECK FIRST: if B is a fixed value rather than a second draw, this stage is affine and IS uniform —
-  then only slew needs fixing.)
+- **A/B mix** interpolates on PAST DRAWS (Rodney) — so A and B are two INDEPENDENT uniforms from the
+  same stream at different counter positions, and `(1-m)·A + m·B` is TRIANGULAR (at m=0.5, peaked at
+  0.5, half the variance, no mass at the extremes). No shortcut: it is not affine-on-a-constant.
 - **Slew** is a one-pole across steps = a weighted sum of many past draws → tends to a bell about 0.5 by
   CLT as the time constant grows.
 - **Spread** itself: the convex mix `(1-a)d + a·t` has variance `(1-a)²+a²`, which DIPS TO 0.5 at
@@ -49,8 +48,15 @@ longer glide between steps — each step is a fresh draw that RESEMBLES its pred
 intent is "the probability drifts gradually", that survives; if it is "the value ramps smoothly", apply
 the ramp as display/CV smoothing AFTER the uniform value is chosen, not inside the distribution.
 
+## A/B mix and slew are the SAME job — collapse them (Rodney)
+Both are TEMPORAL interpolation between draws: A/B mix is a two-tap crossfade between past draws, slew is
+a one-pole across steps. In the rework they become ONE normal-space temporal stage rather than two
+separate fixes — less work, and one fewer place for uniformity to leak. Keep both user controls (mix
+position, slew time) as parameters OF that single stage; they need not become one knob.
+
 ## Pipeline order (the coherent architecture)
-draws → copula correlation across voices → normal-space A/B mix → AR(1) temporal → **uniform value out**
+draws → copula correlation across voices → **one normal-space TEMPORAL stage (A/B mix + slew)** →
+**uniform value out**
 → CA remap → any cosmetic smoothing.
 Everything that shapes the DISTRIBUTION happens in normal space; everything after operates on a
 genuinely uniform value.
