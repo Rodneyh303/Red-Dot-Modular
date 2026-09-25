@@ -53,6 +53,20 @@ public:
         weights(r, w);
         return copula::combine(u, w, K);
     }
+    /// Apply slew from a window of PRE-COMPUTED normal scores `z` (= PhiInv(u), newest first),
+    /// skipping the per-call PhiInv. Use this when the caller caches PhiInv(u) alongside each
+    /// raw draw (it is a pure function of the draw ⇒ reversal-neutral). r == 0 returns Phi(z[0])
+    /// — NOT the raw uniform — so callers on the r==0 bit-identity path must short-circuit to
+    /// the raw u[0] themselves (see PatternEngine::patternXAt). For r > 0 this is bit-identical
+    /// to apply(u, r): combine does z' = Σ w_j·PhiInv(u_j) = Σ w_j·z[j], then Phi(z').
+    static double applyZ(const double* z, double r) {
+        if (!(r > 0.0)) return copula::Phi(z[0]);   // consistent shape; caller short-circuits r==0
+        double w[K];
+        weights(r, w);
+        double s = 0.0;
+        for (std::size_t j = 0; j < K; ++j) s += w[j] * z[j];
+        return copula::Phi(s);
+    }
 
     /// Analytic lag-m correlation of the output series for a constant r (dot product of the
     /// weight vector with itself shifted by m). Tests compare the empirical value against this.

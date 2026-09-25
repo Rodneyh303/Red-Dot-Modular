@@ -23,6 +23,10 @@ namespace copula {
 inline constexpr double U_EPS = 1e-12;
 
 /// Standard normal CDF. erfc is accurate in the far tail, unlike 0.5*(1+erf(x/sqrt2)).
+/// Used by PhiInv's Halley refinement, the round-trip test, and the slew readout (applyZ).
+/// Note: a faster rational approximation (A&S 7.1.26, ~1e-7) was TRIED for applyZ and measured
+/// SLOWER here (erfc is ~79ns, competitive with exp on this libm; the rational + branch lost).
+/// erfc's cost is platform-dependent; if a target libm has a slow erfc fallback, revisit PhiFast.
 inline double Phi(double z) { return 0.5 * std::erfc(-z * 0.70710678118654752440); }
 
 /// Inverse standard normal CDF (Acklam's rational approximation, |err| < 1.15e-9),
