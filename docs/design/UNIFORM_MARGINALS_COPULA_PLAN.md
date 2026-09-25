@@ -79,6 +79,24 @@ the CA-remap ordering problem, since the remap happens after the draws.
 - Cost is negligible: this is PER STEP, not per sample — ~16 voices x 5 lanes x 16 steps ≈ 1.3k
   evaluations per phrase. Acklam/Moro rational approximation for `Φ⁻¹`, cheap `erf` for `Φ`.
 
+## The payoff: spread modulation becomes literal TIME-VARYING CORRELATION (Rodney)
+Not just correctness — a capability. TODAY a spread CV moves a knob whose relation to correlation is
+concave (`k(a)`: 0.5 → 0.71) and whose mid-range also flattens the probabilities, so a sweep is audible
+but you cannot say what correlation it passes through, and part of what you hear is CONTRAST LOSS rather
+than relationship change. AFTER the rework **the CV *is* ρ**: a ramp 0→1 is a linear ramp of correlation
+from independent to unison, with the MARGINALS UNTOUCHED — every voice keeps its own character and only
+the RELATIONSHIPS move.
+
+Consequences:
+- The correlated-spread-modulator patch (SPREAD_TARGET_MODES.md) becomes a **correlation FIELD**: a CA
+  pair's poly out into the spread CV sets each voice's ρ via a voice-permuted signal — the structure
+  setting its own adherence, in honest units.
+- The three timescales stay cleanly separated, which is what linear mixing was blurring: the pin map
+  STEPS at phrase boundaries (who), ρ GLIDES continuously (how much), marginals NEVER move (what each
+  voice is like). Changing "how much" no longer also changes "what each voice is like".
+- ρ is notatable/recallable: "melody ρ 0.3 → 0.9 over eight bars" is a real instruction, not a knob
+  gesture.
+
 ## Do it on a branch
 Changes the generated distribution, so it needs LISTENING, not just reasoning. Land the Sands kit
 migration and the q-mix/CA work first. Regression: verify marginals are uniform (histogram the draws per
