@@ -98,3 +98,64 @@ Slew is per STREAM (R / M / Q), not per lane; lanes inherit their stream's r. Pr
 - Whether the lane's pitch ordering in the quantile gives the perceived motion we want.
 - Cost: 64 PhiInv per position per stream. Measure ns/step; if it bites, cache `PhiInv(u)` alongside
   the carried window (it is a pure function of the draw, so caching is safe and reversal-neutral).
+
+
+---
+
+## Phi on the slew readout: use an INTERPOLATED LOOKUP TABLE (measured)
+
+**Why.** After caching `PhiInv` (pure function of the draw, so 63 of 64 window entries survive a
+one-position advance — cold build 34,816 calls, steady state 544), the readout cost moves to `Phi`.
+`std::erfc` measures **~80 ns on MinGW64** (vs ~14 ns on glibc — this is a known MinGW libm
+weakness), so 544 `Phi` per window is ~44 us — the dominant remaining term.
+
+**What NOT to use:**
+- **Winitzki** — measured max error **6.2e-5**, three orders worse than the ~1e-7 the float
+  probability lanes need. Rejected on accuracy.
+- **A&S 7.1.26** — accuracy is fine (measured **7.0e-8**) but it calls `exp`, and it measured SLOWER
+  than `erfc` on the target toolchain. Rejected on speed. (Measure `exp` alone on MinGW to confirm
+  the whole exp-based family is out.)
+
+**Use instead: a half-range interpolated LUT over z in [0,6], with the symmetry
+`Phi(-z) = 1 - Phi(z)`.** Measured (float table, linear interpolation):
+
+| table | max abs err | monotone | ns/call (glibc) | size |
+|---|---|---|---|---|
+| 4096 | **9.3e-08** | yes | 3.0 | 16 KB |
+| 8192 | 4.5e-08 | yes | 3.0 | 32 KB |
+
+Take **4096** — it meets the 1e-7 target, is no slower than 8192, and is kinder to cache. No
+transcendental call at all, so it sidesteps the MinGW libm problem entirely (expect a much bigger
+win there than the ~5x seen on glibc).
+
+**Required properties, all verified:**
+- **Monotone** across [-7,7] — this is what preserves the uniform marginal. A non-monotone
+  approximation would break the guarantee the whole rework exists to provide.
+- **Deterministic** — bit-exact reversibility is unaffected; reverse still matches forward.
+- Saturates to 0/1 beyond |z| = 6 (correct to ~1e-9), and the half-range symmetry means no accuracy
+  loss on the negative side.
+
+**Rules:**
+1. **Build the table at static-init from the EXACT `Phi`** — one source of truth, no transcribed
+   constants.
+2. **Use it for the whole PROBABILITY PIPELINE — the slew readout AND spread's `mix2`** (Rodney:
+   "slew readout only?" — that split was arbitrary). Both produce probability values for the same
+   float lanes, with the same ~1e-7 need, the same monotonicity requirement and the same uniform-
+   marginal guarantee; running two different `Phi` implementations over one pipeline would give
+   subtly different values from two functions doing the same job, for no benefit.
+   **Keep the EXACT `Phi` for (a) `PhiInv`'s Halley refinement** — it needs full precision or the
+   refinement converges only to LUT accuracy and the 1e-15 round-trip test fails — **and (b) the
+   unit tests of the primitives themselves.**
+   The line is PROBABILITY VALUES (LUT) vs INTERNAL PRECISION (exact), not slew vs spread.
+3. **The distribution tests (KS / chi-square / marginal) MUST run through whichever `Phi` actually
+   ships in the probability pipeline.** Otherwise the tests stop testing the product. A 9e-8 error will not
+   move a KS result, but the test must exercise the real function.
+
+**What this does NOT fix, and why:** advancing one position shifts every weight onto a different
+draw, so all 544 `z` values change — `Phi` and the ~35k MACs cannot be cached across positions the
+way `PhiInv` can. There IS an exact O(1) recursive update for geometric weights
+(`S(n) = x_n + r·S(n-1) - r^K·x_{n-K}`), but reversing it requires dividing by `r`, which is not
+bit-exact in floating point, so forward and backward would drift. That is exactly why the full
+K-term recompute is mandatory. Expected steady state after the LUT: ~1.6 us of `Phi` + ~7 us of MACs
+per position, i.e. ~9 us — so a scrub drag (2 windows x 3 streams) lands around 54 us/frame, well
+under 1% of a 60 Hz budget, down from ~0.7 ms.
