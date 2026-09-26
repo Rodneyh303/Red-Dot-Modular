@@ -102,12 +102,29 @@ struct SpreadInterp {
         return (float)redDot::copula::mix2((double)original, (double)targetValue, (double)spreadAmount);
     }
 
-    // Convenience: full pipeline for one value.
+    // Convenience: full pipeline for one value (mono/V1 path).
     //   original     = the voice's own slewed draw (mono path: the mono draw)
     //   spreadAmount = the (possibly modulated) spread for this voice/lane
+    // Target is always monoSlewed — correct for V1 in both modes:
+    //   Anchor V1:  V1 targets itself (self-target no-op for positive spread).
+    //   Follow CA:  V1's post-remap == src[0]'s material == monoSlewed. ✓
     static float apply(const PatternEngine& pe, int lane, int step,
                        float original, float spreadAmount) {
         return interpolate(original, target(pe, lane, step), spreadAmount);
+    }
+
+    // Poly path: the target depends on the mode.
+    //   Anchor V1:  target = V1's draw (monoSlewed) — voices anchor to V1.
+    //   Follow CA:  target = the voice's OWN post-remap draw (polySlewed) — which IS
+    //               src[v]'s material, because CA's pin remap already put it there.
+    // The caller selects `original` (own) via polyOwn: pre-remap (follow-CA) or post-remap
+    // (anchor V1). Without the polySlewed target here, follow-CA voices would incorrectly
+    // target V1's remapped draw instead of their own src[v]'s material.
+    static float applyPoly(const PatternEngine& pe, int lane, int voice, int step,
+                           float original, float spreadAmount, bool followCA) {
+        float t = followCA ? polySlewed(pe, lane, voice, step)
+                           : monoSlewed(pe, lane, step);
+        return interpolate(original, t, spreadAmount);
     }
 };
 

@@ -1426,4 +1426,84 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 void step() override { if(module) rightText=(module->ppqnSetting==value)?"✔":""; ui::MenuItem::step(); } };
               for (int v : {24,48,96}){auto* it=createMenuItem<PItem>(string::f("%d",v).c_str());it->module=m;it->value=v;sub->addChild(it);} }
         }));
+
+        // ── Spread target modes (SPREAD_TARGET_MODES.md "Per-lane menu (Rodney)").
+        // Per-lane submenu: Target radio (Anchor V1 / Follow CA), per-mode defaults
+        // (-1/0/+1), apply-on-mode-change toggle, apply-now action. "Needs a CA" advisory
+        // cue (greyed text, still selectable — persisted). Module-level apply-to-all.
+        {
+            const char* laneNames[5] = {"REST", "MELODY", "OCTAVE", "ACCENT", "QMIX"};
+            bool caReachable = (m->expanderManager.cachedChangeAlleyV2 != nullptr);
+            menu->addChild(createSubmenuItem("Spread target", "", [=](ui::Menu* sub) {
+                for (int lane = 0; lane < 5; ++lane) {
+                    sub->addChild(createSubmenuItem(laneNames[lane], "", [=](ui::Menu* lm) {
+                        // ── Target radio ──
+                        { auto* l = new ui::MenuLabel; l->text = "Target"; lm->addChild(l); }
+                        lm->addChild(createCheckMenuItem("Anchor V1", "",
+                            [=]() { return m->getSpreadTargetMode(lane) == 0; },
+                            [=]() { m->setSpreadTargetModeAndApply(lane, 0); }));
+                        // Follow CA: advisory text if no CA reachable, but still selectable.
+                        std::string caLabel = "Follow CA";
+                        if (!caReachable) caLabel += " \xe2\x80\x94 needs a Change Alley in the chain";
+                        lm->addChild(createCheckMenuItem(caLabel.c_str(), "",
+                            [=]() { return m->getSpreadTargetMode(lane) == 1; },
+                            [=]() { m->setSpreadTargetModeAndApply(lane, 1); }));
+
+                        lm->addChild(new ui::MenuSeparator);
+
+                        // ── Default when Anchor V1: -1 / 0 / +1 ──
+                        { auto* l = new ui::MenuLabel; l->text = "Default when Anchor V1"; lm->addChild(l); }
+                        { const char* dl[] = {"-1 (oppose)", "0 (independent)", "+1 (follow)"};
+                          const float dv[] = {-1.f, 0.f, 1.f};
+                          for (int i = 0; i < 3; ++i) { float v = dv[i];
+                              lm->addChild(createCheckMenuItem(dl[i], "",
+                                  [=]() { return m->getSpreadDefault(lane, 0) == v; },
+                                  [=]() { m->setSpreadDefault(lane, 0, v); })); } }
+
+                        lm->addChild(new ui::MenuSeparator);
+
+                        // ── Default when Follow CA: -1 / 0 / +1 ──
+                        { auto* l = new ui::MenuLabel; l->text = "Default when Follow CA"; lm->addChild(l); }
+                        { const char* dl[] = {"-1 (oppose)", "0 (independent)", "+1 (follow)"};
+                          const float dv[] = {-1.f, 0.f, 1.f};
+                          for (int i = 0; i < 3; ++i) { float v = dv[i];
+                              lm->addChild(createCheckMenuItem(dl[i], "",
+                                  [=]() { return m->getSpreadDefault(lane, 1) == v; },
+                                  [=]() { m->setSpreadDefault(lane, 1, v); })); } }
+
+                        lm->addChild(new ui::MenuSeparator);
+
+                        // ── Apply default on mode change (toggle, default ON) ──
+                        lm->addChild(createCheckMenuItem("Apply default on mode change", "",
+                            [=]() { return m->getSpreadApplyOnModeChange(lane); },
+                            [=]() { m->setSpreadApplyOnModeChange(lane, !m->getSpreadApplyOnModeChange(lane)); }));
+
+                        // ── Apply default now (uses current mode's default) ──
+                        {
+                            uint8_t curMode = m->getSpreadTargetMode(lane);
+                            float curDef = m->getSpreadDefault(lane, curMode);
+                            const char* modeName = (curMode == 1) ? "Follow CA" : "Anchor V1";
+                            std::string lbl = rack::string::f("Apply default now (%s: %+.0f)", modeName, curDef);
+                            lm->addChild(createMenuItem(lbl.c_str(), "", [=]() { m->applySpreadDefault(lane); }));
+                        }
+
+                        // ── Advisory: Follow-CA with zero spread ──
+                        if (m->getSpreadTargetMode(lane) == 1) {
+                            bool allZero = true;
+                            for (int slot = 0; slot < 16; ++slot)
+                                if (m->getSpread(slot, lane) != 0.f) { allZero = false; break; }
+                            if (allZero) {
+                                auto* note = new ui::MenuLabel;
+                                note->text = "Follow CA \xe2\x80\x94 spread is 0, so pins have no effect";
+                                lm->addChild(note);
+                            }
+                        }
+                    }));
+                }
+                sub->addChild(new ui::MenuSeparator);
+                // ── Module-level: apply each lane's own current-mode default ──
+                sub->addChild(createMenuItem("Apply defaults to all lanes", "",
+                    [=]() { for (int l = 0; l < 5; ++l) m->applySpreadDefault(l); }));
+            }));
+        }
     }

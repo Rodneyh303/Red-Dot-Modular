@@ -551,20 +551,31 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             const float spA = sprForLane(3);
             const float spQ = sprForLane(4);   // QMIX (spread/engine lane 4)
             engine.pe.setSandsActive(true);
+            // V1/mono spread "own" endpoint: in Follow-CA mode, use the pre-remap draw (the
+            // voice's own material before CA replaced it); in Anchor-V1 mode, the slewed draw
+            // (V1 targets itself → self-target no-op for positive spread). The target is always
+            // monoSlewed (SpreadInterp::apply), which is correct for V1 in both modes:
+            //   Anchor V1:  V1 targets V1 (self-target).
+            //   Follow CA:  target = V1's post-remap = src[0]'s material = monoSlewed. ✓
+            auto monoOwn = [&](int lane, int i) -> float {
+                if (mmV1 && mmV1->getSpreadTargetMode(lane) == 1)
+                    return redDot::SpreadInterp::monoPreRemap(engine.pe, lane, i);
+                return redDot::SpreadInterp::monoSlewed(engine.pe, lane, i);
+            };
             for (int i = 0; i < 16; ++i) {
                 if (axR) {
-                    engine.pe.rhythmRandom[i] = redDot::SpreadInterp::apply(engine.pe, 0, i, engine.pe.slewedRhythm[i], spR);
-                    engine.pe.accentRandom[i] = redDot::SpreadInterp::apply(engine.pe, 3, i, engine.pe.slewedAccent[i], spA);
+                    engine.pe.rhythmRandom[i] = redDot::SpreadInterp::apply(engine.pe, 0, i, monoOwn(0, i), spR);
+                    engine.pe.accentRandom[i] = redDot::SpreadInterp::apply(engine.pe, 3, i, monoOwn(3, i), spA);
                     engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];
                     engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
                 }
                 if (axM) {
-                    engine.pe.melodyRandom[i] = redDot::SpreadInterp::apply(engine.pe, 1, i, engine.pe.slewedMelody[i], spM);
-                    engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(engine.pe, 2, i, engine.pe.slewedOctave[i], spO);
+                    engine.pe.melodyRandom[i] = redDot::SpreadInterp::apply(engine.pe, 1, i, monoOwn(1, i), spM);
+                    engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(engine.pe, 2, i, monoOwn(2, i), spO);
                 }
                 if (axQ) {
                     // QMIX spread on its OWN axis (SB_SANDS_Q).
-                    engine.pe.qmixRandom[i] = redDot::SpreadInterp::apply(engine.pe, 4, i, engine.pe.slewedQmix[i], spQ);
+                    engine.pe.qmixRandom[i] = redDot::SpreadInterp::apply(engine.pe, 4, i, monoOwn(4, i), spQ);
                 }
             }
             }   // end if (axR || axM) — spread only; V1 LOR above runs under lock too

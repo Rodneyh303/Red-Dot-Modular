@@ -215,6 +215,20 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     saveArr("editorMonoAtten",    m->editor.monoAtten,    28);   // 7 mono lanes × 4 cols
     saveArr("editorMonoOwner",    m->editor.monoOwner,     5);   // 5 poly lanes
 
+    // Spread target modes (SPREAD_TARGET_MODES.md): per-lane target mode, per-mode defaults
+    // (-1/0/+1), and the apply-on-mode-change toggle. All per-lane (5 lanes).
+    {
+        json_t* stm = json_array();
+        for (int i = 0; i < 5; ++i) json_array_append_new(stm, json_integer(m->editor.spreadTargetMode[i]));
+        json_object_set_new(root, "editorSpreadTargetMode", stm);
+        json_t* sdef = json_array();
+        for (int i = 0; i < 10; ++i) json_array_append_new(sdef, json_real(m->editor.spreadDefault[i]));
+        json_object_set_new(root, "editorSpreadDefault", sdef);
+        json_t* saom = json_array();
+        for (int i = 0; i < 5; ++i) json_array_append_new(saom, json_boolean(m->editor.spreadApplyOnModeChange[i]));
+        json_object_set_new(root, "editorSpreadApplyOnModeChange", saom);
+    }
+
     return root;
 }
 
@@ -447,4 +461,21 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     loadArrN("editorGlobalDir",    m->editor.globalDir,     5);   // 5 poly lanes
     loadArrN("editorMonoAtten",    m->editor.monoAtten,    28);   // 7 mono lanes × 4 cols
     loadArrN("editorMonoOwner",    m->editor.monoOwner,     5);   // 5 poly lanes
+    // Spread target modes (SPREAD_TARGET_MODES.md): per-lane target mode + defaults +
+    // apply-on-mode-change toggle. Missing keys → keep defaults (anchor V1, 0/+1, true).
+    if (auto j = json_object_get(root, "editorSpreadTargetMode")) {
+        if (json_is_array(j))
+            for (size_t i = 0; i < 5 && i < json_array_size(j); ++i)
+                m->editor.spreadTargetMode[i] = (uint8_t)json_integer_value(json_array_get(j, i));
+    }
+    if (auto j = json_object_get(root, "editorSpreadDefault")) {
+        if (json_is_array(j))
+            for (size_t i = 0; i < 10 && i < json_array_size(j); ++i)
+                m->editor.spreadDefault[i] = (float)json_real_value(json_array_get(j, i));
+    }
+    if (auto j = json_object_get(root, "editorSpreadApplyOnModeChange")) {
+        if (json_is_array(j))
+            for (size_t i = 0; i < 5 && i < json_array_size(j); ++i)
+                m->editor.spreadApplyOnModeChange[i] = json_boolean_value(json_array_get(j, i));
+    }
 }
