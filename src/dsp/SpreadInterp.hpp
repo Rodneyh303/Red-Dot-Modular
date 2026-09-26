@@ -1,6 +1,7 @@
 #pragma once
 #include <rack.hpp>
 #include <cmath>
+#include <cassert>
 #include "engines/PatternEngine.hpp"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -121,10 +122,28 @@ struct SpreadInterp {
     // The key: own (pre-remap) != target (post-remap) when V1 is actually pinned. If they're
     // equal (identity pins or no CA), the self-target guard at interpolate() makes it a no-op,
     // which is the correct behaviour (V1 targeting itself = nothing to follow).
+    // V1's CA source row for a spread lane (0=REST, 1=MEL, 2=OCT, 3=ACC, 4=QMIX).
+    // Maps the lane to the appropriate CA pin plane (rhythm/melody/qmix) and returns src[0].
+    // Used only by the debug assertion to know when V1 is actually pinned (src != self).
+    static int v1caSrc(const PatternEngine& pe, int lane) {
+        switch (lane) {
+            case 0: case 3: return pe.caRhythmSrc[0];  // REST, ACC → rhythm plane
+            case 1: case 2: return pe.caMelodySrc[0];  // MEL, OCT → melody plane
+            case 4:         return pe.caQmixSrc[0];    // QMIX → qmix plane
+            default:        return 0;
+        }
+    }
+
     static float applyMono(const PatternEngine& pe, int lane, int step, float spreadAmount) {
         bool followCA = (pe.spreadTargetMode[lane] == 1);
         float own = followCA ? monoPreRemap(pe, lane, step) : monoSlewed(pe, lane, step);
         float t = monoSlewed(pe, lane, step);
+        // SPREAD CONTRACT (SPREAD_TARGET_MODES.md POST-MORTEM): under follow-CA with V1
+        // actually pinned (src != self), own (pre-remap) MUST differ from t (post-remap =
+        // leader's material). If they collapse, interpolate()'s self-target guard makes the
+        // knob a silent no-op — the bug that bit three times. Assert loudly in debug builds.
+        assert(!(followCA && spreadAmount != 0.0f && v1caSrc(pe, lane) != 0 && own == t)
+               && "follow-CA mono spread: own==target (pre-remap collapsed) — knob would be a silent no-op");
         return interpolate(own, t, spreadAmount);
     }
 
@@ -137,7 +156,26 @@ struct SpreadInterp {
         bool followCA = (pe.spreadTargetMode[lane] == 1);
         float own = followCA ? polyPreRemap(pe, lane, voice, step) : polySlewed(pe, lane, voice, step);
         float t = followCA ? polySlewed(pe, lane, voice, step) : monoSlewed(pe, lane, step);
+        // SPREAD CONTRACT (SPREAD_TARGET_MODES.md POST-MORTEM): under follow-CA with this voice
+        // actually pinned (src != self), own (pre-remap) MUST differ from t (post-remap = its
+        // leader's material). Same silent-no-op collapse the mono path hit — assert on BOTH paths.
+        assert(!(followCA && spreadAmount != 0.0f
+                 && (int)pe.caSrcRow(voice + 1, laneToStrand(lane)) != voice + 1 && own == t)
+               && "follow-CA poly spread: own==target (pre-remap collapsed) — knob would be a silent no-op");
         return interpolate(own, t, spreadAmount);
+    }
+
+    // Spread lane (0=REST,1=MEL,2=OCT,3=ACC,4=QMIX) → engine strand, for the poly assertion's
+    // src lookup (caSrcRow takes a strand, not a spread lane).
+    static int laneToStrand(int lane) {
+        switch (lane) {
+            case 0: return dotModular::STRAND_RHYTHM;
+            case 1: return dotModular::STRAND_MELODY;
+            case 2: return dotModular::STRAND_OCTAVE;
+            case 3: return dotModular::STRAND_ACCENT;
+            case 4: return dotModular::STRAND_QMIX;
+            default: return dotModular::STRAND_RHYTHM;
+        }
     }
 };
 

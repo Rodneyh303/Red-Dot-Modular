@@ -66,6 +66,13 @@ struct PhiLUT {
 };
 inline double PhiFast(double z) { return PhiLUT::eval(z); }   // uncacheable/hot/float callers
 
+/// Force the Phi LUT to build NOW (off the audio thread). Call from plugin.cpp init() so the
+/// ~0.33 ms one-time table build (4,097 exact Phi calls) happens on the load thread, not as a
+/// spike mid-block on first playback use. table() is a function-local static (thread-safe,
+/// once, no static-init-order hazard) — this just touches it to trigger the init.
+/// See docs/design/SLEW_COPULA_PLAN.md "LUT warm-up".
+inline void warmPhiLut() { (void)PhiLUT::table(); }
+
 /// Inverse standard normal CDF (Acklam's rational approximation, |err| < 1.15e-9),
 /// refined by one Halley step against Phi so the round trip is accurate to ~1e-15.
 inline double PhiInv(double p) {

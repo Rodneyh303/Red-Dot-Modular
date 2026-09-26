@@ -1177,6 +1177,10 @@ Model* modelMonsoon = createModel<Monsoon, MonsoonWidget>("Monsoon");
 
 void init(rack::Plugin* p) {
 	pluginInstance = p;
+	// Warm the Phi LUT on the load thread (~0.33 ms, once) so its one-time build never lands
+	// mid-block on the audio thread at first spread/slew use. NOT in a module constructor —
+	// multiple modules (Sands visuals, CA correlation) consume Phi. See SLEW_COPULA_PLAN.md.
+	redDot::copula::warmPhiLut();
 	p->addModel(modelMonsoon);
 	p->addModel(modelMonsoonInterchangeExpander);
 	p->addModel(modelMonsoonRafflesExpander);
