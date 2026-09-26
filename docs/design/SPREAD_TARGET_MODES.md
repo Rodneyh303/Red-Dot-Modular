@@ -188,3 +188,31 @@ itself and follow-CA is a no-op by construction. Anchor V1 remains the sensible 
 **Editor display note:** because the remap is pre-spread, the Sands editor shows POST-CA material — a
 voice pinned to another displays that other voice's bars. Worth saying so in the lane tooltip, since the
 per-voice spread amount is then being set on material that is not that voice's own draw.
+
+
+---
+
+## Spread menu: per-mode defaults + the "needs a CA" cue (Rodney)
+
+**Per-MODE default spread, not one shared default.** The two modes want OPPOSITE defaults, which is
+precisely why it must be a stored choice per mode:
+- **Follow CA -> default FULL adherence.** Enabling the mode then preserves today's "the pins take
+  effect" behaviour, and the user dials DOWN to loosen. With a shared/zero default, switching to
+  follow-CA would silently un-pin everything (spread 0 = the voice's own draw) and CA's verbs would
+  go inaudible — the failure already flagged earlier in this doc.
+- **Anchor V1 -> default 0.** That is today's behaviour; anything else would slam voices toward
+  unison on switching.
+Offer the default as a menu choice per mode, persisted, and APPLY it to that lane's voices when the
+mode is switched.
+
+**"Needs a Change Alley" cue — advisory, not preventive.** With no CA in the chain `src[]` is
+identity, so every voice targets itself and follow-CA is a NO-OP by construction. Silently doing
+nothing is the worst outcome for a feature whose whole point is invisible structure: the user
+concludes it is broken.
+- GREY the menu item and append the reason, e.g. `Follow CA — needs a Change Alley in the chain`.
+- **Still allow it to be selected**, and persist it. Blocking selection would make the setting
+  depend on module order and get lost when CA is absent — exactly the state loss the connection
+  rework has been removing. It simply starts working when a CA is added.
+- Reuse the connection model for the check: CA reachability is already answerable via the manager's
+  `cachedChangeAlleyV2`; do not invent a second discovery path. The same grey-out-with-reason
+  convention should apply anywhere else a mode depends on a module being present.
