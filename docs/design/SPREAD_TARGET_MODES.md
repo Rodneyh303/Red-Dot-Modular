@@ -194,16 +194,21 @@ per-voice spread amount is then being set on material that is not that voice's o
 
 ## Spread menu: per-mode defaults + the "needs a CA" cue (Rodney)
 
-**Per-MODE default spread, not one shared default.** The two modes want OPPOSITE defaults, which is
-precisely why it must be a stored choice per mode:
-- **Follow CA -> default FULL adherence.** Enabling the mode then preserves today's "the pins take
-  effect" behaviour, and the user dials DOWN to loosen. With a shared/zero default, switching to
-  follow-CA would silently un-pin everything (spread 0 = the voice's own draw) and CA's verbs would
-  go inaudible — the failure already flagged earlier in this doc.
-- **Anchor V1 -> default 0.** That is today's behaviour; anything else would slam voices toward
-  unison on switching.
-Offer the default as a menu choice per mode, persisted, and APPLY it to that lane's voices when the
-mode is switched.
+**A USER-SELECTABLE default spread for EACH mode (Rodney).** Not a hardcoded value per mode — the
+context menu offers a default-spread choice for BOTH `anchor V1` and `follow CA`, stored
+separately, and switching a lane into a mode APPLIES that mode's stored default to the lane's
+voices.
+
+Why per mode rather than one shared setting: the sensible starting points are OPPOSITE, so a single
+shared default breaks one direction or the other.
+- `follow CA` — a high/full default means enabling the mode preserves today's "the pins take
+  effect" behaviour and the user dials DOWN to loosen. At 0 the voice plays its OWN draw, so a zero
+  default would silently un-pin everything and make CA's verbs inaudible (the failure flagged
+  earlier in this doc).
+- `anchor V1` — 0 is today's behaviour; a high default would slam voices toward unison on switching.
+Ship those two as the INITIAL values of the setting, but both remain user-editable: someone who
+always wants loose adherence sets follow-CA's default low once and every lane they switch follows
+suit.
 
 **"Needs a Change Alley" cue — advisory, not preventive.** With no CA in the chain `src[]` is
 identity, so every voice targets itself and follow-CA is a NO-OP by construction. Silently doing
