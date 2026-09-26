@@ -408,3 +408,48 @@ CLEARS but moves nothing.
 5. **End-of-buffer behaviour** — [OPEN]; stop (not wrap) is the safer default.
 
 Independent of the connection rework and the q-mix build — can be scheduled any time.
+
+## Pending transform ORDER: chronological, with rules (Rodney — try it)
+
+**Today (fixed order).** `pendingRows[CA::N_ROWS]` is not a queue — it is one arm-bit per row, and the
+boundary applies every armed row in ROW INDEX order (verb-major: collapse, rotate, reflect, scatter).
+So order is POSITIONAL, not chronological: press scatter then collapse and collapse still applies
+first. Repeats are absorbed (`p.armed = true` is idempotent).
+
+**Where this is observable at all** (the problem is narrower than it looks):
+- **Cross-stream: irrelevant.** A row is (verb, side, stream); different streams touch different
+  `src[]` arrays, so their relative order is unobservable.
+- **Scatter composed with anything: statistically irrelevant.** Scatter is a random permutation, so
+  rotate∘scatter and scatter∘rotate have the same distribution — a different specific matrix, not a
+  different musical character.
+- **The real cases: COLLAPSE with rotate/reflect, and rotate with reflect, on the SAME stream.**
+  Collapse is lossy, so collapse-then-rotate and rotate-then-collapse differ audibly; rotate and
+  reflect are both deterministic and do not commute.
+
+**DECISION: go chronological, with these rules.** It is a strict REFINEMENT of today's behaviour —
+identical when arms coincide, different only when the user deliberately spaced them.
+1. **Stamp on arm.** On an unarmed→armed transition, assign the next value of a monotonic counter;
+   apply at the boundary in ascending stamp order.
+2. **Ties break by ROW INDEX** — i.e. exactly today's verb-major order. A CV burst or a chord of
+   presses landing in the same sample therefore behaves exactly as now. Nothing regresses.
+3. **Re-arming an already-armed row does NOTHING** — it keeps its original stamp. (Consistent with
+   the true-reverse rule: once the lamp is lit, further presses/triggers are ignored.)
+4. **Order is only defined WITHIN a stream** (see above).
+5. **Counter resets at each boundary**, since the pending set clears there. No overflow.
+6. **Do NOT serialise pending order.** The arm set is transient (sub-phrase); on load, row-order
+   fallback is fine.
+
+**Why the rules work here: arming is PER-SAMPLE.** CA's trigger loop runs every `process()` with no
+divider (only `hostScanDiv_` and the one-shot `pairChecked` are divided), so resolution is ~21 us at
+48 kHz. Two CV triggers tie only if they rise in the SAME SAMPLE, so a patched trigger sequence has a
+genuine, reproducible order — chrono works properly under CV rather than collapsing into
+block-granularity ties. Manual presses essentially never tie; rule 2 mainly serves the CV-burst case.
+
+**Watch at high sample rates.** The per-sample trigger scan is 24 rows x 4 trigger objects + 12
+scatter-back triggers every sample, patched or not. If CPU becomes a concern, a divider at ~1-4 kHz
+would cut it with no audible loss of trigger resolution — but NOTE THE INTERACTION: dividing coarsens
+chrono ties to the divider period, so the two decisions are coupled. Measure at 96/192 kHz before
+changing anything.
+
+**Unaffected: TRUE REVERSE.** It records committed STATES, not causes, so composition order never
+enters its replay.
