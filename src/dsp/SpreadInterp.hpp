@@ -2,6 +2,24 @@
 #include <rack.hpp>
 #include <cmath>
 #include <cassert>
+
+// Spread contract assertion (SPREAD_TARGET_MODES.md POST-MORTEM): under follow-CA with a voice
+// actually pinned, own (pre-remap) must differ from target (post-remap). OFF by default because
+// there is a legitimate transient where they coincide for a block: a dice roll recomputes the
+// slewed (target) buffers but does NOT re-run remapSlewedByPins (that is gated on PIN changes,
+// not dice), so for one control cycle the freshly-recomputed target can momentarily equal the
+// stale pre-remap own before the next remap re-applies the pin. That transient is not an output
+// bug, but it WOULD trip a hot-path assert and crash Rack. So the contract is checked in TESTS
+// (where the remap is driven deterministically), not on the live audio thread. Define
+// REDDOT_SPREAD_CONTRACT_ASSERT=1 in a test to enable it.
+#ifndef REDDOT_SPREAD_CONTRACT_ASSERT
+#define REDDOT_SPREAD_CONTRACT_ASSERT 0
+#endif
+#if REDDOT_SPREAD_CONTRACT_ASSERT
+#define REDDOT_SPREAD_ASSERT(cond, msg) assert((cond) && (msg))
+#else
+#define REDDOT_SPREAD_ASSERT(cond, msg) ((void)0)
+#endif
 #include "engines/PatternEngine.hpp"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -142,8 +160,8 @@ struct SpreadInterp {
         // actually pinned (src != self), own (pre-remap) MUST differ from t (post-remap =
         // leader's material). If they collapse, interpolate()'s self-target guard makes the
         // knob a silent no-op — the bug that bit three times. Assert loudly in debug builds.
-        assert(!(followCA && spreadAmount != 0.0f && v1caSrc(pe, lane) != 0 && own == t)
-               && "follow-CA mono spread: own==target (pre-remap collapsed) — knob would be a silent no-op");
+        REDDOT_SPREAD_ASSERT(!(followCA && spreadAmount != 0.0f && v1caSrc(pe, lane) != 0 && own == t),
+               "follow-CA mono spread: own==target (pre-remap collapsed) — knob would be a silent no-op");
         return interpolate(own, t, spreadAmount);
     }
 
@@ -159,9 +177,9 @@ struct SpreadInterp {
         // SPREAD CONTRACT (SPREAD_TARGET_MODES.md POST-MORTEM): under follow-CA with this voice
         // actually pinned (src != self), own (pre-remap) MUST differ from t (post-remap = its
         // leader's material). Same silent-no-op collapse the mono path hit — assert on BOTH paths.
-        assert(!(followCA && spreadAmount != 0.0f
-                 && (int)pe.caSrcRow(voice + 1, laneToStrand(lane)) != voice + 1 && own == t)
-               && "follow-CA poly spread: own==target (pre-remap collapsed) — knob would be a silent no-op");
+        REDDOT_SPREAD_ASSERT(!(followCA && spreadAmount != 0.0f
+                 && (int)pe.caSrcRow(voice + 1, laneToStrand(lane)) != voice + 1 && own == t),
+               "follow-CA poly spread: own==target (pre-remap collapsed) — knob would be a silent no-op");
         return interpolate(own, t, spreadAmount);
     }
 
