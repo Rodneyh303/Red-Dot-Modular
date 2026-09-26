@@ -273,7 +273,19 @@ looking plausible:
 
 **Rule: pre-remap `original` is required on BOTH the mono and poly paths.** Not a poly-only detail.
 
-**KEEP THE ASSERTION.** At each spread call site, when follow-CA is on and the voice's `src != self`,
-assert `original != target` before interpolating. That is the actual contract of the feature, and it
-converts a silent no-op into a loud failure. All three rounds above would have been caught by it
-immediately. Cheap; keep it in debug builds at minimum, on both paths.
+**KEEP THE ASSERTION — but TEST-GATED, not live (amended after a 4th round).** At each spread call
+site, when follow-CA is on and the voice's `src != self`, assert `original != target` before
+interpolating. That is the actual contract of the feature, and it converts a silent no-op into a loud
+failure. All three rounds above would have been caught by it immediately.
+
+However, a live hot-path `assert` **crashes on a legitimate transient**: a dice roll calls
+`recomputeEffective*` (rewriting the SLEWED = target buffers) but does NOT re-run
+`remapSlewedByPins` (gated on PIN changes, not dice). So for ONE control cycle the freshly-recomputed
+target can equal the stale pre-remap `own` before the next remap re-applies the pin — `own == target`
+with no output bug. A live assert aborts Rack on the next dice roll.
+
+Resolution: the assertion lives behind `REDDOT_SPREAD_CONTRACT_ASSERT` (default 0, compiled out via
+`REDDOT_SPREAD_ASSERT` in SpreadInterp.hpp) and is enabled in TESTS, where the remap is driven
+deterministically (no dice-vs-remap race). Both paths (mono + poly) carry it. The contract is still
+checked — just where the check is valid, not on the live audio thread where a benign one-block
+staleness window would trip it.
