@@ -194,21 +194,37 @@ per-voice spread amount is then being set on material that is not that voice's o
 
 ## Spread menu: per-mode defaults + the "needs a CA" cue (Rodney)
 
-**A USER-SELECTABLE default spread for EACH mode (Rodney).** Not a hardcoded value per mode — the
-context menu offers a default-spread choice for BOTH `anchor V1` and `follow CA`, stored
-separately, and switching a lane into a mode APPLIES that mode's stored default to the lane's
-voices.
+**Per-lane menu (Rodney) — one submenu per spread lane (MELODY / OCTAVE / QMIX / REST / ACCENT):**
 
-Why per mode rather than one shared setting: the sensible starting points are OPPOSITE, so a single
-shared default breaks one direction or the other.
-- `follow CA` — a high/full default means enabling the mode preserves today's "the pins take
-  effect" behaviour and the user dials DOWN to loosen. At 0 the voice plays its OWN draw, so a zero
-  default would silently un-pin everything and make CA's verbs inaudible (the failure flagged
-  earlier in this doc).
-- `anchor V1` — 0 is today's behaviour; a high default would slam voices toward unison on switching.
-Ship those two as the INITIAL values of the setting, but both remain user-editable: someone who
-always wants loose adherence sets follow-CA's default low once and every lane they switch follows
-suit.
+```
+Target      (o) Anchor V1        ( ) Follow CA      <- greyed + reason if no CA reachable
+Default when Anchor V1     -1  /  0  /  +1
+Default when Follow CA     -1  /  0  /  +1
+[x] Apply default on mode change
+    Apply default now
+```
+
+- **Defaults are three-valued: -1 / 0 / +1**, matching the polarity landmarks exactly, so a default
+  is simply "which landmark does this lane start at": `-1` oppose (complement of the target),
+  `0` independent (the voice's own draw), `+1` follow (the target's material). Coarse on purpose —
+  it is a STARTING POINT; per-voice fine-tuning happens on the Sands amounts as now.
+- **A default per mode, both user-selectable**, because the sensible starting points are OPPOSITE
+  and one shared default would break a direction: `follow CA` wants `+1` (enabling the mode then
+  preserves today's "the pins take effect" behaviour and the user dials down to loosen — at `0` the
+  voice plays its own draw, so CA's verbs would go silently inaudible), while `anchor V1` wants `0`
+  (today's behaviour; `+1` would slam voices toward unison on switching). Ship those as the initial
+  values; both remain editable.
+- **`Apply default on mode change` is a TOGGLE, default ON.** Applying on every switch is
+  destructive — someone who has hand-dialled 16 voices and flips modes to compare would lose the
+  lot — so it must be defeatable. With it OFF, mode switching never touches spread values.
+- **`Apply default now` is an explicit action**, always available. It is a normal param change, so
+  Rack's undo covers it — which is why the destructive operation belongs behind an explicit
+  invocation rather than a side effect.
+- **[OPEN] scope of the toggle**: defaults are clearly per lane; `Apply default on mode change` is
+  arguably one behaviour preference for the module rather than per lane. Suggest module-wide.
+- **Advisory cue instead of silent inertness**: when a lane is in `Follow CA` with all spreads at 0,
+  note it in the menu (e.g. `Follow CA — spread is 0, so pins have no effect`). Inform rather than
+  mutate; same pattern as the "needs a Change Alley" cue below.
 
 **"Needs a Change Alley" cue — advisory, not preventive.** With no CA in the chain `src[]` is
 identity, so every voice targets itself and follow-CA is a NO-OP by construction. Silently doing
