@@ -171,3 +171,37 @@ bit-exact in floating point, so forward and backward would drift. That is exactl
 K-term recompute is mandatory. Expected steady state after the LUT: ~1.6 us of `Phi` + ~7 us of MACs
 per position, i.e. ~9 us — so a scrub drag (2 windows x 3 streams) lands around 54 us/frame, well
 under 1% of a 60 Hz budget, down from ~0.7 ms.
+
+---
+
+## IDEA (parked, Rodney): scrub RANGE — make adjacent positions modulatable
+
+**Problem.** Scrub spans 6 positions on one knob (`s = mix*6`), so a CV sweep between two ADJACENT
+draws (0->1 back, or 1->2 back) uses only a sixth of the input range. Fighting attenuator precision
+to get a controlled morph between two neighbouring patterns. This is about MODULATION RESOLUTION,
+not manual positioning.
+
+**Fix: a window into the history**, so scrub's full travel (and full CV range) maps onto just the
+region of interest.
+- **Depth only** (`scrub spans 0..D`) — simple, but always anchored at 0, so you still cannot get
+  full resolution between e.g. 3 and 4.
+- **Span + offset** (`scrub spans offset .. offset+span`) — any two adjacent positions can fill the
+  whole travel. Solves the stated case properly.
+- **Minimal variant**: OFFSET only, span fixed at 1 — "offset picks the PAIR, scrub morphs within
+  it". Arguably the cleanest for the exact problem described.
+
+**Engine cost: nil.** Scrub already computes `s = mix*6` and reads `N-f` / `N-f-1`; this only changes
+how the knob maps to `s`. No new draws, no new state, reversibility untouched (still a pure function
+of position).
+
+**Panel:** Rodney — "maybe two small knobs for range"; also floated a CONTEXT-MENU setup "like the
+mode C/D melody choices". Monsoon is at 45HP after the Big-Five widening, so weigh two small knobs
+vs menu + existing knob (e.g. expose OFFSET physically, keep SPAN in the menu).
+
+**Decide when changing depth/offset:** preserve the ABSOLUTE position (zoom in around where you
+are), not the knob fraction (which would make the position jump). Almost certainly what is wanted.
+
+**Related, cheap, different feature — SNAP.** A "snap scrub to whole positions" menu toggle lands
+exactly ON a past pattern with no interpolation (`f = 0` is the only way to hear a past draw
+unmixed). Exact recall rather than a blend. Costs no panel space, and CV + an external quantiser
+already approximates it.
