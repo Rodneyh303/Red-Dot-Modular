@@ -128,3 +128,46 @@ Sands lane geometry) → then this drops in on the same stream structure.
 8-row budget — each permuting its poly channels by that stream's LIVE (phrase-granular) scatter
 state, co-located under the stream columns, feeding Keppel's velocity/Y/Z inputs for correlated
 per-note MPE expression. No selector, no per-pair state. Sequenced after q-mix.*
+
+
+---
+
+## What the pairs are FOR — patch examples (Rodney)
+
+The static case is the easiest to state and the least interesting: set up the poly modulation you
+want with CA at the identity diagonal, then change the pin matrix — map 4 to 2, and voice 2 now
+carries a correlated mix of 2's and 4's modulation. Everything below is what the pairs buy BEYOND
+that.
+
+1. **Modulation that follows the VERBS.** The live case: scatter or collapse fires at a phrase
+   boundary and the patched modulation is re-assigned along with the notes, automatically. This is
+   the one you cannot patch by hand — the assignment EVOLVES, and it is reversible, so true reverse
+   walks the modulation routing back together with the pins.
+2. **One source, three different correlations.** The same LFO into a rhythm pair, a melody pair and
+   a q-mix pair arrives permuted three different ways — filter tracking the groove while pan tracks
+   the melodic line. One signal, three musical roles.
+3. **Collapse as instant unison.** Patch 16 different envelopes, then collapse a group: those voices
+   now share one envelope — a section moving as one, with no re-patching. Un-collapse restores the
+   individuality.
+4. **Coherence across destinations.** Send one pair's output to filter, pan AND FX send: all three
+   agree about which voice is which. Patched separately from raw poly CV, each would need its own
+   correct routing.
+5. **A plain poly router, no music required.** With identity pins it is a 16-channel patchbay; with
+   the verbs it is a poly channel mapper with collapse / rotate / reflect / scatter and reversible
+   dice. A standalone utility for anyone doing poly work, independent of Monsoon — the "reach at
+   zero cost" point from CORRELATED_POLY_MODULATION.md, and probably how non-Monsoon users find CA.
+6. **Feeding SPREAD — the structure grading itself.** A pair's OUT into the spread amount CV sends a
+   correlation FIELD: each voice's adherence set by a voice-permuted signal. CA decides WHO follows
+   whom, and the same permutation decides HOW STRONGLY each voice adheres; when a verb fires both
+   reshuffle on the same boundary, so a voice that becomes a follower inherits its leader's former
+   tightness. Legible because the modulation is permuted by the SAME table as the notes, and because
+   spread is now genuine correlation — the CV *is* rho, so a ramp is a linear sweep from independent
+   to unison with the marginals untouched (only the relationships move).
+   **Try first — cross-stream:** a RHYTHM pair into the MELODY lane's spread. How tightly the
+   melodic section holds together is then governed by the rhythmic correlation: the groove decides
+   the ensemble's cohesion.
+   **Caution:** spread is bipolar, so a bipolar source flips voices between adherent and MIRROR as
+   it crosses zero — strong. Most LFOs offer a unipolar output (or use an offset/attenuator) to keep
+   it in one half unless the flip is what you want.
+
+(1) is what justifies the feature; the rest are what make it worth eight jacks rather than two.
