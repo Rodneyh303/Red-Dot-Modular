@@ -47,8 +47,9 @@ public:
 
     /// Apply slew at one position. `u` holds the window NEWEST FIRST: u[0] = u_n, u[j] = u_{n-j}.
     /// r == 0 returns u[0] unchanged (bit-identical legacy path).
+    /// r < 0 creates anti-correlation (alternating-sign weights → hocket/interlock).
     static double apply(const double* u, double r) {
-        if (!(r > 0.0)) return u[0];              // exact legacy passthrough, and NaN-safe
+        if (r == 0.0) return u[0];                // exact passthrough, and NaN-safe
         double w[K];
         weights(r, w);
         return copula::combine(u, w, K);
@@ -64,7 +65,7 @@ public:
     // applies PhiFast ONCE — blending the uniform outputs would be a linear blend of uniforms
     // (the distortion Phase 2 eliminates). r==0 returns z[0] (the cached PhiInv of the raw draw).
     static double sumZ(const double* z, double r) {
-        if (!(r > 0.0)) return z[0];
+        if (r == 0.0) return z[0];
         double w[K];
         weights(r, w);
         double s = 0.0;
@@ -83,7 +84,7 @@ public:
     static double lagCorr(double r, std::size_t m = 1) {
         if (m >= K) return 0.0;
         r = clampR(r);
-        if (!(r > 0.0)) return (m == 0) ? 1.0 : 0.0;
+        if (r == 0.0) return (m == 0) ? 1.0 : 0.0;
         double w[K];
         weights(r, w);
         double acc = 0.0;
@@ -91,7 +92,10 @@ public:
         return acc;
     }
 
-    static double clampR(double r) { return r < 0.0 ? 0.0 : (r > R_MAX ? R_MAX : r); }
+    /// Clamp r to [-R_MAX, R_MAX]. Negative r is valid (anti-correlation); the geometric
+    /// weights alternate in sign, producing a lag-1 correlation of the same magnitude but
+    /// opposite polarity. R_MAX bounds |r| because geometric weights degenerate as |r| → 1.
+    static double clampR(double r) { return r < -R_MAX ? -R_MAX : (r > R_MAX ? R_MAX : r); }
 };
 
 }  // namespace redDot

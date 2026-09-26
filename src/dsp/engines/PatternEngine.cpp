@@ -56,8 +56,8 @@ void PatternEngine::reset() {
 
     // (Step 4c: removed A/B init -- no stored A/B arrays under the scrub model.)
 
-    rhythmSlewLatched=melodySlewLatched=qmixSlewLatched=1.f;
-    rhythmSlewApplied=melodySlewApplied=qmixSlewApplied=1.f;
+    rhythmSlewLatched=melodySlewLatched=qmixSlewLatched=0.f;   // bipolar: 0 = independent
+    rhythmSlewApplied=melodySlewApplied=qmixSlewApplied=-1.f;   // force first recompute
     rhythmFirstDraw=melodyFirstDraw=qmixFirstDraw=true;
     sandsActive=false;
     // Mirror defaults into slewedDraw too (final == slewed at reset)
@@ -202,8 +202,8 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
     if (in.locked && !in.diceLiveR) return;   // LOCK_SCOPE_MENU: rhythm dice may draw under lock if opted live
 
     // B is committed into A FIRST, then a fresh B is drawn, and slew blends A↔B
-    // at the roll. A walks forward each roll → groove mutates; low slew = tight
-    // variations near the evolving A, slew=1 = full replace (MeloDicer mode).
+    // at the roll. A walks forward each roll → groove mutates; slew=0 = independent
+    // (full replace, MeloDicer mode), slew>0 = correlated (smooth), slew<0 = anti-correlated.
     // Slew still blends at the roll, so the user auditions candidates against the
     // same anchor A (raise slew to move toward B, lower to fall back to A).
     // First draw (or post-seed): A := B := draw, so effective == draw at any slew.
@@ -239,18 +239,18 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
 // copy slewedDraw → final (the public arrays the sequencer reads).
 void PatternEngine::recomputeEffectiveRhythm() {
     // SCRUB + copula slew. Two adjacent copula windows (N-f, N-f-1) are interpolated at the scrub
-    // fraction. Phase 2: at r>0 the blend is in NORMAL SPACE (blend the two z values, apply PhiFast
+    // fraction. Phase 2: at r!=0 the blend is in NORMAL SPACE (blend the two z values, apply PhiFast
     // once) — blending the uniform outputs would be a linear blend of uniforms (the distortion
-    // Phase 2 eliminates). At r==0 (slew knob=1) the old linear blend of raw draws is kept, so
+    // Phase 2 eliminates). At r==0 (slew knob=0) the old linear blend of raw draws is kept, so
     // bit-identity at scrub=0 is preserved.
     const float s = rack::math::clamp(rhythmMixLatched, 0.f, 1.f) * 6.f;
     const int   f    = (int)s;
     const float frac = s - (float)f;
     const int64_t N  = rhythmDrawCtr;
-    const float slew = rack::math::clamp(rhythmSlewLatched, 0.f, 1.f);
+    const float slew = rack::math::clamp(rhythmSlewLatched, -1.f, 1.f);
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
-    if (r > 0.f) {
+    if (r != 0.f) {
         // Phase 2: normal-space scrub blend. Gather K cached draws for both windows, compute z
         // per slot via sumZ, blend, apply PhiFast once.
         const CachedRhythmDraw* w0[K];
@@ -318,10 +318,10 @@ void PatternEngine::recomputeEffectiveMelody() {
     const int   f    = (int)s;
     const float frac = s - (float)f;
     const int64_t N  = melodyDrawCtr;
-    const float slew = rack::math::clamp(melodySlewLatched, 0.f, 1.f);
+    const float slew = rack::math::clamp(melodySlewLatched, -1.f, 1.f);
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
-    if (r > 0.f) {
+    if (r != 0.f) {
         const CachedMelodyDraw* w0[K];
         const CachedMelodyDraw* w1[K];
         for (std::size_t j = 0; j < K; ++j) {
@@ -375,10 +375,10 @@ void PatternEngine::recomputeEffectiveQmix() {
     const int   f    = (int)s;
     const float frac = s - (float)f;
     const int64_t N  = qmixDrawCtr;
-    const float slew = rack::math::clamp(qmixSlewLatched, 0.f, 1.f);
+    const float slew = rack::math::clamp(qmixSlewLatched, -1.f, 1.f);
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
-    if (r > 0.f) {
+    if (r != 0.f) {
         const CachedQmixDraw* w0[K];
         const CachedQmixDraw* w1[K];
         for (std::size_t j = 0; j < K; ++j) {
@@ -509,13 +509,13 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     // Recompute ONLY when this stream's scrub inputs changed since the last recompute (mix, slew,
     // or counter). Avoids re-deriving the full K-window every ~90Hz refresh when nothing moved.
     {
-        const float rSlew = rack::math::clamp(rhythmSlewLatched, 0.f, 1.f);
+        const float rSlew = rack::math::clamp(rhythmSlewLatched, -1.f, 1.f);
         if (rhythmMixLatched != rhythmMixApplied || rSlew != rhythmSlewApplied || rhythmDrawCtr != rhythmCtrApplied)
             recomputeEffectiveRhythm();
-        const float mSlew = rack::math::clamp(melodySlewLatched, 0.f, 1.f);
+        const float mSlew = rack::math::clamp(melodySlewLatched, -1.f, 1.f);
         if (melodyMixLatched != melodyMixApplied || mSlew != melodySlewApplied || melodyDrawCtr != melodyCtrApplied)
             recomputeEffectiveMelody();
-        const float qSlew = rack::math::clamp(qmixSlewLatched, 0.f, 1.f);
+        const float qSlew = rack::math::clamp(qmixSlewLatched, -1.f, 1.f);
         if (qmixMixLatched != qmixMixApplied || qSlew != qmixSlewApplied || qmixDrawCtr != qmixCtrApplied)
             recomputeEffectiveQmix();
     }

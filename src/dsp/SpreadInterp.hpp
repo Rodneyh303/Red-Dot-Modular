@@ -102,15 +102,44 @@ struct SpreadInterp {
         return (float)redDot::copula::mix2((double)original, (double)targetValue, (double)spreadAmount);
     }
 
-    // Convenience: full pipeline for one value (mono/V1 path).
-    //   original     = the voice's own slewed draw (mono path: the mono draw)
-    //   spreadAmount = the (possibly modulated) spread for this voice/lane
-    // Target is always monoSlewed — correct for V1 in both modes:
-    //   Anchor V1:  V1 targets itself (self-target no-op for positive spread).
-    //   Follow CA:  V1's post-remap == src[0]'s material == monoSlewed. ✓
+    // Convenience: full pipeline for one value (mono/V1 path) — ANCHOR V1 ONLY.
+    // Target is always monoSlewed (V1's own draw = self-target no-op for positive spread).
+    // Do NOT use this for Follow-CA mode — use applyMono() instead, which resolves V1's
+    // CA source correctly. The old comment claiming "Follow CA: V1's post-remap == monoSlewed"
+    // was wrong when src[0] != 0 and led to a silent no-op (target == original → self-target guard).
     static float apply(const PatternEngine& pe, int lane, int step,
                        float original, float spreadAmount) {
         return interpolate(original, target(pe, lane, step), spreadAmount);
+    }
+
+    // V1's CA source row for a spread lane (0=REST, 1=MEL, 2=OCT, 3=ACC, 4=QMIX).
+    // Maps the lane to the appropriate CA pin plane (rhythm/melody/qmix) and returns src[0].
+    static int v1caSrc(const PatternEngine& pe, int lane) {
+        switch (lane) {
+            case 0: case 3: return pe.caRhythmSrc[0];  // REST, ACC → rhythm plane
+            case 1: case 2: return pe.caMelodySrc[0];  // MEL, OCT → melody plane
+            case 4:         return pe.caQmixSrc[0];    // QMIX → qmix plane
+            default:        return 0;
+        }
+    }
+
+    // Mono/V1 path with mode awareness. Under Follow-CA the target resolves from V1's CA
+    // source (src[0]): src==0 → V1 targets itself (no-op); src==k>0 → poly voice k-1's draw
+    // (poly arrays hold V2–V16 at indices 0–14, so src k maps to poly index k-1). This does
+    // NOT rely on the remap having run — it reads the source voice's buffer directly, making
+    // it robust against remap caching. The caller supplies `original` via monoOwn (pre-remap
+    // for follow-CA, slewed for anchor-V1).
+    static float applyMono(const PatternEngine& pe, int lane, int step,
+                           float original, float spreadAmount, bool followCA) {
+        float t;
+        if (followCA) {
+            int src = v1caSrc(pe, lane);
+            t = (src == 0) ? monoSlewed(pe, lane, step)
+                           : polySlewed(pe, lane, src - 1, step);
+        } else {
+            t = monoSlewed(pe, lane, step);  // anchor V1: self-target
+        }
+        return interpolate(original, t, spreadAmount);
     }
 
     // Poly path: the target depends on the mode.

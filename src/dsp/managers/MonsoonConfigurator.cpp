@@ -41,15 +41,16 @@ void MonsoonConfigurator::setup(Monsoon* m) {
 
     // Buttons (momentary) and dice slew/mix params
     m->configButton(DICE_R_PARAM, "Dice rhythm");
-    //slew defaults to 100% for rhythm, common case and aligns with meloDicer which does not have slew.
-    m->configParam(DICE_SLEW_R_PARAM, 0.f, 1.f, 1.f, "Rhythm dice slew", "%", 0.f, 100.f);
+    // Slew is bipolar (-1..+1): 0 = independent (raw draw, bit-identity), +1 = max positive
+    // correlation (smooth/sustained), -1 = max negative correlation (hocket/interlock).
+    // Default 0 = independent (matches meloDicer which has no slew). Phase 4 UI truth.
+    m->configParam(DICE_SLEW_R_PARAM, -1.f, 1.f, 0.f, "Rhythm dice slew", " \xcf\x81", 0.f, 1.f);
     m->configButton(DICE_M_PARAM, "Dice melody");
-    //slew defaults to 100% for melody, common case and aligns with meloDicer which does not have slew.
-    m->configParam(DICE_SLEW_M_PARAM, 0.f, 1.f, 1.f, "Melody dice slew", "%", 0.f, 100.f);
+    m->configParam(DICE_SLEW_M_PARAM, -1.f, 1.f, 0.f, "Melody dice slew", " \xcf\x81", 0.f, 1.f);
     // Task 4 (Trial→QMIX repurpose): the QMIX stream gets its own dice/slew/mix,
     // mirroring rhythm/melody. Slew defaults to 100% B like R/M.
     m->configButton(DICE_Q_PARAM, "Dice q-mix");
-    m->configParam(DICE_SLEW_Q_PARAM, 0.f, 1.f, 1.f, "Q-mix dice slew", "%", 0.f, 100.f);
+    m->configParam(DICE_SLEW_Q_PARAM, -1.f, 1.f, 0.f, "Q-mix dice slew", " \xcf\x81", 0.f, 1.f);
     m->configButton(LAST_DICE_R_PARAM,  "Last dice rhythm (previous draw)");
     m->configButton(LAST_DICE_M_PARAM,  "Last dice melody (previous draw)");
     m->configButton(LAST_DICE_Q_PARAM,  "Last dice q-mix (previous draw)");

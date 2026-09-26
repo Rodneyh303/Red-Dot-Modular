@@ -75,7 +75,7 @@ public:
         if (lane < 0 || lane > 4) return false;
         return junctionOffsets[lane] != 0.f || cv2Offsets[lane] != 0.f;
     }
-    /// Slew/mix effective values (all native 0..1). True if any CV3 offset active.
+    /// Slew effective values (bipolar -1..+1); mix still 0..1. True if any CV3 offset active.
     float getRhythmSlewNorm() const { return getRhythmSlew(); }
     float getMelodySlewNorm() const { return getMelodySlew(); }
     float getQmixSlewNorm()   const { return getQmixSlew(); }

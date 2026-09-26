@@ -1,10 +1,10 @@
 // test_slew_copula.cpp — Phase 1: slew readout is a normal-space moving-average copula.
 //
 // The key invariant the rework must hold (docs/design/SLEW_COPULA_PLAN.md, DISTRIBUTION_REWORK_PLAN):
-//   slew KNOB = 1  ->  copula r = 0  ->  out == the raw draw u[0]  BIT-IDENTICALLY
-// (the knob is inverted: 1 = sharp/raw, 0 = smooth/high-r). This test pins that through the
-// REAL engine path (latchMix + recomputeEffective*), not just the copula unit, and checks the
-// scrub mix is parked so the readout is patternAt(N) with no blend.
+//   slew KNOB = 0  ->  copula r = 0  ->  out == the raw draw u[0]  BIT-IDENTICALLY
+// (bipolar knob: 0 = independent/raw, +1 = correlated/smooth, -1 = anti-correlated/hocket).
+// This test pins that through the REAL engine path (latchMix + recomputeEffective*), not just
+// the copula unit, and checks the scrub mix is parked so the readout is patternAt(N) with no blend.
 #include "test_stubs.hpp"
 #include "PatternEngine.hpp"
 #include <iostream>
@@ -25,19 +25,19 @@ static int s_pass=0, s_fail=0;
 int main(){
     std::cout<<"\033[1mSlew copula (Phase 1) Tests\033[0m\n"<<std::string(50,'=')<<"\n";
 
-    // ── r==0 (slew knob = 1) bit-identity through the engine path ──────────────
-    // mix=0 -> scrub reads patternAt(N) only (f=0, frac=0 -> bl(d0,d1)=d0). slew=1 -> r=0.
+    // ── r==0 (slew knob = 0) bit-identity through the engine path ──────────────
+    // mix=0 -> scrub reads patternAt(N) only (f=0, frac=0 -> bl(d0,d1)=d0). slew=0 -> r=0.
     // So slewedRhythm[i] MUST equal the raw Philox draw at counter N bitwise.
-    TEST("slew knob=1 (r=0) reproduces the raw draw bitwise — rhythm", {
+    TEST("slew knob=0 (r=0) reproduces the raw draw bitwise — rhythm", {
         PatternEngine pe;
         pe.seedRhythmPhilox(0.42f);
         // Advance a few draws so N != 0 (exercises the addressable window, not just seed pos).
         PatternInput in;   // default; not used by recompute
         for (int k=0;k<3;++k) pe.advanceRhythmDraw(+1);
         const int64_t N = pe.rhythmDrawCtr;
-        // Park scrub at mix=0 and slew knob=1 (r=0), then recompute.
+        // Park scrub at mix=0 and slew knob=0 (r=0), then recompute.
         pe.latchMix(/*rMix=*/0.f, /*mMix=*/0.f, /*qMix=*/0.f,
-                    /*rSlew=*/1.f, /*mSlew=*/1.f, /*qSlew=*/1.f,
+                    /*rSlew=*/0.f, /*mSlew=*/0.f, /*qSlew=*/0.f,
                     /*applyRhythm=*/true, /*applyMelody=*/false, /*applyQmix=*/false);
         pe.recomputeEffectiveRhythm();
         // The raw draw at N (what r=0 must reproduce).
@@ -48,12 +48,12 @@ int main(){
     });
 
     // Same bit-identity on the melody stream.
-    TEST("slew knob=1 (r=0) reproduces the raw draw bitwise — melody", {
+    TEST("slew knob=0 (r=0) reproduces the raw draw bitwise — melody", {
         PatternEngine pe;
         pe.seedMelodyPhilox(0.17f);
         for (int k=0;k<5;++k) pe.advanceMelodyDraw(+1);
         const int64_t N = pe.melodyDrawCtr;
-        pe.latchMix(0.f,0.f,0.f, 1.f,1.f,1.f, /*R=*/false, /*M=*/true, /*Q=*/false);
+        pe.latchMix(0.f,0.f,0.f, 0.f,0.f,0.f, /*R=*/false, /*M=*/true, /*Q=*/false);
         pe.recomputeEffectiveMelody();
         PatternEngine::MelodyDraw raw;
         pe.rawDrawMelodyPatternAt(N, raw);
@@ -64,12 +64,12 @@ int main(){
     });
 
     // Same on q-mix.
-    TEST("slew knob=1 (r=0) reproduces the raw draw bitwise — qmix", {
+    TEST("slew knob=0 (r=0) reproduces the raw draw bitwise — qmix", {
         PatternEngine pe;
         pe.seedQmixPhilox(0.9f);
         for (int k=0;k<2;++k) pe.advanceQmixDraw(+1);
         const int64_t N = pe.qmixDrawCtr;
-        pe.latchMix(0.f,0.f,0.f, 1.f,1.f,1.f, /*R=*/false, /*M=*/false, /*Q=*/true);
+        pe.latchMix(0.f,0.f,0.f, 0.f,0.f,0.f, /*R=*/false, /*M=*/false, /*Q=*/true);
         pe.recomputeEffectiveQmix();
         PatternEngine::QmixDraw raw;
         pe.rawDrawQmixPatternAt(N, raw);
@@ -114,10 +114,10 @@ int main(){
     // ── Distribution: at r>0 (slew knob < 1) the marginal stays ~uniform (variance ~1/12) ─
     // Today's L1 linear window collapses variance to ~1/K at low slew; the copula must NOT.
     // Thin by K (samples K apart share no source draws → independent) before the variance check.
-    TEST("slew knob=0.1 (high r): thinned marginal variance ~1/12 (no concentration)", {
+    TEST("slew knob=0.9 (high r): thinned marginal variance ~1/12 (no concentration)", {
         PatternEngine pe;
         pe.seedRhythmPhilox(3.3f);
-        const float slewKnob = 0.1f;          // -> r ≈ 0.9·R_MAX (high correlation, but uniform marginal)
+        const float slewKnob = 0.9f;          // -> r ≈ 0.9·R_MAX (high correlation, but uniform marginal)
         const int M = 4096;                   // positions
         const std::size_t K = redDot::MovingAverageCopula::K;
         double sum=0, sumsq=0; int n=0;

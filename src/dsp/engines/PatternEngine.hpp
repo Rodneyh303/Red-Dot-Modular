@@ -68,9 +68,9 @@ struct PatternInput {
     bool  diceLiveQ        = false;   // q-mix dice stream allowed to redraw under lock (own axis, SB_DICE_Q)
     // Playable dice slew (0..1) per group. Latched at step 0; morphs the
     // effective pattern between the locked (A) and candidate (B) draws.
-    float rhythmSlew       = 1.f;
-    float melodySlew       = 1.f;
-    float qmixSlew         = 1.f;   // q-mix twin of melodySlew (Task 4)
+    float rhythmSlew       = 0.f;   // bipolar: -1=anti, 0=independent, +1=correlated
+    float melodySlew       = 0.f;
+    float qmixSlew         = 0.f;   // q-mix twin of melodySlew (Task 4)
     // Live A<->B blend (MIX). Separate from slew: slew is consumed at roll
     // (shapes B); mix is the live, continuous A<->B morph used for output.
     float rhythmMix        = 0.f;
@@ -377,7 +377,7 @@ struct PatternEngine {
     // Rhythm group: rhythm / variation / legato / accent (+ poly rhythm)
     // Melody group: melody / octave (+ poly melody / poly octave)
     // Latched slew (sampled at step 0), and the last value we recomputed at.
-    float rhythmSlewLatched = 1.f, melodySlewLatched = 1.f, qmixSlewLatched = 1.f;
+    float rhythmSlewLatched = 0.f, melodySlewLatched = 0.f, qmixSlewLatched = 0.f;
     float rhythmSlewApplied =-1.f, melodySlewApplied =-1.f, qmixSlewApplied =-1.f;  // force first recompute
     // Live MIX (A<->B blend) latched at control rate; the effective arrays are
     // recomputed when it changes. This is what drives the continuous morph.
@@ -763,16 +763,16 @@ struct PatternEngine {
     //   z = Σ_j w_j(r)·PhiInv(u_{pos-j}),  Σ w² = 1,  out = Phi(z)  → EXACTLY uniform for every r.
     //
     // KNOB MAPPING (inverted): the slew KNOB is 1 = sharp/raw (today's single-draw), 0 = smooth.
-    // Copula r is the opposite (0 = uncorrelated/raw, →1 = maximally correlated/smooth), so
-    //   r = (1 - slewKnob) · R_MAX.  slewKnob = 1 → r = 0 → apply() returns u[0] BITWISE
-    // (== today's slew=1 single draw): the r=0 bit-identity guarantee. The audible change is at
-    // LOW slewKnob (→ high r): the 7-tap average's ~11% variance becomes a properly-correlated,
-    // full-variance uniform — patterns regain contrast. See docs/design/SLEW_COPULA_PLAN.md.
+    // Slew knob is bipolar (-1..+1), matching spread's polarity landmarks:
+    //   +1 → r = +R_MAX (max positive correlation = smooth/sustained)
+    //    0 → r =  0     (independent = raw draw, bit-identity)
+    //   -1 → r = -R_MAX (max negative correlation = hocket/interlock)
+    // r = slewKnob · R_MAX (direct, no inversion). See docs/design/SLEW_COPULA_PLAN.md.
     static constexpr int SCRUB_K = 6;   // the SCRUB span (Phase 2); NOT the copula K (64). Kept for the scrub callers.
-    // r from a slew knob value: inverted + clamped to [0, R_MAX]. Non-finite → 0 (raw).
+    // r from a bipolar slew knob value: direct mapping, clamped to [-R_MAX, R_MAX]. Non-finite → 0.
     static inline float slewKnobToR(float slewKnob) {
-        if (!(slewKnob >= 0.f && slewKnob <= 1.f)) return 0.f;
-        return (1.f - slewKnob) * (float)redDot::MovingAverageCopula::R_MAX;
+        if (!(slewKnob >= -1.f && slewKnob <= 1.f)) return 0.f;
+        return slewKnob * (float)redDot::MovingAverageCopula::R_MAX;
     }
     // patternXAt: gather K cached draws (pos..pos-K+1, newest first) and apply the copula in
     // normal space. r==0 (slew knob = 1) short-circuits to the raw draw u[0] BITWISE (the
@@ -781,7 +781,7 @@ struct PatternEngine {
     inline void patternRhythmAt(int64_t pos, float slew, RhythmDraw& out) const {
         const float r = slewKnobToR(slew);
         constexpr std::size_t K = redDot::MovingAverageCopula::K;
-        if (!(r > 0.f)) {                 // r == 0: raw draw at pos, bitwise (no PhiInv)
+        if (r == 0.f) {                   // r == 0: raw draw at pos, bitwise (no PhiInv)
             const CachedRhythmDraw& e = cachedRhythmDraw(pos);
             out = e.draw;
             return;
@@ -810,7 +810,7 @@ struct PatternEngine {
     inline void patternMelodyAt(int64_t pos, float slew, MelodyDraw& out) const {
         const float r = slewKnobToR(slew);
         constexpr std::size_t K = redDot::MovingAverageCopula::K;
-        if (!(r > 0.f)) { const CachedMelodyDraw& e = cachedMelodyDraw(pos); out = e.draw; return; }
+        if (r == 0.f) { const CachedMelodyDraw& e = cachedMelodyDraw(pos); out = e.draw; return; }
         const CachedMelodyDraw* win[K];
         for (std::size_t j = 0; j < K; ++j) win[j] = &cachedMelodyDraw(pos - (int64_t)j);
         double zw[K];
@@ -831,7 +831,7 @@ struct PatternEngine {
     inline void patternQmixAt(int64_t pos, float slew, QmixDraw& out) const {
         const float r = slewKnobToR(slew);
         constexpr std::size_t K = redDot::MovingAverageCopula::K;
-        if (!(r > 0.f)) { const CachedQmixDraw& e = cachedQmixDraw(pos); out = e.draw; return; }
+        if (r == 0.f) { const CachedQmixDraw& e = cachedQmixDraw(pos); out = e.draw; return; }
         const CachedQmixDraw* win[K];
         for (std::size_t j = 0; j < K; ++j) win[j] = &cachedQmixDraw(pos - (int64_t)j);
         double zw[K];

@@ -109,12 +109,12 @@ float ParameterManager::getTranspose() const {
     return readParam_(TRANSPOSE_PARAM, -12.f, 12.f);
 }
 
-float ParameterManager::getRhythmSlew() const { return clampv(readParam_(DICE_SLEW_R_PARAM, 0.f, 1.f) + cv3Offsets[0], 0.f, 1.f); }
-float ParameterManager::getMelodySlew() const { return clampv(readParam_(DICE_SLEW_M_PARAM, 0.f, 1.f) + cv3Offsets[1], 0.f, 1.f); }
+float ParameterManager::getRhythmSlew() const { return clampv(readParam_(DICE_SLEW_R_PARAM, -1.f, 1.f) + cv3Offsets[0], -1.f, 1.f); }
+float ParameterManager::getMelodySlew() const { return clampv(readParam_(DICE_SLEW_M_PARAM, -1.f, 1.f) + cv3Offsets[1], -1.f, 1.f); }
 float ParameterManager::getRhythmMix() const { return clampv(readParam_(RHYTHM_MIX_PARAM, 0.f, 1.f) + cv3Offsets[2], 0.f, 1.f); }
 float ParameterManager::getMelodyMix() const { return clampv(readParam_(MELODY_MIX_PARAM, 0.f, 1.f) + cv3Offsets[3], 0.f, 1.f); }
 // Task 4 (QMIX): mirror R/M slew/mix; CV3 lanes 4 (slew) and 5 (mix), appended so R/M indices stay stable.
-float ParameterManager::getQmixSlew() const { return clampv(readParam_(DICE_SLEW_Q_PARAM, 0.f, 1.f) + cv3Offsets[4], 0.f, 1.f); }
+float ParameterManager::getQmixSlew() const { return clampv(readParam_(DICE_SLEW_Q_PARAM, -1.f, 1.f) + cv3Offsets[4], -1.f, 1.f); }
 float ParameterManager::getQmixMix() const { return clampv(readParam_(QMIX_MIX_PARAM, 0.f, 1.f) + cv3Offsets[5], 0.f, 1.f); }
 
 // ──── Octave Range Getters ──────────────────────────────────────────────────
