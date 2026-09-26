@@ -111,40 +111,20 @@ struct SpreadInterp {
         return interpolate(original, target(pe, lane, step), spreadAmount);
     }
 
-    // V1's CA source row for a spread lane (0=REST, 1=MEL, 2=OCT, 3=ACC, 4=QMIX).
-    // Maps the lane to the appropriate CA pin plane (rhythm/melody/qmix) and returns src[0].
-    static int v1caSrc(const PatternEngine& pe, int lane) {
-        switch (lane) {
-            case 0: case 3: return pe.caRhythmSrc[0];  // REST, ACC → rhythm plane
-            case 1: case 2: return pe.caMelodySrc[0];  // MEL, OCT → melody plane
-            case 4:         return pe.caQmixSrc[0];    // QMIX → qmix plane
-            default:        return 0;
-        }
-    }
-
     // Mono/V1 path — reads the mode from pe.spreadTargetMode[lane], so the caller
     // doesn't need a Monsoon pointer. Handles both original + target selection:
     //   Anchor V1:  own = monoSlewed (V1's draw), target = monoSlewed (self-target no-op).
-    //   Follow CA:  own = monoPreRemap (V1's pre-remap draw), target = V1's CA source
-    //               (src[0]==0 → self; src==k>0 → poly voice k-1's draw, read directly
-    //               from the source buffer — robust against remap caching).
+    //   Follow CA:  own = monoPreRemap (V1's pre-remap draw — its OWN material before CA
+    //               overwrote it), target = monoSlewed (V1's post-remap draw = the pinned
+    //               voice's material, because the remap put it there). The spread knob
+    //               interpolates between these two endpoints.
+    // The key: own (pre-remap) != target (post-remap) when V1 is actually pinned. If they're
+    // equal (identity pins or no CA), the self-target guard at interpolate() makes it a no-op,
+    // which is the correct behaviour (V1 targeting itself = nothing to follow).
     static float applyMono(const PatternEngine& pe, int lane, int step, float spreadAmount) {
         bool followCA = (pe.spreadTargetMode[lane] == 1);
         float own = followCA ? monoPreRemap(pe, lane, step) : monoSlewed(pe, lane, step);
-        float t;
-        if (followCA) {
-            int src = v1caSrc(pe, lane);
-            t = (src == 0) ? monoSlewed(pe, lane, step)
-                           : polySlewed(pe, lane, src - 1, step);
-            // CONTRACT: under Follow-CA with src>0, own (V1's pre-remap) must differ from
-            // t (the pinned voice's draw). If they're equal, the self-target guard at
-            // interpolate() makes the knob a silent no-op. This assertion catches that
-            // collapse permanently — it's the actual contract, and would have caught all
-            // three rounds of this bug.
-            assert(!(spreadAmount != 0.0f && src > 0 && own == t));
-        } else {
-            t = monoSlewed(pe, lane, step);
-        }
+        float t = monoSlewed(pe, lane, step);
         return interpolate(own, t, spreadAmount);
     }
 
