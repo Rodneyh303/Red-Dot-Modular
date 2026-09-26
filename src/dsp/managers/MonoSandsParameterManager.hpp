@@ -44,15 +44,20 @@ struct MonoSandsParameterManager {
 
     static constexpr int LANE_COUNT = 7;   // REST/MEL/OCT/LEG/ACC/VAR + QMIX(6)
 
+    // Read PUBLISHED snapshots (pubSlewed*) — NOT the live slewed* arrays the audio thread is
+    // rewriting during recomputeEffective* (now ~116µs at r>0). Reading live arrays mid-rewrite
+    // → torn read → flicker. The published copy is swapped once after the recompute completes,
+    // so the UI always sees a coherent frame. (East already does this via polySpreadEffective;
+    // this brings Mono/Macro in line.)
     float monoDraw(int lane, int step) const {
         switch (lane) {
-            case 0: return patternEngine->slewedRhythm[step];
-            case 1: return patternEngine->slewedMelody[step];
-            case 2: return patternEngine->slewedOctave[step];
-            case 3: return patternEngine->slewedLegato[step];
-            case 4: return patternEngine->slewedAccent[step];
-            case 5: return patternEngine->slewedVariation[step];
-            case 6: return patternEngine->slewedQmix[step];   // QMIX (buffer lane 6)
+            case 0: return patternEngine->pubSlewedRhythm[step];
+            case 1: return patternEngine->pubSlewedMelody[step];
+            case 2: return patternEngine->pubSlewedOctave[step];
+            case 3: return patternEngine->pubSlewedLegato[step];
+            case 4: return patternEngine->pubSlewedAccent[step];
+            case 5: return patternEngine->pubSlewedVariation[step];
+            case 6: return patternEngine->pubSlewedQmix[step];   // QMIX (buffer lane 6)
             default: return 0.5f;
         }
     }

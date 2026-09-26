@@ -382,6 +382,28 @@ struct PatternEngine {
     float slewedPolyRhythm[15][16]={}, slewedPolyMelody[15][16]={}, slewedPolyOctave[15][16]={};
     float slewedPolyAccent[15][16]={};
     float slewedPolyQmix[15][16]={};   // q-mix twin of slewedPolyMelody
+    // Published snapshots of the slewed buffers — coherent copies the UI thread reads. The audio
+    // thread writes slewed* during recomputeEffective* (now ~116µs at r>0), then publishes a
+    // snapshot here. Without this, Mono/Macro visuals read slewed* mid-rewrite → torn read →
+    // flicker. East already reads published polySpreadEffective (immune). The copy is ~1µs (1k
+    // floats), so the race window drops from ~116µs to ~1µs — practically eliminating flicker.
+    float pubSlewedRhythm[16]={}, pubSlewedVariation[16]={}, pubSlewedLegato[16]={}, pubSlewedAccent[16]={};
+    float pubSlewedMelody[16]={}, pubSlewedOctave[16]={}, pubSlewedQmix[16]={};
+    float pubSlewedPolyRhythm[15][16]={}, pubSlewedPolyMelody[15][16]={}, pubSlewedPolyOctave[15][16]={};
+    float pubSlewedPolyAccent[15][16]={}, pubSlewedPolyQmix[15][16]={};
+    void publishSlewedRhythm() {
+        for (int i=0;i<16;++i){ pubSlewedRhythm[i]=slewedRhythm[i]; pubSlewedVariation[i]=slewedVariation[i];
+            pubSlewedLegato[i]=slewedLegato[i]; pubSlewedAccent[i]=slewedAccent[i];
+            for(int v=0;v<15;++v){ pubSlewedPolyRhythm[v][i]=slewedPolyRhythm[v][i]; pubSlewedPolyAccent[v][i]=slewedPolyAccent[v][i]; } }
+    }
+    void publishSlewedMelody() {
+        for (int i=0;i<16;++i){ pubSlewedMelody[i]=slewedMelody[i]; pubSlewedOctave[i]=slewedOctave[i];
+            for(int v=0;v<15;++v){ pubSlewedPolyMelody[v][i]=slewedPolyMelody[v][i]; pubSlewedPolyOctave[v][i]=slewedPolyOctave[v][i]; } }
+    }
+    void publishSlewedQmix() {
+        for (int i=0;i<16;++i){ pubSlewedQmix[i]=slewedQmix[i];
+            for(int v=0;v<15;++v) pubSlewedPolyQmix[v][i]=slewedPolyQmix[v][i]; }
+    }
     // Set true when any Sands visual expander owns the spread→final stage this
     // cycle. When false, slew copies slewedDraw → final.
     bool  sandsActive = false;

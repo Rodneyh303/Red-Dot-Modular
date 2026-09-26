@@ -308,6 +308,7 @@ void PatternEngine::recomputeEffectiveRhythm() {
             for (int v=0;v<15;v++) polyRandom(v, PL_ACCENT)[i]=slewedPolyAccent[v][i];
         }
     }
+    publishSlewedRhythm();   // publish coherent snapshot for the UI thread
     rhythmMixApplied = rhythmMixLatched; rhythmSlewApplied = slew; rhythmCtrApplied = N;
 }
 
@@ -364,6 +365,7 @@ void PatternEngine::recomputeEffectiveMelody() {
                                     polyRandom(v, PL_OCTAVE)[i]=slewedPolyOctave[v][i]; }
         }
     }
+    publishSlewedMelody();
     melodyMixApplied = melodyMixLatched; melodySlewApplied = slew; melodyCtrApplied = N;
 }
 
@@ -415,6 +417,7 @@ void PatternEngine::recomputeEffectiveQmix() {
             for (int v=0;v<15;v++) polyRandom(v, PL_QMIX)[i]=slewedPolyQmix[v][i];
         }
     }
+    publishSlewedQmix();
     qmixMixApplied = qmixMixLatched; qmixSlewApplied = slew; qmixCtrApplied = N;
 }
 
