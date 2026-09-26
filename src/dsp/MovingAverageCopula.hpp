@@ -59,16 +59,23 @@ public:
     /// — NOT the raw uniform — so callers on the r==0 bit-identity path must short-circuit to
     /// the raw u[0] themselves (see PatternEngine::patternXAt). For r > 0 this is bit-identical
     /// to apply(u, r): combine does z' = Σ w_j·PhiInv(u_j) = Σ w_j·z[j], then Phi(z').
-    static double applyZ(const double* z, double r) {
-        if (!(r > 0.0)) return copula::Phi(z[0]);   // consistent shape; caller short-circuits r==0
+    // The weighted normal-space sum s = Σ w_j·z_j WITHOUT the final Phi. Used by the SCRUB blend
+    // (Phase 2): recomputeEffective* blends two adjacent windows' `s` values in normal space, then
+    // applies PhiFast ONCE — blending the uniform outputs would be a linear blend of uniforms
+    // (the distortion Phase 2 eliminates). r==0 returns z[0] (the cached PhiInv of the raw draw).
+    static double sumZ(const double* z, double r) {
+        if (!(r > 0.0)) return z[0];
         double w[K];
         weights(r, w);
         double s = 0.0;
         for (std::size_t j = 0; j < K; ++j) s += w[j] * z[j];
-        // The readout's final Phi is UNCACHEABLE (z = Σ w_j·z_j depends on r, which varies) and hot
-        // (544×/window) and feeds a float lane → LUT (PhiFast), not the exact erfc Phi. The cached
-        // path (PhiInv) keeps the exact Phi. r==0 never reaches here, so bit-identity is untouched.
-        return copula::PhiFast(s);
+        return s;
+    }
+    // applyZ = PhiFast(sumZ(...)) — the full copula readout (uniform output). Used by patternXAt
+    // (non-scrub callers) and the r==0 short-circuit shape. Phase 2's scrub blend uses sumZ +
+    // its own PhiFast so the two windows share one Phi.
+    static double applyZ(const double* z, double r) {
+        return copula::PhiFast(sumZ(z, r));
     }
 
     /// Analytic lag-m correlation of the output series for a constant r (dot product of the
