@@ -62,24 +62,22 @@ struct SpreadInterp {
         return monoSlewed(pe, lane, step);
     }
 
-    // The shared bipolar interpolation + clamp.
+    // Phase 3: copula mix2 — the knob IS rho (correlation) directly, not a linear blend
+    // coefficient. mix2 preserves the uniform marginal (the whole point of the rework) and
+    // the 1-p mirror special case disappears (rho = -1 → exactly 1 - targetValue via mix2's
+    // own special case).
+    //
+    // Self-target guard preserved: V1 (the anchor) targets itself — own == leader. Positive
+    // spread toward yourself is a no-op (you're already there); mix2(own, own, rho>0) would
+    // CHANGE the value (blending a value with itself in normal space concentrates it), which
+    // is wrong. Negative self-target spread inverts toward (1 - own) — mix2 handles this
+    // correctly (rho < 0 → toward complement).
+    //
+    // spreadAmount == 0 → return original exactly (bit-identity at spread 0).
     static float interpolate(float original, float targetValue, float spreadAmount) {
-        float result;
-        // Self-target handling depends on SIGN:
-        //  • spread >= 0 → converge TOWARD the target. When target == original there's
-        //    nothing to converge to → no-op (correct; a lone positive spread does nothing).
-        //  • spread <  0 → move toward the INVERSION (1 − target). This is meaningful even
-        //    when target == original: it inverts the draw toward (1 − d). V1 in voice-1-
-        //    voice-1 target must respond to negative spread this way. (The earlier
-        //    blanket 'target==original → no-op' guard killed this; it only belongs on the
-        //    positive branch.)
-        if (spreadAmount == 0.0f) result = original;
-        else if (spreadAmount > 0.0f) {
-            if (targetValue == original) result = original;                       // converge to self = no-op
-            else result = original + (targetValue - original) * spreadAmount;
-        }
-        else result = original + ((1.0f - targetValue) - original) * std::fabs(spreadAmount);  // invert toward (1−target)
-        return rack::math::clamp(result, 0.0f, 1.0f);
+        if (spreadAmount == 0.0f) return original;
+        if (spreadAmount > 0.0f && targetValue == original) return original;  // V1 self-target no-op
+        return (float)redDot::copula::mix2((double)original, (double)targetValue, (double)spreadAmount);
     }
 
     // Convenience: full pipeline for one value.
