@@ -437,7 +437,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                  : (engLane == PL::PL_ACCENT) ? pe.pubSlewedPolyAccent[v][step & 0x0F]
                  :                              pe.pubSlewedPolyQmix[v][step & 0x0F];
         }
-        return redDot::SpreadInterp::apply(pe, engLane, step, base, sp);
+        return redDot::SpreadInterp::applyAnchorV1Only(pe, engLane, step, base, sp);
     }
 
     void step() override {

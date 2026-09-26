@@ -102,13 +102,12 @@ struct SpreadInterp {
         return (float)redDot::copula::mix2((double)original, (double)targetValue, (double)spreadAmount);
     }
 
-    // Convenience: full pipeline for one value (mono/V1 path) — ANCHOR V1 ONLY.
-    // Target is always monoSlewed (V1's own draw = self-target no-op for positive spread).
-    // Do NOT use this for Follow-CA mode — use applyMono() instead, which resolves V1's
-    // CA source correctly. The old comment claiming "Follow CA: V1's post-remap == monoSlewed"
-    // was wrong when src[0] != 0 and led to a silent no-op (target == original → self-target guard).
-    static float apply(const PatternEngine& pe, int lane, int step,
-                       float original, float spreadAmount) {
+    // DISPLAY-ONLY entry point (anchor-V1 target, caller supplies original). Used by
+    // SpreadManager and macroOwnProbability for visual interpolation. Named explicitly
+    // to prevent accidental use on the audio path where Follow-CA mode requires
+    // applyMono/applyPoly (which resolve the target from the CA source).
+    static float applyAnchorV1Only(const PatternEngine& pe, int lane, int step,
+                                   float original, float spreadAmount) {
         return interpolate(original, target(pe, lane, step), spreadAmount);
     }
 
@@ -123,37 +122,36 @@ struct SpreadInterp {
         }
     }
 
-    // Mono/V1 path with mode awareness. Under Follow-CA the target resolves from V1's CA
-    // source (src[0]): src==0 → V1 targets itself (no-op); src==k>0 → poly voice k-1's draw
-    // (poly arrays hold V2–V16 at indices 0–14, so src k maps to poly index k-1). This does
-    // NOT rely on the remap having run — it reads the source voice's buffer directly, making
-    // it robust against remap caching. The caller supplies `original` via monoOwn (pre-remap
-    // for follow-CA, slewed for anchor-V1).
-    static float applyMono(const PatternEngine& pe, int lane, int step,
-                           float original, float spreadAmount, bool followCA) {
+    // Mono/V1 path — reads the mode from pe.spreadTargetMode[lane], so the caller
+    // doesn't need a Monsoon pointer. Handles both original + target selection:
+    //   Anchor V1:  own = monoSlewed (V1's draw), target = monoSlewed (self-target no-op).
+    //   Follow CA:  own = monoPreRemap (V1's pre-remap draw), target = V1's CA source
+    //               (src[0]==0 → self; src==k>0 → poly voice k-1's draw, read directly
+    //               from the source buffer — robust against remap caching).
+    static float applyMono(const PatternEngine& pe, int lane, int step, float spreadAmount) {
+        bool followCA = (pe.spreadTargetMode[lane] == 1);
+        float own = followCA ? monoPreRemap(pe, lane, step) : monoSlewed(pe, lane, step);
         float t;
         if (followCA) {
             int src = v1caSrc(pe, lane);
             t = (src == 0) ? monoSlewed(pe, lane, step)
                            : polySlewed(pe, lane, src - 1, step);
         } else {
-            t = monoSlewed(pe, lane, step);  // anchor V1: self-target
+            t = monoSlewed(pe, lane, step);
         }
-        return interpolate(original, t, spreadAmount);
+        return interpolate(own, t, spreadAmount);
     }
 
-    // Poly path: the target depends on the mode.
-    //   Anchor V1:  target = V1's draw (monoSlewed) — voices anchor to V1.
-    //   Follow CA:  target = the voice's OWN post-remap draw (polySlewed) — which IS
-    //               src[v]'s material, because CA's pin remap already put it there.
-    // The caller selects `original` (own) via polyOwn: pre-remap (follow-CA) or post-remap
-    // (anchor V1). Without the polySlewed target here, follow-CA voices would incorrectly
-    // target V1's remapped draw instead of their own src[v]'s material.
-    static float applyPoly(const PatternEngine& pe, int lane, int voice, int step,
-                           float original, float spreadAmount, bool followCA) {
-        float t = followCA ? polySlewed(pe, lane, voice, step)
-                           : monoSlewed(pe, lane, step);
-        return interpolate(original, t, spreadAmount);
+    // Poly path — reads the mode from pe.spreadTargetMode[lane], so the caller
+    // doesn't need a Monsoon pointer. Handles both original + target selection:
+    //   Anchor V1:  own = polySlewed (voice's draw), target = monoSlewed (V1's draw).
+    //   Follow CA:  own = polyPreRemap (voice's pre-remap draw), target = polySlewed
+    //               (voice's post-remap = src[v]'s material, already in the poly buffer).
+    static float applyPoly(const PatternEngine& pe, int lane, int voice, int step, float spreadAmount) {
+        bool followCA = (pe.spreadTargetMode[lane] == 1);
+        float own = followCA ? polyPreRemap(pe, lane, voice, step) : polySlewed(pe, lane, voice, step);
+        float t = followCA ? polySlewed(pe, lane, voice, step) : monoSlewed(pe, lane, step);
+        return interpolate(own, t, spreadAmount);
     }
 };
 

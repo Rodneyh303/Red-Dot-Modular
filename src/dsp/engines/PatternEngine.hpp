@@ -138,6 +138,11 @@ struct PatternEngine {
     // ENGINE STRAND at a given step, 0..1. Now a direct index into random_[0] (mono row): strand index
     // IS the editor-lane column (MONO_LANE_TO_STRAND identity), so no table/permutation. Out-of-range
     // falls back to rhythm (matches the old default:). Used by the Sands visual probability CV outs.
+    // Spread target mode per lane (0=Anchor V1, 1=Follow CA). Mirrored from the Monsoon's
+    // EditorState each control cycle so the spread path (which only has PatternEngine&) can
+    // read it without a Monsoon pointer. SPREAD_TARGET_MODES.md.
+    uint8_t spreadTargetMode[5] = {0,0,0,0,0};   // 5 poly lanes: REST/MEL/OCT/ACC/QMIX
+
     // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md §3-REVISED, PRE-SPREAD) ──
     // The pins remap the SLEWED buffers (post A/B-mix, post-slew, PRE-spread) so that a
     // pinned voice's borrowed draw is then spread with the CONSUMER's own reference —

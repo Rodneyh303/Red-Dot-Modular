@@ -57,7 +57,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
     // Poly-lane constants (engine order REST=0,MEL=1,OCT=2,ACC=3). Named here so
     // the renumber tracks automatically and the parallel index conventions below
     // (polyLen[v][lane] / combineLOR(lane,..) / combineSpread(lane,..) /
-    // SpreadInterp::apply(..,lane,..)) all move together.
+    // SpreadInterp::applyMono/applyPoly(..,lane,..)) all move together.
     using PL = SequencerEngine;  // PL::PL_REST etc.
     //auto* deepEast   = cachedDeepStraitsSandsEastExpander;
     //auto* deepWest   = cachedDeepStraitsSandsWestExpander;
@@ -408,11 +408,8 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // post-remap, leader = V1's post-remap). mmOwn is the Monsoon store (single source of
             // truth for the mode). Without this, follow-CA is a no-op: the remap already replaced
             // own with leader, so spread would blend leader with itself.
-            auto polyOwn = [&](int lane, int j) -> float {
-                if (mmOwn && mmOwn->getSpreadTargetMode(lane) == 1)
-                    return redDot::SpreadInterp::polyPreRemap(engine.pe, lane, v, j);
-                return redDot::SpreadInterp::polySlewed(engine.pe, lane, v, j);
-            };
+            // applyPoly reads the mode from pe.spreadTargetMode[lane] and handles both
+            // original + target selection internally. No mmOwn lookup needed here.
 
             float restInterp = mmOwn ? mmOwn->getSpread(slot, PL::PL_REST) : 0.f;
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_REST,3)].isConnected()) {
@@ -432,8 +429,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false)) {   // REST = rhythm axis
                 for (int j = 0; j < 16; j++) {
                     engine.pe.polyRandom(v, PL::PL_REST)[j] = redDot::SpreadInterp::applyPoly(
-                        engine.pe, PL::PL_REST, v, j, polyOwn(PL::PL_REST, j), restInterp,
-                        mmOwn && mmOwn->getSpreadTargetMode(PL::PL_REST) == 1);
+                        engine.pe, PL::PL_REST, v, j, restInterp);
                 }
             }
             
@@ -454,8 +450,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true)) {   // MELODY = melody axis
                 for (int j = 0; j < 16; j++) {
                     engine.pe.polyRandom(v, PL::PL_MELODY)[j] = redDot::SpreadInterp::applyPoly(
-                        engine.pe, PL::PL_MELODY, v, j, polyOwn(PL::PL_MELODY, j), melodyInterp,
-                        mmOwn && mmOwn->getSpreadTargetMode(PL::PL_MELODY) == 1);
+                        engine.pe, PL::PL_MELODY, v, j, melodyInterp);
                 }
             }
             
@@ -483,8 +478,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true)) {   // OCTAVE = melody axis
                 for (int j = 0; j < 16; j++) {
                     engine.pe.polyRandom(v, PL::PL_OCTAVE)[j] = redDot::SpreadInterp::applyPoly(
-                        engine.pe, PL::PL_OCTAVE, v, j, polyOwn(PL::PL_OCTAVE, j), octaveInterp,
-                        mmOwn && mmOwn->getSpreadTargetMode(PL::PL_OCTAVE) == 1);
+                        engine.pe, PL::PL_OCTAVE, v, j, octaveInterp);
                 }
             }
             
@@ -513,8 +507,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false)) {   // ACCENT = rhythm axis
                     for (int j = 0; j < 16; j++) {
                         engine.pe.polyRandom(v, PL::PL_ACCENT)[j] = redDot::SpreadInterp::applyPoly(
-                            engine.pe, PL::PL_ACCENT, v, j, polyOwn(PL::PL_ACCENT, j), accentInterp,
-                            mmOwn && mmOwn->getSpreadTargetMode(PL::PL_ACCENT) == 1);
+                            engine.pe, PL::PL_ACCENT, v, j, accentInterp);
                     }
                 }
             }
@@ -535,8 +528,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 if (!engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0) {   // QMIX = its OWN axis (SB_SANDS_Q)
                     for (int j = 0; j < 16; j++) {
                         engine.pe.polyRandom(v, PL::PL_QMIX)[j] = redDot::SpreadInterp::applyPoly(
-                            engine.pe, PL::PL_QMIX, v, j, polyOwn(PL::PL_QMIX, j), qmixInterp,
-                            mmOwn && mmOwn->getSpreadTargetMode(PL::PL_QMIX) == 1);
+                            engine.pe, PL::PL_QMIX, v, j, qmixInterp);
                     }
                 }
             }
@@ -647,15 +639,15 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 const float spQ = math::clamp(macroVis->macroBase[PL::PL_QMIX][3]   + macroVis->macroSendDelta[PL::PL_QMIX][3],   -1.f, 1.f);   // QMIX (Task 4c)
                 for (int j = 0; j < 16; ++j) {
                     if (msR) {
-                        engine.pe.rhythmRandom[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_REST,   j, engine.pe.slewedRhythm[j], spR);
-                        engine.pe.accentRandom[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_ACCENT, j, engine.pe.slewedAccent[j], spA);
+                        engine.pe.rhythmRandom[j] = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_REST,   j, spR);
+                        engine.pe.accentRandom[j] = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_ACCENT, j, spA);
                     }
                     if (msM) {
-                        engine.pe.melodyRandom[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_MELODY, j, engine.pe.slewedMelody[j], spM);
-                        engine.pe.octaveRandom[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_OCTAVE, j, engine.pe.slewedOctave[j], spO);
+                        engine.pe.melodyRandom[j] = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_MELODY, j, spM);
+                        engine.pe.octaveRandom[j] = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_OCTAVE, j, spO);
                     }
                     if (msQ) {
-                        engine.pe.qmixRandom[j]   = redDot::SpreadInterp::apply(engine.pe, PL::PL_QMIX,   j, engine.pe.slewedQmix[j],   spQ);   // QMIX own axis (SB_SANDS_Q)
+                        engine.pe.qmixRandom[j]   = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_QMIX,   j, spQ);   // QMIX own axis (SB_SANDS_Q)
                     }
                 }
                 // Mono strand LOR from Macro globals (REST/MEL/OCT/ACC/QMIX strands).
@@ -695,13 +687,13 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 const float spQ = math::clamp(macroVis->macroBase[PL::PL_QMIX][3]   + macroVis->macroSendDelta[PL::PL_QMIX][3],   -1.f, 1.f);   // QMIX (Task 4c)
                 for (int j = 0; j < 16; ++j) {
                     if (msR) {
-                        engine.pe.polyRandom(v, PL::PL_REST)[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_REST,   j, engine.pe.slewedPolyRhythm[v][j], spR);
-                        engine.pe.polyRandom(v, PL::PL_ACCENT)[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_ACCENT, j, engine.pe.slewedPolyAccent[v][j], spA);
+                        engine.pe.polyRandom(v, PL::PL_REST)[j] = redDot::SpreadInterp::applyPoly(engine.pe, PL::PL_REST,   v, j, spR);
+                        engine.pe.polyRandom(v, PL::PL_ACCENT)[j] = redDot::SpreadInterp::applyPoly(engine.pe, PL::PL_ACCENT, v, j, spA);
                     }
                     if (msM) {
-                        engine.pe.polyRandom(v, PL::PL_MELODY)[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_MELODY, j, engine.pe.slewedPolyMelody[v][j], spM);
-                        engine.pe.polyRandom(v, PL::PL_OCTAVE)[j] = redDot::SpreadInterp::apply(engine.pe, PL::PL_OCTAVE, j, engine.pe.slewedPolyOctave[v][j], spO);
-                        engine.pe.polyRandom(v, PL::PL_QMIX)[j]   = redDot::SpreadInterp::apply(engine.pe, PL::PL_QMIX,   j, engine.pe.slewedPolyQmix[v][j],   spQ);   // QMIX = melody axis
+                        engine.pe.polyRandom(v, PL::PL_MELODY)[j] = redDot::SpreadInterp::applyPoly(engine.pe, PL::PL_MELODY, v, j, spM);
+                        engine.pe.polyRandom(v, PL::PL_OCTAVE)[j] = redDot::SpreadInterp::applyPoly(engine.pe, PL::PL_OCTAVE, v, j, spO);
+                        engine.pe.polyRandom(v, PL::PL_QMIX)[j]   = redDot::SpreadInterp::applyPoly(engine.pe, PL::PL_QMIX,   v, j, spQ);   // QMIX = melody axis
                     }
                 }
             }
