@@ -231,8 +231,10 @@ Default when Follow CA     -1  /  0  /  +1
 - **Which default does `Apply default now` use?** The CURRENT mode's default — the one in view and
   the one the lane is operating under. State it in the item, e.g.
   `Apply default now (Follow CA: +1)`, so it is unambiguous when the two defaults differ.
-- **Optional convenience**: an `Apply defaults to all lanes` at module level. Five lanes means five
-  menu visits to reset after an experiment; cheap to add once the per-lane action exists.
+- **`Apply defaults to all lanes` at module level — CONFIRMED (Rodney).** Five lanes means five menu
+  visits to reset after an experiment. It applies EACH lane's own current-mode default (lanes may be
+  in different modes with different defaults) — it does NOT impose one value across lanes. Cheap
+  once the per-lane action exists; same code path, looped.
 - **Advisory cue instead of silent inertness**: when a lane is in `Follow CA` with all spreads at 0,
   note it in the menu (e.g. `Follow CA — spread is 0, so pins have no effect`). Inform rather than
   mutate; same pattern as the "needs a Change Alley" cue below.
