@@ -205,3 +205,32 @@ are), not the knob fraction (which would make the position jump). Almost certain
 exactly ON a past pattern with no interpolation (`f = 0` is the only way to hear a past draw
 unmixed). Exact recall rather than a blend. Costs no panel space, and CV + an external quantiser
 already approximates it.
+
+
+---
+
+## LUT warm-up: initialise at plugin load, not lazily (Rodney)
+
+Build the `Phi` LUT once at PLUGIN LOAD so the first call never lands mid-block on the audio thread.
+Cost is trivial — 4,097 exact `Phi` calls at MinGW's ~80 ns is **~0.33 ms**, once, on the load
+thread — but lazily it would be a 0.33 ms spike at an arbitrary first use during playback.
+
+**Where: `plugin.cpp` `init()`, NOT a Monsoon constructor.** Monsoon is not the only consumer (the
+Sands visuals go through spread, and CA's correlation pairs will later), and a per-instance
+constructor would either repeat the work or need its own guard.
+
+**How: a function-local static (Meyers singleton), then TOUCH it in `init()`.**
+```cpp
+// GaussianCopula.hpp / PhiLut.hpp
+inline const PhiLut& phiLut() { static const PhiLut t; return t; }   // thread-safe, once
+
+// plugin.cpp init()
+(void)redDot::copula::phiLut();   // warm off the audio thread
+```
+A function-local static gives thread-safe one-time init with NO static-initialisation-order hazard;
+a namespace-scope global could in principle be read by another translation unit's static init before
+it is built. The explicit touch in `init()` is what moves the cost off the audio thread — without
+it, initialisation happens lazily at first use.
+
+Keep: build the table from the EXACT `Phi` (one source of truth — never from itself, never from
+transcribed constants); it is ~16 KB as floats, so do not grow it casually.

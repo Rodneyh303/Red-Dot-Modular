@@ -250,3 +250,30 @@ concludes it is broken.
 - Reuse the connection model for the check: CA reachability is already answerable via the manager's
   `cachedChangeAlleyV2`; do not invent a second discovery path. The same grey-out-with-reason
   convention should apply anywhere else a mode depends on a module being present.
+
+
+---
+
+## POST-MORTEM: the pre-remap requirement applies to BOTH paths (it bit three times)
+
+Follow-CA's target is the voice's leader material, and its `original` must be the voice's OWN
+**PRE-REMAP** draw. CA's pin remap (`remapSlewedByPins`, via `MonsoonSandsManager`) rewrites the
+slewed buffers IN PLACE, so anything read after it is already the leader's material. If `original`
+comes from a post-remap buffer, `original == target`, the self-target guard in
+`SpreadInterp::interpolate` returns early, and **the knob does nothing, silently.**
+
+`applyPoly` satisfies this via `polyOwn`. The MONO/V1 path was missed three separate times, each
+looking plausible:
+1. `apply()` hardcoded the target to `monoSlewed`, on the wrong assumption that "V1's post-remap ==
+   src[0]'s material == monoSlewed" — true ONLY when `src[0] == 0`.
+2. `applyMono()` was added correctly but **never called** — every mono call site still used
+   `apply()`, so the fix was dead code.
+3. Call sites switched to `applyMono()`, but still passed the POST-REMAP slewed buffer as
+   `original`, so target and value collapsed onto each other again.
+
+**Rule: pre-remap `original` is required on BOTH the mono and poly paths.** Not a poly-only detail.
+
+**KEEP THE ASSERTION.** At each spread call site, when follow-CA is on and the voice's `src != self`,
+assert `original != target` before interpolating. That is the actual contract of the feature, and it
+converts a silent no-op into a loud failure. All three rounds above would have been caught by it
+immediately. Cheap; keep it in debug builds at minimum, on both paths.
