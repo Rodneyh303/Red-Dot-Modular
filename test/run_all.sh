@@ -35,6 +35,7 @@ TESTS=(
   "test_PhiloxRng|"
   "test_SandsTopology|"
   "test_SpreadInterp|"
+  "test_slew_copula|src/dsp/engines/PatternEngine.cpp"
   "test_SquaresRng|"
   "test_ScalaFile|"
   "test_ScaleMaskArbiter|"

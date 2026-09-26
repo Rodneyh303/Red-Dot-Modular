@@ -188,3 +188,104 @@ itself and follow-CA is a no-op by construction. Anchor V1 remains the sensible 
 **Editor display note:** because the remap is pre-spread, the Sands editor shows POST-CA material — a
 voice pinned to another displays that other voice's bars. Worth saying so in the lane tooltip, since the
 per-voice spread amount is then being set on material that is not that voice's own draw.
+
+
+---
+
+## Spread menu: per-mode defaults + the "needs a CA" cue (Rodney)
+
+**Per-lane menu (Rodney) — one submenu per spread lane (MELODY / OCTAVE / QMIX / REST / ACCENT):**
+
+```
+Target      (o) Anchor V1        ( ) Follow CA      <- greyed + reason if no CA reachable
+Default when Anchor V1     -1  /  0  /  +1
+Default when Follow CA     -1  /  0  /  +1
+[x] Apply default on mode change
+    Apply default now
+```
+
+- **Defaults are three-valued: -1 / 0 / +1**, matching the polarity landmarks exactly, so a default
+  is simply "which landmark does this lane start at": `-1` oppose (complement of the target),
+  `0` independent (the voice's own draw), `+1` follow (the target's material). Coarse on purpose —
+  it is a STARTING POINT; per-voice fine-tuning happens on the Sands amounts as now.
+- **A default per mode, both user-selectable**, because the sensible starting points are OPPOSITE
+  and one shared default would break a direction: `follow CA` wants `+1` (enabling the mode then
+  preserves today's "the pins take effect" behaviour and the user dials down to loosen — at `0` the
+  voice plays its own draw, so CA's verbs would go silently inaudible), while `anchor V1` wants `0`
+  (today's behaviour; `+1` would slam voices toward unison on switching). Ship those as the initial
+  values; both remain editable.
+- **`Apply default on mode change` is a TOGGLE, default ON.** Applying on every switch is
+  destructive — someone who has hand-dialled 16 voices and flips modes to compare would lose the
+  lot — so it must be defeatable. With it OFF, mode switching never touches spread values.
+- **`Apply default now` is an explicit action**, always available. It is a normal param change, so
+  Rack's undo covers it — which is why the destructive operation belongs behind an explicit
+  invocation rather than a side effect.
+- **Scope: EVERYTHING here is PER LANE (Rodney)** — the target, both defaults, AND the
+  `Apply default on mode change` toggle. Lanes are independently configured throughout this design,
+  so the toggle follows suit.
+- **`Apply default now` is available at ANY time (Rodney)**, not only around a mode change — that is
+  the point of having it as well as the toggle. The toggle covers the automatic case (entering a
+  mode with a sane starting point); the action covers the manual case (a lane has been dialled into
+  a mess and wants resetting WITHOUT touching its mode), which the toggle can never do. It also
+  means turning auto-apply OFF costs nothing: the operation stays one click away.
+- **Which default does `Apply default now` use?** The CURRENT mode's default — the one in view and
+  the one the lane is operating under. State it in the item, e.g.
+  `Apply default now (Follow CA: +1)`, so it is unambiguous when the two defaults differ.
+- **`Apply defaults to all lanes` at module level — CONFIRMED (Rodney).** Five lanes means five menu
+  visits to reset after an experiment. It applies EACH lane's own current-mode default (lanes may be
+  in different modes with different defaults) — it does NOT impose one value across lanes. Cheap
+  once the per-lane action exists; same code path, looped.
+- **Advisory cue instead of silent inertness**: when a lane is in `Follow CA` with all spreads at 0,
+  note it in the menu (e.g. `Follow CA — spread is 0, so pins have no effect`). Inform rather than
+  mutate; same pattern as the "needs a Change Alley" cue below.
+
+**"Needs a Change Alley" cue — advisory, not preventive.** With no CA in the chain `src[]` is
+identity, so every voice targets itself and follow-CA is a NO-OP by construction. Silently doing
+nothing is the worst outcome for a feature whose whole point is invisible structure: the user
+concludes it is broken.
+- GREY the menu item and append the reason, e.g. `Follow CA — needs a Change Alley in the chain`.
+- **Still allow it to be selected**, and persist it. Blocking selection would make the setting
+  depend on module order and get lost when CA is absent — exactly the state loss the connection
+  rework has been removing. It simply starts working when a CA is added.
+- Reuse the connection model for the check: CA reachability is already answerable via the manager's
+  `cachedChangeAlleyV2`; do not invent a second discovery path. The same grey-out-with-reason
+  convention should apply anywhere else a mode depends on a module being present.
+
+
+---
+
+## POST-MORTEM: the pre-remap requirement applies to BOTH paths (it bit three times)
+
+Follow-CA's target is the voice's leader material, and its `original` must be the voice's OWN
+**PRE-REMAP** draw. CA's pin remap (`remapSlewedByPins`, via `MonsoonSandsManager`) rewrites the
+slewed buffers IN PLACE, so anything read after it is already the leader's material. If `original`
+comes from a post-remap buffer, `original == target`, the self-target guard in
+`SpreadInterp::interpolate` returns early, and **the knob does nothing, silently.**
+
+`applyPoly` satisfies this via `polyOwn`. The MONO/V1 path was missed three separate times, each
+looking plausible:
+1. `apply()` hardcoded the target to `monoSlewed`, on the wrong assumption that "V1's post-remap ==
+   src[0]'s material == monoSlewed" — true ONLY when `src[0] == 0`.
+2. `applyMono()` was added correctly but **never called** — every mono call site still used
+   `apply()`, so the fix was dead code.
+3. Call sites switched to `applyMono()`, but still passed the POST-REMAP slewed buffer as
+   `original`, so target and value collapsed onto each other again.
+
+**Rule: pre-remap `original` is required on BOTH the mono and poly paths.** Not a poly-only detail.
+
+**KEEP THE ASSERTION — but TEST-GATED, not live (amended after a 4th round).** At each spread call
+site, when follow-CA is on and the voice's `src != self`, assert `original != target` before
+interpolating. That is the actual contract of the feature, and it converts a silent no-op into a loud
+failure. All three rounds above would have been caught by it immediately.
+
+However, a live hot-path `assert` **crashes on a legitimate transient**: a dice roll calls
+`recomputeEffective*` (rewriting the SLEWED = target buffers) but does NOT re-run
+`remapSlewedByPins` (gated on PIN changes, not dice). So for ONE control cycle the freshly-recomputed
+target can equal the stale pre-remap `own` before the next remap re-applies the pin — `own == target`
+with no output bug. A live assert aborts Rack on the next dice roll.
+
+Resolution: the assertion lives behind `REDDOT_SPREAD_CONTRACT_ASSERT` (default 0, compiled out via
+`REDDOT_SPREAD_ASSERT` in SpreadInterp.hpp) and is enabled in TESTS, where the remap is driven
+deterministically (no dice-vs-remap race). Both paths (mono + poly) carry it. The contract is still
+checked — just where the check is valid, not on the live audio thread where a benign one-block
+staleness window would trip it.

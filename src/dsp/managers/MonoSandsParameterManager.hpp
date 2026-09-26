@@ -44,15 +44,20 @@ struct MonoSandsParameterManager {
 
     static constexpr int LANE_COUNT = 7;   // REST/MEL/OCT/LEG/ACC/VAR + QMIX(6)
 
+    // Read PUBLISHED snapshots (pubSlewed*) — NOT the live slewed* arrays the audio thread is
+    // rewriting during recomputeEffective* (now ~116µs at r>0). Reading live arrays mid-rewrite
+    // → torn read → flicker. The published copy is swapped once after the recompute completes,
+    // so the UI always sees a coherent frame. (East already does this via polySpreadEffective;
+    // this brings Mono/Macro in line.)
     float monoDraw(int lane, int step) const {
         switch (lane) {
-            case 0: return patternEngine->slewedRhythm[step];
-            case 1: return patternEngine->slewedMelody[step];
-            case 2: return patternEngine->slewedOctave[step];
-            case 3: return patternEngine->slewedLegato[step];
-            case 4: return patternEngine->slewedAccent[step];
-            case 5: return patternEngine->slewedVariation[step];
-            case 6: return patternEngine->slewedQmix[step];   // QMIX (buffer lane 6)
+            case 0: return patternEngine->pubSlewedRhythm[step];
+            case 1: return patternEngine->pubSlewedMelody[step];
+            case 2: return patternEngine->pubSlewedOctave[step];
+            case 3: return patternEngine->pubSlewedLegato[step];
+            case 4: return patternEngine->pubSlewedAccent[step];
+            case 5: return patternEngine->pubSlewedVariation[step];
+            case 6: return patternEngine->pubSlewedQmix[step];   // QMIX (buffer lane 6)
             default: return 0.5f;
         }
     }
@@ -78,15 +83,30 @@ struct MonoSandsParameterManager {
 
     // Post-spread value for (lane, step). REST/MEL/OCT get spread; LEG/ACC/VAR
     // are mono-only → raw slewed draw.
-    float spreadValue(int lane, int step) const {
-        if (isSpreadLane(lane)) {
-            float original = monoDraw(lane, step);
-
-            // Spread target is always the mono (voice-1) draw; self-target is a
-            // positive no-op and a negative invert.
-            return redDot::SpreadInterp::interpolate(original, original, laneSpread[lane]);
+    // Buffer lane (REST0/MEL1/OCT2/LEG3/ACC4/VAR5/QMIX6) → spread-engine lane
+    // (REST0/MEL1/OCT2/ACC3/QMIX4) used by SpreadInterp::applyMono. -1 = not spreadable.
+    static constexpr int bufferLaneToSpreadLane(int bufLane) {
+        switch (bufLane) {
+            case 0: return 0;   // REST
+            case 1: return 1;   // MELODY
+            case 2: return 2;   // OCTAVE
+            case 4: return 3;   // ACCENT (buffer 4 → spread 3)
+            case QMIX_BUFFER_LANE: return 4;   // QMIX (buffer 6 → spread 4)
+            default: return -1; // LEGATO(3)/VARIATION(5): mono-only, no spread
         }
-        return monoDraw(lane, step);
+    }
+
+    // DISPLAY value for one lane/step. Routes through SpreadInterp::applyMono so the
+    // display matches the audio path EXACTLY — including Follow-CA mode, where applyMono
+    // reads pe.spreadTargetMode[lane] and interpolates V1's pre-remap draw toward its
+    // post-remap (pinned-voice) material. Previously this hardcoded interpolate(own, own,
+    // ...) — always self-target — so the display never reflected Follow-CA spread even
+    // though the audio path did. That mismatch was the "knob does nothing" bug.
+    float spreadValue(int lane, int step) const {
+        if (!patternEngine) return monoDraw(lane, step);
+        const int sLane = bufferLaneToSpreadLane(lane);
+        if (sLane < 0) return monoDraw(lane, step);   // LEG/VAR: raw
+        return redDot::SpreadInterp::applyMono(*patternEngine, sLane, step, laneSpread[lane]);
     }
 
     // Sands owns the spread→final stage (audio thread): write spread(slewedDraw)

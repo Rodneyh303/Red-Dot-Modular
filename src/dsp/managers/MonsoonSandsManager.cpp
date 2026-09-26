@@ -383,24 +383,24 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             if (sprR || sprM || sprQ) {
             for (int i = 0; i < 16; ++i) {
                 if (sprR) {
-                    engine.pe.rhythmRandom[i] = redDot::SpreadInterp::apply(
-                        engine.pe, 0, i, engine.pe.slewedRhythm[i], engine.spreadE(0, 0));
+                    engine.pe.rhythmRandom[i] = redDot::SpreadInterp::applyMono(
+                        engine.pe, 0, i, engine.spreadE(0, 0));
                     engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];     // mono-only, raw
-                    engine.pe.accentRandom[i] = redDot::SpreadInterp::apply(
-                        engine.pe, 3, i, engine.pe.slewedAccent[i], engine.spreadE(0, 3));
+                    engine.pe.accentRandom[i] = redDot::SpreadInterp::applyMono(
+                        engine.pe, 3, i, engine.spreadE(0, 3));
                     engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
                 }
                 if (sprM) {
-                    engine.pe.melodyRandom[i] = redDot::SpreadInterp::apply(
-                        engine.pe, 1, i, engine.pe.slewedMelody[i], engine.spreadE(0, 1));
-                    engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(
-                        engine.pe, 2, i, engine.pe.slewedOctave[i], engine.spreadE(0, 2));
+                    engine.pe.melodyRandom[i] = redDot::SpreadInterp::applyMono(
+                        engine.pe, 1, i, engine.spreadE(0, 1));
+                    engine.pe.octaveRandom[i] = redDot::SpreadInterp::applyMono(
+                        engine.pe, 2, i, engine.spreadE(0, 2));
                 }
                 if (sprQ) {
                     // QMIX spread on its OWN axis. SpreadInterp lane 4 = QMIX (slewedQmix twin);
                     // engine spread lane 4 = STRAND_QMIX (spreadE absorbs engine→editor permutation).
-                    engine.pe.qmixRandom[i] = redDot::SpreadInterp::apply(
-                        engine.pe, 4, i, engine.pe.slewedQmix[i], engine.spreadE(0, 4));
+                    engine.pe.qmixRandom[i] = redDot::SpreadInterp::applyMono(
+                        engine.pe, 4, i, engine.spreadE(0, 4));
                 }
             }
             }  // end if(sprR || sprM || sprQ)
@@ -551,20 +551,22 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             const float spA = sprForLane(3);
             const float spQ = sprForLane(4);   // QMIX (spread/engine lane 4)
             engine.pe.setSandsActive(true);
+            // V1/mono spread: applyMono reads the mode from pe.spreadTargetMode[lane] and
+            // handles both original + target selection internally. No Monsoon pointer needed.
             for (int i = 0; i < 16; ++i) {
                 if (axR) {
-                    engine.pe.rhythmRandom[i] = redDot::SpreadInterp::apply(engine.pe, 0, i, engine.pe.slewedRhythm[i], spR);
-                    engine.pe.accentRandom[i] = redDot::SpreadInterp::apply(engine.pe, 3, i, engine.pe.slewedAccent[i], spA);
+                    engine.pe.rhythmRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 0, i, spR);
+                    engine.pe.accentRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 3, i, spA);
                     engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];
                     engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
                 }
                 if (axM) {
-                    engine.pe.melodyRandom[i] = redDot::SpreadInterp::apply(engine.pe, 1, i, engine.pe.slewedMelody[i], spM);
-                    engine.pe.octaveRandom[i] = redDot::SpreadInterp::apply(engine.pe, 2, i, engine.pe.slewedOctave[i], spO);
+                    engine.pe.melodyRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 1, i, spM);
+                    engine.pe.octaveRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 2, i, spO);
                 }
                 if (axQ) {
                     // QMIX spread on its OWN axis (SB_SANDS_Q).
-                    engine.pe.qmixRandom[i] = redDot::SpreadInterp::apply(engine.pe, 4, i, engine.pe.slewedQmix[i], spQ);
+                    engine.pe.qmixRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 4, i, spQ);
                 }
             }
             }   // end if (axR || axM) — spread only; V1 LOR above runs under lock too
@@ -657,14 +659,14 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // V1 (mono final arrays): converge the mono draw toward the ensemble.
             for (int i = 0; i < 16; ++i) {
                 if (mSpR) {
-                    engine.pe.rhythmRandom[i]    = redDot::SpreadInterp::apply(engine.pe, 0, i, engine.pe.slewedRhythm[i], spv[0]);
-                    engine.pe.accentRandom[i]    = redDot::SpreadInterp::apply(engine.pe, 3, i, engine.pe.slewedAccent[i], spv[3]);
+                    engine.pe.rhythmRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 0, i, spv[0]);
+                    engine.pe.accentRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 3, i, spv[3]);
                     engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];
                     engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
                 }
                 if (mSpM) {
-                    engine.pe.melodyRandom[i]    = redDot::SpreadInterp::apply(engine.pe, 1, i, engine.pe.slewedMelody[i], spv[1]);
-                    engine.pe.octaveRandom[i]    = redDot::SpreadInterp::apply(engine.pe, 2, i, engine.pe.slewedOctave[i], spv[2]);
+                    engine.pe.melodyRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 1, i, spv[1]);
+                    engine.pe.octaveRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 2, i, spv[2]);
                 }
             }
             // Each poly voice's final arrays: same global spread level applied per voice.
@@ -673,12 +675,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             for (int v = 0; v < nPoly; ++v) {
                 for (int i = 0; i < 16; ++i) {
                     if (mSpR) {
-                        engine.pe.polyRandom(v, SequencerEngine::PL_REST)[i] = redDot::SpreadInterp::apply(engine.pe, 0, i, engine.pe.slewedPolyRhythm[v][i], spv[0]);
-                        engine.pe.polyRandom(v, SequencerEngine::PL_ACCENT)[i] = redDot::SpreadInterp::apply(engine.pe, 3, i, engine.pe.slewedPolyAccent[v][i], spv[3]);
+                        engine.pe.polyRandom(v, SequencerEngine::PL_REST)[i] = redDot::SpreadInterp::applyPoly(engine.pe, 0, v, i, spv[0]);
+                        engine.pe.polyRandom(v, SequencerEngine::PL_ACCENT)[i] = redDot::SpreadInterp::applyPoly(engine.pe, 3, v, i, spv[3]);
                     }
                     if (mSpM) {
-                        engine.pe.polyRandom(v, SequencerEngine::PL_MELODY)[i] = redDot::SpreadInterp::apply(engine.pe, 1, i, engine.pe.slewedPolyMelody[v][i], spv[1]);
-                        engine.pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[i] = redDot::SpreadInterp::apply(engine.pe, 2, i, engine.pe.slewedPolyOctave[v][i], spv[2]);
+                        engine.pe.polyRandom(v, SequencerEngine::PL_MELODY)[i] = redDot::SpreadInterp::applyPoly(engine.pe, 1, v, i, spv[1]);
+                        engine.pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[i] = redDot::SpreadInterp::applyPoly(engine.pe, 2, v, i, spv[2]);
                     }
                 }
             }

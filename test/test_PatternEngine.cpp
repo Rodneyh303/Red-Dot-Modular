@@ -69,7 +69,7 @@ int main(){
     TEST("Different seeds → different patterns (very likely)", {
         auto p1=fresh(1.f,1.f), p2=fresh(9.f,9.f);
         PatternInput in=allActive();
-        p1.latchMix(1.f,1.f,1.f,1.f,1.f,1.f); p2.latchMix(1.f,1.f,1.f,1.f,1.f,1.f);  // scrub=6, slew=1 (no smoothing); q-mix twins
+        p1.latchMix(1.f,1.f,1.f,0.f,0.f,0.f); p2.latchMix(1.f,1.f,1.f,0.f,0.f,0.f);  // scrub=6, slew=0 (independent/raw); q-mix twins
         p1.redrawMelody(in); p2.redrawMelody(in);
         int diffs=0;
         for(int i=0;i<16;++i) if(p1.melodySemitone[i]!=p2.melodySemitone[i]) ++diffs;

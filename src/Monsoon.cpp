@@ -1071,8 +1071,10 @@ void Monsoon::process(const ProcessArgs& args) {
         // WriteLedger A1 tripwire are gone — the multi-writer hazard they policed is designed out.
 
         // Check for expander changes and update cached pointers
-        // Mirror the global spread-target mode onto the engine so display SpreadManagers
-        // pull one value (no per-widget push). Playback still passes it explicitly below.
+        // Mirror the per-lane spread target mode onto the engine so the spread path
+        // (which only has PatternEngine&) can read it without a Monsoon pointer.
+        for (int l = 0; l < 5; ++l)
+            engine.pe.spreadTargetMode[l] = getSpreadTargetMode(l);
         engine.beginStrandWriteBlock();   // debug-only: reset the per-block strand-writer ledger
         dnaManager.processDNA(expanderManager);
 
@@ -1175,6 +1177,10 @@ Model* modelMonsoon = createModel<Monsoon, MonsoonWidget>("Monsoon");
 
 void init(rack::Plugin* p) {
 	pluginInstance = p;
+	// Warm the Phi LUT on the load thread (~0.33 ms, once) so its one-time build never lands
+	// mid-block on the audio thread at first spread/slew use. NOT in a module constructor —
+	// multiple modules (Sands visuals, CA correlation) consume Phi. See SLEW_COPULA_PLAN.md.
+	redDot::copula::warmPhiLut();
 	p->addModel(modelMonsoon);
 	p->addModel(modelMonsoonInterchangeExpander);
 	p->addModel(modelMonsoonRafflesExpander);

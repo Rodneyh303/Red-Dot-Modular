@@ -1,17 +1,18 @@
 /**
- * test_SpreadInterp.cpp — spread interpolation invariants.
- * Compile: g++ -std=c++17 -I../src/dsp test_SpreadInterp.cpp -o test_si && ./test_si
+ * test_SpreadInterp.cpp — spread interpolation invariants (Phase 3: copula mix2).
  *
- * Guards the spread interpolation contract for a voice targeting its OWN draw
- * (voice-1 target):
- *   • spread >= 0 → NO-OP (nothing to converge toward).
- *   • spread <  0 → inverts toward (1−target) = (1−original); V1 negative spread is
- *     intended and meaningful (e.g. Sands Mono voice-1-target mode).
- * (Earlier the contract was 'no-op for both signs'; the negative-inverts behaviour is
- * now the agreed design, so this suite asserts the asymmetric rule.)
+ * Guards the spread contract after the copula rework:
+ *   • spread == 0  → returns original exactly (bit-identity).
+ *   • self-target (own == leader) + spread > 0 → no-op (V1 is already the target).
+ *   • self-target + spread = -1 → 1 - original (full invert).
+ *   • spread = +1 → returns targetValue (full adherence, mix2 special case).
+ *   • spread = -1 → returns 1 - targetValue (mirror, mix2 special case — the old 1-p special
+ *     case is gone, mix2 handles it).
+ *   • result always in [0, 1] (uniform marginal preserved — the whole point of the rework).
+ *   • deterministic (same inputs → same output).
  */
-#include "test_stubs.hpp"   // rack:: random/dsp stubs (PatternEngine deps)
-#include "SpreadInterp.hpp" // pulls the test-local rack.hpp shim for math::clamp
+#include "test_stubs.hpp"
+#include "SpreadInterp.hpp"
 #include <iostream>
 #include <sstream>
 #include <cmath>
@@ -27,46 +28,66 @@ static int s_pass=0, s_fail=0;
 #define EXPECT_NEAR(a,b,e) do{if(std::fabs((a)-(b))>(e)){std::ostringstream s;s<<#a<<"="<<(a)<<" not~"<<(b);throw std::runtime_error(s.str());}}while(0)
 
 int main(){
-    SUITE("self-target: POSITIVE/zero no-op, NEGATIVE inverts toward (1-original)");
+    SUITE("spread == 0 → bit-identity");
     {
-        // Agreed contract (supersedes the older 'both signs no-op'): a lane targeting
-        // its OWN draw (voice-1 target) does NOTHING for
-        // spread >= 0 (nothing to converge toward), but spread < 0 inverts the draw toward
-        // (1 - original) — V1 negative spread is meaningful and intended.
-        float os[] = {0.0f, 0.2f, 0.5f, 0.8f, 1.0f};
-        float posSpreads[] = {0.0f, 0.001f, 0.4f, 0.9f, 1.0f};
-        for (float o : os)
-            for (float sp : posSpreads)
-                TEST("self-target, spread>=0 → no-op", {
-                    EXPECT_NEAR(SpreadInterp::interpolate(o, o, sp), o, 1e-6f);
+        float vals[] = {0.0f, 0.2f, 0.5f, 0.8f, 1.0f};
+        for (float o : vals)
+            for (float t : vals)
+                TEST("zero spread returns original", {
+                    EXPECT_NEAR(SpreadInterp::interpolate(o, t, 0.0f), o, 0.0f);  // EXACT
                 });
-        // Negative self-target inverts: o + ((1-o)-o)*|s| = o + (1-2o)*|s|.
-        float negSpreads[] = {-0.001f, -0.4f, -0.9f, -1.0f};
-        for (float o : os)
-            for (float sp : negSpreads)
-                TEST("self-target, spread<0 → toward (1-o)", {
-                    float expected = o + (1.0f - 2.0f*o) * std::fabs(sp);
-                    EXPECT_NEAR(SpreadInterp::interpolate(o, o, sp), expected, 1e-6f);
-                });
-        // Concrete: o=0.8, s=-1 → inverts to 0.2; s=+1 → stays 0.8.
-        TEST("o=0.8 s=-1 → 0.2 (invert)", { EXPECT_NEAR(SpreadInterp::interpolate(0.8f,0.8f,-1.0f), 0.2f, 1e-6f); });
-        TEST("o=0.8 s=+1 → 0.8 (no-op)",  { EXPECT_NEAR(SpreadInterp::interpolate(0.8f,0.8f, 1.0f), 0.8f, 1e-6f); });
     }
 
-    SUITE("zero spread is always a no-op");
-    TEST("interpolate(0.3, 0.8, 0) == 0.3", { EXPECT_NEAR(SpreadInterp::interpolate(0.3f,0.8f,0.f), 0.3f, 1e-6f); });
+    SUITE("self-target (own == leader)");
+    {
+        float os[] = {0.0f, 0.2f, 0.5f, 0.8f, 1.0f};
+        float posSpreads[] = {0.001f, 0.4f, 0.9f, 1.0f};
+        for (float o : os)
+            for (float sp : posSpreads)
+                TEST("self-target, spread>0 → no-op", {
+                    EXPECT_NEAR(SpreadInterp::interpolate(o, o, sp), o, 1e-6f);
+                });
+        // Self-target at rho=-1 → full invert (1 - original).
+        TEST("self-target s=-1 → 1-original", {
+            EXPECT_NEAR(SpreadInterp::interpolate(0.8f, 0.8f, -1.0f), 0.2f, 1e-6f);
+        });
+        TEST("self-target s=-1 (0.3) → 0.7", {
+            EXPECT_NEAR(SpreadInterp::interpolate(0.3f, 0.3f, -1.0f), 0.7f, 1e-6f);
+        });
+    }
 
-    SUITE("cross-target spread still works (fix must not disturb real spreading)");
-    // spread>0 toward target: 0.3 + (0.8-0.3)*0.5 = 0.55
-    TEST("pos toward target", { EXPECT_NEAR(SpreadInterp::interpolate(0.3f,0.8f,0.5f), 0.55f, 1e-6f); });
-    // spread<0 toward (1-target): 0.3 + ((1-0.8)-0.3)*0.9 = 0.3 + (-0.1)*0.9 = 0.21
-    TEST("neg toward (1-target)", { EXPECT_NEAR(SpreadInterp::interpolate(0.3f,0.8f,-0.9f), 0.21f, 1e-6f); });
-    // full positive spread reaches target
-    TEST("s=+1 reaches target", { EXPECT_NEAR(SpreadInterp::interpolate(0.2f,0.9f,1.0f), 0.9f, 1e-6f); });
+    SUITE("endpoints: rho = +1 and -1");
+    {
+        TEST("rho=+1 reaches target", {
+            EXPECT_NEAR(SpreadInterp::interpolate(0.2f, 0.9f, 1.0f), 0.9f, 1e-6f);
+        });
+        TEST("rho=-1 reaches 1-target (mirror)", {
+            EXPECT_NEAR(SpreadInterp::interpolate(0.3f, 0.8f, -1.0f), 0.2f, 1e-6f);
+        });
+        TEST("rho=+1 reaches target (0.5,0.5)", {
+            EXPECT_NEAR(SpreadInterp::interpolate(0.5f, 0.5f, 1.0f), 0.5f, 1e-6f);
+        });
+    }
 
-    SUITE("result stays clamped to [0,1]");
-    TEST("no overshoot high", { float r=SpreadInterp::interpolate(0.9f,0.05f,-1.0f); EXPECT(r>=0.f && r<=1.f); });
-    TEST("no overshoot low",  { float r=SpreadInterp::interpolate(0.1f,0.95f,-1.0f); EXPECT(r>=0.f && r<=1.f); });
+    SUITE("mid-rho: uniform marginal + determinism");
+    {
+        float os[] = {0.05f, 0.2f, 0.5f, 0.8f, 0.95f};
+        float ts[] = {0.1f, 0.4f, 0.6f, 0.9f};
+        float rhos[] = {-0.8f, -0.4f, 0.3f, 0.7f, 0.95f};
+        for (float o : os)
+            for (float t : ts)
+                for (float r : rhos) {
+                    TEST("result in [0,1]", {
+                        float v = SpreadInterp::interpolate(o, t, r);
+                        EXPECT(v >= 0.0f && v <= 1.0f);
+                    });
+                    TEST("deterministic", {
+                        float a = SpreadInterp::interpolate(o, t, r);
+                        float b = SpreadInterp::interpolate(o, t, r);
+                        EXPECT(a == b);
+                    });
+                }
+    }
 
     std::cout<<"\n"<<s_pass<<" passed, "<<s_fail<<" failed\n";
     return s_fail ? 1 : 0;

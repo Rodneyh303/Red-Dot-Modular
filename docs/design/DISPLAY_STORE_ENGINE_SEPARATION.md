@@ -109,3 +109,39 @@ Both are the SAME class as the East spread work (LOR got the separation, spread 
 layer over), consistent with the recurring finding that spread lags LOR in the display/store
 separation. Mono's spread path: MonsoonSandsManager (readStrand/spread) + the Mono visual
 expander's spread knobs. Confirm symptom, then apply the matching East-derived fix.
+
+---
+
+## RULE: visuals read PUBLISHED snapshots, never live engine buffers
+
+**Confirmed again (and fixed) during the copula work — this has now bitten at least three times.**
+
+**Symptom.** Sands lane displays flickered/glitched while dragging the spread and mix knobs — on
+**Mono and Macro but NOT East**.
+
+**Cause — a pre-existing torn read, not a new bug.** Mono and Macro drew from the engine's LIVE
+buffers (`pe.slewedRhythm[...]`, `engine.spreadE`) while the audio thread was rewriting them. East
+read PUBLISHED values (`polySpreadEffective[viewedVoice][lane]`) — a snapshot — so it was immune.
+The race had always been there; it was invisible only because `recomputeEffective*` took a few
+microseconds. The copula work took it to ~116 us AND it runs every frame while a knob is dragged,
+so the UI thread started sampling the arrays mid-rewrite and drew partially-updated lanes.
+
+**Fix (applied): publish, like East does.** The engine completes the recompute into a back buffer
+and swaps/publishes; visuals read only the published copy. Removes the race by construction and
+brings all three visuals onto one convention.
+
+**Do NOT "fix" this by making the recompute faster.** That is the worst outcome: the LUT will cut
+~116 us to ~20 us, the flicker becomes rare, and a real race survives as an occasional glitch that
+is miserable to reproduce. Latency is not the bug; unsynchronised sharing is.
+
+**Related sightings (same class):** the Macro spread mod-arc gate comment — "NOT a set-vs-effective
+delta, which races during a manual knob turn (control-rate spreadEffective lags the live param ->
+red residue arc; **same desync as the Monsoon big-5 fix**)". LOR got the separation before spread
+did, repeatedly.
+
+**Checklist for any NEW visual or display value:**
+1. Does it read an engine array the audio thread writes? If yes, it must read a published snapshot.
+2. Is the producing recompute guarded so it only runs on real change? (Guards limit frequency, they
+   do NOT remove the race.)
+3. Gate "is modulated" cues on a real source (e.g. jack connected), never on a set-vs-effective
+   delta — that delta legitimately appears during a knob turn.

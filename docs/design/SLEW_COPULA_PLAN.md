@@ -135,6 +135,18 @@ win there than the ~5x seen on glibc).
 - Saturates to 0/1 beyond |z| = 6 (correct to ~1e-9), and the half-range symmetry means no accuracy
   loss on the negative side.
 
+**The rule, stated neatly (Rodney): IF IT'S CACHED, IT CAN AFFORD TO BE EXACT.**
+The accuracy split falls out of the caching structure — it is not a policy anyone has to remember:
+
+| call site | cacheable? | frequency | precision needed | use |
+|---|---|---|---|---|
+| `Phi` inside `PhiInv`'s Halley step | YES — `PhiInv` is cached per draw value | 544 on a new position; 34,816 on a cold build | full (or the refinement converges only to LUT accuracy and the 1e-15 round-trip test fails) | **exact `Phi`** |
+| `Phi` at the end of the slew readout | NO — advancing one position moves every weight onto a different draw, so all 544 `z` change | every position, incl. every frame while scrub-dragging | ~1e-7 (float probability lane) | **LUT** |
+| `Phi` in spread's `mix2` | NO — `z` depends on the live rho | per voice per lane | ~1e-7 (same lanes) | **LUT** |
+| `Phi` in the primitive unit tests | n/a | n/a | reference | **exact `Phi`** |
+
+So: cached and accuracy-critical -> exact; uncacheable, hot and float-precision -> LUT.
+
 **Rules:**
 1. **Build the table at static-init from the EXACT `Phi`** — one source of truth, no transcribed
    constants.
@@ -159,3 +171,66 @@ bit-exact in floating point, so forward and backward would drift. That is exactl
 K-term recompute is mandatory. Expected steady state after the LUT: ~1.6 us of `Phi` + ~7 us of MACs
 per position, i.e. ~9 us — so a scrub drag (2 windows x 3 streams) lands around 54 us/frame, well
 under 1% of a 60 Hz budget, down from ~0.7 ms.
+
+---
+
+## IDEA (parked, Rodney): scrub RANGE — make adjacent positions modulatable
+
+**Problem.** Scrub spans 6 positions on one knob (`s = mix*6`), so a CV sweep between two ADJACENT
+draws (0->1 back, or 1->2 back) uses only a sixth of the input range. Fighting attenuator precision
+to get a controlled morph between two neighbouring patterns. This is about MODULATION RESOLUTION,
+not manual positioning.
+
+**Fix: a window into the history**, so scrub's full travel (and full CV range) maps onto just the
+region of interest.
+- **Depth only** (`scrub spans 0..D`) — simple, but always anchored at 0, so you still cannot get
+  full resolution between e.g. 3 and 4.
+- **Span + offset** (`scrub spans offset .. offset+span`) — any two adjacent positions can fill the
+  whole travel. Solves the stated case properly.
+- **Minimal variant**: OFFSET only, span fixed at 1 — "offset picks the PAIR, scrub morphs within
+  it". Arguably the cleanest for the exact problem described.
+
+**Engine cost: nil.** Scrub already computes `s = mix*6` and reads `N-f` / `N-f-1`; this only changes
+how the knob maps to `s`. No new draws, no new state, reversibility untouched (still a pure function
+of position).
+
+**Panel:** Rodney — "maybe two small knobs for range"; also floated a CONTEXT-MENU setup "like the
+mode C/D melody choices". Monsoon is at 45HP after the Big-Five widening, so weigh two small knobs
+vs menu + existing knob (e.g. expose OFFSET physically, keep SPAN in the menu).
+
+**Decide when changing depth/offset:** preserve the ABSOLUTE position (zoom in around where you
+are), not the knob fraction (which would make the position jump). Almost certainly what is wanted.
+
+**Related, cheap, different feature — SNAP.** A "snap scrub to whole positions" menu toggle lands
+exactly ON a past pattern with no interpolation (`f = 0` is the only way to hear a past draw
+unmixed). Exact recall rather than a blend. Costs no panel space, and CV + an external quantiser
+already approximates it.
+
+
+---
+
+## LUT warm-up: initialise at plugin load, not lazily (Rodney)
+
+Build the `Phi` LUT once at PLUGIN LOAD so the first call never lands mid-block on the audio thread.
+Cost is trivial — 4,097 exact `Phi` calls at MinGW's ~80 ns is **~0.33 ms**, once, on the load
+thread — but lazily it would be a 0.33 ms spike at an arbitrary first use during playback.
+
+**Where: `plugin.cpp` `init()`, NOT a Monsoon constructor.** Monsoon is not the only consumer (the
+Sands visuals go through spread, and CA's correlation pairs will later), and a per-instance
+constructor would either repeat the work or need its own guard.
+
+**How: a function-local static (Meyers singleton), then TOUCH it in `init()`.**
+```cpp
+// GaussianCopula.hpp / PhiLut.hpp
+inline const PhiLut& phiLut() { static const PhiLut t; return t; }   // thread-safe, once
+
+// plugin.cpp init()
+(void)redDot::copula::phiLut();   // warm off the audio thread
+```
+A function-local static gives thread-safe one-time init with NO static-initialisation-order hazard;
+a namespace-scope global could in principle be read by another translation unit's static init before
+it is built. The explicit touch in `init()` is what moves the cost off the audio thread — without
+it, initialisation happens lazily at first use.
+
+Keep: build the table from the EXACT `Phi` (one source of truth — never from itself, never from
+transcribed constants); it is ~16 KB as floats, so do not grow it casually.

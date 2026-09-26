@@ -418,20 +418,26 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // already yields the pinned source's draw — Macro's own spread then applies on top.
         // Plain own-voice read; no srcRow indirection here.
         using PL = SequencerEngine;  // PL::PL_REST etc. (enum lives in SequencerEngine)
+        // Read PUBLISHED snapshots (pubSlewed*) — NOT the live slewed* arrays the audio thread
+        // is rewriting during recomputeEffective* (now ~116µs at r>0). Reading live arrays
+        // mid-rewrite → torn read → flicker. (East already reads published values; this brings
+        // Macro in line.)
         float base;
         if (mono) {
-            base = (engLane == PL::PL_REST)   ? pe.slewedRhythm[step & 0x0F]
-                 : (engLane == PL::PL_MELODY) ? pe.slewedMelody[step & 0x0F]
-                 : (engLane == PL::PL_OCTAVE) ? pe.slewedOctave[step & 0x0F]
-                 :                              pe.slewedAccent[step & 0x0F];
+            base = (engLane == PL::PL_REST)   ? pe.pubSlewedRhythm[step & 0x0F]
+                 : (engLane == PL::PL_MELODY) ? pe.pubSlewedMelody[step & 0x0F]
+                 : (engLane == PL::PL_OCTAVE) ? pe.pubSlewedOctave[step & 0x0F]
+                 : (engLane == PL::PL_ACCENT) ? pe.pubSlewedAccent[step & 0x0F]
+                 :                              pe.pubSlewedQmix[step & 0x0F];
         } else {
             int v = rack::math::clamp(polyVoice, 0, 14);
-            base = (engLane == PL::PL_REST)   ? pe.slewedPolyRhythm[v][step & 0x0F]
-                 : (engLane == PL::PL_MELODY) ? pe.slewedPolyMelody[v][step & 0x0F]
-                 : (engLane == PL::PL_OCTAVE) ? pe.slewedPolyOctave[v][step & 0x0F]
-                 :                              pe.slewedPolyAccent[v][step & 0x0F];
+            base = (engLane == PL::PL_REST)   ? pe.pubSlewedPolyRhythm[v][step & 0x0F]
+                 : (engLane == PL::PL_MELODY) ? pe.pubSlewedPolyMelody[v][step & 0x0F]
+                 : (engLane == PL::PL_OCTAVE) ? pe.pubSlewedPolyOctave[v][step & 0x0F]
+                 : (engLane == PL::PL_ACCENT) ? pe.pubSlewedPolyAccent[v][step & 0x0F]
+                 :                              pe.pubSlewedPolyQmix[v][step & 0x0F];
         }
-        return redDot::SpreadInterp::apply(pe, engLane, step, base, sp);
+        return redDot::SpreadInterp::applyAnchorV1Only(pe, engLane, step, base, sp);
     }
 
     void step() override {

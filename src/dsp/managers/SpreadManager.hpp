@@ -297,8 +297,8 @@ struct SpreadManager {
     float original = (monoContext || numVoices <= 1)
         ? redDot::SpreadInterp::monoSlewed(*patternEngine, lane, step)
         : redDot::SpreadInterp::polySlewed(*patternEngine, lane, startVoiceIdx + voiceIdx, step);
-    return redDot::SpreadInterp::apply(*patternEngine, lane, step,
-                                       original, getSpread(voiceIdx, lane));
+    return redDot::SpreadInterp::applyAnchorV1Only(*patternEngine, lane, step,
+                                                   original, getSpread(voiceIdx, lane));
   }
   
   // ===== BATCH OPERATIONS =====

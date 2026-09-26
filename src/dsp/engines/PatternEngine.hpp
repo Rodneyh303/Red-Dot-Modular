@@ -23,8 +23,11 @@
 #include <cmath>
 #include <cstdint>
 #include <algorithm>
+#include <unordered_map>
+#include <utility>
 #include "../PhiloxRng.hpp"
 #include "../LaneMapping.hpp"   // dotModular::STRAND_* for finalRandomByStrand
+#include "../MovingAverageCopula.hpp"   // Phase 1: slew as normal-space moving-average copula (replaces L1 linear-uniform window)
 #include "../../tuning/TuningTable.hpp"   // dotModular::TuningTable — shared per-degree tuning (Sikit)
 
 template<typename T>
@@ -65,9 +68,9 @@ struct PatternInput {
     bool  diceLiveQ        = false;   // q-mix dice stream allowed to redraw under lock (own axis, SB_DICE_Q)
     // Playable dice slew (0..1) per group. Latched at step 0; morphs the
     // effective pattern between the locked (A) and candidate (B) draws.
-    float rhythmSlew       = 1.f;
-    float melodySlew       = 1.f;
-    float qmixSlew         = 1.f;   // q-mix twin of melodySlew (Task 4)
+    float rhythmSlew       = 0.f;   // bipolar: -1=anti, 0=independent, +1=correlated
+    float melodySlew       = 0.f;
+    float qmixSlew         = 0.f;   // q-mix twin of melodySlew (Task 4)
     // Live A<->B blend (MIX). Separate from slew: slew is consumed at roll
     // (shapes B); mix is the live, continuous A<->B morph used for output.
     float rhythmMix        = 0.f;
@@ -135,6 +138,11 @@ struct PatternEngine {
     // ENGINE STRAND at a given step, 0..1. Now a direct index into random_[0] (mono row): strand index
     // IS the editor-lane column (MONO_LANE_TO_STRAND identity), so no table/permutation. Out-of-range
     // falls back to rhythm (matches the old default:). Used by the Sands visual probability CV outs.
+    // Spread target mode per lane (0=Anchor V1, 1=Follow CA). Mirrored from the Monsoon's
+    // EditorState each control cycle so the spread path (which only has PatternEngine&) can
+    // read it without a Monsoon pointer. SPREAD_TARGET_MODES.md.
+    uint8_t spreadTargetMode[5] = {0,0,0,0,0};   // 5 poly lanes: REST/MEL/OCT/ACC/QMIX
+
     // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md §3-REVISED, PRE-SPREAD) ──
     // The pins remap the SLEWED buffers (post A/B-mix, post-slew, PRE-spread) so that a
     // pinned voice's borrowed draw is then spread with the CONSUMER's own reference —
@@ -190,7 +198,32 @@ struct PatternEngine {
     // doQ (SB_CA_Q): q-mix rides its OWN green pin plane (caQmixSrc), gated independently of the
     // melody plane. Defaults true (unlocked / callers pre-dating q-mix behave as before, but q-mix
     // now only remaps when doQ AND its own plane is non-identity).
+    // Pre-remap snapshots — the voice's OWN draw before CA pins overwrite it. Follow-CA spread
+    // interpolates between this (own) and the post-remap value (leader). Without it follow-CA is
+    // a no-op: the remap already replaced own with leader, so spread would blend leader with itself.
+    // Populated unconditionally at the start of remapSlewedByPins (even on identity skip, where
+    // pre-remap == post-remap). Read by the spread path when the lane's mode is Follow CA.
+    float preRemapSlewedRhythm[16]={}, preRemapSlewedVariation[16]={}, preRemapSlewedLegato[16]={}, preRemapSlewedAccent[16]={};
+    float preRemapSlewedMelody[16]={}, preRemapSlewedOctave[16]={}, preRemapSlewedQmix[16]={};
+    float preRemapSlewedPolyRhythm[15][16]={}, preRemapSlewedPolyMelody[15][16]={}, preRemapSlewedPolyOctave[15][16]={};
+    float preRemapSlewedPolyAccent[15][16]={}, preRemapSlewedPolyQmix[15][16]={};
+    void snapshotPreRemap() {
+        for (int i=0;i<16;++i){
+            preRemapSlewedRhythm[i]=slewedRhythm[i]; preRemapSlewedVariation[i]=slewedVariation[i];
+            preRemapSlewedLegato[i]=slewedLegato[i]; preRemapSlewedAccent[i]=slewedAccent[i];
+            preRemapSlewedMelody[i]=slewedMelody[i]; preRemapSlewedOctave[i]=slewedOctave[i];
+            preRemapSlewedQmix[i]=slewedQmix[i];
+            for(int v=0;v<15;++v){
+                preRemapSlewedPolyRhythm[v][i]=slewedPolyRhythm[v][i];
+                preRemapSlewedPolyMelody[v][i]=slewedPolyMelody[v][i];
+                preRemapSlewedPolyOctave[v][i]=slewedPolyOctave[v][i];
+                preRemapSlewedPolyAccent[v][i]=slewedPolyAccent[v][i];
+                preRemapSlewedPolyQmix[v][i]=slewedPolyQmix[v][i];
+            }
+        }
+    }
     void remapSlewedByPins(bool doR = true, bool doM = true, bool doQ = true) {
+        snapshotPreRemap();   // always snapshot, even on identity skip (pre == post then)
         // Fast identity skip — only over the families we would actually remap.
         bool identity = true;
         for (int v = 0; v < 16 && identity; ++v) {
@@ -349,7 +382,7 @@ struct PatternEngine {
     // Rhythm group: rhythm / variation / legato / accent (+ poly rhythm)
     // Melody group: melody / octave (+ poly melody / poly octave)
     // Latched slew (sampled at step 0), and the last value we recomputed at.
-    float rhythmSlewLatched = 1.f, melodySlewLatched = 1.f, qmixSlewLatched = 1.f;
+    float rhythmSlewLatched = 0.f, melodySlewLatched = 0.f, qmixSlewLatched = 0.f;
     float rhythmSlewApplied =-1.f, melodySlewApplied =-1.f, qmixSlewApplied =-1.f;  // force first recompute
     // Live MIX (A<->B blend) latched at control rate; the effective arrays are
     // recomputed when it changes. This is what drives the continuous morph.
@@ -379,6 +412,28 @@ struct PatternEngine {
     float slewedPolyRhythm[15][16]={}, slewedPolyMelody[15][16]={}, slewedPolyOctave[15][16]={};
     float slewedPolyAccent[15][16]={};
     float slewedPolyQmix[15][16]={};   // q-mix twin of slewedPolyMelody
+    // Published snapshots of the slewed buffers — coherent copies the UI thread reads. The audio
+    // thread writes slewed* during recomputeEffective* (now ~116µs at r>0), then publishes a
+    // snapshot here. Without this, Mono/Macro visuals read slewed* mid-rewrite → torn read →
+    // flicker. East already reads published polySpreadEffective (immune). The copy is ~1µs (1k
+    // floats), so the race window drops from ~116µs to ~1µs — practically eliminating flicker.
+    float pubSlewedRhythm[16]={}, pubSlewedVariation[16]={}, pubSlewedLegato[16]={}, pubSlewedAccent[16]={};
+    float pubSlewedMelody[16]={}, pubSlewedOctave[16]={}, pubSlewedQmix[16]={};
+    float pubSlewedPolyRhythm[15][16]={}, pubSlewedPolyMelody[15][16]={}, pubSlewedPolyOctave[15][16]={};
+    float pubSlewedPolyAccent[15][16]={}, pubSlewedPolyQmix[15][16]={};
+    void publishSlewedRhythm() {
+        for (int i=0;i<16;++i){ pubSlewedRhythm[i]=slewedRhythm[i]; pubSlewedVariation[i]=slewedVariation[i];
+            pubSlewedLegato[i]=slewedLegato[i]; pubSlewedAccent[i]=slewedAccent[i];
+            for(int v=0;v<15;++v){ pubSlewedPolyRhythm[v][i]=slewedPolyRhythm[v][i]; pubSlewedPolyAccent[v][i]=slewedPolyAccent[v][i]; } }
+    }
+    void publishSlewedMelody() {
+        for (int i=0;i<16;++i){ pubSlewedMelody[i]=slewedMelody[i]; pubSlewedOctave[i]=slewedOctave[i];
+            for(int v=0;v<15;++v){ pubSlewedPolyMelody[v][i]=slewedPolyMelody[v][i]; pubSlewedPolyOctave[v][i]=slewedPolyOctave[v][i]; } }
+    }
+    void publishSlewedQmix() {
+        for (int i=0;i<16;++i){ pubSlewedQmix[i]=slewedQmix[i];
+            for(int v=0;v<15;++v) pubSlewedPolyQmix[v][i]=slewedPolyQmix[v][i]; }
+    }
     // Set true when any Sands visual expander owns the spread→final stage this
     // cycle. When false, slew copies slewedDraw → final.
     bool  sandsActive = false;
@@ -571,21 +626,21 @@ struct PatternEngine {
     // so patching the single SEED input collapsed the two streams into one.
     inline void seedRhythmPhilox(float seedFloat) {
         rhythmPhilox.seed64(redDot::seed::deriveKey(seedFloat, redDot::seed::STREAM_RHYTHM));
-        rhythmDrawCtr = 0;
+        rhythmDrawCtr = 0; rhythmDrawCache_.clear();   // key+counter changed → cached draws stale
     }
     inline void seedMelodyPhilox(float seedFloat) {
         melodyPhilox.seed64(redDot::seed::deriveKey(seedFloat, redDot::seed::STREAM_MELODY));
-        melodyDrawCtr = 0;
+        melodyDrawCtr = 0; melodyDrawCache_.clear();
     }
     // q-mix twin of seedMelodyPhilox — its OWN independent stream via STREAM_SOURCE_SELECT (=3),
     // so the same seed float yields a q-mix key decorrelated from rhythm/melody/CA.
     inline void seedQmixPhilox(float seedFloat) {
         qmixPhilox.seed64(redDot::seed::deriveKey(seedFloat, redDot::seed::STREAM_SOURCE_SELECT));
-        qmixDrawCtr = 0;
+        qmixDrawCtr = 0; qmixDrawCache_.clear();
     }
-    inline void seedRhythmPhiloxFull() { rhythmPhilox.seed64(rack::random::u64()); rhythmDrawCtr = 0; }
-    inline void seedMelodyPhiloxFull() { melodyPhilox.seed64(rack::random::u64()); melodyDrawCtr = 0; }
-    inline void seedQmixPhiloxFull()   { qmixPhilox.seed64(rack::random::u64());   qmixDrawCtr   = 0; }
+    inline void seedRhythmPhiloxFull() { rhythmPhilox.seed64(rack::random::u64()); rhythmDrawCtr = 0; rhythmDrawCache_.clear(); }
+    inline void seedMelodyPhiloxFull() { melodyPhilox.seed64(rack::random::u64()); melodyDrawCtr = 0; melodyDrawCache_.clear(); }
+    inline void seedQmixPhiloxFull()   { qmixPhilox.seed64(rack::random::u64());   qmixDrawCtr   = 0; qmixDrawCache_.clear();   }
 
     inline float philoxRhythm() {
         uint64_t base = (uint64_t)(rhythmDrawCtr) * DRAW_CHUNK + rhythmCursor++;
@@ -645,48 +700,154 @@ struct PatternEngine {
             for (int v=0;v<15;++v) d.polyQmix[v][i]=philoxQmixAt(pos,c++);
         }
     }
-    // B2 truncated-FIR slew smoothing (DICE_SCRUB_SLEW_B2.md): geometric moving average of raw
-    // draws pos..pos-SCRUB_K, weights (1-slew)^j normalized. Pure fn of pos -> reversible.
-    static constexpr int SCRUB_K = 6;
+    // ── Phase 1 PhiInv cache ───────────────────────────────────────────────────
+    // ~91% of patternXAt's cost is PhiInv (Acklam+Halley), not Philox. PhiInv(u) is a PURE
+    // FUNCTION OF THE DRAW u, so caching it per (stream, pos) is reversal-neutral — the cached
+    // value is identical whether pos is reached forward or backward, and re-derivable from
+    // (key, pos) alone. Each cache entry holds the raw draw PLUS the per-value PhiInv, computed
+    // once on miss; patternXAt then gathers K PhiInv windows and calls applyZ (no PhiInv in the
+    // hot loop). Seed clears the map (counter → 0 invalidates every old pos). Unbounded across a
+    // session's walk — accepted per the chosen design (pure-fn-of-pos, hit under scrub/reverse).
+    struct CachedRhythmDraw {
+        RhythmDraw draw;
+        double zRhythm[16], zVariation[16], zLegato[16], zAccent[16];
+        double zPolyRhythm[15][16], zPolyAccent[15][16];
+    };
+    struct CachedMelodyDraw {
+        MelodyDraw draw;
+        double zMelody[16], zOctave[16], zPolyMelody[15][16], zPolyOctave[15][16];
+    };
+    struct CachedQmixDraw {
+        QmixDraw draw;
+        double zQmix[16], zPolyQmix[15][16];
+    };
+    // mutable: patternXAt is const (read from const engine refs in places) but the cache is a
+    // pure-fn-of-pos memo (no observable state change) — so const-correctness is preserved.
+    mutable std::unordered_map<int64_t, CachedRhythmDraw> rhythmDrawCache_;
+    mutable std::unordered_map<int64_t, CachedMelodyDraw> melodyDrawCache_;
+    mutable std::unordered_map<int64_t, CachedQmixDraw>   qmixDrawCache_;
+    // Returns the cached entry for `pos`, computing+inserting on miss.
+    CachedRhythmDraw& cachedRhythmDraw(int64_t pos) const {
+        auto it = rhythmDrawCache_.find(pos);
+        if (it != rhythmDrawCache_.end()) return it->second;
+        CachedRhythmDraw& e = rhythmDrawCache_[pos];
+        rawDrawRhythmPatternAt(pos, e.draw);
+        for (int i=0;i<16;++i){ e.zRhythm[i]=redDot::copula::PhiInv(e.draw.rhythm[i]);
+            e.zVariation[i]=redDot::copula::PhiInv(e.draw.variation[i]);
+            e.zLegato[i]=redDot::copula::PhiInv(e.draw.legato[i]);
+            e.zAccent[i]=redDot::copula::PhiInv(e.draw.accent[i]);
+            for(int v=0;v<15;++v){ e.zPolyRhythm[v][i]=redDot::copula::PhiInv(e.draw.polyRhythm[v][i]);
+                e.zPolyAccent[v][i]=redDot::copula::PhiInv(e.draw.polyAccent[v][i]); } }
+        return e;
+    }
+    CachedMelodyDraw& cachedMelodyDraw(int64_t pos) const {
+        auto it = melodyDrawCache_.find(pos);
+        if (it != melodyDrawCache_.end()) return it->second;
+        CachedMelodyDraw& e = melodyDrawCache_[pos];
+        rawDrawMelodyPatternAt(pos, e.draw);
+        for (int i=0;i<16;++i){ e.zMelody[i]=redDot::copula::PhiInv(e.draw.melody[i]);
+            e.zOctave[i]=redDot::copula::PhiInv(e.draw.octave[i]);
+            for(int v=0;v<15;++v){ e.zPolyMelody[v][i]=redDot::copula::PhiInv(e.draw.polyMelody[v][i]);
+                e.zPolyOctave[v][i]=redDot::copula::PhiInv(e.draw.polyOctave[v][i]); } }
+        return e;
+    }
+    CachedQmixDraw& cachedQmixDraw(int64_t pos) const {
+        auto it = qmixDrawCache_.find(pos);
+        if (it != qmixDrawCache_.end()) return it->second;
+        CachedQmixDraw& e = qmixDrawCache_[pos];
+        rawDrawQmixPatternAt(pos, e.draw);
+        for (int i=0;i<16;++i){ e.zQmix[i]=redDot::copula::PhiInv(e.draw.qmix[i]);
+            for(int v=0;v<15;++v) e.zPolyQmix[v][i]=redDot::copula::PhiInv(e.draw.polyQmix[v][i]); }
+        return e;
+    }
+    // ── Phase 1: slew as a normal-space moving-average Gaussian copula ──────────
+    // Replaces the B2 L1 linear-uniform window (which collapsed variance to ~1/K at low slew —
+    // the AVERAGE_POLY failure mode). The window is now K = MovingAverageCopula::K taps over the
+    // SAME directly-addressable raw draws pos..pos-K+1 (no carried state, pure fn of pos →
+    // reversible, exactly as the 7-tap loop was). The summation is the copula's:
+    //   z = Σ_j w_j(r)·PhiInv(u_{pos-j}),  Σ w² = 1,  out = Phi(z)  → EXACTLY uniform for every r.
+    //
+    // KNOB MAPPING (inverted): the slew KNOB is 1 = sharp/raw (today's single-draw), 0 = smooth.
+    // Slew knob is bipolar (-1..+1), matching spread's polarity landmarks:
+    //   +1 → r = +R_MAX (max positive correlation = smooth/sustained)
+    //    0 → r =  0     (independent = raw draw, bit-identity)
+    //   -1 → r = -R_MAX (max negative correlation = hocket/interlock)
+    // r = slewKnob · R_MAX (direct, no inversion). See docs/design/SLEW_COPULA_PLAN.md.
+    static constexpr int SCRUB_K = 6;   // the SCRUB span (Phase 2); NOT the copula K (64). Kept for the scrub callers.
+    // r from a bipolar slew knob value: direct mapping, clamped to [-R_MAX, R_MAX]. Non-finite → 0.
+    static inline float slewKnobToR(float slewKnob) {
+        if (!(slewKnob >= -1.f && slewKnob <= 1.f)) return 0.f;
+        return slewKnob * (float)redDot::MovingAverageCopula::R_MAX;
+    }
+    // patternXAt: gather K cached draws (pos..pos-K+1, newest first) and apply the copula in
+    // normal space. r==0 (slew knob = 1) short-circuits to the raw draw u[0] BITWISE (the
+    // bit-identity guarantee) — never routed through PhiInv/Phi. Full K-term recompute each call
+    // (never a running sum); the cache memoises the per-draw PhiInv, which is the ~91% cost.
     inline void patternRhythmAt(int64_t pos, float slew, RhythmDraw& out) const {
-        const float sl = slew<0.f?0.f:(slew>1.f?1.f:slew);
-        float w[SCRUB_K+1], wsum=0.f, g=1.f;
-        for (int j=0;j<=SCRUB_K;++j){ w[j]=g; wsum+=g; g*=(1.f-sl); }
-        const float inv=(wsum>0.f)?1.f/wsum:1.f;
-        for (int i=0;i<16;++i){ out.rhythm[i]=out.variation[i]=out.legato[i]=out.accent[i]=0.f;
-            for(int v=0;v<15;++v){out.polyRhythm[v][i]=0.f;out.polyAccent[v][i]=0.f;} }
-        RhythmDraw r;
-        for (int j=0;j<=SCRUB_K;++j){ rawDrawRhythmPatternAt(pos-j,r); const float wj=w[j]*inv;
-            for(int i=0;i<16;++i){ out.rhythm[i]+=wj*r.rhythm[i]; out.variation[i]+=wj*r.variation[i];
-                out.legato[i]+=wj*r.legato[i]; out.accent[i]+=wj*r.accent[i];
-                for(int v=0;v<15;++v){ out.polyRhythm[v][i]+=wj*r.polyRhythm[v][i];
-                    out.polyAccent[v][i]+=wj*r.polyAccent[v][i]; } } }
+        const float r = slewKnobToR(slew);
+        constexpr std::size_t K = redDot::MovingAverageCopula::K;
+        if (r == 0.f) {                   // r == 0: raw draw at pos, bitwise (no PhiInv)
+            const CachedRhythmDraw& e = cachedRhythmDraw(pos);
+            out = e.draw;
+            return;
+        }
+        // Gather K cached entries' PhiInv windows, newest first.
+        const CachedRhythmDraw* win[K];
+        for (std::size_t j = 0; j < K; ++j) win[j] = &cachedRhythmDraw(pos - (int64_t)j);
+        double zw[K];
+        for (int i=0;i<16;++i){
+            for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zRhythm[i];
+            out.rhythm[i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+            for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zVariation[i];
+            out.variation[i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+            for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zLegato[i];
+            out.legato[i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+            for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zAccent[i];
+            out.accent[i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+            for(int v=0;v<15;++v){
+                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zPolyRhythm[v][i];
+                out.polyRhythm[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zPolyAccent[v][i];
+                out.polyAccent[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+            }
+        }
     }
     inline void patternMelodyAt(int64_t pos, float slew, MelodyDraw& out) const {
-        const float sl = slew<0.f?0.f:(slew>1.f?1.f:slew);
-        float w[SCRUB_K+1], wsum=0.f, g=1.f;
-        for (int j=0;j<=SCRUB_K;++j){ w[j]=g; wsum+=g; g*=(1.f-sl); }
-        const float inv=(wsum>0.f)?1.f/wsum:1.f;
-        for (int i=0;i<16;++i){ out.melody[i]=out.octave[i]=0.f;
-            for(int v=0;v<15;++v){out.polyMelody[v][i]=0.f;out.polyOctave[v][i]=0.f;} }
-        MelodyDraw r;
-        for (int j=0;j<=SCRUB_K;++j){ rawDrawMelodyPatternAt(pos-j,r); const float wj=w[j]*inv;
-            for(int i=0;i<16;++i){ out.melody[i]+=wj*r.melody[i]; out.octave[i]+=wj*r.octave[i];
-                for(int v=0;v<15;++v){ out.polyMelody[v][i]+=wj*r.polyMelody[v][i];
-                    out.polyOctave[v][i]+=wj*r.polyOctave[v][i]; } } }
+        const float r = slewKnobToR(slew);
+        constexpr std::size_t K = redDot::MovingAverageCopula::K;
+        if (r == 0.f) { const CachedMelodyDraw& e = cachedMelodyDraw(pos); out = e.draw; return; }
+        const CachedMelodyDraw* win[K];
+        for (std::size_t j = 0; j < K; ++j) win[j] = &cachedMelodyDraw(pos - (int64_t)j);
+        double zw[K];
+        for (int i=0;i<16;++i){
+            for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zMelody[i];
+            out.melody[i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+            for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zOctave[i];
+            out.octave[i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+            for(int v=0;v<15;++v){
+                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zPolyMelody[v][i];
+                out.polyMelody[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zPolyOctave[v][i];
+                out.polyOctave[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+            }
+        }
     }
-    // q-mix twin of patternMelodyAt — B2 truncated-FIR window blend over pos..pos-SCRUB_K.
+    // q-mix twin of patternMelodyAt — normal-space K-window copula over pos..pos-K+1.
     inline void patternQmixAt(int64_t pos, float slew, QmixDraw& out) const {
-        const float sl = slew<0.f?0.f:(slew>1.f?1.f:slew);
-        float w[SCRUB_K+1], wsum=0.f, g=1.f;
-        for (int j=0;j<=SCRUB_K;++j){ w[j]=g; wsum+=g; g*=(1.f-sl); }
-        const float inv=(wsum>0.f)?1.f/wsum:1.f;
-        for (int i=0;i<16;++i){ out.qmix[i]=0.f;
-            for(int v=0;v<15;++v){out.polyQmix[v][i]=0.f;} }
-        QmixDraw r;
-        for (int j=0;j<=SCRUB_K;++j){ rawDrawQmixPatternAt(pos-j,r); const float wj=w[j]*inv;
-            for(int i=0;i<16;++i){ out.qmix[i]+=wj*r.qmix[i];
-                for(int v=0;v<15;++v){ out.polyQmix[v][i]+=wj*r.polyQmix[v][i]; } } }
+        const float r = slewKnobToR(slew);
+        constexpr std::size_t K = redDot::MovingAverageCopula::K;
+        if (r == 0.f) { const CachedQmixDraw& e = cachedQmixDraw(pos); out = e.draw; return; }
+        const CachedQmixDraw* win[K];
+        for (std::size_t j = 0; j < K; ++j) win[j] = &cachedQmixDraw(pos - (int64_t)j);
+        double zw[K];
+        for (int i=0;i<16;++i){
+            for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zQmix[i];
+            out.qmix[i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+            for(int v=0;v<15;++v){
+                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zPolyQmix[v][i];
+                out.polyQmix[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+            }
+        }
     }
 
     static constexpr uint64_t MAX_U64 = 0xFFFFFFFFFFFFFFFFULL;

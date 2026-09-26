@@ -22,8 +22,56 @@ namespace copula {
 // Clamp for PhiInv inputs: Phi^-1(0) and Phi^-1(1) are infinite.
 inline constexpr double U_EPS = 1e-12;
 
-/// Standard normal CDF. erfc is accurate in the far tail, unlike 0.5*(1+erf(x/sqrt2)).
+/// Standard normal CDF (EXACT, erfc form — accurate in the far tail). Used by PhiInv's Halley
+/// refinement, the round-trip test, and spread's mix2, where the ~1e-15 contract matters.
+/// NOT used in the slew readout (applyZ) — that uses PhiLUT (see below).
 inline double Phi(double z) { return 0.5 * std::erfc(-z * 0.70710678118654752440); }
+
+/// Interpolated lookup-table Phi for UNCACHEABLE, hot, float-precision callers (the slew readout's
+/// final Phi in applyZ, and spread's mix2). Splits from the exact Phi by the caching structure:
+/// cached callers (PhiInv, once per new draw) can afford the exact erfc Phi; uncacheable callers
+/// (544×/window in applyZ) use this LUT. See docs/design/SLEW_COPULA_PLAN.md "Phi on the slew readout".
+///
+/// 4096-entry HALF-RANGE table over z in [0,6], built ONCE at first touch from the EXACT Phi, with
+/// linear interpolation and symmetry Phi(-z)=1-Phi(z). Max abs err 9.3e-8 (below the 1e-7 float-lane
+/// target), monotone across [-7,7] (preserves the uniform marginal), deterministic (reversal-neutral),
+/// saturates to 0/1 beyond |z|>=6. NO transcendental in the hot path. r==0 short-circuits before
+/// applyZ, so PhiLUT never touches bit-identity; distribution tests MUST run through it (rule 3).
+struct PhiLUT {
+    static constexpr int N = 4096;
+    static constexpr double ZMAX = 6.0;
+    static constexpr double STEP = ZMAX / N;
+    static constexpr double INV_STEP = N / ZMAX;     // multiply (not divide) in the hot path
+    // Built once, then read-only. A function-local static initialiser avoids a per-call `built`
+    // branch (the lazy `if(!built)` check was the cause of a 2× slowdown in an earlier version).
+    struct Table { float v[N + 1]; };
+    static const Table& table() {
+        static const Table t = []() {
+            Table t;
+            for (int i = 0; i <= N; ++i) t.v[i] = (float)Phi(i * STEP);   // one source of truth
+            return t;
+        }();
+        return t;
+    }
+    static inline double eval(double z) {
+        const double az = z < 0.0 ? -z : z;
+        if (az >= ZMAX) return z < 0.0 ? 0.0 : 1.0;          // saturate
+        const double fi = az * INV_STEP;                     // [0, N), multiply not divide
+        const int i = (int)fi;
+        const double frac = fi - (double)i;
+        const Table& t = table();
+        const double p = (double)t.v[i] + frac * ((double)t.v[i + 1] - (double)t.v[i]);
+        return z < 0.0 ? (1.0 - p) : p;                      // Phi(-z) = 1 - Phi(z)
+    }
+};
+inline double PhiFast(double z) { return PhiLUT::eval(z); }   // uncacheable/hot/float callers
+
+/// Force the Phi LUT to build NOW (off the audio thread). Call from plugin.cpp init() so the
+/// ~0.33 ms one-time table build (4,097 exact Phi calls) happens on the load thread, not as a
+/// spike mid-block on first playback use. table() is a function-local static (thread-safe,
+/// once, no static-init-order hazard) — this just touches it to trigger the init.
+/// See docs/design/SLEW_COPULA_PLAN.md "LUT warm-up".
+inline void warmPhiLut() { (void)PhiLUT::table(); }
 
 /// Inverse standard normal CDF (Acklam's rational approximation, |err| < 1.15e-9),
 /// refined by one Halley step against Phi so the round trip is accurate to ~1e-15.
