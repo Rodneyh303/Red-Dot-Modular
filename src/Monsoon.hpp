@@ -769,6 +769,17 @@ struct Monsoon : Module {
         // apply to VAR/LEG). Zero-init = no spread, matching the old configParam default.
         // Replaces the per-voice interp params AND the old V1-only eastV1Spread. V1 is slot 0.
         float spread[80] = {0};       // 16 slots × 5 poly lanes
+        // Spread target mode per poly lane (0=REST,1=MEL,2=OCT,3=ACC,4=QMIX). 0=Anchor V1 (default),
+        // 1=Follow CA. Single source of truth on the Monsoon, mirrored to the engine — never per-visual
+        // flags (that diverged last time). Persisted in JSON. See SPREAD_TARGET_MODES.md.
+        uint8_t spreadTargetMode[5] = {0,0,0,0,0};
+        // Per-mode defaults (rho landmark: -1/0/+1) per lane. When a mode is switched and
+        // applyDefaultOnModeChange is ON, the lane's spread amounts (all 16 voices) are set to this.
+        // Two per lane: [lane*2 + mode]. mode 0=Anchor V1 (default 0), 1=Follow CA (default +1=1.f).
+        float spreadDefault[10] = {0, 1.f, 0, 1.f, 0, 1.f, 0, 1.f, 0, 1.f};
+        // Apply default on mode change toggle, per lane. Default ON (so enabling follow-CA inits
+        // spread to +1, preserving "pins take effect" feel).
+        bool spreadApplyOnModeChange[5] = {true, true, true, true, true};
 
         // ── GLOBAL slice (MVC_UNIFICATION step 1) ────────────────────────────────────
         // Macro's scope. Previously these lived in Macro's params[] and the engine read
@@ -834,6 +845,24 @@ struct Monsoon : Module {
 
     float getSpread(int slot, int lane) const { return editor.spread[slot*5 + lane]; }  // 5 poly lanes
     void  setSpread(int slot, int lane, float x) { editor.spread[slot*5 + lane] = x; }  // 5 poly lanes
+
+    // Spread target mode (0=Anchor V1, 1=Follow CA) per poly lane (0=REST,1=MEL,2=OCT,3=ACC,4=QMIX).
+    uint8_t getSpreadTargetMode(int lane) const { return (lane>=0&&lane<5) ? editor.spreadTargetMode[lane] : 0; }
+    void    setSpreadTargetMode(int lane, uint8_t mode) { if(lane>=0&&lane<5) editor.spreadTargetMode[lane] = mode; }
+    float   getSpreadDefault(int lane, int mode) const { return (lane>=0&&lane<5&&mode>=0&&mode<2) ? editor.spreadDefault[lane*2+mode] : 0; }
+    void    setSpreadDefault(int lane, int mode, float v) { if(lane>=0&&lane<5&&mode>=0&&mode<2) editor.spreadDefault[lane*2+mode] = v; }
+    bool    getSpreadApplyOnModeChange(int lane) const { return (lane>=0&&lane<5) ? editor.spreadApplyOnModeChange[lane] : true; }
+    void    setSpreadApplyOnModeChange(int lane, bool v) { if(lane>=0&&lane<5) editor.spreadApplyOnModeChange[lane] = v; }
+    void applySpreadDefault(int lane) {
+        if (lane<0||lane>=5) return;
+        float def = getSpreadDefault(lane, getSpreadTargetMode(lane));
+        for (int slot=0; slot<16; ++slot) setSpread(slot, lane, def);
+    }
+    void setSpreadTargetModeAndApply(int lane, uint8_t mode) {
+        if (lane<0||lane>=5) return;
+        editor.spreadTargetMode[lane] = mode;
+        if (getSpreadApplyOnModeChange(lane)) applySpreadDefault(lane);
+    }
 
     // MACRO accessors — stride 5 poly lanes (QMIX-widened; was 4). laneCol spans lane*4+col over
     // 5 lanes → row stride 20 for macroAtten (was 16). lane 0..4, item/col 0..3, v 0..15.

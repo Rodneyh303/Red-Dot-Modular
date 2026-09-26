@@ -193,7 +193,32 @@ struct PatternEngine {
     // doQ (SB_CA_Q): q-mix rides its OWN green pin plane (caQmixSrc), gated independently of the
     // melody plane. Defaults true (unlocked / callers pre-dating q-mix behave as before, but q-mix
     // now only remaps when doQ AND its own plane is non-identity).
+    // Pre-remap snapshots — the voice's OWN draw before CA pins overwrite it. Follow-CA spread
+    // interpolates between this (own) and the post-remap value (leader). Without it follow-CA is
+    // a no-op: the remap already replaced own with leader, so spread would blend leader with itself.
+    // Populated unconditionally at the start of remapSlewedByPins (even on identity skip, where
+    // pre-remap == post-remap). Read by the spread path when the lane's mode is Follow CA.
+    float preRemapSlewedRhythm[16]={}, preRemapSlewedVariation[16]={}, preRemapSlewedLegato[16]={}, preRemapSlewedAccent[16]={};
+    float preRemapSlewedMelody[16]={}, preRemapSlewedOctave[16]={}, preRemapSlewedQmix[16]={};
+    float preRemapSlewedPolyRhythm[15][16]={}, preRemapSlewedPolyMelody[15][16]={}, preRemapSlewedPolyOctave[15][16]={};
+    float preRemapSlewedPolyAccent[15][16]={}, preRemapSlewedPolyQmix[15][16]={};
+    void snapshotPreRemap() {
+        for (int i=0;i<16;++i){
+            preRemapSlewedRhythm[i]=slewedRhythm[i]; preRemapSlewedVariation[i]=slewedVariation[i];
+            preRemapSlewedLegato[i]=slewedLegato[i]; preRemapSlewedAccent[i]=slewedAccent[i];
+            preRemapSlewedMelody[i]=slewedMelody[i]; preRemapSlewedOctave[i]=slewedOctave[i];
+            preRemapSlewedQmix[i]=slewedQmix[i];
+            for(int v=0;v<15;++v){
+                preRemapSlewedPolyRhythm[v][i]=slewedPolyRhythm[v][i];
+                preRemapSlewedPolyMelody[v][i]=slewedPolyMelody[v][i];
+                preRemapSlewedPolyOctave[v][i]=slewedPolyOctave[v][i];
+                preRemapSlewedPolyAccent[v][i]=slewedPolyAccent[v][i];
+                preRemapSlewedPolyQmix[v][i]=slewedPolyQmix[v][i];
+            }
+        }
+    }
     void remapSlewedByPins(bool doR = true, bool doM = true, bool doQ = true) {
+        snapshotPreRemap();   // always snapshot, even on identity skip (pre == post then)
         // Fast identity skip — only over the families we would actually remap.
         bool identity = true;
         for (int v = 0; v < 16 && identity; ++v) {

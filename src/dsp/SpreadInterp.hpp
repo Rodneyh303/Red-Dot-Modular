@@ -32,12 +32,8 @@ namespace redDot {
 struct SpreadInterp {
     // Pointers to the lane's slewed buffers for the engine. Set per lane by the
     // caller so the same code serves rhythm/melody/octave.
-    static const float* monoBuf(const rack::Module* /*unused*/) { return nullptr; }
-
     // Per-lane accessor into the PatternEngine slewed draws.
     // Lane index is the SPREAD/poly-engine lane: 0=REST 1=MELODY 2=OCTAVE 3=ACCENT 4=QMIX
-    // (== SequencerEngine::PL_ order). QMIX is a melody-family value lane; it reads its own
-    // slewedQmix / slewedPolyQmix twin buffers (present as of Task 4b).
     static float monoSlewed(const PatternEngine& pe, int lane, int step) {
         switch (lane) {
             case 0:  return pe.slewedRhythm[step];
@@ -57,9 +53,35 @@ struct SpreadInterp {
         }
     }
 
-    // The interpolation target for a lane/step: always the mono (voice-1) draw.
+    // The interpolation target for a lane/step.
+    // Anchor V1: the mono (voice-1) draw (today's behaviour).
+    // Follow CA: the post-remap draw — which IS src[v]'s material, because CA's pin remap
+    // already put it there. So the "target" is the same slewed buffer the caller passes as
+    // `original` in follow-CA mode; the caller selects `own` (pre-remap) vs post-remap.
     static float target(const PatternEngine& pe, int lane, int step) {
         return monoSlewed(pe, lane, step);
+    }
+    // In Follow CA mode the "own" endpoint is the voice's PRE-REMAP draw (before CA replaced
+    // it), and the "leader" is the post-remap value (src[v]'s material). This helper returns
+    // the pre-remap mono draw for the mono/V1 path (Follow CA on V1 is a no-op by construction
+    // — V1's pre-remap == post-remap — but the poly path needs the pre-remap poly buffers).
+    static float monoPreRemap(const PatternEngine& pe, int lane, int step) {
+        switch (lane) {
+            case 0:  return pe.preRemapSlewedRhythm[step];
+            case 1:  return pe.preRemapSlewedMelody[step];
+            case 3:  return pe.preRemapSlewedAccent[step];
+            case 4:  return pe.preRemapSlewedQmix[step];
+            default: return pe.preRemapSlewedOctave[step];
+        }
+    }
+    static float polyPreRemap(const PatternEngine& pe, int lane, int voice, int step) {
+        switch (lane) {
+            case 0:  return pe.preRemapSlewedPolyRhythm[voice][step];
+            case 1:  return pe.preRemapSlewedPolyMelody[voice][step];
+            case 3:  return pe.preRemapSlewedPolyAccent[voice][step];
+            case 4:  return pe.preRemapSlewedPolyQmix[voice][step];
+            default: return pe.preRemapSlewedPolyOctave[voice][step];
+        }
     }
 
     // Phase 3: copula mix2 — the knob IS rho (correlation) directly, not a linear blend
