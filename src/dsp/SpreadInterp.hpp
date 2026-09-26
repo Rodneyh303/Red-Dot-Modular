@@ -136,6 +136,12 @@ struct SpreadInterp {
             int src = v1caSrc(pe, lane);
             t = (src == 0) ? monoSlewed(pe, lane, step)
                            : polySlewed(pe, lane, src - 1, step);
+            // CONTRACT: under Follow-CA with src>0, own (V1's pre-remap) must differ from
+            // t (the pinned voice's draw). If they're equal, the self-target guard at
+            // interpolate() makes the knob a silent no-op. This assertion catches that
+            // collapse permanently — it's the actual contract, and would have caught all
+            // three rounds of this bug.
+            assert(!(spreadAmount != 0.0f && src > 0 && own == t));
         } else {
             t = monoSlewed(pe, lane, step);
         }
