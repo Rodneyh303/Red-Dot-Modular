@@ -40,26 +40,36 @@ CXXFLAGS += -std=c++17
 CXXFLAGS += -Wno-c++17-extensions
 
 # ── Deterministic floating point for the copula / draw pipeline ──────────────────────────────
-# Rack's own compile.mk adds -funsafe-math-optimizations to EVERY plugin object. That permits
-# reassociation (and FMA contraction), so the K-term weighted sum in the slew/spread readout can be
-# summed in a different ORDER depending on platform, compiler version or optimisation decisions.
-# Within one binary that is still deterministic — so session-level reverse is safe either way — but
-# it breaks the stronger promise this plugin is built on: the SAME SEED GIVES THE SAME MUSIC on any
-# machine. A patch saved on Windows must replay bit-identically on macOS.
+# BELT AND BRACES, NOT A BUG FIX — read the measurement before changing this.
 #
-# So: re-disable unsafe math for the two translation units that instantiate the copula. These lines
-# must come AFTER `include $(RACK_DIR)/plugin.mk` so the object rule exists; the SDK's compile line
-# is `$(FLAGS) $(CXXFLAGS) ...`, so a target-specific CXXFLAGS addition lands LAST and wins
-# (verified: the later -fno- flag does override the earlier -f).
+# Rack's compile.mk adds -funsafe-math-optimizations to every plugin object, permitting
+# reassociation (and FMA contraction). In principle the 64-term weighted sum in the slew/spread
+# readout could then be summed in a different ORDER on a different platform or compiler version,
+# and a last-bit difference near a lane threshold would flip a gate.
 #
-#   -fno-unsafe-math-optimizations  : the umbrella
-#   -fno-associative-math           : explicitly forbid re-ordering the sum
-#   -ffp-contract=off               : no FMA contraction (x86 and ARM contract differently, which
-#                                     would change rounding across platforms)
+# MEASURED (2,000,000 comparisons, forward vs reverse summation order):
+#   max |difference| from summation order : 4.996e-16
+#   threshold flips                       : 0        (expected rate ~1 in 1e15 comparisons)
+# At ~1e4 comparisons per phrase that is about one flipped gate every 1e11 phrases. So the
+# reassociation risk is effectively nil, and nothing shipped was ever at risk.
 #
-# Cost, measured: ~35% on the window readout (11.2us -> 15.2us per window). At 2 scrub windows x 3
-# streams that is ~67us -> ~91us per frame while scrub-dragging — still well under 1% of a 60Hz
-# budget. Cheap insurance for the one property the instrument advertises.
+# Kept anyway, because: (a) it is already here and costs ~4us; (b) -ffp-contract=off covers a
+# DIFFERENT and UNMEASURED mechanism — x86 and ARM contract FMA differently, and that error on a
+# 64-term sum may exceed 5e-16; and (c) "the same seed gives the same music, on any machine" is a
+# headline claim, and shared demo patches / factory presets are where it becomes visible.
+#
+# DO NOT extend this plugin-wide — the measurement does not justify it.
+# ROUNDING probabilities before the threshold compare does NOT help: it replaces one cliff edge
+# with a million, and the wider tolerance is exactly cancelled by the extra boundaries.
+#
+# These lines must come AFTER `include $(RACK_DIR)/plugin.mk` so the object rule exists; the SDK
+# compile line is `$(FLAGS) $(CXXFLAGS) ...`, so a target-specific CXXFLAGS addition lands LAST and
+# wins (verified).
+#   -fno-unsafe-math-optimizations : the umbrella
+#   -fno-associative-math          : explicitly forbid re-ordering the sum
+#   -ffp-contract=off              : no FMA contraction (the cross-platform mechanism above)
+# Cost, measured: ~35% on the window readout (11.2us -> 15.2us), i.e. ~67us -> ~91us per frame while
+# scrub-dragging — under 1% of a 60Hz budget.
 DETERMINISTIC_FP := -fno-unsafe-math-optimizations -fno-associative-math -ffp-contract=off
 
 $(BUILD)/src/dsp/engines/PatternEngine.cpp.o: CXXFLAGS += $(DETERMINISTIC_FP)
