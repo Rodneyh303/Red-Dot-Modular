@@ -40,7 +40,7 @@ def _load_font(path):
     return _FONT_CACHE[path]
 
 def outline_text(s, x_px, y_px, size_px, fill, anchor="start", opacity=1.0,
-                 font="/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf", letter=0.0):
+                 font="C:/msys64/mingw64/share/fonts/TTF/DejaVuSerif.ttf", letter=0.0):
     """Return SVG <path> objects tracing `s` at (x_px,y_px) baseline. size_px = cap size in px.
     anchor: start|middle|end. letter = extra tracking in px. nanosvg-safe (solid paths only)."""
     from fontTools.pens.svgPathPen import SVGPathPen
@@ -69,7 +69,7 @@ def outline_text(s, x_px, y_px, size_px, fill, anchor="start", opacity=1.0,
         pen_x += gs[gname].width * scale + letter
     return "".join(out)
 
-HP=42; PW_MM=HP*5.08; PH_MM=128.5; MARGIN=6.0
+HP=47; PW_MM=HP*5.08; PH_MM=128.5; MARGIN=6.0
 N_SCENES=8; N_VOICES=16; N_OUTPUTS=8; N_SLOTS=8; MAX_REPEAT=4
 LANE_PITCH=6.0
 
@@ -82,7 +82,16 @@ GUTTER=6.0
 MEM_L=MARGIN+GUTTER; MEM_W=92.0; MEM_R=MEM_L+MEM_W                     # 12 -> 82
 COL_W=MEM_W/N_SCENES
 GAPX=8.0
-RT_L=MEM_R+GAPX; RT_W=PW_MM-MARGIN-RT_L
+# RT_W PINNED (was PW_MM-MARGIN-RT_L) so widening the panel adds a RHS out-jack strip, not a wider
+# routing grid. The strip holds BOTH the 5 note outs (inner col) and the 8 correlated expr outs (outer
+# col, on the border) as a vertical 2-column band — frees the bottom POLY OUT row for visual height.
+RT_L=MEM_R+GAPX; RT_W=95.36
+STRIP_GAP=4.0
+STRIP_L=RT_L+RT_W+STRIP_GAP; STRIP_W=PW_MM-MARGIN-STRIP_L
+# Vertical strip columns: inner = note outs (output_0..4), outer = correlated expr outs (output_5..12).
+STRIP_INNER_X=STRIP_L+STRIP_W*0.32
+STRIP_OUTER_X=STRIP_L+STRIP_W*0.74
+STRIP_TOP=20.0; STRIP_BOT=112.0
 
 # VOICE->SLOT grid (top of right block) -- read-only visualiser, smaller pitch
 VS_TOP=GRID_TOP+4.0
@@ -151,21 +160,31 @@ def build(dark):
     for sl in range(N_SLOTS):
         s.append(lab(RT_L-2.4,ROUT_TOP+(sl+0.5)*ROUT_ROWH+1.0,str(sl+1),t,2.6,"end"))
 
-    # RIGHT: transpose knob wells (param_0..7)
-    kn_y=ROUT_TOP+ROUT_H+8.0   # tightened from 13 (saved 5mm)
+    # RIGHT: transpose knob wells (param_0..7) -- stay at the bottom of the routing grid.
+    kn_y=ROUT_TOP+ROUT_H+8.0
     s.append(lab(RT_L+RT_W*0.5,kn_y-6.5,"OUTPUT TRANSPOSE  (\u00b124)",t,3.0))
     for o in range(N_OUTPUTS):
         kx=RT_L+(o+0.5)*ROUT_CW
         s.append(well(kx,kn_y,4.2,t)); comps.append(kit_shape("param",o,kx,kn_y))
 
-    # RIGHT: poly out jacks (output_0..4)
+    # RIGHT-EDGE STRIP: BOTH the 5 note outs (output_0..4, INNER column) AND the 8 correlated expr
+    # outs (output_5..12, OUTER column on the border) run VERTICALLY down the RHS -- 2 columns spanning
+    # the grid band (STRIP_TOP..STRIP_BOT). Frees the old bottom POLY OUT row for visual height. The 8
+    # expr outs mirror CA's pair bank (3R/3M/2QM); labels tag the stream so the patch maps to Keppel's
+    # expression inputs (or any poly-CV consumer) 1:1. (CA_EXPRESSION_CV_CORRELATION.md "Routing through
+    # Intertropical".)
+    s.append(lab(STRIP_INNER_X,STRIP_TOP-5.0,"OUT",t,2.6))
+    s.append(lab(STRIP_OUTER_X,STRIP_TOP-5.0,"EXPR",t,2.6))
     names=["GATE","CV","ACC","LEG","SLG"]
-    jy=kn_y+13.0               # tightened from 17 (saved 4mm)
-    s.append(lab(RT_L+RT_W*0.5,jy-6.5,"POLY OUT",t,3.0))
     for i,nm in enumerate(names):
-        jx=RT_L+(i+0.5)*(RT_W/len(names))
-        s.append(jackwell(jx,jy,t)); s.append(lab(jx,jy+7.0,nm,t,2.5))
-        comps.append(kit_shape("output",i,jx,jy))
+        iy=STRIP_TOP + i*(STRIP_BOT-STRIP_TOP)/(len(names)-1)
+        s.append(jackwell(STRIP_INNER_X,iy,t)); s.append(lab(STRIP_INNER_X-6.5,iy,nm,t,2.3,"end"))
+        comps.append(kit_shape("output",i,STRIP_INNER_X,iy))
+    estreams=["R","R","R","M","M","M","QM","QM"]
+    for k in range(8):
+        ey=STRIP_TOP + k*(STRIP_BOT-STRIP_TOP)/7
+        s.append(jackwell(STRIP_OUTER_X,ey,t)); s.append(lab(STRIP_OUTER_X,ey+5.5,estreams[k]+str(k+1),t,2.0))
+        comps.append(kit_shape("output",5+k,STRIP_OUTER_X,ey))
 
     # brand bottom-left
     # --- Equatorial-band theme (INTERTROPICAL) ---------------------------------------------------
@@ -203,7 +222,9 @@ def main():
     root=os.path.join(os.path.dirname(os.path.abspath(__file__)),"..")
     outdir=os.path.join(root,"res","panels"); os.makedirs(outdir,exist_ok=True)
     for dark,suf in [(True,"dark"),(False,"light")]:
-        svg=build(dark); open(os.path.join(outdir,f"Intertropical_panel_{suf}.svg"),"w").write(svg)
+        svg=build(dark)
+        with open(os.path.join(outdir,f"Intertropical_panel_{suf}.svg"),"w",encoding="utf-8") as fh:
+            fh.write(svg)
         print(f"wrote {suf} ({len(svg)}b)")
 
 if __name__=="__main__": main()

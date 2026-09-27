@@ -5,6 +5,7 @@
 #include "Intertropical.hpp"
 #include "Monsoon.hpp"
 #include "MonsoonStraitsExpander.hpp"   // complete type for cachedPolyVoiceExpander->outputs
+#include "MonsoonChangeAlleyV2.hpp"      // complete type for cachedChangeAlleyV2->outputs (EXPR_OUT)
 #include "ui/IntertropicalPairing.hpp"  // assignPairId (shared pairing mechanism)
 #include "ui/SvgPanelKit.hpp"
 #include "ui/GoldPolyPort.hpp"
@@ -39,6 +40,18 @@ Intertropical::Intertropical() {
     configOutput(Ids::ACCENT_OUT, "Accent (poly, active scene, <=8ch)");
     configOutput(Ids::LEGATO_OUT, "Legato (poly, active scene, <=8ch)");
     configOutput(Ids::SLEG_OUT,   "SLEG (poly, active scene, <=8ch)");
+    // Correlated expression outs (CA_EXPRESSION_CV_CORRELATION.md "Routing through Intertropical").
+    // 8 poly-CV outs mirroring CA's pair bank (3R/3M/2QM). Each carries CA's already-correlated CV
+    // for pair k through the SAME voice->slot->output mapping as the notes. Labels mirror CA's
+    // stream allocation so the patch maps 1:1 to Keppel's expression inputs / any poly-CV consumer.
+    {
+        static const char* SN[3] = {"R", "M", "QM"};
+        for (int k = 0; k < Ids::N_EXPR_OUTS; ++k) {
+            const char* s = (k < 3) ? SN[0] : (k < 6) ? SN[1] : SN[2];
+            configOutput(Ids::EXPR_OUT_FIRST + k,
+                         rack::string::f("Expr %d (%s) — correlated poly-CV, arranged", k + 1, s));
+        }
+    }
 }
 
 void Intertropical::process(const ProcessArgs& args) {
@@ -168,6 +181,42 @@ void Intertropical::process(const ProcessArgs& args) {
             outputs[Ids::ACCENT_OUT].setVoltage(acc, ch);
             outputs[Ids::LEGATO_OUT].setVoltage(leg, ch);
             outputs[Ids::SLEG_OUT].setVoltage(sleg, ch);
+        }
+    }
+
+    // ── Correlated expression routing (CA_EXPRESSION_CV_CORRELATION.md "Routing through Intertropical").
+    // CA's 8 correlated pairs are already GATHER-permuted in VOICE space (out[row]=in[src[row]], the
+    // same src[] the notes follow). Intertropical carries them through the SAME voice->slot->output
+    // mask as the notes — ONE mapping, not two — so a part's note and its expression came from the
+    // same voice through the same transform. Fan-out and scene advance ride along for free (same mask,
+    // same boundary). Grabbed off the chain via cachedChangeAlleyV2 (no cable), the identical mechanism
+    // as cachedPolyVoiceExpander above.
+    //
+    // Build pins: (1) expression outs SKIP the per-output pitch transpose (trSemi/12) — a semitone
+    // offset is meaningless on Y/Z, and X-bend is relative to an already-transposed note. (2) Sized to
+    // the same nOut as the note outs (set above). Silent when CA is absent OR a pair's IN is unpatched
+    // (CA itself goes 0-channel there → getChannels()==0 → we read 0V for every voice, which is the
+    // dimension rest, not a spurious value).
+    auto* ca = host->expanderManager.cachedChangeAlleyV2;
+    for (int k = 0; k < Ids::N_EXPR_OUTS; ++k) {
+        rack::Output& exOut = outputs[Ids::EXPR_OUT_FIRST + k];
+        if (!ca) { exOut.setChannels(0); continue; }   // no CA → silent (not identity)
+        // CA's EXPR_OUT for pair k is 16-voice poly (0-channel if its IN is unpatched). Voice v's
+        // correlated CV pairs with Straits' note for voice v — same 16-voice frame, pre-mapping.
+        rack::Output& caOut = ca->outputs[ChangeAlleyV2Ids::EXPR_OUT_START + k];
+        const int nCa = caOut.getChannels();
+        for (int v = 0; v < Ids::N_VOICES; ++v) {
+            const int slot = slotOf[v];
+            if (slot < 0) continue;
+            const uint8_t mask = slotOutput[slot];
+            if (!mask) continue;
+            // GATHER: voice v's expression (channel v of CA's out), written to every output bit in
+            // its slot's mask — the SAME channels the note for voice v was written to above.
+            const float ev = (nCa > v) ? caOut.getVoltage(v) : 0.f;
+            for (int ch = 0; ch < Ids::MAX_VOICES_PER_SCENE; ++ch) {
+                if (!((mask >> ch) & 1u)) continue;
+                exOut.setVoltage(ev, ch);   // NO transpose — see build pin (1)
+            }
         }
     }
 }
