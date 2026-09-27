@@ -514,11 +514,14 @@ float Monsoon::semitoneToVolts(int semitone) {
         switch (a) {
             case DA_REDICE_R:      diceRhythm(); break;
             case DA_REDICE_M:      diceMelody(); break;
+            case DA_REDICE_Q:      diceQmix(); break;
             case DA_LIVESTATIC_R:  rhythmMode = 1 - rhythmMode; break;
             case DA_LIVESTATIC_M:  melodyMode = 1 - melodyMode; break;
+            case DA_LIVESTATIC_Q:  qmixMode = 1 - qmixMode; break;
             case DA_RESEED_RESTART:reseedOnRestart = !reseedOnRestart; break;
             case DA_LASTDICE_R:    rhythmMode = 0; engine.pe.setPendingRhythmLastRoll();  break;
             case DA_LASTDICE_M:    melodyMode = 0; engine.pe.setPendingMelodyLastRoll();  break;
+            case DA_LASTDICE_Q:    qmixMode = 0; engine.pe.setPendingQmixLastRoll();  break;
         }
     }
 
@@ -679,8 +682,8 @@ void Monsoon::process(const ProcessArgs& args) {
 
     // ── Gate 3 Assignment Handling (Audio Rate for Consistency) ──
     if (cachedGate3Connected && gate3Trig.process(input.gate3, 0.1f, 1.f)) {
-        static const int g3map[] = { DA_REDICE_R, DA_REDICE_M,
-            DA_RESEED_RESTART, DA_LIVESTATIC_R, DA_LIVESTATIC_M };
+        static const int g3map[] = { DA_REDICE_R, DA_REDICE_M, DA_REDICE_Q,
+            DA_LIVESTATIC_R, DA_LIVESTATIC_M, DA_LIVESTATIC_Q, DA_RESEED_RESTART };
         if (gate3Target >= 0 && gate3Target < (int)(sizeof(g3map)/sizeof(g3map[0]))) {
             fireDieAction(g3map[gate3Target]);
         }
@@ -1083,8 +1086,8 @@ void Monsoon::process(const ProcessArgs& args) {
             // beside RafflesInputIds + DieAction in Monsoon.hpp). Fixes the old fireDieAction(i) that
             // treated the gate INDEX as a DieAction — two different orderings, so every gate misfired.
             // DA_NONE gates are inert by design (removed Trial / LiveSrc / reseed-on-roll).
-            for (int i = 0; i < 14; ++i) {
-                int in = MonsoonIds::RAFFLES_GATE_TRIAL_R + i;
+            for (int i = 0; i < 11; ++i) {
+                int in = MonsoonIds::RAFFLES_GATE_REDICE_R + i;
                 if (cw->inputs[in].isConnected()
                     && rafflesGateTrig[i].process(cw->inputs[in].getVoltage(), 0.1f, 1.f)) {
                     const int act = kRafflesGateAction[i];

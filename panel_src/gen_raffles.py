@@ -13,9 +13,47 @@ nanosvg-safe: solid fills, no gradients/masks/text/url. Screws via C++ RedScrew.
 """
 import math
 
-W, H = 180, 380
+# 18HP (was 12HP / W=180 when there were only TWO streams). Three 26mm stream
+# columns + two 2mm gaps + margins = 91.44mm = 18HP.
 S = 75/25.4
 def mm(v): return v*S
+HP       = 18
+W_MM     = HP * 5.08                      # 91.44
+W, H     = round(W_MM * S), 380
+
+# ── Stream columns: ONE source of truth for the layout ───────────────────────────
+# Previously the control positions lived in panel_src/layouts/raffles.json. That was
+# an earlier experiment, superseded by "the generator emits the components layer and
+# the widget binds by name via SvgPanelKit" — so the table now lives here, and every
+# position is DERIVED from the column origin. Adding a fourth stream would be one
+# entry in STREAMS.
+COL_W_MM, COL_GAP_MM = 26.0, 2.0
+COL_MARGIN_MM = (W_MM - (3*COL_W_MM + 2*COL_GAP_MM)) / 2.0      # 4.72
+STREAMS = [("R", "red"), ("Q", "gold"), ("M", "redsoft")]        # left, centre, right
+BOX_Y_MM, BOX_H_MM = 34.0, 88.0
+
+def col_x0(i):  return COL_MARGIN_MM + i * (COL_W_MM + COL_GAP_MM)
+def col_cx(i):  return col_x0(i) + COL_W_MM / 2.0
+
+# Per-stream controls, as offsets from the COLUMN CENTRE. The two-sided mirror the
+# old 2-column layout used does not generalise to three columns, so all columns now
+# share one identical arrangement — easier to learn and one rule to maintain.
+ROW_SLEW_Y, ROW_MIX_Y, ROW_GATE_Y, ROW_LIVE_Y = 44.0, 56.0, 72.0, 92.0
+PAIR_DX, GATE_DX = 4.5, 5.5
+STREAM_CONTROLS = [                        # (kind, id-suffix template, dx, y)
+    ("input", "RAFFLES_SLEW_{s}_CV",         -PAIR_DX, ROW_SLEW_Y),
+    ("param", "RAFFLES_SLEW_{s}_ATT",        +PAIR_DX, ROW_SLEW_Y),
+    ("input", "RAFFLES_MIX_{s}_CV",          -PAIR_DX, ROW_MIX_Y),
+    ("param", "RAFFLES_MIX_{s}_ATT",         +PAIR_DX, ROW_MIX_Y),
+    ("input", "RAFFLES_GATE_REDICE_{s}",     -GATE_DX, ROW_GATE_Y),
+    ("input", "RAFFLES_GATE_LASTDICE_{s}",   +GATE_DX, ROW_GATE_Y),
+    ("input", "RAFFLES_GATE_LIVESTATIC_{s}",      0.0, ROW_LIVE_Y),
+]
+# Globals (not per stream), centred on the panel.
+GLOBAL_CONTROLS = [
+    ("input", "RAFFLES_GATE_RESEED_ROLL",    -16.0, 116.0),
+    ("input", "RAFFLES_GATE_RESEED_RESTART", +16.0, 116.0),
+]
 
 THEMES = {
     "dark":  dict(bg="#18181a", red="#d4001a", redsoft="#dc2626", gold="#c8960c",
@@ -98,30 +136,34 @@ def panel(theme):
     # o.append(f'<line x1="{mm(2):.1f}" y1="{mm(15):.1f}" x2="{mm(W/S-2):.1f}" y2="{mm(15):.1f}" stroke="{t["line"]}" stroke-width="0.8" stroke-opacity="0.6"/>')
     # R/L sides separated by OUTLINED recess boxes (no fill) — a grey highlight
     # outline reads cleaner than a red wash. Rhythm left / melody right.
-    rx0, ry, rw, rh = mm(3), mm(34), mm(26), mm(88)
-    o.append(f'<rect x="{rx0:.1f}" y="{ry:.1f}" width="{rw:.1f}" height="{rh:.1f}" rx="{mm(2):.1f}" '
-             f'fill="none" stroke="{t["line"]}" stroke-width="1.0" stroke-opacity="0.8"/>')
-    o.append(f'<rect x="{mm(31):.1f}" y="{ry:.1f}" width="{rw:.1f}" height="{rh:.1f}" rx="{mm(2):.1f}" '
-             f'fill="none" stroke="{t["line"]}" stroke-width="1.0" stroke-opacity="0.8"/>')
-    # tiny red tab on each box top-centre as a subtle R/M side cue (not a fill)
-    o.append(f'<rect x="{rx0+rw/2-mm(3):.1f}" y="{ry-mm(0.6):.1f}" width="{mm(6):.1f}" height="{mm(1.2):.1f}" fill="{t["red"]}" opacity="0.7"/>')
-    o.append(f'<rect x="{mm(31)+rw/2-mm(3):.1f}" y="{ry-mm(0.6):.1f}" width="{mm(6):.1f}" height="{mm(1.2):.1f}" fill="{t["redsoft"]}" opacity="0.7"/>')
+    ry, rw, rh = mm(BOX_Y_MM), mm(COL_W_MM), mm(BOX_H_MM)
+    for i, (sname, tint) in enumerate(STREAMS):
+        bx = mm(col_x0(i))
+        o.append(f'<rect x="{bx:.1f}" y="{ry:.1f}" width="{rw:.1f}" height="{rh:.1f}" rx="{mm(2):.1f}" '
+                 f'fill="none" stroke="{t["line"]}" stroke-width="1.0" stroke-opacity="0.8"/>')
+        # tiny tab on each box top-centre as a subtle per-stream cue (not a fill)
+        o.append(f'<rect x="{mm(col_cx(i))-mm(3):.1f}" y="{ry-mm(0.6):.1f}" width="{mm(6):.1f}" '
+                 f'height="{mm(1.2):.1f}" fill="{t[tint]}" opacity="0.7"/>')
     # header motif: fanning raffle tickets — pivot just under the branding band
     o += ticket_fan(t, cx_mm=W/2/S, pivot_mm=13.0)
 
     # control wells with KIT ID markers, driven by the SAME source of truth as
     # the module (panel_src/layouts/raffles.json). Each control's id becomes the
     # SVG marker id "<kind>_<CONTROL_ID>" so the widget binds by name via the kit.
-    import json, os
-    _here = os.path.dirname(os.path.abspath(__file__))
-    controls = json.load(open(os.path.join(_here, "layouts", "raffles.json")))["controls"]
+    placed = []
+    for i, (sname, _tint) in enumerate(STREAMS):
+        for kind, tmpl, dx, y in STREAM_CONTROLS:
+            placed.append((kind, tmpl.format(s=sname), col_cx(i) + dx, y))
+    for kind, cid, dx, y in GLOBAL_CONTROLS:
+        placed.append((kind, cid, W_MM / 2.0 + dx, y))
+
     o.append('<g id="components">')
-    for c in controls:
-        cid = f'{c["kind"]}_{c["id"]}'           # e.g. param_RAFFLES_SLEW_R_ATT
-        if c["kind"] == "param":
-            o.append(trim_well(t, c["x_mm"], c["y_mm"], cid=cid))
+    for kind, cid, x_mm, y_mm in placed:
+        marker = f'{kind}_{cid}'            # e.g. param_RAFFLES_SLEW_R_ATT — the kit binds by name
+        if kind == "param":
+            o.append(trim_well(t, x_mm, y_mm, cid=marker))
         else:
-            o.append(jack_well(t, c["x_mm"], c["y_mm"], cid=cid))
+            o.append(jack_well(t, x_mm, y_mm, cid=marker))
     # dot.modular connect mark anchor (footer-centre; reposition here).
     o.append(f'<circle id="light_connect" cx="{mm(W/S/2.0):.1f}" cy="{mm(124.0):.1f}" r="0.5" fill="#000000" fill-opacity="0"/>')
     o.append('</g>')

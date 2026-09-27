@@ -35,26 +35,27 @@ struct MonsoonRafflesExpanderWidget : ModuleWidget,
         bindInput<PJ301MPort>("input_RAFFLES_SLEW_R_CV",  MonsoonIds::RAFFLES_SLEW_R_CV);
         bindParam<Trimpot>   ("param_RAFFLES_SLEW_R_ATT", MonsoonIds::RAFFLES_SLEW_R_ATT);
         bindParam<Trimpot>   ("param_RAFFLES_SLEW_M_ATT", MonsoonIds::RAFFLES_SLEW_M_ATT);
+        bindParam<Trimpot>   ("param_RAFFLES_SLEW_Q_ATT", MonsoonIds::RAFFLES_SLEW_Q_ATT);
         bindInput<PJ301MPort>("input_RAFFLES_SLEW_M_CV",  MonsoonIds::RAFFLES_SLEW_M_CV);
+        bindInput<PJ301MPort>("input_RAFFLES_SLEW_Q_CV",  MonsoonIds::RAFFLES_SLEW_Q_CV);
         bindInput<PJ301MPort>("input_RAFFLES_MIX_R_CV",   MonsoonIds::RAFFLES_MIX_R_CV);
         bindParam<Trimpot>   ("param_RAFFLES_MIX_R_ATT",  MonsoonIds::RAFFLES_MIX_R_ATT);
         bindParam<Trimpot>   ("param_RAFFLES_MIX_M_ATT",  MonsoonIds::RAFFLES_MIX_M_ATT);
+        bindParam<Trimpot>   ("param_RAFFLES_MIX_Q_ATT",  MonsoonIds::RAFFLES_MIX_Q_ATT);
         bindInput<PJ301MPort>("input_RAFFLES_MIX_M_CV",   MonsoonIds::RAFFLES_MIX_M_CV);
+        bindInput<PJ301MPort>("input_RAFFLES_MIX_Q_CV",   MonsoonIds::RAFFLES_MIX_Q_CV);
 
-        bindInput<PJ301MPort>("input_RAFFLES_GATE_TRIAL_R",      MonsoonIds::RAFFLES_GATE_TRIAL_R);
-        bindInput<PJ301MPort>("input_RAFFLES_GATE_TRIAL_M",      MonsoonIds::RAFFLES_GATE_TRIAL_M);
         bindInput<PJ301MPort>("input_RAFFLES_GATE_REDICE_R",     MonsoonIds::RAFFLES_GATE_REDICE_R);
         bindInput<PJ301MPort>("input_RAFFLES_GATE_REDICE_M",     MonsoonIds::RAFFLES_GATE_REDICE_M);
-        bindInput<PJ301MPort>("input_RAFFLES_GATE_LIVESRC_R",    MonsoonIds::RAFFLES_GATE_LIVESRC_R);
-        bindInput<PJ301MPort>("input_RAFFLES_GATE_LIVESRC_M",    MonsoonIds::RAFFLES_GATE_LIVESRC_M);
+        bindInput<PJ301MPort>("input_RAFFLES_GATE_REDICE_Q",     MonsoonIds::RAFFLES_GATE_REDICE_Q);
         bindInput<PJ301MPort>("input_RAFFLES_GATE_LIVESTATIC_R", MonsoonIds::RAFFLES_GATE_LIVESTATIC_R);
         bindInput<PJ301MPort>("input_RAFFLES_GATE_LIVESTATIC_M", MonsoonIds::RAFFLES_GATE_LIVESTATIC_M);
+        bindInput<PJ301MPort>("input_RAFFLES_GATE_LIVESTATIC_Q", MonsoonIds::RAFFLES_GATE_LIVESTATIC_Q);
         bindInput<PJ301MPort>("input_RAFFLES_GATE_RESEED_ROLL",    MonsoonIds::RAFFLES_GATE_RESEED_ROLL);
         bindInput<PJ301MPort>("input_RAFFLES_GATE_RESEED_RESTART", MonsoonIds::RAFFLES_GATE_RESEED_RESTART);
         bindInput<PJ301MPort>("input_RAFFLES_GATE_LASTDICE_R",   MonsoonIds::RAFFLES_GATE_LASTDICE_R);
         bindInput<PJ301MPort>("input_RAFFLES_GATE_LASTDICE_M",   MonsoonIds::RAFFLES_GATE_LASTDICE_M);
-        bindInput<PJ301MPort>("input_RAFFLES_GATE_LASTTRIAL_R",  MonsoonIds::RAFFLES_GATE_LASTTRIAL_R);
-        bindInput<PJ301MPort>("input_RAFFLES_GATE_LASTTRIAL_M",  MonsoonIds::RAFFLES_GATE_LASTTRIAL_M);
+        bindInput<PJ301MPort>("input_RAFFLES_GATE_LASTDICE_Q",   MonsoonIds::RAFFLES_GATE_LASTDICE_Q);
 
         // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
         if (auto* s = findNamed("light_connect")) {
@@ -100,18 +101,14 @@ struct MonsoonRafflesExpanderWidget : ModuleWidget,
         T(cvMid, RafflesLayout::RAFFLES_MIX_R_CV.y - 6.f, 7.f, "MIX");
         T(RafflesLayout::RAFFLES_SLEW_R_CV.x, RafflesLayout::RAFFLES_SLEW_R_CV.y + 6.f, 6.f, "R");
         T(RafflesLayout::RAFFLES_SLEW_M_CV.x, RafflesLayout::RAFFLES_SLEW_M_CV.y + 6.f, 6.f, "M");
-        // Gate row labels (centred between the two gate columns)
-        const char* gl[5] = {"TRIAL","REDICE","LIVE SRC","LIVE/STAT","RESEED"};
-        const float gateY[5] = {
-            RafflesLayout::RAFFLES_GATE_TRIAL_R.y, RafflesLayout::RAFFLES_GATE_REDICE_R.y,
-            RafflesLayout::RAFFLES_GATE_LIVESRC_R.y, RafflesLayout::RAFFLES_GATE_LIVESTATIC_R.y,
+        // Gate row labels (centred): 3 rows — REDICE, LIVE/STAT, RESEED. Trial/LiveSrc rows removed;
+        // each REDICE/LIVESTATIC row now spans R/M/Q (3 cols); RESEED is global (2 gates).
+        const char* gl[3] = {"REDICE","LIVE/STAT","RESEED"};
+        const float gateY[3] = {
+            RafflesLayout::RAFFLES_GATE_REDICE_R.y, RafflesLayout::RAFFLES_GATE_LIVESTATIC_R.y,
             RafflesLayout::RAFFLES_GATE_RESEED_ROLL.y };
-        for (int r = 0; r < 5; ++r) T(30.f, gateY[r], 6.f, gl[r]);
-        // Paired Last-gates: LastTrial sits beside TRIAL (y=66), LastDice beside REDICE
-        // (y=78), centre-ward of each channel. Tiny "L" cue above each so the rewind
-        // partner is distinguishable from the forward gate it pairs with.
-        T(RafflesLayout::RAFFLES_GATE_LASTTRIAL_R.x, RafflesLayout::RAFFLES_GATE_LASTTRIAL_R.y - 6.f, 4.0f, "L");
-        T(RafflesLayout::RAFFLES_GATE_LASTTRIAL_M.x, RafflesLayout::RAFFLES_GATE_LASTTRIAL_M.y - 6.f, 4.0f, "L");
+        for (int r = 0; r < 3; ++r) T(30.f, gateY[r], 6.f, gl[r]);
+        // Paired Last-gate "L" markers (LastDice R/M/Q — LastTrial removed with Trial).
         T(RafflesLayout::RAFFLES_GATE_LASTDICE_R.x,  RafflesLayout::RAFFLES_GATE_LASTDICE_R.y  - 6.f, 4.0f, "L");
         T(RafflesLayout::RAFFLES_GATE_LASTDICE_M.x,  RafflesLayout::RAFFLES_GATE_LASTDICE_M.y  - 6.f, 4.0f, "L");
     }

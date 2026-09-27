@@ -3,8 +3,8 @@
   "cpp_struct": "RafflesLayout",
   "enum_prefix": "MonsoonIds",
   "panel": {
-    "hp": 12,
-    "width_mm": 60.96,
+    "hp": 18,
+    "width_mm": 91.44,
     "height_mm": 128.5,
     "theme": "both",
     "rich_art": false
@@ -13,7 +13,7 @@
     "variant": "horizontal",
     "x_mm": 8.0,
     "y_mm": 6.0,
-    "width_mm": 44.0
+    "width_mm": 65.0
   },
   "palette": {
     "bg": "#070707",
@@ -24,6 +24,7 @@
     "red": "#dc2626",
     "gold": "#c8960c",
     "teal": "#26a69a",
+    "purple": "#7a5aa8",
     "neutral": "#6a6e76"
   },
   "sections": [
@@ -32,7 +33,17 @@
       "side": "left",
       "tint": "red",
       "x_mm": 2.0,
-      "w_mm": 27.48,
+      "w_mm": 25.0,
+      "y_mm": 36.0,
+      "h_mm": 86.0,
+      "opacity": 0.05
+    },
+    {
+      "id": "qmix",
+      "side": "center",
+      "tint": "purple",
+      "x_mm": 28.0,
+      "w_mm": 25.0,
       "y_mm": 36.0,
       "h_mm": 86.0,
       "opacity": 0.05
@@ -41,16 +52,25 @@
       "id": "melody",
       "side": "right",
       "tint": "teal",
-      "x_mm": 31.48,
-      "w_mm": 27.48,
+      "x_mm": 54.0,
+      "w_mm": 25.0,
       "y_mm": 36.0,
       "h_mm": 86.0,
       "opacity": 0.05
     },
     {
-      "id": "divider",
+      "id": "divider_l",
       "kind": "vline",
-      "x_mm": 30.48,
+      "x_mm": 27.0,
+      "y0_mm": 30.0,
+      "y1_mm": 120.0,
+      "y_mm": 36.0,
+      "h_mm": 86.0
+    },
+    {
+      "id": "divider_r",
+      "kind": "vline",
+      "x_mm": 53.0,
       "y0_mm": 30.0,
       "y1_mm": 120.0,
       "y_mm": 36.0,
@@ -62,7 +82,7 @@
       "id": "cv_group",
       "x_mm": 4.0,
       "y_mm": 39.0,
-      "w_mm": 52.96,
+      "w_mm": 73.28,
       "h_mm": 24.0,
       "fill": "well",
       "opacity": 0.5,
@@ -73,7 +93,7 @@
     {
       "id": "RAFFLES_SLEW_R_CV",
       "kind": "input",
-      "x_mm": 9.0,
+      "x_mm": 13.22,
       "y_mm": 44.0,
       "ring": "teal"
     },
@@ -81,29 +101,14 @@
       "id": "RAFFLES_SLEW_R_ATT",
       "kind": "param",
       "widget": "Trimpot",
-      "x_mm": 21.0,
+      "x_mm": 22.22,
       "y_mm": 44.0,
       "ring": "neutral"
-    },
-    {
-      "id": "RAFFLES_SLEW_M_ATT",
-      "kind": "param",
-      "widget": "Trimpot",
-      "x_mm": 39.0,
-      "y_mm": 44.0,
-      "ring": "neutral"
-    },
-    {
-      "id": "RAFFLES_SLEW_M_CV",
-      "kind": "input",
-      "x_mm": 51.0,
-      "y_mm": 44.0,
-      "ring": "teal"
     },
     {
       "id": "RAFFLES_MIX_R_CV",
       "kind": "input",
-      "x_mm": 9.0,
+      "x_mm": 13.22,
       "y_mm": 56.0,
       "ring": "teal"
     },
@@ -111,120 +116,144 @@
       "id": "RAFFLES_MIX_R_ATT",
       "kind": "param",
       "widget": "Trimpot",
-      "x_mm": 21.0,
+      "x_mm": 22.22,
       "y_mm": 56.0,
       "ring": "neutral"
-    },
-    {
-      "id": "RAFFLES_MIX_M_ATT",
-      "kind": "param",
-      "widget": "Trimpot",
-      "x_mm": 39.0,
-      "y_mm": 56.0,
-      "ring": "neutral"
-    },
-    {
-      "id": "RAFFLES_MIX_M_CV",
-      "kind": "input",
-      "x_mm": 51.0,
-      "y_mm": 56.0,
-      "ring": "teal"
-    },
-    {
-      "id": "RAFFLES_GATE_TRIAL_R",
-      "kind": "input",
-      "x_mm": 11.0,
-      "y_mm": 68.0,
-      "ring": "red"
-    },
-    {
-      "id": "RAFFLES_GATE_TRIAL_M",
-      "kind": "input",
-      "x_mm": 49.0,
-      "y_mm": 68.0,
-      "ring": "red"
     },
     {
       "id": "RAFFLES_GATE_REDICE_R",
       "kind": "input",
-      "x_mm": 11.0,
-      "y_mm": 80.0,
-      "ring": "red"
-    },
-    {
-      "id": "RAFFLES_GATE_REDICE_M",
-      "kind": "input",
-      "x_mm": 49.0,
-      "y_mm": 80.0,
-      "ring": "red"
-    },
-    {
-      "id": "RAFFLES_GATE_LASTTRIAL_R",
-      "kind": "input",
-      "x_mm": 22.0,
-      "y_mm": 68.0,
-      "ring": "red"
-    },
-    {
-      "id": "RAFFLES_GATE_LASTTRIAL_M",
-      "kind": "input",
-      "x_mm": 38.0,
-      "y_mm": 68.0,
+      "x_mm": 12.22,
+      "y_mm": 72.0,
       "ring": "red"
     },
     {
       "id": "RAFFLES_GATE_LASTDICE_R",
       "kind": "input",
-      "x_mm": 22.0,
-      "y_mm": 80.0,
+      "x_mm": 23.22,
+      "y_mm": 72.0,
       "ring": "red"
-    },
-    {
-      "id": "RAFFLES_GATE_LASTDICE_M",
-      "kind": "input",
-      "x_mm": 38.0,
-      "y_mm": 80.0,
-      "ring": "red"
-    },
-    {
-      "id": "RAFFLES_GATE_LIVESRC_R",
-      "kind": "input",
-      "x_mm": 16.0,
-      "y_mm": 92.0,
-      "ring": "gold"
-    },
-    {
-      "id": "RAFFLES_GATE_LIVESRC_M",
-      "kind": "input",
-      "x_mm": 44.0,
-      "y_mm": 92.0,
-      "ring": "gold"
     },
     {
       "id": "RAFFLES_GATE_LIVESTATIC_R",
       "kind": "input",
-      "x_mm": 16.0,
-      "y_mm": 104.0,
+      "x_mm": 17.72,
+      "y_mm": 92.0,
+      "ring": "red"
+    },
+    {
+      "id": "RAFFLES_SLEW_Q_CV",
+      "kind": "input",
+      "x_mm": 41.22,
+      "y_mm": 44.0,
+      "ring": "purple"
+    },
+    {
+      "id": "RAFFLES_SLEW_Q_ATT",
+      "kind": "param",
+      "widget": "Trimpot",
+      "x_mm": 50.22,
+      "y_mm": 44.0,
+      "ring": "neutral"
+    },
+    {
+      "id": "RAFFLES_MIX_Q_CV",
+      "kind": "input",
+      "x_mm": 41.22,
+      "y_mm": 56.0,
+      "ring": "purple"
+    },
+    {
+      "id": "RAFFLES_MIX_Q_ATT",
+      "kind": "param",
+      "widget": "Trimpot",
+      "x_mm": 50.22,
+      "y_mm": 56.0,
+      "ring": "neutral"
+    },
+    {
+      "id": "RAFFLES_GATE_REDICE_Q",
+      "kind": "input",
+      "x_mm": 40.22,
+      "y_mm": 72.0,
+      "ring": "purple"
+    },
+    {
+      "id": "RAFFLES_GATE_LASTDICE_Q",
+      "kind": "input",
+      "x_mm": 51.22,
+      "y_mm": 72.0,
+      "ring": "purple"
+    },
+    {
+      "id": "RAFFLES_GATE_LIVESTATIC_Q",
+      "kind": "input",
+      "x_mm": 45.72,
+      "y_mm": 92.0,
+      "ring": "purple"
+    },
+    {
+      "id": "RAFFLES_SLEW_M_CV",
+      "kind": "input",
+      "x_mm": 69.22,
+      "y_mm": 44.0,
+      "ring": "teal"
+    },
+    {
+      "id": "RAFFLES_SLEW_M_ATT",
+      "kind": "param",
+      "widget": "Trimpot",
+      "x_mm": 78.22,
+      "y_mm": 44.0,
+      "ring": "neutral"
+    },
+    {
+      "id": "RAFFLES_MIX_M_CV",
+      "kind": "input",
+      "x_mm": 69.22,
+      "y_mm": 56.0,
+      "ring": "teal"
+    },
+    {
+      "id": "RAFFLES_MIX_M_ATT",
+      "kind": "param",
+      "widget": "Trimpot",
+      "x_mm": 78.22,
+      "y_mm": 56.0,
+      "ring": "neutral"
+    },
+    {
+      "id": "RAFFLES_GATE_REDICE_M",
+      "kind": "input",
+      "x_mm": 68.22,
+      "y_mm": 72.0,
+      "ring": "teal"
+    },
+    {
+      "id": "RAFFLES_GATE_LASTDICE_M",
+      "kind": "input",
+      "x_mm": 79.22,
+      "y_mm": 72.0,
       "ring": "teal"
     },
     {
       "id": "RAFFLES_GATE_LIVESTATIC_M",
       "kind": "input",
-      "x_mm": 44.0,
-      "y_mm": 104.0,
+      "x_mm": 73.72,
+      "y_mm": 92.0,
       "ring": "teal"
     },
     {
       "id": "RAFFLES_GATE_RESEED_ROLL",
       "kind": "input",
-      "x_mm": 16.0,
+      "x_mm": 29.72,
       "y_mm": 116.0,
       "ring": "neutral"
     },
     {
       "id": "RAFFLES_GATE_RESEED_RESTART",
       "kind": "input",
-      "x_mm": 44.0,
+      "x_mm": 61.72,
       "y_mm": 116.0,
       "ring": "neutral"
     }
@@ -232,21 +261,21 @@
   "labels": [
     {
       "text": "RAFFLES",
-      "x_mm": 30.0,
+      "x_mm": 40.0,
       "y_mm": 30.0,
       "size": 9.0,
       "runtime": true
     },
     {
       "text": "SLEW",
-      "x_mm": 30.0,
+      "x_mm": 40.0,
       "y_mm": 32.0,
       "size": 7.0,
       "runtime": true
     },
     {
       "text": "MIX",
-      "x_mm": 30.0,
+      "x_mm": 40.0,
       "y_mm": 44.0,
       "size": 7.0,
       "runtime": true
@@ -254,51 +283,45 @@
     {
       "text": "R",
       "x_mm": 9.0,
-      "y_mm": 44.0,
+      "y_mm": 50.0,
+      "size": 6.0,
+      "runtime": true
+    },
+    {
+      "text": "Q",
+      "x_mm": 40.0,
+      "y_mm": 50.0,
       "size": 6.0,
       "runtime": true
     },
     {
       "text": "M",
-      "x_mm": 51.0,
-      "y_mm": 44.0,
-      "size": 6.0,
-      "runtime": true
-    },
-    {
-      "text": "TRIAL",
-      "x_mm": 30.0,
-      "y_mm": 68.0,
+      "x_mm": 71.0,
+      "y_mm": 50.0,
       "size": 6.0,
       "runtime": true
     },
     {
       "text": "REDICE",
-      "x_mm": 30.0,
-      "y_mm": 80.0,
-      "size": 6.0,
-      "runtime": true
-    },
-    {
-      "text": "LIVE SRC",
-      "x_mm": 30.0,
-      "y_mm": 92.0,
+      "x_mm": 40.0,
+      "y_mm": 66.0,
       "size": 6.0,
       "runtime": true
     },
     {
       "text": "LIVE/STAT",
-      "x_mm": 30.0,
-      "y_mm": 104.0,
+      "x_mm": 40.0,
+      "y_mm": 86.0,
       "size": 6.0,
       "runtime": true
     },
     {
       "text": "RESEED",
-      "x_mm": 30.0,
-      "y_mm": 116.0,
+      "x_mm": 40.0,
+      "y_mm": 110.0,
       "size": 6.0,
       "runtime": true
     }
-  ]
+  ],
+  "_generated_note": "DERIVED from panel_src/gen_raffles.py (STREAMS / STREAM_CONTROLS / GLOBAL_CONTROLS). Do not hand-edit; re-run panel_src/sync_raffles_layout.py."
 }
