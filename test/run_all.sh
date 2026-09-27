@@ -67,6 +67,7 @@ TESTS=(
   "test_poly_slur_roll|"
   "test_poly_voices|"
   "test_probmod_roundtrip|"
+  "test_qmix_poly|"
   "test_qmix_rng|"
   "test_quantize_engine|$SE $GS $PE"
   "test_rule2_consume|"
