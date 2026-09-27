@@ -71,5 +71,45 @@ inline float reconstructVolts(int note, int bend14Val, float bendRangeSemis) {
     return (float)(semis / 12.0);
 }
 
+// ── Two-layer expression model (MPE_UTILITY_BUILD_SPEC "Two-layer input structure") ───────────────
+// OUT = A + B per dimension, summed AROUND the dimension's rest point. A = main-gated base (alive the
+// whole note), B = accent-gated additive (windowed inside a live note). Both a/b are already in the
+// dimension's VALUE space (semitones for X, 0-127 for Y/Z) INCLUDING the rest offset — i.e. a "silent"
+// layer reads as `rest`, not 0. Summing two full values would double the rest, so one rest is removed:
+//   OUT = clamp(a + b - rest, lo, hi)
+// When B is at rest (unpatched + no default) this collapses to `a` (the main layer alone). When BOTH are
+// at rest, OUT = rest — the dimension's neutral point (0 for X/Z, 64 for Y). lo/hi are the rails; for X
+// the caller clamps via bend14 at ±bendRange, so pass a wide lo/hi and let bend14 do the pitch clamping.
+inline float sumAroundRest(float a, float b, float rest, float lo, float hi) {
+    float v = a + b - rest;
+    return v < lo ? lo : (v > hi ? hi : v);
+}
+
+// ── CV → MPE-value mappers (pure; Rack's getPolyVoltage supplies the volts) ────────────────────────
+// The three expression dimensions, each with its rest point and CV convention. All bipolar-friendly:
+// unpatched Rack inputs read 0V, which maps exactly to the dimension's rest, so a silent/unpatched layer
+// contributes nothing — the patchable-not-menued default.
+
+// X — expressive pitch bend, in SEMITONES, bipolar around rest 0. Convention: 1V = 1 semitone of bend
+// (a ±5V expression controller covers ±5 semitones; the receiver's bend range clamps via bend14). This
+// is ADDED to the tuning residual AFTER the note+residual decomposition, so it bypasses the quantiser —
+// it is continuous expression pitch, not a scale-degree move.
+inline float xSemisFromVolts(float v) { return v; }
+
+// Y — CC74 (timbre/slide), 0-127, bipolar around rest 64. Convention: 0V → 64, ±5V spans 0..127
+// (scale 12.8/volt: 64 ± 64 over 5V). A bipolar expression CV centred on 0V lands at the timbre mid.
+inline int yCc74FromVolts(float v) {
+    int n = (int)std::lround(64.0 + (double)v * 12.8);
+    return n < 0 ? 0 : (n > 127 ? 127 : n);
+}
+
+// Z — channel pressure, 0-127, unipolar from rest 0. Convention: 0V → 0, 10V → 127 (scale 12.7/volt).
+// Negative volts clamp to 0 (pressure cannot be negative).
+inline int zPressureFromVolts(float v) {
+    if (v < 0.f) v = 0.f;
+    int n = (int)std::lround((double)v * 12.7);
+    return n > 127 ? 127 : n;
+}
+
 } // namespace mpe
 } // namespace dotModular

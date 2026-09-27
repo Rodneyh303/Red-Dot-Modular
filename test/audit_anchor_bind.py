@@ -102,6 +102,13 @@ MODULES = {
             "input_dir_mod_": 5,
         },
     },
+    "keppel": {
+        "widget": ["src/Keppel.cpp"],
+        "panel": "res/panels/Keppel_panel_dark.svg",
+        # Tier 2 (two-layer X/Y/Z + within-legato gate). All anchors are explicit (no prefix
+        # families), so no `counts` — the 1:1 anchor↔bind check alone covers the 12 inputs + monitor
+        # + param + midi_display + light + 3 label anchors.
+    },
 }
 
 # Modules known NOT yet migrated — documented, not audited (no false green either).
@@ -144,7 +151,11 @@ def read_anchors(svg_path):
 _BIND_SITE_RE = re.compile(
     r'\b(bind(?:Param|Input|Output|Light|LightParam|Widget|Child|StoreKnob'
     r'|Params|Inputs|Outputs|Lights|ParamsN|InputsN|OutputsN))\s*'
-    r'(?:<[^>]*>)?\s*\(', re.DOTALL)
+    # Template args, allowing ONE level of nesting (e.g. bindLight<SmallLight<GreenLight>>).
+    # The old <[^>]*> stopped at the first '>' and silently missed nested-template binds, so a
+    # bindLight<SmallLight<GreenLight>>("light_active") was invisible to the audit (false "anchor
+    # with no bind"). <[^<>]*(?:<[^<>]*>[^<>]*)*> matches <X> and <X<Y>> (and <X<Y>Z>).
+    r'(?:<[^<>]*(?:<[^<>]*>[^<>]*)*>)?\s*\(', re.DOTALL)
 # Direct anchor consumption (not a widget bind) — labels + editor recess. Covers
 # (replaces the old literal-only findNamed matcher)
 # findNamed(...) and any thin wrapper (e.g. draw()'s anchorMM(...)) that forwards a

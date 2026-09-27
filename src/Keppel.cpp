@@ -21,7 +21,19 @@ extern Model* modelKeppel;
 
 namespace KeppelIds {
     enum ParamIds { BEND_RANGE_PARAM, NUM_PARAMS };
-    enum InputIds { PITCH_INPUT, GATE_INPUT, ACCENT_INPUT, VEL_INPUT, NUM_INPUTS };
+    // Two-layer model (MPE_UTILITY_BUILD_SPEC "Two-layer input structure"): each expression dimension has
+    // an A jack (main-gated base) + a B jack (accent-gated additive). Existing PITCH/GATE/ACCENT/VEL are
+    // KEPT UNCHANGED. The 8 NEW jacks: X_A/X_B, Y_A/Y_B, Z_A/Z_B, VEL_B, STEP_GATE. VEL_INPUT is velocity's
+    // layer A. 13 inputs total.
+    enum InputIds {
+        PITCH_INPUT, GATE_INPUT, ACCENT_INPUT, VEL_INPUT,   // existing (unchanged)
+        X_A_INPUT, X_B_INPUT,                               // X: expressive pitch bend (added after quantiser)
+        Y_A_INPUT, Y_B_INPUT,                               // Y: CC74 timbre (bipolar around 64)
+        Z_A_INPUT, Z_B_INPUT,                               // Z: channel pressure (unipolar from 0)
+        VEL_B_INPUT,                                        // velocity layer B (accent-gated additive)
+        STEP_GATE_INPUT,                                    // within-legato (step) gate — inner note divisions
+        NUM_INPUTS
+    };
     enum OutputIds { MONITOR_OUTPUT, NUM_OUTPUTS };
     enum LightIds  { ACTIVE_LIGHT, NUM_LIGHTS };
 }
@@ -39,6 +51,10 @@ struct Keppel : Module {
     // uses velNormal (fully back-compatible). Both menu-adjustable (receivers vary in velocity curve).
     int   velNormal = 80;
     int   velAccent = 127;
+    // Opinionated default for the Y (CC74) brighten on accent when Y_B is unpatched (MPE_UTILITY_BUILD_SPEC
+    // "Two-layer": defaults apply ONLY when a B jack is unpatched — velocity boost + Y brighten on accent,
+    // X and Z silent). +32 CC74 ≈ half-range toward open/bright.
+    int   yAccentBrighten = 32;
 
     // Legato past ±bendRange: a single held note+bend can only CLAMP (wrong pitch) there. Default B
     // (MPE_UTILITY_BUILD_SPEC): re-articulate — re-note on the same member channel so the pitch is
@@ -48,12 +64,15 @@ struct Keppel : Module {
 
     // Per-voice (poly channel) → member-channel assignment + last state, for edge detect + note-off.
     struct VoiceState {
-        bool  active     = false; // gate currently high (a note is sounding)
-        int   memberCh   = -1;    // MIDI channel index (1..memberCount) or -1
-        int   note       = 60;    // latched MIDI note (fixed for the note's lifetime)
-        int   vel        = 80;    // latched note-on velocity (reused when re-articulating past ±range)
-        int   lastBend14 = 8192;  // last bend value sent (dedupe held-voice re-sends)
-        bool  gatePrev   = false; // previous-block gate for edge detection
+        bool  active       = false; // gate currently high (a note is sounding)
+        int   memberCh     = -1;    // MIDI channel index (1..memberCount) or -1
+        int   note         = 60;    // latched MIDI note (fixed for the note's lifetime)
+        int   vel          = 80;    // latched note-on velocity (reused when re-articulating past ±range)
+        int   lastBend14   = 8192;  // last bend value sent (dedupe held-voice re-sends)
+        int   lastY74      = 64;    // last CC74 (timbre) sent — dedupe (carried across re-articulation/LRU)
+        int   lastZ7       = 0;     // last channel pressure sent — dedupe (carried across re-articulation/LRU)
+        bool  gatePrev     = false; // previous-block main gate for edge detection
+        bool  stepGatePrev = false; // previous-block within-legato (step) gate for inner-boundary detect
     };
     VoiceState voices[16];
 
@@ -71,9 +90,19 @@ struct Keppel : Module {
         configParam(BEND_RANGE_PARAM, 1.f, 48.f, 2.f, "Pitch-bend range", " semitones");
         paramQuantities[BEND_RANGE_PARAM]->snapEnabled = true;
         configInput(PITCH_INPUT,  "Poly pitch (1V/oct)");
-        configInput(GATE_INPUT,   "Poly gate");
-        configInput(ACCENT_INPUT, "Poly accent gate (→ note-on velocity; unpatched = normal)");
-        configInput(VEL_INPUT,    "Poly velocity CV (0–10V → 1–127; overrides accent when patched)");
+        configInput(GATE_INPUT,   "Poly gate (main gate — note on/off + legato envelope)");
+        configInput(ACCENT_INPUT, "Poly accent gate (→ note-on velocity + B-layer defaults; unpatched = normal)");
+        configInput(VEL_INPUT,    "Poly velocity CV (layer A; 0–10V → 1–127; overrides accent when patched)");
+        // Two-layer expression jacks (MPE_UTILITY_BUILD_SPEC "Two-layer input structure"). A = main-gated
+        // base (alive the whole note); B = accent-gated additive (windowed inside a live note).
+        configInput(X_A_INPUT, "Poly X-A expr (1V=1st bend, bipolar @0; added after note+residual split)");
+        configInput(X_B_INPUT, "Poly X-B expr (accent-gated additive bend; unpatched = silent)");
+        configInput(Y_A_INPUT, "Poly Y-A expr (CC74 timbre, bipolar @64; ±5V→0..127)");
+        configInput(Y_B_INPUT, "Poly Y-B expr (accent-gated additive CC74; unpatched = accent brighten)");
+        configInput(Z_A_INPUT, "Poly Z-A expr (channel pressure, unipolar @0; 10V→127)");
+        configInput(Z_B_INPUT, "Poly Z-B expr (accent-gated additive pressure; unpatched = silent)");
+        configInput(VEL_B_INPUT, "Poly velocity-B CV (accent-gated additive; 0–10V→0-127; unpatched = accent boost)");
+        configInput(STEP_GATE_INPUT, "Poly within-legato (step) gate — inner note divisions / forced re-artic grid");
         configOutput(MONITOR_OUTPUT, "Reverse-calc monitor: reconstructed pitch CV (scope vs PITCH in)");
         for (int i = 0; i < 16; ++i) memberOwner[i] = -1;
         midiOut.channel = -1;     // we set each message's channel ourselves (per-voice MPE)
@@ -94,6 +123,18 @@ struct Keppel : Module {
     void sendNoteOff(uint8_t ch, uint8_t note, int64_t f)           { send3(0x8, ch, note, 0, f); }
     void sendBend(uint8_t ch, int pw14, int64_t frame) {
         send3(0xE, ch, (uint8_t)(pw14 & 0x7f), (uint8_t)((pw14 >> 7) & 0x7f), frame);
+    }
+    // Channel Pressure (MPE Z dimension): a 2-byte message (0xDn, pressure). Built explicitly with
+    // setSize(2) so the third byte isn't sent — most receivers tolerate a stray 0, but MPE receivers
+    // are picky and we want the wire bytes exact.
+    void sendPressure(uint8_t ch, uint8_t val, int64_t frame) {
+        midi::Message m;
+        m.setSize(2);
+        m.setStatus(0xD);
+        m.setChannel(ch);
+        m.bytes[1] = val & 0x7f;
+        m.setFrame(frame);
+        midiOut.sendMessage(m);
     }
 
     // ── MPE Configuration handshake: set the lower-zone member count + per-note bend range. Sent on
@@ -182,41 +223,96 @@ struct Keppel : Module {
         outputs[MONITOR_OUTPUT].setChannels(channels);
         bool anyActive = false;
 
+        // Helper: read a poly CV channel, returning 0V (the dimension rest for all three of X/Y/Z) when
+        // the jack is unpatched or the channel is absent. An unpatched A or B layer therefore contributes
+        // the rest point — patchable-not-menued by construction.
+        auto readPoly = [&](int id, int voice) -> float {
+            auto& in = inputs[id];
+            return (in.isConnected() && in.getChannels() > voice) ? in.getVoltage(voice) : 0.f;
+        };
+        auto clamp127 = [](int x, int lo) { return x < lo ? lo : (x > 127 ? 127 : x); };
+
         for (int v = 0; v < 16; ++v) {
             const bool present = (v < channels);
             const float pitchV = present ? inputs[PITCH_INPUT].getVoltage(v) : 0.f;
-            // Gate: matching channel on the gate cable; if gate cable has fewer channels, treat absent
-            // as low. (Voice i = pitch[i] + gate[i], per the spec.)
+            // Main gate: matching channel on the gate cable; if gate cable has fewer channels, treat
+            // absent as low. (Voice i = pitch[i] + gate[i], per the spec.)
             const bool gateHigh = present
                 && inputs[GATE_INPUT].getChannels() > v
                 && inputs[GATE_INPUT].getVoltage(v) >= 1.f;
+            // Within-legato (step) gate: inner note divisions inside a held legato (MPE_UTILITY_BUILD_SPEC
+            // FINAL SHAPE). Additive to the main gate — a rising edge WHILE the main gate is held forces a
+            // re-articulation on the SAME member channel, snapping forced re-articulation to a real note
+            // division instead of an inferred pitch-threshold point.
+            const bool stepGateHigh = present
+                && inputs[STEP_GATE_INPUT].getChannels() > v
+                && inputs[STEP_GATE_INPUT].getVoltage(v) >= 1.f;
 
             VoiceState& vs = voices[v];
             const bool rising  =  gateHigh && !vs.gatePrev;
             const bool falling = !gateHigh &&  vs.gatePrev;
 
+            // ── Two-layer expression read (per dimension: A main-gated base + B accent-gated additive).
+            // The accent window opens ONLY while the accent gate is high AND the note is live (main gate
+            // held). Computed every block for use in the rising + hold branches.
+            const bool accentLive = gateHigh
+                && inputs[ACCENT_INPUT].getChannels() > v
+                && inputs[ACCENT_INPUT].getVoltage(v) >= 5.f;
+
+            // X — expressive pitch bend (semitones, rest 0). Added AFTER the note+residual decomposition
+            // (bypasses the quantiser — continuous expression pitch, not a scale-degree move). The sum is
+            // unbounded here; bend14 clamps to ±bendRange at the wire, and over-range feeds re-articulation.
+            const float xA = dotModular::mpe::xSemisFromVolts(readPoly(X_A_INPUT, v));
+            const float xB = dotModular::mpe::xSemisFromVolts(readPoly(X_B_INPUT, v)); // 0 (silent) when unpatched
+            const float xTotal = dotModular::mpe::sumAroundRest(xA, xB, 0.f, -1000.f, 1000.f);
+
+            // Y — CC74 timbre (0-127, rest 64). B default: accent brighten when Y_B unpatched.
+            const int yA = dotModular::mpe::yCc74FromVolts(readPoly(Y_A_INPUT, v));
+            const int yB = inputs[Y_B_INPUT].isConnected()
+                ? dotModular::mpe::yCc74FromVolts(readPoly(Y_B_INPUT, v))
+                : (accentLive ? 64 + yAccentBrighten : 64);
+            const int yVal = (int)std::lround(dotModular::mpe::sumAroundRest(
+                (float)yA, (float)yB, 64.f, 0.f, 127.f));
+
+            // Z — channel pressure (0-127, rest 0). B silent unless patched.
+            const int zA = dotModular::mpe::zPressureFromVolts(readPoly(Z_A_INPUT, v));
+            const int zB = dotModular::mpe::zPressureFromVolts(readPoly(Z_B_INPUT, v)); // 0 (silent) when unpatched
+            const int zVal = (int)std::lround(dotModular::mpe::sumAroundRest(
+                (float)zA, (float)zB, 0.f, 0.f, 127.f));
+
             if (rising) {
                 const int note  = dotModular::mpe::noteFor(pitchV);
-                const int pw14  = dotModular::mpe::bend14For(pitchV, (float)bendRange);
-                const int ch    = allocMember(v, args.frame);
+                // Bend at note-on = centred residual + X expression (X bypasses the quantiser).
+                const float resid = dotModular::mpe::centsOffsetSemis(pitchV);
+                const int    pw14 = dotModular::mpe::bend14(resid + xTotal, (float)bendRange);
+                const int    ch   = allocMember(v, args.frame);
                 if (ch >= 0) {
-                    // Velocity at note-on (latched — it's a note-on property). Precedence:
-                    //   1) VEL CV patched → continuous 0–10V → 1–127 (Rack convention, core CV-MIDI).
-                    //   2) else ACCENT gate patched → two-level (velNormal / velAccent).
-                    //   3) else → velNormal.
-                    int vel;
+                    // Velocity at note-on (one-shot, latched). Two-layer: A = VEL CV (patched) or the
+                    // two-level fallback (velNormal / velAccent); B = VEL_B CV (patched, additive) or the
+                    // default accent boost. Back-compat: VEL patched overrides accent entirely (velB=0
+                    // default), matching the original "overrides accent when patched". With NEITHER VEL nor
+                    // VEL_B patched, accent → velAccent, else velNormal (exactly the original behaviour).
+                    int velA, velB;
                     if (inputs[VEL_INPUT].isConnected()) {
-                        vel = (int)std::round(inputs[VEL_INPUT].getPolyVoltage(v) / 10.f * 127.f);
-                        vel = vel < 1 ? 1 : (vel > 127 ? 127 : vel);
+                        velA = clamp127((int)std::round(inputs[VEL_INPUT].getPolyVoltage(v) / 10.f * 127.f), 1);
+                        velB = inputs[VEL_B_INPUT].isConnected()
+                            ? clamp127((int)std::round(inputs[VEL_B_INPUT].getPolyVoltage(v) / 10.f * 127.f), 0)
+                            : 0;   // no accent default when VEL is patched (user took explicit control)
                     } else {
-                        const bool accented = inputs[ACCENT_INPUT].getChannels() > v
-                                           && inputs[ACCENT_INPUT].getVoltage(v) >= 5.f;
-                        vel = accented ? velAccent : velNormal;
+                        velA = velNormal;
+                        velB = inputs[VEL_B_INPUT].isConnected()
+                            ? clamp127((int)std::round(inputs[VEL_B_INPUT].getPolyVoltage(v) / 10.f * 127.f), 0)
+                            : (accentLive ? (velAccent - velNormal) : 0);
                     }
-                    // BEND FIRST, THEN note-on (note starts at pitch, not sliding in).
+                    const int vel = clamp127(velA + velB, 1);
+                    // BEND FIRST, THEN note-on (note starts at pitch, not sliding in), THEN initial Y/Z so
+                    // the receiver opens the note with the right timbre + pressure (MPE_UTILITY_BUILD_SPEC).
                     sendBend((uint8_t)ch, pw14, args.frame);
                     sendNoteOn((uint8_t)ch, (uint8_t)note, (uint8_t)vel, args.frame);
-                    vs.active = true; vs.memberCh = ch; vs.note = note; vs.vel = vel; vs.lastBend14 = pw14;
+                    sendCC((uint8_t)ch, 74, (uint8_t)yVal, args.frame);       // initial Y (CC74)
+                    sendPressure((uint8_t)ch, (uint8_t)zVal, args.frame);     // initial Z (channel pressure)
+                    vs.active = true; vs.memberCh = ch; vs.note = note; vs.vel = vel;
+                    vs.lastBend14 = pw14; vs.lastY74 = yVal; vs.lastZ7 = zVal;
                 }
             } else if (falling) {
                 if (vs.memberCh >= 0) {
@@ -225,37 +321,50 @@ struct Keppel : Module {
                 }
                 vs.active = false; vs.memberCh = -1;
             } else if (gateHigh && vs.active && vs.memberCh >= 0) {
-                const float offset = dotModular::mpe::offsetFromNoteSemis(pitchV, vs.note);
-                if (reArticulateOnExceed && std::fabs(offset) > (float)bendRange) {
-                    // Legato landmine: the live pitch has drifted past ±bendRange, where a single held
-                    // note+bend can only CLAMP (wrong pitch). Re-articulate on the SAME member channel:
-                    // note-off the old note, then note-on the new nearest note at a centred bend, reusing
-                    // the voice's latched velocity. Correct pitch at the cost of a retrigger
-                    // (MPE_UTILITY_BUILD_SPEC default B). Re-noting recentres the offset near 0, so this
-                    // does NOT oscillate at the boundary.
+                // Total bend = tuning residual (vs.note latched) + X expression. Over-range (past
+                // ±bendRange) OR a within-legato step-gate rising edge forces a re-articulation on the SAME
+                // member channel — correct pitch / real note boundary at the cost of a retrigger. Re-noting
+                // recentres the residual near 0, so the pitch-exceed path does NOT oscillate at the edge.
+                const float resid = dotModular::mpe::offsetFromNoteSemis(pitchV, vs.note);
+                const float totalOffset = resid + xTotal;
+                const bool stepRise = stepGateHigh && !vs.stepGatePrev;
+                const bool exceed = reArticulateOnExceed && std::fabs(totalOffset) > (float)bendRange;
+                if (exceed || stepRise) {
                     const int newNote = dotModular::mpe::noteFor(pitchV);
-                    const int newBend = dotModular::mpe::bend14For(pitchV, (float)bendRange);
+                    const float newResid = dotModular::mpe::centsOffsetSemis(pitchV);
+                    const int newBend = dotModular::mpe::bend14(newResid + xTotal, (float)bendRange);
                     sendNoteOff((uint8_t)vs.memberCh, (uint8_t)vs.note, args.frame);
-                    sendBend((uint8_t)vs.memberCh, newBend, args.frame);   // bend before note-on
+                    sendBend((uint8_t)vs.memberCh, newBend, args.frame);      // bend before note-on
                     sendNoteOn((uint8_t)vs.memberCh, (uint8_t)newNote, (uint8_t)vs.vel, args.frame);
-                    vs.note = newNote; vs.lastBend14 = newBend;
+                    // Re-affirm Y/Z at the new note-on (current values — no discontinuity; carried across).
+                    sendCC((uint8_t)vs.memberCh, 74, (uint8_t)yVal, args.frame);
+                    sendPressure((uint8_t)vs.memberCh, (uint8_t)zVal, args.frame);
+                    vs.note = newNote; vs.lastBend14 = newBend; vs.lastY74 = yVal; vs.lastZ7 = zVal;
                 } else {
-                    // Continuous bend tracking (option 1): the MIDI note stays latched (vs.note) and only
-                    // the per-voice bend moves, so glides/vibrato within ±bendRange play smoothly with no
-                    // re-articulation. Beyond the range (re-articulation OFF), bend14 clamps at the
-                    // extreme. Re-send only on a change (dedupe) to avoid flooding at audio rate.
-                    const int pw14 = dotModular::mpe::bend14FromNote(pitchV, vs.note, (float)bendRange);
+                    // Continuous tracking: the MIDI note stays latched and only bend/Y/Z move, so glides /
+                    // timbre / pressure sweeps within range play smoothly with no re-articulation. Re-send
+                    // each only on a change (dedupe, like lastBend14) to avoid flooding at audio rate.
+                    const int pw14 = dotModular::mpe::bend14(totalOffset, (float)bendRange);
                     if (pw14 != vs.lastBend14) {
                         sendBend((uint8_t)vs.memberCh, pw14, args.frame);
                         vs.lastBend14 = pw14;
+                    }
+                    if (yVal != vs.lastY74) {
+                        sendCC((uint8_t)vs.memberCh, 74, (uint8_t)yVal, args.frame);
+                        vs.lastY74 = yVal;
+                    }
+                    if (zVal != vs.lastZ7) {
+                        sendPressure((uint8_t)vs.memberCh, (uint8_t)zVal, args.frame);
+                        vs.lastZ7 = zVal;
                     }
                 }
             }
 
             // Reverse-calc MONITOR: the 1V/oct pitch an ideal MPE receiver reconstructs from what we
-            // actually emit (latched note + last bend, at the current range). Patch to a scope alongside
-            // PITCH in — they overlay to sub-cent when Keppel is correct; any gap (e.g. a clamped slide
-            // with re-articulation OFF) is visible. Internal ground truth for the round-trip test.
+            // actually emit (latched note + last bend, at the current range — the last bend already
+            // includes the X expression, so the monitor faithfully reflects the emitted pitch). Patch to a
+            // scope alongside PITCH in — they overlay to sub-cent when Keppel is correct; any gap (e.g. a
+            // clamped slide with re-articulation OFF, or X pushed past the range) is visible.
             if (present) {
                 const float mv = (vs.active && vs.memberCh >= 0)
                     ? dotModular::mpe::reconstructVolts(vs.note, vs.lastBend14, (float)bendRange)
@@ -264,6 +373,7 @@ struct Keppel : Module {
             }
 
             vs.gatePrev = gateHigh;
+            vs.stepGatePrev = stepGateHigh;
             anyActive = anyActive || vs.active;
         }
 
@@ -322,11 +432,20 @@ struct KeppelWidget : ModuleWidget,
         bindInput<PJ301MPort>("input_accent", KeppelIds::ACCENT_INPUT);
         bindInput<PJ301MPort>("input_vel",    KeppelIds::VEL_INPUT);
         bindLight<SmallLight<GreenLight>>("light_active", KeppelIds::ACTIVE_LIGHT);
-        // Reverse-calc monitor jack. Needs an `output_monitor` marker in the Keppel panel SVGs to render
-        // (a small Phase-2 panel task); until it's added, the OUTPUT still exists and drives — it's just
-        // not shown on the panel. Guarded so the module compiles/loads either way.
-        if (findNamed("output_monitor"))
-            bindOutput<PJ301MPort>("output_monitor", KeppelIds::MONITOR_OUTPUT);
+        // Two-layer expression jacks + within-legato gate (MPE_UTILITY_BUILD_SPEC Tier 2), bound by name
+        // to the generated anchors (panel_src/gen_keppel.py is the single geometry source). Layout groups
+        // jacks by dimension as [A][B] pairs (X, Y, Z, velocity) + the step gate. Literal names (not a
+        // lambda) so the anchor-vs-bind audit (test/audit_anchor_bind.py) sees every bind 1:1.
+        bindInput<PJ301MPort>("input_x_a",       KeppelIds::X_A_INPUT);
+        bindInput<PJ301MPort>("input_x_b",       KeppelIds::X_B_INPUT);
+        bindInput<PJ301MPort>("input_y_a",       KeppelIds::Y_A_INPUT);
+        bindInput<PJ301MPort>("input_y_b",       KeppelIds::Y_B_INPUT);
+        bindInput<PJ301MPort>("input_z_a",       KeppelIds::Z_A_INPUT);
+        bindInput<PJ301MPort>("input_z_b",       KeppelIds::Z_B_INPUT);
+        bindInput<PJ301MPort>("input_vel_b",     KeppelIds::VEL_B_INPUT);
+        bindInput<PJ301MPort>("input_step_gate", KeppelIds::STEP_GATE_INPUT);
+        // Reverse-calc monitor jack (bound to the output_monitor anchor).
+        bindOutput<PJ301MPort>("output_monitor", KeppelIds::MONITOR_OUTPUT);
 
         // MIDI device panel on the midi_display marker.
         if (auto* s = findNamed("midi_display")) {
@@ -385,23 +504,43 @@ struct KeppelWidget : ModuleWidget,
     void draw(const DrawArgs& args) override {
         ModuleWidget::draw(args);
         auto f = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
-        if (f) {
-            nvgFontFaceId(args.vg, f->handle);
-            nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgFontSize(args.vg, 11.f);
-            nvgFillColor(args.vg, nvgRGB(0xf0, 0xf0, 0xf0));
-            nvgText(args.vg, box.size.x * 0.5f, mm2px(12.0f), "Keppel", nullptr);
-            nvgFontSize(args.vg, 6.f);
-            nvgFillColor(args.vg, nvgRGB(0x8a, 0x94, 0xa0));
-            nvgText(args.vg, box.size.x * 0.5f, mm2px(24.0f), "bend range", nullptr);
-            // 2×2 input grid labels (columns at CX∓8.5mm; jacks at rows 96 / 116mm).
-            const float colL = mm2px(20.32f - 8.5f), colR = mm2px(20.32f + 8.5f);
-            nvgText(args.vg, colL, mm2px(90.0f),  "PITCH",  nullptr);
-            nvgText(args.vg, colR, mm2px(90.0f),  "GATE",   nullptr);
-            nvgText(args.vg, colL, mm2px(110.0f), "ACCENT", nullptr);
-            nvgText(args.vg, colR, mm2px(110.0f), "VEL",    nullptr);
-            nvgText(args.vg, box.size.x * 0.5f, mm2px(125.5f), "→ MPE OUT", nullptr);
-        }
+        if (!f) return;
+        nvgFontFaceId(args.vg, f->handle);
+        nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        // ── Every label is positioned from a panel anchor (gen_keppel.py is the SINGLE geometry
+        // source); the widget places NOTHING with mm2px. Jack labels sit a fixed dy above their jack
+        // anchor — the only two free constants for the jack-label set are JACK_LABEL_DY and the label
+        // font size — so moving a jack in the generator moves its label automatically. The title, "bend
+        // range" and "→ MPE OUT" sit on their own dedicated anchors (no dy). Each anchor name is passed
+        // as a LITERAL to findNamed (not via a parameter) so the anchor-vs-bind audit sees every
+        // consumption 1:1 (test/audit_anchor_bind.py).
+        auto drawAt = [&](NSVGshape* s, const char* txt, float dy) {
+            if (s) nvgText(args.vg, centerOf(s).x, centerOf(s).y + dy, txt, nullptr);
+        };
+        // Title (larger) on the wordmark anchor.
+        nvgFontSize(args.vg, 11.f);
+        nvgFillColor(args.vg, nvgRGB(0xf0, 0xf0, 0xf0));
+        drawAt(findNamed("wordmark"), "Keppel", 0.f);
+        // Everything else: small grey.
+        nvgFontSize(args.vg, 6.f);
+        nvgFillColor(args.vg, nvgRGB(0x8a, 0x94, 0xa0));
+        drawAt(findNamed("label_bendrange"), "bend range", 0.f);
+        // Jack labels — each derived from its own jack/control anchor, JACK_LABEL_DY px above the centre.
+        constexpr float JACK_LABEL_DY = -15.f;   // jack r ≈ 11px + ~4px gap above the well
+        drawAt(findNamed("input_pitch"),     "PITCH",  JACK_LABEL_DY);
+        drawAt(findNamed("input_gate"),      "GATE",   JACK_LABEL_DY);
+        drawAt(findNamed("input_accent"),    "ACCENT", JACK_LABEL_DY);
+        drawAt(findNamed("input_step_gate"), "STEP",   JACK_LABEL_DY);
+        drawAt(findNamed("input_x_a"),       "X-A",    JACK_LABEL_DY);
+        drawAt(findNamed("input_x_b"),       "X-B",    JACK_LABEL_DY);
+        drawAt(findNamed("input_y_a"),       "Y-A",    JACK_LABEL_DY);
+        drawAt(findNamed("input_y_b"),       "Y-B",    JACK_LABEL_DY);
+        drawAt(findNamed("input_z_a"),       "Z-A",    JACK_LABEL_DY);
+        drawAt(findNamed("input_z_b"),       "Z-B",    JACK_LABEL_DY);
+        drawAt(findNamed("input_vel"),       "VEL",    JACK_LABEL_DY);
+        drawAt(findNamed("input_vel_b"),     "VEL-B",  JACK_LABEL_DY);
+        drawAt(findNamed("output_monitor"),  "MON",    JACK_LABEL_DY);
+        drawAt(findNamed("label_mpeout"), "→ MPE OUT", 0.f);
     }
 };
 
