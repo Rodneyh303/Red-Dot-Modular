@@ -171,3 +171,30 @@ that.
    it in one half unless the flip is what you want.
 
 (1) is what justifies the feature; the rest are what make it worth eight jacks rather than two.
+
+
+---
+
+## Routing a per-voice GATE through a pair — step gate via RHYTHM (Rodney)
+
+A per-voice gate is just poly CV at 0/10V, and the pairs permute CHANNELS without touching VALUES, so
+routing a gate is well defined: voice v gets voice `src[v]`'s gate. Keppel's `STEP_GATE_INPUT`
+(within-legato note divisions) is the obvious case — the result is **correlated re-articulation**:
+voice v re-articulates at the moments its correlated leader does.
+
+**Route it through a RHYTHM pair.** `rhythmSrc` is the same table that reassigns the rhythm draws the
+notes come from, so at a phrase boundary the note and its step gate move TOGETHER — voice v now plays
+voice k's rhythm AND voice k's step divisions, and they stay consistent.
+
+**The caution is about MISMATCHED permutations, not about gates.** Route the step gate through a
+MELODY or Q-MIX pair while the notes follow rhythm and the two tables diverge at the boundary: a gate
+that was high can drop mid-pulse, or a new one start part-way, so note boundaries fall out of step
+with the notes. Legal, occasionally interesting, not the default reading.
+
+**The general rule, one level down from "tap at the same stage your carrier comes from":**
+**route a signal through the correlation of the STREAM IT BELONGS TO.** Step gate is rhythmic, so it
+takes a rhythm pair. (Boundary behaviour for gates is already covered under the 0V-when-unmapped rule
+in CORRELATED_POLY_MODULATION.md — last-held on a gate hangs forever, which is why unmapped is 0V.)
+
+This also demonstrates the pairs are NOT MPE-specific: a gate is poly CV, and permuting it is as
+meaningful as permuting a pressure signal.
