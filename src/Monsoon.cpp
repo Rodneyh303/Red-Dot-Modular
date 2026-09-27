@@ -42,7 +42,8 @@
 using namespace rack;
 using namespace MonsoonIds;
 
-Plugin* pluginInstance = nullptr;
+// Plugin* pluginInstance and init(Plugin*) now live in src/plugin.cpp (Rack convention: a dedicated
+// entry-point TU). The extern declaration remains in Monsoon.hpp.
 
 void Monsoon::onSampleRateChange(const SampleRateChangeEvent& e) {
     lightDivider.setDivision(std::max(1, (int)std::round(e.sampleRate / 90.f)));
@@ -1175,42 +1176,7 @@ void Monsoon::process(const ProcessArgs& args) {
 
 Model* modelMonsoon = createModel<Monsoon, MonsoonWidget>("Monsoon");
 
-void init(rack::Plugin* p) {
-	pluginInstance = p;
-	// Warm the Phi LUT on the load thread (~0.33 ms, once) so its one-time build never lands
-	// mid-block on the audio thread at first spread/slew use. NOT in a module constructor —
-	// multiple modules (Sands visuals, CA correlation) consume Phi. See SLEW_COPULA_PLAN.md.
-	redDot::copula::warmPhiLut();
-	p->addModel(modelMonsoon);
-	p->addModel(modelMonsoonInterchangeExpander);
-	p->addModel(modelMonsoonRafflesExpander);
-	// DEPRECATED (§#7): superseded by Change Alley V2 (single module). Code retained.
-	// p->addModel(modelMonsoonChangeAlleyExpander);
-	p->addModel(modelMonsoonChangeAlleyV2);
-	// DEPRECATED (§#7): folded into Change Alley V2. Code retained.
-	// p->addModel(modelMonsoonTemasekExpander);
-	p->addModel(modelMonsoonJunctionExpander);
-	//p->addModel(modelMonsoonSandsExpander);
-	p->addModel(modelMonsoonStraitsExpander);
-	p->addModel(modelMonsoonCausewayPolyExpander);
-	p->addModel(modelMonsoonChangiExpander);
-	p->addModel(modelMonsoonChangiT2Expander);
-	p->addModel(modelMonsoonChangiT3Expander);
-	p->addModel(modelMonsoonShophouseExpander);
-	p->addModel(modelSikit);                         // tuning expander (microtonal Phase 1)
-	p->addModel(modelColonnades);                    // tuning+scale authoring (microtonal Phase 2)
-	p->addModel(modelColonnadesDuo);                 // tuning+scale authoring, 24-tone (microtonal Phase 3)
-	p->addModel(modelMonsoonShophouseMicro);         // tuning+scale scene modulator for Colonnades/Duo (.dmtune fronts)
-	p->addModel(modelKeppel);                        // poly microtonal CV → MPE MIDI out (standalone utility)
-	p->addModel(modelLantern);                       // Lantern note-output visualiser
-	// West retired (Straits redesign): p->addModel(modelMonsoonStraitWestExpander);
-	//p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
-	//p->addModel(modelMonsoonDeepStraitsSandsEast);  // Deep: voices 2-8
-	//p->addModel(modelMonsoonDeepStraitsSandsWest);  // Deep: voices 9-16
-	// Visual editor expanders
-	p->addModel(modelMonsoonSandsVisualExpander);   // Mono visual DNA editor
-	p->addModel(modelStraitsEastSandsVisual);       // East visual DNA editor (tabbed)
-	// RETIRED: West visual editor merged into East (15-voice). Source kept, not registered.
-	p->addModel(modelStraitsSandsMacroVisual);      // Macro visual DNA editor
-	p->addModel(modelIntertropical);                // Intertropical scene sequencer
-}
+// init(Plugin*) and `Plugin* pluginInstance` now live in src/plugin.cpp (Rack convention: a
+// dedicated entry-point TU, picked up by the Makefile's `SOURCES += $(wildcard src/*.cpp)`).
+// The extern declarations remain in Monsoon.hpp (pluginInstance at line 47, modelMonsoon etc.
+// at 1121+).
