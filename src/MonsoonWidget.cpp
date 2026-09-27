@@ -1264,9 +1264,10 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
               for (int v=0;v<4;++v){auto* it=createMenuItem<IntItem>(n2[v]);it->module=m;it->target=&m->gate2Assign;it->value=v;sub->addChild(it);} }
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "Gate 3 (assignable mod)"; sub->addChild(l);
-              const char* n3[] = {"Re-dice rhythm","Re-dice melody","Toggle reseed-on-restart",
-                                  "Toggle rhythm dice\u2194live","Toggle melody dice\u2194live"};
-              for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n3[v]);it->module=m;it->target=&m->gate3Target;it->value=v;sub->addChild(it);} }
+              const char* n3[] = {"Re-dice rhythm","Re-dice melody","Re-dice q-mix",
+                                  "Toggle rhythm dice\u2194live","Toggle melody dice\u2194live","Toggle q-mix dice\u2194live",
+                                  "Toggle reseed-on-restart"};
+              for (int v=0;v<7;++v){auto* it=createMenuItem<IntItem>(n3[v]);it->module=m;it->target=&m->gate3Target;it->value=v;sub->addChild(it);} }
         }));
 
         menu->addChild(createSubmenuItem("Probability outs", "", [=](ui::Menu* sub) {

@@ -362,36 +362,39 @@ namespace MonsoonIds {
     };
 
     // ── Raffles expander (dice/draw-generation modulation) ──────────────────
-    // Its own param/input enums (distinct from Interchange's EXPANDER_*). 4 CV
-    // attenuverters (slew R/M, mix R/M) + 10 dedicated die-action gate inputs.
+    // Its own param/input enums (distinct from Interchange's EXPANDER_*). 6 CV
+    // attenuverters (slew R/M/Q, mix R/M/Q — full R/M/Q parity) + 11 die-action gates.
+    // Trial/LiveSrc gates removed (Trial mechanism gone); Q gates added so every R/M pair is
+    // an R/M/Q triple. The two RESEED gates stay global (no per-stream Q).
     enum RafflesParamIds {
         RAFFLES_SLEW_R_ATT = 0,
         RAFFLES_SLEW_M_ATT,
+        RAFFLES_SLEW_Q_ATT,    // q-mix twin (R/M/Q triple)
         RAFFLES_MIX_R_ATT,
         RAFFLES_MIX_M_ATT,
+        RAFFLES_MIX_Q_ATT,     // q-mix twin
         NUM_RAFFLES_PARAMS
     };
     enum RafflesInputIds {
         RAFFLES_SLEW_R_CV = 0,
         RAFFLES_SLEW_M_CV,
+        RAFFLES_SLEW_Q_CV,     // q-mix twin
         RAFFLES_MIX_R_CV,
         RAFFLES_MIX_M_CV,
-        // 10 die-action gates (order = display order on the panel)
-        RAFFLES_GATE_TRIAL_R,
-        RAFFLES_GATE_TRIAL_M,
+        RAFFLES_MIX_Q_CV,      // q-mix twin
+        // 11 die-action gates (order = display order on the panel): R/M/Q triples + 2 global reseed.
         RAFFLES_GATE_REDICE_R,
         RAFFLES_GATE_REDICE_M,
-        RAFFLES_GATE_LIVESRC_R,
-        RAFFLES_GATE_LIVESRC_M,
+        RAFFLES_GATE_REDICE_Q,
         RAFFLES_GATE_LIVESTATIC_R,
         RAFFLES_GATE_LIVESTATIC_M,
-        RAFFLES_GATE_RESEED_ROLL,
-        RAFFLES_GATE_RESEED_RESTART,
-        // LastDice / LastTrial gates (step draw index opposite to dice/trial).
+        RAFFLES_GATE_LIVESTATIC_Q,
+        RAFFLES_GATE_RESEED_ROLL,      // global (no Q)
+        RAFFLES_GATE_RESEED_RESTART,   // global (no Q)
+        // LastDice gates (step draw index opposite to dice). R/M/Q triple.
         RAFFLES_GATE_LASTDICE_R,
         RAFFLES_GATE_LASTDICE_M,
-        RAFFLES_GATE_LASTTRIAL_R,
-        RAFFLES_GATE_LASTTRIAL_M,
+        RAFFLES_GATE_LASTDICE_Q,
         NUM_RAFFLES_INPUTS
     };
 
@@ -554,10 +557,11 @@ struct Monsoon : Module {
     // selected action. Same target sets are offered (in full, attenuverted) on
     // the Raffles expander, and the contributions SUM.
     enum Cv3Target  { CV3_RHYTHM_SLEW=0, CV3_MELODY_SLEW, CV3_RHYTHM_MIX, CV3_MELODY_MIX, CV3_NUM_TARGETS };
-    enum Gate3Target{ G3_TRIAL_RHYTHM=0, G3_TRIAL_MELODY, G3_TOGGLE_RESEED_ROLL, G3_TOGGLE_RESEED_RESTART,
-                      G3_TOGGLE_RHYTHM_LIVESRC, G3_TOGGLE_MELODY_LIVESRC, G3_NUM_TARGETS };
+    enum Gate3Target{ G3_REDICE_R=0, G3_REDICE_M, G3_REDICE_Q,
+                      G3_LIVESTATIC_R, G3_LIVESTATIC_M, G3_LIVESTATIC_Q,
+                      G3_RESEED_RESTART, G3_NUM_TARGETS };
     int  cv3Target   = CV3_RHYTHM_SLEW;
-    int  gate3Target = G3_TRIAL_RHYTHM;
+    int  gate3Target = G3_REDICE_R;
     dsp::SchmittTrigger gate3Trig;   // rising-edge detect for GATE3 actions
     dsp::SchmittTrigger rafflesGateTrig[14];  // Raffles's 14 die-action gates (incl Last*)
     // Which dice the LIVE mode drives, per lane: false=main (promote, A walks),
@@ -569,46 +573,35 @@ struct Monsoon : Module {
     // action here and every gate source can use it.
     enum DieAction {
         DA_NONE = -1,                        // sentinel: an inert gate (fires no action)
-        DA_REDICE_R = 0, DA_REDICE_M,
-        DA_LIVESTATIC_R, DA_LIVESTATIC_M,    // toggle live<->static (rhythmMode)
+        DA_REDICE_R = 0, DA_REDICE_M, DA_REDICE_Q,
+        DA_LIVESTATIC_R, DA_LIVESTATIC_M, DA_LIVESTATIC_Q,    // toggle live<->static (rhythm/melody/qmix mode)
         DA_RESEED_RESTART,
-        DA_LASTDICE_R, DA_LASTDICE_M,        // step index opposite to dice
+        DA_LASTDICE_R, DA_LASTDICE_M, DA_LASTDICE_Q,        // step index opposite to dice
         DA_NUM
     };
     void fireDieAction(int a);   // defined in Monsoon.cpp
 
     // ── Raffles gate → DieAction map (SoT, LaneMapping-style) ────────────────────────────────
-    // Two intentionally-different orderings: the Raffles gate order is fixed by the PANEL jack
-    // layout (RafflesInputIds, from raffles.json); DieAction is the shared action vocabulary
-    // (also routed by Gate-3's g3map[]). They cannot be forced equal, so this table is the ONE
-    // explicit bridge — co-located with both enums so a renumber of either can't silently drift
-    // (the static_asserts below trip instead). Indexed by gate slot i = (RAFFLES_GATE_TRIAL_R+i).
-    // DA_NONE = inert gate: TRIAL/LASTTRIAL (Trial mechanism removed), LIVESRC (old main/trial
-    // source switch, meaningless without Trial), RESEED_ROLL (reseed-on-roll removed; reseed
-    // lives on RESET). Mirrors dsp/LaneMapping.hpp's "single source for two orderings" discipline.
-    static constexpr int kRafflesGateAction[14] = {
-        /* 0  TRIAL_R        */ DA_NONE,
-        /* 1  TRIAL_M        */ DA_NONE,
-        /* 2  REDICE_R       */ DA_REDICE_R,
-        /* 3  REDICE_M       */ DA_REDICE_M,
-        /* 4  LIVESRC_R      */ DA_NONE,
-        /* 5  LIVESRC_M      */ DA_NONE,
-        /* 6  LIVESTATIC_R   */ DA_LIVESTATIC_R,
-        /* 7  LIVESTATIC_M   */ DA_LIVESTATIC_M,
-        /* 8  RESEED_ROLL    */ DA_NONE,
-        /* 9  RESEED_RESTART */ DA_RESEED_RESTART,
-        /* 10 LASTDICE_R     */ DA_LASTDICE_R,
-        /* 11 LASTDICE_M     */ DA_LASTDICE_M,
-        /* 12 LASTTRIAL_R    */ DA_NONE,
-        /* 13 LASTTRIAL_M    */ DA_NONE,
+    // Indexed by gate slot i = (RAFFLES_GATE_REDICE_R+i). Trial/LiveSrc removed; Q added (R/M/Q
+    // triples). RESEED_ROLL inert (reseed-on-roll removed; reseed lives on RESET).
+    static constexpr int kRafflesGateAction[11] = {
+        /* 0  REDICE_R       */ DA_REDICE_R,
+        /* 1  REDICE_M       */ DA_REDICE_M,
+        /* 2  REDICE_Q       */ DA_REDICE_Q,
+        /* 3  LIVESTATIC_R   */ DA_LIVESTATIC_R,
+        /* 4  LIVESTATIC_M   */ DA_LIVESTATIC_M,
+        /* 5  LIVESTATIC_Q   */ DA_LIVESTATIC_Q,
+        /* 6  RESEED_ROLL    */ DA_NONE,
+        /* 7  RESEED_RESTART */ DA_RESEED_RESTART,
+        /* 8  LASTDICE_R     */ DA_LASTDICE_R,
+        /* 9  LASTDICE_M     */ DA_LASTDICE_M,
+        /* 10 LASTDICE_Q     */ DA_LASTDICE_Q,
     };
-    // Pin the table length to the gate count, and spot-check the live mappings so a future
-    // reorder of RafflesInputIds OR DieAction fails the build rather than misfiring in the field.
-    static_assert((int)MonsoonIds::NUM_RAFFLES_INPUTS - (int)MonsoonIds::RAFFLES_GATE_TRIAL_R == 14,
+    static_assert((int)MonsoonIds::NUM_RAFFLES_INPUTS - (int)MonsoonIds::RAFFLES_GATE_REDICE_R == 11,
                   "kRafflesGateAction length must equal the Raffles gate count");
-    static_assert(kRafflesGateAction[2] == DA_REDICE_R && kRafflesGateAction[3] == DA_REDICE_M,
+    static_assert(kRafflesGateAction[0] == DA_REDICE_R && kRafflesGateAction[1] == DA_REDICE_M,
                   "Raffles REDICE gates must map to DA_REDICE_R/M");
-    static_assert(kRafflesGateAction[9] == DA_RESEED_RESTART,
+    static_assert(kRafflesGateAction[7] == DA_RESEED_RESTART,
                   "Raffles RESEED_RESTART gate must map to DA_RESEED_RESTART");
     int gate1Assign = 0;
     int gate2Assign = 1;
