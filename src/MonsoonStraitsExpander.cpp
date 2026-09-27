@@ -59,37 +59,38 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
             // voice == -1 → the MONO lane (voice 1): set = Monsoon's own mono base, mod = the
             // Causeway ch0-modulated effective value. Gives the Straits voice-1 knobs the same mod
             // arc that Monsoon's own rest/accent knobs show. voice 0..14 → poly voices 2..16.
-            arc->getSetNorm = [self, voice, lane]() -> float {
-                Monsoon* m = redDot::findMonsoonEitherSide(self->module);
-                if (!m) return 0.f;
-                if (voice == -1) return lane == 0 ? m->getMonoRestBase() : m->getMonoAccentBase();
+            // lane: 0 = REST, 1 = ACCENT, 2 = QMIX. QMIX now has a Causeway CV path (QMIX_CV_INPUT),
+            // so its arc shows the effective-vs-set delta like rest/accent.
+            auto setOf = [self](Monsoon* m, int voice, int lane) -> float {
+                if (voice == -1)
+                    return lane == 0 ? m->getMonoRestBase() : lane == 1 ? m->getMonoAccentBase() : m->getMonoQmixBase();
                 if (voice < 0 || voice >= 15) return 0.f;
-                return lane == 0 ? m->getBasePolyRest(voice) : m->getBasePolyAccent(voice);
+                return lane == 0 ? m->getBasePolyRest(voice) : lane == 1 ? m->getBasePolyAccent(voice) : m->getBasePolyQmix(voice);
             };
-            arc->getModNorm = [self, voice, lane]() -> float {
-                Monsoon* m = redDot::findMonsoonEitherSide(self->module);
-                if (!m) return 0.f;
-                if (voice == -1) return lane == 0 ? m->getRestParam() : m->getAccentParam();
+            auto modOf = [self](Monsoon* m, int voice, int lane) -> float {
+                if (voice == -1)
+                    return lane == 0 ? m->getRestParam() : lane == 1 ? m->getAccentParam() : m->getQmixParam();
                 if (voice < 0 || voice >= 15) return 0.f;
-                return lane == 0 ? m->getEffectivePolyRest(voice) : m->getEffectivePolyAccent(voice);
+                return lane == 0 ? m->getEffectivePolyRest(voice) : lane == 1 ? m->getEffectivePolyAccent(voice)
+                                                                               : m->getEffectivePolyQmix(voice);
             };
-            arc->isActive = [self, voice, lane]() -> bool {
+            arc->getSetNorm = [self, voice, lane, setOf]() -> float {
+                Monsoon* m = redDot::findMonsoonEitherSide(self->module);
+                return m ? setOf(m, voice, lane) : 0.f;
+            };
+            arc->getModNorm = [self, voice, lane, modOf]() -> float {
+                Monsoon* m = redDot::findMonsoonEitherSide(self->module);
+                return m ? modOf(m, voice, lane) : 0.f;
+            };
+            arc->isActive = [self, voice, lane, setOf, modOf]() -> bool {
                 Monsoon* m = redDot::findMonsoonEitherSide(self->module);
                 if (!m || !m->modVizEast) return false;
                 // Inactive poly voice (beyond Monsoon's active count) → no arc: the knob is
                 // dimmed + locked, so it isn't a live param. voice 0..14 = V2..V16; active iff
                 // activeVoices_ >= voice+1, hence inactive iff voice >= activeVoices_.
                 if (voice >= 0 && self->activeVoices_ >= 0 && voice >= self->activeVoices_) return false;
-                float set, eff;
-                if (voice == -1) {
-                    set = lane == 0 ? m->getMonoRestBase() : m->getMonoAccentBase();
-                    eff = lane == 0 ? m->getRestParam()    : m->getAccentParam();
-                } else {
-                    if (voice < 0 || voice >= 15) return false;
-                    set = lane == 0 ? m->getBasePolyRest(voice) : m->getBasePolyAccent(voice);
-                    eff = lane == 0 ? m->getEffectivePolyRest(voice) : m->getEffectivePolyAccent(voice);
-                }
-                return std::fabs(eff - set) > 1e-4f;
+                if (voice >= 0 && (voice < 0 || voice >= 15)) return false;
+                return std::fabs(modOf(m, voice, lane) - setOf(m, voice, lane)) > 1e-4f;
             };
             addChild(arc);
         }
@@ -141,8 +142,8 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                 queueArc(k, -1, 1);
             }));
         // ── voice 0 = mono Q-MIX: LOCKED knob that MIRRORS the parent Monsoon's QMIX_LEVEL_PARAM,
-        //    exactly like the mono rest/accent mirrors above. No mod-arc: q-mix has no Causeway CV
-        //    path (effective == set), so there is nothing for an arc to show. ──
+        //    exactly like the mono rest/accent mirrors above. Q-mix now has a Causeway CV path
+        //    (QMIX_CV_INPUT ch0), so its mod-arc shows the effective-vs-set delta — lane 2, voice -1.
         bindParam<redDot::Themed_Compact_Cog_Dim>("param_qmix_0", MonsoonIds::QMIX_LEVEL_PARAM,
             std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this](redDot::Themed_Compact_Cog_Dim* k){
                 k->lightWhen = [this](){ return themeLight_; };
@@ -151,6 +152,7 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                     Monsoon* m = redDot::findMonsoonEitherSide(module);
                     return m ? m->params[MonsoonIds::QMIX_LEVEL_PARAM].getValue() : NAN;
                 };
+                queueArc(k, -1, 2);
             }));
         // ── voices 1..15 = poly. Param = POLY_*_PARAM_1 + (i-1); arc voice index = poly index (i-1),
         //    which maps to getBasePolyRest(0..14). Themed_Compact_Cog_Dim (not plain) so each
@@ -179,13 +181,15 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                     queueArc(k, polyIdx, 1);
                 }));
             // Per-voice Q-MIX level knob, mirroring rest/accent above (same knob type, same
-            // dim/lock-when-inactive). No mod-arc queued: q-mix has no Causeway CV path yet, so
-            // there is no effective-vs-set to draw (unlike rest/accent).
+            // dim/lock-when-inactive). Q-mix now has a Causeway CV path (QMIX_CV_INPUT attenuated
+            // by the per-voice/global q-mix attenuators), so its mod-arc shows the effective-vs-set
+            // delta — lane 2 in the arc resolver (REST=0, ACCENT=1, QMIX=2).
             bindParam<redDot::Themed_Compact_Cog_Dim>("param_qmix_"   + r, MonsoonIds::POLY_QMIX_PARAM_1   + polyIdx,
-                std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this, dimIfInactive](redDot::Themed_Compact_Cog_Dim* k){
+                std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this, polyIdx, dimIfInactive](redDot::Themed_Compact_Cog_Dim* k){
                     k->lightWhen = [this](){ return themeLight_; };
                     k->dimWhen   = dimIfInactive;
                     k->lockWhen  = dimIfInactive;   // inactive voice → inoperative (was draggable)
+                    queueArc(k, polyIdx, 2);
                 }));
         }
 

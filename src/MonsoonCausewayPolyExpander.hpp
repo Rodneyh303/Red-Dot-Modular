@@ -30,9 +30,16 @@ namespace CausewayIds {
         POLY_ACCENT_ATT_START  = POLY_REST_ATT_START + 15,   // 17 .. 31
         POLY_REST_ATT_GLOBAL   = POLY_ACCENT_ATT_START + 15, // 32
         POLY_ACCENT_ATT_GLOBAL,                              // 33
-        NUM_PARAMS                                           // 34
+        // Q-mix lane (full parity with REST/ACC): voice-1 mono attenuator + 15 per-voice poly
+        // attenuators + a global. Modulates the q-mix THRESHOLD (POLY_QMIX_PARAM_* / QMIX_LEVEL_PARAM)
+        // — the knob the engine compares against the q-mix probability draw from Sands. The CV is the
+        // 16ch poly QMIX_CV_INPUT (ch0 = mono), attenuated exactly like rest/accent.
+        MONO_QMIX_ATT,                                       // voice 1 (mono) q-mix
+        POLY_QMIX_ATT_START  = POLY_ACCENT_ATT_GLOBAL + 1,   // 35 .. 49 (voices 2..16)
+        POLY_QMIX_ATT_GLOBAL = POLY_QMIX_ATT_START + 15,     // 50
+        NUM_PARAMS                                           // 51
     };
-    enum InputIds { REST_CV_INPUT = 0, ACCENT_CV_INPUT, NUM_INPUTS };
+    enum InputIds { REST_CV_INPUT = 0, ACCENT_CV_INPUT, QMIX_CV_INPUT, NUM_INPUTS };
 }
 
 struct MonsoonCausewayPolyExpander : Module {
@@ -43,13 +50,18 @@ struct MonsoonCausewayPolyExpander : Module {
                         "Voice " + std::to_string(i + 2) + " rest CV attenuator");
             configParam(CausewayIds::POLY_ACCENT_ATT_START + i, -1.f, 1.f, 0.f,
                         "Voice " + std::to_string(i + 2) + " accent CV attenuator");
+            configParam(CausewayIds::POLY_QMIX_ATT_START + i,   -1.f, 1.f, 0.f,
+                        "Voice " + std::to_string(i + 2) + " q-mix CV attenuator");
         }
         configParam(CausewayIds::POLY_REST_ATT_GLOBAL,   -1.f, 1.f, 0.f, "Global rest CV attenuator");
         configParam(CausewayIds::POLY_ACCENT_ATT_GLOBAL, -1.f, 1.f, 0.f, "Global accent CV attenuator");
+        configParam(CausewayIds::POLY_QMIX_ATT_GLOBAL,   -1.f, 1.f, 0.f, "Global q-mix CV attenuator");
         configParam(CausewayIds::MONO_REST_ATT,   -1.f, 1.f, 0.f, "Voice 1 (mono) rest CV attenuator");
         configParam(CausewayIds::MONO_ACCENT_ATT, -1.f, 1.f, 0.f, "Voice 1 (mono) accent CV attenuator");
+        configParam(CausewayIds::MONO_QMIX_ATT,   -1.f, 1.f, 0.f, "Voice 1 (mono) q-mix CV attenuator");
         configInput(CausewayIds::REST_CV_INPUT,   "Poly rest modulation CV (16ch: ch1=mono)");
         configInput(CausewayIds::ACCENT_CV_INPUT, "Poly accent modulation CV (16ch: ch1=mono)");
+        configInput(CausewayIds::QMIX_CV_INPUT,  "Poly q-mix modulation CV (16ch: ch1=mono)");
     }
 
     // Monsoon reads these inputs/attenuators via the cached pointer; nothing per-sample here.

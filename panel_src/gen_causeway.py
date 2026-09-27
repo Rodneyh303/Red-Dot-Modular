@@ -7,17 +7,19 @@ framework (knobs intersecting the beams, like Interchange's controls sit in its 
 perspective bridge span with towers + piers across the top, water beneath, gold linework throughout.
 
 Controls (voice 0 = mono/ch0, 1..15 poly):
-  16 REST attenuverters (left carriageway) + 16 ACCENT attenuverters (right carriageway)
-  + global REST + global ACCENT attenuators + 2 CV inputs (FROM MONSOON / TO STRAITS).
+  16 REST attenuverters (left carriageway) + 16 ACCENT attenuverters (middle carriageway)
+  + 16 QMIX attenuverters (right carriageway) + global REST/ACCENT/QMIX attenuators
+  + 3 CV inputs (FROM MONSOON / TO STRAITS — rest, accent, q-mix).
 
 nanosvg-safe (solid fills/strokes, elliptical arcs ok; no gradient/mask/text/url).
 
 Kit id markers (widget binds):
-  param_restatt_<0..15> / param_accatt_<0..15> / param_restatt_global / param_accatt_global
-  input_restcv / input_accentcv / light_connect
+  param_restatt_<0..15> / param_accatt_<0..15> / param_qmixatt_<0..15>
+  param_restatt_global / param_accatt_global / param_qmixatt_global
+  input_restcv / input_accentcv / input_qmixcv / light_connect
 """
 import math, os, re
-HP = 22
+HP = 32
 W  = HP * 5.08
 H  = 128.5
 S  = 75 / 25.4
@@ -28,6 +30,7 @@ THEMES = {
     "dark":  dict(bg="#0c0d0a", red="#d4001a", ink="#f0ead8",
                   gold="#b8901c", goldhi="#e8c050", golddim="#5a4818", goldfaint="#3a3014",
                   rest="#4c8c86", restknob="#16211f", acc="#e0951e", accknob="#2e2210",
+                  qmix="#7a5aa8", qmixknob="#1c1424",
                   knobface="#191b17", knobring="#4a4428", knobtick="#d8c890",
                   jackwell="#0a0b08", jackring="#5a4a1c",
                   water="#1e4658", waterhi="#3a7088", node="#c8a83c", deck="#1a2018",
@@ -41,6 +44,7 @@ THEMES = {
     "light": dict(bg="#e6e2d4", red="#d4001a", ink="#2a2418",
                   gold="#8a6a10", goldhi="#a88420", golddim="#c0b088", goldfaint="#cabf98",
                   rest="#3a7a74", restknob="#c4dad6", acc="#b0740e", accknob="#e0d0b0",
+                  qmix="#6a4a98", qmixknob="#d8c8e8",
                   knobface="#ece6d8", knobring="#a89860", knobtick="#5a4a20",
                   jackwell="#d8d0b8", jackring="#a89860",
                   water="#6a9aae", waterhi="#4a7a90", node="#8a6a10", deck="#cdc9b8",
@@ -54,8 +58,8 @@ THEMES = {
 
 MARGIN   = 4.5
 CARR_W   = 46.0                       # each carriageway (truss + knobs) width
-GAP      = W - 2*MARGIN - 2*CARR_W    # central gap (spine truss)
-CARR_X   = [MARGIN, W - MARGIN - CARR_W]
+GAP      = (W - 2*MARGIN - 3*CARR_W) / 2   # gap between carriageways (spine trusses)
+CARR_X   = [MARGIN, MARGIN + CARR_W + GAP, W - MARGIN - CARR_W]
 SPINE_X0 = MARGIN + CARR_W
 SPAN_TOP = 14.0
 SPAN_H   = 14.0
@@ -196,22 +200,29 @@ def gen(dark):
 
     # ── bridge span across the top ──
     bridge_span(A, t)
-    # ── CV inputs at the ends (FROM MONSOON / TO STRAITS) ──
+    # ── CV inputs above each carriageway: rest (left end), accent (centre), q-mix (right end) ──
     cvjack(A, t, MARGIN+4, SPAN_TOP+SPAN_H*0.5, t["rest"])
     A(f'<circle id="input_restcv" cx="{px(MARGIN+4)}" cy="{px(SPAN_TOP+SPAN_H*0.5)}" r="0.5" fill="none" stroke="none"/>')
-    cvjack(A, t, W-MARGIN-4, SPAN_TOP+SPAN_H*0.5, t["acc"])
-    A(f'<circle id="input_accentcv" cx="{px(W-MARGIN-4)}" cy="{px(SPAN_TOP+SPAN_H*0.5)}" r="0.5" fill="none" stroke="none"/>')
+    cvjack(A, t, W/2, SPAN_TOP+SPAN_H*0.5, t["acc"])
+    A(f'<circle id="input_accentcv" cx="{px(W/2)}" cy="{px(SPAN_TOP+SPAN_H*0.5)}" r="0.5" fill="none" stroke="none"/>')
+    cvjack(A, t, W-MARGIN-4, SPAN_TOP+SPAN_H*0.5, t["qmix"])
+    A(f'<circle id="input_qmixcv" cx="{px(W-MARGIN-4)}" cy="{px(SPAN_TOP+SPAN_H*0.5)}" r="0.5" fill="none" stroke="none"/>')
 
-    # ── truss frameworks FIRST (so knobs sit inside them) ──
+    # ── truss frameworks FIRST (so knobs sit inside them): 3 carriageways + 2 spines ──
+    # Carriageway order matches Straits: REST (left) | ACCENT (middle) | QMIX (right).
     truss_frame(A, t, CARR_X[0], CARR_W, BRIDGE_TOP, BAYS_H, N_ROWS)
     truss_frame(A, t, CARR_X[1], CARR_W, BRIDGE_TOP, BAYS_H, N_ROWS)
+    truss_frame(A, t, CARR_X[2], CARR_W, BRIDGE_TOP, BAYS_H, N_ROWS)
     spine_truss(A, t, SPINE_X0, GAP, BRIDGE_TOP, BAYS_H, N_ROWS)
+    spine_truss(A, t, CARR_X[1]+CARR_W, GAP, BRIDGE_TOP, BAYS_H, N_ROWS)
 
-    # ── global attenuators above each carriageway ──
+    # ── global attenuators above each carriageway (REST | ACCENT | QMIX) ──
     knob(A, t, CARR_X[0]+CARR_W*0.5, GLOBAL_Y, KNOB_R+0.5, t["rest"])
     A(f'<circle id="param_restatt_global" cx="{px(CARR_X[0]+CARR_W*0.5)}" cy="{px(GLOBAL_Y)}" r="0.5" fill="none" stroke="none"/>')
     knob(A, t, CARR_X[1]+CARR_W*0.5, GLOBAL_Y, KNOB_R+0.5, t["acc"])
     A(f'<circle id="param_accatt_global" cx="{px(CARR_X[1]+CARR_W*0.5)}" cy="{px(GLOBAL_Y)}" r="0.5" fill="none" stroke="none"/>')
+    knob(A, t, CARR_X[2]+CARR_W*0.5, GLOBAL_Y, KNOB_R+0.5, t["qmix"])
+    A(f'<circle id="param_qmixatt_global" cx="{px(CARR_X[2]+CARR_W*0.5)}" cy="{px(GLOBAL_Y)}" r="0.5" fill="none" stroke="none"/>')
 
     # ── attenuverter knobs INSIDE the truss bays: 2 cols x 8 rows per carriageway = 16 ──
     def bank(kind, cxbase, ring):
@@ -225,8 +236,9 @@ def gen(dark):
                 knob(A, t, cx, cy, KNOB_R, ring, mono)
                 plusminus(A, t, cx, cy, KNOB_R)
                 A(f'<circle id="param_{kind}_{v}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
-    bank("restatt", CARR_X[0], t["rest"])
-    bank("accatt",  CARR_X[1], t["acc"])
+    bank("restatt",  CARR_X[0], t["rest"])
+    bank("accatt",   CARR_X[1], t["acc"])
+    bank("qmixatt",  CARR_X[2], t["qmix"])
 
     # ── voice numbers down the spine (nodes) ──
     bay = BAYS_H/N_ROWS
@@ -245,7 +257,19 @@ def gen(dark):
     # dot.modular wordmark — centred horizontally, lower band (a bit below the Sands panels' y≈113)
     A(logo_embed(dark, (W - 36.0) / 2.0, 116.0, 36.0))
     A('</svg>')
-    return "\n".join(o)
+    # ── Components layer: the kit markers (id="...", r=0.5, invisible) were emitted inline above
+    #    interleaved with the visible art. The anchor/bind audit (test/audit_anchor_bind.py) requires
+    #    them inside a <g inkscape:label="components"> layer. This pass extracts each full marker
+    #    element (preserving its cx/cy), removes the inlines, and wraps the set in the layer before
+    #    </svg>. Position-only anchors, so moving them is safe. ──
+    body = "\n".join(o)
+    import re as _re
+    marker_re = _re.compile(r'<circle id="[^"]+"[^/]*/>')
+    full = marker_re.findall(body)
+    body = marker_re.sub('', body)
+    comp_layer = ('<g inkscape:label="components" inkscape:groupmode="layer">'
+                  + "".join(full) + '</g>')
+    return body.replace('</svg>', comp_layer + '\n</svg>')
 
 def main():
     import os

@@ -117,8 +117,12 @@ void ModeController::updatePatternInput() {
         // redundant re-fetch in executeModeE/A). Causeway-modulated effective value, mirroring rest.
         currentPatternInput.accentProb    = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
                                                        : paramManager.getAccent();
-        // Task 4 (QMIX): mono q-mix threshold level (Rack param; no CV/Causeway path yet).
-        currentPatternInput.qmixLevel     = paramManager.getQmixLevel();
+        // Task 4 (QMIX): mono q-mix threshold level — Causeway-modulated effective value, mirroring
+        // rest/accent above. The Causeway QMIX_CV_INPUT (ch0 = mono) attenuated by MONO_QMIX_ATT +
+        // the global is added to the QMIX_LEVEL_PARAM knob, then clamped to [0,1]. Falls back to the
+        // raw param when there's no mainModule.
+        currentPatternInput.qmixLevel     = mainModule ? mainModule->getEffectiveMonoQmix(paramManager.getQmixLevel())
+                                                       : paramManager.getQmixLevel();
     }
     if (octLive) {   // OctaveRange LATCH — hold OCT LO/HI under lock (see pitch-axis note above)
         currentPatternInput.octaveLo      = paramManager.getOctaveLo();

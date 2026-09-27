@@ -211,10 +211,12 @@ float Monsoon::getLegatoParam()     { return paramManager->getLegato(); }
 // The arc therefore spans raw knob → fully-modulated (Junction + CV2 + Causeway), showing ALL modulation.
 float Monsoon::getMonoRestBase()    { return params[REST_PARAM ].getValue(); }
 float Monsoon::getMonoAccentBase()  { return params[ACCENT_KNOB].getValue(); }
-// Mono EFFECTIVE (Causeway ch0-modulated) rest/accent — the arc's 'mod' value, and what the
+float Monsoon::getMonoQmixBase()    { return params[QMIX_LEVEL_PARAM].getValue(); }
+// Mono EFFECTIVE (Causeway ch0-modulated) rest/accent/q-mix — the arc's 'mod' value, and what the
 // engine consumes (see ModeController).
 float Monsoon::getRestParam()       { return getEffectiveMonoRest(paramManager->getRestUnclamped()); }
 float Monsoon::getAccentParam()     { return getEffectiveMonoAccent(paramManager->getAccentUnclamped()); }
+float Monsoon::getQmixParam()       { return getEffectiveMonoQmix(paramManager->getQmixLevel()); }
 
 float Monsoon::getOctaveLoParam()   { return paramManager->getOctaveLo(); }
 float Monsoon::getOctaveHiParam()   { return paramManager->getOctaveHi(); }
@@ -276,14 +278,40 @@ float Monsoon::getEffectivePolyAccent(int voiceIdx) {
     }
     return math::clamp(base, 0.f, 1.f);
 }
-// Per-voice q-mix LEVEL — mirrors rest/accent. There is NO Causeway q-mix CV path yet (mono q-mix
-// is also Rack-param only), so effective == base (the Straits knob). Kept as an effective/base pair
-// for symmetry and so a future Causeway q-mix CV can drop in exactly like rest/accent.
+// Per-voice q-mix LEVEL — mirrors rest/accent. The Causeway q-mix CV (QMIX_CV_INPUT, 16ch poly) is
+// attenuated by the per-voice + global q-mix attenuators and added to the Straits knob (the
+// threshold the engine compares against the q-mix probability draw from Sands). Exactly the rest/
+// accent pattern: base = Straits knob; effective = base + Causeway CV × att, clamped to [0,1].
 float Monsoon::getBasePolyQmix(int voiceIdx) {
     return paramManager ? paramManager->getPolyQmixLevel(voiceIdx) : 0.f;
 }
 float Monsoon::getEffectivePolyQmix(int voiceIdx) {
-    return math::clamp(getBasePolyQmix(voiceIdx), 0.f, 1.f);
+    float base = getBasePolyQmix(voiceIdx);
+    auto* cway = expanderManager.cachedCausewayPolyExpander;
+    if (cway && voiceIdx >= 0 && voiceIdx < 15) {
+        const int ch = voiceIdx + 1;   // poly voice → poly-cable channel (ch0 = mono)
+        auto& in = cway->inputs[CausewayIds::QMIX_CV_INPUT];
+        if (in.isConnected()) {
+            float att = cway->params[CausewayIds::POLY_QMIX_ATT_START + voiceIdx].getValue()
+                      + cway->params[CausewayIds::POLY_QMIX_ATT_GLOBAL].getValue();
+            base += causewayCv_(in, ch) * att * 0.1f;
+        }
+    }
+    return math::clamp(base, 0.f, 1.f);
+}
+// Voice-1 / MONO q-mix — apply the Causeway MONO_QMIX_ATT (+ global) to CV channel 0 of the q-mix
+// CV input, added onto the mono base (QMIX_LEVEL_PARAM). Mirrors getEffectiveMonoRest/Accent.
+float Monsoon::getEffectiveMonoQmix(float base) {
+    auto* cway = expanderManager.cachedCausewayPolyExpander;
+    if (cway) {
+        auto& in = cway->inputs[CausewayIds::QMIX_CV_INPUT];
+        if (in.isConnected()) {
+            float att = cway->params[CausewayIds::MONO_QMIX_ATT].getValue()
+                      + cway->params[CausewayIds::POLY_QMIX_ATT_GLOBAL].getValue();
+            base += causewayCv_(in, 0) * att * 0.1f;
+        }
+    }
+    return math::clamp(base, 0.f, 1.f);
 }
 
 // Voice-1 / MONO counterparts: apply the Causeway MONO attenuator to CV channel 0 (the mono
