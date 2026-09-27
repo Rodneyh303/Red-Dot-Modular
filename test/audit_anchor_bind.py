@@ -109,6 +109,18 @@ MODULES = {
         # families), so no `counts` — the 1:1 anchor↔bind check alone covers the 12 inputs + monitor
         # + param + midi_display + light + 3 label anchors.
     },
+    "causeway": {
+        "widget": ["src/MonsoonCausewayPolyExpander.cpp"],
+        "panel": "res/panels/Causeway_panel_dark.svg",
+        # 3 carriageways (REST/ACC/QMIX), each 16 per-voice attenuators + a global, + 3 CV inputs +
+        # light_connect. All bound by literal name (param_restatt_0 etc.) — no %d-format binds, so the
+        # audit's prefix-family counts pin the full set.
+        "counts": {
+            "param_restatt_": 17,   # 0..15 + global
+            "param_accatt_":  17,
+            "param_qmixatt_": 17,
+        },
+    },
     # NOTE: intertropical is bind-by-name (param_%d / output_%d via rack::string::f, light_connect via
     # findNamed) and its panel markers exist, but the audit's bind-regex classifies the "%d"-format
     # binds as PREFIX binds and only matches output_5.., not output_0.. — a pre-existing audit-tooling

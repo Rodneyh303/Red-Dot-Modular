@@ -39,8 +39,9 @@ struct MonsoonCausewayPolyExpanderWidget : ModuleWidget,
         // voice 0 = mono/voice-1 → the MONO attenuators; markers 1..15 = poly voices 2..16.
         // Mono + globals never dim (always relevant). Per-voice 1..15 dim when their voice is
         // above Monsoon's active count -- lit = live, same rule as Straits' knobs.
-        bindParam<Trimpot>("param_restatt_0", CausewayIds::MONO_REST_ATT);
-        bindParam<Trimpot>("param_accatt_0",  CausewayIds::MONO_ACCENT_ATT);
+        bindParam<Trimpot>("param_restatt_0",  CausewayIds::MONO_REST_ATT);
+        bindParam<Trimpot>("param_accatt_0",   CausewayIds::MONO_ACCENT_ATT);
+        bindParam<Trimpot>("param_qmixatt_0",  CausewayIds::MONO_QMIX_ATT);
         for (int i = 1; i < 16; ++i) {
             std::string r = std::to_string(i);
             int voiceNum = i;                  // active iff activeVoices_ >= i (see Straits)
@@ -51,11 +52,15 @@ struct MonsoonCausewayPolyExpanderWidget : ModuleWidget,
                 std::function<void(redDot::Dimmable<Trimpot>*)>([dimIfInactive](redDot::Dimmable<Trimpot>* k){ k->dimWhen = dimIfInactive; k->lockWhen = dimIfInactive; }));
             bindParam<redDot::Dimmable<Trimpot>>("param_accatt_"  + r, CausewayIds::POLY_ACCENT_ATT_START + (i - 1),
                 std::function<void(redDot::Dimmable<Trimpot>*)>([dimIfInactive](redDot::Dimmable<Trimpot>* k){ k->dimWhen = dimIfInactive; k->lockWhen = dimIfInactive; }));
+            bindParam<redDot::Dimmable<Trimpot>>("param_qmixatt_" + r, CausewayIds::POLY_QMIX_ATT_START + (i - 1),
+                std::function<void(redDot::Dimmable<Trimpot>*)>([dimIfInactive](redDot::Dimmable<Trimpot>* k){ k->dimWhen = dimIfInactive; k->lockWhen = dimIfInactive; }));
         }
-        bindParam<Trimpot>   ("param_restatt_global", CausewayIds::POLY_REST_ATT_GLOBAL);
-        bindParam<Trimpot>   ("param_accatt_global",  CausewayIds::POLY_ACCENT_ATT_GLOBAL);
+        bindParam<Trimpot>   ("param_restatt_global",  CausewayIds::POLY_REST_ATT_GLOBAL);
+        bindParam<Trimpot>   ("param_accatt_global",   CausewayIds::POLY_ACCENT_ATT_GLOBAL);
+        bindParam<Trimpot>   ("param_qmixatt_global",  CausewayIds::POLY_QMIX_ATT_GLOBAL);
         bindInput<PJ301MPort>("input_restcv",   CausewayIds::REST_CV_INPUT);
         bindInput<PJ301MPort>("input_accentcv", CausewayIds::ACCENT_CV_INPUT);
+        bindInput<PJ301MPort>("input_qmixcv",  CausewayIds::QMIX_CV_INPUT);
 
         if (auto* s = findNamed("light_connect")) {
             connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));

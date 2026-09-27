@@ -998,8 +998,10 @@ struct Monsoon : Module {
     float getLegatoParam();
     float getMonoRestBase();
     float getMonoAccentBase();
+    float getMonoQmixBase();
     float getRestParam();
     float getAccentParam();
+    float getQmixParam();
     float getOctaveLoParam();
     float getOctaveHiParam();
     float getPolyRestParam(int voiceIdx);
@@ -1009,10 +1011,12 @@ struct Monsoon : Module {
     float getBasePolyAccent(int voiceIdx);
     float getEffectivePolyRest(int voiceIdx);
     float getEffectivePolyAccent(int voiceIdx);
-    // Per-voice q-mix LEVEL (Task 4 poly), mirroring rest/accent. No Causeway q-mix CV yet, so
-    // effective == base (the Straits knob). Voice-1/mono q-mix level is QMIX_LEVEL_PARAM.
+    // Per-voice q-mix LEVEL (Task 4 poly), mirroring rest/accent. The Causeway q-mix CV path is now
+    // wired (QMIX_CV_INPUT attenuated by the per-voice/global q-mix attenuators), so effective =
+    // base + Causeway CV × att, clamped. Voice-1/mono q-mix level is QMIX_LEVEL_PARAM (getEffectiveMonoQmix).
     float getBasePolyQmix(int voiceIdx);
     float getEffectivePolyQmix(int voiceIdx);
+    float getEffectiveMonoQmix(float base);
     float getEffectiveMonoRest(float base);
     float getEffectiveMonoAccent(float base);
 
