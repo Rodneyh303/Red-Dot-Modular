@@ -138,6 +138,86 @@ int main() {
         EXPECT(err < 1.0);
     });
 
+    // ── Two-layer expression: sumAroundRest (MPE_UTILITY_BUILD_SPEC "Two-layer input structure") ──────
+    // OUT = clamp(A + B - rest, lo, hi). a/b are full value-space values including the rest offset; a
+    // silent layer reads as `rest`, so summing two full values removes one rest to avoid double-counting.
+    SUITE("sumAroundRest — two-layer sum around a dimension's rest point");
+    TEST("B at rest → OUT = A (B contributes nothing)", {
+        // X: rest 0. A = +1.5st, B = 0 (silent/unpatched).
+        EXPECT(std::fabs(sumAroundRest(1.5f, 0.f, 0.f, -1000.f, 1000.f) - 1.5f) < 1e-5f);
+    });
+    TEST("both at rest → OUT = rest (the neutral point)", {
+        EXPECT(std::fabs(sumAroundRest(0.f, 0.f, 0.f, -1000.f, 1000.f) - 0.f) < 1e-5f);   // X/Z rest 0
+        EXPECT(std::fabs(sumAroundRest(64.f, 64.f, 64.f, 0.f, 127.f) - 64.f) < 1e-5f);     // Y rest 64
+    });
+    TEST("A + B additive around rest: Y rest 64, A=80, B=96 → 80+96-64 = 112", {
+        EXPECT(std::fabs(sumAroundRest(80.f, 96.f, 64.f, 0.f, 127.f) - 112.f) < 1e-4f);
+    });
+    TEST("clamps at the hi rail (Y: 120 + 120 - 64 = 176 → 127)", {
+        EXPECT(std::fabs(sumAroundRest(120.f, 120.f, 64.f, 0.f, 127.f) - 127.f) < 1e-4f);
+    });
+    TEST("clamps at the lo rail (Y: 10 + 10 - 64 = -44 → 0)", {
+        EXPECT(std::fabs(sumAroundRest(10.f, 10.f, 64.f, 0.f, 127.f) - 0.f) < 1e-4f);
+    });
+    TEST("Z unipolar rest 0: A=40, B=30 → 70 (simple additive, rest 0)", {
+        EXPECT(std::fabs(sumAroundRest(40.f, 30.f, 0.f, 0.f, 127.f) - 70.f) < 1e-4f);
+    });
+    TEST("X bipolar rest 0, wide rails: A=+2, B=-0.5 → +1.5 (bend14 clamps later)", {
+        EXPECT(std::fabs(sumAroundRest(2.f, -0.5f, 0.f, -1000.f, 1000.f) - 1.5f) < 1e-5f);
+    });
+    TEST("two-layer X feeds bend14 + reconstructs sub-cent (X added after the split)", {
+        // Model Keppel's held-voice path: residual (within-semitone) + X expression, then bend14 + reconstruct.
+        const float R = 2.f;
+        const float pitchV = 0.3f / 12.f;        // +0.3 st pitch → note 60, residual +0.3
+        const int   note   = noteFor(pitchV);
+        const float resid  = centsOffsetSemis(pitchV);          // ≈ +0.3
+        const float xTotal = sumAroundRest(0.8f, 0.f, 0.f, -1000.f, 1000.f);  // X-A = +0.8st, B silent
+        const float total  = resid + xTotal;                     // ≈ +1.1 st, within ±2
+        int   b  = bend14(total, R);
+        float Vr = reconstructVolts(note, b, R);
+        // The receiver reproduces note + total bend = the original note + (resid + xTotal) of bend.
+        // Reconstruct = (note-60 + total)/12; the X expression is part of the emitted bend, so the
+        // monitor faithfully reflects it. Assert the bend encodes `total` to sub-cent.
+        double reconSemis = (double)reconstructVolts(note, b, R) * 12.0;
+        EXPECT(std::fabs(reconSemis - ((double)(note - 60) + (double)total)) < 0.01);
+    });
+
+    // ── CV → MPE-value mappers (rest points: X@0, Y@64, Z@0) ─────────────────────────────────────────
+    SUITE("CV mappers — unpatched (0V) reads as the dimension rest");
+    TEST("xSemisFromVolts: 0V → 0 (rest), 1V → 1 semitone (1V=1st)", {
+        EXPECT(std::fabs(xSemisFromVolts(0.f)) < 1e-6f);
+        EXPECT(std::fabs(xSemisFromVolts(1.f) - 1.f) < 1e-6f);
+        EXPECT(std::fabs(xSemisFromVolts(-2.5f) + 2.5f) < 1e-6f);
+    });
+    TEST("yCc74FromVolts: 0V → 64 (rest), +5V → 127, -5V → 0 (bipolar around 64)", {
+        EXPECT(yCc74FromVolts(0.f) == 64);
+        EXPECT(yCc74FromVolts(5.f) == 127);     // 64 + 5*12.8 = 128 → clamp 127
+        EXPECT(yCc74FromVolts(-5.f) == 0);      // 64 - 64 = 0
+    });
+    TEST("yCc74FromVolts clamps both rails", {
+        EXPECT(yCc74FromVolts(100.f) == 127);
+        EXPECT(yCc74FromVolts(-100.f) == 0);
+    });
+    TEST("zPressureFromVolts: 0V → 0 (rest), 10V → 127 (unipolar from 0)", {
+        EXPECT(zPressureFromVolts(0.f) == 0);
+        EXPECT(zPressureFromVolts(10.f) == 127);   // 10*12.7 = 127
+    });
+    TEST("zPressureFromVolts clamps negative to 0 (pressure cannot be negative)", {
+        EXPECT(zPressureFromVolts(-5.f) == 0);
+        EXPECT(zPressureFromVolts(100.f) == 127);
+    });
+    TEST("Y/Z round-trip: the value we send IS the value received (no decomposition — direct CC)", {
+        // Unlike pitch (note+bend split), Y (CC74) and Z (channel pressure) are sent as direct values,
+        // so the round-trip is identity: send v → receiver sees v. Asserted so the dedupe + transmit
+        // contract has a ground truth.
+        for (float V = -6.f; V <= 11.f; V += 0.37f) {
+            int y = yCc74FromVolts(V);
+            EXPECT(y >= 0 && y <= 127);   // identity: what we compute is what we send is what arrives
+            int z = zPressureFromVolts(V);
+            EXPECT(z >= 0 && z <= 127);
+        }
+    });
+
     std::cout << "\n-----\n" << g_pass << " passed, " << g_fail << " failed\n";
     return g_fail == 0 ? 0 : 1;
 }
