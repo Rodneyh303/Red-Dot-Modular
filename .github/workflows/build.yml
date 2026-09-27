@@ -86,9 +86,9 @@ jobs:
         run: |
           set -e
           export RACK_DIR="$PWD/Rack-SDK"
-          # Portable arch override for CI artifacts (see NOTE 2). Remove once the
-          # Makefile no longer uses -march=native.
-          make -j2 dist EXTRA_FLAGS="-march=x86-64-v2" || make -j2 dist
+          # The Makefile no longer sets -march at all, and the Rack SDK supplies a
+          # sensible per-platform default, so nothing to override here.
+          make -j2 dist
 
       - name: Build (macOS / Linux)
         if: runner.os != 'Windows'
@@ -96,7 +96,12 @@ jobs:
         run: |
           set -e
           export RACK_DIR="$PWD/Rack-SDK"
-          make -j2 dist EXTRA_FLAGS="-march=x86-64-v2" || make -j2 dist
+          # Do NOT pass -march=x86-64-v2 here: Clang on Apple Silicon rejects it
+          # ("unsupported argument 'x86-64-v2'"), which burned a whole build attempt
+          # before the `|| make` fallback retried. The Rack SDK already sets a suitable
+          # per-platform arch (-march=armv8-a+fp+simd on macOS), and the Makefile no
+          # longer sets -march at all.
+          make -j2 dist
 
       # --- artifact -------------------------------------------------------
       - name: Upload .vcvplugin
