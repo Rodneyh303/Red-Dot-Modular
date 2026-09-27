@@ -36,7 +36,18 @@ struct IntertropicalIds {
         NUM_INPUTS
     };
     enum OutputId {
-        GATE_OUT, CV_OUT, ACCENT_OUT, LEGATO_OUT, SLEG_OUT,   // poly (16ch)
+        GATE_OUT, CV_OUT, ACCENT_OUT, LEGATO_OUT, SLEG_OUT,   // poly (16ch) — the note-carrier outs
+        // Correlated expression outs (CA_EXPRESSION_CV_CORRELATION.md "Routing through Intertropical"):
+        // 8 poly-CV outs mirroring CA's pair bank (3R/3M/2QM), one per correlated pair. Intertropical
+        // GRABS CA's correlated CV off the chain (host->expanderManager.cachedChangeAlleyV2) and runs
+        // it through the SAME slotOf[v]/slotOutput[slot] mask as the notes — one mapping, not two — so
+        // a note and its expression arrive at Keppel in the same frame. Sized to the same nOut as the
+        // note outs; SKIP the per-output pitch transpose (a semitone offset is meaningless on Y/Z, and
+        // X-bend is relative to an already-transposed note). Silent when CA is absent or a pair's IN is
+        // unpatched (CA itself goes 0-channel there). Indices 5..12 share the `output_%d` marker prefix
+        // with the note outs so the widget binds both in one loop.
+        EXPR_OUT_0, EXPR_OUT_1, EXPR_OUT_2, EXPR_OUT_3,
+        EXPR_OUT_4, EXPR_OUT_5, EXPR_OUT_6, EXPR_OUT_7,
         NUM_OUTPUTS
     };
     enum LightId  { NUM_LIGHTS };
@@ -45,6 +56,8 @@ struct IntertropicalIds {
     static constexpr int N_VOICES  = 16;       // 16 voices to choose FROM
     static constexpr int MAX_VOICES_PER_SCENE = 8;  // max voices routed per scene (≤8 output channels)
     static constexpr int MAX_REPEAT = 4;   // max repeats per scene (panel has 4 sub-segs)
+    static constexpr int N_EXPR_OUTS = 8;   // correlated expression outs (mirror CA's pair bank)
+    static constexpr int EXPR_OUT_FIRST = EXPR_OUT_0;
 };
 
 struct Intertropical : Module {

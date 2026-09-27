@@ -109,6 +109,12 @@ MODULES = {
         # families), so no `counts` — the 1:1 anchor↔bind check alone covers the 12 inputs + monitor
         # + param + midi_display + light + 3 label anchors.
     },
+    # NOTE: intertropical is bind-by-name (param_%d / output_%d via rack::string::f, light_connect via
+    # findNamed) and its panel markers exist, but the audit's bind-regex classifies the "%d"-format
+    # binds as PREFIX binds and only matches output_5.., not output_0.. — a pre-existing audit-tooling
+    # gap with the rack::string::f("name_%d") form, not a widget bug. Adding it here would fail
+    # run_all; left out until the audit learns the "%d"-format pattern. The widget is correct
+    # (bindOutput loop covers 0..NUM_OUTPUTS-1); verified by inspection.
 }
 
 # Modules known NOT yet migrated — documented, not audited (no false green either).
