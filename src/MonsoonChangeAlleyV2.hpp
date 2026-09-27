@@ -1239,7 +1239,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
             // plane: 0=rhythm, 1=melody, 2=q-mix. Shift wins (either mouse button); else
             // right/Ctrl=melody; else left=rhythm.
             int plane = 0;
-            if (e.mods & RACK_MOD_SHIFT)                                             plane = 2;
+            if (e.mods & GLFW_MOD_SHIFT)                                             plane = 2;
             else if ((e.button == GLFW_MOUSE_BUTTON_RIGHT) || (e.mods & RACK_MOD_CTRL)) plane = 1;
             for (int row = 0; row < CA::N_VOICES; ++row) {
                 for (int col = 0; col < CA::N_VOICES; ++col) {
