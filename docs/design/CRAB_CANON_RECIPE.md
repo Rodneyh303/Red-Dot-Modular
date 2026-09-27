@@ -220,3 +220,41 @@ version chosen yet.
 
 Cross-ref: the offset-timing fork section (still open, TBC), UNDO_AND_REVERSIBLE_AUTOMATION_PRINCIPLE (the
 conditional undo behaviour if modulatable), the offset-knob section (the primitive, timing undecided)." 
+
+---
+
+## Offset scope: PER STREAM on Monsoon, INHERITED on Change Alley (Rodney)
+
+### Monsoon: one offset per stream (R / M / Q), not one global
+Consistent with everything else that is per stream — slew, dice, reseed, spread target. It is also
+where the musical cases are: canon the RHYTHM while melody stays in unison; or offset only Q-MIX so
+voices drift between sequenced and quantised pitch at different times. A single global offset would
+only give the degenerate "whole system displaced" case.
+
+Each needs a PARAM **and a CV input** (see above): the knob alone gives fixed canon alignment, but the
+headline crab patch drives both Monsoons' counters from one ramp (forward at phase φ, backward at
+1-φ) for an exact midpoint crossing every cycle. Skipping the CV delivers a fraction of the feature.
+
+### Change Alley: INHERIT the host's offset; do not add a local control
+Question raised: does CA need its own offset? Consider two Monsoons playing a canon at offset N with
+their CAs at offset 0 — the NOTES canon but the voice STRUCTURE does not: both systems scatter and
+collapse in lockstep while playing displaced material. That may sound fine, but it is an accident
+rather than a choice.
+
+**DECIDED: CA derives its counter offset from its host.** Offsetting a Monsoon then carries the
+structure with it and the canon is complete — same verbs, same permutations, N draws later. This
+matches how the seed already propagates down the chain rather than being set per expander.
+
+**Shared CA (up to 8 hosts): the PRIMARY host's offset governs** — exactly as it governs
+reseed-on-restart. That is what the primary is for; no new arbitration rule needed. See
+CA_SHARED_EXPANDER_BUILD.md.
+
+**A LOCAL CA offset (structure canon at a different displacement from the notes) is deliberately NOT
+offered.** It is expressible if a musical case ever appears, but none is known and it doubles the
+mental model.
+
+### Build note: the two counters are different objects
+Monsoon's offset displaces the **draw** sequence; CA's displaces the **verb/scatter** sequence. Both
+are Philox counters but they advance on different events, so "offset by 4" does NOT mean the same
+displacement in both. Inheriting must map host offset -> CA offset explicitly, not copy the number
+blindly. Decide and document that mapping when building.
