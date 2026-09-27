@@ -45,6 +45,8 @@ TESTS=(
   "test_TuningTable|"
   "test_StoreEditAction|"
   "test_ca_qmix_source_select|"
+  "test_ca_true_reverse|"
+  "test_ca_pending_order|"
   "test_change_alley_transforms|"
   "test_edge_cases|"
   "test_final_random_by_strand|"

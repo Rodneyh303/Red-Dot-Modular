@@ -1296,5 +1296,9 @@ namespace ChangeAlleyV2Ids {
     struct PendingAction {
         bool  armed = false; int grain = 4; int leaderOrStep = 0;
         int   scatterDelta = 1; bool isDomain = true; bool isInter = false;
+        // Chronological ordering (CA_DICE_COUNTER_MODEL.md "Pending transform ORDER"): set on
+        // the unarmed→armed transition only (re-arm keeps the original stamp). The boundary
+        // applies armed rows in ascending-stamp order, ties by row index (verb-major). 0 = unset.
+        uint32_t stamp = 0;
     };
 }

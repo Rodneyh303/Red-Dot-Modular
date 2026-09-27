@@ -18,6 +18,8 @@
 #include "ui/ModArcOverlay.hpp"
 #include "ui/StoreEditAction.hpp"   // pin edits: store-backed, undoable (DAW_PARAM_AUDIT 5b)
 #include "dsp/ChangeAlleyTransforms.hpp"   // ca::applyCorrelation (transform apply owned here)
+#include "dsp/CATrajectoryBuffer.hpp"      // TRUE REVERSE: per-stream committed-state trajectory ring
+#include "dsp/CAPendingOrder.hpp"          // chronological pending-transform ordering
 #include "ui/IntertropicalPairing.hpp"     // shared pairing: assignPairIdT / resolveFollowedT<T>
 #include "ui/ConnectMark.hpp"              // shared dot.modular connect indicator (same as other panels)
 #include "ui/SvgPanelKit.hpp"             // Option B-full: bind ports/params/lights by name from anchors
@@ -173,6 +175,22 @@ struct MonsoonChangeAlleyV2 : Module {
     std::atomic<uint32_t> undoHead{0};   // producer (audio) writes, then advances
     std::atomic<uint32_t> undoTail{0};   // consumer (UI) reads, then advances
 
+    // ── TRUE REVERSE trajectory buffer (CA_DICE_COUNTER_MODEL.md) ────────────────────────────
+    // A per-stream ring of COMMITTED pin states, pushed once per phrase-boundary commit AFTER the
+    // verbs apply (records results, not causes). Consumed by a queued true-reverse request to step
+    // the state trajectory back one phrase. Distinct from undoRing (UI-thread edit hand-off) and
+    // from Monsoon's diceUndoRing — this is an audio-thread performance buffer. Rack-free struct
+    // (CATrajectoryBuffer.hpp) so the engine is unit-testable. Modulation-class: commits WITHOUT
+    // pushing undo history (per the build brief).
+    redDot::CATrajectoryBuffer trajectory_;
+
+    // ── Chronological pending-transform ordering (CA_DICE_COUNTER_MODEL.md) ───────────────────
+    // Monotonic counter stamped on each unarmed→armed transition (latchRow). The boundary
+    // applies armed rows in ascending-stamp order (ties by row index = verb-major). Reset ONLY
+    // when the pending set becomes fully empty — NOT at every boundary — so out-of-axis
+    // (lock-deferred) rows keep a comparable stamp and don't jump to the front of later arms.
+    uint32_t pendingStampCounter_ = 0;
+
     MonsoonChangeAlleyV2() {
         config(CA::NUM_PARAMS_TOTAL, CA::NUM_INPUTS, CA::NUM_OUTPUTS, CA::NUM_LIGHTS);
         static const char* VN[CA::N_VERBS] = {"Collapse","Rotate","Reflect","Scatter"};
@@ -246,6 +264,11 @@ struct MonsoonChangeAlleyV2 : Module {
 
     void latchRow(int r, int verb, int side, int type, bool domain) {
         auto& p    = pendingRows[r];
+        // Chronological ordering: stamp ONLY on the unarmed→armed transition. Re-arming an
+        // already-armed row keeps its original stamp (does NOT move later in the order) —
+        // consistent with the true-reverse "lit lamp ignores further triggers" rule. latchRow
+        // is the single choke point for triggers, buttons and scatter-back, so this covers all.
+        if (!p.armed) p.stamp = pendingStampCounter_++;
         p.armed    = true;
         p.isDomain = domain;
         p.isInter  = (side == 1);
@@ -297,7 +320,17 @@ struct MonsoonChangeAlleyV2 : Module {
             if (!(axisMask & axisBitForType(ty))) continue;   // out-of-axis: stay queued (like verbs)
             trueRevRequested[ty] = false;
             lights[CA::TRUE_REV_LIGHT_START + ty].setBrightness(0.f);
-            // TODO(true-reverse engine): step this stream's committed-state trajectory back by one.
+            // TRUE-REVERSE engine: step this stream's committed-state trajectory back one phrase.
+            // stepBack pops the newest committed state and restores the PREVIOUS one into src[].
+            // Modulation-class: does NOT push undo (per the build brief). At the buffer start it
+            // returns false (STOP, don't wrap) — the consume still clears the lamp above so the
+            // affordance is consistent, but the state is left unchanged.
+            {
+                uint8_t restored[CA::N_VOICES];
+                uint8_t* tbl = (ty == 0) ? rhythmSrc : (ty == 1) ? melodySrc : qmixSrc;
+                if (trajectory_.stepBack(ty, restored))
+                    std::memcpy(tbl, restored, CA::N_VOICES);
+            }
         }
         // Any armed row this call whose AXIS is in the mask?  If none, nothing to snapshot or apply.
         bool any = false;
@@ -313,9 +346,17 @@ struct MonsoonChangeAlleyV2 : Module {
         for (int v = 0; v < CA::N_VOICES; ++v) { snap.beforeR[v] = rhythmSrc[v]; snap.beforeM[v] = melodySrc[v]; snap.beforeQ[v] = qmixSrc[v]; }
         for (int i = 0; i < CA::N_SCATTER; ++i) snap.counterBefore[i] = scatterCounter[i];
 
-        for (int row = 0; row < CA::N_ROWS; ++row) {
+        // Chronological apply order: armed rows in ascending-stamp order, ties by row index
+        // (today's verb-major). Includes out-of-axis rows so their stamp survives for the later
+        // commit; the axis check below skips them (they stay armed). CA_DICE_COUNTER_MODEL.md
+        // "Pending transform ORDER".
+        bool armedArr[CA::N_ROWS]; uint32_t stampArr[CA::N_ROWS];
+        for (int row = 0; row < CA::N_ROWS; ++row) { armedArr[row] = pendingRows[row].armed; stampArr[row] = pendingRows[row].stamp; }
+        int orderArr[CA::N_ROWS];
+        const int nOrdered = redDot::CAPendingOrder::orderRows(CA::N_ROWS, armedArr, stampArr, orderArr);
+        for (int oi = 0; oi < nOrdered; ++oi) {
+            const int row = orderArr[oi];
             auto& p = pendingRows[row];
-            if (!p.armed) continue;
             // Decode (verb,side,type) from row using the current dims — NOT hardcoded 4/2
             // (rowId = verb*SIDES*TYPES + side*TYPES + type; TYPES=3 now).
             const int verb = row / (CA::SIDES * CA::TYPES);
@@ -348,6 +389,20 @@ struct MonsoonChangeAlleyV2 : Module {
             undoRing[h % UNDO_RING] = snap;
             undoHead.store(h + 1, std::memory_order_release);
         }
+        // TRUE REVERSE trajectory: record the post-commit state for each axis that committed this
+        // call (records RESULTS, not causes — after the verbs applied). pushIfChanged skips
+        // unchanged states so static passages don't consume depth. This is what makes true-reverse
+        // verb-agnostic and able to step back through a lossy collapse.
+        if (axisMask & 0b001) trajectory_.pushIfChanged(0, rhythmSrc);
+        if (axisMask & 0b010) trajectory_.pushIfChanged(1, melodySrc);
+        if (axisMask & 0b100) trajectory_.pushIfChanged(2, qmixSrc);
+        // Chronological counter: reset ONLY when the pending set is now fully empty (no armed
+        // rows remain — out-of-axis rows would still be armed). Resetting at every boundary would
+        // give new post-boundary arms stamp 0 < persistent out-of-axis rows' stamps, jumping them
+        // to the front = wrong. So reset only on a complete clear.
+        bool anyArmed = false;
+        for (int row = 0; row < CA::N_ROWS; ++row) if (pendingRows[row].armed) { anyArmed = true; break; }
+        if (!anyArmed) pendingStampCounter_ = 0;
     }
 
     void process(const ProcessArgs&) override {
@@ -456,6 +511,8 @@ struct MonsoonChangeAlleyV2 : Module {
     void resetToIdentity() {
         for (int v = 0; v < CA::N_VOICES; ++v) { rhythmSrc[v] = v; melodySrc[v] = v; qmixSrc[v] = v; }
         for (int i = 0; i < CA::N_SCATTER; ++i) scatterCounter[i] = 0;
+        trajectory_.clear();   // a reset wipes the pin matrix — pre-reset states are meaningless
+        pendingStampCounter_ = 0;   // fresh chronological ordering after a reset
         // NO key re-derivation here (moved out — see comment above).
     }
 
@@ -476,6 +533,29 @@ struct MonsoonChangeAlleyV2 : Module {
             for (int i = 0; i < CA::N_SCATTER; ++i)
                 json_array_append_new(ck, json_integer((json_int_t)corrKey[i]));
             json_object_set_new(root, "corrKey", ck);
+        }
+        // TRUE REVERSE trajectory: save a bounded TAIL (256 newest/stream, newest-first) with a
+        // version guard. Do NOT save the whole ring (Rack patches are JSON, autosave periodically).
+        {
+            auto blob = trajectory_.serialise();
+            json_t* tj = json_object();
+            json_object_set_new(tj, "v", json_integer((json_int_t)blob.version));
+            json_t* arr = json_array();
+            for (int s = 0; s < redDot::CATrajectoryBuffer::N_STREAMS; ++s) {
+                json_t* strm = json_object();
+                json_object_set_new(strm, "n", json_integer(blob.counts[s]));
+                json_t* states = json_array();
+                for (int i = 0; i < blob.counts[s]; ++i) {
+                    json_t* st = json_array();
+                    for (int v = 0; v < CA::N_VOICES; ++v)
+                        json_array_append_new(st, json_integer(blob.states[s][i].src[v]));
+                    json_array_append_new(states, st);
+                }
+                json_object_set_new(strm, "states", states);
+                json_array_append_new(arr, strm);
+            }
+            json_object_set_new(tj, "streams", arr);
+            json_object_set_new(root, "trajectory", tj);
         }
         return root;
     }
@@ -513,6 +593,32 @@ struct MonsoonChangeAlleyV2 : Module {
             // Old patch saved before corrKey persistence (or before this fix): resetToIdentity()
             // no longer seeds keys, so give this instance valid entropy keys rather than all-zero.
             seedCorrKeysInternal();
+        }
+        // TRUE REVERSE trajectory: restore the bounded tail. A stale/mismatched blob (wrong version
+        // or shape) is DROPPED — trajectory stays empty — rather than restoring garbage pins.
+        if (json_t* tj = json_object_get(root, "trajectory")) {
+            redDot::CATrajectoryBuffer::SerialBlob blob{};
+            json_t* vJ = json_object_get(tj, "v");
+            blob.version  = vJ ? (uint32_t)json_integer_value(vJ) : 0;
+            blob.nStreams  = redDot::CATrajectoryBuffer::N_STREAMS;
+            blob.stateSize = CA::N_VOICES;
+            json_t* arr = json_object_get(tj, "streams");
+            bool ok = json_is_array(arr) && (int)json_array_size(arr) == redDot::CATrajectoryBuffer::N_STREAMS;
+            for (int s = 0; ok && s < redDot::CATrajectoryBuffer::N_STREAMS; ++s) {
+                json_t* strm = json_array_get(arr, s);
+                json_t* nJ = json_object_get(strm, "n");
+                if (!nJ) { ok = false; break; }
+                blob.counts[s] = (int)json_integer_value(nJ);
+                json_t* states = json_object_get(strm, "states");
+                if (!json_is_array(states)) { ok = false; break; }
+                for (int i = 0; i < blob.counts[s]; ++i) {
+                    json_t* st = json_array_get(states, i);
+                    if (!json_is_array(st)) { ok = false; break; }
+                    for (int v = 0; v < CA::N_VOICES && v < (int)json_array_size(st); ++v)
+                        blob.states[s][i].src[v] = (uint8_t)json_integer_value(json_array_get(st, v));
+                }
+            }
+            if (!ok || !trajectory_.deserialise(blob)) trajectory_.clear();
         }
     }
 
