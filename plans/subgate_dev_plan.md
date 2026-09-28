@@ -170,14 +170,20 @@ Write `test/test_subgate.cpp` (synthetic edge streams, no Rack) BEFORE the engin
 
 ## Poly — folded into THIS branch after mono lands (phase order)
 Mono phases (0-5) land and verify first. Then, in the same branch:
-- **Phase P1** — per-voice edge reconciliation: each poly voice's `voices[i].gs`/`gsStep`
-  subdivides under subGate (the correlated + reversible payoff — WHICH voices split moves
-  with the correlation structure and reverses, because the decision is a seeded per-voice
-  lane value; this is why it is internal, not a patch).
-- **Phase P2** — Straits `POLY_STEP_GATE_OUT` / `POLY_STEP_LEGATO_GATE_OUT` already exist as
-  OUTPUT jacks; verify they emit at the fine grid. Changi T2/T3 step outputs likewise.
-- **Phase P3** — header test extension (per-voice subdivision + inter-voice correlation) +
-  Rack verification.
+- **Phase P1 (DONE — no engine changes needed)** — the per-voice subdivision already flows
+  through `postExecute_` → `executePolyVoices` (which runs per subGate onset because
+  `result.stepped=true`). At each mono `NewNote` sub-cell, `monoGateStart=true` →
+  `executePolyVoice` rolls each poly voice's own rest/legato/pitch via `polyRandomSrc`
+  (the correlated + reversible payoff — WHICH voices split is seeded per-voice). Verified by
+  3 poly test suites in `test/test_subgate.cpp` (per-voice rest/play, ratchet, tie-sustain).
+  No `executeModeBSubdivided` change was needed — the mono sub-cell decisions drive the
+  existing poly path.
+- **Phase P2 (Rack-side)** — Straits `POLY_STEP_GATE_OUT` / `POLY_STEP_LEGATO_GATE_OUT` +
+  Changi T2/T3 step outputs read `voices[i].gsStep.process()` (OutputGenerator:68), which
+  re-triggers per sub-cell via `executePolyVoice`'s `gsStep.triggerNote()`. Verify in Rack
+  that the poly step jacks emit at the fine grid under subGate.
+- **Phase P3 (Rack-side)** — Rack verification: poly voices subdivide independently +
+  reversibly; the Straits/Changi step outputs pulse at the subGate rate.
 
 ## Risks / watch-items
 - **Inter-gate legato regression** — the headline trap; the Phase 1 (b) test exists to catch
