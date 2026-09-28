@@ -69,3 +69,32 @@ gate, not only inside a committed slur. Verify before building.
 - **Patched burst/ratchet generator in front of the gate input** — works today for UNcorrelated,
   non-reversible subdivision; on-brand (Monsoon perturbs what arrives). The internal route exists only
   for the correlated/reversible version.
+
+## Phase mode: subdivision is PPQN, NOT STEP_GATE (Rodney)
+Phase mode receives a POSITION (a phasor ramp), not events, so there is nothing to subdivide the
+gate-mode way. Its subdivision resolution ALREADY EXISTS as PPQN: the phasor is quantised to the PPQN
+grid, so phase mode already reads the pattern as discrete steps at a set resolution. So:
+- **Do NOT wire STEP_GATE into phase mode.** It would be redundant with PPQN and would re-muddle the
+  one-external-signal cleanliness that makes phase mode coherent (position in, nothing else).
+- Phase mode's purpose is rhythm VARIATION BY MODULATING THE PHASOR — sweep/scrub position and the
+  pattern reads out differently — not perturbation of an incoming rhythm.
+
+Resolution mechanism per mode, each matching the kind of timing it receives:
+- **Clock** — the clock pulse is the grid; PPQN divides it.
+- **Gate** — STEP_GATE (external clock) sets the grid at which rest/legato perturb your events.
+- **Phase** — PPQN (internal) sets the grid at which the phasor resolves to steps.
+
+## If you want phasor-derived rhythm AS GATES: convert, then use gate mode
+A phasor->gate converter (e.g. HetrickCV **Phasor to Gates** — compares the 0-10V ramp against
+pulse-width thresholds, "smart" mode handling reverse/ping-pong phasors so gates stay even) turns
+position into an EVENT stream. Chain phasor -> PhaseToGates -> Monsoon GATE mode to get
+position-derived rhythm that you can THEN perturb with rest/legato/STEP_GATE. So the two approaches are
+the two ends of the mode taxonomy meeting:
+- **phasor -> phase mode**: position stays internal, pattern read at PPQN. Rhythm variation, no
+  perturbation.
+- **phasor -> PhaseToGates -> gate mode**: position externalised to gates, so the full gate-domain
+  perturbation machinery applies.
+This is also WHY phase mode should not gain STEP_GATE: if you want gate-domain subdivision of a
+phasor-derived rhythm, you convert to gates first and use gate mode, where STEP_GATE already lives.
+Phase staying position-only keeps that boundary clean. (On-brand: Monsoon does interesting things to
+what other modules produce, rather than absorbing every function.)
