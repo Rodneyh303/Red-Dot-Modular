@@ -114,3 +114,54 @@ move: **turn `dotmod_design.py` from a helper library into a small PANEL FRAMEWO
 
 NONE of this changes behaviour — it is all generator/SVG/token work, verifiable with panel_diff, and
 orthogonal to the feature roadmap (connection rework, mode collapse, crab canon).
+
+---
+
+## Second workstream: C++ components (the audit above under-weighted this)
+
+The generator draws the static WELL (ring/recess in the SVG); the widget places the interactive
+COMPONENT on top (knob cap, port, light). Both carry design and both must agree, so "consistent look"
+is a Python AND a C++ job.
+
+### Finding: most interactive parts are STOCK Rack components
+Measured `create*` usage: **Trimpot ×44, TL1105 ×25**, VCVSlider ×3, a couple of lights — against only a
+few custom classes (`ThemedKnob`, `ScrubKnob`, `StoreKnob`, `GoldPolyPort`, `ConnectMark`,
+`DimmableTrimpot`, all in `src/ui/`). So most knobs and buttons are Rack DEFAULTS. That is a large part
+of why the modules do not read as one family — the wells are becoming consistent while the caps on top
+are generic. Cover the panel art and the controls alone would not tell you it is one maker.
+
+FIX: a small house component set in `src/ui/`, used everywhere:
+- one `DotKnob` (with the bipolar/centre-detent variant), replacing bare `Trimpot`;
+- one `DotButton`, replacing bare `TL1105`;
+- `GoldPolyPort` / a mono variant as the standard ports;
+- `ConnectMark`, `DimmableTrimpot` already exist — fold them into the set.
+Each reads the SAME tokens the generator uses (see below), so a knob cap and its well are sized and
+coloured from one source. Changing the house knob then propagates everywhere — the C++ equivalent of a
+design token.
+
+### The JOIN: shared sizing constants both sides read
+A well drawn at radius R (generator) and a cap sized for R' (C++) look wrong together. Today the
+generator has radii in `dotmod_design.py` and each widget hardcodes its own. FIX: the sizing constants
+(jack radius, knob radius, trim radius, light radius, label size, grid pitch) live in ONE place both
+sides consume — export them from `dotmod_design.py` into a generated `src/ui/PanelTokens.hpp` (or a
+hand-kept header the generator asserts against), so Python and C++ cannot disagree.
+
+### Labels: BAKE INTO THE SVG (decided)
+Runtime `nvgText` label draws are widespread — Intertropical 13, Lantern 12, Interchange 12, MicroTuning
+10, Macro 8, Monsoon 7, and more. That is where much of the font inconsistency lives (each widget picks
+its own face and size) and a source of label/control drift.
+DECISION: **static control labels are baked into the SVG by the generator**, from the shared label
+helper and font tokens — one place emits all label text, so font and size are consistent by
+construction and a label cannot drift from its control. This is what most polished Rack plugins do.
+Runtime `nvgText` is reserved for genuinely DYNAMIC strings only: live numeric readouts (BPM, seed),
+a selected-scale name, a mode/status string. Everything static moves into the generator.
+Consequence: as each module migrates onto the Panel builder, its static `nvgText` calls are deleted and
+re-emitted as SVG `<text>` at anchor-relative positions.
+
+### Order within this workstream
+1. Define the house component set in `src/ui/` and the shared `PanelTokens.hpp` join.
+2. Swap stock `Trimpot`/`TL1105` for the house classes module by module, alongside that module's Panel
+   builder migration (do the SVG and C++ passes for a module together, not in separate sweeps — they
+   share the tokens and must land consistent).
+3. Move static labels SVG-side as each module migrates.
+Verify each module with panel_diff (SVG) AND a Rack load (components) before moving on.
