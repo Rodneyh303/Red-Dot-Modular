@@ -168,3 +168,31 @@ This is just correct behaviour for the existing gate-masked ACCENT_OUTPUT when S
 - If ever needed, per-sub-hit accent is DERIVABLE by logic: `STEP_GATE AND re-articulated AND accented`
   — the same masking move step-legato uses (STEP_LEGATO_GATE_OUTPUT = STEP_GATE masked to slurred
   notes). So it is a logic patch or a trivial masked output later, not new engine work now.
+
+## Pitch under subdivision: ALL Sands lanes draw at STEP_GATE onsets (Rodney)
+CORRECTION of an earlier muddle in discussion: a TIE is emergent from the PITCH DRAW, not decided by
+the legato lane. Per the engine enum (SequencerEngine.hpp MonoDecision):
+- `Tie`   = mono extended hold, **same pitch**
+- `Legato`= mono slid to a **new pitch**, no retrigger
+- `NewNote` = retriggered
+The legato lane decides RETRIGGER-vs-not (NewNote vs the no-retrigger group). Within the no-retrigger
+group, Tie-vs-Legato is simply whether the freshly drawn pitch EQUALS the held pitch. (What the engine
+REPLACED was the old reactive legato ROLL at the joining onset — that is the retrigger axis, NOT the
+Tie/Legato split, which is still pitch-equality.)
+
+So clock mode already "makes the pitch decision at each step, including steps within legato; if it draws
+the same pitch it is a tie." Apply the SAME at STEP_GATE onsets within a main gate:
+- **ALL Sands lanes — melody, octave, and q-mix — draw at STEP_GATE onsets** (the fine grid), on exactly
+  the clock-mode step rules. Same pitch as held -> Tie; new pitch -> Legato; legato lane may call
+  NewNote (retrigger). Pitch, like accent, FOLLOWS THE ARTICULATION: a draw happens at each onset; a
+  held/tied continuation is not a fresh onset.
+- **Quantiser mode reads the incoming pitch CV at the SAME resolution** — sampled at each STEP_GATE onset
+  — so a repeated incoming pitch naturally yields a Tie, and a changed one a Legato/NewNote.
+- **q-mix per voice at those onsets**: a voice can be sequenced on one sub-hit and quantised on the next;
+  the user selecting quantised melody via the q-mix knobs can therefore get a Tie when the quantiser
+  reads the same CV at consecutive STEP_GATE onsets. This is the fine-grained form of the pitch-origin
+  axis.
+
+Consistency summary — at each STEP_GATE onset the engine does exactly what it does at a clock step:
+rest/legato/accent evaluated, melody/octave/q-mix drawn, Tie/Legato emergent from pitch equality,
+quantiser CV sampled. STEP_GATE just changes the RESOLUTION at which "a step" happens inside a main gate.
