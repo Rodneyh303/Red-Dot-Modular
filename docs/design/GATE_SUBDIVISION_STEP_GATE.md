@@ -145,3 +145,26 @@ Synthetic edge streams: (a) a main gate spanning N cells -> note length N, legat
 boundaries; (b) a legato tie expected to HOLD across a main-gate boundary AND one that re-articulates at
 a STEP_GATE boundary inside a gate, IN THE SAME PATTERN — this is the test that catches STEP_GATE
 stomping inter-gate legato; (c) an off-grid main-gate edge quantising to the nearest cell.
+
+## Accent under subdivision: no step-accent output (Rodney)
+Accent parallels rest/legato only PARTLY. Rest/legato act on note boundaries (whether/how long a note
+sounds); accent is emphasis on a note already sounding, so at the fine grid its question is per-ONSET,
+not per-cell.
+
+**Rule (internal, cheap, keep it): ACCENT FOLLOWS THE ARTICULATION.** Accent is asked "emphasise?" only
+at ONSETS — a fresh onset at a main-gate edge, or a fresh onset at a STEP_GATE re-articulation. A TIED
+continuation is not an onset, so it gets no new accent decision (do not re-accent mid-slur). Wherever
+legato decides re-articulate -> accent gets a decision; where legato decides tie -> it does not. So
+accent rides on the onsets legato already computes; no separate accent clock or edge reconciliation.
+This is just correct behaviour for the existing gate-masked ACCENT_OUTPUT when STEP_GATE subdivides.
+
+**DECIDED: no STEP_ACCENT output.** Considered and declined.
+- step-legato earns its jack because "these sub-hits are slurred, don't retrigger" is otherwise
+  invisible to a downstream envelope/VCA. Step-accent does not clear that bar: its only new information
+  is per-sub-hit emphasis on a ratchet, which is niche AND reachable downstream (envelope triggered by
+  ACCENT_OUTPUT, or accent -> VCA) without Monsoon emitting it.
+- Keeps the output count down on panels we are simplifying, and avoids the step-legato/step-accent mask
+  interaction (a sub-hit can be both slurred and accented) for a marginal feature.
+- If ever needed, per-sub-hit accent is DERIVABLE by logic: `STEP_GATE AND re-articulated AND accented`
+  — the same masking move step-legato uses (STEP_LEGATO_GATE_OUTPUT = STEP_GATE masked to slurred
+  notes). So it is a logic patch or a trivial masked output later, not new engine work now.
