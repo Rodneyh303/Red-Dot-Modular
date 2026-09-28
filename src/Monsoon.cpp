@@ -680,12 +680,22 @@ void Monsoon::process(const ProcessArgs& args) {
     input.gate1Rise = gateEdges.gate1Rise;
     input.gate2Rise = gateEdges.gate2Rise;
 
-    // ── Gate 3 Assignment Handling (Audio Rate for Consistency) ──
-    if (cachedGate3Connected && gate3Trig.process(input.gate3, 0.1f, 1.f)) {
-        static const int g3map[] = { DA_REDICE_R, DA_REDICE_M, DA_REDICE_Q,
-            DA_LIVESTATIC_R, DA_LIVESTATIC_M, DA_LIVESTATIC_Q, DA_RESEED_RESTART };
-        if (gate3Target >= 0 && gate3Target < (int)(sizeof(g3map)/sizeof(g3map[0]))) {
-            fireDieAction(g3map[gate3Target]);
+    // ── Gate 3: subGate (B/D) or die-action (A/C/E/F) ──
+    // In modes B (1) and D (3), Gate 3 is the subGate — a fine-grid clock that subdivides the
+    // main gate at a finer resolution (GATE_SUBDIVISION_STEP_GATE.md).  In other modes, Gate 3
+    // keeps its assignable die-action role (gate3Target menu).
+    input.subGateConnected = cachedGate3Connected;
+    input.subGateRise = false;
+    const bool gate3Rise = cachedGate3Connected && gate3Trig.process(input.gate3, 0.1f, 1.f);
+    if (gate3Rise) {
+        if (modeSelect == 1 || modeSelect == 3) {
+            input.subGateRise = true;   // Gate 3 = subGate (fine grid) in B/D
+        } else {
+            static const int g3map[] = { DA_REDICE_R, DA_REDICE_M, DA_REDICE_Q,
+                DA_LIVESTATIC_R, DA_LIVESTATIC_M, DA_LIVESTATIC_Q, DA_RESEED_RESTART };
+            if (gate3Target >= 0 && gate3Target < (int)(sizeof(g3map)/sizeof(g3map[0]))) {
+                fireDieAction(g3map[gate3Target]);
+            }
         }
     }
 
@@ -758,12 +768,19 @@ void Monsoon::process(const ProcessArgs& args) {
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
         // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
         bool gate1High = input.gate1 >= 1.0f;
-        bool shouldExecute = (modeSelect == 3); // Mode D is continuous
-        if (!shouldExecute) {
-            if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;
-            else if (modeSelect == 1) shouldExecute = input.gate1Rise || (gate1High && engine.stepIndex == -1);
-            else if (modeSelect == 2) shouldExecute = clock.sixteenthEdge;   // Q3a: new-C = generated 1/16 rhythm (was quarterEdge)
-            else if (modeSelect == 4 || modeSelect == 5) shouldExecute = phase.sixteenthEdge; // Mode E (gen) / F (quant): phase 1/16 grid
+        // subGate (Gate 3) drives the fine-grid step in modes B (1) and D (3) when connected.
+        const bool useSubGate = input.subGateConnected && (modeSelect == 1 || modeSelect == 3);
+        bool shouldExecute;
+        if (useSubGate) {
+            shouldExecute = input.subGateRise;
+        } else {
+            shouldExecute = (modeSelect == 3); // Mode D is continuous
+            if (!shouldExecute) {
+                if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;
+                else if (modeSelect == 1) shouldExecute = input.gate1Rise || (gate1High && engine.stepIndex == -1);
+                else if (modeSelect == 2) shouldExecute = clock.sixteenthEdge;   // Q3a: new-C = generated 1/16 rhythm
+                else if (modeSelect == 4 || modeSelect == 5) shouldExecute = phase.sixteenthEdge; // Mode E (gen) / F (quant): phase 1/16 grid
+            }
         }
 
         if (shouldExecute) {
@@ -885,6 +902,21 @@ void Monsoon::process(const ProcessArgs& args) {
             engine.gs.gatePulseRemain     = -1;   // ADD: prevents MidNote guard on next rise
             engine.gsStep.holdRemain      = 0.f;
             engine.gsStep.gatePulseRemain = -1;   // ADD: STEP mirror
+        }
+    } else if (modeSelect == 3 && input.subGateConnected && runGateActive) {
+        // subGate Mode D IMPL 2b: drive the gate STATE from Gate 2 (the note-event stream),
+        // the twin of Mode B's driver above.  Without this, the subdivided sub-cells'
+        // rest/legato decisions would not govern the output gate width under subGate.
+        const bool gate2High = input.gate2 >= 1.0f;
+        const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
+        const bool gateOpen  = !isRest && (gate2High || engine.gs.slurForward);
+        engine.gs.gateHeld     = gateOpen;
+        engine.gsStep.gateHeld = !isRest && gate2High;
+        if (!gateOpen) {
+            engine.gs.holdRemain          = 0.f;
+            engine.gs.gatePulseRemain     = -1;
+            engine.gsStep.holdRemain      = 0.f;
+            engine.gsStep.gatePulseRemain = -1;
         }
     }
 

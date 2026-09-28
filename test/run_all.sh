@@ -75,6 +75,7 @@ TESTS=(
   "test_scale_list|"
   "test_scale_nondestructive|"
   "test_spread_resolver|"
+  "test_subgate|$SE $GS $PE"
   "test_var_leg_rest|"
   "test_voice_resolver|$SE $GS $PE"
 )

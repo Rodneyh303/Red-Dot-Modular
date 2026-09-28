@@ -781,6 +781,90 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
     return result;
 }
 
+// ── Mode B + subGate (Gate 3) subdivision ─────────────────────────────────────
+// subGate (Gate 3) is the fine-grid clock; the main gate (gate1 in Mode B, gate2 in Mode D)
+// is the note-event stream.  At each subGate onset the playhead advances; where the main gate
+// is HIGH, executeStep shapes the sub-cell (rest/legato/accent + all pitch lanes draw, Tie
+// emergent from pitch equality — ratchet default).  Where the main gate is LOW (gap), the
+// playhead still advances but no note shapes (forced Rest).  The two tie scopes — intra-gate
+// (tie across subGate cells within one main gate) and inter-gate (slur across a main-gate
+// boundary) — are BOTH handled by executeStep's existing wasHeld/prevSlur legato machinery;
+// no forced re-articulation at a coincident main-gate + subGate edge (the spec's TRAP).
+// See GATE_SUBDIVISION_STEP_GATE.md §"Two edge streams" + §"TWO tie scopes".
+StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise,
+                                                    float restProb, float legatoProb, float noteVal,
+                                                    const PatternInput& input) {
+    lastNoteVal_ = noteVal;
+    StepResult result;
+    if (muted || !subGateRise) return result;
+
+    bool wrapped = advancePlayhead();
+
+    // Boundary interrupt (same as executeModeA/B): clear held gate at wrap so every lap
+    // starts fresh.  Applied before wasHeld capture, mono + poly.
+    if (wrapped && boundaryInterrupt) {
+        gs.gateHeld = false; gs.holdRemain = 0.f; gs.slurForward = false;
+        gsStep.gateHeld = false; gsStep.holdRemain = 0.f;
+        for (int i = 0; i < numPolyVoices; ++i) {
+            voices[i].gs.gateHeld = false; voices[i].gs.holdRemain = 0.f;
+            voices[i].gs.slurForward = false; voices[i].participating = false;
+            voices[i].gsStep.gateHeld = false; voices[i].gsStep.holdRemain = 0.f;
+        }
+    }
+
+    float r_vary   = monoStrand(dotModular::STRAND_VARIATION)[getVariationStep()];
+    float r_rest   = monoStrand(dotModular::STRAND_RHYTHM)[getRhythmStep()];
+    float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
+    float r_accent = monoStrand(dotModular::STRAND_ACCENT)[getAccentStep()];
+    float r_qmix   = monoStrand(dotModular::STRAND_QMIX)[getQmixStep()];
+
+    // Mode B nullification: the note DURATION is the main gate's width, not an internal
+    // note-length.  nvIdx = 6 (1/16 = 1 step) so the internal countdown does not govern.
+    int nvIdx = 6;
+
+    float prevHold = gs.holdRemain;
+    wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
+    gs.tick();
+    gsStep.tick();
+    hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
+
+    for (int i = 0; i < numPolyVoices; ++i) {
+        wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
+        float ph = voices[i].gs.holdRemain;
+        voices[i].gs.tick();
+        voices[i].gsStep.tick();
+        hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
+    }
+
+    // Nullify the internal note-length countdown (Mode B): the gate width comes from the
+    // main gate (driven by the module layer's IMPL 2b), not holdRemain/gatePulseRemain.
+    gs.holdRemain = 0.f;     gs.gatePulseRemain = -1;
+    gsStep.holdRemain = 0.f; gsStep.gatePulseRemain = -1;
+
+    if (mainGateHigh) {
+        // Inside a note: shape this sub-cell.  executeStep rolls rest/legato/accent + draws
+        // all pitch lanes (melody/octave/q-mix), Tie/Legato emergent from pitch equality.
+        // wasHeldMono + prevSlur carry the intra-gate (previous sub-cell) or inter-gate
+        // (previous note's slur commitment) predecessor state — the SAME machinery as a
+        // clock step, so the two tie scopes reconcile without a special case.
+        result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent,
+                             input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
+    } else {
+        // Gap (main gate low): the playhead advanced but there is no note to shape.  PRESERVE
+        // the previous step's decision (do NOT mark Rest) so the inter-gate slur bridge survives
+        // the gap — executeStep's connection test (line ~538) requires prevPlayedSounded, and a
+        // Rest here would make it false, breaking slur-across-gates (the spec's TRAP).  The IMPL
+        // 2b gate driver sets gs.gateHeld = slurForward, so at the next main-gate rise the onset
+        // sees wasHeld=slurForward + prevPlayedSounded=true -> connects (Tie/Legato).  slurForward
+        // is NOT cleared (an inter-gate slur can bridge the gap).
+        result = lastStepResult;
+    }
+    result.stepped = true;
+    result.wrapped = wrapped;
+    lastStepResult = result;   // re-sync (executeStep set lastStepResult before wrapped/stepped)
+    return result;
+}
+
 // ── Poly voice execution ──────────────────────────────────────────────────────
 //
 // Rules (see design doc):
