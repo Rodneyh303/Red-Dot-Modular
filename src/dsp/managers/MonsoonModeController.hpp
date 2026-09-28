@@ -55,10 +55,12 @@ public:
     void setPhaseReverse(bool rev) { phaseReverse = rev; }
     
     /// Execute Mode B: Gate-driven sequencing
-    /// Triggers on GATE1 rising edge or continuous hold
+    /// Triggers on GATE1 rising edge or continuous hold (or on subGate edges when useSubGate).
+    /// useSubGate: Gate 3 is the fine-grid clock; gate1 is the note-event stream (subdivision).
     /// Returns true if a new step was taken
     bool executeModeB(bool gate1Rise,
-                      bool gate1High);
+                      bool gate1High,
+                      bool useSubGate = false);
     
     /// Execute Mode C: Quantizer mode 1 (CV2 latch on quarter notes)
     /// Triggers on clock quarter-note edges
@@ -66,10 +68,12 @@ public:
     bool executeModeC(float cv2Voltage);
     
     /// Execute Mode D: Quantizer mode 2 (GATE2-driven, = Mode B + external pitch source)
-    /// Triggers on GATE2 rising edge / held-at-start; quantises external CV to the scale.
+    /// Triggers on GATE2 rising edge / held-at-start (or on subGate edges when useSubGate).
+    /// useSubGate: Gate 3 is the fine-grid clock; gate2 is the note-event stream (subdivision).
     /// Returns true if a new step was taken
     bool executeModeD(bool gate2Rise, bool gate2High,
-                      float cv2Voltage);
+                      float cv2Voltage,
+                      bool useSubGate = false);
     
     // ──── High-Level Dispatcher ──────────────────────────────────────────────
     

@@ -66,6 +66,10 @@ struct InputState {
     float clk, gate1, gate2, gate3;
     float run, reset, cv1, cv2;
     bool  gate1Rise, gate2Rise;
+    // subGate (Gate 3 as a fine-grid clock in modes B/D).  subGateRise fires on Gate 3's rising
+    // edge when in mode 1 or 3; subGateConnected mirrors cachedGate3Connected.  See
+    // GATE_SUBDIVISION_STEP_GATE.md.
+    bool  subGateRise = false, subGateConnected = false;
 };
 
 // ── Parameter IDs ─────────────────────────────────────────────────────────────

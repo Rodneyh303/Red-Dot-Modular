@@ -677,6 +677,13 @@ struct SequencerEngine {
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
     StepResult executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir = +1);
     StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input);
+    // subGate (Gate 3) subdivision: the fine-grid clock advances the playhead; the main gate
+    // (gate1 in Mode B, gate2 in Mode D) is the note-event stream.  At each subGate onset where
+    // the main gate is HIGH, executeStep shapes the sub-cell (rest/legato/accent/pitch — all Sands
+    // lanes draw, Tie emergent from pitch equality, ratchet default).  Where the main gate is LOW
+    // (gap), the playhead still advances but no note shapes (forced Rest).  Unpatched subGate =
+    // executeModeB (the caller chooses which to call).  See GATE_SUBDIVISION_STEP_GATE.md.
+    StepResult executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise, float restProb, float legatoProb, float noteVal, const PatternInput& input);
     void executeModeC(const ClockEngine& clock, float inCV);
     void executeModeD(bool gateHigh, float inCV);
     float quantize(float vIn);

@@ -304,7 +304,19 @@ bool ModeController::executeModeA() {
 // ──── Mode B: Gate-Driven Sequencing ────────────────────────────────────────
 
 bool ModeController::executeModeB(bool gate1Rise,
-                                   bool gate1High) {
+                                   bool gate1High,
+                                   bool useSubGate) {
+    // subGate (Gate 3) subdivision: the fine-grid clock advances the playhead; gate1 is the
+    // note-event stream.  The dispatch (Monsoon.cpp) already gated shouldExecute on subGateRise,
+    // so we only arrive here on a subGate edge — call executeModeBSubdivided directly.
+    if (useSubGate) {
+        PatternInput in = assemblePatternInput_();
+        StepResult result = engine.executeModeBSubdivided(gate1Rise, gate1High, /*subGateRise=*/true,
+                                                          in.restProb, in.legato, in.noteValue, in);
+        postExecute_(result);
+        updateLastStepIndex();
+        return result.stepped;
+    }
     if (gate1Rise || (gate1High && engine.stepIndex == -1)) {
         // In Mode B, variation and note length should have no impact on the gate.
         // Only legato, rest, and accent apply.
@@ -395,10 +407,14 @@ bool ModeController::executeModeC(float cv2Voltage) {
 // REPLACES the old "quantise every sample while gate high" (Vermona-D) with the stepped, phrased twin
 // of Mode B — the unification's intent (D = B + one poly CV in; poly CV lands in Q2).
 bool ModeController::executeModeD(bool gate2Rise, bool gate2High,
-                                   float cv2Voltage) {
+                                   float cv2Voltage,
+                                   bool useSubGate) {
     PatternInput in = assemblePatternInput_();
     beginQuantiserSource_(cv2Voltage);
-    StepResult result = engine.executeModeB(gate2Rise, gate2High, in.restProb, in.legato, in.noteValue, in);
+    StepResult result = useSubGate
+        ? engine.executeModeBSubdivided(gate2Rise, gate2High, /*subGateRise=*/true,
+                                       in.restProb, in.legato, in.noteValue, in)
+        : engine.executeModeB(gate2Rise, gate2High, in.restProb, in.legato, in.noteValue, in);
     postExecute_(result);                // executePolyVoices (poly pitch) while the flag is still on
     engine.quantiserPitchSource = false;
     if (result.stepped) updateLastStepIndex();
@@ -411,11 +427,13 @@ bool ModeController::executeMode(int modeId,
                                   const InputState& input,
                                   bool gate2High) {
     bool gate1High = input.gate1 >= 1.0f;
+    // subGate (Gate 3) is the fine-grid clock in modes B (1) and D (3) when Gate 3 is connected.
+    const bool useSubGate = input.subGateConnected && (modeId == 1 || modeId == 3);
     switch (modeId) {
         case 0: return executeModeA();
-        case 1: return executeModeB(input.gate1Rise, gate1High);
+        case 1: return executeModeB(input.gate1Rise, gate1High, useSubGate);
         case 2: return executeModeC(input.cv2);
-        case 3: return executeModeD(input.gate2Rise, gate2High, input.cv2);
+        case 3: return executeModeD(input.gate2Rise, gate2High, input.cv2, useSubGate);
         case 4: return executeModeE();
         case 5: return executeModeF(input.cv2);   // Q3b: phase-triggered quantiser
         default: return false;
