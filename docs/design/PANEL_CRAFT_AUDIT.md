@@ -165,3 +165,54 @@ re-emitted as SVG `<text>` at anchor-relative positions.
    share the tokens and must land consistent).
 3. Move static labels SVG-side as each module migrates.
 Verify each module with panel_diff (SVG) AND a Rack load (components) before moving on.
+
+---
+
+## Build hygiene: one scale, one gen-all, tokens as a generated artefact (Rodney)
+
+### PanelTokens.hpp should be GENERATED, not hand-kept
+`dotmod_design.py` is the single source of the token VALUES; the C++ header is a derived artefact.
+So a small `gen_tokens.py` emits `src/ui/PanelTokens.hpp` (a `// GENERATED — do not edit` constexpr
+header) from the same Python constants the generators use. Python and C++ then cannot disagree by
+construction, and the earlier "assert against a hand-kept header" idea is unnecessary. Regenerating
+tokens is part of the gen-all run below.
+
+### One scale, one meaning for `S` (this is the "inconsistent mm" root cause)
+Surveyed: `S` currently means FIVE different things across generators — `75/25.4` (correct: px per mm
+at Rack's 75 dpi), `75`, `8`, `3.7795` (96-dpi px/mm), `767.99`, and more. Some generators draw in mm,
+some in raw px, some at 96 dpi. There is no shared definition of what a coordinate MEANS, which is
+exactly why mm usage feels inconsistent — it IS inconsistent.
+FIX: **all geometry is authored in millimetres; the ONLY scale is `S = 75/25.4` (px per mm), defined
+once in `dotmod_design.py` and imported.** No generator defines its own `S`. `px(mm)` is the single
+converter. Legacy 96-dpi art (the Monsoon supertrees are the known case) is converted once to mm and
+then never sees 96 again — the reverse-engineer already did this for Monsoon; apply the same to any
+other 96-dpi holdouts. This is a precondition for the Panel builder: a shared grid is meaningless if
+generators disagree on the size of a millimetre.
+
+### A gen-all script
+There is no build-all today, so regenerating the suite is manual and error-prone (and it is how the
+two-generator clashes like gen_layout-vs-gen_raffles go unnoticed). Add `panel_src/gen_all.sh` (or a
+Makefile target) that:
+  1. runs `gen_tokens.py` -> `src/ui/PanelTokens.hpp`;
+  2. runs every ACTIVE generator in the correct order (art generators LAST where a layout generator
+     also writes the same SVG — the gen_raffles caveat), driven by the panel_src/README.md table so
+     there is one authoritative list;
+  3. optionally runs panel_diff against the committed SVGs and fails if anything moved unexpectedly
+     (a regression guard for the whole suite, like run_all.sh for tests).
+Retiring the graveyard generators (abstraction #5) is a precondition — gen-all must run only the
+active set, so the dead ones have to go or be clearly quarantined.
+
+### Elements vanishing at maximum zoom (a real rendering bug, not just craft)
+Some graphical elements disappear at maximum zoom. Likely causes, in order of probability:
+  1. **Sub-pixel stroke widths.** A `stroke-width` that is a fraction of a mm can round to <1 device
+     pixel and drop out; at extreme zoom the rounding flips. FIX: floor hairline strokes to a minimum
+     mm width, and define stroke widths as tokens (`HAIRLINE`, `RULE`, `HEAVY`) rather than ad-hoc
+     small numbers.
+  2. **nanosvg vs the zoomed renderer disagreeing** on very thin or very low-opacity shapes — the
+     0.78125-wrap and mixed-scale coordinates make some strokes land on non-integer positions that
+     vanish at some zooms.
+  3. **Opacity stacking** so low that a shape is invisible until composited at a particular scale.
+Diagnose by rendering the offending panel at several zoom levels (the nsvgrender tool in
+panel_src/tools/ + a scale sweep) and finding which elements fall below ~1px. This should be its own
+small investigation; note the specific modules/elements when found. It matters more than pure craft
+because it is visible breakage, not just inconsistency.
