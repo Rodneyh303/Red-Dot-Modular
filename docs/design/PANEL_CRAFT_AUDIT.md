@@ -23,6 +23,13 @@ space lavish in places and cramped in others, and inconsistent SvgPanelKit adopt
    than a naive invert gives.
 7. **Breathing room proportional to importance**, not to whatever space was free. Even margins; group
    gaps larger than intra-group gaps; the hero control gets the most air.
+8. **Inputs and outputs visually separated and distinguished** (Rack convention). A user should tell
+   which jacks they DRIVE from which they TAKE from at a glance, without reading labels — by REGION
+   (ins grouped, outs grouped) and by APPEARANCE (a role token: colour/ring differing by direction).
+   Conventionally signal reads in->out top-to-bottom or left-to-right. The suite is inconsistent here
+   (mixed eras; GoldPolyPort is one style regardless of role; Monsoon's in/out rows are not obviously
+   split). The reference to move toward is CA's expression pairs — ins LEFT, outs RIGHT, ROW-aligned so
+   the row itself says "this in maps to this out".
 
 ## Per-module state (dark-panel widths; ✓ on kit = bind-by-name, ✗ = hardcoded mm)
 | Module | HP | Art | Kit | Notable craft issue |
@@ -89,8 +96,10 @@ Craft is hard right now because each panel is hand-geometried. The fixes above m
 move: **turn `dotmod_design.py` from a helper library into a small PANEL FRAMEWORK.** Concretely:
 
 1. **A `Panel` builder object.** `p = Panel(hp=..., theme=...)` that owns the mm grid and emits the
-   background, accent rules, logo and subtitle in the house style, then offers `p.jack(row,col,id)`,
-   `p.knob(...)`, `p.group(...)`, `p.label_for(id)` — all snapping to the shared grid and pulling
+   background, accent rules, logo and subtitle in the house style, then offers `p.knob(...)`,
+   `p.group(...)`, `p.label_for(id)`, and — enforcing principle 8 — role-aware `p.input(...)` /
+   `p.output(...)` that place ins and outs in distinct regions with the correct role appearance by
+   default, so a module cannot accidentally mix them. All snapping to the shared grid and pulling
    colours/fonts/spacing from tokens. A new module becomes a layout table, not an SVG.
 2. **Named design tokens** (colours already exist; ADD `FONT_DISPLAY/FONT_LABEL`, `MARGIN`,
    `GROUP_GAP`, `ROW_PITCH`, `JACK_PITCH`, `LABEL_SIZE`, and the lane-colour map by meaning).
@@ -133,7 +142,10 @@ are generic. Cover the panel art and the controls alone would not tell you it is
 FIX: a small house component set in `src/ui/`, used everywhere:
 - one `DotKnob` (with the bipolar/centre-detent variant), replacing bare `Trimpot`;
 - one `DotButton`, replacing bare `TL1105`;
-- `GoldPolyPort` / a mono variant as the standard ports;
+- **Two port ROLES, visually distinct**: an input port and an output port style (or one shape with a
+  direction token — colour/ring — differing by role), so ins and outs are distinguishable by appearance
+  everywhere, not only by position (principle 8). `GoldPolyPort` is currently one style regardless of
+  direction; split it or tokenise the ring.
 - `ConnectMark`, `DimmableTrimpot` already exist — fold them into the set.
 Each reads the SAME tokens the generator uses (see below), so a knob cap and its well are sized and
 coloured from one source. Changing the house knob then propagates everywhere — the C++ equivalent of a
