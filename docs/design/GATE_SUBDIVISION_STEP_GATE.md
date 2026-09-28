@@ -98,3 +98,50 @@ This is also WHY phase mode should not gain STEP_GATE: if you want gate-domain s
 phasor-derived rhythm, you convert to gates first and use gate mode, where STEP_GATE already lives.
 Phase staying position-only keeps that boundary clean. (On-brand: Monsoon does interesting things to
 what other modules produce, rather than absorbing every function.)
+
+## Two edge streams, two tie SCOPES — one model, two grids (Rodney)
+The unifying insight: **STEP_GATE is to the main gate what step-legato already is to a legato span** —
+a coarse container subdivided by a fine grid, with tie-or-re-articulate decided at each internal
+boundary. Keep the behaviours as CONSISTENT as possible so a user learns one model.
+
+### Playhead / edge tracking
+- Plain gate mode: the playhead advances ONE STEP PER MAIN-GATE EDGE — the incoming gate is the step
+  clock.
+- With STEP_GATE patched: the playhead advances at the STEP_GATE RATE; the main gate becomes a SECOND
+  edge stream layered on top. The engine tracks BOTH edge streams and reconciles them per cell:
+    - STEP_GATE edges: advance the playhead, define the fine grid, and are WHERE rest/legato are
+      evaluated.
+    - Main-gate edges: mark where note events BEGIN and END in the incoming material.
+  A main gate spanning N STEP_GATE cells is a note of length N cells; rest can drop a cell; legato at
+  each internal boundary decides tie vs re-articulate.
+
+### TWO tie scopes, BOTH preserved (the subtle requirement)
+Legato is asked "tie or re-articulate?" at whichever boundaries exist, and there are two kinds:
+- **Intra-gate legato** — tie across STEP_GATE cells WITHIN one main gate (the subdivision case; a long
+  gate stays one note instead of re-articulating every fine cell). This is the step-legato analogue.
+- **Inter-gate legato** — tie across a MAIN-GATE boundary, fusing two separate incoming gates into one
+  sustained note. This is the slur-across-notes the module already does in plain gate mode, and it MUST
+  STILL WORK with STEP_GATE patched.
+Rule: at a STEP_GATE edge inside a gate, apply the intra-gate decision; at a main-gate edge, apply the
+inter-gate decision. A note ENDS only when NEITHER says hold.
+**TRAP to avoid:** STEP_GATE must NOT override inter-gate legato — i.e. do not force a re-articulation
+at every main-gate edge just because it is also a step boundary. That would silently break slurs across
+gates (a capability the module has today) — a regression hidden inside a new feature. Main-gate-boundary
+legato is evaluated on its own terms whether or not a STEP_GATE edge coincides.
+
+### Alignment / robustness (decide before building)
+- **Off-grid main-gate edges.** The two streams are not phase-locked; a main-gate edge can land
+  mid-cell (a swung or slightly-off 1/16). Rule needed: quantise note start/end to the nearest
+  STEP_GATE edge (almost certainly wanted — it is why STEP_GATE was patched) vs honour the fractional
+  cell. Pick quantise; make it explicit.
+- **STEP_GATE stalls while main gates keep arriving.** Playhead freezes (STEP_GATE is the declared
+  clock) vs falls back to main-gate edges. Freeze is cleaner; define the unpatch/repatch handover.
+- **Display.** The Sands playhead shows the ACTIVE step, so under STEP_GATE it moves at the fine rate —
+  it must read the SAME resolved step the engine uses (published state), not a separately computed
+  position, or it is the display/engine race that bit the spread work.
+
+### Test (header-level, no Rack)
+Synthetic edge streams: (a) a main gate spanning N cells -> note length N, legato asked at N-1 internal
+boundaries; (b) a legato tie expected to HOLD across a main-gate boundary AND one that re-articulates at
+a STEP_GATE boundary inside a gate, IN THE SAME PATTERN — this is the test that catches STEP_GATE
+stomping inter-gate legato; (c) an off-grid main-gate edge quantising to the nearest cell.
