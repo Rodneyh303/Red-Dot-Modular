@@ -11,10 +11,14 @@ not: `executeModeC/D` are already DEAD CODE and Mode C already runs Mode A's gen
 quantised pitch. So the six were a surface fiction the engine stopped honouring long ago.
 
 What the engine actually has is TWO ORTHOGONAL AXES:
-- **Timing origin** (3 states): CLOCK (you supply a pulse, it picks which pulses become notes),
-  GATE (you supply note events), PHASE (you supply position, it derives the rest). A progression by
-  how much timing authority you hand over: pulse -> event -> position. "Internal" is just clock with
-  nothing patched (the clock jack normals to internal BPM).
+- **Timing origin** (3 states), distinguished by WHAT YOU HAND OVER, and crucially only ONE is an
+  event stream:
+    - CLOCK — a PULSE TRAIN (tempo). The generator makes its OWN rhythm against your clock; there is no
+      incoming rhythm to modify. "Internal" is just clock with nothing patched (jack normals to BPM).
+    - GATE — NOTE EVENTS. THE ONLY mode that takes an external rhythm, so THE ONLY mode where rest /
+      legato / STEP_GATE-subdivision PERTURB something you sent.
+    - PHASE — a POSITION (a ramp). The generator renders its own rhythm against your position; a ramp
+      has no events, so there is nothing to perturb — phase modifies external TIME-BASE, not rhythm.
 - **Pitch origin** (continuous, PER VOICE): q-mix. 0 = generated, 1 = quantised to the incoming pitch.
 
 Six named combinations pin these into a grid and throw away every hybrid. meloDICER never needed the
@@ -31,6 +35,15 @@ hybrids because it had no continuous per-voice pitch axis to combine with; we do
    "generative sequencer-quantiser" an accurate name rather than a hopeful one.
 These are not four things to weigh independently; they point the same way, which is the sign the model
 was right and the taxonomy was borrowed.
+
+## What "external input" means per mode (get this right — it is subtle)
+Rhythm PERTURBATION ("make a deterministic rhythm stochastic": rest/legato/STEP_GATE) is a GATE-MODE
+capability ONLY — it is the only mode that receives note events. Clock and phase hand over a time-base
+(pulse / position), not events, so there is nothing to skip, join or subdivide in those modes. The
+SEQ-8-becomes-an-ensemble demo is specifically a GATE-mode patch.
+PITCH q-mix is different — it is a separate axis and works in ANY mode (you can quantise an incoming
+pitch onto the generator's clock-mode rhythm). So: pitch origin is orthogonal to mode; RHYTHM
+perturbation is gate-only.
 
 ## Why it matters MORE in multi-Monsoon patches
 Modes are per host and discrete, so a rig is a set of ROLE ASSIGNMENTS (this one sequences, that one

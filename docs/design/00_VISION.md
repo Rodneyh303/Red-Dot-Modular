@@ -14,7 +14,13 @@ The interesting music is in between, where different voices sit at different poi
 
 This is a new way to INTERACT with sequencers — not sequencers sequencing sequencers, but an instrument
 that takes as much or as little of your timing and pitch as you hand it and generates the rest. Patch a
-plain SEQ-8 in and it becomes an ensemble.
+plain SEQ-8 into GATE mode and it becomes an ensemble.
+
+Precision on "timing": the three modes differ by WHAT YOU HAND OVER — a pulse (clock: your tempo, its
+rhythm), NOTE EVENTS (gate: your rhythm, perturbed), or a position (phase: your time-base, its rhythm).
+Only GATE mode receives an external rhythm, so "make a deterministic RHYTHM stochastic" (rest / legato /
+STEP_GATE subdivision) is a GATE-mode capability. PITCH origin (q-mix) is a separate axis and works in
+any mode.
 
 ## The idea, and why the parts are one idea (not a feature pile)
 Everything is the same thing surfaced at a different layer: **navigable, reversible, correlated
