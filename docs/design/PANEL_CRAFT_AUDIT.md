@@ -23,13 +23,24 @@ space lavish in places and cramped in others, and inconsistent SvgPanelKit adopt
    than a naive invert gives.
 7. **Breathing room proportional to importance**, not to whatever space was free. Even margins; group
    gaps larger than intra-group gaps; the hero control gets the most air.
-8. **Inputs and outputs visually separated and distinguished** (Rack convention). A user should tell
-   which jacks they DRIVE from which they TAKE from at a glance, without reading labels — by REGION
-   (ins grouped, outs grouped) and by APPEARANCE (a role token: colour/ring differing by direction).
-   Conventionally signal reads in->out top-to-bottom or left-to-right. The suite is inconsistent here
-   (mixed eras; GoldPolyPort is one style regardless of role; Monsoon's in/out rows are not obviously
-   split). The reference to move toward is CA's expression pairs — ins LEFT, outs RIGHT, ROW-aligned so
-   the row itself says "this in maps to this out".
+8. **Every jack legible by ROLE; mixed-direction modules additionally separated by REGION.** Two parts,
+   different scopes (Rodney):
+   - **Role appearance — UNIVERSAL, the higher-leverage half.** Every jack, on every module, looks like
+     an input or an output by APPEARANCE (a direction token: colour/ring differing by role), so a glance
+     across a rack tells sources from sinks and consumers from producers without tracing cables or
+     reading labels. This applies even to modules that are ALL inputs or ALL outputs — many expanders
+     are — where there is nothing to "separate" but the module should still read unambiguously as a
+     consumer or a producer (a useful cross-module cue in a Monsoon+expanders chain).
+   - **Region separation — ONLY for MIXED-direction modules.** When a module has BOTH, group ins and
+     outs into distinct regions with a clear divide; signal conventionally reads in->out
+     left-to-right / top-to-bottom. Do NOT impose an in/out split on a single-direction module — there
+     is nothing to split, and forcing one is worse than leaving it.
+   State of the suite: role appearance is MISSING everywhere (GoldPolyPort is one style regardless of
+   direction). Region separation is already CORRECT on Monsoon (bottom two rows: every jack x<=100 is an
+   input, x>=114 an output, clean gap between — do not relayout it; it needs the appearance token and a
+   slightly wider/marked divide at the 100->114 gutter so the split reads as a split, not just the next
+   column) and on CA's expression pairs (ins LEFT, outs RIGHT, ROW-aligned so the row says "this in maps
+   to this out" — the reference pattern).
 
 ## Per-module state (dark-panel widths; ✓ on kit = bind-by-name, ✗ = hardcoded mm)
 | Module | HP | Art | Kit | Notable craft issue |
