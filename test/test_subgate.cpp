@@ -71,6 +71,26 @@ static StepResult subStep(SequencerEngine& eng, bool mainGateRise, bool mainGate
     return r;
 }
 
+// Poly variant: also runs executePolyVoices (the module layer's postExecute_ does this after
+// every stepped executeModeB*).  This is what makes per-voice subdivision flow at subGate onsets:
+// at a mono NewNote sub-cell, monoGateStart=true -> each poly voice independently rolls its own
+// rest/legato/pitch (the correlated + reversible payoff — WHICH voices split is seeded per-voice).
+static StepResult subStepPoly(SequencerEngine& eng, bool mainGateRise, bool mainGateHigh,
+                               float restProb, float legatoProb, float noteVal) {
+    const PatternInput in = makeInput();
+    StepResult r = eng.executeModeBSubdivided(mainGateRise, mainGateHigh, /*subGateRise=*/true,
+                                              restProb, legatoProb, noteVal, in);
+    if (r.stepped && eng.numPolyVoices > 0)
+        eng.executePolyVoices(in);   // mirror postExecute_
+    // IMPL 2b mono gate driver (mirror).
+    const bool isRest = (r.decision == MonoDecision::Rest);
+    const bool gateOpen = !isRest && (mainGateHigh || eng.gs.slurForward);
+    eng.gs.gateHeld = gateOpen;
+    if (!gateOpen) eng.gs.holdRemain = 0.f;
+    eng.gsStep.gateHeld = !isRest && mainGateHigh;
+    return r;
+}
+
 int main() {
     using D = MonoDecision;
 
@@ -169,6 +189,41 @@ int main() {
         StepResult r = eng.executeModeBSubdivided(true, true, /*subGateRise=*/false,
                                                   0.f, 0.f, 2.f, in);
         EXPECT(!r.stepped);                          // no subGate edge -> no step
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // POLY (P1): per-voice subdivision — the correlated + reversible payoff.
+    // ─────────────────────────────────────────────────────────────────────────────
+    SUITE("P1 — per-voice subdivision: poly voices independently rest/play at subGate onsets");
+    TEST("at a mono onset, voice 0 (restProb=0) plays, voice 1 (restProb=1) rests", {
+        SequencerEngine eng; eng.numPolyVoices = 2;
+        eng.voices[0].restProb = 0.f;   // never rests -> always plays
+        eng.voices[1].restProb = 1.f;  // always rests -> silent
+        subStepPoly(eng, /*rise=*/true, /*high=*/true, 0.f, 0.f, 4.f);  // mono onset (NewNote)
+        EXPECT(eng.voices[0].gs.gateHeld);    // voice 0 plays
+        EXPECT(!eng.voices[1].gs.gateHeld);   // voice 1 rests
+    });
+
+    TEST("a ratcheted sub-cell (mono NewNote, legato=0) re-articulates the playing voice", {
+        // legato=0 -> mono re-articulates every sub-cell (ratchet).  Each NewNote sub-cell fires
+        // monoGateStart -> the playing voice re-rolls + re-triggers (a ratchet hit per sub-cell).
+        SequencerEngine eng; eng.numPolyVoices = 1;
+        eng.voices[0].restProb = 0.f;   // always plays
+        subStepPoly(eng, true,  true,  0.f, 0.f, 4.f);  // onset
+        StepResult r = subStepPoly(eng, false, true, 0.f, 0.f, 4.f);  // ratchet sub-cell
+        EXPECT(r.decision == D::NewNote);              // mono re-articulated
+        EXPECT(eng.voices[0].gs.gateHeld);             // voice still sounding (re-triggered)
+    });
+
+    TEST("a tied sub-cell (mono Tie, legato high) extends the playing voice's hold", {
+        // legato=0.5 -> mono ties across sub-cells.  monoGateStart=false at a Tie -> the playing
+        // voice extends its hold (no re-trigger) — the subdivision sustain.
+        SequencerEngine eng; eng.numPolyVoices = 1;
+        eng.voices[0].restProb = 0.f;
+        subStepPoly(eng, true,  true,  0.f, 0.5f, 4.f);  // onset (commits slurForward)
+        StepResult r = subStepPoly(eng, false, true, 0.f, 0.5f, 4.f);  // tied sub-cell
+        EXPECT(r.decision == D::Tie || r.decision == D::Legato);  // mono sustained
+        EXPECT(eng.voices[0].gs.gateHeld);             // voice still sounding (held, not re-triggered)
     });
 
     std::cout << "\n-----\nsubgate: " << g_pass << " passed, " << g_fail << " failed\n";
