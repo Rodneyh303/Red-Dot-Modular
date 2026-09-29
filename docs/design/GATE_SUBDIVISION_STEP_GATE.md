@@ -268,8 +268,11 @@ The four combinations are therefore only all reachable with TWO clocks:
 - **SUBGATE_GHOST** — clocks GHOST-fill in the gaps (additionally gated by VG). Unpatched = no ghosts.
 - ratchets only = patch RATCHET; ghosts only = patch GHOST (+VG>0); both = patch both; neither = patch
   neither.
-- **GHOST normals to RATCHET's signal**, so one cable drives both (the common case) and you only patch
-  the second to separate them. Reuses Monsoon's existing Gate 3 / assignable gate jacks — no big deal.
+- **Mutual (bidirectional) normalling**: an UNPATCHED subgate input takes the OTHER's signal, so
+  patching EITHER jack drives both in-gate ratchets and between-gate ghosts (the common case, same
+  clock); you patch the SECOND only to give them different grids. A fixed one-way normal would be
+  wrong — whichever direction you pick, patching the other jack alone would leave the first at its
+  default. Reuses Monsoon's existing Gate 3 / assignable gate jacks — no big deal.
 
 ### Dependency and default
 - **Requires the relevant subgate input patched** — no subgate grid, no placement clock or length quantum, so
