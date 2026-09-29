@@ -62,3 +62,32 @@ reverse caveat at ~484). Verify a bitwise forward/reverse test still passes with
 - back-to-back / <1ms gap (Rampage consecutive falls) -> TIE candidate;
 - normal adjacent phrasing -> unchanged;
 - forward vs reverse bitwise identical with gap logic active.
+
+## Adjacency means different things in clock vs gate mode (Rodney)
+The deeper framing: BOTH modes ask the same question — "are these two notes NEIGHBOURS (tie
+candidates)?" — but from different information.
+- **Clock mode: adjacency is STRUCTURAL.** Neighbour = the next STEP. The step counter defines it by
+  construction, so there is no gap to measure, no tolerance, no timing test. `wasHeld` is SAFE here
+  because the grid bounds it: a note's hold spans naturally to the next step boundary, and that step
+  IS the adjacent one.
+- **Gate mode: adjacency is TEMPORAL and EXTERNAL.** You do not own the grid — the incoming gates do —
+  so "consecutive" is not defined for you; you INFER it from edge timing. The 1ms threshold is
+  precisely reconstructing, from gate edges, the "are these consecutive?" that clock mode gets for
+  free from its step counter.
+
+So the BUG is: gate mode used clock mode's MECHANISM (`wasHeld`) without clock mode's GUARANTEE (that
+the next event is structurally adjacent). In clock mode `wasHeld` is grid-bounded; in gate mode it is
+unbounded because nothing guarantees the next gate is soon. The fix adds, in gate mode, the adjacency
+guarantee the step grid provides automatically in clock mode.
+
+### Subgate is the bridge case — adjacency may be STRUCTURAL again
+When STEP_GATE is patched, gate mode REGAINS a grid (the subgate clock), so within it adjacency can be
+STRUCTURAL (consecutive subgate cells) rather than 1ms-inferred — which is MORE consistent with clock
+mode and more robust than measuring gaps. Two options:
+- **(chosen for the bug fix) 1ms everywhere in gate mode** — one rule; get bare main-gate mode correct
+  now.
+- **(worth confirming) structural adjacency on the subgate grid when present; 1ms only for the bare
+  main gate** — matches clock mode, at the cost of two code paths.
+Recommendation: fix bare gate mode with 1ms now; then CHECK whether the subgate path already resolves
+adjacency structurally (consecutive cells) — if so, do not force 1ms onto a grid that already defines
+adjacency; let it be structural there, matching clock mode.
