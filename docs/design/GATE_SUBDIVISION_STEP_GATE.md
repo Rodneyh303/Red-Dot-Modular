@@ -257,12 +257,49 @@ STATUS: design agreed; not built. This is the ONE feature that deliberately open
   whether a note carries past the gate edge into the first ghost cell. One rule, one grid, three regions
   (in-gate / boundary / gap) treated identically. The "one model" property holds even here.
 
+### TWO subgate inputs — ratchet and ghost are independent capabilities (Rodney)
+Confirmed in code: there is ONE Gate 3 today doing both jobs, and in-gate subdivision does NOT
+self-disable at zero probability — SequencerEngine.cpp:551 `gsStep.triggerNote(...) // STEP:
+re-strike, same pitch`, so a subdivided gate RE-STRIKES (ratchets) regardless of rest/legato rolls.
+So ratcheting is inherent to subdividing, not gated by a lane value, and VG=0 only silences ghosts.
+The four combinations are therefore only all reachable with TWO clocks:
+- **SUBGATE_RATCHET** — clocks IN-GATE subdivision (ratchet/tie/rest/legato within gates). Unpatched =
+  gates play whole, no ratcheting.
+- **SUBGATE_GHOST** — clocks GHOST-fill in the gaps (additionally gated by VG). Unpatched = no ghosts.
+- ratchets only = patch RATCHET; ghosts only = patch GHOST (+VG>0); both = patch both; neither = patch
+  neither.
+- **GHOST normals to RATCHET's signal**, so one cable drives both (the common case) and you only patch
+  the second to separate them. Reuses Monsoon's existing Gate 3 / assignable gate jacks — no big deal.
+
 ### Dependency and default
-- **Requires STEP_GATE patched** — no subgate grid, no placement clock or length quantum, so
+- **Requires the relevant subgate input patched** — no subgate grid, no placement clock or length quantum, so
   VARIATION/GHOST is inert (or falls back to plain variation) when STEP_GATE is unpatched. Clean, and
   discoverable: patch a subgate clock and turn up variation -> gaps start filling.
 - Plain gate mode (no subgate, or variation at 0) keeps the ceiling intact — output onsets a subset of
   the incoming gates. Ghost-fill is strictly opt-in.
+
+### Correlated by CA GROUP, not just per voice (Rodney)
+Ghost placement, rest, legato and accent all run through the correlation structure, and CA defines
+voice SUBGROUPS — so ratchets and ghosts organise BY SECTION: one choir ratchets together while
+another stays sparse; the melody group fills gaps the bass group leaves; negative correlation makes
+one group fill exactly the gaps another leaves (hocket/kotekan at the subgate grid, DERIVED from a
+played pattern, not authored). The order/chaos field gains the sub-gate and gap dimensions at GROUP
+level, which is where it is musical rather than busy.
+
+### What ghost + ratchet buys musically
+- **Correlated ornamentation of a PLAYED line**: ratchets add rolls/re-articulations ON the notes,
+  ghosts add grace notes/fills BETWEEN them, and CA groups decide which voices ornament together —
+  heterophonic ornamentation of an external line, the non-Western ensemble texture the correlation
+  model was built for, now on the RHYTHMIC surface.
+- **Two independent density axes** over the same input: ratchet density (within notes) and ghost
+  density (between notes), separately clocked and separately correlated — busy-within/sparse-between or
+  the reverse, each slidable. A 2-D rhythmic space no "amount of randomness" knob gives.
+- **Interlocking** at the subgate grid via negative-correlation ghosts (one group fills another's gaps).
+- **Gradual order<->chaos on your own material, reversibly** — the played onsets stay the skeleton;
+  ratchets/ghosts elaborate around them and reverse back. The line is never lost.
+
+Manual one-liner: *feed in any line and an ensemble ornaments it — ratchets within notes, ghosts
+between them, organised into sections by Change Alley, sliding from faithful to florid and back.*
 
 ### Scope line for the manual
 Gate mode reworks the ARTICULATION of your gates — chop and tie within and across gates, output onsets a
