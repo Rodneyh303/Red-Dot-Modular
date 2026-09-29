@@ -331,6 +331,7 @@ bool ModeController::executeModeB(const InputState& input,
         StepResult result = engine.executeModeB(
             gate1Rise,
             gate1High,
+            input.gate1Adjacent,   // gate-gap adjacency (LEGATO_GATE_GAP_BUG.md): overlap/<1ms vs >=1ms
             modeBPatternInput.restProb, // Rest still applies
             modeBPatternInput.legato,   // BigFive LATCH: staged in updatePatternInput (was paramManager.getLegato())
             // Note value (which influences note length) should have no impact.
@@ -416,7 +417,7 @@ bool ModeController::executeModeD(bool gate2Rise, bool gate2High,
     StepResult result = useSubGate
         ? engine.executeModeBSubdivided(gate2Rise, gate2High, /*subGateRise=*/true,
                                        in.restProb, in.legato, in.noteValue, in)
-        : engine.executeModeB(gate2Rise, gate2High, in.restProb, in.legato, in.noteValue, in);
+        : engine.executeModeB(gate2Rise, gate2High, /*gate1Adjacent=*/true, in.restProb, in.legato, in.noteValue, in);
     postExecute_(result);                // executePolyVoices (poly pitch) while the flag is still on
     engine.quantiserPitchSource = false;
     if (result.stepped) updateLastStepIndex();

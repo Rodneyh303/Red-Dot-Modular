@@ -74,6 +74,11 @@ struct InputState {
     // the main gate).  When Gate 3 is unpatched, ghost normals to RATCHET (Gate 2) — one cable
     // drives both the in-gate ratchet and the in-gap ghost.
     bool  ghostRise = false, ghostConnected = false, ghostHigh = false;
+    // Gate-gap adjacency (LEGATO_GATE_GAP_BUG.md): true if the rising Gate 1 is ADJACENT to the
+    // previous gate — overlap or a <1ms low (1ms = the min gate length all standard modules detect,
+    // sourced to Andrew Belt). False => a real >=1ms separation => fresh note, no legato across the
+    // gap. Computed per-sample in Monsoon::process from the gate1LowSamples accumulator.
+    bool  gate1Adjacent = true;
 };
 
 // ── Parameter IDs ─────────────────────────────────────────────────────────────
@@ -578,6 +583,11 @@ struct Monsoon : Module {
     // decision).  Held between onsets and ANDed with the mono gate envelope (IMPL 2b) so a poly
     // voice's gate WIDTH follows Gate 1 / ghost like the mono gate, not a 1-step internal hold.
     bool polyVoiceActive[15] = {};
+    // Gate-gap accumulator (LEGATO_GATE_GAP_BUG.md): samples since Gate 1 last went low, measured
+    // from the Schmitt level. Resets while HIGH, accumulates while LOW. At a rise the value still
+    // holds the just-ended gap (read before the per-sample update), so overlap => 0 (<1ms) and a
+    // real separation => >=1ms. Edge-timed (not index-timed) => direction-agnostic (reverse-safe).
+    float gate1LowSamples = 0.f;
     // Which dice the LIVE mode drives, per lane: false=main (promote, A walks),
     // true=trial (anchored A, endless variations on a theme). Persisted.
 

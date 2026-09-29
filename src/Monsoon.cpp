@@ -680,6 +680,15 @@ void Monsoon::process(const ProcessArgs& args) {
     input.gate1Rise = gateEdges.gate1Rise;
     input.gate2Rise = gateEdges.gate2Rise;
 
+    // ── Gate-gap adjacency (LEGATO_GATE_GAP_BUG.md) ──
+    // 1ms = the minimum gate length all standard modules detect (Andrew Belt / VCV).  gate1LowSamples
+    // accumulates while the Schmitt Gate-1 level is LOW (resets while HIGH).  Read it BEFORE the
+    // per-sample update so at a rise it still holds the just-ended gap: overlap => 0 (<1ms) and a
+    // real separation => >=1ms.  Edge-timed (not index-timed) => direction-agnostic (reverse-safe).
+    const float oneMsSamples = args.sampleRate / 1000.f;
+    input.gate1Adjacent = (gate1LowSamples < oneMsSamples);
+    if (tc.getGate1SchmittHigh()) gate1LowSamples = 0.f; else gate1LowSamples += 1.f;
+
     // ── Gate 2/3 routing (mode-dependent) — GATE_SUBDIVISION_STEP_GATE.md (ghost extension) ──
     // GATE mode (B): Gate 1 = main, Gate 2 = ratchet (in-gate), Gate 3 = ghost (in-gap; GHOST
     //   normals to RATCHET's signal so one cable drives both).  Mode D: Gate 2 = main, Gate 3 =

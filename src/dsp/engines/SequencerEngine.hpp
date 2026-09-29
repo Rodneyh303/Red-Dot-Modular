@@ -681,7 +681,7 @@ struct SequencerEngine {
     StepResult executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
     StepResult executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir = +1);
-    StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input);
+    StepResult executeModeB(bool gate1Rise, bool gate1High, bool gate1Adjacent, float restProb, float legatoProb, float noteVal, const PatternInput& input);
     // subGate subdivision (GATE_SUBDIVISION_STEP_GATE.md).  Three edge streams advance the playhead
     // and each runs executeStep (rest/legato/accent/pitch — all Sands lanes draw, Tie emergent from
     // pitch equality):

@@ -56,6 +56,7 @@ TESTS=(
   "test_legato_leading_edge|"
   "test_lock_behaviour|$PE"
   "test_mode_b_gate|$SE $GS $PE"
+  "test_mode_b_gap|$SE $GS $PE"
   "test_modes_bcd|"
   "test_modes_cd_microtonal|"
   "test_monsoon_discovery|"
