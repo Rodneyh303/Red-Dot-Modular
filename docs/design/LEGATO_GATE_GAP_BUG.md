@@ -107,3 +107,53 @@ causality constraint entirely. 1ms then survives ONLY for the bare main gate wit
 (the one genuinely gridless case).
 Order: (1) ship the 1ms bare-gate fix standalone; (2) switch to structural cell-adjacency when a
 subgate is patched. Step 1 is shippable alone; step 2 makes the subgate case exact, matching clock mode.
+
+
+## RESOLUTION (Rodney, after scoping Rampage correctly)
+Scoping Rampage with BOTH rising and falling edges patched shows legato fires correctly — the earlier
+"no legato" was a PATCH error (falling edge only), not the code. This confirms gate-mode legato is the
+OVERLAP / HELD-PREDECESSOR model (the clock-mode slur-forward model applied to gate mode): legato
+requires the previous gate still high across the boundary (`wasHeld || hadTail`), which is correct and
+working. It is NOT gap-tolerant by design, and should not be made so — a source that drops the gate
+with a real gap is not playing legato.
+
+Consequence: **the 1ms gap-tolerance idea is retired.** It was solving a problem the held-predecessor
+invariant already solves. Whichever way the redundancy experiment goes, the answer is NO TIMER:
+- if the original long-gap bug stays fixed with `gate1Adjacent` forced true -> REMOVE the machinery
+  (redundant; and it harmfully clears `slurForward` on gaps);
+- if the bug returns -> the fix belongs in the NOTE-LENGTH nullification (stop a long note-value leaking
+  held-ness), NOT in a gap timer — because legato is overlap-based, a timer is the wrong tool regardless.
+The "keep it, tune tolerance to tens of ms" option (former step 3) is WRONG and dropped: it assumed a
+gap-tolerance model that the Rampage result disproves.
+
+
+## EXPERIMENT RESULT — cause found, fix decided (evidence-led)
+Ran the redundancy experiment. Table (Bridge = the IMPL 2b slurForward term in gateHeld; Timer =
+gate1Adjacent):
+
+| Variant | Bridge | Timer | Input | Result | Meaning |
+|---|---|---|---|---|---|
+| A | active  | OFF | long gap | Tie     | bug REPRODUCES — bridge keeps gateHeld/slurForward high across the gap -> wasHeld true -> tie |
+| B | removed | OFF | long gap | NewNote | held-predecessor invariant ALONE fixes it (no timer) |
+| C | removed | OFF | overlap  | Tie     | overlap still ties without the bridge (held-across works) |
+| D | active  | ON  | long gap | NewNote | the timer is a BAND-AID over the bridge (and wipes slurForward -> clips phrasing) |
+
+**True cause:** the `slurForward` term in Mode B IMPL 2b's `gateHeld = gate1High || ghostSounding ||
+slurForward` re-asserts gateHeld across the gap, defeating the held-predecessor guard. The gate1Adjacent
+timer was a band-aid for that and is harmful (clears slurForward, the legato carrier, on any >=1ms gap).
+
+**FIX (decided): remove BOTH.**
+- IMPL 2b: `gateOpen = !isRest && (gate1High || ghostSounding)` — drop the `slurForward` term, KEEP the
+  ghost term.
+- Remove the gate1Adjacent timer + gate1LowSamples accumulator entirely (Monsoon.cpp/.hpp, the
+  ModeController + SequencerEngine parameter, the `if (!gate1Adjacent)` clear).
+Result: gap -> fresh (B), overlap -> tie (C), no timer, no phrasing suppression. Overlap-only /
+held-predecessor model, intact.
+
+**Confirm before closing (the bridge existed for a reason — check it is gone, not masked):**
+1. CLOCK-mode legato still works — a multi-step slur (note slurring across several steps) still holds.
+   If IMPL 2b is gate-mode-only this is moot; if shared, verify (the bridge may have protected the
+   clock-mode abutting-notes case).
+2. Ghost legato across the gate->gap boundary still ties (the kept ghostSounding term) — a legato note
+   carries into the first ghost cell.
+Both green + forward/reverse bitwise green => closed.
