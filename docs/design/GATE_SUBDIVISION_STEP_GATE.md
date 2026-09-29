@@ -197,7 +197,10 @@ Consistency summary — at each STEP_GATE onset the engine does exactly what it 
 rest/legato/accent evaluated, melody/octave/q-mix drawn, Tie/Legato emergent from pitch equality,
 quantiser CV sampled. STEP_GATE just changes the RESOLUTION at which "a step" happens inside a main gate.
 
-## Ghost-fill: notes OUTSIDE the gate envelope via the VARIATION lane (Rodney)
+## GHOST PROTOCOL — notes OUTSIDE the gate envelope via the VARIATION lane (Rodney)
+*Feature name: **Ghost Protocol**. Menu item stays literal ("Ghost notes"); code identifier plain
+(ghostFill/ghostProb). "Ghost Protocol" is the manual/marketing name.*
+
 STATUS: design agreed; not built. This is the ONE feature that deliberately opens the gate-mode ceiling
 (output onsets outside the incoming gate union). Bounded and opt-in.
 
