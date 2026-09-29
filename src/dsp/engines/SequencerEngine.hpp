@@ -677,13 +677,19 @@ struct SequencerEngine {
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
     StepResult executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir = +1);
     StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input);
-    // subGate (Gate 3) subdivision: the fine-grid clock advances the playhead; the main gate
-    // (gate1 in Mode B, gate2 in Mode D) is the note-event stream.  At each subGate onset where
-    // the main gate is HIGH, executeStep shapes the sub-cell (rest/legato/accent/pitch — all Sands
-    // lanes draw, Tie emergent from pitch equality, ratchet default).  Where the main gate is LOW
-    // (gap), the playhead still advances but no note shapes (forced Rest).  Unpatched subGate =
-    // executeModeB (the caller chooses which to call).  See GATE_SUBDIVISION_STEP_GATE.md.
-    StepResult executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise, float restProb, float legatoProb, float noteVal, const PatternInput& input);
+    // subGate subdivision (GATE_SUBDIVISION_STEP_GATE.md).  Three edge streams advance the playhead
+    // and each runs executeStep (rest/legato/accent/pitch — all Sands lanes draw, Tie emergent from
+    // pitch equality):
+    //   - mainGateRise: a main-gate onset (note event begin).  Main always wins (quantised to the edge).
+    //   - subGateRise (ratchet): a fine-grid edge INSIDE a main gate -> sub-cell (ratchet/tie/rest).
+    //   - ghostRise: a fine-grid edge OUTSIDE main gates (in a gap) -> a GHOST note.  Ghost + main are
+    //     symmetric: both are external gates whose level drives note width (the module-layer IMPL 2b
+    //     reads mainGateHigh || ghostHigh).  Legato flows both ways across the ghost<->main boundary
+    //     via the leading-edge slurForward model (no special case).  A ghost onset is a CANDIDATE note
+    //     — executeStep rolls the rest lane first, so restProb may still silence it.
+    // mainGateHigh/ghostHigh are passed for the IMPL 2b mirror in tests; the engine itself is
+    // region-agnostic (which edge fired selects the region).  Unpatched = executeModeB.
+    StepResult executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise, float restProb, float legatoProb, float noteVal, const PatternInput& input, bool ghostRise = false, bool ghostHigh = false);
     void executeModeC(const ClockEngine& clock, float inCV);
     void executeModeD(bool gateHigh, float inCV);
     float quantize(float vIn);

@@ -303,16 +303,18 @@ bool ModeController::executeModeA() {
 
 // ──── Mode B: Gate-Driven Sequencing ────────────────────────────────────────
 
-bool ModeController::executeModeB(bool gate1Rise,
-                                   bool gate1High,
+bool ModeController::executeModeB(const InputState& input,
                                    bool useSubGate) {
-    // subGate (Gate 3) subdivision: the fine-grid clock advances the playhead; gate1 is the
-    // note-event stream.  The dispatch (Monsoon.cpp) already gated shouldExecute on subGateRise,
-    // so we only arrive here on a subGate edge — call executeModeBSubdivided directly.
+    const bool gate1Rise = input.gate1Rise;
+    const bool gate1High = input.gate1 >= 1.0f;
+    // subGate subdivision (GATE mode): three edge streams — main (gate1) rise, ratchet (Gate 2)
+    // in-gate, ghost (Gate 3, normalled to ratchet) in-gap.  The dispatch (Monsoon.cpp) gated
+    // shouldExecute on whichever edge fired; pass all three + the ghost level to the engine.
     if (useSubGate) {
         PatternInput in = assemblePatternInput_();
-        StepResult result = engine.executeModeBSubdivided(gate1Rise, gate1High, /*subGateRise=*/true,
-                                                          in.restProb, in.legato, in.noteValue, in);
+        StepResult result = engine.executeModeBSubdivided(gate1Rise, gate1High, input.subGateRise,
+                                                          in.restProb, in.legato, in.noteValue, in,
+                                                          input.ghostRise, input.ghostHigh);
         postExecute_(result);
         updateLastStepIndex();
         return result.stepped;
@@ -426,12 +428,14 @@ bool ModeController::executeModeD(bool gate2Rise, bool gate2High,
 bool ModeController::executeMode(int modeId,
                                   const InputState& input,
                                   bool gate2High) {
-    bool gate1High = input.gate1 >= 1.0f;
-    // subGate (Gate 3) is the fine-grid clock in modes B (1) and D (3) when Gate 3 is connected.
-    const bool useSubGate = input.subGateConnected && (modeId == 1 || modeId == 3);
+    // GATE mode (B): useSubGate when ratchet (Gate 2) OR ghost (Gate 3) is active (ghost normalled
+    // to ratchet, so a Gate 2 patch also drives the gaps).  Mode D: Gate 3 ratchet (unchanged).
+    const bool useSubGate = (modeId == 1) ? (input.subGateConnected || input.ghostConnected)
+                                         : (modeId == 3) ? input.subGateConnected
+                                                         : false;
     switch (modeId) {
         case 0: return executeModeA();
-        case 1: return executeModeB(input.gate1Rise, gate1High, useSubGate);
+        case 1: return executeModeB(input, useSubGate);
         case 2: return executeModeC(input.cv2);
         case 3: return executeModeD(input.gate2Rise, gate2High, input.cv2, useSubGate);
         case 4: return executeModeE();

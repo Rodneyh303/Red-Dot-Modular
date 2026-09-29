@@ -680,22 +680,32 @@ void Monsoon::process(const ProcessArgs& args) {
     input.gate1Rise = gateEdges.gate1Rise;
     input.gate2Rise = gateEdges.gate2Rise;
 
-    // ── Gate 3: subGate (B/D) or die-action (A/C/E/F) ──
-    // In modes B (1) and D (3), Gate 3 is the subGate — a fine-grid clock that subdivides the
-    // main gate at a finer resolution (GATE_SUBDIVISION_STEP_GATE.md).  In other modes, Gate 3
-    // keeps its assignable die-action role (gate3Target menu).
-    input.subGateConnected = cachedGate3Connected;
-    input.subGateRise = false;
+    // ── Gate 2/3 routing (mode-dependent) — GATE_SUBDIVISION_STEP_GATE.md (ghost extension) ──
+    // GATE mode (B): Gate 1 = main, Gate 2 = ratchet (in-gate), Gate 3 = ghost (in-gap; GHOST
+    //   normals to RATCHET's signal so one cable drives both).  Mode D: Gate 2 = main, Gate 3 =
+    //   ratchet (unchanged).  A/C/E/F: Gate 3 = die-action (gate3Target menu).
+    input.subGateConnected = false; input.subGateRise = false;
+    input.ghostConnected = false; input.ghostRise = false; input.ghostHigh = false;
     const bool gate3Rise = cachedGate3Connected && gate3Trig.process(input.gate3, 0.1f, 1.f);
-    if (gate3Rise) {
-        if (modeSelect == 1 || modeSelect == 3) {
-            input.subGateRise = true;   // Gate 3 = subGate (fine grid) in B/D
-        } else {
+    if (modeSelect == 1) {
+        // GATE mode: Gate 2 = ratchet, Gate 3 = ghost.
+        input.subGateConnected = cachedGate2Connected;
+        input.subGateRise = input.gate2Rise;                 // ratchet edges (in-gate; dispatch gates on mainGateHigh)
+        input.ghostConnected = cachedGate3Connected;
+        // Ghost normals to ratchet (Gate 2) when Gate 3 is unpatched — one cable drives both.
+        input.ghostRise = cachedGate3Connected ? gate3Rise : input.gate2Rise;
+        input.ghostHigh = cachedGate3Connected ? (input.gate3 >= 1.0f) : (input.gate2 >= 1.0f);
+    } else if (modeSelect == 3) {
+        // Mode D: Gate 3 = ratchet (unchanged).
+        input.subGateConnected = cachedGate3Connected;
+        input.subGateRise = gate3Rise;
+    } else {
+        // A/C/E/F: Gate 3 = die-action.
+        if (gate3Rise) {
             static const int g3map[] = { DA_REDICE_R, DA_REDICE_M, DA_REDICE_Q,
                 DA_LIVESTATIC_R, DA_LIVESTATIC_M, DA_LIVESTATIC_Q, DA_RESEED_RESTART };
-            if (gate3Target >= 0 && gate3Target < (int)(sizeof(g3map)/sizeof(g3map[0]))) {
+            if (gate3Target >= 0 && gate3Target < (int)(sizeof(g3map)/sizeof(g3map[0])))
                 fireDieAction(g3map[gate3Target]);
-            }
         }
     }
 
@@ -768,19 +778,23 @@ void Monsoon::process(const ProcessArgs& args) {
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
         // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
         bool gate1High = input.gate1 >= 1.0f;
-        // subGate (Gate 3) drives the fine-grid step in modes B (1) and D (3) when connected.
-        const bool useSubGate = input.subGateConnected && (modeSelect == 1 || modeSelect == 3);
+        // GATE mode (B): three edge streams — main (Gate 1) always wins; ratchet (Gate 2) drives
+        // in-gate; ghost (Gate 3, normalled to ratchet) drives in-gap.  Mode D: Gate 3 ratchet
+        // (unchanged).  Other modes: their usual clock/phase/gate edges.
         bool shouldExecute;
-        if (useSubGate) {
-            shouldExecute = input.subGateRise;
+        if (modeSelect == 1) {
+            const bool inGate = gate1High;
+            shouldExecute = input.gate1Rise || (gate1High && engine.stepIndex == -1)              // main onset / held-at-start
+                          || (inGate && input.subGateRise)                                        // ratchet in-gate
+                          || (!inGate && input.ghostRise);                                        // ghost in-gap
+        } else if (modeSelect == 3) {
+            const bool useSubGate = input.subGateConnected;
+            shouldExecute = useSubGate ? input.subGateRise : true;   // Mode D continuous, or ratchet on Gate 3
         } else {
-            shouldExecute = (modeSelect == 3); // Mode D is continuous
-            if (!shouldExecute) {
-                if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;
-                else if (modeSelect == 1) shouldExecute = input.gate1Rise || (gate1High && engine.stepIndex == -1);
-                else if (modeSelect == 2) shouldExecute = clock.sixteenthEdge;   // Q3a: new-C = generated 1/16 rhythm
-                else if (modeSelect == 4 || modeSelect == 5) shouldExecute = phase.sixteenthEdge; // Mode E (gen) / F (quant): phase 1/16 grid
-            }
+            shouldExecute = false;
+            if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;
+            else if (modeSelect == 2) shouldExecute = clock.sixteenthEdge;   // Q3a: new-C = generated 1/16 rhythm
+            else if (modeSelect == 4 || modeSelect == 5) shouldExecute = phase.sixteenthEdge; // Mode E (gen) / F (quant): phase 1/16 grid
         }
 
         if (shouldExecute) {
@@ -885,11 +899,12 @@ void Monsoon::process(const ProcessArgs& args) {
     if (modeSelect == 1 && runGateActive) {
         const bool gate1High = input.gate1 >= 1.0f;
         const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
-        // Fused gate (main GATE_OUTPUT + Lantern): bridges the gap when slurring.
-        const bool gateOpen  = !isRest && (gate1High || engine.gs.slurForward);
+        // Fused gate (main GATE_OUTPUT + Lantern): symmetric — main OR ghost gate level bounds the
+        // note width (ghost + main are both external gates), plus the slur bridge across gaps.
+        const bool gateOpen  = !isRest && (gate1High || input.ghostHigh || engine.gs.slurForward);
         engine.gs.gateHeld     = gateOpen;
         // STEP mirror (un-fused): re-articulates every gate, so it NEVER bridges the gap.
-        engine.gsStep.gateHeld = !isRest && gate1High;
+        engine.gsStep.gateHeld = !isRest && (gate1High || input.ghostHigh);
 
         // CRITICAL (MODE_B_SPEC.md "REMAINING BUG"): the Lantern's sounding test is
         //   sounding = gs.gateHeld || gs.holdRemain > 0.0001f   (Lantern.cpp:347)

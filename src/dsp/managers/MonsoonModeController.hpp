@@ -55,11 +55,11 @@ public:
     void setPhaseReverse(bool rev) { phaseReverse = rev; }
     
     /// Execute Mode B: Gate-driven sequencing
-    /// Triggers on GATE1 rising edge or continuous hold (or on subGate edges when useSubGate).
-    /// useSubGate: Gate 3 is the fine-grid clock; gate1 is the note-event stream (subdivision).
+    /// Triggers on GATE1 rising edge or continuous hold, or on subGate edges when useSubGate.
+    /// useSubGate: in GATE mode, Gate 2 = ratchet (in-gate) + Gate 3 = ghost (in-gap); gate1 is the
+    /// main gate.  The InputState carries the ratchet/ghost edges + ghost level.
     /// Returns true if a new step was taken
-    bool executeModeB(bool gate1Rise,
-                      bool gate1High,
+    bool executeModeB(const InputState& input,
                       bool useSubGate = false);
     
     /// Execute Mode C: Quantizer mode 1 (CV2 latch on quarter notes)

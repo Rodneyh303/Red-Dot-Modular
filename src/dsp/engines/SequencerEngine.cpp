@@ -793,10 +793,18 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
 // See GATE_SUBDIVISION_STEP_GATE.md §"Two edge streams" + §"TWO tie scopes".
 StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise,
                                                     float restProb, float legatoProb, float noteVal,
-                                                    const PatternInput& input) {
+                                                    const PatternInput& input,
+                                                    bool ghostRise, bool ghostHigh) {
     lastNoteVal_ = noteVal;
     StepResult result;
-    if (muted || !subGateRise) return result;
+    // Any of the three edge streams advances the playhead + shapes a step:
+    //   mainGateRise (main onset), subGateRise (ratchet, in-gate), ghostRise (ghost, in-gap).
+    // The module layer ensures ratchet fires only in-gate and ghost only in-gap; the engine is
+    // region-agnostic — executeStep's wasHeld/prevSlur handle intra-gate, inter-gate, AND
+    // ghost<->main legato uniformly (the leading-edge model composes across all boundaries).
+    const bool anyEdge = mainGateRise || subGateRise || ghostRise;
+    if (muted || !anyEdge) return result;
+    (void)mainGateHigh; (void)ghostHigh;   // engine is region-agnostic; IMPL 2b (caller) uses these for width
 
     bool wrapped = advancePlayhead();
 
@@ -812,7 +820,6 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
         }
     }
 
-    float r_vary   = monoStrand(dotModular::STRAND_VARIATION)[getVariationStep()];
     float r_rest   = monoStrand(dotModular::STRAND_RHYTHM)[getRhythmStep()];
     float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
     float r_accent = monoStrand(dotModular::STRAND_ACCENT)[getAccentStep()];
@@ -841,24 +848,15 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     gs.holdRemain = 0.f;     gs.gatePulseRemain = -1;
     gsStep.holdRemain = 0.f; gsStep.gatePulseRemain = -1;
 
-    if (mainGateHigh) {
-        // Inside a note: shape this sub-cell.  executeStep rolls rest/legato/accent + draws
-        // all pitch lanes (melody/octave/q-mix), Tie/Legato emergent from pitch equality.
-        // wasHeldMono + prevSlur carry the intra-gate (previous sub-cell) or inter-gate
-        // (previous note's slur commitment) predecessor state — the SAME machinery as a
-        // clock step, so the two tie scopes reconcile without a special case.
-        result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent,
-                             input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
-    } else {
-        // Gap (main gate low): the playhead advanced but there is no note to shape.  PRESERVE
-        // the previous step's decision (do NOT mark Rest) so the inter-gate slur bridge survives
-        // the gap — executeStep's connection test (line ~538) requires prevPlayedSounded, and a
-        // Rest here would make it false, breaking slur-across-gates (the spec's TRAP).  The IMPL
-        // 2b gate driver sets gs.gateHeld = slurForward, so at the next main-gate rise the onset
-        // sees wasHeld=slurForward + prevPlayedSounded=true -> connects (Tie/Legato).  slurForward
-        // is NOT cleared (an inter-gate slur can bridge the gap).
-        result = lastStepResult;
-    }
+    // Shape this step.  A main onset, a ratchet sub-cell, or a ghost note all run executeStep —
+    // rest/legato/accent + all pitch lanes draw, Tie/Legato emergent from pitch equality.  A ghost
+    // onset is a CANDIDATE note: executeStep rolls the rest lane first, so restProb may still silence
+    // it (the gap stays empty for that cell).  wasHeldMono + prevSlur carry the predecessor state
+    // across ALL boundary types (intra-gate, inter-gate, ghost<->main) — the leading-edge model
+    // composes, so legato flows both ways with no special case (the spec's TRAP).  The gate width
+    // comes from whichever external gate is high (main or ghost) via the module-layer IMPL 2b.
+    result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent,
+                         input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
     result.stepped = true;
     result.wrapped = wrapped;
     lastStepResult = result;   // re-sync (executeStep set lastStepResult before wrapped/stepped)
