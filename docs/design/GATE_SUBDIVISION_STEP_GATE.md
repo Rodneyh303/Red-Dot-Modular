@@ -221,16 +221,23 @@ STATUS: design agreed; not built. This is the ONE feature that deliberately open
 - **Pitch**: generated from the melody/octave lanes as clock mode does (no incoming pitch in a gap).
   This is the one line-crossing (gate mode generating pitch), confined to gap cells and gated by
   variation.
-- **Per-voice behaviour comes from the OTHER lanes, not from variation.** VARIATION is a MONO strand
-  (poly voices mirror mono — SequencerEngine.hpp:310, "VARIATION/LEGATO are mono STRANDS, not poly
-  lanes"), so it decides WHERE ghosts appear as a single pattern-level choice for the whole ensemble —
-  which is correct, placement is a pattern decision. Then each ghost cell is just an ONSET, and the
-  POLY lanes treat it exactly like any in-gate onset: REST thins it per voice, LEGATO ties/re-articulates
-  per voice, ACCENT emphasises per voice — all using the algorithms they already run. So per-voice +
-  correlated ghosting IS achieved, located in the poly rest/legato/accent lanes, not in variation.
-  (Earlier draft wrongly claimed variation itself gives this "for free" — it does not; variation is
-  mono. REVERSIBLE is still free — variation rides the Philox spine.) No lane is promoted to poly;
-  nothing changes about which lanes are mono vs poly.
+- **Per-voice ghosting comes from variation/ghost's OWN per-voice probability (settled model).**
+  Clarification of the engine reality: variation/ghost ALREADY has a per-voice probability that is
+  poly and correlatable across voices — it simply is not read by anything today. Ghost-fill reads it.
+  So ghost PLACEMENT is per-voice, and its CORRELATION setting is the whole spectrum:
+    - correlation HIGH -> voices share (nearly) the same ghost probability -> ghost the same gaps ->
+      "shared ghost rhythm" (what earlier drafts called Model A);
+    - correlation LOW  -> independent per-voice ghost probability -> each voice ghosts different gaps
+      (Model B);
+    - between -> partially-shared. These are ENDPOINTS OF ONE CONTROL, not separate models — so there
+      is NO A/B/C toggle and NO mono-placement model. Menu is simply **None / Ghost**.
+  The AMOUNT is a GLOBAL control on Monsoon (per-voice-Straits-style control is NOT provided) — exactly
+  the poly-LEGATO precedent (global control, per-voice probability), so it is consistent, not a
+  compromise; a user who knows legato's behaviour knows ghost's. Per-voice Straits control, if ever
+  wanted, is the same promotion legato would need, deferred on the same reasoning.
+  Rest/legato/accent still additionally shape each ghost onset per voice with their existing algorithms.
+  Reversible is free (variation rides the Philox spine). Pitch is generated (melody/octave) as clock
+  mode does. (Earlier drafts wrongly said variation is mono-placement + A/B/C models — corrected here.)
 - **Legato is CONTINUOUS across the gate->gap boundary**: the legato decision applies at the next
   outside-gate subgate onset exactly as inside a gate — tie or re-articulate ghost cells, and govern
   whether a note carries past the gate edge into the first ghost cell. One rule, one grid, three regions
