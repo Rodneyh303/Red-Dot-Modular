@@ -276,6 +276,11 @@ struct SequencerEngine {
     bool hadMonoTail = false;
     bool wasHeldMono = false; // Capture mono state before tick() for start-detection
     bool hadPolyTail[15] = {};
+    // Ghost (subGate_ghost): true while a ghost note is sustaining — set when a ghost candidate
+    // (variation-gated) plays, cleared when it rests/fails or a main/ratchet onset takes over.
+    // The module-layer IMPL 2b reads this (&& ghostHigh) so the gate only opens for a ghost that
+    // actually fired, not merely because Gate 3 is high (variation=0 -> no ghost).
+    bool ghostActive = false;
     bool wasHeldPolyPrev[15] = {}; // Capture poly state before tick()
 
     // ── Mono (V1) strand windowing: Length (1..16), Offset (0..15), Rotation ──

@@ -50,16 +50,25 @@ static PatternInput makeInput() {
 // Ghost + main are symmetric — whichever external gate is high bounds the note width.
 static StepResult step(SequencerEngine& eng, bool mainRise, bool ratchetRise, bool ghostRise,
                        bool mainHigh, bool ghostHigh,
-                       float restProb, float legatoProb, float noteVal) {
-    const PatternInput in = makeInput();
+                       float restProb, float legatoProb, float noteVal, float variation = 0.5f,
+                       bool subgatesActive = true) {
+    PatternInput in = makeInput();
+    in.variationAmount = variation;
     StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, ratchetRise,
                                               restProb, legatoProb, noteVal, in,
                                               ghostRise, ghostHigh);
     const bool isRest = (r.decision == MonoDecision::Rest);
-    const bool gateOpen = !isRest && (mainHigh || ghostHigh || eng.gs.slurForward);
+    // Ghost only sounds when a candidate actually fired (engine.ghostActive) AND the ghost gate is
+    // high — Gate 3 high alone is NOT enough (variation=0 -> no ghost candidate).
+    const bool ghostSounding = eng.ghostActive && ghostHigh;
+    // NO slurForward bridge: the gate closes on the fall, so a pause between gates does NOT hold
+    // legato — legato only when gate edges join (one gate high when the next arrives, e.g. a ghost
+    // high when a main gate rises -> ghostSounding keeps gateHeld true -> the main legatos in).
+    (void)subgatesActive;
+    const bool gateOpen = !isRest && (mainHigh || ghostSounding);
     eng.gs.gateHeld = gateOpen;
     if (!gateOpen) eng.gs.holdRemain = 0.f;
-    eng.gsStep.gateHeld = !isRest && (mainHigh || ghostHigh);
+    eng.gsStep.gateHeld = !isRest && (mainHigh || ghostSounding);
     return r;
 }
 
@@ -68,18 +77,21 @@ static StepResult step(SequencerEngine& eng, bool mainRise, bool ratchetRise, bo
 // independently rolls its own rest/legato/pitch (the correlated + reversible payoff).
 static StepResult stepPoly(SequencerEngine& eng, bool mainRise, bool ratchetRise, bool ghostRise,
                             bool mainHigh, bool ghostHigh,
-                            float restProb, float legatoProb, float noteVal) {
-    const PatternInput in = makeInput();
+                            float restProb, float legatoProb, float noteVal, float variation = 0.5f) {
+    PatternInput in = makeInput();
+    in.variationAmount = variation;
     StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, ratchetRise,
                                               restProb, legatoProb, noteVal, in,
                                               ghostRise, ghostHigh);
     if (r.stepped && eng.numPolyVoices > 0)
         eng.executePolyVoices(in);
     const bool isRest = (r.decision == MonoDecision::Rest);
-    const bool gateOpen = !isRest && (mainHigh || ghostHigh || eng.gs.slurForward);
+    const bool ghostSounding = eng.ghostActive && ghostHigh;
+    // No slurForward bridge (legato only when gate edges join — see step()).
+    const bool gateOpen = !isRest && (mainHigh || ghostSounding);
     eng.gs.gateHeld = gateOpen;
     if (!gateOpen) eng.gs.holdRemain = 0.f;
-    eng.gsStep.gateHeld = !isRest && (mainHigh || ghostHigh);
+    eng.gsStep.gateHeld = !isRest && (mainHigh || ghostSounding);
     return r;
 }
 
@@ -124,26 +136,39 @@ int main() {
 
     // ─────────────────────────────────────────────────────────────────────────────
     SUITE("3 — inter-gate slur: a slur across a main-gate boundary holds (the TRAP)");
-    TEST("slur across a main-gate boundary holds (Tie/Legato, not NewNote)", {
-        // note 1 (onset + intra tie) -> silent gap (no edge) -> note 2 (fresh main rise).
-        // The IMPL 2b bridges the silent gap with slurForward; note 2 connects.
+    TEST("a SILENT gap between main gates does NOT legato (legato only when edges join)", {
+        // note 1 (onset + intra tie) -> silent gap (no edge, gate low) -> note 2 (fresh main rise).
+        // No slurForward bridge: the gate closes on the fall, so note 2 is a fresh NewNote (legato
+        // only when gate edges join — a silent gap is not a join).
         SequencerEngine eng; eng.numPolyVoices = 0;
-        step(eng, true,  true,  false, true,  false, 0.f, 0.5f, 4.f);  // note 1 onset, commits slurForward
+        step(eng, true,  true,  false, true,  false, 0.f, 0.5f, 4.f);  // note 1 onset
         step(eng, false, true,  false, true,  false, 0.f, 0.5f, 4.f);  // note 1 intra-gate tie
-        step(eng, false, false, false, false, false, 0.f, 0.5f, 4.f);  // silent gap (no edge) — slurForward persists via IMPL 2b
+        step(eng, false, false, false, false, false, 0.f, 0.5f, 4.f);  // silent gap (gate low)
         StepResult r = step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f);  // note 2: fresh main rise
-        EXPECT(r.decision == D::Tie || r.decision == D::Legato);
-        EXPECT(r.decision != D::NewNote);
+        EXPECT(r.decision == D::NewNote);  // no slur across a silent gap
     });
 
-    TEST("a multi-sub-cell slur chain (legato high throughout) bridges the gap to the next note", {
+    TEST("PLAIN gate mode (no subgates): a pause between main gates does NOT hold legato", {
+        // No subgates -> no slurForward bridge.  Main gate 1 falls (pause), main gate 2 rises: the
+        // gate closes on the fall, so gate 2 is a fresh NewNote (legato only when edges join).
         SequencerEngine eng; eng.numPolyVoices = 0;
-        step(eng, true,  true,  false, true,  false, 0.f, 0.5f, 4.f);  // onset commits slurForward
-        step(eng, false, true,  false, true,  false, 0.f, 0.5f, 4.f);  // sub-cell 2: ties, re-commits
-        step(eng, false, true,  false, true,  false, 0.f, 0.5f, 4.f);  // sub-cell 3: ties, re-commits
-        step(eng, false, false, false, false, false, 0.f, 0.5f, 4.f);  // silent gap (slurForward persists)
+        step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f, 0.5f, /*subgates=*/false);  // main 1 onset
+        step(eng, false, false, false, false, false, 0.f, 0.5f, 4.f, 0.5f, /*subgates=*/false);  // pause (gap)
+        StepResult r = step(eng, true, false, false, true, false, 0.f, 0.5f, 4.f, 0.5f, /*subgates=*/false);  // main 2 rise
+        EXPECT(r.decision == D::NewNote);  // fresh note — no slur across the pause
+    });
+
+    TEST("intra-gate sub-cells tie (contiguous), but a silent gap to the next note does NOT legato", {
+        // Sub-cells WITHIN a gate are contiguous (gate high) -> they tie.  But a silent gap to the
+        // next main gate is NOT a join -> note 2 is a fresh NewNote (no slurForward bridge).
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        step(eng, true,  true,  false, true,  false, 0.f, 0.5f, 4.f);  // onset
+        StepResult intra = step(eng, false, true,  false, true,  false, 0.f, 0.5f, 4.f);  // sub-cell 2 (in-gate)
+        EXPECT(intra.decision == D::Tie || intra.decision == D::Legato);  // contiguous -> ties
+        step(eng, false, true,  false, true,  false, 0.f, 0.5f, 4.f);  // sub-cell 3 (in-gate)
+        step(eng, false, false, false, false, false, 0.f, 0.5f, 4.f);  // silent gap (gate low)
         StepResult inter = step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f);  // note 2
-        EXPECT(inter.decision == D::Tie || inter.decision == D::Legato);
+        EXPECT(inter.decision == D::NewNote);  // silent gap -> fresh note, no slur
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -180,6 +205,19 @@ int main() {
         EXPECT(!eng.gs.gateHeld);        // silent
     });
 
+    TEST("variation=0 -> NO ghost candidate (silent gap, even with rest=0 and Gate 3 high)", {
+        // The ghost candidate is variation-gated: r_vary >= variationAmount -> no ghost.  At
+        // variation=0 every r_vary (0..1) >= 0 -> no ghost ever fires, so the gaps stay empty
+        // even with Gate 3 patched high.  (Ratchet + main are NOT variation-gated — only ghost.)
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        step(eng, true, false, false, true, false, 0.f, 0.f, 4.f);    // main onset
+        step(eng, false, false, false, false, false, 0.f, 0.f, 4.f);  // silent gap
+        StepResult r = step(eng, false, false, true, false, true, 0.f, 0.f, 4.f, /*variation=*/0.f);
+        EXPECT(r.stepped);
+        EXPECT(!eng.ghostActive);        // no ghost candidate fired
+        EXPECT(!eng.gs.gateHeld);       // gate stays low (Gate 3 high alone doesn't open it)
+    });
+
     // ─────────────────────────────────────────────────────────────────────────────
     SUITE("G2 — legato flows BOTH ways across the ghost<->main boundary");
     TEST("ghost -> main: a ghost note high at a main-gate rise legatos into the main note", {
@@ -191,22 +229,25 @@ int main() {
         EXPECT(r.decision == D::Tie || r.decision == D::Legato);  // ghost legatos into main
     });
 
-    TEST("main -> ghost: a main note legatos into the first ghost cell of the following gap", {
+    TEST("main -> ghost across a SILENT gap does NOT legato (the gate closed on the main's fall)", {
+        // The main note falls (silent gap), then the ghost rises.  The gate closed on the fall ->
+        // wasHeld=false at the ghost -> fresh NewNote.  (main->ghost legato only if the ghost rises
+        // while the main is still high — but the ghost is in-gap, so this is a gap -> no slur.)
         SequencerEngine eng; eng.numPolyVoices = 0;
-        step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f);  // main note, commits slurForward
-        step(eng, false, false, false, false, false, 0.f, 0.5f, 4.f);  // silent gap (slurForward persists via IMPL 2b)
+        step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f);  // main note
+        step(eng, false, false, false, false, false, 0.f, 0.5f, 4.f);  // silent gap (gate low)
         StepResult r = step(eng, false, false, true,  false, true,  0.f, 0.5f, 4.f);  // first ghost cell
-        EXPECT(r.decision == D::Tie || r.decision == D::Legato);  // main legatos into ghost
+        EXPECT(r.decision == D::NewNote);  // no slur across a silent gap
     });
 
-    TEST("TRAP: ghost->main AND main->ghost slurs in one pattern; no forced re-articulation", {
+    TEST("ghost->main legatos (ghost high at main rise); main->ghost across a silent gap does not", {
         SequencerEngine eng; eng.numPolyVoices = 0;
-        step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f);  // main A, commits slurForward
+        step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f);  // main A
         step(eng, false, false, false, false, false, 0.f, 0.5f, 4.f);  // silent gap
-        StepResult g1 = step(eng, false, false, true,  false, true,  0.f, 0.5f, 4.f);  // ghost (main->ghost slur)
-        EXPECT(g1.decision == D::Tie || g1.decision == D::Legato);
-        StepResult m2 = step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f);  // main B (ghost->main slur)
-        EXPECT(m2.decision == D::Tie || m2.decision == D::Legato);
+        StepResult g1 = step(eng, false, false, true,  false, true,  0.f, 0.5f, 4.f);  // ghost (gap -> fresh)
+        EXPECT(g1.decision == D::NewNote);                              // main->ghost across silent gap: no slur
+        StepResult m2 = step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f);  // main B (ghost high -> join)
+        EXPECT(m2.decision == D::Tie || m2.decision == D::Legato);    // ghost->main: ghost high -> legatos
     });
 
     // ─────────────────────────────────────────────────────────────────────────────

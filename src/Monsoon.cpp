@@ -688,12 +688,15 @@ void Monsoon::process(const ProcessArgs& args) {
     input.ghostConnected = false; input.ghostRise = false; input.ghostHigh = false;
     const bool gate3Rise = cachedGate3Connected && gate3Trig.process(input.gate3, 0.1f, 1.f);
     if (modeSelect == 1) {
-        // GATE mode: Gate 2 = ratchet, Gate 3 = ghost.
+        // GATE mode: Gate 2 = ratchet (in-gate), Gate 3 = ghost (in-gap; normals to ratchet).
+        // Region-select the edge: ratchet fires only in-gate, ghost only in-gap — so the engine
+        // can tell which fired (ghost is variation-gated; ratchet is not).  Main (Gate 1) rise is
+        // separate and always wins.
+        const bool inGate = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
         input.subGateConnected = cachedGate2Connected;
-        input.subGateRise = input.gate2Rise;                 // ratchet edges (in-gate; dispatch gates on mainGateHigh)
         input.ghostConnected = cachedGate3Connected;
-        // Ghost normals to ratchet (Gate 2) when Gate 3 is unpatched — one cable drives both.
-        input.ghostRise = cachedGate3Connected ? gate3Rise : input.gate2Rise;
+        input.subGateRise = (inGate) ? input.gate2Rise : false;             // ratchet: in-gate only
+        input.ghostRise = (!inGate) ? (cachedGate3Connected ? gate3Rise : input.gate2Rise) : false;  // ghost: in-gap only
         input.ghostHigh = cachedGate3Connected ? (input.gate3 >= 1.0f) : (input.gate2 >= 1.0f);
     } else if (modeSelect == 3) {
         // Mode D: Gate 3 = ratchet (unchanged).
@@ -777,7 +780,7 @@ void Monsoon::process(const ProcessArgs& args) {
         }
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
         // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
-        bool gate1High = input.gate1 >= 1.0f;
+        bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
         // GATE mode (B): three edge streams — main (Gate 1) always wins; ratchet (Gate 2) drives
         // in-gate; ghost (Gate 3, normalled to ratchet) drives in-gap.  Mode D: Gate 3 ratchet
         // (unchanged).  Other modes: their usual clock/phase/gate edges.
@@ -799,6 +802,17 @@ void Monsoon::process(const ProcessArgs& args) {
 
         if (shouldExecute) {
             mc.executeMode(modeSelect, input, tc.getGate2High());
+
+            // Latch each poly voice's sounding decision (Mode B poly gate-width follow).  In Mode B
+            // holdRemain is nullified so there is no MidNote — every shouldExecute carries a real
+            // onset/landing/rest decision, and executePolyVoices (run inside executeMode) has just
+            // set voices[i].gs.gateHeld to whether each voice plays or rests.  Hold that between
+            // onsets; the IMPL 2b gate driver ANDs it with the mono envelope so poly gate WIDTH
+            // follows Gate 1 / ghost (not a 1-step internal hold).  Mode B only.
+            if (modeSelect == 1) {
+                for (int i = 0; i < engine.numPolyVoices; ++i)
+                    polyVoiceActive[i] = engine.voices[i].gs.gateHeld;
+            }
 
             // ── Shophouse scale expander: boundary-quantised scale/root ──
             // Drive the attached Shophouse's ScaleList. The index CV is sampled at the phrase
@@ -890,21 +904,32 @@ void Monsoon::process(const ProcessArgs& args) {
     // lastNoteType) — agrees by construction. This is spec §5's single source of truth.
     //   REST      -> gate LOW (rest punches its hole; §4b rest wins, even over a pending slur).
     //   gate1High -> gate HIGH (the note sounds for exactly the external gate's width).
-    //   gap (low) -> HIGH iff this note committed to slur forward (gs.slurForward, the same
-    //                leading-edge MODEL 1 commitment as Mode A) -> bridge to the next rise;
-    //                else LOW = clean re-articulation gap. Level-based, so 3-note chains bridge
-    //                successive gaps naturally as long as each note re-commits slurForward.
+    //   gap (low) -> HIGH iff this note committed slurForward (MODEL 1: bridge to the next rise).
+    //                The bridge is UNCONDITIONAL on the gap length — "consecutive" is a sequence
+    //                relationship judged at the NEXT rise, not a gap-duration fact (see
+    //                plans/mode_b_legato_rework.md). executeStep already breaks the chain on a REST
+    //                and on a non-committing predecessor, and slurForward is committed by the
+    //                leading-edge legato roll — so the LEGATO knob governs how often ties happen
+    //                and REST punches the holes that break chains. No time/sample window: a window
+    //                cannot catch a real sequencer gap (30-60ms) and only ever blocks all ties.
     // gs.slurForward persists from the note's onset (executeStep set it; the per-rise countdown
     // clear in executeModeB does NOT touch it), so no edge latch / extra state is needed.
     if (modeSelect == 1 && runGateActive) {
-        const bool gate1High = input.gate1 >= 1.0f;
+        const bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
         const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
-        // Fused gate (main GATE_OUTPUT + Lantern): symmetric — main OR ghost gate level bounds the
-        // note width (ghost + main are both external gates), plus the slur bridge across gaps.
-        const bool gateOpen  = !isRest && (gate1High || input.ghostHigh || engine.gs.slurForward);
+        // MODEL 1 legato bridge (unconditional on gap length).  While Gate 1 is low, hold the gate
+        // open iff this note committed slurForward at its onset (the leading-edge legato roll) —
+        // bridging to the next rise so executeStep's wasHeldMono/prevSlur connect the tie.  Whether
+        // the tie actually HAPPENS is re-decided at that next rise by executeStep (REST wins; a
+        // non-committing predecessor breaks the chain).  The gap duration is irrelevant: a window
+        // cannot catch a real sequencer gap and only blocks all ties.  See mode_b_legato_rework.md.
+        // A ghost high when a main gate rises also keeps the gate open (ghostSounding) -> main legatos in.
+        const bool legatoBridge = engine.gs.slurForward;
+        const bool ghostSounding = engine.ghostActive && input.ghostHigh;
+        const bool gateOpen  = !isRest && (gate1High || ghostSounding || legatoBridge);
         engine.gs.gateHeld     = gateOpen;
         // STEP mirror (un-fused): re-articulates every gate, so it NEVER bridges the gap.
-        engine.gsStep.gateHeld = !isRest && (gate1High || input.ghostHigh);
+        engine.gsStep.gateHeld = !isRest && (gate1High || ghostSounding);
 
         // CRITICAL (MODE_B_SPEC.md "REMAINING BUG"): the Lantern's sounding test is
         //   sounding = gs.gateHeld || gs.holdRemain > 0.0001f   (Lantern.cpp:347)
@@ -917,6 +942,22 @@ void Monsoon::process(const ProcessArgs& args) {
             engine.gs.gatePulseRemain     = -1;   // ADD: prevents MidNote guard on next rise
             engine.gsStep.holdRemain      = 0.f;
             engine.gsStep.gatePulseRemain = -1;   // ADD: STEP mirror
+        }
+
+        // ── Poly gate-width follow (Phase 5 roll-out) ──────────────────────────────────────
+        // Each poly voice's gate rides the SAME mono envelope (Gate 1 width / ghost / slurForward
+        // bridge) ANDed with its latched sounding decision (polyVoiceActive[], set after the last
+        // executePolyVoices).  So poly ghost / ratchet notes match the mono envelope instead of a
+        // 1-step internal hold.  gsStep is left to executePolyVoice's per-onset retrigger (the STEP
+        // output re-articulates by design); only the fused GATE width is driven here.  A voice whose
+        // gate closes also gets its holdRemain zeroed (Lantern sounding-test parity with the mono).
+        for (int i = 0; i < engine.numPolyVoices; ++i) {
+            const bool vOpen = gateOpen && polyVoiceActive[i];
+            engine.voices[i].gs.gateHeld = vOpen;
+            if (!vOpen) {
+                engine.voices[i].gs.holdRemain      = 0.f;
+                engine.voices[i].gs.gatePulseRemain = -1;
+            }
         }
     } else if (modeSelect == 3 && input.subGateConnected && runGateActive) {
         // subGate Mode D IMPL 2b: drive the gate STATE from Gate 2 (the note-event stream),

@@ -3,12 +3,6 @@
 
 using namespace rack;
 
-// ──── Helper: Gate High Detection ───────────────────────────────────────────
-// All about gates  - does it belong with Gatestate or ModeController instead? It's mostly used for timing-related gate processing, so TimingController seems reasonable for now. Can refactor later if needed.
-bool TimingController::gateHigh_(float v, float threshold) {
-    return v >= threshold;
-}
-
 // ──── Run Gate Processing ───────────────────────────────────────────────────
 
 bool TimingController::processRunGate(bool currentlyActive,
@@ -57,15 +51,16 @@ void TimingController::clearReset() {
 // ──── Gate Edge Detection ───────────────────────────────────────────────────
 
 TimingController::GateEdges TimingController::processGateEdges(float gate1V, float gate2V) {
-    bool gate1Now = gateHigh_(gate1V);
-    bool gate2Now = gateHigh_(gate2V);
-    
-    bool gate1Rise = gate1Now && !lastGate1High;
-    bool gate2Rise = gate2Now && !lastGate2High;
-    
-    lastGate1High = gate1Now;
-    lastGate2High = gate2Now;
-    
+    // Schmitt triggers give hysteresis (0.1V low / 1.0V high): the rise edge fires on
+    // the low→high transition and the internal `.state` holds the hysteresis-filtered
+    // level.  This is more robust against noisy/dipping gates than a raw `>= threshold`.
+    // `getGate1SchmittHigh()` exposes `.state` for the legato grace timer (IMPL 2b).
+    bool gate1Rise = gate1EdgeTrig.process(gate1V, 0.1f, 1.f);
+    bool gate2Rise = gate2EdgeTrig.process(gate2V, 0.1f, 1.f);
+
+    lastGate1High = gate1EdgeTrig.state;
+    lastGate2High = gate2EdgeTrig.state;
+
     return {gate1Rise, gate2Rise};
 }
 

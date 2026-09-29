@@ -72,6 +72,10 @@ public:
     /// Get gate2 high state (useful for gate2Assign mode 2)
     bool getGate2High() const { return lastGate2High; }
 
+    /// Get gate1 high state — Schmitt-triggered (hysteresis-filtered), robust against
+    /// noisy/dipping gates. Used by the legato grace timer (Monsoon.cpp IMPL 2b).
+    bool getGate1SchmittHigh() const { return gate1EdgeTrig.state; }
+
 private:
     Monsoon* mainModule;
     
@@ -90,7 +94,4 @@ private:
     
     // Reset pulse
     rack::dsp::PulseGenerator resetPulse;
-    
-    // Helper: Process gate with threshold detection
-    bool gateHigh_(float v, float threshold = 1.f);
 };

@@ -848,15 +848,37 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     gs.holdRemain = 0.f;     gs.gatePulseRemain = -1;
     gsStep.holdRemain = 0.f; gsStep.gatePulseRemain = -1;
 
-    // Shape this step.  A main onset, a ratchet sub-cell, or a ghost note all run executeStep —
-    // rest/legato/accent + all pitch lanes draw, Tie/Legato emergent from pitch equality.  A ghost
-    // onset is a CANDIDATE note: executeStep rolls the rest lane first, so restProb may still silence
-    // it (the gap stays empty for that cell).  wasHeldMono + prevSlur carry the predecessor state
-    // across ALL boundary types (intra-gate, inter-gate, ghost<->main) — the leading-edge model
-    // composes, so legato flows both ways with no special case (the spec's TRAP).  The gate width
-    // comes from whichever external gate is high (main or ghost) via the module-layer IMPL 2b.
+    // Ghost candidate gate: a ghost onset (in-gap) only produces a note if the VARIATION strand
+    // fires — variation/ghost produces the CANDIDATE.  r_vary >= variationAmount -> no ghost
+    // (silent gap cell; preserve the decision for the slur bridge + own forStep).  At variation=0
+    // no ghost ever fires.  (Ratchet sub-cells and main onsets are NOT variation-gated — only the
+    // ghost is.)  Then executeStep rolls the rest lane, which may still silence a ghost candidate.
+    if (ghostRise) {
+        float r_vary = monoStrand(dotModular::STRAND_VARIATION)[getVariationStep()];
+        if (r_vary >= input.variationAmount) {
+            // No ghost candidate — silent gap.  Preserve the decision (slur bridge) + own cell.
+            ghostActive = false;
+            result = lastStepResult;
+            result.forStep = stepIndex;
+            result.stepped = true;
+            result.wrapped = wrapped;
+            lastStepResult = result;
+            return result;
+        }
+    }
+    // A main or ratchet onset ends any sustaining ghost (the ghost only lives in the gap).
+    if (mainGateRise || subGateRise) ghostActive = false;
+
+    // Shape this step.  A main onset, a ratchet sub-cell, or a ghost candidate all run executeStep —
+    // rest/legato/accent + all pitch lanes draw, Tie/Legato emergent from pitch equality.  wasHeldMono
+    // + prevSlur carry the predecessor state across ALL boundary types (intra-gate, inter-gate,
+    // ghost<->main) — the leading-edge model composes, so legato flows both ways with no special
+    // case (the spec's TRAP).  The gate width comes from whichever external gate is high (main or
+    // ghost) via the module-layer IMPL 2b.
     result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent,
                          input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
+    // A ghost candidate that played (not rested) sustains; a rested ghost does not.
+    if (ghostRise) ghostActive = (result.decision != MonoDecision::Rest);
     result.stepped = true;
     result.wrapped = wrapped;
     lastStepResult = result;   // re-sync (executeStep set lastStepResult before wrapped/stepped)
