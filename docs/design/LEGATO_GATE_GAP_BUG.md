@@ -91,3 +91,19 @@ mode and more robust than measuring gaps. Two options:
 Recommendation: fix bare gate mode with 1ms now; then CHECK whether the subgate path already resolves
 adjacency structurally (consecutive cells) — if so, do not force 1ms onto a grid that already defines
 adjacency; let it be structural there, matching clock mode.
+
+### Step 2 (follow-on, Rodney): infer the gap grid from the subgate clock
+Once a subgate clock is patched, replace the 1ms TIMING inference with STRUCTURAL adjacency on that
+grid: two main gates are neighbours iff no subgate cell lies strictly between them (previous gate
+ended in cell K, this gate starts in K+1 -> adjacent; K+2+ -> gap). Grid PRIORITY:
+**SUBGATE_RATCHET, or SUBGATE_GHOST if that is the one patched** — ratchet is the natural choice
+(finest grid governing in-gate behaviour, so gaps align with how notes are already subdivided); and
+since GHOST normals to RATCHET, "ratchet or ghost if patched" collapses to "whatever single clock is
+patched" in the common case.
+Why this is BETTER than 1ms, not just consistent: it is still decidable BACKWARD (you know the
+previous gate's cell when this edge arrives — no lookahead), because the grid discretises the past
+into countable cells rather than a continuous gap you would want to wait out. So it sidesteps the
+causality constraint entirely. 1ms then survives ONLY for the bare main gate with NO subgate patched
+(the one genuinely gridless case).
+Order: (1) ship the 1ms bare-gate fix standalone; (2) switch to structural cell-adjacency when a
+subgate is patched. Step 1 is shippable alone; step 2 makes the subgate case exact, matching clock mode.
