@@ -236,6 +236,17 @@ STATUS: design agreed; not built. This is the ONE feature that deliberately open
   compromise; a user who knows legato's behaviour knows ghost's. Per-voice Straits control, if ever
   wanted, is the same promotion legato would need, deferred on the same reasoning.
   Rest/legato/accent still additionally shape each ghost onset per voice with their existing algorithms.
+  **Poly REST acts on ghost cells (this is what makes the hybrid CONTAIN Model A).** At high placement
+  correlation the voices share the same ghost gaps; poly rest then thins them PER VOICE — i.e.
+  shared-placement + poly-thinning, which is exactly Model A. So A is not a separate model, it is the
+  high-correlation end WITH rest still acting. Placement correlation controls how ALIGNED the voices'
+  ghost rhythms are; rest independently controls DENSITY on top. They are distinct (alignment vs
+  density) and both act at every correlation setting — kept independent to avoid coupling "thin the
+  ghosts" to "align the ghosts".
+  **Ghost cells inherit the existing `restBeatsLegato` toggle** (RHYTHM_BEHAVIOUR_POLICIES.md; Monsoon
+  context menu "Rest beats legato") for the rest-vs-slur conflict — a ghost that is both tied and rolls
+  a rest is the SAME conflict as in-gate, resolved the SAME way. Do NOT add a parallel ghost arbitration
+  control.
   Reversible is free (variation rides the Philox spine). Pitch is generated (melody/octave) as clock
   mode does. (Earlier drafts wrongly said variation is mono-placement + A/B/C models — corrected here.)
 - **Legato is CONTINUOUS across the gate->gap boundary**: the legato decision applies at the next
