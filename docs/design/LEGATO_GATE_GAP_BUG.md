@@ -107,3 +107,21 @@ causality constraint entirely. 1ms then survives ONLY for the bare main gate wit
 (the one genuinely gridless case).
 Order: (1) ship the 1ms bare-gate fix standalone; (2) switch to structural cell-adjacency when a
 subgate is patched. Step 1 is shippable alone; step 2 makes the subgate case exact, matching clock mode.
+
+
+## RESOLUTION (Rodney, after scoping Rampage correctly)
+Scoping Rampage with BOTH rising and falling edges patched shows legato fires correctly — the earlier
+"no legato" was a PATCH error (falling edge only), not the code. This confirms gate-mode legato is the
+OVERLAP / HELD-PREDECESSOR model (the clock-mode slur-forward model applied to gate mode): legato
+requires the previous gate still high across the boundary (`wasHeld || hadTail`), which is correct and
+working. It is NOT gap-tolerant by design, and should not be made so — a source that drops the gate
+with a real gap is not playing legato.
+
+Consequence: **the 1ms gap-tolerance idea is retired.** It was solving a problem the held-predecessor
+invariant already solves. Whichever way the redundancy experiment goes, the answer is NO TIMER:
+- if the original long-gap bug stays fixed with `gate1Adjacent` forced true -> REMOVE the machinery
+  (redundant; and it harmfully clears `slurForward` on gaps);
+- if the bug returns -> the fix belongs in the NOTE-LENGTH nullification (stop a long note-value leaking
+  held-ness), NOT in a gap timer — because legato is overlap-based, a timer is the wrong tool regardless.
+The "keep it, tune tolerance to tens of ms" option (former step 3) is WRONG and dropped: it assumed a
+gap-tolerance model that the Rampage result disproves.
