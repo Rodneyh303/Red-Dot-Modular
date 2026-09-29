@@ -125,3 +125,35 @@ invariant already solves. Whichever way the redundancy experiment goes, the answ
   held-ness), NOT in a gap timer — because legato is overlap-based, a timer is the wrong tool regardless.
 The "keep it, tune tolerance to tens of ms" option (former step 3) is WRONG and dropped: it assumed a
 gap-tolerance model that the Rampage result disproves.
+
+
+## EXPERIMENT RESULT — cause found, fix decided (evidence-led)
+Ran the redundancy experiment. Table (Bridge = the IMPL 2b slurForward term in gateHeld; Timer =
+gate1Adjacent):
+
+| Variant | Bridge | Timer | Input | Result | Meaning |
+|---|---|---|---|---|---|
+| A | active  | OFF | long gap | Tie     | bug REPRODUCES — bridge keeps gateHeld/slurForward high across the gap -> wasHeld true -> tie |
+| B | removed | OFF | long gap | NewNote | held-predecessor invariant ALONE fixes it (no timer) |
+| C | removed | OFF | overlap  | Tie     | overlap still ties without the bridge (held-across works) |
+| D | active  | ON  | long gap | NewNote | the timer is a BAND-AID over the bridge (and wipes slurForward -> clips phrasing) |
+
+**True cause:** the `slurForward` term in Mode B IMPL 2b's `gateHeld = gate1High || ghostSounding ||
+slurForward` re-asserts gateHeld across the gap, defeating the held-predecessor guard. The gate1Adjacent
+timer was a band-aid for that and is harmful (clears slurForward, the legato carrier, on any >=1ms gap).
+
+**FIX (decided): remove BOTH.**
+- IMPL 2b: `gateOpen = !isRest && (gate1High || ghostSounding)` — drop the `slurForward` term, KEEP the
+  ghost term.
+- Remove the gate1Adjacent timer + gate1LowSamples accumulator entirely (Monsoon.cpp/.hpp, the
+  ModeController + SequencerEngine parameter, the `if (!gate1Adjacent)` clear).
+Result: gap -> fresh (B), overlap -> tie (C), no timer, no phrasing suppression. Overlap-only /
+held-predecessor model, intact.
+
+**Confirm before closing (the bridge existed for a reason — check it is gone, not masked):**
+1. CLOCK-mode legato still works — a multi-step slur (note slurring across several steps) still holds.
+   If IMPL 2b is gate-mode-only this is moot; if shared, verify (the bridge may have protected the
+   clock-mode abutting-notes case).
+2. Ghost legato across the gate->gap boundary still ties (the kept ghostSounding term) — a legato note
+   carries into the first ghost cell.
+Both green + forward/reverse bitwise green => closed.
