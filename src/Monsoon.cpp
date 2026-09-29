@@ -680,15 +680,6 @@ void Monsoon::process(const ProcessArgs& args) {
     input.gate1Rise = gateEdges.gate1Rise;
     input.gate2Rise = gateEdges.gate2Rise;
 
-    // ── Gate-gap adjacency (LEGATO_GATE_GAP_BUG.md) ──
-    // 1ms = the minimum gate length all standard modules detect (Andrew Belt / VCV).  gate1LowSamples
-    // accumulates while the Schmitt Gate-1 level is LOW (resets while HIGH).  Read it BEFORE the
-    // per-sample update so at a rise it still holds the just-ended gap: overlap => 0 (<1ms) and a
-    // real separation => >=1ms.  Edge-timed (not index-timed) => direction-agnostic (reverse-safe).
-    const float oneMsSamples = args.sampleRate / 1000.f;
-    input.gate1Adjacent = (gate1LowSamples < oneMsSamples);
-    if (tc.getGate1SchmittHigh()) gate1LowSamples = 0.f; else gate1LowSamples += 1.f;
-
     // ── Gate 2/3 routing (mode-dependent) — GATE_SUBDIVISION_STEP_GATE.md (ghost extension) ──
     // GATE mode (B): Gate 1 = main, Gate 2 = ratchet (in-gate), Gate 3 = ghost (in-gap; GHOST
     //   normals to RATCHET's signal so one cable drives both).  Mode D: Gate 2 = main, Gate 3 =
@@ -913,29 +904,21 @@ void Monsoon::process(const ProcessArgs& args) {
     // lastNoteType) — agrees by construction. This is spec §5's single source of truth.
     //   REST      -> gate LOW (rest punches its hole; §4b rest wins, even over a pending slur).
     //   gate1High -> gate HIGH (the note sounds for exactly the external gate's width).
-    //   gap (low) -> HIGH iff this note committed slurForward (MODEL 1: bridge to the next rise).
-    //                The bridge is UNCONDITIONAL on the gap length — "consecutive" is a sequence
-    //                relationship judged at the NEXT rise, not a gap-duration fact (see
-    //                plans/mode_b_legato_rework.md). executeStep already breaks the chain on a REST
-    //                and on a non-committing predecessor, and slurForward is committed by the
-    //                leading-edge legato roll — so the LEGATO knob governs how often ties happen
-    //                and REST punches the holes that break chains. No time/sample window: a window
-    //                cannot catch a real sequencer gap (30-60ms) and only ever blocks all ties.
-    // gs.slurForward persists from the note's onset (executeStep set it; the per-rise countdown
-    // clear in executeModeB does NOT touch it), so no edge latch / extra state is needed.
+    //   gap (low) -> gate LOW.  NO slurForward bridge: a tie requires the previous gate STILL HIGH
+    //                at this rise (overlap / hold) — the held-predecessor invariant (wasHeld =
+    //                gateHeld, note-length nullified).  The bridge that previously held gateHeld =
+    //                slurForward across a gap was the cause of the long-gap legato bug
+    //                (LEGATO_GATE_GAP_BUG.md); with it gone, a gap drops the gate => wasHeld false =>
+    //                fresh note, and overlap keeps it high => tie.  executeStep's connect branch
+    //                already guards on (wasHeld || hadTail) && prevPlayedSounded, so the invariant
+    //                is enforced structurally; slurForward remains the leading-edge commitment for
+    //                the Lantern/SLEG, just not a gate bridge here.
     if (modeSelect == 1 && runGateActive) {
         const bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
         const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
-        // MODEL 1 legato bridge (unconditional on gap length).  While Gate 1 is low, hold the gate
-        // open iff this note committed slurForward at its onset (the leading-edge legato roll) —
-        // bridging to the next rise so executeStep's wasHeldMono/prevSlur connect the tie.  Whether
-        // the tie actually HAPPENS is re-decided at that next rise by executeStep (REST wins; a
-        // non-committing predecessor breaks the chain).  The gap duration is irrelevant: a window
-        // cannot catch a real sequencer gap and only blocks all ties.  See mode_b_legato_rework.md.
-        // A ghost high when a main gate rises also keeps the gate open (ghostSounding) -> main legatos in.
-        const bool legatoBridge = engine.gs.slurForward;
+        // A ghost high when a main gate rises keeps the gate open (ghostSounding) -> main legatos in.
         const bool ghostSounding = engine.ghostActive && input.ghostHigh;
-        const bool gateOpen  = !isRest && (gate1High || ghostSounding || legatoBridge);
+        const bool gateOpen  = !isRest && (gate1High || ghostSounding);
         engine.gs.gateHeld     = gateOpen;
         // STEP mirror (un-fused): re-articulates every gate, so it NEVER bridges the gap.
         engine.gsStep.gateHeld = !isRest && (gate1High || ghostSounding);

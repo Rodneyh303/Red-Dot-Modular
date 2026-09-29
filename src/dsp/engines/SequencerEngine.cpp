@@ -692,7 +692,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     return result;
 }
 
-StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, bool gate1Adjacent, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
+StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
     lastNoteVal_ = noteVal;   // poly voices derive their own nvIdx from this (stage 2)
     StepResult result;
     if (muted) {
@@ -738,23 +738,6 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, bool ga
         // wrong). One step = the bar occupies only its own cell; the audible gate width still comes
         // from Gate 1 (generateOutputs). Variation is intentionally bypassed in Mode B.
         int nvIdx = (modeSelect == 1) ? 6 /*1/16 = 1 step*/ : getNoteLenIdx(noteVal, input, r_vary);
-
-        // ── Gate-gap adjacency (LEGATO_GATE_GAP_BUG.md) ──────────────────────────────────────
-        // A rise after a >=1ms low is a REAL separation: clear the held state BEFORE wasHeldMono is
-        // captured (next line) so wasHeld reads false -> fresh NewNote (no legato across the gap).
-        // Overlap / sub-1ms (gate1Adjacent) leaves it untouched -> wasHeld stays true -> legato
-        // candidate (still subject to legatoProb/prevSlur).  This replaces note-DURATION as the
-        // adjacency proxy with actual gate timing (1ms, sourced to Andrew Belt).  Mono + poly,
-        // mirroring the boundaryInterrupt clear above.  Reverse-safe: gate1Adjacent is edge-timed.
-        if (!gate1Adjacent) {
-            gs.gateHeld = false; gs.holdRemain = 0.f; gs.slurForward = false;
-            gsStep.gateHeld = false; gsStep.holdRemain = 0.f;
-            for (int i = 0; i < numPolyVoices; ++i) {
-                voices[i].gs.gateHeld = false; voices[i].gs.holdRemain = 0.f;
-                voices[i].gs.slurForward = false; voices[i].participating = false;
-                voices[i].gsStep.gateHeld = false; voices[i].gsStep.holdRemain = 0.f;
-            }
-        }
 
         float prevHold = gs.holdRemain;
         wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
