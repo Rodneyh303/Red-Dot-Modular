@@ -196,3 +196,45 @@ the same pitch it is a tie." Apply the SAME at STEP_GATE onsets within a main ga
 Consistency summary — at each STEP_GATE onset the engine does exactly what it does at a clock step:
 rest/legato/accent evaluated, melody/octave/q-mix drawn, Tie/Legato emergent from pitch equality,
 quantiser CV sampled. STEP_GATE just changes the RESOLUTION at which "a step" happens inside a main gate.
+
+## Ghost-fill: notes OUTSIDE the gate envelope via the VARIATION lane (Rodney)
+STATUS: design agreed; not built. This is the ONE feature that deliberately opens the gate-mode ceiling
+(output onsets outside the incoming gate union). Bounded and opt-in.
+
+### Why it can exist cleanly
+- **Variation is the one lane UNUSED in gate mode.** Repurpose it here rather than adding a lane —
+  and semantically consistent: filling gaps IS "departing from the played pattern", which is what
+  variation means. Name it **VARIATION/GHOST** so it reads as "the variation lane, whose gate-mode job
+  is outside-gate notes".
+- **Patching alone cannot do this** (retracted an earlier claim): a second clock-mode instrument
+  overlays a whole part, not gap-fill; masking it by the inverted gate gives foreign scale, no
+  correlation, separate voice frame, not reversible. Ghost-fill is musical only if the ghosts share the
+  SAME generator's scale, correlation, voice frame and reversibility — so it must be internal.
+
+### Mechanism (all on the SUBGATE grid — depends on STEP_GATE patched)
+- **Placement**: outside-gate subgate cells (main gate LOW, playhead advancing — today's `forced Rest`
+  branch in executeModeBSubdivided). At each such cell, roll the VARIATION/GHOST probability; if it
+  fires, a ghost note is born.
+- **Length**: ONE subgate cell. Note length is kept OUT — ghosts are sized by the subgate, not by
+  NOTE_VALUE. Longer ghosts arise by LEGATO tying consecutive ghost cells — the same way in-gate note
+  length emerges from ties. One sizing rule, not two.
+- **Pitch**: generated from the melody/octave lanes as clock mode does (no incoming pitch in a gap).
+  This is the one line-crossing (gate mode generating pitch), confined to gap cells and gated by
+  variation. Per-voice + correlated + reversible for FREE, because variation is already a lane with the
+  Sands/CA machinery.
+- **Legato is CONTINUOUS across the gate->gap boundary**: the legato decision applies at the next
+  outside-gate subgate onset exactly as inside a gate — tie or re-articulate ghost cells, and govern
+  whether a note carries past the gate edge into the first ghost cell. One rule, one grid, three regions
+  (in-gate / boundary / gap) treated identically. The "one model" property holds even here.
+
+### Dependency and default
+- **Requires STEP_GATE patched** — no subgate grid, no placement clock or length quantum, so
+  VARIATION/GHOST is inert (or falls back to plain variation) when STEP_GATE is unpatched. Clean, and
+  discoverable: patch a subgate clock and turn up variation -> gaps start filling.
+- Plain gate mode (no subgate, or variation at 0) keeps the ceiling intact — output onsets a subset of
+  the incoming gates. Ghost-fill is strictly opt-in.
+
+### Scope line for the manual
+Gate mode reworks the ARTICULATION of your gates — chop and tie within and across gates, output onsets a
+subset of the gate union — UNLESS variation/ghost + subgate is engaged, which is the one deliberate way
+to add correlated, reversible notes in the gaps, on the subgate grid.
