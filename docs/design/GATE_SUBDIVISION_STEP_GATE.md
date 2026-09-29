@@ -220,8 +220,17 @@ STATUS: design agreed; not built. This is the ONE feature that deliberately open
   length emerges from ties. One sizing rule, not two.
 - **Pitch**: generated from the melody/octave lanes as clock mode does (no incoming pitch in a gap).
   This is the one line-crossing (gate mode generating pitch), confined to gap cells and gated by
-  variation. Per-voice + correlated + reversible for FREE, because variation is already a lane with the
-  Sands/CA machinery.
+  variation.
+- **Per-voice behaviour comes from the OTHER lanes, not from variation.** VARIATION is a MONO strand
+  (poly voices mirror mono — SequencerEngine.hpp:310, "VARIATION/LEGATO are mono STRANDS, not poly
+  lanes"), so it decides WHERE ghosts appear as a single pattern-level choice for the whole ensemble —
+  which is correct, placement is a pattern decision. Then each ghost cell is just an ONSET, and the
+  POLY lanes treat it exactly like any in-gate onset: REST thins it per voice, LEGATO ties/re-articulates
+  per voice, ACCENT emphasises per voice — all using the algorithms they already run. So per-voice +
+  correlated ghosting IS achieved, located in the poly rest/legato/accent lanes, not in variation.
+  (Earlier draft wrongly claimed variation itself gives this "for free" — it does not; variation is
+  mono. REVERSIBLE is still free — variation rides the Philox spine.) No lane is promoted to poly;
+  nothing changes about which lanes are mono vs poly.
 - **Legato is CONTINUOUS across the gate->gap boundary**: the legato decision applies at the next
   outside-gate subgate onset exactly as inside a gate — tie or re-articulate ghost cells, and govern
   whether a note carries past the gate edge into the first ghost cell. One rule, one grid, three regions
