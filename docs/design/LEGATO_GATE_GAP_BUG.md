@@ -286,3 +286,29 @@ Therefore:
 Do NOT recruit restBeatsLegato to police gaps (an earlier tempting idea) — it would conflate a
 generated-rest rule with structural-gap handling and couple two unrelated musical choices. Keep them
 independent: generated-rest behaviour and gap behaviour are set by different controls.
+
+## RESOLVED (Rodney) — two honest modes; the "advance on falling edge" idea is retired
+Explored (thought experiment): a False mode where the FALLING edge holds the gate high AND advances the
+playhead to the next step, re-drawing the slur there, so a slur is not blindly carried to the next rise.
+REJECTED — it cannot distinguish a long pause from a fall-then-rise-1-sample-later, so a tight fall/rise
+double-advances the playhead (fall advances, then the near-immediate rise advances again) -> spurious
+playhead JUMPS. Root cause is the SAME causality wall as the ms timer: a falling edge cannot know whether
+a rise is imminent (that is 1 sample of lookahead), so it cannot classify itself as "gap" vs "half of a
+tight boundary". Every clever middle option needs lookahead and fails identically.
+
+**Decision — the only two options that need no lookahead, exposed as a context-menu toggle
+("Falling edge beats gate legato"):**
+- **TRUE = abutting-gates-only (sample-accurate).** A falling edge ends note and slur. Ties only when the
+  source holds/abuts the gate to the next rise (overlap / <=1-sample). Deterministic, no smear, needs a
+  clean source (Impromptu, or logic/latch to hold the gate to the next rise). Never ties across a rest or
+  a gap.
+- **FALSE = tie across gaps into the next gate.** The module-layer bridge holds the gate across the gap
+  and the slur ties into the next gate whenever it arrives. Works with ANY sequencer. Not
+  sample-accurate / not seed-exact (the tie depends on live gate timing). BOUNDED not by a timer but by
+  the ARRIVING NOTE: the bridge proposes, the next note's own legato roll disposes, so it does not tie
+  across a bar of silence unless that note actually slurs. This is what makes it musical, and it needs no
+  cap.
+Default FALSE (works out-of-box with the common gapped source; TRUE for clean sources wanting
+determinism). Same chosen mode governs subgate adjacency, per event, no grid assumption.
+This SUPERSEDES all earlier framings in this doc (timer, remove-both, overlap-only-forever,
+advance-on-fall). The two modes above are final.
