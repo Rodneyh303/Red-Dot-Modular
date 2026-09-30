@@ -302,12 +302,20 @@ tight boundary". Every clever middle option needs lookahead and fails identicall
   source holds/abuts the gate to the next rise (overlap / <=1-sample). Deterministic, no smear, needs a
   clean source (Impromptu, or logic/latch to hold the gate to the next rise). Never ties across a rest or
   a gap.
-- **FALSE = tie across gaps into the next gate.** The module-layer bridge holds the gate across the gap
-  and the slur ties into the next gate whenever it arrives. Works with ANY sequencer. Not
-  sample-accurate / not seed-exact (the tie depends on live gate timing). BOUNDED not by a timer but by
-  the ARRIVING NOTE: the bridge proposes, the next note's own legato roll disposes, so it does not tie
-  across a bar of silence unless that note actually slurs. This is what makes it musical, and it needs no
-  cap.
+- **FALSE = tie across gaps into the next gate.** A slur-forward-COMMITTED note whose gate ends holds
+  the gate high across the gap (bridge); when the next gate arrives, **legato continues INTO it** — the
+  tie forms, because the PREDECESSOR committed. The lead-commits handshake (slurForward -> prevSlur) is
+  applied unchanged across the gap; the gap only means the gate was held high in between.
+  Chain rules at the arriving gate:
+    1. if the arriving gate is decided a REST -> silenced, chain ENDS (a rest breaks it);
+    2. else the note plays (tied IN from the predecessor) and REDRAWS its OWN legato to decide whether
+       IT slurs forward to the NEXT gate. Commits -> chain continues; does not -> chain ENDS WITH this
+       gate (it still tied in).
+  So the arriving note's redraw governs tying OUT, NOT tying in — the incoming tie is already earned by
+  the predecessor. **CORRECTION of an earlier note:** FALSE mode does NOT self-bound the gap. A committed
+  slur ties into the next gate REGARDLESS of gap length; the ONLY brake on "tie across a bar of silence"
+  is a REST decision on the arriving note. That is intended in FALSE mode. Not sample-accurate / not
+  seed-exact (depends on live gate timing).
 Default FALSE (works out-of-box with the common gapped source; TRUE for clean sources wanting
 determinism). Same chosen mode governs subgate adjacency, per event, no grid assumption.
 This SUPERSEDES all earlier framings in this doc (timer, remove-both, overlap-only-forever,

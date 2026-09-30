@@ -325,7 +325,11 @@ aligned to main gates; wonky or steady both allowed):
   grid owns it?
 - main-gate rise/fall edges rarely align with subgate cell boundaries, so there is routinely a PARTIAL
   cell at each end of every gate. Define its treatment.
-Decide the boundary rule deliberately (same care as the legato edge cases), do not let it fall out of
-implementation order. Candidate framings to weigh tomorrow: own-by-where-the-cell-STARTS;
-own-by-where-the-cell's-ONSET-falls; or clip cells at main-gate edges so a straddling cell splits into an
-in-gate part and a gap part. Not decided.
+**Provisional rule (Rodney's first cut — NOT settled):** a subgate cell is GHOST if it STARTS between a
+main-gate FALL and the next RISE, and RATCHET otherwise. I.e. classify by where the cell STARTS relative
+to the main-gate envelope — decidable at the cell's onset, no lookahead. This follows gate mode cleanly.
+**Still needs due consideration** for the STRADDLE cases: a cell that starts in-gate but the main gate
+falls partway through it, or starts in a gap but a main gate rises mid-cell — "classify by start" gives
+AN answer but maybe not the musically right one. Alternatives to weigh: own-by-where-the-ONSET-falls;
+or clip cells at main-gate edges so a straddling cell splits into an in-gate (ratchet) part and a gap
+(ghost) part. Provisional = classify-by-start; final = TBD after testing.
