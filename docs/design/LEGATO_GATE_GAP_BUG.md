@@ -377,3 +377,33 @@ Open point to weigh (Rodney):
   by a legato roll at the rest.
 - Possible tie-in: the gap "rest step" is the same region where GHOSTS live and where a SUBGATE grid
   would step — so sustain-across-rest and ghost-fill may be one region under one grid. Not resolved.
+
+## MULL — two toggles instead of one mode: "join abutting gates" + "join across rest"
+Status: to mull, not decided. Rodney: the single TRUE/FALSE ("incoming rest beats legato") mode forces
+two INDEPENDENT decisions to move together. Split into two toggles:
+- **Join abutting gates** — do physically abutting/overlapping gates fuse (legato)?
+- **Join across rest** — do slurs bridge a gap/incoming-rest into the next gate? (= "incoming rest beats
+  legato" INVERTED: join-across-rest ON == incoming-rest-does-NOT-beat-legato.)
+
+Four combinations, three clearly useful; two toggles strictly DOMINATE the single mode (same reachable
+behaviours plus two more, and each toggle NAMES a real thing):
+
+| join abutting | join across rest | behaviour |
+|---|---|---|
+| off | off | source gate-shape never creates legato; only Monsoon's own legato lane matters, gates always re-articulate (NOT reachable by the single mode) |
+| on  | off | legato only where gates abut/overlap; gaps stay articulated = the old "TRUE" |
+| on  | on  | abutting ties AND gaps bridge = the old "FALSE" |
+| off | on  | UNUSUAL but coherent: abutting notes do NOT fuse, gaps DO bridge -> legato only THROUGH silences, never between struck-together notes. Leave reachable; document as unusual. |
+
+Ties into the settled naming: "join across rest" already = the incoming-rest toggle; the NEW one is
+"join abutting gates". Both named for what they do, both independent. Would supersede the single-mode
+framing above.
+
+### Test-source problem (Rodney)
+To exercise these you need ONE sequence with SOME abutting boundaries and SOME gapped — fiddly.
+- Couldn't see how to get abutting gates out of PhraseSeq16 (its gate lengths don't butt cleanly).
+- Cleanest source: a per-step GATE-LENGTH sequencer — set some steps to ~100% (abut the next) and some
+  short (leave a gap) -> both kinds in one deterministic pattern. Impromptu GateSeq / a sequencer with
+  per-step gate width. (Confirm which actually produces truly abutting/overlapping gates.)
+- Fallback: OR/merge two gate streams — one high-duty (abutting), one triggered (gapped) — on alternating
+  steps.
