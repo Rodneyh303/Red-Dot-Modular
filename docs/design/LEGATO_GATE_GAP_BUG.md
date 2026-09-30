@@ -320,3 +320,24 @@ Default FALSE (works out-of-box with the common gapped source; TRUE for clean so
 determinism). Same chosen mode governs subgate adjacency, per event, no grid assumption.
 This SUPERSEDES all earlier framings in this doc (timer, remove-both, overlap-only-forever,
 advance-on-fall). The two modes above are final.
+
+
+## NAMING (Rodney) — two "beats legato" toggles, one per rest KIND
+The gate-mode TRUE/FALSE toggle is best understood and NAMED as **"incoming rest beats legato"** — the
+STRUCTURAL-gap twin of the existing generated-rest toggle. Same question ("does a rest break a slur?")
+asked of two different rest SOURCES:
+- **"generated rest beats legato"** (rename of the existing `restBeatsLegato`) — governs rests the module
+  ROLLS (rest lane). Menu label today is "Rest beats legato".
+- **"incoming rest beats legato"** (new) — governs STRUCTURAL rests / gaps (source sent no gate):
+  ON = TRUE = a gap beats the slur (abutting-gates-only, sample-accurate); OFF = FALSE = slur survives
+  the gap and ties into the next gate.
+
+Keep them TWO INDEPENDENT toggles — a user may want generated rests to break slurs (phrasing) while gaps
+do not (tie across a sequencer's staccato gaps), or the reverse. Do NOT merge into one "rest beats
+legato". **Rename the existing `restBeatsLegato` -> `generatedRestBeatsLegato`** (and the menu label to
+"Generated rest beats legato") to avoid conflation with the new incoming one.
+
+Rename footprint: 5 refs / 4 files (MonsoonWidget.cpp menu label, SequencerEngine.cpp/.hpp,
+MonsoonPersistenceManager.cpp x2). NOTE the persistence manager reads/writes it to patch JSON — either
+keep the JSON KEY as the old string for save-compat while renaming the C++ symbol, or migrate old keys
+on load. Pre-release so breaking the key is acceptable, but decide deliberately.
