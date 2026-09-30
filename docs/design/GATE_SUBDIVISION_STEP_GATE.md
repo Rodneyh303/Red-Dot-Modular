@@ -328,8 +328,26 @@ aligned to main gates; wonky or steady both allowed):
 **Provisional rule (Rodney's first cut — NOT settled):** a subgate cell is GHOST if it STARTS between a
 main-gate FALL and the next RISE, and RATCHET otherwise. I.e. classify by where the cell STARTS relative
 to the main-gate envelope — decidable at the cell's onset, no lookahead. This follows gate mode cleanly.
-**Still needs due consideration** for the STRADDLE cases: a cell that starts in-gate but the main gate
-falls partway through it, or starts in a gap but a main gate rises mid-cell — "classify by start" gives
-AN answer but maybe not the musically right one. Alternatives to weigh: own-by-where-the-ONSET-falls;
-or clip cells at main-gate edges so a straddling cell splits into an in-gate (ratchet) part and a gap
-(ghost) part. Provisional = classify-by-start; final = TBD after testing.
+### Straddle resolution (Rodney, initial — to confirm at build): MAIN GATE WINS AT ITS EDGES, asymmetrically
+- **Falling edge — main gate wins (clip).** A cell that starts IN-gate but the main gate falls partway
+  through it (a ratchet/subdivision) TERMINATES at the boundary — it abuts the gate's end, does not run
+  on into the gap. A subdivision belongs to the note it subdivides, so it ends when the note ends
+  (subject to the normal gap-legato rules for the note itself).
+- **Rising edge — a GHOST may TIE THROUGH it.** A cell that starts in a gap (a ghost) reaching a main
+  gate does NOT simply hard-cease: if the ghost is a slur-forward candidate it can LEGATO into the
+  incoming note — so the output note is already sounding (from the ghost) and CONTINUES through the rise
+  with no re-attack. **The OUTPUT gate is therefore allowed to START BEFORE the main gate's rising edge**
+  (a ghost-led pickup/anticipation). This is fine: gate mode re-articulates the input, it does not
+  slavishly reproduce main-gate timing — the main-gate rise AUTHORISES a note; legato decides whether it
+  is a fresh attack or a continuation. If the ghost does NOT tie, it ceases at the boundary and the main
+  note attacks fresh.
+- **Decision reuse:** ghost-into-note uses the SAME legato handshake as note-to-note (ghost commits
+  slurForward; the arriving main-gate note decides tie-in per the FALSE checkpoint logic). One model — a
+  boundary is a boundary; ghost->note is governed like note->note.
+- **Degenerate guard:** a cell whose end coincides exactly with a boundary must collapse cleanly, not
+  emit a zero-/1-sample sliver.
+- **Robustness:** clipping at main-gate edges makes subgate-grid REGULARITY irrelevant at boundaries —
+  wonky or steady subgates both honour main-gate timing exactly (except the deliberate ghost-tie-through
+  early start). This is the property we wanted; clip delivers it for free.
+Open sub-question for the weekend: confirm the ghost-tie-through-rise default (tie vs always
+re-articulate) sounds right; the machinery already supports tie.
