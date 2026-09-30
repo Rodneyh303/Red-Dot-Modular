@@ -308,3 +308,24 @@ between them, organised into sections by Change Alley, sliding from faithful to 
 Gate mode reworks the ARTICULATION of your gates — chop and tie within and across gates, output onsets a
 subset of the gate union — UNLESS variation/ghost + subgate is engaged, which is the one deliberate way
 to add correlated, reversible notes in the gaps, on the subgate grid.
+
+
+## OPEN (Rodney) — subgate applicability: within vs outside the main-gate envelope
+The ratchet/ghost split is defined by MAIN-GATE-ENVELOPE MEMBERSHIP, and this must be settled BEFORE the
+ratchet/ghost build, not after:
+- subgate cell INSIDE a main gate (gate1High) -> RATCHET / subdivision (SUBGATE_RATCHET grid): chop /
+  re-articulate the sounding note.
+- subgate cell OUTSIDE (main gate low, a gap) -> GHOST (SUBGATE_GHOST grid): place ghost notes.
+So "within vs outside the envelope" is the switch selecting which behaviour a subgate edge triggers, and
+it maps onto the two subgate inputs.
+
+**The hard part is cells that CROSS the envelope boundary** (must be handled — subgates are NOT assumed
+aligned to main gates; wonky or steady both allowed):
+- a subgate cell that STRADDLES a main-gate edge (starts inside, ends in the gap, or vice versa) — which
+  grid owns it?
+- main-gate rise/fall edges rarely align with subgate cell boundaries, so there is routinely a PARTIAL
+  cell at each end of every gate. Define its treatment.
+Decide the boundary rule deliberately (same care as the legato edge cases), do not let it fall out of
+implementation order. Candidate framings to weigh tomorrow: own-by-where-the-cell-STARTS;
+own-by-where-the-cell's-ONSET-falls; or clip cells at main-gate edges so a straddling cell splits into an
+in-gate part and a gap part. Not decided.

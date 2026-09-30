@@ -249,9 +249,13 @@ Per-mode caveat stated in the menu/manual: sample-accurate = reproducible; tie-a
 not seed-exact and slightly smears the held gate end.
 
 ### Still true regardless of mode
-- The long-gap bug (tie across a BAR of silence) must not happen even in tie-across-gaps mode: bound the
-  bridge by the committing note's own natural duration where knowable, or a generous musical cap, so a
-  slur reaches the NEXT note but not an arbitrarily distant one. (Open: exact cap for the bridge mode.)
+- **No upper bound / time cap is needed (Rodney): the ARRIVING NOTE decides.** In tie-across-gaps mode
+  the bridge keeps slurForward alive across the gap, but a tie only FORMS if the arriving note's own
+  legato check (prevSlur + its legato roll) passes — it must NOT connect unconditionally just because
+  the bridge was up. A note after a long silence won't roll legato -> fresh note. So the "long-gap bug"
+  was really the JOIN connecting unconditionally, not the bridge lasting too long; re-consulting the
+  arriving note's decision bounds it for free at any gap length. The bridge proposes; the next note
+  disposes.
 - Subgate uses the SAME chosen mode, judged per event, no grid-regularity assumption.
 - slurForward stays the LEAD commitment either way; only its gate-bridging differs by mode.
 
