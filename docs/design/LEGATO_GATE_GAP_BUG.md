@@ -262,3 +262,27 @@ not seed-exact and slightly smears the held gate end.
 ### Supersedes
 The "remove both / overlap-only-forever" conclusion is replaced by this two-mode choice. The FINAL MODEL
 section above defines the sample-accurate mode; the bridge (pre-removal behaviour) defines tie-across-gaps.
+
+
+## FINDING (Rodney, verified) — TWO kinds of "rest" are already structurally separate; gap has no representation
+Checked the engine: executeModeB is **edge-driven** — its body runs under `if (gate1Rise)`. In a GAP
+(gate low, no rise) it does nothing: no executeStep, no MonoDecision::Rest, no event. So:
+- **Generated rest** = a real MonoDecision::Rest produced by executeStep AT A RISE when the rest lane
+  rolls. It exists, is a decision, and feeds `restBeatsLegato`. (Clock and gate mode.)
+- **Structural gap** = the silence between rises. NOT represented at all — no decision, no Rest. Just
+  absence of a rise.
+So the two are ALREADY not conflated (a gap never becomes a Rest, so restBeatsLegato never sees a gap).
+Nothing to untangle there — the concern was that a gap might be synthesised into a Rest; it is not.
+
+### Consequence for the design (clean separation, two controls)
+Because executeModeB only fires at rises, the ONLY thing that carries a slur across a gap is the
+MODULE-LAYER gate-hold bridge (gateOpen/slurForward in Monsoon.cpp) keeping the gate "held" across the
+gap so the next rise sees wasHeld. Remove the bridge -> the gap is dead time and the next rise is an
+unconditional fresh executeModeB call with no pending-slur memory (why removal killed gapped legato).
+Therefore:
+- **`restBeatsLegato` governs GENERATED RESTS only** (rolled at a rise). Unchanged.
+- **The gap-handling MODE (sample-accurate vs tie-across-gaps) governs the BRIDGE only** (does the gate
+  stay held across a structural gap). Separate control, separate concept.
+Do NOT recruit restBeatsLegato to police gaps (an earlier tempting idea) — it would conflate a
+generated-rest rule with structural-gap handling and couple two unrelated musical choices. Keep them
+independent: generated-rest behaviour and gap behaviour are set by different controls.
