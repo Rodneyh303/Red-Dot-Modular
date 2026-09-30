@@ -157,3 +157,70 @@ held-predecessor model, intact.
 2. Ghost legato across the gate->gap boundary still ties (the kept ghostSounding term) — a legato note
    carries into the first ghost cell.
 Both green + forward/reverse bitwise green => closed.
+
+## FINAL MODEL (Rodney) — sample-accurate overlap / <=1-sample tie; supersedes the timer thread
+The timer/tolerance thread above is SUPERSEDED. Decision and the reasoning that forces it:
+
+### Why not a gap tolerance (causal + accuracy, not taste)
+To tie across a real gap you must HOLD the slur-candidate gate open and WAIT to see if a rise arrives.
+That waiting is fatal twice over:
+1. If you ultimately DON'T tie, you have held the gate open past its true falling edge -> the gate END
+   is smeared by the wait -> NOT sample-accurate (a downstream envelope release starts late).
+2. Waiting N ms to "think about" legato also DELAYS the next note's onset by N ms -> you corrupt the
+   NEXT gate's start too. You throw out two edges' timing to maybe save one.
+Both break the reversible/seed-deterministic contract. So: **sample accuracy is non-negotiable; no
+wait-and-see gap tolerance.**
+
+### The model
+Legato is committed at the LEAD (slurForward, as today) but RESOLVED in real time by edges, because in
+gate mode the note's true length is not known until it ends (unlike clock mode, where the grid
+guarantees the landing). Resolve with NO lookahead:
+- **Rise while the previous gate is still HIGH (overlap)** -> TIE. Zero latency, decided at the rise.
+- **Fall then Rise on the very NEXT sample (<=1-sample gap)** -> TIE. At most a 1-sample gate
+  perturbation, which is ~50x shorter than VCV's 1ms minimum-detectable gate, so it is below audibility
+  AND below every downstream module's edge threshold — effectively free, no meaningful smear.
+- **Fall then Rise >=2 samples later** -> FRESH note. This is exactly the boundary where "decide now"
+  becomes "decide by waiting", and waiting is what breaks accuracy. So the cutoff is not a tuned
+  threshold — it is the largest gap resolvable WITHOUT waiting (1 sample).
+- **Fall then no Rise** -> the note just ends (gate closes sample-accurately).
+Edge detection itself is 1 sample (Schmitt, already used: getGate1SchmittHigh), so none of this adds
+latency.
+
+This is Rodney's ORIGINAL instinct, restored: "gate high + another rising edge (overlap), or gate low
+for one sample then a rise -> tie candidate; any gap >=2 samples -> fresh note."
+
+### Why NOT the earlier "overlap-only" push, and why NOT the timer
+- Strict overlap-only (rise-before-fall ONLY) was slightly too strict: the <=1-sample-gap case is also
+  sample-accurate (1 sample is below every threshold) and should tie. Include it.
+- The 1ms timer / any ms tolerance is too GENEROUS and non-causal (it waits, it smears, and it wrongly
+  cleared slurForward). Removed.
+
+### What this means for the USER (honest, document it)
+A source whose consecutive notes have a MULTI-SAMPLE gap (most sequencers/Rampage phrasing gaps are
+ms = tens-to-hundreds of samples) will NOT legato — correctly, because it cannot be done
+sample-accurately. To get legato, the source must present overlapping gates or a <=1-sample gap, i.e.
+genuinely hold/abut the gate across the boundary. NOTE: a Count Modula (or similar) TIE is NOT this — a
+tie there is ONE continuous high gate = ONE note (no second onset), so it does not exercise the
+two-distinct-onsets case at all. The test source must emit TWO distinct rising edges with a 0-1 sample
+low between them (e.g. a high-duty square / a period-minus-one-sample pulse), not a held gate.
+
+### Fix (both layers), superseding "remove both"
+- Mode B IMPL 2b (Monsoon.cpp): tie candidacy = overlap (prev gate still high at rise) OR the
+  fall-was-exactly-1-sample-ago case; else fresh. NO ms timer, NO unconditional slurForward bridge.
+  slurForward remains the LEAD commitment (Lantern/SLEG) but does not hold the gate open across a
+  multi-sample gap.
+- Remove the gate1Adjacent ms-timer/accumulator (the ms version); if a <=1-sample check is cleanest as
+  a tiny 1-sample-memory flag, that is fine — it is not a ms timer and does not wait.
+- Reverse-safe: the 1-sample decision is edge-timed, direction-agnostic. Keep forward/reverse bitwise.
+
+### SAME MODEL AT SUBGATE LEVEL (the reason to get it right now)
+The subgate grid is NOT guaranteed regular (user may feed wonky or steady subgates). So subgate
+adjacency uses the SAME edge rule, judged per event, NOT an assumed grid spacing: a subgate cell ties
+to the next iff overlap or <=1-sample gap between the cell's own fall and the next rise. No grid-
+regularity assumption anywhere — robust to wonky subgate input by construction.
+
+### Test (needs a real 2-onset source — Rodney to supply)
+Source emitting two distinct rising edges with 0-1 sample low between (high-duty square / pulse =
+period-1). Assert: overlap -> tie; 1-sample gap -> tie; >=2-sample gap -> fresh; long gap -> fresh (the
+original bug); held-single-gate (Count Modula tie) -> ONE note (not a legato pair). Forward/reverse
+bitwise green.
