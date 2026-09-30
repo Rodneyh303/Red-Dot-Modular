@@ -349,5 +349,12 @@ to the main-gate envelope — decidable at the cell's onset, no lookahead. This 
 - **Robustness:** clipping at main-gate edges makes subgate-grid REGULARITY irrelevant at boundaries —
   wonky or steady subgates both honour main-gate timing exactly (except the deliberate ghost-tie-through
   early start). This is the property we wanted; clip delivers it for free.
-Open sub-question for the weekend: confirm the ghost-tie-through-rise default (tie vs always
-re-articulate) sounds right; the machinery already supports tie.
+**Tie-vs-re-articulate at the rise is NOT a default — it is the GHOST'S OWN legato roll (Rodney).** A
+ghost is just a note and rolls slurForward like any note:
+- ghost COMMITTED slurForward -> ties through the rise -> note continues, no re-attack, output-gate-start
+  precedes the main gate (pickup);
+- ghost did NOT commit -> ceases at the boundary -> main note attacks FRESH (hard re-articulate).
+So it is EMERGENT from the ghost's legato probability, per voice, correlated, reversible — exactly like
+note-to-note legato. High legato -> more ghost pickups; low legato -> ghosts stay separate. No special
+case: a ghost decides tying-OUT like every note, the main-gate note decides tying-IN like every arriver.
+One model to the corner. Nothing left open here.
