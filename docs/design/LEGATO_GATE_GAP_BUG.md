@@ -224,3 +224,37 @@ Source emitting two distinct rising edges with 0-1 sample low between (high-duty
 period-1). Assert: overlap -> tie; 1-sample gap -> tie; >=2-sample gap -> fresh; long gap -> fresh (the
 original bug); held-single-gate (Count Modula tie) -> ONE note (not a legato pair). Forward/reverse
 bitwise green.
+
+## DECISION (Rodney): TWO modes via context menu — neither inference is universally right
+Inference from gate timing cannot be BOTH sample-accurate AND gap-tolerant (needs the future). So do not
+pick one globally — expose both as a context-menu choice, matched to the source:
+
+- **Sample-accurate legato** — overlap / <=1-sample tie (the FINAL MODEL above). Correct, no gate-end
+  smear, fully seed-REPRODUCIBLE. Requires a source that holds/abuts the gate across the boundary
+  (e.g. Impromptu and similar can emit sample-accurate gates). A gapped source simply won't legato in
+  this mode — correctly.
+- **Tie across gaps** — the slurForward bridge to the next rise whenever it arrives. Works BROADLY
+  (any gate sequencer), at the cost of: gate-END smear on a landed slur (the gate is held open to the
+  next onset), and NOT seed-reproducible (the slur landing depends on live gate timing).
+
+Justification for two: **not all sequencers can generate a 1-sample rise held high until the next rise
+without dropping.** A sample-accurate-only instrument cannot legato with those; a bridge-only instrument
+smears. Neither is wrong — they suit different sources.
+
+### Default: TIE ACROSS GAPS
+Most sources a user first patches will NOT produce sample-accurate gates, so a sample-accurate DEFAULT
+makes the out-of-box experience "legato is broken" (the failure mode to avoid). Default to the mode that
+works broadly; expose sample-accurate for users whose source is clean and who want determinism.
+Per-mode caveat stated in the menu/manual: sample-accurate = reproducible; tie-across-gaps = broad but
+not seed-exact and slightly smears the held gate end.
+
+### Still true regardless of mode
+- The long-gap bug (tie across a BAR of silence) must not happen even in tie-across-gaps mode: bound the
+  bridge by the committing note's own natural duration where knowable, or a generous musical cap, so a
+  slur reaches the NEXT note but not an arbitrarily distant one. (Open: exact cap for the bridge mode.)
+- Subgate uses the SAME chosen mode, judged per event, no grid-regularity assumption.
+- slurForward stays the LEAD commitment either way; only its gate-bridging differs by mode.
+
+### Supersedes
+The "remove both / overlap-only-forever" conclusion is replaced by this two-mode choice. The FINAL MODEL
+section above defines the sample-accurate mode; the bridge (pre-removal behaviour) defines tie-across-gaps.
