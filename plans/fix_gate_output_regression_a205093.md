@@ -1,47 +1,43 @@
-# URGENT regression — gate output dead in clock/phase modes (A, C, E, F) on master
+# URGENT regression — GATE_OUTPUT dead in modes A, B, C, D (all tested) on master
 
-**Introduced by `a205093`** ("Fix: Mode D gate topology unified with Mode B"), merged to master in
-PR #275. Symptom (Rodney, in Rack): **no gate output in Mode A, C** (and by the same cause E, F) —
-and Mode D's gate input moved. Suite is GREEN, so no test caught it.
+Symptom (Rodney, in Rack): no gate output across modes A, B, C, D. Suite GREEN — nothing caught it.
 
-## Diagnosis
-`a205093` removed the "post-drive GATE_OUTPUT override" (see the comment it left at
-`src/Monsoon.cpp` ~1005) on the assumption that `gs.process()` inside `outputGenerator->drive()`
-would carry the gate from engine state. BUT the gate-state writer `engine.gs.gateHeld = gateOpen`
-now lives ONLY inside the gate-mode driver block guarded by `(modeSelect == 1 || modeSelect == 3)`
-(~Monsoon.cpp:937). For the CLOCK/PHASE modes — A(0), C(2), E(4), F(5) — that block never runs, so
-when the override was removed those modes lost the thing that set their output gate state. Result:
-`gs.gateHeld` is not driven for A/C/E/F → no gate out.
+## IMPORTANT: diagnose by BISECT/BUILD, not by trusting this doc's commit-pointing
+This was mis-attributed to `a205093` (the Mode D fix) at first; closer reading says `a205093` is
+clean and the GATE_OUTPUT-write removal happened EARLIER in the subgate work (`d0b8ea4` "Schmitt
+gate edges / restore MODEL 1 legato bridge" and `10f4c68` "subGate ghost GATE re-plumb" each removed
+a GATE_OUTPUT line). **CC: git bisect in Rack (does GATE_OUTPUT fire?) across 10f4c68..HEAD to confirm
+the exact culprit before fixing.** Do not assume.
 
-The driver block itself was CORRECTLY added for B/D. The bug is that the SAME commit removed the
-gate-state source the OTHER modes depended on, without giving them a replacement.
+## Likely root cause (verify)
+`src/dsp/managers/MonsoonOutputGenerator.cpp:32` does `float gateV = outputs[GATE_OUTPUT].getVoltage();`
+— it READS the output jack's current voltage, mutes it, and writes it back (line 159
+`setGateWithMute_(outputs[GATE_OUTPUT], gateV, ...)`). So the generator is read-modify-write; it does
+NOT compute the gate from engine state. The code that USED to write GATE_OUTPUT from `gs` state (the
+"post-drive GATE_OUTPUT override", per the comment at Monsoon.cpp:1005) was REMOVED during the subgate
+work, on the assumption that `gs.process()` would carry it. If nothing now drives GATE_OUTPUT high from
+`engine.gs.gateHeld`/`gs.process()`, the jack stays low in every mode. That matches "A/B/C/D all dead"
+(shared output stage, not a mode-specific path — the per-mode execute dispatch is unchanged).
 
-(Also: the commit deleted a Mode-D-specific `else if (modeSelect==3 ...)` gate-state block and routed
-D through the B driver — that part is intended, see below.)
+## Fix
+1. **Bisect to confirm** the commit where GATE_OUTPUT stopped firing (Rack test, all modes).
+2. Trace the `gs.gateHeld`/`gs.process()` → GATE_OUTPUT path through
+   `MonsoonOutputGenerator::drive`. Determine whether `gs.process()` is supposed to SET the gate
+   voltage (and regressed) or whether the removed override was the ONLY writer.
+3. Restore a single, correct GATE_OUTPUT writer from engine gate state, shared by ALL modes (B/D's
+   gateHeld driver block sets `gs.gateHeld`; A/C/E/F set it via their step results — the generator must
+   turn `gs` state into the jack voltage for every mode). Do NOT re-introduce the read-back self-write
+   as the source of truth.
+4. Confirm in Rack: all six modes emit a gate on a non-rest step.
 
-## Fix direction (CC: diagnose precisely, then repair — do NOT blind-patch)
-1. Determine how `gs.gateHeld` (and `gsStep.gateHeld`) were set for A/C/E/F BEFORE `a205093` — i.e.
-   what the removed override did for the non-gate modes, or whether the step result's own gate
-   decision was meant to feed `gs` via `executeModeA`/`gs.process()`.
-2. Restore gate-state driving for modes NOT in {1,3}: EITHER keep a version of the removed override
-   scoped to `modeSelect != 1 && modeSelect != 3`, OR repair the clock/phase path so the step
-   decision reaches `gs.gateHeld`. Keep the B/D driver block as-is (it is correct).
-3. Confirm the fix restores A and C gate output in Rack; E/F (phase) share the path so verify too.
+## Mode D input topology (separate, intended — keep + document)
+`a205093` correctly moved Mode D's MAIN gate Gate2→Gate1 (B/D share Gate1=main/Gate2=ratchet/Gate3=ghost,
+the §421 invariant). Keep it; document the breaking change (Mode D main gate is now Gate 1).
 
-## Mode D input topology — confirm, don't revert blindly
-`a205093` moved Mode D's MAIN gate from **Gate 2 → Gate 1** (so B and D share Gate1=main,
-Gate2=ratchet, Gate3=ghost — the §421 mode-agnostic invariant). The engine `executeModeD` now
-correctly reads `input.gate1` as main and mirrors `executeModeB`. This is INTENDED and should stay
-(reverting D to Gate-2-main would break the very invariant the work established). **Decision for
-Rodney:** this is a breaking change to existing Mode D patches (they fed Gate 2). Pre-release, so
-acceptable — just DOCUMENT it (Mode D now takes its main gate on Gate 1, ratchet on Gate 2).
-
-## REQUIRED new test (this is why it shipped silently)
-`test_gate_mode_agnostic` only covers the B≡D q-mix invariant. NOTHING asserts that A/C/E/F actually
-EMIT a gate. Add a per-mode gate SMOKE test: for each of modes A, B, C, D, E, F — clock (or gate)
-running, a non-rest step — assert `GATE_OUTPUT` goes high. This would have caught the regression at
-commit time and must exist before this fix is considered done. Register in run_all.sh.
+## REQUIRED new test — this is why it shipped green
+Add a per-mode GATE SMOKE test: for modes A..F, clock/gate running + a non-rest step, assert
+GATE_OUTPUT goes high. `test_gate_mode_agnostic` only compared B vs D; nothing asserted the most basic
+thing — that a gate comes out. Must land with the fix; register in run_all.sh.
 
 ## Priority
-This is a merged-to-master regression killing four of six modes' core output. Fix BEFORE any other
-roadmap work (seq/quant unification, Sands). Hotfix branch off master.
+Merged-to-master regression killing core output. HOTFIX off master before all other roadmap work.
