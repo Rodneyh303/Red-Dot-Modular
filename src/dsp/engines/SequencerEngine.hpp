@@ -150,12 +150,29 @@ struct SequencerEngine {
     // tails still outrank rest (canRest). See RHYTHM_BEHAVIOUR_POLICIES.md.
 
     // ── Rhythm-behaviour toggles (context menu; see RHYTHM_BEHAVIOUR_POLICIES.md) ──
-    // "Rest beats legato" — when a committed slur (prevSlur) is reaching N+1 and N+1 rolls a
-    // rest: TRUE (default) = rest WINS, cancelling the slur (N+1 silent). FALSE = slur WINS,
-    // the rest roll is IGNORED and N+1 plays as a Legato/Tie (its own drawn pitch, gate-
-    // connected from N). Only affects the case where a genuine committed slur lands on a held
-    // predecessor; a rest on a non-slur note is unaffected.
-    bool restBeatsLegato = true;
+    // "Generated rest beats legato" — governs GENERATED rests (the rest lane rolls a Rest at a
+    // rise). When a committed slur (prevSlur) is reaching N+1 and N+1 rolls a rest: TRUE (default)
+    // = rest WINS, cancelling the slur (N+1 silent). FALSE = slur WINS, the rest roll is IGNORED
+    // and N+1 plays as a Legato/Tie (its own drawn pitch, gate-connected from N). Only affects the
+    // case where a genuine committed slur lands on a held predecessor; a rest on a non-slur note
+    // is unaffected. (Renamed from restBeatsLegato to disambiguate from the incoming-gap toggle;
+    // the patch-JSON key stays "restBeatsLegato" for save-compat.)
+    bool generatedRestBeatsLegato = true;
+
+    // "Incoming rest beats legato" — governs STRUCTURAL gaps (source sent no gate between two
+    // rises; NOT a MonoDecision::Rest, which the engine never synthesises for a gap). Two modes
+    // (LEGATO_GATE_GAP_BUG.md RESOLVED §290):
+    //   FALSE (default) = TIE ACROSS GAPS. The module-layer bridge holds the gate high across the
+    //     gap (gateOpen += slurForward) so the next rise sees wasHeld true; the tie forms because
+    //     the PREDECESSOR committed (slurForward -> prevSlur, unchanged across the gap). The
+    //     arriving note's OWN legato roll governs tying OUT only (it does NOT re-earn the incoming
+    //     tie). A REST decision on the arriving note ENDS the chain. NO self-bound / no timer: a
+    //     committed slur ties into the next gate regardless of gap length; the only brake is a
+    //     rest. Broad (any gate sequencer); not seed-reproducible (depends on live gate timing).
+    //   TRUE = ABUTTING-GATES-ONLY (sample-accurate). A falling edge ends the note+slur; the gate
+    //     is held for ONE sample after the fall (overlap / <=1-sample gap -> tie) then drops (a
+    //     >=2-sample gap -> fresh). No ms timer, no lookahead, no gate-end smear, seed-reproducible.
+    bool incomingRestBeatsLegato = false;
 
     // "Boundary interrupt" — at the phrase boundary (wrap): FALSE (default) = CONTINUE, gate/
     // state carries across the loop (lap 2 can differ from lap 1). TRUE = INTERRUPT, force a

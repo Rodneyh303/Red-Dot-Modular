@@ -904,21 +904,32 @@ void Monsoon::process(const ProcessArgs& args) {
     // lastNoteType) — agrees by construction. This is spec §5's single source of truth.
     //   REST      -> gate LOW (rest punches its hole; §4b rest wins, even over a pending slur).
     //   gate1High -> gate HIGH (the note sounds for exactly the external gate's width).
-    //   gap (low) -> gate LOW.  NO slurForward bridge: a tie requires the previous gate STILL HIGH
-    //                at this rise (overlap / hold) — the held-predecessor invariant (wasHeld =
-    //                gateHeld, note-length nullified).  The bridge that previously held gateHeld =
-    //                slurForward across a gap was the cause of the long-gap legato bug
-    //                (LEGATO_GATE_GAP_BUG.md); with it gone, a gap drops the gate => wasHeld false =>
-    //                fresh note, and overlap keeps it high => tie.  executeStep's connect branch
-    //                already guards on (wasHeld || hadTail) && prevPlayedSounded, so the invariant
-    //                is enforced structurally; slurForward remains the leading-edge commitment for
-    //                the Lantern/SLEG, just not a gate bridge here.
+    //   gap (low) -> governed by the "Incoming rest beats legato" toggle (two-toggle model,
+    //                LEGATO_GATE_GAP_BUG.md RESOLVED §290): a STRUCTURAL gap (source sent no gate)
+    //                is NOT a MonoDecision::Rest; this toggle controls whether the gate stays held
+    //                across it so the next rise sees wasHeld and can tie in.
+    //                  FALSE (default) = TIE ACROSS GAPS: the slurForward bridge holds the gate high
+    //                    across the gap.  The tie forms because the PREDECESSOR committed (slurForward
+    //                    -> prevSlur, unchanged across the gap); the arriving note's own legato roll
+    //                    governs tying OUT only (it does NOT re-earn the incoming tie).  A REST decision
+    //                    on the arriving note ENDS the chain.  No self-bound / no timer: a committed
+    //                    slur ties into the next gate regardless of gap length; the only brake is rest.
+    //                  TRUE = ABUTTING-GATES-ONLY (sample-accurate): hold the gate for ONE sample after
+    //                    the fall (prevGate1SchmittHigh) so overlap / <=1-sample gap ties, then drop
+    //                    it (a >=2-sample gap -> fresh).  No ms timer, no lookahead, no gate-end smear.
+    //                Generated rests (rest lane) are a SEPARATE concern (generatedRestBeatsLegato);
+    //                the two toggles are independent.  slurForward remains the leading-edge commitment
+    //                for the Lantern/SLEG either way; only its gate-bridging differs by mode.
     if (modeSelect == 1 && runGateActive) {
         const bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
         const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
         // A ghost high when a main gate rises keeps the gate open (ghostSounding) -> main legatos in.
         const bool ghostSounding = engine.ghostActive && input.ghostHigh;
-        const bool gateOpen  = !isRest && (gate1High || ghostSounding);
+        // Gap bridge: TRUE = 1-sample hold after the fall (prevGate1SchmittHigh, sample-accurate);
+        //             FALSE = slurForward bridge to the next rise (tie across gaps).
+        const bool gapBridge = engine.incomingRestBeatsLegato ? prevGate1SchmittHigh : engine.gs.slurForward;
+        const bool gateOpen  = !isRest && (gate1High || ghostSounding || gapBridge);
+        prevGate1SchmittHigh = gate1High;   // refresh per-sample (Mode B); used next sample for the 1-sample hold
         engine.gs.gateHeld     = gateOpen;
         // STEP mirror (un-fused): re-articulates every gate, so it NEVER bridges the gap.
         engine.gsStep.gateHeld = !isRest && (gate1High || ghostSounding);

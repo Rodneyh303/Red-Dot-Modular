@@ -578,6 +578,10 @@ struct Monsoon : Module {
     // decision).  Held between onsets and ANDed with the mono gate envelope (IMPL 2b) so a poly
     // voice's gate WIDTH follows Gate 1 / ghost like the mono gate, not a 1-step internal hold.
     bool polyVoiceActive[15] = {};
+    // Per-sample memory of Gate 1's Schmitt level (TRUE-mode legato: holds the gate for 1 sample
+    // after the fall so an overlap / <=1-sample gap ties; a >=2-sample gap drops it -> fresh).
+    // Edge-timed (reset while HIGH) => direction-agnostic / reverse-safe. No ms timer.
+    bool prevGate1SchmittHigh = false;
     // Which dice the LIVE mode drives, per lane: false=main (promote, A walks),
     // true=trial (anchored A, endless variations on a theme). Persisted.
 

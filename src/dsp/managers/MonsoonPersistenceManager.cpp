@@ -21,7 +21,9 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "gate3Target", json_integer(m->gate3Target));
     json_object_set_new(root, "invertMuteLogic", json_boolean(m->invertMuteLogic));
     json_object_set_new(root, "modVizMonsoonMelody", json_boolean(m->modVizMonsoonMelody));
-    json_object_set_new(root, "restBeatsLegato",  json_boolean(m->engine.restBeatsLegato));
+    // Key stays "restBeatsLegato" for save-compat; C++ symbol renamed to generatedRestBeatsLegato.
+    json_object_set_new(root, "restBeatsLegato",  json_boolean(m->engine.generatedRestBeatsLegato));
+    json_object_set_new(root, "incomingRestBeatsLegato", json_boolean(m->engine.incomingRestBeatsLegato));
     json_object_set_new(root, "boundaryInterrupt", json_boolean(m->engine.boundaryInterrupt));
     json_object_set_new(root, "perVoiceArticulation", json_boolean(m->engine.perVoiceArticulation));
     // Per-lane direction: the 4-state LaneDir enum per strand (Forward/Reverse/Pendulum/PingPong).
@@ -240,7 +242,8 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "cv1Mode")) m->cv1Mode = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "probOutScale")) m->probOutScale = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "probOutSampleHold")) m->probOutSampleHold = json_boolean_value(j);
-    if (auto j = json_object_get(root, "restBeatsLegato"))   m->engine.restBeatsLegato   = json_boolean_value(j);
+    if (auto j = json_object_get(root, "restBeatsLegato"))   m->engine.generatedRestBeatsLegato  = json_boolean_value(j);
+    if (auto j = json_object_get(root, "incomingRestBeatsLegato")) m->engine.incomingRestBeatsLegato = json_boolean_value(j);
     if (auto j = json_object_get(root, "boundaryInterrupt"))  m->engine.boundaryInterrupt  = json_boolean_value(j);
     if (auto j = json_object_get(root, "perVoiceArticulation")) m->engine.perVoiceArticulation = json_boolean_value(j);
     // Step 4: laneDir and laneDirV are NOT restored here any more. Direction is now

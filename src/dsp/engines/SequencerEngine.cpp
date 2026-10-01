@@ -510,7 +510,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     // Tie); when ON (default), the rest branch takes priority (rest cancels the slur). A
     // fractional TAIL still always outranks rest (canRest, below), regardless of the toggle.
     const bool slurReachesHere    = legatoConnects && (wasHeld || hadTail) && prevPlayedSounded;
-    const bool slurSuppressesRest = !restBeatsLegato && slurReachesHere;
+    const bool slurSuppressesRest = !generatedRestBeatsLegato && slurReachesHere;
 
     if (legatoProb >= 0.999f) {
         gs.slideMax(pitchV, sem, nvIdx);
