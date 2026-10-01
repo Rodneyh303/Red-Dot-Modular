@@ -432,3 +432,24 @@ TESTED: assert gate/rest/legato/accent/subgate/ghost output is bit-identical for
 regardless of pitch-origin, across the q-mix range.
 (Same principle as the Sands consolidation: one parameterised implementation beats parallel ones;
 here q-mix is the parameter wrongly tempting a structural split, as the correlation matrix was for Sands.)
+
+
+## BOUNDARY-COINCIDENCE rule (Rodney) — subgate edge landing EXACTLY on a main-gate edge
+Completes the straddle logic (straddle = cell CROSSES a boundary; this = cell edge lands ON the same
+sample as a main-gate edge). One principle: **the main gate OWNS its edge samples** (a rise is a
+note-START, a fall is a note-END — neither sample is "gap"). Ghost = gap-only, ratchet = in-gate-only,
+applied to the coincident sample:
+
+| subgate event | at main-gate RISING edge (same sample) | at main-gate FALLING edge (same sample) |
+|---|---|---|
+| **Ghost** | **IGNORE** — rise is a note-start, not a gap; ghost would collide with the main onset | **IGNORE** — fall is the note-end transition; not a gap |
+| **Ratchet** | **INCLUDE** — the rise is the gate's START, so an aligned ratchet is the valid FIRST in-gate cell | **IGNORE** — no gate left to subdivide (clip rule: in-gate cells terminate at the fall) |
+
+- **Ghost resumes >=1 sample clear of the boundary:** a ghost onset ONE SAMPLE after the main gate
+  falls -> INCLUDE (now genuinely in the gap). Same <=1-sample reasoning as the legato work — one
+  sample clear is "in the gap" and below the threshold of anything mattering.
+- **Degenerate guard** still applies: coincidence resolution must not emit a zero-length cell.
+
+Consistent with: the envelope rule (ghost=gap, ratchet=in-gate) applied at the exact-coincidence sample;
+the clip rule (in-gate cells end at the fall); and the playhead rule (a ghost that is ignored does not
+advance the playhead, because it is not emitted).
