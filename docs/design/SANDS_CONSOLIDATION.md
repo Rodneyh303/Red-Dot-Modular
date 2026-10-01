@@ -60,3 +60,21 @@ capability (lane-owner across playheads) + a migration (pre-release, allowed). D
 - Then redesign ONE Sands module (this is where the panel-craft effort for Sands goes — not into
   polishing the three).
 - Migration: Mono/East/Macro become legacy; pre-release so breaking is acceptable.
+
+
+## Known gap this consolidation closes: SPREAD on VARIATION / LEGATO
+Noticed post-gate-work (Rodney): spread currently covers 5 lanes (REST, MELODY, OCTAVE, ACCENT, QMIX —
+SpreadInterp.hpp:55). **VARIATION and LEGATO have NO spread** — they have mono `slewed` buffers but no
+`slewedPoly*` buffers, no per-voice draw/slew path, and no per-voice spread UI. So extending spread to
+them is NOT a 5->7 table-widen; it needs poly buffers + the per-voice slew/pre-remap path + UI — i.e.
+exactly the "all lanes poly + correlated" work this consolidation does ONCE, uniformly. Adding it now to
+the three-module Sands would be thrown away at the collapse. So: **do it as part of the consolidation,
+not before.**
+
+**Safety in the interim:** the gate work added the per-voice VARIATION/LEGATO *mechanism*
+(`perVoiceArticulation`, default OFF — RHYTHM_BEHAVIOUR_TOGGLES.md) but WITHOUT spread/correlation, so
+turning it ON today gives the UNCONTROLLED per-voice variation = the "soup". That is acceptable only
+because it is behind an OFF-by-default flag. The CORRELATED (safe) version arrives when spread reaches
+VAR/LEG at consolidation — at which point perVoiceArticulation is removed/replaced by the graded
+correlation (mono reference + per-voice correlated, +-1). Do not promote perVoiceArticulation or ship it
+ON until then.
