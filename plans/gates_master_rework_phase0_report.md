@@ -123,3 +123,16 @@ missing subgate rules (straddle/coincidence/placement) must be built reverse-saf
    mono; rest/legato/accent shape survivors per voice (§398).
 
 Reverse-safe throughout; keep the forward/reverse bitwise test green.
+
+## F. Doc-vs-doc note (resolved in Phase 3): ghost trigger-advance (§286 vs §379)
+§286 ("Subgate signal types") says a trigger-ghost should "not advance the playhead"; §379
+("PLAYHEAD ADVANCE for ghosts", headed *settled*) says "a ghost onset ALWAYS advances the
+playhead, regardless of length... this dissolves the 'how do we not advance on a trigger'
+question — we DO advance on it." §379 explicitly supersedes §286 on the advance question, so
+**§379 wins: every ghost onset (trigger or gate) advances the playhead** (it must, to draw the
+step's rest/legato/accent/pitch data). The signal-type rule that SURVIVES from §286 is the LENGTH
+rule: gate-ghost = sustained (gate width), trigger-ghost = short blip (the trigger's own width).
+No classification is needed — the ghost note's length already follows the ghost gate's high time
+(a short gate IS a blip; a long gate IS sustained), which the existing `ghostHigh → ghostSounding`
+in IMPL 2b already implements. Phase 3's only code change was removing the Gate3→Gate2 normalling
+(§271); the signal-type behaviour was already correct.

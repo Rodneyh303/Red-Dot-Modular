@@ -688,16 +688,22 @@ void Monsoon::process(const ProcessArgs& args) {
     input.ghostConnected = false; input.ghostRise = false; input.ghostHigh = false;
     const bool gate3Rise = cachedGate3Connected && gate3Trig.process(input.gate3, 0.1f, 1.f);
     if (modeSelect == 1) {
-        // GATE mode: Gate 2 = ratchet (in-gate), Gate 3 = ghost (in-gap; normals to ratchet).
-        // Region-select the edge: ratchet fires only in-gate, ghost only in-gap — so the engine
-        // can tell which fired (ghost is variation-gated; ratchet is not).  Main (Gate 1) rise is
-        // separate and always wins.
+        // GATE mode: TWO explicit subgate inputs, NO normalling (GATE_SUBDIVISION_STEP_GATE.md §271).
+        //   SUBGATE_RATCHET = Gate 2 — clocks IN-GATE subdivision (ratchet/tie/rest/legato within
+        //     gates). Accepts a trigger OR gate (onset-only: the rising edge is all it needs; the
+        //     cell length is bounded by the MAIN gate per the clip rule + the next ratchet onset).
+        //   SUBGATE_GHOST   = Gate 3 — clocks GHOST-fill IN THE GAPS. Needs a gate (rise = onset,
+        //     width = ghost length); a trigger renders as a short blip (the trigger's own short
+        //     width — no invented duration, no stretching to the next event). Unpatched = no ghosts.
+        // Region-select the edge: ratchet fires only in-gate, ghost only in-gap — so the engine can
+        // tell which fired (ghost is variation-gated; ratchet is not).  Main (Gate 1) rise is
+        // separate and always wins.  No Gate3->Gate2 fallback: each input does one job, explicitly.
         const bool inGate = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
         input.subGateConnected = cachedGate2Connected;
         input.ghostConnected = cachedGate3Connected;
-        input.subGateRise = (inGate) ? input.gate2Rise : false;             // ratchet: in-gate only
-        input.ghostRise = (!inGate) ? (cachedGate3Connected ? gate3Rise : input.gate2Rise) : false;  // ghost: in-gap only
-        input.ghostHigh = cachedGate3Connected ? (input.gate3 >= 1.0f) : (input.gate2 >= 1.0f);
+        input.subGateRise = (inGate && cachedGate2Connected) ? input.gate2Rise : false;   // ratchet: in-gate, Gate 2 only
+        input.ghostRise = (!inGate && cachedGate3Connected) ? gate3Rise : false;          // ghost: in-gap, Gate 3 only
+        input.ghostHigh = cachedGate3Connected ? (input.gate3 >= 1.0f) : false;           // no fallback to Gate 2
     } else if (modeSelect == 3) {
         // Mode D: Gate 3 = ratchet (unchanged).
         input.subGateConnected = cachedGate3Connected;

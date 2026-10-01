@@ -428,8 +428,9 @@ bool ModeController::executeModeD(bool gate2Rise, bool gate2High,
 bool ModeController::executeMode(int modeId,
                                   const InputState& input,
                                   bool gate2High) {
-    // GATE mode (B): useSubGate when ratchet (Gate 2) OR ghost (Gate 3) is active (ghost normalled
-    // to ratchet, so a Gate 2 patch also drives the gaps).  Mode D: Gate 3 ratchet (unchanged).
+    // GATE mode (B): useSubGate when ratchet (Gate 2) OR ghost (Gate 3) is patched — TWO EXPLICIT
+    // inputs, no normalling (GATE_SUBDIVISION_STEP_GATE.md §271), so each patch enables its own
+    // behaviour.  Mode D: Gate 3 ratchet (unchanged).
     const bool useSubGate = (modeId == 1) ? (input.subGateConnected || input.ghostConnected)
                                          : (modeId == 3) ? input.subGateConnected
                                                          : false;

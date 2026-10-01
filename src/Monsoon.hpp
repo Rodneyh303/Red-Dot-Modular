@@ -66,13 +66,15 @@ struct InputState {
     float clk, gate1, gate2, gate3;
     float run, reset, cv1, cv2;
     bool  gate1Rise, gate2Rise;
-    // subGate (ratchet): the fine-grid clock INSIDE main gates.  In GATE mode (B) this is Gate 2;
-    // in Mode D it is Gate 3 (unchanged).  subGateRise fires on the ratchet's rising edge.
+    // subGate (ratchet) = Gate 2 (GATE mode B) / Gate 3 (Mode D).  The fine-grid clock INSIDE main
+    // gates (ratchet/tie/rest/legato within gates).  Accepts a trigger OR gate (onset-only).
+    // subGateRise fires on the ratchet's rising edge.
     bool  subGateRise = false, subGateConnected = false;
-    // subGate (ghost): the fine-grid clock OUTSIDE main gates (in the gaps).  GATE mode only —
-    // Gate 3.  ghostHigh is the ghost gate's level (drives the ghost note's width, symmetric with
-    // the main gate).  When Gate 3 is unpatched, ghost normals to RATCHET (Gate 2) — one cable
-    // drives both the in-gate ratchet and the in-gap ghost.
+    // subGate (ghost) = Gate 3 (GATE mode B only).  The fine-grid clock OUTSIDE main gates (in the
+    // gaps).  Needs a gate (rise = onset, width = ghost length; a trigger renders as a short blip).
+    // ghostHigh is the ghost gate's level (drives the ghost note's width, symmetric with the main
+    // gate).  TWO EXPLICIT INPUTS, NO NORMALLING (GATE_SUBDIVISION_STEP_GATE.md §271): Gate 3
+    // unpatched = no ghosts (no fallback to Gate 2).  Each input does one job, explicitly.
     bool  ghostRise = false, ghostConnected = false, ghostHigh = false;
 };
 
