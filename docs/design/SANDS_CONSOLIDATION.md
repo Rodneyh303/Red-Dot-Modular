@@ -3,6 +3,12 @@
 STATUS: DESIGN DIRECTION, confirmed. Gated on a capability audit (below). Reprioritises Sands panel
 craft: REDESIGN one unified module, do NOT polish Mono/East/Macro that are to be dissolved.
 
+Companion: **SANDS_ARCHITECTURE_CONSOLIDATION.md** is the earlier ANALYSIS (where the complexity lives —
+`combineLOR`/`combineSpread` — and the 3/2/1 option comparison). It predates the correlation matrix and
+so could weigh options but not decide; THIS doc is the decision, on the new argument (copula dissolves
+the soup fear) + the maintainability evidence. Its `combineLOR`/`combineSpread` analysis and option-1
+"single module, paged" sketch are directly useful for the BUILD.
+
 ## Why (the case, strongest argument first)
 1. **Three implementations = three bug surfaces.** This session's Sands bugs were ALL single-module
    divergences: the lane-index bug hit one visual not the others; the Mono spread no-op was Mono-only;
