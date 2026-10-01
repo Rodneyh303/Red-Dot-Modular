@@ -681,9 +681,9 @@ void Monsoon::process(const ProcessArgs& args) {
     input.gate2Rise = gateEdges.gate2Rise;
 
     // ── Gate 2/3 routing (mode-dependent) — GATE_SUBDIVISION_STEP_GATE.md (ghost extension) ──
-    // GATE mode (B): Gate 1 = main, Gate 2 = ratchet (in-gate), Gate 3 = ghost (in-gap; GHOST
-    //   normals to RATCHET's signal so one cable drives both).  Mode D: Gate 2 = main, Gate 3 =
-    //   ratchet (unchanged).  A/C/E/F: Gate 3 = die-action (gate3Target menu).
+    // GATE modes (B + D): Gate 1 = main, Gate 2 = ratchet (in-gate), Gate 3 = ghost (in-gap).
+    //   B and D share the SAME gate topology (§421 mode-agnostic invariant); only the pitch
+    //   source differs (D quantises CV2).  A/C/E/F: Gate 3 = die-action (gate3Target menu).
     input.subGateConnected = false; input.subGateRise = false;
     input.ghostConnected = false; input.ghostRise = false; input.ghostHigh = false;
     const bool gate3Rise = cachedGate3Connected && gate3Trig.process(input.gate3, 0.1f, 1.f);
@@ -798,18 +798,19 @@ void Monsoon::process(const ProcessArgs& args) {
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
         // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
         bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
-        // GATE mode (B): three edge streams — main (Gate 1) always wins; ratchet (Gate 2) drives
-        // in-gate; ghost (Gate 3, normalled to ratchet) drives in-gap.  Mode D: Gate 3 ratchet
-        // (unchanged).  Other modes: their usual clock/phase/gate edges.
+        // GATE modes (B + D): three edge streams — main (Gate 1) always wins; ratchet (Gate 2)
+        //   drives in-gate; ghost (Gate 3) drives in-gap.  Other modes: their usual clock/phase edges.
+        // B and D share the SAME shouldExecute gate (§421 mode-agnostic invariant): only the pitch
+        // source differs (D quantises CV2), handled downstream in executeModeD — NOT here. One branch
+        // for both PREVENTS the B/D drift bug (a205093 left D on the old `: true` continuous logic,
+        // which called executeMode every sample and jammed gate state — see
+        // plans/fix_gate_output_regression_a205093.md).
         bool shouldExecute;
-        if (modeSelect == 1) {
+        if (modeSelect == 1 || modeSelect == 3) {
             const bool inGate = gate1High;
             shouldExecute = input.gate1Rise || (gate1High && engine.stepIndex == -1)              // main onset / held-at-start
-                          || (inGate && input.subGateRise)                                        // ratchet in-gate
-                          || (!inGate && input.ghostRise);                                        // ghost in-gap
-        } else if (modeSelect == 3) {
-            const bool useSubGate = input.subGateConnected;
-            shouldExecute = useSubGate ? input.subGateRise : true;   // Mode D continuous, or ratchet on Gate 3
+                          || (inGate && input.subGateRise)                                        // ratchet in-gate (Gate 2)
+                          || (!inGate && input.ghostRise);                                        // ghost in-gap (Gate 3)
         } else {
             shouldExecute = false;
             if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;
