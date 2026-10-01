@@ -702,7 +702,16 @@ void Monsoon::process(const ProcessArgs& args) {
         input.subGateConnected = cachedGate2Connected;
         input.ghostConnected = cachedGate3Connected;
         input.subGateRise = (inGate && cachedGate2Connected) ? input.gate2Rise : false;   // ratchet: in-gate, Gate 2 only
-        input.ghostRise = (!inGate && cachedGate3Connected) ? gate3Rise : false;          // ghost: in-gap, Gate 3 only
+        // Ghost coincidence (GATE_SUBDIVISION_STEP_GATE.md §437): the main gate OWNS its edge
+        // samples — a rise is a note-START, a fall is a note-END; neither is "gap", so a ghost is
+        // IGNORED on BOTH main-gate edges and resumes >=1 sample into the gap. The rise edge is
+        // already suppressed (!inGate false); the FALL edge needs the prev-sample state: a ghost
+        // onset on the fall sample (prevInGate && !inGate) is suppressed. So a ghost fires iff the
+        // gate was ALREADY low last sample AND this sample — genuinely in the gap, one sample clear
+        // of the fall. (prevGate1SchmittHigh here is last sample's level — routing runs before
+        // IMPL 2b refreshes it.)
+        const bool genuinelyInGap = !inGate && !prevGate1SchmittHigh;
+        input.ghostRise = (genuinelyInGap && cachedGate3Connected) ? gate3Rise : false;
         input.ghostHigh = cachedGate3Connected ? (input.gate3 >= 1.0f) : false;           // no fallback to Gate 2
     } else if (modeSelect == 3) {
         // Mode D: Gate 3 = ratchet (unchanged).
@@ -929,7 +938,15 @@ void Monsoon::process(const ProcessArgs& args) {
     if (modeSelect == 1 && runGateActive) {
         const bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
         const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
-        // A ghost high when a main gate rises keeps the gate open (ghostSounding) -> main legatos in.
+        // Ghost tie-through-rise (GATE_SUBDIVISION_STEP_GATE.md §352/§368): a ghost still high when
+        // the main gate rises MAY continue with no re-attack (a ghost-led pickup; the output gate may
+        // start before the main-gate rise) — but ONLY if the ghost committed slurForward at its own
+        // onset (its legato roll). This is NOT a default: tie-vs-re-articulate at the rise is the
+        // ghost's own legato decision, exactly like note->note. EMERGENT from the ghostSounding term
+        // below — no special-case code: ghostSounding keeps gateHeld true across the rise so
+        // executeStep reads wasHeld=true; then prevSlur (= the ghost's slurForward) decides — committed
+        // -> Legato/Tie (no retrigger); not committed -> NewNote (the ghost ceases at the boundary,
+        // main note re-attacks FRESH). (Covered by test_subgate G2 "ghost->main legatos".)
         const bool ghostSounding = engine.ghostActive && input.ghostHigh;
         // Gap bridge (tieAcrossRests, polarity-flipped from the old incomingRestBeatsLegato):
         //   TRUE (default) = TIE ACROSS GAPS: slurForward bridge to the next rise.

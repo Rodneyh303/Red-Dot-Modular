@@ -313,6 +313,56 @@ int main() {
         EXPECT(eng.voices[0].gsStep.gateHeld);  // re-struck at the ghost cell
     });
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // G4 — ghost + tie-across-gap interaction (GATE_SUBDIVISION_STEP_GATE.md §458):
+    // a sounding ghost in the gap CONSUMES the pending gap-slur — the slur ties INTO the ghost
+    // (the nearer onset), not the main gate. The ghost then redraws its own legato (commit ->
+    // continue; not -> end at the ghost). Emergent from the edge-driven model + the bridge.
+    // ─────────────────────────────────────────────────────────────────────────────
+    SUITE("G4 — ghost consumes the pending gap-slur (tie-across-rests bridge)");
+    // A bridge-aware variant of step(): models tieAcrossRests=ON (the gap bridge holds gateHeld =
+    // slurForward across the gap) so a ghost onset in the gap sees wasHeld and ties IN.
+    auto stepBridge = [](SequencerEngine& eng, bool mainRise, bool ghostRise, bool mainHigh,
+                         bool ghostHigh, float restProb, float legatoProb, float noteVal,
+                         float variation = 0.5f) {
+        PatternInput in = makeInput(); in.variationAmount = variation;
+        StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, /*ratchetRise=*/false,
+                                                 restProb, legatoProb, noteVal, in,
+                                                 ghostRise, ghostHigh);
+        const bool isRest = (r.decision == MonoDecision::Rest);
+        const bool ghostSounding = eng.ghostActive && ghostHigh;
+        // Bridge (tieAcrossRests=ON): the gate stays held across the gap iff slurForward committed.
+        const bool gateOpen = !isRest && (mainHigh || ghostSounding || eng.gs.slurForward);
+        eng.gs.gateHeld = gateOpen;
+        if (!gateOpen) eng.gs.holdRemain = 0.f;
+        return r;
+    };
+    TEST("a sounding ghost in the gap is the next onset -> the slur ties INTO the ghost", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        // A: main onset, commits slurForward (legato=1.0).
+        stepBridge(eng, /*mainRise=*/true,  /*ghostRise=*/false, /*mainHigh=*/true,  /*ghostHigh=*/false, 0.f, 1.0f, 4.f);
+        // Gap: main gate low; the bridge keeps gateHeld = slurForward (true) so wasHeld stays true.
+        // A ghost fires in the gap (variation=1.0 -> candidate fires). It is the next onset.
+        StepResult g = stepBridge(eng, /*mainRise=*/false, /*ghostRise=*/true,  /*mainHigh=*/false, /*ghostHigh=*/true,  0.f, 0.5f, 4.f, /*variation=*/1.0f);
+        // The ghost tied IN from A's slur (prevSlur reached it) -> not a fresh NewNote.
+        EXPECT(g.decision == D::Tie || g.decision == D::Legato || g.decision == D::LegatoMax);
+    });
+    TEST("a rested ghost (no candidate) is transparent — the slur passes through to the next onset", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        stepBridge(eng, true, false, true, false, 0.f, 1.0f, 4.f);              // A commits
+        // Gap ghost that RESTS (variation=0 -> no candidate). It is NOT an onset for this voice:
+        // ghostActive stays false (no ghost sounded) and slurForward is untouched, so the slur
+        // passes THROUGH it (the bridge keeps the gate held). The returned decision is the preserved
+        // prior one (not a fresh Rest) — transparency is ghostActive==false + chain survival, not a
+        // Rest decision.
+        StepResult g = stepBridge(eng, false, true, false, true, 0.f, 0.5f, 4.f, /*variation=*/0.f);
+        EXPECT(!eng.ghostActive);                                  // no ghost sounded -> transparent
+        EXPECT(eng.gs.slurForward == true);                        // A's slur survived (not consumed/broken)
+        // The bridge still holds; a following main gate ties in (A's slur survived the transparent ghost).
+        StepResult m = stepBridge(eng, true, false, true, false, 0.f, 0.5f, 4.f);
+        EXPECT(m.decision == D::Tie || m.decision == D::Legato || m.decision == D::LegatoMax);
+    });
+
     std::cout << "\n-----\nsubgate: " << g_pass << " passed, " << g_fail << " failed\n";
     return g_fail ? 1 : 0;
 }
