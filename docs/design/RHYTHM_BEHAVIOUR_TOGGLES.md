@@ -7,6 +7,12 @@ Both are persisted to the patch JSON
 ---
 
 ## "Per-voice articulation (East VARIATION/LEGATO)" — `perVoiceArticulation` (default OFF)
+**CONSOLIDATION-REDUNDANT (Rodney):** this is the OLD BINARY per-voice VAR/LEG option — the feared
+"soup" (uncorrelated per-voice variation) left as an opt-in flag. The Gaussian-copula CORRELATION
+MATRIX supersedes it: graded per-voice variation CORRELATED to mono (+1 shared / 0 independent / -1
+interlocking) replaces the on/off switch, safely. Slated for REMOVAL at the Sands consolidation
+(SANDS_CONSOLIDATION.md). Leave as-is until then; do not extend.
+
 
 Member: [`SequencerEngine::perVoiceArticulation`](../../src/dsp/engines/SequencerEngine.hpp:331).
 Driven in [`executePolyVoice`](../../src/dsp/engines/SequencerEngine.cpp:902). Part of the
