@@ -83,6 +83,12 @@ museum of them.
 - **Arranger** — INTERTROPICAL_SPEC and related.
 - **Craft & consistency (the finish, not the vision)** — PANEL_CRAFT_AUDIT.md,
   PANEL_KIT_CONSISTENCY_AUDIT.md.
+- **Structural consolidations (the correlation matrix's biggest payoff)** —
+  SANDS_CONSOLIDATION.md (three Sands modules -> one + global-modulation + taps expanders; the copula
+  dissolves the soup fear that split them, and three implementations were three bug surfaces), and the
+  gate=quantiser MODE-AGNOSTIC invariant in GATE_SUBDIVISION_STEP_GATE.md (generator and quantiser share
+  exact gate code; q-mix only switches the pitch source). Both are instances of "one parameterised
+  implementation beats parallel ones".
 
 ## Status (2026-09)
 Feature vision essentially COMPLETE — the last new idea (collapse 6 modes to 3) was a simplification, not

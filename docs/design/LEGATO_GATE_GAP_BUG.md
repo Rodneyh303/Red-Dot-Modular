@@ -341,3 +341,69 @@ Rename footprint: 5 refs / 4 files (MonsoonWidget.cpp menu label, SequencerEngin
 MonsoonPersistenceManager.cpp x2). NOTE the persistence manager reads/writes it to patch JSON — either
 keep the JSON KEY as the old string for save-compat while renaming the C++ symbol, or migrate old keys
 on load. Pre-release so breaking the key is acceptable, but decide deliberately.
+
+## PROPOSED refinement of FALSE mode (Rodney) — one advance per fall, legato checkpoint at the incoming rest
+Status: PROPOSAL to mull over, not decided. Would replace the current FALSE behaviour ("slur ties into
+the next gate unconditionally; rest is the only brake; no self-bound").
+
+Mechanism:
+- A slur-forward-committed note's gate FALLS -> **advance the playhead ONE step** to the now-low position
+  = an INCOMING REST.
+- At that rested step, `generatedRestBeatsLegato` is IRRELEVANT (the incoming rest already makes it
+  silent), but the **legato draw IS read**: it decides whether the slur REMAINS A CANDIDATE. Yes -> slur
+  stays pending across the rest; No -> chain ENDS here.
+- No further stepping (one advance per falling edge). When the NEXT GATE arrives, if the slur was still a
+  candidate, it ties into that gate.
+
+Why it is better than current FALSE:
+- **Self-bounding, no timer:** the slur no longer reaches the next gate unconditionally — it must pass a
+  legato check at the incoming-rest checkpoint first. Fixes the "legato continues too long" bug properly.
+- **One legato gate per GAP, not per unit time:** a long gap still produces exactly ONE rest-step
+  checkpoint (one fall = one advance), so it is "did legato pass at this rest", not distance-dependent.
+- **No double-advance jump** (the earlier thought-experiment failure): fall advances ONCE to the
+  rest-step; a following rise is the ARRIVAL the checkpoint waits for (consumes the pending slur if it
+  survived), NOT a second advance. One advance, one arrival.
+- Musically: "sustain across a rest, gated by a legato roll at the rest" — the slur reaches the next note
+  only via a rest checkpoint, never by blindly bridging.
+
+Open point to weigh (Rodney):
+- This VIOLATES the current invariant that the playhead advances ONLY on rising gates — here a FALLING
+  edge advances it one step. BUT that advanced step corresponds to a real **legato-output step**, so it
+  is arguably legitimate (the step exists as an output event, the rest checkpoint). Worth considering
+  whether "advance on fall into a rest-checkpoint" is a clean generalisation or an exception to guard.
+- Relation to VCV Gates FLIP: flip goes high on a rise, stays through the fall/gap, drops at the NEXT
+  rise. This proposal's articulation (sustain through the rest, re-decide, consume at next rise) traces
+  the same span as flip — i.e. the proposal is the internal equivalent of the flip articulation, gated
+  by a legato roll at the rest.
+- Possible tie-in: the gap "rest step" is the same region where GHOSTS live and where a SUBGATE grid
+  would step — so sustain-across-rest and ghost-fill may be one region under one grid. Not resolved.
+
+## MULL — two toggles instead of one mode: "join abutting gates" + "join across rest"
+Status: to mull, not decided. Rodney: the single TRUE/FALSE ("incoming rest beats legato") mode forces
+two INDEPENDENT decisions to move together. Split into two toggles:
+- **Join abutting gates** — do physically abutting/overlapping gates fuse (legato)?
+- **Join across rest** — do slurs bridge a gap/incoming-rest into the next gate? (= "incoming rest beats
+  legato" INVERTED: join-across-rest ON == incoming-rest-does-NOT-beat-legato.)
+
+Four combinations, three clearly useful; two toggles strictly DOMINATE the single mode (same reachable
+behaviours plus two more, and each toggle NAMES a real thing):
+
+| join abutting | join across rest | behaviour |
+|---|---|---|
+| off | off | source gate-shape never creates legato; only Monsoon's own legato lane matters, gates always re-articulate (NOT reachable by the single mode) |
+| on  | off | legato only where gates abut/overlap; gaps stay articulated = the old "TRUE" |
+| on  | on  | abutting ties AND gaps bridge = the old "FALSE" |
+| off | on  | UNUSUAL but coherent: abutting notes do NOT fuse, gaps DO bridge -> legato only THROUGH silences, never between struck-together notes. Leave reachable; document as unusual. |
+
+Ties into the settled naming: "join across rest" already = the incoming-rest toggle; the NEW one is
+"join abutting gates". Both named for what they do, both independent. Would supersede the single-mode
+framing above.
+
+### Test-source problem (Rodney)
+To exercise these you need ONE sequence with SOME abutting boundaries and SOME gapped — fiddly.
+- Couldn't see how to get abutting gates out of PhraseSeq16 (its gate lengths don't butt cleanly).
+- Cleanest source: a per-step GATE-LENGTH sequencer — set some steps to ~100% (abut the next) and some
+  short (leave a gap) -> both kinds in one deterministic pattern. Impromptu GateSeq / a sequencer with
+  per-step gate width. (Confirm which actually produces truly abutting/overlapping gates.)
+- Fallback: OR/merge two gate streams — one high-duty (abutting), one triggered (gapped) — on alternating
+  steps.
