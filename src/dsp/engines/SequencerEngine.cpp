@@ -127,6 +127,7 @@ void SequencerEngine::reset() {
     runGateActive = false;
     resetArmed = false;
     prevGate1High = false;
+    pendingCheckpointArrival = false;
     modeSelect = 0;
     ppqnSetting = 24;
     noteVariationMask = 0b111;
@@ -510,7 +511,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     // Tie); when ON (default), the rest branch takes priority (rest cancels the slur). A
     // fractional TAIL still always outranks rest (canRest, below), regardless of the toggle.
     const bool slurReachesHere    = legatoConnects && (wasHeld || hadTail) && prevPlayedSounded;
-    const bool slurSuppressesRest = !restBeatsLegato && slurReachesHere;
+    const bool slurSuppressesRest = !generatedRestBeatsLegato && slurReachesHere;
 
     if (legatoProb >= 0.999f) {
         gs.slideMax(pitchV, sem, nvIdx);
@@ -692,6 +693,30 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     return result;
 }
 
+// advanceOnTieIntoRest checkpoint (LEGATO_GATE_GAP_BUG.md §345). Called from the module layer on a
+// Gate-1 FALL while a slur is pending (tieAcrossRests && advanceOnTieIntoRest). Advances the
+// playhead ONE step into the incoming-rest position and re-evaluates the slur candidacy there: the
+// legato draw at that step decides whether the slur REMAINS a candidate (survives across the rest)
+// or ENDS. NOT a note onset — a silent rest checkpoint (the gate stays low). Sets
+// pendingCheckpointArrival so the next rise SKIPS its own advance ("one advance, one arrival" — no
+// double-advance jump). The SOLE advance-on-fall (edge-driven-playhead violation), opt-in.
+void SequencerEngine::legatoCheckpointOnFall(float legatoProb) {
+    if (muted) { pendingCheckpointArrival = true; return; }
+    bool wrapped = advancePlayhead();
+    if (wrapped && boundaryInterrupt) {
+        gs.slurForward = false;          // phrase boundary breaks the chain
+        pendingCheckpointArrival = true;  // the fall still advanced; the rise plays this step, no 2nd advance
+        return;
+    }
+    // The legato draw at the rested step decides slur survival (generatedRestBeatsLegato is
+    // IRRELEVANT — the incoming rest already makes it silent; only the slur candidacy is in play).
+    float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
+    bool survives = (legatoProb >= 0.999f) || (r_legato < legatoProb);
+    if (!survives) gs.slurForward = false;   // chain ENDS at the rest checkpoint
+    // else slurForward stays pending across the rest (tieAcrossRests bridge carries it to the rise)
+    pendingCheckpointArrival = true;
+}
+
 StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
     lastNoteVal_ = noteVal;   // poly voices derive their own nvIdx from this (stage 2)
     StepResult result;
@@ -703,7 +728,15 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
     bool triggered = false;
 
     if (gate1Rise) {
-        wrapped = advancePlayhead();
+        if (pendingCheckpointArrival) {
+            // advanceOnTieIntoRest: the falling edge already advanced one step into the incoming-rest
+            // (legatoCheckpointOnFall). This rise is the ARRIVAL — play the already-stepped-to step,
+            // do NOT advance again ("one advance, one arrival" — no double-advance jump).
+            pendingCheckpointArrival = false;
+            wrapped = false;
+        } else {
+            wrapped = advancePlayhead();
+        }
         triggered = true;
     } else if (gate1High && !prevGate1High && stepIndex == -1) {
         advancePlayhead();
@@ -793,10 +826,18 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
 // See GATE_SUBDIVISION_STEP_GATE.md §"Two edge streams" + §"TWO tie scopes".
 StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise,
                                                     float restProb, float legatoProb, float noteVal,
-                                                    const PatternInput& input) {
+                                                    const PatternInput& input,
+                                                    bool ghostRise, bool ghostHigh) {
     lastNoteVal_ = noteVal;
     StepResult result;
-    if (muted || !subGateRise) return result;
+    // Any of the three edge streams advances the playhead + shapes a step:
+    //   mainGateRise (main onset), subGateRise (ratchet, in-gate), ghostRise (ghost, in-gap).
+    // The module layer ensures ratchet fires only in-gate and ghost only in-gap; the engine is
+    // region-agnostic — executeStep's wasHeld/prevSlur handle intra-gate, inter-gate, AND
+    // ghost<->main legato uniformly (the leading-edge model composes across all boundaries).
+    const bool anyEdge = mainGateRise || subGateRise || ghostRise;
+    if (muted || !anyEdge) return result;
+    (void)mainGateHigh; (void)ghostHigh;   // engine is region-agnostic; IMPL 2b (caller) uses these for width
 
     bool wrapped = advancePlayhead();
 
@@ -812,7 +853,6 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
         }
     }
 
-    float r_vary   = monoStrand(dotModular::STRAND_VARIATION)[getVariationStep()];
     float r_rest   = monoStrand(dotModular::STRAND_RHYTHM)[getRhythmStep()];
     float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
     float r_accent = monoStrand(dotModular::STRAND_ACCENT)[getAccentStep()];
@@ -841,24 +881,37 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     gs.holdRemain = 0.f;     gs.gatePulseRemain = -1;
     gsStep.holdRemain = 0.f; gsStep.gatePulseRemain = -1;
 
-    if (mainGateHigh) {
-        // Inside a note: shape this sub-cell.  executeStep rolls rest/legato/accent + draws
-        // all pitch lanes (melody/octave/q-mix), Tie/Legato emergent from pitch equality.
-        // wasHeldMono + prevSlur carry the intra-gate (previous sub-cell) or inter-gate
-        // (previous note's slur commitment) predecessor state — the SAME machinery as a
-        // clock step, so the two tie scopes reconcile without a special case.
-        result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent,
-                             input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
-    } else {
-        // Gap (main gate low): the playhead advanced but there is no note to shape.  PRESERVE
-        // the previous step's decision (do NOT mark Rest) so the inter-gate slur bridge survives
-        // the gap — executeStep's connection test (line ~538) requires prevPlayedSounded, and a
-        // Rest here would make it false, breaking slur-across-gates (the spec's TRAP).  The IMPL
-        // 2b gate driver sets gs.gateHeld = slurForward, so at the next main-gate rise the onset
-        // sees wasHeld=slurForward + prevPlayedSounded=true -> connects (Tie/Legato).  slurForward
-        // is NOT cleared (an inter-gate slur can bridge the gap).
-        result = lastStepResult;
+    // Ghost candidate gate: a ghost onset (in-gap) only produces a note if the VARIATION strand
+    // fires — variation/ghost produces the CANDIDATE.  r_vary >= variationAmount -> no ghost
+    // (silent gap cell; preserve the decision for the slur bridge + own forStep).  At variation=0
+    // no ghost ever fires.  (Ratchet sub-cells and main onsets are NOT variation-gated — only the
+    // ghost is.)  Then executeStep rolls the rest lane, which may still silence a ghost candidate.
+    if (ghostRise) {
+        float r_vary = monoStrand(dotModular::STRAND_VARIATION)[getVariationStep()];
+        if (r_vary >= input.variationAmount) {
+            // No ghost candidate — silent gap.  Preserve the decision (slur bridge) + own cell.
+            ghostActive = false;
+            result = lastStepResult;
+            result.forStep = stepIndex;
+            result.stepped = true;
+            result.wrapped = wrapped;
+            lastStepResult = result;
+            return result;
+        }
     }
+    // A main or ratchet onset ends any sustaining ghost (the ghost only lives in the gap).
+    if (mainGateRise || subGateRise) ghostActive = false;
+
+    // Shape this step.  A main onset, a ratchet sub-cell, or a ghost candidate all run executeStep —
+    // rest/legato/accent + all pitch lanes draw, Tie/Legato emergent from pitch equality.  wasHeldMono
+    // + prevSlur carry the predecessor state across ALL boundary types (intra-gate, inter-gate,
+    // ghost<->main) — the leading-edge model composes, so legato flows both ways with no special
+    // case (the spec's TRAP).  The gate width comes from whichever external gate is high (main or
+    // ghost) via the module-layer IMPL 2b.
+    result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent,
+                         input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
+    // A ghost candidate that played (not rested) sustains; a rested ghost does not.
+    if (ghostRise) ghostActive = (result.decision != MonoDecision::Rest);
     result.stepped = true;
     result.wrapped = wrapped;
     lastStepResult = result;   // re-sync (executeStep set lastStepResult before wrapped/stepped)
@@ -900,7 +953,29 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         int melIdx  = getStrandIdx(polyLaneTick(voiceIdx, PL_MELODY), polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
         int octIdx  = getStrandIdx(polyLaneTick(voiceIdx, PL_OCTAVE), polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
         float r_rest = polyRandomSrc(voiceIdx, PL_REST)[restIdx];
-        
+
+        // ── Phase 5: per-voice ghost placement (§398/§227) ────────────────────────────────
+        // At a ghost cell (ghostActive: the mono ghosted this onset), each poly voice rolls its
+        // OWN variation to decide if it ghosts HERE. A voice whose variation does not pass is a
+        // RESTED GHOST — transparent (silent; the slur passes through it, §458), not part of the
+        // chain. The mono voice is already gated (executeModeBSubdivided). With perVoiceArticulation
+        // OFF, getVariationStepForVoice returns the mono step -> all voices read the same value =
+        // shared ghost rhythm (+1 correlation). With it ON, each voice reads its own East VARIATION
+        // LOR step = independent placement (0). The graded [-1,+1] copula correlation is a future
+        // refinement (variation is not yet a spread lane); this is the per-voice read the doc says
+        // "already exists, just not read by anything today" (§227).
+        if (ghostActive) {
+            int varIdx = getVariationStepForVoice(voiceIdx) & 0x0F;
+            float r_vary_voice = pe.variationRandom[varIdx];
+            if (r_vary_voice >= input.variationAmount) {
+                // Rested ghost: transparent — silent, not part of the chain.
+                v.accented = false;
+                v.gs.gateHeld = false; v.gsStep.gateHeld = false;
+                v.participating = false; v.gs.slurMember = false;
+                return;
+            }
+        }
+
         if (r_rest < v.restProb) {
             // Decide to Rest: Stick with it until mono gate drops. No accent while resting.
             v.accented = false;

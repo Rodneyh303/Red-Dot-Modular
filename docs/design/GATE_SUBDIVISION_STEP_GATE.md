@@ -268,8 +268,27 @@ The four combinations are therefore only all reachable with TWO clocks:
 - **SUBGATE_GHOST** — clocks GHOST-fill in the gaps (additionally gated by VG). Unpatched = no ghosts.
 - ratchets only = patch RATCHET; ghosts only = patch GHOST (+VG>0); both = patch both; neither = patch
   neither.
-- **GHOST normals to RATCHET's signal**, so one cable drives both (the common case) and you only patch
-  the second to separate them. Reuses Monsoon's existing Gate 3 / assignable gate jacks — no big deal.
+- **TWO inputs, NO normalling (Rodney, settled).** Each input does one job, explicitly: want ratchets,
+  patch SUBGATE_RATCHET; want ghosts, patch SUBGATE_GHOST; want both, patch both; want neither, patch
+  nothing (plain gate mode). No inference, no normalling — dropping the earlier mutual-normal scheme,
+  which also removes its direction ambiguity. Consistent with the "render what's patched, don't be
+  clever" stance. Reuses Monsoon's existing assignable gate jacks.
+  Rationale for keeping TWO (the original "they're different behaviours" reason was ABSORBED by the
+  envelope rule — one clock classified by in-gate-vs-gap already does both): what two still buys is
+  (a) different RATES for ratchets vs ghosts, and (b) different SIGNAL TYPES simultaneously — ghosts
+  want GATES (onset + duration), ratchets accept TRIGGERS (onset only). One input would force both
+  roles onto one signal; two lets you e.g. gate-driven sustained ghosts WITH trigger-driven ratchets.
+
+### Subgate signal types (settled)
+- **SUBGATE_GHOST needs a GATE** — a ghost has a DURATION, and the only source of it is the subgate's
+  own high time (rise = ghost onset, width = ghost length). A TRIGGER into ghost gives no length:
+  render it as a SHORT FIXED BLIP (the trigger's own/default short length), do NOT invent duration by
+  stretching to the next event and do NOT advance the playhead. So: gate -> sustained ghosts, trigger
+  -> staccato ghosts. The signal type IS the articulation choice.
+- **SUBGATE_RATCHET takes a TRIGGER or GATE** — onset-only suffices (ratchet cell length is bounded by
+  the MAIN gate per the clip rule and by the next ratchet onset, NOT by the subgate's own width), so a
+  trigger's rising edge is all it needs. (This "retrigger while the main gate is held" is also exactly
+  the dual-wire abutment case strict legato ties on — same onset event, different feature lens.)
 
 ### Dependency and default
 - **Requires the relevant subgate input patched** — no subgate grid, no placement clock or length quantum, so
@@ -305,3 +324,155 @@ between them, organised into sections by Change Alley, sliding from faithful to 
 Gate mode reworks the ARTICULATION of your gates — chop and tie within and across gates, output onsets a
 subset of the gate union — UNLESS variation/ghost + subgate is engaged, which is the one deliberate way
 to add correlated, reversible notes in the gaps, on the subgate grid.
+
+
+## OPEN (Rodney) — subgate applicability: within vs outside the main-gate envelope
+The ratchet/ghost split is defined by MAIN-GATE-ENVELOPE MEMBERSHIP, and this must be settled BEFORE the
+ratchet/ghost build, not after:
+- subgate cell INSIDE a main gate (gate1High) -> RATCHET / subdivision (SUBGATE_RATCHET grid): chop /
+  re-articulate the sounding note.
+- subgate cell OUTSIDE (main gate low, a gap) -> GHOST (SUBGATE_GHOST grid): place ghost notes.
+So "within vs outside the envelope" is the switch selecting which behaviour a subgate edge triggers, and
+it maps onto the two subgate inputs.
+
+**The hard part is cells that CROSS the envelope boundary** (must be handled — subgates are NOT assumed
+aligned to main gates; wonky or steady both allowed):
+- a subgate cell that STRADDLES a main-gate edge (starts inside, ends in the gap, or vice versa) — which
+  grid owns it?
+- main-gate rise/fall edges rarely align with subgate cell boundaries, so there is routinely a PARTIAL
+  cell at each end of every gate. Define its treatment.
+**Provisional rule (Rodney's first cut — NOT settled):** a subgate cell is GHOST if it STARTS between a
+main-gate FALL and the next RISE, and RATCHET otherwise. I.e. classify by where the cell STARTS relative
+to the main-gate envelope — decidable at the cell's onset, no lookahead. This follows gate mode cleanly.
+### Straddle resolution (Rodney, initial — to confirm at build): MAIN GATE WINS AT ITS EDGES, asymmetrically
+- **Falling edge — main gate wins (clip).** A cell that starts IN-gate but the main gate falls partway
+  through it (a ratchet/subdivision) TERMINATES at the boundary — it abuts the gate's end, does not run
+  on into the gap. A subdivision belongs to the note it subdivides, so it ends when the note ends
+  (subject to the normal gap-legato rules for the note itself).
+- **Rising edge — a GHOST may TIE THROUGH it.** A cell that starts in a gap (a ghost) reaching a main
+  gate does NOT simply hard-cease: if the ghost is a slur-forward candidate it can LEGATO into the
+  incoming note — so the output note is already sounding (from the ghost) and CONTINUES through the rise
+  with no re-attack. **The OUTPUT gate is therefore allowed to START BEFORE the main gate's rising edge**
+  (a ghost-led pickup/anticipation). This is fine: gate mode re-articulates the input, it does not
+  slavishly reproduce main-gate timing — the main-gate rise AUTHORISES a note; legato decides whether it
+  is a fresh attack or a continuation. If the ghost does NOT tie, it ceases at the boundary and the main
+  note attacks fresh.
+- **Decision reuse:** ghost-into-note uses the SAME legato handshake as note-to-note (ghost commits
+  slurForward; the arriving main-gate note decides tie-in per the FALSE checkpoint logic). One model — a
+  boundary is a boundary; ghost->note is governed like note->note.
+- **Degenerate guard:** a cell whose end coincides exactly with a boundary must collapse cleanly, not
+  emit a zero-/1-sample sliver.
+- **Robustness:** clipping at main-gate edges makes subgate-grid REGULARITY irrelevant at boundaries —
+  wonky or steady subgates both honour main-gate timing exactly (except the deliberate ghost-tie-through
+  early start). This is the property we wanted; clip delivers it for free.
+**Tie-vs-re-articulate at the rise is NOT a default — it is the GHOST'S OWN legato roll (Rodney).** A
+ghost is just a note and rolls slurForward like any note:
+- ghost COMMITTED slurForward -> ties through the rise -> note continues, no re-attack, output-gate-start
+  precedes the main gate (pickup);
+- ghost did NOT commit -> ceases at the boundary -> main note attacks FRESH (hard re-articulate).
+So it is EMERGENT from the ghost's legato probability, per voice, correlated, reversible — exactly like
+note-to-note legato. High legato -> more ghost pickups; low legato -> ghosts stay separate. No special
+case: a ghost decides tying-OUT like every note, the main-gate note decides tying-IN like every arriver.
+One model to the corner. Nothing left open here.
+
+
+## PLAYHEAD ADVANCE for ghosts (Rodney, settled)
+**A ghost onset ALWAYS advances the playhead, regardless of length (trigger or gate).** The advance IS
+the point: the playhead landing on a step is how the ghost gets its REST / LEGATO / ACCENT / PITCH lane
+data. A ghost without an advance would be a note with no data source. So there is NO gate-vs-trigger
+distinction to make here — a trigger is just the shortest possible gate, both are ghosts, both need a
+step's data, both advance and draw. (This also dissolves the "how do we not advance on a trigger"
+question — we DO advance on it; a staccato trigger-ghost still draws a full step, it just sounds short.)
+
+**Playhead model (whole engine):** the playhead is EDGE-DRIVEN — it advances ON an onset (main-gate
+rise, ratchet rise, ghost rise) and draws that step; it NEVER free-runs between onsets (no motion in
+gaps). A ghost edge is simply one more onset type that advances it — fully consistent with the existing
+model, not new free-running behaviour.
+
+**The one proposed EXCEPTION (still to-mull):** the FALSE-mode "tie into rest" refinement would advance
+the playhead on a FALLING edge into a rest checkpoint — the sole case that advances on something other
+than a rising onset. Flagged as the single deliberate violation of "advance on onset only"; weigh it
+carefully if built.
+
+
+## Ghost PLACEMENT is per-voice, CORRELATED to the mono reference (Rodney — corrects earlier notes)
+Ghost candidate placement is NOT a binary mono-vs-per-voice choice. It goes through the CORRELATION
+matrix like everything else: the per-voice variation/ghost probability is correlated TO THE MONO
+variation reference, correlation in [-1, +1]:
+- **+100%** -> per-voice locked to mono -> all voices ghost the SAME cells -> shared ghost rhythm.
+- **0%** -> independent -> each voice ghosts its own cells.
+- **-100%** -> anti-correlated -> voices ghost where mono does NOT -> interlocking / complement.
+Uses the SAME graded-correlation machinery (copula / spread / follow-CA) as pitch. The per-voice
+variation probability (poly + correlatable, currently unread) is what ghost-fill reads, correlated to
+the mono variation strand.
+
+**Playhead stays MONO / reference anchored:** the mono variation strand defines the canonical candidate
+timeline (one playhead). Each voice's ACTUAL ghost cells are a CORRELATED perturbation of that reference
+— at +1 they coincide with mono (one effective timeline); below that they diverge per voice, but as a
+STRUCTURED correlated field, not independent chaos. Mono anchors it; correlation controls departure.
+This is spread-follows-CA applied to ghost placement: mono = reference, per-voice = correlated
+deviation, correlation (+1/0/-1) = the control. Supersedes the earlier "placement must be mono" and
+"placement could be per-voice (binary)" notes — it is per-voice CORRELATED, which is neither.
+
+(Rest/legato/accent still additionally shape each surviving ghost per voice, as before — that is on top
+of the correlated placement, not instead of it.)
+
+
+## INVARIANT (Rodney) — gate behaviour is MODE-AGNOSTIC: generator and quantiser share EXACT gate code
+The sequencer-quantiser unification REQUIRES that gates/subgates/ghosts/legato/rest/accent behave
+IDENTICALLY whether pitch comes from the GENERATOR or from the QUANTISED INPUT. q-mix (the pitch-origin
+axis) is the ONLY thing that differs between the two — it changes WHERE PITCH IS READ FROM, nothing
+else. If the gate behaviour diverged between "generator mode" and "quantiser mode" they would be two
+instruments again, not one instrument with a pitch axis.
+**Rule:** gate/subgate/ghost/legato code MUST be a single mode-agnostic path — NO "if quantiser mode"
+special cases in the gate logic. Same code, same result; only the pitch SOURCE is switched by q-mix
+(per voice, correlated). This is what makes the unification real rather than cosmetic, and it is the
+kind of invariant that silently rots (someone adds a quantiser-mode special case) — so it must be
+TESTED: assert gate/rest/legato/accent/subgate/ghost output is bit-identical for the same gate input
+regardless of pitch-origin, across the q-mix range.
+(Same principle as the Sands consolidation: one parameterised implementation beats parallel ones;
+here q-mix is the parameter wrongly tempting a structural split, as the correlation matrix was for Sands.)
+
+
+## BOUNDARY-COINCIDENCE rule (Rodney) — subgate edge landing EXACTLY on a main-gate edge
+Completes the straddle logic (straddle = cell CROSSES a boundary; this = cell edge lands ON the same
+sample as a main-gate edge). One principle: **the main gate OWNS its edge samples** (a rise is a
+note-START, a fall is a note-END — neither sample is "gap"). Ghost = gap-only, ratchet = in-gate-only,
+applied to the coincident sample:
+
+| subgate event | at main-gate RISING edge (same sample) | at main-gate FALLING edge (same sample) |
+|---|---|---|
+| **Ghost** | **IGNORE** — rise is a note-start, not a gap; ghost would collide with the main onset | **IGNORE** — fall is the note-end transition; not a gap |
+| **Ratchet** | **INCLUDE** — the rise is the gate's START, so an aligned ratchet is the valid FIRST in-gate cell | **IGNORE** — no gate left to subdivide (clip rule: in-gate cells terminate at the fall) |
+
+- **Ghost resumes >=1 sample clear of the boundary:** a ghost onset ONE SAMPLE after the main gate
+  falls -> INCLUDE (now genuinely in the gap). Same <=1-sample reasoning as the legato work — one
+  sample clear is "in the gap" and below the threshold of anything mattering.
+- **Degenerate guard** still applies: coincidence resolution must not emit a zero-length cell.
+
+Consistent with: the envelope rule (ghost=gap, ratchet=in-gate) applied at the exact-coincidence sample;
+the clip rule (in-gate cells end at the fall); and the playhead rule (a ghost that is ignored does not
+advance the playhead, because it is not emitted).
+
+
+## Ghost + tie-across-gap interaction (Rodney) — a sounding ghost CONSUMES the pending gap-slur
+When FALSE-mode (tie across gaps) and Ghost Protocol both act in the same gap, they collide — both want
+the gap. Resolution is NOT a new rule: **a ghost is an onset, and a pending gap-slur reaches for the NEXT
+onset**, so the slur ties into whatever comes next — ghost or main gate alike.
+- **Sounding ghost in the gap** -> it IS the next onset -> the slur ties INTO the ghost (does not wait
+  for the main gate). Then the ghost REDRAWS ITS OWN legato (like any note) to decide tying OUT:
+  commits -> chain continues to the next onset (another ghost, or the main gate); does not -> chain ends
+  at the ghost. Identical handshake to note->note and note->gate — a ghost is just a note, ties IN like
+  an arriver, decides OUT by its own roll.
+- **Rested ghost** (knocked out per-voice by the rest/survival layer) is NOT an onset for that voice ->
+  the slur passes THROUGH it and continues to the next onset. So "does the slur tie into the ghost" =
+  "does the ghost SOUND"; a rested ghost is transparent (just gap). Consistent: rest ends the chain
+  everywhere.
+- **Per-voice / correlated:** ghost survival is per-voice (correlated to mono), so for some voices the
+  slur ties into the ghost and for others it passes through — the slur-into-ghost behaviour is itself
+  correlated, free.
+- **Bonus — moderates the long-gap tie:** without ghosts the slur bridges the whole gap to the main gate
+  (rest-bounded only). A ghost landing in the gap gives the slur a NEARER onset to tie to, so Ghost
+  Protocol incidentally interrupts the "tie across a bar of silence" case — same self-regulation as
+  ratchets moderating gap-legato. Features compose without a governor.
+No new mechanism: slur consumed by the next SOUNDING onset, continuation by that onset's own legato roll.

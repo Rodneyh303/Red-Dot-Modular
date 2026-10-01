@@ -66,10 +66,16 @@ struct InputState {
     float clk, gate1, gate2, gate3;
     float run, reset, cv1, cv2;
     bool  gate1Rise, gate2Rise;
-    // subGate (Gate 3 as a fine-grid clock in modes B/D).  subGateRise fires on Gate 3's rising
-    // edge when in mode 1 or 3; subGateConnected mirrors cachedGate3Connected.  See
-    // GATE_SUBDIVISION_STEP_GATE.md.
+    // subGate (ratchet) = Gate 2 (GATE mode B) / Gate 3 (Mode D).  The fine-grid clock INSIDE main
+    // gates (ratchet/tie/rest/legato within gates).  Accepts a trigger OR gate (onset-only).
+    // subGateRise fires on the ratchet's rising edge.
     bool  subGateRise = false, subGateConnected = false;
+    // subGate (ghost) = Gate 3 (GATE mode B only).  The fine-grid clock OUTSIDE main gates (in the
+    // gaps).  Needs a gate (rise = onset, width = ghost length; a trigger renders as a short blip).
+    // ghostHigh is the ghost gate's level (drives the ghost note's width, symmetric with the main
+    // gate).  TWO EXPLICIT INPUTS, NO NORMALLING (GATE_SUBDIVISION_STEP_GATE.md §271): Gate 3
+    // unpatched = no ghosts (no fallback to Gate 2).  Each input does one job, explicitly.
+    bool  ghostRise = false, ghostConnected = false, ghostHigh = false;
 };
 
 // ── Parameter IDs ─────────────────────────────────────────────────────────────
@@ -568,6 +574,16 @@ struct Monsoon : Module {
     int  gate3Target = G3_REDICE_R;
     dsp::SchmittTrigger gate3Trig;   // rising-edge detect for GATE3 actions
     dsp::SchmittTrigger rafflesGateTrig[14];  // Raffles's 14 die-action gates (incl Last*)
+    // Per-voice "sounding this gate cycle" latch (Mode B poly gate-width follow).  Latched from
+    // voices[i].gs.gateHeld right after executePolyVoices runs (onset/landing/rest decision — in
+    // Mode B holdRemain is nullified so there is no MidNote, every shouldExecute carries a real
+    // decision).  Held between onsets and ANDed with the mono gate envelope (IMPL 2b) so a poly
+    // voice's gate WIDTH follows Gate 1 / ghost like the mono gate, not a 1-step internal hold.
+    bool polyVoiceActive[15] = {};
+    // Per-sample memory of Gate 1's Schmitt level (TRUE-mode legato: holds the gate for 1 sample
+    // after the fall so an overlap / <=1-sample gap ties; a >=2-sample gap drops it -> fresh).
+    // Edge-timed (reset while HIGH) => direction-agnostic / reverse-safe. No ms timer.
+    bool prevGate1SchmittHigh = false;
     // Which dice the LIVE mode drives, per lane: false=main (promote, A walks),
     // true=trial (anchored A, endless variations on a theme). Persisted.
 

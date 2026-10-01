@@ -680,30 +680,60 @@ void Monsoon::process(const ProcessArgs& args) {
     input.gate1Rise = gateEdges.gate1Rise;
     input.gate2Rise = gateEdges.gate2Rise;
 
-    // ── Gate 3: subGate (B/D) or die-action (A/C/E/F) ──
-    // In modes B (1) and D (3), Gate 3 is the subGate — a fine-grid clock that subdivides the
-    // main gate at a finer resolution (GATE_SUBDIVISION_STEP_GATE.md).  In other modes, Gate 3
-    // keeps its assignable die-action role (gate3Target menu).
-    input.subGateConnected = cachedGate3Connected;
-    input.subGateRise = false;
+    // ── Gate 2/3 routing (mode-dependent) — GATE_SUBDIVISION_STEP_GATE.md (ghost extension) ──
+    // GATE mode (B): Gate 1 = main, Gate 2 = ratchet (in-gate), Gate 3 = ghost (in-gap; GHOST
+    //   normals to RATCHET's signal so one cable drives both).  Mode D: Gate 2 = main, Gate 3 =
+    //   ratchet (unchanged).  A/C/E/F: Gate 3 = die-action (gate3Target menu).
+    input.subGateConnected = false; input.subGateRise = false;
+    input.ghostConnected = false; input.ghostRise = false; input.ghostHigh = false;
     const bool gate3Rise = cachedGate3Connected && gate3Trig.process(input.gate3, 0.1f, 1.f);
-    if (gate3Rise) {
-        if (modeSelect == 1 || modeSelect == 3) {
-            input.subGateRise = true;   // Gate 3 = subGate (fine grid) in B/D
-        } else {
+    if (modeSelect == 1 || modeSelect == 3) {
+        // GATE modes (B + D): TWO explicit subgate inputs, NO normalling
+        // (GATE_SUBDIVISION_STEP_GATE.md §271). Mode B + Mode D share the SAME gate topology
+        // (Gate 1 = main, Gate 2 = ratchet, Gate 3 = ghost) per the §421 mode-agnostic invariant;
+        // only the pitch source differs (D quantises CV2).
+        //   SUBGATE_RATCHET = Gate 2 — clocks IN-GATE subdivision (ratchet/tie/rest/legato within
+        //     gates). Accepts a trigger OR gate (onset-only: the rising edge is all it needs; the
+        //     cell length is bounded by the MAIN gate per the clip rule + the next ratchet onset).
+        //   SUBGATE_GHOST   = Gate 3 — clocks GHOST-fill IN THE GAPS. Needs a gate (rise = onset,
+        //     width = ghost length); a trigger renders as a short blip (the trigger's own short
+        //     width — no invented duration, no stretching to the next event). Unpatched = no ghosts.
+        // Region-select the edge: ratchet fires only in-gate, ghost only in-gap — so the engine can
+        // tell which fired (ghost is variation-gated; ratchet is not).  Main (Gate 1) rise is
+        // separate and always wins.  No Gate3->Gate2 fallback: each input does one job, explicitly.
+        const bool inGate = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
+        input.subGateConnected = cachedGate2Connected;
+        input.ghostConnected = cachedGate3Connected;
+        input.subGateRise = (inGate && cachedGate2Connected) ? input.gate2Rise : false;   // ratchet: in-gate, Gate 2 only
+        // Ghost coincidence (GATE_SUBDIVISION_STEP_GATE.md §437): the main gate OWNS its edge
+        // samples — a rise is a note-START, a fall is a note-END; neither is "gap", so a ghost is
+        // IGNORED on BOTH main-gate edges and resumes >=1 sample into the gap. The rise edge is
+        // already suppressed (!inGate false); the FALL edge needs the prev-sample state: a ghost
+        // onset on the fall sample (prevInGate && !inGate) is suppressed. So a ghost fires iff the
+        // gate was ALREADY low last sample AND this sample — genuinely in the gap, one sample clear
+        // of the fall. (prevGate1SchmittHigh here is last sample's level — routing runs before
+        // IMPL 2b refreshes it.)
+        const bool genuinelyInGap = !inGate && !prevGate1SchmittHigh;
+        input.ghostRise = (genuinelyInGap && cachedGate3Connected) ? gate3Rise : false;
+        input.ghostHigh = cachedGate3Connected ? (input.gate3 >= 1.0f) : false;           // no fallback to Gate 2
+    } else {
+        // A/C/E/F: Gate 3 = die-action.
+        if (gate3Rise) {
             static const int g3map[] = { DA_REDICE_R, DA_REDICE_M, DA_REDICE_Q,
                 DA_LIVESTATIC_R, DA_LIVESTATIC_M, DA_LIVESTATIC_Q, DA_RESEED_RESTART };
-            if (gate3Target >= 0 && gate3Target < (int)(sizeof(g3map)/sizeof(g3map[0]))) {
+            if (gate3Target >= 0 && gate3Target < (int)(sizeof(g3map)/sizeof(g3map[0])))
                 fireDieAction(g3map[gate3Target]);
-            }
         }
     }
 
     // ── Gate Assignment Handling ──
-    if (modeSelect != 1) { // Mode B uses Gate 1 for input driving
+    // Mode B (1) and Mode D (3) both use Gate 1 as the main gate + Gate 2 as the ratchet sub — so
+    // Gate 1 is NOT assignable in either (it drives the playhead). Gate 2 is the ratchet sub in both
+    // (not assignable in D; left assignable in the non-gate modes as before).
+    if (modeSelect != 1 && modeSelect != 3) { // Mode B + Mode D use Gate 1 for input driving
         tc.handleGate1Assignment(gate1Assign, input.gate1Rise);
     }
-    if (modeSelect != 3) { // Mode D uses Gate 2 for input driving
+    if (modeSelect != 1 && modeSelect != 3) { // Mode B + Mode D use Gate 2 as the ratchet sub
         tc.handleGate2Assignment(gate2Assign, input.gate2Rise, tc.getGate2High(), invertMuteLogic);
     }
 
@@ -767,24 +797,39 @@ void Monsoon::process(const ProcessArgs& args) {
         }
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
         // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
-        bool gate1High = input.gate1 >= 1.0f;
-        // subGate (Gate 3) drives the fine-grid step in modes B (1) and D (3) when connected.
-        const bool useSubGate = input.subGateConnected && (modeSelect == 1 || modeSelect == 3);
+        bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
+        // GATE mode (B): three edge streams — main (Gate 1) always wins; ratchet (Gate 2) drives
+        // in-gate; ghost (Gate 3, normalled to ratchet) drives in-gap.  Mode D: Gate 3 ratchet
+        // (unchanged).  Other modes: their usual clock/phase/gate edges.
         bool shouldExecute;
-        if (useSubGate) {
-            shouldExecute = input.subGateRise;
+        if (modeSelect == 1) {
+            const bool inGate = gate1High;
+            shouldExecute = input.gate1Rise || (gate1High && engine.stepIndex == -1)              // main onset / held-at-start
+                          || (inGate && input.subGateRise)                                        // ratchet in-gate
+                          || (!inGate && input.ghostRise);                                        // ghost in-gap
+        } else if (modeSelect == 3) {
+            const bool useSubGate = input.subGateConnected;
+            shouldExecute = useSubGate ? input.subGateRise : true;   // Mode D continuous, or ratchet on Gate 3
         } else {
-            shouldExecute = (modeSelect == 3); // Mode D is continuous
-            if (!shouldExecute) {
-                if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;
-                else if (modeSelect == 1) shouldExecute = input.gate1Rise || (gate1High && engine.stepIndex == -1);
-                else if (modeSelect == 2) shouldExecute = clock.sixteenthEdge;   // Q3a: new-C = generated 1/16 rhythm
-                else if (modeSelect == 4 || modeSelect == 5) shouldExecute = phase.sixteenthEdge; // Mode E (gen) / F (quant): phase 1/16 grid
-            }
+            shouldExecute = false;
+            if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;
+            else if (modeSelect == 2) shouldExecute = clock.sixteenthEdge;   // Q3a: new-C = generated 1/16 rhythm
+            else if (modeSelect == 4 || modeSelect == 5) shouldExecute = phase.sixteenthEdge; // Mode E (gen) / F (quant): phase 1/16 grid
         }
 
         if (shouldExecute) {
             mc.executeMode(modeSelect, input, tc.getGate2High());
+
+            // Latch each poly voice's sounding decision (Mode B poly gate-width follow).  In Mode B
+            // holdRemain is nullified so there is no MidNote — every shouldExecute carries a real
+            // onset/landing/rest decision, and executePolyVoices (run inside executeMode) has just
+            // set voices[i].gs.gateHeld to whether each voice plays or rests.  Hold that between
+            // onsets; the IMPL 2b gate driver ANDs it with the mono envelope so poly gate WIDTH
+            // follows Gate 1 / ghost (not a 1-step internal hold).  Mode B only.
+            if (modeSelect == 1) {
+                for (int i = 0; i < engine.numPolyVoices; ++i)
+                    polyVoiceActive[i] = engine.voices[i].gs.gateHeld;
+            }
 
             // ── Shophouse scale expander: boundary-quantised scale/root ──
             // Drive the attached Shophouse's ScaleList. The index CV is sampled at the phrase
@@ -876,20 +921,54 @@ void Monsoon::process(const ProcessArgs& args) {
     // lastNoteType) — agrees by construction. This is spec §5's single source of truth.
     //   REST      -> gate LOW (rest punches its hole; §4b rest wins, even over a pending slur).
     //   gate1High -> gate HIGH (the note sounds for exactly the external gate's width).
-    //   gap (low) -> HIGH iff this note committed to slur forward (gs.slurForward, the same
-    //                leading-edge MODEL 1 commitment as Mode A) -> bridge to the next rise;
-    //                else LOW = clean re-articulation gap. Level-based, so 3-note chains bridge
-    //                successive gaps naturally as long as each note re-commits slurForward.
-    // gs.slurForward persists from the note's onset (executeStep set it; the per-rise countdown
-    // clear in executeModeB does NOT touch it), so no edge latch / extra state is needed.
-    if (modeSelect == 1 && runGateActive) {
-        const bool gate1High = input.gate1 >= 1.0f;
+    //   gap (low) -> governed by the "Incoming rest beats legato" toggle (two-toggle model,
+    //                LEGATO_GATE_GAP_BUG.md RESOLVED §290): a STRUCTURAL gap (source sent no gate)
+    //                is NOT a MonoDecision::Rest; this toggle controls whether the gate stays held
+    //                across it so the next rise sees wasHeld and can tie in.
+    //                  FALSE (default) = TIE ACROSS GAPS: the slurForward bridge holds the gate high
+    //                    across the gap.  The tie forms because the PREDECESSOR committed (slurForward
+    //                    -> prevSlur, unchanged across the gap); the arriving note's own legato roll
+    //                    governs tying OUT only (it does NOT re-earn the incoming tie).  A REST decision
+    //                    on the arriving note ENDS the chain.  No self-bound / no timer: a committed
+    //                    slur ties into the next gate regardless of gap length; the only brake is rest.
+    //                  TRUE = ABUTTING-GATES-ONLY (sample-accurate): hold the gate for ONE sample after
+    //                    the fall (prevGate1SchmittHigh) so overlap / <=1-sample gap ties, then drop
+    //                    it (a >=2-sample gap -> fresh).  No ms timer, no lookahead, no gate-end smear.
+    //                Generated rests (rest lane) are a SEPARATE concern (generatedRestBeatsLegato);
+    //                the two toggles are independent.  slurForward remains the leading-edge commitment
+    //                for the Lantern/SLEG either way; only its gate-bridging differs by mode.
+    if ((modeSelect == 1 || modeSelect == 3) && runGateActive) {
+        const bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
         const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
-        // Fused gate (main GATE_OUTPUT + Lantern): bridges the gap when slurring.
-        const bool gateOpen  = !isRest && (gate1High || engine.gs.slurForward);
+        // Ghost tie-through-rise (GATE_SUBDIVISION_STEP_GATE.md §352/§368): a ghost still high when
+        // the main gate rises MAY continue with no re-attack (a ghost-led pickup; the output gate may
+        // start before the main-gate rise) — but ONLY if the ghost committed slurForward at its own
+        // onset (its legato roll). This is NOT a default: tie-vs-re-articulate at the rise is the
+        // ghost's own legato decision, exactly like note->note. EMERGENT from the ghostSounding term
+        // below — no special-case code: ghostSounding keeps gateHeld true across the rise so
+        // executeStep reads wasHeld=true; then prevSlur (= the ghost's slurForward) decides — committed
+        // -> Legato/Tie (no retrigger); not committed -> NewNote (the ghost ceases at the boundary,
+        // main note re-attacks FRESH). (Covered by test_subgate G2 "ghost->main legatos".)
+        const bool ghostSounding = engine.ghostActive && input.ghostHigh;
+        // Gap bridge (tieAcrossRests, polarity-flipped from the old incomingRestBeatsLegato):
+        //   TRUE (default) = TIE ACROSS GAPS: slurForward bridge to the next rise.
+        //   FALSE = ABUTTING-GATES-ONLY (sample-accurate): 1-sample hold after the fall
+        //           (prevGate1SchmittHigh) so overlap / <=1-sample gap ties, then drops.
+        const bool gapBridge = engine.tieAcrossRests ? engine.gs.slurForward : prevGate1SchmittHigh;
+        const bool gateOpen  = !isRest && (gate1High || ghostSounding || gapBridge);
+        // advanceOnTieIntoRest checkpoint (LEGATO_GATE_GAP_BUG.md §345): on the falling edge
+        // (prevGate1SchmittHigh && !gate1High), if a slur is pending and both toggles are on, advance
+        // the playhead ONE step into the incoming-rest and re-evaluate the slur candidacy there. The
+        // next rise then plays that step without a second advance. One-shot (only on the fall
+        // transition; gated by slurForward so a non-slurring note's fall does nothing).
+        if (prevGate1SchmittHigh && !gate1High && engine.gs.slurForward &&
+            engine.tieAcrossRests && engine.advanceOnTieIntoRest && !engine.pendingCheckpointArrival) {
+            engine.legatoCheckpointOnFall(engine.lastLegatoProb_);
+        }
+        prevGate1SchmittHigh = gate1High;   // refresh per-sample (Mode B); used next sample for the 1-sample hold
         engine.gs.gateHeld     = gateOpen;
         // STEP mirror (un-fused): re-articulates every gate, so it NEVER bridges the gap.
-        engine.gsStep.gateHeld = !isRest && gate1High;
+        engine.gsStep.gateHeld = !isRest && (gate1High || ghostSounding);
 
         // CRITICAL (MODE_B_SPEC.md "REMAINING BUG"): the Lantern's sounding test is
         //   sounding = gs.gateHeld || gs.holdRemain > 0.0001f   (Lantern.cpp:347)
@@ -903,20 +982,21 @@ void Monsoon::process(const ProcessArgs& args) {
             engine.gsStep.holdRemain      = 0.f;
             engine.gsStep.gatePulseRemain = -1;   // ADD: STEP mirror
         }
-    } else if (modeSelect == 3 && input.subGateConnected && runGateActive) {
-        // subGate Mode D IMPL 2b: drive the gate STATE from Gate 2 (the note-event stream),
-        // the twin of Mode B's driver above.  Without this, the subdivided sub-cells'
-        // rest/legato decisions would not govern the output gate width under subGate.
-        const bool gate2High = input.gate2 >= 1.0f;
-        const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
-        const bool gateOpen  = !isRest && (gate2High || engine.gs.slurForward);
-        engine.gs.gateHeld     = gateOpen;
-        engine.gsStep.gateHeld = !isRest && gate2High;
-        if (!gateOpen) {
-            engine.gs.holdRemain          = 0.f;
-            engine.gs.gatePulseRemain     = -1;
-            engine.gsStep.holdRemain      = 0.f;
-            engine.gsStep.gatePulseRemain = -1;
+
+        // ── Poly gate-width follow (Phase 5 roll-out) ──────────────────────────────────────
+        // Each poly voice's gate rides the SAME mono envelope (Gate 1 width / ghost / slurForward
+        // bridge) ANDed with its latched sounding decision (polyVoiceActive[], set after the last
+        // executePolyVoices).  So poly ghost / ratchet notes match the mono envelope instead of a
+        // 1-step internal hold.  gsStep is left to executePolyVoice's per-onset retrigger (the STEP
+        // output re-articulates by design); only the fused GATE width is driven here.  A voice whose
+        // gate closes also gets its holdRemain zeroed (Lantern sounding-test parity with the mono).
+        for (int i = 0; i < engine.numPolyVoices; ++i) {
+            const bool vOpen = gateOpen && polyVoiceActive[i];
+            engine.voices[i].gs.gateHeld = vOpen;
+            if (!vOpen) {
+                engine.voices[i].gs.holdRemain      = 0.f;
+                engine.voices[i].gs.gatePulseRemain = -1;
+            }
         }
     }
 

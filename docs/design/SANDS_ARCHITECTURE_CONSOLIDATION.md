@@ -1,7 +1,14 @@
 # Sands Architecture — consolidation analysis (1 vs 2 vs 3 modules)
 
-Status: **analysis / discussion, not actioned.** Captures the drift from the
-original concept and options for pulling it back. Nothing here changes code yet.
+Status: **ANALYSIS (predates the correlation matrix).** Captures the drift from the original concept,
+locates the complexity (`combineLOR`/`combineSpread`), and lays out options 3/2/1. The DECISION is now
+in **SANDS_CONSOLIDATION.md** (collapse to 1 + global-modulation + taps expanders), which this doc's
+analysis supports — but the deciding argument is NEW and not in here: the **Gaussian-copula correlation
+matrix dissolves the "soup" fear** that justified keeping variation/legato mono, which is what unlocks
+"all lanes poly" and removes the *reason* for the three-way split. Plus this session's evidence that
+three implementations = three bug surfaces. Read SANDS_CONSOLIDATION.md for the decision; this doc
+remains the useful analysis of WHERE the complexity is and the 3/2/1 option comparison.
+<!-- SUPERSEDED-BY note: decision lives in SANDS_CONSOLIDATION.md -->
 
 ## The original intent vs where we are
 

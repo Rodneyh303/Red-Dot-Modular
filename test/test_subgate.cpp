@@ -1,21 +1,14 @@
-// test_subgate.cpp — GATE_SUBDIVISION_STEP_GATE.md §"Test" executable spec test.
+// test_subgate.cpp — GATE_SUBDIVISION_STEP_GATE.md executable spec test.
 //
-// subGate (Gate 3) is a fine-grid clock; the main gate (Gate 1 in Mode B, Gate 2 in Mode D) is
-// the note-event stream.  At each subGate onset the playhead advances; where the main gate is
-// HIGH, executeStep shapes the sub-cell (rest/legato/accent + all pitch lanes draw, Tie emergent
-// from pitch equality).  Where the main gate is LOW (gap), the playhead still advances but no
-// note shapes (forced Rest).  Two tie scopes both preserved: intra-gate (tie across subGate cells
-// within one main gate) and inter-gate (slur across a main-gate boundary).
-//
-// SUITES:
-//   1 — subGate advances the playhead; a main gate spanning N cells = N sub-cell decisions.
-//   2 — intra-gate legato: legato high -> Tie/Legato across sub-cells within a gate (the
-//       subdivision hold).  legato low -> NewNote each sub-cell (a ratchet).
-//   3 — gap (main gate low) -> Rest; playhead still advances.
-//   4 — THE TRAP: inter-gate legato HOLDS across a main-gate boundary AND intra-gate
-//       re-articulates at a subGate boundary, IN THE SAME PATTERN.  This catches subGate
-//       stomping inter-gate legato (the spec's headline regression).
-//   5 — subGateRise=false -> no step (the caller uses executeModeB when subGate is unpatched).
+// subGate subdivision (GATE mode / Mode B).  Three edge streams advance the playhead and each runs
+// executeStep (rest/legato/accent + all pitch lanes draw, Tie emergent from pitch equality):
+//   - main gate rise   — a main-gate onset (note event begin); main always wins.
+//   - ratchet (Gate 2) — a fine-grid edge INSIDE a main gate -> sub-cell (ratchet/tie/rest).
+//   - ghost  (Gate 3)  — a fine-grid edge OUTSIDE main gates (in a gap) -> a GHOST note.
+// Ghost + main are symmetric: both are external gates whose level drives note width (the IMPL 2b
+// mirror reads mainHigh || ghostHigh).  Legato flows both ways across the ghost<->main boundary via
+// the leading-edge slurForward model.  A ghost/ratchet onset is a CANDIDATE note — executeStep rolls
+// the rest lane first, so restProb may still silence it.
 //
 // Build (needs the engine TUs — see test/run_all.sh, entry "test_subgate|$SE $GS $PE"):
 //   g++ -std=c++17 -Itest -Isrc -Isrc/dsp -Isrc/dsp/engines -Isrc/dsp/gates -Isrc/dsp/managers \
@@ -43,51 +36,62 @@
 
 static int g_pass = 0, g_fail = 0;
 
-// A note-shaping input with a deterministic, all-active scale so genPitchLive always resolves.
 static PatternInput makeInput() {
     PatternInput in;
     for (int i = 0; i < 12; ++i) in.semiWeights[i] = 1.f;
     in.noteVariationMask = 0b111;
     in.variationAmount   = 0.5f;
-    in.octaveLo = 0; in.octaveHi = 0;   // keep pitch in one octave (irrelevant to gate logic)
+    in.octaveLo = 0; in.octaveHi = 0;
     return in;
 }
 
-// Drive one subGate onset through the real engine, then simulate the module-layer IMPL 2b gate
-// driver (runs every sample between subGate onsets): gateOpen = !isRest && (mainGateHigh ||
-// slurForward).  This is the faithful mirror of Monsoon.cpp's Mode-B gate-state driver, so the
-// engine sees the same gs.gateHeld it would in Rack.
-static StepResult subStep(SequencerEngine& eng, bool mainGateRise, bool mainGateHigh,
-                          float restProb, float legatoProb, float noteVal) {
-    const PatternInput in = makeInput();
-    StepResult r = eng.executeModeBSubdivided(mainGateRise, mainGateHigh, /*subGateRise=*/true,
-                                              restProb, legatoProb, noteVal, in);
-    // IMPL 2b gate-state driver (mirror of Monsoon.cpp:868-884):
+// Drive one edge through the real engine, then mirror the module-layer IMPL 2b gate driver
+// (runs every sample between edges): gateOpen = !isRest && (mainHigh || ghostHigh || slurForward).
+// Ghost + main are symmetric — whichever external gate is high bounds the note width.
+static StepResult step(SequencerEngine& eng, bool mainRise, bool ratchetRise, bool ghostRise,
+                       bool mainHigh, bool ghostHigh,
+                       float restProb, float legatoProb, float noteVal, float variation = 0.5f,
+                       bool subgatesActive = true) {
+    PatternInput in = makeInput();
+    in.variationAmount = variation;
+    StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, ratchetRise,
+                                              restProb, legatoProb, noteVal, in,
+                                              ghostRise, ghostHigh);
     const bool isRest = (r.decision == MonoDecision::Rest);
-    const bool gateOpen = !isRest && (mainGateHigh || eng.gs.slurForward);
+    // Ghost only sounds when a candidate actually fired (engine.ghostActive) AND the ghost gate is
+    // high — Gate 3 high alone is NOT enough (variation=0 -> no ghost candidate).
+    const bool ghostSounding = eng.ghostActive && ghostHigh;
+    // NO slurForward bridge: the gate closes on the fall, so a pause between gates does NOT hold
+    // legato — legato only when gate edges join (one gate high when the next arrives, e.g. a ghost
+    // high when a main gate rises -> ghostSounding keeps gateHeld true -> the main legatos in).
+    (void)subgatesActive;
+    const bool gateOpen = !isRest && (mainHigh || ghostSounding);
     eng.gs.gateHeld = gateOpen;
     if (!gateOpen) eng.gs.holdRemain = 0.f;
-    eng.gsStep.gateHeld = !isRest && mainGateHigh;
+    eng.gsStep.gateHeld = !isRest && (mainHigh || ghostSounding);
     return r;
 }
 
-// Poly variant: also runs executePolyVoices (the module layer's postExecute_ does this after
-// every stepped executeModeB*).  This is what makes per-voice subdivision flow at subGate onsets:
-// at a mono NewNote sub-cell, monoGateStart=true -> each poly voice independently rolls its own
-// rest/legato/pitch (the correlated + reversible payoff — WHICH voices split is seeded per-voice).
-static StepResult subStepPoly(SequencerEngine& eng, bool mainGateRise, bool mainGateHigh,
-                               float restProb, float legatoProb, float noteVal) {
-    const PatternInput in = makeInput();
-    StepResult r = eng.executeModeBSubdivided(mainGateRise, mainGateHigh, /*subGateRise=*/true,
-                                              restProb, legatoProb, noteVal, in);
+// Poly variant: also runs executePolyVoices (the module layer's postExecute_ does this after every
+// stepped executeModeB*).  At a mono NewNote onset, monoGateStart=true -> each poly voice
+// independently rolls its own rest/legato/pitch (the correlated + reversible payoff).
+static StepResult stepPoly(SequencerEngine& eng, bool mainRise, bool ratchetRise, bool ghostRise,
+                            bool mainHigh, bool ghostHigh,
+                            float restProb, float legatoProb, float noteVal, float variation = 0.5f) {
+    PatternInput in = makeInput();
+    in.variationAmount = variation;
+    StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, ratchetRise,
+                                              restProb, legatoProb, noteVal, in,
+                                              ghostRise, ghostHigh);
     if (r.stepped && eng.numPolyVoices > 0)
-        eng.executePolyVoices(in);   // mirror postExecute_
-    // IMPL 2b mono gate driver (mirror).
+        eng.executePolyVoices(in);
     const bool isRest = (r.decision == MonoDecision::Rest);
-    const bool gateOpen = !isRest && (mainGateHigh || eng.gs.slurForward);
+    const bool ghostSounding = eng.ghostActive && ghostHigh;
+    // No slurForward bridge (legato only when gate edges join — see step()).
+    const bool gateOpen = !isRest && (mainHigh || ghostSounding);
     eng.gs.gateHeld = gateOpen;
     if (!gateOpen) eng.gs.holdRemain = 0.f;
-    eng.gsStep.gateHeld = !isRest && mainGateHigh;
+    eng.gsStep.gateHeld = !isRest && (mainHigh || ghostSounding);
     return r;
 }
 
@@ -95,135 +99,312 @@ int main() {
     using D = MonoDecision;
 
     // ─────────────────────────────────────────────────────────────────────────────
-    SUITE("1 — subGate advances the playhead; N cells = N decisions");
-    TEST("a main gate spanning 3 subGate cells produces 3 stepped decisions (ratchet, legato=0)", {
+    SUITE("1 — ratchet (in-gate): N sub-cells = N decisions, playhead advances");
+    TEST("a main gate spanning 3 ratchet cells produces 3 stepped decisions (ratchet, legato=0)", {
         SequencerEngine eng; eng.numPolyVoices = 0;
-        StepResult r0 = subStep(eng, /*rise=*/true,  /*high=*/true,  0.f, 0.f, 2.f);  // onset
-        StepResult r1 = subStep(eng, /*rise=*/false, /*high=*/true,  0.f, 0.f, 2.f);  // sub-cell
-        StepResult r2 = subStep(eng, /*rise=*/false, /*high=*/true,  0.f, 0.f, 2.f);  // sub-cell
+        StepResult r0 = step(eng, /*mainRise=*/true,  /*ratchet=*/true,  /*ghost=*/false, /*mainHigh=*/true,  /*ghostHigh=*/false, 0.f, 0.f, 2.f);
+        StepResult r1 = step(eng, /*mainRise=*/false, /*ratchet=*/true,  /*ghost=*/false, /*mainHigh=*/true,  /*ghostHigh=*/false, 0.f, 0.f, 2.f);
+        StepResult r2 = step(eng, /*mainRise=*/false, /*ratchet=*/true,  /*ghost=*/false, /*mainHigh=*/true,  /*ghostHigh=*/false, 0.f, 0.f, 2.f);
         EXPECT(r0.stepped && r1.stepped && r2.stepped);
-        EXPECT(r0.decision != D::MidNote);              // each sub-cell is a fresh decision
-        EXPECT(r1.decision != D::MidNote);
-        EXPECT(r2.decision != D::MidNote);
-        EXPECT_EQ(eng.stepIndex, 2);                    // playhead advanced 3 steps (0,1,2)
+        EXPECT(r0.decision != D::MidNote && r1.decision != D::MidNote && r2.decision != D::MidNote);
+        EXPECT_EQ(eng.stepIndex, 2);
     });
 
-    TEST("subGateRise with main gate LOW still advances the playhead (the clock runs in a gap)", {
+    TEST("no edge -> no step (a silent gap with nothing patched advances nothing)", {
         SequencerEngine eng; eng.numPolyVoices = 0;
-        subStep(eng, true,  true,  0.f, 0.f, 2.f);   // step 0 (onset)
-        StepResult r = subStep(eng, false, false, 0.f, 0.f, 2.f);   // gap sub-cell
-        EXPECT(r.stepped);
-        EXPECT_EQ(eng.stepIndex, 1);                   // playhead still advanced (subGate is the clock)
+        step(eng, true, true, false, true, false, 0.f, 0.f, 2.f);   // onset, step 0
+        StepResult r = step(eng, false, false, false, false, false, 0.f, 0.f, 2.f);  // no edge
+        EXPECT(!r.stepped);
+        EXPECT_EQ(eng.stepIndex, 0);   // playhead did not advance
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
-    SUITE("2 — intra-gate legato: tie across sub-cells within one main gate");
+    SUITE("2 — intra-gate legato: tie vs ratchet across sub-cells within one main gate");
     TEST("legato high -> second sub-cell ties/legatos (holds across the sub-cell boundary)", {
         SequencerEngine eng; eng.numPolyVoices = 0;
-        subStep(eng, true, true, 0.f, 0.5f, 4.f);                 // onset commits slurForward
-        StepResult r = subStep(eng, false, true, 0.f, 0.5f, 4.f); // intra-gate boundary
-        EXPECT(r.decision == D::Tie || r.decision == D::Legato);  // holds, not a fresh NewNote
+        step(eng, true, true, false, true, false, 0.f, 0.5f, 4.f);                 // onset commits slurForward
+        StepResult r = step(eng, false, true, false, true, false, 0.f, 0.5f, 4.f); // intra-gate boundary
+        EXPECT(r.decision == D::Tie || r.decision == D::Legato);
     });
 
     TEST("legato low -> every sub-cell re-articulates (a ratchet: NewNote each onset)", {
         SequencerEngine eng; eng.numPolyVoices = 0;
-        subStep(eng, true, true, 0.f, 0.f, 4.f);                  // onset
-        StepResult r = subStep(eng, false, true, 0.f, 0.f, 4.f);  // intra-gate boundary
-        EXPECT(r.decision == D::NewNote);                         // re-articulated, not tied
+        step(eng, true, true, false, true, false, 0.f, 0.f, 4.f);
+        StepResult r = step(eng, false, true, false, true, false, 0.f, 0.f, 4.f);
+        EXPECT(r.decision == D::NewNote);
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
-    SUITE("3 — gap (main gate low): playhead advances, gate silent unless a slur bridges");
-    TEST("a gap with NO committed slur -> gate silent (legato=0, no bridge)", {
+    SUITE("3 — inter-gate slur: a slur across a main-gate boundary holds (the TRAP)");
+    TEST("a SILENT gap between main gates does NOT legato (legato only when edges join)", {
+        // note 1 (onset + intra tie) -> silent gap (no edge, gate low) -> note 2 (fresh main rise).
+        // No slurForward bridge: the gate closes on the fall, so note 2 is a fresh NewNote (legato
+        // only when gate edges join — a silent gap is not a join).
         SequencerEngine eng; eng.numPolyVoices = 0;
-        subStep(eng, true, true, 0.f, 0.f, 4.f);    // onset (legato=0 -> no slurForward)
-        StepResult r = subStep(eng, false, false, 0.f, 0.f, 4.f);  // gap
-        EXPECT(r.stepped);
-        EXPECT_EQ(eng.stepIndex, 1);                 // playhead advanced
-        EXPECT(!eng.gs.gateHeld);                    // silent — no slur bridge
+        step(eng, true,  true,  false, true,  false, 0.f, 0.5f, 4.f);  // note 1 onset
+        step(eng, false, true,  false, true,  false, 0.f, 0.5f, 4.f);  // note 1 intra-gate tie
+        step(eng, false, false, false, false, false, 0.f, 0.5f, 4.f);  // silent gap (gate low)
+        StepResult r = step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f);  // note 2: fresh main rise
+        EXPECT(r.decision == D::NewNote);  // no slur across a silent gap
     });
-    TEST("a gap with a committed slur -> gate bridges (slurForward persists across the gap)", {
+
+    TEST("PLAIN gate mode (no subgates): a pause between main gates does NOT hold legato", {
+        // No subgates -> no slurForward bridge.  Main gate 1 falls (pause), main gate 2 rises: the
+        // gate closes on the fall, so gate 2 is a fresh NewNote (legato only when edges join).
         SequencerEngine eng; eng.numPolyVoices = 0;
-        subStep(eng, true, true, 0.f, 0.5f, 4.f);   // onset commits slurForward
-        StepResult r = subStep(eng, false, false, 0.f, 0.5f, 4.f);  // gap
-        EXPECT(r.stepped);
-        EXPECT(eng.gs.gateHeld);                     // slurForward bridges the gap
+        step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f, 0.5f, /*subgates=*/false);  // main 1 onset
+        step(eng, false, false, false, false, false, 0.f, 0.5f, 4.f, 0.5f, /*subgates=*/false);  // pause (gap)
+        StepResult r = step(eng, true, false, false, true, false, 0.f, 0.5f, 4.f, 0.5f, /*subgates=*/false);  // main 2 rise
+        EXPECT(r.decision == D::NewNote);  // fresh note — no slur across the pause
+    });
+
+    TEST("intra-gate sub-cells tie (contiguous), but a silent gap to the next note does NOT legato", {
+        // Sub-cells WITHIN a gate are contiguous (gate high) -> they tie.  But a silent gap to the
+        // next main gate is NOT a join -> note 2 is a fresh NewNote (no slurForward bridge).
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        step(eng, true,  true,  false, true,  false, 0.f, 0.5f, 4.f);  // onset
+        StepResult intra = step(eng, false, true,  false, true,  false, 0.f, 0.5f, 4.f);  // sub-cell 2 (in-gate)
+        EXPECT(intra.decision == D::Tie || intra.decision == D::Legato);  // contiguous -> ties
+        step(eng, false, true,  false, true,  false, 0.f, 0.5f, 4.f);  // sub-cell 3 (in-gate)
+        step(eng, false, false, false, false, false, 0.f, 0.5f, 4.f);  // silent gap (gate low)
+        StepResult inter = step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f);  // note 2
+        EXPECT(inter.decision == D::NewNote);  // silent gap -> fresh note, no slur
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
-    SUITE("4 — THE TRAP: inter-gate legato HOLDS across a main-gate boundary (subGate must not stomp it)");
-    // The headline regression test (spec §"TWO tie scopes" TRAP).  In ONE pattern:
-    //   note 1 (onset + an intra-gate tie) -> gap -> note 2 (a fresh main-gate rise).
-    // Note 2's onset must connect (Tie/Legato) via the slurForward bridge — subGate must NOT
-    // force a re-articulation at the main-gate edge just because it is also a subGate boundary.
-    TEST("slur across a main-gate boundary holds under subGate (Tie/Legato, not NewNote)", {
-        SequencerEngine eng; eng.numPolyVoices = 0;
-        subStep(eng, true,  true,  0.f, 0.5f, 4.f);  // note 1 onset, commits slurForward
-        subStep(eng, false, true,  0.f, 0.5f, 4.f);  // note 1 intra-gate tie
-        subStep(eng, false, false, 0.f, 0.5f, 4.f);  // gap (slurForward persists)
-        StepResult r = subStep(eng, true,  true,  0.f, 0.5f, 4.f);  // note 2: fresh main-gate rise
-        EXPECT(r.decision == D::Tie || r.decision == D::Legato);    // slur held across the boundary
-        EXPECT(r.decision != D::NewNote);                           // NOT forced to re-articulate
-    });
-
-    TEST("a multi-sub-cell slur chain (legato high throughout) bridges the gap to the next note", {
-        // The leading-edge model re-commits slurForward at EACH step from that step's own legato
-        // roll (line ~617: gs.slurForward = leadsSlur).  So a slur chain requires every sub-cell
-        // to roll legato (re-commit) — a single legato=0 sub-cell clears slurForward and breaks
-        // the chain.  This test: onset + 2 tied sub-cells (all legato=0.5) + gap + note 2 — the
-        // chain holds across the gap because every step re-committed.
-        SequencerEngine eng; eng.numPolyVoices = 0;
-        subStep(eng, true,  true,  0.f, 0.5f, 4.f);  // onset commits slurForward
-        subStep(eng, false, true,  0.f, 0.5f, 4.f);  // sub-cell 2: ties, re-commits
-        subStep(eng, false, true,  0.f, 0.5f, 4.f);  // sub-cell 3: ties, re-commits
-        subStep(eng, false, false, 0.f, 0.5f, 4.f);  // gap (slurForward persists)
-        StepResult inter = subStep(eng, true,  true,  0.f, 0.5f, 4.f);  // note 2: inter-gate boundary
-        EXPECT(inter.decision == D::Tie || inter.decision == D::Legato);  // slur held across boundary
-    });
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    SUITE("5 — subGateRise=false -> no step (unpatched path uses executeModeB)");
-    TEST("no subGate edge -> stepped=false (the caller falls back to executeModeB)", {
+    SUITE("4 — no edge -> no step (unpatched / silent gap)");
+    TEST("no edge -> stepped=false", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeBSubdivided(true, true, /*subGateRise=*/false,
-                                                  0.f, 0.f, 2.f, in);
-        EXPECT(!r.stepped);                          // no subGate edge -> no step
+        StepResult r = eng.executeModeBSubdivided(false, false, false, 0.f, 0.f, 2.f, in);
+        EXPECT(!r.stepped);
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // GHOST (G3): ghost notes fill the gaps.  Ghost + main are symmetric (level drives width);
+    // legato flows both ways; a ghost onset is a candidate that rest may silence.
+    // ─────────────────────────────────────────────────────────────────────────────
+    SUITE("G1 — ghost onset in a gap shapes a note (rest/legato/pitch), playhead advances");
+    TEST("a ghost rise in a gap (rest=0) plays a note; gate follows the ghost gate width", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        step(eng, true, false, false, true, false, 0.f, 0.f, 4.f);    // main onset
+        step(eng, false, false, false, false, false, 0.f, 0.f, 4.f);  // silent gap (no edge)
+        StepResult r = step(eng, false, false, true, false, true, 0.f, 0.f, 4.f);  // ghost onset in gap
+        EXPECT(r.stepped);
+        EXPECT(r.decision != D::MidNote);
+        EXPECT(eng.gs.gateHeld);   // ghost note sounding (ghostHigh bounds the width)
+    });
+
+    TEST("a ghost onset is a CANDIDATE — rest high silences it (the gap stays empty for that cell)", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        step(eng, true, false, false, true, false, 0.f, 0.f, 4.f);    // main onset
+        step(eng, false, false, false, false, false, 0.f, 0.f, 4.f);  // silent gap
+        StepResult r = step(eng, false, false, true, false, true, 0.5f, 0.f, 4.f);  // ghost onset, rest high
+        EXPECT(r.stepped);
+        EXPECT(r.decision == D::Rest);   // candidate ghost note rested
+        EXPECT(!eng.gs.gateHeld);        // silent
+    });
+
+    TEST("variation=0 -> NO ghost candidate (silent gap, even with rest=0 and Gate 3 high)", {
+        // The ghost candidate is variation-gated: r_vary >= variationAmount -> no ghost.  At
+        // variation=0 every r_vary (0..1) >= 0 -> no ghost ever fires, so the gaps stay empty
+        // even with Gate 3 patched high.  (Ratchet + main are NOT variation-gated — only ghost.)
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        step(eng, true, false, false, true, false, 0.f, 0.f, 4.f);    // main onset
+        step(eng, false, false, false, false, false, 0.f, 0.f, 4.f);  // silent gap
+        StepResult r = step(eng, false, false, true, false, true, 0.f, 0.f, 4.f, /*variation=*/0.f);
+        EXPECT(r.stepped);
+        EXPECT(!eng.ghostActive);        // no ghost candidate fired
+        EXPECT(!eng.gs.gateHeld);       // gate stays low (Gate 3 high alone doesn't open it)
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    SUITE("G2 — legato flows BOTH ways across the ghost<->main boundary");
+    TEST("ghost -> main: a ghost note high at a main-gate rise legatos into the main note", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f);  // main note 1, commits slurForward
+        step(eng, false, false, false, false, false, 0.f, 0.5f, 4.f);  // silent gap
+        step(eng, false, false, true,  false, true,  0.f, 0.5f, 4.f);  // ghost note (commits slurForward)
+        StepResult r = step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f);  // main note 2 arrives mid-ghost
+        EXPECT(r.decision == D::Tie || r.decision == D::Legato);  // ghost legatos into main
+    });
+
+    TEST("main -> ghost across a SILENT gap does NOT legato (the gate closed on the main's fall)", {
+        // The main note falls (silent gap), then the ghost rises.  The gate closed on the fall ->
+        // wasHeld=false at the ghost -> fresh NewNote.  (main->ghost legato only if the ghost rises
+        // while the main is still high — but the ghost is in-gap, so this is a gap -> no slur.)
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f);  // main note
+        step(eng, false, false, false, false, false, 0.f, 0.5f, 4.f);  // silent gap (gate low)
+        StepResult r = step(eng, false, false, true,  false, true,  0.f, 0.5f, 4.f);  // first ghost cell
+        EXPECT(r.decision == D::NewNote);  // no slur across a silent gap
+    });
+
+    TEST("ghost->main legatos (ghost high at main rise); main->ghost across a silent gap does not", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f);  // main A
+        step(eng, false, false, false, false, false, 0.f, 0.5f, 4.f);  // silent gap
+        StepResult g1 = step(eng, false, false, true,  false, true,  0.f, 0.5f, 4.f);  // ghost (gap -> fresh)
+        EXPECT(g1.decision == D::NewNote);                              // main->ghost across silent gap: no slur
+        StepResult m2 = step(eng, true,  false, false, true,  false, 0.f, 0.5f, 4.f);  // main B (ghost high -> join)
+        EXPECT(m2.decision == D::Tie || m2.decision == D::Legato);    // ghost->main: ghost high -> legatos
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    SUITE("G3 — region select: ratchet drives in-gate, ghost drives in-gap");
+    TEST("ratchet in-gate + ghost in-gap: each drives its own region (both patched)", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        step(eng, true,  true,  false, true,  false, 0.f, 0.f, 4.f);  // main onset + ratchet sub-cell
+        StepResult rac = step(eng, false, true,  false, true,  false, 0.f, 0.f, 4.f);  // ratchet sub-cell (in-gate)
+        EXPECT(rac.stepped && rac.decision == D::NewNote);  // ratchet re-articulates in-gate
+        step(eng, false, false, false, false, false, 0.f, 0.f, 4.f);  // silent gap edge? no — no edge
+        StepResult gh = step(eng, false, false, true,  false, true,  0.f, 0.f, 4.f);  // ghost in gap
+        EXPECT(gh.stepped && gh.decision != D::MidNote);  // ghost drives the gap
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
     // POLY (P1): per-voice subdivision — the correlated + reversible payoff.
     // ─────────────────────────────────────────────────────────────────────────────
-    SUITE("P1 — per-voice subdivision: poly voices independently rest/play at subGate onsets");
+    SUITE("P1 — per-voice subdivision: poly voices independently rest/play at onsets");
     TEST("at a mono onset, voice 0 (restProb=0) plays, voice 1 (restProb=1) rests", {
         SequencerEngine eng; eng.numPolyVoices = 2;
-        eng.voices[0].restProb = 0.f;   // never rests -> always plays
-        eng.voices[1].restProb = 1.f;  // always rests -> silent
-        subStepPoly(eng, /*rise=*/true, /*high=*/true, 0.f, 0.f, 4.f);  // mono onset (NewNote)
-        EXPECT(eng.voices[0].gs.gateHeld);    // voice 0 plays
-        EXPECT(!eng.voices[1].gs.gateHeld);   // voice 1 rests
+        eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 1.f;
+        stepPoly(eng, true, true, false, true, false, 0.f, 0.f, 4.f);  // mono onset
+        EXPECT(eng.voices[0].gs.gateHeld);
+        EXPECT(!eng.voices[1].gs.gateHeld);
     });
 
     TEST("a ratcheted sub-cell (mono NewNote, legato=0) re-articulates the playing voice", {
-        // legato=0 -> mono re-articulates every sub-cell (ratchet).  Each NewNote sub-cell fires
-        // monoGateStart -> the playing voice re-rolls + re-triggers (a ratchet hit per sub-cell).
-        SequencerEngine eng; eng.numPolyVoices = 1;
-        eng.voices[0].restProb = 0.f;   // always plays
-        subStepPoly(eng, true,  true,  0.f, 0.f, 4.f);  // onset
-        StepResult r = subStepPoly(eng, false, true, 0.f, 0.f, 4.f);  // ratchet sub-cell
-        EXPECT(r.decision == D::NewNote);              // mono re-articulated
-        EXPECT(eng.voices[0].gs.gateHeld);             // voice still sounding (re-triggered)
-    });
-
-    TEST("a tied sub-cell (mono Tie, legato high) extends the playing voice's hold", {
-        // legato=0.5 -> mono ties across sub-cells.  monoGateStart=false at a Tie -> the playing
-        // voice extends its hold (no re-trigger) — the subdivision sustain.
         SequencerEngine eng; eng.numPolyVoices = 1;
         eng.voices[0].restProb = 0.f;
-        subStepPoly(eng, true,  true,  0.f, 0.5f, 4.f);  // onset (commits slurForward)
-        StepResult r = subStepPoly(eng, false, true, 0.f, 0.5f, 4.f);  // tied sub-cell
-        EXPECT(r.decision == D::Tie || r.decision == D::Legato);  // mono sustained
-        EXPECT(eng.voices[0].gs.gateHeld);             // voice still sounding (held, not re-triggered)
+        stepPoly(eng, true, true, false, true, false, 0.f, 0.f, 4.f);
+        StepResult r = stepPoly(eng, false, true, false, true, false, 0.f, 0.f, 4.f);
+        EXPECT(r.decision == D::NewNote);
+        EXPECT(eng.voices[0].gs.gateHeld);
+    });
+
+    TEST("a ghost onset in a gap drives per-voice rolls (poly ghost notes)", {
+        SequencerEngine eng; eng.numPolyVoices = 2;
+        eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 1.f;
+        stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f);   // main onset
+        stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f); // silent gap
+        stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f); // ghost onset in gap
+        EXPECT(eng.voices[0].gs.gateHeld);    // voice 0 plays the ghost
+        EXPECT(!eng.voices[1].gs.gateHeld);   // voice 1 rests
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // POLY (P2): the un-fused STEP output re-triggers per cell (Straits/Changi emit at fine grid).
+    // ─────────────────────────────────────────────────────────────────────────────
+    SUITE("P2 — poly STEP output (un-fused) re-triggers per cell");
+    TEST("at a mono onset, the playing voice's gsStep is high (re-struck)", {
+        SequencerEngine eng; eng.numPolyVoices = 1;
+        eng.voices[0].restProb = 0.f;
+        stepPoly(eng, true, true, false, true, false, 0.f, 0.f, 4.f);
+        EXPECT(eng.voices[0].gsStep.gateHeld);
+    });
+
+    TEST("a ghost onset re-strikes gsStep (ghost cells pulse the step output)", {
+        SequencerEngine eng; eng.numPolyVoices = 1;
+        eng.voices[0].restProb = 0.f;
+        stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f);
+        stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f);
+        stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f);  // ghost onset
+        EXPECT(eng.voices[0].gsStep.gateHeld);  // re-struck at the ghost cell
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // G4 — ghost + tie-across-gap interaction (GATE_SUBDIVISION_STEP_GATE.md §458):
+    // a sounding ghost in the gap CONSUMES the pending gap-slur — the slur ties INTO the ghost
+    // (the nearer onset), not the main gate. The ghost then redraws its own legato (commit ->
+    // continue; not -> end at the ghost). Emergent from the edge-driven model + the bridge.
+    // ─────────────────────────────────────────────────────────────────────────────
+    SUITE("G4 — ghost consumes the pending gap-slur (tie-across-rests bridge)");
+    // A bridge-aware variant of step(): models tieAcrossRests=ON (the gap bridge holds gateHeld =
+    // slurForward across the gap) so a ghost onset in the gap sees wasHeld and ties IN.
+    auto stepBridge = [](SequencerEngine& eng, bool mainRise, bool ghostRise, bool mainHigh,
+                         bool ghostHigh, float restProb, float legatoProb, float noteVal,
+                         float variation = 0.5f) {
+        PatternInput in = makeInput(); in.variationAmount = variation;
+        StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, /*ratchetRise=*/false,
+                                                 restProb, legatoProb, noteVal, in,
+                                                 ghostRise, ghostHigh);
+        const bool isRest = (r.decision == MonoDecision::Rest);
+        const bool ghostSounding = eng.ghostActive && ghostHigh;
+        // Bridge (tieAcrossRests=ON): the gate stays held across the gap iff slurForward committed.
+        const bool gateOpen = !isRest && (mainHigh || ghostSounding || eng.gs.slurForward);
+        eng.gs.gateHeld = gateOpen;
+        if (!gateOpen) eng.gs.holdRemain = 0.f;
+        return r;
+    };
+    TEST("a sounding ghost in the gap is the next onset -> the slur ties INTO the ghost", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        // A: main onset, commits slurForward (legato=1.0).
+        stepBridge(eng, /*mainRise=*/true,  /*ghostRise=*/false, /*mainHigh=*/true,  /*ghostHigh=*/false, 0.f, 1.0f, 4.f);
+        // Gap: main gate low; the bridge keeps gateHeld = slurForward (true) so wasHeld stays true.
+        // A ghost fires in the gap (variation=1.0 -> candidate fires). It is the next onset.
+        StepResult g = stepBridge(eng, /*mainRise=*/false, /*ghostRise=*/true,  /*mainHigh=*/false, /*ghostHigh=*/true,  0.f, 0.5f, 4.f, /*variation=*/1.0f);
+        // The ghost tied IN from A's slur (prevSlur reached it) -> not a fresh NewNote.
+        EXPECT(g.decision == D::Tie || g.decision == D::Legato || g.decision == D::LegatoMax);
+    });
+    TEST("a rested ghost (no candidate) is transparent — the slur passes through to the next onset", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        stepBridge(eng, true, false, true, false, 0.f, 1.0f, 4.f);              // A commits
+        // Gap ghost that RESTS (variation=0 -> no candidate). It is NOT an onset for this voice:
+        // ghostActive stays false (no ghost sounded) and slurForward is untouched, so the slur
+        // passes THROUGH it (the bridge keeps the gate held). The returned decision is the preserved
+        // prior one (not a fresh Rest) — transparency is ghostActive==false + chain survival, not a
+        // Rest decision.
+        StepResult g = stepBridge(eng, false, true, false, true, 0.f, 0.5f, 4.f, /*variation=*/0.f);
+        EXPECT(!eng.ghostActive);                                  // no ghost sounded -> transparent
+        EXPECT(eng.gs.slurForward == true);                        // A's slur survived (not consumed/broken)
+        // The bridge still holds; a following main gate ties in (A's slur survived the transparent ghost).
+        StepResult m = stepBridge(eng, true, false, true, false, 0.f, 0.5f, 4.f);
+        EXPECT(m.decision == D::Tie || m.decision == D::Legato || m.decision == D::LegatoMax);
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // G5 — per-voice ghost placement (GATE_SUBDIVISION_STEP_GATE.md §398/§227):
+    // At a ghost cell (the mono ghosted), each poly voice rolls its OWN variation to decide if it
+    // ghosts. A voice whose variation does not pass is a RESTED GHOST (transparent — silent, the
+    // slur passes through it). With delegation (default) all voices read the mono step = shared
+    // (+1); with Local East + a per-voice VAR LOR, a voice reads its own step = independent (0).
+    // ─────────────────────────────────────────────────────────────────────────────
+    SUITE("G5 — per-voice ghost placement (variation gate per voice)");
+    TEST("shared (delegated): mono ghosts -> all poly voices ghost (same variation read)", {
+        SequencerEngine eng; eng.numPolyVoices = 2;
+        eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 0.f;
+        // variationAmount=1.0 -> mono always ghosts (r_vary < 1.0); ghostActive=true. Delegated
+        // voices read the mono step -> same value -> all ghost.
+        stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f, /*variation=*/1.0f);  // main onset
+        stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f, 1.0f);              // gap (no edge)
+        stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f, 1.0f);              // ghost onset
+        EXPECT(eng.ghostActive);                       // mono ghosted
+        EXPECT(eng.voices[0].gs.gateHeld);             // voice 0 ghosts (shared)
+        EXPECT(eng.voices[1].gs.gateHeld);             // voice 1 ghosts (shared)
+    });
+    TEST("Local East: voice 0's VAR LOR points to a high-variation step -> rested ghost (transparent); voice 1 (delegated) ghosts", {
+        SequencerEngine eng; eng.numPolyVoices = 2;
+        eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 0.f;
+        // Pin the variation array + LORs so the steps are deterministic (len=1 => step = off):
+        //   mono VAR LOR: len=1, off=0 -> step 0 -> variationRandom[0]=0.1 (< 0.5) -> mono ghosts.
+        //   voice 0: Local East VAR, len=1, off=1 -> step 1 -> variationRandom[1]=0.9 (>= 0.5) -> RESTED GHOST.
+        //   voice 1: delegated -> reads mono step 0 -> 0.1 (< 0.5) -> ghosts.
+        eng.pe.variationRandom[0] = 0.1f;   // mono + delegated voices ghost
+        eng.pe.variationRandom[1] = 0.9f;   // voice 0's Local-East step -> rested ghost
+        eng.strandLenRef(dotModular::STRAND_VARIATION) = 1;
+        eng.strandOffRef(dotModular::STRAND_VARIATION) = 0;
+        eng.polyLORRef(0, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_LEN) = 1;
+        eng.polyLORRef(0, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_OFF) = 1;
+        eng.setVarlegLocalEast(0, 0, true);   // voice 0 reads its own VAR LOR (Local East)
+        const float variation = 0.5f;
+        stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f, variation);  // main onset
+        stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f, variation); // gap
+        stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f, variation); // ghost onset (mono ghosts)
+        EXPECT(eng.ghostActive);                       // mono ghosted (variationRandom[0]=0.1 < 0.5)
+        EXPECT(!eng.voices[0].gs.gateHeld);            // voice 0: RESTED GHOST (transparent)
+        EXPECT(!eng.voices[0].participating);          //   not part of the chain
+        EXPECT(eng.voices[1].gs.gateHeld);             // voice 1: delegated -> ghosts
     });
 
     std::cout << "\n-----\nsubgate: " << g_pass << " passed, " << g_fail << " failed\n";
