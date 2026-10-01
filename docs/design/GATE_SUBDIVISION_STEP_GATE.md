@@ -416,3 +416,19 @@ deviation, correlation (+1/0/-1) = the control. Supersedes the earlier "placemen
 
 (Rest/legato/accent still additionally shape each surviving ghost per voice, as before — that is on top
 of the correlated placement, not instead of it.)
+
+
+## INVARIANT (Rodney) — gate behaviour is MODE-AGNOSTIC: generator and quantiser share EXACT gate code
+The sequencer-quantiser unification REQUIRES that gates/subgates/ghosts/legato/rest/accent behave
+IDENTICALLY whether pitch comes from the GENERATOR or from the QUANTISED INPUT. q-mix (the pitch-origin
+axis) is the ONLY thing that differs between the two — it changes WHERE PITCH IS READ FROM, nothing
+else. If the gate behaviour diverged between "generator mode" and "quantiser mode" they would be two
+instruments again, not one instrument with a pitch axis.
+**Rule:** gate/subgate/ghost/legato code MUST be a single mode-agnostic path — NO "if quantiser mode"
+special cases in the gate logic. Same code, same result; only the pitch SOURCE is switched by q-mix
+(per voice, correlated). This is what makes the unification real rather than cosmetic, and it is the
+kind of invariant that silently rots (someone adds a quantiser-mode special case) — so it must be
+TESTED: assert gate/rest/legato/accent/subgate/ghost output is bit-identical for the same gate input
+regardless of pitch-origin, across the q-mix range.
+(Same principle as the Sands consolidation: one parameterised implementation beats parallel ones;
+here q-mix is the parameter wrongly tempting a structural split, as the correlation matrix was for Sands.)
