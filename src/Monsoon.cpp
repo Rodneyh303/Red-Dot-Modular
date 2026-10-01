@@ -687,8 +687,11 @@ void Monsoon::process(const ProcessArgs& args) {
     input.subGateConnected = false; input.subGateRise = false;
     input.ghostConnected = false; input.ghostRise = false; input.ghostHigh = false;
     const bool gate3Rise = cachedGate3Connected && gate3Trig.process(input.gate3, 0.1f, 1.f);
-    if (modeSelect == 1) {
-        // GATE mode: TWO explicit subgate inputs, NO normalling (GATE_SUBDIVISION_STEP_GATE.md §271).
+    if (modeSelect == 1 || modeSelect == 3) {
+        // GATE modes (B + D): TWO explicit subgate inputs, NO normalling
+        // (GATE_SUBDIVISION_STEP_GATE.md §271). Mode B + Mode D share the SAME gate topology
+        // (Gate 1 = main, Gate 2 = ratchet, Gate 3 = ghost) per the §421 mode-agnostic invariant;
+        // only the pitch source differs (D quantises CV2).
         //   SUBGATE_RATCHET = Gate 2 — clocks IN-GATE subdivision (ratchet/tie/rest/legato within
         //     gates). Accepts a trigger OR gate (onset-only: the rising edge is all it needs; the
         //     cell length is bounded by the MAIN gate per the clip rule + the next ratchet onset).
@@ -713,10 +716,6 @@ void Monsoon::process(const ProcessArgs& args) {
         const bool genuinelyInGap = !inGate && !prevGate1SchmittHigh;
         input.ghostRise = (genuinelyInGap && cachedGate3Connected) ? gate3Rise : false;
         input.ghostHigh = cachedGate3Connected ? (input.gate3 >= 1.0f) : false;           // no fallback to Gate 2
-    } else if (modeSelect == 3) {
-        // Mode D: Gate 3 = ratchet (unchanged).
-        input.subGateConnected = cachedGate3Connected;
-        input.subGateRise = gate3Rise;
     } else {
         // A/C/E/F: Gate 3 = die-action.
         if (gate3Rise) {
@@ -728,10 +727,13 @@ void Monsoon::process(const ProcessArgs& args) {
     }
 
     // ── Gate Assignment Handling ──
-    if (modeSelect != 1) { // Mode B uses Gate 1 for input driving
+    // Mode B (1) and Mode D (3) both use Gate 1 as the main gate + Gate 2 as the ratchet sub — so
+    // Gate 1 is NOT assignable in either (it drives the playhead). Gate 2 is the ratchet sub in both
+    // (not assignable in D; left assignable in the non-gate modes as before).
+    if (modeSelect != 1 && modeSelect != 3) { // Mode B + Mode D use Gate 1 for input driving
         tc.handleGate1Assignment(gate1Assign, input.gate1Rise);
     }
-    if (modeSelect != 3) { // Mode D uses Gate 2 for input driving
+    if (modeSelect != 1 && modeSelect != 3) { // Mode B + Mode D use Gate 2 as the ratchet sub
         tc.handleGate2Assignment(gate2Assign, input.gate2Rise, tc.getGate2High(), invertMuteLogic);
     }
 
@@ -935,7 +937,7 @@ void Monsoon::process(const ProcessArgs& args) {
     //                Generated rests (rest lane) are a SEPARATE concern (generatedRestBeatsLegato);
     //                the two toggles are independent.  slurForward remains the leading-edge commitment
     //                for the Lantern/SLEG either way; only its gate-bridging differs by mode.
-    if (modeSelect == 1 && runGateActive) {
+    if ((modeSelect == 1 || modeSelect == 3) && runGateActive) {
         const bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
         const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
         // Ghost tie-through-rise (GATE_SUBDIVISION_STEP_GATE.md §352/§368): a ghost still high when
@@ -995,21 +997,6 @@ void Monsoon::process(const ProcessArgs& args) {
                 engine.voices[i].gs.holdRemain      = 0.f;
                 engine.voices[i].gs.gatePulseRemain = -1;
             }
-        }
-    } else if (modeSelect == 3 && input.subGateConnected && runGateActive) {
-        // subGate Mode D IMPL 2b: drive the gate STATE from Gate 2 (the note-event stream),
-        // the twin of Mode B's driver above.  Without this, the subdivided sub-cells'
-        // rest/legato decisions would not govern the output gate width under subGate.
-        const bool gate2High = input.gate2 >= 1.0f;
-        const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
-        const bool gateOpen  = !isRest && (gate2High || engine.gs.slurForward);
-        engine.gs.gateHeld     = gateOpen;
-        engine.gsStep.gateHeld = !isRest && gate2High;
-        if (!gateOpen) {
-            engine.gs.holdRemain          = 0.f;
-            engine.gs.gatePulseRemain     = -1;
-            engine.gsStep.holdRemain      = 0.f;
-            engine.gsStep.gatePulseRemain = -1;
         }
     }
 

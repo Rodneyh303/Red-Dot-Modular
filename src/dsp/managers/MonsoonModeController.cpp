@@ -408,19 +408,35 @@ bool ModeController::executeModeC(float cv2Voltage) {
 // edge (or held-at-start) advances one step; Sands rest/legato/accent differentiate the voices. This
 // REPLACES the old "quantise every sample while gate high" (Vermona-D) with the stepped, phrased twin
 // of Mode B — the unification's intent (D = B + one poly CV in; poly CV lands in Q2).
-bool ModeController::executeModeD(bool gate2Rise, bool gate2High,
-                                   float cv2Voltage,
+bool ModeController::executeModeD(const InputState& input,
                                    bool useSubGate) {
+    // Mode D is Mode B's twin (GATE_SUBDIVISION_STEP_GATE.md §421 mode-agnostic invariant): the SAME
+    // gate topology (Gate 1 = main, Gate 2 = ratchet sub, Gate 3 = ghost sub) + the SAME gate code,
+    // with the internal melody draw replaced by "quantise the external CV2" (quantiserPitchSource).
+    // So this mirrors executeModeB exactly — Gate 1 is the main gate (NOT Gate 2 as before the fix).
+    const bool gate1Rise = input.gate1Rise;
+    const bool gate1High = input.gate1 >= 1.0f;
     PatternInput in = assemblePatternInput_();
-    beginQuantiserSource_(cv2Voltage);
-    StepResult result = useSubGate
-        ? engine.executeModeBSubdivided(gate2Rise, gate2High, /*subGateRise=*/true,
-                                       in.restProb, in.legato, in.noteValue, in)
-        : engine.executeModeB(gate2Rise, gate2High, in.restProb, in.legato, in.noteValue, in);
-    postExecute_(result);                // executePolyVoices (poly pitch) while the flag is still on
+    beginQuantiserSource_(input.cv2);
+    if (useSubGate) {
+        StepResult result = engine.executeModeBSubdivided(gate1Rise, gate1High, input.subGateRise,
+                                                          in.restProb, in.legato, in.noteValue, in,
+                                                          input.ghostRise, input.ghostHigh);
+        postExecute_(result);                // executePolyVoices (poly pitch) while the flag is still on
+        engine.quantiserPitchSource = false;
+        updateLastStepIndex();
+        return result.stepped;
+    }
+    if (gate1Rise || (gate1High && engine.stepIndex == -1)) {
+        StepResult result = engine.executeModeB(gate1Rise, gate1High,
+                                                in.restProb, in.legato, in.noteValue, in);
+        postExecute_(result);
+        engine.quantiserPitchSource = false;
+        updateLastStepIndex();
+        return result.stepped;
+    }
     engine.quantiserPitchSource = false;
-    if (result.stepped) updateLastStepIndex();
-    return result.stepped;
+    return false;
 }
 
 // ──── High-Level Dispatcher ─────────────────────────────────────────────────
@@ -428,17 +444,17 @@ bool ModeController::executeModeD(bool gate2Rise, bool gate2High,
 bool ModeController::executeMode(int modeId,
                                   const InputState& input,
                                   bool gate2High) {
-    // GATE mode (B): useSubGate when ratchet (Gate 2) OR ghost (Gate 3) is patched — TWO EXPLICIT
-    // inputs, no normalling (GATE_SUBDIVISION_STEP_GATE.md §271), so each patch enables its own
-    // behaviour.  Mode D: Gate 3 ratchet (unchanged).
-    const bool useSubGate = (modeId == 1) ? (input.subGateConnected || input.ghostConnected)
-                                         : (modeId == 3) ? input.subGateConnected
-                                                         : false;
+    (void)gate2High;   // unused since Mode D unified with Mode B (Gate 1 = main); kept for call-site stability
+    // GATE modes (B + D): useSubGate when ratchet (Gate 2) OR ghost (Gate 3) is patched — TWO EXPLICIT
+    // inputs, no normalling (GATE_SUBDIVISION_STEP_GATE.md §271). Mode B and Mode D share the SAME
+    // gate topology (Gate 1 = main, Gate 2 = ratchet, Gate 3 = ghost); only the pitch source differs.
+    const bool useSubGate = (modeId == 1 || modeId == 3)
+        ? (input.subGateConnected || input.ghostConnected) : false;
     switch (modeId) {
         case 0: return executeModeA();
         case 1: return executeModeB(input, useSubGate);
         case 2: return executeModeC(input.cv2);
-        case 3: return executeModeD(input.gate2Rise, gate2High, input.cv2, useSubGate);
+        case 3: return executeModeD(input, useSubGate);
         case 4: return executeModeE();
         case 5: return executeModeF(input.cv2);   // Q3b: phase-triggered quantiser
         default: return false;

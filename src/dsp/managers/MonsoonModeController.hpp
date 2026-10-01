@@ -69,10 +69,12 @@ public:
     
     /// Execute Mode D: Quantizer mode 2 (GATE2-driven, = Mode B + external pitch source)
     /// Triggers on GATE2 rising edge / held-at-start (or on subGate edges when useSubGate).
-    /// useSubGate: Gate 3 is the fine-grid clock; gate2 is the note-event stream (subdivision).
-    /// Returns true if a new step was taken
-    bool executeModeD(bool gate2Rise, bool gate2High,
-                      float cv2Voltage,
+    /// Mode D (quantiser) is Mode B's twin: the SAME gate topology (Gate 1 = main, Gate 2 = ratchet
+    /// sub, Gate 3 = ghost sub) + the SAME gate code (executeModeB/executeModeBSubdivided), with the
+    /// internal melody draw replaced by "quantise the external CV2" (quantiserPitchSource). The
+    /// mode-agnostic invariant (GATE_SUBDIVISION_STEP_GATE.md §421): only the pitch SOURCE differs.
+    /// Returns true if a new step was taken.
+    bool executeModeD(const InputState& input,
                       bool useSubGate = false);
     
     // ──── High-Level Dispatcher ──────────────────────────────────────────────
