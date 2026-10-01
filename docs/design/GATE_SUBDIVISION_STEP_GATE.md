@@ -393,3 +393,26 @@ model, not new free-running behaviour.
 the playhead on a FALLING edge into a rest checkpoint — the sole case that advances on something other
 than a rising onset. Flagged as the single deliberate violation of "advance on onset only"; weigh it
 carefully if built.
+
+
+## Ghost PLACEMENT is per-voice, CORRELATED to the mono reference (Rodney — corrects earlier notes)
+Ghost candidate placement is NOT a binary mono-vs-per-voice choice. It goes through the CORRELATION
+matrix like everything else: the per-voice variation/ghost probability is correlated TO THE MONO
+variation reference, correlation in [-1, +1]:
+- **+100%** -> per-voice locked to mono -> all voices ghost the SAME cells -> shared ghost rhythm.
+- **0%** -> independent -> each voice ghosts its own cells.
+- **-100%** -> anti-correlated -> voices ghost where mono does NOT -> interlocking / complement.
+Uses the SAME graded-correlation machinery (copula / spread / follow-CA) as pitch. The per-voice
+variation probability (poly + correlatable, currently unread) is what ghost-fill reads, correlated to
+the mono variation strand.
+
+**Playhead stays MONO / reference anchored:** the mono variation strand defines the canonical candidate
+timeline (one playhead). Each voice's ACTUAL ghost cells are a CORRELATED perturbation of that reference
+— at +1 they coincide with mono (one effective timeline); below that they diverge per voice, but as a
+STRUCTURED correlated field, not independent chaos. Mono anchors it; correlation controls departure.
+This is spread-follows-CA applied to ghost placement: mono = reference, per-voice = correlated
+deviation, correlation (+1/0/-1) = the control. Supersedes the earlier "placement must be mono" and
+"placement could be per-voice (binary)" notes — it is per-voice CORRELATED, which is neither.
+
+(Rest/legato/accent still additionally shape each surviving ghost per voice, as before — that is on top
+of the correlated placement, not instead of it.)
