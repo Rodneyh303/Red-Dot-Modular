@@ -453,3 +453,26 @@ applied to the coincident sample:
 Consistent with: the envelope rule (ghost=gap, ratchet=in-gate) applied at the exact-coincidence sample;
 the clip rule (in-gate cells end at the fall); and the playhead rule (a ghost that is ignored does not
 advance the playhead, because it is not emitted).
+
+
+## Ghost + tie-across-gap interaction (Rodney) — a sounding ghost CONSUMES the pending gap-slur
+When FALSE-mode (tie across gaps) and Ghost Protocol both act in the same gap, they collide — both want
+the gap. Resolution is NOT a new rule: **a ghost is an onset, and a pending gap-slur reaches for the NEXT
+onset**, so the slur ties into whatever comes next — ghost or main gate alike.
+- **Sounding ghost in the gap** -> it IS the next onset -> the slur ties INTO the ghost (does not wait
+  for the main gate). Then the ghost REDRAWS ITS OWN legato (like any note) to decide tying OUT:
+  commits -> chain continues to the next onset (another ghost, or the main gate); does not -> chain ends
+  at the ghost. Identical handshake to note->note and note->gate — a ghost is just a note, ties IN like
+  an arriver, decides OUT by its own roll.
+- **Rested ghost** (knocked out per-voice by the rest/survival layer) is NOT an onset for that voice ->
+  the slur passes THROUGH it and continues to the next onset. So "does the slur tie into the ghost" =
+  "does the ghost SOUND"; a rested ghost is transparent (just gap). Consistent: rest ends the chain
+  everywhere.
+- **Per-voice / correlated:** ghost survival is per-voice (correlated to mono), so for some voices the
+  slur ties into the ghost and for others it passes through — the slur-into-ghost behaviour is itself
+  correlated, free.
+- **Bonus — moderates the long-gap tie:** without ghosts the slur bridges the whole gap to the main gate
+  (rest-bounded only). A ghost landing in the gap gives the slur a NEARER onset to tie to, so Ghost
+  Protocol incidentally interrupts the "tie across a bar of silence" case — same self-regulation as
+  ratchets moderating gap-legato. Features compose without a governor.
+No new mechanism: slur consumed by the next SOUNDING onset, continuation by that onset's own legato roll.
