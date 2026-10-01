@@ -374,3 +374,22 @@ So it is EMERGENT from the ghost's legato probability, per voice, correlated, re
 note-to-note legato. High legato -> more ghost pickups; low legato -> ghosts stay separate. No special
 case: a ghost decides tying-OUT like every note, the main-gate note decides tying-IN like every arriver.
 One model to the corner. Nothing left open here.
+
+
+## PLAYHEAD ADVANCE for ghosts (Rodney, settled)
+**A ghost onset ALWAYS advances the playhead, regardless of length (trigger or gate).** The advance IS
+the point: the playhead landing on a step is how the ghost gets its REST / LEGATO / ACCENT / PITCH lane
+data. A ghost without an advance would be a note with no data source. So there is NO gate-vs-trigger
+distinction to make here — a trigger is just the shortest possible gate, both are ghosts, both need a
+step's data, both advance and draw. (This also dissolves the "how do we not advance on a trigger"
+question — we DO advance on it; a staccato trigger-ghost still draws a full step, it just sounds short.)
+
+**Playhead model (whole engine):** the playhead is EDGE-DRIVEN — it advances ON an onset (main-gate
+rise, ratchet rise, ghost rise) and draws that step; it NEVER free-runs between onsets (no motion in
+gaps). A ghost edge is simply one more onset type that advances it — fully consistent with the existing
+model, not new free-running behaviour.
+
+**The one proposed EXCEPTION (still to-mull):** the FALSE-mode "tie into rest" refinement would advance
+the playhead on a FALLING edge into a rest checkpoint — the sole case that advances on something other
+than a rising onset. Flagged as the single deliberate violation of "advance on onset only"; weigh it
+carefully if built.
