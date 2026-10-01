@@ -363,6 +363,50 @@ int main() {
         EXPECT(m.decision == D::Tie || m.decision == D::Legato || m.decision == D::LegatoMax);
     });
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // G5 — per-voice ghost placement (GATE_SUBDIVISION_STEP_GATE.md §398/§227):
+    // At a ghost cell (the mono ghosted), each poly voice rolls its OWN variation to decide if it
+    // ghosts. A voice whose variation does not pass is a RESTED GHOST (transparent — silent, the
+    // slur passes through it). With delegation (default) all voices read the mono step = shared
+    // (+1); with Local East + a per-voice VAR LOR, a voice reads its own step = independent (0).
+    // ─────────────────────────────────────────────────────────────────────────────
+    SUITE("G5 — per-voice ghost placement (variation gate per voice)");
+    TEST("shared (delegated): mono ghosts -> all poly voices ghost (same variation read)", {
+        SequencerEngine eng; eng.numPolyVoices = 2;
+        eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 0.f;
+        // variationAmount=1.0 -> mono always ghosts (r_vary < 1.0); ghostActive=true. Delegated
+        // voices read the mono step -> same value -> all ghost.
+        stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f, /*variation=*/1.0f);  // main onset
+        stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f, 1.0f);              // gap (no edge)
+        stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f, 1.0f);              // ghost onset
+        EXPECT(eng.ghostActive);                       // mono ghosted
+        EXPECT(eng.voices[0].gs.gateHeld);             // voice 0 ghosts (shared)
+        EXPECT(eng.voices[1].gs.gateHeld);             // voice 1 ghosts (shared)
+    });
+    TEST("Local East: voice 0's VAR LOR points to a high-variation step -> rested ghost (transparent); voice 1 (delegated) ghosts", {
+        SequencerEngine eng; eng.numPolyVoices = 2;
+        eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 0.f;
+        // Pin the variation array + LORs so the steps are deterministic (len=1 => step = off):
+        //   mono VAR LOR: len=1, off=0 -> step 0 -> variationRandom[0]=0.1 (< 0.5) -> mono ghosts.
+        //   voice 0: Local East VAR, len=1, off=1 -> step 1 -> variationRandom[1]=0.9 (>= 0.5) -> RESTED GHOST.
+        //   voice 1: delegated -> reads mono step 0 -> 0.1 (< 0.5) -> ghosts.
+        eng.pe.variationRandom[0] = 0.1f;   // mono + delegated voices ghost
+        eng.pe.variationRandom[1] = 0.9f;   // voice 0's Local-East step -> rested ghost
+        eng.strandLenRef(dotModular::STRAND_VARIATION) = 1;
+        eng.strandOffRef(dotModular::STRAND_VARIATION) = 0;
+        eng.polyLORRef(0, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_LEN) = 1;
+        eng.polyLORRef(0, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_OFF) = 1;
+        eng.setVarlegLocalEast(0, 0, true);   // voice 0 reads its own VAR LOR (Local East)
+        const float variation = 0.5f;
+        stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f, variation);  // main onset
+        stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f, variation); // gap
+        stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f, variation); // ghost onset (mono ghosts)
+        EXPECT(eng.ghostActive);                       // mono ghosted (variationRandom[0]=0.1 < 0.5)
+        EXPECT(!eng.voices[0].gs.gateHeld);            // voice 0: RESTED GHOST (transparent)
+        EXPECT(!eng.voices[0].participating);          //   not part of the chain
+        EXPECT(eng.voices[1].gs.gateHeld);             // voice 1: delegated -> ghosts
+    });
+
     std::cout << "\n-----\nsubgate: " << g_pass << " passed, " << g_fail << " failed\n";
     return g_fail ? 1 : 0;
 }

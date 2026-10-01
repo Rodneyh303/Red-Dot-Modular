@@ -953,7 +953,29 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         int melIdx  = getStrandIdx(polyLaneTick(voiceIdx, PL_MELODY), polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
         int octIdx  = getStrandIdx(polyLaneTick(voiceIdx, PL_OCTAVE), polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
         float r_rest = polyRandomSrc(voiceIdx, PL_REST)[restIdx];
-        
+
+        // ── Phase 5: per-voice ghost placement (§398/§227) ────────────────────────────────
+        // At a ghost cell (ghostActive: the mono ghosted this onset), each poly voice rolls its
+        // OWN variation to decide if it ghosts HERE. A voice whose variation does not pass is a
+        // RESTED GHOST — transparent (silent; the slur passes through it, §458), not part of the
+        // chain. The mono voice is already gated (executeModeBSubdivided). With perVoiceArticulation
+        // OFF, getVariationStepForVoice returns the mono step -> all voices read the same value =
+        // shared ghost rhythm (+1 correlation). With it ON, each voice reads its own East VARIATION
+        // LOR step = independent placement (0). The graded [-1,+1] copula correlation is a future
+        // refinement (variation is not yet a spread lane); this is the per-voice read the doc says
+        // "already exists, just not read by anything today" (§227).
+        if (ghostActive) {
+            int varIdx = getVariationStepForVoice(voiceIdx) & 0x0F;
+            float r_vary_voice = pe.variationRandom[varIdx];
+            if (r_vary_voice >= input.variationAmount) {
+                // Rested ghost: transparent — silent, not part of the chain.
+                v.accented = false;
+                v.gs.gateHeld = false; v.gsStep.gateHeld = false;
+                v.participating = false; v.gs.slurMember = false;
+                return;
+            }
+        }
+
         if (r_rest < v.restProb) {
             // Decide to Rest: Stick with it until mono gate drops. No accent while resting.
             v.accented = false;

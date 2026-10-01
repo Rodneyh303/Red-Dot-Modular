@@ -136,3 +136,61 @@ No classification is needed — the ghost note's length already follows the ghos
 (a short gate IS a blip; a long gate IS sustained), which the existing `ghostHigh → ghostSounding`
 in IMPL 2b already implements. Phase 3's only code change was removing the Gate3→Gate2 normalling
 (§271); the signal-type behaviour was already correct.
+
+## G. Phase 5 recon — per-voice variation EXISTS (via perVoiceArticulation/East LOR); CORRECTION + a real conflict
+**CORRECTION (Rodney):** my first draft of this section wrongly claimed there is no per-voice
+variation. There IS one. `getVariationStepForVoice(bank)` reads a per-voice VARIATION step via the
+per-voice VARIATION LOR (the East "Local East" VARIATION lane), then reads `pe.variationRandom[idx]`
+— the shared mono variation array at a per-voice position. This is the `perVoiceArticulation`
+context-menu path ("Per-voice articulation (East VARIATION/LEGATO)", default OFF): when ON, each
+voice reads its own variation/legato LOR window. So §227 ("variation/ghost ALREADY has a per-voice
+probability that is poly and correlatable across voices — it simply is not read by anything today.
+Ghost-fill reads it") is CORRECT: the per-voice variation exists; the ghost path reads the MONO
+variation (`monoStrand(STRAND_VARIATION)[getVariationStep()]`, `executeModeBSubdivided:856`), not
+the per-voice one. So Phase 5 is **plumbing**, not a build: route the ghost candidate gate, per
+voice, through the per-voice variation read (`getVariationStepForVoice` + `variationRandom`) instead
+of the mono variation.
+
+### ⚠️ Real conflict (flag, do not auto-resolve): the master plan says DO NOT build on perVoiceArticulation
+`gates_master_rework.md §56` explicitly says: "perVoiceArticulation — LEAVE IT, it is consolidation-
+redundant... the Gaussian-copula CORRELATION MATRIX supersedes it... slated for REMOVAL at the Sands
+consolidation, NOT now. **Do not build on it or extend it.**" But the per-voice variation that
+§227/§398 say ghost-fill should read IS the perVoiceArticulation/East-LOR path. So:
+- Phase 5's doc (§227/§398) says: plumb the per-voice variation (the East LOR / perVoiceArticulation
+  path) into the ghost gate.
+- The master plan (§56) says: do NOT build on / extend perVoiceArticulation (it's slated for removal;
+  the copula correlation matrix is the intended successor).
+
+These conflict. Two readings:
+1. **Plumb perVoiceArticulation's per-voice variation into the ghost path now** (the §227/§398
+   reading — Phase 5 is small plumbing) — but that BUILDS ON the flag §56 says to leave alone.
+2. **Phase 5 uses the copula/spread correlation machinery** (the §398 "SAME graded-correlation
+   machinery as pitch" + §56 "copula correlation matrix supersedes it" reading) — NOT the
+   perVoiceArticulation LOR. That's a larger build (a spread/correlation control for variation,
+   which the spread machinery does NOT currently cover — it spreads REST/MEL/OCT/ACC/QMIX, not
+   variation).
+
+Rodney's correction ("we have poly variation already as a first-class lane" + "the per-voice
+articulation menu item... it exists") points at reading 1 (the perVoiceArticulation path). But that
+directly contradicts §56.
+
+**RESOLVED (Rodney):** §56's "do not build on perVoiceArticulation" ONLY means "don't REMOVE the
+old context-menu item yet" (it's an old option no longer needed now that the correlation matrix
+tames the chaos; leave it for now). It is NOT saying "don't use the per-voice variation mechanism."
+So Phase 5 = **reading 1**: plumb the existing per-voice variation read (`getVariationStepForVoice`
++ `pe.variationRandom`, gated by `input.variationAmount`) into the ghost path.
+
+**Implemented:** in `executePolyVoice`'s monoGateStart block, at a ghost cell (`ghostActive`), each
+poly voice rolls its OWN variation; if it does not pass (`r_vary >= variationAmount`), it is a
+RESTED GHOST — transparent (silent, `participating=false`, the slur passes through it per §458).
+If it passes, the voice ghosts (proceeds to its rest roll + play). The mono voice stays gated by
+the mono variation (`executeModeBSubdivided:856`, unchanged — mono variation drives the playhead +
+canonical candidate timeline, §409). With `perVoiceArticulation` OFF, `getVariationStepForVoice`
+returns the mono step → all voices read the same value = shared ghost rhythm (+1). With it ON,
+each voice reads its own East VARIATION LOR step = independent placement (0). The graded [-1,+1]
+copula correlation is a future refinement (variation isn't yet a spread lane — spread covers
+REST/MEL/OCT/ACC/QMIX); this is the per-voice read the doc says "already exists, just not read by
+anything today" (§227).
+
+**Status:** Phases 0-5 complete (gate/legato/subgate/boundary/placement). Phase 5 = per-voice ghost
+placement plumbed + a test.
