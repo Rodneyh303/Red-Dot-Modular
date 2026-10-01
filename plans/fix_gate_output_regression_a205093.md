@@ -1,3 +1,21 @@
+# [RESOLVED — FALSE ALARM: STALE BUILD] gate output regression a205093
+
+**NOT A REGRESSION.** Symptom (no gate output across modes) was a STALE INCREMENTAL BUILD after
+a205093 changed the executeModeD signature + the output path — an incremental build linked against
+mismatched old objects. A CLEAN REBUILD restores all modes. Confirmed: gs.gateHeld is set by the
+engine's own executeStep/triggerNote path (SequencerEngine.cpp ~518-562), which runs for EVERY
+mode — NOT only the modeSelect==1||3 driver block. The earlier diagnosis below was WRONG; the
+removed GATE_OUTPUT override was genuinely redundant as a205093's comment stated.
+
+**DO NOT ACTION the fix below.** Kept only for the record.
+
+**Lesson that STILL stands:** add the per-mode gate SMOKE test (A..F each emit a gate) — not to fix
+a regression (there is none) but because the suite has no guard that each mode emits its most basic
+output, and a stale-build vs real-break ambiguity is exactly what a cheap smoke test disambiguates.
+
+---
+(original false-alarm diagnosis retained below)
+
 # URGENT regression — GATE_OUTPUT dead in modes A, B, C, D (all tested) on master
 
 Symptom (Rodney, in Rack): no gate output across modes A, B, C, D. Suite GREEN — nothing caught it.
