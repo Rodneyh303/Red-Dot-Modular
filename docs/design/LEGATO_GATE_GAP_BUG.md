@@ -407,3 +407,25 @@ To exercise these you need ONE sequence with SOME abutting boundaries and SOME g
   per-step gate width. (Confirm which actually produces truly abutting/overlapping gates.)
 - Fallback: OR/merge two gate streams — one high-duty (abutting), one triggered (gapped) — on alternating
   steps.
+
+
+## CONTEXT-MENU LAYOUT (Rodney, settled) — two sections
+Rhythm-behaviour context menu, legato split into two sections:
+
+**Legato behaviour mode** (all modes)
+- **Generated rest beats legato** — the renamed existing `generatedRestBeatsLegato`. DEFAULT: TRUE (a
+  generated rest cancels a slur — "can't slur into silence"; unchanged from current default).
+
+**Gate-mode legato behaviour** (gate mode only)
+- **Tie across rests** — DEFAULT: TRUE. This is the permissive gap behaviour (== the old FALSE mode /
+  incoming-rest-does-NOT-beat-legato). TRUE = slur bridges a gap into the next SOUNDING onset (works
+  out-of-box with gapped sources). FALSE = a gap ends the slur (abutting/overlap only).
+  **Polarity note for the implementer:** the rename flipped the sense — "Tie across rests = TRUE" means
+  BRIDGE, i.e. incoming-rest does NOT beat legato. Do not invert.
+- **Advance playhead on tie-into-rest** — DEFAULT: FALSE. The FALSE-refinement checkpoint (advance one
+  step on the falling edge into an incoming-rest, re-draw legato there). This is the SOLE violation of
+  the edge-driven "advance on onset only" invariant, so it is opt-in/off by default.
+
+**DROPPED: "tie across abutting gates" toggle.** Abutting/overlap ALWAYS ties (there is no gap for modes
+to disagree about, so a "false" would mean refusing to tie genuine overlap — no musical use). Assumed,
+not a toggle.
