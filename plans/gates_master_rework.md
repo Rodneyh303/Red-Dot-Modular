@@ -23,8 +23,13 @@ Diff existing code vs the settled docs and report disagreements. Specifically:
   i.e. incoming rest does NOT beat legato — verify not inverted), **"Advance playhead on tie-into-rest"**
   (default FALSE)? Report naming/polarity/missing.
 - Is the ms timer + slurForward bridge FULLY removed (RESOLVED section)? Behaviour must be: FALSE has
-  NO self-bound (rest is the only brake across long gaps — do NOT re-add a cap/timer); strict is
-  overlap-only with NO <=1-sample allowance.
+  NO self-bound (rest is the only brake across long gaps — do NOT re-add a cap/timer); strict (TRUE)
+  is overlap OR <=1-sample gap ties, >=2-sample gap fresh. CORRECTION (Rodney): an earlier draft here
+  said "overlap-only with NO <=1-sample allowance" — that is WRONG and superseded by
+  LEGATO_GATE_GAP_BUG.md FINAL MODEL §161. A continuous gate signal cannot go high->low->high without
+  one low sample between the highs, so the closest two DISTINCT onsets are N high / N+1 low / N+2 high
+  (a 1-sample dip); overlap alone is one continuous gate = one note, not a tie. Without the
+  <=1-sample allowance strict-mode ties between two onsets are UNREACHABLE. Keep the allowance.
 - Which subgate rules exist vs missing (GATE_SUBDIVISION settled): two inputs no-normalling; envelope
   classification (in-gate=ratchet, gap=ghost); straddle clip (in-gate cells end at the fall; ghost may
   tie through the rise via its own slurForward roll); boundary-COINCIDENCE table (ghost suppressed on

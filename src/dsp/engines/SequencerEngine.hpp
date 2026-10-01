@@ -155,24 +155,41 @@ struct SequencerEngine {
     // = rest WINS, cancelling the slur (N+1 silent). FALSE = slur WINS, the rest roll is IGNORED
     // and N+1 plays as a Legato/Tie (its own drawn pitch, gate-connected from N). Only affects the
     // case where a genuine committed slur lands on a held predecessor; a rest on a non-slur note
-    // is unaffected. (Renamed from restBeatsLegato to disambiguate from the incoming-gap toggle;
-    // the patch-JSON key stays "restBeatsLegato" for save-compat.)
+    // is unaffected. (Renamed from restBeatsLegato to disambiguate from the gap toggle. Patch-compat
+    // is broken freely — dev, not released — so the JSON key is "generatedRestBeatsLegato".)
     bool generatedRestBeatsLegato = true;
 
-    // "Incoming rest beats legato" — governs STRUCTURAL gaps (source sent no gate between two
-    // rises; NOT a MonoDecision::Rest, which the engine never synthesises for a gap). Two modes
-    // (LEGATO_GATE_GAP_BUG.md RESOLVED §290):
-    //   FALSE (default) = TIE ACROSS GAPS. The module-layer bridge holds the gate high across the
-    //     gap (gateOpen += slurForward) so the next rise sees wasHeld true; the tie forms because
-    //     the PREDECESSOR committed (slurForward -> prevSlur, unchanged across the gap). The
-    //     arriving note's OWN legato roll governs tying OUT only (it does NOT re-earn the incoming
-    //     tie). A REST decision on the arriving note ENDS the chain. NO self-bound / no timer: a
-    //     committed slur ties into the next gate regardless of gap length; the only brake is a
-    //     rest. Broad (any gate sequencer); not seed-reproducible (depends on live gate timing).
-    //   TRUE = ABUTTING-GATES-ONLY (sample-accurate). A falling edge ends the note+slur; the gate
+    // "Tie across rests" — governs STRUCTURAL gaps (source sent no gate between two rises; NOT a
+    // MonoDecision::Rest, which the engine never synthesises for a gap). Polarity-flipped rename of
+    // the old "incoming rest beats legato" (LEGATO_GATE_GAP_BUG.md CONTEXT-MENU LAYOUT §412):
+    //   TRUE (default) = TIE ACROSS GAPS (== the old FALSE mode / incoming-rest-does-NOT-beat-
+    //     legato). The module-layer bridge holds the gate high across the gap (gateOpen +=
+    //     slurForward) so the next rise sees wasHeld true; the tie forms because the PREDECESSOR
+    //     committed (slurForward -> prevSlur, unchanged across the gap). The arriving note's OWN
+    //     legato roll governs tying OUT only (it does NOT re-earn the incoming tie). A REST decision
+    //     on the arriving note ENDS the chain. NO self-bound / no timer: a committed slur ties into
+    //     the next gate regardless of gap length; the only brake is a rest. Broad (any gate
+    //     sequencer); not seed-reproducible (depends on live gate timing).
+    //   FALSE = ABUTTING-GATES-ONLY (sample-accurate). A falling edge ends the note+slur; the gate
     //     is held for ONE sample after the fall (overlap / <=1-sample gap -> tie) then drops (a
-    //     >=2-sample gap -> fresh). No ms timer, no lookahead, no gate-end smear, seed-reproducible.
-    bool incomingRestBeatsLegato = false;
+    //     >=2-sample gap -> fresh). The <=1-sample allowance is REQUIRED by signal continuity (a
+    //     continuous gate cannot go high->low->high without one low sample between the highs; overlap
+    //     alone is one continuous gate = one note, not a tie). No ms timer, no lookahead, no gate-end
+    //     smear, seed-reproducible.
+    bool tieAcrossRests = true;
+
+    // "Advance playhead on tie-into-rest" — DEFAULT FALSE. The FALSE-refinement checkpoint
+    // (LEGATO_GATE_GAP_BUG.md §345/§425): on a Gate-1 FALL while a slur is pending (tieAcrossRests &&
+    // this flag), advance the playhead ONE step into the incoming-rest position and re-evaluate the
+    // slur candidacy there — the legato draw at that step decides whether the slur REMAINS a
+    // candidate (survives across the rest) or ENDS. The next gate RISE then plays that step WITHOUT
+    // a second advance (the fall already advanced; "one advance, one arrival" — no double-advance
+    // jump). This is the SOLE violation of the edge-driven "advance on onset only" invariant, opt-in.
+    // Not seed-reproducible (depends on live gate-fall timing). See legatoCheckpointOnFall().
+    bool advanceOnTieIntoRest = false;
+    // Latch set by legatoCheckpointOnFall (the fall advanced one step); the next executeModeB rise
+    // consumes it and SKIPS its own advancePlayhead (plays the already-stepped-to step). One-shot.
+    bool pendingCheckpointArrival = false;
 
     // "Boundary interrupt" — at the phrase boundary (wrap): FALSE (default) = CONTINUE, gate/
     // state carries across the loop (lap 2 can differ from lap 1). TRUE = INTERRUPT, force a
@@ -598,6 +615,11 @@ struct SequencerEngine {
     bool isStepInWindow(int idx) const;
     void setWindow(int length, int offset);
     bool advancePlayhead(int dir = +1);   // dir<0 = reverse traversal (within-draw)
+    // advanceOnTieIntoRest checkpoint (LEGATO_GATE_GAP_BUG.md §345). Called from the module layer on
+    // a Gate-1 FALL while a slur is pending. Advances the playhead ONE step into the incoming-rest
+    // position and re-evaluates the slur candidacy (legato draw at that step). Sets
+    // pendingCheckpointArrival so the next rise skips its own advance (one advance, one arrival).
+    void legatoCheckpointOnFall(float legatoProb);
     void updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched);
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask) const;
     int getNoteLenIdx(float baseNoteParam, const PatternInput& input, float r);

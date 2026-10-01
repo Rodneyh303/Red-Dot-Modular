@@ -925,10 +925,21 @@ void Monsoon::process(const ProcessArgs& args) {
         const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
         // A ghost high when a main gate rises keeps the gate open (ghostSounding) -> main legatos in.
         const bool ghostSounding = engine.ghostActive && input.ghostHigh;
-        // Gap bridge: TRUE = 1-sample hold after the fall (prevGate1SchmittHigh, sample-accurate);
-        //             FALSE = slurForward bridge to the next rise (tie across gaps).
-        const bool gapBridge = engine.incomingRestBeatsLegato ? prevGate1SchmittHigh : engine.gs.slurForward;
+        // Gap bridge (tieAcrossRests, polarity-flipped from the old incomingRestBeatsLegato):
+        //   TRUE (default) = TIE ACROSS GAPS: slurForward bridge to the next rise.
+        //   FALSE = ABUTTING-GATES-ONLY (sample-accurate): 1-sample hold after the fall
+        //           (prevGate1SchmittHigh) so overlap / <=1-sample gap ties, then drops.
+        const bool gapBridge = engine.tieAcrossRests ? engine.gs.slurForward : prevGate1SchmittHigh;
         const bool gateOpen  = !isRest && (gate1High || ghostSounding || gapBridge);
+        // advanceOnTieIntoRest checkpoint (LEGATO_GATE_GAP_BUG.md §345): on the falling edge
+        // (prevGate1SchmittHigh && !gate1High), if a slur is pending and both toggles are on, advance
+        // the playhead ONE step into the incoming-rest and re-evaluate the slur candidacy there. The
+        // next rise then plays that step without a second advance. One-shot (only on the fall
+        // transition; gated by slurForward so a non-slurring note's fall does nothing).
+        if (prevGate1SchmittHigh && !gate1High && engine.gs.slurForward &&
+            engine.tieAcrossRests && engine.advanceOnTieIntoRest && !engine.pendingCheckpointArrival) {
+            engine.legatoCheckpointOnFall(engine.lastLegatoProb_);
+        }
         prevGate1SchmittHigh = gate1High;   // refresh per-sample (Mode B); used next sample for the 1-sample hold
         engine.gs.gateHeld     = gateOpen;
         // STEP mirror (un-fused): re-articulates every gate, so it NEVER bridges the gap.

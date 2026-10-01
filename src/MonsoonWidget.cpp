@@ -1037,15 +1037,23 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             auto add = [&](const char* label, bool* f) {
                 auto* it = createMenuItem<ModVizFlagItem>(label); it->flag = f; sm->addChild(it);
             };
-            // ON (default): a rest cancels a committed slur (N+1 silent). OFF: slur wins, the
-            // rest is ignored and N+1 plays as a legato/tie of its own drawn pitch.
+            // ── Legato behaviour mode (all modes) ──
+            sm->addChild(createMenuLabel("Legato behaviour mode"));
+            // ON (default): a generated rest cancels a committed slur (N+1 silent). OFF: slur wins,
+            // the rest is ignored and N+1 plays as a legato/tie of its own drawn pitch.
             add("Generated rest beats legato", &m->engine.generatedRestBeatsLegato);
-            // "Incoming rest beats legato" — structural gaps (source sent no gate). OFF (default)
-            // = tie across gaps (bridge; the predecessor's slur commits the incoming tie, the
-            // arriving note redraws only tying OUT; a rest arrival ends the chain). ON = abutting-
-            // gates-only (sample-accurate: overlap / <=1-sample gap ties, >=2-sample gap is fresh).
-            // See docs/design/LEGATO_GATE_GAP_BUG.md (RESOLVED).
-            add("Incoming rest beats legato", &m->engine.incomingRestBeatsLegato);
+            sm->addChild(new ui::MenuSeparator);
+            // ── Gate-mode legato behaviour (gate mode only) ──
+            sm->addChild(createMenuLabel("Gate-mode legato behaviour"));
+            // "Tie across rests" — structural gaps (source sent no gate). ON (default) = TIE ACROSS
+            // GAPS (bridge: the predecessor's slur commits the incoming tie; the arriving note
+            // redraws only tying OUT; a rest arrival ends the chain). OFF = abutting-gates-only
+            // (sample-accurate: overlap / <=1-sample gap ties, >=2-sample gap is fresh).
+            add("Tie across rests", &m->engine.tieAcrossRests);
+            // "Advance playhead on tie-into-rest" — OFF (default). On a gate fall with a pending
+            // slur, advance one step into the incoming-rest and re-draw legato there (the sole
+            // advance-on-fall; opt-in). See docs/design/LEGATO_GATE_GAP_BUG.md (§345/§425).
+            add("Advance playhead on tie-into-rest", &m->engine.advanceOnTieIntoRest);
             sm->addChild(new ui::MenuSeparator);
             // OFF (default): CONTINUE — gate carries across the loop, laps can differ. ON:
             // INTERRUPT — reset at the boundary, every lap identical (no cross-lap memory).

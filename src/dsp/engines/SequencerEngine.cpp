@@ -127,6 +127,7 @@ void SequencerEngine::reset() {
     runGateActive = false;
     resetArmed = false;
     prevGate1High = false;
+    pendingCheckpointArrival = false;
     modeSelect = 0;
     ppqnSetting = 24;
     noteVariationMask = 0b111;
@@ -692,6 +693,30 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
     return result;
 }
 
+// advanceOnTieIntoRest checkpoint (LEGATO_GATE_GAP_BUG.md §345). Called from the module layer on a
+// Gate-1 FALL while a slur is pending (tieAcrossRests && advanceOnTieIntoRest). Advances the
+// playhead ONE step into the incoming-rest position and re-evaluates the slur candidacy there: the
+// legato draw at that step decides whether the slur REMAINS a candidate (survives across the rest)
+// or ENDS. NOT a note onset — a silent rest checkpoint (the gate stays low). Sets
+// pendingCheckpointArrival so the next rise SKIPS its own advance ("one advance, one arrival" — no
+// double-advance jump). The SOLE advance-on-fall (edge-driven-playhead violation), opt-in.
+void SequencerEngine::legatoCheckpointOnFall(float legatoProb) {
+    if (muted) { pendingCheckpointArrival = true; return; }
+    bool wrapped = advancePlayhead();
+    if (wrapped && boundaryInterrupt) {
+        gs.slurForward = false;          // phrase boundary breaks the chain
+        pendingCheckpointArrival = true;  // the fall still advanced; the rise plays this step, no 2nd advance
+        return;
+    }
+    // The legato draw at the rested step decides slur survival (generatedRestBeatsLegato is
+    // IRRELEVANT — the incoming rest already makes it silent; only the slur candidacy is in play).
+    float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
+    bool survives = (legatoProb >= 0.999f) || (r_legato < legatoProb);
+    if (!survives) gs.slurForward = false;   // chain ENDS at the rest checkpoint
+    // else slurForward stays pending across the rest (tieAcrossRests bridge carries it to the rise)
+    pendingCheckpointArrival = true;
+}
+
 StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
     lastNoteVal_ = noteVal;   // poly voices derive their own nvIdx from this (stage 2)
     StepResult result;
@@ -703,7 +728,15 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
     bool triggered = false;
 
     if (gate1Rise) {
-        wrapped = advancePlayhead();
+        if (pendingCheckpointArrival) {
+            // advanceOnTieIntoRest: the falling edge already advanced one step into the incoming-rest
+            // (legatoCheckpointOnFall). This rise is the ARRIVAL — play the already-stepped-to step,
+            // do NOT advance again ("one advance, one arrival" — no double-advance jump).
+            pendingCheckpointArrival = false;
+            wrapped = false;
+        } else {
+            wrapped = advancePlayhead();
+        }
         triggered = true;
     } else if (gate1High && !prevGate1High && stepIndex == -1) {
         advancePlayhead();
