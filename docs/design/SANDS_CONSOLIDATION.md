@@ -218,3 +218,24 @@ Confirm: Mono does nothing but edit V1 (-> East voice 1); Macro's variation/lega
 only the poly buffers + spread the lane-uniformity work provides; the send-knob relocation doesn't
 break the pre/post tap semantics; lane-owner / same-playhead — does killing Mono lose it, or is it
 East/Macro only?
+
+
+## Macro subsumes Mono; generalise East to mono — symmetric two-module model (Rodney)
+Two facts that settle and tighten the chosen approach:
+1. **Macro ALREADY works in mono mode** -> Macro's function already SUBSUMES Mono's. Deleting Mono
+   rehomes nothing; Mono is pure redundancy. (Removes the last hesitation about the deletion.)
+2. **East is currently poly-only, but should be generalised to work for a MONO Monsoon (no Straits).**
+   Then BOTH modules span mono AND poly, and "mono" stops being a module/mode — it is just the 1-voice
+   CASE of the general thing (same as everywhere else in the instrument: mono is N=1, not special).
+   Build is additive: East's poly path already handles N voices; mono = N=1 — likely nearly works if
+   East is written generically over voice count. Audit: does anything in East assume N>1?
+
+**Settled model (symmetric, Mono-free):**
+- **Macro** — GLOBAL control, any voice count (mono or poly).
+- **East** — PER-VOICE / fine control, any voice count (generalise to include mono Monsoon).
+- **Both together** — combine via the existing delegation + sends.
+- **Mono is a voice-count CONTEXT, not a module.** Macro and East each handle the full range.
+
+User story (manual-ready): *"Macro for global, East for per-voice, both together for the combination —
+each works whether your Monsoon is mono or poly."* Generalising East removes the last asymmetry
+(East-poly-only) so the two-module story is complete and symmetric.
