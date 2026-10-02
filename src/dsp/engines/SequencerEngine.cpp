@@ -456,10 +456,14 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     //   • INPUT-CV operand — routed inside voicePitch via caInputCvSrcRow (CA melody plane).
     //   • GENERATED operand — genPitchLive, unchanged.
     // Level scales the probability; qmixSrc scatters WHICH voice's q-mix. Identity qmixSrc + level 0
-    // → always quantised input (legacy), level 1 → always generated. Gated by quantiserPitchSource so
-    // it is inert outside quantiser modes (A/B byte-identical). Computed HERE (before voicePitch) so
-    // it steers the pitch source; result.qmixHit below uses the SAME decision on starting steps.
-    const bool qmixUseGenerated = quantiserPitchSource && (r_qmix < input.qmixLevel);
+    // → always GENERATED (safe default), level 1 → always quantised input. Gated by
+    // quantiserPitchSource so it is inert outside quantiser modes (A/B byte-identical). Computed HERE
+    // (before voicePitch) so it steers the pitch source; result.qmixHit below uses the SAME decision
+    // on starting steps.
+    // POLARITY (MODE_COLLAPSE_6_TO_3 §29): 0 = generated, 1 = quantised. The draw crosses UPWARD
+    // (r >= level → use generated), so level 0 forces generated, level 1 forces quantised. (Pre-collapse
+    // this was r < level, i.e. high q-mix = generated — the opposite.)
+    const bool qmixUseGenerated = quantiserPitchSource && (r_qmix >= input.qmixLevel);
     // QUANTISER (Q1): mono/voice-0 pitch = quantised external CV when in a quantiser mode, else the
     // internal melody+octave draw. voicePitch bypasses genPitchLive (no RNG/lane perturbation) when
     // quantiserPitchSource is set; off = byte-identical legacy path. qmixUseGenerated forces the
@@ -578,14 +582,15 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     }
 
     // Task 4 (QMIX): threshold the mono q-mix draw against QMIX_LEVEL, mirroring accent. A "hit"
-    // fires when the draw crosses the level (draw < level); on sustains it inherits, on rests false.
-    // This is the SAME decision that steered the pitch source above (qmixUseGenerated): on a starting
-    // step qmixHit == "this note used the GENERATED pitch". A held/tied step reuses the prior note's
-    // pitch (no fresh voicePitch draw), so it inherits the prior qmixHit — the source latches with the
-    // note. Outside quantiser modes qmixUseGenerated is always false; qmixHit keeps its raw-draw
-    // semantics via the r_qmix<qmixLevel form (behaviour-inert there, matching prior code).
+    // fires when the draw crosses the level UPWARD (draw >= level → generated); on sustains it
+    // inherits, on rests false. This is the SAME decision that steered the pitch source above
+    // (qmixUseGenerated): on a starting step qmixHit == "this note used the GENERATED pitch". A
+    // held/tied step reuses the prior note's pitch (no fresh voicePitch draw), so it inherits the
+    // prior qmixHit — the source latches with the note. Outside quantiser modes qmixUseGenerated is
+    // always false; qmixHit keeps its raw-draw semantics via the r_qmix>=qmixLevel form (behaviour-
+    // inert there, matching prior code). POLARITY: 0 = generated, 1 = quantised (§29).
     if (monoStarting) {
-        result.qmixHit = (r_qmix < input.qmixLevel);
+        result.qmixHit = (r_qmix >= input.qmixLevel);
     } else if (result.decision == MonoDecision::Rest) {
         result.qmixHit = false;
     } else {
@@ -1000,15 +1005,16 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         //   • INPUT-CV operand — routed inside voicePitch via caInputCvSrcRow (CA melody plane), so a
         //     voice can quantise another voice's input line.
         //   • GENERATED operand — melody+octave draw (also CA-remapped), unchanged.
-        //   r_qmix_voice < voice's qmixLevel → use GENERATED (mode-A pitch for this voice).
-        //   otherwise                        → use CA-routed quantised external CV.
+        //   r_qmix_voice >= voice's qmixLevel → use GENERATED (mode-A pitch for this voice).
+        //   otherwise                         → use CA-routed quantised external CV.
         // Level scales the probability; qmixSrc scatters WHICH voice's q-mix. Identity qmixSrc + level 0
-        // → always quantised input, level 1 → always generated (the knob reads as before at identity).
+        // → always GENERATED, level 1 → always quantised input (the knob reads as before at identity).
         // qmixUseGenerated is only ever true in quantiser modes (voicePitch gates forceGenerated on
         // quantiserPitchSource); outside them it's inert and byte-identical to the legacy poly path.
+        // POLARITY (§29): 0 = generated, 1 = quantised (draw crosses upward: r >= level → generated).
         int qmixIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_QMIX), polyLenE(voiceIdx, PL_QMIX), polyOffE(voiceIdx, PL_QMIX), polyRotE(voiceIdx, PL_QMIX));
         float r_qmix_voice = polyRandomSrc(voiceIdx, PL_QMIX)[qmixIdx];
-        bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice < v.qmixLevel);
+        bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice >= v.qmixLevel);
         // QUANTISER (Q1): this voice's pitch = quantised external CV (its own channel) in quantiser
         // mode, else the internal melody+octave draw. voices[voiceIdx] is ENGINE voice voiceIdx+1
         // (voice 0 is the mono/executeStep path), so read quantiserCV[voiceIdx+1]. When

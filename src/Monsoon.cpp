@@ -297,7 +297,20 @@ float Monsoon::getEffectivePolyQmix(int voiceIdx) {
             base += causewayCv_(in, ch) * att * 0.1f;
         }
     }
-    return math::clamp(base, 0.f, 1.f);
+    float eff = math::clamp(base, 0.f, 1.f);
+    // PATCHED-DETECTION (MODE_COLLAPSE_6_TO_3 §60): with polarity 0=generated/1=quantised, an
+    // unpatched pitch input must force q-mix to 0 (generate) so the knob up is silent, not nonsense.
+    // Poly voice i reads channel i+1 of the pitch input (ch0 = mono). Voices BEYOND the source
+    // channel count GENERATE (no silent wrap/fold). A mono source broadcasts to every voice.
+    // The quantise pitch source is the Straits QUANT_CV_INPUT if a Straits is attached, else CV2.
+    auto* straits = expanderManager.cachedPolyVoiceExpander;
+    if (straits && straits->inputs[StraitsIds::QUANT_CV_INPUT].isConnected()) {
+        int n = std::max(1, straits->inputs[StraitsIds::QUANT_CV_INPUT].getChannels());
+        int ch = voiceIdx + 1;                       // ch0 = mono; poly voice i → ch i+1
+        return (ch < n) ? eff : 0.f;                 // beyond source channels → generate
+    }
+    if (cachedCv2Connected) return eff;              // CV2 is mono → broadcasts to all voices
+    return 0.f;                                      // nothing patched → generate
 }
 // Voice-1 / MONO q-mix — apply the Causeway MONO_QMIX_ATT (+ global) to CV channel 0 of the q-mix
 // CV input, added onto the mono base (QMIX_LEVEL_PARAM). Mirrors getEffectiveMonoRest/Accent.
@@ -311,7 +324,15 @@ float Monsoon::getEffectiveMonoQmix(float base) {
             base += causewayCv_(in, 0) * att * 0.1f;
         }
     }
-    return math::clamp(base, 0.f, 1.f);
+    float eff = math::clamp(base, 0.f, 1.f);
+    // PATCHED-DETECTION (§60): the mono voice reads channel 0 of the pitch input. With nothing
+    // patched, force q-mix to 0 (generate). Presence from the PORT, never the value (0V is a
+    // valid pitch). The pitch source is the Straits QUANT_CV_INPUT (ch0 = mono) or Monsoon's CV2.
+    auto* straits = expanderManager.cachedPolyVoiceExpander;
+    const bool pitchPatched = (straits && straits->inputs[StraitsIds::QUANT_CV_INPUT].isConnected())
+                           || cachedCv2Connected;
+    if (!pitchPatched) return 0.f;                   // nothing to quantise → generate
+    return eff;                                      // mono ch0 is always within a patched source
 }
 
 // Voice-1 / MONO counterparts: apply the Causeway MONO attenuator to CV channel 0 (the mono

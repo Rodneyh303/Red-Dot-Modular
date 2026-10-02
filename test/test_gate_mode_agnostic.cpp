@@ -7,8 +7,11 @@
 //
 // Two comparisons, same gate sequence (rises + a rest + a legato-commit):
 //  (A) quantiserPitchSource=false                       -> generated pitch (generator)
-//  (B) quantiserPitchSource=true,  qmixLevel=1.0        -> forceGenerated -> generated pitch
-//  (C) quantiserPitchSource=true,  qmixLevel=0.0        -> quantised external CV
+//  (B) quantiserPitchSource=true,  qmixLevel=0.0        -> forceGenerated -> generated pitch
+//  (C) quantiserPitchSource=true,  qmixLevel=1.0        -> quantised external CV
+//  POLARITY (MODE_COLLAPSE_6_TO_3 §29): 0 = generated, 1 = quantised (the inverse of the
+//  pre-collapse polarity, where high q-mix meant generated). The §421 INVARIANT itself is
+//  polarity-agnostic — only which qmixLevel value means "force generated" flips.
 //
 //  A vs B: the quantiser FLAG alone must change NOTHING — fully bit-identical (decision, gate
 //          envelope, accent, pitch, Tie/Legato). Proves the flag doesn't branch the gate logic.
@@ -102,11 +105,11 @@ static std::vector<Snap> runSeq(bool quantiserSrc, float qmixLevel, float quanti
 int main() {
     SUITE("§421 INVARIANT — gate behaviour is mode-agnostic (q-mix switches pitch only)");
 
-    // (A) generator (flag off)  vs  (B) quantiser flag ON + force-generated (qmixLevel=1.0).
-    // Must be FULLY bit-identical: the quantiser flag alone changes nothing.
+    // (A) generator (flag off)  vs  (B) quantiser flag ON + force-generated (qmixLevel=0.0).
+    // Must be FULLY bit-identical: the quantiser flag alone changes nothing. (0 = generated, §29)
     TEST("A (generator) vs B (quantiser flag on, force-generated): bit-identical gate+pitch", {
         auto a = runSeq(/*quantiserSrc=*/false, /*qmixLevel=*/0.f,   /*cv=*/1.0f);
-        auto b = runSeq(/*quantiserSrc=*/true,  /*qmixLevel=*/1.0f,  /*cv=*/1.0f);
+        auto b = runSeq(/*quantiserSrc=*/true,  /*qmixLevel=*/0.0f,  /*cv=*/1.0f);  // 0 = generated (§29)
         EXPECT(a.size() == b.size());
         for (size_t i = 0; i < a.size(); ++i) {
             EXPECT(std::string(a[i].cat) == std::string(b[i].cat));
@@ -120,8 +123,8 @@ int main() {
     // (B) generated pitch  vs  (C) quantised external CV — same quantiser flag, different pitch source.
     // Gate behaviour identical; only pitch (and the pitch-derived Tie/Legato label) may differ.
     TEST("B (generated) vs C (quantised CV): gate envelope + category + accent identical; pitch differs", {
-        auto b = runSeq(/*quantiserSrc=*/true, /*qmixLevel=*/1.0f,  /*cv=*/1.0f);
-        auto c = runSeq(/*quantiserSrc=*/true, /*qmixLevel=*/0.0f,  /*cv=*/1.0f);
+        auto b = runSeq(/*quantiserSrc=*/true, /*qmixLevel=*/0.0f,  /*cv=*/1.0f);  // 0 = generated
+        auto c = runSeq(/*quantiserSrc=*/true, /*qmixLevel=*/1.0f,  /*cv=*/1.0f);  // 1 = quantised (§29)
         EXPECT(b.size() == c.size());
         bool pitchDiffered = false;
         for (size_t i = 0; i < b.size(); ++i) {
@@ -139,8 +142,8 @@ int main() {
 
     // Sweep q-mix level across its range — the gate envelope must be invariant at every setting.
     TEST("gate envelope invariant across the q-mix range (0.0, 0.25, 0.5, 0.75, 1.0)", {
-        auto base = runSeq(true, 1.0f, 1.0f);   // force-generated reference (deterministic)
-        for (float q : { 0.0f, 0.25f, 0.5f, 0.75f }) {
+        auto base = runSeq(true, 0.0f, 1.0f);   // force-generated reference (0 = generated, deterministic)
+        for (float q : { 0.25f, 0.5f, 0.75f, 1.0f }) {
             auto s = runSeq(true, q, 1.0f);     // mix of generated + quantised per step
             EXPECT(s.size() == base.size());
             for (size_t i = 0; i < s.size(); ++i) {
