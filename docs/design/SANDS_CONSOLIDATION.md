@@ -166,3 +166,25 @@ unjustified.
 Trade accepted: lose "follow Macro's separate LOR" (minor; = all-follow within East). This supersedes
 both "keep Macro" framings above. The delegated-LOR + per-lane-mono-mod ideas from "East completed"
 are HOW the single module expresses global; they are the build content, now inside one module.
+
+
+## THE ACTUAL REQUIREMENT (Rodney) — per-lane global+poly mix, not a full matrix, not a module merge
+Why the current East+Macro setup exists: so **East can grab GLOBAL modulation (from Macro) AND apply
+per-voice POLY tweaking on the SAME lane.** That "global + per-voice on one destination" is the real
+requirement; East-grabs-Macro is just the MECHANISM (there was no general primitive, so East reaches
+over to Macro and sums its own poly).
+
+The "modulation matrix" reframe was useful for diagnosis but is OVER-ENGINEERING as a build: the thing
+actually needed is not an N×M matrix (big redesign, opacity UX hazard) — it is the SPECIFIC 2-source
+mix the reach-over approximates: **per lane, a GLOBAL (mono) source + a PER-VOICE (poly) source,
+attenuated and SUMMED.**
+
+**So the fix is minimal:** each lane in the ONE unified module natively has BOTH a global (mono) mod
+input and a per-voice (poly) mod input, with attenuation, summed. Then:
+- East no longer needs to grab Macro — Macro's contribution IS the lane's global input, now local.
+- The East→Macro delegation DISAPPEARS (the thing it reached for is local).
+- Macro as a separate module is unnecessary (its whole job was being the global source East reached to).
+This is the "per-lane mono mod input alongside poly" shape from earlier — now JUSTIFIED precisely: it is
+the internalisation of the East→Macro reach-over, i.e. the minimal form of the matrix op the design
+actually uses. NOT a full matrix, NOT a two-grid merge — just global+poly summed per lane, in one
+module. Confirms the one-module decision above and specifies the modulation structure inside it.
