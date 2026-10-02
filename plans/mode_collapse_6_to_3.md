@@ -69,3 +69,21 @@ Straits, so poly is unaffected.
 
 (Earlier over-engineered framing — "assignment composes with patched-detection" — DROPPED; it is just a
 binary quantiser-in choice, mono only.)
+
+
+## Fader lamp colours — seq vs quant hits (the visual seam)
+Seq mode flashes a fader lamp for each generated note. Quant mode must flash the fader(s) the incoming
+CV is QUANTISED to, on the SAME faders. So the blend needs to distinguish them — **THREE colours:**
+- **SEQ hit** — a voice's generated note landed on this fader (keep the existing colour).
+- **QUANT hit** — a voice's quantised note landed here (new, clearly distinct colour).
+- **BOTH** — POLY ONLY: at least one seq voice AND at least one quant voice on this fader this frame.
+
+**Per voice (incl. mono) a note is EITHER seq OR quant, never both** — q-mix selects ONE pitch source
+per voice per note. So "both" NEVER arises in mono; it only occurs across DIFFERENT voices sharing a
+poly fader (one seq, one quant). No further states, no voice-count/intensity on the lamp — that detail
+belongs to Lantern. Aggregation: per fader per frame, "any seq hit?" AND "any quant hit?" -> pick colour.
+
+Composes with the CV2 "quantiser in" choice: with no quantiser assigned there are no quant hits, so
+faders behave exactly as today (seq only) — the new colours appear ONLY when quantising is happening,
+so no visual noise for pure-sequencer use. Pick a BOTH colour that reads as a distinct third state
+(not a muddy additive mix); alternation between the two is an option worth testing.
