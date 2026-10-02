@@ -188,3 +188,33 @@ This is the "per-lane mono mod input alongside poly" shape from earlier — now 
 the internalisation of the East→Macro reach-over, i.e. the minimal form of the matrix op the design
 actually uses. NOT a full matrix, NOT a two-grid merge — just global+poly summed per lane, in one
 module. Confirms the one-module decision above and specifies the modulation structure inside it.
+
+
+## CHOSEN APPROACH (pragmatic, lower-risk) — kill Mono, keep+extend Macro
+After weighing BUILD RISK (not just build amount): dissolving Macro into East means deep surgery on
+East's working modulation structure (per-lane global+poly sum, delegators, internalising the
+reach-over). Keeping Macro and ADDING lanes to it is additive and LOCAL — Macro already is the
+global-mod module with send/tap structure; you extend a working thing by two lanes rather than
+re-architecting two modules' relationship. Given a working instrument + release target (and this
+week's reminder that touching working engine code breeds subtle bugs), additive-and-local wins.
+
+**DO:**
+- **Kill Mono** (V1 = voice 1 of East). Survives from every framing — unambiguously right; the
+  Mono-present/absent coordination rules still largely collapse.
+- **Keep Macro; add VARIATION + LEGATO lanes** so it carries the full uniform lane set (they are no
+  longer mono-only). Extra sends/taps for the two new lanes.
+- **Move the SEND knobs to the RIGHT of the panel** to make room for the two added lanes. This is the
+  concrete blocker ("no space") solved without a full redesign.
+- East↔Macro relationship stays AS-IS (the working reach-over), now over the full lane set.
+
+**Honest trade:** this is the SAFE path, not the simplest endpoint. The one-module dissolve (above) is
+cleaner in principle but deferred — the modulation-structure cleanup (per-lane global+poly, delegators)
+is NOT done here, only the lane-uniformity + Mono removal. **The full dissolve-into-one-module remains
+an OPTIONAL later refinement once this is stable.** Supersedes the one-module decision as the NEXT
+build; keeps it as the longer-term option.
+
+## Capability audit — now scoped to this path
+Confirm: Mono does nothing but edit V1 (-> East voice 1); Macro's variation/legato lane addition needs
+only the poly buffers + spread the lane-uniformity work provides; the send-knob relocation doesn't
+break the pre/post tap semantics; lane-owner / same-playhead — does killing Mono lose it, or is it
+East/Macro only?
