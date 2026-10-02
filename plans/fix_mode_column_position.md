@@ -33,3 +33,28 @@ The mode column lives in a SEPARATE generator (mode_column.py) that hard-codes t
 it was not carried by the shift and its guard silently compared against a stale position. One shared
 source for DX_RIGHT / RING_C across both files would prevent this class of drift (same lesson as the
 PanelTokens single-source work in PANEL_CRAFT_AUDIT.md).
+
+
+## UPDATE 2 — THREE coordinated fixes (why nudging keeps failing)
+Screenshot after the last attempt shows: (a) the MODE cycle BUTTON stranded in the lower-right
+corner (BTN=(194,60), y=60 is on the BPM/LEN/OFFSET knob line) far from the C/G/P stack it controls;
+(b) the C/G/P column NOT vertically centred on the ring — ROW_Y=[13,22,31] centres on y=22, but the
+ring centre is y=30 (FLYER_C.y), so it rides high. These must be fixed TOGETHER with the stale-RING_C
+fix, because all three interact:
+
+1. **RING_C is STILL stale.** mode_column.py line 28: `RING_C=(162.0,30.0)`. The real ring is at
+   `(162+DX_RIGHT, 30) = (187.4, 30)`. Fix first (import/share DX_RIGHT=25.4 from one place).
+2. **Vertically centre the column on the ring:** ROW_Y -> `[21.0, 30.0, 39.0]` (same ~9mm pitch,
+   centred on y=30). This is INSIDE the ring's vertical span AND near its widest horizontal reach.
+3. **So the column CANNOT sit beside the ring** (it reaches x~210 there, past the 203.2 panel edge).
+   The column + its cycle BUTTON must move to a band that clears the real ring:
+   EITHER move the whole group (BTN + ROW_Y + LIGHT_X/BOX_CX) BELOW the ring (rows y>~55, into the
+   ~27mm the 6->3 collapse freed) and keep them vertically grouped as a unit;
+   OR keep rows centred on y=30 but place the column to the LEFT of the ring (x well below
+   187.4-23=164.4) if that region is free.
+   Pick one; the BUTTON must end up ADJACENT to the C/G/P stack (grouped), not on the knob row.
+
+**Decide the target region first (below-ring vs left-of-ring), then place button+column+rows as ONE
+group in it, with RING_C corrected so the clearance assert actually guards.** Do not nudge
+individual values — that is why it keeps breaking one thing while fixing another. Regenerate,
+Rack-check: button grouped with C/G/P, column clears the ring, letters track their LEDs.
