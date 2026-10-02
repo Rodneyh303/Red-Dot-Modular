@@ -285,10 +285,11 @@ def logo(S=S75, theme="dark"):
 # Remaining known oddities, to be revisited later:
 #   * BPM/LEN/OFFSET knobs sit at y=60 but their rings (PHASE_Y) are centred at y=58.
 #   * PHASE_PARAM (Mode E phase knob) is a TEMPORARY placement at (178,72).
-# Moved straight down 10mm (60->70): the old y=60 spot overlapped the "F" mode key-cap; y=70
-# clears the "phase quant" caption and sits above the rail at y=78. (x still right-cluster +DX_RIGHT.)
-MODE_PARAM_XY = (194.0 + DX_RIGHT, 70.0)                    # right cluster: +DX_RIGHT
-MODE_LIGHT_X, MODE_LIGHT_Y0, MODE_LIGHT_PITCH = 197.5 + DX_RIGHT, 13.0, 9.0   # right cluster: +DX_RIGHT
+# COORDINATED with mode_column.py (fix_mode_column_position.md UPDATE 2): the C/G/P column is centred
+# on the ring (y=21/30/39) and the cycle button is grouped ADJACENT below the stack (y=46), off the
+# BPM/LEN/OFFSET knob line. At the shifted X this clears the Flyer ring. Keep in sync with mode_column.py.
+MODE_PARAM_XY = (194.0 + DX_RIGHT, 46.0)                    # right cluster: +DX_RIGHT; grouped with C/G/P
+MODE_LIGHT_X, MODE_LIGHT_Y0, MODE_LIGHT_PITCH = 197.5 + DX_RIGHT, 21.0, 9.0   # right cluster: +DX_RIGHT; centred on ring (was 13)
 
 # Six Big-Five knobs: q-mix LEVEL is now the 6th (lands at x=BIG5_X0+5*26=146, y=22 via layout()).
 # Its ring/drop-line/rail-dot follow automatically from BIG5_N=6. Anchor id kept param_QMIX_LEVEL_PARAM.
