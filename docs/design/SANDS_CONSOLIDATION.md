@@ -78,3 +78,41 @@ because it is behind an OFF-by-default flag. The CORRELATED (safe) version arriv
 VAR/LEG at consolidation — at which point perVoiceArticulation is removed/replaced by the graded
 correlation (mono reference + per-voice correlated, +-1). Do not promote perVoiceArticulation or ship it
 ON until then.
+
+
+## PROPOSED UNIFIED ARCHITECTURE (Rodney) — "East, completed" + delegated LOR
+The consolidation is NOT a from-scratch rebuild. It is **East generalised to carry everything**, with
+the other modules' distinctive bits absorbed as DELEGATION STATES or relocated. Target:
+
+**Unified Sands = East, with:**
+1. **Per-lane MONO mod input + attenuverters**, alongside East's existing per-voice (poly) mod input +
+   attenuverters. The mono input is the global/shared-CV layer -> **absorbs Macro's global MODULATION
+   role** (global = the mono input; per-voice = the poly input; both attenuverted).
+2. **Per-voice LOR governed by each voice's LANE DELEGATOR**, choosing per voice: **follow voice 1**
+   (take voice 1's LOR — voice 1 is the reference) OR **independent** (own per-voice LOR). Plus bulk
+   **ALL-FOLLOW** and **ALL-INDEPENDENT** actions. -> **absorbs Macro's global LOR**: "global LOR" is
+   simply the ALL-FOLLOW state (set voice 1, all follow). No separate global-LOR layer / params /
+   reader-writer needed. Same generalisation as spread-follow-CA and correlated ghost placement:
+   GLOBAL IS NOT A LAYER, it is the follow/+1 delegation state of per-voice.
+3. **Mono = voice 1 of East** (reference-voice editing is just editing voice 1).
+4. **Taps (pre/post send taps, two per lane: LOR + SPREAD, continuous 1.0=POST/0.0=PRE) = the TAPS
+   EXPANDER** (relocated, per the expander plan). Preserve the continuous pre<->post semantics exactly
+   (SANDS_OWNERSHIP_SPEC.md §9) — do not simplify to a 2-way switch.
+
+**The one genuinely open item: lane-owner-across-playheads.** NOTE it may be the DELEGATOR
+GENERALISED — a delegator already answers "whose LOR does this voice follow"; lane-owner answers
+"whose playhead/lane does this voice follow". If the delegator subsumes lane-owner, it folds in rather
+than being lost. **Audit must confirm this.**
+
+## Capability audit — REFRAMED to verify this hypothesis
+The audit is now sharper: not "enumerate cold and discover an architecture" but "**confirm the
+proposed architecture above covers everything, or name what falls outside it**". Specifically verify:
+- East + per-lane mono mod + atten covers ALL of Macro's global modulation. [expect: yes]
+- Per-voice LOR + delegators (follow-v1 / independent) + all-follow/all-independent covers ALL of
+  Macro's global LOR, with global == all-follow. [expect: yes]
+- Taps relocate to the expander with continuous pre/post semantics intact. [verify not simplified]
+- blend == the correlation/reference blend (not a 2nd mechanism). [verify]
+- lock survives the collapse. [verify]
+- **lane-owner-across-playheads**: is it subsumed by the delegator, or a separate used capability? If
+  separate and used, how does the unified model carry it? [THE open item — Rodney decides if used]
+Green-light the rebuild only when every row is resolved.
