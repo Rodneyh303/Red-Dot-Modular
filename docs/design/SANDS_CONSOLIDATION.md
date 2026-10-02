@@ -142,3 +142,27 @@ per voice" capability — that must land in East first or be a deliberate drop. 
 (The earlier "East completed / per-lane mono mod + delegated LOR" framing above is SUPERSEDED as the
 primary plan — Macro stays as-is rather than being folded into East. Its delegated-LOR idea may still
 inform how East↔Macro delegation expresses "global", but Macro is NOT dissolved.)
+
+
+## COST ANALYSIS RESOLVES TO ONE MODULE (Rodney)
+"Drop Mono, keep Macro" is NOT free after all: Macro was built with FEWER lanes (variation + legato
+were mono-only then). That no longer holds, so keeping Macro means **adding variation + legato lanes
+to it — extra sends, extra taps, panel re-layout.** That is exactly the per-module expansion the
+consolidation exists to avoid. What keeping Macro buys for that cost: only **follow-Macro's-LOR** —
+and that is a SMALL advantage, recoverable anyway as all-follow-voice-1 within East (the delegated-LOR
+reframe).
+
+So the thing that made Macro worth keeping (a distinct, SMALLER global layer) stops being true once
+lanes unify. A full-lane Macro is just "East's global sibling" — at which point two modules is
+unjustified.
+
+**DECISION: full collapse to ONE Sands module.**
+- **Mono deleted** (V1 = voice 1 of East).
+- **Macro dissolved into East** (global = ALL-FOLLOW delegation state of per-voice; no separate global
+  layer, no Macro lane-expansion work).
+- **Taps = the taps expander** (relocated, continuous pre/post semantics intact).
+- Lane uniformity is then FREE (East is already per-voice all-lanes).
+- Zero module-coordination rules (one module), vs the three-module latch/arbitration mesh.
+Trade accepted: lose "follow Macro's separate LOR" (minor; = all-follow within East). This supersedes
+both "keep Macro" framings above. The delegated-LOR + per-lane-mono-mod ideas from "East completed"
+are HOW the single module expresses global; they are the build content, now inside one module.
