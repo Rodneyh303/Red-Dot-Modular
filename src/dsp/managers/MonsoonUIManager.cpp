@@ -80,10 +80,11 @@ void UIManager::updateModeLights(int currentMode, int& lastMode) {
     
     // Only update if mode changed to avoid redundant updates
     if (currentMode != lastMode) {
-        // One light per mode. Loop rather than a line each, so adding a mode cannot leave a
-        // light behind again -- which is exactly how Mode E ended up selectable but unlit.
-        for (int i = 0; i < 6; ++i)   // 6 modes now (A..F); Mode F = phase quantiser (Q3b)
-            lights[MODE_A_LIGHT + i].setBrightness(currentMode == i ? 1.f : 0.f);
+        // One light per mode. Loop rather than a line each, so a future mode add cannot leave a
+        // light behind. MODE_COLLAPSE_6_TO_3: three timing origins (clock/gate/phase). The panel
+        // still wires 6 light positions (Phase 3 reduces to 3); 3..5 stay off.
+        for (int i = 0; i < 6; ++i)
+            lights[MODE_A_LIGHT + i].setBrightness((i < 3 && currentMode == i) ? 1.f : 0.f);
         lastMode = currentMode;
     }
 }
@@ -163,7 +164,7 @@ bool UIManager::processModeButton(int& modeSelect) {
     using namespace MonsoonIds;
     
     if (modeTrigger.process(params[MODE_PARAM].getValue())) {
-        modeSelect = (modeSelect + 1) % 6;   // A→B→C→D→E→F→A (Mode F = phase quantiser, Q3b)
+        modeSelect = (modeSelect + 1) % 3;   // MODE_COLLAPSE_6_TO_3: clock→gate→phase→clock
         return true;
     }
     return false;

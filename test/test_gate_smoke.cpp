@@ -1,17 +1,24 @@
-// test_gate_smoke.cpp — per-mode gate-emission smoke + B/D shouldExecute parity guard.
+// test_gate_smoke.cpp — per-mode gate-emission smoke + shouldExecute routing guard.
 //
-// WHY THIS TEST EXISTS (plans/fix_gate_output_regression_a205093.md):
+// WHY THIS TEST EXISTS (plans/fix_gate_output_regression_a205093.md + mode_collapse_6_to_3.md):
 //   a205093 unified Mode D's ENGINE + INPUT ROUTING with Mode B (Gate 1 = main) but left Mode D's
 //   module-layer `shouldExecute` on the OLD pre-fix logic — `useSubGate ? subGateRise : true` — so
 //   with no subgate patched Mode D called executeMode EVERY SAMPLE, jamming gate state (no coherent
 //   gate output). The suite was GREEN because test_gate_mode_agnostic drives the engine twins
 //   directly (executeModeB vs executeModeD), bypassing the module-layer shouldExecute gate where the
 //   bug lived. This test closes that gap two ways:
-//     SUITE 1 — per-mode gate SMOKE: each of A..F, driven through its canonical engine entry with a
-//               non-rest step, asserts gs.gateHeld goes true (i.e. GATE_OUTPUT would emit).
-//     SUITE 2 — B/D shouldExecute PARITY: a faithful copy of the module-layer shouldExecute rule
-//               (Monsoon.cpp ~800, post-fix) asserts B≡D across an input matrix AND asserts the
-//               specific regression — no edges + no subgate → Mode D does NOT execute (old `: true`).
+//     SUITE 1 — per-mode gate SMOKE: each timing origin (clock/gate/phase), driven through its
+//               canonical engine entry with a non-rest step, asserts gs.gateHeld goes true.
+//     SUITE 2 — REST suppresses the gate (negative smoke): every origin's gate goes low on a rest.
+//     SUITE 3 — shouldExecute ROUTING: a faithful copy of the module-layer shouldExecute rule
+//               (Monsoon.cpp ~830, post-collapse) pins the 3-origin routing contract and the
+//               a205093 regression — gate origin + no edges -> does NOT execute.
+//
+// MODE_COLLAPSE_6_TO_3: three timing origins (clock=0 / gate=1 / phase=2). Pitch origin (generate vs
+// quantise) is the q-mix axis, not a mode — it does not affect gate emission (section-421 invariant),
+// so this smoke needs no q-mix cases. The controller routes clock/phase -> engine.executeModeA and
+// gate -> engine.executeModeB; only the edge SOURCE differs (clock.sixteenthEdge vs phase.sixteenthEdge
+// for the phase origin).
 //
 // Build (see test/run_all.sh, entry "test_gate_smoke|$SE $GS $PE $CE"):
 //   g++ -std=c++17 -Itest -Isrc -Isrc/dsp -Isrc/dsp/engines -Isrc/dsp/gates -Isrc/dsp/managers \
@@ -48,30 +55,30 @@ static PatternInput makeInput() {
     return in;
 }
 
-// A clock view with a 1/16 edge asserted — exactly what the module layer passes into executeModeA
-// for Modes A / C / E / F (the controller routes all four through engine.executeModeA; only the
-// edge SOURCE differs — clock.sixteenthEdge for A/C, phase.sixteenthEdge for E/F).
+// A clock/phase view with a 1/16 edge asserted — exactly what the module layer passes into
+// engine.executeModeA for the clock and phase origins (the controller routes both through
+// engine.executeModeA; only the edge SOURCE differs — clock.sixteenthEdge vs phase.sixteenthEdge).
 static ClockEngine edgeClock() {
     ClockEngine ck;
     ck.sixteenthEdge = true;
     return ck;
 }
 
-// ── Faithful copy of the module-layer shouldExecute gate (Monsoon.cpp ~800, POST-fix). ──
-// One branch for modeSelect 1 (B) and 3 (D): the §421 mode-agnostic invariant. Keeping this as a
-// single expression for both is what prevents the B/D drift bug from recurring. If Monsoon.cpp's
-// rule changes, update this mirror to match (the parity assertions then re-encode the contract).
+// ── Faithful copy of the module-layer shouldExecute gate (Monsoon.cpp ~830, POST-collapse). ──
+// Three timing origins: gate(1) is event-driven (the only one that takes an external rhythm);
+// clock(0) steps on the generated 1/16 grid; phase(2) steps on the phase 1/16 grid. If Monsoon.cpp's
+// rule changes, update this mirror to match (the routing assertions then re-encode the contract).
 static bool shouldExecute(int modeSelect, bool gate1High, bool gate1Rise,
                           bool subGateRise, bool ghostRise, int stepIndex,
                           bool clockSixteenth, bool phaseSixteenth) {
-    if (modeSelect == 1 || modeSelect == 3) {
+    if (modeSelect == 1) {                      // GATE origin: event-driven (was B/D)
         const bool inGate = gate1High;
         return gate1Rise || (gate1High && stepIndex == -1)   // main onset / held-at-start
             || (inGate && subGateRise)                        // ratchet in-gate (Gate 2)
             || (!inGate && ghostRise);                        // ghost in-gap (Gate 3)
     }
-    if (modeSelect == 0 || modeSelect == 2) return clockSixteenth;   // A / C: generated 1/16 grid
-    if (modeSelect == 4 || modeSelect == 5) return phaseSixteenth;   // E / F: phase 1/16 grid
+    if (modeSelect == 0) return clockSixteenth;   // CLOCK origin: generated 1/16 grid
+    if (modeSelect == 2) return phaseSixteenth;   // PHASE origin: phase 1/16 grid
     return false;
 }
 
@@ -79,14 +86,13 @@ int main() {
     using D = MonoDecision;
 
     // ════════════════════════════════════════════════════════════════════════════
-    SUITE("1 — per-mode gate SMOKE: A..F each emit a gate on a non-rest step");
+    SUITE("1 — per-origin gate SMOKE: clock/gate/phase each emit a gate on a non-rest step");
     // GATE_OUTPUT is high iff engine.gs.gateHeld (GateState::process). So "emits a gate" ==
-    // gs.gateHeld true after a non-rest step. The controller routes A/C/E/F → engine.executeModeA
-    // and B/D → engine.executeModeB (the §421 mode-agnostic invariant; only pitch source differs),
-    // so the engine-level smoke has two canonical entries — exercised once per MODE to mirror the
-    // module dispatch and keep the per-mode contract explicit.
+    // gs.gateHeld true after a non-rest step. The controller routes clock/phase -> engine.executeModeA
+    // and gate -> engine.executeModeB (the section-421 mode-agnostic invariant; pitch source is the
+    // q-mix axis, not a mode), so the engine-level smoke has two canonical entries.
 
-    TEST("Mode A (clock): a 1/16 step, no rest -> gate high", {
+    TEST("Clock origin (mode 0): a 1/16 step, no rest -> gate high", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
         StepResult r = eng.executeModeA(edgeClock(), /*restProb=*/0.f, /*legatoProb=*/0.f,
@@ -96,7 +102,7 @@ int main() {
         EXPECT(eng.gs.gateHeld);                       // GATE_OUTPUT would emit
     });
 
-    TEST("Mode B (gate): a Gate-1 rise, no rest -> gate high", {
+    TEST("Gate origin (mode 1): a Gate-1 rise, no rest -> gate high", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
         StepResult r = eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true,
@@ -106,42 +112,8 @@ int main() {
         EXPECT(eng.gs.gateHeld);
     });
 
-    TEST("Mode C (quantiser+clock): a 1/16 step, no rest -> gate high", {
-        // Mode C routes through engine.executeModeA (controller::executeModeC); pitch source
-        // (quantise CV2) does not affect gate emission.
-        SequencerEngine eng; eng.numPolyVoices = 0;
-        const PatternInput in = makeInput();
-        StepResult r = eng.executeModeA(edgeClock(), 0.f, 0.f, 2.f, in);
-        EXPECT(r.stepped);
-        EXPECT(r.decision != D::Rest);
-        EXPECT(eng.gs.gateHeld);
-    });
-
-    TEST("Mode D (quantiser+gate): a Gate-1 rise, no rest -> gate high", {
-        // Mode D routes through engine.executeModeB (controller::executeModeD mirrors B). The
-        // a205093 regression jammed this at the MODULE layer (shouldExecute `: true`); the engine
-        // twin itself is correct, as asserted here and in test_gate_mode_agnostic.
-        SequencerEngine eng; eng.numPolyVoices = 0;
-        const PatternInput in = makeInput();
-        StepResult r = eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true,
-                                        0.f, 0.f, 0.f, in);
-        EXPECT(r.stepped);
-        EXPECT(r.decision != D::Rest);
-        EXPECT(eng.gs.gateHeld);
-    });
-
-    TEST("Mode E (phase): a 1/16 phase step, no rest -> gate high", {
-        // Mode E routes through engine.executeModeA with a phase-derived edge view.
-        SequencerEngine eng; eng.numPolyVoices = 0;
-        const PatternInput in = makeInput();
-        StepResult r = eng.executeModeA(edgeClock(), 0.f, 0.f, 2.f, in);
-        EXPECT(r.stepped);
-        EXPECT(r.decision != D::Rest);
-        EXPECT(eng.gs.gateHeld);
-    });
-
-    TEST("Mode F (quantiser+phase): a 1/16 phase step, no rest -> gate high", {
-        // Mode F routes through engine.executeModeA (controller::executeModeF).
+    TEST("Phase origin (mode 2): a 1/16 phase step, no rest -> gate high", {
+        // Phase routes through engine.executeModeA with a phase-derived edge view (sixteenthEdge=true).
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
         StepResult r = eng.executeModeA(edgeClock(), 0.f, 0.f, 2.f, in);
@@ -151,16 +123,14 @@ int main() {
     });
 
     // ════════════════════════════════════════════════════════════════════════════
-    SUITE("2 — REST suppresses the gate (negative smoke, every mode)");
+    SUITE("2 — REST suppresses the gate (negative smoke, every origin)");
     // restProb high -> decision Rest and gs.gateHeld false. Confirms the gate truly tracks the
-    // step decision (not stuck high) for each mode's canonical entry. EVERY mode gets the
-    // positive (SUITE 1) + negative (this) pair so a routing regression that leaves a mode's gate
-    // stuck high OR never firing is caught. This is the GUARD pulled forward (plan Phase 4) ahead
-    // of the 6→3 dispatch collapse (Phase 2): after the collapse the three surviving routes
-    // (clock / gate / phase) keep this pair, so a misroute turns green->red here, not "hours of
-    // confusion". Modes A/C/E/F route through engine.executeModeA; B/D through engine.executeModeB.
+    // step decision (not stuck high) for each origin's canonical entry. Every origin gets the
+    // positive (SUITE 1) + negative (this) pair so a routing regression that leaves a gate stuck
+    // high OR never firing is caught. This is the GUARD for the 6->3 dispatch collapse: a misroute
+    // turns green->red here, not "hours of confusion".
 
-    TEST("Mode A (clock): rest step -> gate low", {
+    TEST("Clock origin: rest step -> gate low", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
         StepResult r = eng.executeModeA(edgeClock(), /*restProb=*/0.5f, 0.f, 2.f, in);
@@ -168,7 +138,7 @@ int main() {
         EXPECT(!eng.gs.gateHeld);
     });
 
-    TEST("Mode B (gate): rest step -> gate low", {
+    TEST("Gate origin: rest step -> gate low", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
         StepResult r = eng.executeModeB(true, true, /*restProb=*/0.5f, 0.f, 0.f, in);
@@ -176,31 +146,7 @@ int main() {
         EXPECT(!eng.gs.gateHeld);
     });
 
-    TEST("Mode C (quantiser+clock): rest step -> gate low", {
-        SequencerEngine eng; eng.numPolyVoices = 0;
-        const PatternInput in = makeInput();
-        StepResult r = eng.executeModeA(edgeClock(), /*restProb=*/0.5f, 0.f, 2.f, in);
-        EXPECT(r.decision == D::Rest);
-        EXPECT(!eng.gs.gateHeld);
-    });
-
-    TEST("Mode D (quantiser+gate): rest step -> gate low", {
-        SequencerEngine eng; eng.numPolyVoices = 0;
-        const PatternInput in = makeInput();
-        StepResult r = eng.executeModeB(true, true, /*restProb=*/0.5f, 0.f, 0.f, in);
-        EXPECT(r.decision == D::Rest);
-        EXPECT(!eng.gs.gateHeld);
-    });
-
-    TEST("Mode E (phase): rest step -> gate low", {
-        SequencerEngine eng; eng.numPolyVoices = 0;
-        const PatternInput in = makeInput();
-        StepResult r = eng.executeModeA(edgeClock(), /*restProb=*/0.5f, 0.f, 2.f, in);
-        EXPECT(r.decision == D::Rest);
-        EXPECT(!eng.gs.gateHeld);
-    });
-
-    TEST("Mode F (quantiser+phase): rest step -> gate low", {
+    TEST("Phase origin: rest step -> gate low", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
         StepResult r = eng.executeModeA(edgeClock(), /*restProb=*/0.5f, 0.f, 2.f, in);
@@ -209,56 +155,43 @@ int main() {
     });
 
     // ════════════════════════════════════════════════════════════════════════════
-    SUITE("3 — B/D shouldExecute PARITY (the a205093 regression guard)");
-    // The bug lived in the MODULE-layer shouldExecute gate (Monsoon.cpp), which the engine-level
-    // tests bypass. This suite encodes that rule's contract directly: B and D share ONE branch
-    // (§421), so their shouldExecute must be identical for every edge combination, and Mode D must
-    // NOT fall through to `: true` when nothing is patched.
+    SUITE("3 — shouldExecute ROUTING (the a205093 regression guard, post-collapse)");
+    // The a205093 bug lived in the MODULE-layer shouldExecute gate (Monsoon.cpp), which the engine-
+    // level tests bypass. This suite encodes that rule's contract directly: the gate origin is
+    // event-driven (no edges -> no step, the a205093 fix); clock steps on the clock grid; phase on
+    // the phase grid.
 
-    TEST("REGRESSION (a205093): Mode D, no edges + no subgate -> does NOT execute every sample", {
-        // The old D branch was `useSubGate ? subGateRise : true` → with nothing patched it returned
-        // TRUE, so executeMode ran every sample and jammed the gate. Post-fix D shares B's edge-gated
-        // logic, so with no Gate-1 rise / no held-at-start / no ratchet / no ghost it must be FALSE.
-        EXPECT(!shouldExecute(/*modeSelect=*/3, /*gate1High=*/false, /*gate1Rise=*/false,
+    TEST("REGRESSION (a205093): gate origin, no edges + no subgate -> does NOT execute every sample", {
+        // The old gate-quantiser branch was `useSubGate ? subGateRise : true` -> with nothing patched
+        // it returned TRUE, so executeMode ran every sample and jammed the gate. Post-fix the gate
+        // origin is edge-gated, so with no Gate-1 rise / no held-at-start / no ratchet / no ghost it
+        // must be FALSE.
+        EXPECT(!shouldExecute(/*modeSelect=*/1, /*gate1High=*/false, /*gate1Rise=*/false,
                               /*subGateRise=*/false, /*ghostRise=*/false, /*stepIndex=*/0,
                               /*clockSixteenth=*/true, /*phaseSixteenth=*/true));
     });
 
-    TEST("Mode D steps on a Gate-1 rise exactly as Mode B", {
-        EXPECT(shouldExecute(3, true,  true,  false, false, 0, true, true));
-        EXPECT_EQ(shouldExecute(1, true,  true,  false, false, 0, true, true),
-                  shouldExecute(3, true,  true,  false, false, 0, true, true));
+    TEST("Gate origin steps on a Gate-1 rise", {
+        EXPECT(shouldExecute(1, true,  true,  false, false, 0, true, true));
+        EXPECT(shouldExecute(1, true,  false, false, false, -1, true, true));   // held-at-start
     });
 
-    TEST("Mode D held-at-start (stepIndex==-1, Gate 1 high) steps like Mode B", {
-        EXPECT(shouldExecute(3, true,  false, false, false, -1, true, true));
-        EXPECT_EQ(shouldExecute(1, true,  false, false, false, -1, true, true),
-                  shouldExecute(3, true,  false, false, false, -1, true, true));
-    });
-
-    TEST("B ≡ D across the full edge matrix (shouldExecute identical for every combination)", {
-        bool allEqual = true;
-        for (int gh = 0; gh <= 1; ++gh)
-            for (int gr = 0; gr <= 1; ++gr)
-                for (int sr = 0; sr <= 1; ++sr)
-                    for (int ghst = 0; ghst <= 1; ++ghst)
-                        for (int si : {-1, 0, 5}) {
-                            const bool b = shouldExecute(1, gh, gr, sr, ghst, si, true, true);
-                            const bool d = shouldExecute(3, gh, gr, sr, ghst, si, true, true);
-                            if (b != d) { allEqual = false;
-                                std::cout << "    MISMATCH gh=" << gh << " gr=" << gr
-                                          << " sr=" << sr << " ghst=" << ghst << " si=" << si
-                                          << " B=" << b << " D=" << d << "\n"; }
-                        }
-        EXPECT(allEqual);
-    });
-
-    TEST("Clock/phase modes unaffected by the gate branch (A/C on clock, E/F on phase)", {
+    TEST("Clock origin steps ONLY on the clock 1/16 edge (not phase, not gate edges)", {
         EXPECT(shouldExecute(0, false, false, false, false, 0, /*clockSixteenth=*/true,  false));
-        EXPECT(shouldExecute(2, false, false, false, false, 0, /*clockSixteenth=*/true,  false));
-        EXPECT(shouldExecute(4, false, false, false, false, 0, false, /*phaseSixteenth=*/true));
-        EXPECT(shouldExecute(5, false, false, false, false, 0, false, /*phaseSixteenth=*/true));
-        EXPECT(!shouldExecute(0, false, false, false, false, 0, false, false));  // no edge -> no step
+        EXPECT(!shouldExecute(0, false, false, false, false, 0, false, /*phaseSixteenth=*/true));
+        EXPECT(!shouldExecute(0, false, false, false, false, 0, false, false));   // no edge -> no step
+    });
+
+    TEST("Phase origin steps ONLY on the phase 1/16 edge (not clock, not gate edges)", {
+        EXPECT(shouldExecute(2, false, false, false, false, 0, false, /*phaseSixteenth=*/true));
+        EXPECT(!shouldExecute(2, false, false, false, false, 0, /*clockSixteenth=*/true, false));
+    });
+
+    TEST("Invalid modeSelect (>=3, old saved patch) executes nothing", {
+        // No migration (pre-release): old patches with modeSelect 3..5 are dead until re-saved.
+        // The dispatch's default branch returns false, so shouldExecute must agree.
+        for (int m : {3, 4, 5})
+            EXPECT(!shouldExecute(m, true, true, true, true, 0, true, true));
     });
 
     // ─────────────────────────────────────────────────────────────────────────────

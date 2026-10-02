@@ -39,48 +39,35 @@ public:
           lastStepIndex(-1) {}
     
     // ──── Mode Execution ────────────────────────────────────────────────────
+    // MODE_COLLAPSE_6_TO_3: three TIMING ORIGINS — clock(0) / gate(1) / phase(2). Pitch origin
+    // (generate vs quantise) is the q-mix AXIS, engaged per-step in executeMode() via
+    // beginQuantiserSource_ (not a mode). The three execute* fns below are the GENERATE twins of
+    // each timing origin; the quantiser is "that origin with q-mix up" (no separate mode).
     
-    /// Execute Mode A: Clock-driven sequencing
-    /// Triggers on clock sixteenth edges
-    /// Returns true if a new step was taken
+    /// Clock origin (mode 0): clock-driven sequencing. Triggers on clock sixteenth edges.
+    /// (Was Mode A; the old Mode C "clock quantiser" is now clock + q-mix up.)
     bool executeModeA();
-    bool executeModeE();   // Mode E: phase-ramp driven (forward; reverse next branch)
 
-    /// Execute Mode F: phase-triggered QUANTISER (Q3b). Mirrors Mode E's phase cascade with the
-    /// internal melody draw replaced by quantise(external CV). Called when phase.sixteenthEdge fires.
-    bool executeModeF(float cv2Voltage);
+    /// Phase origin (mode 2): phase-ramp driven (forward; reverse via phaseReverse). Triggers on
+    /// phase sixteenth edges. (Was Mode E; the old Mode F "phase quantiser" is now phase + q-mix up.)
+    bool executeModeE();
 
     // Mode E playhead direction, set from the PhaseEngine each block before dispatch.
     bool phaseReverse = false;
     void setPhaseReverse(bool rev) { phaseReverse = rev; }
     
-    /// Execute Mode B: Gate-driven sequencing
-    /// Triggers on GATE1 rising edge or continuous hold, or on subGate edges when useSubGate.
-    /// useSubGate: in GATE mode, Gate 2 = ratchet (in-gate) + Gate 3 = ghost (in-gap); gate1 is the
-    /// main gate.  The InputState carries the ratchet/ghost edges + ghost level.
-    /// Returns true if a new step was taken
-    bool executeModeB(const InputState& input,
-                      bool useSubGate = false);
-    
-    /// Execute Mode C: Quantizer mode 1 (CV2 latch on quarter notes)
-    /// Triggers on clock quarter-note edges
-    /// Returns true if a new step was taken
-    bool executeModeC(float cv2Voltage);
-    
-    /// Execute Mode D: Quantizer mode 2 (GATE2-driven, = Mode B + external pitch source)
-    /// Triggers on GATE2 rising edge / held-at-start (or on subGate edges when useSubGate).
-    /// Mode D (quantiser) is Mode B's twin: the SAME gate topology (Gate 1 = main, Gate 2 = ratchet
-    /// sub, Gate 3 = ghost sub) + the SAME gate code (executeModeB/executeModeBSubdivided), with the
-    /// internal melody draw replaced by "quantise the external CV2" (quantiserPitchSource). The
-    /// mode-agnostic invariant (GATE_SUBDIVISION_STEP_GATE.md §421): only the pitch SOURCE differs.
+    /// Gate origin (mode 1): gate-driven sequencing. Triggers on GATE1 rising edge or continuous
+    /// hold, or on subGate edges when useSubGate. useSubGate: Gate 2 = ratchet (in-gate) + Gate 3 =
+    /// ghost (in-gap); gate1 is the main gate. (Was Mode B; the old Mode D "gate quantiser" is now
+    /// gate + q-mix up.) The InputState carries the ratchet/ghost edges + ghost level.
     /// Returns true if a new step was taken.
-    bool executeModeD(const InputState& input,
+    bool executeModeB(const InputState& input,
                       bool useSubGate = false);
     
     // ──── High-Level Dispatcher ──────────────────────────────────────────────
     
-    /// Execute the appropriate mode based on modeId (0–3)
-    /// Returns true if a new step was taken
+    /// Execute the appropriate timing origin based on modeId (0=clock, 1=gate, 2=phase) and engage
+    /// the q-mix pitch-source axis per step. Returns true if a new step was taken.
     bool executeMode(int modeId,
                      const InputState& input,
                      bool gate2High);

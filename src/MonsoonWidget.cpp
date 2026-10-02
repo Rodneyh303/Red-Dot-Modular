@@ -1187,8 +1187,9 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
 
         menu->addChild(createSubmenuItem("Sequencer Modes", "", [=](ui::Menu* sub) {
             { auto* l = new ui::MenuLabel; l->text = "Operating Mode"; sub->addChild(l);
-              const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer (gen. rhythm)","D: Quantizer (Gate 2)","E: Phase (CV1)","F: Phase Quantizer (CV1)"};
-              for (int v=0;v<6;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
+              // MODE_COLLAPSE_6_TO_3: three timing origins; pitch origin is the q-mix axis.
+              const char* n[] = {"Clock (gen rhythm)","Gate (your events)","Phase (your time-base)"};
+              for (int v=0;v<3;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
 
 
             sub->addChild(new ui::MenuSeparator);
@@ -1259,9 +1260,12 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
               const char* n[] = {"Add Seq","Transpose Seq","Mod Range LO","Mod Range HI","BPM Mod"}; // Added BPM Mod
               for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv1Mode;it->value=v;sub->addChild(it);} }
             sub->addChild(new ui::MenuSeparator);
-            { auto* l = new ui::MenuLabel; l->text = "CV IN 2"; sub->addChild(l);
-              const char* n[] = {"Note value","Variation","Legato","Rest","Accent"}; // Added Accent
-              for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv2Mode;it->value=v;sub->addChild(it);} }
+            { auto* l = new ui::MenuLabel; l->text = "CV IN 2 (mono)"; sub->addChild(l);
+              // A SINGLE radio (mutually exclusive; MODE_COLLAPSE_6_TO_3 §"CV2 role clash"): CV2 is
+              // EITHER a Big-5 modulation target (0..4) OR "Quantiser in" (5 = the mono quantise-pitch
+              // input; q-mix quantises it, and CV2 does NOT modulate). Default 5 (quantiser in).
+              const char* n[] = {"Note value","Variation","Legato","Rest","Accent","Quantiser in"};
+              for (int v=0;v<6;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv2Mode;it->value=v;sub->addChild(it);} }
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "CV IN 3 (assignable mod)"; sub->addChild(l);
               const char* n[] = {"Rhythm slew","Melody slew","Rhythm A>B mix","Melody A>B mix"};

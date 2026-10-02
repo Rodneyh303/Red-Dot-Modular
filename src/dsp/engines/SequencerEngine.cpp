@@ -366,9 +366,8 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
     // The moving playhead should always follow the global timeline index. Shown for
     // stepped modes A/B/C (0/1/2), the phase modes E/F (4/5); Mode D (3) is continuous
     // (no discrete playhead step). Mode F (5, Q3b) is a phase-1/16 stepped quantiser, so it
-    // has a discrete playhead exactly like Mode E.
-    bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2
-                        || modeSelect == 4 || modeSelect == 5);
+    // has a discrete playhead exactly like the phase origin.
+    bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2);  // clock/gate/phase (collapse)
     float current = (steppedMode && lightIdx == stepIndex) ? 1.0f : 0.0f;
 
     // Direction cue (Mode E especially): a one-LED comet trail BEHIND the playhead in
@@ -1225,31 +1224,10 @@ int SequencerEngine::degreeOf(float pitchV) const {
     return pe.tuning.nearestDegree(frac);
 }
 
-void SequencerEngine::executeModeC(const ClockEngine& clock, float inCV) {
-    gs.gateHeld = false;
-    if (clock.quarterEdge) {
-        gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
-        gsStep.tick(ClockEngine::pulsesPer16th(ppqnSetting));
-        advancePlayhead();
-        gs.currentPitchV = quantize(inCV);
-        int sem = degreeOf(gs.currentPitchV);   // 12-TET default → legacy round(*12)%12; else table degree
-        gs.lastSemitone = sem;
-        gs.markSemi(sem, 4.0f);
-        gs.gatePulse.trigger(1e-3f);
-    }
-}
-
-void SequencerEngine::executeModeD(bool gateHigh, float inCV) {
-    gs.gateHeld = gateHigh;
-    if (gateHigh) {
-        gs.currentPitchV = quantize(inCV);
-        int sem = degreeOf(gs.currentPitchV);   // 12-TET default → legacy round(*12)%12; else table degree
-        gs.markSemi(sem, 1.0f);
-    } else {
-        gs.currentPitchV = 0.f;
-        gs.gatePulse.reset();
-    }
-}
+// Dead code removed (MODE_COLLAPSE_6_TO_3): the engine's executeModeC/D were never called by the
+// controller (C→engine.executeModeA, D→engine.executeModeB) — the old fixed-quarter / sample-while-
+// high Vermona logic. The quantiser is now the q-mix axis (engaged per-step in the dispatch), so these
+// are gone.
 
 float SequencerEngine::quantize(float vIn) {
     if (std::abs(vIn - lastQuantIn) < 1e-6f) return lastQuantOut;
