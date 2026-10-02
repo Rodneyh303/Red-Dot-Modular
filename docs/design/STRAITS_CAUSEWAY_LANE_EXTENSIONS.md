@@ -22,19 +22,32 @@ Pay HP only for the lanes you use.
 - Applies to **both** Straits (per-voice knobs) and Causeway (per-voice CV mod inputs) — same model,
   two roles.
 
-## HARD prerequisites (do NOT build this before these)
-1. **Lane uniformity must be REAL in the engine.** VARIATION and LEGATO have no poly buffers / no
-   spread yet (see SANDS_CONSOLIDATION.md "spread on VAR/LEG"). A variation/legato EXTENSION cannot
-   carry correlated per-voice control until the Sands consolidation builds those poly+correlated lanes.
-   So: **Sands consolidation first.**
-2. **Docking/adjacency infrastructure.** Panel-extension expanders that attach and order themselves are
-   exactly CONNECTION_MODEL_SPEC.md / the adjacency rules. Build the **connection rework first** —
-   don't build lane-docking on top of the current connection bugs. (This REORDERS the roadmap: the
-   connection rework moves up, since CA marks AND this both depend on it.)
+## FIXED-ORDER, RIGHT-SIDE, CONTIGUOUS docking (Rodney — the simplification)
+Not flexible connection — the expanders dock ONLY to the RIGHT, in a FIXED CANONICAL ORDER, read
+CONTIGUOUSLY from the base. This sidesteps nearly all expander complexity:
+- **Position encodes identity.** A fixed order (e.g. REST -> ACCENT -> VARIATION -> LEGATO) means the
+  base knows what the Nth right-neighbour IS by position — no discovery/identification of "which lane
+  is this expander".
+- **Plain Rack expander chaining** (leftExpander/rightExpander), NOT the CA flexible-connection model.
+  So this likely does NOT need the connection rework as a prerequisite (that still stands for CA marks).
+- **Gap rule:** lanes are read contiguously rightward until the first non-matching/absent neighbour;
+  anything past a gap is ignored. User learns "keep them contiguous, in order". Simple and predictable.
+- **Order rule:** pick one — base assigns lanes by POSITION regardless of intent, OR base only
+  recognises the expected expander at each position. Decide at build; position-assigns is simplest.
+- Deterministic rightward growth; no scattered-expander confusion.
 
-## Dependency chain / order
-mode collapse (6->3) -> Sands consolidation (lanes become poly+correlated, uniform) -> connection
-rework (docking infra) -> THEN Straits/Causeway lane extensions.
+## Prerequisites (loosened by fixed-order docking)
+1. **Lane uniformity must be REAL in the engine (STILL REQUIRED).** VARIATION and LEGATO have no poly
+   buffers / no spread yet (SANDS_CONSOLIDATION.md "spread on VAR/LEG"). A variation/legato extension
+   cannot carry correlated per-voice control until the Sands consolidation builds those lanes. So:
+   **Sands consolidation first.**
+2. **Connection rework — NO LONGER a prerequisite for THIS** (fixed-order right docking uses plain Rack
+   expander chaining, not the CA connection model). It remains needed for CA marks, but it no longer
+   BLOCKS lane extensions, so it can run in PARALLEL rather than before.
+
+## Dependency chain / order (shortened)
+mode collapse (6->3) -> Sands consolidation (lanes poly+correlated, uniform) -> THEN Straits/Causeway
+lane extensions. (Connection rework parallel, not blocking this.)
 
 ## Possible further unification (note, not committed)
 Straits (per-voice knobs), Causeway (per-voice CV), and the unified Sands (visual editor) may all be
