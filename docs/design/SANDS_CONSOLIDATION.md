@@ -116,3 +116,29 @@ proposed architecture above covers everything, or name what falls outside it**".
 - **lane-owner-across-playheads**: is it subsumed by the delegator, or a separate used capability? If
   separate and used, how does the unified model carry it? [THE open item — Rodney decides if used]
 Green-light the rebuild only when every row is resolved.
+
+
+## PREFERRED — DROP MONO, keep East→Macro (Rodney, supersedes "East completed")
+Even simpler than absorbing Macro into East: **delete Mono entirely; keep the EXISTING East + Macro
+pair and their East→Macro delegation as-is.** The win is TOPOLOGY-RULE DELETION, not role-merging:
+- **East already addresses ALL voices including V1** — V1 is just voice 1 of East. Mono existed only
+  to edit V1 as "the reference"; with Mono gone, V1 editing is in East and the reference role is the
+  follow/delegation target (voice 1), not a separate module.
+- **A large part of the topology rules exist purely to COORDINATE three modules** — the latch, the
+  Mono-present/absent conditionals ("if no Mono present, East may delegate lane 1", SANDS_OWNERSHIP_SPEC
+  §5), ownership arbitration. Dropping Mono makes those conditions UNREACHABLE, so the rules delete
+  themselves. Removing coordination complexity (rules that do no musical work, only manage module
+  relationships) is the best kind of simplification.
+- **Two modules, one relationship:** East (per-voice, all voices) + Macro (global), East→Macro
+  delegation the SOLE relationship. No three-way mesh.
+- **Less to BUILD than "East completed":** you are not rebuilding East to swallow Macro's roles — you
+  keep the working East/Macro split and delegation, and just remove the third wheel.
+
+**Audit (now minimal):** confirm Mono does NOTHING but edit V1 (which East already does). If Mono
+carries anything else — a distinct interaction, mono-specific mode, or the lane-owner/"same playhead
+per voice" capability — that must land in East first or be a deliberate drop. That single question
+("what does Mono do beyond V1 editing?") is essentially the whole audit now.
+
+(The earlier "East completed / per-lane mono mod + delegated LOR" framing above is SUPERSEDED as the
+primary plan — Macro stays as-is rather than being folded into East. Its delegated-LOR idea may still
+inform how East↔Macro delegation expresses "global", but Macro is NOT dissolved.)
