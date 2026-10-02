@@ -457,12 +457,11 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         }
 
         // ── Mode button + lights: right strip, bound by ANCHOR ────────────────
-        // Anchors come from panel_src/mode_column.py, which also asserts each light row
-        // clears the step ring. SIX lights (A..F): Mode F (Q3b) = phase-triggered quantiser,
-        // modeSelect==5, the cycle is (modeSelect+1)%6. (Mode E precedent: a selectable mode
-        // with no light turns them all off and looks broken, so the light count tracks the modes.)
+        // MODE_COLLAPSE_6_TO_3: THREE timing origins (clock/gate/phase = lights A/B/C). Pitch origin
+        // is the q-mix axis, not a mode. Anchors come from panel_src/mode_column.py (3 LEDs now; rows
+        // 4..6 retired, freeing ~27mm for the subtitle). The cycle is (modeSelect+1)%3.
         bindParam<TL1105>("param_MODE_PARAM", MonsoonIds::MODE_PARAM);
-        for (int i = 0; i < 6; ++i)
+        for (int i = 0; i < 3; ++i)
             bindLight<MediumLight<YellowLight>>("light_MODE_" + std::string(1, char('A'+i)) + "_LIGHT",
                                                 MonsoonIds::MODE_A_LIGHT + i);
 
@@ -845,7 +844,8 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         arcLabel("param_LEGATO_PARAM",68.f,22.f,12.f,-225.f,"0%",130,130,120);        arcLabel("param_LEGATO_PARAM",68.f,22.f,12.f,45.f,"100%",130,130,120);
         arcLabel("param_REST_PARAM",94.f,22.f,12.f,-225.f,"0%",130,130,120);          arcLabel("param_REST_PARAM",94.f,22.f,12.f,45.f,"100%",130,130,120);
         arcLabel("param_ACCENT_KNOB",120.f,22.f,12.f,-225.f,"0%",130,130,120);        arcLabel("param_ACCENT_KNOB",120.f,22.f,12.f,45.f,"100%",130,130,120);
-        arcLabel("param_QMIX_LEVEL_PARAM",146.f,22.f,12.f,-225.f,"0%",130,130,120);   arcLabel("param_QMIX_LEVEL_PARAM",146.f,22.f,12.f,45.f,"100%",130,130,120);
+        // QMIX polarity (MODE_COLLAPSE_6_TO_3 §29): 0 = generated, 1 = quantised.
+        arcLabel("param_QMIX_LEVEL_PARAM",146.f,22.f,12.f,-225.f,"GEN",130,130,120);   arcLabel("param_QMIX_LEVEL_PARAM",146.f,22.f,12.f,45.f,"QUANT",130,130,120);
 
         // Seq knob labels (below ring)
         setNvgFontSize(3.2f); fillNvgColour(170,170,170);
@@ -917,8 +917,9 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         // letter appeared to light up instead of the LED, and on the light theme a near-black
         // glyph on an unlit light's dark circle vanished completely.
         {
-            static const char* kModeDesc[6] = {
-                "sequencer", "seq + gate", "quantizer", "quant gate", "phase seq", "phase quant" };
+            // MODE_COLLAPSE_6_TO_3: three timing origins. Pitch origin is the q-mix axis.
+            static const char* kModeLetter[3] = { "C", "G", "P" };          // Clock / Gate / Phase
+            static const char* kModeDesc[3]   = { "clock", "gate", "phase" };
             const float BOX_DX = -7.0f;   // box centre, relative to the LED
             const float BOX_W  =  5.5f, BOX_H = 5.5f;
             const float TXT_DX = -3.5f, TXT_DY = 4.6f;   // description, relative to the LED
@@ -931,7 +932,17 @@ void MonsoonWidget::draw(const DrawArgs& args) {
                 writeNvgText(a.x, a.y - 6.f, "MODE");
             }
 
-            for (int i = 0; i < 6; ++i) {
+            // Subtitle in the ~27mm freed by collapsing the mode column 6->3 (MODE_COLLAPSE_6_TO_3
+            // §"discoverability"): sits below the 3 mode rows, top-right of the step ring.
+            {
+                Vec a = centerMM("light_MODE_A_LIGHT", 193.f, 12.f);
+                setNvgFontSize(2.4f); fillNvgColour(170,170,160);
+                writeNvgText(a.x, a.y + 33.f, "generative");
+                writeNvgText(a.x, a.y + 38.f, "sequencer-");
+                writeNvgText(a.x, a.y + 43.f, "quantiser");
+            }
+
+            for (int i = 0; i < 3; ++i) {
                 const std::string id = "light_MODE_" + std::string(1, char('A'+i)) + "_LIGHT";
                 NSVGshape* sh = findNamed(id.c_str());
                 if (!sh) continue;
@@ -948,10 +959,9 @@ void MonsoonWidget::draw(const DrawArgs& args) {
                 nvgStrokeColor(vg, lt ? nvgRGB(0x20,0x24,0x2a) : nvgRGB(0x9a,0x9a,0x9a));
                 nvgStrokeWidth(vg, 0.8f); nvgStroke(vg);
 
-                const char t[2] = { char('A'+i), 0 };
                 setNvgFontSize(3.4f);
                 nvgFillColor(vg, lt ? nvgRGB(0xe6,0xe8,0xec) : nvgRGB(0x10,0x12,0x16));
-                nvgText(vg, c.x + mm2px(BOX_DX), c.y, t, nullptr);
+                nvgText(vg, c.x + mm2px(BOX_DX), c.y, kModeLetter[i], nullptr);
 
                 setNvgFontSize(1.9f); fillNvgColour(150,150,140);
                 nvgText(vg, c.x + mm2px(TXT_DX), c.y + mm2px(TXT_DY), kModeDesc[i], nullptr);

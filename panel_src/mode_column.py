@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
-"""Monsoon MODE column: button + 5 mode-light anchors, emitted from one source.
+"""Monsoon MODE column: button + 3 mode-light anchors, emitted from one source.
 
-Layout follows the Vermona meloDICER: per mode a BOXED LETTER, its LED beside it, and a
-small description underneath. The cycle button sits on the BPM/LEN/OFFSET line (y=60) so
-it reads as part of that row rather than floating in the top corner 46mm from its own lights.
+MODE_COLLAPSE_6_TO_3: three timing origins -- clock / gate / phase (was A..F). Per
+mode a BOXED LETTER, its LED beside it, and a small description underneath. The
+cycle button sits on the BPM/LEN/OFFSET line (y=60). Pitch origin (generate vs
+quantise) is the q-mix axis, not a mode -- so the column is just the 3 timing
+choices. Collapsing 6->3 retires rows 4..6, freeing ~27mm below the column for the
+"generative sequencer-quantiser" subtitle.
 
-Only the ANCHORS live here. The widget draws the box, the letter and the description
-positioned FROM each light anchor, so the glyph cannot drift off its LED -- which is the
-bug this column had: letters were drawn at exactly the light coordinates, so each letter
-covered its own light (the letter appeared to light up; on the light theme a near-black
-glyph on an unlit light's dark circle vanished entirely).
-
-Mode E is real: the engine has always handled modeSelect==4 and the cycle is
-(modeSelect+1)%6 -- it simply had no light, so choosing it turned them all off.
-Mode F (Q3b) is the phase-triggered QUANTISER (modeSelect==5): the sixth row/LED here.
+Only the ANCHORS live here. The widget draws the box, the letter and the
+description positioned FROM each light anchor, so the glyph cannot drift off its
+LED (the bug this column had: letters drawn at the light coords covered the LED).
 
 Clearances asserted below against the step ring (centre 162,30, outer TICK radius 23mm).
 """
@@ -25,8 +22,8 @@ BTN      = (194.0, 60.0)   # cycle button, on the BPM/LEN/OFFSET line
 LIGHT_X  = 197.5           # LED column
 BOX_CX   = 190.5           # boxed letter centre (widget draws it from the anchor)
 BOX_W    = 5.5
-ROW_Y    = [13.0, 22.0, 31.0, 40.0, 49.0, 58.0]
-IDS      = ['MODE_A_LIGHT','MODE_B_LIGHT','MODE_C_LIGHT','MODE_D_LIGHT','MODE_E_LIGHT','MODE_F_LIGHT']
+ROW_Y    = [13.0, 22.0, 31.0]                                   # 3 timing origins (was 6)
+IDS      = ['MODE_A_LIGHT','MODE_B_LIGHT','MODE_C_LIGHT']       # clock / gate / phase
 
 RING_C, RING_R = (162.0, 30.0), 23.0
 
@@ -54,8 +51,9 @@ def anchors():
 for theme in ('dark', 'light'):
     p = 'res/panels/Monsoon_panel_%s_monsoon.svg' % theme
     s = open(p).read()
-    for lid in IDS:
-        s = re.sub(r'\n?<circle id="light_%s"[^>]*/>' % lid, '', s)
+    # strip ALL legacy mode light anchors (A..F) + the button, then re-emit the 3 surviving.
+    for c in 'ABCDEF':
+        s = re.sub(r'\n?<circle id="light_MODE_%s_LIGHT"[^>]*/>' % c, '', s)
     s = re.sub(r'\n?\s*<circle id="param_MODE_PARAM"[^>]*/>', '', s)
     k = s.index('id="components">') + len('id="components">')
     s = s[:k] + '\n' + anchors() + s[k:]
