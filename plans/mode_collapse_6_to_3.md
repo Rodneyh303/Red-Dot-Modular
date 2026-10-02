@@ -48,3 +48,24 @@ cost hours during the "dead modes" (stale-patch) scare. Register in run_all.sh.
 ## Order
 Phase 0 → Phase 1 (polarity, verified) → Phase 4 (smoke test, so later phases are guarded) →
 Phase 2 (collapse) → Phase 3 (panel). (Smoke test pulled early deliberately.)
+
+
+## CV2 role clash (mono) — resolved: a simple "quantiser in" menu choice
+The collapse exposes that CV2's ROLE was mode-dependent: seq mode used CV2 for MODULATION, quant mode
+used it as the PITCH CV to quantise. With mode now a continuum there is no discrete mode to key off, so
+CV2 needs an explicit role. **Scope is MONO ONLY** — poly quantisation has its OWN dedicated CV in on
+Straits, so poly is unaffected.
+
+**Resolution (small, no interaction logic):** a context-menu **"CV2 = quantiser in"** choice (mono).
+- ON  -> CV2 is the quantiser pitch input.
+- OFF -> CV2 is free for its other use. Its MODULATION role is available from JUNCTION anyway, so
+  nothing is lost by reassigning it.
+- **No q-mix composition rule needed.** The existing unpatched-pitch-detection rule already handles
+  "no pitch source -> generate": if CV2 is not the quantiser in (or unpatched), there is simply no
+  pitch source and q-mix generates — the menu choice does not need to interact with q-mix.
+- Default: likely ON (quantising is the headline; CV2-as-quantiser-in is the expected behaviour;
+  modulation users turn it off and patch Junction). Confirm at build.
+- Jack headroom: 3 gate inputs but only 1 needed for CV, so reassigning does not starve anything.
+
+(Earlier over-engineered framing — "assignment composes with patched-detection" — DROPPED; it is just a
+binary quantiser-in choice, mono only.)
