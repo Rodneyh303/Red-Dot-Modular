@@ -477,7 +477,8 @@ namespace MonsoonIds {
                         // light slot shifts — SEMI_LED_START and everything below simply advance by 1.
 
         SEMI_LED_START,
-        SEMI_LED_END = SEMI_LED_START + 24,  // 2 channels × 12 semitones
+        // FADER_SEQ_QUANT_COLOURS: 4 channels × 12 semitones (white weight + red seq + green quant + blue both)
+        SEMI_LED_END = SEMI_LED_START + 48,
 
         // SEMI_LED_END consumes its slot; OCT_LO_LED auto-follows
         OCT_LO_LED,

@@ -32,6 +32,23 @@ using namespace MonsoonIds;
 //       its modulation is misleading). Conservation OFF (guide mode) shows everything freely.
 //       Layered on top of the existing global modVizMonsoonMelody context-menu choice. Conservation
 //       mode is the differentiator. (Isolated in drawModMarker.)
+// FADER_SEQ_QUANT_COLOURS: 4-channel semitone-fader light (replaces the 2ch GreenRedLight).
+//   ch0 = WHITE  — the weight bar (driven by the slider from the param value; automatic).
+//   ch1 = RED    — seq flash   (a voice's generated note landed on this fader).
+//   ch2 = GREEN  — quant flash (a voice's quantised note landed here).
+//   ch3 = BLUE   — BOTH (poly: >=1 seq AND >=1 quant voice on this fader this frame).
+// Per voice a note is EITHER seq OR quant (q-mix selects one pitch source); "both" arises only
+// across different voices on the same fader. With no quant source (cv2Mode!=5, no Straits) no
+// quant marks are set => ch2/ch3 stay dark => faders read red-only (exactly as pre-collapse).
+struct WhiteRgbLight : GrayModuleLightWidget {
+    WhiteRgbLight() {
+        addBaseColor(SCHEME_WHITE);
+        addBaseColor(SCHEME_RED);
+        addBaseColor(SCHEME_GREEN);
+        addBaseColor(SCHEME_BLUE);
+    }
+};
+
 template <typename TLightBase = RedLight>
 struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
     // Flip to true to render out-of-scale faders at ZERO position instead of dim-in-place.
@@ -392,9 +409,10 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // Bound by ANCHOR, not coordinates: panel_src/fader_level_markers.py emits each
         // param_SEMIn_PARAM anchor AND that fader's level ticks from one loop, so the ticks
         // cannot drift from the slider (cleanup doc A3). Do not reintroduce mm here.
+        // FADER_SEQ_QUANT_COLOURS: 4ch WhiteRgbLight per fader (white weight + RGB flash), 4 slots each.
         for (int i = 0; i < 12; ++i) {
-            bindLightParam<MonsoonLightSlider<GreenRedLight>>(
-                "param_SEMI" + std::to_string(i) + "_PARAM", SEMI0_PARAM + i, SEMI_LED_START + 2*i);
+            bindLightParam<MonsoonLightSlider<WhiteRgbLight>>(
+                "param_SEMI" + std::to_string(i) + "_PARAM", SEMI0_PARAM + i, SEMI_LED_START + 4*i);
         }
 
         // ── Scale enable-band (MONSOON_SCALE_AUTHORING Phase B) ─────────────────
@@ -930,16 +948,6 @@ void MonsoonWidget::draw(const DrawArgs& args) {
             {
                 Vec a = centerMM("light_MODE_A_LIGHT", 193.f, 12.f);
                 writeNvgText(a.x, a.y - 6.f, "MODE");
-            }
-
-            // Subtitle in the ~27mm freed by collapsing the mode column 6->3 (MODE_COLLAPSE_6_TO_3
-            // §"discoverability"): sits below the 3 mode rows, top-right of the step ring.
-            {
-                Vec a = centerMM("light_MODE_A_LIGHT", 193.f, 12.f);
-                setNvgFontSize(2.4f); fillNvgColour(170,170,160);
-                writeNvgText(a.x, a.y + 33.f, "generative");
-                writeNvgText(a.x, a.y + 38.f, "sequencer-");
-                writeNvgText(a.x, a.y + 43.f, "quantiser");
             }
 
             for (int i = 0; i < 3; ++i) {

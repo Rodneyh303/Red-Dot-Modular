@@ -58,6 +58,13 @@ struct GateState {
     // Per-DEGREE flash timers (steps). Sized MAXN (24) for Micro-24; only the active degrees are ever
     // marked. At N=12 only [0..11] are touched → byte-identical to the legacy semiPlayRemain[12].
     float  semiPlayRemain[dotModular::TuningTable::MAXN] = {};
+    // FADER_SEQ_QUANT_COLOURS: a parallel quantise-flash timer. A note is EITHER seq (generated) OR
+    // quant (quantised external CV) per voice per note — q-mix selects one pitch source. seq marks
+    // semiPlayRemain (red flash); quant marks semiQuantPlayRemain (green flash). Both timers on the
+    // same degree in one frame (across poly voices) => blue (the "both" state, poly only). At N=12
+    // only [0..11] are touched; absent a quant source (cv2Mode != 5, no Straits) no quant marks are
+    // ever set => faders stay red-only (byte-identical to the pre-collapse behaviour).
+    float  semiQuantPlayRemain[dotModular::TuningTable::MAXN] = {};
 
     // ── Leading-edge legato instrument (STEP 1: computed, UNUSED by gate logic) ──
     // In the leading-edge model a note commits AT ITS ONSET to hold its gate forward
@@ -89,10 +96,12 @@ struct GateState {
     // ── Core operations ───────────────────────────────────────────────────────
     // Arm the gate-close pulse countdown from a duration in 1/16-steps.
     void armGate(float durSteps);   // gatePulseRemain = round(durSteps * pulsesPer16th)
-    void triggerNote(float pitchV, int semitone, int nvIdx);
-    void slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld);
-    void slideMax(float pitchV, int semitone, int nvIdx);
-    void extendHold(int semitone, int nvIdx);
+    // FADER_SEQ_QUANT_COLOURS: isQuant routes the flash to the quant timer (green) instead of the
+    // seq timer (red). Default false = seq (byte-identical to pre-collapse callers that omit it).
+    void triggerNote(float pitchV, int semitone, int nvIdx, bool isQuant = false);
+    void slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld, bool isQuant = false);
+    void slideMax(float pitchV, int semitone, int nvIdx, bool isQuant = false);
+    void extendHold(int semitone, int nvIdx, bool isQuant = false);
     void rest(bool tieExtend, int nvIdx);
     // Tick: call once per 1/16 step edge. Decrements the whole-step DECISION
     // counter (holdRemain) + semi LED timers. Does NOT close the gate (that's
@@ -109,5 +118,6 @@ struct GateState {
     // ── LED helper ────────────────────────────────────────────────────────────
     // semiPlayRemain normalised to 0..1 for setBrightness (1/4 note = full bright)
     float semiLedBrightness(int semitone) const;
-    void markSemi(int semitone, float dur);
+    float semiQuantLedBrightness(int semitone) const;   // FADER_SEQ_QUANT_COLOURS (green flash)
+    void markSemi(int semitone, float dur, bool isQuant = false);
 };

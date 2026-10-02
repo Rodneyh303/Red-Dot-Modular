@@ -1170,24 +1170,29 @@ void Monsoon::process(const ProcessArgs& args) {
             // delegation), Monsoon's own note faders are greyed/inert and the MICRO's faders show the
             // play flash instead — so suppress Monsoon's own flash here to avoid a flash on a delegated
             // (greyed) fader. (Sikit/no-Micro: maskAuthored false → normal flash.)
+            // FADER_SEQ_QUANT_COLOURS: aggregate SEQ (red) + QUANT (green) flash brightness per degree,
+            // max over mono + all poly voices. "Both" (blue) is decided in the UIManager from the pair.
             const bool micro = engine.pe.tuning.maskAuthored;
             float semiLedBrightness[12];
+            float semiQuantLedBrightness[12] = {};
             for (int i = 0; i < 12; ++i) {
-                float b = 0.f;
+                float b = 0.f, q = 0.f;
                 if (!micro) {
                     b = engine.gs.semiLedBrightness(i);
-                    // Aggregate brightness from all active poly voices
+                    q = engine.gs.semiQuantLedBrightness(i);
                     for (int v = 0; v < engine.numPolyVoices; ++v) {
                         b = std::max(b, engine.voices[v].gs.semiLedBrightness(i));
+                        q = std::max(q, engine.voices[v].gs.semiQuantLedBrightness(i));
                     }
                 }
                 semiLedBrightness[i] = b;
+                semiQuantLedBrightness[i] = q;
             }
             
             // Update both via UIManager
             if (uiManager) {
                 uiManager->updateStepLights(stepBrightness, 16);
-                uiManager->updateSemitoneFlashLights(semiLedBrightness, 12);
+                uiManager->updateSemitoneFlashLights(semiLedBrightness, semiQuantLedBrightness, 12);
             }
         }
 

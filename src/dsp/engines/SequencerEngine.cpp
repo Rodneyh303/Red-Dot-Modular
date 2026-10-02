@@ -467,6 +467,10 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     // internal melody+octave draw. voicePitch bypasses genPitchLive (no RNG/lane perturbation) when
     // quantiserPitchSource is set; off = byte-identical legacy path. qmixUseGenerated forces the
     // generated branch on a q-mix "use generated" step.
+    // FADER_SEQ_QUANT_COLOURS: isQuant = this note's pitch came from the QUANTISED external CV (not
+    // generated). Routes the fader flash to the green (quant) timer instead of red (seq). Per voice a
+    // note is EITHER seq OR quant; q-mix selects one source. isQuant is threaded into the note-on calls.
+    const bool isQuant = quantiserPitchSource && !qmixUseGenerated;
     float pitchV = voicePitch(0, sem, input,
                               pe.melodyRandom[getMelodyStep()],
                               pe.octaveRandom[getOctaveStep()],
@@ -517,8 +521,8 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     const bool slurSuppressesRest = !generatedRestBeatsLegato && slurReachesHere;
 
     if (legatoProb >= 0.999f) {
-        gs.slideMax(pitchV, sem, nvIdx);
-        gsStep.triggerNote(pitchV, sem, nvIdx);            // STEP: re-strike (un-fused)
+        gs.slideMax(pitchV, sem, nvIdx, isQuant);
+        gsStep.triggerNote(pitchV, sem, nvIdx, isQuant);            // STEP: re-strike (un-fused)
         result.decision = MonoDecision::LegatoMax;
     }
     else if ((r_rest < restProb) && !slurSuppressesRest) {
@@ -551,18 +555,18 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         // on → a fresh note). (Supersedes master's standalone r_legato_tie<legatoProb form:
         // the joining onset no longer re-rolls — prevSlur carries the decision.)
         if (sem == gs.lastSemitone) {
-            gs.extendHold(sem, nvIdx);
-            gsStep.triggerNote(gs.currentPitchV, sem, nvIdx);  // STEP: re-strike, same pitch
+            gs.extendHold(sem, nvIdx, isQuant);
+            gsStep.triggerNote(gs.currentPitchV, sem, nvIdx, isQuant);  // STEP: re-strike, same pitch
             result.decision = MonoDecision::Tie;
         } else {
-            gs.slideNote(pitchV, sem, nvIdx, /*wasHeld=*/true);
-            gsStep.triggerNote(pitchV, sem, nvIdx);        // STEP: re-strike (un-fused)
+            gs.slideNote(pitchV, sem, nvIdx, /*wasHeld=*/true, isQuant);
+            gsStep.triggerNote(pitchV, sem, nvIdx, isQuant);        // STEP: re-strike (un-fused)
             result.decision = MonoDecision::Legato;
         }
     }
     else {
-        gs.triggerNote(pitchV, sem, nvIdx);
-        gsStep.triggerNote(pitchV, sem, nvIdx);            // STEP: same as fused (fresh note)
+        gs.triggerNote(pitchV, sem, nvIdx, isQuant);
+        gsStep.triggerNote(pitchV, sem, nvIdx, isQuant);            // STEP: same as fused (fresh note)
         result.decision = MonoDecision::NewNote;
     }
 
@@ -1014,6 +1018,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         int qmixIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_QMIX), polyLenE(voiceIdx, PL_QMIX), polyOffE(voiceIdx, PL_QMIX), polyRotE(voiceIdx, PL_QMIX));
         float r_qmix_voice = polyRandomSrc(voiceIdx, PL_QMIX)[qmixIdx];
         bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice >= v.qmixLevel);
+        const bool isQuant = quantiserPitchSource && !qmixUseGenerated;   // FADER_SEQ_QUANT_COLOURS (green flash)
         // QUANTISER (Q1): this voice's pitch = quantised external CV (its own channel) in quantiser
         // mode, else the internal melody+octave draw. voices[voiceIdx] is ENGINE voice voiceIdx+1
         // (voice 0 is the mono/executeStep path), so read quantiserCV[voiceIdx+1]. When
@@ -1027,18 +1032,18 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         int accIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_ACCENT), polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
         v.accented = (polyRandomSrc(voiceIdx, PL_ACCENT)[accIdx] < v.accentProb);
         if (lastStepResult.decision == MonoDecision::NewNote)
-            v.gs.triggerNote(pitchV, sem, nvV);
+            v.gs.triggerNote(pitchV, sem, nvV, isQuant);
         else if (wasHeldPoly || hadPolyTail)
             // Mono is slurring/tying and THIS poly voice had a held predecessor → real slide.
-            v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true);
+            v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true, isQuant);
         else
             // Mono slurs but this poly voice had NO held gate (it was resting/silent on its
             // previous played step) — sliding would produce an isolated Legato cell (teal note
             // with no predecessor on this lane), the poly analogue of the mono isolated-teal
             // bug. Trigger a fresh note instead. (Direction-independent; surfaced in reverse
             // mode but present forward too.)
-            v.gs.triggerNote(pitchV, sem, nvV);
-        v.gsStep.triggerNote(pitchV, sem, nvV);   // STEP: every played onset re-strikes (un-fused)
+            v.gs.triggerNote(pitchV, sem, nvV, isQuant);
+        v.gsStep.triggerNote(pitchV, sem, nvV, isQuant);   // STEP: every played onset re-strikes (un-fused)
 
         // ── Rule 2 LEAD (per-voice leading-edge slur roll) ────────────────────────────────
         // Mirror mono's LEAD commitment (executeStep), per voice: this note commits to slur its
