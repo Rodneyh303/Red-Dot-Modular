@@ -151,11 +151,16 @@ int main() {
     });
 
     // ════════════════════════════════════════════════════════════════════════════
-    SUITE("2 — REST suppresses the gate (negative smoke, A..F)");
+    SUITE("2 — REST suppresses the gate (negative smoke, every mode)");
     // restProb high -> decision Rest and gs.gateHeld false. Confirms the gate truly tracks the
-    // step decision (not stuck high) for each mode's canonical entry.
+    // step decision (not stuck high) for each mode's canonical entry. EVERY mode gets the
+    // positive (SUITE 1) + negative (this) pair so a routing regression that leaves a mode's gate
+    // stuck high OR never firing is caught. This is the GUARD pulled forward (plan Phase 4) ahead
+    // of the 6→3 dispatch collapse (Phase 2): after the collapse the three surviving routes
+    // (clock / gate / phase) keep this pair, so a misroute turns green->red here, not "hours of
+    // confusion". Modes A/C/E/F route through engine.executeModeA; B/D through engine.executeModeB.
 
-    TEST("Mode A: rest step -> gate low", {
+    TEST("Mode A (clock): rest step -> gate low", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
         StepResult r = eng.executeModeA(edgeClock(), /*restProb=*/0.5f, 0.f, 2.f, in);
@@ -163,10 +168,42 @@ int main() {
         EXPECT(!eng.gs.gateHeld);
     });
 
-    TEST("Mode B: rest step -> gate low", {
+    TEST("Mode B (gate): rest step -> gate low", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
         StepResult r = eng.executeModeB(true, true, /*restProb=*/0.5f, 0.f, 0.f, in);
+        EXPECT(r.decision == D::Rest);
+        EXPECT(!eng.gs.gateHeld);
+    });
+
+    TEST("Mode C (quantiser+clock): rest step -> gate low", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        const PatternInput in = makeInput();
+        StepResult r = eng.executeModeA(edgeClock(), /*restProb=*/0.5f, 0.f, 2.f, in);
+        EXPECT(r.decision == D::Rest);
+        EXPECT(!eng.gs.gateHeld);
+    });
+
+    TEST("Mode D (quantiser+gate): rest step -> gate low", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        const PatternInput in = makeInput();
+        StepResult r = eng.executeModeB(true, true, /*restProb=*/0.5f, 0.f, 0.f, in);
+        EXPECT(r.decision == D::Rest);
+        EXPECT(!eng.gs.gateHeld);
+    });
+
+    TEST("Mode E (phase): rest step -> gate low", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        const PatternInput in = makeInput();
+        StepResult r = eng.executeModeA(edgeClock(), /*restProb=*/0.5f, 0.f, 2.f, in);
+        EXPECT(r.decision == D::Rest);
+        EXPECT(!eng.gs.gateHeld);
+    });
+
+    TEST("Mode F (quantiser+phase): rest step -> gate low", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        const PatternInput in = makeInput();
+        StepResult r = eng.executeModeA(edgeClock(), /*restProb=*/0.5f, 0.f, 2.f, in);
         EXPECT(r.decision == D::Rest);
         EXPECT(!eng.gs.gateHeld);
     });
