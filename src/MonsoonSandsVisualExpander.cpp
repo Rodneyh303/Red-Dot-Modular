@@ -207,7 +207,7 @@ struct MonsoonSandsVisualExpanderWidget : ModuleWidget,
             // bind to anchors named by the SPREAD index l (the generator emits param_spr_<l>,
             // input_sprcv_<l>, param_spratten_<l> placed on the editor row via SPR_TO_EDITOR).
             int editorLane = SPREAD_LANE_TO_EDITOR[l];
-            const char* SN[5] = {"REST","MEL","OCT","ACC","QMIX"};
+            const char* SN[7] = {"REST","MEL","OCT","ACC","QMIX","VAR","LEG"};
             const std::string nm = SN[l];
             const int spLane = l;
             const int edLane = editorLane;

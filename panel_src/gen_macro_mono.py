@@ -6,110 +6,93 @@ sys.path.insert(0, os.path.dirname(__file__))
 import dotmod_design as D
 from dotmod_design import px, theme
 
-def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack columns)
-    # Macro mirrors the East visual's 40HP geometry exactly (same columns); it does
-    # the same spread job but GLOBAL (3 lanes) rather than per-lane. Must match
-    # StraitsSandsMacroVisual.hpp: COL_J1=8 J2=18 A1=30 A2=39 SPREAD_X=49 ED_X=58.
+def gen_macro(dark, W_MM=264.16):   # 52HP (48HP + 4HP widened on the RIGHT for the 6-col send grid)
+    # Macro mirrors the East visual's 7-lane geometry EXACTLY (same lane tops/heights); it does
+    # the same spread job but GLOBAL rather than per-lane. Must match StraitsSandsMacroVisual.hpp
+    # (W_MM, ROW_BOT=105, ED_H=91) and src/ui/SandsGrid.hpp (LANE_TOP=14, LANE_H=13, POLY_LANES=7).
+    # SANDS CONSOLIDATION Step 3: widened 48→52HP; the 6 mix-in send knobs per lane MOVED from
+    # below-editor groups to a 6-column × 7-row RHS grid (row-aligned per lane). Left/center
+    # geometry (jacks/attens/spread/editor/owner/dir/dir_mod/prob_out) is UNCHANGED.
     t=theme(dark); H_MM=128.5; PW,PH=px(W_MM),px(H_MM)
-    N=5   # OPT-B: 5 lanes (Q-MIX at index 2), one row each
+    N=7   # 7 editor lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG), one row each — matches East
     ED_LANES=N   # explicit local so the draw/component loops below can't pick up a leaked module-
-                 # scope ED_LANES (East's 7) — the "Macro missing a row / labels mixed up" root cause.
-    # editor row → poly engine/spread lane (MEL->1 OCT->2 QMIX->4 REST->0 ACC->3). Mirrors
-    # dotModular::EDITOR_TO_ENGINE_LANE_QMIX (dsp/LaneMapping.hpp). cv/atten/spread/prob ids are
-    # engine-ordered, so emit them at the editor row via this table (using `el` put REST's spread on
-    # the melody row etc). Defined HERE (was implicitly leaked) so gen_macro is self-contained.
-    EDITOR_TO_ENGINE=[1,2,4,0,3]
+                 #scope ED_LANES (East's 7) — the "Macro missing a row / labels mixed up" root cause.
+    # editor row → poly engine/spread lane. Mirrors dotModular::EDITOR_TO_ENGINE_LANE_QMIX
+    # (dsp/LaneMapping.hpp): MEL->1 OCT->2 QMIX->4 REST->0 ACC->3 VAR->5 LEG->6. cv/atten/spread/
+    # prob ids are engine-ordered, so emit them at the editor row via this table. Defined HERE
+    # (was implicitly leaked) so gen_macro is self-contained.
+    EDITOR_TO_ENGINE=[1,2,4,0,3,5,6]
     assert len(EDITOR_TO_ENGINE)==ED_LANES, "EDITOR_TO_ENGINE must have one entry per editor lane"
     # Extra top margin so the view-tab row isn't crammed against the panel top
     # edge. 0.5 cm = 5 mm. Mirror TAB_TOP_OFFSET_MM in StraitsSandsMacroVisualWidget.
         # Mirrors src/ui/SandsGrid.hpp — tabs sit ABOVE the grid (3..13mm), lane 0 starts at 14.
     TAB_TOP, TAB_ROW_H = 3.0, 5.0
     TAB_TOP_OFFSET_MM = 5.0
-    # Mirrors src/ui/SandsGrid.hpp: lane 0 at 14mm, 4 lanes x 14mm = 56 (tabs live above, 3..13).
-    ED_X=88.; ED_W=111.; OWNER_X=205.; DIR_X=212.; DIR_MOD_X=220.; PROB_OUT_X=236.; ED_Y=14.; ED_H=65.   # OPT-B: 5 lanes x 13mm, editor 14->79
+    # Geometry: 7 lanes × 13mm, editor 14→105 (matches East). Left/center/right columns are
+    # UNCHANGED from the 5-lane layout; the extra 20mm is added on the RIGHT for the send grid.
+    ED_X=88.; ED_W=111.; OWNER_X=205.; DIR_X=212.; DIR_MOD_X=220.; PROB_OUT_X=236.; ED_Y=14.; ED_H=91.   # 7 lanes x 13mm, editor 14->105
     ED_LANE_H=ED_H/N
     # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY).
     def rowY(r): return ED_Y+(r+0.5)*ED_LANE_H
     ctrlY = rowY   # alias: a few sites below use ctrlY (as gen_mono does); same lane-centre.
-    # (Removed the stale 4-entry DISPLAY_ORDER / LANE_NAMES_D — pre-q-mix leftovers. Rows are
-    #  editor lanes 0..4 directly (MEL/OCT/QMIX/REST/ACC); no display remap, no local label table.)
     # 4 CV jacks + 4 attens + spread base — columns match SandsMonoVisual, ED_X=88
     JACK_X=[6.,15.,24.,33.]            # LEN/OFF/ROT/SPR-cv
     ATTEN_X=[43.,52.,61.,70.]          # LEN/OFF/ROT/SPR depth
     SPREAD_X=80.                       # per-lane spread base trimpot
+    # RHS mix-in SEND grid: 6 columns × 7 rows (one row per lane, Y-aligned to the lane centre).
+    # Cols: 0 LEN 1 OFF 2 ROT 3 SPR (sends) + 4 LOR tap 5 SPR tap. The 4 send columns reuse the
+    # param_send_<el>_<item> anchors; the 2 tap columns reuse param_taplor_/tapspr_<el>. Anchor
+    # NAMES are UNCHANGED — only X/Y move — so the widget name-binds still resolve and the audit
+    # stays 1:1. 4mm pitch fits the +20mm right strip (240..260); clears prob_out (236).
+    SEND_COL_X=[240.,244.,248.,252.,256.,260.]
     L=[]; A=L.append
     A(D.svg_open(PW,PH))
     A('<g inkscape:label="artwork" inkscape:groupmode="layer">')
     A(D.bg_rect(PW,PH,t))
-    # Identity artwork in the BOTTOM-LEFT corner (vs East's lower-right) so the
-    # two near-identical 42HP panels read apart at a glance. Bottom-left is free
-    # on Macro (send grids live in the right section).
-    A(D.helix_sands(4.0, 82.0, 74.0, 33.0, t, op=0.95))   # Sands Helix hero mark, bottom-left pocket (moved down 6mm so its MBS motif reads lower; wordmark moved the same amount)
-    # (MBS identity mark removed — the Helix already carries an MBS motif in its background,
-    #  and it collided with the bottom-left wordmark. The Helix alone is the identity art here.)
+    # Identity artwork: Sands Helix hero mark, bottom-left pocket. With 7 lanes the left controls
+    # now extend to Y=105, so the helix is scaled into the free bottom strip (105→128.5) to avoid
+    # overlapping the VAR/LEG control rows. Still bottom-left (vs East's lower-right), just lower
+    # + shorter. A full helix reposition is deferred to Step 4.
+    A(D.helix_sands(4.0, 107.0, 60.0, 20.0, t, op=0.95))
     A(D.accent_rules(PW,t))
     gx,gy=1.5,ctrlY(0)-ED_LANE_H*0.5-3.0; gw,gh=(SPREAD_X+6.0)-gx,(ctrlY(N-1)+ED_LANE_H*0.5+3.0)-gy  # gx clears leftmost jack
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
-    A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=5))
+    A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=7))
     A(D.owner_block(OWNER_X, [ctrlY(r) for r in range(N)], ED_X+ED_W, t, cell_w_mm=6.0))
+    # RHS send-grid recess: a faint panel-coloured frame behind the 6×7 send knob grid, spanning
+    # the same vertical band as the editor (14→105) so the rows read aligned to the lanes.
+    sg_x=SEND_COL_X[0]-3.0; sg_y=ED_Y; sg_w=(SEND_COL_X[-1]-SEND_COL_X[0])+6.0; sg_h=ED_H
+    A(f'<rect x="{px(sg_x):.1f}" y="{px(sg_y):.1f}" width="{px(sg_w):.1f}" height="{px(sg_h):.1f}" rx="{px(1.4):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.55"/>')
     A('</g>')
     A('<g inkscape:label="branding" inkscape:groupmode="layer">')
-    A(D.logo_embed(dark, x_mm=200.0, y_mm=122.0, target_w_mm=40.0))   # bottom-RIGHT (opposite the helix)
+    A(D.logo_embed(dark, x_mm=W_MM-44.0, y_mm=122.0, target_w_mm=40.0))   # bottom-RIGHT (opposite the helix), tracks the wider panel
     A('</g>')
     A('<g inkscape:label="control-graphics" inkscape:groupmode="layer">')
-    # 5 editor lanes (MEL/OCT/QMIX/REST/ACC), q-mix a PLAIN lane at row 2. Row == editor lane
-    # (no ESLOT/DISPLAY_ORDER remap); 4 CV jacks + 4 attens + spread base each.
+    # 7 editor lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG), q-mix a PLAIN lane at row 2. Row == editor
+    # lane (no ESLOT/DISPLAY_ORDER remap); 4 CV jacks + 4 attens + spread base each.
     for el in range(ED_LANES):
         y=rowY(el)
         for x in JACK_X:  A(D.jack(x,y,t))
         for x in ATTEN_X: A(D.trim(x,y,t,t["gold"]))
         A(D.trim(SPREAD_X,y,t,t["wellring"]))
-    # ── Macro→voice MIX-IN send groups (relocated from East under the control
-    #    inversion). 3 demarked groups (REST/MEL/OCT) below the editor, each a 2×2
-    #    Len/Off/Rot/Spr send grid. "per voice, how much of Macro's global CV reaches
-    #    this voice." Geometry shared with the widget labels in
-    #    StraitsSandsMacroVisual::draw. GEOMETRY IS OWNED HERE: the generator emits a
-    #    label_mixin_<editorLane> anchor per group (+ reuses the param_send_/taplor/tapspr
-    #    anchors for the item labels), and draw() derives every label position from
-    #    centerOf(findNamed(...)) — NOT by recomputing GROUP_W/BLEND_*. So these constants
-    #    live in ONE place; re-running the generator can no longer drift the labels off the
-    #    boxes (the ED_W/4-vs-ED_W/5 bug that recurred 3×).
-    BLEND_TOP=85.0; BLEND_H=35.0; BGAP=2.5; GROUP_W=ED_W/float(ED_LANES)  # 5 groups (q-mix is a full lane)
-    SEND_Y0=10.0; SEND_DY=9.0; SEND_DX=6.0                   # DX 7→6 for narrower groups
-    TAP_ROW_DY=9.0                                            # row 3 (taps) below the 2 send rows
-    A(f'<line x1="{px(ED_X):.1f}" y1="{px(BLEND_TOP-3.0):.1f}" x2="{px(ED_X+ED_W):.1f}" y2="{px(BLEND_TOP-3.0):.1f}" stroke="{t["accent"]}" stroke-width="1.0" opacity="0.6"/>')
-    # Blend groups drawn in EDITOR order (left-to-right: MEL/OCT/QMIX/REST/ACC). Group index g
-    # IS the editor lane — send/tap markers below are editor-lane indexed to match the C++ binds
-    # (param_send_<editorLane>_<item>, param_taplor/tapspr_<editorLane>). No engine remap.
-    MIX_XY=[None]*ED_LANES   # indexed by EDITOR lane
-    TAP_XY=[None]*ED_LANES   # P9b: [LOR tap, spread tap] per EDITOR lane
-    LABEL_MIXIN_XY=[None]*ED_LANES   # group-header label anchor per EDITOR lane
+    # ── Macro→voice MIX-IN send grid (RELOCATED from below-editor groups to the RHS). 6 columns
+    #    × 7 rows, row-aligned to each lane's Y. Cols 0..3 = LEN/OFF/ROT/SPR sends (gold), col 4 =
+    #    LOR tap, col 5 = SPR tap (wellring). PRE/POST tap semantics (OWNERSHIP_SPEC §9) preserved:
+    #    the LOR tap and SPR tap remain distinct knobs. "per voice, how much of Macro's global CV
+    #    reaches this voice." Geometry shared with the widget labels in StraitsSandsMacroVisual::draw
+    #    (column headers only — rows are implicit, each == an editor lane).
     for el in range(ED_LANES):
-        gx=ED_X+el*GROUP_W+BGAP*0.5; gw=GROUP_W-BGAP; gcx=gx+gw*0.5
-        A(f'<rect x="{px(gx):.1f}" y="{px(BLEND_TOP):.1f}" width="{px(gw):.1f}" height="{px(BLEND_H):.1f}" rx="{px(1.4):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.92"/>')
-        LABEL_MIXIN_XY[el]=(gcx, BLEND_TOP+4.0)   # group-name label centre (matches old draw() gcx, BLEND_TOP+4)
-        A(f'<line x1="{px(gx+2):.1f}" y1="{px(BLEND_TOP+7.5):.1f}" x2="{px(gx+gw-2):.1f}" y2="{px(BLEND_TOP+7.5):.1f}" stroke="{t["edborder"]}" stroke-width="0.6" opacity="0.6"/>')
-        lane_sends=[]
+        y=rowY(el)
         for item in range(4):
-            cxs=gcx+(-SEND_DX if (item%2)==0 else SEND_DX)
-            cys=BLEND_TOP+SEND_Y0+(item//2)*SEND_DY
-            A(D.trim(cxs,cys,t,t["gold"]))
-            lane_sends.append((cxs,cys))
-        MIX_XY[el]=lane_sends
-        # P9b: row 3 = the two CV taps for this lane group — LOR (left) + SPREAD (right).
-        tap_y = BLEND_TOP+SEND_Y0+2*TAP_ROW_DY
-        A(f'<line x1="{px(gx+2):.1f}" y1="{px(tap_y-5.5):.1f}" x2="{px(gx+gw-2):.1f}" y2="{px(tap_y-5.5):.1f}" stroke="{t["edborder"]}" stroke-width="0.6" opacity="0.6"/>')
-        A(D.trim(gcx-SEND_DX, tap_y, t, t["wellring"]))   # LOR tap
-        A(D.trim(gcx+SEND_DX, tap_y, t, t["wellring"]))   # spread tap
-        TAP_XY[el]=[(gcx-SEND_DX,tap_y),(gcx+SEND_DX,tap_y)]
+            A(D.trim(SEND_COL_X[item], y, t, t["gold"]))   # LEN/OFF/ROT/SPR send
+        A(D.trim(SEND_COL_X[4], y, t, t["wellring"]))      # LOR tap (PRE/POST)
+        A(D.trim(SEND_COL_X[5], y, t, t["wellring"]))      # SPR tap (PRE/POST)
     A('</g>')
     # ── SvgPanelKit component (anchor) layer — THE SINGLE GEOMETRY SOURCE. ────────
-    # DESCRIPTIVE, EDITOR-lane-indexed names (matches Sands Mono + East). This replaces
-    # the old numeric id-in-name convention (input_<cvId>/param_<attenId|SPREAD>), which
-    # mixed engine-lane ids into the NAME while the C++ binds by EDITOR lane — a latent
-    # editor-vs-engine mismatch of exactly the kind that broke East. The widget binds
-    # each by name; the anchor-vs-bind audit enforces 1:1.
-    # editor lane el: 0 MEL,1 OCT,2 QMIX,3 REST,4 ACC.
+    # DESCRIPTIVE, EDITOR-lane-indexed names (matches Sands Mono + East). The widget binds each
+    # by name; the anchor-vs-bind audit enforces 1:1. Send/tap anchors now sit in the RHS grid;
+    # their NAMES are unchanged, so the StoreKnob binds (param_send_<el>_<item> etc.) resolve
+    # automatically — only X/Y changed. editor lane el: 0 MEL,1 OCT,2 QMIX,3 REST,4 ACC,5 VAR,6 LEG.
     def named(name, x, y):
         A(f'<circle id="{name}" cx="{px(x):.2f}" cy="{px(y):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
@@ -121,28 +104,19 @@ def gen_macro(dark, W_MM=243.84):   # 48HP (44 + 4HP for dir_mod + prob_out jack
         for c,x in enumerate(ATTEN_X): named(f"param_atten_{el}_{c}", x, y)
         named(f"param_spr_{el}",  SPREAD_X,   y)
         named(f"output_prob_{el}", PROB_OUT_X, y)
-    # Macro→voice mix-in send markers + PRE/POST taps — editor-lane indexed (the C++ binds
-    # param_send_<el>_<item> / param_taplor_<el> / param_tapspr_<el> by editor lane).
+    # Macro→voice mix-in send + PRE/POST tap anchors — RHS grid, editor-lane indexed (the C++
+    # binds param_send_<el>_<item> / param_taplor_<el> / param_tapspr_<el> by editor lane).
     for el in range(ED_LANES):
+        y=rowY(el)
         for item in range(4):
-            cxs,cys = MIX_XY[el][item]
-            named(f"param_send_{el}_{item}", cxs, cys)
-        (lx,ly),(sx,sy) = TAP_XY[el]
-        named(f"param_taplor_{el}", lx, ly)
-        named(f"param_tapspr_{el}", sx, sy)
-    # Group-header label anchors (EDITOR order — the group name MEL/OCT/QMIX/REST/ACC). draw()
-    # reads centerOf(findNamed("label_mixin_<el>")) instead of recomputing ED_X+el*GROUP_W, so the
-    # header + its item labels can never drift off the boxes when GROUP_W/BLEND_* change here.
-    for el in range(ED_LANES):
-        gcx, gy = LABEL_MIXIN_XY[el]
-        A(f'<circle id="label_mixin_{el}" cx="{px(gcx):.2f}" cy="{px(gy):.2f}" r="0.5" fill="none" stroke="none"/>')
+            named(f"param_send_{el}_{item}", SEND_COL_X[item], y)
+        named(f"param_taplor_{el}", SEND_COL_X[4], y)
+        named(f"param_tapspr_{el}", SEND_COL_X[5], y)
     # Direction cells (param_dir_<editorLane>) + gate-mod jacks (input_dir_mod_<editorLane>) —
     # these ARE editor-lane indexed in the C++ (getGlobalDir(editorLane)), so keep `el`.
     for el in range(ED_LANES):
-        A(f'<circle id="param_dir_{el}" cx="{px(DIR_X):.2f}" cy="{px(rowY(el)):.2f}" '
-          f'r="0.5" fill="none" stroke="none"/>')
-        A(f'<circle id="input_dir_mod_{el}" cx="{px(DIR_MOD_X):.2f}" cy="{px(rowY(el)):.2f}" '
-          f'r="0.5" fill="none" stroke="none"/>')
+        named(f"param_dir_{el}",     DIR_X,     rowY(el))
+        named(f"input_dir_mod_{el}", DIR_MOD_X, rowY(el))
     A('</g>')
     A('</svg>')
     return "\n".join(L)

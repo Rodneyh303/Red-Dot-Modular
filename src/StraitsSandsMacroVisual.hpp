@@ -13,19 +13,29 @@ namespace StraitsMacroVisualIds {
 
     // ── Panel ──────────────────────────────────────────────────────────────
     // Macro does the same job as the East visual (spread control) but GLOBAL
-    // rather than per-lane, so it shares East's 40HP width and column geometry
-    // for consistency and to give the spread column proper room.
-    static constexpr float W_MM    = 243.84f;   // 48HP (44 + 4HP for dir_mod + prob_out jack columns)
+    // rather than per-lane. SANDS CONSOLIDATION Step 3: widened 48→52HP (the extra
+    // 20mm on the RIGHT carries the 6-column mix-in send grid); left/center column
+    // geometry still matches East for consistency.
+    static constexpr float W_MM    = 264.16f;   // 52HP (48HP + 4HP widened on the RIGHT for the send grid)
     static constexpr float OWNER_X    = 205.f;  // owner cell column (matches East)
     static constexpr float DIR_X      = 212.f;  // direction cell column (matches East)
     static constexpr float DIR_MOD_X  = 220.f;  // direction gate-mod jack column
     static constexpr float PROB_OUT_X = 236.f;  // poly prob-out jack column (aligned with East/Mono)
-    // Bound to the grid so Mono/East/Macro cannot drift (mirrors East). Option B: LANE_H=13,
-    // 5 poly lanes (MEL/OCT/QMIX/REST/ACC). Was a stale hardcoded ROW_BOT=108 / N_ROWS=4
-    // (pre-QMIX "REST/MEL/OCT/ACCENT"); nothing reads these now, but keep them grid-derived
-    // so the file can never re-introduce a 4-lane assumption.
+    // ── RHS mix-in SEND grid (6 columns × 7 rows, row-aligned per lane). SANDS CONSOLIDATION
+    //    Step 3: moved from below-editor groups. Cols 0..3 = LEN/OFF/ROT/SPR sends,
+    //    col 4 = LOR tap, col 5 = SPR tap. Mirrors gen_macro_mono.py SEND_COL_X.
+    static constexpr float SEND_COL0_X = 240.f;   // LEN send
+    static constexpr float SEND_COL1_X = 244.f;   // OFF send
+    static constexpr float SEND_COL2_X = 248.f;   // ROT send
+    static constexpr float SEND_COL3_X = 252.f;   // SPR send
+    static constexpr float SEND_COL4_X = 256.f;   // LOR tap (PRE/POST)
+    static constexpr float SEND_COL5_X = 260.f;   // SPR tap (PRE/POST)
+    // Bound to the grid so Mono/East/Macro cannot drift (mirrors East). 7 poly lanes
+    // (MEL/OCT/QMIX/REST/ACC/VAR/LEG), LANE_H=13. Was a stale hardcoded ROW_BOT=108 /
+    // N_ROWS=4 (pre-QMIX "REST/MEL/OCT/ACCENT"); keep them grid-derived so the file can
+    // never re-introduce a 4-/5-lane assumption.
     static constexpr float ROW_TOP = dotModular::SandsGrid::LANE_TOP;      // 14
-    static constexpr float ROW_BOT = dotModular::SandsGrid::polyBottom();  // 79 (5×13)
+    static constexpr float ROW_BOT = dotModular::SandsGrid::polyBottom();  // 105 (7×13)
     static constexpr int   N_ROWS  = dotModular::SandsGrid::POLY_LANES;    // 7 (SANDS CONSOLIDATION Step 1)
     // Mono-style: 4 CV jacks (LEN/OFF/ROT/SPR-cv) + 4 attens + 1 spread-base trimpot per lane.
     // Column layout and ED_X=88 match SandsMonoVisual exactly.
@@ -46,10 +56,10 @@ namespace StraitsMacroVisualIds {
     static constexpr float TAB_TOP_OFFSET_MM = 5.f;   // (retained; tabs now sit ABOVE the grid)
     // Voice tabs moved into 3..13mm (above the grid) so lane 0 starts at LANE_TOP like Mono.
     static constexpr float ED_Y   = dotModular::SandsGrid::LANE_TOP;   // 14 (was 23)
-    // Editor holds 4 poly lanes (MEL/OCT/REST/ACCENT); ~12mm each. ED_LANE_H
-    // drives prob-out vertical placement and must match the gen script's ED_H/4.
-    static constexpr float ED_H      = dotModular::SandsGrid::polyHeight();  // 56 (was 48)
-    static constexpr float ED_LANE_H = dotModular::SandsGrid::LANE_H;        // 14 (was 12)
+    // Editor holds 7 poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG); 13mm each. ED_LANE_H
+    // drives prob-out + send-knob vertical placement and must match the gen script's ED_H/N.
+    static constexpr float ED_H      = dotModular::SandsGrid::polyHeight();  // 91 (7×13, was 65)
+    static constexpr float ED_LANE_H = dotModular::SandsGrid::LANE_H;        // 13 (Option B)
 
     // Left-control rows align with the EDITOR lane centres (not the full panel),
     // so each lane's CV jacks + attens sit beside the visual lane they modulate.
@@ -199,12 +209,16 @@ struct StraitsSandsMacroVisual : Module {
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
         monLookupDiv.setDivision(8);   // topology changes are control-rate
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
-        { static const char* ln[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX"};
+        { static const char* ln[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX","VAR","LEG"};
           for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
             configOutput(StraitsMacroVisualIds::PROB_OUT_REST + l,
                 std::string("Probability ") + ln[l] + " (poly: ch2+ voices)"); }
 
-        static const char* laneNames[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX"};
+        // SANDS CONSOLIDATION Step 1: 7 poly lanes (engine order; matches cvId(lane,c)).
+        // Was 5 initializers on a [POLY_LANES] array → lanes 5/6 were nullptr →
+        // std::string(nullptr) aborts (signal 22) during module construction — the Macro
+        // instantiation crash. All 7 must be present.
+        static const char* laneNames[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX","VAR","LEG"};
         static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
         for (int lane=0; lane<dotModular::SandsGrid::POLY_LANES; ++lane) {
             // P9b: TWO PRE/POST taps per lane — LOR (LEN/OFF/ROT) and SPREAD. Default
@@ -233,7 +247,9 @@ struct StraitsSandsMacroVisual : Module {
         // write the live view voice's slot directly, so no display proxy and no sync dance.
         // Ids kept declared so the enum does not renumber, matching LOR/direction/attenuverters.
         // Direction display proxies (4 poly lanes). DirCell writes 0..3 = Fwd/Rev/Pend/PingPong.
-        static const char* dirNames[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC"};
+        // SANDS CONSOLIDATION Step 1: 7 poly lanes (editor order; matches dirModId(l)).
+        // Was 5 initializers → lanes 5/6 nullptr → std::string(nullptr) abort (signal 22).
+        static const char* dirNames[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
             // dirDispId is STORE-BACKED (MVC step 1: direction de-param) -- no configParam,
             // not host-exposed. Direction lives in editor.globalDir[4] (engine-read,

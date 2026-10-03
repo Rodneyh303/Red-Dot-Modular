@@ -167,9 +167,10 @@ namespace StraitsEastVisualIds {
 
     // Per-lane POLY probability CV outs (REST/MEL/OCT). Each is a poly cable:
     // channel 1 = master value, channels 2..1+nVoices = the per-voice ensemble.
-    // Phase 2: Added PROB_OUT_QMIX (5 outputs total, was 4).
+    // SANDS CONSOLIDATION Step 1: 7 poly outputs (added VAR/LEG).
     enum OutputId {
         PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_ACCENT, PROB_OUT_QMIX,
+        PROB_OUT_VAR, PROB_OUT_LEG,
         NUM_OUTPUTS
     };
 }
@@ -202,8 +203,8 @@ struct StraitsEastSandsVisual : Module {
         config(0, StraitsEastVisualIds::NUM_INPUTS,
                StraitsEastVisualIds::NUM_OUTPUTS, StraitsEastVisualIds::NUM_LIGHTS);
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
-        // Phase 2: Now 5 poly outputs (added Q-MIX)
-        { static const char* ln[5] = {"REST","MEL","OCT","ACC","Q-MIX"};
+        // SANDS CONSOLIDATION Step 1: 7 poly outputs (VAR/LEG added)
+        { static const char* ln[7] = {"REST","MEL","OCT","ACC","Q-MIX","VAR","LEG"};
           for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
             configOutput(StraitsEastVisualIds::PROB_OUT_REST + l,
                 std::string("Probability ") + ln[l] + " (poly: ch1 master, ch2+ voices)"); }
