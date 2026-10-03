@@ -16,11 +16,23 @@ on top of the unmerged branch.
   EDITOR_TO_ENGINE_QMIX and the static_asserts accordingly.
 - This is the lane-uniformity step everything else depends on.
 
-### 2. Spread on VARIATION and LEGATO
-- They currently have mono slewed buffers but NO poly buffers / no spread (SANDS_CONSOLIDATION.md
-  "spread on VAR/LEG"). Add the poly buffers + per-voice slew/pre-remap path + spread for these two
-  lanes, same as the other poly lanes. SpreadInterp N_SPREAD_LANES 5 -> 7, mapping tables, per-voice
-  application. THIS is the only real engine work in the consolidation.
+### 2. FULL feature complement on ALL lanes (not just spread on var/leg)
+Lane uniformity means EVERY lane has the COMPLETE feature set — no lane special in ANY dimension.
+Bring VARIATION + LEGATO up to the full set AND confirm every other lane also has all of:
+- **DIRECTION** (per-lane direction/reverse),
+- **MODULATION of direction** (CV mod of direction),
+- **DELEGATION** (on EAST — follow-voice-1 / independent delegators),
+- **SPREAD** — var/leg currently have mono slewed buffers but NO poly buffers / no spread; add poly
+  buffers + per-voice slew/pre-remap + spread (SpreadInterp N_SPREAD_LANES 5 -> 7, mapping tables),
+- **PROBABILITY OUTS** (per-lane prob output).
+Audit: some OTHER lanes may also be missing direction-mod or prob-outs — uniformity means NONE is.
+This full uniformity is also what makes the later per-lane EXTENSION model work (a lane must be
+genuinely interchangeable for "a lane is a lane is an extension"). THIS is the real engine work.
+
+### 2b. Deprecate East's lane-LOCK symbols on VARIATION / LEGATO
+East shows lock icons on var/leg signifying "mono-only". Once they become full poly+spread lanes
+(above), the locks are FALSE — they claim a restriction that no longer exists. Remove the lock symbols
+from var/leg (the visual residue of the mono-only era); do not leave them misinforming the user.
 
 ### 3. Macro panel — move SEND knobs to the RHS, 6 columns aligned per-lane
 - Currently send columns are fixed X (COL_J1=8 J2=18 A1=30 A2=39 SPREAD_X=49 ED_X=58). Relocate the
@@ -35,13 +47,7 @@ on top of the unmerged branch.
   that reads best once sends have moved RHS — confirm visually). The send-knob relocation + lane
   layout should leave a clean region for the helix.
 
-### 5. Deprecate MONO — goodbye
-- Macro already works in mono, so it SUBSUMES Mono (SANDS_CONSOLIDATION.md). Remove the Mono module:
-  unregister from plugin (Monsoon.cpp addModel), move src for Mono visual to deprecated/, drop its
-  slug from plugin.json, remove its generator path. Pre-release: no patch migration. Verify nothing
-  else references the Mono module.
-
-### 6. Deprecate "Per-voice articulation (East VARIATION/LEGATO)" context-menu item
+### 5. Deprecate "Per-voice articulation (East VARIATION/LEGATO)" context-menu item
 - MonsoonWidget.cpp:1069 `add("Per-voice articulation (East VARIATION/LEGATO)", &m->engine.
   perVoiceArticulation)`. This was the binary "soup" flag; the correlation matrix + spread-on-VAR/LEG
   (step 2) supersede it (graded per-voice variation correlated to mono replaces the on/off). REMOVE the
@@ -50,7 +56,17 @@ on top of the unmerged branch.
   too); if a transitional default-on is simpler, leave the flag true and dead for now and note it. Pick
   the clean removal if step 2 makes it fully redundant.
 
+### 6. Deprecate MONO — goodbye (LAST step, deliberately)
+- Macro already works in mono, so it SUBSUMES Mono (SANDS_CONSOLIDATION.md). Remove the Mono module:
+  unregister from plugin (Monsoon.cpp addModel), move src for Mono visual to deprecated/, drop its
+  slug from plugin.json, remove its generator path. Pre-release: no patch migration. Verify nothing
+  else references Mono.
+- **WHY LAST:** Mono is the current lane REFERENCE, so deleting it is the step most likely to expose a
+  lingering dependency. Doing all additive work (lanes, full complement, delegation, prob outs, panel)
+  FIRST means the deletion is debugged against a known-good base, isolated. Recon before deleting: does
+  killing Mono lose lane-owner / same-playhead (SANDS_CONSOLIDATION.md)?
+
 ## Order & risk
-2 (spread on VAR/LEG) is the only real engine work — do it carefully with tests. 1,3,4 are
-additive/panel. 5,6 are deletion. Audit question still open: does killing Mono lose lane-owner /
-same-playhead (SANDS_CONSOLIDATION.md)? Confirm in step 5's recon before deleting.
+Step 2 (full feature complement on all lanes incl spread on var/leg) is the real engine work — do it
+carefully with tests. 2b, 3, 4 are additive/panel. 5 and 6 are DELETION, with Mono deletion LAST
+(it's the reference; isolate it against a proven base).
