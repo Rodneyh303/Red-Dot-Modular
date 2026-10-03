@@ -37,19 +37,20 @@ namespace SandsLaneNames {
     static_assert(SandsGrid::MONO_LANES == SandsGrid::EAST_LANES,
                   "EDITOR table serves both Mono and East (equal lane counts)");
 
-    // ENGINE/SPREAD order (index == poly engine/spread lane). Length == POLY_LANES (5).
+    // ENGINE/SPREAD order (index == poly engine/spread lane). Length == POLY_LANES (7).
     // Used where the id is engine-ordered: East PROB_OUT_*, sprPid[], spreadEffective[].
+    // SANDS CONSOLIDATION Step 1: VAR/LEG appended at engine index 5/6.
     inline constexpr const char* SPREAD[SandsGrid::POLY_LANES] =
-        { "REST", "MEL", "OCT", "ACC", "Q-MIX" };
+        { "REST", "MEL", "OCT", "ACC", "Q-MIX", "VAR", "LEG" };
     static_assert(sizeof(SPREAD) / sizeof(SPREAD[0]) == SandsGrid::POLY_LANES,
                   "SPREAD lane-name table length must equal SandsGrid::POLY_LANES");
 
-    // EDITOR order restricted to the POLY lanes (0..4) — for label sites that iterate
+    // EDITOR order restricted to the POLY lanes (0..6) — for label sites that iterate
     // the poly lanes in EDITOR order (e.g. Mono delegation targets, East owner cells).
     // It is EDITOR[0..POLY_LANES); named so call sites can't accidentally grab the
-    // spread ordering when they mean editor.
+    // spread ordering when they mean editor. SANDS CONSOLIDATION Step 1: VAR/LEG at 5/6.
     inline constexpr const char* EDITOR_POLY[SandsGrid::POLY_LANES] =
-        { "MEL", "OCT", "QMIX", "REST", "ACC" };
+        { "MEL", "OCT", "QMIX", "REST", "ACC", "VAR", "LEG" };
     static_assert(sizeof(EDITOR_POLY) / sizeof(EDITOR_POLY[0]) == SandsGrid::POLY_LANES,
                   "EDITOR_POLY lane-name table length must equal SandsGrid::POLY_LANES");
 

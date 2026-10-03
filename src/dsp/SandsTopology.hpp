@@ -64,11 +64,11 @@ struct SandsTopology {
         //   monoV1Owner[l]      : Mono's   ownerDispId(l)  > 0.5  (true = Mono local-owns)
         //   eastV1Owner[l]      : East's   ownerDispId(l)  > 0.5  (true = East local-owns)
         //   eastPolyOwner[v][l] : East's   ownerId(v,l)    > 0.5  (true = East local-owns; v = poly index 0..14)
-        // Now 5 poly/delegable lanes, EDITOR order 0..4 = MEL/OCT/QMIX/REST/ACC.
-        // VAR/LEG are editor lanes 5/6 (mono-only, never delegable) — NOT in these arrays.
-        bool monoV1Owner[5]      = { true, true, true, true, true };
-        bool eastV1Owner[5]      = { true, true, true, true, true };
-        bool eastPolyOwner[15][5] = {};   // default false → Macro-owned until set; caller fills when East present
+        // SANDS CONSOLIDATION Step 1: 7 poly/delegable lanes, EDITOR order 0..6 = MEL/OCT/QMIX/REST/ACC/VAR/LEG.
+        // VAR/LEG are now FULL poly lanes (no longer mono-only) — included in these arrays.
+        bool monoV1Owner[7]      = { true, true, true, true, true, true, true };
+        bool eastV1Owner[7]      = { true, true, true, true, true, true, true };
+        bool eastPolyOwner[15][7] = {};   // default false → Macro-owned until set; caller fills when East present
     };
 
     Config config = Config::EMPTY;
@@ -99,14 +99,13 @@ struct SandsTopology {
     // 3 REST, 4 ACC (the 5 poly/delegable lanes), 5 VAR, 6 LEG (mono-only, never
     // delegable). VAR/LEG → MONO when Mono present, else NONE. Lanes 0..4 follow
     // the per-surface owner params (arrays sized 5, editor-indexed 0..4).
-    static constexpr int kPolyLanes = 5;   // MEL/OCT/QMIX/REST/ACC (delegable)
+    static constexpr int kPolyLanes = 7;   // MEL/OCT/QMIX/REST/ACC/VAR/LEG (SANDS CONSOLIDATION Step 1; was 5)
     Role owner(int voice, int editorLane) const {
         if (editorLane < 0 || editorLane > 6) return Role::NONE;
 
-        // V1 / mono slot.
+        // V1 / mono slot. (SANDS CONSOLIDATION Step 1: VAR/LEG are now delegable poly lanes — the old
+        // `editorLane >= kPolyLanes → mono-only` special-case is dead with kPolyLanes=7; Step 7 removes it.)
         if (voice == 0) {
-            // VAR/LEG (editor 5/6) are mono-only and always Mono-owned (never delegable).
-            if (editorLane >= kPolyLanes) return in.monoPresent ? Role::MONO : Role::NONE;
 
             if (in.monoPresent) {
                 // Mono owns V1 unless it has ceded this lane to Macro (and Macro present).
@@ -122,8 +121,7 @@ struct SandsTopology {
             return Role::NONE;
         }
 
-        // Poly voices (voice >= 1). VAR/LEG don't exist on poly → NONE.
-        if (editorLane >= kPolyLanes) return Role::NONE;
+        // Poly voices (voice >= 1). (VAR/LEG are poly now; the old `>= kPolyLanes → NONE` is dead.)
         if (in.eastPresent) {
             const int pv = voice - 1;   // poly index 0..14
             if (pv < 0 || pv >= 15) return Role::NONE;

@@ -26,8 +26,7 @@ namespace StraitsMacroVisualIds {
     // so the file can never re-introduce a 4-lane assumption.
     static constexpr float ROW_TOP = dotModular::SandsGrid::LANE_TOP;      // 14
     static constexpr float ROW_BOT = dotModular::SandsGrid::polyBottom();  // 79 (5×13)
-    static constexpr int   N_ROWS  = dotModular::SandsGrid::POLY_LANES;    // 5 (MEL/OCT/QMIX/REST/ACC)
-    static_assert(N_ROWS == 5, "Macro has 5 poly lanes after the q-mix widening");
+    static constexpr int   N_ROWS  = dotModular::SandsGrid::POLY_LANES;    // 7 (SANDS CONSOLIDATION Step 1)
     // Mono-style: 4 CV jacks (LEN/OFF/ROT/SPR-cv) + 4 attens + 1 spread-base trimpot per lane.
     // Column layout and ED_X=88 match SandsMonoVisual exactly.
     static constexpr float COL_J1 = 6.f;    // LEN CV in
@@ -125,6 +124,7 @@ namespace StraitsMacroVisualIds {
     // ch2..1+nVoices = per-voice ensemble.
     enum OutputId {
         PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_ACC, PROB_OUT_QMIX,
+        PROB_OUT_VAR, PROB_OUT_LEG,   // SANDS CONSOLIDATION Step 1
         NUM_OUTPUTS
     };
 
@@ -266,13 +266,13 @@ struct StraitsSandsMacroVisual : Module {
     // 1=OFF 2=ROT 3=SPR. macroBase = the knob value (no CV); macroCVDelta = the
     // CV-only contribution (already scaled by Macro's own attenuverter). East's
     // sync reads these: value = base(owner) + eastCV + macroCVDelta·blendSend.
-    // Now 5 poly lanes: REST/MELODY/OCTAVE/ACCENT/QMIX (engine lane order).
-    float macroBase[5][4]    = {};
-    float macroCVDelta[5][4] = {};
+    // SANDS CONSOLIDATION Step 1: 7 poly lanes (REST/MELODY/OCTAVE/ACCENT/QMIX/VAR/LEG, engine order).
+    float macroBase[7][4]    = {};
+    float macroCVDelta[7][4] = {};
     // P9: the send PRE/POST tap applies ONLY to what the sends distribute, not to
     // Macro's own LOR/spread display (which always uses the true POST macroCVDelta).
     // macroSendDelta = the tapped CV delta the East/Mono send mix-ins read.
-    float macroSendDelta[5][4] = {};
+    float macroSendDelta[7][4] = {};
 
     json_t* dataToJson() override {
         json_t* r = json_object();

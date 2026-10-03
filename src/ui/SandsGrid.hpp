@@ -28,9 +28,9 @@ namespace SandsGrid {
     static constexpr float LANE_H     = 13.f;   // one lane height everywhere (Option B: 14→13)
     // q-mix is a full lane at index 2. Engine supports 7 strands (Phase 1 complete).
     static constexpr int   MONO_LANES = 7;      // MEL, OCT, QMIX, REST, ACCENT, VARIATION, LEGATO
-    static constexpr int   POLY_LANES = 5;      // MEL, OCT, QMIX, REST, ACCENT (Macro; East's spread rows)
-    // East displays all seven lanes (adds VARIATION, LEGATO).
-    // Lanes 5/6 (VAR/LEG) are display-only until the per-voice LOR feature lands (EAST_EXTRA_LANES.md).
+    // SANDS CONSOLIDATION Step 1: VARIATION + LEGATO are now FULL poly lanes (no longer mono-only).
+    // All three families (Mono/East/Macro) carry the full uniform 7-lane set.
+    static constexpr int   POLY_LANES = 7;      // MEL, OCT, QMIX, REST, ACCENT, VARIATION, LEGATO
     static constexpr int   EAST_LANES = 7;
 
     // Voice-tab band, above the grid (East/Macro only). Two rows of 5mm: 3..13.

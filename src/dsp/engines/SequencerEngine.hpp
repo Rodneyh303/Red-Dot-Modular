@@ -269,7 +269,7 @@ struct SequencerEngine {
     int macroLaneSign_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1,1};   // NUM_STRANDS-sized (was 6-elem → LEGATO=0 pre-reset)
     LaneDir macroLaneDir_[dotModular::NUM_STRANDS] = {};
     bool macroPingPongHold_[dotModular::NUM_STRANDS] = {};
-    int macroLOR_[5] = {16,16,16,16,16};  // Macro's own LOR lengths (lanes 0..4: REST/MEL/OCT/ACC/QMIX) for bounce
+    int macroLOR_[7] = {16,16,16,16,16,16,16};  // Macro's own LOR lengths (7 poly lanes: REST/MEL/OCT/ACC/QMIX/VAR/LEG)
     // Per-voice per-strand accumulated tick (poly analogue of laneTick_). Advanced in advancePlayhead
     // by dir * polyLaneSign(v, s) — the effective sign is the voice's OWN, i.e. ABSOLUTE, not
     // relative to mono. laneSignV_ = +1 (default) = Forward; -1 = Reverse. A voice therefore does
