@@ -112,9 +112,9 @@ namespace StraitsMacroVisualIds {
 
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
-        CV_START = 0,                    // 5 poly lanes × 4 cols (LEN/OFF/ROT/SPR) = 20 (0..19)
-        DIR_MOD_START = CV_START + 20,   // = 20 — direction gate-mod (5 poly lanes, 20..24)
-        NUM_INPUTS = DIR_MOD_START + 5   // = 25  (QMIX-widened; was 20 at 4 lanes)
+        CV_START = 0,                    // 7 poly lanes × 4 cols (LEN/OFF/ROT/SPR) = 28 (0..27)
+        DIR_MOD_START = CV_START + dotModular::SandsGrid::POLY_LANES * 4,   // = 28 — direction gate-mod (7 poly lanes)
+        NUM_INPUTS = DIR_MOD_START + dotModular::SandsGrid::POLY_LANES   // = 35
     };
     static inline int dirModId(int lane) { return DIR_MOD_START + lane; }
     static inline int cvId(int lane, int c) { return CV_START + lane*4 + c; }

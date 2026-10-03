@@ -942,9 +942,9 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
 
 void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, bool wasHeldPoly, bool hadPolyTail) {
     PolyVoice& v = voices[voiceIdx];
-    // Stage 2: this voice's note length. Identical to lastStepResult.nvIdx when
-    // perVoiceArticulation is off (default) or the voice's VAR LOR is identity. Clamped so the
-    // voice can never hold past mono's next event — articulation is subtractive.
+    // Stage 2: this voice's note length. Identical to lastStepResult.nvIdx when the voice's VAR
+    // LOR is identity (delegated → reads mono's step). Clamped so the voice can never hold past
+    // mono's next event — articulation is subtractive.
     const int nvV = nvIdxForVoice(voiceIdx, input);
 
     // Start Detection: A new note/retrigger happens on NewNote, or on 
@@ -966,12 +966,12 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // At a ghost cell (ghostActive: the mono ghosted this onset), each poly voice rolls its
         // OWN variation to decide if it ghosts HERE. A voice whose variation does not pass is a
         // RESTED GHOST — transparent (silent; the slur passes through it, §458), not part of the
-        // chain. The mono voice is already gated (executeModeBSubdivided). With perVoiceArticulation
-        // OFF, getVariationStepForVoice returns the mono step -> all voices read the same value =
-        // shared ghost rhythm (+1 correlation). With it ON, each voice reads its own East VARIATION
-        // LOR step = independent placement (0). The graded [-1,+1] copula correlation is a future
-        // refinement (variation is not yet a spread lane); this is the per-voice read the doc says
-        // "already exists, just not read by anything today" (§227).
+        // chain. The mono voice is already gated (executeModeBSubdivided). Delegated voices read
+        // mono's step → all voices read the same value = shared ghost rhythm (+1 correlation).
+        // Local-East voices read their own East VARIATION LOR step = independent placement (0).
+        // The graded [-1,+1] copula correlation is a future refinement (variation is not yet a
+        // spread lane); this is the per-voice read the doc says "already exists, just not read
+        // by anything today" (§227).
         if (ghostActive) {
             int varIdx = getVariationStepForVoice(voiceIdx) & 0x0F;
             float r_vary_voice = pe.variationRandom[varIdx];
@@ -992,7 +992,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             // Rule 2: a resting voice starts no note, so it commits no forward slur, and it
             // is NOT part of this chain — landings must skip it (distinct from an opted-out
             // voice whose gate merely closed).
-            if (perVoiceArticulation) { v.gs.slurForward = false; v.participating = false; }
+            v.gs.slurForward = false; v.participating = false;
             v.gs.slurMember = false;   // SLEG: a resting voice is not part of a slur
             return;
         }
@@ -1052,11 +1052,10 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // cell when delegated (default) so it matches mono, own cell when Local East). The
         // THRESHOLD (lastLegatoProb_) and the array stay global/mono — only the reading cell is
         // per-voice, exactly as VARIATION. Rolled here at the leading edge and consumed at the
-        // NEXT landing (v.gs.slurForward → prevSlur). Gated by perVoiceArticulation; when off,
-        // slurForward is left to the existing follow-mono path (Rule 2 is additive).
-        // NOTE: this only ROLLS the commitment. The poly landing does not consume it yet (that
-        // is Rule 2 step 3 — the opt-out re-articulate branch); until then this is inert.
-        if (perVoiceArticulation) {
+        // NEXT landing (v.gs.slurForward → prevSlur). Delegated voices read mono's legato cell →
+        // their slur matches mono's; Local-East voices read their own.
+        // NOTE: this ROLLS the commitment; the poly landing consumes it (Rule 2 CONSUME below).
+        {
             // This voice played at the chain onset → it is part of the chain for its life.
             v.participating = true;
             bool leStartingV = (lastStepResult.decision == MonoDecision::NewNote)
@@ -1080,15 +1079,6 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                 (int)v.gs.slurForward);
 #endif
         }
-        else {
-            // Follow-mono (Rule 2 off): this voice tracks mono's articulation shape, so its
-            // slur MEMBERSHIP at the onset is mono's (already computed this step — mono's
-            // cascade runs first). Without this, a follow-mono voice's slur LEAD never sets
-            // slurMember (the continuations set it in the follow-mono slide/tie path below),
-            // so SLEG missed the lead strike and the Lantern underlined only the chain
-            // interior — the doc's flagged poly-mask subtlety, surfaced by the display.
-            v.gs.slurMember = gs.slurMember;
-        }
         return;
     }
 
@@ -1105,7 +1095,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                                       || (lastStepResult.decision == MonoDecision::LegatoMax)
                                       || (lastStepResult.decision == MonoDecision::Tie);
 
-        if (perVoiceArticulation && monoConnectLanding) {
+        if (monoConnectLanding) {
             // ── Rule 2 CONSUME (per-voice landing) ────────────────────────────────────────
             // A participating voice decides its OWN connect at this edge from its OWN prevSlur
             // (committed at its previous onset): prevSlur → connect (slide/extend, tracking mono's
@@ -1169,7 +1159,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                 v.gs.slurMember = prevSlur || v.gs.slurForward;  // SLEG: continues OR leads
             }
         } else {
-            // ── follow-mono path (perVoiceArticulation OFF, or a MidNote hold) ─────────────
+            // ── MidNote hold path (mono is sustaining mid-note, not at a landing edge) ─────
             // Poly follows mono gate presence strictly IF it was already active ("in").
             if (gs.gateHeld && wasHeldPoly) {
                 if (lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) {
@@ -1314,7 +1304,7 @@ int SequencerEngine::getLegatoStepForVoice(int bank) const {
 }
 
 int SequencerEngine::nvIdxForVoice(int bank, const PatternInput& input) const {
-    if (!perVoiceArticulation || bank < 0 || bank >= 15) return lastStepResult.nvIdx;
+    if (bank < 0 || bank >= 15) return lastStepResult.nvIdx;
     // The probability array stays MONO (one shared shape); only the reading position is per-voice.
     const int idx = getVariationStepForVoice(bank) & 0x0F;
     const float r = pe.variationRandom[idx];

@@ -200,7 +200,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // EditorLane/EngineLane make a raw-int mixup a compile error; .v feeds the int-keyed store.
         auto EL2ENG = [](int el){ return dotModular::toEngine(dotModular::EditorLane(el)).v; };
         // Editor-ordered lane names for tooltips (top→bottom).
-        static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC"};
+        static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
 
         // 5 poly probability CV outs — jack on editor row el drives engine lane's prob out.
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el)
@@ -280,7 +280,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         static const NVGcolor editorDirCol[dotModular::SandsGrid::POLY_LANES] = {
             nvgRGB(0xd4,0xaf,0x37), nvgRGB(0xb8,0x86,0x0b),  // MEL gold, OCT dark gold
             nvgRGB(0x80,0x60,0xc0),  // QMIX purple
-            nvgRGB(0x50,0x50,0x50), nvgRGB(0xff,0x95,0x00)   // REST grey, ACC orange
+            nvgRGB(0x50,0x50,0x50), nvgRGB(0xff,0x95,0x00),  // REST grey, ACC orange
+            nvgRGB(0x20,0x80,0x20), nvgRGB(0x80,0x40,0x20)   // VAR green, LEG brown
         };
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             // STORE-BACKED (MVC step 1: direction de-param). The DirCell reads/writes
@@ -658,7 +659,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // re-running the generator can never drift the labels off the boxes (the ED_W/4-vs-ED_W/5
         // bug that recurred 3×). The store accessors (getMacroSend/getGlobalTap) remain engine-
         // indexed and are keyed inside the bind closures — only the ANCHOR NAMES are editor order.
-        const char* laneName[dotModular::SandsGrid::POLY_LANES] = { "MELODY", "OCTAVE", "QMIX", "REST", "ACCENT" };  // editor order
+        const char* laneName[dotModular::SandsGrid::POLY_LANES] = { "MELODY", "OCTAVE", "QMIX", "REST", "ACCENT", "VARIATION", "LEGATO" };  // editor order
         const char* itemName[4] = { "LEN", "OFF", "ROT", "SPR" };
         static_assert(sizeof(laneName)/sizeof(laneName[0]) == dotModular::SandsGrid::POLY_LANES,
                       "MIX-IN lane-name table must be one per poly lane");

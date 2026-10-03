@@ -412,9 +412,6 @@ struct PatternEngine {
     float slewedPolyRhythm[15][16]={}, slewedPolyMelody[15][16]={}, slewedPolyOctave[15][16]={};
     float slewedPolyAccent[15][16]={};
     float slewedPolyQmix[15][16]={};   // q-mix twin of slewedPolyMelody
-    // SANDS CONSOLIDATION Step 2: VAR/LEG poly slewed buffers (parallel to the 5 above).
-    float slewedPolyVariation[15][16]={};
-    float slewedPolyLegato[15][16]={};
     // Published snapshots of the slewed buffers — coherent copies the UI thread reads. The audio
     // thread writes slewed* during recomputeEffective* (now ~116µs at r>0), then publishes a
     // snapshot here. Without this, Mono/Macro visuals read slewed* mid-rewrite → torn read →

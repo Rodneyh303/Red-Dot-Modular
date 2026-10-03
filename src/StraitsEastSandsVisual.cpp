@@ -343,7 +343,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     "input_cv_" + std::to_string(el) + "_" + std::to_string(c), cvId(eng,c),
                     std::function<void(redDot::GoldPolyPort*)>(themeCfg));
             // CV-depth attenuverters: STORE-BACKED, engine-indexed store, editor-ordered label.
-            static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC"};
+            static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
             static const char* CN[4] = {"Len","Off","Rot","Spr"};
             for (int c = 0; c < 4; ++c) {
                 const int aEng = eng, aCol = c;
@@ -394,7 +394,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //  via the store get/set below, keyed by editor lane.)
         // Spread base — anchor param_spr_<el> (editor row), store getSpread(slot, engine lane),
         // editor-ordered label. Same el→engine conversion as the attens above.
-        static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC"};
+        static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             const int eng = EL2ENG(el);
             auto* k = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
@@ -824,7 +824,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                           ? dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane] : lane;
         const bool macroOwns = !eastOwnsLane(engLane);   // MVC step 1d: store-backed (engine lane)
         static const char* laneNames[dotModular::SandsGrid::POLY_LANES] =
-            { "MELODY", "OCTAVE", "Q-MIX", "REST", "ACCENT" };   // EDITOR order (lane is an editor lane)
+            { "MELODY", "OCTAVE", "Q-MIX", "REST", "ACCENT", "VARIATION", "LEGATO" };   // EDITOR order (lane is an editor lane)
         static_assert(sizeof(laneNames)/sizeof(laneNames[0]) == dotModular::SandsGrid::POLY_LANES,
                       "ownership-menu lane-name table must be one per poly lane");
         const char* ln = (lane >= 0 && lane < dotModular::SandsGrid::POLY_LANES) ? laneNames[lane] : "?";

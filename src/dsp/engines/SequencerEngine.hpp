@@ -52,8 +52,9 @@ struct PolyVoice {
     // PLAYED (vs rested) when mono started the gate, and held for the chain's life. It, not
     // the gate-held flag, is what tells a landing whether this voice is part of the chain:
     // a voice that opted out and let its short note close still reads participating==true and
-    // re-articulates, whereas a rester reads false and stays silent. Only consulted when
-    // perVoiceArticulation is on. Reset at each new onset and when mono rests.
+    // re-articulates, whereas a rester reads false and stays silent. Always consulted (the
+    // per-voice VAR/LEG draw is now unconditional — SANDS CONSOLIDATION Step 2). Reset at each
+    // new onset and when mono rests.
     bool  participating = false;
 };
 
@@ -352,10 +353,11 @@ struct SequencerEngine {
     static constexpr int EDITOR_LANE_VARIATION = 5;
     static constexpr int EDITOR_LANE_LEGATO    = 6;
 
-    // OFF by default: every poly voice uses mono's nvIdx exactly, as before. Even when ON, the
-    // per-voice LOR defaults to identity (len 16, off 0, rot 0), so voices read mono's own
-    // variation index and the result is bit-identical. Doubly inert.
-    bool perVoiceArticulation = false;
+    // SANDS CONSOLIDATION Step 2: promoted to always-on. The per-voice VAR/LEG draw is now the
+    // only path — the delegation system (varlegLocalEast_) is the sole control. Delegated voices
+    // (default) read mono's step → bit-identical to the old off path; Local-East voices diverge.
+    // The flag stays true for Lantern (Step 5 removes the flag + menu + Lantern check entirely).
+    bool perVoiceArticulation = true;
 
     // VAR/LEG per-voice delegation (EAST_EXTRA_LANES §4d). false (default) = delegate to
     // mono → the voice reads MONO's VAR/LEG position, so it mirrors mono (silent). true =
