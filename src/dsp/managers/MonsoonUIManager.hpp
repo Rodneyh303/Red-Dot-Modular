@@ -63,8 +63,10 @@ public:
     
     // ──── Semitone LED Brightness ───────────────────────────────────────────
     
-    /// Update red channel of semitone LEDs (for note-playing flash feedback)
-    void updateSemitoneFlashLights(const float* semiLedBrightness, int count);
+    /// FADER_SEQ_QUANT_COLOURS: drive the semitone-fader flash channels. Per degree: seq>0&&quant>0
+    /// -> blue (both); seq>0 -> red (generated); quant>0 -> green (quantised); else off. ch0 (white
+    /// weight) is driven by the slider widget from the param value.
+    void updateSemitoneFlashLights(const float* seqBrightness, const float* quantBrightness, int count);
     
     // ──── Button Trigger Processing ─────────────────────────────────────────
     

@@ -228,7 +228,7 @@ struct PhraseState {
 // Simulates what happens when loading a corrupt patch: values silently loaded
 // without range checking. These tests document current behaviour and can
 // catch regressions if clamping is added in future.
-static bool validModeSelect(int v)  { return v>=0 && v<=3; }
+static bool validModeSelect(int v)  { return v>=0 && v<=2; }   // MODE_COLLAPSE_6_TO_3: clock/gate/phase
 static bool validPpqnSetting(int v) { return v==1 || v==4 || v==24; }
 static bool validGateAssign(int v)  { return v>=0 && v<=3; }
 static bool validMuteBehavior(int v){ return v>=0 && v<=3; }
@@ -746,9 +746,9 @@ int main(){
     SUITE("JSON Patch Integrity — Valid Ranges");
     // ─────────────────────────────────────────────────────────────────────────
 
-    TEST("Valid modeSelect values: only 0..3", {
-        for(int v:{0,1,2,3}) EXPECT(validModeSelect(v));
-        for(int v:{-1,4,99,-100}) EXPECT(!validModeSelect(v));
+    TEST("Valid modeSelect values: only 0..2 (clock/gate/phase)", {
+        for(int v:{0,1,2}) EXPECT(validModeSelect(v));
+        for(int v:{-1,3,4,5,99,-100}) EXPECT(!validModeSelect(v));   // 3..5 are dead old modes (no migration)
     });
 
     TEST("Valid ppqnSetting: only 1, 4, 24", {

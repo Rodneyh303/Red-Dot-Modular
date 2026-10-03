@@ -366,9 +366,8 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
     // The moving playhead should always follow the global timeline index. Shown for
     // stepped modes A/B/C (0/1/2), the phase modes E/F (4/5); Mode D (3) is continuous
     // (no discrete playhead step). Mode F (5, Q3b) is a phase-1/16 stepped quantiser, so it
-    // has a discrete playhead exactly like Mode E.
-    bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2
-                        || modeSelect == 4 || modeSelect == 5);
+    // has a discrete playhead exactly like the phase origin.
+    bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2);  // clock/gate/phase (collapse)
     float current = (steppedMode && lightIdx == stepIndex) ? 1.0f : 0.0f;
 
     // Direction cue (Mode E especially): a one-LED comet trail BEHIND the playhead in
@@ -456,14 +455,22 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     //   • INPUT-CV operand — routed inside voicePitch via caInputCvSrcRow (CA melody plane).
     //   • GENERATED operand — genPitchLive, unchanged.
     // Level scales the probability; qmixSrc scatters WHICH voice's q-mix. Identity qmixSrc + level 0
-    // → always quantised input (legacy), level 1 → always generated. Gated by quantiserPitchSource so
-    // it is inert outside quantiser modes (A/B byte-identical). Computed HERE (before voicePitch) so
-    // it steers the pitch source; result.qmixHit below uses the SAME decision on starting steps.
-    const bool qmixUseGenerated = quantiserPitchSource && (r_qmix < input.qmixLevel);
+    // → always GENERATED (safe default), level 1 → always quantised input. Gated by
+    // quantiserPitchSource so it is inert outside quantiser modes (A/B byte-identical). Computed HERE
+    // (before voicePitch) so it steers the pitch source; result.qmixHit below uses the SAME decision
+    // on starting steps.
+    // POLARITY (MODE_COLLAPSE_6_TO_3 §29): 0 = generated, 1 = quantised. The draw crosses UPWARD
+    // (r >= level → use generated), so level 0 forces generated, level 1 forces quantised. (Pre-collapse
+    // this was r < level, i.e. high q-mix = generated — the opposite.)
+    const bool qmixUseGenerated = quantiserPitchSource && (r_qmix >= input.qmixLevel);
     // QUANTISER (Q1): mono/voice-0 pitch = quantised external CV when in a quantiser mode, else the
     // internal melody+octave draw. voicePitch bypasses genPitchLive (no RNG/lane perturbation) when
     // quantiserPitchSource is set; off = byte-identical legacy path. qmixUseGenerated forces the
     // generated branch on a q-mix "use generated" step.
+    // FADER_SEQ_QUANT_COLOURS: isQuant = this note's pitch came from the QUANTISED external CV (not
+    // generated). Routes the fader flash to the green (quant) timer instead of red (seq). Per voice a
+    // note is EITHER seq OR quant; q-mix selects one source. isQuant is threaded into the note-on calls.
+    const bool isQuant = quantiserPitchSource && !qmixUseGenerated;
     float pitchV = voicePitch(0, sem, input,
                               pe.melodyRandom[getMelodyStep()],
                               pe.octaveRandom[getOctaveStep()],
@@ -514,8 +521,8 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     const bool slurSuppressesRest = !generatedRestBeatsLegato && slurReachesHere;
 
     if (legatoProb >= 0.999f) {
-        gs.slideMax(pitchV, sem, nvIdx);
-        gsStep.triggerNote(pitchV, sem, nvIdx);            // STEP: re-strike (un-fused)
+        gs.slideMax(pitchV, sem, nvIdx, isQuant);
+        gsStep.triggerNote(pitchV, sem, nvIdx, isQuant);            // STEP: re-strike (un-fused)
         result.decision = MonoDecision::LegatoMax;
     }
     else if ((r_rest < restProb) && !slurSuppressesRest) {
@@ -548,18 +555,18 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
         // on → a fresh note). (Supersedes master's standalone r_legato_tie<legatoProb form:
         // the joining onset no longer re-rolls — prevSlur carries the decision.)
         if (sem == gs.lastSemitone) {
-            gs.extendHold(sem, nvIdx);
-            gsStep.triggerNote(gs.currentPitchV, sem, nvIdx);  // STEP: re-strike, same pitch
+            gs.extendHold(sem, nvIdx, isQuant);
+            gsStep.triggerNote(gs.currentPitchV, sem, nvIdx, isQuant);  // STEP: re-strike, same pitch
             result.decision = MonoDecision::Tie;
         } else {
-            gs.slideNote(pitchV, sem, nvIdx, /*wasHeld=*/true);
-            gsStep.triggerNote(pitchV, sem, nvIdx);        // STEP: re-strike (un-fused)
+            gs.slideNote(pitchV, sem, nvIdx, /*wasHeld=*/true, isQuant);
+            gsStep.triggerNote(pitchV, sem, nvIdx, isQuant);        // STEP: re-strike (un-fused)
             result.decision = MonoDecision::Legato;
         }
     }
     else {
-        gs.triggerNote(pitchV, sem, nvIdx);
-        gsStep.triggerNote(pitchV, sem, nvIdx);            // STEP: same as fused (fresh note)
+        gs.triggerNote(pitchV, sem, nvIdx, isQuant);
+        gsStep.triggerNote(pitchV, sem, nvIdx, isQuant);            // STEP: same as fused (fresh note)
         result.decision = MonoDecision::NewNote;
     }
 
@@ -578,14 +585,15 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     }
 
     // Task 4 (QMIX): threshold the mono q-mix draw against QMIX_LEVEL, mirroring accent. A "hit"
-    // fires when the draw crosses the level (draw < level); on sustains it inherits, on rests false.
-    // This is the SAME decision that steered the pitch source above (qmixUseGenerated): on a starting
-    // step qmixHit == "this note used the GENERATED pitch". A held/tied step reuses the prior note's
-    // pitch (no fresh voicePitch draw), so it inherits the prior qmixHit — the source latches with the
-    // note. Outside quantiser modes qmixUseGenerated is always false; qmixHit keeps its raw-draw
-    // semantics via the r_qmix<qmixLevel form (behaviour-inert there, matching prior code).
+    // fires when the draw crosses the level UPWARD (draw >= level → generated); on sustains it
+    // inherits, on rests false. This is the SAME decision that steered the pitch source above
+    // (qmixUseGenerated): on a starting step qmixHit == "this note used the GENERATED pitch". A
+    // held/tied step reuses the prior note's pitch (no fresh voicePitch draw), so it inherits the
+    // prior qmixHit — the source latches with the note. Outside quantiser modes qmixUseGenerated is
+    // always false; qmixHit keeps its raw-draw semantics via the r_qmix>=qmixLevel form (behaviour-
+    // inert there, matching prior code). POLARITY: 0 = generated, 1 = quantised (§29).
     if (monoStarting) {
-        result.qmixHit = (r_qmix < input.qmixLevel);
+        result.qmixHit = (r_qmix >= input.qmixLevel);
     } else if (result.decision == MonoDecision::Rest) {
         result.qmixHit = false;
     } else {
@@ -1000,15 +1008,17 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         //   • INPUT-CV operand — routed inside voicePitch via caInputCvSrcRow (CA melody plane), so a
         //     voice can quantise another voice's input line.
         //   • GENERATED operand — melody+octave draw (also CA-remapped), unchanged.
-        //   r_qmix_voice < voice's qmixLevel → use GENERATED (mode-A pitch for this voice).
-        //   otherwise                        → use CA-routed quantised external CV.
+        //   r_qmix_voice >= voice's qmixLevel → use GENERATED (mode-A pitch for this voice).
+        //   otherwise                         → use CA-routed quantised external CV.
         // Level scales the probability; qmixSrc scatters WHICH voice's q-mix. Identity qmixSrc + level 0
-        // → always quantised input, level 1 → always generated (the knob reads as before at identity).
+        // → always GENERATED, level 1 → always quantised input (the knob reads as before at identity).
         // qmixUseGenerated is only ever true in quantiser modes (voicePitch gates forceGenerated on
         // quantiserPitchSource); outside them it's inert and byte-identical to the legacy poly path.
+        // POLARITY (§29): 0 = generated, 1 = quantised (draw crosses upward: r >= level → generated).
         int qmixIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_QMIX), polyLenE(voiceIdx, PL_QMIX), polyOffE(voiceIdx, PL_QMIX), polyRotE(voiceIdx, PL_QMIX));
         float r_qmix_voice = polyRandomSrc(voiceIdx, PL_QMIX)[qmixIdx];
-        bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice < v.qmixLevel);
+        bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice >= v.qmixLevel);
+        const bool isQuant = quantiserPitchSource && !qmixUseGenerated;   // FADER_SEQ_QUANT_COLOURS (green flash)
         // QUANTISER (Q1): this voice's pitch = quantised external CV (its own channel) in quantiser
         // mode, else the internal melody+octave draw. voices[voiceIdx] is ENGINE voice voiceIdx+1
         // (voice 0 is the mono/executeStep path), so read quantiserCV[voiceIdx+1]. When
@@ -1022,18 +1032,18 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         int accIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_ACCENT), polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
         v.accented = (polyRandomSrc(voiceIdx, PL_ACCENT)[accIdx] < v.accentProb);
         if (lastStepResult.decision == MonoDecision::NewNote)
-            v.gs.triggerNote(pitchV, sem, nvV);
+            v.gs.triggerNote(pitchV, sem, nvV, isQuant);
         else if (wasHeldPoly || hadPolyTail)
             // Mono is slurring/tying and THIS poly voice had a held predecessor → real slide.
-            v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true);
+            v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true, isQuant);
         else
             // Mono slurs but this poly voice had NO held gate (it was resting/silent on its
             // previous played step) — sliding would produce an isolated Legato cell (teal note
             // with no predecessor on this lane), the poly analogue of the mono isolated-teal
             // bug. Trigger a fresh note instead. (Direction-independent; surfaced in reverse
             // mode but present forward too.)
-            v.gs.triggerNote(pitchV, sem, nvV);
-        v.gsStep.triggerNote(pitchV, sem, nvV);   // STEP: every played onset re-strikes (un-fused)
+            v.gs.triggerNote(pitchV, sem, nvV, isQuant);
+        v.gsStep.triggerNote(pitchV, sem, nvV, isQuant);   // STEP: every played onset re-strikes (un-fused)
 
         // ── Rule 2 LEAD (per-voice leading-edge slur roll) ────────────────────────────────
         // Mirror mono's LEAD commitment (executeStep), per voice: this note commits to slur its
@@ -1219,31 +1229,10 @@ int SequencerEngine::degreeOf(float pitchV) const {
     return pe.tuning.nearestDegree(frac);
 }
 
-void SequencerEngine::executeModeC(const ClockEngine& clock, float inCV) {
-    gs.gateHeld = false;
-    if (clock.quarterEdge) {
-        gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
-        gsStep.tick(ClockEngine::pulsesPer16th(ppqnSetting));
-        advancePlayhead();
-        gs.currentPitchV = quantize(inCV);
-        int sem = degreeOf(gs.currentPitchV);   // 12-TET default → legacy round(*12)%12; else table degree
-        gs.lastSemitone = sem;
-        gs.markSemi(sem, 4.0f);
-        gs.gatePulse.trigger(1e-3f);
-    }
-}
-
-void SequencerEngine::executeModeD(bool gateHigh, float inCV) {
-    gs.gateHeld = gateHigh;
-    if (gateHigh) {
-        gs.currentPitchV = quantize(inCV);
-        int sem = degreeOf(gs.currentPitchV);   // 12-TET default → legacy round(*12)%12; else table degree
-        gs.markSemi(sem, 1.0f);
-    } else {
-        gs.currentPitchV = 0.f;
-        gs.gatePulse.reset();
-    }
-}
+// Dead code removed (MODE_COLLAPSE_6_TO_3): the engine's executeModeC/D were never called by the
+// controller (C→engine.executeModeA, D→engine.executeModeB) — the old fixed-quarter / sample-while-
+// high Vermona logic. The quantiser is now the q-mix axis (engaged per-step in the dispatch), so these
+// are gone.
 
 float SequencerEngine::quantize(float vIn) {
     if (std::abs(vIn - lastQuantIn) < 1e-6f) return lastQuantOut;

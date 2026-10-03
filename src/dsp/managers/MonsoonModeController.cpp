@@ -248,35 +248,6 @@ bool ModeController::executeModeE() {
     return result.stepped;
 }
 
-// ──── Mode F: phase-triggered QUANTISER (Q3b) ────────────────────────────────
-// Mode F is the quantiser's Mode E — the SAME phase-edge step cascade, with the internal melody draw
-// replaced by "quantise the external CV" (quantiserPitchSource). The dispatch (Monsoon.cpp) only calls
-// this when phase.sixteenthEdge fired (a 1/16 phase step is due), exactly as it gates Mode E. Phase
-// provides the WHEN (including reverse traversal via phaseReverse); the external CV provides the WHAT.
-// Completes the timing symmetry: A↔C(clock/gen), B↔D(gate), E↔F(phase). MODES_C_D_QUANTIZER_PRERELEASE
-// "Reading 1 CONFIRMED": Mode F is a TRIGGER mode, not a modulator — quantisation behaviour is unchanged,
-// only its firing source is the phase ramp.
-bool ModeController::executeModeF(float cv2Voltage) {
-    PatternInput in = assemblePatternInput_();
-    beginQuantiserSource_(cv2Voltage);
-
-    ClockEngine phaseView;            // edge-only view; executeModeA reads sixteenthEdge
-    phaseView.sixteenthEdge = true;
-
-    StepResult result = engine.executeModeA(
-        phaseView,
-        in.restProb,
-        in.legato,
-        in.noteValue,
-        in,
-        phaseReverse ? -1 : +1        // within-draw reverse traversal (same as Mode E)
-    );
-    postExecute_(result);             // executePolyVoices (poly pitch) while the flag is still on
-    engine.quantiserPitchSource = false;
-    updateLastStepIndex();
-    return result.stepped;
-}
-
 bool ModeController::executeModeA() {
     if (clock.sixteenthEdge) {
         // ACCENT assembled once in updatePatternInput() (in.accentProb) — redundant re-fetch removed.
@@ -379,84 +350,29 @@ void ModeController::beginQuantiserSource_(float cv2Voltage) {
     for (int v = 0; v < 16; ++v) engine.quantiserCV[v] = inCV;
 }
 
-// ──── Mode C: Quantizer Mode 1 (NOW generated-rhythm-driven, with phrasing + poly) ─────
-// QUANTISER UNIFICATION Q3a ("new C"): C is now the QUANTISER'S Mode B — driven by the engine's OWN
-// generated rhythm (any division/probabilistic pattern), NOT Vermona's fixed quarter grid. It routes
-// through Mode A's full step cascade on every 1/16 clock edge, so the engine's rest strand decides
-// note-vs-rest at whatever rhythm it generates, while the pitch comes from the external CV
-// (quantiserPitchSource). Strictly more powerful than the old fixed-quarter C, costs nothing new (the
-// rhythm generation already exists). The dispatch (Monsoon.cpp) gates this on clock.sixteenthEdge; we
-// pass the live clock so quarterEdge/etc. remain available to the cascade.
-//   Q1b history: this used to fire on clock.quarterEdge with a synthesized step-view — that was the
-//   interim "phrasing on a quarter grid" step. Q3a widens the trigger to the generated 1/16 rhythm.
-bool ModeController::executeModeC(float cv2Voltage) {
-    if (clock.sixteenthEdge) {
-        PatternInput in = assemblePatternInput_();
-        beginQuantiserSource_(cv2Voltage);
-        StepResult result = engine.executeModeA(clock, in.restProb, in.legato, in.noteValue, in);
-        postExecute_(result);            // runs executePolyVoices (poly pitch drawn here — flag still on)
-        engine.quantiserPitchSource = false;
-        updateLastStepIndex();
-        return result.stepped;
-    }
-    return false;
-}
-
-// ──── Mode D: Quantizer Mode 2 (external gate2, = Mode B + external pitch) ────
-// QUANTISER UNIFICATION Q1b: Mode D is Mode B's twin — the SAME gate-driven step cascade, with the
-// internal melody draw replaced by "quantise the external CV" (quantiserPitchSource). Gate2's rising
-// edge (or held-at-start) advances one step; Sands rest/legato/accent differentiate the voices. This
-// REPLACES the old "quantise every sample while gate high" (Vermona-D) with the stepped, phrased twin
-// of Mode B — the unification's intent (D = B + one poly CV in; poly CV lands in Q2).
-bool ModeController::executeModeD(const InputState& input,
-                                   bool useSubGate) {
-    // Mode D is Mode B's twin (GATE_SUBDIVISION_STEP_GATE.md §421 mode-agnostic invariant): the SAME
-    // gate topology (Gate 1 = main, Gate 2 = ratchet sub, Gate 3 = ghost sub) + the SAME gate code,
-    // with the internal melody draw replaced by "quantise the external CV2" (quantiserPitchSource).
-    // So this mirrors executeModeB exactly — Gate 1 is the main gate (NOT Gate 2 as before the fix).
-    const bool gate1Rise = input.gate1Rise;
-    const bool gate1High = input.gate1 >= 1.0f;
-    PatternInput in = assemblePatternInput_();
-    beginQuantiserSource_(input.cv2);
-    if (useSubGate) {
-        StepResult result = engine.executeModeBSubdivided(gate1Rise, gate1High, input.subGateRise,
-                                                          in.restProb, in.legato, in.noteValue, in,
-                                                          input.ghostRise, input.ghostHigh);
-        postExecute_(result);                // executePolyVoices (poly pitch) while the flag is still on
-        engine.quantiserPitchSource = false;
-        updateLastStepIndex();
-        return result.stepped;
-    }
-    if (gate1Rise || (gate1High && engine.stepIndex == -1)) {
-        StepResult result = engine.executeModeB(gate1Rise, gate1High,
-                                                in.restProb, in.legato, in.noteValue, in);
-        postExecute_(result);
-        engine.quantiserPitchSource = false;
-        updateLastStepIndex();
-        return result.stepped;
-    }
-    engine.quantiserPitchSource = false;
-    return false;
-}
-
 // ──── High-Level Dispatcher ─────────────────────────────────────────────────
 
 bool ModeController::executeMode(int modeId,
                                   const InputState& input,
                                   bool gate2High) {
     (void)gate2High;   // unused since Mode D unified with Mode B (Gate 1 = main); kept for call-site stability
-    // GATE modes (B + D): useSubGate when ratchet (Gate 2) OR ghost (Gate 3) is patched — TWO EXPLICIT
-    // inputs, no normalling (GATE_SUBDIVISION_STEP_GATE.md §271). Mode B and Mode D share the SAME
-    // gate topology (Gate 1 = main, Gate 2 = ratchet, Gate 3 = ghost); only the pitch source differs.
-    const bool useSubGate = (modeId == 1 || modeId == 3)
-        ? (input.subGateConnected || input.ghostConnected) : false;
+    // MODE_COLLAPSE_6_TO_3: three TIMING ORIGINS — clock(0) / gate(1) / phase(2). Pitch origin
+    // (generate vs quantise) is the q-mix AXIS, not a mode. It is engaged PER STEP here via
+    // beginQuantiserSource_ (quantiserPitchSource set true, cleared after — NEVER block-latched, so
+    // q-mix sweeps stay sample-accurate and the engine's per-step determinism is preserved). The
+    // engine's qmixUseGenerated + the patched-detection resolver decide per-step whether each voice
+    // quantises; the section-421 invariant (flag-true + forceGenerated == flag-false) keeps the pure-
+    // generate path (q-mix=0) byte-identical to the pre-collapse generator modes. Old C/D/F
+    // ("quantiser modes") are now just "that timing origin with q-mix up" — no separate mode.
+    const bool useSubGate = (modeId == 1) && (input.subGateConnected || input.ghostConnected);
+    beginQuantiserSource_(input.cv2);   // per-step engage; inert at q-mix=0 (forceGenerated)
+    bool stepped = false;
     switch (modeId) {
-        case 0: return executeModeA();
-        case 1: return executeModeB(input, useSubGate);
-        case 2: return executeModeC(input.cv2);
-        case 3: return executeModeD(input, useSubGate);
-        case 4: return executeModeE();
-        case 5: return executeModeF(input.cv2);   // Q3b: phase-triggered quantiser
-        default: return false;
+        case 0:  stepped = executeModeA();                  break;  // clock  (was A; C = clock + q-mix)
+        case 1:  stepped = executeModeB(input, useSubGate); break;  // gate   (was B; D = gate  + q-mix)
+        case 2:  stepped = executeModeE();                  break;  // phase  (was E; F = phase + q-mix)
+        default: break;
     }
+    engine.quantiserPitchSource = false;   // per-step clear (never latched for the block)
+    return stepped;
 }

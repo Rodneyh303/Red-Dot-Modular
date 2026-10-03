@@ -477,7 +477,8 @@ namespace MonsoonIds {
                         // light slot shifts — SEMI_LED_START and everything below simply advance by 1.
 
         SEMI_LED_START,
-        SEMI_LED_END = SEMI_LED_START + 24,  // 2 channels × 12 semitones
+        // FADER_SEQ_QUANT_COLOURS: 4 channels × 12 semitones (white weight + red seq + green quant + blue both)
+        SEMI_LED_END = SEMI_LED_START + 48,
 
         // SEMI_LED_END consumes its slot; OCT_LO_LED auto-follows
         OCT_LO_LED,
@@ -560,7 +561,11 @@ struct Monsoon : Module {
     // no menus of their own). Scale 0=0..1V,1=0..5V,2=0..10V; S&H vs continuous.
     int  probOutScale = 2;
     bool probOutSampleHold = true;
-    int cv2Mode = 0;
+    // cv2Mode: CV2's role (mono) — a SINGLE radio (mutually exclusive; MODE_COLLAPSE_6_TO_3 §"CV2
+    // role clash"). 0..4 = Big-5 modulation target (Note value / Variation / Legato / Rest / Accent);
+    // 5 = "Quantiser in" (CV2 is the mono quantise-pitch input; q-mix quantises it, and CV2 does NOT
+    // modulate). Default 5 — quantising is the headline; modulation users pick a 0..4 target.
+    int cv2Mode = 5;
 
     // Assignable mod routing for the main-panel CV3 / GATE3 jacks (persisted).
     // CV3 adds to the selected continuous target; GATE3 rising edge fires the

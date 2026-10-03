@@ -148,8 +148,9 @@ int main() {
     }
 
     // ── 3. The blend mux (downstream of CA) + the markSemi correctness rule ───────────────────────
-    // pick = (r_qmix < level) ? generated : quantised-input   [threshold from the CA-scattered draw]
-    // level 0 → always quantised-input; level 1 → always generated; mid → per-step split by the draw.
+    // pick = (r_qmix >= level) ? generated : quantised-input   [threshold from the CA-scattered draw]
+    // POLARITY (MODE_COLLAPSE_6_TO_3 §29): 0 = generated, 1 = quantised (draw crosses UPWARD).
+    // level 0 → always generated; level 1 → always quantised-input; mid → per-step split by the draw.
     // Whichever value is picked is the one whose DEGREE is marked (lastSemitone) — no drift.
     {
         // A tiny mux replica matching the engine's decision + degree-naming (12-TET degreeOf).
@@ -161,29 +162,29 @@ int main() {
         const float generatedPitch = 1.0f + 7.0f/12.0f;    // degree 7
         const float quantInputPitch = 0.0f + 3.0f/12.0f;   // degree 3
         auto mux = [&](float r_qmix, float level, float& outPitch, int& outSem) {
-            bool useGenerated = (r_qmix < level);
+            bool useGenerated = (r_qmix >= level);   // §29: 0 = generated, 1 = quantised
             outPitch = useGenerated ? generatedPitch : quantInputPitch;
             outSem   = degreeOf12(outPitch);   // the CHOSEN value names its degree (markSemi source)
         };
 
         float p; int s;
-        // level 0 → never generated → always quantised input (degree 3), == legacy behaviour.
-        bool allInput = true;
-        for (int i = 0; i < 32; ++i) { mux((float)i/32.f, 0.0f, p, s); allInput &= (p == quantInputPitch && s == 3); }
-        CHK(allInput, "level 0 → always quantised input; lastSemitone == input degree (3)");
-
-        // level 1 → always generated (degree 7).
+        // level 0 → always generated (degree 7) — the safe default (nothing forced to quantise).
         bool allGen = true;
-        for (int i = 0; i < 32; ++i) { mux((float)i/32.f, 1.0f, p, s); allGen &= (p == generatedPitch && s == 7); }
-        CHK(allGen, "level 1 → always generated; lastSemitone == generated degree (7)");
+        for (int i = 0; i < 32; ++i) { mux((float)i/32.f, 0.0f, p, s); allGen &= (p == generatedPitch && s == 7); }
+        CHK(allGen, "level 0 → always generated; lastSemitone == generated degree (7)");
+
+        // level 1 → always quantised input (degree 3).
+        bool allInput = true;
+        for (int i = 0; i < 32; ++i) { mux((float)i/32.f, 1.0f, p, s); allInput &= (p == quantInputPitch && s == 3); }
+        CHK(allInput, "level 1 → always quantised input; lastSemitone == input degree (3)");
 
         // mid level → per-step split by the q-mix draw; each step's marked degree matches its pick.
         int genCount = 0, inCount = 0; bool markOk = true;
         for (int i = 0; i < 100; ++i) {
             float r = (float)i / 100.f;   // sweeps [0,1)
             mux(r, 0.5f, p, s);
-            if (r < 0.5f) { ++genCount; markOk &= (p == generatedPitch && s == 7); }
-            else          { ++inCount;  markOk &= (p == quantInputPitch && s == 3); }
+            if (r >= 0.5f) { ++genCount; markOk &= (p == generatedPitch && s == 7); }
+            else           { ++inCount;  markOk &= (p == quantInputPitch && s == 3); }
         }
         CHK(genCount == 50 && inCount == 50, "mid level splits the sweep 50/50 by the draw");
         CHK(markOk, "markSemi rule: the CHOSEN value (gen OR input) is the one whose degree is marked");

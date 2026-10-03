@@ -143,7 +143,7 @@ void Monsoon::updateExpanderPointers() {
 
   void Monsoon::initialize(){
         cv1Mode = 0;
-        cv2Mode = 0;
+        cv2Mode = 5;   // MODE_COLLAPSE_6_TO_3: default "Quantiser in" (CV2 = mono quantise pitch)
         gate1Assign = 0;
         gate2Assign = 1;
         invertMuteLogic = false;
@@ -297,7 +297,20 @@ float Monsoon::getEffectivePolyQmix(int voiceIdx) {
             base += causewayCv_(in, ch) * att * 0.1f;
         }
     }
-    return math::clamp(base, 0.f, 1.f);
+    float eff = math::clamp(base, 0.f, 1.f);
+    // PATCHED-DETECTION (MODE_COLLAPSE_6_TO_3 §60): with polarity 0=generated/1=quantised, an
+    // unpatched pitch input must force q-mix to 0 (generate) so the knob up is silent, not nonsense.
+    // Poly voice i reads channel i+1 of the pitch input (ch0 = mono). Voices BEYOND the source
+    // channel count GENERATE (no silent wrap/fold). A mono source broadcasts to every voice.
+    // The quantise pitch source is the Straits QUANT_CV_INPUT if a Straits is attached, else CV2.
+    auto* straits = expanderManager.cachedPolyVoiceExpander;
+    if (straits && straits->inputs[StraitsIds::QUANT_CV_INPUT].isConnected()) {
+        int n = std::max(1, straits->inputs[StraitsIds::QUANT_CV_INPUT].getChannels());
+        int ch = voiceIdx + 1;                       // ch0 = mono; poly voice i → ch i+1
+        return (ch < n) ? eff : 0.f;                 // beyond source channels → generate
+    }
+    if (cachedCv2Connected) return eff;              // CV2 is mono → broadcasts to all voices
+    return 0.f;                                      // nothing patched → generate
 }
 // Voice-1 / MONO q-mix — apply the Causeway MONO_QMIX_ATT (+ global) to CV channel 0 of the q-mix
 // CV input, added onto the mono base (QMIX_LEVEL_PARAM). Mirrors getEffectiveMonoRest/Accent.
@@ -311,7 +324,18 @@ float Monsoon::getEffectiveMonoQmix(float base) {
             base += causewayCv_(in, 0) * att * 0.1f;
         }
     }
-    return math::clamp(base, 0.f, 1.f);
+    float eff = math::clamp(base, 0.f, 1.f);
+    // PATCHED-DETECTION (§60): the mono voice reads channel 0 of the pitch input. With nothing
+    // patched, force q-mix to 0 (generate). Presence from the PORT, never the value (0V is a
+    // valid pitch). The pitch source is the Straits QUANT_CV_INPUT (ch0 = mono) or — only when
+    // cv2Mode == 5 ("Quantiser in") — Monsoon's CV2. When CV2 is a modulation target (cv2Mode 0..4)
+    // it is NOT a quantise-pitch source, so with no Straits there is nothing to quantise -> generate.
+    // (MODE_COLLAPSE_6_TO_3 §"CV2 role clash".)
+    auto* straits = expanderManager.cachedPolyVoiceExpander;
+    const bool pitchPatched = (straits && straits->inputs[StraitsIds::QUANT_CV_INPUT].isConnected())
+                           || (cv2Mode == 5 && cachedCv2Connected);
+    if (!pitchPatched) return 0.f;                   // nothing to quantise → generate
+    return eff;                                      // mono ch0 is always within a patched source
 }
 
 // Voice-1 / MONO counterparts: apply the Causeway MONO attenuator to CV channel 0 (the mono
@@ -607,7 +631,9 @@ void Monsoon::process(const ProcessArgs& args) {
     input.run   = cachedRunConnected ? inputs[RUN_GATE_INPUT].getVoltage() : 0.f;
     input.reset = cachedResetConnected ? inputs[RESET_TRIGGER_INPUT].getVoltage() : 0.f;
     input.cv1   = cachedCv1Connected ? inputs[CV1_INPUT].getVoltage() : 0.f;
-    input.cv2   = (modeSelect >= 2 && cachedCv2Connected) ? inputs[CV2_INPUT].getVoltage() : 0.f;
+    // q-mix axis: CV2 is the quantise pitch source for ANY mode (collapse: pitch origin is no
+    // longer a mode). Read it whenever patched; beginQuantiserSource_ consumes it per step.
+    input.cv2   = cachedCv2Connected ? inputs[CV2_INPUT].getVoltage() : 0.f;
 
     // Logic References (Eliminate pointer indirection in hot path)
     TimingController& tc = *timingController;
@@ -629,7 +655,7 @@ void Monsoon::process(const ProcessArgs& args) {
     // In Mode E, CV1 is EXCLUSIVELY the phase input (it takes over CV1's meaning,
     // mirroring how Mode B repurposes gate1). The PhaseEngine emits the same
     // pulseEdge/sixteenthEdge/quarterEdge contract as the clock, plus a reverse flag.
-    if (modeSelect == 4 || modeSelect == 5) {   // Mode E (generate) OR Mode F (quantise) — both phase-driven
+    if (modeSelect == 2) {   // phase origin (was E/F) — phase-driven
         // Phase source: CV1 when patched, else the manual PHASE_PARAM knob (0..1 of the
         // knob = 0..phaseInMax volts = one bar ramp). The knob path reports connected=true
         // to the PhaseEngine so it drives the grid identically -- this is what lets a DAW
@@ -681,17 +707,16 @@ void Monsoon::process(const ProcessArgs& args) {
     input.gate2Rise = gateEdges.gate2Rise;
 
     // ── Gate 2/3 routing (mode-dependent) — GATE_SUBDIVISION_STEP_GATE.md (ghost extension) ──
-    // GATE mode (B): Gate 1 = main, Gate 2 = ratchet (in-gate), Gate 3 = ghost (in-gap; GHOST
-    //   normals to RATCHET's signal so one cable drives both).  Mode D: Gate 2 = main, Gate 3 =
-    //   ratchet (unchanged).  A/C/E/F: Gate 3 = die-action (gate3Target menu).
+    // GATE origin (was B/D): Gate 1 = main, Gate 2 = ratchet (in-gate), Gate 3 = ghost (in-gap).
+    //   The section-421 mode-agnostic invariant: gate topology is one path; only the pitch source
+    //   differs (now the q-mix axis, not a mode).  clock/phase: Gate 3 = die-action (gate3Target menu).
     input.subGateConnected = false; input.subGateRise = false;
     input.ghostConnected = false; input.ghostRise = false; input.ghostHigh = false;
     const bool gate3Rise = cachedGate3Connected && gate3Trig.process(input.gate3, 0.1f, 1.f);
-    if (modeSelect == 1 || modeSelect == 3) {
-        // GATE modes (B + D): TWO explicit subgate inputs, NO normalling
-        // (GATE_SUBDIVISION_STEP_GATE.md §271). Mode B + Mode D share the SAME gate topology
-        // (Gate 1 = main, Gate 2 = ratchet, Gate 3 = ghost) per the §421 mode-agnostic invariant;
-        // only the pitch source differs (D quantises CV2).
+    if (modeSelect == 1) {
+        // GATE origin: TWO explicit subgate inputs, NO normalling (GATE_SUBDIVISION_STEP_GATE.md §271).
+        // Gate 1 = main, Gate 2 = ratchet, Gate 3 = ghost (the §421 mode-agnostic invariant; pitch
+        // source is the q-mix axis, not a mode).
         //   SUBGATE_RATCHET = Gate 2 — clocks IN-GATE subdivision (ratchet/tie/rest/legato within
         //     gates). Accepts a trigger OR gate (onset-only: the rising edge is all it needs; the
         //     cell length is bounded by the MAIN gate per the clip rule + the next ratchet onset).
@@ -717,7 +742,7 @@ void Monsoon::process(const ProcessArgs& args) {
         input.ghostRise = (genuinelyInGap && cachedGate3Connected) ? gate3Rise : false;
         input.ghostHigh = cachedGate3Connected ? (input.gate3 >= 1.0f) : false;           // no fallback to Gate 2
     } else {
-        // A/C/E/F: Gate 3 = die-action.
+        // clock/phase: Gate 3 = die-action.
         if (gate3Rise) {
             static const int g3map[] = { DA_REDICE_R, DA_REDICE_M, DA_REDICE_Q,
                 DA_LIVESTATIC_R, DA_LIVESTATIC_M, DA_LIVESTATIC_Q, DA_RESEED_RESTART };
@@ -727,13 +752,13 @@ void Monsoon::process(const ProcessArgs& args) {
     }
 
     // ── Gate Assignment Handling ──
-    // Mode B (1) and Mode D (3) both use Gate 1 as the main gate + Gate 2 as the ratchet sub — so
-    // Gate 1 is NOT assignable in either (it drives the playhead). Gate 2 is the ratchet sub in both
-    // (not assignable in D; left assignable in the non-gate modes as before).
-    if (modeSelect != 1 && modeSelect != 3) { // Mode B + Mode D use Gate 1 for input driving
+    // The GATE origin (1) uses Gate 1 as the main gate + Gate 2 as the ratchet sub, so Gate 1 is NOT
+    // assignable there (it drives the playhead); Gate 2 is the ratchet sub (left assignable in
+    // clock/phase as before).
+    if (modeSelect != 1) { // gate origin uses Gate 1 for input driving
         tc.handleGate1Assignment(gate1Assign, input.gate1Rise);
     }
-    if (modeSelect != 1 && modeSelect != 3) { // Mode B + Mode D use Gate 2 as the ratchet sub
+    if (modeSelect != 1) { // gate origin uses Gate 2 as the ratchet sub
         tc.handleGate2Assignment(gate2Assign, input.gate2Rise, tc.getGate2High(), invertMuteLogic);
     }
 
@@ -786,7 +811,7 @@ void Monsoon::process(const ProcessArgs& args) {
     if (runGateActive) {
         // Gate-close on the PPQN grid pulse. In Mode E the pulse source is the phase
         // ramp; otherwise the internal/external clock.
-        bool gridPulse = (modeSelect == 4 || modeSelect == 5) ? phase.pulseEdge : clock.pulseEdge;
+        bool gridPulse = (modeSelect == 2) ? phase.pulseEdge : clock.pulseEdge;   // phase origin vs clock
         if (gridPulse) {
             engine.gs.tickPulse();
             engine.gsStep.tickPulse();
@@ -798,23 +823,23 @@ void Monsoon::process(const ProcessArgs& args) {
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
         // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
         bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
-        // GATE mode (B): three edge streams — main (Gate 1) always wins; ratchet (Gate 2) drives
-        // in-gate; ghost (Gate 3, normalled to ratchet) drives in-gap.  Mode D: Gate 3 ratchet
-        // (unchanged).  Other modes: their usual clock/phase/gate edges.
+        // GATE modes (B + D): three edge streams — main (Gate 1) always wins; ratchet (Gate 2)
+        //   drives in-gate; ghost (Gate 3) drives in-gap.  Other modes: their usual clock/phase edges.
+        // B and D share the SAME shouldExecute gate (§421 mode-agnostic invariant): only the pitch
+        // source differs (D quantises CV2), handled downstream in executeModeD — NOT here. One branch
+        // for both PREVENTS the B/D drift bug (a205093 left D on the old `: true` continuous logic,
+        // which called executeMode every sample and jammed gate state — see
+        // plans/fix_gate_output_regression_a205093.md).
         bool shouldExecute;
-        if (modeSelect == 1) {
+        if (modeSelect == 1) {   // gate origin: event-driven (was B/D)
             const bool inGate = gate1High;
             shouldExecute = input.gate1Rise || (gate1High && engine.stepIndex == -1)              // main onset / held-at-start
-                          || (inGate && input.subGateRise)                                        // ratchet in-gate
-                          || (!inGate && input.ghostRise);                                        // ghost in-gap
-        } else if (modeSelect == 3) {
-            const bool useSubGate = input.subGateConnected;
-            shouldExecute = useSubGate ? input.subGateRise : true;   // Mode D continuous, or ratchet on Gate 3
+                          || (inGate && input.subGateRise)                                        // ratchet in-gate (Gate 2)
+                          || (!inGate && input.ghostRise);                                        // ghost in-gap (Gate 3)
         } else {
             shouldExecute = false;
-            if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;
-            else if (modeSelect == 2) shouldExecute = clock.sixteenthEdge;   // Q3a: new-C = generated 1/16 rhythm
-            else if (modeSelect == 4 || modeSelect == 5) shouldExecute = phase.sixteenthEdge; // Mode E (gen) / F (quant): phase 1/16 grid
+            if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;       // clock origin (was A/C)
+            else if (modeSelect == 2) shouldExecute = phase.sixteenthEdge;  // phase origin (was E/F)
         }
 
         if (shouldExecute) {
@@ -864,7 +889,7 @@ void Monsoon::process(const ProcessArgs& args) {
         // WITHIN-DRAW: bounded to the current phrase (cap at 16 steps); a jump that
         // would cross the phrase boundary is clamped — cross-draw regeneration is a
         // later refinement.
-        if ((modeSelect == 4 || modeSelect == 5) && phase.jumped && phase.jumpSixteenths != 0) {
+        if (modeSelect == 2 && phase.jumped && phase.jumpSixteenths != 0) {
             bool jumpReverse = (phase.jumpSixteenths < 0);
             mc.setPhaseReverse(jumpReverse);
             // Bridge the jump DIRECTION to the draw-index direction: a boundary crossed
@@ -903,7 +928,7 @@ void Monsoon::process(const ProcessArgs& args) {
     // In Mode E, CV1 is EXCLUSIVELY the phase input (handled above), so its normal
     // pitch/BPM routing is suppressed — mirrors Mode B fully repurposing gate1.
     float cvOutVoltage = currentPitchV;
-    bool cv1IsPhase = (modeSelect == 4 || modeSelect == 5);   // CV1 = phase ramp in Mode E and Mode F
+    bool cv1IsPhase = (modeSelect == 2);   // CV1 = phase ramp in the phase origin (was E/F)
     if (!cv1IsPhase && cachedCv1Connected && input.cv1 != 0.f && (cv1Mode == 0 || cv1Mode == 1)) {
         cvOutVoltage = cvr.processCV1Input(cv1Mode, input.cv1, *paramManager, currentPitchV, true);
     } else if (!cv1IsPhase && cachedCv1Connected && cv1Mode == 4) { // BPM Mod
@@ -937,7 +962,7 @@ void Monsoon::process(const ProcessArgs& args) {
     //                Generated rests (rest lane) are a SEPARATE concern (generatedRestBeatsLegato);
     //                the two toggles are independent.  slurForward remains the leading-edge commitment
     //                for the Lantern/SLEG either way; only its gate-bridging differs by mode.
-    if ((modeSelect == 1 || modeSelect == 3) && runGateActive) {
+    if (modeSelect == 1 && runGateActive) {   // gate origin (was B/D)
         const bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
         const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
         // Ghost tie-through-rise (GATE_SUBDIVISION_STEP_GATE.md §352/§368): a ghost still high when
@@ -1145,24 +1170,29 @@ void Monsoon::process(const ProcessArgs& args) {
             // delegation), Monsoon's own note faders are greyed/inert and the MICRO's faders show the
             // play flash instead — so suppress Monsoon's own flash here to avoid a flash on a delegated
             // (greyed) fader. (Sikit/no-Micro: maskAuthored false → normal flash.)
+            // FADER_SEQ_QUANT_COLOURS: aggregate SEQ (red) + QUANT (green) flash brightness per degree,
+            // max over mono + all poly voices. "Both" (blue) is decided in the UIManager from the pair.
             const bool micro = engine.pe.tuning.maskAuthored;
             float semiLedBrightness[12];
+            float semiQuantLedBrightness[12] = {};
             for (int i = 0; i < 12; ++i) {
-                float b = 0.f;
+                float b = 0.f, q = 0.f;
                 if (!micro) {
                     b = engine.gs.semiLedBrightness(i);
-                    // Aggregate brightness from all active poly voices
+                    q = engine.gs.semiQuantLedBrightness(i);
                     for (int v = 0; v < engine.numPolyVoices; ++v) {
                         b = std::max(b, engine.voices[v].gs.semiLedBrightness(i));
+                        q = std::max(q, engine.voices[v].gs.semiQuantLedBrightness(i));
                     }
                 }
                 semiLedBrightness[i] = b;
+                semiQuantLedBrightness[i] = q;
             }
             
             // Update both via UIManager
             if (uiManager) {
                 uiManager->updateStepLights(stepBrightness, 16);
-                uiManager->updateSemitoneFlashLights(semiLedBrightness, 12);
+                uiManager->updateSemitoneFlashLights(semiLedBrightness, semiQuantLedBrightness, 12);
             }
         }
 
@@ -1276,8 +1306,11 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // Update CV2 modulation offsets (Throttled)
         paramManager->clearCv2Offsets();
-        // Mode C and D use CV2 as the pitch input to be quantized
-        if (modeSelect < 2 && inputs[CV2_INPUT].isConnected()) { // CV2 is used for quantization in modes C and D
+        // CV2 as a Big-5 modulation source (cv2Mode 0..4) in the clock/gate origins (modeSelect < 2).
+        // MUTUALLY EXCLUSIVE with "Quantiser in" (MODE_COLLAPSE_6_TO_3 §"CV2 role clash"): cv2Mode==5
+        // means CV2 is the mono quantise-pitch input (the q-mix axis, handled per-step in the
+        // dispatch) and does NOT modulate. Only cv2Mode 0..4 routes CV2 to a modulation target.
+        if (modeSelect < 2 && cv2Mode < 5 && inputs[CV2_INPUT].isConnected()) {
             float v    = clampv<float>(inputs[CV2_INPUT].getVoltage(), -5.f, 5.f);
             float norm = v / 5.f;   // now bipolar -1..+1 (was 0..1; rectified the negative half)
             if (cv2Mode == 0) paramManager->setCv2Offset(0, norm * 8.f);

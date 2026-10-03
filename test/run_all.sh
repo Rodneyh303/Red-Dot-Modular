@@ -25,6 +25,7 @@ STD="-std=c++17"
 GS="src/dsp/gates/GateState.cpp"
 PE="src/dsp/engines/PatternEngine.cpp"
 SE="src/dsp/engines/SequencerEngine.cpp"
+CE="src/dsp/engines/ClockEngine.cpp"
 
 # name|companion sources (empty = header-only). Keep alphabetical.
 TESTS=(
@@ -58,6 +59,7 @@ TESTS=(
   "test_mode_b_gate|$SE $GS $PE"
   "test_mode_b_gap|$SE $GS $PE"
   "test_gate_mode_agnostic|$SE $GS $PE"
+  "test_gate_smoke|$SE $GS $PE $CE"
   "test_modes_bcd|"
   "test_modes_cd_microtonal|"
   "test_monsoon_discovery|"

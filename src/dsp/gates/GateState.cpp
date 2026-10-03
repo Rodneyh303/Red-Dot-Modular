@@ -22,7 +22,7 @@ void GateState::armGate(float durSteps) {
 
 // ── Core operations ───────────────────────────────────────────────────────────
 
-void GateState::triggerNote(float pitchV, int semitone, int nvIdx) {
+void GateState::triggerNote(float pitchV, int semitone, int nvIdx, bool isQuant) {
     float dur = gs_noteSteps(nvIdx);
     currentPitchV = pitchV;
     lastSemitone  = semitone;
@@ -30,11 +30,11 @@ void GateState::triggerNote(float pitchV, int semitone, int nvIdx) {
     gateHeld   = true;
     holdRemain = dur;
     armGate(dur);
-    markSemi(semitone, dur);
+    markSemi(semitone, dur, isQuant);
     lastNoteType = NoteType::Single;        // a fresh attack (incl. an opt-out re-strike)
 }
 
-void GateState::slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld) {
+void GateState::slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld, bool isQuant) {
     float dur = gs_noteSteps(nvIdx);
     currentPitchV = pitchV;
     lastSemitone  = semitone;
@@ -50,26 +50,26 @@ void GateState::slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld) {
         armGate(dur);
         lastNoteType = NoteType::Single;    // this note retriggers → a fresh attack
     }
-    markSemi(semitone, dur);
+    markSemi(semitone, dur, isQuant);
 }
 
-void GateState::slideMax(float pitchV, int semitone, int nvIdx) {
+void GateState::slideMax(float pitchV, int semitone, int nvIdx, bool isQuant) {
     float dur = gs_noteSteps(nvIdx);
     currentPitchV = pitchV;
     lastSemitone  = semitone;
     gateHeld   = true;
     holdRemain = dur;
     armGate(dur);
-    markSemi(semitone, dur);
+    markSemi(semitone, dur, isQuant);
     lastNoteType = NoteType::Legato;        // LegatoMax = forced slide, no retrigger
 }
 
-void GateState::extendHold(int semitone, int nvIdx) {
+void GateState::extendHold(int semitone, int nvIdx, bool isQuant) {
     float add = gs_noteSteps(nvIdx);
     holdRemain += add;
     gateHeld = true;
     armGate(holdRemain);            // re-arm to the summed length
-    markSemi(semitone, holdRemain);
+    markSemi(semitone, holdRemain, isQuant);
     lastNoteType = NoteType::Tie;           // held same pitch, no retrigger
 }
 
@@ -97,6 +97,10 @@ void GateState::tick(int p16) {
         if (semiPlayRemain[i] > 0.f) {
             semiPlayRemain[i] -= 1.f;
             if (semiPlayRemain[i] < 0.f) semiPlayRemain[i] = 0.f;
+        }
+        if (semiQuantPlayRemain[i] > 0.f) {   // FADER_SEQ_QUANT_COLOURS (green flash decay)
+            semiQuantPlayRemain[i] -= 1.f;
+            if (semiQuantPlayRemain[i] < 0.f) semiQuantPlayRemain[i] = 0.f;
         }
     }
 }
@@ -133,7 +137,7 @@ void GateState::reset() {
     lastSemitone    = -1;
     slurForward     = false;
     gatePulse.reset();
-    for (int i = 0; i < dotModular::TuningTable::MAXN; ++i) semiPlayRemain[i] = 0.f;
+    for (int i = 0; i < dotModular::TuningTable::MAXN; ++i) { semiPlayRemain[i] = 0.f; semiQuantPlayRemain[i] = 0.f; }
 }
 
 // ── LED helper ────────────────────────────────────────────────────────────────
@@ -144,7 +148,14 @@ float GateState::semiLedBrightness(int semitone) const {
     return gs_clamp(semiPlayRemain[semitone] * 0.25f, 0.f, 1.f);
 }
 
-void GateState::markSemi(int semitone, float dur) {
-    if (semitone >= 0 && semitone < dotModular::TuningTable::MAXN)
-        semiPlayRemain[semitone] = std::max(semiPlayRemain[semitone], dur);
+float GateState::semiQuantLedBrightness(int semitone) const {
+    if (semitone < 0 || semitone >= dotModular::TuningTable::MAXN) return 0.f;
+    return gs_clamp(semiQuantPlayRemain[semitone] * 0.25f, 0.f, 1.f);
+}
+
+void GateState::markSemi(int semitone, float dur, bool isQuant) {
+    if (semitone >= 0 && semitone < dotModular::TuningTable::MAXN) {
+        if (isQuant) semiQuantPlayRemain[semitone] = std::max(semiQuantPlayRemain[semitone], dur);
+        else         semiPlayRemain[semitone]      = std::max(semiPlayRemain[semitone], dur);
+    }
 }

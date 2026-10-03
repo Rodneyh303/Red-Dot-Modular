@@ -32,6 +32,23 @@ using namespace MonsoonIds;
 //       its modulation is misleading). Conservation OFF (guide mode) shows everything freely.
 //       Layered on top of the existing global modVizMonsoonMelody context-menu choice. Conservation
 //       mode is the differentiator. (Isolated in drawModMarker.)
+// FADER_SEQ_QUANT_COLOURS: 4-channel semitone-fader light (replaces the 2ch GreenRedLight).
+//   ch0 = WHITE  — the weight bar (driven by the slider from the param value; automatic).
+//   ch1 = RED    — seq flash   (a voice's generated note landed on this fader).
+//   ch2 = GREEN  — quant flash (a voice's quantised note landed here).
+//   ch3 = BLUE   — BOTH (poly: >=1 seq AND >=1 quant voice on this fader this frame).
+// Per voice a note is EITHER seq OR quant (q-mix selects one pitch source); "both" arises only
+// across different voices on the same fader. With no quant source (cv2Mode!=5, no Straits) no
+// quant marks are set => ch2/ch3 stay dark => faders read red-only (exactly as pre-collapse).
+struct WhiteRgbLight : GrayModuleLightWidget {
+    WhiteRgbLight() {
+        addBaseColor(SCHEME_WHITE);
+        addBaseColor(SCHEME_RED);
+        addBaseColor(SCHEME_GREEN);
+        addBaseColor(SCHEME_BLUE);
+    }
+};
+
 template <typename TLightBase = RedLight>
 struct MonsoonLightSlider : VCVLightSlider<TLightBase> {
     // Flip to true to render out-of-scale faders at ZERO position instead of dim-in-place.
@@ -392,9 +409,10 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // Bound by ANCHOR, not coordinates: panel_src/fader_level_markers.py emits each
         // param_SEMIn_PARAM anchor AND that fader's level ticks from one loop, so the ticks
         // cannot drift from the slider (cleanup doc A3). Do not reintroduce mm here.
+        // FADER_SEQ_QUANT_COLOURS: 4ch WhiteRgbLight per fader (white weight + RGB flash), 4 slots each.
         for (int i = 0; i < 12; ++i) {
-            bindLightParam<MonsoonLightSlider<GreenRedLight>>(
-                "param_SEMI" + std::to_string(i) + "_PARAM", SEMI0_PARAM + i, SEMI_LED_START + 2*i);
+            bindLightParam<MonsoonLightSlider<WhiteRgbLight>>(
+                "param_SEMI" + std::to_string(i) + "_PARAM", SEMI0_PARAM + i, SEMI_LED_START + 4*i);
         }
 
         // ── Scale enable-band (MONSOON_SCALE_AUTHORING Phase B) ─────────────────
@@ -457,12 +475,11 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         }
 
         // ── Mode button + lights: right strip, bound by ANCHOR ────────────────
-        // Anchors come from panel_src/mode_column.py, which also asserts each light row
-        // clears the step ring. SIX lights (A..F): Mode F (Q3b) = phase-triggered quantiser,
-        // modeSelect==5, the cycle is (modeSelect+1)%6. (Mode E precedent: a selectable mode
-        // with no light turns them all off and looks broken, so the light count tracks the modes.)
+        // MODE_COLLAPSE_6_TO_3: THREE timing origins (clock/gate/phase = lights A/B/C). Pitch origin
+        // is the q-mix axis, not a mode. Anchors come from panel_src/mode_column.py (3 LEDs now; rows
+        // 4..6 retired, freeing ~27mm for the subtitle). The cycle is (modeSelect+1)%3.
         bindParam<TL1105>("param_MODE_PARAM", MonsoonIds::MODE_PARAM);
-        for (int i = 0; i < 6; ++i)
+        for (int i = 0; i < 3; ++i)
             bindLight<MediumLight<YellowLight>>("light_MODE_" + std::string(1, char('A'+i)) + "_LIGHT",
                                                 MonsoonIds::MODE_A_LIGHT + i);
 
@@ -845,7 +862,8 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         arcLabel("param_LEGATO_PARAM",68.f,22.f,12.f,-225.f,"0%",130,130,120);        arcLabel("param_LEGATO_PARAM",68.f,22.f,12.f,45.f,"100%",130,130,120);
         arcLabel("param_REST_PARAM",94.f,22.f,12.f,-225.f,"0%",130,130,120);          arcLabel("param_REST_PARAM",94.f,22.f,12.f,45.f,"100%",130,130,120);
         arcLabel("param_ACCENT_KNOB",120.f,22.f,12.f,-225.f,"0%",130,130,120);        arcLabel("param_ACCENT_KNOB",120.f,22.f,12.f,45.f,"100%",130,130,120);
-        arcLabel("param_QMIX_LEVEL_PARAM",146.f,22.f,12.f,-225.f,"0%",130,130,120);   arcLabel("param_QMIX_LEVEL_PARAM",146.f,22.f,12.f,45.f,"100%",130,130,120);
+        // QMIX polarity (MODE_COLLAPSE_6_TO_3 §29): 0 = generated, 1 = quantised.
+        arcLabel("param_QMIX_LEVEL_PARAM",146.f,22.f,12.f,-225.f,"GEN",130,130,120);   arcLabel("param_QMIX_LEVEL_PARAM",146.f,22.f,12.f,45.f,"QUANT",130,130,120);
 
         // Seq knob labels (below ring)
         setNvgFontSize(3.2f); fillNvgColour(170,170,170);
@@ -917,8 +935,9 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         // letter appeared to light up instead of the LED, and on the light theme a near-black
         // glyph on an unlit light's dark circle vanished completely.
         {
-            static const char* kModeDesc[6] = {
-                "sequencer", "seq + gate", "quantizer", "quant gate", "phase seq", "phase quant" };
+            // MODE_COLLAPSE_6_TO_3: three timing origins. Pitch origin is the q-mix axis.
+            static const char* kModeLetter[3] = { "C", "G", "P" };          // Clock / Gate / Phase
+            static const char* kModeDesc[3]   = { "clock", "gate", "phase" };
             const float BOX_DX = -7.0f;   // box centre, relative to the LED
             const float BOX_W  =  5.5f, BOX_H = 5.5f;
             const float TXT_DX = -3.5f, TXT_DY = 4.6f;   // description, relative to the LED
@@ -931,7 +950,7 @@ void MonsoonWidget::draw(const DrawArgs& args) {
                 writeNvgText(a.x, a.y - 6.f, "MODE");
             }
 
-            for (int i = 0; i < 6; ++i) {
+            for (int i = 0; i < 3; ++i) {
                 const std::string id = "light_MODE_" + std::string(1, char('A'+i)) + "_LIGHT";
                 NSVGshape* sh = findNamed(id.c_str());
                 if (!sh) continue;
@@ -948,10 +967,9 @@ void MonsoonWidget::draw(const DrawArgs& args) {
                 nvgStrokeColor(vg, lt ? nvgRGB(0x20,0x24,0x2a) : nvgRGB(0x9a,0x9a,0x9a));
                 nvgStrokeWidth(vg, 0.8f); nvgStroke(vg);
 
-                const char t[2] = { char('A'+i), 0 };
                 setNvgFontSize(3.4f);
                 nvgFillColor(vg, lt ? nvgRGB(0xe6,0xe8,0xec) : nvgRGB(0x10,0x12,0x16));
-                nvgText(vg, c.x + mm2px(BOX_DX), c.y, t, nullptr);
+                nvgText(vg, c.x + mm2px(BOX_DX), c.y, kModeLetter[i], nullptr);
 
                 setNvgFontSize(1.9f); fillNvgColour(150,150,140);
                 nvgText(vg, c.x + mm2px(TXT_DX), c.y + mm2px(TXT_DY), kModeDesc[i], nullptr);
@@ -1187,8 +1205,9 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
 
         menu->addChild(createSubmenuItem("Sequencer Modes", "", [=](ui::Menu* sub) {
             { auto* l = new ui::MenuLabel; l->text = "Operating Mode"; sub->addChild(l);
-              const char* n[] = {"A: Sequencer","B: Seq + Gate","C: Quantizer (gen. rhythm)","D: Quantizer (Gate 2)","E: Phase (CV1)","F: Phase Quantizer (CV1)"};
-              for (int v=0;v<6;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
+              // MODE_COLLAPSE_6_TO_3: three timing origins; pitch origin is the q-mix axis.
+              const char* n[] = {"Clock (gen rhythm)","Gate (your events)","Phase (your time-base)"};
+              for (int v=0;v<3;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->modeSelect;it->value=v;sub->addChild(it);} }
 
 
             sub->addChild(new ui::MenuSeparator);
@@ -1259,9 +1278,12 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
               const char* n[] = {"Add Seq","Transpose Seq","Mod Range LO","Mod Range HI","BPM Mod"}; // Added BPM Mod
               for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv1Mode;it->value=v;sub->addChild(it);} }
             sub->addChild(new ui::MenuSeparator);
-            { auto* l = new ui::MenuLabel; l->text = "CV IN 2"; sub->addChild(l);
-              const char* n[] = {"Note value","Variation","Legato","Rest","Accent"}; // Added Accent
-              for (int v=0;v<5;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv2Mode;it->value=v;sub->addChild(it);} }
+            { auto* l = new ui::MenuLabel; l->text = "CV IN 2 (mono)"; sub->addChild(l);
+              // A SINGLE radio (mutually exclusive; MODE_COLLAPSE_6_TO_3 §"CV2 role clash"): CV2 is
+              // EITHER a Big-5 modulation target (0..4) OR "Quantiser in" (5 = the mono quantise-pitch
+              // input; q-mix quantises it, and CV2 does NOT modulate). Default 5 (quantiser in).
+              const char* n[] = {"Note value","Variation","Legato","Rest","Accent","Quantiser in"};
+              for (int v=0;v<6;++v){auto* it=createMenuItem<IntItem>(n[v]);it->module=m;it->target=&m->cv2Mode;it->value=v;sub->addChild(it);} }
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "CV IN 3 (assignable mod)"; sub->addChild(l);
               const char* n[] = {"Rhythm slew","Melody slew","Rhythm A>B mix","Melody A>B mix"};

@@ -734,8 +734,8 @@ struct SequencerEngine {
     // mainGateHigh/ghostHigh are passed for the IMPL 2b mirror in tests; the engine itself is
     // region-agnostic (which edge fired selects the region).  Unpatched = executeModeB.
     StepResult executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise, float restProb, float legatoProb, float noteVal, const PatternInput& input, bool ghostRise = false, bool ghostHigh = false);
-    void executeModeC(const ClockEngine& clock, float inCV);
-    void executeModeD(bool gateHigh, float inCV);
+    // (executeModeC/D removed — MODE_COLLAPSE_6_TO_3: dead code; the controller routes C→A, D→B,
+    //  and the quantiser is now the q-mix axis engaged per-step in the dispatch, not an engine mode.)
     float quantize(float vIn);
 
     // High-level DNA Actions
