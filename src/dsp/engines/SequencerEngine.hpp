@@ -343,7 +343,7 @@ struct SequencerEngine {
     int        lor   (int strand, int item) const { return lorStore_[0][strandClamp(strand)][item]; }
     static int strandClamp(int s) { return (s >= 0 && s < dotModular::NUM_STRANDS) ? s : dotModular::STRAND_RHYTHM; }
 
-    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_QMIX = 4, PL_LANES = 5 };
+    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_QMIX = 4, PL_VARIATION = 5, PL_LEGATO = 6, PL_LANES = 7 };   // SANDS CONSOLIDATION Step 2
 
     // ── EAST_EXTRA_LANES stage 2: per-voice ARTICULATION (clamped) ─────────────────────────────
     // VARIATION/LEGATO are mono STRANDS, not poly lanes, so they have no PL_ id and CANNOT be
@@ -394,9 +394,9 @@ struct SequencerEngine {
     // lanes, so they have no engine-order id; for their per-voice LOR use the EDITOR-order accessors
     // polyLOR/polyLORRef (they mask & 7 and index lorStore_ directly). See EAST_EXTRA_LANES.md.
     static int editorLane(int engLane) {
-        // 5 = PL_LANES (poly lanes incl QMIX). Literal, not SandsGrid::POLY_LANES, to keep this
-        // low-level engine header free of the UI SandsGrid include (only LaneMapping is pulled in).
-        return (engLane >= 0 && engLane < 5)
+        // 7 = PL_LANES (poly lanes incl QMIX/VAR/LEG; SANDS CONSOLIDATION Step 2). Literal, not
+        // SandsGrid::POLY_LANES, to keep this header free of the UI SandsGrid include.
+        return (engLane >= 0 && engLane < 7)
                    ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane]
                    : dotModular::ENGINE_LANE_TO_EDITOR_QMIX[0];   // fallback → REST's editor lane
     }
