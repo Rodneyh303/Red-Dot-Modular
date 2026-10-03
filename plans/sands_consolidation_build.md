@@ -21,7 +21,9 @@ Lane uniformity means EVERY lane has the COMPLETE feature set — no lane specia
 Bring VARIATION + LEGATO up to the full set AND confirm every other lane also has all of:
 - **DIRECTION** (per-lane direction/reverse),
 - **MODULATION of direction** (CV mod of direction),
-- **DELEGATION** (on EAST — follow-voice-1 / independent delegators),
+- **DELEGATION** (on EAST — follow-voice-1 / independent delegators) **and a DELEGATION MOD INPUT**
+  per lane (CV over the delegation, so follow/independent is modulatable/sweepable, not a static
+  switch — consistent with everything else being CV-addressable),
 - **SPREAD** — var/leg currently have mono slewed buffers but NO poly buffers / no spread; add poly
   buffers + per-voice slew/pre-remap + spread (SpreadInterp N_SPREAD_LANES 5 -> 7, mapping tables),
 - **PROBABILITY OUTS** (per-lane prob output).
