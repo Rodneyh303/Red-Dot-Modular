@@ -239,3 +239,29 @@ Two facts that settle and tighten the chosen approach:
 User story (manual-ready): *"Macro for global, East for per-voice, both together for the combination —
 each works whether your Monsoon is mono or poly."* Generalising East removes the last asymmetry
 (East-poly-only) so the two-module story is complete and symmetric.
+
+
+## The real Macro/East distinction — uniform vs per-voice correlation STRENGTH (Rodney)
+Not "one ensemble vs many" — BOTH use CA's connected GROUPS. The distinction is the correlation
+STRENGTH:
+- **Macro** — CA groups, with ONE correlation strength applied within/across them. At 1.0 every voice
+  follows its group's CA lane / voice-1; at 0.8 all voices get the same amount of variation; at 0 all
+  independent. "All my groups adhere THIS much." (Homogeneous strength over structured groups.)
+- **East** — CA groups, with PER-VOICE correlation strength. Voice 3 tightly following while voice 7 is
+  loose, WITHIN the same group. The fine structure Macro can't reach.
+Both legitimate: "uniform adherence across structured groups" is a real, common want (one knob is the
+right gesture); "per-voice adherence" is the fine case. Neither is a degraded other. So Macro's
+limitation is its IDENTITY, not a weakness: broad-strokes correlation vs fine-grained.
+
+### The clean 2x2 (both modules, both axes)
+Macro = BROAD strokes, East = FINE grain — at BOTH of the instrument's fundamental axes:
+|            | PROBABILITY (the what) | CORRELATION (the who-with) |
+|------------|------------------------|----------------------------|
+| **Macro**  | broad / ensemble-level | uniform strength over CA groups |
+| **East**   | per-voice              | per-voice strength |
+Use Macro for broad strokes on either axis, East for fine detail on either, BOTH for broad-on-some /
+fine-on-others. The module pair maps exactly onto the two conceptual axes x two resolutions. This is
+the strongest justification for keeping two modules.
+
+Manual-ready: *"Broad strokes or fine grain, on probability and on correlation — Macro for broad,
+East for fine, both for the mix. Each works mono or poly."*
