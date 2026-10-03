@@ -253,15 +253,20 @@ Both legitimate: "uniform adherence across structured groups" is a real, common 
 right gesture); "per-voice adherence" is the fine case. Neither is a degraded other. So Macro's
 limitation is its IDENTITY, not a weakness: broad-strokes correlation vs fine-grained.
 
-### The clean 2x2 (both modules, both axes)
-Macro = BROAD strokes, East = FINE grain — at BOTH of the instrument's fundamental axes:
-|            | PROBABILITY (the what) | CORRELATION (the who-with) |
-|------------|------------------------|----------------------------|
-| **Macro**  | broad / ensemble-level | uniform strength over CA groups |
-| **East**   | per-voice              | per-voice strength |
-Use Macro for broad strokes on either axis, East for fine detail on either, BOTH for broad-on-some /
-fine-on-others. The module pair maps exactly onto the two conceptual axes x two resolutions. This is
-the strongest justification for keeping two modules.
+### NOT an independent 2x2 — the module choice is PER LANE and COUPLES the two axes (Rodney correction)
+A tidy 2x2 (pick probability-resolution and correlation-resolution independently) is FALSE: a single
+lane's probability comes from ONE source, and so does its correlation — you cannot take East's
+per-voice probability AND Macro's correlation on the SAME lane. Whichever module drives a lane carries
+BOTH its probability resolution AND its correlation resolution together, as a package:
+- **Macro-driven lane** = broad probability AND uniform (one-strength) correlation over CA groups.
+- **East-driven lane** = per-voice probability AND per-voice correlation.
+The two axes are COUPLED per lane by the module, not independently selectable.
 
-Manual-ready: *"Broad strokes or fine grain, on probability and on correlation — Macro for broad,
-East for fine, both for the mix. Each works mono or poly."*
+**So "use both" = LANE-LEVEL assignment** (some lanes Macro-driven broad, others East-driven fine) PLUS
+the specific per-lane global+poly SEND/DELEGATION combination the signal path actually provides (see
+"THE ACTUAL REQUIREMENT" above) — NOT arbitrary mixing of four cells. Broad-strokes vs fine-grain is a
+per-LANE choice (which module owns the lane), carrying probability+correlation together.
+
+Manual-ready: *"Per lane, choose broad strokes (Macro) or fine grain (East) — each carries both its
+note probabilities and its voice correlation. Mix across lanes, and combine on a lane via the sends.
+Each works mono or poly."*
