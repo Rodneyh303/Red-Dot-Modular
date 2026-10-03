@@ -270,3 +270,32 @@ per-LANE choice (which module owns the lane), carrying probability+correlation t
 Manual-ready: *"Per lane, choose broad strokes (Macro) or fine grain (East) — each carries both its
 note probabilities and its voice correlation. Mix across lanes, and combine on a lane via the sends.
 Each works mono or poly."*
+
+
+## East COPY actions — make the per-group / per-voice cells easy (Rodney)
+The "2x2" is CONSTRUCTIBLE within East (set LOR uniform by hand, vary correlation per voice) — it is
+just not a one-gesture pick. The only thing making it tedious is setting many voices by hand. Context-
+menu COPY actions remove that, so East can directly express the uniform and group-uniform cases (and
+reduces the need for Macro to the broad-GESTURE convenience, not a sole capability holder).
+
+**By SCOPE:**
+- **Copy to one voice** — the primitive (copy from voice X, apply to voice Y).
+- **Copy to ALL voices** — flat uniform (every voice identical).
+- **Copy along CA MAPPING** — GROUP-uniform: each voice takes its value from whichever voice CA maps it
+  to, so each CA group is internally aligned to its mapped source. Uses the instrument's OWN structure
+  to decide the copy pattern — the same permutation that drives correlation + the expression pairs.
+  Pick the mapping of the lane's OWN CA stream (rhythm lane -> rhythm mapping — the "route through the
+  correlation of the stream it belongs to" rule).
+
+**Across VALUES (not just LOR):** apply the same copy-scope actions to LOR, CORRELATION, and
+PROBABILITY. Copy-along-CA-mapping on CORRELATION = "make each section adhere like its leader" = the
+per-group-uniform cell in ONE action — the most powerful case.
+
+**STATIC vs LIVE (must be legible in the menu):** copy actions are a one-time SNAPSHOT (copy now, then
+voices independent even if CA re-maps later). This is DISTINCT from DELEGATION-follow (live linkage,
+tracks CA via the delegation mod input). Three points on the spectrum: copy-to-all (static flat),
+copy-along-CA (static group), delegation-follow (live). All legitimate, all different — label them so
+users don't conflate snapshot with live.
+
+(Not a core consolidation requirement — an ergonomic add that makes the group/voice cells easy. Record
+now; build with or after the consolidation.)
