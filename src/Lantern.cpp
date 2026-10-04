@@ -38,12 +38,12 @@
 //                                direction of TIME. Per-lane direction (laneSign_/laneTick_)
 //                                is NOT read and must not be -- a reversed lane still played
 //                                its notes at the steps shown.
-//   eng.numPolyVoices, eng.voices, eng.perVoiceArticulation
+//   eng.numPolyVoices, eng.voices
 //   gs.gateHeld / gs.holdRemain  SOUNDING test, per voice. NOT MonoDecision::Rest -- the
 //                                voice's own gate is the per-voice truth.
 //   gs.gatePulseRemain           distinguishes a fresh attack from a held-over tail
 //   gs.lastNoteType              CELL COLOUR. Single/Tie/Legato.
-//   gs.slurForward, pv.accented  per-voice, under perVoiceArticulation
+//   gs.slurForward, pv.accented  per-voice (always-on; flag removed Step 5)
 //   gs.slurMember                SLUR UNDERLINE. The SLEG output mask (leads OR continues a
 //                                slur), read per voice exactly like lastNoteType. An
 //                                underlined run of cells = one fused GATE; its cell edges =
@@ -300,7 +300,7 @@ struct Lantern : Module {
                     cells[row][writeStep].type = lantern::NoteType::Inactive; return;
                 }
                 const PolyVoice& pv = eng.voices[pv_i];
-                const bool voiceSlur = eng.perVoiceArticulation ? pv.gs.slurForward : monoSlur;
+                const bool voiceSlur = pv.gs.slurForward;   // SANDS CONSOLIDATION Step 5: per-voice slur (flag removed)
                 recordCell(row, writeStep, pv.gs, dec, pv.accented, lenSteps, voiceSlur, monoSlur,
                            eng.lastPlayDir, lapArrival);
             }
@@ -434,8 +434,8 @@ struct Lantern : Module {
         // heldOut = this note holds its gate high PAST the last step, by EITHER mechanism:
         //   (1) a LONG note whose length extends past this step (holdRemain > 1), or
         //   (2) a LEGATO LEAD that committed to hold its gate forward (slurFwd). With
-        //       perVoiceArticulation OFF a poly voice follows mono, so slurFwd is mono's
-        //       commitment (passed in); with it ON the voice rolls its OWN slurForward
+        //       The voice rolls its OWN slurForward (per-voice articulation is always-on;
+        //       flag removed in SANDS CONSOLIDATION Step 5).
         //       (Rule 2), so slurFwd is that per-voice value. Either way it is the correct
         //       forward-hold for THIS voice. A poly voice that RESTED already early-returned
         //       Inactive above, so this marks only sounding voices. Pairs with the step-0
@@ -452,8 +452,7 @@ struct Lantern : Module {
         // (gs.lastNoteType), not mono's decision — so a poly voice that opted out and
         // re-struck inside a slur reads Single (blue) while a connecting voice reads
         // Legato/Tie. This is what makes per-voice legato visible; mono (row 0) reads
-        // eng.gs.lastNoteType and is unchanged. (Set by triggerNote/slideNote/extendHold,
-        // so it is correct with perVoiceArticulation on OR off.)
+        // eng.gs.lastNoteType and is unchanged. (Set by triggerNote/slideNote/extendHold.)
         // A MidNote is the tail of an already-shown note — keep the old base colour for it
         // (isMidTail drives its rendering as a continuation), so tails are unchanged.
         if (dec == MonoDecision::MidNote && !wrapTail) {

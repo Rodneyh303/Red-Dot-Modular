@@ -132,6 +132,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         addChild(tabGroup);
 
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
+        visualEditor->setLaneCount(dotModular::SandsGrid::POLY_LANES);   // 7 lanes — matches East exactly
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         // Lanes fill the box evenly (no padding) → align with painted lanes +
@@ -351,8 +352,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     }
 
     // STEP 4b: ownership authority for the Macro widget's V1 view. Macro is present
-    // (this widget IS Macro); monoV1Owner[] read from Mono's editor-ordered ownerDispId
-    // (the same source the old predicate read). lockedOn(MACRO,0,l) == owner(0,l)!=MACRO,
+    // (this widget IS Macro). SANDS CONSOLIDATION Step 7: monoV1Owner removed — V1
+    // ownership now via eastV1Owner[] only. lockedOn(MACRO,0,l) == owner(0,l)!=MACRO,
     // i.e. "Mono owns it" — matching the old mv->ownerDispId(l) > 0.5 test.
     // NOTE: currently UNUSED — laneEditBlockedFn stopped gating V1 LOR on Mono ownership (Macro's own
     // global LOR is always editable, matching its spread). Kept because the tracked East-ownership
@@ -365,8 +366,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             mon->expanderManager.fillPresence(in, mon->engine.numPolyVoices);  // single authority
             // MVC step 1d: Mono's owner is STORE-BACKED (editor.monoOwner via getMonoOwner).
             // mon IS the Monsoon store owner; was mv->params[ownerDispId(l)].
-            for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
-                in.monoV1Owner[l] = mon->getMonoOwner(l);
+            // SANDS CONSOLIDATION Step 7: monoV1Owner removed — V1 ownership via eastV1Owner only.
         }
         return dotModular::SandsTopology::build(in);
     }
@@ -640,11 +640,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     }
 
     // Mix-in SEND grid labels (NanoVG; panel carries no baked text). SANDS CONSOLIDATION Step 3:
-    // the send knobs MOVED from below-editor groups to a 6-column × 7-row RHS grid (row-aligned
-    // per lane). Only COLUMN HEADERS are labelled now (LEN/OFF/ROT/SPR/LOR/SPR); the rows are
-    // implicit — each row == an editor lane, already labelled in the editor recess. Geometry is
-    // owned by the generator: column X is read from the lane-0 send/tap anchors, so re-running
-    // the generator can never drift the headers off the columns.
+    // 6 send knobs in a single horizontal row per lane, 9mm pitch, row-aligned to each LED lane.
+    // Column headers (LEN/OFF/ROT/SPR/LOR/SPR) sit above lane 0. Geometry is owned by the generator.
     void draw(const DrawArgs& args) override {
         ModuleWidget::draw(args);
         NVGcontext* vg = args.vg;
@@ -679,8 +676,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         { bool ok = false; Vec sp = anchorMM("param_tapspr_0", ok); if (ok) { colX[5] = sp.x; okAny = true; } }
         if (!okAny) return;
 
-        // Column headers, sitting in the free band above lane 0 (Y < LANE_TOP) at the send
-        // columns' X — outside the voice-tab band, which lives over the editor (ED_X..ED_X+ED_W).
+        // Column headers, sitting above lane 0 at the send columns' X.
         const char* colName[6] = { "LEN", "OFF", "ROT", "SPR", "LOR", "SPR" };
         nvgFontSize(vg, 6.0f);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);

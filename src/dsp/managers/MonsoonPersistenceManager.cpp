@@ -26,7 +26,7 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "tieAcrossRests",            json_boolean(m->engine.tieAcrossRests));
     json_object_set_new(root, "advanceOnTieIntoRest",      json_boolean(m->engine.advanceOnTieIntoRest));
     json_object_set_new(root, "boundaryInterrupt", json_boolean(m->engine.boundaryInterrupt));
-    json_object_set_new(root, "perVoiceArticulation", json_boolean(m->engine.perVoiceArticulation));
+    // SANDS CONSOLIDATION Step 5: perVoiceArticulation no longer saved (flag removed).
     // Per-lane direction: the 4-state LaneDir enum per strand (Forward/Reverse/Pendulum/PingPong).
     // Also saves the legacy sign + pendulum fields for backward compat with older patches.
     // Step 3: laneDirV is NOT persisted here any more — East's direction bank is poly
@@ -247,7 +247,8 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "tieAcrossRests"))           m->engine.tieAcrossRests           = json_boolean_value(j);
     if (auto j = json_object_get(root, "advanceOnTieIntoRest"))     m->engine.advanceOnTieIntoRest     = json_boolean_value(j);
     if (auto j = json_object_get(root, "boundaryInterrupt"))  m->engine.boundaryInterrupt  = json_boolean_value(j);
-    if (auto j = json_object_get(root, "perVoiceArticulation")) m->engine.perVoiceArticulation = json_boolean_value(j);
+    // SANDS CONSOLIDATION Step 5: perVoiceArticulation no longer loaded (flag removed).
+    // Old patches that saved it are silently ignored (no field to restore into).
     // Step 4: laneDir and laneDirV are NOT restored here any more. Direction is now
     // expander-homed (Mono's dirDispId for mono, East's dirId/monoDirId bank for poly).
     // Rack restores the expander params, then MonsoonExpanderManager::sync() pushes them

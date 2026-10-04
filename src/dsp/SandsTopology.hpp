@@ -32,41 +32,30 @@ namespace dotModular {
 
 struct SandsTopology {
     // Who can be the producer/owner/editor of a lane's base value.
-    enum class Role : uint8_t { NONE = 0, MONO, EAST, MACRO };
+    // SANDS CONSOLIDATION Step 7: MONO removed (Mono visual module killed in Step 6).
+    enum class Role : uint8_t { NONE = 0, EAST, MACRO };
 
-    // The NAMED configuration. Distinct names so a guard can never accidentally
-    // match two topologies (the exact shape of the Mono+Macro clobber bug, where a
-    // hand-built `macro && polyBase` matched both MACRO_SOLE and MONO_PLUS_MACRO).
-    // ALL reachable combos are listed even where behaviour is currently identical.
+    // The NAMED configuration. SANDS CONSOLIDATION Step 7: simplified to 2-module
+    // (East+Macro) reality. Dead MONO configs removed (was 8, now 4).
     enum class Config : uint8_t {
         EMPTY = 0,        // no Sands visual present
-        MONO,             // Mono only (no base needed for its own V1)
         EAST,             // East only (+ poly base active)
-        MACRO_SOLE,       // Macro only (+ base), NO East visual, NO Mono  ← clobber guard lives here
-        MONO_PLUS_EAST,   // Mono + East (no Macro)
-        MONO_PLUS_MACRO,  // Mono + Macro (+ base)
+        MACRO_SOLE,       // Macro only (+ base), NO East visual
         EAST_PLUS_MACRO,  // East + Macro (+ base)
-        MONO_EAST_MACRO,  // all three (+ base)
     };
 
     // ── Inputs the builder needs (filled by the caller; keeps this header free of
     //    the heavy widget headers / include cycles). Pure data. ────────────────
     struct Inputs {
-        bool monoPresent  = false;   // cachedSandsVisualExpander != nullptr
+        // SANDS CONSOLIDATION Step 7: monoPresent + monoV1Owner removed (Mono killed Step 6).
         bool eastPresent  = false;   // cachedEastSandsVisual    != nullptr
         bool macroPresent = false;   // cachedMacroSandsVisual   != nullptr
         bool polyBaseActive = false; // cachedPolyVoiceExpander != null && numPolyVoices >= 1
         int  polyVoiceCount = 0;     // engine.numPolyVoices
 
-        // Ownership params, already read by the caller (it has the typed module ptrs;
-        // we don't, to stay header-light). EDITOR-lane indexed, lanes 0..3 (MEL/OCT/
-        // REST/ACC — the 4 poly/delegable lanes; VAR/LEG are mono-only, never ceded).
-        //   monoV1Owner[l]      : Mono's   ownerDispId(l)  > 0.5  (true = Mono local-owns)
+        // Ownership params. EDITOR-lane indexed, 7 lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG).
         //   eastV1Owner[l]      : East's   ownerDispId(l)  > 0.5  (true = East local-owns)
         //   eastPolyOwner[v][l] : East's   ownerId(v,l)    > 0.5  (true = East local-owns; v = poly index 0..14)
-        // SANDS CONSOLIDATION Step 1: 7 poly/delegable lanes, EDITOR order 0..6 = MEL/OCT/QMIX/REST/ACC/VAR/LEG.
-        // VAR/LEG are now FULL poly lanes (no longer mono-only) — included in these arrays.
-        bool monoV1Owner[7]      = { true, true, true, true, true, true, true };
         bool eastV1Owner[7]      = { true, true, true, true, true, true, true };
         bool eastPolyOwner[15][7] = {};   // default false → Macro-owned until set; caller fills when East present
     };
@@ -83,37 +72,25 @@ struct SandsTopology {
     }
 
     static Config classify(const Inputs& i) {
-        const bool m = i.monoPresent, e = i.eastPresent, x = i.macroPresent;
-        if (!m && !e && !x) return Config::EMPTY;
-        if ( m && !e && !x) return Config::MONO;
-        if (!m &&  e && !x) return Config::EAST;
-        if (!m && !e &&  x) return Config::MACRO_SOLE;
-        if ( m &&  e && !x) return Config::MONO_PLUS_EAST;
-        if ( m && !e &&  x) return Config::MONO_PLUS_MACRO;
-        if (!m &&  e &&  x) return Config::EAST_PLUS_MACRO;
-        return Config::MONO_EAST_MACRO;   // m && e && x
+        // SANDS CONSOLIDATION Step 7: simplified to 2-module (East+Macro) — was 8 cases, now 4.
+        const bool e = i.eastPresent, x = i.macroPresent;
+        if (!e && !x) return Config::EMPTY;
+        if ( e && !x) return Config::EAST;
+        if (!e &&  x) return Config::MACRO_SOLE;
+        return Config::EAST_PLUS_MACRO;   // e && x
     }
 
     // ── OWNS(voice, editorLane) — the single source of ownership ──────────────
-    // voice 0 = V1/mono slot. QMIX-widened editor order: 0 MEL, 1 OCT, 2 QMIX,
-    // 3 REST, 4 ACC (the 5 poly/delegable lanes), 5 VAR, 6 LEG (mono-only, never
-    // delegable). VAR/LEG → MONO when Mono present, else NONE. Lanes 0..4 follow
-    // the per-surface owner params (arrays sized 5, editor-indexed 0..4).
-    static constexpr int kPolyLanes = 7;   // MEL/OCT/QMIX/REST/ACC/VAR/LEG (SANDS CONSOLIDATION Step 1; was 5)
+    // voice 0 = V1/mono slot. Editor order: 0 MEL, 1 OCT, 2 QMIX, 3 REST, 4 ACC, 5 VAR, 6 LEG.
+    // SANDS CONSOLIDATION Step 7: Mono branch removed — V1 owned by East or Macro.
+    static constexpr int kPolyLanes = 7;   // MEL/OCT/QMIX/REST/ACC/VAR/LEG
     Role owner(int voice, int editorLane) const {
         if (editorLane < 0 || editorLane > 6) return Role::NONE;
 
-        // V1 / mono slot. (SANDS CONSOLIDATION Step 1: VAR/LEG are now delegable poly lanes — the old
-        // `editorLane >= kPolyLanes → mono-only` special-case is dead with kPolyLanes=7; Step 7 removes it.)
+        // V1 / mono slot.
         if (voice == 0) {
-
-            if (in.monoPresent) {
-                // Mono owns V1 unless it has ceded this lane to Macro (and Macro present).
-                if (in.macroPresent && !in.monoV1Owner[editorLane]) return Role::MACRO;
-                return Role::MONO;
-            }
             if (in.eastPresent) {
-                // East is the V1 editor when no Mono. Per-lane: East or delegated-to-Macro.
+                // East is the V1 editor. Per-lane: East or delegated-to-Macro.
                 if (in.macroPresent && !in.eastV1Owner[editorLane]) return Role::MACRO;
                 return Role::EAST;
             }
