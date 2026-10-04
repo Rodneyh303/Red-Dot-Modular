@@ -339,8 +339,12 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 // Delegation toggles (§4d): 0 = follow mono (default, silent), 1 = Local East.
                 // When Local East, the LOR pushed above is read; when delegating, the engine
                 // ignores it and reads mono's VAR/LEG position instead. lane 0 = VAR, 1 = LEG.
-                engine.setVarlegLocalEast(v, 0, mmE && mmE->getVarlegDeleg(v, 0) > 0.5f);
-                engine.setVarlegLocalEast(v, 1, mmE && mmE->getVarlegDeleg(v, 1) > 0.5f);
+                // SANDS CONSOLIDATION: East owning the VAR/LEG lane (macroOwn > 0.5) ALSO implies
+                // Local East — the two flags are unified so taking East ownership of a VAR/LEG
+                // lane automatically un-delegates (otherwise the per-voice LOR is written but
+                // short-circuited by varlegDelegated before generation reads it).
+                engine.setVarlegLocalEast(v, 0, mmE && (mmE->getVarlegDeleg(v, 0) > 0.5f || mmE->getMacroOwn(v, PL::PL_VARIATION) > 0.5f));
+                engine.setVarlegLocalEast(v, 1, mmE && (mmE->getVarlegDeleg(v, 1) > 0.5f || mmE->getMacroOwn(v, PL::PL_LEGATO)    > 0.5f));
 
                 // Per-voice LANE DIRECTION, from East's bank — same shape as the delegation
                 // push above. This is what frees direction from the widget: the editor owns the
