@@ -652,11 +652,12 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 }
                 // Mono strand LOR from Macro globals (REST/MEL/OCT/ACC/QMIX strands).
                 // Note: These are in ENGINE lane order (REST=0, MEL=1, OCT=2, ACC=3, QMIX=4), not editor order.
-                // BUGFIX (QMIX widening): the loop runs lane<POLY_LANES(5) but STRND was 4 elements —
-                // lane==4 (QMIX) read STRND[4] out of bounds. Extended to 5 with STRAND_QMIX.
-                static const int STRND[5] = { dotModular::STRAND_RHYTHM, dotModular::STRAND_MELODY,
+                // SANDS CONSOLIDATION Step 1: 7 poly lanes. STRND must have 7 entries (was 5 —
+                // lane 5/6 read OOB, causing the strand=12 StrandLedger CONFLICT warning).
+                static const int STRND[7] = { dotModular::STRAND_RHYTHM, dotModular::STRAND_MELODY,
                                               dotModular::STRAND_OCTAVE, dotModular::STRAND_ACCENT,
-                                              dotModular::STRAND_QMIX };
+                                              dotModular::STRAND_QMIX,
+                                              dotModular::STRAND_VARIATION, dotModular::STRAND_LEGATO };
                 for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
                     // SCOPE (LOCK_SCOPE_MENU): per-strand — MELODY/OCTAVE = melody axis; QMIX = its OWN
                     // axis (SB_SANDS_Q); else rhythm.
