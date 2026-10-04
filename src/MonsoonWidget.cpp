@@ -1083,8 +1083,8 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             // therefore subtractive (voices release early, never late) — the clock stays mono's.
             // Also gates Rule 2: each voice rolls its own leading-edge legato from its LEGATO LOR
             // window and connects/re-articulates independently (EAST_EXTRA_LANES §4d). Silent unless
-            // a voice's VAR/LEG is set Local East on the East expander. See EAST_EXTRA_LANES.md.
-            add("Per-voice articulation (East VARIATION/LEGATO)", &m->engine.perVoiceArticulation);
+            // SANDS CONSOLIDATION Step 5: perVoiceArticulation menu item REMOVED.
+            // The flag is gone — the per-voice VAR/LEG draw is always-on (Step 2).
         }));
         // Lane direction context menu removed (step 4 of lane_direction_homes.md).
         // Direction is now expander-homed — set it via DirCell or gate-mod on the Sands panels.

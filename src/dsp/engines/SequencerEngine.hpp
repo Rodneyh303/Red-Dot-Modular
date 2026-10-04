@@ -353,11 +353,10 @@ struct SequencerEngine {
     static constexpr int EDITOR_LANE_VARIATION = 5;
     static constexpr int EDITOR_LANE_LEGATO    = 6;
 
-    // SANDS CONSOLIDATION Step 2: promoted to always-on. The per-voice VAR/LEG draw is now the
-    // only path — the delegation system (varlegLocalEast_) is the sole control. Delegated voices
-    // (default) read mono's step → bit-identical to the old off path; Local-East voices diverge.
-    // The flag stays true for Lantern (Step 5 removes the flag + menu + Lantern check entirely).
-    bool perVoiceArticulation = true;
+    // SANDS CONSOLIDATION Step 5: perVoiceArticulation flag REMOVED entirely.
+    // The per-voice VAR/LEG draw is always-on (Step 2 promoted it). The delegation
+    // system (varlegLocalEast_) is the sole control. Lantern now reads pv.gs.slurForward
+    // directly (no flag check). Menu item and persistence removed.
 
     // VAR/LEG per-voice delegation (EAST_EXTRA_LANES §4d). false (default) = delegate to
     // mono → the voice reads MONO's VAR/LEG position, so it mirrors mono (silent). true =

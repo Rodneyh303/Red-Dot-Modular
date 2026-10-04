@@ -1,7 +1,7 @@
 // Per-voice articulation, clamped to the mono event grid.
-// SANDS CONSOLIDATION Step 2: perVoiceArticulation promoted to always-on — the flag is inert.
+// SANDS CONSOLIDATION Step 5: perVoiceArticulation flag removed — draw is always-on.
 // Proves the properties the design rests on:
-//   1. flag is INERT: false behaves identically to true (delegated → mono nvIdx)
+//   1. delegated (default) → mono nvIdx (bit-identical)
 //   2. identity LOR → still identical (doubly inert)
 //   3. dialed LOR but DELEGATED (default) → still mono's (§4d delegation)
 //   4. dialed LOR + Local East → voices diverge, but ALWAYS hold <= mono's (the clamp)
@@ -28,18 +28,16 @@ int main() {
 
     e.lastNoteVal_ = 4.f;   // NOTE_VALUE = 1/8
 
-    // ── 1. flag is INERT: false behaves identically to true (delegated → mono nvIdx) ──
-    e.perVoiceArticulation = false;
+    // ── 1. delegated (default) → mono nvIdx (the draw is always-on; no flag) ──
     for (int step = 0; step < 64; ++step) {
         e.totalStepsElapsed = step;
         int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
         e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
         for (int v = 0; v < 15; ++v)
-            check(e.nvIdxForVoice(v, in) == e.lastStepResult.nvIdx, "flag inert (false) -> delegated -> mono nvIdx");
+            check(e.nvIdxForVoice(v, in) == e.lastStepResult.nvIdx, "delegated -> mono nvIdx");
     }
 
     // ── 2. identity LOR (len 16, off 0, rot 0 — as reset() now seeds) → still mono nvIdx ──
-    e.perVoiceArticulation = true;
     for (int step = 0; step < 64; ++step) {
         e.totalStepsElapsed = step;
         // mono reads its own VAR strand at this step; give the voice the same window
