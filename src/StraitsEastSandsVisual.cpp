@@ -16,6 +16,7 @@
 #include "ui/StoreBound.hpp"      // bindStoreKnob (de-param)
 #include "ui/Controls.hpp"        // Tag_Grey_Trim_Bar
 #include "dsp/SandsTopology.hpp"   // step 3c: East V1 write ownership via the resolver
+#include "dsp/SpreadInterp.hpp"    // applyAnchorV1Only for poly-voice display (matches Macro)
 #include <cassert>
 #include <cmath>
 #include <limits>
@@ -1110,23 +1111,43 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // LIVE (spread esp. ACCENT previously only mutated on tab change). One call now.
             // (Removed: paramMgr->syncPatternEngineToEditor(...) — master's cleanup/dead-poly-sync
             //  deleted the voice-indexed overload; it wrote REST/MEL/OCT from PRE-spread interp
-            //  values, missing ACCENT, and every lane is overwritten by the resolver fill
+            //  values, missing ACCENT, and every lane is overwritten by the fill
             //  immediately below in this same block anyway.)
             saveSlot(currentSlot());
             // The editor's drag only edits the LOR WINDOW (length/offset/rotation), never
-            // individual step probabilities — those are display-only. So show the
-            // SPREAD-APPLIED probabilities (polyRhythmRandom etc., what actually plays)
-            // for EVERY lane, not just Macro-ceded ones. Previously East-owned lanes kept
-            // the raw drawn pattern, so moving spread changed the audio but NOT the
-            // visible bars. Reading the resolver (post-spread) makes spread visible and
-            // also fixes the blank-lane case under Macro ownership.
-            dotModular::VoiceResolver resolver(monsoon->engine);
-            const int vnum = currentVoice();
+            // individual step probabilities — those are display-only. Show the SPREAD-APPLIED
+            // probabilities for EVERY lane.
+            //
+            // SOURCE MATCHING (East↔Macro alignment): read pubSlewedPoly*[voice] — the SAME
+            // pre-spread published snapshot Macro's macroOwnProbability reads — and apply spread
+            // via applyAnchorV1Only. This makes East and Macro read the IDENTICAL pre-spread
+            // source, so they can't diverge by timing (torn reads of live slewed* vs published
+            // pubSlewed*). The spread may differ on East-owned lanes (East's combined spread vs
+            // Macro's own) — that's correct: East shows the actual per-voice output.
+            // Previously this read resolver.laneProbabilityAtStep → polyRandomSrc (post-spread
+            // final array), which could disagree with Macro's pre-spread+spread when the manager
+            // wrote the final array at a different time than the widget read it.
+            auto* eastMod = static_cast<StraitsEastSandsVisual*>(module);
+            const int pv = polyVoice();   // poly bank index (0 = V2, 1 = V3, ...)
+            auto& peRef = monsoon->engine.pe;
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
                 int el = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[lane];
-                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
+                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
+                    float base;
+                    switch (lane) {
+                        case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[pv][s]; break;
+                        case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[pv][s]; break;
+                        case SequencerEngine::PL_OCTAVE:   base = peRef.pubSlewedPolyOctave[pv][s]; break;
+                        case SequencerEngine::PL_ACCENT:   base = peRef.pubSlewedPolyAccent[pv][s]; break;
+                        case SequencerEngine::PL_QMIX:     base = peRef.pubSlewedPolyQmix[pv][s]; break;
+                        case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[pv][s]; break;
+                        case SequencerEngine::PL_LEGATO:   base = peRef.pubSlewedPolyLegato[pv][s]; break;
+                        default: base = 0.5f; break;
+                    }
+                    const float spread = eastMod->polySpreadEffective[pv][lane];
                     visualEditor->currentState.lanes[el].probabilities[s] =
-                        resolver.laneProbabilityAtStep(vnum, lane, s);
+                        redDot::SpreadInterp::applyAnchorV1Only(peRef, lane, s, base, spread);
+                }
             }
         }
 
@@ -1198,23 +1219,38 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // store is editor-lane indexed (el).
             // (V1+Mono owner mirror DELETED — MVC step 1d: the store-backed OwnerCell's getOwnsFn
             //  reads getMonoOwner directly for the V1+Mono case, so no proxy mirror is needed.)
-            // Probabilities: show the SPREAD-APPLIED V1 values (what plays) for all 4
-            // lanes, so Mono's spread/CV AND East's V1 spread CV (both folded into the
-            // engine mono strand by the manager) are visible — matching Mono's display.
-            // Use finalRandomByStrand PER STEP (the resolver's masterLaneProbability only
-            // returns the current playhead step, which would flatten all 16 bars). Bars
-            // are display-only on V1 (editor readOnly), so overwriting each frame is safe.
+            // Probabilities: V1 display reads pubSlewed* (mono published snapshot) + applies
+            // spread via applyAnchorV1Only — the SAME source and function Macro's
+            // macroOwnProbability uses, so V1 and Macro can't diverge. When Macro is present,
+            // uses Macro's spread (macroBase+macroSendDelta); otherwise falls back to the
+            // engine's V1 spread. Previously read finalRandomByStrand (post-spread final array
+            // written with sprForLane's spread), which differed from Macro's display spread on
+            // East-owned V1 rhythm-axis lanes (REST/ACC/VAR/LEG).
             {
-                // editor lane → mono strand index (identity mapping with q-mix).
-                // Now 5 poly lanes: MEL/OCT/QMIX/REST/ACC (editor lanes 0..4).
-                for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-                    int strand = dotModular::MONO_LANE_TO_STRAND[el];
-                    for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
+                auto& peRef = monsoon->engine.pe;
+                auto* macroMod = monsoon->expanderManager.cachedMacroSandsVisual;
+                for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
+                    const int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
+                    for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
+                        float base;
+                        switch (engLane) {
+                            case SequencerEngine::PL_REST:      base = peRef.pubSlewedRhythm[s]; break;
+                            case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedMelody[s]; break;
+                            case SequencerEngine::PL_OCTAVE:    base = peRef.pubSlewedOctave[s]; break;
+                            case SequencerEngine::PL_ACCENT:    base = peRef.pubSlewedAccent[s]; break;
+                            case SequencerEngine::PL_QMIX:      base = peRef.pubSlewedQmix[s]; break;
+                            case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedVariation[s]; break;
+                            case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedLegato[s]; break;
+                            default: base = 0.5f; break;
+                        }
+                        float spread = macroMod
+                            ? rack::math::clamp(macroMod->macroBase[engLane][3] + macroMod->macroSendDelta[engLane][3], -1.f, 1.f)
+                            : monsoon->engine.spreadE(0, engLane);
                         visualEditor->currentState.lanes[el].probabilities[s] =
-                            monsoon->engine.pe.finalRandomByStrand(strand, s);
+                            redDot::SpreadInterp::applyAnchorV1Only(peRef, engLane, s, base, spread);
+                    }
                 }
             }
-            mirrorMonoExtraLanes();   // lanes 4/5: mono's VARIATION/LEGATO, read-only
         } else if (v1Editable()) {
             // ── V1 (East-alone) persistence ──────────────────────────────────────────────
             // V1 has no per-voice bank (poly voices use lorIdEditor/interp params). Its
@@ -1269,22 +1305,36 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int ph1222 = (eng.stepIndex >= 0) ? eng.laneTick_[dotModular::MONO_LANE_TO_STRAND[el]] : -1;
                 visualEditor->setLanePlayStep(el, calcPlayhead(ph1222, cvLen, cvOff, cvRot));
             }
-            // Probabilities: V1 (mono) probabilities are display-only (drag edits the LOR
-            // window only), so show the SPREAD-APPLIED values the sequencer plays. Read
-            // PER-STEP from finalRandomByStrand — NOT resolver.laneProbabilityAtStep, which
-            // for mono returns masterLaneProbability (the CURRENT step only), making every
-            // bar identical (regression). editor lane → engine strand via MONO_LANE_TO_STRAND.
-            // All SIX lanes: lanes 4/5 (VAR/LEG) were previously skipped (loop ran el<4), so on
-            // first load V1's VAR/LEG cells showed a flat/default array until a poly-voice visit
-            // populated the shared array — the "flat probability until V2 round-trip" bug. VAR/LEG
-            // share the mono array (§4d), so this reads the same finalRandomByStrand the mono tab does.
+            // Probabilities: V1 display reads pubSlewed* (mono published snapshot) + applies
+            // spread via applyAnchorV1Only — the SAME source and function Macro's
+            // macroOwnProbability uses. When Macro is present, uses Macro's spread; otherwise
+            // the engine's V1 spread. This matches the onMonoTab() block and the poly-voice
+            // block, so V1 and Macro read ONE source and can't diverge. Previously read
+            // finalRandomByStrand (post-spread final array), which used sprForLane's spread —
+            // different from Macro's display spread on East-owned rhythm-axis V1 lanes.
             {
                 auto& peRef = monsoon->engine.pe;
+                auto* macroMod = monsoon->expanderManager.cachedMacroSandsVisual;
                 for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
-                    int strand = dotModular::MONO_LANE_TO_STRAND[el];
-                    for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
+                    const int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
+                    for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
+                        float base;
+                        switch (engLane) {
+                            case SequencerEngine::PL_REST:      base = peRef.pubSlewedRhythm[s]; break;
+                            case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedMelody[s]; break;
+                            case SequencerEngine::PL_OCTAVE:    base = peRef.pubSlewedOctave[s]; break;
+                            case SequencerEngine::PL_ACCENT:    base = peRef.pubSlewedAccent[s]; break;
+                            case SequencerEngine::PL_QMIX:      base = peRef.pubSlewedQmix[s]; break;
+                            case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedVariation[s]; break;
+                            case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedLegato[s]; break;
+                            default: base = 0.5f; break;
+                        }
+                        float spread = macroMod
+                            ? rack::math::clamp(macroMod->macroBase[engLane][3] + macroMod->macroSendDelta[engLane][3], -1.f, 1.f)
+                            : monsoon->engine.spreadE(0, engLane);
                         visualEditor->currentState.lanes[el].probabilities[s] =
-                            peRef.finalRandomByStrand(strand, s);
+                            redDot::SpreadInterp::applyAnchorV1Only(peRef, engLane, s, base, spread);
+                    }
                 }
             }
         } else if (selectedVoice >= 1) {

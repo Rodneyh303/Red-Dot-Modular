@@ -313,9 +313,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // (polyLORRef masks & 7). polyLenERef would mask & 3 and silently alias VAR -> REST.
             // VAR/LEG now route through spread (see the VAR/LEG spread block below): the per-voice
             // Philox draws (f9c4189) give each voice its own slewed buffer and SpreadInterp lanes
-            // 5/6 apply the spread knob. No Macro blend — an owned lane would annihilate the
-            // per-voice divergence that IS the feature. This LOR push is the reading position,
-            // independent of spread; spread is applied in the per-voice block alongside REST/MEL/…/QMIX.
+            // 5/6 apply the spread knob. No Macro LOR blend — an owned LOR lane would annihilate
+            // the per-voice divergence that IS the feature. This LOR push is the reading position,
+            // independent of spread; spread (WITH Macro blend via combineSpread) is applied in the
+            // per-voice block alongside REST/MEL/…/QMIX.
             if (eastLOR) {
                 using SE = SequencerEngine;
                 // VAR/LEG LOR now uses the UNIFIED eastLorVal path (identical to REST/MEL/OCT/ACC/
@@ -518,15 +519,16 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 }
             }
 
-            // ── VAR/LEG spread (lanes 5/6): per-voice spread, NO Macro blend ──────────────
+            // ── VAR/LEG spread (lanes 5/6): per-voice spread, WITH Macro blend ──────────────
             // These lanes carry full per-voice Philox draws (slewedPolyVariation/Legato), so spread
             // is meaningful: applyPoly interpolates each voice's draw toward the mono (V1) anchor.
-            // Macro cannot own VAR/LEG (it would drive all voices identically and annihilate the
-            // per-voice divergence that IS the feature), so there is no owner/Macro blend — the base
-            // spread knob + SPR CV are applied directly (mirroring the East-owned branch of the
-            // REST/MEL/.../QMIX spread blocks, but WITHOUT combineSpread's Macro ownership leg).
+            // VAR/LEG now go through combineSpread — the SAME owner + Macro blend logic the 5 core
+            // lanes use. When delegated to Macro (eastPolyOwner[pv][5/6] == false), combineSpread
+            // returns macroBase[lane][3] + macroCVDelta[lane][3] (Macro's knob + CV), so turning
+            // Macro's VAR/LEG spread knob reflects on East. When East-owned, the per-voice spread
+            // knob + CV form the base, with Macro's send delta blended on top (same as REST/MEL/…).
             // SPR CV jack = cvId(lane,3); depth = getMacroAtten(slot, lane*4+3) — the UNIFIED store
-            // VAR/LEG now share with the 5 core lanes (sands consolidation Step 3).
+            // VAR/LEG share with the 5 core lanes (sands consolidation Step 3).
             {
                 static constexpr int VARLEG_SPREAD_LANES[2] = { PL::PL_VARIATION, PL::PL_LEGATO };
                 for (int vl = 0; vl < 2; ++vl) {
@@ -535,9 +537,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                     if (eastVisual && eastVisual->inputs[cvId(lane,3)].isConnected()) {
                         float att = mmOwn ? mmOwn->getMacroAtten(slot, lane*4 + 3) : 0.f;   // PER-VOICE SPR depth
                         float cv  = eastVisual->inputs[cvId(lane,3)].getPolyVoltage(v) / 10.f;
-                        interp += cv * att * 2.f;   // ×2 = ±1 span. End-clamped below.
+                        interp += cv * att * 2.f;   // ×2 = ±1 span. End-clamped in combineSpread.
                     }
-                    interp = math::clamp(interp, -1.f, 1.f);
+                    interp = combineSpread(lane, interp);   // owner + Macro-CV blend (spread) — SAME as REST/MEL/OCT/ACC/QMIX
                     if (eastVisual) eastVisual->polySpreadEffective[v][lane] = interp;
                     // VAR/LEG are on the rhythm plane (SpreadInterp::v1caSrc: cases 5/6 → caRhythmSrc),
                     // so they share the rhythm-axis spread lock with REST/ACCENT.

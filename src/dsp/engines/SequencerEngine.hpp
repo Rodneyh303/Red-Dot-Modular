@@ -665,16 +665,18 @@ struct SequencerEngine {
         return getStrandIdx(polyLaneTick(voice, polyLane), polyLenE(voice, polyLane),
                             polyOffE(voice, polyLane), polyRotE(voice, polyLane)) & 0x0F;
     }
-    // Engine poly lane (PL_REST..PL_ACCENT) → strand index. Single mapping (was inlined in
-    // masterLaneStep and polyLaneTick). PL_LANES.. have no strand (VAR/LEG are mono-only); this
-    // is only valid for the 4 poly lanes.
+    // Engine poly lane (PL_REST..PL_LEGATO) → strand index. Single mapping (was inlined in
+    // masterLaneStep and polyLaneTick). SANDS CONSOLIDATION: VAR/LEG are now full poly lanes
+    // with their own strands (STRAND_VARIATION/STRAND_LEGATO), so all 7 lanes are handled.
     static int polyLaneStrand(int polyLane) {
-        return (polyLane == PL_REST)   ? dotModular::STRAND_RHYTHM
-             : (polyLane == PL_MELODY) ? dotModular::STRAND_MELODY
-             : (polyLane == PL_OCTAVE) ? dotModular::STRAND_OCTAVE
-             : (polyLane == PL_ACCENT) ? dotModular::STRAND_ACCENT
-             : (polyLane == PL_QMIX)   ? dotModular::STRAND_QMIX
-                                       : dotModular::STRAND_RHYTHM;  // fallback
+        return (polyLane == PL_REST)      ? dotModular::STRAND_RHYTHM
+             : (polyLane == PL_MELODY)    ? dotModular::STRAND_MELODY
+             : (polyLane == PL_OCTAVE)    ? dotModular::STRAND_OCTAVE
+             : (polyLane == PL_ACCENT)    ? dotModular::STRAND_ACCENT
+             : (polyLane == PL_QMIX)      ? dotModular::STRAND_QMIX
+             : (polyLane == PL_VARIATION) ? dotModular::STRAND_VARIATION
+             : (polyLane == PL_LEGATO)    ? dotModular::STRAND_LEGATO
+                                          : dotModular::STRAND_RHYTHM;  // fallback
     }
     // Per-voice tick for an engine poly lane. The voice's direction is ABSOLUTE (its own DirCell),
     // so this tracks mono's laneTick_[strand] only while both the voice and mono's lane are
@@ -698,12 +700,10 @@ struct SequencerEngine {
                             strandOff(strand), strandRot(strand)) & 0x0F;
     }
     inline float masterLaneProbability(int polyLane) const {
-        int strand = (polyLane == PL_REST)   ? dotModular::STRAND_RHYTHM
-                   : (polyLane == PL_MELODY) ? dotModular::STRAND_MELODY
-                   : (polyLane == PL_OCTAVE) ? dotModular::STRAND_OCTAVE
-                   : (polyLane == PL_ACCENT) ? dotModular::STRAND_ACCENT
-                   : (polyLane == PL_QMIX)   ? dotModular::STRAND_QMIX
-                                             : dotModular::STRAND_RHYTHM;  // fallback
+        // SANDS CONSOLIDATION: use polyLaneStrand (now handles all 7 lanes incl. VAR/LEG).
+        // Previously this duplicated the switch WITHOUT the VAR/LEG cases, so voice 1's
+        // VAR/LEG display fell back to STRAND_RHYTHM (showing rhythm values — a bug).
+        int strand = polyLaneStrand(polyLane);
         return pe.finalRandomByStrand(strand, masterLaneStep(polyLane));
     }
 
