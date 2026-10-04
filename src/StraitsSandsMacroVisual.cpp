@@ -425,18 +425,22 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // Macro in line.)
         float base;
         if (mono) {
-            base = (engLane == PL::PL_REST)   ? pe.pubSlewedRhythm[step & 0x0F]
-                 : (engLane == PL::PL_MELODY) ? pe.pubSlewedMelody[step & 0x0F]
-                 : (engLane == PL::PL_OCTAVE) ? pe.pubSlewedOctave[step & 0x0F]
-                 : (engLane == PL::PL_ACCENT) ? pe.pubSlewedAccent[step & 0x0F]
-                 :                              pe.pubSlewedQmix[step & 0x0F];
+            base = (engLane == PL::PL_REST)      ? pe.pubSlewedRhythm[step & 0x0F]
+                 : (engLane == PL::PL_MELODY)    ? pe.pubSlewedMelody[step & 0x0F]
+                 : (engLane == PL::PL_OCTAVE)    ? pe.pubSlewedOctave[step & 0x0F]
+                 : (engLane == PL::PL_ACCENT)    ? pe.pubSlewedAccent[step & 0x0F]
+                 : (engLane == PL::PL_QMIX)      ? pe.pubSlewedQmix[step & 0x0F]
+                 : (engLane == PL::PL_VARIATION) ? pe.pubSlewedVariation[step & 0x0F]
+                 :                                pe.pubSlewedLegato[step & 0x0F];
         } else {
             int v = rack::math::clamp(polyVoice, 0, 14);
-            base = (engLane == PL::PL_REST)   ? pe.pubSlewedPolyRhythm[v][step & 0x0F]
-                 : (engLane == PL::PL_MELODY) ? pe.pubSlewedPolyMelody[v][step & 0x0F]
-                 : (engLane == PL::PL_OCTAVE) ? pe.pubSlewedPolyOctave[v][step & 0x0F]
-                 : (engLane == PL::PL_ACCENT) ? pe.pubSlewedPolyAccent[v][step & 0x0F]
-                 :                              pe.pubSlewedPolyQmix[v][step & 0x0F];
+            base = (engLane == PL::PL_REST)      ? pe.pubSlewedPolyRhythm[v][step & 0x0F]
+                 : (engLane == PL::PL_MELODY)    ? pe.pubSlewedPolyMelody[v][step & 0x0F]
+                 : (engLane == PL::PL_OCTAVE)    ? pe.pubSlewedPolyOctave[v][step & 0x0F]
+                 : (engLane == PL::PL_ACCENT)    ? pe.pubSlewedPolyAccent[v][step & 0x0F]
+                 : (engLane == PL::PL_QMIX)      ? pe.pubSlewedPolyQmix[v][step & 0x0F]
+                 : (engLane == PL::PL_VARIATION) ? pe.pubSlewedPolyVariation[v][step & 0x0F]
+                 :                                pe.pubSlewedPolyLegato[v][step & 0x0F];
         }
         return redDot::SpreadInterp::applyAnchorV1Only(pe, engLane, step, base, sp);
     }

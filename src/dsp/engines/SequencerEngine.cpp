@@ -974,7 +974,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // by anything today" (§227).
         if (ghostActive) {
             int varIdx = getVariationStepForVoice(voiceIdx) & 0x0F;
-            float r_vary_voice = pe.variationRandom[varIdx];
+            float r_vary_voice = polyRandomSrc(voiceIdx, PL_VARIATION)[varIdx];
             if (r_vary_voice >= input.variationAmount) {
                 // Rested ghost: transparent — silent, not part of the chain.
                 v.accented = false;
@@ -1062,7 +1062,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                             || (lastStepResult.decision == MonoDecision::Legato)
                             || (lastStepResult.decision == MonoDecision::LegatoMax)
                             || (lastStepResult.decision == MonoDecision::Tie);
-            float r_polyLegato = pe.legatoRandom[getLegatoStepForVoice(voiceIdx)];
+            float r_polyLegato = polyRandomSrc(voiceIdx, PL_LEGATO)[getLegatoStepForVoice(voiceIdx)];
             v.gs.slurForward = leStartingV
                              && noteCanLeadLegato(nvV)
                              && (lastLegatoProb_ >= 0.999f || r_polyLegato < lastLegatoProb_);
@@ -1153,7 +1153,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                     v.gsStep.triggerNote(pitchV, sem, nvV);   // STEP: slide/re-artic both re-strike
                 }
                 // Re-roll the forward commitment for the NEXT landing (mirror mono's LEAD, per voice).
-                float r_polyLegato = pe.legatoRandom[getLegatoStepForVoice(voiceIdx)];
+                float r_polyLegato = polyRandomSrc(voiceIdx, PL_LEGATO)[getLegatoStepForVoice(voiceIdx)];
                 v.gs.slurForward = noteCanLeadLegato(nvV)
                                  && (lastLegatoProb_ >= 0.999f || r_polyLegato < lastLegatoProb_);
                 v.gs.slurMember = prevSlur || v.gs.slurForward;  // SLEG: continues OR leads
@@ -1307,7 +1307,7 @@ int SequencerEngine::nvIdxForVoice(int bank, const PatternInput& input) const {
     if (bank < 0 || bank >= 15) return lastStepResult.nvIdx;
     // The probability array stays MONO (one shared shape); only the reading position is per-voice.
     const int idx = getVariationStepForVoice(bank) & 0x0F;
-    const float r = pe.variationRandom[idx];
+    const float r = polyRandomSrc(bank, PL_VARIATION)[idx];
     const int nv  = const_cast<SequencerEngine*>(this)->getNoteLenIdx(lastNoteVal_, input, r);
     // CLAMP to the mono event grid: a voice may release early, never hold past mono's next note.
     // NOTE_VALUES is ordered slowest→fastest, so max() picks the SHORTER of the two.

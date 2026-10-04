@@ -35,12 +35,16 @@ void PatternEngine::reset() {
             polyRandom(v, PL_MELODY)[i] = 0.5f;
             polyRandom(v, PL_OCTAVE)[i] = 0.5f;
             polyRandom(v, PL_QMIX)[i]   = 0.5f;   // q-mix twin
+            polyRandom(v, PL_VARIATION)[i] = 0.5f;  // No variation bias (matches mono default)
+            polyRandom(v, PL_LEGATO)[i]   = 0.0f;   // No legato/ties (matches mono default)
             
             polyRhythmSource[v][i] = 1.0f;
             polyAccentSource[v][i] = 1.0f;
             polyMelodySource[v][i] = polyRandom(v, PL_MELODY)[i];
             polyOctaveSource[v][i] = polyRandom(v, PL_OCTAVE)[i];
             polyQmixSource[v][i]   = polyRandom(v, PL_QMIX)[i];
+            polyVariationSource[v][i] = polyRandom(v, PL_VARIATION)[i];
+            polyLegatoSource[v][i]   = polyRandom(v, PL_LEGATO)[i];
         }
         
         rhythmSource[i] = rhythmRandom[i];
@@ -294,6 +298,16 @@ void PatternEngine::recomputeEffectiveRhythm() {
             }
         }
     }
+    // Poly VAR/LEG: no copula blend (polyVariation/Legato were intentionally removed from
+    // RhythmDraw), so write the raw per-voice draws from random_ into the slewed buffers.
+    // This MUST run unconditionally — when Sands is active the spread pipeline needs the
+    // "own" value to interpolate; when Sands is inactive the remap promote (below + in
+    // remapSlewedByPins) is the final value and these buffers mirror random_ for the UI.
+    for (int i = 0; i < 16; ++i)
+        for (int v = 0; v < 15; v++) {
+            slewedPolyVariation[v][i] = polyRandom(v, PL_VARIATION)[i];
+            slewedPolyLegato[v][i]    = polyRandom(v, PL_LEGATO)[i];
+        }
     if (!sandsActive) {
         for (int i = 0; i < 16; ++i) {
             rhythmRandom[i]=slewedRhythm[i]; variationRandom[i]=slewedVariation[i];

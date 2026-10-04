@@ -15,14 +15,11 @@ struct MonoSandsParameterManager {
     // Base spread per SPREADABLE lane. Indexed by this manager's BUFFER lane order:
     //   REST0 / MEL1 / OCT2 / LEG3 / ACC4 / VAR5 / QMIX6   (QMIX appended at buffer lane 6).
     // Set by per-lane trimpots, may be CV-modulated.
-    // LEGATO/VARIATION are mono-only — they have NO poly counterpart, so spread does not
-    // apply to them at all. REST/MEL/OCT/ACCENT/QMIX are the poly-derived spreadable lanes.
+    // SANDS CONSOLIDATION: ALL 7 lanes are spreadable (VAR/LEG promoted from mono-only).
     static constexpr int QMIX_BUFFER_LANE = 6;   // this manager's buffer-lane slot for QMIX
-    static constexpr int SPREAD_LANES = 7;   // index by buffer lane order; eligibility via isSpreadLane
-    // Spreadable lanes: REST(0), MELODY(1), OCTAVE(2), ACCENT(4) and QMIX(6) — the poly-derived
-    // lanes. LEGATO(3) and VARIATION(5) remain mono-only (raw draw, no spread).
+    static constexpr int SPREAD_LANES = 7;   // index by buffer lane order
     static constexpr bool isSpreadLane(int lane) {
-        return lane == 0 || lane == 1 || lane == 2 || lane == 4 || lane == QMIX_BUFFER_LANE;
+        return lane >= 0 && lane < SPREAD_LANES;   // all 7 lanes spreadable
     }
     float laneSpread[SPREAD_LANES] = {};
 
@@ -36,7 +33,7 @@ struct MonoSandsParameterManager {
         spreadMgr.patternEngine = pe;
     }
 
-    // lane: 0=REST, 1=MELODY, 2=OCTAVE only (others ignored — mono-only lanes)
+    // lane: 0=REST, 1=MELODY, 2=OCTAVE, 3=LEGATO, 4=ACCENT, 5=VARIATION, 6=QMIX
     void setLaneSpread(int lane, float value) {
         if (lane >= 0 && lane < SPREAD_LANES)
             laneSpread[lane] = rack::math::clamp(value, -1.f, 1.f);
@@ -81,8 +78,7 @@ struct MonoSandsParameterManager {
         return sum / (float)(1 + nPoly);
     }
 
-    // Post-spread value for (lane, step). REST/MEL/OCT get spread; LEG/ACC/VAR
-    // are mono-only → raw slewed draw.
+    // Post-spread value for (lane, step). All 7 lanes get spread.
     // Buffer lane (REST0/MEL1/OCT2/LEG3/ACC4/VAR5/QMIX6) → spread-engine lane
     // (REST0/MEL1/OCT2/ACC3/QMIX4) used by SpreadInterp::applyMono. -1 = not spreadable.
     static constexpr int bufferLaneToSpreadLane(int bufLane) {
@@ -92,7 +88,9 @@ struct MonoSandsParameterManager {
             case 2: return 2;   // OCTAVE
             case 4: return 3;   // ACCENT (buffer 4 → spread 3)
             case QMIX_BUFFER_LANE: return 4;   // QMIX (buffer 6 → spread 4)
-            default: return -1; // LEGATO(3)/VARIATION(5): mono-only, no spread
+            case 3: return 5;                 // LEGATO (buffer 3 → spread 5)
+            case 5: return 6;                 // VARIATION (buffer 5 → spread 6)
+            default: return -1;
         }
     }
 

@@ -58,8 +58,8 @@ struct SpreadManager {
   // Spread values: [voice][lane]
   // For macro: all voices use same spread (but we store separately for flexibility)
   // For per-voice: each voice has own spread
-  // Lane order is the SPREAD/poly-engine order: 0=REST 1=MEL 2=OCT 3=ACC 4=QMIX (PL_QMIX).
-  std::array<std::array<float, 5>, 8> spread = {};  // [8 voices][5 lanes: REST/MEL/OCT/ACC/QMIX]
+  // Lane order is the SPREAD/poly-engine order: 0=REST 1=MEL 2=OCT 3=ACC 4=QMIX 5=VAR 6=LEG.
+  std::array<std::array<float, 7>, 8> spread = {};  // [8 voices][7 lanes: REST/MEL/OCT/ACC/QMIX/VAR/LEG]
 
   // ── Average-poly display cache ───────────────────────────────────────────
   // calculateAveragePolyValue() was called 48x/UI-frame (3 lanes x 16 steps),
@@ -67,7 +67,7 @@ struct SpreadManager {
   // voices). The averaged grid only changes when the poly arrays or the active
   // voice count change, so cache the 3x16 grid and rebuild it at most once per
   // frame, and only when a cheap checksum of the inputs differs.
-  mutable std::array<std::array<float, 16>, 5> avgCache_ = {};
+  mutable std::array<std::array<float, 16>, 7> avgCache_ = {};
   mutable float avgChecksum_ = -1.f;
   mutable int   avgValid_ = 0;
   
@@ -75,7 +75,7 @@ struct SpreadManager {
     : patternEngine(pe), numVoices(nVoices), startVoiceIdx(startVoice) {
     // Initialize spreads to 0 (no interpolation)
     for (int v = 0; v < 8; ++v) {
-      for (int l = 0; l < 5; ++l) {
+      for (int l = 0; l < 7; ++l) {
         spread[v][l] = 0.0f;
       }
     }
@@ -91,13 +91,13 @@ struct SpreadManager {
   
   
   void setSpread(int voiceIdx, int lane, float value) {
-    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 5) {
+    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 7) {
       spread[voiceIdx][lane] = rack::math::clamp(value, -1.0f, 1.0f);
     }
   }
   
   float getSpread(int voiceIdx, int lane) const {
-    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 5) {
+    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 7) {
       return spread[voiceIdx][lane];
     } // Default to 0.0f if out of bounds, meaning no spread
     return 0.0f;
@@ -406,7 +406,7 @@ struct MacroSpreadManager : public SpreadManager {
   
   // Override: set spread applies to all voices
   void setSpread(int lane, float value) {
-    if (lane >= 0 && lane < 5) {
+    if (lane >= 0 && lane < 7) {
       float clamped = rack::math::clamp(value, -1.0f, 1.0f);
       for (int v = 0; v < numVoices; ++v) {
         SpreadManager::setSpread(v, lane, clamped);

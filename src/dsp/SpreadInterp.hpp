@@ -52,13 +52,15 @@ struct SpreadInterp {
     // Pointers to the lane's slewed buffers for the engine. Set per lane by the
     // caller so the same code serves rhythm/melody/octave.
     // Per-lane accessor into the PatternEngine slewed draws.
-    // Lane index is the SPREAD/poly-engine lane: 0=REST 1=MELODY 2=OCTAVE 3=ACCENT 4=QMIX
+    // Lane index is the SPREAD/poly-engine lane: 0=REST 1=MEL 2=OCT 3=ACC 4=QMIX 5=VAR 6=LEG
     static float monoSlewed(const PatternEngine& pe, int lane, int step) {
         switch (lane) {
             case 0:  return pe.slewedRhythm[step];
             case 1:  return pe.slewedMelody[step];
             case 3:  return pe.slewedAccent[step];
             case 4:  return pe.slewedQmix[step];
+            case 5:  return pe.slewedVariation[step];
+            case 6:  return pe.slewedLegato[step];
             default: return pe.slewedOctave[step];
         }
     }
@@ -68,6 +70,8 @@ struct SpreadInterp {
             case 1:  return pe.slewedPolyMelody[voice][step];
             case 3:  return pe.slewedPolyAccent[voice][step];
             case 4:  return pe.slewedPolyQmix[voice][step];
+            case 5:  return pe.slewedPolyVariation[voice][step];
+            case 6:  return pe.slewedPolyLegato[voice][step];
             default: return pe.slewedPolyOctave[voice][step];
         }
     }
@@ -90,6 +94,8 @@ struct SpreadInterp {
             case 1:  return pe.preRemapSlewedMelody[step];
             case 3:  return pe.preRemapSlewedAccent[step];
             case 4:  return pe.preRemapSlewedQmix[step];
+            case 5:  return pe.preRemapSlewedVariation[step];
+            case 6:  return pe.preRemapSlewedLegato[step];
             default: return pe.preRemapSlewedOctave[step];
         }
     }
@@ -99,6 +105,8 @@ struct SpreadInterp {
             case 1:  return pe.preRemapSlewedPolyMelody[voice][step];
             case 3:  return pe.preRemapSlewedPolyAccent[voice][step];
             case 4:  return pe.preRemapSlewedPolyQmix[voice][step];
+            case 5:  return pe.preRemapSlewedPolyVariation[voice][step];
+            case 6:  return pe.preRemapSlewedPolyLegato[voice][step];
             default: return pe.preRemapSlewedPolyOctave[voice][step];
         }
     }
@@ -145,10 +153,10 @@ struct SpreadInterp {
     // Used only by the debug assertion to know when V1 is actually pinned (src != self).
     static int v1caSrc(const PatternEngine& pe, int lane) {
         switch (lane) {
-            case 0: case 3: return pe.caRhythmSrc[0];  // REST, ACC → rhythm plane
-            case 1: case 2: return pe.caMelodySrc[0];  // MEL, OCT → melody plane
-            case 4:         return pe.caQmixSrc[0];    // QMIX → qmix plane
-            default:        return 0;
+            case 0: case 3: case 5: case 6: return pe.caRhythmSrc[0];  // REST, ACC, VAR, LEG → rhythm plane
+            case 1: case 2:                 return pe.caMelodySrc[0];  // MEL, OCT → melody plane
+            case 4:                          return pe.caQmixSrc[0];    // QMIX → qmix plane
+            default:                         return 0;
         }
     }
 
