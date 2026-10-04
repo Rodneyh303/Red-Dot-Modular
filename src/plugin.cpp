@@ -55,7 +55,10 @@ void init(rack::Plugin* p) {
 	//p->addModel(modelMonsoonDeepStraitsSandsEast);  // Deep: voices 2-8
 	//p->addModel(modelMonsoonDeepStraitsSandsWest);  // Deep: voices 9-16
 	// Visual editor expanders
-	p->addModel(modelMonsoonSandsVisualExpander);   // Mono visual DNA editor
+	// Mono visual RETIRED (sands-consolidation Step 6): subsumed by Macro (7 lanes + mono mode).
+	// Source moved to src/deprecated/; modelMonsoonSandsVisualExpander is now nullptr (see stub),
+	// so cachedSandsVisualExpander detection is an inert no-op. Slug removed from plugin.json.
+	//p->addModel(modelMonsoonSandsVisualExpander);   // Mono visual DNA editor
 	p->addModel(modelStraitsEastSandsVisual);       // East visual DNA editor (tabbed)
 	// RETIRED: West visual editor merged into East (15-voice). Source kept, not registered.
 	p->addModel(modelStraitsSandsMacroVisual);      // Macro visual DNA editor

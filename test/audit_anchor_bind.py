@@ -49,23 +49,8 @@ def p(*parts):
 # for the components layer). 'counts' asserts anchor-family sizes against the
 # SandsGrid constants, catching lane-count divergence (the 6→7 q-mix bug class).
 MODULES = {
-    "sands_mono": {
-        "widget": ["src/MonsoonSandsVisualExpander.cpp"],
-        "panel": "res/panels/SandsMonoVisual_48HP.svg",
-        # family-prefix -> expected count (int) or SandsGrid symbol name (str)
-        "counts": {
-            "input_cv_": 21,          # 7 lanes x 3 (LEN/OFF/ROT)
-            "param_atten_": 21,
-            "param_spr_": 5,          # 5 poly spread lanes
-            "input_sprcv_": 5,
-            "param_spratten_": 5,
-            "param_owner_": 5,
-            "param_dir_": 7,          # 7 mono lanes
-            "input_dir_mod_": 7,
-            "input_deleg_mod_": 5,
-            "output_prob_": 7,
-        },
-    },
+    # sands-consolidation Step 6: sands_mono retired (subsumed by Macro). Widget source
+    # moved to src/deprecated/; panel no longer generated. Audit entry removed.
     "sands_east": {
         "widget": ["src/StraitsEastSandsVisual.cpp"],
         "panel": "res/panels/StraitsEastSandsVisual_48HP.svg",
