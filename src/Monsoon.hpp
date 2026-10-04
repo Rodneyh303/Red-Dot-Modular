@@ -760,10 +760,11 @@ struct Monsoon : Module {
         // index = v*2 + lane  (== old VARLEG_DELEG_START + v*2 + lane).
         // The only array with no mono slice — see MVC_UNIFICATION.md step 2.
         float varlegDeleg[30] = {0};
-        // varlegAtten: VAR/LEG attenuation per (v = 0..15 voice-slot) × lane(0=VAR,1=LEG) × col(0..2).
-        // CONVENTION: VoiceResolver::voiceSlot (mono = slot 0). Verified against call sites.
-        // index = v*6 + lane*3 + col  (== old VARLEG_ATTEN_START + v*6 + lane*3 + col).
-        float varlegAtten[96] = {0};
+        // varlegAtten RETIRED: VAR/LEG CV-depth now lives in the UNIFIED macroAtten store
+        // (lanes 5/6, index v*28 + lane*4 + col) — see getMacroAtten/setMacroAtten. The
+        // separate VAR/LEG atten path was a relic of the "VAR/LEG are mono-only, no spread"
+        // era; the sands consolidation (POLY_LANES=7) ends it. varlegDeleg stays (it is the
+        // VAR/LEG LOR delegation toggle, a distinct feature — see getVarlegDeleg).
         // macroOwn: owner per poly lane(0..4, QMIX-widened). INDEXING IS POLY-BANK, NOT voiceSlot:
         //   v = 0..14  -> V2..V16 (poly bank index)
         //   v = 15     -> V1/mono   (see getMonoMacroOwn/setMonoMacroOwn)
@@ -775,7 +776,12 @@ struct Monsoon : Module {
         float macroSend[448] = {0};  // 16 × 7 lanes × 4 items (SANDS CONSOLIDATION Step 1)
         // macroAtten: atten depth per (v=0..15)×(lane*4+col, 28 wide). index = v*28 + lane*4+col.
         // CONVENTION: VoiceResolver::voiceSlot (mono = slot 0). Verified against call sites.
-        float macroAtten[320] = {0}; // 16 × 5 lanes × 4 cols (was 256 = 16 × 4 × 4)
+        // SANDS CONSOLIDATION Step 2: now 7 poly lanes (REST/MEL/OCT/ACC/QMIX/VAR/LEG) × 4 cols
+        // = 28 wide × 16 voice-slots = 448. Was 320 (5 lanes) — getMacroAtten already read with
+        // a v*28 stride (7 lanes) into the 320-element array, so it was OOB for voice-slot ≥ 12
+        // and the get/set strides disagreed (get v*28 vs set v*20). Both fixed here: array 448,
+        // BOTH strides v*28. VAR/LEG (lanes 5/6) now share this store with the 5 core lanes.
+        float macroAtten[448] = {0}; // 16 × 7 lanes × 4 cols
         // Unified per-voice LOR base store (Stage 1 of the MVC unification). Indexed by
         // voiceSlot (0 = V1/mono, 1..15 = V2..V16) × bank (0=REST/DNA 1=MEL 2=OCT 3=ACC
         // 4=VAR 5=LEG) × (0=len 1=off 2=rot). This is the SINGLE home for every voice's
@@ -891,7 +897,7 @@ struct Monsoon : Module {
     float getMacroSend(int v, int lane, int item) const { return editor.macroSend[(v*7 + lane)*4 + item]; }
     void  setMacroSend(int v, int lane, int item, float x) { editor.macroSend[(v*7 + lane)*4 + item] = x; }
     float getMacroAtten(int v, int laneCol) const { return editor.macroAtten[v*28 + laneCol]; }
-    void  setMacroAtten(int v, int laneCol, float x) { editor.macroAtten[v*20 + laneCol] = x; }
+    void  setMacroAtten(int v, int laneCol, float x) { editor.macroAtten[v*28 + laneCol] = x; }
 
     // LANE_DIR accessors — the ONE place the index math lives (mirrors old dirId/monoDirId).
     float getLaneDir(int v, int lane) const { return editor.laneDir[v*6 + lane]; }
@@ -899,11 +905,11 @@ struct Monsoon : Module {
     float getMonoLaneDir(int lane) const { return editor.laneDir[15*6 + lane]; }
     void  setMonoLaneDir(int lane, float x) { editor.laneDir[15*6 + lane] = x; }
 
-    // VARLEG accessors (mirror old varlegDelegId / varlegAttId index math).
+    // VARLEG accessors. varlegDeleg stays (VAR/LEG LOR delegation toggle — a distinct feature).
+    // varlegAtten RETIRED: VAR/LEG CV-depth now uses the unified macroAtten store via
+    // getMacroAtten(v, lane*4+col) with lane 5=VAR, 6=LEG (see macroAtten comment above).
     float getVarlegDeleg(int v, int lane) const { return editor.varlegDeleg[v*2 + lane]; }
     void  setVarlegDeleg(int v, int lane, float x) { editor.varlegDeleg[v*2 + lane] = x; }
-    float getVarlegAtten(int v, int lane, int col) const { return editor.varlegAtten[v*6 + lane*3 + col]; }
-    void  setVarlegAtten(int v, int lane, int col, float x) { editor.varlegAtten[v*6 + lane*3 + col] = x; }
 
     MonsoonSandsManager dnaManager{engine}; // Always valid
     std::unique_ptr<ParameterManager> paramManager;

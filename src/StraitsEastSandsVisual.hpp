@@ -104,18 +104,20 @@ namespace StraitsEastVisualIds {
     // ── Input IDs ─────────────────────────────────────────────────────────
     enum InputId {
         CV_START = 0,
-        NUM_LANE_INPUTS = CV_START + 20,              // 5 poly lanes × 4 cols (LEN/OFF/ROT/SPR)
-        // VAR/LEG poly CV inputs (LEN/OFF/ROT only — no SPR). lane 0=VAR, 1=LEG; col 0..2.
-        VARLEG_CV_START = NUM_LANE_INPUTS,            // = 20
-        DIR_MOD_START = VARLEG_CV_START + 6,          // = 26 — direction gate-mod (7 east lanes)
-        DELEG_MOD_START = DIR_MOD_START + 7,          // = 33 — delegation gate-mod (7 east lanes, all lanes)
-        NUM_INPUTS = DELEG_MOD_START + 7              // = 40
+        // SANDS CONSOLIDATION Step 3: 7 poly lanes (REST/MEL/OCT/ACC/QMIX/VAR/LEG) × 4 cols.
+        // VAR/LEG now use cvId(5/6, col) like the 5 core lanes — the separate varlegCvId path
+        // is RETIRED (it aliased cvId(5/6) at the same input ids 20+, and its atten store
+        // varlegAtten was a dead second store). NUM_LANE_INPUTS 20→28; dir/deleg mod shift +2.
+        NUM_LANE_INPUTS = CV_START + 28,              // 7 poly lanes × 4 cols (LEN/OFF/ROT/SPR)
+        DIR_MOD_START = NUM_LANE_INPUTS,              // = 28 — direction gate-mod (7 east lanes)
+        DELEG_MOD_START = DIR_MOD_START + 7,          // = 35 — delegation gate-mod (7 east lanes, all lanes)
+        NUM_INPUTS = DELEG_MOD_START + 7              // = 42
     };
     static inline int dirModId(int lane) { return DIR_MOD_START + lane; }
     static inline int delegModId(int lane) { return DELEG_MOD_START + lane; }
     static inline int cvId(int lane, int col) { return CV_START + lane*4 + col; }
-    // VAR/LEG CV jack id. lane 0=VAR, 1=LEG; col 0=LEN,1=OFF,2=ROT.
-    static inline int varlegCvId(int lane, int col) { return VARLEG_CV_START + lane*3 + col; }
+    // varlegCvId RETIRED: VAR/LEG CV jacks are now cvId(5, col) (VAR) / cvId(6, col) (LEG),
+    // sharing the unified input-id range and the macroAtten depth store with the 5 core lanes.
 
     // ── LOR bank helper ───────────────────────────────────────────────────
 
@@ -237,25 +239,9 @@ struct StraitsEastSandsVisual : Module {
                 configInput(cvId(lane,c), nm+" CV (poly, per-voice depth)");
             }
 
-        // VARIATION / LEGATO poly CV (LEN/OFF/ROT only — no SPR, no spread). Display
-        // proxies + per-voice depth store, same selected-voice pattern as the 4 lanes.
-        // ch0 of each jack is the mono/V1 mix-in (slot 0); ch1.. feed poly voices.
-        {
-            static const char* vlNames[2] = {"VARIATION","LEGATO"};
-            static const char* vlItems[3] = {"Len","Off","Rot"};
-            // VAR/LEG CV-depth attens: STORE-BACKED (MVC step 1d). varlegAttDispId ids KEPT (name
-            // panel slots) but reserve NO param slots — StoreKnob reads/writes editor.varlegAtten
-            // [currentSlot(), lane, col] live per tab. Only the CV jack (input) is configured here.
-            for (int lane=0; lane<2; ++lane)
-                for (int c=0; c<3; ++c) {
-                    std::string nm = std::string(vlNames[lane])+" "+vlItems[c];
-                    configInput(varlegCvId(lane,c),
-                                nm+" CV (poly: ch1=mono mix-in, ch2+ voices)");
-                }
-            // Per-voice depth store (16-wide, slot 0 = mono/V1).
-            // Per-voice VAR/LEG depth store MIGRATED to Monsoon::editor.varlegAtten
-            // (NUM_PARAMS_MIGRATION.md) -- no configParam here; accessors carry it.
-        }
+        // VARIATION / LEGATO poly CV is now configured by the main cvId loop above (lanes 5/6,
+        // 4 cols incl SPR) — the separate varlegCvId/configInput block is RETIRED. VAR/LEG CV
+        // depth lives in the unified macroAtten store (getMacroAtten(slot, lane*4+col)).
 
         for (int v=0; v<15; ++v) {   // poly voices 2..16: owner/send/atten banks are 15-wide
             std::string vl = "V"+std::to_string(v+2)+" ";

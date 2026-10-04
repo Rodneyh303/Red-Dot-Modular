@@ -178,12 +178,14 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_t* vd = json_array();
     for (int i = 0; i < 30; ++i) json_array_append_new(vd, json_real(m->editor.varlegDeleg[i]));
     json_object_set_new(root, "editorVarlegDeleg", vd);
-    json_t* va = json_array();
-    for (int i = 0; i < 96; ++i) json_array_append_new(va, json_real(m->editor.varlegAtten[i]));
-    json_object_set_new(root, "editorVarlegAtten", va);
+    // editorVarlegAtten RETIRED: VAR/LEG CV-depth now lives in editorMacroAtten (lanes 5/6).
+    // Old patches with editorVarlegAtten are still migrated on load (see the load block).
 
-    // MACRO owner (80) + send (320) + atten (320), migrated out of params[]. QMIX-widened to
-    // 5 poly lanes (was 64/256/256 at 4 lanes). Tap re-homed to an expander param (Rack path).
+    // MACRO owner (112) + send (448) + atten (448), migrated out of params[]. SANDS
+    // CONSOLIDATION Step 2: 7 poly lanes (REST/MEL/OCT/ACC/QMIX/VAR/LEG) — VAR/LEG atten
+    // now shares macroAtten (was 320 at 5 lanes; getMacroAtten already read a 7-lane stride
+    // into the 320 array → OOB, fixed). Own/send save loops stay at the 5-lane count because
+    // VAR/LEG are East-only (never Macro-owned), so their own/send slots are always 0.
     json_t* mo = json_array();
     for (int i = 0; i < 80; ++i) json_array_append_new(mo, json_real(m->editor.macroOwn[i]));
     json_object_set_new(root, "editorMacroOwn", mo);
@@ -191,7 +193,7 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     for (int i = 0; i < 320; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));
     json_object_set_new(root, "editorMacroSend", ms);
     json_t* ma = json_array();
-    for (int i = 0; i < 320; ++i) json_array_append_new(ma, json_real(m->editor.macroAtten[i]));
+    for (int i = 0; i < 448; ++i) json_array_append_new(ma, json_real(m->editor.macroAtten[i]));
     json_object_set_new(root, "editorMacroAtten", ma);
 
     // V1 (East-alone) LOR/spread backup + its written-once guard.
@@ -200,7 +202,9 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     for (int i = 0; i < 336; ++i) json_array_append_new(lb, json_real(m->editor.lorBase[i]));
     json_object_set_new(root, "editorLorBase", lb);
     json_t* sp = json_array();
-    for (int i = 0; i < 80; ++i) json_array_append_new(sp, json_real(m->editor.spread[i]));
+    // SANDS CONSOLIDATION Step 3: 16 slots × 7 poly lanes (incl VAR/LEG) = 112. Was 80 (16×5),
+    // so VAR/LEG spread never persisted. Now it does.
+    for (int i = 0; i < 112; ++i) json_array_append_new(sp, json_real(m->editor.spread[i]));
     json_object_set_new(root, "editorSpread", sp);
 
     // GLOBAL slice (MVC step 1). Macro's globals used to be params, which gave save/restore
@@ -431,10 +435,22 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
             for (size_t i = 0; i < 30 && i < json_array_size(j); ++i)
                 m->editor.varlegDeleg[i] = (float)json_real_value(json_array_get(j, i));
     }
+    // editorVarlegAtten RETIRED: VAR/LEG CV-depth now in editorMacroAtten (lanes 5/6).
+    // Migrate legacy patches: fold the old VAR/LEG atten (v*6 + lane*3 + col) into the unified
+    // macroAtten store at lane 5/6 (v*28 + lane*4 + col). Old layout: lane 0=VAR,1=LEG; col 0..2.
     if (auto j = json_object_get(root, "editorVarlegAtten")) {
-        if (json_is_array(j))
-            for (size_t i = 0; i < 96 && i < json_array_size(j); ++i)
-                m->editor.varlegAtten[i] = (float)json_real_value(json_array_get(j, i));
+        if (json_is_array(j)) {
+            for (int vs = 0; vs < 16; ++vs)
+                for (int lane = 0; lane < 2; ++lane)
+                    for (int col = 0; col < 3; ++col) {
+                        size_t oldIdx = (size_t)(vs*6 + lane*3 + col);
+                        if (oldIdx < json_array_size(j)) {
+                            int engLane = (lane == 0) ? 5 : 6;   // VAR→5, LEG→6
+                            m->editor.macroAtten[vs*28 + engLane*4 + col] =
+                                (float)json_real_value(json_array_get(j, oldIdx));
+                        }
+                    }
+        }
     }
     if (auto j = json_object_get(root, "editorMacroOwn")) {
         if (json_is_array(j))
@@ -448,7 +464,7 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     }
     if (auto j = json_object_get(root, "editorMacroAtten")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 320 && i < json_array_size(j); ++i)   // 16 × 5 × 4 cols
+            for (size_t i = 0; i < 448 && i < json_array_size(j); ++i)   // 16 × 7 × 4 cols
                 m->editor.macroAtten[i] = (float)json_real_value(json_array_get(j, i));
     }
     if (auto j = json_object_get(root, "editorLorBase")) {
@@ -458,7 +474,7 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     }
     if (auto j = json_object_get(root, "editorSpread")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 80 && i < json_array_size(j); ++i)    // 16 × 5 poly lanes
+            for (size_t i = 0; i < 112 && i < json_array_size(j); ++i)   // 16 × 7 poly lanes
                 m->editor.spread[i] = (float)json_real_value(json_array_get(j, i));
     }
     auto loadArrN = [&](const char* key, float* a, int n) {

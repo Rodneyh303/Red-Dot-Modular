@@ -318,38 +318,22 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // independent of spread; spread is applied in the per-voice block alongside REST/MEL/…/QMIX.
             if (eastLOR) {
                 using SE = SequencerEngine;
-                // VARLEG deleg + atten migrated to Monsoon::editor (NUM_PARAMS_MIGRATION.md);
-                // read them via this Monsoon pointer (LANE_DIR below uses the same lookup).
+                // VAR/LEG LOR now uses the UNIFIED eastLorVal path (identical to REST/MEL/OCT/ACC/
+                // QMIX): cvId(engLane,c) CV jack + getMacroAtten(slot, engLane*4+c) depth +
+                // getLorBase(slot, engLane, item). The separate varlegCvId/varlegAtten path is
+                // RETIRED (sands consolidation: VAR/LEG are full poly lanes, one CV/atten store).
+                // No Macro blend: VAR/LEG stay East-owned (an owned lane would annihilate the
+                // per-voice divergence that IS the feature), so we call eastLorVal (East-only)
+                // NOT combineLOR (which adds Macro ownership/blend). The LOR bank for VAR/LEG ==
+                // the engine lane (5/6) — same identity the old varlegStoreBank(vl) returned.
+                // mmE retained for the VAR/LEG delegation toggle pushed below.
                 Monsoon* mmE = redDot::findMonsoonEitherSide(eastLOR);
-                // East's own base + per-voice poly CV for a VAR/LEG L/O/R item. Mirrors eastLorVal
-                // but uses the VAR/LEG CV jacks (varlegCvId) and per-voice depth (varlegAttId).
-                // No Macro blend: VAR/LEG are never Macro-owned (an owned lane would annihilate
-                // per-voice divergence). vl = 0 (VAR) or 1 (LEG); col c = 0/1/2 (LEN/OFF/ROT).
-                // Poly cable ch(v) → poly voice v (V(v+2)); the mono/V1 ch0 mix-in is applied in
-                // the East widget's v1Editable strand write, not here.
-                auto varlegLorVal = [&](int vl, int c, float lo, float hi)->int {
-                    // Store-bank order (Monsoon.hpp lorBase): MEL0 OCT1 REST2 ACC3 QMIX4 VAR5 LEG6.
-                    // VAR/LEG banks come from the SINGLE canonical helper (dsp/LaneMapping.hpp
-                    // varlegStoreBank): VAR→5, LEG→6, derived from POLY_LANE_COUNT + guarded by
-                    // static_assert. This is the fix for the old `vl + 4` drift (QMIX's bank
-                    // insertion silently made VAR read QMIX / LEG read VAR — QMIX drag bled into
-                    // VAR/LEG and poly VAR/LEG edits never took). One source now for every site.
-                    const int bank = dotModular::varlegStoreBank(vl);   // VAR→5, LEG→6
-                    float base = mmE ? mmE->getLorBase(slot, bank, c) : 0.f;
-                    if (eastVisual->inputs[StraitsEastVisualIds::varlegCvId(vl,c)].isConnected()) {
-                        float att = mmE ? mmE->getVarlegAtten(slot, vl, c) : 0.f;
-                        float cv  = eastVisual->inputs[StraitsEastVisualIds::varlegCvId(vl,c)]
-                                        .getPolyVoltage(v) / 10.f;
-                        base = math::clamp(base + cv * att * (hi - lo), lo, hi);
-                    }
-                    return (int)std::lround(base);
-                };
-                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_LEN) = varlegLorVal(0, 0, 1.f, 16.f);
-                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_OFF) = varlegLorVal(0, 1, 0.f, 15.f);
-                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_ROT) = varlegLorVal(0, 2, 0.f, 15.f);
-                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_LEN) = varlegLorVal(1, 0, 1.f, 16.f);
-                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_OFF) = varlegLorVal(1, 1, 0.f, 15.f);
-                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_ROT) = varlegLorVal(1, 2, 0.f, 15.f);
+                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_LEN) = (int)std::lround(eastLorVal(PL::PL_VARIATION, 0, PL::PL_VARIATION, 0, 1.f, 16.f));
+                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_OFF) = (int)std::lround(eastLorVal(PL::PL_VARIATION, 1, PL::PL_VARIATION, 1, 0.f, 15.f));
+                engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_ROT) = (int)std::lround(eastLorVal(PL::PL_VARIATION, 2, PL::PL_VARIATION, 2, 0.f, 15.f));
+                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_LEN) = (int)std::lround(eastLorVal(PL::PL_LEGATO,    0, PL::PL_LEGATO,    0, 1.f, 16.f));
+                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_OFF) = (int)std::lround(eastLorVal(PL::PL_LEGATO,    1, PL::PL_LEGATO,    1, 0.f, 15.f));
+                engine.polyLORRef(v, SE::EDITOR_LANE_LEGATO,    SE::LOR_ROT) = (int)std::lround(eastLorVal(PL::PL_LEGATO,    2, PL::PL_LEGATO,    2, 0.f, 15.f));
 
                 // Delegation toggles (§4d): 0 = follow mono (default, silent), 1 = Local East.
                 // When Local East, the LOR pushed above is read; when delegating, the engine
@@ -539,13 +523,21 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // is meaningful: applyPoly interpolates each voice's draw toward the mono (V1) anchor.
             // Macro cannot own VAR/LEG (it would drive all voices identically and annihilate the
             // per-voice divergence that IS the feature), so there is no owner/Macro blend — the base
-            // spread knob is applied directly. CV jack + depth atten arrive with the SPR column
-            // (panel Step 3); until then only the manual knob modulates the spread amount.
+            // spread knob + SPR CV are applied directly (mirroring the East-owned branch of the
+            // REST/MEL/.../QMIX spread blocks, but WITHOUT combineSpread's Macro ownership leg).
+            // SPR CV jack = cvId(lane,3); depth = getMacroAtten(slot, lane*4+3) — the UNIFIED store
+            // VAR/LEG now share with the 5 core lanes (sands consolidation Step 3).
             {
                 static constexpr int VARLEG_SPREAD_LANES[2] = { PL::PL_VARIATION, PL::PL_LEGATO };
                 for (int vl = 0; vl < 2; ++vl) {
                     const int lane = VARLEG_SPREAD_LANES[vl];
                     float interp = math::clamp(mmOwn ? mmOwn->getSpread(slot, lane) : 0.f, -1.f, 1.f);
+                    if (eastVisual && eastVisual->inputs[cvId(lane,3)].isConnected()) {
+                        float att = mmOwn ? mmOwn->getMacroAtten(slot, lane*4 + 3) : 0.f;   // PER-VOICE SPR depth
+                        float cv  = eastVisual->inputs[cvId(lane,3)].getPolyVoltage(v) / 10.f;
+                        interp += cv * att * 2.f;   // ×2 = ±1 span. End-clamped below.
+                    }
+                    interp = math::clamp(interp, -1.f, 1.f);
                     if (eastVisual) eastVisual->polySpreadEffective[v][lane] = interp;
                     // VAR/LEG are on the rhythm plane (SpreadInterp::v1caSrc: cases 5/6 → caRhythmSrc),
                     // so they share the rhythm-axis spread lock with REST/ACCENT.

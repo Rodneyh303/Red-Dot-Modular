@@ -360,8 +360,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             }
             // engine.spread[slot][editorLane] is the engine's own spread state (was monoVis->
             // spreadEffective — MVC: the model no longer reaches into the visual). Accessed engine-
-            // order via spreadE/spreadERef (0=REST,1=MEL,2=OCT,3=ACCENT); lanes 4/5 unused (LEG/VAR
-            // are mono-only, no spread).
+            // order via spreadE/spreadERef (0=REST,1=MEL,2=OCT,3=ACCENT,4=QMIX,5=VAR,6=LEG). SANDS
+            // CONSOLIDATION Step 3: lanes 5/6 (VAR/LEG) are now spread-active (the loop above runs
+            // l < POLY_LANES=7); the old 'lanes 4/5 unused (LEG/VAR mono-only)' note was stale.
 
             // ── Sands spread→final (Option W, Model 1) ───────────────────────
             // Mono owns the MONO final arrays: read the SLEWED draw, apply
@@ -385,10 +386,16 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 if (sprR) {
                     engine.pe.rhythmRandom[i] = redDot::SpreadInterp::applyMono(
                         engine.pe, 0, i, engine.spreadE(0, 0));
-                    engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];     // mono-only, raw
+                    // VAR/LEG spread (lanes 5/6): applyMono, not the raw slewed copy. Under
+                    // anchor-V1 this is a self-target no-op, but under follow-CA (V1 pinned) it
+                    // interpolates own(pre-remap) vs target(post-remap) — meaningful. Either way
+                    // the spread value is now read/published instead of dropped on the floor.
+                    engine.pe.variationRandom[i] = redDot::SpreadInterp::applyMono(
+                        engine.pe, 5, i, engine.spreadE(0, 5));
+                    engine.pe.legatoRandom[i]    = redDot::SpreadInterp::applyMono(
+                        engine.pe, 6, i, engine.spreadE(0, 6));
                     engine.pe.accentRandom[i] = redDot::SpreadInterp::applyMono(
                         engine.pe, 3, i, engine.spreadE(0, 3));
-                    engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
                 }
                 if (sprM) {
                     engine.pe.melodyRandom[i] = redDot::SpreadInterp::applyMono(
@@ -496,27 +503,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         (int)std::round(addCV(off, 1, 0.f, 15.f)),
                         (int)std::round(addCV(rot, 2, 0.f, 15.f)));
                 }
-                // VAR/LEG (4/5): East-owned, never Macro-delegated, no send blend. strand == el.
-                for (int el = dotModular::SandsGrid::POLY_LANES; el < dotModular::SandsGrid::EAST_LANES; ++el) {
-                    const int vl = el - dotModular::SandsGrid::POLY_LANES;   // 0=VAR, 1=LEG
-                    const int b0 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, el, 0)) : 16;
-                    const int b1 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, el, 1)) : 0;
-                    const int b2 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, el, 2)) : 0;
-                    auto addCV = [&](float base, int item, float lo, float hi)->float {
-                        if (eastV1->inputs[East::varlegCvId(vl,item)].isConnected()) {
-                            float att = mmV1 ? mmV1->getVarlegAtten(kMono, vl, item) : 0.f;
-                            float cv  = eastV1->inputs[East::varlegCvId(vl,item)].getPolyVoltage(0) / 10.f;  // ch0 = V1
-                            base += cv * att * (hi - lo);
-                        }
-                        return rack::math::clamp(base, lo, hi);
-                    };
-                    // VAR/LEG are RHYTHM-axis strands -> melodyAxis=false (SB_SANDS_R).
-                    if (dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false))   // LOR LATCH: skip re-push under lock
-                    engine.setStrand(StrandWriter::EAST, el,
-                        (int)std::round(addCV((float)std::max(1, b0), 0, 1.f, 16.f)),
-                        (int)std::round(addCV((float)(((b1 % 16) + 16) % 16), 1, 0.f, 15.f)),
-                        (int)std::round(addCV((float)(((b2 % 16) + 16) % 16), 2, 0.f, 15.f)));
-                }
+                // VAR/LEG (editor 5/6) now flow through the SAME core loop above (POLY_LANES=7),
+                // via cvId(5/6,item) + getMacroAtten(kMono, 5/6*4+item) + getLorBase(kMono, 5/6,·).
+                // The separate varleg V1 LOR block is RETIRED (sands consolidation Step 3): one
+                // CV/atten system, no varlegCvId/varlegAtten. VAR/LEG are never Macro-owned
+                // (monoOwnedByMacro returns false for lanes 5/6), so the core loop's Macro branch
+                // is skipped and the base+CV path runs — matching the old block's behaviour exactly
+                // (sendBlend is 0 for VAR/LEG, so the core loop's clamp(base+sendBlend) == clamp(base)).
             }
 
             // ── SPREAD: lock-gated (frozen pattern must not be re-spread). LOR above already ran.
@@ -550,6 +543,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             const float spO = sprForLane(2);
             const float spA = sprForLane(3);
             const float spQ = sprForLane(4);   // QMIX (spread/engine lane 4)
+            const float spV = sprForLane(5);   // VARIATION (spread/engine lane 5)
+            const float spL = sprForLane(6);   // LEGATO (spread/engine lane 6)
             engine.pe.setSandsActive(true);
             // V1/mono spread: applyMono reads the mode from pe.spreadTargetMode[lane] and
             // handles both original + target selection internally. No Monsoon pointer needed.
@@ -557,8 +552,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 if (axR) {
                     engine.pe.rhythmRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 0, i, spR);
                     engine.pe.accentRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 3, i, spA);
-                    engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];
-                    engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
+                    // VAR/LEG spread (lanes 5/6) — applyMono, not the raw slewed copy (the raw copy
+                    // dropped the spread value entirely; under follow-CA this is meaningful, and it
+                    // keeps VAR/LEG on the same path as the 5 core lanes).
+                    engine.pe.variationRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 5, i, spV);
+                    engine.pe.legatoRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 6, i, spL);
                 }
                 if (axM) {
                     engine.pe.melodyRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 1, i, spM);
@@ -661,8 +659,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 if (mSpR) {
                     engine.pe.rhythmRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 0, i, spv[0]);
                     engine.pe.accentRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 3, i, spv[3]);
-                    engine.pe.legatoRandom[i]    = engine.pe.slewedLegato[i];
-                    engine.pe.variationRandom[i] = engine.pe.slewedVariation[i];
+                    // VAR/LEG spread (lanes 5/6): spv[5/6] are populated by the loop above
+                    // (lane < POLY_LANES=7). applyMono, not the raw slewed copy.
+                    engine.pe.variationRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 5, i, spv[5]);
+                    engine.pe.legatoRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 6, i, spv[6]);
                 }
                 if (mSpM) {
                     engine.pe.melodyRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 1, i, spv[1]);

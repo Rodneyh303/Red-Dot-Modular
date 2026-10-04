@@ -58,16 +58,16 @@ MODULES = {
         # convention collided (param_4 = SPREAD_Q AND an atten slot via a base-4-vs-5
         # off-by-one). Per-family counts now pin every control.
         "counts": {
-            "input_cv_": 20,          # 5 poly lanes × 4 (LEN/OFF/ROT/SPR)
-            "param_atten_": 20,
-            "param_spr_": 5,          # 5 poly spread bases (editor-lane indexed)
-            "input_varlegcv_": 6,     # VAR/LEG × 3 (LEN/OFF/ROT)
-            "param_varlegatten_": 6,
-            "param_owner_": 7,        # 5 poly (incl QMIX) + VAR/LEG
+            "input_cv_": 28,          # 7 poly lanes × 4 (LEN/OFF/ROT/SPR) — VAR/LEG migrated
+            "param_atten_": 28,
+            "param_spr_": 7,          # 7 poly spread bases (editor-lane indexed; VAR/LEG added)
+            # input_varlegcv_ / param_varlegatten_ RETIRED: VAR/LEG now use input_cv_/param_atten_
+            # (sands consolidation Step 3) — the separate varleg CV/atten path is gone.
+            "param_owner_": 7,        # 7 poly (incl QMIX/VAR/LEG)
             "param_dir_": 7,
             "input_dir_mod_": 7,
             "input_deleg_mod_": 7,
-            "output_prob_": 5,        # 5 poly prob outs (incl QMIX)
+            "output_prob_": 7,        # 7 poly prob outs (incl QMIX/VAR/LEG)
         },
     },
     "sands_macro": {

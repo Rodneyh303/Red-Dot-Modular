@@ -349,35 +349,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             }
         }
 
-        // VARIATION / LEGATO poly CV (LEN/OFF/ROT only — no SPR). Same bind pattern as
-        // the 4 lanes: gold poly jacks (theme-follow) + always-live depth attenuverters.
-        // ch0 = mono/V1 mix-in, ch1+ = poly voices (applied in the expander manager).
-        {
-            Module* mod = module;
-            auto themeCfg = [mod](redDot::GoldPolyPort* p) {
-                p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
-                                          return m && m->lightTheme; };
-            };
-            for (int lane = 0; lane < 2; ++lane)
-                for (int c = 0; c < 3; ++c)
-                    bindInput<redDot::GoldPolyPort>(
-                        "input_varlegcv_" + std::to_string(lane) + "_" + std::to_string(c),
-                        varlegCvId(lane,c), std::function<void(redDot::GoldPolyPort*)>(themeCfg));
-            // VAR/LEG CV-depth: STORE-BACKED (MVC step 1d). editor.varlegAtten[currentSlot(), lane, col]
-            // (V1 → slot 0; poly → polySlot). Live slot resolution per tab. Was varlegAttDispId param.
-            static const char* vlN[2] = {"VAR","LEG"};
-            static const char* vlC[3] = {"Len","Off","Rot"};
-            for (int lane = 0; lane < 2; ++lane)
-                for (int c = 0; c < 3; ++c) {
-                    const int vlLane = lane, vlCol = c;
-                    redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                        "param_varlegatten_" + std::to_string(lane) + "_" + std::to_string(c),
-                        [this](){ return getMonsoon(); },
-                        -1.f, 1.f, 0.f, std::string(vlN[lane])+" "+vlC[c]+" depth",
-                        [this, vlLane, vlCol](Monsoon& m)          { return m.getVarlegAtten(currentSlot(), vlLane, vlCol); },
-                        [this, vlLane, vlCol](Monsoon& m, float v) { m.setVarlegAtten(currentSlot(), vlLane, vlCol, v); });
-                }
-        }
+        // VARIATION / LEGATO poly CV + depth atten + spread base are now bound by the MAIN
+        // loop above (el = 5/6 = VAR/LEG): input_cv_5/6_{0..3} (incl SPR) → cvId(5/6,c),
+        // param_atten_5/6_{0..3} → getMacroAtten(slot, lane*4+c), param_spr_5/6 → getSpread.
+        // The separate varleg CV/atten block is RETIRED (sands consolidation Step 3): one
+        // CV/atten/spread system, one store (macroAtten), no dead second store.
         // Spread base: STORE-BACKED (MVC step 1d). editor.spread[currentSlot(), lane] (V1 → slot 0
         // = Mono's spread, locked; poly → polySlot). The per-frame push syncs editor.spread →
         // SpreadManager (the engine's poly spread source). lockWhen/displayValueFn carry over.

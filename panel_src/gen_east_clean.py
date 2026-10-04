@@ -26,8 +26,9 @@ DIR_MOD_X = 228.0   # direction gate-mod jack column (gate cycles Fwd→Rev→Pe
 PROB_OUT_X = 236.0  # right-strip jack column, pushed right by the mod jack columns (matches hpp)
 ED_H = 91.0   # OPT-B: 7 lanes x 13mm — East adds Q-MIX at index 2 (MEL/OCT/QMIX/REST/ACC/VAR/LEG); editor 14->105, ~6mm above MBS
 ED_LANES = 7  # OPT-B: editor lanes drawn (Q-MIX added at index 2)
-POLY_LANES = 5  # spread/poly lanes (MEL/OCT/QMIX/REST/ACC) — the rows with CV/atten/spread/prob.
-                # Mirrors dotModular::SandsGrid::POLY_LANES; VAR/LEG (editor 5,6) are mono-only.
+POLY_LANES = 7  # spread/poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG) — all rows now carry
+                # CV/atten/spread/prob. Mirrors dotModular::SandsGrid::POLY_LANES (=7 after the
+                # sands consolidation; VAR/LEG are full poly lanes, no longer mono-only).
 ED_LANE_H = ED_H / ED_LANES
 # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY):
 # each lane's CV jacks + attens sit beside the visual lane they modulate. Row == editor lane
@@ -40,7 +41,7 @@ def ctrlY(k): return rowY(k)   # control/marker row for editor lane k (identity)
 # EDITOR lane (cvId/attenDispId + getMacroAtten by editor lane). So spread markers carry the
 # ENGINE id at the editor row; cv/atten stay editor-indexed. Emitting editor ids for spread put
 # REST's spread on the MEL row (the reported East mixup).
-EDITOR_TO_ENGINE=[1,2,4,0,3]   # MEL->1 OCT->2 QMIX->4 REST->0 ACC->3
+EDITOR_TO_ENGINE=[1,2,4,0,3,5,6]   # MEL->1 OCT->2 QMIX->4 REST->0 ACC->3 VAR->5 LEG->6
 assert len(EDITOR_TO_ENGINE) == POLY_LANES, "EDITOR_TO_ENGINE has one entry per poly lane"
 # 4 CV jacks + 4 attens + spread base — columns match SandsMonoVisual, ED_X=88
 JACK_X  = [6.0, 15.0, 24.0, 33.0]   # LEN/OFF/ROT/SPR-cv
@@ -205,19 +206,14 @@ def gen(dark):
     def trim(x,y,col):
         A(f'<circle cx="{px(x):.1f}" cy="{px(y):.1f}" r="{px(3.2):.1f}" fill="{t["well"]}" stroke="{col}" stroke-width="1.25"/>')
         A(f'<line x1="{px(x):.1f}" y1="{px(y):.1f}" x2="{px(x):.1f}" y2="{px(y-2.4):.1f}" stroke="{col}" stroke-width="1"/>')
-    # 5 SPREAD lanes at editor rows 0..4 (MEL/OCT/QMIX/REST/ACC): 4 CV jacks + 4 attens + spread.
-    # q-mix is a PLAIN lane at editor row 2 — identical complement, no special-casing (ESLOT gone).
+    # 7 SPREAD lanes at editor rows 0..6 (MEL/OCT/QMIX/REST/ACC/VAR/LEG): 4 CV jacks + 4 attens
+    # + spread. VAR/LEG are full poly lanes now (sands consolidation) — identical complement, no
+    # special-casing. q-mix is a PLAIN lane at editor row 2 (ESLOT gone).
     for el in range(POLY_LANES):
         y=rowY(el)
         for x in JACK_X:  jack(x,y)
         for x in ATTEN_X: trim(x,y,t["gold"])
         trim(SPREAD_X,y,t["teal"])
-    # VARIATION (row 5) / LEGATO (row 6): LEN/OFF/ROT only — no SPR jack, no spread knob
-    # (spread does not apply to these mono-strand lanes). Attens in gold like the others.
-    for el in range(POLY_LANES, ED_LANES):
-        y=rowY(el)
-        for x in JACK_X[:3]:  jack(x,y)
-        for x in ATTEN_X[:3]: trim(x,y,t["gold"])
 
     # ── Macro/East blend controls — 3 labelled groups (REST / MELODY / OCTAVE),
     #    each a demarked box stacked as: lane-name header → owner latch (OWN) →
@@ -250,23 +246,16 @@ def gen(dark):
     def named(name, x, y):
         A(f'<circle id="{name}" cx="{px(x):.2f}" cy="{px(y):.2f}" r="0.5" fill="none" stroke="none"/>')
     A('<g inkscape:label="components" inkscape:groupmode="layer">')
-    # 5 poly lanes (editor 0..4 incl QMIX at 2): CV jacks (LEN/OFF/ROT/SPR) + attens + spread base.
-    #   input_cv_<el>_<c>     CV jack        (bindInput, cvId(el,c))
-    #   param_atten_<el>_<c>  atten StoreKnob(bindStoreKnob)
-    #   param_spr_<el>        spread base StoreKnob at the editor row (bindStoreKnob)
+    # 7 poly lanes (editor 0..6 incl QMIX at 2, VAR at 5, LEG at 6): CV jacks (LEN/OFF/ROT/SPR)
+    # + attens + spread base. VAR/LEG now use the SAME input_cv_/param_atten_/param_spr_ anchors
+    # as the 5 core lanes (sands consolidation Step 3) — the varlegcv/varlegatten anchors are
+    # RETIRED. Widget binds: input_cv_<el>_<c> (cvId), param_atten_<el>_<c> (macroAtten),
+    # param_spr_<el> (getSpread).
     for el in range(POLY_LANES):
         y=rowY(el)
         for c,x in enumerate(JACK_X):  named(f"input_cv_{el}_{c}",    x, y)
         for c,x in enumerate(ATTEN_X): named(f"param_atten_{el}_{c}", x, y)
         named(f"param_spr_{el}", SPREAD_X, y)
-    # VARIATION (editor 5) / LEGATO (editor 6): VAR/LEG CV jacks + depth attens (LEN/OFF/ROT).
-    #   input_varlegcv_<vl>_<c>     CV jack (bindInput, varlegCvId)
-    #   param_varlegatten_<vl>_<c>  atten StoreKnob (bindStoreKnob)
-    for vl in range(2):
-        y=rowY(POLY_LANES+vl)   # editor rows 5,6
-        for c in range(3):
-            named(f"input_varlegcv_{vl}_{c}",    JACK_X[c],  y)
-            named(f"param_varlegatten_{vl}_{c}", ATTEN_X[c], y)
     # Owner cells (param_owner_<editorLane>) — 5 poly (0..4) + VAR/LEG (5,6). All editor lane.
     for el in range(ED_LANES):
         A(f'<circle id="param_owner_{el}" cx="{px(OWNER_X):.2f}" cy="{px(rowY(el)):.2f}" '
@@ -281,7 +270,7 @@ def gen(dark):
           f'r="0.5" fill="none" stroke="none"/>')
         A(f'<circle id="input_deleg_mod_{el}" cx="{px(DELEG_MOD_X):.2f}" cy="{px(rowY(el)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
-    # Probability-out jacks (output_prob_<editorLane>) — 5 poly prob CV outs (incl QMIX at 2).
+    # Probability-out jacks (output_prob_<editorLane>) — 7 poly prob CV outs (incl QMIX/VAR/LEG).
     for el in range(POLY_LANES):
         A(f'<circle id="output_prob_{el}" cx="{px(PROB_OUT_X):.2f}" cy="{px(rowY(el)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
