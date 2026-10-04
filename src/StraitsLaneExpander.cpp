@@ -97,6 +97,12 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
 
     StraitsLaneExpanderWidget(StraitsLaneExpander* mod) {
         setModule(mod);
+        // Browser preview creates widgets with mod=nullptr; guard against that.
+        if (!mod) {
+            // Load a default panel so the preview doesn't crash.
+            loadPanel(asset::plugin(pluginInstance, "res/panels/StraitsLane_qmix_dark.svg"));
+            return;
+        }
         desc = mod->desc;
 
         // Panel SVG paths (per-lane tint)
