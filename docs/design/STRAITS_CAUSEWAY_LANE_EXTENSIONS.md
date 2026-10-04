@@ -118,7 +118,13 @@ These sharpen (and in two cases CHANGE) the model above. Where they conflict, TH
 This is a REFACTOR of the WORKING Straits panel, NOT a new build. Working Straits already has the
 per-voice knob rows, the per-voice data reads from Monsoon, the pointer wiring, and the panel layout
 — all PROVEN (some fixed in hard sessions). So:
-- **Start from working Straits code + panel. Cut along lane boundaries; MOVE, don't reimplement.**
+- **COPY the working Straits widget to a new module; refactor the COPY. The ORIGINAL widget is NEVER
+  edited** — it stays registered and working, frozen, as a pristine reference + fallback, until it is
+  deliberately retired last. So: duplicate working code, then split the DUPLICATE into base+expanders;
+  MOVE things around within the copy, never reimplement.
+- Because the copy starts as a LITERAL copy of working code, at each step you can DIFF the copy's
+  behaviour against the untouched original — if behaviour diverges, the refactor is wrong and the
+  original is right there to compare. Per-voice reads/binds/pointer wiring come across verbatim.
 - The generic `LaneExpander` = the existing per-lane ROW logic EXTRACTED into a reusable class.
 - The base = the existing FRAME + IO with the lane rows REMOVED.
 - The lane DESCRIPTORS (REST/ACCENT/QMIX colour/label/strand/params) are READ OFF what the existing
