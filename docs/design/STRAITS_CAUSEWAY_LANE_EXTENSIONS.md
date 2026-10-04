@@ -147,3 +147,31 @@ per-voice knob rows, the per-voice data reads from Monsoon, the pointer wiring, 
 - **Phase 3 — context-menu add/remove** (optional/later), QMIX default.
 - **Phase 4 — retire old Straits** last, once fully replaced and tested.
 Additive throughout (new slugs; don't touch working Sands/engine). Suite green between phases.
+
+
+## CONSTRUCTION MODEL (Rodney) — base-only browsable; extenders spawned from the base context menu
+IMPORTANT change to how extenders exist:
+- **Only STRAITS BASE appears in Rack's browser / preview menu.** The lane extenders (QMIX, REST,
+  ACCENT, VARIATION, LEGATO) are **NOT browsable** — a user cannot drag them in from the module library.
+- **Extenders are created ONLY from the base's own CONTEXT MENU** ("add REST lane", etc.), and removed
+  the same way. QMIX is spawned by default when the base is placed.
+- Under the hood extenders are still real Rack modules (they render + hold knob state), but they are
+  **hidden from the browser** (registered-but-hidden, or simply not added to the browsable model list
+  while remaining instantiable), and the base **programmatically spawns/positions/removes** them
+  adjacent to the right, in canonical order.
+
+Why: keeps the browser clean (one Straits, not five confusing fragments); extenders can only exist
+attached to a base in valid order (base creates them) — no meaningless bare-extender placements, no
+wrong-order/invalid states; the "add/remove lane" gesture lives exactly where it makes sense (the base).
+This is a module WITH GROWABLE SUB-PANELS, not separate draggable expander modules.
+
+**Load-bearing mechanism to prototype EARLY (Phase 1):** a Rack module programmatically creating,
+positioning (adjacent right), and removing another module via the API. Rack supports module creation
+from code (used by auto-expander modules). CONFIRM this API pattern works — base spawns a hidden
+extender on a context-menu action, positions it, and can delete it — BEFORE building the lane set, as
+everything depends on it. If a cleaner path exists (e.g. the base draws the sub-panels itself as child
+widgets rather than spawning separate modules), weigh it — the requirement is "base-constructed,
+not browser-dragged, hidden from the library", however that's best realised.
+
+(Supersedes any earlier implication that extenders are browser-placed/dragged in fixed order. QMIX is
+still the default lane, now by being base-spawned-by-default rather than baked in.)
