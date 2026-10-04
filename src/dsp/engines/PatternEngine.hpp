@@ -684,7 +684,8 @@ struct PatternEngine {
         return qmixPhilox.atUniform((uint64_t)pos * DRAW_CHUNK + cursor);
     }
     struct RhythmDraw { float rhythm[16], variation[16], legato[16], accent[16];
-                        float polyRhythm[15][16], polyAccent[15][16]; };
+                        float polyRhythm[15][16], polyAccent[15][16],
+                        polyVariation[15][16], polyLegato[15][16]; };
     struct MelodyDraw { float melody[16], octave[16];
                         float polyMelody[15][16], polyOctave[15][16]; };
     // q-mix twin of MelodyDraw — one value per step (mono) + per poly voice.
@@ -697,6 +698,8 @@ struct PatternEngine {
             d.legato[i]=philoxRhythmAt(pos,c++); d.accent[i]=philoxRhythmAt(pos,c++);
             for (int v=0;v<15;++v) d.polyRhythm[v][i]=philoxRhythmAt(pos,c++);
             for (int v=0;v<15;++v) d.polyAccent[v][i]=philoxRhythmAt(pos,c++);
+            for (int v=0;v<15;++v) d.polyVariation[v][i]=philoxRhythmAt(pos,c++);
+            for (int v=0;v<15;++v) d.polyLegato[v][i]=philoxRhythmAt(pos,c++);
         }
     }
     inline void rawDrawMelodyPatternAt(int64_t pos, MelodyDraw& d) const {
@@ -727,6 +730,7 @@ struct PatternEngine {
         RhythmDraw draw;
         double zRhythm[16], zVariation[16], zLegato[16], zAccent[16];
         double zPolyRhythm[15][16], zPolyAccent[15][16];
+        double zPolyVariation[15][16], zPolyLegato[15][16];
     };
     struct CachedMelodyDraw {
         MelodyDraw draw;
@@ -752,7 +756,9 @@ struct PatternEngine {
             e.zLegato[i]=redDot::copula::PhiInv(e.draw.legato[i]);
             e.zAccent[i]=redDot::copula::PhiInv(e.draw.accent[i]);
             for(int v=0;v<15;++v){ e.zPolyRhythm[v][i]=redDot::copula::PhiInv(e.draw.polyRhythm[v][i]);
-                e.zPolyAccent[v][i]=redDot::copula::PhiInv(e.draw.polyAccent[v][i]); } }
+                e.zPolyAccent[v][i]=redDot::copula::PhiInv(e.draw.polyAccent[v][i]);
+                e.zPolyVariation[v][i]=redDot::copula::PhiInv(e.draw.polyVariation[v][i]);
+                e.zPolyLegato[v][i]=redDot::copula::PhiInv(e.draw.polyLegato[v][i]); } }
         return e;
     }
     CachedMelodyDraw& cachedMelodyDraw(int64_t pos) const {
@@ -824,6 +830,10 @@ struct PatternEngine {
                 out.polyRhythm[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
                 for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zPolyAccent[v][i];
                 out.polyAccent[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zPolyVariation[v][i];
+                out.polyVariation[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zPolyLegato[v][i];
+                out.polyLegato[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
             }
         }
     }

@@ -279,6 +279,8 @@ void PatternEngine::recomputeEffectiveRhythm() {
             for (int v = 0; v < 15; v++) {
                 slewedPolyRhythm[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyRhythm[v][i]; });
                 slewedPolyAccent[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyAccent[v][i]; });
+                slewedPolyVariation[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyVariation[v][i]; });
+                slewedPolyLegato[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyLegato[v][i]; });
             }
         }
     } else {
@@ -295,19 +297,13 @@ void PatternEngine::recomputeEffectiveRhythm() {
             for (int v = 0; v < 15; v++) {
                 slewedPolyRhythm[v][i]=bl(d0.polyRhythm[v][i],d1.polyRhythm[v][i]);
                 slewedPolyAccent[v][i]=bl(d0.polyAccent[v][i],d1.polyAccent[v][i]);
+                slewedPolyVariation[v][i]=bl(d0.polyVariation[v][i],d1.polyVariation[v][i]);
+                slewedPolyLegato[v][i]=bl(d0.polyLegato[v][i],d1.polyLegato[v][i]);
             }
         }
     }
-    // Poly VAR/LEG: no copula blend (polyVariation/Legato were intentionally removed from
-    // RhythmDraw), so write the raw per-voice draws from random_ into the slewed buffers.
-    // This MUST run unconditionally — when Sands is active the spread pipeline needs the
-    // "own" value to interpolate; when Sands is inactive the remap promote (below + in
-    // remapSlewedByPins) is the final value and these buffers mirror random_ for the UI.
-    for (int i = 0; i < 16; ++i)
-        for (int v = 0; v < 15; v++) {
-            slewedPolyVariation[v][i] = polyRandom(v, PL_VARIATION)[i];
-            slewedPolyLegato[v][i]    = polyRandom(v, PL_LEGATO)[i];
-        }
+    // Poly VAR/LEG are now drawn by the Philox stream and copula-blended above
+    // (same as the other 5 lanes). No raw fallback needed.
     if (!sandsActive) {
         for (int i = 0; i < 16; ++i) {
             rhythmRandom[i]=slewedRhythm[i]; variationRandom[i]=slewedVariation[i];
