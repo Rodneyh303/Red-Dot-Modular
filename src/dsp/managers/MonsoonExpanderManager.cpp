@@ -502,11 +502,15 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 }
             }
 
-            // QMIX lane (PL_QMIX=4): per-voice spread mirroring REST/MEL/OCT/ACCENT. QMIX is a
-            // melody-family value lane, so its spread is on the MELODY axis (Task 4c). LEN/OFF/ROT
-            // for QMIX are handled by the main POLY_LANES combineLOR loop above; this block only
-            // adds the spread→final apply so East poly QMIX prob-out + bars respond to spread.
+            // QMIX lane (PL_QMIX=4): per-voice LOR + spread mirroring REST/MEL/OCT/ACCENT.
+            // QMIX is a melody-family value lane, so its spread is on the MELODY axis (Task 4c).
+            // LEN/OFF/ROT via combineLOR (same as REST/MEL/OCT/ACC) — previously MISSING, so
+            // editing QMIX LOR on poly voices had no effect (the comment claimed a "main
+            // POLY_LANES combineLOR loop above" that never existed; each lane was individual).
             {
+                engine.polyLenERef(v, PL::PL_QMIX) = combineLOR(PL::PL_QMIX, 0, PL::PL_QMIX, 0, 1.f, 16.f);
+                engine.polyOffERef(v, PL::PL_QMIX) = combineLOR(PL::PL_QMIX, 1, PL::PL_QMIX, 1, 0.f, 15.f);
+                engine.polyRotERef(v, PL::PL_QMIX) = combineLOR(PL::PL_QMIX, 2, PL::PL_QMIX, 2, 0.f, 15.f);
                 float qmixInterp = math::clamp(mmOwn ? mmOwn->getSpread(slot, PL::PL_QMIX) : 0.f, -1.f, 1.f);
                 if (eastVisual && eastVisual->inputs[cvId(PL::PL_QMIX,3)].isConnected()) {
                     float att = mmOwn ? mmOwn->getMacroAtten(slot, PL::PL_QMIX*4 + 3) : 0.f;   // PER-VOICE depth
