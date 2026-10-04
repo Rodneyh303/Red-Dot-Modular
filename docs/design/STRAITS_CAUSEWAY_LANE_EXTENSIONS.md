@@ -19,6 +19,12 @@ Pay HP only for the lanes you use.
 - **Base frame = frame + QMIX** (shown by default — qmix is the defining sequencer-quantiser axis after
   the mode collapse, so its primacy is structural). A bare Straits is "per-voice qmix".
 - **Four attachable extensions:** REST, ACCENT, VARIATION, LEGATO. Add what you want.
+- **SEAMLESS rendering (TwoWayExpander-style):** base + lane expanders must render as ONE continuous
+  panel — the expander's panel art abuts the base's exactly (shared background, rails, and the
+  per-voice knob-row Y aligned across the seam), so base + N expanders look like a single wider
+  module, not separate modules with a visible gap. Reference: VGLabs TwoWayExpander
+  (github.com/landgrvi/VGLabs-TwoWayExpander). This is a MODEL property, not just cosmetic — the
+  lane-per-voice knob rows must flow unbroken across each boundary.
 - Applies to **both** Straits (per-voice knobs) and Causeway (per-voice CV mod inputs) — same model,
   two roles.
 
@@ -44,6 +50,25 @@ CONTIGUOUSLY from the base. This sidesteps nearly all expander complexity:
 2. **Connection rework — NO LONGER a prerequisite for THIS** (fixed-order right docking uses plain Rack
    expander chaining, not the CA connection model). It remains needed for CA marks, but it no longer
    BLOCKS lane extensions, so it can run in PARALLEL rather than before.
+
+## Implementation: POINTER-based (zero delay)
+Base and lane expanders communicate via direct POINTERS (as the existing MonsoonExpanderManager /
+MonsoonDiscovery pattern does), NOT Rack's 1-block expander message passing — so lane values are
+read with ZERO sample delay. The base resolves its contiguous right-neighbour chain to pointers once
+per block (on expander topology change), then reads lane state directly. No per-sample message copy,
+no 1-block latency. Fixed-order + position-encodes-identity makes the pointer resolution trivial: walk
+rightExpander, assign by position.
+
+## Build steps
+1. Base Straits = frame + QMIX (default). Move REST+ACCENT out of base into lane expanders.
+2. Seamless expander scaffold: one lane-expander type, docks right fixed-order, panel art abuts the
+   base seamlessly, base resolves the right-chain to pointers. Prove with ONE expander (REST).
+3. Port REST, ACCENT onto the scaffold.
+4. Add VARIATION, LEGATO lane expanders.
+5. Registration + plugin.json + seamless panel generators.
+Open: final lane ORDER; ONE "Straits Lane" slug (position=lane) vs separate slugs per lane; Straits
+stays rhythm-family only (pitch in Sands). Same model applies to CAUSEWAY (CV mod inputs instead of
+per-voice knobs).
 
 ## Dependency chain / order (shortened)
 mode collapse (6->3) -> Sands consolidation (lanes poly+correlated, uniform) -> THEN Straits/Causeway
