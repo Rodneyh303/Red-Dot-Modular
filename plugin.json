@@ -57,6 +57,26 @@
       ]
     },
     {
+      "slug": "StraitsBase",
+      "name": "Straits Base",
+      "description": "Lane-extension base \u2014 frame + IO (16ch poly-cable outs, quantiser CV in) + voice count. Dock lane expanders right.",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
+      "slug": "StraitsLaneQMIX",
+      "name": "Straits Lane: Q-MIX",
+      "description": "Per-voice Q-MIX level lane expander \u2014 16 knobs (ch1=mono). Dock right of Straits Base.",
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
+    },
+    {
       "slug": "Causeway",
       "name": "Causeway",
       "description": "Poly CV modulation \u2014 16ch REST + ACCENT modulation CV in (ch1=mono) with attenuverters",
