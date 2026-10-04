@@ -1243,9 +1243,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedLegato[s]; break;
                             default: base = 0.5f; break;
                         }
-                        float spread = macroMod
-                            ? rack::math::clamp(macroMod->macroBase[engLane][3] + macroMod->macroSendDelta[engLane][3], -1.f, 1.f)
-                            : monsoon->engine.spreadE(0, engLane);
+                        // V1 spread: respect lane ownership. East owns → East's V1
+                        // spread knob; Macro owns → Macro's spread (matches Macro's
+                        // display); no Macro → engine's V1 spread.
+                        float spread;
+                        if (macroMod && !eastOwnsLane(engLane))
+                            spread = rack::math::clamp(macroMod->macroBase[engLane][3] + macroMod->macroSendDelta[engLane][3], -1.f, 1.f);
+                        else if (macroMod)
+                            spread = monsoon->getSpread(dotModular::VoiceResolver::kMonoSlot, engLane);
+                        else
+                            spread = monsoon->engine.spreadE(0, engLane);
                         visualEditor->currentState.lanes[el].probabilities[s] =
                             redDot::SpreadInterp::applyAnchorV1Only(peRef, engLane, s, base, spread);
                     }
@@ -1329,9 +1336,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedLegato[s]; break;
                             default: base = 0.5f; break;
                         }
-                        float spread = macroMod
-                            ? rack::math::clamp(macroMod->macroBase[engLane][3] + macroMod->macroSendDelta[engLane][3], -1.f, 1.f)
-                            : monsoon->engine.spreadE(0, engLane);
+                        // V1 spread: respect lane ownership (same as onMonoTab block above).
+                        float spread;
+                        if (macroMod && !eastOwnsLane(engLane))
+                            spread = rack::math::clamp(macroMod->macroBase[engLane][3] + macroMod->macroSendDelta[engLane][3], -1.f, 1.f);
+                        else if (macroMod)
+                            spread = monsoon->getSpread(dotModular::VoiceResolver::kMonoSlot, engLane);
+                        else
+                            spread = monsoon->engine.spreadE(0, engLane);
                         visualEditor->currentState.lanes[el].probabilities[s] =
                             redDot::SpreadInterp::applyAnchorV1Only(peRef, engLane, s, base, spread);
                     }
