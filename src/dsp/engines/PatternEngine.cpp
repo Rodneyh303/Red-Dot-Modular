@@ -316,6 +316,9 @@ void PatternEngine::recomputeEffectiveRhythm() {
             // value showed. Mirror the rhythm promotion. (sandsActive path already sets both via
             // SpreadInterp at MonsoonSandsManager 460/463.)
             for (int v=0;v<15;v++) polyRandom(v, PL_ACCENT)[i]=slewedPolyAccent[v][i];
+            // SANDS CONSOLIDATION: promote poly VAR/LEG too (same family — rhythm Philox stream).
+            for (int v=0;v<15;v++) polyRandom(v, PL_VARIATION)[i]=slewedPolyVariation[v][i];
+            for (int v=0;v<15;v++) polyRandom(v, PL_LEGATO)[i]=slewedPolyLegato[v][i];
         }
     }
     publishSlewedRhythm();   // publish coherent snapshot for the UI thread
