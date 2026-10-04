@@ -352,8 +352,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     }
 
     // STEP 4b: ownership authority for the Macro widget's V1 view. Macro is present
-    // (this widget IS Macro); monoV1Owner[] read from Mono's editor-ordered ownerDispId
-    // (the same source the old predicate read). lockedOn(MACRO,0,l) == owner(0,l)!=MACRO,
+    // (this widget IS Macro). SANDS CONSOLIDATION Step 7: monoV1Owner removed — V1
+    // ownership now via eastV1Owner[] only. lockedOn(MACRO,0,l) == owner(0,l)!=MACRO,
     // i.e. "Mono owns it" — matching the old mv->ownerDispId(l) > 0.5 test.
     // NOTE: currently UNUSED — laneEditBlockedFn stopped gating V1 LOR on Mono ownership (Macro's own
     // global LOR is always editable, matching its spread). Kept because the tracked East-ownership
@@ -366,8 +366,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             mon->expanderManager.fillPresence(in, mon->engine.numPolyVoices);  // single authority
             // MVC step 1d: Mono's owner is STORE-BACKED (editor.monoOwner via getMonoOwner).
             // mon IS the Monsoon store owner; was mv->params[ownerDispId(l)].
-            for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
-                in.monoV1Owner[l] = mon->getMonoOwner(l);
+            // SANDS CONSOLIDATION Step 7: monoV1Owner removed — V1 ownership via eastV1Owner only.
         }
         return dotModular::SandsTopology::build(in);
     }

@@ -261,7 +261,7 @@ struct MonsoonExpanderManager {
     // present (this is what produced the MACRO-then-EAST strand clobber). numPolyVoices is passed
     // because this manager doesn't hold the engine.
     void fillPresence(dotModular::SandsTopology::Inputs& in, int numPolyVoices) const {
-        in.monoPresent     = (cachedSandsVisualExpander != nullptr);
+        // SANDS CONSOLIDATION Step 7: monoPresent removed (Mono killed Step 6).
         in.eastPresent     = (cachedEastSandsVisual     != nullptr);
         in.macroPresent    = (cachedMacroSandsVisual    != nullptr);
         in.polyBaseActive  = (cachedPolyVoiceExpander   != nullptr) && (numPolyVoices >= 1);

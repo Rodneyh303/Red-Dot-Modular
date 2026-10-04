@@ -132,8 +132,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     expanderManager.fillPresence(topoIn, engine.numPolyVoices);   // single presence authority
     if (monoVis) {
         // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
-        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
-            topoIn.monoV1Owner[l] = gMon ? gMon->getMonoOwner(l) : true;
+        // SANDS CONSOLIDATION Step 7: monoV1Owner removed — V1 ownership now via eastV1Owner only.
     }
     const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
     const bool macroDrivesOutput = hasMacro && polyBaseActive;
@@ -223,11 +222,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 }
             }
 
-            // Mono's own CV applies only to lanes Mono OWNS. A delegated lane tracks
-            // Macro exclusively (G5) — Mono's CV must not additionally modulate it.
-            // Mono owns ⟺ owner(0,l)==MONO; lanes >=4 (VAR/LEG) are always MONO when present.
-            const bool monoOwnsLane = (topo.owner(0, l) == dotModular::SandsTopology::Role::MONO);
-            if (monoOwnsLane) {
+            // SANDS CONSOLIDATION Step 7: V1 base CV applies only to lanes the V1 editor OWNS.
+            // A delegated lane tracks Macro exclusively — V1's CV must not additionally modulate it.
+            // V1 editor is EAST (or MACRO_SOLE). The applyMonoCV lambda is now a no-op (Mono visual
+            // killed in Step 6 — monoVis is always nullptr), but the guard stays for future East CV.
+            const bool v1OwnsLane = (topo.owner(0, l) == dotModular::SandsTopology::Role::EAST);
+            if (v1OwnsLane) {
                 baseLen = applyMonoCV(baseLen, l, 0, 1.f, 16.f);
                 baseOff = applyMonoCV(baseOff, l, 1, 0.f, 15.f);
                 baseRot = applyMonoCV(baseRot, l, 2, 0.f, 15.f);
@@ -274,7 +274,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // A DELEGATED lane tracks Macro's value exclusively (set above) — it takes
             // neither East's CV nor the Macro SEND on top (that would double-count Macro's
             // modulation, already in the delegated base). Only OWNED lanes receive these.
-            if (l < dotModular::SandsGrid::POLY_LANES && monoOwnsLane) {
+            if (l < dotModular::SandsGrid::POLY_LANES && v1OwnsLane) {
                 int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[l];   // editor → engine lane (East CV jack)
                 // Sum ALL mods (East CV + Macro send) onto the base, then clamp the END RESULT once.
                 baseLen = math::clamp(baseLen + eastDelta(eng, 0, 1.f, 16.f) + macroDelta(eng, 0),  1.f, 16.f);
