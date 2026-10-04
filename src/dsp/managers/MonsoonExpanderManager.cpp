@@ -311,10 +311,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // ── EAST_EXTRA_LANES: per-voice VARIATION / LEGATO LOR ────────────────────────────
             // These are mono STRANDS, not PolyLanes, so they must use the EDITOR-order accessor
             // (polyLORRef masks & 7). polyLenERef would mask & 3 and silently alias VAR -> REST.
-            // No Macro blend and no spread: Macro cannot own these lanes (an owned lane drives all
-            // voices identically, which annihilates the per-voice divergence that IS the feature),
-            // and there is nothing to spread (the probability array stays mono; only the reading
-            // position differs). Straight base params, clamped to the same ranges as the poly lanes.
+            // VAR/LEG now route through spread (see the VAR/LEG spread block below): the per-voice
+            // Philox draws (f9c4189) give each voice its own slewed buffer and SpreadInterp lanes
+            // 5/6 apply the spread knob. No Macro blend — an owned lane would annihilate the
+            // per-voice divergence that IS the feature. This LOR push is the reading position,
+            // independent of spread; spread is applied in the per-voice block alongside REST/MEL/…/QMIX.
             if (eastLOR) {
                 using SE = SequencerEngine;
                 // VARLEG deleg + atten migrated to Monsoon::editor (NUM_PARAMS_MIGRATION.md);
@@ -529,6 +530,30 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                     for (int j = 0; j < 16; j++) {
                         engine.pe.polyRandom(v, PL::PL_QMIX)[j] = redDot::SpreadInterp::applyPoly(
                             engine.pe, PL::PL_QMIX, v, j, qmixInterp);
+                    }
+                }
+            }
+
+            // ── VAR/LEG spread (lanes 5/6): per-voice spread, NO Macro blend ──────────────
+            // These lanes carry full per-voice Philox draws (slewedPolyVariation/Legato), so spread
+            // is meaningful: applyPoly interpolates each voice's draw toward the mono (V1) anchor.
+            // Macro cannot own VAR/LEG (it would drive all voices identically and annihilate the
+            // per-voice divergence that IS the feature), so there is no owner/Macro blend — the base
+            // spread knob is applied directly. CV jack + depth atten arrive with the SPR column
+            // (panel Step 3); until then only the manual knob modulates the spread amount.
+            {
+                static constexpr int VARLEG_SPREAD_LANES[2] = { PL::PL_VARIATION, PL::PL_LEGATO };
+                for (int vl = 0; vl < 2; ++vl) {
+                    const int lane = VARLEG_SPREAD_LANES[vl];
+                    float interp = math::clamp(mmOwn ? mmOwn->getSpread(slot, lane) : 0.f, -1.f, 1.f);
+                    if (eastVisual) eastVisual->polySpreadEffective[v][lane] = interp;
+                    // VAR/LEG are on the rhythm plane (SpreadInterp::v1caSrc: cases 5/6 → caRhythmSrc),
+                    // so they share the rhythm-axis spread lock with REST/ACCENT.
+                    if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false)) {
+                        for (int j = 0; j < 16; j++) {
+                            engine.pe.polyRandom(v, lane)[j] = redDot::SpreadInterp::applyPoly(
+                                engine.pe, lane, v, j, interp);
+                        }
                     }
                 }
             }
