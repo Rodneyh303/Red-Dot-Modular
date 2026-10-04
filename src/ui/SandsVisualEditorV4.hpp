@@ -586,12 +586,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     static const char* monoNames[MAX_LANES] =
         {"MELODY", "OCTAVE", "QMIX", "REST", "ACCENT", "VARIATION", "LEGATO"};
     const char* name = (lane >= 0 && lane < MAX_LANES) ? monoNames[lane] : "";
-    float y = layout.getLaneCenterY(lane);
-    
+    // Label sits ABOVE the lane's controls (was centred on the row, slicing through the knobs).
+    float y = layout.getLaneY(lane) + 2.f;
+
     nvgFontSize(vg, 10.f);
-    nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
     nvgFillColor(vg, (lane == kbState.selectedLane) ? getLaneColor(lane) : nvgRGB(0x66, 0x66, 0x66));
-    nvgText(vg, layout.padding - 8, y, name, nullptr);
+    nvgText(vg, layout.padding + 2, y, name, nullptr);
   }
   
   void drawStep(NVGcontext* vg, int lane, int step) {
