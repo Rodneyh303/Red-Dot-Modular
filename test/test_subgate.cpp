@@ -367,31 +367,42 @@ int main() {
     // G5 — per-voice ghost placement (GATE_SUBDIVISION_STEP_GATE.md §398/§227):
     // At a ghost cell (the mono ghosted), each poly voice rolls its OWN variation to decide if it
     // ghosts. A voice whose variation does not pass is a RESTED GHOST (transparent — silent, the
-    // slur passes through it). With delegation (default) all voices read the mono step = shared
-    // (+1); with Local East + a per-voice VAR LOR, a voice reads its own step = independent (0).
+    // slur passes through it). Per the f9c4189 per-voice VAR draw model, a poly voice reads its
+    // OWN per-voice draw (polyRandom(bank, PL_VARIATION)) — NOT mono's variationRandom. Mono still
+    // reads variationRandom. So: delegated voice = mono's STEP + its own per-voice draw; Local East
+    // voice = its own STEP + its own per-voice draw. The draws are seeded directly here (the unit
+    // test does not run the Philox draw pipeline, so polyRandom persists as seeded).
     // ─────────────────────────────────────────────────────────────────────────────
     SUITE("G5 — per-voice ghost placement (variation gate per voice)");
-    TEST("shared (delegated): mono ghosts -> all poly voices ghost (same variation read)", {
+    TEST("shared (delegated): mono ghosts -> all poly voices ghost (per-voice draws pass)", {
         SequencerEngine eng; eng.numPolyVoices = 2;
         eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 0.f;
-        // variationAmount=1.0 -> mono always ghosts (r_vary < 1.0); ghostActive=true. Delegated
-        // voices read the mono step -> same value -> all ghost.
+        // variationAmount=1.0 -> ghost iff r_vary < 1.0. Seed every per-voice VAR draw to 0.1 so
+        // both delegated voices (mono step + own draw) ghost deterministically; mono reads its
+        // variationRandom (default 0) and also ghosts -> ghostActive=true.
+        for (int i = 0; i < 16; ++i) {
+            eng.pe.polyRandom(0, SequencerEngine::PL_VARIATION)[i] = 0.1f;
+            eng.pe.polyRandom(1, SequencerEngine::PL_VARIATION)[i] = 0.1f;
+        }
         stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f, /*variation=*/1.0f);  // main onset
         stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f, 1.0f);              // gap (no edge)
         stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f, 1.0f);              // ghost onset
         EXPECT(eng.ghostActive);                       // mono ghosted
-        EXPECT(eng.voices[0].gs.gateHeld);             // voice 0 ghosts (shared)
-        EXPECT(eng.voices[1].gs.gateHeld);             // voice 1 ghosts (shared)
+        EXPECT(eng.voices[0].gs.gateHeld);             // voice 0 ghosts (own draw 0.1 < 1.0)
+        EXPECT(eng.voices[1].gs.gateHeld);             // voice 1 ghosts (own draw 0.1 < 1.0)
     });
     TEST("Local East: voice 0's VAR LOR points to a high-variation step -> rested ghost (transparent); voice 1 (delegated) ghosts", {
         SequencerEngine eng; eng.numPolyVoices = 2;
         eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 0.f;
-        // Pin the variation array + LORs so the steps are deterministic (len=1 => step = off):
+        // Pin the LORs so the steps are deterministic (len=1 => step = off). Per-voice draws are
+        // seeded in polyRandom(bank, PL_VARIATION) (the f9c4189 per-voice model); mono reads
+        // variationRandom.
         //   mono VAR LOR: len=1, off=0 -> step 0 -> variationRandom[0]=0.1 (< 0.5) -> mono ghosts.
-        //   voice 0: Local East VAR, len=1, off=1 -> step 1 -> variationRandom[1]=0.9 (>= 0.5) -> RESTED GHOST.
-        //   voice 1: delegated -> reads mono step 0 -> 0.1 (< 0.5) -> ghosts.
-        eng.pe.variationRandom[0] = 0.1f;   // mono + delegated voices ghost
-        eng.pe.variationRandom[1] = 0.9f;   // voice 0's Local-East step -> rested ghost
+        //   voice 0: Local East VAR, len=1, off=1 -> step 1 -> polyRandom(0,PL_VAR)[1]=0.9 (>= 0.5) -> RESTED GHOST.
+        //   voice 1: delegated -> mono step 0 -> polyRandom(1,PL_VAR)[0]=0.1 (< 0.5) -> ghosts.
+        eng.pe.variationRandom[0] = 0.1f;                          // mono ghosts
+        eng.pe.polyRandom(0, SequencerEngine::PL_VARIATION)[1] = 0.9f;   // voice 0 Local-East step -> rested ghost
+        eng.pe.polyRandom(1, SequencerEngine::PL_VARIATION)[0] = 0.1f;   // voice 1 delegated, mono step -> ghosts
         eng.strandLenRef(dotModular::STRAND_VARIATION) = 1;
         eng.strandOffRef(dotModular::STRAND_VARIATION) = 0;
         eng.polyLORRef(0, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_LEN) = 1;

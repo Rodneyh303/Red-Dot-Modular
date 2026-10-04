@@ -1,10 +1,15 @@
 // Per-voice articulation, clamped to the mono event grid.
 // SANDS CONSOLIDATION Step 5: perVoiceArticulation flag removed — draw is always-on.
-// Proves the properties the design rests on:
-//   1. delegated (default) → mono nvIdx (bit-identical)
-//   2. identity LOR → still identical (doubly inert)
-//   3. dialed LOR but DELEGATED (default) → still mono's (§4d delegation)
-//   4. dialed LOR + Local East → voices diverge, but ALWAYS hold <= mono's (the clamp)
+// Updated for the per-voice VAR draw model (f9c4189): a delegated VAR voice shares mono's
+// STEP (reading position) but rolls/reads its OWN per-voice draw (polyRandom(bank, PL_VARIATION)),
+// NOT mono's variationRandom. The old test asserted the obsolete mono-mirror (delegated → mono
+// nvIdx); this version asserts the new contract:
+//   1. delegated (default) → voice reads its OWN per-voice draw at MONO's step, clamped to mono
+//   2. identity LOR → still mono's step (doubly inert on position), own draw, clamped
+//   3a. dialed LOR but DELEGATED → mono's step (the dialed LOR is ignored), own draw, clamped
+//   3b. dialed LOR + Local East → voice uses its OWN step (per-voice tick) + own draw, diverges,
+//       but ALWAYS holds <= mono's (the clamp)
+//   4. table contract the clamp relies on: slowest -> fastest
 #include "SequencerEngine.hpp"
 #include "NoteValues.hpp"
 #include <cstdio>
@@ -23,28 +28,47 @@ int main() {
     in.variationAmount   = 0.85f;   // window widens toward shorter notes
     in.noteVariationMask = 0b111;   // all triplet/1-32 values legal
 
-    // a shared mono VARIATION shape
+    // A shared mono VARIATION shape (read by mono's getNoteLenIdx).
     for (int i = 0; i < 16; ++i) e.pe.variationRandom[i] = (float)((i * 7 + 3) % 16) / 16.f;
+
+    // PER-VOICE VAR draws (the f9c4189 model): each voice has its own 16-step draw in
+    // polyRandom(bank, PL_VARIATION). Seed a distinct, voice-dependent shape so a delegated
+    // voice (mono step + own draw) is provably different from mono and from other voices.
+    for (int v = 0; v < 15; ++v)
+        for (int i = 0; i < 16; ++i)
+            e.pe.polyRandom(v, SequencerEngine::PL_VARIATION)[i] =
+                (float)(((i * 7 + 3) + (v + 1) * 13) % 16) / 16.f;
 
     e.lastNoteVal_ = 4.f;   // NOTE_VALUE = 1/8
 
-    // ── 1. delegated (default) → mono nvIdx (the draw is always-on; no flag) ──
+    // Expected nvIdx for a DELEGATED voice at a given mono step: read the voice's OWN per-voice
+    // draw at mono's step, then clamp to the mono event grid (a voice may release early, never
+    // hold past mono's next note — NOTE_VALUES is slowest->fastest, so max() picks the shorter).
+    auto expectedDelegated = [&](int v, int monoIdx)->int {
+        float rVoice = e.pe.polyRandom(v, SequencerEngine::PL_VARIATION)[monoIdx];
+        int nv = e.getNoteLenIdx(e.lastNoteVal_, in, rVoice);
+        return (nv > e.lastStepResult.nvIdx) ? nv : e.lastStepResult.nvIdx;
+    };
+
+    // ── 1. delegated (default) → voice's own draw at mono's step, clamped (NOT mono's nvIdx) ──
     for (int step = 0; step < 64; ++step) {
         e.totalStepsElapsed = step;
         int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
         e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
         for (int v = 0; v < 15; ++v)
-            check(e.nvIdxForVoice(v, in) == e.lastStepResult.nvIdx, "delegated -> mono nvIdx");
+            check(e.nvIdxForVoice(v, in) == expectedDelegated(v, monoIdx),
+                  "delegated -> voice's own draw at mono step, clamped");
     }
 
-    // ── 2. identity LOR (len 16, off 0, rot 0 — as reset() now seeds) → still mono nvIdx ──
+    // ── 2. identity LOR (len 16, off 0, rot 0 — as reset() seeds) → still mono's step (position
+    //    inert), own draw, clamped. Same expectation as case 1. ──
     for (int step = 0; step < 64; ++step) {
         e.totalStepsElapsed = step;
-        // mono reads its own VAR strand at this step; give the voice the same window
         int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
         e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
         for (int v = 0; v < 15; ++v)
-            check(e.nvIdxForVoice(v, in) == e.lastStepResult.nvIdx, "identity LOR -> mono nvIdx");
+            check(e.nvIdxForVoice(v, in) == expectedDelegated(v, monoIdx),
+                  "identity LOR -> mono step, own draw, clamped");
     }
 
     // ── 3. per-voice LOR windows: delegation default, then divergence + clamp ──
@@ -53,17 +77,20 @@ int main() {
     e.polyLORRef(2, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_OFF) = 3;
     e.polyLORRef(2, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_ROT) = 2;
 
-    // 3a. DELEGATION DEFAULT (§4d): even with a dialed LOR, a delegated voice (the default)
-    //     reads mono's position → mono nvIdx. Divergence must NOT appear until Local East.
+    // 3a. DELEGATION DEFAULT (§4d): even with a dialed LOR, a delegated voice reads MONO's step
+    //     (the dialed LOR is ignored) + its own draw → same expectation as case 1. Divergence from
+    //     mono's nvIdx comes from the per-voice draw, NOT the dialed LOR.
     for (int step = 0; step < 64; ++step) {
         e.totalStepsElapsed = step;
         int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
         e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
         for (int v : {1, 2})
-            check(e.nvIdxForVoice(v, in) == e.lastStepResult.nvIdx, "delegated (default) -> mono nvIdx despite dialed LOR");
+            check(e.nvIdxForVoice(v, in) == expectedDelegated(v, monoIdx),
+                  "delegated (default) -> mono step (dialed LOR ignored), own draw, clamped");
     }
 
-    // 3b. Flip V3/V4 VAR to Local East, THEN the dialed LOR takes effect and they diverge.
+    // 3b. Flip V3/V4 VAR to Local East, THEN the dialed LOR takes effect: the voice uses its OWN
+    //     step (per-voice tick) + its own draw, and diverges. The clamp still holds.
     e.setVarlegLocalEast(1, 0, true);   // V3 VAR: Local East (opt out of mono delegation)
     e.setVarlegLocalEast(2, 0, true);   // V4 VAR: Local East
 
