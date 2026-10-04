@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="165.0" height="379.43" viewBox="0 0 165.0 379.43">
+<rect width="165.0" height="379.43" fill="#14171b"/>
+<rect x="0" y="0" width="165.0" height="3.54" fill="#d4001a"/>
+<rect x="11.81" y="35.43" width="141.38" height="279.39" rx="4.43" fill="#8060c0" fill-opacity="0.08" stroke="#8060c0" stroke-width="0.3" stroke-opacity="0.45"/>
+<circle cx="37.34" cy="74.96" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="2.36"/>
+<line x1="37.34" y1="74.96" x2="37.34" y2="64.33" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle cx="37.34" cy="74.96" r="16.24" fill="none" stroke="#d4001a" stroke-width="1.48" stroke-opacity="0.8"/>
+<circle id="param_qmix_0" cx="37.34" cy="74.96" r="0.5" fill="none" stroke="none"/>
+<circle cx="37.34" cy="118.57" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="37.34" y1="118.57" x2="37.34" y2="107.94" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_qmix_1" cx="37.34" cy="118.57" r="0.5" fill="none" stroke="none"/>
+<circle cx="37.34" cy="162.18" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="37.34" y1="162.18" x2="37.34" y2="151.55" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_qmix_2" cx="37.34" cy="162.18" r="0.5" fill="none" stroke="none"/>
+<circle cx="37.34" cy="205.79" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="37.34" y1="205.79" x2="37.34" y2="195.16" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_qmix_3" cx="37.34" cy="205.79" r="0.5" fill="none" stroke="none"/>
+<circle cx="37.34" cy="249.4" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="37.34" y1="249.4" x2="37.34" y2="238.77" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_qmix_4" cx="37.34" cy="249.4" r="0.5" fill="none" stroke="none"/>
+<circle cx="37.34" cy="293.02" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="37.34" y1="293.02" x2="37.34" y2="282.39" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_qmix_5" cx="37.34" cy="293.02" r="0.5" fill="none" stroke="none"/>
+<circle cx="82.5" cy="74.96" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="82.5" y1="74.96" x2="82.5" y2="64.33" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_qmix_6" cx="82.5" cy="74.96" r="0.5" fill="none" stroke="none"/>
+<circle cx="82.5" cy="118.57" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="82.5" y1="118.57" x2="82.5" y2="107.94" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_qmix_7" cx="82.5" cy="118.57" r="0.5" fill="none" stroke="none"/>
+<circle cx="82.5" cy="162.18" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="82.5" y1="162.18" x2="82.5" y2="151.55" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_qmix_8" cx="82.5" cy="162.18" r="0.5" fill="none" stroke="none"/>
+<circle cx="82.5" cy="205.79" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="82.5" y1="205.79" x2="82.5" y2="195.16" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_qmix_9" cx="82.5" cy="205.79" r="0.5" fill="none" stroke="none"/>
+<circle cx="82.5" cy="249.4" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="82.5" y1="249.4" x2="82.5" y2="238.77" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_qmix_10" cx="82.5" cy="249.4" r="0.5" fill="none" stroke="none"/>
+<circle cx="82.5" cy="293.02" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="82.5" y1="293.02" x2="82.5" y2="282.39" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_qmix_11" cx="82.5" cy="293.02" r="0.5" fill="none" stroke="none"/>
+<circle cx="127.66" cy="118.57" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="127.66" y1="118.57" x2="127.66" y2="107.94" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_qmix_12" cx="127.66" cy="118.57" r="0.5" fill="none" stroke="none"/>
+<circle cx="127.66" cy="162.18" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="127.66" y1="162.18" x2="127.66" y2="151.55" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_qmix_13" cx="127.66" cy="162.18" r="0.5" fill="none" stroke="none"/>
+<circle cx="127.66" cy="205.79" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="127.66" y1="205.79" x2="127.66" y2="195.16" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_qmix_14" cx="127.66" cy="205.79" r="0.5" fill="none" stroke="none"/>
+<circle cx="127.66" cy="249.4" r="13.29" fill="#241a3a" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="127.66" y1="249.4" x2="127.66" y2="238.77" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_qmix_15" cx="127.66" cy="249.4" r="0.5" fill="none" stroke="none"/>
+<circle id="light_connect" cx="82.5" cy="355.81" r="0.5" fill="none" stroke="none"/>
+</svg>

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180.0" height="379.43" viewBox="0 0 180.0 379.43">
+<rect width="180.0" height="379.43" fill="#dcdcdc"/>
+<rect x="0" y="0" width="180.0" height="3.54" fill="#d4001a"/>
+<circle cx="90.0" cy="88.58" r="13.29" fill="#e8e2d6" stroke="#b0a898" stroke-width="1.48"/>
+<line x1="90.0" y1="88.58" x2="90.0" y2="77.95" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle id="param_voicecount" cx="90.0" cy="88.58" r="0.5" fill="none" stroke="none"/>
+<circle cx="27.3" cy="328.05" r="11.81" fill="#e2ddd2" stroke="#b0a898" stroke-width="1.48"/>
+<circle id="output_polygate" cx="27.3" cy="328.05" r="0.5" fill="none" stroke="none"/>
+<circle cx="52.38" cy="328.05" r="11.81" fill="#e2ddd2" stroke="#b0a898" stroke-width="1.48"/>
+<circle id="output_polystepgate" cx="52.38" cy="328.05" r="0.5" fill="none" stroke="none"/>
+<circle cx="77.46" cy="328.05" r="11.81" fill="#e2ddd2" stroke="#b0a898" stroke-width="1.48"/>
+<circle id="output_polyslegato" cx="77.46" cy="328.05" r="0.5" fill="none" stroke="none"/>
+<circle cx="102.54" cy="328.05" r="11.81" fill="#e2ddd2" stroke="#b0a898" stroke-width="1.48"/>
+<circle id="output_polycv" cx="102.54" cy="328.05" r="0.5" fill="none" stroke="none"/>
+<circle cx="127.62" cy="328.05" r="11.81" fill="#e2ddd2" stroke="#b0a898" stroke-width="1.48"/>
+<circle id="output_polyaccent" cx="127.62" cy="328.05" r="0.5" fill="none" stroke="none"/>
+<circle cx="152.7" cy="328.05" r="11.81" fill="#e2ddd2" stroke="#b0a898" stroke-width="1.48"/>
+<circle id="input_quantcv" cx="152.7" cy="328.05" r="0.5" fill="none" stroke="none"/>
+<circle id="light_connect" cx="90.0" cy="355.81" r="0.5" fill="none" stroke="none"/>
+</svg>

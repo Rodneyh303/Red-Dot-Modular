@@ -39,6 +39,8 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonJunctionExpander);
 	//p->addModel(modelMonsoonSandsExpander);
 	p->addModel(modelMonsoonStraitsExpander);
+	p->addModel(modelStraitsBase);             // lane-extension base (frame + IO + docking)
+	p->addModel(modelStraitsLaneQMIX);         // QMIX lane expander (Phase 1)
 	p->addModel(modelMonsoonCausewayPolyExpander);
 	p->addModel(modelMonsoonChangiExpander);
 	p->addModel(modelMonsoonChangiT2Expander);
