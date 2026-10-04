@@ -132,6 +132,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         addChild(tabGroup);
 
         visualEditor = new SandsVisualEditorV4(SandsVisualEditorV4::POLY);
+        visualEditor->setLaneCount(dotModular::SandsGrid::POLY_LANES);   // 7 lanes — matches East exactly
         visualEditor->box.pos  = mm2px(Vec(ED_X, ED_Y));
         visualEditor->box.size = mm2px(Vec(ED_W, ED_H));
         // Lanes fill the box evenly (no padding) → align with painted lanes +
@@ -640,11 +641,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     }
 
     // Mix-in SEND grid labels (NanoVG; panel carries no baked text). SANDS CONSOLIDATION Step 3:
-    // the send knobs MOVED from below-editor groups to a 6-column × 7-row RHS grid (row-aligned
-    // per lane). Only COLUMN HEADERS are labelled now (LEN/OFF/ROT/SPR/LOR/SPR); the rows are
-    // implicit — each row == an editor lane, already labelled in the editor recess. Geometry is
-    // owned by the generator: column X is read from the lane-0 send/tap anchors, so re-running
-    // the generator can never drift the headers off the columns.
+    // 6 send knobs in a single horizontal row per lane, 9mm pitch, row-aligned to each LED lane.
+    // Column headers (LEN/OFF/ROT/SPR/LOR/SPR) sit above lane 0. Geometry is owned by the generator.
     void draw(const DrawArgs& args) override {
         ModuleWidget::draw(args);
         NVGcontext* vg = args.vg;
@@ -679,8 +677,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         { bool ok = false; Vec sp = anchorMM("param_tapspr_0", ok); if (ok) { colX[5] = sp.x; okAny = true; } }
         if (!okAny) return;
 
-        // Column headers, sitting in the free band above lane 0 (Y < LANE_TOP) at the send
-        // columns' X — outside the voice-tab band, which lives over the editor (ED_X..ED_X+ED_W).
+        // Column headers, sitting above lane 0 at the send columns' X.
         const char* colName[6] = { "LEN", "OFF", "ROT", "SPR", "LOR", "SPR" };
         nvgFontSize(vg, 6.0f);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);

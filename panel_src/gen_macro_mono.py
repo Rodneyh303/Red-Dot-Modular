@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import dotmod_design as D
 from dotmod_design import px, theme
 
-def gen_macro(dark, W_MM=264.16):   # 52HP (48HP + 4HP widened on the RIGHT for the 6-col send grid)
+def gen_macro(dark, W_MM=294.64):   # 58HP (48HP + 10HP widened on the RIGHT for the 6-col send row per lane)
     # Macro mirrors the East visual's 7-lane geometry EXACTLY (same lane tops/heights); it does
     # the same spread job but GLOBAL rather than per-lane. Must match StraitsSandsMacroVisual.hpp
     # (W_MM, ROW_BOT=105, ED_H=91) and src/ui/SandsGrid.hpp (LANE_TOP=14, LANE_H=13, POLY_LANES=7).
@@ -30,7 +30,7 @@ def gen_macro(dark, W_MM=264.16):   # 52HP (48HP + 4HP widened on the RIGHT for 
     TAB_TOP_OFFSET_MM = 5.0
     # Geometry: 7 lanes × 13mm, editor 14→105 (matches East). Left/center/right columns are
     # UNCHANGED from the 5-lane layout; the extra 20mm is added on the RIGHT for the send grid.
-    ED_X=88.; ED_W=111.; OWNER_X=205.; DIR_X=212.; DIR_MOD_X=220.; PROB_OUT_X=236.; ED_Y=14.; ED_H=91.   # 7 lanes x 13mm, editor 14->105
+    ED_X=88.; ED_W=111.; OWNER_X=205.; DIR_X=212.; DIR_MOD_X=220.; PROB_OUT_X=230.; ED_Y=14.; ED_H=91.   # 7 lanes x 13mm, editor 14->105; PROB_OUT moved L to clear send col
     ED_LANE_H=ED_H/N
     # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY).
     def rowY(r): return ED_Y+(r+0.5)*ED_LANE_H
@@ -39,12 +39,11 @@ def gen_macro(dark, W_MM=264.16):   # 52HP (48HP + 4HP widened on the RIGHT for 
     JACK_X=[6.,15.,24.,33.]            # LEN/OFF/ROT/SPR-cv
     ATTEN_X=[43.,52.,61.,70.]          # LEN/OFF/ROT/SPR depth
     SPREAD_X=80.                       # per-lane spread base trimpot
-    # RHS mix-in SEND grid: 6 columns × 7 rows (one row per lane, Y-aligned to the lane centre).
-    # Cols: 0 LEN 1 OFF 2 ROT 3 SPR (sends) + 4 LOR tap 5 SPR tap. The 4 send columns reuse the
-    # param_send_<el>_<item> anchors; the 2 tap columns reuse param_taplor_/tapspr_<el>. Anchor
-    # NAMES are UNCHANGED — only X/Y move — so the widget name-binds still resolve and the audit
-    # stays 1:1. 4mm pitch fits the +20mm right strip (240..260); clears prob_out (236).
-    SEND_COL_X=[240.,244.,248.,252.,256.,260.]
+    # RHS mix-in SEND row: 6 knobs in a SINGLE horizontal row per lane, 9mm pitch (matches
+    # left-side modulation knobs). Row-aligned to each LED lane (Y = ctrlY(el)). Cols 0..3 =
+    # LEN/OFF/ROT/SPR sends (gold), col 4 = LOR tap, col 5 = SPR tap (wellring). Anchor NAMES
+    # are UNCHANGED — only X/Y move — so widget name-binds still resolve.
+    SEND_COL_X=[240.,249.,258.,267.,276.,285.]   # 6 columns at 9mm pitch
     L=[]; A=L.append
     A(D.svg_open(PW,PH))
     A('<g inkscape:label="artwork" inkscape:groupmode="layer">')
@@ -59,8 +58,7 @@ def gen_macro(dark, W_MM=264.16):   # 52HP (48HP + 4HP widened on the RIGHT for 
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
     A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=7))
     A(D.owner_block(OWNER_X, [ctrlY(r) for r in range(N)], ED_X+ED_W, t, cell_w_mm=6.0))
-    # RHS send-grid recess: a faint panel-coloured frame behind the 6×7 send knob grid, spanning
-    # the same vertical band as the editor (14→105) so the rows read aligned to the lanes.
+    # RHS send-grid recess: a faint panel-coloured frame behind the 3×2 send knob blocks.
     sg_x=SEND_COL_X[0]-3.0; sg_y=ED_Y; sg_w=(SEND_COL_X[-1]-SEND_COL_X[0])+6.0; sg_h=ED_H
     A(f'<rect x="{px(sg_x):.1f}" y="{px(sg_y):.1f}" width="{px(sg_w):.1f}" height="{px(sg_h):.1f}" rx="{px(1.4):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.55"/>')
     A('</g>')
@@ -75,12 +73,9 @@ def gen_macro(dark, W_MM=264.16):   # 52HP (48HP + 4HP widened on the RIGHT for 
         for x in JACK_X:  A(D.jack(x,y,t))
         for x in ATTEN_X: A(D.trim(x,y,t,t["gold"]))
         A(D.trim(SPREAD_X,y,t,t["wellring"]))
-    # ── Macro→voice MIX-IN send grid (RELOCATED from below-editor groups to the RHS). 6 columns
-    #    × 7 rows, row-aligned to each lane's Y. Cols 0..3 = LEN/OFF/ROT/SPR sends (gold), col 4 =
-    #    LOR tap, col 5 = SPR tap (wellring). PRE/POST tap semantics (OWNERSHIP_SPEC §9) preserved:
-    #    the LOR tap and SPR tap remain distinct knobs. "per voice, how much of Macro's global CV
-    #    reaches this voice." Geometry shared with the widget labels in StraitsSandsMacroVisual::draw
-    #    (column headers only — rows are implicit, each == an editor lane).
+    # ── Macro→voice MIX-IN send row: 6 knobs in a single horizontal row per lane, 9mm pitch.
+    #    Cols 0..3 = LEN/OFF/ROT/SPR sends (gold), col 4 = LOR tap, col 5 = SPR tap (wellring).
+    #    Row-aligned to each LED lane (Y = ctrlY(el)), mirroring the left-side modulation knobs.
     for el in range(ED_LANES):
         y=rowY(el)
         for item in range(4):
@@ -104,14 +99,15 @@ def gen_macro(dark, W_MM=264.16):   # 52HP (48HP + 4HP widened on the RIGHT for 
         for c,x in enumerate(ATTEN_X): named(f"param_atten_{el}_{c}", x, y)
         named(f"param_spr_{el}",  SPREAD_X,   y)
         named(f"output_prob_{el}", PROB_OUT_X, y)
-    # Macro→voice mix-in send + PRE/POST tap anchors — RHS grid, editor-lane indexed (the C++
-    # binds param_send_<el>_<item> / param_taplor_<el> / param_tapspr_<el> by editor lane).
+    # Macro→voice mix-in send + PRE/POST tap anchors — single row per lane, 6 columns at 9mm pitch.
     for el in range(ED_LANES):
         y=rowY(el)
-        for item in range(4):
-            named(f"param_send_{el}_{item}", SEND_COL_X[item], y)
-        named(f"param_taplor_{el}", SEND_COL_X[4], y)
-        named(f"param_tapspr_{el}", SEND_COL_X[5], y)
+        named(f"param_send_{el}_0", SEND_COL_X[0], y)   # LEN send
+        named(f"param_send_{el}_1", SEND_COL_X[1], y)   # OFF send
+        named(f"param_send_{el}_2", SEND_COL_X[2], y)   # ROT send
+        named(f"param_send_{el}_3", SEND_COL_X[3], y)   # SPR send
+        named(f"param_taplor_{el}", SEND_COL_X[4], y)   # LOR tap
+        named(f"param_tapspr_{el}", SEND_COL_X[5], y)   # SPR tap
     # Direction cells (param_dir_<editorLane>) + gate-mod jacks (input_dir_mod_<editorLane>) —
     # these ARE editor-lane indexed in the C++ (getGlobalDir(editorLane)), so keep `el`.
     for el in range(ED_LANES):
