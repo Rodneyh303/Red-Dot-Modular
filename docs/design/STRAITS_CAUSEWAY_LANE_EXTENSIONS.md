@@ -175,3 +175,23 @@ not browser-dragged, hidden from the library", however that's best realised.
 
 (Supersedes any earlier implication that extenders are browser-placed/dragged in fixed order. QMIX is
 still the default lane, now by being base-spawned-by-default rather than baked in.)
+
+
+## MECHANISM (Rodney) — UNREGISTERED model = base-only creation (the clean way to do it)
+Don't "hide a registered module" — simply **DON'T register the extender model in plugin.cpp**
+(never call `p->addModel(extenderModel)`). Rack only lists REGISTERED models in the browser, so an
+unregistered model is uncreatable by the user — but the BASE can still INSTANTIATE it in code
+(construct the Module + ModuleWidget directly). Registration ≠ instantiation:
+- **Registration (addModel)** = appears in the browser / draggable. SKIP this for extenders.
+- **Instantiation (constructing the objects)** = exists in the rack. The base does this itself.
+So the base is the ONLY thing that can make an extender, enforced by nothing else having a registered
+path to it.
+
+### PERSISTENCE wrinkle (must handle — verify in Phase 1)
+Rack saves/loads modules by model lookup (plugin+model slug). An UNREGISTERED model may not be
+restorable by Rack on patch load. So the BASE owns persistence: it SAVES which lanes it has (in the
+base's own JSON) and RE-SPAWNS its extenders on load, rather than relying on Rack to auto-restore them.
+This matches the whole model — the base OWNS its extenders (create/position/remove), so it also owns
+their persistence: extenders are children of the base's state, not independently-persisted modules.
+Verify save/load round-trips (place base, add lanes, save, reload → lanes come back, in order, with
+their knob state) EARLY — this is the second load-bearing thing after the spawn API.
