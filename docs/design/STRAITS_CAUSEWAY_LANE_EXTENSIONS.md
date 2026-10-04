@@ -114,6 +114,20 @@ These sharpen (and in two cases CHANGE) the model above. Where they conflict, TH
    pre-checked. Design the LaneExpander so it CAN be added that way (not hard-wired to browser
    placement) — but the docking mechanism exists first; the menu is a later UX layer.
 
+## METHOD: REFACTOR, not build-from-scratch (Rodney — binding constraint)
+This is a REFACTOR of the WORKING Straits panel, NOT a new build. Working Straits already has the
+per-voice knob rows, the per-voice data reads from Monsoon, the pointer wiring, and the panel layout
+— all PROVEN (some fixed in hard sessions). So:
+- **Start from working Straits code + panel. Cut along lane boundaries; MOVE, don't reimplement.**
+- The generic `LaneExpander` = the existing per-lane ROW logic EXTRACTED into a reusable class.
+- The base = the existing FRAME + IO with the lane rows REMOVED.
+- The lane DESCRIPTORS (REST/ACCENT/QMIX colour/label/strand/params) are READ OFF what the existing
+  rows already differ by — not invented.
+- **Red flag: if CC writes NEW per-voice-read or binding logic, it has gone wrong** — that code exists
+  and works in Straits today. Reuse it. Reimplementing risks reintroducing already-fixed bugs and is
+  far more work. The design decisions (seamless, pointer, mono-default) are mostly ALREADY embodied in
+  working Straits; this is reorganisation, not redesign.
+
 ## Build sequence (keeps old Straits, modular, incrementally testable)
 - **Phase 0 — recon, write nothing:** current Straits (lanes/HP/panel-gen/how it reads per-voice);
   the MonsoonExpanderManager/MonsoonDiscovery pointer-neighbour infra; the seamless-abutment mechanics
