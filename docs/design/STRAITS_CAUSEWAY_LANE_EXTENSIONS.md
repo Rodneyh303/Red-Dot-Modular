@@ -78,3 +78,52 @@ lane extensions. (Connection rework parallel, not blocking this.)
 Straits (per-voice knobs), Causeway (per-voice CV), and the unified Sands (visual editor) may all be
 the SAME configurable-lane frame in different roles — lane uniformity subsuming three modules' worth of
 special-casing, as it already did for the three Sands. Worth revisiting once the extension model exists.
+
+
+## REFINED MODEL (Rodney, supersedes base=frame+QMIX) — five refinements
+These sharpen (and in two cases CHANGE) the model above. Where they conflict, THESE win.
+
+1. **Base = minimal frame + ALL IO jacks + docking. No lane controls in the base.** The base carries
+   every input/output (the complete signal interface) and the docking frame — nothing lane-specific.
+   So the base alone is fully functional; expanders add CONTROL RESOLUTION, not capability, and never
+   route signal across the seam (just pointer-shared control state). (Changes the doc's per-lane-IO.)
+
+2. **QMIX is an EXTENDER, not baked into the base** — just PRE-ADDED by default. So EVERY lane
+   (QMIX included) is a lane-expander; zero special cases. A bare base has no lanes; QMIX is the
+   default-attached one and can be removed like any other. (Changes "base = frame + QMIX".)
+
+3. **ONE generic `LaneExpander` class, parameterised by a LANE DESCRIPTOR** (lane id, colour, label,
+   engine strand/params to bind). REST/ACCENT/QMIX/VARIATION/LEGATO are each just a descriptor — NOT
+   separate module classes. A docking/render bug fixed once fixes all lanes; adding a lane later is a
+   new descriptor. This is lane-uniformity in the PANEL code (avoids the per-module divergence that
+   made Sands a nightmare).
+
+4. **No expander for a lane ⇒ that lane uses the MONO value (Monsoon's mono control), broadcast to all
+   voices.** The expander is purely a per-voice OVERRIDE on top of the mono default that already
+   exists. Layering: Monsoon = mono controls (the floor; all voices follow mono); each added
+   lane-expander = per-voice control for THAT lane; absent expander = mono-broadcast. No lane is ever
+   lost by lacking its expander — it just runs at mono (N=1) resolution. "Mono controls on Monsoon,
+   mono+poly on Straits." Engine read: per-voice WHEN the expander is present AND the voice is
+   independent; else MONO. (Note: "delegated to mono" and "no expander" are the same read: mono value.)
+
+5. **Keep the OLD Straits registered and working throughout the build** — build the new base+expanders
+   as SEPARATE new slugs alongside it (reference + safety net). Retire the old Straits slug LAST, only
+   once the new system fully replaces it and is tested.
+
+6. **Eventual context-menu add/remove lanes** on the base (dock/undock a lane-expander), QMIX
+   pre-checked. Design the LaneExpander so it CAN be added that way (not hard-wired to browser
+   placement) — but the docking mechanism exists first; the menu is a later UX layer.
+
+## Build sequence (keeps old Straits, modular, incrementally testable)
+- **Phase 0 — recon, write nothing:** current Straits (lanes/HP/panel-gen/how it reads per-voice);
+  the MonsoonExpanderManager/MonsoonDiscovery pointer-neighbour infra; the seamless-abutment mechanics
+  (shared bg/rails, per-voice knob-row Y aligned across the seam). Report the minimal one-lane scaffold.
+- **Phase 1 — generic LaneExpander + base, proven with ONE lane (QMIX):** new Straits BASE (frame +
+  all IO + docking); generic LaneExpander(descriptor); instantiate for QMIX; dock right, seamless
+  render, pointer-wired. Test in Rack: base+QMIX = one seamless panel, per-voice QMIX works, old
+  Straits still there. STOP and review before scaling.
+- **Phase 2 — drop in REST/ACCENT/VARIATION/LEGATO as DESCRIPTORS** to the same class. Verify
+  mono-default-when-absent for each (remove the expander → lane falls back to mono-broadcast).
+- **Phase 3 — context-menu add/remove** (optional/later), QMIX default.
+- **Phase 4 — retire old Straits** last, once fully replaced and tested.
+Additive throughout (new slugs; don't touch working Sands/engine). Suite green between phases.
