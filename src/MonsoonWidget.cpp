@@ -1469,10 +1469,10 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
         // (-1/0/+1), apply-on-mode-change toggle, apply-now action. "Needs a CA" advisory
         // cue (greyed text, still selectable — persisted). Module-level apply-to-all.
         {
-            const char* laneNames[5] = {"REST", "MELODY", "OCTAVE", "ACCENT", "QMIX"};
+            const char* laneNames[7] = {"REST", "MELODY", "OCTAVE", "ACCENT", "QMIX", "VARIATION", "LEGATO"};
             bool caReachable = (m->expanderManager.cachedChangeAlleyV2 != nullptr);
             menu->addChild(createSubmenuItem("Spread target", "", [=](ui::Menu* sub) {
-                for (int lane = 0; lane < 5; ++lane) {
+                for (int lane = 0; lane < 7; ++lane) {   // 7 = POLY_LANES (REST/MEL/OCT/ACC/QMIX/VAR/LEG)
                     sub->addChild(createSubmenuItem(laneNames[lane], "", [=](ui::Menu* lm) {
                         // ── Target radio ──
                         { auto* l = new ui::MenuLabel; l->text = "Target"; lm->addChild(l); }

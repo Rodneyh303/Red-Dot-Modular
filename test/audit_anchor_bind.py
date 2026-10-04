@@ -89,17 +89,19 @@ MODULES = {
         "widget": ["src/StraitsSandsMacroVisual.cpp"],
         "panel": "res/panels/StraitsSandsMacroVisual_48HP.svg",
         # Descriptive families after Stage 3 migration.
+        # SANDS CONSOLIDATION Step 3: 7 poly lanes (was 5). Send knobs moved from below-editor
+        # groups to a 6-column × 7-row RHS grid; label_mixin_ group-header anchors removed
+        # (rows are now implicit — each == an editor lane; draw() labels column headers only).
         "counts": {
-            "input_cv_": 20,          # 5 poly lanes × 4 (LEN/OFF/ROT/SPR)
-            "param_atten_": 20,
-            "param_spr_": 5,          # 5 poly spread bases
-            "output_prob_": 5,
-            "param_send_": 20,        # 5 lanes × 4 mix-in items
-            "param_taplor_": 5,
-            "param_tapspr_": 5,
-            "label_mixin_": 5,
-            "param_dir_": 5,
-            "input_dir_mod_": 5,
+            "input_cv_": 28,          # 7 poly lanes × 4 (LEN/OFF/ROT/SPR)
+            "param_atten_": 28,
+            "param_spr_": 7,          # 7 poly spread bases
+            "output_prob_": 7,
+            "param_send_": 28,        # 7 lanes × 4 mix-in items
+            "param_taplor_": 7,
+            "param_tapspr_": 7,
+            "param_dir_": 7,
+            "input_dir_mod_": 7,
         },
     },
     "keppel": {
@@ -274,7 +276,7 @@ def audit(name, cfg):
 # SandsGrid constant lookup (kept minimal; extend as configs reference symbols).
 _GRID_VALUES = {
     "MONO_LANES": 7,
-    "POLY_LANES": 5,
+    "POLY_LANES": 7,   # SANDS CONSOLIDATION Step 1: 7 (was 5)
     "EAST_LANES": 7,
 }
 

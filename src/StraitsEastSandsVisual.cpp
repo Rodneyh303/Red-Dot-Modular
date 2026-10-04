@@ -234,17 +234,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // mirrors Mono, inoperable). editorLane → engine lane for the ownership check.
         visualEditor->laneEditBlockedFn = [this](int editorLane) -> bool {
             if (tab1MonoMirror()) return true;           // V1 owned by Mono → all lanes locked on East
-            // VARIATION (4) / LEGATO (5): the usual V1 pattern. MONO owns these strands, so on the
-            // V1 tab they are LOCKED and merely MIRROR mono's values — even when no Sands Mono is
-            // attached (East is the V1 editor for the four poly lanes only; VAR/LEG stay mono's).
-            // On poly tabs they are editable (stage 1b banks). They are never Macro-delegated:
-            // an owned lane drives all voices identically, annihilating per-voice divergence.
-            // Modulation still reaches mono's VAR/LEG through mono's own path — locking the East
-            // display does not gate the strand.
-            // Editable on poly tabs, and on V1 when East IS the V1 editor (no Sands Mono).
-            // Locked only when Mono owns V1 — which tab1MonoMirror() already caught above.
-            if (editorLane >= dotModular::SandsGrid::POLY_LANES) return onMonoTab() && !v1Editable();
-            if (editorLane < 0) return false;
+            // SANDS CONSOLIDATION Step 2b: VAR/LEG are now full poly lanes (POLY_LANES=7), so
+            // the old `>= POLY_LANES` guard that locked them as mono-only is unreachable (there
+            // are no editor lanes >= 7). All 7 lanes now use the same Macro-delegation lock.
+            if (editorLane < 0 || editorLane >= dotModular::SandsGrid::EAST_LANES) return false;
             int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[editorLane];
             // STEP 4c: a lane delegated to Macro is inoperable on East (V1 + poly tabs).
             // Shared resolver-backed helper: owner(currentVoice, lane) == MACRO.
@@ -343,7 +336,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     "input_cv_" + std::to_string(el) + "_" + std::to_string(c), cvId(eng,c),
                     std::function<void(redDot::GoldPolyPort*)>(themeCfg));
             // CV-depth attenuverters: STORE-BACKED, engine-indexed store, editor-ordered label.
-            static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC"};
+            static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
             static const char* CN[4] = {"Len","Off","Rot","Spr"};
             for (int c = 0; c < 4; ++c) {
                 const int aEng = eng, aCol = c;
@@ -394,7 +387,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //  via the store get/set below, keyed by editor lane.)
         // Spread base — anchor param_spr_<el> (editor row), store getSpread(slot, engine lane),
         // editor-ordered label. Same el→engine conversion as the attens above.
-        static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC"};
+        static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             const int eng = EL2ENG(el);
             auto* k = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
@@ -518,8 +511,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         }
         // Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong).
         // Locked when the lane is delegated (not locally owned): direction follows the delegated
-        // owner and can't be overridden. Lanes 0..3 (poly): locked when Macro owns. Lanes 4..5
-        // (VAR/LEG): locked on the mono tab (V1 follows mono's direction).
+        // owner and can't be overridden. SANDS CONSOLIDATION Step 2b: all 7 lanes (incl VAR/LEG)
+        // use the same lock — delegated to Macro OR V1+Mono tab. The old VAR/LEG-specific lock
+        // is gone (they're full poly lanes now).
         static const NVGcolor dirCol[dotModular::SandsGrid::EAST_LANES] = {
             nvgRGB(0xd4,0xaf,0x37), nvgRGB(0xb8,0x86,0x0b),  // MEL gold, OCT dark gold
             nvgRGB(0x80,0x60,0xc0),  // QMIX purple
@@ -571,23 +565,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // NOTE: laneOwnedByMacroTopo takes an ENGINE lane (REST=0,MEL=1,OCT=2,ACC=3,QMIX=4),
                     // but `lane` here is an EDITOR lane (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4). Convert via
                     // EDITOR_TO_ENGINE_LANE_QMIX to avoid the permutation.
-                    // Lanes 5..6 (VAR/LEG): on mono tab, locked when tab1MonoMirror (V1 follows
-                    // Mono). On poly tabs, locked when the lane is delegated to mono (follows
-                    // mono's direction) — checked via varlegDelegDispId (0 = delegated).
-                    if (lane < dotModular::SandsGrid::POLY_LANES)
-                        w->lockWhen = [this, lane]() {
-                            int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane];
-                            return laneOwnedByMacroTopo(engLane) || tab1MonoMirror();
-                        };
-                    else
-                        w->lockWhen = [this, lane]() {
-                            if (tab1MonoMirror()) return true;
-                            if (!onMonoTab() && selectedVoice >= 1) {
-                                int vl = lane - dotModular::SandsGrid::POLY_LANES;   // QMIX-widened: editor 5=VAR→0, 6=LEG→1 (was lane-4, now ACC=4 is a poly lane)
-                                Monsoon* m = getMonsoon(); return m && (m->getVarlegDeleg(polyVoice(), vl) < 0.5f);
-                            }
-                            return false;
-                        };
+                    // SANDS CONSOLIDATION Step 2b: all 7 lanes use the same DirCell lock (VAR/LEG
+                    // are full poly lanes now — the old mono-only-specific else branch is dead code
+                    // since POLY_LANES=7 means `lane < POLY_LANES` is always true for valid lanes).
+                    w->lockWhen = [this, lane]() {
+                        int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane];
+                        return laneOwnedByMacroTopo(engLane) || tab1MonoMirror();
+                    };
                 }
             );
         }
@@ -824,7 +808,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                           ? dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane] : lane;
         const bool macroOwns = !eastOwnsLane(engLane);   // MVC step 1d: store-backed (engine lane)
         static const char* laneNames[dotModular::SandsGrid::POLY_LANES] =
-            { "MELODY", "OCTAVE", "Q-MIX", "REST", "ACCENT" };   // EDITOR order (lane is an editor lane)
+            { "MELODY", "OCTAVE", "Q-MIX", "REST", "ACCENT", "VARIATION", "LEGATO" };   // EDITOR order (lane is an editor lane)
         static_assert(sizeof(laneNames)/sizeof(laneNames[0]) == dotModular::SandsGrid::POLY_LANES,
                       "ownership-menu lane-name table must be one per poly lane");
         const char* ln = (lane >= 0 && lane < dotModular::SandsGrid::POLY_LANES) ? laneNames[lane] : "?";

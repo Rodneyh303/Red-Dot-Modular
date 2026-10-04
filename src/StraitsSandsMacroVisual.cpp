@@ -173,7 +173,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                     mm.setGlobalLor(engLane, 0, (float)L);
                     mm.setGlobalLor(engLane, 1, (float)O);
                     mm.setGlobalLor(engLane, 2, (float)R);
-                    if (ed && lane >= 0 && lane < 6) {
+                    if (ed && lane >= 0 && lane < dotModular::SandsGrid::POLY_LANES) {
                         ed->currentState.lanes[lane].length   = std::max(1, L);
                         ed->currentState.lanes[lane].offset   = O;
                         ed->currentState.lanes[lane].rotation = R;
@@ -200,7 +200,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // EditorLane/EngineLane make a raw-int mixup a compile error; .v feeds the int-keyed store.
         auto EL2ENG = [](int el){ return dotModular::toEngine(dotModular::EditorLane(el)).v; };
         // Editor-ordered lane names for tooltips (top→bottom).
-        static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC"};
+        static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
 
         // 5 poly probability CV outs — jack on editor row el drives engine lane's prob out.
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el)
@@ -280,7 +280,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         static const NVGcolor editorDirCol[dotModular::SandsGrid::POLY_LANES] = {
             nvgRGB(0xd4,0xaf,0x37), nvgRGB(0xb8,0x86,0x0b),  // MEL gold, OCT dark gold
             nvgRGB(0x80,0x60,0xc0),  // QMIX purple
-            nvgRGB(0x50,0x50,0x50), nvgRGB(0xff,0x95,0x00)   // REST grey, ACC orange
+            nvgRGB(0x50,0x50,0x50), nvgRGB(0xff,0x95,0x00),  // REST grey, ACC orange
+            nvgRGB(0x20,0x80,0x20), nvgRGB(0x80,0x40,0x20)   // VAR green, LEG brown
         };
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             // STORE-BACKED (MVC step 1: direction de-param). The DirCell reads/writes
@@ -638,30 +639,18 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         }
     }
 
-    // Mix-in send group labels (NanoVG; panel carries no baked text). Geometry MUST
-    // match the send grids in gen_macro_mono.py (gen_macro) EXACTLY — keep in lockstep:
-    //   BLEND_TOP=85 BLEND_H=35 SEND_Y0=10 SEND_DY=9 SEND_DX=6 GROUP_W=ED_W/5 (5 lanes incl QMIX).
+    // Mix-in SEND grid labels (NanoVG; panel carries no baked text). SANDS CONSOLIDATION Step 3:
+    // the send knobs MOVED from below-editor groups to a 6-column × 7-row RHS grid (row-aligned
+    // per lane). Only COLUMN HEADERS are labelled now (LEN/OFF/ROT/SPR/LOR/SPR); the rows are
+    // implicit — each row == an editor lane, already labelled in the editor recess. Geometry is
+    // owned by the generator: column X is read from the lane-0 send/tap anchors, so re-running
+    // the generator can never drift the headers off the columns.
     void draw(const DrawArgs& args) override {
         ModuleWidget::draw(args);
         NVGcontext* vg = args.vg;
 
-        // (P1/G1 no-hide: the old V1 atten-masking rectangle was removed — Macro's
-        // left attenuverters are always visible, including on the V1 tab. They were
-        // being painted over with the panel background here, which is why the V1
-        // trimpots "disappeared" even though the widgets were visible.)
-
-        // GEOMETRY IS OWNED BY THE GENERATOR. Every MIX-IN label position is derived from the
-        // panel-kit anchors gen_macro_mono.py emits — ALL now EDITOR-lane indexed (Stage 3 unified
-        // Macro on descriptive editor-order anchors, matching the widget binds): group header from
-        // label_mixin_<el>, the four send items from param_send_<el>_<item>, the two taps from
-        // param_taplor_<el>/param_tapspr_<el>. NOTHING is recomputed from GROUP_W/BLEND_* here, so
-        // re-running the generator can never drift the labels off the boxes (the ED_W/4-vs-ED_W/5
-        // bug that recurred 3×). The store accessors (getMacroSend/getGlobalTap) remain engine-
-        // indexed and are keyed inside the bind closures — only the ANCHOR NAMES are editor order.
-        const char* laneName[dotModular::SandsGrid::POLY_LANES] = { "MELODY", "OCTAVE", "QMIX", "REST", "ACCENT" };  // editor order
-        const char* itemName[4] = { "LEN", "OFF", "ROT", "SPR" };
-        static_assert(sizeof(laneName)/sizeof(laneName[0]) == dotModular::SandsGrid::POLY_LANES,
-                      "MIX-IN lane-name table must be one per poly lane");
+        // (P1/G1 no-hide: the old V1 atten-masking rectangle was removed — Macro's left
+        // attenuverters are always visible, including on the V1 tab.)
 
         bool isLight = false;
         if (auto* mon = getMonsoon()) isLight = mon->lightTheme;
@@ -672,51 +661,33 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         nvgFontFaceId(vg, font->handle);
 
         NVGcolor head = isLight ? nvgRGB(40,44,52) : nvgRGB(210,214,222);
-        NVGcolor item = isLight ? nvgRGB(150,120,20) : nvgRGB(190,160,60);
 
-        // "MIX IN" header: anchor its baseline just above the first group's header anchor, so it
-        // tracks the box row without a BLEND_TOP literal.
         auto anchorMM = [&](const std::string& name, bool& ok) -> Vec {
             if (NSVGshape* s = findNamed(name)) { ok = true; return centerOf(s); }   // px
             ok = false; return Vec(0, 0);
         };
-        {
-            bool ok0 = false; Vec g0 = anchorMM("label_mixin_0", ok0);
-            nvgFontSize(vg, 8.0f);
-            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_BOTTOM);
-            nvgFillColor(vg, head);
-            const float baselineY = ok0 ? (g0.y - mm2px(5.5f)) : mm2px(83.5f);
-            nvgText(vg, mm2px(ED_X), baselineY, "MIX IN", nullptr);
-        }
 
-        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            // All MIX-IN anchors are EDITOR-lane indexed (Stage 3), so index every one by l.
-            // Group header — from the editor-ordered label_mixin_<l> anchor.
-            bool okH = false; Vec gH = anchorMM("label_mixin_" + std::to_string(l), okH);
-            if (okH) {
-                nvgFontSize(vg, 7.0f);
-                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-                nvgFillColor(vg, head);
-                nvgText(vg, gH.x, gH.y, laneName[l], nullptr);
-            }
-            // Send-item labels — one under each param_send_<l>_<item> anchor.
-            nvgFontSize(vg, 5.0f);
-            nvgFillColor(vg, item);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            for (int it = 0; it < 4; ++it) {
-                bool okS = false;
-                Vec s = anchorMM("param_send_" + std::to_string(l) + "_" + std::to_string(it), okS);
-                if (okS) nvgText(vg, s.x, s.y + mm2px(4.4f), itemName[it], nullptr);
-            }
-            // PRE/POST CV taps — LOR (param_taplor_<l>) + SPR (param_tapspr_<l>).
-            {
-                bool okL = false, okSp = false;
-                Vec lTap = anchorMM("param_taplor_" + std::to_string(l), okL);
-                Vec sTap = anchorMM("param_tapspr_" + std::to_string(l), okSp);
-                if (okL)  nvgText(vg, lTap.x, lTap.y + mm2px(4.4f), "LOR", nullptr);
-                if (okSp) nvgText(vg, sTap.x, sTap.y + mm2px(4.4f), "SPR", nullptr);
-            }
+        // Column X positions from lane-0 anchors: items 0..3 = LEN/OFF/ROT/SPR sends,
+        // col 4 = LOR tap (param_taplor_0), col 5 = SPR tap (param_tapspr_0).
+        float colX[6] = {};
+        bool okAny = false;
+        for (int it = 0; it < 4; ++it) {
+            bool ok = false; Vec s = anchorMM("param_send_0_" + std::to_string(it), ok);
+            if (ok) { colX[it] = s.x; okAny = true; }
         }
+        { bool ok = false; Vec l = anchorMM("param_taplor_0", ok);  if (ok) { colX[4] = l.x;  okAny = true; } }
+        { bool ok = false; Vec sp = anchorMM("param_tapspr_0", ok); if (ok) { colX[5] = sp.x; okAny = true; } }
+        if (!okAny) return;
+
+        // Column headers, sitting in the free band above lane 0 (Y < LANE_TOP) at the send
+        // columns' X — outside the voice-tab band, which lives over the editor (ED_X..ED_X+ED_W).
+        const char* colName[6] = { "LEN", "OFF", "ROT", "SPR", "LOR", "SPR" };
+        nvgFontSize(vg, 6.0f);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgFillColor(vg, head);
+        const float headerY = mm2px(ED_Y - 3.0f);   // 11mm — above lane 0 (14), below the tab band
+        for (int c = 0; c < 6; ++c)
+            nvgText(vg, colX[c], headerY, colName[c], nullptr);
     }
 };
 

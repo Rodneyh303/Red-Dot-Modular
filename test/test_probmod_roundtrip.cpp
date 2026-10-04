@@ -60,7 +60,7 @@ static constexpr int kNStrands = 7;
 // item: 0=len 1=off 2=rot. Kept in the legal-ish range but distinct.
 static int monoSentinel(int item, int strandEnum) { return 100 + item * 10 + strandEnum; }
 // Poly: unique per (item, bank, lane).
-static int polySentinel(int item, int bank, int lane) { return 1000 + item*300 + bank*5 + lane; }  // *5: 5 poly lanes (QMIX)
+static int polySentinel(int item, int bank, int lane) { return 1000 + item*300 + bank*7 + lane; }  // *7: 7 poly lanes (SANDS CONSOLIDATION Step 2)
 
 int main() {
     using VR = dotModular::VoiceResolver;

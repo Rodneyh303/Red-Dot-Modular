@@ -99,14 +99,16 @@ constexpr int EDITOR_TO_MONO_PARAM[7] = { 0, 1, 2, 3, 4, 5, 6 };
 //     STRAND_MELODY 0, OCTAVE 1, QMIX 2, RHYTHM 3, ACCENT 4, VARIATION 5, LEGATO 6; NUM 7
 // STRAND_QMIX generates off STREAM_SOURCE_SELECT; every other strand off rhythm/melody.
 constexpr int  QMIX_EDITOR_LANE = 2;    // q-mix's editor lane (and, editor-aligned, its strand)
-constexpr int  POLY_NONE        = -1;   // mono-only editor lane has no poly engine lane (VAR/LEG)
+constexpr int  POLY_NONE        = -1;   // (kept for legacy callers; no mono-only poly lane remains post-consolidation)
 constexpr uint64_t QMIX_STREAM_KEY = 3; // == redDot::seed::STREAM_SOURCE_SELECT
 
-// Poly engine lane → editor lane, WITH q-mix as a poly lane (appended at poly index 4, editor 2).
-//   REST→3  MEL→0  OCT→1  ACC→4  QMIX→2          (was {2,0,1,3})
-constexpr int ENGINE_LANE_TO_EDITOR_QMIX[5] = { 3, 0, 1, 4, 2 };
-// Inverse over 7 editor lanes; VAR/LEG are mono-only (POLY_NONE).
-constexpr int EDITOR_TO_ENGINE_LANE_QMIX[7] = { 1, 2, 4, 0, 3, POLY_NONE, POLY_NONE };
+// SANDS CONSOLIDATION Step 1: VARIATION + LEGATO are now FULL poly lanes (no longer mono-only).
+// The poly engine lane order is 0 REST 1 MEL 2 OCT 3 ACC 4 QMIX 5 VARIATION 6 LEGATO (7 lanes);
+// editor order is 0 MEL 1 OCT 2 QMIX 3 REST 4 ACC 5 VAR 6 LEG. VAR/LEG are poly index 5/6,
+// editor 5/6 — so the bridge table widens 5→7 and VAR/LEG map to themselves (no longer POLY_NONE).
+constexpr int ENGINE_LANE_TO_EDITOR_QMIX[7] = { 3, 0, 1, 4, 2, 5, 6 };
+// Inverse over 7 editor lanes (all poly now).
+constexpr int EDITOR_TO_ENGINE_LANE_QMIX[7] = { 1, 2, 4, 0, 3, 5, 6 };
 
 // ─── LOR store-bank: the ONE canonical editor-lane → lorBase[] bank mapping ───
 // The lorBase store (Monsoon.hpp editor.lorBase) is banked in the order
@@ -120,9 +122,8 @@ constexpr int EDITOR_TO_ENGINE_LANE_QMIX[7] = { 1, 2, 4, 0, 3, POLY_NONE, POLY_N
 // ALL LOR-bank call sites (East lorBank(), Mono readStrand bLor, MonsoonExpanderManager
 // poly VAR/LEG, save/load) MUST route through lorStoreBank() so a future lane-count
 // change updates exactly one place and VAR/LEG can never drift again.
-constexpr int POLY_LANE_COUNT = 5;   // MEL/OCT/QMIX/REST/ACC (== SandsGrid::POLY_LANES; kept
-                                     // here so this header stays self-contained / include-light)
-constexpr int EDITOR_LANE_COUNT = 7; // + VAR/LEG (== SandsGrid::MONO_LANES / EAST_LANES)
+constexpr int POLY_LANE_COUNT = 7;   // MEL/OCT/QMIX/REST/ACC/VAR/LEG (== SandsGrid::POLY_LANES; SANDS CONSOLIDATION Step 1)
+constexpr int EDITOR_LANE_COUNT = 7; // == SandsGrid::MONO_LANES / EAST_LANES (all 7 are poly now)
 
 // editorLane (0..6) → lorBase[] bank. Poly lanes map through the QMIX table; VAR/LEG map
 // to themselves (banks 5/6), derived from POLY_LANE_COUNT so they track the poly count.
@@ -131,9 +132,10 @@ constexpr int lorStoreBank(int editorLane) {
                ? EDITOR_TO_ENGINE_LANE_QMIX[editorLane]           // MEL0 OCT1 QMIX4 REST0? -> table
                : editorLane;                                      // VAR(5)/LEG(6): self
 }
-// varleg index (0=VAR,1=LEG) → lorBase[] bank. The safe replacement for the old `vl + 4`
-// literal: VAR→5, LEG→6, derived from POLY_LANE_COUNT.
-constexpr int varlegStoreBank(int vl) { return POLY_LANE_COUNT + vl; }
+// varleg index (0=VAR,1=LEG) → lorBase[] bank. SANDS CONSOLIDATION Step 1: VAR/LEG are now
+// regular poly lanes (editor 5/6), so route through lorStoreBank (the canonical table) rather
+// than the old "POLY_LANE_COUNT + vl" append formula (which gave 7/8, not 5/6, post-widen).
+constexpr int varlegStoreBank(int vl) { return lorStoreBank(5 + vl); }
 
 // Compile-time guards nailing the exact banks so any future renumber that forgets a call
 // site trips here instead of in the field (the VAR/LEG banks that silently drifted for QMIX).
@@ -148,6 +150,8 @@ static_assert(varlegStoreBank(0) == 5 && varlegStoreBank(1) == 6, "varleg banks:
 
 static_assert(MONO_LANE_TO_STRAND[QMIX_EDITOR_LANE] == STRAND_QMIX, "qmix is strand 2 (editor-aligned)");
 static_assert(ENGINE_LANE_TO_EDITOR_QMIX[4] == 2 && EDITOR_TO_ENGINE_LANE_QMIX[2] == 4, "qmix poly<->editor round-trip");
+static_assert(ENGINE_LANE_TO_EDITOR_QMIX[5] == 5 && EDITOR_TO_ENGINE_LANE_QMIX[5] == 5, "VARIATION poly<->editor round-trip (Step 1)");
+static_assert(ENGINE_LANE_TO_EDITOR_QMIX[6] == 6 && EDITOR_TO_ENGINE_LANE_QMIX[6] == 6, "LEGATO poly<->editor round-trip (Step 1)");
 
 // LENGTH GUARDS (the point of deleting the old tables): tie each bridge table's width to the lane
 // count so the NEXT lane-count change fails to COMPILE instead of silently dropping a lane — the exact
@@ -159,10 +163,9 @@ static_assert(sizeof(EDITOR_TO_ENGINE_LANE_QMIX) / sizeof(int) == EDITOR_LANE_CO
               "EDITOR_TO_ENGINE_LANE_QMIX must have one entry per editor lane (EDITOR_LANE_COUNT)");
 static_assert(sizeof(MONO_LANE_TO_STRAND) / sizeof(int) == EDITOR_LANE_COUNT,
               "MONO_LANE_TO_STRAND must have one entry per editor lane (EDITOR_LANE_COUNT)");
-// Every editor lane 0..POLY_LANE_COUNT-1 has a REAL poly engine lane; VAR/LEG are exactly POLY_NONE.
-static_assert(EDITOR_TO_ENGINE_LANE_QMIX[POLY_LANE_COUNT - 1] != POLY_NONE
-              && EDITOR_TO_ENGINE_LANE_QMIX[POLY_LANE_COUNT] == POLY_NONE,
-              "poly editor lanes map to a real engine lane; the first mono-only lane is POLY_NONE");
+// SANDS CONSOLIDATION Step 1: ALL editor lanes are poly now (no POLY_NONE). VAR/LEG round-trip.
+static_assert(EDITOR_TO_ENGINE_LANE_QMIX[5] == 5 && EDITOR_TO_ENGINE_LANE_QMIX[6] == 6,
+              "VAR/LEG are poly lanes (no longer POLY_NONE)");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRONG LANE TYPES — make "editor lane vs engine lane" a COMPILE-TIME distinction.
@@ -199,7 +202,9 @@ static_assert(toEngine(EditorLane(0)).v == 1, "editor MELODY -> engine 1");
 static_assert(toEngine(EditorLane(2)).v == 4, "editor QMIX -> engine 4");
 static_assert(toEngine(EditorLane(3)).v == 0, "editor REST -> engine 0");
 static_assert(toEditor(toEngine(EditorLane(2))).v == 2, "editor->engine->editor round-trips (QMIX)");
-static_assert(toEngine(EditorLane(5)).v == POLY_NONE, "VAR is mono-only (no engine lane)");
+static_assert(toEngine(EditorLane(5)).v == 5, "VAR is a poly lane (SANDS CONSOLIDATION Step 1; was POLY_NONE)");
+static_assert(toEditor(toEngine(EditorLane(5))).v == 5, "VAR editor->engine->editor round-trips (Step 1)");
+static_assert(toEditor(toEngine(EditorLane(6))).v == 6, "LEG editor->engine->editor round-trips (Step 1)");
 
 // ─── NOTE: ALIGN THE ORDERS WHERE POSSIBLE ───────────────────────────────────
 // Of the orderings in the header block, three are already collapsed to identity (engine

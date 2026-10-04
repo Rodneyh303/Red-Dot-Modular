@@ -52,8 +52,9 @@ struct PolyVoice {
     // PLAYED (vs rested) when mono started the gate, and held for the chain's life. It, not
     // the gate-held flag, is what tells a landing whether this voice is part of the chain:
     // a voice that opted out and let its short note close still reads participating==true and
-    // re-articulates, whereas a rester reads false and stays silent. Only consulted when
-    // perVoiceArticulation is on. Reset at each new onset and when mono rests.
+    // re-articulates, whereas a rester reads false and stays silent. Always consulted (the
+    // per-voice VAR/LEG draw is now unconditional — SANDS CONSOLIDATION Step 2). Reset at each
+    // new onset and when mono rests.
     bool  participating = false;
 };
 
@@ -269,7 +270,7 @@ struct SequencerEngine {
     int macroLaneSign_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1,1};   // NUM_STRANDS-sized (was 6-elem → LEGATO=0 pre-reset)
     LaneDir macroLaneDir_[dotModular::NUM_STRANDS] = {};
     bool macroPingPongHold_[dotModular::NUM_STRANDS] = {};
-    int macroLOR_[5] = {16,16,16,16,16};  // Macro's own LOR lengths (lanes 0..4: REST/MEL/OCT/ACC/QMIX) for bounce
+    int macroLOR_[7] = {16,16,16,16,16,16,16};  // Macro's own LOR lengths (7 poly lanes: REST/MEL/OCT/ACC/QMIX/VAR/LEG)
     // Per-voice per-strand accumulated tick (poly analogue of laneTick_). Advanced in advancePlayhead
     // by dir * polyLaneSign(v, s) — the effective sign is the voice's OWN, i.e. ABSOLUTE, not
     // relative to mono. laneSignV_ = +1 (default) = Forward; -1 = Reverse. A voice therefore does
@@ -343,7 +344,7 @@ struct SequencerEngine {
     int        lor   (int strand, int item) const { return lorStore_[0][strandClamp(strand)][item]; }
     static int strandClamp(int s) { return (s >= 0 && s < dotModular::NUM_STRANDS) ? s : dotModular::STRAND_RHYTHM; }
 
-    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_QMIX = 4, PL_LANES = 5 };
+    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_QMIX = 4, PL_VARIATION = 5, PL_LEGATO = 6, PL_LANES = 7 };   // SANDS CONSOLIDATION Step 2
 
     // ── EAST_EXTRA_LANES stage 2: per-voice ARTICULATION (clamped) ─────────────────────────────
     // VARIATION/LEGATO are mono STRANDS, not poly lanes, so they have no PL_ id and CANNOT be
@@ -352,10 +353,11 @@ struct SequencerEngine {
     static constexpr int EDITOR_LANE_VARIATION = 5;
     static constexpr int EDITOR_LANE_LEGATO    = 6;
 
-    // OFF by default: every poly voice uses mono's nvIdx exactly, as before. Even when ON, the
-    // per-voice LOR defaults to identity (len 16, off 0, rot 0), so voices read mono's own
-    // variation index and the result is bit-identical. Doubly inert.
-    bool perVoiceArticulation = false;
+    // SANDS CONSOLIDATION Step 2: promoted to always-on. The per-voice VAR/LEG draw is now the
+    // only path — the delegation system (varlegLocalEast_) is the sole control. Delegated voices
+    // (default) read mono's step → bit-identical to the old off path; Local-East voices diverge.
+    // The flag stays true for Lantern (Step 5 removes the flag + menu + Lantern check entirely).
+    bool perVoiceArticulation = true;
 
     // VAR/LEG per-voice delegation (EAST_EXTRA_LANES §4d). false (default) = delegate to
     // mono → the voice reads MONO's VAR/LEG position, so it mirrors mono (silent). true =
@@ -394,9 +396,9 @@ struct SequencerEngine {
     // lanes, so they have no engine-order id; for their per-voice LOR use the EDITOR-order accessors
     // polyLOR/polyLORRef (they mask & 7 and index lorStore_ directly). See EAST_EXTRA_LANES.md.
     static int editorLane(int engLane) {
-        // 5 = PL_LANES (poly lanes incl QMIX). Literal, not SandsGrid::POLY_LANES, to keep this
-        // low-level engine header free of the UI SandsGrid include (only LaneMapping is pulled in).
-        return (engLane >= 0 && engLane < 5)
+        // 7 = PL_LANES (poly lanes incl QMIX/VAR/LEG; SANDS CONSOLIDATION Step 2). Literal, not
+        // SandsGrid::POLY_LANES, to keep this header free of the UI SandsGrid include.
+        return (engLane >= 0 && engLane < 7)
                    ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane]
                    : dotModular::ENGINE_LANE_TO_EDITOR_QMIX[0];   // fallback → REST's editor lane
     }

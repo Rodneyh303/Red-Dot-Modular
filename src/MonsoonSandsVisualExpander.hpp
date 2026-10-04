@@ -74,10 +74,10 @@ namespace SandsMonoVisualIds {
     enum InputId {
         // 21 LOR CV jacks (7 lanes × 3) + 5 spread CV jacks (REST/MEL/QMIX/OCT/ACC) = 26
         CV_START = 0,                       // 0 .. 20
-        SPR_CV_START = CV_START + 21,       // 21 .. 25 (5 poly lanes with spread)
-        DIR_MOD_START = SPR_CV_START + 5,   // = 26 — direction gate-mod (7 mono jacks)
-        DELEG_MOD_START = DIR_MOD_START + 7, // = 33 — delegation gate-mod (5 poly jacks)
-        NUM_INPUTS = DELEG_MOD_START + 5    // = 38
+        SPR_CV_START = CV_START + 21,       // 21 .. 27 (7 poly lanes with spread)
+        DIR_MOD_START = SPR_CV_START + dotModular::SandsGrid::POLY_LANES,   // = 28 — direction gate-mod (7 mono jacks)
+        DELEG_MOD_START = DIR_MOD_START + dotModular::SandsGrid::MONO_LANES, // = 35 — delegation gate-mod (7 poly jacks)
+        NUM_INPUTS = DELEG_MOD_START + dotModular::SandsGrid::POLY_LANES    // = 42
     };
     static inline int dirModId(int lane) { return DIR_MOD_START + lane; }
     static inline int delegModId(int lane) { return DELEG_MOD_START + lane; }

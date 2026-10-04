@@ -112,8 +112,8 @@ struct PatternEngine {
     float (&legatoRandom)[16]    = random_[0][dotModular::STRAND_LEGATO];
 
     // Poly engine lane constants (mirror SequencerEngine::PolyLane) for polyRandom callers in this
-    // layer. 0=REST,1=MEL,2=OCT,3=ACC,4=QMIX — the engine PL_ order (converted to editor order inside).
-    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_QMIX = 4, PL_LANES = 5 };
+    // layer. 0=REST,1=MEL,2=OCT,3=ACC,4=QMIX,5=VAR,6=LEG — the engine PL_ order (SANDS CONSOLIDATION Step 2).
+    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_QMIX = 4, PL_VARIATION = 5, PL_LEGATO = 6, PL_LANES = 7 };
     // q-mix ordering asserts (Task 4a): the q-mix Philox stream key MUST be STREAM_SOURCE_SELECT (=3),
     // and the PL_QMIX poly lane MUST round-trip to editor lane 2 (STRAND_QMIX). If either the RNG
     // stream order or the poly-lane order is renumbered, these fire at compile time.
@@ -124,13 +124,13 @@ struct PatternEngine {
 
     // Poly probability view: voice bank b (0..14 = V2..V16) → slot b+1; lane is the engine PL_ lane,
     // converted to editor order. Returns the 16-step row (float(&)[16]) so callers index [step].
-    // Now handles 5 poly lanes (REST/MEL/OCT/ACC/QMIX) via ENGINE_LANE_TO_EDITOR_QMIX.
+    // Now handles 7 poly lanes (REST/MEL/OCT/ACC/QMIX/VAR/LEG) via ENGINE_LANE_TO_EDITOR_QMIX (SANDS CONSOLIDATION Step 2).
     float (&polyRandom(int bank, int engLane))[16] {
-        int edLane = (engLane >= 0 && engLane < 5) ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane] : 0;
+        int edLane = (engLane >= 0 && engLane < 7) ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane] : 0;
         return random_[bank + 1][edLane];
     }
     const float (&polyRandom(int bank, int engLane) const)[16] {
-        int edLane = (engLane >= 0 && engLane < 5) ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane] : 0;
+        int edLane = (engLane >= 0 && engLane < 7) ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane] : 0;
         return random_[bank + 1][edLane];
     }
 
@@ -141,7 +141,7 @@ struct PatternEngine {
     // Spread target mode per lane (0=Anchor V1, 1=Follow CA). Mirrored from the Monsoon's
     // EditorState each control cycle so the spread path (which only has PatternEngine&) can
     // read it without a Monsoon pointer. SPREAD_TARGET_MODES.md.
-    uint8_t spreadTargetMode[5] = {0,0,0,0,0};   // 5 poly lanes: REST/MEL/OCT/ACC/QMIX
+    uint8_t spreadTargetMode[7] = {0,0,0,0,0,0,0};   // 7 poly lanes (SANDS CONSOLIDATION Step 2)
 
     // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md §3-REVISED, PRE-SPREAD) ──
     // The pins remap the SLEWED buffers (post A/B-mix, post-slew, PRE-spread) so that a

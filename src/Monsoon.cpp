@@ -1086,7 +1086,7 @@ void Monsoon::process(const ProcessArgs& args) {
             modViz.melodyMix  = paramManager->getMelodyMixNorm();
             modViz.qmixMix    = paramManager->getQmixMixNorm();    // Task 4 (QMIX)
             modViz.activeCv3  = paramManager->anyCv3Modulated();
-            for (int i = 0; i < dotModular::SandsGrid::POLY_LANES; ++i) modViz.cv3Lane[i] = paramManager->cv3LaneModulated(i);
+            for (int i = 0; i < 5; ++i) modViz.cv3Lane[i] = paramManager->cv3LaneModulated(i);   // CV3 = 5 Big-5 targets (not POLY_LANES)
             for (int i = 0; i < 12; ++i) modViz.semitone[i] = paramManager->getSemitoneNorm(i);
             modViz.octaveLo   = paramManager->getOctaveLoNorm();
             modViz.octaveHi   = paramManager->getOctaveHiNorm();
@@ -1343,7 +1343,7 @@ void Monsoon::process(const ProcessArgs& args) {
         }
 
         // Apply final summed offsets to ParameterManager
-        for (int i = 0; i < dotModular::SandsGrid::POLY_LANES; ++i) {
+        for (int i = 0; i < 5; ++i) {   // CV3 = 5 Big-5 targets (not POLY_LANES)
             paramManager->setCv3Offset(i, clampv<float>(cv3Mods[i], -1.f, 1.f));
         }
     }

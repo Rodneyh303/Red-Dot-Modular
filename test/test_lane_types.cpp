@@ -21,9 +21,11 @@ int main() {
     CHECK(toEngine(EditorLane(3)).v == 0, "editor REST -> engine 0");
     CHECK(toEngine(EditorLane(4)).v == 3, "editor ACCENT -> engine 3");
 
-    // VAR/LEG are mono-only: no engine lane.
-    CHECK(toEngine(EditorLane(5)).v == POLY_NONE, "editor VAR -> POLY_NONE");
-    CHECK(toEngine(EditorLane(6)).v == POLY_NONE, "editor LEG -> POLY_NONE");
+    // SANDS CONSOLIDATION Step 1: VAR/LEG are now FULL poly lanes (no longer mono-only / POLY_NONE).
+    CHECK(toEngine(EditorLane(5)).v == 5, "editor VAR -> engine 5 (Step 1; was POLY_NONE)");
+    CHECK(toEngine(EditorLane(6)).v == 6, "editor LEG -> engine 6 (Step 1; was POLY_NONE)");
+    CHECK(toEditor(toEngine(EditorLane(5))).v == 5, "editor VAR round-trips (Step 1)");
+    CHECK(toEditor(toEngine(EditorLane(6))).v == 6, "editor LEG round-trips (Step 1)");
 
     // Inverse: engine -> editor for the five poly lanes.
     CHECK(toEditor(EngineLane(0)).v == 3, "engine REST -> editor 3");

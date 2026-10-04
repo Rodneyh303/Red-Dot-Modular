@@ -1,9 +1,10 @@
-// EAST_EXTRA_LANES stage 2/3 — per-voice articulation, clamped to the mono event grid.
+// Per-voice articulation, clamped to the mono event grid.
+// SANDS CONSOLIDATION Step 2: perVoiceArticulation promoted to always-on — the flag is inert.
 // Proves the properties the design rests on:
-//   1. flag OFF  → every voice's nvIdx == mono's (bit-identical to today)
-//   2. flag ON, identity LOR → still identical (doubly inert)
-//   3. flag ON, dialed LOR but DELEGATED (default) → still mono's (§4d delegation)
-//   4. flag ON, dialed LOR + Local East → voices diverge, but ALWAYS hold <= mono's (the clamp)
+//   1. flag is INERT: false behaves identically to true (delegated → mono nvIdx)
+//   2. identity LOR → still identical (doubly inert)
+//   3. dialed LOR but DELEGATED (default) → still mono's (§4d delegation)
+//   4. dialed LOR + Local East → voices diverge, but ALWAYS hold <= mono's (the clamp)
 #include "SequencerEngine.hpp"
 #include "NoteValues.hpp"
 #include <cstdio>
@@ -27,16 +28,17 @@ int main() {
 
     e.lastNoteVal_ = 4.f;   // NOTE_VALUE = 1/8
 
-    // ── 1. flag OFF: identical to mono, for every voice and step ──
+    // ── 1. flag is INERT: false behaves identically to true (delegated → mono nvIdx) ──
     e.perVoiceArticulation = false;
     for (int step = 0; step < 64; ++step) {
         e.totalStepsElapsed = step;
-        e.lastStepResult.nvIdx = 2 + (step % 4);
+        int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
+        e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
         for (int v = 0; v < 15; ++v)
-            check(e.nvIdxForVoice(v, in) == e.lastStepResult.nvIdx, "flag off -> mono nvIdx");
+            check(e.nvIdxForVoice(v, in) == e.lastStepResult.nvIdx, "flag inert (false) -> delegated -> mono nvIdx");
     }
 
-    // ── 2. flag ON, identity LOR (len 16, off 0, rot 0 — as reset() now seeds) ──
+    // ── 2. identity LOR (len 16, off 0, rot 0 — as reset() now seeds) → still mono nvIdx ──
     e.perVoiceArticulation = true;
     for (int step = 0; step < 64; ++step) {
         e.totalStepsElapsed = step;
@@ -47,7 +49,7 @@ int main() {
             check(e.nvIdxForVoice(v, in) == e.lastStepResult.nvIdx, "identity LOR -> mono nvIdx");
     }
 
-    // ── 3. flag ON, per-voice LOR windows: delegation default, then divergence + clamp ──
+    // ── 3. per-voice LOR windows: delegation default, then divergence + clamp ──
     e.polyLORRef(1, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_LEN) = 6;   // V3
     e.polyLORRef(2, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_LEN) = 12;  // V4
     e.polyLORRef(2, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_OFF) = 3;

@@ -49,8 +49,8 @@ int main() {
         CHECK(!t.writesEngine(Role::MACRO,0,0),     "MACRO does NOT write engine V1 (the fix)");
         CHECK(t.owner(0,2) == Role::MONO,           "QMIX (lane2) delegable, not ceded -> MONO");
         CHECK(t.owner(0,4) == Role::MONO,           "ACCENT (lane4) delegable, not ceded -> MONO");
-        CHECK(t.owner(0,5) == Role::MONO,           "VAR (lane5) mono-only -> MONO");
-        CHECK(t.owner(0,6) == Role::MONO,           "LEG (lane6) mono-only -> MONO");
+        CHECK(t.owner(0,5) == Role::MONO,           "VAR (lane5) V1 -> MONO (no Macro to cede to; was mono-only, now delegable)");
+        CHECK(t.owner(0,6) == Role::MONO,           "LEG (lane6) V1 -> MONO (no Macro to cede to; was mono-only, now delegable)");
     }
 
     std::printf("== MONO_PLUS_MACRO with melody lane CEDED to Macro ==\n");
@@ -81,7 +81,7 @@ int main() {
         CHECK(t.owner(3,0) == Role::EAST,           "V4 melody still EAST");
         CHECK(t.owner(1,0) == Role::EAST,           "V2 melody EAST");
         CHECK(t.owner(1,4) == Role::EAST,           "V2 ACCENT (lane4) is a poly lane -> EAST");
-        CHECK(t.owner(1,5) == Role::NONE,           "poly has no VAR lane (5) -> NONE");
+        CHECK(t.owner(1,5) == Role::MACRO,          "V2 VAR (lane5) is a poly lane -> MACRO (default delegated; SANDS CONSOLIDATION Step 1)");
     }
 
     std::printf("\n%s (%d failures)\n", failures ? "TESTS FAILED" : "ALL TESTS PASSED", failures);
