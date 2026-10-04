@@ -442,50 +442,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
 
-        // VAR/LEG delegation cells: QMIX-widened editor lanes are 5 (VAR) / 6 (LEG) — the poly
-        // owner cells above now occupy param_owner_0..4 (5 poly lanes incl QMIX+ACC), so VAR/LEG
-        // MUST bind param_owner_5/6. (Was 4/5 pre-QMIX when poly was only 0..3 — that now COLLIDES
-        // with ACCENT's param_owner_4, which is why ACC delegation broke and the LEGATO row showed
-        // a stray/duplicate cell.) Delegation target is MONO (follow mono); locked on V1/mono tab.
-        static const NVGcolor varlegCol[2] = {
-            nvgRGB(0xff,0x6b,0x6b),   // VARIATION (matches editor colors.variation)
-            nvgRGB(0x26,0xa6,0x9a)    // LEGATO    (matches editor colors.legato)
-        };
-        for (int lane = 0; lane < 2; ++lane) {
-            // STORE-BACKED (MVC step 1d): OwnerCell reads/writes editor.varlegDeleg via
-            // get/setVarlegDeleg(polyVoice, lane) — POLY-ONLY (no mono slot; V1 follows mono,
-            // locked). Live slot resolution per tab. Was varlegDelegDispId param.
-            bindWidget<OwnerCell>(
-                "param_owner_" + std::to_string(dotModular::SandsGrid::POLY_LANES + lane),
-                [this, lane](OwnerCell* w) {
-                    w->laneCol = varlegCol[lane];
-                    Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
-                    const float stepW = (ED_W - 2.f*6.f) / 16.f;
-                    w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
-                    w->box.pos  = ctr.minus(w->box.size.div(2.f));
-                    const int vlLane = lane;
-                    w->getOwnsFn = [this, vlLane]() {
-                        if (onMonoTab()) return false;   // V1 follows mono (no mono slot)
-                        Monsoon* m = getMonsoon(); int pv = polyVoice();
-                        return (m && pv >= 0 && pv < 15) ? (m->getVarlegDeleg(pv, vlLane) > 0.5f) : false;
-                    };
-                    w->setOwnsFn = [this, vlLane](bool b) {
-                        if (onMonoTab()) return;   // locked on V1
-                        Monsoon* m = getMonsoon(); int pv = polyVoice();
-                        if (m && pv >= 0 && pv < 15) m->setVarlegDeleg(pv, vlLane, b ? 1.f : 0.f);
-                    };
-                    w->pushUndoFn = [this, vlLane](bool oldB, bool newB) {
-                        if (onMonoTab()) return;   // locked on V1
-                        Monsoon* m = getMonsoon(); int pv = polyVoice();
-                        if (!m || pv < 0 || pv >= 15) return;
-                        redDot::applyAndPushStoreEdit<Monsoon>(m, "varleg deleg",
-                            [vlLane, pv](Monsoon& mm, float val) { mm.setVarlegDeleg(pv, vlLane, val); },
-                            oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
-                    };
-                    w->lockWhen = [this](){ return onMonoTab(); };
-                }
-            );
-        }
+        // SANDS CONSOLIDATION: the separate VAR/LEG delegation OwnerCells (param_owner_7/8)
+        // are RETIRED. VAR/LEG are full poly lanes now — their ownership is handled by the
+        // main OwnerCell loop above (param_owner_5/6, writing macroOwn). East owning a VAR/LEG
+        // lane implies un-delegated (setVarlegLocalEast ORs in getMacroOwn), so the separate
+        // varlegDeleg toggle is no longer needed as a UI control. Removing these bindings
+        // also eliminates the "widget shape not found: param_owner_7/8" warnings (those anchor
+        // names never existed on the SVG panel — they were a leftover from the pre-consolidation
+        // era when VAR/LEG had their own delegation cells separate from the main owner column).
         // Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong).
         // Locked when the lane is delegated (not locally owned): direction follows the delegated
         // owner and can't be overridden. SANDS CONSOLIDATION Step 2b: all 7 lanes (incl VAR/LEG)
