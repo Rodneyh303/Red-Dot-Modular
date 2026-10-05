@@ -127,11 +127,21 @@ attenuverter) also works per-lane for the Burst patch; but for per-voice complem
 the clean internal way. **Conclusion: build no inverse, any form.**
 
 
-## POSITIONING — exposing the probability FIELD is a real differentiator
-Few/no generative sequencers or VSTs expose their INTERNAL probability field. They make decisions FROM
-probabilities, but those probabilities are private state — you get the output (notes/gates), not the
-field that produced them. VCV Random / Marbles / Turing Machine etc. GENERATE randomness but don't hand
-you "probability of activity here, as a live CV".
+## POSITIONING — exposing a GENERATED, STRUCTURED probability field (accurate claim)
+CORRECTION/accuracy: probability-as-patchable is NOT novel — VCV Random has a probability INPUT
+(a threshold/CV that gates whether it emits a new random value), and there are ~3 Random variants on
+the library (real appetite for probability-as-a-patchable-thing — validates the direction, cuts FOR us).
+So do NOT claim "nobody exposes probability." The accurate, still-distinctive difference is narrower:
+- **Direction:** Random takes probability IN — a scalar you SET (the chance knob/CV into a random
+  process). dot.modular puts a probability field OUT — one the ENGINE GENERATES. Random's prob is a
+  control you dial; dot.modular's is a RESULT you route.
+- **Structure:** Random's probability is a scalar you choose. dot.modular's is a GENERATED, CORRELATED,
+  per-voice/per-lane FIELD (7x16) the copula produced — not "a chance setting" but "the evolving
+  probability landscape the pattern is drawn from, exposed."
+So the true claim: others let you SET a probability; dot.modular GENERATES and EXPOSES a structured
+probability field (input-parameter vs generated-output-field; scalar-you-dial vs
+correlated-field-the-model-produces). The existing interest (3 Random variants) is evidence the market
+wants this — dot.modular serves it at a richer level.
 
 **dot.modular inverts that:** the probability field is a FIRST-CLASS, patchable poly signal (7 lanes x
 16 voices of prob-outs). So dot.modular is a probability SOURCE, not just a consumer — the opposite of
