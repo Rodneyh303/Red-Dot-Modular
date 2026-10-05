@@ -39,6 +39,8 @@ def gen(tintkey, dark=True):
     A(f'<rect x="{px(MARGIN-1)}" y="{px(TOP-4)}" width="{px(BANK_W+2)}" height="{px(N_ROWS*ROW_H+6)}" '
       f'rx="{px(1.5)}" fill="{t["tint"]}" fill-opacity="0.08" stroke="{t["tint"]}" '
       f'stroke-width="0.3" stroke-opacity="0.45"/>')
+    # Coloured identifying dot above the band (ported from old Straits)
+    A(f'<circle cx="{px(W/2)}" cy="{px(TOP-6)}" r="{px(1.4)}" fill="{t["tint"]}"/>')
     # Knob grid: 3 cols, 6/6/4, col-major (v0 = mono top-left)
     cw = BANK_W / 3
     v = 0

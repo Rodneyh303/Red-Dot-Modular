@@ -70,6 +70,7 @@ struct StraitsBaseWidget : ModuleWidget,
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
     bool lanesSpawned_ = false;   // false until auto-spawn/pending-spawn runs
+    Vec lastBasePos_;             // for delta-follow drag guard
 
     StraitsBaseWidget(StraitsBaseModule* mod) {
         setModule(mod);
@@ -104,17 +105,62 @@ struct StraitsBaseWidget : ModuleWidget,
         }
     }
 
-    // ── Context menu: "Add Lane >" ───────────────────────────────────────────
+    // ── Context menu: lane presence checkboxes ───────────────────────────────
+    // Lanes are UNIQUE (at most one each). Checkboxes toggle presence.
+    // VARIATION/LEGATO shown but disabled (no engine params yet).
+    bool hasLane(const std::string& slug) {
+        auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
+        if (!baseMod) return false;
+        for (int64_t id : baseMod->orderedLaneIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (m) {
+                auto* lane = dynamic_cast<StraitsLaneExpander*>(m);
+                if (lane && lane->desc && lane->desc->slug == slug) return true;
+            }
+        }
+        return false;
+    }
+    void removeLane(const std::string& slug) {
+        auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
+        if (!baseMod) return;
+        for (size_t i = 0; i < baseMod->orderedLaneIds_.size(); ++i) {
+            int64_t id = baseMod->orderedLaneIds_[i];
+            rack::Module* m = APP->engine->getModule(id);
+            if (m) {
+                auto* lane = dynamic_cast<StraitsLaneExpander*>(m);
+                if (lane && lane->desc && lane->desc->slug == slug) {
+                    ModuleWidget* lw = APP->scene->rack->getModule(id);
+                    if (lw) APP->scene->rack->removeModule(lw);
+                    APP->engine->removeModule(m);
+                    baseMod->orderedLaneIds_.erase(baseMod->orderedLaneIds_.begin() + i);
+                    return;
+                }
+            }
+        }
+    }
+    void toggleLane(const std::string& slug) {
+        if (hasLane(slug)) removeLane(slug);
+        else spawnLane(slug);
+    }
     void appendContextMenu(Menu* menu) override {
         ModuleWidget::appendContextMenu(menu);
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuLabel("Lanes"));
-        menu->addChild(createMenuItem("Add Q-MIX Lane", "",
-            [this]() { spawnLane("StraitsLaneQMIX"); }));
-        menu->addChild(createMenuItem("Add REST Lane", "",
-            [this]() { spawnLane("StraitsLaneREST"); }));
-        menu->addChild(createMenuItem("Add ACCENT Lane", "",
-            [this]() { spawnLane("StraitsLaneACCENT"); }));
+        menu->addChild(createCheckMenuItem("Q-MIX", "",
+            [this]() { return hasLane("StraitsLaneQMIX"); },
+            [this]() { toggleLane("StraitsLaneQMIX"); }));
+        menu->addChild(createCheckMenuItem("REST", "",
+            [this]() { return hasLane("StraitsLaneREST"); },
+            [this]() { toggleLane("StraitsLaneREST"); }));
+        menu->addChild(createCheckMenuItem("ACCENT", "",
+            [this]() { return hasLane("StraitsLaneACCENT"); },
+            [this]() { toggleLane("StraitsLaneACCENT"); }));
+        auto* varItem = createCheckMenuItem("VARIATION", "", []() { return false; }, []() {});
+        varItem->disabled = true;
+        menu->addChild(varItem);
+        auto* legItem = createCheckMenuItem("LEGATO", "", []() { return false; }, []() {});
+        legItem->disabled = true;
+        menu->addChild(legItem);
     }
 
     // ── Spawn a lane expander module and dock it right ───────────────────────
@@ -213,22 +259,35 @@ struct StraitsBaseWidget : ModuleWidget,
             }
 
             // ── Force-follow: keep lane expanders welded to base's right ──────────
-            // Walk the OWNED lane ID list (not the live rightExpander chain — a lane
-            // dragged away is no longer adjacent, so the chain would miss it). Each owned
-            // lane is snapped to its computed slot, regardless of current position.
-            // Reposition only when out of place (>0.5px) to avoid jitter.
+            // DRAG-GUARD: when the base moves, move all lanes by the same delta (smooth,
+            // no fighting Rack's drag). When the base is stationary, snap any out-of-place
+            // lane back to its slot — but skip lanes with large deviation (>50px, likely
+            // being actively dragged by the user; they snap back on release).
             {
                 auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
                 if (baseMod) {
-                    float expectedX = box.getTopRight().x;
-                    for (int64_t laneId : baseMod->orderedLaneIds_) {
-                        ModuleWidget* lw = APP->scene->rack->getModule(laneId);
-                        if (!lw) continue;
-                        Vec target(expectedX, box.pos.y);
-                        if (lw->box.pos.minus(target).norm() > 0.5f)
-                            lw->box.pos = target;
-                        expectedX = lw->box.getTopRight().x;
+                    Vec currentPos = box.pos;
+                    Vec delta = currentPos.minus(lastBasePos_);
+                    if (delta.norm() > 0.5f) {
+                        // Base moved — translate all lanes by the same delta (smooth follow)
+                        for (int64_t laneId : baseMod->orderedLaneIds_) {
+                            ModuleWidget* lw = APP->scene->rack->getModule(laneId);
+                            if (lw) lw->box.pos = lw->box.pos.plus(delta);
+                        }
+                    } else {
+                        // Base stationary — snap out-of-place lanes back (skip active drags)
+                        float expectedX = box.getTopRight().x;
+                        for (int64_t laneId : baseMod->orderedLaneIds_) {
+                            ModuleWidget* lw = APP->scene->rack->getModule(laneId);
+                            if (!lw) continue;
+                            Vec target(expectedX, box.pos.y);
+                            float dist = lw->box.pos.minus(target).norm();
+                            if (dist > 0.5f && dist < 50.f)  // small drift → snap; large → active drag, skip
+                                lw->box.pos = target;
+                            expectedX = lw->box.getTopRight().x;
+                        }
                     }
+                    lastBasePos_ = currentPos;
                 }
             }
         }

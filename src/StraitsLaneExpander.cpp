@@ -161,7 +161,13 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
             connectMark->connected = [this]() {
                 if (!module) return false;
                 auto* left = module->leftExpander.module;
-                return left && left->model == modelStraitsBase;
+                if (!left) return false;
+                // Light if left neighbour is the base OR another lane expander
+                // (chain: QMIX → lane → ... → base → Monsoon)
+                return left->model == modelStraitsBase
+                    || left->model == modelStraitsLaneQMIX
+                    || left->model == modelStraitsLaneREST
+                    || left->model == modelStraitsLaneACCENT;
             };
             addChild(connectMark);
         }
