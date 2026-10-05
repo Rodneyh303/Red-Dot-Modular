@@ -44,6 +44,15 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
 
+    void onButton(const event::Button& e) override {
+        ModuleWidget::onButton(e);
+        // Set the MODULE's beingDragged flag so the base's force-follow can skip us
+        if (e.button == GLFW_MOUSE_BUTTON_LEFT && module) {
+            auto* lane = dynamic_cast<StraitsLaneExpander*>(module);
+            if (lane) lane->beingDragged = (e.action == GLFW_PRESS && !e.isConsumed());
+        }
+    }
+
     // Per-voice mod-arc overlays — COPIED from MonsoonStraitsExpanderWidget.
     // lane index = desc->arcLane (0=REST, 1=ACCENT, 2=QMIX).
     std::vector<std::tuple<rack::ParamWidget*, int, int>> pendingArcs;  // (knob, voice, lane)
