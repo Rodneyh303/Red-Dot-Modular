@@ -198,7 +198,8 @@ float ParameterManager::getPolyAccent(int voiceIdx) const {
     // is still added on top in Monsoon's process loop, exactly like rest.)
     if (voiceIdx < 0 || voiceIdx > 14) return 0.f;
 
-    float v = 0.f;  // default: no accent
+    // MONO-DEFAULT: no poly expander → broadcast Monsoon's mono ACCENT_KNOB to all voices.
+    float v = (mainModule ? mainModule->params[ACCENT_KNOB].getValue() : 0.f);
 
     if (cachedPolyVoiceExpander && *cachedPolyVoiceExpander) {
         auto& params = (*cachedPolyVoiceExpander)->params;
@@ -226,7 +227,8 @@ float ParameterManager::getPolyAccent(int voiceIdx) const {
 float ParameterManager::getPolyQmixLevel(int voiceIdx) const {
     if (voiceIdx < 0 || voiceIdx > 14) return 0.f;
 
-    float v = 0.f;  // default: never generated → always quantised (legacy behaviour)
+    // MONO-DEFAULT: no poly expander → broadcast Monsoon's mono QMIX_LEVEL_PARAM to all voices.
+    float v = (mainModule ? mainModule->params[QMIX_LEVEL_PARAM].getValue() : 0.f);
 
     if (cachedPolyVoiceExpander && *cachedPolyVoiceExpander) {
         auto& params = (*cachedPolyVoiceExpander)->params;
@@ -242,9 +244,10 @@ float ParameterManager::getPolyQmixLevel(int voiceIdx) const {
 
 float ParameterManager::getPolyRest(int voiceIdx) const {
     if (voiceIdx < 0 || voiceIdx > 14) return 0.1f;
-    
-    float v = 0.1f;  // Default fallback
-    
+
+    // MONO-DEFAULT: no poly expander → broadcast Monsoon's mono REST_PARAM to all voices.
+    float v = (mainModule ? mainModule->params[REST_PARAM].getValue() : 0.1f);
+
     if (cachedPolyVoiceExpander && *cachedPolyVoiceExpander) {
         auto& params = (*cachedPolyVoiceExpander)->params;
         auto& inputs = (*cachedPolyVoiceExpander)->inputs;
