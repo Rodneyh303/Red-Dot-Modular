@@ -44,3 +44,17 @@ arranged signal.
 Answers "does probability follow the arranger?" without CHOOSING — expose both (raw on Sands, arranged
 on Intertropical/companion). Additive, optional, doesn't touch Sands or spend its HP, rides the
 existing CV routing mask. NOT on Sands.
+
+
+## EFFORT — SMALLER than the CV work (Rodney): probabilities already carry the CA mapping
+The CV-through-Intertropical work had to pick up the **CA MAPPING** across the three groups (rhythm,
+melody, qmix) first — the raw CV didn't carry it, so CV had to be threaded through the CA-group
+correlation permutation. **The Sands probability outs ALREADY carry the CA mapping** (that's what makes
+them per-voice correlated to begin with). So arranged-prob-outs do NOT need the CA-mapping step CV
+needed — they need ONLY the Intertropical ARRANGEMENT routing (slotOf[v]/slotOutput[slot]) applied on
+top of the already-CA-mapped probabilities.
+
+So the feature is small: apply Intertropical's EXISTING arrangement mask to signals that are already
+ready — not "build routing from scratch", and not the full CA-mapping-plus-routing CV required. The
+hard/prior half (CA mapping) is already baked into the Sands prob-outs; only the arranger permutation
+remains. Lower effort than parked-as, same claim earned (random source + random arranger).
