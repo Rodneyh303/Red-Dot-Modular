@@ -77,15 +77,31 @@ The 6->3 collapse isn't arbitrary — each surviving mode is a functional identi
 - **PHASE** = convert incoming phase to gates -> the (optionally-randomising) PHASE-TO-GATE CONVERTER.
 "generate / modulate / convert", by input type.
 
-## The functional identities (one engine, many uses)
+## The functional identities (one engine, many uses) — SIX, all verified
 - **random number SOURCE** — the copula field.
 - **random number ARRANGER** — Intertropical routing the probabilities.
 - **generative CLOCK/GATE MODULATOR** — transforming an input clock -> GATE OUT (main) + STEP GATE OUT
-  (subdivision) + STEP LEGATO OUT; all emit (verified). A gate-mode-legato edge-truthfulness
-  refinement to STEP remains, but the two-level outputs work today.
-Not bolted-together features — three USES of the same generative/probabilistic/correlated/reversible
-core. Three entry points for three users (generative-seq person / ensemble person / rhythm-clock
-person), each a familiar hook that turns out to be the other two.
+  (subdivision) + STEP LEGATO OUT; all emit (verified). A gate-mode-legato STEP edge-truthfulness
+  refinement remains, but the two-level outputs work today.
+- **optionally-randomising PHASE-TO-GATE CONVERTER** — PHASE mode: phase ramp -> gates, clean
+  deterministic at zero, generative when dialled (up to 16 correlated variations). (verified)
+- **deterministic AND stochastic SEQUENTIAL SWITCH** — CV into Change Alley's poly-CV inputs (8 pairs)
+  -> CA permutation remap (fixed OR dice-reshuffled) -> Intertropical -> outputs. Routing spans
+  fixed->generative, correlated. The random switching is REVERSIBLE TWO WAYS (dice re-draw backward +
+  true-reverse trajectory). SOME deterministic transforms are truly invertible (non-fan-in: rotate/
+  reflect); fan-in (scatter/collapse) are lossy, reversible only via state-replay. (verified — see
+  SEQUENTIAL_SWITCH_IDEA.md)
+- **generative ARPEGGIATOR / chord re-voicer** — quantise a POLY CHORD in; each note a per-voice line;
+  a voice can quantise ANOTHER voice's input line (SequencerEngine.cpp:1009); the arrangement
+  redistributes which voice plays which chord-line, voices fire per the generative rhythm -> different
+  combinations of the chord's lines over time. Classic arp (chord->sequenced) is a special case; beyond
+  = generative re-voicing, det-or-stochastic, reversible. Claim "can ACT AS" (no classic up/down MODE).
+  Most ACCESSIBLE musician hook (chord in, arp out). (verified)
+
+NOT bolted-together features — SIX USES of the SAME generative/probabilistic/correlated/reversible
+core, each defined by how you patch it, each verified against the code. Many entry points for many
+users (generative-seq / ensemble / rhythm-clock / phase / switching / chord-arp person), each a
+familiar hook that turns out to be the others.
 
 ## Three orthogonal axes (the full space)
 All TIME-REVERSIBLE:
