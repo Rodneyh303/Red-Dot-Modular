@@ -283,7 +283,19 @@ float Monsoon::getEffectivePolyAccent(int voiceIdx) {
 // threshold the engine compares against the q-mix probability draw from Sands). Exactly the rest/
 // accent pattern: base = Straits knob; effective = base + Causeway CV × att, clamped to [0,1].
 float Monsoon::getBasePolyQmix(int voiceIdx) {
-    return paramManager ? paramManager->getPolyQmixLevel(voiceIdx) : 0.f;
+    float base = paramManager ? paramManager->getPolyQmixLevel(voiceIdx) : 0.f;
+    // Apply the SAME patched-detection as getEffectivePolyQmix, so base == effective
+    // at rest (no Causeway modulation). Without this, the mod-arc shows on poly QMIX
+    // knobs whenever the knob is non-zero and no quantiser CV is patched (effective
+    // returns 0 via patched-detection, base returns the knob value → they diverge).
+    auto* straits = expanderManager.cachedPolyVoiceExpander;
+    if (straits && straits->inputs[StraitsIds::QUANT_CV_INPUT].isConnected()) {
+        int n = std::max(1, straits->inputs[StraitsIds::QUANT_CV_INPUT].getChannels());
+        int ch = voiceIdx + 1;                       // ch0 = mono; poly voice i → ch i+1
+        return (ch < n) ? base : 0.f;                 // beyond source channels → generate
+    }
+    if (cachedCv2Connected) return base;              // CV2 is mono → broadcasts to all voices
+    return 0.f;                                       // nothing patched → generate
 }
 float Monsoon::getEffectivePolyQmix(int voiceIdx) {
     float base = getBasePolyQmix(voiceIdx);
