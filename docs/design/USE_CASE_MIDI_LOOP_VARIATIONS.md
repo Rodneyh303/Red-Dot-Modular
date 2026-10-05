@@ -173,3 +173,20 @@ beyond the module's own outputs.
 **Manual/positioning line:** "Most generative modules hide their probabilities; dot.modular exposes its
 field as poly CV — so it can be the structured-randomness brain for your whole patch." Concrete, true,
 and immediately grasped by anyone tired of uncorrelated-randomness soup.
+
+
+## SCOPE the probability claim — "generated/musical field", NOT "all probabilities"
+We expose the 7x16 per-voice/per-lane MUSICAL probability field (rest/variation/legato/accent/qmix —
+"how likely is this behaviour here"). We do NOT expose the internal CA probability streams (the Philox
+draws that drive the permutation/arrangement — which scatter, how the mapping reshuffles). **That's
+fine, and the claim stays accurate IF scoped right:**
+- The CA streams are internal structural bookkeeping — a raw permutation-index draw is not a musically
+  useful signal to patch (it's an index into a shuffle, not a "probability of X"). Their EFFECT (the
+  arrangement) IS observable/exportable (arranged outputs, routing, Lantern). So it's an implementation
+  detail, not a withheld feature.
+- We expose SIGNALS (the musical probability field), not internal INDICES. The right boundary.
+**Claim wording:** "exposes its generated / per-voice MUSICAL probability field as poly CV." Do NOT
+claim "exposes all its probabilities" or "fully transparent probability field" — the CA streams aren't
+exposed and someone could point at that. Scope to the true thing (same discipline as everywhere).
+If anything this is a STRENGTH: distinguishing "probability about musical events" (exposed) from
+"draws about internal permutation" (internal) shows the design knows a signal from machinery.
