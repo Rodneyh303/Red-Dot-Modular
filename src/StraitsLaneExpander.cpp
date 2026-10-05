@@ -155,6 +155,14 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
 
         if (auto* s = findNamed("light_connect")) {
             connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));
+            // Lane expander's connect mark indicates its OWN next-hop: the left neighbour
+            // is the StraitsR base. Chain: QMIX → base → Monsoon. Each link's mark shows
+            // its own hop, so the first unlit mark = break point.
+            connectMark->connected = [this]() {
+                if (!module) return false;
+                auto* left = module->leftExpander.module;
+                return left && left->model == modelStraitsBase;
+            };
             addChild(connectMark);
         }
     }
