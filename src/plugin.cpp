@@ -29,6 +29,10 @@ void init(rack::Plugin* p) {
 	// browser — only the base spawns it via context menu.
 	p->addModel(modelStraitsLaneQMIX);
 	modelStraitsLaneQMIX->hidden = true;
+	p->addModel(modelStraitsLaneREST);
+	modelStraitsLaneREST->hidden = true;
+	p->addModel(modelStraitsLaneACCENT);
+	modelStraitsLaneACCENT->hidden = true;
 	// Warm the Phi LUT on the load thread (~0.33 ms, once) so its one-time build never lands
 	// mid-block on the audio thread at first spread/slew use. NOT in a module constructor —
 	// multiple modules (Sands visuals, CA correlation) consume Phi. See SLEW_COPULA_PLAN.md.

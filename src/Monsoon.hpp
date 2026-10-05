@@ -1156,7 +1156,9 @@ extern Model* modelMonsoonTemasekExpander;
 //extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsExpander; // base poly expander
 extern Model* modelStraitsBase;            // lane-extension base (frame + IO + docking)
-extern Model* modelStraitsLaneQMIX;        // QMIX lane expander (Phase 1 proof-of-concept)
+extern Model* modelStraitsLaneQMIX;        // QMIX lane expander
+extern Model* modelStraitsLaneREST;        // REST lane expander
+extern Model* modelStraitsLaneACCENT;      // ACCENT lane expander
 extern Model* modelMonsoonCausewayPolyExpander; // poly CV modulation expander
 extern Model* modelMonsoonChangiExpander; // per-voice output expander
 extern Model* modelMonsoonShophouseExpander; // scale expander (12th module)

@@ -77,6 +77,18 @@
       ]
     },
     {
+      "slug": "StraitsLaneREST",
+      "name": "Straits Lane: REST",
+      "description": "Per-voice REST probability lane expander (hidden — spawned by Straits Base)",
+      "tags": ["Expander", "Sequencer", "Random"]
+    },
+    {
+      "slug": "StraitsLaneACCENT",
+      "name": "Straits Lane: ACCENT",
+      "description": "Per-voice ACCENT probability lane expander (hidden — spawned by Straits Base)",
+      "tags": ["Expander", "Sequencer", "Random"]
+    },
+    {
       "slug": "Causeway",
       "name": "Causeway",
       "description": "Poly CV modulation \u2014 16ch REST + ACCENT modulation CV in (ch1=mono) with attenuverters",
