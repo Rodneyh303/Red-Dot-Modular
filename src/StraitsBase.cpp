@@ -14,6 +14,7 @@
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/Controls.hpp"
+#include <algorithm>   // std::sort
 #include "StraitsLaneExpander.hpp"
 
 using namespace rack;
@@ -72,6 +73,7 @@ struct StraitsBaseWidget : ModuleWidget,
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
     bool lanesSpawned_ = false;   // false until auto-spawn/pending-spawn runs
+    Vec lastBasePos_;             // detect base movement for one-shot re-snap
 
     StraitsBaseWidget(StraitsBaseModule* mod) {
         setModule(mod);
@@ -147,15 +149,15 @@ struct StraitsBaseWidget : ModuleWidget,
         ModuleWidget::appendContextMenu(menu);
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuLabel("Lanes"));
-        menu->addChild(createCheckMenuItem("Q-MIX", "",
-            [this]() { return hasLane("StraitsLaneQMIX"); },
-            [this]() { toggleLane("StraitsLaneQMIX"); }));
         menu->addChild(createCheckMenuItem("REST", "",
             [this]() { return hasLane("StraitsLaneREST"); },
             [this]() { toggleLane("StraitsLaneREST"); }));
         menu->addChild(createCheckMenuItem("ACCENT", "",
             [this]() { return hasLane("StraitsLaneACCENT"); },
             [this]() { toggleLane("StraitsLaneACCENT"); }));
+        menu->addChild(createCheckMenuItem("Q-MIX", "",
+            [this]() { return hasLane("StraitsLaneQMIX"); },
+            [this]() { toggleLane("StraitsLaneQMIX"); }));
         auto* varItem = createCheckMenuItem("VARIATION", "", []() { return false; }, []() {});
         varItem->disabled = true;
         menu->addChild(varItem);
@@ -259,31 +261,50 @@ struct StraitsBaseWidget : ModuleWidget,
                 lanesSpawned_ = true;
             }
 
-            // ── Force-follow: always snap lanes to slots derived from base.pos ──────
-            // Every frame, recompute each owned lane's correct slot (base right edge +
-            // cumulative widths by orderedLaneIds_) and snap it there — UNLESS that
-            // lane widget is being actively dragged (beingDragged_ flag set by its own
-            // onButton handler). When the user releases the drag, the flag clears and
-            // the lane snaps back next frame. No delta-follow, no distance heuristics.
-            // Base drag is smooth because lanes just track base.pos-derived slots.
+            // ── One-shot re-snap (NOT per-frame): when nothing is being dragged,
+            // reposition owned lanes to canonical slots (REST→ACCENT→QMIX order).
+            // During drags, do nothing — let Rack handle placement. Re-snap fires
+            // the first frame after a drag ends (positions stabilize), avoiding the
+            // feedback loop that per-frame force-follow created with Rack's placement.
             {
                 auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
                 if (baseMod) {
-                    float expectedX = box.getTopRight().x;
+                    // Check if base moved this frame (= being dragged)
+                    Vec currentPos = box.pos;
+                    bool baseMoved = (currentPos.x != lastBasePos_.x || currentPos.y != lastBasePos_.y);
+                    lastBasePos_ = currentPos;
+
+                    // Check if any lane is being dragged
+                    bool anyLaneDragged = false;
                     for (int64_t laneId : baseMod->orderedLaneIds_) {
-                        ModuleWidget* lw = APP->scene->rack->getModule(laneId);
-                        if (!lw) continue;
-                        // Skip the lane being actively dragged (flag set by its onButton;
-                        // it snaps back next frame after release)
-                        auto* laneMod = dynamic_cast<StraitsLaneExpander*>(lw->module);
-                        if (laneMod && laneMod->beingDragged) {
-                            expectedX += lw->box.size.x;  // still account for its width
-                            continue;
+                        rack::Module* m = APP->engine->getModule(laneId);
+                        if (m) {
+                            auto* lane = dynamic_cast<StraitsLaneExpander*>(m);
+                            if (lane && lane->beingDragged) { anyLaneDragged = true; break; }
                         }
-                        Vec target(expectedX, box.pos.y);
-                        if (lw->box.pos.x != target.x || lw->box.pos.y != target.y)
-                            lw->box.pos = target;
-                        expectedX += lw->box.size.x;
+                    }
+
+                    // Re-snap ONLY when nothing is being dragged (one-shot on stabilization)
+                    if (!baseMoved && !anyLaneDragged) {
+                        // Sort owned lanes by canonical order (arcLane: REST=0, ACCENT=1, QMIX=2)
+                        std::sort(baseMod->orderedLaneIds_.begin(), baseMod->orderedLaneIds_.end(),
+                            [&](int64_t a, int64_t b) {
+                                auto* ma = dynamic_cast<StraitsLaneExpander*>(APP->engine->getModule(a));
+                                auto* mb = dynamic_cast<StraitsLaneExpander*>(APP->engine->getModule(b));
+                                int oa = (ma && ma->desc) ? ma->desc->arcLane : 99;
+                                int ob = (mb && mb->desc) ? mb->desc->arcLane : 99;
+                                return oa < ob;
+                            });
+                        // Re-snap to contiguous slots in canonical order
+                        float expectedX = box.getTopRight().x;
+                        for (int64_t laneId : baseMod->orderedLaneIds_) {
+                            ModuleWidget* lw = APP->scene->rack->getModule(laneId);
+                            if (!lw) continue;
+                            Vec target(expectedX, box.pos.y);
+                            if (lw->box.pos.x != target.x || lw->box.pos.y != target.y)
+                                lw->box.pos = target;
+                            expectedX += lw->box.size.x;
+                        }
                     }
                 }
             }
