@@ -52,3 +52,26 @@ copula/quantiser depth be the discovery underneath.
 - Subgate-from-second-MIDI-channel produces a musically-sensible ratchet/ghost layer (or needs
   conditioning).
 - The groove FEEL genuinely survives the variation layer (gate timing preserved, as designed).
+
+
+## Standout patch — Befaco Burst (probability-driven ratchets) fed by Sands PROB-OUTS
+Befaco Burst (VCV clone of the hardware; a trigger->burst generator) is an ideal subgate source: feed
+it a gate, it emits a BURST of ratchet triggers, with a PROBABILITY input controlling how likely each
+sub-trigger fires ("an organic chain of events"), plus count/time-shape.
+
+**The clever bit (Rodney): feed Burst's PROBABILITY CV from Sands' PROBABILITY OUTS.** Then:
+- Burst manufactures the ratchet subgate grid from the incoming gate, AND
+- which sub-pulses fire is driven by the generative engine's OWN per-voice probability field (via the
+  prob-outs added to every lane in the Sands consolidation).
+So the ratchet DENSITY isn't a fixed grid or an independent thinning — it's coupled to the SAME
+probability structure driving the pattern. The subgates breathe WITH the generative field.
+
+This is a self-referential loop: dot.modular generates probabilities -> exports via prob-outs ->
+modulates Burst -> Burst's ratchets feed back in as subgates -> engine subdivides/varies them. The
+probability field reaches OUT into the ecosystem and shapes an external module that feeds back as
+rhythmic material.
+
+**Retroactively validates the prob-outs** (which looked like completeness-for-its-own-sake in the
+consolidation): here's the concrete, musical, non-obvious payoff — the generative probability field
+driving an external probability-based module. A distinctive patch, not commodity. Good demo material:
+"our probability drives the ratchets, so the subdivisions thin and thicken with the pattern itself."
