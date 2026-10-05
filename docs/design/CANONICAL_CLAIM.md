@@ -19,7 +19,20 @@ Unpacked:
   not one global randomness amount.
 - **Modulate structure AND amount** — the correlation TOPOLOGY (who relates to whom) and the
   correlation STRENGTH (how much) are each independently modulatable.
-- **LOR + direction (Sands)** — the read-transformation layer on top of the generated field.
+- **Global pattern length + per-lane LOR within it + direction (Sands)** — a TWO-LEVEL time structure:
+  the global length sets the loop/phrase boundary; per-lane LOR (length/offset/rotation) + direction
+  operate INSIDE that frame, so lanes are POLYMETRIC/phased against each other and the global cycle
+  (e.g. a length-7 melody lane against a length-5 rhythm lane inside a 16 global), drifting and
+  realigning over the global loop — all reversible.
+
+## Three orthogonal axes (the full space)
+All TIME-REVERSIBLE:
+1. **Time structure** — global pattern length + per-lane LOR + direction (polymetric, phased).
+2. **Probability** — the 7x16 copula field (order<->chaos in WHAT happens).
+3. **Correlation** — constructible + modulatable structure AND amount (order<->chaos in HOW voices
+   relate).
+Time-structure is the compositional-time axis; probability is content; correlation is ensemble. Three
+independent dimensions of a generative space, each navigable and reversible.
 
 ## Two registers — SAME machinery, different audiences
 - **Technical audience** (developers, serious synthesists, the knowledgeable community corner): use the
