@@ -102,3 +102,26 @@ Practical:
   just the CV (simple); actual-rest needs a "did this step rest" gate output. Try both.
 - Watch the main-gate interaction: high rest prob but the step still FIRES -> main note + high burst
   together (maybe too much). Actual-rest-driven avoids this; probability-driven smooths it.
+
+
+## RESOLVED — no inverse output needed: -1 correlation IS inversion (internal)
+Prob-outs are POLY (7 lanes x 16 voices). A built-in inverse (jack OR menu) is both HP-awkward and
+UNNECESSARY, because **inversion already exists inside the instrument: -1 correlation.** The correlation
+axis spans +1..-1, and -1 IS the complement/inverse.
+
+**Internal inversion via Change Alley + -1 correlation (Rodney):** e.g. 8 voices are program material;
+set voice 9 to RECEIVE voice 3's rest probability via Change Alley, then set -1 correlation on voice 9's
+rest. Voice 9 is now the INVERSE of voice 3's rest — rests where voice 3 is active, active where voice 3
+rests. Per-voice precise (which external poly-cable inversion can't do cleanly), generated internally,
+no external module, no extra output.
+
+**Generalises rests-become-fills INSIDE the instrument:** use spare voices (e.g. 9..16) as
+ANTI-CORRELATED complement/FILL voices — -1 against the mains' rest/variation/etc., so they
+automatically do the opposite (activate where mains rest). Ghost Protocol's cousin (gap-filling) done
+through the voice/correlation layer instead of the subgate layer.
+
+**The pattern again:** the thing that looked like a new feature (inverse outputs) is already expressible
+with the general mechanism — the correlation matrix (which did pitch, spread, ghost placement) absorbs
+"inverse probability" too, as its -1 end routed through Change Alley. External poly inversion (one
+attenuverter) also works per-lane for the Burst patch; but for per-voice complement, -1 correlation is
+the clean internal way. **Conclusion: build no inverse, any form.**
