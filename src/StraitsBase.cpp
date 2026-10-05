@@ -28,6 +28,7 @@ struct StraitsBaseModule : MonsoonStraitsExpander {
     // Lane keys to spawn on next step (set by dataFromJson or context menu).
     // e.g. "qmix", "rest", "accent". Processed in the widget's step().
     std::vector<std::string> pendingLanes;
+    std::vector<int64_t> orderedLaneIds_;  // owned lane module IDs, in dock order (for force-follow)
     bool initialized = false;   // false until the widget's first step runs
 
     json_t* dataToJson() override {
@@ -124,16 +125,21 @@ struct StraitsBaseWidget : ModuleWidget,
         engine::Module* laneMod = model->createModule();
         APP->engine->addModule(laneMod);
 
+        // Record the lane's module ID for force-follow (walk by ID, not live chain)
+        if (auto* baseMod = dynamic_cast<StraitsBaseModule*>(module))
+            baseMod->orderedLaneIds_.push_back(laneMod->id);
+
         // Create the widget
         ModuleWidget* laneW = model->createModuleWidget(laneMod);
 
-        // Position: right of the rightmost module in the chain (base + existing lanes)
+        // Position: right of the rightmost owned lane (or base if none)
         float rightX = box.getTopRight().x;
-        rack::Module* right = module->rightExpander.module;
-        while (right) {
-            ModuleWidget* rw = APP->scene->rack->getModule(right->id);
-            if (rw) rightX = std::max(rightX, rw->box.getTopRight().x);
-            right = right->rightExpander.module;
+        if (auto* baseMod = dynamic_cast<StraitsBaseModule*>(module)) {
+            for (int64_t id : baseMod->orderedLaneIds_) {
+                if (id == laneMod->id) continue;  // skip self (just added)
+                ModuleWidget* lw = APP->scene->rack->getModule(id);
+                if (lw) rightX = std::max(rightX, lw->box.getTopRight().x);
+            }
         }
         laneW->box.pos = Vec(rightX, box.pos.y);
 
@@ -197,24 +203,22 @@ struct StraitsBaseWidget : ModuleWidget,
             }
 
             // ── Force-follow: keep lane expanders welded to base's right ──────────
-            // Lanes follow the base when it moves; lanes dragged away snap back next frame.
-            // Reposition only when a lane is out of place (not every frame — avoids jitter).
+            // Walk the OWNED lane ID list (not the live rightExpander chain — a lane
+            // dragged away is no longer adjacent, so the chain would miss it). Each owned
+            // lane is snapped to its computed slot, regardless of current position.
+            // Reposition only when out of place (>0.5px) to avoid jitter.
             {
-                float expectedX = box.getTopRight().x;
-                rack::Module* right = module->rightExpander.module;
-                while (right) {
-                    auto* lane = dynamic_cast<StraitsLaneExpander*>(right);
-                    if (!lane || !lane->desc) break;
-                    ModuleWidget* lw = APP->scene->rack->getModule(right->id);
-                    if (lw) {
-                        // Snap to contiguous right position if out of place
-                        if (std::abs(lw->box.pos.x - expectedX) > 0.5f ||
-                            std::abs(lw->box.pos.y - box.pos.y) > 0.5f) {
-                            lw->box.pos = Vec(expectedX, box.pos.y);
-                        }
+                auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
+                if (baseMod) {
+                    float expectedX = box.getTopRight().x;
+                    for (int64_t laneId : baseMod->orderedLaneIds_) {
+                        ModuleWidget* lw = APP->scene->rack->getModule(laneId);
+                        if (!lw) continue;
+                        Vec target(expectedX, box.pos.y);
+                        if (lw->box.pos.minus(target).norm() > 0.5f)
+                            lw->box.pos = target;
                         expectedX = lw->box.getTopRight().x;
                     }
-                    right = right->rightExpander.module;
                 }
             }
         }
