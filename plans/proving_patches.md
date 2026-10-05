@@ -23,8 +23,11 @@ RE-SCOPE the claim (same discipline, last stage).
    — the SWEEP is the demo. Proves: optionally-randomising.
 5. **SEQUENTIAL SWITCH** — CV into Change Alley; deterministic then dice-reshuffled routing to outputs;
    then reverse it (dice-reverse / true-reverse). Proves: det+stochastic, reversible two ways.
-6. **ARPEGGIATOR / chord re-voicer** — poly chord quantised in, arrangement re-voices it over time.
-   Proves: chord re-voicer. Most accessible; also most likely to reveal a chain gap.
+6. **ARPEGGIATION (patch technique)** — poly chord, SPLIT voices, sequential via Intertropical, SHORT
+   master pattern length (1/2/4), MODULATE master offset into the 16 steps. A CONSTRUCTED generative
+   arp, not a mode. THE key proving patch: confirms whether the recipe reads cleanly as an arp (fair
+   claim) or is fiddly (weaker claim / small UX-win opportunity). Downgraded from 'arpeggiator' — honest
+   it's a recipe. Also watch: is the recipe a few sensible settings or a precarious combination?
 
 (The MIDI-loop, Burst+prob-outs, rests-become-fills patches from USE_CASE_MIDI_LOOP_VARIATIONS.md fit
 under these too — reuse as demo material.)

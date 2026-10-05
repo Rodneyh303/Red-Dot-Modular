@@ -91,12 +91,15 @@ The 6->3 collapse isn't arbitrary — each surviving mode is a functional identi
   true-reverse trajectory). SOME deterministic transforms are truly invertible (non-fan-in: rotate/
   reflect); fan-in (scatter/collapse) are lossy, reversible only via state-replay. (verified — see
   SEQUENTIAL_SWITCH_IDEA.md)
-- **generative ARPEGGIATOR / chord re-voicer** — quantise a POLY CHORD in; each note a per-voice line;
-  a voice can quantise ANOTHER voice's input line (SequencerEngine.cpp:1009); the arrangement
-  redistributes which voice plays which chord-line, voices fire per the generative rhythm -> different
-  combinations of the chord's lines over time. Classic arp (chord->sequenced) is a special case; beyond
-  = generative re-voicing, det-or-stochastic, reversible. Claim "can ACT AS" (no classic up/down MODE).
-  Most ACCESSIBLE musician hook (chord in, arp out). (verified)
+- **ARPEGGIATION as a PATCH TECHNIQUE** (constructed, not a mode — DOWNGRADED from 'arpeggiator') —
+  achievable but it's a RECIPE, not a built-in arp. Quantise a poly CHORD, SPLIT its voices, step
+  through them sequentially via Intertropical, set a SHORT master pattern length (1/2/4 notes), and
+  MODULATE the master offset into the 16 steps so each short pattern starts at a different offset
+  (the moving/cycling arp quality). A CONSTRUCTED generative arpeggiator. Claim "arpeggiation is
+  achievable as a patch technique", NOT "it's an arpeggiator" / "arp mode" (there is none). NEEDS the
+  proving patch to confirm it reads cleanly as an arp vs clunky — if clean, fair claim; if fiddly,
+  weaker ("arp-like textures with effort"). Watch while building the patch: is the recipe a few
+  sensible settings (document it) or a precarious combination (weak claim or a small UX win)?
 
 NOT bolted-together features — SIX USES of the SAME generative/probabilistic/correlated/reversible
 core, each defined by how you patch it, each verified against the code. Many entry points for many
