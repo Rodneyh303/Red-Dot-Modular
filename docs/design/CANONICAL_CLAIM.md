@@ -40,19 +40,27 @@ structure) underneath — modest surface, over-delivers on inspection.
 Gate mode takes an incoming clock/gate stream and transforms its rhythm — rests = probabilistic
 SKIPS, ratchets/subgates = MULTIPLY/subdivide, ghosts = INSERT events in gaps, legato/tie = MERGE
 consecutive gates — all probability-driven, correlated, reversible. Crucially the transformed streams
-are USABLE OUTPUTS: **GATE OUT** (the modulated main gate) and **STEP GATE OUT** (the subdivision
-stream). So patch a clock in -> drive a drum module / envelope / another sequencer's clock from the
-transformed stream, at two rhythmic levels (main + subdivision).
+are USABLE OUTPUTS. **STATUS CHECK (verified in code):**
+- **GATE OUT emits** (via gs.process / the output generator) — the modulated MAIN gate (rests=skips,
+  legato=merge) IS available now. The main-gate modulation claim is REAL today.
+- **STEP GATE OUT does NOT emit yet** — Monsoon.hpp:437/446 mark STEP_GATE_OUTPUT and
+  STEP_LEGATO_GATE_OUTPUT "ENGINE EMISSION PENDING". The subdivision stream (ratchets/ghosts) is NOT
+  on the output. It needs the OutputGenerator to track the gate BEFORE legato drops edges (a pre-drop
+  gate-state flag, not lastStepResult.decision) — non-trivial, the onset-knowledge wall again.
 
-Claim it QUALIFIED: **"generative / probabilistic clock-and-gate modulator"** — the qualifier is the
-differentiator (plain clock modulators / dividers are commodity; a GENERATIVE, correlated, reversible
-one with main+subdivision outs is distinctive). Don't claim bare "clock modulator" (implies
-divide/multiply/swing expectation it would only partly meet).
+So TODAY the honest claim is a **main-gate** generative modulator (GATE OUT). The FULL two-level
+(main + subdivision) claim requires building STEP GATE OUT emission first — then it's complete.
+
+Claim it QUALIFIED when earned: **"generative / probabilistic clock-and-gate modulator"** — the
+qualifier is the differentiator (plain dividers are commodity; a GENERATIVE, correlated, reversible
+one is distinctive). Don't claim bare "clock modulator" (implies divide/multiply/swing), and don't
+claim the two-level main+subdivision version until STEP GATE OUT emits.
 
 ## The three functional identities (one engine, three uses)
 - **random number SOURCE** — the copula field.
 - **random number ARRANGER** — Intertropical routing the probabilities.
-- **generative CLOCK/GATE MODULATOR** — gate mode transforming an input clock -> GATE OUT + STEP GATE OUT.
+- **generative CLOCK/GATE MODULATOR** — gate mode transforming an input clock -> GATE OUT (main,
+  emits today) + STEP GATE OUT (subdivision, EMISSION PENDING — build to complete the two-level claim).
 Not bolted-together features — three USES of the same generative/probabilistic/correlated/reversible
 core. Three entry points for three users (generative-seq person / ensemble person / rhythm-clock
 person), each a familiar hook that turns out to be the other two.
