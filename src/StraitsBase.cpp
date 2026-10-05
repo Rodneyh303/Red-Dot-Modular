@@ -29,7 +29,8 @@ struct StraitsBaseModule : MonsoonStraitsExpander {
     // Lane keys to spawn on next step (set by dataFromJson or context menu).
     // e.g. "qmix", "rest", "accent". Processed in the widget's step().
     std::vector<std::string> pendingLanes;
-    std::vector<int64_t> orderedLaneIds_;  // owned lane module IDs, in dock order (for force-follow)
+    std::vector<int64_t> orderedLaneIds_;  // owned lane module IDs, in dock order
+    bool needsResnap = false;   // set by onDragEnd, cleared by step() (one-shot)
     bool initialized = false;   // false until the widget's first step runs
 
     json_t* dataToJson() override {
@@ -261,51 +262,33 @@ struct StraitsBaseWidget : ModuleWidget,
                 lanesSpawned_ = true;
             }
 
-            // ── One-shot re-snap (NOT per-frame): when nothing is being dragged,
-            // reposition owned lanes to canonical slots (REST→ACCENT→QMIX order).
-            // During drags, do nothing — let Rack handle placement. Re-snap fires
-            // the first frame after a drag ends (positions stabilize), avoiding the
-            // feedback loop that per-frame force-follow created with Rack's placement.
+            // ── One-shot re-snap: fires ONLY when a needsResnap flag is set
+            // by onDragEnd (base's own or a lane's). NOT per-frame — zero
+            // box.pos writes in step() during drags → no flicker, no fighting.
             {
                 auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
-                if (baseMod) {
-                    // Check if base moved this frame (= being dragged)
-                    Vec currentPos = box.pos;
-                    bool baseMoved = (currentPos.x != lastBasePos_.x || currentPos.y != lastBasePos_.y);
-                    lastBasePos_ = currentPos;
-
-                    // Check if any lane is being dragged
-                    bool anyLaneDragged = false;
+                bool needSnap = baseMod && baseMod->needsResnap;
+                // Also check each owned lane's needsResnap flag
+                if (baseMod && !needSnap) {
                     for (int64_t laneId : baseMod->orderedLaneIds_) {
                         rack::Module* m = APP->engine->getModule(laneId);
                         if (m) {
                             auto* lane = dynamic_cast<StraitsLaneExpander*>(m);
-                            if (lane && lane->beingDragged) { anyLaneDragged = true; break; }
+                            if (lane && lane->needsResnap) { needSnap = true; break; }
                         }
                     }
-
-                    // Re-snap ONLY when nothing is being dragged (one-shot on stabilization)
-                    if (!baseMoved && !anyLaneDragged) {
-                        // Sort owned lanes by canonical order (arcLane: REST=0, ACCENT=1, QMIX=2)
-                        std::sort(baseMod->orderedLaneIds_.begin(), baseMod->orderedLaneIds_.end(),
-                            [&](int64_t a, int64_t b) {
-                                auto* ma = dynamic_cast<StraitsLaneExpander*>(APP->engine->getModule(a));
-                                auto* mb = dynamic_cast<StraitsLaneExpander*>(APP->engine->getModule(b));
-                                int oa = (ma && ma->desc) ? ma->desc->arcLane : 99;
-                                int ob = (mb && mb->desc) ? mb->desc->arcLane : 99;
-                                return oa < ob;
-                            });
-                        // Re-snap to contiguous slots in canonical order
-                        float expectedX = box.getTopRight().x;
-                        for (int64_t laneId : baseMod->orderedLaneIds_) {
-                            ModuleWidget* lw = APP->scene->rack->getModule(laneId);
-                            if (!lw) continue;
-                            Vec target(expectedX, box.pos.y);
-                            if (lw->box.pos.x != target.x || lw->box.pos.y != target.y)
-                                lw->box.pos = target;
-                            expectedX += lw->box.size.x;
+                }
+                if (needSnap) {
+                    if (baseMod) baseMod->needsResnap = false;
+                    // Clear lane flags
+                    for (int64_t laneId : baseMod->orderedLaneIds_) {
+                        rack::Module* m = APP->engine->getModule(laneId);
+                        if (m) {
+                            auto* lane = dynamic_cast<StraitsLaneExpander*>(m);
+                            if (lane) lane->needsResnap = false;
                         }
                     }
+                    resnapLanes();
                 }
             }
         }
@@ -323,6 +306,34 @@ struct StraitsBaseWidget : ModuleWidget,
                 }
             }
         }
+    }
+
+    // ── Re-snap helper: sort owned lanes by canonical order, position contiguously ──
+    void resnapLanes() {
+        auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
+        if (!baseMod) return;
+        std::sort(baseMod->orderedLaneIds_.begin(), baseMod->orderedLaneIds_.end(),
+            [&](int64_t a, int64_t b) {
+                auto* ma = dynamic_cast<StraitsLaneExpander*>(APP->engine->getModule(a));
+                auto* mb = dynamic_cast<StraitsLaneExpander*>(APP->engine->getModule(b));
+                int oa = (ma && ma->desc) ? ma->desc->arcLane : 99;
+                int ob = (mb && mb->desc) ? mb->desc->arcLane : 99;
+                return oa < ob;
+            });
+        float expectedX = box.getTopRight().x;
+        for (int64_t laneId : baseMod->orderedLaneIds_) {
+            ModuleWidget* lw = APP->scene->rack->getModule(laneId);
+            if (!lw) continue;
+            lw->box.pos = Vec(expectedX, box.pos.y);
+            expectedX += lw->box.size.x;
+        }
+    }
+
+    // ── onDragEnd: set the resnap flag (fires once on drag completion) ──────────
+    void onDragEnd(const event::DragEnd& e) override {
+        ModuleWidget::onDragEnd(e);
+        if (auto* baseMod = dynamic_cast<StraitsBaseModule*>(module))
+            baseMod->needsResnap = true;
     }
 };
 

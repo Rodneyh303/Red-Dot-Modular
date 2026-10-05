@@ -46,10 +46,18 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
 
     void onButton(const event::Button& e) override {
         ModuleWidget::onButton(e);
-        // Set the MODULE's beingDragged flag so the base's force-follow can skip us
         if (e.button == GLFW_MOUSE_BUTTON_LEFT && module) {
             auto* lane = dynamic_cast<StraitsLaneExpander*>(module);
             if (lane) lane->beingDragged = (e.action == GLFW_PRESS && !e.isConsumed());
+        }
+    }
+
+    void onDragEnd(const event::DragEnd& e) override {
+        ModuleWidget::onDragEnd(e);
+        // Set our own needsResnap flag — the base's step() checks it
+        if (module) {
+            auto* lane = dynamic_cast<StraitsLaneExpander*>(module);
+            if (lane) lane->needsResnap = true;
         }
     }
 
