@@ -195,6 +195,28 @@ struct StraitsBaseWidget : ModuleWidget,
                 }
                 lanesSpawned_ = true;
             }
+
+            // ── Force-follow: keep lane expanders welded to base's right ──────────
+            // Lanes follow the base when it moves; lanes dragged away snap back next frame.
+            // Reposition only when a lane is out of place (not every frame — avoids jitter).
+            {
+                float expectedX = box.getTopRight().x;
+                rack::Module* right = module->rightExpander.module;
+                while (right) {
+                    auto* lane = dynamic_cast<StraitsLaneExpander*>(right);
+                    if (!lane || !lane->desc) break;
+                    ModuleWidget* lw = APP->scene->rack->getModule(right->id);
+                    if (lw) {
+                        // Snap to contiguous right position if out of place
+                        if (std::abs(lw->box.pos.x - expectedX) > 0.5f ||
+                            std::abs(lw->box.pos.y - box.pos.y) > 0.5f) {
+                            lw->box.pos = Vec(expectedX, box.pos.y);
+                        }
+                        expectedX = lw->box.getTopRight().x;
+                    }
+                    right = right->rightExpander.module;
+                }
+            }
         }
         ModuleWidget::step();
         kitStep();
