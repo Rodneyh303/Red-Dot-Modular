@@ -42,3 +42,19 @@ So the stochastic sequential switch is reversible both as a RE-DRAW (dice backwa
 STATE-HISTORY WALK (true-reverse) — two independent reverse paths over the random mapping. No ordinary
 sequential switch (deterministic or random) is reversible at all, let alone two ways. This is the part
 that makes it categorically unlike anything else.
+
+
+## Deterministic mode: SOME transforms are invertible (precise — CA_DICE_COUNTER_MODEL.md)
+"Some of the transforms are also reversible" — the "SOME" is load-bearing and the doc already nailed why:
+- **Non-fan-in transforms (rotate, reflect/invert, pure permutations)** — genuinely INVERTIBLE as
+  transforms: apply the inverse, recover the prior config exactly.
+- **Fan-in transforms (scatter, collapse — many-to-one)** — NOT invertible as transforms (information
+  lost; CA_DICE_COUNTER_MODEL.md:31 "scatter has fan-in => NO inverse transform"). Their "reverse" is
+  NOT an inverse: either REVERSE-DICE (scatterCounter--, re-derives the previous DRAW and applies it to
+  CURRENT pins — a generative scrub gesture, NOT an edit-undo; lines 42-48,57) or TRUE-REVERSE
+  (state-replay from the stored trajectory — an undo, but via history, not inversion).
+
+So the honest scoped claim: **SOME deterministic transforms (the permutation/non-fan-in class) are
+truly invertible; all are navigable via dice-reverse (generative) and restorable via true-reverse
+(state-replay).** Do NOT claim scatter/collapse are "reversible transforms" — they're lossy; their
+reversibility is state-replay, not inversion. The word "some" is the accurate one.
