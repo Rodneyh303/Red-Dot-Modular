@@ -35,7 +35,8 @@ struct LaneDescriptor {
 // the base syncs params via step(), and the engine reads from the base.
 struct StraitsLaneExpander : Module {
     const LaneDescriptor* desc = nullptr;   // set by the widget constructor
-    bool beingDragged = false;               // set by widget onButton, used by base force-follow
+    bool beingDragged = false;               // set by widget onButton (legacy, unused now)
+    bool needsResnap = false;                // set by widget onDragEnd, checked by base step()
 
     StraitsLaneExpander() {
         // Sized to Monsoon's full param namespace so POLY_*_PARAM IDs are valid.
