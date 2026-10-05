@@ -1,6 +1,13 @@
 # Arranged probability outputs — idea (Intertropical or a companion output module)
 
-STATUS: design idea, parked. Additive, optional, HP-contained.
+STATUS: design idea — RAISED PRIORITY. Additive, optional, HP-contained. It EARNS a core CLAIM.
+
+**Why it matters more than a nice-to-have output:** once Intertropical ROUTES the probabilities (not
+just notes/CV), Intertropical is ARRANGING THE RANDOM SOURCE ITSELF. That lets us honestly claim
+**random number SOURCE + random number ARRANGER** — with no new feature beyond these arranged
+prob-outs. So this isn't just a Burst-patch convenience; it COMPLETES the identity (see CANONICAL_CLAIM).
+Almost nothing else arranges the underlying random numbers (anyone can arrange notes). That raises this
+from parked-nice-to-have to the-feature-that-earns-a-core-claim.
 
 ## The question
 Should the probability field (prob-outs) follow Intertropical routing, like CV expression already does?

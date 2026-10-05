@@ -25,6 +25,17 @@ Unpacked:
   (e.g. a length-7 melody lane against a length-5 rhythm lane inside a 16 global), drifting and
   realigning over the global loop — all reversible.
 
+## The two-function claim: random number SOURCE + random number ARRANGER
+Plain-language core (grasped instantly; depth underneath): **a random number SOURCE and a random
+number ARRANGER.**
+- SOURCE = the copula probability field (Monsoon/Sands generates it).
+- ARRANGER = Intertropical — ONCE it routes the PROBABILITIES (not just notes/CV), it arranges the
+  RANDOM SOURCE ITSELF (see ARRANGED_PROBABILITY_OUTS_IDEA — the feature that earns this claim).
+Distinctive because almost nothing else arranges the underlying RANDOM NUMBERS — anyone arranges notes;
+routing a generated probability field through a correlation-aware arranger is near-unique. Lead PLAIN
+with this ('random generator + arranger'), reveal the depth (reversible copula field, correlation
+structure) underneath — modest surface, over-delivers on inspection.
+
 ## Three orthogonal axes (the full space)
 All TIME-REVERSIBLE:
 1. **Time structure** — global pattern length + per-lane LOR + direction (polymetric, phased).
