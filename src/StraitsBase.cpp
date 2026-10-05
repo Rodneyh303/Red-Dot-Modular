@@ -36,12 +36,14 @@ struct StraitsBaseModule : MonsoonStraitsExpander {
         if (!rootJ) rootJ = json_object();
         // Save the list of attached lane keys (walk rightExpander chain).
         json_t* lanesJ = json_array();
-        rack::Module* right = rightExpander.module;
-        while (right) {
-            auto* lane = dynamic_cast<StraitsLaneExpander*>(right);
-            if (!lane || !lane->desc) break;
-            json_array_append_new(lanesJ, json_string(lane->desc->slug));
-            right = right->rightExpander.module;
+        // Save by owned ID list (not live chain) — robust to transient detachment
+        for (int64_t id : orderedLaneIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (m) {
+                auto* lane = dynamic_cast<StraitsLaneExpander*>(m);
+                if (lane && lane->desc)
+                    json_array_append_new(lanesJ, json_string(lane->desc->slug));
+            }
         }
         json_object_set_new(rootJ, "straitLanes", lanesJ);
         return rootJ;
@@ -70,7 +72,6 @@ struct StraitsBaseWidget : ModuleWidget,
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
     bool lanesSpawned_ = false;   // false until auto-spawn/pending-spawn runs
-    Vec lastBasePos_;             // for delta-follow drag guard
 
     StraitsBaseWidget(StraitsBaseModule* mod) {
         setModule(mod);
@@ -258,36 +259,32 @@ struct StraitsBaseWidget : ModuleWidget,
                 lanesSpawned_ = true;
             }
 
-            // ── Force-follow: keep lane expanders welded to base's right ──────────
-            // DRAG-GUARD: when the base moves, move all lanes by the same delta (smooth,
-            // no fighting Rack's drag). When the base is stationary, snap any out-of-place
-            // lane back to its slot — but skip lanes with large deviation (>50px, likely
-            // being actively dragged by the user; they snap back on release).
+            // ── Force-follow: always snap lanes to slots derived from base.pos ──────
+            // Every frame, recompute each owned lane's correct slot (base right edge +
+            // cumulative widths by orderedLaneIds_) and snap it there — UNLESS that
+            // lane widget is being actively dragged (beingDragged_ flag set by its own
+            // onButton handler). When the user releases the drag, the flag clears and
+            // the lane snaps back next frame. No delta-follow, no distance heuristics.
+            // Base drag is smooth because lanes just track base.pos-derived slots.
             {
                 auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
                 if (baseMod) {
-                    Vec currentPos = box.pos;
-                    Vec delta = currentPos.minus(lastBasePos_);
-                    if (delta.norm() > 0.5f) {
-                        // Base moved — translate all lanes by the same delta (smooth follow)
-                        for (int64_t laneId : baseMod->orderedLaneIds_) {
-                            ModuleWidget* lw = APP->scene->rack->getModule(laneId);
-                            if (lw) lw->box.pos = lw->box.pos.plus(delta);
+                    float expectedX = box.getTopRight().x;
+                    for (int64_t laneId : baseMod->orderedLaneIds_) {
+                        ModuleWidget* lw = APP->scene->rack->getModule(laneId);
+                        if (!lw) continue;
+                        // Skip the lane being actively dragged (flag set by its onButton;
+                        // it snaps back next frame after release)
+                        auto* laneMod = dynamic_cast<StraitsLaneExpander*>(lw->module);
+                        if (laneMod && laneMod->beingDragged) {
+                            expectedX += lw->box.size.x;  // still account for its width
+                            continue;
                         }
-                    } else {
-                        // Base stationary — snap out-of-place lanes back (skip active drags)
-                        float expectedX = box.getTopRight().x;
-                        for (int64_t laneId : baseMod->orderedLaneIds_) {
-                            ModuleWidget* lw = APP->scene->rack->getModule(laneId);
-                            if (!lw) continue;
-                            Vec target(expectedX, box.pos.y);
-                            float dist = lw->box.pos.minus(target).norm();
-                            if (dist > 0.5f && dist < 50.f)  // small drift → snap; large → active drag, skip
-                                lw->box.pos = target;
-                            expectedX = lw->box.getTopRight().x;
-                        }
+                        Vec target(expectedX, box.pos.y);
+                        if (lw->box.pos.x != target.x || lw->box.pos.y != target.y)
+                            lw->box.pos = target;
+                        expectedX += lw->box.size.x;
                     }
-                    lastBasePos_ = currentPos;
                 }
             }
         }
