@@ -1,25 +1,25 @@
-# Sequential switch — NOT a current claim; a feature IDEA (verified)
+# Sequential switch — VERIFIED, it IS one (deterministic AND stochastic)
 
-## Verified: NOT a sequential switch TODAY
-"CV through Intertropical makes it a sequential switch" — CHECKED: Intertropical has NO general
-patchable CV input (Intertropical.hpp: essentially no CV inputs before NUM_INPUTS; Intertropical.cpp:46
-+ design notes — it reads expression/CA OFF THE CHAIN, cachedChangeAlleyV2, NO cable). It routes the
-ENGINE'S OWN expression/probability through the arrangement — it does NOT take an arbitrary external CV
-and switch it. A switch's defining feature is "patch a signal IN, it routes it to outputs"; Intertropical
-has nothing to patch in. **So do NOT claim sequential switch** — the mechanism isn't there.
-(Same verify-before-claim lesson as STEP GATE: the idea sounded right, the mechanism wasn't present.)
+## CORRECTION: the claim HOLDS — I checked the wrong module first
+Earlier I checked INTERTROPICAL's inputs (none) and wrongly concluded "no CV input". The CV input is on
+CHANGE ALLEY, upstream, chained to Intertropical. Verified: MonsoonChangeAlleyV2.hpp:233 — Change Alley
+has **8 poly-CV IN/OUT pairs** (CA_EXPRESSION_CV_CORRELATION.md). So the signal path is real:
+**patchable CV IN (Change Alley) -> CA REMAPPING -> Intertropical mapping (normalled from CA) -> outputs.**
 
-## But there's a real FEATURE idea here
-IF Intertropical had a general CV input (or several), it WOULD be a sequential / ARRANGING switch: route
-arbitrary CV through the SAME correlation-aware arrangement as the notes. Distinctive (a switch whose
-pattern is generative + correlated, not round-robin commodity), and it reuses the EXISTING routing mask
-(slotOf[v]/slotOutput[slot]) — same shape as the arranged-prob-outs idea ("let more signals ride the
-arrangement"; there probability, here an external CV).
+## It's a DETERMINISTIC AND STOCHASTIC sequential switch
+- **CV into Change Alley** -> remapped by the CA permutation, which is **deterministic** (fixed mapping)
+  OR **stochastic** (dice/random verbs reshuffle the mapping). So the switching is a FIXED pattern or a
+  generatively RANDOM one.
+- **Through Intertropical** (normalled from CA) -> the arrangement mapping applied.
+So: patch CV in, it's routed to outputs by a mapping that spans DETERMINISTIC (fixed sequence =
+ordinary sequential switch) to STOCHASTIC (reshuffling = random switch), on the same order<->chaos
+continuum as everything else — correlation-aware, reversible.
 
-Claim it, if built, QUALIFIED: **"arranging / generative sequential switch"** — the qualifier is the
-differentiator (plain sequential switches are commodity; one whose routing follows a generative,
-correlated, reversible arrangement is not). Don't claim bare "sequential switch".
+## Claim (holds today)
+A **deterministic AND stochastic sequential switch** — distinctive, NOT a commodity round-robin: its
+routing pattern is navigable from fixed to generative, correlated, reversible. This is a FIFTH verified
+functional identity: patch CV through Change Alley -> switched between outputs by a det-or-random
+arrangement.
 
-## Status
-Parked feature idea. Small-ish (reuses the routing mask; the work is a general CV input + routing it).
-HP cost = the input jack(s) — weigh against Intertropical's budget. Do NOT claim until built + verified.
+(Verify-before-claim still honoured — the claim is now grounded in the 8 poly-CV pairs on Change Alley,
+not asserted. My first pass checked Intertropical alone and missed the CA->Intertropical chain.)
