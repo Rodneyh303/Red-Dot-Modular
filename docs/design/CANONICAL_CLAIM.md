@@ -36,6 +36,27 @@ routing a generated probability field through a correlation-aware arranger is ne
 with this ('random generator + arranger'), reveal the depth (reversible copula field, correlation
 structure) underneath — modest surface, over-delivers on inspection.
 
+## Third functional identity: generative CLOCK/GATE MODULATOR
+Gate mode takes an incoming clock/gate stream and transforms its rhythm — rests = probabilistic
+SKIPS, ratchets/subgates = MULTIPLY/subdivide, ghosts = INSERT events in gaps, legato/tie = MERGE
+consecutive gates — all probability-driven, correlated, reversible. Crucially the transformed streams
+are USABLE OUTPUTS: **GATE OUT** (the modulated main gate) and **STEP GATE OUT** (the subdivision
+stream). So patch a clock in -> drive a drum module / envelope / another sequencer's clock from the
+transformed stream, at two rhythmic levels (main + subdivision).
+
+Claim it QUALIFIED: **"generative / probabilistic clock-and-gate modulator"** — the qualifier is the
+differentiator (plain clock modulators / dividers are commodity; a GENERATIVE, correlated, reversible
+one with main+subdivision outs is distinctive). Don't claim bare "clock modulator" (implies
+divide/multiply/swing expectation it would only partly meet).
+
+## The three functional identities (one engine, three uses)
+- **random number SOURCE** — the copula field.
+- **random number ARRANGER** — Intertropical routing the probabilities.
+- **generative CLOCK/GATE MODULATOR** — gate mode transforming an input clock -> GATE OUT + STEP GATE OUT.
+Not bolted-together features — three USES of the same generative/probabilistic/correlated/reversible
+core. Three entry points for three users (generative-seq person / ensemble person / rhythm-clock
+person), each a familiar hook that turns out to be the other two.
+
 ## Three orthogonal axes (the full space)
 All TIME-REVERSIBLE:
 1. **Time structure** — global pattern length + per-lane LOR + direction (polymetric, phased).
