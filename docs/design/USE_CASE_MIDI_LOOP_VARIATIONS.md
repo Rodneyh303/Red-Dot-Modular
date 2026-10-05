@@ -75,3 +75,30 @@ rhythmic material.
 consolidation): here's the concrete, musical, non-obvious payoff — the generative probability field
 driving an external probability-based module. A distinctive patch, not commodity. Good demo material:
 "our probability drives the ratchets, so the subdivisions thin and thicken with the pattern itself."
+
+
+## Experiment — INVERT rest probability -> Burst (rests become fills)
+Rodney, worth experimenting: feed Burst's probability from the INVERTED rest prob-out, so
+`burst_prob = 1 - rest_prob`. Then **where the main pattern RESTS, the subgates BURST** — the gaps fill
+with ratchet activity exactly when the main voice goes quiet. Self-balancing density: busy main line ->
+sparse bursts; lots of rests -> busy bursts. This is how a drummer fills (main pattern lays out -> put
+in a roll). Rests stop being just silence and become INVITATIONS for subgate activity.
+
+Kin to GHOST PROTOCOL (which already fills gaps with ghost notes): two complementary gap-fillers —
+ghosts (internal, variation-gated) and inverted-rest->Burst (external, ratchet bursts). Both turn
+"where the main pattern rests" into "where other activity happens". They can reinforce or be split
+across the gaps (a patching choice) — watch for dense double-fills if both fire in the same gaps.
+
+General principle this reveals: **any exported probability can be INVERTED, and the inversion often
+has an opposite-but-complementary musical meaning** ("do the opposite where X is likely"). A little
+algebra of complementary density from a simple CV op.
+
+Practical:
+- **Invert externally** — 10V-x, an attenuverter at -1 + offset, or Burst's CV polarity. No build
+  needed to TRY it. (A context-menu "invert" on the prob-out would be a nice small touch later, not
+  required.)
+- **Probability-driven vs actual-rest-driven:** burst density from rest PROBABILITY (likelihood,
+  smooth) vs from actual RESTS (only where a rest really happened, precise gap-fill). Probability is
+  just the CV (simple); actual-rest needs a "did this step rest" gate output. Try both.
+- Watch the main-gate interaction: high rest prob but the step still FIRES -> main note + high burst
+  together (maybe too much). Actual-rest-driven avoids this; probability-driven smooths it.
