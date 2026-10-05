@@ -39,8 +39,9 @@ void init(rack::Plugin* p) {
 	p->addModel(modelMonsoonJunctionExpander);
 	//p->addModel(modelMonsoonSandsExpander);
 	p->addModel(modelMonsoonStraitsExpander);
-	p->addModel(modelStraitsBase);             // lane-extension base (frame + IO + docking)
-	p->addModel(modelStraitsLaneQMIX);         // QMIX lane expander (Phase 1)
+	p->addModel(modelStraitsBase);             // lane-extension base (frame + IO + docking) — spawns lane expanders
+	// StraitsLaneQMIX is UNREGISTERED — base-spawned only (not browser-draggable).
+	// The Model* is kept for the base to instantiate via context menu.
 	p->addModel(modelMonsoonCausewayPolyExpander);
 	p->addModel(modelMonsoonChangiExpander);
 	p->addModel(modelMonsoonChangiT2Expander);

@@ -2,8 +2,9 @@
 // This is a REFACTOR of the working Straits widget (MonsoonStraitsExpander.cpp):
 // the IO bindings, voice-count knob, connect mark, and step() logic are COPIED
 // from MonsoonStraitsExpanderWidget — only the lane knob bindings are removed.
-// The base module IS MonsoonStraitsExpander (same config, same params, same IO).
-// Lane expanders dock right and their params sync into the base in step().
+// The base module IS a StraitsStraitsExpander subclass (same config, same params,
+// same IO). Lane expanders are UNREGISTERED — the base spawns them via context menu
+// and owns persistence (save/load the lane list).
 //
 // See docs/design/STRAITS_CAUSEWAY_LANE_EXTENSIONS.md REFINED MODEL + METHOD:REFACTOR.
 #include <rack.hpp>
@@ -19,6 +20,45 @@ using namespace rack;
 using namespace MonsoonIds;
 using namespace StraitsIds;
 
+// ── StraitsBaseModule — subclass with lane persistence ───────────────────────
+// Adds dataToJson/dataFromJson to save/restore the list of attached lane
+// expanders. Since lane expanders are unregistered, Rack won't auto-restore
+// them — the base re-spawns them on load.
+struct StraitsBaseModule : MonsoonStraitsExpander {
+    // Lane keys to spawn on next step (set by dataFromJson or context menu).
+    // e.g. "qmix", "rest", "accent". Processed in the widget's step().
+    std::vector<std::string> pendingLanes;
+    bool initialized = false;   // false until the widget's first step runs
+
+    json_t* dataToJson() override {
+        json_t* rootJ = MonsoonStraitsExpander::dataToJson();
+        if (!rootJ) rootJ = json_object();
+        // Save the list of attached lane keys (walk rightExpander chain).
+        json_t* lanesJ = json_array();
+        rack::Module* right = rightExpander.module;
+        while (right) {
+            auto* lane = dynamic_cast<StraitsLaneExpander*>(right);
+            if (!lane || !lane->desc) break;
+            json_array_append_new(lanesJ, json_string(lane->desc->slug));
+            right = right->rightExpander.module;
+        }
+        json_object_set_new(rootJ, "straitLanes", lanesJ);
+        return rootJ;
+    }
+
+    void dataFromJson(json_t* rootJ) override {
+        MonsoonStraitsExpander::dataFromJson(rootJ);
+        json_t* lanesJ = json_object_get(rootJ, "straitLanes");
+        if (lanesJ) {
+            size_t i; json_t* v;
+            json_array_foreach(lanesJ, i, v) {
+                const char* s = json_string_value(v);
+                if (s) pendingLanes.push_back(s);
+            }
+        }
+    }
+};
+
 struct StraitsBaseWidget : ModuleWidget,
     dotModular::Compose<StraitsBaseWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
@@ -28,8 +68,9 @@ struct StraitsBaseWidget : ModuleWidget,
     bool voiceCountSynced_ = false;
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
+    bool lanesSpawned_ = false;   // false until auto-spawn/pending-spawn runs
 
-    StraitsBaseWidget(MonsoonStraitsExpander* mod) {
+    StraitsBaseWidget(StraitsBaseModule* mod) {
         setModule(mod);
         const char* darkPath  = "res/panels/StraitsBase_panel_dark.svg";
         const char* lightPath = "res/panels/StraitsBase_panel_light.svg";
@@ -62,6 +103,44 @@ struct StraitsBaseWidget : ModuleWidget,
         }
     }
 
+    // ── Context menu: "Add Lane >" ───────────────────────────────────────────
+    void appendContextMenu(Menu* menu) override {
+        ModuleWidget::appendContextMenu(menu);
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Lanes"));
+        menu->addChild(createMenuItem("Add Q-MIX Lane", "",
+            [this]() { spawnLane("StraitsLaneQMIX"); }));
+    }
+
+    // ── Spawn a lane expander module and dock it right ───────────────────────
+    void spawnLane(const std::string& slug) {
+        if (!module) return;
+        // Find the Model for this slug
+        Model* model = nullptr;
+        if (slug == "StraitsLaneQMIX") model = modelStraitsLaneQMIX;
+        if (!model) return;
+
+        // Create the module
+        engine::Module* laneMod = model->createModule();
+        APP->engine->addModule(laneMod);
+
+        // Create the widget
+        ModuleWidget* laneW = model->createModuleWidget(laneMod);
+
+        // Position: right of the rightmost module in the chain (base + existing lanes)
+        float rightX = box.getTopRight().x;
+        rack::Module* right = module->rightExpander.module;
+        while (right) {
+            ModuleWidget* rw = APP->scene->rack->getModule(right->id);
+            if (rw) rightX = std::max(rightX, rw->box.getTopRight().x);
+            right = right->rightExpander.module;
+        }
+        laneW->box.pos = Vec(rightX, box.pos.y);
+
+        // Add to rack
+        APP->scene->rack->addModule(laneW);
+    }
+
     void step() override {
         // ── step() logic COPIED from MonsoonStraitsExpanderWidget, plus lane sync ──
         if (module) {
@@ -86,12 +165,10 @@ struct StraitsBaseWidget : ModuleWidget,
             // Walk the right-neighbour chain and sync each lane expander's params
             // into the base's params. The engine reads from the base (as
             // cachedPolyVoiceExpander), so lane knob edits reach the engine here.
-            // Fixed-order: read rightExpander until a non-LaneExpander is found.
             rack::Module* right = module->rightExpander.module;
             while (right) {
                 auto* lane = dynamic_cast<StraitsLaneExpander*>(right);
                 if (!lane || !lane->desc) break;
-                // Sync mono + 15 poly params for this lane
                 module->params[lane->desc->monoParamId].setValue(
                     right->params[lane->desc->monoParamId].getValue());
                 for (int i = 0; i < 15; i++) {
@@ -99,6 +176,24 @@ struct StraitsBaseWidget : ModuleWidget,
                         right->params[lane->desc->polyParamIdBase + i].getValue());
                 }
                 right = right->rightExpander.module;
+            }
+
+            // ── Auto-spawn / restore lanes ──────────────────────────────────────
+            if (!lanesSpawned_) {
+                auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
+                if (baseMod) {
+                    // Restore saved lanes (from dataFromJson)
+                    for (const auto& slug : baseMod->pendingLanes)
+                        spawnLane(slug);
+                    baseMod->pendingLanes.clear();
+
+                    // Auto-spawn QMIX if no lanes attached (default-attached)
+                    if (!module->rightExpander.module ||
+                        !dynamic_cast<StraitsLaneExpander*>(module->rightExpander.module)) {
+                        spawnLane("StraitsLaneQMIX");
+                    }
+                }
+                lanesSpawned_ = true;
             }
         }
         ModuleWidget::step();
@@ -119,4 +214,4 @@ struct StraitsBaseWidget : ModuleWidget,
 };
 
 Model* modelStraitsBase =
-    createModel<MonsoonStraitsExpander, StraitsBaseWidget>("StraitsBase");
+    createModel<StraitsBaseModule, StraitsBaseWidget>("StraitsBase");
