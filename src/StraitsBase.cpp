@@ -308,7 +308,9 @@ struct StraitsBaseWidget : ModuleWidget,
         }
     }
 
-    // ── Re-snap helper: sort owned lanes by canonical order, position contiguously ──
+    // ── Re-snap helper: sort by canonical order, position via Rack's API ──────
+    // Uses setModulePosForce (Rack's placement-with-shoving) instead of raw
+    // box.pos — pushes other modules aside, no overlap.
     void resnapLanes() {
         auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
         if (!baseMod) return;
@@ -324,8 +326,9 @@ struct StraitsBaseWidget : ModuleWidget,
         for (int64_t laneId : baseMod->orderedLaneIds_) {
             ModuleWidget* lw = APP->scene->rack->getModule(laneId);
             if (!lw) continue;
-            lw->box.pos = Vec(expectedX, box.pos.y);
-            expectedX += lw->box.size.x;
+            // Use Rack's placement API (shoves neighbours, no overlap)
+            APP->scene->rack->setModulePosForce(lw, Vec(expectedX, box.pos.y));
+            expectedX = lw->box.getTopRight().x;
         }
     }
 
