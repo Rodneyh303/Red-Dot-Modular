@@ -111,6 +111,10 @@ struct StraitsBaseWidget : ModuleWidget,
         menu->addChild(createMenuLabel("Lanes"));
         menu->addChild(createMenuItem("Add Q-MIX Lane", "",
             [this]() { spawnLane("StraitsLaneQMIX"); }));
+        menu->addChild(createMenuItem("Add REST Lane", "",
+            [this]() { spawnLane("StraitsLaneREST"); }));
+        menu->addChild(createMenuItem("Add ACCENT Lane", "",
+            [this]() { spawnLane("StraitsLaneACCENT"); }));
     }
 
     // ── Spawn a lane expander module and dock it right ───────────────────────
@@ -119,6 +123,8 @@ struct StraitsBaseWidget : ModuleWidget,
         // Find the Model for this slug
         Model* model = nullptr;
         if (slug == "StraitsLaneQMIX") model = modelStraitsLaneQMIX;
+        else if (slug == "StraitsLaneREST") model = modelStraitsLaneREST;
+        else if (slug == "StraitsLaneACCENT") model = modelStraitsLaneACCENT;
         if (!model) return;
 
         // Create the module

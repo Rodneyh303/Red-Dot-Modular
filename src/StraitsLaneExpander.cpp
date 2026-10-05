@@ -208,6 +208,16 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
 struct StraitsLaneQMIXModule : StraitsLaneExpander {
     StraitsLaneQMIXModule() { setDescriptor(&QMIX_DESCRIPTOR); }
 };
+struct StraitsLaneRESTModule : StraitsLaneExpander {
+    StraitsLaneRESTModule() { setDescriptor(&REST_DESCRIPTOR); }
+};
+struct StraitsLaneACCENTModule : StraitsLaneExpander {
+    StraitsLaneACCENTModule() { setDescriptor(&ACCENT_DESCRIPTOR); }
+};
 
 Model* modelStraitsLaneQMIX =
     createModel<StraitsLaneQMIXModule, StraitsLaneExpanderWidget>("StraitsLaneQMIX");
+Model* modelStraitsLaneREST =
+    createModel<StraitsLaneRESTModule, StraitsLaneExpanderWidget>("StraitsLaneREST");
+Model* modelStraitsLaneACCENT =
+    createModel<StraitsLaneACCENTModule, StraitsLaneExpanderWidget>("StraitsLaneACCENT");
