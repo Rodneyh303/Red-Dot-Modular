@@ -125,3 +125,32 @@ with the general mechanism — the correlation matrix (which did pitch, spread, 
 "inverse probability" too, as its -1 end routed through Change Alley. External poly inversion (one
 attenuverter) also works per-lane for the Burst patch; but for per-voice complement, -1 correlation is
 the clean internal way. **Conclusion: build no inverse, any form.**
+
+
+## POSITIONING — exposing the probability FIELD is a real differentiator
+Few/no generative sequencers or VSTs expose their INTERNAL probability field. They make decisions FROM
+probabilities, but those probabilities are private state — you get the output (notes/gates), not the
+field that produced them. VCV Random / Marbles / Turing Machine etc. GENERATE randomness but don't hand
+you "probability of activity here, as a live CV".
+
+**dot.modular inverts that:** the probability field is a FIRST-CLASS, patchable poly signal (7 lanes x
+16 voices of prob-outs). So dot.modular is a probability SOURCE, not just a consumer — the opposite of
+VCV Random (which consumes a probability setting to produce chance). It's the thing Random's
+chance-inputs want to be fed BY.
+
+**Why dot.modular CAN do this when others can't:** it has a COHERENT probability field to export —
+built on an actual probabilistic MODEL (the copula + per-voice correlated probabilities), not scattered
+ad-hoc rand() calls. A tool built on local dice rolls has nothing structured to route out; dot.modular
+does, because it modelled probability properly. The quant-modelling rigour isn't just internal
+elegance — it's WHAT MAKES the field exportable as meaningful signals.
+
+**Ecosystem reframe:** most generative modules are CLOSED (randomness in, notes out, nothing to grab).
+dot.modular is OPEN — its field is a bus you tap, so it becomes the COHERENT RANDOMNESS SOURCE for a
+whole patch. Every Bernoulli gate / chance input / probabilistic switch can be fed from it and thereby
+CORRELATED to your pattern instead of rolling independent dice. Turns "a rack full of independent
+randomness" into "a rack whose randomness shares one structure" — the order-in-chaos thesis extended
+beyond the module's own outputs.
+
+**Manual/positioning line:** "Most generative modules hide their probabilities; dot.modular exposes its
+field as poly CV — so it can be the structured-randomness brain for your whole patch." Concrete, true,
+and immediately grasped by anyone tired of uncorrelated-randomness soup.
