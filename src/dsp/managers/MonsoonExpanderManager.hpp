@@ -4,6 +4,11 @@
 
 // Forward declarations
 class SequencerEngine;
+// Model externs for the lane-extension system (declared in Monsoon.hpp, but
+// needed here before Monsoon.hpp reaches those lines — forward-declare).
+namespace rack { struct Model; }
+extern rack::Model* modelStraitsBase;
+extern rack::Model* modelStraitsLaneQMIX;
 
 // Forward declarations
 struct MonsoonInterchangeExpander;
@@ -168,7 +173,11 @@ struct MonsoonExpanderManager {
                 } else if (curr->model == modelMonsoonSandsVisualExpander) {
                     if (!cachedSandsVisualExpander) cachedSandsVisualExpander = reinterpret_cast<MonsoonSandsVisualExpander*>(curr);
                     sandsVisualExpanderCount++;
-                } else if (curr->model == modelMonsoonStraitsExpander) {
+                } else if (curr->model == modelMonsoonStraitsExpander
+                           || curr->model == modelStraitsBase) {
+                    // StraitsBase is a subclass of MonsoonStraitsExpander — same param/IO layout,
+                    // so the reinterpret_cast is safe. Lane expanders are NOT poly-voice expanders
+                    // (they have no IO); only the base is.
                     if (!cachedPolyVoiceExpander) cachedPolyVoiceExpander = reinterpret_cast<MonsoonStraitsExpander*>(curr);
                     polyExpanderCount++;
                 } else if (curr->model == modelMonsoonCausewayPolyExpander) {
