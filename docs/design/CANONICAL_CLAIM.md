@@ -59,7 +59,25 @@ differentiator (plain dividers are commodity; a GENERATIVE, correlated, reversib
 main+subdivision outs is distinctive). Don't claim bare "clock modulator" (implies divide/multiply/
 swing).
 
-## The three functional identities (one engine, three uses)
+## Fourth functional identity: optionally-randomising PHASE-TO-GATE CONVERTER
+Phase mode (verified: modeSelect==2, CV1 = phase input -> phase.pulseEdge/sixteenthEdge -> gates) takes
+a PHASE RAMP in (0->1 position, from a master clock's phase out / LFO ramp / phase-distributed clock)
+and produces GATES out. "OPTIONALLY RANDOMISING" is the continuum: at zero probability/variation it's a
+CLEAN DETERMINISTIC phase-to-gate converter on a fixed grid; dial the generative controls and it becomes
+generative.
+Example (Rodney, the demo): set NOTE VALUE only, nothing else random -> deterministic phase-to-gate on
+the note-value grid. Then add variation / legato / rest / etc. -> the SAME conversion blooms into up to
+16 per-voice correlated random VARIATIONS. Same input, same conversion, continuously order->chaos — the
+thesis demonstrated on one function.
+
+## The clock/gate/phase modes ARE identities (by input type)
+The 6->3 collapse isn't arbitrary — each surviving mode is a functional identity keyed to its input:
+- **CLOCK** = generate from tempo -> the pure GENERATOR.
+- **GATE** = reshape incoming gates -> the CLOCK/GATE MODULATOR.
+- **PHASE** = convert incoming phase to gates -> the (optionally-randomising) PHASE-TO-GATE CONVERTER.
+"generate / modulate / convert", by input type.
+
+## The functional identities (one engine, many uses)
 - **random number SOURCE** — the copula field.
 - **random number ARRANGER** — Intertropical routing the probabilities.
 - **generative CLOCK/GATE MODULATOR** — transforming an input clock -> GATE OUT (main) + STEP GATE OUT
