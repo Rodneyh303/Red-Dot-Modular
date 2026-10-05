@@ -184,20 +184,24 @@ struct StraitsBaseWidget : ModuleWidget,
                 right = right->rightExpander.module;
             }
 
-            // ── Auto-spawn / restore lanes ──────────────────────────────────────
+            // ── Adopt restored lanes + auto-spawn QMIX ───────────────────────────
+            // Rack restores lane expanders natively (registered + hidden). The base
+            // adopts them by walking the rightExpander chain and recording their IDs.
+            // If no lanes are found (first creation), auto-spawn QMIX (default-attached).
             if (!lanesSpawned_) {
                 auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
                 if (baseMod) {
-                    // Restore saved lanes (from dataFromJson)
-                    for (const auto& slug : baseMod->pendingLanes)
-                        spawnLane(slug);
-                    baseMod->pendingLanes.clear();
-
-                    // Auto-spawn QMIX if no lanes attached (default-attached)
-                    if (!module->rightExpander.module ||
-                        !dynamic_cast<StraitsLaneExpander*>(module->rightExpander.module)) {
-                        spawnLane("StraitsLaneQMIX");
+                    // Adopt lanes restored by Rack (walk rightExpander chain)
+                    rack::Module* right = module->rightExpander.module;
+                    while (right) {
+                        auto* lane = dynamic_cast<StraitsLaneExpander*>(right);
+                        if (!lane || !lane->desc) break;
+                        baseMod->orderedLaneIds_.push_back(right->id);
+                        right = right->rightExpander.module;
                     }
+                    // Auto-spawn QMIX if no lanes attached (first creation, no save)
+                    if (baseMod->orderedLaneIds_.empty())
+                        spawnLane("StraitsLaneQMIX");
                 }
                 lanesSpawned_ = true;
             }
