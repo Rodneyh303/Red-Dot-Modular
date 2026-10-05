@@ -40,27 +40,31 @@ structure) underneath — modest surface, over-delivers on inspection.
 Gate mode takes an incoming clock/gate stream and transforms its rhythm — rests = probabilistic
 SKIPS, ratchets/subgates = MULTIPLY/subdivide, ghosts = INSERT events in gaps, legato/tie = MERGE
 consecutive gates — all probability-driven, correlated, reversible. Crucially the transformed streams
-are USABLE OUTPUTS. **STATUS CHECK (verified in code):**
-- **GATE OUT emits** (via gs.process / the output generator) — the modulated MAIN gate (rests=skips,
-  legato=merge) IS available now. The main-gate modulation claim is REAL today.
-- **STEP GATE OUT does NOT emit yet** — Monsoon.hpp:437/446 mark STEP_GATE_OUTPUT and
-  STEP_LEGATO_GATE_OUTPUT "ENGINE EMISSION PENDING". The subdivision stream (ratchets/ghosts) is NOT
-  on the output. It needs the OutputGenerator to track the gate BEFORE legato drops edges (a pre-drop
-  gate-state flag, not lastStepResult.decision) — non-trivial, the onset-knowledge wall again.
+are USABLE OUTPUTS. **STATUS CHECK (verified in code — MonsoonOutputGenerator.cpp):**
+- **GATE OUT emits** (gs.process -> the jack). Modulated MAIN gate (rests=skips, legato=merge). Real.
+- **STEP GATE OUT + STEP LEGATO OUT DO emit** — gsStep.process() -> setGateWithMute_(outputs[
+  STEP_GATE_OUTPUT]/[STEP_LEGATO_GATE_OUTPUT]) (lines 68/184-185; poly via STEP_GATE_OUT_0,
+  139/144-145). Confirmed emitting (incl. clock mode). The subdivision/step stream IS on the output.
+  NOTE the Monsoon.hpp:437/446 "ENGINE EMISSION PENDING" comment is MISLEADING/stale re: the jack —
+  the jack works; what's pending is a NARROWER gate-mode refinement (tracking the gate BEFORE legato
+  drops edges so the un-fused STEP gate is fully truthful in gate-mode legato cases). So STEP GATE
+  OUT works today; only that gate-mode-legato edge-truthfulness refinement remains.
 
-So TODAY the honest claim is a **main-gate** generative modulator (GATE OUT). The FULL two-level
-(main + subdivision) claim requires building STEP GATE OUT emission first — then it's complete.
+So the TWO-LEVEL claim (main GATE OUT + subdivision STEP GATE OUT) is essentially REAL today — with a
+gate-mode-legato refinement to STEP's edge-truthfulness still to finish. Claim the two-level version,
+noting the refinement if being strict.
 
-Claim it QUALIFIED when earned: **"generative / probabilistic clock-and-gate modulator"** — the
-qualifier is the differentiator (plain dividers are commodity; a GENERATIVE, correlated, reversible
-one is distinctive). Don't claim bare "clock modulator" (implies divide/multiply/swing), and don't
-claim the two-level main+subdivision version until STEP GATE OUT emits.
+Claim it QUALIFIED: **"generative / probabilistic clock-and-gate modulator"** — the qualifier is the
+differentiator (plain dividers are commodity; a GENERATIVE, correlated, reversible one with
+main+subdivision outs is distinctive). Don't claim bare "clock modulator" (implies divide/multiply/
+swing).
 
 ## The three functional identities (one engine, three uses)
 - **random number SOURCE** — the copula field.
 - **random number ARRANGER** — Intertropical routing the probabilities.
-- **generative CLOCK/GATE MODULATOR** — gate mode transforming an input clock -> GATE OUT (main,
-  emits today) + STEP GATE OUT (subdivision, EMISSION PENDING — build to complete the two-level claim).
+- **generative CLOCK/GATE MODULATOR** — transforming an input clock -> GATE OUT (main) + STEP GATE OUT
+  (subdivision) + STEP LEGATO OUT; all emit (verified). A gate-mode-legato edge-truthfulness
+  refinement to STEP remains, but the two-level outputs work today.
 Not bolted-together features — three USES of the same generative/probabilistic/correlated/reversible
 core. Three entry points for three users (generative-seq person / ensemble person / rhythm-clock
 person), each a familiar hook that turns out to be the other two.
