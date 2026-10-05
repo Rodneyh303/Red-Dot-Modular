@@ -137,6 +137,7 @@ struct StraitsBaseWidget : ModuleWidget,
                     if (lw) APP->scene->rack->removeModule(lw);
                     APP->engine->removeModule(m);
                     baseMod->orderedLaneIds_.erase(baseMod->orderedLaneIds_.begin() + i);
+                    resnapLanes();   // close the gap — reposition remaining lanes
                     return;
                 }
             }
