@@ -24,9 +24,11 @@ Plugin* pluginInstance = nullptr;
 
 void init(rack::Plugin* p) {
 	pluginInstance = p;
-	// Set plugin on UNREGISTERED models (base-spawned lane expanders) so
-	// Module::toJson() can access model->plugin->slug during autosave.
-	modelStraitsLaneQMIX->plugin = p;
+	// Lane expander: registered + hidden. Registered so Rack's native save/load
+	// works (no "Cannot find Module" warning). Hidden so it doesn't appear in the
+	// browser — only the base spawns it via context menu.
+	p->addModel(modelStraitsLaneQMIX);
+	modelStraitsLaneQMIX->hidden = true;
 	// Warm the Phi LUT on the load thread (~0.33 ms, once) so its one-time build never lands
 	// mid-block on the audio thread at first spread/slew use. NOT in a module constructor —
 	// multiple modules (Sands visuals, CA correlation) consume Phi. See SLEW_COPULA_PLAN.md.
