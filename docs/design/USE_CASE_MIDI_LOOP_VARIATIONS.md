@@ -29,10 +29,17 @@ q-mix lets it slide from "quantise the loop's pitches" to "generate new pitches 
    are solid — may need conditioning).
 2. **A Rack SEQ or function generator** — drive ratchet/ghost from a separate clock/sequencer/FG for
    deliberate subdivision independent of the loop.
-3. **A gate chop/delay utility (possible future dot.modular module)** — a small module that takes an
-   incoming gate and CHOPS it into subgate pulses, or DELAYS/offsets it, to manufacture
-   ratchet/ghost grids from a single gate. Would make "subgates from any single gate source" trivial.
-   Parked idea — only if the external-module route proves fiddly.
+3. **Rack GATE DELAYS / BURST GENERATORS on the incoming gate** (Rodney — the right answer, use these).
+   The ecosystem already has excellent gate manipulators — burst generators, gate delays, clock
+   dividers/multipliers, Bernoulli gates (Count Modula, Bogaudio, ML, Stoermelder, etc.). Feed the
+   incoming gate into one to manufacture a ratchet/ghost subgate grid. This is BETTER than a bespoke
+   module: less to build/maintain, meets users where they are (they own + know these), keeps
+   dot.modular focused on what's unique (the generative-quantiser core), and composes naturally
+   (burst gen -> ratchet subgate; gate delay -> ghost subgate).
+   **Do NOT build a dot.modular gate chop/delay utility** — it's commodity functionality Rack does
+   well; the external route is the intended answer, not a fallback. Same discipline as "gate mode
+   takes external sequences": build what only we can (the copula generative-quantiser), use the
+   ecosystem for commodity gate utilities.
 
 ## Demo value
 Self-explaining: "here's a drum loop / MIDI riff you know — patch it into gate mode — now listen" and it
