@@ -64,6 +64,7 @@ struct PhiLUT {
         return z < 0.0 ? (1.0 - p) : p;                      // Phi(-z) = 1 - Phi(z)
     }
 };
+
 inline double PhiFast(double z) { return PhiLUT::eval(z); }   // uncacheable/hot/float callers
 
 /// Force the Phi LUT to build NOW (off the audio thread). Call from plugin.cpp init() so the
@@ -106,12 +107,66 @@ inline double PhiInv(double p) {
     return x;
 }
 
+/// Interpolated lookup-table PhiInv for hot callers (spread's mix2). Mirrors the forward
+/// PhiLUT: same N/ZMAX, same symmetry (PhiInv(1-p) = -PhiInv(p)), same saturation beyond
+/// |z| >= ZMAX. Stores p_i = Phi(z_i) at UNIFORM z intervals; binary-searches for the z
+/// whose Phi matches the input p, then linear-interpolates in p-space. Table uses DOUBLE
+/// (not float) so tail entries near p~1 stay distinguishable (float rounds 0.9999998 to 1.0).
+/// Reversibility: forward spread (PhiFast + PhiInvFast) and reverse use the IDENTICAL LUT
+/// pair, so round-trip is bit-exact by construction. Distribution tests MUST run through
+/// this (rule 3). ~12 comparisons/call (binary search) vs sqrt+log+erfc+exp for exact.
+struct PhiInvLUT {
+    static constexpr int N = 4096;
+    static constexpr double ZMAX = 6.0;          // match PhiLUT; saturate beyond
+    static constexpr double STEP = ZMAX / N;
+    struct Table { double p[N + 1]; };            // p[i] = Phi(i * STEP), monotone increasing
+    static const Table& table() {
+        static const Table t = []() {
+            Table t;
+            for (int i = 0; i <= N; ++i) t.p[i] = Phi(i * STEP);   // exact, double
+            return t;
+        }();
+        return t;
+    }
+    static inline double eval(double p) {
+        if (p <= U_EPS) p = U_EPS;
+        if (p >= 1.0 - U_EPS) p = 1.0 - U_EPS;
+        // Symmetry: PhiInv(1-p) = -PhiInv(p). Work in [0.5, 1).
+        const bool neg = (p < 0.5);
+        if (neg) p = 1.0 - p;
+        // Binary search for largest i with table.p[i] <= p
+        const Table& t = table();
+        int lo = 0, hi = N;
+        while (lo < hi) {
+            int mid = (lo + hi + 1) >> 1;
+            if (t.p[mid] <= p) lo = mid;
+            else hi = mid - 1;
+        }
+        if (lo >= N) return neg ? -ZMAX : ZMAX;               // saturate
+        // Linear interpolation in p-space: z = z_lo + (p - p_lo) / (p_hi - p_lo) * STEP
+        const double p0 = t.p[lo];
+        const double p1 = t.p[lo + 1];
+        const double z0 = lo * STEP;
+        const double dp = p1 - p0;
+        double z = (dp > 0.0) ? (z0 + (p - p0) / dp * STEP) : z0;
+        return neg ? -z : z;
+    }
+};
+
+inline double PhiInvFast(double p) { return PhiInvLUT::eval(p); }
+
+/// Force the PhiInv LUT to build NOW (off the audio thread). Call from plugin.cpp init()
+/// alongside warmPhiLut(). Table build is ~0.66 ms (4,097 exact Phi calls, double storage).
+inline void warmPhiInvLut() { (void)PhiInvLUT::table(); }
+
 /// Combine uniforms in normal space with pre-normalised weights (SUM w^2 must be 1).
 /// Returns a uniform. Pure function of its inputs.
+/// HOT PATH: routed through PhiInvFast + PhiFast (LUT lookups, no transcendentals).
+/// Reversibility: forward and reverse both use the same LUT pair so round-trip is bit-exact.
 inline double combine(const double* u, const double* w, std::size_t n) {
     double z = 0.0;
-    for (std::size_t j = 0; j < n; ++j) z += w[j] * PhiInv(u[j]);
-    return Phi(z);
+    for (std::size_t j = 0; j < n; ++j) z += w[j] * PhiInvFast(u[j]);
+    return PhiFast(z);
 }
 
 /// Two-source copula mix used by SPREAD: result correlates with `leader` at exactly rho and keeps
@@ -120,6 +175,7 @@ inline double combine(const double* u, const double* w, std::size_t n) {
 inline double mix2(double own, double leader, double rho) {
     if (rho > 0.9999) return leader;
     if (rho < -0.9999) return 1.0 - leader;
+    if (rho == 0.0) return own;                  // no correlation -> own draw, exact (no LUT round-trip)
     const double w[2] = {rho, std::sqrt(1.0 - rho * rho)};
     const double u[2] = {leader, own};
     return combine(u, w, 2);

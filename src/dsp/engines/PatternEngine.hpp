@@ -102,6 +102,19 @@ struct PatternEngine {
     // polyRandom(voice,lane). (mono row lane == strand index: MONO_LANE_TO_STRAND is the identity.)
     float random_[16][dotModular::NUM_STRANDS][16] = {};
 
+    // ── Stage 2a spread cache: per-voice blended spread amount (from combineSpread),
+    // cached at control rate for step-rate refresh. [voice][engineLane]. The engine
+    // reads polyRandom at step advance via refreshPolyRandomCell, which applies this
+    // cached spread to the current step only — NOT all 16 steps at control rate.
+    // cachedSpreadLiveR/M/Q mirror the lock axes: when false, refresh skips (frozen).
+    float cachedPolySpread[15][7] = {};
+    bool cachedSpreadLiveR = true;   // rhythm axis (REST/ACC/VAR/LEG)
+    bool cachedSpreadLiveM = true;   // melody axis (MEL/OCT)
+    bool cachedSpreadLiveQ = true;   // QMIX own axis (SB_SANDS_Q)
+    // False until sync()/processDNA() populates the cache. When false, refreshPolyRandomCell
+    // skips (leaves polyRandom at whatever publishSlewed* or the test set). Set true in sync().
+    bool cachedSpreadInitialized = false;
+
     // ── Mono output views (read by MeloDicer, never written externally) — bound to random_[0][lane].
     float (&melodyRandom)[16]    = random_[0][dotModular::STRAND_MELODY];
     float (&octaveRandom)[16]    = random_[0][dotModular::STRAND_OCTAVE];
