@@ -78,3 +78,57 @@ before.
 - mix2/applyPoly transcendental cost → ~0 (LUT lookups, Stage 1); call count → ~thousands/sec (Stage 2).
 - Reversibility round-trip bit-exact; distribution tests pass.
 - UI bars update live at video rate on mix/slew/spread knob turns.
+
+---
+
+## OUTCOME (landed) + CLEANUP / follow-ups
+
+### Result
+- Stage 1 (LUTs: PhiFast + new PhiInvFast in combine/mix2): `process` 10,500ns → ~2,380ns (~4.4×).
+- Stage 2a (per-voice spread write gated control-rate → STEP rate in sync()): ~2,380ns → ~250ns.
+- Mono vs 16-voice poly now near-flat (~250–300ns, barely noticeable) — per-voice cost is negligible.
+- **Stage 2b NOT built — redundant** (see below): the UI already self-computes its grid in draw().
+- Stage 3 (SIMD): not needed.
+- PhiInvFast is SHARED — also used by slew/mix wherever exact PhiInv was in a hot path.
+
+### How the UI actually works (the "why is 2a adequate" answer) — MVC separation
+The engine and the UI are a MODEL/VIEW split that read DIFFERENT sources:
+- **Model (engine, audio thread):** `polyRandom[v][lane][currentStep]` — written by `sync()` at step
+  rate via `SpreadInterp::applyPoly` → `copula::mix2`. This is what the probability path reads.
+- **View (UI thread, video rate):** StraitsEastSandsVisual.cpp:~1096-1114 — the widget draw()
+  SELF-COMPUTES the displayed voice's full 16-step × 7-lane grid from the PRE-spread published
+  snapshot `pubSlewedPoly*[voice][step]` + the per-lane spread scalar `polySpreadEffective[voice][lane]`,
+  applying spread itself via `SpreadInterp::applyAnchorV1Only`.
+So the UI never reads the engine's post-spread field; it re-derives its own grid each frame. That is
+why all 16 bars are smooth and track knob/modulation, and why 2b (a video-rate UI grid) was redundant
+— the widget already does exactly that.
+
+### CLEANUP / RISK — MODEL/VIEW SPREAD CAN DESYNC (resolve before release)
+The MVC separation is correct and is WHY it works, but it introduces a real divergence risk: model and
+view compute spread by TWO DIFFERENT code paths that must agree, with nothing enforcing it. If they
+drift, the UI shows bars that don't match what plays — a subtle, trust-eroding bug.
+- **Different functions:** model uses `applyPoly` (full: follow-CA branch, per-voice targets,
+  combineSpread owner+Macro blend); view uses `applyAnchorV1Only` (V1-anchor only). **Verify these are
+  equivalent for what the view claims to show** — if the model applies follow-CA / per-voice-target
+  spread that the anchor-V1-only view path doesn't, the UI is an APPROXIMATION, not a faithful view.
+- **Torn reads:** view reads `pubSlewedPoly*` + `polySpreadEffective` which the audio thread writes;
+  no sync → can read a half-updated mix (one field this block, one last). The East↔Macro version of
+  this was already hit and fixed by same-source reads (see the draw() comment ~1085-1092); the
+  model/view version has the same exposure.
+- **Root tension:** the 2a restructure (model computes CURRENT STEP only) is what FORCED the view to
+  self-compute the 16-step grid (the model no longer holds a full-16-step post-spread field to render).
+
+**Preferred resolution (cleanest MVC — view renders model state, no parallel re-derivation):**
+Have the model compute + PUBLISH the DISPLAYED voice's 16-step post-spread grid (1 voice × 7 lanes ×
+16 = 112 cells, at step rate, cheap), as a coherent snapshot (double-buffer / seqlock so no torn read).
+The view just renders it. Removes the two-path divergence entirely and the torn-read risk.
+Fallback if keeping view-side recompute: make the view call the IDENTICAL spread function as the model
+(not a different anchor-only one), reading a coherent published input snapshot.
+
+### Other cleanup
+- Strip the debug timers / INFO counters (process avgNs, combineSpread counter) before shipping.
+- Confirm reverse spread uses the SAME LUT path as forward (reversibility = same calc both ways).
+- Run: reversibility round-trip (bit-exact), distribution tests (through the LUT), engine-probability
+  bit-compare vs pre-restructure, UI-bars-match-engine check.
+- Optional: the engine `polyRandom[j]` write still loops all 16 steps at step rate — if the engine
+  only reads `[currentStep]`, trim to current-step-only (further saving; at 250ns likely not worth it).
