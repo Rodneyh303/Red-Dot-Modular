@@ -97,20 +97,23 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 // MVC step 1d: SET = the store-backed knob's value = editor.spread[currentSlot()].
                 // currentSlot() = 0 (V1) or polySlot, so one read covers both. (v+1)/2 normalise.
                 Monsoon* mm = getMonsoon(); if (!mm) return 0.5f;
-                float v = mm->getSpread(currentSlot(), lane);
+                int slot = currentSlot();
+                if (slot < 0 || slot > 15) return 0.5f;   // guard: invalid slot (e.g. during init)
+                float v = mm->getSpread(slot, lane);
                 return rack::math::clamp((v + 1.f) * 0.5f, 0.f, 1.f);
             };
             arc->getModNorm = [mod, this, lane]() -> float {
                 if (!mod) return 0.5f;
+                if (lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return 0.5f;
                 int v = polyVoice();
                 if (v < 0) {
                     // V1 / mono tab: MOD = the EFFECTIVE V1 spread on this lane, matching
                     // the manager's sprForLane: delegated → Macro base+CVdelta; owned →
                     // East knob + East V1 spread CV + Macro send blend. lane = spread index
                     // 0=REST,1=MEL,2=OCT,3=ACC,4=Q-MIX; CV jack cvId(lane,3).
-                    if (lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return 0.5f;
                     Monsoon* mon = findMonsoonEitherSide(mod);
-                    auto* macroVis = mon ? mon->expanderManager.cachedMacroSandsVisual : nullptr;
+                    if (!mon) return 0.5f;   // guard: no Monsoon reachable from East
+                    auto* macroVis = mon->expanderManager.cachedMacroSandsVisual;
                     bool delegated = macroVis && !eastOwnsLane(lane);   // MVC step 1d: store-backed
                     float sp;
                     if (delegated) {
@@ -121,12 +124,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                                 : (int)SPREAD_Q;   // lane 4 = Q-MIX (was folded onto SPREAD_A)
                         sp = mod->params[pid].getValue();   // bipolar -1..1
                         if (mod->inputs[cvId(lane,3)].isConnected()) {
-                            float att = (redDot::findMonsoonEitherSide(mod) ? redDot::findMonsoonEitherSide(mod)->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + 3) : 0.f);
+                            Monsoon* mon2 = redDot::findMonsoonEitherSide(mod);
+                            float att = mon2 ? mon2->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + 3) : 0.f;
                             float cv  = mod->inputs[cvId(lane,3)].getVoltage(0) / 10.f;
                             sp += cv * att * 2.f;
                         }
                         if (macroVis) {
-                            float send = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, lane, 3) : 0.f);
+                            Monsoon* mon3 = redDot::findMonsoonEitherSide(macroVis);
+                            float send = mon3 ? mon3->getMacroSend(dotModular::VoiceResolver::kMonoSlot, lane, 3) : 0.f;
                             sp += macroVis->macroSendDelta[lane][3] * send;
                         }
                     }
@@ -138,6 +143,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             };
             arc->isActive = [mod, this, lane]() -> bool {
                 if (!mod) return false;
+                if (lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return false;
                 Monsoon* mon = findMonsoonEitherSide(mod);
                 if (!mon || !mon->modVizEast) return false;
                 int v = polyVoice();
@@ -632,8 +638,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         }
     }
 
+    // Cached Monsoon pointer — updated once per frame in step() to avoid walking the
+    // module chain during draw (which races with the audio thread's expander updates).
+    mutable Monsoon* cachedMonsoon_ = nullptr;
     Monsoon* getMonsoon() const {
-        return module ? findMonsoonEitherSide(module) : nullptr;
+        if (cachedMonsoon_) return cachedMonsoon_;   // use cached pointer (set in step())
+        return module ? findMonsoonEitherSide(module) : nullptr;   // fallback for first frame
     }
 
     // STEP 4c: full ownership authority for East. Populates V1 + all poly owners from the
@@ -939,6 +949,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // store directly via get/setLaneDir, so the proxy→bank flush + clobber-guard are dead.)
 
     void step() override {
+        // Cache the Monsoon pointer BEFORE ModuleWidget::step() (which calls child step() →
+        // displayValueFn → getMonsoon()). This avoids walking the module chain during child
+        // step()/draw, which races with the audio thread's expander pointer updates.
+        cachedMonsoon_ = module ? findMonsoonEitherSide(module) : nullptr;
         ModuleWidget::step();
         kitStep();
         if (!module || !paramMgr || !visualEditor) return;
