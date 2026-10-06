@@ -5,7 +5,7 @@
 // Patched: separate Philox streams for melody & rhythm (counter-based, stateless),
 // SEED CV input/output, RESET input, deferred reseed at phrase boundary, JSON serialization,
 // two-part 64-bit seeding, widget ports for RESET/SEED, and preserved behavior.
-
+#include <chrono>
 #include <rack.hpp>
 #include <algorithm>
 #include <array>
@@ -603,7 +603,12 @@ void Monsoon::onPhraseBoundary_() {
 // and is reached by walking one step further.  If no DNA is present,
 // PolyVoice may attach directly to Monsoon's right.
 void Monsoon::onExpanderChange(const ExpanderChangeEvent& e) {
+    static uint64_t n=0, ns=0;
+    auto t0 = std::chrono::high_resolution_clock::now();
     updateExpanderPointers();
+     auto t1 = std::chrono::high_resolution_clock::now();
+    ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0).count();
+    if (++n % 50000 == 0) INFO("blockEXP(594): avgNs=%llu", (unsigned long long)(ns/n));
 }
 
 // ---------------- Helper: reset hook -----------------------------------------
@@ -624,6 +629,10 @@ int Monsoon::computeNoteLengthIdx(int requestedIdx, int ppqnMask) { return engin
 // Full logic for all modes inline here
 // Calls helper functions as needed
 void Monsoon::process(const ProcessArgs& args) {
+
+     static uint64_t n=0, ns=0;
+    auto t0 = std::chrono::high_resolution_clock::now();
+    
     // Flush denormals to zero on the audio thread. Decaying float state (pulses,
     // smoothing, pitch CV) can drift into the denormal range, where FPU ops cost
     // ~10-100x normal — a classic cause of sudden CPU spikes that scale with the
@@ -1037,11 +1046,19 @@ void Monsoon::process(const ProcessArgs& args) {
         }
     }
 
+    {
+    //static uint64_t n = 0, ns = 0;
+    //auto t0 = std::chrono::high_resolution_clock::now();
     // --- Output Generation (Delegated to OutputGenerator) ---
     // Mode B gate state was set from Gate 1 just above; generateOutputs' gs.process()/gsStep.process()
     // now emit the Gate-1-driven gate (the old post-drive GATE_OUTPUT override is removed — it could
     // not fix the Lantern, which reads engine state, and risked output/state divergence).
     outputGenerator->drive(engine, outputs.data(), expanderManager, args.sampleTime);
+
+     // auto t1 = std::chrono::high_resolution_clock::now();
+    // ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+    // if (++n % 50000 == 0) INFO("drive: calls=%llu avgNs=%llu", (unsigned long long)n, (unsigned long long)(ns / n));
+    }
 
     // // Poly Sands editors (East visual, and the deprecated knob path) only do
     // // anything when the Straits BASE poly output expander is connected AND the
@@ -1359,6 +1376,9 @@ void Monsoon::process(const ProcessArgs& args) {
             paramManager->setCv3Offset(i, clampv<float>(cv3Mods[i], -1.f, 1.f));
         }
     }
+    auto t1 = std::chrono::high_resolution_clock::now();
+    ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0).count();
+    if (++n % 50000 == 0) INFO("process TOTAL avgNs=%llu", (unsigned long long)(ns/n));
 }
 
 

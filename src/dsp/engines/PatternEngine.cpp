@@ -247,6 +247,12 @@ void PatternEngine::recomputeEffectiveRhythm() {
     // once) — blending the uniform outputs would be a linear blend of uniforms (the distortion
     // Phase 2 eliminates). At r==0 (slew knob=0) the old linear blend of raw draws is kept, so
     // bit-identity at scrub=0 is preserved.
+
+INFO("recompute HIT");
+    static uint64_t n = 0; 
+if (++n % 5000 == 0) INFO("recomputeRhythm: %llu", n);
+
+
     const float s = rack::math::clamp(rhythmMixLatched, 0.f, 1.f) * 6.f;
     const int   f    = (int)s;
     const float frac = s - (float)f;
@@ -326,6 +332,10 @@ void PatternEngine::recomputeEffectiveRhythm() {
 }
 
 void PatternEngine::recomputeEffectiveMelody() {
+
+    static uint64_t n = 0; 
+if (++n % 5000 == 0) INFO("recomputeMelody: %llu", n);
+
     // Phase 2: normal-space scrub blend (mirror of recomputeEffectiveRhythm).
     const float s = rack::math::clamp(melodyMixLatched, 0.f, 1.f) * 6.f;
     const int   f    = (int)s;
@@ -383,6 +393,10 @@ void PatternEngine::recomputeEffectiveMelody() {
 }
 
 void PatternEngine::recomputeEffectiveQmix() {
+
+    static uint64_t n = 0; 
+if (++n % 5000 == 0) INFO("recomputeQmix: %llu", n);
+
     // Phase 2: normal-space scrub blend (mirror, q-mix stream).
     const float s = rack::math::clamp(qmixMixLatched, 0.f, 1.f) * 6.f;
     const int   f    = (int)s;
