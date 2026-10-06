@@ -289,6 +289,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // inconsistency, flagged separately; we clamp the COMBINED value to
             // [-1,1] so Macro ownership/blend can still reach negative spread.
             auto combineSpread = [&](int lane, float eastInterpVal)-> float {
+
+static uint64_t n = 0;
+if (++n % 5000 == 0) INFO("combineSpread: %llu", (unsigned long long)n);
+
                 // STEP 5b: same poly write ownership via the resolver (spread path).
                 const int els = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[lane];
                 const bool ownerEast = (topo.owner(v + 1, els) == dotModular::SandsTopology::Role::EAST);
