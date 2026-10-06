@@ -669,20 +669,18 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                     engine.pe.octaveRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 2, i, spv[2]);
                 }
             }
-            // Each poly voice's final arrays: same global spread level applied per voice.
-            // apply() computes the lane's ensemble target internally; pass each voice's
-            // own slewed draw as the value to interpolate (same call shape as East's loop).
+            // Stage 2a: cache poly spread values for step-rate refresh (was: full-field
+            // applyPoly loop nPoly x 5 lanes x 16 steps). Mono arrays above are applyMono
+            // (16 cells, cheap) — left as-is.
+            engine.pe.cachedSpreadLiveR = mSpR;
+            engine.pe.cachedSpreadLiveM = mSpM;
+            engine.pe.cachedSpreadLiveQ = false;   // standalone Macro: no QMIX axis here (no East)
+            engine.pe.cachedSpreadInitialized = true;   // Stage 2a: enable step-rate refresh
             for (int v = 0; v < nPoly; ++v) {
-                for (int i = 0; i < 16; ++i) {
-                    if (mSpR) {
-                        engine.pe.polyRandom(v, SequencerEngine::PL_REST)[i] = redDot::SpreadInterp::applyPoly(engine.pe, 0, v, i, spv[0]);
-                        engine.pe.polyRandom(v, SequencerEngine::PL_ACCENT)[i] = redDot::SpreadInterp::applyPoly(engine.pe, 3, v, i, spv[3]);
-                    }
-                    if (mSpM) {
-                        engine.pe.polyRandom(v, SequencerEngine::PL_MELODY)[i] = redDot::SpreadInterp::applyPoly(engine.pe, 1, v, i, spv[1]);
-                        engine.pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[i] = redDot::SpreadInterp::applyPoly(engine.pe, 2, v, i, spv[2]);
-                    }
-                }
+                engine.pe.cachedPolySpread[v][SequencerEngine::PL_REST]   = spv[0];
+                engine.pe.cachedPolySpread[v][SequencerEngine::PL_ACCENT] = spv[3];
+                engine.pe.cachedPolySpread[v][SequencerEngine::PL_MELODY] = spv[1];
+                engine.pe.cachedPolySpread[v][SequencerEngine::PL_OCTAVE] = spv[2];
             }
         }   // if (mSpR || mSpM)
         }   // if (!macroDrivesOutput)

@@ -82,11 +82,12 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
     // and monoOwnerId; converted to editor lane so topo speaks editor lane (decision 1).
     // Now 5 poly lanes: MEL/OCT/QMIX/REST/ACC (editor order).
     if (cachedEastSandsVisual) {
+        Monsoon* mmTopo = redDot::findMonsoonEitherSide(cachedEastSandsVisual);
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             const int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
-            topoIn.eastV1Owner[el] = (redDot::findMonsoonEitherSide(cachedEastSandsVisual) ? redDot::findMonsoonEitherSide(cachedEastSandsVisual)->getMonoMacroOwn(eng) > 0.5f : false);
+            topoIn.eastV1Owner[el] = (mmTopo ? mmTopo->getMonoMacroOwn(eng) > 0.5f : false);
             for (int pv = 0; pv < 15; ++pv)
-                topoIn.eastPolyOwner[pv][el] = (redDot::findMonsoonEitherSide(cachedEastSandsVisual) ? redDot::findMonsoonEitherSide(cachedEastSandsVisual)->getMacroOwn(pv, eng) > 0.5f : false);
+                topoIn.eastPolyOwner[pv][el] = (mmTopo ? mmTopo->getMacroOwn(pv, eng) > 0.5f : false);
         }
     }
     const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
@@ -226,7 +227,17 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         Monsoon* mmOwn = eastLOR ? redDot::findMonsoonEitherSide(eastLOR)
                        : (macroVis ? redDot::findMonsoonEitherSide(macroVis) : nullptr);
 
-        for (int v = 0; v < 15; v++) {
+        // Stage 2a: cache spread lock axes once per sync() — the engine checks these at
+        // step advance to decide whether to apply spread or leave the frozen value.
+        engine.pe.cachedSpreadLiveR = dotModular::LockManager::liveNow(
+            dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
+        engine.pe.cachedSpreadLiveM = dotModular::LockManager::liveNow(
+            dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
+        engine.pe.cachedSpreadLiveQ = !engine.locked
+            || (engine.scopeLiveMask & (1u << 13)) != 0;   // QMIX own axis (SB_SANDS_Q)
+        engine.pe.cachedSpreadInitialized = true;   // Stage 2a: enable step-rate refresh
+
+        for (int v = 0; v < effPolyVoices; v++) {
             // Per-voice send/atten banks are voice-number-indexed (slot 0 = voice 1/mono, slot
             // 1 = poly voice 2, …). Engine poly index v (0..14) is poly voice v+2; derive its
             // 16-wide slot through the resolver so this can't drift from the asserted slot/bank
@@ -289,10 +300,6 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // inconsistency, flagged separately; we clamp the COMBINED value to
             // [-1,1] so Macro ownership/blend can still reach negative spread.
             auto combineSpread = [&](int lane, float eastInterpVal)-> float {
-
-static uint64_t n = 0;
-if (++n % 5000 == 0) INFO("combineSpread: %llu", (unsigned long long)n);
-
                 // STEP 5b: same poly write ownership via the resolver (spread path).
                 const int els = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[lane];
                 const bool ownerEast = (topo.owner(v + 1, els) == dotModular::SandsTopology::Role::EAST);
@@ -331,8 +338,8 @@ if (++n % 5000 == 0) INFO("combineSpread: %llu", (unsigned long long)n);
                 // per-voice divergence that IS the feature), so we call eastLorVal (East-only)
                 // NOT combineLOR (which adds Macro ownership/blend). The LOR bank for VAR/LEG ==
                 // the engine lane (5/6) — same identity the old varlegStoreBank(vl) returned.
-                // mmE retained for the VAR/LEG delegation toggle pushed below.
-                Monsoon* mmE = redDot::findMonsoonEitherSide(eastLOR);
+                // mmOwn (hoisted before the loop) is the Monsoon for eastLOR — reuse it
+                // instead of re-walking the chain per voice.
                 engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_LEN) = (int)std::lround(eastLorVal(PL::PL_VARIATION, 0, PL::PL_VARIATION, 0, 1.f, 16.f));
                 engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_OFF) = (int)std::lround(eastLorVal(PL::PL_VARIATION, 1, PL::PL_VARIATION, 1, 0.f, 15.f));
                 engine.polyLORRef(v, SE::EDITOR_LANE_VARIATION, SE::LOR_ROT) = (int)std::lround(eastLorVal(PL::PL_VARIATION, 2, PL::PL_VARIATION, 2, 0.f, 15.f));
@@ -347,8 +354,8 @@ if (++n % 5000 == 0) INFO("combineSpread: %llu", (unsigned long long)n);
                 // Local East — the two flags are unified so taking East ownership of a VAR/LEG
                 // lane automatically un-delegates (otherwise the per-voice LOR is written but
                 // short-circuited by varlegDelegated before generation reads it).
-                engine.setVarlegLocalEast(v, 0, mmE && (mmE->getVarlegDeleg(v, 0) > 0.5f || mmE->getMacroOwn(v, PL::PL_VARIATION) > 0.5f));
-                engine.setVarlegLocalEast(v, 1, mmE && (mmE->getVarlegDeleg(v, 1) > 0.5f || mmE->getMacroOwn(v, PL::PL_LEGATO)    > 0.5f));
+                engine.setVarlegLocalEast(v, 0, mmOwn && (mmOwn->getVarlegDeleg(v, 0) > 0.5f || mmOwn->getMacroOwn(v, PL::PL_VARIATION) > 0.5f));
+                engine.setVarlegLocalEast(v, 1, mmOwn && (mmOwn->getVarlegDeleg(v, 1) > 0.5f || mmOwn->getMacroOwn(v, PL::PL_LEGATO)    > 0.5f));
 
                 // Per-voice LANE DIRECTION, from East's bank — same shape as the delegation
                 // push above. This is what frees direction from the widget: the editor owns the
@@ -358,7 +365,7 @@ if (++n % 5000 == 0) INFO("combineSpread: %llu", (unsigned long long)n);
                 // derives the sign for Forward/Reverse and OWNS it for Pendulum/PingPong (flipping
                 // at the LOR endpoint). Pushing a sign here would overwrite the bounce-induced flip
                 // with laneDirSign(Pendulum)=+1 every pass and the lane would never turn around.
-                if (auto* mm = redDot::findMonsoonEitherSide(eastLOR)) {
+                if (mmOwn) {
                     for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
                         // MVC: resolve through ownership — delegated to Macro → Macro's globalDir;
                         // else the voice's own getLaneDir (cached for reclaim). Lanes 4/5 (VAR/LEG)
@@ -368,11 +375,11 @@ if (++n % 5000 == 0) INFO("combineSpread: %llu", (unsigned long long)n);
                         float dirVal;
                         if (l < dotModular::SandsGrid::POLY_LANES) {
                             int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[l];
-                            dirVal = (mm->getMacroOwn(v, engLane) > 0.5f)
-                                   ? mm->getLaneDir(v, l)       // East owns → voice's own (cached)
-                                   : mm->getGlobalDir(engLane);  // Macro owns → Macro's global
+                            dirVal = (mmOwn->getMacroOwn(v, engLane) > 0.5f)
+                                   ? mmOwn->getLaneDir(v, l)       // East owns → voice's own (cached)
+                                   : mmOwn->getGlobalDir(engLane);  // Macro owns → Macro's global
                         } else {
-                            dirVal = mm->getLaneDir(v, l);      // VAR/LEG: always voice's own
+                            dirVal = mmOwn->getLaneDir(v, l);      // VAR/LEG: always voice's own
                         }
                         int dv = (int)std::lround(math::clamp(dirVal, 0.f, 3.f));
                         engine.laneDirVPending_[v][l] = (SequencerEngine::LaneDir)dv;
@@ -387,11 +394,11 @@ if (++n % 5000 == 0) INFO("combineSpread: %llu", (unsigned long long)n);
                     if ((r2c++ & 0x1FFFF) < 15)
                         INFO("[R2 push ] v=%2d VARp=%.2f LEGp=%.2f legLOR=(%d,%d,%d)",
                             v,
-                            (mmE ? mmE->getVarlegDeleg(v, 0) : 0.f),
-                            (mmE ? mmE->getVarlegDeleg(v, 1) : 0.f),
-                            (int)std::lround(math::clamp(mmE ? mmE->getLorBase(slot, legBank, 0) : 16.f, 1.f, 16.f)),
-                            (int)std::lround(math::clamp(mmE ? mmE->getLorBase(slot, legBank, 1) : 0.f, 0.f, 15.f)),
-                            (int)std::lround(math::clamp(mmE ? mmE->getLorBase(slot, legBank, 2) : 0.f, 0.f, 15.f)));
+                            (mmOwn ? mmOwn->getVarlegDeleg(v, 0) : 0.f),
+                            (mmOwn ? mmOwn->getVarlegDeleg(v, 1) : 0.f),
+                            (int)std::lround(math::clamp(mmOwn ? mmOwn->getLorBase(slot, legBank, 0) : 16.f, 1.f, 16.f)),
+                            (int)std::lround(math::clamp(mmOwn ? mmOwn->getLorBase(slot, legBank, 1) : 0.f, 0.f, 15.f)),
+                            (int)std::lround(math::clamp(mmOwn ? mmOwn->getLorBase(slot, legBank, 2) : 0.f, 0.f, 15.f)));
                 }
 #endif
             }
@@ -415,17 +422,13 @@ if (++n % 5000 == 0) INFO("combineSpread: %llu", (unsigned long long)n);
             }
             restInterp = combineSpread(PL::PL_REST, restInterp);   // owner + Macro-CV blend (spread)
             if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_REST] = restInterp;
-            
+            engine.pe.cachedPolySpread[v][PL::PL_REST] = restInterp;   // Stage 2a: cache for step-rate refresh
+
             // if (deepEast) {
             //     engine.voices[v].restProb = deepEast->params[MonsoonIds::POLY_REST_PARAM_1 + v].getValue();
             // }
 
-            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false)) {   // REST = rhythm axis
-                for (int j = 0; j < 16; j++) {
-                    engine.pe.polyRandom(v, PL::PL_REST)[j] = redDot::SpreadInterp::applyPoly(
-                        engine.pe, PL::PL_REST, v, j, restInterp);
-                }
-            }
+            // Stage 2a: removed full-field applyPoly loop — engine refreshes at step advance
             
             float melodyInterp = mmOwn ? mmOwn->getSpread(slot, PL::PL_MELODY) : 0.f;
             engine.polyLenERef(v, PL::PL_MELODY) = combineLOR(PL::PL_MELODY, 0, PL::PL_MELODY, 0, 1.f, 16.f);
@@ -440,13 +443,9 @@ if (++n % 5000 == 0) INFO("combineSpread: %llu", (unsigned long long)n);
             }
             melodyInterp = combineSpread(PL::PL_MELODY, melodyInterp);   // owner + Macro-CV blend (spread)
             if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_MELODY] = melodyInterp;
-            
-            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true)) {   // MELODY = melody axis
-                for (int j = 0; j < 16; j++) {
-                    engine.pe.polyRandom(v, PL::PL_MELODY)[j] = redDot::SpreadInterp::applyPoly(
-                        engine.pe, PL::PL_MELODY, v, j, melodyInterp);
-                }
-            }
+            engine.pe.cachedPolySpread[v][PL::PL_MELODY] = melodyInterp;   // Stage 2a: cache for step-rate refresh
+
+            // Stage 2a: removed full-field applyPoly loop — engine refreshes at step advance
             
             // if (deepEast) {
             //     engine.polyLenERef(v, 1) = (int)deepEast->params[melodyBase].getValue();
@@ -468,13 +467,9 @@ if (++n % 5000 == 0) INFO("combineSpread: %llu", (unsigned long long)n);
             }
             octaveInterp = combineSpread(PL::PL_OCTAVE, octaveInterp);   // owner + Macro-CV blend (spread)
             if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_OCTAVE] = octaveInterp;
-            
-            if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true)) {   // OCTAVE = melody axis
-                for (int j = 0; j < 16; j++) {
-                    engine.pe.polyRandom(v, PL::PL_OCTAVE)[j] = redDot::SpreadInterp::applyPoly(
-                        engine.pe, PL::PL_OCTAVE, v, j, octaveInterp);
-                }
-            }
+            engine.pe.cachedPolySpread[v][PL::PL_OCTAVE] = octaveInterp;   // Stage 2a: cache for step-rate refresh
+
+            // Stage 2a: removed full-field applyPoly loop — engine refreshes at step advance
             
             // ACCENT lane (3): per-voice base L/O/R from POLY_ACCENT_VOICE_* (default identity:
             // LEN 16). Now routed through combineLOR like REST/MEL/OCT so accent gets the owner
@@ -498,12 +493,9 @@ if (++n % 5000 == 0) INFO("combineSpread: %llu", (unsigned long long)n);
                 }
                 accentInterp = combineSpread(PL::PL_ACCENT, accentInterp);   // owner + Macro-CV blend (spread)
                 if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_ACCENT] = accentInterp;   // accent spread → editor display
-                if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false)) {   // ACCENT = rhythm axis
-                    for (int j = 0; j < 16; j++) {
-                        engine.pe.polyRandom(v, PL::PL_ACCENT)[j] = redDot::SpreadInterp::applyPoly(
-                            engine.pe, PL::PL_ACCENT, v, j, accentInterp);
-                    }
-                }
+                engine.pe.cachedPolySpread[v][PL::PL_ACCENT] = accentInterp;   // Stage 2a: cache for step-rate refresh
+
+                // Stage 2a: removed full-field applyPoly loop — engine refreshes at step advance
             }
 
             // QMIX lane (PL_QMIX=4): per-voice LOR + spread mirroring REST/MEL/OCT/ACCENT.
@@ -523,12 +515,9 @@ if (++n % 5000 == 0) INFO("combineSpread: %llu", (unsigned long long)n);
                 }
                 qmixInterp = combineSpread(PL::PL_QMIX, qmixInterp);   // owner + Macro-CV blend (spread)
                 if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_QMIX] = qmixInterp;   // → editor display
-                if (!engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0) {   // QMIX = its OWN axis (SB_SANDS_Q)
-                    for (int j = 0; j < 16; j++) {
-                        engine.pe.polyRandom(v, PL::PL_QMIX)[j] = redDot::SpreadInterp::applyPoly(
-                            engine.pe, PL::PL_QMIX, v, j, qmixInterp);
-                    }
-                }
+                engine.pe.cachedPolySpread[v][PL::PL_QMIX] = qmixInterp;   // Stage 2a: cache for step-rate refresh
+
+                // Stage 2a: removed full-field applyPoly loop — engine refreshes at step advance
             }
 
             // ── VAR/LEG spread (lanes 5/6): per-voice spread, WITH Macro blend ──────────────
@@ -553,14 +542,9 @@ if (++n % 5000 == 0) INFO("combineSpread: %llu", (unsigned long long)n);
                     }
                     interp = combineSpread(lane, interp);   // owner + Macro-CV blend (spread) — SAME as REST/MEL/OCT/ACC/QMIX
                     if (eastVisual) eastVisual->polySpreadEffective[v][lane] = interp;
-                    // VAR/LEG are on the rhythm plane (SpreadInterp::v1caSrc: cases 5/6 → caRhythmSrc),
-                    // so they share the rhythm-axis spread lock with REST/ACCENT.
-                    if (dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false)) {
-                        for (int j = 0; j < 16; j++) {
-                            engine.pe.polyRandom(v, lane)[j] = redDot::SpreadInterp::applyPoly(
-                                engine.pe, lane, v, j, interp);
-                        }
-                    }
+                    engine.pe.cachedPolySpread[v][lane] = interp;   // Stage 2a: cache for step-rate refresh
+
+                    // Stage 2a: removed full-field applyPoly loop — engine refreshes at step advance
                 }
             }
 
@@ -644,9 +628,14 @@ if (++n % 5000 == 0) INFO("combineSpread: %llu", (unsigned long long)n);
         // Spread scope (LOCK_SCOPE_MENU): PER-AXIS. msR gates rhythm arrays (rhythm/accent), msM the
         // melody arrays (melody/octave), for both the V1 mono finals and the poly voices. The LOR
         // sub-loop inside keeps its OWN per-strand Lor gate (LOR runs under lock; spread does not).
-        const bool msR = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
-        const bool msM = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
-        const bool msQ = !engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0;   // == dotModular::SB_SANDS_Q (q-mix own axis)
+        // Stage 2a: cache spread lock axes for step-rate refresh
+        engine.pe.cachedSpreadLiveR = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
+        engine.pe.cachedSpreadLiveM = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
+        engine.pe.cachedSpreadLiveQ = !engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0;   // == dotModular::SB_SANDS_Q (q-mix own axis)
+        engine.pe.cachedSpreadInitialized = true;   // Stage 2a: enable step-rate refresh
+        const bool msR = engine.pe.cachedSpreadLiveR;
+        const bool msM = engine.pe.cachedSpreadLiveM;
+        const bool msQ = engine.pe.cachedSpreadLiveQ;
         if (msR || msM || msQ) {
             // V1 (mono final arrays + mono strand LOR): Macro owns V1 too when it is the
             // sole visual. The hasMonoVisual block (which normally does this) is skipped
@@ -717,17 +706,12 @@ if (++n % 5000 == 0) INFO("combineSpread: %llu", (unsigned long long)n);
                 const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->macroSendDelta[PL::PL_OCTAVE][3], -1.f, 1.f);
                 const float spA = math::clamp(macroVis->macroBase[PL::PL_ACCENT][3] + macroVis->macroSendDelta[PL::PL_ACCENT][3], -1.f, 1.f);
                 const float spQ = math::clamp(macroVis->macroBase[PL::PL_QMIX][3]   + macroVis->macroSendDelta[PL::PL_QMIX][3],   -1.f, 1.f);   // QMIX (Task 4c)
-                for (int j = 0; j < 16; ++j) {
-                    if (msR) {
-                        engine.pe.polyRandom(v, PL::PL_REST)[j] = redDot::SpreadInterp::applyPoly(engine.pe, PL::PL_REST,   v, j, spR);
-                        engine.pe.polyRandom(v, PL::PL_ACCENT)[j] = redDot::SpreadInterp::applyPoly(engine.pe, PL::PL_ACCENT, v, j, spA);
-                    }
-                    if (msM) {
-                        engine.pe.polyRandom(v, PL::PL_MELODY)[j] = redDot::SpreadInterp::applyPoly(engine.pe, PL::PL_MELODY, v, j, spM);
-                        engine.pe.polyRandom(v, PL::PL_OCTAVE)[j] = redDot::SpreadInterp::applyPoly(engine.pe, PL::PL_OCTAVE, v, j, spO);
-                        engine.pe.polyRandom(v, PL::PL_QMIX)[j]   = redDot::SpreadInterp::applyPoly(engine.pe, PL::PL_QMIX,   v, j, spQ);   // QMIX = melody axis
-                    }
-                }
+                // Stage 2a: cache spread values for step-rate refresh (was: full-field applyPoly loop)
+                engine.pe.cachedPolySpread[v][PL::PL_REST]   = spR;
+                engine.pe.cachedPolySpread[v][PL::PL_ACCENT] = spA;
+                engine.pe.cachedPolySpread[v][PL::PL_MELODY] = spM;
+                engine.pe.cachedPolySpread[v][PL::PL_OCTAVE] = spO;
+                engine.pe.cachedPolySpread[v][PL::PL_QMIX]   = spQ;
             }
         }
     }

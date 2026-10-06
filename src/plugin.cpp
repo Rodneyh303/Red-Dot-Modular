@@ -33,10 +33,12 @@ void init(rack::Plugin* p) {
 	modelStraitsLaneREST->hidden = true;
 	p->addModel(modelStraitsLaneACCENT);
 	modelStraitsLaneACCENT->hidden = true;
-	// Warm the Phi LUT on the load thread (~0.33 ms, once) so its one-time build never lands
-	// mid-block on the audio thread at first spread/slew use. NOT in a module constructor —
-	// multiple modules (Sands visuals, CA correlation) consume Phi. See SLEW_COPULA_PLAN.md.
+	// Warm the Phi + PhiInv LUTs on the load thread (~1 ms total, once) so their one-time
+	// builds never land mid-block on the audio thread at first spread/slew use. NOT in a
+	// module constructor — multiple modules (Sands visuals, CA correlation) consume Phi.
+	// See SLEW_COPULA_PLAN.md and SPREAD_PERFORMANCE_PLAN.md.
 	redDot::copula::warmPhiLut();
+	redDot::copula::warmPhiInvLut();
 	p->addModel(modelMonsoon);
 	p->addModel(modelMonsoonInterchangeExpander);
 	p->addModel(modelMonsoonRafflesExpander);

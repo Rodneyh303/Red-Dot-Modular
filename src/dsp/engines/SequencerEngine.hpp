@@ -529,6 +529,12 @@ struct SequencerEngine {
     inline const float (&polyRandomSrc(int voiceIdx, int polyLane) const)[16] {
         return pe.polyRandom(voiceIdx, polyLane);
     }
+    // Stage 2a: refresh ONE cell of polyRandom at step advance, using the cached spread
+    // value from the last control-rate sync(). Checks the lane's lock axis; if not live,
+    // returns without writing (frozen value persists). Called from executePolyVoice before
+    // each polyRandomSrc read — replaces the old full-field (15 voices x 7 lanes x 16 steps)
+    // control-rate rebuild.
+    void refreshPolyRandomCell(int voice, int engLane, int step);
     static inline int polyLaneToStrand(int polyLane) {
         return (polyLane == PL_REST)   ? dotModular::STRAND_RHYTHM
              : (polyLane == PL_MELODY) ? dotModular::STRAND_MELODY
