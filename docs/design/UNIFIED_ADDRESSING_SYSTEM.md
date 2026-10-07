@@ -86,6 +86,25 @@ READ axis. They're distinct axes but multiply into ONE effective read direction 
 A distinctive case: ring spinning BACKWARD (phase) x a REVERSED voice = FORWARD reads on a backward
 playhead. Associative + commutative + reversible (flip any/all signs).
 
+### PING-PONG / PENDULUM — instantaneous sign multiplication
+Ping-pong/pendulum is a direction that FLIPS at the window boundary, so direction per level is an
+INSTANTANEOUS sign (forward/reverse = constant; ping-pong = +/- depending on which leg it's on). The
+composition still holds as an INSTANTANEOUS product:
+  **effective_dir(t) = playhead_dir(t) x voice_dir(t) x lane_dir(t)**  (each factor = that level's
+  current sign). Each ping-pong level flips at ITS OWN window boundary (voice at voice edges, lane at
+  lane edges, playhead at global edges). Multiple pendulums flipping at their own boundaries produce an
+  intricate interleaved forward/backward pattern (the product of their phases) — rich, and reversible.
+
+**Endpoint-direction rule (Rodney) — makes the sign DEFINITE at turnarounds:** at a turnaround the
+flip involves two endpoints; assign the FIRST endpoint the PRE-endpoint direction (the way you arrived)
+and the SECOND endpoint the POST-endpoint direction (the way you leave after the flip) — EACH IN ITS
+OWN FRAME OF REFERENCE (each level applies this to its own window/direction independently). This makes
+the instantaneous sign unambiguous at every instant INCLUDING endpoints, so the product is well-defined
+even when multiple levels turn around simultaneously (each has a definite own-frame sign). It also fixes
+the repeat-endpoint ambiguity: the turnaround is two endpoint-reads with distinct (pre/post) directions,
+not one doubled read. Reversible: the assignment is deterministic and symmetric under scrub, so the
+round-trip retraces endpoint directions exactly.
+
 ### Offset (the O in LOR) — nested, relative to parent read position
 Offset is the usual LOR O (NOT the range start). Range = {where the window is, length}; OFFSET = where
 within/along that window the read starts, relative to the PARENT's read position:
