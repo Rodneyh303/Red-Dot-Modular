@@ -4,6 +4,21 @@ STATUS: design direction, POST-RELEASE. Major but conceptually clean. This is th
 consolidation (like copula unified seq/quant, correlation unified per-voice value): pattern ADDRESSING
 is the subsystem not yet unified. Capturing the full worked-through design so it isn't re-derived.
 
+## LOR component definitions — AUTHORITATIVE (Rodney). Read the rest against these.
+For the EXISTING lane LOR (and the same meanings nest at voice/global):
+- **L = LENGTH** — the pattern length for this lane: the NUMBER OF 1/16 STEPS it spans (how many
+  steps before it repeats).
+- **O = OFFSET** — WHICH of the 16 steps it STARTS FROM (where the lane's window begins in the
+  16-step space).
+- **R = ROTATION** — WHERE WITHIN the steps it starts when the GLOBAL PHRASE STARTS (the phase into
+  the lane's content/window at phrase start).
+So O+L define the WINDOW (O = where it starts; L = how many steps); R defines the PHASE INTO that
+window at phrase-start. These are three independent controls.
+NOTE (correction): earlier in this doc an "offset" example (window 5..12, "start at 7") actually mixed
+O and R — correctly it is L=8, O=5 (window steps 5..12), R=2 (at phrase start begin at step 7=5+2,
+wrap within 5..12). Read all composition rules below with THESE meanings: "offset" = O (window
+placement, which step it starts from); the phase-into-window-at-phrase-start is R (rotation), NOT O.
+
 ## The gap (Rodney)
 Three levels of pattern addressing exist but are NOT one system:
 1. GLOBAL pattern length + offset (Monsoon) — top frame.
