@@ -68,6 +68,34 @@ Direction is the one LOR component where composition isn't offset-addition — p
   backward. That is the only place voice direction becomes audible/visible.
 - Reversible: sign product composes and inverts cleanly, same as the rest.
 
+### THREE-factor direction: add the PLAYHEAD (phase can drive it backward)
+Two axes combine at the final read: PLAYHEAD direction (timing — the light ring; phase mode can drive
+it BACKWARD) and the probability-READ direction (voice x lane). They multiply into one effective
+real-time read direction:
+  **effective = playhead_dir x voice_dir x lane_dir   (sign product)**
+  Even total reversals => FORWARD; odd => BACKWARD.
+Cases (Rodney):
+- everything fwd, playhead reverses: (-)(+)(+) = BACKWARD (whole ensemble dragged backward).
+- a lane previously reading BACKWARD (lane-rev, voice-fwd, playhead-fwd = backward), THEN playhead
+  reverses: (-)(+)(-) = FORWARD — the backward lane now reads FORWARD. Two reversals cancel.
+So reversing the playhead FLIPS every lane's effective direction (backward lanes become forward and
+vice versa) — NOT "everything becomes backward". That sign-cancellation is the proof it's
+multiplication, not "any reverse = backward".
+Note the axes: playhead dir is the TIMING axis (the ring, phase-backward); voice/lane dir are the
+READ axis. They're distinct axes but multiply into ONE effective read direction at the final step.
+A distinctive case: ring spinning BACKWARD (phase) x a REVERSED voice = FORWARD reads on a backward
+playhead. Associative + commutative + reversible (flip any/all signs).
+
+### Offset (the O in LOR) — nested, relative to parent read position
+Offset is the usual LOR O (NOT the range start). Range = {where the window is, length}; OFFSET = where
+within/along that window the read starts, relative to the PARENT's read position:
+- VOICE offset = where the voice is reading when GLOBAL is at its range start.
+- LANE offset = where the lane is reading relative to the VOICE's offset position.
+Example (Rodney): playhead 1..16; voice range FIXED 5..12; voice offset 2 => when playhead at 1 the
+voice reads 7 (5+2); as playhead advances the voice advances within 5..12; reaching 12 it WRAPS to 5.
+Offset 0 => voice starts at 5. So offset slides the read phase WITHIN the fixed window (wraps at the
+window boundary), independent of the range (which sets the window + wrap points).
+
 ### UI legibility for composed direction
 Composed direction can surprise (set lane forward, reverse voice, lane plays backward — correct but
 non-obvious). The ANIMATED voice-range lane handles this: the playhead visibly moves backward across
