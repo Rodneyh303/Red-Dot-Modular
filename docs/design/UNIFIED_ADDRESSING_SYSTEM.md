@@ -50,6 +50,32 @@ span the full "how voices relate" space. Voice LOR unlocks forms correlation STR
 (Within the no-timing-change scope these read as content/window effects rather than literal temporal
 canon — still a large, distinct musical class vs value-correlation alone.)
 
+## Direction composition — voice direction is EXPRESSED THROUGH lane direction (Rodney)
+Direction is the one LOR component where composition isn't offset-addition — pin it explicitly:
+- **Effective direction = voice direction x lane direction (sign multiply).** Lane direction is
+  RELATIVE TO THE VOICE, not absolute real-time, because lane maps FROM voice step ("lane is the
+  probability half of voice"). So:
+  - voice forward x lane forward = forward
+  - voice REVERSE x lane forward = reverse (voice reversal carries through)
+  - voice REVERSE x lane reverse = forward (double negative — lane un-reverses within a reversed voice)
+- **Do NOT flip lane direction when the voice reverses — it INHERITS by composition.** The lane's own
+  setting stays; reversing the voice reverses the voice step, and the lane (forward-relative-to-voice)
+  consequently reads backward in real time.
+- This is FORCED by the nesting, not a free choice: "lane reads from voice step" is incompatible with
+  "lane direction is absolute in real time" (they conflict the moment the voice reverses). So
+  **voice direction can only be EXPRESSED VIA lane direction** — there is no separate real-time voice
+  traversal to show; the voice's reversal manifests as the lanes (its probability reads) traversing
+  backward. That is the only place voice direction becomes audible/visible.
+- Reversible: sign product composes and inverts cleanly, same as the rest.
+
+### UI legibility for composed direction
+Composed direction can surprise (set lane forward, reverse voice, lane plays backward — correct but
+non-obvious). The ANIMATED voice-range lane handles this: the playhead visibly moves backward across
+the window when the voice is reversed, and the probability-lane playheads move backward too — so the
+EFFECTIVE (composed) direction is shown directly by the animation, not just inferred from a setting.
+Show the voice's direction as the arrow on the voice-range lane; the lanes' real-time direction is
+then self-evident from their playhead motion.
+
 ## Delegation + placement — REUSE the spread two-module model
 Same architecture as spread (Macro broad/global, East fine/per-voice, per-voice delegation):
 - **Macro = GLOBAL voice range** (all voices share one range).
