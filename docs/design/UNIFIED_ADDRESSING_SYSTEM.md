@@ -105,6 +105,20 @@ the repeat-endpoint ambiguity: the turnaround is two endpoint-reads with distinc
 not one doubled read. Reversible: the assignment is deterministic and symmetric under scrub, so the
 round-trip retraces endpoint directions exactly.
 
+**Two turnaround STYLES, both covered by the pre/post rule:**
+- **PING-PONG (double-tap):** endpoint read TWICE — ...10,11,[12 pre][12 post],11,10... The two
+  endpoint reads are the first (pre-direction) and second (post-direction) of the rule. +1 step per
+  turnaround.
+- **PENDULUM (no double-tap):** endpoint read ONCE — ...10,11,[12 pre],11,10... = ping-pong with the
+  SECOND (post-direction) endpoint read OMITTED. The single endpoint carries the PRE-direction (the
+  first-endpoint rule); the post-direction resumes at the NEXT inward step. No extra step.
+So pendulum = "ping-pong minus the second endpoint read." The pre/post framing defines WHICH read is
+which; pendulum just drops the post read. Step counts differ (ping-pong +1/turnaround) → feeds the
+polymeter when levels use different styles; the instantaneous sign-product composition holds for BOTH
+(the single pendulum endpoint's sign = pre-direction). Reversible for both IF the drop is applied
+consistently forward and back (same frame rule), so scrub retraces single-vs-double endpoints exactly.
+Turnaround style is a per-level setting.
+
 ### Offset (the O in LOR) — nested, relative to parent read position
 Offset is the usual LOR O (NOT the range start). Range = {where the window is, length}; OFFSET = where
 within/along that window the read starts, relative to the PARENT's read position:
