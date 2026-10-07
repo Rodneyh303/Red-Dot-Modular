@@ -161,6 +161,44 @@ Voice LOR has NO probability bar to show — it shows a RANGE. So:
   frame the probability lanes nest within (optional: dim lane columns outside the voice window to make
   the nesting visceral).
 
+## MUSICAL WINS — clear-eyed (what's genuinely new vs already reachable)
+Already reachable (NOT new): per-voice per-lane LOR+direction in any combination; lane-vs-lane
+polymeter (lanes at different lengths beat at their LCM); global offset/rotation/length (playhead,
+the ring). So "polymeter" per se is NOT the new thing.
+
+**The one irreplaceable new capability = the VOICE-LENGTH MODULUS: a common per-voice cycle ABOVE the
+lanes that re-phrases ALL of a voice's lanes TOGETHER.** Per-lane LOR can't do this (no shared cycle
+to re-base the lanes as a group). Static, it's a second-order refinement (grouped re-phasing). What
+makes it FIRST-ORDER:
+
+1. **MODULATED voice length = METRIC MODULATION.** e.g. start voice length 8, add 2 every bar or two
+   (8->10->12...). The re-phasing point WALKS against the bar and the lanes progressively, and because
+   the lanes beat WITHIN the voice cycle, the texture TRANSFORMS as the grouping grows — a developing
+   arc, not static drift. Generative metric modulation (Carter/Reich-style regrouping). Only reachable
+   via the voice modulus: modulating the voice length re-groups the lanes COHERENTLY (they stay
+   related, the whole group re-phases); modulating lane lengths individually would de-sync them.
+2. **Different voices re-phrasing SIMILAR material differently = HETEROPHONY.** Correlation (copula)
+   makes voices play RELATED content; different per-voice voice-length (and different modulation of it)
+   groups/phrases that shared material differently per voice. Same idea, stated at different metric
+   groupings simultaneously = true heterophony / gamelan-style stratification (a core design goal).
+   e.g. one voice phrases in 8s, another in 10s, another growing 8->12 — all the same correlated idea,
+   re-phrased, evolving.
+
+So the win is **modulatable per-voice GROUPING of CORRELATED material -> metric modulation + evolving
+heterophony.** Fits the instrument's identity exactly: copula = related material (value axis);
+voice-length modulus = that material re-phrased/grouped differently and evolvingly per voice.
+
+**It is ANOTHER WAY OF TAMING THE CHAOS (Rodney).** Alongside correlation (tames value-chaos: voices
+relate in what they play) and the grid (bounds timing-chaos), the voice modulus bounds/organises the
+METRIC/PHRASING relationship: voices don't just scatter in grouping — they re-phrase a shared idea on
+controlled, relatable, modulatable cycles. Order<->chaos on the grouping/phrasing axis. The
+irreplaceable bit is the modulus; offset (phased-canon) and direction (retrograde/mirror) are the
+read-relationship enrichments on top.
+
+(Honesty caveat per the hard constraint: because voice LOR moves only the probability READ, these are
+content/window-phase versions — heterophonic re-phrasing of READS on a shared grid, not onset-timing
+displacement. Still the heterophony/metric-modulation class; scoped to the read axis.)
+
 ## Reversibility
 Each level (global/voice/lane) is a deterministic LOR transform of the counter-addressed spine. Forward
 = compose the maps; reverse = compose the inverses. Same reversibility the existing lane LOR already
