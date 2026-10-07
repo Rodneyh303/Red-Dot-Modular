@@ -29,22 +29,25 @@ Implications:
 per-voice voice direction; phase covers driven-backward natively). Per-voice backward direction (the
 addressing system) is where retrograde earns its place.
 
-## 2. tie-across-rests should extend to clock/phase — but the rest MODEL differs
-Gate mode built the two-toggle rest model: `generatedRestBeatsLegato` (rolled/GENERATED rests) +
-`tieAcrossRests` (bridge a structural GAP). Clock/phase have a DIFFERENT rest model:
-- **Clock & phase: notes restricted to integer multiples of 1/16.** An odd (non-1/16) note quantised
-  into the grid leaves a RESIDUAL GAP (leftover to the next 1/16 boundary), treated as an INCOMING
-  rest (belongs to the next note's arrival) — NOT a separately-generated rest step.
-- So "rest" means structurally different things: gate = a generated rest EVENT; clock/phase = a
-  RESIDUAL GAP from 1/16-quantising odd durations, framed as incoming.
-Consequence for extending tie-across-rests:
-- **`generatedRestBeatsLegato` has NO referent in clock/phase** (no generated rests) → stays gate-only.
-- **`tieAcrossRests` DOES extend** → it governs bridging the RESIDUAL-GAP incoming rest: when an odd
-  note leaves a residual gap before the next note, does the legato SUSTAIN through the gap into the next
-  note (tie) or does the gap break it? Well-defined, and SIMPLER than gate (only one gap type — the
-  residual/incoming — no generated-vs-structural split).
-**So the extension is:** enable `tieAcrossRests` in clock/phase governing the residual-gap bridge; keep
-`generatedRestBeatsLegato` gate-only. Not "ungate the toggle" — it's the same structural-gap-bridge
-toggle applied to clock/phase's residual-gap rests (their only rest type).
-Verify: confirm the tie-across-rests implementation is at the legato/rest-decision level (mode-agnostic
-per the gate-mode mode-agnostic discipline) so applying it to residual gaps is clean.
+## 2. tie-across-rests should extend to clock/phase — CORRECTED
+All THREE modes (gate, clock, phase) have BOTH rest types:
+1. **Generated rests** — a step/event that is a rest (`generatedRestBeatsLegato` governs rolling these).
+2. **Gap / incoming rests** — a gap before the next note (`tieAcrossRests` governs bridging these).
+
+So clock/phase are NOT missing a rest type. The clock/phase **RESIDUAL GAP** (the leftover when an odd,
+non-1/16 note is quantised to the 1/16 grid) is the **EQUIVALENT of gate mode's INCOMING REST = the gap
+between gates** (Rodney). It is the same gap-type rest, and `tieAcrossRests` governs it identically.
+(The 1/16 note-length restriction in clock/phase is a SEPARATE thing — it's merely the mechanism that
+PRODUCES the residual gap; it doesn't change the rest model.)
+
+**So both toggles apply to all three modes.** Clock and phase currently just DON'T ALLOW tie-across-gap
+— the gap-bridge behaviour isn't enabled there, even though they already HAVE both gap types. The
+extension is therefore close to "enable tie-across-rests (the gap-bridge logic) in clock/phase" — they
+are already structured for it; they simply don't act on the gap-bridge toggle yet.
+
+- `tieAcrossRests` → enable in clock/phase; bridges the residual/incoming gap (= gate's between-gates
+  gap) identically.
+- `generatedRestBeatsLegato` → ALSO applies (clock/phase DO have generated rests) — enable consistently.
+
+Verify the tie-across-rests implementation is at the legato/rest-decision level (mode-agnostic per the
+gate-mode discipline) so enabling it for clock/phase's gaps is clean.
