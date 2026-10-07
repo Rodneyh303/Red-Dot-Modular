@@ -184,7 +184,10 @@ namespace StraitsMacroVisualIds {
     // (mono slot 0 for V1/Mono; the voice slot for poly). macro may be null → false.
     inline bool macroSpreadModulatesLane(rack::Module* macro, int engineLane,
                                          bool delegated, int sendSlot) {
-        if (!macro || engineLane < 0 || engineLane >= 4) return false;
+        // SANDS CONSOLIDATION: 7 poly lanes (REST/MEL/OCT/ACC/QMIX/VAR/LEG), not 4. The old
+        // `>= 4` bound silently rejected QMIX (4), VARIATION (5), LEGATO (6) so their spread
+        // mod-arcs never lit (a UI regression after the consolidation added the newer lanes).
+        if (!macro || engineLane < 0 || engineLane >= 7) return false;
         bool sprCvLive = macro->inputs[cvId(engineLane, 3)].isConnected();
         if (delegated) return sprCvLive;
         float send = (redDot::findMonsoonEitherSide(macro)

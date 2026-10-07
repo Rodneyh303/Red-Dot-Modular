@@ -97,41 +97,38 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 // MVC step 1d: SET = the store-backed knob's value = editor.spread[currentSlot()].
                 // currentSlot() = 0 (V1) or polySlot, so one read covers both. (v+1)/2 normalise.
                 Monsoon* mm = getMonsoon(); if (!mm) return 0.5f;
-                int slot = currentSlot();
-                if (slot < 0 || slot > 15) return 0.5f;   // guard: invalid slot (e.g. during init)
-                float v = mm->getSpread(slot, lane);
+                float v = mm->getSpread(currentSlot(), lane);
                 return rack::math::clamp((v + 1.f) * 0.5f, 0.f, 1.f);
             };
             arc->getModNorm = [mod, this, lane]() -> float {
                 if (!mod) return 0.5f;
-                if (lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return 0.5f;
                 int v = polyVoice();
                 if (v < 0) {
                     // V1 / mono tab: MOD = the EFFECTIVE V1 spread on this lane, matching
                     // the manager's sprForLane: delegated → Macro base+CVdelta; owned →
                     // East knob + East V1 spread CV + Macro send blend. lane = spread index
                     // 0=REST,1=MEL,2=OCT,3=ACC,4=Q-MIX; CV jack cvId(lane,3).
+                    if (lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return 0.5f;
                     Monsoon* mon = findMonsoonEitherSide(mod);
-                    if (!mon) return 0.5f;   // guard: no Monsoon reachable from East
-                    auto* macroVis = mon->expanderManager.cachedMacroSandsVisual;
+                    auto* macroVis = mon ? mon->expanderManager.cachedMacroSandsVisual : nullptr;
                     bool delegated = macroVis && !eastOwnsLane(lane);   // MVC step 1d: store-backed
                     float sp;
                     if (delegated) {
                         sp = macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3];
                     } else {
-                        int pid = (lane==0) ? (int)SPREAD_R : (lane==1) ? (int)SPREAD_M
-                                : (lane==2) ? (int)SPREAD_O : (lane==3) ? (int)SPREAD_A
-                                : (int)SPREAD_Q;   // lane 4 = Q-MIX (was folded onto SPREAD_A)
-                        sp = mod->params[pid].getValue();   // bipolar -1..1
+                        // MVC de-param (NUM_PARAMS_MIGRATION): the spread base is STORE-BACKED
+                        // (editor.spread[slot*7+lane]), NOT a param. mod->params is EMPTY on East
+                        // post-migration, so the old mod->params[SPREAD_*] read was an out-of-bounds
+                        // access on a zero-length vector → SIGSEGV. Read the store instead, matching
+                        // getSetNorm above. V1/mono tab → currentSlot()==0.
+                        sp = mon ? mon->getSpread(currentSlot(), lane) : 0.f;   // bipolar -1..1
                         if (mod->inputs[cvId(lane,3)].isConnected()) {
-                            Monsoon* mon2 = redDot::findMonsoonEitherSide(mod);
-                            float att = mon2 ? mon2->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + 3) : 0.f;
+                            float att = (redDot::findMonsoonEitherSide(mod) ? redDot::findMonsoonEitherSide(mod)->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + 3) : 0.f);
                             float cv  = mod->inputs[cvId(lane,3)].getVoltage(0) / 10.f;
                             sp += cv * att * 2.f;
                         }
                         if (macroVis) {
-                            Monsoon* mon3 = redDot::findMonsoonEitherSide(macroVis);
-                            float send = mon3 ? mon3->getMacroSend(dotModular::VoiceResolver::kMonoSlot, lane, 3) : 0.f;
+                            float send = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, lane, 3) : 0.f);
                             sp += macroVis->macroSendDelta[lane][3] * send;
                         }
                     }
@@ -143,7 +140,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             };
             arc->isActive = [mod, this, lane]() -> bool {
                 if (!mod) return false;
-                if (lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return false;
                 Monsoon* mon = findMonsoonEitherSide(mod);
                 if (!mon || !mon->modVizEast) return false;
                 int v = polyVoice();
@@ -638,12 +634,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         }
     }
 
-    // Cached Monsoon pointer — updated once per frame in step() to avoid walking the
-    // module chain during draw (which races with the audio thread's expander updates).
-    mutable Monsoon* cachedMonsoon_ = nullptr;
     Monsoon* getMonsoon() const {
-        if (cachedMonsoon_) return cachedMonsoon_;   // use cached pointer (set in step())
-        return module ? findMonsoonEitherSide(module) : nullptr;   // fallback for first frame
+        return module ? findMonsoonEitherSide(module) : nullptr;
     }
 
     // STEP 4c: full ownership authority for East. Populates V1 + all poly owners from the
@@ -949,10 +941,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // store directly via get/setLaneDir, so the proxy→bank flush + clobber-guard are dead.)
 
     void step() override {
-        // Cache the Monsoon pointer BEFORE ModuleWidget::step() (which calls child step() →
-        // displayValueFn → getMonsoon()). This avoids walking the module chain during child
-        // step()/draw, which races with the audio thread's expander pointer updates.
-        cachedMonsoon_ = module ? findMonsoonEitherSide(module) : nullptr;
         ModuleWidget::step();
         kitStep();
         if (!module || !paramMgr || !visualEditor) return;
@@ -1314,14 +1302,35 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedLegato[s]; break;
                             default: base = 0.5f; break;
                         }
-                        // V1 spread: respect lane ownership (same as onMonoTab block above).
+                        // V1 spread: respect lane ownership, and mirror the ENGINE's sprForLane
+                        // EXACTLY (MonsoonSandsManager processDNA) so the displayed bars match the
+                        // audible spread AND animate under live CV/LFO modulation.
+                        const int kMono = dotModular::VoiceResolver::kMonoSlot;
                         float spread;
-                        if (macroMod && !eastOwnsLane(engLane))
-                            spread = rack::math::clamp(macroMod->macroBase[engLane][3] + macroMod->macroSendDelta[engLane][3], -1.f, 1.f);
-                        else if (macroMod)
-                            spread = monsoon->getSpread(dotModular::VoiceResolver::kMonoSlot, engLane);
-                        else
+                        if (macroMod && !eastOwnsLane(engLane)) {
+                            // Delegated → Macro's EFFECTIVE spread = base + CV delta (the LIVE
+                            // CV/LFO contribution), matching sprForLane's delegated branch.
+                            spread = macroMod->macroBase[engLane][3] + macroMod->macroCVDelta[engLane][3];
+                        } else if (eastOwnsLane(engLane)) {
+                            // East-owned → East's V1 spread base + East's own spread CV (the LIVE
+                            // contribution that was MISSING — the display read only the static store
+                            // base, so East-owned V1 bars didn't animate) + the Macro send blend.
+                            // Mirrors sprForLane's owned branch exactly. `module` is this East module.
+                            Monsoon* mmV1 = monsoon;
+                            spread = mmV1 ? mmV1->getSpread(kMono, engLane) : 0.f;
+                            if (module->inputs[cvId(engLane,3)].isConnected()) {
+                                float att = mmV1 ? mmV1->getMacroAtten(kMono, engLane*4 + 3) : 0.f;
+                                float cv  = module->inputs[cvId(engLane,3)].getPolyVoltage(0) / 10.f;  // ch0 = V1
+                                spread += cv * att * 2.f;
+                            }
+                            if (macroMod) {
+                                float send = mmV1 ? mmV1->getMacroSend(kMono, engLane, 3) : 0.f;
+                                spread += macroMod->macroSendDelta[engLane][3] * send;
+                            }
+                        } else {
                             spread = monsoon->engine.spreadE(0, engLane);
+                        }
+                        spread = rack::math::clamp(spread, -1.f, 1.f);
                         visualEditor->currentState.lanes[el].probabilities[s] =
                             redDot::SpreadInterp::applyAnchorV1Only(peRef, engLane, s, base, spread);
                     }
