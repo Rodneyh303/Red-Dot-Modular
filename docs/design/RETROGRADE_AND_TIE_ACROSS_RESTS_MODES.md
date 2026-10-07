@@ -66,6 +66,23 @@ gap, vs the engine generating a rest step). So the SAME toggle settings give dif
 different gaps depending on which rest type occurred. Toggles define the policy; material picks the
 branch.
 
+### VERIFIED against gate-mode code (SequencerEngine.cpp) — toggles set ELIGIBILITY, material decides
+The table above gives eligibility; the ACTUAL tie is further gated by material. From the code:
+- **Generated rest:** `slurSuppressesRest = !generatedRestBeatsLegato && slurReachesHere`
+  (SequencerEngine.cpp:521). So generatedRestBeatsLegato=FALSE lets a REACHING slur win — but
+  `slurReachesHere` requires a genuine committed slur with a held predecessor (material-dependent).
+- **FRACTIONAL TAIL override (:519):** a fractional tail ALWAYS outranks rest (canRest), REGARDLESS of
+  the toggle. So tail-present is a material override that forces the tie-ish behaviour either way.
+- **Incoming/residual rest bridge:** at the checkpoint, **generatedRestBeatsLegato is IRRELEVANT**
+  (:719 — the incoming rest is already silent; only slur candidacy matters). Survival across it is
+  gated by a LEGATO RE-DRAW at the rest checkpoint (:722: survives = legatoProb>=0.999 OR
+  r_legato<legatoProb), under `tieAcrossRests && advanceOnTieIntoRest`. So "tieAcrossRests=TRUE =>
+  YES" is really "=> ELIGIBLE; the slur bridges only if it SURVIVES the re-draw at the rest".
+So: **toggles enable the POSSIBILITY; the material (committed-slur reach, fractional tails, the legato
+re-draw at the incoming-rest checkpoint) decides the actuality.** The table = eligibility, not
+guaranteed outcome. (This is gate mode, verified; clock/phase should use the ANALOGOUS logic — the
+reason to derive theirs from gate's, per 'worked through gates'.)
+
 Verify the tie-across-rests implementation is at the legato/rest-decision level (mode-agnostic per the
 gate-mode discipline) so enabling it for clock/phase's gaps is clean.
 
