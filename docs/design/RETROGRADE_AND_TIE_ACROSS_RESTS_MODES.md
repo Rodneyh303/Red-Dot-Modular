@@ -51,3 +51,21 @@ are already structured for it; they simply don't act on the gap-bridge toggle ye
 
 Verify the tie-across-rests implementation is at the legato/rest-decision level (mode-agnostic per the
 gate-mode discipline) so enabling it for clock/phase's gaps is clean.
+
+### INTENT distinction — the residual gap is INCIDENTAL, not a chosen rest (Rodney)
+"Incoming" is apt because the residual gap belongs to the ARRIVAL/quantisation mechanics, not to a
+compositional rest decision. Choosing a triplet (or any non-1/16 note) is a choice to PLAY THAT NOTE
+(that duration) — the residual gap to the next 1/16 is a CONSEQUENCE, not a request for silence. So
+the two gap types differ in MUSICAL INTENT:
+- **Residual / incoming gap** = INCIDENTAL (byproduct of a note-length choice). The player chose a
+  duration, not a silence.
+- **Generated rest** = DELIBERATE silence (a chosen rest).
+This argues for DIFFERENT DEFAULTS reflecting intent:
+- `tieAcrossRests` (incoming/residual gap) → default likely TRUE in clock/phase: BRIDGE the
+  quantisation artifact (honours "I played this note", not "I wanted a gap"). Legato continues through
+  the incidental gap.
+- `generatedRestBeatsLegato` (deliberate rest) → default respects the silence (rest beats legato);
+  bridging an intended rest is the override.
+So the two toggles aren't just mechanically applicable to all modes — they carry different NATURAL
+DEFAULTS because incidental gaps and deliberate rests mean different things. Bridge the incidental,
+respect the deliberate (unless overridden).
