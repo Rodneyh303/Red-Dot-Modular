@@ -66,3 +66,15 @@ gap (the odd note ended before the next grid position). Default behaviour parall
 Same principle across all modes: **auto-tie only the directly-connected / minimum-separation case;
 anything with a real gap (residual OR structural/generated) requires the explicit tie-across-rest
 toggle.** The residual gap is treated like any other real gap — default respect, opt-in bridge.
+
+### "Auto-tie" gates REALIZATION of a generated slur intention — it does NOT create ties (Rodney)
+A SLUR INTENTION must be GENERATED first (by the legato lane / generative legato decision) for any tie
+to happen. "Auto-tie" is NOT "ties appear on their own" — it is: GIVEN a generated slur intention, the
+directly-connected case lets it REALIZE automatically (no gap-toggle needed). The intention is the
+prerequisite; the toggles gate whether an intention may bridge a real gap. Full logic:
+- No slur intention -> NO tie, ever (even directly-connected; notes play separately).
+- Slur intention + directly-connected (1/16-multiple / gate min-separation) -> tie (AUTO).
+- Slur intention + real gap (residual/structural) -> tie only if the gap-toggle is on
+  (`tieAcrossRests` for incoming/residual gaps, `generatedRestBeatsLegato` for generated rests).
+- No slur intention + gap -> no tie (nothing to bridge).
+So the toggles gate the REALIZATION of generated intentions across gaps; they never generate ties.
