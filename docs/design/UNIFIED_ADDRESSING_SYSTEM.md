@@ -236,3 +236,40 @@ delegation, each reversible, spanning the full field of how an ensemble's voices
 reaches (staggering, polymeter, phase, retrograde/mirror) are compositional techniques, not
 elaborations. Conceptually cheap (UI thin lane; compute read-only; delegation reused); the care is the
 nested-map composition semantics and holding the no-logic-outside-read constraint.
+
+---
+
+## ABSOLUTE (one-shot) MODE — second mode on the per-voice LOR (Rodney, settled)
+A per-voice MODE flag (sited in HP near delegation/direction): CYCLE (current/default) vs ABSOLUTE.
+Replaces the rejected "range-rest on lanes" (which broke uniform marginals by zeroing PROBABILITY —
+wrong). ABSOLUTE is an OUTPUT gate + a sync point, NOT a probability modifier — marginals/correlation
+untouched.
+
+Definition (worked through; all WITHIN-RANGE, self-contained — no roaming read, no outside-range reads):
+- **Range = the voice's O + L** (O = start step, L = length). **NO gates or CV outside the range** —
+  silent outside, always. The range is the sounding region.
+- **R (voice rotation) is anywhere WITHIN the voice range** and is the **SYNC POINT**: before the
+  global playhead reaches R, the lane probability readers TRACK THE GLOBAL PLAYHEAD (global-aligned);
+  AT R, the lane readers SYNC TO THEIR OWN (lane) offsets/rotations and play their applicable direction,
+  looping within the range as required.
+- **R can be the range START** (simplest: lanes sync immediately when the range opens — fully on their
+  own offsets for the whole range; no global-track phase).
+
+Worked example (range 5-12, R=7):
+- playhead 1-4: silent (outside range).
+- playhead 5-6: sounds; lanes TRACK GLOBAL (read global-aligned).
+- playhead 7 (=R): lanes SYNC to their lane offsets.
+- playhead 7-12: sounds; lanes on their OWN offsets (direction + loop within range).
+- playhead 13-16: silent (outside range).
+
+So R's job (non-redundant): WITHIN the sounding region, R is where the lanes transition from
+global-tracking to their own-offset addressing. R=range-start => fully independent from the opening
+(immediate break-away, the default); R later in the range => lanes stay global-locked for the first
+part (O..R), then break to their offsets (R..end). A gradient of "how much of the sounding region
+stays locked to the global frame before the voice asserts its own phrasing."
+
+Why clean: everything within-range (R in [O,O+L), gate [O,O+L), lanes operate within); nothing roams
+outside; output-gate not probability-modify (marginals preserved). Two controls, two jobs: range (O,L)
+= WHERE it sounds; R = where inside it the lanes switch global-track -> own-offset.
+(Earlier tangled attempts — read-roams-free, read=playhead+R, rotation-outside-range — are SUPERSEDED
+by this within-range self-contained formulation.)
