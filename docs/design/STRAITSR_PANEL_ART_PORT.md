@@ -17,14 +17,28 @@ so EVERY panel's LEFT edge and RIGHT edge sit at the SAME wave phase/Y.** Then t
 right edge == the wave at the next panel's left edge, for ANY base+lane pairing -> seamless across
 arbitrary combinations. (A per-panel random/free wave would NOT tile — it must match at edges.)
 
-## 3. Inter-panel vertical separator lines
-Original draws vertical lines between banks (gen_straits.py:161). **Port them** — a vertical separator
-spine at each lane/base boundary, so abutted sub-panels show the separator as the original did.
+## 3+4. SEAM — self-contained per-panel DOUBLE-RAIL (Rodney, redesign; supersedes "align perfectly")
+Attempt 1: the edge-tiling BOTTOM WAVE WORKED (keep it). But cross-panel seamlessness (one continuous
+vertical line + perfectly-seamless bg) FIGHTS Rack's imperfect panel alignment — abutted SVGs get
+sub-pixel seam gaps (HP grid + zoom + float rounding), so a single line that must span the seam, or a
+bg that must meet exactly, will show a glaring break. Don't chase it.
 
-## 4. Seam not exactly seamless (close-up shows a gap at the top-rule / edges)
-Base<->lane abutment isn't bit-aligned. **Verify:** base and lane panels have IDENTICAL top-rule Y +
-height + colour (the red rule), identical bg fill, and the lane's left edge sits EXACTLY at the base's
-right edge (no sub-pixel gap). The seamless look requires shared bg/rails bit-aligned across the seam.
+**Design around it — DOUBLE-RAIL:**
+- **Each panel (base + EVERY lane) draws a vertical rail on BOTH its LEFT and RIGHT edges** (with the
+  horizontal notches), entirely WITHIN its own SVG — perfectly positioned per-panel, zero cross-panel
+  coordination.
+- At each abutment: panel-A-right-rail + panel-B-left-rail = **two close parallel rails = an
+  intentional DOUBLE-RAIL seam.**
+- **Robust to misalignment:** a sub-pixel panel gap just changes the spacing between the two rails
+  (unnoticeable) — where a single continuous line would show a break.
+- **Covers the bg seam:** any dark gap between panel backgrounds HIDES BEHIND the rails, so the bg no
+  longer needs to be perfectly seamless either. (Solves both #3 vertical-lines AND #4 seam at once.)
+- **Outer edges** (assembly far-left / far-right): single rail (frames the module) — fine; optionally
+  style the outer frame distinctly from inner double-rail seams.
+
+Principle: don't make art span the seam; make each panel's edges SELF-COMPLETE (own L+R rails + notches
++ full-height bg), and let the abutment of two self-complete edges BE the design. Turns "seam must be
+invisible" (unwinnable in Rack) into "seam is an intentional double-rail" (always works).
 
 ## Verify
 Attach base + various lane combinations: continuous wavy bg behind lanes; continuous bottom wave across
