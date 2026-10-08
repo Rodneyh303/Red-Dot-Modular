@@ -136,7 +136,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 }
                 if (v >= 15) return 0.5f;
                 // polySpreadEffective is bipolar -1..1 → map to 0..1.
-                return rack::math::clamp((mod->polySpreadEffective[v][lane] + 1.f) * 0.5f, 0.f, 1.f);
+                float rawSpread = mod->polySpreadEffective[v][lane];
+                static int rlog = 0;
+                if (rlog < 30) {
+                    INFO("[SPREAD-READ] v=%d lane=%d raw=%.4f mod=%p", v, lane, rawSpread, (void*)mod);
+                    rlog++;
+                }
+                return rack::math::clamp((rawSpread + 1.f) * 0.5f, 0.f, 1.f);
             };
             arc->isActive = [mod, this, lane]() -> bool {
                 if (!mod) return false;

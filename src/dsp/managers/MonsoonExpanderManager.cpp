@@ -421,7 +421,14 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                     // discarded headroom and made East-then-Macro != Macro-then-East).
             }
             restInterp = combineSpread(PL::PL_REST, restInterp);   // owner + Macro-CV blend (spread)
-            if (eastVisual) eastVisual->polySpreadEffective[v][PL::PL_REST] = restInterp;
+            if (eastVisual) {
+                eastVisual->polySpreadEffective[v][PL::PL_REST] = restInterp;
+                static int wlog = 0;
+                if (wlog < 30 && v == 0) {
+                    INFO("[SPREAD-WRITE] v=%d lane=REST val=%.4f eastVisual=%p", v, restInterp, (void*)eastVisual);
+                    wlog++;
+                }
+            }
             engine.pe.cachedPolySpread[v][PL::PL_REST] = restInterp;   // Stage 2a: cache for step-rate refresh
 
             // if (deepEast) {
