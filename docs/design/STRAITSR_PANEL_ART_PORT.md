@@ -17,7 +17,29 @@ so EVERY panel's LEFT edge and RIGHT edge sit at the SAME wave phase/Y.** Then t
 right edge == the wave at the next panel's left edge, for ANY base+lane pairing -> seamless across
 arbitrary combinations. (A per-panel random/free wave would NOT tile — it must match at edges.)
 
-## 3+4. SEAM — self-contained per-panel DOUBLE-RAIL (Rodney, redesign; supersedes "align perfectly")
+## 3+4. SEAM — RUNTIME draw-over-the-seam (the real technique), NOT static alignment
+True seamlessness ("borders and gap disappear as the expander docks") is achieved by a WIDGET draw()
+behaviour, NOT by static SVG abutment — which is why static alignment can never match it (Rodney's
+diagnosis: alignment is unwinnable; the answer is DON'T rely on it).
+
+**Reference: VGLabs TwoWayExpander** — https://github.com/landgrvi/VGLabs-TwoWayExpander
+(animation: https://github.com/landgrvi/VGLabs-TwoWayExpander/blob/main/TwoWayAnimation.gif). Its README:
+"implements the seamless expander behaviour seen in MindMeld's MixMaster & AuxSpander, where the borders
+and gap disappear as the expander moves into place." Both are open source — read their widget draw().
+
+**Technique:** in the panel widget's draw(), when the module detects it's DOCKED to a compatible
+neighbour (left/right expander present), **draw a FILLER STRIP of the panel bg + continuing art (waves
+etc.) ACROSS the seam**, covering the border/gap — typically drawn by the panel at the boundary,
+extending a few px past its edge to cover the neighbour's border + the gap. When UNDOCKED, don't draw it
+(normal separate panel). So the seam is PAINTED OVER at runtime, full fidelity, regardless of sub-pixel
+alignment; the bottom-wave + bg art continue THROUGH the filler so the assembly reads as ONE continuous
+module.
+
+This supersedes "align perfectly" (unwinnable) for TRUE seamlessness. The DOUBLE-RAIL below is the
+ALTERNATIVE — use it only if you deliberately want VISIBLE inter-panel rails rather than an invisible
+seam.
+
+## (ALTERNATIVE) Self-contained per-panel DOUBLE-RAIL (visible-rails aesthetic)
 Attempt 1: the edge-tiling BOTTOM WAVE WORKED (keep it). But cross-panel seamlessness (one continuous
 vertical line + perfectly-seamless bg) FIGHTS Rack's imperfect panel alignment — abutted SVGs get
 sub-pixel seam gaps (HP grid + zoom + float rounding), so a single line that must span the seam, or a
