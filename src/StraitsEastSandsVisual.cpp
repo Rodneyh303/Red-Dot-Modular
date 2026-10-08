@@ -1127,6 +1127,47 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 }
             }
         }
+        // ── Mono tab (V1) bar fill: same pattern but base from MONO slewed arrays
+        //    and spread from V1 computation (store + East CV + Macro send), NOT
+        //    polySpreadEffective (which is poly-indexed). Without this, V1 bars
+        //    are never filled with spread-applied probabilities → spread knob
+        //    has no visible effect on the mono tab.
+        else {
+            saveSlot(currentSlot());
+            const int kMono = dotModular::VoiceResolver::kMonoSlot;
+            auto* macroVis = monsoon ? monsoon->expanderManager.cachedMacroSandsVisual : nullptr;
+            for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
+                int el = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[lane];
+                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
+                    float base;
+                    switch (lane) {
+                        case SequencerEngine::PL_REST:      base = peRef.slewedRhythm[s]; break;
+                        case SequencerEngine::PL_MELODY:    base = peRef.slewedMelody[s]; break;
+                        case SequencerEngine::PL_OCTAVE:    base = peRef.slewedOctave[s]; break;
+                        case SequencerEngine::PL_ACCENT:    base = peRef.slewedAccent[s]; break;
+                        case SequencerEngine::PL_QMIX:      base = peRef.slewedQmix[s]; break;
+                        case SequencerEngine::PL_VARIATION: base = peRef.slewedPolyVariation[0][s]; break;
+                        case SequencerEngine::PL_LEGATO:    base = peRef.slewedPolyLegato[0][s]; break;
+                        default: base = 0.5f; break;
+                    }
+                    // V1 spread: store + East CV × att × 2 + Macro send (bipolar, mirrors
+                    // the mod-arc's mono path at lines 130-136, but WITHOUT the [0,1] mapping
+                    // — applyAnchorV1Only takes bipolar [-1,1]).
+                    float spread = monsoon ? monsoon->getSpread(kMono, lane) : 0.f;
+                    if (module->inputs[cvId(lane,3)].isConnected()) {
+                        float att = monsoon ? monsoon->getMacroAtten(kMono, lane*4 + 3) : 0.f;
+                        float cv  = module->inputs[cvId(lane,3)].getPolyVoltage(0) / 10.f;
+                        spread += cv * att * 2.f;
+                    }
+                    if (macroVis) {
+                        float send = monsoon ? monsoon->getMacroSend(kMono, lane, 3) : 0.f;
+                        spread += macroVis->macroSendDelta[lane][3] * send;
+                    }
+                    visualEditor->currentState.lanes[el].probabilities[s] =
+                        redDot::SpreadInterp::applyAnchorV1Only(peRef, lane, s, base, spread);
+                }
+            }
+        }
 
         // Surface the engine's CV-APPLIED L/O/R to the display window so the
         // highlighted range + offset/rotation markers track L/O/R CV modulation.
