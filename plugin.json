@@ -89,6 +89,18 @@
       "tags": ["Expander", "Sequencer", "Random"]
     },
     {
+      "slug": "StraitsLaneVARIATION",
+      "name": "Straits Lane: VARIATION",
+      "description": "Per-voice VARIATION probability lane expander (hidden — spawned by Straits Base)",
+      "tags": ["Expander", "Sequencer", "Random"]
+    },
+    {
+      "slug": "StraitsLaneLEGATO",
+      "name": "Straits Lane: LEGATO",
+      "description": "Per-voice LEGATO probability lane expander (hidden — spawned by Straits Base)",
+      "tags": ["Expander", "Sequencer", "Random"]
+    },
+    {
       "slug": "Causeway",
       "name": "Causeway",
       "description": "Poly CV modulation \u2014 16ch REST + ACCENT modulation CV in (ch1=mono) with attenuverters",

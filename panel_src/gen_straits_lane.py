@@ -15,9 +15,11 @@ PW, PH = round(W*S, 2), round(H*S, 2)
 def px(v): return round(v*S, 2)
 
 TINTS = {
-    "rest":   dict(bg="#14171b", tint="#3f7d78", wave="#2a5a56", knob="#1a2e2c", tinttext="#3f7d78"),
-    "accent": dict(bg="#14171b", tint="#e08a1a", wave="#8a5410", knob="#3a2a10", tinttext="#e08a1a"),
-    "qmix":   dict(bg="#14171b", tint="#8060c0", wave="#4e3a78", knob="#241a3a", tinttext="#8060c0"),
+    "rest":      dict(bg="#14171b", tint="#3f7d78", wave="#2a5a56", knob="#1a2e2c", tinttext="#3f7d78"),
+    "accent":    dict(bg="#14171b", tint="#e08a1a", wave="#8a5410", knob="#3a2a10", tinttext="#e08a1a"),
+    "qmix":      dict(bg="#14171b", tint="#8060c0", wave="#4e3a78", knob="#241a3a", tinttext="#8060c0"),
+    "variation": dict(bg="#14171b", tint="#7a9a3a", wave="#5a7a2a", knob="#2a3a14", tinttext="#7a9a3a"),
+    "legato":    dict(bg="#14171b", tint="#3a6a9a", wave="#2a4a7a", knob="#14223a", tinttext="#3a6a9a"),
 }
 
 MARGIN   = 5.0

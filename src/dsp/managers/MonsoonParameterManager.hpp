@@ -151,6 +151,12 @@ public:
     /// QMIX_LEVEL_PARAM (getQmixLevel) — not part of this per-voice poly accessor.
     /// Falls back to 0 (never generated → always quantised, legacy behaviour) if no expander.
     float getPolyQmixLevel(int voiceIdx) const;
+    /// Per-voice VARIATION probability, mirroring getPolyRest. Reads the Straits expander's
+    /// POLY_VARIATION_PARAM_* knobs. Falls back to Monsoon's VARIATION_PARAM if no expander.
+    float getPolyVariation(int voiceIdx) const;
+    /// Per-voice LEGATO probability, mirroring getPolyRest. Reads the Straits expander's
+    /// POLY_LEGATO_PARAM_* knobs. Falls back to Monsoon's LEGATO_PARAM if no expander.
+    float getPolyLegato(int voiceIdx) const;
     
     // ──── CV2 Offset Management ──────────────────────────────────────────────
     

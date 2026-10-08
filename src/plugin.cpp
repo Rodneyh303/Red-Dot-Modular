@@ -33,6 +33,10 @@ void init(rack::Plugin* p) {
 	modelStraitsLaneREST->hidden = true;
 	p->addModel(modelStraitsLaneACCENT);
 	modelStraitsLaneACCENT->hidden = true;
+	p->addModel(modelStraitsLaneVARIATION);
+	modelStraitsLaneVARIATION->hidden = true;
+	p->addModel(modelStraitsLaneLEGATO);
+	modelStraitsLaneLEGATO->hidden = true;
 	// Warm the Phi + PhiInv LUTs on the load thread (~1 ms total, once) so their one-time
 	// builds never land mid-block on the audio thread at first spread/slew use. NOT in a
 	// module constructor — multiple modules (Sands visuals, CA correlation) consume Phi.
