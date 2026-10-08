@@ -19,6 +19,46 @@ O and R — correctly it is L=8, O=5 (window steps 5..12), R=2 (at phrase start 
 wrap within 5..12). Read all composition rules below with THESE meanings: "offset" = O (window
 placement, which step it starts from); the phase-into-window-at-phrase-start is R (rotation), NOT O.
 
+## NESTING REFERENCE — lane R is referenced to VOICE step 1, voice R to GLOBAL step 1 (Rodney, resolved)
+This resolves how voice LOR actually propagates to the lanes (and fixes "voice rotation does nothing"):
+- **Voice R** = where the VOICE reads when **GLOBAL is at step 1**. (e.g. voice R=7 => global 1 => voice
+  reads window-step 7.)
+- **Lane R** = the lane's position when the **VOICE is at step 1** (voice-window start) — NOT when global
+  is at 1. (This is the CHANGE from the old behaviour, where lane R referenced global step 1.)
+So the anchor chain nests: global-1 anchors the voice (voice R); voice-step-1 anchors the lanes (lane R).
+Lanes advance driven by the VOICE's step. Because voice R determines WHEN voice-step-1 occurs in global
+time, voice R now PROPAGATES to the lanes (shifting voice R shifts the voice-step timeline, moving when
+the lanes hit their rotations and everything downstream). Voice R is no longer inert.
+
+### Worked two-lane example
+Voice: L=8, O=5, R=7 (window 5..12). Lane A: L=4, O=1, R=3 (win 1..4). Lane B: L=6, O=3, R=6 (win 3..8).
+Voice reads its window from 7 at global 1, looping within 5..12. "Voice step" = window position 1..8
+(pattern 5=pos1 ... 12=pos8); voice-step-1 (window start, pattern 5) occurs at global 7 and 15.
+Lanes hit their rotation at voice-step-1 (global 7/15), advancing with voice-step:
+
+| global | voice reads | voice step (1..8) | lane A (win1-4,R=3) | lane B (win3-8,R=6) |
+|   1 |  7 | 3 | 1 | 8 |
+|   2 |  8 | 4 | 2 | 3 |
+|   3 |  9 | 5 | 3 | 4 |
+|   4 | 10 | 6 | 4 | 5 |
+|   5 | 11 | 7 | 1 | 6 |
+|   6 | 12 | 8 | 2 | 7 |
+|   7 |  5 | 1 | 3 (=lane R) | 6 (=lane R) |
+|   8 |  6 | 2 | 4 | 7 |
+|   9 |  7 | 3 | 1 | 8 |
+|  10 |  8 | 4 | 2 | 3 |
+|  11 |  9 | 5 | 3 | 4 |
+|  12 | 10 | 6 | 4 | 5 |
+|  13 | 11 | 7 | 1 | 6 |
+|  14 | 12 | 8 | 2 | 7 |
+|  15 |  5 | 1 | 3 | 6 |
+|  16 |  6 | 2 | 4 | 7 |
+
+Checks: global 1 -> voice reads 7 (voice R); lanes NOT at their R (they reference voice-step-1, which is
+at global 7). global 7 (voice step 1) -> lane A=3, lane B=6 (their Rs). Change voice R -> voice-step
+timeline shifts -> lanes shift too (voice R now matters). (Assumes voice-step-1 = voice WINDOW START; if
+instead it should be the voice's rotation position, shift the anchor accordingly — mechanism unchanged.)
+
 ## The gap (Rodney)
 Three levels of pattern addressing exist but are NOT one system:
 1. GLOBAL pattern length + offset (Monsoon) — top frame.
