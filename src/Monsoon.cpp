@@ -983,7 +983,10 @@ void Monsoon::process(const ProcessArgs& args) {
         // and the transport drifts (e.g., 0% knob lands on step 16 instead of 1).
         // This lightweight check snaps only when stepIndex != pulsePos/p16,
         // so the expensive recomputeLaneTicks() runs ONLY on actual drift.
-        {
+        // CRITICAL: gated by modeSelect == 2 — in clock/gate modes, phase.pulsePos
+        // is stale (PhaseEngine not processing), so phaseStep=0 would snap stepIndex
+        // to 0 every sample, freezing the sequencer.
+        if (modeSelect == 2) {
             int p16d = ClockEngine::pulsesPer16th(ppqnSetting);
             long absStep = phase.pulsePos / p16d;
             int phaseStep = (int)(((absStep % 16) + 16) % 16);
