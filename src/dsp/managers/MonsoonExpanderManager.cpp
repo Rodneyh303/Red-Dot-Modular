@@ -37,7 +37,7 @@ MonsoonExpanderManager::MonoDirSrc MonsoonExpanderManager::monoDirAuthority(int 
     if (monoVis) {
         // Mono always owns VAR/LEG; for 0..3 it owns only when its owner store says so.
         // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
-        Monsoon* mm = redDot::findMonsoonEitherSide(monoVis);
+        Monsoon* mm = owner;   // back-pointer (set in Monsoon::process)
         const bool monoOwns = varleg || (mm ? mm->getMonoOwner(lane) : true);
         // MVC step 1d: direction is STORE-BACKED. Mono/Macro/East all return FIELD sources now
         // (the dirDispId params are gone). Mono/East V1 → getMonoLaneDir; Macro → getGlobalDir.
@@ -82,7 +82,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
     // and monoOwnerId; converted to editor lane so topo speaks editor lane (decision 1).
     // Now 5 poly lanes: MEL/OCT/QMIX/REST/ACC (editor order).
     if (cachedEastSandsVisual) {
-        Monsoon* mmTopo = redDot::findMonsoonEitherSide(cachedEastSandsVisual);
+        Monsoon* mmTopo = owner;   // back-pointer (set in Monsoon::process)
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             const int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
             topoIn.eastV1Owner[el] = (mmTopo ? mmTopo->getMonoMacroOwn(eng) > 0.5f : false);
@@ -168,7 +168,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 // Field-backed (MVC de-param): direction lives in the Monsoon store. Resolve the
                 // Monsoon from ANY owning expander (Mono/Macro/East all hang off it). macroGlobal
                 // picks Macro's globalDir vs the mono-lane dir (Mono/East V1).
-                if (auto* mm = redDot::findMonsoonEitherSide(src.mod)) {
+                if (auto* mm = owner) {
                     const float v = src.macroGlobal
                         ? mm->getGlobalDir(src.eastMonoLane)
                         : mm->getMonoLaneDir(src.eastMonoLane);
@@ -185,7 +185,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         if (macroVis) {
             auto* mmod = dynamic_cast<StraitsSandsMacroVisual*>(macroVis);
             // MVC step 1c: Macro's global direction now reads from the store, not its params.
-            Monsoon* gMon = redDot::findMonsoonEitherSide(macroVis);
+            Monsoon* gMon = owner;   // back-pointer (set in Monsoon::process)
             // Now 5 poly lanes: MEL/OCT/QMIX/REST/ACC (editor order).
             for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
                 // el = editor lane (MEL=0, OCT=1, QMIX=2, REST=3, ACC=4) = strand index
@@ -224,8 +224,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         const bool macroPresent = (macroVis != nullptr);
         // MACRO atten/send migrated to Monsoon::editor (NUM_PARAMS_MIGRATION.md). Pointer for
         // the field reads in this loop (East owns atten, Macro owns send; same Monsoon).
-        Monsoon* mmOwn = eastLOR ? redDot::findMonsoonEitherSide(eastLOR)
-                       : (macroVis ? redDot::findMonsoonEitherSide(macroVis) : nullptr);
+        // Use the owner back-pointer (set in Monsoon::process) instead of the fragile
+        // findMonsoonEitherSide chain walk — the manager IS a member of Monsoon, so it
+        // always knows its owner. The chain walk could return null when a lane expander
+        // or other module sat between East and Monsoon, making ALL store reads return 0.
+        Monsoon* mmOwn = owner;
 
         // Stage 2a: cache spread lock axes once per sync() — the engine checks these at
         // step advance to decide whether to apply spread or leave the frozen value.
@@ -413,15 +416,6 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // original + target selection internally. No mmOwn lookup needed here.
 
             float restInterp = mmOwn ? mmOwn->getSpread(slot, PL::PL_REST) : 0.f;
-            {
-                static float lastLog = 999.f;
-                float storeVal = mmOwn ? mmOwn->getSpread(slot, PL::PL_REST) : 999.f;
-                if (std::fabs(storeVal - lastLog) > 0.01f) {
-                    INFO("[SPREAD-STORE] mmOwn=%p slot=%d storeVal=%.4f restInterp=%.4f",
-                         (void*)mmOwn, slot, storeVal, restInterp);
-                    lastLog = storeVal;
-                }
-            }
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_REST,3)].isConnected()) {
                 float att = mmOwn ? mmOwn->getMacroAtten(slot, PL::PL_REST*4 + 3) : 0.f;   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(PL::PL_REST,3)].getPolyVoltage(v) / 10.f;
@@ -432,11 +426,6 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             restInterp = combineSpread(PL::PL_REST, restInterp);   // owner + Macro-CV blend (spread)
             if (eastVisual) {
                 eastVisual->polySpreadEffective[v][PL::PL_REST] = restInterp;
-                static float lastVal = 999.f;
-                if (v == 0 && std::fabs(restInterp - lastVal) > 0.001f) {
-                    INFO("[SPREAD-WRITE] v=%d lane=REST val=%.4f eastVisual=%p", v, restInterp, (void*)eastVisual);
-                    lastVal = restInterp;
-                }
             }
             engine.pe.cachedPolySpread[v][PL::PL_REST] = restInterp;   // Stage 2a: cache for step-rate refresh
 

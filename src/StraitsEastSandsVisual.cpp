@@ -137,11 +137,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (v >= 15) return 0.5f;
                 // polySpreadEffective is bipolar -1..1 → map to 0..1.
                 float rawSpread = mod->polySpreadEffective[v][lane];
-                static int rlog = 0;
-                if (rlog < 30) {
-                    INFO("[SPREAD-READ] v=%d lane=%d raw=%.4f mod=%p", v, lane, rawSpread, (void*)mod);
-                    rlog++;
-                }
                 return rack::math::clamp((rawSpread + 1.f) * 0.5f, 0.f, 1.f);
             };
             arc->isActive = [mod, this, lane]() -> bool {
@@ -380,7 +375,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 [this](){ return getMonsoon(); },
                 -1.f, 1.f, 0.f, std::string(EDN[el]) + " spread",
                 [this, eng](Monsoon& m)          { return m.getSpread(currentSlot(), eng); },
-                [this, eng](Monsoon& m, float v) { m.setSpread(currentSlot(), eng, v); INFO("[KNOB-SET] slot=%d eng=%d v=%.4f", currentSlot(), eng, v); });
+                [this, eng](Monsoon& m, float v) { m.setSpread(currentSlot(), eng, v); });
             if (k) {
                 k->lockWhen = [this, eng]() { return laneOwnedByMacroTopo(eng) || tab1MonoMirror(); };
                 k->displayValueFn = [this, eng]() { return spreadDisplayValue(eng); };
@@ -1117,11 +1112,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         default: base = 0.5f; break;
                     }
                     const float spread = (pv >= 0 && pv < 15) ? eastMod->polySpreadEffective[pv][lane] : 0.f;
-                    static int blog = 0;
-                    if (blog < 60 && s == 0) {
-                        INFO("[BAR-READ] pv=%d lane=%d spread=%.4f base=%.4f", pv, lane, spread, base);
-                        blog++;
-                    }
                     visualEditor->currentState.lanes[el].probabilities[s] =
                         redDot::SpreadInterp::applyAnchorV1Only(peRef, lane, s, base, spread);
                 }
@@ -1163,13 +1153,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     if (macroVis) {
                         float send = monsoon ? monsoon->getMacroSend(kMono, lane, 3) : 0.f;
                         spread += macroVis->macroSendDelta[lane][3] * send;
-                    }
-                    {
-                        static int mlog = 0;
-                        if (s == 0 && lane == 0 && mlog < 200) {
-                            INFO("[BAR-READ-MONO] lane=%d s=%d spread=%.4f base=%.4f", lane, s, spread, base);
-                            mlog++;
-                        }
                     }
                     visualEditor->currentState.lanes[el].probabilities[s] =
                         redDot::SpreadInterp::applyAnchorV1Only(peRef, lane, s, base, spread);
