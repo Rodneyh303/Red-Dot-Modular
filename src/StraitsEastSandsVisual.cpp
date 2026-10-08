@@ -380,7 +380,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 [this](){ return getMonsoon(); },
                 -1.f, 1.f, 0.f, std::string(EDN[el]) + " spread",
                 [this, eng](Monsoon& m)          { return m.getSpread(currentSlot(), eng); },
-                [this, eng](Monsoon& m, float v) { m.setSpread(currentSlot(), eng, v); });
+                [this, eng](Monsoon& m, float v) { m.setSpread(currentSlot(), eng, v); INFO("[KNOB-SET] slot=%d eng=%d v=%.4f", currentSlot(), eng, v); });
             if (k) {
                 k->lockWhen = [this, eng]() { return laneOwnedByMacroTopo(eng) || tab1MonoMirror(); };
                 k->displayValueFn = [this, eng]() { return spreadDisplayValue(eng); };
