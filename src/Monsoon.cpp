@@ -452,7 +452,11 @@ float Monsoon::semitoneToVolts(int semitone) {
     // handle manual restart: place index so next increment lands on startStep, optionally redraw realtime patterns
     // If there are pending seeds and resetImmediate==true, apply them immediately (for RESET triggered reseed)
     void Monsoon::handleRestart(bool manual, bool resetImmediate) {
-        stepIndex = (startStep - 1 + 16) % 16;
+        // stepIndex = -1 (stopped) so the UI shows no playhead until the first clock edge.
+        // advancePlayhead() handles -1 correctly: it seeds to (startStep-1) then increments
+        // to startStep — same result as the old pre-increment, but without the visual flash
+        // of step 16 (stepIndex=15) between reset and the first edge.
+        stepIndex = -1;
         engine.totalStepsElapsed = 0; // Sync polymeters to "Beat 1" on hard reset
         // Under the stateless model the lanes follow this for free (each is a pure function
         // of totalStepsElapsed), so Beat 1 sync is automatic. resetLaneWalk() is belt-and-braces:
@@ -940,7 +944,33 @@ void Monsoon::process(const ProcessArgs& args) {
                     }
                 }
             }
+            // ── Snap transport to the phase-derived position ──────────────────────
+            // The replay above advanced stepIndex/totalStepsElapsed by the ROUNDED
+            // jumpSixteenths (nearest whole 1/16). But the actual phase position is
+            // at pulsePos/p16, which is fractional. Without this snap, the rounding
+            // error accumulates across jumps — each sweep of the phase knob lands on
+            // a different step (non-deterministic, because frame-rate timing varies).
+            // In Mode E the phase IS the transport, so we override with the exact
+            // phase-derived position and recompute lane ticks from it.
+            engine.snapToPhaseStep(phase.pulsePos, p16);
             engine.pe.setReverseActive(savedReverse);
+        }
+
+        // ── Continuous drift correction (every sample in Mode E) ───────────────
+        // The jump snap above only fires on discontinuities. But the phase knob
+        // updates at frame rate (60Hz), and per-frame phase deltas can cross
+        // 1/16 boundaries via the continuous-motion path (not jumps). Over many
+        // rotations, sub-pulse rounding in prevContPhase vs stepIndex accumulates
+        // and the transport drifts (e.g., 0% knob lands on step 16 instead of 1).
+        // This lightweight check snaps only when stepIndex != pulsePos/p16,
+        // so the expensive recomputeLaneTicks() runs ONLY on actual drift.
+        {
+            int p16d = ClockEngine::pulsesPer16th(ppqnSetting);
+            long absStep = phase.pulsePos / p16d;
+            int phaseStep = (int)(((absStep % 16) + 16) % 16);
+            if (phaseStep != engine.stepIndex) {
+                engine.snapToPhaseStep(phase.pulsePos, p16d);
+            }
         }
 
     }

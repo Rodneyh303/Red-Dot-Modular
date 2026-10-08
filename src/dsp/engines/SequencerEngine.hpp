@@ -622,6 +622,15 @@ struct SequencerEngine {
     bool isStepInWindow(int idx) const;
     void setWindow(int length, int offset);
     bool advancePlayhead(int dir = +1);   // dir<0 = reverse traversal (within-draw)
+    // Recompute all laneTick_/laneTickV_/macroLaneTick_ caches from totalStepsElapsed.
+    // Called after snapping totalStepsElapsed externally (e.g. Mode E phase jump snap)
+    // so the lane position caches match the new transport position without a full
+    // advancePlayhead (which would also increment stepIndex/totalStepsElapsed).
+    void recomputeLaneTicks();
+    // Snap the transport (stepIndex + totalStepsElapsed) to the phase-derived pulse
+    // position, then recompute lane ticks. Used after a Mode E phase jump to eliminate
+    // the rounding drift from jumpSixteenths. p16 = pulsesPer16th (ppqn/4).
+    void snapToPhaseStep(long pulsePos, int p16);
     // advanceOnTieIntoRest checkpoint (LEGATO_GATE_GAP_BUG.md §345). Called from the module layer on
     // a Gate-1 FALL while a slur is pending. Advances the playhead ONE step into the incoming-rest
     // position and re-evaluates the slur candidacy (legato draw at that step). Sets

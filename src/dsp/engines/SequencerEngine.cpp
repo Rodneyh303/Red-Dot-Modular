@@ -48,21 +48,28 @@ static const int DNA_LCM = 1441440; // LCM(1..16)*2 — covers every lane period
 // 120 BPM. The current value 1441440 = LCM(1..16)*2 fixes that -- fully continuous.)
 long SequencerEngine::laneTickFor(LaneDir d, long t, int len) {
     const int L = std::max(1, len);
+    // totalStepsElapsed is 1-based (incremented before laneTick_ is computed).
+    // Convert to 0-based position so laneTick_ matches stepIndex (also 0-based).
+    // Without this, the Sands visual playhead is always 1 step ahead of the
+    // Monsoon ring light (which reads stepIndex directly).
+    long t0 = t - 1;
     switch (d) {
-        case LaneDir::Reverse: return -t;
+        // Reverse: -(t0+1) = -t — same formula as before (the -1 and +1 cancel),
+        // so Reverse behaviour is unchanged. For t=1: returns -1, wraps to L-1.
+        case LaneDir::Reverse: return -(t0 + 1);
         case LaneDir::Pendulum: {
             if (L < 2) return 0;
             const long P = 2 * (L - 1);
-            const long u = ((t + (L - 1)) % P + P) % P;
+            const long u = ((t0 + (L - 1)) % P + P) % P;
             return std::labs(u - (L - 1));
         }
         case LaneDir::PingPong: {
             const long P = 2 * L;
-            const long u = ((t % P) + P) % P;
+            const long u = ((t0 % P) + P) % P;
             return (u < L) ? u : (P - 1 - u);
         }
         case LaneDir::Forward:
-        default: return t;
+        default: return t0;
     }
 }
 
@@ -302,6 +309,68 @@ bool SequencerEngine::advancePlayhead(int dir) {
     return wrapped;
 }
 
+void SequencerEngine::recomputeLaneTicks() {
+    // Recompute all laneTick_/laneTickV_/macroLaneTick_ caches from totalStepsElapsed.
+    // This is the same recompute block as in advancePlayhead(), extracted so it can be
+    // called after snapping totalStepsElapsed externally (e.g. Mode E phase jump snap)
+    // without incrementing stepIndex/totalStepsElapsed.
+    auto recomp = [&](LaneDir d, int len, int& tickOut, int& signOut) {
+        const long t   = (long)totalStepsElapsed;
+        const long cur = laneTickFor(d, t, len);
+        const long prv = laneTickFor(d, t - lastPlayDir, len);
+        tickOut = (int)((cur % DNA_LCM + DNA_LCM) % DNA_LCM);
+        const long delta = cur - prv;
+        if (delta > 0)      signOut = +1;
+        else if (delta < 0) signOut = -1;
+        // delta == 0 is the PingPong endpoint repeat: keep the previous sign.
+    };
+    auto polyStrandLen = [&](int v, int strand) -> int {
+        switch (strand) {
+            case dotModular::STRAND_MELODY:    return polyLenE(v, PL_MELODY);
+            case dotModular::STRAND_OCTAVE:    return polyLenE(v, PL_OCTAVE);
+            case dotModular::STRAND_QMIX:      return polyLenE(v, PL_QMIX);
+            case dotModular::STRAND_RHYTHM:    return polyLenE(v, PL_REST);
+            case dotModular::STRAND_ACCENT:    return polyLenE(v, PL_ACCENT);
+            case dotModular::STRAND_VARIATION: return polyLOR(v, EDITOR_LANE_VARIATION, LOR_LEN);
+            case dotModular::STRAND_LEGATO:    return polyLOR(v, EDITOR_LANE_LEGATO, LOR_LEN);
+        }
+        return 16;
+    };
+    for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+        const int len = std::max(1, strandLen(l));
+        recomp(laneDir_[l], len, laneTick_[l], laneSign_[l]);
+        for (int v = 0; v < 15; ++v) {
+            const int vlen = std::max(1, polyStrandLen(v, l));
+            recomp(laneDirV_[v][l], vlen, laneTickV_[v][l], laneSignV_[v][l]);
+        }
+    }
+    for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+        const int mlen = std::max(1, (l < dotModular::POLY_LANE_COUNT) ? macroLOR_[l] : strandLen(l));
+        recomp(macroLaneDir_[l], mlen, macroLaneTick_[l], macroLaneSign_[l]);
+    }
+}
+
+void SequencerEngine::snapToPhaseStep(long pulsePos, int p16) {
+    // Snap the transport (stepIndex + totalStepsElapsed) to the phase-derived pulse
+    // position, then recompute lane ticks. Used after a Mode E phase jump to eliminate
+    // the rounding drift from jumpSixteenths: the replay advances by the ROUNDED step
+    // count, but the actual phase position is at pulsePos/p16 (which may be fractional).
+    // Without this snap, each sweep of the phase knob lands on a different step.
+    long absStep = pulsePos / p16;               // absolute step (can be negative, 0-based)
+    int phaseStep = (int)(((absStep % 16) + 16) % 16);
+    // totalStepsElapsed is 1-based (incremented before laneTickFor uses it, which subtracts 1
+    // internally to produce 0-based laneTick_). So convert absStep (0-based) to 1-based.
+    totalStepsElapsed = (((absStep + 1) % (long)DNA_LCM + (long)DNA_LCM) % (long)DNA_LCM);
+    stepIndex = phaseStep;
+    // Apply window checking (match advancePlayhead's behavior)
+    if (!isStepInWindow(stepIndex)) {
+        stepIndex = startStep;
+        for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
+            stepIndex = (stepIndex + 1) & 0x0F;
+    }
+    recomputeLaneTicks();
+}
+
 void SequencerEngine::updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched) {
     int length = pe_clamp<int>((int)std::round(lenParam), 1, 16);
     int offset = (int)std::round(offParam) & 0x0F;
@@ -357,7 +426,10 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
         // Calculate distance from current playhead to map physical LED to drifting DNA content
         int relCurrent = (stepIndex - startStep + 16) % 16;
         int relLight = (lightIdx - startStep + 16) % 16;
-        int tickForLight = totalStepsElapsed - relCurrent + relLight;
+        // totalStepsElapsed is 1-based; subtract 1 to get the 0-based tick (matching laneTick_,
+        // which laneTickFor now returns as 0-based). Without this, the DNA content (which steps
+        // show notes) would be 1 step ahead of the playhead.
+        int tickForLight = totalStepsElapsed - 1 - relCurrent + relLight;
 
         int dnaIdx = getStrandIdx(tickForLight, lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT));
         bool isNote = pe.rhythmPattern[dnaIdx];
