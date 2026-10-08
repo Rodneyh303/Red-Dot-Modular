@@ -1,25 +1,29 @@
 #!/usr/bin/env python3
 """Straits Lane Expander panel — ONE bank of 16 per-voice knobs.
-Parameterised by lane tint (rest/accent/qmix). Seamless abutment: same GRID_TOP,
-ROW_H, and knob grid as the base + other lane expanders.
+Parameterised by lane tint (rest/accent/qmix/variation/legato). Seamless abutment:
+same GRID_TOP, ROW_H, and knob grid as the base + other lane expanders.
+
+Uses shared art helpers from straits_art.py for:
+  - Identical top-rule/bg/S/H (seam alignment with base + other lane panels)
+  - Wave-field background behind the knob grid (flowing contour "water" lines)
+  - Edge-tiling bottom wave footer (continuous across base + any lane combination)
+  - Left-edge vertical separator (base→lane or lane→lane boundary)
 
 nanosvg-safe (solid fills/strokes, no gradient/mask/text/url).
 """
 import math, os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from straits_art import *
 
 HP = 11
 W  = HP * 5.08
-H  = 128.5
-S  = 75 / 25.4
-PW, PH = round(W*S, 2), round(H*S, 2)
-def px(v): return round(v*S, 2)
 
 TINTS = {
-    "rest":      dict(bg="#14171b", tint="#3f7d78", wave="#2a5a56", knob="#1a2e2c", tinttext="#3f7d78"),
-    "accent":    dict(bg="#14171b", tint="#e08a1a", wave="#8a5410", knob="#3a2a10", tinttext="#e08a1a"),
-    "qmix":      dict(bg="#14171b", tint="#8060c0", wave="#4e3a78", knob="#241a3a", tinttext="#8060c0"),
-    "variation": dict(bg="#14171b", tint="#7a9a3a", wave="#5a7a2a", knob="#2a3a14", tinttext="#7a9a3a"),
-    "legato":    dict(bg="#14171b", tint="#3a6a9a", wave="#2a4a7a", knob="#14223a", tinttext="#3a6a9a"),
+    "rest":      dict(tint="#3f7d78", wave="#2a5a56", knob="#1a2e2c", tinttext="#3f7d78"),
+    "accent":    dict(tint="#e08a1a", wave="#8a5410", knob="#3a2a10", tinttext="#e08a1a"),
+    "qmix":      dict(tint="#8060c0", wave="#4e3a78", knob="#241a3a", tinttext="#8060c0"),
+    "variation": dict(tint="#7a9a3a", wave="#5a7a2a", knob="#2a3a14", tinttext="#7a9a3a"),
+    "legato":    dict(tint="#3a6a9a", wave="#2a4a7a", knob="#14223a", tinttext="#3a6a9a"),
 }
 
 MARGIN   = 5.0
@@ -30,19 +34,32 @@ COLS     = [6, 6, 4]
 ROW_H    = 14.77
 KNOB_R   = 4.5
 GRID_TOP = TOP + 2.0
+JACK_Y   = 111.1
+WAVE_Y   = JACK_Y + 5.5
+WAVE_H   = 5.5
 
 def gen(tintkey, dark=True):
     t = TINTS[tintkey]
+    theme = THEMES["dark" if dark else "light"]
+    bg = theme["bg"]
+    spine = theme["spine"]
+    px = make_px()
     o = []; A = o.append
-    A(f'<svg xmlns="http://www.w3.org/2000/svg" width="{PW}" height="{PH}" viewBox="0 0 {PW} {PH}">')
-    A(f'<rect width="{PW}" height="{PH}" fill="{t["bg"]}"/>')
-    A(f'<rect x="0" y="0" width="{PW}" height="{px(1.2)}" fill="#d4001a"/>')
+
+    svg_open(A, px, W)
+    bg_fill(A, px, W, bg)
+    top_rule(A, px, W)
+
+    # ── Wave-field background behind the knob grid (ported from gen_straits.py) ──
+    wave_field(A, px, MARGIN, TOP, BANK_W, N_ROWS*ROW_H, t["wave"], theme["wave_op"], n=18)
+
     # Tint band
     A(f'<rect x="{px(MARGIN-1)}" y="{px(TOP-4)}" width="{px(BANK_W+2)}" height="{px(N_ROWS*ROW_H+6)}" '
       f'rx="{px(1.5)}" fill="{t["tint"]}" fill-opacity="0.08" stroke="{t["tint"]}" '
       f'stroke-width="0.3" stroke-opacity="0.45"/>')
-    # Coloured identifying dot above the band (ported from old Straits)
+    # Coloured identifying dot above the band
     A(f'<circle cx="{px(W/2)}" cy="{px(TOP-6)}" r="{px(1.4)}" fill="{t["tint"]}"/>')
+
     # Knob grid: 3 cols, 6/6/4, col-major (v0 = mono top-left)
     cw = BANK_W / 3
     v = 0
@@ -64,6 +81,13 @@ def gen(tintkey, dark=True):
             # Anchor marker (invisible — SvgPanelKit finds by id)
             A(f'<circle id="param_{tintkey}_{v}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
             v += 1
+
+    # ── Bottom wave footer (edge-tiling: 1 cycle per panel width) ──
+    bottom_wave_tiling(A, px, W, WAVE_Y, WAVE_H, spine, theme["wave_op"], n=7)
+
+    # ── Left-edge separator (base→lane or lane→lane boundary) ──
+    separator_line(A, px, 0.3, 2.0, WAVE_Y + WAVE_H, spine, sw=0.5)
+
     # Connect mark anchor
     A(f'<circle id="light_connect" cx="{px(W/2)}" cy="{px(H-8)}" r="0.5" fill="none" stroke="none"/>')
     A('</svg>')
