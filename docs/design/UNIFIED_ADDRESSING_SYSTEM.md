@@ -316,8 +316,16 @@ voice-step-1 — all unchanged, see the nesting table above). Absolute adds ONLY
    patch), zeroed so the voice emits NOTHING outside its region. **NOT the modulation CV INPUTS**
    (spread/correlation/etc. CV in) — those are UNTOUCHED (absolute mode never touches generation or
    correlation; it is purely an output gate+zero on the voice's outputs).
-2. **Stop any gate still HIGH at range END** (hard-cut at the O+L boundary, so a note sustaining as the
-   playhead leaves the range doesn't bleed past it — the range is a clean hard edge).
+2. **Stop any gate still HIGH at the range END — but respect PHRASE WRAP (Rodney).** The cut is at the
+   range's ACTUAL end boundary, NOT mechanically at step 16:
+   - Range does NOT wrap the phrase (e.g. 5..12, inside 1..16): cut the gate at the range end (12).
+   - Range WRAPS the phrase boundary (e.g. 13..4 = 13,14,15,16,1,2,3,4): step 16->1 is INSIDE the range,
+     so do NOT cut at step 16 — the gate carries across the 16->1 wrap normally. Only cut at the range's
+     real end (here step 4).
+   - **Only cut at step 16 if step 1 is OUTSIDE the range** (range ends at/before 16, doesn't include 1).
+   - At a wrap that is inside the range, follow NORMAL phrase-wrap behaviour including the applicable
+     context-menu options (tie-across-rest etc.) — same as cycle mode across 16->1. The range end is a
+     hard edge; the phrase boundary is only an edge when the range doesn't span it.
 
 That's it. Reads are computed everywhere (cycle mappings run continuously, nothing internal changes);
 output is gated to global ∈ [O, O+L) with a hard gate-stop at range end.
