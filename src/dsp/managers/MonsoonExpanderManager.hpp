@@ -4,11 +4,17 @@
 
 // Forward declarations
 class SequencerEngine;
+struct Monsoon;
 // Model externs for the lane-extension system (declared in Monsoon.hpp, but
 // needed here before Monsoon.hpp reaches those lines — forward-declare).
 namespace rack { struct Model; }
 extern rack::Model* modelStraitsBase;
 extern rack::Model* modelStraitsLaneQMIX;
+extern rack::Model* modelStraitsLaneREST;
+extern rack::Model* modelStraitsLaneACCENT;
+extern rack::Model* modelStraitsLaneVARIATION;
+extern rack::Model* modelStraitsLaneLEGATO;
+extern rack::Model* modelMonsoonShophouseMicro;
 
 // Forward declarations
 struct MonsoonInterchangeExpander;
@@ -60,6 +66,14 @@ extern rack::Model* modelIntertropical;   // arranger/observer — suite member,
  * It walks the left and right expansion chains to identify connected modules.
  */
 struct MonsoonExpanderManager {
+    // Back-pointer to the owning Monsoon. Set in Monsoon::process() before sync().
+    // Eliminates the fragile findMonsoonEitherSide chain walk for the store owner
+    // (mmOwn) — the manager IS a member of Monsoon, so it always knows its owner.
+    // Without this, mmOwn could be null if the chain walk hit a boundary, making ALL
+    // store reads (getSpread/getLorBase/getMacroAtten/getMacroSend/…) return 0 →
+    // spread bars flat, LOR/dir/sends at defaults — the spread/QMIX-arc/crash cluster.
+    Monsoon* owner = nullptr;
+
     // ── Single source of truth for WHO owns V1/mono direction on a lane ───────────
     // The manager READS this to push laneDirPending_; East's V1 direction gate-mod WRITES
     // through it. Both must agree, or the mod writes one store while the manager pushes
@@ -216,14 +230,22 @@ struct MonsoonExpanderManager {
                     macroSandsVisualCount++;
                 } else if (curr->model == modelLantern
                         || curr->model == modelMonsoonChangiT3Expander
-                        || curr->model == modelIntertropical) {
-                    // Observer / follower suite modules (Lantern; Changi T3). NOT expanders Monsoon
-                    // claims — they read FROM the system (Lantern via findMonsoonEitherSide, T3 via
-                    // IntertropicalPairing), never the reverse, so they get no cache slot. But they
-                    // live in the chain (often placed between Monsoon and other expanders), so HOP
-                    // through them instead of stopping (Rule 1). Without this, anything past an
-                    // observer was never cached → ConnectMarks showed disconnected. Kept in LOCKSTEP
-                    // with MonsoonDiscovery.hpp isSuiteChainModel (both must agree suite-vs-foreign).
+                        || curr->model == modelIntertropical
+                        || curr->model == modelStraitsLaneQMIX
+                        || curr->model == modelStraitsLaneREST
+                        || curr->model == modelStraitsLaneACCENT
+                        || curr->model == modelStraitsLaneVARIATION
+                        || curr->model == modelStraitsLaneLEGATO
+                        || curr->model == modelMonsoonShophouseMicro) {
+                    // Hop-through modules (no cache slot): observer/follower suite modules (Lantern;
+                    // Changi T3) AND lane-extension sub-modules (StraitsLaneQMIX/REST/ACCENT/
+                    // VARIATION/LEGATO) AND ShophouseMicro. These live in the chain between Monsoon
+                    // and other expanders (e.g. Monsoon → StraitsBase → StraitsLaneQMIX → EastSands),
+                    // so HOP through them instead of stopping (Rule 1). Without this, anything past a
+                    // lane expander was never cached → cachedEastSandsVisual stayed null → mmOwn null →
+                    // getSpread returned 0 → polySpreadEffective written 0 → spread bars flat (the
+                    // spread/QMIX-arc/de-param crash cluster — one root cause). Kept in LOCKSTEP with
+                    // MonsoonDiscovery.hpp isSuiteChainModel (both must agree suite-vs-foreign).
                 } else break;   // Rule 1: stop at first foreign module.
 
                 // (No early-out. Chains are at most depth-8 per side, so the cost of always

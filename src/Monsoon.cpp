@@ -1352,6 +1352,7 @@ void Monsoon::process(const ProcessArgs& args) {
         // trigger inside sync() reads this cycle's edges. Uses engine.stepIndex (transport
         // authority) -- replaces the old caV2PrevStep_/caV2PrevLocked_ shadow state.
         lockManager.tick(engine.stepIndex);
+        expanderManager.owner = this;   // back-pointer: sync() uses this instead of findMonsoonEitherSide
         expanderManager.sync(engine, lockManager.queueFires());
         
         // Refresh Audio-Rate Caches (Throttled)
