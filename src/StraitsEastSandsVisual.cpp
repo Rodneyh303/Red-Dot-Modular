@@ -1165,10 +1165,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         spread += macroVis->macroSendDelta[lane][3] * send;
                     }
                     {
-                        static float lastSpread = 999.f;
-                        if (s == 0 && lane == 0 && std::fabs(spread - lastSpread) > 0.001f) {
+                        static int mlog = 0;
+                        if (s == 0 && lane == 0 && mlog < 200) {
                             INFO("[BAR-READ-MONO] lane=%d s=%d spread=%.4f base=%.4f", lane, s, spread, base);
-                            lastSpread = spread;
+                            mlog++;
                         }
                     }
                     visualEditor->currentState.lanes[el].probabilities[s] =
