@@ -254,6 +254,32 @@ read-relationship enrichments on top.
 content/window-phase versions — heterophonic re-phrasing of READS on a shared grid, not onset-timing
 displacement. Still the heterophony/metric-modulation class; scoped to the read axis.)
 
+### THE PRECISE GAIN (Rodney) — two fixed constants of the lane beating become TUNABLE
+The sharpest statement of what voice LOR buys, grounded in the behaviour:
+- **BEFORE (lanes referenced to global):** lanes beat against EACH OTHER (different lane lengths ->
+  LCM beating) phase-linked at GLOBAL STEP 1, and against the FIXED 16-step global frame. Two beating
+  references, both fixed: lanes-vs-lanes (sync at global 1) and lanes-vs-16.
+- **NOW (lanes referenced to the voice):** lanes beat against each other AND against the VOICE length,
+  which is ANY value 1..16 (not just 16), phase-linked at VOICE-STEP-1 — whose position in the phrase
+  is SELECTABLE via voice R.
+
+So two previously-FIXED parameters of the lane polymeter become CONTROLS:
+1. **Beating CONTAINER cycle: 16 (fixed) -> voice length 1..16 (tunable).** You choose the modulus the
+   lanes nest within.
+2. **Phase ANCHOR: global step 1 (fixed) -> voice-step-1 position (selectable via voice R).** You choose
+   where the lanes' common phase reference falls, not just the downbeat.
+
+Why it matters (the felt result): tight, FEELABLE ratios like 6-in-8 were UNREACHABLE before — a 6-lane
+could only beat against 16 (LCM 48, a long loose cycle). 6-against-8 (LCM 24, tight, clearly felt) needs
+the tunable voice length. So voice LOR doesn't just add beatings — it adds the USEFUL, tight,
+feelable ones (6/8, 3/4, 5/8...) that beating-against-16 can't give. Example reads for a 6-lane in an
+8-voice: 5,6,7,6,7,8,9,10 — you can FEEL the 6/8 lilt in how the probability reads recur (the
+overlapping 5,6,7 -> 6,7,8). That felt groove is the payoff that the abstract 'metric modulation /
+heterophony' framing names but the EAR confirms.
+One-line: voice LOR makes the lane-beating CONTAINER (was fixed 16) and the phase ANCHOR (was fixed
+global-1) into tunable controls -> lanes beat against any cycle length, synced at any point -> unlocks
+the tight feelable polymetric ratios.
+
 ## Reversibility
 Each level (global/voice/lane) is a deterministic LOR transform of the counter-addressed spine. Forward
 = compose the maps; reverse = compose the inverses. Same reversibility the existing lane LOR already
