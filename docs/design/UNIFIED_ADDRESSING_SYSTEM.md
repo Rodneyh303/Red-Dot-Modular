@@ -279,37 +279,23 @@ nested-map composition semantics and holding the no-logic-outside-read constrain
 
 ---
 
-## ABSOLUTE (one-shot) MODE — second mode on the per-voice LOR (Rodney, settled)
-A per-voice MODE flag (sited in HP near delegation/direction): CYCLE (current/default) vs ABSOLUTE.
-Replaces the rejected "range-rest on lanes" (which broke uniform marginals by zeroing PROBABILITY —
-wrong). ABSOLUTE is an OUTPUT gate + a sync point, NOT a probability modifier — marginals/correlation
-untouched.
+## ABSOLUTE MODE — final (Rodney): same mappings as CYCLE, just gate the output
+A per-voice MODE flag (HP, near delegation/direction): CYCLE (default) vs ABSOLUTE. ABSOLUTE is
+DEAD SIMPLE and supersedes all earlier elaborations (R-as-sync-point, read-roams-free, etc. — DROPPED):
 
-Definition (worked through; all WITHIN-RANGE, self-contained — no roaming read, no outside-range reads):
-- **Range = the voice's O + L** (O = start step, L = length). **NO gates or CV outside the range** —
-  silent outside, always. The range is the sounding region.
-- **R (voice rotation) is anywhere WITHIN the voice range** and is the **SYNC POINT**: before the
-  global playhead reaches R, the lane probability readers TRACK THE GLOBAL PLAYHEAD (global-aligned);
-  AT R, the lane readers SYNC TO THEIR OWN (lane) offsets/rotations and play their applicable direction,
-  looping within the range as required.
-- **R can be the range START** (simplest: lanes sync immediately when the range opens — fully on their
-  own offsets for the whole range; no global-track phase).
+**Keep the EXACT cycle-mode read mappings (global->voice->lane, voice R, lane R referenced to
+voice-step-1 — all unchanged, see the nesting table above). Absolute adds ONLY an output gate:**
+1. **Silence GATE and CV when the GLOBAL step is OUTSIDE the voice range** (outside [O, O+L) of the
+   voice window — global-position space, "this region of the phrase sounds").
+2. **Stop any gate still HIGH at range END** (hard-cut at the O+L boundary, so a note sustaining as the
+   playhead leaves the range doesn't bleed past it — the range is a clean hard edge).
 
-Worked example (range 5-12, R=7):
-- playhead 1-4: silent (outside range).
-- playhead 5-6: sounds; lanes TRACK GLOBAL (read global-aligned).
-- playhead 7 (=R): lanes SYNC to their lane offsets.
-- playhead 7-12: sounds; lanes on their OWN offsets (direction + loop within range).
-- playhead 13-16: silent (outside range).
-
-So R's job (non-redundant): WITHIN the sounding region, R is where the lanes transition from
-global-tracking to their own-offset addressing. R=range-start => fully independent from the opening
-(immediate break-away, the default); R later in the range => lanes stay global-locked for the first
-part (O..R), then break to their offsets (R..end). A gradient of "how much of the sounding region
-stays locked to the global frame before the voice asserts its own phrasing."
-
-Why clean: everything within-range (R in [O,O+L), gate [O,O+L), lanes operate within); nothing roams
-outside; output-gate not probability-modify (marginals preserved). Two controls, two jobs: range (O,L)
-= WHERE it sounds; R = where inside it the lanes switch global-track -> own-offset.
-(Earlier tangled attempts — read-roams-free, read=playhead+R, rotation-outside-range — are SUPERSEDED
-by this within-range self-contained formulation.)
+That's it. Reads are computed everywhere (cycle mappings run continuously, nothing internal changes);
+output is gated to global ∈ [O, O+L) with a hard gate-stop at range end.
+- OUTPUT-gate only => marginals/correlation UNTOUCHED (NOT probability-modifying). Safe output-stage mute.
+- No roaming reads, no R re-interpretation, no sync-point logic — the earlier convolution came entirely
+  from trying to make the READS special in absolute mode; they are NOT special, only the output is gated.
+Payoff: per-voice SOUND REGIONS -> entrances/exits, builds, drops, call-and-response, voices occupying
+different regions of the phrase = arrangement-level structure (not otherwise reachable; rests give
+probabilistic silence, not a clean "active only here" region).
+Minor: CV outside range — gate is off so it's largely moot; default to simplest (gate-off).
