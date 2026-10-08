@@ -16,8 +16,20 @@
 #include "ui/ConnectMark.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "ui/Controls.hpp"
+#include "ui/StraitsSeamFiller.hpp"
 
 using namespace rack;
+
+// Helper: is this module a compatible StraitsR panel (for seam detection)?
+static bool isStraitsRPanel(rack::Module* m) {
+    if (!m) return false;
+    return m->model == modelStraitsBase
+        || m->model == modelStraitsLaneQMIX
+        || m->model == modelStraitsLaneREST
+        || m->model == modelStraitsLaneACCENT
+        || m->model == modelStraitsLaneVARIATION
+        || m->model == modelStraitsLaneLEGATO;
+}
 using namespace MonsoonIds;
 
 // ── Lane descriptors — read off existing Straits bank differences ────────────
@@ -51,6 +63,8 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
     const LaneDescriptor* desc;
     redDot::ConnectMark* connectMark = nullptr;
     int lastThemeLight = -1;
+    redDot::StraitsSeamFiller* leftFiller = nullptr;
+    redDot::StraitsSeamFiller* rightFiller = nullptr;
 
     void onButton(const event::Button& e) override {
         ModuleWidget::onButton(e);
@@ -227,6 +241,20 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
             };
             addChild(connectMark);
         }
+        // ── Seam fillers (runtime draw-over for seamless abutment) ──
+        float rulePx = 1.2f * 75.f / 25.4f;
+        leftFiller = new redDot::StraitsSeamFiller();
+        leftFiller->isLeft = true;
+        leftFiller->box.pos = Vec(-2, 0);
+        leftFiller->box.size.y = box.size.y;
+        leftFiller->ruleHeightPx = rulePx;
+        addChild(leftFiller);
+        rightFiller = new redDot::StraitsSeamFiller();
+        rightFiller->isLeft = false;
+        rightFiller->box.pos = Vec(box.size.x - 2, 0);
+        rightFiller->box.size.y = box.size.y;
+        rightFiller->ruleHeightPx = rulePx;
+        addChild(rightFiller);
     }
 
     void step() override {
@@ -239,6 +267,10 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
             // Monsoon's numPolyVoices. We read activeVoices_ from Monsoon directly.
             Monsoon* mm = redDot::findMonsoonEitherSide(module);
             themeLight_ = (mm && mm->lightTheme);
+            // ── Seam filler: toggle based on neighbour detection ──
+            NVGcolor bg = themeLight_ ? nvgRGB(0xdc, 0xdc, 0xdc) : nvgRGB(0x14, 0x17, 0x1b);
+            if (leftFiller)  { leftFiller->active = isStraitsRPanel(module->leftExpander.module);  leftFiller->bgColour = bg; }
+            if (rightFiller) { rightFiller->active = isStraitsRPanel(module->rightExpander.module); rightFiller->bgColour = bg; }
             if (mm) {
                 activeVoices_ = mm->engine.numPolyVoices;
             } else {
