@@ -4,6 +4,61 @@ STATUS: design direction, POST-RELEASE. Major but conceptually clean. This is th
 consolidation (like copula unified seq/quant, correlation unified per-voice value): pattern ADDRESSING
 is the subsystem not yet unified. Capturing the full worked-through design so it isn't re-derived.
 
+## LOR component definitions — AUTHORITATIVE (Rodney). Read the rest against these.
+For the EXISTING lane LOR (and the same meanings nest at voice/global):
+- **L = LENGTH** — the pattern length for this lane: the NUMBER OF 1/16 STEPS it spans (how many
+  steps before it repeats).
+- **O = OFFSET** — WHICH of the 16 steps it STARTS FROM (where the lane's window begins in the
+  16-step space).
+- **R = ROTATION** — WHERE WITHIN the steps it starts when the GLOBAL PHRASE STARTS (the phase into
+  the lane's content/window at phrase start).
+So O+L define the WINDOW (O = where it starts; L = how many steps); R defines the PHASE INTO that
+window at phrase-start. These are three independent controls.
+NOTE (correction): earlier in this doc an "offset" example (window 5..12, "start at 7") actually mixed
+O and R — correctly it is L=8, O=5 (window steps 5..12), R=2 (at phrase start begin at step 7=5+2,
+wrap within 5..12). Read all composition rules below with THESE meanings: "offset" = O (window
+placement, which step it starts from); the phase-into-window-at-phrase-start is R (rotation), NOT O.
+
+## NESTING REFERENCE — lane R is referenced to VOICE step 1, voice R to GLOBAL step 1 (Rodney, resolved)
+This resolves how voice LOR actually propagates to the lanes (and fixes "voice rotation does nothing"):
+- **Voice R** = where the VOICE reads when **GLOBAL is at step 1**. (e.g. voice R=7 => global 1 => voice
+  reads window-step 7.)
+- **Lane R** = the lane's position when the **VOICE is at step 1** (voice-window start) — NOT when global
+  is at 1. (This is the CHANGE from the old behaviour, where lane R referenced global step 1.)
+So the anchor chain nests: global-1 anchors the voice (voice R); voice-step-1 anchors the lanes (lane R).
+Lanes advance driven by the VOICE's step. Because voice R determines WHEN voice-step-1 occurs in global
+time, voice R now PROPAGATES to the lanes (shifting voice R shifts the voice-step timeline, moving when
+the lanes hit their rotations and everything downstream). Voice R is no longer inert.
+
+### Worked two-lane example
+Voice: L=8, O=5, R=7 (window 5..12). Lane A: L=4, O=1, R=3 (win 1..4). Lane B: L=6, O=3, R=6 (win 3..8).
+Voice reads its window from 7 at global 1, looping within 5..12. "Voice step" = window position 1..8
+(pattern 5=pos1 ... 12=pos8); voice-step-1 (window start, pattern 5) occurs at global 7 and 15.
+Lanes hit their rotation at voice-step-1 (global 7/15), advancing with voice-step:
+
+| global | voice reads | voice step (1..8) | lane A (win1-4,R=3) | lane B (win3-8,R=6) |
+|   1 |  7 | 3 | 1 | 8 |
+|   2 |  8 | 4 | 2 | 3 |
+|   3 |  9 | 5 | 3 | 4 |
+|   4 | 10 | 6 | 4 | 5 |
+|   5 | 11 | 7 | 1 | 6 |
+|   6 | 12 | 8 | 2 | 7 |
+|   7 |  5 | 1 | 3 (=lane R) | 6 (=lane R) |
+|   8 |  6 | 2 | 4 | 7 |
+|   9 |  7 | 3 | 1 | 8 |
+|  10 |  8 | 4 | 2 | 3 |
+|  11 |  9 | 5 | 3 | 4 |
+|  12 | 10 | 6 | 4 | 5 |
+|  13 | 11 | 7 | 1 | 6 |
+|  14 | 12 | 8 | 2 | 7 |
+|  15 |  5 | 1 | 3 | 6 |
+|  16 |  6 | 2 | 4 | 7 |
+
+Checks: global 1 -> voice reads 7 (voice R); lanes NOT at their R (they reference voice-step-1, which is
+at global 7). global 7 (voice step 1) -> lane A=3, lane B=6 (their Rs). Change voice R -> voice-step
+timeline shifts -> lanes shift too (voice R now matters). (Assumes voice-step-1 = voice WINDOW START; if
+instead it should be the voice's rotation position, shift the anchor accordingly — mechanism unchanged.)
+
 ## The gap (Rodney)
 Three levels of pattern addressing exist but are NOT one system:
 1. GLOBAL pattern length + offset (Monsoon) — top frame.
@@ -199,6 +254,32 @@ read-relationship enrichments on top.
 content/window-phase versions — heterophonic re-phrasing of READS on a shared grid, not onset-timing
 displacement. Still the heterophony/metric-modulation class; scoped to the read axis.)
 
+### THE PRECISE GAIN (Rodney) — two fixed constants of the lane beating become TUNABLE
+The sharpest statement of what voice LOR buys, grounded in the behaviour:
+- **BEFORE (lanes referenced to global):** lanes beat against EACH OTHER (different lane lengths ->
+  LCM beating) phase-linked at GLOBAL STEP 1, and against the FIXED 16-step global frame. Two beating
+  references, both fixed: lanes-vs-lanes (sync at global 1) and lanes-vs-16.
+- **NOW (lanes referenced to the voice):** lanes beat against each other AND against the VOICE length,
+  which is ANY value 1..16 (not just 16), phase-linked at VOICE-STEP-1 — whose position in the phrase
+  is SELECTABLE via voice R.
+
+So two previously-FIXED parameters of the lane polymeter become CONTROLS:
+1. **Beating CONTAINER cycle: 16 (fixed) -> voice length 1..16 (tunable).** You choose the modulus the
+   lanes nest within.
+2. **Phase ANCHOR: global step 1 (fixed) -> voice-step-1 position (selectable via voice R).** You choose
+   where the lanes' common phase reference falls, not just the downbeat.
+
+Why it matters (the felt result): tight, FEELABLE ratios like 6-in-8 were UNREACHABLE before — a 6-lane
+could only beat against 16 (LCM 48, a long loose cycle). 6-against-8 (LCM 24, tight, clearly felt) needs
+the tunable voice length. So voice LOR doesn't just add beatings — it adds the USEFUL, tight,
+feelable ones (6/8, 3/4, 5/8...) that beating-against-16 can't give. Example reads for a 6-lane in an
+8-voice: 5,6,7,6,7,8,9,10 — you can FEEL the 6/8 lilt in how the probability reads recur (the
+overlapping 5,6,7 -> 6,7,8). That felt groove is the payoff that the abstract 'metric modulation /
+heterophony' framing names but the EAR confirms.
+One-line: voice LOR makes the lane-beating CONTAINER (was fixed 16) and the phase ANCHOR (was fixed
+global-1) into tunable controls -> lanes beat against any cycle length, synced at any point -> unlocks
+the tight feelable polymetric ratios.
+
 ## Reversibility
 Each level (global/voice/lane) is a deterministic LOR transform of the counter-addressed spine. Forward
 = compose the maps; reverse = compose the inverses. Same reversibility the existing lane LOR already
@@ -221,3 +302,29 @@ delegation, each reversible, spanning the full field of how an ensemble's voices
 reaches (staggering, polymeter, phase, retrograde/mirror) are compositional techniques, not
 elaborations. Conceptually cheap (UI thin lane; compute read-only; delegation reused); the care is the
 nested-map composition semantics and holding the no-logic-outside-read constraint.
+
+---
+
+## ABSOLUTE MODE — final (Rodney): same mappings as CYCLE, just gate the output
+A per-voice MODE flag (HP, near delegation/direction): CYCLE (default) vs ABSOLUTE. ABSOLUTE is
+DEAD SIMPLE and supersedes all earlier elaborations (R-as-sync-point, read-roams-free, etc. — DROPPED):
+
+**Keep the EXACT cycle-mode read mappings (global->voice->lane, voice R, lane R referenced to
+voice-step-1 — all unchanged, see the nesting table above). Absolute adds ONLY an output gate:**
+1. **Zero the voice's GATE and CV OUT when the GLOBAL step is OUTSIDE the voice range** (outside
+   [O, O+L) of the voice window — global-position space). CV OUT = the voice's OUTPUT (pitch/CV to the
+   patch), zeroed so the voice emits NOTHING outside its region. **NOT the modulation CV INPUTS**
+   (spread/correlation/etc. CV in) — those are UNTOUCHED (absolute mode never touches generation or
+   correlation; it is purely an output gate+zero on the voice's outputs).
+2. **Stop any gate still HIGH at range END** (hard-cut at the O+L boundary, so a note sustaining as the
+   playhead leaves the range doesn't bleed past it — the range is a clean hard edge).
+
+That's it. Reads are computed everywhere (cycle mappings run continuously, nothing internal changes);
+output is gated to global ∈ [O, O+L) with a hard gate-stop at range end.
+- OUTPUT-gate only => marginals/correlation UNTOUCHED (NOT probability-modifying). Safe output-stage mute.
+- No roaming reads, no R re-interpretation, no sync-point logic — the earlier convolution came entirely
+  from trying to make the READS special in absolute mode; they are NOT special, only the output is gated.
+Payoff: per-voice SOUND REGIONS -> entrances/exits, builds, drops, call-and-response, voices occupying
+different regions of the phrase = arrangement-level structure (not otherwise reachable; rests give
+probabilistic silence, not a clean "active only here" region).
+
