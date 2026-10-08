@@ -170,6 +170,42 @@ namespace MonsoonIds {
         POLY_QMIX_PARAM_14,
         POLY_QMIX_PARAM_15,
 
+        // Poly VARIATION Probability (15 voices) — variation as a per-voice lane, parallel to
+        // rest/accent/q-mix. Voices 2..16 = 15 knobs; voice 1 (mono) variation lives on Monsoon's
+        // VARIATION_PARAM (mirrored below, same as REST_PARAM/ACCENT_KNOB/QMIX_LEVEL_PARAM).
+        POLY_VARIATION_PARAM_1,
+        POLY_VARIATION_PARAM_2,
+        POLY_VARIATION_PARAM_3,
+        POLY_VARIATION_PARAM_4,
+        POLY_VARIATION_PARAM_5,
+        POLY_VARIATION_PARAM_6,
+        POLY_VARIATION_PARAM_7,
+        POLY_VARIATION_PARAM_8,
+        POLY_VARIATION_PARAM_9,
+        POLY_VARIATION_PARAM_10,
+        POLY_VARIATION_PARAM_11,
+        POLY_VARIATION_PARAM_12,
+        POLY_VARIATION_PARAM_13,
+        POLY_VARIATION_PARAM_14,
+        POLY_VARIATION_PARAM_15,
+
+        // Poly LEGATO Probability (15 voices) — legato as a per-voice lane, parallel to variation.
+        POLY_LEGATO_PARAM_1,
+        POLY_LEGATO_PARAM_2,
+        POLY_LEGATO_PARAM_3,
+        POLY_LEGATO_PARAM_4,
+        POLY_LEGATO_PARAM_5,
+        POLY_LEGATO_PARAM_6,
+        POLY_LEGATO_PARAM_7,
+        POLY_LEGATO_PARAM_8,
+        POLY_LEGATO_PARAM_9,
+        POLY_LEGATO_PARAM_10,
+        POLY_LEGATO_PARAM_11,
+        POLY_LEGATO_PARAM_12,
+        POLY_LEGATO_PARAM_13,
+        POLY_LEGATO_PARAM_14,
+        POLY_LEGATO_PARAM_15,
+
         // Rest Probability Modulation Attenuverters (15 voices) - NEW
 
         // Accent Probability Modulation Attenuverters (15 voices) - NEW
@@ -1023,6 +1059,8 @@ struct Monsoon : Module {
     float getMonoRestBase();
     float getMonoAccentBase();
     float getMonoQmixBase();
+    float getMonoVariationBase();
+    float getMonoLegatoBase();
     float getRestParam();
     float getAccentParam();
     float getQmixParam();
@@ -1040,6 +1078,12 @@ struct Monsoon : Module {
     // base + Causeway CV × att, clamped. Voice-1/mono q-mix level is QMIX_LEVEL_PARAM (getEffectiveMonoQmix).
     float getBasePolyQmix(int voiceIdx);
     float getEffectivePolyQmix(int voiceIdx);
+    // Per-voice VARIATION/LEGATO, mirroring rest/accent. No Causeway VAR/LEG CV inputs yet,
+    // so effective = base (clamped). Mono base = VARIATION_PARAM / LEGATO_PARAM raw knob.
+    float getBasePolyVariation(int voiceIdx);
+    float getBasePolyLegato(int voiceIdx);
+    float getEffectivePolyVariation(int voiceIdx);
+    float getEffectivePolyLegato(int voiceIdx);
     float getEffectiveMonoQmix(float base);
     float getEffectiveMonoRest(float base);
     float getEffectiveMonoAccent(float base);
@@ -1159,6 +1203,8 @@ extern Model* modelStraitsBase;            // lane-extension base (frame + IO + 
 extern Model* modelStraitsLaneQMIX;        // QMIX lane expander
 extern Model* modelStraitsLaneREST;        // REST lane expander
 extern Model* modelStraitsLaneACCENT;      // ACCENT lane expander
+extern Model* modelStraitsLaneVARIATION;   // VARIATION lane expander
+extern Model* modelStraitsLaneLEGATO;      // LEGATO lane expander
 extern Model* modelMonsoonCausewayPolyExpander; // poly CV modulation expander
 extern Model* modelMonsoonChangiExpander; // per-voice output expander
 extern Model* modelMonsoonShophouseExpander; // scale expander (12th module)

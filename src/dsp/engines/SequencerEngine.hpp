@@ -47,6 +47,8 @@ struct PolyVoice {
                                // draw is thresholded against. 0 = always quantised (legacy), 1 =
                                // always generated. Mirrors restProb/accentProb (per-voice decision
                                // cache written by ModeController from getEffectivePolyQmix).
+    float variationProb = 0.5f; // per-voice VARIATION probability — mirrors restProb/accentProb.
+    float legatoProb = 0.0f;    // per-voice LEGATO probability — mirrors restProb/accentProb.
     bool  accented = false;    // result of this voice's own accent draw this step
     // Rule 2 (EAST_EXTRA_LANES §4d): latched at the mono chain onset — true if this voice
     // PLAYED (vs rested) when mono started the gate, and held for the chain's life. It, not

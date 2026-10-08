@@ -1075,7 +1075,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             int varIdx = getVariationStepForVoice(voiceIdx) & 0x0F;
             refreshPolyRandomCell(voiceIdx, PL_VARIATION, varIdx);
             float r_vary_voice = polyRandomSrc(voiceIdx, PL_VARIATION)[varIdx];
-            if (r_vary_voice >= input.variationAmount) {
+            if (r_vary_voice >= v.variationProb) {
                 // Rested ghost: transparent — silent, not part of the chain.
                 v.accented = false;
                 v.gs.gateHeld = false; v.gsStep.gateHeld = false;
@@ -1169,7 +1169,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
             float r_polyLegato = polyRandomSrc(voiceIdx, PL_LEGATO)[legIdx];
             v.gs.slurForward = leStartingV
                              && noteCanLeadLegato(nvV)
-                             && (lastLegatoProb_ >= 0.999f || r_polyLegato < lastLegatoProb_);
+                             && (v.legatoProb >= 0.999f || r_polyLegato < v.legatoProb);
             v.gs.slurMember = v.gs.slurForward;   // SLEG: onset member iff it leads a slur
 #if RULE2_DEBUG
             INFO("[R2 roll ] v=%2d step=%3d LE=%d legCell=%2d monoCell=%2d legLOR=(%2d,%2d,%2d) "
@@ -1264,7 +1264,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                   refreshPolyRandomCell(voiceIdx, PL_LEGATO, legIdx2);
                 float r_polyLegato = polyRandomSrc(voiceIdx, PL_LEGATO)[legIdx2];
                 v.gs.slurForward = noteCanLeadLegato(nvV)
-                                 && (lastLegatoProb_ >= 0.999f || r_polyLegato < lastLegatoProb_);
+                                 && (v.legatoProb >= 0.999f || r_polyLegato < v.legatoProb);
                 v.gs.slurMember = prevSlur || v.gs.slurForward;  // SLEG: continues OR leads
                 }
             }

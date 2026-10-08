@@ -33,6 +33,14 @@ static const LaneDescriptor ACCENT_DESCRIPTOR = {
     "StraitsLaneACCENT", "param_accent_", "Accent",
     MonsoonIds::ACCENT_KNOB, MonsoonIds::POLY_ACCENT_PARAM_1, 1, "accent"
 };
+static const LaneDescriptor VARIATION_DESCRIPTOR = {
+    "StraitsLaneVARIATION", "param_variation_", "Variation",
+    MonsoonIds::VARIATION_PARAM, MonsoonIds::POLY_VARIATION_PARAM_1, 5, "variation"
+};
+static const LaneDescriptor LEGATO_DESCRIPTOR = {
+    "StraitsLaneLEGATO", "param_legato_", "Legato",
+    MonsoonIds::LEGATO_PARAM, MonsoonIds::POLY_LEGATO_PARAM_1, 6, "legato"
+};
 
 struct StraitsLaneExpanderWidget : ModuleWidget,
     dotModular::Compose<StraitsLaneExpanderWidget,
@@ -80,17 +88,46 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
             // voice == -1 → MONO lane (voice 1); voice 0..14 → poly voices 2..16.
             // lane = desc->arcLane (REST=0, ACCENT=1, QMIX=2).
             auto setOf = [self, lane](Monsoon* m, int voice) -> float {
-                if (voice == -1)
-                    return lane == 0 ? m->getMonoRestBase() : lane == 1 ? m->getMonoAccentBase() : m->getMonoQmixBase();
+                if (voice == -1) {
+                    switch (lane) {
+                        case 0: return m->getMonoRestBase();
+                        case 1: return m->getMonoAccentBase();
+                        case 2: return m->getMonoQmixBase();
+                        case 5: return m->getMonoVariationBase();
+                        case 6: return m->getMonoLegatoBase();
+                        default: return 0.f;
+                    }
+                }
                 if (voice < 0 || voice >= 15) return 0.f;
-                return lane == 0 ? m->getBasePolyRest(voice) : lane == 1 ? m->getBasePolyAccent(voice) : m->getBasePolyQmix(voice);
+                switch (lane) {
+                    case 0: return m->getBasePolyRest(voice);
+                    case 1: return m->getBasePolyAccent(voice);
+                    case 2: return m->getBasePolyQmix(voice);
+                    case 5: return m->getBasePolyVariation(voice);
+                    case 6: return m->getBasePolyLegato(voice);
+                    default: return 0.f;
+                }
             };
             auto modOf = [self, lane](Monsoon* m, int voice) -> float {
-                if (voice == -1)
-                    return lane == 0 ? m->getRestParam() : lane == 1 ? m->getAccentParam() : m->getQmixParam();
+                if (voice == -1) {
+                    switch (lane) {
+                        case 0: return m->getRestParam();
+                        case 1: return m->getAccentParam();
+                        case 2: return m->getQmixParam();
+                        case 5: return m->getVariationParam();
+                        case 6: return m->getLegatoParam();
+                        default: return 0.f;
+                    }
+                }
                 if (voice < 0 || voice >= 15) return 0.f;
-                return lane == 0 ? m->getEffectivePolyRest(voice) : lane == 1 ? m->getEffectivePolyAccent(voice)
-                                                                               : m->getEffectivePolyQmix(voice);
+                switch (lane) {
+                    case 0: return m->getEffectivePolyRest(voice);
+                    case 1: return m->getEffectivePolyAccent(voice);
+                    case 2: return m->getEffectivePolyQmix(voice);
+                    case 5: return m->getEffectivePolyVariation(voice);
+                    case 6: return m->getEffectivePolyLegato(voice);
+                    default: return 0.f;
+                }
             };
             arc->getSetNorm = [self, voice, setOf]() -> float {
                 Monsoon* m = redDot::findMonsoonEitherSide(self->module);
@@ -184,7 +221,9 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
                 return left->model == modelStraitsBase
                     || left->model == modelStraitsLaneQMIX
                     || left->model == modelStraitsLaneREST
-                    || left->model == modelStraitsLaneACCENT;
+                    || left->model == modelStraitsLaneACCENT
+                    || left->model == modelStraitsLaneVARIATION
+                    || left->model == modelStraitsLaneLEGATO;
             };
             addChild(connectMark);
         }
@@ -237,6 +276,12 @@ struct StraitsLaneRESTModule : StraitsLaneExpander {
 struct StraitsLaneACCENTModule : StraitsLaneExpander {
     StraitsLaneACCENTModule() { setDescriptor(&ACCENT_DESCRIPTOR); }
 };
+struct StraitsLaneVARIATIONModule : StraitsLaneExpander {
+    StraitsLaneVARIATIONModule() { setDescriptor(&VARIATION_DESCRIPTOR); }
+};
+struct StraitsLaneLEGATOModule : StraitsLaneExpander {
+    StraitsLaneLEGATOModule() { setDescriptor(&LEGATO_DESCRIPTOR); }
+};
 
 Model* modelStraitsLaneQMIX =
     createModel<StraitsLaneQMIXModule, StraitsLaneExpanderWidget>("StraitsLaneQMIX");
@@ -244,3 +289,7 @@ Model* modelStraitsLaneREST =
     createModel<StraitsLaneRESTModule, StraitsLaneExpanderWidget>("StraitsLaneREST");
 Model* modelStraitsLaneACCENT =
     createModel<StraitsLaneACCENTModule, StraitsLaneExpanderWidget>("StraitsLaneACCENT");
+Model* modelStraitsLaneVARIATION =
+    createModel<StraitsLaneVARIATIONModule, StraitsLaneExpanderWidget>("StraitsLaneVARIATION");
+Model* modelStraitsLaneLEGATO =
+    createModel<StraitsLaneLEGATOModule, StraitsLaneExpanderWidget>("StraitsLaneLEGATO");

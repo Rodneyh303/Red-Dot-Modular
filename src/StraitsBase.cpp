@@ -160,12 +160,12 @@ struct StraitsBaseWidget : ModuleWidget,
         menu->addChild(createCheckMenuItem("Q-MIX", "",
             [this]() { return hasLane("StraitsLaneQMIX"); },
             [this]() { toggleLane("StraitsLaneQMIX"); }));
-        auto* varItem = createCheckMenuItem("VARIATION", "", []() { return false; }, []() {});
-        varItem->disabled = true;
-        menu->addChild(varItem);
-        auto* legItem = createCheckMenuItem("LEGATO", "", []() { return false; }, []() {});
-        legItem->disabled = true;
-        menu->addChild(legItem);
+        menu->addChild(createCheckMenuItem("VARIATION", "",
+            [this]() { return hasLane("StraitsLaneVARIATION"); },
+            [this]() { toggleLane("StraitsLaneVARIATION"); }));
+        menu->addChild(createCheckMenuItem("LEGATO", "",
+            [this]() { return hasLane("StraitsLaneLEGATO"); },
+            [this]() { toggleLane("StraitsLaneLEGATO"); }));
     }
 
     // ── Spawn a lane expander module and dock it right ───────────────────────
@@ -176,6 +176,8 @@ struct StraitsBaseWidget : ModuleWidget,
         if (slug == "StraitsLaneQMIX") model = modelStraitsLaneQMIX;
         else if (slug == "StraitsLaneREST") model = modelStraitsLaneREST;
         else if (slug == "StraitsLaneACCENT") model = modelStraitsLaneACCENT;
+        else if (slug == "StraitsLaneVARIATION") model = modelStraitsLaneVARIATION;
+        else if (slug == "StraitsLaneLEGATO") model = modelStraitsLaneLEGATO;
         if (!model) return;
 
         // Create the module

@@ -1,28 +1,24 @@
 #!/usr/bin/env python3
-"""Straits — poly expander panel (34HP), styled as the flowing straits between shores.
+"""Straits — poly expander panel (54HP), styled as the flowing straits between shores.
 
-The refactored single Straits carries 16 REST + 16 ACCENT + 16 Q-MIX per-voice knobs (voice 1 =
-mono/ch0, voices 2..16 = poly) plus five 16ch poly-cable outs (gate/step/sleg/CV/accent). The old
-East/West split is gone — instead THREE knob banks sit side by side: REST (muted cool), ACCENT
-(vibrant warm) and Q-MIX (purple), the tint itself the literal lane distinction. A field of flowing
-contour "wave" lines runs behind each bank (the straits' water), tinted to each side. A voice spine
-(1..16) on the far left organises rows; voice 1 (mono) is marked distinctly.
-
-Q-MIX (Task 4 poly): per-voice level blending that voice's CV out between quantised input (0) and
-internally-generated notes (1) — the poly twin of the mono Q-mix Level. "Goes where rest and accent
-already are": a third bank exactly parallel to rest/accent.
+The Straits carries 16 REST + 16 ACCENT + 16 Q-MIX + 16 VARIATION + 16 LEGATO per-voice knobs
+(voice 1 = mono/ch0, voices 2..16 = poly) plus five 16ch poly-cable outs (gate/step/sleg/CV/accent).
+FIVE knob banks sit side by side: REST (muted cool), ACCENT (vibrant warm), Q-MIX (purple),
+VARIATION (olive green) and LEGATO (cool blue), the tint itself the literal lane distinction.
 
 nanosvg-safe (solid fills/strokes, no gradient/mask/text/url).
 
 Kit id markers (widget binds; voice v 0..15, v0 = mono/voice 1):
-  param_rest_<0..15>     REST probability knob   (v0 → mono REST_PARAM,   v1..15 → POLY_REST_PARAM_*)
-  param_accent_<0..15>   ACCENT probability knob (v0 → mono ACCENT_KNOB,  v1..15 → POLY_ACCENT_PARAM_*)
-  param_qmix_<0..15>     Q-MIX level knob        (v0 → mono QMIX_LEVEL_PARAM, v1..15 → POLY_QMIX_PARAM_*)
+  param_rest_<0..15>       REST probability knob
+  param_accent_<0..15>     ACCENT probability knob
+  param_qmix_<0..15>       Q-MIX level knob
+  param_variation_<0..15>  VARIATION probability knob
+  param_legato_<0..15>     LEGATO probability knob
   output_polygate / output_polystepgate / output_polyslegato / output_polycv / output_polyaccent
   input_quantcv / param_voicecount / light_connect
 """
 import math, os, re
-HP = 34
+HP = 54
 W  = HP * 5.08
 H  = 128.5
 S  = 75 / 25.4
@@ -31,10 +27,12 @@ def px(v): return round(v*S, 2)
 
 THEMES = {
     "dark":  dict(bg="#14171b", red="#d4001a", ink="#f0f0f0",
-                  # REST = muted cool; ACCENT = vibrant warm; QMIX = purple
+                  # REST = muted cool; ACCENT = vibrant warm; QMIX = purple; VAR = olive; LEG = blue
                   rest="#3f7d78", restwave="#2a5a56", restknob="#1a2e2c",
                   acc="#e08a1a", accwave="#8a5410", accknob="#3a2a10",
                   qmix="#8060c0", qmixwave="#4e3a78", qmixknob="#241a3a",
+                  var="#7a9a3a", varwave="#5a7a2a", varknob="#2a3a14",
+                  leg="#3a6a9a", legwave="#2a4a7a", legknob="#14223a",
                   spine="#5a6470", spinehi="#8a94a0", spinedot="#4c7ac0",
                   knobface="#2a2e33", knobring="#4a5058", knobtick="#c0c8d0",
                   jackwell="#0c0e11", jackring="#4a4a4a", gold="#c8960c",
@@ -43,6 +41,8 @@ THEMES = {
                   rest="#5a9a94", restwave="#6fa8a2", restknob="#c8ddd9",
                   acc="#c88018", accwave="#d09a48", accknob="#e4d4b8",
                   qmix="#8a6ac8", qmixwave="#a087d0", qmixknob="#d8cceb",
+                  var="#8aaa4a", varwave="#a0c060", varknob="#d0e0b0",
+                  leg="#4a7aaa", legwave="#6090c0", legknob="#b0cce0",
                   spine="#b0b8c0", spinehi="#8a94a0", spinedot="#4c6ab0",
                   knobface="#e8e2d6", knobring="#b0a898", knobtick="#5a5040",
                   jackwell="#e2ddd2", jackring="#b0a898", gold="#b07d00",
@@ -54,7 +54,7 @@ MARGIN   = 5.0
 # far-left panel edge. So there's no dedicated left "spine" column any more — the banks start
 # near the left margin and the rails are derived from the gutter midpoints (see gutter_cx()).
 GAP      = 6.0                  # gap between banks — wide enough to host a divider rail
-NBANKS   = 3                   # rest, accent, qmix (rails auto-scale: one per (NBANKS-1) gap)
+NBANKS   = 5                   # rest, accent, qmix, variation, legato
 BANKS_X0 = MARGIN + 2.0
 BANK_W   = (W - BANKS_X0 - MARGIN - (NBANKS-1)*GAP) / float(NBANKS)
 TOP      = 16.0
@@ -122,9 +122,11 @@ def gen(dark):
     A(f'<rect width="{PW}" height="{PH}" fill="{t["bg"]}"/>')
     A(f'<rect x="0" y="0" width="{PW}" height="{px(1.2)}" fill="{t["red"]}"/>')
 
-    bands = [("rest",   t["rest"], t["restwave"], t["restknob"]),
-             ("accent", t["acc"],  t["accwave"],  t["accknob"]),
-             ("qmix",   t["qmix"], t["qmixwave"], t["qmixknob"])]
+    bands = [("rest",      t["rest"], t["restwave"], t["restknob"]),
+             ("accent",    t["acc"],  t["accwave"],  t["accknob"]),
+             ("qmix",      t["qmix"], t["qmixwave"], t["qmixknob"]),
+             ("variation", t["var"],  t["varwave"],  t["varknob"]),
+             ("legato",    t["leg"],  t["legwave"],  t["legknob"])]
 
     # ── wave fields + tint bands behind each of the three banks ──
     for idx, (kind, tint, wave, _knob) in enumerate(bands):
@@ -152,9 +154,11 @@ def gen(dark):
                 knob(A, t, cx, cy, KNOB_R, col_face, col_ring, mono)
                 A(f'<circle id="param_{kind}_{v}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
                 v += 1
-    bank("rest",   bank_x0(0), t["restknob"], t["rest"])
-    bank("accent", bank_x0(1), t["accknob"],  t["acc"])
-    bank("qmix",   bank_x0(2), t["qmixknob"], t["qmix"])
+    bank("rest",      bank_x0(0), t["restknob"], t["rest"])
+    bank("accent",    bank_x0(1), t["accknob"],  t["acc"])
+    bank("qmix",      bank_x0(2), t["qmixknob"], t["qmix"])
+    bank("variation", bank_x0(3), t["varknob"],  t["var"])
+    bank("legato",    bank_x0(4), t["legknob"],  t["leg"])
 
     # ── divider rails: ONE per inter-bank gutter (derived from group geometry via gutter_cx),
     # so 3 banks → 2 rails and a future 4th bank would add a 3rd automatically. Each rail is a

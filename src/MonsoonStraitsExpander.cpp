@@ -62,17 +62,46 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
             // lane: 0 = REST, 1 = ACCENT, 2 = QMIX. QMIX now has a Causeway CV path (QMIX_CV_INPUT),
             // so its arc shows the effective-vs-set delta like rest/accent.
             auto setOf = [self](Monsoon* m, int voice, int lane) -> float {
-                if (voice == -1)
-                    return lane == 0 ? m->getMonoRestBase() : lane == 1 ? m->getMonoAccentBase() : m->getMonoQmixBase();
+                if (voice == -1) {
+                    switch (lane) {
+                        case 0: return m->getMonoRestBase();
+                        case 1: return m->getMonoAccentBase();
+                        case 2: return m->getMonoQmixBase();
+                        case 5: return m->getMonoVariationBase();
+                        case 6: return m->getMonoLegatoBase();
+                        default: return 0.f;
+                    }
+                }
                 if (voice < 0 || voice >= 15) return 0.f;
-                return lane == 0 ? m->getBasePolyRest(voice) : lane == 1 ? m->getBasePolyAccent(voice) : m->getBasePolyQmix(voice);
+                switch (lane) {
+                    case 0: return m->getBasePolyRest(voice);
+                    case 1: return m->getBasePolyAccent(voice);
+                    case 2: return m->getBasePolyQmix(voice);
+                    case 5: return m->getBasePolyVariation(voice);
+                    case 6: return m->getBasePolyLegato(voice);
+                    default: return 0.f;
+                }
             };
             auto modOf = [self](Monsoon* m, int voice, int lane) -> float {
-                if (voice == -1)
-                    return lane == 0 ? m->getRestParam() : lane == 1 ? m->getAccentParam() : m->getQmixParam();
+                if (voice == -1) {
+                    switch (lane) {
+                        case 0: return m->getRestParam();
+                        case 1: return m->getAccentParam();
+                        case 2: return m->getQmixParam();
+                        case 5: return m->getVariationParam();
+                        case 6: return m->getLegatoParam();
+                        default: return 0.f;
+                    }
+                }
                 if (voice < 0 || voice >= 15) return 0.f;
-                return lane == 0 ? m->getEffectivePolyRest(voice) : lane == 1 ? m->getEffectivePolyAccent(voice)
-                                                                               : m->getEffectivePolyQmix(voice);
+                switch (lane) {
+                    case 0: return m->getEffectivePolyRest(voice);
+                    case 1: return m->getEffectivePolyAccent(voice);
+                    case 2: return m->getEffectivePolyQmix(voice);
+                    case 5: return m->getEffectivePolyVariation(voice);
+                    case 6: return m->getEffectivePolyLegato(voice);
+                    default: return 0.f;
+                }
             };
             arc->getSetNorm = [self, voice, lane, setOf]() -> float {
                 Monsoon* m = redDot::findMonsoonEitherSide(self->module);
@@ -154,6 +183,28 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                 };
                 queueArc(k, -1, 2);
             }));
+        // ── voice 0 = mono VARIATION + LEGATO: LOCKED knobs mirroring Monsoon's VARIATION_PARAM /
+        //    LEGATO_PARAM, exactly like the mono rest/accent/q-mix mirrors above.
+        bindParam<redDot::Themed_Compact_Cog_Dim>("param_variation_0", MonsoonIds::VARIATION_PARAM,
+            std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this](redDot::Themed_Compact_Cog_Dim* k){
+                k->lightWhen = [this](){ return themeLight_; };
+                k->lockWhen = [](){ return true; };
+                k->displayValueFn = [this]() -> float {
+                    Monsoon* m = redDot::findMonsoonEitherSide(module);
+                    return m ? m->params[MonsoonIds::VARIATION_PARAM].getValue() : NAN;
+                };
+                queueArc(k, -1, 5);
+            }));
+        bindParam<redDot::Themed_Compact_Cog_Dim>("param_legato_0", MonsoonIds::LEGATO_PARAM,
+            std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this](redDot::Themed_Compact_Cog_Dim* k){
+                k->lightWhen = [this](){ return themeLight_; };
+                k->lockWhen = [](){ return true; };
+                k->displayValueFn = [this]() -> float {
+                    Monsoon* m = redDot::findMonsoonEitherSide(module);
+                    return m ? m->params[MonsoonIds::LEGATO_PARAM].getValue() : NAN;
+                };
+                queueArc(k, -1, 6);
+            }));
         // ── voices 1..15 = poly. Param = POLY_*_PARAM_1 + (i-1); arc voice index = poly index (i-1),
         //    which maps to getBasePolyRest(0..14). Themed_Compact_Cog_Dim (not plain) so each
         //    poly knob can dim when its voice is above Monsoon's active count -- lit = live. ──
@@ -191,7 +242,22 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                     k->lockWhen  = dimIfInactive;   // inactive voice → inoperative (was draggable)
                     queueArc(k, polyIdx, 2);
                 }));
-        }
+                // Per-voice VARIATION + LEGATO knobs, mirroring rest/accent/q-mix above.
+                bindParam<redDot::Themed_Compact_Cog_Dim>("param_variation_" + r, MonsoonIds::POLY_VARIATION_PARAM_1 + polyIdx,
+                    std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this, polyIdx, dimIfInactive](redDot::Themed_Compact_Cog_Dim* k){
+                        k->lightWhen = [this](){ return themeLight_; };
+                        k->dimWhen   = dimIfInactive;
+                        k->lockWhen  = dimIfInactive;
+                        queueArc(k, polyIdx, 5);
+                    }));
+                bindParam<redDot::Themed_Compact_Cog_Dim>("param_legato_" + r, MonsoonIds::POLY_LEGATO_PARAM_1 + polyIdx,
+                    std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this, polyIdx, dimIfInactive](redDot::Themed_Compact_Cog_Dim* k){
+                        k->lightWhen = [this](){ return themeLight_; };
+                        k->dimWhen   = dimIfInactive;
+                        k->lockWhen  = dimIfInactive;
+                        queueArc(k, polyIdx, 6);
+                    }));
+            }
 
         // Three 16-channel poly-cable outputs (ch1 = mono, ch2.. = poly).
         bindOutput<PJ301MPort>("output_polygate",     POLY_GATE_OUT);

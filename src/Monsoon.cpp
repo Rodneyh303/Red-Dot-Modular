@@ -212,6 +212,8 @@ float Monsoon::getLegatoParam()     { return paramManager->getLegato(); }
 float Monsoon::getMonoRestBase()    { return params[REST_PARAM ].getValue(); }
 float Monsoon::getMonoAccentBase()  { return params[ACCENT_KNOB].getValue(); }
 float Monsoon::getMonoQmixBase()    { return params[QMIX_LEVEL_PARAM].getValue(); }
+float Monsoon::getMonoVariationBase() { return params[VARIATION_PARAM].getValue(); }
+float Monsoon::getMonoLegatoBase()    { return params[LEGATO_PARAM].getValue(); }
 // Mono EFFECTIVE (Causeway ch0-modulated) rest/accent/q-mix — the arc's 'mod' value, and what the
 // engine consumes (see ModeController).
 float Monsoon::getRestParam()       { return getEffectiveMonoRest(paramManager->getRestUnclamped()); }
@@ -379,7 +381,24 @@ float Monsoon::getEffectiveMonoAccent(float base) {
     return math::clamp(base, 0.f, 1.f);
 }
 
-// --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---    
+// Per-voice VARIATION/LEGATO — mirrors rest/accent. No Causeway VAR/LEG CV inputs exist yet,
+// so effective = base (clamped). Mono base = raw VARIATION_PARAM / LEGATO_PARAM knob.
+float Monsoon::getBasePolyVariation(int voiceIdx) {
+    return paramManager ? paramManager->getPolyVariation(voiceIdx) : 0.5f;
+}
+float Monsoon::getBasePolyLegato(int voiceIdx) {
+    return paramManager ? paramManager->getPolyLegato(voiceIdx) : 0.0f;
+}
+float Monsoon::getEffectivePolyVariation(int voiceIdx) {
+    // No Causeway VAR CV input yet — effective = base, clamped.
+    return math::clamp(getBasePolyVariation(voiceIdx), 0.f, 1.f);
+}
+float Monsoon::getEffectivePolyLegato(int voiceIdx) {
+    // No Causeway LEG CV input yet — effective = base, clamped.
+    return math::clamp(getBasePolyLegato(voiceIdx), 0.f, 1.f);
+}
+
+// --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---
 void Monsoon::switchMelodyMode() { engine.pe.switchMelodyMode(stepIndex, lastStepIndex); }
 
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---

@@ -242,6 +242,38 @@ float ParameterManager::getPolyQmixLevel(int voiceIdx) const {
     return clampv(v, 0.f, 1.f);
 }
 
+// Per-voice VARIATION probability, mirroring getPolyRest EXACTLY. Reads the Straits expander's
+// POLY_VARIATION_PARAM_* knobs (per-voice). No dedicated VAR CV input yet (unlike REST's
+// POLY_REST_CV_INPUT) — CV modulation is added on top in Monsoon's getEffectivePolyVariation
+// via Causeway (when a Causeway VAR CV input is added). Falls back to mono VARIATION_PARAM.
+float ParameterManager::getPolyVariation(int voiceIdx) const {
+    if (voiceIdx < 0 || voiceIdx > 14) return 0.5f;
+    float v = (mainModule ? mainModule->params[VARIATION_PARAM].getValue() : 0.5f);
+    if (cachedPolyVoiceExpander && *cachedPolyVoiceExpander) {
+        auto& params = (*cachedPolyVoiceExpander)->params;
+        int paramId = POLY_VARIATION_PARAM_1 + voiceIdx;
+        if (paramId < (int)params.size()) {
+            v = params[paramId].getValue();
+        }
+    }
+    return clampv(v, 0.f, 1.f);
+}
+
+// Per-voice LEGATO probability, mirroring getPolyRest EXACTLY. Reads the Straits expander's
+// POLY_LEGATO_PARAM_* knobs (per-voice). Falls back to mono LEGATO_PARAM.
+float ParameterManager::getPolyLegato(int voiceIdx) const {
+    if (voiceIdx < 0 || voiceIdx > 14) return 0.0f;
+    float v = (mainModule ? mainModule->params[LEGATO_PARAM].getValue() : 0.0f);
+    if (cachedPolyVoiceExpander && *cachedPolyVoiceExpander) {
+        auto& params = (*cachedPolyVoiceExpander)->params;
+        int paramId = POLY_LEGATO_PARAM_1 + voiceIdx;
+        if (paramId < (int)params.size()) {
+            v = params[paramId].getValue();
+        }
+    }
+    return clampv(v, 0.f, 1.f);
+}
+
 float ParameterManager::getPolyRest(int voiceIdx) const {
     if (voiceIdx < 0 || voiceIdx > 14) return 0.1f;
 

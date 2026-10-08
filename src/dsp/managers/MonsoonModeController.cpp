@@ -48,6 +48,11 @@ void ModeController::updatePolyVoiceRest_() {
         // voices[i].qmixLevel per-step in executePolyVoice's source-select. getEffectivePolyQmix
         // is the single resolver (Straits knob; no Causeway q-mix CV yet).
         engine.voices[i].qmixLevel  = mainModule->getEffectivePolyQmix(i);
+        // VAR/LEG per-voice knobs — mirror rest/accent/q-mix. The engine reads these in
+        // executePolyVoice to threshold the per-voice VAR/LEG draws (which already exist
+        // as slewedPolyVariation/Legato → polyRandom(PL_VARIATION/PL_LEGATO)).
+        engine.voices[i].variationProb = mainModule->getEffectivePolyVariation(i);
+        engine.voices[i].legatoProb    = mainModule->getEffectivePolyLegato(i);
     }
     polyVoiceCachePrimed_ = true;
 }

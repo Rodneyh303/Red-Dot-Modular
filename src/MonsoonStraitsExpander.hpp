@@ -84,9 +84,13 @@ struct MonsoonStraitsExpander : Module {
         // Monsoon's QMIX_LEVEL_PARAM (driven from the widget each frame). Configured here so the param
         // exists with range; the parent stays authoritative (the engine reads Monsoon's own knob).
         configParam(MonsoonIds::QMIX_LEVEL_PARAM, 0.f, 1.f, 0.f, "Voice 1 (mono) Q-mix Level - follows Monsoon");
+        // Voice 1 (mono) VARIATION + LEGATO mirrors — like rest/accent/q-mix above, these knobs
+        // MIRROR the parent Monsoon's mono VARIATION_PARAM / LEGATO_PARAM (driven each frame).
+        configParam(MonsoonIds::VARIATION_PARAM, 0.f, 1.f, 0.5f, "Voice 1 (mono) Variation - follows Monsoon");
+        configParam(MonsoonIds::LEGATO_PARAM,    0.f, 1.f, 0.0f, "Voice 1 (mono) Legato - follows Monsoon");
 
-        // Per-poly-voice REST + ACCENT + Q-MIX knobs (voices 2..16 = 15 knobs each).
-        // Voice 1 (mono) rest/accent/q-mix lives on the parent Monsoon (mirrored above).
+        // Per-poly-voice REST + ACCENT + Q-MIX + VARIATION + LEGATO knobs (voices 2..16 = 15 each).
+        // Voice 1 (mono) params live on the parent Monsoon (mirrored above).
         for (int i = 0; i < 15; i++) {
             configParam(MonsoonIds::POLY_REST_PARAM_1 + i, 0.f, 1.f, 0.1f,
                         "Voice " + std::to_string(i + 2) + " Rest Probability");
@@ -94,6 +98,10 @@ struct MonsoonStraitsExpander : Module {
                         "Voice " + std::to_string(i + 2) + " Accent Probability");
             configParam(MonsoonIds::POLY_QMIX_PARAM_1 + i, 0.f, 1.f, 0.f,
                         "Voice " + std::to_string(i + 2) + " Q-mix Level");
+            configParam(MonsoonIds::POLY_VARIATION_PARAM_1 + i, 0.f, 1.f, 0.5f,
+                        "Voice " + std::to_string(i + 2) + " Variation Probability");
+            configParam(MonsoonIds::POLY_LEGATO_PARAM_1 + i, 0.f, 1.f, 0.0f,
+                        "Voice " + std::to_string(i + 2) + " Legato Probability");
         }
 
         configOutput(StraitsIds::POLY_GATE_OUT,           "Poly gate (16ch: ch1 = mono, ch2.. = poly)");

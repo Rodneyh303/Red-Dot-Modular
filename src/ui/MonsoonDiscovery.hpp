@@ -41,6 +41,8 @@ inline bool isSuiteChainModel(const rack::Model* m) {
         || m == modelStraitsLaneQMIX     // lane expander (base-spawned, hidden, hop-through)
         || m == modelStraitsLaneREST     // REST lane expander
         || m == modelStraitsLaneACCENT   // ACCENT lane expander
+        || m == modelStraitsLaneVARIATION // VARIATION lane expander
+        || m == modelStraitsLaneLEGATO   // LEGATO lane expander
         || m == modelMonsoonCausewayPolyExpander
         || m == modelMonsoonChangiExpander
         || m == modelMonsoonChangiT2Expander   // claimed expander (manager caches it) — was MISSING here,
