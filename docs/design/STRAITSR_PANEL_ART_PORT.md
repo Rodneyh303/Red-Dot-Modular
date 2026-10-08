@@ -40,6 +40,23 @@ Principle: don't make art span the seam; make each panel's edges SELF-COMPLETE (
 + full-height bg), and let the abutment of two self-complete edges BE the design. Turns "seam must be
 invisible" (unwinnable in Rack) into "seam is an intentional double-rail" (always works).
 
+## 5. QMIX mod-arc GLITCH — shows at construction with NO modulation
+The arc is active when getEffectivePolyQmix(v) != getBasePolyQmix(v). The earlier fix made
+getBasePolyQmix apply the same patched-detection as effective (Monsoon.cpp:285-295) so they agree at
+rest — BUT it checks `expanderManager.cachedPolyVoiceExpander` + `StraitsIds::QUANT_CV_INPUT` = the OLD
+Straits, NOT the new StraitsR base. With StraitsR attached, cachedPolyVoiceExpander isn't the StraitsR
+QMIX source, so patched-detection doesn't fire -> base returns the raw knob, effective returns 0 ->
+they diverge -> arc shows even with no modulation.
+**Fix:** make the QMIX patched-detection in getBasePolyQmix AND getEffectivePolyQmix (Monsoon.cpp:285,
+301) check the STRAITSR base (the refactor's QMIX CV input), or whichever expander is actually attached
+(old Straits OR StraitsR), so base == effective at rest regardless. Arc off at construction; on only
+when real Causeway/quantiser CV is patched.
+**Also grep for siblings:** other `cachedPolyVoiceExpander` / `QUANT_CV_INPUT` reads that assume OLD
+Straits (REST/ACCENT patched-detection, etc.) — same root cause as the de-paramming crash (code
+reaching for old Straits when StraitsR is attached). Fix any that'd misbehave with StraitsR.
+Verify: fresh StraitsR + QMIX lane, non-zero knob, NO CV patched -> NO mod-arc. Patch quantiser/Causeway
+CV -> arc appears.
+
 ## Verify
 Attach base + various lane combinations: continuous wavy bg behind lanes; continuous bottom wave across
 ALL panels in ANY combination; vertical separators between sub-panels; truly seamless seam (no visible
