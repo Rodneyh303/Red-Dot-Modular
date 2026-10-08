@@ -16,8 +16,20 @@
 #include "ui/Controls.hpp"
 #include <algorithm>   // std::sort
 #include "StraitsLaneExpander.hpp"
+#include "ui/StraitsSeamFiller.hpp"
 
 using namespace rack;
+
+// Helper: is this module a compatible StraitsR panel (for seam detection)?
+static bool isStraitsRPanel(rack::Module* m) {
+    if (!m) return false;
+    return m->model == modelStraitsBase
+        || m->model == modelStraitsLaneQMIX
+        || m->model == modelStraitsLaneREST
+        || m->model == modelStraitsLaneACCENT
+        || m->model == modelStraitsLaneVARIATION
+        || m->model == modelStraitsLaneLEGATO;
+}
 using namespace MonsoonIds;
 using namespace StraitsIds;
 
@@ -75,6 +87,8 @@ struct StraitsBaseWidget : ModuleWidget,
     int lastThemeLight = -1;
     bool lanesSpawned_ = false;   // false until auto-spawn/pending-spawn runs
     Vec lastBasePos_;             // detect base movement for one-shot re-snap
+    redDot::StraitsSeamFiller* leftFiller = nullptr;
+    redDot::StraitsSeamFiller* rightFiller = nullptr;
 
     StraitsBaseWidget(StraitsBaseModule* mod) {
         setModule(mod);
@@ -88,6 +102,21 @@ struct StraitsBaseWidget : ModuleWidget,
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+
+        // ── Seam fillers (runtime draw-over for seamless abutment) ──
+        float rulePx = 1.2f * 75.f / 25.4f;
+        leftFiller = new redDot::StraitsSeamFiller();
+        leftFiller->isLeft = true;
+        leftFiller->box.pos = Vec(-2, 0);
+        leftFiller->box.size.y = box.size.y;
+        leftFiller->ruleHeightPx = rulePx;
+        addChild(leftFiller);
+        rightFiller = new redDot::StraitsSeamFiller();
+        rightFiller->isLeft = false;
+        rightFiller->box.pos = Vec(box.size.x - 2, 0);
+        rightFiller->box.size.y = box.size.y;
+        rightFiller->ruleHeightPx = rulePx;
+        addChild(rightFiller);
 
         // ── IO bindings (COPIED from MonsoonStraitsExpanderWidget, unchanged) ──
         bindOutput<PJ301MPort>("output_polygate",     POLY_GATE_OUT);
@@ -211,6 +240,10 @@ struct StraitsBaseWidget : ModuleWidget,
         if (module) {
             Monsoon* mm = redDot::findMonsoonEitherSide(module);
             themeLight_ = (mm && mm->lightTheme);
+            // ── Seam filler: toggle based on neighbour detection ──
+            NVGcolor bg = themeLight_ ? nvgRGB(0xdc, 0xdc, 0xdc) : nvgRGB(0x14, 0x17, 0x1b);
+            if (leftFiller)  { leftFiller->active = isStraitsRPanel(module->leftExpander.module);  leftFiller->bgColour = bg; }
+            if (rightFiller) { rightFiller->active = isStraitsRPanel(module->rightExpander.module); rightFiller->bgColour = bg; }
             if (mm) {
                 if (!voiceCountSynced_) {
                     float knob = (float)(mm->engine.numPolyVoices + 1);
