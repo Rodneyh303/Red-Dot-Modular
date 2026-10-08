@@ -85,8 +85,10 @@ def gen(tintkey, dark=True):
     # ── Bottom wave footer (edge-tiling: 1 cycle per panel width) ──
     bottom_wave_tiling(A, px, W, WAVE_Y, WAVE_H, spine, theme["wave_op"], n=7)
 
-    # ── Left-edge separator (base→lane or lane→lane boundary) ──
-    separator_line(A, px, 0.3, 2.0, WAVE_Y + WAVE_H, spine, sw=0.5)
+    # ── L+R edge rails (double-rail seam design) ──
+    # Each edge is an inner seam (base↔lane or lane↔lane). At the abutment:
+    # panel-A-right-rail + panel-B-left-rail = intentional DOUBLE-RAIL.
+    panel_rails(A, px, W, 2.0, WAVE_Y + WAVE_H, theme)
 
     # Connect mark anchor
     A(f'<circle id="light_connect" cx="{px(W/2)}" cy="{px(H-8)}" r="0.5" fill="none" stroke="none"/>')

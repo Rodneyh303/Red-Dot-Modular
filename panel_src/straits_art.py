@@ -77,13 +77,41 @@ def bottom_wave_tiling(A, px, W, y, h, colour, wave_op=0.5, n=7):
           f'stroke-width="0.4" stroke-opacity="{op:.2f}"/>')
 
 
-# ── 3. Inter-panel vertical separator line ─────────────────────────────────────
-def separator_line(A, px, x, y_top, y_bot, colour, sw=0.6):
-    """Vertical separator spine at a panel boundary. Drawn at the LEFT edge of
-    each lane panel (and the RIGHT edge of the base) so abutted sub-panels show
-    the separator as the original Straits did between banks."""
+# ── 3. Panel edge rail (DOUBLE-RAIL seam design) ──────────────────────────────
+# Each panel draws a vertical rail on BOTH its LEFT and RIGHT edges, entirely
+# within its own SVG. At each abutment: panel-A-right-rail + panel-B-left-rail =
+# two close parallel rails = an intentional DOUBLE-RAIL seam. Robust to Rack's
+# sub-pixel panel misalignment — a gap just changes spacing between the two
+# rails (unnoticeable), where a single line would break. Also covers the bg
+# seam: any dark gap between panel backgrounds hides behind the rails.
+def panel_edge_rail(A, px, x, y_top, y_bot, colour, spinehi, spinedot, sw=0.6, n_dots=6):
+    """Draw a vertical rail at position x with horizontal notches (voice-row dots).
+    The rail spans y_top..y_bot. Dots are evenly spaced, with the first (top) dot
+    highlighted (mono/voice-1 marker)."""
     A(f'<line x1="{px(x)}" y1="{px(y_top)}" x2="{px(x)}" y2="{px(y_bot)}" '
       f'stroke="{colour}" stroke-width="{px(sw)}"/>')
+    # Voice-row dots (matching the original Straits' inter-bank dot pattern)
+    span = y_bot - y_top
+    for i in range(n_dots):
+        dy = y_top + span * (i + 0.5) / n_dots
+        mono = (i == 0)
+        c = spinedot if mono else spinehi
+        op = 1.0 if mono else 0.5
+        A(f'<circle cx="{px(x)}" cy="{px(dy)}" r="{px(0.7)}" '
+          f'fill="{c}" fill-opacity="{op}"/>')
+
+
+def panel_rails(A, px, W, y_top, y_bot, theme, is_outer_left=False, is_outer_right=False):
+    """Draw L+R edge rails for a panel. Each edge gets a vertical rail with dots.
+    At inner seams (base↔lane, lane↔lane): the abutment of two rails forms the
+    DOUBLE-RAIL. At outer edges (far-left/far-right of the assembly): single rail
+    frames the module."""
+    rail_x_left  = 0.3     # just inside the left edge
+    rail_x_right = W - 0.3 # just inside the right edge
+    panel_edge_rail(A, px, rail_x_left,  y_top, y_bot, theme["spine"],
+                    theme["spinehi"], theme["spinedot"])
+    panel_edge_rail(A, px, rail_x_right, y_top, y_bot, theme["spine"],
+                    theme["spinehi"], theme["spinedot"])
 
 
 # ── 4. Top-rule (red bar at the top) — shared for seam alignment ───────────────
