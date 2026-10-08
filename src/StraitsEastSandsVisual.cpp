@@ -1164,6 +1164,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         float send = monsoon ? monsoon->getMacroSend(kMono, lane, 3) : 0.f;
                         spread += macroVis->macroSendDelta[lane][3] * send;
                     }
+                    {
+                        static float lastSpread = 999.f;
+                        if (s == 0 && lane == 0 && std::fabs(spread - lastSpread) > 0.001f) {
+                            INFO("[BAR-READ-MONO] lane=%d s=%d spread=%.4f base=%.4f", lane, s, spread, base);
+                            lastSpread = spread;
+                        }
+                    }
                     visualEditor->currentState.lanes[el].probabilities[s] =
                         redDot::SpreadInterp::applyAnchorV1Only(peRef, lane, s, base, spread);
                 }

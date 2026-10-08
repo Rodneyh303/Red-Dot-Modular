@@ -423,10 +423,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             restInterp = combineSpread(PL::PL_REST, restInterp);   // owner + Macro-CV blend (spread)
             if (eastVisual) {
                 eastVisual->polySpreadEffective[v][PL::PL_REST] = restInterp;
-                static int wlog = 0;
-                if (wlog < 200 && v == 0) {
+                static float lastVal = 999.f;
+                if (v == 0 && std::fabs(restInterp - lastVal) > 0.001f) {
                     INFO("[SPREAD-WRITE] v=%d lane=REST val=%.4f eastVisual=%p", v, restInterp, (void*)eastVisual);
-                    wlog++;
+                    lastVal = restInterp;
                 }
             }
             engine.pe.cachedPolySpread[v][PL::PL_REST] = restInterp;   // Stage 2a: cache for step-rate refresh
