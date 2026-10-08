@@ -1134,6 +1134,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //    has no visible effect on the mono tab.
         else {
             saveSlot(currentSlot());
+            auto& peRef = monsoon->engine.pe;
             const int kMono = dotModular::VoiceResolver::kMonoSlot;
             auto* macroVis = monsoon ? monsoon->expanderManager.cachedMacroSandsVisual : nullptr;
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
