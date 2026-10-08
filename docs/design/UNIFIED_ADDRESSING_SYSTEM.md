@@ -285,8 +285,11 @@ DEAD SIMPLE and supersedes all earlier elaborations (R-as-sync-point, read-roams
 
 **Keep the EXACT cycle-mode read mappings (global->voice->lane, voice R, lane R referenced to
 voice-step-1 — all unchanged, see the nesting table above). Absolute adds ONLY an output gate:**
-1. **Silence GATE and CV when the GLOBAL step is OUTSIDE the voice range** (outside [O, O+L) of the
-   voice window — global-position space, "this region of the phrase sounds").
+1. **Zero the voice's GATE and CV OUT when the GLOBAL step is OUTSIDE the voice range** (outside
+   [O, O+L) of the voice window — global-position space). CV OUT = the voice's OUTPUT (pitch/CV to the
+   patch), zeroed so the voice emits NOTHING outside its region. **NOT the modulation CV INPUTS**
+   (spread/correlation/etc. CV in) — those are UNTOUCHED (absolute mode never touches generation or
+   correlation; it is purely an output gate+zero on the voice's outputs).
 2. **Stop any gate still HIGH at range END** (hard-cut at the O+L boundary, so a note sustaining as the
    playhead leaves the range doesn't bleed past it — the range is a clean hard edge).
 
@@ -298,4 +301,4 @@ output is gated to global ∈ [O, O+L) with a hard gate-stop at range end.
 Payoff: per-voice SOUND REGIONS -> entrances/exits, builds, drops, call-and-response, voices occupying
 different regions of the phrase = arrangement-level structure (not otherwise reachable; rests give
 probabilistic silence, not a clean "active only here" region).
-Minor: CV outside range — gate is off so it's largely moot; default to simplest (gate-off).
+
