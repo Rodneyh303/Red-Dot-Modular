@@ -1116,7 +1116,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         case SequencerEngine::PL_LEGATO:   base = peRef.pubSlewedPolyLegato[pv][s]; break;
                         default: base = 0.5f; break;
                     }
-                    const float spread = eastMod->polySpreadEffective[pv][lane];
+                    const float spread = (pv >= 0 && pv < 15) ? eastMod->polySpreadEffective[pv][lane] : 0.f;
+                    static int blog = 0;
+                    if (blog < 60 && s == 0) {
+                        INFO("[BAR-READ] pv=%d lane=%d spread=%.4f base=%.4f", pv, lane, spread, base);
+                        blog++;
+                    }
                     visualEditor->currentState.lanes[el].probabilities[s] =
                         redDot::SpreadInterp::applyAnchorV1Only(peRef, lane, s, base, spread);
                 }

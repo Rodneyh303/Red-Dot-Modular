@@ -424,7 +424,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             if (eastVisual) {
                 eastVisual->polySpreadEffective[v][PL::PL_REST] = restInterp;
                 static int wlog = 0;
-                if (wlog < 30 && v == 0) {
+                if (wlog < 200 && v == 0) {
                     INFO("[SPREAD-WRITE] v=%d lane=REST val=%.4f eastVisual=%p", v, restInterp, (void*)eastVisual);
                     wlog++;
                 }
