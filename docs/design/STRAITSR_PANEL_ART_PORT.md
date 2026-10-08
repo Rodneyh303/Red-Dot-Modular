@@ -17,7 +17,29 @@ so EVERY panel's LEFT edge and RIGHT edge sit at the SAME wave phase/Y.** Then t
 right edge == the wave at the next panel's left edge, for ANY base+lane pairing -> seamless across
 arbitrary combinations. (A per-panel random/free wave would NOT tile — it must match at edges.)
 
-## 3+4. SEAM — self-contained per-panel DOUBLE-RAIL (Rodney, redesign; supersedes "align perfectly")
+## 3+4. SEAM — RUNTIME draw-over-the-seam (the real technique), NOT static alignment
+True seamlessness ("borders and gap disappear as the expander docks") is achieved by a WIDGET draw()
+behaviour, NOT by static SVG abutment — which is why static alignment can never match it (Rodney's
+diagnosis: alignment is unwinnable; the answer is DON'T rely on it).
+
+**Reference: VGLabs TwoWayExpander** — https://github.com/landgrvi/VGLabs-TwoWayExpander
+(animation: https://github.com/landgrvi/VGLabs-TwoWayExpander/blob/main/TwoWayAnimation.gif). Its README:
+"implements the seamless expander behaviour seen in MindMeld's MixMaster & AuxSpander, where the borders
+and gap disappear as the expander moves into place." Both are open source — read their widget draw().
+
+**Technique:** in the panel widget's draw(), when the module detects it's DOCKED to a compatible
+neighbour (left/right expander present), **draw a FILLER STRIP of the panel bg + continuing art (waves
+etc.) ACROSS the seam**, covering the border/gap — typically drawn by the panel at the boundary,
+extending a few px past its edge to cover the neighbour's border + the gap. When UNDOCKED, don't draw it
+(normal separate panel). So the seam is PAINTED OVER at runtime, full fidelity, regardless of sub-pixel
+alignment; the bottom-wave + bg art continue THROUGH the filler so the assembly reads as ONE continuous
+module.
+
+This supersedes "align perfectly" (unwinnable) for TRUE seamlessness. The DOUBLE-RAIL below is the
+ALTERNATIVE — use it only if you deliberately want VISIBLE inter-panel rails rather than an invisible
+seam.
+
+## (ALTERNATIVE) Self-contained per-panel DOUBLE-RAIL (visible-rails aesthetic)
 Attempt 1: the edge-tiling BOTTOM WAVE WORKED (keep it). But cross-panel seamlessness (one continuous
 vertical line + perfectly-seamless bg) FIGHTS Rack's imperfect panel alignment — abutted SVGs get
 sub-pixel seam gaps (HP grid + zoom + float rounding), so a single line that must span the seam, or a
@@ -39,6 +61,23 @@ bg that must meet exactly, will show a glaring break. Don't chase it.
 Principle: don't make art span the seam; make each panel's edges SELF-COMPLETE (own L+R rails + notches
 + full-height bg), and let the abutment of two self-complete edges BE the design. Turns "seam must be
 invisible" (unwinnable in Rack) into "seam is an intentional double-rail" (always works).
+
+## 5. QMIX mod-arc GLITCH — shows at construction with NO modulation
+The arc is active when getEffectivePolyQmix(v) != getBasePolyQmix(v). The earlier fix made
+getBasePolyQmix apply the same patched-detection as effective (Monsoon.cpp:285-295) so they agree at
+rest — BUT it checks `expanderManager.cachedPolyVoiceExpander` + `StraitsIds::QUANT_CV_INPUT` = the OLD
+Straits, NOT the new StraitsR base. With StraitsR attached, cachedPolyVoiceExpander isn't the StraitsR
+QMIX source, so patched-detection doesn't fire -> base returns the raw knob, effective returns 0 ->
+they diverge -> arc shows even with no modulation.
+**Fix:** make the QMIX patched-detection in getBasePolyQmix AND getEffectivePolyQmix (Monsoon.cpp:285,
+301) check the STRAITSR base (the refactor's QMIX CV input), or whichever expander is actually attached
+(old Straits OR StraitsR), so base == effective at rest regardless. Arc off at construction; on only
+when real Causeway/quantiser CV is patched.
+**Also grep for siblings:** other `cachedPolyVoiceExpander` / `QUANT_CV_INPUT` reads that assume OLD
+Straits (REST/ACCENT patched-detection, etc.) — same root cause as the de-paramming crash (code
+reaching for old Straits when StraitsR is attached). Fix any that'd misbehave with StraitsR.
+Verify: fresh StraitsR + QMIX lane, non-zero knob, NO CV patched -> NO mod-arc. Patch quantiser/Causeway
+CV -> arc appears.
 
 ## Verify
 Attach base + various lane combinations: continuous wavy bg behind lanes; continuous bottom wave across
