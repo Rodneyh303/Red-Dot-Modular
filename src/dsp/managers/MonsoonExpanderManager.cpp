@@ -413,6 +413,15 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // original + target selection internally. No mmOwn lookup needed here.
 
             float restInterp = mmOwn ? mmOwn->getSpread(slot, PL::PL_REST) : 0.f;
+            {
+                static float lastLog = 999.f;
+                float storeVal = mmOwn ? mmOwn->getSpread(slot, PL::PL_REST) : 999.f;
+                if (std::fabs(storeVal - lastLog) > 0.01f) {
+                    INFO("[SPREAD-STORE] mmOwn=%p slot=%d storeVal=%.4f restInterp=%.4f",
+                         (void*)mmOwn, slot, storeVal, restInterp);
+                    lastLog = storeVal;
+                }
+            }
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_REST,3)].isConnected()) {
                 float att = mmOwn ? mmOwn->getMacroAtten(slot, PL::PL_REST*4 + 3) : 0.f;   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(PL::PL_REST,3)].getPolyVoltage(v) / 10.f;
