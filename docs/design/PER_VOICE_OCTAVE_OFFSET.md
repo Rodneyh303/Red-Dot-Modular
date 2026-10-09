@@ -33,7 +33,24 @@ octave-offset control, or set via the voice tabs / context menu (it's set, not p
 panel-space cost.
 
 ## Placement, Causeway, and Intertropical consolidation (Rodney)
-- **Home: Straits, NOT crowded Sands.** It's deterministic, per-voice, SET-ONCE (a value, not a
+- **Home: STRAITS — and it's the FIRST Straits subpanel that is NOT a Monsoon-knob mirror (Rodney).**
+  Every Straits lane so far (REST/ACCENT/QMIX, coming VAR/LEG) is the POLY version of a Monsoon mono
+  control (Straits = V2..V16 for what Monsoon has at V1). Octave offset is GENUINELY NEW — Monsoon has no
+  per-voice octave-offset knob. So Straits is becoming "ALL per-voice controls", not just "poly mirrors"
+  — octave offset is the first expression of that broader role.
+  - **V1:** offset via its natural V1 location (the V1 knob offsets V1); Straits provides V2..V16 — keeps
+    the per-voice model consistent (V1 where V1 lives, V2..16 on Straits).
+  - **Why Straits is the PERFECT home (two reasons):**
+    1. **Octave offset is a POLY-ONLY feature** — a single voice has no register to assign RELATIVE TO;
+       it's meaningful only with multiple voices to spread across registers. Poly = Straits. The feature's
+       dependency (poly) matches its home (Straits); it doesn't clutter the mono/base experience where it
+       does nothing.
+    2. **It works WITHOUT Sands.** It's a REALIZATION control (deterministic register assignment), not a
+       PROBABILITY control (Sands' job). On Straits you can orchestrate voices across registers with
+       Monsoon + Straits ALONE — no Sands probability editor needed. Register assignment shouldn't require
+       the probability module.
+  Plus the CAUSEWAY mod payoff (below). Every consideration points to Straits.
+  (Deterministic set-once value — a per-voice control, not a probability bar. Not on crowded Sands.) It's deterministic, per-voice, SET-ONCE (a value, not a
   probability bar) — belongs with the per-voice controls on Straits, not the Sands lane grid (already
   crowded, see the range-lane fit). Likely a Straits LANE-EXPANDER: a deterministic per-voice
   octave-offset lane in the expander chain alongside the probability lanes — same mechanism, different
