@@ -280,6 +280,19 @@ One-line: voice LOR makes the lane-beating CONTAINER (was fixed 16) and the phas
 global-1) into tunable controls -> lanes beat against any cycle length, synced at any point -> unlocks
 the tight feelable polymetric ratios.
 
+### Stated for the CORRELATION-aware reader (Rodney) — resync at different steps x +/- correlation
+The sharpest musical framing: voices playing CORRELATED (positive OR negative) lane data can RESYNC
+(re-anchor) their probability reads at DIFFERENT steps (voice range 1..16). Correlation relates WHAT the
+voices read (agree / complement); the per-voice reset point relates WHEN they re-anchor. Combined:
+- **Positive correlation + different reset steps** -> the SAME idea, re-anchored at staggered points ->
+  CANON / round-like (agreeing material, phase-shifted by reset point).
+- **Negative correlation + different reset steps** -> COMPLEMENTARY material, re-anchored at staggered
+  points -> INTERLOCKING / HOCKET-like (complement, phase-shifted).
+So the voice range adds a per-voice RESET-PHASE dimension ON TOP of the value-correlation axis, and
+because correlation is +/- you get both canon (positive+offset) and hocket (negative+offset) from the
+one mechanism — correlation SIGN x reset OFFSET. That is what "resync probability at different steps for
+correlated voices" buys: the value axis (correlation) composed with a reset-phase axis (voice range).
+
 ## Reversibility
 Each level (global/voice/lane) is a deterministic LOR transform of the counter-addressed spine. Forward
 = compose the maps; reverse = compose the inverses. Same reversibility the existing lane LOR already
@@ -316,8 +329,16 @@ voice-step-1 — all unchanged, see the nesting table above). Absolute adds ONLY
    patch), zeroed so the voice emits NOTHING outside its region. **NOT the modulation CV INPUTS**
    (spread/correlation/etc. CV in) — those are UNTOUCHED (absolute mode never touches generation or
    correlation; it is purely an output gate+zero on the voice's outputs).
-2. **Stop any gate still HIGH at range END** (hard-cut at the O+L boundary, so a note sustaining as the
-   playhead leaves the range doesn't bleed past it — the range is a clean hard edge).
+2. **Stop any gate still HIGH at the range END — but respect PHRASE WRAP (Rodney).** The cut is at the
+   range's ACTUAL end boundary, NOT mechanically at step 16:
+   - Range does NOT wrap the phrase (e.g. 5..12, inside 1..16): cut the gate at the range end (12).
+   - Range WRAPS the phrase boundary (e.g. 13..4 = 13,14,15,16,1,2,3,4): step 16->1 is INSIDE the range,
+     so do NOT cut at step 16 — the gate carries across the 16->1 wrap normally. Only cut at the range's
+     real end (here step 4).
+   - **Only cut at step 16 if step 1 is OUTSIDE the range** (range ends at/before 16, doesn't include 1).
+   - At a wrap that is inside the range, follow NORMAL phrase-wrap behaviour including the applicable
+     context-menu options (tie-across-rest etc.) — same as cycle mode across 16->1. The range end is a
+     hard edge; the phrase boundary is only an edge when the range doesn't span it.
 
 That's it. Reads are computed everywhere (cycle mappings run continuously, nothing internal changes);
 output is gated to global ∈ [O, O+L) with a hard gate-stop at range end.
@@ -328,3 +349,127 @@ Payoff: per-voice SOUND REGIONS -> entrances/exits, builds, drops, call-and-resp
 different regions of the phrase = arrangement-level structure (not otherwise reachable; rests give
 probabilistic silence, not a clean "active only here" region).
 
+
+
+## ABSOLUTE 2 & 3 — per-step play/mute MASK (added output layer; static vs follows-rotation; Rodney)
+An ADDED output layer that REPLACES NOTHING — stacks on top of the single range + the reads. Output
+emits only if it passes ALL gates: within the voice range (if absolute 1 is active) AND the mask cell is
+"play". Purely additive; the probability reading / addressing / generation / correlation are untouched
+(same safe output-stage mechanism as absolute 1, just a per-step mask instead of a single range test).
+- **Per-step play/mute mask over the 16 steps** — painted via a click-toggle UI action on the RANGE
+  LANE's 16 cells (puts the bars to real interactive use; lit=play, dim=mute). Any subset, not just a
+  contiguous run.
+- **Delegation (existing model):** GLOBAL mask = Sands MACRO (all voices); PER-VOICE mask = Sands EAST
+  (displayed voice). Same Macro/East split as spread/LOR/range.
+- **Musical use:** hand-painted RHYTHMIC gating of generative content per voice — deterministic WHEN,
+  generative WHAT. Per-voice masks across the ensemble = interlocking rhythms (hocket-by-mask).
+
+Same phrase-wrap / gate-cut-at-boundary rules as absolute 1 apply at mute-cell edges.
+
+**ABSOLUTE 2 vs ABSOLUTE 3 — the mask is STATIC vs FOLLOWS ROTATION (two distinct MODES, Rodney):**
+- **ABSOLUTE 2 — STATIC mask:** fixed to absolute phrase-step positions (steps 1,4,7 always play
+  regardless of R). A fixed rhythmic gate; modulating R shifts the CONTENT through the fixed mask,
+  rhythm stays put.
+- **ABSOLUTE 3 — mask FOLLOWS range ROTATION (R):** the mask is defined relative to the voice's
+  reset/phase, so it SHIFTS WITH the phase reset points — modulating R slides rhythm AND content
+  together. The rhythmic figure becomes part of the phased voice (travels with the reset) — richer for
+  the correlation x reset-phase textures (canon/hocket where the RHYTHM also phases, not just pitch).
+Split into two modes (not a sub-toggle) so each has one unambiguous behaviour; the mode switch just
+steps through cycle / absolute 1 / absolute 2 / absolute 3.
+
+## THE OUTPUT MODES ARE A CONTAINMENT HIERARCHY — implement as ONE mechanism (Rodney)
+The modes are NOT four parallel things — each is a SUBSET of the next (even cycle, the original, is a
+subset):
+  **Cycle  subset of  Absolute 1  subset of  Absolute 2  subset of  Absolute 3**
+- **Cycle** = mask ALL-ON (everything sounds, no gating).
+- **Absolute 1** = mask is a single CONTIGUOUS RUN (editable as O/L).
+- **Absolute 2** = ARBITRARY static mask.
+- **Absolute 3** = arbitrary mask + FOLLOWS-ROTATION.
+
+So implement ONE output layer: **a per-step play/mute MASK + a FOLLOW-ROTATION flag.** The "modes" are
+just configurations of it, not separate code paths:
+- mask all-on  -> cycle
+- mask contiguous run -> absolute 1
+- mask arbitrary, follow-R off -> absolute 2
+- mask arbitrary, follow-R on  -> absolute 3
+REFINEMENT (Rodney): the modes differ in WHAT THE MASK IS and WHAT IT FOLLOWS:
+- **Cycle** = all-on mask.
+- **Absolute 1** = the mask IS the O/L range (contiguous) — a UI action sets the mask to play inside
+  [O,O+L), mute outside. It FOLLOWS L/O: modulating O or L moves/resizes the play-region with the range.
+  It does NOT follow R. (The mask is DERIVED from O/L, so it tracks them by definition.)
+- **Absolute 2** = arbitrary PAINTED mask, STATIC (follows nothing — fixed to absolute phrase steps).
+- **Absolute 3** = arbitrary PAINTED mask, FOLLOWS R (rotation / phase reset).
+
+CLEANEST FRAMING (Rodney): the real distinction is WHAT VARIES — mask SIZE vs mask ROTATION:
+- **Absolute 1 = a DYNAMICALLY-SIZED mask.** Its size/position is a function of O/L, so modulating O/L
+  RESIZES/MOVES it. Dynamic geometry (recomputed as O/L change). Contiguous run = the range-as-mask.
+- **Absolute 2 & 3 = FIXED masks, but ROTATABLE.** The mask SHAPE is fixed (the painted play/mute
+  pattern doesn't change size); only its ROTATION can vary. Abs2 = rotation static (fixed); abs3 =
+  rotation follows R.
+
+So TWO mask KINDS:
+1. **Dynamically-sized** (abs1): computed from O/L each change — extent tracks the range.
+2. **Fixed rotatable** (abs2/abs3): stored painted pattern + a rotation offset; rotation SOURCE = static
+   (abs2) or follows-R (abs3).
+Abs2 & abs3 thus collapse to ONE kind ("fixed rotatable mask") with a rotation-source flag (static /
+follows-R). Cycle = the all-on degenerate full mask. Net structure: two mask kinds (dynamically-sized
+vs fixed-rotatable), the fixed-rotatable one having a rotation-source sub-choice.
+
+**UI implication:** possibly NO explicit 4-way mode switch — paint the mask + one follow-R toggle, and
+the behaviour follows from what's painted (all-on = cycle, contiguous = abs1, arbitrary = abs2/3).
+Optionally offer named PRESETS (set-all-on, set-single-range) as conveniences, but the underlying code
+is ONE path (one mask gate + one flag), not four. Big simplification: four modes collapse to one
+mechanism with two degrees of freedom (mask pattern, follow-R).
+
+## MASK <-> ROTATION ANCHORING (Rodney) — base re-anchors, modulation moves relative to it
+How the fixed rotatable mask (abs2/abs3) connects to rotation. PER STEP:
+1. **Check whether the UNMODULATED (base knob) rotation has changed** — i.e. has the anchor link
+   between MASK-STEP-1 and the base rotation value changed?
+2. **If the base changed -> UPDATE THE ANCHOR** (re-pin mask-step-1 <-> new base rotation; move the mask
+   by that change).
+3. **Then FOLLOW THE MODULATION** — apply the current rotation MODULATION (CV) relative to the
+   (possibly-updated) anchor.
+4. **Always reflect the LATEST anchor + latest rotation mod:**
+   mask position = latest_base_anchor + current_modulation_offset.
+
+Two layers acting on the mask:
+- **Anchor** = mask-step-1 pinned to the BASE (unmodulated) rotation; re-pins ONLY when the base knob
+  changes (per-step change detection). Stable between knob changes (no jitter).
+- **Modulation** = the CV rotation offset, applied relative to the current anchor, continuously.
+
+Behaviour: base static + mod static -> mask at anchor, stable. Turn the knob -> anchor re-pins to new
+base, mask moves there (mod offsets from there). CV-modulate rotation -> mask moves by the mod relative
+to the current anchor. Both -> anchor tracks base (re-pin on change), mod offsets from the latest anchor.
+
+This resolves the earlier "establish the link first, then move together" question: the BASE establishes
+(and re-establishes on change) the anchor; the MODULATION moves the mask relative to it. No separate
+reset/phrase-boundary decision needed — base-change detection IS the re-anchor trigger.
+
+## MUSICAL PAYOFF OF THE MASK MODES — "rhythmic in and out" = the PRESENCE / STRUCTURE axis (Rodney)
+The extra absolute modes open a distinct musical register: **rhythmic in and out** — voices rhythmically
+ENTERING and LEAVING on a hand-shaped pattern (not probabilistic dropout). Plain working term: "rhythmic
+in and out". (Snappier names if wanted later for manual/marketing: "rhythmic framing", "presence
+masking"; technical: "rhythmic gating / presence sequencing".)
+
+What it spans (via the three mask kinds):
+- **Static mask (abs2):** a fixed rhythmic in/out figure (voice plays on these steps, absent otherwise).
+- **Rotatable mask (abs3):** the in/out figure MOVES/EVOLVES as rotation modulates.
+- **Dynamically-sized mask (abs1):** swell a voice IN / fade OUT by widening/narrowing its range (density).
+- **Per-voice masks across the ensemble:** interlocking entrances/exits -> HOCKET, call-and-response,
+  builds, breakdowns, drops.
+
+Why it's a NEW register, not just "mute steps": rests give PROBABILISTIC sparseness (generative texture);
+the mask gives DETERMINISTIC, COMPOSED rhythmic presence/absence (arrangement/structure). Different jobs.
+Combined: **deterministic WHEN (the mask) x generative WHAT (the engine)** — you COMPOSE the rhythmic
+architecture (who's in when), the engine fills it with correlated generative content. This directly
+addresses the common criticism that generative music meanders without structure: the user gets composed
+STRUCTURAL control over presence while content stays generative.
+
+**Best framing — the PRESENCE / STRUCTURE axis of the instrument's order<->chaos family:** the mask is
+the FOURTH composed-control dimension alongside the existing three:
+- Correlation (copula) -> VALUE relationships.
+- Grid -> TIMING floor.
+- Voice-length nesting -> METRIC / phrasing.
+- **Mask -> PRESENCE / STRUCTURE** (rhythmic in and out — who is present when).
+So "rhythmic in and out" isn't a bolt-on feature; it's the instrument's composed-control-over-generative
+thesis extended to the PRESENCE axis — compose who's present when, the engine generates what.
