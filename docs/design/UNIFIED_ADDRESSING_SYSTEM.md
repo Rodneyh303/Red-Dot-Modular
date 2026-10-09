@@ -444,3 +444,32 @@ to the current anchor. Both -> anchor tracks base (re-pin on change), mod offset
 This resolves the earlier "establish the link first, then move together" question: the BASE establishes
 (and re-establishes on change) the anchor; the MODULATION moves the mask relative to it. No separate
 reset/phrase-boundary decision needed — base-change detection IS the re-anchor trigger.
+
+## MUSICAL PAYOFF OF THE MASK MODES — "rhythmic in and out" = the PRESENCE / STRUCTURE axis (Rodney)
+The extra absolute modes open a distinct musical register: **rhythmic in and out** — voices rhythmically
+ENTERING and LEAVING on a hand-shaped pattern (not probabilistic dropout). Plain working term: "rhythmic
+in and out". (Snappier names if wanted later for manual/marketing: "rhythmic framing", "presence
+masking"; technical: "rhythmic gating / presence sequencing".)
+
+What it spans (via the three mask kinds):
+- **Static mask (abs2):** a fixed rhythmic in/out figure (voice plays on these steps, absent otherwise).
+- **Rotatable mask (abs3):** the in/out figure MOVES/EVOLVES as rotation modulates.
+- **Dynamically-sized mask (abs1):** swell a voice IN / fade OUT by widening/narrowing its range (density).
+- **Per-voice masks across the ensemble:** interlocking entrances/exits -> HOCKET, call-and-response,
+  builds, breakdowns, drops.
+
+Why it's a NEW register, not just "mute steps": rests give PROBABILISTIC sparseness (generative texture);
+the mask gives DETERMINISTIC, COMPOSED rhythmic presence/absence (arrangement/structure). Different jobs.
+Combined: **deterministic WHEN (the mask) x generative WHAT (the engine)** — you COMPOSE the rhythmic
+architecture (who's in when), the engine fills it with correlated generative content. This directly
+addresses the common criticism that generative music meanders without structure: the user gets composed
+STRUCTURAL control over presence while content stays generative.
+
+**Best framing — the PRESENCE / STRUCTURE axis of the instrument's order<->chaos family:** the mask is
+the FOURTH composed-control dimension alongside the existing three:
+- Correlation (copula) -> VALUE relationships.
+- Grid -> TIMING floor.
+- Voice-length nesting -> METRIC / phrasing.
+- **Mask -> PRESENCE / STRUCTURE** (rhythmic in and out — who is present when).
+So "rhythmic in and out" isn't a bolt-on feature; it's the instrument's composed-control-over-generative
+thesis extended to the PRESENCE axis — compose who's present when, the engine generates what.
