@@ -106,3 +106,31 @@ and read without widening the panel. So the ceiling is min(musically wanted, edi
 - No HP expansion — 32 keeps the current panel width.
 So the target is definitively 32 (not "32 or more") — UI practicality caps it there, and 32 solves the
 flaw without the fiddliness or a wider panel.
+
+## 32 also bounded by COPULA COST (SIMD gain TBD) + the modular alternative for long notes
+**Compute ceiling:** the copula work (draw generation, spread field, per-cell mix2) is indexed by step,
+so 16->32 roughly DOUBLES that per-step work — partially giving back the hard-won LUT + step-rate perf
+gains. 32 is the COST-SAFE ceiling at current (non-SIMD) copula cost. 64 would double it again, eroding
+performance. **SIMD is the relevant TBD:** if the per-step mix2/copula were float_4-vectorised (with the
+double-precision/reversibility caveats on mix2), there MIGHT be headroom for more — but SIMD is unbuilt
+and uncertain, so 64 stays off the table unless/until SIMD proves out. Ceiling ties to the SIMD
+question: 32 now; beyond-32 only if SIMD lands.
+
+## LONG NOTES — the MODULAR alternative: a second Monsoon at half tempo, seed + CA linked (Rodney)
+Beyond the 32 raise, the modular idiom gives a better answer for GENUINELY long notes / polytempo than
+64 steps: **run a SECOND Monsoon at HALF TEMPO** — each step = 2x duration, so long-note phrases come
+from the slower instance, not more steps. Link the two:
+- **Share SEEDS** -> both draw from the SAME random field -> the half-tempo (long-note) instance plays
+  material CORRELATED with the full-tempo instance (coherent, not independent).
+- **Share CHANGE ALLEY** -> the CA permutation/routing is shared -> the two instances' ARRANGEMENT is
+  linked too (seed- AND structure-linked).
+Result: POLYTEMPO layering — a fast layer (short notes) + a slow layer (long notes), correlated, which
+is arguably MORE musical than long notes in one grid (both time-scales at once, related). Same
+philosophy as "length via Intertropical horizontal polyphony": compose from INSTANCES, not enlarge one.
+So beyond 32, the answer is MORE INSTANCES (modular composition), not more steps (monolithic enlarge) —
+which reinforces the 32 ceiling.
+**Needs:** seed-sharing (expose seed as CV/link — likely straightforward) and CA-sharing (communicate CA
+state between instances — more involved) between Monsoon instances. If buildable -> "linked multi-tempo
+Monsoons" is a powerful polytempo-correlated-generation pattern. Feature to scope separately.
+Net: 32 for in-instance room (common case) + linked half-tempo instance for long notes/polytempo
+(extreme case) => likely NEVER need 64.
