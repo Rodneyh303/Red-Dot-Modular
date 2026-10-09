@@ -349,3 +349,28 @@ Payoff: per-voice SOUND REGIONS -> entrances/exits, builds, drops, call-and-resp
 different regions of the phrase = arrangement-level structure (not otherwise reachable; rests give
 probabilistic silence, not a clean "active only here" region).
 
+
+
+## ABSOLUTE 2 — per-step play/mute MASK (added output layer; Rodney)
+An ADDED output layer that REPLACES NOTHING — stacks on top of the single range + the reads. Output
+emits only if it passes ALL gates: within the voice range (if absolute 1 is active) AND the mask cell is
+"play". Purely additive; the probability reading / addressing / generation / correlation are untouched
+(same safe output-stage mechanism as absolute 1, just a per-step mask instead of a single range test).
+- **Per-step play/mute mask over the 16 steps** — painted via a click-toggle UI action on the RANGE
+  LANE's 16 cells (puts the bars to real interactive use; lit=play, dim=mute). Any subset, not just a
+  contiguous run.
+- **Delegation (existing model):** GLOBAL mask = Sands MACRO (all voices); PER-VOICE mask = Sands EAST
+  (displayed voice). Same Macro/East split as spread/LOR/range.
+- **Musical use:** hand-painted RHYTHMIC gating of generative content per voice — deterministic WHEN,
+  generative WHAT. Per-voice masks across the ensemble = interlocking rhythms (hocket-by-mask).
+
+### Open: STATIC mask vs mask-FOLLOWS-ROTATION (key modulation question)
+Modulation TBD, but the central fork:
+- **STATIC mask:** fixed to absolute phrase-step positions (steps 1,4,7 always play regardless of R).
+  A fixed rhythmic gate; modulating R shifts the CONTENT through it, rhythm stays put.
+- **Mask FOLLOWS range ROTATION (R):** the mask is defined relative to the voice's reset/phase, so it
+  SHIFTS WITH the phase reset points — modulating R slides rhythm AND content together. Makes the
+  rhythmic figure part of the phased voice (travels with the reset) — richer for the correlation x
+  reset-phase textures (canon/hocket where the RHYTHM also phases, not just pitch).
+Possibly a per-use TOGGLE (static vs follows-R). Same phrase-wrap / gate-cut-at-boundary rules as
+absolute 1 apply at mute-cell edges.
