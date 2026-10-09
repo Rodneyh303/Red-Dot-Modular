@@ -280,6 +280,19 @@ One-line: voice LOR makes the lane-beating CONTAINER (was fixed 16) and the phas
 global-1) into tunable controls -> lanes beat against any cycle length, synced at any point -> unlocks
 the tight feelable polymetric ratios.
 
+### Stated for the CORRELATION-aware reader (Rodney) — resend at different steps x +/- correlation
+The sharpest musical framing: voices playing CORRELATED (positive OR negative) lane data can RESEND
+(re-anchor) their probability reads at DIFFERENT steps (voice range 1..16). Correlation relates WHAT the
+voices read (agree / complement); the per-voice reset point relates WHEN they re-anchor. Combined:
+- **Positive correlation + different reset steps** -> the SAME idea, re-anchored at staggered points ->
+  CANON / round-like (agreeing material, phase-shifted by reset point).
+- **Negative correlation + different reset steps** -> COMPLEMENTARY material, re-anchored at staggered
+  points -> INTERLOCKING / HOCKET-like (complement, phase-shifted).
+So the voice range adds a per-voice RESET-PHASE dimension ON TOP of the value-correlation axis, and
+because correlation is +/- you get both canon (positive+offset) and hocket (negative+offset) from the
+one mechanism — correlation SIGN x reset OFFSET. That is what "resend probability at different steps for
+correlated voices" buys: the value axis (correlation) composed with a reset-phase axis (voice range).
+
 ## Reversibility
 Each level (global/voice/lane) is a deterministic LOR transform of the counter-addressed spine. Forward
 = compose the maps; reverse = compose the inverses. Same reversibility the existing lane LOR already
