@@ -400,10 +400,20 @@ REFINEMENT (Rodney): the modes differ in WHAT THE MASK IS and WHAT IT FOLLOWS:
 - **Absolute 2** = arbitrary PAINTED mask, STATIC (follows nothing — fixed to absolute phrase steps).
 - **Absolute 3** = arbitrary PAINTED mask, FOLLOWS R (rotation / phase reset).
 
-So the follow-behaviour is NOT one bit: abs1's mask follows L/O (it's the range-as-mask); the painted
-masks (abs2/abs3) have no O/L and follow nothing or R. One mechanism still (a per-step mask gate) but
-the mask's SOURCE differs: abs1 = derived-from-O/L (tracks O/L); abs2/abs3 = painted (tracks nothing / R).
-abs1 is thus slightly special — its 'follow' axis (L/O) is different from abs2/abs3's (R-or-not).
+CLEANEST FRAMING (Rodney): the real distinction is WHAT VARIES — mask SIZE vs mask ROTATION:
+- **Absolute 1 = a DYNAMICALLY-SIZED mask.** Its size/position is a function of O/L, so modulating O/L
+  RESIZES/MOVES it. Dynamic geometry (recomputed as O/L change). Contiguous run = the range-as-mask.
+- **Absolute 2 & 3 = FIXED masks, but ROTATABLE.** The mask SHAPE is fixed (the painted play/mute
+  pattern doesn't change size); only its ROTATION can vary. Abs2 = rotation static (fixed); abs3 =
+  rotation follows R.
+
+So TWO mask KINDS:
+1. **Dynamically-sized** (abs1): computed from O/L each change — extent tracks the range.
+2. **Fixed rotatable** (abs2/abs3): stored painted pattern + a rotation offset; rotation SOURCE = static
+   (abs2) or follows-R (abs3).
+Abs2 & abs3 thus collapse to ONE kind ("fixed rotatable mask") with a rotation-source flag (static /
+follows-R). Cycle = the all-on degenerate full mask. Net structure: two mask kinds (dynamically-sized
+vs fixed-rotatable), the fixed-rotatable one having a rotation-source sub-choice.
 
 **UI implication:** possibly NO explicit 4-way mode switch — paint the mask + one follow-R toggle, and
 the behaviour follows from what's painted (all-on = cycle, contiguous = abs1, arbitrary = abs2/3).
