@@ -1196,11 +1196,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // spread knob locks via tab1MonoMirror() (see laneOwnedByMacro/lock predicates).
         // (Per-voice modulation folding onto voice 1 — interp. Y — is the deferred
         //  follow-up; this stage is the display/lock mirror only.)
-        auto* monoVis = monsoon->expanderManager.cachedSandsVisualExpander;
-        bool tab1Mono = onMonoTab() && (monoVis != nullptr);
-        // readOnly: only when Mono is attached (it owns V1). When V1 is editable
-        // (no Mono), the editor is live and the user edits V1's lanes directly here.
-        visualEditor->readOnly = tab1Mono;
+        // (tab1Mono dead code: Mono killed Step 6, cachedSandsVisualExpander always null)
+        bool tab1Mono = false;
+        visualEditor->readOnly = false;   // V1 is always editable (no Mono to mirror)
         if (tab1Mono) {
             // Show Mono's base LOR for all 4 poly lanes (Mono params are editor-ordered:
             // MEL=0 OCT=1 REST=2 ACC=3 → editor lane == param index). V1 base belongs to
