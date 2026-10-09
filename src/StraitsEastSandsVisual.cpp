@@ -684,6 +684,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // spread-arc lockWhen lambdas so all East lock predicates read one authority.
     // engLane in; converts to editor lane for the resolver.
     bool laneOwnedByMacroTopo(int engLane) {
+        // No Macro → nothing is Macro-owned → knob unlocked (East owns everything solo).
+        // Without this, V1's owner defaults to MACRO in the topology (getMonoMacroOwn
+        // returns false without Macro ever connected), locking the V1 spread knob —
+        // input swallowed before setSpread → no write → no effect. Mirrors the
+        // (ownerEast || !macroPresent) escape in combineSpread.
+        Monsoon* m = getMonsoon();
+        if (!m || !m->expanderManager.cachedMacroSandsVisual) return false;
         const int el = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane];
         return buildTopo().owner(currentVoice() - 1, el) == dotModular::SandsTopology::Role::MACRO;
     }
