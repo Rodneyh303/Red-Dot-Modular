@@ -88,7 +88,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     void flushSpreadArcs() {
         auto* mod = dynamic_cast<StraitsEastSandsVisual*>(module);
         for (auto& pr : pendingSpreadArcs) {
-            auto* knob = pr.first; int lane = pr.second;
+            auto* knob = pr.first;
+            const int el = pr.second;   // EDITOR lane (stored at push_back)
+            const int lane = dotModular::toEngine(dotModular::EditorLane(el)).v;  // → ENGINE lane for all store/cvId/polySpreadEffective reads
             if (!knob) continue;
             auto* arc = new redDot::ModArcOverlay();
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
@@ -379,7 +381,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             if (k) {
                 k->lockWhen = [this, eng]() { return laneOwnedByMacroTopo(eng) || tab1MonoMirror(); };
                 k->displayValueFn = [this, eng]() { return spreadDisplayValue(eng); };
-                pendingSpreadArcs.push_back({k, eng});   // arc reads engine-lane spread
+                pendingSpreadArcs.push_back({k, el});   // arc stores EDITOR lane; flushSpreadArcs converts to engine via toEngine()
             }
         }
 
@@ -703,7 +705,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     bool eastOwnsLane(int engLane) const {
         Monsoon* m = getMonsoon(); if (!m) return true;
         if (tab1MonoMirror()) return m->getMonoOwner(dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane]);
-        if (onMonoTab()) return m->getMonoMacroOwn(engLane) > 0.5f;
+        if (onMonoTab()) {
+            // No Macro → East is the sole owner (including V1). Without this, V1's
+            // getMonoMacroOwn returns false when Macro was never connected, so the V1
+            // bar fill fell to engine.spreadE (stale/0) instead of the knob's getSpread.
+            auto* macroVis = m ? m->expanderManager.cachedMacroSandsVisual : nullptr;
+            if (!macroVis) return true;
+            return m->getMonoMacroOwn(engLane) > 0.5f;
+        }
         int pv = polyVoice();
         return (pv >= 0 && pv < 15) ? (m->getMacroOwn(pv, engLane) > 0.5f) : true;
     }
@@ -1141,6 +1150,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         case SequencerEngine::PL_LEGATO:    base = peRef.slewedPolyLegato[0][s]; break;
                         default: base = 0.5f; break;
                     }
+                    (void)base;   // applyMono computes own internally; base kept for clarity
                     // V1 spread: store + East CV × att × 2 + Macro send (bipolar, mirrors
                     // the mod-arc's mono path at lines 130-136, but WITHOUT the [0,1] mapping
                     // — applyAnchorV1Only takes bipolar [-1,1]).
@@ -1154,8 +1164,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         float send = monsoon ? monsoon->getMacroSend(kMono, lane, 3) : 0.f;
                         spread += macroVis->macroSendDelta[lane][3] * send;
                     }
+                    // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
+                    // instead of applyAnchorV1Only (hard-codes own=target=monoSlewed → self-target no-op).
                     visualEditor->currentState.lanes[el].probabilities[s] =
-                        redDot::SpreadInterp::applyAnchorV1Only(peRef, lane, s, base, spread);
+                        redDot::SpreadInterp::applyMono(peRef, lane, s, spread);
                 }
             }
         }
@@ -1252,6 +1264,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedLegato[s]; break;
                             default: base = 0.5f; break;
                         }
+                        (void)base;   // applyMono computes own internally; base kept for clarity
                         // V1 spread: respect lane ownership. East owns → East's V1
                         // spread knob; Macro owns → Macro's spread (matches Macro's
                         // display); no Macro → engine's V1 spread.
@@ -1262,8 +1275,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             spread = monsoon->getSpread(dotModular::VoiceResolver::kMonoSlot, engLane);
                         else
                             spread = monsoon->engine.spreadE(0, engLane);
+                        // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
                         visualEditor->currentState.lanes[el].probabilities[s] =
-                            redDot::SpreadInterp::applyAnchorV1Only(peRef, engLane, s, base, spread);
+                            redDot::SpreadInterp::applyMono(peRef, engLane, s, spread);
                     }
                 }
             }
@@ -1345,6 +1359,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedLegato[s]; break;
                             default: base = 0.5f; break;
                         }
+                        (void)base;   // applyMono computes own internally; base kept for clarity
                         // V1 spread: respect lane ownership, and mirror the ENGINE's sprForLane
                         // EXACTLY (MonsoonSandsManager processDNA) so the displayed bars match the
                         // audible spread AND animate under live CV/LFO modulation.
@@ -1374,8 +1389,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             spread = monsoon->engine.spreadE(0, engLane);
                         }
                         spread = rack::math::clamp(spread, -1.f, 1.f);
+                        // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
                         visualEditor->currentState.lanes[el].probabilities[s] =
-                            redDot::SpreadInterp::applyAnchorV1Only(peRef, engLane, s, base, spread);
+                            redDot::SpreadInterp::applyMono(peRef, engLane, s, spread);
                     }
                 }
             }
