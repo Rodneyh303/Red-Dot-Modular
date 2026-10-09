@@ -239,7 +239,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // Macro on a poly voice, OR when this is the V1 tab and Mono owns V1 (East
         // mirrors Mono, inoperable). editorLane → engine lane for the ownership check.
         visualEditor->laneEditBlockedFn = [this](int editorLane) -> bool {
-            if (tab1MonoMirror()) return true;           // V1 owned by Mono → all lanes locked on East
+            // (tab1MonoMirror removed — Mono killed Step 6, always false)
             // SANDS CONSOLIDATION Step 2b: VAR/LEG are now full poly lanes (POLY_LANES=7), so
             // the old `>= POLY_LANES` guard that locked them as mono-only is unreachable (there
             // are no editor lanes >= 7). All 7 lanes now use the same Macro-delegation lock.
@@ -379,7 +379,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 [this, eng](Monsoon& m)          { return m.getSpread(currentSlot(), eng); },
                 [this, eng](Monsoon& m, float v) { m.setSpread(currentSlot(), eng, v); });
             if (k) {
-                k->lockWhen = [this, eng]() { return laneOwnedByMacroTopo(eng) || tab1MonoMirror(); };
+                k->lockWhen = [this, eng]() { return laneOwnedByMacroTopo(eng); };
                 k->displayValueFn = [this, eng]() { return spreadDisplayValue(eng); };
                 pendingSpreadArcs.push_back({k, el});   // arc stores EDITOR lane; flushSpreadArcs converts to engine via toEngine()
             }
@@ -419,7 +419,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // No separate getMonoMacroOwn call — same accessor, different index.
                     w->getOwnsFn = [this, ocLane, ocEng]() {
                         Monsoon* m = getMonsoon(); if (!m) return true;
-                        if (tab1MonoMirror()) return m->getMonoOwner(ocLane);   // monoOwner is editor-indexed
+                        // (tab1MonoMirror removed — Mono killed Step 6)
                         int vi = onMonoTab() ? Monsoon::kMonoMacroOwnRow : polyVoice();
                         return (vi >= 0 && vi < 16) ? (m->getMacroOwn(vi, ocEng) > 0.5f) : true;
                     };
@@ -441,7 +441,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
                     };
                     // Locked when no Macro (nothing to delegate to) OR V1+Mono (Mono owns V1).
-                    w->lockWhen = [this](){ return !macroAttached() || tab1MonoMirror(); };
+                    w->lockWhen = [this](){ return !macroAttached(); };
                 }
             );
         }
@@ -517,7 +517,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // since POLY_LANES=7 means `lane < POLY_LANES` is always true for valid lanes).
                     w->lockWhen = [this, lane]() {
                         int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane];
-                        return laneOwnedByMacroTopo(engLane) || tab1MonoMirror();
+                        return laneOwnedByMacroTopo(engLane);
                     };
                 }
             );
@@ -712,7 +712,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // buildTopo's live-voice read, the lane-ownership menu, and the owner light.
     bool eastOwnsLane(int engLane) const {
         Monsoon* m = getMonsoon(); if (!m) return true;
-        if (tab1MonoMirror()) return m->getMonoOwner(dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane]);
+        // (tab1MonoMirror removed — Mono killed Step 6)
         if (onMonoTab()) {
             // No Macro → East is the sole owner (including V1). Without this, V1's
             // getMonoMacroOwn returns false when Macro was never connected, so the V1
@@ -733,12 +733,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // currentVoice() with voiceSlot so V1 and poly index the same lorBase/spread store.
     int currentSlot() const { return dotModular::VoiceResolver::voiceSlot(currentVoice()); }
 
-    // Voice 1 / tab 1 with Sands Mono attached: the lane base belongs to Mono — East's
-    // base controls lock + mirror mono (display-only). Independent of Macro.
-    bool tab1MonoMirror() const {
-        Monsoon* m = getMonsoon();
-        return onMonoTab() && m && m->expanderManager.cachedSandsVisualExpander != nullptr;
-    }
+    // (tab1MonoMirror removed — Mono killed Step 6, cachedSandsVisualExpander always null)
     // Mono tab? = the selected voice is the mono master strand (resolver owns this).
     bool onMonoTab() const { return dotModular::VoiceResolver::isMono(currentVoice()); }
     // V1 editable: on mono tab AND Sands Mono is NOT attached. East acts as the
@@ -1063,15 +1058,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //    laneSignPending_ at the LOR endpoint). If we also pushed laneSignPending_
         //    every frame, we would overwrite the bounce-induced sign flip with
         //    laneDirSign(Pendulum) = +1, undoing the bounce at the next promotion.
-        if (onMonoTab() && !tab1MonoMirror()) {
+        if (onMonoTab()) {
             // V1 editable (no Mono attached): East IS the mono editor.
             // Step 4: NO sync needed. The DirCell writes dirDispId; syncDirBank()
             // persists it to monoDirId(lane); the manager reads monoDirId and pushes
             // to laneDirPending_. The widget must NOT overwrite dirDispId FROM engine.
-        } else if (onMonoTab() && tab1MonoMirror()) {
-            // Mono attached: Mono is the mono-direction authority. MVC step 1d: the store-backed
-            // DirCell reads getMonoLaneDir live (the slot Mono writes), so no per-frame proxy
-            // sync from the engine is needed.
+            // (tab1MonoMirror branch removed — Mono killed Step 6)
         } else if (selectedVoice >= 1) {
             // Step 3 (plans/lane_direction_homes.md): the poly push is GONE. East's direction
             // BANK is the home now and MonsoonExpanderManager::sync() pushes it into the engine
