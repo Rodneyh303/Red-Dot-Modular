@@ -926,10 +926,16 @@ struct Monsoon : Module {
 
     // MACRO accessors — stride 5 poly lanes (QMIX-widened; was 4). laneCol spans lane*4+col over
     // 5 lanes → row stride 20 for macroAtten (was 16). lane 0..4, item/col 0..3, v 0..15.
+    // V1→voice-0 unification: macroOwn has 16 rows (0..15). Rows 0..14 = V2..V16
+    // (poly bank index); row 15 = V1/mono. getMonoMacroOwn is a thin wrapper over
+    // getMacroOwn(15, ...) — same data, unified accessor. Next step: renumber V1
+    // to row 0 with a data migration so getMonoMacroOwn can be deleted entirely.
+    // The kMonoVoice index in macroOwn (row 15) is the V1 ownership slot.
+    static constexpr int kMonoMacroOwnRow = 15;
     float getMacroOwn(int v, int lane) const { return editor.macroOwn[v*7 + lane]; }
     void  setMacroOwn(int v, int lane, float x) { editor.macroOwn[v*7 + lane] = x; }
-    float getMonoMacroOwn(int lane) const { return editor.macroOwn[15*7 + lane]; }
-    void  setMonoMacroOwn(int lane, float x) { editor.macroOwn[15*7 + lane] = x; }
+    float getMonoMacroOwn(int lane) const { return getMacroOwn(kMonoMacroOwnRow, lane); }
+    void  setMonoMacroOwn(int lane, float x) { setMacroOwn(kMonoMacroOwnRow, lane, x); }
     float getMacroSend(int v, int lane, int item) const { return editor.macroSend[(v*7 + lane)*4 + item]; }
     void  setMacroSend(int v, int lane, int item, float x) { editor.macroSend[(v*7 + lane)*4 + item] = x; }
     float getMacroAtten(int v, int laneCol) const { return editor.macroAtten[v*28 + laneCol]; }
