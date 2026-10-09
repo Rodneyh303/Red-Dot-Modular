@@ -32,6 +32,27 @@ Deterministic set-once value per voice -> does NOT need a full lane of bars. A c
 octave-offset control, or set via the voice tabs / context menu (it's set, not performed) -> low
 panel-space cost.
 
+## Placement, Causeway, and Intertropical consolidation (Rodney)
+- **Home: Straits, NOT crowded Sands.** It's deterministic, per-voice, SET-ONCE (a value, not a
+  probability bar) — belongs with the per-voice controls on Straits, not the Sands lane grid (already
+  crowded, see the range-lane fit). Likely a Straits LANE-EXPANDER: a deterministic per-voice
+  octave-offset lane in the expander chain alongside the probability lanes — same mechanism, different
+  payload (set offsets, not draws). Reuses the lane-expander infra being completed in the Straits
+  refactor; natural to add as part of that lane set.
+- **May earn a DEFAULT / BASE panel spot:** if orchestrating voices to registers (bass/lead/pad) proves
+  commonly needed, it may be core enough for the base/default panel (always present) rather than an
+  opt-in expander. Open (expander vs base-panel), pending how central it proves.
+- **CAUSEWAY = CV-modulatable version (Rodney):** a Causeway octave-offset lane = CV-MODULATABLE per-voice
+  register assignment -> voices MIGRATE between registers over time (a voice rising bass->lead over a
+  phrase). Static assignment (Straits, set-once) + dynamic migration (Causeway, CV) = the Straits/Causeway
+  knob-vs-CV duality applied to register. Orchestration automation.
+- **Then REMOVE output semitone/octave offset from INTERTROPICAL (consolidation):** Intertropical
+  currently carries deterministic output semitone/octave offsetting — it was a WORKAROUND for the missing
+  per-voice octave. Once the proper per-voice octave offset exists (Straits), Intertropical no longer
+  needs it: move the offsetting responsibility to its proper home and REMOVE it from Intertropical.
+  Each module does its own job (Intertropical = arrangement/routing; octave offset = Straits per-voice
+  register). Pays down the band-aid; clarifies responsibilities. (Do after the octave offset lands.)
+
 ## Result vs Melodicer
 Melodicer: global octave, all voices same register (can't orchestrate). Monsoon: per-voice stochastic
 octave lane (voices wander) + per-voice deterministic octave OFFSET (assign bass/lead/pad) -> BOTH
