@@ -376,3 +376,26 @@ Same phrase-wrap / gate-cut-at-boundary rules as absolute 1 apply at mute-cell e
   the correlation x reset-phase textures (canon/hocket where the RHYTHM also phases, not just pitch).
 Split into two modes (not a sub-toggle) so each has one unambiguous behaviour; the mode switch just
 steps through cycle / absolute 1 / absolute 2 / absolute 3.
+
+## THE OUTPUT MODES ARE A CONTAINMENT HIERARCHY — implement as ONE mechanism (Rodney)
+The modes are NOT four parallel things — each is a SUBSET of the next (even cycle, the original, is a
+subset):
+  **Cycle  subset of  Absolute 1  subset of  Absolute 2  subset of  Absolute 3**
+- **Cycle** = mask ALL-ON (everything sounds, no gating).
+- **Absolute 1** = mask is a single CONTIGUOUS RUN (editable as O/L).
+- **Absolute 2** = ARBITRARY static mask.
+- **Absolute 3** = arbitrary mask + FOLLOWS-ROTATION.
+
+So implement ONE output layer: **a per-step play/mute MASK + a FOLLOW-ROTATION flag.** The "modes" are
+just configurations of it, not separate code paths:
+- mask all-on  -> cycle
+- mask contiguous run -> absolute 1
+- mask arbitrary, follow-R off -> absolute 2
+- mask arbitrary, follow-R on  -> absolute 3
+The ONLY real mode bit is FOLLOW-ROTATION (abs3 vs the rest); everything else is just WHAT THE MASK IS.
+
+**UI implication:** possibly NO explicit 4-way mode switch — paint the mask + one follow-R toggle, and
+the behaviour follows from what's painted (all-on = cycle, contiguous = abs1, arbitrary = abs2/3).
+Optionally offer named PRESETS (set-all-on, set-single-range) as conveniences, but the underlying code
+is ONE path (one mask gate + one flag), not four. Big simplification: four modes collapse to one
+mechanism with two degrees of freedom (mask pattern, follow-R).
