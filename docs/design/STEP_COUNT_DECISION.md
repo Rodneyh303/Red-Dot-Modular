@@ -72,3 +72,24 @@ cost on every patch.
 Only post-release, as a deliberate large project, and only if — after LIVING with the addressing system +
 horizontal polyphony — 16 genuinely proves limiting. Bet: it won't, because nested ratios + sequential
 arrangement already stretch 16 across many bars of structured, evolving material.
+
+
+
+### PRECEDENT + what actually resizes (Rodney)
+- **Variable length ALREADY EXISTS:** `PATTERN_LENGTH_PARAM` (Monsoon.hpp:93) — the pattern already
+  plays a variable 1..16 steps. So extending to 32 is RAISING A CEILING, not building variable-length.
+  The length CONTROL and play-N-steps logic are already there; what's hardcoded 16 is the STORAGE
+  dimension `random_[16][NUM_STRANDS][16]` (PatternEngine.hpp:103, the 2nd [16] = MAX_STEPS) and
+  everything indexed by it (CA, copula, reversibility, hot path). The resize is concentrated in the
+  array dimension + indexing, NOT new control logic.
+- **16 is a RECOGNISED FLAW of the closest ancestor (Rodney):** the 16-step cap is seen as a limitation
+  of the original Melodicer (the nearest probabilistic step-sequencer in spirit). So this is EXTERNAL
+  evidence, not a hypothetical — the category has already found 16 limiting. Shipping with it = shipping
+  a known category weakness.
+
+**Net:** three converging arguments now tilt toward RAISING the ceiling — (1) long notes = hard
+arithmetic cap, (2) Melodicer precedent = recognised category flaw, (3) the length control already
+exists so it's a ceiling-raise not a new feature. The audit is still the gate (build it, A/B, confirm),
+but the expected conclusion has shifted toward "raise it" (to 32, or configurable 16/32). Cost stays
+the array-dimension resize (invasive but bounded: MAX_STEPS + indexing across CA/copula/reversibility/
+hot path), to be done carefully with the test suite (bit-compare, reversibility) as the safety net.
