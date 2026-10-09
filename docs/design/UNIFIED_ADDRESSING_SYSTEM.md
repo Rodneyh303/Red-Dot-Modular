@@ -392,7 +392,18 @@ just configurations of it, not separate code paths:
 - mask contiguous run -> absolute 1
 - mask arbitrary, follow-R off -> absolute 2
 - mask arbitrary, follow-R on  -> absolute 3
-The ONLY real mode bit is FOLLOW-ROTATION (abs3 vs the rest); everything else is just WHAT THE MASK IS.
+REFINEMENT (Rodney): the modes differ in WHAT THE MASK IS and WHAT IT FOLLOWS:
+- **Cycle** = all-on mask.
+- **Absolute 1** = the mask IS the O/L range (contiguous) — a UI action sets the mask to play inside
+  [O,O+L), mute outside. It FOLLOWS L/O: modulating O or L moves/resizes the play-region with the range.
+  It does NOT follow R. (The mask is DERIVED from O/L, so it tracks them by definition.)
+- **Absolute 2** = arbitrary PAINTED mask, STATIC (follows nothing — fixed to absolute phrase steps).
+- **Absolute 3** = arbitrary PAINTED mask, FOLLOWS R (rotation / phase reset).
+
+So the follow-behaviour is NOT one bit: abs1's mask follows L/O (it's the range-as-mask); the painted
+masks (abs2/abs3) have no O/L and follow nothing or R. One mechanism still (a per-step mask gate) but
+the mask's SOURCE differs: abs1 = derived-from-O/L (tracks O/L); abs2/abs3 = painted (tracks nothing / R).
+abs1 is thus slightly special — its 'follow' axis (L/O) is different from abs2/abs3's (R-or-not).
 
 **UI implication:** possibly NO explicit 4-way mode switch — paint the mask + one follow-R toggle, and
 the behaviour follows from what's painted (all-on = cycle, contiguous = abs1, arbitrary = abs2/3).
