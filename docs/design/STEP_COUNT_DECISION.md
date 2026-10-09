@@ -53,6 +53,22 @@ wrong thing).
 
 So: 16 confirmed for LENGTH; the LEGIBILITY question is open and deliberately deferred to a post-mono,
 post-addressing-system audit/experiment. Decision made by LISTENING (A/B), not in advance.
+
+### LONG NOTES — the concrete, partly-OBJECTIVE case (Rodney)
+The clearest instance where 16 is genuinely too small is GENERATING LONGER NOTES. A note's DURATION eats
+steps: whole note = 16 (the entire pattern is one note), half note = 8 (half the frame). So the longer
+the notes, the FEWER fit — you cannot write a multi-note phrase of long notes in 16 (e.g. four half
+notes = 32 steps). This is not aesthetics; it is a HARD EXPRESSIVE CAP: the arithmetic doesn't fit.
+It compounds with the features: legato/tie machinery (extends notes -> needs steps to extend into),
+triplets/odd durations (consume steps + leave gaps), per-voice ranges with long notes (a small range may
+fit only ONE long note -> no phrase).
+This sharpens the audit's success criterion: not only "does it sound better at 32" (subjective) but
+"is there music — specifically long-note phrases — IMPOSSIBLE to express at 16 but natural at 32?" For
+long notes the answer is pretty clearly YES (unarguable arithmetic: N long notes need N x length > 16).
+So for long-note music, more steps is ENABLING, not just legibility — which tilts the audit toward
+"yes, we need room" for that use case, and makes the CONFIGURABLE base length (16 for short-note
+patterns, 32 when long-note phrases are wanted) the most attractive option: room when needed, no forced
+cost on every patch.
 Only post-release, as a deliberate large project, and only if — after LIVING with the addressing system +
 horizontal polyphony — 16 genuinely proves limiting. Bet: it won't, because nested ratios + sequential
 arrangement already stretch 16 across many bars of structured, evolving material.
