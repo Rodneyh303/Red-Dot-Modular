@@ -90,7 +90,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         const bool noMacro = (cachedMacroSandsVisual == nullptr);
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             const int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
-            topoIn.eastV1Owner[el] = noMacro || (mmTopo ? mmTopo->getMonoMacroOwn(eng) > 0.5f : false);
+            topoIn.eastV1Owner[el] = noMacro || (mmTopo ? mmTopo->getMacroOwn(Monsoon::kMonoMacroOwnRow, eng) > 0.5f : false);
             for (int pv = 0; pv < 15; ++pv)
                 topoIn.eastPolyOwner[pv][el] = (mmTopo ? mmTopo->getMacroOwn(pv, eng) > 0.5f : false);
         }

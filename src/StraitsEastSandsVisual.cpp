@@ -414,18 +414,19 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
                     const int ocLane = lane;                                  // EDITOR lane
                     const int ocEng  = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane];  // ENGINE lane for the store
+                    // V1→voice-0: unified ownership via getMacroOwn at the voice's row.
+                    // V1 (onMonoTab) = row kMonoMacroOwnRow (15); V2+ = poly bank index.
+                    // No separate getMonoMacroOwn call — same accessor, different index.
                     w->getOwnsFn = [this, ocLane, ocEng]() {
                         Monsoon* m = getMonsoon(); if (!m) return true;
                         if (tab1MonoMirror()) return m->getMonoOwner(ocLane);   // monoOwner is editor-indexed
-                        if (onMonoTab()) return m->getMonoMacroOwn(ocEng) > 0.5f;
-                        int pv = polyVoice();
-                        return (pv >= 0 && pv < 15) ? (m->getMacroOwn(pv, ocEng) > 0.5f) : true;
+                        int vi = onMonoTab() ? Monsoon::kMonoMacroOwnRow : polyVoice();
+                        return (vi >= 0 && vi < 16) ? (m->getMacroOwn(vi, ocEng) > 0.5f) : true;
                     };
                     w->setOwnsFn = [this, ocEng](bool b) {
                         Monsoon* m = getMonsoon(); if (!m) return;
-                        if (onMonoTab()) { m->setMonoMacroOwn(ocEng, b); return; }
-                        int pv = polyVoice();
-                        if (pv >= 0 && pv < 15) m->setMacroOwn(pv, ocEng, b ? 1.f : 0.f);
+                        int vi = onMonoTab() ? Monsoon::kMonoMacroOwnRow : polyVoice();
+                        if (vi >= 0 && vi < 16) m->setMacroOwn(vi, ocEng, b ? 1.f : 0.f);
                     };
                     w->pushUndoFn = [this, ocEng](bool oldB, bool newB) {
                         Monsoon* m = getMonsoon(); if (!m) return;
@@ -434,7 +435,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         if (!mono && (pv < 0 || pv >= 15)) return;
                         redDot::applyAndPushStoreEdit<Monsoon>(m, "lane owner",
                             [ocEng, mono, pv](Monsoon& mm, float val) {
-                                if (mono) mm.setMonoMacroOwn(ocEng, val > 0.5f);
+                                if (mono) mm.setMacroOwn(Monsoon::kMonoMacroOwnRow, ocEng, val > 0.5f);
                                 else      mm.setMacroOwn(pv, ocEng, val);
                             },
                             oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
@@ -655,7 +656,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             Monsoon* mmT = getMonsoon();
             for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
                 int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
-                in.eastV1Owner[el] = mmT ? (mmT->getMonoMacroOwn(eng) > 0.5f) : false;
+                in.eastV1Owner[el] = mmT ? (mmT->getMacroOwn(Monsoon::kMonoMacroOwnRow, eng) > 0.5f) : false;
                 for (int pv = 0; pv < 15; ++pv)
                     in.eastPolyOwner[pv][el] = mmT ? (mmT->getMacroOwn(pv, eng) > 0.5f) : false;
             }
@@ -718,7 +719,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // bar fill fell to engine.spreadE (stale/0) instead of the knob's getSpread.
             auto* macroVis = m ? m->expanderManager.cachedMacroSandsVisual : nullptr;
             if (!macroVis) return true;
-            return m->getMonoMacroOwn(engLane) > 0.5f;
+            return m->getMacroOwn(Monsoon::kMonoMacroOwnRow, engLane) > 0.5f;
         }
         int pv = polyVoice();
         return (pv >= 0 && pv < 15) ? (m->getMacroOwn(pv, engLane) > 0.5f) : true;
@@ -931,9 +932,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (lane < dotModular::SandsGrid::POLY_LANES) {
                     // owner delegation (MACRO_OWN) migrated to Monsoon::editor.macroOwn
                     if (auto* mm = findMonsoonEitherSide(mod)) {
-                        const float cur = (ch == 0) ? mm->getMonoMacroOwn(eng) : mm->getMacroOwn(ch - 1, eng);
+                        const float cur = (ch == 0) ? mm->getMacroOwn(Monsoon::kMonoMacroOwnRow, eng) : mm->getMacroOwn(ch - 1, eng);
                         const float nv = (cur > 0.5f) ? 0.f : 1.f;
-                        if (ch == 0) mm->setMonoMacroOwn(eng, nv); else mm->setMacroOwn(ch - 1, eng, nv);
+                        if (ch == 0) mm->setMacroOwn(Monsoon::kMonoMacroOwnRow, eng, nv); else mm->setMacroOwn(ch - 1, eng, nv);
                         // (owner proxy write DELETED — MVC step 1d: setMonoMacroOwn/setMacroOwn above is the home.)
                     }
                 } else {
@@ -1461,7 +1462,7 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
         // `lane` is the EDITOR lane (ownerLightId is an editor-row light); the macroOwn store
         // is ENGINE-indexed, so convert editor→engine before getMonoMacroOwn.
         lights[ownerLightId(lane)].setBrightness(
-            (cachedMon_ && (cachedMon_->getMonoMacroOwn(dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane]) > 0.5f)) ? 1.f : 0.f);
+            (cachedMon_ && (cachedMon_->getMacroOwn(Monsoon::kMonoMacroOwnRow, dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane]) > 0.5f)) ? 1.f : 0.f);
 
     // PERF: findMonsoonEitherSide walks the expander chain. Topology only changes at
     // control rate, so refresh the cached pointer on the same /8 divider as the gate scan
