@@ -93,3 +93,16 @@ exists so it's a ceiling-raise not a new feature. The audit is still the gate (b
 but the expected conclusion has shifted toward "raise it" (to 32, or configurable 16/32). Cost stays
 the array-dimension resize (invasive but bounded: MAX_STEPS + indexing across CA/copula/reversibility/
 hot path), to be done carefully with the test suite (bit-compare, reversibility) as the safety net.
+
+## CEILING = 32, bounded by UI practicality (Rodney)
+**32 is the MAX setting — 64 would make Sands too fiddly at current HP.** 64 cells across the lane grid
+(and 64 per-step clickable cells for the absolute-2/3 play/mute MASK) would be too small to read/edit/
+paint precisely at the panel's current width → bad UX. 32 keeps the per-step cells big enough to click
+and read without widening the panel. So the ceiling is min(musically wanted, editable at current HP) =
+32: enough to fix the long-note/phrase flaw + the Melodicer limitation, while staying usable.
+- Pattern length stays VARIABLE via the existing PATTERN_LENGTH_PARAM — now 1..32 instead of 1..16.
+- Cell editability matters DOUBLY because the absolute-2/3 mask is painted per-cell; 32 keeps both
+  probability-bar editing AND mask-painting usable; 64 would make both fiddly.
+- No HP expansion — 32 keeps the current panel width.
+So the target is definitively 32 (not "32 or more") — UI practicality caps it there, and 32 solves the
+flaw without the fiddliness or a wider panel.
