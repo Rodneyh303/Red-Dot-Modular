@@ -351,7 +351,7 @@ probabilistic silence, not a clean "active only here" region).
 
 
 
-## ABSOLUTE 2 — per-step play/mute MASK (added output layer; Rodney)
+## ABSOLUTE 2 & 3 — per-step play/mute MASK (added output layer; static vs follows-rotation; Rodney)
 An ADDED output layer that REPLACES NOTHING — stacks on top of the single range + the reads. Output
 emits only if it passes ALL gates: within the voice range (if absolute 1 is active) AND the mask cell is
 "play". Purely additive; the probability reading / addressing / generation / correlation are untouched
@@ -364,13 +364,15 @@ emits only if it passes ALL gates: within the voice range (if absolute 1 is acti
 - **Musical use:** hand-painted RHYTHMIC gating of generative content per voice — deterministic WHEN,
   generative WHAT. Per-voice masks across the ensemble = interlocking rhythms (hocket-by-mask).
 
-### Open: STATIC mask vs mask-FOLLOWS-ROTATION (key modulation question)
-Modulation TBD, but the central fork:
-- **STATIC mask:** fixed to absolute phrase-step positions (steps 1,4,7 always play regardless of R).
-  A fixed rhythmic gate; modulating R shifts the CONTENT through it, rhythm stays put.
-- **Mask FOLLOWS range ROTATION (R):** the mask is defined relative to the voice's reset/phase, so it
-  SHIFTS WITH the phase reset points — modulating R slides rhythm AND content together. Makes the
-  rhythmic figure part of the phased voice (travels with the reset) — richer for the correlation x
-  reset-phase textures (canon/hocket where the RHYTHM also phases, not just pitch).
-Possibly a per-use TOGGLE (static vs follows-R). Same phrase-wrap / gate-cut-at-boundary rules as
-absolute 1 apply at mute-cell edges.
+Same phrase-wrap / gate-cut-at-boundary rules as absolute 1 apply at mute-cell edges.
+
+**ABSOLUTE 2 vs ABSOLUTE 3 — the mask is STATIC vs FOLLOWS ROTATION (two distinct MODES, Rodney):**
+- **ABSOLUTE 2 — STATIC mask:** fixed to absolute phrase-step positions (steps 1,4,7 always play
+  regardless of R). A fixed rhythmic gate; modulating R shifts the CONTENT through the fixed mask,
+  rhythm stays put.
+- **ABSOLUTE 3 — mask FOLLOWS range ROTATION (R):** the mask is defined relative to the voice's
+  reset/phase, so it SHIFTS WITH the phase reset points — modulating R slides rhythm AND content
+  together. The rhythmic figure becomes part of the phased voice (travels with the reset) — richer for
+  the correlation x reset-phase textures (canon/hocket where the RHYTHM also phases, not just pitch).
+Split into two modes (not a sub-toggle) so each has one unambiguous behaviour; the mode switch just
+steps through cycle / absolute 1 / absolute 2 / absolute 3.
