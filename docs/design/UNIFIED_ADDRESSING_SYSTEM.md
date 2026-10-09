@@ -420,3 +420,27 @@ the behaviour follows from what's painted (all-on = cycle, contiguous = abs1, ar
 Optionally offer named PRESETS (set-all-on, set-single-range) as conveniences, but the underlying code
 is ONE path (one mask gate + one flag), not four. Big simplification: four modes collapse to one
 mechanism with two degrees of freedom (mask pattern, follow-R).
+
+## MASK <-> ROTATION ANCHORING (Rodney) — base re-anchors, modulation moves relative to it
+How the fixed rotatable mask (abs2/abs3) connects to rotation. PER STEP:
+1. **Check whether the UNMODULATED (base knob) rotation has changed** — i.e. has the anchor link
+   between MASK-STEP-1 and the base rotation value changed?
+2. **If the base changed -> UPDATE THE ANCHOR** (re-pin mask-step-1 <-> new base rotation; move the mask
+   by that change).
+3. **Then FOLLOW THE MODULATION** — apply the current rotation MODULATION (CV) relative to the
+   (possibly-updated) anchor.
+4. **Always reflect the LATEST anchor + latest rotation mod:**
+   mask position = latest_base_anchor + current_modulation_offset.
+
+Two layers acting on the mask:
+- **Anchor** = mask-step-1 pinned to the BASE (unmodulated) rotation; re-pins ONLY when the base knob
+  changes (per-step change detection). Stable between knob changes (no jitter).
+- **Modulation** = the CV rotation offset, applied relative to the current anchor, continuously.
+
+Behaviour: base static + mod static -> mask at anchor, stable. Turn the knob -> anchor re-pins to new
+base, mask moves there (mod offsets from there). CV-modulate rotation -> mask moves by the mod relative
+to the current anchor. Both -> anchor tracks base (re-pin on change), mod offsets from the latest anchor.
+
+This resolves the earlier "establish the link first, then move together" question: the BASE establishes
+(and re-establishes on change) the anchor; the MODULATION moves the mask relative to it. No separate
+reset/phrase-boundary decision needed — base-change detection IS the re-anchor trigger.
