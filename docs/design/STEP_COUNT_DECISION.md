@@ -129,8 +129,14 @@ is arguably MORE musical than long notes in one grid (both time-scales at once, 
 philosophy as "length via Intertropical horizontal polyphony": compose from INSTANCES, not enlarge one.
 So beyond 32, the answer is MORE INSTANCES (modular composition), not more steps (monolithic enlarge) —
 which reinforces the 32 ceiling.
-**Needs:** seed-sharing (expose seed as CV/link — likely straightforward) and CA-sharing (communicate CA
-state between instances — more involved) between Monsoon instances. If buildable -> "linked multi-tempo
-Monsoons" is a powerful polytempo-correlated-generation pattern. Feature to scope separately.
-Net: 32 for in-instance room (common case) + linked half-tempo instance for long notes/polytempo
-(extreme case) => likely NEVER need 64.
+**ALREADY SUPPORTED — no new code (Rodney):** both sharing mechanisms EXIST.
+- SEED sharing: `SEED_OUTPUT` (Monsoon.hpp:434) -> `SEED_INPUT` (267). Patch one Monsoon's seed out to
+  the other's seed in -> shared seed field.
+- CA sharing: EXISTS via the Change Alley CV streams (CA_PANEL_THREE_STREAM_LAYOUT / MonsoonChangeAlleyV2
+  / MonsoonCausewayPolyExpander).
+So "linked multi-tempo Monsoons" is achievable TODAY by PATCHING: two Monsoons, link seed (out->in) +
+link CA, clock one at half tempo -> correlated polytempo long+short layering, ZERO new code. (I earlier
+mis-stated CA-sharing as needing to be built — it already exists.)
+Net: 32 for in-instance room (common case) + a PATCHED linked half-tempo instance for long
+notes/polytempo (extreme case, works today) => likely NEVER need 64. Beyond 32 = patch more instances,
+not build a bigger grid.
