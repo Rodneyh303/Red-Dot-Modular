@@ -502,8 +502,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         if (!mono && (pv < 0 || pv >= 15)) return;
                         redDot::applyAndPushStoreEdit<Monsoon>(m, "direction",
                             [dcLane, mono, pv](Monsoon& mm, float val) {
-                                if (mono) mm.setMonoLaneDir(dcLane, val);
-                                else      mm.setLaneDir(pv, dcLane, val);
+                                int vi = mono ? Monsoon::kMonoLaneDirRow : pv;
+                                mm.setLaneDir(vi, dcLane, val);
                             },
                             (float)oldV, (float)newV);
                     };
@@ -889,11 +889,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // globalDir; else the mono-lane dir (Mono/East V1). Param-backed branch is dead.
                     int cur;
                     if (auth.macroGlobal)      cur = (int)std::lround(math::clamp(m->getGlobalDir(auth.eastMonoLane), 0.f, 3.f));
-                    else if (auth.isField())   cur = (int)std::lround(math::clamp(m->getMonoLaneDir(auth.eastMonoLane), 0.f, 3.f));
+                    else if (auth.isField())   cur = (int)std::lround(math::clamp(m->getLaneDir(Monsoon::kMonoLaneDirRow, auth.eastMonoLane), 0.f, 3.f));
                     else                       cur = (int)std::lround(math::clamp(auth.mod->params[auth.paramId].getValue(), 0.f, 3.f));
                     nxt = (cur + d) % 4;
                     if (auth.macroGlobal)      m->setGlobalDir(auth.eastMonoLane, (float)nxt);
-                    else if (auth.isField())   m->setMonoLaneDir(auth.eastMonoLane, (float)nxt);
+                    else if (auth.isField())   m->setLaneDir(Monsoon::kMonoLaneDirRow, auth.eastMonoLane, (float)nxt);
                     else                       auth.mod->params[auth.paramId].setValue((float)nxt);
                 } else {
                     const int pv = ch - 1;

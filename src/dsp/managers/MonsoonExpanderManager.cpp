@@ -176,7 +176,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 if (auto* mm = owner) {
                     const float v = src.macroGlobal
                         ? mm->getGlobalDir(src.eastMonoLane)
-                        : mm->getMonoLaneDir(src.eastMonoLane);
+                        : mm->getLaneDir(Monsoon::kMonoLaneDirRow, src.eastMonoLane);
                     engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
                         math::clamp(v, 0.f, 3.f));
                 }
