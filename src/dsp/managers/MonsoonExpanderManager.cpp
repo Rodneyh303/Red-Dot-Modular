@@ -83,9 +83,14 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
     // Now 5 poly lanes: MEL/OCT/QMIX/REST/ACC (editor order).
     if (cachedEastSandsVisual) {
         Monsoon* mmTopo = owner;   // back-pointer (set in Monsoon::process)
+        // No Macro → East is the sole owner of V1 (and everything). Without this,
+        // getMonoMacroOwn returns false (row 15 defaults to 0), so V1's owner resolves
+        // to MACRO in the topology → laneOwnedByMacroTopo returns true → the V1 spread
+        // knob is LOCKED (inert) and the V1 bar fill falls to engine.spreadE (stale/0).
+        const bool noMacro = (cachedMacroSandsVisual == nullptr);
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             const int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
-            topoIn.eastV1Owner[el] = (mmTopo ? mmTopo->getMonoMacroOwn(eng) > 0.5f : false);
+            topoIn.eastV1Owner[el] = noMacro || (mmTopo ? mmTopo->getMonoMacroOwn(eng) > 0.5f : false);
             for (int pv = 0; pv < 15; ++pv)
                 topoIn.eastPolyOwner[pv][el] = (mmTopo ? mmTopo->getMacroOwn(pv, eng) > 0.5f : false);
         }
@@ -277,9 +282,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 // CV delta), not just the base. macroCVDelta is Macro's true POST delta
                 // (published in processDNA). Previously this used macroBase only, so a lane
                 // delegated to Macro ignored Macro's main LOR modulators on East's display.
-                float base = ownerEast ? eastLorVal(lane, item, r, c, lo, hi)
-                                       : (macroPresent ? (macroVis->macroBase[lane][item] + macroVis->macroCVDelta[lane][item])
-                                                       : eastLorVal(lane, item, r, c, lo, hi));
+                // Same V1 ownership fix as combineSpread: no Macro → East owns everything.
+                float base = (ownerEast || !macroPresent) ? eastLorVal(lane, item, r, c, lo, hi)
+                                       : (macroVis->macroBase[lane][item] + macroVis->macroCVDelta[lane][item]);
                 // Macro-CV blend: only meaningful when EAST owns the lane (when Macro
                 // owns, the lane already IS the Macro value — nothing to blend). The
                 // send is a PER-VOICE attenuverter on Macro's CV contribution
@@ -307,8 +312,12 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 const int els = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[lane];
                 const bool ownerEast = (topo.owner(v + 1, els) == dotModular::SandsTopology::Role::EAST);
                 // (step 5+6 cross-check assert removed — see the poly-write path above.)
-                float base = ownerEast ? eastInterpVal
-                                       : (macroPresent ? (macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3]) : eastInterpVal);
+                // No Macro → East is the sole owner (including V1). Only delegate to Macro
+                // when Macro is actually present AND owns the lane. Without this, V1's
+                // owner defaulted to Macro (getMonoMacroOwn returns false without Macro
+                // ever connected), suppressing East's V1 spread → bars flat.
+                float base = (ownerEast || !macroPresent) ? eastInterpVal
+                                       : (macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3]);
                 float blend = 0.f;
                 if (macroPresent && ownerEast) {
                     float send = mmOwn ? mmOwn->getMacroSend(slot, lane, 3) : 0.f;
