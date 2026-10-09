@@ -35,5 +35,5 @@ gives a constant visual frame.)
 
 ## Summary
 Segmented ring, position-only, red quarter-note / green otherwise (the original's cue = beat anchors +
-identity reminder), bright playhead + optional trail, no scale, possibly enlarged, adapt-vs-fixed-length
+identity reminder), bright playhead + optional trail, numeric scale TBD (may keep), possibly enlarged, adapt-vs-fixed-length
 TBD. Preserves the iconic ring at 32 without the rectangular fallback.
