@@ -1163,7 +1163,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
                     // instead of applyAnchorV1Only (hard-codes own=target=monoSlewed → self-target no-op).
                     visualEditor->currentState.lanes[el].probabilities[s] =
-                        redDot::SpreadInterp::applyMono(peRef, lane, s, spread);
+                        redDot::SpreadInterp::interpolate(base, base, spread);
                 }
             }
         }
@@ -1271,7 +1271,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             spread = monsoon->engine.spreadE(0, engLane);
                         // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
                         visualEditor->currentState.lanes[el].probabilities[s] =
-                            redDot::SpreadInterp::applyMono(peRef, engLane, s, spread);
+                            redDot::SpreadInterp::interpolate(base, base, spread);
                     }
                 }
             }
@@ -1385,7 +1385,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         spread = rack::math::clamp(spread, -1.f, 1.f);
                         // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
                         visualEditor->currentState.lanes[el].probabilities[s] =
-                            redDot::SpreadInterp::applyMono(peRef, engLane, s, spread);
+                            redDot::SpreadInterp::interpolate(base, base, spread);
                     }
                 }
             }
