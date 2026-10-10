@@ -132,3 +132,34 @@ overclaiming to describe themselves this way; dot.modular would be UNDERclaiming
 precise version prominently SOMEWHERE (for the people who recognise what it means — the early adopters
 and advocates who carry it), translated per audience elsewhere. Precision is the credential; the same
 rigour that built the instrument should describe it.
+
+---
+
+## Positioning vs Vermona Melodicer — "mono is a correlation setting, not a limit" (Rodney)
+Melodicer has GLOBAL variation and legato (one value, all voices). Monsoon has them PER-VOICE. But the
+compelling claim is NOT "we added more knobs" — it is CATEGORICAL:
+- **Monsoon is a Gaussian-copula CORRELATION engine; Melodicer's global behaviour is simply Monsoon at
+  MAXIMUM variation/legato correlation.** At correlation +1 all voices' variation/legato draws are
+  identical => effectively global/mono = the Melodicer coordinate. At 0 => independent per-voice; at −1
+  => complementary. So "variation/legato mono-only" is ONE COORDINATE in a continuous space Monsoon
+  spans — a correlation SETTING, not an architectural LIMIT.
+- So Monsoon doesn't have "more variation than Melodicer" — it CONTAINS Melodicer as the +1-correlation
+  corner of its copula space, and opens the whole axis around it.
+- Same principle as the instrument's whole thesis: every GLOBAL-vs-PER-VOICE choice is a correlation
+  setting. Variation/legato are just lanes in the same engine; "mono" is max-correlation on those lanes,
+  exactly as "unison" is max-correlation on the value lanes. ONE engine; mono is its degenerate case.
+
+Crisp line: "Melodicer forces you to the mono corner. Monsoon gives you the whole correlation axis —
+mono is just what you get at maximum correlation."
+
+### Why V1 is still an EXPLICIT spread target (honouring the Melodicer coordinate) (Rodney)
+CA (Change Alley) is general — any voice can be a spread source/target, V1 included. So V1-as-an-explicit
+spread-target could look redundant (just pick V1 in CA). It is NOT redundant: the Melodicer coordinate is
+"everything relates to the MAIN / reference voice (V1)", and that natural anchor deserves FIRST-CLASS,
+directly-reachable representation rather than being buried as one CA configuration. So:
+- CA = the GENERAL case (any voice ↔ any voice).
+- V1-as-explicit-target = the honoured SPECIAL case (the reference/anchor = the Melodicer coordinate),
+  made directly addressable because it is the natural/default/lineage point users reach for.
+This mirrors the whole trio: V1 is NOT special in IMPLEMENTATION (it's just voice 0 — "mono is not
+special anymore" in the code), but it IS the meaningful REFERENCE coordinate the design chooses to
+surface directly in the interface. Not special internally; honoured as the anchor externally.
