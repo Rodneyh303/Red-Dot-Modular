@@ -471,9 +471,9 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
     return true; 
 }
 
-StepResult SequencerEngine::executeStep(float restProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail) {
-    // Phase A: legato threshold now read from voices[0].legatoProb (V1 = voice 0), not a
-    // separate parameter. lastLegatoProb_ removed — all readers use voices[0].legatoProb.
+StepResult SequencerEngine::executeStep(float restProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail) {
+    // Phase A: V1's per-voice params (legato, accent, qmix, variation) now read from
+    // voices[0].* instead of separate parameters or input.* scalars. V1 = voice 0.
     // ── Fractional notes (1/4T=2.667, 1/8T=1.333, 1/32=0.5 steps) & legato/tie ──
     // These notes end MID-STEP (closed by the gateSecRemain seconds-timer), not on
     // a 1/16 grid edge. Legato/tie decisions only happen AT an edge and require the
@@ -536,7 +536,7 @@ StepResult SequencerEngine::executeStep(float restProb, int nvIdx, float r_rest,
     // POLARITY (MODE_COLLAPSE_6_TO_3 §29): 0 = generated, 1 = quantised. The draw crosses UPWARD
     // (r >= level → use generated), so level 0 forces generated, level 1 forces quantised. (Pre-collapse
     // this was r < level, i.e. high q-mix = generated — the opposite.)
-    const bool qmixUseGenerated = quantiserPitchSource && (r_qmix >= input.qmixLevel);
+    const bool qmixUseGenerated = quantiserPitchSource && (r_qmix >= voices[0].qmixLevel);
     // QUANTISER (Q1): mono/voice-0 pitch = quantised external CV when in a quantiser mode, else the
     // internal melody+octave draw. voicePitch bypasses genPitchLive (no RNG/lane perturbation) when
     // quantiserPitchSource is set; off = byte-identical legacy path. qmixUseGenerated forces the
@@ -650,7 +650,7 @@ StepResult SequencerEngine::executeStep(float restProb, int nvIdx, float r_rest,
                         ((result.decision == MonoDecision::Legato || result.decision == MonoDecision::LegatoMax) && !wasHeld && !hadTail);
 
     if (monoStarting) {
-        result.accented = (r_accent < accentProb);
+        result.accented = (r_accent < voices[0].accentProb);
     } else if (result.decision == MonoDecision::Rest) {
         result.accented = false;
     } else {
@@ -667,7 +667,7 @@ StepResult SequencerEngine::executeStep(float restProb, int nvIdx, float r_rest,
     // always false; qmixHit keeps its raw-draw semantics via the r_qmix>=qmixLevel form (behaviour-
     // inert there, matching prior code). POLARITY: 0 = generated, 1 = quantised (§29).
     if (monoStarting) {
-        result.qmixHit = (r_qmix >= input.qmixLevel);
+        result.qmixHit = (r_qmix >= voices[0].qmixLevel);
     } else if (result.decision == MonoDecision::Rest) {
         result.qmixHit = false;
     } else {
@@ -772,7 +772,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
     
-    result = executeStep(restProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
+    result = executeStep(restProb, nvIdx, r_rest, r_legato, r_accent, r_qmix, input, wasHeldMono, hadMonoTail);
     result.stepped = true;
     result.wrapped = wrapped;
     // executeStep already assigned lastStepResult (BEFORE wrapped/stepped were set on the local
@@ -898,7 +898,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         gs.holdRemain = 0.f;     gs.gatePulseRemain = -1;
         gsStep.holdRemain = 0.f; gsStep.gatePulseRemain = -1;
 
-        result = executeStep(restProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
+        result = executeStep(restProb, nvIdx, r_rest, r_legato, r_accent, r_qmix, input, wasHeldMono, hadMonoTail);
         result.stepped = true;
         result.wrapped = wrapped;
         lastStepResult = result;   // re-sync wrapped/stepped (executeStep set lastStepResult before they were known)
@@ -985,7 +985,7 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     // ghost is.)  Then executeStep rolls the rest lane, which may still silence a ghost candidate.
     if (ghostRise) {
         float r_vary = pe.polyRandom(0, PL_VARIATION)[getVariationStep()];
-        if (r_vary >= input.variationAmount) {
+        if (r_vary >= voices[0].variationProb) {
             // No ghost candidate — silent gap.  Preserve the decision (slur bridge) + own cell.
             ghostActive = false;
             result = lastStepResult;
@@ -1006,7 +1006,7 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     // case (the spec's TRAP).  The gate width comes from whichever external gate is high (main or
     // ghost) via the module-layer IMPL 2b.
     result = executeStep(restProb, nvIdx, r_rest, r_legato, r_accent,
-                         input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
+                         r_qmix, input, wasHeldMono, hadMonoTail);
     // A ghost candidate that played (not rested) sustains; a rested ghost does not.
     if (ghostRise) ghostActive = (result.decision != MonoDecision::Rest);
     result.stepped = true;

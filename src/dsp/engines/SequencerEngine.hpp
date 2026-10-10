@@ -729,7 +729,7 @@ struct SequencerEngine {
     int getQmixStep() const;    // Task 4: q-mix strand DNA index (mono)
 
     bool shouldTriggerStep(int ppqn) const;
-    StepResult executeStep(float restProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
+    StepResult executeStep(float restProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
     StepResult executeModeA(const ClockEngine& clock, float restProb, float noteVal, const PatternInput& input, int dir = +1);
     StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float noteVal, const PatternInput& input);
