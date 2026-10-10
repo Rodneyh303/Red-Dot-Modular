@@ -82,7 +82,8 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             const int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
             topoIn.eastV1Owner[el] = noMacro || (mmTopo ? mmTopo->getMacroOwn(Monsoon::kMonoMacroOwnRow, eng) > 0.5f : false);
             for (int pv = 0; pv < 15; ++pv)
-                topoIn.eastPolyOwner[pv][el] = (mmTopo ? mmTopo->getMacroOwn(pv, eng) > 0.5f : false);
+                // Phase A: poly voices shifted by +1 (V2=1..V16=15; V1=0). Old patches discarded.
+                topoIn.eastPolyOwner[pv][el] = (mmTopo ? mmTopo->getMacroOwn(pv + 1, eng) > 0.5f : false);
         }
     }
     const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);

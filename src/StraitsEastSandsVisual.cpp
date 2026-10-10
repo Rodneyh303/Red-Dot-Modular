@@ -420,12 +420,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->getOwnsFn = [this, ocLane, ocEng]() {
                         Monsoon* m = getMonsoon(); if (!m) return true;
                         // (tab1MonoMirror removed — Mono killed Step 6)
-                        int vi = onMonoTab() ? Monsoon::kMonoMacroOwnRow : polyVoice();
+                        int vi = currentSlot();   // Phase A: V1=0, V2+=1..15 (unified index)
                         return (vi >= 0 && vi < 16) ? (m->getMacroOwn(vi, ocEng) > 0.5f) : true;
                     };
                     w->setOwnsFn = [this, ocEng](bool b) {
                         Monsoon* m = getMonsoon(); if (!m) return;
-                        int vi = onMonoTab() ? Monsoon::kMonoMacroOwnRow : polyVoice();
+                        int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
                         if (vi >= 0 && vi < 16) m->setMacroOwn(vi, ocEng, b ? 1.f : 0.f);
                     };
                     w->pushUndoFn = [this, ocEng](bool oldB, bool newB) {
@@ -484,24 +484,21 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // V1→voice-0: unified direction via getLaneDir at the voice's row.
                     w->getStateFn = [this, dcLane]() {
                         Monsoon* m = getMonsoon(); if (!m) return 0;
-                        int vi = onMonoTab() ? Monsoon::kMonoLaneDirRow : polyVoice();
+                        int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
                         return (vi >= 0 && vi < 16) ? (int)std::lround(m->getLaneDir(vi, dcLane)) : 0;
                     };
                     w->setStateFn = [this, dcLane](int v) {
                         Monsoon* m = getMonsoon(); if (!m) return;
-                        int vi = onMonoTab() ? Monsoon::kMonoLaneDirRow : polyVoice();
+                        int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
                         if (vi >= 0 && vi < 16) m->setLaneDir(vi, dcLane, (float)v);
                     };
                     // Undo hook: route a direction cycle through Rack history (Ctrl+Z). Captures
                     // the resolved store target at click time (mono vs poly, which voice/lane).
                     w->pushUndoFn = [this, dcLane](int oldV, int newV) {
                         Monsoon* m = getMonsoon(); if (!m) return;
-                        const bool mono = onMonoTab();
-                        const int  pv   = mono ? -1 : polyVoice();
-                        if (!mono && (pv < 0 || pv >= 15)) return;
+                        const int vi = currentSlot();   // Phase A: V1=0, V2+=1..15 (unified)
                         redDot::applyAndPushStoreEdit<Monsoon>(m, "direction",
-                            [dcLane, mono, pv](Monsoon& mm, float val) {
-                                int vi = mono ? Monsoon::kMonoLaneDirRow : pv;
+                            [dcLane, vi](Monsoon& mm, float val) {
                                 mm.setLaneDir(vi, dcLane, val);
                             },
                             (float)oldV, (float)newV);
@@ -657,7 +654,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
                 in.eastV1Owner[el] = mmT ? (mmT->getMacroOwn(Monsoon::kMonoMacroOwnRow, eng) > 0.5f) : false;
                 for (int pv = 0; pv < 15; ++pv)
-                    in.eastPolyOwner[pv][el] = mmT ? (mmT->getMacroOwn(pv, eng) > 0.5f) : false;
+                    // Phase A: poly voices shifted by +1 (V2=1..V16=15; V1=0)
+                    in.eastPolyOwner[pv][el] = mmT ? (mmT->getMacroOwn(pv + 1, eng) > 0.5f) : false;
             }
             // The CURRENT tab's owner cells live in the display proxy (ownerDispId) and are
             // only flushed to the persistent slot on tab-exit — so for the current voice,
@@ -720,8 +718,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             if (!macroVis) return true;
             return m->getMacroOwn(Monsoon::kMonoMacroOwnRow, engLane) > 0.5f;
         }
-        int pv = polyVoice();
-        return (pv >= 0 && pv < 15) ? (m->getMacroOwn(pv, engLane) > 0.5f) : true;
+        int vi = currentSlot();   // Phase A: V2+=1..15 (was polyBankIndex 0..14)
+        return (vi >= 0 && vi < 16) ? (m->getMacroOwn(vi, engLane) > 0.5f) : true;
     }
     // The voice NUMBER (1..16) for the selected tab: tab 0 = V1 (mono), tab v = V(v+1).
     // All mono/poly identity + bank mapping flows through VoiceResolver so there's one
@@ -926,9 +924,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (lane < dotModular::SandsGrid::POLY_LANES) {
                     // owner delegation (MACRO_OWN) migrated to Monsoon::editor.macroOwn
                     if (auto* mm = findMonsoonEitherSide(mod)) {
-                        const float cur = (ch == 0) ? mm->getMacroOwn(Monsoon::kMonoMacroOwnRow, eng) : mm->getMacroOwn(ch - 1, eng);
+                        // Phase A: ch IS the new index (V1=0, V2=1..15). Was ch-1 (old poly bank index).
+                        const float cur = mm->getMacroOwn(ch, eng);
                         const float nv = (cur > 0.5f) ? 0.f : 1.f;
-                        if (ch == 0) mm->setMacroOwn(Monsoon::kMonoMacroOwnRow, eng, nv); else mm->setMacroOwn(ch - 1, eng, nv);
+                        mm->setMacroOwn(ch, eng, nv);
                         // (owner proxy write DELETED — MVC step 1d: setMonoMacroOwn/setMacroOwn above is the home.)
                     }
                 } else {

@@ -930,8 +930,9 @@ struct Monsoon : Module {
     // (poly bank index); row 15 = V1/mono. getMonoMacroOwn is a thin wrapper over
     // getMacroOwn(15, ...) — same data, unified accessor. Next step: renumber V1
     // to row 0 with a data migration so getMonoMacroOwn can be deleted entirely.
-    // The kMonoVoice index in macroOwn (row 15) is the V1 ownership slot.
-    static constexpr int kMonoMacroOwnRow = 15;
+    // Phase A: V1 = index 0 (was 15). Consistent with kMonoSlot=0 (V1 data slice).
+    // Old patches discarded — no backward-compat.
+    static constexpr int kMonoMacroOwnRow = 0;
     float getMacroOwn(int v, int lane) const { return editor.macroOwn[v*7 + lane]; }
     void  setMacroOwn(int v, int lane, float x) { editor.macroOwn[v*7 + lane] = x; }
     float getMonoMacroOwn(int lane) const { return getMacroOwn(kMonoMacroOwnRow, lane); }
@@ -944,7 +945,7 @@ struct Monsoon : Module {
     // LANE_DIR accessors — the ONE place the index math lives (mirrors old dirId/monoDirId).
     // V1→voice-0: laneDir has 16 rows (0..15). Rows 0..14 = V2..V16; row 15 = V1/mono.
     // getMonoLaneDir is a thin wrapper over getLaneDir(15, ...) — same data, unified accessor.
-    static constexpr int kMonoLaneDirRow = 15;
+    static constexpr int kMonoLaneDirRow = 0;   // Phase A: V1 = index 0 (was 15)
     float getLaneDir(int v, int lane) const { return editor.laneDir[v*6 + lane]; }
     void  setLaneDir(int v, int lane, float x) { editor.laneDir[v*6 + lane] = x; }
     float getMonoLaneDir(int lane) const { return getLaneDir(kMonoLaneDirRow, lane); }
