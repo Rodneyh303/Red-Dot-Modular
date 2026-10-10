@@ -14,7 +14,7 @@ on:
     # master is the WORKING branch (the repo default `main` is STALE). Feature
     # branches build too, so a branch is verified on all three platforms before
     # it is merged.
-    branches: [ master, 'feat/**', 'docs/**' ]
+    branches: [ master, lane-expander-refactor, 'feat/**', 'docs/**', '*refactor*', '*-refactor' ]
   pull_request:
   workflow_dispatch:        # manual trigger from the Actions tab
 
