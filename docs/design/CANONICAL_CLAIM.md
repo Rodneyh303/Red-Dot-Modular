@@ -163,3 +163,24 @@ directly-reachable representation rather than being buried as one CA configurati
 This mirrors the whole trio: V1 is NOT special in IMPLEMENTATION (it's just voice 0 — "mono is not
 special anymore" in the code), but it IS the meaningful REFERENCE coordinate the design chooses to
 surface directly in the interface. Not special internally; honoured as the anchor externally.
+
+**V1 is targetable DIRECTLY, without CA.** Not even "a convenient CA preset" — V1-as-spread-target is a
+standalone direct path, independent of CA. So the Melodicer coordinate (spread toward the reference voice)
+is reachable with NO CA configuration — fully first-class.
+
+### Melodicer's QUANTISER MODES = a QMIX setting at the simplest rhythm corner (Rodney)
+The argument generalises from variation/legato to Melodicer's CENTRAL feature — the quantiser (it's in
+the name). QMIX is Monsoon's quantiser pitch-source blend: per note, qmixUseGenerated = (r_qmix >=
+qmixLevel) decides generated vs quantiser-mode pitch (SequencerEngine.cpp:465). So:
+- **Melodicer's quantiser modes = a particular (fixed/deterministic) QMIX setting** — e.g. qmixLevel at the
+  extreme = always-quantise. Monsoon opens the PROBABILISTIC continuum (qmixLevel anywhere => per-note
+  probability of quantise-vs-generated), which Melodicer cannot do.
+- **...at the SIMPLEST CORNER of the rhythm settings** — Melodicer's rhythm = the degenerate/minimal point
+  of Monsoon's rhythm space (basic probability, no correlation, no per-voice variation).
+So **Melodicer in its ENTIRETY is a single CORNER of Monsoon's (rhythm × qmix × correlation) space** —
+the simplest corner. Monsoon is the whole continuous space; Melodicer is one point in it. The copula +
+qmix + rhythm lanes are what turn "Melodicer's features" into "coordinates in our space."
+
+Crisp line (scaled up): "Melodicer isn't a smaller feature set — it's the simplest CORNER of Monsoon's
+space. Its quantiser is one QMIX setting; its global variation is max correlation; its rhythm is the
+minimal corner. We contain Melodicer as a coordinate and open the whole space around it."
