@@ -168,18 +168,25 @@ surface directly in the interface. Not special internally; honoured as the ancho
 standalone direct path, independent of CA. So the Melodicer coordinate (spread toward the reference voice)
 is reachable with NO CA configuration — fully first-class.
 
-### Melodicer's QUANTISER MODES = a QMIX setting at the simplest rhythm corner (Rodney)
-The argument generalises from variation/legato to Melodicer's CENTRAL feature — the quantiser (it's in
-the name). QMIX is Monsoon's quantiser pitch-source blend: per note, qmixUseGenerated = (r_qmix >=
-qmixLevel) decides generated vs quantiser-mode pitch (SequencerEngine.cpp:465). So:
-- **Melodicer's quantiser modes = a particular (fixed/deterministic) QMIX setting** — e.g. qmixLevel at the
-  extreme = always-quantise. Monsoon opens the PROBABILISTIC continuum (qmixLevel anywhere => per-note
-  probability of quantise-vs-generated), which Melodicer cannot do.
-- **...at the SIMPLEST CORNER of the rhythm settings** — Melodicer's rhythm = the degenerate/minimal point
-  of Monsoon's rhythm space (basic probability, no correlation, no per-voice variation).
-So **Melodicer in its ENTIRETY is a single CORNER of Monsoon's (rhythm × qmix × correlation) space** —
-the simplest corner. Monsoon is the whole continuous space; Melodicer is one point in it. The copula +
-qmix + rhythm lanes are what turn "Melodicer's features" into "coordinates in our space."
+### Melodicer's QUANTISER MODES = the simplest corner across THREE axes (Rodney, corrected)
+What Melodicer's quantiser mode actually IS: quantise EXTERNAL CV, with basic rhythm = 1/4 notes, driven
+by clock or external gate. So it maps to the INTERSECTION of the simplest settings on three Monsoon axes:
+1. Pitch source = external CV -> the QMIX / pitch-source axis at the external/quantiser source (not
+   generated). QMIX is this blend: qmixUseGenerated = (r_qmix >= qmixLevel) selects generated vs
+   quantiser-mode pitch (SequencerEngine.cpp:465). Melodicer = fixed at the external-CV corner; Monsoon
+   opens the PROBABILISTIC continuum (per-note blend with GENERATED, correlatable across voices).
+2. Rhythm = 1/4 notes -> the SIMPLEST rhythm corner (fixed quarter-note, no probabilistic rhythm, no
+   rests, no per-voice variation). Monsoon opens the whole rhythm space (probability, rests, LOR
+   windowing, per-voice, correlated, any subdivision).
+3. Timing = clock or external gate -> Monsoon's clock/gate origin at its basic setting; Monsoon adds
+   phase-mode (+ reverse/slew turnaround).
+So Melodicer's SIGNATURE mode sits at {external-CV pitch} x {1/4 simplest rhythm} x {clock/gate} — the
+exact simple corner of Monsoon's (pitch-source x rhythm x timing) space. Ties to 00_VISION's "clock/gate/
+phase x q-mix pitch axis": Melodicer = clock-or-gate (not phase) x q-mix-at-external-CV x simplest rhythm.
+Combined with variation/legato = max-correlation: Melodicer IN ITS ENTIRETY is a single CORNER of
+Monsoon's space (pitch-source x rhythm x timing x correlation). Monsoon is the whole continuous space;
+Melodicer is one point in it. The copula + qmix + rhythm + timing axes turn Melodicer's features into
+coordinates in our space.
 
 Crisp line (scaled up): "Melodicer isn't a smaller feature set — it's the simplest CORNER of Monsoon's
 space. Its quantiser is one QMIX setting; its global variation is max correlation; its rhythm is the
