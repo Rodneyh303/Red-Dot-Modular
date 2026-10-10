@@ -109,7 +109,7 @@ the SQUARE matrix over the 8 CV pairs (3 rhythm, 3 melody, 2 qmix) in/out. Squar
 destination share the SAME index space, so for any index it is EITHER in bounds for BOTH its source and
 destination roles, OR out of bounds for both — NEVER one axis OOB and the other in. So the asymmetric
 source-only / destination-only cases CANNOT occur. The policy collapses to one line:
-  **OOB (index < poly count fails) => revert to the IDENTITY map (voice <-> self).**
+  **OOB (index >= poly count N, i.e. ABOVE the active range) => revert to the IDENTITY map (voice <-> self).**
 Applies uniformly to BOTH consumers — random-generation correlation structure AND the CV remapping.
 Identity is the natural no-map state; reversible (restore the mapping when the index is back in bounds).
 (The earlier source-vs-destination analysis above is subsumed: the square matrix means they move
