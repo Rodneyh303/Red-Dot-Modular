@@ -616,7 +616,7 @@ struct Monsoon : Module {
     dsp::SchmittTrigger gate3Trig;   // rising-edge detect for GATE3 actions
     dsp::SchmittTrigger rafflesGateTrig[14];  // Raffles's 14 die-action gates (incl Last*)
     // Per-voice "sounding this gate cycle" latch (Mode B poly gate-width follow).  Latched from
-    // voices[i].gs.gateHeld right after executePolyVoices runs (onset/landing/rest decision — in
+    // voices[i + 1].gs.gateHeld right after executePolyVoices runs (onset/landing/rest decision — in
     // Mode B holdRemain is nullified so there is no MidNote, every shouldExecute carries a real
     // decision).  Held between onsets and ANDed with the mono gate envelope (IMPL 2b) so a poly
     // voice's gate WIDTH follows Gate 1 / ghost like the mono gate, not a 1-step internal hold.
@@ -926,20 +926,26 @@ struct Monsoon : Module {
 
     // MACRO accessors — stride 5 poly lanes (QMIX-widened; was 4). laneCol spans lane*4+col over
     // 5 lanes → row stride 20 for macroAtten (was 16). lane 0..4, item/col 0..3, v 0..15.
+    // V1→voice-0 unification: macroOwn has 16 rows (0..15). Row 0 = V1 (was 15);
+    // rows 1..15 = V2..V16 (poly bank index + 1). Phase A: V1 = index 0, consistent
+    // with kMonoSlot=0 (V1 data slice). Old patches discarded — no backward-compat.
+    // (getMonoMacroOwn/setMonoMacroOwn DELETED — all call sites use
+    //  getMacroOwn(kMonoMacroOwnRow, ...) / setMacroOwn(kMonoMacroOwnRow, ...) directly.)
+    static constexpr int kMonoMacroOwnRow = 0;
     float getMacroOwn(int v, int lane) const { return editor.macroOwn[v*7 + lane]; }
     void  setMacroOwn(int v, int lane, float x) { editor.macroOwn[v*7 + lane] = x; }
-    float getMonoMacroOwn(int lane) const { return editor.macroOwn[15*7 + lane]; }
-    void  setMonoMacroOwn(int lane, float x) { editor.macroOwn[15*7 + lane] = x; }
     float getMacroSend(int v, int lane, int item) const { return editor.macroSend[(v*7 + lane)*4 + item]; }
     void  setMacroSend(int v, int lane, int item, float x) { editor.macroSend[(v*7 + lane)*4 + item] = x; }
     float getMacroAtten(int v, int laneCol) const { return editor.macroAtten[v*28 + laneCol]; }
     void  setMacroAtten(int v, int laneCol, float x) { editor.macroAtten[v*28 + laneCol] = x; }
 
     // LANE_DIR accessors — the ONE place the index math lives (mirrors old dirId/monoDirId).
+    // V1→voice-0: laneDir has 16 rows (0..15). Row 0 = V1 (was 15); rows 1..15 = V2..V16.
+    // Phase A: V1 = index 0. (getMonoLaneDir/setMonoLaneDir DELETED — dead code, all call
+    //  sites use getLaneDir(kMonoLaneDirRow, ...) / setLaneDir(kMonoLaneDirRow, ...) directly.)
+    static constexpr int kMonoLaneDirRow = 0;   // Phase A: V1 = index 0 (was 15)
     float getLaneDir(int v, int lane) const { return editor.laneDir[v*6 + lane]; }
     void  setLaneDir(int v, int lane, float x) { editor.laneDir[v*6 + lane] = x; }
-    float getMonoLaneDir(int lane) const { return editor.laneDir[15*6 + lane]; }
-    void  setMonoLaneDir(int lane, float x) { editor.laneDir[15*6 + lane] = x; }
 
     // VARLEG accessors. varlegDeleg stays (VAR/LEG LOR delegation toggle — a distinct feature).
     // varlegAtten RETIRED: VAR/LEG CV-depth now uses the unified macroAtten store via

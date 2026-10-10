@@ -455,6 +455,7 @@ int main(){
 
     TEST("CA remapSlewedByPins(doQ=true only) remaps q-mix, leaves rhythm/melody untouched", {
         PatternEngine pe;
+        pe.numPolyVoicesHint = 15;   // Phase B: OOB=identity requires active count > 1 for cross-voice borrow
         // Seed distinct, known mono slewed buffers so a wrong-plane copy is observable.
         for(int i=0;i<16;++i){
             pe.slewedRhythm[i] = 0.10f + 0.01f*i;
@@ -487,6 +488,85 @@ int main(){
         // ...but doQ=false: q-mix must NOT be remapped.
         pe.remapSlewedByPins(/*doR=*/true, /*doM=*/true, /*doQ=*/false);
         EXPECT_NEAR(pe.slewedQmix[0], qWas0, 1e-6f);
+    });
+
+    // ── Phase B: CA OOB = IDENTITY ──────────────────────────────────────────────
+    // When poly count is reduced, a CA mapping that resolves to an inactive voice
+    // (index >= numPolyVoicesHint + 1) must revert to IDENTITY (self → self), not
+    // read stale/garbage data from the inactive voice's buffer. Reversible: restore
+    // the count and the mapping is active again.
+
+    TEST("CA OOB: mapping to inactive voice reverts to identity (rhythm plane)", {
+        PatternEngine pe;
+        pe.numPolyVoicesHint = 15;  // all voices active initially
+        for (int i = 0; i < 16; ++i) {
+            pe.slewedRhythm[i] = 0.10f + 0.01f * i;    // mono/V1
+        }
+        for (int i = 0; i < 16; ++i) pe.slewedPolyRhythm[2][i] = 0.777f;  // poly voice 3 (index 3)
+        // CA: mono row 0 sources voice 3 (index 3)
+        for (int v = 0; v < 16; ++v) pe.caRhythmSrc[v] = v;
+        pe.caRhythmSrc[0] = 3;
+        const float ownVal = pe.slewedRhythm[0];
+
+        // All active: remap works (row 0 reads voice 3's rhythm)
+        pe.remapSlewedByPins(true, false, false);
+        EXPECT_NEAR(pe.slewedRhythm[0], 0.777f, 1e-6f);
+
+        // Restore mono row 0's own value, then reduce poly count: voice 3 is now OOB
+        pe.slewedRhythm[0] = ownVal;
+        pe.numPolyVoicesHint = 2;  // active = 0,1,2; voice 3 (index 3) is OOB
+        pe.remapSlewedByPins(true, false, false);
+        EXPECT_NEAR(pe.slewedRhythm[0], ownVal, 1e-6f);  // identity (self, not voice 3)
+
+        // Restore count: mapping active again
+        pe.slewedRhythm[0] = ownVal;
+        pe.numPolyVoicesHint = 15;
+        pe.remapSlewedByPins(true, false, false);
+        EXPECT_NEAR(pe.slewedRhythm[0], 0.777f, 1e-6f);  // remapped again
+    });
+
+    TEST("CA OOB: mapping to inactive voice reverts to identity (q-mix plane)", {
+        PatternEngine pe;
+        pe.numPolyVoicesHint = 15;
+        for (int i = 0; i < 16; ++i) pe.slewedQmix[i] = 0.90f - 0.01f * i;
+        for (int i = 0; i < 16; ++i) pe.slewedPolyQmix[4][i] = 0.555f;  // poly voice 5 (index 5)
+        for (int v = 0; v < 16; ++v) { pe.caRhythmSrc[v] = v; pe.caMelodySrc[v] = v; pe.caQmixSrc[v] = v; }
+        pe.caQmixSrc[0] = 5;  // mono row 0 sources voice 5's q-mix
+        const float ownVal = pe.slewedQmix[0];
+
+        // All active: remap works
+        pe.remapSlewedByPins(false, false, true);
+        EXPECT_NEAR(pe.slewedQmix[0], 0.555f, 1e-6f);
+
+        // Reduce: voice 5 OOB → identity
+        pe.slewedQmix[0] = ownVal;
+        pe.numPolyVoicesHint = 3;  // active = 0,1,2,3; voice 5 OOB
+        pe.remapSlewedByPins(false, false, true);
+        EXPECT_NEAR(pe.slewedQmix[0], ownVal, 1e-6f);  // identity
+
+        // Restore: active again
+        pe.slewedQmix[0] = ownVal;
+        pe.numPolyVoicesHint = 15;
+        pe.remapSlewedByPins(false, false, true);
+        EXPECT_NEAR(pe.slewedQmix[0], 0.555f, 1e-6f);  // remapped
+    });
+
+    TEST("CA OOB: caSrcRow returns identity for OOB source (direct accessor test)", {
+        PatternEngine pe;
+        pe.numPolyVoicesHint = 2;  // active = 0,1,2
+        for (int v = 0; v < 16; ++v) { pe.caRhythmSrc[v] = v; pe.caMelodySrc[v] = v; pe.caQmixSrc[v] = v; }
+        pe.caRhythmSrc[0] = 5;  // map voice 0 → voice 5 (OOB)
+        pe.caMelodySrc[1] = 3;  // map voice 1 → voice 3 (OOB)
+        pe.caQmixSrc[2]   = 7;  // map voice 2 → voice 7 (OOB)
+        // OOB: all revert to identity (self)
+        EXPECT(pe.caSrcRow(0, dotModular::STRAND_RHYTHM) == 0);  // OOB src → identity
+        EXPECT(pe.caSrcRow(1, dotModular::STRAND_MELODY) == 1);  // OOB src → identity
+        EXPECT(pe.caSrcRow(2, dotModular::STRAND_QMIX)   == 2);  // OOB src → identity
+        EXPECT(pe.caQmixSrcRow(2) == 2);                            // OOB → identity
+        EXPECT(pe.caInputCvSrcRow(1) == 1);                         // OOB → identity
+        // In-bounds: normal mapping
+        pe.caRhythmSrc[0] = 2;  // voice 0 → voice 2 (in bounds: active=0,1,2)
+        EXPECT(pe.caSrcRow(0, dotModular::STRAND_RHYTHM) == 2);  // in-bounds → mapped
     });
 
     TEST("q-mix seed → Philox key + counter round-trip is reproducible (undo primitive)", {

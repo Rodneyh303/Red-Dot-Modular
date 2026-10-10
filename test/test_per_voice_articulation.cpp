@@ -36,7 +36,7 @@ int main() {
     // voice (mono step + own draw) is provably different from mono and from other voices.
     for (int v = 0; v < 15; ++v)
         for (int i = 0; i < 16; ++i)
-            e.pe.polyRandom(v, SequencerEngine::PL_VARIATION)[i] =
+            e.pe.polyRandom(v + 1, SequencerEngine::PL_VARIATION)[i] =
                 (float)(((i * 7 + 3) + (v + 1) * 13) % 16) / 16.f;
 
     e.lastNoteVal_ = 4.f;   // NOTE_VALUE = 1/8
@@ -45,7 +45,7 @@ int main() {
     // draw at mono's step, then clamp to the mono event grid (a voice may release early, never
     // hold past mono's next note — NOTE_VALUES is slowest->fastest, so max() picks the shorter).
     auto expectedDelegated = [&](int v, int monoIdx)->int {
-        float rVoice = e.pe.polyRandom(v, SequencerEngine::PL_VARIATION)[monoIdx];
+        float rVoice = e.pe.polyRandom(v + 1, SequencerEngine::PL_VARIATION)[monoIdx];
         int nv = e.getNoteLenIdx(e.lastNoteVal_, in, rVoice);
         return (nv > e.lastStepResult.nvIdx) ? nv : e.lastStepResult.nvIdx;
     };

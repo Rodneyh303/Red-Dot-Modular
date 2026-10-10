@@ -145,8 +145,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (!mod) return false;
                 Monsoon* mon = findMonsoonEitherSide(mod);
                 if (!mon || !mon->modVizEast) return false;
-                int v = polyVoice();
-                if (v < 0) {
+                int v = currentSlot();   // Phase A: V1=0, V2+=1..15 (was polyVoice)
+                if (onMonoTab()) {
                     // V1 / mono tab: active when REAL modulation enters V1's spread on this
                     // lane — East's own V1 spread CV, OR Macro modulation: delegated lane
                     // with Macro spread CV live, OR owned lane with a non-zero send AND
@@ -161,7 +161,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     return StraitsMacroVisualIds::macroSpreadModulatesLane(
                         macroVis, lane, delegated, dotModular::VoiceResolver::kMonoSlot);
                 }
-                if (v >= 15) return false;
+                if (v >= 16) return false;   // Phase A: 16 voices (was 15)
                 // Gate on a REAL modulation source (not a transient set-vs-effective
                 // delta, which races during a manual knob turn — the control-rate
                 // polySpreadEffective lags the live param for a frame and drew a red
@@ -239,7 +239,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // Macro on a poly voice, OR when this is the V1 tab and Mono owns V1 (East
         // mirrors Mono, inoperable). editorLane → engine lane for the ownership check.
         visualEditor->laneEditBlockedFn = [this](int editorLane) -> bool {
-            if (tab1MonoMirror()) return true;           // V1 owned by Mono → all lanes locked on East
+            // (tab1MonoMirror removed — Mono killed Step 6, always false)
             // SANDS CONSOLIDATION Step 2b: VAR/LEG are now full poly lanes (POLY_LANES=7), so
             // the old `>= POLY_LANES` guard that locked them as mono-only is unreachable (there
             // are no editor lanes >= 7). All 7 lanes now use the same Macro-delegation lock.
@@ -254,7 +254,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // Right-click on a lane row opens the ownership context menu.
         visualEditor->onLaneRightClick = [this](int lane, rack::math::Vec pos) -> bool {
             if (!macroAttached()) return false;  // no menu when Macro absent
-            if (onMonoTab()) return false;        // ownership is per poly voice, not mono
+            // (V1 ownership menu unblocked — V1 now uses the same getMacroOwn path as V2+)
             openLaneOwnershipMenu(lane, pos);
             return true;
         };
@@ -379,7 +379,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 [this, eng](Monsoon& m)          { return m.getSpread(currentSlot(), eng); },
                 [this, eng](Monsoon& m, float v) { m.setSpread(currentSlot(), eng, v); });
             if (k) {
-                k->lockWhen = [this, eng]() { return laneOwnedByMacroTopo(eng) || tab1MonoMirror(); };
+                k->lockWhen = [this, eng]() { return laneOwnedByMacroTopo(eng); };
                 k->displayValueFn = [this, eng]() { return spreadDisplayValue(eng); };
                 pendingSpreadArcs.push_back({k, el});   // arc stores EDITOR lane; flushSpreadArcs converts to engine via toEngine()
             }
@@ -414,33 +414,31 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
                     const int ocLane = lane;                                  // EDITOR lane
                     const int ocEng  = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane];  // ENGINE lane for the store
+                    // V1→voice-0: unified ownership via getMacroOwn at the voice's row.
+                    // V1 (onMonoTab) = row kMonoMacroOwnRow (15); V2+ = poly bank index.
+                    // No separate getMonoMacroOwn call — same accessor, different index.
                     w->getOwnsFn = [this, ocLane, ocEng]() {
                         Monsoon* m = getMonsoon(); if (!m) return true;
-                        if (tab1MonoMirror()) return m->getMonoOwner(ocLane);   // monoOwner is editor-indexed
-                        if (onMonoTab()) return m->getMonoMacroOwn(ocEng) > 0.5f;
-                        int pv = polyVoice();
-                        return (pv >= 0 && pv < 15) ? (m->getMacroOwn(pv, ocEng) > 0.5f) : true;
+                        // (tab1MonoMirror removed — Mono killed Step 6)
+                        int vi = currentSlot();   // Phase A: V1=0, V2+=1..15 (unified index)
+                        return (vi >= 0 && vi < 16) ? (m->getMacroOwn(vi, ocEng) > 0.5f) : true;
                     };
                     w->setOwnsFn = [this, ocEng](bool b) {
                         Monsoon* m = getMonsoon(); if (!m) return;
-                        if (onMonoTab()) { m->setMonoMacroOwn(ocEng, b); return; }
-                        int pv = polyVoice();
-                        if (pv >= 0 && pv < 15) m->setMacroOwn(pv, ocEng, b ? 1.f : 0.f);
+                        int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
+                        if (vi >= 0 && vi < 16) m->setMacroOwn(vi, ocEng, b ? 1.f : 0.f);
                     };
                     w->pushUndoFn = [this, ocEng](bool oldB, bool newB) {
                         Monsoon* m = getMonsoon(); if (!m) return;
-                        const bool mono = onMonoTab();
-                        const int  pv   = mono ? -1 : polyVoice();
-                        if (!mono && (pv < 0 || pv >= 15)) return;
+                        const int vi = currentSlot();   // Phase A: V1=0, V2+=1..15 (unified)
                         redDot::applyAndPushStoreEdit<Monsoon>(m, "lane owner",
-                            [ocEng, mono, pv](Monsoon& mm, float val) {
-                                if (mono) mm.setMonoMacroOwn(ocEng, val > 0.5f);
-                                else      mm.setMacroOwn(pv, ocEng, val);
+                            [ocEng, vi](Monsoon& mm, float val) {
+                                mm.setMacroOwn(vi, ocEng, val > 0.5f);
                             },
                             oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
                     };
                     // Locked when no Macro (nothing to delegate to) OR V1+Mono (Mono owns V1).
-                    w->lockWhen = [this](){ return !macroAttached() || tab1MonoMirror(); };
+                    w->lockWhen = [this](){ return !macroAttached(); };
                 }
             );
         }
@@ -480,29 +478,25 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
                     const int dcLane = lane;
+                    // V1→voice-0: unified direction via getLaneDir at the voice's row.
                     w->getStateFn = [this, dcLane]() {
                         Monsoon* m = getMonsoon(); if (!m) return 0;
-                        if (onMonoTab()) return (int)std::lround(m->getMonoLaneDir(dcLane));
-                        int pv = polyVoice();
-                        return (pv >= 0 && pv < 15) ? (int)std::lround(m->getLaneDir(pv, dcLane)) : 0;
+                        int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
+                        return (vi >= 0 && vi < 16) ? (int)std::lround(m->getLaneDir(vi, dcLane)) : 0;
                     };
                     w->setStateFn = [this, dcLane](int v) {
                         Monsoon* m = getMonsoon(); if (!m) return;
-                        if (onMonoTab()) { m->setMonoLaneDir(dcLane, (float)v); return; }
-                        int pv = polyVoice();
-                        if (pv >= 0 && pv < 15) m->setLaneDir(pv, dcLane, (float)v);
+                        int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
+                        if (vi >= 0 && vi < 16) m->setLaneDir(vi, dcLane, (float)v);
                     };
                     // Undo hook: route a direction cycle through Rack history (Ctrl+Z). Captures
                     // the resolved store target at click time (mono vs poly, which voice/lane).
                     w->pushUndoFn = [this, dcLane](int oldV, int newV) {
                         Monsoon* m = getMonsoon(); if (!m) return;
-                        const bool mono = onMonoTab();
-                        const int  pv   = mono ? -1 : polyVoice();
-                        if (!mono && (pv < 0 || pv >= 15)) return;
+                        const int vi = currentSlot();   // Phase A: V1=0, V2+=1..15 (unified)
                         redDot::applyAndPushStoreEdit<Monsoon>(m, "direction",
-                            [dcLane, mono, pv](Monsoon& mm, float val) {
-                                if (mono) mm.setMonoLaneDir(dcLane, val);
-                                else      mm.setLaneDir(pv, dcLane, val);
+                            [dcLane, vi](Monsoon& mm, float val) {
+                                mm.setLaneDir(vi, dcLane, val);
                             },
                             (float)oldV, (float)newV);
                     };
@@ -516,7 +510,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // since POLY_LANES=7 means `lane < POLY_LANES` is always true for valid lanes).
                     w->lockWhen = [this, lane]() {
                         int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane];
-                        return laneOwnedByMacroTopo(engLane) || tab1MonoMirror();
+                        return laneOwnedByMacroTopo(engLane);
                     };
                 }
             );
@@ -655,9 +649,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             Monsoon* mmT = getMonsoon();
             for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
                 int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
-                in.eastV1Owner[el] = mmT ? (mmT->getMonoMacroOwn(eng) > 0.5f) : false;
+                in.eastV1Owner[el] = mmT ? (mmT->getMacroOwn(Monsoon::kMonoMacroOwnRow, eng) > 0.5f) : false;
                 for (int pv = 0; pv < 15; ++pv)
-                    in.eastPolyOwner[pv][el] = mmT ? (mmT->getMacroOwn(pv, eng) > 0.5f) : false;
+                    // Phase A: poly voices shifted by +1 (V2=1..V16=15; V1=0)
+                    in.eastPolyOwner[pv][el] = mmT ? (mmT->getMacroOwn(pv + 1, eng) > 0.5f) : false;
             }
             // The CURRENT tab's owner cells live in the display proxy (ownerDispId) and are
             // only flushed to the persistent slot on tab-exit — so for the current voice,
@@ -711,17 +706,17 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // buildTopo's live-voice read, the lane-ownership menu, and the owner light.
     bool eastOwnsLane(int engLane) const {
         Monsoon* m = getMonsoon(); if (!m) return true;
-        if (tab1MonoMirror()) return m->getMonoOwner(dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane]);
+        // (tab1MonoMirror removed — Mono killed Step 6)
         if (onMonoTab()) {
             // No Macro → East is the sole owner (including V1). Without this, V1's
             // getMonoMacroOwn returns false when Macro was never connected, so the V1
             // bar fill fell to engine.spreadE (stale/0) instead of the knob's getSpread.
             auto* macroVis = m ? m->expanderManager.cachedMacroSandsVisual : nullptr;
             if (!macroVis) return true;
-            return m->getMonoMacroOwn(engLane) > 0.5f;
+            return m->getMacroOwn(Monsoon::kMonoMacroOwnRow, engLane) > 0.5f;
         }
-        int pv = polyVoice();
-        return (pv >= 0 && pv < 15) ? (m->getMacroOwn(pv, engLane) > 0.5f) : true;
+        int vi = currentSlot();   // Phase A: V2+=1..15 (was polyBankIndex 0..14)
+        return (vi >= 0 && vi < 16) ? (m->getMacroOwn(vi, engLane) > 0.5f) : true;
     }
     // The voice NUMBER (1..16) for the selected tab: tab 0 = V1 (mono), tab v = V(v+1).
     // All mono/poly identity + bank mapping flows through VoiceResolver so there's one
@@ -732,12 +727,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // currentVoice() with voiceSlot so V1 and poly index the same lorBase/spread store.
     int currentSlot() const { return dotModular::VoiceResolver::voiceSlot(currentVoice()); }
 
-    // Voice 1 / tab 1 with Sands Mono attached: the lane base belongs to Mono — East's
-    // base controls lock + mirror mono (display-only). Independent of Macro.
-    bool tab1MonoMirror() const {
-        Monsoon* m = getMonsoon();
-        return onMonoTab() && m && m->expanderManager.cachedSandsVisualExpander != nullptr;
-    }
+    // (tab1MonoMirror removed — Mono killed Step 6, cachedSandsVisualExpander always null)
     // Mono tab? = the selected voice is the mono master strand (resolver owns this).
     bool onMonoTab() const { return dotModular::VoiceResolver::isMono(currentVoice()); }
     // V1 editable: on mono tab AND Sands Mono is NOT attached. East acts as the
@@ -752,7 +742,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // persistent StrandLedger MACRO-then-EAST conflict). Deferring to the authoritative cache
         // makes the two views agree by construction — exactly one writer.
         if (m->expanderManager.cachedEastSandsVisual != module) return false;
-        return onMonoTab() && !(m->expanderManager.cachedSandsVisualExpander != nullptr);
+        return onMonoTab();   // Mono killed Step 6 — cachedSandsVisualExpander always null
     }
     // Poly bank index (0..14) for the selected tab; -1 on the mono tab (resolver-mapped,
     // == the old selectedVoice-1). Use only when !onMonoTab().
@@ -763,7 +753,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // convert editor→engine (EDITOR_TO_ENGINE_LANE_QMIX) before any get/setMacroOwn / eastOwnsLane.
     void openLaneOwnershipMenu(int lane, rack::math::Vec editorLocalPos) {
         if (!module) return;
-        const int voice = polyVoice();   // current poly bank index (0-based)
+        const int voice = currentSlot();   // Phase A: V1=0, V2+=1..15 (was polyVoice)
         const int engLane = (lane >= 0 && lane < dotModular::SandsGrid::POLY_LANES)
                           ? dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane] : lane;
         const bool macroOwns = !eastOwnsLane(engLane);   // MVC step 1d: store-backed (engine lane)
@@ -775,7 +765,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         Menu* menu = createMenu();
         menu->addChild(createMenuLabel(
-            std::string("Lane: ") + ln + "  (V" + std::to_string(voice + 2) + ")"));
+            std::string("Lane: ") + ln + "  (V" + std::to_string(voice + 1) + ")"));
         menu->addChild(new MenuSeparator);
 
         // Toggle ownership for this voice+lane
@@ -893,11 +883,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // globalDir; else the mono-lane dir (Mono/East V1). Param-backed branch is dead.
                     int cur;
                     if (auth.macroGlobal)      cur = (int)std::lround(math::clamp(m->getGlobalDir(auth.eastMonoLane), 0.f, 3.f));
-                    else if (auth.isField())   cur = (int)std::lround(math::clamp(m->getMonoLaneDir(auth.eastMonoLane), 0.f, 3.f));
+                    else if (auth.isField())   cur = (int)std::lround(math::clamp(m->getLaneDir(Monsoon::kMonoLaneDirRow, auth.eastMonoLane), 0.f, 3.f));
                     else                       cur = (int)std::lround(math::clamp(auth.mod->params[auth.paramId].getValue(), 0.f, 3.f));
                     nxt = (cur + d) % 4;
                     if (auth.macroGlobal)      m->setGlobalDir(auth.eastMonoLane, (float)nxt);
-                    else if (auth.isField())   m->setMonoLaneDir(auth.eastMonoLane, (float)nxt);
+                    else if (auth.isField())   m->setLaneDir(Monsoon::kMonoLaneDirRow, auth.eastMonoLane, (float)nxt);
                     else                       auth.mod->params[auth.paramId].setValue((float)nxt);
                 } else {
                     const int pv = ch - 1;
@@ -931,9 +921,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (lane < dotModular::SandsGrid::POLY_LANES) {
                     // owner delegation (MACRO_OWN) migrated to Monsoon::editor.macroOwn
                     if (auto* mm = findMonsoonEitherSide(mod)) {
-                        const float cur = (ch == 0) ? mm->getMonoMacroOwn(eng) : mm->getMacroOwn(ch - 1, eng);
+                        // Phase A: ch IS the new index (V1=0, V2=1..15). Was ch-1 (old poly bank index).
+                        const float cur = mm->getMacroOwn(ch, eng);
                         const float nv = (cur > 0.5f) ? 0.f : 1.f;
-                        if (ch == 0) mm->setMonoMacroOwn(eng, nv); else mm->setMacroOwn(ch - 1, eng, nv);
+                        mm->setMacroOwn(ch, eng, nv);
                         // (owner proxy write DELETED — MVC step 1d: setMonoMacroOwn/setMacroOwn above is the home.)
                     }
                 } else {
@@ -1062,15 +1053,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //    laneSignPending_ at the LOR endpoint). If we also pushed laneSignPending_
         //    every frame, we would overwrite the bounce-induced sign flip with
         //    laneDirSign(Pendulum) = +1, undoing the bounce at the next promotion.
-        if (onMonoTab() && !tab1MonoMirror()) {
+        if (onMonoTab()) {
             // V1 editable (no Mono attached): East IS the mono editor.
             // Step 4: NO sync needed. The DirCell writes dirDispId; syncDirBank()
             // persists it to monoDirId(lane); the manager reads monoDirId and pushes
             // to laneDirPending_. The widget must NOT overwrite dirDispId FROM engine.
-        } else if (onMonoTab() && tab1MonoMirror()) {
-            // Mono attached: Mono is the mono-direction authority. MVC step 1d: the store-backed
-            // DirCell reads getMonoLaneDir live (the slot Mono writes), so no per-frame proxy
-            // sync from the engine is needed.
+            // (tab1MonoMirror branch removed — Mono killed Step 6)
         } else if (selectedVoice >= 1) {
             // Step 3 (plans/lane_direction_homes.md): the poly push is GONE. East's direction
             // BANK is the home now and MonsoonExpanderManager::sync() pushes it into the engine
@@ -1118,13 +1106,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
                     float base;
                     switch (lane) {
-                        case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[pv][s]; break;
-                        case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[pv][s]; break;
-                        case SequencerEngine::PL_OCTAVE:   base = peRef.pubSlewedPolyOctave[pv][s]; break;
-                        case SequencerEngine::PL_ACCENT:   base = peRef.pubSlewedPolyAccent[pv][s]; break;
-                        case SequencerEngine::PL_QMIX:     base = peRef.pubSlewedPolyQmix[pv][s]; break;
-                        case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[pv][s]; break;
-                        case SequencerEngine::PL_LEGATO:   base = peRef.pubSlewedPolyLegato[pv][s]; break;
+                        case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[pv + 1][s]; break;
+                        case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[pv + 1][s]; break;
+                        case SequencerEngine::PL_OCTAVE:   base = peRef.pubSlewedPolyOctave[pv + 1][s]; break;
+                        case SequencerEngine::PL_ACCENT:   base = peRef.pubSlewedPolyAccent[pv + 1][s]; break;
+                        case SequencerEngine::PL_QMIX:     base = peRef.pubSlewedPolyQmix[pv + 1][s]; break;
+                        case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[pv + 1][s]; break;
+                        case SequencerEngine::PL_LEGATO:   base = peRef.pubSlewedPolyLegato[pv + 1][s]; break;
                         default: base = 0.5f; break;
                     }
                     const float spread = (pv >= 0 && pv < 15) ? eastMod->polySpreadEffective[pv][lane] : 0.f;
@@ -1148,13 +1136,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
                     float base;
                     switch (lane) {
-                        case SequencerEngine::PL_REST:      base = peRef.slewedRhythm[s]; break;
-                        case SequencerEngine::PL_MELODY:    base = peRef.slewedMelody[s]; break;
-                        case SequencerEngine::PL_OCTAVE:    base = peRef.slewedOctave[s]; break;
-                        case SequencerEngine::PL_ACCENT:    base = peRef.slewedAccent[s]; break;
-                        case SequencerEngine::PL_QMIX:      base = peRef.slewedQmix[s]; break;
-                        case SequencerEngine::PL_VARIATION: base = peRef.slewedPolyVariation[0][s]; break;
-                        case SequencerEngine::PL_LEGATO:    base = peRef.slewedPolyLegato[0][s]; break;
+                        // Phase A: V1 reads PUBLISHED poly voice 0 (not LIVE mono) — matches Macro
+                        case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[0][s]; break;
+                        case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[0][s]; break;
+                        case SequencerEngine::PL_OCTAVE:    base = peRef.pubSlewedPolyOctave[0][s]; break;
+                        case SequencerEngine::PL_ACCENT:    base = peRef.pubSlewedPolyAccent[0][s]; break;
+                        case SequencerEngine::PL_QMIX:      base = peRef.pubSlewedPolyQmix[0][s]; break;
+                        case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[0][s]; break;
+                        case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedPolyLegato[0][s]; break;
                         default: base = 0.5f; break;
                     }
                     (void)base;   // applyMono computes own internally; base kept for clarity
@@ -1174,7 +1163,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
                     // instead of applyAnchorV1Only (hard-codes own=target=monoSlewed → self-target no-op).
                     visualEditor->currentState.lanes[el].probabilities[s] =
-                        redDot::SpreadInterp::applyMono(peRef, lane, s, spread);
+                        redDot::SpreadInterp::interpolate(base, base, spread);
                 }
             }
         }
@@ -1203,11 +1192,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // spread knob locks via tab1MonoMirror() (see laneOwnedByMacro/lock predicates).
         // (Per-voice modulation folding onto voice 1 — interp. Y — is the deferred
         //  follow-up; this stage is the display/lock mirror only.)
-        auto* monoVis = monsoon->expanderManager.cachedSandsVisualExpander;
-        bool tab1Mono = onMonoTab() && (monoVis != nullptr);
-        // readOnly: only when Mono is attached (it owns V1). When V1 is editable
-        // (no Mono), the editor is live and the user edits V1's lanes directly here.
-        visualEditor->readOnly = tab1Mono;
+        // (tab1Mono dead code: Mono killed Step 6, cachedSandsVisualExpander always null)
+        bool tab1Mono = false;
+        visualEditor->readOnly = false;   // V1 is always editable (no Mono to mirror)
         if (tab1Mono) {
             // Show Mono's base LOR for all 4 poly lanes (Mono params are editor-ordered:
             // MEL=0 OCT=1 REST=2 ACC=3 → editor lane == param index). V1 base belongs to
@@ -1262,13 +1249,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
                         float base;
                         switch (engLane) {
-                            case SequencerEngine::PL_REST:      base = peRef.pubSlewedRhythm[s]; break;
-                            case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedMelody[s]; break;
-                            case SequencerEngine::PL_OCTAVE:    base = peRef.pubSlewedOctave[s]; break;
-                            case SequencerEngine::PL_ACCENT:    base = peRef.pubSlewedAccent[s]; break;
-                            case SequencerEngine::PL_QMIX:      base = peRef.pubSlewedQmix[s]; break;
-                            case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedVariation[s]; break;
-                            case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedLegato[s]; break;
+                            case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[0][s]; break;
+                            case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[0][s]; break;
+                            case SequencerEngine::PL_OCTAVE:    base = peRef.pubSlewedPolyOctave[0][s]; break;
+                            case SequencerEngine::PL_ACCENT:    base = peRef.pubSlewedPolyAccent[0][s]; break;
+                            case SequencerEngine::PL_QMIX:      base = peRef.pubSlewedPolyQmix[0][s]; break;
+                            case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[0][s]; break;
+                            case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedPolyLegato[0][s]; break;
                             default: base = 0.5f; break;
                         }
                         (void)base;   // applyMono computes own internally; base kept for clarity
@@ -1284,7 +1271,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             spread = monsoon->engine.spreadE(0, engLane);
                         // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
                         visualEditor->currentState.lanes[el].probabilities[s] =
-                            redDot::SpreadInterp::applyMono(peRef, engLane, s, spread);
+                            redDot::SpreadInterp::interpolate(base, base, spread);
                     }
                 }
             }
@@ -1357,13 +1344,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
                         float base;
                         switch (engLane) {
-                            case SequencerEngine::PL_REST:      base = peRef.pubSlewedRhythm[s]; break;
-                            case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedMelody[s]; break;
-                            case SequencerEngine::PL_OCTAVE:    base = peRef.pubSlewedOctave[s]; break;
-                            case SequencerEngine::PL_ACCENT:    base = peRef.pubSlewedAccent[s]; break;
-                            case SequencerEngine::PL_QMIX:      base = peRef.pubSlewedQmix[s]; break;
-                            case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedVariation[s]; break;
-                            case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedLegato[s]; break;
+                            case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[0][s]; break;
+                            case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[0][s]; break;
+                            case SequencerEngine::PL_OCTAVE:    base = peRef.pubSlewedPolyOctave[0][s]; break;
+                            case SequencerEngine::PL_ACCENT:    base = peRef.pubSlewedPolyAccent[0][s]; break;
+                            case SequencerEngine::PL_QMIX:      base = peRef.pubSlewedPolyQmix[0][s]; break;
+                            case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[0][s]; break;
+                            case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedPolyLegato[0][s]; break;
                             default: base = 0.5f; break;
                         }
                         (void)base;   // applyMono computes own internally; base kept for clarity
@@ -1398,7 +1385,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         spread = rack::math::clamp(spread, -1.f, 1.f);
                         // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
                         visualEditor->currentState.lanes[el].probabilities[s] =
-                            redDot::SpreadInterp::applyMono(peRef, engLane, s, spread);
+                            redDot::SpreadInterp::interpolate(base, base, spread);
                     }
                 }
             }
@@ -1461,7 +1448,7 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
         // `lane` is the EDITOR lane (ownerLightId is an editor-row light); the macroOwn store
         // is ENGINE-indexed, so convert editor→engine before getMonoMacroOwn.
         lights[ownerLightId(lane)].setBrightness(
-            (cachedMon_ && (cachedMon_->getMonoMacroOwn(dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane]) > 0.5f)) ? 1.f : 0.f);
+            (cachedMon_ && (cachedMon_->getMacroOwn(Monsoon::kMonoMacroOwnRow, dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane]) > 0.5f)) ? 1.f : 0.f);
 
     // PERF: findMonsoonEitherSide walks the expander chain. Topology only changes at
     // control rate, so refresh the cached pointer on the same /8 divider as the gate scan

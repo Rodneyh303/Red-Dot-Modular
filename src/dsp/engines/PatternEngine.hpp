@@ -42,16 +42,14 @@ struct PatternInput {
     float semiWeights[dotModular::TuningTable::MAXN] = {};
     float restProb         = 0.1f;
     float variationAmount  = 0.5f;
-    // LOCK Phase 2 (LOCK_SEMANTICS §9): mono BigFive LEGATO + NOTE_VALUE + ACCENT staged on the
-    // snapshot so they LATCH like restProb/variationAmount. LEGATO/NOTE_VALUE were previously passed
-    // live at the executeMode call sites; ACCENT lived on engine.accentProb written at THREE sites
-    // (control-rate + a redundant re-fetch in executeModeE/A) — a code smell the STEP1 WriteLedger
-    // A1/A2/A3 notes existed to police. Collapsing accent to this SINGLE writer removes the drift
-    // hazard entirely (ledger tripwire retired) and latches it for free. Call sites read in.*.
-    float legato           = 0.f;   // mono legato/tie probability 0..1
+    // LOCK Phase 2 (LOCK_SEMANTICS §9): mono BigFive NOTE_VALUE staged on the
+    // snapshot so it LATCHES like restProb/variationAmount. NOTE_VALUE was previously passed
+    // live at the executeMode call sites. LEGATO/ACCENT/QMIX were staged here too, but Phase A
+    // collapsed them: they now live on voices[0].* (V1 = voice 0), written by the controller
+    // in updatePatternInput — NOT transported through PatternInput.
+    // restProb and variationAmount remain here because PatternEngine reads them for
+    // pattern generation (snapshotPreRemap, varyNoteIndex, etc.) — not just the step cascade.
     float noteValue        = 2.f;   // mono note-value INDEX 0..7 (2 = 1/4 note)
-    float accentProb        = 0.25f; // mono accent probability 0..1 (was engine.accentProb; single-writer now)
-    float qmixLevel         = 0.f;   // Task 4: mono q-mix threshold 0..1 (QMIX_LEVEL_PARAM). draw<level = hit.
     float octaveLo         = 2.f;
     float octaveHi         = 5.f;
     float transpose        = 0.f;
@@ -137,14 +135,15 @@ struct PatternEngine {
 
     // Poly probability view: voice bank b (0..14 = V2..V16) → slot b+1; lane is the engine PL_ lane,
     // converted to editor order. Returns the 16-step row (float(&)[16]) so callers index [step].
-    // Now handles 7 poly lanes (REST/MEL/OCT/ACC/QMIX/VAR/LEG) via ENGINE_LANE_TO_EDITOR_QMIX (SANDS CONSOLIDATION Step 2).
-    float (&polyRandom(int bank, int engLane))[16] {
+    // Phase A: polyRandom now takes voiceSlot directly (V1=0, V2+=1..15). Was bank+1 (skipping V1).
+    // Callers must pass voiceSlot (0..15), NOT polyBankIndex (0..14). Old patches discarded.
+    float (&polyRandom(int voiceSlot, int engLane))[16] {
         int edLane = (engLane >= 0 && engLane < 7) ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane] : 0;
-        return random_[bank + 1][edLane];
+        return random_[voiceSlot][edLane];
     }
-    const float (&polyRandom(int bank, int engLane) const)[16] {
+    const float (&polyRandom(int voiceSlot, int engLane) const)[16] {
         int edLane = (engLane >= 0 && engLane < 7) ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane] : 0;
-        return random_[bank + 1][edLane];
+        return random_[voiceSlot][edLane];
     }
 
     // Final post-everything (A/B-mix + spread + LOR feed in upstream) probability value for a given
@@ -181,22 +180,38 @@ struct PatternEngine {
         const int r = (row >= 0 && row < 16) ? row : 0;
         // Q-mix rides its OWN green plane (parity with white=rhythm / red=melody). MELODY/OCTAVE ride
         // the melody plane; everything else (RHYTHM/ACCENT/VARIATION/LEGATO) rides the rhythm plane.
-        if (strand == dotModular::STRAND_QMIX) return (int)caQmixSrc[r];
-        const bool mel = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);
-        return mel ? (int)caMelodySrc[r] : (int)caRhythmSrc[r];
+        int src;
+        if (strand == dotModular::STRAND_QMIX) src = (int)caQmixSrc[r];
+        else {
+            const bool mel = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);
+            src = mel ? (int)caMelodySrc[r] : (int)caRhythmSrc[r];
+        }
+        // Phase B: CA OOB = IDENTITY. If the resolved source is above the active voice
+        // count (V1 + numPolyVoicesHint poly voices), revert to self (identity = no-op).
+        // Square matrix: source & target OOB together, one check. Reversible: restore
+        // when the index is back in bounds. Identity = own value (neutral, stateless).
+        const int activeCount = numPolyVoicesHint + 1;  // V1 (always) + active poly
+        if (src >= activeCount || r >= activeCount) return r;  // OOB → identity (self)
+        return src;
     }
     // Per-voice q-mix source row for the downstream blend THRESHOLD (which voice's q-mix probability
     // consuming voice `row` reads). row 0 = mono/voice-0, rows 1..15 = poly V2..V16. Identity default.
     inline int caQmixSrcRow(int row) const {
         const int r = (row >= 0 && row < 16) ? row : 0;
-        return (int)caQmixSrc[r];
+        const int src = (int)caQmixSrc[r];
+        const int activeCount = numPolyVoicesHint + 1;  // Phase B: OOB = identity
+        if (src >= activeCount || r >= activeCount) return r;
+        return src;
     }
     // Per-voice input-CV source row for the blend's QUANTISED-INPUT operand: it rides CA's MELODY
     // plane (QMIX_LANE_PARITY §"The blend" step 2 — "input CV = a CA melody source"), so a voice can
     // quantise another voice's input line. Identity default = each voice reads its own input CV.
     inline int caInputCvSrcRow(int row) const {
         const int r = (row >= 0 && row < 16) ? row : 0;
-        return (int)caMelodySrc[r];
+        const int src = (int)caMelodySrc[r];
+        const int activeCount = numPolyVoicesHint + 1;  // Phase B: OOB = identity
+        if (src >= activeCount || r >= activeCount) return r;
+        return src;
     }
 
     // Remap the slewed buffers by pins, ONCE per cycle, BEFORE spread (called from
@@ -357,17 +372,17 @@ struct PatternEngine {
             }
             for (int v=0;v<15;v++){
                 if (doR) {
-                    polyRandom(v, PL_REST)[i]=slewedPolyRhythm[v][i];
-                    polyRandom(v, PL_ACCENT)[i]=slewedPolyAccent[v][i];
-                    polyRandom(v, PL_VARIATION)[i]=slewedPolyVariation[v][i];
-                    polyRandom(v, PL_LEGATO)[i]=slewedPolyLegato[v][i];
+                    polyRandom(v + 1, PL_REST)[i]=slewedPolyRhythm[v][i];
+                    polyRandom(v + 1, PL_ACCENT)[i]=slewedPolyAccent[v][i];
+                    polyRandom(v + 1, PL_VARIATION)[i]=slewedPolyVariation[v][i];
+                    polyRandom(v + 1, PL_LEGATO)[i]=slewedPolyLegato[v][i];
                 }
                 if (doM) {
-                    polyRandom(v, PL_MELODY)[i]=slewedPolyMelody[v][i];
-                    polyRandom(v, PL_OCTAVE)[i]=slewedPolyOctave[v][i];
+                    polyRandom(v + 1, PL_MELODY)[i]=slewedPolyMelody[v][i];
+                    polyRandom(v + 1, PL_OCTAVE)[i]=slewedPolyOctave[v][i];
                 }
                 if (doQ) {
-                    polyRandom(v, PL_QMIX)[i]=slewedPolyQmix[v][i];
+                    polyRandom(v + 1, PL_QMIX)[i]=slewedPolyQmix[v][i];
                 }
             }
         }
@@ -443,22 +458,33 @@ struct PatternEngine {
     // floats), so the race window drops from ~116µs to ~1µs — practically eliminating flicker.
     float pubSlewedRhythm[16]={}, pubSlewedVariation[16]={}, pubSlewedLegato[16]={}, pubSlewedAccent[16]={};
     float pubSlewedMelody[16]={}, pubSlewedOctave[16]={}, pubSlewedQmix[16]={};
-    float pubSlewedPolyRhythm[15][16]={}, pubSlewedPolyMelody[15][16]={}, pubSlewedPolyOctave[15][16]={};
-    float pubSlewedPolyAccent[15][16]={}, pubSlewedPolyQmix[15][16]={};
-    float pubSlewedPolyVariation[15][16]={}, pubSlewedPolyLegato[15][16]={};
+    // Phase A: extended from [15] to [16] — V1 (voice 0) at index 0, V2..V16 at 1..15
+    float pubSlewedPolyRhythm[16][16]={}, pubSlewedPolyMelody[16][16]={}, pubSlewedPolyOctave[16][16]={};
+    float pubSlewedPolyAccent[16][16]={}, pubSlewedPolyQmix[16][16]={};
+    float pubSlewedPolyVariation[16][16]={}, pubSlewedPolyLegato[16][16]={};
     void publishSlewedRhythm() {
         for (int i=0;i<16;++i){ pubSlewedRhythm[i]=slewedRhythm[i]; pubSlewedVariation[i]=slewedVariation[i];
             pubSlewedLegato[i]=slewedLegato[i]; pubSlewedAccent[i]=slewedAccent[i];
-            for(int v=0;v<15;++v){ pubSlewedPolyRhythm[v][i]=slewedPolyRhythm[v][i]; pubSlewedPolyAccent[v][i]=slewedPolyAccent[v][i];
-                pubSlewedPolyVariation[v][i]=slewedPolyVariation[v][i]; pubSlewedPolyLegato[v][i]=slewedPolyLegato[v][i]; } }
+            // Phase A: V1 (voice 0) published from mono slewed* → pubSlewedPoly*[0]
+            pubSlewedPolyRhythm[0][i]=slewedRhythm[i]; pubSlewedPolyAccent[0][i]=slewedAccent[i];
+            pubSlewedPolyVariation[0][i]=slewedVariation[i]; pubSlewedPolyLegato[0][i]=slewedLegato[i];
+            // V2..V16 (voices 1..15) published from slewedPoly*[v-1] → pubSlewedPoly*[v]
+            for(int v=1;v<16;++v){ pubSlewedPolyRhythm[v][i]=slewedPolyRhythm[v-1][i]; pubSlewedPolyAccent[v][i]=slewedPolyAccent[v-1][i];
+                pubSlewedPolyVariation[v][i]=slewedPolyVariation[v-1][i]; pubSlewedPolyLegato[v][i]=slewedPolyLegato[v-1][i]; } }
     }
     void publishSlewedMelody() {
         for (int i=0;i<16;++i){ pubSlewedMelody[i]=slewedMelody[i]; pubSlewedOctave[i]=slewedOctave[i];
-            for(int v=0;v<15;++v){ pubSlewedPolyMelody[v][i]=slewedPolyMelody[v][i]; pubSlewedPolyOctave[v][i]=slewedPolyOctave[v][i]; } }
+            // Phase A: V1 (voice 0) from mono slewed*
+            pubSlewedPolyMelody[0][i]=slewedMelody[i]; pubSlewedPolyOctave[0][i]=slewedOctave[i];
+            // V2..V16 (voices 1..15) from slewedPoly*[v-1]
+            for(int v=1;v<16;++v){ pubSlewedPolyMelody[v][i]=slewedPolyMelody[v-1][i]; pubSlewedPolyOctave[v][i]=slewedPolyOctave[v-1][i]; } }
     }
     void publishSlewedQmix() {
         for (int i=0;i<16;++i){ pubSlewedQmix[i]=slewedQmix[i];
-            for(int v=0;v<15;++v) pubSlewedPolyQmix[v][i]=slewedPolyQmix[v][i]; }
+            // Phase A: V1 (voice 0) from mono slewed*
+            pubSlewedPolyQmix[0][i]=slewedQmix[i];
+            // V2..V16 (voices 1..15) from slewedPolyQmix[v-1]
+            for(int v=1;v<16;++v) pubSlewedPolyQmix[v][i]=slewedPolyQmix[v-1][i]; }
     }
     // Set true when any Sands visual expander owns the spread→final stage this
     // cycle. When false, slew copies slewedDraw → final.
@@ -590,8 +616,8 @@ struct PatternEngine {
     // float precision, which is all the probability lanes need.
     //
     // CHUNK must exceed the max unit() calls per redraw of a stream. Worst case:
-    //   rhythm  16 * (rhythm+variation+legato+accent=4 mono + 15 poly) = 304
-    //   melody  16 * (melody+octave=2 mono + 15*2 poly)               = 512
+    //   rhythm  16 * (rhythm+variation+legato+accent=4 + 15 poly) = 304  (Phase A: 16 unified voices)
+    //   melody  16 * (melody+octave=2 + 15*2 poly)               = 512
     // 1024 leaves generous headroom and is a clean power of two.
     static constexpr uint64_t DRAW_CHUNK = 1024;
     // Draws are always Philox (counter-based). The legacy Xoroshiro A/B path is gone.

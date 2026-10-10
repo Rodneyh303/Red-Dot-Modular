@@ -29,7 +29,7 @@ using namespace rack;
 void ModeController::updatePolyVoiceRest_() {
     // Write the engine's per-voice decision cache from the SINGLE resolver on Monsoon
     // (getEffectivePolyRest/Accent = knob + Causeway CV × att, clamped). The engine reads
-    // voices[i].restProb per-sample in its hot loop, so it needs the value in the struct — but this
+    // voices[i + 1].restProb per-sample in its hot loop, so it needs the value in the struct — but this
     // is the ONLY writer, sourced from the one resolver, applied right before executePolyVoices.
     // The Straits mod arcs pull from the same resolver directly (no cached-effective copies), so
     // there is nothing to drift or clobber.
@@ -42,17 +42,17 @@ void ModeController::updatePolyVoiceRest_() {
     if (polyVoiceCachePrimed_
         && !dotModular::LockManager::liveNow(dotModular::Control::BigFive, engine.locked, engine.scopeLiveMask)) return;
     for (int i = 0; i < engine.numPolyVoices; ++i) {
-        engine.voices[i].restProb   = mainModule->getEffectivePolyRest(i);
-        engine.voices[i].accentProb = mainModule->getEffectivePolyAccent(i);
+        engine.voices[i + 1].restProb   = mainModule->getEffectivePolyRest(i);
+        engine.voices[i + 1].accentProb = mainModule->getEffectivePolyAccent(i);
         // Task 4 (poly QMIX): per-voice q-mix LEVEL, mirroring rest/accent. The engine reads
-        // voices[i].qmixLevel per-step in executePolyVoice's source-select. getEffectivePolyQmix
+        // voices[i + 1].qmixLevel per-step in executePolyVoice's source-select. getEffectivePolyQmix
         // is the single resolver (Straits knob; no Causeway q-mix CV yet).
-        engine.voices[i].qmixLevel  = mainModule->getEffectivePolyQmix(i);
+        engine.voices[i + 1].qmixLevel  = mainModule->getEffectivePolyQmix(i);
         // VAR/LEG per-voice knobs — mirror rest/accent/q-mix. The engine reads these in
         // executePolyVoice to threshold the per-voice VAR/LEG draws (which already exist
         // as slewedPolyVariation/Legato → polyRandom(PL_VARIATION/PL_LEGATO)).
-        engine.voices[i].variationProb = mainModule->getEffectivePolyVariation(i);
-        engine.voices[i].legatoProb    = mainModule->getEffectivePolyLegato(i);
+        engine.voices[i + 1].variationProb = mainModule->getEffectivePolyVariation(i);
+        engine.voices[i + 1].legatoProb    = mainModule->getEffectivePolyLegato(i);
     }
     polyVoiceCachePrimed_ = true;
 }
@@ -106,28 +106,26 @@ void ModeController::updatePatternInput() {
                 currentPatternInput.semiWeights[i] = 0.f;
         }
     }
-    if (rhythmLive) {   // BigFive LATCH — hold REST/VARIATION/LEGATO/NOTE_VALUE under lock
+    if (rhythmLive) {   // BigFive LATCH — hold REST/VARIATION/NOTE_VALUE under lock
         // MONO rest: use the Causeway-modulated effective value (mirrors the poly idiom
-        // engine.voices[i].restProb = mainModule->getEffectivePolyRest(i) above). Falls back to the
+        // engine.voices[i + 1].restProb = mainModule->getEffectivePolyRest(i) above). Falls back to the
         // raw param when there's no mainModule.
         currentPatternInput.restProb      = mainModule ? mainModule->getEffectiveMonoRest(paramManager.getRestUnclamped())
                                                        : paramManager.getRest();
         engine.writeLedger.noteWrite(WriteRole::MONO, WriteField::RestProb); // STEP1 WriteLedger: mono currentPatternInput.restProb (R2)
         currentPatternInput.variationAmount = paramManager.getVariation();
-        // LEGATO + NOTE_VALUE now staged here (were passed live at the executeMode call sites); the
-        // call sites read in.legato / in.noteValue so the lock hold applies to them too.
-        currentPatternInput.legato        = paramManager.getLegato();
         currentPatternInput.noteValue     = paramManager.getNoteValue();
-        // ACCENT: single writer now (was engine.accentProb written at 3 sites — control-rate plus a
-        // redundant re-fetch in executeModeE/A). Causeway-modulated effective value, mirroring rest.
-        currentPatternInput.accentProb    = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
-                                                       : paramManager.getAccent();
-        // Task 4 (QMIX): mono q-mix threshold level — Causeway-modulated effective value, mirroring
-        // rest/accent above. The Causeway QMIX_CV_INPUT (ch0 = mono) attenuated by MONO_QMIX_ATT +
-        // the global is added to the QMIX_LEVEL_PARAM knob, then clamped to [0,1]. Falls back to the
-        // raw param when there's no mainModule.
-        currentPatternInput.qmixLevel     = mainModule ? mainModule->getEffectiveMonoQmix(paramManager.getQmixLevel())
-                                                       : paramManager.getQmixLevel();
+        // Phase A: V1's per-voice params (legato, accent, qmix) now written DIRECTLY to
+        // voices[0] — NOT transported through PatternInput scalars (deleted). The
+        // controller is the SOLE writer of voices[0], mirroring how
+        // updatePolyVoiceRest_() is the sole writer of voices[1..15].
+        engine.voices[0].restProb      = currentPatternInput.restProb;
+        engine.voices[0].legatoProb   = paramManager.getLegato();
+        engine.voices[0].accentProb   = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
+                                                    : paramManager.getAccent();
+        engine.voices[0].qmixLevel    = mainModule ? mainModule->getEffectiveMonoQmix(paramManager.getQmixLevel())
+                                                    : paramManager.getQmixLevel();
+        engine.voices[0].variationProb = currentPatternInput.variationAmount;
     }
     if (octLive) {   // OctaveRange LATCH — hold OCT LO/HI under lock (see pitch-axis note above)
         currentPatternInput.octaveLo      = paramManager.getOctaveLo();
@@ -233,8 +231,7 @@ void ModeController::postExecute_(const StepResult& result) {
 // into engine.executeModeA, which reads nothing else from the clock. (Forward only;
 // reverse traversal is the next branch.)
 bool ModeController::executeModeE() {
-    // ACCENT is now assembled once in updatePatternInput() (in.accentProb) — the redundant re-fetch
-    // that used to live here is gone (single-writer; see PatternInput::accentProb note).
+    // Phase A: accent assembled once in updatePatternInput() → voices[0].accentProb.
     PatternInput in = assemblePatternInput_();
 
     ClockEngine phaseView;            // edge-only view; executeModeA reads sixteenthEdge
@@ -242,10 +239,8 @@ bool ModeController::executeModeE() {
 
     StepResult result = engine.executeModeA(
         phaseView,
-        in.restProb,
-        in.legato,          // BigFive LATCH: staged in updatePatternInput (was paramManager.getLegato())
         in.noteValue,       // BigFive LATCH: staged in updatePatternInput (was paramManager.getNoteValue())
-        in,
+        in,                 // Phase A: V1 params via voices[0] (populated in updatePatternInput)
         phaseReverse ? -1 : +1        // within-draw reverse traversal
     );
     postExecute_(result);
@@ -255,17 +250,15 @@ bool ModeController::executeModeE() {
 
 bool ModeController::executeModeA() {
     if (clock.sixteenthEdge) {
-        // ACCENT assembled once in updatePatternInput() (in.accentProb) — redundant re-fetch removed.
+        // Phase A: accent assembled in updatePatternInput() → voices[0].accentProb.
         // Ensure pattern input is fresh
         PatternInput in = assemblePatternInput_();
 
         // Execute the mode
         StepResult result = engine.executeModeA(
             clock,
-            in.restProb,
-            in.legato,          // BigFive LATCH: staged in updatePatternInput (was paramManager.getLegato())
             in.noteValue,       // BigFive LATCH: staged in updatePatternInput (was paramManager.getNoteValue())
-            in
+            in                  // Phase A: V1 params via voices[0] (populated in updatePatternInput)
         );
         
         // Handle post-execution
@@ -289,7 +282,7 @@ bool ModeController::executeModeB(const InputState& input,
     if (useSubGate) {
         PatternInput in = assemblePatternInput_();
         StepResult result = engine.executeModeBSubdivided(gate1Rise, gate1High, input.subGateRise,
-                                                          in.restProb, in.legato, in.noteValue, in,
+                                                          in.noteValue, in,
                                                           input.ghostRise, input.ghostHigh);
         postExecute_(result);
         updateLastStepIndex();
@@ -301,18 +294,18 @@ bool ModeController::executeModeB(const InputState& input,
         // Create a local copy of PatternInput and override relevant values for Mode B.
         PatternInput modeBPatternInput = currentPatternInput; // Start with current settings
         modeBPatternInput.noteVariationMask = 0b111; // Allow all note lengths (e.g., 1/1 to 1/32T)
-        modeBPatternInput.variationAmount = 0.5f;    // No bias for longer/shorter notes
+        // Phase A: Mode B overrides V1's variation to neutral (no bias for longer/shorter notes).
+        // Was modeBPatternInput.variationAmount = 0.5f; now writes voices[0] directly.
+        engine.voices[0].variationProb = 0.5f;
 
         // Execute the mode
         StepResult result = engine.executeModeB(
             gate1Rise,
             gate1High,
-            modeBPatternInput.restProb, // Rest still applies
-            modeBPatternInput.legato,   // BigFive LATCH: staged in updatePatternInput (was paramManager.getLegato())
             // Note value (which influences note length) should have no impact.
             // Pass a neutral value (e.g., 2.f for 1/4 note, a common default).
             0.f,
-            modeBPatternInput // Pass the modified PatternInput
+            modeBPatternInput // Pass the modified PatternInput (V1 params via voices[0])
         );
         
         // Handle post-execution

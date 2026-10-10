@@ -874,8 +874,8 @@ void Monsoon::process(const ProcessArgs& args) {
             engine.gs.tickPulse();
             engine.gsStep.tickPulse();
             for (int i = 0; i < engine.numPolyVoices; ++i) {
-                engine.voices[i].gs.tickPulse();
-                engine.voices[i].gsStep.tickPulse();
+                engine.voices[i + 1].gs.tickPulse();
+                engine.voices[i + 1].gsStep.tickPulse();
             }
         }
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
@@ -906,12 +906,12 @@ void Monsoon::process(const ProcessArgs& args) {
             // Latch each poly voice's sounding decision (Mode B poly gate-width follow).  In Mode B
             // holdRemain is nullified so there is no MidNote — every shouldExecute carries a real
             // onset/landing/rest decision, and executePolyVoices (run inside executeMode) has just
-            // set voices[i].gs.gateHeld to whether each voice plays or rests.  Hold that between
+            // set voices[i + 1].gs.gateHeld to whether each voice plays or rests.  Hold that between
             // onsets; the IMPL 2b gate driver ANDs it with the mono envelope so poly gate WIDTH
             // follows Gate 1 / ghost (not a 1-step internal hold).  Mode B only.
             if (modeSelect == 1) {
                 for (int i = 0; i < engine.numPolyVoices; ++i)
-                    polyVoiceActive[i] = engine.voices[i].gs.gateHeld;
+                    polyVoiceActive[i] = engine.voices[i + 1].gs.gateHeld;
             }
 
             // ── Shophouse scale expander: boundary-quantised scale/root ──
@@ -972,8 +972,8 @@ void Monsoon::process(const ProcessArgs& args) {
                     engine.gs.tickPulse();
                     engine.gsStep.tickPulse();
                     for (int i = 0; i < engine.numPolyVoices; ++i) {
-                        engine.voices[i].gs.tickPulse();
-                        engine.voices[i].gsStep.tickPulse();
+                        engine.voices[i + 1].gs.tickPulse();
+                        engine.voices[i + 1].gsStep.tickPulse();
                     }
                 }
             }
@@ -1075,7 +1075,7 @@ void Monsoon::process(const ProcessArgs& args) {
         // transition; gated by slurForward so a non-slurring note's fall does nothing).
         if (prevGate1SchmittHigh && !gate1High && engine.gs.slurForward &&
             engine.tieAcrossRests && engine.advanceOnTieIntoRest && !engine.pendingCheckpointArrival) {
-            engine.legatoCheckpointOnFall(engine.lastLegatoProb_);
+            engine.legatoCheckpointOnFall();
         }
         prevGate1SchmittHigh = gate1High;   // refresh per-sample (Mode B); used next sample for the 1-sample hold
         engine.gs.gateHeld     = gateOpen;
@@ -1104,10 +1104,10 @@ void Monsoon::process(const ProcessArgs& args) {
         // gate closes also gets its holdRemain zeroed (Lantern sounding-test parity with the mono).
         for (int i = 0; i < engine.numPolyVoices; ++i) {
             const bool vOpen = gateOpen && polyVoiceActive[i];
-            engine.voices[i].gs.gateHeld = vOpen;
+            engine.voices[i + 1].gs.gateHeld = vOpen;
             if (!vOpen) {
-                engine.voices[i].gs.holdRemain      = 0.f;
-                engine.voices[i].gs.gatePulseRemain = -1;
+                engine.voices[i + 1].gs.holdRemain      = 0.f;
+                engine.voices[i + 1].gs.gatePulseRemain = -1;
             }
         }
     }
@@ -1276,8 +1276,8 @@ void Monsoon::process(const ProcessArgs& args) {
                     b = engine.gs.semiLedBrightness(i);
                     q = engine.gs.semiQuantLedBrightness(i);
                     for (int v = 0; v < engine.numPolyVoices; ++v) {
-                        b = std::max(b, engine.voices[v].gs.semiLedBrightness(i));
-                        q = std::max(q, engine.voices[v].gs.semiQuantLedBrightness(i));
+                        b = std::max(b, engine.voices[v + 1].gs.semiLedBrightness(i));
+                        q = std::max(q, engine.voices[v + 1].gs.semiQuantLedBrightness(i));
                     }
                 }
                 semiLedBrightness[i] = b;

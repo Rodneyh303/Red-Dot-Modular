@@ -29,22 +29,12 @@ using namespace rack;
 MonsoonExpanderManager::MonoDirSrc MonsoonExpanderManager::monoDirAuthority(int lane) const {
     MonoDirSrc r;
     if (lane < 0 || lane >= dotModular::NUM_STRANDS) return r;
-    auto* monoVis  = cachedSandsVisualExpander;
+    // (monoVis removed — Mono killed Step 6, cachedSandsVisualExpander always null)
     auto* macroVis = cachedMacroSandsVisual;
     auto* eastVis  = cachedEastSandsVisual;
     const bool varleg = (lane >= 4);          // VARIATION / LEGATO: Macro has no such lane
 
-    if (monoVis) {
-        // Mono always owns VAR/LEG; for 0..3 it owns only when its owner store says so.
-        // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
-        Monsoon* mm = owner;   // back-pointer (set in Monsoon::process)
-        const bool monoOwns = varleg || (mm ? mm->getMonoOwner(lane) : true);
-        // MVC step 1d: direction is STORE-BACKED. Mono/Macro/East all return FIELD sources now
-        // (the dirDispId params are gone). Mono/East V1 → getMonoLaneDir; Macro → getGlobalDir.
-        if (monoOwns) { r.mod = monoVis; r.eastMonoLane = lane; return r; }                    // getMonoLaneDir
-        if (macroVis) { r.mod = macroVis; r.eastMonoLane = lane; r.macroGlobal = true; return r; } // getGlobalDir
-        return r;                              // Mono present but doesn't own, no Macro -> nobody
-    }
+    // (Mono killed Step 6 — cachedSandsVisualExpander always null, if(monoVis) block removed)
     if (macroVis && !varleg) { r.mod = macroVis; r.eastMonoLane = lane; r.macroGlobal = true; return r; }
     // No Mono, and either no Macro or a VAR/LEG lane Macro cannot own -> East's V1 slot.
     // This is the arm that was missing: with Macro attached, V1's VAR/LEG had NO source, so
@@ -90,9 +80,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         const bool noMacro = (cachedMacroSandsVisual == nullptr);
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             const int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
-            topoIn.eastV1Owner[el] = noMacro || (mmTopo ? mmTopo->getMonoMacroOwn(eng) > 0.5f : false);
+            topoIn.eastV1Owner[el] = noMacro || (mmTopo ? mmTopo->getMacroOwn(Monsoon::kMonoMacroOwnRow, eng) > 0.5f : false);
             for (int pv = 0; pv < 15; ++pv)
-                topoIn.eastPolyOwner[pv][el] = (mmTopo ? mmTopo->getMacroOwn(pv, eng) > 0.5f : false);
+                // Phase A: poly voices shifted by +1 (V2=1..V16=15; V1=0). Old patches discarded.
+                topoIn.eastPolyOwner[pv][el] = (mmTopo ? mmTopo->getMacroOwn(pv + 1, eng) > 0.5f : false);
         }
     }
     const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
@@ -176,7 +167,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 if (auto* mm = owner) {
                     const float v = src.macroGlobal
                         ? mm->getGlobalDir(src.eastMonoLane)
-                        : mm->getMonoLaneDir(src.eastMonoLane);
+                        : mm->getLaneDir(Monsoon::kMonoLaneDirRow, src.eastMonoLane);
                     engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
                         math::clamp(v, 0.f, 3.f));
                 }
@@ -439,7 +430,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             engine.pe.cachedPolySpread[v][PL::PL_REST] = restInterp;   // Stage 2a: cache for step-rate refresh
 
             // if (deepEast) {
-            //     engine.voices[v].restProb = deepEast->params[MonsoonIds::POLY_REST_PARAM_1 + v].getValue();
+            //     engine.voices[v + 1].restProb = deepEast->params[MonsoonIds::POLY_REST_PARAM_1 + v].getValue();
             // }
 
             // Stage 2a: removed full-field applyPoly loop — engine refreshes at step advance

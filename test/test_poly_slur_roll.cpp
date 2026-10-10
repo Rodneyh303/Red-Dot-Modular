@@ -1,9 +1,10 @@
 // EAST_EXTRA_LANES Stage 3 — Rule 2 per-voice leading-edge slur ROLL (step 2).
 //
 // Pins the design claim the roll rests on (EAST_EXTRA_LANES.md §4d): the slur
-// commitment is mono's LEAD formula run PER VOICE, and the ONLY per-voice input
+// commitment is V1's LEAD formula run PER VOICE, and the ONLY per-voice input
 // is the reading CELL, selected by delegation. Everything else — the legatoRandom
-// array and the legatoProb threshold — stays global/mono, exactly like VARIATION.
+// array and the per-voice legatoProb threshold (Phase A: V1's threshold is
+// voices[0].legatoProb; poly voices have their own v.legatoProb) — mirrors V1.
 //
 // Consequences proved here (the real engine's roll at SequencerEngine.cpp mirrors
 // this formula line-for-line; this validates the DESIGN, the engine binding is a

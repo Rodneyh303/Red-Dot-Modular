@@ -229,18 +229,18 @@ int main() {
         // Poly rows via polyRandom(bank, engLane): distinct per (voice, lane, step).
         for (int v = 0; v < 15; ++v)
             for (int s = 0; s < 16; ++s) {
-                pe.polyRandom(v, SequencerEngine::PL_REST)[s]   = 1.0f + v * 0.1f + s * 0.001f;
-                pe.polyRandom(v, SequencerEngine::PL_MELODY)[s] = 2.0f + v * 0.1f + s * 0.001f;
-                pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[s] = 3.0f + v * 0.1f + s * 0.001f;
-                pe.polyRandom(v, SequencerEngine::PL_ACCENT)[s] = 4.0f + v * 0.1f + s * 0.001f;
+                pe.polyRandom(v + 1, SequencerEngine::PL_REST)[s]   = 1.0f + v * 0.1f + s * 0.001f;
+                pe.polyRandom(v + 1, SequencerEngine::PL_MELODY)[s] = 2.0f + v * 0.1f + s * 0.001f;
+                pe.polyRandom(v + 1, SequencerEngine::PL_OCTAVE)[s] = 3.0f + v * 0.1f + s * 0.001f;
+                pe.polyRandom(v + 1, SequencerEngine::PL_ACCENT)[s] = 4.0f + v * 0.1f + s * 0.001f;
             }
         TEST("poly rows hold distinct per-(voice,lane,step) values, no aliasing", {
             for (int v = 0; v < 15; ++v)
                 for (int s = 0; s < 16; ++s) {
-                    EXPECT_NEAR(pe.polyRandom(v, SequencerEngine::PL_REST)[s],   1.0f + v * 0.1f + s * 0.001f);
-                    EXPECT_NEAR(pe.polyRandom(v, SequencerEngine::PL_MELODY)[s], 2.0f + v * 0.1f + s * 0.001f);
-                    EXPECT_NEAR(pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[s], 3.0f + v * 0.1f + s * 0.001f);
-                    EXPECT_NEAR(pe.polyRandom(v, SequencerEngine::PL_ACCENT)[s], 4.0f + v * 0.1f + s * 0.001f);
+                    EXPECT_NEAR(pe.polyRandom(v + 1, SequencerEngine::PL_REST)[s],   1.0f + v * 0.1f + s * 0.001f);
+                    EXPECT_NEAR(pe.polyRandom(v + 1, SequencerEngine::PL_MELODY)[s], 2.0f + v * 0.1f + s * 0.001f);
+                    EXPECT_NEAR(pe.polyRandom(v + 1, SequencerEngine::PL_OCTAVE)[s], 3.0f + v * 0.1f + s * 0.001f);
+                    EXPECT_NEAR(pe.polyRandom(v + 1, SequencerEngine::PL_ACCENT)[s], 4.0f + v * 0.1f + s * 0.001f);
                 }
         });
         TEST("mono and poly probability storage are independent (no cross-write)", {

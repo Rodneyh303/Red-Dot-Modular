@@ -299,7 +299,7 @@ struct Lantern : Module {
                 if (pv_i < 0 || pv_i >= eng.numPolyVoices || pv_i >= 15) {
                     cells[row][writeStep].type = lantern::NoteType::Inactive; return;
                 }
-                const PolyVoice& pv = eng.voices[pv_i];
+                const PolyVoice& pv = eng.voices[pv_i + 1];
                 const bool voiceSlur = pv.gs.slurForward;   // SANDS CONSOLIDATION Step 5: per-voice slur (flag removed)
                 recordCell(row, writeStep, pv.gs, dec, pv.accented, lenSteps, voiceSlur, monoSlur,
                            eng.lastPlayDir, lapArrival);

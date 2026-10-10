@@ -1108,12 +1108,46 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
                 }
             }
 
+            // Phase B: active-area frame + OOB identity diagonal.
+            // Light frame around the active (poly+1)x(poly+1) area to show the non-dimmed region.
+            // Light red diagonal line for the identity diagonal OUTSIDE the active area, showing
+            // the user that OOB mappings resolve to identity (suspended).
+            if (poly < CA::N_VOICES - 1) {  // only when there ARE OOB voices
+                const float hw = mm2px(Vec(CELL_W * 0.5f, 0)).x;
+                const float hh = mm2px(Vec(0, CELL_H * 0.5f)).y;
+                // Active frame: rectangle around cells (0,0)..(poly,poly)
+                Vec tl = cellCentre(0, 0);
+                Vec br = cellCentre(poly, poly);
+                nvgBeginPath(vg);
+                nvgRect(vg, tl.x - hw, tl.y - hh,
+                        (br.x + hw) - (tl.x - hw), (br.y + hh) - (tl.y - hh));
+                nvgStrokeColor(vg, nvgRGBAf(1,1,1,0.25f));
+                nvgStrokeWidth(vg, mm2px(Vec(0.4f,0)).x);
+                nvgStroke(vg);
+                // OOB identity diagonal: from (poly+1,poly+1) to (15,15) in light red
+                Vec d0 = cellCentre(poly + 1, poly + 1);
+                Vec d1 = cellCentre(CA::N_VOICES - 1, CA::N_VOICES - 1);
+                nvgBeginPath(vg);
+                nvgMoveTo(vg, d0.x, d0.y);
+                nvgLineTo(vg, d1.x, d1.y);
+                nvgStrokeColor(vg, nvgRGBAf(0.85f,0.15f,0.15f,0.35f));
+                nvgStrokeWidth(vg, mm2px(Vec(0.5f,0)).x);
+                nvgStroke(vg);
+            }
+
             for (int row = 0; row < CA::N_VOICES; ++row) {
                 bool active = (row == 0) || (row <= poly);  // row 0=mono always active
                 float alpha = active ? 1.f : 0.4f;
                 uint8_t rSrc = module->rhythmSrc[row];
                 uint8_t mSrc = module->melodySrc[row];
                 uint8_t qSrc = module->qmixSrc[row];
+                // Phase B: dim BOTH axes. A pin whose SOURCE is also OOB resolves to
+                // identity (OOB=identity policy), so dim it to show the user which
+                // mappings are suspended. Per-plane alpha: target active AND source active.
+                auto vActive = [&](int v) { return (v == 0) || (v <= poly); };
+                float rAlpha = (active && vActive(rSrc)) ? 1.f : 0.4f;
+                float mAlpha = (active && vActive(mSrc)) ? 1.f : 0.4f;
+                float qAlpha = (active && vActive(qSrc)) ? 1.f : 0.4f;
 
                 for (int col = 0; col < CA::N_VOICES; ++col) {
                     Vec c = cellCentre(row, col);
@@ -1134,21 +1168,21 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
                     if (hasR || hasM || hasQ) {
                         // base peg: white if rhythm present, else the outermost present plane's colour
                         if (hasR) {
-                            drawPin(vg, c.x, c.y, ro, white, rIdentity ? 0.72f*alpha : alpha);
+                            drawPin(vg, c.x, c.y, ro, white, rIdentity ? 0.72f*rAlpha : rAlpha);
                         } else if (hasM) {
-                            drawPin(vg, c.x, c.y, ro, red, mIdentity ? 0.72f*alpha : alpha);
+                            drawPin(vg, c.x, c.y, ro, red, mIdentity ? 0.72f*mAlpha : mAlpha);
                         } else { // q-mix only
-                            drawPin(vg, c.x, c.y, ro, green, qIdentity ? 0.72f*alpha : alpha);
+                            drawPin(vg, c.x, c.y, ro, green, qIdentity ? 0.72f*qAlpha : qAlpha);
                         }
                         // mid red dot if melody present AND a rhythm peg is under it
                         if (hasM && hasR) {
-                            NVGcolor ic = red; ic.a = (mIdentity ? 0.72f : 1.f) * alpha;
+                            NVGcolor ic = red; ic.a = (mIdentity ? 0.72f : 1.f) * mAlpha;
                             nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, ri);
                             nvgFillColor(vg, ic); nvgFill(vg);
                         }
                         // inner green dot if q-mix present AND something is under it (peg is R or M)
                         if (hasQ && (hasR || hasM)) {
-                            NVGcolor gc = green; gc.a = (qIdentity ? 0.72f : 1.f) * alpha;
+                            NVGcolor gc = green; gc.a = (qIdentity ? 0.72f : 1.f) * qAlpha;
                             nvgBeginPath(vg); nvgCircle(vg, c.x, c.y, rq);
                             nvgFillColor(vg, gc); nvgFill(vg);
                         }

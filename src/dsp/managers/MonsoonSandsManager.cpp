@@ -447,8 +447,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             Monsoon* mmV1 = redDot::findMonsoonEitherSide(eastV1);
             const bool macroHere = hasMacro && (macroVis != nullptr);
             auto monoOwnedByMacro = [&](int lane)->bool {
-                // MVC step 1d: owner is STORE-BACKED (editor.macroOwn via getMonoMacroOwn). Was params[ownerDispId].
-                return macroHere && !(mmV1 ? mmV1->getMonoMacroOwn(lane) : false);
+                // MVC step 1d: owner is STORE-BACKED (editor.macroOwn via getMacroOwn at kMonoMacroOwnRow).
+                return macroHere && !(mmV1 ? mmV1->getMacroOwn(Monsoon::kMonoMacroOwnRow, lane) : false);
             };
 
             // Stage 3b: V1 LOR derivation — moved here from the East widget's v1Editable

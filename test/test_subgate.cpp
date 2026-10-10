@@ -53,9 +53,13 @@ static StepResult step(SequencerEngine& eng, bool mainRise, bool ratchetRise, bo
                        float restProb, float legatoProb, float noteVal, float variation = 0.5f,
                        bool subgatesActive = true) {
     PatternInput in = makeInput();
-    in.variationAmount = variation;
+    eng.voices[0].restProb      = restProb;
+    eng.voices[0].legatoProb    = legatoProb;
+    eng.voices[0].accentProb    = 0.25f;     // default (PatternInput::accentProb deleted)
+    eng.voices[0].qmixLevel     = 0.f;       // default (PatternInput::qmixLevel deleted)
+    eng.voices[0].variationProb = variation;
     StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, ratchetRise,
-                                              restProb, legatoProb, noteVal, in,
+                                              noteVal, in,
                                               ghostRise, ghostHigh);
     const bool isRest = (r.decision == MonoDecision::Rest);
     // Ghost only sounds when a candidate actually fired (engine.ghostActive) AND the ghost gate is
@@ -79,9 +83,13 @@ static StepResult stepPoly(SequencerEngine& eng, bool mainRise, bool ratchetRise
                             bool mainHigh, bool ghostHigh,
                             float restProb, float legatoProb, float noteVal, float variation = 0.5f) {
     PatternInput in = makeInput();
-    in.variationAmount = variation;
+    eng.voices[0].restProb      = restProb;
+    eng.voices[0].legatoProb    = legatoProb;
+    eng.voices[0].accentProb    = 0.25f;     // default (PatternInput::accentProb deleted)
+    eng.voices[0].qmixLevel     = 0.f;       // default (PatternInput::qmixLevel deleted)
+    eng.voices[0].variationProb = variation;
     StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, ratchetRise,
-                                              restProb, legatoProb, noteVal, in,
+                                              noteVal, in,
                                               ghostRise, ghostHigh);
     if (r.stepped && eng.numPolyVoices > 0)
         eng.executePolyVoices(in);
@@ -176,7 +184,9 @@ int main() {
     TEST("no edge -> stepped=false", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeBSubdivided(false, false, false, 0.f, 0.f, 2.f, in);
+        eng.voices[0].restProb = 0.f;
+        eng.voices[0].variationProb = in.variationAmount;
+        StepResult r = eng.executeModeBSubdivided(false, false, false, 2.f, in);
         EXPECT(!r.stepped);
     });
 
@@ -268,29 +278,29 @@ int main() {
     SUITE("P1 — per-voice subdivision: poly voices independently rest/play at onsets");
     TEST("at a mono onset, voice 0 (restProb=0) plays, voice 1 (restProb=1) rests", {
         SequencerEngine eng; eng.numPolyVoices = 2;
-        eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 1.f;
+        eng.voices[1].restProb = 0.f; eng.voices[2].restProb = 1.f;
         stepPoly(eng, true, true, false, true, false, 0.f, 0.f, 4.f);  // mono onset
-        EXPECT(eng.voices[0].gs.gateHeld);
-        EXPECT(!eng.voices[1].gs.gateHeld);
+        EXPECT(eng.voices[1].gs.gateHeld);
+        EXPECT(!eng.voices[2].gs.gateHeld);
     });
 
     TEST("a ratcheted sub-cell (mono NewNote, legato=0) re-articulates the playing voice", {
         SequencerEngine eng; eng.numPolyVoices = 1;
-        eng.voices[0].restProb = 0.f;
+        eng.voices[1].restProb = 0.f;
         stepPoly(eng, true, true, false, true, false, 0.f, 0.f, 4.f);
         StepResult r = stepPoly(eng, false, true, false, true, false, 0.f, 0.f, 4.f);
         EXPECT(r.decision == D::NewNote);
-        EXPECT(eng.voices[0].gs.gateHeld);
+        EXPECT(eng.voices[1].gs.gateHeld);
     });
 
     TEST("a ghost onset in a gap drives per-voice rolls (poly ghost notes)", {
         SequencerEngine eng; eng.numPolyVoices = 2;
-        eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 1.f;
+        eng.voices[1].restProb = 0.f; eng.voices[2].restProb = 1.f;
         stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f);   // main onset
         stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f); // silent gap
         stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f); // ghost onset in gap
-        EXPECT(eng.voices[0].gs.gateHeld);    // voice 0 plays the ghost
-        EXPECT(!eng.voices[1].gs.gateHeld);   // voice 1 rests
+        EXPECT(eng.voices[1].gs.gateHeld);    // voice 0 plays the ghost
+        EXPECT(!eng.voices[2].gs.gateHeld);   // voice 1 rests
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -299,18 +309,18 @@ int main() {
     SUITE("P2 — poly STEP output (un-fused) re-triggers per cell");
     TEST("at a mono onset, the playing voice's gsStep is high (re-struck)", {
         SequencerEngine eng; eng.numPolyVoices = 1;
-        eng.voices[0].restProb = 0.f;
+        eng.voices[1].restProb = 0.f;
         stepPoly(eng, true, true, false, true, false, 0.f, 0.f, 4.f);
-        EXPECT(eng.voices[0].gsStep.gateHeld);
+        EXPECT(eng.voices[1].gsStep.gateHeld);
     });
 
     TEST("a ghost onset re-strikes gsStep (ghost cells pulse the step output)", {
         SequencerEngine eng; eng.numPolyVoices = 1;
-        eng.voices[0].restProb = 0.f;
+        eng.voices[1].restProb = 0.f;
         stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f);
         stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f);
         stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f);  // ghost onset
-        EXPECT(eng.voices[0].gsStep.gateHeld);  // re-struck at the ghost cell
+        EXPECT(eng.voices[1].gsStep.gateHeld);  // re-struck at the ghost cell
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -325,9 +335,14 @@ int main() {
     auto stepBridge = [](SequencerEngine& eng, bool mainRise, bool ghostRise, bool mainHigh,
                          bool ghostHigh, float restProb, float legatoProb, float noteVal,
                          float variation = 0.5f) {
-        PatternInput in = makeInput(); in.variationAmount = variation;
+        PatternInput in = makeInput();
+        eng.voices[0].restProb      = restProb;
+        eng.voices[0].legatoProb    = legatoProb;
+        eng.voices[0].accentProb    = 0.25f;     // default (PatternInput::accentProb deleted)
+        eng.voices[0].qmixLevel     = 0.f;       // default (PatternInput::qmixLevel deleted)
+        eng.voices[0].variationProb = variation;
         StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, /*ratchetRise=*/false,
-                                                 restProb, legatoProb, noteVal, in,
+                                                 noteVal, in,
                                                  ghostRise, ghostHigh);
         const bool isRest = (r.decision == MonoDecision::Rest);
         const bool ghostSounding = eng.ghostActive && ghostHigh;
@@ -376,33 +391,33 @@ int main() {
     SUITE("G5 — per-voice ghost placement (variation gate per voice)");
     TEST("shared (delegated): mono ghosts -> all poly voices ghost (per-voice draws pass)", {
         SequencerEngine eng; eng.numPolyVoices = 2;
-        eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 0.f;
+        eng.voices[1].restProb = 0.f; eng.voices[2].restProb = 0.f;
         // variationAmount=1.0 -> ghost iff r_vary < 1.0. Seed every per-voice VAR draw to 0.1 so
         // both delegated voices (mono step + own draw) ghost deterministically; mono reads its
         // variationRandom (default 0) and also ghosts -> ghostActive=true.
         for (int i = 0; i < 16; ++i) {
-            eng.pe.polyRandom(0, SequencerEngine::PL_VARIATION)[i] = 0.1f;
             eng.pe.polyRandom(1, SequencerEngine::PL_VARIATION)[i] = 0.1f;
+            eng.pe.polyRandom(2, SequencerEngine::PL_VARIATION)[i] = 0.1f;
         }
         stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f, /*variation=*/1.0f);  // main onset
         stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f, 1.0f);              // gap (no edge)
         stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f, 1.0f);              // ghost onset
         EXPECT(eng.ghostActive);                       // mono ghosted
-        EXPECT(eng.voices[0].gs.gateHeld);             // voice 0 ghosts (own draw 0.1 < 1.0)
-        EXPECT(eng.voices[1].gs.gateHeld);             // voice 1 ghosts (own draw 0.1 < 1.0)
+        EXPECT(eng.voices[1].gs.gateHeld);             // voice 0 ghosts (own draw 0.1 < 1.0)
+        EXPECT(eng.voices[2].gs.gateHeld);             // voice 1 ghosts (own draw 0.1 < 1.0)
     });
     TEST("Local East: voice 0's VAR LOR points to a high-variation step -> rested ghost (transparent); voice 1 (delegated) ghosts", {
         SequencerEngine eng; eng.numPolyVoices = 2;
-        eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 0.f;
+        eng.voices[1].restProb = 0.f; eng.voices[2].restProb = 0.f;
         // Pin the LORs so the steps are deterministic (len=1 => step = off). Per-voice draws are
         // seeded in polyRandom(bank, PL_VARIATION) (the f9c4189 per-voice model); mono reads
         // variationRandom.
         //   mono VAR LOR: len=1, off=0 -> step 0 -> variationRandom[0]=0.1 (< 0.5) -> mono ghosts.
-        //   voice 0: Local East VAR, len=1, off=1 -> step 1 -> polyRandom(0,PL_VAR)[1]=0.9 (>= 0.5) -> RESTED GHOST.
-        //   voice 1: delegated -> mono step 0 -> polyRandom(1,PL_VAR)[0]=0.1 (< 0.5) -> ghosts.
+        //   voice 0: Local East VAR, len=1, off=1 -> step 1 -> polyRandom(1,PL_VAR)[1]=0.9 (>= 0.5) -> RESTED GHOST.
+        //   voice 1: delegated -> mono step 0 -> polyRandom(2,PL_VAR)[0]=0.1 (< 0.5) -> ghosts.
         eng.pe.variationRandom[0] = 0.1f;                          // mono ghosts
-        eng.pe.polyRandom(0, SequencerEngine::PL_VARIATION)[1] = 0.9f;   // voice 0 Local-East step -> rested ghost
-        eng.pe.polyRandom(1, SequencerEngine::PL_VARIATION)[0] = 0.1f;   // voice 1 delegated, mono step -> ghosts
+        eng.pe.polyRandom(1, SequencerEngine::PL_VARIATION)[1] = 0.9f;   // voice 0 Local-East step -> rested ghost
+        eng.pe.polyRandom(2, SequencerEngine::PL_VARIATION)[0] = 0.1f;   // voice 1 delegated, mono step -> ghosts
         eng.strandLenRef(dotModular::STRAND_VARIATION) = 1;
         eng.strandOffRef(dotModular::STRAND_VARIATION) = 0;
         eng.polyLORRef(0, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_LEN) = 1;
@@ -413,9 +428,9 @@ int main() {
         stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f, variation); // gap
         stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f, variation); // ghost onset (mono ghosts)
         EXPECT(eng.ghostActive);                       // mono ghosted (variationRandom[0]=0.1 < 0.5)
-        EXPECT(!eng.voices[0].gs.gateHeld);            // voice 0: RESTED GHOST (transparent)
-        EXPECT(!eng.voices[0].participating);          //   not part of the chain
-        EXPECT(eng.voices[1].gs.gateHeld);             // voice 1: delegated -> ghosts
+        EXPECT(!eng.voices[1].gs.gateHeld);            // voice 0: RESTED GHOST (transparent)
+        EXPECT(!eng.voices[1].participating);          //   not part of the chain
+        EXPECT(eng.voices[2].gs.gateHeld);             // voice 1: delegated -> ghosts
     });
 
     std::cout << "\n-----\nsubgate: " << g_pass << " passed, " << g_fail << " failed\n";

@@ -131,18 +131,21 @@ struct SequencerEngine {
     // ── Poly voices ───────────────────────────────────────────────────────────
     // voices[0] = voice 2, voices[6] = voice 8.
     // numPolyVoices is set from the context-menu user preference (0 = mono only).
-    // It is intentionally NOT cleared by reset() so it survives patch reload.
-    PolyVoice voices[15];
+    // Phase A: voices[0] = V1 (voice 0 of the unified per-voice system).
+    // Was 15 (V2..V16); now 16 (V1..V16). All poly access shifted by +1.
+    PolyVoice voices[16];
     int       numPolyVoices = 0;
+    // Phase B: track the poly count used last step. When numPolyVoices increases,
+    // newly-activated voices have stale gs state (gateHeld/holdRemain from when
+    // they were last active). resetActivatedPolyVoices_() clears their state so
+    // they fresh-trigger instead of legato-ing from a stale held gate.
+    int       prevNumPolyVoices_ = 0;
 
     // Most recent mono decision — written by executeStep, read by executePolyVoices.
     StepResult lastStepResult;
 
-    // Most recent mono legato probability — written by executeStep, read by executePolyVoice
-    // for the Rule 2 per-voice slur roll (the legato THRESHOLD stays global/mono; only each
-    // voice's reading CELL differs, via getLegatoStepForVoice). Same write-once/read-by-poly
-    // pattern as lastStepResult above.
-    float lastLegatoProb_ = 0.f;
+    // (lastLegatoProb_ REMOVED — Phase A: V1 legato lives on voices[0].legatoProb, read
+    // directly by executeStep, legatoCheckpointOnFall, and the debug print in executePolyVoice.)
 
     // Leading-edge legato is now the ONLY legato model: the connection is governed by the
     // PREVIOUS note's onset commitment (gs.slurForward), captured before this note's cascade
@@ -529,7 +532,7 @@ struct SequencerEngine {
     // pre-spread), so every read here is a PLAIN own-bank read — a pinned voice's
     // borrowed draw already carries the consumer's own spread. No read-time indirection.
     inline const float (&polyRandomSrc(int voiceIdx, int polyLane) const)[16] {
-        return pe.polyRandom(voiceIdx, polyLane);
+        return pe.polyRandom(voiceIdx + 1, polyLane);
     }
     // Stage 2a: refresh ONE cell of polyRandom at step advance, using the cached spread
     // value from the last control-rate sync(). Checks the lane's lock axis; if not live,
@@ -545,11 +548,7 @@ struct SequencerEngine {
              : (polyLane == PL_QMIX)   ? dotModular::STRAND_QMIX
                                        : dotModular::STRAND_RHYTHM;  // fallback
     }
-    // Mono reads by STRAND — plain own bank (random_[0][strand]); remap is upstream.
-    inline const float (&monoStrand(int strand) const)[16] {
-        const int s = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? strand : dotModular::STRAND_RHYTHM;
-        return pe.random_[0][s];
-    }
+    // (monoStrand deleted — V1 reads via pe.polyRandom(0, PL_*) now, same path as V2+)
     bool muted = false;
     bool runGateActive = false;
     bool resetArmed = false;
@@ -637,7 +636,7 @@ struct SequencerEngine {
     // a Gate-1 FALL while a slur is pending. Advances the playhead ONE step into the incoming-rest
     // position and re-evaluates the slur candidacy (legato draw at that step). Sets
     // pendingCheckpointArrival so the next rise skips its own advance (one advance, one arrival).
-    void legatoCheckpointOnFall(float legatoProb);
+    void legatoCheckpointOnFall();
     void updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched);
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask) const;
     int getNoteLenIdx(float baseNoteParam, const PatternInput& input, float r);
@@ -735,10 +734,29 @@ struct SequencerEngine {
     int getQmixStep() const;    // Task 4: q-mix strand DNA index (mono)
 
     bool shouldTriggerStep(int ppqn) const;
-    StepResult executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
+    // Phase B: called at the top of each mode executor. When numPolyVoices increases,
+    // newly-activated voices have stale gs state (gateHeld/holdRemain/slurForward from
+    // when they were last active). Reset them so they fresh-trigger instead of legato-ing
+    // from a stale held gate. Also latches the count for this step (prevNumPolyVoices_).
+    void resetActivatedPolyVoices_() {
+        if (numPolyVoices > prevNumPolyVoices_) {
+            for (int i = prevNumPolyVoices_; i < numPolyVoices && i < 15; ++i) {
+                voices[i + 1].gs.gateHeld = false;
+                voices[i + 1].gs.holdRemain = 0.f;
+                voices[i + 1].gs.slurForward = false;
+                voices[i + 1].gs.gatePulseRemain = -1;
+                voices[i + 1].gsStep.gateHeld = false;
+                voices[i + 1].gsStep.holdRemain = 0.f;
+                voices[i + 1].gsStep.gatePulseRemain = -1;
+                voices[i + 1].participating = false;
+            }
+        }
+        prevNumPolyVoices_ = numPolyVoices;
+    }
+    StepResult executeStep(int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
-    StepResult executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir = +1);
-    StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input);
+    StepResult executeModeA(const ClockEngine& clock, float noteVal, const PatternInput& input, int dir = +1);
+    StepResult executeModeB(bool gate1Rise, bool gate1High, float noteVal, const PatternInput& input);
     // subGate subdivision (GATE_SUBDIVISION_STEP_GATE.md).  Three edge streams advance the playhead
     // and each runs executeStep (rest/legato/accent/pitch — all Sands lanes draw, Tie emergent from
     // pitch equality):
@@ -751,7 +769,7 @@ struct SequencerEngine {
     //     — executeStep rolls the rest lane first, so restProb may still silence it.
     // mainGateHigh/ghostHigh are passed for the IMPL 2b mirror in tests; the engine itself is
     // region-agnostic (which edge fired selects the region).  Unpatched = executeModeB.
-    StepResult executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise, float restProb, float legatoProb, float noteVal, const PatternInput& input, bool ghostRise = false, bool ghostHigh = false);
+    StepResult executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise, float noteVal, const PatternInput& input, bool ghostRise = false, bool ghostHigh = false);
     // (executeModeC/D removed — MODE_COLLAPSE_6_TO_3: dead code; the controller routes C→A, D→B,
     //  and the quantiser is now the q-mix axis engaged per-step in the dispatch, not an engine mode.)
     float quantize(float vIn);
@@ -761,7 +779,7 @@ struct SequencerEngine {
 
     // ── Poly voice execution ──────────────────────────────────────────────────
     // Call executePolyVoices() after any stepped executeModeA/B call.
-    // voices[i].restProb must be set by the caller before invoking.
+    // voices[i + 1].restProb must be set by the caller before invoking.
     void executePolyVoice(int voiceIdx, const PatternInput& input, bool wasHeld, bool hadTail);
     void executePolyVoices(const PatternInput& input);
 };

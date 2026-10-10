@@ -1,62 +1,137 @@
-# CC BRIEF — V1 -> voice-0 unification (the keystone refactor)
+# CC BRIEF v2 — V1 -> voice-0 unification (continue on feat/v1-to-voice0)
 
-## Start
-Create a NEW branch off lane-expander-refactor. Do NOT work on the refactor branch directly.
-    git checkout lane-expander-refactor && git pull
-    git checkout -b v1-to-voice0
-See also docs/design/V1_TO_VOICE0_UNIFICATION.md.
+Steps 1-7 DONE (ownership resolution + direction unified, dead mono code removed, ~-128 lines).
+Full spec + decisions: docs/design/V1_TO_VOICE0_UNIFICATION.md. This file is the working brief.
 
-## Why (the justification — read this)
-V1 is still structurally "Mono": it uses separate special-case machinery assuming the old Mono module /
-Macro arbitration, instead of the poly path that works for V2-V16. This is ONE root cause with many
-faces — all shipped as separate bugs this project already paid for:
-- spread knob LOCK (laneOwnedByMacroTopo defaulted true for V1 w/o Macro -> knob swallowed input)
-- spread application (combineSpread/applyMono didn't apply V1's own spread w/o Macro)
-- QMIX mod-arc showing at rest
-- the de-paramming crash
-Every one was "V1 ownership/addressing defaults wrong without Macro." V2+ ALWAYS work because they use
-the unified poly path (getMacroOwn, kFirstPoly loop, poly lock). Fix = make V1 behave as VOICE 0 of
-that same path. This keeps generating bugs until collapsed; it is the keystone blocking effective
-iteration pre-release.
+## CRITICAL — the current layout is INCONSISTENT; reconcile it
+V1/mono is split across TWO indices:
+- VoiceResolver.hpp: kMonoVoice=1, kFirstPoly=2, kMonoSlot=0  (mono DATA slice at slot 0)
+- Monsoon.hpp:934: kMonoMacroOwnRow=15                        (V1 OWNERSHIP at row 15)
+So V1 data is at slot 0 but V1 ownership is at row 15 — inconsistent, the root of the scattered
+special-casing. TARGET (Rodney's decision): V1 = INDEX 0 everywhere, uniform, no special rows.
+DISCARD old patches — NO backward-compat / migration code.
 
-## The guiding tell
-For any broken V1 behaviour: find the WORKING V2+ equivalent and make V1 use the SAME logic at
-voice-index 0 / the appropriate slot. e.g. getMacroOwn(v,lane) resolves correctly without Macro;
-getMonoMacroOwn(lane) does not -> make V1 resolve the same way.
+## PHASE A — reconcile + collapse to index 0 (DO NOW, carefully, one at a time)
+1. Unify OWNERSHIP index with DATA index: kMonoMacroOwnRow=15 -> V1 ownership at the SAME index as V1
+   data (voice 0). Collapse the row-15 ownership into the voice-0 row of macroOwn. Kills the slot-0 vs
+   row-15 split.
+2. kMonoSlot (35): collapse SPECIAL-CASE branches to the uniform voice path; where it is merely the
+   index-0 slice (legit), keep but read it as "voice 0" not "special mono slot". Test each: "if V1 were
+   just voice 0, would this code still be needed?" No -> collapse. Yes -> keep.
+3. Collapse onto the poly path at voice 0 and DELETE the V1-special branch:
+   onMonoTab (22), tab1MonoMirror (9), eastV1Owner (9), getMonoMacroOwn/setMonoMacroOwn (12/9),
+   getMonoLaneDir (6), laneOwnedByMacroTopo (8).
+4. Voice numbering: kMonoVoice=1 / kFirstPoly=2 (1-based, "channel-1-reserved"). Make the INTERNAL index
+   0-based with V1 = index 0; keep the USER-FACING label "V1". Do not let the 1-based internal convention
+   keep V1 special.
 
-## Scope — collapse these V1/mono special-case sites onto the poly path (~150 refs)
-- getMonoMacroOwn / setMonoMacroOwn (17/12) -> V1 ownership via poly getMacroOwn/setMacroOwn at V1 index.
-- laneOwnedByMacroTopo V1 branch (8) -> V1 lock resolves like poly (false when !macroPresent).
-- eastV1Owner (9) -> unify with eastPolyOwner at voice 0.
-- kMonoSlot (35) -> where it is a SPECIAL-CASE BRANCH, route V1 through the normal slot path; where it is
-  merely the slot-0 INDEX (correct), keep it.
-- tab1MonoMirror / onMonoTab (13/25) -> treat the V1 tab as voice 0; remove mirror/special-tab logic.
-- getMonoLaneDir (11) -> V1 direction via the poly direction path at voice 0.
+## METHOD (CRITICAL — unchanged)
+- ONE symbol/area at a time. For each: find the working V2+ equivalent, route V1 through it at voice 0,
+  delete the V1-special branch, BUILD, run test suite, confirm GREEN, COMMIT, PUSH. Small commits.
+  PUSH EVERY ONE (do not batch; pushes have been forgotten before).
+- NO diagnostic logging. Diagnose from code. Remove any trace before committing.
+- BIT-COMPARE V1 against a working poly voice after each collapse: bar is "V1 structurally identical to
+  voice 0", not "the bug went away".
+- Keep genuine V1-as-correlation-REFERENCE semantics if any (flag, don't force-collapse).
+- Multi-session; incremental only; never one giant commit.
 
-## DO NOT blindly delete
-applyMono (60) and kMonoSlot (35) include LEGITIMATE mechanism (slot 0 IS where V1's data lives — that
-is correct), not just special-casing. Only collapse branches that treat V1 DIFFERENTLY from how a poly
-voice at index 0 would be treated. TEST for each site: "if V1 were just voice 0, would this code still
-be needed?" No (special-case) -> collapse. Yes (normal slot-0 handling) -> keep.
-
-## Method — CRITICAL (big pervasive refactor; go carefully)
-1. ONE symbol/site at a time. For each: find the working V2+ equivalent, route V1 through it, delete the
-   V1-special branch, BUILD, run the test suite, confirm green.
-2. BIT-COMPARE V1 against a working voice: after collapsing, V1 should be STRUCTURALLY IDENTICAL to a
-   poly voice at index 0 — not just "the bug went away".
-3. Keep genuine V1 semantics IF ANY (V1 as the correlation REFERENCE voice may legitimately differ in
-   some contexts) — flag these, do not force-collapse; collapse only ownership/addressing/display
-   special-casing.
-4. Commit per symbol/milestone (SMALL commits). PUSH EACH (do not batch — pushes have been forgotten).
-5. Do NOT add diagnostic logging. Diagnose from code. If you must trace, remove it before committing.
-6. This is multi-session. Do NOT attempt one giant commit. Incremental is the only safe way.
-
-## Verify throughout (the bugs this kills)
-- East alone, NO Macro: V1 spread knob works, V1 bars respond, V1 NOT locked/dimmed.
-- V1 behaves IDENTICALLY to V2 for ownership / spread / direction / display.
-- QMIX mod-arc OFF at rest for V1.
-- No regression for V2-V16, nor for Macro-attached cases.
+## PHASE B — LATER (separate; only after Phase A merges clean)
+Active-voices-only optimisation + CA OOB policy, per the design doc:
+- Compute only N active voices (no Straits -> N=1; else N = poly count). ~16/N x saving.
+- Poly-count change at STEP boundary; knob-POLLED, NEVER modulatable (not CV, not DAW). No pending UI.
+- Existing channels never change on add/reduce — only the delta voices spin up/down; counter-addressed
+  regen keeps determinism (activate-at-step-30 == active-since-1); pending dice irrelevant.
+- CA (the SQUARE matrix over 8 CV pairs: 3 rhythm/3 melody/2 qmix in-out): any index >= N (above poly
+  count) -> revert to IDENTITY map (voice<->self). Square => source & target OOB together; OOB=identity
+  uniformly for BOTH consumers (random correlation structure AND CV remap). Reversible. UI: dim BOTH axes
+  (not just target) when out of range.
+DO NOT start Phase B until Phase A (index-0 migration) is complete and verified.
 
 ## OUT OF SCOPE
-Do NOT touch the Straits seamless-panel / VAR-LEG lanes / range-lane work. This branch is ONLY the
-V1->voice-0 engine unification. Straits panel polish resumes after this merges back.
+Straits seamless-panel / VAR-LEG / range-lane — not this branch.
+
+## VERIFY THROUGHOUT
+East alone, no Macro: V1 spread/owner/direction/display IDENTICAL to V2; V1 not locked; QMIX arc off at
+rest; no V2-V16 or Macro-attached regression; test suite green.
+
+---
+
+## CORRECTION (Rodney) — Phase A is NOT done; the real debt is the MONO-STRAND DATA MODEL
+Commit 5d170115 reconciled the index CONSTANTS (kMonoMacroOwnRow/kMonoLaneDirRow 15 -> 0) — legit but
+SMALL (19 lines). The commit message "V1 = index 0 everywhere" OVERCLAIMS: the counts barely moved
+(kMonoSlot 36, onMonoTab 17, tab1MonoMirror 9, eastV1Owner 9, getMonoMacroOwn 12). The actual V1-is-Mono
+debt — the separate MONO-STRAND DATA MODEL — is UNTOUCHED.
+
+### The real structural problem
+The storage still separates "4 MONO strands (V1) + 15 poly", NOT 16 poly voices:
+- PatternEngine.hpp:593 comment: "4 mono + 15 poly" (rhythm+variation+legato+accent as MONO + 15 poly).
+- PatternEngine.hpp:51: a separate `float legato` MONO scalar.
+- SequencerEngine.cpp:747: V1 legato read via `monoStrand(STRAND_LEGATO)` — a separate mono strand.
+- Monsoon.hpp:174: "voice 1 (mono) variation lives on Monsoon's knob" — V1 variation on the MONO knob.
+- PatternEngine.cpp:38-39: poly seeded to "match mono default" — implies mono (V1) is still the reference.
+So V1's rhythm/variation/legato/accent live in SEPARATE MONO STRANDS + the Monsoon mono knob, NOT as
+voice 0 of the poly arrays. THAT is the debt (legato/variation are still V1-mono-special — Rodney flagged
+they should NOT be).
+
+### What Phase A MUST actually do (the structural collapse)
+VARIATION and LEGATO are now POLY (POLY_VARIATION_PARAM_1..15 exist). So V1 must be VOICE 0 of those poly
+arrays, NOT a separate mono strand/knob. Collapse:
+- The "4 mono + 15 poly" storage split -> 16 POLY voices, V1 = index 0. No separate mono strands for
+  rhythm/variation/legato/accent.
+- `monoStrand(...)` reads for V1 -> read voice 0 of the poly array (polyRandom(0, PL_*)).
+- The separate `legato` mono scalar (PatternEngine.hpp:51) -> gone; V1 legato = voice 0 of the poly
+  legato array.
+- "V1 variation on the Monsoon knob" -> route V1 variation through POLY_VARIATION_PARAM at voice 0.
+- The "matches mono default" seeding -> V1 is just voice 0; no separate mono default/reference.
+Then kMonoSlot/onMonoTab/tab1MonoMirror/eastV1Owner/getMonoMacroOwn/getMonoLaneDir/laneOwnedByMacroTopo
+collapse naturally (they exist to serve the mono-strand model).
+
+### Commit-message discipline
+"V1 = index 0 everywhere" must mean the DATA MODEL is unified (mono strands collapsed into poly voice 0),
+not just that index constants changed. Do not mark Phase A done until the mono strands are gone and the
+counts above are near zero. Bit-compare V1 to a working poly voice — same data path, not a parallel mono one.
+
+---
+
+## PHASE B BRIEF — active-voices-only + CA OOB=identity (Phase A is DONE)
+Phase A done: V1 = voices[0], engine data-model collapsed (executeStep reads voices[0].*, no input.*
+scalars). Residual kMonoSlot/onMonoTab/eastV1Owner are benign UI/topology NAMING (index-0 const, selected
+tab, ownership entry) — not debt. Now Phase B. Refs: docs/design/DRAW_BUFFER_AND_PHILOX_EFFICIENCY.md +
+the active-voices/CA sections of V1_TO_VOICE0_UNIFICATION.md.
+
+### CONSTRAINT 1 — do NOT optimise the DRAW over voices/steps
+A draw is MULTIVARIATE (all voices x all steps, one correlated unit; MA uses per-draw history). Skipping
+voices/steps in the draw needs expensive history regeneration on activation (the TRAP). So the DRAW/MA
+stays ALL voices, ALL steps, always. Optimise ONLY DOWNSTREAM per-voice processing (spread apply, output
+write, per-voice execute) — reads the already-all-voices draws, no history dependency. That's where the
+cost was.
+
+### CONSTRAINT 2 — poly count is NEVER modulatable (not CV, not DAW). Just POLL the knob.
+
+### Work
+1. **Downstream active-voices gating.** Per-voice downstream loops already use engine.numPolyVoices
+   (Monsoon.cpp:876/913/974/1105/1278; executePolyVoices SequencerEngine.cpp:1319). Confirm these are
+   active-count-gated and NOTHING downstream processes voices >= numPolyVoices (spread/output/execute).
+   Gate any that don't. Output: zero gate/CV beyond numPolyVoices (Monsoon.cpp:1396 intent — verify).
+2. **Poly-count change at STEP boundary.** Increase: new voices' DRAWS already exist (all-voices draw) —
+   just start processing them downstream, no history regen, existing voices untouched. Decrease: stop
+   processing dropped voices (next step), existing untouched. No pending indicator.
+3. **CA OOB = IDENTITY (square matrix).** CA remap = caRhythmSrc[16]/caMelodySrc[16], resolved via
+   caSrcRow(row,strand) (PatternEngine.hpp:179). On poly reduce, a mapping may resolve to an index >=
+   numPolyVoices. RULE: if the resolved CA source index >= numPolyVoices (OOB = above the active range),
+   revert to IDENTITY (voice<->self) — source reads its OWN value (mix2(own,own,s)=own, no-op). Square
+   matrix => source & target OOB together, ONE check. Uniform for BOTH consumers (random/correlation
+   structure AND CV remap). Reversible: restore when index back in bounds. Identity = own value (neutral,
+   stateless).
+4. **UI: dim BOTH axes** of the CA display when out of the poly range (currently only target dims) — a
+   mapping suspends if EITHER endpoint OOB, so dim both -> user sees which resolve to identity. Setting
+   out-of-range stays allowed (permissive).
+
+### Method
+One change at a time, build + test + commit + PUSH each. No logging. Verify: reduce poly with a CA
+mapping to a now-OOB voice -> resolves to identity (no garbage/crash); restore -> active again;
+increase/decrease poly mid-play -> clean at next step, existing voices unchanged; draw stays all-voices.
+
+### NOT in scope (separate future tasks — do NOT start)
+Bidirectional buffer / reverse-mode; 32-step expansion; 4x Philox batching (fillBlock/drawBlock); SIMD;
+nonce. Documented, but their own tasks.
