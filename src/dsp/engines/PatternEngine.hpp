@@ -600,8 +600,8 @@ struct PatternEngine {
     // float precision, which is all the probability lanes need.
     //
     // CHUNK must exceed the max unit() calls per redraw of a stream. Worst case:
-    //   rhythm  16 * (rhythm+variation+legato+accent=4 mono + 15 poly) = 304
-    //   melody  16 * (melody+octave=2 mono + 15*2 poly)               = 512
+    //   rhythm  16 * (rhythm+variation+legato+accent=4 + 15 poly) = 304  (Phase A: 16 unified voices)
+    //   melody  16 * (melody+octave=2 + 15*2 poly)               = 512
     // 1024 leaves generous headroom and is a clean power of two.
     static constexpr uint64_t DRAW_CHUNK = 1024;
     // Draws are always Philox (counter-based). The legacy Xoroshiro A/B path is gone.
