@@ -122,9 +122,9 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_t* poarr = json_array();
     for (int v = 0; v < 15; v++) {
         for (int i = 0; i < 16; i++) {
-            json_array_append_new(prarr, json_real(m->engine.pe.polyRandom(v, SequencerEngine::PL_REST)[i]));
-            json_array_append_new(pmarr, json_real(m->engine.pe.polyRandom(v, SequencerEngine::PL_MELODY)[i]));
-            json_array_append_new(poarr, json_real(m->engine.pe.polyRandom(v, SequencerEngine::PL_OCTAVE)[i]));
+            json_array_append_new(prarr, json_real(m->engine.pe.polyRandom(v + 1, SequencerEngine::PL_REST)[i]));
+            json_array_append_new(pmarr, json_real(m->engine.pe.polyRandom(v + 1, SequencerEngine::PL_MELODY)[i]));
+            json_array_append_new(poarr, json_real(m->engine.pe.polyRandom(v + 1, SequencerEngine::PL_OCTAVE)[i]));
         }
     }
     json_object_set_new(root, "polyRhythmRandom", prarr);
@@ -364,7 +364,7 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
                         json_t* val = json_array_get(j, v * 16 + i);
                         if (val) {
                             float x = (float)json_real_value(val);
-                            m->engine.pe.polyRandom(v, engLane)[i] = x;
+                            m->engine.pe.polyRandom(v + 1, engLane)[i] = x;
                             source[v][i] = x;
                         }
                     }

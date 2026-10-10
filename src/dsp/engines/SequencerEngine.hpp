@@ -529,7 +529,7 @@ struct SequencerEngine {
     // pre-spread), so every read here is a PLAIN own-bank read — a pinned voice's
     // borrowed draw already carries the consumer's own spread. No read-time indirection.
     inline const float (&polyRandomSrc(int voiceIdx, int polyLane) const)[16] {
-        return pe.polyRandom(voiceIdx, polyLane);
+        return pe.polyRandom(voiceIdx + 1, polyLane);
     }
     // Stage 2a: refresh ONE cell of polyRandom at step advance, using the cached spread
     // value from the last control-rate sync(). Checks the lane's lock axis; if not live,

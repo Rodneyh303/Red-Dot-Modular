@@ -381,8 +381,8 @@ int main() {
         // both delegated voices (mono step + own draw) ghost deterministically; mono reads its
         // variationRandom (default 0) and also ghosts -> ghostActive=true.
         for (int i = 0; i < 16; ++i) {
-            eng.pe.polyRandom(0, SequencerEngine::PL_VARIATION)[i] = 0.1f;
             eng.pe.polyRandom(1, SequencerEngine::PL_VARIATION)[i] = 0.1f;
+            eng.pe.polyRandom(2, SequencerEngine::PL_VARIATION)[i] = 0.1f;
         }
         stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f, /*variation=*/1.0f);  // main onset
         stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f, 1.0f);              // gap (no edge)
@@ -398,11 +398,11 @@ int main() {
         // seeded in polyRandom(bank, PL_VARIATION) (the f9c4189 per-voice model); mono reads
         // variationRandom.
         //   mono VAR LOR: len=1, off=0 -> step 0 -> variationRandom[0]=0.1 (< 0.5) -> mono ghosts.
-        //   voice 0: Local East VAR, len=1, off=1 -> step 1 -> polyRandom(0,PL_VAR)[1]=0.9 (>= 0.5) -> RESTED GHOST.
-        //   voice 1: delegated -> mono step 0 -> polyRandom(1,PL_VAR)[0]=0.1 (< 0.5) -> ghosts.
+        //   voice 0: Local East VAR, len=1, off=1 -> step 1 -> polyRandom(1,PL_VAR)[1]=0.9 (>= 0.5) -> RESTED GHOST.
+        //   voice 1: delegated -> mono step 0 -> polyRandom(2,PL_VAR)[0]=0.1 (< 0.5) -> ghosts.
         eng.pe.variationRandom[0] = 0.1f;                          // mono ghosts
-        eng.pe.polyRandom(0, SequencerEngine::PL_VARIATION)[1] = 0.9f;   // voice 0 Local-East step -> rested ghost
-        eng.pe.polyRandom(1, SequencerEngine::PL_VARIATION)[0] = 0.1f;   // voice 1 delegated, mono step -> ghosts
+        eng.pe.polyRandom(1, SequencerEngine::PL_VARIATION)[1] = 0.9f;   // voice 0 Local-East step -> rested ghost
+        eng.pe.polyRandom(2, SequencerEngine::PL_VARIATION)[0] = 0.1f;   // voice 1 delegated, mono step -> ghosts
         eng.strandLenRef(dotModular::STRAND_VARIATION) = 1;
         eng.strandOffRef(dotModular::STRAND_VARIATION) = 0;
         eng.polyLORRef(0, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_LEN) = 1;

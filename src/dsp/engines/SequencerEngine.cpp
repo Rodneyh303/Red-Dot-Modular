@@ -1030,7 +1030,7 @@ void SequencerEngine::refreshPolyRandomCell(int voice, int engLane, int step) {
         default: return;
     }
     if (!pe.cachedSpreadInitialized || !live) return;   // not yet cached or frozen — leave existing value
-    pe.polyRandom(voice, engLane)[step & 0x0F] =
+    pe.polyRandom(voice + 1, engLane)[step & 0x0F] =
         redDot::SpreadInterp::applyPoly(pe, engLane, voice, step & 0x0F,
                                         pe.cachedPolySpread[voice][engLane]);
 }

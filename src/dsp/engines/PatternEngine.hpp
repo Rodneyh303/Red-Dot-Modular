@@ -137,14 +137,15 @@ struct PatternEngine {
 
     // Poly probability view: voice bank b (0..14 = V2..V16) → slot b+1; lane is the engine PL_ lane,
     // converted to editor order. Returns the 16-step row (float(&)[16]) so callers index [step].
-    // Now handles 7 poly lanes (REST/MEL/OCT/ACC/QMIX/VAR/LEG) via ENGINE_LANE_TO_EDITOR_QMIX (SANDS CONSOLIDATION Step 2).
-    float (&polyRandom(int bank, int engLane))[16] {
+    // Phase A: polyRandom now takes voiceSlot directly (V1=0, V2+=1..15). Was bank+1 (skipping V1).
+    // Callers must pass voiceSlot (0..15), NOT polyBankIndex (0..14). Old patches discarded.
+    float (&polyRandom(int voiceSlot, int engLane))[16] {
         int edLane = (engLane >= 0 && engLane < 7) ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane] : 0;
-        return random_[bank + 1][edLane];
+        return random_[voiceSlot][edLane];
     }
-    const float (&polyRandom(int bank, int engLane) const)[16] {
+    const float (&polyRandom(int voiceSlot, int engLane) const)[16] {
         int edLane = (engLane >= 0 && engLane < 7) ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane] : 0;
-        return random_[bank + 1][edLane];
+        return random_[voiceSlot][edLane];
     }
 
     // Final post-everything (A/B-mix + spread + LOR feed in upstream) probability value for a given
@@ -357,17 +358,17 @@ struct PatternEngine {
             }
             for (int v=0;v<15;v++){
                 if (doR) {
-                    polyRandom(v, PL_REST)[i]=slewedPolyRhythm[v][i];
-                    polyRandom(v, PL_ACCENT)[i]=slewedPolyAccent[v][i];
-                    polyRandom(v, PL_VARIATION)[i]=slewedPolyVariation[v][i];
-                    polyRandom(v, PL_LEGATO)[i]=slewedPolyLegato[v][i];
+                    polyRandom(v + 1, PL_REST)[i]=slewedPolyRhythm[v][i];
+                    polyRandom(v + 1, PL_ACCENT)[i]=slewedPolyAccent[v][i];
+                    polyRandom(v + 1, PL_VARIATION)[i]=slewedPolyVariation[v][i];
+                    polyRandom(v + 1, PL_LEGATO)[i]=slewedPolyLegato[v][i];
                 }
                 if (doM) {
-                    polyRandom(v, PL_MELODY)[i]=slewedPolyMelody[v][i];
-                    polyRandom(v, PL_OCTAVE)[i]=slewedPolyOctave[v][i];
+                    polyRandom(v + 1, PL_MELODY)[i]=slewedPolyMelody[v][i];
+                    polyRandom(v + 1, PL_OCTAVE)[i]=slewedPolyOctave[v][i];
                 }
                 if (doQ) {
-                    polyRandom(v, PL_QMIX)[i]=slewedPolyQmix[v][i];
+                    polyRandom(v + 1, PL_QMIX)[i]=slewedPolyQmix[v][i];
                 }
             }
         }
