@@ -473,3 +473,17 @@ the FOURTH composed-control dimension alongside the existing three:
 - **Mask -> PRESENCE / STRUCTURE** (rhythmic in and out — who is present when).
 So "rhythmic in and out" isn't a bolt-on feature; it's the instrument's composed-control-over-generative
 thesis extended to the PRESENCE axis — compose who's present when, the engine generates what.
+---
+
+## KNOWN ISSUE to fix WITH this system — global length/offset doesn't wrap the Sands read (Rodney)
+Observed: changing the GLOBAL playhead length/offset (PATTERN_LENGTH_PARAM / global offset) wraps the
+PLAYHEAD (it cycles fewer steps), but Sands keeps READING/showing the FULL 16-step probability range
+instead of wrapping to the global window. So playhead wraps, Sands read/display does NOT — inconsistent.
+Root: the GLOBAL-level LOR (top of the nested global->voice->lane chain) isn't propagating to the Sands
+read/display; the global window should BOUND the reads beneath it.
+Fix this as PART OF the unified addressing implementation (the nested maps), NOT as an ad-hoc patch now:
+it's the same mechanism (global LOR wrapping the read), the addressing work rebuilds this read-position
+logic anyway, and the correct wrap falls out of implementing the nested maps properly.
+Sub-question to settle then: should Sands DISPLAY the full 16 with the active window highlighted, or only
+the active window? (Ties to the adapt-to-length vs fixed display decision — see STEP_COUNT_DECISION.md /
+LIGHT_RING_32_STEPS.md.)
