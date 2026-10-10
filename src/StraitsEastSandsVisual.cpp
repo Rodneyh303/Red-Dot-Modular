@@ -254,7 +254,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // Right-click on a lane row opens the ownership context menu.
         visualEditor->onLaneRightClick = [this](int lane, rack::math::Vec pos) -> bool {
             if (!macroAttached()) return false;  // no menu when Macro absent
-            if (onMonoTab()) return false;        // ownership is per poly voice, not mono
+            // (V1 ownership menu unblocked — V1 now uses the same getMacroOwn path as V2+)
             openLaneOwnershipMenu(lane, pos);
             return true;
         };
@@ -481,17 +481,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
                     const int dcLane = lane;
+                    // V1→voice-0: unified direction via getLaneDir at the voice's row.
                     w->getStateFn = [this, dcLane]() {
                         Monsoon* m = getMonsoon(); if (!m) return 0;
-                        if (onMonoTab()) return (int)std::lround(m->getMonoLaneDir(dcLane));
-                        int pv = polyVoice();
-                        return (pv >= 0 && pv < 15) ? (int)std::lround(m->getLaneDir(pv, dcLane)) : 0;
+                        int vi = onMonoTab() ? Monsoon::kMonoLaneDirRow : polyVoice();
+                        return (vi >= 0 && vi < 16) ? (int)std::lround(m->getLaneDir(vi, dcLane)) : 0;
                     };
                     w->setStateFn = [this, dcLane](int v) {
                         Monsoon* m = getMonsoon(); if (!m) return;
-                        if (onMonoTab()) { m->setMonoLaneDir(dcLane, (float)v); return; }
-                        int pv = polyVoice();
-                        if (pv >= 0 && pv < 15) m->setLaneDir(pv, dcLane, (float)v);
+                        int vi = onMonoTab() ? Monsoon::kMonoLaneDirRow : polyVoice();
+                        if (vi >= 0 && vi < 16) m->setLaneDir(vi, dcLane, (float)v);
                     };
                     // Undo hook: route a direction cycle through Rack history (Ctrl+Z). Captures
                     // the resolved store target at click time (mono vs poly, which voice/lane).
@@ -748,7 +747,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // persistent StrandLedger MACRO-then-EAST conflict). Deferring to the authoritative cache
         // makes the two views agree by construction — exactly one writer.
         if (m->expanderManager.cachedEastSandsVisual != module) return false;
-        return onMonoTab() && !(m->expanderManager.cachedSandsVisualExpander != nullptr);
+        return onMonoTab();   // Mono killed Step 6 — cachedSandsVisualExpander always null
     }
     // Poly bank index (0..14) for the selected tab; -1 on the mono tab (resolver-mapped,
     // == the old selectedVoice-1). Use only when !onMonoTab().
