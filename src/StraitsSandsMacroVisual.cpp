@@ -442,6 +442,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                  : (engLane == PL::PL_VARIATION) ? pe.pubSlewedPolyVariation[v][step & 0x0F]
                  :                                pe.pubSlewedPolyLegato[v][step & 0x0F];
         }
+        // V1 (mono=true): self-target no-op — V1 is the anchor, spread toward itself
+        // is meaningless. Use interpolate(base, base, sp) so V1 bars are identical
+        // regardless of spread (matches East V1 which uses interpolate(base, base, spread)).
+        // Poly voices (mono=false): still use applyAnchorV1Only (interpolates toward V1).
+        if (mono)
+            return redDot::SpreadInterp::interpolate(base, base, sp);
         return redDot::SpreadInterp::applyAnchorV1Only(pe, engLane, step, base, sp);
     }
 
