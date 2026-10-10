@@ -135,6 +135,11 @@ struct SequencerEngine {
     // Was 15 (V2..V16); now 16 (V1..V16). All poly access shifted by +1.
     PolyVoice voices[16];
     int       numPolyVoices = 0;
+    // Phase B: track the poly count used last step. When numPolyVoices increases,
+    // newly-activated voices have stale gs state (gateHeld/holdRemain from when
+    // they were last active). resetActivatedPolyVoices_() clears their state so
+    // they fresh-trigger instead of legato-ing from a stale held gate.
+    int       prevNumPolyVoices_ = 0;
 
     // Most recent mono decision — written by executeStep, read by executePolyVoices.
     StepResult lastStepResult;
@@ -729,6 +734,25 @@ struct SequencerEngine {
     int getQmixStep() const;    // Task 4: q-mix strand DNA index (mono)
 
     bool shouldTriggerStep(int ppqn) const;
+    // Phase B: called at the top of each mode executor. When numPolyVoices increases,
+    // newly-activated voices have stale gs state (gateHeld/holdRemain/slurForward from
+    // when they were last active). Reset them so they fresh-trigger instead of legato-ing
+    // from a stale held gate. Also latches the count for this step (prevNumPolyVoices_).
+    void resetActivatedPolyVoices_() {
+        if (numPolyVoices > prevNumPolyVoices_) {
+            for (int i = prevNumPolyVoices_; i < numPolyVoices && i < 15; ++i) {
+                voices[i + 1].gs.gateHeld = false;
+                voices[i + 1].gs.holdRemain = 0.f;
+                voices[i + 1].gs.slurForward = false;
+                voices[i + 1].gs.gatePulseRemain = -1;
+                voices[i + 1].gsStep.gateHeld = false;
+                voices[i + 1].gsStep.holdRemain = 0.f;
+                voices[i + 1].gsStep.gatePulseRemain = -1;
+                voices[i + 1].participating = false;
+            }
+        }
+        prevNumPolyVoices_ = numPolyVoices;
+    }
     StepResult executeStep(int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
     StepResult executeModeA(const ClockEngine& clock, float noteVal, const PatternInput& input, int dir = +1);

@@ -721,6 +721,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float noteVal
     lastNoteVal_ = noteVal;   // poly voices derive their own nvIdx from this (stage 2)
     // Phase A: voices[0] (V1) is populated by the controller (updatePatternInput),
     // not here — same single-writer pattern as voices[1..15] (updatePolyVoiceRest_).
+    resetActivatedPolyVoices_();  // Phase B: reset newly-activated voices' stale gs state
     StepResult result;
     if (!clock.sixteenthEdge || muted) return result;
 
@@ -806,6 +807,7 @@ void SequencerEngine::legatoCheckpointOnFall() {
 StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float noteVal, const PatternInput& input) {
     lastNoteVal_ = noteVal;
     // Phase A: voices[0] (V1) is populated by the controller (updatePatternInput).
+    resetActivatedPolyVoices_();  // Phase B: reset newly-activated voices' stale gs state
     StepResult result;
     if (muted) {
         prevGate1High = gate1High;
@@ -917,6 +919,7 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
                                                     bool ghostRise, bool ghostHigh) {
     lastNoteVal_ = noteVal;
     // Phase A: voices[0] (V1) is populated by the controller (updatePatternInput).
+    resetActivatedPolyVoices_();  // Phase B: reset newly-activated voices' stale gs state
     StepResult result;
     // Any of the three edge streams advances the playhead + shapes a step:
     //   mainGateRise (main onset), subGateRise (ratchet, in-gate), ghostRise (ghost, in-gap).
