@@ -35,8 +35,8 @@ void PatternEngine::reset() {
             polyRandom(v + 1, PL_MELODY)[i] = 0.5f;
             polyRandom(v + 1, PL_OCTAVE)[i] = 0.5f;
             polyRandom(v + 1, PL_QMIX)[i]   = 0.5f;   // q-mix twin
-            polyRandom(v + 1, PL_VARIATION)[i] = 0.5f;  // No variation bias (matches mono default)
-            polyRandom(v + 1, PL_LEGATO)[i]   = 0.0f;   // No legato/ties (matches mono default)
+            polyRandom(v + 1, PL_VARIATION)[i] = 0.5f;  // Default — V1 is voice 0, not a mono reference
+            polyRandom(v + 1, PL_LEGATO)[i]   = 0.0f;   // Default — V1 is voice 0, not a mono reference
             
             polyRhythmSource[v][i] = 1.0f;
             polyAccentSource[v][i] = 1.0f;
