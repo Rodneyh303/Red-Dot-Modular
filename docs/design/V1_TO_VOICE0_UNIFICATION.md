@@ -42,3 +42,39 @@ class so it can't recur.
 Kills the entire V1-only bug class at once (ownership, display, spread, future ones). Stops the
 whack-a-mole. The consolidation "killed the Mono MODULE" but left the Mono CONCEPT in V1's code paths;
 this finishes the job — V1 becomes voice 0, full stop.
+
+---
+
+## DECISIONS (Rodney) — full migration to index 0, + active-voices-only optimisation
+
+### Full migration: V1 -> INDEX 0. Discard old patches (no backward-compat).
+Don't care about existing patches (pre-release). So:
+- **V1 = index 0, poly voices = 1..15** (index = voice number − 1). Natural, uniform.
+- **Collapse kMonoSlot / kMonoMacroOwnRow=15 ENTIRELY** — no special mono row; everything uses v*7+lane
+  (v*6 for laneDir) with V1 at v=0. Remove eastV1Owner, onMonoTab branches, the mono-slot special-casing
+  (not a row-15 shim — actually move V1 to 0 and delete the special path).
+- **NO migration code** — old patches are discarded (they'd load with scrambled voices; we don't care).
+  Best for long-term maintainability: nobody later needs to know "V1 is secretly at row 15."
+Progress so far (steps 1-7): ownership resolution + direction unified, dead mono code removed, V1
+editability unblocked (~−128 lines). STILL TO DO: actually move V1 15->0, collapse kMonoSlot (35),
+onMonoTab (22), eastV1Owner (9).
+
+### Active-voices-only optimisation (compute N not 16)
+Only produce data for the N poly voices selected (no Straits -> N=1, index 0 only; else N = poly count).
+~16/N x saving on per-voice work for small counts (meaningful given the hard-won perf).
+**What makes it STRAIGHTFORWARD (Rodney's simplifying constraints):**
+- **Existing channels NEVER change on add or reduce** — only the DELTA moves: add -> spin up the new
+  voices' data; reduce -> stop computing dropped ones. Voices that stay are untouched -> no glitch risk.
+- **Pending dice roll doesn't affect regen** — draws are counter-addressed (deterministic fn of the
+  counter), so a newly-active voice generates from the current counter, independent of pending dice.
+  Determinism/reversibility preserved: activating voice v at step 30 gives the SAME data as if it'd been
+  active since step 1 (counter-addressed, not activation-time-dependent).
+- **Poly count is NEVER modulatable** — not CV, not DAW-automatable (deliberate: it's a CONFIGURATION
+  knob, not a performance control; automating voice count is niche and better done by muting/gating).
+  So: only POLL THE KNOB (cheap per-block), no modulation/automation handling.
+- **Change lands at the NEXT STEP boundary** (≤1/16 away) -> regen the delta voices then. One step is
+  quick enough that NO pending indicator is needed.
+So the whole optimisation = poll knob -> on change, at next step, spin up/down the delta voices (existing
+untouched, counter-addressed regen) -> otherwise compute only 0..N-1. Composes cleanly with V1=index 0
+(the per-voice loop becomes 0..N-1). No mid-step glitch, no modulation handling, no pending UI, no dice
+interaction.
