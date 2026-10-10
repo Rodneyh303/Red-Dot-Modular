@@ -22,6 +22,21 @@ of the remaining work so the dependency chain is explicit.
    lane-index. 4x fewer Philox blocks.
 5. **32 steps + draw-buffer / reverse-mode** — FUNDED by the 4x (step 4). Bidirectional buffer, reverse/
    slew turnaround, the light-ring-at-32 graphics.
+   - **BUILD THE SEED/COUNTER OFFSET HERE too (already scoped — SEED_OFFSET_DESIGN.md).** Steps 4-5
+     restructure the Philox counter addressing (batching, bidirectional N±j windows), which is exactly the
+     "apply offset at the address site (draw N -> draw N+offset)" code the seed-offset needs. So fold it in.
+     It's a RELATIVE SIGNED COUNTER offset (effectiveCtr = drawCtr + offset) — param + CV, unified
+     rhythm+melody by default. No edge cases (signed-bijection over the whole space). Covers crab/canon
+     alignment, scrubbable timeline (CV-driven), and jump. NOTE the key-vs-counter rule (MASTER_PLAN:421):
+     this feature uses a COUNTER offset DELIBERATELY (same key, time-shifted = correlated — the canon
+     behaviour); stream INDEPENDENCE uses KEY offset (that's separate, already done: S/S+1/S+2).
+   - **Nonce migration (optional, consider here):** moving lane/voice into ctr[2..3] (nonce) gives a
+     pure-position ctr[0..1], making both the N±j reverse windows AND the counter-offset cleaner (offset
+     shifts pure position, not the packed pos*CHUNK+cursor). NOT required — the seed-offset and reverse
+     mode both work with the packed counter — but 4-5 is the natural time if doing it (addressing is
+     already being restructured; avoids a later separate refactor). Lean: do it if the packed-counter
+     stride proves awkward in the reverse windows; else defer. (Cross-stream separate KEYS stay — don't
+     fold those into the nonce.)
 6. **Forward features** on the fully-clean foundation: unified addressing system (voice LOR, cycle/abs1/2/3
    mask modes), per-voice octave offset (Straits), the modulation canvas, tie-across-rests, Causeway.
 
