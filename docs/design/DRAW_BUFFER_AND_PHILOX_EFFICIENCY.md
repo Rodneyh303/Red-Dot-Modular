@@ -40,6 +40,19 @@ Problem: forward play only buffers [N-j..N]; a turnaround suddenly needs [N..N+j
 - Scope: bidirectional only where instant reversal happens (PHASE mode). Clock/gate (reversal at phrase
   boundary / not instant) can stay unidirectional-backward.
 - j = slew depth (or max j=64 if slew is modulatable and can jump deep).
+- **REVERSE-MODE MAINTENANCE — the leading edge and dice meaning FLIP (Rodney):** which edge to extend
+  follows the current PHASE/PLAY DIRECTION, and the meaning of forward/backward dice rolls inverts in
+  reverse:
+  - FORWARD mode: playhead index INCREMENTS; play-forward = index++ -> extend the FAR-FORWARD edge
+    (N+j+1); step-back/undo = index--.
+  - REVERSE mode (phase driving backward): playhead index DECREMENTS; "play-forward" in the REVERSE
+    timeline = index-- -> extend the FAR-BACKWARD edge (N-j-1); "step-back/undo" in reverse = index++.
+  So a FORWARD dice roll means index-increment in forward mode but index-DECREMENT in reverse mode (and
+  backward dice the opposite) — the index-direction of forward/backward dice FLIPS with phase direction.
+  The buffer always covers [current-j .. current+j]; the LEADING edge (extended each step) is the one in
+  the current play direction; the TRAILING edge (behind play direction) is already buffered and pruned
+  beyond j. At a TURNAROUND (phase flips), the new leading direction is already buffered (both sides kept)
+  -> free; then continue extending the NEW leading edge as play proceeds in the new direction.
 
 ## 32 STEPS + BIDIRECTIONAL funded by the 4x Philox win
 Buffer grows 64 -> 128 wide (bidirectional) AND steps 16 -> 32 (2x) = 4x more draws. This is EXACTLY
