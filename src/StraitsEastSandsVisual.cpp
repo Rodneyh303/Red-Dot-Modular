@@ -145,8 +145,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (!mod) return false;
                 Monsoon* mon = findMonsoonEitherSide(mod);
                 if (!mon || !mon->modVizEast) return false;
-                int v = polyVoice();
-                if (v < 0) {
+                int v = currentSlot();   // Phase A: V1=0, V2+=1..15 (was polyVoice)
+                if (onMonoTab()) {
                     // V1 / mono tab: active when REAL modulation enters V1's spread on this
                     // lane — East's own V1 spread CV, OR Macro modulation: delegated lane
                     // with Macro spread CV live, OR owned lane with a non-zero send AND
@@ -161,7 +161,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     return StraitsMacroVisualIds::macroSpreadModulatesLane(
                         macroVis, lane, delegated, dotModular::VoiceResolver::kMonoSlot);
                 }
-                if (v >= 15) return false;
+                if (v >= 16) return false;   // Phase A: 16 voices (was 15)
                 // Gate on a REAL modulation source (not a transient set-vs-effective
                 // delta, which races during a manual knob turn — the control-rate
                 // polySpreadEffective lags the live param for a frame and drew a red
@@ -430,13 +430,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     };
                     w->pushUndoFn = [this, ocEng](bool oldB, bool newB) {
                         Monsoon* m = getMonsoon(); if (!m) return;
-                        const bool mono = onMonoTab();
-                        const int  pv   = mono ? -1 : polyVoice();
-                        if (!mono && (pv < 0 || pv >= 15)) return;
+                        const int vi = currentSlot();   // Phase A: V1=0, V2+=1..15 (unified)
                         redDot::applyAndPushStoreEdit<Monsoon>(m, "lane owner",
-                            [ocEng, mono, pv](Monsoon& mm, float val) {
-                                if (mono) mm.setMacroOwn(Monsoon::kMonoMacroOwnRow, ocEng, val > 0.5f);
-                                else      mm.setMacroOwn(pv, ocEng, val);
+                            [ocEng, vi](Monsoon& mm, float val) {
+                                mm.setMacroOwn(vi, ocEng, val > 0.5f);
                             },
                             oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
                     };
@@ -756,7 +753,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // convert editor→engine (EDITOR_TO_ENGINE_LANE_QMIX) before any get/setMacroOwn / eastOwnsLane.
     void openLaneOwnershipMenu(int lane, rack::math::Vec editorLocalPos) {
         if (!module) return;
-        const int voice = polyVoice();   // current poly bank index (0-based)
+        const int voice = currentSlot();   // Phase A: V1=0, V2+=1..15 (was polyVoice)
         const int engLane = (lane >= 0 && lane < dotModular::SandsGrid::POLY_LANES)
                           ? dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane] : lane;
         const bool macroOwns = !eastOwnsLane(engLane);   // MVC step 1d: store-backed (engine lane)
@@ -768,7 +765,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         Menu* menu = createMenu();
         menu->addChild(createMenuLabel(
-            std::string("Lane: ") + ln + "  (V" + std::to_string(voice + 2) + ")"));
+            std::string("Lane: ") + ln + "  (V" + std::to_string(voice + 1) + ")"));
         menu->addChild(new MenuSeparator);
 
         // Toggle ownership for this voice+lane
