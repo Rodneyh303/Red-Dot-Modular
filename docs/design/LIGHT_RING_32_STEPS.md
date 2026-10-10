@@ -22,8 +22,16 @@ position-only with beat anchors, and the ring is iconic to the instrument's iden
   readable. This red-quarter/green-rest scheme is the "visual reminder of the original" to preserve.
 - **No numeric scale needed** (decided — don't add step-number labels; the beat-anchor colouring is
   enough).
-- Possibly ENLARGE the ring now that it does less (bigger radius -> more circumference per segment), if
-  the panel allows.
+- **ENLARGE the ring — the PRIMARY lever (Rodney).** Lamp/segment count fits around the CIRCUMFERENCE,
+  which scales LINEARLY with radius (C = 2*pi*r). So even a MODEST enlargement meaningfully helps: ~+30%
+  radius -> ~+30% circumference -> ~30% more arc per lamp — can be the difference between "too cramped"
+  and "fine" at 32. Removing the pattern-detail role (position-only now) may free visual budget to grow,
+  and position-only one-bit lamps don't "waste" the extra room. So enlargement is the most DIRECT fix
+  (more physical room per lamp); the beat-anchor colouring (red quarters) + optional trail are then
+  BACKUP/polish rather than necessities.
+  - Constraint: panel REAL ESTATE + visual PROPORTION. Check the space around the current ring and what a
+    bigger ring would displace; a too-large ring can unbalance the panel. Measure-the-panel question —
+    even +20-30% radius may be enough and achievable if there's any breathing room.
 
 ## OPEN: adapt-to-length vs fixed 32 segments
 To be decided — does the ring render:
