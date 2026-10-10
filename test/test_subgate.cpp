@@ -268,29 +268,29 @@ int main() {
     SUITE("P1 — per-voice subdivision: poly voices independently rest/play at onsets");
     TEST("at a mono onset, voice 0 (restProb=0) plays, voice 1 (restProb=1) rests", {
         SequencerEngine eng; eng.numPolyVoices = 2;
-        eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 1.f;
+        eng.voices[1].restProb = 0.f; eng.voices[2].restProb = 1.f;
         stepPoly(eng, true, true, false, true, false, 0.f, 0.f, 4.f);  // mono onset
-        EXPECT(eng.voices[0].gs.gateHeld);
-        EXPECT(!eng.voices[1].gs.gateHeld);
+        EXPECT(eng.voices[1].gs.gateHeld);
+        EXPECT(!eng.voices[2].gs.gateHeld);
     });
 
     TEST("a ratcheted sub-cell (mono NewNote, legato=0) re-articulates the playing voice", {
         SequencerEngine eng; eng.numPolyVoices = 1;
-        eng.voices[0].restProb = 0.f;
+        eng.voices[1].restProb = 0.f;
         stepPoly(eng, true, true, false, true, false, 0.f, 0.f, 4.f);
         StepResult r = stepPoly(eng, false, true, false, true, false, 0.f, 0.f, 4.f);
         EXPECT(r.decision == D::NewNote);
-        EXPECT(eng.voices[0].gs.gateHeld);
+        EXPECT(eng.voices[1].gs.gateHeld);
     });
 
     TEST("a ghost onset in a gap drives per-voice rolls (poly ghost notes)", {
         SequencerEngine eng; eng.numPolyVoices = 2;
-        eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 1.f;
+        eng.voices[1].restProb = 0.f; eng.voices[2].restProb = 1.f;
         stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f);   // main onset
         stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f); // silent gap
         stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f); // ghost onset in gap
-        EXPECT(eng.voices[0].gs.gateHeld);    // voice 0 plays the ghost
-        EXPECT(!eng.voices[1].gs.gateHeld);   // voice 1 rests
+        EXPECT(eng.voices[1].gs.gateHeld);    // voice 0 plays the ghost
+        EXPECT(!eng.voices[2].gs.gateHeld);   // voice 1 rests
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -299,18 +299,18 @@ int main() {
     SUITE("P2 — poly STEP output (un-fused) re-triggers per cell");
     TEST("at a mono onset, the playing voice's gsStep is high (re-struck)", {
         SequencerEngine eng; eng.numPolyVoices = 1;
-        eng.voices[0].restProb = 0.f;
+        eng.voices[1].restProb = 0.f;
         stepPoly(eng, true, true, false, true, false, 0.f, 0.f, 4.f);
-        EXPECT(eng.voices[0].gsStep.gateHeld);
+        EXPECT(eng.voices[1].gsStep.gateHeld);
     });
 
     TEST("a ghost onset re-strikes gsStep (ghost cells pulse the step output)", {
         SequencerEngine eng; eng.numPolyVoices = 1;
-        eng.voices[0].restProb = 0.f;
+        eng.voices[1].restProb = 0.f;
         stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f);
         stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f);
         stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f);  // ghost onset
-        EXPECT(eng.voices[0].gsStep.gateHeld);  // re-struck at the ghost cell
+        EXPECT(eng.voices[1].gsStep.gateHeld);  // re-struck at the ghost cell
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -376,7 +376,7 @@ int main() {
     SUITE("G5 — per-voice ghost placement (variation gate per voice)");
     TEST("shared (delegated): mono ghosts -> all poly voices ghost (per-voice draws pass)", {
         SequencerEngine eng; eng.numPolyVoices = 2;
-        eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 0.f;
+        eng.voices[1].restProb = 0.f; eng.voices[2].restProb = 0.f;
         // variationAmount=1.0 -> ghost iff r_vary < 1.0. Seed every per-voice VAR draw to 0.1 so
         // both delegated voices (mono step + own draw) ghost deterministically; mono reads its
         // variationRandom (default 0) and also ghosts -> ghostActive=true.
@@ -388,12 +388,12 @@ int main() {
         stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f, 1.0f);              // gap (no edge)
         stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f, 1.0f);              // ghost onset
         EXPECT(eng.ghostActive);                       // mono ghosted
-        EXPECT(eng.voices[0].gs.gateHeld);             // voice 0 ghosts (own draw 0.1 < 1.0)
-        EXPECT(eng.voices[1].gs.gateHeld);             // voice 1 ghosts (own draw 0.1 < 1.0)
+        EXPECT(eng.voices[1].gs.gateHeld);             // voice 0 ghosts (own draw 0.1 < 1.0)
+        EXPECT(eng.voices[2].gs.gateHeld);             // voice 1 ghosts (own draw 0.1 < 1.0)
     });
     TEST("Local East: voice 0's VAR LOR points to a high-variation step -> rested ghost (transparent); voice 1 (delegated) ghosts", {
         SequencerEngine eng; eng.numPolyVoices = 2;
-        eng.voices[0].restProb = 0.f; eng.voices[1].restProb = 0.f;
+        eng.voices[1].restProb = 0.f; eng.voices[2].restProb = 0.f;
         // Pin the LORs so the steps are deterministic (len=1 => step = off). Per-voice draws are
         // seeded in polyRandom(bank, PL_VARIATION) (the f9c4189 per-voice model); mono reads
         // variationRandom.
@@ -413,9 +413,9 @@ int main() {
         stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f, variation); // gap
         stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f, variation); // ghost onset (mono ghosts)
         EXPECT(eng.ghostActive);                       // mono ghosted (variationRandom[0]=0.1 < 0.5)
-        EXPECT(!eng.voices[0].gs.gateHeld);            // voice 0: RESTED GHOST (transparent)
-        EXPECT(!eng.voices[0].participating);          //   not part of the chain
-        EXPECT(eng.voices[1].gs.gateHeld);             // voice 1: delegated -> ghosts
+        EXPECT(!eng.voices[1].gs.gateHeld);            // voice 0: RESTED GHOST (transparent)
+        EXPECT(!eng.voices[1].participating);          //   not part of the chain
+        EXPECT(eng.voices[2].gs.gateHeld);             // voice 1: delegated -> ghosts
     });
 
     std::cout << "\n-----\nsubgate: " << g_pass << " passed, " << g_fail << " failed\n";
