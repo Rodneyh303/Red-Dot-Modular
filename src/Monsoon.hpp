@@ -940,13 +940,12 @@ struct Monsoon : Module {
     void  setMacroAtten(int v, int laneCol, float x) { editor.macroAtten[v*28 + laneCol] = x; }
 
     // LANE_DIR accessors — the ONE place the index math lives (mirrors old dirId/monoDirId).
-    // V1→voice-0: laneDir has 16 rows (0..15). Rows 0..14 = V2..V16; row 15 = V1/mono.
-    // getMonoLaneDir is a thin wrapper over getLaneDir(15, ...) — same data, unified accessor.
+    // V1→voice-0: laneDir has 16 rows (0..15). Row 0 = V1 (was 15); rows 1..15 = V2..V16.
+    // Phase A: V1 = index 0. (getMonoLaneDir/setMonoLaneDir DELETED — dead code, all call
+    //  sites use getLaneDir(kMonoLaneDirRow, ...) / setLaneDir(kMonoLaneDirRow, ...) directly.)
     static constexpr int kMonoLaneDirRow = 0;   // Phase A: V1 = index 0 (was 15)
     float getLaneDir(int v, int lane) const { return editor.laneDir[v*6 + lane]; }
     void  setLaneDir(int v, int lane, float x) { editor.laneDir[v*6 + lane] = x; }
-    float getMonoLaneDir(int lane) const { return getLaneDir(kMonoLaneDirRow, lane); }
-    void  setMonoLaneDir(int lane, float x) { setLaneDir(kMonoLaneDirRow, lane, x); }
 
     // VARLEG accessors. varlegDeleg stays (VAR/LEG LOR delegation toggle — a distinct feature).
     // varlegAtten RETIRED: VAR/LEG CV-depth now uses the unified macroAtten store via
