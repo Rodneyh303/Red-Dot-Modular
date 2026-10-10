@@ -471,9 +471,10 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
     return true; 
 }
 
-StepResult SequencerEngine::executeStep(float restProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail) {
-    // Phase A: V1's per-voice params (legato, accent, qmix, variation) now read from
-    // voices[0].* instead of separate parameters or input.* scalars. V1 = voice 0.
+StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail) {
+    // Phase A: ALL V1 per-voice params (rest, legato, accent, qmix, variation) now read from
+    // voices[0].* — no separate parameters. V1 = voice 0 of the unified per-voice system.
+    // voices[0] is populated by the controller (updatePatternInput), not by the mode executors.
     // ── Fractional notes (1/4T=2.667, 1/8T=1.333, 1/32=0.5 steps) & legato/tie ──
     // These notes end MID-STEP (closed by the gateSecRemain seconds-timer), not on
     // a 1/16 grid edge. Legato/tie decisions only happen AT an edge and require the
@@ -599,7 +600,7 @@ StepResult SequencerEngine::executeStep(float restProb, int nvIdx, float r_rest,
         gsStep.triggerNote(pitchV, sem, nvIdx, isQuant);            // STEP: re-strike (un-fused)
         result.decision = MonoDecision::LegatoMax;
     }
-    else if ((r_rest < restProb) && !slurSuppressesRest) {
+    else if ((r_rest < voices[0].restProb) && !slurSuppressesRest) {
         // Rest precedence:
         //  - A fractional NOTE TAIL always outranks a rest (physical — !canRest). Unchanged.
         //  - "Rest beats legato" ON (default): a rest CANCELS an optional slur reach ("can't
@@ -716,15 +717,10 @@ void SequencerEngine::handlePhraseBoundary(PatternInput input, bool isMelodyReal
     pe.applyPendingSeedsAndRedraw(input);
 }
 
-StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float noteVal, const PatternInput& input, int dir) {
+StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float noteVal, const PatternInput& input, int dir) {
     lastNoteVal_ = noteVal;   // poly voices derive their own nvIdx from this (stage 2)
-    // Phase A: populate voices[0] (V1) from PatternInput — unifies V1's params
-    // with the per-voice PolyVoice system. V1 now reads from voices[0] like V2+.
-    voices[0].restProb = restProb;
-    voices[0].legatoProb = input.legato;
-    voices[0].accentProb = input.accentProb;
-    voices[0].qmixLevel = input.qmixLevel;
-    voices[0].variationProb = input.variationAmount;
+    // Phase A: voices[0] (V1) is populated by the controller (updatePatternInput),
+    // not here — same single-writer pattern as voices[1..15] (updatePolyVoiceRest_).
     StepResult result;
     if (!clock.sixteenthEdge || muted) return result;
 
@@ -772,7 +768,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
     
-    result = executeStep(restProb, nvIdx, r_rest, r_legato, r_accent, r_qmix, input, wasHeldMono, hadMonoTail);
+    result = executeStep(nvIdx, r_rest, r_legato, r_accent, r_qmix, input, wasHeldMono, hadMonoTail);
     result.stepped = true;
     result.wrapped = wrapped;
     // executeStep already assigned lastStepResult (BEFORE wrapped/stepped were set on the local
@@ -807,12 +803,9 @@ void SequencerEngine::legatoCheckpointOnFall() {
     pendingCheckpointArrival = true;
 }
 
-StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restProb, float noteVal, const PatternInput& input) {
+StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float noteVal, const PatternInput& input) {
     lastNoteVal_ = noteVal;
-    voices[0].restProb = restProb;
-    voices[0].legatoProb = input.legato;
-    voices[0].accentProb = input.accentProb; voices[0].qmixLevel = input.qmixLevel;
-    voices[0].variationProb = input.variationAmount;
+    // Phase A: voices[0] (V1) is populated by the controller (updatePatternInput).
     StepResult result;
     if (muted) {
         prevGate1High = gate1High;
@@ -898,7 +891,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         gs.holdRemain = 0.f;     gs.gatePulseRemain = -1;
         gsStep.holdRemain = 0.f; gsStep.gatePulseRemain = -1;
 
-        result = executeStep(restProb, nvIdx, r_rest, r_legato, r_accent, r_qmix, input, wasHeldMono, hadMonoTail);
+        result = executeStep(nvIdx, r_rest, r_legato, r_accent, r_qmix, input, wasHeldMono, hadMonoTail);
         result.stepped = true;
         result.wrapped = wrapped;
         lastStepResult = result;   // re-sync wrapped/stepped (executeStep set lastStepResult before they were known)
@@ -919,13 +912,11 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
 // no forced re-articulation at a coincident main-gate + subGate edge (the spec's TRAP).
 // See GATE_SUBDIVISION_STEP_GATE.md §"Two edge streams" + §"TWO tie scopes".
 StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise,
-                                                    float restProb, float noteVal,
+                                                    float noteVal,
                                                     const PatternInput& input,
                                                     bool ghostRise, bool ghostHigh) {
     lastNoteVal_ = noteVal;
-    voices[0].restProb = restProb; voices[0].legatoProb = input.legato;
-    voices[0].accentProb = input.accentProb; voices[0].qmixLevel = input.qmixLevel;
-    voices[0].variationProb = input.variationAmount;
+    // Phase A: voices[0] (V1) is populated by the controller (updatePatternInput).
     StepResult result;
     // Any of the three edge streams advances the playhead + shapes a step:
     //   mainGateRise (main onset), subGateRise (ratchet, in-gate), ghostRise (ghost, in-gap).
@@ -1005,7 +996,7 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     // ghost<->main) — the leading-edge model composes, so legato flows both ways with no special
     // case (the spec's TRAP).  The gate width comes from whichever external gate is high (main or
     // ghost) via the module-layer IMPL 2b.
-    result = executeStep(restProb, nvIdx, r_rest, r_legato, r_accent,
+    result = executeStep(nvIdx, r_rest, r_legato, r_accent,
                          r_qmix, input, wasHeldMono, hadMonoTail);
     // A ghost candidate that played (not rested) sustains; a rested ghost does not.
     if (ghostRise) ghostActive = (result.decision != MonoDecision::Rest);

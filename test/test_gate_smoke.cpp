@@ -55,6 +55,16 @@ static PatternInput makeInput() {
     return in;
 }
 
+// Phase A: populate voices[0] (V1) — the controller normally does this in
+// updatePatternInput; tests bypass the controller, so do it here.
+static void populateV0(SequencerEngine& eng, const PatternInput& in, float restProb) {
+    eng.voices[0].restProb       = restProb;
+    eng.voices[0].legatoProb     = in.legato;
+    eng.voices[0].accentProb     = in.accentProb;
+    eng.voices[0].qmixLevel      = in.qmixLevel;
+    eng.voices[0].variationProb  = in.variationAmount;
+}
+
 // A clock/phase view with a 1/16 edge asserted — exactly what the module layer passes into
 // engine.executeModeA for the clock and phase origins (the controller routes both through
 // engine.executeModeA; only the edge SOURCE differs — clock.sixteenthEdge vs phase.sixteenthEdge).
@@ -95,8 +105,8 @@ int main() {
     TEST("Clock origin (mode 0): a 1/16 step, no rest -> gate high", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeA(edgeClock(), /*restProb=*/0.f,
-                                        /*noteVal=*/2.f, in);
+        populateV0(eng, in, 0.f);
+        StepResult r = eng.executeModeA(edgeClock(), /*noteVal=*/2.f, in);
         EXPECT(r.stepped);
         EXPECT(r.decision != D::Rest);
         EXPECT(eng.gs.gateHeld);                       // GATE_OUTPUT would emit
@@ -105,8 +115,8 @@ int main() {
     TEST("Gate origin (mode 1): a Gate-1 rise, no rest -> gate high", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true,
-                                        /*restProb=*/0.f, /*noteVal=*/0.f, in);
+        populateV0(eng, in, 0.f);
+        StepResult r = eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, /*noteVal=*/0.f, in);
         EXPECT(r.stepped);
         EXPECT(r.decision != D::Rest);
         EXPECT(eng.gs.gateHeld);
@@ -116,7 +126,8 @@ int main() {
         // Phase routes through engine.executeModeA with a phase-derived edge view (sixteenthEdge=true).
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeA(edgeClock(), 0.f, 2.f, in);
+        populateV0(eng, in, 0.f);
+        StepResult r = eng.executeModeA(edgeClock(), 2.f, in);
         EXPECT(r.stepped);
         EXPECT(r.decision != D::Rest);
         EXPECT(eng.gs.gateHeld);
@@ -133,7 +144,8 @@ int main() {
     TEST("Clock origin: rest step -> gate low", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeA(edgeClock(), /*restProb=*/0.5f, 2.f, in);
+        populateV0(eng, in, 0.5f);
+        StepResult r = eng.executeModeA(edgeClock(), 2.f, in);
         EXPECT(r.decision == D::Rest);
         EXPECT(!eng.gs.gateHeld);
     });
@@ -141,7 +153,8 @@ int main() {
     TEST("Gate origin: rest step -> gate low", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeB(true, true, /*restProb=*/0.5f, 0.f, in);
+        populateV0(eng, in, 0.5f);
+        StepResult r = eng.executeModeB(true, true, 0.f, in);
         EXPECT(r.decision == D::Rest);
         EXPECT(!eng.gs.gateHeld);
     });
@@ -149,7 +162,8 @@ int main() {
     TEST("Phase origin: rest step -> gate low", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeA(edgeClock(), /*restProb=*/0.5f, 2.f, in);
+        populateV0(eng, in, 0.5f);
+        StepResult r = eng.executeModeA(edgeClock(), 2.f, in);
         EXPECT(r.decision == D::Rest);
         EXPECT(!eng.gs.gateHeld);
     });

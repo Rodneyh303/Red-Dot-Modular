@@ -57,8 +57,12 @@ static PatternInput makeInput() {
 // module layer, not here). restProb/legatoProb/noteVal are the Mode-A-identical shaping inputs.
 static StepResult rise(SequencerEngine& eng, float restProb, float legatoProb, float noteVal) {
     PatternInput in = makeInput();
-    in.legato = legatoProb;
-    return eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, restProb, noteVal, in);
+    eng.voices[0].restProb      = restProb;
+    eng.voices[0].legatoProb    = legatoProb;
+    eng.voices[0].accentProb    = in.accentProb;
+    eng.voices[0].qmixLevel     = in.qmixLevel;
+    eng.voices[0].variationProb = in.variationAmount;
+    return eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, noteVal, in);
 }
 
 int main() {

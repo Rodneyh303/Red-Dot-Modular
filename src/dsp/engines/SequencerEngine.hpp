@@ -729,10 +729,10 @@ struct SequencerEngine {
     int getQmixStep() const;    // Task 4: q-mix strand DNA index (mono)
 
     bool shouldTriggerStep(int ppqn) const;
-    StepResult executeStep(float restProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
+    StepResult executeStep(int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
-    StepResult executeModeA(const ClockEngine& clock, float restProb, float noteVal, const PatternInput& input, int dir = +1);
-    StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float noteVal, const PatternInput& input);
+    StepResult executeModeA(const ClockEngine& clock, float noteVal, const PatternInput& input, int dir = +1);
+    StepResult executeModeB(bool gate1Rise, bool gate1High, float noteVal, const PatternInput& input);
     // subGate subdivision (GATE_SUBDIVISION_STEP_GATE.md).  Three edge streams advance the playhead
     // and each runs executeStep (rest/legato/accent/pitch — all Sands lanes draw, Tie emergent from
     // pitch equality):
@@ -745,7 +745,7 @@ struct SequencerEngine {
     //     — executeStep rolls the rest lane first, so restProb may still silence it.
     // mainGateHigh/ghostHigh are passed for the IMPL 2b mirror in tests; the engine itself is
     // region-agnostic (which edge fired selects the region).  Unpatched = executeModeB.
-    StepResult executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise, float restProb, float noteVal, const PatternInput& input, bool ghostRise = false, bool ghostHigh = false);
+    StepResult executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise, float noteVal, const PatternInput& input, bool ghostRise = false, bool ghostHigh = false);
     // (executeModeC/D removed — MODE_COLLAPSE_6_TO_3: dead code; the controller routes C→A, D→B,
     //  and the quantiser is now the q-mix axis engaged per-step in the dispatch, not an engine mode.)
     float quantize(float vIn);

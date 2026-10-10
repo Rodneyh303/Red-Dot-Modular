@@ -128,6 +128,16 @@ void ModeController::updatePatternInput() {
         // raw param when there's no mainModule.
         currentPatternInput.qmixLevel     = mainModule ? mainModule->getEffectiveMonoQmix(paramManager.getQmixLevel())
                                                        : paramManager.getQmixLevel();
+        // Phase A: populate voices[0] (V1 = voice 0) from the same source as the mono
+        // PatternInput scalars — the controller is now the SOLE writer of voices[0],
+        // mirroring how updatePolyVoiceRest_() is the sole writer of voices[1..15].
+        // This replaces the per-executor voices[0] population, collapsing the
+        // mono-strand data model: executeStep reads voices[0].* for all V1 params.
+        engine.voices[0].restProb      = currentPatternInput.restProb;
+        engine.voices[0].legatoProb    = currentPatternInput.legato;
+        engine.voices[0].accentProb    = currentPatternInput.accentProb;
+        engine.voices[0].qmixLevel     = currentPatternInput.qmixLevel;
+        engine.voices[0].variationProb = currentPatternInput.variationAmount;
     }
     if (octLive) {   // OctaveRange LATCH — hold OCT LO/HI under lock (see pitch-axis note above)
         currentPatternInput.octaveLo      = paramManager.getOctaveLo();
@@ -242,9 +252,8 @@ bool ModeController::executeModeE() {
 
     StepResult result = engine.executeModeA(
         phaseView,
-        in.restProb,
         in.noteValue,       // BigFive LATCH: staged in updatePatternInput (was paramManager.getNoteValue())
-        in,                 // Phase A: legato routed via input.legato → voices[0].legatoProb
+        in,                 // Phase A: V1 params via voices[0] (populated in updatePatternInput)
         phaseReverse ? -1 : +1        // within-draw reverse traversal
     );
     postExecute_(result);
@@ -261,9 +270,8 @@ bool ModeController::executeModeA() {
         // Execute the mode
         StepResult result = engine.executeModeA(
             clock,
-            in.restProb,
             in.noteValue,       // BigFive LATCH: staged in updatePatternInput (was paramManager.getNoteValue())
-            in                  // Phase A: legato routed via input.legato → voices[0].legatoProb
+            in                  // Phase A: V1 params via voices[0] (populated in updatePatternInput)
         );
         
         // Handle post-execution
@@ -287,7 +295,7 @@ bool ModeController::executeModeB(const InputState& input,
     if (useSubGate) {
         PatternInput in = assemblePatternInput_();
         StepResult result = engine.executeModeBSubdivided(gate1Rise, gate1High, input.subGateRise,
-                                                          in.restProb, in.noteValue, in,
+                                                          in.noteValue, in,
                                                           input.ghostRise, input.ghostHigh);
         postExecute_(result);
         updateLastStepIndex();
@@ -299,17 +307,18 @@ bool ModeController::executeModeB(const InputState& input,
         // Create a local copy of PatternInput and override relevant values for Mode B.
         PatternInput modeBPatternInput = currentPatternInput; // Start with current settings
         modeBPatternInput.noteVariationMask = 0b111; // Allow all note lengths (e.g., 1/1 to 1/32T)
-        modeBPatternInput.variationAmount = 0.5f;    // No bias for longer/shorter notes
+        // Phase A: Mode B overrides V1's variation to neutral (no bias for longer/shorter notes).
+        // Was modeBPatternInput.variationAmount = 0.5f; now writes voices[0] directly.
+        engine.voices[0].variationProb = 0.5f;
 
         // Execute the mode
         StepResult result = engine.executeModeB(
             gate1Rise,
             gate1High,
-            modeBPatternInput.restProb, // Rest still applies
             // Note value (which influences note length) should have no impact.
             // Pass a neutral value (e.g., 2.f for 1/4 note, a common default).
             0.f,
-            modeBPatternInput // Pass the modified PatternInput (Phase A: legato via input.legato → voices[0])
+            modeBPatternInput // Pass the modified PatternInput (V1 params via voices[0])
         );
         
         // Handle post-execution

@@ -53,10 +53,13 @@ static StepResult step(SequencerEngine& eng, bool mainRise, bool ratchetRise, bo
                        float restProb, float legatoProb, float noteVal, float variation = 0.5f,
                        bool subgatesActive = true) {
     PatternInput in = makeInput();
-    in.variationAmount = variation;
-    in.legato = legatoProb;
+    eng.voices[0].restProb      = restProb;
+    eng.voices[0].legatoProb    = legatoProb;
+    eng.voices[0].accentProb    = in.accentProb;
+    eng.voices[0].qmixLevel     = in.qmixLevel;
+    eng.voices[0].variationProb = variation;
     StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, ratchetRise,
-                                              restProb, noteVal, in,
+                                              noteVal, in,
                                               ghostRise, ghostHigh);
     const bool isRest = (r.decision == MonoDecision::Rest);
     // Ghost only sounds when a candidate actually fired (engine.ghostActive) AND the ghost gate is
@@ -80,10 +83,13 @@ static StepResult stepPoly(SequencerEngine& eng, bool mainRise, bool ratchetRise
                             bool mainHigh, bool ghostHigh,
                             float restProb, float legatoProb, float noteVal, float variation = 0.5f) {
     PatternInput in = makeInput();
-    in.variationAmount = variation;
-    in.legato = legatoProb;
+    eng.voices[0].restProb      = restProb;
+    eng.voices[0].legatoProb    = legatoProb;
+    eng.voices[0].accentProb    = in.accentProb;
+    eng.voices[0].qmixLevel     = in.qmixLevel;
+    eng.voices[0].variationProb = variation;
     StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, ratchetRise,
-                                              restProb, noteVal, in,
+                                              noteVal, in,
                                               ghostRise, ghostHigh);
     if (r.stepped && eng.numPolyVoices > 0)
         eng.executePolyVoices(in);
@@ -178,7 +184,9 @@ int main() {
     TEST("no edge -> stepped=false", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeBSubdivided(false, false, false, 0.f, 2.f, in);
+        eng.voices[0].restProb = 0.f;
+        eng.voices[0].variationProb = in.variationAmount;
+        StepResult r = eng.executeModeBSubdivided(false, false, false, 2.f, in);
         EXPECT(!r.stepped);
     });
 
@@ -327,10 +335,14 @@ int main() {
     auto stepBridge = [](SequencerEngine& eng, bool mainRise, bool ghostRise, bool mainHigh,
                          bool ghostHigh, float restProb, float legatoProb, float noteVal,
                          float variation = 0.5f) {
-        PatternInput in = makeInput(); in.variationAmount = variation;
-        in.legato = legatoProb;
+        PatternInput in = makeInput();
+        eng.voices[0].restProb      = restProb;
+        eng.voices[0].legatoProb    = legatoProb;
+        eng.voices[0].accentProb    = in.accentProb;
+        eng.voices[0].qmixLevel     = in.qmixLevel;
+        eng.voices[0].variationProb = variation;
         StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, /*ratchetRise=*/false,
-                                                 restProb, noteVal, in,
+                                                 noteVal, in,
                                                  ghostRise, ghostHigh);
         const bool isRest = (r.decision == MonoDecision::Rest);
         const bool ghostSounding = eng.ghostActive && ghostHigh;
