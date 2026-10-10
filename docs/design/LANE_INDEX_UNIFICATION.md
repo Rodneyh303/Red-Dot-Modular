@@ -53,3 +53,43 @@ Make the ONE canonical lane index = the VISUAL order above. Then:
 One lane index everywhere -> the EL2ENG crosswire bug class is GONE (no conversions), display order stays
 the sensible visual one (and is stream-contiguous), draw batching reads contiguous stream ranges. Reorder
 is a relabelling refactor (bit-identical output), scoped and verifiable.
+
+---
+
+## SCOPE vs V1->voice-0 — similar SIZE, meaningfully EASIER (Rodney)
+Measured footprint:
+- PL_* lane-enum refs: ~278 across ~12 files. STRAND_*: ~136 across ~8. EL2ENG/EditorLane/EngineLane
+  (the conversions to DELETE): ~36 across ~5 files.
+- V1->voice-0 took: 33 files, ~845+/432-, multi-session, several overclaim/correct cycles.
+
+So raw ref-count is SIMILAR-OR-LARGER than V1 — BUT the effort is MUCH SMALLER, because it's MECHANICAL
+RELABELLING, not a semantic data-model collapse:
+- Most of the 278 PL_* refs DON'T CHANGE — they use the NAME (PL_MELODY etc.), which is STABLE; only the
+  enum VALUES reorder (PL_MELODY=0 instead of PL_REST=0). `polyRandom(v, PL_MELODY)` is identical before/
+  after. So ~278 refs, but most need ZERO edits.
+- Real edit surface is bounded: (a) the enum definition (1 line reorder, SequencerEngine.hpp:352);
+  (b) delete the ~36 EL2ENG conversion sites (editor-order == engine-order now); (c) the ORDER-DEPENDENT
+  hard-codings below.
+- Unlike V1, NO subtle semantic preservation (legato timing/spread/ownership) — output is
+  IDENTICAL-or-OBVIOUSLY-BROKEN. Bit-compare = clean pass/fail, no subtle-breakage debugging.
+Estimate: ~1/3 to 1/2 the EFFORT of V1 despite comparable size; lower-risk.
+
+### ORDER-DEPENDENT spots the reorder MUST update (the real work — prep list)
+These encode the CURRENT order and break silently if the enum reorders without fixing them:
+- StraitsSandsMacroVisual.hpp:97  `(lane==0)?0 :(lane==1)?3 :(lane==3)?9 :6` — lane->block index map.
+- StraitsSandsMacroVisual.hpp:152 `if (lane==0) return SPREAD_REST;` — lane->spread-id map.
+- MonsoonChangeAlleyV2.hpp:1286/1295 `(plane==0)?rhythmSrc:...` — CA plane (rhythm/melody/qmix) mapping.
+- SpreadInterp.hpp:152 — lane -> CA pin plane (rhythm/melody/qmix) mapping.
+- SequencerEngine.cpp:118 `for l < PL_LANES` — order-agnostic loop (fine, but verify any `< 3`/`<N`
+  partial-lane loops are updated to the new groupings).
+- rawDraw*PatternAt cursor order (PatternEngine.hpp ~697) — the Philox CURSOR order within a stream is a
+  SEPARATE internal detail; need NOT match the lane index, but confirm the stream<->lane grouping stays
+  consistent (melody 0-1, qmix 2, rhythm 3-6 under the new order).
+- static_assert laneNames size == POLY_LANES (StraitsEastSandsVisual.cpp:762) — update laneNames order.
+Prep = grep `lane ==`, `== PL_`, `plane ==`, `< 3`/partial-lane loops near PL_ usage; these are the
+findable, bounded set. Not a semantic minefield.
+
+### Recommendation
+Good "do it on the momentum" candidate after the Straits finish: kills the 2nd recurring bug class
+(EL2ENG crosswires), lower-risk than V1 (mechanical + bit-verifiable), and ENABLES the 4x Philox
+stream-contiguous batching. Main prep is the order-dependent list above.
