@@ -1106,13 +1106,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
                     float base;
                     switch (lane) {
-                        case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[pv][s]; break;
-                        case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[pv][s]; break;
-                        case SequencerEngine::PL_OCTAVE:   base = peRef.pubSlewedPolyOctave[pv][s]; break;
-                        case SequencerEngine::PL_ACCENT:   base = peRef.pubSlewedPolyAccent[pv][s]; break;
-                        case SequencerEngine::PL_QMIX:     base = peRef.pubSlewedPolyQmix[pv][s]; break;
-                        case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[pv][s]; break;
-                        case SequencerEngine::PL_LEGATO:   base = peRef.pubSlewedPolyLegato[pv][s]; break;
+                        case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[pv + 1][s]; break;
+                        case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[pv + 1][s]; break;
+                        case SequencerEngine::PL_OCTAVE:   base = peRef.pubSlewedPolyOctave[pv + 1][s]; break;
+                        case SequencerEngine::PL_ACCENT:   base = peRef.pubSlewedPolyAccent[pv + 1][s]; break;
+                        case SequencerEngine::PL_QMIX:     base = peRef.pubSlewedPolyQmix[pv + 1][s]; break;
+                        case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[pv + 1][s]; break;
+                        case SequencerEngine::PL_LEGATO:   base = peRef.pubSlewedPolyLegato[pv + 1][s]; break;
                         default: base = 0.5f; break;
                     }
                     const float spread = (pv >= 0 && pv < 15) ? eastMod->polySpreadEffective[pv][lane] : 0.f;
@@ -1136,13 +1136,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
                     float base;
                     switch (lane) {
-                        case SequencerEngine::PL_REST:      base = peRef.slewedRhythm[s]; break;
-                        case SequencerEngine::PL_MELODY:    base = peRef.slewedMelody[s]; break;
-                        case SequencerEngine::PL_OCTAVE:    base = peRef.slewedOctave[s]; break;
-                        case SequencerEngine::PL_ACCENT:    base = peRef.slewedAccent[s]; break;
-                        case SequencerEngine::PL_QMIX:      base = peRef.slewedQmix[s]; break;
-                        case SequencerEngine::PL_VARIATION: base = peRef.slewedPolyVariation[0][s]; break;
-                        case SequencerEngine::PL_LEGATO:    base = peRef.slewedPolyLegato[0][s]; break;
+                        // Phase A: V1 reads PUBLISHED poly voice 0 (not LIVE mono) — matches Macro
+                        case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[0][s]; break;
+                        case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[0][s]; break;
+                        case SequencerEngine::PL_OCTAVE:    base = peRef.pubSlewedPolyOctave[0][s]; break;
+                        case SequencerEngine::PL_ACCENT:    base = peRef.pubSlewedPolyAccent[0][s]; break;
+                        case SequencerEngine::PL_QMIX:      base = peRef.pubSlewedPolyQmix[0][s]; break;
+                        case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[0][s]; break;
+                        case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedPolyLegato[0][s]; break;
                         default: base = 0.5f; break;
                     }
                     (void)base;   // applyMono computes own internally; base kept for clarity
@@ -1248,13 +1249,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
                         float base;
                         switch (engLane) {
-                            case SequencerEngine::PL_REST:      base = peRef.pubSlewedRhythm[s]; break;
-                            case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedMelody[s]; break;
-                            case SequencerEngine::PL_OCTAVE:    base = peRef.pubSlewedOctave[s]; break;
-                            case SequencerEngine::PL_ACCENT:    base = peRef.pubSlewedAccent[s]; break;
-                            case SequencerEngine::PL_QMIX:      base = peRef.pubSlewedQmix[s]; break;
-                            case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedVariation[s]; break;
-                            case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedLegato[s]; break;
+                            case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[0][s]; break;
+                            case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[0][s]; break;
+                            case SequencerEngine::PL_OCTAVE:    base = peRef.pubSlewedPolyOctave[0][s]; break;
+                            case SequencerEngine::PL_ACCENT:    base = peRef.pubSlewedPolyAccent[0][s]; break;
+                            case SequencerEngine::PL_QMIX:      base = peRef.pubSlewedPolyQmix[0][s]; break;
+                            case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[0][s]; break;
+                            case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedPolyLegato[0][s]; break;
                             default: base = 0.5f; break;
                         }
                         (void)base;   // applyMono computes own internally; base kept for clarity
@@ -1343,13 +1344,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
                         float base;
                         switch (engLane) {
-                            case SequencerEngine::PL_REST:      base = peRef.pubSlewedRhythm[s]; break;
-                            case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedMelody[s]; break;
-                            case SequencerEngine::PL_OCTAVE:    base = peRef.pubSlewedOctave[s]; break;
-                            case SequencerEngine::PL_ACCENT:    base = peRef.pubSlewedAccent[s]; break;
-                            case SequencerEngine::PL_QMIX:      base = peRef.pubSlewedQmix[s]; break;
-                            case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedVariation[s]; break;
-                            case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedLegato[s]; break;
+                            case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[0][s]; break;
+                            case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[0][s]; break;
+                            case SequencerEngine::PL_OCTAVE:    base = peRef.pubSlewedPolyOctave[0][s]; break;
+                            case SequencerEngine::PL_ACCENT:    base = peRef.pubSlewedPolyAccent[0][s]; break;
+                            case SequencerEngine::PL_QMIX:      base = peRef.pubSlewedPolyQmix[0][s]; break;
+                            case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[0][s]; break;
+                            case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedPolyLegato[0][s]; break;
                             default: base = 0.5f; break;
                         }
                         (void)base;   // applyMono computes own internally; base kept for clarity

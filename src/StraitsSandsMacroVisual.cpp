@@ -425,15 +425,15 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // Macro in line.)
         float base;
         if (mono) {
-            base = (engLane == PL::PL_REST)      ? pe.pubSlewedRhythm[step & 0x0F]
-                 : (engLane == PL::PL_MELODY)    ? pe.pubSlewedMelody[step & 0x0F]
-                 : (engLane == PL::PL_OCTAVE)    ? pe.pubSlewedOctave[step & 0x0F]
-                 : (engLane == PL::PL_ACCENT)    ? pe.pubSlewedAccent[step & 0x0F]
-                 : (engLane == PL::PL_QMIX)      ? pe.pubSlewedQmix[step & 0x0F]
-                 : (engLane == PL::PL_VARIATION) ? pe.pubSlewedVariation[step & 0x0F]
-                 :                                pe.pubSlewedLegato[step & 0x0F];
+            base = (engLane == PL::PL_REST)      ? pe.pubSlewedPolyRhythm[0][step & 0x0F]
+                 : (engLane == PL::PL_MELODY)    ? pe.pubSlewedPolyMelody[0][step & 0x0F]
+                 : (engLane == PL::PL_OCTAVE)    ? pe.pubSlewedPolyOctave[0][step & 0x0F]
+                 : (engLane == PL::PL_ACCENT)    ? pe.pubSlewedPolyAccent[0][step & 0x0F]
+                 : (engLane == PL::PL_QMIX)      ? pe.pubSlewedPolyQmix[0][step & 0x0F]
+                 : (engLane == PL::PL_VARIATION) ? pe.pubSlewedPolyVariation[0][step & 0x0F]
+                 :                                pe.pubSlewedPolyLegato[0][step & 0x0F];
         } else {
-            int v = rack::math::clamp(polyVoice, 0, 14);
+            int v = rack::math::clamp(polyVoice + 1, 0, 15);   // Phase A: V1=0, V2+=1..15
             base = (engLane == PL::PL_REST)      ? pe.pubSlewedPolyRhythm[v][step & 0x0F]
                  : (engLane == PL::PL_MELODY)    ? pe.pubSlewedPolyMelody[v][step & 0x0F]
                  : (engLane == PL::PL_OCTAVE)    ? pe.pubSlewedPolyOctave[v][step & 0x0F]

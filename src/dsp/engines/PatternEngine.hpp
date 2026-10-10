@@ -444,22 +444,33 @@ struct PatternEngine {
     // floats), so the race window drops from ~116µs to ~1µs — practically eliminating flicker.
     float pubSlewedRhythm[16]={}, pubSlewedVariation[16]={}, pubSlewedLegato[16]={}, pubSlewedAccent[16]={};
     float pubSlewedMelody[16]={}, pubSlewedOctave[16]={}, pubSlewedQmix[16]={};
-    float pubSlewedPolyRhythm[15][16]={}, pubSlewedPolyMelody[15][16]={}, pubSlewedPolyOctave[15][16]={};
-    float pubSlewedPolyAccent[15][16]={}, pubSlewedPolyQmix[15][16]={};
-    float pubSlewedPolyVariation[15][16]={}, pubSlewedPolyLegato[15][16]={};
+    // Phase A: extended from [15] to [16] — V1 (voice 0) at index 0, V2..V16 at 1..15
+    float pubSlewedPolyRhythm[16][16]={}, pubSlewedPolyMelody[16][16]={}, pubSlewedPolyOctave[16][16]={};
+    float pubSlewedPolyAccent[16][16]={}, pubSlewedPolyQmix[16][16]={};
+    float pubSlewedPolyVariation[16][16]={}, pubSlewedPolyLegato[16][16]={};
     void publishSlewedRhythm() {
         for (int i=0;i<16;++i){ pubSlewedRhythm[i]=slewedRhythm[i]; pubSlewedVariation[i]=slewedVariation[i];
             pubSlewedLegato[i]=slewedLegato[i]; pubSlewedAccent[i]=slewedAccent[i];
-            for(int v=0;v<15;++v){ pubSlewedPolyRhythm[v][i]=slewedPolyRhythm[v][i]; pubSlewedPolyAccent[v][i]=slewedPolyAccent[v][i];
-                pubSlewedPolyVariation[v][i]=slewedPolyVariation[v][i]; pubSlewedPolyLegato[v][i]=slewedPolyLegato[v][i]; } }
+            // Phase A: V1 (voice 0) published from mono slewed* → pubSlewedPoly*[0]
+            pubSlewedPolyRhythm[0][i]=slewedRhythm[i]; pubSlewedPolyAccent[0][i]=slewedAccent[i];
+            pubSlewedPolyVariation[0][i]=slewedVariation[i]; pubSlewedPolyLegato[0][i]=slewedLegato[i];
+            // V2..V16 (voices 1..15) published from slewedPoly*[v-1] → pubSlewedPoly*[v]
+            for(int v=1;v<16;++v){ pubSlewedPolyRhythm[v][i]=slewedPolyRhythm[v-1][i]; pubSlewedPolyAccent[v][i]=slewedPolyAccent[v-1][i];
+                pubSlewedPolyVariation[v][i]=slewedPolyVariation[v-1][i]; pubSlewedPolyLegato[v][i]=slewedPolyLegato[v-1][i]; } }
     }
     void publishSlewedMelody() {
         for (int i=0;i<16;++i){ pubSlewedMelody[i]=slewedMelody[i]; pubSlewedOctave[i]=slewedOctave[i];
-            for(int v=0;v<15;++v){ pubSlewedPolyMelody[v][i]=slewedPolyMelody[v][i]; pubSlewedPolyOctave[v][i]=slewedPolyOctave[v][i]; } }
+            // Phase A: V1 (voice 0) from mono slewed*
+            pubSlewedPolyMelody[0][i]=slewedMelody[i]; pubSlewedPolyOctave[0][i]=slewedOctave[i];
+            // V2..V16 (voices 1..15) from slewedPoly*[v-1]
+            for(int v=1;v<16;++v){ pubSlewedPolyMelody[v][i]=slewedPolyMelody[v-1][i]; pubSlewedPolyOctave[v][i]=slewedPolyOctave[v-1][i]; } }
     }
     void publishSlewedQmix() {
         for (int i=0;i<16;++i){ pubSlewedQmix[i]=slewedQmix[i];
-            for(int v=0;v<15;++v) pubSlewedPolyQmix[v][i]=slewedPolyQmix[v][i]; }
+            // Phase A: V1 (voice 0) from mono slewed*
+            pubSlewedPolyQmix[0][i]=slewedQmix[i];
+            // V2..V16 (voices 1..15) from slewedPolyQmix[v-1]
+            for(int v=1;v<16;++v) pubSlewedPolyQmix[v][i]=slewedPolyQmix[v-1][i]; }
     }
     // Set true when any Sands visual expander owns the spread→final stage this
     // cycle. When false, slew copies slewedDraw → final.
