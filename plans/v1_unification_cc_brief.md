@@ -53,3 +53,40 @@ Straits seamless-panel / VAR-LEG / range-lane — not this branch.
 ## VERIFY THROUGHOUT
 East alone, no Macro: V1 spread/owner/direction/display IDENTICAL to V2; V1 not locked; QMIX arc off at
 rest; no V2-V16 or Macro-attached regression; test suite green.
+
+---
+
+## CORRECTION (Rodney) — Phase A is NOT done; the real debt is the MONO-STRAND DATA MODEL
+Commit 5d170115 reconciled the index CONSTANTS (kMonoMacroOwnRow/kMonoLaneDirRow 15 -> 0) — legit but
+SMALL (19 lines). The commit message "V1 = index 0 everywhere" OVERCLAIMS: the counts barely moved
+(kMonoSlot 36, onMonoTab 17, tab1MonoMirror 9, eastV1Owner 9, getMonoMacroOwn 12). The actual V1-is-Mono
+debt — the separate MONO-STRAND DATA MODEL — is UNTOUCHED.
+
+### The real structural problem
+The storage still separates "4 MONO strands (V1) + 15 poly", NOT 16 poly voices:
+- PatternEngine.hpp:593 comment: "4 mono + 15 poly" (rhythm+variation+legato+accent as MONO + 15 poly).
+- PatternEngine.hpp:51: a separate `float legato` MONO scalar.
+- SequencerEngine.cpp:747: V1 legato read via `monoStrand(STRAND_LEGATO)` — a separate mono strand.
+- Monsoon.hpp:174: "voice 1 (mono) variation lives on Monsoon's knob" — V1 variation on the MONO knob.
+- PatternEngine.cpp:38-39: poly seeded to "match mono default" — implies mono (V1) is still the reference.
+So V1's rhythm/variation/legato/accent live in SEPARATE MONO STRANDS + the Monsoon mono knob, NOT as
+voice 0 of the poly arrays. THAT is the debt (legato/variation are still V1-mono-special — Rodney flagged
+they should NOT be).
+
+### What Phase A MUST actually do (the structural collapse)
+VARIATION and LEGATO are now POLY (POLY_VARIATION_PARAM_1..15 exist). So V1 must be VOICE 0 of those poly
+arrays, NOT a separate mono strand/knob. Collapse:
+- The "4 mono + 15 poly" storage split -> 16 POLY voices, V1 = index 0. No separate mono strands for
+  rhythm/variation/legato/accent.
+- `monoStrand(...)` reads for V1 -> read voice 0 of the poly array (polyRandom(0, PL_*)).
+- The separate `legato` mono scalar (PatternEngine.hpp:51) -> gone; V1 legato = voice 0 of the poly
+  legato array.
+- "V1 variation on the Monsoon knob" -> route V1 variation through POLY_VARIATION_PARAM at voice 0.
+- The "matches mono default" seeding -> V1 is just voice 0; no separate mono default/reference.
+Then kMonoSlot/onMonoTab/tab1MonoMirror/eastV1Owner/getMonoMacroOwn/getMonoLaneDir/laneOwnedByMacroTopo
+collapse naturally (they exist to serve the mono-strand model).
+
+### Commit-message discipline
+"V1 = index 0 everywhere" must mean the DATA MODEL is unified (mono strands collapsed into poly voice 0),
+not just that index constants changed. Do not mark Phase A done until the mono strands are gone and the
+counts above are near zero. Bit-compare V1 to a working poly voice — same data path, not a parallel mono one.
