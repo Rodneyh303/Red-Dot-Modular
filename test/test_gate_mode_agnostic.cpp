@@ -89,7 +89,8 @@ static std::vector<Snap> runSeq(bool quantiserSrc, float qmixLevel, float quanti
     PatternInput in = makeInput(qmixLevel);
     std::vector<Snap> out;
     auto step = [&](float restProb, float legatoProb) {
-        StepResult r = eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, restProb, legatoProb, 4.f, in);
+        in.legato = legatoProb;
+        StepResult r = eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, restProb, 4.f, in);
         out.push_back({ category(r.decision), eng.gs.gateHeld, r.accented, eng.gs.currentPitchV, r.decision });
     };
     // Sequence: fresh note, legato-commit (connect), connect, rest, fresh, connect.

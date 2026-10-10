@@ -1075,7 +1075,7 @@ void Monsoon::process(const ProcessArgs& args) {
         // transition; gated by slurForward so a non-slurring note's fall does nothing).
         if (prevGate1SchmittHigh && !gate1High && engine.gs.slurForward &&
             engine.tieAcrossRests && engine.advanceOnTieIntoRest && !engine.pendingCheckpointArrival) {
-            engine.legatoCheckpointOnFall(engine.lastLegatoProb_);
+            engine.legatoCheckpointOnFall();
         }
         prevGate1SchmittHigh = gate1High;   // refresh per-sample (Mode B); used next sample for the 1-sample hold
         engine.gs.gateHeld     = gateOpen;

@@ -471,8 +471,9 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
     return true; 
 }
 
-StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail) {
-    lastLegatoProb_ = legatoProb;   // for the Rule 2 per-voice slur roll (read in executePolyVoice)
+StepResult SequencerEngine::executeStep(float restProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail) {
+    // Phase A: legato threshold now read from voices[0].legatoProb (V1 = voice 0), not a
+    // separate parameter. lastLegatoProb_ removed — all readers use voices[0].legatoProb.
     // ── Fractional notes (1/4T=2.667, 1/8T=1.333, 1/32=0.5 steps) & legato/tie ──
     // These notes end MID-STEP (closed by the gateSecRemain seconds-timer), not on
     // a 1/16 grid edge. Legato/tie decisions only happen AT an edge and require the
@@ -583,7 +584,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     // r_legato_tie is consumed only at the LEAD commitment (gs.slurForward, at the bottom of
     // this cascade), i.e. by the note that produces the next note's prevSlur.
     // legatoProb>=0.999 (LegatoMax) still forces connection.
-    const bool legatoConnects = (legatoProb >= 0.999f) || prevSlur;
+    const bool legatoConnects = (voices[0].legatoProb >= 0.999f) || prevSlur;
 
     // A genuine committed slur reaching THIS note: it connects AND has a held predecessor to
     // connect to (exactly the condition the legato branch below uses). "Rest beats legato"
@@ -593,7 +594,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
     const bool slurReachesHere    = legatoConnects && (wasHeld || hadTail) && prevPlayedSounded;
     const bool slurSuppressesRest = !generatedRestBeatsLegato && slurReachesHere;
 
-    if (legatoProb >= 0.999f) {
+    if (voices[0].legatoProb >= 0.999f) {
         gs.slideMax(pitchV, sem, nvIdx, isQuant);
         gsStep.triggerNote(pitchV, sem, nvIdx, isQuant);            // STEP: re-strike (un-fused)
         result.decision = MonoDecision::LegatoMax;
@@ -695,7 +696,7 @@ StepResult SequencerEngine::executeStep(float restProb, float legatoProb, int nv
                    || (result.decision == MonoDecision::Tie);
     bool leadsSlur = leStarting
                   && noteCanLeadLegato(nvIdx)
-                  && (legatoProb >= 0.999f || r_legato_tie < legatoProb);
+                  && (voices[0].legatoProb >= 0.999f || r_legato_tie < voices[0].legatoProb);
     gs.slurForward = leadsSlur;
     gs.slurMember  = prevSlur || leadsSlur;   // SLEG mask: this note leads OR continues a slur
 
@@ -715,12 +716,12 @@ void SequencerEngine::handlePhraseBoundary(PatternInput input, bool isMelodyReal
     pe.applyPendingSeedsAndRedraw(input);
 }
 
-StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir) {
+StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restProb, float noteVal, const PatternInput& input, int dir) {
     lastNoteVal_ = noteVal;   // poly voices derive their own nvIdx from this (stage 2)
     // Phase A: populate voices[0] (V1) from PatternInput — unifies V1's params
     // with the per-voice PolyVoice system. V1 now reads from voices[0] like V2+.
     voices[0].restProb = restProb;
-    voices[0].legatoProb = legatoProb;
+    voices[0].legatoProb = input.legato;
     voices[0].accentProb = input.accentProb;
     voices[0].qmixLevel = input.qmixLevel;
     voices[0].variationProb = input.variationAmount;
@@ -771,7 +772,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
     
-    result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
+    result = executeStep(restProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
     result.stepped = true;
     result.wrapped = wrapped;
     // executeStep already assigned lastStepResult (BEFORE wrapped/stepped were set on the local
@@ -788,7 +789,7 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
 // or ENDS. NOT a note onset — a silent rest checkpoint (the gate stays low). Sets
 // pendingCheckpointArrival so the next rise SKIPS its own advance ("one advance, one arrival" — no
 // double-advance jump). The SOLE advance-on-fall (edge-driven-playhead violation), opt-in.
-void SequencerEngine::legatoCheckpointOnFall(float legatoProb) {
+void SequencerEngine::legatoCheckpointOnFall() {
     if (muted) { pendingCheckpointArrival = true; return; }
     bool wrapped = advancePlayhead();
     if (wrapped && boundaryInterrupt) {
@@ -798,16 +799,18 @@ void SequencerEngine::legatoCheckpointOnFall(float legatoProb) {
     }
     // The legato draw at the rested step decides slur survival (generatedRestBeatsLegato is
     // IRRELEVANT — the incoming rest already makes it silent; only the slur candidacy is in play).
+    // Phase A: legato threshold read from voices[0].legatoProb (V1 = voice 0).
     float r_legato = pe.polyRandom(0, PL_LEGATO)[getLegatoStep()];
-    bool survives = (legatoProb >= 0.999f) || (r_legato < legatoProb);
+    bool survives = (voices[0].legatoProb >= 0.999f) || (r_legato < voices[0].legatoProb);
     if (!survives) gs.slurForward = false;   // chain ENDS at the rest checkpoint
     // else slurForward stays pending across the rest (tieAcrossRests bridge carries it to the rise)
     pendingCheckpointArrival = true;
 }
 
-StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input) {
+StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float restProb, float noteVal, const PatternInput& input) {
     lastNoteVal_ = noteVal;
-    voices[0].restProb = restProb; voices[0].legatoProb = legatoProb;
+    voices[0].restProb = restProb;
+    voices[0].legatoProb = input.legato;
     voices[0].accentProb = input.accentProb; voices[0].qmixLevel = input.qmixLevel;
     voices[0].variationProb = input.variationAmount;
     StepResult result;
@@ -895,7 +898,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
         gs.holdRemain = 0.f;     gs.gatePulseRemain = -1;
         gsStep.holdRemain = 0.f; gsStep.gatePulseRemain = -1;
 
-        result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
+        result = executeStep(restProb, nvIdx, r_rest, r_legato, r_accent, input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
         result.stepped = true;
         result.wrapped = wrapped;
         lastStepResult = result;   // re-sync wrapped/stepped (executeStep set lastStepResult before they were known)
@@ -916,11 +919,11 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
 // no forced re-articulation at a coincident main-gate + subGate edge (the spec's TRAP).
 // See GATE_SUBDIVISION_STEP_GATE.md §"Two edge streams" + §"TWO tie scopes".
 StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise,
-                                                    float restProb, float legatoProb, float noteVal,
+                                                    float restProb, float noteVal,
                                                     const PatternInput& input,
                                                     bool ghostRise, bool ghostHigh) {
     lastNoteVal_ = noteVal;
-    voices[0].restProb = restProb; voices[0].legatoProb = legatoProb;
+    voices[0].restProb = restProb; voices[0].legatoProb = input.legato;
     voices[0].accentProb = input.accentProb; voices[0].qmixLevel = input.qmixLevel;
     voices[0].variationProb = input.variationAmount;
     StepResult result;
@@ -1002,7 +1005,7 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     // ghost<->main) — the leading-edge model composes, so legato flows both ways with no special
     // case (the spec's TRAP).  The gate width comes from whichever external gate is high (main or
     // ghost) via the module-layer IMPL 2b.
-    result = executeStep(restProb, legatoProb, nvIdx, r_rest, r_legato, r_accent,
+    result = executeStep(restProb, nvIdx, r_rest, r_legato, r_accent,
                          input.accentProb, r_qmix, input, wasHeldMono, hadMonoTail);
     // A ghost candidate that played (not rested) sustains; a rested ghost does not.
     if (ghostRise) ghostActive = (result.decision != MonoDecision::Rest);
@@ -1163,12 +1166,12 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // ── Rule 2 LEAD (per-voice leading-edge slur roll) ────────────────────────────────
         // Mirror mono's LEAD commitment (executeStep), per voice: this note commits to slur its
         // gate forward into the NEXT note iff its OWN legato draw fires. The draw reads the
-        // SHARED mono legatoRandom array at THIS voice's cell (getLegatoStepForVoice → mono's
-        // cell when delegated (default) so it matches mono, own cell when Local East). The
-        // THRESHOLD (lastLegatoProb_) and the array stay global/mono — only the reading cell is
-        // per-voice, exactly as VARIATION. Rolled here at the leading edge and consumed at the
-        // NEXT landing (v.gs.slurForward → prevSlur). Delegated voices read mono's legato cell →
-        // their slur matches mono's; Local-East voices read their own.
+        // legato strand at THIS voice's cell (getLegatoStepForVoice → mono's cell when delegated
+        // (default) so it matches V1, own cell when Local East). Phase A: the THRESHOLD is
+        // per-voice (v.legatoProb, with voices[0].legatoProb = V1's threshold); mono/V1 reads
+        // the same voice-0 cell. Rolled here at the leading edge and consumed at the NEXT landing
+        // (v.gs.slurForward → prevSlur). Delegated voices read V1's legato cell → their slur
+        // matches V1's; Local-East voices read their own.
         // NOTE: this ROLLS the commitment; the poly landing consumes it (Rule 2 CONSUME below).
         {
             // This voice played at the chain onset → it is part of the chain for its life.
@@ -1192,7 +1195,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                 polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_LEN),
                 polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_OFF),
                 polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_ROT),
-                r_polyLegato, lastLegatoProb_, nvV, (int)noteCanLeadLegato(nvV),
+                r_polyLegato, voices[0].legatoProb, nvV, (int)noteCanLeadLegato(nvV),
                 (int)v.gs.slurForward);
 #endif
         }

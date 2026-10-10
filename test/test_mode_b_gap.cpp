@@ -55,8 +55,9 @@ static PatternInput makeInput() {
 
 // Drive one Gate 1 RISE through the real engine. gate1High=true models the gate high at the edge.
 static StepResult rise(SequencerEngine& eng, float restProb, float legatoProb, float noteVal) {
-    const PatternInput in = makeInput();
-    return eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, restProb, legatoProb, noteVal, in);
+    PatternInput in = makeInput();
+    in.legato = legatoProb;
+    return eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, restProb, noteVal, in);
 }
 
 // Model the module-layer IMPL 2b bridge state during a gap, per tieAcrossRests.
@@ -211,7 +212,7 @@ int main() {
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
         rise(eng, 0.f, 1.0f, 4.f);               // A commits slurForward (legato=1.0)
         EXPECT(eng.gs.slurForward == true);
-        eng.legatoCheckpointOnFall(/*legatoProb=*/1.0f);   // the fall checkpoint
+        eng.legatoCheckpointOnFall();   // the fall checkpoint (voices[0].legatoProb=1.0 from the rise)
         EXPECT(eng.gs.slurForward == true);      // survived (legato=1.0 forces it)
         EXPECT(eng.pendingCheckpointArrival == true);
         // The next rise plays the already-stepped-to step (no 2nd advance) and ties in.
@@ -224,7 +225,8 @@ int main() {
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
         rise(eng, 0.f, 1.0f, 4.f);               // A commits slurForward
         EXPECT(eng.gs.slurForward == true);
-        eng.legatoCheckpointOnFall(/*legatoProb=*/0.0f);   // the fall checkpoint; legato=0 -> never survives
+        eng.voices[0].legatoProb = 0.0f;   // simulate legato=0 at the checkpoint step
+        eng.legatoCheckpointOnFall();   // the fall checkpoint; legato=0 -> never survives
         EXPECT(eng.gs.slurForward == false);     // chain ENDED at the rest checkpoint
         EXPECT(eng.pendingCheckpointArrival == true);
         // The next rise plays the already-stepped-to step; no pending slur -> fresh NewNote.
@@ -239,7 +241,7 @@ int main() {
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
         rise(eng, 0.f, 1.0f, 4.f);               // plays step 0 (A); stepIndex now 0
         int beforeFall = eng.stepIndex;
-        eng.legatoCheckpointOnFall(1.0f);        // fall advances one step -> stepIndex 1
+        eng.legatoCheckpointOnFall();        // fall advances one step -> stepIndex 1 (voices[0].legatoProb=1.0 from rise)
         EXPECT(eng.stepIndex == (beforeFall + 1));
         int afterCheckpoint = eng.stepIndex;
         rise(eng, 0.f, 0.5f, 4.f);               // rise: pendingCheckpointArrival -> NO advance

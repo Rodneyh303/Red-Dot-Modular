@@ -139,11 +139,8 @@ struct SequencerEngine {
     // Most recent mono decision — written by executeStep, read by executePolyVoices.
     StepResult lastStepResult;
 
-    // Most recent mono legato probability — written by executeStep, read by executePolyVoice
-    // for the Rule 2 per-voice slur roll (the legato THRESHOLD stays global/mono; only each
-    // voice's reading CELL differs, via getLegatoStepForVoice). Same write-once/read-by-poly
-    // pattern as lastStepResult above.
-    float lastLegatoProb_ = 0.f;
+    // (lastLegatoProb_ REMOVED — Phase A: V1 legato lives on voices[0].legatoProb, read
+    // directly by executeStep, legatoCheckpointOnFall, and the debug print in executePolyVoice.)
 
     // Leading-edge legato is now the ONLY legato model: the connection is governed by the
     // PREVIOUS note's onset commitment (gs.slurForward), captured before this note's cascade
@@ -634,7 +631,7 @@ struct SequencerEngine {
     // a Gate-1 FALL while a slur is pending. Advances the playhead ONE step into the incoming-rest
     // position and re-evaluates the slur candidacy (legato draw at that step). Sets
     // pendingCheckpointArrival so the next rise skips its own advance (one advance, one arrival).
-    void legatoCheckpointOnFall(float legatoProb);
+    void legatoCheckpointOnFall();
     void updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched);
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask) const;
     int getNoteLenIdx(float baseNoteParam, const PatternInput& input, float r);
@@ -732,10 +729,10 @@ struct SequencerEngine {
     int getQmixStep() const;    // Task 4: q-mix strand DNA index (mono)
 
     bool shouldTriggerStep(int ppqn) const;
-    StepResult executeStep(float restProb, float legatoProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
+    StepResult executeStep(float restProb, int nvIdx, float r_rest, float r_legato_tie, float r_accent, float accentProb, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
-    StepResult executeModeA(const ClockEngine& clock, float restProb, float legatoProb, float noteVal, const PatternInput& input, int dir = +1);
-    StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float legatoProb, float noteVal, const PatternInput& input);
+    StepResult executeModeA(const ClockEngine& clock, float restProb, float noteVal, const PatternInput& input, int dir = +1);
+    StepResult executeModeB(bool gate1Rise, bool gate1High, float restProb, float noteVal, const PatternInput& input);
     // subGate subdivision (GATE_SUBDIVISION_STEP_GATE.md).  Three edge streams advance the playhead
     // and each runs executeStep (rest/legato/accent/pitch — all Sands lanes draw, Tie emergent from
     // pitch equality):
@@ -748,7 +745,7 @@ struct SequencerEngine {
     //     — executeStep rolls the rest lane first, so restProb may still silence it.
     // mainGateHigh/ghostHigh are passed for the IMPL 2b mirror in tests; the engine itself is
     // region-agnostic (which edge fired selects the region).  Unpatched = executeModeB.
-    StepResult executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise, float restProb, float legatoProb, float noteVal, const PatternInput& input, bool ghostRise = false, bool ghostHigh = false);
+    StepResult executeModeBSubdivided(bool mainGateRise, bool mainGateHigh, bool subGateRise, float restProb, float noteVal, const PatternInput& input, bool ghostRise = false, bool ghostHigh = false);
     // (executeModeC/D removed — MODE_COLLAPSE_6_TO_3: dead code; the controller routes C→A, D→B,
     //  and the quantiser is now the q-mix axis engaged per-step in the dispatch, not an engine mode.)
     float quantize(float vIn);

@@ -243,9 +243,8 @@ bool ModeController::executeModeE() {
     StepResult result = engine.executeModeA(
         phaseView,
         in.restProb,
-        in.legato,          // BigFive LATCH: staged in updatePatternInput (was paramManager.getLegato())
         in.noteValue,       // BigFive LATCH: staged in updatePatternInput (was paramManager.getNoteValue())
-        in,
+        in,                 // Phase A: legato routed via input.legato → voices[0].legatoProb
         phaseReverse ? -1 : +1        // within-draw reverse traversal
     );
     postExecute_(result);
@@ -263,9 +262,8 @@ bool ModeController::executeModeA() {
         StepResult result = engine.executeModeA(
             clock,
             in.restProb,
-            in.legato,          // BigFive LATCH: staged in updatePatternInput (was paramManager.getLegato())
             in.noteValue,       // BigFive LATCH: staged in updatePatternInput (was paramManager.getNoteValue())
-            in
+            in                  // Phase A: legato routed via input.legato → voices[0].legatoProb
         );
         
         // Handle post-execution
@@ -289,7 +287,7 @@ bool ModeController::executeModeB(const InputState& input,
     if (useSubGate) {
         PatternInput in = assemblePatternInput_();
         StepResult result = engine.executeModeBSubdivided(gate1Rise, gate1High, input.subGateRise,
-                                                          in.restProb, in.legato, in.noteValue, in,
+                                                          in.restProb, in.noteValue, in,
                                                           input.ghostRise, input.ghostHigh);
         postExecute_(result);
         updateLastStepIndex();
@@ -308,11 +306,10 @@ bool ModeController::executeModeB(const InputState& input,
             gate1Rise,
             gate1High,
             modeBPatternInput.restProb, // Rest still applies
-            modeBPatternInput.legato,   // BigFive LATCH: staged in updatePatternInput (was paramManager.getLegato())
             // Note value (which influences note length) should have no impact.
             // Pass a neutral value (e.g., 2.f for 1/4 note, a common default).
             0.f,
-            modeBPatternInput // Pass the modified PatternInput
+            modeBPatternInput // Pass the modified PatternInput (Phase A: legato via input.legato → voices[0])
         );
         
         // Handle post-execution

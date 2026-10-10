@@ -54,8 +54,9 @@ static StepResult step(SequencerEngine& eng, bool mainRise, bool ratchetRise, bo
                        bool subgatesActive = true) {
     PatternInput in = makeInput();
     in.variationAmount = variation;
+    in.legato = legatoProb;
     StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, ratchetRise,
-                                              restProb, legatoProb, noteVal, in,
+                                              restProb, noteVal, in,
                                               ghostRise, ghostHigh);
     const bool isRest = (r.decision == MonoDecision::Rest);
     // Ghost only sounds when a candidate actually fired (engine.ghostActive) AND the ghost gate is
@@ -80,8 +81,9 @@ static StepResult stepPoly(SequencerEngine& eng, bool mainRise, bool ratchetRise
                             float restProb, float legatoProb, float noteVal, float variation = 0.5f) {
     PatternInput in = makeInput();
     in.variationAmount = variation;
+    in.legato = legatoProb;
     StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, ratchetRise,
-                                              restProb, legatoProb, noteVal, in,
+                                              restProb, noteVal, in,
                                               ghostRise, ghostHigh);
     if (r.stepped && eng.numPolyVoices > 0)
         eng.executePolyVoices(in);
@@ -176,7 +178,7 @@ int main() {
     TEST("no edge -> stepped=false", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
-        StepResult r = eng.executeModeBSubdivided(false, false, false, 0.f, 0.f, 2.f, in);
+        StepResult r = eng.executeModeBSubdivided(false, false, false, 0.f, 2.f, in);
         EXPECT(!r.stepped);
     });
 
@@ -326,8 +328,9 @@ int main() {
                          bool ghostHigh, float restProb, float legatoProb, float noteVal,
                          float variation = 0.5f) {
         PatternInput in = makeInput(); in.variationAmount = variation;
+        in.legato = legatoProb;
         StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, /*ratchetRise=*/false,
-                                                 restProb, legatoProb, noteVal, in,
+                                                 restProb, noteVal, in,
                                                  ghostRise, ghostHigh);
         const bool isRest = (r.decision == MonoDecision::Rest);
         const bool ghostSounding = eng.ghostActive && ghostHigh;
