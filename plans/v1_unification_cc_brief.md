@@ -90,3 +90,48 @@ collapse naturally (they exist to serve the mono-strand model).
 "V1 = index 0 everywhere" must mean the DATA MODEL is unified (mono strands collapsed into poly voice 0),
 not just that index constants changed. Do not mark Phase A done until the mono strands are gone and the
 counts above are near zero. Bit-compare V1 to a working poly voice — same data path, not a parallel mono one.
+
+---
+
+## PHASE B BRIEF — active-voices-only + CA OOB=identity (Phase A is DONE)
+Phase A done: V1 = voices[0], engine data-model collapsed (executeStep reads voices[0].*, no input.*
+scalars). Residual kMonoSlot/onMonoTab/eastV1Owner are benign UI/topology NAMING (index-0 const, selected
+tab, ownership entry) — not debt. Now Phase B. Refs: docs/design/DRAW_BUFFER_AND_PHILOX_EFFICIENCY.md +
+the active-voices/CA sections of V1_TO_VOICE0_UNIFICATION.md.
+
+### CONSTRAINT 1 — do NOT optimise the DRAW over voices/steps
+A draw is MULTIVARIATE (all voices x all steps, one correlated unit; MA uses per-draw history). Skipping
+voices/steps in the draw needs expensive history regeneration on activation (the TRAP). So the DRAW/MA
+stays ALL voices, ALL steps, always. Optimise ONLY DOWNSTREAM per-voice processing (spread apply, output
+write, per-voice execute) — reads the already-all-voices draws, no history dependency. That's where the
+cost was.
+
+### CONSTRAINT 2 — poly count is NEVER modulatable (not CV, not DAW). Just POLL the knob.
+
+### Work
+1. **Downstream active-voices gating.** Per-voice downstream loops already use engine.numPolyVoices
+   (Monsoon.cpp:876/913/974/1105/1278; executePolyVoices SequencerEngine.cpp:1319). Confirm these are
+   active-count-gated and NOTHING downstream processes voices >= numPolyVoices (spread/output/execute).
+   Gate any that don't. Output: zero gate/CV beyond numPolyVoices (Monsoon.cpp:1396 intent — verify).
+2. **Poly-count change at STEP boundary.** Increase: new voices' DRAWS already exist (all-voices draw) —
+   just start processing them downstream, no history regen, existing voices untouched. Decrease: stop
+   processing dropped voices (next step), existing untouched. No pending indicator.
+3. **CA OOB = IDENTITY (square matrix).** CA remap = caRhythmSrc[16]/caMelodySrc[16], resolved via
+   caSrcRow(row,strand) (PatternEngine.hpp:179). On poly reduce, a mapping may resolve to an index >=
+   numPolyVoices. RULE: if the resolved CA source index >= numPolyVoices (OOB = above the active range),
+   revert to IDENTITY (voice<->self) — source reads its OWN value (mix2(own,own,s)=own, no-op). Square
+   matrix => source & target OOB together, ONE check. Uniform for BOTH consumers (random/correlation
+   structure AND CV remap). Reversible: restore when index back in bounds. Identity = own value (neutral,
+   stateless).
+4. **UI: dim BOTH axes** of the CA display when out of the poly range (currently only target dims) — a
+   mapping suspends if EITHER endpoint OOB, so dim both -> user sees which resolve to identity. Setting
+   out-of-range stays allowed (permissive).
+
+### Method
+One change at a time, build + test + commit + PUSH each. No logging. Verify: reduce poly with a CA
+mapping to a now-OOB voice -> resolves to identity (no garbage/crash); restore -> active again;
+increase/decrease poly mid-play -> clean at next step, existing voices unchanged; draw stays all-voices.
+
+### NOT in scope (separate future tasks — do NOT start)
+Bidirectional buffer / reverse-mode; 32-step expansion; 4x Philox batching (fillBlock/drawBlock); SIMD;
+nonce. Documented, but their own tasks.
