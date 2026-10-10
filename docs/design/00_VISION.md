@@ -96,3 +96,29 @@ an addition, which is the signal of completeness. Remaining: connection rework (
 the mode collapse, the seed-offset knobs, then the CRAFT pass (panel framework, one visual system) and
 release materials (docs, sample patches incl. the SEQ-8 demo, DAW setups, .dmtune files). Target: VCV
 Library, H1 2027.
+
+---
+
+## Why GATE IN is MONO by design (not a gap) (Rodney)
+Gate mode: mono GATE IN, but poly REST/LEGATO/ACCENT. Should we allow POLY gates in? **No — and it's
+architectural, not a limitation.**
+- The gate drives the **single MASTER ENGINE STEP** (the one master draw-index advance). That step is
+  NOT poly — there is ONE master step all voices read from (the multivariate draw at that index).
+- So poly gates in would try to drive the ONE master step from multiple independent sources —
+  incoherent (one index can't advance to 16 positions at once). Poly gates in => poly MASTER STEPS =>
+  independent per-voice draw indices => NO shared multivariate draw => NO cross-voice CORRELATION.
+- So mono gate is LOAD-BEARING: the single master step is the shared TIMEBASE that ENABLES the
+  multivariate draw and the correlation engine. "Move together in time" (shared step) is what makes
+  cross-voice correlation possible.
+
+Per-voice variation is provided WITHOUT poly gates, preserving the shared timebase:
+- **Poly ARTICULATION** (rest/legato/accent) — per-voice WHAT happens at each master step (already have).
+- **Poly ADDRESSING** (voice-R / LOR, when built) — per-voice WHERE in the pattern each voice reads at
+  each master step.
+Decomposition: voices share a TIMEBASE (master step) but differ in WHAT (articulation) and WHERE
+(addressing) — the right shape for a CORRELATED ensemble (together in time, different in content).
+
+Want genuinely INDEPENDENT per-voice external rhythms (uncorrelated)? => MULTIPLE Monsoon instances,
+each with its own master step/gate, optionally correlated via shared seed/CA. One instance = one master
+step = one gate = one correlated ensemble. Independent timebases = more instances (same modular-
+composition answer as length-via-Intertropical / long-notes-via-linked-instances).
