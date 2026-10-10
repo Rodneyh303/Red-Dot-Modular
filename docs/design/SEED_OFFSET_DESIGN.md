@@ -315,3 +315,39 @@ knob. This is the hybrid's power without the hybrid's awkwardness.
   before building the reach. The knob covers the proven case (canon = small, fine).
 Net: +-32 fine knob now; CV-with-selectable-scaling as the reach answer, added once distant-region
 navigation proves musically worthwhile.
+
+---
+
+## UX: "turn it and watch Sands change" — the offset as a live, reversible pattern-scrubber (Rodney)
+How to make the offset COOL (the mechanism is scoped above; this is the experience). Model it on the
+SLEW knob: turn it and watch Sands update live. No separate explorer UI — SANDS ITSELF is the map.
+- Turning the offset moves to a different draw position -> ALL the bars reshuffle (new draws). Turn right
+  to sweep through new patterns; turn LEFT to return EXACTLY to patterns you passed (reversible — every
+  position is fixed/addressable). So it's a continuous, REVERSIBLE pattern-scrubber: "re-roll you can
+  undo by turning back." A random re-roll can't do this; the addressable/reversible design can.
+- CV input (already in the design): patch an LFO/ramp -> the pattern auto-scrubs continuously (Sands bars
+  endlessly, smoothly reshuffling). Manual = explore by hand; CV = performable/automatable auto-scrub.
+- Dissolves the "uniform space is featureless" worry: raw Philox is statistically uniform, but what you
+  SEE on Sands at each offset is a SPECIFIC concrete bar pattern that visibly differs position-to-position
+  -> navigable by eye. Sands is the terrain; the knob moves you through it.
+
+### Display cost — show SLEWED live (symmetric with slew), raw-while-moving as fallback
+- Showing the SLEWED (post-copula) bars while scrubbing is the ideal (you see what you'll HEAR). It's the
+  SAME control-rate readout (applyZ over memoised z) the SLEW knob already does every frame — the offset
+  is just another control-rate input to it. By SYMMETRY: if slew-while-turning is affordable (it is,
+  post perf-fix ~130-250ns), offset-while-turning is too (same readout, different input).
+- FALLBACK if the full-grid slewed recompute at 32 steps + deep slew exceeds the per-frame budget: show
+  RAW bars while the knob is MOVING (cheap, memoised), do one SLEWED readout when it SETTLES
+  ("coarse-while-dragging, accurate-on-release"). Measure the 32-step worst case to decide.
+
+### This may TIP the balance for SIMD Philox
+Offset-scrub is a NEW load pattern that stresses RAW-DRAW generation: fast/far scrub (esp. CV-driven)
+sweeps through UNCACHED positions, generating many draws quickly — AND 2x at 32 steps. Same class as the
+reverse-mode TURNAROUND burst. So the offset-scrub joins reverse-mode as a SECOND concrete SIMD-demanding
+case — making SIMD justified by a WANTED feature, not speculation.
+- Order: the 4x fillBlock/drawBlock batching (step 4) is tried FIRST (free; may suffice -> fast scrub
+  fits budget). If a fast CV-driven offset sweep at 32 steps + deep slew STILL stutters after the 4x,
+  SIMD closes the gap.
+- Concrete SIMD-decision TEST: "does a fast CV-driven offset sweep at 32 steps stay smooth?" Before the
+  offset-scrub, normal play always fit the budget so there was no test; now there is a real, demanding,
+  wanted use case to measure against.
