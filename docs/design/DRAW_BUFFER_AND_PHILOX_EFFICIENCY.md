@@ -89,3 +89,28 @@ turnarounds free). Decide by measurement; the 4x batching is the priority.
    per step, rebuild only at phrase-boundary dice rolls, prune trailing, scope to phase mode).
 3. 32 steps — funded by (1).
 4. Nonce / SIMD — defer, only if measurement/reverse-mode needs them.
+
+
+## MUSICAL DEFINITION of reverse mode + slew — defensible & understandable (Rodney)
+Reverse mode plays the pattern backward; the SLEW (serial correlation / "how far back" the MA reaches)
+EASES over its own depth at the turnaround, then retraces the forward material EXACTLY.
+- **DERIVED, not imposed:** a moving average has inertia by definition — it CAN'T reverse instantly, it
+  turns around over its window. So the slew-depth turnaround isn't an ad-hoc rule; it's what the MA DOES
+  when reversed. That's what makes it defensible (explanation = "it's consistent", not "we chose this").
+- **Understandable:** one monotonic knob — more slew = more momentum = gentler turnaround. Maps to the
+  intuition that smoothed signals don't snap. Clean extremes.
+- **No separate "instant reverse" mode needed — that IS slew-minimum (instant slew).** Slew min = no
+  smoothing = instant turnaround = hard mirror reverse. The knob spans instant-reverse (min) to
+  sweeping-turnaround (max); one parameter covers everything. Slew does DOUBLE DUTY: forward
+  serial-correlation AND turnaround character.
+- **Multiple reverses (phase mode wiggles direction arbitrarily) -> the slew-ease is what makes it
+  MUSICAL.** Instant turnarounds would make rapid phase-reverses harsh/glitchy; slew-eased turnarounds
+  make them SMOOTH flowing back-and-forth (the correlation easing in/out of each reversal),
+  controllably (slew min = crisp/stuttery as an effect; slew max = smooth). Same per-turnaround
+  mechanism repeated — no special handling for "many reverses"; the bidirectional buffer makes each
+  reversal FREE regardless of count.
+- **Backbone:** between turnarounds, reverse retraces forward EXACTLY (reversibility, r reproducible).
+  So: expressive turnaround GESTURE + faithful RETRACE. Character at the turn, fidelity in the body.
+Verdict: good, defensible, understandable — strengthened by being DERIVED (moving-average behaviour),
+ONE KNOB (instant..sweeping incl. hard-reverse at min), and GRACEFUL under the hardest case (rapid
+multi-reverse in phase mode).
