@@ -3,11 +3,13 @@
 #include "../SandsTopology.hpp"   // for SandsTopology::Inputs (the presence authority target)
 
 // Forward declarations
-class SequencerEngine;
+struct SequencerEngine;
 struct Monsoon;
 // Model externs for the lane-extension system (declared in Monsoon.hpp, but
-// needed here before Monsoon.hpp reaches those lines — forward-declare).
-namespace rack { struct Model; }
+// needed here before Monsoon.hpp reaches those lines). rack::Model comes from
+// <rack.hpp> (included above); do NOT forward-declare it here — Clang treats a
+// local `namespace rack { struct Model; }` as conflicting with the SDK's
+// `using plugin::Model;` and reports every rack::Model reference as ambiguous.
 extern rack::Model* modelStraitsBase;
 extern rack::Model* modelStraitsLaneQMIX;
 extern rack::Model* modelStraitsLaneREST;
