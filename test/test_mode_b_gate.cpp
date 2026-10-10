@@ -59,8 +59,8 @@ static StepResult rise(SequencerEngine& eng, float restProb, float legatoProb, f
     PatternInput in = makeInput();
     eng.voices[0].restProb      = restProb;
     eng.voices[0].legatoProb    = legatoProb;
-    eng.voices[0].accentProb    = in.accentProb;
-    eng.voices[0].qmixLevel     = in.qmixLevel;
+    eng.voices[0].accentProb    = 0.25f;     // default (PatternInput::accentProb deleted)
+    eng.voices[0].qmixLevel     = 0.f;       // default (PatternInput::qmixLevel deleted)
     eng.voices[0].variationProb = in.variationAmount;
     return eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, noteVal, in);
 }

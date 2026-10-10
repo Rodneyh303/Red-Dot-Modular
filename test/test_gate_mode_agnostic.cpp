@@ -48,14 +48,12 @@ static int g_pass = 0, g_fail = 0;
 
 using D = MonoDecision;
 
-static PatternInput makeInput(float qmixLevel) {
+static PatternInput makeInput() {
     PatternInput in;
     for (int i = 0; i < 12; ++i) in.semiWeights[i] = 1.f;
     in.noteVariationMask = 0b111;
     in.variationAmount   = 0.5f;
     in.octaveLo = 0; in.octaveHi = 0;
-    in.qmixLevel = qmixLevel;
-    in.accentProb = 0.0f;   // accent off (deterministic) — accent is a gate behaviour we compare
     return in;
 }
 
@@ -86,13 +84,16 @@ static std::vector<Snap> runSeq(bool quantiserSrc, float qmixLevel, float quanti
     SequencerEngine eng; eng.numPolyVoices = 0;
     eng.quantiserPitchSource = quantiserSrc;
     eng.quantiserCV[0] = quantiserCV;
-    PatternInput in = makeInput(qmixLevel);
+    PatternInput in = makeInput();
+    // Phase A: qmixLevel and accentProb now on voices[0], not PatternInput
+    const float v0qmix = qmixLevel;
+    const float v0accent = 0.0f;   // accent off (deterministic) — gate behaviour we compare
     std::vector<Snap> out;
     auto step = [&](float restProb, float legatoProb) {
         eng.voices[0].restProb   = restProb;
         eng.voices[0].legatoProb = legatoProb;
-        eng.voices[0].accentProb    = in.accentProb;
-        eng.voices[0].qmixLevel     = in.qmixLevel;
+        eng.voices[0].accentProb    = v0accent;
+        eng.voices[0].qmixLevel     = v0qmix;
         eng.voices[0].variationProb = in.variationAmount;
         StepResult r = eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, 4.f, in);
         out.push_back({ category(r.decision), eng.gs.gateHeld, r.accented, eng.gs.currentPitchV, r.decision });

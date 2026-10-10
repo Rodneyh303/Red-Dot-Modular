@@ -42,16 +42,14 @@ struct PatternInput {
     float semiWeights[dotModular::TuningTable::MAXN] = {};
     float restProb         = 0.1f;
     float variationAmount  = 0.5f;
-    // LOCK Phase 2 (LOCK_SEMANTICS §9): mono BigFive LEGATO + NOTE_VALUE + ACCENT staged on the
-    // snapshot so they LATCH like restProb/variationAmount. LEGATO/NOTE_VALUE were previously passed
-    // live at the executeMode call sites; ACCENT lived on engine.accentProb written at THREE sites
-    // (control-rate + a redundant re-fetch in executeModeE/A) — a code smell the STEP1 WriteLedger
-    // A1/A2/A3 notes existed to police. Collapsing accent to this SINGLE writer removes the drift
-    // hazard entirely (ledger tripwire retired) and latches it for free. Call sites read in.*.
-    float legato           = 0.f;   // mono legato/tie probability 0..1
+    // LOCK Phase 2 (LOCK_SEMANTICS §9): mono BigFive NOTE_VALUE staged on the
+    // snapshot so it LATCHES like restProb/variationAmount. NOTE_VALUE was previously passed
+    // live at the executeMode call sites. LEGATO/ACCENT/QMIX were staged here too, but Phase A
+    // collapsed them: they now live on voices[0].* (V1 = voice 0), written by the controller
+    // in updatePatternInput — NOT transported through PatternInput.
+    // restProb and variationAmount remain here because PatternEngine reads them for
+    // pattern generation (snapshotPreRemap, varyNoteIndex, etc.) — not just the step cascade.
     float noteValue        = 2.f;   // mono note-value INDEX 0..7 (2 = 1/4 note)
-    float accentProb        = 0.25f; // mono accent probability 0..1 (was engine.accentProb; single-writer now)
-    float qmixLevel         = 0.f;   // Task 4: mono q-mix threshold 0..1 (QMIX_LEVEL_PARAM). draw<level = hit.
     float octaveLo         = 2.f;
     float octaveHi         = 5.f;
     float transpose        = 0.f;

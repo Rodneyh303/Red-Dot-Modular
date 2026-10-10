@@ -59,9 +59,9 @@ static PatternInput makeInput() {
 // updatePatternInput; tests bypass the controller, so do it here.
 static void populateV0(SequencerEngine& eng, const PatternInput& in, float restProb) {
     eng.voices[0].restProb       = restProb;
-    eng.voices[0].legatoProb     = in.legato;
-    eng.voices[0].accentProb     = in.accentProb;
-    eng.voices[0].qmixLevel      = in.qmixLevel;
+    eng.voices[0].legatoProb     = 0.f;       // default (PatternInput::legato deleted)
+    eng.voices[0].accentProb     = 0.25f;     // default (PatternInput::accentProb deleted)
+    eng.voices[0].qmixLevel      = 0.f;       // default (PatternInput::qmixLevel deleted)
     eng.voices[0].variationProb  = in.variationAmount;
 }
 
