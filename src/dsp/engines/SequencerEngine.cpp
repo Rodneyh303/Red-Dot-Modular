@@ -742,11 +742,11 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float restPro
         }
     }
 
-    float r_vary   = monoStrand(dotModular::STRAND_VARIATION)[getVariationStep()];
-    float r_rest   = monoStrand(dotModular::STRAND_RHYTHM)[getRhythmStep()];
-    float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
-    float r_accent = monoStrand(dotModular::STRAND_ACCENT)[getAccentStep()];  // New: accent strand
-    float r_qmix   = monoStrand(dotModular::STRAND_QMIX)[getQmixStep()];      // Task 4: q-mix strand
+    float r_vary   = pe.polyRandom(0, PL_VARIATION)[getVariationStep()];
+    float r_rest   = pe.polyRandom(0, PL_REST)[getRhythmStep()];
+    float r_legato = pe.polyRandom(0, PL_LEGATO)[getLegatoStep()];
+    float r_accent = pe.polyRandom(0, PL_ACCENT)[getAccentStep()];  // New: accent strand
+    float r_qmix   = pe.polyRandom(0, PL_QMIX)[getQmixStep()];      // Task 4: q-mix strand
     
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
@@ -791,7 +791,7 @@ void SequencerEngine::legatoCheckpointOnFall(float legatoProb) {
     }
     // The legato draw at the rested step decides slur survival (generatedRestBeatsLegato is
     // IRRELEVANT — the incoming rest already makes it silent; only the slur candidacy is in play).
-    float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
+    float r_legato = pe.polyRandom(0, PL_LEGATO)[getLegatoStep()];
     bool survives = (legatoProb >= 0.999f) || (r_legato < legatoProb);
     if (!survives) gs.slurForward = false;   // chain ENDS at the rest checkpoint
     // else slurForward stays pending across the rest (tieAcrossRests bridge carries it to the rise)
@@ -836,11 +836,11 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float r
                 voices[i].gsStep.gateHeld = false; voices[i].gsStep.holdRemain = 0.f;
             }
         }
-        float r_vary   = monoStrand(dotModular::STRAND_VARIATION)[getVariationStep()];
-        float r_rest   = monoStrand(dotModular::STRAND_RHYTHM)[getRhythmStep()];
-        float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
-        float r_accent = monoStrand(dotModular::STRAND_ACCENT)[getAccentStep()];  // New: accent strand
-        float r_qmix   = monoStrand(dotModular::STRAND_QMIX)[getQmixStep()];      // Task 4: q-mix strand
+        float r_vary   = pe.polyRandom(0, PL_VARIATION)[getVariationStep()];
+        float r_rest   = pe.polyRandom(0, PL_REST)[getRhythmStep()];
+        float r_legato = pe.polyRandom(0, PL_LEGATO)[getLegatoStep()];
+        float r_accent = pe.polyRandom(0, PL_ACCENT)[getAccentStep()];  // New: accent strand
+        float r_qmix   = pe.polyRandom(0, PL_QMIX)[getQmixStep()];      // Task 4: q-mix strand
         
         // Mode B: the note DURATION is Gate 1's width, so the INTERNAL note length is nullified
         // to a single 1/16 step (index 6 in NoteValues.hpp = 1.0 step). Using the controller's
@@ -934,10 +934,10 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
         }
     }
 
-    float r_rest   = monoStrand(dotModular::STRAND_RHYTHM)[getRhythmStep()];
-    float r_legato = monoStrand(dotModular::STRAND_LEGATO)[getLegatoStep()];
-    float r_accent = monoStrand(dotModular::STRAND_ACCENT)[getAccentStep()];
-    float r_qmix   = monoStrand(dotModular::STRAND_QMIX)[getQmixStep()];
+    float r_rest   = pe.polyRandom(0, PL_REST)[getRhythmStep()];
+    float r_legato = pe.polyRandom(0, PL_LEGATO)[getLegatoStep()];
+    float r_accent = pe.polyRandom(0, PL_ACCENT)[getAccentStep()];
+    float r_qmix   = pe.polyRandom(0, PL_QMIX)[getQmixStep()];
 
     // Mode B nullification: the note DURATION is the main gate's width, not an internal
     // note-length.  nvIdx = 6 (1/16 = 1 step) so the internal countdown does not govern.
@@ -968,7 +968,7 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     // no ghost ever fires.  (Ratchet sub-cells and main onsets are NOT variation-gated — only the
     // ghost is.)  Then executeStep rolls the rest lane, which may still silence a ghost candidate.
     if (ghostRise) {
-        float r_vary = monoStrand(dotModular::STRAND_VARIATION)[getVariationStep()];
+        float r_vary = pe.polyRandom(0, PL_VARIATION)[getVariationStep()];
         if (r_vary >= input.variationAmount) {
             // No ghost candidate — silent gap.  Preserve the decision (slur bridge) + own cell.
             ghostActive = false;

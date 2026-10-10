@@ -545,11 +545,7 @@ struct SequencerEngine {
              : (polyLane == PL_QMIX)   ? dotModular::STRAND_QMIX
                                        : dotModular::STRAND_RHYTHM;  // fallback
     }
-    // Mono reads by STRAND — plain own bank (random_[0][strand]); remap is upstream.
-    inline const float (&monoStrand(int strand) const)[16] {
-        const int s = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? strand : dotModular::STRAND_RHYTHM;
-        return pe.random_[0][s];
-    }
+    // (monoStrand deleted — V1 reads via pe.polyRandom(0, PL_*) now, same path as V2+)
     bool muted = false;
     bool runGateActive = false;
     bool resetArmed = false;
