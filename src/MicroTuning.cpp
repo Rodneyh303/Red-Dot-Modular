@@ -182,7 +182,7 @@ void MicroTuningModule::process(const ProcessArgs&) {
     for (int i = 0; i < n; ++i) {
         float b = (i < tt.N) ? mon->engine.gs.semiLedBrightness(i) : 0.f;   // greyed (>= tuning size): no flash
         for (int v = 0; v < mon->engine.numPolyVoices && i < tt.N; ++v)
-            b = std::max(b, mon->engine.voices[v].gs.semiLedBrightness(i));
+            b = std::max(b, mon->engine.voices[v + 1].gs.semiLedBrightness(i));
         lights[weightLed(i) + 0].setBrightness(0.f);   // green sub unused (match Monsoon)
         lights[weightLed(i) + 1].setBrightness(b);     // red sub = play flash
     }

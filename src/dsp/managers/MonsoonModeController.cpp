@@ -29,7 +29,7 @@ using namespace rack;
 void ModeController::updatePolyVoiceRest_() {
     // Write the engine's per-voice decision cache from the SINGLE resolver on Monsoon
     // (getEffectivePolyRest/Accent = knob + Causeway CV × att, clamped). The engine reads
-    // voices[i].restProb per-sample in its hot loop, so it needs the value in the struct — but this
+    // voices[i + 1].restProb per-sample in its hot loop, so it needs the value in the struct — but this
     // is the ONLY writer, sourced from the one resolver, applied right before executePolyVoices.
     // The Straits mod arcs pull from the same resolver directly (no cached-effective copies), so
     // there is nothing to drift or clobber.
@@ -42,17 +42,17 @@ void ModeController::updatePolyVoiceRest_() {
     if (polyVoiceCachePrimed_
         && !dotModular::LockManager::liveNow(dotModular::Control::BigFive, engine.locked, engine.scopeLiveMask)) return;
     for (int i = 0; i < engine.numPolyVoices; ++i) {
-        engine.voices[i].restProb   = mainModule->getEffectivePolyRest(i);
-        engine.voices[i].accentProb = mainModule->getEffectivePolyAccent(i);
+        engine.voices[i + 1].restProb   = mainModule->getEffectivePolyRest(i);
+        engine.voices[i + 1].accentProb = mainModule->getEffectivePolyAccent(i);
         // Task 4 (poly QMIX): per-voice q-mix LEVEL, mirroring rest/accent. The engine reads
-        // voices[i].qmixLevel per-step in executePolyVoice's source-select. getEffectivePolyQmix
+        // voices[i + 1].qmixLevel per-step in executePolyVoice's source-select. getEffectivePolyQmix
         // is the single resolver (Straits knob; no Causeway q-mix CV yet).
-        engine.voices[i].qmixLevel  = mainModule->getEffectivePolyQmix(i);
+        engine.voices[i + 1].qmixLevel  = mainModule->getEffectivePolyQmix(i);
         // VAR/LEG per-voice knobs — mirror rest/accent/q-mix. The engine reads these in
         // executePolyVoice to threshold the per-voice VAR/LEG draws (which already exist
         // as slewedPolyVariation/Legato → polyRandom(PL_VARIATION/PL_LEGATO)).
-        engine.voices[i].variationProb = mainModule->getEffectivePolyVariation(i);
-        engine.voices[i].legatoProb    = mainModule->getEffectivePolyLegato(i);
+        engine.voices[i + 1].variationProb = mainModule->getEffectivePolyVariation(i);
+        engine.voices[i + 1].legatoProb    = mainModule->getEffectivePolyLegato(i);
     }
     polyVoiceCachePrimed_ = true;
 }
@@ -108,7 +108,7 @@ void ModeController::updatePatternInput() {
     }
     if (rhythmLive) {   // BigFive LATCH — hold REST/VARIATION/LEGATO/NOTE_VALUE under lock
         // MONO rest: use the Causeway-modulated effective value (mirrors the poly idiom
-        // engine.voices[i].restProb = mainModule->getEffectivePolyRest(i) above). Falls back to the
+        // engine.voices[i + 1].restProb = mainModule->getEffectivePolyRest(i) above). Falls back to the
         // raw param when there's no mainModule.
         currentPatternInput.restProb      = mainModule ? mainModule->getEffectiveMonoRest(paramManager.getRestUnclamped())
                                                        : paramManager.getRest();

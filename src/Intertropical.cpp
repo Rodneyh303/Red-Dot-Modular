@@ -168,7 +168,7 @@ void Intertropical::process(const ProcessArgs& args) {
         // tie's onset. LEGATO = a connected note allowed to glide, so transpose reads LIVE (worst
         // case a legato with unchanged transpose just looks like a tie -- a valid note). Single =
         // fresh onset, live. Rule: hold while lastNoteType==Tie, else re-capture the live knob.
-        const GateState& vgs = (v == 0) ? eng.gs : eng.voices[v - 1].gs;
+        const GateState& vgs = (v == 0) ? eng.gs : eng.voices[v].gs;
         const bool tieHold = (vgs.lastNoteType == GateState::NoteType::Tie);
         for (int ch = 0; ch < Ids::MAX_VOICES_PER_SCENE; ++ch) {
             if (!((mask >> ch) & 1u)) continue;    // this slot doesn't drive output ch

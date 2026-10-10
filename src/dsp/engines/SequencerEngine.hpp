@@ -131,8 +131,9 @@ struct SequencerEngine {
     // ── Poly voices ───────────────────────────────────────────────────────────
     // voices[0] = voice 2, voices[6] = voice 8.
     // numPolyVoices is set from the context-menu user preference (0 = mono only).
-    // It is intentionally NOT cleared by reset() so it survives patch reload.
-    PolyVoice voices[15];
+    // Phase A: voices[0] = V1 (voice 0 of the unified per-voice system).
+    // Was 15 (V2..V16); now 16 (V1..V16). All poly access shifted by +1.
+    PolyVoice voices[16];
     int       numPolyVoices = 0;
 
     // Most recent mono decision — written by executeStep, read by executePolyVoices.
@@ -757,7 +758,7 @@ struct SequencerEngine {
 
     // ── Poly voice execution ──────────────────────────────────────────────────
     // Call executePolyVoices() after any stepped executeModeA/B call.
-    // voices[i].restProb must be set by the caller before invoking.
+    // voices[i + 1].restProb must be set by the caller before invoking.
     void executePolyVoice(int voiceIdx, const PatternInput& input, bool wasHeld, bool hadTail);
     void executePolyVoices(const PatternInput& input);
 };

@@ -84,7 +84,7 @@ struct GateState {
     // Set by the three articulation methods: triggerNote → Single (a fresh attack, including an
     // opt-out re-strike INSIDE a slur), slideNote → Legato (slid to a new pitch, no retrigger),
     // extendHold → Tie (held same pitch). MidNote/hold leave it unchanged (the note continues).
-    // This is what the lantern reads per voice (voices[i].gs.lastNoteType) — and, later, what a
+    // This is what the lantern reads per voice (voices[i + 1].gs.lastNoteType) — and, later, what a
     // poly TIE/LEGATO output jack emits — so per-voice legato is exposed exactly like mono's,
     // rather than inferred from a 1ms gate dip that the display can't recover. Values match the
     // lantern's colour convention: Single (blue) / Tie (violet) / Legato (teal).

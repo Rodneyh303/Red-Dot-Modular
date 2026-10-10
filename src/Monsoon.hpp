@@ -616,7 +616,7 @@ struct Monsoon : Module {
     dsp::SchmittTrigger gate3Trig;   // rising-edge detect for GATE3 actions
     dsp::SchmittTrigger rafflesGateTrig[14];  // Raffles's 14 die-action gates (incl Last*)
     // Per-voice "sounding this gate cycle" latch (Mode B poly gate-width follow).  Latched from
-    // voices[i].gs.gateHeld right after executePolyVoices runs (onset/landing/rest decision — in
+    // voices[i + 1].gs.gateHeld right after executePolyVoices runs (onset/landing/rest decision — in
     // Mode B holdRemain is nullified so there is no MidNote, every shouldExecute carries a real
     // decision).  Held between onsets and ANDed with the mono gate envelope (IMPL 2b) so a poly
     // voice's gate WIDTH follows Gate 1 / ghost like the mono gate, not a 1-step internal hold.
