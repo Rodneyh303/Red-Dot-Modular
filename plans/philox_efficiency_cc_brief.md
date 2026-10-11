@@ -30,8 +30,10 @@ fillBlock -> compute 4 (SSE/float_4) or 8 (AVX2) Philox BLOCKS at once.
 - Vectorize philox4x32_10 across 4/8 consecutive block positions; feed from the batched fillBlock.
 - Still BIT-IDENTICAL (same algorithm, same outputs, computed in parallel lanes) -> bit-compare holds.
 - Gain: ~4-8x on Philox block gen; combined with A's 4x -> ~16-32x on raw-draw generation.
-Gate this on NEED: do it when the offset-scrub / reverse-mode load (sweeping uncached positions, 2x at
-32 steps) justifies it. The concrete test: "fast CV offset sweep at 32 steps stays smooth?"
+DO B NOW (Rodney), right after A, in the SAME pass — A and B touch the SAME code (the Philox block
+generation / rawDraw*PatternAt), and A's consecutive-counter fillBlock is exactly what B's SIMD consumes.
+Restructure the draw hot path ONCE: batch (A) + vectorize (B) together. (The offset-scrub/reverse-mode
+load is the WHY it's worth it, but we do it now while in this code, not deferred.)
 
 ## STEP C (DEFERRED, conditional) — LUT SIMD only if still needed after offset-scrub.
 PhiInv (cached, erfc+Halley) is COLD + branchy -> don't SIMD. PhiLUT/PhiInvLUT (hot readout) are table
@@ -44,6 +46,17 @@ LUT gather is actually the bottleneck and whether the z-indices CLUSTER (adjacen
 contiguous load not scatter -> SIMD-able). If scattered, LUT-SIMD may not pay; consider other options.
 
 ## Order
-A (now, free 4x, bit-identical) -> B (SIMD Philox, when offset-scrub/reverse-mode needs it) -> C (LUT
-SIMD, only if B still insufficient, measure first). Keep flat consecutive-counter layout throughout (good
-for both batching and SIMD).
+A + B NOW, same pass (both touch the Philox block gen; A sets up the consecutive-counter layout B's SIMD
+consumes -> restructure the draw hot path once). Then C (LUT SIMD) LATER, only if a fast CV offset-scrub
+at 32 steps still stutters after A+B — measure the LUT gather + z-index clustering first. Keep the flat
+consecutive-counter layout throughout (good for both batching and SIMD).
+
+### Sequencing within A+B
+1. A first: batch via fillBlock, build + BIT-COMPARE PASS + commit (lock in the bit-identical 4x before
+   adding SIMD complexity).
+2. Then B: vectorize the block gen (float_4 / AVX2) feeding from A's batched access, build + BIT-COMPARE
+   PASS (still bit-identical — same algorithm in parallel lanes) + measure the speedup + commit.
+Keep A and B as SEPARATE commits so if B's SIMD has a platform issue (it's new intrinsic code, 3 OSes via
+CI), A's bit-identical win stands alone and B can be isolated. CI now builds this branch on Win/Mac/Linux
+— watch that B compiles on all three (SIMD intrinsics are the most platform-sensitive code; prefer
+rack::simd::float_4 which abstracts the platform over raw _mm_ intrinsics).
