@@ -108,3 +108,27 @@ untouched.
 Either way the recompute is CHEAP-to-FREE -> "just do extra channels" is sound, no glitch. Estimates from
 the ~130-250ns copula figure x the 16x; CONFIRM by measuring (add voices mid-play, watch CPU meter, or
 time the regen via the debug timer at Monsoon.cpp:1381).
+
+
+## FINAL SIMPLIFIED FORM — voice-opt = cap the downstream per-voice loops (Rodney)
+Since the buffer REDRAW is now cheap (16x), skipping draws for unused voices saves ~nothing -> don't
+bother. And the downstream is ALREADY done PER VOICE (per-voice loops). So voice-opt collapses to:
+- **Draws: always all 16** (multivariate + cheap — leave them; no conditioning, no buffer resizing).
+- **Downstream: cap the per-voice loops at activeCount** (spread apply, readout, slew, quantise, output,
+  display). The only change is the LOOP BOUND (0..16 -> 0..activeCount).
+- **Voice-add: INSTANT loop-widening** — the draws are already there (all-16), so adding a voice just
+  runs more downstream iterations. NO regen, NO history problem, NO draw-side concurrency race. Supersedes
+  the earlier "regen the delta voices" framing — there is nothing to regen.
+This is the BEST kind of optimization: biggest benefit (end-to-end per-voice cost skipped), SIMPLEST
+(change loop bounds), LOWEST-risk (no determinism, no regen, no draw conditioning), INSTANT voice changes.
+= the Phase B "downstream active-voices gating" — already partly done (some loops already use
+numPolyVoices).
+
+### Implementation = audit the downstream per-voice loops for consistent activeCount bounding
+Task: grep every downstream per-voice loop (for (v...)) in the processing stages; confirm EACH caps at
+activeCount / numPolyVoices; fix any hardcoded 16 / NUM_VOICES. If spread caps but output doesn't, you
+still pay for inactive voices — so it must be CONSISTENT across ALL downstream stages.
+EASIER NOW after the poly-voice addressing debt (V1->voice-0) is fixed: voices are uniform (V1 = voice 0,
+no mono special path), so "0..activeCount" means the same thing everywhere — no V1-exception to special-
+case in the bound. (Pre-unification, a loop might have been 0..15 poly + a separate mono path; now it's
+one uniform 0..activeCount.)
