@@ -28,8 +28,8 @@
 
 // Step B: SIMD Philox — vectorize 4 consecutive block computations.
 // Bit-identical to the scalar path (same algorithm, computed in parallel lanes).
-// Uses simd_compat.hpp: native SSE on x86, sse2neon→NEON on arm64.
-#include "../third_party/sse2neon/simd_compat.hpp"
+// Uses simd_compat.hpp: Rack-bundled SIMDe — native SSE on x86, NEON on arm64.
+#include "../third_party/simd/simd_compat.hpp"
 
 namespace redDot {
 

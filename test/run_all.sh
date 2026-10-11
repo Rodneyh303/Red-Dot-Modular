@@ -21,6 +21,13 @@ root="$(cd "$here/.." && pwd)"
 cd "$root"
 
 INCS="-Itest -Isrc -Isrc/tuning -Isrc/dsp -Isrc/dsp/engines -Isrc/dsp/gates -Isrc/dsp/managers -Isrc/ui"
+# SIMDe (for the SIMD Philox compat test) lives in the Rack SDK's dep/include.
+# Add it when RACK_DIR is set (CI sets it); tests not needing SIMDe are unaffected.
+if [ -n "$RACK_DIR" ] && [ -d "$RACK_DIR/dep/include" ]; then
+  INCS="$INCS -I$RACK_DIR/dep/include"
+elif [ -d "../../dep/include" ]; then
+  INCS="$INCS -I../../dep/include"
+fi
 STD="-std=c++17"
 # SSE4.1 for SIMD Philox (x86 only; arm64 uses sse2neon which needs no flag)
 ARCHF=""
@@ -60,7 +67,7 @@ TESTS=(
   "test_fractional_tail|"
   "test_lane_direction|"
   "test_lane_bitcompare|$SE $GS $PE"
-  "test_sse2neon_compat|"   # header-only: SIMD compat layer (sse2neon on arm64)
+  "test_simd_compat|"   # header-only: SIMD compat layer (SIMDe on arm64)
   "test_lane_types|"
   "test_legato_leading_edge|"
   "test_lock_behaviour|$PE"
