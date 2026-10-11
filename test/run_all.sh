@@ -23,8 +23,8 @@ cd "$root"
 INCS="-Itest -Isrc -Isrc/tuning -Isrc/dsp -Isrc/dsp/engines -Isrc/dsp/gates -Isrc/dsp/managers -Isrc/ui"
 # SIMDe (for the SIMD Philox compat test) lives in the Rack SDK's dep/include.
 # Add it when RACK_DIR is set (CI sets it); tests not needing SIMDe are unaffected.
-if [ -n "$RACK_DIR" ] && [ -d "$RACK_DIR/dep/include" ]; then
-  INCS="$INCS -I$RACK_DIR/dep/include"
+if [ -n "${RACK_DIR:-}" ] && [ -d "${RACK_DIR}/dep/include" ]; then
+  INCS="$INCS -I${RACK_DIR}/dep/include"
 elif [ -d "../../dep/include" ]; then
   INCS="$INCS -I../../dep/include"
 fi

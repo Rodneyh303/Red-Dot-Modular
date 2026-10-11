@@ -114,6 +114,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -e
+          export RACK_DIR="$PWD/Rack-SDK"
           bash test/run_all.sh
 
       - name: Unit tests (macOS / Linux)
@@ -121,6 +122,7 @@ jobs:
         shell: bash
         run: |
           set -e
+          export RACK_DIR="$PWD/Rack-SDK"
           bash test/run_all.sh
 
       # --- artifact -------------------------------------------------------
