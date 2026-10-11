@@ -351,3 +351,37 @@ case — making SIMD justified by a WANTED feature, not speculation.
 - Concrete SIMD-decision TEST: "does a fast CV-driven offset sweep at 32 steps stay smooth?" Before the
   offset-scrub, normal play always fit the budget so there was no test; now there is a real, demanding,
   wanted use case to measure against.
+
+---
+
+## OPEN UI QUESTION — "get the offset counter exactly" (log; discuss later, Rodney)
+Perf budget is there: the 4x batching funds 32 steps + bidirectional buffer; the 4x SIMD funds the
+offset-scrub load. So the mechanism + perf are covered; the open piece is the UI.
+
+The tension: ONE offset control must serve two opposed needs —
+- **Coarse SCRUB** (wide range: turn a little, sweep many counter positions; the "watch Sands change"
+  exploration).
+- **EXACT landing** (fine: hit a specific counter — to return to a found spot, or set a precise canon
+  offset between instances). A single continuous knob can't do both well.
+
+Reversibility is the asset: every offset is a FIXED addressable position, so exact return is always
+POSSIBLE (unlike a random re-roll). The UI's job is to EXPOSE the exact position and let you SET it.
+
+Options (to weigh later):
+1. Coarse knob + fine knob (or coarse + shift-drag vernier) — each does one job well.
+2. Scrub knob + NUMERIC readout/entry — knob explores, readout shows current offset (needed to navigate/
+   return), click-to-type for exact.
+3. Scrub knob + step buttons (+1/-1) or a detented encoder — coarse to near, step to exact.
+4. QUANTIZED detents — snap to MUSICAL offsets (multiples of pattern length / beat) — "exact" = canon-
+   useful values; free scrub between.
+5. CV for auto-scrub (performance) + knob for exact base (the seed-offset is CV-modulatable already).
+
+Questions to settle first:
+- (a) Primary "exact" need: ARBITRARY counter (return/bookmark) vs MUSICAL offset (canon by N steps/beats)?
+  Likely both, but which dominates shapes the default.
+- (b) READOUT almost certainly needed (show current offset) — units: raw counter or musical (patterns+steps)?
+- (c) Coarse/fine mechanism: which of 1-4.
+- (d) BOOKMARKS? mark explored spots, jump between — sidesteps read/type for the "return to a good spot" case.
+- (e) CV role: auto-scrub vs knob-for-base split.
+Likely answer: scrub knob + musical detents (canon) + numeric readout (return/bookmark) + CV auto-scrub —
+but DISCUSS. The determinism makes exact return possible; the UI makes it accessible.
