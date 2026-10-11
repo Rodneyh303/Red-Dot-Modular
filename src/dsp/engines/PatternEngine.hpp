@@ -123,8 +123,9 @@ struct PatternEngine {
     float (&legatoRandom)[16]    = random_[0][dotModular::STRAND_LEGATO];
 
     // Poly engine lane constants (mirror SequencerEngine::PolyLane) for polyRandom callers in this
-    // layer. 0=REST,1=MEL,2=OCT,3=ACC,4=QMIX,5=VAR,6=LEG — the engine PL_ order (SANDS CONSOLIDATION Step 2).
-    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_QMIX = 4, PL_VARIATION = 5, PL_LEGATO = 6, PL_LANES = 7 };
+    // Lane-index unification: PL_* now matches the VISUAL/EDITOR/STRAND order
+    // (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6). Editor==engine==strand.
+    enum PolyLane { PL_MELODY = 0, PL_OCTAVE = 1, PL_QMIX = 2, PL_REST = 3, PL_ACCENT = 4, PL_VARIATION = 5, PL_LEGATO = 6, PL_LANES = 7 };
     // q-mix ordering asserts (Task 4a): the q-mix Philox stream key MUST be STREAM_SOURCE_SELECT (=3),
     // and the PL_QMIX poly lane MUST round-trip to editor lane 2 (STRAND_QMIX). If either the RNG
     // stream order or the poly-lane order is renumbered, these fire at compile time.

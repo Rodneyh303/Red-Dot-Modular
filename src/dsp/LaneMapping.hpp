@@ -106,9 +106,12 @@ constexpr uint64_t QMIX_STREAM_KEY = 3; // == redDot::seed::STREAM_SOURCE_SELECT
 // The poly engine lane order is 0 REST 1 MEL 2 OCT 3 ACC 4 QMIX 5 VARIATION 6 LEGATO (7 lanes);
 // editor order is 0 MEL 1 OCT 2 QMIX 3 REST 4 ACC 5 VAR 6 LEG. VAR/LEG are poly index 5/6,
 // editor 5/6 — so the bridge table widens 5→7 and VAR/LEG map to themselves (no longer POLY_NONE).
-constexpr int ENGINE_LANE_TO_EDITOR_QMIX[7] = { 3, 0, 1, 4, 2, 5, 6 };
-// Inverse over 7 editor lanes (all poly now).
-constexpr int EDITOR_TO_ENGINE_LANE_QMIX[7] = { 1, 2, 4, 0, 3, 5, 6 };
+// Lane-index unification: editor == engine == strand (PL_* reordered to match
+// the visual/editor/strand order). These tables are now IDENTITY — kept as named
+// constants (not deleted) so call sites that reference them still compile, but
+// they no longer permute. The EL2ENG/toEngine/toEditor conversions are identity.
+constexpr int ENGINE_LANE_TO_EDITOR_QMIX[7] = { 0, 1, 2, 3, 4, 5, 6 };
+constexpr int EDITOR_TO_ENGINE_LANE_QMIX[7] = { 0, 1, 2, 3, 4, 5, 6 };
 
 // ─── LOR store-bank: the ONE canonical editor-lane → lorBase[] bank mapping ───
 // The lorBase store (Monsoon.hpp editor.lorBase) is banked in the order
@@ -139,8 +142,8 @@ constexpr int varlegStoreBank(int vl) { return lorStoreBank(5 + vl); }
 
 // Compile-time guards nailing the exact banks so any future renumber that forgets a call
 // site trips here instead of in the field (the VAR/LEG banks that silently drifted for QMIX).
-static_assert(lorStoreBank(0) == 1 && lorStoreBank(2) == 4 && lorStoreBank(3) == 0,
-              "lorStoreBank poly lanes route through EDITOR_TO_ENGINE_LANE_QMIX");
+static_assert(lorStoreBank(0) == 0 && lorStoreBank(2) == 2 && lorStoreBank(3) == 3,
+              "lorStoreBank is identity (lane-index unification: editor==engine)");
 static_assert(lorStoreBank(5) == 5 && lorStoreBank(6) == 6, "VAR/LEG lorBase banks are 5/6");
 static_assert(varlegStoreBank(0) == 5 && varlegStoreBank(1) == 6, "varleg banks: VAR5 LEG6");
 
@@ -149,9 +152,9 @@ static_assert(varlegStoreBank(0) == 5 && varlegStoreBank(1) == 6, "varleg banks:
 //  index editor lanes 0..N directly.)
 
 static_assert(MONO_LANE_TO_STRAND[QMIX_EDITOR_LANE] == STRAND_QMIX, "qmix is strand 2 (editor-aligned)");
-static_assert(ENGINE_LANE_TO_EDITOR_QMIX[4] == 2 && EDITOR_TO_ENGINE_LANE_QMIX[2] == 4, "qmix poly<->editor round-trip");
-static_assert(ENGINE_LANE_TO_EDITOR_QMIX[5] == 5 && EDITOR_TO_ENGINE_LANE_QMIX[5] == 5, "VARIATION poly<->editor round-trip (Step 1)");
-static_assert(ENGINE_LANE_TO_EDITOR_QMIX[6] == 6 && EDITOR_TO_ENGINE_LANE_QMIX[6] == 6, "LEGATO poly<->editor round-trip (Step 1)");
+static_assert(ENGINE_LANE_TO_EDITOR_QMIX[2] == 2 && EDITOR_TO_ENGINE_LANE_QMIX[2] == 2, "q-mix identity (lane-index unification)");
+static_assert(ENGINE_LANE_TO_EDITOR_QMIX[5] == 5 && EDITOR_TO_ENGINE_LANE_QMIX[5] == 5, "VARIATION identity");
+static_assert(ENGINE_LANE_TO_EDITOR_QMIX[6] == 6 && EDITOR_TO_ENGINE_LANE_QMIX[6] == 6, "LEGATO identity");
 
 // LENGTH GUARDS (the point of deleting the old tables): tie each bridge table's width to the lane
 // count so the NEXT lane-count change fails to COMPILE instead of silently dropping a lane — the exact
@@ -165,7 +168,7 @@ static_assert(sizeof(MONO_LANE_TO_STRAND) / sizeof(int) == EDITOR_LANE_COUNT,
               "MONO_LANE_TO_STRAND must have one entry per editor lane (EDITOR_LANE_COUNT)");
 // SANDS CONSOLIDATION Step 1: ALL editor lanes are poly now (no POLY_NONE). VAR/LEG round-trip.
 static_assert(EDITOR_TO_ENGINE_LANE_QMIX[5] == 5 && EDITOR_TO_ENGINE_LANE_QMIX[6] == 6,
-              "VAR/LEG are poly lanes (no longer POLY_NONE)");
+              "VAR/LEG identity (lane-index unification)");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRONG LANE TYPES — make "editor lane vs engine lane" a COMPILE-TIME distinction.
@@ -198,13 +201,14 @@ constexpr EditorLane toEditor(EngineLane eng) {
                           ? ENGINE_LANE_TO_EDITOR_QMIX[eng.v] : POLY_NONE);
 }
 
-static_assert(toEngine(EditorLane(0)).v == 1, "editor MELODY -> engine 1");
-static_assert(toEngine(EditorLane(2)).v == 4, "editor QMIX -> engine 4");
-static_assert(toEngine(EditorLane(3)).v == 0, "editor REST -> engine 0");
-static_assert(toEditor(toEngine(EditorLane(2))).v == 2, "editor->engine->editor round-trips (QMIX)");
-static_assert(toEngine(EditorLane(5)).v == 5, "VAR is a poly lane (SANDS CONSOLIDATION Step 1; was POLY_NONE)");
-static_assert(toEditor(toEngine(EditorLane(5))).v == 5, "VAR editor->engine->editor round-trips (Step 1)");
-static_assert(toEditor(toEngine(EditorLane(6))).v == 6, "LEG editor->engine->editor round-trips (Step 1)");
+// Lane-index unification: toEngine/toEditor are IDENTITY
+static_assert(toEngine(EditorLane(0)).v == 0, "editor MELODY -> engine 0 (identity)");
+static_assert(toEngine(EditorLane(2)).v == 2, "editor QMIX -> engine 2 (identity)");
+static_assert(toEngine(EditorLane(3)).v == 3, "editor REST -> engine 3 (identity)");
+static_assert(toEditor(toEngine(EditorLane(2))).v == 2, "editor->engine->editor round-trips (identity)");
+static_assert(toEngine(EditorLane(5)).v == 5, "VAR identity");
+static_assert(toEditor(toEngine(EditorLane(5))).v == 5, "VAR round-trips (identity)");
+static_assert(toEditor(toEngine(EditorLane(6))).v == 6, "LEG round-trips (identity)");
 
 // ─── NOTE: ALIGN THE ORDERS WHERE POSSIBLE ───────────────────────────────────
 // Of the orderings in the header block, three are already collapsed to identity (engine

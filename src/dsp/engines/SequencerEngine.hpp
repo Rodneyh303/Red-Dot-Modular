@@ -349,7 +349,11 @@ struct SequencerEngine {
     int        lor   (int strand, int item) const { return lorStore_[0][strandClamp(strand)][item]; }
     static int strandClamp(int s) { return (s >= 0 && s < dotModular::NUM_STRANDS) ? s : dotModular::STRAND_RHYTHM; }
 
-    enum PolyLane { PL_REST = 0, PL_MELODY = 1, PL_OCTAVE = 2, PL_ACCENT = 3, PL_QMIX = 4, PL_VARIATION = 5, PL_LEGATO = 6, PL_LANES = 7 };   // SANDS CONSOLIDATION Step 2
+    // Lane-index unification: PL_* now matches the VISUAL/EDITOR/STRAND order
+    // (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6). Editor==engine==strand →
+    // the EDITOR_TO_ENGINE_LANE_QMIX conversion is now identity (deleted below).
+    // Streams: MELODY=0..1, QMIX=2, RHYTHM=3..6 (stream-contiguous).
+    enum PolyLane { PL_MELODY = 0, PL_OCTAVE = 1, PL_QMIX = 2, PL_REST = 3, PL_ACCENT = 4, PL_VARIATION = 5, PL_LEGATO = 6, PL_LANES = 7 };
 
     // ── EAST_EXTRA_LANES stage 2: per-voice ARTICULATION (clamped) ─────────────────────────────
     // VARIATION/LEGATO are mono STRANDS, not poly lanes, so they have no PL_ id and CANNOT be
@@ -399,12 +403,10 @@ struct SequencerEngine {
     // 4→0 and only landed on editor 2 by coincidence). VARIATION/LEGATO are mono strands, NOT poly
     // lanes, so they have no engine-order id; for their per-voice LOR use the EDITOR-order accessors
     // polyLOR/polyLORRef (they mask & 7 and index lorStore_ directly). See EAST_EXTRA_LANES.md.
+    // Lane-index unification: editor == engine (PL_* reordered to visual/strand order).
+    // editorLane() is now IDENTITY — kept for call-site readability, no longer permutes.
     static int editorLane(int engLane) {
-        // 7 = PL_LANES (poly lanes incl QMIX/VAR/LEG; SANDS CONSOLIDATION Step 2). Literal, not
-        // SandsGrid::POLY_LANES, to keep this header free of the UI SandsGrid include.
-        return (engLane >= 0 && engLane < 7)
-                   ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane]
-                   : dotModular::ENGINE_LANE_TO_EDITOR_QMIX[0];   // fallback → REST's editor lane
+        return (engLane >= 0 && engLane < 7) ? engLane : 0;
     }
 
     // Editor-order poly accessors: bank b → slot b+1, editorLane indexes the unified array directly
