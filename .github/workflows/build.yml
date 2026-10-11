@@ -103,6 +103,26 @@ jobs:
           # longer sets -march at all.
           make -j2 dist
 
+      # --- unit tests (bit-compare + the rest) ----------------------------
+      # Run the standalone unit test suite on every platform. run_all.sh compiles
+      # and runs each test and exits nonzero on ANY failure, so this makes the
+      # BIT-COMPARE (lane-index, Philox 4x, SIMD) + test_sse2neon_compat an automatic
+      # cross-platform correctness gate — not just a compile check. On the arm64 Mac
+      # runner this is what proves the sse2neon->NEON SIMD path is bit-exact.
+      - name: Unit tests (Windows / MSYS2)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          set -e
+          bash test/run_all.sh
+
+      - name: Unit tests (macOS / Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -e
+          bash test/run_all.sh
+
       # --- artifact -------------------------------------------------------
       - name: Upload .vcvplugin
         uses: actions/upload-artifact@v4
