@@ -53,6 +53,7 @@ TESTS=(
   "test_final_random_by_strand|"
   "test_fractional_tail|"
   "test_lane_direction|"
+  "test_lane_bitcompare|$SE $GS $PE"
   "test_lane_types|"
   "test_legato_leading_edge|"
   "test_lock_behaviour|$PE"

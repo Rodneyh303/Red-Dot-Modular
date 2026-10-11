@@ -193,15 +193,10 @@ struct SpreadInterp {
 
     // Spread lane (0=REST,1=MEL,2=OCT,3=ACC,4=QMIX) → engine strand, for the poly assertion's
     // src lookup (caSrcRow takes a strand, not a spread lane).
+    // Lane-index unification: lane == strand (PL_* reordered to match STRAND_*).
+    // laneToStrand is now IDENTITY — lane IS the strand index.
     static int laneToStrand(int lane) {
-        switch (lane) {
-            case 0: return dotModular::STRAND_RHYTHM;
-            case 1: return dotModular::STRAND_MELODY;
-            case 2: return dotModular::STRAND_OCTAVE;
-            case 3: return dotModular::STRAND_ACCENT;
-            case 4: return dotModular::STRAND_QMIX;
-            default: return dotModular::STRAND_RHYTHM;
-        }
+        return (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : dotModular::STRAND_RHYTHM;
     }
 };
 

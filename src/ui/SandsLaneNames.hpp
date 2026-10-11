@@ -37,11 +37,10 @@ namespace SandsLaneNames {
     static_assert(SandsGrid::MONO_LANES == SandsGrid::EAST_LANES,
                   "EDITOR table serves both Mono and East (equal lane counts)");
 
-    // ENGINE/SPREAD order (index == poly engine/spread lane). Length == POLY_LANES (7).
+    // Lane-index unification: engine == editor (SPREAD now matches EDITOR order).
     // Used where the id is engine-ordered: East PROB_OUT_*, sprPid[], spreadEffective[].
-    // SANDS CONSOLIDATION Step 1: VAR/LEG appended at engine index 5/6.
     inline constexpr const char* SPREAD[SandsGrid::POLY_LANES] =
-        { "REST", "MEL", "OCT", "ACC", "Q-MIX", "VAR", "LEG" };
+        { "MEL", "OCT", "QMIX", "REST", "ACC", "VAR", "LEG" };
     static_assert(sizeof(SPREAD) / sizeof(SPREAD[0]) == SandsGrid::POLY_LANES,
                   "SPREAD lane-name table length must equal SandsGrid::POLY_LANES");
 
