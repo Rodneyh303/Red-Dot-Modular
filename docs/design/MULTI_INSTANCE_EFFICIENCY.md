@@ -76,3 +76,35 @@ The exact benefit of PRNG-slave (and of voice-opt across instances) is TO BE EST
 MUST help the multi-Monsoon goal: shared-counter instances stop recomputing identical draws, and every
 case pays only for active voices. MEASURE once the single-instance breakdown is known; don't assume the
 magnitude.
+
+---
+
+## NEXT PERF PRIORITY — VOICE-COUNT OPTIMIZATION (the biggest win) (Rodney)
+Voice-count opt is the biggest/next perf win — bigger AND lower-risk than the SIMD candidates:
+- **END-TO-END:** skips inactive voices through the WHOLE per-voice pipeline (draw processing, spread
+  apply, readout, slew, quantise, output, display) — not one stage. SIMD-ing one stage (spread apply /
+  MA reduction) speeds that stage ~4x for all 16 voices; voice-opt makes inactive voices cost ~0 across
+  EVERY stage.
+- **MULTIPLIER:** process N not 16 -> ~16/N x on ALL per-voice cost, compounding across stages.
+- **ENABLED BY THE 16x:** fast draws make the buffer recompute cheap enough to "just do extra channels"
+  on demand (before 16x, adding voices = expensive regen -> risky dynamically; now cheap).
+- **THE MULTI-INSTANCE LEVER:** few voices per instance -> N Monsoons realistic (4 inst x 4 voices = 16
+  voice-slots, not 64). Directly serves the goal.
+- **LOWER-RISK than SIMD:** no determinism tension, no float reordering — just DON'T process inactive
+  voices. Biggest win is also the simplest/safest.
+Mostly ALREADY SPECCED: it's the active-voices Phase B (downstream gating) + the fast recompute (16x +
+bidirectional buffer) + the mutual lock (poly-change PERP counter-change, at a step boundary). Implement:
+on voice-count change, at the next STEP boundary, spin up the delta voices (cheap regen), existing voices
+untouched.
+
+### Buffer-recompute time ESTIMATE (order of magnitude; measure to confirm)
+- **Case A — multivariate draws (our design: each draw is ALL voices):** buffer ALREADY holds all voices
+  -> adding channels = just start READING the new voice slots -> **~0 / near-instant, no spike.** The only
+  new cost is steady-state processing of the added voices, not a one-time recompute.
+- **Case B — if buffer is active-voices-only and must regen the new window:** ~128 positions
+  (bidirectional K=64) x per-position draw (cheap post-16x, ~tens of ns). Full-window all-voices regen
+  ~= **single-digit microseconds (~2-7us)** = **~0.01-0.04% of a 60Hz frame (16,667us)** -> negligible,
+  no glitch. Delta-voices-only is proportionally less.
+Either way the recompute is CHEAP-to-FREE -> "just do extra channels" is sound, no glitch. Estimates from
+the ~130-250ns copula figure x the 16x; CONFIRM by measuring (add voices mid-play, watch CPU meter, or
+time the regen via the debug timer at Monsoon.cpp:1381).
