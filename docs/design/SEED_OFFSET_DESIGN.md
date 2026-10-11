@@ -385,3 +385,36 @@ Questions to settle first:
 - (e) CV role: auto-scrub vs knob-for-base split.
 Likely answer: scrub knob + musical detents (canon) + numeric readout (return/bookmark) + CV auto-scrub —
 but DISCUSS. The determinism makes exact return possible; the UI makes it accessible.
+
+---
+
+## OFFSET SCRUB — integration + the counter digital expander (Rodney)
+Call it what it is: the COUNTER feature / OFFSET SCRUB. It's another aspect of the addressable-counter
+system EXPOSED, and it must INTEGRATE with slew, mix, and dice — not bolt on. (NOTE: already anticipated
+elsewhere as the "dice-scrub rework" — LOCK_QUEUE_STATUS.md, LOCK_MODE_AUDIT.md defer some lock-mode work
+until after it. Unify with that, don't duplicate.)
+
+### Integration (mostly implied by the architecture; pin the composition rules when building)
+- **Slew:** the slew MA window travels WITH the counter — scrubbing moves the read position, slew reads
+  its K-window around the current (offset) position (the bidirectional buffer / reverse turnaround is
+  part of this). Counter feeds the window position.
+- **Mix (qmix / spread-correlation readout):** applied at readout (control rate) to whatever draws the
+  current position yields. The mix doesn't MOVE with the counter (it's cross-sectional at the read point),
+  but its INPUT changes as you scrub -> readout follows the new position's draws.
+- **Dice:** ORTHOGONAL to offset. Dice = new KEY/seed stream (different material); offset = position on
+  the stream (same material, different place). Clean separation: dice -> Philox KEY, offset -> COUNTER
+  (different inputs, independent). So scrub position PERSISTS across a dice roll (it's counter; dice
+  changed the key). Pin: dice-while-scrubbed, step-back ("last draw") vs offset (both move the counter),
+  offset persistence across reseed — all compose on the SINGLE counter axis via the reversible addressing.
+
+### The COUNTER DIGITAL EXPANDER (proof + UI home)
+A dedicated digital (screen-based) expander that shows + controls the counter/offset:
+- Solves the logged "where does the offset UI go" question — its own panel for coarse/fine, numeric
+  readout, bookmarks, musical detents (see the OPEN UI QUESTION above).
+- PROOF of how it works: displaying the counter / window / scrub makes the otherwise-invisible mechanism
+  VISIBLE + tangible — a feature AND a demonstration of the addressable-counter design.
+- Fits the expander ecosystem (lane-expander / interconnection infra, see MODULE_INTERCONNECTION_WORK.md)
+  — another expander in the family, inheriting discovery/connection/owner.
+- Host: MONSOON (where the counter lives) or RAFFLES (modelMonsoonRafflesExpander exists) — TBD.
+- Digital form is natural: the counter is a number/position, best shown as a readout + scrub visual
+  (filmstrip of nearby patterns, per the UI options).
