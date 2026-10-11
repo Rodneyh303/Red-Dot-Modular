@@ -70,7 +70,7 @@ CXXFLAGS += -Wno-c++17-extensions
 #   -ffp-contract=off              : no FMA contraction (the cross-platform mechanism above)
 # Cost, measured: ~35% on the window readout (11.2us -> 15.2us), i.e. ~67us -> ~91us per frame while
 # scrub-dragging — under 1% of a 60Hz budget.
-DETERMINISTIC_FP := -fno-unsafe-math-optimizations -fno-associative-math -ffp-contract=off
+DETERMINISTIC_FP := -ffp-contract=off   # EXPERIMENT (branch fp-drop-reassoc-guard): dropped -fno-unsafe-math-optimizations -fno-associative-math (reassociation guard, ~nil measured value, ~most of the cost). Keep -ffp-contract=off (cross-platform FMA determinism, unmeasured mechanism CI cannot verify).
 
 $(BUILD)/src/dsp/engines/PatternEngine.cpp.o: CXXFLAGS += $(DETERMINISTIC_FP)
 $(BUILD)/src/Monsoon.cpp.o:                   CXXFLAGS += $(DETERMINISTIC_FP)
