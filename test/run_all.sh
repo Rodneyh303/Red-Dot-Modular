@@ -41,7 +41,7 @@ STD="$STD $ARCHF"
 # Match the plugin's deterministic-FP flags (Makefile DETERMINISTIC_FP) so bit-exact float tests
 # (EXPECT_BITEQ in test_TuningTable etc.) hold across x86 and arm64. Without -ffp-contract=off, arm64
 # (Mac) contracts (a*b)*c into an FMA that rounds differently from x86 -> last-bit diff -> false failure.
-STD="$STD -ffp-contract=off"   # EXPERIMENT: dropped reassoc guard, kept -ffp-contract=off (match Makefile)
+STD="$STD -ffp-contract=off"   # DECIDED: match Makefile DETERMINISTIC_FP — dropped reassoc guard (nil value), kept -ffp-contract=off (cross-platform FMA determinism; keeps bit-exact tests valid across x86/arm64)
 GS="src/dsp/gates/GateState.cpp"
 PE="src/dsp/engines/PatternEngine.cpp"
 SE="src/dsp/engines/SequencerEngine.cpp"
