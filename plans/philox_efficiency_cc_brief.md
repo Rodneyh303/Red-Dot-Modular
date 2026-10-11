@@ -60,3 +60,37 @@ Keep A and B as SEPARATE commits so if B's SIMD has a platform issue (it's new i
 CI), A's bit-identical win stands alone and B can be isolated. CI now builds this branch on Win/Mac/Linux
 — watch that B compiles on all three (SIMD intrinsics are the most platform-sensitive code; prefer
 rack::simd::float_4 which abstracts the platform over raw _mm_ intrinsics).
+
+---
+
+## STEP B SIMD — intrinsics decision (Rodney)
+CC found: rack::simd int32_4/float_4 lack integer multiply/shift/shuffle/blend (int32_4 multiply "NOT
+AVAILABLE IN SSE3"). Philox's core 32x32->64 unsigned multiply (needs hi AND lo 32 bits) requires raw
+_mm_mullo_epi32 / _mm_mul_epu32 / _mm_shuffle_epi32 / _mm_blend_epi16.
+
+DECISION:
+- **Option C is RULED OUT** — float-based 16-bit decomposition risks float rounding -> NOT bit-identical ->
+  breaks the bit-compare verification AND reversibility (the chain must reproduce exactly). Philox is
+  integer arithmetic; it MUST stay integer arithmetic. Non-negotiable.
+- **Use Option B** — raw __m128i throughout the SSE kernel (consistent; the natural idiom for a vectorized
+  integer PRNG). The int32_4 abstraction buys little here since multiply/shuffle/blend are raw anyway, and
+  mixing int32_4 + .v adds wrap/unwrap friction. Include the SDK's platform-detection header.
+
+### CRITICAL — PORTABILITY: SSE intrinsics DON'T compile on arm64 (Apple Silicon)
+The macOS CI build is a UNIVERSAL binary (x86_64 + arm64). `_mm_*` SSE intrinsics are x86-only — they DO
+NOT EXIST on the arm64 slice -> SSE-only Philox will FAIL to compile on Mac. MUST gate it:
+    #if defined(__SSE4_1__)   // x86: Windows, Linux, Intel-Mac slice
+        ... SSE Philox kernel ...
+    #else                     // arm64-Mac slice (and any other arch)
+        ... existing SCALAR Philox ...
+    #endif
+So x86 gets the SIMD speedup; arm64-Mac gets the scalar path (CORRECT, BIT-IDENTICAL, just unaccelerated).
+All paths produce the SAME Philox outputs -> bit-compare passes on every platform.
+(Optional LATER: add a NEON path for arm64-Mac speedup — but scalar-fallback FIRST; Apple Silicon scalar
+is fast, may not need NEON.)
+
+### Verify B
+- Bit-compare passes on ALL 3 CI platforms (SSE path on Win/Lin, scalar path on arm64-Mac both bit-identical).
+- B compiles on all 3 (watch Mac especially — the #ifdef gate is what makes it compile on arm64).
+- Measure the x86 speedup (expect ~4-8x on block gen on top of step A's 4x).
+- Keep A and B separate commits.
