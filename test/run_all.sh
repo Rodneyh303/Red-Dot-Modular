@@ -22,6 +22,12 @@ cd "$root"
 
 INCS="-Itest -Isrc -Isrc/tuning -Isrc/dsp -Isrc/dsp/engines -Isrc/dsp/gates -Isrc/dsp/managers -Isrc/ui"
 STD="-std=c++17"
+# SSE4.1 for SIMD Philox (x86 only; arm64 uses sse2neon which needs no flag)
+ARCHF=""
+if [ "$(uname -m)" = "x86_64" ] || [ "$(uname -m)" = "i686" ] || [ "$(uname -m)" = "i386" ]; then
+    ARCHF="-msse4.1"
+fi
+STD="$STD $ARCHF"
 GS="src/dsp/gates/GateState.cpp"
 PE="src/dsp/engines/PatternEngine.cpp"
 SE="src/dsp/engines/SequencerEngine.cpp"

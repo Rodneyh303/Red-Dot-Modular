@@ -731,31 +731,43 @@ struct PatternEngine {
     // q-mix twin of MelodyDraw — one value per step (mono) + per poly voice.
     struct QmixDraw   { float qmix[16];
                         float polyQmix[15][16]; };
+    // Step A: 4x batching — fillBlock computes each Philox block ONCE (4 outputs),
+    // then scatter into struct fields in the same order. Bit-identical to the old
+    // per-cursor philox*At(pos, c++) calls (same Philox outputs, 4x fewer block computations).
     inline void rawDrawRhythmPatternAt(int64_t pos, RhythmDraw& d) const {
-        uint64_t c = 0;
+        // 4 mono + 4*15 poly = 64 per step × 16 steps = 1024
+        static thread_local float buf[1024];
+        rhythmPhilox.fillBlock((uint64_t)pos * DRAW_CHUNK, buf, 1024);
+        int k = 0;
         for (int i = 0; i < 16; ++i) {
-            d.rhythm[i]=philoxRhythmAt(pos,c++); d.variation[i]=philoxRhythmAt(pos,c++);
-            d.legato[i]=philoxRhythmAt(pos,c++); d.accent[i]=philoxRhythmAt(pos,c++);
-            for (int v=0;v<15;++v) d.polyRhythm[v][i]=philoxRhythmAt(pos,c++);
-            for (int v=0;v<15;++v) d.polyAccent[v][i]=philoxRhythmAt(pos,c++);
-            for (int v=0;v<15;++v) d.polyVariation[v][i]=philoxRhythmAt(pos,c++);
-            for (int v=0;v<15;++v) d.polyLegato[v][i]=philoxRhythmAt(pos,c++);
+            d.rhythm[i]=buf[k++]; d.variation[i]=buf[k++];
+            d.legato[i]=buf[k++]; d.accent[i]=buf[k++];
+            for (int v=0;v<15;++v) d.polyRhythm[v][i]=buf[k++];
+            for (int v=0;v<15;++v) d.polyAccent[v][i]=buf[k++];
+            for (int v=0;v<15;++v) d.polyVariation[v][i]=buf[k++];
+            for (int v=0;v<15;++v) d.polyLegato[v][i]=buf[k++];
         }
     }
     inline void rawDrawMelodyPatternAt(int64_t pos, MelodyDraw& d) const {
-        uint64_t c = 0;
+        // 2 mono + 2*15 poly = 32 per step × 16 steps = 512
+        static thread_local float buf[512];
+        melodyPhilox.fillBlock((uint64_t)pos * DRAW_CHUNK, buf, 512);
+        int k = 0;
         for (int i = 0; i < 16; ++i) {
-            d.melody[i]=philoxMelodyAt(pos,c++); d.octave[i]=philoxMelodyAt(pos,c++);
-            for (int v=0;v<15;++v) d.polyMelody[v][i]=philoxMelodyAt(pos,c++);
-            for (int v=0;v<15;++v) d.polyOctave[v][i]=philoxMelodyAt(pos,c++);
+            d.melody[i]=buf[k++]; d.octave[i]=buf[k++];
+            for (int v=0;v<15;++v) d.polyMelody[v][i]=buf[k++];
+            for (int v=0;v<15;++v) d.polyOctave[v][i]=buf[k++];
         }
     }
     // q-mix twin of rawDrawMelodyPatternAt — one mono value + 15 poly values per step.
     inline void rawDrawQmixPatternAt(int64_t pos, QmixDraw& d) const {
-        uint64_t c = 0;
+        // 1 mono + 15 poly = 16 per step × 16 steps = 256
+        static thread_local float buf[256];
+        qmixPhilox.fillBlock((uint64_t)pos * DRAW_CHUNK, buf, 256);
+        int k = 0;
         for (int i = 0; i < 16; ++i) {
-            d.qmix[i]=philoxQmixAt(pos,c++);
-            for (int v=0;v<15;++v) d.polyQmix[v][i]=philoxQmixAt(pos,c++);
+            d.qmix[i]=buf[k++];
+            for (int v=0;v<15;++v) d.polyQmix[v][i]=buf[k++];
         }
     }
     // ── Phase 1 PhiInv cache ───────────────────────────────────────────────────
