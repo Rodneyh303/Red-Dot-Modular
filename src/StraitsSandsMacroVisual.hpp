@@ -92,9 +92,15 @@ namespace StraitsMacroVisualIds {
         GLOBAL_DNA_START = TAP_START + 8,       // = 48 .. 59
         NUM_SPREAD_PARAMS = GLOBAL_DNA_START + 12   // = 60
     };
-    // lane: 0 REST, 1 MELODY, 2 OCTAVE, 3 ACCENT -> block offset
+    // Global LOR/DNA param pool blocks are keyed by lane IDENTITY (fixed layout:
+    // REST=0, MELODY=3, OCTAVE=6, ACCENT=9). Lane index is the NEW order
+    // (MELODY=0, OCTAVE=1, QMIX=2, REST=3, ACCENT=4). Map new lane -> its identity block.
     static inline int globalDnaId(int lane, int c) {
-        const int blk = (lane == 0) ? 0 : (lane == 1) ? 3 : (lane == 3) ? 9 : 6;
+        const int blk = (lane == 0) ? 3   // PL_MELODY -> MELODY block
+                      : (lane == 1) ? 6   // PL_OCTAVE -> OCTAVE block
+                      : (lane == 3) ? 0   // PL_REST   -> REST block
+                      : (lane == 4) ? 9   // PL_ACCENT -> ACCENT block
+                      :               6;  // PL_QMIX (lane 2) shares OCTAVE block (as before: old 'else')
         return GLOBAL_DNA_START + blk + c;
     }
     static inline int sendDispId(int lane, int item) { return SEND_DISP_START + lane*4 + item; }
@@ -147,13 +153,15 @@ namespace StraitsMacroVisualIds {
     inline int lorId(int lane, int c) {
         return StraitsMacroVisualIds::globalDnaId(lane, c);   // local pool, was MonsoonIds
     }
-    // Spread: stored in SPREAD_REST/MELODY/OCTAVE display params
+    // Spread: stored in SPREAD_* display params. Lane index is the NEW visual/engine
+    // order (MELODY=0, OCTAVE=1, QMIX=2, REST=3, ACCENT=4); map each to its fixed
+    // SPREAD_* slot (enum order REST=0, MELODY=1, OCTAVE=2, ACCENT=3, QMIX=4).
     inline int sprId(int lane) {
-        if (lane == 0) return SPREAD_REST;
-        if (lane == 1) return SPREAD_MELODY;
-        if (lane == 2) return SPREAD_OCTAVE;
-        if (lane == 3) return SPREAD_ACCENT;
-        return              SPREAD_QMIX;  // lane 4
+        if (lane == 0) return SPREAD_MELODY;  // PL_MELODY
+        if (lane == 1) return SPREAD_OCTAVE;  // PL_OCTAVE
+        if (lane == 2) return SPREAD_QMIX;    // PL_QMIX
+        if (lane == 3) return SPREAD_REST;    // PL_REST
+        return              SPREAD_ACCENT;    // PL_ACCENT (lane 4)
     }
     // param 0=LEN,1=OFF,2=ROT → lorId; param 3=SPR → sprId
     inline float targetLo(int param) { return param == 0 ? 1.f : 0.f; }

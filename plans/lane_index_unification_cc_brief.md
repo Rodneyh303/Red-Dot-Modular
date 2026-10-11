@@ -66,3 +66,30 @@ is identical before/after. So the real edit surface is small:
 Per ROADMAP_SEQUENCING.md: ideally do this BEFORE adding the NEW Straits lanes (VAR/LEG expanders, range
 lane) so they're born into the one-index layout. Panel art/seam is index-independent. Out of scope: the
 4x Philox batching (separate later step — but this unification sets up its stream-contiguity).
+
+---
+
+## CORRECTION (post-review) — two order-dependent maps were MISSED; fixed, but VERIFY
+The enum reorder + laneToStrand/laneNames were done correctly. But TWO engine-lane->param maps in
+StraitsSandsMacroVisual.hpp were NOT updated and crosswired after the reorder (the exact bug class this
+is meant to KILL). Both take the ENGINE lane (caller "store engine lane", .cpp:233) but were hard-coded
+to the OLD order (0=REST). FIXED in this review to the new order (MELODY=0, OCTAVE=1, QMIX=2, REST=3,
+ACCENT=4):
+- `sprId(lane)` — now lane0->SPREAD_MELODY, 1->OCTAVE, 2->QMIX, 3->REST, 4->ACCENT (SPREAD_* enum
+  unchanged: REST=0,MELODY=1,OCTAVE=2,ACCENT=3,QMIX=4).
+- `globalDnaId(lane,c)` — DNA pool blocks keyed by identity (REST@0,MELODY@3,OCTAVE@6,ACCENT@9); now
+  lane0(MEL)->3, 1(OCT)->6, 3(REST)->0, 4(ACC)->9, 2(QMIX)->6.
+
+### STILL TO VERIFY (CC — do these before calling done)
+1. **globalDnaId QMIX case:** QMIX (new lane 2) falls through to block 6 (OCTAVE's block) — this preserves
+   the OLD 'else' behaviour (old lanes 2=OCTAVE and 4=QMIX both ->6). CONFIRM that's correct: does QMIX
+   actually SHARE OCTAVE's DNA block, or should QMIX have no global DNA (only 4 lanes REST/MEL/OCT/ACC
+   have it)? If QMIX shouldn't map to a real block, this needs a different fix. CHECK the original intent.
+2. **CA planes (MonsoonChangeAlleyV2.hpp:1286-1296):** `(plane==0)?rhythmSrc:(plane==1)?melodySrc:qmixSrc`.
+   Planes are STREAM-indexed (rhythm/melody/qmix), NOT lane-indexed — so they're likely FINE (streams
+   didn't reorder, only lanes). CONFIRM plane is a stream index, not a lane index. If stream -> no change.
+3. **BIT-COMPARE (the gate):** same seed/pattern -> output IDENTICAL to lane-expander-refactor. This
+   relabelling MUST be output-identical; any difference = a remaining missed site. RUN IT and report the
+   result. It would have caught the two maps above — so run it now and chase any remaining diff.
+4. **EL2ENG kept as identity (35 refs):** acceptable only if toEngine is genuinely identity now. CONFIRM,
+   and prefer DELETING it (per the brief) so the conversion machinery is gone, not just defused.
