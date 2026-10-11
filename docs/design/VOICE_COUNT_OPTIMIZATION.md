@@ -108,3 +108,23 @@ multivariate structure + addressability hold); only the expensive PhiInv transfo
 ~16/N x on the DOMINANT (91% PhiInv) per-voice cost + the per-step blend. Much bigger than gating only
 the "downstream". Still low-risk: PhiInv is addressable (compute delta on increase), bit-compare verifies
 (all-voices-active = identical output). Measure: toggle 1 vs 16 voices, watch CPU meter.
+
+
+## CONFIRMED — the 91% PhiInv is CURRENT (not pre-LUT) + exact-at-fill is REQUIRED; voice-opt is the ONLY lever
+Checked (Rodney's memory was right):
+- The 91% is CURRENT, not a stale pre-LUT figure. The cache FILL uses the EXACT PhiInv
+  (redDot::copula::PhiInv — Acklam + one Halley step whose Halley uses the EXACT erfc Phi, NOT the LUT) —
+  PatternEngine.hpp:806-813. The cached z is DOUBLE precision.
+- Exact-at-fill is REQUIRED for reversibility, deliberately decided + tested (SLEW_COPULA_PLAN.md:143):
+  "Phi inside PhiInv's Halley step -> YES PhiInv is cached per draw value -> EXACT Phi — full [precision],
+  or the refinement converges only to LUT accuracy and the 1e-15 round-trip test FAILS." LUT PhiInvFast
+  is ~9.3e-8 -> would FAIL the 1e-15 reversible round-trip.
+- The LUT (PhiFast/PhiInvFast) is correctly READOUT-ONLY — it "never touches bit-identity"
+  (GaussianCopula.hpp:39); the readout's final Phi is an OUTPUT transform, not part of the reversible chain.
+
+### Consequence: can't LUT-ify the fill -> voice-opt is the SOLE lever for the 91%
+Because the fill MUST stay exact double PhiInv (reversibility), you CANNOT cut the 91% by making the fill
+cheaper. The ONLY way to reduce the dominant per-voice cost is to NOT DO IT for inactive voices -> VOICE-OPT.
+So voice-opt isn't just A lever for the 91% — it's the ONLY one. Do NOT attempt "use the LUT at cache-fill"
+as a shortcut — it breaks the 1e-15 round-trip (tested). This cements voice-opt as the way to cut the
+dominant cost, and the gate for multi-instance.
