@@ -46,3 +46,33 @@ voice set) fast enough to do on-change without a glitch.
   isolated; a cross-module shared cache needs a deliberate mechanism via the link).
 - Active-voices-only is the Phase-B downstream optimization (already specced).
 - Pairs with the counter/offset-scrub integration (slew/mix/dice) and the bidirectional buffer.
+
+
+## CORRECTION / clarification — SHARED SEED vs PRNG-SLAVE are DIFFERENT things (Rodney)
+Earlier framing conflated them. They are distinct and apply to DIFFERENT counter regimes:
+- **SHARED SEED = a MUSICAL FEATURE (crab/canon).** Same seed, DIFFERENT counters -> correlated-but-offset
+  material. The seed-share IS the correlation (why they sound related); the counter offset is the canon.
+  Each instance computes its OWN draws (different counter -> different draws). NOT an optimization — it's
+  the feature. Cost lever here = VOICES (few per instance), since draws genuinely differ (nothing to share).
+- **PRNG-SLAVE = an OPTIMIZATION (shared-counter polyrhythm).** Same seed AND same counter -> the draw is
+  IDENTICAL -> don't compute it twice; the slave READS the master's draw. Same musical result, the draw
+  computed ONCE. Only applies where counters COINCIDE (draws provably identical). Where counters differ
+  (crab/canon) there is nothing to slave.
+
+So they do NOT obviate each other — they occupy different counter regimes:
+| case | seed | counter | material lever | voice lever |
+| shared-counter polyrhythm | shared | SAME | PRNG-SLAVE (draw once) | voice-opt |
+| crab/canon | shared | OFFSET | none (draws differ, each computes) | voice-opt |
+| independent | different | different | none | voice-opt |
+- VOICE-OPT applies to ALL cases. SHARED CA is ORTHOGONAL (links arrangement, any case).
+
+(This supersedes the earlier "shared seed -> shared cache keyed by (position,key)" phrasing above: that
+cache IS the PRNG-slave implementation for the SAME-counter case; shared-seed-different-counter is the
+crab/canon feature where each computes.)
+
+## Computational benefit — TBD, but surely helps the multi-Monsoon case
+The exact benefit of PRNG-slave (and of voice-opt across instances) is TO BE ESTABLISHED by measurement
+(depends on the post-16x per-instance cost breakdown — draw vs readout vs output). But directionally it
+MUST help the multi-Monsoon goal: shared-counter instances stop recomputing identical draws, and every
+case pays only for active voices. MEASURE once the single-instance breakdown is known; don't assume the
+magnitude.
