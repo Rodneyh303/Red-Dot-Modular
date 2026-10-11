@@ -70,7 +70,14 @@ CXXFLAGS += -Wno-c++17-extensions
 #   -ffp-contract=off              : no FMA contraction (the cross-platform mechanism above)
 # Cost, measured: ~35% on the window readout (11.2us -> 15.2us), i.e. ~67us -> ~91us per frame while
 # scrub-dragging — under 1% of a 60Hz budget.
-DETERMINISTIC_FP := -fno-unsafe-math-optimizations -fno-associative-math -ffp-contract=off
+DETERMINISTIC_FP := -ffp-contract=off   # DECIDED: dropped the reassociation guard (-fno-unsafe-math-optimizations -fno-associative-math) — ~nil measured value (~1 in 1e15), ~most of the cost; validated green on all 3 platforms. Keep -ffp-contract=off: cross-platform FMA determinism, which CI cannot verify per-platform. See docs/design/DETERMINISTIC_FP_COST_NOTE.md.
 
 $(BUILD)/src/dsp/engines/PatternEngine.cpp.o: CXXFLAGS += $(DETERMINISTIC_FP)
 $(BUILD)/src/Monsoon.cpp.o:                   CXXFLAGS += $(DETERMINISTIC_FP)
+
+
+# NOTE on SIMD Philox + SSE4.1: the x86_64 slice gets SSE4.1 from Rack's own
+# -march=nehalem (compile.mk, ARCH_X64) — Nehalem includes SSE4.1/4.2 — so NO
+# extra -msse4.1 is needed in the plugin build. The arm64 slice uses sse2neon ->
+# NEON (no x86 flag). (-Xarch_x86_64 is NOT usable here: Rack builds each arch as
+# a SEPARATE invocation, not one dual-arch command.)
