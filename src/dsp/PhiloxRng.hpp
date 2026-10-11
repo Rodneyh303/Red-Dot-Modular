@@ -171,8 +171,36 @@ struct PhiloxRng {
     double nextDouble() { uint32_t a = next(), b = next(); return philoxUniformDouble(a,b); }
 
     // ── Block drawing (PatternEngine use-case) — addressable, counter untouched ─
+    // Step A: 4x batching — compute each Philox block ONCE, consume all 4 outputs.
+    // The old fillBlock called atUniform(base+i) per element, which recomputed the
+    // entire 10-round Philox block for each of the 4 outputs (75% waste). Now each
+    // block is computed once and all 4 outputs are consumed. Bit-identical.
     void fillBlock(uint64_t base, float* out, int n) const {
-        for (int i = 0; i < n; ++i) out[i] = atUniform(base + (uint64_t)i);
+        int i = 0;
+        uint64_t pos = base;
+        // Leading partial block (base not block-aligned)
+        int lead = (int)(base & 3u);
+        if (lead > 0 && n > 0) {
+            auto b = block(base >> 2);
+            for (int j = lead; j < 4 && i < n; ++j)
+                out[i++] = philoxUniformFloat(b[j]);
+            pos = (base & ~3ull) + 4;
+        }
+        // Full blocks: one block computation per 4 outputs
+        while (i + 4 <= n) {
+            auto b = block(pos >> 2);
+            out[i]   = philoxUniformFloat(b[0]);
+            out[i+1] = philoxUniformFloat(b[1]);
+            out[i+2] = philoxUniformFloat(b[2]);
+            out[i+3] = philoxUniformFloat(b[3]);
+            i += 4; pos += 4;
+        }
+        // Trailing partial block
+        if (i < n) {
+            auto b = block(pos >> 2);
+            for (int j = 0; i < n; ++j)
+                out[i++] = philoxUniformFloat(b[j]);
+        }
     }
     void drawBlock(float* out, int n) {
         fillBlock(counter, out, n);
