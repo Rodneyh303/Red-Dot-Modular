@@ -1,5 +1,16 @@
 # Voice-count optimization — NEXT PERF PRIORITY (mechanical, low-risk)
 
+> **DO THIS NEXT. It is the GATE for the entire multi-instance capability class.**
+> Voice-opt -> each Monsoon costs ~16/N x for N active voices -> MULTIPLE MONSOONS realistic ->
+> which ENABLES: POLYRHYTHM (independent timebases = multiple instances, now affordable),
+> CRAB/CANON (shared seed + offset counters + few voices each — voice-opt is the SOLE lever here,
+> since different counters mean NO draw-sharing), and future SHARED-PRNG polyrhythm (shared-counter
+> PRNG-slave COMPOUNDS with low voice count: one shared draw + few voices each = minimal cost).
+> Without voice-opt each Monsoon pays full 16-voice PhiInv (91% cost) and multi-Monsoon is CPU-prohibitive
+> regardless of other optimizations. Voice-opt is the ENABLING CONDITION; shared-draw/PRNG-slave add on
+> top. Biggest single-instance win (~16/N x on the 91% PhiInv) AND the strategic gate AND mechanical/
+> low-risk AND clean post V1->voice-0. Clear next priority.
+
 ## Why this is next (biggest + simplest + safest)
 - END-TO-END: skips inactive voices through the whole PER-VOICE DOWNSTREAM pipeline (spread apply,
   readout, slew, quantise, output, display) — a MULTIPLIER (~16/N x on per-voice cost), not a one-stage
