@@ -63,3 +63,37 @@ MonsoonExpanderManager.cpp:567, 579, 598, 607 (`< 7` = lanes); any `< NUM_STRAND
 Very low: no SIMD, no determinism change, no draw conditioning; gating = loop bounds. The only care is
 (a) consistency (gate ALL downstream stages, not some), and (b) confirm the numPolyVoices<->voices[]
 index mapping post-Phase-A so the bound is correct. Bit-compare catches mistakes.
+
+
+## CORRECTION — the saving is BIGGER than first thought: PhiInv is 91% and PER-VOICE (Rodney)
+Earlier "draws are cheap post-16x, don't skip them" was WRONG IN EMPHASIS. PatternEngine.hpp:774 states:
+"~91% of patternXAt's cost is PhiInv (Acklam+Halley), NOT Philox." The 16x was on PHILOX (the cheap 9%).
+PhiInv is CACHED per (key,pos) — computed ONCE on cache-MISS, then reused. The multivariate cache entry
+holds PhiInv for ALL voices (zPolyRhythm[15][16] etc.), so a cache-miss computes PhiInv for ALL 15 poly
+voices at that position — INCLUDING INACTIVE ONES.
+
+So the real per-voice cost split:
+- **PhiInv (91%): paid once per position on cache-MISS, for ALL voices.** Gating it to ACTIVE voices
+  saves the dominant cost (12 inactive voices x PhiInv) on every new position drawn. THIS is the big win
+  the "don't skip draws" conclusion missed.
+- **Steady-state blend/applyZ (the slewedPoly* `<15` loops, per step): reads cached z + blends.** Gating
+  these saves the per-step per-voice blend (smaller, but real).
+
+So GATE ALL per-voice work to active voices — both the PhiInv-at-cache-miss AND the blend loops — not
+just the "downstream". The PhiInv gating is the LARGE saving (~16/N x on the 91% cost).
+
+### Implementation (Rodney) — "guard everything, unguard on poly-count INCREASE" (easy)
+- Normally compute per-voice work (PhiInv-at-miss + blend) only for ACTIVE voices.
+- On poly count INCREASE, the newly-active voices were skipped -> compute the DELTA voices' PhiInv/z at
+  the current cached positions. EASY because PhiInv is a PURE function of (key,pos) -> just evaluate it
+  for the new voices' slots. The Phase-B infra ALREADY exists (prevNumPolyVoices_ tracking +
+  resetActivatedPolyVoices_, SequencerEngine.hpp:745) — extend it to also fill the delta voices' z.
+- On DECREASE: just stop computing the dropped voices (nothing to regen).
+This supersedes "keep draws all-voices": keep raw PHILOX all-voices (cheap, multivariate) but GATE the
+PhiInv/z (the 91%) to active voices, filling the delta on increase. The raw Philox stays all-16 (so the
+multivariate structure + addressability hold); only the expensive PhiInv transform is active-gated.
+
+### Net
+~16/N x on the DOMINANT (91% PhiInv) per-voice cost + the per-step blend. Much bigger than gating only
+the "downstream". Still low-risk: PhiInv is addressable (compute delta on increase), bit-compare verifies
+(all-voices-active = identical output). Measure: toggle 1 vs 16 voices, watch CPU meter.
