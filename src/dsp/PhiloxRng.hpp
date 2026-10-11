@@ -26,7 +26,29 @@
 #include <cstring>
 #include <array>
 
+// Step B: SIMD Philox — vectorize 4 consecutive block computations.
+// Bit-identical to the scalar path (same algorithm, computed in parallel lanes).
+// Uses simd_compat.hpp: native SSE on x86, sse2neon→NEON on arm64.
+#include "third_party/sse2neon/simd_compat.hpp"
+
 namespace redDot {
+
+#if defined(SIMD_HAVE_SSE)
+// Helper: 4-lane unsigned 32x32->64 multiply, returning both hi and lo.
+// _mm_mullo_epi32 (SSE4.1) gives the low 32 bits of all 4 lanes.
+// For the high 32 bits, _mm_mul_epu32 (SSE2) processes 2 lanes at a time
+// (the low 32 bits of each 64-bit lane), so we call it twice with shuffled inputs.
+inline void mul4x32(__m128i a, __m128i b, __m128i& hi, __m128i& lo) {
+    lo = _mm_mullo_epi32(a, b);  // low 32 bits, all 4 lanes (SSE4.1)
+    __m128i prod02 = _mm_mul_epu32(a, b);  // {a[0]*b[0]_64, _, a[2]*b[2]_64, _}
+    __m128i a13 = _mm_shuffle_epi32(a, _MM_SHUFFLE(2, 3, 0, 1));
+    __m128i b13 = _mm_shuffle_epi32(b, _MM_SHUFFLE(2, 3, 0, 1));
+    __m128i prod13 = _mm_mul_epu32(a13, b13);  // {a[1]*b[1]_64, _, a[3]*b[3]_64, _}
+    __m128i hi02 = _mm_srli_epi64(prod02, 32);  // {hi[0], 0, hi[2], 0}
+    __m128i hi13 = _mm_srli_epi64(prod13, 32);  // {hi[1], 0, hi[3], 0}
+    hi = _mm_blend_epi16(hi02, _mm_slli_si128(hi13, 4), 0xCC);  // {hi[0], hi[1], hi[2], hi[3]}
+}
+#endif
 
 // ── Philox4x32-10 core (verbatim algorithm, reference form) ──────────────────
 // 4 x 32-bit counter, 2 x 32-bit key, 10 rounds. Returns 4 x 32-bit output that is
@@ -175,6 +197,58 @@ struct PhiloxRng {
     // The old fillBlock called atUniform(base+i) per element, which recomputed the
     // entire 10-round Philox block for each of the 4 outputs (75% waste). Now each
     // block is computed once and all 4 outputs are consumed. Bit-identical.
+#if defined(SIMD_HAVE_SSE)
+    // Step B: SIMD Philox — compute 4 consecutive blocks (16 outputs) in parallel
+    // using SSE4.2. Bit-identical to 4× scalar block() calls. Each lane processes
+    // one block; the 4 counter words are in separate SSE registers (ctr0..ctr3).
+    void fillBlock4xSimd(uint64_t base, float* out) const {
+        // Pack 4 consecutive block positions' counters
+        uint64_t bp = base >> 2;
+        __m128i ctr0 = _mm_setr_epi32(
+            (int32_t)(uint32_t)(bp),       (int32_t)(uint32_t)(bp + 1),
+            (int32_t)(uint32_t)(bp + 2),   (int32_t)(uint32_t)(bp + 3));
+        __m128i ctr1 = _mm_setr_epi32(
+            (int32_t)(uint32_t)(bp >> 32), (int32_t)(uint32_t)((bp + 1) >> 32),
+            (int32_t)(uint32_t)((bp + 2) >> 32), (int32_t)(uint32_t)((bp + 3) >> 32));
+        __m128i ctr2 = _mm_setzero_si128();
+        __m128i ctr3 = _mm_setzero_si128();
+        // Philox constants
+        const __m128i M0 = _mm_set1_epi32((int32_t)0xD2511F53u);
+        const __m128i M1 = _mm_set1_epi32((int32_t)0xCD9E8D57u);
+        __m128i k0 = _mm_set1_epi32((int32_t)key[0]);
+        __m128i k1 = _mm_set1_epi32((int32_t)key[1]);
+        const __m128i W0 = _mm_set1_epi32((int32_t)0x9E3779B9u);
+        const __m128i W1 = _mm_set1_epi32((int32_t)0xBB67AE85u);
+        // 10 rounds (round 0 uses raw key; rounds 1-9 bump key before use)
+        for (int r = 0; r < 10; ++r) {
+            __m128i hi0, lo0, hi1, lo1;
+            mul4x32(M0, ctr0, hi0, lo0);
+            mul4x32(M1, ctr2, hi1, lo1);
+            // out = {hi1 ^ ctr1 ^ k0, lo1, hi0 ^ ctr3 ^ k1, lo0}
+            __m128i new0 = _mm_xor_si128(_mm_xor_si128(hi1, ctr1), k0);
+            __m128i new1 = lo1;
+            __m128i new2 = _mm_xor_si128(_mm_xor_si128(hi0, ctr3), k1);
+            __m128i new3 = lo0;
+            ctr0 = new0; ctr1 = new1; ctr2 = new2; ctr3 = new3;
+            if (r < 9) { k0 = _mm_add_epi32(k0, W0); k1 = _mm_add_epi32(k1, W1); }
+        }
+        // Transpose 4x4: {ctr0..3}[lane] → block[lane] = {ctr0..3}[lane]
+        __m128i t0 = _mm_unpacklo_epi32(ctr0, ctr1);
+        __m128i t1 = _mm_unpackhi_epi32(ctr0, ctr1);
+        __m128i t2 = _mm_unpacklo_epi32(ctr2, ctr3);
+        __m128i t3 = _mm_unpackhi_epi32(ctr2, ctr3);
+        __m128i blk0 = _mm_unpacklo_epi64(t0, t2);  // block 0's 4 outputs
+        __m128i blk1 = _mm_unpackhi_epi64(t0, t2);  // block 1
+        __m128i blk2 = _mm_unpacklo_epi64(t1, t3);  // block 2
+        __m128i blk3 = _mm_unpackhi_epi64(t1, t3);  // block 3
+        // Convert to floats: (bits >> 8) * (1/2^24)
+        const __m128 scale = _mm_set1_ps(1.0f / 16777216.0f);
+        _mm_store_ps(out,      _mm_mul_ps(_mm_cvtepi32_ps(_mm_srli_epi32(blk0, 8)), scale));
+        _mm_store_ps(out + 4,  _mm_mul_ps(_mm_cvtepi32_ps(_mm_srli_epi32(blk1, 8)), scale));
+        _mm_store_ps(out + 8,  _mm_mul_ps(_mm_cvtepi32_ps(_mm_srli_epi32(blk2, 8)), scale));
+        _mm_store_ps(out + 12, _mm_mul_ps(_mm_cvtepi32_ps(_mm_srli_epi32(blk3, 8)), scale));
+    }
+#endif
     void fillBlock(uint64_t base, float* out, int n) const {
         int i = 0;
         uint64_t pos = base;
@@ -186,7 +260,14 @@ struct PhiloxRng {
                 out[i++] = philoxUniformFloat(b[j]);
             pos = (base & ~3ull) + 4;
         }
-        // Full blocks: one block computation per 4 outputs
+#if defined(SIMD_HAVE_SSE)
+        // Step B: SIMD — process 4 blocks (16 outputs) at a time
+        while (i + 16 <= n) {
+            fillBlock4xSimd(pos, out + i);
+            i += 16; pos += 16;
+        }
+#endif
+        // Remaining full blocks (scalar)
         while (i + 4 <= n) {
             auto b = block(pos >> 2);
             out[i]   = philoxUniformFloat(b[0]);
