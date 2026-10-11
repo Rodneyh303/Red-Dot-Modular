@@ -21,7 +21,7 @@ root="$(cd "$here/.." && pwd)"
 cd "$root"
 
 # python for the anchor/bind audit: python3 (Linux/macOS) or python (MSYS2/Windows)
-PYBIN="$(command -v python3 || command -v python || echo python3)"
+PYBIN="$(command -v python3 || command -v python || true)"
 
 INCS="-Itest -Isrc -Isrc/tuning -Isrc/dsp -Isrc/dsp/engines -Isrc/dsp/gates -Isrc/dsp/managers -Isrc/ui"
 # SIMDe (for the SIMD Philox compat test) lives in the Rack SDK's dep/include.
@@ -38,6 +38,10 @@ if [ "$(uname -m)" = "x86_64" ] || [ "$(uname -m)" = "i686" ] || [ "$(uname -m)"
     ARCHF="-msse4.1"
 fi
 STD="$STD $ARCHF"
+# Match the plugin's deterministic-FP flags (Makefile DETERMINISTIC_FP) so bit-exact float tests
+# (EXPECT_BITEQ in test_TuningTable etc.) hold across x86 and arm64. Without -ffp-contract=off, arm64
+# (Mac) contracts (a*b)*c into an FMA that rounds differently from x86 -> last-bit diff -> false failure.
+STD="$STD -fno-unsafe-math-optimizations -fno-associative-math -ffp-contract=off"
 GS="src/dsp/gates/GateState.cpp"
 PE="src/dsp/engines/PatternEngine.cpp"
 SE="src/dsp/engines/SequencerEngine.cpp"
@@ -146,7 +150,9 @@ echo "suites: $((pass+fail))  passed: $pass  failed: $fail  (test_MeloDicer excl
 audit_fail=0
 if [ -z "$filter" ] || [[ "audit" == *"$filter"* ]]; then
   echo "anchor/bind audit:"
-  if ! "$PYBIN" "$here/audit_anchor_bind.py"; then
+  if [ -z "$PYBIN" ]; then
+    printf "  \033[33m?\033[0m  anchor/bind audit SKIPPED (no python found)\n"
+  elif ! "$PYBIN" "$here/audit_anchor_bind.py"; then
     audit_fail=1
   fi
   echo "-----"
