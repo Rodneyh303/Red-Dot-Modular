@@ -221,7 +221,7 @@ struct StraitsSandsMacroVisual : Module {
         // Was 5 initializers on a [POLY_LANES] array → lanes 5/6 were nullptr →
         // std::string(nullptr) aborts (signal 22) during module construction — the Macro
         // instantiation crash. All 7 must be present.
-        static const char* laneNames[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX","VAR","LEG"};
+        static const char* laneNames[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
         static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
         for (int lane=0; lane<dotModular::SandsGrid::POLY_LANES; ++lane) {
             // P9b: TWO PRE/POST taps per lane — LOR (LEN/OFF/ROT) and SPREAD. Default
