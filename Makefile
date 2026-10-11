@@ -75,18 +75,9 @@ DETERMINISTIC_FP := -fno-unsafe-math-optimizations -fno-associative-math -ffp-co
 $(BUILD)/src/dsp/engines/PatternEngine.cpp.o: CXXFLAGS += $(DETERMINISTIC_FP)
 $(BUILD)/src/Monsoon.cpp.o:                   CXXFLAGS += $(DETERMINISTIC_FP)
 
-# ── SSE4.1 for the SIMD Philox kernel (PhiloxRng.hpp -> compiled into these two TUs) ─────────────
-# The SIMD path uses SSE4.1 intrinsics (_mm_mullo_epi32, _mm_blend_epi16). Clang does NOT enable
-# SSE4.1 by default (GCC/MinGW on Linux/Windows effectively do), so Mac needs the flag explicitly.
-# macOS is a UNIVERSAL build (-arch x86_64 -arch arm64 in ONE compile): -msse4.1 is x86-only and is
-# REJECTED on the arm64 slice, so it MUST be scoped to the x86_64 slice with Clang's -Xarch_x86_64.
-# The arm64 slice needs no x86 flag — it uses sse2neon -> NEON. (uname/-march can't gate this: the
-# host runner is arm64 but the x86_64 slice is compiled too — only -Xarch_x86_64 targets one slice.)
-ifdef ARCH_MAC
-  SIMD_SSE_FLAGS := -Xarch_x86_64 -msse4.1
-else
-  SIMD_SSE_FLAGS := -msse4.1
-endif
-$(BUILD)/src/dsp/engines/PatternEngine.cpp.o:        CXXFLAGS += $(SIMD_SSE_FLAGS)
-$(BUILD)/src/Monsoon.cpp.o:                          CXXFLAGS += $(SIMD_SSE_FLAGS)
-$(BUILD)/src/dsp/managers/MonsoonExpanderManager.cpp.o: CXXFLAGS += $(SIMD_SSE_FLAGS)  # includes ChangeAlleyTransforms.hpp -> PhiloxRng
+
+# NOTE on SIMD Philox + SSE4.1: the x86_64 slice gets SSE4.1 from Rack's own
+# -march=nehalem (compile.mk, ARCH_X64) — Nehalem includes SSE4.1/4.2 — so NO
+# extra -msse4.1 is needed in the plugin build. The arm64 slice uses sse2neon ->
+# NEON (no x86 flag). (-Xarch_x86_64 is NOT usable here: Rack builds each arch as
+# a SEPARATE invocation, not one dual-arch command.)
