@@ -753,6 +753,7 @@ struct SequencerEngine {
                 voices[i + 1].participating = false;
             }
         }
+        pe.syncPolyVoiceCount();  // Voice-count opt: fill delta voices' z in cache on increase
         prevNumPolyVoices_ = numPolyVoices;
     }
     StepResult executeStep(int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);

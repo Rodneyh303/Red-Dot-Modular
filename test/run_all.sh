@@ -74,6 +74,8 @@ TESTS=(
   "test_fractional_tail|"
   "test_lane_direction|"
   "test_lane_bitcompare|$SE $GS $PE"
+  "test_voice_count_partial|$PE"
+  "test_sse2neon_compat|"   # header-only: SIMD compat layer (sse2neon on arm64)
   "test_simd_compat|"   # header-only: SIMD compat layer (SIMDe on arm64)
   "test_lane_types|"
   "test_legato_leading_edge|"
