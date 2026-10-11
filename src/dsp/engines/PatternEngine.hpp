@@ -797,6 +797,49 @@ struct PatternEngine {
     mutable std::unordered_map<int64_t, CachedRhythmDraw> rhythmDrawCache_;
     mutable std::unordered_map<int64_t, CachedMelodyDraw> melodyDrawCache_;
     mutable std::unordered_map<int64_t, CachedQmixDraw>   qmixDrawCache_;
+    // Voice-count opt: track the hint used at cache-fill time. On poly count INCREASE,
+    // existing cache entries are missing z values for the delta voices — fillDeltaZ_
+    // retroactively computes PhiInv for them (pure fn of draw → just evaluate it).
+    mutable int prevNumPolyVoicesHint_ = 0;
+    void fillDeltaZ_(int oldCount, int newCount) {
+        if (newCount <= oldCount) return;
+        newCount = std::min(newCount, 15);
+        for (auto& kv : rhythmDrawCache_) {
+            auto& e = kv.second;
+            for (int v = oldCount; v < newCount; ++v)
+                for (int i = 0; i < 16; ++i) {
+                    e.zPolyRhythm[v][i] = redDot::copula::PhiInv(e.draw.polyRhythm[v][i]);
+                    e.zPolyAccent[v][i] = redDot::copula::PhiInv(e.draw.polyAccent[v][i]);
+                    e.zPolyVariation[v][i] = redDot::copula::PhiInv(e.draw.polyVariation[v][i]);
+                    e.zPolyLegato[v][i] = redDot::copula::PhiInv(e.draw.polyLegato[v][i]);
+                }
+        }
+        for (auto& kv : melodyDrawCache_) {
+            auto& e = kv.second;
+            for (int v = oldCount; v < newCount; ++v)
+                for (int i = 0; i < 16; ++i) {
+                    e.zPolyMelody[v][i] = redDot::copula::PhiInv(e.draw.polyMelody[v][i]);
+                    e.zPolyOctave[v][i] = redDot::copula::PhiInv(e.draw.polyOctave[v][i]);
+                }
+        }
+        for (auto& kv : qmixDrawCache_) {
+            auto& e = kv.second;
+            for (int v = oldCount; v < newCount; ++v)
+                for (int i = 0; i < 16; ++i)
+                    e.zPolyQmix[v][i] = redDot::copula::PhiInv(e.draw.polyQmix[v][i]);
+        }
+    }
+public:
+    // Called from SequencerEngine::resetActivatedPolyVoices_ on each step.
+    // Detects numPolyVoicesHint increase and retroactively fills delta voices' z.
+    void syncPolyVoiceCount() {
+        if (numPolyVoicesHint > prevNumPolyVoicesHint_) {
+            fillDeltaZ_(prevNumPolyVoicesHint_, numPolyVoicesHint);
+            prevNumPolyVoicesHint_ = numPolyVoicesHint;
+        } else if (numPolyVoicesHint < prevNumPolyVoicesHint_) {
+            prevNumPolyVoicesHint_ = numPolyVoicesHint;  // decrease: just track (z stays in cache, unused)
+        }
+    }
     // Returns the cached entry for `pos`, computing+inserting on miss.
     CachedRhythmDraw& cachedRhythmDraw(int64_t pos) const {
         auto it = rhythmDrawCache_.find(pos);
@@ -807,7 +850,7 @@ struct PatternEngine {
             e.zVariation[i]=redDot::copula::PhiInv(e.draw.variation[i]);
             e.zLegato[i]=redDot::copula::PhiInv(e.draw.legato[i]);
             e.zAccent[i]=redDot::copula::PhiInv(e.draw.accent[i]);
-            for(int v=0;v<15;++v){ e.zPolyRhythm[v][i]=redDot::copula::PhiInv(e.draw.polyRhythm[v][i]);
+            for(int v=0;v<numPolyVoicesHint;++v){ e.zPolyRhythm[v][i]=redDot::copula::PhiInv(e.draw.polyRhythm[v][i]);
                 e.zPolyAccent[v][i]=redDot::copula::PhiInv(e.draw.polyAccent[v][i]);
                 e.zPolyVariation[v][i]=redDot::copula::PhiInv(e.draw.polyVariation[v][i]);
                 e.zPolyLegato[v][i]=redDot::copula::PhiInv(e.draw.polyLegato[v][i]); } }
@@ -820,7 +863,7 @@ struct PatternEngine {
         rawDrawMelodyPatternAt(pos, e.draw);
         for (int i=0;i<16;++i){ e.zMelody[i]=redDot::copula::PhiInv(e.draw.melody[i]);
             e.zOctave[i]=redDot::copula::PhiInv(e.draw.octave[i]);
-            for(int v=0;v<15;++v){ e.zPolyMelody[v][i]=redDot::copula::PhiInv(e.draw.polyMelody[v][i]);
+            for(int v=0;v<numPolyVoicesHint;++v){ e.zPolyMelody[v][i]=redDot::copula::PhiInv(e.draw.polyMelody[v][i]);
                 e.zPolyOctave[v][i]=redDot::copula::PhiInv(e.draw.polyOctave[v][i]); } }
         return e;
     }
@@ -830,7 +873,7 @@ struct PatternEngine {
         CachedQmixDraw& e = qmixDrawCache_[pos];
         rawDrawQmixPatternAt(pos, e.draw);
         for (int i=0;i<16;++i){ e.zQmix[i]=redDot::copula::PhiInv(e.draw.qmix[i]);
-            for(int v=0;v<15;++v) e.zPolyQmix[v][i]=redDot::copula::PhiInv(e.draw.polyQmix[v][i]); }
+            for(int v=0;v<numPolyVoicesHint;++v) e.zPolyQmix[v][i]=redDot::copula::PhiInv(e.draw.polyQmix[v][i]); }
         return e;
     }
     // ── Phase 1: slew as a normal-space moving-average Gaussian copula ──────────
@@ -877,7 +920,7 @@ struct PatternEngine {
             out.legato[i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
             for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zAccent[i];
             out.accent[i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
-            for(int v=0;v<15;++v){
+            for(int v=0;v<numPolyVoicesHint;++v){
                 for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zPolyRhythm[v][i];
                 out.polyRhythm[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
                 for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zPolyAccent[v][i];
@@ -901,7 +944,7 @@ struct PatternEngine {
             out.melody[i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
             for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zOctave[i];
             out.octave[i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
-            for(int v=0;v<15;++v){
+            for(int v=0;v<numPolyVoicesHint;++v){
                 for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zPolyMelody[v][i];
                 out.polyMelody[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
                 for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zPolyOctave[v][i];
@@ -920,7 +963,7 @@ struct PatternEngine {
         for (int i=0;i<16;++i){
             for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zQmix[i];
             out.qmix[i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
-            for(int v=0;v<15;++v){
+            for(int v=0;v<numPolyVoicesHint;++v){
                 for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zPolyQmix[v][i];
                 out.polyQmix[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
             }
