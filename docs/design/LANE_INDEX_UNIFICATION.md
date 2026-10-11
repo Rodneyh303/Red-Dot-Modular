@@ -93,3 +93,17 @@ findable, bounded set. Not a semantic minefield.
 Good "do it on the momentum" candidate after the Straits finish: kills the 2nd recurring bug class
 (EL2ENG crosswires), lower-risk than V1 (mechanical + bit-verifiable), and ENABLES the 4x Philox
 stream-contiguous batching. Main prep is the order-dependent list above.
+
+
+## Origin — the lane debt is an ACCRETION debt (same shape as mono) (Rodney)
+Like the V1/mono debt, the lane-index debt is the fossil record of incremental growth, not a mistake:
+- Started with a small set of lanes in the engine PL_* order (rhythm/melody + a few).
+- Then lanes were ADDED incrementally as the instrument gained expressive dimensions — ACCENT, then
+  poly VARIATION + LEGATO, then QMIX — each slotted into the engine enum where convenient at the time.
+- Meanwhile the EDITOR/visual order was arranged for UX.
+So the two orders diverged by ACCRETION (each new lane added to the engine order without re-aligning to
+the visual order), and EL2ENG papered over the growing mismatch -> the debt. Same pattern as mono: a
+sensible early structure outgrown by incremental additions, bridged by conversion code that became debt.
+Clearing it (one visual-order index) = aligning the code with what the instrument grew into. The lanes
+themselves (accent/var/leg/qmix) are each a capability the instrument gained over time — the debt is
+literally the trace of it maturing.
