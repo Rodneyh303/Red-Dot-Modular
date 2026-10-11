@@ -55,3 +55,27 @@ can OPTIONALLY be SIMD'd for extra headroom:
 Decomposition FIRST (audio per-step-when-read + visual video-rate-displayed-page), one piece at a time,
 build + bit-compare + reversibility test + commit + PUSH, watch CI (3 platforms), measure CPU. THEN,
 optionally, SIMD the sumZ as the cherry.
+
+---
+
+## MIX is bad too — same problem, same rate fix (Rodney)
+"Mix" is TWO things; both are slow CHARACTER controls that don't need audio/control-rate modulation ->
+same rate principle as slew:
+1. **Scrub/blend MIX (rhythmMix/melodyMix/qmixMix):** shares the SAME recompute path as slew — the gate
+   checks `MixLatched != MixApplied || SlewLatched != SlewApplied` (PatternEngine.cpp:501+). So modulating
+   this mix triggers the same recomputeEffective* -> the DECOMPOSITION ABOVE ALREADY FIXES IT (per-step
+   audio + video-rate visual). No extra work.
+2. **SPREAD / correlation (mix2 / combineSpread / polySpreadEffective):** a SEPARATE path — runs
+   per-voice x per-lane in the MANAGER sync (MonsoonExpanderManager combineSpread loop, lines 426-521,
+   one mix2 per voice per lane REST/MELODY/OCTAVE/ACCENT/QMIX). If modulating the SPREAD knob is the
+   expensive one, it's THIS path, and it needs the SAME treatment:
+   - Recompute combineSpread / polySpreadEffective at CONTROL/VIDEO rate (not per-sample), and ONLY for
+     ACTIVE voices (voice-opt helps the cross-voice cost directly — fewer voices = fewer mix2 calls).
+   - Spread is a character control; modulating it doesn't need per-sample response.
+
+### DIAGNOSE which mix is the culprit (differential — toggle separately)
+Modulate the SCRUB/BLEND mix alone vs the SPREAD/correlation knob alone, watch the VCV CPU meter:
+- scrub/blend mix spikes -> it's path (1), fixed by the decomposition.
+- spread knob spikes -> it's path (2), the combineSpread manager loop — apply the same rate + active-voices
+  treatment there.
+Likely both; both get the consumption-aligned rate fix. Rate IS the answer for mix, same as slew.
