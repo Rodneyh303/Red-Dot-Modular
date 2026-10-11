@@ -103,7 +103,7 @@ void SequencerEngine::reset() {
         macroLaneSign_[s] = 1;
         macroLaneDir_[s] = LaneDir::Forward;
         macroPingPongHold_[s] = false;
-        for (int v = 0; v < 15; ++v) {
+        for (int v = 0; v < numPolyVoices; ++v) {
             laneTickV_[v][s] = 0;   // per-voice tick: reset (inherits mono dir)
             laneSignV_[v][s] = 1;   // CRITICAL: must be +1, not 0 — -0 == 0 in integer
                                     // arithmetic, so a bounce flip on 0 is a no-op (the
@@ -186,7 +186,7 @@ bool SequencerEngine::advancePlayhead(int dir) {
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             if (!dirLive_(l)) continue;   // this strand's direction stays latched
             laneDir_[l] = laneDirPending_[l];
-            for (int v = 0; v < 15; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
+            for (int v = 0; v < numPolyVoices; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
         }
     }
 
@@ -245,7 +245,7 @@ bool SequencerEngine::advancePlayhead(int dir) {
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             const int len = std::max(1, strandLen(l));   // mono strand length (mono tick)
             recomp(laneDir_[l], len, laneTick_[l], laneSign_[l]);
-            for (int v = 0; v < 15; ++v) {
+            for (int v = 0; v < numPolyVoices; ++v) {
                 const int vlen = std::max(1, polyStrandLen(v, l));   // THIS voice's LOR length
                 recomp(laneDirV_[v][l], vlen, laneTickV_[v][l], laneSignV_[v][l]);
             }
@@ -303,7 +303,7 @@ bool SequencerEngine::advancePlayhead(int dir) {
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             if (!dirLive_(l)) continue;
             laneDir_[l] = laneDirPending_[l];
-            for (int v = 0; v < 15; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
+            for (int v = 0; v < numPolyVoices; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
         }
 
     return wrapped;
@@ -339,7 +339,7 @@ void SequencerEngine::recomputeLaneTicks() {
     for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
         const int len = std::max(1, strandLen(l));
         recomp(laneDir_[l], len, laneTick_[l], laneSign_[l]);
-        for (int v = 0; v < 15; ++v) {
+        for (int v = 0; v < numPolyVoices; ++v) {
             const int vlen = std::max(1, polyStrandLen(v, l));
             recomp(laneDirV_[v][l], vlen, laneTickV_[v][l], laneSignV_[v][l]);
         }
