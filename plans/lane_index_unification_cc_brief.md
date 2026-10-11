@@ -93,3 +93,48 @@ ACCENT=4):
    result. It would have caught the two maps above — so run it now and chase any remaining diff.
 4. **EL2ENG kept as identity (35 refs):** acceptable only if toEngine is genuinely identity now. CONFIRM,
    and prefer DELETING it (per the brief) so the conversion machinery is gone, not just defused.
+
+---
+
+# ===> NEXT WORK: PHILOX EFFICIENCY (lane-index is DONE + merged) <===
+Lane-index unification is complete and merged to lane-expander-refactor. Now do the Philox efficiency
+work. FULL SPEC: plans/philox_efficiency_cc_brief.md — read it. Summary prompt below.
+
+## Do STEP A then STEP B, as SEPARATE commits, build + bit-compare + PUSH each.
+
+### STEP A — 4x Philox output batching (bit-identical, do first)
+`rawDraw{Rhythm,Melody,Qmix}PatternAt` (PatternEngine.hpp ~734) call `philoxXAt(pos, c++)` ~1024x/step;
+each `atUniform(x)=block(x>>2)[x&3]` RECOMPUTES the Philox block and uses 1 of 4 outputs -> 75% waste.
+`c` is CONSECUTIVE. Fix: batch via the existing `fillBlock(base, out, n)` (PhiloxRng.hpp:174) — compute
+each block ONCE, use all 4 outputs — into a scratch buffer, then scatter into the draw fields in the same
+order. ~4x fewer Philox blocks. **BIT-IDENTICAL** -> the bit-compare MUST pass (test_lane_bitcompare +
+any full seed->output compare). Commit A alone.
+
+### STEP B — SIMD Philox (bit-identical, separate commit)
+Vectorize philox4x32_10 across 4 (SSE) consecutive block positions, fed from A's batched access.
+- **Intrinsics: Option B — raw __m128i** for the kernel (mul/shift/shuffle/blend). rack::simd int32_4
+  lacks int multiply/shuffle/blend, so raw intrinsics are required. Option C (float decomposition) is
+  FORBIDDEN — not bit-identical.
+- **Include via the vendored compat layer:** `#include "third_party/sse2neon/simd_compat.hpp"` (already
+  in the repo, MIT). It gives native SSE on x86 and sse2neon->NEON on arm64, and defines `SIMD_HAVE_SSE`.
+- **Gate the SIMD kernel: `#if defined(SIMD_HAVE_SSE)` SSE/NEON path `#else` existing SCALAR Philox.**
+  This is REQUIRED: without it, non-SSE arches don't compile. With simd_compat.hpp, SIMD_HAVE_SSE is set
+  on BOTH x86 (native) AND arm64 (sse2neon) — so the SIMD path compiles+runs on all 3 CI platforms
+  (x86 native on Win/Lin, sse2neon->NEON on the arm64 Mac slice).
+- **Still BIT-IDENTICAL** (same algorithm in parallel lanes; Philox is integer -> bit-exact across
+  SSE/NEON). The bit-compare MUST pass on ALL 3 platforms. Commit B separately.
+- Measure the x86 speedup (expect ~4-8x on block gen, ~16-32x combined with A).
+
+## NOTE — sse2neon is vendored + its compat test is on CI
+`test/test_sse2neon_compat.cpp` already proves `_mm_mul_epu32` (the core Philox 32x32->64 mul) is
+bit-exact via sse2neon on arm64. CONFIRM the Mac CI job for that test is GREEN before relying on the
+arm64 path for Step B. (Linux already passed; Mac was building.)
+
+## Method (same as always)
+One step at a time; build + run test suite + BIT-COMPARE PASS + commit + PUSH each. No diagnostic logging.
+Watch CI on all 3 platforms (B is new intrinsic code — most platform-sensitive; the #ifdef gate +
+simd_compat.hpp are what make it compile everywhere). Report the bit-compare result + the measured speedup.
+
+## OUT OF SCOPE
+LUT-SIMD (deferred — only if a fast CV offset-scrub at 32 steps still stutters after A+B; measure first).
+Nonce (dropped). 32 steps / reverse-mode / seed-offset (later steps).
