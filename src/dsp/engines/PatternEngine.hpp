@@ -780,17 +780,17 @@ struct PatternEngine {
     // session's walk — accepted per the chosen design (pure-fn-of-pos, hit under scrub/reverse).
     struct CachedRhythmDraw {
         RhythmDraw draw;
-        double zRhythm[16], zVariation[16], zLegato[16], zAccent[16];
-        double zPolyRhythm[15][16], zPolyAccent[15][16];
-        double zPolyVariation[15][16], zPolyLegato[15][16];
+        double zRhythm[16]={}, zVariation[16]={}, zLegato[16]={}, zAccent[16]={};
+        double zPolyRhythm[15][16]={}, zPolyAccent[15][16]={};
+        double zPolyVariation[15][16]={}, zPolyLegato[15][16]={};
     };
     struct CachedMelodyDraw {
         MelodyDraw draw;
-        double zMelody[16], zOctave[16], zPolyMelody[15][16], zPolyOctave[15][16];
+        double zMelody[16]={}, zOctave[16]={}, zPolyMelody[15][16]={}, zPolyOctave[15][16]={};
     };
     struct CachedQmixDraw {
         QmixDraw draw;
-        double zQmix[16], zPolyQmix[15][16];
+        double zQmix[16]={}, zPolyQmix[15][16]={};
     };
     // mutable: patternXAt is const (read from const engine refs in places) but the cache is a
     // pure-fn-of-pos memo (no observable state change) — so const-correctness is preserved.
