@@ -492,22 +492,25 @@ void PatternEngine::latchMix(float rhythmMix, float melodyMix, float qmixMix,
     // false) does NOT re-latch its mix/slew and does NOT recompute — its latched value + effective
     // pattern hold from before the lock. The two streams are fully independent here, so a per-axis
     // A/B scope freeze is exact (no combined coupling). Default true/true = latch both (unlocked).
+    // Rate-limit: gate the modulated-slew recompute to control rate (~1.4kHz). Latch always happens;
+    // recompute only when the divider fires OR slewApplied is -1 (forced from redraw).
+    const bool gate = recomputeGate_();
     if (applyRhythm) {
         rhythmMixLatched  = rhythmMix;
         rhythmSlewLatched = rhythmSlew;
-        if (rhythmMixLatched != rhythmMixApplied || rhythmSlewLatched != rhythmSlewApplied)
+        if (gate && (rhythmMixLatched != rhythmMixApplied || rhythmSlewLatched != rhythmSlewApplied))
             recomputeEffectiveRhythm();
     }
     if (applyMelody) {
         melodyMixLatched  = melodyMix;
         melodySlewLatched = melodySlew;
-        if (melodyMixLatched != melodyMixApplied || melodySlewLatched != melodySlewApplied)
+        if (gate && (melodyMixLatched != melodyMixApplied || melodySlewLatched != melodySlewApplied))
             recomputeEffectiveMelody();
     }
     if (applyQmix) {
         qmixMixLatched  = qmixMix;
         qmixSlewLatched = qmixSlew;
-        if (qmixMixLatched != qmixMixApplied || qmixSlewLatched != qmixSlewApplied)
+        if (gate && (qmixMixLatched != qmixMixApplied || qmixSlewLatched != qmixSlewApplied))
             recomputeEffectiveQmix();
     }
 }
@@ -523,16 +526,22 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     // counter now read identically). Cheap: it's just the window blend.
     // Recompute ONLY when this stream's scrub inputs changed since the last recompute (mix, slew,
     // or counter). Avoids re-deriving the full K-window every ~90Hz refresh when nothing moved.
+    // Rate-limit: same control-rate gate as latchMix. Counter-advance (redraw)
+    // already forces recompute via slewApplied=-1, so the gate only affects
+    // modulated-slew recompute here.
     {
-        const float rSlew = rack::math::clamp(rhythmSlewLatched, -1.f, 1.f);
-        if (rhythmMixLatched != rhythmMixApplied || rSlew != rhythmSlewApplied || rhythmDrawCtr != rhythmCtrApplied)
-            recomputeEffectiveRhythm();
-        const float mSlew = rack::math::clamp(melodySlewLatched, -1.f, 1.f);
-        if (melodyMixLatched != melodyMixApplied || mSlew != melodySlewApplied || melodyDrawCtr != melodyCtrApplied)
-            recomputeEffectiveMelody();
-        const float qSlew = rack::math::clamp(qmixSlewLatched, -1.f, 1.f);
-        if (qmixMixLatched != qmixMixApplied || qSlew != qmixSlewApplied || qmixDrawCtr != qmixCtrApplied)
-            recomputeEffectiveQmix();
+        const bool gate = recomputeGate_();
+        if (gate) {
+            const float rSlew = rack::math::clamp(rhythmSlewLatched, -1.f, 1.f);
+            if (rhythmMixLatched != rhythmMixApplied || rSlew != rhythmSlewApplied || rhythmDrawCtr != rhythmCtrApplied)
+                recomputeEffectiveRhythm();
+            const float mSlew = rack::math::clamp(melodySlewLatched, -1.f, 1.f);
+            if (melodyMixLatched != melodyMixApplied || mSlew != melodySlewApplied || melodyDrawCtr != melodyCtrApplied)
+                recomputeEffectiveMelody();
+            const float qSlew = rack::math::clamp(qmixSlewLatched, -1.f, 1.f);
+            if (qmixMixLatched != qmixMixApplied || qSlew != qmixSlewApplied || qmixDrawCtr != qmixCtrApplied)
+                recomputeEffectiveQmix();
+        }
     }
     for (int i = 0; i < 16; ++i) {
         rhythmPattern[i] = (rhythmRandom[i] >= in.restProb);

@@ -493,6 +493,17 @@ struct PatternEngine {
     // Active poly voice count mirrored from SequencerEngine (for Sands display
     // ensemble sizing — the audio path uses SequencerEngine::numPolyVoices).
     int   numPolyVoicesHint = 0;
+    // Rate-limit: gate modulated-slew recompute to control rate (every N process
+    // blocks). Fixed slew is already cached (no recompute); modulated slew changes
+    // every frame → full recompute every frame. This divider drops it to ~1.4kHz
+    // (32 samples at 44.1kHz) — perceptually identical, ~32× cheaper.
+    // Forced recompute (slewApplied=-1 from redraw) bypasses the gate.
+    int   recomputeDivider_ = 0;
+    static constexpr int RECOMPUTE_DIV = 32;  // ~1.4kHz at 44.1kHz
+    bool recomputeGate_() {
+        if (++recomputeDivider_ >= RECOMPUTE_DIV) { recomputeDivider_ = 0; return true; }
+        return false;
+    }
 
     // ── Source DNA Cache (Original draws before rotation/scramble) ───────────
     float rhythmSource[16]    = {};
