@@ -114,3 +114,35 @@ EASES over its own depth at the turnaround, then retraces the forward material E
 Verdict: good, defensible, understandable — strengthened by being DERIVED (moving-average behaviour),
 ONE KNOB (instant..sweeping incl. hard-reverse at min), and GRACEFUL under the hardest case (rapid
 multi-reverse in phase mode).
+---
+
+## LUT-SIMD — examined, NOT worth it in our context; scalar interpolated LUT is the sweet spot (Rodney)
+Examined two candidate SIMD approaches for the copula transcendentals (Phi / PhiInv):
+1. **Vectorized POLYNOMIAL** (A&S erf CDF ~1e-7; Beasley-Springer-Moro PPF). REJECTED:
+   - Breaks REVERSIBILITY — Phi and PhiInv are INDEPENDENT approximations, so PhiInv(Phi(x)) != x
+     bit-exactly. Our requirement is reversible ROUND-TRIP (determinism), not accuracy-to-true-Gaussian.
+   - Uses libmvec (_ZGVdN8v_expf/logf) — GCC/glibc/Linux ONLY (fails Mac/Windows link).
+   - Uses FMA — contracts differently per platform (violates our -ffp-contract=off cross-platform rule).
+2. **Gather-based SIMD LUT** (forward = 1 gather; inverse = 12-gather vectorized binary search). REJECTED:
+   - GATHER-BOUND: gather is SIMD's weak spot (serialized/high-latency); the 12-gather inverse is likely
+     marginal/negative vs our 1 interpolated scalar lookup.
+   - LOWER accuracy — nearest-index, NO interpolation (ours interpolates -> smoother).
+   - NO arm64 benefit — NEON has no _mm256_i32gather equivalent; SIMDe emulates gather as scalar loads.
+
+### Is efficient LUT-SIMD possible AT ALL? Yes, but it sacrifices what we need
+- In-register small table + shuffle (permutevar / vqtbl) OR bit-trick + polynomial — these AVOID gather
+  and are genuinely fast. BUT they are APPROXIMATIONS with polynomial correction -> don't round-trip
+  bit-exact -> break reversibility (same problem as the polynomial).
+- The ONLY efficient + reversible SIMD LUT = the SAME small register-table both ways (shuffle, round-trip
+  exact). But a small (16-32 entry) table is COARSE -> spread/correlation quantized to few levels ->
+  likely sounds STEPPED. Our interpolation is what gives smooth output from a manageable table — and
+  interpolation is exactly what reintroduces round-trip inexactness.
+
+### Conclusion
+Our scalar INTERPOLATED LUT sits at a sweet spot the SIMD versions can't hit: FINE-grained + INTERPOLATED
+(smooth) + DETERMINISTIC + REVERSIBLE + cheap-enough scalar. Every efficient SIMD-LUT technique sacrifices
+either reversibility (poly) or fineness (coarse register table); the fine+reversible SIMD LUT is
+gather-bound (slow). So: **we can't further optimise our LUT in the current context** — the SIMD win is
+the INTEGER PHILOX (done); the transcendental LUT is CORRECTLY scalar.
+Revisit ONLY if profiling (post-16x) shows the readout is the bottleneck AND a coarser register-table
+tests musically acceptable (not stepped). Until then, closed.
