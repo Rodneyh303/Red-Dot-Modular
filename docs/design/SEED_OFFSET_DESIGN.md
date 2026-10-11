@@ -415,6 +415,22 @@ A dedicated digital (screen-based) expander that shows + controls the counter/of
   VISIBLE + tangible — a feature AND a demonstration of the addressable-counter design.
 - Fits the expander ecosystem (lane-expander / interconnection infra, see MODULE_INTERCONNECTION_WORK.md)
   — another expander in the family, inheriting discovery/connection/owner.
-- Host: MONSOON (where the counter lives) or RAFFLES (modelMonsoonRafflesExpander exists) — TBD.
 - Digital form is natural: the counter is a number/position, best shown as a readout + scrub visual
   (filmstrip of nearby patterns, per the UI options).
+
+### HOST: MONSOON primary (room likely there now) — core on Monsoon, rich nav optional expander (Rodney)
+Monsoon likely HAS ROOM now, and it's the RIGHT host, not just available:
+- Room opened up BY the consolidation + expander-offloading: V1=voice-0 (no mono-special UI), and
+  capability moved OFF Monsoon onto expanders (Sands probability, Straits per-voice incl. octave offset,
+  Causeway/Junction CV-mod, lane expanders). The discipline that kept Monsoon uncrowded now leaves space.
+- The counter is GLOBAL ENGINE STATE — the single master read position all voices share ("gate drives
+  the single master step"). Unlike per-voice/per-lane stuff (correctly on expanders), global engine state
+  belongs ON THE ENGINE (Monsoon), not an expander ("the counter, over there").
+- Proof-of-concept wants to be SEEN: on Monsoon it's visible by default (no expander required) — better
+  discoverability + demonstration.
+**Split (mirrors the suite pattern — core on main module, extended on expanders):**
+- **Counter display + basic scrub -> MONSOON** (always-visible: current position + scrub knob; the proof).
+- **Rich navigation (bookmarks, fine/numeric entry, musical detents) -> optional COUNTER EXPANDER** for
+  power users (the full surface from the OPEN UI QUESTION).
+So the counter feature doesn't REQUIRE an extra module to use (discoverable on Monsoon), and the expander
+adds power-user navigation if wanted. (Raffles was the earlier fallback; Monsoon-primary supersedes it.)
