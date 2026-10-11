@@ -109,3 +109,19 @@ RUNTIME bit-compare coverage (the runner EXECUTES arm64, since macos-latest is A
 - Both produce identical Philox outputs -> both pass. So one Mac build + the Win/Lin builds together
   exercise BOTH the SSE path and the scalar fallback. Comprehensive.
 (When you later add a NEON arm64 path, IT would then run+bit-compare on the Mac runner instead of scalar.)
+### arm64-Mac speedup path (if the scalar fallback isn't enough) — sse2neon, NOT hand-written NEON
+Scalar fallback FIRST (above) — correct, bit-identical, zero portability code. THEN, only if arm64-Mac
+performance needs it:
+- **Use sse2neon** (header-only, MIT, battle-tested): translates SSE intrinsics -> ARM NEON at compile
+  time. Write the Philox kernel ONCE in SSE; on arm64 `#include "sse2neon.h"` and the SAME code compiles
+  to NEON. One codebase, both archs. Likely BIT-IDENTICAL because Philox is INTEGER-only (mul/xor/add/
+  shift/shuffle/blend) and integer SIMD is deterministic across x86-SSE and arm64-NEON (unlike float).
+  VERIFY via the existing bit-compare (CI runs arm64 on the Mac runner -> it would then run the NEON path
+  and bit-compare it).
+- Do NOT hand-write a separate NEON kernel (double the code + maintenance) unless sse2neon's mapping
+  proves inadequate for this kernel — unlikely.
+- **But measure FIRST:** Apple Silicon has excellent SCALAR IPC, and Philox-after-the-4x-batching is
+  already much cheaper. The scalar fallback on arm64-Mac may be perfectly fine. Only reach for sse2neon
+  if a fast CV offset-scrub at 32 steps actually stutters on Apple Silicon.
+Order for arm64-Mac: scalar (free, now) -> measure -> sse2neon (one header, if needed) -> hand NEON
+(only if sse2neon inadequate, probably never).
