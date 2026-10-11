@@ -20,6 +20,9 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 cd "$root"
 
+# python for the anchor/bind audit: python3 (Linux/macOS) or python (MSYS2/Windows)
+PYBIN="$(command -v python3 || command -v python || echo python3)"
+
 INCS="-Itest -Isrc -Isrc/tuning -Isrc/dsp -Isrc/dsp/engines -Isrc/dsp/gates -Isrc/dsp/managers -Isrc/ui"
 # SIMDe (for the SIMD Philox compat test) lives in the Rack SDK's dep/include.
 # Add it when RACK_DIR is set (CI sets it); tests not needing SIMDe are unaffected.
@@ -143,7 +146,7 @@ echo "suites: $((pass+fail))  passed: $pass  failed: $fail  (test_MeloDicer excl
 audit_fail=0
 if [ -z "$filter" ] || [[ "audit" == *"$filter"* ]]; then
   echo "anchor/bind audit:"
-  if ! python3 "$here/audit_anchor_bind.py"; then
+  if ! "$PYBIN" "$here/audit_anchor_bind.py"; then
     audit_fail=1
   fi
   echo "-----"
