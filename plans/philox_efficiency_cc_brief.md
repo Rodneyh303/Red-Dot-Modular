@@ -94,3 +94,18 @@ is fast, may not need NEON.)
 - B compiles on all 3 (watch Mac especially — the #ifdef gate is what makes it compile on arm64).
 - Measure the x86 speedup (expect ~4-8x on block gen on top of step A's 4x).
 - Keep A and B separate commits.
+
+
+### GitHub Mac CI builds BOTH slices (x64 + arm64) — confirmed
+The macOS CI uses the `mac-x64+arm64` SDK on `macos-latest` (which is now an ARM64 / Apple Silicon runner)
+and builds a UNIVERSAL binary — it compiles BOTH the x86_64 slice AND the arm64 slice. So:
+- x86_64 slice: `__SSE4_1__` defined -> compiles the SSE Philox kernel.
+- arm64 slice: `__SSE4_1__` NOT defined -> compiles the SCALAR fallback.
+=> If you write SSE-only Philox (no gate), the arm64 slice FAILS TO COMPILE and Mac CI blocks it. The
+`#if defined(__SSE4_1__)` gate is what lets BOTH slices compile. CI catches a missing gate immediately.
+RUNTIME bit-compare coverage (the runner EXECUTES arm64, since macos-latest is Apple Silicon):
+- SSE path is RUN + bit-compared on the WINDOWS + LINUX runners (x86).
+- scalar path is RUN + bit-compared on the MAC runner (arm64).
+- Both produce identical Philox outputs -> both pass. So one Mac build + the Win/Lin builds together
+  exercise BOTH the SSE path and the scalar fallback. Comprehensive.
+(When you later add a NEON arm64 path, IT would then run+bit-compare on the Mac runner instead of scalar.)
