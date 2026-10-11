@@ -132,3 +132,23 @@ EASIER NOW after the poly-voice addressing debt (V1->voice-0) is fixed: voices a
 no mono special path), so "0..activeCount" means the same thing everywhere — no V1-exception to special-
 case in the bound. (Pre-unification, a loop might have been 0..15 poly + a separate mono path; now it's
 one uniform 0..activeCount.)
+
+### AUDIT (done) — current per-voice loop bounds, voice-opt task scoped
+Grepped the hot engine files. Mixed:
+- **Already active-count-bound (7 loops):** Monsoon.cpp:1278 (numPolyVoices), ExpanderManager:239/700
+  (effPolyVoices), + the Phase-B regen-on-increase at SequencerEngine.hpp:745
+  (for i=prevNumPolyVoices_; i<numPolyVoices) with prevNumPolyVoices_ tracking. So the voice-count-CHANGE
+  infrastructure EXISTS (Phase B partly done).
+- **Hardcoded < 15 (17 loops):** SequencerEngine.cpp:106/189/248/306/342; ExpanderManager:84/99/143; etc.
+  These process all 15 poly voices regardless of active count = the waste to fix.
+- **Per-LANE loops < 7 (ExpanderManager:567/579/598/607):** NOT per-voice (7 lanes) — LEAVE ALONE.
+
+TASK (mechanical, bounded): review the ~17 `< 15` loops, classify each:
+- DRAW-generation loop -> KEEP all-voices (multivariate + cheap). Don't gate.
+- DOWNSTREAM-processing loop (spread apply, readout, output, display) -> GATE to numPolyVoices.
+- (per-lane < 7 -> ignore.)
+Must be CONSISTENT across ALL downstream stages (if spread gates but output doesn't, inactive voices
+still cost). Change-handling (Phase B regen, prevNumPolyVoices) already there; remaining = cap processing loops.
+
+CONFIRMED easier post V1->voice-0: loops now uniform `< 15` (voices 0..14, V1=voice 0 elsewhere), NOT
+"0..14 poly + separate mono path" -> gating to numPolyVoices means the SAME everywhere, no V1-exception.
