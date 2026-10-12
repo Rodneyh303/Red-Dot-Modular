@@ -315,3 +315,122 @@ knob. This is the hybrid's power without the hybrid's awkwardness.
   before building the reach. The knob covers the proven case (canon = small, fine).
 Net: +-32 fine knob now; CV-with-selectable-scaling as the reach answer, added once distant-region
 navigation proves musically worthwhile.
+
+---
+
+## UX: "turn it and watch Sands change" — the offset as a live, reversible pattern-scrubber (Rodney)
+How to make the offset COOL (the mechanism is scoped above; this is the experience). Model it on the
+SLEW knob: turn it and watch Sands update live. No separate explorer UI — SANDS ITSELF is the map.
+- Turning the offset moves to a different draw position -> ALL the bars reshuffle (new draws). Turn right
+  to sweep through new patterns; turn LEFT to return EXACTLY to patterns you passed (reversible — every
+  position is fixed/addressable). So it's a continuous, REVERSIBLE pattern-scrubber: "re-roll you can
+  undo by turning back." A random re-roll can't do this; the addressable/reversible design can.
+- CV input (already in the design): patch an LFO/ramp -> the pattern auto-scrubs continuously (Sands bars
+  endlessly, smoothly reshuffling). Manual = explore by hand; CV = performable/automatable auto-scrub.
+- Dissolves the "uniform space is featureless" worry: raw Philox is statistically uniform, but what you
+  SEE on Sands at each offset is a SPECIFIC concrete bar pattern that visibly differs position-to-position
+  -> navigable by eye. Sands is the terrain; the knob moves you through it.
+
+### Display cost — show SLEWED live (symmetric with slew), raw-while-moving as fallback
+- Showing the SLEWED (post-copula) bars while scrubbing is the ideal (you see what you'll HEAR). It's the
+  SAME control-rate readout (applyZ over memoised z) the SLEW knob already does every frame — the offset
+  is just another control-rate input to it. By SYMMETRY: if slew-while-turning is affordable (it is,
+  post perf-fix ~130-250ns), offset-while-turning is too (same readout, different input).
+- FALLBACK if the full-grid slewed recompute at 32 steps + deep slew exceeds the per-frame budget: show
+  RAW bars while the knob is MOVING (cheap, memoised), do one SLEWED readout when it SETTLES
+  ("coarse-while-dragging, accurate-on-release"). Measure the 32-step worst case to decide.
+
+### This may TIP the balance for SIMD Philox
+Offset-scrub is a NEW load pattern that stresses RAW-DRAW generation: fast/far scrub (esp. CV-driven)
+sweeps through UNCACHED positions, generating many draws quickly — AND 2x at 32 steps. Same class as the
+reverse-mode TURNAROUND burst. So the offset-scrub joins reverse-mode as a SECOND concrete SIMD-demanding
+case — making SIMD justified by a WANTED feature, not speculation.
+- Order: the 4x fillBlock/drawBlock batching (step 4) is tried FIRST (free; may suffice -> fast scrub
+  fits budget). If a fast CV-driven offset sweep at 32 steps + deep slew STILL stutters after the 4x,
+  SIMD closes the gap.
+- Concrete SIMD-decision TEST: "does a fast CV-driven offset sweep at 32 steps stay smooth?" Before the
+  offset-scrub, normal play always fit the budget so there was no test; now there is a real, demanding,
+  wanted use case to measure against.
+
+---
+
+## OPEN UI QUESTION — "get the offset counter exactly" (log; discuss later, Rodney)
+Perf budget is there: the 4x batching funds 32 steps + bidirectional buffer; the 4x SIMD funds the
+offset-scrub load. So the mechanism + perf are covered; the open piece is the UI.
+
+The tension: ONE offset control must serve two opposed needs —
+- **Coarse SCRUB** (wide range: turn a little, sweep many counter positions; the "watch Sands change"
+  exploration).
+- **EXACT landing** (fine: hit a specific counter — to return to a found spot, or set a precise canon
+  offset between instances). A single continuous knob can't do both well.
+
+Reversibility is the asset: every offset is a FIXED addressable position, so exact return is always
+POSSIBLE (unlike a random re-roll). The UI's job is to EXPOSE the exact position and let you SET it.
+
+Options (to weigh later):
+1. Coarse knob + fine knob (or coarse + shift-drag vernier) — each does one job well.
+2. Scrub knob + NUMERIC readout/entry — knob explores, readout shows current offset (needed to navigate/
+   return), click-to-type for exact.
+3. Scrub knob + step buttons (+1/-1) or a detented encoder — coarse to near, step to exact.
+4. QUANTIZED detents — snap to MUSICAL offsets (multiples of pattern length / beat) — "exact" = canon-
+   useful values; free scrub between.
+5. CV for auto-scrub (performance) + knob for exact base (the seed-offset is CV-modulatable already).
+
+Questions to settle first:
+- (a) Primary "exact" need: ARBITRARY counter (return/bookmark) vs MUSICAL offset (canon by N steps/beats)?
+  Likely both, but which dominates shapes the default.
+- (b) READOUT almost certainly needed (show current offset) — units: raw counter or musical (patterns+steps)?
+- (c) Coarse/fine mechanism: which of 1-4.
+- (d) BOOKMARKS? mark explored spots, jump between — sidesteps read/type for the "return to a good spot" case.
+- (e) CV role: auto-scrub vs knob-for-base split.
+Likely answer: scrub knob + musical detents (canon) + numeric readout (return/bookmark) + CV auto-scrub —
+but DISCUSS. The determinism makes exact return possible; the UI makes it accessible.
+
+---
+
+## OFFSET SCRUB — integration + the counter digital expander (Rodney)
+Call it what it is: the COUNTER feature / OFFSET SCRUB. It's another aspect of the addressable-counter
+system EXPOSED, and it must INTEGRATE with slew, mix, and dice — not bolt on. (NOTE: already anticipated
+elsewhere as the "dice-scrub rework" — LOCK_QUEUE_STATUS.md, LOCK_MODE_AUDIT.md defer some lock-mode work
+until after it. Unify with that, don't duplicate.)
+
+### Integration (mostly implied by the architecture; pin the composition rules when building)
+- **Slew:** the slew MA window travels WITH the counter — scrubbing moves the read position, slew reads
+  its K-window around the current (offset) position (the bidirectional buffer / reverse turnaround is
+  part of this). Counter feeds the window position.
+- **Mix (qmix / spread-correlation readout):** applied at readout (control rate) to whatever draws the
+  current position yields. The mix doesn't MOVE with the counter (it's cross-sectional at the read point),
+  but its INPUT changes as you scrub -> readout follows the new position's draws.
+- **Dice:** ORTHOGONAL to offset. Dice = new KEY/seed stream (different material); offset = position on
+  the stream (same material, different place). Clean separation: dice -> Philox KEY, offset -> COUNTER
+  (different inputs, independent). So scrub position PERSISTS across a dice roll (it's counter; dice
+  changed the key). Pin: dice-while-scrubbed, step-back ("last draw") vs offset (both move the counter),
+  offset persistence across reseed — all compose on the SINGLE counter axis via the reversible addressing.
+
+### The COUNTER DIGITAL EXPANDER (proof + UI home)
+A dedicated digital (screen-based) expander that shows + controls the counter/offset:
+- Solves the logged "where does the offset UI go" question — its own panel for coarse/fine, numeric
+  readout, bookmarks, musical detents (see the OPEN UI QUESTION above).
+- PROOF of how it works: displaying the counter / window / scrub makes the otherwise-invisible mechanism
+  VISIBLE + tangible — a feature AND a demonstration of the addressable-counter design.
+- Fits the expander ecosystem (lane-expander / interconnection infra, see MODULE_INTERCONNECTION_WORK.md)
+  — another expander in the family, inheriting discovery/connection/owner.
+- Digital form is natural: the counter is a number/position, best shown as a readout + scrub visual
+  (filmstrip of nearby patterns, per the UI options).
+
+### HOST: MONSOON primary (room likely there now) — core on Monsoon, rich nav optional expander (Rodney)
+Monsoon likely HAS ROOM now, and it's the RIGHT host, not just available:
+- Room opened up BY the consolidation + expander-offloading: V1=voice-0 (no mono-special UI), and
+  capability moved OFF Monsoon onto expanders (Sands probability, Straits per-voice incl. octave offset,
+  Causeway/Junction CV-mod, lane expanders). The discipline that kept Monsoon uncrowded now leaves space.
+- The counter is GLOBAL ENGINE STATE — the single master read position all voices share ("gate drives
+  the single master step"). Unlike per-voice/per-lane stuff (correctly on expanders), global engine state
+  belongs ON THE ENGINE (Monsoon), not an expander ("the counter, over there").
+- Proof-of-concept wants to be SEEN: on Monsoon it's visible by default (no expander required) — better
+  discoverability + demonstration.
+**Split (mirrors the suite pattern — core on main module, extended on expanders):**
+- **Counter display + basic scrub -> MONSOON** (always-visible: current position + scrub knob; the proof).
+- **Rich navigation (bookmarks, fine/numeric entry, musical detents) -> optional COUNTER EXPANDER** for
+  power users (the full surface from the OPEN UI QUESTION).
+So the counter feature doesn't REQUIRE an extra module to use (discoverable on Monsoon), and the expander
+adds power-user navigation if wanted. (Raffles was the earlier fallback; Monsoon-primary supersedes it.)
