@@ -91,3 +91,25 @@ with endpoints (not model-consistent) — only the seeded-noise bridge is fully 
 Brownian-bridge sampling is established (Virtual Brownian Tree, Brownian Interval); the OU time-change
 wrapper is a derivation (verify by Monte Carlo: variance=1 and endpoint corrs r^f/r^(1-f) at several r,f).
 Formulas need 0 < r < 1; r<0 (anti-correlation/hocket) needs separate handling (no OU embedding) — TBD.
+
+### Noise magnitude — range of sqrt(v) across the interval
+sqrt(v) = 0 at BOTH endpoints (f=0,1 -> pinned exactly to z_A/z_B), rising SYMMETRICALLY to a MAX at the
+midpoint f=1/2:
+  sqrt(v(1/2)) = sqrt((1 - r)/(1 + r))
+So sqrt(v) ranges [0 .. sqrt((1-r)/(1+r))]. Since rho = r = the slew value:
+
+  slew r | max sqrt(v) at midpoint | meaning
+  0.0    | 1.00   | full unit noise — endpoints independent, mid-interval is a FRESH N(0,1)
+  0.5    | 0.577  | substantial injection
+  0.9    | 0.229  | small — points nearly identical
+  0.97   | 0.123  | very small (R_MAX)
+  ->1.0  | ->0    | none — endpoints perfectly correlated, middle deterministic
+
+NOISE AMPLITUDE TRACKS (1-r): lots of fresh noise at LOW slew (independent endpoints -> the scrub reveals
+NEW material between positions), vanishing at HIGH slew (near-identical endpoints -> smooth morph, almost
+pure blend). Profile vs f is a flat-topped bump (0 at ends, ~flat across the middle): e.g. r=0.5 gives
+sqrt(v)~0.5 at f=0.25/0.75, 0.577 at f=0.5.
+Implication: noise is BOUNDED (<=1, at r=0) and cheap (one sqrt of the closed form, or a 2D LUT in
+quantised (r,f)). Confirms the bridge handles r==0 correctly: mid-interval = independent N(0,1) (the RIGHT
+value, vs the old linear blend's variance-reduced wrong one). The bridge injects EXACTLY the variance the
+conditional mean is missing, scaled by endpoint independence.
