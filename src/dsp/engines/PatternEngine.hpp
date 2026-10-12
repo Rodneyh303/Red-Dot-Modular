@@ -493,6 +493,10 @@ struct PatternEngine {
     // Active poly voice count mirrored from SequencerEngine (for Sands display
     // ensemble sizing — the audio path uses SequencerEngine::numPolyVoices).
     int   numPolyVoicesHint = 0;
+    // (recomputeDivider_ / RECOMPUTE_DIV / recomputeGate_ REMOVED — slew is now consumed
+    //  at the phrase boundary only, not at control rate. The roll already calls
+    //  recomputeEffective* with the latched slew; mid-phrase slew changes are latched
+    //  but do NOT trigger recompute. See slew_phrase_boundary_cc_brief.md.)
 
     // ── Source DNA Cache (Original draws before rotation/scramble) ───────────
     float rhythmSource[16]    = {};

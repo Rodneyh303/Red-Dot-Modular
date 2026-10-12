@@ -146,3 +146,32 @@ gather-bound (slow). So: **we can't further optimise our LUT in the current cont
 the INTEGER PHILOX (done); the transcendental LUT is CORRECTLY scalar.
 Revisit ONLY if profiling (post-16x) shows the readout is the bottleneck AND a coarser register-table
 tests musically acceptable (not stepped). Until then, closed.
+
+---
+
+## CONSIDER LATER — expose K (window depth) as a user param? (Rodney)
+K = the moving-average WINDOW DEPTH (how far the slew window reaches). Slew (r) = how STRONGLY it
+correlates within the window; K = how FAR. Orthogonal smoothing controls: slew = strength, K = reach.
+Musical value: small K (4-8) = short-range/local smoothing (smooth jitter); large K (64) = long-range
+continuity (slow broad drift). A real second expressive dimension — and small K is musically DISTINCT,
+not just cheaper (so it's "cheaper AND different", not "cheaper but worse").
+
+### The open question — is exposing K an OPTIMISATION, or just how we USE the 64 buffer?
+Decide this AFTER: (1) the slew recompute DECOMPOSITION lands (per-step + video-rate), (2) the SIMD-sumZ
+cherry, (3) the buffer-rebuild cost is measured. Because:
+- The per-step sumZ cost is O(K). So smaller K = cheaper per sumZ (K=8 is 8x cheaper than K=64). IF the
+  decomposition + SIMD haven't already made slew cheap enough, exposing K is a real PERF LEVER (user
+  trades reach for CPU). IF they HAVE made it cheap enough, then K is "just how we use the 64-deep buffer"
+  — a MUSICAL param (choose your reach) with negligible perf consequence, not an optimisation.
+- So whether K is an "optimisation" or "just a musical use of the buffer" depends on the post-fix cost.
+  Measure first; the answer falls out.
+
+### Design constraints (if exposed)
+- CONFIG knob, NOT CV-modulatable — changing K changes the window structure -> full recompute storm (same
+  reason poly count isn't modulatable). Set reach, then modulate slew within it.
+- Buffer ALLOCATED for MAX K (64); K just windows over it (so no reallocation; the bidirectional buffer
+  already holds 64). This is literally "how we use the 64 buffer".
+- Scope: GLOBAL or PER-LANE (reach differs rhythm vs melody), NOT per-voice (too much config surface). TBD.
+- Range e.g. 2-64, default 64 (or a musical value); powers of 2 help the SIMD-sumZ cherry (clean widths).
+- Framing: turns a fixed internal constant (K=64) into a musical "correlation REACH" param — the temporal
+  complement to slew's strength, as spread/mix is the cross-voice correlation.

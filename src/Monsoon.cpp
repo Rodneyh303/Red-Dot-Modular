@@ -1417,8 +1417,10 @@ void Monsoon::process(const ProcessArgs& args) {
         }
 
         // ── Assignable CV3 & Raffles Modulation (Throttled) ──
-        float cv3Mods[5] = {0.f, 0.f, 0.f, 0.f, 0.f};  // 5 poly lanes: REST/MEL/QMIX/OCT/ACC
-        
+        // cv3Mods indices match ParameterManager::cv3Offsets:
+        //   0=R slew, 1=M slew, 2=R mix, 3=M mix, 4=Q slew, 5=Q mix
+        float cv3Mods[6] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+
         // 1. Main Panel CV3 (bipolar offset to selected target; was unipolar 0..5
         //    which rectified the negative half — an attenuverter implies bipolar).
         if (cachedCv3Connected) {
@@ -1427,19 +1429,32 @@ void Monsoon::process(const ProcessArgs& args) {
         }
 
         // 2. Raffles Expander (Summing bipolar attenuverted CVs)
+        //    Raffles input/param order: SLEW_R(0), SLEW_M(1), SLEW_Q(2), MIX_R(3), MIX_M(4), MIX_Q(5)
+        //    cv3Offsets order:           R slew(0), M slew(1), R mix(2), M mix(3), Q slew(4), Q mix(5)
+        //    These DIFFER from index 2 — the old linear cv3Mods[i] mapping sent SLEW_Q → Rhythm Mix
+        //    (cross-wiring qmix slew CV into rhythm mix, which triggers recomputeEffectiveRhythm at
+        //    control rate → CPU spike + rhythm bars changing). Map explicitly.
         if (expanderManager.cachedRafflesExpander) {
             rack::Module* cw = expanderManager.cachedRafflesExpander;
-            for (int i = 0; i < 4; ++i) {
+            static constexpr int rafflesToCv3[6] = {
+                0,  // SLEW_R → Rhythm slew
+                1,  // SLEW_M → Melody slew
+                4,  // SLEW_Q → Qmix slew
+                2,  // MIX_R  → Rhythm mix
+                3,  // MIX_M  → Melody mix
+                5,  // MIX_Q  → Qmix mix
+            };
+            for (int i = 0; i < 6; ++i) {
                 if (cw->inputs[RAFFLES_SLEW_R_CV + i].isConnected()) {
                     float v = cw->inputs[RAFFLES_SLEW_R_CV + i].getVoltage();
                     float att = cw->params[RAFFLES_SLEW_R_ATT + i].getValue();
-                    cv3Mods[i] += (v / 5.f) * att;
+                    cv3Mods[rafflesToCv3[i]] += (v / 5.f) * att;
                 }
             }
         }
 
         // Apply final summed offsets to ParameterManager
-        for (int i = 0; i < 5; ++i) {   // CV3 = 5 Big-5 targets (not POLY_LANES)
+        for (int i = 0; i < 6; ++i) {   // 6 slew/mix targets (R/M/Q × slew/mix)
             paramManager->setCv3Offset(i, clampv<float>(cv3Mods[i], -1.f, 1.f));
         }
     }
