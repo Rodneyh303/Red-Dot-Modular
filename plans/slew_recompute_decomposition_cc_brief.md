@@ -89,3 +89,37 @@ Modulate the SCRUB/BLEND mix alone vs the SPREAD/correlation knob alone, watch t
 - spread knob spikes -> it's path (2), the combineSpread manager loop — apply the same rate + active-voices
   treatment there.
 Likely both; both get the consumption-aligned rate fix. Rate IS the answer for mix, same as slew.
+
+---
+
+## SIMD AXIS — RECONSIDERED: horizontal (over K) likely best after all (Rodney)
+Worked through BOTH. Decision: SIMD over the K SUMMING DIMENSION (horizontal — vectorize the 64 taps of
+each sumZ), NOT vertical across voices/lanes. Reasoning (the packing reality flips it):
+
+VERTICAL (across voices/lanes) — bit-exact by construction, BUT the packing is the hard part and it's
+open-ended + weakest where we need it:
+- Voices are VARIABLE (1-16, gated) -> few-voice patches UNDERFILL the vector (N=4 fills 4/8) — i.e. worst
+  exactly in the lean multi-instance sweet spot we care about.
+- Lanes are RAGGED (qmix=1, melody=2, rhythm=4) -> don't tile 8-wide.
+- One-step-at-a-time removes steps as a packing axis.
+- To pack efficiently you must FLATTEN voice x lane AND co-design the z-cache LAYOUT so the packed
+  reductions' inputs are contiguous (else gather). Open-ended layout rework.
+
+HORIZONTAL (over K) — the one real cost is a solved discipline; everything else is trivial:
+- K = 64 is FIXED, UNIFORM, LARGE -> tiles perfectly (64/8 = 8 full AVX2 vectors), ZERO underfill, no
+  raggedness, no variable-count. Trivial, always-full packing.
+- NO data-layout co-design — each sumZ's window zw[0..63] is ALREADY contiguous -> load direct, no gather,
+  no flatten.
+- ROBUST to variable-N and ragged lanes — every sumZ is the same 64-tap reduction regardless of voice
+  count or which lane.
+- COST = deterministic reduction ORDER (SIMD sums taps in a different order than scalar). SOLVED: use a
+  FIXED strided/tree order (same every call, same every platform) — the AAD reproducible-adjoint
+  technique. Re-baseline the reversibility/1e-15 test to the SIMD order (pre-release, fine). Bit-compare
+  confirms + stays identical across platforms.
+- Horizontal-tail (one cross-lane add per reduction) is amortized over 64 taps (~10% tax), not dominant.
+
+Net: horizontal's hard part (fixed-order determinism) is BOUNDED + KNOWN; vertical's hard part (packing a
+ragged/variable space + layout co-design, underfilling at low N) is OPEN-ENDED + worst in our target case.
+So HORIZONTAL over K wins on practicality. Use the SIMDe path (simd_compat.hpp) x86+NEON; fixed reduction
+order; bit-compare on 3 platforms; re-baseline the reversibility test to the SIMD order.
+(Still land the DECOMPOSITION first — the ~1000x structural fix — then horizontal-SIMD the per-step sumZ.)
