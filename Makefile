@@ -72,12 +72,15 @@ CXXFLAGS += -Wno-c++17-extensions
 # scrub-dragging — under 1% of a 60Hz budget.
 DETERMINISTIC_FP := -ffp-contract=off   # DECIDED: dropped the reassociation guard (-fno-unsafe-math-optimizations -fno-associative-math) — ~nil measured value (~1 in 1e15), ~most of the cost; validated green on all 3 platforms. Keep -ffp-contract=off: cross-platform FMA determinism, which CI cannot verify per-platform. See docs/design/DETERMINISTIC_FP_COST_NOTE.md.
 
-$(BUILD)/src/dsp/engines/PatternEngine.cpp.o: CXXFLAGS += $(DETERMINISTIC_FP)
+$(BUILD)/src/dsp/engines/PatternEngine.cpp.o: CXXFLAGS += $(DETERMINISTIC_FP) -mavx
 $(BUILD)/src/Monsoon.cpp.o:                   CXXFLAGS += $(DETERMINISTIC_FP)
 
 
-# NOTE on SIMD Philox + SSE4.1: the x86_64 slice gets SSE4.1 from Rack's own
-# -march=nehalem (compile.mk, ARCH_X64) — Nehalem includes SSE4.1/4.2 — so NO
-# extra -msse4.1 is needed in the plugin build. The arm64 slice uses sse2neon ->
-# NEON (no x86 flag). (-Xarch_x86_64 is NOT usable here: Rack builds each arch as
-# a SEPARATE invocation, not one dual-arch command.)
+# NOTE on SIMD: the x86_64 slice gets SSE4.1 from Rack's own -march=nehalem (compile.mk,
+# ARCH_X64) — Nehalem includes SSE4.1/4.2 — so NO extra -msse4.1 is needed for Philox.
+# -mavx is added TARGET-SPECIFICALLY to PatternEngine.cpp.o above: it enables the AVX1
+# 4-wide double (_mm256_mul/add/load/store) path in MovingAverageCopula::sumZ. AVX1 is
+# Sandy Bridge (2011+) — the same baseline as Rack's own -march=nehalem targets (Nehalem
+# is 2008; AVX is one generation later, but all x86_64 VCV Rack users have AVX). The arm64
+# slice uses SIMDe NEON emulation (no x86 flag). AVX-512 path auto-activates if the compiler
+# supports -mavx512f (future; not enabled by default).
