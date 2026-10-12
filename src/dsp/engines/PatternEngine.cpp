@@ -259,33 +259,50 @@ void PatternEngine::recomputeEffectiveRhythm() {
         // this recompute (16 steps x lanes x voices x 2 windows).  Compute once, reuse.
         if (!rhythmWeightCache_.matches(r)) rhythmWeightCache_.update(r);
         const double* wc = rhythmWeightCache_.w;
-        // Phase 2: normal-space scrub blend. Gather K cached draws for both windows, compute z
-        // per slot via sumZ, blend, apply PhiFast once.
+        // z0/z1 cache: within a phrase (r fixed) + same integer position f, the two window
+        // sumZ results depend ONLY on position -> cache and reuse on frac-only changes (scrub
+        // within a position-pair).  Invalidate on roll (ctr), position-cross (f), or r change.
+        const bool cacheHit = rhythmZCache_.hit(N, f, r);
         const CachedRhythmDraw* w0[K];
         const CachedRhythmDraw* w1[K];
-        for (std::size_t j = 0; j < K; ++j) {
-            w0[j] = &cachedRhythmDraw(N - f     - (int64_t)j);
-            w1[j] = &cachedRhythmDraw(N - f - 1 - (int64_t)j);
+        if (!cacheHit) {
+            for (std::size_t j = 0; j < K; ++j) {
+                w0[j] = &cachedRhythmDraw(N - f     - (int64_t)j);
+                w1[j] = &cachedRhythmDraw(N - f - 1 - (int64_t)j);
+            }
         }
         double zw[K];
-        auto blend = [&](int i, auto field) -> float {
-            for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
-            double z0 = redDot::MovingAverageCopula::sumZ(zw, wc);
-            for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
-            double z1 = redDot::MovingAverageCopula::sumZ(zw, wc);
+        auto blend = [&](int i, auto field, int fi) -> float {
+            double z0, z1;
+            if (cacheHit) {
+                z0 = rhythmZCache_.z0[fi];
+                z1 = rhythmZCache_.z1[fi];
+            } else {
+                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
+                z0 = redDot::MovingAverageCopula::sumZ(zw, wc);
+                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
+                z1 = redDot::MovingAverageCopula::sumZ(zw, wc);
+                rhythmZCache_.z0[fi] = z0;
+                rhythmZCache_.z1[fi] = z1;
+            }
             return (float)redDot::copula::PhiFast((1.0 - (double)frac) * z0 + (double)frac * z1);
         };
+        int fi = 0;
         for (int i = 0; i < 16; ++i) {
-            slewedRhythm[i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zRhythm[i]; });
-            slewedVariation[i] = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zVariation[i]; });
-            slewedLegato[i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zLegato[i]; });
-            slewedAccent[i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zAccent[i]; });
+            slewedRhythm[i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zRhythm[i]; }, fi++);
+            slewedVariation[i] = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zVariation[i]; }, fi++);
+            slewedLegato[i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zLegato[i]; }, fi++);
+            slewedAccent[i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zAccent[i]; }, fi++);
             for (int v = 0; v < numPolyVoicesHint; v++) {
-                slewedPolyRhythm[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyRhythm[v][i]; });
-                slewedPolyAccent[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyAccent[v][i]; });
-                slewedPolyVariation[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyVariation[v][i]; });
-                slewedPolyLegato[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyLegato[v][i]; });
+                slewedPolyRhythm[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyRhythm[v][i]; }, fi++);
+                slewedPolyAccent[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyAccent[v][i]; }, fi++);
+                slewedPolyVariation[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyVariation[v][i]; }, fi++);
+                slewedPolyLegato[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyLegato[v][i]; }, fi++);
             }
+        }
+        if (!cacheHit) {
+            rhythmZCache_.cachedCtr = N; rhythmZCache_.cachedF = f;
+            rhythmZCache_.cachedR = r;  rhythmZCache_.valid = true;
         }
     } else {
         // r==0: old linear blend of raw draws (bit-identity at frac=0).
@@ -342,27 +359,43 @@ void PatternEngine::recomputeEffectiveMelody() {
     if (r != 0.f) {
         if (!melodyWeightCache_.matches(r)) melodyWeightCache_.update(r);
         const double* wc = melodyWeightCache_.w;
+        const bool cacheHit = melodyZCache_.hit(N, f, r);
         const CachedMelodyDraw* w0[K];
         const CachedMelodyDraw* w1[K];
-        for (std::size_t j = 0; j < K; ++j) {
-            w0[j] = &cachedMelodyDraw(N - f     - (int64_t)j);
-            w1[j] = &cachedMelodyDraw(N - f - 1 - (int64_t)j);
+        if (!cacheHit) {
+            for (std::size_t j = 0; j < K; ++j) {
+                w0[j] = &cachedMelodyDraw(N - f     - (int64_t)j);
+                w1[j] = &cachedMelodyDraw(N - f - 1 - (int64_t)j);
+            }
         }
         double zw[K];
-        auto blend = [&](int i, auto field) -> float {
-            for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
-            double z0 = redDot::MovingAverageCopula::sumZ(zw, wc);
-            for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
-            double z1 = redDot::MovingAverageCopula::sumZ(zw, wc);
+        auto blend = [&](int i, auto field, int fi) -> float {
+            double z0, z1;
+            if (cacheHit) {
+                z0 = melodyZCache_.z0[fi];
+                z1 = melodyZCache_.z1[fi];
+            } else {
+                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
+                z0 = redDot::MovingAverageCopula::sumZ(zw, wc);
+                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
+                z1 = redDot::MovingAverageCopula::sumZ(zw, wc);
+                melodyZCache_.z0[fi] = z0;
+                melodyZCache_.z1[fi] = z1;
+            }
             return (float)redDot::copula::PhiFast((1.0 - (double)frac) * z0 + (double)frac * z1);
         };
+        int fi = 0;
         for (int i = 0; i < 16; ++i) {
-            slewedMelody[i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zMelody[i]; });
-            slewedOctave[i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zOctave[i]; });
+            slewedMelody[i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zMelody[i]; }, fi++);
+            slewedOctave[i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zOctave[i]; }, fi++);
             for (int v = 0; v < numPolyVoicesHint; v++) {
-                slewedPolyMelody[v][i] = blend(i, [v](const CachedMelodyDraw* c, int i){ return c->zPolyMelody[v][i]; });
-                slewedPolyOctave[v][i] = blend(i, [v](const CachedMelodyDraw* c, int i){ return c->zPolyOctave[v][i]; });
+                slewedPolyMelody[v][i] = blend(i, [v](const CachedMelodyDraw* c, int i){ return c->zPolyMelody[v][i]; }, fi++);
+                slewedPolyOctave[v][i] = blend(i, [v](const CachedMelodyDraw* c, int i){ return c->zPolyOctave[v][i]; }, fi++);
             }
+        }
+        if (!cacheHit) {
+            melodyZCache_.cachedCtr = N; melodyZCache_.cachedF = f;
+            melodyZCache_.cachedR = r;  melodyZCache_.valid = true;
         }
     } else {
         MelodyDraw d0, d1;
@@ -402,25 +435,41 @@ void PatternEngine::recomputeEffectiveQmix() {
     if (r != 0.f) {
         if (!qmixWeightCache_.matches(r)) qmixWeightCache_.update(r);
         const double* wc = qmixWeightCache_.w;
+        const bool cacheHit = qmixZCache_.hit(N, f, r);
         const CachedQmixDraw* w0[K];
         const CachedQmixDraw* w1[K];
-        for (std::size_t j = 0; j < K; ++j) {
-            w0[j] = &cachedQmixDraw(N - f     - (int64_t)j);
-            w1[j] = &cachedQmixDraw(N - f - 1 - (int64_t)j);
+        if (!cacheHit) {
+            for (std::size_t j = 0; j < K; ++j) {
+                w0[j] = &cachedQmixDraw(N - f     - (int64_t)j);
+                w1[j] = &cachedQmixDraw(N - f - 1 - (int64_t)j);
+            }
         }
         double zw[K];
-        auto blend = [&](int i, auto field) -> float {
-            for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
-            double z0 = redDot::MovingAverageCopula::sumZ(zw, wc);
-            for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
-            double z1 = redDot::MovingAverageCopula::sumZ(zw, wc);
+        auto blend = [&](int i, auto field, int fi) -> float {
+            double z0, z1;
+            if (cacheHit) {
+                z0 = qmixZCache_.z0[fi];
+                z1 = qmixZCache_.z1[fi];
+            } else {
+                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
+                z0 = redDot::MovingAverageCopula::sumZ(zw, wc);
+                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
+                z1 = redDot::MovingAverageCopula::sumZ(zw, wc);
+                qmixZCache_.z0[fi] = z0;
+                qmixZCache_.z1[fi] = z1;
+            }
             return (float)redDot::copula::PhiFast((1.0 - (double)frac) * z0 + (double)frac * z1);
         };
+        int fi = 0;
         for (int i = 0; i < 16; ++i) {
-            slewedQmix[i] = blend(i, [](const CachedQmixDraw* c, int i){ return c->zQmix[i]; });
+            slewedQmix[i] = blend(i, [](const CachedQmixDraw* c, int i){ return c->zQmix[i]; }, fi++);
             for (int v = 0; v < numPolyVoicesHint; v++) {
-                slewedPolyQmix[v][i] = blend(i, [v](const CachedQmixDraw* c, int i){ return c->zPolyQmix[v][i]; });
+                slewedPolyQmix[v][i] = blend(i, [v](const CachedQmixDraw* c, int i){ return c->zPolyQmix[v][i]; }, fi++);
             }
+        }
+        if (!cacheHit) {
+            qmixZCache_.cachedCtr = N; qmixZCache_.cachedF = f;
+            qmixZCache_.cachedR = r;  qmixZCache_.valid = true;
         }
     } else {
         QmixDraw d0, d1;
