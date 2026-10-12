@@ -1,5 +1,11 @@
 # CC BRIEF — SIMD the sumZ reduction (horizontal over K) + cache the weights
 
+## >>> DO THIS FIRST (before the mix cache). Rodney's order: sumZ -> mix. <<<
+Self-contained in MovingAverageCopula::sumZ, bit-verifiable independently, makes sumZ faster EVERYWHERE
+it's called -> the mix cache is then built on an already-fast sumZ. Within this brief: (1) weight-cache
+(free, bit-identical) -> commit; (2) horizontal SIMD, fixed reduction order, RE-BASELINE the reversibility/
+1e-15 test to the SIMD order -> commit. THEN do plans/mix_scrub_fix_cc_brief.md.
+
 Do WITH / AFTER the mix cache (plans/mix_scrub_fix_cc_brief.md) — same code (MovingAverageCopula::sumZ +
 the blend() callers). The mix cache reduces HOW OFTEN sumZ runs (scrub path cached out); this makes each
 remaining sumZ (at ROLL / position-cross / phrase boundary, where z0/z1 are freshly computed over all

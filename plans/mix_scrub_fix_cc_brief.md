@@ -1,5 +1,9 @@
 # CC BRIEF — mix/scrub: cache phrase-stable sumZ + cheap per-frac blend; engine at STEP boundary; video-rate displayed-voice bars
 
+## >>> DO AFTER the SIMD sumZ brief (plans/simd_sumz_cc_brief.md). Rodney's order: sumZ -> mix. <<<
+Build this on top of the already-fast sumZ (weight-cache + horizontal SIMD). The z0/z1 cache here then
+caches the output of a sumZ that is already weight-cached + SIMD'd.
+
 ## Problem (measured)
 Even with slew fixed at phrase boundary, modulating MIX still spikes CPU. Root: on every mix change,
 recomputeEffectiveRhythm/Melody/Qmix redoes the FULL recompute — for ALL 16 steps x lanes x N voices it
