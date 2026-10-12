@@ -58,3 +58,42 @@ The new lanes (VAR/LEG, range) are being ADDED; lane-index reorders the lane ind
 Decide by how much Straits remains: if VAR/LEG/range lanes are still to build, do lane-index first so they
 land clean; if Straits is nearly done, finish it then reorder. (Panel art / seam is index-independent —
 can proceed either way.)
+
+---
+
+## Forward sequence (post slew/mix fix) — Rodney's list + dependencies
+Order: SLEW+MIX fix (in progress) -> then the rest. Slew/mix must be cheap first because everything that
+MODULATES (counter-scrub, addressing) sweeps slew/mix -> blocked until fixed.
+
+1. **Slew + mix fix** (decomposition + horizontal-K SIMD). Unblocks all modulation-heavy work. (NOW)
+2. **Counter + bidirectional buffer — TOGETHER** (Rodney). The counter-scrub's "scrub back to return" IS
+   reverse navigation -> needs the bidirectional buffer; build them as one. (Counter = offset-scrub; see
+   SEED_OFFSET_DESIGN.md. Buffer per DRAW_BUFFER_AND_PHILOX_EFFICIENCY.md.)
+3. **Unified addressing** — incl. the RANGE LANE (Rodney: range lane lands with ADDRESSING, not Straits;
+   the lane UI may be built in Straits but its semantics are the addressing system's). Voice LOR,
+   cycle/abs1-3 masks, correlation x reset-phase. Big; on the counter machinery.
+4. **K (window-depth param)** — slot after slew-fix + SIMD + buffer-cost measured (is it an optimisation
+   or just use of the 64 buffer — see DRAW_BUFFER doc). Low-risk param exposure, anytime after.
+5. **Octave (per-voice octave offset)** — Straits feature; mostly independent; pairs with finish-Straits.
+6. **Expander connection polish** — the interconnection work (owner back-pointer etc.); foundational;
+   before/during Straits.
+7. **Finish Straits** — panel art, VAR/LEG lanes. (Range lane moved to #3 addressing.)
+8. **Causeway** — LAST. CV-mod expander; inherits Straits wave/seam helpers + owner model; modulates
+   features that must exist first.
+
+### Counter-scrub display idea (maybe) — override display slew during scrub, via LOCK MODE
+During counter-scrub you navigate by POSITION in the probability sequence -> want to SEE the underlying
+per-position draws, not whatever the current slew smooths them into. Idea: FIX the DISPLAY slew to a
+constant during scrub (reuse LOCK MODE as the hold/override) so the scrub view is consistent/legible;
+AUDIO keeps the real slew. OPEN: which fixed value — slew=0 (raw, distinct per-position draws — navigate
+the actual content) or slew=1 (fully-smoothed structural view)? Instinct: 0 (see the real draws); confirm.
+Ties to the counter digital expander (its job = show position/content legibly).
+
+### K-modulation — RESOLVED: phrase-boundary, as the intertemporal sibling of CA (Rodney)
+K is the INTERTEMPORAL correlation structure (how far the temporal correlation reaches). CA modulates the
+CROSS-VOICE correlation structure, and CA-mod is PHRASE-BOUNDARY. K is the same KIND of thing (correlation
+structure) on the TIME axis -> K-modulation follows the CA precedent: PHRASE-BOUNDARY. Principled
+(correlation structure coheres at the phrase), not just a perf rate-limit. Symmetry: CA = cross-voice
+correlation structure, K = intertemporal correlation structure, BOTH modulate at phrase boundary — two
+axes (voice x time) of correlation-structure, same cadence. So K-mod is phrase-boundary modulatable,
+the time-axis sibling of CA-mod.
