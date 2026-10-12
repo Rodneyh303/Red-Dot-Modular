@@ -423,6 +423,12 @@ struct PatternEngine {
     // Latched slew (sampled at step 0), and the last value we recomputed at.
     float rhythmSlewLatched = 0.f, melodySlewLatched = 0.f, qmixSlewLatched = 0.f;
     float rhythmSlewApplied =-1.f, melodySlewApplied =-1.f, qmixSlewApplied =-1.f;  // force first recompute
+    // Weight-cache: L2-normalised geometric weights w[K] per stream, keyed on r (= slewKnobToR(slew)).
+    // Slew r is phrase-fixed, so weights() was recomputed every sumZ call with the same r — pure
+    // waste.  Cache w[] per stream; invalidate when r changes (phrase boundary).  Bit-identical.
+    redDot::MovingAverageCopula::WeightCache rhythmWeightCache_;
+    redDot::MovingAverageCopula::WeightCache melodyWeightCache_;
+    redDot::MovingAverageCopula::WeightCache qmixWeightCache_;
     // Live MIX (A<->B blend) latched at control rate; the effective arrays are
     // recomputed when it changes. This is what drives the continuous morph.
     // A/B morph coefficient — GLOBAL per strand family (one scalar for ALL voices).

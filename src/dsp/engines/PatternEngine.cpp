@@ -255,6 +255,10 @@ void PatternEngine::recomputeEffectiveRhythm() {
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
     if (r != 0.f) {
+        // Weight-cache: r is phrase-fixed, so weights(r) is the same for every sumZ call in
+        // this recompute (16 steps x lanes x voices x 2 windows).  Compute once, reuse.
+        if (!rhythmWeightCache_.matches(r)) rhythmWeightCache_.update(r);
+        const double* wc = rhythmWeightCache_.w;
         // Phase 2: normal-space scrub blend. Gather K cached draws for both windows, compute z
         // per slot via sumZ, blend, apply PhiFast once.
         const CachedRhythmDraw* w0[K];
@@ -266,9 +270,9 @@ void PatternEngine::recomputeEffectiveRhythm() {
         double zw[K];
         auto blend = [&](int i, auto field) -> float {
             for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
-            double z0 = redDot::MovingAverageCopula::sumZ(zw, r);
+            double z0 = redDot::MovingAverageCopula::sumZ(zw, wc);
             for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
-            double z1 = redDot::MovingAverageCopula::sumZ(zw, r);
+            double z1 = redDot::MovingAverageCopula::sumZ(zw, wc);
             return (float)redDot::copula::PhiFast((1.0 - (double)frac) * z0 + (double)frac * z1);
         };
         for (int i = 0; i < 16; ++i) {
@@ -336,6 +340,8 @@ void PatternEngine::recomputeEffectiveMelody() {
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
     if (r != 0.f) {
+        if (!melodyWeightCache_.matches(r)) melodyWeightCache_.update(r);
+        const double* wc = melodyWeightCache_.w;
         const CachedMelodyDraw* w0[K];
         const CachedMelodyDraw* w1[K];
         for (std::size_t j = 0; j < K; ++j) {
@@ -345,9 +351,9 @@ void PatternEngine::recomputeEffectiveMelody() {
         double zw[K];
         auto blend = [&](int i, auto field) -> float {
             for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
-            double z0 = redDot::MovingAverageCopula::sumZ(zw, r);
+            double z0 = redDot::MovingAverageCopula::sumZ(zw, wc);
             for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
-            double z1 = redDot::MovingAverageCopula::sumZ(zw, r);
+            double z1 = redDot::MovingAverageCopula::sumZ(zw, wc);
             return (float)redDot::copula::PhiFast((1.0 - (double)frac) * z0 + (double)frac * z1);
         };
         for (int i = 0; i < 16; ++i) {
@@ -394,6 +400,8 @@ void PatternEngine::recomputeEffectiveQmix() {
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
     if (r != 0.f) {
+        if (!qmixWeightCache_.matches(r)) qmixWeightCache_.update(r);
+        const double* wc = qmixWeightCache_.w;
         const CachedQmixDraw* w0[K];
         const CachedQmixDraw* w1[K];
         for (std::size_t j = 0; j < K; ++j) {
@@ -403,9 +411,9 @@ void PatternEngine::recomputeEffectiveQmix() {
         double zw[K];
         auto blend = [&](int i, auto field) -> float {
             for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
-            double z0 = redDot::MovingAverageCopula::sumZ(zw, r);
+            double z0 = redDot::MovingAverageCopula::sumZ(zw, wc);
             for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
-            double z1 = redDot::MovingAverageCopula::sumZ(zw, r);
+            double z1 = redDot::MovingAverageCopula::sumZ(zw, wc);
             return (float)redDot::copula::PhiFast((1.0 - (double)frac) * z0 + (double)frac * z1);
         };
         for (int i = 0; i < 16; ++i) {

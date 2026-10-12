@@ -45,6 +45,20 @@ public:
         for (std::size_t j = 0; j < K; ++j) w[j] *= inv;
     }
 
+    /// Cache of L2-normalised weights for a given r.  Slew r is phrase-fixed (the slew-phrase
+    /// fix landed), so within one recomputeEffective* call — which loops over all 16 steps ×
+    /// lanes × voices × 2 windows — `weights(r, w)` was recomputed every `sumZ` invocation with
+    /// the SAME r.  This struct caches w[K] + the r it was built for; callers `update(r)` once
+    /// per phrase (or per recompute if r changed) then pass `w` to the `sumZ(z, w)` overload.
+    /// Bit-identical: the weights and the dot product are the same computation, just hoisted.
+    struct WeightCache {
+        double w[K];
+        double cachedR = 999.0;   ///< invalid sentinel (no valid r is 999)
+        bool matches(double r) const { return r == cachedR; }
+        void update(double r) { weights(r, w); cachedR = r; }
+        void invalidate() { cachedR = 999.0; }
+    };
+
     /// Apply slew at one position. `u` holds the window NEWEST FIRST: u[0] = u_n, u[j] = u_{n-j}.
     /// r == 0 returns u[0] unchanged (bit-identical legacy path).
     /// r < 0 creates anti-correlation (alternating-sign weights → hocket/interlock).
@@ -68,6 +82,13 @@ public:
         if (r == 0.0) return z[0];
         double w[K];
         weights(r, w);
+        return sumZ(z, w);
+    }
+    /// sumZ with PRE-COMPUTED weights (from a WeightCache).  Skips the weights() call — the
+    /// dot product only.  Caller must ensure w was built for the correct r and that r != 0
+    /// (the r==0 early-out is in the `sumZ(z, r)` wrapper; callers on the r==0 path short-
+    /// circuit before reaching here).
+    static double sumZ(const double* z, const double* w) {
         double s = 0.0;
         for (std::size_t j = 0; j < K; ++j) s += w[j] * z[j];
         return s;
@@ -77,6 +98,10 @@ public:
     // its own PhiFast so the two windows share one Phi.
     static double applyZ(const double* z, double r) {
         return copula::PhiFast(sumZ(z, r));
+    }
+    /// applyZ with PRE-COMPUTED weights (from a WeightCache).  = PhiFast(sumZ(z, w)).
+    static double applyZ(const double* z, const double* w) {
+        return copula::PhiFast(sumZ(z, w));
     }
 
     /// Analytic lag-m correlation of the output series for a constant r (dot product of the
