@@ -14,7 +14,7 @@ on:
     # master is the WORKING branch (the repo default `main` is STALE). Feature
     # branches build too, so a branch is verified on all three platforms before
     # it is merged.
-    branches: [ master, lane-expander-refactor, 'feat/**', 'docs/**', '*refactor*', '*-refactor' ]
+    branches: [ master, lane-expander-refactor, 'feat/**', 'docs/**', '*refactor*', '*-refactor', 'fp-**', 'exp/**' ]
   pull_request:
   workflow_dispatch:        # manual trigger from the Actions tab
 
@@ -102,6 +102,28 @@ jobs:
           # per-platform arch (-march=armv8-a+fp+simd on macOS), and the Makefile no
           # longer sets -march at all.
           make -j2 dist
+
+      # --- unit tests (bit-compare + the rest) ----------------------------
+      # Run the standalone unit test suite on every platform. run_all.sh compiles
+      # and runs each test and exits nonzero on ANY failure, so this makes the
+      # BIT-COMPARE (lane-index, Philox 4x, SIMD) + test_sse2neon_compat an automatic
+      # cross-platform correctness gate — not just a compile check. On the arm64 Mac
+      # runner this is what proves the sse2neon->NEON SIMD path is bit-exact.
+      - name: Unit tests (Windows / MSYS2)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          set -e
+          export RACK_DIR="$PWD/Rack-SDK"
+          bash test/run_all.sh
+
+      - name: Unit tests (macOS / Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -e
+          export RACK_DIR="$PWD/Rack-SDK"
+          bash test/run_all.sh
 
       # --- artifact -------------------------------------------------------
       - name: Upload .vcvplugin
