@@ -555,20 +555,21 @@ void PatternEngine::latchMix(float rhythmMix, float melodyMix, float qmixMix,
     if (applyRhythm) {
         rhythmMixLatched  = rhythmMix;
         rhythmSlewLatched = rhythmSlew;
-        if (rhythmMixLatched != rhythmMixApplied)
-            recomputeEffectiveRhythm();
+        // PART 3 (decomposition): mix changes are NOT recomputed here — the full 16-step
+        // recompute was the CPU spike (832 blends every sample during a mix sweep). Mix is
+        // now consumed at the PHRASE BOUNDARY (the roll/redraw calls recomputeEffective*
+        // with the current latched mix). [TODO: per-step blend at step boundary for live scrub.]
+        rhythmMixApplied = rhythmMixLatched;
     }
     if (applyMelody) {
         melodyMixLatched  = melodyMix;
         melodySlewLatched = melodySlew;
-        if (melodyMixLatched != melodyMixApplied)
-            recomputeEffectiveMelody();
+        melodyMixApplied = melodyMixLatched;
     }
     if (applyQmix) {
         qmixMixLatched  = qmixMix;
         qmixSlewLatched = qmixSlew;
-        if (qmixMixLatched != qmixMixApplied)
-            recomputeEffectiveQmix();
+        qmixMixApplied = qmixMixLatched;
     }
 }
 
@@ -585,11 +586,14 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     // counter). Slew is NOT a mid-phrase trigger — it's consumed at the roll (phrase boundary).
     // Counter-advance (redraw) forces recompute via slewApplied=-1 in the redraw path.
     {
-        if (rhythmMixLatched != rhythmMixApplied || rhythmDrawCtr != rhythmCtrApplied)
+        // PART 3: mix changes are consumed at the phrase boundary (latchMix updates mixApplied
+        // without recompute). Only recompute here on COUNTER change (roll/phrase boundary —
+        // the counter was advanced by redrawRhythm, which already called recomputeEffective*).
+        if (rhythmDrawCtr != rhythmCtrApplied)
             recomputeEffectiveRhythm();
-        if (melodyMixLatched != melodyMixApplied || melodyDrawCtr != melodyCtrApplied)
+        if (melodyDrawCtr != melodyCtrApplied)
             recomputeEffectiveMelody();
-        if (qmixMixLatched != qmixMixApplied || qmixDrawCtr != qmixCtrApplied)
+        if (qmixDrawCtr != qmixCtrApplied)
             recomputeEffectiveQmix();
     }
     for (int i = 0; i < 16; ++i) {

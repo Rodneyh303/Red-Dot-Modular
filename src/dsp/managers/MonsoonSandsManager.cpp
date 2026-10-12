@@ -714,9 +714,12 @@ bool MonsoonSandsManager::remapSigChanged_(const uint8_t* rSrc, const uint8_t* m
     if (pe.rhythmDrawCtr != lastRemap_.rCtr)              return true;
     if (pe.melodyDrawCtr != lastRemap_.mCtr)              return true;
     if (pe.qmixDrawCtr   != lastRemap_.qCtr)              return true;
-    if (pe.rhythmMixLatched  != lastRemap_.rMix)          return true;
-    if (pe.melodyMixLatched  != lastRemap_.mMix)          return true;
-    if (pe.qmixMixLatched    != lastRemap_.qMix)          return true;
+    // MIX is NOT checked (phrase-boundary consumption — same as slew). The draw-counter
+    // checks above detect when the slewed buffers are re-derived at the roll (phrase
+    // boundary), which is when the remap should re-fire. Mid-phrase mix changes do NOT
+    // re-derive the slewed buffers (latchMix + refreshVisualCache skip recompute on mix
+    // change), so checking mix here would fire forceRecomputeSlewed() at control rate on
+    // every mix modulation tick — the CPU spike.
     for (int v = 0; v < 16; ++v)
         if (rSrc[v] != lastRemap_.rSrc[v] || mSrc[v] != lastRemap_.mSrc[v] || qSrc[v] != lastRemap_.qSrc[v]) return true;
     return false;
@@ -726,7 +729,6 @@ void MonsoonSandsManager::captureRemapSig_(const uint8_t* rSrc, const uint8_t* m
     auto& pe = engine.pe;
     for (int v = 0; v < 16; ++v) { lastRemap_.rSrc[v] = rSrc[v]; lastRemap_.mSrc[v] = mSrc[v]; lastRemap_.qSrc[v] = qSrc[v]; }
     lastRemap_.rCtr = pe.rhythmDrawCtr;  lastRemap_.mCtr = pe.melodyDrawCtr;  lastRemap_.qCtr = pe.qmixDrawCtr;
-    lastRemap_.rMix = pe.rhythmMixLatched;  lastRemap_.mMix = pe.melodyMixLatched;  lastRemap_.qMix = pe.qmixMixLatched;
-    // Slew is NOT captured (phrase-boundary consumption — see remapSigChanged_ comment).
+    // Mix + Slew are NOT captured (phrase-boundary consumption — see remapSigChanged_ comment).
     lastRemap_.wasIdentity = identity;
 }
