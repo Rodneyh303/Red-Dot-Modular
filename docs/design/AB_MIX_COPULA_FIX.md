@@ -113,3 +113,39 @@ Implication: noise is BOUNDED (<=1, at r=0) and cheap (one sqrt of the closed fo
 quantised (r,f)). Confirms the bridge handles r==0 correctly: mid-interval = independent N(0,1) (the RIGHT
 value, vs the old linear blend's variance-reduced wrong one). The bridge injects EXACTLY the variance the
 conditional mean is missing, scaled by endpoint independence.
+
+---
+
+## OU-bridge noise xi — counter/key design (reversible by construction) (Rodney)
+### One xi per consecutive A/B PAIR (= one per main-draw-counter change)
+xi is NOT keyed by frac. One xi per adjacent-position PAIR (N-f, N-f-1), HELD CONSTANT across the frac
+sweep within that pair. Only a(r,f), b(r,f), sqrt(v(r,f)) vary with frac; xi is fixed. This is the
+"rank-one bridge" — the right noise structure for a SWEEP: smooth in f (only a/b/v move), exact pointwise.
+(The within-interval over-correlation caveat is IRRELEVANT for scrub: we read ONE point at a time, never a
+dense sub-path, so the joint law of multiple mid-interval points doesn't matter.)
+
+### Keying — separate stream key + the pair's position index
+- **Separate KEY per stream** (independence): rhythm/melody/qmix bridge-xi get their own keys, distinct
+  from the base-draw keys (S/S+1/S+2) AND from each other — extend the existing cross-stream decorrelation
+  (e.g. S+4/S+5/S+6). xi MUST be independent of the base draws (z_A,z_B) and across streams, or the
+  marginal / endpoint-correlation / stream-independence breaks.
+- **COUNTER = the pair's (lower) position index** — a consistent per-pair identifier. NO frac in the key
+  (so no frac-quantisation needed). Each distinct pair -> distinct index -> distinct xi.
+
+### Reversible BY CONSTRUCTION — decrement the counter, get the same xi (Rodney)
+xi is a PURE FUNCTION of its counter (Philox), and the counter is the pair's position index. So a BACKWARD
+dice roll / REVERSE scrub = DECREMENT the counter -> regenerates the IDENTICAL xi (Philox is a deterministic
+bijection on the counter, signed-space). No stored state, no bookkeeping: forward to index k and backward
+to index k both give xi_k = Philox(key, k).
+So the WHOLE interpolation is bidirectionally reversible: BOTH ingredients are counter-addressed + bijective
+— the base draws (z_A,z_B) by their position counters, and the bridge xi by the pair's position counter.
+Backward = decrement the counters = exact regeneration of everything. This is the SAME signed-bijection
+property the bidirectional buffer uses for the main draws; xi inherits it for FREE by using the same
+position-counter cadence (one xi per draw-counter change). (If xi were keyed by a float frac, or drawn from
+running state, backward would NOT reproduce it — keying by the position counter is what makes it reversible.)
+
+### Continuity across pair boundaries (despite distinct per-pair xi)
+At frac=1 of pair (N-f, N-f-1) the value = z_{N-f-1} exactly (sqrt(v)=0 -> xi term vanishes); at frac=0 of
+the next pair (N-f-1, N-f-2) it = z_{N-f-1} exactly too. SAME value -> CONTINUOUS across the boundary, even
+though the two pairs have DIFFERENT xi — because the noise is zero at the integer endpoints where pairs
+meet. So per-pair xi gives a continuous scrub.
