@@ -36,7 +36,7 @@ private:
     struct RemapSig {
         uint8_t  rSrc[16] = {0}, mSrc[16] = {0}, qSrc[16] = {0};
         int64_t  rCtr = 0, mCtr = 0, qCtr = 0;
-        float    rMix = 1e30f, mMix = 1e30f, qMix = 1e30f, rSlew = 1e30f, mSlew = 1e30f, qSlew = 1e30f;
+        float    rMix = 1e30f, mMix = 1e30f, qMix = 1e30f;   // slew intentionally excluded (phrase-boundary)
         bool wasIdentity = true;
     } lastRemap_;
     bool remapSigChanged_(const uint8_t* rSrc, const uint8_t* mSrc, const uint8_t* qSrc, bool identity) const;
