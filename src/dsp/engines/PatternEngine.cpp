@@ -486,31 +486,31 @@ void PatternEngine::latchMix(float rhythmMix, float melodyMix, float qmixMix,
                              float rhythmSlew, float melodySlew, float qmixSlew,
                              bool applyRhythm, bool applyMelody, bool applyQmix) {
     // Sample the live SCRUB inputs (control rate). Under the scrub model BOTH the scrub position
-    // (MIX repurposed) AND slew (FIR smoothing width) feed the effective pattern, so latch both and
-    // recompute a stream when EITHER changed. Recompute is cheap + change-guarded.
+    // (MIX repurposed) AND slew (FIR smoothing width) feed the effective pattern, so latch both.
+    // SLEW is consumed at the PHRASE BOUNDARY (the roll/redraw already calls recomputeEffective*
+    // with the latched slew). Mid-phrase slew changes are LATCHED but do NOT trigger recompute —
+    // the effect applies at the next roll (distributional correctness: slew must be constant across
+    // a phrase). MIX/scrub changes DO trigger recompute (they're instantaneous position controls,
+    // not distributional parameters).
     // LOCK_SCOPE_MENU: applyRhythm/applyMelody gate EACH stream independently. A frozen stream (apply
     // false) does NOT re-latch its mix/slew and does NOT recompute — its latched value + effective
-    // pattern hold from before the lock. The two streams are fully independent here, so a per-axis
-    // A/B scope freeze is exact (no combined coupling). Default true/true = latch both (unlocked).
-    // Rate-limit: gate the modulated-slew recompute to control rate (~1.4kHz). Latch always happens;
-    // recompute only when the divider fires OR slewApplied is -1 (forced from redraw).
-    const bool gate = recomputeGate_();
+    // pattern hold from before the lock. Default true/true = latch both (unlocked).
     if (applyRhythm) {
         rhythmMixLatched  = rhythmMix;
         rhythmSlewLatched = rhythmSlew;
-        if (gate && (rhythmMixLatched != rhythmMixApplied || rhythmSlewLatched != rhythmSlewApplied))
+        if (rhythmMixLatched != rhythmMixApplied)
             recomputeEffectiveRhythm();
     }
     if (applyMelody) {
         melodyMixLatched  = melodyMix;
         melodySlewLatched = melodySlew;
-        if (gate && (melodyMixLatched != melodyMixApplied || melodySlewLatched != melodySlewApplied))
+        if (melodyMixLatched != melodyMixApplied)
             recomputeEffectiveMelody();
     }
     if (applyQmix) {
         qmixMixLatched  = qmixMix;
         qmixSlewLatched = qmixSlew;
-        if (gate && (qmixMixLatched != qmixMixApplied || qmixSlewLatched != qmixSlewApplied))
+        if (qmixMixLatched != qmixMixApplied)
             recomputeEffectiveQmix();
     }
 }
@@ -524,24 +524,16 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     // and the no-redraw pattern diverges from an equivalent redraw at the same counter. Recomputing
     // makes the two paths converge (a seeded engine that never rolled and one that rolled to the same
     // counter now read identically). Cheap: it's just the window blend.
-    // Recompute ONLY when this stream's scrub inputs changed since the last recompute (mix, slew,
-    // or counter). Avoids re-deriving the full K-window every ~90Hz refresh when nothing moved.
-    // Rate-limit: same control-rate gate as latchMix. Counter-advance (redraw)
-    // already forces recompute via slewApplied=-1, so the gate only affects
-    // modulated-slew recompute here.
+    // Recompute ONLY when this stream's scrub inputs changed since the last recompute (mix or
+    // counter). Slew is NOT a mid-phrase trigger — it's consumed at the roll (phrase boundary).
+    // Counter-advance (redraw) forces recompute via slewApplied=-1 in the redraw path.
     {
-        const bool gate = recomputeGate_();
-        if (gate) {
-            const float rSlew = rack::math::clamp(rhythmSlewLatched, -1.f, 1.f);
-            if (rhythmMixLatched != rhythmMixApplied || rSlew != rhythmSlewApplied || rhythmDrawCtr != rhythmCtrApplied)
-                recomputeEffectiveRhythm();
-            const float mSlew = rack::math::clamp(melodySlewLatched, -1.f, 1.f);
-            if (melodyMixLatched != melodyMixApplied || mSlew != melodySlewApplied || melodyDrawCtr != melodyCtrApplied)
-                recomputeEffectiveMelody();
-            const float qSlew = rack::math::clamp(qmixSlewLatched, -1.f, 1.f);
-            if (qmixMixLatched != qmixMixApplied || qSlew != qmixSlewApplied || qmixDrawCtr != qmixCtrApplied)
-                recomputeEffectiveQmix();
-        }
+        if (rhythmMixLatched != rhythmMixApplied || rhythmDrawCtr != rhythmCtrApplied)
+            recomputeEffectiveRhythm();
+        if (melodyMixLatched != melodyMixApplied || melodyDrawCtr != melodyCtrApplied)
+            recomputeEffectiveMelody();
+        if (qmixMixLatched != qmixMixApplied || qmixDrawCtr != qmixCtrApplied)
+            recomputeEffectiveQmix();
     }
     for (int i = 0; i < 16; ++i) {
         rhythmPattern[i] = (rhythmRandom[i] >= in.restProb);
