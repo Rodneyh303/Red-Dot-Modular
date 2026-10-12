@@ -132,3 +132,62 @@ overclaiming to describe themselves this way; dot.modular would be UNDERclaiming
 precise version prominently SOMEWHERE (for the people who recognise what it means — the early adopters
 and advocates who carry it), translated per audience elsewhere. Precision is the credential; the same
 rigour that built the instrument should describe it.
+
+---
+
+## Positioning vs Vermona Melodicer — "mono is a correlation setting, not a limit" (Rodney)
+Melodicer has GLOBAL variation and legato (one value, all voices). Monsoon has them PER-VOICE. But the
+compelling claim is NOT "we added more knobs" — it is CATEGORICAL:
+- **Monsoon is a Gaussian-copula CORRELATION engine; Melodicer's global behaviour is simply Monsoon at
+  MAXIMUM variation/legato correlation.** At correlation +1 all voices' variation/legato draws are
+  identical => effectively global/mono = the Melodicer coordinate. At 0 => independent per-voice; at −1
+  => complementary. So "variation/legato mono-only" is ONE COORDINATE in a continuous space Monsoon
+  spans — a correlation SETTING, not an architectural LIMIT.
+- So Monsoon doesn't have "more variation than Melodicer" — it CONTAINS Melodicer as the +1-correlation
+  corner of its copula space, and opens the whole axis around it.
+- Same principle as the instrument's whole thesis: every GLOBAL-vs-PER-VOICE choice is a correlation
+  setting. Variation/legato are just lanes in the same engine; "mono" is max-correlation on those lanes,
+  exactly as "unison" is max-correlation on the value lanes. ONE engine; mono is its degenerate case.
+
+Crisp line: "Melodicer forces you to the mono corner. Monsoon gives you the whole correlation axis —
+mono is just what you get at maximum correlation."
+
+### Why V1 is still an EXPLICIT spread target (honouring the Melodicer coordinate) (Rodney)
+CA (Change Alley) is general — any voice can be a spread source/target, V1 included. So V1-as-an-explicit
+spread-target could look redundant (just pick V1 in CA). It is NOT redundant: the Melodicer coordinate is
+"everything relates to the MAIN / reference voice (V1)", and that natural anchor deserves FIRST-CLASS,
+directly-reachable representation rather than being buried as one CA configuration. So:
+- CA = the GENERAL case (any voice ↔ any voice).
+- V1-as-explicit-target = the honoured SPECIAL case (the reference/anchor = the Melodicer coordinate),
+  made directly addressable because it is the natural/default/lineage point users reach for.
+This mirrors the whole trio: V1 is NOT special in IMPLEMENTATION (it's just voice 0 — "mono is not
+special anymore" in the code), but it IS the meaningful REFERENCE coordinate the design chooses to
+surface directly in the interface. Not special internally; honoured as the anchor externally.
+
+**V1 is targetable DIRECTLY, without CA.** Not even "a convenient CA preset" — V1-as-spread-target is a
+standalone direct path, independent of CA. So the Melodicer coordinate (spread toward the reference voice)
+is reachable with NO CA configuration — fully first-class.
+
+### Melodicer's QUANTISER MODES = the simplest corner across THREE axes (Rodney, corrected)
+What Melodicer's quantiser mode actually IS: quantise EXTERNAL CV, with basic rhythm = 1/4 notes, driven
+by clock or external gate. So it maps to the INTERSECTION of the simplest settings on three Monsoon axes:
+1. Pitch source = external CV -> the QMIX / pitch-source axis at the external/quantiser source (not
+   generated). QMIX is this blend: qmixUseGenerated = (r_qmix >= qmixLevel) selects generated vs
+   quantiser-mode pitch (SequencerEngine.cpp:465). Melodicer = fixed at the external-CV corner; Monsoon
+   opens the PROBABILISTIC continuum (per-note blend with GENERATED, correlatable across voices).
+2. Rhythm = 1/4 notes -> the SIMPLEST rhythm corner (fixed quarter-note, no probabilistic rhythm, no
+   rests, no per-voice variation). Monsoon opens the whole rhythm space (probability, rests, LOR
+   windowing, per-voice, correlated, any subdivision).
+3. Timing = clock or external gate -> Monsoon's clock/gate origin at its basic setting; Monsoon adds
+   phase-mode (+ reverse/slew turnaround).
+So Melodicer's SIGNATURE mode sits at {external-CV pitch} x {1/4 simplest rhythm} x {clock/gate} — the
+exact simple corner of Monsoon's (pitch-source x rhythm x timing) space. Ties to 00_VISION's "clock/gate/
+phase x q-mix pitch axis": Melodicer = clock-or-gate (not phase) x q-mix-at-external-CV x simplest rhythm.
+Combined with variation/legato = max-correlation: Melodicer IN ITS ENTIRETY is a single CORNER of
+Monsoon's space (pitch-source x rhythm x timing x correlation). Monsoon is the whole continuous space;
+Melodicer is one point in it. The copula + qmix + rhythm + timing axes turn Melodicer's features into
+coordinates in our space.
+
+Crisp line (scaled up): "Melodicer isn't a smaller feature set — it's the simplest CORNER of Monsoon's
+space. Its quantiser is one QMIX setting; its global variation is max correlation; its rhythm is the
+minimal corner. We contain Melodicer as a coordinate and open the whole space around it."

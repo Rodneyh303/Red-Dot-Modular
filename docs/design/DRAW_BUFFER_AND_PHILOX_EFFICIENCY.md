@@ -1,0 +1,177 @@
+# Draw buffering, bidirectional caches, Philox efficiency (reverse mode + 32 steps)
+
+Conclusions from working through the MA/copula draw model, reversibility, and Philox usage. Applies when
+expanding to 32 steps and implementing phase/reverse mode.
+
+## The draw model (confirmed from code)
+- Each DRAW at a position is a MULTIVARIATE raw draw: all lanes x voices x steps, drawn as one unit
+  (that's what correlates them). You cannot cheaply draw "fewer voices/steps" — a draw IS the full vector.
+- **MEMOISED = RAW draws + z (= PhiInv(raw))** — position-pure (Philox-addressable), REVERSIBLE,
+  SLEW-INDEPENDENT. NOT copula-applied. (CachedRhythmDraw holds `draw` + `z[...]`, PatternEngine.hpp:729.)
+- **Copula/slew (r) applied at READOUT, at CONTROL RATE** (recomputeEffective*, applyZ=sumZ+PhiFast,
+  reads memoised z + current r). "r enters ONLY at readout, never the chain" (SLEW_COPULA_PLAN.md:44) ->
+  the chain reverses exactly; copula updates at control rate on the SAME memoised z.
+- The MA window for step i = step i's value across the last K DRAWS (per-step history across multivariate
+  draws), K=64. Window is RE-READ from the current index each readout (cachedRhythmDraw(N-f-j)), not an
+  incrementally-slid stateful buffer.
+
+## Can we optimise over voices? NO (at the draw level)
+The draw is multivariate (all voices per draw); skipping voices would need per-voice MA-history
+regeneration on activation (expensive, and now bidirectional). So: NEVER optimise the DRAW over voices
+(buffer is all-voices regardless; voice count doesn't change its size). Optimise ONLY downstream
+(spread/output per-voice processing), which reads the all-voices draws with no history dependency — that
+is where the earlier perf cost actually was.
+
+## BIDIRECTIONAL CACHES — needed for reverse mode (rhythm, melody, qmix)
+Reverse mode (phase input): the MA window must reach the OTHER index direction. Forward play: window
+reaches BACK (N-j). Reverse play: window reaches FORWARD (N+j). The turnaround TRANSITIONS over the slew
+depth (slew = "how far back"; slew=1 -> instant turnaround, slew=64 -> blends over 64), after which
+reverse RETRACES the forward windows exactly (= exact reversibility, r reproducible).
+Problem: forward play only buffers [N-j..N]; a turnaround suddenly needs [N..N+j] (up to 64 draws) -> spike.
+**Solution (Rodney): maintain a BIDIRECTIONAL buffer [N-j .. N+j] for rhythm, melody, qmix.**
+- INIT the full bidirectional window ONCE at reset (into NEGATIVE counters too — Philox is a bijection
+  over signed space, so [N-j] near the origin is valid; no truncation). One-time cost, off audio-critical.
+- MAINTAIN: each step/dice-roll, extend the LEADING edge by the new draws (a couple per step) — the
+  trailing edge is already buffered. So ~a couple of draws per step, amortised.
+- TURNAROUND is then FREE (forward window already warm, no spike).
+- Rebuild the buffer only at PHRASE-BOUNDARY dice rolls (a full regen point); otherwise just maintain
+  (extend leading edge).
+- Prune the trailing edge beyond [N-j..N+j] to bound the cache (currently an unbounded map).
+- Scope: bidirectional only where instant reversal happens (PHASE mode). Clock/gate (reversal at phrase
+  boundary / not instant) can stay unidirectional-backward.
+- j = slew depth (or max j=64 if slew is modulatable and can jump deep).
+- **REVERSE-MODE MAINTENANCE — the leading edge and dice meaning FLIP (Rodney):** which edge to extend
+  follows the current PHASE/PLAY DIRECTION, and the meaning of forward/backward dice rolls inverts in
+  reverse:
+  - FORWARD mode: playhead index INCREMENTS; play-forward = index++ -> extend the FAR-FORWARD edge
+    (N+j+1); step-back/undo = index--.
+  - REVERSE mode (phase driving backward): playhead index DECREMENTS; "play-forward" in the REVERSE
+    timeline = index-- -> extend the FAR-BACKWARD edge (N-j-1); "step-back/undo" in reverse = index++.
+  So a FORWARD dice roll means index-increment in forward mode but index-DECREMENT in reverse mode (and
+  backward dice the opposite) — the index-direction of forward/backward dice FLIPS with phase direction.
+  The buffer always covers [current-j .. current+j]; the LEADING edge (extended each step) is the one in
+  the current play direction; the TRAILING edge (behind play direction) is already buffered and pruned
+  beyond j. At a TURNAROUND (phase flips), the new leading direction is already buffered (both sides kept)
+  -> free; then continue extending the NEW leading edge as play proceeds in the new direction.
+
+## 32 STEPS + BIDIRECTIONAL funded by the 4x Philox win
+Buffer grows 64 -> 128 wide (bidirectional) AND steps 16 -> 32 (2x) = 4x more draws. This is EXACTLY
+funded by reclaiming the 4x Philox waste below -> NO net Philox-block cost increase. We DO still pay more
+PhiInv-LUT (per z) and the bigger one-time init, but the init is once (at reset), and the LUT is cheap.
+
+## PHILOX 4x EFFICIENCY — the 75% waste is REAL (do this)
+`philox4x32_10` returns 4 outputs/call (the 10 rounds are the cost; 4 outputs are free). `at(pos)` =
+`block(pos>>2)[pos&3]` — correct per-primitive, BUT `rawDraw*PatternAt` (PatternEngine.hpp:694-718) calls
+`atUniform(pos*DRAW_CHUNK + cursor)` PER CURSOR in a loop (c++). Each call RECOMPUTES block(x>>2) and uses
+1 of 4 outputs -> **4x Philox-block computations, 75% discarded** (~1024 calls per multivariate draw vs
+~256).
+**FIX: batch via fillBlock/drawBlock** (exist, PhiloxRng.hpp:175/177) over the consecutive cursor range ->
+each block computed ONCE, all 4 outputs used -> **4x fewer Philox blocks, BIT-IDENTICAL output.** No
+algorithm change.
+
+## NONCE — indexing convenience, NOT compute efficiency
+ctr[2..3] nonce is UNUSED (fixed 0; "UNUSED and stays so", PhiloxRng.hpp:116). Using it does NOT add
+speed (each nonce value = a full Philox call). It is addressing cleanliness only (counter = pure
+position for reverse-mode N±j windows; lane/voice via nonce vs the current packed pos*DRAW_CHUNK+cursor).
+- Cross-stream (rhythm/melody/qmix/CA): keep SEPARATE KEYS (S, S+1, S+2, S+3 additive — decorrelated,
+  deliberately bug-fixed). Do NOT refactor to nonce. No speed gain, touches bug-sensitive key code.
+- Within-stream packed counter -> nonce: DEFER to reverse-mode build; adopt ONLY if the packed counter
+  (pos*DRAW_CHUNK+cursor) complicates the N+j / negative-position addressing. Tidiness, not necessity.
+
+## SIMD Philox — optional, on top of the 4x
+Philox is built for SIMD (parallel counters). Would give another ~4-8x on raw-draw gen. Candidate for the
+turnaround/init burst, but likely unnecessary after the 4x batching + bidirectional buffer (which makes
+turnarounds free). Decide by measurement; the 4x batching is the priority.
+
+## Action order
+1. 4-output batching (fillBlock/drawBlock in rawDraw*PatternAt) — the 4x, do first, mechanical.
+2. Bidirectional buffer for rhythm/melody/qmix (reset-init incl. negative counters, extend-leading-edge
+   per step, rebuild only at phrase-boundary dice rolls, prune trailing, scope to phase mode).
+3. 32 steps — funded by (1).
+4. Nonce / SIMD — defer, only if measurement/reverse-mode needs them.
+
+
+## MUSICAL DEFINITION of reverse mode + slew — defensible & understandable (Rodney)
+Reverse mode plays the pattern backward; the SLEW (serial correlation / "how far back" the MA reaches)
+EASES over its own depth at the turnaround, then retraces the forward material EXACTLY.
+- **DERIVED, not imposed:** a moving average has inertia by definition — it CAN'T reverse instantly, it
+  turns around over its window. So the slew-depth turnaround isn't an ad-hoc rule; it's what the MA DOES
+  when reversed. That's what makes it defensible (explanation = "it's consistent", not "we chose this").
+- **Understandable:** one monotonic knob — more slew = more momentum = gentler turnaround. Maps to the
+  intuition that smoothed signals don't snap. Clean extremes.
+- **No separate "instant reverse" mode needed — that IS slew-minimum (instant slew).** Slew min = no
+  smoothing = instant turnaround = hard mirror reverse. The knob spans instant-reverse (min) to
+  sweeping-turnaround (max); one parameter covers everything. Slew does DOUBLE DUTY: forward
+  serial-correlation AND turnaround character.
+- **Multiple reverses (phase mode wiggles direction arbitrarily) -> the slew-ease is what makes it
+  MUSICAL.** Instant turnarounds would make rapid phase-reverses harsh/glitchy; slew-eased turnarounds
+  make them SMOOTH flowing back-and-forth (the correlation easing in/out of each reversal),
+  controllably (slew min = crisp/stuttery as an effect; slew max = smooth). Same per-turnaround
+  mechanism repeated — no special handling for "many reverses"; the bidirectional buffer makes each
+  reversal FREE regardless of count.
+- **Backbone:** between turnarounds, reverse retraces forward EXACTLY (reversibility, r reproducible).
+  So: expressive turnaround GESTURE + faithful RETRACE. Character at the turn, fidelity in the body.
+Verdict: good, defensible, understandable — strengthened by being DERIVED (moving-average behaviour),
+ONE KNOB (instant..sweeping incl. hard-reverse at min), and GRACEFUL under the hardest case (rapid
+multi-reverse in phase mode).
+---
+
+## LUT-SIMD — examined, NOT worth it in our context; scalar interpolated LUT is the sweet spot (Rodney)
+Examined two candidate SIMD approaches for the copula transcendentals (Phi / PhiInv):
+1. **Vectorized POLYNOMIAL** (A&S erf CDF ~1e-7; Beasley-Springer-Moro PPF). REJECTED:
+   - Breaks REVERSIBILITY — Phi and PhiInv are INDEPENDENT approximations, so PhiInv(Phi(x)) != x
+     bit-exactly. Our requirement is reversible ROUND-TRIP (determinism), not accuracy-to-true-Gaussian.
+   - Uses libmvec (_ZGVdN8v_expf/logf) — GCC/glibc/Linux ONLY (fails Mac/Windows link).
+   - Uses FMA — contracts differently per platform (violates our -ffp-contract=off cross-platform rule).
+2. **Gather-based SIMD LUT** (forward = 1 gather; inverse = 12-gather vectorized binary search). REJECTED:
+   - GATHER-BOUND: gather is SIMD's weak spot (serialized/high-latency); the 12-gather inverse is likely
+     marginal/negative vs our 1 interpolated scalar lookup.
+   - LOWER accuracy — nearest-index, NO interpolation (ours interpolates -> smoother).
+   - NO arm64 benefit — NEON has no _mm256_i32gather equivalent; SIMDe emulates gather as scalar loads.
+
+### Is efficient LUT-SIMD possible AT ALL? Yes, but it sacrifices what we need
+- In-register small table + shuffle (permutevar / vqtbl) OR bit-trick + polynomial — these AVOID gather
+  and are genuinely fast. BUT they are APPROXIMATIONS with polynomial correction -> don't round-trip
+  bit-exact -> break reversibility (same problem as the polynomial).
+- The ONLY efficient + reversible SIMD LUT = the SAME small register-table both ways (shuffle, round-trip
+  exact). But a small (16-32 entry) table is COARSE -> spread/correlation quantized to few levels ->
+  likely sounds STEPPED. Our interpolation is what gives smooth output from a manageable table — and
+  interpolation is exactly what reintroduces round-trip inexactness.
+
+### Conclusion
+Our scalar INTERPOLATED LUT sits at a sweet spot the SIMD versions can't hit: FINE-grained + INTERPOLATED
+(smooth) + DETERMINISTIC + REVERSIBLE + cheap-enough scalar. Every efficient SIMD-LUT technique sacrifices
+either reversibility (poly) or fineness (coarse register table); the fine+reversible SIMD LUT is
+gather-bound (slow). So: **we can't further optimise our LUT in the current context** — the SIMD win is
+the INTEGER PHILOX (done); the transcendental LUT is CORRECTLY scalar.
+Revisit ONLY if profiling (post-16x) shows the readout is the bottleneck AND a coarser register-table
+tests musically acceptable (not stepped). Until then, closed.
+
+---
+
+## CONSIDER LATER — expose K (window depth) as a user param? (Rodney)
+K = the moving-average WINDOW DEPTH (how far the slew window reaches). Slew (r) = how STRONGLY it
+correlates within the window; K = how FAR. Orthogonal smoothing controls: slew = strength, K = reach.
+Musical value: small K (4-8) = short-range/local smoothing (smooth jitter); large K (64) = long-range
+continuity (slow broad drift). A real second expressive dimension — and small K is musically DISTINCT,
+not just cheaper (so it's "cheaper AND different", not "cheaper but worse").
+
+### The open question — is exposing K an OPTIMISATION, or just how we USE the 64 buffer?
+Decide this AFTER: (1) the slew recompute DECOMPOSITION lands (per-step + video-rate), (2) the SIMD-sumZ
+cherry, (3) the buffer-rebuild cost is measured. Because:
+- The per-step sumZ cost is O(K). So smaller K = cheaper per sumZ (K=8 is 8x cheaper than K=64). IF the
+  decomposition + SIMD haven't already made slew cheap enough, exposing K is a real PERF LEVER (user
+  trades reach for CPU). IF they HAVE made it cheap enough, then K is "just how we use the 64-deep buffer"
+  — a MUSICAL param (choose your reach) with negligible perf consequence, not an optimisation.
+- So whether K is an "optimisation" or "just a musical use of the buffer" depends on the post-fix cost.
+  Measure first; the answer falls out.
+
+### Design constraints (if exposed)
+- CONFIG knob, NOT CV-modulatable — changing K changes the window structure -> full recompute storm (same
+  reason poly count isn't modulatable). Set reach, then modulate slew within it.
+- Buffer ALLOCATED for MAX K (64); K just windows over it (so no reallocation; the bidirectional buffer
+  already holds 64). This is literally "how we use the 64 buffer".
+- Scope: GLOBAL or PER-LANE (reach differs rhythm vs melody), NOT per-voice (too much config surface). TBD.
+- Range e.g. 2-64, default 64 (or a musical value); powers of 2 help the SIMD-sumZ cherry (clean widths).
+- Framing: turns a fixed internal constant (K=64) into a musical "correlation REACH" param — the temporal
+  complement to slew's strength, as spread/mix is the cross-voice correlation.

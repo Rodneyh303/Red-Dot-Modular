@@ -699,6 +699,15 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
 // The remapped slewed buffers are a pure function of (pins, draw counters, mix, slew). Re-run the
 // forceRecomputeSlewed()+remapSlewedByPins() pair only when that signature changes; otherwise the
 // buffers from last cycle are already correct and re-running just churns them under the UI reader.
+//
+// SLEW IS INTENTIONALLY EXCLUDED from this check (phrase-boundary slew consumption). Slew is a
+// distributional parameter that must be constant across a phrase; latchMix latches it every
+// control-rate cycle, but the slewed buffers are only re-derived at the ROLL (phrase boundary),
+// where redrawRhythm/Melody/Qmix advance the draw counter. The draw-counter checks below detect
+// that roll and re-fire the remap with the new slewed content. Mid-phrase slew changes do NOT
+// re-derive the slewed buffers (latchMix + refreshVisualCache skip recompute on slew-only change),
+// so checking slew here would fire forceRecomputeSlewed() at control rate on every slew modulation
+// tick — the CPU spike. The counter advance at the roll is the correct and sufficient trigger.
 bool MonsoonSandsManager::remapSigChanged_(const uint8_t* rSrc, const uint8_t* mSrc, const uint8_t* qSrc, bool identity) const {
     auto& pe = engine.pe;
     if (identity != lastRemap_.wasIdentity)               return true;
@@ -708,9 +717,6 @@ bool MonsoonSandsManager::remapSigChanged_(const uint8_t* rSrc, const uint8_t* m
     if (pe.rhythmMixLatched  != lastRemap_.rMix)          return true;
     if (pe.melodyMixLatched  != lastRemap_.mMix)          return true;
     if (pe.qmixMixLatched    != lastRemap_.qMix)          return true;
-    if (pe.rhythmSlewLatched != lastRemap_.rSlew)         return true;
-    if (pe.melodySlewLatched != lastRemap_.mSlew)         return true;
-    if (pe.qmixSlewLatched   != lastRemap_.qSlew)         return true;
     for (int v = 0; v < 16; ++v)
         if (rSrc[v] != lastRemap_.rSrc[v] || mSrc[v] != lastRemap_.mSrc[v] || qSrc[v] != lastRemap_.qSrc[v]) return true;
     return false;
@@ -721,6 +727,6 @@ void MonsoonSandsManager::captureRemapSig_(const uint8_t* rSrc, const uint8_t* m
     for (int v = 0; v < 16; ++v) { lastRemap_.rSrc[v] = rSrc[v]; lastRemap_.mSrc[v] = mSrc[v]; lastRemap_.qSrc[v] = qSrc[v]; }
     lastRemap_.rCtr = pe.rhythmDrawCtr;  lastRemap_.mCtr = pe.melodyDrawCtr;  lastRemap_.qCtr = pe.qmixDrawCtr;
     lastRemap_.rMix = pe.rhythmMixLatched;  lastRemap_.mMix = pe.melodyMixLatched;  lastRemap_.qMix = pe.qmixMixLatched;
-    lastRemap_.rSlew = pe.rhythmSlewLatched; lastRemap_.mSlew = pe.melodySlewLatched; lastRemap_.qSlew = pe.qmixSlewLatched;
+    // Slew is NOT captured (phrase-boundary consumption — see remapSigChanged_ comment).
     lastRemap_.wasIdentity = identity;
 }
