@@ -32,7 +32,7 @@ elif [ -d "../../dep/include" ]; then
   INCS="$INCS -I../../dep/include"
 fi
 STD="-std=c++17"
-# SSE4.1 for SIMD Philox (x86 only; arm64 uses sse2neon which needs no flag)
+# SSE4.1 for SIMD Philox (x86 only; arm64 uses SIMDe NEON emulation, no flag needed)
 ARCHF=""
 if [ "$(uname -m)" = "x86_64" ] || [ "$(uname -m)" = "i686" ] || [ "$(uname -m)" = "i386" ]; then
     ARCHF="-msse4.1"
@@ -75,8 +75,7 @@ TESTS=(
   "test_lane_direction|"
   "test_lane_bitcompare|$SE $GS $PE"
   "test_voice_count_partial|$PE"
-  "test_sse2neon_compat|"   # header-only: SIMD compat layer (sse2neon on arm64)
-  "test_simd_compat|"   # header-only: SIMD compat layer (SIMDe on arm64)
+  "test_simd_compat|"   # header-only: SIMD compat layer (SIMDe: native SSE on x86, NEON emulation on arm64)
   "test_lane_types|"
   "test_legato_leading_edge|"
   "test_lock_behaviour|$PE"
