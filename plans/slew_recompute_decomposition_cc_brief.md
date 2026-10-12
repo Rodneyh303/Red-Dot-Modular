@@ -40,16 +40,26 @@ visual). No quality loss — you compute exactly what's heard/seen. No SIMD need
 - Fixed slew still bit-identical.
 - MEASURE: modulate 3 slews at 16 voices, VCV CPU meter -> confirm 80% -> low single digits.
 
-## CHERRY ON TOP (optional, AFTER the decomposition lands + measured) — SIMD the sumZ
-Once the decomposition has cut the op count ~1000x, the remaining per-step sumZ (K=64 weighted reduction)
-can OPTIONALLY be SIMD'd for extra headroom:
-- SIMD the 64-tap weighted sum (the reduction part — NOT the PhiFast LUT gather at the end, which is
-  gather-bound and stays scalar). ~4-8x on the reduction.
-- MUST be bit-identical: use a DETERMINISTIC reduction order (fixed pairwise/tree, NOT compiler
-  auto-vectorized reorder) + the SIMDe path (src/third_party/simd/simd_compat.hpp) for x86+arm64.
-  Bit-compare must still pass on all 3 platforms.
-- This is a "cherry on top" — do it ONLY after the decomposition is landed, verified, and measured; it's
-  a modest extra on an already-cheap path, not the fix. The fix is the consumption-aligned decomposition.
+## SIMD — VERTICAL across INDEPENDENT STREAMS (not horizontal within one sum) — a clean ~8x
+IMPORTANT (Rodney, from AAD/tape experience): do NOT vectorize WITHIN one sumZ (horizontal — the 64 taps
+of a single reduction, which needs a cross-lane horizontal sum + a deterministic reduction ORDER + fights
+the final gather). Instead vectorize ACROSS INDEPENDENT reductions (vertical): pack 8 independent VOICES
+(or steps, or lanes) into the 8 SIMD lanes, each lane running its OWN sumZ over its own window — the
+IDENTICAL scalar logic, 8 in parallel. The engine is full of independent reductions (per voice, per step,
+per lane — a voice's window sum doesn't depend on another's), so this fits naturally.
+Why vertical wins here:
+- BIT-IDENTICAL BY CONSTRUCTION — each lane is the exact scalar computation, same order; nothing is
+  reordered. The determinism/reassociation concern VANISHES (no reduction-order problem). This is the AAD
+  "independent summing of multiple streams" technique.
+- NO horizontal-reduction tail (method-1's Amdahl bottleneck) — each lane's result is independent.
+- The final PhiFast GATHER also parallelizes (8 voices' lookups = one gather).
+- Clean ~8x (AVX2) / ~4x (SSE/NEON) on the WHOLE per-step reduction incl. the transform.
+So SIMD here is NOT a caveated "cherry" — it's a clean, bit-exact ~8x with no determinism issue, and it's
+arguably EASIER than horizontal (no horizontal sum, no order care). Likely a MUST, not optional. Use the
+SIMDe path (src/third_party/simd/simd_compat.hpp) for x86 native + arm64 NEON; bit-compare on 3 platforms.
+ORDER: still land the consumption-aligned DECOMPOSITION first (the ~1000x structural win / the actual
+fix), then apply vertical SIMD across voices to the remaining per-step reductions (slew sumZ AND the
+cross-voice spread/mix2 reduction — same vertical technique, independent streams).
 
 ## Method
 Decomposition FIRST (audio per-step-when-read + visual video-rate-displayed-page), one piece at a time,
