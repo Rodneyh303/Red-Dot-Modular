@@ -118,3 +118,29 @@ dual-input jitter as a known minor edge.
 ### Net
 Three facets of V1=voice-0 now: LOGIC (done), STORAGE (Category 1 -> [16][16]), UI EDITABILITY (this —
 v0 two-way editable). Unify the data model HERE too.
+
+---
+
+## PYTHON panel generators — LEAVE, not risky (Rodney asked)
+The panel generators (panel_src/gen_straits.py etc.) generate the SVG panels + the named anchors
+(param_rest_0..15 etc.) that C++ bindParam hooks widgets onto. For OUR changes they need NO edit:
+- **Category 1 (storage collapse [15][16]->[16][16]):** INTERNAL C++ data only — zero panel/anchor/UI
+  impact. Python fully orthogonal. Leave.
+- **v0 two-way editable:** the Straits panel ALREADY generates 16 knob anchors (param_rest_<0..15>,
+  v0=mono — gen_straits.py). The change is purely C++: unlock the v0 bind (editable, point at V1's
+  existing Monsoon param). The anchor already exists -> NO panel regeneration. Leave.
+- **Category 2 (param enums) left intentional** -> no anchor-count change -> no Python change.
+
+### When Python WOULD be risky (NOT in scope)
+Only if a change altered the ANCHOR COUNT or NAMES (e.g. a blanket 15->16 that added a 16th poly param,
+or removed/renamed anchors). Then Python-generated anchors must match the C++ bind names exactly, or the
+UI breaks SILENTLY (bind to a non-existent anchor -> widget missing / unbound). We are NOT doing that
+(param layer stays).
+
+### Existing guard
+test/audit_anchor_bind.py already checks anchor<->bind consistency ("all migrated modules consistent, all
+anchors bound") and runs in the test suite. So any accidental anchor/bind mismatch is caught. (This is the
+test that needs python3-or-python on the runner — the Windows PYBIN fix.)
+
+CONCLUSION: leave the Python generators; the pass is C++-internal (storage) + C++-bind (v0) with the param/
+anchor layer unchanged; audit_anchor_bind.py guards consistency.
