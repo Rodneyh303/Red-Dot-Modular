@@ -149,3 +149,48 @@ At frac=1 of pair (N-f, N-f-1) the value = z_{N-f-1} exactly (sqrt(v)=0 -> xi te
 the next pair (N-f-1, N-f-2) it = z_{N-f-1} exactly too. SAME value -> CONTINUOUS across the boundary, even
 though the two pairs have DIFFERENT xi — because the noise is zero at the integer endpoints where pairs
 meet. So per-pair xi gives a continuous scrub.
+
+---
+
+## r < 0 (hocket / anti-correlation) — resolved: variance-normalised DETERMINISTIC blend (Rodney)
+The OU-bridge (sinh/theta) formula is UNDEFINED for r<0: it needs a continuous rho(tau) with rho(0)=1,
+rho(1)=r, i.e. r^tau — but r^frac is COMPLEX for negative r at non-integer frac. There is no real
+continuous/fractional process whose fractional-lag correlation matches a negative-r AR(1).
+
+### Checked: is there a model-consistent negative-r FRACTIONAL bridge? (Option 2) — NO, for OUR process
+- An INTEGER-lattice AR(1) bridge (direct Gaussian conditioning on integer grid points, cov = phi^|i-j|)
+  WORKS for negative phi — because phi^(INTEGER) is real. (A posted numpy `ar1_gaussian_bridge` does
+  exactly this.) BUT that fills INTEGER gaps between distant endpoints — it is NOT a FRACTIONAL
+  interpolation between two ADJACENT samples (our scrub). Different problem.
+- Direct conditioning WOULD extend to fractional IF we could supply Corr(X_frac, X_0)=rho_a and
+  Corr(X_frac, X_1)=rho_b. For r>0 those are r^frac, r^(1-frac). For r<0 they are COMPLEX -> the AR(1)
+  structure does NOT define a real fractional-lag correlation. So there is NOTHING canonical to condition
+  on.
+- The only real continuous process with rho(1)<0 is an OSCILLATORY covariance e^{-a|tau|}cos(w tau): but
+  it (a) needs an EXTRA parameter (damping vs oscillation; r alone doesn't fix it) and (b) its integer
+  restriction is AR(2), NOT our geometric-weight AR(1) — so it doesn't match r^k at the other lags.
+=> For OUR AR(1)-with-negative-r there is NO model-consistent fractional bridge. The alternation is an
+inherently DISCRETE (integer-lag-only) phenomenon with no fractional meaning. So this is not a limitation
+to apologise for — there's genuinely nothing to be model-consistent TO between the samples.
+
+### The answer: r<0 uses the variance-normalised DETERMINISTIC blend (no noise)
+  X_frac = ((1-f)*z0 + f*z1) / sqrt((1-f)^2 + f^2 + 2*f*(1-f)*r)   then PhiFast
+- Well-defined for r > -1 (denominator strictly positive). EXACT endpoints. UNIT variance at every f ->
+  uniform after Phi. Smooth. Cheap. No xi needed (no valid bridge variance to inject -> none exists at r<0,
+  which is WHY it's deterministic).
+- It is the rescaled conditional mean of the best unit-variance linear interpolant — the honest noise-free
+  answer.
+
+### Unified story (all r)
+- r > 0: OU bridge = deterministic mean-blend (a,b) + model-consistent xi noise (sqrt(v)). Full
+  model-consistency.
+- r = 0: independent -> xi IS the value (a=b=0, v=1, fresh N(0,1)).
+- r < 0: variance-normalised DETERMINISTIC blend (no noise — none is well-defined). Uniform + exact
+  endpoints; the deterministic sibling of the OU bridge.
+So: inject bridge noise WHERE IT'S DEFINED (r>=0); fall to the deterministic uniform blend where it isn't
+(r<0). One family, noise added only when the model permits it.
+
+### CC implementation note (supersedes "keep current behaviour" — that was wrong; current r<0 = the bug)
+r<0 branch: use the variance-normalised blend above (NOT the old distorted linear blend, NOT the OU sinh
+formula). Verify variance=1 (Monte-Carlo) for r<0 too. Integer positions exact. (Also fixes the old r<0
+distortion.)
