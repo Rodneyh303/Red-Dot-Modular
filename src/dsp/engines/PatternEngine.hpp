@@ -88,39 +88,37 @@ struct PatternInput {
     //  PHILOX_KEY_DERIVATION_AND_CA_SEED.md Finding 1.)
 };
 
-// ── OU-bridge blend coefficients ──────────────────────────────────────────────
-// Three branches: r>0 (OU bridge with ξ), r=0 (fresh ξ, a=b=0), r<0 (variance-normalized, no ξ).
+// ── OU-bridge blend coefficients (UNIFIED 2×2 conditioning for ALL r) ─────────
+// One bridge for all r: r>0 (monotone kernel), r=0 (fresh ξ), r<0 (oscillatory kernel).
 // Computed once per (r, frac, pair) — same for all 16 steps/fields at a given (r, frac).
+// ξ is ALWAYS injected (one per A/B pair, position-index keyed, separate keys S+4/5/6).
 struct OUBridgeCoeffs {
-    double a = 0, b = 0, sqrtV = 0, xi = 0, denom = 1, dfrac = 0;
-    bool useOU = false;   // true for r>=0 (OU bridge with ξ), false for r<0 (deterministic)
+    double a = 0, b = 0, sqrtV = 0, xi = 0;
     void compute(float r, float frac, const redDot::PhiloxRng& bridge, int64_t pairIndex) {
-        dfrac = (double)frac;
-        if (r >= 0.f) {
-            useOU = true;
-            if (r == 0.f) {
-                // r=0: a=b=0 (mid), v=1 → X=ξ (fresh noise). Endpoints: a=1/b=1, v=0.
-                if (frac == 0.f) { a = 1; b = 0; sqrtV = 0; }
-                else if (frac == 1.f) { a = 0; b = 1; sqrtV = 0; }
-                else { a = 0; b = 0; sqrtV = 1; }
-            } else {
-                const double theta = -std::log((double)r);
-                const double sh  = std::sinh(theta);
-                a = std::sinh(theta * (1.0 - dfrac)) / sh;
-                b = std::sinh(theta * dfrac) / sh;
-                const double v = 2.0 * std::sinh(theta * dfrac) * std::sinh(theta * (1.0 - dfrac)) / sh;
-                sqrtV = std::sqrt(v < 0.0 ? 0.0 : v);
-            }
-            xi = redDot::copula::PhiInv((double)bridge.atUniform((uint64_t)pairIndex));
+        const double dfrac = (double)frac;
+        if (r == 0.f) {
+            // r=0: a=b=0 (mid), v=1 → X=ξ (fresh noise). Endpoints: a=1/b=1, v=0.
+            if (frac == 0.f) { a = 1; b = 0; sqrtV = 0; }
+            else if (frac == 1.f) { a = 0; b = 1; sqrtV = 0; }
+            else { a = 0; b = 0; sqrtV = 1; }
         } else {
-            // r<0: variance-normalized deterministic blend (no ξ, no OU embedding)
-            useOU = false;
-            denom = std::sqrt((1.0-dfrac)*(1.0-dfrac) + dfrac*dfrac + 2.0*dfrac*(1.0-dfrac)*(double)r);
+            // Unified 2×2 conditioning: ρ_a/ρ_b encode the endpoint correlations.
+            // ω=0 for r>0 (monotone), ω=π for r<0 (oscillatory/anti-correlation).
+            const double absR  = std::fabs((double)r);
+            const double omega = (r < 0.f) ? M_PI : 0.0;
+            const double rhoA  = std::pow(absR, dfrac)         * std::cos(omega * dfrac);
+            const double rhoB  = std::pow(absR, 1.0 - dfrac)  * std::cos(omega * (1.0 - dfrac));
+            const double dr    = (double)r;
+            const double det   = 1.0 - dr * dr;   // det = 1 - r²
+            a = (rhoA - dr * rhoB) / det;         // a = (ρ_a - r·ρ_b) / (1-r²)
+            b = (rhoB - dr * rhoA) / det;         // b = (ρ_b - r·ρ_a) / (1-r²)
+            double v = 1.0 - (rhoA * a + rhoB * b);  // v = 1 - (ρ_a·a + ρ_b·b)
+            sqrtV = std::sqrt(v < 0.0 ? 0.0 : v);    // clamp for numerical safety
         }
+        xi = redDot::copula::PhiInv((double)bridge.atUniform((uint64_t)pairIndex));
     }
     double blend(double z0, double z1) const {
-        if (useOU) return a * z0 + b * z1 + sqrtV * xi;
-        return ((1.0 - dfrac) * z0 + dfrac * z1) / denom;
+        return a * z0 + b * z1 + sqrtV * xi;
     }
 };
 
