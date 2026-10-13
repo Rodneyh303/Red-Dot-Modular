@@ -105,7 +105,7 @@ struct OUBridgeCoeffs {
             // Unified 2×2 conditioning: ρ_a/ρ_b encode the endpoint correlations.
             // ω=0 for r>0 (monotone), ω=π for r<0 (oscillatory/anti-correlation).
             const double absR  = std::fabs((double)r);
-            const double omega = (r < 0.f) ? M_PI : 0.0;
+            const double omega = (r < 0.f) ? 3.14159265358979323846 : 0.0;
             const double rhoA  = std::pow(absR, dfrac)         * std::cos(omega * dfrac);
             const double rhoB  = std::pow(absR, 1.0 - dfrac)  * std::cos(omega * (1.0 - dfrac));
             const double dr    = (double)r;
