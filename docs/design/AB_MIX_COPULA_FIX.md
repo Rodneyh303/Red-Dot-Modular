@@ -194,3 +194,44 @@ So: inject bridge noise WHERE IT'S DEFINED (r>=0); fall to the deterministic uni
 r<0 branch: use the variance-normalised blend above (NOT the old distorted linear blend, NOT the OU sinh
 formula). Verify variance=1 (Monte-Carlo) for r<0 too. Integer positions exact. (Also fixes the old r<0
 distortion.)
+
+---
+
+## CORRECTION — r<0 bridge DOES exist (oscillatory kernel). UNIFIED bridge for ALL r (Rodney was right)
+The earlier "no model-consistent fractional bridge for r<0" was WRONG. The negative case has a proper
+bridge via a DAMPED-OSCILLATORY (quasi-periodic) kernel — Rodney's instinct ("different continuous process
+for the negative case"). Verified numerically.
+
+### The unified correlation kernel (all r in (-1,1))
+  rho(tau) = |r|^tau * cos(omega * tau),   omega = 0 for r>0,   omega = pi for r<0.
+- r>0: rho = r^tau (monotone) = the OU/Gaussian-Markov kernel.
+- r<0: rho = |r|^tau * cos(pi*tau) — a valid POSITIVE-DEFINITE covariance (min eig > 0, checked). At
+  INTEGER lags it = |r|^k*cos(pi k) = |r|^k*(-1)^k = r^k EXACTLY -> matches our AR(1) incl the alternating
+  sign. (Continuous process = a damped harmonic oscillator / CARMA(2) driven by noise; its INTEGER samples
+  are AR(1)-with-negative-r. NOT fBm — a stationary oscillatory GP. My earlier "it's AR(2), mismatch" was
+  WRONG: integer-lag corr is exactly r^k = AR(1).)
+
+### ONE construction, both signs (supersedes the r<0 deterministic-blend split)
+Same Gaussian conditioning on the two endpoints, same per-pair Philox xi, just the correlation formula
+switches on sign(r):
+  rho_a = |r|^frac       * cos(omega*frac)          # corr(X_frac, X_0)
+  rho_b = |r|^(1-frac)   * cos(omega*(1-frac))       # corr(X_frac, X_1)      omega = (r<0 ? pi : 0)
+  [a, b] = [rho_a, rho_b] * inv([[1, r],[r, 1]])
+  v      = 1 - [rho_a, rho_b] * inv([[1,r],[r,1]]) * [rho_a, rho_b]^T
+  X_frac = a*z0 + b*z1 + sqrt(v)*xi   -> PhiFast
+Verified for r in {+0.7, 0, -0.3, -0.7, -0.95}: all v in [0,1], endpoints exact, unit variance (uniform).
+- r>0 reduces to the sinh/theta OU forms (same thing).
+- r=0: a=b=0, v=1 -> fresh xi.
+- r<0: oscillatory rho -> a,b can be NEGATIVE (the anti-correlation), v in [0,1], STILL noise-injected +
+  model-consistent. (Midpoint v=1 at r<0 -> pure xi, like r=0.)
+So the bridge is MODEL-CONSISTENT (noise-injected) for NEGATIVE r too — NOT a deterministic fallback.
+The xi design (one per A/B pair, S+4/5/6 keys, position-index counter, reversible) is UNCHANGED.
+
+### Implementation
+Compute [a,b] and v from the 2x2 solve directly (cheap: a 2x2 inverse) rather than the sinh closed form —
+the 2x2 solve works for BOTH signs with the one kernel, so no separate r<0 branch beyond omega = (r<0?pi:0)
+in rho_a/rho_b. Or precompute a,b,v as a LUT in quantised (r, frac) across the FULL r in (-1,1). Keep the
+r==0 limit (a=b=0, v=1). Monte-Carlo verify variance=1 for r<0 too.
+(The variance-normalised deterministic blend from the previous section is the NOISE-FREE conditional mean
+of this same bridge — keep it only as the no-noise option if ever wanted; the full noise-injected bridge
+above is the recommended unified answer for all r.)
