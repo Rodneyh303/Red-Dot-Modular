@@ -122,6 +122,10 @@ namespace seed {
     // q-mix lane is wired in the geometry branch (editor lane 2 — see dsp/LaneMapping.hpp);
     // reseed is its OWN action and it shares the single SEED jack (consistent with CA).
     constexpr uint64_t STREAM_SOURCE_SELECT = 3;
+    // OU-bridge interpolation noise: ONE per A/B pair, position-index keyed (no frac).
+    // SEPARATE keys per stream (S+4/5/6) — distinct from base draws AND each other, so
+    // the scrub noise is independent of the draws and decorrelated across streams.
+    constexpr uint64_t STREAM_BRIDGE_R = 4, STREAM_BRIDGE_M = 5, STREAM_BRIDGE_Q = 6;
     // seedFloat 0..10 → 64-bit key for the given stream. Same float + different stream
     // → different key. seed64() conditions the key again via philoxMakeKey, so a small
     // additive offset still lands on a well-separated stream.

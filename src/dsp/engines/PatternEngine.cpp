@@ -14,6 +14,9 @@ void PatternEngine::reset() {
     seedRhythmPhilox(rhythmSeedFloat);
     seedMelodyPhilox(melodySeedFloat);
     seedQmixPhilox(qmixSeedFloat);   // q-mix twin — its OWN STREAM_SOURCE_SELECT stream
+    seedBridgeRhythmPhilox(rhythmSeedFloat);  // OU-bridge noise (S+4/5/6, user-seedable)
+    seedBridgeMelodyPhilox(melodySeedFloat);
+    seedBridgeQmixPhilox(qmixSeedFloat);
 
     // strands must not be all-zero or module is silent until dice/phrase
     for (int i = 0; i < 16; ++i) {
@@ -263,6 +266,10 @@ void PatternEngine::recomputeEffectiveRhythm() {
         // sumZ results depend ONLY on position -> cache and reuse on frac-only changes (scrub
         // within a position-pair).  Invalidate on roll (ctr), position-cross (f), or r change.
         const bool cacheHit = rhythmZCache_.hit(N, f, r);
+        // B2: OU-bridge coefficients — computed once per (r, frac, pair). Three branches:
+        // r>0 (OU with ξ), r=0 (fresh ξ), r<0 (variance-normalized, no ξ).
+        OUBridgeCoeffs ouBC;
+        ouBC.compute(r, frac, bridgeRhythmPhilox, N - f - 1);
         const CachedRhythmDraw* w0[K];
         const CachedRhythmDraw* w1[K];
         if (!cacheHit) {
@@ -285,7 +292,7 @@ void PatternEngine::recomputeEffectiveRhythm() {
                 rhythmZCache_.z0[fi] = z0;
                 rhythmZCache_.z1[fi] = z1;
             }
-            return (float)redDot::copula::PhiFast((1.0 - (double)frac) * z0 + (double)frac * z1);
+            return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1));
         };
         int fi = 0;
         for (int i = 0; i < 16; ++i) {
@@ -360,6 +367,7 @@ void PatternEngine::recomputeEffectiveMelody() {
         if (!melodyWeightCache_.matches(r)) melodyWeightCache_.update(r);
         const double* wc = melodyWeightCache_.w;
         const bool cacheHit = melodyZCache_.hit(N, f, r);
+        OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeMelodyPhilox, N - f - 1);
         const CachedMelodyDraw* w0[K];
         const CachedMelodyDraw* w1[K];
         if (!cacheHit) {
@@ -382,7 +390,7 @@ void PatternEngine::recomputeEffectiveMelody() {
                 melodyZCache_.z0[fi] = z0;
                 melodyZCache_.z1[fi] = z1;
             }
-            return (float)redDot::copula::PhiFast((1.0 - (double)frac) * z0 + (double)frac * z1);
+            return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1));
         };
         int fi = 0;
         for (int i = 0; i < 16; ++i) {
@@ -436,6 +444,7 @@ void PatternEngine::recomputeEffectiveQmix() {
         if (!qmixWeightCache_.matches(r)) qmixWeightCache_.update(r);
         const double* wc = qmixWeightCache_.w;
         const bool cacheHit = qmixZCache_.hit(N, f, r);
+        OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeQmixPhilox, N - f - 1);
         const CachedQmixDraw* w0[K];
         const CachedQmixDraw* w1[K];
         if (!cacheHit) {
@@ -458,7 +467,7 @@ void PatternEngine::recomputeEffectiveQmix() {
                 qmixZCache_.z0[fi] = z0;
                 qmixZCache_.z1[fi] = z1;
             }
-            return (float)redDot::copula::PhiFast((1.0 - (double)frac) * z0 + (double)frac * z1);
+            return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1));
         };
         int fi = 0;
         for (int i = 0; i < 16; ++i) {
@@ -754,6 +763,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     if (!in.locked && rhythmSeedPending) {
         rhythmSeedFloat = rhythmSeedPendingFloat;
         seedRhythmPhilox(rhythmSeedFloat);     // mirror seed into Philox (counter→0)
+        seedBridgeRhythmPhilox(rhythmSeedFloat);
         rhythmSeedPending = false;
         rhythmFirstDraw = true;   // new seed → A=B=draw, reproducible at any slew
     } else if (rhythmReseedRollPending) {
@@ -772,6 +782,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     if (!in.locked && melodySeedPending) {   // seeds stay frozen under lock (Reseed-scoped)
         melodySeedFloat = melodySeedPendingFloat;
         seedMelodyPhilox(melodySeedFloat);     // mirror seed into Philox (counter→0)
+        seedBridgeMelodyPhilox(melodySeedFloat);
         melodySeedPending = false;
         melodyFirstDraw = true;
     } else if (!in.locked && melodyReseedRollPending) {
@@ -787,6 +798,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     if (!in.locked && qmixSeedPending) {   // seeds stay frozen under lock (Reseed-scoped)
         qmixSeedFloat = qmixSeedPendingFloat;
         seedQmixPhilox(qmixSeedFloat);     // mirror seed into Philox (counter→0)
+        seedBridgeQmixPhilox(qmixSeedFloat);
         qmixSeedPending = false;
         qmixFirstDraw = true;
     } else if (!in.locked && qmixReseedRollPending) {

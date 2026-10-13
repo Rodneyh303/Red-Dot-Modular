@@ -88,6 +88,42 @@ struct PatternInput {
     //  PHILOX_KEY_DERIVATION_AND_CA_SEED.md Finding 1.)
 };
 
+// ── OU-bridge blend coefficients ──────────────────────────────────────────────
+// Three branches: r>0 (OU bridge with ξ), r=0 (fresh ξ, a=b=0), r<0 (variance-normalized, no ξ).
+// Computed once per (r, frac, pair) — same for all 16 steps/fields at a given (r, frac).
+struct OUBridgeCoeffs {
+    double a = 0, b = 0, sqrtV = 0, xi = 0, denom = 1, dfrac = 0;
+    bool useOU = false;   // true for r>=0 (OU bridge with ξ), false for r<0 (deterministic)
+    void compute(float r, float frac, const redDot::PhiloxRng& bridge, int64_t pairIndex) {
+        dfrac = (double)frac;
+        if (r >= 0.f) {
+            useOU = true;
+            if (r == 0.f) {
+                // r=0: a=b=0 (mid), v=1 → X=ξ (fresh noise). Endpoints: a=1/b=1, v=0.
+                if (frac == 0.f) { a = 1; b = 0; sqrtV = 0; }
+                else if (frac == 1.f) { a = 0; b = 1; sqrtV = 0; }
+                else { a = 0; b = 0; sqrtV = 1; }
+            } else {
+                const double theta = -std::log((double)r);
+                const double sh  = std::sinh(theta);
+                a = std::sinh(theta * (1.0 - dfrac)) / sh;
+                b = std::sinh(theta * dfrac) / sh;
+                const double v = 2.0 * std::sinh(theta * dfrac) * std::sinh(theta * (1.0 - dfrac)) / sh;
+                sqrtV = std::sqrt(v < 0.0 ? 0.0 : v);
+            }
+            xi = redDot::copula::PhiInv((double)bridge.atUniform((uint64_t)pairIndex));
+        } else {
+            // r<0: variance-normalized deterministic blend (no ξ, no OU embedding)
+            useOU = false;
+            denom = std::sqrt((1.0-dfrac)*(1.0-dfrac) + dfrac*dfrac + 2.0*dfrac*(1.0-dfrac)*(double)r);
+        }
+    }
+    double blend(double z0, double z1) const {
+        if (useOU) return a * z0 + b * z1 + sqrtV * xi;
+        return ((1.0 - dfrac) * z0 + dfrac * z1) / denom;
+    }
+};
+
 // ── PatternEngine ─────────────────────────────────────────────────────────────
 struct PatternEngine {
 
@@ -667,6 +703,8 @@ struct PatternEngine {
     // redDot::seed::STREAM_SOURCE_SELECT (=3) — decorrelated from rhythm/melody so "which notes"
     // (q-mix) varies independently of "where they interleave" (melody). Mirror of melodyPhilox.
     redDot::PhiloxRng rhythmPhilox, melodyPhilox, qmixPhilox;
+    // OU-bridge interpolation noise: SEPARATE keys per stream (S+4/5/6), position-index keyed.
+    redDot::PhiloxRng bridgeRhythmPhilox, bridgeMelodyPhilox, bridgeQmixPhilox;
     int64_t   rhythmDrawCtr = 0, melodyDrawCtr = 0, qmixDrawCtr = 0;   // signed: can go negative on reverse
     uint64_t  rhythmCursor  = 0, melodyCursor  = 0, qmixCursor  = 0;   // intra-draw position, reset per redraw
 
@@ -737,6 +775,10 @@ struct PatternEngine {
     inline void seedRhythmPhiloxFull() { rhythmPhilox.seed64(rack::random::u64()); rhythmDrawCtr = 0; rhythmDrawCache_.clear(); }
     inline void seedMelodyPhiloxFull() { melodyPhilox.seed64(rack::random::u64()); melodyDrawCtr = 0; melodyDrawCache_.clear(); }
     inline void seedQmixPhiloxFull()   { qmixPhilox.seed64(rack::random::u64());   qmixDrawCtr   = 0; qmixDrawCache_.clear();   }
+    // OU-bridge noise: reseed alongside the dice streams (user-seedable, per-stream keys S+4/5/6).
+    inline void seedBridgeRhythmPhilox(float sf) { bridgeRhythmPhilox.seed64(redDot::seed::deriveKey(sf, redDot::seed::STREAM_BRIDGE_R)); }
+    inline void seedBridgeMelodyPhilox(float sf) { bridgeMelodyPhilox.seed64(redDot::seed::deriveKey(sf, redDot::seed::STREAM_BRIDGE_M)); }
+    inline void seedBridgeQmixPhilox(float sf)   { bridgeQmixPhilox.seed64(redDot::seed::deriveKey(sf, redDot::seed::STREAM_BRIDGE_Q)); }
 
     inline float philoxRhythm() {
         uint64_t base = (uint64_t)(rhythmDrawCtr) * DRAW_CHUNK + rhythmCursor++;

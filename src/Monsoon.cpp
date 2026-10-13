@@ -64,6 +64,8 @@ Monsoon::Monsoon() {
         melodySeedFloat = rack::random::uniform() * 10.f;
         engine.pe.seedRhythmPhilox(rhythmSeedFloat);
         engine.pe.seedMelodyPhilox(melodySeedFloat);
+        engine.pe.seedBridgeRhythmPhilox(rhythmSeedFloat);
+        engine.pe.seedBridgeMelodyPhilox(melodySeedFloat);
         rhythmSeedPendingFloat = rhythmSeedFloat;
         melodySeedPendingFloat = melodySeedFloat;
 
@@ -179,6 +181,8 @@ void Monsoon::updateExpanderPointers() {
     int64_t savedR = engine.pe.rhythmDrawCtr, savedM = engine.pe.melodyDrawCtr;
     engine.pe.seedRhythmPhilox(rhythmSeedFloat);
     engine.pe.seedMelodyPhilox(melodySeedFloat);
+    engine.pe.seedBridgeRhythmPhilox(rhythmSeedFloat);
+    engine.pe.seedBridgeMelodyPhilox(melodySeedFloat);
     if (pendingRegenB) {
         engine.pe.rhythmDrawCtr = savedR;
         engine.pe.melodyDrawCtr = savedM;
