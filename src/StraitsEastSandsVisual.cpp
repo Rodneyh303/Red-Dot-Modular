@@ -1019,6 +1019,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
         int newSel = tabGroup->getSelectedTab();
         if (newSel != selectedVoice) onVoiceTabChanged(newSel);
+        // B3: set the displayed voice for the for-voice recompute in refreshVisualCache.
+        monsoon->engine.pe.displayedVoice_ = selectedVoice;
 
         // Per-frame write-back of display proxies → the selected voice's params, so edits
         // take effect immediately. Poly tabs only — the mono tab (index 0) is display-only

@@ -399,6 +399,9 @@ struct PatternEngine {
         rhythmMixApplied = -999.f;   // invalidate so recompute* actually runs
         melodyMixApplied = -999.f;
         qmixMixApplied   = -999.f;
+        rhythmZCache_.invalidate();  // z0/z1 cache: force full recompute (not blend-only)
+        melodyZCache_.invalidate();
+        qmixZCache_.invalidate();
         recomputeEffectiveRhythm();
         recomputeEffectiveMelody();
         recomputeEffectiveQmix();
@@ -423,6 +426,40 @@ struct PatternEngine {
     // Latched slew (sampled at step 0), and the last value we recomputed at.
     float rhythmSlewLatched = 0.f, melodySlewLatched = 0.f, qmixSlewLatched = 0.f;
     float rhythmSlewApplied =-1.f, melodySlewApplied =-1.f, qmixSlewApplied =-1.f;  // force first recompute
+    // Weight-cache: L2-normalised geometric weights w[K] per stream, keyed on r (= slewKnobToR(slew)).
+    // Slew r is phrase-fixed, so weights() was recomputed every sumZ call with the same r — pure
+    // waste.  Cache w[] per stream; invalidate when r changes (phrase boundary).  Bit-identical.
+    redDot::MovingAverageCopula::WeightCache rhythmWeightCache_;
+    redDot::MovingAverageCopula::WeightCache melodyWeightCache_;
+    redDot::MovingAverageCopula::WeightCache qmixWeightCache_;
+    // z0/z1 window-cache: the two sumZ results (window@N-f, window@N-f-1) per step x lane x
+    // voice.  Within a phrase (r fixed) + same integer position f, these depend ONLY on
+    // position -> compute ONCE, cache, reuse on every frac change (scrub within a position-
+    // pair).  Invalidate on: phrase boundary (r changes), position-cross (f changes), or
+    // roll (drawCtr advances).  Key: (drawCtr, f, r).  forceRecomputeSlewed() sets invalid.
+    // Max fields: rhythm=4+4*15=64, melody=2+2*15=32, qmix=1+1*15=16.  Use 64 for all.
+    struct ZWindowCache {
+        static constexpr int MAX_FIELDS = 4 + 4 * 15;  // 64 (rhythm max)
+        double z0[16 * MAX_FIELDS];
+        double z1[16 * MAX_FIELDS];
+        int64_t cachedCtr = -999;
+        int cachedF = -999;
+        double cachedR = 999.0;
+        bool valid = false;
+        bool hit(int64_t ctr, int f_, double r_) const {
+            return valid && cachedCtr == ctr && cachedF == f_ && cachedR == r_;
+        }
+        void invalidate() { valid = false; }
+    };
+    ZWindowCache rhythmZCache_, melodyZCache_, qmixZCache_;
+    // Displayed voice for the Sands visual (set by the UI, read by refreshVisualCache).
+    // 0 = mono/V1, 1..15 = poly V2..V16. Used to scope the display recompute to 1 voice.
+    int displayedVoice_ = 0;
+    // Voice-scoped recompute: blend only the given voice's 16 steps from cached z0/z1.
+    // Called by refreshVisualCache for the displayed voice (not all 15 poly voices).
+    void recomputeEffectiveRhythmForVoice(int voice);
+    void recomputeEffectiveMelodyForVoice(int voice);
+    void recomputeEffectiveQmixForVoice(int voice);
     // Live MIX (A<->B blend) latched at control rate; the effective arrays are
     // recomputed when it changes. This is what drives the continuous morph.
     // A/B morph coefficient — GLOBAL per strand family (one scalar for ALL voices).

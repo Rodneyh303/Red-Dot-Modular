@@ -35,7 +35,7 @@ STD="-std=c++17"
 # SSE4.1 for SIMD Philox (x86 only; arm64 uses SIMDe NEON emulation, no flag needed)
 ARCHF=""
 if [ "$(uname -m)" = "x86_64" ] || [ "$(uname -m)" = "i686" ] || [ "$(uname -m)" = "i386" ]; then
-    ARCHF="-msse4.1"
+    ARCHF="-msse4.1 -mavx"   # SSE4.1 for Philox int ops, AVX1 for sumZ double _mm256 dot product
 fi
 STD="$STD $ARCHF"
 # Match the plugin's deterministic-FP flags (Makefile DETERMINISTIC_FP) so bit-exact float tests

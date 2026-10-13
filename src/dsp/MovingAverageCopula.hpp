@@ -27,6 +27,7 @@
 #include <cmath>
 #include <cstddef>
 #include "GaussianCopula.hpp"
+#include "../third_party/simd/simd_compat.hpp"   // AVX2 __m256d for sumZ SIMD path
 
 namespace redDot {
 
@@ -44,6 +45,20 @@ public:
         const double inv = 1.0 / std::sqrt(s2);
         for (std::size_t j = 0; j < K; ++j) w[j] *= inv;
     }
+
+    /// Cache of L2-normalised weights for a given r.  Slew r is phrase-fixed (the slew-phrase
+    /// fix landed), so within one recomputeEffective* call — which loops over all 16 steps ×
+    /// lanes × voices × 2 windows — `weights(r, w)` was recomputed every `sumZ` invocation with
+    /// the SAME r.  This struct caches w[K] + the r it was built for; callers `update(r)` once
+    /// per phrase (or per recompute if r changed) then pass `w` to the `sumZ(z, w)` overload.
+    /// Bit-identical: the weights and the dot product are the same computation, just hoisted.
+    struct WeightCache {
+        double w[K];
+        double cachedR = 999.0;   ///< invalid sentinel (no valid r is 999)
+        bool matches(double r) const { return r == cachedR; }
+        void update(double r) { weights(r, w); cachedR = r; }
+        void invalidate() { cachedR = 999.0; }
+    };
 
     /// Apply slew at one position. `u` holds the window NEWEST FIRST: u[0] = u_n, u[j] = u_{n-j}.
     /// r == 0 returns u[0] unchanged (bit-identical legacy path).
@@ -68,15 +83,50 @@ public:
         if (r == 0.0) return z[0];
         double w[K];
         weights(r, w);
-        double s = 0.0;
-        for (std::size_t j = 0; j < K; ++j) s += w[j] * z[j];
-        return s;
+        return sumZ(z, w);
+    }
+    /// sumZ with PRE-COMPUTED weights (from a WeightCache).  Skips the weights() call — the
+    /// dot product only.  Caller must ensure w was built for the correct r and that r != 0
+    /// (the r==0 early-out is in the `sumZ(z, r)` wrapper; callers on the r==0 path short-
+    /// circuit before reaching here).
+    static double sumZ(const double* z, const double* w) {
+        // 4-wide lane-independent accumulation with FIXED reduction order.
+        // No FMA (separate mul+add = 2 roundings, matches scalar — cross-platform determinism).
+        // Two tiers: AVX1 (4-wide __m256d) > scalar (4-wide double).
+        // AVX2 adds nothing for double mul/add (only integer 256-bit + gather).
+        // Each lane does accN += w[j+N] * z[j+N] (one mul, one add, two roundings).
+        // Horizontal sum: (lane0 + lane1) + (lane2 + lane3) — fixed everywhere.
+        // Bit-identical across native AVX1 (x86 -mavx), SIMDe NEON (arm64), and scalar.
+        #if defined(__AVX__) || defined(__aarch64__) || defined(__ARM_NEON)
+        __m256d acc = _mm256_setzero_pd();
+        for (std::size_t j = 0; j < K; j += 4) {
+            __m256d zj = _mm256_loadu_pd(&z[j]);
+            __m256d wj = _mm256_loadu_pd(&w[j]);
+            acc = _mm256_add_pd(acc, _mm256_mul_pd(zj, wj));  // NO FMA — 2 roundings
+        }
+        double tmp[4];
+        _mm256_storeu_pd(tmp, acc);
+        return (tmp[0] + tmp[1]) + (tmp[2] + tmp[3]);
+        #else
+        double lane0 = 0.0, lane1 = 0.0, lane2 = 0.0, lane3 = 0.0;
+        for (std::size_t j = 0; j < K; j += 4) {
+            lane0 += w[j]   * z[j];
+            lane1 += w[j+1] * z[j+1];
+            lane2 += w[j+2] * z[j+2];
+            lane3 += w[j+3] * z[j+3];
+        }
+        return (lane0 + lane1) + (lane2 + lane3);
+        #endif
     }
     // applyZ = PhiFast(sumZ(...)) — the full copula readout (uniform output). Used by patternXAt
     // (non-scrub callers) and the r==0 short-circuit shape. Phase 2's scrub blend uses sumZ +
     // its own PhiFast so the two windows share one Phi.
     static double applyZ(const double* z, double r) {
         return copula::PhiFast(sumZ(z, r));
+    }
+    /// applyZ with PRE-COMPUTED weights (from a WeightCache).  = PhiFast(sumZ(z, w)).
+    static double applyZ(const double* z, const double* w) {
+        return copula::PhiFast(sumZ(z, w));
     }
 
     /// Analytic lag-m correlation of the output series for a constant r (dot product of the

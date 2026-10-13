@@ -255,33 +255,54 @@ void PatternEngine::recomputeEffectiveRhythm() {
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
     if (r != 0.f) {
-        // Phase 2: normal-space scrub blend. Gather K cached draws for both windows, compute z
-        // per slot via sumZ, blend, apply PhiFast once.
+        // Weight-cache: r is phrase-fixed, so weights(r) is the same for every sumZ call in
+        // this recompute (16 steps x lanes x voices x 2 windows).  Compute once, reuse.
+        if (!rhythmWeightCache_.matches(r)) rhythmWeightCache_.update(r);
+        const double* wc = rhythmWeightCache_.w;
+        // z0/z1 cache: within a phrase (r fixed) + same integer position f, the two window
+        // sumZ results depend ONLY on position -> cache and reuse on frac-only changes (scrub
+        // within a position-pair).  Invalidate on roll (ctr), position-cross (f), or r change.
+        const bool cacheHit = rhythmZCache_.hit(N, f, r);
         const CachedRhythmDraw* w0[K];
         const CachedRhythmDraw* w1[K];
-        for (std::size_t j = 0; j < K; ++j) {
-            w0[j] = &cachedRhythmDraw(N - f     - (int64_t)j);
-            w1[j] = &cachedRhythmDraw(N - f - 1 - (int64_t)j);
+        if (!cacheHit) {
+            for (std::size_t j = 0; j < K; ++j) {
+                w0[j] = &cachedRhythmDraw(N - f     - (int64_t)j);
+                w1[j] = &cachedRhythmDraw(N - f - 1 - (int64_t)j);
+            }
         }
         double zw[K];
-        auto blend = [&](int i, auto field) -> float {
-            for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
-            double z0 = redDot::MovingAverageCopula::sumZ(zw, r);
-            for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
-            double z1 = redDot::MovingAverageCopula::sumZ(zw, r);
+        auto blend = [&](int i, auto field, int fi) -> float {
+            double z0, z1;
+            if (cacheHit) {
+                z0 = rhythmZCache_.z0[fi];
+                z1 = rhythmZCache_.z1[fi];
+            } else {
+                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
+                z0 = redDot::MovingAverageCopula::sumZ(zw, wc);
+                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
+                z1 = redDot::MovingAverageCopula::sumZ(zw, wc);
+                rhythmZCache_.z0[fi] = z0;
+                rhythmZCache_.z1[fi] = z1;
+            }
             return (float)redDot::copula::PhiFast((1.0 - (double)frac) * z0 + (double)frac * z1);
         };
+        int fi = 0;
         for (int i = 0; i < 16; ++i) {
-            slewedRhythm[i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zRhythm[i]; });
-            slewedVariation[i] = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zVariation[i]; });
-            slewedLegato[i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zLegato[i]; });
-            slewedAccent[i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zAccent[i]; });
+            slewedRhythm[i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zRhythm[i]; }, fi++);
+            slewedVariation[i] = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zVariation[i]; }, fi++);
+            slewedLegato[i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zLegato[i]; }, fi++);
+            slewedAccent[i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zAccent[i]; }, fi++);
             for (int v = 0; v < numPolyVoicesHint; v++) {
-                slewedPolyRhythm[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyRhythm[v][i]; });
-                slewedPolyAccent[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyAccent[v][i]; });
-                slewedPolyVariation[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyVariation[v][i]; });
-                slewedPolyLegato[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyLegato[v][i]; });
+                slewedPolyRhythm[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyRhythm[v][i]; }, fi++);
+                slewedPolyAccent[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyAccent[v][i]; }, fi++);
+                slewedPolyVariation[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyVariation[v][i]; }, fi++);
+                slewedPolyLegato[v][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyLegato[v][i]; }, fi++);
             }
+        }
+        if (!cacheHit) {
+            rhythmZCache_.cachedCtr = N; rhythmZCache_.cachedF = f;
+            rhythmZCache_.cachedR = r;  rhythmZCache_.valid = true;
         }
     } else {
         // r==0: old linear blend of raw draws (bit-identity at frac=0).
@@ -336,27 +357,45 @@ void PatternEngine::recomputeEffectiveMelody() {
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
     if (r != 0.f) {
+        if (!melodyWeightCache_.matches(r)) melodyWeightCache_.update(r);
+        const double* wc = melodyWeightCache_.w;
+        const bool cacheHit = melodyZCache_.hit(N, f, r);
         const CachedMelodyDraw* w0[K];
         const CachedMelodyDraw* w1[K];
-        for (std::size_t j = 0; j < K; ++j) {
-            w0[j] = &cachedMelodyDraw(N - f     - (int64_t)j);
-            w1[j] = &cachedMelodyDraw(N - f - 1 - (int64_t)j);
+        if (!cacheHit) {
+            for (std::size_t j = 0; j < K; ++j) {
+                w0[j] = &cachedMelodyDraw(N - f     - (int64_t)j);
+                w1[j] = &cachedMelodyDraw(N - f - 1 - (int64_t)j);
+            }
         }
         double zw[K];
-        auto blend = [&](int i, auto field) -> float {
-            for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
-            double z0 = redDot::MovingAverageCopula::sumZ(zw, r);
-            for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
-            double z1 = redDot::MovingAverageCopula::sumZ(zw, r);
+        auto blend = [&](int i, auto field, int fi) -> float {
+            double z0, z1;
+            if (cacheHit) {
+                z0 = melodyZCache_.z0[fi];
+                z1 = melodyZCache_.z1[fi];
+            } else {
+                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
+                z0 = redDot::MovingAverageCopula::sumZ(zw, wc);
+                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
+                z1 = redDot::MovingAverageCopula::sumZ(zw, wc);
+                melodyZCache_.z0[fi] = z0;
+                melodyZCache_.z1[fi] = z1;
+            }
             return (float)redDot::copula::PhiFast((1.0 - (double)frac) * z0 + (double)frac * z1);
         };
+        int fi = 0;
         for (int i = 0; i < 16; ++i) {
-            slewedMelody[i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zMelody[i]; });
-            slewedOctave[i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zOctave[i]; });
+            slewedMelody[i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zMelody[i]; }, fi++);
+            slewedOctave[i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zOctave[i]; }, fi++);
             for (int v = 0; v < numPolyVoicesHint; v++) {
-                slewedPolyMelody[v][i] = blend(i, [v](const CachedMelodyDraw* c, int i){ return c->zPolyMelody[v][i]; });
-                slewedPolyOctave[v][i] = blend(i, [v](const CachedMelodyDraw* c, int i){ return c->zPolyOctave[v][i]; });
+                slewedPolyMelody[v][i] = blend(i, [v](const CachedMelodyDraw* c, int i){ return c->zPolyMelody[v][i]; }, fi++);
+                slewedPolyOctave[v][i] = blend(i, [v](const CachedMelodyDraw* c, int i){ return c->zPolyOctave[v][i]; }, fi++);
             }
+        }
+        if (!cacheHit) {
+            melodyZCache_.cachedCtr = N; melodyZCache_.cachedF = f;
+            melodyZCache_.cachedR = r;  melodyZCache_.valid = true;
         }
     } else {
         MelodyDraw d0, d1;
@@ -394,25 +433,43 @@ void PatternEngine::recomputeEffectiveQmix() {
     const float r    = slewKnobToR(slew);
     constexpr std::size_t K = redDot::MovingAverageCopula::K;
     if (r != 0.f) {
+        if (!qmixWeightCache_.matches(r)) qmixWeightCache_.update(r);
+        const double* wc = qmixWeightCache_.w;
+        const bool cacheHit = qmixZCache_.hit(N, f, r);
         const CachedQmixDraw* w0[K];
         const CachedQmixDraw* w1[K];
-        for (std::size_t j = 0; j < K; ++j) {
-            w0[j] = &cachedQmixDraw(N - f     - (int64_t)j);
-            w1[j] = &cachedQmixDraw(N - f - 1 - (int64_t)j);
+        if (!cacheHit) {
+            for (std::size_t j = 0; j < K; ++j) {
+                w0[j] = &cachedQmixDraw(N - f     - (int64_t)j);
+                w1[j] = &cachedQmixDraw(N - f - 1 - (int64_t)j);
+            }
         }
         double zw[K];
-        auto blend = [&](int i, auto field) -> float {
-            for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
-            double z0 = redDot::MovingAverageCopula::sumZ(zw, r);
-            for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
-            double z1 = redDot::MovingAverageCopula::sumZ(zw, r);
+        auto blend = [&](int i, auto field, int fi) -> float {
+            double z0, z1;
+            if (cacheHit) {
+                z0 = qmixZCache_.z0[fi];
+                z1 = qmixZCache_.z1[fi];
+            } else {
+                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w0[j], i);
+                z0 = redDot::MovingAverageCopula::sumZ(zw, wc);
+                for (std::size_t j = 0; j < K; ++j) zw[j] = field(w1[j], i);
+                z1 = redDot::MovingAverageCopula::sumZ(zw, wc);
+                qmixZCache_.z0[fi] = z0;
+                qmixZCache_.z1[fi] = z1;
+            }
             return (float)redDot::copula::PhiFast((1.0 - (double)frac) * z0 + (double)frac * z1);
         };
+        int fi = 0;
         for (int i = 0; i < 16; ++i) {
-            slewedQmix[i] = blend(i, [](const CachedQmixDraw* c, int i){ return c->zQmix[i]; });
+            slewedQmix[i] = blend(i, [](const CachedQmixDraw* c, int i){ return c->zQmix[i]; }, fi++);
             for (int v = 0; v < numPolyVoicesHint; v++) {
-                slewedPolyQmix[v][i] = blend(i, [v](const CachedQmixDraw* c, int i){ return c->zPolyQmix[v][i]; });
+                slewedPolyQmix[v][i] = blend(i, [v](const CachedQmixDraw* c, int i){ return c->zPolyQmix[v][i]; }, fi++);
             }
+        }
+        if (!cacheHit) {
+            qmixZCache_.cachedCtr = N; qmixZCache_.cachedF = f;
+            qmixZCache_.cachedR = r;  qmixZCache_.valid = true;
         }
     } else {
         QmixDraw d0, d1;
@@ -434,6 +491,104 @@ void PatternEngine::recomputeEffectiveQmix() {
     }
     publishSlewedQmix();
     qmixMixApplied = qmixMixLatched; qmixSlewApplied = slew; qmixCtrApplied = N;
+}
+
+// ── Voice-scoped recompute: blend only the given voice's 16 steps from cached z0/z1 ──
+// Called by refreshVisualCache for the DISPLAYED voice only (not all 15 poly voices).
+// ~16x less work than the full recomputeEffective*. Cache hit required (populated at roll).
+void PatternEngine::recomputeEffectiveRhythmForVoice(int voice) {
+    const float s = rack::math::clamp(rhythmMixLatched, 0.f, 1.f) * 6.f;
+    const int   f = (int)s;
+    const float frac = s - (float)f;
+    const int64_t N  = rhythmDrawCtr;
+    const float slew = rack::math::clamp(rhythmSlewLatched, -1.f, 1.f);
+    const float r = slewKnobToR(slew);
+    if (r == 0.f) return;
+    if (!rhythmZCache_.hit(N, f, r)) { recomputeEffectiveRhythm(); return; }
+
+    const int stride = 4 + 4 * numPolyVoicesHint;
+    const double dfrac = (double)frac;
+    auto bl = [&](int fi) -> float {
+        return (float)redDot::copula::PhiFast((1.0 - dfrac) * rhythmZCache_.z0[fi] + dfrac * rhythmZCache_.z1[fi]);
+    };
+    if (voice == 0) {
+        for (int i = 0; i < 16; ++i) {
+            int b = i * stride;
+            slewedRhythm[i]    = bl(b); slewedVariation[i] = bl(b+1);
+            slewedLegato[i]    = bl(b+2); slewedAccent[i]   = bl(b+3);
+        }
+        if (!sandsActive) for (int i = 0; i < 16; ++i) {
+            rhythmRandom[i]=slewedRhythm[i]; variationRandom[i]=slewedVariation[i];
+            legatoRandom[i]=slewedLegato[i]; accentRandom[i]=slewedAccent[i];
+        }
+    } else {
+        int v = voice - 1; if (v >= numPolyVoicesHint) return;
+        int off = 4 + v * 4;
+        for (int i = 0; i < 16; ++i) {
+            int b = i * stride + off;
+            slewedPolyRhythm[v][i]    = bl(b); slewedPolyAccent[v][i]    = bl(b+1);
+            slewedPolyVariation[v][i] = bl(b+2); slewedPolyLegato[v][i]    = bl(b+3);
+        }
+    }
+    publishSlewedRhythm();
+    rhythmMixApplied = rhythmMixLatched;
+}
+void PatternEngine::recomputeEffectiveMelodyForVoice(int voice) {
+    const float s = rack::math::clamp(melodyMixLatched, 0.f, 1.f) * 6.f;
+    const int   f = (int)s;
+    const float frac = s - (float)f;
+    const int64_t N  = melodyDrawCtr;
+    const float slew = rack::math::clamp(melodySlewLatched, -1.f, 1.f);
+    const float r = slewKnobToR(slew);
+    if (r == 0.f) return;
+    if (!melodyZCache_.hit(N, f, r)) { recomputeEffectiveMelody(); return; }
+    const int stride = 2 + 2 * numPolyVoicesHint;
+    const double dfrac = (double)frac;
+    auto bl = [&](int fi) -> float {
+        return (float)redDot::copula::PhiFast((1.0 - dfrac) * melodyZCache_.z0[fi] + dfrac * melodyZCache_.z1[fi]);
+    };
+    if (voice == 0) {
+        for (int i = 0; i < 16; ++i) {
+            int b = i * stride;
+            slewedMelody[i] = bl(b); slewedOctave[i] = bl(b+1);
+        }
+        if (!sandsActive) for (int i = 0; i < 16; ++i) {
+            melodyRandom[i]=slewedMelody[i]; octaveRandom[i]=slewedOctave[i];
+        }
+    } else {
+        int v = voice - 1; if (v >= numPolyVoicesHint) return;
+        int off = 2 + v * 2;
+        for (int i = 0; i < 16; ++i) {
+            int b = i * stride + off;
+            slewedPolyMelody[v][i] = bl(b); slewedPolyOctave[v][i] = bl(b+1);
+        }
+    }
+    publishSlewedMelody();
+    melodyMixApplied = melodyMixLatched;
+}
+void PatternEngine::recomputeEffectiveQmixForVoice(int voice) {
+    const float s = rack::math::clamp(qmixMixLatched, 0.f, 1.f) * 6.f;
+    const int   f = (int)s;
+    const float frac = s - (float)f;
+    const int64_t N  = qmixDrawCtr;
+    const float slew = rack::math::clamp(qmixSlewLatched, -1.f, 1.f);
+    const float r = slewKnobToR(slew);
+    if (r == 0.f) return;
+    if (!qmixZCache_.hit(N, f, r)) { recomputeEffectiveQmix(); return; }
+    const int stride = 1 + numPolyVoicesHint;
+    const double dfrac = (double)frac;
+    auto bl = [&](int fi) -> float {
+        return (float)redDot::copula::PhiFast((1.0 - dfrac) * qmixZCache_.z0[fi] + dfrac * qmixZCache_.z1[fi]);
+    };
+    if (voice == 0) {
+        for (int i = 0; i < 16; ++i) slewedQmix[i] = bl(i * stride);
+        if (!sandsActive) for (int i = 0; i < 16; ++i) qmixRandom[i]=slewedQmix[i];
+    } else {
+        int v = voice - 1; if (v >= numPolyVoicesHint) return;
+        for (int i = 0; i < 16; ++i) slewedPolyQmix[v][i] = bl(i * stride + 1 + v);
+    }
+    publishSlewedQmix();
+    qmixMixApplied = qmixMixLatched;
 }
 
 // Regenerate melody pattern (16 steps of semitone + pitch voltage)
@@ -495,23 +650,20 @@ void PatternEngine::latchMix(float rhythmMix, float melodyMix, float qmixMix,
     // LOCK_SCOPE_MENU: applyRhythm/applyMelody gate EACH stream independently. A frozen stream (apply
     // false) does NOT re-latch its mix/slew and does NOT recompute — its latched value + effective
     // pattern hold from before the lock. Default true/true = latch both (unlocked).
+    // B3: mix is NOT consumed here — refreshVisualCache handles the for-voice recompute at
+    // the display rate (~90Hz lightDivider). latchMix just latches; the mix change stays
+    // pending (mixApplied unchanged) so refreshVisualCache can detect and consume it.
     if (applyRhythm) {
         rhythmMixLatched  = rhythmMix;
         rhythmSlewLatched = rhythmSlew;
-        if (rhythmMixLatched != rhythmMixApplied)
-            recomputeEffectiveRhythm();
     }
     if (applyMelody) {
         melodyMixLatched  = melodyMix;
         melodySlewLatched = melodySlew;
-        if (melodyMixLatched != melodyMixApplied)
-            recomputeEffectiveMelody();
     }
     if (applyQmix) {
         qmixMixLatched  = qmixMix;
         qmixSlewLatched = qmixSlew;
-        if (qmixMixLatched != qmixMixApplied)
-            recomputeEffectiveQmix();
     }
 }
 
@@ -528,12 +680,21 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     // counter). Slew is NOT a mid-phrase trigger — it's consumed at the roll (phrase boundary).
     // Counter-advance (redraw) forces recompute via slewApplied=-1 in the redraw path.
     {
-        if (rhythmMixLatched != rhythmMixApplied || rhythmDrawCtr != rhythmCtrApplied)
-            recomputeEffectiveRhythm();
-        if (melodyMixLatched != melodyMixApplied || melodyDrawCtr != melodyCtrApplied)
+        // PART 3: mix changes use the FOR-VOICE recompute (displayed voice only, ~16x less
+        // than all-voices). Counter change (roll/phrase boundary) uses the FULL recompute
+        // (all voices — the audio needs them). Different scopes for the two consumers.
+        if (rhythmDrawCtr != rhythmCtrApplied)
+            recomputeEffectiveRhythm();           // roll: full recompute (all voices)
+        else if (rhythmMixLatched != rhythmMixApplied)
+            recomputeEffectiveRhythmForVoice(displayedVoice_);  // mix: displayed voice only
+        if (melodyDrawCtr != melodyCtrApplied)
             recomputeEffectiveMelody();
-        if (qmixMixLatched != qmixMixApplied || qmixDrawCtr != qmixCtrApplied)
+        else if (melodyMixLatched != melodyMixApplied)
+            recomputeEffectiveMelodyForVoice(displayedVoice_);
+        if (qmixDrawCtr != qmixCtrApplied)
             recomputeEffectiveQmix();
+        else if (qmixMixLatched != qmixMixApplied)
+            recomputeEffectiveQmixForVoice(displayedVoice_);
     }
     for (int i = 0; i < 16; ++i) {
         rhythmPattern[i] = (rhythmRandom[i] >= in.restProb);
