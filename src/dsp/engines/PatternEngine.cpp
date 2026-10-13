@@ -516,9 +516,9 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(int voice) {
     if (!rhythmZCache_.hit(N, f, r)) { recomputeEffectiveRhythm(); return; }
 
     const int stride = 4 + 4 * numPolyVoicesHint;
-    const double dfrac = (double)frac;
+    OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeRhythmPhilox, N - f - 1);
     auto bl = [&](int fi) -> float {
-        return (float)redDot::copula::PhiFast((1.0 - dfrac) * rhythmZCache_.z0[fi] + dfrac * rhythmZCache_.z1[fi]);
+        return (float)redDot::copula::PhiFast(ouBC.blend(rhythmZCache_.z0[fi], rhythmZCache_.z1[fi]));
     };
     if (voice == 0) {
         for (int i = 0; i < 16; ++i) {
@@ -552,9 +552,9 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(int voice) {
     if (r == 0.f) return;
     if (!melodyZCache_.hit(N, f, r)) { recomputeEffectiveMelody(); return; }
     const int stride = 2 + 2 * numPolyVoicesHint;
-    const double dfrac = (double)frac;
+    OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeMelodyPhilox, N - f - 1);
     auto bl = [&](int fi) -> float {
-        return (float)redDot::copula::PhiFast((1.0 - dfrac) * melodyZCache_.z0[fi] + dfrac * melodyZCache_.z1[fi]);
+        return (float)redDot::copula::PhiFast(ouBC.blend(melodyZCache_.z0[fi], melodyZCache_.z1[fi]));
     };
     if (voice == 0) {
         for (int i = 0; i < 16; ++i) {
@@ -585,9 +585,9 @@ void PatternEngine::recomputeEffectiveQmixForVoice(int voice) {
     if (r == 0.f) return;
     if (!qmixZCache_.hit(N, f, r)) { recomputeEffectiveQmix(); return; }
     const int stride = 1 + numPolyVoicesHint;
-    const double dfrac = (double)frac;
+    OUBridgeCoeffs ouBC; ouBC.compute(r, frac, bridgeQmixPhilox, N - f - 1);
     auto bl = [&](int fi) -> float {
-        return (float)redDot::copula::PhiFast((1.0 - dfrac) * qmixZCache_.z0[fi] + dfrac * qmixZCache_.z1[fi]);
+        return (float)redDot::copula::PhiFast(ouBC.blend(qmixZCache_.z0[fi], qmixZCache_.z1[fi]));
     };
     if (voice == 0) {
         for (int i = 0; i < 16; ++i) slewedQmix[i] = bl(i * stride);

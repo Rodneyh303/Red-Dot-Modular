@@ -137,6 +137,80 @@ int main(){
         (void)K;
     });
 
+    // ── OU-bridge Monte-Carlo: variance ~1/12 (uniform marginal) at mid-frac ──────
+    // The OU-bridge must preserve unit variance -> uniform marginal after PhiFast at EVERY
+    // frac. The old linear blend collapsed variance mid-interval. Test at several r values.
+    {
+        const float slewVals[] = { 0.7f, -0.3f, -0.7f };  // r = slew * R_MAX
+        const char* labels[] = { "r~+0.68", "r~-0.29", "r~-0.68" };
+        for (int si = 0; si < 3; ++si) {
+            std::string desc = std::string("OU-bridge Monte-Carlo: variance ~1/12 at mid-frac for ") + labels[si];
+            TEST(desc.c_str(), {
+                PatternEngine pe;
+                pe.seedRhythmPhilox(1.1f + si * 2.0f);
+                pe.seedBridgeRhythmPhilox(1.1f + si * 2.0f);
+                const float slewKnob = slewVals[si];
+                const float mixVal = 0.55f;  // s=3.3, f=3, frac=0.3 (mid-interval)
+                const int M = 2048;
+                double sum=0, sumsq=0; int n=0;
+                PatternInput in;
+                for (int p=0; p<M; ++p) {
+                    pe.rhythmDrawCtr = p * 64;  // thin by K=64 (independent samples)
+                    pe.latchMix(mixVal, 0.f, 0.f, slewKnob, 0.f, 0.f, true, false, false);
+                    pe.recomputeEffectiveRhythm();
+                    const double v = pe.slewedRhythm[0];
+                    sum += v; sumsq += v*v; ++n;
+                }
+                const double mean = sum/n;
+                const double var  = sumsq/n - mean*mean;
+                // Uniform[0,1] variance = 1/12 ≈ 0.0833. OU-bridge preserves unit variance.
+                EXPECT(var > 0.06);  // well above collapsed ~0.002; near 0.0833 means uniform
+            });
+        }
+    }
+
+    // ── OU-bridge reversibility: forward-then-back reproduces bitwise ────────────
+    TEST("OU-bridge reversibility: forward-then-back to same (pair,frac) reproduces bitwise", {
+        PatternEngine pe;
+        pe.seedRhythmPhilox(3.3f);
+        pe.seedBridgeRhythmPhilox(3.3f);
+        const float slew = 0.6f;
+        const float mixVal = 0.55f;  // mid-frac -> exercises ξ
+        PatternInput in;
+        for (int k=0;k<5;++k) pe.advanceRhythmDraw(+1);
+        const int64_t N = pe.rhythmDrawCtr;
+        pe.latchMix(mixVal, 0.f, 0.f, slew, 0.f, 0.f, true, false, false);
+        pe.recomputeEffectiveRhythm();
+        float fwd[16]; for (int i=0;i<16;++i) fwd[i] = pe.slewedRhythm[i];
+        // Walk backward past N then forward to N again
+        for (int k=0;k<3;++k) pe.advanceRhythmDraw(-1);
+        for (int k=0;k<3;++k) pe.advanceRhythmDraw(+1);
+        EXPECT(pe.rhythmDrawCtr == N);
+        pe.latchMix(mixVal, 0.f, 0.f, slew, 0.f, 0.f, true, false, false);
+        pe.recomputeEffectiveRhythm();
+        for (int i=0;i<16;++i)
+            EXPECT(std::memcmp(&fwd[i], &pe.slewedRhythm[i], sizeof(float)) == 0);
+    });
+
+    // ── OU-bridge endpoints: frac=0 is bit-exact to the raw window draw ──────────
+    TEST("OU-bridge endpoints: frac=0 (mix=0) is bit-exact to patternRhythmAt", {
+        PatternEngine pe;
+        pe.seedRhythmPhilox(0.42f);
+        pe.seedBridgeRhythmPhilox(0.42f);
+        PatternInput in;
+        for (int k=0;k<3;++k) pe.advanceRhythmDraw(+1);
+        const int64_t N = pe.rhythmDrawCtr;
+        const float slew = 0.5f;  // r > 0, exercises the OU path
+        // mix=0 -> s=0, f=0, frac=0 -> OU-bridge gives X=z0 exactly (a=1, b=0, v=0).
+        pe.latchMix(0.f, 0.f, 0.f, slew, 0.f, 0.f, true, false, false);
+        pe.recomputeEffectiveRhythm();
+        // z0 = sumZ(window@N, r). patternRhythmAt(N, slew) = PhiFast(sumZ(window@N, r)) = PhiFast(z0).
+        PatternEngine::RhythmDraw raw;
+        pe.patternRhythmAt(N, slew, raw);
+        for (int i=0;i<16;++i)
+            EXPECT(std::memcmp(&pe.slewedRhythm[i], &raw.rhythm[i], sizeof(float)) == 0);
+    });
+
     std::cout<<"\n"<<s_pass<<" passed, "<<s_fail<<" failed\n";
     return s_fail ? 1 : 0;
 }
