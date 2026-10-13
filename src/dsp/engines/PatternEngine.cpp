@@ -680,36 +680,49 @@ void PatternEngine::latchMix(float rhythmMix, float melodyMix, float qmixMix,
 // current knob positions and the *existing* random buffers.
 void PatternEngine::refreshVisualCache(const PatternInput& in) {
     // No-redraw path (e.g. mix/scrub moved but no roll, or a stream that didn't redraw this cycle).
-    // Under the scrub model the effective pattern is a pure function of (counter, scrub position), so
-    // re-derive it here too -- otherwise rhythmRandom/melodyRandom keep whatever a PRIOR redraw left
-    // and the no-redraw pattern diverges from an equivalent redraw at the same counter. Recomputing
-    // makes the two paths converge (a seeded engine that never rolled and one that rolled to the same
-    // counter now read identically). Cheap: it's just the window blend.
-    // Recompute ONLY when this stream's scrub inputs changed since the last recompute (mix or
-    // counter). Slew is NOT a mid-phrase trigger — it's consumed at the roll (phrase boundary).
-    // Counter-advance (redraw) forces recompute via slewApplied=-1 in the redraw path.
+    // PART 3: mix changes use the FOR-VOICE recompute (displayed voice only, ~16x less
+    // than all-voices). Counter change (roll/phrase boundary) uses the FULL recompute
+    // (all voices — the audio needs them). Different scopes for the two consumers.
+    bool rhythmChanged = false, melodyChanged = false;
     {
-        // PART 3: mix changes use the FOR-VOICE recompute (displayed voice only, ~16x less
-        // than all-voices). Counter change (roll/phrase boundary) uses the FULL recompute
-        // (all voices — the audio needs them). Different scopes for the two consumers.
-        if (rhythmDrawCtr != rhythmCtrApplied)
+        if (rhythmDrawCtr != rhythmCtrApplied) {
             recomputeEffectiveRhythm();           // roll: full recompute (all voices)
-        else if (rhythmMixLatched != rhythmMixApplied)
+            rhythmChanged = true;
+        } else if (rhythmMixLatched != rhythmMixApplied) {
             recomputeEffectiveRhythmForVoice(displayedVoice_);  // mix: displayed voice only
-        if (melodyDrawCtr != melodyCtrApplied)
+            rhythmChanged = true;
+        }
+        if (melodyDrawCtr != melodyCtrApplied) {
             recomputeEffectiveMelody();
-        else if (melodyMixLatched != melodyMixApplied)
+            melodyChanged = true;
+        } else if (melodyMixLatched != melodyMixApplied) {
             recomputeEffectiveMelodyForVoice(displayedVoice_);
+            melodyChanged = true;
+        }
         if (qmixDrawCtr != qmixCtrApplied)
             recomputeEffectiveQmix();
         else if (qmixMixLatched != qmixMixApplied)
             recomputeEffectiveQmixForVoice(displayedVoice_);
     }
-    for (int i = 0; i < 16; ++i) {
-        rhythmPattern[i] = (rhythmRandom[i] >= in.restProb);
-        int sem = 0;
-        melodyPitchV[i]   = genPitchLive(sem, in, melodyRandom[i], octaveRandom[i]);
-        melodySemitone[i] = sem;
+    // BUG FIX (rhythmmix_leaks_melody_bars): SPLIT the display derivation — rhythm-only
+    // changes don't re-derive melodyPitchV (and vice versa). AND read the DISPLAYED VOICE's
+    // array (poly for voice >= 1, mono for voice 0) — the old code always read the mono
+    // arrays, which is wrong for a poly displayed voice and caused jumpy melody bars when
+    // rhythm-mix forced the unconditional loop to re-run.
+    if (rhythmChanged) {
+        for (int i = 0; i < 16; ++i) {
+            float rVal = (displayedVoice_ == 0) ? rhythmRandom[i] : polyRandom(displayedVoice_, PL_REST)[i];
+            rhythmPattern[i] = (rVal >= in.restProb);
+        }
+    }
+    if (melodyChanged) {
+        for (int i = 0; i < 16; ++i) {
+            float mVal = (displayedVoice_ == 0) ? melodyRandom[i] : polyRandom(displayedVoice_, PL_MELODY)[i];
+            float oVal = (displayedVoice_ == 0) ? octaveRandom[i] : polyRandom(displayedVoice_, PL_OCTAVE)[i];
+            int sem = 0;
+            melodyPitchV[i]   = genPitchLive(sem, in, mVal, oVal);
+            melodySemitone[i] = sem;
+        }
     }
 }
 
