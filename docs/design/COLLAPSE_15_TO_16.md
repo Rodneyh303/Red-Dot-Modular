@@ -81,3 +81,40 @@ unification, not a param change. Per site: collapse mono[16]+poly[15][16] -> [16
 at [1..15]; fix the feeding loops to <16; BIT-COMPARE output identical (same values relocated). The
 panel/param layer is untouched, so no UI/preset migration. Watch: don't bump a param/bank 15 (Cat 2).
 Treat like lane-index: mechanical, bit-identical, chase every DATA site, verify by bit-compare + test gate.
+
+---
+
+## Category 2 REFINED — make the Straits mono (v0) knob TWO-WAY editable = UI-layer V1=voice-0 (Rodney)
+Correction to "Category 2 = leave entirely". The param-LOCATION is intentional (keep); the v0 LOCK is not.
+
+### Current (one-way mirror)
+Straits panel has 16 knobs (v0..v15), v0 = mono/V1. v0 is a LOCKED read-only MIRROR of V1's Monsoon param
+(REST_PARAM / QMIX_LEVEL_PARAM / ...). V1 is editable ONLY from Monsoon; Straits just displays it, kept in
+sync by custom code. "Not sure why mono can't be poly 0 here" (Rodney) — it can.
+
+### Change — v0 editable, both knobs on the SAME param (UI-layer unification)
+- Bind the Straits v0 knob to V1's EXISTING Monsoon param (REST_PARAM etc.), EDITABLE (not locked mirror).
+  The Monsoon knob and the Straits v0 knob point at the SAME paramId.
+- VCV auto-syncs two widgets on one param — turn either, the one param moves, both displays update. So
+  V1 editable from EITHER panel, kept in sync FOR FREE (no custom sync code).
+- This completes V1=voice-0 at the UI layer (v0 is a real control, the voice-0 instance), and it's LESS
+  code than the current locked-mirror + one-way sync.
+- Param ENUMS UNCHANGED: POLY_*_PARAM_1..15 stay (V2..V16); V1 keeps its Monsoon param; v0 is just a
+  second editable widget on that Monsoon param. No preset/UI migration.
+- WATCH: v0 currently has "no poly mod-arc" (the arc reads poly params; V1's isn't one). Unlocking the
+  knob is separate from the arc — confirm the mod-arc display still behaves (V1 arc, if any, reads its
+  Monsoon param).
+
+### Race condition — benign, no hard guard needed (Rodney flagged)
+In plain Rack (one mouse) you can't edit both at once. With a MIDI controller + multitouch you could drive
+both widgets "simultaneously". SAFE because both bind to the SAME paramId -> VCV serialises writes to the
+single param float (no torn value, no corruption); last-write-wins within a frame; both widgets read the
+one param so they CONVERGE next frame (self-healing). Only artifact: brief JITTER / sticky feel if two
+inputs FIGHT over the one param at once (esp. with MIDI smoothing) — benign, self-resolves on release, and
+it's a rare deliberate dual-input case. NO guard strictly needed. Note: two-widgets-one-param is actually
+LESS racy than the current one-way custom mirror (which has sync code to race). Optionally document the
+dual-input jitter as a known minor edge.
+
+### Net
+Three facets of V1=voice-0 now: LOGIC (done), STORAGE (Category 1 -> [16][16]), UI EDITABILITY (this —
+v0 two-way editable). Unify the data model HERE too.
