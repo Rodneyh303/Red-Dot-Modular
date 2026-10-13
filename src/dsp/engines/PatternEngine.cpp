@@ -493,6 +493,104 @@ void PatternEngine::recomputeEffectiveQmix() {
     qmixMixApplied = qmixMixLatched; qmixSlewApplied = slew; qmixCtrApplied = N;
 }
 
+// ── Voice-scoped recompute: blend only the given voice's 16 steps from cached z0/z1 ──
+// Called by refreshVisualCache for the DISPLAYED voice only (not all 15 poly voices).
+// ~16x less work than the full recomputeEffective*. Cache hit required (populated at roll).
+void PatternEngine::recomputeEffectiveRhythmForVoice(int voice) {
+    const float s = rack::math::clamp(rhythmMixLatched, 0.f, 1.f) * 6.f;
+    const int   f = (int)s;
+    const float frac = s - (float)f;
+    const int64_t N  = rhythmDrawCtr;
+    const float slew = rack::math::clamp(rhythmSlewLatched, -1.f, 1.f);
+    const float r = slewKnobToR(slew);
+    if (r == 0.f) return;
+    if (!rhythmZCache_.hit(N, f, r)) { recomputeEffectiveRhythm(); return; }
+
+    const int stride = 4 + 4 * numPolyVoicesHint;
+    const double dfrac = (double)frac;
+    auto bl = [&](int fi) -> float {
+        return (float)redDot::copula::PhiFast((1.0 - dfrac) * rhythmZCache_.z0[fi] + dfrac * rhythmZCache_.z1[fi]);
+    };
+    if (voice == 0) {
+        for (int i = 0; i < 16; ++i) {
+            int b = i * stride;
+            slewedRhythm[i]    = bl(b); slewedVariation[i] = bl(b+1);
+            slewedLegato[i]    = bl(b+2); slewedAccent[i]   = bl(b+3);
+        }
+        if (!sandsActive) for (int i = 0; i < 16; ++i) {
+            rhythmRandom[i]=slewedRhythm[i]; variationRandom[i]=slewedVariation[i];
+            legatoRandom[i]=slewedLegato[i]; accentRandom[i]=slewedAccent[i];
+        }
+    } else {
+        int v = voice - 1; if (v >= numPolyVoicesHint) return;
+        int off = 4 + v * 4;
+        for (int i = 0; i < 16; ++i) {
+            int b = i * stride + off;
+            slewedPolyRhythm[v][i]    = bl(b); slewedPolyAccent[v][i]    = bl(b+1);
+            slewedPolyVariation[v][i] = bl(b+2); slewedPolyLegato[v][i]    = bl(b+3);
+        }
+    }
+    publishSlewedRhythm();
+    rhythmMixApplied = rhythmMixLatched;
+}
+void PatternEngine::recomputeEffectiveMelodyForVoice(int voice) {
+    const float s = rack::math::clamp(melodyMixLatched, 0.f, 1.f) * 6.f;
+    const int   f = (int)s;
+    const float frac = s - (float)f;
+    const int64_t N  = melodyDrawCtr;
+    const float slew = rack::math::clamp(melodySlewLatched, -1.f, 1.f);
+    const float r = slewKnobToR(slew);
+    if (r == 0.f) return;
+    if (!melodyZCache_.hit(N, f, r)) { recomputeEffectiveMelody(); return; }
+    const int stride = 2 + 2 * numPolyVoicesHint;
+    const double dfrac = (double)frac;
+    auto bl = [&](int fi) -> float {
+        return (float)redDot::copula::PhiFast((1.0 - dfrac) * melodyZCache_.z0[fi] + dfrac * melodyZCache_.z1[fi]);
+    };
+    if (voice == 0) {
+        for (int i = 0; i < 16; ++i) {
+            int b = i * stride;
+            slewedMelody[i] = bl(b); slewedOctave[i] = bl(b+1);
+        }
+        if (!sandsActive) for (int i = 0; i < 16; ++i) {
+            melodyRandom[i]=slewedMelody[i]; octaveRandom[i]=slewedOctave[i];
+        }
+    } else {
+        int v = voice - 1; if (v >= numPolyVoicesHint) return;
+        int off = 2 + v * 2;
+        for (int i = 0; i < 16; ++i) {
+            int b = i * stride + off;
+            slewedPolyMelody[v][i] = bl(b); slewedPolyOctave[v][i] = bl(b+1);
+        }
+    }
+    publishSlewedMelody();
+    melodyMixApplied = melodyMixLatched;
+}
+void PatternEngine::recomputeEffectiveQmixForVoice(int voice) {
+    const float s = rack::math::clamp(qmixMixLatched, 0.f, 1.f) * 6.f;
+    const int   f = (int)s;
+    const float frac = s - (float)f;
+    const int64_t N  = qmixDrawCtr;
+    const float slew = rack::math::clamp(qmixSlewLatched, -1.f, 1.f);
+    const float r = slewKnobToR(slew);
+    if (r == 0.f) return;
+    if (!qmixZCache_.hit(N, f, r)) { recomputeEffectiveQmix(); return; }
+    const int stride = 1 + numPolyVoicesHint;
+    const double dfrac = (double)frac;
+    auto bl = [&](int fi) -> float {
+        return (float)redDot::copula::PhiFast((1.0 - dfrac) * qmixZCache_.z0[fi] + dfrac * qmixZCache_.z1[fi]);
+    };
+    if (voice == 0) {
+        for (int i = 0; i < 16; ++i) slewedQmix[i] = bl(i * stride);
+        if (!sandsActive) for (int i = 0; i < 16; ++i) qmixRandom[i]=slewedQmix[i];
+    } else {
+        int v = voice - 1; if (v >= numPolyVoicesHint) return;
+        for (int i = 0; i < 16; ++i) slewedPolyQmix[v][i] = bl(i * stride + 1 + v);
+    }
+    publishSlewedQmix();
+    qmixMixApplied = qmixMixLatched;
+}
+
 // Regenerate melody pattern (16 steps of semitone + pitch voltage)
 void PatternEngine::redrawMelody(const PatternInput& in) {
     if (in.locked && !in.diceLiveM) return;   // LOCK_SCOPE_MENU: melody dice may draw under lock if opted live
@@ -552,42 +650,20 @@ void PatternEngine::latchMix(float rhythmMix, float melodyMix, float qmixMix,
     // LOCK_SCOPE_MENU: applyRhythm/applyMelody gate EACH stream independently. A frozen stream (apply
     // false) does NOT re-latch its mix/slew and does NOT recompute — its latched value + effective
     // pattern hold from before the lock. Default true/true = latch both (unlocked).
-    // B3: rate-limit the mix-change recompute to ~1/3 of control rate (~470Hz).
-    // The B1 z0/z1 cache makes each recompute cheap (no sumZ on cache hit). The Sands
-    // bars read pubSlewed* at ~60Hz (display refresh), so 470Hz is more than enough.
-    // This removes the audio-rate recompute that was the remaining spike.
-    static int mixRateLimit_ = 0;
-    bool mixRate = (++mixRateLimit_ >= 3);
-    if (mixRate) mixRateLimit_ = 0;
+    // B3: mix is NOT consumed here — refreshVisualCache handles the for-voice recompute at
+    // the display rate (~90Hz lightDivider). latchMix just latches; the mix change stays
+    // pending (mixApplied unchanged) so refreshVisualCache can detect and consume it.
     if (applyRhythm) {
         rhythmMixLatched  = rhythmMix;
         rhythmSlewLatched = rhythmSlew;
-        if (rhythmMixLatched != rhythmMixApplied) {
-            if (mixRate || !rhythmZCache_.valid)
-                recomputeEffectiveRhythm();
-            else
-                rhythmMixApplied = rhythmMixLatched;  // consume without recompute (next rate tick)
-        }
     }
     if (applyMelody) {
         melodyMixLatched  = melodyMix;
         melodySlewLatched = melodySlew;
-        if (melodyMixLatched != melodyMixApplied) {
-            if (mixRate || !melodyZCache_.valid)
-                recomputeEffectiveMelody();
-            else
-                melodyMixApplied = melodyMixLatched;
-        }
     }
     if (applyQmix) {
         qmixMixLatched  = qmixMix;
         qmixSlewLatched = qmixSlew;
-        if (qmixMixLatched != qmixMixApplied) {
-            if (mixRate || !qmixZCache_.valid)
-                recomputeEffectiveQmix();
-            else
-                qmixMixApplied = qmixMixLatched;
-        }
     }
 }
 
@@ -604,14 +680,21 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     // counter). Slew is NOT a mid-phrase trigger — it's consumed at the roll (phrase boundary).
     // Counter-advance (redraw) forces recompute via slewApplied=-1 in the redraw path.
     {
-        // PART 3: mix changes are rate-limited in latchMix (control rate ~470Hz). Here at
-        // audio rate, only recompute on COUNTER change (roll/phrase boundary).
+        // PART 3: mix changes use the FOR-VOICE recompute (displayed voice only, ~16x less
+        // than all-voices). Counter change (roll/phrase boundary) uses the FULL recompute
+        // (all voices — the audio needs them). Different scopes for the two consumers.
         if (rhythmDrawCtr != rhythmCtrApplied)
-            recomputeEffectiveRhythm();
+            recomputeEffectiveRhythm();           // roll: full recompute (all voices)
+        else if (rhythmMixLatched != rhythmMixApplied)
+            recomputeEffectiveRhythmForVoice(displayedVoice_);  // mix: displayed voice only
         if (melodyDrawCtr != melodyCtrApplied)
             recomputeEffectiveMelody();
+        else if (melodyMixLatched != melodyMixApplied)
+            recomputeEffectiveMelodyForVoice(displayedVoice_);
         if (qmixDrawCtr != qmixCtrApplied)
             recomputeEffectiveQmix();
+        else if (qmixMixLatched != qmixMixApplied)
+            recomputeEffectiveQmixForVoice(displayedVoice_);
     }
     for (int i = 0; i < 16; ++i) {
         rhythmPattern[i] = (rhythmRandom[i] >= in.restProb);

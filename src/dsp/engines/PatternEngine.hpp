@@ -452,6 +452,14 @@ struct PatternEngine {
         void invalidate() { valid = false; }
     };
     ZWindowCache rhythmZCache_, melodyZCache_, qmixZCache_;
+    // Displayed voice for the Sands visual (set by the UI, read by refreshVisualCache).
+    // 0 = mono/V1, 1..15 = poly V2..V16. Used to scope the display recompute to 1 voice.
+    int displayedVoice_ = 0;
+    // Voice-scoped recompute: blend only the given voice's 16 steps from cached z0/z1.
+    // Called by refreshVisualCache for the displayed voice (not all 15 poly voices).
+    void recomputeEffectiveRhythmForVoice(int voice);
+    void recomputeEffectiveMelodyForVoice(int voice);
+    void recomputeEffectiveQmixForVoice(int voice);
     // Live MIX (A<->B blend) latched at control rate; the effective arrays are
     // recomputed when it changes. This is what drives the continuous morph.
     // A/B morph coefficient — GLOBAL per strand family (one scalar for ALL voices).
