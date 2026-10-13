@@ -552,23 +552,42 @@ void PatternEngine::latchMix(float rhythmMix, float melodyMix, float qmixMix,
     // LOCK_SCOPE_MENU: applyRhythm/applyMelody gate EACH stream independently. A frozen stream (apply
     // false) does NOT re-latch its mix/slew and does NOT recompute — its latched value + effective
     // pattern hold from before the lock. Default true/true = latch both (unlocked).
+    // B3: rate-limit the mix-change recompute to ~1/3 of control rate (~470Hz).
+    // The B1 z0/z1 cache makes each recompute cheap (no sumZ on cache hit). The Sands
+    // bars read pubSlewed* at ~60Hz (display refresh), so 470Hz is more than enough.
+    // This removes the audio-rate recompute that was the remaining spike.
+    static int mixRateLimit_ = 0;
+    bool mixRate = (++mixRateLimit_ >= 3);
+    if (mixRate) mixRateLimit_ = 0;
     if (applyRhythm) {
         rhythmMixLatched  = rhythmMix;
         rhythmSlewLatched = rhythmSlew;
-        if (rhythmMixLatched != rhythmMixApplied)
-            recomputeEffectiveRhythm();
+        if (rhythmMixLatched != rhythmMixApplied) {
+            if (mixRate || !rhythmZCache_.valid)
+                recomputeEffectiveRhythm();
+            else
+                rhythmMixApplied = rhythmMixLatched;  // consume without recompute (next rate tick)
+        }
     }
     if (applyMelody) {
         melodyMixLatched  = melodyMix;
         melodySlewLatched = melodySlew;
-        if (melodyMixLatched != melodyMixApplied)
-            recomputeEffectiveMelody();
+        if (melodyMixLatched != melodyMixApplied) {
+            if (mixRate || !melodyZCache_.valid)
+                recomputeEffectiveMelody();
+            else
+                melodyMixApplied = melodyMixLatched;
+        }
     }
     if (applyQmix) {
         qmixMixLatched  = qmixMix;
         qmixSlewLatched = qmixSlew;
-        if (qmixMixLatched != qmixMixApplied)
-            recomputeEffectiveQmix();
+        if (qmixMixLatched != qmixMixApplied) {
+            if (mixRate || !qmixZCache_.valid)
+                recomputeEffectiveQmix();
+            else
+                qmixMixApplied = qmixMixLatched;
+        }
     }
 }
 
@@ -585,11 +604,13 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     // counter). Slew is NOT a mid-phrase trigger — it's consumed at the roll (phrase boundary).
     // Counter-advance (redraw) forces recompute via slewApplied=-1 in the redraw path.
     {
-        if (rhythmMixLatched != rhythmMixApplied || rhythmDrawCtr != rhythmCtrApplied)
+        // PART 3: mix changes are rate-limited in latchMix (control rate ~470Hz). Here at
+        // audio rate, only recompute on COUNTER change (roll/phrase boundary).
+        if (rhythmDrawCtr != rhythmCtrApplied)
             recomputeEffectiveRhythm();
-        if (melodyMixLatched != melodyMixApplied || melodyDrawCtr != melodyCtrApplied)
+        if (melodyDrawCtr != melodyCtrApplied)
             recomputeEffectiveMelody();
-        if (qmixMixLatched != qmixMixApplied || qmixDrawCtr != qmixCtrApplied)
+        if (qmixDrawCtr != qmixCtrApplied)
             recomputeEffectiveQmix();
     }
     for (int i = 0; i < 16; ++i) {
