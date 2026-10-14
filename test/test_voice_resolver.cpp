@@ -91,7 +91,7 @@ int main() {
         for (int v = 2; v <= 16; ++v) {
             EXPECT(VoiceResolver::isPoly(v));
             EXPECT(!VoiceResolver::isMono(v));
-            EXPECT_EQ(VoiceResolver::polyBankIndex(v), v - 2);
+            EXPECT_EQ(VoiceResolver::polyBankIndex(v), v - 1);
         }
     });
     TEST("voiceSlot convention + the slot/bank invariant the send-bank off-by-one violated", {
@@ -106,7 +106,7 @@ int main() {
         // bank with a mono slice (send/atten) and a poly-only bank stay correctly offset. This
         // is exactly the relationship the Macro send/atten off-by-one broke (V2 → slot 0).
         for (int v = 2; v <= 16; ++v)
-            EXPECT_EQ(VoiceResolver::voiceSlot(v), VoiceResolver::polyBankIndex(v) + 1);
+            EXPECT_EQ(VoiceResolver::voiceSlot(v), VoiceResolver::polyBankIndex(v));
     });
     TEST("baseEditableHere: false for mono, true for poly", {
         EXPECT(!VoiceResolver::baseEditableHere(1));
@@ -125,7 +125,7 @@ int main() {
         for (int v = 2; v <= 16; ++v)
             for (int li = 0; li < 4; ++li)
                 EXPECT_BITEQ(r.laneProbability(v, lanes[li]),
-                             eng.polyLaneProbability(lanes[li], v - 2));
+                             eng.polyLaneProbability(lanes[li], v - 1));
     });
 
     SUITE("VoiceResolver — laneStep == direct accessors");
@@ -136,7 +136,7 @@ int main() {
     TEST("V2..V16 laneStep == polyLaneStep(lane, V-2)", {
         for (int v = 2; v <= 16; ++v)
             for (int li = 0; li < 4; ++li)
-                EXPECT_EQ(r.laneStep(v, lanes[li]), eng.polyLaneStep(lanes[li], v - 2));
+                EXPECT_EQ(r.laneStep(v, lanes[li]), eng.polyLaneStep(lanes[li], v - 1));
     });
 
     SUITE("VoiceResolver — laneProbabilityAtStep == direct accessors (every step)");
@@ -145,7 +145,7 @@ int main() {
             for (int li = 0; li < 4; ++li)
                 for (int s = 0; s < 16; ++s)
                     EXPECT_BITEQ(r.laneProbabilityAtStep(v, lanes[li], s),
-                                 eng.polyLaneProbabilityAtStep(lanes[li], v - 2, s));
+                                 eng.polyLaneProbabilityAtStep(lanes[li], v - 1, s));
     });
     TEST("V1 laneProbabilityAtStep == masterLaneProbability (mono ignores explicit step)", {
         for (int li = 0; li < 4; ++li)

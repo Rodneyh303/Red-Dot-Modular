@@ -36,9 +36,9 @@ struct VoiceResolver {
 
     static constexpr bool isMono(int v)  { return v == kMonoVoice; }
     static constexpr bool isPoly(int v)  { return v >= kFirstPoly && v <= kLastVoice; }
-    // Poly bank index (0..14) for V2..V16. Undefined (-1) for the mono voice — callers
-    // must gate on isPoly() and never index a bank with the mono voice.
-    static constexpr int  polyBankIndex(int v) { return isPoly(v) ? (v - kFirstPoly) : -1; }
+    // Poly voiceSlot (1..15) for V2..V16 — same as voiceSlot for poly voices.
+    // V1 (mono) returns -1. Callers must gate on isPoly().
+    static constexpr int  polyBankIndex(int v) { return isPoly(v) ? (v - 1) : -1; }
 
     // ── Per-voice STORAGE SLOT conventions ──────────────────────────────────────
     // There are TWO ways code indexes per-voice storage, and mixing them is exactly the
@@ -115,8 +115,8 @@ struct VoiceResolver {
 
 // Free, header-scope checks of the index dispatch (no engine needed).
 inline void voiceResolverIndexSelfTest_() {
-    static_assert(VoiceResolver::polyBankIndex(2)  == 0,  "V2 → bank 0");
-    static_assert(VoiceResolver::polyBankIndex(16) == 14, "V16 → bank 14");
+    static_assert(VoiceResolver::polyBankIndex(2)  == 1,  "V2 → voiceSlot 1");
+    static_assert(VoiceResolver::polyBankIndex(16) == 15, "V16 → voiceSlot 15");
     static_assert(VoiceResolver::polyBankIndex(1)  == -1, "mono has no bank slot");
     // The invariant that the Macro send/atten off-by-one violated: a poly voice's 16-wide
     // voiceSlot is exactly one above its 15-wide poly bank (slot 0 reserved for mono). If
@@ -124,10 +124,10 @@ inline void voiceResolverIndexSelfTest_() {
     static_assert(VoiceResolver::voiceSlot(1)  == 0,  "mono is slot 0");
     static_assert(VoiceResolver::voiceSlot(2)  == 1,  "V2 is slot 1 (NOT slot 0 — the bug)");
     static_assert(VoiceResolver::voiceSlot(16) == 15, "V16 is slot 15");
-    static_assert(VoiceResolver::voiceSlot(2) == VoiceResolver::polyBankIndex(2) + 1,
-                  "voiceSlot(poly) == polyBankIndex(poly) + 1 — slot 0 is the mono slice");
-    static_assert(VoiceResolver::voiceSlot(16) == VoiceResolver::polyBankIndex(16) + 1,
-                  "the slot/bank relationship holds across the whole poly range");
+    static_assert(VoiceResolver::voiceSlot(2) == VoiceResolver::polyBankIndex(2),
+                  "voiceSlot(poly) == polyBankIndex(poly) — unified to voiceSlot");
+    static_assert(VoiceResolver::voiceSlot(16) == VoiceResolver::polyBankIndex(16),
+                  "voiceSlot == polyBankIndex across the whole poly range");
     static_assert(VoiceResolver::slotToVoice(VoiceResolver::voiceSlot(9)) == 9, "slot round-trips");
     static_assert(VoiceResolver::kVoiceSlots == 16, "16 voice slots (mono + 15 poly)");
     static_assert(VoiceResolver::kMonoSlot == VoiceResolver::voiceSlot(VoiceResolver::kMonoVoice), "kMonoSlot is the mono voice slice");

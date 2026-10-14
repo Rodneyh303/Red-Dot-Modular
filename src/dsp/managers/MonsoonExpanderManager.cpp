@@ -236,7 +236,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             || (engine.scopeLiveMask & (1u << 13)) != 0;   // QMIX own axis (SB_SANDS_Q)
         engine.pe.cachedSpreadInitialized = true;   // Stage 2a: enable step-rate refresh
 
-        for (int v = 0; v < effPolyVoices; v++) {
+        for (int v = 1; v <= effPolyVoices; v++) {
             // Per-voice send/atten banks are voice-number-indexed (slot 0 = voice 1/mono, slot
             // 1 = poly voice 2, …). Engine poly index v (0..14) is poly voice v+2; derive its
             // 16-wide slot through the resolver so this can't drift from the asserted slot/bank
@@ -430,7 +430,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             engine.pe.cachedPolySpread[v][PL::PL_REST] = restInterp;   // Stage 2a: cache for step-rate refresh
 
             // if (deepEast) {
-            //     engine.voices[v + 1].restProb = deepEast->params[MonsoonIds::POLY_REST_PARAM_1 + v].getValue();
+            //     engine.voices[v].restProb = deepEast->params[MonsoonIds::POLY_REST_PARAM_1 + v].getValue();
             // }
 
             // Stage 2a: removed full-field applyPoly loop — engine refreshes at step advance

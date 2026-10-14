@@ -411,17 +411,17 @@ struct SequencerEngine {
 
     // Editor-order poly accessors: bank b → slot b+1, editorLane indexes the unified array directly
     // (storage IS editor order now — no permutation).
-    int& polyLORRef(int bank, int editorLane, int item) { return lorStore_[bank + 1][editorLane & 7][item]; }
-    int  polyLOR   (int bank, int editorLane, int item) const { return lorStore_[bank + 1][editorLane & 7][item]; }
+    int& polyLORRef(int bank, int editorLane, int item) { return lorStore_[bank][editorLane & 7][item]; }
+    int  polyLOR   (int bank, int editorLane, int item) const { return lorStore_[bank][editorLane & 7][item]; }
 
     // Engine-order poly accessors: bank b → slot b+1; the engine PL_ lane converts to editor lane
     // via ENGINE_LANE_TO_EDITOR HERE — the single storage boundary that absorbs the permutation.
-    int& polyLenERef(int bank, int engLane) { return lorStore_[bank + 1][editorLane(engLane)][LOR_LEN]; }
-    int& polyOffERef(int bank, int engLane) { return lorStore_[bank + 1][editorLane(engLane)][LOR_OFF]; }
-    int& polyRotERef(int bank, int engLane) { return lorStore_[bank + 1][editorLane(engLane)][LOR_ROT]; }
-    int  polyLenE(int bank, int engLane) const { return lorStore_[bank + 1][editorLane(engLane)][LOR_LEN]; }
-    int  polyOffE(int bank, int engLane) const { return lorStore_[bank + 1][editorLane(engLane)][LOR_OFF]; }
-    int  polyRotE(int bank, int engLane) const { return lorStore_[bank + 1][editorLane(engLane)][LOR_ROT]; }
+    int& polyLenERef(int bank, int engLane) { return lorStore_[bank][editorLane(engLane)][LOR_LEN]; }
+    int& polyOffERef(int bank, int engLane) { return lorStore_[bank][editorLane(engLane)][LOR_OFF]; }
+    int& polyRotERef(int bank, int engLane) { return lorStore_[bank][editorLane(engLane)][LOR_ROT]; }
+    int  polyLenE(int bank, int engLane) const { return lorStore_[bank][editorLane(engLane)][LOR_LEN]; }
+    int  polyOffE(int bank, int engLane) const { return lorStore_[bank][editorLane(engLane)][LOR_OFF]; }
+    int  polyRotE(int bank, int engLane) const { return lorStore_[bank][editorLane(engLane)][LOR_ROT]; }
 
     // ── Spread: the 4th probability modifier, now ENGINE STATE (MVC: was on the Mono visual, which the
     // engine reached into for the draws — model reading from view. Now the model owns it). Stored in the
@@ -534,7 +534,7 @@ struct SequencerEngine {
     // pre-spread), so every read here is a PLAIN own-bank read — a pinned voice's
     // borrowed draw already carries the consumer's own spread. No read-time indirection.
     inline const float (&polyRandomSrc(int voiceIdx, int polyLane) const)[16] {
-        return pe.polyRandom(voiceIdx + 1, polyLane);
+        return pe.polyRandom(voiceIdx, polyLane);
     }
     // Stage 2a: refresh ONE cell of polyRandom at step advance, using the cached spread
     // value from the last control-rate sync(). Checks the lane's lock axis; if not live,
@@ -679,7 +679,7 @@ struct SequencerEngine {
 
     // Step indices (for S&H edge detection) matching the probability accessors above.
     inline int polyLaneStep(int polyLane, int voice) const {
-        if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return -1;
+        if (voice < 0 || voice >= 16 || polyLane < 0 || polyLane >= PL_LANES) return -1;
         return getStrandIdx(polyLaneTick(voice, polyLane), polyLenE(voice, polyLane),
                             polyOffE(voice, polyLane), polyRotE(voice, polyLane)) & 0x0F;
     }
@@ -742,15 +742,15 @@ struct SequencerEngine {
     // from a stale held gate. Also latches the count for this step (prevNumPolyVoices_).
     void resetActivatedPolyVoices_() {
         if (numPolyVoices > prevNumPolyVoices_) {
-            for (int i = prevNumPolyVoices_; i < numPolyVoices && i < 15; ++i) {
-                voices[i + 1].gs.gateHeld = false;
-                voices[i + 1].gs.holdRemain = 0.f;
-                voices[i + 1].gs.slurForward = false;
-                voices[i + 1].gs.gatePulseRemain = -1;
-                voices[i + 1].gsStep.gateHeld = false;
-                voices[i + 1].gsStep.holdRemain = 0.f;
-                voices[i + 1].gsStep.gatePulseRemain = -1;
-                voices[i + 1].participating = false;
+            for (int i = prevNumPolyVoices_ + 1; i <= numPolyVoices && i < 16; ++i) {
+                voices[i].gs.gateHeld = false;
+                voices[i].gs.holdRemain = 0.f;
+                voices[i].gs.slurForward = false;
+                voices[i].gs.gatePulseRemain = -1;
+                voices[i].gsStep.gateHeld = false;
+                voices[i].gsStep.holdRemain = 0.f;
+                voices[i].gsStep.gatePulseRemain = -1;
+                voices[i].participating = false;
             }
         }
         pe.syncPolyVoiceCount();  // Voice-count opt: fill delta voices' z in cache on increase
@@ -782,7 +782,7 @@ struct SequencerEngine {
 
     // ── Poly voice execution ──────────────────────────────────────────────────
     // Call executePolyVoices() after any stepped executeModeA/B call.
-    // voices[i + 1].restProb must be set by the caller before invoking.
+    // voices[voiceSlot].restProb must be set by the caller before invoking.
     void executePolyVoice(int voiceIdx, const PatternInput& input, bool wasHeld, bool hadTail);
     void executePolyVoices(const PatternInput& input);
 };

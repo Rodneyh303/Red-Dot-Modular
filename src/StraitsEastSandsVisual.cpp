@@ -802,7 +802,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 // Set display proxy and persist to all 15 poly voice slots
                 // (owner proxy write DELETED — MVC step 1d: setMacroOwn below is the home.)
                 if (auto* mmA = redDot::findMonsoonEitherSide(widget->module))
-                    for (int v = 0; v < 15; ++v) mmA->setMacroOwn(v, lane, val);
+                    for (int v = 1; v < 16; ++v) mmA->setMacroOwn(v, lane, val);
             }
         };
 

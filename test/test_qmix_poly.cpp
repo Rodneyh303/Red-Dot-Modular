@@ -55,10 +55,10 @@ int main() {
     SUITE("distinctness — 15 poly voices get 15 distinct q-mix values, each reads its own");
     {
         PatternEngine pe;
-        for (int pv = 0; pv < N_POLY; ++pv)
-            pe.slewedQmix[pv+1][STEP] = voiceVal(pv);  // V2..V16 at [1..15]
+        for (int pv = 1; pv <= N_POLY; ++pv)
+            pe.slewedQmix[pv][STEP] = voiceVal(pv);  // V2..V16 at [1..15]
         TEST("each poly voice reads back exactly its own q-mix value", {
-            for (int pv = 0; pv < N_POLY; ++pv)
+            for (int pv = 1; pv <= N_POLY; ++pv)
                 EXPECT_NEAR(SpreadInterp::polySlewed(pe, LANE_QMIX, pv, STEP), voiceVal(pv), 0.0f);
         });
         TEST("all 15 values are mutually distinct", {
@@ -71,12 +71,12 @@ int main() {
     SUITE("routing identity — voice v's q-mix lands on voice v, not v±1");
     {
         PatternEngine pe;
-        for (int pv = 0; pv < N_POLY; ++pv)
-            pe.slewedQmix[pv+1][STEP] = voiceVal(pv);  // V2..V16 at [1..15]
+        for (int pv = 1; pv <= N_POLY; ++pv)
+            pe.slewedQmix[pv][STEP] = voiceVal(pv);  // V2..V16 at [1..15]
         // An off-by-one would make voice pv read voiceVal(pv±1). Assert each reads its own index-derived
         // value and NOT its neighbour's — catches both directions of a shift.
         TEST("voice pv reads voiceVal(pv), not voiceVal(pv-1) or voiceVal(pv+1)", {
-            for (int pv = 0; pv < N_POLY; ++pv) {
+            for (int pv = 1; pv <= N_POLY; ++pv) {
                 const float got = SpreadInterp::polySlewed(pe, LANE_QMIX, pv, STEP);
                 EXPECT_NEAR(got, voiceVal(pv), 1e-6f);
                 if (pv > 0)          EXPECT(std::fabs(got - voiceVal(pv - 1)) > 1e-4f);
@@ -91,21 +91,21 @@ int main() {
         // could alias onto the REST or ACCENT buffers. Seed REST/ACC with their own distinct
         // per-voice values, write q-mix, and assert REST/ACC are untouched.
         PatternEngine pe;
-        for (int pv = 0; pv < N_POLY; ++pv) {
-            pe.slewedRhythm[pv+1][STEP] = 0.20f + 0.01f * pv;   // REST (lane 0), V2..V16 at [1..15]
-            pe.slewedAccent[pv+1][STEP] = 0.70f - 0.01f * pv;   // ACC (lane 3)
-            pe.slewedQmix[pv+1][STEP]   = voiceVal(pv);          // QMIX (lane 4)
+        for (int pv = 1; pv <= N_POLY; ++pv) {
+            pe.slewedRhythm[pv][STEP] = 0.20f + 0.01f * pv;   // REST (lane 0), V2..V16 at [1..15]
+            pe.slewedAccent[pv][STEP] = 0.70f - 0.01f * pv;   // ACC (lane 3)
+            pe.slewedQmix[pv][STEP]   = voiceVal(pv);          // QMIX (lane 4)
         }
         TEST("REST (lane 0) unchanged after writing q-mix", {
-            for (int pv = 0; pv < N_POLY; ++pv)
+            for (int pv = 1; pv <= N_POLY; ++pv)
                 EXPECT_NEAR(SpreadInterp::polySlewed(pe, LANE_REST, pv, STEP), 0.20f + 0.01f * pv, 0.0f);
         });
         TEST("ACCENT (lane 3) unchanged after writing q-mix", {
-            for (int pv = 0; pv < N_POLY; ++pv)
+            for (int pv = 1; pv <= N_POLY; ++pv)
                 EXPECT_NEAR(SpreadInterp::polySlewed(pe, LANE_ACC, pv, STEP), 0.70f - 0.01f * pv, 0.0f);
         });
         TEST("and q-mix itself reads correctly (no cross-contamination back)", {
-            for (int pv = 0; pv < N_POLY; ++pv)
+            for (int pv = 1; pv <= N_POLY; ++pv)
                 EXPECT_NEAR(SpreadInterp::polySlewed(pe, LANE_QMIX, pv, STEP), voiceVal(pv), 0.0f);
         });
     }
@@ -119,11 +119,11 @@ int main() {
         // (bit-identity, matching mono's spread==0 contract) — i.e. the poly path doesn't alter the
         // stored value when there's nothing to blend toward.
         PatternEngine pe;
-        for (int pv = 0; pv < N_POLY; ++pv)
-            pe.slewedQmix[pv+1][STEP] = voiceVal(pv);
+        for (int pv = 1; pv <= N_POLY; ++pv)
+            pe.slewedQmix[pv][STEP] = voiceVal(pv);
         pe.slewedQmix[0][STEP] = 0.44f;   // V1 mono reference value
         TEST("poly spread==0 returns own value exactly (bit-identity, mono contract)", {
-            for (int pv = 0; pv < N_POLY; ++pv)
+            for (int pv = 1; pv <= N_POLY; ++pv)
                 EXPECT_NEAR(SpreadInterp::applyPoly(pe, LANE_QMIX, pv, STEP, 0.0f), voiceVal(pv), 0.0f);
         });
         TEST("mono spread==0 returns own value exactly (the reference)", {
@@ -140,8 +140,8 @@ int main() {
         // voice's value vs its own; (b) the result stays in [0,1] (uniform marginal preserved); (c)
         // spread==0 is bit-identity for EVERY voice (the no-op guard). Voice 7 is the swept exemplar.
         PatternEngine pe;
-        for (int pv = 0; pv < N_POLY; ++pv)
-            pe.slewedQmix[pv+1][STEP] = voiceVal(pv);
+        for (int pv = 1; pv <= N_POLY; ++pv)
+            pe.slewedQmix[pv][STEP] = voiceVal(pv);
         pe.slewedQmix[0][STEP] = 0.90f;             // the mono V1 target (distinct from every voiceVal)
         pe.spreadTargetMode[LANE_QMIX] = 0;       // anchor V1: target = monoSlewed = 0.90
         const int target = 7;
@@ -154,7 +154,7 @@ int main() {
             }
         });
         TEST("spread==0 is bit-identity for EVERY voice (the no-op guard)", {
-            for (int pv = 0; pv < N_POLY; ++pv)
+            for (int pv = 1; pv <= N_POLY; ++pv)
                 EXPECT_NEAR(SpreadInterp::applyPoly(pe, LANE_QMIX, pv, STEP, 0.0f), voiceVal(pv), 0.0f);
         });
         TEST("positive spread moves voice 7 toward the V1 target (0.90), not away", {
@@ -179,8 +179,8 @@ int main() {
         for (int v = 0; v < 16; ++v) pe.caQmixSrc[v] = (uint8_t)v;   // identity baseline
         pe.caQmixSrc[pv + 1] = 0;   // voice 6 follows voice 0 (src != self)
         // Pre-remap (own) = voice 5's own material; post-remap (target) = voice 0's material.
-        pe.preRemapSlewedQmix[pv+1][STEP] = 0.15f;   // own (pre-remap, V2..V16 at [1..15])
-        pe.slewedQmix[pv+1][STEP]           = 0.85f;   // target (leader's, after remap)
+        pe.preRemapSlewedQmix[pv][STEP] = 0.15f;   // own (pre-remap, V2..V16 at [1..15])
+        pe.slewedQmix[pv][STEP]           = 0.85f;   // target (leader's, after remap)
         const float own = SpreadInterp::polyPreRemap(pe, LANE_QMIX, pv, STEP);
         const float tgt = SpreadInterp::polySlewed(pe, LANE_QMIX, pv, STEP);
         TEST("own (pre-remap) != target (post-remap) when src != self", {
@@ -197,8 +197,8 @@ int main() {
             // With identity pins the buffers still differ here (we set them distinct), but the
             // contract is only that a collapse is ALLOWED (self-target no-op) — not required.
             // Assert the self-target no-op path itself: spread>0 with own==target returns own.
-            pe.preRemapSlewedQmix[pv+1][STEP] = 0.42f;
-            pe.slewedQmix[pv+1][STEP]           = 0.42f;   // own == target
+            pe.preRemapSlewedQmix[pv][STEP] = 0.42f;
+            pe.slewedQmix[pv][STEP]           = 0.42f;   // own == target
             EXPECT_NEAR(SpreadInterp::applyPoly(pe, LANE_QMIX, pv, STEP, 0.6f), 0.42f, 1e-6f);
             (void)o2; (void)t2;
         });

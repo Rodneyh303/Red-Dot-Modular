@@ -1280,8 +1280,8 @@ void Monsoon::process(const ProcessArgs& args) {
                     b = engine.gs.semiLedBrightness(i);
                     q = engine.gs.semiQuantLedBrightness(i);
                     for (int v = 0; v < engine.numPolyVoices; ++v) {
-                        b = std::max(b, engine.voices[v + 1].gs.semiLedBrightness(i));
-                        q = std::max(q, engine.voices[v + 1].gs.semiQuantLedBrightness(i));
+                        b = std::max(b, engine.voices[v].gs.semiLedBrightness(i));
+                        q = std::max(q, engine.voices[v].gs.semiQuantLedBrightness(i));
                     }
                 }
                 semiLedBrightness[i] = b;
