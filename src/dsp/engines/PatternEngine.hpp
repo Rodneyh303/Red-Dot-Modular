@@ -486,7 +486,7 @@ struct PatternEngine {
     // DELETED: slewedPoly* (15][16] arrays — V2..V16 now at slewed*[1..15].
     // Old: slewedRhythm[16] (mono/V1) + slewedPolyRhythm[15][16] (V2..V16, poly[0]=V2).
     // New: slewedRhythm[16][16] — V1 at [0], V2 at [1], ..., V16 at [15].
-    // Access: mono was slewedRhythm[i] → slewedRhythm[0][i]; poly was slewedPolyRhythm[v][i] → slewedRhythm[v+1][i].
+    // Access: mono was slewedRhythm[i] → slewedRhythm[0][i]; poly was slewedPolyRhythm[v][i] → slewedRhythm[v][i].
     // Published snapshots of the slewed buffers — coherent copies the UI thread reads. The audio
     // thread writes slewed* during recomputeEffective* (now ~116µs at r>0), then publishes a
     // snapshot here. Without this, Mono/Macro visuals read slewed* mid-rewrite → torn read →
@@ -824,27 +824,27 @@ struct PatternEngine {
         newCount = std::min(newCount, 15);
         for (auto& kv : rhythmDrawCache_) {
             auto& e = kv.second;
-            for (int v = oldCount; v < newCount; ++v)
+            for (int v = oldCount + 1; v <= newCount; ++v)
                 for (int i = 0; i < 16; ++i) {
-                    e.zRhythm[v+1][i] = redDot::copula::PhiInv(e.draw.rhythm[v+1][i]);
-                    e.zAccent[v+1][i] = redDot::copula::PhiInv(e.draw.accent[v+1][i]);
-                    e.zVariation[v+1][i] = redDot::copula::PhiInv(e.draw.variation[v+1][i]);
-                    e.zLegato[v+1][i] = redDot::copula::PhiInv(e.draw.legato[v+1][i]);
+                    e.zRhythm[v][i] = redDot::copula::PhiInv(e.draw.rhythm[v][i]);
+                    e.zAccent[v][i] = redDot::copula::PhiInv(e.draw.accent[v][i]);
+                    e.zVariation[v][i] = redDot::copula::PhiInv(e.draw.variation[v][i]);
+                    e.zLegato[v][i] = redDot::copula::PhiInv(e.draw.legato[v][i]);
                 }
         }
         for (auto& kv : melodyDrawCache_) {
             auto& e = kv.second;
-            for (int v = oldCount; v < newCount; ++v)
+            for (int v = oldCount + 1; v <= newCount; ++v)
                 for (int i = 0; i < 16; ++i) {
-                    e.zMelody[v+1][i] = redDot::copula::PhiInv(e.draw.melody[v+1][i]);
-                    e.zOctave[v+1][i] = redDot::copula::PhiInv(e.draw.octave[v+1][i]);
+                    e.zMelody[v][i] = redDot::copula::PhiInv(e.draw.melody[v][i]);
+                    e.zOctave[v][i] = redDot::copula::PhiInv(e.draw.octave[v][i]);
                 }
         }
         for (auto& kv : qmixDrawCache_) {
             auto& e = kv.second;
-            for (int v = oldCount; v < newCount; ++v)
+            for (int v = oldCount + 1; v <= newCount; ++v)
                 for (int i = 0; i < 16; ++i)
-                    e.zQmix[v+1][i] = redDot::copula::PhiInv(e.draw.qmix[v+1][i]);
+                    e.zQmix[v][i] = redDot::copula::PhiInv(e.draw.qmix[v][i]);
         }
     }
 public:
@@ -868,10 +868,10 @@ public:
             e.zVariation[0][i]=redDot::copula::PhiInv(e.draw.variation[0][i]);
             e.zLegato[0][i]=redDot::copula::PhiInv(e.draw.legato[0][i]);
             e.zAccent[0][i]=redDot::copula::PhiInv(e.draw.accent[0][i]);
-            for(int v=0;v<numPolyVoicesHint;++v){ e.zRhythm[v+1][i]=redDot::copula::PhiInv(e.draw.rhythm[v+1][i]);
-                e.zAccent[v+1][i]=redDot::copula::PhiInv(e.draw.accent[v+1][i]);
-                e.zVariation[v+1][i]=redDot::copula::PhiInv(e.draw.variation[v+1][i]);
-                e.zLegato[v+1][i]=redDot::copula::PhiInv(e.draw.legato[v+1][i]); } }
+            for(int v=1;v<=numPolyVoicesHint;++v){ e.zRhythm[v][i]=redDot::copula::PhiInv(e.draw.rhythm[v][i]);
+                e.zAccent[v][i]=redDot::copula::PhiInv(e.draw.accent[v][i]);
+                e.zVariation[v][i]=redDot::copula::PhiInv(e.draw.variation[v][i]);
+                e.zLegato[v][i]=redDot::copula::PhiInv(e.draw.legato[v][i]); } }
         return e;
     }
     CachedMelodyDraw& cachedMelodyDraw(int64_t pos) const {
@@ -881,8 +881,8 @@ public:
         rawDrawMelodyPatternAt(pos, e.draw);
         for (int i=0;i<16;++i){ e.zMelody[0][i]=redDot::copula::PhiInv(e.draw.melody[0][i]);
             e.zOctave[0][i]=redDot::copula::PhiInv(e.draw.octave[0][i]);
-            for(int v=0;v<numPolyVoicesHint;++v){ e.zMelody[v+1][i]=redDot::copula::PhiInv(e.draw.melody[v+1][i]);
-                e.zOctave[v+1][i]=redDot::copula::PhiInv(e.draw.octave[v+1][i]); } }
+            for(int v=1;v<=numPolyVoicesHint;++v){ e.zMelody[v][i]=redDot::copula::PhiInv(e.draw.melody[v][i]);
+                e.zOctave[v][i]=redDot::copula::PhiInv(e.draw.octave[v][i]); } }
         return e;
     }
     CachedQmixDraw& cachedQmixDraw(int64_t pos) const {
@@ -891,7 +891,7 @@ public:
         CachedQmixDraw& e = qmixDrawCache_[pos];
         rawDrawQmixPatternAt(pos, e.draw);
         for (int i=0;i<16;++i){ e.zQmix[0][i]=redDot::copula::PhiInv(e.draw.qmix[0][i]);
-            for(int v=0;v<numPolyVoicesHint;++v) e.zQmix[v+1][i]=redDot::copula::PhiInv(e.draw.qmix[v+1][i]); }
+            for(int v=1;v<=numPolyVoicesHint;++v) e.zQmix[v][i]=redDot::copula::PhiInv(e.draw.qmix[v][i]); }
         return e;
     }
     // ── Phase 1: slew as a normal-space moving-average Gaussian copula ──────────
@@ -938,15 +938,15 @@ public:
             out.legato[0][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
             for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zAccent[0][i];
             out.accent[0][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
-            for(int v=0;v<numPolyVoicesHint;++v){
-                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zRhythm[v+1][i];
-                out.rhythm[v+1][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
-                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zAccent[v+1][i];
-                out.accent[v+1][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
-                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zVariation[v+1][i];
-                out.variation[v+1][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
-                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zLegato[v+1][i];
-                out.legato[v+1][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+            for(int v=1;v<=numPolyVoicesHint;++v){
+                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zRhythm[v][i];
+                out.rhythm[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zAccent[v][i];
+                out.accent[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zVariation[v][i];
+                out.variation[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zLegato[v][i];
+                out.legato[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
             }
         }
     }
@@ -962,11 +962,11 @@ public:
             out.melody[0][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
             for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zOctave[0][i];
             out.octave[0][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
-            for(int v=0;v<numPolyVoicesHint;++v){
-                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zMelody[v+1][i];
-                out.melody[v+1][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
-                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zOctave[v+1][i];
-                out.octave[v+1][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+            for(int v=1;v<=numPolyVoicesHint;++v){
+                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zMelody[v][i];
+                out.melody[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zOctave[v][i];
+                out.octave[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
             }
         }
     }
@@ -981,9 +981,9 @@ public:
         for (int i=0;i<16;++i){
             for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zQmix[0][i];
             out.qmix[0][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
-            for(int v=0;v<numPolyVoicesHint;++v){
-                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zQmix[v+1][i];
-                out.qmix[v+1][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
+            for(int v=1;v<=numPolyVoicesHint;++v){
+                for(std::size_t j=0;j<K;++j) zw[j]=win[j]->zQmix[v][i];
+                out.qmix[v][i]=(float)redDot::MovingAverageCopula::applyZ(zw,r);
             }
         }
     }

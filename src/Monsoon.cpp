@@ -877,9 +877,9 @@ void Monsoon::process(const ProcessArgs& args) {
         if (gridPulse) {
             engine.gs.tickPulse();
             engine.gsStep.tickPulse();
-            for (int i = 0; i < engine.numPolyVoices; ++i) {
-                engine.voices[i + 1].gs.tickPulse();
-                engine.voices[i + 1].gsStep.tickPulse();
+            for (int i = 1; i <= engine.numPolyVoices; ++i) {
+                engine.voices[i].gs.tickPulse();
+                engine.voices[i].gsStep.tickPulse();
             }
         }
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
@@ -910,12 +910,12 @@ void Monsoon::process(const ProcessArgs& args) {
             // Latch each poly voice's sounding decision (Mode B poly gate-width follow).  In Mode B
             // holdRemain is nullified so there is no MidNote — every shouldExecute carries a real
             // onset/landing/rest decision, and executePolyVoices (run inside executeMode) has just
-            // set voices[i + 1].gs.gateHeld to whether each voice plays or rests.  Hold that between
+            // set voices[i].gs.gateHeld to whether each voice plays or rests.  Hold that between
             // onsets; the IMPL 2b gate driver ANDs it with the mono envelope so poly gate WIDTH
             // follows Gate 1 / ghost (not a 1-step internal hold).  Mode B only.
             if (modeSelect == 1) {
-                for (int i = 0; i < engine.numPolyVoices; ++i)
-                    polyVoiceActive[i] = engine.voices[i + 1].gs.gateHeld;
+                for (int i = 1; i <= engine.numPolyVoices; ++i)
+                    polyVoiceActive[i] = engine.voices[i].gs.gateHeld;
             }
 
             // ── Shophouse scale expander: boundary-quantised scale/root ──
@@ -975,9 +975,9 @@ void Monsoon::process(const ProcessArgs& args) {
                 for (int pu = 0; pu < p16; ++pu) {
                     engine.gs.tickPulse();
                     engine.gsStep.tickPulse();
-                    for (int i = 0; i < engine.numPolyVoices; ++i) {
-                        engine.voices[i + 1].gs.tickPulse();
-                        engine.voices[i + 1].gsStep.tickPulse();
+                    for (int i = 1; i <= engine.numPolyVoices; ++i) {
+                        engine.voices[i].gs.tickPulse();
+                        engine.voices[i].gsStep.tickPulse();
                     }
                 }
             }
@@ -1106,12 +1106,12 @@ void Monsoon::process(const ProcessArgs& args) {
         // 1-step internal hold.  gsStep is left to executePolyVoice's per-onset retrigger (the STEP
         // output re-articulates by design); only the fused GATE width is driven here.  A voice whose
         // gate closes also gets its holdRemain zeroed (Lantern sounding-test parity with the mono).
-        for (int i = 0; i < engine.numPolyVoices; ++i) {
+        for (int i = 1; i <= engine.numPolyVoices; ++i) {
             const bool vOpen = gateOpen && polyVoiceActive[i];
-            engine.voices[i + 1].gs.gateHeld = vOpen;
+            engine.voices[i].gs.gateHeld = vOpen;
             if (!vOpen) {
-                engine.voices[i + 1].gs.holdRemain      = 0.f;
-                engine.voices[i + 1].gs.gatePulseRemain = -1;
+                engine.voices[i].gs.holdRemain      = 0.f;
+                engine.voices[i].gs.gatePulseRemain = -1;
             }
         }
     }
@@ -1279,7 +1279,7 @@ void Monsoon::process(const ProcessArgs& args) {
                 if (!micro) {
                     b = engine.gs.semiLedBrightness(i);
                     q = engine.gs.semiQuantLedBrightness(i);
-                    for (int v = 0; v < engine.numPolyVoices; ++v) {
+                    for (int v = 1; v <= engine.numPolyVoices; ++v) {
                         b = std::max(b, engine.voices[v].gs.semiLedBrightness(i));
                         q = std::max(q, engine.voices[v].gs.semiQuantLedBrightness(i));
                     }

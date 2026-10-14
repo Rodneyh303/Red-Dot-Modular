@@ -1,4 +1,5 @@
 #include "PatternEngine.hpp"
+#include "../SpreadInterp.hpp"
 
 // ── OU-bridge blend coefficients (UNIFIED 2×2 conditioning for ALL r) ─────────
 // File-local: lives here (not in the header) to avoid pulling PhiInvLUT::table()
@@ -365,14 +366,24 @@ void PatternEngine::recomputeEffectiveRhythm() {
     }
     // Poly VAR/LEG are now drawn by the Philox stream and copula-blended above
     // (same as the other 5 lanes). No raw fallback needed.
+    // RACE FIX: apply cachedPolySpread in the recompute's poly write so it matches
+    // what refreshPolyRandomCell produces (the step-rate sole writer of the final
+    // random_[v]). Without this, the recompute writes pre-spread while refresh writes
+    // post-spread → poly flicker during mix modulation (mono is immune: no per-step
+    // spread refresh for random_[0]).
     if (!sandsActive) {
+        const bool applyR = cachedSpreadInitialized && cachedSpreadLiveR;
         for (int i = 0; i < 16; ++i) {
             rhythmRandom[i]=slewedRhythm[0][i]; variationRandom[i]=slewedVariation[0][i];
             legatoRandom[i]=slewedLegato[0][i]; accentRandom[i]=slewedAccent[0][i];
-            for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_REST)[i]=slewedRhythm[v][i];
-            for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_ACCENT)[i]=slewedAccent[v][i];
-            for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_VARIATION)[i]=slewedVariation[v][i];
-            for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_LEGATO)[i]=slewedLegato[v][i];
+            for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_REST)[i]=applyR?
+                redDot::SpreadInterp::applyPoly(*this,PL_REST,v,i,cachedPolySpread[v][PL_REST]):slewedRhythm[v][i];
+            for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_ACCENT)[i]=applyR?
+                redDot::SpreadInterp::applyPoly(*this,PL_ACCENT,v,i,cachedPolySpread[v][PL_ACCENT]):slewedAccent[v][i];
+            for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_VARIATION)[i]=applyR?
+                redDot::SpreadInterp::applyPoly(*this,PL_VARIATION,v,i,cachedPolySpread[v][PL_VARIATION]):slewedVariation[v][i];
+            for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_LEGATO)[i]=applyR?
+                redDot::SpreadInterp::applyPoly(*this,PL_LEGATO,v,i,cachedPolySpread[v][PL_LEGATO]):slewedLegato[v][i];
         }
     }
     publishSlewedRhythm();   // publish coherent snapshot for the UI thread
@@ -446,10 +457,13 @@ void PatternEngine::recomputeEffectiveMelody() {
         }
     }
     if (!sandsActive) {
+        const bool applyM = cachedSpreadInitialized && cachedSpreadLiveM;
         for (int i = 0; i < 16; ++i) {
             melodyRandom[i]=slewedMelody[0][i]; octaveRandom[i]=slewedOctave[0][i];
-            for (int v=1;v<=numPolyVoicesHint;v++){ polyRandom(v, PL_MELODY)[i]=slewedMelody[v][i];
-                                    polyRandom(v, PL_OCTAVE)[i]=slewedOctave[v][i]; }
+            for (int v=1;v<=numPolyVoicesHint;v++){ polyRandom(v, PL_MELODY)[i]=applyM?
+                redDot::SpreadInterp::applyPoly(*this,PL_MELODY,v,i,cachedPolySpread[v][PL_MELODY]):slewedMelody[v][i];
+                                    polyRandom(v, PL_OCTAVE)[i]=applyM?
+                redDot::SpreadInterp::applyPoly(*this,PL_OCTAVE,v,i,cachedPolySpread[v][PL_OCTAVE]):slewedOctave[v][i]; }
         }
     }
     publishSlewedMelody();
@@ -519,9 +533,11 @@ void PatternEngine::recomputeEffectiveQmix() {
         }
     }
     if (!sandsActive) {
+        const bool applyQ = cachedSpreadInitialized && cachedSpreadLiveQ;
         for (int i = 0; i < 16; ++i) {
             qmixRandom[i]=slewedQmix[0][i];
-            for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_QMIX)[i]=slewedQmix[v][i];
+            for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_QMIX)[i]=applyQ?
+                redDot::SpreadInterp::applyPoly(*this,PL_QMIX,v,i,cachedPolySpread[v][PL_QMIX]):slewedQmix[v][i];
         }
     }
     publishSlewedQmix();

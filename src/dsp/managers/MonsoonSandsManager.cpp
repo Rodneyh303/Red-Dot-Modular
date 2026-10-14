@@ -676,7 +676,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             engine.pe.cachedSpreadLiveM = mSpM;
             engine.pe.cachedSpreadLiveQ = false;   // standalone Macro: no QMIX axis here (no East)
             engine.pe.cachedSpreadInitialized = true;   // Stage 2a: enable step-rate refresh
-            for (int v = 0; v < nPoly; ++v) {
+            for (int v = 1; v <= nPoly; ++v) {
                 engine.pe.cachedPolySpread[v][SequencerEngine::PL_REST]   = spv[0];
                 engine.pe.cachedPolySpread[v][SequencerEngine::PL_ACCENT] = spv[3];
                 engine.pe.cachedPolySpread[v][SequencerEngine::PL_MELODY] = spv[1];
