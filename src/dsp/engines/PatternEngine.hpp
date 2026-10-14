@@ -88,40 +88,6 @@ struct PatternInput {
     //  PHILOX_KEY_DERIVATION_AND_CA_SEED.md Finding 1.)
 };
 
-// ── OU-bridge blend coefficients (UNIFIED 2×2 conditioning for ALL r) ─────────
-// One bridge for all r: r>0 (monotone kernel), r=0 (fresh ξ), r<0 (oscillatory kernel).
-// Computed once per (r, frac, pair) — same for all 16 steps/fields at a given (r, frac).
-// ξ is ALWAYS injected (one per A/B pair, position-index keyed, separate keys S+4/5/6).
-struct OUBridgeCoeffs {
-    double a = 0, b = 0, sqrtV = 0, xi = 0;
-    void compute(float r, float frac, const redDot::PhiloxRng& bridge, int64_t pairIndex) {
-        const double dfrac = (double)frac;
-        if (r == 0.f) {
-            // r=0: a=b=0 (mid), v=1 → X=ξ (fresh noise). Endpoints: a=1/b=1, v=0.
-            if (frac == 0.f) { a = 1; b = 0; sqrtV = 0; }
-            else if (frac == 1.f) { a = 0; b = 1; sqrtV = 0; }
-            else { a = 0; b = 0; sqrtV = 1; }
-        } else {
-            // Unified 2×2 conditioning: ρ_a/ρ_b encode the endpoint correlations.
-            // ω=0 for r>0 (monotone), ω=π for r<0 (oscillatory/anti-correlation).
-            const double absR  = std::fabs((double)r);
-            const double omega = (r < 0.f) ? 3.14159265358979323846 : 0.0;
-            const double rhoA  = std::pow(absR, dfrac)         * std::cos(omega * dfrac);
-            const double rhoB  = std::pow(absR, 1.0 - dfrac)  * std::cos(omega * (1.0 - dfrac));
-            const double dr    = (double)r;
-            const double det   = 1.0 - dr * dr;   // det = 1 - r²
-            a = (rhoA - dr * rhoB) / det;         // a = (ρ_a - r·ρ_b) / (1-r²)
-            b = (rhoB - dr * rhoA) / det;         // b = (ρ_b - r·ρ_a) / (1-r²)
-            double v = 1.0 - (rhoA * a + rhoB * b);  // v = 1 - (ρ_a·a + ρ_b·b)
-            sqrtV = std::sqrt(v < 0.0 ? 0.0 : v);    // clamp for numerical safety
-        }
-        xi = redDot::copula::PhiInv((double)bridge.atUniform((uint64_t)pairIndex));
-    }
-    double blend(double z0, double z1) const {
-        return a * z0 + b * z1 + sqrtV * xi;
-    }
-};
-
 // ── PatternEngine ─────────────────────────────────────────────────────────────
 struct PatternEngine {
 

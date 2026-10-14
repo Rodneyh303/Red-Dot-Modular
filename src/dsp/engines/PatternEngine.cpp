@@ -1,5 +1,38 @@
 #include "PatternEngine.hpp"
 
+// ── OU-bridge blend coefficients (UNIFIED 2×2 conditioning for ALL r) ─────────
+// File-local: lives here (not in the header) to avoid pulling PhiInvLUT::table()
+// into header-only test builds. One bridge for all r: r>0 (monotone kernel),
+// r=0 (fresh ξ), r<0 (oscillatory kernel). ξ ALWAYS injected.
+namespace {
+struct OUBridgeCoeffs {
+    double a = 0, b = 0, sqrtV = 0, xi = 0;
+    void compute(float r, float frac, const redDot::PhiloxRng& bridge, int64_t pairIndex) {
+        const double dfrac = (double)frac;
+        if (r == 0.f) {
+            if (frac == 0.f) { a = 1; b = 0; sqrtV = 0; }
+            else if (frac == 1.f) { a = 0; b = 1; sqrtV = 0; }
+            else { a = 0; b = 0; sqrtV = 1; }
+        } else {
+            const double absR  = std::fabs((double)r);
+            const double omega = (r < 0.f) ? 3.14159265358979323846 : 0.0;
+            const double rhoA  = std::pow(absR, dfrac)        * std::cos(omega * dfrac);
+            const double rhoB  = std::pow(absR, 1.0 - dfrac) * std::cos(omega * (1.0 - dfrac));
+            const double dr    = (double)r;
+            const double det   = 1.0 - dr * dr;
+            a = (rhoA - dr * rhoB) / det;
+            b = (rhoB - dr * rhoA) / det;
+            double v = 1.0 - (rhoA * a + rhoB * b);
+            sqrtV = std::sqrt(v < 0.0 ? 0.0 : v);
+        }
+        xi = redDot::copula::PhiInv((double)bridge.atUniform((uint64_t)pairIndex));
+    }
+    double blend(double z0, double z1) const {
+        return a * z0 + b * z1 + sqrtV * xi;
+    }
+};
+} // anon namespace
+
 void PatternEngine::reset() {
     rhythmSeedPending = melodySeedPending = qmixSeedPending = false;
     rhythmRollPending = melodyRollPending = qmixRollPending = false;
