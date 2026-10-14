@@ -701,3 +701,29 @@ Impl: per-subgate enum {None, MainRest, Variation, Both}; at the ghostRise / in-
 rested = (src==None? false : src==MainRest? (r_rest<restProb) : src==Variation? (r_vary passes) :
 /*Both*/ (r_rest<restProb) || (r_vary passes)). Shared lanes, position-keyed rolls (reversible). Per-voice
 or global TBD. Supersedes the "variation filter checkboxes + rest-priority toggle" notes above.
+
+### WHY rest-source is genuinely better — the old single-lane BIND (Rodney)
+With RATCHET source = Main rest (the old default) there's an inherent self-fighting coupling:
+- Ratchets only exist where the main gate SOUNDS -> you need LOW main-rest probability to HAVE gates to
+  ratchet.
+- But if ratchet rest IS the main rest, that same LOW rest -> LOW rest inside the ratchets -> ratchets are
+  near-SOLID; you can't thin them.
+So the condition for ratchets to EXIST (low main rest) is the same condition that prevents THINNING them.
+Escaping needs careful rest-lane MODULATION (low on main steps, higher on sub-cells) — fiddly, fighting one
+shared lane.
+Variation-as-rest-source BREAKS the bind: main rest stays low (gates exist, ratchets have material) AND
+variation independently sets ratchet density. Two lanes, no fight. "Solid main + varied ratchets" is then
+trivial, no careful modulation. THIS is the real justification — it decouples "do ratchets exist" (main
+rest) from "how dense are they" (variation), which the single lane made mutually constraining.
+
+### Rest-beats-legato composes on the FINAL rest decision, regardless of source (Rodney)
+The REST SOURCE selector is purely UPSTREAM: it produces ONE "is this cell rested?" boolean. Everything
+downstream — rest-beats-legato, slurSuppressesRest, the whole rest-vs-slur machinery — operates on THAT
+resolved boolean, AGNOSTIC to which source produced it. A ghost cell rested BY VARIATION interacts with
+legato EXACTLY as one rested by main rest would. So:
+  (1) rest source {None/Main/Variation/Both-OR} -> rested? (one bool)
+  (2) existing rest-beats-legato toggle -> acts on that bool vs any slur, uniformly, source-agnostic.
+=> No per-source rest-behaviour (no "rest-beats-legato for main but not variation"). The selector only
+changes the rest INPUT; all downstream rest machinery consumes the unified decision unchanged. (Impl: feed
+the source-resolved `rested` into executeStep's existing r_rest/restProb path so canRest/slurSuppressesRest
+/rest-beats-legato all key off it as today.)
