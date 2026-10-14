@@ -660,3 +660,44 @@ If ratchet is UNGATED (doc) -> variation-on-ratchet FILLS a real gap (ratchet ha
 Resolve which, then pick.
 NOTE: the earlier "rest-applies-to-ghost -> symmetric two-gate" + control-surface notes in this file assumed
 facts that may be partly wrong (ratchet-rest). Treat them as PROVISIONAL until the runtime check settles it.
+
+### RESOLVED DESIGN — per-subgate "REST SOURCE" selector (supersedes the variation-filter + priority-toggle model)
+(Corrects the mid-session thrash. GATE MODE ONLY.)
+
+Traced facts (definitive):
+- RATCHET fires ONLY in-gate (Monsoon.cpp:794: subGateRise = inGate ? gate2Rise : false). A main rest
+  CLOSES the gate -> no in-gate region -> NO ratchets on a rested step (STRUCTURAL, not a rest roll).
+- GHOST fires ONLY in-gap — the gate-shape GAPS between main gate pulses (a property of the GATE RHYTHM,
+  NOT of the rest lane). Ghost strictly occupies those gaps regardless of whether main steps are rested.
+  (So "main rest as ghost source" is NOT circular: gate-gap != rest-decision — independent.)
+- Ratchet and ghost are REGIONALLY EXCLUSIVE (in-gate vs in-gap).
+
+The design — each subgate (GHOST, RATCHET) has a context-menu "REST SOURCE". Each subgate cell rolls ONE
+rest from the chosen source; there is only ONE rest per cell (no two-gate stacking -> the whole
+rest<->variation priority tension + the missing "rest beats variation" toggle DISSOLVE).
+Options (per subgate):
+  - **None**       — rest never applied; every cell that exists sounds (dense ghost / solid ratchet).
+  - **Main rest**  — cells read the MAIN rest lane (density tracks the main pattern's rest rhythm).
+  - **Variation**  — cells read the VARIATION lane AS rest (independent of main; = the current ghost
+                     default; enables "solid main + varied ratchet").
+  - **Both (OR)**  — rested if EITHER main rest OR variation fires (OR semantics only; = the current
+                     ghost behaviour "variation candidacy THEN main rest"). No AND option (no musical case
+                     yet; AND would just reintroduce priority complexity).
+
+Current behaviour = default sources: GHOST source = Variation (or Both — the existing variation-then-rest);
+RATCHET source = Main rest (its sub-cells already run executeStep with the main r_rest). So today's
+behaviour is just a pair of default rest-source settings.
+
+Why this is the right landing (resolves Rodney's "maybe wrong role for variation"):
+- Variation is NOT a special second gate — it is ONE SELECTABLE REST SOURCE. Rest is the single unified
+  concept (silence probability); the SOURCE is chosen. For ghost, candidacy == rest (one roll decides
+  "sounds or not") — the rest-source framing absorbs candidacy.
+- One rest per cell -> no stacking, no priority, no "beats" toggle. The earlier two-gate tension + the
+  rest<->variation priority gap VANISH (except inside "Both", whose OR semantics are fixed, not a toggle).
+- Every behaviour previously enumerated (current ghost/ratchet, dense ghost, solid ratchet, varied ratchet,
+  solid-main+varied-ratchet) = a combination of per-subgate rest-source picks.
+
+Impl: per-subgate enum {None, MainRest, Variation, Both}; at the ghostRise / in-gate subGateRise cell,
+rested = (src==None? false : src==MainRest? (r_rest<restProb) : src==Variation? (r_vary passes) :
+/*Both*/ (r_rest<restProb) || (r_vary passes)). Shared lanes, position-keyed rolls (reversible). Per-voice
+or global TBD. Supersedes the "variation filter checkboxes + rest-priority toggle" notes above.
