@@ -43,3 +43,29 @@ BAR-DISPLAY / spread-refresh path. NOT engine fill / tabs / prob-OUT (all confir
 These are the SAME two bugs, not new breakage. Several "thinks fixed but isn't" attempts = fixes aren't
 being VERIFIED before claiming done. Fix ONE bug, VERIFY IN RACK, commit, then the next. V1-as-reference
 (Bug B) + the count audit (Bug A) are both now concrete with a known-good to compare against.
+
+---
+
+## CONSOLIDATION (Rodney) — melody/rhythm/qmix jitter are ONE bug, not three
+The V2 melody jitter, the poly rhythm jitter, and the qmix jitter have the SAME symptom -> SAME root cause.
+Not three bugs: ONE mechanism seen through three parallel streams.
+
+### Why (structural)
+Rhythm, melody, qmix go through IDENTICAL code paths (recomputeEffective{Rhythm,Melody,Qmix}[ForVoice] are
+three copies of the same structure; all write random_[voice][STRAND_*] the same way; all subject to the
+same two-writer interaction: control-rate recompute vs step-rate refreshPolyRandomCell applying
+cachedPolySpread). So a bug in that SHARED per-voice write path manifests IDENTICALLY on all three streams,
+for the same (poly) voices, V1-exempt (mono has no refreshPolyRandomCell second writer -> smooth).
+The uniform-across-streams symptom is DIAGNOSTIC: it RULES OUT per-stream/per-lane index bugs (a melody-only
+error wouldn't hit rhythm) and CONFIRMS the bug is in the shared per-voice machinery = the two-writer spread
+race, V1 vs poly asymmetry. Exactly Bug B.
+
+### Consequence — ONE fix, not three
+Fix the shared two-writer race ONCE (reconcile the control-rate recompute with refreshPolyRandomCell so each
+poly voice's random_[v] has ONE consistent writer, like V1/mono) -> ALL THREE lanes' poly jitter resolves
+together.
+CRISP TEST: after the fix, all three (melody, rhythm, qmix) go smooth TOGETHER on poly voices. If only one
+goes smooth -> you touched a per-stream symptom, not the shared root; keep looking. "All three smooth or the
+fix missed the root."
+(Same pattern as the voice-2 bugs: parallel-stream structure means a SHARED-PATH bug shows as N identical
+symptoms. Don't chase N; fix the one shared mechanism.)
