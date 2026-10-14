@@ -238,19 +238,21 @@ struct PatternEngine {
     float preRemapSlewedPolyAccent[15][16]={}, preRemapSlewedPolyQmix[15][16]={};
     float preRemapSlewedPolyVariation[15][16]={}, preRemapSlewedPolyLegato[15][16]={};
     void snapshotPreRemap() {
+        // COLLAPSE: slewed*[16][16] — V1 at [0], poly V2..V16 at [1..15].
+        // preRemapSlewed* still mono[16]+poly[15][16] (collapse in a later commit).
         for (int i=0;i<16;++i){
-            preRemapSlewedRhythm[i]=slewedRhythm[i]; preRemapSlewedVariation[i]=slewedVariation[i];
-            preRemapSlewedLegato[i]=slewedLegato[i]; preRemapSlewedAccent[i]=slewedAccent[i];
-            preRemapSlewedMelody[i]=slewedMelody[i]; preRemapSlewedOctave[i]=slewedOctave[i];
-            preRemapSlewedQmix[i]=slewedQmix[i];
+            preRemapSlewedRhythm[i]=slewedRhythm[0][i]; preRemapSlewedVariation[i]=slewedVariation[0][i];
+            preRemapSlewedLegato[i]=slewedLegato[0][i]; preRemapSlewedAccent[i]=slewedAccent[0][i];
+            preRemapSlewedMelody[i]=slewedMelody[0][i]; preRemapSlewedOctave[i]=slewedOctave[0][i];
+            preRemapSlewedQmix[i]=slewedQmix[0][i];
             for(int v=0;v<15;++v){
-                preRemapSlewedPolyRhythm[v][i]=slewedPolyRhythm[v][i];
-                preRemapSlewedPolyMelody[v][i]=slewedPolyMelody[v][i];
-                preRemapSlewedPolyOctave[v][i]=slewedPolyOctave[v][i];
-                preRemapSlewedPolyAccent[v][i]=slewedPolyAccent[v][i];
-                preRemapSlewedPolyQmix[v][i]=slewedPolyQmix[v][i];
-                preRemapSlewedPolyVariation[v][i]=slewedPolyVariation[v][i];
-                preRemapSlewedPolyLegato[v][i]=slewedPolyLegato[v][i];
+                preRemapSlewedPolyRhythm[v][i]=slewedRhythm[v+1][i];
+                preRemapSlewedPolyMelody[v][i]=slewedMelody[v+1][i];
+                preRemapSlewedPolyOctave[v][i]=slewedOctave[v+1][i];
+                preRemapSlewedPolyAccent[v][i]=slewedAccent[v+1][i];
+                preRemapSlewedPolyQmix[v][i]=slewedQmix[v+1][i];
+                preRemapSlewedPolyVariation[v][i]=slewedVariation[v+1][i];
+                preRemapSlewedPolyLegato[v][i]=slewedLegato[v+1][i];
             }
         }
     }
@@ -268,16 +270,16 @@ struct PatternEngine {
         // Snapshot mono[16] + poly[15][16] for the seven strands (incl. q-mix, melody family).
         float mR[16], mM[16], mO[16], mQ[16], mA[16], mV[16], mL[16];
         for (int i = 0; i < 16; ++i) {
-            mR[i]=slewedRhythm[i]; mM[i]=slewedMelody[i]; mO[i]=slewedOctave[i];
-            mQ[i]=slewedQmix[i];
-            mA[i]=slewedAccent[i]; mV[i]=slewedVariation[i]; mL[i]=slewedLegato[i];
+            mR[i]=slewedRhythm[0][i]; mM[i]=slewedMelody[0][i]; mO[i]=slewedOctave[0][i];
+            mQ[i]=slewedQmix[0][i];
+            mA[i]=slewedAccent[0][i]; mV[i]=slewedVariation[0][i]; mL[i]=slewedLegato[0][i];
         }
         static thread_local float pR[15][16], pM[15][16], pO[15][16], pQ[15][16], pA[15][16], pV[15][16], pL[15][16];
         for (int v = 0; v < 15; ++v) for (int i = 0; i < 16; ++i) {
-            pR[v][i]=slewedPolyRhythm[v][i]; pM[v][i]=slewedPolyMelody[v][i];
-            pO[v][i]=slewedPolyOctave[v][i]; pQ[v][i]=slewedPolyQmix[v][i];
-            pA[v][i]=slewedPolyAccent[v][i];
-            pV[v][i]=slewedPolyVariation[v][i]; pL[v][i]=slewedPolyLegato[v][i];
+            pR[v][i]=slewedRhythm[v+1][i]; pM[v][i]=slewedMelody[v+1][i];
+            pO[v][i]=slewedOctave[v+1][i]; pQ[v][i]=slewedQmix[v+1][i];
+            pA[v][i]=slewedAccent[v+1][i];
+            pV[v][i]=slewedVariation[v+1][i]; pL[v][i]=slewedLegato[v+1][i];
         }
         // src row → (mono buffer if 0, else poly buffer src-1) for a given strand family.
         auto pickMono = [&](int srcRow, int strand, int i) -> float {
@@ -309,17 +311,17 @@ struct PatternEngine {
         // Mono row 0 — rhythm family (RHYTHM/ACCENT/VAR/LEG) gated by doR, melody family (MEL/OCT) by doM.
         for (int i = 0; i < 16; ++i) {
             if (doR) {
-                slewedRhythm[i]    = pickMono(caSrcRow(0, dotModular::STRAND_RHYTHM),    dotModular::STRAND_RHYTHM,    i);
-                slewedAccent[i]    = pickMono(caSrcRow(0, dotModular::STRAND_ACCENT),    dotModular::STRAND_ACCENT,    i);
-                slewedVariation[i] = pickMono(caSrcRow(0, dotModular::STRAND_VARIATION), dotModular::STRAND_VARIATION, i);
-                slewedLegato[i]    = pickMono(caSrcRow(0, dotModular::STRAND_LEGATO),    dotModular::STRAND_LEGATO,    i);
+                slewedRhythm[0][i]    = pickMono(caSrcRow(0, dotModular::STRAND_RHYTHM),    dotModular::STRAND_RHYTHM,    i);
+                slewedAccent[0][i]    = pickMono(caSrcRow(0, dotModular::STRAND_ACCENT),    dotModular::STRAND_ACCENT,    i);
+                slewedVariation[0][i] = pickMono(caSrcRow(0, dotModular::STRAND_VARIATION), dotModular::STRAND_VARIATION, i);
+                slewedLegato[0][i]    = pickMono(caSrcRow(0, dotModular::STRAND_LEGATO),    dotModular::STRAND_LEGATO,    i);
             }
             if (doM) {
-                slewedMelody[i] = pickMono(caSrcRow(0, dotModular::STRAND_MELODY), dotModular::STRAND_MELODY, i);
-                slewedOctave[i] = pickMono(caSrcRow(0, dotModular::STRAND_OCTAVE), dotModular::STRAND_OCTAVE, i);
+                slewedMelody[0][i] = pickMono(caSrcRow(0, dotModular::STRAND_MELODY), dotModular::STRAND_MELODY, i);
+                slewedOctave[0][i] = pickMono(caSrcRow(0, dotModular::STRAND_OCTAVE), dotModular::STRAND_OCTAVE, i);
             }
             if (doQ) {
-                slewedQmix[i]   = pickMono(caSrcRow(0, dotModular::STRAND_QMIX),   dotModular::STRAND_QMIX,   i);
+                slewedQmix[0][i]   = pickMono(caSrcRow(0, dotModular::STRAND_QMIX),   dotModular::STRAND_QMIX,   i);
             }
         }
         // Poly rows 1..15 → poly buffers 0..14.
@@ -334,17 +336,17 @@ struct PatternEngine {
             const int sL = caSrcRow(row, dotModular::STRAND_LEGATO);
             for (int i = 0; i < 16; ++i) {
                 if (doR) {
-                    slewedPolyRhythm[v][i] = pickMono(sR, dotModular::STRAND_RHYTHM, i);
-                    slewedPolyAccent[v][i] = pickMono(sA, dotModular::STRAND_ACCENT, i);
-                    slewedPolyVariation[v][i] = pickMono(sV, dotModular::STRAND_VARIATION, i);
-                    slewedPolyLegato[v][i] = pickMono(sL, dotModular::STRAND_LEGATO, i);
+                    slewedRhythm[v+1][i] = pickMono(sR, dotModular::STRAND_RHYTHM, i);
+                    slewedAccent[v+1][i] = pickMono(sA, dotModular::STRAND_ACCENT, i);
+                    slewedVariation[v+1][i] = pickMono(sV, dotModular::STRAND_VARIATION, i);
+                    slewedLegato[v+1][i] = pickMono(sL, dotModular::STRAND_LEGATO, i);
                 }
                 if (doM) {
-                    slewedPolyMelody[v][i] = pickMono(sM, dotModular::STRAND_MELODY, i);
-                    slewedPolyOctave[v][i] = pickMono(sO, dotModular::STRAND_OCTAVE, i);
+                    slewedMelody[v+1][i] = pickMono(sM, dotModular::STRAND_MELODY, i);
+                    slewedOctave[v+1][i] = pickMono(sO, dotModular::STRAND_OCTAVE, i);
                 }
                 if (doQ) {
-                    slewedPolyQmix[v][i]   = pickMono(sQ, dotModular::STRAND_QMIX,   i);
+                    slewedQmix[v+1][i]   = pickMono(sQ, dotModular::STRAND_QMIX,   i);
                 }
             }
         }
@@ -362,28 +364,28 @@ struct PatternEngine {
         // never ran, so remapped melody/octave never reached random_ while rhythm did.
         for (int i = 0; i < 16; ++i) {
             if (doR) {
-                rhythmRandom[i]=slewedRhythm[i]; accentRandom[i]=slewedAccent[i];
-                variationRandom[i]=slewedVariation[i]; legatoRandom[i]=slewedLegato[i];
+                rhythmRandom[i]=slewedRhythm[0][i]; accentRandom[i]=slewedAccent[0][i];
+                variationRandom[i]=slewedVariation[0][i]; legatoRandom[i]=slewedLegato[0][i];
             }
             if (doM) {
-                melodyRandom[i]=slewedMelody[i]; octaveRandom[i]=slewedOctave[i];
+                melodyRandom[i]=slewedMelody[0][i]; octaveRandom[i]=slewedOctave[0][i];
             }
             if (doQ) {
-                qmixRandom[i]=slewedQmix[i];
+                qmixRandom[i]=slewedQmix[0][i];
             }
             for (int v=0;v<15;v++){
                 if (doR) {
-                    polyRandom(v + 1, PL_REST)[i]=slewedPolyRhythm[v][i];
-                    polyRandom(v + 1, PL_ACCENT)[i]=slewedPolyAccent[v][i];
-                    polyRandom(v + 1, PL_VARIATION)[i]=slewedPolyVariation[v][i];
-                    polyRandom(v + 1, PL_LEGATO)[i]=slewedPolyLegato[v][i];
+                    polyRandom(v + 1, PL_REST)[i]=slewedRhythm[v+1][i];
+                    polyRandom(v + 1, PL_ACCENT)[i]=slewedAccent[v+1][i];
+                    polyRandom(v + 1, PL_VARIATION)[i]=slewedVariation[v+1][i];
+                    polyRandom(v + 1, PL_LEGATO)[i]=slewedLegato[v+1][i];
                 }
                 if (doM) {
-                    polyRandom(v + 1, PL_MELODY)[i]=slewedPolyMelody[v][i];
-                    polyRandom(v + 1, PL_OCTAVE)[i]=slewedPolyOctave[v][i];
+                    polyRandom(v + 1, PL_MELODY)[i]=slewedMelody[v+1][i];
+                    polyRandom(v + 1, PL_OCTAVE)[i]=slewedOctave[v+1][i];
                 }
                 if (doQ) {
-                    polyRandom(v + 1, PL_QMIX)[i]=slewedPolyQmix[v][i];
+                    polyRandom(v + 1, PL_QMIX)[i]=slewedQmix[v+1][i];
                 }
             }
         }
@@ -482,13 +484,14 @@ struct PatternEngine {
     //   no Sands  → final = copy of slewedDraw (done when slew re-latches).
     //   Sands     → Sands reads slewedDraw, applies spread at control rate, and
     //               writes the result into the public/final arrays itself.
-    float slewedRhythm[16]={}, slewedVariation[16]={}, slewedLegato[16]={}, slewedAccent[16]={};
-    float slewedMelody[16]={}, slewedOctave[16]={};
-    float slewedQmix[16]={};   // q-mix twin of slewedMelody
-    float slewedPolyRhythm[15][16]={}, slewedPolyMelody[15][16]={}, slewedPolyOctave[15][16]={};
-    float slewedPolyAccent[15][16]={};
-    float slewedPolyQmix[15][16]={};   // q-mix twin of slewedPolyMelody
-    float slewedPolyVariation[15][16]={}, slewedPolyLegato[15][16]={};   // SANDS CONSOLIDATION: poly VAR/LEG for spread
+    // COLLAPSE [15]+mono → [16][16]: V1 at [0], V2..V16 at [1..15]. One array per strand.
+    float slewedRhythm[16][16]={}, slewedVariation[16][16]={}, slewedLegato[16][16]={}, slewedAccent[16][16]={};
+    float slewedMelody[16][16]={}, slewedOctave[16][16]={};
+    float slewedQmix[16][16]={};   // q-mix twin of slewedMelody
+    // DELETED: slewedPoly* (15][16] arrays — V2..V16 now at slewed*[1..15].
+    // Old: slewedRhythm[16] (mono/V1) + slewedPolyRhythm[15][16] (V2..V16, poly[0]=V2).
+    // New: slewedRhythm[16][16] — V1 at [0], V2 at [1], ..., V16 at [15].
+    // Access: mono was slewedRhythm[i] → slewedRhythm[0][i]; poly was slewedPolyRhythm[v][i] → slewedRhythm[v+1][i].
     // Published snapshots of the slewed buffers — coherent copies the UI thread reads. The audio
     // thread writes slewed* during recomputeEffective* (now ~116µs at r>0), then publishes a
     // snapshot here. Without this, Mono/Macro visuals read slewed* mid-rewrite → torn read →
@@ -501,28 +504,19 @@ struct PatternEngine {
     float pubSlewedPolyAccent[16][16]={}, pubSlewedPolyQmix[16][16]={};
     float pubSlewedPolyVariation[16][16]={}, pubSlewedPolyLegato[16][16]={};
     void publishSlewedRhythm() {
-        for (int i=0;i<16;++i){ pubSlewedRhythm[i]=slewedRhythm[i]; pubSlewedVariation[i]=slewedVariation[i];
-            pubSlewedLegato[i]=slewedLegato[i]; pubSlewedAccent[i]=slewedAccent[i];
-            // Phase A: V1 (voice 0) published from mono slewed* → pubSlewedPoly*[0]
-            pubSlewedPolyRhythm[0][i]=slewedRhythm[i]; pubSlewedPolyAccent[0][i]=slewedAccent[i];
-            pubSlewedPolyVariation[0][i]=slewedVariation[i]; pubSlewedPolyLegato[0][i]=slewedLegato[i];
-            // V2..V16 (voices 1..15) published from slewedPoly*[v-1] → pubSlewedPoly*[v]
-            for(int v=1;v<16;++v){ pubSlewedPolyRhythm[v][i]=slewedPolyRhythm[v-1][i]; pubSlewedPolyAccent[v][i]=slewedPolyAccent[v-1][i];
-                pubSlewedPolyVariation[v][i]=slewedPolyVariation[v-1][i]; pubSlewedPolyLegato[v][i]=slewedPolyLegato[v-1][i]; } }
+        // COLLAPSE: slewed*[16][16] — V1 at [0], V2..V16 at [1..15]. Direct copy, no alias/shift.
+        for (int i=0;i<16;++i){ pubSlewedRhythm[i]=slewedRhythm[0][i]; pubSlewedVariation[i]=slewedVariation[0][i];
+            pubSlewedLegato[i]=slewedLegato[0][i]; pubSlewedAccent[i]=slewedAccent[0][i];
+            for(int v=0;v<16;++v){ pubSlewedPolyRhythm[v][i]=slewedRhythm[v][i]; pubSlewedPolyAccent[v][i]=slewedAccent[v][i];
+                pubSlewedPolyVariation[v][i]=slewedVariation[v][i]; pubSlewedPolyLegato[v][i]=slewedLegato[v][i]; } }
     }
     void publishSlewedMelody() {
-        for (int i=0;i<16;++i){ pubSlewedMelody[i]=slewedMelody[i]; pubSlewedOctave[i]=slewedOctave[i];
-            // Phase A: V1 (voice 0) from mono slewed*
-            pubSlewedPolyMelody[0][i]=slewedMelody[i]; pubSlewedPolyOctave[0][i]=slewedOctave[i];
-            // V2..V16 (voices 1..15) from slewedPoly*[v-1]
-            for(int v=1;v<16;++v){ pubSlewedPolyMelody[v][i]=slewedPolyMelody[v-1][i]; pubSlewedPolyOctave[v][i]=slewedPolyOctave[v-1][i]; } }
+        for (int i=0;i<16;++i){ pubSlewedMelody[i]=slewedMelody[0][i]; pubSlewedOctave[i]=slewedOctave[0][i];
+            for(int v=0;v<16;++v){ pubSlewedPolyMelody[v][i]=slewedMelody[v][i]; pubSlewedPolyOctave[v][i]=slewedOctave[v][i]; } }
     }
     void publishSlewedQmix() {
-        for (int i=0;i<16;++i){ pubSlewedQmix[i]=slewedQmix[i];
-            // Phase A: V1 (voice 0) from mono slewed*
-            pubSlewedPolyQmix[0][i]=slewedQmix[i];
-            // V2..V16 (voices 1..15) from slewedPolyQmix[v-1]
-            for(int v=1;v<16;++v) pubSlewedPolyQmix[v][i]=slewedPolyQmix[v-1][i]; }
+        for (int i=0;i<16;++i){ pubSlewedQmix[i]=slewedQmix[0][i];
+            for(int v=0;v<16;++v) pubSlewedPolyQmix[v][i]=slewedQmix[v][i]; }
     }
     // Set true when any Sands visual expander owns the spread→final stage this
     // cycle. When false, slew copies slewedDraw → final.
@@ -1091,7 +1085,7 @@ public:
     // When no Sands is connected, leave sandsActive=false and slew copies
     // slewedDraw → final automatically.
     void setSandsActive(bool a) { sandsActive = a; }
-    // The slewedDraw buffers (slewedRhythm[], slewedPolyMelody[][], etc.) are
+    // The slewedDraw buffers (slewedRhythm[16][16], slewedMelody[16][16], etc.) are
     // public members above — the Sands stage reads them directly as its input.
     
     // ── Seed Management API ────────────────────────────────────────────────────

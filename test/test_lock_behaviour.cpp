@@ -458,36 +458,36 @@ int main(){
         pe.numPolyVoicesHint = 15;   // Phase B: OOB=identity requires active count > 1 for cross-voice borrow
         // Seed distinct, known mono slewed buffers so a wrong-plane copy is observable.
         for(int i=0;i<16;++i){
-            pe.slewedRhythm[i] = 0.10f + 0.01f*i;
-            pe.slewedMelody[i] = 0.50f + 0.01f*i;
-            pe.slewedQmix[i]   = 0.90f - 0.01f*i;
+            pe.slewedRhythm[0][i] = 0.10f + 0.01f*i;
+            pe.slewedMelody[0][i] = 0.50f + 0.01f*i;
+            pe.slewedQmix[0][i]   = 0.90f - 0.01f*i;
         }
-        // Give poly voice 0 a DISTINCT q-mix buffer so a cross-voice borrow is observable.
+        // Give poly voice 0 (V2) a DISTINCT q-mix buffer so a cross-voice borrow is observable.
         const float polyQ0 = 0.123f;
-        for(int i=0;i<16;++i) pe.slewedPolyQmix[0][i] = polyQ0;
-        // q-mix plane: mono row 0 borrows poly voice 0 (src=1 → poly v-1=0). Others identity.
+        for(int i=0;i<16;++i) pe.slewedQmix[1][i] = polyQ0;  // V2 at [1]
+        // q-mix plane: mono row 0 borrows poly voice 0 (src=1 → slewed[1]=V2). Others identity.
         for(int v=0;v<16;++v){ pe.caRhythmSrc[v]=v; pe.caMelodySrc[v]=v; pe.caQmixSrc[v]=v; }
         pe.caQmixSrc[0]=1;   // mono row 0 sources poly voice 0's q-mix
-        const float rBefore0 = pe.slewedRhythm[0], mBefore0 = pe.slewedMelody[0];
+        const float rBefore0 = pe.slewedRhythm[0][0], mBefore0 = pe.slewedMelody[0][0];
         // Only the q-mix axis remaps.
         pe.remapSlewedByPins(/*doR=*/false, /*doM=*/false, /*doQ=*/true);
         // q-mix row 0 took poly voice 0's value (cross-voice borrow via the green plane)...
-        EXPECT_NEAR(pe.slewedQmix[0], polyQ0, 1e-6f);
+        EXPECT_NEAR(pe.slewedQmix[0][0], polyQ0, 1e-6f);
         // ...while rhythm/melody are byte-identical (their axes were NOT remapped).
-        EXPECT_NEAR(pe.slewedRhythm[0], rBefore0, 1e-6f);
-        EXPECT_NEAR(pe.slewedMelody[0], mBefore0, 1e-6f);
+        EXPECT_NEAR(pe.slewedRhythm[0][0], rBefore0, 1e-6f);
+        EXPECT_NEAR(pe.slewedMelody[0][0], mBefore0, 1e-6f);
     });
 
     TEST("CA remapSlewedByPins(doQ=false) holds the q-mix plane frozen", {
         PatternEngine pe;
-        for(int i=0;i<16;++i) pe.slewedQmix[i] = 0.90f - 0.01f*i;
-        for(int i=0;i<16;++i) pe.slewedPolyQmix[0][i] = 0.123f;
+        for(int i=0;i<16;++i) pe.slewedQmix[0][i] = 0.90f - 0.01f*i;
+        for(int i=0;i<16;++i) pe.slewedQmix[1][i] = 0.123f;  // V2 at [1]
         for(int v=0;v<16;++v){ pe.caRhythmSrc[v]=v; pe.caMelodySrc[v]=v; pe.caQmixSrc[v]=v; }
         pe.caQmixSrc[0]=1;   // non-identity q-mix plane...
-        const float qWas0 = pe.slewedQmix[0];
+        const float qWas0 = pe.slewedQmix[0][0];
         // ...but doQ=false: q-mix must NOT be remapped.
         pe.remapSlewedByPins(/*doR=*/true, /*doM=*/true, /*doQ=*/false);
-        EXPECT_NEAR(pe.slewedQmix[0], qWas0, 1e-6f);
+        EXPECT_NEAR(pe.slewedQmix[0][0], qWas0, 1e-6f);
     });
 
     // ── Phase B: CA OOB = IDENTITY ──────────────────────────────────────────────
@@ -500,55 +500,55 @@ int main(){
         PatternEngine pe;
         pe.numPolyVoicesHint = 15;  // all voices active initially
         for (int i = 0; i < 16; ++i) {
-            pe.slewedRhythm[i] = 0.10f + 0.01f * i;    // mono/V1
+            pe.slewedRhythm[0][i] = 0.10f + 0.01f * i;    // mono/V1
         }
-        for (int i = 0; i < 16; ++i) pe.slewedPolyRhythm[2][i] = 0.777f;  // poly voice 3 (index 3)
+        for (int i = 0; i < 16; ++i) pe.slewedRhythm[3][i] = 0.777f;  // V4 at [3] (poly voice 2)
         // CA: mono row 0 sources voice 3 (index 3)
         for (int v = 0; v < 16; ++v) pe.caRhythmSrc[v] = v;
         pe.caRhythmSrc[0] = 3;
-        const float ownVal = pe.slewedRhythm[0];
+        const float ownVal = pe.slewedRhythm[0][0];
 
         // All active: remap works (row 0 reads voice 3's rhythm)
         pe.remapSlewedByPins(true, false, false);
-        EXPECT_NEAR(pe.slewedRhythm[0], 0.777f, 1e-6f);
+        EXPECT_NEAR(pe.slewedRhythm[0][0], 0.777f, 1e-6f);
 
         // Restore mono row 0's own value, then reduce poly count: voice 3 is now OOB
-        pe.slewedRhythm[0] = ownVal;
+        pe.slewedRhythm[0][0] = ownVal;
         pe.numPolyVoicesHint = 2;  // active = 0,1,2; voice 3 (index 3) is OOB
         pe.remapSlewedByPins(true, false, false);
-        EXPECT_NEAR(pe.slewedRhythm[0], ownVal, 1e-6f);  // identity (self, not voice 3)
+        EXPECT_NEAR(pe.slewedRhythm[0][0], ownVal, 1e-6f);  // identity (self, not voice 3)
 
         // Restore count: mapping active again
-        pe.slewedRhythm[0] = ownVal;
+        pe.slewedRhythm[0][0] = ownVal;
         pe.numPolyVoicesHint = 15;
         pe.remapSlewedByPins(true, false, false);
-        EXPECT_NEAR(pe.slewedRhythm[0], 0.777f, 1e-6f);  // remapped again
+        EXPECT_NEAR(pe.slewedRhythm[0][0], 0.777f, 1e-6f);  // remapped again
     });
 
     TEST("CA OOB: mapping to inactive voice reverts to identity (q-mix plane)", {
         PatternEngine pe;
         pe.numPolyVoicesHint = 15;
-        for (int i = 0; i < 16; ++i) pe.slewedQmix[i] = 0.90f - 0.01f * i;
-        for (int i = 0; i < 16; ++i) pe.slewedPolyQmix[4][i] = 0.555f;  // poly voice 5 (index 5)
+        for (int i = 0; i < 16; ++i) pe.slewedQmix[0][i] = 0.90f - 0.01f * i;
+        for (int i = 0; i < 16; ++i) pe.slewedQmix[5][i] = 0.555f;  // V6 at [5] (poly voice 4)
         for (int v = 0; v < 16; ++v) { pe.caRhythmSrc[v] = v; pe.caMelodySrc[v] = v; pe.caQmixSrc[v] = v; }
         pe.caQmixSrc[0] = 5;  // mono row 0 sources voice 5's q-mix
-        const float ownVal = pe.slewedQmix[0];
+        const float ownVal = pe.slewedQmix[0][0];
 
         // All active: remap works
         pe.remapSlewedByPins(false, false, true);
-        EXPECT_NEAR(pe.slewedQmix[0], 0.555f, 1e-6f);
+        EXPECT_NEAR(pe.slewedQmix[0][0], 0.555f, 1e-6f);
 
         // Reduce: voice 5 OOB → identity
-        pe.slewedQmix[0] = ownVal;
+        pe.slewedQmix[0][0] = ownVal;
         pe.numPolyVoicesHint = 3;  // active = 0,1,2,3; voice 5 OOB
         pe.remapSlewedByPins(false, false, true);
-        EXPECT_NEAR(pe.slewedQmix[0], ownVal, 1e-6f);  // identity
+        EXPECT_NEAR(pe.slewedQmix[0][0], ownVal, 1e-6f);  // identity
 
         // Restore: active again
-        pe.slewedQmix[0] = ownVal;
+        pe.slewedQmix[0][0] = ownVal;
         pe.numPolyVoicesHint = 15;
         pe.remapSlewedByPins(false, false, true);
-        EXPECT_NEAR(pe.slewedQmix[0], 0.555f, 1e-6f);  // remapped
+        EXPECT_NEAR(pe.slewedQmix[0][0], 0.555f, 1e-6f);  // remapped
     });
 
     TEST("CA OOB: caSrcRow returns identity for OOB source (direct accessor test)", {

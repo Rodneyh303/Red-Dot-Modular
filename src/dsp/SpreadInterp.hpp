@@ -54,14 +54,15 @@ struct SpreadInterp {
     // Per-lane accessor into the PatternEngine slewed draws.
     // Lane index is the SPREAD/poly-engine lane: 0=REST 1=MEL 2=OCT 3=ACC 4=QMIX 5=VAR 6=LEG
     static float monoSlewed(const PatternEngine& pe, int lane, int step) {
+        // COLLAPSE: slewed*[16][16] — V1 at [0]. monoSlewed reads voiceSlot 0.
         switch (lane) {
-            case 0:  return pe.slewedRhythm[step];
-            case 1:  return pe.slewedMelody[step];
-            case 3:  return pe.slewedAccent[step];
-            case 4:  return pe.slewedQmix[step];
-            case 5:  return pe.slewedVariation[step];
-            case 6:  return pe.slewedLegato[step];
-            default: return pe.slewedOctave[step];
+            case 0:  return pe.slewedRhythm[0][step];
+            case 1:  return pe.slewedMelody[0][step];
+            case 3:  return pe.slewedAccent[0][step];
+            case 4:  return pe.slewedQmix[0][step];
+            case 5:  return pe.slewedVariation[0][step];
+            case 6:  return pe.slewedLegato[0][step];
+            default: return pe.slewedOctave[0][step];
         }
     }
     static float polySlewed(const PatternEngine& pe, int lane, int voice, int step) {
@@ -71,15 +72,15 @@ struct SpreadInterp {
         // The Macro visual cross-thread issue is separate (and the user uses East, which
         // doesn't call syncPatternEngineToEditor). Only monoSlewed (the spread ANCHOR, read
         // by the Sands visual step()) was changed to published for cross-thread safety.
-        // voice here is 0-based poly (0=V2).
+        // COLLAPSE: voice is 0-based poly (0=V2). slewed*[voice+1] = V2..V16.
         switch (lane) {
-            case 0:  return pe.slewedPolyRhythm[voice][step];
-            case 1:  return pe.slewedPolyMelody[voice][step];
-            case 3:  return pe.slewedPolyAccent[voice][step];
-            case 4:  return pe.slewedPolyQmix[voice][step];
-            case 5:  return pe.slewedPolyVariation[voice][step];
-            case 6:  return pe.slewedPolyLegato[voice][step];
-            default: return pe.slewedPolyOctave[voice][step];
+            case 0:  return pe.slewedRhythm[voice+1][step];
+            case 1:  return pe.slewedMelody[voice+1][step];
+            case 3:  return pe.slewedAccent[voice+1][step];
+            case 4:  return pe.slewedQmix[voice+1][step];
+            case 5:  return pe.slewedVariation[voice+1][step];
+            case 6:  return pe.slewedLegato[voice+1][step];
+            default: return pe.slewedOctave[voice+1][step];
         }
     }
 

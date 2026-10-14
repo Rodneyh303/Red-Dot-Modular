@@ -27,7 +27,7 @@ int main(){
 
     // ── r==0 (slew knob = 0) bit-identity through the engine path ──────────────
     // mix=0 -> scrub reads patternAt(N) only (f=0, frac=0 -> bl(d0,d1)=d0). slew=0 -> r=0.
-    // So slewedRhythm[i] MUST equal the raw Philox draw at counter N bitwise.
+    // So slewedRhythm[0][i] MUST equal the raw Philox draw at counter N bitwise.
     TEST("slew knob=0 (r=0) reproduces the raw draw bitwise — rhythm", {
         PatternEngine pe;
         pe.seedRhythmPhilox(0.42f);
@@ -44,7 +44,7 @@ int main(){
         PatternEngine::RhythmDraw raw;
         pe.rawDrawRhythmPatternAt(N, raw);
         for (int i=0;i<16;++i)
-            EXPECT(std::memcmp(&pe.slewedRhythm[i], &raw.rhythm[i], sizeof(float)) == 0);
+            EXPECT(std::memcmp(&pe.slewedRhythm[0][i], &raw.rhythm[i], sizeof(float)) == 0);
     });
 
     // Same bit-identity on the melody stream.
@@ -58,8 +58,8 @@ int main(){
         PatternEngine::MelodyDraw raw;
         pe.rawDrawMelodyPatternAt(N, raw);
         for (int i=0;i<16;++i) {
-            EXPECT(std::memcmp(&pe.slewedMelody[i], &raw.melody[i], sizeof(float)) == 0);
-            EXPECT(std::memcmp(&pe.slewedOctave[i], &raw.octave[i], sizeof(float)) == 0);
+            EXPECT(std::memcmp(&pe.slewedMelody[0][i], &raw.melody[i], sizeof(float)) == 0);
+            EXPECT(std::memcmp(&pe.slewedOctave[0][i], &raw.octave[i], sizeof(float)) == 0);
         }
     });
 
@@ -74,7 +74,7 @@ int main(){
         PatternEngine::QmixDraw raw;
         pe.rawDrawQmixPatternAt(N, raw);
         for (int i=0;i<16;++i)
-            EXPECT(std::memcmp(&pe.slewedQmix[i], &raw.qmix[i], sizeof(float)) == 0);
+            EXPECT(std::memcmp(&pe.slewedQmix[0][i], &raw.qmix[i], sizeof(float)) == 0);
     });
 
     // ── Reversibility: patternAt(N) is a pure function of (N, slew) — forward then back ─
@@ -158,7 +158,7 @@ int main(){
                     pe.rhythmDrawCtr = p * 64;  // thin by K=64 (independent samples)
                     pe.latchMix(mixVal, 0.f, 0.f, slewKnob, 0.f, 0.f, true, false, false);
                     pe.recomputeEffectiveRhythm();
-                    const double v = pe.slewedRhythm[0];
+                    const double v = pe.slewedRhythm[0][0];
                     sum += v; sumsq += v*v; ++n;
                 }
                 const double mean = sum/n;
@@ -181,7 +181,7 @@ int main(){
         const int64_t N = pe.rhythmDrawCtr;
         pe.latchMix(mixVal, 0.f, 0.f, slew, 0.f, 0.f, true, false, false);
         pe.recomputeEffectiveRhythm();
-        float fwd[16]; for (int i=0;i<16;++i) fwd[i] = pe.slewedRhythm[i];
+        float fwd[16]; for (int i=0;i<16;++i) fwd[i] = pe.slewedRhythm[0][i];
         // Walk backward past N then forward to N again
         for (int k=0;k<3;++k) pe.advanceRhythmDraw(-1);
         for (int k=0;k<3;++k) pe.advanceRhythmDraw(+1);
@@ -189,7 +189,7 @@ int main(){
         pe.latchMix(mixVal, 0.f, 0.f, slew, 0.f, 0.f, true, false, false);
         pe.recomputeEffectiveRhythm();
         for (int i=0;i<16;++i)
-            EXPECT(std::memcmp(&fwd[i], &pe.slewedRhythm[i], sizeof(float)) == 0);
+            EXPECT(std::memcmp(&fwd[i], &pe.slewedRhythm[0][i], sizeof(float)) == 0);
     });
 
     // ── OU-bridge endpoints: frac=0 is bit-exact to the raw window draw ──────────
@@ -208,7 +208,7 @@ int main(){
         PatternEngine::RhythmDraw raw;
         pe.patternRhythmAt(N, slew, raw);
         for (int i=0;i<16;++i)
-            EXPECT(std::memcmp(&pe.slewedRhythm[i], &raw.rhythm[i], sizeof(float)) == 0);
+            EXPECT(std::memcmp(&pe.slewedRhythm[0][i], &raw.rhythm[i], sizeof(float)) == 0);
     });
 
     std::cout<<"\n"<<s_pass<<" passed, "<<s_fail<<" failed\n";

@@ -67,12 +67,13 @@ struct MonoSandsParameterManager {
         int nPoly = patternEngine ? rack::math::clamp(patternEngine->numPolyVoicesHint, 0, 15) : 0;
         float sum = monoDraw(lane, step);   // mono voice
         for (int v = 0; v < nPoly; ++v) {
+            // COLLAPSE: slewed*[16][16] — poly V2..V16 at [1..15]. v=0 → [v+1]=V2.
             switch (lane) {
-                case 0: sum += patternEngine->slewedPolyRhythm[v][step]; break;
-                case 1: sum += patternEngine->slewedPolyMelody[v][step]; break;
-                case 2: sum += patternEngine->slewedPolyOctave[v][step]; break;
-                case 4: sum += patternEngine->slewedPolyAccent[v][step]; break;
-                case 6: sum += patternEngine->slewedPolyQmix[v][step]; break;   // QMIX
+                case 0: sum += patternEngine->slewedRhythm[v+1][step]; break;
+                case 1: sum += patternEngine->slewedMelody[v+1][step]; break;
+                case 2: sum += patternEngine->slewedOctave[v+1][step]; break;
+                case 4: sum += patternEngine->slewedAccent[v+1][step]; break;
+                case 6: sum += patternEngine->slewedQmix[v+1][step]; break;   // QMIX
             }
         }
         return sum / (float)(1 + nPoly);

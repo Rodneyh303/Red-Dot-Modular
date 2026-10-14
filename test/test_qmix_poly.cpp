@@ -56,7 +56,7 @@ int main() {
     {
         PatternEngine pe;
         for (int pv = 0; pv < N_POLY; ++pv)
-            pe.slewedPolyQmix[pv][STEP] = voiceVal(pv);
+            pe.slewedQmix[pv+1][STEP] = voiceVal(pv);  // V2..V16 at [1..15]
         TEST("each poly voice reads back exactly its own q-mix value", {
             for (int pv = 0; pv < N_POLY; ++pv)
                 EXPECT_NEAR(SpreadInterp::polySlewed(pe, LANE_QMIX, pv, STEP), voiceVal(pv), 0.0f);
@@ -72,7 +72,7 @@ int main() {
     {
         PatternEngine pe;
         for (int pv = 0; pv < N_POLY; ++pv)
-            pe.slewedPolyQmix[pv][STEP] = voiceVal(pv);
+            pe.slewedQmix[pv+1][STEP] = voiceVal(pv);  // V2..V16 at [1..15]
         // An off-by-one would make voice pv read voiceVal(pv±1). Assert each reads its own index-derived
         // value and NOT its neighbour's — catches both directions of a shift.
         TEST("voice pv reads voiceVal(pv), not voiceVal(pv-1) or voiceVal(pv+1)", {
@@ -92,9 +92,9 @@ int main() {
         // per-voice values, write q-mix, and assert REST/ACC are untouched.
         PatternEngine pe;
         for (int pv = 0; pv < N_POLY; ++pv) {
-            pe.slewedPolyRhythm[pv][STEP] = 0.20f + 0.01f * pv;   // REST (lane 0)
-            pe.slewedPolyAccent[pv][STEP] = 0.70f - 0.01f * pv;   // ACC (lane 3)
-            pe.slewedPolyQmix[pv][STEP]   = voiceVal(pv);          // QMIX (lane 4)
+            pe.slewedRhythm[pv+1][STEP] = 0.20f + 0.01f * pv;   // REST (lane 0), V2..V16 at [1..15]
+            pe.slewedAccent[pv+1][STEP] = 0.70f - 0.01f * pv;   // ACC (lane 3)
+            pe.slewedQmix[pv+1][STEP]   = voiceVal(pv);          // QMIX (lane 4)
         }
         TEST("REST (lane 0) unchanged after writing q-mix", {
             for (int pv = 0; pv < N_POLY; ++pv)
@@ -120,8 +120,8 @@ int main() {
         // stored value when there's nothing to blend toward.
         PatternEngine pe;
         for (int pv = 0; pv < N_POLY; ++pv)
-            pe.slewedPolyQmix[pv][STEP] = voiceVal(pv);
-        pe.slewedQmix[STEP] = 0.44f;   // V1 mono reference value
+            pe.slewedQmix[pv+1][STEP] = voiceVal(pv);
+        pe.slewedQmix[0][STEP] = 0.44f;   // V1 mono reference value
         TEST("poly spread==0 returns own value exactly (bit-identity, mono contract)", {
             for (int pv = 0; pv < N_POLY; ++pv)
                 EXPECT_NEAR(SpreadInterp::applyPoly(pe, LANE_QMIX, pv, STEP, 0.0f), voiceVal(pv), 0.0f);
@@ -141,8 +141,8 @@ int main() {
         // spread==0 is bit-identity for EVERY voice (the no-op guard). Voice 7 is the swept exemplar.
         PatternEngine pe;
         for (int pv = 0; pv < N_POLY; ++pv)
-            pe.slewedPolyQmix[pv][STEP] = voiceVal(pv);
-        pe.slewedQmix[STEP] = 0.90f;             // the mono V1 target (distinct from every voiceVal)
+            pe.slewedQmix[pv+1][STEP] = voiceVal(pv);
+        pe.slewedQmix[0][STEP] = 0.90f;             // the mono V1 target (distinct from every voiceVal)
         pe.spreadTargetMode[LANE_QMIX] = 0;       // anchor V1: target = monoSlewed = 0.90
         const int target = 7;
         const float v7own = voiceVal(target);
@@ -179,8 +179,8 @@ int main() {
         for (int v = 0; v < 16; ++v) pe.caQmixSrc[v] = (uint8_t)v;   // identity baseline
         pe.caQmixSrc[pv + 1] = 0;   // voice 6 follows voice 0 (src != self)
         // Pre-remap (own) = voice 5's own material; post-remap (target) = voice 0's material.
-        pe.preRemapSlewedPolyQmix[pv][STEP] = 0.15f;   // own
-        pe.slewedPolyQmix[pv][STEP]         = 0.85f;   // target (leader's, after remap)
+        pe.preRemapSlewedPolyQmix[pv][STEP] = 0.15f;   // own (preRemap still [15][16])
+        pe.slewedQmix[pv+1][STEP]           = 0.85f;   // target (leader's, after remap)
         const float own = SpreadInterp::polyPreRemap(pe, LANE_QMIX, pv, STEP);
         const float tgt = SpreadInterp::polySlewed(pe, LANE_QMIX, pv, STEP);
         TEST("own (pre-remap) != target (post-remap) when src != self", {
@@ -198,7 +198,7 @@ int main() {
             // contract is only that a collapse is ALLOWED (self-target no-op) — not required.
             // Assert the self-target no-op path itself: spread>0 with own==target returns own.
             pe.preRemapSlewedPolyQmix[pv][STEP] = 0.42f;
-            pe.slewedPolyQmix[pv][STEP]         = 0.42f;   // own == target
+            pe.slewedQmix[pv+1][STEP]           = 0.42f;   // own == target
             EXPECT_NEAR(SpreadInterp::applyPoly(pe, LANE_QMIX, pv, STEP, 0.6f), 0.42f, 1e-6f);
             (void)o2; (void)t2;
         });
