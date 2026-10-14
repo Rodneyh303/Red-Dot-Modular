@@ -47,14 +47,15 @@ struct MonoSandsParameterManager {
     // so the UI always sees a coherent frame. (East already does this via polySpreadEffective;
     // this brings Mono/Macro in line.)
     float monoDraw(int lane, int step) const {
+        // COLLAPSE: mono pubSlewed* deleted — read V1 from pubSlewedPoly*[0].
         switch (lane) {
-            case 0: return patternEngine->pubSlewedRhythm[step];
-            case 1: return patternEngine->pubSlewedMelody[step];
-            case 2: return patternEngine->pubSlewedOctave[step];
-            case 3: return patternEngine->pubSlewedLegato[step];
-            case 4: return patternEngine->pubSlewedAccent[step];
-            case 5: return patternEngine->pubSlewedVariation[step];
-            case 6: return patternEngine->pubSlewedQmix[step];   // QMIX (buffer lane 6)
+            case 0: return patternEngine->pubSlewedPolyRhythm[0][step];
+            case 1: return patternEngine->pubSlewedPolyMelody[0][step];
+            case 2: return patternEngine->pubSlewedPolyOctave[0][step];
+            case 3: return patternEngine->pubSlewedPolyLegato[0][step];
+            case 4: return patternEngine->pubSlewedPolyAccent[0][step];
+            case 5: return patternEngine->pubSlewedPolyVariation[0][step];
+            case 6: return patternEngine->pubSlewedPolyQmix[0][step];   // QMIX (buffer lane 6)
             default: return 0.5f;
         }
     }
