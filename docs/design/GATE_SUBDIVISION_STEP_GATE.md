@@ -756,3 +756,23 @@ spare lane (Variation) can feed either or both. Overlap -> rest-beats-legato (ex
 spare lane there). Impl: add the legato source picker mirroring the rest one; both resolve to bools fed into
 executeStep; the existing rest/legato/slur path (canRest, slurSuppressesRest, rest-beats-legato) handles the
 rest. Reversible (position-keyed draws). GATE MODE only.
+
+### CAPSTONE — subgates inherit the FULL system richness because rest/legato/variation are first-class lanes (Rodney)
+The source-picker design routes subgate rest/legato through the EXISTING first-class lanes (rest, legato,
+variation) rather than bespoke flat subgate knobs. Those lanes are PER-VOICE and COPULA-CORRELATED. So the
+subgate layer inherits the WHOLE apparatus for FREE:
+- **Per-voice subgate variation:** each voice's ghost density / ratchet thinning / sub-cell tying is driven
+  by THAT voice's own lane draws -> voices don't ratchet identically; each has independently-varied subgate
+  behaviour. Rich polyphonic subgate texture from the subgate layer alone.
+- **Copula correlation reaches INTO the subgates:** because the source lanes are copula-correlated across
+  voices (spread/CA), subgate behaviour is correlatable the SAME way the main pattern is — voices' ghost/
+  ratchet/tie decisions can MOVE TOGETHER (correlated) or INTERLEAVE (decorrelated) via the existing
+  correlation controls. Correlated ratchet fills vs dense interleaved fills, per-voice ghost densities that
+  track or diverge, polyphonic sub-cell phrasing — all from the existing copula, no new mechanism.
+- **Reversibility** carries through (lane draws are position-keyed).
+Net: subgate rest/legato/tying are as RICH and CONTROLLABLE as main-pattern rest/legato, because they REUSE
+the first-class per-voice correlated lane infrastructure instead of flat dedicated controls. The subgate
+becomes a FULL CITIZEN of the probabilistic-polyphonic-copula-reversible system, not a bolted-on effect.
+This is the LEVERAGE of source-selection-from-existing-lanes: the entire system extends into the subgate
+layer at no extra cost. (Had we built bespoke "subgate ghost density" knobs, they'd be flat/global — the
+lane-routing is what buys the polyphony + correlation + reversibility.)
