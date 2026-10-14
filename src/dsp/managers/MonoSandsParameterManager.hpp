@@ -132,17 +132,17 @@ struct MonoSandsParameterManager {
         if (!patternEngine) return;
         for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
             patternEngine->rhythmRandom[i]    = editorState.lanes[SandsVisualEditorV4::REST      ].probabilities[i];
-            patternEngine->rhythmSource[i]    = patternEngine->rhythmRandom[i];
+            patternEngine->rhythmSource[0][i]    = patternEngine->rhythmRandom[i];
             patternEngine->melodyRandom[i]    = editorState.lanes[SandsVisualEditorV4::MELODY    ].probabilities[i];
-            patternEngine->melodySource[i]    = patternEngine->melodyRandom[i];
+            patternEngine->melodySource[0][i]    = patternEngine->melodyRandom[i];
             patternEngine->octaveRandom[i]    = editorState.lanes[SandsVisualEditorV4::OCTAVE    ].probabilities[i];
-            patternEngine->octaveSource[i]    = patternEngine->octaveRandom[i];
+            patternEngine->octaveSource[0][i]    = patternEngine->octaveRandom[i];
             patternEngine->legatoRandom[i]    = editorState.lanes[SandsVisualEditorV4::LEGATO    ].probabilities[i];
-            patternEngine->legatoSource[i]    = patternEngine->legatoRandom[i];
+            patternEngine->legatoSource[0][i]    = patternEngine->legatoRandom[i];
             patternEngine->accentRandom[i]    = editorState.lanes[SandsVisualEditorV4::ACCENT    ].probabilities[i];
-            patternEngine->accentSource[i]    = patternEngine->accentRandom[i];
+            patternEngine->accentSource[0][i]    = patternEngine->accentRandom[i];
             patternEngine->variationRandom[i] = editorState.lanes[SandsVisualEditorV4::VARIATION ].probabilities[i];
-            patternEngine->variationSource[i] = patternEngine->variationRandom[i];
+            patternEngine->variationSource[0][i] = patternEngine->variationRandom[i];
         }
     }
 

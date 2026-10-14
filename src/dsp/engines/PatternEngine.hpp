@@ -526,20 +526,14 @@ struct PatternEngine {
     //  but do NOT trigger recompute. See slew_phrase_boundary_cc_brief.md.)
 
     // ── Source DNA Cache (Original draws before rotation/scramble) ───────────
-    float rhythmSource[16]    = {};
-    float variationSource[16] = {};
-    float legatoSource[16]    = {};
-    float accentSource[16]    = {};  // New: cache for accent before scramble
-    float melodySource[16]    = {};
-    float octaveSource[16]    = {};
-    float qmixSource[16]      = {};   // q-mix twin of melodySource
-    float polyRhythmSource[15][16] = {};
-    float polyAccentSource[15][16] = {};
-    float polyMelodySource[15][16] = {};
-    float polyOctaveSource[15][16] = {};
-    float polyQmixSource[15][16]   = {};   // q-mix twin of polyMelodySource
-    float polyVariationSource[15][16] = {};   // SANDS CONSOLIDATION: per-voice VAR source
-    float polyLegatoSource[15][16]   = {};   // per-voice LEG source
+    // COLLAPSE: [16][16] — V1 at [0], V2..V16 at [1..15]. One array per strand.
+    float rhythmSource[16][16]    = {};
+    float variationSource[16][16] = {};
+    float legatoSource[16][16]    = {};
+    float accentSource[16][16]    = {};
+    float melodySource[16][16]    = {};
+    float octaveSource[16][16]    = {};
+    float qmixSource[16][16]      = {};
 
     // Caches for UI/Lights to reflect the current state
     bool  rhythmPattern[16]   = {};

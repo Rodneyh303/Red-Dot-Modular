@@ -68,19 +68,19 @@ struct PolySandsParameterManager {
     // Rest lane (global rhythm for all voices)
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
       patternEngine->rhythmRandom[i] = editorState.lanes[SandsVisualEditorV4::REST].probabilities[i];
-      patternEngine->rhythmSource[i] = patternEngine->rhythmRandom[i];
+      patternEngine->rhythmSource[0][i] = patternEngine->rhythmRandom[i];
     }
     
     // Melody lane
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
       patternEngine->melodyRandom[i] = editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i];
-      patternEngine->melodySource[i] = patternEngine->melodyRandom[i];
+      patternEngine->melodySource[0][i] = patternEngine->melodyRandom[i];
     }
     
     // Octave lane
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
       patternEngine->octaveRandom[i] = editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i];
-      patternEngine->octaveSource[i] = patternEngine->octaveRandom[i];
+      patternEngine->octaveSource[0][i] = patternEngine->octaveRandom[i];
     }
   }
   

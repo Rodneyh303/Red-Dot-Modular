@@ -74,22 +74,22 @@ void PatternEngine::reset() {
             polyRandom(v + 1, PL_VARIATION)[i] = 0.5f;  // Default — V1 is voice 0, not a mono reference
             polyRandom(v + 1, PL_LEGATO)[i]   = 0.0f;   // Default — V1 is voice 0, not a mono reference
             
-            polyRhythmSource[v][i] = 1.0f;
-            polyAccentSource[v][i] = 1.0f;
-            polyMelodySource[v][i] = polyRandom(v + 1, PL_MELODY)[i];
-            polyOctaveSource[v][i] = polyRandom(v + 1, PL_OCTAVE)[i];
-            polyQmixSource[v][i]   = polyRandom(v + 1, PL_QMIX)[i];
-            polyVariationSource[v][i] = polyRandom(v + 1, PL_VARIATION)[i];
-            polyLegatoSource[v][i]   = polyRandom(v + 1, PL_LEGATO)[i];
+            rhythmSource[v+1][i] = 1.0f;
+            accentSource[v+1][i] = 1.0f;
+            melodySource[v+1][i] = polyRandom(v + 1, PL_MELODY)[i];
+            octaveSource[v+1][i] = polyRandom(v + 1, PL_OCTAVE)[i];
+            qmixSource[v+1][i]   = polyRandom(v + 1, PL_QMIX)[i];
+            variationSource[v+1][i] = polyRandom(v + 1, PL_VARIATION)[i];
+            legatoSource[v+1][i]   = polyRandom(v + 1, PL_LEGATO)[i];
         }
         
-        rhythmSource[i] = rhythmRandom[i];
-        variationSource[i] = variationRandom[i];
-        legatoSource[i] = legatoRandom[i];
-        accentSource[i] = accentRandom[i];
-        melodySource[i] = melodyRandom[i];
-        octaveSource[i] = octaveRandom[i];
-        qmixSource[i]   = qmixRandom[i];
+        rhythmSource[0][i] = rhythmRandom[i];
+        variationSource[0][i] = variationRandom[i];
+        legatoSource[0][i] = legatoRandom[i];
+        accentSource[0][i] = accentRandom[i];
+        melodySource[0][i] = melodyRandom[i];
+        octaveSource[0][i] = octaveRandom[i];
+        qmixSource[0][i]   = qmixRandom[i];
 
         rhythmPattern[i] = true;
     }
@@ -267,10 +267,10 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
     // Cache source from the SLEWED draw (canonical draw; final may be rewritten
     // by Sands later this cycle). UI pattern previews the no-Sands final.
     for (int i = 0; i < 16; ++i) {
-        rhythmSource[i]=slewedRhythm[0][i]; variationSource[i]=slewedVariation[0][i];
-        legatoSource[i]=slewedLegato[0][i]; accentSource[i]=slewedAccent[0][i];
-        for (int v=0;v<numPolyVoicesHint;v++) polyRhythmSource[v][i]=slewedRhythm[v+1][i];
-        for (int v=0;v<numPolyVoicesHint;v++) polyAccentSource[v][i]=slewedAccent[v+1][i];
+        rhythmSource[0][i]=slewedRhythm[0][i]; variationSource[0][i]=slewedVariation[0][i];
+        legatoSource[0][i]=slewedLegato[0][i]; accentSource[0][i]=slewedAccent[0][i];
+        for (int v=0;v<numPolyVoicesHint;v++) rhythmSource[v+1][i]=slewedRhythm[v+1][i];
+        for (int v=0;v<numPolyVoicesHint;v++) accentSource[v+1][i]=slewedAccent[v+1][i];
         rhythmPattern[i] = (slewedRhythm[0][i] >= in.restProb);
     }
 }
@@ -642,9 +642,9 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
     melodySlewApplied = -1.f;
     recomputeEffectiveMelody();
     for (int i = 0; i < 16; ++i) {
-        melodySource[i]=slewedMelody[0][i]; octaveSource[i]=slewedOctave[0][i];
-        for (int v=0;v<numPolyVoicesHint;v++){ polyMelodySource[v][i]=slewedMelody[v+1][i];
-                                polyOctaveSource[v][i]=slewedOctave[v+1][i]; }
+        melodySource[0][i]=slewedMelody[0][i]; octaveSource[0][i]=slewedOctave[0][i];
+        for (int v=0;v<numPolyVoicesHint;v++){ melodySource[v+1][i]=slewedMelody[v+1][i];
+                                octaveSource[v+1][i]=slewedOctave[v+1][i]; }
         int sem = 0;
         melodyPitchV[i]   = genPitchLive(sem, in, slewedMelody[0][i], slewedOctave[0][i]);
         melodySemitone[i] = sem;
@@ -667,8 +667,8 @@ void PatternEngine::redrawQmix(const PatternInput& in) {
     qmixSlewApplied = -1.f;
     recomputeEffectiveQmix();
     for (int i = 0; i < 16; ++i) {
-        qmixSource[i]=slewedQmix[0][i];
-        for (int v=0;v<numPolyVoicesHint;v++){ polyQmixSource[v][i]=slewedQmix[v+1][i]; }
+        qmixSource[0][i]=slewedQmix[0][i];
+        for (int v=0;v<numPolyVoicesHint;v++){ qmixSource[v+1][i]=slewedQmix[v+1][i]; }
     }
 }
 

@@ -354,9 +354,8 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     loadArr("qmixRandom", m->engine.pe.qmixRandom);   // Task 4d
 
     // ── Poly DNA Random Buffers ──
-    // target is the unified random_ store (written per-element via polyRandom, since random_[1..15]
-    // isn't a contiguous [15][16] block); source is still a plain [15][16] slew-cache array.
-    auto loadPolyArr = [&](const char* name, int engLane, float source[15][16]) {
+    // COLLAPSE: source arrays are now [16][16] — V2..V16 at [1..15]. v=0 → [v+1]=V2.
+    auto loadPolyArr = [&](const char* name, int engLane, float source[16][16]) {
         if (auto j = json_object_get(root, name)) {
             if (json_is_array(j)) {
                 for (int v = 0; v < 15; v++) {
@@ -365,16 +364,16 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
                         if (val) {
                             float x = (float)json_real_value(val);
                             m->engine.pe.polyRandom(v + 1, engLane)[i] = x;
-                            source[v][i] = x;
+                            source[v + 1][i] = x;
                         }
                     }
                 }
             }
         }
     };
-    loadPolyArr("polyRhythmRandom", SequencerEngine::PL_REST,   m->engine.pe.polyRhythmSource);
-    loadPolyArr("polyMelodyRandom", SequencerEngine::PL_MELODY, m->engine.pe.polyMelodySource);
-    loadPolyArr("polyOctaveRandom", SequencerEngine::PL_OCTAVE, m->engine.pe.polyOctaveSource);
+    loadPolyArr("polyRhythmRandom", SequencerEngine::PL_REST,   m->engine.pe.rhythmSource);
+    loadPolyArr("polyMelodyRandom", SequencerEngine::PL_MELODY, m->engine.pe.melodySource);
+    loadPolyArr("polyOctaveRandom", SequencerEngine::PL_OCTAVE, m->engine.pe.octaveSource);
 
     //  Scrub model: restore the scrub state (counter, slew, mix, firstDraw) and recompute the
     //  effective pattern from it. No A/B endpoints to restore -- the pattern is re-derived from
