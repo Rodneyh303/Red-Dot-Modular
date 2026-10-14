@@ -573,3 +573,32 @@ ONLY (independent). User picks by intent.
 Bonus: the exact user wanting "solid main + varied ratchets" is LEAST likely to use GHOSTS (they want the
 main solid, not gap-filled) -> the shared-variation coupling to ghost is a non-issue for them. Use case and
 no-coupling-cost condition align.
+
+### FINAL design — uniform "variation filter" checkboxes per subgate (Rodney; supersedes the asymmetry above)
+Two context-menu checkboxes, SAME meaning for both subgate types:
+  - **UNCHECKED** = ALL subgate cells are candidates (no variation filter). Every ghost gap / every ratchet
+    sub-cell is a candidate.
+  - **CHECKED**   = apply the VARIATION FILTER to decide candidates (variation roll gates candidacy).
+Then REST filters on top, always (candidate may still be rested). So one uniform rule:
+  candidacy = checkbox ? (r_vary < variationAmount) : true;   then rest silences.
+Applied IDENTICALLY to ghost and ratchet cells (no ghost-is-constitutive vs ratchet-is-additive
+special-casing — they're uniform).
+
+This makes the CURRENT behaviour just the DEFAULT checkbox states:
+  Ghost default = CHECKED (variation filters ghost candidacy = today's "ghost born by variation roll").
+  Ratchet default = UNCHECKED (all ratchet sub-cells candidates = today's "ratchet not variation-gated").
+
+Full 2x2 (ghost / ratchet):
+  ghost checked, ratchet unchecked  -> CURRENT default (ghost varied, ratchet solid)
+  ghost checked, ratchet checked    -> both varied (thinned ghost + thinned ratchet)
+  ghost unchecked, ratchet checked  -> DENSE ghost (all gaps) + VARIED ratchet (the "solid main+varied
+                                       ratchet" user, if also no main rests)
+  ghost unchecked, ratchet unchecked-> DENSE ghost (all gaps) + SOLID ratchet
+Every corner is a coherent, reachable behaviour. "Ghost unchecked = fill all gaps (rest-filtered)" is a
+clean dense-gap-fill mode; "ratchet checked = variation thins ratchet" is the thinning. Both compose with
+rest the same way.
+
+Implementation: one `bool varFiltersGhost` + `bool varFiltersRatchet` (per-voice or global TBD). At the
+ghostRise and subGateRise candidacy points, candidacy = filter ? (r_vary passes) : true. Shared variation
+lane/prob + position-keyed roll (reversible). Supersedes the single "variation-on-ratchet toggle" framing —
+this is the general, uniform version.
