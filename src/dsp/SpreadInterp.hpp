@@ -54,33 +54,32 @@ struct SpreadInterp {
     // Per-lane accessor into the PatternEngine slewed draws.
     // Lane index is the SPREAD/poly-engine lane: 0=REST 1=MEL 2=OCT 3=ACC 4=QMIX 5=VAR 6=LEG
     static float monoSlewed(const PatternEngine& pe, int lane, int step) {
-        // BUG FIX (voice2_boundary): read PUBLISHED snapshots (cross-thread safe), NOT the live
-        // slewed* arrays which the audio thread is rewriting. The live read caused torn reads
-        // -> jumpy bars when the audio thread updated any slewed array (incl. rhythm, which
-        // re-derives slewedRhythm on mix change — the torn read on the adjacent slewedMelody
-        // caused V2's melody anchor to jump).
         switch (lane) {
-            case 0:  return pe.pubSlewedPolyRhythm[0][step];
-            case 1:  return pe.pubSlewedPolyMelody[0][step];
-            case 3:  return pe.pubSlewedPolyAccent[0][step];
-            case 4:  return pe.pubSlewedPolyQmix[0][step];
-            case 5:  return pe.pubSlewedPolyVariation[0][step];
-            case 6:  return pe.pubSlewedPolyLegato[0][step];
-            default: return pe.pubSlewedPolyOctave[0][step];
+            case 0:  return pe.slewedRhythm[step];
+            case 1:  return pe.slewedMelody[step];
+            case 3:  return pe.slewedAccent[step];
+            case 4:  return pe.slewedQmix[step];
+            case 5:  return pe.slewedVariation[step];
+            case 6:  return pe.slewedLegato[step];
+            default: return pe.slewedOctave[step];
         }
     }
     static float polySlewed(const PatternEngine& pe, int lane, int voice, int step) {
-        // Also use PUBLISHED snapshots for poly (cross-thread safe, same fix as monoSlewed).
-        // voice here is 0-based poly (0=V2). pubSlewedPoly[v+1] = V(v+2) → voice+1 maps to the
-        // correct published slot.
+        // Read LIVE poly arrays (NOT published). polySlewed is called by the audio thread
+        // (Sands manager applyPoly) and by SpreadManager.getOriginalValue (Macro visual
+        // syncPatternEngineToEditor). For the audio thread, live is safe (same thread).
+        // The Macro visual cross-thread issue is separate (and the user uses East, which
+        // doesn't call syncPatternEngineToEditor). Only monoSlewed (the spread ANCHOR, read
+        // by the Sands visual step()) was changed to published for cross-thread safety.
+        // voice here is 0-based poly (0=V2).
         switch (lane) {
-            case 0:  return pe.pubSlewedPolyRhythm[voice + 1][step];
-            case 1:  return pe.pubSlewedPolyMelody[voice + 1][step];
-            case 3:  return pe.pubSlewedPolyAccent[voice + 1][step];
-            case 4:  return pe.pubSlewedPolyQmix[voice + 1][step];
-            case 5:  return pe.pubSlewedPolyVariation[voice + 1][step];
-            case 6:  return pe.pubSlewedPolyLegato[voice + 1][step];
-            default: return pe.pubSlewedPolyOctave[voice + 1][step];
+            case 0:  return pe.slewedPolyRhythm[voice][step];
+            case 1:  return pe.slewedPolyMelody[voice][step];
+            case 3:  return pe.slewedPolyAccent[voice][step];
+            case 4:  return pe.slewedPolyQmix[voice][step];
+            case 5:  return pe.slewedPolyVariation[voice][step];
+            case 6:  return pe.slewedPolyLegato[voice][step];
+            default: return pe.slewedPolyOctave[voice][step];
         }
     }
 
