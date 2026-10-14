@@ -656,7 +656,7 @@ struct SequencerEngine {
     // (0=REST→rhythm, 1=MEL→melody, 2=OCT→octave), at that voice's own LOR step.
     // 0..1. Used to assemble the poly probability cables (channels 2..1+nVoices).
     inline float polyLaneProbability(int polyLane, int voice) const {
-        if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return 0.f;
+        if (voice < 0 || voice >= 16 || polyLane < 0 || polyLane >= PL_LANES) return 0.f;
         // Follow this voice's own lane position, not the raw global tick: a reversed lane's
         // notes come from polyLaneTick, so its probability CV must too or the CV reports a
         // different cell than the one being played (they silently disagreed before).
@@ -672,7 +672,7 @@ struct SequencerEngine {
     // draw at MACRO's own global LOR step — independent of East/ownership. East instead
     // uses polyLaneProbability (resolved per-voice step). 0..1.
     inline float polyLaneProbabilityAtStep(int polyLane, int voice, int step) const {
-        if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return 0.f;
+        if (voice < 0 || voice >= 16 || polyLane < 0 || polyLane >= PL_LANES) return 0.f;
         step &= 0x0F;
         return polyRandomSrc(voice, polyLane)[step];   // through the Change Alley remap
     }
