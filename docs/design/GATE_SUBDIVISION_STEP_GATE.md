@@ -727,3 +727,32 @@ legato EXACTLY as one rested by main rest would. So:
 changes the rest INPUT; all downstream rest machinery consumes the unified decision unchanged. (Impl: feed
 the source-resolved `rested` into executeStep's existing r_rest/restProb path so canRest/slurSuppressesRest
 /rest-beats-legato all key off it as today.)
+
+### Variation = the ASSIGNABLE spare lane in GATE MODE; subgate LEGATO gets a symmetric source picker (Rodney)
+In GATE MODE note length = gate length, so the VARIATION lane is FREED (not doing note-length selection).
+It becomes the spare/assignable subgate utility lane. Give subgate LEGATO its own SOURCE PICKER, SYMMETRIC
+to the subgate rest picker:
+  - subgate REST   source: {None, Main rest,   Variation, Both-OR}  -> "rested?"
+  - subgate LEGATO source: {None, Main legato, Variation, Both-OR}  -> "tied/slurred?"
+Subgate legato = probabilistic TYING of sub-cells (ratchet/ghost cells tied into longer notes -> varied
+sub-cell note lengths), which otherwise lacks a dedicated control. The spare VARIATION lane can feed EITHER
+picker.
+
+### The one-lane-two-roles "constraint" DISSOLVES — rest-beats-legato already resolves the overlap (Rodney)
+Earlier worry: one spare lane can only drive ONE role (rest OR legato). WRONG. Variation can drive BOTH:
+if Variation is the source for BOTH rest and legato on a cell, the SAME variation draw produces a rest
+decision AND a legato decision. A cell that's both rested AND slurred is EXACTLY the ordinary rest-vs-legato
+CONFLICT -> the EXISTING rest-beats-legato toggle resolves it (rest cancels slur / slur survives). No NEW
+conflict rule, no precedence ("when not used for rest" is unnecessary), no one-lane-one-role limit. It's the
+same conflict main-pattern notes already have, handled the same way.
+This composes exactly because rest-beats-legato operates on the FINAL resolved rest decision REGARDLESS OF
+SOURCE (noted above): a variation-sourced rest colliding with a variation-sourced legato is just another
+"rested cell + slur -> rest-beats-legato decides", source-agnostic.
+
+### Final shape (symmetric, self-resolving)
+Two parallel per-subgate source pickers (rest, legato), each {None, Main, Variation, Both-OR}. The gate-mode
+spare lane (Variation) can feed either or both. Overlap -> rest-beats-legato (existing). No new machinery.
+"Variation" in gate mode = the assignable subgate utility lane, truthfully named by what it does (it IS the
+spare lane there). Impl: add the legato source picker mirroring the rest one; both resolve to bools fed into
+executeStep; the existing rest/legato/slur path (canRest, slurSuppressesRest, rest-beats-legato) handles the
+rest. Reversible (position-keyed draws). GATE MODE only.
