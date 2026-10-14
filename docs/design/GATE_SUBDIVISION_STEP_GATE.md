@@ -627,3 +627,36 @@ The other paths SIDESTEP it by variation NOT gating existence:
 So the rest<->variation priority question is INTRINSIC to the ghost-thinning design (two existence-gates),
 and is the price of giving ghost a candidature control. Worth a toggle; low priority. Ties to the
 variation-filter-checkbox design above (same subgate scope).
+
+### *** DOC/CODE CONTRADICTION on ratchet-rest — RESOLVE BEFORE ANY REDESIGN (Rodney asked to check) ***
+Checking the main-rest code surfaced a CONTRADICTION that likely explains the "undue complexity / unresolved
+tension" in this whole area:
+- **This doc (the "TWO subgate inputs" section above)** says: "a subdivided gate RE-STRIKES (ratchets)
+  REGARDLESS of rest/legato rolls... ratcheting is inherent to subdividing, NOT gated by a lane value, and
+  VG=0 only silences ghosts." (Cited line 551 is now STALE — line numbers shifted.)
+- **The LIVE CODE** (executeModeBSubdivided, starts ~916) threads the rest roll into the ratchet path:
+  a ratchet sub-cell (subGateRise) calls executeStep(nvIdx, r_rest, ...) (~line 1002), and executeStep
+  applies rest: `if (r_rest < restProb) -> Rest` (~line 603). The code comment there even says "a main
+  onset, a ratchet sub-cell, or a ghost candidate ALL run executeStep — rest/legato/accent ... draw."
+  => The CODE DOES rest-gate ratchet sub-cells (each rolls its own r_rest at getRhythmStep()).
+
+So doc says "ratchet ignores rest", code says "ratchet is rest-gated". They DISAGREE. The doc comment is
+probably PRE-executeModeBSubdivided (an older raw-triggerNote mechanism before rest was threaded in).
+EVERYONE (incl. this session's earlier notes) has been reasoning from the inconsistent model — which is
+plausibly WHY the rest/variation/ghost interaction feels unresolved.
+
+MUST DO FIRST: determine the ACTUAL runtime behaviour (run it: patch SUBGATE_RATCHET, set rest>0, does a
+ratchet sub-cell get silenced?), then make doc AND code agree. Only AFTER that is the variation-role
+redesign (below) well-founded — several earlier notes this session assumed rest-gates-ratchet OR
+ratchet-ungated; both can't be right.
+
+### Redesign candidates (revisit after the contradiction is resolved)
+If ratchet IS rest-gated (code) -> the earlier "two existence-gates" tension is real; the cleaner fix is
+likely Rodney's: VARIATION = dual-purpose SUBGATE REST (same interpretation as main rest) — ghost+ratchet
+rest-gated via the variation lane, ONE "rest" concept region-sourced (main lane for main steps, variation
+lane for subgates), no second gate, no priority toggle. OR drop variation's subgate candidacy role entirely
+and just use REST throughout (simplest).
+If ratchet is UNGATED (doc) -> variation-on-ratchet FILLS a real gap (ratchet has no probabilistic control).
+Resolve which, then pick.
+NOTE: the earlier "rest-applies-to-ghost -> symmetric two-gate" + control-surface notes in this file assumed
+facts that may be partly wrong (ratchet-rest). Treat them as PROVISIONAL until the runtime check settles it.
