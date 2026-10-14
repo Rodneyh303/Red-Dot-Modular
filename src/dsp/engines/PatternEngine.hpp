@@ -232,27 +232,23 @@ struct PatternEngine {
     // a no-op: the remap already replaced own with leader, so spread would blend leader with itself.
     // Populated unconditionally at the start of remapSlewedByPins (even on identity skip, where
     // pre-remap == post-remap). Read by the spread path when the lane's mode is Follow CA.
-    float preRemapSlewedRhythm[16]={}, preRemapSlewedVariation[16]={}, preRemapSlewedLegato[16]={}, preRemapSlewedAccent[16]={};
-    float preRemapSlewedMelody[16]={}, preRemapSlewedOctave[16]={}, preRemapSlewedQmix[16]={};
-    float preRemapSlewedPolyRhythm[15][16]={}, preRemapSlewedPolyMelody[15][16]={}, preRemapSlewedPolyOctave[15][16]={};
-    float preRemapSlewedPolyAccent[15][16]={}, preRemapSlewedPolyQmix[15][16]={};
-    float preRemapSlewedPolyVariation[15][16]={}, preRemapSlewedPolyLegato[15][16]={};
+    // COLLAPSE: preRemapSlewed*[16][16] — V1 at [0], V2..V16 at [1..15]. One array per strand.
+    float preRemapSlewedRhythm[16][16]={}, preRemapSlewedVariation[16][16]={}, preRemapSlewedLegato[16][16]={}, preRemapSlewedAccent[16][16]={};
+    float preRemapSlewedMelody[16][16]={}, preRemapSlewedOctave[16][16]={}, preRemapSlewedQmix[16][16]={};
     void snapshotPreRemap() {
-        // COLLAPSE: slewed*[16][16] — V1 at [0], poly V2..V16 at [1..15].
-        // preRemapSlewed* still mono[16]+poly[15][16] (collapse in a later commit).
         for (int i=0;i<16;++i){
-            preRemapSlewedRhythm[i]=slewedRhythm[0][i]; preRemapSlewedVariation[i]=slewedVariation[0][i];
-            preRemapSlewedLegato[i]=slewedLegato[0][i]; preRemapSlewedAccent[i]=slewedAccent[0][i];
-            preRemapSlewedMelody[i]=slewedMelody[0][i]; preRemapSlewedOctave[i]=slewedOctave[0][i];
-            preRemapSlewedQmix[i]=slewedQmix[0][i];
-            for(int v=0;v<15;++v){
-                preRemapSlewedPolyRhythm[v][i]=slewedRhythm[v+1][i];
-                preRemapSlewedPolyMelody[v][i]=slewedMelody[v+1][i];
-                preRemapSlewedPolyOctave[v][i]=slewedOctave[v+1][i];
-                preRemapSlewedPolyAccent[v][i]=slewedAccent[v+1][i];
-                preRemapSlewedPolyQmix[v][i]=slewedQmix[v+1][i];
-                preRemapSlewedPolyVariation[v][i]=slewedVariation[v+1][i];
-                preRemapSlewedPolyLegato[v][i]=slewedLegato[v+1][i];
+            preRemapSlewedRhythm[0][i]=slewedRhythm[0][i]; preRemapSlewedVariation[0][i]=slewedVariation[0][i];
+            preRemapSlewedLegato[0][i]=slewedLegato[0][i]; preRemapSlewedAccent[0][i]=slewedAccent[0][i];
+            preRemapSlewedMelody[0][i]=slewedMelody[0][i]; preRemapSlewedOctave[0][i]=slewedOctave[0][i];
+            preRemapSlewedQmix[0][i]=slewedQmix[0][i];
+            for(int v=1;v<16;++v){
+                preRemapSlewedRhythm[v][i]=slewedRhythm[v][i];
+                preRemapSlewedMelody[v][i]=slewedMelody[v][i];
+                preRemapSlewedOctave[v][i]=slewedOctave[v][i];
+                preRemapSlewedAccent[v][i]=slewedAccent[v][i];
+                preRemapSlewedQmix[v][i]=slewedQmix[v][i];
+                preRemapSlewedVariation[v][i]=slewedVariation[v][i];
+                preRemapSlewedLegato[v][i]=slewedLegato[v][i];
             }
         }
     }

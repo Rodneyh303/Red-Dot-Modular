@@ -97,25 +97,27 @@ struct SpreadInterp {
     // the pre-remap mono draw for the mono/V1 path (Follow CA on V1 is a no-op by construction
     // — V1's pre-remap == post-remap — but the poly path needs the pre-remap poly buffers).
     static float monoPreRemap(const PatternEngine& pe, int lane, int step) {
+        // COLLAPSE: preRemapSlewed*[16][16] — V1 at [0].
         switch (lane) {
-            case 0:  return pe.preRemapSlewedRhythm[step];
-            case 1:  return pe.preRemapSlewedMelody[step];
-            case 3:  return pe.preRemapSlewedAccent[step];
-            case 4:  return pe.preRemapSlewedQmix[step];
-            case 5:  return pe.preRemapSlewedVariation[step];
-            case 6:  return pe.preRemapSlewedLegato[step];
-            default: return pe.preRemapSlewedOctave[step];
+            case 0:  return pe.preRemapSlewedRhythm[0][step];
+            case 1:  return pe.preRemapSlewedMelody[0][step];
+            case 3:  return pe.preRemapSlewedAccent[0][step];
+            case 4:  return pe.preRemapSlewedQmix[0][step];
+            case 5:  return pe.preRemapSlewedVariation[0][step];
+            case 6:  return pe.preRemapSlewedLegato[0][step];
+            default: return pe.preRemapSlewedOctave[0][step];
         }
     }
     static float polyPreRemap(const PatternEngine& pe, int lane, int voice, int step) {
+        // COLLAPSE: voice is 0-based poly (0=V2). preRemapSlewed*[voice+1] = V2..V16.
         switch (lane) {
-            case 0:  return pe.preRemapSlewedPolyRhythm[voice][step];
-            case 1:  return pe.preRemapSlewedPolyMelody[voice][step];
-            case 3:  return pe.preRemapSlewedPolyAccent[voice][step];
-            case 4:  return pe.preRemapSlewedPolyQmix[voice][step];
-            case 5:  return pe.preRemapSlewedPolyVariation[voice][step];
-            case 6:  return pe.preRemapSlewedPolyLegato[voice][step];
-            default: return pe.preRemapSlewedPolyOctave[voice][step];
+            case 0:  return pe.preRemapSlewedRhythm[voice+1][step];
+            case 1:  return pe.preRemapSlewedMelody[voice+1][step];
+            case 3:  return pe.preRemapSlewedAccent[voice+1][step];
+            case 4:  return pe.preRemapSlewedQmix[voice+1][step];
+            case 5:  return pe.preRemapSlewedVariation[voice+1][step];
+            case 6:  return pe.preRemapSlewedLegato[voice+1][step];
+            default: return pe.preRemapSlewedOctave[voice+1][step];
         }
     }
 

@@ -179,7 +179,7 @@ int main() {
         for (int v = 0; v < 16; ++v) pe.caQmixSrc[v] = (uint8_t)v;   // identity baseline
         pe.caQmixSrc[pv + 1] = 0;   // voice 6 follows voice 0 (src != self)
         // Pre-remap (own) = voice 5's own material; post-remap (target) = voice 0's material.
-        pe.preRemapSlewedPolyQmix[pv][STEP] = 0.15f;   // own (preRemap still [15][16])
+        pe.preRemapSlewedQmix[pv+1][STEP] = 0.15f;   // own (pre-remap, V2..V16 at [1..15])
         pe.slewedQmix[pv+1][STEP]           = 0.85f;   // target (leader's, after remap)
         const float own = SpreadInterp::polyPreRemap(pe, LANE_QMIX, pv, STEP);
         const float tgt = SpreadInterp::polySlewed(pe, LANE_QMIX, pv, STEP);
@@ -197,7 +197,7 @@ int main() {
             // With identity pins the buffers still differ here (we set them distinct), but the
             // contract is only that a collapse is ALLOWED (self-target no-op) — not required.
             // Assert the self-target no-op path itself: spread>0 with own==target returns own.
-            pe.preRemapSlewedPolyQmix[pv][STEP] = 0.42f;
+            pe.preRemapSlewedQmix[pv+1][STEP] = 0.42f;
             pe.slewedQmix[pv+1][STEP]           = 0.42f;   // own == target
             EXPECT_NEAR(SpreadInterp::applyPoly(pe, LANE_QMIX, pv, STEP, 0.6f), 0.42f, 1e-6f);
             (void)o2; (void)t2;
