@@ -476,3 +476,38 @@ onset**, so the slur ties into whatever comes next — ghost or main gate alike.
   Protocol incidentally interrupts the "tie across a bar of silence" case — same self-regulation as
   ratchets moderating gap-legato. Features compose without a governor.
 No new mechanism: slur consumed by the next SOUNDING onset, continuation by that onset's own legato roll.
+
+---
+
+## RATIONALE (recalled) — why VARIATION gates GHOST but NOT RATCHET (Rodney)
+The variation lane has ONE meaning everywhere: "DEPART from the played pattern." Ghost and ratchet differ
+by region, and only one is a departure:
+- **GHOST = in-GAP (main gate LOW): a NEW note where the pattern had none -> a DEPARTURE -> that IS what
+  variation means.** So ghost is the variation lane's GATE-MODE expression — ghost is BORN by rolling the
+  variation/ghost probability (SequencerEngine.cpp:975-980: r_vary >= variationAmount -> no ghost). Hence
+  the feature name VARIATION/GHOST: "the variation lane whose gate-mode job is outside-gate notes."
+  Variation-gated BY DEFINITION.
+- **RATCHET = in-GATE (main gate HIGH): subdividing a note that ALREADY EXISTS -> NOT a departure, just
+  finer ARTICULATION of the played pattern.** The note's existence was already decided (pattern/rest lane);
+  ratchet only chops it. So variation has no role — nothing NEW is being decided. "Ratchet sub-cells and
+  main onsets are NOT variation-gated — only the ghost is" (SequencerEngine.cpp:978).
+Summary: variation decides WHETHER A NEW (GHOST) NOTE IS BORN (departure); it has no role in HOW AN EXISTING
+NOTE IS SUBDIVIDED (ratchet). Departure (ghost) vs articulation (ratchet).
+
+## EXPERIMENT TO TRY — context-menu option to apply VARIATION to the RATCHET too (Rodney)
+Try a context-menu toggle that ALSO variation-gates the ratchet sub-cells (not just ghost). I.e. each
+ratchet sub-cell rolls the variation probability -> a ratchet sub-cell only fires if variation fires.
+- Musical effect: "stochastic ratchets" / probabilistic sub-cell thinning — the ratchet stops being a
+  fixed even subdivision and becomes a VARIED burst (some sub-cells drop out per the variation prob). At
+  low variation most sub-cells fire (near-solid ratchet); higher variation -> sparser, more irregular
+  ratchet bursts. Could be expressive (humanised / glitchy ratchets).
+- Why it's an EXPERIMENT not the default: it breaks the clean departure-vs-articulation split above
+  (ratchet would gain a "departure" character). Keep the DEFAULT as-is (ratchet NOT variation-gated); the
+  menu option is opt-in.
+- Implementation sketch: at SequencerEngine.cpp:978 the comment notes ratchet is deliberately NOT
+  variation-gated. Add a flag (e.g. ghostFill-style per-voice or global menu toggle) that, when on, applies
+  the SAME r_vary >= variationAmount test to subGateRise (ratchet) cells as currently applies to ghostRise.
+  One ratchet sub-cell = one variation roll (own cell/counter). Keep reversibility (variation roll is a
+  draw, position-keyed).
+- Open: does the ratchet variation use the SAME variation probability as ghost, or its own? (Probably same
+  lane for simplicity; a separate "ratchet density" is a further idea.) TBD by trying it.
