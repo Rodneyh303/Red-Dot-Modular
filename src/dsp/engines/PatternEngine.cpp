@@ -580,6 +580,20 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(int voice) {
             slewedRhythm[voice][i]    = bl(b); slewedAccent[voice][i]    = bl(b+1);
             slewedVariation[voice][i] = bl(b+2); slewedLegato[voice][i]    = bl(b+3);
         }
+        // RACE FIX: write random_[voice] for poly — V1's path writes random_[0]; poly must too
+        if (!sandsActive) {
+            const bool applyR = cachedSpreadInitialized && cachedSpreadLiveR;
+            for (int i = 0; i < 16; ++i) {
+                polyRandom(voice, PL_REST)[i]=applyR?
+                    redDot::SpreadInterp::applyPoly(*this,PL_REST,voice,i,cachedPolySpread[voice][PL_REST]):slewedRhythm[voice][i];
+                polyRandom(voice, PL_ACCENT)[i]=applyR?
+                    redDot::SpreadInterp::applyPoly(*this,PL_ACCENT,voice,i,cachedPolySpread[voice][PL_ACCENT]):slewedAccent[voice][i];
+                polyRandom(voice, PL_VARIATION)[i]=applyR?
+                    redDot::SpreadInterp::applyPoly(*this,PL_VARIATION,voice,i,cachedPolySpread[voice][PL_VARIATION]):slewedVariation[voice][i];
+                polyRandom(voice, PL_LEGATO)[i]=applyR?
+                    redDot::SpreadInterp::applyPoly(*this,PL_LEGATO,voice,i,cachedPolySpread[voice][PL_LEGATO]):slewedLegato[voice][i];
+            }
+        }
     }
     publishSlewedRhythm();
     rhythmMixApplied = rhythmMixLatched;
@@ -613,6 +627,15 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(int voice) {
             int b = i * stride + off;
             slewedMelody[voice][i] = bl(b); slewedOctave[voice][i] = bl(b+1);
         }
+        if (!sandsActive) {
+            const bool applyM = cachedSpreadInitialized && cachedSpreadLiveM;
+            for (int i = 0; i < 16; ++i) {
+                polyRandom(voice, PL_MELODY)[i]=applyM?
+                    redDot::SpreadInterp::applyPoly(*this,PL_MELODY,voice,i,cachedPolySpread[voice][PL_MELODY]):slewedMelody[voice][i];
+                polyRandom(voice, PL_OCTAVE)[i]=applyM?
+                    redDot::SpreadInterp::applyPoly(*this,PL_OCTAVE,voice,i,cachedPolySpread[voice][PL_OCTAVE]):slewedOctave[voice][i];
+            }
+        }
     }
     publishSlewedMelody();
     melodyMixApplied = melodyMixLatched;
@@ -637,6 +660,11 @@ void PatternEngine::recomputeEffectiveQmixForVoice(int voice) {
     } else {
         if (voice > numPolyVoicesHint) return;
         for (int i = 0; i < 16; ++i) slewedQmix[voice][i] = bl(i * stride + 1 + (voice - 1));
+        if (!sandsActive) {
+            const bool applyQ = cachedSpreadInitialized && cachedSpreadLiveQ;
+            for (int i = 0; i < 16; ++i) polyRandom(voice, PL_QMIX)[i]=applyQ?
+                redDot::SpreadInterp::applyPoly(*this,PL_QMIX,voice,i,cachedPolySpread[voice][PL_QMIX]):slewedQmix[voice][i];
+        }
     }
     publishSlewedQmix();
     qmixMixApplied = qmixMixLatched;
