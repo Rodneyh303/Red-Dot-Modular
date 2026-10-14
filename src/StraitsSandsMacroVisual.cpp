@@ -198,8 +198,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // the store + label. Passing `el` straight through was the "top row is MELODY but
         // the knob is labelled/modulates REST" bug. Anchor name stays <el>.
         // Strong-typed conversion: editor row → engine lane (the single editor↔engine crossing).
-        // EditorLane/EngineLane make a raw-int mixup a compile error; .v feeds the int-keyed store.
-        auto EL2ENG = [](int el){ return dotModular::toEngine(dotModular::EditorLane(el)).v; };
+        // editor lane == engine lane (unified). No conversion needed.
         // Editor-ordered lane names for tooltips (top→bottom).
         static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
 
@@ -207,13 +206,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el)
             bindOutput<redDot::GoldPolyPort>(
                 "output_prob_" + std::to_string(el),
-                StraitsMacroVisualIds::PROB_OUT_REST + EL2ENG(el),
+                StraitsMacroVisualIds::PROB_OUT_REST + el,
                 std::function<void(redDot::GoldPolyPort*)>(themeOut));
 
         // ── Left section: 5 poly lanes × (4 CV jacks + 4 attens + 1 spread) ──
         // Anchor row = editor lane el; store/id = engine lane eng.
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            const int eng = EL2ENG(el);
+            const int eng = el;
             for (int c = 0; c < 4; ++c)
                 bindInput<PJ301MPort>(
                     "input_cv_" + std::to_string(el) + "_" + std::to_string(c), cvId(eng,c));
@@ -232,7 +231,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
 
         // Per-lane global SPREAD trimpots — anchor param_spr_<el>, store engine lane.
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            const int eng = EL2ENG(el);
+            const int eng = el;
             auto* sp = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_spr_" + std::to_string(el), storeResolver(),
                 -1.f, 1.f, 0.f, std::string(EDN[el]) + " spread",
@@ -245,7 +244,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // STORE-BACKED: reads/writes editor.macroSend for the viewed voice (slot resolved LIVE).
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el)
             for (int item = 0; item < 4; ++item) {
-                const int eng = EL2ENG(el);
+                const int eng = el;
                 redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                     "param_send_" + std::to_string(el) + "_" + std::to_string(item),
                     storeResolver(), -1.f, 1.f, 0.f,
@@ -261,7 +260,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             }
         // PRE/POST CV taps per lane — anchor param_taplor_/tapspr_<el>, store engine lane.
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            const int eng = EL2ENG(el);
+            const int eng = el;
             redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_taplor_" + std::to_string(el), storeResolver(),
                 0.f, 1.f, 1.f, std::string(EDN[el]) + " LOR send tap (PRE-POST)",
@@ -291,7 +290,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // panel ROW is EDITOR order. So the cell on editor row `el` must target engine lane
             // eng = EDITOR_TO_ENGINE_LANE_QMIX[el]. (Was passing `el` straight in → the direction
             // cell on the MELODY row drove REST's direction.) Anchor stays param_dir_<el>.
-            const int eng = EL2ENG(el);
+            const int eng = el;
             bindWidget<DirCell>(
                 "param_dir_" + std::to_string(el),
                 std::function<void(DirCell*)>([this, el, eng](DirCell* w) {

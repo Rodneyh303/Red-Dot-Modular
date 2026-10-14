@@ -89,8 +89,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         auto* mod = dynamic_cast<StraitsEastSandsVisual*>(module);
         for (auto& pr : pendingSpreadArcs) {
             auto* knob = pr.first;
-            const int el = pr.second;   // EDITOR lane (stored at push_back)
-            const int lane = dotModular::toEngine(dotModular::EditorLane(el)).v;  // → ENGINE lane for all store/cvId/polySpreadEffective reads
+            const int el = pr.second;   // editor lane == engine lane (unified)
+            const int lane = el;         // lane index for store/cvId/polySpreadEffective reads
             if (!knob) continue;
             auto* arc = new redDot::ModArcOverlay();
             arc->radius   = std::min(knob->box.size.x, knob->box.size.y) * 0.5f + mm2px(0.6f);
@@ -325,13 +325,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // getSpread(slot, PL_x), cvId(PL_x, ..) with engine PL_ constants. So for each editor
         // row `el` convert el→engine via EDITOR_TO_ENGINE_LANE_QMIX and use THAT for the store,
         // the CV jack id, and the label. Passing `el` straight through was the "MELODY row is
-        // labelled/modulates REST" bug. Anchor name stays <el>.
-        // Strong-typed conversion: editor row → engine lane (the one place editor↔engine
-        // crosses). Using EditorLane/EngineLane here would make a raw-int mixup not compile;
-        // .v hands the index to the still-int-keyed store/port APIs.
-        auto EL2ENG = [](int el){ return dotModular::toEngine(dotModular::EditorLane(el)).v; };
+        // editor lane == engine lane (unified). No conversion needed.
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            const int eng = EL2ENG(el);
+            const int eng = el;
             Module* mod = module;
             auto themeCfg = [mod](redDot::GoldPolyPort* p) {
                 p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
@@ -367,11 +363,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //  param_spr_<editorLane>, not the numeric SpreadParamId — the numeric name
         //  collided with the atten family. The param id is still SPREAD_R+lane implicitly
         //  via the store get/set below, keyed by editor lane.)
-        // Spread base — anchor param_spr_<el> (editor row), store getSpread(slot, engine lane),
-        // editor-ordered label. Same el→engine conversion as the attens above.
+        // Spread base — anchor param_spr_<el>, store getSpread(slot, lane).
         static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            const int eng = EL2ENG(el);
+            const int eng = el;
             auto* k = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_spr_" + std::to_string(el),
                 [this](){ return getMonsoon(); },
