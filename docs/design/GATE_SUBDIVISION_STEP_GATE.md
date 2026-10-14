@@ -528,3 +528,31 @@ ratchet sub-cell rolls the variation probability -> a ratchet sub-cell only fire
   So turning variation up thins the ratchet (more sub-cells cut); turning it down keeps a near-solid ratchet.
 Net: the experiment is consistent with existing ratchet behaviour (rest already gates it; sub-cells mirror
 main gates), uses the shared variation control, and gates by 'good to make the cut' (fire=keep).
+
+### Layered model + control surface (Rodney) — rest-applies-to-ghost CONFIRMED -> symmetric
+Two probability gates compose in sequence:
+  (1) VARIATION = CANDIDACY ("good to make the cut": fires -> candidate born; else no cell).
+  (2) REST = SILENCE ON TOP (candidate may still be rested).
+CONFIRMED from code (SequencerEngine.cpp:979, 1004): REST ALREADY APPLIES TO GHOST — "executeStep rolls
+the rest lane, which may still silence a ghost candidate"; "a rested ghost does not [sustain]". So the
+variation->rest two-gate chain ALREADY exists for ghost. Variation-on-ratchet gives the ratchet the SAME
+two-gate structure -> SYMMETRIC with ghost (not the asymmetric surface I'd feared).
+
+Control surface:
+  note type              | VARIATION (candidacy) | REST (silence)
+  main step              |        -              |   yes
+  ghost                  |       yes             |   yes            (variation->rest chain, existing)
+  ratchet (default)      |        -              |   yes (linked to main rest)
+  ratchet (toggle ON)    |       yes             |   yes            (== ghost's structure, in-gate)
+
+So the experiment is just: enable the SECOND lane (variation candidacy) for ratchet sub-cells, giving them
+the SAME variation->rest model ghost already uses. Semantics already proven (ghost is the template).
+
+### Coupling + UX (Rodney)
+- SHARED variation control -> turning variation up thins BOTH ghost candidacy AND ratchet candidacy. So
+  ratchet-thinning is LINKED to ghost if ghosts are in use.
+- If the user has NOT patched/enabled GHOST, the shared variation control is FREE — it becomes effectively
+  "the ratchet-thinning control" with no ghost side-effect. So the feature is cleanest for users not using
+  ghosts; for ghost users it's a deliberate coupling (thin both together).
+- "Double check" on ratchets = variation (candidacy) + rest (silence) — two independent thinning passes,
+  exactly ghost's. Rest on ratchet is already linked to main rest; variation adds the candidacy pass.
