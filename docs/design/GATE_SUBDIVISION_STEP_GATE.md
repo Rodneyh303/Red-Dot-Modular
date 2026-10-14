@@ -602,3 +602,28 @@ Implementation: one `bool varFiltersGhost` + `bool varFiltersRatchet` (per-voice
 ghostRise and subGateRise candidacy points, candidacy = filter ? (r_vary passes) : true. Shared variation
 lane/prob + position-keyed roll (reversible). Supersedes the single "variation-on-ratchet toggle" framing —
 this is the general, uniform version.
+
+### GAP (note) — no "rest beats variation" toggle, unlike "rest beats legato" (Rodney)
+We expose a "rest beats legato" toggle (rest-vs-slur priority, both directions). We do NOT expose any
+user control over the rest<->VARIATION priority. For ghost (and variation-filtered ratchet), the order is
+HARDCODED: variation decides candidacy, THEN rest silences -> rest ALWAYS beats variation. There's no
+toggle to let a variation-born candidate IGNORE rest and play through (the "variation beats rest"
+direction), the way rest-beats-legato offers both directions.
+TODO: expose a rest<->variation priority toggle (per-subgate, alongside the variation-filter checkboxes),
+so the user can choose rest-beats-variation (current default) vs variation-beats-rest (a candidate that
+fired plays through a rest).
+
+### WHY it's complex — the tension is real, and only GHOST has it (Rodney)
+This whole area got complex because we chose to use VARIATION for GHOST THINNING (candidacy). That gives
+ghost TWO probabilistic controls that both touch existence — a CANDIDATURE control (variation) and a
+SILENCE control (rest) — and whenever two lanes both gate existence, you need a priority rule (hence the
+missing toggle). That tension exists ONLY where variation is a candidacy gate (ghost, filtered ratchet).
+The other paths SIDESTEP it by variation NOT gating existence:
+- MAIN gates: variation picks the NOTE LENGTH/VALUE (getNoteLenIdx), NOT candidacy. The note's existence is
+  decided by rest alone -> no rest-vs-variation conflict (rest silences; length is just moot). So main
+  steps never had this problem.
+- MELODICER corner: variation is global/simple and does NOT gate per-note existence either -> same
+  sidestep.
+So the rest<->variation priority question is INTRINSIC to the ghost-thinning design (two existence-gates),
+and is the price of giving ghost a candidature control. Worth a toggle; low priority. Ties to the
+variation-filter-checkbox design above (same subgate scope).
