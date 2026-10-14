@@ -568,7 +568,7 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(int voice) {
             slewedRhythm[0][i]    = bl(b); slewedVariation[0][i] = bl(b+1);
             slewedLegato[0][i]    = bl(b+2); slewedAccent[0][i]   = bl(b+3);
         }
-        if (!sandsActive) for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < 16; ++i) {
             rhythmRandom[i]=slewedRhythm[0][i]; variationRandom[i]=slewedVariation[0][i];
             legatoRandom[i]=slewedLegato[0][i]; accentRandom[i]=slewedAccent[0][i];
         }
@@ -580,8 +580,8 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(int voice) {
             slewedRhythm[voice][i]    = bl(b); slewedAccent[voice][i]    = bl(b+1);
             slewedVariation[voice][i] = bl(b+2); slewedLegato[voice][i]    = bl(b+3);
         }
-        // RACE FIX: write random_[voice] for poly — V1's path writes random_[0]; poly must too
-        if (!sandsActive) {
+        // Always write random_[voice] — V1's path writes random_[0]; poly must too (no !sandsActive guard)
+        {
             const bool applyR = cachedSpreadInitialized && cachedSpreadLiveR;
             for (int i = 0; i < 16; ++i) {
                 polyRandom(voice, PL_REST)[i]=applyR?
@@ -617,7 +617,7 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(int voice) {
             int b = i * stride;
             slewedMelody[0][i] = bl(b); slewedOctave[0][i] = bl(b+1);
         }
-        if (!sandsActive) for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < 16; ++i) {
             melodyRandom[i]=slewedMelody[0][i]; octaveRandom[i]=slewedOctave[0][i];
         }
     } else {
@@ -627,7 +627,7 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(int voice) {
             int b = i * stride + off;
             slewedMelody[voice][i] = bl(b); slewedOctave[voice][i] = bl(b+1);
         }
-        if (!sandsActive) {
+        {
             const bool applyM = cachedSpreadInitialized && cachedSpreadLiveM;
             for (int i = 0; i < 16; ++i) {
                 polyRandom(voice, PL_MELODY)[i]=applyM?
@@ -656,11 +656,11 @@ void PatternEngine::recomputeEffectiveQmixForVoice(int voice) {
     };
     if (voice == 0) {
         for (int i = 0; i < 16; ++i) slewedQmix[0][i] = bl(i * stride);
-        if (!sandsActive) for (int i = 0; i < 16; ++i) qmixRandom[i]=slewedQmix[0][i];
+        for (int i = 0; i < 16; ++i) qmixRandom[i]=slewedQmix[0][i];
     } else {
         if (voice > numPolyVoicesHint) return;
         for (int i = 0; i < 16; ++i) slewedQmix[voice][i] = bl(i * stride + 1 + (voice - 1));
-        if (!sandsActive) {
+        {
             const bool applyQ = cachedSpreadInitialized && cachedSpreadLiveQ;
             for (int i = 0; i < 16; ++i) polyRandom(voice, PL_QMIX)[i]=applyQ?
                 redDot::SpreadInterp::applyPoly(*this,PL_QMIX,voice,i,cachedPolySpread[voice][PL_QMIX]):slewedQmix[voice][i];
