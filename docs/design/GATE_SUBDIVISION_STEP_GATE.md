@@ -556,3 +556,20 @@ the SAME variation->rest model ghost already uses. Semantics already proven (gho
   ghosts; for ghost users it's a deliberate coupling (thin both together).
 - "Double check" on ratchets = variation (candidacy) + rest (silence) — two independent thinning passes,
   exactly ghost's. Rest on ratchet is already linked to main rest; variation adds the candidacy pass.
+
+### MOTIVATING USE CASE (Rodney) — "solid main + varied ratchets" (only variation can do this)
+A user wants thinned/varied RATCHETS but a SOLID main pattern (NO main-gate rests). The DEFAULT can't do
+this: the only probabilistic control on ratchets is REST, and subgate rest is LINKED to the main rest ->
+turning up rest to thin ratchets ALSO rests the main gates. So "thin ratchets" currently forces "rest the
+main too" — they're coupled through the rest lane.
+Variation-on-ratchet BREAKS that coupling: variation is an INDEPENDENT candidacy gate, decoupled from main
+rest. So:
+  - main gate: rest LOW (solid pattern), AND
+  - ratchet: variation thins the sub-cells (independent of the main)
+= steady rest-free main groove with irregular/glitchy/humanised ratchet fills. This sound is ONLY reachable
+via variation-on-ratchet.
+So the two ratchet lanes are INDEPENDENT AXES: REST = thin ratchet LINKED to main; VARIATION = thin ratchet
+ONLY (independent). User picks by intent.
+Bonus: the exact user wanting "solid main + varied ratchets" is LEAST likely to use GHOSTS (they want the
+main solid, not gap-filled) -> the shared-variation coupling to ghost is a non-issue for them. Use case and
+no-coupling-cost condition align.
