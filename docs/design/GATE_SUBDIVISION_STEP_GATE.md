@@ -511,3 +511,20 @@ ratchet sub-cell rolls the variation probability -> a ratchet sub-cell only fire
   draw, position-keyed).
 - Open: does the ratchet variation use the SAME variation probability as ghost, or its own? (Probably same
   lane for simplicity; a separate "ratchet density" is a further idea.) TBD by trying it.
+
+### Refinements that make the experiment well-motivated (Rodney)
+- **Precedent — REST already modifies subgate ratchet.** The rest lane already silences ratchet sub-cells
+  (same as it silences main steps). So a probabilistic lane (variation) touching ratchet is NOT novel/
+  intrusive — it's CONSISTENT with how rest already behaves on ratchet.
+- **Baseline semantics — a ratchet sub-cell currently behaves like the MAIN GATE (without subgate).** Inside
+  the gate, each sub-cell inherits the main-step behaviour (the step's note, subdivided). So variation at the
+  SUB-CELL granularity is the natural extension of variation at the STEP granularity — same question ("depart
+  from what's established?"), one level finer. That makes it coherent, not arbitrary.
+- **SHARED variation control (resolves the open question).** The ratchet variation uses the SAME variation
+  lane/probability as step-variation and ghost — NOT a separate "ratchet density" knob. One variation control,
+  applied at more granularities (step, ghost, and — with the toggle — ratchet sub-cells). Simpler + unified.
+- **Polarity — the sub-cell must be GOOD TO MAKE THE CUT.** Variation must FIRE for the sub-cell to be
+  KEPT/played; variation NOT firing CUTS (drops) the sub-cell. Same gating sense as ghost (fire -> born/kept).
+  So turning variation up thins the ratchet (more sub-cells cut); turning it down keeps a near-solid ratchet.
+Net: the experiment is consistent with existing ratchet behaviour (rest already gates it; sub-cells mirror
+main gates), uses the shared variation control, and gates by 'good to make the cut' (fire=keep).
