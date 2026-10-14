@@ -140,7 +140,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
     // delegation above. The reset is the half that was missing while the engine was direction's
     // home: nothing cleared laneDirV_, so pulling East out of the rack left poly direction
     // applied forever. Now no East => Forward, same as no East => no delegation.
-    for (int dv = 0; dv < 15; ++dv)
+    for (int dv = 0; dv < 16; ++dv)
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
             engine.laneDirVPending_[dv][l] = SequencerEngine::LaneDir::Forward;
     // Step 4: mono direction reset — same pattern. No expander => Forward.

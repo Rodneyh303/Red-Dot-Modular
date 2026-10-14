@@ -79,7 +79,7 @@ void SequencerEngine::reset() {
     gsStep.reset();
     for (int i = 0; i < 15; ++i) { voices[i + 1].gs.reset(); voices[i + 1].gsStep.reset(); }
     // restProb values are NOT reset — the caller re-applies them from expander knobs.
-    for (int i = 0; i < 15; i++) wasHeldPolyPrev[i] = false;
+    for (int i = 0; i < 16; i++) wasHeldPolyPrev[i] = false;
     lastStepResult = StepResult{};
     stepIndex = -1;
     lastStepIndex = -1;

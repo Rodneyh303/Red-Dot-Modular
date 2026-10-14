@@ -262,7 +262,7 @@ struct SequencerEngine {
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
             laneTick_[s] = 0; laneSign_[s] = 1; lanePingPongHold_[s] = false;
             macroLaneTick_[s] = 0; macroLaneSign_[s] = 1; macroPingPongHold_[s] = false;
-            for (int v = 0; v < 15; ++v) {
+            for (int v = 0; v < 16; ++v) {
                 laneTickV_[v][s] = 0; laneSignV_[v][s] = 1; lanePingPongHoldV_[v][s] = false;
             }
         }
@@ -285,20 +285,20 @@ struct SequencerEngine {
     // mono's lane are both Forward → no-op until something is reversed.
     // laneSignVPending_ is promoted to laneSignV_ at the same boundary as mono's (laneFlipQuant),
     // so a per-voice flip also takes effect musically (no jump).
-    int laneTickV_[15][dotModular::NUM_STRANDS]        = {};
-    int laneSignV_[15][dotModular::NUM_STRANDS]        = {};   // default 0 → treated as +1 (see polyLaneSign)
-    int laneSignVPending_[15][dotModular::NUM_STRANDS] = {};
-    LaneDir laneDirV_[15][dotModular::NUM_STRANDS]        = {};   // per-voice direction (default Forward)
-    LaneDir laneDirVPending_[15][dotModular::NUM_STRANDS] = {};
-    bool lanePingPongHoldV_[15][dotModular::NUM_STRANDS] = {};   // per-voice ping-pong hold flag
+    int laneTickV_[16][dotModular::NUM_STRANDS]        = {};
+    int laneSignV_[16][dotModular::NUM_STRANDS]        = {};   // default 0 → treated as +1 (see polyLaneSign)
+    int laneSignVPending_[16][dotModular::NUM_STRANDS] = {};
+    LaneDir laneDirV_[16][dotModular::NUM_STRANDS]        = {};   // per-voice direction (default Forward)
+    LaneDir laneDirVPending_[16][dotModular::NUM_STRANDS] = {};
+    bool lanePingPongHoldV_[16][dotModular::NUM_STRANDS] = {};   // per-voice ping-pong hold flag
     // Effective per-voice sign for a strand: +1 if laneSignV_ is 0 (default/unset → follow mono) or
     // positive, -1 if negative. Multiplied with mono's laneSign_ in advancePlayhead.
     int polyLaneSign(int bank, int strand) const {
-        if (bank < 0 || bank >= 15) return 1;
+        if (bank < 0 || bank >= 16) return 1;
         return (laneSignV_[bank][strand] < 0) ? -1 : +1;
     }
     int polyLaneSignPending(int bank, int strand) const {
-        if (bank < 0 || bank >= 15) return 1;
+        if (bank < 0 || bank >= 16) return 1;
         return (laneSignVPending_[bank][strand] < 0) ? -1 : +1;
     }
     // Derive sign (+1/-1) from a LaneDir state.
@@ -315,13 +315,13 @@ struct SequencerEngine {
 
     bool hadMonoTail = false;
     bool wasHeldMono = false; // Capture mono state before tick() for start-detection
-    bool hadPolyTail[15] = {};
+    bool hadPolyTail[16] = {};
     // Ghost (subGate_ghost): true while a ghost note is sustaining — set when a ghost candidate
     // (variation-gated) plays, cleared when it rests/fails or a main/ratchet onset takes over.
     // The module-layer IMPL 2b reads this (&& ghostHigh) so the gate only opens for a ghost that
     // actually fired, not merely because Gate 3 is high (variation=0 -> no ghost).
     bool ghostActive = false;
-    bool wasHeldPolyPrev[15] = {}; // Capture poly state before tick()
+    bool wasHeldPolyPrev[16] = {}; // Capture poly state before tick()
 
     // ── Mono (V1) strand windowing: Length (1..16), Offset (0..15), Rotation ──
     // Step 1 of the probability-modifier unification (docs/design/PROBABILITY_MODIFIER_MODEL.md):
@@ -373,13 +373,13 @@ struct SequencerEngine {
     // bank 0..14 = V2..V16, lane 0 = VAR, 1 = LEG. Zero-init = all-delegate = follow mono,
     // which is also the correct fallback when East is absent (nothing sets Local East).
     // Pushed each cycle by MonsoonExpanderManager from the East delegation params.
-    bool varlegLocalEast_[15][2] = {};
+    bool varlegLocalEast_[16][2] = {};
     void setVarlegLocalEast(int bank, int lane, bool localEast) {
-        if (bank >= 0 && bank < 15 && lane >= 0 && lane < 2) varlegLocalEast_[bank][lane] = localEast;
+        if (bank >= 0 && bank < 16 && lane >= 0 && lane < 2) varlegLocalEast_[bank][lane] = localEast;
     }
     // VAR = lane 0, LEG = lane 1.
     bool varlegDelegated(int bank, int lane) const {
-        return !(bank >= 0 && bank < 15 && lane >= 0 && lane < 2 && varlegLocalEast_[bank][lane]);
+        return !(bank >= 0 && bank < 16 && lane >= 0 && lane < 2 && varlegLocalEast_[bank][lane]);
     }
 
     // Per-voice VARIATION step — mono's getStrandIdx transform, driven by THIS voice's LOR window.
@@ -701,7 +701,7 @@ struct SequencerEngine {
     // Forward — a voice does NOT inherit mono's reversal. Out-of-range bank falls back to mono's tick.
     int polyLaneTick(int bank, int polyLane) const {
         int strand = polyLaneStrand(polyLane);
-        return (bank >= 0 && bank < 15) ? laneTickV_[bank][strand] : laneTick_[strand];
+        return (bank >= 0 && bank < 16) ? laneTickV_[bank][strand] : laneTick_[strand];
     }
     // Per-voice effective sign for an engine poly lane — ABSOLUTE (the voice's own sign,
     // not relative to mono). +1 = forward (default); -1 = reversed. Used by the visual
