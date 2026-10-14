@@ -776,3 +776,27 @@ becomes a FULL CITIZEN of the probabilistic-polyphonic-copula-reversible system,
 This is the LEVERAGE of source-selection-from-existing-lanes: the entire system extends into the subgate
 layer at no extra cost. (Had we built bespoke "subgate ghost density" knobs, they'd be flat/global — the
 lane-routing is what buys the polyphony + correlation + reversibility.)
+
+### ...AND the MA copula (SLEW) too — subgate density evolves draw-to-draw by the slew regime (Rodney)
+The first-class lanes carry not just the CROSS-VOICE copula but also the MA copula (SLEW = temporal lag-1
+correlation r). So the subgate decisions inherit SLEW's draw-to-draw temporal character:
+- **high positive slew (r->1):** adjacent subgate draws strongly correlated -> the probability drifts a
+  LITTLE draw-to-draw -> ghost/ratchet density EVOLVES SMOOTHLY (breathing, organic subgate texture).
+- **zero slew (r=0):** adjacent draws independent -> probability jumps A LOT -> density is random/erratic
+  per draw.
+- **negative slew (r<0, hocket):** anti-correlated -> next draw tends toward 1 - now -> probability
+  FLIP-FLOPS -> density ALTERNATES dense/sparse (temporal hocket in the subgates: stuttering ratchet bursts,
+  alternating ghost fills). "change a lot, from 1-now."
+So SLEW (this session's central MA-copula subject) now shapes HOW the subgate density evolves over TIME, the
+same way it shapes the main pattern's smooth<->hocket character.
+
+### FULL 2D correlation — subgate is a complete citizen (voice x time)
+Combined with the cross-voice copula (capstone above), the subgate layer has the ENTIRE correlation
+structure of the main pattern:
+- CROSS-VOICE (spread/CA): voices' subgate decisions together (correlated) or apart (decorrelated).
+- TEMPORAL draw-to-draw (MA copula / slew): smooth drift / random / flip-flop alternation.
+- PER-VOICE independent draws; REVERSIBLE (position-keyed).
+=> e.g. ratchets whose density BREATHES (smooth slew) or STUTTERS (negative slew -> alternating dense/sparse
+bursts), per voice, correlated across voices by the copula. Enormous expressive space, ALL from reusing the
+existing 2D (voice x time) copula machinery via first-class-lane routing. The subgate inherits the full
+instrument, not a slice of it.
