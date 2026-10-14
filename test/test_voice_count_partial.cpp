@@ -53,32 +53,33 @@ int main() {
         }
     };
 
-    // Active voices (v < 4): must match full-count values
+    // Active voices (v < 4): must match full-count values.
+    // COLLAPSE: Draw structs are [16][16] — V2..V16 at [1..15]. v=0 → [v+1]=V2.
     for (int v = 0; v < 4; ++v) {
         for (int i = 0; i < 16; ++i) {
-            check("polyRhythm", rPart.polyRhythm[v][i], rFull.polyRhythm[v][i], v);
-            check("polyAccent", rPart.polyAccent[v][i], rFull.polyAccent[v][i], v);
-            check("polyVariation", rPart.polyVariation[v][i], rFull.polyVariation[v][i], v);
-            check("polyLegato", rPart.polyLegato[v][i], rFull.polyLegato[v][i], v);
-            check("polyMelody", mPart.polyMelody[v][i], mFull.polyMelody[v][i], v);
-            check("polyOctave", mPart.polyOctave[v][i], mFull.polyOctave[v][i], v);
-            check("polyQmix", qPart.polyQmix[v][i], qFull.polyQmix[v][i], v);
+            check("rhythm", rPart.rhythm[v+1][i], rFull.rhythm[v+1][i], v);
+            check("accent", rPart.accent[v+1][i], rFull.accent[v+1][i], v);
+            check("variation", rPart.variation[v+1][i], rFull.variation[v+1][i], v);
+            check("legato", rPart.legato[v+1][i], rFull.legato[v+1][i], v);
+            check("melody", mPart.melody[v+1][i], mFull.melody[v+1][i], v);
+            check("octave", mPart.octave[v+1][i], mFull.octave[v+1][i], v);
+            check("qmix", qPart.qmix[v+1][i], qFull.qmix[v+1][i], v);
         }
     }
 
     // Inactive voices (v >= 4): must be 0 (zero-init, not read by the gated blend loop)
     for (int v = 4; v < 15; ++v) {
         for (int i = 0; i < 16; ++i) {
-            if (rPart.polyRhythm[v][i] != 0.f) {
-                printf("FAIL polyRhythm v=%d i=%d: inactive voice not zero (got %.6f)\n", v, i, rPart.polyRhythm[v][i]);
+            if (rPart.rhythm[v+1][i] != 0.f) {
+                printf("FAIL rhythm v=%d i=%d: inactive voice not zero (got %.6f)\n", v, i, rPart.rhythm[v+1][i]);
                 ++fail;
             }
-            if (mPart.polyMelody[v][i] != 0.f) {
-                printf("FAIL polyMelody v=%d i=%d: inactive voice not zero (got %.6f)\n", v, i, mPart.polyMelody[v][i]);
+            if (mPart.melody[v+1][i] != 0.f) {
+                printf("FAIL melody v=%d i=%d: inactive voice not zero (got %.6f)\n", v, i, mPart.melody[v+1][i]);
                 ++fail;
             }
-            if (qPart.polyQmix[v][i] != 0.f) {
-                printf("FAIL polyQmix v=%d i=%d: inactive voice not zero (got %.6f)\n", v, i, qPart.polyQmix[v][i]);
+            if (qPart.qmix[v+1][i] != 0.f) {
+                printf("FAIL qmix v=%d i=%d: inactive voice not zero (got %.6f)\n", v, i, qPart.qmix[v+1][i]);
                 ++fail;
             }
         }

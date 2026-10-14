@@ -44,7 +44,7 @@ int main(){
         PatternEngine::RhythmDraw raw;
         pe.rawDrawRhythmPatternAt(N, raw);
         for (int i=0;i<16;++i)
-            EXPECT(std::memcmp(&pe.slewedRhythm[0][i], &raw.rhythm[i], sizeof(float)) == 0);
+            EXPECT(std::memcmp(&pe.slewedRhythm[0][i], &raw.rhythm[0][i], sizeof(float)) == 0);
     });
 
     // Same bit-identity on the melody stream.
@@ -58,8 +58,8 @@ int main(){
         PatternEngine::MelodyDraw raw;
         pe.rawDrawMelodyPatternAt(N, raw);
         for (int i=0;i<16;++i) {
-            EXPECT(std::memcmp(&pe.slewedMelody[0][i], &raw.melody[i], sizeof(float)) == 0);
-            EXPECT(std::memcmp(&pe.slewedOctave[0][i], &raw.octave[i], sizeof(float)) == 0);
+            EXPECT(std::memcmp(&pe.slewedMelody[0][i], &raw.melody[0][i], sizeof(float)) == 0);
+            EXPECT(std::memcmp(&pe.slewedOctave[0][i], &raw.octave[0][i], sizeof(float)) == 0);
         }
     });
 
@@ -74,7 +74,7 @@ int main(){
         PatternEngine::QmixDraw raw;
         pe.rawDrawQmixPatternAt(N, raw);
         for (int i=0;i<16;++i)
-            EXPECT(std::memcmp(&pe.slewedQmix[0][i], &raw.qmix[i], sizeof(float)) == 0);
+            EXPECT(std::memcmp(&pe.slewedQmix[0][i], &raw.qmix[0][i], sizeof(float)) == 0);
     });
 
     // ── Reversibility: patternAt(N) is a pure function of (N, slew) — forward then back ─
@@ -94,7 +94,7 @@ int main(){
         EXPECT(pe.rhythmDrawCtr == target);
         pe.patternRhythmAt(pe.rhythmDrawCtr, slew, back);
         for (int i=0;i<16;++i)
-            EXPECT(std::memcmp(&fwd.rhythm[i], &back.rhythm[i], sizeof(float)) == 0);
+            EXPECT(std::memcmp(&fwd.rhythm[0][i], &back.rhythm[0][i], sizeof(float)) == 0);
     });
 
     // ── Negative counters: patternAt works at pos < 0 (infinite line, no origin floor) ──
@@ -106,8 +106,8 @@ int main(){
         pe.patternRhythmAt(-7, slew, a);
         pe.patternRhythmAt(-7, slew, b);   // re-read same negative pos
         for (int i=0;i<16;++i) {
-            EXPECT(std::isfinite(a.rhythm[i]));
-            EXPECT(std::memcmp(&a.rhythm[i], &b.rhythm[i], sizeof(float)) == 0);
+            EXPECT(std::isfinite(a.rhythm[0][i]));
+            EXPECT(std::memcmp(&a.rhythm[0][i], &b.rhythm[0][i], sizeof(float)) == 0);
         }
     });
 
@@ -125,7 +125,7 @@ int main(){
         for (int p=0; p<M; ++p) {
             pe.patternRhythmAt(p, slewKnob, d);
             // Thin by K: take step 0 only (positions p and p+K share no source draws).
-            const double v = d.rhythm[0];
+            const double v = d.rhythm[0][0];
             sum += v; sumsq += v*v; ++n;
         }
         const double mean = sum/n;
@@ -208,7 +208,7 @@ int main(){
         PatternEngine::RhythmDraw raw;
         pe.patternRhythmAt(N, slew, raw);
         for (int i=0;i<16;++i)
-            EXPECT(std::memcmp(&pe.slewedRhythm[0][i], &raw.rhythm[i], sizeof(float)) == 0);
+            EXPECT(std::memcmp(&pe.slewedRhythm[0][i], &raw.rhythm[0][i], sizeof(float)) == 0);
     });
 
     std::cout<<"\n"<<s_pass<<" passed, "<<s_fail<<" failed\n";

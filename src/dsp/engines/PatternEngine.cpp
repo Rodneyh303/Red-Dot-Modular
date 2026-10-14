@@ -329,15 +329,15 @@ void PatternEngine::recomputeEffectiveRhythm() {
         };
         int fi = 0;
         for (int i = 0; i < 16; ++i) {
-            slewedRhythm[0][i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zRhythm[i]; }, fi++);
-            slewedVariation[0][i] = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zVariation[i]; }, fi++);
-            slewedLegato[0][i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zLegato[i]; }, fi++);
-            slewedAccent[0][i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zAccent[i]; }, fi++);
+            slewedRhythm[0][i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zRhythm[0][i]; }, fi++);
+            slewedVariation[0][i] = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zVariation[0][i]; }, fi++);
+            slewedLegato[0][i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zLegato[0][i]; }, fi++);
+            slewedAccent[0][i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zAccent[0][i]; }, fi++);
             for (int v = 0; v < numPolyVoicesHint; v++) {
-                slewedRhythm[v+1][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyRhythm[v][i]; }, fi++);
-                slewedAccent[v+1][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyAccent[v][i]; }, fi++);
-                slewedVariation[v+1][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyVariation[v][i]; }, fi++);
-                slewedLegato[v+1][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zPolyLegato[v][i]; }, fi++);
+                slewedRhythm[v+1][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zRhythm[v+1][i]; }, fi++);
+                slewedAccent[v+1][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zAccent[v+1][i]; }, fi++);
+                slewedVariation[v+1][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zVariation[v+1][i]; }, fi++);
+                slewedLegato[v+1][i] = blend(i, [v](const CachedRhythmDraw* c, int i){ return c->zLegato[v+1][i]; }, fi++);
             }
         }
         if (!cacheHit) {
@@ -351,15 +351,15 @@ void PatternEngine::recomputeEffectiveRhythm() {
         patternRhythmAt(N - f - 1, slew, d1);
         auto bl = [frac](float a, float b){ return a + frac*(b-a); };
         for (int i = 0; i < 16; ++i) {
-            slewedRhythm[0][i]=bl(d0.rhythm[i],d1.rhythm[i]);
-            slewedVariation[0][i]=bl(d0.variation[i],d1.variation[i]);
-            slewedLegato[0][i]=bl(d0.legato[i],d1.legato[i]);
-            slewedAccent[0][i]=bl(d0.accent[i],d1.accent[i]);
+            slewedRhythm[0][i]=bl(d0.rhythm[0][i],d1.rhythm[0][i]);
+            slewedVariation[0][i]=bl(d0.variation[0][i],d1.variation[0][i]);
+            slewedLegato[0][i]=bl(d0.legato[0][i],d1.legato[0][i]);
+            slewedAccent[0][i]=bl(d0.accent[0][i],d1.accent[0][i]);
             for (int v = 0; v < numPolyVoicesHint; v++) {
-                slewedRhythm[v+1][i]=bl(d0.polyRhythm[v][i],d1.polyRhythm[v][i]);
-                slewedAccent[v+1][i]=bl(d0.polyAccent[v][i],d1.polyAccent[v][i]);
-                slewedVariation[v+1][i]=bl(d0.polyVariation[v][i],d1.polyVariation[v][i]);
-                slewedLegato[v+1][i]=bl(d0.polyLegato[v][i],d1.polyLegato[v][i]);
+                slewedRhythm[v+1][i]=bl(d0.rhythm[v+1][i],d1.rhythm[v+1][i]);
+                slewedAccent[v+1][i]=bl(d0.accent[v+1][i],d1.accent[v+1][i]);
+                slewedVariation[v+1][i]=bl(d0.variation[v+1][i],d1.variation[v+1][i]);
+                slewedLegato[v+1][i]=bl(d0.legato[v+1][i],d1.legato[v+1][i]);
             }
         }
     }
@@ -420,11 +420,11 @@ void PatternEngine::recomputeEffectiveMelody() {
         };
         int fi = 0;
         for (int i = 0; i < 16; ++i) {
-            slewedMelody[0][i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zMelody[i]; }, fi++);
-            slewedOctave[0][i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zOctave[i]; }, fi++);
+            slewedMelody[0][i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zMelody[0][i]; }, fi++);
+            slewedOctave[0][i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zOctave[0][i]; }, fi++);
             for (int v = 0; v < numPolyVoicesHint; v++) {
-                slewedMelody[v+1][i] = blend(i, [v](const CachedMelodyDraw* c, int i){ return c->zPolyMelody[v][i]; }, fi++);
-                slewedOctave[v+1][i] = blend(i, [v](const CachedMelodyDraw* c, int i){ return c->zPolyOctave[v][i]; }, fi++);
+                slewedMelody[v+1][i] = blend(i, [v](const CachedMelodyDraw* c, int i){ return c->zMelody[v+1][i]; }, fi++);
+                slewedOctave[v+1][i] = blend(i, [v](const CachedMelodyDraw* c, int i){ return c->zOctave[v+1][i]; }, fi++);
             }
         }
         if (!cacheHit) {
@@ -437,11 +437,11 @@ void PatternEngine::recomputeEffectiveMelody() {
         patternMelodyAt(N - f - 1, slew, d1);
         auto bl = [frac](float a, float b){ return a + frac*(b-a); };
         for (int i = 0; i < 16; ++i) {
-            slewedMelody[0][i]=bl(d0.melody[i],d1.melody[i]);
-            slewedOctave[0][i]=bl(d0.octave[i],d1.octave[i]);
+            slewedMelody[0][i]=bl(d0.melody[0][i],d1.melody[0][i]);
+            slewedOctave[0][i]=bl(d0.octave[0][i],d1.octave[0][i]);
             for (int v = 0; v < numPolyVoicesHint; v++) {
-                slewedMelody[v+1][i]=bl(d0.polyMelody[v][i],d1.polyMelody[v][i]);
-                slewedOctave[v+1][i]=bl(d0.polyOctave[v][i],d1.polyOctave[v][i]);
+                slewedMelody[v+1][i]=bl(d0.melody[v+1][i],d1.melody[v+1][i]);
+                slewedOctave[v+1][i]=bl(d0.octave[v+1][i],d1.octave[v+1][i]);
             }
         }
     }
@@ -497,9 +497,9 @@ void PatternEngine::recomputeEffectiveQmix() {
         };
         int fi = 0;
         for (int i = 0; i < 16; ++i) {
-            slewedQmix[0][i] = blend(i, [](const CachedQmixDraw* c, int i){ return c->zQmix[i]; }, fi++);
+            slewedQmix[0][i] = blend(i, [](const CachedQmixDraw* c, int i){ return c->zQmix[0][i]; }, fi++);
             for (int v = 0; v < numPolyVoicesHint; v++) {
-                slewedQmix[v+1][i] = blend(i, [v](const CachedQmixDraw* c, int i){ return c->zPolyQmix[v][i]; }, fi++);
+                slewedQmix[v+1][i] = blend(i, [v](const CachedQmixDraw* c, int i){ return c->zQmix[v+1][i]; }, fi++);
             }
         }
         if (!cacheHit) {
@@ -512,9 +512,9 @@ void PatternEngine::recomputeEffectiveQmix() {
         patternQmixAt(N - f - 1, slew, d1);
         auto bl = [frac](float a, float b){ return a + frac*(b-a); };
         for (int i = 0; i < 16; ++i) {
-            slewedQmix[0][i]=bl(d0.qmix[i],d1.qmix[i]);
+            slewedQmix[0][i]=bl(d0.qmix[0][i],d1.qmix[0][i]);
             for (int v = 0; v < numPolyVoicesHint; v++) {
-                slewedQmix[v+1][i]=bl(d0.polyQmix[v][i],d1.polyQmix[v][i]);
+                slewedQmix[v+1][i]=bl(d0.qmix[v+1][i],d1.qmix[v+1][i]);
             }
         }
     }
