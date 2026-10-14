@@ -184,7 +184,7 @@ struct StraitsEastSandsVisual : Module {
     // sync so the East spread trimpot mod-arc can show the viewed voice's value.
     // lane: 0=REST 1=MELODY 2=OCTAVE 3=ACCENT 4=QMIX. Bipolar-ish 0..1 interp domain.
     // 5 poly lanes (QMIX-widened; was [15][4]). The spread-arc getModNorm reads lane up to 4.
-    float polySpreadEffective[15][dotModular::SandsGrid::POLY_LANES] = {};   // 5 lanes (REST/MEL/OCT/ACC/QMIX)
+    float polySpreadEffective[16][dotModular::SandsGrid::POLY_LANES] = {};   // 5 lanes (REST/MEL/OCT/ACC/QMIX)
 
     // Probability CV out config (persisted): scale 0=0..1V,1=0..5V,2=0..10V; S&H vs
     // continuous. probHeld/probLastStep per (lane, channel) for S&H (ch0=master, 1..15

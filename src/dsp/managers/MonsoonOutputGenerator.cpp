@@ -53,11 +53,11 @@ void OutputGenerator::drive(SequencerEngine& engine,
     auto* changiT2 = expanderManager.cachedChangiT2Expander;
     const bool anyPolyConsumer = (straits != nullptr) || (changi != nullptr) || (changiT2 != nullptr);
 
-    float polyGateV[15]   = {};
-    float polyStepV[15]   = {};
-    float polyCV[15]      = {};
-    float polyAccentV[15] = {};
-    float polySlegV[15]   = {};
+    float polyGateV[16]   = {};
+    float polyStepV[16]   = {};
+    float polyCV[16]      = {};
+    float polyAccentV[16] = {};
+    float polySlegV[16]   = {};
     if (anyPolyConsumer) {
         for (int i = 0; i < 15; ++i) {
             if (effectiveMuted || i >= (int)engine.numPolyVoices) {

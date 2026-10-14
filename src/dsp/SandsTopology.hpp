@@ -57,7 +57,7 @@ struct SandsTopology {
         //   eastV1Owner[l]      : East's   ownerDispId(l)  > 0.5  (true = East local-owns)
         //   eastPolyOwner[v][l] : East's   ownerId(v,l)    > 0.5  (true = East local-owns; v = poly index 0..14)
         bool eastV1Owner[7]      = { true, true, true, true, true, true, true };
-        bool eastPolyOwner[15][7] = {};   // default false → Macro-owned until set; caller fills when East present
+        bool eastPolyOwner[16][7] = {};   // default false → Macro-owned until set; caller fills when East present
     };
 
     Config config = Config::EMPTY;
@@ -101,7 +101,7 @@ struct SandsTopology {
         // Poly voices (voice >= 1). (VAR/LEG are poly now; the old `>= kPolyLanes → NONE` is dead.)
         if (in.eastPresent) {
             const int pv = voice - 1;   // poly index 0..14
-            if (pv < 0 || pv >= 15) return Role::NONE;
+            if (pv < 0 || pv >= 16) return Role::NONE;
             if (in.macroPresent && !in.eastPolyOwner[pv][editorLane]) return Role::MACRO;
             return Role::EAST;
         }

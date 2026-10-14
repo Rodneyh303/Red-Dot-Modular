@@ -136,7 +136,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     }
                     return rack::math::clamp((rack::math::clamp(sp,-1.f,1.f) + 1.f) * 0.5f, 0.f, 1.f);
                 }
-                if (v >= 15) return 0.5f;
+                if (v >= 16) return 0.5f;
                 // polySpreadEffective is bipolar -1..1 → map to 0..1.
                 float rawSpread = mod->polySpreadEffective[v][lane];
                 return rack::math::clamp((rawSpread + 1.f) * 0.5f, 0.f, 1.f);
@@ -1117,7 +1117,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         case SequencerEngine::PL_LEGATO:   base = peRef.pubSlewedPolyLegato[pv + 1][s]; break;
                         default: base = 0.5f; break;
                     }
-                    const float spread = (pv >= 0 && pv < 15) ? eastMod->polySpreadEffective[pv][lane] : 0.f;
+                    const float spread = (pv >= 0 && pv < 16) ? eastMod->polySpreadEffective[pv][lane] : 0.f;
                     visualEditor->currentState.lanes[el].probabilities[s] =
                         redDot::SpreadInterp::applyAnchorV1Only(peRef, lane, s, base, spread);
                 }
