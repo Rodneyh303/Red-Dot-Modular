@@ -1,7 +1,7 @@
 #pragma once
 // ── dotModular::ScalaFile — shared Scala (.scl) tuning-file parser ────────────────────────────
 // One parser, many callers (Sikit Phase 1; Micro-12 / Micro-24 later). The PARSING is identical
-// across callers; only the ACCEPT criterion (degree count) varies, so callers pass an `acceptFn`
+// across callers; only the ACCEPT criterion (degree count) varies, so callers pass an acceptFn
 // predicate. See docs/design/SCALA_FILE_AND_LOAD_UI.md.
 //
 // PURE C++: depends only on the standard library (<string>,<vector>,<sstream>,<cmath>,<functional>,
@@ -97,8 +97,8 @@ namespace scala_detail {
 
 } // namespace scala_detail
 
-// Parse from an already-loaded string. `acceptFn` (if provided) is called with the DECLARED degree
-// count; if it returns false the result is RejectedByPredicate with `rejectMessage`. This lets each
+// Parse from an already-loaded string. acceptFn (if provided) is called with the DECLARED degree
+// count; if it returns false the result is RejectedByPredicate with rejectMessage. This lets each
 // caller enforce its own degree-count constraint without duplicating parse code.
 inline ScalaFile parseScala(
     const std::string& text,
@@ -216,7 +216,7 @@ inline ScalaFile loadScala(
 
 // ── Writing ──────────────────────────────────────────────────────────────────────────────────
 // Serialise a list of per-degree cents (NOT including the implicit root 0) to standard .scl text.
-// `centsFromRoot` holds degrees 1..N in cents (the same shape as ScalaFile::centsFromRoot). The
+// centsFromRoot holds degrees 1..N in cents (the same shape as ScalaFile::centsFromRoot). The
 // period/octave is the caller's responsibility to include as the LAST entry (Scala convention);
 // callers that store only within-octave degrees should append 1200.0 before calling. Cents are
 // written with a decimal point so they parse back as cents (not ratios). description → line 1.

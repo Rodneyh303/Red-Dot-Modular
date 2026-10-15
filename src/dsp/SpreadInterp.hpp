@@ -54,32 +54,27 @@ struct SpreadInterp {
     // Per-lane accessor into the PatternEngine slewed draws.
     // Lane index is the SPREAD/poly-engine lane: 0=REST 1=MEL 2=OCT 3=ACC 4=QMIX 5=VAR 6=LEG
     static float monoSlewed(const PatternEngine& pe, int lane, int step) {
+        // COLLAPSE: slewed*[16][16] — V1 at [0]. monoSlewed reads voiceSlot 0.
         switch (lane) {
-            case 0:  return pe.slewedRhythm[step];
-            case 1:  return pe.slewedMelody[step];
-            case 3:  return pe.slewedAccent[step];
-            case 4:  return pe.slewedQmix[step];
-            case 5:  return pe.slewedVariation[step];
-            case 6:  return pe.slewedLegato[step];
-            default: return pe.slewedOctave[step];
+            case 0:  return pe.slewedRhythm[0][step];
+            case 1:  return pe.slewedMelody[0][step];
+            case 3:  return pe.slewedAccent[0][step];
+            case 4:  return pe.slewedQmix[0][step];
+            case 5:  return pe.slewedVariation[0][step];
+            case 6:  return pe.slewedLegato[0][step];
+            default: return pe.slewedOctave[0][step];
         }
     }
     static float polySlewed(const PatternEngine& pe, int lane, int voice, int step) {
-        // Read LIVE poly arrays (NOT published). polySlewed is called by the audio thread
-        // (Sands manager applyPoly) and by SpreadManager.getOriginalValue (Macro visual
-        // syncPatternEngineToEditor). For the audio thread, live is safe (same thread).
-        // The Macro visual cross-thread issue is separate (and the user uses East, which
-        // doesn't call syncPatternEngineToEditor). Only monoSlewed (the spread ANCHOR, read
-        // by the Sands visual step()) was changed to published for cross-thread safety.
-        // voice here is 0-based poly (0=V2).
+        // voice is voiceSlot (0=V1, 1=V2, ..., 15=V16). slewed*[voice] directly.
         switch (lane) {
-            case 0:  return pe.slewedPolyRhythm[voice][step];
-            case 1:  return pe.slewedPolyMelody[voice][step];
-            case 3:  return pe.slewedPolyAccent[voice][step];
-            case 4:  return pe.slewedPolyQmix[voice][step];
-            case 5:  return pe.slewedPolyVariation[voice][step];
-            case 6:  return pe.slewedPolyLegato[voice][step];
-            default: return pe.slewedPolyOctave[voice][step];
+            case 0:  return pe.slewedRhythm[voice][step];
+            case 1:  return pe.slewedMelody[voice][step];
+            case 3:  return pe.slewedAccent[voice][step];
+            case 4:  return pe.slewedQmix[voice][step];
+            case 5:  return pe.slewedVariation[voice][step];
+            case 6:  return pe.slewedLegato[voice][step];
+            default: return pe.slewedOctave[voice][step];
         }
     }
 
@@ -87,7 +82,7 @@ struct SpreadInterp {
     // Anchor V1: the mono (voice-1) draw (today's behaviour).
     // Follow CA: the post-remap draw — which IS src[v]'s material, because CA's pin remap
     // already put it there. So the "target" is the same slewed buffer the caller passes as
-    // `original` in follow-CA mode; the caller selects `own` (pre-remap) vs post-remap.
+    // original in follow-CA mode; the caller selects own (pre-remap) vs post-remap.
     static float target(const PatternEngine& pe, int lane, int step) {
         return monoSlewed(pe, lane, step);
     }
@@ -96,25 +91,27 @@ struct SpreadInterp {
     // the pre-remap mono draw for the mono/V1 path (Follow CA on V1 is a no-op by construction
     // — V1's pre-remap == post-remap — but the poly path needs the pre-remap poly buffers).
     static float monoPreRemap(const PatternEngine& pe, int lane, int step) {
+        // COLLAPSE: preRemapSlewed*[16][16] — V1 at [0].
         switch (lane) {
-            case 0:  return pe.preRemapSlewedRhythm[step];
-            case 1:  return pe.preRemapSlewedMelody[step];
-            case 3:  return pe.preRemapSlewedAccent[step];
-            case 4:  return pe.preRemapSlewedQmix[step];
-            case 5:  return pe.preRemapSlewedVariation[step];
-            case 6:  return pe.preRemapSlewedLegato[step];
-            default: return pe.preRemapSlewedOctave[step];
+            case 0:  return pe.preRemapSlewedRhythm[0][step];
+            case 1:  return pe.preRemapSlewedMelody[0][step];
+            case 3:  return pe.preRemapSlewedAccent[0][step];
+            case 4:  return pe.preRemapSlewedQmix[0][step];
+            case 5:  return pe.preRemapSlewedVariation[0][step];
+            case 6:  return pe.preRemapSlewedLegato[0][step];
+            default: return pe.preRemapSlewedOctave[0][step];
         }
     }
     static float polyPreRemap(const PatternEngine& pe, int lane, int voice, int step) {
+        // voice is voiceSlot (0=V1, 1=V2, ..., 15=V16).
         switch (lane) {
-            case 0:  return pe.preRemapSlewedPolyRhythm[voice][step];
-            case 1:  return pe.preRemapSlewedPolyMelody[voice][step];
-            case 3:  return pe.preRemapSlewedPolyAccent[voice][step];
-            case 4:  return pe.preRemapSlewedPolyQmix[voice][step];
-            case 5:  return pe.preRemapSlewedPolyVariation[voice][step];
-            case 6:  return pe.preRemapSlewedPolyLegato[voice][step];
-            default: return pe.preRemapSlewedPolyOctave[voice][step];
+            case 0:  return pe.preRemapSlewedRhythm[voice][step];
+            case 1:  return pe.preRemapSlewedMelody[voice][step];
+            case 3:  return pe.preRemapSlewedAccent[voice][step];
+            case 4:  return pe.preRemapSlewedQmix[voice][step];
+            case 5:  return pe.preRemapSlewedVariation[voice][step];
+            case 6:  return pe.preRemapSlewedLegato[voice][step];
+            default: return pe.preRemapSlewedOctave[voice][step];
         }
     }
 
@@ -189,11 +186,8 @@ struct SpreadInterp {
         bool followCA = (pe.spreadTargetMode[lane] == 1);
         float own = followCA ? polyPreRemap(pe, lane, voice, step) : polySlewed(pe, lane, voice, step);
         float t = followCA ? polySlewed(pe, lane, voice, step) : monoSlewed(pe, lane, step);
-        // SPREAD CONTRACT (SPREAD_TARGET_MODES.md POST-MORTEM): under follow-CA with this voice
-        // actually pinned (src != self), own (pre-remap) MUST differ from t (post-remap = its
-        // leader's material). Same silent-no-op collapse the mono path hit — assert on BOTH paths.
         REDDOT_SPREAD_ASSERT(!(followCA && spreadAmount != 0.0f
-                 && (int)pe.caSrcRow(voice + 1, laneToStrand(lane)) != voice + 1 && own == t),
+                 && (int)pe.caSrcRow(voice, laneToStrand(lane)) != voice && own == t),
                "follow-CA poly spread: own==target (pre-remap collapsed) — knob would be a silent no-op");
         return interpolate(own, t, spreadAmount);
     }

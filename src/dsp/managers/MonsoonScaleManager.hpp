@@ -62,7 +62,7 @@ public:
 
     // ── Explicit-mask control (MONSOON_SCALE_AUTHORING) ────────────────────────────────────────────
     /// Set/clear the Monsoon's own authored base mask (from its enable band). 12-bit, &0xFFF.
-    /// `relative` marks it as tonic-relative (transposed by the live root); default absolute (WYSIWYG).
+    /// relative marks it as tonic-relative (transposed by the live root); default absolute (WYSIWYG).
     void setAuthoredMask(uint16_t mask, bool relative = false) {
         authoredMask = mask & 0x0FFF; authoredValid = true; authoredRelative = relative; updateScaleMask();
     }
@@ -76,7 +76,7 @@ public:
     }
 
     // ── TONIC designation (TONIC_TRANSPOSE STEP 1/2) ───────────────────────────────────────────────
-    // Designate absolute pitch-class `p` as the tonic: the current sounding scale is pinned, then made
+    // Designate absolute pitch-class p as the tonic: the current sounding scale is pinned, then made
     // root-relative with the live root moved to p, so the SAME notes keep sounding but now transpose
     // when the root changes. Only a currently-enabled degree can be the tonic.
     void setTonicAbsolute(int p) {
@@ -105,7 +105,7 @@ public:
     // or the user's own designation — and clears when an override has no tonic (non-transposable custom).
     int  tonicPitchClass() const { return overrideValid ? overrideTonic : authoredTonicPitchClass(); }
     /// Set/clear the Shophouse override mask (boundary-quantised push; cleared on detach/no-active).
-    /// `tonic` = the override's tonic pitch-class (front root), or -1 if it has none.
+    /// tonic = the override's tonic pitch-class (front root), or -1 if it has none.
     void setOverrideMask(uint16_t mask, int tonic = -1) {
         overrideMask = mask & 0x0FFF; overrideValid = true; overrideTonic = tonic; updateScaleMask();
     }

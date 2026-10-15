@@ -73,7 +73,7 @@ int main() {
     });
     TEST("poly bank b  ↔  voiceSlot == b + 1  (V2->slot1 … V16->slot15)", {
         for (int v = VR::kFirstPoly; v <= VR::kLastVoice; ++v)
-            EXPECT_EQ(VR::voiceSlot(v), VR::polyBankIndex(v) + 1);
+            EXPECT_EQ(VR::voiceSlot(v), VR::polyBankIndex(v));
     });
     TEST("16 slots total, slotToVoice inverts voiceSlot", {
         EXPECT_EQ(VR::kVoiceSlots, 16);
@@ -111,14 +111,14 @@ int main() {
 
     // ── 2. POLY LOR round-trips through the direct arrays ──────────────────────
     SUITE("Poly LOR: set/read polyLen/Off/Rot[bank][lane] — 15 banks × 4 lanes, no leak");
-    for (int b = 0; b < 15; ++b)
+    for (int b = 1; b < 16; ++b)
         for (int l = 0; l < SequencerEngine::PL_LANES; ++l) {
             eng.polyLenERef(b, l) = polySentinel(0, b, l);
             eng.polyOffERef(b, l) = polySentinel(1, b, l);
             eng.polyRotERef(b, l) = polySentinel(2, b, l);
         }
     TEST("every poly (bank,lane) reads its OWN sentinel (no cross-bank / cross-lane leak)", {
-        for (int b = 0; b < 15; ++b)
+        for (int b = 1; b < 16; ++b)
             for (int l = 0; l < SequencerEngine::PL_LANES; ++l) {
                 EXPECT_EQ(eng.polyLenE(b, l), polySentinel(0, b, l));
                 EXPECT_EQ(eng.polyOffE(b, l), polySentinel(1, b, l));
@@ -126,15 +126,17 @@ int main() {
             }
     });
 
-    // ── 2a. Editor-order poly accessor: pins the editor→engine lane conversion ──
-    // The unified [16][7] storage is EDITOR-ordered. polyLOR/polyLORRef present the (engine-ordered)
-    // poly storage in editor order. Assert the conversion matches EDITOR_TO_ENGINE_LANE_QMIX exactly
-    // (5 poly editor lanes incl. QMIX), so a lane-swap in the physical merge is caught here.
-    SUITE("Poly LOR editor-order accessor: editorLane→PL_ engine lane conversion is correct (QMIX, 5 lanes)");
-    TEST("polyLOR(bank, editorLane, item) reads the EDITOR_TO_ENGINE_LANE_QMIX-mapped engine cell", {
-        for (int b = 0; b < 15; ++b)
+    // ── 2a. Editor-order poly accessor: pins the editor==engine lane identity ──
+    // The unified [16][7] storage is EDITOR-ordered. polyLOR/polyLORRef present the
+    // poly storage in editor order; the editor→engine mapping is IDENTITY (lane-index
+    // unification — the old EDITOR_TO_ENGINE_LANE_QMIX table is deleted), so editor
+    // lane ed and engine lane ed address the SAME cell. A lane-swap in the physical
+    // merge is still caught here.
+    SUITE("Poly LOR editor-order accessor: editorLane==PL_ engine lane (identity, 5 lanes)");
+    TEST("polyLOR(bank, editorLane, item) reads the identity-mapped engine cell", {
+        for (int b = 1; b < 16; ++b)
             for (int ed = 0; ed < SequencerEngine::PL_LANES; ++ed) {   // 5 poly editor lanes (PL_LANES incl QMIX)
-                int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[ed];
+                int engLane = ed;   // identity (editor == engine since lane-index unification)
                 // reading via editor lane `ed` must return the sentinel stored at engine lane `engLane`
                 EXPECT_EQ(eng.polyLOR(b, ed, SequencerEngine::LOR_LEN), polySentinel(0, b, engLane));
                 EXPECT_EQ(eng.polyLOR(b, ed, SequencerEngine::LOR_OFF), polySentinel(1, b, engLane));
@@ -143,18 +145,18 @@ int main() {
     });
     TEST("polyLORRef(editorLane) and polyLenE(engineLane) address the SAME unified cell", {
         // write via the editor-order ref at editor lane ed; the engine-order accessor at the
-        // corresponding engine lane (EDITOR_TO_ENGINE_LANE_QMIX[ed]) must read the same value, and the
-        // editor-order reader must round-trip. Proves the two accessor families agree post-merge.
-        for (int b = 0; b < 15; ++b)
+        // same index (identity) must read the same value, and the editor-order reader must
+        // round-trip. Proves the two accessor families agree post-merge.
+        for (int b = 1; b < 16; ++b)
             for (int ed = 0; ed < SequencerEngine::PL_LANES; ++ed) {
-                int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[ed];
+                int engLane = ed;   // identity (editor == engine since lane-index unification)
                 int val = 7000 + b*5 + ed;
                 eng.polyLORRef(b, ed, SequencerEngine::LOR_LEN) = val;
                 EXPECT_EQ(eng.polyLOR(b, ed, SequencerEngine::LOR_LEN), val);   // editor round-trip
                 EXPECT_EQ(eng.polyLenE(b, engLane), val);                       // engine accessor agrees
             }
         // restore the sentinels (engine-order) for later suites
-        for (int b = 0; b < 15; ++b)
+        for (int b = 1; b < 16; ++b)
             for (int l = 0; l < SequencerEngine::PL_LANES; ++l)
                 eng.polyLenERef(b, l) = polySentinel(0, b, l);
     });
@@ -171,7 +173,7 @@ int main() {
     });
     TEST("re-writing mono does not perturb any poly cell", {
         for (int i = 0; i < kNStrands; ++i) eng.strandLenRef(kStrands[i]) = monoSentinel(0, kStrands[i]) + 1;
-        for (int b = 0; b < 15; ++b)
+        for (int b = 1; b < 16; ++b)
             for (int l = 0; l < SequencerEngine::PL_LANES; ++l)
                 EXPECT_EQ(eng.polyLenE(b, l), polySentinel(0, b, l));
     });
@@ -179,16 +181,16 @@ int main() {
     // ── 4. Spread storage on the engine (B-corrected): spread[16][6] editor-ordered, accessed
     //       engine-order via spreadE/spreadERef. Pins the engine→editor conversion so the migration
     //       of mono spread from the visual onto the engine is provably permutation-correct. ───────
-    SUITE("Spread engine storage: spreadERef(slot,engLane) round-trips + editor↔engine agree (QMIX, 5 lanes)");
-    TEST("spreadERef writes the ENGINE_LANE_TO_EDITOR_QMIX-mapped cell; spreadE reads it back", {
+    SUITE("Spread engine storage: spreadERef(slot,engLane) round-trips + editor↔engine agree (identity, 5 lanes)");
+    TEST("spreadERef writes the identity-mapped cell; spreadE reads it back", {
         for (int slot = 0; slot < SequencerEngine::kVoiceSlots; ++slot)
             for (int engLane = 0; engLane < SequencerEngine::PL_LANES; ++engLane) {   // 5 spread lanes incl QMIX
                 float val = 0.01f * slot + 0.001f * engLane - 0.5f;   // distinct bipolar sentinel
                 eng.spreadERef(slot, engLane) = val;
                 // engine accessor round-trips
                 EXPECT_NEAR(eng.spreadE(slot, engLane), val);
-                // and it landed at the editor-lane cell ENGINE_LANE_TO_EDITOR_QMIX[engLane]
-                EXPECT_NEAR(eng.spread[slot][dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane]], val);
+                // and it landed at the same editor-lane cell (identity)
+                EXPECT_NEAR(eng.spread[slot][engLane], val);
             }
     });
     TEST("distinct slots/lanes never alias (no cross-voice / cross-lane spread leak)", {

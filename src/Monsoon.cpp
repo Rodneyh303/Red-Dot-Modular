@@ -260,7 +260,7 @@ float Monsoon::getEffectivePolyRest(int voiceIdx) {
     float base = getBasePolyRest(voiceIdx);
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway && voiceIdx >= 0 && voiceIdx < 15) {
-        const int ch = voiceIdx + 1;   // poly voice → poly-cable channel (ch0 = mono)
+        const int ch = voiceIdx + 1;   // INTENTIONAL cable-boundary +1 (not debt): voiceIdx is 0-based poly (0=V2, 14=V16); cable ch0 = mono/V1, so poly voice k → channel k+1
         auto& in = cway->inputs[CausewayIds::REST_CV_INPUT];
         if (in.isConnected()) {
             float att = cway->params[CausewayIds::POLY_REST_ATT_START + voiceIdx].getValue()
@@ -274,7 +274,7 @@ float Monsoon::getEffectivePolyAccent(int voiceIdx) {
     float base = getBasePolyAccent(voiceIdx);
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway && voiceIdx >= 0 && voiceIdx < 15) {
-        const int ch = voiceIdx + 1;
+        const int ch = voiceIdx + 1;   // INTENTIONAL cable-boundary +1 (not debt): voiceIdx is 0-based poly (0=V2, 14=V16); cable ch0 = mono/V1, so poly voice k → channel k+1
         auto& in = cway->inputs[CausewayIds::ACCENT_CV_INPUT];
         if (in.isConnected()) {
             float att = cway->params[CausewayIds::POLY_ACCENT_ATT_START + voiceIdx].getValue()
@@ -305,7 +305,7 @@ float Monsoon::getBasePolyQmix(int voiceIdx) {
     auto* straits = expanderManager.cachedPolyVoiceExpander;
     if (straits && straits->inputs[StraitsIds::QUANT_CV_INPUT].isConnected()) {
         int n = std::max(1, straits->inputs[StraitsIds::QUANT_CV_INPUT].getChannels());
-        int ch = voiceIdx + 1;                       // ch0 = mono; poly voice i → ch i+1
+        int ch = voiceIdx + 1;                       // INTENTIONAL cable-boundary +1 (not debt): ch0 = mono/V1; poly voice i (0=V2) → channel i+1
         return (ch < n) ? base : 0.f;                 // beyond source channels → generate
     }
     if (cachedCv2Connected) return base;              // CV2 is mono → broadcasts to all voices
@@ -321,7 +321,7 @@ float Monsoon::getEffectivePolyQmix(int voiceIdx) {
     }
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway && voiceIdx >= 0 && voiceIdx < 15) {
-        const int ch = voiceIdx + 1;   // poly voice → poly-cable channel (ch0 = mono)
+        const int ch = voiceIdx + 1;   // INTENTIONAL cable-boundary +1 (not debt): voiceIdx is 0-based poly (0=V2, 14=V16); cable ch0 = mono/V1, so poly voice k → channel k+1
         auto& in = cway->inputs[CausewayIds::QMIX_CV_INPUT];
         if (in.isConnected()) {
             float att = cway->params[CausewayIds::POLY_QMIX_ATT_START + voiceIdx].getValue()
@@ -338,7 +338,7 @@ float Monsoon::getEffectivePolyQmix(int voiceIdx) {
     auto* straits = expanderManager.cachedPolyVoiceExpander;
     if (straits && straits->inputs[StraitsIds::QUANT_CV_INPUT].isConnected()) {
         int n = std::max(1, straits->inputs[StraitsIds::QUANT_CV_INPUT].getChannels());
-        int ch = voiceIdx + 1;                       // ch0 = mono; poly voice i → ch i+1
+        int ch = voiceIdx + 1;                       // INTENTIONAL cable-boundary +1 (not debt): ch0 = mono/V1; poly voice i (0=V2) → channel i+1
         return (ch < n) ? eff : 0.f;                 // beyond source channels → generate
     }
     if (cachedCv2Connected) return eff;              // CV2 is mono → broadcasts to all voices
@@ -877,9 +877,9 @@ void Monsoon::process(const ProcessArgs& args) {
         if (gridPulse) {
             engine.gs.tickPulse();
             engine.gsStep.tickPulse();
-            for (int i = 0; i < engine.numPolyVoices; ++i) {
-                engine.voices[i + 1].gs.tickPulse();
-                engine.voices[i + 1].gsStep.tickPulse();
+            for (int i = 1; i <= engine.numPolyVoices; ++i) {
+                engine.voices[i].gs.tickPulse();
+                engine.voices[i].gsStep.tickPulse();
             }
         }
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
@@ -889,7 +889,7 @@ void Monsoon::process(const ProcessArgs& args) {
         //   drives in-gate; ghost (Gate 3) drives in-gap.  Other modes: their usual clock/phase edges.
         // B and D share the SAME shouldExecute gate (§421 mode-agnostic invariant): only the pitch
         // source differs (D quantises CV2), handled downstream in executeModeD — NOT here. One branch
-        // for both PREVENTS the B/D drift bug (a205093 left D on the old `: true` continuous logic,
+        // for both PREVENTS the B/D drift bug (a205093 left D on the old : true continuous logic,
         // which called executeMode every sample and jammed gate state — see
         // plans/fix_gate_output_regression_a205093.md).
         bool shouldExecute;
@@ -910,12 +910,12 @@ void Monsoon::process(const ProcessArgs& args) {
             // Latch each poly voice's sounding decision (Mode B poly gate-width follow).  In Mode B
             // holdRemain is nullified so there is no MidNote — every shouldExecute carries a real
             // onset/landing/rest decision, and executePolyVoices (run inside executeMode) has just
-            // set voices[i + 1].gs.gateHeld to whether each voice plays or rests.  Hold that between
+            // set voices[i].gs.gateHeld to whether each voice plays or rests.  Hold that between
             // onsets; the IMPL 2b gate driver ANDs it with the mono envelope so poly gate WIDTH
             // follows Gate 1 / ghost (not a 1-step internal hold).  Mode B only.
             if (modeSelect == 1) {
-                for (int i = 0; i < engine.numPolyVoices; ++i)
-                    polyVoiceActive[i] = engine.voices[i + 1].gs.gateHeld;
+                for (int i = 1; i <= engine.numPolyVoices; ++i)
+                    polyVoiceActive[i] = engine.voices[i].gs.gateHeld;
             }
 
             // ── Shophouse scale expander: boundary-quantised scale/root ──
@@ -975,9 +975,9 @@ void Monsoon::process(const ProcessArgs& args) {
                 for (int pu = 0; pu < p16; ++pu) {
                     engine.gs.tickPulse();
                     engine.gsStep.tickPulse();
-                    for (int i = 0; i < engine.numPolyVoices; ++i) {
-                        engine.voices[i + 1].gs.tickPulse();
-                        engine.voices[i + 1].gsStep.tickPulse();
+                    for (int i = 1; i <= engine.numPolyVoices; ++i) {
+                        engine.voices[i].gs.tickPulse();
+                        engine.voices[i].gsStep.tickPulse();
                     }
                 }
             }
@@ -1106,12 +1106,12 @@ void Monsoon::process(const ProcessArgs& args) {
         // 1-step internal hold.  gsStep is left to executePolyVoice's per-onset retrigger (the STEP
         // output re-articulates by design); only the fused GATE width is driven here.  A voice whose
         // gate closes also gets its holdRemain zeroed (Lantern sounding-test parity with the mono).
-        for (int i = 0; i < engine.numPolyVoices; ++i) {
+        for (int i = 1; i <= engine.numPolyVoices; ++i) {
             const bool vOpen = gateOpen && polyVoiceActive[i];
-            engine.voices[i + 1].gs.gateHeld = vOpen;
+            engine.voices[i].gs.gateHeld = vOpen;
             if (!vOpen) {
-                engine.voices[i + 1].gs.holdRemain      = 0.f;
-                engine.voices[i + 1].gs.gatePulseRemain = -1;
+                engine.voices[i].gs.holdRemain      = 0.f;
+                engine.voices[i].gs.gatePulseRemain = -1;
             }
         }
     }
@@ -1151,7 +1151,7 @@ void Monsoon::process(const ProcessArgs& args) {
     if (lightDivider.process()) {
         // ── modViz: DISPLAY-ONLY modulation visualisation ────────────────────────────
         // Moved inside lightDivider. It was running EVERY SAMPLE, gated only on the
-        // always-true `if (paramManager)`, resolving ~35 modulated values per call purely
+        // always-true if (paramManager), resolving ~35 modulated values per call purely
         // to fill a struct that ONLY MonsoonWidget reads. Audio-rate updates were pure
         // waste; frame rate is the correct rate for a visualisation.
         if (paramManager) {
@@ -1279,9 +1279,9 @@ void Monsoon::process(const ProcessArgs& args) {
                 if (!micro) {
                     b = engine.gs.semiLedBrightness(i);
                     q = engine.gs.semiQuantLedBrightness(i);
-                    for (int v = 0; v < engine.numPolyVoices; ++v) {
-                        b = std::max(b, engine.voices[v + 1].gs.semiLedBrightness(i));
-                        q = std::max(q, engine.voices[v + 1].gs.semiQuantLedBrightness(i));
+                    for (int v = 1; v <= engine.numPolyVoices; ++v) {
+                        b = std::max(b, engine.voices[v].gs.semiLedBrightness(i));
+                        q = std::max(q, engine.voices[v].gs.semiQuantLedBrightness(i));
                     }
                 }
                 semiLedBrightness[i] = b;
@@ -1470,7 +1470,7 @@ void Monsoon::process(const ProcessArgs& args) {
 
 Model* modelMonsoon = createModel<Monsoon, MonsoonWidget>("Monsoon");
 
-// init(Plugin*) and `Plugin* pluginInstance` now live in src/plugin.cpp (Rack convention: a
-// dedicated entry-point TU, picked up by the Makefile's `SOURCES += $(wildcard src/*.cpp)`).
+// init(Plugin*) and Plugin* pluginInstance now live in src/plugin.cpp (Rack convention: a
+// dedicated entry-point TU, picked up by the Makefile's SOURCES += $(wildcard src/*.cpp)).
 // The extern declarations remain in Monsoon.hpp (pluginInstance at line 47, modelMonsoon etc.
 // at 1121+).

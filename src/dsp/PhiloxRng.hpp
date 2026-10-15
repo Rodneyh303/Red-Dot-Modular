@@ -173,13 +173,13 @@ struct PhiloxRng {
     void     rewind() { counter = 0; idx = 4; }
 
     // ── Addressable (stateless) — the reversible core ──────────────────────────
-    // The 4-word block at absolute block-index `blockPos`. Pure fn of (pos,key).
+    // The 4-word block at absolute block-index blockPos. Pure fn of (pos,key).
     std::array<uint32_t,4> block(uint64_t blockPos) const {
         std::array<uint32_t,4> ctr{
             (uint32_t)(blockPos & 0xFFFFFFFFu), (uint32_t)(blockPos >> 32), 0u, 0u };
         return philox4x32_10(ctr, key);
     }
-    // Single 32-bit value at absolute stream position `pos` (4 per block).
+    // Single 32-bit value at absolute stream position pos (4 per block).
     uint32_t at(uint64_t pos) const { return block(pos >> 2)[pos & 3u]; }
     float    atUniform(uint64_t pos) const { return philoxUniformFloat(at(pos)); }
 

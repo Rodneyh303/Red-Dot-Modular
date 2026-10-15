@@ -1,6 +1,12 @@
 #pragma once
 #include <cstdint>   // uint64_t (QMIX_STREAM_KEY) — keep this header self-contained
 //
+// NOTE (include direction): ui/SandsGrid.hpp includes THIS header and asserts
+// POLY_LANES/MONO_LANES/EAST_LANES against POLY_LANE_COUNT/EDITOR_LANE_COUNT —
+// the dependency is one-way (SandsGrid → LaneMapping). LaneMapping must NEVER
+// include SandsGrid back: it goes circular and neither side's constants exist
+// yet where the other needs them.
+//
 // LaneMapping.hpp — SINGLE SOURCE OF TRUTH for the visual-editor lane order
 // vs. the engine strand order.
 //
@@ -33,7 +39,7 @@ namespace dotModular {
 enum EngineStrand {
     // Renumbered to EDITOR order (MEL/OCT/QMIX/REST/ACC/VAR/LEG) with q-mix at index 2.
     // The switch(strand) accessors are keyed by NAME, so their behaviour is unchanged
-    // by the renumber; this just makes MONO_LANE_TO_STRAND the identity (editor lane == strand index).
+    // by the renumber; editor lane == strand index (identity).
     STRAND_MELODY    = 0,
     STRAND_OCTAVE    = 1,
     STRAND_QMIX      = 2,   // Q-mix (quantizer mode: blend generated vs input melody)
@@ -44,31 +50,10 @@ enum EngineStrand {
     NUM_STRANDS      = 7,   // (was 6)
 };
 
-// Editor lane index → engine strand index.
-//   editor 0 MELODY    -> melody
-//   editor 1 OCTAVE    -> octave
-//   editor 2 QMIX      -> qmix
-//   editor 3 REST      -> rhythm
-//   editor 4 ACCENT    -> accent
-//   editor 5 VARIATION -> variation
-//   editor 6 LEGATO    -> legato
-constexpr int MONO_LANE_TO_STRAND[7] = {
-    STRAND_MELODY,      // 0 MELODY
-    STRAND_OCTAVE,      // 1 OCTAVE
-    STRAND_QMIX,        // 2 QMIX
-    STRAND_RHYTHM,      // 3 REST
-    STRAND_ACCENT,      // 4 ACCENT
-    STRAND_VARIATION,   // 5 VARIATION
-    STRAND_LEGATO,      // 6 LEGATO
-};
-
-// Mono LOR param bank → editor lane.  COLLAPSED TO IDENTITY: the Mono ParamId
-// LOR bank (lenId/offId/rotId) was renumbered to EDITOR order (MEL,OCT,QMIX,REST,ACC,
-// VAR,LEG), so the param index now IS the editor lane. These tables have no live
-// callers any more; kept as identity (and documented) so any stragglers are safe.
-// Removable once confirmed nothing references them.
-constexpr int MONO_PARAM_TO_EDITOR[7] = { 0, 1, 2, 3, 4, 5, 6 };
-constexpr int EDITOR_TO_MONO_PARAM[7] = { 0, 1, 2, 3, 4, 5, 6 };
+// ERADICATION Phase 3b: MONO_LANE_TO_STRAND, MONO_PARAM_TO_EDITOR,
+// EDITOR_TO_MONO_PARAM — ALL DELETED. They were identity ({0,1,2,3,4,5,6}).
+// Editor lane == engine strand == param lane (lane-index unification).
+// Call sites now use the lane index directly.
 
 // ── OLD 4-wide poly bridge tables DELETED (q-mix regression, SANDS_LANE_INDEX_AUDIT) ──────────
 // The pre-q-mix ENGINE_LANE_TO_EDITOR[4] = {2,0,1,3}, EDITOR_TO_ENGINE_LANE[4] = {1,2,0,3} and the
@@ -94,33 +79,25 @@ constexpr int EDITOR_TO_MONO_PARAM[7] = { 0, 1, 2, 3, 4, 5, 6 };
 // counts DO grow (SandsGrid MONO/EAST 6→7, POLY 4→5) — atomically with the engine
 // q-mix strand + its param/per-voice arrays.
 //
-// Strand enum — QMIX inserted at 2, editor-aligned, so MONO_LANE_TO_STRAND stays the
-// IDENTITY (editor lane == strand index):
+// Strand enum — QMIX inserted at 2, editor-aligned (editor lane == strand index, identity):
 //     STRAND_MELODY 0, OCTAVE 1, QMIX 2, RHYTHM 3, ACCENT 4, VARIATION 5, LEGATO 6; NUM 7
 // STRAND_QMIX generates off STREAM_SOURCE_SELECT; every other strand off rhythm/melody.
 constexpr int  QMIX_EDITOR_LANE = 2;    // q-mix's editor lane (and, editor-aligned, its strand)
 constexpr int  POLY_NONE        = -1;   // (kept for legacy callers; no mono-only poly lane remains post-consolidation)
 constexpr uint64_t QMIX_STREAM_KEY = 3; // == redDot::seed::STREAM_SOURCE_SELECT
 
-// SANDS CONSOLIDATION Step 1: VARIATION + LEGATO are now FULL poly lanes (no longer mono-only).
-// The poly engine lane order is 0 REST 1 MEL 2 OCT 3 ACC 4 QMIX 5 VARIATION 6 LEGATO (7 lanes);
-// editor order is 0 MEL 1 OCT 2 QMIX 3 REST 4 ACC 5 VAR 6 LEG. VAR/LEG are poly index 5/6,
-// editor 5/6 — so the bridge table widens 5→7 and VAR/LEG map to themselves (no longer POLY_NONE).
-// Lane-index unification: editor == engine == strand (PL_* reordered to match
-// the visual/editor/strand order). These tables are now IDENTITY — kept as named
-// constants (not deleted) so call sites that reference them still compile, but
-// they no longer permute. The EL2ENG/toEngine/toEditor conversions are identity.
-constexpr int ENGINE_LANE_TO_EDITOR_QMIX[7] = { 0, 1, 2, 3, 4, 5, 6 };
-constexpr int EDITOR_TO_ENGINE_LANE_QMIX[7] = { 0, 1, 2, 3, 4, 5, 6 };
+// ERADICATION Phase 3b: ENGINE_LANE_TO_EDITOR_QMIX, EDITOR_TO_ENGINE_LANE_QMIX —
+// DELETED. Identity since the lane-index unification (editor == engine == strand).
+// Call sites now use the lane index directly.
 
 // ─── LOR store-bank: the ONE canonical editor-lane → lorBase[] bank mapping ───
-// The lorBase store (Monsoon.hpp editor.lorBase) is banked in the order
-//   MEL0 OCT1 REST2 ACC3 QMIX4 VAR5 LEG6   (== editor order; strand-aligned).
-// Poly lanes (editor 0..4) reach it via EDITOR_TO_ENGINE_LANE_QMIX; VAR/LEG (editor
-// 5/6) are POLY_NONE — they have NO poly engine lane, so callers historically hand-
-// rolled `vl + <literal>`, INVISIBLE to this header. When QMIX shifted the bank layout
-// those literals silently drifted (VAR read QMIX's bank, LEG read VAR's) → the
-// "editing QMIX also edits LEGATO / VAR-LEG edits don't take" bug class.
+// The lorBase store (Monsoon.hpp editor.lorBase) is banked in EDITOR order — IDENTITY
+// since the lane-index unification (editor == engine == strand):
+//   MEL0 OCT1 QMIX2 REST3 ACC4 VAR5 LEG6.
+// Historically VAR/LEG were appended past the poly lanes with hand-rolled literals
+// (INVISIBLE to this header), which drifted when QMIX shifted the bank layout (VAR
+// read QMIX's bank, LEG read VAR's) → the "editing QMIX also edits LEGATO / VAR-LEG
+// edits don't take" bug class.
 //
 // ALL LOR-bank call sites (East lorBank(), Mono readStrand bLor, MonsoonExpanderManager
 // poly VAR/LEG, save/load) MUST route through lorStoreBank() so a future lane-count
@@ -131,9 +108,7 @@ constexpr int EDITOR_LANE_COUNT = 7; // == SandsGrid::MONO_LANES / EAST_LANES (a
 // editorLane (0..6) → lorBase[] bank. Poly lanes map through the QMIX table; VAR/LEG map
 // to themselves (banks 5/6), derived from POLY_LANE_COUNT so they track the poly count.
 constexpr int lorStoreBank(int editorLane) {
-    return (editorLane >= 0 && editorLane < POLY_LANE_COUNT)
-               ? EDITOR_TO_ENGINE_LANE_QMIX[editorLane]           // MEL0 OCT1 QMIX4 REST0? -> table
-               : editorLane;                                      // VAR(5)/LEG(6): self
+    return editorLane;   // identity (lane-index unification: editor == engine == strand)
 }
 // varleg index (0=VAR,1=LEG) → lorBase[] bank. SANDS CONSOLIDATION Step 1: VAR/LEG are now
 // regular poly lanes (editor 5/6), so route through lorStoreBank (the canonical table) rather
@@ -151,54 +126,37 @@ static_assert(varlegStoreBank(0) == 5 && varlegStoreBank(1) == 6, "varleg banks:
 //  a plain lane at index 2 with full data + jacks, so there is no gap and no slot remap. Generators
 //  index editor lanes 0..N directly.)
 
-static_assert(MONO_LANE_TO_STRAND[QMIX_EDITOR_LANE] == STRAND_QMIX, "qmix is strand 2 (editor-aligned)");
-static_assert(ENGINE_LANE_TO_EDITOR_QMIX[2] == 2 && EDITOR_TO_ENGINE_LANE_QMIX[2] == 2, "q-mix identity (lane-index unification)");
-static_assert(ENGINE_LANE_TO_EDITOR_QMIX[5] == 5 && EDITOR_TO_ENGINE_LANE_QMIX[5] == 5, "VARIATION identity");
-static_assert(ENGINE_LANE_TO_EDITOR_QMIX[6] == 6 && EDITOR_TO_ENGINE_LANE_QMIX[6] == 6, "LEGATO identity");
-
-// LENGTH GUARDS (the point of deleting the old tables): tie each bridge table's width to the lane
-// count so the NEXT lane-count change fails to COMPILE instead of silently dropping a lane — the exact
-// recurrence the audit records. ENGINE_LANE_TO_EDITOR_QMIX is one entry per POLY lane;
-// EDITOR_TO_ENGINE_LANE_QMIX + MONO_LANE_TO_STRAND are one per EDITOR lane.
-static_assert(sizeof(ENGINE_LANE_TO_EDITOR_QMIX) / sizeof(int) == POLY_LANE_COUNT,
-              "ENGINE_LANE_TO_EDITOR_QMIX must have one entry per poly lane (POLY_LANE_COUNT)");
-static_assert(sizeof(EDITOR_TO_ENGINE_LANE_QMIX) / sizeof(int) == EDITOR_LANE_COUNT,
-              "EDITOR_TO_ENGINE_LANE_QMIX must have one entry per editor lane (EDITOR_LANE_COUNT)");
-static_assert(sizeof(MONO_LANE_TO_STRAND) / sizeof(int) == EDITOR_LANE_COUNT,
-              "MONO_LANE_TO_STRAND must have one entry per editor lane (EDITOR_LANE_COUNT)");
-// SANDS CONSOLIDATION Step 1: ALL editor lanes are poly now (no POLY_NONE). VAR/LEG round-trip.
-static_assert(EDITOR_TO_ENGINE_LANE_QMIX[5] == 5 && EDITOR_TO_ENGINE_LANE_QMIX[6] == 6,
-              "VAR/LEG identity (lane-index unification)");
+// ERADICATION Phase 3b: table static_asserts DELETED (tables deleted — identity).
+// The identity invariant is now carried by lorStoreBank + toEngine/toEditor below.
+static_assert((int)STRAND_QMIX == QMIX_EDITOR_LANE, "qmix is strand 2 (editor-aligned)");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRONG LANE TYPES — make "editor lane vs engine lane" a COMPILE-TIME distinction.
 //
 // The recurring Sands bug ("the MELODY row modulates/labels REST") was ALWAYS the same
 // shape: a lane index in EDITOR order (panel rows MEL,OCT,QMIX,REST,ACC) fed straight
-// into an ENGINE-order store (REST,MEL,OCT,ACC,QMIX). Both were bare `int`, so the
+// into an ENGINE-order store (REST,MEL,OCT,ACC,QMIX). Both were bare int, so the
 // compiler couldn't see it and it only surfaced by hovering a knob in Rack.
 //
 // EditorLane / EngineLane are one-int strong typedefs:
 //   • construct EXPLICITLY only (no int → EditorLane silently),
 //   • do NOT convert to each other or to int implicitly (mixing them won't compile),
 //   • expose .v to reach the raw index for the still-int-keyed store/port APIs,
-//   • bridge ONLY through toEngine()/toEditor(), the single named conversion that
-//     consults the *_QMIX tables above.
+//   • bridge ONLY through toEngine()/toEditor(), the single named conversion
+//     (IDENTITY since the lane-index unification — the tables are deleted).
 // Adoption is OPT-IN: existing int call sites keep compiling; UI code takes an
 // EditorLane row and calls toEngine(row).v for the store. See test/test_lane_types.cpp.
 struct EngineLane { int v; explicit constexpr EngineLane(int lane) : v(lane) {} };
 struct EditorLane { int v; explicit constexpr EditorLane(int lane) : v(lane) {} };
 
-// Editor row → engine lane. Poly editor lanes map through the QMIX table; VAR/LEG
-// (mono-only) have no engine lane → EngineLane{POLY_NONE}.
+// Editor row → engine lane. IDENTITY since the lane-index unification (editor ==
+// engine == strand): all seven lanes map to themselves; out-of-range → POLY_NONE.
 constexpr EngineLane toEngine(EditorLane el) {
-    return EngineLane((el.v >= 0 && el.v < POLY_LANE_COUNT)
-                          ? EDITOR_TO_ENGINE_LANE_QMIX[el.v] : POLY_NONE);
+    return EngineLane((el.v >= 0 && el.v < POLY_LANE_COUNT) ? el.v : POLY_NONE);
 }
-// Engine lane → editor row (poly lanes only; engine has no VAR/LEG).
+// Engine lane → editor row. IDENTITY (see toEngine).
 constexpr EditorLane toEditor(EngineLane eng) {
-    return EditorLane((eng.v >= 0 && eng.v < POLY_LANE_COUNT)
-                          ? ENGINE_LANE_TO_EDITOR_QMIX[eng.v] : POLY_NONE);
+    return EditorLane((eng.v >= 0 && eng.v < POLY_LANE_COUNT) ? eng.v : POLY_NONE);
 }
 
 // Lane-index unification: toEngine/toEditor are IDENTITY
@@ -210,23 +168,39 @@ static_assert(toEngine(EditorLane(5)).v == 5, "VAR identity");
 static_assert(toEditor(toEngine(EditorLane(5))).v == 5, "VAR round-trips (identity)");
 static_assert(toEditor(toEngine(EditorLane(6))).v == 6, "LEG round-trips (identity)");
 
-// ─── NOTE: ALIGN THE ORDERS WHERE POSSIBLE ───────────────────────────────────
-// Of the orderings in the header block, three are already collapsed to identity (engine
-// strand renumbered to editor order; both MONO_PARAM tables identity). The ONE remaining
-// misalignment is the POLY ENGINE lane order (0 REST 1 MEL 2 OCT 3 ACC) vs editor order
-// (0 MEL 1 OCT 2 REST 3 ACC) — the sole reason ENGINE_LANE_TO_EDITOR/EDITOR_TO_ENGINE_LANE
-// are non-identity and the source of the "MEL↔OCT↔REST circular permutation" bugs noted in
-// StraitsEastSandsVisual.cpp. Renumbering the poly engine lanes to editor order would make
-// both tables the identity and delete a whole class of remap bugs — but it touches the poly
-// DATA model (engine.polyLen[v][lane], macroBase[lane], VoiceResolver lane arg, PROB_OUT_*
-// indexing), so it's a deliberate refactor, best done on its own, not bundled with q-mix.
-// The RNG STREAM order (RHYTHM0/MELODY1/CA2/SOURCE_SELECT3) is a separate axis and needn't
-// align with lane order. Recommendation: align the poly engine order in a dedicated pass;
-// until then keep the *_QMIX tables above as the single q-mix-aware source and mirror them
-// in the generators rather than hand-rolling a third copy.
-// Because q-mix is itself a NEW poly lane, landing it already touches the poly data model
-// (polyLen/macroBase/VoiceResolver/PROB_OUT) — so folding the poly-order alignment INTO the
-// q-mix pass (making all orderings identity with q-mix at index 2 everywhere) is worth weighing
-// against doing it separately; either way, do it deliberately, not by accident.
+// ─── NOTE: the poly engine order IS aligned to the editor order — DONE ───────
+// The historical misalignment (poly engine 0 REST 1 MEL 2 OCT 3 ACC vs editor
+// 0 MEL 1 OCT 2 QMIX 3 REST 4 ACC) was the sole reason the lane tables were
+// non-identity and the source of the "MEL↔OCT↔REST circular permutation" bug
+// class. The lane-index unification renumbered the PL_ enum to the editor/strand
+// order, making EVERY lane mapping identity; the conversion tables were then
+// deleted outright (Phase 3b) so a second generation can never coexist with the
+// first. The RNG STREAM order (RHYTHM/MELODY/CA/SOURCE_SELECT) is a separate
+// axis and does not follow lane order.
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SandsLaneNames — the canonical lane-NAME tables. Phase 3b-3: absorbed from
+// ui/SandsLaneNames.hpp (DELETED) so this header is the ONE lane descriptor —
+// order, strong types, store banks AND names. Post-unification there is ONE
+// order, hence ONE short + ONE long table; the old SPREAD / EDITOR_POLY
+// aliases (identical content, separate names) are gone — index by the lane.
+namespace SandsLaneNames {
+
+    // SHORT names (jack labels, tooltips, config strings). Index == lane.
+    // Sized by THIS header's own lane count — SandsGrid.hpp (which includes us)
+    // asserts its MONO/POLY/EAST lane counts against EDITOR_LANE_COUNT, so the
+    // tables and every consumer stay tied to one number at compile time.
+    inline constexpr const char* EDITOR[EDITOR_LANE_COUNT] =
+        { "MEL", "OCT", "QMIX", "REST", "ACC", "VAR", "LEG" };
+    static_assert(sizeof(EDITOR) / sizeof(EDITOR[0]) == EDITOR_LANE_COUNT,
+                  "EDITOR lane-name table length must equal EDITOR_LANE_COUNT");
+
+    // LONG names (menus, editor row labels). Same order.
+    inline constexpr const char* EDITOR_LONG[EDITOR_LANE_COUNT] =
+        { "MELODY", "OCTAVE", "QMIX", "REST", "ACCENT", "VARIATION", "LEGATO" };
+    static_assert(sizeof(EDITOR_LONG) / sizeof(EDITOR_LONG[0]) == EDITOR_LANE_COUNT,
+                  "EDITOR_LONG lane-name table length must equal EDITOR_LANE_COUNT");
+
+} // namespace SandsLaneNames
 
 } // namespace dotModular

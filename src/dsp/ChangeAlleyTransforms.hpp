@@ -420,7 +420,7 @@ inline void apply(int transform, uint8_t* src, int activeCount, int blockSize, u
     switch (transform) {
         case 0: collapse(src, activeCount, blockSize); break;
         case 1: rotateValues (src, activeCount, blockSize, step); break;
-        // scatter now takes (streamKey, position): reuse `seed` as the fixed stream key and `step`
+        // scatter now takes (streamKey, position): reuse seed as the fixed stream key and step
         // as the addressable position, so the counter-position model is exercised here too.
         case 2: scatter (src, activeCount, blockSize, (uint64_t)seed, (int64_t)step); break;
         case 3: reflectRows  (src, activeCount, blockSize); break;

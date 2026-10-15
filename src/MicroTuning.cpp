@@ -85,7 +85,7 @@ void MicroTuningModule::process(const ProcessArgs&) {
     }
     // CONSERVATION toggle lives on the bound Shophouse Micro and governs the whole rig's mask, whether
     // that mask came from an ACTIVE FRONT or the Colonnades' OWN enable band — NOT only when a front is
-    // active (matches original Shophouse: the toggle governs the effective scale, always). `scene` is the
+    // active (matches original Shophouse: the toggle governs the effective scale, always). scene is the
     // bound module (may have no active front); enforce() reads its switch. When NO Shophouse Micro is
     // bound there is no conservation control → the Colonnades mask stays hard (byte-identical).
     const bool sceneBound   = (scene != nullptr);
@@ -106,7 +106,7 @@ void MicroTuningModule::process(const ProcessArgs&) {
                     const bool bound = (ix->followTarget > 0) ? (ix->followTarget == pairId)
                                      : (redDot::findPairHubEitherSide<MicroTuningModule>(ix) == this);
                     // §16 item 1 (target selector): only take Interchanges that actually TARGET the Micro.
-                    // `bound` is the microBound predicate from this Interchange's view; drivesMicro()
+                    // bound is the microBound predicate from this Interchange's view; drivesMicro()
                     // resolves AUTO (Micro when bound) and the explicit Monsoon-only/Micro-only modes.
                     // A Monsoon-only Interchange is skipped here so it no longer drives the weight faders.
                     if (bound && ix->drivesMicro(bound)) boundInterchanges_.push_back(ix);
@@ -182,7 +182,7 @@ void MicroTuningModule::process(const ProcessArgs&) {
     for (int i = 0; i < n; ++i) {
         float b = (i < tt.N) ? mon->engine.gs.semiLedBrightness(i) : 0.f;   // greyed (>= tuning size): no flash
         for (int v = 0; v < mon->engine.numPolyVoices && i < tt.N; ++v)
-            b = std::max(b, mon->engine.voices[v + 1].gs.semiLedBrightness(i));
+            b = std::max(b, mon->engine.voices[v].gs.semiLedBrightness(i));
         lights[weightLed(i) + 0].setBrightness(0.f);   // green sub unused (match Monsoon)
         lights[weightLed(i) + 1].setBrightness(b);     // red sub = play flash
     }
@@ -313,7 +313,7 @@ struct MicroCentsDisplay : Widget {
         // Contiguous grid cells (stroked rectangles). Colonnades: two rows, lower offset 50% in X (the
         // odd faders are half a pitch off the even → the shared horizontal divider steps). Duo: one row.
         // ROUND 10: only draw cells for LIVE degrees (i < tuning size). Greyed degrees (beyond N) have no
-        // cents cell. `liveCount` = the tuning size (falls back to n when standalone).
+        // cents cell. liveCount = the tuning size (falls back to n when standalone).
         const int liveCount = module ? module->liveN() : n;
         nvgStrokeColor(vg, nvgRGBA(0x8a, 0x94, 0xa0, 0x55));
         nvgStrokeWidth(vg, 0.8f);

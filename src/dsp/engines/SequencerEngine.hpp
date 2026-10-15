@@ -262,7 +262,7 @@ struct SequencerEngine {
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
             laneTick_[s] = 0; laneSign_[s] = 1; lanePingPongHold_[s] = false;
             macroLaneTick_[s] = 0; macroLaneSign_[s] = 1; macroPingPongHold_[s] = false;
-            for (int v = 0; v < 15; ++v) {
+            for (int v = 0; v < 16; ++v) {
                 laneTickV_[v][s] = 0; laneSignV_[v][s] = 1; lanePingPongHoldV_[v][s] = false;
             }
         }
@@ -285,20 +285,20 @@ struct SequencerEngine {
     // mono's lane are both Forward → no-op until something is reversed.
     // laneSignVPending_ is promoted to laneSignV_ at the same boundary as mono's (laneFlipQuant),
     // so a per-voice flip also takes effect musically (no jump).
-    int laneTickV_[15][dotModular::NUM_STRANDS]        = {};
-    int laneSignV_[15][dotModular::NUM_STRANDS]        = {};   // default 0 → treated as +1 (see polyLaneSign)
-    int laneSignVPending_[15][dotModular::NUM_STRANDS] = {};
-    LaneDir laneDirV_[15][dotModular::NUM_STRANDS]        = {};   // per-voice direction (default Forward)
-    LaneDir laneDirVPending_[15][dotModular::NUM_STRANDS] = {};
-    bool lanePingPongHoldV_[15][dotModular::NUM_STRANDS] = {};   // per-voice ping-pong hold flag
+    int laneTickV_[16][dotModular::NUM_STRANDS]        = {};
+    int laneSignV_[16][dotModular::NUM_STRANDS]        = {};   // default 0 → treated as +1 (see polyLaneSign)
+    int laneSignVPending_[16][dotModular::NUM_STRANDS] = {};
+    LaneDir laneDirV_[16][dotModular::NUM_STRANDS]        = {};   // per-voice direction (default Forward)
+    LaneDir laneDirVPending_[16][dotModular::NUM_STRANDS] = {};
+    bool lanePingPongHoldV_[16][dotModular::NUM_STRANDS] = {};   // per-voice ping-pong hold flag
     // Effective per-voice sign for a strand: +1 if laneSignV_ is 0 (default/unset → follow mono) or
     // positive, -1 if negative. Multiplied with mono's laneSign_ in advancePlayhead.
     int polyLaneSign(int bank, int strand) const {
-        if (bank < 0 || bank >= 15) return 1;
+        if (bank < 0 || bank >= 16) return 1;
         return (laneSignV_[bank][strand] < 0) ? -1 : +1;
     }
     int polyLaneSignPending(int bank, int strand) const {
-        if (bank < 0 || bank >= 15) return 1;
+        if (bank < 0 || bank >= 16) return 1;
         return (laneSignVPending_[bank][strand] < 0) ? -1 : +1;
     }
     // Derive sign (+1/-1) from a LaneDir state.
@@ -315,13 +315,13 @@ struct SequencerEngine {
 
     bool hadMonoTail = false;
     bool wasHeldMono = false; // Capture mono state before tick() for start-detection
-    bool hadPolyTail[15] = {};
+    bool hadPolyTail[16] = {};
     // Ghost (subGate_ghost): true while a ghost note is sustaining — set when a ghost candidate
     // (variation-gated) plays, cleared when it rests/fails or a main/ratchet onset takes over.
     // The module-layer IMPL 2b reads this (&& ghostHigh) so the gate only opens for a ghost that
     // actually fired, not merely because Gate 3 is high (variation=0 -> no ghost).
     bool ghostActive = false;
-    bool wasHeldPolyPrev[15] = {}; // Capture poly state before tick()
+    bool wasHeldPolyPrev[16] = {}; // Capture poly state before tick()
 
     // ── Mono (V1) strand windowing: Length (1..16), Offset (0..15), Rotation ──
     // Step 1 of the probability-modifier unification (docs/design/PROBABILITY_MODIFIER_MODEL.md):
@@ -350,8 +350,8 @@ struct SequencerEngine {
     static int strandClamp(int s) { return (s >= 0 && s < dotModular::NUM_STRANDS) ? s : dotModular::STRAND_RHYTHM; }
 
     // Lane-index unification: PL_* now matches the VISUAL/EDITOR/STRAND order
-    // (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6). Editor==engine==strand →
-    // the EDITOR_TO_ENGINE_LANE_QMIX conversion is now identity (deleted below).
+    // (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6). Editor==engine==strand —
+    // the old EDITOR_TO_ENGINE_LANE_QMIX table is deleted (Phase 3b, identity).
     // Streams: MELODY=0..1, QMIX=2, RHYTHM=3..6 (stream-contiguous).
     enum PolyLane { PL_MELODY = 0, PL_OCTAVE = 1, PL_QMIX = 2, PL_REST = 3, PL_ACCENT = 4, PL_VARIATION = 5, PL_LEGATO = 6, PL_LANES = 7 };
 
@@ -373,13 +373,13 @@ struct SequencerEngine {
     // bank 0..14 = V2..V16, lane 0 = VAR, 1 = LEG. Zero-init = all-delegate = follow mono,
     // which is also the correct fallback when East is absent (nothing sets Local East).
     // Pushed each cycle by MonsoonExpanderManager from the East delegation params.
-    bool varlegLocalEast_[15][2] = {};
+    bool varlegLocalEast_[16][2] = {};
     void setVarlegLocalEast(int bank, int lane, bool localEast) {
-        if (bank >= 0 && bank < 15 && lane >= 0 && lane < 2) varlegLocalEast_[bank][lane] = localEast;
+        if (bank >= 0 && bank < 16 && lane >= 0 && lane < 2) varlegLocalEast_[bank][lane] = localEast;
     }
     // VAR = lane 0, LEG = lane 1.
     bool varlegDelegated(int bank, int lane) const {
-        return !(bank >= 0 && bank < 15 && lane >= 0 && lane < 2 && varlegLocalEast_[bank][lane]);
+        return !(bank >= 0 && bank < 16 && lane >= 0 && lane < 2 && varlegLocalEast_[bank][lane]);
     }
 
     // Per-voice VARIATION step — mono's getStrandIdx transform, driven by THIS voice's LOR window.
@@ -398,30 +398,29 @@ struct SequencerEngine {
 
     // The single engine→editor lane conversion. The modifier stores (lorStore_, spread) are editor-
     // ordered; every accessor that takes an engine PL_ lane converts through HERE — one definition.
-    // engLane is a POLY lane: PL_REST/PL_MELODY/PL_OCTAVE/PL_ACCENT/PL_QMIX = 0..4 (PL_LANES == 5).
-    // Uses the QMIX-aware table so PL_QMIX(4) → editor 2 explicitly (the old `& 3` formula aliased
-    // 4→0 and only landed on editor 2 by coincidence). VARIATION/LEGATO are mono strands, NOT poly
-    // lanes, so they have no engine-order id; for their per-voice LOR use the EDITOR-order accessors
-    // polyLOR/polyLORRef (they mask & 7 and index lorStore_ directly). See EAST_EXTRA_LANES.md.
+    // engLane is a POLY lane 0..6 (PL_LANES == 7).
     // Lane-index unification: editor == engine (PL_* reordered to visual/strand order).
     // editorLane() is now IDENTITY — kept for call-site readability, no longer permutes.
+    // (Historically the two orders differed and the old & 3 formula aliased PL_QMIX 4→0; the
+    // conversion tables were deleted in Phase 3b. For per-voice LOR the EDITOR-order accessors
+    // polyLOR/polyLORRef mask & 7 and index lorStore_ directly.) See EAST_EXTRA_LANES.md.
     static int editorLane(int engLane) {
         return (engLane >= 0 && engLane < 7) ? engLane : 0;
     }
 
     // Editor-order poly accessors: bank b → slot b+1, editorLane indexes the unified array directly
     // (storage IS editor order now — no permutation).
-    int& polyLORRef(int bank, int editorLane, int item) { return lorStore_[bank + 1][editorLane & 7][item]; }
-    int  polyLOR   (int bank, int editorLane, int item) const { return lorStore_[bank + 1][editorLane & 7][item]; }
+    int& polyLORRef(int bank, int editorLane, int item) { return lorStore_[bank][editorLane & 7][item]; }
+    int  polyLOR   (int bank, int editorLane, int item) const { return lorStore_[bank][editorLane & 7][item]; }
 
     // Engine-order poly accessors: bank b → slot b+1; the engine PL_ lane converts to editor lane
-    // via ENGINE_LANE_TO_EDITOR HERE — the single storage boundary that absorbs the permutation.
-    int& polyLenERef(int bank, int engLane) { return lorStore_[bank + 1][editorLane(engLane)][LOR_LEN]; }
-    int& polyOffERef(int bank, int engLane) { return lorStore_[bank + 1][editorLane(engLane)][LOR_OFF]; }
-    int& polyRotERef(int bank, int engLane) { return lorStore_[bank + 1][editorLane(engLane)][LOR_ROT]; }
-    int  polyLenE(int bank, int engLane) const { return lorStore_[bank + 1][editorLane(engLane)][LOR_LEN]; }
-    int  polyOffE(int bank, int engLane) const { return lorStore_[bank + 1][editorLane(engLane)][LOR_OFF]; }
-    int  polyRotE(int bank, int engLane) const { return lorStore_[bank + 1][editorLane(engLane)][LOR_ROT]; }
+    // via editorLane() HERE — the single storage boundary (identity since lane-index unification).
+    int& polyLenERef(int bank, int engLane) { return lorStore_[bank][editorLane(engLane)][LOR_LEN]; }
+    int& polyOffERef(int bank, int engLane) { return lorStore_[bank][editorLane(engLane)][LOR_OFF]; }
+    int& polyRotERef(int bank, int engLane) { return lorStore_[bank][editorLane(engLane)][LOR_ROT]; }
+    int  polyLenE(int bank, int engLane) const { return lorStore_[bank][editorLane(engLane)][LOR_LEN]; }
+    int  polyOffE(int bank, int engLane) const { return lorStore_[bank][editorLane(engLane)][LOR_OFF]; }
+    int  polyRotE(int bank, int engLane) const { return lorStore_[bank][editorLane(engLane)][LOR_ROT]; }
 
     // ── Spread: the 4th probability modifier, now ENGINE STATE (MVC: was on the Mono visual, which the
     // engine reached into for the draws — model reading from view. Now the model owns it). Stored in the
@@ -438,14 +437,14 @@ struct SequencerEngine {
 
 
     // Indexable strand accessors keyed by dotModular::EngineStrand order
-    // (0 rhythm, 1 variation, 2 legato, 3 accent, 4 melody, 5 octave). These let
-    // callers go editor-lane → strand (via MONO_LANE_TO_STRAND) → value without
-    // hardcoding the permutation. Single source of truth for strand indexing.
+    // (0 MEL, 1 OCT, 2 QMIX, 3 RHYTHM/REST, 4 ACC, 5 VAR, 6 LEG — editor-aligned).
+    // Editor lane == strand index (identity), so callers pass the lane directly.
+    // Single source of truth for strand indexing.
     // Strand LOR readers/writers, now backed by monoLOR[strand][item] (one array, no switches).
     // Out-of-range semantics preserved EXACTLY from the previous 6 switches:
     //   readers  → literal fallback (LEN 16, OFF 0, ROT 0) for an invalid strand;
     //   writers  → the rhythm cell (strandClamp maps invalid → STRAND_RHYTHM), so an out-of-range
-    //              write lands on rhythm just as the old `default: return rhythmLen/Off/Rot` did.
+    //              write lands on rhythm just as the old default: return rhythmLen/Off/Rot did.
     int strandLen(int strand) const {
         return (strand >= 0 && strand < dotModular::NUM_STRANDS) ? lor(strand, LOR_LEN) : 16;
     }
@@ -525,7 +524,7 @@ struct SequencerEngine {
     bool locked = false;
     // Lock SCOPE bitmask (LOCK_SCOPE_MENU.md). Set bit = that generative group is kept LIVE under
     // lock (opted out of the freeze). 0 = whole-module lock (every LATCH frozen) = pre-menu default.
-    // Lives beside `locked` because the static LockManager::liveNow call sites already read
+    // Lives beside locked because the static LockManager::liveNow call sites already read
     // engine.locked; they pass engine.scopeLiveMask alongside. Persisted by PersistenceManager.
     uint32_t scopeLiveMask = 0;
 
@@ -534,7 +533,7 @@ struct SequencerEngine {
     // pre-spread), so every read here is a PLAIN own-bank read — a pinned voice's
     // borrowed draw already carries the consumer's own spread. No read-time indirection.
     inline const float (&polyRandomSrc(int voiceIdx, int polyLane) const)[16] {
-        return pe.polyRandom(voiceIdx + 1, polyLane);
+        return pe.polyRandom(voiceIdx, polyLane);
     }
     // Stage 2a: refresh ONE cell of polyRandom at step advance, using the cached spread
     // value from the last control-rate sync(). Checks the lane's lock axis; if not live,
@@ -586,7 +585,7 @@ struct SequencerEngine {
     float quantiserCV[16] = {};
 
     // The sounding pitch for a voice at its onset: quantised external CV in quantiser mode, else the
-    // internal draw via genPitchLive. `voiceIdx` 0..15 (0 = mono/voice-0). outSem = the sounding degree
+    // internal draw via genPitchLive. voiceIdx 0..15 (0 = mono/voice-0). outSem = the sounding degree
     // (for flash LEDs). r_semi/r_oct = the voice's melody/octave draws (used only in the internal path).
     //
     // QMIX per-step source-select (mono/voice-0 only): when quantiserPitchSource is set AND
@@ -656,7 +655,7 @@ struct SequencerEngine {
     // (0=REST→rhythm, 1=MEL→melody, 2=OCT→octave), at that voice's own LOR step.
     // 0..1. Used to assemble the poly probability cables (channels 2..1+nVoices).
     inline float polyLaneProbability(int polyLane, int voice) const {
-        if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return 0.f;
+        if (voice < 0 || voice >= 16 || polyLane < 0 || polyLane >= PL_LANES) return 0.f;
         // Follow this voice's own lane position, not the raw global tick: a reversed lane's
         // notes come from polyLaneTick, so its probability CV must too or the CV reports a
         // different cell than the one being played (they silently disagreed before).
@@ -672,14 +671,14 @@ struct SequencerEngine {
     // draw at MACRO's own global LOR step — independent of East/ownership. East instead
     // uses polyLaneProbability (resolved per-voice step). 0..1.
     inline float polyLaneProbabilityAtStep(int polyLane, int voice, int step) const {
-        if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return 0.f;
+        if (voice < 0 || voice >= 16 || polyLane < 0 || polyLane >= PL_LANES) return 0.f;
         step &= 0x0F;
         return polyRandomSrc(voice, polyLane)[step];   // through the Change Alley remap
     }
 
     // Step indices (for S&H edge detection) matching the probability accessors above.
     inline int polyLaneStep(int polyLane, int voice) const {
-        if (voice < 0 || voice >= 15 || polyLane < 0 || polyLane >= PL_LANES) return -1;
+        if (voice < 0 || voice >= 16 || polyLane < 0 || polyLane >= PL_LANES) return -1;
         return getStrandIdx(polyLaneTick(voice, polyLane), polyLenE(voice, polyLane),
                             polyOffE(voice, polyLane), polyRotE(voice, polyLane)) & 0x0F;
     }
@@ -701,7 +700,7 @@ struct SequencerEngine {
     // Forward — a voice does NOT inherit mono's reversal. Out-of-range bank falls back to mono's tick.
     int polyLaneTick(int bank, int polyLane) const {
         int strand = polyLaneStrand(polyLane);
-        return (bank >= 0 && bank < 15) ? laneTickV_[bank][strand] : laneTick_[strand];
+        return (bank >= 0 && bank < 16) ? laneTickV_[bank][strand] : laneTick_[strand];
     }
     // Per-voice effective sign for an engine poly lane — ABSOLUTE (the voice's own sign,
     // not relative to mono). +1 = forward (default); -1 = reversed. Used by the visual
@@ -742,15 +741,15 @@ struct SequencerEngine {
     // from a stale held gate. Also latches the count for this step (prevNumPolyVoices_).
     void resetActivatedPolyVoices_() {
         if (numPolyVoices > prevNumPolyVoices_) {
-            for (int i = prevNumPolyVoices_; i < numPolyVoices && i < 15; ++i) {
-                voices[i + 1].gs.gateHeld = false;
-                voices[i + 1].gs.holdRemain = 0.f;
-                voices[i + 1].gs.slurForward = false;
-                voices[i + 1].gs.gatePulseRemain = -1;
-                voices[i + 1].gsStep.gateHeld = false;
-                voices[i + 1].gsStep.holdRemain = 0.f;
-                voices[i + 1].gsStep.gatePulseRemain = -1;
-                voices[i + 1].participating = false;
+            for (int i = prevNumPolyVoices_ + 1; i <= numPolyVoices && i < 16; ++i) {
+                voices[i].gs.gateHeld = false;
+                voices[i].gs.holdRemain = 0.f;
+                voices[i].gs.slurForward = false;
+                voices[i].gs.gatePulseRemain = -1;
+                voices[i].gsStep.gateHeld = false;
+                voices[i].gsStep.holdRemain = 0.f;
+                voices[i].gsStep.gatePulseRemain = -1;
+                voices[i].participating = false;
             }
         }
         pe.syncPolyVoiceCount();  // Voice-count opt: fill delta voices' z in cache on increase
@@ -782,7 +781,7 @@ struct SequencerEngine {
 
     // ── Poly voice execution ──────────────────────────────────────────────────
     // Call executePolyVoices() after any stepped executeModeA/B call.
-    // voices[i + 1].restProb must be set by the caller before invoking.
+    // voices[voiceSlot].restProb must be set by the caller before invoking.
     void executePolyVoice(int voiceIdx, const PatternInput& input, bool wasHeld, bool hadTail);
     void executePolyVoices(const PatternInput& input);
 };

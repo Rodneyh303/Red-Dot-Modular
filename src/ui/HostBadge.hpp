@@ -80,8 +80,8 @@ struct HostBadge : rack::widget::Widget {
     }
 };
 
-// Build a HostBadge sized to `sizePx` (square) centred on panel coordinate `center`, reading the host
-// pairId via the supplied getter. `primaryFn` defaults to always-primary (non-shareable modules); CA
+// Build a HostBadge sized to sizePx (square) centred on panel coordinate center, reading the host
+// pairId via the supplied getter. primaryFn defaults to always-primary (non-shareable modules); CA
 // passes a real primary predicate. lightThemeFn matches the panel theme swap.
 inline HostBadge* makeHostBadge(rack::math::Vec center, float sizePx,
                                 std::function<int()> hostPairIdFn,

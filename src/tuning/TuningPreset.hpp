@@ -48,7 +48,7 @@ struct TuningPreset {
     bool ok() const { return status == Status::Ok; }
 };
 
-// Save the given preset to `filePath` as .dmtune JSON. Returns true on success. `acceptFn` is not
+// Save the given preset to filePath as .dmtune JSON. Returns true on success. acceptFn is not
 // needed on write (the caller owns n). UI thread only.
 inline bool saveTuningPreset(const std::string& filePath, const TuningPreset& p) {
     json_t* root = json_object();
@@ -73,7 +73,7 @@ inline bool saveTuningPreset(const std::string& filePath, const TuningPreset& p)
     return rc == 0;
 }
 
-// Load a .dmtune from `filePath`. `acceptFn(n)` (optional) lets the caller reject a mismatched degree
+// Load a .dmtune from filePath. acceptFn(n) (optional) lets the caller reject a mismatched degree
 // count (e.g. a Micro-12 accepts only n==12). UI thread only.
 inline TuningPreset loadTuningPreset(
     const std::string& filePath,

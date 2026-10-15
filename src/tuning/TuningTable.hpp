@@ -35,7 +35,7 @@ struct TuningTable {
     // byte-identical. Defaults all-true so a fresh table behaves exactly as before.
     bool  enabled[MAXN];
 
-    // TRUE => genPitchLive uses the EXACT legacy `(sem + transpose)/12` path (bit-identical to the
+    // TRUE => genPitchLive uses the EXACT legacy (sem + transpose)/12 path (bit-identical to the
     // pre-refactor engine). Flips to FALSE only when a tuning-authoring expander publishes non-default
     // cents (Step F). Guarantees the Step-B refactor is a provable no-op at 12-TET.
     bool  isDefault12TET = true;
@@ -70,10 +70,10 @@ struct TuningTable {
         return cents[d] * (1.f / 1200.f);
     }
 
-    // Degree (0..N-1) whose within-octave voltage is closest to `frac` (a 0..1 within-octave value =
+    // Degree (0..N-1) whose within-octave voltage is closest to frac (a 0..1 within-octave value =
     // pitch minus its octave). Used by Mode C/D to name the sounding degree for the flash LEDs under a
-    // custom tuning (where the 12-TET `round(frac*12)` is wrong). At the 12-TET default the caller uses
-    // the legacy `round(frac*12)%12` instead — this is only invoked when isDefault12TET is false.
+    // custom tuning (where the 12-TET round(frac*12) is wrong). At the 12-TET default the caller uses
+    // the legacy round(frac*12)%12 instead — this is only invoked when isDefault12TET is false.
     inline int nearestDegree(float frac) const {
         int best = 0; float bestD = 1e9f;
         for (int i = 0; i < N; ++i) {

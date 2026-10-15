@@ -10,7 +10,7 @@
 // It knows nothing about .dmtune JSON (that's TuningPreset, jansson-backed) — a slot just holds the
 // already-decoded cents/weight/name. The module layer decodes a .dmtune into a slot via loadSlot().
 //
-// 12/24 MODE (SHOPHOUSE_MICRO_SPEC §66): the list carries an explicit degree count `n_` (12 or 24);
+// 12/24 MODE (SHOPHOUSE_MICRO_SPEC §66): the list carries an explicit degree count n_ (12 or 24);
 // every loaded slot must match it. loadSlot() rejects a mismatched n so a mixed-N slot set is
 // impossible. Front COUNT is caller-chosen (4 at 12, 2 at 24) via resize().
 //
@@ -61,7 +61,7 @@ public:
     }
 
     // ── Slot loading (by the module after decoding a .dmtune) ─────────────────────────────────────
-    // ROUND 10 full model: a front's degree count `n` may be ANY value in 1..capacity — slots may differ
+    // ROUND 10 full model: a front's degree count n may be ANY value in 1..capacity — slots may differ
     // (the old all-fronts-same-n rejection is DROPPED). Only bound is the capacity (n_). If UNATTACHED
     // and adoptModeIfEmpty, the first load can BUMP the capacity/mode up (e.g. a 24-degree file adopts
     // 24-mode) — but never rejects an n <= capacity. Stores the front's own n for the scene-drive.

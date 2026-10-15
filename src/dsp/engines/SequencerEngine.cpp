@@ -77,9 +77,9 @@ void SequencerEngine::reset() {
     pe.reset();
     gs.reset();
     gsStep.reset();
-    for (int i = 0; i < 15; ++i) { voices[i + 1].gs.reset(); voices[i + 1].gsStep.reset(); }
+    for (int i = 1; i < 16; ++i) { voices[i].gs.reset(); voices[i].gsStep.reset(); }
     // restProb values are NOT reset — the caller re-applies them from expander knobs.
-    for (int i = 0; i < 15; i++) wasHeldPolyPrev[i] = false;
+    for (int i = 0; i < 16; i++) wasHeldPolyPrev[i] = false;
     lastStepResult = StepResult{};
     stepIndex = -1;
     lastStepIndex = -1;
@@ -103,7 +103,7 @@ void SequencerEngine::reset() {
         macroLaneSign_[s] = 1;
         macroLaneDir_[s] = LaneDir::Forward;
         macroPingPongHold_[s] = false;
-        for (int v = 0; v < numPolyVoices; ++v) {
+        for (int v = 1; v <= numPolyVoices; ++v) {
             laneTickV_[v][s] = 0;   // per-voice tick: reset (inherits mono dir)
             laneSignV_[v][s] = 1;   // CRITICAL: must be +1, not 0 — -0 == 0 in integer
                                     // arithmetic, so a bounce flip on 0 is a no-op (the
@@ -114,7 +114,7 @@ void SequencerEngine::reset() {
             lanePingPongHoldV_[v][s] = false;
         }
     }
-    for (int i = 0; i < 15; i++) {
+    for (int i = 1; i < 16; i++) {
         for (int l = 0; l < PL_LANES; ++l) {   // was l < 3 — PL_ACCENT(3) was never reset (pre-existing bug)
             polyLenERef(i, l) = 16;
             polyOffERef(i, l) = 0;
@@ -177,7 +177,7 @@ bool SequencerEngine::advancePlayhead(int dir) {
     // an accumulator that can drift away from the DNA clock. See laneTickFor().
     // Promote pending direction at the step edge -- BUT NOT while locked. Direction is LATCH
     // (LOCK_SEMANTICS §9): a direction change made under lock must freeze and take effect at
-    // unlock, not commit at the next step edge. `locked` is this engine's live lock (aliased as
+    // unlock, not commit at the next step edge. locked is this engine's live lock (aliased as
     // Monsoon::locked, toggled by the user). Gating here staged-promotes: pending holds the new
     // dir, and the first unlocked step edge commits it.
     // SCOPE (LOCK_SCOPE_MENU): a strand promotes under lock IF its Sands scope bit is set (direction
@@ -186,7 +186,7 @@ bool SequencerEngine::advancePlayhead(int dir) {
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             if (!dirLive_(l)) continue;   // this strand's direction stays latched
             laneDir_[l] = laneDirPending_[l];
-            for (int v = 0; v < numPolyVoices; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
+            for (int v = 1; v <= numPolyVoices; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
         }
     }
 
@@ -245,14 +245,14 @@ bool SequencerEngine::advancePlayhead(int dir) {
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             const int len = std::max(1, strandLen(l));   // mono strand length (mono tick)
             recomp(laneDir_[l], len, laneTick_[l], laneSign_[l]);
-            for (int v = 0; v < numPolyVoices; ++v) {
+            for (int v = 1; v <= numPolyVoices; ++v) {
                 const int vlen = std::max(1, polyStrandLen(v, l));   // THIS voice's LOR length
                 recomp(laneDirV_[v][l], vlen, laneTickV_[v][l], laneSignV_[v][l]);
             }
         }
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             // macroLOR_ is EDITOR-lane indexed for the POLY lanes (0..4 = MEL/OCT/QMIX/REST/ACC);
-            // VAR/LEG (5/6) have no global LOR, so they use the mono strandLen. The bound was `< 4`,
+            // VAR/LEG (5/6) have no global LOR, so they use the mono strandLen. The bound was < 4,
             // which both DROPPED ACCENT (strand 4, a real poly lane) and would have dropped q-mix's
             // macroLOR had the strands not been editor-aligned — use POLY_LANE_COUNT so every poly
             // lane (incl. q-mix + accent) reads its Macro length.
@@ -303,7 +303,7 @@ bool SequencerEngine::advancePlayhead(int dir) {
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             if (!dirLive_(l)) continue;
             laneDir_[l] = laneDirPending_[l];
-            for (int v = 0; v < numPolyVoices; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
+            for (int v = 1; v <= numPolyVoices; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
         }
 
     return wrapped;
@@ -339,7 +339,7 @@ void SequencerEngine::recomputeLaneTicks() {
     for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
         const int len = std::max(1, strandLen(l));
         recomp(laneDir_[l], len, laneTick_[l], laneSign_[l]);
-        for (int v = 0; v < numPolyVoices; ++v) {
+        for (int v = 1; v <= numPolyVoices; ++v) {
             const int vlen = std::max(1, polyStrandLen(v, l));
             recomp(laneDirV_[v][l], vlen, laneTickV_[v][l], laneSignV_[v][l]);
         }
@@ -738,12 +738,12 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float noteVal
         gs.holdRemain = 0.f;
         gs.slurForward = false;
         gsStep.gateHeld = false; gsStep.holdRemain = 0.f;      // STEP: stop with the fused gate
-        for (int i = 0; i < numPolyVoices; ++i) {
-            voices[i + 1].gs.gateHeld   = false;
-            voices[i + 1].gs.holdRemain = 0.f;
-            voices[i + 1].gs.slurForward = false;
-            voices[i + 1].participating = false;
-            voices[i + 1].gsStep.gateHeld = false; voices[i + 1].gsStep.holdRemain = 0.f;
+        for (int i = 1; i <= numPolyVoices; ++i) {
+            voices[i].gs.gateHeld   = false;
+            voices[i].gs.holdRemain = 0.f;
+            voices[i].gs.slurForward = false;
+            voices[i].participating = false;
+            voices[i].gsStep.gateHeld = false; voices[i].gsStep.holdRemain = 0.f;
         }
     }
 
@@ -761,11 +761,11 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float noteVal
     gsStep.tick(ClockEngine::pulsesPer16th(ppqnSetting));
     hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
-    for (int i = 0; i < numPolyVoices; ++i) {
-        wasHeldPolyPrev[i] = voices[i + 1].gs.gateHeld || (voices[i + 1].gs.holdRemain > 0.0001f);
-        float ph = voices[i + 1].gs.holdRemain;
-        voices[i + 1].gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
-        voices[i + 1].gsStep.tick(ClockEngine::pulsesPer16th(ppqnSetting));
+    for (int i = 1; i <= numPolyVoices; ++i) {
+        wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
+        float ph = voices[i].gs.holdRemain;
+        voices[i].gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
+        voices[i].gsStep.tick(ClockEngine::pulsesPer16th(ppqnSetting));
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
     
@@ -838,10 +838,10 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
         if (wrapped && boundaryInterrupt) {
             gs.gateHeld = false; gs.holdRemain = 0.f; gs.slurForward = false;
             gsStep.gateHeld = false; gsStep.holdRemain = 0.f;      // STEP: stop with the fused gate
-            for (int i = 0; i < numPolyVoices; ++i) {
-                voices[i + 1].gs.gateHeld = false; voices[i + 1].gs.holdRemain = 0.f;
-                voices[i + 1].gs.slurForward = false; voices[i + 1].participating = false;
-                voices[i + 1].gsStep.gateHeld = false; voices[i + 1].gsStep.holdRemain = 0.f;
+            for (int i = 1; i <= numPolyVoices; ++i) {
+                voices[i].gs.gateHeld = false; voices[i].gs.holdRemain = 0.f;
+                voices[i].gs.slurForward = false; voices[i].participating = false;
+                voices[i].gsStep.gateHeld = false; voices[i].gsStep.holdRemain = 0.f;
             }
         }
         float r_vary   = pe.polyRandom(0, PL_VARIATION)[getVariationStep()];
@@ -867,11 +867,11 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
         gsStep.tick();
         hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
-        for (int i = 0; i < numPolyVoices; ++i) {
-            wasHeldPolyPrev[i] = voices[i + 1].gs.gateHeld || (voices[i + 1].gs.holdRemain > 0.0001f);
-            float ph = voices[i + 1].gs.holdRemain;
-            voices[i + 1].gs.tick();
-            voices[i + 1].gsStep.tick();
+        for (int i = 1; i <= numPolyVoices; ++i) {
+            wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
+            float ph = voices[i].gs.holdRemain;
+            voices[i].gs.tick();
+            voices[i].gsStep.tick();
             hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
         }
 
@@ -937,10 +937,10 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     if (wrapped && boundaryInterrupt) {
         gs.gateHeld = false; gs.holdRemain = 0.f; gs.slurForward = false;
         gsStep.gateHeld = false; gsStep.holdRemain = 0.f;
-        for (int i = 0; i < numPolyVoices; ++i) {
-            voices[i + 1].gs.gateHeld = false; voices[i + 1].gs.holdRemain = 0.f;
-            voices[i + 1].gs.slurForward = false; voices[i + 1].participating = false;
-            voices[i + 1].gsStep.gateHeld = false; voices[i + 1].gsStep.holdRemain = 0.f;
+        for (int i = 1; i <= numPolyVoices; ++i) {
+            voices[i].gs.gateHeld = false; voices[i].gs.holdRemain = 0.f;
+            voices[i].gs.slurForward = false; voices[i].participating = false;
+            voices[i].gsStep.gateHeld = false; voices[i].gsStep.holdRemain = 0.f;
         }
     }
 
@@ -959,11 +959,11 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     gsStep.tick();
     hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
-    for (int i = 0; i < numPolyVoices; ++i) {
-        wasHeldPolyPrev[i] = voices[i + 1].gs.gateHeld || (voices[i + 1].gs.holdRemain > 0.0001f);
-        float ph = voices[i + 1].gs.holdRemain;
-        voices[i + 1].gs.tick();
-        voices[i + 1].gsStep.tick();
+    for (int i = 1; i <= numPolyVoices; ++i) {
+        wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
+        float ph = voices[i].gs.holdRemain;
+        voices[i].gs.tick();
+        voices[i].gsStep.tick();
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
 
@@ -1040,13 +1040,13 @@ void SequencerEngine::refreshPolyRandomCell(int voice, int engLane, int step) {
         default: return;
     }
     if (!pe.cachedSpreadInitialized || !live) return;   // not yet cached or frozen — leave existing value
-    pe.polyRandom(voice + 1, engLane)[step & 0x0F] =
+    pe.polyRandom(voice, engLane)[step & 0x0F] =
         redDot::SpreadInterp::applyPoly(pe, engLane, voice, step & 0x0F,
                                         pe.cachedPolySpread[voice][engLane]);
 }
 
 void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, bool wasHeldPoly, bool hadPolyTail) {
-    PolyVoice& v = voices[voiceIdx + 1];
+    PolyVoice& v = voices[voiceIdx];
     // Stage 2a: refresh VARIATION cell before nvIdxForVoice reads it (nvIdxForVoice
     // reads polyRandomSrc at the voice's variation step to pick the note length).
     refreshPolyRandomCell(voiceIdx, PL_VARIATION, getVariationStepForVoice(voiceIdx) & 0x0F);
@@ -1131,10 +1131,12 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice >= v.qmixLevel);
         const bool isQuant = quantiserPitchSource && !qmixUseGenerated;   // FADER_SEQ_QUANT_COLOURS (green flash)
         // QUANTISER (Q1): this voice's pitch = quantised external CV (its own channel) in quantiser
-        // mode, else the internal melody+octave draw. voices[voiceIdx + 1] is ENGINE voice voiceIdx+1
-        // (voice 0 is the mono/executeStep path), so read quantiserCV[voiceIdx+1]. When
-        // qmixUseGenerated, forceGenerated pushes voicePitch through genPitchLive (mode-A pitch).
-        float pitchV = voicePitch(voiceIdx + 1, sem, input,
+        // mode, else the internal melody+octave draw. voiceIdx is the voiceSlot (1..15 = V2..V16;
+        // slot 0 = the mono/executeStep path). voicePitch reads quantiserCV[slot] DIRECTLY — no +1
+        // (an older comment here described a pre-unification quantiserCV[voiceIdx+1] that no longer
+        // exists in the code). When qmixUseGenerated, forceGenerated pushes voicePitch through
+        // genPitchLive (mode-A pitch).
+        float pitchV = voicePitch(voiceIdx, sem, input,
                                   (refreshPolyRandomCell(voiceIdx, PL_MELODY, melIdx), polyRandomSrc(voiceIdx, PL_MELODY)[melIdx]),
                                   (refreshPolyRandomCell(voiceIdx, PL_OCTAVE, octIdx), polyRandomSrc(voiceIdx, PL_OCTAVE)[octIdx]),
                                   qmixUseGenerated);
@@ -1320,7 +1322,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
 }
 
 void SequencerEngine::executePolyVoices(const PatternInput& input) {
-    for (int i = 0; i < numPolyVoices; ++i) {
+    for (int i = 1; i <= numPolyVoices; ++i) {
         // Use the state from BEFORE the tick to decide if we were active.
         // This ensures that if a note ended exactly at the boundary, 
         // we still consider it "active" for slaving to a continuing mono gate.
@@ -1356,7 +1358,7 @@ float SequencerEngine::quantize(float vIn) {
     float bestV = vIn;
 
     // Within-octave voltage of a cached ACTIVE degree. At the 12-TET default (isDefault12TET) this is
-    // the EXACT legacy `s/12` (byte-identical — the whole Mode C/D quantizer is unchanged for N=12,
+    // the EXACT legacy s/12 (byte-identical — the whole Mode C/D quantizer is unchanged for N=12,
     // any Sikit-at-default, and Monsoon standalone). Under a custom tuning (Micro publishing non-
     // default cents, or a Micro-24) it becomes the table's degreeVolts(s) so quantize snaps to the
     // ACTUAL tuning degrees, not 12-TET semitone slots.
@@ -1426,7 +1428,7 @@ int SequencerEngine::getLegatoStepForVoice(int bank) const {
 }
 
 int SequencerEngine::nvIdxForVoice(int bank, const PatternInput& input) const {
-    if (bank < 0 || bank >= 15) return lastStepResult.nvIdx;
+    if (bank < 1 || bank >= 16) return lastStepResult.nvIdx;
     // The probability array stays MONO (one shared shape); only the reading position is per-voice.
     const int idx = getVariationStepForVoice(bank) & 0x0F;
     const float r = polyRandomSrc(bank, PL_VARIATION)[idx];

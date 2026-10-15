@@ -34,10 +34,10 @@ int main() {
     // PER-VOICE VAR draws (the f9c4189 model): each voice has its own 16-step draw in
     // polyRandom(bank, PL_VARIATION). Seed a distinct, voice-dependent shape so a delegated
     // voice (mono step + own draw) is provably different from mono and from other voices.
-    for (int v = 0; v < 15; ++v)
+    for (int v = 1; v < 16; ++v)
         for (int i = 0; i < 16; ++i)
-            e.pe.polyRandom(v + 1, SequencerEngine::PL_VARIATION)[i] =
-                (float)(((i * 7 + 3) + (v + 1) * 13) % 16) / 16.f;
+            e.pe.polyRandom(v, SequencerEngine::PL_VARIATION)[i] =
+                (float)(((i * 7 + 3) + v * 13) % 16) / 16.f;
 
     e.lastNoteVal_ = 4.f;   // NOTE_VALUE = 1/8
 
@@ -45,7 +45,7 @@ int main() {
     // draw at mono's step, then clamp to the mono event grid (a voice may release early, never
     // hold past mono's next note — NOTE_VALUES is slowest->fastest, so max() picks the shorter).
     auto expectedDelegated = [&](int v, int monoIdx)->int {
-        float rVoice = e.pe.polyRandom(v + 1, SequencerEngine::PL_VARIATION)[monoIdx];
+        float rVoice = e.pe.polyRandom(v, SequencerEngine::PL_VARIATION)[monoIdx];
         int nv = e.getNoteLenIdx(e.lastNoteVal_, in, rVoice);
         return (nv > e.lastStepResult.nvIdx) ? nv : e.lastStepResult.nvIdx;
     };
@@ -56,7 +56,7 @@ int main() {
         e.laneTick_[dotModular::STRAND_VARIATION] = step;   // advance mono's VAR tick so getVariationStep() matches
         int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
         e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
-        for (int v = 0; v < 15; ++v)
+        for (int v = 1; v < 16; ++v)
             check(e.nvIdxForVoice(v, in) == expectedDelegated(v, monoIdx),
                   "delegated -> voice's own draw at mono step, clamped");
     }
@@ -68,16 +68,16 @@ int main() {
         e.laneTick_[dotModular::STRAND_VARIATION] = step;
         int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
         e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
-        for (int v = 0; v < 15; ++v)
+        for (int v = 1; v < 16; ++v)
             check(e.nvIdxForVoice(v, in) == expectedDelegated(v, monoIdx),
                   "identity LOR -> mono step, own draw, clamped");
     }
 
     // ── 3. per-voice LOR windows: delegation default, then divergence + clamp ──
-    e.polyLORRef(1, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_LEN) = 6;   // V3
-    e.polyLORRef(2, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_LEN) = 12;  // V4
-    e.polyLORRef(2, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_OFF) = 3;
-    e.polyLORRef(2, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_ROT) = 2;
+    e.polyLORRef(2, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_LEN) = 6;   // V3 (voiceSlot 2)
+    e.polyLORRef(3, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_LEN) = 12;  // V4 (voiceSlot 3)
+    e.polyLORRef(3, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_OFF) = 3;
+    e.polyLORRef(3, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_ROT) = 2;
 
     // 3a. DELEGATION DEFAULT (§4d): even with a dialed LOR, a delegated voice reads MONO's step
     //     (the dialed LOR is ignored) + its own draw → same expectation as case 1. Divergence from
@@ -87,27 +87,27 @@ int main() {
         e.laneTick_[dotModular::STRAND_VARIATION] = step;
         int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
         e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
-        for (int v : {1, 2})
+        for (int v : {2, 3})
             check(e.nvIdxForVoice(v, in) == expectedDelegated(v, monoIdx),
                   "delegated (default) -> mono step (dialed LOR ignored), own draw, clamped");
     }
 
     // 3b. Flip V3/V4 VAR to Local East, THEN the dialed LOR takes effect: the voice uses its OWN
     //     step (per-voice tick) + its own draw, and diverges. The clamp still holds.
-    e.setVarlegLocalEast(1, 0, true);   // V3 VAR: Local East (opt out of mono delegation)
-    e.setVarlegLocalEast(2, 0, true);   // V4 VAR: Local East
+    e.setVarlegLocalEast(2, 0, true);   // V3 VAR: Local East (voiceSlot 2)
+    e.setVarlegLocalEast(3, 0, true);   // V4 VAR: Local East (voiceSlot 3)
 
     int diverged = 0, checked = 0;
     for (int step = 0; step < 96; ++step) {
         e.totalStepsElapsed = step;
         e.laneTick_[dotModular::STRAND_VARIATION] = step;
         // Local-East voices use their own per-voice tick (laneTickV_); advance it too.
-        e.laneTickV_[1][dotModular::STRAND_VARIATION] = step;
-        e.laneTickV_[2][dotModular::STRAND_VARIATION] = step;
+        e.laneTickV_[2][dotModular::STRAND_VARIATION] = step;  // V3
+        e.laneTickV_[3][dotModular::STRAND_VARIATION] = step;  // V4
         int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
         e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
         float monoDur = noteValueSteps(e.lastStepResult.nvIdx);
-        for (int v : {1, 2}) {
+        for (int v : {2, 3}) {
             int nv = e.nvIdxForVoice(v, in);
             float dur = noteValueSteps(nv);
             // THE CLAMP: a voice may release early, never hold past mono's next event.

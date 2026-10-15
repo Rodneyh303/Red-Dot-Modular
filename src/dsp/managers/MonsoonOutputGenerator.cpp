@@ -47,32 +47,32 @@ void OutputGenerator::drive(SequencerEngine& engine,
     // Semantics preserved verbatim: muted / inactive voices (i >= numPolyVoices) DO NOT call
     // process() (gate stays frozen, as before) and read out as 0V. The guard runs the precompute
     // only when at least one poly consumer is attached, so the pulse isn't advanced when nothing
-    // reads it (matching the old behaviour where the blocks only ran under their own `if`).
+    // reads it (matching the old behaviour where the blocks only ran under their own if).
     auto* straits  = expanderManager.cachedPolyVoiceExpander;
     auto* changi   = expanderManager.cachedChangiExpander;
     auto* changiT2 = expanderManager.cachedChangiT2Expander;
     const bool anyPolyConsumer = (straits != nullptr) || (changi != nullptr) || (changiT2 != nullptr);
 
-    float polyGateV[15]   = {};
-    float polyStepV[15]   = {};
-    float polyCV[15]      = {};
-    float polyAccentV[15] = {};
-    float polySlegV[15]   = {};
+    float polyGateV[16]   = {};
+    float polyStepV[16]   = {};
+    float polyCV[16]      = {};
+    float polyAccentV[16] = {};
+    float polySlegV[16]   = {};
     if (anyPolyConsumer) {
         for (int i = 0; i < 15; ++i) {
             if (effectiveMuted || i >= (int)engine.numPolyVoices) {
                 // Skipped voice: leave arrays at 0 and DON'T advance process() (frozen gate).
                 continue;
             }
-            float vg     = engine.voices[i + 1].gs.process(sampleTime);
-            float vgStep = engine.voices[i + 1].gsStep.process(sampleTime);   // STEP mirror (per voice)
+            float vg     = engine.voices[i].gs.process(sampleTime);
+            float vgStep = engine.voices[i].gsStep.process(sampleTime);   // STEP mirror (per voice)
             polyGateV[i]   = vg;
             polyStepV[i]   = vgStep;
-            polyCV[i]      = engine.voices[i + 1].gs.currentPitchV;
+            polyCV[i]      = engine.voices[i].gs.currentPitchV;
             // Accent is a poly lane: each voice fires its OWN accent (drawn per-voice in
             // executePolyVoice), gated by the voice actually sounding.
-            polyAccentV[i] = (engine.voices[i + 1].accented && vg > 5.f) ? 10.f : 0.f;
-            polySlegV[i]   = engine.voices[i + 1].gs.slurMember ? vgStep : 0.f;  // SLEG: slur-masked
+            polyAccentV[i] = (engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f;
+            polySlegV[i]   = engine.voices[i].gs.slurMember ? vgStep : 0.f;  // SLEG: slur-masked
         }
     }
 
@@ -208,20 +208,20 @@ void OutputGenerator::setPolyVoiceOutputs(engine::Output* outputs,
     // (mono accent stays on the mono ACCENT_OUTPUT; poly voices now use their OWN accent)
     
     // Output active voices
-    for (int i = 0; i < numPolyVoices && i < 7; ++i) {
-        float vg = engine.voices[i + 1].gs.process(sampleTime);
+    for (int i = 1; i <= numPolyVoices && i <= 7; ++i) {
+        float vg = engine.voices[i].gs.process(sampleTime);
         
         // Main voice gate
         setGateWithMute_(outputs[i], vg, muted);
         
         // Poly voice CV (pitch)
-        float pv = engine.voices[i + 1].gs.currentPitchV;
+        float pv = engine.voices[i].gs.currentPitchV;
         if (i + 7 < 14) {  // Assume CV outputs follow gate outputs
             outputs[i + 7].setVoltage(muted ? 0.f : pv);
         }
         
         // Poly accent: each voice fires its OWN accent (poly lane), gated by sounding.
-        float polyAccent = (engine.voices[i + 1].accented && vg > 5.f) ? 10.f : 0.f;
+        float polyAccent = (engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f;
         if (i + 14 < 21) {  // Assume accent outputs follow CV outputs
             setGateWithMute_(outputs[i + 14], polyAccent, muted);
         }

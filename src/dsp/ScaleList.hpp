@@ -4,7 +4,7 @@
 // (SHOPHOUSE_SPEC.md). Deliberately PURE and driver-agnostic: it holds a small list of
 // (scale, root) entries and a pending→active index that commits ONLY on a phrase-boundary
 // signal. It knows nothing about HOW the pending index is chosen (gate-queued vs CV-sampled —
-// open question 2) or how it's presented (UI — open question 4); a driver sets `pending`, the
+// open question 2) or how it's presented (UI — open question 4); a driver sets pending, the
 // engine calls commitAtBoundary() at the phrase boundary. This is the substrate the driver +
 // UI + engine-wiring build on, and it's independently unit-testable.
 //

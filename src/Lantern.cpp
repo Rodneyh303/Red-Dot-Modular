@@ -299,7 +299,7 @@ struct Lantern : Module {
                 if (pv_i < 0 || pv_i >= eng.numPolyVoices || pv_i >= 15) {
                     cells[row][writeStep].type = lantern::NoteType::Inactive; return;
                 }
-                const PolyVoice& pv = eng.voices[pv_i + 1];
+                const PolyVoice& pv = eng.voices[pv_i];
                 const bool voiceSlur = pv.gs.slurForward;   // SANDS CONSOLIDATION Step 5: per-voice slur (flag removed)
                 recordCell(row, writeStep, pv.gs, dec, pv.accented, lenSteps, voiceSlur, monoSlur,
                            eng.lastPlayDir, lapArrival);
@@ -347,7 +347,7 @@ struct Lantern : Module {
     // Map an observed voice state at a step into a display Cell. NoteType priority:
     // inactive (gate down & not held) → else Accent if accented → else the join type
     // (Tie/Legato) from the decision → else Single (a fresh/normal note).
-    // `monoLeading` = mono's slurForward (whether mono is leading a slur). Used to gate the
+    // monoLeading = mono's slurForward (whether mono is leading a slur). Used to gate the
     // poly lead marker so a per-voice lead never floats outside mono's chain.
     void recordCell(int voice, int step, const GateState& gs, MonoDecision dec,
                     bool accented, float lenSteps, bool slurFwd, bool monoLeading, int playDir,

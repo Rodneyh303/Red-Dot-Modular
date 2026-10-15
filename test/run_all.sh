@@ -70,6 +70,7 @@ TESTS=(
   "test_ca_pending_order|"
   "test_change_alley_transforms|"
   "test_edge_cases|"
+  "test_eradication_harness|$PE"
   "test_final_random_by_strand|"
   "test_fractional_tail|"
   "test_lane_direction|"
@@ -116,33 +117,124 @@ for a in "$@"; do
 done
 
 pass=0; fail=0; failed_names=()
-bin=/tmp/rdt_test_bin
-for spec in "${TESTS[@]}"; do
-  name="${spec%%|*}"; srcs="${spec#*|}"
-  [ -n "$filter" ] && [[ "$name" != *"$filter"* ]] && continue
-  src="test/$name.cpp"
+
+# ── Parallel execution ────────────────────────────────────────────────────────
+# Each test (compile + run) is independent, so fan them out across cores. Set
+# RDT_JOBS to override; default = CPU count. RDT_JOBS=1 forces the old serial order.
+jobs="${RDT_JOBS:-$( (command -v nproc >/dev/null && nproc) || sysctl -n hw.ncpu 2>/dev/null || echo 4 )}"
+workdir="$(mktemp -d /tmp/rdt_run.XXXXXX)"
+trap 'rm -rf "$workdir"' EXIT
+
+# ── Precompile shared sources once ────────────────────────────────────────────
+# GateState/PatternEngine/SequencerEngine/ClockEngine are each linked by many tests
+# (PE by 15, GS by 12, SE by 11). Compiling them per-test dominates runtime. Build
+# each to a .o ONCE here (in parallel), with the IDENTICAL flags tests use, then the
+# per-test compile links the .o instead of recompiling the .cpp. Set RDT_NO_PRECOMPILE=1
+# to disable (falls back to compiling sources directly, as before).
+SHARED_SRCS="$GS $PE $SE $CE"
+declare -A OBJ_OF
+if [ "${RDT_NO_PRECOMPILE:-0}" != "1" ]; then
+  pcfail=0; pcrun=0
+  for s in $SHARED_SRCS; do
+    o="$workdir/$(printf '%s' "$s" | tr '/.' '__').o"
+    OBJ_OF["$s"]="$o"
+    ( g++ $STD $INCS -c "$s" -o "$o" 2>"$o.err" || { echo "PRECOMPILE FAIL: $s"; cat "$o.err"; } ) &
+    pcrun=$((pcrun+1))
+    if [ "$pcrun" -ge "$jobs" ]; then wait; pcrun=0; fi
+  done
+  wait
+  # if any .o is missing (compile failed), abort precompile mode cleanly -> fall back to direct
+  for s in $SHARED_SRCS; do [ -s "${OBJ_OF[$s]}" ] || pcfail=1; done
+  if [ "$pcfail" = "1" ]; then
+    echo "  (precompile failed; falling back to per-test source compile)"
+    OBJ_OF=()
+  fi
+fi
+
+# translate a test's source list into .o's where precompiled, else leave the .cpp
+objs_for() {
+  local out="" tok
+  for tok in $1; do
+    if [ -n "${OBJ_OF[$tok]:-}" ]; then out="$out ${OBJ_OF[$tok]}"; else out="$out $tok"; fi
+  done
+  printf '%s' "$out"
+}
+
+# Run one test: compile to a unique bin, run it, write a self-contained result record
+# to $workdir/<idx>.res. Record format (one file per test):
+#   line 1: status  (OK | FAIL | COMPILE | MISSING)
+#   line 2: name
+#   line 3: tally/message (what prints after the name)
+#   rest:   captured stdout (for -v) OR compile errors (for COMPILE)
+run_one() {
+  local idx="$1" name="$2" srcs="$3"
+  local res="$workdir/$idx.res"
+  local src="test/$name.cpp"
+  local bin="$workdir/bin_$idx"
   if [ ! -f "$src" ]; then
-    printf "  \033[33m?\033[0m  %-32s (missing file)\n" "$name"; continue
+    printf 'MISSING\n%s\n(missing file)\n' "$name" > "$res"; return
   fi
-  if ! g++ $STD $INCS "$src" $srcs -o "$bin" 2>/tmp/rdt_cerr; then
-    printf "  \033[31m✗\033[0m  %-32s COMPILE ERROR\n" "$name"
-    grep -iE "error:|undefined ref" /tmp/rdt_cerr | head -2 | sed 's/^/       /'
-    fail=$((fail+1)); failed_names+=("$name"); continue
+  local link; link="$(objs_for "$srcs")"
+  if ! g++ $STD $INCS "$src" $link -o "$bin" 2>"$workdir/cerr_$idx"; then
+    { printf 'COMPILE\n%s\nCOMPILE ERROR\n' "$name"
+      grep -iE "error:|undefined ref" "$workdir/cerr_$idx" | head -2; } > "$res"; return
   fi
+  local out code tally
   out="$("$bin" 2>&1)"; code=$?
   tally="$(printf '%s' "$out" | grep -oiE "[0-9]+ (passed|pass)[a-z]*(,? *[0-9]+ fail[a-z]*)?" | tail -1)"
   if [ $code -eq 0 ]; then
-    printf "  \033[32m✓\033[0m  %-32s %s\n" "$name" "${tally:-ok}"
-    pass=$((pass+1))
+    { printf 'OK\n%s\n%s\n' "$name" "${tally:-ok}"; printf '%s\n' "$out"; } > "$res"
   else
-    printf "  \033[31m✗\033[0m  %-32s %s\n" "$name" "${tally:-RUNTIME FAIL (exit $code)}"
-    fail=$((fail+1)); failed_names+=("$name")
+    { printf 'FAIL\n%s\n%s\n' "$name" "${tally:-RUNTIME FAIL (exit $code)}"; printf '%s\n' "$out"; } > "$res"
   fi
-  [ $verbose -eq 1 ] && printf '%s\n' "$out" | sed 's/^/       /'
+}
+
+# dispatch in chunked batches of $jobs: launch up to $jobs, then plain `wait` for the
+# WHOLE batch before the next. Uses only portable `wait` (no `wait -n`, which hangs on
+# MSYS2/Git-Bash). Slightly less tightly packed than a rolling pool, but robust and
+# guarantees every job finishes (and every .res exists) before collection.
+idx=0; running=0
+for spec in "${TESTS[@]}"; do
+  name="${spec%%|*}"; srcs="${spec#*|}"
+  [ -n "$filter" ] && [[ "$name" != *"$filter"* ]] && continue
+  run_one "$idx" "$name" "$srcs" &
+  idx=$((idx+1)); running=$((running+1))
+  if [ "$running" -ge "$jobs" ]; then wait; running=0; fi
+done
+wait
+
+# collect results IN ORDER (deterministic output, same as serial)
+total=$idx
+# map idx -> name (for reporting a result file that went missing)
+nidx=0; declare -A NAME_OF
+for spec in "${TESTS[@]}"; do
+  nm="${spec%%|*}"
+  [ -n "$filter" ] && [[ "$nm" != *"$filter"* ]] && continue
+  NAME_OF[$nidx]="$nm"; nidx=$((nidx+1))
+done
+for ((i=0; i<total; i++)); do
+  res="$workdir/$i.res"
+  if [ ! -f "$res" ]; then
+    printf "  \033[31m✗\033[0m  %-32s %s\n" "${NAME_OF[$i]:-?}" "NO RESULT (job did not complete)"
+    fail=$((fail+1)); failed_names+=("${NAME_OF[$i]:-idx$i}"); continue
+  fi
+  status="$(sed -n '1p' "$res")"; rname="$(sed -n '2p' "$res")"; msg="$(sed -n '3p' "$res")"
+  case "$status" in
+    MISSING) printf "  \033[33m?\033[0m  %-32s %s\n" "$rname" "$msg" ;;
+    COMPILE) printf "  \033[31m✗\033[0m  %-32s %s\n" "$rname" "$msg"
+             sed -n '4,5p' "$res" | sed 's/^/       /'
+             fail=$((fail+1)); failed_names+=("$rname") ;;
+    OK)      printf "  \033[32m✓\033[0m  %-32s %s\n" "$rname" "$msg"
+             pass=$((pass+1))
+             [ $verbose -eq 1 ] && sed -n '4,$p' "$res" | sed 's/^/       /' ;;
+    FAIL)    printf "  \033[31m✗\033[0m  %-32s %s\n" "$rname" "$msg"
+             fail=$((fail+1)); failed_names+=("$rname")
+             [ $verbose -eq 1 ] && sed -n '4,$p' "$res" | sed 's/^/       /' ;;
+  esac
 done
 
 echo "-----"
-echo "suites: $((pass+fail))  passed: $pass  failed: $fail  (test_MeloDicer excluded: needs real SDK)"
+echo "suites: $((pass+fail))  passed: $pass  failed: $fail  (test_MeloDicer excluded: needs real SDK)  [jobs: $jobs]"
 
 # ── anchor-vs-bind audit (SvgPanelKit geometry guard) ─────────────────────────
 # Every generated panel anchor must have a widget bind and vice-versa; catches the

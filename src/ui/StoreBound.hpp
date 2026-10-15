@@ -7,7 +7,7 @@
 // HISTORY (why this does NOT derive from SvgKnob):
 // The first version layered over Controls.hpp's KnobT (i.e. app::SvgKnob) to reuse the RDM
 // artwork. It did not render. SvgKnob draws through a FramebufferWidget whose refresh Rack
-// drives from inside `if (getParamQuantity())` — and a de-parammed knob has no
+// drives from inside if (getParamQuantity()) — and a de-parammed knob has no
 // ParamQuantity, so the framebuffer never refreshed. Forcing fb->dirty every frame STILL
 // did not render (the knob appeared only on frames the flag was set — it "flashed" while
 // dragging), so the FramebufferWidget was not retaining content for a param-less knob at
@@ -232,7 +232,7 @@ struct StoreKnob : rack::widget::Widget {
 // genuine differences (where the store lives, how the panel places widgets), never from
 // the order modules happened to be migrated.
 //
-// Face is a generator-emitted Tag (Controls.hpp `Tag_<Palette>_<Size>_<Style>`), not a
+// Face is a generator-emitted Tag (Controls.hpp Tag_<Palette>_<Size>_<Style>), not a
 // path string: a mis-named face becomes a COMPILE error rather than a knob that silently
 // fails to render.
 //

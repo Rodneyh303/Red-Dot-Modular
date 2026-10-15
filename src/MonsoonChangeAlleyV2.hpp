@@ -295,7 +295,7 @@ struct MonsoonChangeAlleyV2 : Module {
     // Apply all ARMED pending transforms to this module's own pin matrix. Owns the state
     // mutation (rhythmSrc/melodySrc + scatterCounter) -- the manager only decides WHEN to call
     // this (phrase boundary / unlock). Moved out of MonsoonExpanderManager so the module that
-    // holds the state also owns its mutation (and, next, its undo snapshot). `active` is the
+    // holds the state also owns its mutation (and, next, its undo snapshot). active is the
     // active voice count (numPolyVoices+1, clamped >=1).
     // axisMask (LOCK_SCOPE_MENU §6): which axes may commit THIS call. bit0 = rhythm rows (type==0),
     // bit1 = melody rows (type==1), bit2 = q-mix rows (type==2). Default 0b111 = all (normal unlock/
@@ -484,7 +484,7 @@ struct MonsoonChangeAlleyV2 : Module {
         // ── Correlation EXPRESSION pairs (CA_EXPRESSION_CV_CORRELATION.md) ───────────────────────
         // Each pair is a pass-through ROUTER: poly-CV OUT = poly-CV IN with its 16 voice channels
         // permuted by that stream's LIVE voice table (the SAME src[] the notes/Keppel consume, so the
-        // expression stays in one voice frame). GATHER form: consuming voice `row` pulls the envelope
+        // expression stays in one voice frame). GATHER form: consuming voice row pulls the envelope
         // of its source voice src[row] — out[row] = in[src[row]] — i.e. "voice 1's envelope goes where
         // voice 3's note went." Tables change only at phrase granularity; the per-sample cost is a
         // 16-ch copy through a lookup. Pair→stream allocation 3 rhythm / 3 melody / 2 q-mix (== the
@@ -735,7 +735,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
         // Mod arc factory: overlay a red arc on a knob showing where poly CV pushes it.
         // getSetNorm = knob's own value; getModNorm = resolved knob+CV; gated on the
         // Monsoon menu flag modVizChangeAlley (matches every other surface).
-        auto* mod = module;   // capture the ctor param explicitly (member `this->module`
+        auto* mod = module;   // capture the ctor param explicitly (member this->module
                               //   is set by setModule but the local shadows it here)
         auto addArc = [&, mod](rack::app::Knob* knob, int paramId,
                           std::function<float()> resolved) {
@@ -1085,7 +1085,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
                     // (An earlier version outlined diagonal squares, which is only correct
                     //  near identity: rotateValues takes its block from src[v], the COLUMN,
                     //  and collapseDomain hands row v the value tmp[leader], any column.)
-                    // INTRA bands are `grain` wide; INTER bands are the whole pool split
+                    // INTRA bands are grain wide; INTER bands are the whole pool split
                     // into blocks, drawn heavier because whole blocks move as units.
                     const int b    = std::max(1, h.grain);
                     const float lw = h.isInter ? sw * 1.6f : sw;

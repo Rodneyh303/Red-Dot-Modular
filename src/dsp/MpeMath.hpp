@@ -75,9 +75,9 @@ inline float reconstructVolts(int note, int bend14Val, float bendRangeSemis) {
 // OUT = A + B per dimension, summed AROUND the dimension's rest point. A = main-gated base (alive the
 // whole note), B = accent-gated additive (windowed inside a live note). Both a/b are already in the
 // dimension's VALUE space (semitones for X, 0-127 for Y/Z) INCLUDING the rest offset — i.e. a "silent"
-// layer reads as `rest`, not 0. Summing two full values would double the rest, so one rest is removed:
+// layer reads as rest, not 0. Summing two full values would double the rest, so one rest is removed:
 //   OUT = clamp(a + b - rest, lo, hi)
-// When B is at rest (unpatched + no default) this collapses to `a` (the main layer alone). When BOTH are
+// When B is at rest (unpatched + no default) this collapses to a (the main layer alone). When BOTH are
 // at rest, OUT = rest — the dimension's neutral point (0 for X/Z, 64 for Y). lo/hi are the rails; for X
 // the caller clamps via bend14 at ±bendRange, so pass a wide lo/hi and let bend14 do the pitch clamping.
 inline float sumAroundRest(float a, float b, float rest, float lo, float hi) {

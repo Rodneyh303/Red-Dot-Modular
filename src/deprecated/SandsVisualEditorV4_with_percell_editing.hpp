@@ -408,7 +408,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // Straits East CV expander is attached (it defines the poly voice count, so
     // there are no poly lanes to draw without it). Rather than display frozen
     // bars that look broken, show nothing but a clear hint. The owning module
-    // sets `inert` each frame from cachedPolyVoiceExpander == nullptr.
+    // sets inert each frame from cachedPolyVoiceExpander == nullptr.
     if (inert) {
       const char* msg = inertMessage ? inertMessage : "Attach Straits East";
       nvgFontSize(args.vg, 13.f);

@@ -190,7 +190,9 @@ struct MonoSandsParameterManager : SandsParameterManager {
 ### Poly Sands Parameter Manager
 
 ```cpp
-struct PolySandsParameterManager : SandsParameterManager {
+// (Historical design sketch — merged into the real SandsParameterManager,
+//  ERADICATION Phase 3d; this class no longer exists.)
+struct PolyGlobalSandsSketch {
   // Map poly sands lanes to parameters
   int getStepParamId(int lane, int voice, int step) {
     // voice = 0-14 (editor voices, mapped to Monsoon 2-16)
@@ -372,7 +374,7 @@ In Poly mode, LEGATO/ACCENT/VARIATION are controlled separately.
 ### For Poly Sands (East/West)
 
 - [ ] Create `SandsVisualEditorV3(Mode::POLY)` × 7 (or 8) in panel
-- [ ] Implement `PolySandsParameterManager`
+- [ ] Implement `SandsParameterManager` (global scope)
 - [ ] Map 3 lanes × N voices
 - [ ] Implement separate global control UI (LEGATO, ACCENT, VARIATION)
 - [ ] Wire sync for per-voice + global parameters

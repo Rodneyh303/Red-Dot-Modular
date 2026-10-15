@@ -40,7 +40,7 @@ struct MonsoonInterchangeExpander : Module {
     bool  microBoundCached_ = false;
     rack::dsp::ClockDivider targetScanDiv_;
 
-    // Effective routing predicates. `microBound` = is a Micro reachable for this Interchange (AUTO
+    // Effective routing predicates. microBound = is a Micro reachable for this Interchange (AUTO
     // needs it; the fixed modes ignore it). Kept as small pure helpers so both read sites agree.
     bool drivesMonsoon(bool microBound) const {
         if (targetMode == 1) return true;      // Monsoon only
