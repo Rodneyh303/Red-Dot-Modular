@@ -134,12 +134,13 @@ trap 'rm -rf "$workdir"' EXIT
 SHARED_SRCS="$GS $PE $SE $CE"
 declare -A OBJ_OF
 if [ "${RDT_NO_PRECOMPILE:-0}" != "1" ]; then
-  pcfail=0
+  pcfail=0; pcrun=0
   for s in $SHARED_SRCS; do
     o="$workdir/$(printf '%s' "$s" | tr '/.' '__').o"
     OBJ_OF["$s"]="$o"
-    ( g++ $STD $INCS -c "$s" -o "$o" 2>"$o.err" || { echo "PRECOMPILE FAIL: $s"; cat "$o.err"; exit 1; } ) &
-    while [ "$(jobs -r | wc -l)" -ge "$jobs" ]; do wait -n 2>/dev/null || wait; done
+    ( g++ $STD $INCS -c "$s" -o "$o" 2>"$o.err" || { echo "PRECOMPILE FAIL: $s"; cat "$o.err"; } ) &
+    pcrun=$((pcrun+1))
+    if [ "$pcrun" -ge "$jobs" ]; then wait; pcrun=0; fi
   done
   wait
   # if any .o is missing (compile failed), abort precompile mode cleanly -> fall back to direct
@@ -188,23 +189,35 @@ run_one() {
   fi
 }
 
-# dispatch, capped at $jobs concurrent
-idx=0
+# dispatch in chunked batches of $jobs: launch up to $jobs, then plain `wait` for the
+# WHOLE batch before the next. Uses only portable `wait` (no `wait -n`, which hangs on
+# MSYS2/Git-Bash). Slightly less tightly packed than a rolling pool, but robust and
+# guarantees every job finishes (and every .res exists) before collection.
+idx=0; running=0
 for spec in "${TESTS[@]}"; do
   name="${spec%%|*}"; srcs="${spec#*|}"
   [ -n "$filter" ] && [[ "$name" != *"$filter"* ]] && continue
   run_one "$idx" "$name" "$srcs" &
-  idx=$((idx+1))
-  # throttle: wait if we've hit the job cap
-  while [ "$(jobs -r | wc -l)" -ge "$jobs" ]; do wait -n 2>/dev/null || wait; done
+  idx=$((idx+1)); running=$((running+1))
+  if [ "$running" -ge "$jobs" ]; then wait; running=0; fi
 done
 wait
 
 # collect results IN ORDER (deterministic output, same as serial)
 total=$idx
+# map idx -> name (for reporting a result file that went missing)
+nidx=0; declare -A NAME_OF
+for spec in "${TESTS[@]}"; do
+  nm="${spec%%|*}"
+  [ -n "$filter" ] && [[ "$nm" != *"$filter"* ]] && continue
+  NAME_OF[$nidx]="$nm"; nidx=$((nidx+1))
+done
 for ((i=0; i<total; i++)); do
   res="$workdir/$i.res"
-  [ -f "$res" ] || continue
+  if [ ! -f "$res" ]; then
+    printf "  \033[31m✗\033[0m  %-32s %s\n" "${NAME_OF[$i]:-?}" "NO RESULT (job did not complete)"
+    fail=$((fail+1)); failed_names+=("${NAME_OF[$i]:-idx$i}"); continue
+  fi
   status="$(sed -n '1p' "$res")"; rname="$(sed -n '2p' "$res")"; msg="$(sed -n '3p' "$res")"
   case "$status" in
     MISSING) printf "  \033[33m?\033[0m  %-32s %s\n" "$rname" "$msg" ;;
