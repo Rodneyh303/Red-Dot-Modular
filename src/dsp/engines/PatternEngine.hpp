@@ -384,6 +384,18 @@ struct PatternEngine {
                 }
             }
         }
+        // V16-FLICKER FIX (classification (c), two-writer race): PUBLISH here. The remap
+        // rewrites slewed* (incl. the mono row every spread-anchored voice tracks) but
+        // previously left pubSlewed* at whatever forceRecomputeSlewed() published just
+        // BEFORE it — the UN-remapped state. The next ForVoice/refresh publish then
+        // copied the REMAPPED slewed*, so the published anchor (and every bar at full
+        // spread) alternated between the remapped and un-remapped mono draw across
+        // control cycles. Publishing here makes the remap the FINAL writer of the
+        // snapshots: pubs are always consistent with the final slewed state. Identity-
+        // pinned patches take the early-return above and are byte-identical.
+        publishSlewedRhythm();
+        publishSlewedMelody();
+        publishSlewedQmix();
     }
 
     // regardless of mix-latch state — used before the Change Alley pin remap so the

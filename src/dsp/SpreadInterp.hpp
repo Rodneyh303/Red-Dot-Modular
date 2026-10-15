@@ -78,6 +78,38 @@ struct SpreadInterp {
         }
     }
 
+    // Published-snapshot twins (DISPLAY-ONLY). The UI thread must never read the live
+    // slewed*: the audio thread rewrites them for ~116µs per recomputeEffective*, and a
+    // video-rate read mid-rewrite is a torn value. This was the V16 flicker: the bars'
+    // own-draw came from pubSlewed* but the spread TARGET leaked through to the live
+    // array — so every voice at spread != 0 (V16 was the spread-up voice in the repro)
+    // tracked a churning/torn target while spread-0 voices looked stable. The audio
+    // path (applyMono/applyPoly — engine thread, same thread as the writer) keeps the
+    // LIVE reads above, which are correct there.
+    static float monoSlewedPub(const PatternEngine& pe, int lane, int step) {
+        switch (lane) {
+            case 0:  return pe.pubSlewedPolyRhythm[0][step];
+            case 1:  return pe.pubSlewedPolyMelody[0][step];
+            case 3:  return pe.pubSlewedPolyAccent[0][step];
+            case 4:  return pe.pubSlewedPolyQmix[0][step];
+            case 5:  return pe.pubSlewedPolyVariation[0][step];
+            case 6:  return pe.pubSlewedPolyLegato[0][step];
+            default: return pe.pubSlewedPolyOctave[0][step];
+        }
+    }
+    static float polySlewedPub(const PatternEngine& pe, int lane, int voice, int step) {
+        // voice is voiceSlot (0=V1, 1=V2, ..., 15=V16).
+        switch (lane) {
+            case 0:  return pe.pubSlewedPolyRhythm[voice][step];
+            case 1:  return pe.pubSlewedPolyMelody[voice][step];
+            case 3:  return pe.pubSlewedPolyAccent[voice][step];
+            case 4:  return pe.pubSlewedPolyQmix[voice][step];
+            case 5:  return pe.pubSlewedPolyVariation[voice][step];
+            case 6:  return pe.pubSlewedPolyLegato[voice][step];
+            default: return pe.pubSlewedPolyOctave[voice][step];
+        }
+    }
+
     // The interpolation target for a lane/step.
     // Anchor V1: the mono (voice-1) draw (today's behaviour).
     // Follow CA: the post-remap draw — which IS src[v]'s material, because CA's pin remap
@@ -139,7 +171,9 @@ struct SpreadInterp {
     // applyMono/applyPoly (which resolve the target from the CA source).
     static float applyAnchorV1Only(const PatternEngine& pe, int lane, int step,
                                    float original, float spreadAmount) {
-        return interpolate(original, target(pe, lane, step), spreadAmount);
+        // DISPLAY-ONLY: the target comes from the PUBLISHED snapshot, not the live
+        // slewed* (the live read here was the V16 flicker — see monoSlewedPub).
+        return interpolate(original, monoSlewedPub(pe, lane, step), spreadAmount);
     }
 
     // Mono/V1 path — reads the mode from pe.spreadTargetMode[lane], so the caller

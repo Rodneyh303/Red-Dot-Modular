@@ -47,7 +47,7 @@ int main() {
     // assert EVERY voiceSlot has nonzero data in each lane.
     // ════════════════════════════════════════════════════════════════════════
     std::printf("[Test 1: all-voices-have-data]\n");
-    for (int N : {2, 6, 15}) {
+    for (int N : {2, 6, 15, 16}) {
         PatternEngine pe = makeSeededEngine(N - 1);  // N-1 poly + V1 = N total
         PatternInput in;
         rollDice(pe, in);

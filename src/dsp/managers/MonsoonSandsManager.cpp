@@ -142,7 +142,21 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // to the voices (see the else-branch below), so include it here too — otherwise that
     // work was silently overwritten and the spread knob looked dead.
     engine.pe.setSandsActive(hasMonoVisual || macroDrivesOutput || (hasEastVisual && polyBaseActive) || hasMacro);
-    engine.pe.numPolyVoicesHint = effPolyVoices;  // gated + output-bounded: display matches audio
+    // Hint assignment + HINT-RISE REFILL (V16-flicker round-2, finding 2): the
+    // load-time redraw runs BEFORE the first processDNA sets the hint (hint=0 there),
+    // so the poly voices' slewed*/pubs stay ALL-ZERO until the first roll — every poly
+    // bar flat after load (masked as "stable"). When the hint RISES, recompute +
+    // publish all three families so the new voices have real data immediately. One
+    // full recompute per hint change (load attach / voice-count turn) — roll-priced.
+    // (Known edge, NOT fixed here: with CA pins set, the pin remap's signature doesn't
+    // include the hint, so a hint-rise under non-identity pins leaves the new voices
+    // un-remapped until the next roll.)
+    if (effPolyVoices > engine.pe.numPolyVoicesHint) {
+        engine.pe.numPolyVoicesHint = effPolyVoices;   // set BEFORE the recompute: fills v=1..eff
+        engine.pe.forceRecomputeSlewed();              // recompute + publish, all three families
+    } else {
+        engine.pe.numPolyVoicesHint = effPolyVoices;   // gated + output-bounded: display matches audio
+    }
 
     // ── Helper: apply mono CV offset at read site ─────────────────────────
     auto applyMonoCV = [&](float base, int lane, int param, float lo, float hi) -> float {

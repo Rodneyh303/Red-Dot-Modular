@@ -302,8 +302,8 @@ struct SpreadManager {
     // is a true self-target (positive no-op, negative invert). Poly per-voice managers
     // interpolate from their own slewed poly draw.
     float original = (monoContext || numVoices <= 1)
-        ? redDot::SpreadInterp::monoSlewed(*patternEngine, lane, step)
-        : redDot::SpreadInterp::polySlewed(*patternEngine, lane, startVoiceIdx + voiceIdx, step);
+        ? redDot::SpreadInterp::monoSlewedPub(*patternEngine, lane, step)
+        : redDot::SpreadInterp::polySlewedPub(*patternEngine, lane, startVoiceIdx + voiceIdx, step);
     return redDot::SpreadInterp::applyAnchorV1Only(*patternEngine, lane, step,
                                                    original, getSpread(voiceIdx, lane));
   }
