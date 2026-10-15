@@ -1131,9 +1131,11 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice >= v.qmixLevel);
         const bool isQuant = quantiserPitchSource && !qmixUseGenerated;   // FADER_SEQ_QUANT_COLOURS (green flash)
         // QUANTISER (Q1): this voice's pitch = quantised external CV (its own channel) in quantiser
-        // mode, else the internal melody+octave draw. voices[voiceIdx] is ENGINE voice voiceIdx+1
-        // (voice 0 is the mono/executeStep path), so read quantiserCV[voiceIdx+1]. When
-        // qmixUseGenerated, forceGenerated pushes voicePitch through genPitchLive (mode-A pitch).
+        // mode, else the internal melody+octave draw. voiceIdx is the voiceSlot (1..15 = V2..V16;
+        // slot 0 = the mono/executeStep path). voicePitch reads quantiserCV[slot] DIRECTLY — no +1
+        // (an older comment here described a pre-unification quantiserCV[voiceIdx+1] that no longer
+        // exists in the code). When qmixUseGenerated, forceGenerated pushes voicePitch through
+        // genPitchLive (mode-A pitch).
         float pitchV = voicePitch(voiceIdx, sem, input,
                                   (refreshPolyRandomCell(voiceIdx, PL_MELODY, melIdx), polyRandomSrc(voiceIdx, PL_MELODY)[melIdx]),
                                   (refreshPolyRandomCell(voiceIdx, PL_OCTAVE, octIdx), polyRandomSrc(voiceIdx, PL_OCTAVE)[octIdx]),

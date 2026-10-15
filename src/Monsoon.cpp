@@ -260,7 +260,7 @@ float Monsoon::getEffectivePolyRest(int voiceIdx) {
     float base = getBasePolyRest(voiceIdx);
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway && voiceIdx >= 0 && voiceIdx < 15) {
-        const int ch = voiceIdx + 1;   // poly voice → poly-cable channel (ch0 = mono)
+        const int ch = voiceIdx + 1;   // INTENTIONAL cable-boundary +1 (not debt): voiceIdx is 0-based poly (0=V2, 14=V16); cable ch0 = mono/V1, so poly voice k → channel k+1
         auto& in = cway->inputs[CausewayIds::REST_CV_INPUT];
         if (in.isConnected()) {
             float att = cway->params[CausewayIds::POLY_REST_ATT_START + voiceIdx].getValue()
@@ -274,7 +274,7 @@ float Monsoon::getEffectivePolyAccent(int voiceIdx) {
     float base = getBasePolyAccent(voiceIdx);
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway && voiceIdx >= 0 && voiceIdx < 15) {
-        const int ch = voiceIdx + 1;
+        const int ch = voiceIdx + 1;   // INTENTIONAL cable-boundary +1 (not debt): voiceIdx is 0-based poly (0=V2, 14=V16); cable ch0 = mono/V1, so poly voice k → channel k+1
         auto& in = cway->inputs[CausewayIds::ACCENT_CV_INPUT];
         if (in.isConnected()) {
             float att = cway->params[CausewayIds::POLY_ACCENT_ATT_START + voiceIdx].getValue()
@@ -305,7 +305,7 @@ float Monsoon::getBasePolyQmix(int voiceIdx) {
     auto* straits = expanderManager.cachedPolyVoiceExpander;
     if (straits && straits->inputs[StraitsIds::QUANT_CV_INPUT].isConnected()) {
         int n = std::max(1, straits->inputs[StraitsIds::QUANT_CV_INPUT].getChannels());
-        int ch = voiceIdx + 1;                       // ch0 = mono; poly voice i → ch i+1
+        int ch = voiceIdx + 1;                       // INTENTIONAL cable-boundary +1 (not debt): ch0 = mono/V1; poly voice i (0=V2) → channel i+1
         return (ch < n) ? base : 0.f;                 // beyond source channels → generate
     }
     if (cachedCv2Connected) return base;              // CV2 is mono → broadcasts to all voices
@@ -321,7 +321,7 @@ float Monsoon::getEffectivePolyQmix(int voiceIdx) {
     }
     auto* cway = expanderManager.cachedCausewayPolyExpander;
     if (cway && voiceIdx >= 0 && voiceIdx < 15) {
-        const int ch = voiceIdx + 1;   // poly voice → poly-cable channel (ch0 = mono)
+        const int ch = voiceIdx + 1;   // INTENTIONAL cable-boundary +1 (not debt): voiceIdx is 0-based poly (0=V2, 14=V16); cable ch0 = mono/V1, so poly voice k → channel k+1
         auto& in = cway->inputs[CausewayIds::QMIX_CV_INPUT];
         if (in.isConnected()) {
             float att = cway->params[CausewayIds::POLY_QMIX_ATT_START + voiceIdx].getValue()
@@ -338,7 +338,7 @@ float Monsoon::getEffectivePolyQmix(int voiceIdx) {
     auto* straits = expanderManager.cachedPolyVoiceExpander;
     if (straits && straits->inputs[StraitsIds::QUANT_CV_INPUT].isConnected()) {
         int n = std::max(1, straits->inputs[StraitsIds::QUANT_CV_INPUT].getChannels());
-        int ch = voiceIdx + 1;                       // ch0 = mono; poly voice i → ch i+1
+        int ch = voiceIdx + 1;                       // INTENTIONAL cable-boundary +1 (not debt): ch0 = mono/V1; poly voice i (0=V2) → channel i+1
         return (ch < n) ? eff : 0.f;                 // beyond source channels → generate
     }
     if (cachedCv2Connected) return eff;              // CV2 is mono → broadcasts to all voices

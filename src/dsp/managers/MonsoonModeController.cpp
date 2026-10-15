@@ -41,6 +41,9 @@ void ModeController::updatePolyVoiceRest_() {
     // poly voices). Once primed, obey the lock.
     if (polyVoiceCachePrimed_
         && !dotModular::LockManager::liveNow(dotModular::Control::BigFive, engine.locked, engine.scopeLiveMask)) return;
+    // INTENTIONAL slot→poly bridge (not debt): i is the voiceSlot (1=V2..15=V16) into
+    // voices[i]; the getEffectivePoly* family below is 0-based poly (0=V2) — hence i - 1.
+    // The matching +1 lives INSIDE those functions, at the cable boundary (ch0 = mono/V1).
     for (int i = 1; i <= engine.numPolyVoices; ++i) {
         engine.voices[i].restProb   = mainModule->getEffectivePolyRest(i - 1);
         engine.voices[i].accentProb = mainModule->getEffectivePolyAccent(i - 1);
