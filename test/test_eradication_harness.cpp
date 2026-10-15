@@ -188,6 +188,82 @@ int main() {
         }
     }
 
+    // ════════════════════════════════════════════════════════════════════════
+    // TEST 4: V16 melody stability (STEP 1 of the V16-flicker protocol).
+    // 16 active voices, fixed seed, roll dice. For voiceSlot 15 (V16):
+    //   (i)   random_[15][PL_MELODY] NONZERO, and the BAR SOURCE
+    //         pubSlewedPolyMelody[15] nonzero too
+    //   (ii)  STABLE across refresh cycles: mix=0.30 → refresh → read A;
+    //         mix=0.31 → refresh; mix=0.30 → refresh → read B. A == B
+    //         (bit-identical). This is ALSO the ForVoice(15) vs
+    //         full-recompute consistency law: A comes from the FULL
+    //         recompute (first 0.30 = cache miss), B from ForVoice(15)
+    //         (cache hit) — the two writers must agree at the same mix.
+    //   (iii) V16's values must be DISTINCT from V15's (an off-by-one at
+    //         slot 15 would make ForVoice(15) read V15's cache slots).
+    //   (iv)  rhythm-mix modulation must NOT perturb V16's melody values
+    //         (the reported repro: modulating rhythm-mix flickers the
+    //         MELODY bars on V16 only).
+    // Nonzero melodySlew keeps the ForVoice copula path live (r != 0).
+    // ════════════════════════════════════════════════════════════════════════
+    std::printf("[Test 4: V16 melody stability (flicker)]\n");
+    {
+        PatternEngine pe = makeSeededEngine(15);   // 15 poly + V1 = 16 voices
+        pe.displayedVoice_ = 15;                    // V16 displayed (the flickering bars)
+        PatternInput in;
+        rollDice(pe, in);
+
+        // (i) nonzero — raw store and bar source
+        bool rawNonzero = false, pubNonzero = false;
+        for (int s = 0; s < 16; ++s) {
+            if (pe.polyRandom(15, SequencerEngine::PL_MELODY)[s] != 0.f) rawNonzero = true;
+            if (pe.pubSlewedPolyMelody[15][s] != 0.f) pubNonzero = true;
+        }
+        check(rawNonzero, "V16 (voiceSlot 15) MELODY nonzero (random_)");
+        check(pubNonzero, "V16 (voiceSlot 15) MELODY nonzero (pubSlewed_ — bar source)");
+
+        // (ii) same-mix determinism: full recompute at 0.30, ForVoice at 0.31,
+        // ForVoice back at 0.30 — the two 0.30 reads must be bit-identical.
+        float rawA[16], rawB[16], pubA[16], pubB[16];
+        pe.latchMix(0.f, 0.30f, 0.f, 0.f, 0.4f, 0.f, true, true, true);
+        pe.refreshVisualCache(in);   // first 0.30: z-cache cold at this r → FULL recompute
+        for (int s = 0; s < 16; ++s) {
+            rawA[s] = pe.polyRandom(15, SequencerEngine::PL_MELODY)[s];
+            pubA[s] = pe.pubSlewedPolyMelody[15][s];
+        }
+        pe.latchMix(0.f, 0.31f, 0.f, 0.f, 0.4f, 0.f, true, true, true);
+        pe.refreshVisualCache(in);   // 0.31: ForVoice(15), cache hit
+        pe.latchMix(0.f, 0.30f, 0.f, 0.f, 0.4f, 0.f, true, true, true);
+        pe.refreshVisualCache(in);   // back to 0.30: ForVoice(15), cache hit
+        bool rawStable = true, pubStable = true;
+        for (int s = 0; s < 16; ++s) {
+            rawB[s] = pe.polyRandom(15, SequencerEngine::PL_MELODY)[s];
+            pubB[s] = pe.pubSlewedPolyMelody[15][s];
+            if (rawB[s] != rawA[s]) rawStable = false;
+            if (pubB[s] != pubA[s]) pubStable = false;
+        }
+        check(rawStable, "V16 MELODY stable across refresh cycles (random_, same mix)");
+        check(pubStable, "V16 MELODY stable across refresh cycles (pubSlewed_, same mix) — ForVoice(15) == full recompute");
+
+        // (iii) distinct from V15 (off-by-one detector: ForVoice(15) must read
+        // V16's cache slots, not V15's)
+        bool distinctFromV15 = false;
+        for (int s = 0; s < 16; ++s)
+            if (pubB[s] != pe.pubSlewedPolyMelody[14][s]) { distinctFromV15 = true; break; }
+        check(distinctFromV15, "V16 MELODY distinct from V15 (ForVoice slot not off-by-one)");
+
+        // (iv) rhythm-mix modulation must not perturb V16's melody values
+        pe.latchMix(0.70f, 0.30f, 0.f, 0.f, 0.4f, 0.f, true, true, true);
+        pe.refreshVisualCache(in);   // rhythm mix change → rhythm ForVoice path only
+        bool isoRaw = true, isoPub = true;
+        for (int s = 0; s < 16; ++s) {
+            if (pe.polyRandom(15, SequencerEngine::PL_MELODY)[s] != rawB[s]) isoRaw = false;
+            if (pe.pubSlewedPolyMelody[15][s] != pubB[s]) isoPub = false;
+        }
+        check(isoRaw, "V16 MELODY data unaffected by rhythm-mix change (random_)");
+        check(isoPub, "V16 MELODY bars unaffected by rhythm-mix change (pubSlewed_)");
+    }
+
     std::printf("%d passed, %d failed\n", passed, failed);
     return failed ? 1 : 0;
 }
