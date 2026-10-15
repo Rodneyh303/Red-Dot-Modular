@@ -60,11 +60,10 @@ namespace SandsMonoVisualIds {
     inline bool monoMacroOwnsEngineLane(rack::Module* mod, int engineLane) {
         // engineLane is a poly lane 0..4 (unified order — editor == engine, identity).
         if (!mod || engineLane < 0 || engineLane >= dotModular::SandsGrid::POLY_LANES) return false;
-        int editorLane = engineLane;
         // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
         // Returns true iff Macro owns (delegated); no Monsoon → treat as Mono-owned (not delegated).
         Monsoon* m = redDot::findMonsoonEitherSide(mod);
-        return !(m ? m->getMonoOwner(editorLane) : true);
+        return !(m ? m->getMonoOwner(engineLane) : true);
     }
 
     // ── Input IDs ─────────────────────────────────────────────────────────

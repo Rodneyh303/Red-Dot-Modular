@@ -188,7 +188,6 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         // call list that could drift. (DNA-expander base path is retired;
         // base always comes from the visual params. cvRow == editor lane.)
         auto readStrand = [&](int l) {
-            int strand = l;
             // MVC step 1d: LOR base is STORE-BACKED (editor.lorBase[kMonoSlot, bank, c]). Was
             // params[lenId/offId/rotId(l)] (removed). l is the EDITOR lane; bank = engine lane for
             // poly (0..4), self for VAR/LEG (5,6) — East's lorBank. gMon resolves via monoVis so
@@ -210,15 +209,14 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 // STEP 3b: delegated ⟺ topo.owner(0,l) == MACRO.
                 const bool delegated = (topo.owner(0, l) == dotModular::SandsTopology::Role::MACRO);
                 if (delegated) {
-                    int el = l;   // editor → poly engine lane
                     // Delegated → track Macro's base + the TAPPED CV delta (macroSendDelta),
                     // so the per-lane PRE/POST send tap controls how Macro's modulation
                     // reaches the delegated lane: PRE (tap=0) = raw CV even when the left
                     // atten is 0; POST (tap=1) = CV × left atten. (Was macroCVDelta = always
                     // POST, so the tap did nothing and att=0 killed all modulation here.)
-                    baseLen = macroVis->macroBase[el][0] + macroVis->macroSendDelta[el][0];
-                    baseOff = macroVis->macroBase[el][1] + macroVis->macroSendDelta[el][1];
-                    baseRot = macroVis->macroBase[el][2] + macroVis->macroSendDelta[el][2];
+                    baseLen = macroVis->macroBase[l][0] + macroVis->macroSendDelta[l][0];
+                    baseOff = macroVis->macroBase[l][1] + macroVis->macroSendDelta[l][1];
+                    baseRot = macroVis->macroBase[l][2] + macroVis->macroSendDelta[l][2];
                 }
             }
 
@@ -275,11 +273,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // neither East's CV nor the Macro SEND on top (that would double-count Macro's
             // modulation, already in the delegated base). Only OWNED lanes receive these.
             if (l < dotModular::SandsGrid::POLY_LANES && v1OwnsLane) {
-                int eng = l;   // editor → engine lane (East CV jack)
                 // Sum ALL mods (East CV + Macro send) onto the base, then clamp the END RESULT once.
-                baseLen = math::clamp(baseLen + eastDelta(eng, 0, 1.f, 16.f) + macroDelta(eng, 0),  1.f, 16.f);
-                baseOff = math::clamp(baseOff + eastDelta(eng, 1, 0.f, 15.f) + macroDelta(eng, 1),  0.f, 15.f);
-                baseRot = math::clamp(baseRot + eastDelta(eng, 2, 0.f, 15.f) + macroDelta(eng, 2),  0.f, 15.f);
+                baseLen = math::clamp(baseLen + eastDelta(l, 0, 1.f, 16.f) + macroDelta(l, 0),  1.f, 16.f);
+                baseOff = math::clamp(baseOff + eastDelta(l, 1, 0.f, 15.f) + macroDelta(l, 1),  0.f, 15.f);
+                baseRot = math::clamp(baseRot + eastDelta(l, 2, 0.f, 15.f) + macroDelta(l, 2),  0.f, 15.f);
             }
 
             // LOR is LATCH (LOCK_SEMANTICS §9): under lock, do NOT re-push the strand window --
@@ -290,12 +287,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // the rest (RHYTHM/VAR/LEG/ACCENT) rhythm. strand is the engine strand for this lane.
             // q-mix is its OWN Sands axis (SB_SANDS_Q), not rhythm (the old lorMelodyAxis=false
             // default put STRAND_QMIX on the rhythm bit — split-brain vs its melody-axis spread).
-            const bool lorMelodyAxis = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);
-            const bool lorLive = (strand == dotModular::STRAND_QMIX)
+            const bool lorMelodyAxis = (l == dotModular::STRAND_MELODY || l == dotModular::STRAND_OCTAVE);
+            const bool lorLive = (l == dotModular::STRAND_QMIX)
                 ? (!engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0)   // == dotModular::SB_SANDS_Q
                 : dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelodyAxis);
             if (lorLive) {
-                engine.setStrand(StrandWriter::MONO, strand,
+                engine.setStrand(StrandWriter::MONO, l,
                                  (int)std::round(baseLen),
                                  (int)std::round(baseOff),
                                  (int)std::round(baseRot));
@@ -461,43 +458,41 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 const int kMono = dotModular::VoiceResolver::kMonoSlot;
                 // Lanes 0..3 (REST/MEL/OCT/ACC): Macro base when delegated, else base+CV+send blend.
                 for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-                    const int engLane = el;
-                    const int strand  = el;
                     // SCOPE (LOCK_SCOPE_MENU): MELODY/OCTAVE strands = melody axis; else rhythm.
                     // q-mix is its OWN axis (SB_SANDS_Q), not rhythm (fixes the split-brain vs spread).
-                    const bool lorMelAxis = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);
-                    const bool lorLive = (strand == dotModular::STRAND_QMIX)
+                    const bool lorMelAxis = (el == dotModular::STRAND_MELODY || el == dotModular::STRAND_OCTAVE);
+                    const bool lorLive = (el == dotModular::STRAND_QMIX)
                         ? (!engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0)   // == dotModular::SB_SANDS_Q
                         : dotModular::LockManager::liveNow(dotModular::Control::Lor, engine.locked, engine.scopeLiveMask, lorMelAxis);
-                    if (monoOwnedByMacro(engLane)) {
+                    if (monoOwnedByMacro(el)) {
                         if (lorLive)   // LOR LATCH: skip re-push under lock
-                        engine.setStrand(StrandWriter::EAST, strand,
-                            (int)std::round(macroVis->macroBase[engLane][0] + macroVis->macroCVDelta[engLane][0]),
-                            (int)std::round(macroVis->macroBase[engLane][1] + macroVis->macroCVDelta[engLane][1]),
-                            (int)std::round(macroVis->macroBase[engLane][2] + macroVis->macroCVDelta[engLane][2]));
+                        engine.setStrand(StrandWriter::EAST, el,
+                            (int)std::round(macroVis->macroBase[el][0] + macroVis->macroCVDelta[el][0]),
+                            (int)std::round(macroVis->macroBase[el][1] + macroVis->macroCVDelta[el][1]),
+                            (int)std::round(macroVis->macroBase[el][2] + macroVis->macroCVDelta[el][2]));
                         continue;
                     }
-                    const int b0 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, engLane, 0)) : 16;
-                    const int b1 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, engLane, 1)) : 0;
-                    const int b2 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, engLane, 2)) : 0;
+                    const int b0 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, el, 0)) : 16;
+                    const int b1 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, el, 1)) : 0;
+                    const int b2 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, el, 2)) : 0;
                     const float len = (float)std::max(1, b0);
                     const float off = (float)(((b1 % 16) + 16) % 16);
                     const float rot = (float)(((b2 % 16) + 16) % 16);
                     auto sendBlend = [&](int item)->float {
                         if (!macroVis) return 0.f;   // match the widget's guard exactly
-                        float send = mmV1 ? mmV1->getMacroSend(kMono, engLane, item) : 0.f;
-                        return macroVis->macroSendDelta[engLane][item] * send;
+                        float send = mmV1 ? mmV1->getMacroSend(kMono, el, item) : 0.f;
+                        return macroVis->macroSendDelta[el][item] * send;
                     };
                     auto addCV = [&](float base, int item, float lo, float hi)->float {
-                        if (eastV1->inputs[East::cvId(engLane,item)].isConnected()) {
-                            float att = mmV1 ? mmV1->getMacroAtten(kMono, engLane*4 + item) : 0.f;
-                            float cv  = eastV1->inputs[East::cvId(engLane,item)].getPolyVoltage(0) / 10.f;  // ch0 = V1
+                        if (eastV1->inputs[East::cvId(el,item)].isConnected()) {
+                            float att = mmV1 ? mmV1->getMacroAtten(kMono, el*4 + item) : 0.f;
+                            float cv  = eastV1->inputs[East::cvId(el,item)].getPolyVoltage(0) / 10.f;  // ch0 = V1
                             base += cv * att * (hi - lo);
                         }
                         return rack::math::clamp(base + sendBlend(item), lo, hi);
                     };
                     if (lorLive)   // LOR LATCH: skip re-push under lock (q-mix on SB_SANDS_Q)
-                    engine.setStrand(StrandWriter::EAST, strand,
+                    engine.setStrand(StrandWriter::EAST, el,
                         (int)std::round(addCV(len, 0, 1.f, 16.f)),
                         (int)std::round(addCV(off, 1, 0.f, 15.f)),
                         (int)std::round(addCV(rot, 2, 0.f, 15.f)));

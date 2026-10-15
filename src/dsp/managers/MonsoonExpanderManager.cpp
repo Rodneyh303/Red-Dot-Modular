@@ -79,11 +79,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         // knob is LOCKED (inert) and the V1 bar fill falls to engine.spreadE (stale/0).
         const bool noMacro = (cachedMacroSandsVisual == nullptr);
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            const int eng = el;
-            topoIn.eastV1Owner[el] = noMacro || (mmTopo ? mmTopo->getMacroOwn(Monsoon::kMonoMacroOwnRow, eng) > 0.5f : false);
+            topoIn.eastV1Owner[el] = noMacro || (mmTopo ? mmTopo->getMacroOwn(Monsoon::kMonoMacroOwnRow, el) > 0.5f : false);
             // voiceSlot convention: pv = 1..effPolyVoices (V2..V(effPolyVoices+1)). V1 at [0] unused.
             for (int pv = 1; pv <= effPolyVoices; ++pv)
-                topoIn.eastPolyOwner[pv][el] = (mmTopo ? mmTopo->getMacroOwn(pv, eng) > 0.5f : false);
+                topoIn.eastPolyOwner[pv][el] = (mmTopo ? mmTopo->getMacroOwn(pv, el) > 0.5f : false);
         }
     }
     const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
@@ -194,8 +193,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 // macroBase is indexed by lane; editor lane == engine lane (identity
                 // since the lane-index unification), so el passes through directly.
                 if (mmod) {
-                    int engLane = el;
-                    engine.macroLOR_[el] = std::max(1, (int)std::lround(mmod->macroBase[engLane][0] + mmod->macroCVDelta[engLane][0]));
+                    engine.macroLOR_[el] = std::max(1, (int)std::lround(mmod->macroBase[el][0] + mmod->macroCVDelta[el][0]));
                 }
             }
         } else {
@@ -376,14 +374,13 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                         // MVC: resolve through ownership — delegated to Macro → Macro's globalDir;
                         // else the voice's own getLaneDir (cached for reclaim). Lanes 4/5 (VAR/LEG)
                         // have no Macro ownership, so always use the voice's getLaneDir.
-                        // NOTE: getMacroOwn/getGlobalDir take ENGINE lane (REST=0,MEL=1,OCT=2,ACC=3),
-                        // but l is a STRAND (== editor lane: MEL=0,OCT=1,QMIX=2,REST=3,ACC=4). Convert.
+                        // getMacroOwn/getGlobalDir take the unified lane order — same as l
+                        // (editor == engine == strand) — so l passes through directly.
                         float dirVal;
                         if (l < dotModular::SandsGrid::POLY_LANES) {
-                            int engLane = l;
-                            dirVal = (mmOwn->getMacroOwn(v, engLane) > 0.5f)
+                            dirVal = (mmOwn->getMacroOwn(v, l) > 0.5f)
                                    ? mmOwn->getLaneDir(v, l)       // East owns → voice's own (cached)
-                                   : mmOwn->getGlobalDir(engLane);  // Macro owns → Macro's global
+                                   : mmOwn->getGlobalDir(l);       // Macro owns → Macro's global
                         } else {
                             dirVal = mmOwn->getLaneDir(v, l);      // VAR/LEG: always voice's own
                         }

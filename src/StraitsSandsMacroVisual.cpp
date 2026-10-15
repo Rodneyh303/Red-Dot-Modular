@@ -163,17 +163,16 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         visualEditor->onLorCommit = [this](int lane, const int before[3], const int after[3]) {
             auto* m = getMonsoon(); if (!m) return;
             if (lane < 0 || lane > 4) return;   // only MEL/OCT/REST/ACC/QMIX have global LOR (5 poly lanes)
-            const int engLane = lane;
             const int bef0=before[0],bef1=before[1],bef2=before[2];
             const int aft0=after[0], aft1=after[1], aft2=after[2];
             auto* ed = visualEditor;
             redDot::applyAndPushStoreEdit<Monsoon>(m, "LOR edit",
-                [engLane, lane, bef0,bef1,bef2, aft0,aft1,aft2, ed](Monsoon& mm, float dir) {
+                [lane, bef0,bef1,bef2, aft0,aft1,aft2, ed](Monsoon& mm, float dir) {
                     const bool redo = dir > 0.5f;
                     const int L = redo?aft0:bef0, O = redo?aft1:bef1, R = redo?aft2:bef2;
-                    mm.setGlobalLor(engLane, 0, (float)L);
-                    mm.setGlobalLor(engLane, 1, (float)O);
-                    mm.setGlobalLor(engLane, 2, (float)R);
+                    mm.setGlobalLor(lane, 0, (float)L);
+                    mm.setGlobalLor(lane, 1, (float)O);
+                    mm.setGlobalLor(lane, 2, (float)R);
                     if (ed && lane >= 0 && lane < dotModular::SandsGrid::POLY_LANES) {
                         ed->currentState.lanes[lane].length   = std::max(1, L);
                         ed->currentState.lanes[lane].offset   = O;
@@ -207,12 +206,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 std::function<void(redDot::GoldPolyPort*)>(themeOut));
 
         // ── Left section: 5 poly lanes × (4 CV jacks + 4 attens + 1 spread) ──
-        // Anchor row = editor lane el; store/id = engine lane eng.
+        // Anchor row = editor lane el; store/id = the same lane (identity).
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            const int eng = el;
             for (int c = 0; c < 4; ++c)
                 bindInput<PJ301MPort>(
-                    "input_cv_" + std::to_string(el) + "_" + std::to_string(c), cvId(eng,c));
+                    "input_cv_" + std::to_string(el) + "_" + std::to_string(c), cvId(el,c));
             // STORE-BACKED (MVC step 1d): global attenuverters (engine-indexed store).
             for (int c = 0; c < 4; ++c) {
                 static const char* CN[4] = {"Length","Offset","Rotation","Spread"};
@@ -220,54 +218,51 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 auto* k = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                     "param_atten_" + std::to_string(el) + "_" + std::to_string(c), storeResolver(),
                     -1.f, 1.f, 0.f, albl,
-                    [eng, c](Monsoon& m)          { return m.getGlobalAtten(eng, c); },
-                    [eng, c](Monsoon& m, float v) { m.setGlobalAtten(eng, c, v); });
+                    [el, c](Monsoon& m)          { return m.getGlobalAtten(el, c); },
+                    [el, c](Monsoon& m, float v) { m.setGlobalAtten(el, c, v); });
                 if (k) leftAttenuverters.push_back(k);
             }
         }
 
-        // Per-lane global SPREAD trimpots — anchor param_spr_<el>, store engine lane.
+        // Per-lane global SPREAD trimpots — anchor param_spr_<el>, store the same lane.
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            const int eng = el;
             auto* sp = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_spr_" + std::to_string(el), storeResolver(),
                 -1.f, 1.f, 0.f, std::string(EDN[el]) + " spread",
-                [eng](Monsoon& m)          { return m.getGlobalSpread(eng); },
-                [eng](Monsoon& m, float v) { m.setGlobalSpread(eng, v); });
-            if (sp) pendingSpreadArcs.push_back({sp, eng});   // arc reads engine-lane spread
+                [el](Monsoon& m)          { return m.getGlobalSpread(el); },
+                [el](Monsoon& m, float v) { m.setGlobalSpread(el, v); });
+            if (sp) pendingSpreadArcs.push_back({sp, el});   // arc reads the lane's spread
         }
 
-        // Macro→voice MIX-IN send 2×2 grids — anchor param_send_<el>_<item>, store engine lane.
+        // Macro→voice MIX-IN send 2×2 grids — anchor param_send_<el>_<item>, store the same lane.
         // STORE-BACKED: reads/writes editor.macroSend for the viewed voice (slot resolved LIVE).
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el)
             for (int item = 0; item < 4; ++item) {
-                const int eng = el;
                 redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                     "param_send_" + std::to_string(el) + "_" + std::to_string(item),
                     storeResolver(), -1.f, 1.f, 0.f,
                     std::string(EDN[el]) + " mix-in " + std::to_string(item) + " (viewed voice)",
-                    [this, eng, item](Monsoon& m) {
+                    [this, el, item](Monsoon& m) {
                         const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
-                        return m.getMacroSend(slot, eng, item);
+                        return m.getMacroSend(slot, el, item);
                     },
-                    [this, eng, item](Monsoon& m, float v) {
+                    [this, el, item](Monsoon& m, float v) {
                         const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
-                        m.setMacroSend(slot, eng, item, v);
+                        m.setMacroSend(slot, el, item, v);
                     });
             }
-        // PRE/POST CV taps per lane — anchor param_taplor_/tapspr_<el>, store engine lane.
+        // PRE/POST CV taps per lane — anchor param_taplor_/tapspr_<el>, store the same lane.
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            const int eng = el;
             redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_taplor_" + std::to_string(el), storeResolver(),
                 0.f, 1.f, 1.f, std::string(EDN[el]) + " LOR send tap (PRE-POST)",
-                [eng](Monsoon& m)          { return m.getGlobalTap(eng, 0); },
-                [eng](Monsoon& m, float v) { m.setGlobalTap(eng, 0, v); });
+                [el](Monsoon& m)          { return m.getGlobalTap(el, 0); },
+                [el](Monsoon& m, float v) { m.setGlobalTap(el, 0, v); });
             redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_tapspr_" + std::to_string(el), storeResolver(),
                 0.f, 1.f, 1.f, std::string(EDN[el]) + " spread send tap (PRE-POST)",
-                [eng](Monsoon& m)          { return m.getGlobalTap(eng, 1); },
-                [eng](Monsoon& m, float v) { m.setGlobalTap(eng, 1, v); });
+                [el](Monsoon& m)          { return m.getGlobalTap(el, 1); },
+                [el](Monsoon& m, float v) { m.setGlobalTap(el, 1, v); });
         }
 
         // ── Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong).
@@ -284,27 +279,26 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // STORE-BACKED (MVC step 1: direction de-param). The DirCell reads/writes
             // editor.globalDir via get/setGlobalDir; the manager reads getGlobalDir(lane).
             // Editor row == engine lane (identity since lane-index unification), so the
-            // cell on editor row el targets engine lane eng = el directly. (Historically
+            // cell on editor row el targets engine lane el directly. (Historically
             // the orders differed and passing el straight in made the MELODY-row cell
             // drive REST's direction.) Anchor stays param_dir_<el>.
-            const int eng = el;
             bindWidget<DirCell>(
                 "param_dir_" + std::to_string(el),
-                std::function<void(DirCell*)>([this, el, eng](DirCell* w) {
+                std::function<void(DirCell*)>([this, el](DirCell* w) {
                     w->laneCol = editorDirCol[el];
                     const float stepW = (ED_W - 2.f*6.f) / 16.f;
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
-                    w->getStateFn = [this, eng]() -> int {
+                    w->getStateFn = [this, el]() -> int {
                         auto* mm = getMonsoon();
-                        return mm ? (int)std::lround(mm->getGlobalDir(eng)) & 3 : 0;
+                        return mm ? (int)std::lround(mm->getGlobalDir(el)) & 3 : 0;
                     };
-                    w->setStateFn = [this, eng](int v) {
-                        if (auto* mm = getMonsoon()) mm->setGlobalDir(eng, (float)(v & 3));
+                    w->setStateFn = [this, el](int v) {
+                        if (auto* mm = getMonsoon()) mm->setGlobalDir(el, (float)(v & 3));
                     };
-                    w->pushUndoFn = [this, eng](int oldV, int newV) {
+                    w->pushUndoFn = [this, el](int oldV, int newV) {
                         auto* mm = getMonsoon(); if (!mm) return;
                         redDot::applyAndPushStoreEdit<Monsoon>(mm, "direction",
-                            [eng](Monsoon& m, float val) { m.setGlobalDir(eng, val); },
+                            [el](Monsoon& m, float val) { m.setGlobalDir(el, val); },
                             (float)(oldV & 3), (float)(newV & 3));
                     };
                     w->lockWhen = [this]() { return !getMonsoon(); };
@@ -554,12 +548,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // POLY TAB: show MACRO's OWN probability (shared base draw + Macro's own spread),
         // NOT resolver.laneProbabilityAtStep (which returns the shared final that East's spread
         // writes on East-owned lanes → leak). One-way borrowing: Macro never borrows East.
-        // lane = engine PL lane; el = editor lane it displays into; pv = poly bank index.
+        // lane = the unified lane (editor == engine); pv = poly bank index.
         if (!onMonoTab) {
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
-                int el = lane;
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
-                    visualEditor->currentState.lanes[el].probabilities[s] =
+                    visualEditor->currentState.lanes[lane].probabilities[s] =
                         macroOwnProbability(lane, s, /*mono=*/false, /*polyVoice=*/pv);
             }
         } else {
@@ -575,10 +568,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // borrowing: Macro never borrows East. el = EDITOR lane; macroOwnProbability wants
             // the ENGINE PL lane — identity, el passes through.
             for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-                const int engLane = el;
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[el].probabilities[s] =
-                        macroOwnProbability(engLane, s, /*mono=*/true, /*polyVoice=*/0);
+                        macroOwnProbability(el, s, /*mono=*/true, /*polyVoice=*/0);
             }
         }
 
@@ -594,9 +586,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         auto& eng = monsoon->engine;
         // Per-lane direction cue: use Macro's OWN macroLaneSign_ (always follows Macro's DirCell)
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            int el = l;
-            int strand = el;
-            visualEditor->setLanePlayDir(el, eng.lastPlayDir * eng.macroLaneSign_[strand]);
+            visualEditor->setLanePlayDir(l, eng.lastPlayDir * eng.macroLaneSign_[l]);
         }
         // TAB-1 MONO MIRROR: view tab 1 = voice 1 = the mono master strand when Sands
         // Mono is attached. Show mono's LORS read-only (consistent treatment with the
@@ -631,16 +621,14 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 int ownOff = (int)std::lround(mod->macroBase[l][1] + mod->macroCVDelta[l][1]);
                 int ownRot = (int)std::lround(mod->macroBase[l][2] + mod->macroCVDelta[l][2]);
                 ownLen = std::max(1, ownLen);
-                int el = l;
-                visualEditor->currentState.lanes[el].setDisplayLOR(ownLen, ownOff, ownRot);
+                visualEditor->currentState.lanes[l].setDisplayLOR(ownLen, ownOff, ownRot);
                 // Use Macro's OWN macroLaneTick_ — advanced by the engine in advancePlayhead
                 // using Macro's direction (macroLaneDir_), with full bounce support for
                 // Pendulum/PingPong. Same pattern as East's laneTickV_.
-                int strand = el;
                 // MVC: hide the playhead when stopped (match Mono's started ? tick : -1), so
                 // rotation CV only moves the chevron, not the playhead, when the seq is stopped.
-                int ph = (eng.stepIndex >= 0) ? eng.macroLaneTick_[strand] : -1;
-                visualEditor->setLanePlayStep(el, calcPlayhead(ph, ownLen, ownOff, ownRot));
+                int ph = (eng.stepIndex >= 0) ? eng.macroLaneTick_[l] : -1;
+                visualEditor->setLanePlayStep(l, calcPlayhead(ph, ownLen, ownOff, ownRot));
             }
         }
     }
@@ -715,14 +703,13 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
             // dirModId(el) is the jack on editor row el; globalDir is lane-indexed and
             // editor row == engine lane (identity), so eng = el directly. (Historically
             // the orders differed and cycling el directly advanced REST's direction.)
-            const int eng = el;
             auto& in = inputs[dirModId(el)];
             if (!in.isConnected()) continue;
             bool high = in.getVoltage(0) > 1.f;
             if (high && !dirModPrev[el]) {
                 if (auto* mm = redDot::findMonsoonEitherSide(this)) {
-                    int cur = (int)std::lround(mm->getGlobalDir(eng));
-                    mm->setGlobalDir(eng, (float)((cur + 1) % 4));
+                    int cur = (int)std::lround(mm->getGlobalDir(el));
+                    mm->setGlobalDir(el, (float)((cur + 1) % 4));
                 }
             }
             dirModPrev[el] = high;
