@@ -238,11 +238,15 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         engine.pe.cachedSpreadInitialized = true;   // Stage 2a: enable step-rate refresh
 
         for (int v = 1; v <= effPolyVoices; v++) {
-            // Per-voice send/atten banks are voice-number-indexed (slot 0 = voice 1/mono, slot
-            // 1 = poly voice 2, …). Engine poly index v (0..14) is poly voice v+2; derive its
-            // 16-wide slot through the resolver so this can't drift from the asserted slot/bank
-            // invariant (slot stays off 0, the mono mix-in's slice).
-            const int slot = dotModular::VoiceResolver::voiceSlot(v + dotModular::VoiceResolver::kFirstPoly);
+            // v IS the voiceSlot (1..15 = V2..V16; Phase 2 unified this loop). The per-voice
+            // store banks (lorBase/spread/macroAtten/macroSend) are slot-indexed (slot 0 =
+            // V1/mono, slot k = V(k+1)) — use v directly.
+            // DOUBLE-CONVERSION FIX: this was voiceSlot(v + kFirstPoly), written when v was a
+            // 0-based poly bank index. After the loop became slot-based it computed v+1, so
+            // every voice read the NEXT voice's store slot (V16 read slot 16, out of bounds) —
+            // the "spread knob doesn't move voices-2+ probability bars" bug. Same class as the
+            // polyVoice() display fix (2b9d5ec5).
+            const int slot = v;
 
             // East's own base+CV for an L/O/R item. bank 0..3 = REST/MEL/OCT/ACC (== the
             // engine lane), item 0/1/2 = LEN/OFF/ROT. Base comes from the unified per-voice
@@ -263,10 +267,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                                   float lo, float hi)-> int {
                 // STEP 5b: poly write ownership via the resolver. Was:
                 //   ownerEast = ownerId(v, lane) > 0.5f
-                // topo voice arg is 1-based for poly (0 = mono/V1); lane here is
-                // engine-ordered → convert to editor lane. Cross-check in debug.
+                // owner() takes the voiceSlot (0 = V1/mono, 1..15 = V2..V16) — v already is
+                // one. (Was owner(v + 1) from the 0-based-loop era: read the NEXT voice's
+                // owner, and NONE at v=15 — fixed together with the slot double-conversion.)
                 const int elc = lane;
-                const bool ownerEast = (topo.owner(v + 1, elc) == dotModular::SandsTopology::Role::EAST);
+                const bool ownerEast = (topo.owner(v, elc) == dotModular::SandsTopology::Role::EAST);
                 // (step 5+6 cross-check assert removed — the resolver is now the single
                 // source of truth; the old ownerId-match check fired on load-time transients
                 // during attach/teardown. Same strip as the other 7 topology cross-checks.)
@@ -302,7 +307,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             auto combineSpread = [&](int lane, float eastInterpVal)-> float {
                 // STEP 5b: same poly write ownership via the resolver (spread path).
                 const int els = lane;
-                const bool ownerEast = (topo.owner(v + 1, els) == dotModular::SandsTopology::Role::EAST);
+                const bool ownerEast = (topo.owner(v, els) == dotModular::SandsTopology::Role::EAST);
                 // (step 5+6 cross-check assert removed — see the poly-write path above.)
                 // No Macro → East is the sole owner (including V1). Only delegate to Macro
                 // when Macro is actually present AND owns the lane. Without this, V1's
@@ -697,7 +702,11 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                                      (int)std::round(macroVis->macroBase[lane][2]));
                 }
             }
-            for (int v = 0; v < effPolyVoices; ++v) {
+            // voiceSlot loop (1..effPolyVoices = V2..V16). Slot 0 is V1, whose
+            // strands the MACRO_SOLE mono block above already writes; the old
+            // 0-based loop clobbered V1's store slot with the globals AND
+            // dropped V16 (slot 15).
+            for (int v = 1; v <= effPolyVoices; ++v) {
                 // Global LOR per lane (Macro owns → no per-voice/ownership branch).
                 // macroBase[lane][item]: item 0=LEN 1=OFF 2=ROT, engine-lane indexed.
                 for (int lane = 0; lane < PL::PL_LANES; ++lane) {

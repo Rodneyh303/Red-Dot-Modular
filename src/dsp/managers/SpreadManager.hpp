@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include "../SpreadInterp.hpp"
+#include "../VoiceResolver.hpp"   // kVoiceSlots (16-wide slot banks)
 
 namespace redDot {
 
@@ -55,11 +56,11 @@ struct SpreadManager {
   // breaking the voice-1 self-target no-op (positive V1 spread wrongly moved V1).
   bool monoContext = false;
   
-  // Spread values: [voice][lane]
-  // For macro: all voices use same spread (but we store separately for flexibility)
-  // For per-voice: each voice has own spread
-  // Lane order is the SPREAD/poly-engine order: 0=REST 1=MEL 2=OCT 3=ACC 4=QMIX 5=VAR 6=LEG.
-  std::array<std::array<float, 7>, 8> spread = {};  // [8 voices][7 lanes: REST/MEL/OCT/ACC/QMIX/VAR/LEG]
+  // Spread values: [voiceSlot][lane]. Slot-indexed, 16-wide (slot 0 = V1/mono,
+  // 1..15 = V2..V16) — was [8], so slot-8..14 writes (East pushes voiceSlot
+  // 1..15) ran off the end into the average cache below. Lane order is the
+  // unified lane order (MEL/OCT/QMIX/REST/ACC/VAR/LEG).
+  std::array<std::array<float, 7>, dotModular::VoiceResolver::kVoiceSlots> spread = {};   // [16 slots][7 lanes]
 
   // ── Average-poly display cache ───────────────────────────────────────────
   // calculateAveragePolyValue() was called 48x/UI-frame (3 lanes x 16 steps),
@@ -74,7 +75,7 @@ struct SpreadManager {
   SpreadManager(PatternEngine* pe = nullptr, int nVoices = 7, int startVoice = 0)
     : patternEngine(pe), numVoices(nVoices), startVoiceIdx(startVoice) {
     // Initialize spreads to 0 (no interpolation)
-    for (int v = 0; v < 8; ++v) {
+    for (int v = 0; v < dotModular::VoiceResolver::kVoiceSlots; ++v) {
       for (int l = 0; l < 7; ++l) {
         spread[v][l] = 0.0f;
       }
@@ -90,14 +91,17 @@ struct SpreadManager {
   }
   
   
+  // Storage bound = the 16-wide slot bank (numVoices stays the ACTIVE-voice
+  // count for the average logic — it must not gate storage, or V16 (slot 15)
+  // can never hold a spread value).
   void setSpread(int voiceIdx, int lane, float value) {
-    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 7) {
+    if (voiceIdx >= 0 && voiceIdx < dotModular::VoiceResolver::kVoiceSlots && lane >= 0 && lane < 7) {
       spread[voiceIdx][lane] = rack::math::clamp(value, -1.0f, 1.0f);
     }
   }
   
   float getSpread(int voiceIdx, int lane) const {
-    if (voiceIdx >= 0 && voiceIdx < numVoices && lane >= 0 && lane < 7) {
+    if (voiceIdx >= 0 && voiceIdx < dotModular::VoiceResolver::kVoiceSlots && lane >= 0 && lane < 7) {
       return spread[voiceIdx][lane];
     } // Default to 0.0f if out of bounds, meaning no spread
     return 0.0f;
@@ -173,7 +177,10 @@ struct SpreadManager {
     const float inv = 1.f / activeVoiceCount;
     for (int s = 0; s < 16; ++s) {
       float r = 0.f, m = 0.f, o = 0.f, a = 0.f, q = 0.f;
-      for (int v = 0; v < activeVoiceCount; ++v) {
+      // voiceSlot loop: slots 1..activeVoiceCount = V2..V(last active). Was
+      // v = 0..count-1 — pre-Phase-A polyRandom(bank) semantics that averaged
+      // V1's row and dropped the top active voice.
+      for (int v = 1; v <= activeVoiceCount; ++v) {
         r += patternEngine->polyRandom(v, SequencerEngine::PL_REST)[s];
         m += patternEngine->polyRandom(v, SequencerEngine::PL_MELODY)[s];
         o += patternEngine->polyRandom(v, SequencerEngine::PL_OCTAVE)[s];
@@ -234,7 +241,7 @@ struct SpreadManager {
    * Get the original (uninterpolated) value for a voice/lane/step.
    */
   float getOriginalValue(int voiceIdx, int lane, int step) const {
-    if (!patternEngine || voiceIdx < 0 || voiceIdx >= numVoices) return 0.5f;
+    if (!patternEngine || voiceIdx < 0 || voiceIdx >= dotModular::VoiceResolver::kVoiceSlots) return 0.5f;
     if (lane < 0 || lane > 4 || step < 0 || step >= 16) return 0.5f;
     
     switch (lane) {
@@ -389,34 +396,10 @@ struct SpreadManager {
   }
 };
 
-/**
- * MacroSpreadManager
- * 
- * Convenience wrapper for macro poly spread (same spread applied to all voices).
- * 
- * Usage:
- *   MacroSpreadManager mgr(patternEngine, 7);
- *   mgr.setSpread(lane, 0.5);  // Applied to all voices
- *   float val = mgr.getInterpolatedValue(voiceIdx, lane, step);
- */
-
-struct MacroSpreadManager : public SpreadManager {
-  MacroSpreadManager(PatternEngine* pe = nullptr, int nVoices = 7)
-    : SpreadManager(pe, nVoices) {}
-  
-  // Override: set spread applies to all voices
-  void setSpread(int lane, float value) {
-    if (lane >= 0 && lane < 7) {
-      float clamped = rack::math::clamp(value, -1.0f, 1.0f);
-      for (int v = 0; v < numVoices; ++v) {
-        SpreadManager::setSpread(v, lane, clamped);
-      }
-    }
-  }
-  
-  float getSpread(int lane) const {
-    return (numVoices > 0) ? SpreadManager::getSpread(0, lane) : 0.0f;
-  }
-};
+// ERADICATION Phase 3d: MacroSpreadManager DELETED. Its only consumer
+// (PolySandsParameterManager) was merged into SandsParameterManager, which
+// carries the same fan-out as setSpreadAll() — identical [-1,1] clamp + loop.
+// (SpreadManager::setMacroSpread() is NOT a replacement: it clamps to [0,1]
+// while spread values are bipolar. Historical docs: SPREADMANAGER_GUIDE.md.)
 
 }  // namespace redDot
