@@ -133,3 +133,35 @@ the VIDEO-rate display path computes for, (c) whether the two probability patter
 - indices SAME but values differ -> it IS the timing race (reconcile recompute vs refreshPolyRandomCell).
 Bet: indices differ (two clean patterns = two voices). Plan: 100% mono-eradication first, then this log if
 persistent.
+
+---
+
+## ✅ RESOLVED (commit 2b9d5ec5) — ROOT CAUSE = polyVoice() DOUBLE-CONVERSION (+1 applied twice)
+Both bugs were ONE off-by-one. During the convention work, polyBankIndex was changed to return voiceSlot
+(0=V1). But the bar display STILL added +1 (pv+1), a DOUBLE conversion:
+  OLD: pv = polyVoice() [was 0-based poly]; vs = pv + 1   // correct when polyBankIndex returned 0-based
+  NOW: polyBankIndex returns voiceSlot -> polyVoice() IS voiceSlot -> the +1 is one conversion too many.
+Consequences (both predicted symptoms, now explained):
+- BUG A (last voice zero): V16 -> voiceSlot 15, +1 -> index 16 = OUT OF BOUNDS on the [16] array -> reads
+  zero/garbage. Last voice shows no data.
+- BUG B (poly jitter "two patterns flip"): the display read the ADJACENT voice (off by one) -> the correct
+  voice's pattern and the adjacent voice's pattern alternated in the slot = "flips between two patterns" =
+  two voices, exactly the earlier refinement. V1 was uniquely smooth because index 0 doesn't overflow / the
+  +1 bit the higher indices.
+FIX: remove the UI +1; use polyVoice() (= voiceSlot) directly. One line. Also deleted the now-vestigial
+MonoSandsParameterManager.hpp (170 lines) — one class-level suspect cleared.
+
+### Validation of the whole diagnostic arc (every tell was right)
+- "dual convention is the root" ✓ (two paths disagreed on whether +1 was already applied)
+- "both bugs, one root" ✓ (one double +1)
+- "two patterns = two adjacent voices" ✓
+- "V1 is the reference / still special" ✓ (index 0 escapes the overflow)
+- "verification was the bottleneck" ✓ — the fast+reliable test harness is what let it be TRACED to ground
+  instead of guessed. The harness fix didn't fix the bug; it let the bug be SEEN.
+
+### Still remaining (debt, NOT bugs)
+The ~310-site full convention unification (voiceSlot everywhere) + the other vestigial classes (LaneMapping
++ SandsLaneNames, MonsoonSandsManager, identity-conversions, EL2ENG) remain as FUTURE-PROOFING cleanup —
+they are no longer blocking behaviour. The convention work was far enough along that this ONE site fixed the
+bugs. Verify in Rack: N=6/15 all voices show data (V16 nonzero); poly smooth incl melody+rhythm+qmix
+together; V1 no longer uniquely smooth.
