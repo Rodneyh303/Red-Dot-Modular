@@ -69,3 +69,34 @@ goes smooth -> you touched a per-stream symptom, not the shared root; keep looki
 fix missed the root."
 (Same pattern as the voice-2 bugs: parallel-stream structure means a SHARED-PATH bug shows as N identical
 symptoms. Don't chase N; fix the one shared mechanism.)
+
+---
+
+## SHARPER Bug B diagnosis — "2 patterns flipping" = WRONG-VOICE INDEX, not a spread race (Rodney)
+New symptom detail: the mix optimisation = engine computes at STEP BOUNDARY + controller view at VIDEO RATE
+for the SELECTED voice only. It's NOT reaching the selected voice; what reaches FLIPS BETWEEN 2 PATTERNS of
+probability.
+
+"Flips between 2 PATTERNS" (not two near-values, not smooth noise) is diagnostic -> this is NOT the
+spread-timing race I chased earlier. Two discrete PATTERNS = two writers putting DIFFERENT VOICES' data into
+the display slot, alternating:
+- Writer 1 (step-boundary engine): writes the CORRECT selected-voice pattern.
+- Writer 2 (video-rate selected-voice view): writes a DIFFERENT voice's pattern because it's indexed to the
+  WRONG voice ("not reaching the selected voice").
+-> display alternates between the two voice patterns = the "2 patterns flipping".
+
+So Bug B is most likely a WRONG-VOICE INDEX in the video-rate view (an off-by-one / wrong-base convention on
+displayedVoice_ / selectedVoice), NOT a timing/spread reconciliation. It fits the convention debt exactly
+(voiceIdx 0=V2 vs voiceSlot 0=V1 ambiguity on the display index). Supersedes the two-writer-spread-race
+theory above for Bug B.
+
+### Plan (Rodney): eradicate-then-log
+1. Do the FULL mono-not-special / convention eradication (one base = voiceSlot 0=V1, everywhere incl the
+   video-rate display-view index). This likely FIXES it — the video-rate view will hit the actual selected
+   voice.
+2. If it persists -> LOGGING: log (a) selectedVoice, (b) the voice index the video-rate view COMPUTES/WRITES,
+   (c) the voice index the step-boundary engine wrote. The 2 flipping patterns = 2 different voice indices;
+   the log shows WHICH is wrong in ~2 min. Then fix that one index.
+
+NOTE the melody/rhythm/qmix consolidation still holds: if it IS a wrong-voice index in the SHARED video-rate
+view path, all 3 lanes flip the same way (confirmed-same-symptom) -> one index fix resolves all 3.
