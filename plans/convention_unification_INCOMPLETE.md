@@ -41,3 +41,41 @@ not-fixed without Rack. Before more fixes: (a) complete the convention unificati
 harness over ALL voices; (b) add a behavioural check (fill N voices -> assert all N nonzero). Then fixes are
 verifiable instead of guesses. Until then, the fixes need Rack-in-hand (Rodney) — the bottleneck is
 VERIFICATION, not typing.
+
+---
+
+## CLASS-LEVEL DEBT — vestigial bridges after unification (Rodney audit). The THIRD level.
+"Mono/lane is not special" must be true at THREE levels, not two: STORAGE, INDEX/CONVENTION, and CLASS
+STRUCTURE. The class level is UN-STARTED, and is likely WHY V1 still behaves specially (V1 may still route
+through a mono-specific class/path that the array+index collapse never touched).
+
+### Three-level eradication map
+  dimension      | storage        | index/convention   | CLASS structure (NEW — not started)
+  voice (mono)   | [16][16] ~95%  | voiceSlot ~10%     | MonoSandsParameterManager, MonsoonSandsManager,
+                 |                |                    |   3rd ParameterManager  -> retire/merge
+  lane           | order unified  | order unified      | LaneMapping(dsp) + SandsLaneNames(ui) + 14 lane
+                 |                |                    |   identity-conv + EL2ENG  -> merge/delete
+
+### Confirmed suspect classes (vestigial bridges — a representation unified but the bridge survived)
+- **MonoSandsParameterManager.hpp** — mono-Sands retired; class persists. SMOKING GUN candidate for the
+  V1-is-special bug: if V1 routes through this (its own param path) while poly doesn't, that IS why V1 is
+  uniquely smooth. CHECK FIRST: is V1 handled by MonoSandsParameterManager and poly by a different manager?
+  If so, retiring/merging it unifies the path -> likely fixes the jitter.
+- **MonsoonSandsManager** — probable sibling/overlap with MonoSandsParameterManager (two Sands managers);
+  merge.
+- **3 ParameterManager classes** total — post-unification likely wants fewer (one per-voice param manager,
+  not mono+poly+...). Check overlap.
+- **LaneMapping.hpp (src/dsp/) + SandsLaneNames.hpp (src/ui/)** — TWO lane-reference systems in two layers
+  (dsp + ui). Under one unified lane order they should be ONE canonical lane descriptor. Merge/minimize.
+- **14 lane identity-conversion sites + EL2ENG** — bridges converting between now-IDENTICAL lane
+  representations = dead. Delete (identity = no-op).
+
+### NOT suspect (functional managers — leave): UIManager, ScaleManager, PersistenceManager, LockManager.
+
+### The principle (unifies the whole cleanup)
+Collapse to ONE REPRESENTATION per dimension (one voice model, one lane reference); DELETE every
+bridge/manager/mapping/conversion that translates between representations that are now IDENTICAL. Vestigial
+bridges don't just add dead weight — they PERPETUATE the split (keep the special-case scaffolding alive),
+which is the likely home of the V1-special behaviour. So the "100% mono eradication" must include RETIRING
+THE MONO CLASSES, not just the arrays/indices — and the lane cleanup must MERGE the two lane-naming systems
++ delete the identity conversions. Do all three levels or the split persists at whichever is left.
