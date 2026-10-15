@@ -98,11 +98,11 @@ struct SandsTopology {
             return Role::NONE;
         }
 
-        // Poly voices (voice >= 1). (VAR/LEG are poly now; the old `>= kPolyLanes → NONE` is dead.)
+        // Poly voices (voice >= 1, voiceSlot). eastPolyOwner is voiceSlot-indexed
+        // ([0]=V1 unused, [1]=V2, ..., [15]=V16) — matches the writer.
         if (in.eastPresent) {
-            const int pv = voice - 1;   // poly index 0..14
-            if (pv < 0 || pv >= 16) return Role::NONE;
-            if (in.macroPresent && !in.eastPolyOwner[pv][editorLane]) return Role::MACRO;
+            if (voice < 1 || voice >= 16) return Role::NONE;
+            if (in.macroPresent && !in.eastPolyOwner[voice][editorLane]) return Role::MACRO;
             return Role::EAST;
         }
         if (in.macroPresent) return Role::MACRO;   // Macro drives all poly voices when sole poly editor

@@ -81,9 +81,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             const int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
             topoIn.eastV1Owner[el] = noMacro || (mmTopo ? mmTopo->getMacroOwn(Monsoon::kMonoMacroOwnRow, eng) > 0.5f : false);
-            for (int pv = 0; pv < effPolyVoices; ++pv)
-                // Phase A: poly voices shifted by +1 (V2=1..V16=15; V1=0). Old patches discarded.
-                topoIn.eastPolyOwner[pv][el] = (mmTopo ? mmTopo->getMacroOwn(pv + 1, eng) > 0.5f : false);
+            // voiceSlot convention: pv = 1..effPolyVoices (V2..V(effPolyVoices+1)). V1 at [0] unused.
+            for (int pv = 1; pv <= effPolyVoices; ++pv)
+                topoIn.eastPolyOwner[pv][el] = (mmTopo ? mmTopo->getMacroOwn(pv, eng) > 0.5f : false);
         }
     }
     const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
@@ -96,7 +96,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
     // East-gated block. If East is absent or detached, the block below is skipped and this
     // stands — so "no East ⇒ follow mono" holds even after East is removed mid-session (no
     // stale Local-East state). When East IS present, the block re-asserts Local East per param.
-    for (int dv = 0; dv < effPolyVoices; ++dv) { engine.setVarlegLocalEast(dv, 0, false); engine.setVarlegLocalEast(dv, 1, false); }
+    // voiceSlot convention: dv = 1..effPolyVoices (V2..V(effPolyVoices+1)).
+    // BUG FIX: was dv=0..effPolyVoices-1 (0-based poly) — V2's reset went to
+    // varlegLocalEast_[0] = V1's slot (the reader uses voiceSlot). Off-by-one.
+    for (int dv = 1; dv <= effPolyVoices; ++dv) { engine.setVarlegLocalEast(dv, 0, false); engine.setVarlegLocalEast(dv, 1, false); }
 
     // Change Alley V2: single module, runs INDEPENDENTLY of the old Change Alley.
     // (The V2 application was nested inside if(cachedChangeAlleyExpander) and never fired

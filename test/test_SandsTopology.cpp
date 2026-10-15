@@ -64,8 +64,8 @@ int main() {
     std::printf("== EAST_PLUS_MACRO poly ownership (per voice/lane) ==\n");
     {
         auto i = base(true,true);
-        for (int v=0; v<15; ++v) for (int l=0;l<7;++l) i.eastPolyOwner[v][l] = true; // East owns all 7 poly lanes
-        i.eastPolyOwner[2][1] = false;   // voice index 2 (=V4), octave ceded to Macro
+        for (int v=1; v<16; ++v) for (int l=0;l<7;++l) i.eastPolyOwner[v][l] = true; // East owns all 7 poly lanes (voiceSlot 1..15)
+        i.eastPolyOwner[3][1] = false;   // voiceSlot 3 (=V4), octave ceded to Macro
         auto t = SandsTopology::build(i);
         CHECK(t.owner(3,1) == Role::MACRO,           "V4 octave ceded -> MACRO (voice 3 = poly idx 2)");
         CHECK(t.owner(3,0) == Role::EAST,            "V4 melody still EAST");

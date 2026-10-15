@@ -80,22 +80,23 @@ struct PolyVoiceSandsParameterManager {
   void syncEditorToPatternEngine(int voiceIdx, const SandsVisualEditorV4::VoiceState& editorState) {
     if (!patternEngine || voiceIdx < 0 || voiceIdx >= numVoices) return;
     
-    // Rest lane (uses polyRhythmRandom)
+    // voiceIdx is 0-based poly (0=V2). Convert to voiceSlot (+1) for BOTH
+    // polyRandom and the source arrays — they were INCONSISTENT (polyRandom
+    // had no +1, writing V2's editor data into V1's random_ slot. BUG FIX).
+    const int vs = voiceIdx + 1;  // voiceSlot
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_REST)[i] = editorState.lanes[SandsVisualEditorV4::REST].probabilities[i];
-      patternEngine->rhythmSource[voiceIdx + 1][i] = patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_REST)[i];
+      patternEngine->polyRandom(vs, SequencerEngine::PL_REST)[i] = editorState.lanes[SandsVisualEditorV4::REST].probabilities[i];
+      patternEngine->rhythmSource[vs][i] = patternEngine->polyRandom(vs, SequencerEngine::PL_REST)[i];
     }
-    
-    // Melody lane
+
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_MELODY)[i] = editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i];
-      patternEngine->melodySource[voiceIdx + 1][i] = patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_MELODY)[i];
+      patternEngine->polyRandom(vs, SequencerEngine::PL_MELODY)[i] = editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i];
+      patternEngine->melodySource[vs][i] = patternEngine->polyRandom(vs, SequencerEngine::PL_MELODY)[i];
     }
-    
-    // Octave lane
+
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_OCTAVE)[i] = editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i];
-      patternEngine->octaveSource[voiceIdx + 1][i] = patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_OCTAVE)[i];
+      patternEngine->polyRandom(vs, SequencerEngine::PL_OCTAVE)[i] = editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i];
+      patternEngine->octaveSource[vs][i] = patternEngine->polyRandom(vs, SequencerEngine::PL_OCTAVE)[i];
     }
   }
   

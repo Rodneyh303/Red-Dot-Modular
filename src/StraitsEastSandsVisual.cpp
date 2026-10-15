@@ -645,9 +645,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
                 int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
                 in.eastV1Owner[el] = mmT ? (mmT->getMacroOwn(Monsoon::kMonoMacroOwnRow, eng) > 0.5f) : false;
-                for (int pv = 0; pv < 15; ++pv)
-                    // Phase A: poly voices shifted by +1 (V2=1..V16=15; V1=0)
-                    in.eastPolyOwner[pv][el] = mmT ? (mmT->getMacroOwn(pv + 1, eng) > 0.5f) : false;
+                // voiceSlot: pv = 1..15 (V2..V16). V1 at [0] unused (eastV1Owner covers it).
+                for (int pv = 1; pv < 16; ++pv)
+                    in.eastPolyOwner[pv][el] = mmT ? (mmT->getMacroOwn(pv, eng) > 0.5f) : false;
             }
             // The CURRENT tab's owner cells live in the display proxy (ownerDispId) and are
             // only flushed to the persistent slot on tab-exit — so for the current voice,
