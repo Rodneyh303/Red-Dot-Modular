@@ -1097,19 +1097,20 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // wrote the final array at a different time than the widget read it.
             auto* eastMod = static_cast<StraitsEastSandsVisual*>(module);
             const int pv = polyVoice();   // poly bank index (0 = V2, 1 = V3, ...)
+            const int vs = pv + 1;        // → voiceSlot (1 = V2, ..., 15 = V16) — UI boundary conversion
             auto& peRef = monsoon->engine.pe;
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
                 int el = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[lane];
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
                     float base;
                     switch (lane) {
-                        case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[pv + 1][s]; break;
-                        case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[pv + 1][s]; break;
-                        case SequencerEngine::PL_OCTAVE:   base = peRef.pubSlewedPolyOctave[pv + 1][s]; break;
-                        case SequencerEngine::PL_ACCENT:   base = peRef.pubSlewedPolyAccent[pv + 1][s]; break;
-                        case SequencerEngine::PL_QMIX:     base = peRef.pubSlewedPolyQmix[pv + 1][s]; break;
-                        case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[pv + 1][s]; break;
-                        case SequencerEngine::PL_LEGATO:   base = peRef.pubSlewedPolyLegato[pv + 1][s]; break;
+                        case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[vs][s]; break;
+                        case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[vs][s]; break;
+                        case SequencerEngine::PL_OCTAVE:   base = peRef.pubSlewedPolyOctave[vs][s]; break;
+                        case SequencerEngine::PL_ACCENT:   base = peRef.pubSlewedPolyAccent[vs][s]; break;
+                        case SequencerEngine::PL_QMIX:     base = peRef.pubSlewedPolyQmix[vs][s]; break;
+                        case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[vs][s]; break;
+                        case SequencerEngine::PL_LEGATO:   base = peRef.pubSlewedPolyLegato[vs][s]; break;
                         default: base = 0.5f; break;
                     }
                     const float spread = (pv >= 0 && pv < 16) ? eastMod->polySpreadEffective[pv][lane] : 0.f;
