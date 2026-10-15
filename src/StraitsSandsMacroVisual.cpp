@@ -195,14 +195,14 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // unification), so el passes through everywhere with NO conversion. (Historically
         // the two orders differed and passing el straight through was the "top row is
         // MELODY but the knob is labelled/modulates REST" bug.) Anchor stays <el>.
-        // Editor-ordered lane names for tooltips (top→bottom).
-        static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
+        // Canonical lane names for tooltips (top→bottom).
+        static const char* const* EDN = dotModular::SandsLaneNames::EDITOR;
 
         // 5 poly probability CV outs — jack on editor row el drives engine lane's prob out.
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el)
             bindOutput<redDot::GoldPolyPort>(
                 "output_prob_" + std::to_string(el),
-                StraitsMacroVisualIds::PROB_OUT_REST + el,
+                StraitsMacroVisualIds::PROB_OUT_START + el,
                 std::function<void(redDot::GoldPolyPort*)>(themeOut));
 
         // ── Left section: 5 poly lanes × (4 CV jacks + 4 attens + 1 spread) ──
@@ -690,8 +690,8 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     Monsoon* mon = cachedMon_;
     if (!mon) {
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            outputs[PROB_OUT_REST + l].setChannels(1);
-            outputs[PROB_OUT_REST + l].setVoltage(0.f);
+            outputs[PROB_OUT_START + l].setChannels(1);
+            outputs[PROB_OUT_START + l].setVoltage(0.f);
         }
         return;
     }
@@ -723,7 +723,7 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     const int gs = eng.stepIndex;
     dotModular::VoiceResolver resolver(eng);
     for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // 5 poly lanes incl QMIX
-        auto& out = outputs[PROB_OUT_REST + l];
+        auto& out = outputs[PROB_OUT_START + l];
         out.setChannels(nCh < 1 ? 1 : nCh);
         // Macro's OWN global LOR step for this lane (from macroBase+CVDelta — identical
         // to Macro's editor playhead, independent of East/ownership). Same step for

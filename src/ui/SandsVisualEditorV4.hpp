@@ -579,12 +579,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   }
   
   void drawLaneLabel(NVGcontext* vg, int lane) {
-    // EDITOR lane order incl QMIX at index 2 (identity — editor lane == strand): MEL/OCT/QMIX/REST/
-    // ACCENT/VARIATION/LEGATO. 7 entries (MAX_LANES) so lane 6 (LEGATO) is in-bounds; the first
-    // FIVE equal the poly labels. Was 6 entries pre-QMIX (missing QMIX + LEG OOB read).
-    static const char* monoNames[MAX_LANES] =
-        {"MELODY", "OCTAVE", "QMIX", "REST", "ACCENT", "VARIATION", "LEGATO"};
-    const char* name = (lane >= 0 && lane < MAX_LANES) ? monoNames[lane] : "";
+    // Long lane names from the canonical table (unified order; length-asserted in
+    // LaneMapping). Was a local literal — the exact per-file-copy drift class.
+    const char* name = (lane >= 0 && lane < MAX_LANES) ? dotModular::SandsLaneNames::EDITOR_LONG[lane] : "";
     // PURELY VERTICAL fix: X / right-align / left-of-grid position unchanged (never the problem).
     // Was at the lane CENTRE (getLaneCenterY) which is the same height as the mod/spread knobs to
     // the left, so the label sliced through them. Move Y UP to sit ABOVE the knob row — near the

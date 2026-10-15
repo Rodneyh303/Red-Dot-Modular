@@ -298,7 +298,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             };
             for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
                 bindOutput<redDot::GoldPolyPort>("output_prob_" + std::to_string(l),
-                    StraitsEastVisualIds::PROB_OUT_REST + l,
+                    StraitsEastVisualIds::PROB_OUT_START + l,
                     std::function<void(redDot::GoldPolyPort*)>(themeOut));
         }
         // Direction gate-mod jacks (input_dir_mod_<lane>) — poly, gate cycles Fwd→Rev→Pend→PingPong.
@@ -336,7 +336,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     "input_cv_" + std::to_string(el) + "_" + std::to_string(c), cvId(el,c),
                     std::function<void(redDot::GoldPolyPort*)>(themeCfg));
             // CV-depth attenuverters: STORE-BACKED, engine-indexed store, editor-ordered label.
-            static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
+            static const char* const* EDN = dotModular::SandsLaneNames::EDITOR;
             static const char* CN[4] = {"Len","Off","Rot","Spr"};
             for (int c = 0; c < 4; ++c) {
                 redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
@@ -361,7 +361,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //  collided with the atten family. The param id is still SPREAD_R+lane implicitly
         //  via the store get/set below, keyed by editor lane.)
         // Spread base — anchor param_spr_<el>, store getSpread(slot, lane).
-        static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
+        static const char* const* EDN = dotModular::SandsLaneNames::EDITOR;
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             auto* k = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_spr_" + std::to_string(el),
@@ -737,10 +737,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         if (!module) return;
         const int voice = currentSlot();   // Phase A: V1=0, V2+=1..15 (was polyVoice)
         const bool macroOwns = !eastOwnsLane(lane);   // MVC step 1d: store-backed
-        static const char* laneNames[dotModular::SandsGrid::POLY_LANES] =
-            { "MELODY", "OCTAVE", "Q-MIX", "REST", "ACCENT", "VARIATION", "LEGATO" };   // EDITOR order (lane is an editor lane)
-        static_assert(sizeof(laneNames)/sizeof(laneNames[0]) == dotModular::SandsGrid::POLY_LANES,
-                      "ownership-menu lane-name table must be one per poly lane");
+        // Canonical long names (unified order — lane is unified; length-asserted in LaneMapping).
+        static const char* const* laneNames = dotModular::SandsLaneNames::EDITOR_LONG;
         const char* ln = (lane >= 0 && lane < dotModular::SandsGrid::POLY_LANES) ? laneNames[lane] : "?";
 
         Menu* menu = createMenu();
@@ -1434,8 +1432,8 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
     if (!mon) {
         // Phase 2: Now 5 poly outputs
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            outputs[PROB_OUT_REST + l].setChannels(1);
-            outputs[PROB_OUT_REST + l].setVoltage(0.f);
+            outputs[PROB_OUT_START + l].setChannels(1);
+            outputs[PROB_OUT_START + l].setVoltage(0.f);
         }
         return;
     }
@@ -1489,7 +1487,7 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
     dotModular::VoiceResolver resolver(eng);
     // Phase 2: Now 5 poly outputs
     for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-        auto& out = outputs[PROB_OUT_REST + l];
+        auto& out = outputs[PROB_OUT_START + l];
         out.setChannels(nCh < 1 ? 1 : nCh);
         // Uniform addressing: VCV channel ch (0-based) carries voice number ch+1.
         //   ch 0 → voice 1 (mono master strand) — previously hardcoded 0V; now its real draw.

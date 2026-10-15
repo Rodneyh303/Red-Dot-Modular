@@ -1,7 +1,7 @@
 #pragma once
 #include <rack.hpp>
 #include "ui/SandsGrid.hpp"
-#include "ui/SandsLaneNames.hpp"   // canonical EDITOR / SPREAD lane-name tables (q-mix-correct)
+#include "dsp/LaneMapping.hpp"     // lane order + canonical lane names (Phase 3b-3 merge)
 #include "Monsoon.hpp"
 
 using namespace rack;
@@ -171,8 +171,11 @@ namespace StraitsEastVisualIds {
     // channel 1 = master value, channels 2..1+nVoices = the per-voice ensemble.
     // SANDS CONSOLIDATION Step 1: 7 poly outputs (added VAR/LEG).
     enum OutputId {
-        PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_ACCENT, PROB_OUT_QMIX,
-        PROB_OUT_VAR, PROB_OUT_LEG,
+        // Unified lane order (MEL=0 OCT=1 QMIX=2 REST=3 ACC=4 VAR=5 LEG=6) — matches the
+        // panel rows, the resolver writes and the labels. (Was REST-first from the OLD
+        // spread order, so every id's NAME was crossed with the data it carries.)
+        PROB_OUT_START = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_QMIX, PROB_OUT_REST,
+        PROB_OUT_ACCENT, PROB_OUT_VAR, PROB_OUT_LEG,
         NUM_OUTPUTS
     };
 }
@@ -205,11 +208,12 @@ struct StraitsEastSandsVisual : Module {
         config(0, StraitsEastVisualIds::NUM_INPUTS,
                StraitsEastVisualIds::NUM_OUTPUTS, StraitsEastVisualIds::NUM_LIGHTS);
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
-        // SANDS CONSOLIDATION Step 1: 7 poly outputs (VAR/LEG added)
-        { static const char* ln[7] = {"REST","MEL","OCT","ACC","Q-MIX","VAR","LEG"};
-          for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
-            configOutput(StraitsEastVisualIds::PROB_OUT_REST + l,
-                std::string("Probability ") + ln[l] + " (poly: ch1 master, ch2+ voices)"); }
+        // SANDS CONSOLIDATION Step 1: 7 poly outputs (VAR/LEG added). Labels from the
+        // canonical table — the old local literal was in the OLD spread order, so every
+        // jack tooltip named the wrong lane (id 0 carries MEL, was labelled "REST").
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
+            configOutput(StraitsEastVisualIds::PROB_OUT_START + l,
+                std::string("Probability ") + dotModular::SandsLaneNames::EDITOR[l] + " (poly: ch1 master, ch2+ voices)");
 
         // Spread base (4): STORE-BACKED (MVC step 1d). SPREAD_R/M/O/A ids KEPT (name panel slots)
         // but reserve NO param slots — StoreKnob reads/writes editor.spread[currentSlot(), lane]
@@ -219,16 +223,13 @@ struct StraitsEastSandsVisual : Module {
         // to/from the per-voice MACRO_OWN/SEND params on voice switch). Owner is
         // an on/off switch (off=Macro owns base, on=East owns). Sends -1..1
         // default unity (Macro CV reaches the voice; turn down to localise).
-        // (Dead: consumed only by (void)laneNm below — kept as the SPREAD-order table for parity.)
-        const char* const* laneNm = dotModular::SandsLaneNames::SPREAD;   // [POLY_LANES], spread order
         // V1 ownership (poly lanes 0..3): STORE-BACKED (MVC step 1d). ownerDispId ids KEPT (name
         // panel slots) but reserve NO param slots — OwnerCell reads/writes editor.macroOwn via
         // get/setMacroOwn (poly) / get/setMonoMacroOwn (V1) live per tab. No configSwitch.
-        (void)laneNm;
 
-        // cvId(lane,c) is indexed by SPREAD/poly-engine lane (lane 0=REST); label from the canonical
-        // SPREAD table (q-mix appended at index 4). paramNames are the 4 COLUMNS (Len/Off/Rot/Spr).
-        static const char* const* laneNames = dotModular::SandsLaneNames::SPREAD;   // [POLY_LANES], spread order
+        // cvId(lane,c) is indexed by the unified lane; label from the canonical table.
+        // paramNames are the 4 COLUMNS (Len/Off/Rot/Spr).
+        static const char* const* laneNames = dotModular::SandsLaneNames::EDITOR;   // [POLY_LANES]
         static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
         for (int lane=0; lane<dotModular::SandsGrid::POLY_LANES; ++lane)
             // CV-depth attens: STORE-BACKED (MVC step 1d). attenDispId ids KEPT (name panel slots)

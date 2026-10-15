@@ -1,7 +1,6 @@
 #pragma once
 #include <rack.hpp>
 #include "ui/SandsGrid.hpp"
-#include "ui/SandsLaneNames.hpp"   // canonical EDITOR / SPREAD lane-name tables (q-mix-correct)
 #include "Monsoon.hpp"
 #include "dsp/LaneMapping.hpp"   // strand constants + strong lane types (identity — tables deleted Phase 3b)
 #include "ui/VisualExpanderHelpers.hpp"  // findMonsoonEitherSide (monoMacroOwnsEngineLane store read)
@@ -163,7 +162,7 @@ struct MonsoonSandsVisualExpander : Module {
         // bound by POLY_LANES so a lane-count change can't leave this at 4 again.
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
             configInput(delegModId(l),
-                        std::string(dotModular::SandsLaneNames::EDITOR_POLY[l]) + " delegation gate-mod");
+                        std::string(dotModular::SandsLaneNames::EDITOR[l]) + " delegation gate-mod");
     }
     void process(const ProcessArgs&) override;   // defined in .cpp (needs calcPlayhead)
 

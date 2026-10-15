@@ -1,6 +1,12 @@
 #pragma once
 #include <cstdint>   // uint64_t (QMIX_STREAM_KEY) — keep this header self-contained
 //
+// NOTE (include direction): ui/SandsGrid.hpp includes THIS header and asserts
+// POLY_LANES/MONO_LANES/EAST_LANES against POLY_LANE_COUNT/EDITOR_LANE_COUNT —
+// the dependency is one-way (SandsGrid → LaneMapping). LaneMapping must NEVER
+// include SandsGrid back: it goes circular and neither side's constants exist
+// yet where the other needs them.
+//
 // LaneMapping.hpp — SINGLE SOURCE OF TRUTH for the visual-editor lane order
 // vs. the engine strand order.
 //
@@ -171,5 +177,30 @@ static_assert(toEditor(toEngine(EditorLane(6))).v == 6, "LEG round-trips (identi
 // deleted outright (Phase 3b) so a second generation can never coexist with the
 // first. The RNG STREAM order (RHYTHM/MELODY/CA/SOURCE_SELECT) is a separate
 // axis and does not follow lane order.
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SandsLaneNames — the canonical lane-NAME tables. Phase 3b-3: absorbed from
+// ui/SandsLaneNames.hpp (DELETED) so this header is the ONE lane descriptor —
+// order, strong types, store banks AND names. Post-unification there is ONE
+// order, hence ONE short + ONE long table; the old SPREAD / EDITOR_POLY
+// aliases (identical content, separate names) are gone — index by the lane.
+namespace SandsLaneNames {
+
+    // SHORT names (jack labels, tooltips, config strings). Index == lane.
+    // Sized by THIS header's own lane count — SandsGrid.hpp (which includes us)
+    // asserts its MONO/POLY/EAST lane counts against EDITOR_LANE_COUNT, so the
+    // tables and every consumer stay tied to one number at compile time.
+    inline constexpr const char* EDITOR[EDITOR_LANE_COUNT] =
+        { "MEL", "OCT", "QMIX", "REST", "ACC", "VAR", "LEG" };
+    static_assert(sizeof(EDITOR) / sizeof(EDITOR[0]) == EDITOR_LANE_COUNT,
+                  "EDITOR lane-name table length must equal EDITOR_LANE_COUNT");
+
+    // LONG names (menus, editor row labels). Same order.
+    inline constexpr const char* EDITOR_LONG[EDITOR_LANE_COUNT] =
+        { "MELODY", "OCTAVE", "QMIX", "REST", "ACCENT", "VARIATION", "LEGATO" };
+    static_assert(sizeof(EDITOR_LONG) / sizeof(EDITOR_LONG[0]) == EDITOR_LANE_COUNT,
+                  "EDITOR_LONG lane-name table length must equal EDITOR_LANE_COUNT");
+
+} // namespace SandsLaneNames
 
 } // namespace dotModular

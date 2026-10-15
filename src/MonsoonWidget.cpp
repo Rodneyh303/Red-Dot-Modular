@@ -10,6 +10,7 @@
 #include "ui/ModArcOverlay.hpp"
 #include "ui/HostBadge.hpp"                 // shared connection-identity badge (CONNECTION_MODEL_SPEC §4)
 #include "dsp/managers/MonsoonScaleManager.hpp"
+#include "dsp/LaneMapping.hpp"            // canonical lane names (spread-target menu)
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -1469,7 +1470,7 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
         // (-1/0/+1), apply-on-mode-change toggle, apply-now action. "Needs a CA" advisory
         // cue (greyed text, still selectable — persisted). Module-level apply-to-all.
         {
-            const char* laneNames[7] = {"MELODY", "OCTAVE", "QMIX", "REST", "ACCENT", "VARIATION", "LEGATO"};
+            const char* const* laneNames = dotModular::SandsLaneNames::EDITOR_LONG;
             bool caReachable = (m->expanderManager.cachedChangeAlleyV2 != nullptr);
             menu->addChild(createSubmenuItem("Spread target", "", [=](ui::Menu* sub) {
                 for (int lane = 0; lane < 7; ++lane) {   // 7 = POLY_LANES (REST/MEL/OCT/ACC/QMIX/VAR/LEG)

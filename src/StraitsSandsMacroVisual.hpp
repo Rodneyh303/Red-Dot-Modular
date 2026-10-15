@@ -139,8 +139,11 @@ namespace StraitsMacroVisualIds {
     // 3 poly probability CV outs (REST/MEL/OCT): ch1 reserved (future mono tab),
     // ch2..1+nVoices = per-voice ensemble.
     enum OutputId {
-        PROB_OUT_REST = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_ACC, PROB_OUT_QMIX,
-        PROB_OUT_VAR, PROB_OUT_LEG,   // SANDS CONSOLIDATION Step 1
+        // Unified lane order (MEL=0 OCT=1 QMIX=2 REST=3 ACC=4 VAR=5 LEG=6) — matches the
+        // panel rows, the resolver writes and the labels. (Was REST-first from the OLD
+        // spread order, so every id's NAME was crossed with the data it carries.)
+        PROB_OUT_START = 0, PROB_OUT_MEL, PROB_OUT_OCT, PROB_OUT_QMIX, PROB_OUT_REST,
+        PROB_OUT_ACC, PROB_OUT_VAR, PROB_OUT_LEG,   // SANDS CONSOLIDATION Step 1
         NUM_OUTPUTS
     };
 
@@ -220,16 +223,16 @@ struct StraitsSandsMacroVisual : Module {
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
         monLookupDiv.setDivision(8);   // topology changes are control-rate
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
-        { static const char* ln[dotModular::SandsGrid::POLY_LANES] = {"REST","MEL","OCT","ACC","QMIX","VAR","LEG"};
-          for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
-            configOutput(StraitsMacroVisualIds::PROB_OUT_REST + l,
-                std::string("Probability ") + ln[l] + " (poly: ch2+ voices)"); }
+        // Labels from the canonical table — the old local literal was OLD-order, so
+        // every jack tooltip named the wrong lane (id 0 carries MEL, was labelled "REST").
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
+            configOutput(StraitsMacroVisualIds::PROB_OUT_START + l,
+                std::string("Probability ") + dotModular::SandsLaneNames::EDITOR[l] + " (poly: ch2+ voices)");
 
-        // SANDS CONSOLIDATION Step 1: 7 poly lanes (engine order; matches cvId(lane,c)).
-        // Was 5 initializers on a [POLY_LANES] array → lanes 5/6 were nullptr →
-        // std::string(nullptr) aborts (signal 22) during module construction — the Macro
-        // instantiation crash. All 7 must be present.
-        static const char* laneNames[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
+        // SANDS CONSOLIDATION Step 1: 7 poly lanes (unified order; matches cvId(lane,c)).
+        // (Historical: a 5-initializer local literal left lanes 5/6 nullptr → the
+        // std::string(nullptr) instantiation crash. Canonical table since.)
+        static const char* const* laneNames = dotModular::SandsLaneNames::EDITOR;
         static const char* paramNames[4] = {"Len","Off","Rot","Spr"};
         for (int lane=0; lane<dotModular::SandsGrid::POLY_LANES; ++lane) {
             // P9b: TWO PRE/POST taps per lane — LOR (LEN/OFF/ROT) and SPREAD. Default
@@ -258,9 +261,8 @@ struct StraitsSandsMacroVisual : Module {
         // write the live view voice's slot directly, so no display proxy and no sync dance.
         // Ids kept declared so the enum does not renumber, matching LOR/direction/attenuverters.
         // Direction display proxies (4 poly lanes). DirCell writes 0..3 = Fwd/Rev/Pend/PingPong.
-        // SANDS CONSOLIDATION Step 1: 7 poly lanes (editor order; matches dirModId(l)).
-        // Was 5 initializers → lanes 5/6 nullptr → std::string(nullptr) abort (signal 22).
-        static const char* dirNames[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
+        // SANDS CONSOLIDATION Step 1: 7 poly lanes (unified order; matches dirModId(l)).
+        static const char* const* dirNames = dotModular::SandsLaneNames::EDITOR;
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
             // dirDispId is STORE-BACKED (MVC step 1: direction de-param) -- no configParam,
             // not host-exposed. Direction lives in editor.globalDir[4] (engine-read,
