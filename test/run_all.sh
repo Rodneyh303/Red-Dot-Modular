@@ -70,6 +70,7 @@ TESTS=(
   "test_ca_pending_order|"
   "test_change_alley_transforms|"
   "test_edge_cases|"
+  "test_eradication_harness|$PE"
   "test_final_random_by_strand|"
   "test_fractional_tail|"
   "test_lane_direction|"
