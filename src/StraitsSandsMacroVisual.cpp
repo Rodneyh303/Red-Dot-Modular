@@ -16,7 +16,7 @@
 #include "ui/ModArcOverlay.hpp"
 #include "ui/OwnerCell.hpp"       // DirCell
 #include "dsp/engines/SequencerEngine.hpp"  // LaneDir
-#include "dsp/managers/PolySandsParameterManager.hpp"
+#include "dsp/managers/SandsParameterManager.hpp"
 #include "dsp/VoiceResolver.hpp"   // activeVoiceCount + voice identity, single source of truth for the tab→voice mapping and uniform 16-voice addressing for prob-out
 #include "dsp/LaneMapping.hpp"        // lane constants + strong types (identity — tables deleted Phase 3b)
 
@@ -48,7 +48,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     dotModular::Compose<StraitsSandsMacroVisualWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     SandsVisualEditorV4*       visualEditor = nullptr;
-    PolySandsParameterManager* paramMgr     = nullptr;
+    SandsParameterManager*     paramMgr     = nullptr;
     TabButtonGroup*            tabGroup     = nullptr;
     int viewVoice = 0;   // which voice's resulting probabilities to DISPLAY (read-only)
     // (lastSendVoice removed: the per-voice send sync dance is gone -- StoreKnobs read/write
@@ -318,7 +318,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                     dirModId(lane), std::function<void(redDot::GoldPolyPort*)>(themeIn));
         }
 
-        paramMgr = new PolySandsParameterManager(nullptr, nullptr, nullptr, 7);
+        paramMgr = new SandsParameterManager(nullptr, nullptr, 7, 0, true);   // monoContext: V1 interpolates from the MONO draw
         flushSpreadArcs();   // attach spread mod-arcs on top of the trimpots
 
         // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
@@ -511,10 +511,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
 
         // Spread: processDNA has already applied CV offset to SPREAD_REST/MEL/OCT params.
         // Read effective values here for SpreadManager display.
-        paramMgr->spreadMgr.setSpread(0, mod->spreadEffective[0]);
-        paramMgr->spreadMgr.setSpread(1, mod->spreadEffective[1]);
-        paramMgr->spreadMgr.setSpread(2, mod->spreadEffective[2]);
-        paramMgr->spreadMgr.setSpread(3, mod->spreadEffective[3]);
+        paramMgr->setSpreadAll(0, mod->spreadEffective[0]);
+        paramMgr->setSpreadAll(1, mod->spreadEffective[1]);
+        paramMgr->setSpreadAll(2, mod->spreadEffective[2]);
+        paramMgr->setSpreadAll(3, mod->spreadEffective[3]);
         // (Spread target mode pulled from the engine by SpreadManager — no push needed.)
 
         // CV applied at control rate in Monsoon::process() — base + cv*atten*scale.

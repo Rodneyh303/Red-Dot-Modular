@@ -22,7 +22,7 @@
 #include <limits>
 #include "ui/ConnectMark.hpp"
 #include "ui/GoldPolyPort.hpp"
-#include "dsp/managers/PolyVoiceSandsParameterManager.hpp"
+#include "dsp/managers/SandsParameterManager.hpp"
 #include "dsp/managers/SpreadManager.hpp"
 #include "dsp/VoiceResolver.hpp"   //  activeVoiceCount + voice identity, single source of truth for the tab→voice mapping and uniform 16-voice addressing for prob-out
 #include "dsp/LaneMapping.hpp"        // lane constants + strong types (identity — tables deleted Phase 3b)
@@ -73,7 +73,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     SandsVisualEditorV4*            visualEditor = nullptr;
     TabButtonGroup*                 tabGroup     = nullptr;
-    PolyVoiceSandsParameterManager* paramMgr     = nullptr;
+    SandsParameterManager*          paramMgr     = nullptr;
     // (blend controls now dim/disable themselves via DimmableTrimpot/DimmableLatch
     //  predicates — no central visibility list needed.)
     int  selectedVoice = 0;
@@ -432,7 +432,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             );
         }
 
-        paramMgr = new PolyVoiceSandsParameterManager(nullptr, nullptr, 15, 0);
+        paramMgr = new SandsParameterManager(nullptr, nullptr, 15, 0);
 
         // SANDS CONSOLIDATION: the separate VAR/LEG delegation OwnerCells (param_owner_7/8)
         // are RETIRED. VAR/LEG are full poly lanes now — their ownership is handled by the
