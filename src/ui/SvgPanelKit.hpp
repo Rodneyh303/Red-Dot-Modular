@@ -162,7 +162,7 @@ struct Bind {
     }
     // Bind a NON-PARAM widget (e.g. redDot::StoreKnob) to a named panel shape.
     // De-parammed controls are not ParamWidgets, so createParamCentered/addParam cannot be
-    // used: this creates the widget, lets `config` run FIRST (setSvg establishes box.size),
+    // used: this creates the widget, lets config run FIRST (setSvg establishes box.size),
     // then centres it on the shape and addChild()s it. Returns the widget so the caller can
     // finish wiring it. See PARAM_CLASSIFICATION.md.
     template <class W> W* bindWidget(const std::string& n, std::function<void(W*)> config = nullptr) {

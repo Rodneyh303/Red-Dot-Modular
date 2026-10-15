@@ -36,7 +36,7 @@ public:
     static constexpr std::size_t K = 64;     ///< window length (taps)
     static constexpr double R_MAX = 0.97;    ///< r clamp: geometric weights degenerate as r -> 1
 
-    /// Fill `w` (K entries) with L2-normalised geometric weights for r. w[0] is the newest draw.
+    /// Fill w (K entries) with L2-normalised geometric weights for r. w[0] is the newest draw.
     /// SUM w^2 == 1 exactly (up to rounding), which is what makes the output uniform.
     static void weights(double r, double* w) {
         r = clampR(r);
@@ -48,9 +48,9 @@ public:
 
     /// Cache of L2-normalised weights for a given r.  Slew r is phrase-fixed (the slew-phrase
     /// fix landed), so within one recomputeEffective* call — which loops over all 16 steps ×
-    /// lanes × voices × 2 windows — `weights(r, w)` was recomputed every `sumZ` invocation with
-    /// the SAME r.  This struct caches w[K] + the r it was built for; callers `update(r)` once
-    /// per phrase (or per recompute if r changed) then pass `w` to the `sumZ(z, w)` overload.
+    /// lanes × voices × 2 windows — weights(r, w) was recomputed every sumZ invocation with
+    /// the SAME r.  This struct caches w[K] + the r it was built for; callers update(r) once
+    /// per phrase (or per recompute if r changed) then pass w to the sumZ(z, w) overload.
     /// Bit-identical: the weights and the dot product are the same computation, just hoisted.
     struct WeightCache {
         double w[K];
@@ -60,7 +60,7 @@ public:
         void invalidate() { cachedR = 999.0; }
     };
 
-    /// Apply slew at one position. `u` holds the window NEWEST FIRST: u[0] = u_n, u[j] = u_{n-j}.
+    /// Apply slew at one position. u holds the window NEWEST FIRST: u[0] = u_n, u[j] = u_{n-j}.
     /// r == 0 returns u[0] unchanged (bit-identical legacy path).
     /// r < 0 creates anti-correlation (alternating-sign weights → hocket/interlock).
     static double apply(const double* u, double r) {
@@ -69,14 +69,14 @@ public:
         weights(r, w);
         return copula::combine(u, w, K);
     }
-    /// Apply slew from a window of PRE-COMPUTED normal scores `z` (= PhiInv(u), newest first),
+    /// Apply slew from a window of PRE-COMPUTED normal scores z (= PhiInv(u), newest first),
     /// skipping the per-call PhiInv. Use this when the caller caches PhiInv(u) alongside each
     /// raw draw (it is a pure function of the draw ⇒ reversal-neutral). r == 0 returns Phi(z[0])
     /// — NOT the raw uniform — so callers on the r==0 bit-identity path must short-circuit to
     /// the raw u[0] themselves (see PatternEngine::patternXAt). For r > 0 this is bit-identical
     /// to apply(u, r): combine does z' = Σ w_j·PhiInv(u_j) = Σ w_j·z[j], then Phi(z').
     // The weighted normal-space sum s = Σ w_j·z_j WITHOUT the final Phi. Used by the SCRUB blend
-    // (Phase 2): recomputeEffective* blends two adjacent windows' `s` values in normal space, then
+    // (Phase 2): recomputeEffective* blends two adjacent windows' s values in normal space, then
     // applies PhiFast ONCE — blending the uniform outputs would be a linear blend of uniforms
     // (the distortion Phase 2 eliminates). r==0 returns z[0] (the cached PhiInv of the raw draw).
     static double sumZ(const double* z, double r) {
@@ -87,7 +87,7 @@ public:
     }
     /// sumZ with PRE-COMPUTED weights (from a WeightCache).  Skips the weights() call — the
     /// dot product only.  Caller must ensure w was built for the correct r and that r != 0
-    /// (the r==0 early-out is in the `sumZ(z, r)` wrapper; callers on the r==0 path short-
+    /// (the r==0 early-out is in the sumZ(z, r) wrapper; callers on the r==0 path short-
     /// circuit before reaching here).
     static double sumZ(const double* z, const double* w) {
         // 4-wide lane-independent accumulation with FIXED reduction order.

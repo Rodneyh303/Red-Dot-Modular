@@ -8,8 +8,8 @@ struct Monsoon;
 // Model externs for the lane-extension system (declared in Monsoon.hpp, but
 // needed here before Monsoon.hpp reaches those lines). rack::Model comes from
 // <rack.hpp> (included above); do NOT forward-declare it here — Clang treats a
-// local `namespace rack { struct Model; }` as conflicting with the SDK's
-// `using plugin::Model;` and reports every rack::Model reference as ambiguous.
+// local namespace rack { struct Model; } as conflicting with the SDK's
+// using plugin::Model; and reports every rack::Model reference as ambiguous.
 extern rack::Model* modelStraitsBase;
 extern rack::Model* modelStraitsLaneQMIX;
 extern rack::Model* modelStraitsLaneREST;
@@ -288,7 +288,7 @@ struct MonsoonExpanderManager {
     // THE one place the topology's presence/base fields are populated. Every consumer
     // (managers AND widgets) calls this instead of hand-setting eastPresent/macroPresent/
     // monoPresent/polyBaseActive — which previously diverged (widgets hard-coded their own
-    // presence as `true`, managers read the cache; polyBaseActive was defined 3 ways). The
+    // presence as true, managers read the cache; polyBaseActive was defined 3 ways). The
     // authoritative source of "is X present" is ALWAYS the expander-scan cache pointer, never
     // a widget's self-knowledge: a widget that Monsoon's scan hasn't cached is NOT topologically
     // present (this is what produced the MACRO-then-EAST strand clobber). numPolyVoices is passed

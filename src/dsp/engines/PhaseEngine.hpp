@@ -10,7 +10,7 @@
  *
  * Mirrors ClockEngine's OUTPUT CONTRACT (pulseEdge / sixteenthEdge / quarterEdge +
  * bpm + sixteenthSec) so the existing execute path is reused unchanged. ADDS a
- * `reverse` flag: when the phase ramp moves backward, edges fire in reverse and the
+ * reverse flag: when the phase ramp moves backward, edges fire in reverse and the
  * sequencer steps its playhead backward (handled in SequencerEngine).
  *
  * STEP 1 SCOPE (this file): forward + within-phrase reverse. No PRNG, no jumps, no

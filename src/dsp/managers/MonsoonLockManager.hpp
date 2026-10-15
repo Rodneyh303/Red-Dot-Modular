@@ -10,11 +10,11 @@
 // LIVE-critical on the audio thread and must not round-trip through a manager.
 //
 // This manager owns the MODEL: for each control, its lock CATEGORY, and a single liveNow(Control)
-// query that call sites use INSTEAD of a bespoke `if (!engine.locked)`. The category logic lives
+// query that call sites use INSTEAD of a bespoke if (!engine.locked). The category logic lives
 // here; call sites stop encoding "am I locked?" decisions ad hoc.
 //
 // Phase 1 (this file): the category map + liveNow. This is a REFACTOR of already-correct behaviour
-// -- every audited LATCH site currently does `if (!locked)`, and liveNow(LATCH) == !locked, so the
+// -- every audited LATCH site currently does if (!locked), and liveNow(LATCH) == !locked, so the
 // consolidation is behaviour-preserving (the ~23 lock test assertions must stay green).
 //
 // Phase 2 (later): boundary/unlock EVENTS + the QUEUE for arm-and-fire-at-boundary controls
@@ -139,7 +139,7 @@ public:
         }
     }
 
-    // Should this control APPLY right now?  The query call sites use instead of `if (!locked)`.
+    // Should this control APPLY right now?  The query call sites use instead of if (!locked).
     //   LATCH -> live only when unlocked (frozen under lock; commits at unlock elsewhere).
     //   LIVE  -> always live (never obeys lock).
     //   QUEUE -> not "live now" in the continuous sense; it arms and fires at a boundary. For the
@@ -206,7 +206,7 @@ public:
 
     // Static form: evaluate a control's live-now decision against an explicitly-provided lock
     // state. Lets call sites that hold their own lock bool (e.g. managers reading a specific
-    // engine's `locked`) route through the SAME category model without needing a LockManager
+    // engine's locked) route through the SAME category model without needing a LockManager
     // instance or a Monsoon* -- and provably preserve which lock bool they read.
     //
     // SCOPE-AWARE overload: a LATCH control is ALSO live when its scope bit is set in scopeLiveMask

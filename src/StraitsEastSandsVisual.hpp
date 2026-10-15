@@ -123,7 +123,7 @@ namespace StraitsEastVisualIds {
 
     // Unified LOR bank for an EDITOR lane — the SINGLE canonical mapping now lives in
     // dsp/LaneMapping.hpp (dotModular::lorStoreBank), which also covers VAR/LEG (editor
-    // 5/6) so the old hand-rolled `vl + <literal>` bank drift (QMIX→LEGATO coupling) can't
+    // 5/6) so the old hand-rolled vl + <literal> bank drift (QMIX→LEGATO coupling) can't
     // recur. Thin forwarder kept for call-site readability.
     static inline int lorBank(int editorLane) {
         return dotModular::lorStoreBank(editorLane);

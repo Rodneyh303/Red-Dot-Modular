@@ -118,7 +118,7 @@ void PatternEngine::reset() {
 
 // ── Core generation ───────────────────────────────────────────────────────
 
-// Pick a DEGREE (0..n-1) weighted by fader values using a provided random value. `n` = active degree
+// Pick a DEGREE (0..n-1) weighted by fader values using a provided random value. n = active degree
 // count (tuning.N): 12 for built-in/Sikit/Micro-12, up to 24 for Micro-24. At n=12 the loop bounds,
 // sum, walk, and float-safety return are all identical to the legacy pickSemitone → byte-identical.
 int PatternEngine::pickSemitone(const float weights[], int n, float r_val) {

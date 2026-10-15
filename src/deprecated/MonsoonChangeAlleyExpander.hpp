@@ -84,7 +84,7 @@ struct MonsoonChangeAlleyExpander : Module {
         // Latch pendings from gates + buttons; light = pending. Application happens in
         // the expander manager at phrase boundary / unlock (audio-side, same thread).
         for (int row = 0; row < 8; ++row) {
-            // BRACES ARE LOAD-BEARING: without them only `armed` is guarded and blk is
+            // BRACES ARE LOAD-BEARING: without them only armed is guarded and blk is
             // re-read EVERY SAMPLE, which silently defeats the whole §14a latch.
             auto latch = [&]() {
                 pendingRow[row].armed = true;
@@ -386,7 +386,7 @@ struct MonsoonChangeAlleyExpanderWidget : ModuleWidget {
                     // (An earlier version outlined diagonal squares, which is only correct
                     //  near identity: rotateValues takes its block from src[v], the COLUMN,
                     //  and collapseDomain hands row v the value tmp[leader], any column.)
-                    // INTRA bands are `grain` wide; INTER bands are the whole pool split
+                    // INTRA bands are grain wide; INTER bands are the whole pool split
                     // into blocks, drawn heavier because whole blocks move as units.
                     const int b    = std::max(1, h.blk);
                     const float lw = h.isInter ? sw * 1.6f : sw;

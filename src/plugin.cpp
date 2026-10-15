@@ -2,7 +2,7 @@
 // sources, matching the Rack plugin template). Holds the Plugin* definition + init(Plugin*), the
 // plugin's single entry point: registers every model and warms the Phi LUT on the load thread.
 //
-// Moved verbatim from src/Monsoon.cpp (where init() and `Plugin* pluginInstance` previously lived)
+// Moved verbatim from src/Monsoon.cpp (where init() and Plugin* pluginInstance previously lived)
 // so the plugin's entry point no longer depends on one module's translation unit, and touching a
 // registration no longer rebuilds the large Monsoon.cpp. SOURCES += $(wildcard src/*.cpp) in the
 // Makefile picks this up with no Makefile change.

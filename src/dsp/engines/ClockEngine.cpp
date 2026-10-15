@@ -9,13 +9,13 @@ void ClockEngine::reset() {
     bpm = 120.f;
 }
 
-// Unified PPQN pulse-grid clock. The grid runs at `ppqn` pulses-per-quarter;
+// Unified PPQN pulse-grid clock. The grid runs at ppqn pulses-per-quarter;
 // pulsesPer16th = ppqn/4. Each accepted grid pulse sets pulseEdge; every
 // pulsesPer16th-th pulse also sets sixteenthEdge (and every 4th sixteenth sets
 // quarterEdge). Gate lengths downstream are counted in grid pulses, so triplets
 // and 1/32 are ordinary integer pulse counts — no seconds timer, no special case.
 //
-// External clock: ASSUMED to arrive at exactly `ppqn` PPQN — one incoming pulse =
+// External clock: ASSUMED to arrive at exactly ppqn PPQN — one incoming pulse =
 // one grid pulse. A rate mismatch (e.g. menu says 24, cable is 48) simply scales
 // tempo; that's the user's contract. We still derive bpm by measuring the 1/16
 // interval for display + internal-fallback continuity.

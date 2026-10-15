@@ -68,7 +68,7 @@ inline bool isSuiteChainModel(const rack::Model* m) {
 }
 
 // ── Templated one-direction segment walk ────────────────────────────────────────────────────────
-// Walk from `start` following NextFn (left or right expander) up to maxDepth hops. Return the first
+// Walk from start following NextFn (left or right expander) up to maxDepth hops. Return the first
 // node for which IsHostFn(node) is true. STOP (return null) at the first node that is neither a host
 // nor a recognised suite member (IsSuiteFn) — that node is a foreign boundary. A host is itself a
 // boundary in the sense that the walk returns it (we never walk PAST a host looking for a farther one).
@@ -91,7 +91,7 @@ inline Node* walkSegmentForHost(Node* start, NextFn next, IsHostFn isHost, IsSui
 // ── Both-sides host search (the order-independent replacement for findMonsoonEitherSide) ──────────
 // Walk right, then left, each side bounded by the segment rule. Returns the first host found. Because
 // each side stops at the first foreign module AND the walk returns the first host it reaches, a Monsoon
-// separated from `self` by a foreign module is correctly NOT returned (different segment). A SECOND
+// separated from self by a foreign module is correctly NOT returned (different segment). A SECOND
 // Monsoon farther out never "wins" over a foreign boundary nearer in — order-independent by construction.
 template <class Node, class LeftFn, class RightFn, class IsHostFn, class IsSuiteFn>
 inline Node* findHostBothSides(Node* self, LeftFn left, RightFn right,

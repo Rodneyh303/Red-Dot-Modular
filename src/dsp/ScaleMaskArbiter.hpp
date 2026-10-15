@@ -29,7 +29,7 @@ inline uint16_t resolveScaleMask(bool overrideValid, uint16_t overrideMask,
 }
 
 // ── TONIC_TRANSPOSE_BUILD_BRIEF: root-relative transposition of a 12-bit scale mask ───────────────
-// Rotate a 12-bit pitch-class mask UP by `semis` (bit p → p+semis, mod 12). This is exactly how a
+// Rotate a 12-bit pitch-class mask UP by semis (bit p → p+semis, mod 12). This is exactly how a
 // built-in scale transposes: calculateMask uses (root+interval)%12, i.e. rotate the degree-0 pattern
 // up by root. A user scale stored root-relative (tonic at degree 0) transposes the same way — apply
 // the LIVE root control via rotateMask12(relMask, root). Semis is taken mod 12 (any int, +/-).
@@ -40,7 +40,7 @@ inline uint16_t rotateMask12(uint16_t mask, int semis) {
 }
 
 // Normalise an ABSOLUTE mask to ROOT-RELATIVE for saving: rotate DOWN so the tonic sits at degree 0
-// (bit at `tonic` → bit 0). Inverse of applying a root. tonic must be 0..11.
+// (bit at tonic → bit 0). Inverse of applying a root. tonic must be 0..11.
 inline uint16_t normaliseToTonic(uint16_t mask, int tonic) {
     return rotateMask12(mask, -tonic);
 }

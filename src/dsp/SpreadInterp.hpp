@@ -82,7 +82,7 @@ struct SpreadInterp {
     // Anchor V1: the mono (voice-1) draw (today's behaviour).
     // Follow CA: the post-remap draw — which IS src[v]'s material, because CA's pin remap
     // already put it there. So the "target" is the same slewed buffer the caller passes as
-    // `original` in follow-CA mode; the caller selects `own` (pre-remap) vs post-remap.
+    // original in follow-CA mode; the caller selects own (pre-remap) vs post-remap.
     static float target(const PatternEngine& pe, int lane, int step) {
         return monoSlewed(pe, lane, step);
     }

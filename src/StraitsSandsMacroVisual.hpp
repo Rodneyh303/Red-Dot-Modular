@@ -86,7 +86,7 @@ namespace StraitsMacroVisualIds {
         // 12 global LOR params (4 lanes x LEN/OFF/ROT), re-homed OUT of the shared
         // MonsoonIds pool so Macro can be right-sized. Deliberately ONE symbol +
         // arithmetic: individual names (GLOBAL_REST_DNA_LEN ...) would be ambiguous
-        // against the file-scope `using namespace MonsoonIds`. Lane order matches the
+        // against the file-scope using namespace MonsoonIds. Lane order matches the
         // MonsoonIds layout that was replaced: REST, MELODY, OCTAVE, ACCENT; c = 0 LEN,
         // 1 OFF, 2 ROT.
         GLOBAL_DNA_START = TAP_START + 8,       // = 48 .. 59
@@ -188,12 +188,12 @@ namespace StraitsMacroVisualIds {
     //                      spread CV is connected. (Static blend excluded — a non-zero
     //                      send with no live CV is a constant offset, not modulation, and
     //                      gating on it raced the manual-knob turn → red residue arc.)
-    // Caller resolves `delegated` (owner storage differs per module) and `sendSlot`
+    // Caller resolves delegated (owner storage differs per module) and sendSlot
     // (mono slot 0 for V1/Mono; the voice slot for poly). macro may be null → false.
     inline bool macroSpreadModulatesLane(rack::Module* macro, int engineLane,
                                          bool delegated, int sendSlot) {
         // SANDS CONSOLIDATION: 7 poly lanes (REST/MEL/OCT/ACC/QMIX/VAR/LEG), not 4. The old
-        // `>= 4` bound silently rejected QMIX (4), VARIATION (5), LEGATO (6) so their spread
+        // >= 4 bound silently rejected QMIX (4), VARIATION (5), LEGATO (6) so their spread
         // mod-arcs never lit (a UI regression after the consolidation added the newer lanes).
         if (!macro || engineLane < 0 || engineLane >= 7) return false;
         bool sprCvLive = macro->inputs[cvId(engineLane, 3)].isConnected();

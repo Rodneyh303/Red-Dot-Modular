@@ -108,7 +108,7 @@ struct SquaresRng {
 
     // ── Addressable (stateless) access — the reversible core ───────────────────
     // The raw 64-bit value at an absolute stream position. Pure function of (pos,
-    // key); does not touch `counter`. value(N) == value(N) forever, in any order.
+    // key); does not touch counter. value(N) == value(N) forever, in any order.
     uint64_t at(uint64_t pos) const { return squares64(pos, key); }
 
     // Uniform [0,1) double / float at an absolute position.
@@ -121,14 +121,14 @@ struct SquaresRng {
     float    nextFloat()   { return (float)nextDouble(); }          // [0,1)
 
     // ── Block drawing (the PatternEngine use-case) ─────────────────────────────
-    // Fill out[0..n) with uniform floats starting at absolute position `base`,
-    // WITHOUT disturbing `counter`. Deterministic + addressable: re-filling the
+    // Fill out[0..n) with uniform floats starting at absolute position base,
+    // WITHOUT disturbing counter. Deterministic + addressable: re-filling the
     // same (base,n,key) reproduces the block exactly — forwards or backwards —
     // which is the property that lets phase mode replay draws in reverse.
     void fillBlock(uint64_t base, float* out, int n) const {
         for (int i = 0; i < n; ++i) out[i] = atUniformF(base + (uint64_t)i);
     }
-    // Same, advancing `counter` past the block (sequential convenience).
+    // Same, advancing counter past the block (sequential convenience).
     void drawBlock(float* out, int n) {
         fillBlock(counter, out, n);
         counter += (uint64_t)n;

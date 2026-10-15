@@ -31,7 +31,7 @@ struct OutputAccent : rack::widget::Widget {
 };
 
 // Add an output-accent region covering an mm rectangle (x,y,w,h) to a widget.
-// Call BEFORE adding the output ports so it sits behind them. `lightFn` lets the
+// Call BEFORE adding the output ports so it sits behind them. lightFn lets the
 // region follow the host theme.
 inline void addOutputAccent(rack::app::ModuleWidget* mw,
                             float x_mm, float y_mm, float w_mm, float h_mm,

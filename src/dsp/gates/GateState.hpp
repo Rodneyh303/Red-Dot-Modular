@@ -105,7 +105,7 @@ struct GateState {
     void rest(bool tieExtend, int nvIdx);
     // Tick: call once per 1/16 step edge. Decrements the whole-step DECISION
     // counter (holdRemain) + semi LED timers. Does NOT close the gate (that's
-    // tickPulse on the finer grid). `p16` keeps pulsesPer16th current.
+    // tickPulse on the finer grid). p16 keeps pulsesPer16th current.
     void tick(int p16 = 0);
     // TickPulse: call once per PPQN grid pulse. Decrements gatePulseRemain and
     // closes the gate when it reaches 0. This is the sole gate-close mechanism.

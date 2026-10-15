@@ -47,7 +47,7 @@ void OutputGenerator::drive(SequencerEngine& engine,
     // Semantics preserved verbatim: muted / inactive voices (i >= numPolyVoices) DO NOT call
     // process() (gate stays frozen, as before) and read out as 0V. The guard runs the precompute
     // only when at least one poly consumer is attached, so the pulse isn't advanced when nothing
-    // reads it (matching the old behaviour where the blocks only ran under their own `if`).
+    // reads it (matching the old behaviour where the blocks only ran under their own if).
     auto* straits  = expanderManager.cachedPolyVoiceExpander;
     auto* changi   = expanderManager.cachedChangiExpander;
     auto* changiT2 = expanderManager.cachedChangiT2Expander;

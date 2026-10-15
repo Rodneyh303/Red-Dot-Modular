@@ -42,11 +42,11 @@ inline Monsoon* findMonsoonEitherSide(rack::Module* self, int maxDepth = 12) {
     return dynamic_cast<Monsoon*>(host);
 }
 
-// True only if `self` is the expander Monsoon has actually CLAIMED for its type.
+// True only if self is the expander Monsoon has actually CLAIMED for its type.
 // Monsoon caches the FIRST module of each type in its chain (one pointer per
 // type), so when several expanders of the same type are placed in a row, only one
 // is functionally connected. The connect mark must reflect that — otherwise every
-// duplicate lights up as if connected. Compares `self` against the matching
+// duplicate lights up as if connected. Compares self against the matching
 // cached pointer by address (the cached slots are stored as the concrete module
 // pointers, so an address compare is valid across the reinterpret_cast).
 inline bool isClaimedExpander(rack::Module* self, Monsoon* mon) {
@@ -89,7 +89,7 @@ inline int calcPlayhead(int globalStep, int length, int offset, int rotation) {
 }
 
 // Read an integer param (rounded) from a module, clamped to [1, 16].
-// Returns `fallback` if the module pointer is null.
+// Returns fallback if the module pointer is null.
 inline int readLenParam(rack::Module* mod, int paramId, int fallback = 16) {
     if (!mod) return fallback;
     return std::max(1, std::min(16, (int)std::round(mod->params[paramId].getValue())));

@@ -37,7 +37,7 @@ struct SpreadResolver {
     static constexpr int   kSpreadLanes = 4;   // REST, MEL, OCT, ACC (engine order)
     static constexpr float kBipolarSpan = 2.f; // ±1 range → ×2 so full-depth CV reaches the ends
 
-    // One additive CV/attenuverter modulation term. `connected` gates it (an
+    // One additive CV/attenuverter modulation term. connected gates it (an
     // unconnected jack contributes nothing). Voltage is already /10 (unit-scaled)
     // by the caller, matching the existing applyMono/MacroSprCV convention.
     struct CvTerm {
@@ -69,7 +69,7 @@ struct SpreadResolver {
     // Sums the present contributions and clamps ONCE at the end (end-clamp; see header note) — order-
     // independent, so a large-then-opposite pair keeps its net (no intermediate pinning). A term that
     // isn't present (unconnected CV / macro absent) is skipped entirely, so an absent term is a true
-    // no-op — exactly as the manager's `if (connected)` / `if (hasMacro)` guards intend.
+    // no-op — exactly as the manager's if (connected) / if (hasMacro) guards intend.
     static float effective(const Inputs& in) {
         if (in.delegated) {
             // Ceded lane: mirror Macro entirely, ignore own base/CV.

@@ -17,10 +17,10 @@
 
 namespace redDot {
 
-// ── GENERIC pairing helpers (template over any HUB type T that has a public `int pairId`) ──────
+// ── GENERIC pairing helpers (template over any HUB type T that has a public int pairId) ──────
 // The pairing pattern (self-assigned lowest-free id + rack-wide follow-by-id, adjacency fallback) is
 // identical for every hub. These templates express it once; each hub instantiates on its own type.
-// Requirement on T: `int pairId` member. T must be COMPLETE at the instantiation site (the .cpp that
+// Requirement on T: int pairId member. T must be COMPLETE at the instantiation site (the .cpp that
 // calls these). The header stays decoupled — it names no concrete hub except in the IT aliases below.
 
 // Nearest hub of type T on either side (walk right then left, hop intermediates). AUTO behaviour.
@@ -41,7 +41,7 @@ inline T* findPairHubEitherSide(rack::Module* self, int maxDepth = 12) {
     return nullptr;
 }
 
-// Global lowest-unused pair id (1..N) across every T except `self`. Stable numbers survive because
+// Global lowest-unused pair id (1..N) across every T except self. Stable numbers survive because
 // each existing instance keeps its persisted id; a fresh module takes the smallest gap.
 template <class T>
 inline int assignPairIdT(rack::Module* self) {
@@ -92,7 +92,7 @@ inline std::vector<int> presentPairIdsT() {
 
 // ── Intertropical aliases (unchanged names; forward to the templates) ──────────────────────────
 // Lantern / Changi T3 / Intertropical call THESE; they remain bit-identical (the templates
-// instantiate on Intertropical, which has `int pairId`). New hubs (shared CA) use the *T forms.
+// instantiate on Intertropical, which has int pairId). New hubs (shared CA) use the *T forms.
 inline Intertropical* findIntertropicalEitherSide(rack::Module* self, int maxDepth = 12) {
     return findPairHubEitherSide<Intertropical>(self, maxDepth);
 }

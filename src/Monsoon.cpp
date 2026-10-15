@@ -889,7 +889,7 @@ void Monsoon::process(const ProcessArgs& args) {
         //   drives in-gate; ghost (Gate 3) drives in-gap.  Other modes: their usual clock/phase edges.
         // B and D share the SAME shouldExecute gate (§421 mode-agnostic invariant): only the pitch
         // source differs (D quantises CV2), handled downstream in executeModeD — NOT here. One branch
-        // for both PREVENTS the B/D drift bug (a205093 left D on the old `: true` continuous logic,
+        // for both PREVENTS the B/D drift bug (a205093 left D on the old : true continuous logic,
         // which called executeMode every sample and jammed gate state — see
         // plans/fix_gate_output_regression_a205093.md).
         bool shouldExecute;
@@ -1151,7 +1151,7 @@ void Monsoon::process(const ProcessArgs& args) {
     if (lightDivider.process()) {
         // ── modViz: DISPLAY-ONLY modulation visualisation ────────────────────────────
         // Moved inside lightDivider. It was running EVERY SAMPLE, gated only on the
-        // always-true `if (paramManager)`, resolving ~35 modulated values per call purely
+        // always-true if (paramManager), resolving ~35 modulated values per call purely
         // to fill a struct that ONLY MonsoonWidget reads. Audio-rate updates were pure
         // waste; frame rate is the correct rate for a visualisation.
         if (paramManager) {
@@ -1470,7 +1470,7 @@ void Monsoon::process(const ProcessArgs& args) {
 
 Model* modelMonsoon = createModel<Monsoon, MonsoonWidget>("Monsoon");
 
-// init(Plugin*) and `Plugin* pluginInstance` now live in src/plugin.cpp (Rack convention: a
-// dedicated entry-point TU, picked up by the Makefile's `SOURCES += $(wildcard src/*.cpp)`).
+// init(Plugin*) and Plugin* pluginInstance now live in src/plugin.cpp (Rack convention: a
+// dedicated entry-point TU, picked up by the Makefile's SOURCES += $(wildcard src/*.cpp)).
 // The extern declarations remain in Monsoon.hpp (pluginInstance at line 47, modelMonsoon etc.
 // at 1121+).

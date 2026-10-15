@@ -44,7 +44,7 @@ struct IntertropicalIds {
         // a note and its expression arrive at Keppel in the same frame. Sized to the same nOut as the
         // note outs; SKIP the per-output pitch transpose (a semitone offset is meaningless on Y/Z, and
         // X-bend is relative to an already-transposed note). Silent when CA is absent or a pair's IN is
-        // unpatched (CA itself goes 0-channel there). Indices 5..12 share the `output_%d` marker prefix
+        // unpatched (CA itself goes 0-channel there). Indices 5..12 share the output_%d marker prefix
         // with the note outs so the widget binds both in one loop.
         EXPR_OUT_0, EXPR_OUT_1, EXPR_OUT_2, EXPR_OUT_3,
         EXPR_OUT_4, EXPR_OUT_5, EXPR_OUT_6, EXPR_OUT_7,

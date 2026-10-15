@@ -42,8 +42,8 @@ struct PhiLUT {
     static constexpr double ZMAX = 6.0;
     static constexpr double STEP = ZMAX / N;
     static constexpr double INV_STEP = N / ZMAX;     // multiply (not divide) in the hot path
-    // Built once, then read-only. A function-local static initialiser avoids a per-call `built`
-    // branch (the lazy `if(!built)` check was the cause of a 2× slowdown in an earlier version).
+    // Built once, then read-only. A function-local static initialiser avoids a per-call built
+    // branch (the lazy if(!built) check was the cause of a 2× slowdown in an earlier version).
     struct Table { float v[N + 1]; };
     static const Table& table() {
         static const Table t = []() {
@@ -169,9 +169,9 @@ inline double combine(const double* u, const double* w, std::size_t n) {
     return PhiFast(z);
 }
 
-/// Two-source copula mix used by SPREAD: result correlates with `leader` at exactly rho and keeps
+/// Two-source copula mix used by SPREAD: result correlates with leader at exactly rho and keeps
 /// a uniform marginal. rho < 0 gives the mirror (rho = -1 => exactly 1 - leader), so the legacy
-/// "1 - p" special case disappears. `own` is the voice's own (independent) draw.
+/// "1 - p" special case disappears. own is the voice's own (independent) draw.
 inline double mix2(double own, double leader, double rho) {
     if (rho > 0.9999) return leader;
     if (rho < -0.9999) return 1.0 - leader;

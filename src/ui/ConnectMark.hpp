@@ -52,8 +52,8 @@ struct ConnectMark : rack::widget::Widget {
     }
 };
 
-// Build a ConnectMark sized to `sizePx` (square) centred on panel coordinate
-// `center`, wired to a module via findMonsoonEitherSide. Explicit, robust
+// Build a ConnectMark sized to sizePx (square) centred on panel coordinate
+// center, wired to a module via findMonsoonEitherSide. Explicit, robust
 // placement — avoids the createWidgetCentered-then-resize ordering subtlety that
 // can leave a kit bindChild-placed mark mis-centred. The mark's rendered art is
 // scaled to fill ~85% of the box so a larger box gives a larger mark.

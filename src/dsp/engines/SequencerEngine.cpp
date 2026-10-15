@@ -177,7 +177,7 @@ bool SequencerEngine::advancePlayhead(int dir) {
     // an accumulator that can drift away from the DNA clock. See laneTickFor().
     // Promote pending direction at the step edge -- BUT NOT while locked. Direction is LATCH
     // (LOCK_SEMANTICS §9): a direction change made under lock must freeze and take effect at
-    // unlock, not commit at the next step edge. `locked` is this engine's live lock (aliased as
+    // unlock, not commit at the next step edge. locked is this engine's live lock (aliased as
     // Monsoon::locked, toggled by the user). Gating here staged-promotes: pending holds the new
     // dir, and the first unlocked step edge commits it.
     // SCOPE (LOCK_SCOPE_MENU): a strand promotes under lock IF its Sands scope bit is set (direction
@@ -252,7 +252,7 @@ bool SequencerEngine::advancePlayhead(int dir) {
         }
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             // macroLOR_ is EDITOR-lane indexed for the POLY lanes (0..4 = MEL/OCT/QMIX/REST/ACC);
-            // VAR/LEG (5/6) have no global LOR, so they use the mono strandLen. The bound was `< 4`,
+            // VAR/LEG (5/6) have no global LOR, so they use the mono strandLen. The bound was < 4,
             // which both DROPPED ACCENT (strand 4, a real poly lane) and would have dropped q-mix's
             // macroLOR had the strands not been editor-aligned — use POLY_LANE_COUNT so every poly
             // lane (incl. q-mix + accent) reads its Macro length.
@@ -1356,7 +1356,7 @@ float SequencerEngine::quantize(float vIn) {
     float bestV = vIn;
 
     // Within-octave voltage of a cached ACTIVE degree. At the 12-TET default (isDefault12TET) this is
-    // the EXACT legacy `s/12` (byte-identical — the whole Mode C/D quantizer is unchanged for N=12,
+    // the EXACT legacy s/12 (byte-identical — the whole Mode C/D quantizer is unchanged for N=12,
     // any Sikit-at-default, and Monsoon standalone). Under a custom tuning (Micro publishing non-
     // default cents, or a Micro-24) it becomes the table's degreeVolts(s) so quantize snaps to the
     // ACTUAL tuning degrees, not 12-TET semitone slots.

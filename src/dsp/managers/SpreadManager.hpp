@@ -49,7 +49,7 @@ struct SpreadManager {
   int numVoices = 7;  // 7 for East, 8 for West, 1 for Mono
   int startVoiceIdx = 0;  // 0 for East (voices 2-8), 8 for West (voices 9-16)
   // True when this manager represents the MONO MASTER strand (V1) display — its view
-  // is always voice 1, so `original` must be the MONO draw regardless of how many poly
+  // is always voice 1, so original must be the MONO draw regardless of how many poly
   // voices exist. Without this, a mono manager with
   // numVoices>1 (e.g. Mono widget defaulting to 7) interpolated V1 from a POLY draw,
   // breaking the voice-1 self-target no-op (positive V1 spread wrongly moved V1).
