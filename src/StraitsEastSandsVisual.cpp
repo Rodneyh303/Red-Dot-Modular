@@ -1096,8 +1096,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // final array), which could disagree with Macro's pre-spread+spread when the manager
             // wrote the final array at a different time than the widget read it.
             auto* eastMod = static_cast<StraitsEastSandsVisual*>(module);
-            const int pv = polyVoice();   // poly bank index (0 = V2, 1 = V3, ...)
-            const int vs = pv + 1;        // → voiceSlot (1 = V2, ..., 15 = V16) — UI boundary conversion
+            // polyVoice() = polyBankIndex(currentVoice()) which NOW returns voiceSlot
+            // (1=V2, ..., 15=V16). The OLD pv+1 was a DOUBLE conversion (polyBankIndex
+            // used to return 0-based poly; now it returns voiceSlot) — reading the
+            // ADJACENT voice (Bug B: two-patterns-flipping) and OOB for V16 (Bug A: zero).
+            const int vs = polyVoice();   // voiceSlot (1 = V2, ..., 15 = V16)
             auto& peRef = monsoon->engine.pe;
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
                 int el = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[lane];
@@ -1113,7 +1116,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         case SequencerEngine::PL_LEGATO:   base = peRef.pubSlewedPolyLegato[vs][s]; break;
                         default: base = 0.5f; break;
                     }
-                    const float spread = (pv >= 0 && pv < 16) ? eastMod->polySpreadEffective[pv][lane] : 0.f;
+                    const float spread = (vs >= 0 && vs < 16) ? eastMod->polySpreadEffective[vs][lane] : 0.f;
                     visualEditor->currentState.lanes[el].probabilities[s] =
                         redDot::SpreadInterp::applyAnchorV1Only(peRef, lane, s, base, spread);
                 }

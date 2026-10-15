@@ -80,10 +80,9 @@ struct PolyVoiceSandsParameterManager {
   void syncEditorToPatternEngine(int voiceIdx, const SandsVisualEditorV4::VoiceState& editorState) {
     if (!patternEngine || voiceIdx < 0 || voiceIdx >= numVoices) return;
     
-    // voiceIdx is 0-based poly (0=V2). Convert to voiceSlot (+1) for BOTH
-    // polyRandom and the source arrays — they were INCONSISTENT (polyRandom
-    // had no +1, writing V2's editor data into V1's random_ slot. BUG FIX).
-    const int vs = voiceIdx + 1;  // voiceSlot
+    // voiceIdx is voiceSlot (1=V2, ..., 15=V16) — the caller (polyVoice())
+    // returns voiceSlot via polyBankIndex. Use directly (no +1).
+    const int vs = voiceIdx;  // voiceSlot
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
       patternEngine->polyRandom(vs, SequencerEngine::PL_REST)[i] = editorState.lanes[SandsVisualEditorV4::REST].probabilities[i];
       patternEngine->rhythmSource[vs][i] = patternEngine->polyRandom(vs, SequencerEngine::PL_REST)[i];
