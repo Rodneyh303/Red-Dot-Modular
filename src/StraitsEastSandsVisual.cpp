@@ -1084,11 +1084,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // final array), which could disagree with Macro's pre-spread+spread when the manager
             // wrote the final array at a different time than the widget read it.
             auto* eastMod = static_cast<StraitsEastSandsVisual*>(module);
-            // polyVoice() = polyBankIndex(currentVoice()) which NOW returns voiceSlot
-            // (1=V2, ..., 15=V16). The OLD pv+1 was a DOUBLE conversion (polyBankIndex
-            // used to return 0-based poly; now it returns voiceSlot) — reading the
-            // ADJACENT voice (Bug B: two-patterns-flipping) and OOB for V16 (Bug A: zero).
-            const int vs = polyVoice();   // voiceSlot (1 = V2, ..., 15 = V16)
+            // pubSlewedPoly* is VOICESLOT-indexed: writer PatternEngine.hpp:506
+            // `for v=0..15; pubSlewedPolyMelody[v]=slewedMelody[v]`, and [0]=V1/mono
+            // (the mono branch reads pubSlewedPolyMelody[0]). So the per-voice bar read
+            // MUST use voiceSlot (V1=0, V2=1, ..., V16=15).
+            // BUG (V16 melody-bar flicker): this used polyVoice() = polyBankIndex = (v-1)
+            // = POLY-BANK (0=V2, ..., 14=V16) — one slot LOW. Every poly voice read the
+            // adjacent slot; V16 read [14]=V15 → the flicker. The old comment claiming
+            // polyVoice() "returns voiceSlot" was FALSE (polyBankIndex returns v-1).
+            const int vs = currentSlot();   // voiceSlot: V1=0, V2..V16 = 1..15
             auto& peRef = monsoon->engine.pe;
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
