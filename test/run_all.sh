@@ -116,33 +116,76 @@ for a in "$@"; do
 done
 
 pass=0; fail=0; failed_names=()
-bin=/tmp/rdt_test_bin
-for spec in "${TESTS[@]}"; do
-  name="${spec%%|*}"; srcs="${spec#*|}"
-  [ -n "$filter" ] && [[ "$name" != *"$filter"* ]] && continue
-  src="test/$name.cpp"
+
+# ── Parallel execution ────────────────────────────────────────────────────────
+# Each test (compile + run) is independent, so fan them out across cores. Set
+# RDT_JOBS to override; default = CPU count. RDT_JOBS=1 forces the old serial order.
+jobs="${RDT_JOBS:-$( (command -v nproc >/dev/null && nproc) || sysctl -n hw.ncpu 2>/dev/null || echo 4 )}"
+workdir="$(mktemp -d /tmp/rdt_run.XXXXXX)"
+trap 'rm -rf "$workdir"' EXIT
+
+# Run one test: compile to a unique bin, run it, write a self-contained result record
+# to $workdir/<idx>.res. Record format (one file per test):
+#   line 1: status  (OK | FAIL | COMPILE | MISSING)
+#   line 2: name
+#   line 3: tally/message (what prints after the name)
+#   rest:   captured stdout (for -v) OR compile errors (for COMPILE)
+run_one() {
+  local idx="$1" name="$2" srcs="$3"
+  local res="$workdir/$idx.res"
+  local src="test/$name.cpp"
+  local bin="$workdir/bin_$idx"
   if [ ! -f "$src" ]; then
-    printf "  \033[33m?\033[0m  %-32s (missing file)\n" "$name"; continue
+    printf 'MISSING\n%s\n(missing file)\n' "$name" > "$res"; return
   fi
-  if ! g++ $STD $INCS "$src" $srcs -o "$bin" 2>/tmp/rdt_cerr; then
-    printf "  \033[31m✗\033[0m  %-32s COMPILE ERROR\n" "$name"
-    grep -iE "error:|undefined ref" /tmp/rdt_cerr | head -2 | sed 's/^/       /'
-    fail=$((fail+1)); failed_names+=("$name"); continue
+  if ! g++ $STD $INCS "$src" $srcs -o "$bin" 2>"$workdir/cerr_$idx"; then
+    { printf 'COMPILE\n%s\nCOMPILE ERROR\n' "$name"
+      grep -iE "error:|undefined ref" "$workdir/cerr_$idx" | head -2; } > "$res"; return
   fi
+  local out code tally
   out="$("$bin" 2>&1)"; code=$?
   tally="$(printf '%s' "$out" | grep -oiE "[0-9]+ (passed|pass)[a-z]*(,? *[0-9]+ fail[a-z]*)?" | tail -1)"
   if [ $code -eq 0 ]; then
-    printf "  \033[32m✓\033[0m  %-32s %s\n" "$name" "${tally:-ok}"
-    pass=$((pass+1))
+    { printf 'OK\n%s\n%s\n' "$name" "${tally:-ok}"; printf '%s\n' "$out"; } > "$res"
   else
-    printf "  \033[31m✗\033[0m  %-32s %s\n" "$name" "${tally:-RUNTIME FAIL (exit $code)}"
-    fail=$((fail+1)); failed_names+=("$name")
+    { printf 'FAIL\n%s\n%s\n' "$name" "${tally:-RUNTIME FAIL (exit $code)}"; printf '%s\n' "$out"; } > "$res"
   fi
-  [ $verbose -eq 1 ] && printf '%s\n' "$out" | sed 's/^/       /'
+}
+
+# dispatch, capped at $jobs concurrent
+idx=0
+for spec in "${TESTS[@]}"; do
+  name="${spec%%|*}"; srcs="${spec#*|}"
+  [ -n "$filter" ] && [[ "$name" != *"$filter"* ]] && continue
+  run_one "$idx" "$name" "$srcs" &
+  idx=$((idx+1))
+  # throttle: wait if we've hit the job cap
+  while [ "$(jobs -r | wc -l)" -ge "$jobs" ]; do wait -n 2>/dev/null || wait; done
+done
+wait
+
+# collect results IN ORDER (deterministic output, same as serial)
+total=$idx
+for ((i=0; i<total; i++)); do
+  res="$workdir/$i.res"
+  [ -f "$res" ] || continue
+  status="$(sed -n '1p' "$res")"; rname="$(sed -n '2p' "$res")"; msg="$(sed -n '3p' "$res")"
+  case "$status" in
+    MISSING) printf "  \033[33m?\033[0m  %-32s %s\n" "$rname" "$msg" ;;
+    COMPILE) printf "  \033[31m✗\033[0m  %-32s %s\n" "$rname" "$msg"
+             sed -n '4,5p' "$res" | sed 's/^/       /'
+             fail=$((fail+1)); failed_names+=("$rname") ;;
+    OK)      printf "  \033[32m✓\033[0m  %-32s %s\n" "$rname" "$msg"
+             pass=$((pass+1))
+             [ $verbose -eq 1 ] && sed -n '4,$p' "$res" | sed 's/^/       /' ;;
+    FAIL)    printf "  \033[31m✗\033[0m  %-32s %s\n" "$rname" "$msg"
+             fail=$((fail+1)); failed_names+=("$rname")
+             [ $verbose -eq 1 ] && sed -n '4,$p' "$res" | sed 's/^/       /' ;;
+  esac
 done
 
 echo "-----"
-echo "suites: $((pass+fail))  passed: $pass  failed: $fail  (test_MeloDicer excluded: needs real SDK)"
+echo "suites: $((pass+fail))  passed: $pass  failed: $fail  (test_MeloDicer excluded: needs real SDK)  [jobs: $jobs]"
 
 # ── anchor-vs-bind audit (SvgPanelKit geometry guard) ─────────────────────────
 # Every generated panel anchor must have a widget bind and vice-versa; catches the
