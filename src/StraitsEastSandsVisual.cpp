@@ -104,7 +104,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             };
             arc->getModNorm = [mod, this, lane]() -> float {
                 if (!mod) return 0.5f;
-                int v = polyVoice();
+                int v = polyVoice();            // poly-bank (-1 = mono/V1) — used ONLY for the v<0 mono test
                 if (v < 0) {
                     // V1 / mono tab: MOD = the EFFECTIVE V1 spread on this lane, matching
                     // the manager's sprForLane: delegated → Macro base+CVdelta; owned →
@@ -136,9 +136,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     }
                     return rack::math::clamp((rack::math::clamp(sp,-1.f,1.f) + 1.f) * 0.5f, 0.f, 1.f);
                 }
-                if (v >= 16) return 0.5f;
+                // polySpreadEffective is VOICESLOT-indexed (writer: ExpanderManager:240
+                // `for v=1..effPolyVoices; polySpreadEffective[v]`, v = voiceSlot 1=V2..15=V16).
+                // polyVoice() above is POLY-BANK (0=V2..14=V16) — reading with it was off by one
+                // (V16 read slot 14 = V15 → the V16 melody-bar flicker; same double-convention class
+                // as the fixed polyVoice() bug, at a reader the first fix missed). Index by voiceSlot.
+                const int vs = currentSlot();   // voiceSlot: V2..V16 = 1..15
+                if (vs < 0 || vs >= 16) return 0.5f;
                 // polySpreadEffective is bipolar -1..1 → map to 0..1.
-                float rawSpread = mod->polySpreadEffective[v][lane];
+                float rawSpread = mod->polySpreadEffective[vs][lane];
                 return rack::math::clamp((rawSpread + 1.f) * 0.5f, 0.f, 1.f);
             };
             arc->isActive = [mod, this, lane]() -> bool {
