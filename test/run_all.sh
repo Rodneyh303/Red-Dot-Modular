@@ -124,6 +124,40 @@ jobs="${RDT_JOBS:-$( (command -v nproc >/dev/null && nproc) || sysctl -n hw.ncpu
 workdir="$(mktemp -d /tmp/rdt_run.XXXXXX)"
 trap 'rm -rf "$workdir"' EXIT
 
+# ── Precompile shared sources once ────────────────────────────────────────────
+# GateState/PatternEngine/SequencerEngine/ClockEngine are each linked by many tests
+# (PE by 15, GS by 12, SE by 11). Compiling them per-test dominates runtime. Build
+# each to a .o ONCE here (in parallel), with the IDENTICAL flags tests use, then the
+# per-test compile links the .o instead of recompiling the .cpp. Set RDT_NO_PRECOMPILE=1
+# to disable (falls back to compiling sources directly, as before).
+SHARED_SRCS="$GS $PE $SE $CE"
+declare -A OBJ_OF
+if [ "${RDT_NO_PRECOMPILE:-0}" != "1" ]; then
+  pcfail=0
+  for s in $SHARED_SRCS; do
+    o="$workdir/$(printf '%s' "$s" | tr '/.' '__').o"
+    OBJ_OF["$s"]="$o"
+    ( g++ $STD $INCS -c "$s" -o "$o" 2>"$o.err" || { echo "PRECOMPILE FAIL: $s"; cat "$o.err"; exit 1; } ) &
+    while [ "$(jobs -r | wc -l)" -ge "$jobs" ]; do wait -n 2>/dev/null || wait; done
+  done
+  wait
+  # if any .o is missing (compile failed), abort precompile mode cleanly -> fall back to direct
+  for s in $SHARED_SRCS; do [ -s "${OBJ_OF[$s]}" ] || pcfail=1; done
+  if [ "$pcfail" = "1" ]; then
+    echo "  (precompile failed; falling back to per-test source compile)"
+    OBJ_OF=()
+  fi
+fi
+
+# translate a test's source list into .o's where precompiled, else leave the .cpp
+objs_for() {
+  local out="" tok
+  for tok in $1; do
+    if [ -n "${OBJ_OF[$tok]:-}" ]; then out="$out ${OBJ_OF[$tok]}"; else out="$out $tok"; fi
+  done
+  printf '%s' "$out"
+}
+
 # Run one test: compile to a unique bin, run it, write a self-contained result record
 # to $workdir/<idx>.res. Record format (one file per test):
 #   line 1: status  (OK | FAIL | COMPILE | MISSING)
@@ -138,7 +172,8 @@ run_one() {
   if [ ! -f "$src" ]; then
     printf 'MISSING\n%s\n(missing file)\n' "$name" > "$res"; return
   fi
-  if ! g++ $STD $INCS "$src" $srcs -o "$bin" 2>"$workdir/cerr_$idx"; then
+  local link; link="$(objs_for "$srcs")"
+  if ! g++ $STD $INCS "$src" $link -o "$bin" 2>"$workdir/cerr_$idx"; then
     { printf 'COMPILE\n%s\nCOMPILE ERROR\n' "$name"
       grep -iE "error:|undefined ref" "$workdir/cerr_$idx" | head -2; } > "$res"; return
   fi
