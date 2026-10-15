@@ -65,13 +65,10 @@ At spread=1.0: Voice 0 plays 0.5 (mono)
 
 **Macro Spread (Global)**
 ```cpp
-MacroSpreadManager mgr(patternEngine, 7);
+SandsParameterManager mgr(patternEngine, nullptr, 7, 0, /*monoContext=*/true);
 
-// Same spread applied to all voices
-mgr.setSpread(lane, 0.5);  // Sets all 7 voices to spread=0.5
-
-// Read back
-float spread = mgr.getSpread(lane);  // Gets first voice's spread
+// Same spread applied to every slot
+mgr.setSpreadAll(lane, 0.5f);   // all 16 slots (was the Macro wrapper's fan-out — deleted, Phase 3d)
 ```
 
 **Per-Voice Spread (Individual)**
@@ -115,7 +112,7 @@ float interpolated = mgr.getInterpolatedValue(voiceIdx, lane, step);
 
 ```cpp
 struct StraitsEastWidget : ModuleWidget {
-  PolyVoiceSandsParameterManager* paramMgr;
+  SandsParameterManager* paramMgr;
   SandsVisualEditorV4* editors[7];
   
   void step() override {
@@ -146,7 +143,7 @@ struct StraitsEastWidget : ModuleWidget {
 
 ```cpp
 struct MonsoonStraitSandsWidget : ModuleWidget {
-  PolySandsParameterManager* paramMgr;
+  SandsParameterManager* paramMgr;
   
   void step() override {
     if (paramMgr) {
@@ -176,7 +173,9 @@ The visual editor displays interpolated probabilities:
 ```cpp
 // In SandsVisualEditorV4
 
-void syncPatternEngineToEditor(const PolyVoiceSandsParameterManager& mgr,
+// (Historical sample — the merged SandsParameterManager dropped the
+//  getDisplayProbability surface; see SandsParameterManager.hpp.)
+void syncPatternEngineToEditor(const SandsParameterManager& mgr,
                                 int voiceIdx) {
   for (int lane = 0; lane < 3; ++lane) {
     for (int step = 0; step < 16; ++step) {
@@ -269,56 +268,36 @@ InterpolatedVoice getInterpolatedVoice(int voiceIdx) const;
 InterpolationStats getInterpolationStats(int voiceIdx, int lane) const;
 ```
 
-### MacroSpreadManager
+### Macro spread (the former wrapper — DELETED, Phase 3d)
+
+Its 2-arg setSpread fan-out lives on as SandsParameterManager::setSpreadAll
+(same [-1,1] clamp + loop; now fans to all 16 slots). See SandsParameterManager.hpp.
+
+### SandsParameterManager (both scopes — merged, ERADICATION Phase 3d)
+
+The former per-voice and global parameter managers are ONE class. Live surface:
 
 ```cpp
-// Override: applies to all voices
-void setSpread(int lane, float value);
-float getSpread(int lane) const;
+// Per-voice (East): editor grid → engine draws for ONE voice
+void syncEditorToPatternEngine(int voiceSlot, const VoiceState& state);
 
-// Inherited from SpreadManager
-void setInterpolationTarget(InterpolationTarget target);
-float getInterpolatedValue(int voiceIdx, int lane, int step) const;
+// Global (Macro): engine spread-interpolated values → editor bars (view lens)
+void syncPatternEngineToEditor(VoiceState& state, int viewVoice = 0);
+
+// Global spread (Macro): same value on every slot (was the MacroSpreadManager fan-out)
+void setSpreadAll(int lane, float value);
 ```
 
-### PolyVoiceSandsParameterManager
-
-```cpp
-// Spread control
-void setSpread(int voiceIdx, int lane, float value);
-float getSpread(int voiceIdx, int lane) const;
-void setInterpolationTarget(SpreadManager::InterpolationTarget target);
-
-// Syncing
-void syncEditorToPatternEngine(int voiceIdx, const VoiceState& state);
-void syncPatternEngineToEditor(int voiceIdx, VoiceState& state);
-
-// Display
-float getDisplayProbability(int voiceIdx, int lane, int step) const;
-```
-
-### PolySandsParameterManager
-
-```cpp
-// Spread control (via macro manager)
-// setSpread(lane) applies to all voices
-
-// Syncing
-void syncEditorToPatternEngine(const VoiceState& state);
-void syncPatternEngineToEditor(VoiceState& state);
-
-// Display
-float getDisplayProbability(int lane, int step) const;
-```
+(The old per-voice setSpread/getSpread/getDisplayProbability wrappers had zero
+callers and were dropped in the merge.)
 
 ---
 
 ## Implementation Checklist
 
-- [ ] SpreadManager created and tested
-- [ ] MacroSpreadManager (wrapper for global spread)
-- [ ] PolyVoiceSandsParameterManager uses SpreadManager
-- [ ] PolySandsParameterManager uses MacroSpreadManager
+- [x] SpreadManager created and tested
+- [x] Global spread — SandsParameterManager::setSpreadAll (the Macro wrapper deleted, Phase 3d)
+- [x] SandsParameterManager uses SpreadManager (former per-voice/global managers merged, Phase 3d)
 - [ ] Visual editor shows interpolated values
 - [ ] Macro poly: 3 spread knobs (one per lane)
 - [ ] Per-voice poly: 21 spread knobs (7 voices × 3 lanes)

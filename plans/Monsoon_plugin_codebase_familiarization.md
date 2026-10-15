@@ -124,7 +124,7 @@ All constructed in `Monsoon()` and held by `unique_ptr`. Single-responsibility; 
 | **MonsoonConfigurator** | [`MonsoonConfigurator.hpp`](plugins/Melodicer/src/dsp/managers/MonsoonConfigurator.hpp:9) | `setup(Monsoon*)` — all `configParam`/`configInput`/`configOutput`/`configLight` boilerplate (the ~600 params). |
 | **SpreadManager** | [`SpreadManager.hpp`](plugins/Melodicer/src/dsp/managers/SpreadManager.hpp:47) | Display-side spread interpolation (AVERAGE_POLY / MONO_DRAW). Cached 3×16 average grid (checksum-guarded). `effectiveTarget()` reads the engine's single-source `spreadInterpMono`. |
 | **MonoSandsParameterManager** | [`MonoSandsParameterManager.hpp`](plugins/Melodicer/src/dsp/managers/MonoSandsParameterManager.hpp:9) | Mono V1 spread: `spreadValue(lane,step)` via `SpreadInterp::interpolate`; `writeFinal()` writes the 6 mono final arrays + sets `sandsActive`. `polyAverageInclMono` includes mono in the ensemble. |
-| **PolySandsParameterManager / PolyVoiceSandsParameterManager** | (same dir) | Poly-voice analogues of the mono Sands param manager (per-voice LOR/spread → poly final arrays). |
+| **SandsParameterManager** | (same dir) | Poly-voice Sands editor↔engine sync, both scopes (the former global/per-voice parameter managers were merged into it — ERADICATION Phase 3d). |
 
 ## 6. DSP utilities — `src/dsp/`
 

@@ -14,8 +14,8 @@ SandsManager 31, SequencerEngine 5, Persistence 1) — single-threaded within pr
 safe. **18 are GUI-thread**: the parameter managers' `syncEditorToPatternEngine` paths,
 called from widget `step()` per frame:
 - MonoSandsParameterManager.hpp — 12 sites
-- PolySandsParameterManager.hpp — 3 sites
-- PolyVoiceSandsParameterManager.hpp — 3 sites
+- The former poly parameter managers — 6 sites (both since merged into
+  SandsParameterManager, ERADICATION Phase 3d)
 Callers (non-deprecated): StraitsEastSandsVisual.cpp:577 (East editor drag path),
 plus the display-direction syncs in StraitsSandsMacroVisual.cpp / MonsoonSandsVisualExpander.cpp
 (read direction — verify write-direction callers per manager during migration).

@@ -221,7 +221,8 @@ two-colour pins solve it, and one board halves the panel cost (16×16 at ~4.5 mm
 > SUPERSEDED — WRITE-SIDE REVERTED (race + non-idempotence, found in Rack):
 > The write-side in-place remap FLASHED the East visual on off-diagonal pins. Root cause,
 > measured: random_ has 73 WRITE SITES across 7 files INCLUDING GUI-THREAD parameter
-> managers (Mono/Poly/PolyVoiceSandsParameterManager write finals from editor save
+> managers (the Mono/Poly Sands parameter managers — since merged into
+> SandsParameterManager, ERADICATION Phase 3d — wrote finals from editor save
 > paths). Writers between remaps expose unmapped transients (flash), and in-place remap
 > is NON-IDEMPOTENT under pin chains (remap twice = mapping composed twice — any bank
 > not refilled between remaps WALKS through the chain). Making it safe needs tail-calls
