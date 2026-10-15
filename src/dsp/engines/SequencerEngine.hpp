@@ -350,8 +350,8 @@ struct SequencerEngine {
     static int strandClamp(int s) { return (s >= 0 && s < dotModular::NUM_STRANDS) ? s : dotModular::STRAND_RHYTHM; }
 
     // Lane-index unification: PL_* now matches the VISUAL/EDITOR/STRAND order
-    // (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6). Editor==engine==strand →
-    // the EDITOR_TO_ENGINE_LANE_QMIX conversion is now identity (deleted below).
+    // (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6). Editor==engine==strand —
+    // the old EDITOR_TO_ENGINE_LANE_QMIX table is deleted (Phase 3b, identity).
     // Streams: MELODY=0..1, QMIX=2, RHYTHM=3..6 (stream-contiguous).
     enum PolyLane { PL_MELODY = 0, PL_OCTAVE = 1, PL_QMIX = 2, PL_REST = 3, PL_ACCENT = 4, PL_VARIATION = 5, PL_LEGATO = 6, PL_LANES = 7 };
 
@@ -398,13 +398,12 @@ struct SequencerEngine {
 
     // The single engine→editor lane conversion. The modifier stores (lorStore_, spread) are editor-
     // ordered; every accessor that takes an engine PL_ lane converts through HERE — one definition.
-    // engLane is a POLY lane: PL_REST/PL_MELODY/PL_OCTAVE/PL_ACCENT/PL_QMIX = 0..4 (PL_LANES == 5).
-    // Uses the QMIX-aware table so PL_QMIX(4) → editor 2 explicitly (the old `& 3` formula aliased
-    // 4→0 and only landed on editor 2 by coincidence). VARIATION/LEGATO are mono strands, NOT poly
-    // lanes, so they have no engine-order id; for their per-voice LOR use the EDITOR-order accessors
-    // polyLOR/polyLORRef (they mask & 7 and index lorStore_ directly). See EAST_EXTRA_LANES.md.
+    // engLane is a POLY lane 0..6 (PL_LANES == 7).
     // Lane-index unification: editor == engine (PL_* reordered to visual/strand order).
     // editorLane() is now IDENTITY — kept for call-site readability, no longer permutes.
+    // (Historically the two orders differed and the old & 3 formula aliased PL_QMIX 4→0; the
+    // conversion tables were deleted in Phase 3b. For per-voice LOR the EDITOR-order accessors
+    // polyLOR/polyLORRef mask & 7 and index lorStore_ directly.) See EAST_EXTRA_LANES.md.
     static int editorLane(int engLane) {
         return (engLane >= 0 && engLane < 7) ? engLane : 0;
     }
@@ -415,7 +414,7 @@ struct SequencerEngine {
     int  polyLOR   (int bank, int editorLane, int item) const { return lorStore_[bank][editorLane & 7][item]; }
 
     // Engine-order poly accessors: bank b → slot b+1; the engine PL_ lane converts to editor lane
-    // via ENGINE_LANE_TO_EDITOR HERE — the single storage boundary that absorbs the permutation.
+    // via editorLane() HERE — the single storage boundary (identity since lane-index unification).
     int& polyLenERef(int bank, int engLane) { return lorStore_[bank][editorLane(engLane)][LOR_LEN]; }
     int& polyOffERef(int bank, int engLane) { return lorStore_[bank][editorLane(engLane)][LOR_OFF]; }
     int& polyRotERef(int bank, int engLane) { return lorStore_[bank][editorLane(engLane)][LOR_ROT]; }
@@ -438,14 +437,14 @@ struct SequencerEngine {
 
 
     // Indexable strand accessors keyed by dotModular::EngineStrand order
-    // (0 rhythm, 1 variation, 2 legato, 3 accent, 4 melody, 5 octave). These let
-    // callers go editor-lane → strand (via MONO_LANE_TO_STRAND) → value without
-    // hardcoding the permutation. Single source of truth for strand indexing.
+    // (0 MEL, 1 OCT, 2 QMIX, 3 RHYTHM/REST, 4 ACC, 5 VAR, 6 LEG — editor-aligned).
+    // Editor lane == strand index (identity), so callers pass the lane directly.
+    // Single source of truth for strand indexing.
     // Strand LOR readers/writers, now backed by monoLOR[strand][item] (one array, no switches).
     // Out-of-range semantics preserved EXACTLY from the previous 6 switches:
     //   readers  → literal fallback (LEN 16, OFF 0, ROT 0) for an invalid strand;
     //   writers  → the rhythm cell (strandClamp maps invalid → STRAND_RHYTHM), so an out-of-range
-    //              write lands on rhythm just as the old `default: return rhythmLen/Off/Rot` did.
+    //              write lands on rhythm just as the old default: return rhythmLen/Off/Rot did.
     int strandLen(int strand) const {
         return (strand >= 0 && strand < dotModular::NUM_STRANDS) ? lor(strand, LOR_LEN) : 16;
     }
@@ -525,7 +524,7 @@ struct SequencerEngine {
     bool locked = false;
     // Lock SCOPE bitmask (LOCK_SCOPE_MENU.md). Set bit = that generative group is kept LIVE under
     // lock (opted out of the freeze). 0 = whole-module lock (every LATCH frozen) = pre-menu default.
-    // Lives beside `locked` because the static LockManager::liveNow call sites already read
+    // Lives beside locked because the static LockManager::liveNow call sites already read
     // engine.locked; they pass engine.scopeLiveMask alongside. Persisted by PersistenceManager.
     uint32_t scopeLiveMask = 0;
 
@@ -586,7 +585,7 @@ struct SequencerEngine {
     float quantiserCV[16] = {};
 
     // The sounding pitch for a voice at its onset: quantised external CV in quantiser mode, else the
-    // internal draw via genPitchLive. `voiceIdx` 0..15 (0 = mono/voice-0). outSem = the sounding degree
+    // internal draw via genPitchLive. voiceIdx 0..15 (0 = mono/voice-0). outSem = the sounding degree
     // (for flash LEDs). r_semi/r_oct = the voice's melody/octave draws (used only in the internal path).
     //
     // QMIX per-step source-select (mono/voice-0 only): when quantiserPitchSource is set AND

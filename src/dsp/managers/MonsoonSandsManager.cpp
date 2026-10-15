@@ -182,13 +182,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     {
         // readStrand: read a mono strand's base L/O/R from the visual params,
         // apply mono CV, and write the clamped result to the engine strand for
-        // editor lane `l`. The editor-lane → engine-strand permutation lives in
-        // dotModular::MONO_LANE_TO_STRAND (dsp/LaneMapping.hpp) — the single
-        // source of truth — so this is driven by a loop rather than a hand-
-        // ordered call list that could drift. (DNA-expander base path is retired;
+        // editor lane l. Editor lane == engine strand (identity since the
+        // lane-index unification; the old MONO_LANE_TO_STRAND table is deleted),
+        // so this stays a loop over lane constants rather than a hand-ordered
+        // call list that could drift. (DNA-expander base path is retired;
         // base always comes from the visual params. cvRow == editor lane.)
         auto readStrand = [&](int l) {
-            int strand = dotModular::MONO_LANE_TO_STRAND[l];
+            int strand = l;
             // MVC step 1d: LOR base is STORE-BACKED (editor.lorBase[kMonoSlot, bank, c]). Was
             // params[lenId/offId/rotId(l)] (removed). l is the EDITOR lane; bank = engine lane for
             // poly (0..4), self for VAR/LEG (5,6) — East's lorBank. gMon resolves via monoVis so
@@ -205,12 +205,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // are mono-only and always Mono-owned. (macroBase is published later in
             // this same block → one control-block lag, same as the macroMix delta.)
             // POLY_LANE_COUNT (5) not 4: editor lanes 0..4 = MEL/OCT/QMIX/REST/ACC are ALL poly
-            // lanes and can be delegated to Macro; the old `< 4` dropped ACCENT (editor lane 4).
+            // lanes and can be delegated to Macro; the old < 4 dropped ACCENT (editor lane 4).
             if (l < dotModular::POLY_LANE_COUNT && hasMacro && macroVis) {
                 // STEP 3b: delegated ⟺ topo.owner(0,l) == MACRO.
                 const bool delegated = (topo.owner(0, l) == dotModular::SandsTopology::Role::MACRO);
                 if (delegated) {
-                    int el = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[l];   // editor → poly engine lane
+                    int el = l;   // editor → poly engine lane
                     // Delegated → track Macro's base + the TAPPED CV delta (macroSendDelta),
                     // so the per-lane PRE/POST send tap controls how Macro's modulation
                     // reaches the delegated lane: PRE (tap=0) = raw CV even when the left
@@ -275,7 +275,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // neither East's CV nor the Macro SEND on top (that would double-count Macro's
             // modulation, already in the delegated base). Only OWNED lanes receive these.
             if (l < dotModular::SandsGrid::POLY_LANES && v1OwnsLane) {
-                int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[l];   // editor → engine lane (East CV jack)
+                int eng = l;   // editor → engine lane (East CV jack)
                 // Sum ALL mods (East CV + Macro send) onto the base, then clamp the END RESULT once.
                 baseLen = math::clamp(baseLen + eastDelta(eng, 0, 1.f, 16.f) + macroDelta(eng, 0),  1.f, 16.f);
                 baseOff = math::clamp(baseOff + eastDelta(eng, 1, 0.f, 15.f) + macroDelta(eng, 1),  0.f, 15.f);
@@ -287,7 +287,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // value (base + latched CV). This also latches OWNER for free: owner selects which base
             // feeds baseLen above, and freezing the apply freezes that selection's effect too.
             // SCOPE (LOCK_SCOPE_MENU): per-strand R/M — MELODY/OCTAVE strands are the melody axis,
-            // the rest (RHYTHM/VAR/LEG/ACCENT) rhythm. `strand` is the engine strand for this lane.
+            // the rest (RHYTHM/VAR/LEG/ACCENT) rhythm. strand is the engine strand for this lane.
             // q-mix is its OWN Sands axis (SB_SANDS_Q), not rhythm (the old lorMelodyAxis=false
             // default put STRAND_QMIX on the rhythm bit — split-brain vs its melody-axis spread).
             const bool lorMelodyAxis = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);
@@ -340,10 +340,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 if (monoVis->inputs[Mono::sprCvId(l)].isConnected()) {
                     sin.ownCv.connected   = true;
                     sin.ownCv.unitVoltage = monoVis->inputs[Mono::sprCvId(l)].getVoltage() / 10.f;
-                    // atten: editor.monoAtten is EDITOR-lane-indexed (col 3 = spread atten), so
-                    // convert l (engine) via SPREAD_LANE_TO_EDITOR — the SAME index the widget's
-                    // StoreKnob writes. Was params[sprAttenId(l)].
-                    sin.ownCv.atten       = gMon ? gMon->getMonoAtten(SandsMonoVisualIds::SPREAD_LANE_TO_EDITOR[l], 3) : 0.f;
+                    // atten: editor.monoAtten is lane-indexed (col 3 = spread atten) — identity,
+                    // the SAME lane index the widget's StoreKnob writes. Was params[sprAttenId(l)].
+                    sin.ownCv.atten       = gMon ? gMon->getMonoAtten(l, 3) : 0.f;   // identity: spread lane == editor lane
                 }
                 // East V1 spread CV add (cvId(engineLane,3) jack + attenId(mono slot,l,3)).
                 if (eastVisS && eastVisS->inputs[East::cvId(l,3)].isConnected()) {
@@ -462,8 +461,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 const int kMono = dotModular::VoiceResolver::kMonoSlot;
                 // Lanes 0..3 (REST/MEL/OCT/ACC): Macro base when delegated, else base+CV+send blend.
                 for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-                    const int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
-                    const int strand  = dotModular::MONO_LANE_TO_STRAND[el];
+                    const int engLane = el;
+                    const int strand  = el;
                     // SCOPE (LOCK_SCOPE_MENU): MELODY/OCTAVE strands = melody axis; else rhythm.
                     // q-mix is its OWN axis (SB_SANDS_Q), not rhythm (fixes the split-brain vs spread).
                     const bool lorMelAxis = (strand == dotModular::STRAND_MELODY || strand == dotModular::STRAND_OCTAVE);

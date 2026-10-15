@@ -36,8 +36,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     POLY
   };
   
-  // QMIX-widened EDITOR lane order (== dotModular::MONO_LANE_TO_STRAND identity, drawLaneLabel,
-  // and every other Sands site). QMIX inserted at index 2, shifting REST→3, ACCENT→4, VAR→5,
+  // QMIX-widened EDITOR lane order (== the strand order, drawLaneLabel, and every other
+  // Sands site — identity). QMIX inserted at index 2, shifting REST→3, ACCENT→4, VAR→5,
   // LEG→6. WAS the pre-QMIX 6-lane order (MEL0 OCT1 REST2 ACC3 VAR4 LEG5) — that stale enum made
   // syncPatternEngineToEditor write each lane's probabilities to the wrong row (REST spread showed
   // on the QMIX row, ACCENT on the REST row). These symbolic names index VoiceState::lanes[] rows.
@@ -53,20 +53,19 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // GUARD: this editor-lane enum is a SECOND source of truth for the editor lane order — that's
   // why dsp/LaneMapping.hpp couldn't catch the stale pre-QMIX values that misrouted spread display
   // (REST bars on the QMIX row). Tie it to the canonical LaneMapping order so any future drift on
-  // EITHER side trips at compile time. MONO_LANE_TO_STRAND is editor-aligned (identity), so the
-  // strand index for each editor lane equals that lane's editor index.
+  // EITHER side trips at compile time. Editor lane == strand index (identity).
   static_assert(QMIX == dotModular::QMIX_EDITOR_LANE, "editor QMIX lane must be dotModular::QMIX_EDITOR_LANE (2)");
   static_assert(MELODY == 0 && OCTAVE == 1 && QMIX == 2 && REST == 3
                 && ACCENT == 4 && VARIATION == 5 && LEGATO == 6,
                 "SandsVisualEditorV4::Lane must equal the QMIX editor order (dsp/LaneMapping.hpp)");
   // (int) casts: Lane and dotModular::EngineStrand are distinct enums; comparing them directly
   // trips -Wenum-compare. We deliberately assert their integer values coincide (editor lane ==
-  // strand, MONO_LANE_TO_STRAND identity), so compare as ints.
+  // strand, identity), so compare as ints.
   static_assert((int)MELODY == (int)dotModular::STRAND_MELODY && (int)OCTAVE == (int)dotModular::STRAND_OCTAVE
                 && (int)QMIX == (int)dotModular::STRAND_QMIX && (int)REST == (int)dotModular::STRAND_RHYTHM
                 && (int)ACCENT == (int)dotModular::STRAND_ACCENT && (int)VARIATION == (int)dotModular::STRAND_VARIATION
                 && (int)LEGATO == (int)dotModular::STRAND_LEGATO,
-                "editor lane == engine strand (MONO_LANE_TO_STRAND is identity); keep both in step");
+                "editor lane == engine strand (identity); keep both in step");
   
   struct Colors {
     NVGcolor rest       = nvgRGB(0x50, 0x50, 0x50);
@@ -210,7 +209,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   const char* inertMessage = nullptr;
   // readOnly: render data normally but block all editing/drag. Used for East/Macro
   // tab 1 when Sands Mono is attached — the lane data belongs to Mono and is shown
-  // read-only (edit it on Sands Mono). Unlike `inert`, no hint message, data still drawn.
+  // read-only (edit it on Sands Mono). Unlike inert, no hint message, data still drawn.
   bool readOnly = false;
   // Per-lane edit lock (P4 / G5): host returns true for a lane whose values are
   // owned elsewhere (e.g. delegated to Macro) — that lane is shown but its handles
@@ -525,7 +524,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // Straits East CV expander is attached (it defines the poly voice count, so
     // there are no poly lanes to draw without it). Rather than display frozen
     // bars that look broken, show nothing but a clear hint. The owning module
-    // sets `inert` each frame from cachedPolyVoiceExpander == nullptr.
+    // sets inert each frame from cachedPolyVoiceExpander == nullptr.
     if (inert) {
       const char* msg = inertMessage ? inertMessage : "Attach Straits East";
       nvgFontSize(args.vg, 13.f);
@@ -580,7 +579,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   }
   
   void drawLaneLabel(NVGcontext* vg, int lane) {
-    // EDITOR lane order incl QMIX at index 2 (MONO_LANE_TO_STRAND identity): MEL/OCT/QMIX/REST/
+    // EDITOR lane order incl QMIX at index 2 (identity — editor lane == strand): MEL/OCT/QMIX/REST/
     // ACCENT/VARIATION/LEGATO. 7 entries (MAX_LANES) so lane 6 (LEGATO) is in-bounds; the first
     // FIVE equal the poly labels. Was 6 entries pre-QMIX (missing QMIX + LEG OOB read).
     static const char* monoNames[MAX_LANES] =

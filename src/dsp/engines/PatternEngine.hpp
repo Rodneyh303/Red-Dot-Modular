@@ -97,7 +97,7 @@ struct PatternEngine {
     // slots 1..15 = V2..V16; editor lanes MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6; VAR/LEG poly-unused).
     // The 7 mono named arrays below are REFERENCE VIEWS onto random_[0][lane] so the ~160 existing
     // rhythmRandom[step] / std::rotate / whole-array sites keep working unchanged; poly access goes via
-    // polyRandom(voice,lane). (mono row lane == strand index: MONO_LANE_TO_STRAND is the identity.)
+    // polyRandom(voice,lane). (mono row lane == strand index — identity.)
     float random_[16][dotModular::NUM_STRANDS][16] = {};
 
     // ── Stage 2a spread cache: per-voice blended spread amount (from combineSpread),
@@ -131,7 +131,7 @@ struct PatternEngine {
     // stream order or the poly-lane order is renumbered, these fire at compile time.
     static_assert(dotModular::QMIX_STREAM_KEY == redDot::seed::STREAM_SOURCE_SELECT,
                   "q-mix stream key must equal redDot::seed::STREAM_SOURCE_SELECT (=3)");
-    static_assert(dotModular::ENGINE_LANE_TO_EDITOR_QMIX[PL_QMIX] == dotModular::STRAND_QMIX,
+    static_assert((int)PL_QMIX == (int)dotModular::STRAND_QMIX,
                   "PL_QMIX poly lane must map to editor lane STRAND_QMIX (=2)");
 
     // Poly probability view: voice bank b (0..14 = V2..V16) → slot b+1; lane is the engine PL_ lane,
@@ -139,17 +139,17 @@ struct PatternEngine {
     // Phase A: polyRandom now takes voiceSlot directly (V1=0, V2+=1..15). Was bank+1 (skipping V1).
     // Callers must pass voiceSlot (0..15), NOT polyBankIndex (0..14). Old patches discarded.
     float (&polyRandom(int voiceSlot, int engLane))[16] {
-        int edLane = (engLane >= 0 && engLane < 7) ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane] : 0;
+        int edLane = (engLane >= 0 && engLane < 7) ? engLane : 0;
         return random_[voiceSlot][edLane];
     }
     const float (&polyRandom(int voiceSlot, int engLane) const)[16] {
-        int edLane = (engLane >= 0 && engLane < 7) ? dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engLane] : 0;
+        int edLane = (engLane >= 0 && engLane < 7) ? engLane : 0;
         return random_[voiceSlot][edLane];
     }
 
     // Final post-everything (A/B-mix + spread + LOR feed in upstream) probability value for a given
     // ENGINE STRAND at a given step, 0..1. Now a direct index into random_[0] (mono row): strand index
-    // IS the editor-lane column (MONO_LANE_TO_STRAND identity), so no table/permutation. Out-of-range
+    // IS the editor-lane column (identity), so no table/permutation. Out-of-range
     // falls back to rhythm (matches the old default:). Used by the Sands visual probability CV outs.
     // Spread target mode per lane (0=Anchor V1, 1=Follow CA). Mirrored from the Monsoon's
     // EditorState each control cycle so the spread path (which only has PatternEngine&) can
@@ -196,7 +196,7 @@ struct PatternEngine {
         return src;
     }
     // Per-voice q-mix source row for the downstream blend THRESHOLD (which voice's q-mix probability
-    // consuming voice `row` reads). row 0 = mono/voice-0, rows 1..15 = poly V2..V16. Identity default.
+    // consuming voice row reads). row 0 = mono/voice-0, rows 1..15 = poly V2..V16. Identity default.
     inline int caQmixSrcRow(int row) const {
         const int r = (row >= 0 && row < 16) ? row : 0;
         const int src = (int)caQmixSrc[r];
@@ -350,11 +350,11 @@ struct PatternEngine {
         // and MODULATE these probabilities; they are never a precondition for the correlation
         // itself. So the remap ALWAYS re-promotes every lane into random_ here, with no
         // dependence on sandsActive / hasMonoVisual / anything downstream.
-        // (This runs BEFORE the spread stage, which re-reads `slewed`, so when spread is
+        // (This runs BEFORE the spread stage, which re-reads slewed, so when spread is
         //  present and non-zero it simply overwrites random_ with the spread result on top of
         //  the already-correct remapped draw. When spread is absent or zero, this promote is
         //  the value the sequencer reads.)
-        // The earlier `if (!sandsActive)` guard broke exactly this: with Macro attached but no
+        // The earlier if (!sandsActive) guard broke exactly this: with Macro attached but no
         // Mono visual, sandsActive was true yet the mono spread block (inside if(hasMonoVisual))
         // never ran, so remapped melody/octave never reached random_ while rhythm did.
         for (int i = 0; i < 16; ++i) {
@@ -858,7 +858,7 @@ public:
             prevNumPolyVoicesHint_ = numPolyVoicesHint;  // decrease: just track (z stays in cache, unused)
         }
     }
-    // Returns the cached entry for `pos`, computing+inserting on miss.
+    // Returns the cached entry for pos, computing+inserting on miss.
     CachedRhythmDraw& cachedRhythmDraw(int64_t pos) const {
         auto it = rhythmDrawCache_.find(pos);
         if (it != rhythmDrawCache_.end()) return it->second;
@@ -994,7 +994,7 @@ public:
 
     // ── Core generation ───────────────────────────────────────────────────────
 
-    // Pick a DEGREE (0..n-1) weighted by fader values using a provided random value. `n` is the active
+    // Pick a DEGREE (0..n-1) weighted by fader values using a provided random value. n is the active
     // degree count (tuning.N): 12 for the built-in/Sikit/Micro-12, up to 24 for Micro-24. At n=12 this
     // is bit-identical to the legacy pickSemitone (same sum + walk + float-safety return).
     int pickSemitone(const float weights[], int n, float r_val);

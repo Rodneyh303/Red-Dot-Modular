@@ -12,18 +12,15 @@
 // Centralising the tables + a length static_assert turns the next lane-count change
 // from a silent "melody row labelled OCTAVE" into a COMPILE ERROR.
 //
-// There are exactly two orderings a label array is ever written in (the audit's #1/#2):
-//   • EDITOR order — what the user sees top-to-bottom, what row/label/dir arrays use:
+// Historically there were two orderings (editor vs engine/spread) and mixing them was
+// the bug this file exists to end. Since the lane-index unification there is ONE
+// order — EDITOR — everywhere (row/label/dir arrays, PROB_OUT ids, sprPid[],
+// spreadEffective[]):
 //         MEL OCT QMIX REST ACC VAR LEG        (q-mix at index 2)
-//   • ENGINE/SPREAD order — PROB_OUT ids on East, sprPid[], spreadEffective[]:
-//         REST MEL OCT ACC Q-MIX               (q-mix appended at index 4)
+// EDITOR, SPREAD and EDITOR_POLY are now identical content, kept as separate names
+// so each call site documents WHICH convention its index belongs to.
 //
-// PICK BY THE ARRAY'S CONVENTION, NOT BY EYE. Indexing the spread table with an
-// editor lane (or vice-versa) is exactly the bug this file is meant to end — every
-// consumer already owns the right bridge (EDITOR_TO_ENGINE_LANE_QMIX) for the id, and
-// must feed THAT table's index the matching-convention lane.
-//
-// `inline constexpr` so the arrays are usable across translation units (ODR-safe).
+// inline constexpr so the arrays are usable across translation units (ODR-safe).
 // ─────────────────────────────────────────────────────────────────────────────
 namespace dotModular {
 namespace SandsLaneNames {

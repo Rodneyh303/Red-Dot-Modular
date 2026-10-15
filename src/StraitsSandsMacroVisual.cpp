@@ -18,7 +18,7 @@
 #include "dsp/engines/SequencerEngine.hpp"  // LaneDir
 #include "dsp/managers/PolySandsParameterManager.hpp"
 #include "dsp/VoiceResolver.hpp"   // activeVoiceCount + voice identity, single source of truth for the tab→voice mapping and uniform 16-voice addressing for prob-out
-#include "dsp/LaneMapping.hpp"        // ENGINE_LANE_TO_EDITOR / MONO_PARAM_TO_EDITOR — single source of truth for lane order
+#include "dsp/LaneMapping.hpp"        // lane constants + strong types (identity — tables deleted Phase 3b)
 
 using namespace rack;
 using namespace redDot;
@@ -163,7 +163,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         visualEditor->onLorCommit = [this](int lane, const int before[3], const int after[3]) {
             auto* m = getMonsoon(); if (!m) return;
             if (lane < 0 || lane > 4) return;   // only MEL/OCT/REST/ACC/QMIX have global LOR (5 poly lanes)
-            const int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[lane];
+            const int engLane = lane;
             const int bef0=before[0],bef1=before[1],bef2=before[2];
             const int aft0=after[0], aft1=after[1], aft2=after[2];
             auto* ed = visualEditor;
@@ -190,15 +190,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         };
 
         // ── CRITICAL lane-order note ──────────────────────────────────────────
-        // The panel ROWS are EDITOR order (top→bottom: MEL,OCT,QMIX,REST,ACC) and the
-        // anchors are editor-lane indexed (param_*_<el>). But EVERY store accessor here
-        // (getGlobalSpread/Atten/Tap, getMacroSend, cvId, PROB_OUT_REST) and the label
-        // arrays are ENGINE order (REST,MEL,OCT,ACC,QMIX). So for each editor row `el`
-        // we MUST convert el→engine lane via EDITOR_TO_ENGINE_LANE_QMIX and use THAT for
-        // the store + label. Passing `el` straight through was the "top row is MELODY but
-        // the knob is labelled/modulates REST" bug. Anchor name stays <el>.
-        // Strong-typed conversion: editor row → engine lane (the single editor↔engine crossing).
-        // editor lane == engine lane (unified). No conversion needed.
+        // The panel ROWS, anchors and store accessors (getGlobalSpread/Atten/Tap,
+        // getMacroSend, cvId, PROB_OUT_REST) all use the ONE unified lane order
+        // (MEL,OCT,QMIX,REST,ACC top→bottom) — editor lane == engine lane (lane-index
+        // unification), so el passes through everywhere with NO conversion. (Historically
+        // the two orders differed and passing el straight through was the "top row is
+        // MELODY but the knob is labelled/modulates REST" bug.) Anchor stays <el>.
         // Editor-ordered lane names for tooltips (top→bottom).
         static const char* EDN[dotModular::SandsGrid::POLY_LANES] = {"MEL","OCT","QMIX","REST","ACC","VAR","LEG"};
 
@@ -285,11 +282,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         };
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             // STORE-BACKED (MVC step 1: direction de-param). The DirCell reads/writes
-            // editor.globalDir via get/setGlobalDir. globalDir is ENGINE-indexed
-            // (REST/MEL/OCT/ACC/QMIX) — the manager reads getGlobalDir(engineLane) — but the
-            // panel ROW is EDITOR order. So the cell on editor row `el` must target engine lane
-            // eng = EDITOR_TO_ENGINE_LANE_QMIX[el]. (Was passing `el` straight in → the direction
-            // cell on the MELODY row drove REST's direction.) Anchor stays param_dir_<el>.
+            // editor.globalDir via get/setGlobalDir; the manager reads getGlobalDir(lane).
+            // Editor row == engine lane (identity since lane-index unification), so the
+            // cell on editor row el targets engine lane eng = el directly. (Historically
+            // the orders differed and passing el straight in made the MELODY-row cell
+            // drive REST's direction.) Anchor stays param_dir_<el>.
             const int eng = el;
             bindWidget<DirCell>(
                 "param_dir_" + std::to_string(el),
@@ -381,7 +378,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         if (!module || !visualEditor) return;
         auto* mm = getMonsoon(); if (!mm) return;
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // l = engine lane
-            const auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR_QMIX[l]];
+            const auto& lane = visualEditor->currentState.lanes[l];
             mm->setGlobalLor(l, 0, (float)lane.length);
             mm->setGlobalLor(l, 1, (float)lane.offset);
             mm->setGlobalLor(l, 2, (float)lane.rotation);
@@ -391,7 +388,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         if (!module || !visualEditor) return;
         auto* mm = getMonsoon(); if (!mm) return;
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // l = engine lane
-            auto& lane = visualEditor->currentState.lanes[dotModular::ENGINE_LANE_TO_EDITOR_QMIX[l]];
+            auto& lane = visualEditor->currentState.lanes[l];
             lane.length   = std::max(1,(int)std::round(mm->getGlobalLor(l, 0)));
             lane.offset   = (int)std::round(mm->getGlobalLor(l, 1));
             lane.rotation = (int)std::round(mm->getGlobalLor(l, 2));
@@ -560,7 +557,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // lane = engine PL lane; el = editor lane it displays into; pv = poly bank index.
         if (!onMonoTab) {
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
-                int el = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[lane];
+                int el = lane;
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[el].probabilities[s] =
                         macroOwnProbability(lane, s, /*mono=*/false, /*polyVoice=*/pv);
@@ -571,14 +568,14 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // engine — they showed stale currentState. That's why standalone-Macro spread
             // looked dead: with numPolyVoices=0 the ONLY tab is V1. Read V1 per-step from
             // the engine MONO final arrays (finalRandomByStrand — what Mono/East/standalone-
-            // Macro spread write), editor lane → engine strand via MONO_LANE_TO_STRAND.
+            // Macro spread write); editor lane == engine strand (identity).
             // MONO TAB (V1): show MACRO's OWN probability — the shared base draw with Macro's
             // OWN spread — NOT the shared finalRandomByStrand (which East's spread writes on an
             // East-owned lane, leaking East's modulation into Macro's display). One-way
             // borrowing: Macro never borrows East. el = EDITOR lane; macroOwnProbability wants
-            // the ENGINE PL lane → EDITOR_TO_ENGINE_LANE[el].
+            // the ENGINE PL lane — identity, el passes through.
             for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-                const int engLane = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
+                const int engLane = el;
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[el].probabilities[s] =
                         macroOwnProbability(engLane, s, /*mono=*/true, /*polyVoice=*/0);
@@ -597,8 +594,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         auto& eng = monsoon->engine;
         // Per-lane direction cue: use Macro's OWN macroLaneSign_ (always follows Macro's DirCell)
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            int el = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[l];
-            int strand = dotModular::MONO_LANE_TO_STRAND[el];
+            int el = l;
+            int strand = el;
             visualEditor->setLanePlayDir(el, eng.lastPlayDir * eng.macroLaneSign_[strand]);
         }
         // TAB-1 MONO MIRROR: view tab 1 = voice 1 = the mono master strand when Sands
@@ -614,7 +611,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // Macro V1 editing is locked PER-LANE via laneEditBlockedFn (set up in the
         // constructor): on the V1 tab with Mono attached, a lane is locked iff Mono owns
         // it; Macro-owned (delegated) lanes stay editable. This replaced the old blunt
-        // `readOnly = tab1Mono`, which locked ALL of Macro's V1 whenever Mono was present
+        // readOnly = tab1Mono, which locked ALL of Macro's V1 whenever Mono was present
         // (so Macro-owned lanes couldn't be edited in Mono+Macro). readOnly stays false.
         visualEditor->readOnly = false;
         // P1 (G1 no-hide): Macro's left attenuverters are ALWAYS visible — they were
@@ -634,12 +631,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 int ownOff = (int)std::lround(mod->macroBase[l][1] + mod->macroCVDelta[l][1]);
                 int ownRot = (int)std::lround(mod->macroBase[l][2] + mod->macroCVDelta[l][2]);
                 ownLen = std::max(1, ownLen);
-                int el = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[l];
+                int el = l;
                 visualEditor->currentState.lanes[el].setDisplayLOR(ownLen, ownOff, ownRot);
                 // Use Macro's OWN macroLaneTick_ — advanced by the engine in advancePlayhead
                 // using Macro's direction (macroLaneDir_), with full bounce support for
                 // Pendulum/PingPong. Same pattern as East's laneTickV_.
-                int strand = dotModular::MONO_LANE_TO_STRAND[el];
+                int strand = el;
                 // MVC: hide the playhead when stopped (match Mono's started ? tick : -1), so
                 // rotation CV only moves the chevron, not the playhead, when the seq is stopped.
                 int ph = (eng.stepIndex >= 0) ? eng.macroLaneTick_[strand] : -1;
@@ -715,10 +712,10 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     // Cycles the dirDispId display proxy param; the widget's step() syncs to engine.
     {
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            // dirModId(el) is the jack on editor row el; globalDir is ENGINE-indexed, so
-            // cycle engine lane eng = EDITOR_TO_ENGINE_LANE_QMIX[el]. (Was cycling el directly →
-            // the MELODY-row gate advanced REST's direction.)
-            const int eng = dotModular::EDITOR_TO_ENGINE_LANE_QMIX[el];
+            // dirModId(el) is the jack on editor row el; globalDir is lane-indexed and
+            // editor row == engine lane (identity), so eng = el directly. (Historically
+            // the orders differed and cycling el directly advanced REST's direction.)
+            const int eng = el;
             auto& in = inputs[dirModId(el)];
             if (!in.isConnected()) continue;
             bool high = in.getVoltage(0) > 1.f;

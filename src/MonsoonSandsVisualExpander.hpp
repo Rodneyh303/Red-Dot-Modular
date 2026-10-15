@@ -3,7 +3,7 @@
 #include "ui/SandsGrid.hpp"
 #include "ui/SandsLaneNames.hpp"   // canonical EDITOR / SPREAD lane-name tables (q-mix-correct)
 #include "Monsoon.hpp"
-#include "dsp/LaneMapping.hpp"   // ENGINE_LANE_TO_EDITOR / MONO_PARAM_TO_EDITOR — single source of truth
+#include "dsp/LaneMapping.hpp"   // strand constants + strong lane types (identity — tables deleted Phase 3b)
 #include "ui/VisualExpanderHelpers.hpp"  // findMonsoonEitherSide (monoMacroOwnsEngineLane store read)
 
 using namespace rack;
@@ -18,10 +18,8 @@ namespace SandsMonoVisualIds {
     // the q-mix regression class. The anchor-vs-bind audit (test/audit_anchor_bind.py)
     // enforces that the panel anchors and the widget binds stay 1:1.
     static constexpr float W_MM = 243.84f;  // panel width (connect-mark centring only)
-    // Spread control index (0..4 = poly engine lane REST/MEL/OCT/ACC/QMIX) → editor lane.
-    // Shares the QMIX poly engine→editor mapping (dsp/LaneMapping.hpp): REST=3, MEL=0,
-    // OCT=1, ACC=4, QMIX=2. Single source of truth — do not redefine here.
-    static constexpr const int* SPREAD_LANE_TO_EDITOR = dotModular::ENGINE_LANE_TO_EDITOR_QMIX;
+    // (SPREAD_LANE_TO_EDITOR alias DELETED — Phase 3b. The engine→editor lane mapping
+    // is identity since the lane-index unification; spread indices pass through directly.)
 
     // ── Param IDs ─────────────────────────────────────────────────────────
     enum ParamId {
@@ -35,8 +33,8 @@ namespace SandsMonoVisualIds {
         LEN_ACCENT,     OFF_ACCENT,     ROT_ACCENT,
         LEN_VARIATION,  OFF_VARIATION,  ROT_VARIATION,
         LEN_LEGATO,     OFF_LEGATO,     ROT_LEGATO,
-        // Spread base trimpots: 5 poly lanes (REST/MEL/OCT/ACC/QMIX). sprId(l) takes a
-        // spread index 0..4, mapped to editor via SPREAD_LANE_TO_EDITOR_QMIX.
+        // Spread base trimpots: 5 poly lanes. sprId(l) takes the SPR_* index 0..4
+        // (REST/MEL/OCT/ACC/QMIX — panel slot order).
         SPR_REST, SPR_MELODY, SPR_OCTAVE, SPR_ACCENT, SPR_QMIX,
         // Attenuverters: 21 LOR (7 lanes × 3) + 5 spread.
         ATTEN_START,                        // 26 .. 46  (21 LOR attens: 7 lanes × 3)
@@ -53,17 +51,16 @@ namespace SandsMonoVisualIds {
     // Direction display proxy: lane 0..5 (editor order MEL/OCT/REST/ACC/VAR/LEG).
     static inline int dirDispId(int lane) { return DIR_DISP_START + lane; }
 
-    // Owner lookup BY ENGINE LANE (REST=0,MEL=1,OCT=2,ACC=3). Mono's ownerDispId is
-    // EDITOR-ordered, so callers working in engine/spread lane order MUST convert via
-    // ENGINE_LANE_TO_EDITOR — forgetting this caused the recurring "owner of lane N+1
-    // gates lane N" off-by-one (found 5×). This helper bakes the conversion in: given a
+    // Owner lookup BY ENGINE LANE. Mono's ownerDispId is EDITOR-ordered and, since the
+    // lane-index unification (editor == engine), the index passes through unchanged.
+    // (Historically the two orders differed and the missing conversion caused the
+    // recurring "owner of lane N+1 gates lane N" off-by-one, found 5×.) Given a
     // Mono module and an ENGINE lane, returns true iff Macro owns that lane (delegated).
     // Returns false if mod is null. (param <= 0.5 == Macro owns; > 0.5 == Mono/local owns.)
     inline bool monoMacroOwnsEngineLane(rack::Module* mod, int engineLane) {
-        // engineLane is a poly lane 0..4 (REST/MEL/OCT/ACC/QMIX). Use the QMIX-aware table so
-        // PL_QMIX(4) resolves to editor lane 2 rather than being rejected by the old `>= 4` guard.
+        // engineLane is a poly lane 0..4 (unified order — editor == engine, identity).
         if (!mod || engineLane < 0 || engineLane >= dotModular::SandsGrid::POLY_LANES) return false;
-        int editorLane = dotModular::ENGINE_LANE_TO_EDITOR_QMIX[engineLane];
+        int editorLane = engineLane;
         // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
         // Returns true iff Macro owns (delegated); no Monsoon → treat as Mono-owned (not delegated).
         Monsoon* m = redDot::findMonsoonEitherSide(mod);
@@ -151,7 +148,7 @@ struct MonsoonSandsVisualExpander : Module {
         // editor.spread[kMonoSlot,l] (base) and editor.monoAtten[editorLane,3] (atten). Only the
         // CV jack (an input, not host-exposed) is configured here.
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            const char* nm = names[SPREAD_LANE_TO_EDITOR[l]];
+            const char* nm = names[l];   // identity: spread lane == editor lane (lane-index unified)
             configInput(sprCvId(l), std::string(nm)+" Spread CV");
         }
         // V1 ownership (poly lanes 0..3): STORE-BACKED (MVC step 1d). ownerDispId ids KEPT
