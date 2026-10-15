@@ -100,3 +100,36 @@ theory above for Bug B.
 
 NOTE the melody/rhythm/qmix consolidation still holds: if it IS a wrong-voice index in the SHARED video-rate
 view path, all 3 lanes flip the same way (confirmed-same-symptom) -> one index fix resolves all 3.
+
+---
+
+## REFINEMENT (Rodney) — "flips between TWO patterns" = two different VOICES, not timing noise
+New observation: the mix-opt design = engine computes at STEP boundary, controller view at VIDEO rate, only
+for the SELECTED voice. Symptom: (a) it's NOT reaching the selected voice, and (b) what reaches jitter-FLIPS
+between TWO patterns of probability.
+
+### Why this is diagnostic
+"Flips between TWO stable patterns" (not chaotic noise) means TWO complete, internally-coherent computations
+are both landing in the display slot and the view alternates between them. Combined with "not reaching the
+selected voice", the likely mechanism:
+- the STEP-boundary engine path writes the CORRECT selected voice's pattern, AND
+- the VIDEO-rate display path computes for the WRONG voice (off-by-one in "selected voice" index) -> a
+  DIFFERENT voice's pattern.
+-> the slot alternates between the right voice's and the wrong voice's patterns = "flips between two
+patterns" = the SAME bug as "not reaching the selected voice". ONE bug: the video-rate displayed-voice path
+targets the wrong voice INDEX (different base than the step-boundary path).
+
+### This is the CONVENTION bug -> the mono-eradication should fix it
+Two patterns = two voices = the two paths DISAGREE on what "selected voice N" means (different base). That's
+the incomplete convention unification. So the full "mono is not special" / voiceSlot(0=V1)-everywhere
+eradication should make both paths agree -> two patterns collapse to one (the right one) -> reaches the
+selected voice. (vs the pure timing-race hypothesis, which would look like SMEARING/noise on ONE voice, not
+two clean alternating patterns. The clean two-pattern flip points at TWO VOICES = convention, not timing.)
+
+### If it persists after eradication — the ONE log line that decides it
+For the selected voice, log: (a) the voiceIndex the STEP-boundary engine computes for, (b) the voiceIndex
+the VIDEO-rate display path computes for, (c) whether the two probability patterns differ.
+- indices DIFFER -> off-by-one/convention (should already be fixed by eradication; find the straggler site).
+- indices SAME but values differ -> it IS the timing race (reconcile recompute vs refreshPolyRandomCell).
+Bet: indices differ (two clean patterns = two voices). Plan: 100% mono-eradication first, then this log if
+persistent.
