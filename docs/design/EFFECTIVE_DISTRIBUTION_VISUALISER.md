@@ -84,3 +84,29 @@ tilt) per voice, live. The window into "what notes/octaves will this voice actua
 ## Effort — LOW (reuse)
 Reuses Sands bar renderer + Lantern host-snapshot/display-only pattern -> not onerous. Mostly: the row-of-
 voices layout, the widths x Sands-density product, the Straits-displacement fold-in, host-driven degree count.
+
+---
+
+## THE KEYSTONE — switchable UNIFORM <-> TRANSFORMED view (makes the whole system make sense) (Rodney)
+The Sands bars (and the visualiser) toggle between:
+- UNIFORM view: the bars under a flat draw — raw relative structure (weights/widths, un-tilted per-step prob).
+- TRANSFORMED view: the same bars AFTER the non-uniform draw / tilt / correlation / displacement has acted.
+So every probabilistic layer becomes a VISIBLE DIFFERENCE you flip into and out of:
+- tilt low/high -> bars shift low/high between views (e.g. low-tilt pulls mass to the low notes — you SEE it)
+- correlation (slew/spread) -> the bars' pattern/clustering changes between views
+- Straits displacement -> voices' registers shift between views
+- plain weights -> absolute: uniform shows relative widths, transformed shows actual probabilities
+The user doesn't have to IMAGINE what a setting does — flip the toggle, watch the bars redistribute. The
+transform stops being abstract and becomes concrete (input=uniform, output=transformed, operator=the
+difference).
+
+### Why this is the point
+- Truthful-display at its fullest: show the value AND the baseline it transformed from, so the TRANSFORMATION
+  ITSELF is visible — not just the result.
+- It's the ANSWER to "too deep to be interesting": depth is intimidating only when INVISIBLE. Make each
+  layer's effect toggle-visible (uniform<->transformed) and depth becomes EXPLORABLE ("turn it on, flip, see
+  what it did") -> depth-as-discovery, not depth-as-barrier. This is HOW the layered-optional instrument
+  stays approachable while being sophisticated.
+- It's the connective tissue tying faders (set the layers) + Sands bars/visualiser (see each layer's effect
+  by flipping) + the whole correlation/distribution machinery into one comprehensible, learnable system.
+The "set a low tilt, flip the view, watch the mass slide low" moment is when it all clicks for a user.
