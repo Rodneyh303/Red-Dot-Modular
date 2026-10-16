@@ -7,6 +7,12 @@
 // the CDF invariant). The user draws the CDF F; the runtime transform uses F⁻¹; the density
 // display uses the slope.
 //
+// DOUBLE precision throughout (matches the Distribution layer that wraps it —
+// docs/design/DISTRIBUTION_LAYER.md): PchipDistribution is a cast-free double citizen, and
+// evalInverse's Newton root-find wants double for clean convergence and a ~1e-12 round-trip
+// (the same reason PhiInv is double). The float cast happens only at the engine's storage
+// boundary, the existing double-compute/float-store pattern.
+//
 // PHASE 1 SCOPE (this header): pure math + JSON serialization. No Rack/nanovg/UI — the only
 // non-stdlib dependency is jansson's json_t, included DIRECTLY (not via rack.hpp), so the
 // unit tests exercise the real .dmcurve schema through the test/jansson.h shim exactly as
@@ -44,18 +50,19 @@ namespace dotModular {
 
 class MonotoneCurve {
 public:
-    static constexpr int   MIN_POINTS  = 2;
-    static constexpr int   MAX_POINTS  = 32;
-    // Minimum horizontal spacing between control points. Edits and loads keep neighbours at
-    // least this far apart: every PCHIP segment stays well-conditioned and the reflected
-    // (inverse) point set remains a function.
-    static constexpr float MIN_SPACING = 1e-6f;
+    static constexpr int    MIN_POINTS  = 2;
+    static constexpr int    MAX_POINTS  = 32;
+    // Minimum horizontal spacing between control points (an EDITOR-scale quantum — sub-pixel
+    // at panel resolution, and the dedupe threshold for hand-authored files). Edits and loads
+    // keep neighbours at least this far apart: every PCHIP segment stays well-conditioned and
+    // the reflected (inverse) point set remains a function.
+    static constexpr double MIN_SPACING = 1e-6;
     // u-space width of the near-vertical knot pair a flat run contributes to the reflected
     // (inverse) curve. Small enough that a negligible fraction of quantiles land inside a
     // gap, large enough to be numerically robust.
-    static constexpr float REFLECT_NUDGE = 1e-4f;
+    static constexpr double REFLECT_NUDGE = 1e-4;
 
-    struct Point { float x = 0.f, y = 0.f; };
+    struct Point { double x = 0.0, y = 0.0; };
 
     // Optional .dmcurve library metadata (name/author/description). Never interpreted — the
     // editor carries them so a saved curve stays attributable / shareable.
@@ -66,8 +73,8 @@ public:
     // Identity curve: just the two pinned endpoints (the uniform distribution).
     void reset() {
         points.clear();
-        points.push_back(Point{0.f, 0.f});
-        points.push_back(Point{1.f, 1.f});
+        points.push_back(Point{0.0, 0.0});
+        points.push_back(Point{1.0, 1.0});
         dirty_ = true;
     }
 
@@ -79,7 +86,7 @@ public:
     // ── Core math ────────────────────────────────────────────────────────────────────────────
     // The CDF at x — PCHIP over the control points. x clamped to [0,1]; F(0)=0 and F(1)=1
     // exactly (pinned endpoints, exact Hermite evaluation at the knots).
-    float evalCDF(float x) const {
+    double evalCDF(double x) const {
         ensureCaches();
         x = clamp01(x);
         const int i = segmentFor(points.data(), (int)points.size(), x);
@@ -88,30 +95,30 @@ public:
     // The inverse CDF (quantile function) at u — the EXACT inverse of the drawn PCHIP curve:
     // the cached reflected-curve PCHIP provides the seed (knot-exact, monotone, carries the
     // gap edges), then safeguarded Newton iterations on evalCDF/pdf pin it to the true root
-    // (bisection whenever a step leaves the bracket or the slope is flat; ~1e-7). u clamped
+    // (bisection whenever a step leaves the bracket or the slope is flat; ~1e-13). u clamped
     // to [0,1]; F⁻¹(0)=0 and F⁻¹(1)=1 exactly.
-    float evalInverse(float u) const {
+    double evalInverse(double u) const {
         ensureCaches();
-        if (u <= 0.f) return 0.f;   // pinned anchors (also the left-edge convention for a bottom flat)
-        if (u >= 1.f) return 1.f;   // pinned anchors (right edge for a top flat)
+        if (u <= 0.0) return 0.0;   // pinned anchors (also the left-edge convention for a bottom flat)
+        if (u >= 1.0) return 1.0;   // pinned anchors (right edge for a top flat)
         const int i = segmentFor(reflPts_.data(), (int)reflPts_.size(), u);
-        float x = clamp01(evalSegment(reflPts_.data(), invSlopes_.data(), i, u));
-        float lo = 0.f, hi = 1.f;
-        for (int it = 0; it < 30; ++it) {
-            const float fx = evalCDF(x) - u;
-            if (fx == 0.f) return x;                            // exact hit (incl. knots + gap left-edges)
-            if (fx < 0.f) lo = x; else hi = x;
-            if (hi - lo < 1e-7f) break;
-            const float df = pdf(x);
-            float nx = (df > 1e-12f) ? (x - fx / df) : (0.5f * (lo + hi));
-            if (!(nx > lo && nx < hi)) nx = 0.5f * (lo + hi);   // NaN / left the bracket -> bisect
+        double x = clamp01(evalSegment(reflPts_.data(), invSlopes_.data(), i, u));
+        double lo = 0.0, hi = 1.0;
+        for (int it = 0; it < 60; ++it) {
+            const double fx = evalCDF(x) - u;
+            if (fx == 0.0) return x;                          // exact hit (incl. knots + gap left-edges)
+            if (fx < 0.0) lo = x; else hi = x;
+            if (hi - lo < 1e-13) break;
+            const double df = pdf(x);
+            double nx = (df > 1e-15) ? (x - fx / df) : (0.5 * (lo + hi));
+            if (!(nx > lo && nx < hi)) nx = 0.5 * (lo + hi);  // NaN / left the bracket -> bisect
             x = nx;
         }
-        return 0.5f * (lo + hi);
+        return 0.5 * (lo + hi);
     }
     // The density at x — the ANALYTIC slope of the same PCHIP segment evalCDF evaluates.
     // x clamped to [0,1]. Non-negative by construction (monotone cubic).
-    float pdf(float x) const {
+    double pdf(double x) const {
         ensureCaches();
         x = clamp01(x);
         const int i = segmentFor(points.data(), (int)points.size(), x);
@@ -124,13 +131,13 @@ public:
     // each side (when the neighbours are closer than 2*MIN_SPACING the x stays put). THE
     // ENDPOINTS ARE IMMOVABLE — the pinned (0,0)/(1,1) anchor the CDF; setPoint on index 0,
     // the last index, or any out-of-range index is a no-op. NaN inputs are no-ops.
-    void setPoint(int i, float x, float y) {
+    void setPoint(int i, double x, double y) {
         if (i <= 0 || i >= (int)points.size() - 1) return;   // endpoints immovable / out of range
         if (!(x == x) || !(y == y)) return;                  // NaN guard
-        const float ny = clamp(y, points[i - 1].y, points[i + 1].y);
-        float nx = points[i].x;
-        const float lo = points[i - 1].x + MIN_SPACING;
-        const float hi = points[i + 1].x - MIN_SPACING;
+        const double ny = clamp(y, points[i - 1].y, points[i + 1].y);
+        double nx = points[i].x;
+        const double lo = points[i - 1].x + MIN_SPACING;
+        const double hi = points[i + 1].x - MIN_SPACING;
         if (lo < hi) nx = clamp(x, lo, hi);
         points[i] = Point{nx, ny};
         dirty_ = true;
@@ -140,13 +147,13 @@ public:
     // discontinuity; the shape is unchanged until the new point is dragged). Rejected
     // (no-op) when: the curve is at MAX_POINTS, x is not in the open interval (0,1) (0 and
     // 1 are the pinned endpoints' x), or x duplicates an existing point within MIN_SPACING.
-    void addPoint(float x) {
+    void addPoint(double x) {
         if ((int)points.size() >= MAX_POINTS) return;
         if (!(x == x)) return;                               // NaN guard
-        if (!(x > 0.f && x < 1.f)) return;
+        if (!(x > 0.0 && x < 1.0)) return;
         for (const Point& p : points)
             if (std::fabs(x - p.x) < MIN_SPACING) return;
-        const float y = evalCDF(x);                          // PRE-insert CDF: lands on the curve
+        const double y = evalCDF(x);                         // PRE-insert CDF: lands on the curve
         size_t at = 0;
         while (at < points.size() && points[at].x < x) ++at;
         points.insert(points.begin() + (std::ptrdiff_t)at, Point{x, y});
@@ -176,8 +183,8 @@ public:
         json_t* jp = json_array();
         for (const Point& p : points) {
             json_t* pair = json_array();
-            json_array_append_new(pair, json_real((double)p.x));
-            json_array_append_new(pair, json_real((double)p.y));
+            json_array_append_new(pair, json_real(p.x));
+            json_array_append_new(pair, json_real(p.y));
             json_array_append_new(jp, pair);
         }
         json_object_set_new(root, "points", jp);
@@ -225,8 +232,8 @@ public:
             json_t* jx = json_array_get(pair, 0);
             json_t* jy = json_array_get(pair, 1);
             if (!json_is_number(jx) || !json_is_number(jy)) return false;
-            loaded.push_back(Point{clamp01((float)json_number_value(jx)),
-                                   clamp01((float)json_number_value(jy))});
+            loaded.push_back(Point{clamp01(json_number_value(jx)),
+                                   clamp01(json_number_value(jy))});
         }
         // Sanitize: sort, dedupe, ensure corner anchors, running-max (see the method comment).
         std::stable_sort(loaded.begin(), loaded.end(),
@@ -241,12 +248,12 @@ public:
         // Ensure the pinned corners: INSERT the anchors when the extremes aren't already at
         // them (overwriting would silently eat the file's shape); overwrite in place when a
         // point already sits at the corner with its y off it.
-        if (kept.front().x > MIN_SPACING) kept.insert(kept.begin(), Point{0.f, 0.f});
-        else                              kept.front()  = Point{0.f, 0.f};
-        if (kept.back().x < 1.f - MIN_SPACING) kept.push_back(Point{1.f, 1.f});
-        else                                    kept.back()  = Point{1.f, 1.f};
+        if (kept.front().x > MIN_SPACING) kept.insert(kept.begin(), Point{0.0, 0.0});
+        else                              kept.front()  = Point{0.0, 0.0};
+        if (kept.back().x < 1.0 - MIN_SPACING) kept.push_back(Point{1.0, 1.0});
+        else                                    kept.back()  = Point{1.0, 1.0};
         if ((int)kept.size() > MAX_POINTS) return false;   // inserted corners pushed it over the cap
-        float yMax = 0.f;                                                       // lift y monotone
+        double yMax = 0.0;                                                      // lift y monotone
         for (Point& p : kept) { if (p.y > yMax) yMax = p.y; p.y = yMax; }
 
         points = std::move(kept);                       // commit (state was untouched so far)
@@ -264,13 +271,13 @@ private:
     std::vector<Point> points;               // the CDF's control points (source of truth)
     // PCHIP caches — rebuilt lazily on the first read after any edit (dirty flag); pure
     // reads afterwards (safe to call evalCDF/evalInverse/pdf from the audio thread).
-    mutable std::vector<float> cdfSlopes_;   // Fritsch–Carlson derivatives of the CDF
-    mutable std::vector<Point> reflPts_;     // reflected control points (the F⁻¹ knots)
-    mutable std::vector<float> invSlopes_;   // Fritsch–Carlson derivatives of the reflection
+    mutable std::vector<double> cdfSlopes_;  // Fritsch–Carlson derivatives of the CDF
+    mutable std::vector<Point>  reflPts_;    // reflected control points (the F⁻¹ knots)
+    mutable std::vector<double> invSlopes_;  // Fritsch–Carlson derivatives of the reflection
     mutable bool dirty_ = true;
 
-    static float clamp01(float v) { return v < 0.f ? 0.f : (v > 1.f ? 1.f : v); }
-    static float clamp(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
+    static double clamp01(double v) { return v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v); }
+    static double clamp(double v, double lo, double hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
     // ── Fritsch–Carlson monotone cubic (PCHIP) ──────────────────────────────────────────────
     // Derivatives d[i] at every knot. Interior knots where the adjoining secant slopes
@@ -279,63 +286,63 @@ private:
     // secants and keeps the cubic inside Fritsch–Carlson's monotone region: no overshoot.
     // Endpoints use the one-sided three-point estimate, zeroed on sign mismatch and limited
     // to 3x the adjoining secant (the MATLAB pchip / scipy PchipInterpolator construction).
-    static void fritschCarlson(const std::vector<Point>& pts, std::vector<float>& d) {
+    static void fritschCarlson(const std::vector<Point>& pts, std::vector<double>& d) {
         const int n = (int)pts.size();
-        d.assign((size_t)(n < 1 ? 1 : n), 0.f);
+        d.assign((size_t)(n < 1 ? 1 : n), 0.0);
         if (n < 2) return;
         if (n == 2) {   // single segment: both derivatives are the secant (a straight line)
             d[0] = d[1] = (pts[1].y - pts[0].y) / (pts[1].x - pts[0].x);
             return;
         }
-        std::vector<float> h((size_t)n - 1), delta((size_t)n - 1);
+        std::vector<double> h((size_t)n - 1), delta((size_t)n - 1);
         for (int i = 0; i < n - 1; ++i) {
             h[(size_t)i]     = pts[i + 1].x - pts[i].x;                  // > MIN_SPACING (invariant)
             delta[(size_t)i] = (pts[i + 1].y - pts[i].y) / h[(size_t)i]; // >= 0 (monotone y)
         }
         for (int i = 1; i < n - 1; ++i) {
-            const float dl = delta[(size_t)i - 1], dr = delta[(size_t)i];
-            if (dl * dr <= 0.f) { d[(size_t)i] = 0.f; continue; }        // sign change / flat: stay flat
-            const float w1 = 2.f * h[(size_t)i] + h[(size_t)i - 1];
-            const float w2 = h[(size_t)i] + 2.f * h[(size_t)i - 1];
+            const double dl = delta[(size_t)i - 1], dr = delta[(size_t)i];
+            if (dl * dr <= 0.0) { d[(size_t)i] = 0.0; continue; }        // sign change / flat: stay flat
+            const double w1 = 2.0 * h[(size_t)i] + h[(size_t)i - 1];
+            const double w2 = h[(size_t)i] + 2.0 * h[(size_t)i - 1];
             d[(size_t)i] = (w1 + w2) / (w1 / dl + w2 / dr);
         }
-        d[0] = ((2.f * h[0] + h[1]) * delta[0] - h[0] * delta[1]) / (h[0] + h[1]);
-        if (d[0] * delta[0] <= 0.f) d[0] = 0.f;
-        else if (delta[0] * delta[1] <= 0.f && std::fabs(d[0]) > 3.f * delta[0]) d[0] = 3.f * delta[0];
+        d[0] = ((2.0 * h[0] + h[1]) * delta[0] - h[0] * delta[1]) / (h[0] + h[1]);
+        if (d[0] * delta[0] <= 0.0) d[0] = 0.0;
+        else if (delta[0] * delta[1] <= 0.0 && std::fabs(d[0]) > 3.0 * delta[0]) d[0] = 3.0 * delta[0];
         const int L = n - 1;
-        d[(size_t)L] = ((2.f * h[(size_t)L - 1] + h[(size_t)L - 2]) * delta[(size_t)L - 1]
+        d[(size_t)L] = ((2.0 * h[(size_t)L - 1] + h[(size_t)L - 2]) * delta[(size_t)L - 1]
                         - h[(size_t)L - 1] * delta[(size_t)L - 2]) / (h[(size_t)L - 1] + h[(size_t)L - 2]);
-        if (d[(size_t)L] * delta[(size_t)L - 1] <= 0.f) d[(size_t)L] = 0.f;
-        else if (delta[(size_t)L - 1] * delta[(size_t)L - 2] <= 0.f
-                 && std::fabs(d[(size_t)L]) > 3.f * delta[(size_t)L - 1])
-            d[(size_t)L] = 3.f * delta[(size_t)L - 1];
+        if (d[(size_t)L] * delta[(size_t)L - 1] <= 0.0) d[(size_t)L] = 0.0;
+        else if (delta[(size_t)L - 1] * delta[(size_t)L - 2] <= 0.0
+                 && std::fabs(d[(size_t)L]) > 3.0 * delta[(size_t)L - 1])
+            d[(size_t)L] = 3.0 * delta[(size_t)L - 1];
     }
 
     // Cubic Hermite evaluation on segment i at x (t = (x - x_i)/h in [0,1]). Exact at the
     // knots: t=0 returns y_i, t=1 returns y_{i+1}.
-    static float evalSegment(const Point* pts, const float* d, int i, float x) {
-        const float h  = pts[i + 1].x - pts[i].x;
-        const float t  = (x - pts[i].x) / h;
-        const float t2 = t * t, t3 = t2 * t;
-        return pts[i].y     * (2.f * t3 - 3.f * t2 + 1.f)
-             + pts[i + 1].y * (-2.f * t3 + 3.f * t2)
-             + h * d[i]     * (t3 - 2.f * t2 + t)
+    static double evalSegment(const Point* pts, const double* d, int i, double x) {
+        const double h  = pts[i + 1].x - pts[i].x;
+        const double t  = (x - pts[i].x) / h;
+        const double t2 = t * t, t3 = t2 * t;
+        return pts[i].y     * (2.0 * t3 - 3.0 * t2 + 1.0)
+             + pts[i + 1].y * (-2.0 * t3 + 3.0 * t2)
+             + h * d[i]     * (t3 - 2.0 * t2 + t)
              + h * d[i + 1] * (t3 - t2);
     }
     // Analytic d/dx of evalSegment (the density). Exact at the knots: d[i] and d[i+1].
-    static float evalSegmentSlope(const Point* pts, const float* d, int i, float x) {
-        const float h  = pts[i + 1].x - pts[i].x;
-        const float t  = (x - pts[i].x) / h;
-        const float t2 = t * t;
-        const float dH = pts[i].y     * (6.f * t2 - 6.f * t)
-                       + pts[i + 1].y * (-6.f * t2 + 6.f * t)
-                       + h * d[i]     * (3.f * t2 - 4.f * t + 1.f)
-                       + h * d[i + 1] * (3.f * t2 - 2.f * t);
+    static double evalSegmentSlope(const Point* pts, const double* d, int i, double x) {
+        const double h  = pts[i + 1].x - pts[i].x;
+        const double t  = (x - pts[i].x) / h;
+        const double t2 = t * t;
+        const double dH = pts[i].y     * (6.0 * t2 - 6.0 * t)
+                       + pts[i + 1].y * (-6.0 * t2 + 6.0 * t)
+                       + h * d[i]     * (3.0 * t2 - 4.0 * t + 1.0)
+                       + h * d[i + 1] * (3.0 * t2 - 2.0 * t);
         return dH / h;
     }
     // Largest i in [0, n-2] with pts[i].x <= x (binary search over the sorted knots; x
     // assumed clamped to [pts[0].x, pts[n-1].x]).
-    static int segmentFor(const Point* pts, int n, float x) {
+    static int segmentFor(const Point* pts, int n, double x) {
         int lo = 0, hi = n - 2;
         while (lo < hi) {
             const int mid = (lo + hi + 1) >> 1;
@@ -362,28 +369,28 @@ private:
         while (i < n) {
             int j = i;
             while (j + 1 < n && points[j + 1].y <= points[i].y + MIN_SPACING) ++j;  // maximal run [i..j]
-            const float u0 = points[i].y;
+            const double u0 = points[i].y;
             reflPts_.push_back(Point{u0, points[i].x});
             if (j > i) {                                   // multi-point run: a gap — carry its far edge
-                float u1;
+                double u1;
                 if (j + 1 < n) {
-                    const float uNext = points[j + 1].y;   // next run's height (strictly above u0)
+                    const double uNext = points[j + 1].y;   // next run's height (strictly above u0)
                     u1 = u0 + REFLECT_NUDGE;
-                    const float mid = 0.5f * (u0 + uNext);
-                    if (u1 > mid) u1 = mid;                // never overrun the next run
+                    const double mid = 0.5 * (u0 + uNext);
+                    if (u1 > mid) u1 = mid;                 // never overrun the next run
                 } else {
-                    u1 = 1.0f;                             // the run owns the pinned top (1,1)
+                    u1 = 1.0;                               // the run owns the pinned top (1,1)
                 }
                 const bool fits = u1 > u0                                   // strictly past the left edge...
                                   && (j + 1 >= n || u1 < points[j + 1].y);  // ...and strictly before the next
                 if (fits) reflPts_.push_back(Point{u1, points[j].x});
-                // (degenerate float spacing: the gap collapses to its left edge — still valid)
+                // (degenerate spacing: the gap collapses to its left edge — still valid)
             }
             i = j + 1;
         }
         if (!reflPts_.empty()) {
-            reflPts_.front() = Point{0.f, 0.f};            // Q(0) == 0 exactly (always true; guarded)
-            reflPts_.back()  = Point{1.f, 1.f};            // Q(1) == 1 exactly (repairs a collapsed top)
+            reflPts_.front() = Point{0.0, 0.0};             // Q(0) == 0 exactly (always true; guarded)
+            reflPts_.back()  = Point{1.0, 1.0};             // Q(1) == 1 exactly (repairs a collapsed top)
         }
         fritschCarlson(reflPts_, invSlopes_);
         dirty_ = false;

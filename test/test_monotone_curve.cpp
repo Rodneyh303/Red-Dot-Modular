@@ -16,9 +16,8 @@
 //   5. addPoint lands ON the curve (y == pre-insert evalCDF(x)); rejects the 32 cap,
 //      duplicate x, and out-of-domain x; keeps sort order.
 //   6. removePoint never removes endpoints; floor at MIN_POINTS; anchors preserved.
-//   7. evalInverse(evalCDF(x)) ≈ x round-trip (1e-4 on the strictly-monotone family; the
-//      steep/kink curves get a documented looser tolerance where a shallow tail amplifies
-//      interpolation error) + the F(F⁻¹(u)) direction.
+//   7.  evalInverse(evalCDF(x)) ≈ x round-trip in double (~1e-10, both directions) — the
+//      Newton-refined inverse is exact up to root-finding tolerance.
 //   8. Flat segments (zero-density gaps): F⁻¹ maps a gap's quantile to its LEFT edge (exact
 //      knot) and neighbouring quantiles into the post-gap rising region (not into the gap) —
 //      the reflection carries both gap edges.
@@ -78,22 +77,22 @@ static bool invariantsHold(const MonotoneCurve& c) {
     return true;
 }
 
-// evalCDF monotone over a fine sweep (the PCHIP no-overshoot guarantee). 1e-6 slack covers
-// float rounding in the cubic evaluation — a real overshoot is orders of magnitude bigger.
+// evalCDF monotone over a fine sweep (the PCHIP no-overshoot guarantee). 1e-12 slack covers
+// double rounding in the cubic evaluation — a real overshoot is orders of magnitude bigger.
 static bool monotoneSweep(const MonotoneCurve& c, int steps = 1000) {
-    float prev = c.evalCDF(0.f);
+    double prev = c.evalCDF(0.0);
     for (int k = 1; k <= steps; ++k) {
-        const float v = c.evalCDF((float)k / (float)steps);
-        if (v < prev - 1e-6f) return false;
+        const double v = c.evalCDF((double)k / (double)steps);
+        if (v < prev - 1e-12) return false;
         prev = v;
     }
     return true;
 }
 static bool inverseMonotoneSweep(const MonotoneCurve& c, int steps = 1000) {
-    float prev = c.evalInverse(0.f);
+    double prev = c.evalInverse(0.0);
     for (int k = 1; k <= steps; ++k) {
-        const float v = c.evalInverse((float)k / (float)steps);
-        if (v < prev - 1e-6f) return false;
+        const double v = c.evalInverse((double)k / (double)steps);
+        if (v < prev - 1e-12) return false;
         prev = v;
     }
     return true;
@@ -178,9 +177,9 @@ static void testIdentityCurve() {
     check(c.evalInverse(1.f) == 1.f, "evalInverse(1) == 1 exactly");
     for (int k = 1; k < 100; ++k) {
         const float x = (float)k / 100.f;
-        checkNear((double)c.evalCDF(x), (double)x, 1e-6, "identity: evalCDF(x) == x");
-        checkNear((double)c.evalInverse(x), (double)x, 1e-6, "identity: evalInverse(u) == u");
-        checkNear((double)c.pdf(x), 1.0, 1e-3, "identity: pdf == 1");
+        checkNear((double)c.evalCDF(x), (double)x, 1e-12, "identity: evalCDF(x) == x");
+        checkNear((double)c.evalInverse(x), (double)x, 1e-12, "identity: evalInverse(u) == u");
+        checkNear((double)c.pdf(x), 1.0, 1e-9, "identity: pdf == 1");
     }
     // Domain clamping
     check(c.evalCDF(-0.5f) == 0.f, "evalCDF clamps below 0");
@@ -231,13 +230,13 @@ static void testMonotonicityNoOvershoot() {
         MonotoneCurve c = curveFromPoints(pts);
         check(monotoneSweep(c, 2000), "evalCDF monotone non-decreasing over fine sweep");
         check(inverseMonotoneSweep(c, 2000), "evalInverse monotone non-decreasing over fine sweep");
-        float lo = 0.f, hi = 1.f;
+        double lo = 0.0, hi = 1.0;
         for (int k = 0; k <= 2000; ++k) {
-            const float v = c.evalCDF((float)k / 2000.f);
+            const double v = c.evalCDF((double)k / 2000.0);
             if (v < lo) lo = v;
             if (v > hi) hi = v;
         }
-        check(lo >= -1e-6f && hi <= 1.f + 1e-6f, "evalCDF stays inside [0,1]");
+        check(lo >= -1e-12 && hi <= 1.0 + 1e-12, "evalCDF stays inside [0,1]");
     }
     // Random adversarial battery: random curves + wild drags, invariants + monotonicity
     // re-checked after every single operation.
@@ -323,8 +322,8 @@ static void testAddPointBehaviour() {
                                        MonotoneCurve::Point{0.5f, 0.5f}, MonotoneCurve::Point{0.8f, 0.95f},
                                        MonotoneCurve::Point{1.f, 1.f}});
     const MonotoneCurve snapshot = c;
-    const float x = 0.33f;
-    const float expectedY = snapshot.evalCDF(x);   // PRE-insert value
+    const double x = 0.33;
+    const double expectedY = snapshot.evalCDF(x);   // PRE-insert value
     c.addPoint(x);
     check(c.size() == snapshot.size() + 1, "addPoint inserted a point");
     int idx = -1;
@@ -395,10 +394,10 @@ static void roundTripCase(const std::vector<MonotoneCurve::Point>& pts, double t
     double maxFwd = 0.0, maxBack = 0.0;   // |F⁻¹(F(x)) - x| and |F(F⁻¹(u)) - u|
     for (int k = 0; k <= 400; ++k) {
         const double x = 0.001 + 0.998 * (double)k / 400.0;
-        const double fwd = std::fabs((double)c.evalInverse(c.evalCDF((float)x)) - x);
+        const double fwd = std::fabs(c.evalInverse(c.evalCDF(x)) - x);
         if (fwd > maxFwd) maxFwd = fwd;
         const double u = 0.001 + 0.998 * (double)k / 400.0;
-        const double back = std::fabs((double)c.evalCDF(c.evalInverse((float)u)) - u);
+        const double back = std::fabs(c.evalCDF(c.evalInverse(u)) - u);
         if (back > maxBack) maxBack = back;
     }
     checkNear(maxFwd, 0.0, tol, label);
@@ -407,23 +406,22 @@ static void roundTripCase(const std::vector<MonotoneCurve::Point>& pts, double t
 static void testInverseRoundTrip() {
     std::printf("evalInverse(evalCDF(x)) round-trip\n");
     const auto family = roundTripFamily();
-    roundTripCase(family[0], 1e-6, "round-trip: identity");
-    roundTripCase(family[1], 1e-5, "round-trip: S curve");
-    roundTripCase(family[2], 1e-5, "round-trip: concave");
-    roundTripCase(family[3], 1e-5, "round-trip: convex");
-    roundTripCase(family[4], 1e-5, "round-trip: gentle");
-    roundTripCase(family[5], 1e-5, "round-trip: x^2 (9 pts)");
-    roundTripCase(family[6], 1e-5, "round-trip: dense 17 pts");
-    // The steep/kink adversarial curves invert exactly, but their PCHIP tails approach ZERO
-    // slope at x=1 (endpoint limiting), so the pointwise round-trip near the end amplifies
-    // float noise by ~1/F' (measured ~1e-3). Ill-conditioned by nature — a flat CDF
-    // compresses a wide x range into a tiny F range; the invariant that matters there
-    // (monotonicity) is asserted in section 3.
+    roundTripCase(family[0], 1e-11, "round-trip: identity");
+    roundTripCase(family[1], 1e-10, "round-trip: S curve");
+    roundTripCase(family[2], 1e-10, "round-trip: concave");
+    roundTripCase(family[3], 1e-10, "round-trip: convex");
+    roundTripCase(family[4], 1e-10, "round-trip: gentle");
+    roundTripCase(family[5], 1e-10, "round-trip: x^2 (9 pts)");
+    roundTripCase(family[6], 1e-10, "round-trip: dense 17 pts");
+    // The steep/kink adversarial curves' PCHIP tails approach ZERO slope at x=1 (endpoint
+    // limiting), so the pointwise round-trip near the end amplifies eval noise by ~1/F' —
+    // but from a 1e-16 double floor that stays ~1e-11 over the sweep (the float version
+    // measured ~1e-3 there). Monotonicity (the real invariant) is asserted in section 3.
     roundTripCase({MonotoneCurve::Point{0.f, 0.f}, MonotoneCurve::Point{0.05f, 0.98f},
-                   MonotoneCurve::Point{1.f, 1.f}}, 5e-3, "round-trip: near-vertical (flat tail amplifies noise)");
+                   MonotoneCurve::Point{1.f, 1.f}}, 1e-10, "round-trip: near-vertical (flat tail amplifies noise)");
     roundTripCase({MonotoneCurve::Point{0.f, 0.f}, MonotoneCurve::Point{0.1f, 0.02f},
                    MonotoneCurve::Point{0.2f, 0.98f}, MonotoneCurve::Point{1.f, 1.f}},
-                  5e-3, "round-trip: kink (flat tail amplifies noise)");
+                  1e-10, "round-trip: kink (flat tail amplifies noise)");
 }
 
 // ── 8. flats (zero-density gaps) ───────────────────────────────────────────────────────────────
@@ -442,8 +440,8 @@ static void testInverseFlats() {
     check(c.evalInverse(0.9f) > 0.85f, "u=0.9 lands after the second gap");
     check(inverseMonotoneSweep(c, 2000), "inverse stays monotone across flats");
     // pdf is (numerically) zero inside a gap: zero density
-    checkNear((double)c.pdf(0.3f), 0.0, 1e-6, "pdf == 0 inside a flat (gap interior)");
-    checkNear((double)c.pdf(0.7f), 0.0, 1e-6, "pdf == 0 inside the second flat");
+    checkNear((double)c.pdf(0.3f), 0.0, 1e-9, "pdf == 0 inside a flat (gap interior)");
+    checkNear((double)c.pdf(0.7f), 0.0, 1e-9, "pdf == 0 inside the second flat");
     // Round-trip on the RISING stretches (the gaps themselves are covered by the edge
     // semantics above): F is strictly increasing there, so the exact inversion round-trips.
     // Stay clear of the zero-slope knots bounding the gaps (ill-conditioned inversion).
@@ -452,10 +450,10 @@ static void testInverseFlats() {
         const double x = 0.001 + 0.998 * (double)k / 400.0;
         if (x > 0.2 - 5e-3 && x < 0.45 + 5e-3) continue;   // gap 1 + knot margins
         if (x > 0.6 - 5e-3 && x < 0.85 + 5e-3) continue;   // gap 2 + knot margins
-        const double rt = std::fabs((double)c.evalInverse(c.evalCDF((float)x)) - x);
+        const double rt = std::fabs(c.evalInverse(c.evalCDF(x)) - x);
         if (rt > maxRt) maxRt = rt;
     }
-    checkNear(maxRt, 0.0, 1e-4, "staircase: round-trip on the rising stretches");
+    checkNear(maxRt, 0.0, 1e-10, "staircase: round-trip on the rising stretches");
     // A flat that touches the BOTTOM edge: the reflection still carries the gap's far edge —
     // the mid quantile must land in the post-gap rising region (x > 0.6), not at u itself.
     MonotoneCurve b = curveFromPoints({MonotoneCurve::Point{0.f, 0.f}, MonotoneCurve::Point{0.3f, 0.f},
@@ -475,18 +473,18 @@ static void testInverseFlats() {
 // ── 9. pdf vs numerical derivative ─────────────────────────────────────────────────────────────
 static void pdfCase(const std::vector<MonotoneCurve::Point>& pts, const char* label) {
     MonotoneCurve c = curveFromPoints(pts);
-    const double h = 1e-3;
+    const double h = 1e-5;
     int checked = 0;
     for (double x = 0.01; x <= 0.99; x += 0.0037) {
         // Skip knot neighbourhoods: the derivative is discontinuous AT control points and a
         // central difference across a kink mixes the two one-sided slopes.
         bool nearKnot = false;
         for (const auto& p : pts)
-            if (std::fabs(x - (double)p.x) < 3.0 * h) { nearKnot = true; break; }
+            if (std::fabs(x - p.x) < 3.0 * h) { nearKnot = true; break; }
         if (nearKnot) continue;
-        const double num = ((double)c.evalCDF((float)(x + h)) - (double)c.evalCDF((float)(x - h))) / (2.0 * h);
-        checkNear((double)c.pdf((float)x), num, 1e-3, "pdf == numerical derivative of evalCDF");
-        check(c.pdf((float)x) >= -1e-6f, "pdf non-negative (monotone CDF)");
+        const double num = (c.evalCDF(x + h) - c.evalCDF(x - h)) / (2.0 * h);
+        checkNear(c.pdf(x), num, 1e-6, "pdf == numerical derivative of evalCDF");
+        check(c.pdf(x) >= -1e-12, "pdf non-negative (monotone CDF)");
         ++checked;
     }
     check(checked > 100, "pdf sweep actually exercised interior points");
@@ -758,21 +756,21 @@ static void testJsonSanitize() {
                  "out-of-range coordinates clamped, then loaded");
     // unsorted x sorted
     sanitizeCase(dmcurveDefault(pointsArr({{1.0, 1.0}, {0.5, 0.6}, {0.0, 0.0}})),
-                 {MonotoneCurve::Point{0.f, 0.f}, MonotoneCurve::Point{0.5f, 0.6f}, MonotoneCurve::Point{1.f, 1.f}},
+                 {MonotoneCurve::Point{0.0, 0.0}, MonotoneCurve::Point{0.5, 0.6}, MonotoneCurve::Point{1.0, 1.0}},
                  "unsorted points sorted by x, then loaded");
     // non-monotone y lifted to a running maximum
     sanitizeCase(dmcurveDefault(pointsArr({{0.0, 0.0}, {0.3, 0.8}, {0.6, 0.2}, {1.0, 1.0}})),
-                 {MonotoneCurve::Point{0.f, 0.f}, MonotoneCurve::Point{0.3f, 0.8f},
-                  MonotoneCurve::Point{0.6f, 0.8f}, MonotoneCurve::Point{1.f, 1.f}},
+                 {MonotoneCurve::Point{0.0, 0.0}, MonotoneCurve::Point{0.3, 0.8},
+                  MonotoneCurve::Point{0.6, 0.8}, MonotoneCurve::Point{1.0, 1.0}},
                  "non-monotone y lifted to running max, then loaded");
     // duplicate x: first wins, duplicates dropped
     sanitizeCase(dmcurveDefault(pointsArr({{0.0, 0.0}, {0.5, 0.3}, {0.5, 0.7}, {1.0, 1.0}})),
-                 {MonotoneCurve::Point{0.f, 0.f}, MonotoneCurve::Point{0.5f, 0.3f}, MonotoneCurve::Point{1.f, 1.f}},
+                 {MonotoneCurve::Point{0.0, 0.0}, MonotoneCurve::Point{0.5, 0.3}, MonotoneCurve::Point{1.0, 1.0}},
                  "duplicate x dropped (first wins)");
     // missing corner anchors are INSERTED (the file's shape is preserved, not eaten)
     sanitizeCase(dmcurveDefault(pointsArr({{0.2, 0.1}, {0.7, 0.9}})),
-                 {MonotoneCurve::Point{0.f, 0.f}, MonotoneCurve::Point{0.2f, 0.1f},
-                  MonotoneCurve::Point{0.7f, 0.9f}, MonotoneCurve::Point{1.f, 1.f}},
+                 {MonotoneCurve::Point{0.0, 0.0}, MonotoneCurve::Point{0.2, 0.1},
+                  MonotoneCurve::Point{0.7, 0.9}, MonotoneCurve::Point{1.0, 1.0}},
                  "corner anchors (0,0)/(1,1) inserted when missing");
     // ...but a file whose corner insertion would exceed MAX_POINTS is rejected
     {
