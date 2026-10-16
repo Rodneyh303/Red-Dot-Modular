@@ -222,3 +222,39 @@ Files are for CRAFTED, REUSABLE ASSETS (tunings .dmtune, curves .dmcurve). Patch
 the asset earns a format. Result: ONE format not two, no .dmdist library/browser/reference-resolution, no
 cross-reference fragility, and .dmcurve stays general-purpose. Authorable-asset family = .dmtune + .dmcurve
 (two files); distributions live in patches.
+
+---
+
+## UI — EDIT THE CDF DIRECTLY (not F^-1); show PDF/CDF/F^-1 (Rodney)
+Edit surface = the CDF F(x), because it's the object the user MEANS and the constraints are cleanest.
+- EDIT: CDF F(x) on [0,1], pinned F(0)=0, F(1)=1, MONOTONE non-decreasing. The user draws "what fraction of
+  outputs fall below x" — a comprehensible statement.
+- PDF = the CDF's SLOPE (DIRECT derivative f=F', not reciprocal). Shown LIVE as they draw: STEEP = high
+  density ("lots of values here"), FLAT = low density. Best drawing feedback — you shape density directly.
+- F^-1 (the RUNTIME object, applied to the uniform stream) = the drawn CDF INVERTED. Derived at edit-commit:
+  reflect the CDF's control points across the diagonal (swap x<->y — still monotone, still valid points) +
+  re-fit PCHIP on the swapped points. -> F^-1 stays a DIRECT-EVAL PCHIP (no LUT, no runtime root-find). The
+  inversion is "swap coords, re-fit", done once per edit.
+- Three views, all from the one object: CDF (edit), PDF (slope, live density feedback), F^-1 (derived, the
+  runtime transform). Clamp the PDF plot for near-vertical CDF segments (slope->inf = near-delta spike) —
+  display clamp only, correct behaviour.
+
+### Closed-form distributions in the SAME CDF-centric view
+Named dists (triangular/power/logit-normal/Kumaraswamy) have closed-form CDF + PDF + F^-1 — show all three
+in the same view, so DRAWN and NAMED are comparable/interchangeable (draw a CDF -> see its PDF + F^-1; pick
+Kumaraswamy -> see its CDF curve). Overlay to match a drawn curve to a named family, or start named + hand-
+tweak.
+
+### Composes with the pre/post output histogram (truthful display)
+The realized output MARGINAL histogram = the empirical PDF; show it AGAINST the target PDF — "distribution
+you asked for" vs "what the output produced". The truthful-display principle (show actual vs intended).
+
+## WHY THIS ALL WORKS — the uniformity-preserving modulation was the point (Rodney)
+This entire feature — editing a CDF, deriving F^-1, mapping the output to any target distribution, with
+correlation + reversibility intact — RESTS on the output being guaranteed Uniform(0,1). That guarantee is
+EXACTLY what the whole slew/mix/scrub correctness war defended: uniformity-PRESERVING modulation (OU bridge,
+variance preservation, r=0/r<0, the AB-mix copula blend). We insisted on uniform-preserving modulation for
+correctness; the PAYOFF is that the output is a clean uniform substrate onto which ANY CDF maps cleanly.
+Had modulation distorted the marginal, F^-1(output) would be garbage. The hard invariant we protected is the
+foundation this feature stands on. (Nice: the thing that made the correctness work non-negotiable is the
+same thing that makes this capability possible.)
