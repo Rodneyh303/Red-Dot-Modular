@@ -88,6 +88,7 @@ TESTS=(
   "test_modes_cd_microtonal|"
   "test_monsoon_discovery|"
   "test_mono_dir_authority|"
+  "test_monotone_curve|"   # header-only: the .dmcurve Phase 1 math module (jansson via test/jansson.h shim)
   "test_MpeMath|"
   "test_multistep|"
   "test_note_length|"
