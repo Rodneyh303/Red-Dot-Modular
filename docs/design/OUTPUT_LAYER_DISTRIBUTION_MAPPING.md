@@ -161,3 +161,39 @@ authors): both text, versioned, save/load/share, "define the thing not the rende
 the copula engine. dot.modular isn't just a synth — it's an AUTHORABLE correlational-randomness ecosystem
 with an open file-format family for the SHAPING layers (pitch mapping + distribution mapping). Eventually: a
 named library + browser for both (as Bitwig 6 unifies curves + automation clips in one browser).
+
+---
+
+## OPTION (if not too distracting) — also ship as a STANDALONE probability-reshaper module
+The reshaper core is a PURE, context-free function: out = F^-1(in) + the curve/distribution UI + .dmcurve.
+It doesn't care if `in` is Monsoon's internal uniform or an external CV. So the same core can be exposed
+TWO ways — build the core ONCE, wrap twice:
+1. Monsoon/Sands EXPANDER — internal per-lane uniform, Macro-global/Sands-unlock scope (the primary purpose).
+2. STANDALONE VCV module — CV in -> F^-1 -> CV out. A general "probability/distribution reshaper" for VCV.
+
+### Why it's worth considering (but OPTIONAL — don't let it distract from Monsoon)
+- Almost free: shared pure core + a thin wrapper (just a CV in/out jack). The F^-1 engine, curve editor,
+  .dmcurve are built regardless for the expander.
+- Fills a real VCV gap: the forum thread (Morris, "additive randomness") shows the community wants
+  distribution-shaping beyond subtractive filtering; a drop-after-any-random-source reshaper isn't
+  well-served. Ships what they're asking for.
+- GATEWAY to the ecosystem: a free/cheap standalone reshaper -> users meet .dmcurve -> discover tuning
+  ecosystem / Monsoon / the copula engine. Low-commitment entry point to the deep instrument.
+- DE-RISKS the integrated version: a standalone in->F^-1->out module has NONE of the voice-index/convention
+  minefield (the thing that just cost a brutal day). Trivial, conventionally-safe, easy to test -> proves
+  the F^-1 + curve + .dmcurve machinery in isolation BEFORE wiring into Monsoon. A palette-cleanser build.
+
+### The one design choice for the standalone (input isn't guaranteed uniform)
+F^-1 assumes Uniform(0,1) in (guaranteed inside Monsoon; NOT for arbitrary external CV):
+- (a) ASSUME-UNIFORM: "feed me uniform randomness, I reshape its distribution." Honest, simple, = exactly
+  what Monsoon does internally. The quick version.
+- (b) EMPIRICAL-CDF NORMALIZE then F^-1: measure the input's running distribution (online histogram/CDF),
+  map to uniform, then F^-1 -> "transform ANY signal's distribution into ANY target distribution"
+  (distribution transfer). More powerful + distinctive as a standalone product, but needs the online CDF
+  estimator (more work). The standout general tool if pursued.
+
+### Verdict
+Note as an OPTION. Primary focus = the Monsoon expander (serves the instrument). IF the standalone falls out
+cheaply (it mostly does — shared core), it's high-leverage (gateway + fills a gap + de-risks). Do (a) first
+if at all; (b) only if the "any->any distribution transfer" tool is worth the online-CDF work. Do NOT let it
+pull focus from the instrument.
