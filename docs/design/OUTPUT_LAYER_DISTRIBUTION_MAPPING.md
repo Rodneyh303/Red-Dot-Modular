@@ -258,3 +258,40 @@ correctness; the PAYOFF is that the output is a clean uniform substrate onto whi
 Had modulation distorted the marginal, F^-1(output) would be garbage. The hard invariant we protected is the
 foundation this feature stands on. (Nice: the thing that made the correctness work non-negotiable is the
 same thing that makes this capability possible.)
+
+---
+
+## PITCH-LANE semantics — weights vs F^-1 degree-tilt (Rodney; code-checked)
+Generative pitch (genPitchLive): the melody draw r_semi -> pickSemitone(semiWeights, N, r_semi), a
+correct cumulative-weight roulette: note i picked with probability weights[i]/sum, ORDER-INDEPENDENT for
+probability (pickSemitone is sensible as-is — picking depends on WEIGHTS only). Notes are laid out in
+DEGREE (pitch) order along the [0,1] uniform axis.
+
+### The two orthogonal controls (confirmed)
+- **UNIFORM distribution (flat r_semi, today's behaviour):** the pick depends on WEIGHTS ONLY. Degree order
+  is INERT — invisible, because each note's slice is hit proportional to its weight regardless of position.
+- **F^-1 NOT uniform (the output-mapping feature):** brings in DEGREE on top of weights. Because notes are
+  pitch-ordered along [0,1], a skewed F^-1 tilts WHICH REGION of the axis is favoured -> a register/degree
+  tilt layered on the weights. Skew low -> favour low-DEGREE (low-pitch-in-octave) notes; skew high ->
+  high; mid-heavy -> middle; bimodal -> extremes. Each note's share = its weight x the local density of the
+  F^-1 tilt.
+So: WEIGHTS = which notes + base probability (uniform=flat, skewed=per-note emphasis; arbitrary per-note).
+F^-1 = DEGREE/register tilt along the pitch-ordered axis. Independent axes.
+
+### Four combinations
+- uniform weights + flat F^-1      -> flat (every note equally likely)
+- uniform weights + skewed F^-1    -> all notes available, mass register-tilted (PURE register tilt — F^-1
+                                      does all the shaping)
+- skewed weights + flat F^-1       -> specific notes emphasised, no register tilt (today)
+- skewed weights + skewed F^-1     -> emphasised notes AND a register tilt over them
+
+### Notes for building
+- pickSemitone is correct — do NOT "fix" it; position-order is inert under uniform, becomes the register
+  HANDLE only under F^-1. (If a user wants arbitrary per-note emphasis regardless of pitch -> that's the
+  WEIGHTS, not F^-1. F^-1 is inherently a pitch-ordered/register tilt.)
+- OCTAVE lane is currently UNIFORM (oct = oL + floor(r_oct*range)) -> F^-1 on r_oct is a PURE NEW register
+  (octave) tilt, net-new control (octave was flat).
+- Combined r_semi + r_oct F^-1 = independent within-octave-degree tilt + octave tilt -> full register
+  sculpting, within the scale weights, copula-correlation preserved (monotone per-lane).
+- Pre/post display should show the REALIZED note distribution (semiWeights composed with F^-1), not just
+  F^-1 — so the user sees the combined effect.
