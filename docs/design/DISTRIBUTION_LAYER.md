@@ -96,3 +96,31 @@ Kotz & van Dorp, "Beyond Beta: Other Continuous Families of Distributions with B
 authoritative catalog of [0,1] distributions. If a user ever requests an exotic shape: van Dorp's
 Two-Sided Power / generalized-trapezoidal families (flat-top / trapezoidal-with-skew) are the place to look.
 Meanwhile the drawn curve covers it. Book = reference, not a v1 need.
+
+---
+
+## PRECISION — double (match the copula/PhiInv MATH layer), float at storage, NO template (Rodney)
+Decided by the actual architecture: the engine has a DOUBLE math layer (GaussianCopula) feeding a FLOAT
+storage layer.
+- GaussianCopula.hpp is ALL double: Phi, PhiInv (Acklam rational + Halley refinement via exact erfc Phi),
+  PhiFast/PhiInvFast, mix2, U_EPS=1e-12. The double precision is DELIBERATE — the reversibility (1e-15
+  round-trip) + far-tail/boundary behaviour DEPEND on it; 1e-12 epsilons are meaningless in float.
+- Storage (random_[][], slewed*, pubSlewed*) is FLOAT. So the pipeline is: DOUBLE compute -> FLOAT store.
+
+Decision:
+- **Distribution interface + all impls = `double`.** The distributions live in the SAME math layer as the
+  copula and CALL INTO it: LogitNormal/TruncatedNormal reuse the double PhiInv/Phi/phi DIRECTLY — double
+  avoids a pointless lossy double->float->double cast across the PhiInv boundary. It also preserves the
+  reversibility precision the double pipeline maintains (the F^-1 transform is in that reversible pipeline),
+  and the edge-sensitive formulas (Kumaraswamy 1-(1-x^a)^b at x->0, logit at {0,1}, trunc-normal's
+  Phi(b)-Phi(a) tiny-interval denominator) get the same double-scale/epsilon treatment the pipeline already
+  uses.
+- **Cast to float ONLY at the storage-array boundary** — the existing double-compute/float-store pattern
+  (PhiInv's double output already becomes float storage). No special handling.
+- **NO template.** It would fight the polymorphic Distribution interface (virtual cdf/pdf/invCDF don't
+  template cleanly across a non-templated base) and serve a second instantiation never created (YAGNI). One
+  type: double.
+- Tests: production is double -> reference values are just double; compare directly (tol for round-trip/pdf).
+
+(Correcting an earlier float lean: "match the engine" is right, but the engine's MATH layer is double —
+the distributions are siblings of PhiInv, not of the float CV storage.)
