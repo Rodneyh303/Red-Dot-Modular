@@ -110,3 +110,44 @@ fixes the clipping.
 - Spike display-CLAMP (near-vertical CDF -> density->huge -> auto-max dominates -> rest of PDF flattens
   invisibly): cap the spike at ~95% box height + mark clipped — ONLY if spikes prove to crush the rest in
   practice. Start with plain auto-normalize.
+
+---
+
+## Phase 2.5 additions (Rodney — after first full-size render; drag feel confirmed good)
+Display + dual-axis + square all confirmed working (parametric Kumaraswamy AND drawn PCHIP both render —
+the draw-against-Distribution design validated). Three additions, all devhost-isolated, all build on what
+exists:
+
+### 1. All distributions in the devhost selector (trivial)
+Cycle the selector through ALL built-ins: triangular, power, kumaraswamy, logit-normal, arcsine,
+truncated-normal + drawn PCHIP. One-line list addition. Lets Rodney eyeball all 6 parametric shapes render
+(a visual cross-check on the math tests).
+
+### 2. Parametric param editing — ~2 generic param knobs, relabeled per distribution, LIVE update
+Parametric dists are edited by their PARAMS (knobs), not by dragging. Param counts: kumaraswamy(a,b),
+logit-normal(mu,sigma), truncated-normal(mu,sigma), triangular(mode), power(k), arcsine(none). Max = 2.
+- Two GENERIC param knobs ("Param 1 / Param 2") that REMAP + RELABEL per selected distribution (knob1=a/mu/
+  mode/k; knob2=b/sigma/unused). Label shows the live meaning+value ("a: 2.0"). Arcsine -> both inert/hidden.
+- LIVE: turning a knob reshapes the curve in real time (same live-preview magic as dragging, for parametric)
+  -- turn "a", watch the Kumaraswamy morph.
+- Simplest UI (2 knobs always, relabeled) vs context-sensitive appearing knobs (more machinery). Go simple.
+
+### 3. "Convert to editable" — parametric -> NEARBY PCHIP (cheap, monotone-safe, high-value)
+The start-from-a-shape-then-tweak workflow. NOT too much — it's ~10 lines + a button:
+- MonotoneCurve::fromDistribution(const Distribution& d, int n=~9): sample d.cdf(x) at n x-values -> use as
+  control points -> PCHIP interpolates. Monotone-safe for FREE (a valid CDF is monotone -> monotone points
+  -> valid PCHIP). You already have addPoint-lands-on-curve; this is the batch version.
+- "NEARBY", not exact: PCHIP through ~9 points ~= the parametric, not = it. That's the POINT — an editable
+  starting shape close to the parametric, then drag to customize. ("I want something LIKE a Kumaraswamy but
+  with a bump here" -> pick it -> Convert -> drag.)
+- N: start even-spaced ~9; could go adaptive later (more points where CDF curves hard). Refine if the
+  approximation loses shape.
+- UNIFIES parametric + drawn: parametrics are the PRESETS; convert-to-PCHIP makes any preset a tweakable
+  drawn curve. Also: shipped default .dmcurve files can BE converted-parametrics (editable starting points).
+- UI: a "Convert to editable" button (devhost; Phase 3 = the real panel). On convert, the widget switches to
+  the drawn/editable mode with the sampled curve.
+
+### Small display nitpicks (optional, not urgent) from the full-size render
+- Top-right "view" label collides with the RHS axis labels — nudge spacing.
+- "view (edit off)" sidebar text slightly redundant with the "view" overlay — tidy.
+- Gridlines faint against near-black — maybe nudge contrast. Taste.
