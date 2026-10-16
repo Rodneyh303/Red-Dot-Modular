@@ -4,6 +4,7 @@
 #include "ui/Controls.hpp"
 
 #include <cmath>
+#include <cstdio>
 #include <functional>
 
 using namespace rack;
@@ -13,7 +14,8 @@ extern Plugin* pluginInstance;   // defined in plugin.cpp (Monsoon.hpp holds the
 namespace {
 
 const char* const kWhichNames[DmcurveDevHost::N_WHICH] = {
-    "Kumaraswamy (2,3)", "Arcsine", "Triangular (0.3)", "Drawn (PCHIP)",
+    "Kumaraswamy", "Arcsine", "Triangular", "Power",
+    "Logit-normal", "Trunc-normal", "Drawn (PCHIP)",
 };
 
 // Live name + mode readout under the distribution knob (gold when the drawn case is live).
@@ -40,7 +42,33 @@ struct DistributionLabel : rack::widget::Widget {
     }
 };
 
-// A small dev button (EDIT HANDLES / RESET CURVE). Gold label when its activeWhen is true.
+// Live param readout beside a generic knob: "a: 2.31" (the symbol + range follow the
+// selected distribution; an inert slot shows a dim dash).
+struct ParamLabel : rack::widget::Widget {
+    DmcurveDevHost* m = nullptr;
+    int slot = 0;
+    std::function<bool()> isLight;
+    void draw(const rack::widget::Widget::DrawArgs& args) override {
+        if (!m) return;
+        NVGcontext* vg = args.vg;
+        const bool light = isLight && isLight();
+        const auto ps = DmcurveDevHost::paramSlot(m->which, slot);
+        char buf[32];
+        if (ps.used) {
+            const double v = m->paramValue(slot);
+            std::snprintf(buf, sizeof buf, "%s: %s%.2f", ps.sym, (v >= 0.0 && ps.lo < 0.0) ? "+" : "", v);
+        } else {
+            std::snprintf(buf, sizeof buf, "%s", ps.used ? "" : "-");
+        }
+        nvgFontSize(vg, 8.f);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgFillColor(vg, ps.used ? (light ? nvgRGB(0x5a, 0x5f, 0x66) : nvgRGB(0x8a, 0x8f, 0x98))
+                                 : (light ? nvgRGB(0xa8, 0xac, 0xb2) : nvgRGB(0x4a, 0x4e, 0x55)));
+        nvgText(vg, box.size.x * 0.5f, box.size.y * 0.5f, buf, nullptr);
+    }
+};
+
+// A small dev button (EDIT / RESET / CONVERT). Gold label when its activeWhen is true.
 struct SidebarButton : rack::widget::Widget {
     std::function<bool()> isLight;
     std::function<bool()> activeWhen;
@@ -57,7 +85,7 @@ struct SidebarButton : rack::widget::Widget {
         nvgStrokeColor(vg, light ? nvgRGB(0xb0, 0xa8, 0x98) : nvgRGB(0x2a, 0x2f, 0x37));
         nvgStrokeWidth(vg, 1.f);
         nvgStroke(vg);
-        nvgFontSize(vg, 8.f);
+        nvgFontSize(vg, 7.5f);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
         nvgFillColor(vg, active ? nvgRGB(0xd4, 0xaf, 0x37)
                                 : (light ? nvgRGB(0x5a, 0x5f, 0x66) : nvgRGB(0x8a, 0x8f, 0x98)));
@@ -98,8 +126,9 @@ DmcurveDevHostWidget::DmcurveDevHostWidget(DmcurveDevHost* module) {
         });
 
     // ── the control sidebar ─────────────────────────────────────────────────────────────
-    // Distribution selector: a themed house knob over the param (the single source of truth
-    // for `which`; quantized in step()).
+    // Distribution selector + the two GENERIC param knobs (normalized [0,1]; the meaning,
+    // range and label follow the selection — see DmcurveDevHost::paramSlot). All themed
+    // house knobs.
     bindParam<redDot::Themed_Small_Cog>("param_distribution", DmcurveDevHost::DISTRIBUTION_PARAM,
         [themeCb](redDot::Themed_Small_Cog* w) { w->lightWhen = themeCb; });
     bindWidget<DistributionLabel>("label_distribution",
@@ -108,20 +137,54 @@ DmcurveDevHostWidget::DmcurveDevHostWidget(DmcurveDevHost* module) {
             w->m = m;
             w->isLight = themeCb;
         });
+    bindParam<redDot::Themed_Small_Cog>("param_p1", DmcurveDevHost::PARAM1_PARAM,
+        [themeCb](redDot::Themed_Small_Cog* w) { w->lightWhen = themeCb; });
+    bindWidget<ParamLabel>("label_p1",
+        [m, themeCb](ParamLabel* w) {
+            w->box.size = rack::math::Vec(104.f, 12.f);
+            w->m = m;
+            w->slot = 0;
+            w->isLight = themeCb;
+        });
+    bindParam<redDot::Themed_Small_Cog>("param_p2", DmcurveDevHost::PARAM2_PARAM,
+        [themeCb](redDot::Themed_Small_Cog* w) { w->lightWhen = themeCb; });
+    bindWidget<ParamLabel>("label_p2",
+        [m, themeCb](ParamLabel* w) {
+            w->box.size = rack::math::Vec(104.f, 12.f);
+            w->m = m;
+            w->slot = 1;
+            w->isLight = themeCb;
+        });
     bindWidget<SidebarButton>("btn_edit",
         [m, themeCb](SidebarButton* w) {
-            w->box.size = rack::math::Vec(90.f, 22.f);
-            w->label = "EDIT HANDLES";
+            w->box.size = rack::math::Vec(48.f, 20.f);
+            w->label = "EDIT";
             w->isLight = themeCb;
             w->activeWhen = [m] { return m && m->editEnabled; };
             w->onPress = [m] { if (m) m->editEnabled = !m->editEnabled; };
         });
     bindWidget<SidebarButton>("btn_reset",
         [m, themeCb](SidebarButton* w) {
-            w->box.size = rack::math::Vec(90.f, 22.f);
-            w->label = "RESET CURVE";
+            w->box.size = rack::math::Vec(48.f, 20.f);
+            w->label = "RESET";
             w->isLight = themeCb;
             w->onPress = [m] { if (m) m->starterS(); };
+        });
+    // CONVERT → EDITABLE: the start-from-a-shape workflow. Sample the CURRENT (parametric)
+    // distribution into a nearby 9-point PCHIP, then switch to the drawn case with handles
+    // live. (No-op when already drawn.)
+    bindWidget<SidebarButton>("btn_convert",
+        [m, themeCb](SidebarButton* w) {
+            w->box.size = rack::math::Vec(104.f, 20.f);
+            w->label = "TO EDITABLE";
+            w->isLight = themeCb;
+            w->activeWhen = [m] { return m && m->which != DmcurveDevHost::DRAWN; };
+            w->onPress = [m] {
+                if (!m || m->which == DmcurveDevHost::DRAWN) return;
+                m->pchip.curve = dotModular::MonotoneCurve::fromDistribution(*m->current(), 9);
+                m->editEnabled = true;
+                m->params[DmcurveDevHost::DISTRIBUTION_PARAM].setValue((float)DmcurveDevHost::DRAWN);
+            };
         });
 }
 
@@ -138,16 +201,39 @@ void DmcurveDevHostWidget::step() {
             kit_.panel->setBackground(wantLight ? panelSvgLight : panelSvgDark);
     }
     if (auto* m = dynamic_cast<DmcurveDevHost*>(module)) {
-        // The param is the single source of truth for `which` (knob + context menu both
-        // write it; Rack auto-persists it). Quantize on the UI thread.
+        // The distribution param is the single source of truth for `which` (knob + context
+        // menu both write it; Rack auto-persists it). Quantize on the UI thread.
         if (m->params.size() > (size_t)DmcurveDevHost::DISTRIBUTION_PARAM) {
             int w = (int)std::lround(m->params[DmcurveDevHost::DISTRIBUTION_PARAM].getValue());
             if (w < 0) w = 0;
             if (w >= DmcurveDevHost::N_WHICH) w = DmcurveDevHost::N_WHICH - 1;
             m->which = w;
         }
-        // Keep the curve widget's bindings live (selector / edit toggle / reset all change
-        // them at runtime).
+        // The generic param knobs: normalized [0,1] mapped through paramSlot(). On a
+        // distribution CHANGE they back-fill from the new distribution's values; otherwise
+        // they drive the live param (the curve + PDF + auto-max reshaping in real time).
+        if (m->which != lastWhich) {
+            lastWhich = m->which;
+            for (int slot = 0; slot < 2; ++slot) {
+                const auto ps = DmcurveDevHost::paramSlot(m->which, slot);
+                const int id = (slot == 0) ? DmcurveDevHost::PARAM1_PARAM : DmcurveDevHost::PARAM2_PARAM;
+                if (ps.used && ps.hi > ps.lo && m->params.size() > (size_t)id) {
+                    double norm = (m->paramValue(slot) - ps.lo) / (ps.hi - ps.lo);
+                    if (norm < 0.0) norm = 0.0;
+                    if (norm > 1.0) norm = 1.0;
+                    m->params[id].setValue((float)norm);
+                }
+            }
+        } else {
+            for (int slot = 0; slot < 2; ++slot) {
+                const auto ps = DmcurveDevHost::paramSlot(m->which, slot);
+                const int id = (slot == 0) ? DmcurveDevHost::PARAM1_PARAM : DmcurveDevHost::PARAM2_PARAM;
+                if (ps.used && m->params.size() > (size_t)id)
+                    m->setParamValue(slot, ps.lo + (double)m->params[id].getValue() * (ps.hi - ps.lo));
+            }
+        }
+        // Keep the curve widget's bindings live (selector / knobs / edit toggle / convert
+        // all change them at runtime).
         if (curveWidget) {
             curveWidget->dist = m->current();
             curveWidget->editCurve = (m->which == DmcurveDevHost::DRAWN && m->editEnabled)
@@ -160,6 +246,7 @@ void DmcurveDevHostWidget::appendContextMenu(ui::Menu* menu) {
     auto* m = dynamic_cast<DmcurveDevHost*>(module);
     if (!m) return;
     menu->addChild(createMenuLabel(".dmcurve dev host"));
+    menu->addChild(createMenuLabel("drag points - click: add - dbl-click: remove"));
     menu->addChild(createMenuLabel("Distribution"));
     for (int i = 0; i < DmcurveDevHost::N_WHICH; ++i) {
         const bool editable = (i == DmcurveDevHost::DRAWN);
@@ -169,6 +256,13 @@ void DmcurveDevHostWidget::appendContextMenu(ui::Menu* menu) {
     }
     menu->addChild(createMenuItem("Edit handles", CHECKMARK(m->editEnabled),
         [m] { m->editEnabled = !m->editEnabled; }));
+    menu->addChild(createMenuItem("Convert to editable (9-pt PCHIP)", "",
+        [m] {
+            if (m->which == DmcurveDevHost::DRAWN) return;
+            m->pchip.curve = dotModular::MonotoneCurve::fromDistribution(*m->current(), 9);
+            m->editEnabled = true;
+            m->params[DmcurveDevHost::DISTRIBUTION_PARAM].setValue((float)DmcurveDevHost::DRAWN);
+        }));
     menu->addChild(createMenuItem("Reset drawn curve", "", [m] { m->starterS(); }));
 }
 

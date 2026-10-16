@@ -114,7 +114,7 @@ struct DistributionCurveWidget : rack::widget::Widget {
         const NVGcolor well    = nvgRGB(0x10, 0x12, 0x16);   // Monsoon slot recess
         const NVGcolor bezel   = light ? nvgRGB(0xb0, 0xa8, 0x98) : nvgRGB(0x2a, 0x2f, 0x37);
         const NVGcolor bezelBg = light ? nvgRGB(0xd8, 0xda, 0xde) : nvgRGB(0x13, 0x15, 0x1a);
-        const NVGcolor gridCol = nvgRGBAf(0.16f, 0.19f, 0.22f, 0.55f);
+        const NVGcolor gridCol = nvgRGBAf(0.30f, 0.34f, 0.39f, 0.75f);   // slotline, lifted off the near-black well
         const NVGcolor cdfCol  = nvgRGB(0xd4, 0xaf, 0x37);   // melody gold — the drawn curve
         const NVGcolor pdfCol  = nvgRGB(0x26, 0xa6, 0x9a);   // legato teal — the density
         const NVGcolor textCol = light ? nvgRGB(0x5a, 0x5f, 0x66) : nvgRGB(0x8a, 0x8f, 0x98);
@@ -303,8 +303,10 @@ struct DistributionCurveWidget : rack::widget::Widget {
         nvgFillColor(vg, pdfCol);
         nvgText(vg, px + 26.f, py + 2.f, "PDF", nullptr);
         nvgFillColor(vg, textCol);
-        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_TOP);
-        nvgText(vg, px + pw - 2.f, py + 2.f, editCurve ? "edit" : "view", nullptr);
+        // Bottom-right INSIDE the well: the top-right corner collides with the RHS axis
+        // labels, and the bottom-right of a CDF plot is reliably empty (below the diagonal).
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_BOTTOM);
+        nvgText(vg, px + pw - 2.f, py + ph - 2.f, editCurve ? "edit" : "view", nullptr);
 
         rack::widget::Widget::draw(args);
     }
