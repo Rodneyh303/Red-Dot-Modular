@@ -43,7 +43,8 @@ struct DistributionLabel : rack::widget::Widget {
 };
 
 // Live param readout beside a generic knob: "a: 2.31" (the symbol + range follow the
-// selected distribution; an inert slot shows a dim dash).
+// selected distribution; an inert slot shows a dim "none" — arcsine has no params, the
+// single-param distributions leave knob 2 unused, and the drawn case is edited by drag).
 struct ParamLabel : rack::widget::Widget {
     DmcurveDevHost* m = nullptr;
     int slot = 0;
@@ -58,7 +59,7 @@ struct ParamLabel : rack::widget::Widget {
             const double v = m->paramValue(slot);
             std::snprintf(buf, sizeof buf, "%s: %s%.2f", ps.sym, (v >= 0.0 && ps.lo < 0.0) ? "+" : "", v);
         } else {
-            std::snprintf(buf, sizeof buf, "%s", ps.used ? "" : "-");
+            std::snprintf(buf, sizeof buf, "none");
         }
         nvgFontSize(vg, 8.f);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
@@ -137,8 +138,17 @@ DmcurveDevHostWidget::DmcurveDevHostWidget(DmcurveDevHost* module) {
             w->m = m;
             w->isLight = themeCb;
         });
-    bindParam<redDot::Themed_Small_Cog>("param_p1", DmcurveDevHost::PARAM1_PARAM,
-        [themeCb](redDot::Themed_Small_Cog* w) { w->lightWhen = themeCb; });
+    // The param knobs are Dimmable: when their slot is INERT for the selected distribution
+    // (arcsine's two, the single-param distributions' knob 2, or both on the drawn case)
+    // they take the grey scrim AND lock — turning does nothing, so inert can't read as a
+    // bug. The predicate is live (reads m->which each frame, like every other binding).
+    bindParam<redDot::Themed_Small_Cog_Dim>("param_p1", DmcurveDevHost::PARAM1_PARAM,
+        [themeCb, m](redDot::Themed_Small_Cog_Dim* w) {
+            w->lightWhen = themeCb;
+            const auto inert = [m] { return !m || !DmcurveDevHost::paramSlot(m->which, 0).used; };
+            w->dimWhen = inert;
+            w->lockWhen = inert;
+        });
     bindWidget<ParamLabel>("label_p1",
         [m, themeCb](ParamLabel* w) {
             w->box.size = rack::math::Vec(104.f, 12.f);
@@ -146,8 +156,13 @@ DmcurveDevHostWidget::DmcurveDevHostWidget(DmcurveDevHost* module) {
             w->slot = 0;
             w->isLight = themeCb;
         });
-    bindParam<redDot::Themed_Small_Cog>("param_p2", DmcurveDevHost::PARAM2_PARAM,
-        [themeCb](redDot::Themed_Small_Cog* w) { w->lightWhen = themeCb; });
+    bindParam<redDot::Themed_Small_Cog_Dim>("param_p2", DmcurveDevHost::PARAM2_PARAM,
+        [themeCb, m](redDot::Themed_Small_Cog_Dim* w) {
+            w->lightWhen = themeCb;
+            const auto inert = [m] { return !m || !DmcurveDevHost::paramSlot(m->which, 1).used; };
+            w->dimWhen = inert;
+            w->lockWhen = inert;
+        });
     bindWidget<ParamLabel>("label_p2",
         [m, themeCb](ParamLabel* w) {
             w->box.size = rack::math::Vec(104.f, 12.f);
