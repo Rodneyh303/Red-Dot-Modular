@@ -52,29 +52,35 @@ struct SpreadInterp {
     // Pointers to the lane's slewed buffers for the engine. Set per lane by the
     // caller so the same code serves rhythm/melody/octave.
     // Per-lane accessor into the PatternEngine slewed draws.
-    // Lane index is the SPREAD/poly-engine lane: 0=REST 1=MEL 2=OCT 3=ACC 4=QMIX 5=VAR 6=LEG
+    // Lane index is the UNIFIED PL_*/strand order (MEL=0, OCT=1, QMIX=2, REST=3, ACC=4,
+    // VAR=5, LEG=6 — PatternEngine::PolyLane; editor==engine==strand since the lane-index
+    // unification). NOTE: these switches USED to speak the old spread order (0=REST, 1=MEL,
+    // 2=OCT, 3=ACC, 4=QMIX) while unified-PL_* callers passed the new order — the lane-
+    // convention split caught by test_voice_conventions [C]; unified here 2026-10-16.
     static float monoSlewed(const PatternEngine& pe, int lane, int step) {
         // COLLAPSE: slewed*[16][16] — V1 at [0]. monoSlewed reads voiceSlot 0.
         switch (lane) {
-            case 0:  return pe.slewedRhythm[0][step];
-            case 1:  return pe.slewedMelody[0][step];
-            case 3:  return pe.slewedAccent[0][step];
-            case 4:  return pe.slewedQmix[0][step];
-            case 5:  return pe.slewedVariation[0][step];
-            case 6:  return pe.slewedLegato[0][step];
-            default: return pe.slewedOctave[0][step];
+            case PatternEngine::PL_MELODY:    return pe.slewedMelody[0][step];
+            case PatternEngine::PL_OCTAVE:    return pe.slewedOctave[0][step];
+            case PatternEngine::PL_QMIX:      return pe.slewedQmix[0][step];
+            case PatternEngine::PL_REST:      return pe.slewedRhythm[0][step];
+            case PatternEngine::PL_ACCENT:    return pe.slewedAccent[0][step];
+            case PatternEngine::PL_VARIATION: return pe.slewedVariation[0][step];
+            case PatternEngine::PL_LEGATO:    return pe.slewedLegato[0][step];
+            default:                          return pe.slewedRhythm[0][step];   // invalid lane → rhythm fallback
         }
     }
     static float polySlewed(const PatternEngine& pe, int lane, int voice, int step) {
         // voice is voiceSlot (0=V1, 1=V2, ..., 15=V16). slewed*[voice] directly.
         switch (lane) {
-            case 0:  return pe.slewedRhythm[voice][step];
-            case 1:  return pe.slewedMelody[voice][step];
-            case 3:  return pe.slewedAccent[voice][step];
-            case 4:  return pe.slewedQmix[voice][step];
-            case 5:  return pe.slewedVariation[voice][step];
-            case 6:  return pe.slewedLegato[voice][step];
-            default: return pe.slewedOctave[voice][step];
+            case PatternEngine::PL_MELODY:    return pe.slewedMelody[voice][step];
+            case PatternEngine::PL_OCTAVE:    return pe.slewedOctave[voice][step];
+            case PatternEngine::PL_QMIX:      return pe.slewedQmix[voice][step];
+            case PatternEngine::PL_REST:      return pe.slewedRhythm[voice][step];
+            case PatternEngine::PL_ACCENT:    return pe.slewedAccent[voice][step];
+            case PatternEngine::PL_VARIATION: return pe.slewedVariation[voice][step];
+            case PatternEngine::PL_LEGATO:    return pe.slewedLegato[voice][step];
+            default:                          return pe.slewedRhythm[voice][step];   // invalid lane → rhythm fallback
         }
     }
 
@@ -88,25 +94,27 @@ struct SpreadInterp {
     // LIVE reads above, which are correct there.
     static float monoSlewedPub(const PatternEngine& pe, int lane, int step) {
         switch (lane) {
-            case 0:  return pe.pubSlewedPolyRhythm[0][step];
-            case 1:  return pe.pubSlewedPolyMelody[0][step];
-            case 3:  return pe.pubSlewedPolyAccent[0][step];
-            case 4:  return pe.pubSlewedPolyQmix[0][step];
-            case 5:  return pe.pubSlewedPolyVariation[0][step];
-            case 6:  return pe.pubSlewedPolyLegato[0][step];
-            default: return pe.pubSlewedPolyOctave[0][step];
+            case PatternEngine::PL_MELODY:    return pe.pubSlewedPolyMelody[0][step];
+            case PatternEngine::PL_OCTAVE:    return pe.pubSlewedPolyOctave[0][step];
+            case PatternEngine::PL_QMIX:      return pe.pubSlewedPolyQmix[0][step];
+            case PatternEngine::PL_REST:      return pe.pubSlewedPolyRhythm[0][step];
+            case PatternEngine::PL_ACCENT:    return pe.pubSlewedPolyAccent[0][step];
+            case PatternEngine::PL_VARIATION: return pe.pubSlewedPolyVariation[0][step];
+            case PatternEngine::PL_LEGATO:    return pe.pubSlewedPolyLegato[0][step];
+            default:                          return pe.pubSlewedPolyRhythm[0][step];
         }
     }
     static float polySlewedPub(const PatternEngine& pe, int lane, int voice, int step) {
         // voice is voiceSlot (0=V1, 1=V2, ..., 15=V16).
         switch (lane) {
-            case 0:  return pe.pubSlewedPolyRhythm[voice][step];
-            case 1:  return pe.pubSlewedPolyMelody[voice][step];
-            case 3:  return pe.pubSlewedPolyAccent[voice][step];
-            case 4:  return pe.pubSlewedPolyQmix[voice][step];
-            case 5:  return pe.pubSlewedPolyVariation[voice][step];
-            case 6:  return pe.pubSlewedPolyLegato[voice][step];
-            default: return pe.pubSlewedPolyOctave[voice][step];
+            case PatternEngine::PL_MELODY:    return pe.pubSlewedPolyMelody[voice][step];
+            case PatternEngine::PL_OCTAVE:    return pe.pubSlewedPolyOctave[voice][step];
+            case PatternEngine::PL_QMIX:      return pe.pubSlewedPolyQmix[voice][step];
+            case PatternEngine::PL_REST:      return pe.pubSlewedPolyRhythm[voice][step];
+            case PatternEngine::PL_ACCENT:    return pe.pubSlewedPolyAccent[voice][step];
+            case PatternEngine::PL_VARIATION: return pe.pubSlewedPolyVariation[voice][step];
+            case PatternEngine::PL_LEGATO:    return pe.pubSlewedPolyLegato[voice][step];
+            default:                          return pe.pubSlewedPolyRhythm[voice][step];
         }
     }
 
@@ -125,25 +133,27 @@ struct SpreadInterp {
     static float monoPreRemap(const PatternEngine& pe, int lane, int step) {
         // COLLAPSE: preRemapSlewed*[16][16] — V1 at [0].
         switch (lane) {
-            case 0:  return pe.preRemapSlewedRhythm[0][step];
-            case 1:  return pe.preRemapSlewedMelody[0][step];
-            case 3:  return pe.preRemapSlewedAccent[0][step];
-            case 4:  return pe.preRemapSlewedQmix[0][step];
-            case 5:  return pe.preRemapSlewedVariation[0][step];
-            case 6:  return pe.preRemapSlewedLegato[0][step];
-            default: return pe.preRemapSlewedOctave[0][step];
+            case PatternEngine::PL_MELODY:    return pe.preRemapSlewedMelody[0][step];
+            case PatternEngine::PL_OCTAVE:    return pe.preRemapSlewedOctave[0][step];
+            case PatternEngine::PL_QMIX:      return pe.preRemapSlewedQmix[0][step];
+            case PatternEngine::PL_REST:      return pe.preRemapSlewedRhythm[0][step];
+            case PatternEngine::PL_ACCENT:    return pe.preRemapSlewedAccent[0][step];
+            case PatternEngine::PL_VARIATION: return pe.preRemapSlewedVariation[0][step];
+            case PatternEngine::PL_LEGATO:    return pe.preRemapSlewedLegato[0][step];
+            default:                          return pe.preRemapSlewedRhythm[0][step];
         }
     }
     static float polyPreRemap(const PatternEngine& pe, int lane, int voice, int step) {
         // voice is voiceSlot (0=V1, 1=V2, ..., 15=V16).
         switch (lane) {
-            case 0:  return pe.preRemapSlewedRhythm[voice][step];
-            case 1:  return pe.preRemapSlewedMelody[voice][step];
-            case 3:  return pe.preRemapSlewedAccent[voice][step];
-            case 4:  return pe.preRemapSlewedQmix[voice][step];
-            case 5:  return pe.preRemapSlewedVariation[voice][step];
-            case 6:  return pe.preRemapSlewedLegato[voice][step];
-            default: return pe.preRemapSlewedOctave[voice][step];
+            case PatternEngine::PL_MELODY:    return pe.preRemapSlewedMelody[voice][step];
+            case PatternEngine::PL_OCTAVE:    return pe.preRemapSlewedOctave[voice][step];
+            case PatternEngine::PL_QMIX:      return pe.preRemapSlewedQmix[voice][step];
+            case PatternEngine::PL_REST:      return pe.preRemapSlewedRhythm[voice][step];
+            case PatternEngine::PL_ACCENT:    return pe.preRemapSlewedAccent[voice][step];
+            case PatternEngine::PL_VARIATION: return pe.preRemapSlewedVariation[voice][step];
+            case PatternEngine::PL_LEGATO:    return pe.preRemapSlewedLegato[voice][step];
+            default:                          return pe.preRemapSlewedRhythm[voice][step];
         }
     }
 
@@ -191,10 +201,15 @@ struct SpreadInterp {
     // Used only by the debug assertion to know when V1 is actually pinned (src != self).
     static int v1caSrc(const PatternEngine& pe, int lane) {
         switch (lane) {
-            case 0: case 3: case 5: case 6: return pe.caRhythmSrc[0];  // REST, ACC, VAR, LEG → rhythm plane
-            case 1: case 2:                 return pe.caMelodySrc[0];  // MEL, OCT → melody plane
-            case 4:                          return pe.caQmixSrc[0];    // QMIX → qmix plane
-            default:                         return 0;
+            case PatternEngine::PL_MELODY: case PatternEngine::PL_OCTAVE:
+                return pe.caMelodySrc[0];    // MEL, OCT → melody plane
+            case PatternEngine::PL_QMIX:
+                return pe.caQmixSrc[0];      // QMIX → qmix plane
+            case PatternEngine::PL_REST: case PatternEngine::PL_ACCENT:
+            case PatternEngine::PL_VARIATION: case PatternEngine::PL_LEGATO:
+                return pe.caRhythmSrc[0];    // REST, ACC, VAR, LEG → rhythm plane
+            default:
+                return 0;
         }
     }
 

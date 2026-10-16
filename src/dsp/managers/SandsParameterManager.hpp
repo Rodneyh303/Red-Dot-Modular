@@ -112,22 +112,24 @@ struct SandsParameterManager {
   void syncPatternEngineToEditor(SandsVisualEditorV4::VoiceState& editorState, int viewVoice = 0) {
     if (!patternEngine) return;
 
-    // Rest lane - show interpolated values for the viewed voice
+    // Rest lane - show interpolated values for the viewed voice.
+    // Lane args are the UNIFIED PL_* order (lane unification): REST=3, MEL=0, OCT=1.
+    // (These used to pass the OLD spread order 0/1/2 = REST/MEL/OCT.)
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
       editorState.lanes[SandsVisualEditorV4::REST].probabilities[i] =
-        spreadMgr.getInterpolatedValue(viewVoice, 0, i);
+        spreadMgr.getInterpolatedValue(viewVoice, PatternEngine::PL_REST, i);
     }
 
     // Melody lane
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
       editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i] =
-        spreadMgr.getInterpolatedValue(viewVoice, 1, i);
+        spreadMgr.getInterpolatedValue(viewVoice, PatternEngine::PL_MELODY, i);
     }
 
     // Octave lane
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
       editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i] =
-        spreadMgr.getInterpolatedValue(viewVoice, 2, i);
+        spreadMgr.getInterpolatedValue(viewVoice, PatternEngine::PL_OCTAVE, i);
     }
   }
 };

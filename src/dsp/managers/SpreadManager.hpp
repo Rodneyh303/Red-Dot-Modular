@@ -243,21 +243,10 @@ struct SpreadManager {
   float getOriginalValue(int voiceIdx, int lane, int step) const {
     if (!patternEngine || voiceIdx < 0 || voiceIdx >= dotModular::VoiceResolver::kVoiceSlots) return 0.5f;
     if (lane < 0 || lane > 4 || step < 0 || step >= 16) return 0.5f;
-    
-    switch (lane) {
-      case 0:  // REST
-        return patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_REST)[step];
-      case 1:  // MELODY
-        return patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_MELODY)[step];
-      case 2:  // OCTAVE
-        return patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_OCTAVE)[step];
-      case 3:  // ACCENT
-        return patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_ACCENT)[step];
-      case 4:  // QMIX
-        return patternEngine->polyRandom(voiceIdx, SequencerEngine::PL_QMIX)[step];
-      default:
-        return 0.5f;
-    }
+    // Lane is the UNIFIED PL_* order (MEL=0, OCT=1, QMIX=2, REST=3, ACC=4 — the lane
+    // unification made this an identity into polyRandom: editor lane == engine lane).
+    // (This switch used to translate the OLD spread order 0=REST/1=MEL/2=OCT/3=ACC/4=QMIX.)
+    return patternEngine->polyRandom(voiceIdx, lane)[step];
   }
   
   /**

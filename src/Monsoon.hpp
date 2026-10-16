@@ -906,7 +906,9 @@ struct Monsoon : Module {
     float getSpread(int slot, int lane) const { return editor.spread[slot*7 + lane]; }  // 7 poly lanes
     void  setSpread(int slot, int lane, float x) { editor.spread[slot*7 + lane] = x; }  // 7 poly lanes
 
-    // Spread target mode (0=Anchor V1, 1=Follow CA) per poly lane (0=REST,1=MEL,2=OCT,3=ACC,4=QMIX).
+    // Spread target mode (0=Anchor V1, 1=Follow CA) per poly lane, UNIFIED PL_* order
+    // (0=MEL,1=OCT,2=QMIX,3=REST,4=ACC,5=VAR,6=LEG — the menu indexes SandsLaneNames::
+    // EDITOR_LONG, which is this order; pe.spreadTargetMode mirrors it 1:1).
     uint8_t getSpreadTargetMode(int lane) const { return (lane>=0&&lane<7) ? editor.spreadTargetMode[lane] : 0; }
     void    setSpreadTargetMode(int lane, uint8_t mode) { if(lane>=0&&lane<7) editor.spreadTargetMode[lane] = mode; }
     float   getSpreadDefault(int lane, int mode) const { return (lane>=0&&lane<7&&mode>=0&&mode<2) ? editor.spreadDefault[lane*2+mode] : 0; }

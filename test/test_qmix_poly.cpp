@@ -42,8 +42,12 @@ static int s_pass = 0, s_fail = 0;
 #define EXPECT(e) do{if(!(e))throw std::runtime_error("EXPECT(" #e ")");}while(0)
 #define EXPECT_NEAR(a,b,e) do{if(std::fabs((a)-(b))>(e)){std::ostringstream s;s<<#a<<"="<<(a)<<" not~"<<#b<<"="<<(b);throw std::runtime_error(s.str());}}while(0)
 
-// Spread/poly-engine lane indices (SpreadInterp): 0=REST 1=MELODY 2=OCT 3=ACC 4=QMIX.
-static constexpr int LANE_REST = 0, LANE_ACC = 3, LANE_QMIX = 4;
+// Unified PL_*/strand lane order (SpreadInterp speaks PL_* since the lane unification):
+// MEL=0, OCT=1, QMIX=2, REST=3, ACC=4, VAR=5, LEG=6. (These constants used to pin the
+// OLD spread order 0=REST/3=ACC/4=QMIX — converted with the unification, same intent.)
+static constexpr int LANE_REST = PatternEngine::PL_REST,
+                     LANE_ACC  = PatternEngine::PL_ACCENT,
+                     LANE_QMIX = PatternEngine::PL_QMIX;
 static constexpr int N_POLY = 15;   // poly voices V2..V16 (poly index 0..14)
 static constexpr int STEP = 3;      // arbitrary step within the 16-step pattern
 

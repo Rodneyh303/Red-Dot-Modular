@@ -394,30 +394,33 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             if (sprR || sprM || sprQ) {
             for (int i = 0; i < 16; ++i) {
                 if (sprR) {
+                    // LANE UNIFICATION: applyMono's lane arg is the unified PL_* order
+                    // (SpreadInterp speaks PL_*). The spreadE(0, X) VALUE fetch keeps its
+                    // historical column pairing — the spread store's own order is a separate
+                    // Phase-2 audit item.
                     engine.pe.rhythmRandom[i] = redDot::SpreadInterp::applyMono(
-                        engine.pe, 0, i, engine.spreadE(0, 0));
-                    // VAR/LEG spread (lanes 5/6): applyMono, not the raw slewed copy. Under
+                        engine.pe, SequencerEngine::PL_REST, i, engine.spreadE(0, 0));
+                    // VAR/LEG spread: applyMono, not the raw slewed copy. Under
                     // anchor-V1 this is a self-target no-op, but under follow-CA (V1 pinned) it
                     // interpolates own(pre-remap) vs target(post-remap) — meaningful. Either way
                     // the spread value is now read/published instead of dropped on the floor.
                     engine.pe.variationRandom[i] = redDot::SpreadInterp::applyMono(
-                        engine.pe, 5, i, engine.spreadE(0, 5));
+                        engine.pe, SequencerEngine::PL_VARIATION, i, engine.spreadE(0, 5));
                     engine.pe.legatoRandom[i]    = redDot::SpreadInterp::applyMono(
-                        engine.pe, 6, i, engine.spreadE(0, 6));
+                        engine.pe, SequencerEngine::PL_LEGATO, i, engine.spreadE(0, 6));
                     engine.pe.accentRandom[i] = redDot::SpreadInterp::applyMono(
-                        engine.pe, 3, i, engine.spreadE(0, 3));
+                        engine.pe, SequencerEngine::PL_ACCENT, i, engine.spreadE(0, 3));
                 }
                 if (sprM) {
                     engine.pe.melodyRandom[i] = redDot::SpreadInterp::applyMono(
-                        engine.pe, 1, i, engine.spreadE(0, 1));
+                        engine.pe, SequencerEngine::PL_MELODY, i, engine.spreadE(0, 1));
                     engine.pe.octaveRandom[i] = redDot::SpreadInterp::applyMono(
-                        engine.pe, 2, i, engine.spreadE(0, 2));
+                        engine.pe, SequencerEngine::PL_OCTAVE, i, engine.spreadE(0, 2));
                 }
                 if (sprQ) {
-                    // QMIX spread on its OWN axis. SpreadInterp lane 4 = QMIX (slewedQmix twin);
-                    // engine spread lane 4 = STRAND_QMIX (spreadE absorbs engine→editor permutation).
+                    // QMIX spread on its OWN axis (SB_SANDS_Q): applyMono lane = PL_QMIX.
                     engine.pe.qmixRandom[i] = redDot::SpreadInterp::applyMono(
-                        engine.pe, 4, i, engine.spreadE(0, 4));
+                        engine.pe, SequencerEngine::PL_QMIX, i, engine.spreadE(0, 4));
                 }
             }
             }  // end if(sprR || sprM || sprQ)
@@ -558,21 +561,30 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // handles both original + target selection internally. No Monsoon pointer needed.
             for (int i = 0; i < 16; ++i) {
                 if (axR) {
-                    engine.pe.rhythmRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 0, i, spR);
-                    engine.pe.accentRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 3, i, spA);
-                    // VAR/LEG spread (lanes 5/6) — applyMono, not the raw slewed copy (the raw copy
+                    // LANE UNIFICATION: applyMono lane args are unified PL_*; the spX VALUE
+                    // locals keep their historical sprForLane source pairing (Phase-2 audit).
+                    engine.pe.rhythmRandom[i] = redDot::SpreadInterp::applyMono(
+                        engine.pe, SequencerEngine::PL_REST, i, spR);
+                    engine.pe.accentRandom[i] = redDot::SpreadInterp::applyMono(
+                        engine.pe, SequencerEngine::PL_ACCENT, i, spA);
+                    // VAR/LEG spread — applyMono, not the raw slewed copy (the raw copy
                     // dropped the spread value entirely; under follow-CA this is meaningful, and it
                     // keeps VAR/LEG on the same path as the 5 core lanes).
-                    engine.pe.variationRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 5, i, spV);
-                    engine.pe.legatoRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 6, i, spL);
+                    engine.pe.variationRandom[i] = redDot::SpreadInterp::applyMono(
+                        engine.pe, SequencerEngine::PL_VARIATION, i, spV);
+                    engine.pe.legatoRandom[i]    = redDot::SpreadInterp::applyMono(
+                        engine.pe, SequencerEngine::PL_LEGATO, i, spL);
                 }
                 if (axM) {
-                    engine.pe.melodyRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 1, i, spM);
-                    engine.pe.octaveRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 2, i, spO);
+                    engine.pe.melodyRandom[i] = redDot::SpreadInterp::applyMono(
+                        engine.pe, SequencerEngine::PL_MELODY, i, spM);
+                    engine.pe.octaveRandom[i] = redDot::SpreadInterp::applyMono(
+                        engine.pe, SequencerEngine::PL_OCTAVE, i, spO);
                 }
                 if (axQ) {
                     // QMIX spread on its OWN axis (SB_SANDS_Q).
-                    engine.pe.qmixRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 4, i, spQ);
+                    engine.pe.qmixRandom[i] = redDot::SpreadInterp::applyMono(
+                        engine.pe, SequencerEngine::PL_QMIX, i, spQ);
                 }
             }
             }   // end if (axR || axM) — spread only; V1 LOR above runs under lock too
@@ -665,16 +677,24 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // V1 (mono final arrays): converge the mono draw toward the ensemble.
             for (int i = 0; i < 16; ++i) {
                 if (mSpR) {
-                    engine.pe.rhythmRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 0, i, spv[0]);
-                    engine.pe.accentRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 3, i, spv[3]);
-                    // VAR/LEG spread (lanes 5/6): spv[5/6] are populated by the loop above
+                    // LANE UNIFICATION: applyMono lane args unified PL_* — matching the
+                    // cachedPolySpread pairing below (PL_REST=spv[0] etc.); spv sources unchanged.
+                    engine.pe.rhythmRandom[i]    = redDot::SpreadInterp::applyMono(
+                        engine.pe, SequencerEngine::PL_REST, i, spv[0]);
+                    engine.pe.accentRandom[i]    = redDot::SpreadInterp::applyMono(
+                        engine.pe, SequencerEngine::PL_ACCENT, i, spv[3]);
+                    // VAR/LEG spread: spv[5/6] are populated by the loop above
                     // (lane < POLY_LANES=7). applyMono, not the raw slewed copy.
-                    engine.pe.variationRandom[i] = redDot::SpreadInterp::applyMono(engine.pe, 5, i, spv[5]);
-                    engine.pe.legatoRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 6, i, spv[6]);
+                    engine.pe.variationRandom[i] = redDot::SpreadInterp::applyMono(
+                        engine.pe, SequencerEngine::PL_VARIATION, i, spv[5]);
+                    engine.pe.legatoRandom[i]    = redDot::SpreadInterp::applyMono(
+                        engine.pe, SequencerEngine::PL_LEGATO, i, spv[6]);
                 }
                 if (mSpM) {
-                    engine.pe.melodyRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 1, i, spv[1]);
-                    engine.pe.octaveRandom[i]    = redDot::SpreadInterp::applyMono(engine.pe, 2, i, spv[2]);
+                    engine.pe.melodyRandom[i]    = redDot::SpreadInterp::applyMono(
+                        engine.pe, SequencerEngine::PL_MELODY, i, spv[1]);
+                    engine.pe.octaveRandom[i]    = redDot::SpreadInterp::applyMono(
+                        engine.pe, SequencerEngine::PL_OCTAVE, i, spv[2]);
                 }
             }
             // Stage 2a: cache poly spread values for step-rate refresh (was: full-field
