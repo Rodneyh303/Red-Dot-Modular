@@ -295,3 +295,47 @@ F^-1 = DEGREE/register tilt along the pitch-ordered axis. Independent axes.
   sculpting, within the scale weights, copula-correlation preserved (monotone per-lane).
 - Pre/post display should show the REALIZED note distribution (semiWeights composed with F^-1), not just
   F^-1 — so the user sees the combined effect.
+
+---
+
+## F^-1 vs TRUE TAIL DEPENDENCE — the honest line (Rodney)
+What per-voice F^-1 gives: voices sharing a correlation CLUSTER or DISPERSE in OUTPUT depending on whether
+their MARGINAL response curves are similar or different — a MARGINAL-level effect. The copula (dependence
+structure) is UNCHANGED (Sklar: monotone marginal transforms leave the copula invariant); F^-1 reshapes
+WHERE in value-space the fixed Gaussian dependence lands per voice.
+What it does NOT give: TRUE TAIL DEPENDENCE — a COPULA property (genuine extreme co-movement: t/Gumbel/
+Clayton). Gaussian copula has ZERO tail dependence; no marginal transform can manufacture it (tail dep is
+invariant under marginal transforms). THE LINE = MARGINALS (what F^-1 shapes) vs COPULA (what it can't
+touch).
+Design position: keep the GAUSSIAN copula (gifts: PhiInv, reversibility, uniformity, OU-bridge, tractability)
++ output F^-1 shaping -> the musical FLAVOUR of range-varying correlation-expression (clustering/dispersion),
+WITHOUT real tail dependence. True tail dep would need a different copula family (costs: loses the gifts).
+Honest: F^-1 MIMICS, via marginals, some of what copula-family-choice gives; it is not the same thing.
+
+## CONCRETE — what you SEE on the Sands bars (2 voices x 16 steps)
+Bars show the per-step per-voice probability/value. For two SPREAD-correlated voices:
+- **BASELINE (uniform marginals + positive spread):** the two rows' up/down PATTERNS track — high-together,
+  low-together, same steps; each row uses the FULL height range. Correlated. (Stronger spread -> rows more
+  identical; spread=0 -> independent; spread<0 -> anti, A high where B low.)
+- **SAME concave F^-1 (both) + spread:** both rows BUNCH into the same (e.g. low) band, AND their occasional
+  tall spikes COINCIDE at the same steps -> visibly CLUSTERED (unison register + co-spiking).
+- **DIFFERENT curves (A concave-low, B convex-high) + spread:** rows sit in DIFFERENT height bands, but
+  MOTION still correlates (both rise/fall together WITHIN their bands) -> correlated-but-DISPERSED (coupled
+  in direction, separated in level; talls don't co-bunch).
+Visual signatures: CORRELATION = the two rows' up/down patterns agree. CLUSTERING (the F^-1 effect) = rows
+share the same height band + extremes coincide. So F^-1 controls WHERE the correlated pattern lives +
+whether voices share that band = the clustering-vs-dispersion axis, as vertical bunching on top of the
+correlated pattern.
+
+### Why the PRE/POST toggle earns its place
+Bars must show the REALIZED post-F^-1 values to SEE clustering (clustering is a marginal effect). PRE-F^-1
+bars show correlation only (raw correlated uniform); POST show correlation + clustering. The pre/post toggle
+lets you SEE the distinction -> that's what justifies it (truthful display).
+
+## Note to self
+Probability here is COMPLEX with a lot composing at once: base (knob) x correlation INTENSITY (slew temporal
++ spread cross-voice) x F^-1 RESPONSE (marginal shape / clustering) x the copula (fixed Gaussian dependence)
+x per-voice (Macro-global/Sands-unlock) x per-lane meaning (value-tilt vs control-response-curve). Good
+reminder to keep the layers DISTINCT when reasoning/building: knob=base, slew/spread=how-coupled,
+F^-1=how-expressed(marginal), copula=the dependence we don't touch. Conflating them is where confusion (and
+bugs) hide.
