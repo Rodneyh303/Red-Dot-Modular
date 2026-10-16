@@ -186,8 +186,9 @@ DmcurveDevHostWidget::DmcurveDevHostWidget(DmcurveDevHost* module) {
             w->onPress = [m] { if (m) m->starterS(); };
         });
     // CONVERT → EDITABLE: the start-from-a-shape workflow. Sample the CURRENT (parametric)
-    // distribution into a nearby 9-point PCHIP, then switch to the drawn case with handles
-    // live. (No-op when already drawn.)
+    // distribution into a nearby 13-point PCHIP (odd count: a knot lands exactly at x=0.5,
+    // which suits the symmetric shapes), then switch to the drawn case with handles live.
+    // (No-op when already drawn.)
     bindWidget<SidebarButton>("btn_convert",
         [m, themeCb](SidebarButton* w) {
             w->box.size = rack::math::Vec(104.f, 20.f);
@@ -196,7 +197,7 @@ DmcurveDevHostWidget::DmcurveDevHostWidget(DmcurveDevHost* module) {
             w->activeWhen = [m] { return m && m->which != DmcurveDevHost::DRAWN; };
             w->onPress = [m] {
                 if (!m || m->which == DmcurveDevHost::DRAWN) return;
-                m->pchip.curve = dotModular::MonotoneCurve::fromDistribution(*m->current(), 9);
+                m->pchip.curve = dotModular::MonotoneCurve::fromDistribution(*m->current(), 13);
                 m->editEnabled = true;
                 m->params[DmcurveDevHost::DISTRIBUTION_PARAM].setValue((float)DmcurveDevHost::DRAWN);
             };
@@ -271,10 +272,10 @@ void DmcurveDevHostWidget::appendContextMenu(ui::Menu* menu) {
     }
     menu->addChild(createMenuItem("Edit handles", CHECKMARK(m->editEnabled),
         [m] { m->editEnabled = !m->editEnabled; }));
-    menu->addChild(createMenuItem("Convert to editable (9-pt PCHIP)", "",
+    menu->addChild(createMenuItem("Convert to editable (13-pt PCHIP)", "",
         [m] {
             if (m->which == DmcurveDevHost::DRAWN) return;
-            m->pchip.curve = dotModular::MonotoneCurve::fromDistribution(*m->current(), 9);
+            m->pchip.curve = dotModular::MonotoneCurve::fromDistribution(*m->current(), 13);
             m->editEnabled = true;
             m->params[DmcurveDevHost::DISTRIBUTION_PARAM].setValue((float)DmcurveDevHost::DRAWN);
         }));
