@@ -79,3 +79,48 @@ bridges don't just add dead weight — they PERPETUATE the split (keep the speci
 which is the likely home of the V1-special behaviour. So the "100% mono eradication" must include RETIRING
 THE MONO CLASSES, not just the arrays/indices — and the lane cleanup must MERGE the two lane-naming systems
 + delete the identity conversions. Do all three levels or the split persists at whichever is left.
+
+---
+
+## THE LANE AXIS (found 2026-10-16, test_voice_conventions.cpp [C] — deliberately RED)
+
+The voice-axis split above now has a LANE twin, caught statically by the Phase-0 convention
+tests. SpreadInterp + SpreadManager + MonsoonSandsManager speak the OLD spread-lane order
+(0=REST, 1=MEL, 2=OCT, 3=ACC, 4=QMIX, 5=VAR, 6=LEG — SpreadInterp.hpp:55, getOriginalValue's
+switch, MonsoonSandsManager's raw 0/1/2/3/4/5/6 applyMono calls), while the unified PL_* world
+(MEL=0, OCT=1, QMIX=2, REST=3, ACC=4, VAR=5, LEG=6 — PatternEngine::PolyLane) calls SpreadInterp
+DIRECTLY from:
+- PatternEngine.cpp recompute/promote sites (applyPoly with PL_REST/PL_MELODY/PL_OCTAVE/PL_QMIX/PL_ACCENT)
+- SequencerEngine.cpp refreshPolyRandomCell (applyPoly with engLane)
+- MonsoonExpanderManager.cpp (applyMono with PL::PL_* — unified)
+- StraitsEastSandsVisual.cpp bar fill (applyAnchorV1Only, unified lane loop)
+- StraitsSandsMacroVisual.cpp macroOwnProbability (applyAnchorV1Only, engLane)
+
+### Crossing map (unified lane passed → array actually read by SpreadInterp's switch)
+```
+MEL(0) → Rhythm    OCT(1) → Melody    QMIX(2) → Octave
+REST(3) → Accent   ACC(4) → Qmix      VAR(5) → Variation (coincide)   LEG(6) → Legato (coincide)
+```
+5 of 7 lanes crossed. Own AND target read the wrong lane's arrays wherever spread != 0 on those
+paths — including the AUDIO poly spread path (PatternEngine.cpp's promote loops). At spread = 0
+it is invisible (interpolate returns original), which is why it survived this long.
+
+This also finally explains the V16 melody-bar flicker's round-5 signature: the melody bars'
+spread TARGET was monoSlewedPub(PL_MELODY=0) = V1's RHYTHM row — the one array the diagnostics
+never pinned, and the one that churns under the repro's rhythm-mix modulation. The out row
+churned while pubSlewedPolyMelody[0]/[15] sat bit-stable because the actual target wasn't the
+melody row at all.
+
+### The fix — LANDED 2026-10-16 (option (a); Rodney: "fix the code instead of the test")
+SpreadInterp's six switches + v1caSrc now speak the unified PL_* order; MonsoonSandsManager's
+applyMono sites, SpreadManager::getOriginalValue and SandsParameterManager's getInterpolatedValue
+calls converted to PL_*. The spread-VALUE fetch pairing (spreadE(0,X) / sprForLane(X) / spv[X])
+is kept EXACTLY as before — see the remaining items. Behavioural at spread != 0 (crossed reads
+become correct — NOT bit-identical there; spread = 0 paths bit-identical). The [C] contract pins
+in test_voice_conventions.cpp now guard the unified order (green). Rack verification pending
+(the V16 melody-bar flicker should be gone — its mechanism was this crossing).
+
+REMAINING (Phase-2 VALUE-store audit, NOT fixed): the spread-value fetch columns keep their
+historical sources — the stores behind them (engine spread, Monsoon editor spread, global
+spread) may themselves be order-mismatched vs the menu's unified EDITOR_LONG indexing. Also
+setMacroSpread's numVoices loop over the 16-wide slot bank.

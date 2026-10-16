@@ -105,6 +105,7 @@ TESTS=(
   "test_spread_resolver|"
   "test_subgate|$SE $GS $PE"
   "test_var_leg_rest|"
+  "test_voice_conventions|$SE $GS $PE"
   "test_voice_resolver|$SE $GS $PE"
 )
 
