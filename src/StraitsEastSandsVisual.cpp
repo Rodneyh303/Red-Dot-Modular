@@ -104,7 +104,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             };
             arc->getModNorm = [mod, this, lane]() -> float {
                 if (!mod) return 0.5f;
-                int v = polyVoice();            // poly-bank (-1 = mono/V1) — used ONLY for the v<0 mono test
+                int v = polyVoice();            // voiceSlot on poly tabs, -1 on mono/V1 — used ONLY for the v<0 mono test
                 if (v < 0) {
                     // V1 / mono tab: MOD = the EFFECTIVE V1 spread on this lane, matching
                     // the manager's sprForLane: delegated → Macro base+CVdelta; owned →
@@ -138,9 +138,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 }
                 // polySpreadEffective is VOICESLOT-indexed (writer: ExpanderManager:240
                 // `for v=1..effPolyVoices; polySpreadEffective[v]`, v = voiceSlot 1=V2..15=V16).
-                // polyVoice() above is POLY-BANK (0=V2..14=V16) — reading with it was off by one
-                // (V16 read slot 14 = V15 → the V16 melody-bar flicker; same double-convention class
-                // as the fixed polyVoice() bug, at a reader the first fix missed). Index by voiceSlot.
+                // TRUTH (plans/V16_FLICKER_root_smell.md): polyVoice() above returns exactly
+                // that voiceSlot for poly tabs (== currentSlot() there; the two differ ONLY on
+                // the mono tab, where polyVoice() = -1 — what the v<0 test above uses). The
+                // earlier comment claiming polyVoice() was 0-based-poly here was FALSE and
+                // the swap was a no-op. currentSlot() kept for the explicit voiceSlot name.
                 const int vs = currentSlot();   // voiceSlot: V2..V16 = 1..15
                 if (vs < 0 || vs >= 16) return 0.5f;
                 // polySpreadEffective is bipolar -1..1 → map to 0..1.
@@ -703,7 +705,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             if (!macroVis) return true;
             return m->getMacroOwn(Monsoon::kMonoMacroOwnRow, engLane) > 0.5f;
         }
-        int vi = currentSlot();   // Phase A: V2+=1..15 (was polyBankIndex 0..14)
+        int vi = currentSlot();   // voiceSlot: V2..V16 = 1..15 (== polyVoice() on poly tabs)
         return (vi >= 0 && vi < 16) ? (m->getMacroOwn(vi, engLane) > 0.5f) : true;
     }
     // The voice NUMBER (1..16) for the selected tab: tab 0 = V1 (mono), tab v = V(v+1).
@@ -732,9 +734,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         if (m->expanderManager.cachedEastSandsVisual != module) return false;
         return onMonoTab();   // Mono killed Step 6 — cachedSandsVisualExpander always null
     }
-    // Poly bank index (0..14) for the selected tab; -1 on the mono tab (resolver-mapped,
-    // == the old selectedVoice-1). Use only when !onMonoTab().
-    int  polyVoice() const { return dotModular::VoiceResolver::polyBankIndex(currentVoice()); }
+    // The selected tab's voiceSlot when it is a POLY tab (1..15 = V2..V16); -1 on the
+    // mono tab. Same value as currentSlot() on poly tabs — the -1 IS the point (mono
+    // guard). NOT a 0-based poly bank (dead convention). Use only when !onMonoTab().
+    int  polyVoice() const { return dotModular::VoiceResolver::polyVoiceSlot(currentVoice()); }
 
     // lane is the EDITOR lane (onLaneRightClick passes the editor row: 0 MEL,1 OCT,2 QMIX,
     // 3 REST,4 ACC). laneNames[] is editor-ordered; the macroOwn store is lane-indexed and
@@ -1088,10 +1091,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // `for v=0..15; pubSlewedPolyMelody[v]=slewedMelody[v]`, and [0]=V1/mono
             // (the mono branch reads pubSlewedPolyMelody[0]). So the per-voice bar read
             // MUST use voiceSlot (V1=0, V2=1, ..., V16=15).
-            // BUG (V16 melody-bar flicker): this used polyVoice() = polyBankIndex = (v-1)
-            // = POLY-BANK (0=V2, ..., 14=V16) — one slot LOW. Every poly voice read the
-            // adjacent slot; V16 read [14]=V15 → the flicker. The old comment claiming
-            // polyVoice() "returns voiceSlot" was FALSE (polyBankIndex returns v-1).
+            // TRUTH (plans/V16_FLICKER_root_smell.md): polyVoice() ALWAYS returned
+            // voiceSlot here (v-1: V16→15) — the aeb7a8b8 comment claiming it was
+            // 0-based-poly and "one slot low" was FALSE, and the currentSlot() swap was
+            // a no-op. The flicker is NOT an index error at this site. currentSlot()
+            // kept for the explicit voiceSlot name.
             const int vs = currentSlot();   // voiceSlot: V1=0, V2..V16 = 1..15
             auto& peRef = monsoon->engine.pe;
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {

@@ -73,7 +73,7 @@ struct SandsParameterManager {
 
   // ── WRITE direction (East): editor grid → engine raw draws for ONE voice ────
   // voiceIdx is voiceSlot (1=V2, ..., 15=V16) — the caller (polyVoice())
-  // returns voiceSlot via polyBankIndex. Use directly (no +1).
+  // returns voiceSlot via polyVoiceSlot. Use directly (no +1).
   void syncEditorToPatternEngine(int voiceIdx, const SandsVisualEditorV4::VoiceState& editorState) {
     // voiceIdx is a voiceSlot: 0..15 (V1..V16). Was `>= numVoices` (15), which silently
     // dropped V16 (slot 15) — its tab-exit probability sync never ran (LOR/spread still

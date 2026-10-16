@@ -7,7 +7,7 @@
 // STEP 1 — READ-ONLY SHADOW. This layer GENERATES NOTHING and CHANGES NO BEHAVIOUR. It
 // is a thin read facade over accessors that already exist on SequencerEngine:
 //   voice 1  → masterLaneProbability / masterLaneStep   (mono)
-//   voice ≥2 → polyLaneProbability   / polyLaneStep      (poly, bank index = voice-2)
+//   voice ≥2 → polyLaneProbability   / polyLaneStep      (poly, voiceSlot = voice-1)
 // It exists so callers (UI tabs, prob-outs, modulation) can eventually address all 16
 // voices through ONE interface instead of the scattered mono-vs-poly bridging (the -1
 // remap, the tab-1 mirror special-cases, the cover-paints). Until callers are migrated
@@ -16,7 +16,7 @@
 //
 // Voice numbering (matches the UI tabs V1..V16 and the channel-1-reserved convention):
 //   V = 1        → mono master strand (the core Monsoon voice; standalone)
-//   V = 2..16    → poly voice, poly bank index = V - 2  (0..14)
+//   V = 2..16    → poly voice, voiceSlot = V - 1  (1..15)
 //
 // The resolver only READS. Mono's generation (the Monsoon/Sands path) and poly's
 // generation (executePolyVoice) are untouched; this wraps their outputs.
@@ -36,26 +36,24 @@ struct VoiceResolver {
 
     static constexpr bool isMono(int v)  { return v == kMonoVoice; }
     static constexpr bool isPoly(int v)  { return v >= kFirstPoly && v <= kLastVoice; }
-    // Poly voiceSlot (1..15) for V2..V16 — same as voiceSlot for poly voices.
+    // Poly voiceSlot (1..15) for V2..V16 — the SAME value voiceSlot() returns for poly
+    // voices (NOT a 0-based poly bank; that convention is dead since the COLLAPSE).
     // V1 (mono) returns -1. Callers must gate on isPoly().
-    static constexpr int  polyBankIndex(int v) { return isPoly(v) ? (v - 1) : -1; }
+    static constexpr int  polyVoiceSlot(int v) { return isPoly(v) ? (v - 1) : -1; }
 
-    // ── Per-voice STORAGE SLOT conventions ──────────────────────────────────────
-    // There are TWO ways code indexes per-voice storage, and mixing them is exactly the
-    // off-by-one that bit the Macro send/atten banks (poly bank 0 == voice 2, but the mono
-    // mix-in also wanted "slot 0"). The resolver now OWNS both conventions so every bank
-    // helper routes through one definition and they cannot silently disagree:
+    // ── Per-voice STORAGE SLOT convention (ONE, post-COLLAPSE) ─────────────────
+    // There is ONE way code indexes per-voice storage: voiceSlot — 16-wide, 0 = V1 (mono),
+    // 1..15 = V2..V16. The old 0-based poly bank (bank 0 = V2, i.e. v-2) is DEAD: the arrays
+    // it used to index were widened to [16] with V1 at 0. The historical off-by-ones that bit
+    // the Macro send/atten banks came from those two conventions coexisting.
     //
-    //   voiceSlot(v)   — 16-WIDE, voice-number indexed. slot 0 = mono (V1), slot k = V(k+1).
-    //                    Use for banks that include a mono slice (Macro send/atten, the
-    //                    voice-1 mix-in). This is the N→N convention.
-    //   polyBankIndex(v) — 15-WIDE, poly-only. bank 0 = V2. Use for banks with no mono slot
-    //                      (the engine poly draw arrays, East's own owner/interp banks).
+    //   voiceSlot(v)     — 16-wide, 0=V1 … 15=V16. THE storage convention.
+    //   polyVoiceSlot(v) — the SAME value as voiceSlot for poly voices (V2→1 … V16→15),
+    //                      -1 for V1. A poly-guard on the one convention, NOT a second
+    //                      convention.
     //
-    // The invariant tying them together (asserted below): for any poly voice,
-    //   voiceSlot(v) == polyBankIndex(v) + 1.
-    // If you ever change one convention, the static_assert fails at compile time instead of
-    // shipping a silent off-by-one.
+    // The tie (asserted below): for any poly voice, voiceSlot(v) == polyVoiceSlot(v).
+    // If you ever want a 0-based poly bank again, the ARRAY is wrong — fix the array.
     static constexpr int  kVoiceSlots = kLastVoice;          // 16 (mono + 15 poly)
     static constexpr int  voiceSlot(int v)  { return v - kMonoVoice; }   // V1→0 … V16→15
     static constexpr int  slotToVoice(int s){ return s + kMonoVoice; }   // inverse
@@ -82,14 +80,14 @@ struct VoiceResolver {
     // Resolved probability draw (0..1) for (voice, lane) at the voice's own LOR step.
     float laneProbability(int v, int lane) const {
         if (isMono(v)) return eng.masterLaneProbability(lane);
-        if (isPoly(v)) return eng.polyLaneProbability(lane, polyBankIndex(v));
+        if (isPoly(v)) return eng.polyLaneProbability(lane, polyVoiceSlot(v));
         return 0.f;
     }
 
     // Resolved step index (for S&H edge detection) for (voice, lane).
     int laneStep(int v, int lane) const {
         if (isMono(v)) return eng.masterLaneStep(lane);
-        if (isPoly(v)) return eng.polyLaneStep(lane, polyBankIndex(v));
+        if (isPoly(v)) return eng.polyLaneStep(lane, polyVoiceSlot(v));
         return -1;
     }
 
@@ -97,7 +95,7 @@ struct VoiceResolver {
     // at Macro's own global LOR step). Mono ignores the explicit step (single strand).
     float laneProbabilityAtStep(int v, int lane, int step) const {
         if (isMono(v)) return eng.masterLaneProbability(lane);
-        if (isPoly(v)) return eng.polyLaneProbabilityAtStep(lane, polyBankIndex(v), step);
+        if (isPoly(v)) return eng.polyLaneProbabilityAtStep(lane, polyVoiceSlot(v), step);
         return 0.f;
     }
 
@@ -115,19 +113,19 @@ struct VoiceResolver {
 
 // Free, header-scope checks of the index dispatch (no engine needed).
 inline void voiceResolverIndexSelfTest_() {
-    static_assert(VoiceResolver::polyBankIndex(2)  == 1,  "V2 → voiceSlot 1");
-    static_assert(VoiceResolver::polyBankIndex(16) == 15, "V16 → voiceSlot 15");
-    static_assert(VoiceResolver::polyBankIndex(1)  == -1, "mono has no bank slot");
-    // The invariant that the Macro send/atten off-by-one violated: a poly voice's 16-wide
-    // voiceSlot is exactly one above its 15-wide poly bank (slot 0 reserved for mono). If
-    // either convention drifts, THIS fails to compile rather than misrouting CV at runtime.
+    static_assert(VoiceResolver::polyVoiceSlot(2)  == 1,  "V2 → voiceSlot 1");
+    static_assert(VoiceResolver::polyVoiceSlot(16) == 15, "V16 → voiceSlot 15");
+    static_assert(VoiceResolver::polyVoiceSlot(1)  == -1, "mono has no poly slot");
+    // voiceSlot and polyVoiceSlot are the SAME value for poly voices — the COLLAPSE unified
+    // the old twin conventions into one. If anyone reintroduces a 0-based poly bank, THIS
+    // fails to compile rather than misrouting CV at runtime.
     static_assert(VoiceResolver::voiceSlot(1)  == 0,  "mono is slot 0");
     static_assert(VoiceResolver::voiceSlot(2)  == 1,  "V2 is slot 1 (NOT slot 0 — the bug)");
     static_assert(VoiceResolver::voiceSlot(16) == 15, "V16 is slot 15");
-    static_assert(VoiceResolver::voiceSlot(2) == VoiceResolver::polyBankIndex(2),
-                  "voiceSlot(poly) == polyBankIndex(poly) — unified to voiceSlot");
-    static_assert(VoiceResolver::voiceSlot(16) == VoiceResolver::polyBankIndex(16),
-                  "voiceSlot == polyBankIndex across the whole poly range");
+    static_assert(VoiceResolver::voiceSlot(2) == VoiceResolver::polyVoiceSlot(2),
+                  "voiceSlot(poly) == polyVoiceSlot(poly) — ONE convention");
+    static_assert(VoiceResolver::voiceSlot(16) == VoiceResolver::polyVoiceSlot(16),
+                  "voiceSlot == polyVoiceSlot across the whole poly range");
     static_assert(VoiceResolver::slotToVoice(VoiceResolver::voiceSlot(9)) == 9, "slot round-trips");
     static_assert(VoiceResolver::kVoiceSlots == 16, "16 voice slots (mono + 15 poly)");
     static_assert(VoiceResolver::kMonoSlot == VoiceResolver::voiceSlot(VoiceResolver::kMonoVoice), "kMonoSlot is the mono voice slice");

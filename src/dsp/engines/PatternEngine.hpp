@@ -137,7 +137,7 @@ struct PatternEngine {
     // Poly probability view: voice bank b (0..14 = V2..V16) → slot b+1; lane is the engine PL_ lane,
     // converted to editor order. Returns the 16-step row (float(&)[16]) so callers index [step].
     // Phase A: polyRandom now takes voiceSlot directly (V1=0, V2+=1..15). Was bank+1 (skipping V1).
-    // Callers must pass voiceSlot (0..15), NOT polyBankIndex (0..14). Old patches discarded.
+    // Callers must pass voiceSlot (0..15), NOT a 0-based poly bank (dead convention). Old patches discarded.
     float (&polyRandom(int voiceSlot, int engLane))[16] {
         int edLane = (engLane >= 0 && engLane < 7) ? engLane : 0;
         return random_[voiceSlot][edLane];

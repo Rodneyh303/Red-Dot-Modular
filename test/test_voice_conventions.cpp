@@ -1,7 +1,8 @@
 // test_voice_conventions.cpp — voice-convention CONTRACT tests (plans/VOICE_CONVENTION_TESTS.md,
-// driven by plans/V16_FLICKER_root_smell.md: VoiceResolver::polyBankIndex is a lying abstraction —
-// name/comments say 0-based poly bank (0=V2, voiceSlot=polyBankIndex+1) while the code returns
-// v-1 = voiceSlot-for-poly). These tests pin index<->voice mappings by ACTUAL BEHAVIOUR
+// driven by plans/V16_FLICKER_root_smell.md: VoiceResolver::polyBankIndex was a lying abstraction —
+// name/comments said 0-based poly bank (0=V2, voiceSlot=polyBankIndex+1) while the code returned
+// v-1 = voiceSlot-for-poly. (Renamed polyVoiceSlot in the Phase-1 truth-fix; value unchanged.)
+// These tests pin index<->voice mappings by ACTUAL BEHAVIOUR
 // (definition's array + writer, never the param name — names lie), so a lying convention or a
 // wrong-convention caller fails with "voice N's data appeared under voice M".
 //
@@ -81,16 +82,16 @@ int main() {
     {
         check(VR::voiceSlot(1) == 0 && VR::voiceSlot(2) == 1 && VR::voiceSlot(16) == 15,
               "voiceSlot(v) = v-1  (V1=0, V2=1, V16=15)");
-        // THE CODE'S ACTUAL BEHAVIOUR (contradicting its own name/comments — see
-        // plans/V16_FLICKER_root_smell.md). Phase 1 renames this polyVoiceSlot; the VALUE
-        // must not change. This pin is what makes the rename provably value-identical.
-        check(VR::polyBankIndex(2) == 1 && VR::polyBankIndex(16) == 15,
-              "polyBankIndex(poly v) = v-1  (V2=1, V16=15) — SAME value as voiceSlot");
-        check(VR::polyBankIndex(1) == -1,
-              "polyBankIndex(mono V1) = -1  (poly guard, not a slot)");
+        // polyVoiceSlot (renamed from polyBankIndex — the name lied; see
+        // plans/V16_FLICKER_root_smell.md): SAME VALUE as voiceSlot for poly voices,
+        // -1 for mono (the poly guard). This pin made the rename provably value-identical.
+        check(VR::polyVoiceSlot(2) == 1 && VR::polyVoiceSlot(16) == 15,
+              "polyVoiceSlot(poly v) = v-1  (V2=1, V16=15) — SAME value as voiceSlot");
+        check(VR::polyVoiceSlot(1) == -1,
+              "polyVoiceSlot(mono V1) = -1  (poly guard, not a slot)");
         bool allEq = true;
-        for (int v = 2; v <= 16; ++v) if (VR::voiceSlot(v) != VR::polyBankIndex(v)) allEq = false;
-        check(allEq, "voiceSlot == polyBankIndex across the whole poly range (ONE convention)");
+        for (int v = 2; v <= 16; ++v) if (VR::voiceSlot(v) != VR::polyVoiceSlot(v)) allEq = false;
+        check(allEq, "voiceSlot == polyVoiceSlot across the whole poly range (ONE convention)");
         check(VR::slotToVoice(VR::voiceSlot(16)) == 16 && VR::slotToVoice(VR::voiceSlot(1)) == 1,
               "slotToVoice(voiceSlot(v)) round-trips (V1, V16)");
         check(VR::kVoiceSlots == 16 && VR::kMonoSlot == 0,

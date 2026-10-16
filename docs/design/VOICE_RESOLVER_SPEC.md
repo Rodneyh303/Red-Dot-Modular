@@ -99,7 +99,7 @@ banks directly:
 ```
 resolver.value(V, lane, param)     // V in 1..16; V=1 → mono, V≥2 → poly derivation
 resolver.baseEditableHere(V, lane) // false for V=1 (mono owns) → UI shows read-only mirror
-resolver.polyBankIndex(V)          // V-2 for poly; undefined for mono (callers must not index)
+resolver.polyVoiceSlot(V)          // V-1 for poly (== voiceSlot); -1 for mono (callers must not index)
 resolver.spreadMode(V)             // MONO_DRAW for V=1, AVERAGE_POLY for V≥2
 ```
 

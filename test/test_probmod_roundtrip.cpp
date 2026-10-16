@@ -73,7 +73,7 @@ int main() {
     });
     TEST("poly bank b  ↔  voiceSlot == b + 1  (V2->slot1 … V16->slot15)", {
         for (int v = VR::kFirstPoly; v <= VR::kLastVoice; ++v)
-            EXPECT_EQ(VR::voiceSlot(v), VR::polyBankIndex(v));
+            EXPECT_EQ(VR::voiceSlot(v), VR::polyVoiceSlot(v));
     });
     TEST("16 slots total, slotToVoice inverts voiceSlot", {
         EXPECT_EQ(VR::kVoiceSlots, 16);

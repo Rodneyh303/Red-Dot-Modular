@@ -532,7 +532,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         const int  viewVoiceNum = viewVoice + 1;
         const bool onMonoTab = dotModular::VoiceResolver::isMono(viewVoiceNum);
         // (v1Editable removed — its only use, hiding Macro attens on V1, was dropped in P1.)
-        const int  pv = dotModular::VoiceResolver::polyBankIndex(viewVoiceNum);  // -1 on mono
+        const int  pv = dotModular::VoiceResolver::polyVoiceSlot(viewVoiceNum);  // voiceSlot for poly, -1 on mono
 
         // Mix-in sends: STORE-BACKED via the StoreKnobs above (they read/write
         // getMacroSend/setMacroSend for the live view voice directly). The old per-voice

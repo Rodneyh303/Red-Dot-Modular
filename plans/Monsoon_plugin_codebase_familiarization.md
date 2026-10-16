@@ -137,7 +137,7 @@ All constructed in `Monsoon()` and held by `unique_ptr`. Single-responsibility; 
 | [`ScaleList.hpp`](plugins/Melodicer/src/dsp/ScaleList.hpp:28) | Boundary-quantised (scale,root) list for Shophouse: `setPending`/`commitAtBoundary`. Pure data model. |
 | [`SpreadResolver.hpp`](plugins/Melodicer/src/dsp/SpreadResolver.hpp:39) | Pure arithmetic for effective spread amount (base + ownCv + eastCv + macroSendDelta, step-clamped). Delegated lane mirrors Macro. |
 | [`SpreadInterp.hpp`](plugins/Melodicer/src/dsp/SpreadInterp.hpp:30) | Single definition of spread interpolation: bipolar (>0 converge to target, <0 invert toward 1−target), AVERAGE_POLY vs MONO_DRAW. Operates on slewed draws. |
-| [`VoiceResolver.hpp`](plugins/Melodicer/src/dsp/VoiceResolver.hpp:29) | Uniform 16-voice addressing: V1=mono, V2..V16=poly. `voiceSlot`/`polyBankIndex` conventions (with static_asserts guarding the off-by-one). Read-only shadow. |
+| [`VoiceResolver.hpp`](plugins/Melodicer/src/dsp/VoiceResolver.hpp:29) | Uniform 16-voice addressing: V1=mono, V2..V16=poly. ONE slot convention: `voiceSlot` (0=V1..15=V16); `polyVoiceSlot` is its poly-gated view (-1 on mono), static_asserts guard the unification. Read-only shadow. |
 | [`SandsTopology.hpp`](plugins/Melodicer/src/dsp/SandsTopology.hpp:33) | Ownership/lock/editable authority. `Config` enum (EMPTY/MONO/EAST/MACRO_SOLE/.../MONO_EAST_MACRO). `owner(voice,lane)` → Role. `editableOn`/`lockedOn`/`writesEngine`. The named-config guard against the Mono+Macro clobber. |
 
 ## 7. Expanders — `src/*.cpp` (11 modules)

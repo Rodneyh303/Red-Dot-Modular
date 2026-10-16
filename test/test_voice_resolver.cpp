@@ -5,8 +5,8 @@
 // laneProbability / laneStep / laneProbabilityAtStep must return BIT-EXACTLY what the direct
 // engine accessors return —
 //     V1  → eng.masterLane* (the mono master strand)
-//     V≥2 → eng.polyLane*(.., V-2)
-// plus the metadata dispatch (isMono/isPoly/polyBankIndex/baseEditableHere/spreadMode).
+//     V≥2 → eng.polyLane*(.., V-1 = voiceSlot)
+// plus the metadata dispatch (isMono/isPoly/polyVoiceSlot/baseEditableHere/spreadMode).
 //
 // Strategy: construct a REAL SequencerEngine (now possible post-Xoroshiro-deprecation — the
 // test rack shim constructs it), seed every poly bank [v][step] and the master strand arrays
@@ -87,11 +87,11 @@ int main() {
     TEST("voice identity + bank index across all 16 voices", {
         EXPECT(VoiceResolver::isMono(1));
         EXPECT(!VoiceResolver::isPoly(1));
-        EXPECT_EQ(VoiceResolver::polyBankIndex(1), -1);
+        EXPECT_EQ(VoiceResolver::polyVoiceSlot(1), -1);
         for (int v = 2; v <= 16; ++v) {
             EXPECT(VoiceResolver::isPoly(v));
             EXPECT(!VoiceResolver::isMono(v));
-            EXPECT_EQ(VoiceResolver::polyBankIndex(v), v - 1);
+            EXPECT_EQ(VoiceResolver::polyVoiceSlot(v), v - 1);
         }
     });
     TEST("voiceSlot convention + the slot/bank invariant the send-bank off-by-one violated", {
@@ -106,7 +106,7 @@ int main() {
         // bank with a mono slice (send/atten) and a poly-only bank stay correctly offset. This
         // is exactly the relationship the Macro send/atten off-by-one broke (V2 → slot 0).
         for (int v = 2; v <= 16; ++v)
-            EXPECT_EQ(VoiceResolver::voiceSlot(v), VoiceResolver::polyBankIndex(v));
+            EXPECT_EQ(VoiceResolver::voiceSlot(v), VoiceResolver::polyVoiceSlot(v));
     });
     TEST("baseEditableHere: false for mono, true for poly", {
         EXPECT(!VoiceResolver::baseEditableHere(1));
