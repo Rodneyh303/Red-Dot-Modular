@@ -197,3 +197,28 @@ Note as an OPTION. Primary focus = the Monsoon expander (serves the instrument).
 cheaply (it mostly does — shared core), it's high-leverage (gateway + fills a gap + de-risks). Do (a) first
 if at all; (b) only if the "any->any distribution transfer" tool is worth the online-CDF work. Do NOT let it
 pull focus from the instrument.
+
+---
+
+## REFINED file/state model — .dmcurve is a FILE; the distribution is PATCH STATE (no .dmdist)
+Separated the two concepts (Rodney), then realised only ONE needs a file:
+- A **CURVE** = a monotone shape (points + interp) — a CRAFTED, reusable, shareable ASSET. Worth a file.
+- A **DISTRIBUTION** = which dist a lane uses (type + params, OR "drawn") — just a SETTING. Not an asset.
+
+### Decision: ONE format (.dmcurve); distribution rides in the patch
+- **.dmcurve = the ONE file format** — a general-purpose monotone CURVE (points + interp, endpoint
+  convention). Reusable ANYWHERE a curve is wanted (F^-1/transfer/mapping), not locked to "distribution".
+  The BWCURVE analogue; OPEN + documented + text + versioned (see .dmcurve section above). Save/load/library/
+  share.
+- **NO .dmdist file.** The distribution SELECTION (parametric {type, params}, or "drawn") is LANE/PATCH
+  STATE — it serializes with the patch like slew/K/any parameter. Nothing to save separately.
+- A DRAWN lane EMBEDS its curve points in the patch (self-contained — patch never breaks), and can
+  OPTIONALLY save/load a .dmcurve for library/reuse. The .dmcurve is the SHARING/LIBRARY copy; the patch
+  always carries its own inline copy. No fragile cross-references.
+
+### Why (the principle)
+Files are for CRAFTED, REUSABLE ASSETS (tunings .dmtune, curves .dmcurve). Patch state is for SETTINGS
+(which distribution + params). A parametric dist choice is a setting; a hand-drawn curve is an asset — only
+the asset earns a format. Result: ONE format not two, no .dmdist library/browser/reference-resolution, no
+cross-reference fragility, and .dmcurve stays general-purpose. Authorable-asset family = .dmtune + .dmcurve
+(two files); distributions live in patches.
