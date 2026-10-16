@@ -48,3 +48,39 @@ Sands has ROWS of LANES; this has ROWS of VOICES.
 - Pre/post or realized-only? (Realized = weight x tilt. Could toggle to show weight-only (uniform) vs
   realized, = the pre/post idea, per row.)
 - Reuse Sands bar renderer + the host-snapshot pattern from Lantern.
+
+
+---
+
+## MECHANISM (precise) — faders set WIDTHS; Sands output is the non-uniform draw thrown at them (Rodney)
+- Faders (Monsoon/Colonnades/Duo) set weight WIDTHS: each note owns a slice of width weight[i] along the
+  selection axis (relative, normalized at pick). STATIC structure, uniform-interpretation.
+- The "EFFECTIVE weight" arises from throwing NON-UNIFORM data at those widths — and that non-uniform data
+  IS THE SANDS OUTPUT (the generated, per-voice, correlated-via-slew/spread, F^-1-reshaped draw). The faders
+  are the passive TARGET (widths); the Sands draw is the non-uniform PROJECTILE; effective = where it lands.
+- EFFECTIVE weight[i, voice] = width[i] x (Sands-draw density over slice i, for that voice). Per voice (the
+  Sands draw differs per voice), LIVE. This locates the non-uniformity in its SOURCE (the Sands output
+  stream), not an abstract pitch-lane tilt — pitch faders are passive widths; the action is the draw hitting
+  them.
+- So the visualiser needs: WIDTHS (from host faders) x realized per-voice SANDS DRAW density -> the effective
+  per-note (and per-octave) distribution, per voice.
+
+## VALUE — useful EVEN WITHOUT tilt (Rodney)
+Even with a UNIFORM draw (no F^-1 tilt), the visualiser earns its place: it maps the RELATIVE fader widths to
+the ABSOLUTE probability (normalized) — i.e. it answers "given these relative fader heights, what's each
+note's actual probability?", which the faders alone don't show (they're relative). So it's valuable from day
+one, before any distribution-shaping feature lands. With tilt/per-voice distributions, it additionally shows
+how those reshape the landing.
+
+## SCOPE of what it visualises (the combined effective picture)
+A single super-nice visual of the COMBINED effective result:
+- MELODY + OCTAVE settings (the weight widths) -> effective note/octave distribution.
+- STRAITS planned per-voice OCTAVE DISPLACEMENT folded in (voices shifted in register) — so the effective
+  distribution reflects where each voice actually sits.
+- PLUS any per-lane / per-voice distribution (tilt) settings, when present.
+=> users SEE the net effect of all the pitch-shaping layers (weights x Sands draw x Straits displacement x
+tilt) per voice, live. The window into "what notes/octaves will this voice actually play, and how often".
+
+## Effort — LOW (reuse)
+Reuses Sands bar renderer + Lantern host-snapshot/display-only pattern -> not onerous. Mostly: the row-of-
+voices layout, the widths x Sands-density product, the Straits-displacement fold-in, host-driven degree count.
