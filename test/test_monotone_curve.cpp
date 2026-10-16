@@ -45,6 +45,7 @@
 #include <vector>
 
 #include "MonotoneCurve.hpp"
+#include "Distribution.hpp"
 
 using dotModular::MonotoneCurve;
 
@@ -835,6 +836,65 @@ static void testJsonSanitize() {
     }
 }
 
+// ── 13. fromDistribution (parametric → nearby editable PCHIP; Phase 2.5) ──────────────────────
+static void fromDistributionCase(const dotModular::Distribution& d, const char* name, double tol) {
+    MonotoneCurve c = MonotoneCurve::fromDistribution(d, 9);
+    check(c.size() == 9, "fromDistribution: n control points");
+    check(invariantsHold(c), "fromDistribution: invariants (sorted/monotone/pinned)");
+    check(c.evalCDF(0.0) == 0.0 && c.evalCDF(1.0) == 1.0, "fromDistribution: pinned corners exact");
+    check(monotoneSweep(c, 1000), "fromDistribution: monotone sweep");
+    // NEARBY: the 9-point PCHIP approximates the parametric CDF (it's a starting shape,
+    // not a copy — the tolerance IS the approximation quality)
+    double maxErr = 0.0;
+    for (int k = 0; k <= 200; ++k) {
+        const double x = (double)k / 200.0;
+        const double err = std::fabs(c.evalCDF(x) - d.cdf(x));
+        if (err > maxErr) maxErr = err;
+    }
+    checkNear(maxErr, 0.0, tol, "fromDistribution: evalCDF ≈ parametric cdf (nearby)");
+    // A denser sampling is at least as close
+    MonotoneCurve c17 = MonotoneCurve::fromDistribution(d, 17);
+    double maxErr17 = 0.0;
+    for (int k = 0; k <= 200; ++k) {
+        const double x = (double)k / 200.0;
+        const double err = std::fabs(c17.evalCDF(x) - d.cdf(x));
+        if (err > maxErr17) maxErr17 = err;
+    }
+    check(maxErr17 < maxErr + 1e-9, "fromDistribution: 17 points at least as close as 9");
+    check(invariantsHold(c17) && monotoneSweep(c17, 500), "fromDistribution: 17-pt invariants");
+    // The result is an ORDINARY editable curve: drags work, JSON round-trips
+    c.setPoint(1, c[1].x, 0.5);
+    check(invariantsHold(c) && monotoneSweep(c, 500), "fromDistribution: editable after conversion");
+    json_t* j = c.toJson();
+    MonotoneCurve c2;
+    check(c2.fromJson(j), "fromDistribution: JSON round-trip loads");
+    check(samePoints(c, c2), "fromDistribution: JSON round-trip identical");
+    json_decref(j);
+    (void)name;
+}
+static void testFromDistribution() {
+    std::printf("fromDistribution (parametric -> nearby PCHIP)\n");
+    fromDistributionCase(dotModular::TriangularDistribution(0.3), "triangular", 5e-3);
+    fromDistributionCase(dotModular::PowerDistribution(2.0), "power", 5e-3);
+    fromDistributionCase(dotModular::KumaraswamyDistribution(2.0, 3.0), "kumaraswamy", 1e-2);
+    fromDistributionCase(dotModular::LogitNormalDistribution(0.0, 1.0), "logit-normal", 2e-2);
+    // Arcsine is the WORST case for even spacing: its CDF has infinite slope at both
+    // endpoints, so the first/last PCHIP segments undershoot (~4.4% at 9 points). Still
+    // "nearby"; adaptive sampling is the documented later refinement if it matters.
+    fromDistributionCase(dotModular::ArcsineDistribution(), "arcsine", 5e-2);
+    fromDistributionCase(dotModular::TruncatedNormalDistribution(0.5, 0.2), "truncated-normal", 5e-3);
+    // Degenerate far-off-support (a step CDF): still a valid monotone curve
+    dotModular::TruncatedNormalDistribution far(-3.0, 0.1);
+    MonotoneCurve cf = MonotoneCurve::fromDistribution(far, 9);
+    check(invariantsHold(cf) && monotoneSweep(cf, 500),
+          "fromDistribution: far-off-support step CDF stays valid");
+    // n clamps into [MIN_POINTS, MAX_POINTS]
+    MonotoneCurve cn = MonotoneCurve::fromDistribution(dotModular::PowerDistribution(2.0), 1);
+    check(cn.size() == MonotoneCurve::MIN_POINTS, "fromDistribution: n clamps up to MIN_POINTS");
+    MonotoneCurve cx = MonotoneCurve::fromDistribution(dotModular::PowerDistribution(2.0), 999);
+    check(cx.size() == MonotoneCurve::MAX_POINTS, "fromDistribution: n clamps down to MAX_POINTS");
+}
+
 int main() {
     std::printf("== MonotoneCurve (.dmcurve Phase 1) ==\n");
     testIdentityCurve();
@@ -851,6 +911,7 @@ int main() {
     testJsonSchemaFields();
     testJsonValidation();
     testJsonSanitize();
+    testFromDistribution();
     std::printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
