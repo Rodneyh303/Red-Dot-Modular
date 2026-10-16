@@ -22,13 +22,19 @@ CDF:  out = F^-1(U).  And it is:
 So: user brings entropy + craft + reaction (random gates Mode C, random pitch to quantiser) AND can shape
 the output distribution; the instrument owns the correlational MODEL.
 
-## Scope (Rodney's initial thinking — keep it tight)
-- Distributions that are QUICK to compute and defined on FINITE [0,1] (so F^-1 is cheap, bounded, no tails
-  to clip): e.g. Beta-ish shapes, triangular, raised-cosine, power (U^k), logistic-on-[0,1], piecewise/
-  user curve. No heavy/unbounded ones.
-- PER-LANE only. NO parameter modulation (keep it a set-and-forget shaping curve per lane, not a modulated
-  surface — avoids the modulation-cost + reversibility questions).
-- Delivery: an output-layer MAPPING, e.g. a SANDS EXTENSION (expander) that carries the per-lane F^-1 curves.
+## Scope (FINAL — Rodney)
+- Distributions QUICK to compute, FINITE [0,1] (F^-1 cheap, bounded, no tails). See palette below.
+- NO parameter modulation (set-and-forget curve — avoids modulation-cost + reversibility questions).
+- SCOPE = the instrument's existing two-tier MACRO <-> SANDS delegate/override pattern (same as every other
+  per-voice param): the F^-1 curve is **per-lane, GLOBAL across voices by default (set via MACRO)**, with
+  **optional PER-VOICE UNLOCK to a different curve via SANDS**. Default = ONE curve per lane; per-voice is
+  OPT-IN only when a voice wants distinct character. NOT per-slot, NOT per-collection, NOT fixed per-voice.
+- Collection-character EMERGES: set global-per-lane on Macro, selectively unlock voices in Sands; whatever
+  collections the arrangement (voice->slot->fan-out->arrange) forms inherit their voices' curves. No
+  collection-level control needed — it composes up from Macro-global + selective-Sands-unlock.
+- Reuses existing machinery + mental model (delegate-global-or-override-local); zero new conceptual surface.
+- Delivery: the curve lives on MACRO (global per lane) and SANDS (per-voice when unlocked), where those
+  controls already are.
 
 ## UI thoughts (initial)
 - A mapping VISUALISER (show the F^-1 curve per lane), and/or
@@ -80,3 +86,41 @@ true Beta, or the drawn curve). Runtime = LUT lookup + interpolation, IDENTICAL 
 no-modulation constraint is what buys this: all per-distribution cost is at set-time, runtime is one cheap
 uniform path. (Closed-form ones -- triangular/power/logit-normal/Kumaraswamy -- could even skip the LUT and
 eval live if preferred; LUT is the uniform option.)
+
+---
+
+## USER-DRAWN CURVE — how to surface it (Rodney: think on this)
+The user-draw F^-1 is the most expressive + fun shaper, but it needs a curve-DRAWING UI. The curve IS F^-1
+(monotone [0,1]->[0,1]); the only runtime cost is a LUT lookup, so ALL the work is the editor.
+
+### Reference / prior art
+- MindMeld ShapeMaster is the gold standard for curve drawing in VCV (node-based, draggable handles,
+  tension/curve-type per segment, snap). BUT closed-source — can't lift code, only study the UX.
+- So: either (a) build a minimal bespoke monotone-curve editor, or (b) pull in a 3rd-party OPEN-SOURCE curve
+  lib.
+
+### Requirements (narrower than ShapeMaster — this is NOT a full envelope editor)
+- Domain/range both [0,1]; MONOTONE NON-DECREASING enforced (it's an inverse-CDF — must be monotone or the
+  "distribution" is ill-defined). This constraint SIMPLIFIES the editor vs ShapeMaster (no arbitrary shapes).
+- A handful of draggable control points + interpolation (monotone cubic / PCHIP keeps it monotone +
+  smooth; or monotone Catmull-Rom; linear is the trivial floor).
+- Endpoints pinned (0,0) and (1,1) OR free (a non-(0,0)/(1,1) curve = truncated/shifted support — decide:
+  pin for a true CDF, or allow free for creative "dead zones").
+- Output: a LUT (e.g. 256/1024 samples) sampled from the curve at set-time. Runtime = lookup+interp.
+- Fits on a Sands/Macro panel region (small), with the pre/post-transform bar display alongside.
+
+### Open-source options to evaluate (3rd-party)
+- MONOTONE INTERPOLATION (the math, not the UI): PCHIP / Fritsch-Carlson monotone cubic — tiny, public-
+  domain algorithms, trivial to vendor (no lib needed, ~30 lines). This is likely all the "lib" required —
+  the interpolation is the only non-trivial math, and monotone-cubic is a known closed-form.
+- CURVE-EDITOR UI: VCV itself has no shared curve widget; most plugins roll their own. Check permissively-
+  licensed VCV plugins with curve editors (MIT/BSD/GPL-compat with our license) to study/adapt — but the
+  WIDGET is mostly nanovg drawing + hit-testing on control points, which is bespoke-cheap to write.
+- Decision lean: VENDOR the monotone-cubic interpolation (~30 lines, public domain) + write a MINIMAL
+  bespoke nanovg curve widget (draggable monotone-constrained points). A full 3rd-party curve-editor lib is
+  probably heavier than needed for a monotone [0,1] inverse-CDF. Study ShapeMaster's UX, don't need its code.
+
+### Build order (when this lands)
+1. Closed-form distributions FIRST (triangular/power/logit-normal/Kumaraswamy) — no UI beyond param knobs +
+   the visualiser. Gets the whole F^-1-LUT pipeline + pre/post display working.
+2. THEN the user-draw curve editor on top (the pipeline already exists; only the editor is new).
