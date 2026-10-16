@@ -26,9 +26,10 @@
 // flicker's mechanism (the melody spread target was V1's RHYTHM row, which churns under
 // rhythm-mix modulation). Fixed by: SpreadInterp speaks PL_*; MonsoonSandsManager's applyMono
 // sites + SpreadManager::getOriginalValue + SandsParameterManager converted to PL_*.
-// REMAINING Phase-2 lane questions (VALUE stores, not array reads — NOT fixed here): the
-// spread-value fetch columns (spreadE/sprForLane/spv) vs the menu's unified EDITOR_LONG
-// indexing of the editor spread stores; setMacroSpread's numVoices loop.
+// Phase-2 follow-up (LANDED, same session): the spread-VALUE fetch columns were converted
+// to unified PL_* (spreadE/sprForLane/spv — the stores were verified unified: menu
+// EDITOR_LONG, East binds, publishGlobal); setMacroSpread deleted as dead code. Rack
+// verification of the knob→lane mapping is the remaining behavioural check.
 #include "engines/PatternEngine.hpp"
 #include "engines/SequencerEngine.hpp"
 #include "managers/SpreadManager.hpp"

@@ -270,8 +270,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 return cv * att * (hi - lo);
             };
             // Macro global CV distributed to voice 1 (voice-0 send × macroCVDelta).
-            // sendId AND macroCVDelta are ENGINE-lane indexed (REST=0,MEL=1,OCT=2,
-            // ACC=3) — same as the poly path — so pass the engine lane, not editor l.
+            // The send bank AND macroCVDelta/macroSendDelta are indexed by the UNIFIED
+            // poly lane (publishGlobal's loop) — editor l IS that lane (identity), so
+            // pass l directly.
             // NOTE: macroCVDelta is published by the Macro block LATER in this same
             // processDNA (after the mono strand), so voice 1 reads the PREVIOUS control
             // block's delta — a one-block (sub-ms, control-rate) lag. Imperceptible.
@@ -313,8 +314,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             }
         };
 
-        // Spread (REST/MEL/OCT only): base trimpot + per-lane spread CV.
-        // sprId/sprCvId lane index: 0=REST, 1=MELODY, 2=OCTAVE (editor order).
+        // Spread: base trimpot + per-lane spread CV. Lane index is the UNIFIED order
+        // (editor == engine == PL_*: 0=MEL, 1=OCT, 2=QMIX, 3=REST, 4=ACC, 5=VAR, 6=LEG).
        // if (hasMonoVisual) 
        // {
             // REST/MEL/OCT/ACCENT spread (engine/spread lanes 0..3). Accent is now
@@ -325,18 +326,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 // Delegation: if Mono CEDES this poly spread lane to Macro, the spread
                 // tracks Macro's global spread (base + tapped send delta) exclusively —
                 // no Mono base, no Mono/East CV (parallel to the LOR delegation above).
-                // l is the SPREAD/engine lane (0=REST,1=MEL,2=OCT,3=ACC); ownerDispId is
-                // EDITOR-ordered (0=MEL,1=OCT,2=REST,3=ACC), so convert — otherwise the
-                // owner of lane N+1 gates lane N's delegation (octave owner ↔ melody
-                // spread, etc.).
-                // l is the SPREAD/engine lane (0=REST,1=MEL,2=OCT,3=ACC). Use the helper
-                // that bakes the engine→editor conversion (Mono's ownerDispId is editor-
-                // ordered) so we can't regress the owner-of-N+1-gates-N off-by-one.
+                // l is the UNIFIED poly lane (editor == engine — identity); the owner
+                // store and monoMacroOwnsEngineLane both speak the same unified order.
                 // Effective spread amount via the single authority (SpreadResolver). All inputs are
                 // read from exactly the same places the previous inline arithmetic did; the resolver
                 // replicates the manager's step-wise clamping, so this is behaviour-inert. Topology
                 // decides delegation (owner()==MACRO, via monoMacroOwnsEngineLane); the resolver only
-                // consumes that boolean. l is the SPREAD/engine lane (0=REST,1=MEL,2=OCT,3=ACC).
+                // consumes that boolean. l is the unified poly lane.
                 auto* eastVisS = expanderManager.cachedEastSandsVisual;
                 // MVC step 1d: spread base + atten are now STORE-BACKED (editor.spread /
                 // editor.monoAtten), not params. gMon is the store owner; was NOT in scope here.
@@ -345,7 +341,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 sin.delegated    = hasMacro && macroVis &&
                                    SandsMonoVisualIds::monoMacroOwnsEngineLane(monoVis, l);
                 sin.macroPresent = (hasMacro && macroVis);
-                // base: editor.spread[kMonoSlot, l] (l = engine/spread lane). Was params[sprId(l)].
+                // base: editor.spread[kMonoSlot, l] (l = unified poly lane). Was params[sprId(l)].
                 sin.base         = gMon ? gMon->getSpread(dotModular::VoiceResolver::kMonoSlot, l) : 0.f;
                 // Own Mono spread CV (sprCvId jack + sprAttenId), unit-scaled /10.
                 if (monoVis->inputs[Mono::sprCvId(l)].isConnected()) {
@@ -369,8 +365,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 engine.spreadERef(0, l) = redDot::SpreadResolver::effective(sin);   // slot 0 = mono/V1
             }
             // engine.spread[slot][editorLane] is the engine's own spread state (was monoVis->
-            // spreadEffective — MVC: the model no longer reaches into the visual). Accessed engine-
-            // order via spreadE/spreadERef (0=REST,1=MEL,2=OCT,3=ACCENT,4=QMIX,5=VAR,6=LEG). SANDS
+            // spreadEffective — MVC: the model no longer reaches into the visual). Accessed
+            // via spreadE/spreadERef in the UNIFIED order (0=MEL,1=OCT,2=QMIX,3=REST,4=ACCENT,
+            // 5=VAR,6=LEG — editor == engine). SANDS
             // CONSOLIDATION Step 3: lanes 5/6 (VAR/LEG) are now spread-active (the loop above runs
             // l < POLY_LANES=7); the old 'lanes 4/5 unused (LEG/VAR mono-only)' note was stale.
 
@@ -394,33 +391,40 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             if (sprR || sprM || sprQ) {
             for (int i = 0; i < 16; ++i) {
                 if (sprR) {
-                    // LANE UNIFICATION: applyMono's lane arg is the unified PL_* order
-                    // (SpreadInterp speaks PL_*). The spreadE(0, X) VALUE fetch keeps its
-                    // historical column pairing — the spread store's own order is a separate
-                    // Phase-2 audit item.
+                    // LANE UNIFICATION (Phase 2): the spread-value stores are ALL unified
+                    // (menu EDITOR_LONG, East binds, the pipeline loop above) — so the
+                    // spreadE fetch must use PL_* too. The old raw literals (0/1/2/3/4/5/6
+                    // under the dead spread order) read the WRONG lane's knob.
                     engine.pe.rhythmRandom[i] = redDot::SpreadInterp::applyMono(
-                        engine.pe, SequencerEngine::PL_REST, i, engine.spreadE(0, 0));
+                        engine.pe, SequencerEngine::PL_REST, i,
+                        engine.spreadE(0, SequencerEngine::PL_REST));
                     // VAR/LEG spread: applyMono, not the raw slewed copy. Under
                     // anchor-V1 this is a self-target no-op, but under follow-CA (V1 pinned) it
                     // interpolates own(pre-remap) vs target(post-remap) — meaningful. Either way
                     // the spread value is now read/published instead of dropped on the floor.
                     engine.pe.variationRandom[i] = redDot::SpreadInterp::applyMono(
-                        engine.pe, SequencerEngine::PL_VARIATION, i, engine.spreadE(0, 5));
+                        engine.pe, SequencerEngine::PL_VARIATION, i,
+                        engine.spreadE(0, SequencerEngine::PL_VARIATION));
                     engine.pe.legatoRandom[i]    = redDot::SpreadInterp::applyMono(
-                        engine.pe, SequencerEngine::PL_LEGATO, i, engine.spreadE(0, 6));
+                        engine.pe, SequencerEngine::PL_LEGATO, i,
+                        engine.spreadE(0, SequencerEngine::PL_LEGATO));
                     engine.pe.accentRandom[i] = redDot::SpreadInterp::applyMono(
-                        engine.pe, SequencerEngine::PL_ACCENT, i, engine.spreadE(0, 3));
+                        engine.pe, SequencerEngine::PL_ACCENT, i,
+                        engine.spreadE(0, SequencerEngine::PL_ACCENT));
                 }
                 if (sprM) {
                     engine.pe.melodyRandom[i] = redDot::SpreadInterp::applyMono(
-                        engine.pe, SequencerEngine::PL_MELODY, i, engine.spreadE(0, 1));
+                        engine.pe, SequencerEngine::PL_MELODY, i,
+                        engine.spreadE(0, SequencerEngine::PL_MELODY));
                     engine.pe.octaveRandom[i] = redDot::SpreadInterp::applyMono(
-                        engine.pe, SequencerEngine::PL_OCTAVE, i, engine.spreadE(0, 2));
+                        engine.pe, SequencerEngine::PL_OCTAVE, i,
+                        engine.spreadE(0, SequencerEngine::PL_OCTAVE));
                 }
                 if (sprQ) {
                     // QMIX spread on its OWN axis (SB_SANDS_Q): applyMono lane = PL_QMIX.
                     engine.pe.qmixRandom[i] = redDot::SpreadInterp::applyMono(
-                        engine.pe, SequencerEngine::PL_QMIX, i, engine.spreadE(0, 4));
+                        engine.pe, SequencerEngine::PL_QMIX, i,
+                        engine.spreadE(0, SequencerEngine::PL_QMIX));
                 }
             }
             }  // end if(sprR || sprM || sprQ)
@@ -549,20 +553,21 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 }
                 return rack::math::clamp(sp, -1.f, 1.f);
             };
-            const float spR = sprForLane(0);
-            const float spM = sprForLane(1);
-            const float spO = sprForLane(2);
-            const float spA = sprForLane(3);
-            const float spQ = sprForLane(4);   // QMIX (spread/engine lane 4)
-            const float spV = sprForLane(5);   // VARIATION (spread/engine lane 5)
-            const float spL = sprForLane(6);   // LEGATO (spread/engine lane 6)
+            // LANE UNIFICATION (Phase 2): sprForLane fetches UNIFIED stores (editor.spread,
+            // cvId jacks, atten/send banks) — pass PL_* so each axis reads its own lane.
+            // (The old raw 0..6 literals read the dead spread order: rhythm got MEL's knob.)
+            const float spR = sprForLane(SequencerEngine::PL_REST);       // rhythm axis
+            const float spM = sprForLane(SequencerEngine::PL_MELODY);     // melody axis
+            const float spO = sprForLane(SequencerEngine::PL_OCTAVE);     // melody axis
+            const float spA = sprForLane(SequencerEngine::PL_ACCENT);     // rhythm axis
+            const float spQ = sprForLane(SequencerEngine::PL_QMIX);       // own axis (SB_SANDS_Q)
+            const float spV = sprForLane(SequencerEngine::PL_VARIATION);  // rhythm axis
+            const float spL = sprForLane(SequencerEngine::PL_LEGATO);     // rhythm axis
             engine.pe.setSandsActive(true);
             // V1/mono spread: applyMono reads the mode from pe.spreadTargetMode[lane] and
             // handles both original + target selection internally. No Monsoon pointer needed.
             for (int i = 0; i < 16; ++i) {
                 if (axR) {
-                    // LANE UNIFICATION: applyMono lane args are unified PL_*; the spX VALUE
-                    // locals keep their historical sprForLane source pairing (Phase-2 audit).
                     engine.pe.rhythmRandom[i] = redDot::SpreadInterp::applyMono(
                         engine.pe, SequencerEngine::PL_REST, i, spR);
                     engine.pe.accentRandom[i] = redDot::SpreadInterp::applyMono(
@@ -645,7 +650,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         // spread had no effect on the observed probability. Loop over POLY_LANES so it can't drop a
         // lane again (matches the OUTPUT-application loops below at PL_LANES).
         for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
-            publishGlobal(lane);   // 0 REST, 1 MEL, 2 OCT, 3 ACC, 4 QMIX
+            publishGlobal(lane);   // unified PL_* order (0=MEL, 1=OCT, 2=QMIX, 3=REST, 4=ACC, 5=VAR, 6=LEG)
 
         // Output application: only when Macro actually drives real output voices (Straits attached
         // with poly active). When macroDrivesOutput, East's per-voice sync (runs after) combines
@@ -658,7 +663,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         const bool mSpM = dotModular::LockManager::liveNow(dotModular::Control::Spread, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/true);
         if (mSpR || mSpM) {
             const int nPoly = rack::math::clamp(engine.numPolyVoices, 0, 15);
-            // Global spread level per lane (knob + CV), spread/engine-indexed 0..3.
+            // Global spread level per lane (knob + CV), unified PL_* order.
             float spv[dotModular::SandsGrid::POLY_LANES];
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
                 // Standalone Macro global spread — own CV only (same as publishGlobal), via the resolver.
@@ -677,24 +682,24 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // V1 (mono final arrays): converge the mono draw toward the ensemble.
             for (int i = 0; i < 16; ++i) {
                 if (mSpR) {
-                    // LANE UNIFICATION: applyMono lane args unified PL_* — matching the
-                    // cachedPolySpread pairing below (PL_REST=spv[0] etc.); spv sources unchanged.
+                    // LANE UNIFICATION (Phase 2): spv is indexed by the unified PL_* order
+                    // (the fetch loop reads getGlobalSpread from the unified store) — each
+                    // axis reads its OWN lane's value.
                     engine.pe.rhythmRandom[i]    = redDot::SpreadInterp::applyMono(
-                        engine.pe, SequencerEngine::PL_REST, i, spv[0]);
+                        engine.pe, SequencerEngine::PL_REST, i, spv[SequencerEngine::PL_REST]);
                     engine.pe.accentRandom[i]    = redDot::SpreadInterp::applyMono(
-                        engine.pe, SequencerEngine::PL_ACCENT, i, spv[3]);
-                    // VAR/LEG spread: spv[5/6] are populated by the loop above
-                    // (lane < POLY_LANES=7). applyMono, not the raw slewed copy.
+                        engine.pe, SequencerEngine::PL_ACCENT, i, spv[SequencerEngine::PL_ACCENT]);
+                    // VAR/LEG spread: applyMono, not the raw slewed copy.
                     engine.pe.variationRandom[i] = redDot::SpreadInterp::applyMono(
-                        engine.pe, SequencerEngine::PL_VARIATION, i, spv[5]);
+                        engine.pe, SequencerEngine::PL_VARIATION, i, spv[SequencerEngine::PL_VARIATION]);
                     engine.pe.legatoRandom[i]    = redDot::SpreadInterp::applyMono(
-                        engine.pe, SequencerEngine::PL_LEGATO, i, spv[6]);
+                        engine.pe, SequencerEngine::PL_LEGATO, i, spv[SequencerEngine::PL_LEGATO]);
                 }
                 if (mSpM) {
                     engine.pe.melodyRandom[i]    = redDot::SpreadInterp::applyMono(
-                        engine.pe, SequencerEngine::PL_MELODY, i, spv[1]);
+                        engine.pe, SequencerEngine::PL_MELODY, i, spv[SequencerEngine::PL_MELODY]);
                     engine.pe.octaveRandom[i]    = redDot::SpreadInterp::applyMono(
-                        engine.pe, SequencerEngine::PL_OCTAVE, i, spv[2]);
+                        engine.pe, SequencerEngine::PL_OCTAVE, i, spv[SequencerEngine::PL_OCTAVE]);
                 }
             }
             // Stage 2a: cache poly spread values for step-rate refresh (was: full-field
@@ -705,10 +710,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             engine.pe.cachedSpreadLiveQ = false;   // standalone Macro: no QMIX axis here (no East)
             engine.pe.cachedSpreadInitialized = true;   // Stage 2a: enable step-rate refresh
             for (int v = 1; v <= nPoly; ++v) {
-                engine.pe.cachedPolySpread[v][SequencerEngine::PL_REST]   = spv[0];
-                engine.pe.cachedPolySpread[v][SequencerEngine::PL_ACCENT] = spv[3];
-                engine.pe.cachedPolySpread[v][SequencerEngine::PL_MELODY] = spv[1];
-                engine.pe.cachedPolySpread[v][SequencerEngine::PL_OCTAVE] = spv[2];
+                engine.pe.cachedPolySpread[v][SequencerEngine::PL_REST]   = spv[SequencerEngine::PL_REST];
+                engine.pe.cachedPolySpread[v][SequencerEngine::PL_ACCENT] = spv[SequencerEngine::PL_ACCENT];
+                engine.pe.cachedPolySpread[v][SequencerEngine::PL_MELODY] = spv[SequencerEngine::PL_MELODY];
+                engine.pe.cachedPolySpread[v][SequencerEngine::PL_OCTAVE] = spv[SequencerEngine::PL_OCTAVE];
             }
         }   // if (mSpR || mSpM)
         }   // if (!macroDrivesOutput)

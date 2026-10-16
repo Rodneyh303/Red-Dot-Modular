@@ -23,8 +23,8 @@ namespace redDot {
  *   - the per-voice setSpread/getSpread wrappers (callers use spreadMgr directly)
  *   - monsoonModule (write-only field)
  *   - MacroSpreadManager (its 2-arg fan-out lives on as setSpreadAll below —
- *     clamp and loop copied verbatim; SpreadManager::setMacroSpread is NOT
- *     equivalent: it clamps to [0,1] while spread values are bipolar)
+ *     clamp and loop copied verbatim; SpreadManager::setMacroSpread was deleted
+ *     as dead code — it clamped to [0,1] while spread values are bipolar)
  *
  * Live surface:
  *   - East  (per-voice): ctor + syncEditorToPatternEngine(voiceSlot, state)

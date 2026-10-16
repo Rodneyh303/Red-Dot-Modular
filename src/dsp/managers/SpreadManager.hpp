@@ -107,13 +107,9 @@ struct SpreadManager {
     return 0.0f;
   }
   
-  // Set macro spread (same for all voices)
-  void setMacroSpread(int lane, float value) {
-    float clamped = rack::math::clamp(value, 0.0f, 1.0f);
-    for (int v = 0; v < numVoices; ++v) {
-      spread[v][lane] = clamped;
-    }
-  }
+  // (setMacroSpread DELETED — dead code: zero callers, a [0,1] clamp on bipolar spread
+  // values, and a numVoices-bounded loop over the 16-wide slot bank. The real fan-out
+  // is SandsParameterManager::setSpreadAll. Historical docs: SPREADMANAGER_GUIDE.md.)
   
   float getMacroSpread(int lane) const {
     // Return first voice's spread (assuming all are same)
@@ -388,7 +384,7 @@ struct SpreadManager {
 // ERADICATION Phase 3d: MacroSpreadManager DELETED. Its only consumer
 // (PolySandsParameterManager) was merged into SandsParameterManager, which
 // carries the same fan-out as setSpreadAll() — identical [-1,1] clamp + loop.
-// (SpreadManager::setMacroSpread() is NOT a replacement: it clamps to [0,1]
-// while spread values are bipolar. Historical docs: SPREADMANAGER_GUIDE.md.)
+// (SpreadManager::setMacroSpread() was DELETED — dead code with a [0,1] clamp on
+// bipolar values. Historical docs: SPREADMANAGER_GUIDE.md.)
 
 }  // namespace redDot
