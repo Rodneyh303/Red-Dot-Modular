@@ -43,3 +43,40 @@ the output distribution; the instrument owns the correlational MODEL.
 - Connects to the forum "additive randomness / shape which values are chosen" conversation — done the
   principled way (output marginal via F^-1 on a correlated uniform), not by summing distributions.
 - Visual + musical payoff (reshape register/value emphasis per lane while keeping the groove's correlation).
+
+---
+
+## Distribution palette — per-lane F^-1, cost & form (Rodney)
+No-modulation + per-lane means: compute each lane's F^-1 ONCE at SET-TIME, then runtime = LUT lookup +
+interp. So all per-distribution complexity lives at set-time; runtime is ONE uniform cheap path regardless.
+
+### Closed-form F^-1 — use directly (no numerical inversion, LUT optional)
+- **Triangular** — F^-1 piecewise, two sqrt branches around the mode. Exact, trivial. 1 param (mode). The
+  reference case.
+- **Power** — F^-1(u) = u^(1/k) (or 1-(1-u)^(1/k) mirror). One pow. 1 param. Skew toward 0/1. "Emphasis".
+- **Logit-normal** — F^-1(u) = logistic(mu + sigma*PhiInv(u)). **Cheaper FOR US than anyone** because we
+  already have PhiInv (copula cornerstone). 2 params (mu,sigma). Unimodal/skewable. Clamp u off {0,1}
+  (open support). STANDOUT pick — reuses existing engine math.
+- **Kumaraswamy** — F^-1(u) = (1 - (1-u)^(1/b))^(1/a). TWO pows, closed form. ~Beta-like shape flexibility
+  (unimodal/skew/bathtub) with NO incomplete-beta, NO inversion, NO LUT needed. **Preferred Beta-family
+  shaper for musical use** — gives the shapes you want without Beta's machinery.
+- **User draw curve** — the monotone curve the user draws IS F^-1 directly (enforce monotonicity). Pure LUT,
+  cheapest runtime, most expressive/fun. Work is only the UI (draw + monotonicity + interp).
+
+### Needs numerical inversion — SET-TIME LUT only
+- **True Beta(alpha,beta)** — F^-1 = inverse regularized incomplete beta: NO closed form, needs a root-find
+  (Newton/Halley on I_x(a,b) - u). Viable ONLY because no-modulation -> invert ONCE per lane at set-time,
+  build the LUT, lookup forever. Runtime does ZERO Beta math.
+  - LOG-SPACE BETA: helps the SET-TIME LUT-BUILD ROBUSTNESS, not runtime. Evaluate the forward I_x(a,b)
+    inside the inverter in log-space (lgamma-based: exp(lgamma(a)+lgamma(b)-lgamma(a+b)) etc.) so the LUT is
+    accurate for EXTREME/skewed a,b (e.g. Beta(0.3,8)) that would otherwise over/underflow. It does NOT
+    remove the inversion iteration or help the hot path (LUT lookup).
+  - RECOMMENDATION: prefer KUMARASWAMY for the Beta-ish shapes (closed form, no LUT). Keep true Beta ONLY if
+    its exact statistical properties are actually needed (for musical distribution-shaping: almost never).
+
+### Unifying implementation
+Every distribution -> a per-lane F^-1 LUT filled at SET-TIME (closed-form eval, or numerical inversion for
+true Beta, or the drawn curve). Runtime = LUT lookup + interpolation, IDENTICAL cost for all. The
+no-modulation constraint is what buys this: all per-distribution cost is at set-time, runtime is one cheap
+uniform path. (Closed-form ones -- triangular/power/logit-normal/Kumaraswamy -- could even skip the LUT and
+eval live if preferred; LUT is the uniform option.)
