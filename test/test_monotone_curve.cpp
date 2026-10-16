@@ -878,10 +878,8 @@ static void testFromDistribution() {
     fromDistributionCase(dotModular::PowerDistribution(2.0), "power", 5e-3);
     fromDistributionCase(dotModular::KumaraswamyDistribution(2.0, 3.0), "kumaraswamy", 1e-2);
     fromDistributionCase(dotModular::LogitNormalDistribution(0.0, 1.0), "logit-normal", 2e-2);
-    // Arcsine is the WORST case for even spacing: its CDF has infinite slope at both
-    // endpoints, so the first/last PCHIP segments undershoot (~4.4% at 9 points). Still
-    // "nearby"; adaptive sampling is the documented later refinement if it matters.
-    fromDistributionCase(dotModular::ArcsineDistribution(), "arcsine", 5e-2);
+    fromDistributionCase(dotModular::MobiusDistribution(4.0), "mobius", 1e-2);
+    fromDistributionCase(dotModular::LogitSigmoidDistribution(2.0, 0.0), "logit-sigmoid", 1e-2);
     fromDistributionCase(dotModular::TruncatedNormalDistribution(0.5, 0.2), "truncated-normal", 5e-3);
     // Degenerate far-off-support (a step CDF): still a valid monotone curve
     dotModular::TruncatedNormalDistribution far(-3.0, 0.1);

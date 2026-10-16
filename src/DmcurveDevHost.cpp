@@ -14,8 +14,8 @@ extern Plugin* pluginInstance;   // defined in plugin.cpp (Monsoon.hpp holds the
 namespace {
 
 const char* const kWhichNames[DmcurveDevHost::N_WHICH] = {
-    "Kumaraswamy", "Arcsine", "Triangular", "Power",
-    "Logit-normal", "Trunc-normal", "Drawn (PCHIP)",
+    "Kumaraswamy", "Mobius", "Triangular", "Power",
+    "Logit-normal", "Logit-sigmoid", "Trunc-normal", "Drawn (PCHIP)",
 };
 
 // Live name + mode readout under the distribution knob (gold when the drawn case is live).

@@ -11,17 +11,22 @@
 // (redDot::copula::Phi / phi / PhiInv — reused, not reimplemented) and the double
 // MonotoneCurve. The engine's float cast happens at the storage boundary only.
 //
-// v1 palette (shape-space coverage, ALL cheap inverses):
-//   Monotone skew: Power.  Single-peak interior: Triangular (linear), TruncatedNormal
-//   (bell, NON-ZERO edge density — can pile mass at an edge), LogitNormal (squashed bell,
-//   zero edges, open support).  Bathtub/extremes: Arcsine (clean), Kumaraswamy (flexible;
-//   (1,1) = uniform).  Anything else: the drawn PchipDistribution (the escape valve).
+// v1 palette (shape-space coverage, ALL cheap inverses, ALL parametric types TUNABLE —
+// the select → morph-with-knobs → convert UI needs params; a param-less type is a dead
+// end, which is why Arcsine was removed):
+//   WARPS (gentle identity-centred tilts): Power(a), Mobius(a) — pure arithmetic, bounded
+//   density, never spikes.  SIGMOIDS (pick-your-tails): LogitNormal(mu,sigma) (Phi-squash,
+//   zero edges, open support), LogitSigmoid(a,b) (logistic squash — cheaper, heavier
+//   tails, no Phi/erf).  SHAPES: Triangular(mode), Kumaraswamy(a,b) (flexible catch-all;
+//   (1,1) = uniform), TruncatedNormal(mu,sigma) (bounded bell, NON-ZERO edge density).
+//   Anything else: the drawn PchipDistribution (the escape valve — its "params" are the
+//   handles).
 //
 // JSON: the shared .dmcurve v1 schema (docs/design/DMCURVE_EDITOR.md). The type field
 // selects the concrete Distribution; params{} holds the parametric parameters; points[] is
 // the drawn case (delegated to MonotoneCurve's own serializer/validator — one schema, both
 // destinations, the TuningPreset house pattern). Type tags: "drawn", "triangular", "power",
-// "kumaraswamy", "logit-normal", "arcsine", "truncated-normal".
+// "kumaraswamy", "mobius", "logit-normal", "logit-sigmoid", "truncated-normal".
 //
 // Pure module: no Rack/nanovg/UI. jansson included directly (test/jansson.h shim in the
 // standalone harness, Rack's bundled jansson in the plugin tree).
@@ -165,29 +170,81 @@ public:
     }
 };
 
-// ── Arcsine — the clean bathtub/extremes shape ────────────────────────────────────────────────
-// cdf: (2/π)·asin(√x);  pdf: 1/(π·√(x(1-x)));  inv: sin²(πu/2). One sin/sqrt — "favour the
-// extremes, avoid the middle".
-class ArcsineDistribution : public Distribution {
+// ── Mobius(a) — the rational-linear warp: gentle bounded tilt, identity at a=1 ────────────────
+// cdf: x/((1-a)x+a);  inv: ay/(1-(1-a)y);  pdf: a/((1-a)x+a)^2 (the x-terms cancel in the
+// quotient rule). PURE ARITHMETIC — one divide each, no transcendentals: the CHEAPEST type
+// in the palette. Density bounded in [1/a, a] (never spikes, unlike Power whose density
+// diverges at an edge for a<1); a>1 tilts mass toward x=1, 0<a<1 toward x=0, and a=1 is
+// the identity — the clean no-op centre. The "subtle, never-extreme tilt" tool.
+class MobiusDistribution : public Distribution {
 public:
-    const char* typeName() const override { return "arcsine"; }
+    double a;   // > 0 (validated on load)
+    explicit MobiusDistribution(double a_) : a(a_) {}
+
+    const char* typeName() const override { return "mobius"; }
 
     double cdf(double x) const override {
         x = distClamp01(x);
-        return 0.63661977236758134308 * std::asin(std::sqrt(x));   // (2/pi) asin(sqrt(x))
+        return x / ((1.0 - a) * x + a);
     }
     double pdf(double x) const override {
         x = distClamp01(x);
-        if (x < DIST_EDGE_EPS) x = DIST_EDGE_EPS;                  // divergent at both edges
-        else if (x > 1.0 - DIST_EDGE_EPS) x = 1.0 - DIST_EDGE_EPS;
-        return 0.31830988618379067154 / std::sqrt(x * (1.0 - x));  // 1/(pi sqrt(x(1-x)))
+        const double d = (1.0 - a) * x + a;   // > 0 for all x in [0,1] when a > 0
+        return a / (d * d);
     }
     double invCDF(double u) const override {
         u = distClamp01(u);
-        const double s = std::sin(1.57079632679489661923 * u);     // sin(pi*u/2)
-        return s * s;
+        return (a * u) / (1.0 - (1.0 - a) * u);
     }
-    json_t* toJson() const override { return paramEnvelope(json_object()); }
+    json_t* toJson() const override {
+        json_t* p = json_object();
+        json_object_set_new(p, "a", json_real(a));
+        return paramEnvelope(p);
+    }
+};
+
+// ── LogitSigmoid(a, b) — the logistic squash: logit-normal's cheaper, heavier-tailed sibling
+// logit(x)=ln(x/(1-x)); sigma(z)=1/(1+e^-z);
+// cdf: sigma(a·logit(x)+b);  inv: sigma((logit(y)-b)/a);  pdf: a·f(x)·(1-f(x))/(x·(1-x)).
+// exp/log only — NO Phi/erf (kept ALONGSIDE logit-normal: similar shape space, distinct
+// tails + cost). Identity at a=1, b=0 (another gentle-warp centre). The pdf self-limits at
+// the edges when evaluated at the DIST_EDGE_EPS floor (a>=1 lands on its true limit, a<1
+// gives the same finite divergent-edge proxy as Power/Kumaraswamy).
+class LogitSigmoidDistribution : public Distribution {
+public:
+    double a;   // > 0 steepness (validated on load)
+    double b;   // shift
+    LogitSigmoidDistribution(double a_, double b_) : a(a_), b(b_) {}
+
+    const char* typeName() const override { return "logit-sigmoid"; }
+
+    static double sigmoid(double z) { return 1.0 / (1.0 + std::exp(-z)); }
+
+    double cdf(double x) const override {
+        if (x <= 0.0) return 0.0;
+        if (x >= 1.0) return 1.0;
+        if (x < DIST_EDGE_EPS) x = DIST_EDGE_EPS;
+        else if (x > 1.0 - DIST_EDGE_EPS) x = 1.0 - DIST_EDGE_EPS;
+        return sigmoid(a * std::log(x / (1.0 - x)) + b);
+    }
+    double pdf(double x) const override {
+        x = distClamp01(x);
+        if (x < DIST_EDGE_EPS) x = DIST_EDGE_EPS;
+        else if (x > 1.0 - DIST_EDGE_EPS) x = 1.0 - DIST_EDGE_EPS;
+        const double f = sigmoid(a * std::log(x / (1.0 - x)) + b);
+        return a * f * (1.0 - f) / (x * (1.0 - x));
+    }
+    double invCDF(double u) const override {
+        if (u <= 0.0) return 0.0;
+        if (u >= 1.0) return 1.0;
+        return sigmoid((std::log(u / (1.0 - u)) - b) / a);
+    }
+    json_t* toJson() const override {
+        json_t* p = json_object();
+        json_object_set_new(p, "a", json_real(a));
+        json_object_set_new(p, "b", json_real(b));
+        return paramEnvelope(p);
+    }
 };
 
 // ── LogitNormal(mu, sigma) — squashed bell on open support (zero edge density) ─────────────────
@@ -364,8 +421,16 @@ inline std::unique_ptr<Distribution> loadDistribution(json_t* rootJ) {
         if (!numParam("mu", mu) || !posParam("sigma", sg)) return nullptr;
         return std::make_unique<LogitNormalDistribution>(mu, sg);
     }
-    if (type == "arcsine")
-        return std::make_unique<ArcsineDistribution>();
+    if (type == "mobius") {
+        double a;
+        if (!posParam("a", a)) return nullptr;
+        return std::make_unique<MobiusDistribution>(a);
+    }
+    if (type == "logit-sigmoid") {
+        double a, b;
+        if (!posParam("a", a) || !numParam("b", b)) return nullptr;
+        return std::make_unique<LogitSigmoidDistribution>(a, b);
+    }
     if (type == "truncated-normal") {
         double mu, sg;
         if (!numParam("mu", mu) || !posParam("sigma", sg)) return nullptr;

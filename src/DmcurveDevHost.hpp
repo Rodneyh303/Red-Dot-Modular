@@ -3,9 +3,9 @@
 // Scaffolding so the .dmcurve curve widget can be dragged and viewed in Rack IN ISOLATION
 // before Phase 3 integration (docs/design/DMCURVE_EDITOR.md Phase 2 + "Phase 2.5
 // additions"). It exercises the full widget surface:
-//   • the universal draw — ALL seven built-ins render through the same const Distribution&
-//     interface (kumaraswamy, arcsine, triangular, power, logit-normal, truncated-normal,
-//     and the drawn PchipDistribution),
+//   • the universal draw — ALL eight built-ins render through the same const Distribution&
+//     interface (kumaraswamy, mobius, triangular, power, logit-normal, logit-sigmoid,
+//     truncated-normal, and the drawn PchipDistribution),
 //   • parametric param editing — two GENERIC param knobs that remap + relabel per
 //     distribution (knob1 = a/mu/mode/k, knob2 = b/sigma; the label shows the live meaning
 //     + value; arcsine and the drawn case leave them inert), reshaping the curve LIVE, and
@@ -36,13 +36,14 @@ namespace dotModular { struct DistributionCurveWidget; }
 struct DmcurveDevHost : rack::engine::Module {
     enum ParamIds { DISTRIBUTION_PARAM, PARAM1_PARAM, PARAM2_PARAM, N_PARAMS };
     enum Which {
-        KUMARASWAMY = 0, ARCSINE, TRIANGULAR, POWER,
-        LOGIT_NORMAL, TRUNCATED_NORMAL, DRAWN, N_WHICH,
+        KUMARASWAMY = 0, MOBIUS, TRIANGULAR, POWER,
+        LOGIT_NORMAL, LOGIT_SIGMOID, TRUNCATED_NORMAL, DRAWN, N_WHICH,
     };
 
     dotModular::PchipDistribution           pchip;      // THE editable curve (the drawn case)
     dotModular::KumaraswamyDistribution     kum{2.0, 3.0};
-    dotModular::ArcsineDistribution         arcsine;
+    dotModular::MobiusDistribution          mob{2.0};
+    dotModular::LogitSigmoidDistribution    lsig{2.0, 0.0};
     dotModular::TriangularDistribution      tri{0.3};
     dotModular::PowerDistribution           pw{2.0};
     dotModular::LogitNormalDistribution     ln{0.0, 1.0};
@@ -71,7 +72,8 @@ struct DmcurveDevHost : rack::engine::Module {
     dotModular::Distribution* current() {
         switch (which) {
             case KUMARASWAMY:      return &kum;
-            case ARCSINE:          return &arcsine;
+            case MOBIUS:           return &mob;
+            case LOGIT_SIGMOID:    return &lsig;
             case TRIANGULAR:       return &tri;
             case POWER:            return &pw;
             case LOGIT_NORMAL:     return &ln;
@@ -94,23 +96,29 @@ struct DmcurveDevHost : rack::engine::Module {
         switch (which) {
             case KUMARASWAMY:      return first ? ParamSlot{"a",    0.2, 8.0, true}
                                                 : ParamSlot{"b",    0.2, 8.0, true};
+            case MOBIUS:           return first ? ParamSlot{"a",    0.2, 8.0, true}
+                                                : ParamSlot{"-",    0.0, 1.0, false};
             case TRIANGULAR:       return first ? ParamSlot{"mode", 0.0, 1.0, true}
                                                 : ParamSlot{"-",    0.0, 1.0, false};
             case POWER:            return first ? ParamSlot{"k",    0.2, 8.0, true}
                                                 : ParamSlot{"-",    0.0, 1.0, false};
             case LOGIT_NORMAL:     return first ? ParamSlot{"mu",  -3.0, 3.0, true}
                                                 : ParamSlot{"sigma", 0.1, 3.0, true};
+            case LOGIT_SIGMOID:    return first ? ParamSlot{"a",    0.2, 8.0, true}
+                                                : ParamSlot{"b",   -3.0, 3.0, true};
             case TRUNCATED_NORMAL: return first ? ParamSlot{"mu",  -3.0, 3.0, true}
                                                 : ParamSlot{"sigma", 0.1, 3.0, true};
-            default:               return ParamSlot{"-", 0.0, 1.0, false};   // arcsine / drawn
+            default:               return ParamSlot{"-", 0.0, 1.0, false};   // drawn
         }
     }
     double paramValue(int slot) const {
         switch (which) {
             case KUMARASWAMY:      return slot == 0 ? kum.a : kum.b;
+            case MOBIUS:           return slot == 0 ? mob.a : 0.0;
             case TRIANGULAR:       return slot == 0 ? tri.mode : 0.0;
             case POWER:            return slot == 0 ? pw.k : 0.0;
             case LOGIT_NORMAL:     return slot == 0 ? ln.mu : ln.sigma;
+            case LOGIT_SIGMOID:    return slot == 0 ? lsig.a : lsig.b;
             case TRUNCATED_NORMAL: return slot == 0 ? tn.mu : tn.sigma;
             default:               return 0.0;
         }
@@ -118,9 +126,11 @@ struct DmcurveDevHost : rack::engine::Module {
     void setParamValue(int slot, double v) {
         switch (which) {
             case KUMARASWAMY:      if (slot == 0) kum.a = v; else kum.b = v; break;
+            case MOBIUS:           if (slot == 0) mob.a = v; break;
             case TRIANGULAR:       if (slot == 0) tri.mode = v; break;
             case POWER:            if (slot == 0) pw.k = v; break;
             case LOGIT_NORMAL:     if (slot == 0) ln.mu = v; else ln.sigma = v; break;
+            case LOGIT_SIGMOID:    if (slot == 0) lsig.a = v; else lsig.b = v; break;
             case TRUNCATED_NORMAL: if (slot == 0) tn.mu = v; else tn.sigma = v; break;
             default: break;
         }
