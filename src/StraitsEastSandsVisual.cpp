@@ -1114,51 +1114,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     const float spread = (vs >= 0 && vs < 16) ? eastMod->polySpreadEffective[vs][lane] : 0.f;
                     visualEditor->currentState.lanes[lane].probabilities[s] =
                         redDot::SpreadInterp::applyAnchorV1Only(peRef, lane, s, base, spread);
-                    // V16-FLICKER DIAGNOSTIC ROUND 6: round 5 pinned baseH/tgtH stable and
-                    // sp[15] printed 1.000 while out churned — with mix2 pure and vs=15
-                    // that is IMPOSSIBLE for this source (out must equal pub[0] at rho≈1).
-                    // Round 6 logs the ACTUAL call arguments: vs, the spread AS THE LOOP
-                    // READS IT (4 decimals + min/max across the 16-step pass), the target
-                    // via the same monoSlewedPub expression the fill uses, a base sample,
-                    // and the engine pointer. Either an argument churns (found by direct
-                    // observation) or the running binary ≠ this source. The new tag (dbg6)
-                    // doubles as a binary-freshness proof: a stale build still says dbg5.
-                    if (lane == SequencerEngine::PL_MELODY) {
-                        static float spMin = 0.f, spMax = 0.f;
-                        if (s == 0) { spMin = spread; spMax = spread; }
-                        else {
-                            if (spread < spMin) spMin = spread;
-                            if (spread > spMax) spMax = spread;
-                        }
-                        if (s == 15) {
-                            auto rowHash = [](const float* row) -> uint64_t {
-                                uint64_t h = 1469598103934665603ULL;
-                                for (int q = 0; q < 16; ++q) {
-                                    uint32_t bits; std::memcpy(&bits, &row[q], 4);
-                                    h ^= bits; h *= 1099511628211ULL;
-                                }
-                                return h;
-                            };
-                            uint64_t outH = rowHash(visualEditor->currentState.lanes[SequencerEngine::PL_MELODY].probabilities.data());
-                            static uint64_t lastH = 0;
-                            static bool first = true;
-                            if (first || outH != lastH) {
-                                first = false; lastH = outH;
-                                uint64_t baseH = rowHash(peRef.pubSlewedPolyMelody[15]);
-                                uint64_t tgtH  = rowHash(peRef.pubSlewedPolyMelody[0]);
-                                const float* r = visualEditor->currentState.lanes[SequencerEngine::PL_MELODY].probabilities.data();
-                                const float tAct  = redDot::SpreadInterp::monoSlewedPub(peRef, SequencerEngine::PL_MELODY, 15);
-                                const float bAct  = peRef.pubSlewedPolyMelody[vs][15];
-                                const float spAct = (vs >= 0 && vs < 16) ? eastMod->polySpreadEffective[vs][lane] : 0.f;
-                                INFO("[V16dbg6] vs=%d sel=%d tab=%d pe=%p spAct=%.4f spMin=%.4f spMax=%.4f bAct=%.3f tAct=%.3f baseH=%016llx tgtH=%016llx out=[%.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f]",
-                                     vs, selectedVoice, tabGroup ? tabGroup->getSelectedTab() : -99, (void*)&peRef,
-                                     spAct, spMin, spMax, bAct, tAct,
-                                     (unsigned long long)baseH, (unsigned long long)tgtH,
-                                     r[0],r[1],r[2],r[3],r[4],r[5],r[6],r[7],
-                                     r[8],r[9],r[10],r[11],r[12],r[13],r[14],r[15]);
-                            }
-                        }
-                    }
                 }
             }
         }
