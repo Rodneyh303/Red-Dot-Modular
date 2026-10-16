@@ -256,6 +256,15 @@
         "External",
         "Utility"
       ]
+    },
+    {
+      "slug": "DmcurveDevHost",
+      "name": "DmcurveDevHost",
+      "description": "DEV ONLY - standalone host for the .dmcurve distribution curve editor widget. Renders any distribution (CDF + PDF) and, for the drawn case, supports monotone-clamped point editing. No engine wiring; not intended for patches.",
+      "tags": [
+        "Utility",
+        "Random"
+      ]
     }
   ]
 }
