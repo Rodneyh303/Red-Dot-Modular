@@ -27,6 +27,13 @@ inline constexpr double U_EPS = 1e-12;
 /// NOT used in the slew readout (applyZ) — that uses PhiLUT (see below).
 inline double Phi(double z) { return 0.5 * std::erfc(-z * 0.70710678118654752440); }
 
+/// Standard normal PDF. Companion to Phi/PhiInv for distribution work that needs the density
+/// (logit-normal and truncated-normal in the Distribution layer) — same exact, stateless,
+/// pure-function contract.
+inline double phi(double z) {
+    return std::exp(-0.5 * z * z) * 0.398942280401432677939946059934;   // 1/sqrt(2*pi)
+}
+
 /// Interpolated lookup-table Phi for UNCACHEABLE, hot, float-precision callers (the slew readout's
 /// final Phi in applyZ, and spread's mix2). Splits from the exact Phi by the caching structure:
 /// cached callers (PhiInv, once per new draw) can afford the exact erfc Phi; uncacheable callers
