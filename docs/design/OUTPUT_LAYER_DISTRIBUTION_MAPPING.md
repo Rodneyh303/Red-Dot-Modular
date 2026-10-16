@@ -124,3 +124,40 @@ The user-draw F^-1 is the most expressive + fun shaper, but it needs a curve-DRA
 1. Closed-form distributions FIRST (triangular/power/logit-normal/Kumaraswamy) — no UI beyond param knobs +
    the visualiser. Gets the whole F^-1-LUT pipeline + pre/post display working.
 2. THEN the user-draw curve editor on top (the pipeline already exists; only the editor is new).
+
+---
+
+## .dmcurve — savable distribution-curve asset (precedent: Bitwig BWCURVE)
+WHY: Bitwig ships curves as first-class, savable, reusable, cross-device assets (BWCURVE). Their Keytrack+
+("curve maps incoming note pitch to a value") and Transfer ("curve-based waveshaping on pitch") are EXACTLY
+our use case — a transfer function / F^-1 on a value. If a respected DAW makes this a core savable asset,
+.dmcurve is justified outright.
+
+## Format decisions
+- STORE THE DEFINITION, not samples: parametric -> {type, params} (kumaraswamy a,b / logit-normal mu,sigma /
+  power k / triangular mode); drawn -> {control points (<=~32), interp=pchip}; + endpoint convention
+  (pinned (0,0)-(1,1) | free). Re-editable on load, exact, compact. (Same principle as .dmtune: store the
+  definition, not the rendered output.)
+- ONE unified format, a `type:` field distinguishes parametric vs drawn (user shouldn't care which — it's
+  just "a distribution shape I saved").
+- VERSIONED (v1 header) — format changes never break old files (learned the hard way: silent convention
+  drift is the enemy).
+- TEXT-BASED (Scala .scl style) — human-readable, diffable, shareable, future-proof.
+- VALIDATE ON LOAD: enforce monotonicity (reject/clamp non-monotone drawn files — a non-monotone F^-1 is
+  ill-defined), clamp params to valid ranges.
+- SCOPE: one .dmcurve = one lane's F^-1. Loads to Macro (global per lane) or Sands (per-voice when unlocked).
+  (Later: a "curve set" = all lanes, like a bank.)
+
+## THE DIFFERENTIATOR — open + documented (where BWCURVE is closed)
+BWCURVE is "at present undocumented" and the SOS reviewer explicitly wished for "third-party curve
+libraries, or tools to generate new sets of curves algorithmically." So: make .dmcurve an OPEN, DOCUMENTED,
+text format — enabling exactly what the Bitwig community wants but can't have: shareable third-party curve
+libraries + algorithmic curve generators. The Scala/.scl playbook (open text -> ecosystem) applied to
+distribution curves. Open format = our edge over the closed precedent.
+
+## Authorable-asset FAMILY (the positioning)
+.dmtune (tunings — Sikit/Colonnade/Duo author) + .dmcurve (distribution shapes — the output mapping
+authors): both text, versioned, save/load/share, "define the thing not the rendered output," both feeding
+the copula engine. dot.modular isn't just a synth — it's an AUTHORABLE correlational-randomness ecosystem
+with an open file-format family for the SHAPING layers (pitch mapping + distribution mapping). Eventually: a
+named library + browser for both (as Bitwig 6 unifies curves + automation clips in one browser).
