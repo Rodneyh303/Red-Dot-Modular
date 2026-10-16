@@ -8,9 +8,17 @@
 //   • the drawn edit (a PchipDistribution whose MonotoneCurve is supplied as the widget's
 //     editCurve → drag / click-add / double-click-remove all live).
 // NO engine wiring, no audio, no lane integration, no live preview — render + interact only.
-// Switch distributions via the module context menu (right-click); "which" + the drawn curve
-// persist with the patch through the tested .dmcurve JSON path, so an editing session
-// survives save/load while iterating on feel.
+//
+// LAYOUT: the panel is deliberately WIDE (30 HP) so the square diagram is sized by the
+// panel HEIGHT (~most of it) with a control sidebar beside it — the diagram dominates, the
+// test controls (distribution selector knob + name label, edit-handles toggle, curve reset)
+// sit in a vertical strip to the right. The widget itself stays square/dual-axis.
+//
+// STATE: the distribution PARAM is the single source of truth for `which` (the sidebar knob
+// and the context menu both write it; the widget derives `which` from it each frame; Rack
+// auto-persists params). The edit-handles flag and the drawn curve persist via dataToJson
+// (the tested .dmcurve JSON path), so an editing session survives save/load while iterating
+// on feel.
 
 #include <rack.hpp>
 
@@ -21,16 +29,19 @@
 namespace dotModular { struct DistributionCurveWidget; }
 
 struct DmcurveDevHost : rack::engine::Module {
+    enum ParamIds { DISTRIBUTION_PARAM, N_PARAMS };
     enum Which { KUMARASWAMY = 0, ARCSINE, TRIANGULAR, DRAWN, N_WHICH };
 
     dotModular::PchipDistribution       pchip;      // THE editable curve (the drawn case)
     dotModular::KumaraswamyDistribution kum{2.0, 3.0};
     dotModular::ArcsineDistribution     arcsine;
     dotModular::TriangularDistribution  tri{0.3};
-    int which = DRAWN;
+    int  which       = DRAWN;   // derived from DISTRIBUTION_PARAM by the widget each frame
+    bool editEnabled = true;    // EDIT HANDLES toggle (only meaningful for the drawn case)
 
     DmcurveDevHost() {
-        config(0, 0, 0, 0);   // no params, IO, or lights — pure scaffolding
+        config(N_PARAMS, 0, 0, 0);
+        configParam(DISTRIBUTION_PARAM, 0.f, (float)(N_WHICH - 1), (float)DRAWN, "Distribution");
         starterS();
     }
 
@@ -57,15 +68,12 @@ struct DmcurveDevHost : rack::engine::Module {
 
     json_t* dataToJson() override {
         json_t* root = json_object();
-        json_object_set_new(root, "which", json_integer(which));
+        json_object_set_new(root, "edit", json_boolean(editEnabled));
         json_object_set_new(root, "curve", pchip.curve.toJson());   // the full .dmcurve object
         return root;
     }
     void dataFromJson(json_t* root) override {
-        if (json_t* j = json_object_get(root, "which")) {
-            const int v = (int)json_integer_value(j);
-            which = (v < 0 || v >= N_WHICH) ? DRAWN : v;
-        }
+        if (json_t* j = json_object_get(root, "edit")) editEnabled = json_boolean_value(j);
         if (json_t* jc = json_object_get(root, "curve"))
             pchip.curve.fromJson(jc);   // MonotoneCurve's own validation + sanitize
     }
