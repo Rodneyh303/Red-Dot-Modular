@@ -3,8 +3,8 @@
 <rect x="0" y="0" width="152.4" height="3.54" fill="#d4001a"/>
 <circle id="wordmark" cx="76.2" cy="26" r="0.5" fill="none" stroke="none"/>
 <text x="76.2" y="26" font-family="Barlow,sans-serif" font-size="8.5" fill="#5a5f66" text-anchor="middle">DMCURVE DEV</text>
-<rect id="curve_display" x="14" y="48" width="124.4" height="280" fill="none" stroke="none"/>
-<text x="76.2" y="340" font-family="Barlow,sans-serif" font-size="5.9" fill="#70757d" text-anchor="middle">drag points · click: add · dbl-click: remove</text>
-<text x="76.2" y="349" font-family="Barlow,sans-serif" font-size="5.9" fill="#70757d" text-anchor="middle">right-click: switch distribution</text>
+<rect id="curve_display" x="14" y="78" width="124.4" height="112.4" fill="none" stroke="none"/>
+<text x="76.2" y="204" font-family="Barlow,sans-serif" font-size="5.9" fill="#70757d" text-anchor="middle">drag points · click: add · dbl-click: remove</text>
+<text x="76.2" y="213" font-family="Barlow,sans-serif" font-size="5.9" fill="#70757d" text-anchor="middle">right-click: switch distribution</text>
 <text x="76.2" y="369" font-family="Barlow,sans-serif" font-size="6.8" fill="#8a8f98" text-anchor="middle">dot.modular</text>
 </svg>

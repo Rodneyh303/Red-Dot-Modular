@@ -13,19 +13,35 @@
 //   • click empty space       — addPoint (lands ON the curve, rejects duplicates/cap)
 //   • double-click a point    — removePoint (interior only)
 //   • the (0,0)/(1,1) endpoints are FULLY FIXED — not draggable, not removable
-// See docs/design/DMCURVE_EDITOR.md (Phase 2) and docs/design/DISTRIBUTION_LAYER.md.
+// See docs/design/DMCURVE_EDITOR.md (Phase 2 + "Widget display refinements") and
+// docs/design/DISTRIBUTION_LAYER.md.
+//
+// DISPLAY GEOMETRY (the refinements):
+//   • SQUARE plot — the curve is a [0,1]→[0,1] map (same unit on both axes), so 1:1 is the
+//     honest aspect: slope reads true ("steep = dense") and the ghosted diagonal
+//     (0,0)→(1,1) — the uniform reference — is a true 45°. The square sits centred in the
+//     widget box; a tall host panel reserves the space above/below for controls.
+//   • DUAL y-axis — CDF ∈ [0,1] is bounded but PDF ∈ [0,∞) is a density: they cannot share
+//     a scale (a shared axis is why the PDF used to clip). LHS = CDF 0→1, ticked, gold
+//     (colour-matched to the CDF curve). RHS = PDF 0→AUTO-MAX, ticked, teal (matched to
+//     the PDF fill): the fill is auto-normalized so the max sampled density defines the
+//     top — nothing clips, and the scale follows the curve live as it is edited. (Deliberately
+//     NOT pre-built, per the doc: smooth-on-release rescale, and a spike display-clamp —
+//     plain auto-normalize only. The auto-max samples the OPEN interval so the finite
+//     edge-proxy of a divergent density (arcsine, k<1 power) doesn't define the scale.)
 //
 // STYLE — the house LCD rule (SandsVisualEditorV4's documented lesson): the DISPLAY content
 // (curve hues, alpha-encoded density, points) stays on the dark well on BOTH themes —
-// high-luminance hues and alpha-encoded data lie on a light ground. Only the bezel and
-// legend follow the theme via the house isLight callback. Colours come from the existing
-// tables: Monsoon slot recess #101216 / slotline #2a2f37, melody gold #d4af37 for the CDF,
-// legato teal #26a6a9 for the PDF — one table, one meaning per hue.
+// high-luminance hues and alpha-encoded data lie on a light ground. Only the bezel, gutters
+// and x-axis text follow the theme via the house isLight callback. Colours come from the
+// existing tables: Monsoon slot recess #101216 / slotline #2a2f37, melody gold #d4af37 for
+// the CDF, legato teal #26a6a9 for the PDF — one table, one meaning per hue.
 //
-// Feel parameters (grabRadius, doubleClickTime, stroke weights) are Rodney-tuned in Rack
-// via the DmcurveDevHost; this widget is the functional, clean baseline.
+// Feel parameters (grabRadius, doubleClickTime, stroke weights, gutter sizes) are
+// Rodney-tuned in Rack via the DmcurveDevHost; this widget is the functional baseline.
 
 #include <rack.hpp>
+#include <cstdio>
 #include <functional>
 
 #include "../dsp/Distribution.hpp"
@@ -38,13 +54,14 @@ struct DistributionCurveWidget : rack::widget::Widget {
     const Distribution* dist = nullptr;   // REQUIRED: what to draw (the interface — any type)
     MonotoneCurve* editCurve = nullptr;   // OPTIONAL: non-null only for the drawn/Pchip case
                                           // → live editing; null = display-only
-    std::function<bool()> isLight;        // house theme callback (bezel + legend only)
+    std::function<bool()> isLight;        // house theme callback (bezel + gutters only)
 
     // ── feel (tuned in Rack via the dev host) ────────────────────────────────────────────
     float  grabRadius    = 12.f;          // px — control-point hit radius
     double doubleClickTime = 0.33;        // s  — double-click window for point removal
     float  cdfStroke     = 2.2f;          // px — the CDF main curve
-    float  pad           = 8.f;           // px — plot inset inside the widget box
+    float  axisL = 16.f, axisR = 16.f;    // px — y-axis gutters (CDF left / PDF right)
+    float  axisB = 14.f, axisT = 6.f;     // px — x-axis gutter / top margin
 
     // ── interaction state ────────────────────────────────────────────────────────────────
     int dragPoint = -1;                   // index currently being dragged (-1 = none)
@@ -53,11 +70,19 @@ struct DistributionCurveWidget : rack::widget::Widget {
     double lastClickTime = -1e9;          // double-click tracking
     int lastClickIdx = -1;
 
-    // ── plot geometry ([0,1]² ↔ px) ──────────────────────────────────────────────────────
-    float plotX() const { return pad; }
-    float plotY() const { return pad; }
-    float plotW() const { return box.size.x - 2.f * pad; }
-    float plotH() const { return box.size.y - 2.f * pad; }
+    // ── plot geometry: a SQUARE [0,1]² canvas inside the box ─────────────────────────────
+    // side = min(width, height) after the axis gutters; centred in the leftover. A box whose
+    // height is exactly axisT + (width - axisL - axisR) + axisB fits with no leftover (the
+    // dev host's panel marker is cut that way); any other box still lays out correctly.
+    float plotSide() const {
+        const float w = box.size.x - axisL - axisR;
+        const float h = box.size.y - axisT - axisB;
+        return w < h ? w : h;
+    }
+    float plotX() const { return axisL; }
+    float plotY() const { return axisT + 0.5f * (box.size.y - axisT - axisB - plotSide()); }
+    float plotW() const { return plotSide(); }
+    float plotH() const { return plotSide(); }
     rack::math::Vec toPx(double x, double y) const {
         return rack::math::Vec((float)(plotX() + x * (double)plotW()),
                                (float)(plotY() + (1.0 - y) * (double)plotH()));
@@ -94,13 +119,14 @@ struct DistributionCurveWidget : rack::widget::Widget {
         const NVGcolor pdfCol  = nvgRGB(0x26, 0xa6, 0x9a);   // legato teal — the density
         const NVGcolor textCol = light ? nvgRGB(0x5a, 0x5f, 0x66) : nvgRGB(0x8a, 0x8f, 0x98);
 
-        // Bezel + recessed well (the display stays dark on both themes — the LCD rule)
+        // Bezel fills the whole box; the recessed dark well is the SQUARE plot only (the
+        // display stays dark on both themes — the LCD rule; the gutters follow the theme).
         nvgBeginPath(vg);
         nvgRoundedRect(vg, 0.f, 0.f, box.size.x, box.size.y, 5.f);
         nvgFillColor(vg, bezelBg);
         nvgFill(vg);
         nvgBeginPath(vg);
-        nvgRoundedRect(vg, px, py, pw, ph, 3.f);
+        nvgRect(vg, px, py, pw, ph);
         nvgFillColor(vg, well);
         nvgFill(vg);
         nvgStrokeColor(vg, bezel);
@@ -112,9 +138,21 @@ struct DistributionCurveWidget : rack::widget::Widget {
             return;
         }
 
-        // Faint grid at quarters + the y=x ghost (CDF intuition: above = favour high)
+        // Sample the density once. AUTO-MAX over the OPEN interval (endpoints excluded —
+        // the finite edge-proxy of a divergent density must not define the scale); floor
+        // keeps a zero-density degenerate from producing a 0/0 scale.
+        const int N = 200;
+        double pdfs[N + 1];
+        double maxD = 1e-6;
+        for (int i = 0; i <= N; ++i) {
+            pdfs[i] = dist->pdf((double)i / (double)N);
+            if (i > 0 && i < N && pdfs[i] > maxD) maxD = pdfs[i];
+        }
+
         nvgSave(vg);
         nvgScissor(vg, px, py, pw, ph);
+
+        // Faint grid at quarters
         nvgStrokeColor(vg, gridCol);
         nvgStrokeWidth(vg, 0.5f);
         for (int i = 1; i < 4; ++i) {
@@ -126,24 +164,25 @@ struct DistributionCurveWidget : rack::widget::Widget {
             nvgLineTo(vg, px + pw, py + g * ph);
             nvgStroke(vg);
         }
+        // The ghosted diagonal (0,0)→(1,1): the UNIFORM reference — a true 45° now that the
+        // canvas is square (above the diagonal = favour high values, below = favour low).
         nvgBeginPath(vg);
         nvgMoveTo(vg, px, py + ph);
         nvgLineTo(vg, px + pw, py);
         nvgStroke(vg);
 
-        // PDF overlay — the density, filled under the curve. FIXED SCALE: density 1.0 (the
-        // uniform) maps to full well height; anything above clips at the top (a density > 1
-        // means more-than-uniform concentration — clipping is honest, and the divergent
-        // edges of arcsine / k<1 power flat-top visibly, which is the truth of the shape).
-        const int N = 200;
+        // PDF overlay — the density, filled under the curve, auto-normalized to maxD: the
+        // tallest sampled density reaches exactly the top of the well, NOTHING clips, and
+        // the scale follows the curve live as it is edited. (Endpoint samples are clamped
+        // to the well so a divergent edge reads as the full-height spike it is.)
         nvgBeginPath(vg);
         nvgMoveTo(vg, px, py + ph);
         for (int i = 0; i <= N; ++i) {
             const double x = (double)i / (double)N;
-            const double d = dist->pdf(x);
-            const float h = (float)(d < 0.0 ? 0.0 : d) * ph;
-            const rack::math::Vec c = rack::math::Vec(px + (float)x * pw, py + ph - h);
-            nvgLineTo(vg, c.x, c.y);
+            double d = pdfs[i] / maxD;
+            if (d < 0.0) d = 0.0;
+            if (d > 1.0) d = 1.0;
+            nvgLineTo(vg, px + (float)x * pw, py + ph - (float)d * ph);
         }
         nvgLineTo(vg, px + pw, py + ph);
         nvgClosePath(vg);
@@ -203,7 +242,60 @@ struct DistributionCurveWidget : rack::widget::Widget {
             }
         }
 
-        // Legend (theme-following, outside the data colours)
+        // ── axes + ticks ─────────────────────────────────────────────────────────────────
+        nvgFontSize(vg, 7.f);
+        nvgStrokeWidth(vg, 0.8f);
+        // LHS: the CDF scale, 0→1, colour-matched to the curve it reads
+        nvgStrokeColor(vg, cdfCol);
+        nvgFillColor(vg, cdfCol);
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+        for (int i = 0; i <= 4; ++i) {
+            const double q = (double)i / 4.0;
+            const float y = (float)(py + (1.0 - q) * (double)ph);
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, px - 2.f, y);
+            nvgLineTo(vg, px, y);
+            nvgStroke(vg);
+            char buf[16];
+            std::snprintf(buf, sizeof buf, "%g", q);
+            nvgText(vg, px - 3.5f, y, buf, nullptr);
+        }
+        // RHS: the PDF density scale, 0→auto-max (the fill's normalization), colour-matched
+        nvgStrokeColor(vg, pdfCol);
+        nvgFillColor(vg, pdfCol);
+        nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+        for (int i = 0; i <= 4; ++i) {
+            const double f = (double)i / 4.0;
+            const double v = maxD * f;
+            const float y = (float)(py + (1.0 - f) * (double)ph);
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, px + pw, y);
+            nvgLineTo(vg, px + pw + 2.f, y);
+            nvgStroke(vg);
+            char buf[16];
+            if (maxD >= 100.0)      std::snprintf(buf, sizeof buf, "%.0f", v);
+            else if (maxD >= 10.0)  std::snprintf(buf, sizeof buf, "%.1f", v);
+            else if (maxD >= 0.01)  std::snprintf(buf, sizeof buf, "%.2f", v);
+            else                    std::snprintf(buf, sizeof buf, "%.2g", v);
+            nvgText(vg, px + pw + 3.5f, y, buf, nullptr);
+        }
+        // X: the value scale, 0→1 (theme text)
+        nvgStrokeColor(vg, bezel);
+        nvgFillColor(vg, textCol);
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
+        for (int i = 0; i <= 4; ++i) {
+            const double q = (double)i / 4.0;
+            const float x = (float)(px + q * (double)pw);
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, x, py + ph);
+            nvgLineTo(vg, x, py + ph + 2.f);
+            nvgStroke(vg);
+            char buf[16];
+            std::snprintf(buf, sizeof buf, "%g", q);
+            nvgText(vg, x, py + ph + 3.f, buf, nullptr);
+        }
+
+        // Legend — the curve names + the mode tag (kept from the first render)
         nvgFontSize(vg, 9.f);
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_TOP);
         nvgFillColor(vg, cdfCol);
@@ -243,7 +335,7 @@ struct DistributionCurveWidget : rack::widget::Widget {
             }
             // Empty space: add a point ON the curve at this x (addPoint lands it on the CDF
             // with no discontinuity and internally rejects duplicates / the 32-point cap /
-            // out-of-domain x — clicks in the padded margin are harmless no-ops).
+            // out-of-domain x — clicks in the gutters are harmless no-ops).
             editCurve->addPoint(toUnitX(e.pos.x));
             e.consume(this);
             return;
