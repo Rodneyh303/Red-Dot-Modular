@@ -376,3 +376,39 @@ and it all reduces to controlling the polyphonic chaos<->order level — on the 
 most direct chaos dial (together=ordered / apart=chaotic), warp adds distributional differentiation, Straits/
 Causeway add deterministic/temporal structure. The warp ROUNDS OUT existing control systems (chaos-level for
 melody; the octave stack for octave) — it is not a separate axis.
+
+---
+
+## WARP per-lane scope — PROVISIONAL/EXPERIMENTAL: add to ALL, feel, peel back (Rodney)
+### The isolated-lane verdict (reasoning)
+- VALUE/RANGE lanes (melody, octave, note-length-in-clock-mode): warp shapes a real outcome DISTRIBUTION
+  -> clear value. Mono value iff the lane LACKS per-outcome faders (octave/length have none -> warp is the
+  ONLY distributional control -> mono value; melody HAS per-degree faders -> warp polyphonic-only). (Faders
+  and warp are the same role — mono distribution control — delivered differently: faders for few discrete
+  meaningful outcomes, warp for ranges where N sliders would be clumsy.)
+- THRESHOLD/boolean lanes (rest, legato, accent, qmix): fire-or-not, bar set by Straits poly knob+mod per
+  voice. Warp can only reshape draw-before-threshold = a modulation-RESPONSE curve: marginal (inaudible as
+  "shape" on a boolean), redundant with the knob. Isolated verdict: no warp.
+Lane-principle (sibling of the distribution one): a warp belongs on a lane IFF the lane produces a
+distribution over multiple outcomes. Provisional cut line: warp-worthy <=> VISUALISER-worthy (SAME
+criterion: "has a meaningful outcome distribution to show/shape").
+
+### BUT isolated reasoning has a BLIND SPOT -> decide by FEEL, not logic
+The boolean verdict is ISOLATED-LANE. Three things it can't call (emergent / mode-dependent / perceptual):
+1. REST + LEGATO warped TOGETHER: individually boolean, but their INTERACTION makes an emergent gap/phrase-
+   length distribution the warp MIGHT shape (long-legato-phrases-with-big-gaps vs choppy cells). A point FOR
+   trying.
+2. VARIATION in GATE MODE: does something DIFFERENT (not note-length — subgate-related per the rest-source
+   scheme). Whether warp helps depends on candidacy/threshold (marginal) vs density/distribution (real) —
+   TRACE + feel.
+3. GATE/SUBGATE warp with the rest-source scheme: warping the subgate draw might shape ghost/ratchet DENSITY
+   distribution (a real range-outcome), interacting with the 2D-copula subgate texture -> potential genuine
+   value even for "boolean" lanes.
+These are emergent/mode/context effects, NOT callable by isolated-lane reasoning, ultimately PERCEPTUAL.
+
+### Decision (reasoned): ADD WARP TO ALL LANES, experimentally; FEEL; PEEL BACK
+Cheap to add (uniform F^-1 mechanism), cheap to remove. Add everywhere, then play — specifically feel the 3
+interaction cases above. Carve back on (a) computational cost + (b) FUN FACTOR. Provisional DEFAULT cut =
+the visualiser line (warp-worthy<=>visualiser-worthy), but OVERRIDE it wherever an interaction/mode/subgate
+effect surprises in play. Reasoning sets the default; EXPERIENCE sets the verdict. (Perceptual question ->
+build cheap, feel, decide — don't settle it analytically.)
