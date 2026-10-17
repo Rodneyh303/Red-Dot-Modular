@@ -2,8 +2,9 @@
 // Compile: see test/run_all.sh (header-only, no companion sources).
 //
 // The Distribution layer (docs/design/DISTRIBUTION_LAYER.md): the general probability object
-// (cdf/pdf/invCDF on [0,1]) with closed-form parametric types, the arcsine/truncated-normal
-// palette additions, and PchipDistribution wrapping MonotoneCurve (the drawn case). All
+// (cdf/pdf/invCDF on [0,1]) with closed-form parametric types — the palette-revision
+// additions Mobius + Logit-sigmoid (arcsine removed: param-less, a dead end in the
+// morph-with-knobs UI) — and PchipDistribution wrapping MonotoneCurve (the drawn case). All
 // DOUBLE — matching the copula Phi/PhiInv math it calls into; tests compare in double.
 //
 // Sections:
@@ -14,9 +15,9 @@
 //      open-support limits), cdf AND invCDF monotone over fine sweeps (the overshoot guard),
 //      outputs within [0,1], input clamping, pdf non-negative and finite.
 //   2. Degenerate-to-known (catches formula typos cheaply): Kumaraswamy(1,1)=uniform,
-//      Power(1)=uniform, triangular at known mode points, logit-normal median=logistic(mu),
-//      arcsine self-dual at 0.5, symmetric truncated-normal centre, and the far-off-support
-//      truncated-normal point-mass degenerates.
+//      Power(1)=uniform, Mobius(1)=identity/uniform, logit-sigmoid(1,0)=identity, triangular
+//      at known mode points, logit-normal median=logistic(mu), symmetric truncated-normal
+//      centre, and the far-off-support truncated-normal point-mass degenerates.
 //   3. Edge behaviour: truncated-normal has NON-ZERO edge density (the clipped bell — the
 //      doc's distinction vs logit-normal's zero edges).
 //   4. PchipDistribution: pure delegation to MonotoneCurve (same values), the contract
@@ -48,7 +49,8 @@ using dotModular::TriangularDistribution;
 using dotModular::PowerDistribution;
 using dotModular::KumaraswamyDistribution;
 using dotModular::LogitNormalDistribution;
-using dotModular::ArcsineDistribution;
+using dotModular::MobiusDistribution;
+using dotModular::LogitSigmoidDistribution;
 using dotModular::TruncatedNormalDistribution;
 using dotModular::PchipDistribution;
 using dotModular::MonotoneCurve;
@@ -175,11 +177,15 @@ struct Instance {
     std::unique_ptr<Distribution> d;
     const char* label;
     std::vector<double> avoid;   // pdf-sweep knots to keep clear of (Pchip control points)
+    Tol tol;                     // per-instance overrides (divergent-edge shapes: the
+                                 // CENTRAL DIFFERENCE is the imprecise side near an edge —
+                                 // f''' ~ x^(a-3) makes h^2*f'''/6 exceed the default tol)
 };
 static std::vector<Instance> allInstances() {
     std::vector<Instance> v;
-    auto add = [&](Distribution* d, const char* label, std::vector<double> avoid = {}) {
-        v.push_back(Instance{std::unique_ptr<Distribution>(d), label, std::move(avoid)});
+    auto add = [&](Distribution* d, const char* label, std::vector<double> avoid = {},
+                   Tol tol = Tol{}) {
+        v.push_back(Instance{std::unique_ptr<Distribution>(d), label, std::move(avoid), tol});
     };
     add(new TriangularDistribution(0.2), "triangular mode=0.2");
     add(new TriangularDistribution(0.5), "triangular mode=0.5");
@@ -199,7 +205,15 @@ static std::vector<Instance> allInstances() {
     add(new LogitNormalDistribution(1.0, 0.8), "logit-normal (1,0.8)");
     add(new LogitNormalDistribution(-1.0, 0.5), "logit-normal (-1,0.5)");
     add(new LogitNormalDistribution(0.5, 0.25), "logit-normal (0.5,0.25)");
-    add(new ArcsineDistribution(), "arcsine (bathtub/extremes)");
+    add(new MobiusDistribution(0.25), "mobius a=0.25 (tilt low)");
+    add(new MobiusDistribution(4.0), "mobius a=4 (tilt high)");
+    add(new MobiusDistribution(8.0), "mobius a=8 (strong tilt)");
+    add(new LogitSigmoidDistribution(2.0, 0.0), "logit-sigmoid (2,0)");
+    add(new LogitSigmoidDistribution(3.0, -1.0), "logit-sigmoid (3,-1)");
+    add(new LogitSigmoidDistribution(0.5, 1.0), "logit-sigmoid (0.5,1) heavy tails", {},
+        Tol{1e-8, 5e-6, 1e-5});   // a<1: pdf ~ x^(a-1) diverges at 0 — the numerical
+                                   // derivative's truncation, not the formula, sets the floor
+    add(new LogitSigmoidDistribution(1.0, 2.0), "logit-sigmoid (1,2) shifted");
     add(new TruncatedNormalDistribution(0.5, 0.2), "truncated-normal (0.5,0.2)");
     add(new TruncatedNormalDistribution(0.25, 0.12), "truncated-normal (0.25,0.12)");
     add(new TruncatedNormalDistribution(0.85, 0.15), "truncated-normal (0.85,0.15)");
@@ -219,7 +233,7 @@ static std::vector<Instance> allInstances() {
 static void testContractBattery() {
     std::printf("contract battery (every distribution)\n");
     for (const Instance& inst : allInstances())
-        contractBattery(*inst.d, inst.label, inst.avoid);
+        contractBattery(*inst.d, inst.label, inst.avoid, inst.tol);
 }
 
 // ── 2. degenerate-to-known ─────────────────────────────────────────────────────────────────────
@@ -266,12 +280,38 @@ static void testDegenerateToKnown() {
         checkNear(l.invCDF(0.5), 1.0 / (1.0 + std::exp(-mu)), 1e-9,
                   "logit-normal: invCDF(0.5) == logistic(mu) (median)");
     }
-    // Arcsine is self-dual at the centre
+    // Mobius(1) == identity == uniform
     {
-        ArcsineDistribution a;
-        checkNear(a.cdf(0.5), 0.5, 1e-12, "arcsine: cdf(0.5) == 0.5");
-        checkNear(a.invCDF(0.5), 0.5, 1e-12, "arcsine: invCDF(0.5) == 0.5");
-        checkNear(a.pdf(0.5), 2.0 / 3.14159265358979323846, 1e-12, "arcsine: pdf(0.5) == 2/pi");
+        MobiusDistribution m(1.0);
+        for (int i = 1; i < 20; ++i) {
+            const double x = (double)i / 20.0;
+            checkNear(m.cdf(x), x, 1e-12, "Mobius(1): cdf(x) == x (identity/uniform)");
+            checkNear(m.invCDF(x), x, 1e-12, "Mobius(1): invCDF(u) == u");
+            checkNear(m.pdf(x), 1.0, 1e-12, "Mobius(1): pdf == 1");
+        }
+        // And its density is BOUNDED in [min(a,1/a), max(a,1/a)] for every a (the
+        // never-spikes property; the extremes land at opposite ends depending on a<>1)
+        for (double a : {0.25, 2.0, 8.0}) {
+            MobiusDistribution mm(a);
+            const double lo = a < 1.0 ? a : 1.0 / a;
+            const double hi = a < 1.0 ? 1.0 / a : a;
+            bool bounded = true;
+            for (int k = 0; k <= 100; ++k) {
+                const double v = mm.pdf((double)k / 100.0);
+                if (v < lo - 1e-12 || v > hi + 1e-12) bounded = false;
+            }
+            check(bounded, "Mobius: pdf bounded in [min(a,1/a), max(a,1/a)] (never spikes)");
+        }
+    }
+    // Logit-sigmoid(1, 0) == identity (sigma(logit(x)) == x algebraically)
+    {
+        LogitSigmoidDistribution s(1.0, 0.0);
+        for (int i = 1; i < 20; ++i) {
+            const double x = (double)i / 20.0;
+            checkNear(s.cdf(x), x, 1e-12, "logit-sigmoid(1,0): cdf(x) == x (identity)");
+            checkNear(s.invCDF(x), x, 1e-12, "logit-sigmoid(1,0): invCDF(u) == u");
+            checkNear(s.pdf(x), 1.0, 1e-12, "logit-sigmoid(1,0): pdf == 1");
+        }
     }
     // Symmetric truncated-normal centres at 0.5
     for (double s : {0.05, 0.2, 0.5}) {
@@ -307,12 +347,16 @@ static void testEdgeBehaviour() {
     // Logit-normal: density VANISHES at the edges (squashed bell, open support)
     LogitNormalDistribution ln(0.0, 1.0);
     check(ln.pdf(0.0) == 0.0 && ln.pdf(1.0) == 0.0, "logit-normal: zero edge density");
-    // Divergent-edge pdfs stay finite (the DIST_EDGE_EPS proxy): Power k<1 at 0, arcsine both edges
+    // Divergent-edge pdfs stay finite (the DIST_EDGE_EPS proxy): Power k<1 at 0, logit-sigmoid a<1 both edges
     PowerDistribution p(0.5);
     check(std::isfinite(p.pdf(0.0)) && p.pdf(0.0) > 1.0, "power k<1: finite (large) pdf at 0");
-    ArcsineDistribution a;
-    check(std::isfinite(a.pdf(0.0)) && std::isfinite(a.pdf(1.0)) && a.pdf(0.0) > 1.0,
-          "arcsine: finite (large) pdf at both edges");
+    LogitSigmoidDistribution ls(0.5, 0.0);
+    check(std::isfinite(ls.pdf(0.0)) && std::isfinite(ls.pdf(1.0)) && ls.pdf(0.0) > 1.0,
+          "logit-sigmoid a<1: finite (large) pdf at both edges");
+    // Mobius at the edges: exactly 1/a and a (bounded, no proxy needed)
+    MobiusDistribution mb(4.0);
+    checkNear(mb.pdf(0.0), 0.25, 1e-12, "mobius: pdf(0) == 1/a exactly");
+    checkNear(mb.pdf(1.0), 4.0, 1e-12, "mobius: pdf(1) == a exactly");
     KumaraswamyDistribution kb(0.5, 0.5);
     check(std::isfinite(kb.pdf(0.0)) && std::isfinite(kb.pdf(1.0)),
           "kumaraswamy (a,b)<1: finite pdf at both edges");
@@ -384,7 +428,7 @@ static void testJsonRoundTripAll() {
         char* t3 = loaded2 ? dumpText(*loaded2) : nullptr;
         check(t1 && t3 && std::strcmp(t1, t3) == 0, "text round-trip byte-identical");
         // the loaded instance still honours the full contract
-        if (loaded) contractBattery(*loaded, inst.label, inst.avoid);
+        if (loaded) contractBattery(*loaded, inst.label, inst.avoid, inst.tol);
         free(t1);
         free(t2);
         free(t3);
@@ -430,15 +474,27 @@ static void testJsonParamSurvival() {
     check(static_cast<TruncatedNormalDistribution&>(*d).mu == 0.4
           && static_cast<TruncatedNormalDistribution&>(*d).sigma == 0.11,
           "truncated-normal mu/sigma survive exactly");
-    // arcsine: parameterless — absent params fine, junk content tolerated-and-ignored
+    // mobius / logit-sigmoid params survive exactly
+    j = envelope("mobius", paramsObj({{"a", 3.5}}));
+    d = loadDistribution(j);
+    json_decref(j);
+    check(static_cast<MobiusDistribution&>(*d).a == 3.5, "mobius a survives exactly");
+    j = envelope("logit-sigmoid", paramsObj({{"a", 2.0}, {"b", -1.5}}));
+    d = loadDistribution(j);
+    json_decref(j);
+    check(static_cast<LogitSigmoidDistribution&>(*d).a == 2.0
+          && static_cast<LogitSigmoidDistribution&>(*d).b == -1.5,
+          "logit-sigmoid a/b survive exactly");
+    // Extra junk param keys are tolerated-and-ignored (only named params are read)
+    j = envelope("mobius", paramsObj({{"a", 2.0}, {"junk", 1.0}}));
+    d = loadDistribution(j);
+    json_decref(j);
+    check(d != nullptr, "extra junk param keys tolerated");
+    // The removed type is rejected
     j = envelope("arcsine", nullptr);
     d = loadDistribution(j);
     json_decref(j);
-    check(d && std::string(d->typeName()) == "arcsine", "arcsine loads without params");
-    j = envelope("arcsine", paramsObj({{"junk", 1.0}}));
-    d = loadDistribution(j);
-    json_decref(j);
-    check(d != nullptr, "arcsine tolerates junk params content (nothing to read)");
+    check(d == nullptr, "arcsine rejected (removed from the palette)");
 }
 
 static void testJsonValidation() {
@@ -473,6 +529,11 @@ static void testJsonValidation() {
     expectNull(envelope("kumaraswamy", paramsObj({{"a", 2.0}})), "missing b rejected");
     expectNull(envelope("kumaraswamy", paramsObj({{"a", 0.0}, {"b", 1.0}})), "a == 0 rejected");
     expectNull(envelope("kumaraswamy", paramsObj({{"a", 1.0}, {"b", -2.0}})), "b < 0 rejected");
+    expectNull(envelope("mobius", paramsObj({{"a", 0.0}})), "mobius a == 0 rejected");
+    expectNull(envelope("mobius", paramsObj({{"a", -1.0}})), "mobius a < 0 rejected");
+    expectNull(envelope("logit-sigmoid", paramsObj({{"a", 2.0}})), "logit-sigmoid missing b rejected");
+    expectNull(envelope("logit-sigmoid", paramsObj({{"a", 0.0}, {"b", 1.0}})), "logit-sigmoid a == 0 rejected");
+    expectNull(envelope("logit-sigmoid", paramsObj({{"a", -1.0}, {"b", 1.0}})), "logit-sigmoid a < 0 rejected");
     expectNull(envelope("logit-normal", paramsObj({{"mu", 0.0}})), "missing sigma rejected");
     expectNull(envelope("logit-normal", paramsObj({{"mu", 0.0}, {"sigma", 0.0}})), "sigma == 0 rejected");
     expectNull(envelope("logit-normal", paramsObj({{"mu", 0.0}, {"sigma", -1.0}})), "sigma < 0 rejected");

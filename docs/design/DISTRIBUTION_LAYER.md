@@ -124,3 +124,48 @@ Decision:
 
 (Correcting an earlier float lean: "match the engine" is right, but the engine's MATH layer is double —
 the distributions are siblings of PhiInv, not of the float CV storage.)
+
+---
+
+## Palette revision (Rodney) — add Mobius + Logit-sigmoid, REMOVE Arcsine; tunability is now a criterion
+### The Distribution interface IS a monotone [0,1]->[0,1] bijection
+cdf = forward (pinned 0->1), invCDF = inverse, pdf = slope. This unifies THREE things as ONE object:
+statistical distributions (via their CDF), monotone WARPS (power/Mobius/logit-sigmoid "bend the interval"),
+and drawn PCHIP. A CDF is a warp is an editable curve. Warps aren't a new architecture — just more (cheap)
+parametric Distribution types.
+
+### REFINED selection principle — now THREE clauses
+Add a parametric distribution only if: (a) DISTINCT musical shape; (b) CHEAP inverse (closed-form/PhiInv,
+no LUT); (c) **TUNABLE — has params that fit the morph-with-knobs UI**. The whole editor UX is
+select -> morph-with-knobs (live) -> convert-to-editable; a PARAM-LESS distribution is a DEAD-END in that
+flow. (Drawn PCHIP is the exception — its "params" are the handles.)
+
+### ADD — Mobius / rational-linear (cheapest; gentle bounded tilt; identity at alpha=1)
+- cdf:  f(x) = x / ((1-a)x + a)                 (a>0)
+- inv:  f^-1(y) = a*y / (1 - (1-a)y)
+- pdf:  f'(x) = a / ((1-a)x + a)^2               (closed-form; x-terms cancel in the quotient rule)
+- PURE ARITHMETIC — one divide each, no transcendentals. CHEAPEST in the palette.
+- BOUNDED density (ranges 1/a..a across [0,1]) — a GENTLE monotone tilt, never spikes to inf (vs Power's
+  x^a whose density can ->inf at an edge). a>1 -> mass toward x=1; 0<a<1 -> toward x=0; a=1 -> flat
+  (identity/uniform = clean no-op center). The "subtle, never-extreme tilt" tool.
+
+### ADD — Logit-sigmoid (logistic squash; cheaper sibling of logit-normal; kept alongside, not instead)
+- logit(x)=ln(x/(1-x)); sigma(z)=1/(1+e^-z)
+- cdf:  f(x) = sigma(a*logit(x)+b) = 1/(1 + e^-b * ((1-x)/x)^a)      (a>0 steepness, b shift)
+- inv:  f^-1(y) = sigma((logit(y)-b)/a)
+- pdf:  f'(x) = a*f(x)*(1-f(x)) / (x*(1-x))     (derivative; all closed-form, exp/log only, NO Phi/erf)
+- vs Logit-normal (Phi-squash): logistic has HEAVIER tails + is CHEAPER (no Phi). Similar shape space but
+  distinct tails + cost -> keep BOTH (not redundant enough to drop either). identity at a=1,b=0 -> good
+  gentle-warp control. (If the palette ever feels crowded, logit-NORMAL is the one to reconsider, since
+  logit-sigmoid is cheaper and output-side doesn't need Phi-consistency.)
+
+### REMOVE — Arcsine
+Fails clause (c): NO PARAMS -> a dead-end in the morph-with-knobs UI (select it and there's nothing to turn).
+Its bathtub/extremes shape is covered TUNABLY by Kumaraswamy (a<1,b<1) + the drawn curve. It was the one
+distribution that didn't earn its selector slot. Removed.
+
+### Revised palette
+Power(a) | Mobius(a) | Triangular(mode) | Kumaraswamy(a,b) | Logit-normal(mu,sigma) | Logit-sigmoid(a,b) |
+Truncated-normal(mu,sigma) | Drawn(PCHIP).  All parametrics are TUNABLE (fit the morph UI). Two cheap warps
+(Power, Mobius) = gentle tilts; sigmoids (logit-normal/logit-sigmoid) = pick-your-tails; Kumaraswamy + drawn
+= catch-alls. Roles: WARPS = gentle identity-centered cheap tilts; STATISTICAL = specific shapes.
