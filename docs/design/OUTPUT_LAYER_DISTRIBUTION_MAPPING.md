@@ -227,8 +227,21 @@ cross-reference fragility, and .dmcurve stays general-purpose. Authorable-asset 
 
 ## UI — EDIT THE CDF DIRECTLY (not F^-1); show PDF/CDF/F^-1 (Rodney)
 Edit surface = the CDF F(x), because it's the object the user MEANS and the constraints are cleanest.
-- EDIT: CDF F(x) on [0,1], pinned F(0)=0, F(1)=1, MONOTONE non-decreasing. The user draws "what fraction of
-  outputs fall below x" — a comprehensible statement.
+- EDIT: CDF F(x) on [0,1], pinned F(0)=0, F(1)=1, STRICTLY INCREASING with minimum slope epsilon ~1e-3.
+  The user draws "what fraction of outputs fall below x" — a comprehensible statement.
+  *** 2026-10-18: TIGHTENED from "monotone non-decreasing". A FLAT segment is an ATOM, and atoms break
+  Sklar UNIQUENESS (the copula is then pinned only on Ran F, which has gaps), destroy rank information,
+  drag Spearman/Kendall AGAINST the Spread knob's calibration, and produce stuck unisons (the atom returns
+  the IDENTICAL value every time). Strict increase is what rank preservation actually needs; everything
+  else a user draws (steep/shallow/S/asymmetric/lumpy) is unaffected — this excludes one degenerate corner,
+  not the drawn-curve feature. ENFORCE at control-point level: y_{k+1} - y_k >= epsilon*(x_{k+1} - x_k),
+  with the drag handler CLAMPING so a flat drag meets RESISTANCE (same feel as the existing monotonicity
+  clamp). PCHIP cooperates: strictly increasing control points + Fritsch-Carlson limiting => strictly
+  increasing interpolant. epsilon ~1e-3 also guarantees float storage of warped_ cannot collapse a segment
+  to ties. FOLLOW-ONS: (a) assert STRICTLY increasing in the float-store property test, not non-decreasing;
+  (b) audit the palette for parameter values giving near-flat regions (logit-sigmoid heavy tails is the
+  likely candidate) or the invariant leaks through the palette; (c) MonotoneCurve::fromDistribution must
+  LAND on strictly increasing control points — assert, don't assume. ***
 - PDF = the CDF's SLOPE (DIRECT derivative f=F', not reciprocal). Shown LIVE as they draw: STEEP = high
   density ("lots of values here"), FLAT = low density. Best drawing feedback — you shape density directly.
 - F^-1 (the RUNTIME object, applied to the uniform stream) = the drawn CDF INVERTED. Derived at edit-commit:
@@ -311,6 +324,36 @@ Design position: keep the GAUSSIAN copula (gifts: PhiInv, reversibility, uniform
 + output F^-1 shaping -> the musical FLAVOUR of range-varying correlation-expression (clustering/dispersion),
 WITHOUT real tail dependence. True tail dep would need a different copula family (costs: loses the gifts).
 Honest: F^-1 MIMICS, via marginals, some of what copula-family-choice gives; it is not the same thing.
+*** The above is exactly right for a FIXED warp. It UNDERSTATES what a MODULATED warp does — see the next
+section. (2026-10-18) ***
+
+## MODULATED WARP IS A REAL COPULA CHANGE (2026-10-18 — amends the section above)
+If theta (or the depth w) is MODULATED BY A SOURCE SHARED ACROSS VOICES, the statement "the copula is
+unchanged" stops holding UNCONDITIONALLY. Conditional on theta the copula is still C; unconditionally you
+have a FRAILTY MIXTURE over a common factor, and the copula of a mixture is not the mixture of copulas:
+    H(x_1..x_n) = INTEGRAL C( F_theta(x_1), ..., F_theta(x_n) ) dP(theta)
+This is a ONE-FACTOR COPULA (Krupskii & Joe 2013) with conditionally GAUSSIAN coordinates. P = the law of
+the LATCHED theta at draw times (a sine LFO gives arcsine on [-A,A]; a triangle gives uniform; a clock-synced
+LFO is discrete and non-iid). Consequences:
+- At r = 0 with PowerDistribution (F_theta = x^theta, multiplicative in cumulative hazard) it is literally
+  ARCHIMEDEAN, generator phi = M_P^-1 (inverse MGF of the modulation source's amplitude law). So the SPREAD
+  KNOB MOVES BETWEEN DEPENDENCE CLASSES, not just correlation values. Palette members are NOT interchangeable
+  here — only Power has the hazard-multiplicative form giving a clean generator.
+- Law of total covariance: Cov = E[Cov|theta] + Cov(mu_i(theta), mu_j(theta)). With HOMOGENEOUS warps the
+  second term is Var(mu(theta)) >= 0, so shared modulation can only ADD positive dependence (PQD).
+  NEGATIVE common-factor dependence needs HETEROGENEOUS/OPPOSED warps (Sands unlock) — unreachable by any rho.
+- w gates theta MULTIPLICATIVELY (at w=0 the factor vanishes), so shared w is a dependence-STRENGTH control:
+  a non-stationary copula with rho untouched. SYMMETRIC warps (m(theta)=1/2) give a DISPERSION factor with
+  NO mean co-movement — bounded stochastic volatility; Spearman sees ~nothing, quadrant measures see it.
+- At rho = 1 the copula is M (Frechet bound) for ANY w and F — per-voice warp gives PARALLEL VOICING, and
+  shared modulation with heterogeneous warps pushes STRICTLY BELOW M (min is concave): modulation DECORRELATES.
+- lambda (tail dependence) is STILL ZERO: with Cbar(s,s) ~ s^kappa, kappa = 2/(1+r) > 1, we get
+  lambda_U <= G_max^(kappa-1), and G_max -> 0 for any CONTINUOUS F_theta under any BOUNDED P. No modulation,
+  truncation or affine rescaling rescues it. Only an ATOM does — and atoms are excluded by the strict-increase
+  constraint (see EDIT section) because they break Sklar UNIQUENESS and give stuck unisons.
+PITCH LANGUAGE: "common-factor dependence", "co-spiking at audible quantiles", "a copula with user-chosen
+marginals". NOT "tail dependence" — a reader who knows the frailty literature will check it.
+Full derivations: SESSION_LOG_2026-10-18.md sections 5-7.
 
 ## CONCRETE — what you SEE on the Sands bars (2 voices x 16 steps)
 Bars show the per-step per-voice probability/value. For two SPREAD-correlated voices:

@@ -45,7 +45,12 @@ dataToJson/dataFromJson embed the SAME object for patch state. One schema, both 
 ## PHASE 1 (do FIRST — pure, testable, de-risks everything): `MonotoneCurve` math module
 No VCV, no nanovg — just MonotoneCurve.hpp/.cpp + test_monotone_curve.cpp.
 Data:
-- vector<Vec2> points, each (x,y) in [0,1], sorted by x, MONOTONE non-decreasing in y; endpoints pinned
+- vector<Vec2> points, each (x,y) in [0,1], sorted by x, STRICTLY INCREASING in y with minimum slope
+  epsilon ~1e-3 (y_{k+1} - y_k >= epsilon*(x_{k+1} - x_k)); endpoints pinned
+  *** 2026-10-18: TIGHTENED from "monotone non-decreasing" — a flat segment is an ATOM, which breaks Sklar
+  uniqueness, destroys rank info and gives stuck unisons. Drag handler CLAMPS against the epsilon floor
+  (resistance at near-flat, not an error). See OUTPUT_LAYER_DISTRIBUTION_MAPPING.md EDIT section and
+  SESSION_LOG_2026-10-18.md section 8. ***
   (0,0),(1,1); size ~2..32.
 Core math:
 - float evalCDF(float x)      — PCHIP (Fritsch-Carlson monotone cubic): segment-search (x sorted) + cubic.
