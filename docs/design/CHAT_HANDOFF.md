@@ -36,7 +36,7 @@ Read in this order:
 3. Grep/read specific code when a detail matters. plans/Monsoon_plugin_codebase_familiarization.md helps.
 Then just ask Rodney "what are we working on" — he'll point you.
 
-## CURRENT STATE (updated 2026-10-18 — verify with git log AND git ls-remote)
+## CURRENT STATE (updated 2026-10-18b — verify with git log AND git ls-remote)
 *** BRANCH REALITY — READ THIS BEFORE BELIEVING ANY "DONE" BELOW ***
 Phase 2 (editor widget) and Phase 2.5 are NOT on lane-expander-refactor. They live on two UNMERGED
 branches, and Phase 2.5 IS DONE on the second:
@@ -122,11 +122,21 @@ Key settled decisions:
 NEXT: Phase 2.5 is DONE on feat/dmcurve-phase2-5 (see CURRENT STATE) — MERGE IT FIRST. Then Phase 3
 (integration: wire warp into a lane, Macro/Sands scope, .dmcurve load/save, LIVE-PREVIEW KEYSTONE).
 
-PHASE 3 ARCHITECTURE — SETTLED 2026-10-18 (full reasoning: SESSION_LOG_2026-10-18.md):
+PHASE 3 ARCHITECTURE — SETTLED 2026-10-18 (full reasoning: SESSION_LOG_2026-10-18.md + …-18b.md):
 - STORAGE: warped_[16][7][16] MIRROR alongside random_ (the insertion seam is polyRandom() -> random_, the
-  final post-everything uniform). Raw random_ retained as the pre-toggle source, so the uniform<->transformed
-  toggle is two array selections and the LIVE-PREVIEW KEYSTONE falls out of the storage shape (drag -> dirty
-  -> rebuild -> Sands bars redistribute).
+  final post-everything uniform). UPDATED 2026-10-18b: the mirror holds the EFFECTIVE w-MIXTURE (one array,
+  the single value BOTH engine and display read), NOT a separate full-warp array. Raw random_ is retained as
+  the w=0 BASIS the mixture is built from. (This DROPS session-a's raw<->full-warp display toggle — see
+  TIMING below — which removes the latched-vs-live hazard: there is only one value to show.) The LIVE-PREVIEW
+  KEYSTONE still falls out (drag -> dirty -> rebuild -> Sands bars redistribute).
+- TIMING (SETTLED 2026-10-18b, …-18b.md §2): DISPLAY rebuilds IMMEDIATELY on any curve/w edit and ALWAYS
+  shows the effective w-mixture — NO raw↔warped toggle (it would show full-warp-at-w=1, a value not in
+  effect = the plausible-wrong-display failure class). ENGINE latches w at DRAW TIME (step). Step is correct
+  BY the phrase-boundary rule, not an exception: phrase boundary is reserved for items that break Sklar/
+  uniformity per step; the w-mixture (1-w)·id+w·F^-1 is MONOTONE → Sklar-SAFE per step → step granularity.
+  PROTECTED PROPERTY: sight leads sound by ONE STEP (edit→see instantly→hear next step). Do NOT quantise the
+  display to the step "to sync" — that breaks the feel. w:1→0 IS the warp on/off (no separate mode switch =
+  no second source of truth); continuous w gives a smooth uniform→warped morph.
 - DOUBLE COMPUTE, FLOAT STORE. Exact double invCDF on the rebuild path — NO new numerical path, NO new LUT.
   (Do NOT borrow PhiInvFast: it's a 4097-entry binary search, plausibly SLOWER than the branch-light Acklam
   rational, and it exists for mix2 BIT-IDENTITY, not throughput.)
@@ -149,17 +159,55 @@ PHASE 3 ARCHITECTURE — SETTLED 2026-10-18 (full reasoning: SESSION_LOG_2026-10
   thresholded lanes a threshold shift; only the CV outs are irreducible. If ever built: AFFINE RANGE (no
   atoms, all claims intact) is the safe one; HARD CLAMP creates atoms. Params are LANE params, NOT .dmcurve.
 
+UI ATTACHMENT — SETTLED 2026-10-18b (full detail: SESSION_LOG_2026-10-18b.md §7):
+- EDITOR = a POPUP bound to the lane's LaneDist (Macro: lane; East: lane+voice). NOT per-cell bar editing
+  (the deprecated per-cell code was unintentional, never used). THREE surfaces, each shows ONE thing: bars
+  = engine output (on module), curve editor = authored F (popup), effective-distribution = warped marginal
+  (SEPARATE visualiser module).
+- WARP DISPLAY injection = ONE accessor: finalRandomByStrand (PatternEngine.hpp:419) feeds every bar AND
+  the prob outs. Mirror holds the effective w-mixture → bars + CV outs + visualiser all read it. Prob outs
+  carry the w-mix automatically.
+- LAYOUT: DO NOT resize the probability bars. Insert columns LEFT (w-level, w-depth, w-mod jack, param1/2
+  jack+attenuverter = 7 cols ≈63mm, BOTH panels) and RIGHT (Macro ONLY: w-mod-send, w-mod-tap ≈18mm).
+  Full-size controls (no shrinking). Interim widths ~60HP east / ~74HP macro — accepted; subpanel exit later.
+- SEND/TAP ALL ON MACRO, authored per-voice via Macro's TAB; East RECEIVES only (no East send/tap controls).
+  macroTap[224] authored on Macro, read by East, never written by East — fold into the send-tap CC prompt.
+- POPUP TRIGGER button near deleg/dir cells: Macro ALWAYS; East ONLY when lane delegated to East.
+- GEOMETRY INTEGRITY = test/audit_anchor_bind.py (CI via run_all.sh:251): asserts every generator anchor
+  has a widget bind + counts match SandsGrid constants. east(99)/macro(126) pass today. Width task =
+  add anchors in panel_src gen + binds in widget + `counts` IN THE SAME COMMIT (the audit's one gap: a
+  wrong/absent count is only caught if you added it). Only 4 modules migrated (east/macro/keppel/causeway);
+  UNMIGRATED={} is empty (others just absent) — GOAL: migrate ALL panels eventually.
+- SUBPANELS (param mods' right long-term home) BLOCKED by the adjacency bug: subpanels follow the main
+  panel but the user can INSERT a panel between (Rack has no API to forbid it; engine can only detect +
+  degrade). Deferred until warp is proven AND insertion-break degradation is designed; then migrate the
+  WHOLE modulation tier at once, not piecemeal.
+
 STILL OPEN — BLOCKS CC:
-1. Distribution OWNERSHIP: value variant vs unique_ptr. Modulation made it urgent — the structure holds
-   THREE lifetimes (per-voice modulatable scalar w written on the CONTROL path; per-voice curve object read
-   on rebuild; Macro-delegated default behind both) and the dirty mask keys off all three. Up to 119
-   instances. unique_ptr means ALLOCATION DURING MODULATION => points at a value variant, but READ THE
-   SANDS/MACRO DELEGATION CODE BEFORE COMMITTING.
+1. Distribution OWNERSHIP: ANSWERED 2026-10-18b (SESSION_LOG_2026-10-18b.md §1). NOT unique_ptr (allocates
+   on the modulation control path) and NOT variant (wrecks the flat array). Split identity+params (per
+   voice) from behaviour (not): store a FLAT POD `LaneDist{uint8_t kind; float p[4];} laneDist[112]` beside
+   spread[112] — kind is a TAG, params ≤4 doubles, behaviour is a switch(kind) → the SAME closed-form math
+   as Distribution.hpp exposed as free fns. Distribution.hpp STAYS as the authored/editor/set-time form;
+   add a tested one-way `lower(const Distribution&)` at the engine-entry seam (same shape as macroBase→
+   published-deltas). Drawn curves = index into a set-time PCHIP pool (not inline). Guard the lying-
+   abstraction: ONE inline fn per curve shared by both the subclass and the switch; contract test
+   lower(d).invCDF(u)==d.invCDF(u). Remaining = the CC build + tests, not a decision.
 2. melodySource[16][16] is WRITTEN in four places and READ in NONE outside persistence. The degree mapping
    does not consume it. Since faders ARE a discrete inverse-CDF (widths = mass), faderMap . F^-1 is where
-   melody warp lands — PIN THIS SEAM BEFORE DESIGNING IT. Do not design it on a guess.
-3. UNVERIFIED: Change Alley routing (the claim that CA routing w's mod source = routing the FACTOR
-   STRUCTURE). Read the CA docs before relying on it.
+   melody warp lands — PIN THIS SEAM BEFORE DESIGNING IT. Do not design it on a guess. STILL OPEN.
+3. (CLOSED 2026-10-18b) Change Alley is a SEPARATE layer (latent-assignment operator; different files, no
+   crossover). CA and w-modulation are INDEPENDENT dependence handles that COMPOSE; neither routes the
+   other. (Session-a's "CA routes w's factor structure" claim WITHDRAWN.)
+
+IMMEDIATE CC WORK (ships FIRST, alone, off lane-expander-refactor, before any Phase 3):
+- docs/design/CC_PROMPT_per_voice_send_tap.md — fixes a REAL regression found by code-reading: the
+  Macro→East SEND is per-voice (macroSend[448]) but the PRE/POST TAP is Macro-GLOBAL (globalTap[14]),
+  forcing every receiving voice onto one tap. Fix = per-voice tap (macroTap[224]); the non-mechanical
+  heart is that per-voice tap moves the choice DOWNSTREAM of the publish, so Macro must publish BOTH
+  endpoints (macroPreDelta/macroPostDelta) and each voice lerps with its own tap. Hardens the publish-
+  both-endpoints contract the w-send + per-param sends inherit. 4-assert contract test on SpreadResolver
+  (confirmed compiles standalone). NB the tap is a CONTINUOUS lerp effAtt=1+(att-1)·tap, not a toggle.
 
 ## RECURRING HARD-WON PRINCIPLES (so you don't relearn them)
 - VERIFY against code/tests, never a plausible narrative. (polyBankIndex lied; so did some of my design
