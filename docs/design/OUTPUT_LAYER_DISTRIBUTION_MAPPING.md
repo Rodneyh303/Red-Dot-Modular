@@ -339,3 +339,40 @@ x per-voice (Macro-global/Sands-unlock) x per-lane meaning (value-tilt vs contro
 reminder to keep the layers DISTINCT when reasoning/building: knob=base, slew/spread=how-coupled,
 F^-1=how-expressed(marginal), copula=the dependence we don't touch. Conflating them is where confusion (and
 bugs) hide.
+
+---
+
+## What the WARP is FOR (purpose, not mechanism) — Rodney
+(Corrects an earlier invented "warp=where / slew=how orthogonality": slew is SHARED/per-lane, not per-voice;
+that framing added nothing. The real story below.)
+
+### Melody warp = another handle on the polyphonic CHAOS <-> ORDER level
+The warp isn't a standalone feature — it's one more control in the set (copula + slew + faders + warp) that
+ALL governs how STRUCTURED vs CHAOTIC the polyphony is:
+- independent per-voice, no coherence -> soup/chaos
+- copula-correlated -> coherent MOTION (less chaos)
+- correlated + SHARED warp -> coherent AND same region (clustered; even less chaos)
+- per-voice DIFFERENT warps -> controlled DIFFERENTIATION (ordered variety: voices deliberately in different
+  registers, not random)
+GLOBAL melody warp ~= fader adjustment (redundant for static shaping; useful only as a quick gesture / single
+modulation handle vs rebalancing 12 faders). The VALUE is per-voice. It's all chaos-level control.
+Also (Rodney): faders (and per-voice warp) MEDIATE how the shared slew's draw-to-draw correlation becomes
+note-to-note MOTION — concentrated distribution damps slew's note-motion, spread one amplifies it.
+
+### Octave warp = the distributional layer completing a FOUR-LAYER octave-control stack
+The comprehensive answer to the Melodicer-style "limited octave control" criticism. Four ORTHOGONAL musical
+dimensions of register (vs Melodicer's ~one knob):
+1. STRAITS — deterministic per-voice octave OFFSET (WHERE each voice sits). Static, precise.
+2. CAUSEWAY — modulation of those offsets (how the placement DRIFTS over time; temporal).
+3. WARP — per-voice DISTRIBUTION within the octave range (favour low/high/spread/cluster).
+4. COPULA — INSTANTANEOUS cross-voice correlation/decorrelation (voices change octave TOGETHER = parallel
+   registral motion, or APART = contrary/independent = registral voice-leading across the ensemble).
+= placement / temporal / distributional / cross-voice-correlational. The warp adds the probabilistic-
+distribution layer on top of deterministic (Straits) + dynamic (Causeway) + correlational (copula).
+
+### Unifying: it's all CHAOS-LEVEL control on the register axis
+The same four-fold structure (placement/temporal/distributional/correlational) applies to melody AND octave,
+and it all reduces to controlling the polyphonic chaos<->order level — on the register axis the COPULA is the
+most direct chaos dial (together=ordered / apart=chaotic), warp adds distributional differentiation, Straits/
+Causeway add deterministic/temporal structure. The warp ROUNDS OUT existing control systems (chaos-level for
+melody; the octave stack for octave) — it is not a separate axis.
