@@ -4,6 +4,33 @@ You are Claude Code working on dot.modular / Monsoon (VCV Rack v2, C++17). This 
 FIRST build task of Phase 3. It is a self-contained bug fix that ships ALONE and FIRST,
 before any warp/distribution code, because it hardens a publish contract later work reuses.
 
+## READ THESE FIRST, IN THIS ORDER (do not start coding until you have)
+You are starting with NO project context. Load it from the repo, not from assumptions:
+1. `docs/design/CHAT_HANDOFF.md` — the project primer: what Monsoon is, the WORKING MODEL
+   (this repo's docs are the durable memory; verify against code, never a plausible story —
+   a lying abstraction + plausible-but-wrong narratives cost this project weeks), the
+   Singapore-geography naming, and the current state. Non-negotiable first read.
+2. `docs/design/CC_PROMPT_per_voice_send_tap.md` — THE FULL SPEC for THIS task: the bug, the
+   publish-contract change, the EXACT reader list (by file:line), and the 4-assert contract
+   test in detail. This prompt is the ORDERING + wiring; that file is the what-and-why. Read
+   it fully before step 0.
+3. `docs/design/SESSION_LOG_2026-10-18b.md` §3 — the reasoning behind this fix (why the tap
+   must go per-voice, why the publish moves downstream, why it ships first). Context, not
+   instructions; read if a decision in the spec seems arbitrary.
+
+## HOW TO BUILD + TEST (the entry points)
+- Unit tests (what you'll use here — all pure, no Rack): `bash test/run_all.sh` runs every
+  standalone test; `bash test/run_all.sh <name>` runs one. test/run_all.sh is the SOURCE OF
+  TRUTH for each test's compile line and its TESTS[] registry — add new tests there, do not
+  trust per-file "Compile:" header comments (they drifted).
+- Full plugin build (needs the Rack SDK; you likely CANNOT run this — Rodney does):
+  `make RACK_DIR=/path/to/Rack-SDK`. Do not block on it; your work here is unit-testable.
+- Panel audit (if you touch any panel anchor): `python3 test/audit_anchor_bind.py`.
+
+NOTE for the human: this repo has no CLAUDE.md, so a fresh CC session gets no auto-loaded
+context — that's why this orientation block is explicit. Worth adding a CLAUDE.md that points
+at CHAT_HANDOFF.md so future prompts don't each have to repeat this.
+
 ## Ground rules (read, do not skip)
 - Branch: `git checkout lane-expander-refactor && git pull`, then cut
   `git checkout -b fix/per-voice-send-tap`. Work there. NOT master, NOT lane-expander-refactor
