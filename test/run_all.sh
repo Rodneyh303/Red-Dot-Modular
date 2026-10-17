@@ -104,6 +104,7 @@ TESTS=(
   "test_rule2_integration|"
   "test_scale_list|"
   "test_scale_nondestructive|"
+  "test_send_tap|"   # header-only: per-voice send-tap contract (SpreadResolver + MacroTapBank seams)
   "test_spread_resolver|"
   "test_subgate|$SE $GS $PE"
   "test_var_leg_rest|"

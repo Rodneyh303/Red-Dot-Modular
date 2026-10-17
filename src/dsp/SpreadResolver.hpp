@@ -63,7 +63,25 @@ struct SpreadResolver {
         float macroBase = 0.f;        // Macro's base spread for the lane  (macroBase[lane][3])
         float macroSendDelta = 0.f;   // Macro's tapped send delta         (macroSendDelta[lane][3])
         float macroSend = 0.f;        // the send amount (0..1)            (sendId param)
+
+        // PER-VOICE SEND-TAP (the P9b fix): the publish now carries BOTH endpoints and each
+        // receiving VOICE selects its own tap — the pre/post choice moves downstream of
+        // Macro's publish (which can no longer bake one globally-tapped delta).
+        //   macroPreDelta  = raw cv·(hi-lo)          (tap=0 endpoint, PRE the attenuverter)
+        //   macroPostDelta = cv·att·(hi-lo)          (tap=1 endpoint, POST — the old tappedDelta)
+        //   macroTap      = THIS voice's tap (0..1; default 1.0 = POST, the old behaviour)
+        // NOTE (test-first): these fields are the seam test_send_tap.cpp drives. effective()
+        // does not read them YET — wiring the lerp in is what turns the bug assert green.
+        float macroPreDelta  = 0.f;
+        float macroPostDelta = 0.f;
+        float macroTap       = 1.f;
     };
+
+    // The per-voice tap selection: lerp between the two published endpoints. Pure; the
+    // reader-side half of the publish-both-endpoints contract (voiceBlend = tappedDelta·send).
+    static float tappedDelta(const Inputs& in) {
+        return in.macroPreDelta + (in.macroPostDelta - in.macroPreDelta) * in.macroTap;
+    }
 
     // The single authority. Pure: same inputs → same output, no hidden state.
     // Sums the present contributions and clamps ONCE at the end (end-clamp; see header note) — order-
