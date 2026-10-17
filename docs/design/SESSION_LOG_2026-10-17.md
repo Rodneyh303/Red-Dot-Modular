@@ -1,104 +1,81 @@
-# SESSION LOG — 2026-10-17 (long architecture chat; digest, not verbatim)
-This is the distilled REASONING of one very long chat — the connective narrative the per-topic docs lack
-(how threads related, what order, what got CORRECTED). Verbatim chat not saved (couldn't export); its
-durable output is the design docs committed throughout + CHAT_HANDOFF.md. Read that handoff first; this is
-"how we got here, this session".
+# SESSION LOG — 2026-10-17 (long architecture+debug chat, distilled)
+Not verbatim (can't export the raw chat). This is the SUBSTANCE: the reasoning arc, decisions + WHY,
+corrections, and pointers to the docs each thread produced. Companion to CHAT_HANDOFF.md (handoff = where we
+are; this = how we got here this session). Durable record; the chat itself is gone.
 
-## ARC (chronological threads)
+## ARC (chronological-ish)
+1. SUBGATE / VARIATION design (gate mode): resolved ghost/ratchet rest+legato into a per-subgate "REST
+   SOURCE" selector {None, Main, Variation, Both-OR}; dissolved a two-gate priority tension; variation =
+   the assignable spare lane in gate mode; subgates INHERIT the full 2D copula (voice x time) for free by
+   routing through first-class lanes. -> GATE_SUBDIVISION_STEP_GATE.md.
+2. THE BRUTAL DEBUG (centerpiece): a melody-bar flicker on voice 2, then after a fix, on voice 16. 6+ failed
+   CC rounds + 3 failed fixes by me (all "plausible but wrong"). ROOT CAUSE finally found: VoiceResolver::
+   polyBankIndex was a LYING abstraction — code returned v-1 (=voiceSlot) but NAME + comments said "0-based
+   poly bank, V2=0". Self-contradictory source -> nobody could reason correctly. ALSO found a hidden live
+   audio bug: SpreadInterp/SpreadManager/MonsoonSandsManager spoke an OLD lane order while callers used
+   unified PL_* -> 5/7 spread lanes CROSSED when spread!=0.
+   THE FIX THAT WORKED: wrote CONTRACT TESTS (test_voice_conventions.cpp) that caught BOTH statically (after
+   everything else failed in Rack). Then unified conventions on BOTH axes: voice ([16][16] storage,
+   voiceSlot, polyBankIndex->polyVoiceSlot) and lane (unified PL_* order). Verified 3 ways: display + tests
+   + output jacks. CI green. -> CHAT_HANDOFF.md, VOICE_CONVENTION_TESTS.md, V16_FLICKER_root_smell.md,
+   convention_unification_INCOMPLETE.md.
+   LESSON (load-bearing): verification is the bottleneck, not the fix. A reliable test turned an unfixable
+   Rack-only ghost into a static failure solved in one pass. Verify against code/tests, never a plausible
+   narrative.
+3. OUTPUT-LAYER DISTRIBUTION WARPING (the new fun feature, bulk of the session):
+   - Prompted by a VCV forum post (Morris, "subtractive and additive randomness"). Positioned dot.modular as
+     CORRELATIONAL randomness (3rd category). The forum's wish (import external crafted values/scales) is
+     already shipped (QMIX/quantiser/gate/pitch-blend + Scala/.dmtune authoring via Sikit/Colonnade/Duo).
+     -> POSITIONING_correlational_randomness.md.
+   - KEY: because the copula keeps the output UNIFORM(0,1) end-to-end (the invariant defended in the slew/mix
+     correctness war), the output is a clean substrate -> apply any F^-1 at the output to reshape the MARGINAL
+     per lane, correlation- + reversibility-preserving (Sklar). "Knew there was a reason to insist on uniform-
+     preserving modulation." -> OUTPUT_LAYER_DISTRIBUTION_MAPPING.md.
+   - Edit the CDF directly (not F^-1); PDF = slope; F^-1 = reflect+re-fit PCHIP; NO LUT (direct eval, control
+     rate). 8-dist palette (all tunable + cheap inverse): Power, Mobius, Triangular, Kumaraswamy, Logit-
+     normal, Logit-sigmoid, Truncated-normal, Drawn(PCHIP). Dropped Arcsine (no params), Bates/true-Beta/
+     t-copula (iterative inverse). -> DISTRIBUTION_LAYER.md.
+   - Precision: double (siblings of the double PhiInv/copula math layer); float at storage. No template.
+   - .dmcurve = JSON (shares patch dataToJson schema); distribution = patch state (no .dmdist); shipped
+     defaults + user curves all .dmcurve. -> DMCURVE_EDITOR.md.
+4. BUILT IT (fast, on clean foundations): Distribution.hpp + MonotoneCurve.hpp (double, PCHIP) + contract
+   tests = Phase 1, MERGED. Then the editor widget (Phase 2): square dual-axis CDF/PDF display, all dists
+   render (parametric + drawn via draw-against-Distribution-interface), live param knobs, drag-to-edit,
+   "convert parametric -> editable PCHIP". Iterated render-by-render (postage-stamp -> wide panel -> dual-
+   axis fixing PDF clipping). Rodney confirmed drag feel + "to editable" good. -> DMCURVE_EDITOR.md.
+5. WARP SCOPE + PURPOSE (reasoned carefully, several corrections):
+   - PURPOSE: melody warp = per-voice handle on polyphonic CHAOS<->ORDER (global warp ~= fader adjust,
+     redundant); octave warp = distributional layer of a 4-LAYER octave stack (Straits offset / Causeway mod
+     / warp / copula correlation) answering the Melodicer "limited octave control" criticism. (Corrected an
+     invented "warp=where/slew=how orthogonality" — slew is SHARED not per-voice.)
+   - Mono value of a warp iff the lane LACKS per-outcome faders (octave/length: no faders -> mono value;
+     melody: has faders -> polyphonic-only). Faders and warp are the same role, delivered differently.
+   - Threshold/boolean lanes (rest, legato, accent, qmix; variation in GATE mode = binary subgate rest/
+     legato): warp only reshapes a modulation-response curve -> marginal. BUT isolated-lane reasoning has a
+     blind spot (rest+legato gap-distribution interaction; gate/subgate density). DECISION: add warp to ALL
+     lanes EXPERIMENTALLY, FEEL it, peel back on cost + FUN; provisional cut = warp-worthy <=> visualiser-
+     worthy. Reasoning sets the default; Rodney's ears set the verdict.
+   - t-copula NOT needed: shared-extreme-warp + Gaussian copula ~= t-copula tail-clustering MUSICALLY,
+     without the numerical pain (t-quantile unstable high df, Beta-inversion, reversibility risk). Beta^-1
+     harder than PhiInv -> fine if amortizable to set-time (marginals), disqualifying in hot/reversible
+     paths (copula). -> OUTPUT_LAYER_DISTRIBUTION_MAPPING.md, DISTRIBUTION_LAYER.md.
+6. VISUALISER (effective-distribution): a Lantern-style display module, ROWS of VOICES (Sands transposed),
+   showing effective melody + octave (+ note-length) distributions = fader WIDTHS x the Sands non-uniform
+   draw, per voice, live. Serves Monsoon/Colonnades/Duo (attach to one, host-driven bar count). KEYSTONE:
+   switchable UNIFORM<->TRANSFORMED view makes every layer's effect visible (depth-as-discovery). ->
+   EFFECTIVE_DISTRIBUTION_VISUALISER.md.
 
-### 1. Subgate variation -> the REST SOURCE design (early)
-Started: "why does variation gate ghost but not ratchet?" Worked through: rationale (departure vs
-articulation) -> uniform "variation filter" checkboxes -> realized the tension meant the ROLE was wrong ->
-landed on per-subgate REST SOURCE selector {None, MainRest, Variation, Both-OR}. One rest per cell from a
-chosen source dissolves the two-gate tension + the missing "rest beats variation" toggle. Traced facts:
-ratchet in-gate only (main rest closes gate -> no ratchet, STRUCTURAL); ghost in-gap (gate-shape gaps, not
-rest lane). Then: variation = the assignable GATE-MODE spare lane (note length = gate length in gate mode);
-subgate legato gets a symmetric source picker; one-lane-two-roles dissolves because rest-beats-legato
-resolves the overlap. CAPSTONE: subgates inherit the FULL 2D copula (cross-voice spread + temporal slew) for
-free by routing through first-class lanes -> subgate density breathes/clusters. Docs: GATE_SUBDIVISION_STEP_
-GATE.md.
+## CORRECTIONS MADE (plausible-but-wrong caught — the discipline in action)
+- polyBankIndex "the +1 is the bug" (mine, x2-3) -> wrong; it was the lying convention + lane crossing.
+- "ratchet is un-gated" -> wrong (re-read doc comment not code); it's in-gate-only, structurally rest-linked.
+- "warp=where / slew=how orthogonal per-voice" -> wrong; slew is shared; it's just the polyphonic point.
+- float for distributions -> corrected to double (the math layer is double, not the float storage layer).
+- Pattern: Rodney repeatedly caught plausible narratives; the fix was always CHECK THE CODE / FEEL IT.
 
-### 2. The TECH-DEBT war (the brutal core of the session)
-Rodney: "nice ideas once we clear the debt causing constant stress + inexplicable chaos." Audited: root =
-VOICE-INDEX CONVENTION fragmentation (2 bases: voiceSlot 0=V1 vs voiceIdx/polyIdx 0=V2; ~8 names; storage
-split [15]+mono). Then LANE-axis split too (SpreadInterp etc. old order vs unified PL_*). Collapse to
-[16][16] + voiceSlot. Also CLASS-level vestigial debt (MonoSandsParameterManager, LaneMapping+SandsLaneNames,
-identity-conversions) = the THIRD level. "mono is not special" must hold at storage + convention + class.
-Parallelized + precompiled test harness (run_all.sh) — fixed an MSYS2 hang I introduced.
-THE BUGS: V2 melody-bar flicker (fixed via collapse) then it MOVED to V16. 6+ CC rounds failed; 3 of MY
-static fixes failed (2 were no-ops — polyVoice()==currentSlot() for poly). ROOT finally found: VoiceResolver
-::polyBankIndex LIED — code returns v-1 but name/comments said "0=V2, +1". The self-contradiction is why
-nobody could reason about it. THE BREAKTHROUGH: verification-first. Built contract tests (test_voice_
-conventions.cpp) that caught the LANE-convention split STATICALLY (turned an unfixable Rack-only ghost into
-a red test). Fix = unify the lane convention (SpreadInterp speaks PL_*). This TERMINATED the V16 flicker AND
-caught a HIDDEN bug (spread knobs drove the WRONG lane, 5 of 7 crossed when spread!=0). polyBankIndex ->
-polyVoiceSlot (truth-fixed). Verified 3 ways (display + tests + output jacks); CI green; merged.
-LESSON (the meta-lesson of the whole session): VERIFICATION is the bottleneck, not the fix. A flaky/missing
-verification layer costs weeks; a test that makes a bug STATIC fixes it in one pass. Docs: convention_
-unification_INCOMPLETE.md, V16_FLICKER_root_smell.md, VOICE_CONVENTION_TESTS.md, COLLAPSE_15_TO_16.md.
+## STATE AT SESSION END
+HEAD ~a3d044c0 on lane-expander-refactor, CI green. War won + verified. Phase 1 merged. Phase 2 editor built.
+NEXT: Phase 2.5 (Mobius + Logit-sigmoid in Distribution.hpp, remove Arcsine, param knobs, convert-to-PCHIP),
+then Phase 3 (integration: warp into a lane, Macro/Sands scope, .dmcurve load/save, LIVE-PREVIEW keystone).
 
-### 3. Morale pivot -> the OUTPUT-DISTRIBUTION WARPING feature (the fun)
-Prompted by a VCV forum post (Morris, "subtractive and additive randomness"). Insight: dot.modular is a
-THIRD category — CORRELATIONAL randomness (shape dependence, preserve marginals = the copula). The forum's
-wishes (import external values/scales) are already shipped (QMIX, quantiser mode, gate mode, Scala/.dmtune
-via Colonnades/Sikit/Duo) + more. THE FEATURE: because the copula keeps output UNIFORM(0,1) end-to-end (the
-invariant defended in the slew/mix war), apply any F^-1 at the OUTPUT to reshape the per-lane MARGINAL —
-correlation- + reversibility-preserving (Sklar). "Knew there was a reason to insist on uniform-preserving
-modulation" — the correctness invariant turned out to ENABLE a capability. Docs: OUTPUT_LAYER_DISTRIBUTION_
-MAPPING.md, POSITIONING_correlational_randomness.md.
-
-### 4. Distribution design decisions (settled this session)
-- Edit the CDF directly (not F^-1); PDF = slope; F^-1 = reflect+re-fit PCHIP. NO LUT (control-rate direct
-  eval; Beta^-1 harder than PhiInv, only OK if amortizable to set-time; not in hot/reversible paths).
-- Precision = DOUBLE (distributions are siblings of the double PhiInv/copula math layer; cast to float at
-  storage). No template (fights the polymorphic interface; YAGNI).
-- Palette (8, all tunable, cheap inverse): Power, Mobius, Triangular, Kumaraswamy, Logit-normal, Logit-
-  sigmoid, Truncated-normal, Drawn(PCHIP). Dropped Arcsine (no params). Rejected Bates/true-Beta/t-copula
-  (iterative inverse). Mobius pdf = a/((1-a)x+a)^2 (bounded gentle tilt, identity at a=1).
-- The Distribution interface IS a monotone [0,1]->[0,1] bijection -> stat dists, warps, drawn curves are ONE
-  object. Selection principle (3 clauses): distinct shape + cheap inverse + TUNABLE (fits morph-UI).
-- .dmcurve = JSON (shares patch dataToJson schema; .dmtune consistency). Distribution = patch state (no
-  .dmdist file). Shipped defaults + user = all .dmcurve. t-copula not needed: shared-extreme-warp ~=
-  t-copula's tail clustering MUSICALLY, without the numerical pain. Docs: DISTRIBUTION_LAYER.md, DMCURVE_
-  EDITOR.md.
-
-### 5. Warp PURPOSE + SCOPE (reasoned carefully; some of my claims CORRECTED by Rodney)
-- Melody warp = per-voice handle on polyphonic CHAOS<->ORDER (global warp ~= fader adjust, redundant). Mono
-  value iff the lane LACKS per-outcome faders (octave/note-length have none -> warp is the only shaper ->
-  mono value; melody has faders -> polyphonic-only).
-- Octave warp = distributional layer of a 4-LAYER octave stack (Straits deterministic offset / Causeway mod
-  / warp / copula cross-voice correlation) -> comprehensively answers the Melodicer "limited octave control"
-  criticism.
-- CORRECTED: I invented a "warp=where / slew=how" orthogonality — WRONG (slew is shared/per-lane, not
-  per-voice). Rodney caught it. The truth: it's all chaos-level control; faders/warp mediate how shared slew
-  becomes note-motion.
-- Threshold/boolean lanes (rest, legato, accent, qmix; variation in GATE mode is binary = subgate rest/
-  legato): warp only reshapes a modulation-response curve (marginal, redundant with Straits knob+mod).
-- DECISION (provisional/experimental): add warp to ALL lanes (cheap add/remove), FEEL it (esp. interactions
-  — rest+legato gap-distribution, gate/subgate density, which isolated-lane reasoning can't call), peel back
-  on cost + FUN. Provisional cut = warp-worthy <=> visualiser-worthy. Reasoning sets the default; Rodney's
-  EARS set the verdict. Docs: OUTPUT_LAYER_DISTRIBUTION_MAPPING.md (warp purpose + scope).
-
-### 6. The EFFECTIVE-DISTRIBUTION VISUALISER (where to show warped output)
-Can't go under the global faders (per-voice warps -> up to 16 distributions). Not Sands (that's the
-GENERATION layer, not the response-curve layer). -> OWN module, Lantern-style (display-only, snapshots host
-state). Layout = Sands transposed: ROWS of VOICES (scrollable, ~8 visible) x bar groups (melody 12-24 +
-octave ~8 + note-length). Mechanism: faders set WIDTHS; the Sands output (non-uniform draw) lands on them;
-effective = width x draw-density. Useful EVEN WITHOUT tilt (relative faders -> absolute prob). KEYSTONE: a
-switchable UNIFORM<->TRANSFORMED view makes every layer a visible difference -> the answer to "too deep to
-be interesting" (depth-as-discovery). Docs: EFFECTIVE_DISTRIBUTION_VISUALISER.md.
-
-### 7. Build progress (Phase 1-2 DONE this session)
-Phase 1 (MERGED): Distribution.hpp (double) + MonotoneCurve.hpp (PCHIP, double) + contract tests. Phase 2
-(built, delightful): square dual-axis CDF/PDF editor, all distributions render, live param morph, drag-edit,
-"convert parametric -> editable PCHIP", devhost module. Iterated render-by-render (postage-stamp -> proper
-large dual-axis). NEXT: Phase 2.5 (Mobius+Logit-sigmoid, -Arcsine, param knobs, convert) -> Phase 3
-(integration: Macro/Sands scope, .dmcurve load/save, the LIVE-PREVIEW keystone).
-
-## META (the epistemic through-line)
-Both halves of the session taught the SAME lesson: don't trust a plausible narrative over the actual
-thing. For CODE, the actual thing is the test/engine (polyBankIndex lied; contract tests caught it). For
-DESIGN, the actual thing is Rodney's reasoning + ears (he caught my invented orthogonality, my float/double
-wrong default, my "Beta for copula" tangent). For MUSIC, the actual thing is playing it (perceptual
-questions -> feel, don't reason). VERIFY. Keep LAYERS distinct. Reasoning sets defaults; evidence/experience
-sets verdicts.
+## WORKING MODEL (reminder): this chat = architecture + CC prompts; CC = execution (tested/mechanical only,
+can't verify Rack feel); docs = the real memory; verify against code, not narrative.
