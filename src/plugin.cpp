@@ -16,6 +16,7 @@
 
 #include <rack.hpp>
 #include "Monsoon.hpp"               // extern Plugin* pluginInstance; + all extern Model* declarations
+#include "DmcurveDevHost.hpp"        // modelDmcurveDevHost (dev-only .dmcurve widget host)
 #include "dsp/GaussianCopula.hpp"    // redDot::copula::warmPhiLut()
 
 using namespace rack;
@@ -81,4 +82,7 @@ void init(rack::Plugin* p) {
 	// RETIRED: West visual editor merged into East (15-voice). Source kept, not registered.
 	p->addModel(modelStraitsSandsMacroVisual);      // Macro visual DNA editor
 	p->addModel(modelIntertropical);                // Intertropical scene sequencer
+	// DEV-ONLY: the .dmcurve editor widget host (Phase 2 scaffolding — browser-visible so
+	// Rodney can drag it in isolation; no engine wiring, no integration).
+	p->addModel(modelDmcurveDevHost);
 }

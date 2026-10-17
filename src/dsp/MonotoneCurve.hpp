@@ -78,6 +78,41 @@ public:
         dirty_ = true;
     }
 
+    // ── Conversion: a NEARBY editable PCHIP approximation of any distribution ───────────
+    // The "start from a shape, then tweak" workflow (DMCURVE_EDITOR.md Phase 2.5): sample
+    // d.cdf at n evenly spaced x (endpoints 0 and 1 included) and use the samples as the
+    // control points. Monotone-safe for free — a valid CDF is monotone, so its samples are
+    // monotone points, which make a valid PCHIP; the clamps + running max below are
+    // belt-and-braces so even a noisy cdf cannot corrupt the invariants. NEARBY, not exact:
+    // a ~9-point PCHIP approximates the parametric — that is the point (an editable
+    // starting shape to drag; parametrics are the presets).
+    // Template rather than `const Distribution&`: this header must not include
+    // Distribution.hpp — that direction is the include cycle (Distribution includes this).
+    template <typename Dist>
+    static MonotoneCurve fromDistribution(const Dist& d, int n = 9) {
+        if (n < MIN_POINTS) n = MIN_POINTS;
+        if (n > MAX_POINTS) n = MAX_POINTS;
+        std::vector<Point> pts;
+        pts.reserve((size_t)n);
+        double yMax = 0.0;
+        for (int i = 0; i < n; ++i) {
+            const double x = (double)i / (double)(n - 1);
+            double y = d.cdf(x);
+            if (!(y == y)) y = yMax;                    // NaN: hold the last good value
+            if (y < 0.0) y = 0.0;
+            if (y > 1.0) y = 1.0;
+            if (y < yMax) y = yMax;                     // monotone-safe
+            yMax = y;
+            pts.push_back(Point{x, y});
+        }
+        pts.front() = Point{0.0, 0.0};                  // pin the corners exactly
+        pts.back()  = Point{1.0, 1.0};
+        MonotoneCurve c;
+        c.points = std::move(pts);
+        c.dirty_ = true;
+        return c;
+    }
+
     // ── Accessors ────────────────────────────────────────────────────────────────────────────
     int   size() const { return (int)points.size(); }
     const std::vector<Point>& getPoints() const { return points; }   // sorted; invariants hold
