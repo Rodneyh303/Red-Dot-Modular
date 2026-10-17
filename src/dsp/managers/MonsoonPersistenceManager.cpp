@@ -192,6 +192,9 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_t* ms = json_array();
     for (int i = 0; i < 320; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));
     json_object_set_new(root, "editorMacroSend", ms);
+    // P9b: the per-voice send-tap bank (missing key on load ⟹ all voices 1.0 = POST,
+    // so pre-fix patches sound identical).
+    dotModular::MacroTapBank::serialize(m->editor.macroTap, root, "editorMacroTap");
     json_t* ma = json_array();
     for (int i = 0; i < 448; ++i) json_array_append_new(ma, json_real(m->editor.macroAtten[i]));
     json_object_set_new(root, "editorMacroAtten", ma);
@@ -461,6 +464,8 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
             for (size_t i = 0; i < 320 && i < json_array_size(j); ++i)   // 16 × 5 × 4 items
                 m->editor.macroSend[i] = (float)json_real_value(json_array_get(j, i));
     }
+    // P9b: per-voice send-tap bank. Absent key (pre-fix patch) → every voice POST (1.0).
+    dotModular::MacroTapBank::parse(root, "editorMacroTap", m->editor.macroTap);
     if (auto j = json_object_get(root, "editorMacroAtten")) {
         if (json_is_array(j))
             for (size_t i = 0; i < 448 && i < json_array_size(j); ++i)   // 16 × 7 × 4 cols

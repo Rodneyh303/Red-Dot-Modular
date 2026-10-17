@@ -130,8 +130,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             sp += cv * att * 2.f;
                         }
                         if (macroVis) {
-                            float send = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, lane, 3) : 0.f);
-                            sp += macroVis->macroSendDelta[lane][3] * send;
+                            auto* mm = redDot::findMonsoonEitherSide(macroVis);
+                            float send = (mm ? mm->getMacroSend(dotModular::VoiceResolver::kMonoSlot, lane, 3) : 0.f);
+                            // P9b: V1's own tap selects between the published endpoints.
+                            const float tap = (mm ? mm->getMacroTap(dotModular::VoiceResolver::kMonoSlot, lane, 1) : 1.f);
+                            sp += macroVis->tappedDelta(tap, lane, 3) * send;
                         }
                     }
                     return rack::math::clamp((rack::math::clamp(sp,-1.f,1.f) + 1.f) * 0.5f, 0.f, 1.f);
@@ -1153,7 +1156,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     }
                     if (macroVis) {
                         float send = monsoon ? monsoon->getMacroSend(kMono, lane, 3) : 0.f;
-                        spread += macroVis->macroSendDelta[lane][3] * send;
+                        // P9b: V1's own tap selects between the published endpoints.
+                        const float tap = (monsoon ? monsoon->getMacroTap(kMono, lane, 1) : 1.f);
+                        spread += macroVis->tappedDelta(tap, lane, 3) * send;
                     }
                     // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
                     // instead of applyAnchorV1Only (hard-codes own=target=monoSlewed → self-target no-op).
@@ -1255,7 +1260,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         // display); no Macro → engine's V1 spread.
                         float spread;
                         if (macroMod && !eastOwnsLane(el))
-                            spread = rack::math::clamp(macroMod->macroBase[el][3] + macroMod->macroSendDelta[el][3], -1.f, 1.f);
+                            // Macro's OWN value (matches Macro's display) → the POST
+                            // endpoint (P9b; identical at the default tap 1.0).
+                            spread = rack::math::clamp(macroMod->macroBase[el][3] + macroMod->macroPostDelta[el][3], -1.f, 1.f);
                         else if (macroMod)
                             spread = monsoon->getSpread(dotModular::VoiceResolver::kMonoSlot, el);
                         else
@@ -1366,7 +1373,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             }
                             if (macroMod) {
                                 float send = mmV1 ? mmV1->getMacroSend(kMono, el, 3) : 0.f;
-                                spread += macroMod->macroSendDelta[el][3] * send;
+                                // P9b: V1's own tap selects between the published endpoints.
+                                const float tap = (mmV1 ? mmV1->getMacroTap(kMono, el, 1) : 1.f);
+                                spread += macroMod->tappedDelta(tap, el, 3) * send;
                             }
                         } else {
                             spread = monsoon->engine.spreadE(0, el);

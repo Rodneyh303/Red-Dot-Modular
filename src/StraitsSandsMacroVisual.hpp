@@ -300,8 +300,26 @@ struct StraitsSandsMacroVisual : Module {
     float macroCVDelta[7][4] = {};
     // P9: the send PRE/POST tap applies ONLY to what the sends distribute, not to
     // Macro's own LOR/spread display (which always uses the true POST macroCVDelta).
-    // macroSendDelta = the tapped CV delta the East/Mono send mix-ins read.
-    float macroSendDelta[7][4] = {};
+    // (The old single globally-tapped macroSendDelta is DELETED — the P9b per-voice fix
+    // publishes the endpoint pair below; each receiving voice selects via its own tap.)
+
+    // PER-VOICE SEND-TAP (P9b fix): the publish carries BOTH endpoints of the
+    // pre/post lerp; each receiving VOICE selects via its own macroTap (Monsoon store).
+    //   macroPreDelta  = raw cv·(hi-lo)   (tap=0, PRE the attenuverter)
+    //   macroPostDelta = cv·att·(hi-lo)   (tap=1, POST — the old tappedDelta at tap=1)
+    // A voice's delta = tappedDelta(its tap) — see the helper below. Macro's OWN display
+    // always reads macroPostDelta (Macro has no receiving voice).
+    float macroPreDelta[7][4]  = {};
+    float macroPostDelta[7][4] = {};
+
+    // The delta a receiving voice gets: lerp between the published endpoints by the
+    // voice's own tap (0..1). Pure arithmetic on this visual's published arrays; the
+    // caller supplies the tap (getMacroTap(slot, lane, item==3 ? 1 : 0)).
+    float tappedDelta(float tap, int lane, int item) const {
+        const float pre  = macroPreDelta[lane][item];
+        const float post = macroPostDelta[lane][item];
+        return pre + (post - pre) * tap;
+    }
 
     json_t* dataToJson() override {
         json_t* r = json_object();

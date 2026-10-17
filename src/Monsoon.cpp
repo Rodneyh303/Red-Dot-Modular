@@ -59,6 +59,12 @@ Monsoon::Monsoon() {
             for (int bank = 0; bank < dotModular::SandsGrid::MONO_LANES; ++bank)
                 editor.lorBase[slot*21 + bank*3 + 0] = 16.f;  // stride 21 = 7 banks × 3
 
+        // Per-voice send-tap bank: default 1.0 (POST) for every voice/lane/kind — the old
+        // single-tap behaviour at its default, so un-touched patches sound identical
+        // (MacroTapBank::kDefault; the P9b per-voice send-tap fix).
+        for (int i = 0; i < dotModular::MacroTapBank::N; ++i)
+            editor.macroTap[i] = dotModular::MacroTapBank::kDefault;
+
         // Seed RNGs with a random value — safe to call here (uses rack::random, not inputs[])
         rhythmSeedFloat = rack::random::uniform() * 10.f;
         melodySeedFloat = rack::random::uniform() * 10.f;

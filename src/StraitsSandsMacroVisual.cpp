@@ -402,7 +402,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         auto& pe = mon->engine.pe;
         // Macro's own spread for this lane (base knob + send-tapped delta, clamped) — the
         // SAME expression the engine's MACRO_SOLE branch uses (MonsoonExpanderManager.cpp).
-        const float sp = rack::math::clamp(mod->macroBase[engLane][3] + mod->macroSendDelta[engLane][3], -1.f, 1.f);
+        // Macro's OWN display → the POST endpoint (P9b: Macro has no receiving voice; the
+        // per-voice tap lerp is for blend-into-a-voice sites only).
+        const float sp = rack::math::clamp(mod->macroBase[engLane][3] + mod->macroPostDelta[engLane][3], -1.f, 1.f);
         // The pre-spread base draw buffer for this lane (mono strand vs poly bank).
         // The Change Alley pin remap now lives UPSTREAM in the slewed buffers
         // (pe.remapSlewedByPins, pre-spread), so reading this voice's OWN slewed buffer
