@@ -10,7 +10,8 @@ next starts. The DETAILED what-and-why for all of them is SESSION_LOG_2026-10-18
 | P1 | CC_PROMPT_P1_palette_editor_START.md | palette: reversed-power distribution + Kumaraswamy (mode,conc) reparam mapping. (PDF y-max item dropped — not a real concern.) | — (parallel, independent of warp) | YES — reparam round-trip + distribution battery |
 | 02 | CC_PROMPT_02_lanedist_START.md | Per-voice warp-F bank: std::variant<IdentityWarp, 8 types, DrawnWarp> by value, identity-default (branchless mix), warpW[112]. NO distmath, NO POD-switch, NO unique_ptr. Drawn = pool index. | 01 merged (clean trunk) | YES — test_warp_f_bank (default no-op, mix endpoints, single-impl agreement, persistence) |
 | 03 | CC_PROMPT_03_mirror_warp_START.md | warp mirror (effective w-mixture), w[112], scoped dirty mask, warp composition at genPitchLive (melody+octave) + finalRandomByStrand. | 02 | YES — test_warp_mirror (no-op@w0, monotone, dirty-scope, consumer-routing) |
-| 04 | CC_PROMPT_04_warp_ui_START.md | panel columns (w/param left; Macro send/tap right), popup editor (reuses DistributionCurveWidget), audit-guarded layout. | 03 + 01 | PARTIAL — audit_anchor_bind guards geometry; Rack render/feel is human-only |
+| 04 | CC_PROMPT_04_warp_ui_START.md | MINIMAL feel-testable UI: w-level column (→warpW) + curve-editor popup (→warpF) + live-preview keystone. Re-scoped: only controls that connect to EXISTING code. | 03 merged | PARTIAL — audit guards geometry; Rack feel human-only |
+| 04b | (future) modulation UI | w-mod + param-mod jacks/attenuverters + Macro w-mod send/tap columns. Deferred: no w-mod/param-mod bank exists yet. | the modulation layer | audit + human |
 
 ## Verified seams (grounded this session — prompts rely on these, do not re-guess)
 - Uniform store / display accessor: finalRandomByStrand → random_[0][strand][step]
