@@ -576,3 +576,52 @@ target. Consequence:
   natural extension of the existing expression-CV permutation; it belongs AFTER the warp
   foundation (w, mirror) and the param-mod layer exist. The CA plumbing it reuses is already
   designed (CA_EXPRESSION_CV_CORRELATION.md).
+
+────────────────────────────────────────────────────────────────────────────────
+## WHAT COPULA TYPE DOES CLAMP/ATOM GIVE? (Rodney) — completes the tail-dependence map
+
+Worked out: with clamp enabled the map g_v = clamp ∘ F_v^-1 is monotone but NOT strictly
+increasing — flat on U_v <= F_v(lo) and U_v >= F_v(hi). Those flat regions ARE the atoms (an
+interval of U maps to the single value lo/hi). The output copula becomes a PATCHWORK over the
+(U_i,U_j) square:
+  - BOTH interior (unclamped middle): copula = C_Gauss-MA exactly (restricted to that sub-square) —
+    unchanged.
+  - ONE clamped, one interior: the pinned coordinate carries no rank info → dependence collapses
+    to independence-like on that strip.
+  - BOTH clamped SAME rail: Y_i=Y_j=rail → a point mass (perfect comonotonicity on that corner).
+  - BOTH clamped OPPOSITE rails: a countermonotone corner point mass.
+Region weights are set by the clamp thresholds via F_v(lo), F_v(hi).
+
+TYPE: a copula with a SINGULAR COMPONENT — NOT absolutely continuous. Continuous part (the
+Gaussian-MA interior) + singular part (the rail atoms). The corner atoms are EXACTLY the
+MARSHALL-OLKIN singular component (MO's famous singular diagonal = a mass where two coords take
+an identical extreme together = "both clamp to the same rail"). So:
+  clamp gives a GAUSS-MA ⊕ MARSHALL-OLKIN mixed copula — Gaussian-MA interior with an MO-type
+  singular component glued on at the rails. This IS the family that carries lambda>0; the lambda
+  value = the corner-atom mass. (This is finally WHY clamp was always "the atoms route to lambda>0".)
+
+THE PAPER CONNECTION — clamp and DMO are the SAME singular component from OPPOSITE directions:
+  - DMO (the QF paper): CONSTRUCTS the MO atom directly — a shock fires, forces simultaneity; the
+    atom mass (hence lambda) is a FREE parameter gamma_Y you calibrate. Right for PRICING a joint event.
+  - CLAMP + CA: INDUCES the MO atom indirectly — CA-correlated continuous variables both cross a
+    threshold and pile at the rail. The atom mass is NOT free: it's a MONOTONE IMAGE of the CA
+    correlation (+ closeness of thresholds/shapes). lambda is EMERGENT from the latent structure,
+    steered through the correlation layer, not dialed. Right for PLAYING joint-unison (tune by ear:
+    turn up CA correlation → voices clip together more).
+Same family (mixed continuous+singular, lambda>0); DIFFERENT handle (DMO calibrates at the shock
+layer; clamp+CA steers at the latent layer).
+
+CAVEAT (bounds the clamp+CA route): the interior stays Gaussian (tail-independent), so ALL the
+tail dependence comes from the corner atoms, whose mass is capped by how much probability the
+clamp cuts off. => can't get arbitrarily strong lambda this way without heavily clamping (which
+also flattens the marginals). DMO decouples these (strong joint-default, mild marginal effect).
+clamp+CA trades DMO's calibration-freedom + marginal-independence for REUSING EXISTING MACHINERY
+(CA correlation + a clamp stage).
+
+THE COMPLETE TAIL-DEPENDENCE MAP (all three points now pinned):
+  1. no-atoms warp (shared-theta modulation): lambda=0, clean UNIQUE uniform-margin Gauss-MA copula.
+     Finite-quantile co-movement only. (The distribution layer — what we're building.)
+  2. clamp + CA: lambda>0 EMERGENT. Gauss-MA ⊕ MO singular, MO mass = monotone image of CA
+     correlation. Tune by ear. Reuses existing machinery. (A LIKELY FUTURE DIRECTION — Rodney.)
+  3. DMO / common-shock: lambda>0 CALIBRATED. MO constructed directly via shock intensities.
+     The rigorous/pricing version; the published route (arXiv 2009.00368).
