@@ -14,7 +14,7 @@ extern Plugin* pluginInstance;   // defined in plugin.cpp (Monsoon.hpp holds the
 namespace {
 
 const char* const kWhichNames[DmcurveDevHost::N_WHICH] = {
-    "Kumaraswamy", "Mobius", "Triangular", "Power",
+    "Kumaraswamy", "Mobius", "Triangular", "Power", "Rev-power",
     "Logit-normal", "Logit-sigmoid", "Trunc-normal", "Drawn (PCHIP)",
 };
 
