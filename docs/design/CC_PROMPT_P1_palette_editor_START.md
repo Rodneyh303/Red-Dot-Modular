@@ -8,8 +8,8 @@ here — it waits for the distmath:: refactor (CC_PROMPT_02 step 0), which doesn
 1. `CLAUDE.md` (root) — non-negotiables (verify against tests; red→green; branch discipline).
 2. `docs/design/CHAT_HANDOFF.md` — primer + working model.
 3. `docs/design/TODO_distribution_palette_and_editor.md` — items #1 and #3 (the what-and-why).
-4. `src/dsp/Distribution.hpp` (KumaraswamyDistribution ~the class) and
-   `src/ui/DistributionCurveWidget.hpp` (the editor; PDF autoscale lives ~L141-191).
+4. `src/dsp/Distribution.hpp` (KumaraswamyDistribution + TruncatedNormalDistribution classes)
+   and `src/ui/DistributionCurveWidget.hpp` (the editor; PDF scaling ~L141-191).
 
 Branch: off `lane-expander-refactor`, `git checkout -b fix/palette-editor`. PR into it.
 You CANNOT test Rack rendering — for the editor work, say "needs Rack feel-test" and lean on
@@ -53,21 +53,24 @@ TEST `test/test_kumaraswamy_reparam.cpp` (header-only, model on test_distributio
 Register `"test_kumaraswamy_reparam|"` in test/run_all.sh TESTS[]. GREEN.
 
 ────────────────────────────────────────────────────────────────────────────────
-## SUB-TASK B — PDF y-max edge-clipping fix (NOT an x-axis change — see note)
+## SUB-TASK B — fix the PDF y-max so edge-heavy densities don't clip
 
-RETRACTED: the original "2nd x-axis" idea is dropped (Rodney). The PDF never leaves [0,1] on
-x — that was a misread of a CLIPPED TOP. The real bug is on the Y axis.
+(This is a Y-AXIS fix. The PDF never leaves [0,1] on X — there is NO x-axis change. An earlier
+"2nd x-axis" idea was a misdiagnosis and is dropped.)
+
+THE SYMPTOM (observed in Rack): truncated-normal with a wide sigma (e.g. mu +0.48, sigma 0.50
+or 0.67) draws a FLAT-TOPPED teal PDF dome — clipped against the ceiling instead of reaching a
+rounded peak. (The CDF in the same view looks like it has near-vertical "atom" jumps at the
+corners — it does NOT; see the note at the end of this sub-task.)
 
 THE BUG (DistributionCurveWidget.hpp ~L145-191): maxD is taken over the OPEN interval —
 `if (i > 0 && i < N && pdfs[i] > maxD)` (L149) excludes the endpoints — then the fill clamps
-`if (d > 1.0) d = 1.0` (L184). That's correct for DIVERGENT densities (arcsine, power k<1,
-Kumaraswamy a<1/b<1: edge→∞, a finite floored proxy must NOT define the scale). But it's WRONG
-for BOUNDED densities whose true max is AT or NEAR an endpoint — TRUNCATED-NORMAL especially
-("bounded bell, NON-ZERO edge density", per the palette notes): with mu≈0.48, sigma=0.50 the
-real normal's peak can sit near/outside [0,1] so the edge density is the genuine maximum. maxD
-excludes those samples → fill normalises to a too-small interior max → the edge regions CLIP
-FLAT against the ceiling. That flat-topped teal dome is the bug (observed in Rack, trunc-normal
-mu +0.48 sigma 0.50). Logit-normal / logit-sigmoid can hit the same at some params.
+`if (d > 1.0) d = 1.0` (L184). Excluding endpoints is CORRECT for DIVERGENT densities (arcsine,
+power k<1, Kumaraswamy a<1/b<1: edge→∞, a finite floored proxy must NOT define the scale). It is
+WRONG for BOUNDED densities whose true max is AT or NEAR an endpoint — TRUNCATED-NORMAL
+especially ("bounded bell, NON-ZERO edge density"): a wide sigma puts the real peak near/outside
+[0,1], so the genuine maximum is at the edge. maxD excludes it → the fill normalises to a
+too-small interior max → the edge regions clip flat. That flat top is the bug.
 
 THE FIX — distinguish "divergent edge" from "high FINITE edge":
 - Divergent edge → keep excluding it (the proxy is not a real max).
@@ -85,27 +88,25 @@ DISPLAY-ONLY: stored curve, params, math, schema ALL unchanged. X axis stays a s
 0->1 (CDF gold, bottom). Only the PDF Y normalisation changes. DistributionCurveWidget.hpp only;
 no Distribution.hpp / engine change.
 
-RELATED, NOT A BUG (do not "fix" it): with the same edge-heavy params the CDF looks like it has
-ATOMS — near-vertical segments at x≈0 and x≈1. It does NOT. CDF slope = density; high edge
-density → steep (near-vertical) CDF corners that READ as jumps but are continuous. Verified:
-TruncatedNormalDistribution::cdf is correctly renormalised ((Phi((x-mu)/sigma)-Pa)/Z) and pinned
-to exactly 0 at x<=0 and 1 at x>=1 — the curve DOES span 0->1; the 0->~0.2 climb just happens
-within a sub-pixel x-sliver so only the vertical shows. SAME ROOT as the dome clip (edge-heavy
-density). Fixing the PDF y-max so the edge density shows its true height will make the tall-PDF-
-at-edges visually EXPLAIN the steep CDF corners (right now the clipped flat dome doesn't). The
-editor's strict-increase constraint guarantees no TRUE atoms exist, so a near-vertical CDF
-segment is always high density, never a jump. (Optional: a one-line note in the widget comment
-to that effect, so a future reader doesn't mistake steep corners for atoms. Not required.)
-
 TESTABLE: factor the max-finding into a pure free fn
 `double pdfVisibleYMax(const Distribution&, int N=200)` and test it header-only:
   - trunc-normal(mu=0.48, sigma=0.50): the returned max INCLUDES the edge density (assert it
-    equals the actual max over the CLOSED [0,1] sampling, i.e. the edge is not excluded).
+    equals the actual max over the CLOSED [0,1] sampling — the edge is not excluded).
   - power(k=0.5): the returned max is the INTERIOR-bounded one (the divergent 0-edge does NOT
-    blow the scale — assert max is finite and ~ the interior, not the floored edge proxy).
+    blow the scale — assert finite and ~ the interior, not the floored edge proxy).
   - triangular / ordinary kumaraswamy: unchanged, interior peak defines it.
 Register `"test_pdf_ymax|"` in run_all.sh. GREEN. The RENDERING (dome no longer clipped) you
 CANNOT verify — say "needs Rack feel-test" in the PR; the pure-fn test proves the scale logic.
+
+NOT A BUG — do NOT "fix" the CDF: with the same edge-heavy params the CDF looks like it has
+ATOMS (near-vertical segments at x≈0 and x≈1). It does NOT. CDF slope = density; high edge
+density → steep (near-vertical) CDF corners that READ as jumps but are continuous. Verified:
+TruncatedNormalDistribution::cdf is correctly renormalised ((Phi((x-mu)/sigma)-Pa)/Z) and pinned
+to exactly 0 at x<=0 and 1 at x>=1 — the curve DOES span 0->1; the 0->~0.2 climb just happens in
+a sub-pixel x-sliver so only the vertical shows. SAME ROOT as the dome clip. Once the y-max fix
+lands, the tall-PDF-at-edges will visually EXPLAIN the steep CDF corners. The editor's strict-
+increase constraint guarantees no TRUE atoms exist, so a near-vertical CDF segment is always high
+density, never a jump. (Optional: a one-line widget comment to that effect. Not required.)
 
 ────────────────────────────────────────────────────────────────────────────────
 ## DONE =
@@ -120,3 +121,4 @@ CANNOT verify — say "needs Rack feel-test" in the PR; the pure-fn test proves 
 - Reversed-power distribution (TODO #2) — waits for the distmath:: refactor (CC_PROMPT_02 step 0).
 - The Kumaraswamy UI knobs/labels — pair with the warp UI prompt (CC_PROMPT_04).
 - Any warp / mirror / w / modulation code.
+- The CDF rendering (it is correct — see the "NOT A BUG" note in sub-task B).
