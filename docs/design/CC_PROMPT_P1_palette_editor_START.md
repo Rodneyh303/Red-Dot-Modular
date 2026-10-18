@@ -47,12 +47,16 @@ mode (b is solved to hold it), and the mode knob never moves the mode (trivially
 "(near-)orthogonal" needs to mean here.
 
 ### RANGES + CLAMPS (fixed numbers — stop here, do not optimise):
-    conc ∈ [1, 100]   (CONC_MAX = 100; 1 = uniform, up = more peaked; clamp inputs to this)
+    conc ∈ [1, 5]    (CONC_MAX = 5; 1 = uniform, 5 = peak height ~3.7 — plenty peaked)
     mode ∈ [0.02, 0.98]  (MODE_EPS = 0.02; clamp the mode INPUT to this before computing)
-The mode clamp at 0.02 (NOT 1e-3) is deliberate and is the WHOLE answer to the float-flatness
-worry below — a mode of 0.02 with conc 100 gives a large-but-finite b whose CDF is still
-strictly increasing across a 1000-pt grid in double. Wider isn't needed; tighter re-opens the
-problem. Just use 0.02.
+*** CONC_MAX = 5 IS LOAD-BEARING, verified — do NOT raise it. conc := a drives b ~ mode^(-a),
+which EXPLODES: conc=5 → b up to 2.5e8 (fine, invCDF strictly increasing); conc=8 → b ~1e13 and
+the invCDF goes FLAT in double (ties → fails strict-increase); conc=100 → b ~1e169, totally flat.
+(Computed: full box mode[0.02,0.98] × conc[1,5] = 0 flat cells; conc≥8 breaks.) The earlier
+CONC_MAX=100 was wrong and produced flat curves. conc=5 reaches peak height ~3.7 at mode 0.5 —
+a genuinely peaked curve, musically ample; a tighter-than-needle cap is correct because a needle
+spike IS a numerical atom. The MODE clamp (0.02) prevents NaN at the boundary; the CONC clamp (5)
+is what prevents float-flatness. Both are needed.
 
 ### THE VALIDITY REQUIREMENT IS LOOSER THAN THE OLD PROMPT IMPLIED — read this:
 The PARAMETRIC distribution is NOT the editor's edited object and does NOT face the editor's
@@ -68,20 +72,21 @@ that rabbit hole is why this section was rewritten.
   - conc == 1 (any mode)  → (a,b) = (1,1), uniform. modeConcFromAb(1,1): the mode formula is
     0/0 → return mode = 0.5, conc = 1 (documented sentinel).
   - modeConcFromAb with a<=1 OR b<=1 (no interior mode — a J/U/monotone shape that did NOT come
-    from this forward map): return conc = clamp(a,1,100), mode = (density decreasing ? 0.0 : 1.0)
+    from this forward map): return conc = clamp(a,1,5), mode = (density decreasing ? 0.0 : 1.0)
     i.e. clamp mode to whichever boundary the mass sits against. This path only matters for
     curves authored directly in (a,b); the forward map never produces it.
-  - mode input outside [0.02,0.98] or conc outside [1,100] → clamp to the box, then proceed.
+  - mode input outside [0.02,0.98] or conc outside [1,5] → clamp to the box, then proceed.
 
 TEST `test/test_kumaraswamy_reparam.cpp` (header-only, model on test_distribution.cpp):
-  - ROUND-TRIP: grid of (mode ∈ [0.05,0.95] step 0.05) × (conc ∈ [1.5,100] a few values):
+  - ROUND-TRIP: grid of (mode ∈ [0.05,0.95] step 0.05) × (conc ∈ [1.5,5] a few values):
     abFromModeConc then modeConcFromAb returns the input to ~1e-9. (Stay off the 0.02/0.98/1.0
     boundaries for the exact round-trip; those are the clamped/sentinel cases, tested separately.)
   - MODE CORRECT: for the mapped (a,b), the analytic mode ((a-1)/(ab-1))^(1/a) == the requested
     mode to ~1e-9. (This is the orthogonality guarantee.)
-  - FINITE + VALID: every mapped (a,b) over the full clamped box is finite, a>0, b>0, and the
-    Kumaraswamy invCDF is strictly increasing over a 1000-pt u grid in double (it will be — this
-    asserts the clamps are sufficient, NOT a tight bound).
+  - FINITE + VALID: every mapped (a,b) over the full clamped box (conc up to 5) is finite,
+    a>0, b>0, and the Kumaraswamy invCDF is strictly increasing over a 1000-pt u grid in double.
+    This test is what CAUGHT the bad CONC_MAX=100 (it produced flat invCDFs). With CONC_MAX=5 it
+    passes cleanly (verified: 0 flat cells across mode[0.02,0.98] × conc[1,5]).
   - EDGE: conc=1 → (1,1); modeConcFromAb(1,1) → (mode 0.5, conc 1); an a<=1 / b<=1 input →
     documented boundary, no NaN/inf.
 Register `"test_kumaraswamy_reparam|"` in test/run_all.sh TESTS[]. GREEN.
