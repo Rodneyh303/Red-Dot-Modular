@@ -876,6 +876,7 @@ static void testFromDistribution() {
     std::printf("fromDistribution (parametric -> nearby PCHIP)\n");
     fromDistributionCase(dotModular::TriangularDistribution(0.3), "triangular", 5e-3);
     fromDistributionCase(dotModular::PowerDistribution(2.0), "power", 5e-3);
+    fromDistributionCase(dotModular::ReversedPowerDistribution(2.0), "reversed-power", 5e-3);
     fromDistributionCase(dotModular::KumaraswamyDistribution(2.0, 3.0), "kumaraswamy", 1e-2);
     fromDistributionCase(dotModular::LogitNormalDistribution(0.0, 1.0), "logit-normal", 2e-2);
     fromDistributionCase(dotModular::MobiusDistribution(4.0), "mobius", 1e-2);

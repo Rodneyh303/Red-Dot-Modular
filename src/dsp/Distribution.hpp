@@ -14,8 +14,9 @@
 // v1 palette (shape-space coverage, ALL cheap inverses, ALL parametric types TUNABLE —
 // the select → morph-with-knobs → convert UI needs params; a param-less type is a dead
 // end, which is why Arcsine was removed):
-//   WARPS (gentle identity-centred tilts): Power(a), Mobius(a) — pure arithmetic, bounded
-//   density, never spikes.  SIGMOIDS (pick-your-tails): LogitNormal(mu,sigma) (Phi-squash,
+//   WARPS (gentle identity-centred tilts): Power(k), ReversedPower(theta) (its upper-tail
+//   mirror — frailty in -log(1-x), the Joe-copula corner), Mobius(a) — pure arithmetic,
+//   bounded density, never spikes.  SIGMOIDS (pick-your-tails): LogitNormal(mu,sigma) (Phi-squash,
 //   zero edges, open support), LogitSigmoid(a,b) (logistic squash — cheaper, heavier
 //   tails, no Phi/erf).  SHAPES: Triangular(mode), Kumaraswamy(a,b) (flexible catch-all;
 //   (1,1) = uniform), TruncatedNormal(mu,sigma) (bounded bell, NON-ZERO edge density).
@@ -26,7 +27,8 @@
 // selects the concrete Distribution; params{} holds the parametric parameters; points[] is
 // the drawn case (delegated to MonotoneCurve's own serializer/validator — one schema, both
 // destinations, the TuningPreset house pattern). Type tags: "drawn", "triangular", "power",
-// "kumaraswamy", "mobius", "logit-normal", "logit-sigmoid", "truncated-normal".
+// "reversed-power", "kumaraswamy", "mobius", "logit-normal", "logit-sigmoid",
+// "truncated-normal".
 //
 // Pure module: no Rack/nanovg/UI. jansson included directly (test/jansson.h shim in the
 // standalone harness, Rack's bundled jansson in the plugin tree).
@@ -134,6 +136,40 @@ public:
     json_t* toJson() const override {
         json_t* p = json_object();
         json_object_set_new(p, "k", json_real(k));
+        return paramEnvelope(p);
+    }
+};
+
+// ── ReversedPower(theta) — Power's upper-tail mirror ──────────────────────────────────────────
+// cdf: 1-(1-x)^theta;  pdf: theta·(1-x)^(theta-1);  inv: 1-(1-u)^(1/theta). The x<->1-x
+// mirror of Power (x^theta): frailty in -log(1-x) — the upper-tail counterpart to Power's
+// lower-tail, and the only marginal form in the palette that, at r=0 with shared-theta
+// modulation, yields the genuine JOE copula (vs Power -> Clayton). theta=1 is the uniform.
+// Density diverges at x=1 for theta<1 (the DIST_EDGE_EPS proxy, mirrored from Power's 0-edge).
+class ReversedPowerDistribution : public Distribution {
+public:
+    double theta;   // > 0 (validated on load)
+    explicit ReversedPowerDistribution(double t) : theta(t) {}
+
+    const char* typeName() const override { return "reversed-power"; }
+
+    double cdf(double x) const override {
+        x = distClamp01(x);
+        return 1.0 - std::pow(1.0 - x, theta);
+    }
+    double pdf(double x) const override {
+        x = distClamp01(x);
+        double tail = 1.0 - x;
+        if (tail < DIST_EDGE_EPS) tail = DIST_EDGE_EPS;   // divergent at x=1 for theta<1
+        return theta * std::pow(tail, theta - 1.0);
+    }
+    double invCDF(double u) const override {
+        u = distClamp01(u);
+        return 1.0 - std::pow(1.0 - u, 1.0 / theta);
+    }
+    json_t* toJson() const override {
+        json_t* p = json_object();
+        json_object_set_new(p, "theta", json_real(theta));
         return paramEnvelope(p);
     }
 };
@@ -420,8 +456,8 @@ public:
 // ── JSON dispatch ─────────────────────────────────────────────────────────────────────────────
 // Load a Distribution from the .dmcurve v1 schema (BORROWS rootJ — the caller keeps
 // ownership). Returns nullptr on any structural failure: wrong format/version, unknown
-// type, missing / non-numeric / non-finite params, non-positive shape params (k, sigma,
-// a, b — they are rejected, not clamped: a negative scale is a malformed file), or bad
+// type, missing / non-numeric / non-finite params, non-positive shape params (k, theta,
+// sigma, a, b — they are rejected, not clamped: a negative scale is a malformed file), or bad
 // points for the drawn case (MonotoneCurve's own validation). mode is clamped into [0,1]
 // (sanitize, like the curve's point sanitizer). An absent type defaults to "drawn" (the
 // minimal {format, points} object loads, matching MonotoneCurve). Params content is
@@ -464,6 +500,11 @@ inline std::unique_ptr<Distribution> loadDistribution(json_t* rootJ) {
         double k;
         if (!posParam("k", k)) return nullptr;
         return std::make_unique<PowerDistribution>(k);
+    }
+    if (type == "reversed-power") {
+        double th;
+        if (!posParam("theta", th)) return nullptr;
+        return std::make_unique<ReversedPowerDistribution>(th);
     }
     if (type == "kumaraswamy") {
         double a, b;

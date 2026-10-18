@@ -3,12 +3,13 @@
 // Scaffolding so the .dmcurve curve widget can be dragged and viewed in Rack IN ISOLATION
 // before Phase 3 integration (docs/design/DMCURVE_EDITOR.md Phase 2 + "Phase 2.5
 // additions"). It exercises the full widget surface:
-//   • the universal draw — ALL eight built-ins render through the same const Distribution&
-//     interface (kumaraswamy, mobius, triangular, power, logit-normal, logit-sigmoid,
-//     truncated-normal, and the drawn PchipDistribution),
+//   • the universal draw — ALL nine built-ins render through the same const Distribution&
+//     interface (kumaraswamy, mobius, triangular, power, reversed-power, logit-normal,
+//     logit-sigmoid, truncated-normal, and the drawn PchipDistribution),
 //   • parametric param editing — two GENERIC param knobs that remap + relabel per
-//     distribution (knob1 = a/mu/mode/k, knob2 = b/sigma; the label shows the live meaning
-//     + value; arcsine and the drawn case leave them inert), reshaping the curve LIVE, and
+//     distribution (knob1 = a/mu/mode/k/theta, knob2 = b/sigma; the label shows the live
+//     meaning + value; single-param types and the drawn case leave a slot inert),
+//     reshaping the curve LIVE, and
 //   • the drawn edit — a PchipDistribution whose MonotoneCurve is the widget's editCurve
 //     (drag / click-add / double-click-remove), plus CONVERT → EDITABLE: any parametric is
 //     one click from MonotoneCurve::fromDistribution (the start-from-a-shape workflow).
@@ -36,7 +37,7 @@ namespace dotModular { struct DistributionCurveWidget; }
 struct DmcurveDevHost : rack::engine::Module {
     enum ParamIds { DISTRIBUTION_PARAM, PARAM1_PARAM, PARAM2_PARAM, N_PARAMS };
     enum Which {
-        KUMARASWAMY = 0, MOBIUS, TRIANGULAR, POWER,
+        KUMARASWAMY = 0, MOBIUS, TRIANGULAR, POWER, REVERSED_POWER,
         LOGIT_NORMAL, LOGIT_SIGMOID, TRUNCATED_NORMAL, DRAWN, N_WHICH,
     };
 
@@ -46,6 +47,7 @@ struct DmcurveDevHost : rack::engine::Module {
     dotModular::LogitSigmoidDistribution    lsig{2.0, 0.0};
     dotModular::TriangularDistribution      tri{0.3};
     dotModular::PowerDistribution           pw{2.0};
+    dotModular::ReversedPowerDistribution   rpw{2.0};
     dotModular::LogitNormalDistribution     ln{0.0, 1.0};
     dotModular::TruncatedNormalDistribution tn{0.5, 0.2};
     int  which       = DRAWN;   // derived from DISTRIBUTION_PARAM by the widget each frame
@@ -76,6 +78,7 @@ struct DmcurveDevHost : rack::engine::Module {
             case LOGIT_SIGMOID:    return &lsig;
             case TRIANGULAR:       return &tri;
             case POWER:            return &pw;
+            case REVERSED_POWER:   return &rpw;
             case LOGIT_NORMAL:     return &ln;
             case TRUNCATED_NORMAL: return &tn;
             default:               return &pchip;
@@ -84,7 +87,7 @@ struct DmcurveDevHost : rack::engine::Module {
 
     // ── the generic param knobs' per-distribution mapping ───────────────────────────────
     // Knobs are normalized [0,1]; this is the per-distribution meaning + value range.
-    // knob1 = a/mu/mode/k; knob2 = b/sigma. used=false → inert (arcsine, the single-param
+    // knob1 = a/mu/mode/k/theta; knob2 = b/sigma. used=false → inert (the single-param
     // distributions' second slot, and the drawn case — the curve is edited by dragging).
     struct ParamSlot {
         const char* sym;
@@ -101,7 +104,9 @@ struct DmcurveDevHost : rack::engine::Module {
             case TRIANGULAR:       return first ? ParamSlot{"mode", 0.0, 1.0, true}
                                                 : ParamSlot{"-",    0.0, 1.0, false};
             case POWER:            return first ? ParamSlot{"k",    0.2, 8.0, true}
-                                                : ParamSlot{"-",    0.0, 1.0, false};
+                                                 : ParamSlot{"-",    0.0, 1.0, false};
+            case REVERSED_POWER:   return first ? ParamSlot{"theta", 0.2, 8.0, true}
+                                                 : ParamSlot{"-",    0.0, 1.0, false};
             case LOGIT_NORMAL:     return first ? ParamSlot{"mu",  -3.0, 3.0, true}
                                                 : ParamSlot{"sigma", 0.1, 3.0, true};
             case LOGIT_SIGMOID:    return first ? ParamSlot{"a",    0.2, 8.0, true}
@@ -117,6 +122,7 @@ struct DmcurveDevHost : rack::engine::Module {
             case MOBIUS:           return slot == 0 ? mob.a : 0.0;
             case TRIANGULAR:       return slot == 0 ? tri.mode : 0.0;
             case POWER:            return slot == 0 ? pw.k : 0.0;
+            case REVERSED_POWER:   return slot == 0 ? rpw.theta : 0.0;
             case LOGIT_NORMAL:     return slot == 0 ? ln.mu : ln.sigma;
             case LOGIT_SIGMOID:    return slot == 0 ? lsig.a : lsig.b;
             case TRUNCATED_NORMAL: return slot == 0 ? tn.mu : tn.sigma;
@@ -129,6 +135,7 @@ struct DmcurveDevHost : rack::engine::Module {
             case MOBIUS:           if (slot == 0) mob.a = v; break;
             case TRIANGULAR:       if (slot == 0) tri.mode = v; break;
             case POWER:            if (slot == 0) pw.k = v; break;
+            case REVERSED_POWER:   if (slot == 0) rpw.theta = v; break;
             case LOGIT_NORMAL:     if (slot == 0) ln.mu = v; else ln.sigma = v; break;
             case LOGIT_SIGMOID:    if (slot == 0) lsig.a = v; else lsig.b = v; break;
             case TRUNCATED_NORMAL: if (slot == 0) tn.mu = v; else tn.sigma = v; break;

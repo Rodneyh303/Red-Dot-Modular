@@ -47,6 +47,7 @@
 using dotModular::Distribution;
 using dotModular::TriangularDistribution;
 using dotModular::PowerDistribution;
+using dotModular::ReversedPowerDistribution;
 using dotModular::KumaraswamyDistribution;
 using dotModular::LogitNormalDistribution;
 using dotModular::MobiusDistribution;
@@ -196,6 +197,10 @@ static std::vector<Instance> allInstances() {
     add(new PowerDistribution(1.0), "power k=1");
     add(new PowerDistribution(2.0), "power k=2");
     add(new PowerDistribution(3.7), "power k=3.7");
+    add(new ReversedPowerDistribution(0.5), "reversed-power theta=0.5");
+    add(new ReversedPowerDistribution(1.0), "reversed-power theta=1");
+    add(new ReversedPowerDistribution(2.0), "reversed-power theta=2");
+    add(new ReversedPowerDistribution(3.7), "reversed-power theta=3.7");
     add(new KumaraswamyDistribution(1.0, 1.0), "kumaraswamy (1,1)");
     add(new KumaraswamyDistribution(2.0, 3.0), "kumaraswamy (2,3)");
     add(new KumaraswamyDistribution(0.5, 0.5), "kumaraswamy (0.5,0.5) bathtub");
@@ -258,6 +263,25 @@ static void testDegenerateToKnown() {
             checkNear(p.invCDF(x), x, 1e-12, "Power(1): invCDF(u) == u");
             checkNear(p.pdf(x), 1.0, 1e-12, "Power(1): pdf == 1");
         }
+    }
+    // ReversedPower(1) == uniform; and it is Power's EXACT mirror (F_rev(x) = 1 - F_pow(1-x))
+    {
+        ReversedPowerDistribution r(1.0);
+        for (int i = 1; i < 20; ++i) {
+            const double x = (double)i / 20.0;
+            checkNear(r.cdf(x), x, 1e-12, "ReversedPower(1): cdf(x) == x (uniform)");
+            checkNear(r.invCDF(x), x, 1e-12, "ReversedPower(1): invCDF(u) == u");
+            checkNear(r.pdf(x), 1.0, 1e-12, "ReversedPower(1): pdf == 1");
+        }
+        ReversedPowerDistribution rev(2.5);
+        PowerDistribution fwd(2.5);
+        bool mirror = true;
+        for (int i = 0; i <= 40; ++i) {
+            const double x = (double)i / 40.0;
+            if (std::fabs(rev.cdf(x) + fwd.cdf(1.0 - x) - 1.0) > 1e-12) mirror = false;
+            if (std::fabs(rev.invCDF(x) + fwd.invCDF(1.0 - x) - 1.0) > 1e-12) mirror = false;
+        }
+        check(mirror, "ReversedPower is Power's mirror: F_rev(x) == 1 - F_pow(1-x), same theta");
     }
     // Triangular at known mode points: cdf(mode)=mode, pdf(mode)=2 (the peak), inv(mode)=mode
     for (double c : {0.2, 0.5, 0.8}) {
@@ -350,6 +374,9 @@ static void testEdgeBehaviour() {
     // Divergent-edge pdfs stay finite (the DIST_EDGE_EPS proxy): Power k<1 at 0, logit-sigmoid a<1 both edges
     PowerDistribution p(0.5);
     check(std::isfinite(p.pdf(0.0)) && p.pdf(0.0) > 1.0, "power k<1: finite (large) pdf at 0");
+    ReversedPowerDistribution rp(0.5);
+    check(std::isfinite(rp.pdf(1.0)) && rp.pdf(1.0) > 1.0,
+          "reversed-power theta<1: finite (large) pdf at 1 (the mirrored edge proxy)");
     LogitSigmoidDistribution ls(0.5, 0.0);
     check(std::isfinite(ls.pdf(0.0)) && std::isfinite(ls.pdf(1.0)) && ls.pdf(0.0) > 1.0,
           "logit-sigmoid a<1: finite (large) pdf at both edges");
@@ -453,11 +480,16 @@ static void testJsonParamSurvival() {
     d = loadDistribution(j);
     json_decref(j);
     checkNear(static_cast<TriangularDistribution&>(*d).mode, 0.0, 0.0, "mode clamped up to 0");
-    // power / kumaraswamy / logit-normal / truncated-normal
+    // power / reversed-power / kumaraswamy / logit-normal / truncated-normal
     j = envelope("power", paramsObj({{"k", 2.5}}));
     d = loadDistribution(j);
     json_decref(j);
     checkNear(static_cast<PowerDistribution&>(*d).k, 2.5, 0.0, "k survives exactly");
+    j = envelope("reversed-power", paramsObj({{"theta", 2.5}}));
+    d = loadDistribution(j);
+    json_decref(j);
+    checkNear(static_cast<ReversedPowerDistribution&>(*d).theta, 2.5, 0.0,
+              "reversed-power theta survives exactly");
     j = envelope("kumaraswamy", paramsObj({{"a", 0.5}, {"b", 3.0}}));
     d = loadDistribution(j);
     json_decref(j);
