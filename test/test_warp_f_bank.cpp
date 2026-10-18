@@ -34,6 +34,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <type_traits>
 #include <utility>
@@ -97,6 +98,27 @@ static void agreePair(const dotModular::WarpF& f, const dotModular::Distribution
     check(std::strcmp(dotModular::warpTypeName(f), d.typeName()) == 0, buf);
     std::snprintf(buf, sizeof buf, "%s: lowerWarp(d) reproduces the wrapper (lowering seam)", what);
     check(dotModular::lowerWarp(d) == f, buf);
+}
+
+// A curve from explicit valid points via the public JSON path — arbitrary placement is
+// only reachable through a .dmcurve-shaped load (the same entry the editor files use);
+// test_distribution.cpp's makeCurve pattern.
+static MonotoneCurve makeCurve(std::initializer_list<std::pair<double, double>> pts) {
+    json_t* root = json_object();
+    json_object_set_new(root, "format", json_string("dmcurve"));
+    json_object_set_new(root, "version", json_integer(1));
+    json_t* jp = json_array();
+    for (const auto& p : pts) {
+        json_t* pair = json_array();
+        json_array_append_new(pair, json_real(p.first));
+        json_array_append_new(pair, json_real(p.second));
+        json_array_append_new(jp, pair);
+    }
+    json_object_set_new(root, "points", jp);
+    MonotoneCurve c;
+    check(c.fromJson(root), "makeCurve: valid curve loads");
+    json_decref(root);
+    return c;
 }
 
 int main() {
@@ -270,26 +292,7 @@ int main() {
 
     std::printf("[S5] DRAWN POOL: DrawnWarp forwards to the pooled curve; dedup; capacity\n");
     {
-        // A curve from explicit valid points via the public JSON path — the same entry
-        // the editor files use (test_distribution.cpp's makeCurve pattern).
-        auto makeCurve = [](std::initializer_list<std::pair<double, double>> pts) {
-            json_t* root = json_object();
-            json_object_set_new(root, "format", json_string("dmcurve"));
-            json_object_set_new(root, "version", json_integer(1));
-            json_t* jp = json_array();
-            for (const auto& p : pts) {
-                json_t* pair = json_array();
-                json_array_append_new(pair, json_real(p.first));
-                json_array_append_new(pair, json_real(p.second));
-                json_array_append_new(jp, pair);
-            }
-            json_object_set_new(root, "points", jp);
-            MonotoneCurve c;
-            check(c.fromJson(root), "S5 makeCurve: valid curve loads");
-            json_decref(root);
-            return c;
-        };
-
+        // makeCurve: the file-static helper above (the public .dmcurve JSON path).
         dotModular::WarpBank bank;
         const MonotoneCurve cA = makeCurve({{0.0, 0.0}, {0.3, 0.1}, {0.6, 0.5}, {1.0, 1.0}});
         const MonotoneCurve cB = makeCurve({{0.0, 0.0}, {0.2, 0.4}, {0.7, 0.9}, {1.0, 1.0}});
@@ -350,6 +353,144 @@ int main() {
         check(std::holds_alternative<dotModular::IdentityWarp>(
                   bank.fromDistribution(dotModular::PchipDistribution(cNew))),
               "fromDistribution(drawn) at capacity falls back to IdentityWarp (safe default)");
+    }
+
+    std::printf("[S6] PERSISTENCE: mixed bank round-trips exactly; missing keys ⟹ identity + w=0\n");
+    {
+        using Idx = dotModular::WarpBank;   // readability alias for the index() calls
+        dotModular::WarpBank src;
+        src.warpF[Idx::index(0, 0)]  = dotModular::TriangularWarp{0.3};      src.warpW[Idx::index(0, 0)]  = 0.25f;
+        src.warpF[Idx::index(4, 2)]  = dotModular::KumaraswamyWarp{5.0, 25.8}; src.warpW[Idx::index(4, 2)] = 1.f;
+        src.warpF[Idx::index(7, 5)]  = dotModular::LogitNormalWarp{-0.5, 0.8};  src.warpW[Idx::index(7, 5)]  = 0.6f;
+        src.warpF[Idx::index(2, 1)]  = dotModular::MobiusWarp{2.5};             src.warpW[Idx::index(2, 1)]  = 0.5f;
+        src.warpF[Idx::index(9, 0)]  = dotModular::ReversedPowerWarp{3.0};      src.warpW[Idx::index(9, 0)]  = 0.75f;
+        src.warpF[Idx::index(1, 3)]  = dotModular::TruncNormalWarp{0.4, 0.15};  src.warpW[Idx::index(1, 3)]  = 0.1f;
+        src.warpF[Idx::index(11, 6)] = dotModular::PowerWarp{0.5};              src.warpW[Idx::index(11, 6)] = 0.9f;
+        src.warpF[Idx::index(13, 4)] = dotModular::LogitSigmoidWarp{1.5, 0.3};  src.warpW[Idx::index(13, 4)] = 0.35f;
+        const MonotoneCurve c1 = makeCurve({{0.0, 0.0}, {0.25, 0.05}, {0.7, 0.8}, {1.0, 1.0}});
+        const int pc1 = src.putCurve(c1);
+        src.warpF[Idx::index(5, 0)] = dotModular::DrawnWarp{(uint16_t)pc1};    src.warpW[Idx::index(5, 0)] = 0.8f;
+        // a SECOND slot SHARING the same drawn curve (pool dedup is part of the contract)
+        src.warpF[Idx::index(6, 0)] = dotModular::DrawnWarp{(uint16_t)pc1};    src.warpW[Idx::index(6, 0)] = 0.2f;
+        src.globalWarpF[2] = dotModular::PowerWarp{5.0};                       src.globalWarpW[2] = 0.5f;
+
+        json_t* root = json_object();
+        dotModular::WarpBank::serialize(src, root, "editor");
+        dotModular::WarpBank dst;
+        dst.warpF[0] = dotModular::PowerWarp{9.0};   // pre-poison: parse must RESET, not merge
+        dst.warpW[0] = 0.9f;
+        dst.poolUsed = 7;                           // pre-poison the pool high-water too
+        const bool full = dotModular::WarpBank::parse(root, "editor", dst);
+        json_decref(root);
+
+        check(full, "parse reports full arrays for a complete save");
+        bool slotsOk = true;
+        slotsOk &= dst.warpF[Idx::index(0, 0)]  == dotModular::WarpF{dotModular::TriangularWarp{0.3}};
+        slotsOk &= dst.warpW[Idx::index(0, 0)]  == 0.25f;
+        slotsOk &= dst.warpF[Idx::index(4, 2)]  == dotModular::WarpF{dotModular::KumaraswamyWarp{5.0, 25.8}};
+        slotsOk &= dst.warpW[Idx::index(4, 2)]  == 1.f;
+        slotsOk &= dst.warpF[Idx::index(7, 5)]  == dotModular::WarpF{dotModular::LogitNormalWarp{-0.5, 0.8}};
+        slotsOk &= dst.warpF[Idx::index(2, 1)]  == dotModular::WarpF{dotModular::MobiusWarp{2.5}};
+        slotsOk &= dst.warpF[Idx::index(9, 0)]  == dotModular::WarpF{dotModular::ReversedPowerWarp{3.0}};
+        slotsOk &= dst.warpF[Idx::index(1, 3)]  == dotModular::WarpF{dotModular::TruncNormalWarp{0.4, 0.15}};
+        slotsOk &= dst.warpF[Idx::index(11, 6)] == dotModular::WarpF{dotModular::PowerWarp{0.5}};
+        slotsOk &= dst.warpF[Idx::index(13, 4)] == dotModular::WarpF{dotModular::LogitSigmoidWarp{1.5, 0.3}};
+        check(slotsOk, "every parametric slot round-trips exactly (type + params)");
+        bool wOk = dst.warpW[Idx::index(7, 5)] == 0.6f && dst.warpW[Idx::index(9, 0)] == 0.75f &&
+                   dst.warpW[Idx::index(1, 3)] == 0.1f && dst.warpW[Idx::index(11, 6)] == 0.9f &&
+                   dst.warpW[Idx::index(13, 4)] == 0.35f && dst.warpW[Idx::index(5, 0)] == 0.8f &&
+                   dst.warpW[Idx::index(6, 0)] == 0.2f;
+        check(wOk, "every depth w round-trips exactly (float→json→float)");
+        // untouched slots stay identity + w=0 (the default survives a round-trip)
+        bool untouched = true;
+        for (int i = 0; i < dotModular::WarpBank::N; ++i) {
+            if (i == Idx::index(0,0) || i == Idx::index(4,2) || i == Idx::index(7,5) ||
+                i == Idx::index(2,1) || i == Idx::index(9,0) || i == Idx::index(1,3) ||
+                i == Idx::index(11,6) || i == Idx::index(13,4) || i == Idx::index(5,0) ||
+                i == Idx::index(6,0)) continue;
+            if (!std::holds_alternative<dotModular::IdentityWarp>(dst.warpF[i])) untouched = false;
+            if (dst.warpW[i] != 0.f) untouched = false;
+        }
+        check(untouched, "untouched slots stay IdentityWarp + w=0 after the round-trip");
+        // drawn: BOTH slots keep the ONE pool slot; the curve is point-identical
+        const dotModular::DrawnWarp d1 = std::get<dotModular::DrawnWarp>(dst.warpF[Idx::index(5, 0)]);
+        const dotModular::DrawnWarp d2 = std::get<dotModular::DrawnWarp>(dst.warpF[Idx::index(6, 0)]);
+        check(d1 == d2 && d1.idx == (uint16_t)pc1, "shared drawn slots keep ONE pool slot, keyed by index");
+        bool ptsEq = dst.poolSize() == 1;
+        if (ptsEq) {
+            const auto& a = dst.poolCurve(d1.idx).getPoints();
+            const auto& b = c1.getPoints();
+            if (a.size() != b.size()) ptsEq = false;
+            else for (size_t i = 0; i < a.size(); ++i)
+                if (a[i].x != b[i].x || a[i].y != b[i].y) ptsEq = false;
+        }
+        check(ptsEq, "the pooled MonotoneCurve round-trips point-exact (.dmcurve JSON)");
+        check(dst.globalWarpF[2] == dotModular::WarpF{dotModular::PowerWarp{5.0}} &&
+              dst.globalWarpW[2] == 0.5f,
+              "the global (delegation default) slice round-trips exactly");
+        // second generation is byte-identical (lossless — types, params, w, pool, nulls)
+        {
+            json_t* r1 = json_object();
+            dotModular::WarpBank::serialize(src, r1, "editor");
+            char* t1 = json_dumps(r1, JSON_COMPACT);
+            json_t* r2 = json_object();
+            dotModular::WarpBank::serialize(dst, r2, "editor");
+            char* t2 = json_dumps(r2, JSON_COMPACT);
+            check(t1 && t2 && std::strcmp(t1, t2) == 0,
+                  "save→load→save is byte-identical (lossless round-trip)");
+            std::free(t1); std::free(t2);
+            json_decref(r1); json_decref(r2);
+        }
+
+        // NO warp keys at all (a pre-warp patch): everything loads at the defaults.
+        json_t* bare = json_object();
+        dotModular::WarpBank fresh;
+        fresh.warpF[Idx::index(3, 3)] = dotModular::PowerWarp{5.0};
+        fresh.warpW[Idx::index(3, 3)] = 1.f;
+        const bool fullBare = dotModular::WarpBank::parse(bare, "editor", fresh);
+        json_decref(bare);
+        check(!fullBare, "a patch with no warp keys reports not-full");
+        bool allId = true, allW0 = true;
+        for (int i = 0; i < dotModular::WarpBank::N; ++i) {
+            if (!std::holds_alternative<dotModular::IdentityWarp>(fresh.warpF[i])) allId = false;
+            if (fresh.warpW[i] != 0.f) allW0 = false;
+        }
+        check(allId && allW0, "bank with NO stored keys loads all-identity + w=0 (old patches unchanged)");
+        check(fresh.poolSize() == 0, "no pool entries without a stored pool");
+
+        // SHORT arrays: the present head survives; the missing tail defaults.
+        json_t* part = json_object();
+        json_t* jw = json_array();
+        json_array_append_new(jw, json_real(0.5));                          // 1 of 112
+        json_object_set_new(part, "editorWarpW", jw);
+        json_t* jf = json_array();
+        json_array_append_new(jf, dotModular::warpToJson(dotModular::PowerWarp{2.0}));   // 1 of 112
+        json_object_set_new(part, "editorWarpF", jf);
+        dotModular::WarpBank partDst;
+        const bool fullPart = dotModular::WarpBank::parse(part, "editor", partDst);
+        json_decref(part);
+        check(!fullPart, "short arrays report not-full");
+        check(partDst.warpW[0] == 0.5f &&
+              std::holds_alternative<dotModular::PowerWarp>(partDst.warpF[0]) &&
+              std::get<dotModular::PowerWarp>(partDst.warpF[0]).k == 2.0,
+              "short array: present head entries survive");
+        check(partDst.warpW[1] == 0.f &&
+              std::holds_alternative<dotModular::IdentityWarp>(partDst.warpF[1]),
+              "short array: missing tail defaults (w=0, identity)");
+
+        // A corrupt drawn ref (pool index out of range) loads identity — the safe default.
+        json_t* bad = json_object();
+        json_t* jf2 = json_array();
+        json_t* drawnBad = json_object();
+        json_object_set_new(drawnBad, "type", json_string("drawn"));
+        json_object_set_new(drawnBad, "pool", json_integer(999));
+        json_array_append_new(jf2, drawnBad);
+        json_object_set_new(bad, "editorWarpF", jf2);
+        dotModular::WarpBank badDst;
+        dotModular::WarpBank::parse(bad, "editor", badDst);
+        json_decref(bad);
+        check(std::holds_alternative<dotModular::IdentityWarp>(badDst.warpF[0]),
+              "out-of-range pool ref loads identity (safe default)");
     }
 
     std::printf("%s: %d passed, %d failed\n", (g_fail == 0 ? "ALL OK" : "FAILURES"), g_pass, g_fail);

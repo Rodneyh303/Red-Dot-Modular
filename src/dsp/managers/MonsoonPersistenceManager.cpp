@@ -209,6 +209,12 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     for (int i = 0; i < 112; ++i) json_array_append_new(sp, json_real(m->editor.spread[i]));
     json_object_set_new(root, "editorSpread", sp);
 
+    // Warp-F bank (CC_PROMPT_02 step 4): per-voice warp curves + depths, the drawn-curve
+    // pool (keyed by index), and Macro's global default — the bank owns the codec
+    // (WarpBank::serialize/parse; the unit test drives these same functions). Missing
+    // keys on load ⟹ all-IdentityWarp + w=0 (old patches unchanged).
+    dotModular::WarpBank::serialize(m->editor.warp, root, "editor");
+
     // GLOBAL slice (MVC step 1). Macro's globals used to be params, which gave save/restore
     // for free; now they are store fields and must be persisted explicitly.
     auto saveArr = [&](const char* key, const float* a, int n) {
@@ -480,6 +486,9 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
             for (size_t i = 0; i < 112 && i < json_array_size(j); ++i)   // 16 × 7 poly lanes
                 m->editor.spread[i] = (float)json_real_value(json_array_get(j, i));
     }
+    // Warp-F bank: absent keys keep the constructed defaults (all-identity, w=0 — the
+    // CC_PROMPT_02 no-warp guarantee for pre-warp patches).
+    dotModular::WarpBank::parse(root, "editor", m->editor.warp);
     auto loadArrN = [&](const char* key, float* a, int n) {
         if (auto j = json_object_get(root, key)) {
             if (json_is_array(j))

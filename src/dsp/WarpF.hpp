@@ -53,6 +53,8 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <memory>
+#include <string>
 #include <type_traits>
 #include <variant>
 
@@ -270,6 +272,46 @@ inline WarpF lowerWarp(const Distribution& d) {
     return IdentityWarp{};   // "drawn" (bank-level pool) or unknown → the safe default
 }
 
+// ── Slot-level JSON codec (CC_PROMPT_02 step 4) ───────────────────────────────────────────────
+// Identity serializes as JSON null (default slots stay compact); a parametric as the
+// Distribution subclass's own .dmcurve toJson VERBATIM (one serializer per curve, the
+// same reuse the prompt mandates); a drawn slot as a pool REFERENCE
+// {"format":"dmcurve","version":1,"type":"drawn","pool":idx} — the curve itself persists
+// in the bank's pool array, keyed by that index. Inverse: null / absent / malformed /
+// unknown ⟹ IdentityWarp (the safe default — old patches and corrupt slots load as
+// no-warp, never as garbage).
+inline json_t* warpToJson(const WarpF& f) {
+    return std::visit([](const auto& d) -> json_t* {
+        using T = std::decay_t<decltype(d)>;
+        if constexpr (std::is_same_v<T, IdentityWarp>) {
+            return json_null();
+        } else if constexpr (std::is_same_v<T, DrawnWarp>) {
+            json_t* root = json_object();
+            json_object_set_new(root, "format", json_string("dmcurve"));
+            json_object_set_new(root, "version", json_integer(1));
+            json_object_set_new(root, "type", json_string("drawn"));
+            json_object_set_new(root, "pool", json_integer(d.idx));
+            return root;
+        } else {
+            return d.dist().toJson();   // the ONE serializer: the subclass's own
+        }
+    }, f);
+}
+inline WarpF warpFromJson(json_t* j) {
+    if (!j || json_is_null(j) || !json_is_object(j)) return IdentityWarp{};
+    json_t* jt = json_object_get(j, "type");
+    if (json_is_string(jt) && std::strcmp(json_string_value(jt), "drawn") == 0) {
+        json_t* jp = json_object_get(j, "pool");
+        if (json_is_integer(jp)) {
+            const long long idx = json_integer_value(jp);
+            if (idx >= 0 && idx < (long long)kWarpPoolCap) return DrawnWarp{(uint16_t)idx};
+        }
+        return IdentityWarp{};   // bad/missing pool ref
+    }
+    std::unique_ptr<Distribution> d = loadDistribution(j);   // the ONE loader + validation
+    return d ? lowerWarp(*d) : IdentityWarp{};
+}
+
 // ── WarpBank — the per-voice-per-lane warp bank (CC_PROMPT_02 step 2) ──────────────────────────
 // The STORE the mirror and UI will read (wired in CC_PROMPT_03/04 — this prompt lands the
 // bank + mix + tests only). Lives in Monsoon's editor slice beside spread[112]; the same
@@ -367,6 +409,94 @@ struct WarpBank {
             return IdentityWarp{};
         }
         return lowerWarp(d);
+    }
+
+    // ── JSON round-trip (CC_PROMPT_02 step 4) ──────────────────────────────────────────
+    // MacroTapBank's pattern: the bank owns the codec; MonsoonPersistenceManager calls it
+    // under the "editor" prefix, the unit test drives these same functions. Keys (prefix
+    // "editor"): editorWarpW (112 depths) · editorWarpF (112 slot objects/nulls) ·
+    // editorWarpPool (the drawn curves, KEYED BY POOL INDEX — each a .dmcurve object) ·
+    // editorGlobalWarpW (7) · editorGlobalWarpF (7). Missing keys ⟹ the defaults survive
+    // (all-IdentityWarp + w=0 — old patches unchanged).
+    static void serialize(const WarpBank& b, json_t* root, const char* prefix) {
+        const std::string pfx(prefix);
+        json_t* jw = json_array();
+        for (int i = 0; i < N; ++i) json_array_append_new(jw, json_real((double)b.warpW[i]));
+        json_object_set_new(root, (pfx + "WarpW").c_str(), jw);
+        json_t* jf = json_array();
+        for (int i = 0; i < N; ++i) json_array_append_new(jf, warpToJson(b.warpF[i]));
+        json_object_set_new(root, (pfx + "WarpF").c_str(), jf);
+        json_t* jp = json_array();
+        for (uint16_t i = 0; i < b.poolUsed; ++i) json_array_append_new(jp, b.pool[i].toJson());
+        json_object_set_new(root, (pfx + "WarpPool").c_str(), jp);
+        json_t* gw = json_array();
+        for (int l = 0; l < LANES; ++l) json_array_append_new(gw, json_real((double)b.globalWarpW[l]));
+        json_object_set_new(root, (pfx + "GlobalWarpW").c_str(), gw);
+        json_t* gf = json_array();
+        for (int l = 0; l < LANES; ++l) json_array_append_new(gf, warpToJson(b.globalWarpF[l]));
+        json_object_set_new(root, (pfx + "GlobalWarpF").c_str(), gf);
+    }
+
+    // Load: RESETS the bank to defaults first (deterministic — never merges into stale
+    // state), then overwrites from the keys actually present. Short arrays keep the
+    // default tail (identity / w=0). A pool entry that fails MonotoneCurve's validation
+    // resets (a slot referencing it then evaluates the reset curve — the 2-point
+    // identity: safe). Returns true when BOTH per-voice arrays were full-length (the
+    // MacroTapBank::parse convention, applied to the two 112-banks).
+    static bool parse(json_t* root, const char* prefix, WarpBank& out) {
+        out = WarpBank{};   // deterministic base: all-identity, w=0, empty pool
+        const std::string pfx(prefix);
+        bool full = true;
+
+        if (json_t* jw = json_object_get(root, (pfx + "WarpW").c_str())) {
+            if (json_is_array(jw)) {
+                const size_t n = json_array_size(jw);
+                for (int i = 0; i < N && (size_t)i < n; ++i) {
+                    json_t* jv = json_array_get(jw, (size_t)i);
+                    if (json_is_number(jv)) out.warpW[i] = (float)json_number_value(jv);
+                }
+                full = full && n >= (size_t)N;
+            } else full = false;
+        } else full = false;
+
+        if (json_t* jf = json_object_get(root, (pfx + "WarpF").c_str())) {
+            if (json_is_array(jf)) {
+                const size_t n = json_array_size(jf);
+                for (int i = 0; i < N && (size_t)i < n; ++i)
+                    out.warpF[i] = warpFromJson(json_array_get(jf, (size_t)i));
+                full = full && n >= (size_t)N;
+            } else full = false;
+        } else full = false;
+
+        if (json_t* jp = json_object_get(root, (pfx + "WarpPool").c_str())) {
+            if (json_is_array(jp)) {
+                const size_t n = json_array_size(jp);
+                const size_t m = n < (size_t)kWarpPoolCap ? n : (size_t)kWarpPoolCap;
+                for (size_t i = 0; i < m; ++i) {
+                    json_t* jc = json_array_get(jp, i);
+                    if (json_is_object(jc)) out.pool[i].fromJson(jc);   // false ⟹ stays reset
+                }
+                out.poolUsed = (uint16_t)m;
+            }
+        }
+
+        if (json_t* gw = json_object_get(root, (pfx + "GlobalWarpW").c_str())) {
+            if (json_is_array(gw)) {
+                const size_t n = json_array_size(gw);
+                for (int l = 0; l < LANES && (size_t)l < n; ++l) {
+                    json_t* jv = json_array_get(gw, (size_t)l);
+                    if (json_is_number(jv)) out.globalWarpW[l] = (float)json_number_value(jv);
+                }
+            }
+        }
+        if (json_t* gf = json_object_get(root, (pfx + "GlobalWarpF").c_str())) {
+            if (json_is_array(gf)) {
+                const size_t n = json_array_size(gf);
+                for (int l = 0; l < LANES && (size_t)l < n; ++l)
+                    out.globalWarpF[l] = warpFromJson(json_array_get(gf, (size_t)l));
+            }
+        }
+        return full;
     }
 
 private:
