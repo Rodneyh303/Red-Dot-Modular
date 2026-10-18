@@ -606,6 +606,30 @@ an identical extreme together = "both clamp to the same rail"). So:
   part is what carries lambda>0; the lambda value = the corner-atom mass. (Finally WHY clamp was
   always "the atoms route to lambda>0".)
 
+IS THE SINGULAR PART STILL "MOVING AVERAGE"? (Rodney) — NO, and the reason is structural.
+The two parts share the SAME underlying MA correlation rho_{s,s'}=sum_j w_j w_{j+|s-s'|} but
+express it through DIFFERENT functions:
+  - CONTINUOUS part: correlation = rho_{s,s'} itself — LINEAR in the MA weights. MA structure
+    preserved (strictly-monotone warp F^-1 preserves the copula by Sklar → rank structure, hence
+    the MA dependence, is untouched).
+  - SINGULAR part: the atom-to-atom co-occurrence between steps s,s' both at the rail is the
+    bivariate Gaussian ORTHANT PROBABILITY Phibar_2(t,t; rho_{s,s'}), t=Phi^-1(F(rail)) — a
+    NONLINEAR (arcsine-type), threshold-dependent function of rho. So the atoms are the
+    EXCEEDANCE INDICATORS {z_s>t} — a THRESHOLDED (clipped) Gaussian process — whose dependence
+    is the MA correlation passed through the orthant nonlinearity, NOT the MA correlation itself.
+WHY MA dies on the atoms: MA is a LINEAR correlation structure; only linear/affine ops preserve
+it. The clamp is a THRESHOLD (maximally nonlinear, rank-destroying on the clamped region) → it
+turns the continuous field's MA dependence into the binary field's exceedance-correlation, a
+different object. Strictly-monotone warp keeps MA; thresholding (the thing that makes the atom)
+does not.
+WHAT SURVIVES (the controllable residue): atom co-occurrence is MONOTONE INCREASING in
+rho_{s,s'} → more MA/CA correlation at a lag ⟹ more joint-clipping at that lag. So the TEMPORAL
+PROFILE of co-clipping inherits the SHAPE of the MA autocorrelation (bursts cluster at the lags
+where the MA windows overlap most) — a faithful MONOTONE (non-invertible) shadow. But "inherits
+the shape, monotonically" is NOT "is an MA process": the atoms are a clipped-Gaussian process
+whose own autocorrelation is the arcsine-warped MA autocorrelation. Do not model/estimate the
+singular part AS an MA — it's a thresholded-Gaussian exceedance process.
+
 THE PAPER CONNECTION — clamp and DMO are the SAME singular component from OPPOSITE directions:
   - DMO (the QF paper): CONSTRUCTS the MO atom directly — a shock fires, forces simultaneity; the
     atom mass (hence lambda) is a FREE parameter gamma_Y you calibrate. Right for PRICING a joint event.
