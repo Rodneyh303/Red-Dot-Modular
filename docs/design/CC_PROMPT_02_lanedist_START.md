@@ -126,10 +126,25 @@ pool index. Missing key / default slot ⟹ IdentityWarp + w=0 (no warp — old p
     for any w (identity makes the mix u regardless of w). This is the no-warp guarantee.
   - IDENTITY EXACT: invCDF(IdentityWarp,u)==u, cdf==x, pdf==1, over a dense grid.
   - MIX ENDPOINTS: w=0 ⟹ warpedValue==u exactly (any F); w=1 ⟹ warpedValue==invCDF(F,u) exactly.
+    *** w=0 BIT-EXACT: verified that (float)((1-0)*u + 0*invCDF(u)) == (float)u for every F,
+    including a steep one. So the w=0 no-op is bit-exact in float — assert EQUALITY, not nearness.
+    (If your mix is written so w=0 doesn't reduce to exactly u in float — e.g. 1.0-w not exactly
+    1.0 — fix the expression; it MUST be bit-exact at w=0.) ***
   - SINGLE-IMPL AGREEMENT: for each parametric alternative, invCDF(WarpF,u) == the corresponding
     Distribution subclass invCDF(u) over a dense grid (proves the holder forwards, no divergence).
-  - MONOTONE: for fixed (v,lane,F,w), u1<=u2 ⟹ warpedValue(u1)<=warpedValue(u2), dense grid, in
-    the float the bank will store (Sklar-safety; strict where the editor guarantees strict).
+  - MONOTONE (Sklar-safety — the load-bearing invariant): for fixed (v,lane,F,w), u1<=u2 ⟹
+    warpedValue(u1)<=warpedValue(u2) over a dense grid, computed double and STORED FLOAT (float32,
+    matching warped_). Use these VERIFIED cases (pre-computed, not estimated — all give ZERO
+    inversions AND ZERO ties over a 10,000-pt grid at w ∈ {0.0, 0.5, 1.0} in float32):
+      · IdentityWarp (the default)
+      · PowerWarp(k=5)                 — steep near 0
+      · KumaraswamyWarp(a=5, b=25.8)   — the conc=5 case, the STEEPEST curve the editor allows
+          (or get it exactly: KumaraswamyDistribution::abFromModeConc(0.5, 5.0, a, b) → a=5, b=25.8)
+      · ReversedPowerWarp(theta=5)     — steep near 1
+    Assert STRICTLY increasing (no inversions, no ties) for these over the 10k grid at those three
+    w values. (Verified in python before this prompt: the float32-stored mix of a strictly-
+    increasing F with identity is strictly increasing for all w∈[0,1] — the conc=5 steepest case
+    is the binding one; if it passes, the gentler curves do too.)
   - DRAWN: a DrawnWarp over a pooled MonotoneCurve matches the curve's invCDF.
   - PERSISTENCE: save→load a mixed bank (identity, a parametric, a drawn, assorted w) → all
     survive exactly; a bank with no stored key loads all-identity + w=0.
