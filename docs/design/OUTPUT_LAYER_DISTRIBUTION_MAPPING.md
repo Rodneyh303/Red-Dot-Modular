@@ -396,14 +396,27 @@ non-invertible step (clamp: can't recover which u produced a pinned value) in a 
 is still perfectly reversible. Reproducibility != invertibility (cf. y=round(x): reproducible, not
 invertible). Reversibility rides on the first.
 What the atom DOES break is SKLAR UNIQUENESS, not Sklar existence. Existence survives: the output always has
-*a* copula. Uniqueness dies: with an atom the marginal CDF jumps, its range has gaps, and the copula is
-pinned only on that range → infinitely many copulas reproduce the identical joint law → "the copula is
-Gaussian-MA" stops being well-posed. You also lose uniform margins (an atom is a point mass; a uniform has
-none). So the honest line is NOT "reversible but no longer a copula" — it's: reversible, STILL has a copula
-(existence), but NO LONGER uniform-margin and NO LONGER an identifiable/unique copula. Operationally you
-lose: (1) reading the copula back off the output (empirical estimate returns some class member, not
-necessarily Gaussian-MA); (2) rank-correlation stability (ties shift Spearman/Kendall → Spread calibration
-drifts); (3) uniform marginals. This is EXACTLY why atoms belong to a deliberate OUTPUT-STAGE effect
+*a* copula. Uniqueness dies: with an atom the OUTPUT marginal CDF jumps, its range has gaps, and the copula
+is pinned only on that range → infinitely many copulas reproduce the identical joint law → "the copula is
+Gaussian-MA" stops being well-posed.
+IMPORTANT — do NOT say "uniform margins die" (Rodney caught this). Two different objects are both loosely
+called "margin": (a) the LATENT uniform U — the raw Philox draw (random_) the copula is built on — and (b)
+the OUTPUT marginal, the distribution of the clamped/warped value. CLAMPING TOUCHES NEITHER'S UNIFORMITY IN
+THE WAY THAT MATTERS: the latent U is UNTOUCHED (still exactly uniform, still the copula's basis, still
+position-addressable) — it's the one thing clamping provably leaves alone. And the OUTPUT marginal was never
+uniform anyway: ANY warp F^-1 makes it non-uniform; that's the point. So "loses uniformity" is NOT the
+change. The actual change vs an ordinary warp is that the output marginal goes from CONTINUOUS (shaped,
+non-uniform, but gap-free → Sklar-unique) to DISCONTINUOUS (a point mass at the rail → range gap → Sklar
+non-unique). It is the DISCONTINUITY (the atom), not any loss of uniformity, that breaks uniqueness —
+continuous-but-non-uniform margins keep uniqueness perfectly.
+So the honest line is NOT "reversible but no longer a copula", and NOT "no longer uniform-margin" — it's:
+reversible, latent uniforms intact, copula still CONSTRUCTED cleanly on genuine uniforms, but the OUTPUT
+marginal is now discontinuous so the copula is no longer IDENTIFIABLE/UNIQUE from the output samples.
+Operationally you lose: (1) reading the copula back off the output (the clamp destroys output rank info →
+empirical estimate returns some class member, not necessarily Gaussian-MA — the copula is intact in the
+CONSTRUCTION, just not OBSERVABLE from the output); (2) rank-correlation stability (ties shift
+Spearman/Kendall → Spread calibration drifts). This is EXACTLY why atoms belong to a deliberate OUTPUT-STAGE
+effect
 (clamp / DMO shock), never the distribution layer — the warp's value is the clean identifiable
 uniform-margin Sklar decomposition; atoms trade that description away for a specific effect, so they must be
 a visible, chosen stage, not a property of the warp.
