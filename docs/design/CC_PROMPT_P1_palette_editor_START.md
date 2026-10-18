@@ -85,6 +85,18 @@ DISPLAY-ONLY: stored curve, params, math, schema ALL unchanged. X axis stays a s
 0->1 (CDF gold, bottom). Only the PDF Y normalisation changes. DistributionCurveWidget.hpp only;
 no Distribution.hpp / engine change.
 
+RELATED, NOT A BUG (do not "fix" it): with the same edge-heavy params the CDF looks like it has
+ATOMS — near-vertical segments at x≈0 and x≈1. It does NOT. CDF slope = density; high edge
+density → steep (near-vertical) CDF corners that READ as jumps but are continuous. Verified:
+TruncatedNormalDistribution::cdf is correctly renormalised ((Phi((x-mu)/sigma)-Pa)/Z) and pinned
+to exactly 0 at x<=0 and 1 at x>=1 — the curve DOES span 0->1; the 0->~0.2 climb just happens
+within a sub-pixel x-sliver so only the vertical shows. SAME ROOT as the dome clip (edge-heavy
+density). Fixing the PDF y-max so the edge density shows its true height will make the tall-PDF-
+at-edges visually EXPLAIN the steep CDF corners (right now the clipped flat dome doesn't). The
+editor's strict-increase constraint guarantees no TRUE atoms exist, so a near-vertical CDF
+segment is always high density, never a jump. (Optional: a one-line note in the widget comment
+to that effect, so a future reader doesn't mistake steep corners for atoms. Not required.)
+
 TESTABLE: factor the max-finding into a pure free fn
 `double pdfVisibleYMax(const Distribution&, int N=200)` and test it header-only:
   - trunc-normal(mu=0.48, sigma=0.50): the returned max INCLUDES the edge density (assert it
