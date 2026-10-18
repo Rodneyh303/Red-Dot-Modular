@@ -168,6 +168,102 @@ int main() {
               "lowerWarp(drawn) → IdentityWarp (drawn is lowered at the bank/pool level)");
     }
 
+    std::printf("[S4] BANK + MIX: default no-op; endpoints (w=0 bit-exact, w=1 exact); delegation\n");
+    {
+        // ── S4a DEFAULT: the no-warp guarantee ────────────────────────────────────────────
+        dotModular::WarpBank bank;
+        bool allId = true, allW0 = true, allGId = true;
+        for (int i = 0; i < dotModular::WarpBank::N; ++i) {
+            if (!std::holds_alternative<dotModular::IdentityWarp>(bank.warpF[i])) allId = false;
+            if (bank.warpW[i] != 0.f) allW0 = false;
+        }
+        for (int lane = 0; lane < dotModular::WarpBank::LANES; ++lane)
+            if (!std::holds_alternative<dotModular::IdentityWarp>(bank.globalWarpF[lane])) allGId = false;
+        check(allId, "default bank: all 112 slots IdentityWarp");
+        check(allW0, "default bank: all 112 depths w=0");
+        check(allGId, "default bank: global default lanes all IdentityWarp");
+
+        // identity F + ANY w ⟹ still exactly u on the STORED FLOAT (the mix runs the same
+        // branchless code — identity is not special-cased; this is the no-warp guarantee).
+        const int NG = 5001;
+        for (float w : {0.f, 0.25f, 0.5f, 1.f}) {
+            for (int i = 0; i < dotModular::WarpBank::N; ++i) bank.warpW[i] = w;
+            bool ok = true;
+            for (int i = 0; i < NG; ++i) {
+                const double u = (double)i / (double)(NG - 1);
+                if ((float)bank.warpedValue(3, 4, u) != (float)u) ok = false;
+                if ((float)bank.warpedValue(0, 0, u) != (float)u) ok = false;
+                if ((float)bank.warpedValue(15, 6, u) != (float)u) ok = false;
+            }
+            char b[96];
+            std::snprintf(b, sizeof b, "identity F: warpedValue == u (stored float) at w=%g", (double)w);
+            check(ok, b);
+        }
+        for (int i = 0; i < dotModular::WarpBank::N; ++i) bank.warpW[i] = 0.f;   // restore
+
+        // ── S4b MIX ENDPOINTS ─────────────────────────────────────────────────────────────
+        // A roster spanning the palette (incl. the steep editor extremes), driven through
+        // slot (v=3, lane=4).
+        const dotModular::WarpF roster[] = {
+            dotModular::IdentityWarp{},
+            dotModular::TriangularWarp{0.3},
+            dotModular::PowerWarp{5.0},                       // steep near 0
+            dotModular::ReversedPowerWarp{5.0},               // steep near 1
+            dotModular::KumaraswamyWarp{5.0, 25.8},           // the conc=5 steepest
+            dotModular::MobiusWarp{4.0},
+            dotModular::LogitSigmoidWarp{2.0, -0.5},
+            dotModular::LogitNormalWarp{0.5, 0.4},
+            dotModular::TruncNormalWarp{0.5, 0.2},
+            dotModular::TruncNormalWarp{-2.0, 0.5},           // degenerate left
+        };
+        const int R = (int)(sizeof roster / sizeof roster[0]);
+        // w=0 is a BIT-EXACT no-op in the stored float — for EVERY F (CC_PROMPT_02's
+        // verified claim; assert EQUALITY, not nearness).
+        bool w0exact = true;
+        for (int r = 0; r < R; ++r) {
+            bank.warpF[dotModular::WarpBank::index(3, 4)] = roster[r];
+            bank.warpW[dotModular::WarpBank::index(3, 4)] = 0.f;
+            for (int i = 0; i < NG; ++i) {
+                const double u = (double)i / (double)(NG - 1);
+                if ((float)bank.warpedValue(3, 4, u) != (float)u) { w0exact = false; break; }
+            }
+        }
+        check(w0exact, "w=0: warpedValue == u BIT-EXACT (stored float), every F in the roster");
+        // w=1 is EXACTLY the curve: (1-1)*u + 1*F.invCDF(u) == F.invCDF(u), no rounding.
+        bool w1exact = true;
+        for (int r = 0; r < R; ++r) {
+            bank.warpF[dotModular::WarpBank::index(3, 4)] = roster[r];
+            bank.warpW[dotModular::WarpBank::index(3, 4)] = 1.f;
+            for (int i = 0; i < NG; ++i) {
+                const double u = (double)i / (double)(NG - 1);
+                if (bank.warpedValue(3, 4, u) != dotModular::invCDF(roster[r], u, nullptr)) { w1exact = false; break; }
+            }
+        }
+        check(w1exact, "w=1: warpedValue == invCDF(F,u) EXACTLY (double), every F in the roster");
+
+        // ── S4c DELEGATION: the owner()/topo pattern — a ceded lane tracks the GLOBAL ────
+        bank = dotModular::WarpBank{};   // reset to defaults
+        bank.warpF[dotModular::WarpBank::index(2, 3)] = dotModular::PowerWarp{5.0};
+        bank.warpW[dotModular::WarpBank::index(2, 3)] = 0.7f;
+        bank.globalWarpF[3] = dotModular::ReversedPowerWarp{5.0};
+        bank.globalWarpW[3] = 0.25f;
+        {
+            const double u = 0.42;
+            const double ownW = (double)0.7f, globW = (double)0.25f;
+            checkEq(bank.warpedValue(2, 3, u, false),
+                    (1.0 - ownW) * u + ownW * dotModular::invCDF(dotModular::PowerWarp{5.0}, u, nullptr),
+                    "not delegated: the voice's own slot (Power(5) at w=0.7)");
+            checkEq(bank.warpedValue(2, 3, u, true),
+                    (1.0 - globW) * u + globW * dotModular::invCDF(dotModular::ReversedPowerWarp{5.0}, u, nullptr),
+                    "delegated: the GLOBAL default (RevPower(5) at w=0.25)");
+            check(std::holds_alternative<dotModular::PowerWarp>(bank.effectiveF(2, 3, false))
+               && std::holds_alternative<dotModular::ReversedPowerWarp>(bank.effectiveF(2, 3, true)),
+                  "effectiveF selects own slot vs global by the topology-derived flag");
+            check(bank.effectiveW(2, 3, false) == 0.7f && bank.effectiveW(2, 3, true) == 0.25f,
+                  "effectiveW selects own depth vs global by the topology-derived flag");
+        }
+    }
+
     std::printf("%s: %d passed, %d failed\n", (g_fail == 0 ? "ALL OK" : "FAILURES"), g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

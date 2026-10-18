@@ -270,4 +270,65 @@ inline WarpF lowerWarp(const Distribution& d) {
     return IdentityWarp{};   // "drawn" (bank-level pool) or unknown → the safe default
 }
 
+// ── WarpBank — the per-voice-per-lane warp bank (CC_PROMPT_02 step 2) ──────────────────────────
+// The STORE the mirror and UI will read (wired in CC_PROMPT_03/04 — this prompt lands the
+// bank + mix + tests only). Lives in Monsoon's editor slice beside spread[112]; the same
+// flat stride (v*7 + lane), the same slot convention (VoiceResolver::voiceSlot; mono = 0).
+//
+// The GLOBAL members are Macro's delegation DEFAULT — the warp twin of
+// globalSpread[7]/globalTap[14]: a lane ceded to Macro (SandsTopology owner()==MACRO)
+// tracks those instead of the voice's own slot. Delegation is NOT re-derived here — the
+// caller wires the topology-resolved `delegated` flag, exactly the SpreadResolver::Inputs
+// shape (do NOT invent a new delegation mechanism).
+//
+// The POOL is the set-time store of drawn curves (populated by step 3): fixed-capacity
+// (kWarpPoolCap — documented there), touched only at set-time/load. Modulation never
+// touches drawn curves (no scalar param) → no control-path allocation; only voices
+// using a drawn curve consume a pool slot.
+struct WarpBank {
+    static constexpr int N      = 112;   // 16 voice-slots × 7 poly lanes
+    static constexpr int VOICES = 16;
+    static constexpr int LANES  = 7;
+
+    // (v*7 + lane) — the spread[112] stride.
+    static int index(int v, int lane) { return v * LANES + lane; }
+
+    float warpW[N]          = {};   // per-voice-per-lane depth 0..1 (0 = no warp)
+    WarpF warpF[N];                 // default-constructed = all IdentityWarp = uniform
+    float globalWarpW[LANES] = {};  // Macro's default depth (the delegation source)
+    WarpF globalWarpF[LANES];       // Macro's default curve (default = identity)
+    MonotoneCurve pool[kWarpPoolCap];   // set-time drawn-curve pool (DrawnWarp.idx indexes it)
+
+    // The bank's 2-arg forwarder form: threads THIS bank's pool for drawn slots.
+    double invCDF(const WarpF& f, double u) const { return dotModular::invCDF(f, u, pool); }
+    double cdf  (const WarpF& f, double x) const { return dotModular::cdf(f, x, pool); }
+    double pdf  (const WarpF& f, double x) const { return dotModular::pdf(f, x, pool); }
+
+    // THE MIX — branchless. The default F (identity) and w=0 both make this u with no
+    // branch; w=0 is a BIT-EXACT no-op in the stored float and w=1 is exactly
+    // invCDF(F,u) (both pinned by tests). w ∈ [0,1] is the caller's contract — no clamp
+    // (clamping would add the very branch this exists to avoid). Evaluated on the
+    // rebuild path only; the per-sample path reads a stored float.
+    double warpedValue(int v, int lane, double u) const {
+        const int i = index(v, lane);
+        return (1.0 - warpW[i]) * u + warpW[i] * invCDF(warpF[i], u);
+    }
+
+    // Delegation-resolved mix (see struct comment): `delegated` comes from SandsTopology
+    // (owner()==MACRO), wired by the caller — the SpreadResolver::Inputs shape.
+    double warpedValue(int v, int lane, double u, bool delegated) const {
+        if (delegated) {
+            const double w = globalWarpW[lane];
+            return (1.0 - w) * u + w * invCDF(globalWarpF[lane], u);
+        }
+        return warpedValue(v, lane, u);
+    }
+    const WarpF& effectiveF(int v, int lane, bool delegated) const {
+        return delegated ? globalWarpF[lane] : warpF[index(v, lane)];
+    }
+    float effectiveW(int v, int lane, bool delegated) const {
+        return delegated ? globalWarpW[lane] : warpW[index(v, lane)];
+    }
+};
+
 } // namespace dotModular
