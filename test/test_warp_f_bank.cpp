@@ -36,10 +36,14 @@
 #include <cstdio>
 #include <cstring>
 #include <type_traits>
+#include <utility>
 #include <variant>
 
 #include "Distribution.hpp"
+#include "MonotoneCurve.hpp"
 #include "WarpF.hpp"
+
+using dotModular::MonotoneCurve;
 
 static int g_pass = 0, g_fail = 0;
 
@@ -262,6 +266,90 @@ int main() {
             check(bank.effectiveW(2, 3, false) == 0.7f && bank.effectiveW(2, 3, true) == 0.25f,
                   "effectiveW selects own depth vs global by the topology-derived flag");
         }
+    }
+
+    std::printf("[S5] DRAWN POOL: DrawnWarp forwards to the pooled curve; dedup; capacity\n");
+    {
+        // A curve from explicit valid points via the public JSON path — the same entry
+        // the editor files use (test_distribution.cpp's makeCurve pattern).
+        auto makeCurve = [](std::initializer_list<std::pair<double, double>> pts) {
+            json_t* root = json_object();
+            json_object_set_new(root, "format", json_string("dmcurve"));
+            json_object_set_new(root, "version", json_integer(1));
+            json_t* jp = json_array();
+            for (const auto& p : pts) {
+                json_t* pair = json_array();
+                json_array_append_new(pair, json_real(p.first));
+                json_array_append_new(pair, json_real(p.second));
+                json_array_append_new(jp, pair);
+            }
+            json_object_set_new(root, "points", jp);
+            MonotoneCurve c;
+            check(c.fromJson(root), "S5 makeCurve: valid curve loads");
+            json_decref(root);
+            return c;
+        };
+
+        dotModular::WarpBank bank;
+        const MonotoneCurve cA = makeCurve({{0.0, 0.0}, {0.3, 0.1}, {0.6, 0.5}, {1.0, 1.0}});
+        const MonotoneCurve cB = makeCurve({{0.0, 0.0}, {0.2, 0.4}, {0.7, 0.9}, {1.0, 1.0}});
+
+        const int iA = bank.putCurve(cA);
+        check(iA == 0, "first distinct curve takes pool slot 0");
+        const int iB = bank.putCurve(cB);
+        check(iB == 1, "second distinct curve takes slot 1");
+        const int iA2 = bank.putCurve(cA);
+        check(iA2 == iA, "re-committing the SAME curve reuses its pool slot (dedup)");
+        check(bank.poolSize() == 2, "poolSize counts distinct curves only");
+
+        // Forwarding: DrawnWarp == the curve's OWN methods, exactly (one implementation —
+        // the same MonotoneCurve members PchipDistribution calls).
+        const dotModular::WarpF fA = dotModular::DrawnWarp{(uint16_t)iA};
+        check(std::strcmp(dotModular::warpTypeName(fA), "drawn") == 0, "drawn typeName is \"drawn\"");
+        bool dInv = true, dCdf = true, dPdf = true;
+        for (int i = 0; i < 2001; ++i) {
+            const double u = (double)i / 2000.0;
+            if (dotModular::invCDF(fA, u, bank.pool) != cA.evalInverse(u)) dInv = false;
+            if (dotModular::cdf  (fA, u, bank.pool) != cA.evalCDF(u))     dCdf = false;
+            if (dotModular::pdf  (fA, u, bank.pool) != cA.pdf(u))         dPdf = false;
+        }
+        check(dInv && dCdf && dPdf, "DrawnWarp invCDF/cdf/pdf == pooled MonotoneCurve's own methods (exact)");
+
+        // Mix over a drawn slot: w=1 is exactly the curve's inverse.
+        bank.warpF[dotModular::WarpBank::index(5, 2)] = fA;
+        bank.warpW[dotModular::WarpBank::index(5, 2)] = 1.f;
+        bool dW1 = true;
+        for (int i = 0; i < 2001; ++i) {
+            const double u = (double)i / 2000.0;
+            if (bank.warpedValue(5, 2, u) != cA.evalInverse(u)) dW1 = false;
+        }
+        check(dW1, "drawn slot at w=1: warpedValue == curve.evalInverse(u) exactly");
+
+        // fromDistribution — the set-time commit path: parametrics lower, drawn pools.
+        const dotModular::WarpF fP = bank.fromDistribution(dotModular::PowerDistribution(2.5));
+        check(std::holds_alternative<dotModular::PowerWarp>(fP) &&
+              std::get<dotModular::PowerWarp>(fP) == dotModular::PowerWarp{2.5},
+              "fromDistribution(parametric) lowers via lowerWarp");
+        const dotModular::WarpF fD = bank.fromDistribution(dotModular::PchipDistribution(cB));
+        check(std::holds_alternative<dotModular::DrawnWarp>(fD) &&
+              std::get<dotModular::DrawnWarp>(fD).idx == (uint16_t)iB,
+              "fromDistribution(drawn) reuses the identical curve's pool slot");
+
+        // Capacity: fill with distinct curves; a NEW distinct one is refused (kNoSlot);
+        // an already-present one still resolves; the commit path degrades to identity.
+        for (int k = 0; bank.poolSize() < (int)dotModular::kWarpPoolCap && k < 100; ++k) {
+            const double xk = 0.05 + 0.01 * k;   // distinct x ⟹ distinct point set
+            const MonotoneCurve ck = makeCurve({{0.0, 0.0}, {xk, 0.3}, {1.0, 1.0}});
+            check(bank.putCurve(ck) >= 0, "fill: distinct curve takes a slot");
+        }
+        check(bank.poolSize() == (int)dotModular::kWarpPoolCap, "pool filled to the documented capacity (32)");
+        check(bank.poolFull(), "poolFull() at capacity");
+        const MonotoneCurve cNew = makeCurve({{0.0, 0.0}, {0.42, 0.05}, {0.55, 0.7}, {1.0, 1.0}});
+        check(bank.putCurve(cNew) == dotModular::WarpBank::kNoSlot, "NEW distinct curve at capacity refused (kNoSlot)");
+        check(bank.putCurve(cA) == iA, "an already-present curve still resolves at capacity");
+        check(std::holds_alternative<dotModular::IdentityWarp>(
+                  bank.fromDistribution(dotModular::PchipDistribution(cNew))),
+              "fromDistribution(drawn) at capacity falls back to IdentityWarp (safe default)");
     }
 
     std::printf("%s: %d passed, %d failed\n", (g_fail == 0 ? "ALL OK" : "FAILURES"), g_pass, g_fail);

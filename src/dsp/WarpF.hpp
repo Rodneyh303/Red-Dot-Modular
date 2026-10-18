@@ -281,10 +281,10 @@ inline WarpF lowerWarp(const Distribution& d) {
 // caller wires the topology-resolved `delegated` flag, exactly the SpreadResolver::Inputs
 // shape (do NOT invent a new delegation mechanism).
 //
-// The POOL is the set-time store of drawn curves (populated by step 3): fixed-capacity
-// (kWarpPoolCap — documented there), touched only at set-time/load. Modulation never
-// touches drawn curves (no scalar param) → no control-path allocation; only voices
-// using a drawn curve consume a pool slot.
+// The POOL is the set-time store of drawn curves: fixed-capacity (kWarpPoolCap —
+// documented there), touched only at set-time/load. Modulation never touches drawn
+// curves (no scalar param) → no control-path allocation; only voices using a drawn
+// curve consume a pool slot.
 struct WarpBank {
     static constexpr int N      = 112;   // 16 voice-slots × 7 poly lanes
     static constexpr int VOICES = 16;
@@ -328,6 +328,56 @@ struct WarpBank {
     }
     float effectiveW(int v, int lane, bool delegated) const {
         return delegated ? globalWarpW[lane] : warpW[index(v, lane)];
+    }
+
+    // ── The set-time drawn-curve pool (CC_PROMPT_02 step 3) ─────────────────────────────
+    // Populated ONLY at set-time (UI commit / patch load). Identical curves SHARE a slot
+    // (dedup on control points — metadata is editor attribution, not math), so only
+    // voices using a DISTINCT drawn curve consume capacity. Slot reclamation is
+    // CC_PROMPT_04 scope (the UI owns the edit lifecycle).
+    static constexpr int kNoSlot = -1;   // putCurve: pool full, distinct curve refused
+
+    uint16_t poolUsed = 0;               // high-water mark; slots [0, poolUsed) populated
+
+    int  poolSize() const { return (int)poolUsed; }
+    bool poolFull() const { return poolUsed >= kWarpPoolCap; }
+
+    const MonotoneCurve& poolCurve(uint16_t idx) const {
+        assert(idx < kWarpPoolCap);
+        return pool[idx];
+    }
+
+    // Put a curve into the pool: reuse the slot of an IDENTICAL curve, else append while
+    // capacity remains, else kNoSlot (the caller decides — see poolFull()).
+    int putCurve(const MonotoneCurve& c) {
+        for (uint16_t i = 0; i < poolUsed; ++i)
+            if (samePoints(pool[i], c)) return i;
+        if (poolUsed >= kWarpPoolCap) return kNoSlot;
+        pool[poolUsed] = c;
+        return (int)poolUsed++;
+    }
+
+    // The set-time commit path (the UI calls this when a curve is chosen/edited for a
+    // slot): parametrics lower through lowerWarp; a drawn curve allocates (or reuses) a
+    // pool slot. Pool full ⟹ IdentityWarp — the safe default; the UI checks poolFull().
+    WarpF fromDistribution(const Distribution& d) {
+        if (std::strcmp(d.typeName(), "drawn") == 0) {
+            const int slot = putCurve(static_cast<const PchipDistribution&>(d).curve);
+            if (slot != kNoSlot) return DrawnWarp{(uint16_t)slot};
+            return IdentityWarp{};
+        }
+        return lowerWarp(d);
+    }
+
+private:
+    // Exact control-point equality (the dedup key): same size, same x/y bit-for-bit.
+    static bool samePoints(const MonotoneCurve& a, const MonotoneCurve& b) {
+        const auto& pa = a.getPoints();
+        const auto& pb = b.getPoints();
+        if (pa.size() != pb.size()) return false;
+        for (size_t i = 0; i < pa.size(); ++i)
+            if (pa[i].x != pb[i].x || pa[i].y != pb[i].y) return false;
+        return true;
     }
 };
 
