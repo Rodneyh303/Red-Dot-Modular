@@ -687,6 +687,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                         engine.pe.qmixRandom[j]   = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_QMIX,   j, spQ);   // QMIX own axis (SB_SANDS_Q)
                     }
                 }
+                // Warp mirror (CC_PROMPT_03): the mono writes above — refresh row 0's
+                // mirror cells (voice scope). The poly rows below only cache spread
+                // values; their random_ cells refresh at step rate (cell scope).
+                engine.pe.rebuildWarpMirrorVoice(0);
                 // Mono strand LOR from Macro globals (REST/MEL/OCT/ACC/QMIX strands).
                 // Note: These are in ENGINE lane order (REST=0, MEL=1, OCT=2, ACC=3, QMIX=4), not editor order.
                 // SANDS CONSOLIDATION Step 1: 7 poly lanes. STRND must have 7 entries (was 5 —

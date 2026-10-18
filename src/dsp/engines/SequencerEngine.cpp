@@ -1043,6 +1043,11 @@ void SequencerEngine::refreshPolyRandomCell(int voice, int engLane, int step) {
     pe.polyRandom(voice, engLane)[step & 0x0F] =
         redDot::SpreadInterp::applyPoly(pe, engLane, voice, step & 0x0F,
                                         pe.cachedPolySpread[voice][engLane]);
+    // Warp mirror (CC_PROMPT_03): this cell of random_ just moved — refresh exactly
+    // that mirror cell so the next polyRandomSrc read (the same call sequence in
+    // executePolyVoice) sees the effective w-mixture of the CURRENT value. One
+    // warpedValue eval per step per lane; no-op without a bank.
+    pe.rebuildWarpMirrorCell(voice, engLane, step & 0x0F);
 }
 
 void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, bool wasHeldPoly, bool hadPolyTail) {

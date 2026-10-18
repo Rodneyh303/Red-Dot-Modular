@@ -233,7 +233,102 @@ int main() {
                             (double)pe.warped_[v][l][s + 1], (double)pe.warped_[v][l][s]);
     });
 
+    // ── S5: the dirty mask — scoped rebuilds touch EXACTLY their scope ───────────
+    TEST("S5 Macro lane edit: rebuilds ONLY that lane's DELEGATING voices (others stale)", {
+        PatternEngine pe; fillRandomGolden(pe);
+        WarpBank bank; pe.setWarpBank(&bank);
+        // State A: every own-slot is steep kuma @ w=1; Macro's global is inert.
+        for (int i = 0; i < WarpBank::N; ++i) {
+            bank.warpF[i] = dotModular::KumaraswamyWarp{5, 25.8};
+            bank.warpW[i] = 1.f;
+        }
+        const int lane = MEL;
+        // Voices 0/3/7 delegate this lane to Macro; the rest own their slots.
+        pe.setWarpDelegated(0, lane, true);
+        pe.setWarpDelegated(3, lane, true);
+        pe.setWarpDelegated(7, lane, true);
+        pe.rebuildWarpMirrorAll();
+        static float snap[16][7][16];
+        std::memcpy(snap, pe.warped_, sizeof snap);
+        // The edit event: Macro's curve for the lane changes...
+        bank.globalWarpF[lane] = dotModular::TriangularWarp{0.8};
+        bank.globalWarpW[lane] = 1.f;
+        // ...AND a fresh draw lands on OTHER cells (random_ changes there too — a
+        // full rebuild would pick these up; the scope must NOT).
+        for (int v = 0; v < 16; ++v) for (int s = 0; s < 16; ++s)
+            pe.random_[v][OCT][s] = (float)std::fmod(0.777 + (v * 16 + s) * 0.3819660113, 1.0);
+        pe.rebuildWarpMirrorLaneDelegating(lane);
+        const dotModular::TriangularWarp tri{0.8};
+        // (1) delegating voices: lane cells now the global curve over the CURRENT basis.
+        for (int v : {0, 3, 7})
+            for (int s = 0; s < 16; ++s) {
+                const float want = (float)tri.invCDF((double)pe.random_[v][lane][s]);
+                EXPECTF(pe.warped_[v][lane][s] == want, "delegating (%d,%d): got %.9g want %.9g",
+                        v, s, (double)pe.warped_[v][lane][s], (double)want);
+            }
+        // (2) non-delegating voices: lane cells UNTOUCHED (own slots didn't change).
+        for (int v = 0; v < 16; ++v) {
+            if (v == 0 || v == 3 || v == 7) continue;
+            for (int s = 0; s < 16; ++s)
+                EXPECTF(pe.warped_[v][lane][s] == snap[v][lane][s], "own-slot voice %d step %d", v, s);
+        }
+        // (3) other lanes: UNTOUCHED even though their random_ basis changed above.
+        for (int v = 0; v < 16; ++v)
+            for (int l = 0; l < 7; ++l) {
+                if (l == lane) continue;
+                for (int s = 0; s < 16; ++s)
+                    EXPECTF(pe.warped_[v][l][s] == snap[v][l][s], "other lane (%d,%d,%d)", v, l, s);
+            }
+    });
+
+    TEST("S5 Sands (East) edit: rebuilds exactly ONE voice's lane (16 cells), fresh basis", {
+        PatternEngine pe; fillRandomGolden(pe);
+        WarpBank bank; pe.setWarpBank(&bank);
+        pe.rebuildWarpMirrorAll();
+        static float snap[16][7][16];
+        std::memcpy(snap, pe.warped_, sizeof snap);
+        // The edit event: voice 5's melody slot gets a curve + a fresh draw on that lane.
+        const int v = 5, lane = MEL;
+        bank.warpF[WarpBank::index(v, lane)] = dotModular::TruncNormalWarp{0.3, 0.12};
+        bank.warpW[WarpBank::index(v, lane)] = 1.f;
+        for (int s = 0; s < 16; ++s)
+            pe.random_[v][lane][s] = (float)std::fmod(0.313 + s * 0.2718281828, 1.0);
+        pe.rebuildWarpMirrorVoiceLane(v, lane);
+        const dotModular::TruncNormalWarp tn{0.3, 0.12};
+        for (int s = 0; s < 16; ++s) {
+            const float want = (float)tn.invCDF((double)pe.random_[v][lane][s]);
+            EXPECTF(pe.warped_[v][lane][s] == want, "step %d: got %.9g want %.9g",
+                    s, (double)pe.warped_[v][lane][s], (double)want);
+        }
+        // Everything else is UNTOUCHED (still the state-A snapshot).
+        for (int vv = 0; vv < 16; ++vv)
+            for (int l = 0; l < 7; ++l) {
+                if (vv == v && l == lane) continue;
+                for (int s = 0; s < 16; ++s)
+                    EXPECTF(pe.warped_[vv][l][s] == snap[vv][l][s], "cell (%d,%d,%d)", vv, l, s);
+            }
+    });
+
+    TEST("S5 cell scope: rebuilds exactly ONE cell (the step-rate companion)", {
+        PatternEngine pe; fillRandomGolden(pe);
+        WarpBank bank; pe.setWarpBank(&bank);
+        pe.rebuildWarpMirrorAll();
+        static float snap[16][7][16];
+        std::memcpy(snap, pe.warped_, sizeof snap);
+        const int v = 9, lane = OCT, step = 4;
+        bank.warpW[WarpBank::index(v, lane)] = 1.f;
+        pe.random_[v][lane][step] = 0.123456f;
+        pe.rebuildWarpMirrorCell(v, lane, step);
+        EXPECT(pe.warped_[v][lane][step] == pe.random_[v][lane][step]);   // identity F @ w=1
+        for (int vv = 0; vv < 16; ++vv)
+            for (int l = 0; l < 7; ++l)
+                for (int s = 0; s < 16; ++s) {
+                    if (vv == v && l == lane && s == step) continue;
+                    EXPECTF(pe.warped_[vv][l][s] == snap[vv][l][s], "cell (%d,%d,%d)", vv, l, s);
+                }
+    });
+
     std::cout << "-----\n";
-    std::printf("warp mirror STEP 2: %d passed, %d failed\n", s_pass, s_fail);
+    std::printf("warp mirror (STEP 2-3): %d passed, %d failed\n", s_pass, s_fail);
     return s_fail ? 1 : 0;
 }

@@ -148,6 +148,41 @@ void PatternEngine::setWarpBank(const dotModular::WarpBank* b) {
     rebuildWarpMirrorAll();       // first wire / re-wire: refresh from current random_
 }
 
+// ── The dirty mask (STEP 3): scoped rebuilds — see PatternEngine.hpp for the map ──
+
+void PatternEngine::rebuildWarpMirrorVoice(int v) {
+    if (!warpBank_) return;
+    const int vv = (v >= 0 && v < 16) ? v : 0;
+    for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
+        for (int s = 0; s < 16; ++s)
+            warped_[vv][l][s] = warpMixCell(vv, l, s);
+}
+
+void PatternEngine::rebuildWarpMirrorLaneDelegating(int lane) {
+    if (!warpBank_) return;
+    const int l = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : 0;
+    for (int v = 0; v < 16; ++v) {
+        if (!warpDelegated_[v][l]) continue;   // own-slot voices: a Macro edit can't move them
+        for (int s = 0; s < 16; ++s)
+            warped_[v][l][s] = warpMixCell(v, l, s);
+    }
+}
+
+void PatternEngine::rebuildWarpMirrorVoiceLane(int v, int lane) {
+    if (!warpBank_) return;
+    const int vv = (v >= 0 && v < 16) ? v : 0;
+    const int l = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : 0;
+    for (int s = 0; s < 16; ++s)
+        warped_[vv][l][s] = warpMixCell(vv, l, s);
+}
+
+void PatternEngine::rebuildWarpMirrorCell(int v, int lane, int step) {
+    if (!warpBank_) return;
+    const int vv = (v >= 0 && v < 16) ? v : 0;
+    const int l = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : 0;
+    warped_[vv][l][step & 0x0F] = warpMixCell(vv, l, step & 0x0F);
+}
+
 // ── Core generation ───────────────────────────────────────────────────────
 
 // Pick a DEGREE (0..n-1) weighted by fader values using a provided random value. n = active degree
@@ -636,6 +671,9 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(int voice) {
             }
         }
     }
+    // Warp mirror: this function rewrote random_ rows for `voice` (mono row when
+    // voice==0, poly row otherwise) — refresh that voice's mirror cells only.
+    rebuildWarpMirrorVoice(voice);
     publishSlewedRhythm();
     rhythmMixApplied = rhythmMixLatched;
 }
@@ -678,6 +716,8 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(int voice) {
             }
         }
     }
+    // Warp mirror: same voice-scoped companion as the rhythm ForVoice above.
+    rebuildWarpMirrorVoice(voice);
     publishSlewedMelody();
     melodyMixApplied = melodyMixLatched;
 }
@@ -707,6 +747,8 @@ void PatternEngine::recomputeEffectiveQmixForVoice(int voice) {
                 redDot::SpreadInterp::applyPoly(*this,PL_QMIX,voice,i,cachedPolySpread[voice][PL_QMIX]):slewedQmix[voice][i];
         }
     }
+    // Warp mirror: same voice-scoped companion as the rhythm/melody ForVoice above.
+    rebuildWarpMirrorVoice(voice);
     publishSlewedQmix();
     qmixMixApplied = qmixMixLatched;
 }

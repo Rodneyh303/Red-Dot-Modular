@@ -95,6 +95,14 @@ struct SandsParameterManager {
       patternEngine->polyRandom(vs, SequencerEngine::PL_OCTAVE)[i] = editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i];
       patternEngine->octaveSource[vs][i] = patternEngine->polyRandom(vs, SequencerEngine::PL_OCTAVE)[i];
     }
+
+    // Warp mirror (CC_PROMPT_03 STEP 3 — the "Sands (East) edit" dirty scope): the
+    // three loops above rewrote random_[vs] for REST/MELODY/OCTAVE; refresh exactly
+    // those lanes' 16 mirror cells each, so the bars/redistribution stay live. No-op
+    // without a bank.
+    patternEngine->rebuildWarpMirrorVoiceLane(vs, SequencerEngine::PL_REST);
+    patternEngine->rebuildWarpMirrorVoiceLane(vs, SequencerEngine::PL_MELODY);
+    patternEngine->rebuildWarpMirrorVoiceLane(vs, SequencerEngine::PL_OCTAVE);
   }
 
   // ── READ direction (Macro): engine spread-interpolated values → editor bars ──
