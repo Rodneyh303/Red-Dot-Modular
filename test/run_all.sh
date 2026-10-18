@@ -74,6 +74,7 @@ TESTS=(
   "test_eradication_harness|$PE"
   "test_final_random_by_strand|"
   "test_fractional_tail|"
+  "test_kumaraswamy_reparam|"   # header-only: Kumaraswamy (mode,conc) <-> (a,b) authoring map (conc:=a, closed-form b; CONC_MAX=5 load-bearing)
   "test_lane_direction|"
   "test_lane_bitcompare|$SE $GS $PE"
   "test_voice_count_partial|$PE"

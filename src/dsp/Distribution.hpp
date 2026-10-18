@@ -145,6 +145,60 @@ public:
     double a, b;   // > 0 (validated on load)
     KumaraswamyDistribution(double a_, double b_) : a(a_), b(b_) {}
 
+    // ── (mode, concentration) authoring basis ─────────────────────────────────────────────
+    // Native (a,b) are a poor CONTROL basis: both knobs pull mode AND spread. The authoring
+    // basis (TODO_distribution_palette_and_editor.md #1 / CC_PROMPT_P1 sub-task A) is
+    // (mode, concentration) with conc := a (the LEFT shape exponent) and b solved CLOSED-FORM
+    // to hold the mode:
+    //     forward (abFromModeConc):   a = conc,  b = (a-1+m^a)/(a·m^a)   [mode^a=(a-1)/(ab-1)]
+    //     inverse (modeConcFromAb):   conc = a,  mode = ((a-1)/(ab-1))^(1/a)
+    // — an exact inverse BOTH ways, no root-finding (conc:=b would be transcendental in a).
+    // b-1 = (a-1)(1-m^a)/(a·m^a) > 0 for a>1, m<1, so the forward image always lands in the
+    // a>1, b>1 unimodal region, and the conc knob never moves the mode (b is solved to hold
+    // it — exact orthogonality). Internal evaluation and the .dmcurve schema STAY (a,b); this
+    // is the UI/authoring mapping only, and a parametric never faces the editor's
+    // eps-monotonicity gate (only "convert to editable" samples it, at 9 points).
+    //
+    // Clamps (LOAD-BEARING, verified — do NOT widen): conc ∈ [1, CONC_MAX=5] and mode ∈
+    // [MODE_EPS, 1-MODE_EPS] with MODE_EPS=0.02. conc := a drives b ~ mode^(-a), which
+    // EXPLODES: conc=5 → b up to ~2.5e8 (invCDF still strictly increasing across a 1000-pt
+    // grid in double); conc=8 → b ~1e13 and the invCDF goes FLAT (ties — the numerical
+    // atom); conc=100 → b ~1e169, totally flat. conc=5 reaches peak height ~3.7 — musically
+    // ample; a needle spike IS a numerical atom. MODE_EPS keeps m^a off the 0/denormal
+    // boundary. Proven by test_kumaraswamy_reparam: finite a,b>0, never NaN/inf, invCDF
+    // strictly increasing, over the whole clamped box.
+    static constexpr double CONC_MAX = 5.0;    // 1 = uniform, 5 = peak height ~3.7
+    static constexpr double MODE_EPS = 0.02;   // authoring mode floor/ceiling
+
+    static void abFromModeConc(double mode, double conc, double& a, double& b) {
+        if (!(conc >= 1.0)) conc = 1.0;                    // NaN-safe clamps into the box
+        else if (conc > CONC_MAX) conc = CONC_MAX;
+        if (!(mode >= MODE_EPS)) mode = MODE_EPS;
+        else if (mode > 1.0 - MODE_EPS) mode = 1.0 - MODE_EPS;
+        if (conc == 1.0) { a = 1.0; b = 1.0; return; }     // uniform; the mode is irrelevant
+        a = conc;
+        const double ma = std::pow(mode, a);
+        b = (a - 1.0 + ma) / (a * ma);
+    }
+
+    static void modeConcFromAb(double a, double b, double& mode, double& conc) {
+        if (a == 1.0 && b == 1.0) { mode = 0.5; conc = 1.0; return; }   // uniform: 0/0 sentinel
+        if (!(a > 1.0) || !(b > 1.0)) {
+            // No interior mode — a J/U/monotone shape authored directly in (a,b) (the forward
+            // map never produces these): report the boundary the mass sits against, via the
+            // median: cdf(0.5) >= 0.5 means the majority of the mass is left (density
+            // decreasing) -> mode 0; otherwise -> mode 1.
+            if (!(a >= 1.0)) conc = 1.0;
+            else if (a > CONC_MAX) conc = CONC_MAX;
+            else conc = a;
+            const KumaraswamyDistribution d(a, b);
+            mode = (d.cdf(0.5) >= 0.5) ? 0.0 : 1.0;
+            return;
+        }
+        conc = a;   // honest readout (may exceed CONC_MAX for (a,b) authored directly)
+        mode = std::pow((a - 1.0) / (a * b - 1.0), 1.0 / a);
+    }
+
     const char* typeName() const override { return "kumaraswamy"; }
 
     double cdf(double x) const override {
