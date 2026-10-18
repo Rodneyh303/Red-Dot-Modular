@@ -191,11 +191,27 @@ struct PatternEngine {
     void setWarpDelegated(int v, int lane, bool d) {
         if (v >= 0 && v < 16 && lane >= 0 && lane < 7) warpDelegated_[v][lane] = d;
     }
-    // Full mirror rebuild from random_ + warpBank_ (the "rebuild all 1792" scope —
-    // pattern regen / new draw / scrub / pin-remap; 0.064ms worst case per the
-    // verified cost in CC_PROMPT_03 STEP 3, so callers need not be stingy).
-    // No-op without a bank. (Scoped rebuilds — lane/cell dirty mask — land with STEP 3.)
+    // ── The dirty mask (STEP 3): scoped, IMMEDIATE rebuilds. "Display rebuilds
+    // immediately on edit" (§2) — the edit paths call the narrow scope directly;
+    // the scope IS the mask, no deferred flags to flush. All no-op without a bank.
+    //   rebuildWarpMirrorAll()                — regen / new draw / scrub / pin-remap:
+    //                                             1792 cells, 0.064ms worst case
+    //   rebuildWarpMirrorVoice(v)             — a whole voice row (7×16 = 112 cells):
+    //                                             ForVoice recompute + the managers'
+    //                                             mono-row spread passes, ~0.004ms
+    //   rebuildWarpMirrorLaneDelegating(lane) — Macro curve/w edit: that lane across
+    //                                             DELEGATING voices only (own-slot
+    //                                             voices are untouched by a Macro edit)
+    //   rebuildWarpMirrorVoiceLane(v, lane)   — Sands (East) edit on (v,lane): 16 cells
+    //   rebuildWarpMirrorCell(v, lane, step)  — the step-rate spread-refresh companion:
+    //                                             1 cell, ~0.0006ms
+    // The scopes are for CLEANLINESS (don't recompute untouched voices), NOT
+    // performance — the verified costs above are all trivial (the prompt's ruling).
     void rebuildWarpMirrorAll();
+    void rebuildWarpMirrorVoice(int v);
+    void rebuildWarpMirrorLaneDelegating(int lane);
+    void rebuildWarpMirrorVoiceLane(int v, int lane);
+    void rebuildWarpMirrorCell(int v, int lane, int step);
     // The shared cell compute (CONTRACT: warpBank_ != nullptr — every rebuild entry
     // point checks before calling): DOUBLE mix → FLOAT store.
     float warpMixCell(int v, int lane, int step) const;

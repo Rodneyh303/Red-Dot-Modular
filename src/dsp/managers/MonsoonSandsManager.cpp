@@ -136,6 +136,23 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     }
     const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
     const bool macroDrivesOutput = hasMacro && polyBaseActive;
+    // Warp mirror delegation (CC_PROMPT_03 STEP 3): mirror the topology's Macro-owned
+    // (v,lane) matrix onto the engine (the spreadTargetMode pattern), and rebuild the
+    // mirror when it flips — a delegation change moves the EFFECTIVE warp for that
+    // (v,lane) even though no bank slot did. Full scope: owner flips are rare user
+    // actions. Inert while no bank is wired (the rebuilds no-op).
+    {
+        bool warpTopoChanged = false;
+        for (int v = 0; v < 16; ++v)
+            for (int l = 0; l < 7; ++l) {
+                const bool d = (topo.owner(v, l) == dotModular::SandsTopology::Role::MACRO);
+                if (engine.pe.warpDelegated_[v][l] != d) {
+                    engine.pe.warpDelegated_[v][l] = d;
+                    warpTopoChanged = true;
+                }
+            }
+        if (warpTopoChanged) engine.pe.rebuildWarpMirrorAll();
+    }
     // sandsActive must be true whenever ANYTHING writes the spread-applied final arrays,
     // or PatternEngine's slew stage copies the raw slewed draws back over them every
     // sample. Macro STANDALONE (hasMacro, no base expander) now applies its global spread
@@ -747,6 +764,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         }   // if (mSpR || mSpM)
         }   // if (!macroDrivesOutput)
     }       // if (hasMacro && macroVis)
+
+    // Warp mirror (CC_PROMPT_03): the spread passes above rewrote the MONO row of
+    // random_ — refresh that row's mirror cells (voice-scoped, 112 cells ≈ 0.004ms,
+    // per control block). Poly rows are step-rate refreshed via refreshPolyRandomCell
+    // (which carries its own cell-scope rebuild).
+    engine.pe.rebuildWarpMirrorVoice(0);
 
     // Note: Poly DNA windows handled in Monsoon::process controlDivider block.
 }
