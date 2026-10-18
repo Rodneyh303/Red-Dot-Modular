@@ -289,8 +289,18 @@ struct SpreadManager {
     float original = (monoContext || numVoices <= 1)
         ? redDot::SpreadInterp::monoSlewedPub(*patternEngine, lane, step)
         : redDot::SpreadInterp::polySlewedPub(*patternEngine, lane, startVoiceIdx + voiceIdx, step);
-    return redDot::SpreadInterp::applyAnchorV1Only(*patternEngine, lane, step,
+    const float interp = redDot::SpreadInterp::applyAnchorV1Only(*patternEngine, lane, step,
                                                    original, getSpread(voiceIdx, lane));
+    // Warp display composition (CC_PROMPT_04 feel-test bug 1): MEL/OCT consumers read
+    // the warp mirror (polyRandomSrc), so the display composes the same effective
+    // w-mixture ON TOP of the spread-interpolated value — the SAME per-(voice,lane)
+    // (F,w) the mirror resolves (delegated lane → Macro's global curve). Other lanes
+    // stay raw: the audio doesn't warp boolean/qmix lanes, so the bars must not either.
+    if (lane == PatternEngine::PL_MELODY || lane == PatternEngine::PL_OCTAVE) {
+      const int vSlot = (monoContext || numVoices <= 1) ? 0 : (startVoiceIdx + voiceIdx);
+      return patternEngine->warpDisplayMix(vSlot, lane, interp);
+    }
+    return interp;
   }
   
   // ===== BATCH OPERATIONS =====

@@ -215,6 +215,16 @@ struct PatternEngine {
     // The shared cell compute (CONTRACT: warpBank_ != nullptr — every rebuild entry
     // point checks before calling): DOUBLE mix → FLOAT store.
     float warpMixCell(int v, int lane, int step) const;
+    // ── Warp DISPLAY composition (CC_PROMPT_04 feel-test bug 1) ──
+    // The display twin of warpMixCell: compose the effective w-mixture over a
+    // CALLER-SUPPLIED value (the spread-interpolated display value the bars compute)
+    // instead of random_[v][lane][step]. Same per-(voice,lane) (F,w) resolution as the
+    // mirror — it calls the SAME WarpBank::warpedValue(v, lane, u, delegated) overload
+    // warpMixCell uses, including the Macro-global default vs own-slot delegation —
+    // so a bar can never show a value the audio path doesn't consume. The MEL/OCT
+    // gate is the CALLER's job (polyRandomSrc's rule: boolean/qmix lanes stay raw).
+    // No bank ⇒ u returned bit-identically (bank-less hosts unchanged).
+    float warpDisplayMix(int v, int lane, double u) const;
 
     // Final post-everything (A/B-mix + spread + LOR feed in upstream) probability value for a given
     // ENGINE STRAND at a given step, 0..1. Now a direct index into random_[0] (mono row): strand index

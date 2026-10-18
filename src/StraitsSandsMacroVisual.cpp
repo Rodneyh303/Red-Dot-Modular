@@ -536,9 +536,17 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // is meaningless. Use interpolate(base, base, sp) so V1 bars are identical
         // regardless of spread (matches East V1 which uses interpolate(base, base, spread)).
         // Poly voices (mono=false): still use applyAnchorV1Only (interpolates toward V1).
-        if (mono)
-            return redDot::SpreadInterp::interpolate(base, base, sp);
-        return redDot::SpreadInterp::applyAnchorV1Only(pe, engLane, step, base, sp);
+        const float disp = mono
+            ? redDot::SpreadInterp::interpolate(base, base, sp)
+            : redDot::SpreadInterp::applyAnchorV1Only(pe, engLane, step, base, sp);
+        // Warp display composition (feel-test bug 1): the engine consumes the warp
+        // MIRROR for MEL/OCT (polyRandomSrc), so Macro's bars show the same mixture over
+        // the spread-applied value — the SAME per-(voice,lane) (F,w) the mirror resolves
+        // (delegated lane → Macro's global curve; own-slot lane → the voice's own).
+        // Displayed voice: V1/mono = slot 0; poly = the poly bank index + 1 = voiceSlot.
+        return (engLane == PL::PL_MELODY || engLane == PL::PL_OCTAVE)
+            ? pe.warpDisplayMix(mono ? 0 : rack::math::clamp(polyVoice + 1, 0, 15), engLane, disp)
+            : disp;
     }
 
     void step() override {

@@ -17,6 +17,11 @@
 //   S4. MONOTONE (Sklar-safety): dense ascending sweep ⟹ stored float never decreases,
 //       strictly increasing for meaningful u-gaps (ties-at-eps tolerated) — incl. the
 //       steep kuma (5, 25.8) case from test_warp_f_bank S7.
+//   S8. DISPLAY COMPOSITION (CC_PROMPT_04 feel-test bug 1): warpDisplayMix(v,lane,u)
+//       composes the SAME per-(voice,lane) (F,w) the mirror resolves (WarpBank::
+//       warpedValue(v,lane,u,delegated) — Macro-global for delegated cells) over a
+//       caller-supplied DISPLAY value; no bank ⇒ bit-identical passthrough. The
+//       MEL/OCT gate lives at the UI call sites (polyRandomSrc's rule), not here.
 //
 // Companion source: PatternEngine.cpp (the run_all.sh:59 test_slew_copula pattern).
 #include "test_stubs.hpp"
@@ -413,6 +418,55 @@ int main() {
             for (int l = 0; l < 7; ++l)
                 for (int s = 0; s < 16; ++s)
                     EXPECT(se.polyRandomSrc(v, l)[s] == se.pe.random_[v][l][s]);
+    });
+
+    // ── S8: DISPLAY COMPOSITION (CC_PROMPT_04 feel-test bug 1) ─────────────────────
+    // The bar fills must compose the warp mix ON TOP of the display's spread-
+    // interpolated value via warpDisplayMix — the display twin of warpMixCell. It has
+    // to resolve (F,w) EXACTLY as the mirror does (delegation included), so a bar can
+    // never show a value the audio doesn't consume.
+    TEST("S8 warpDisplayMix: same (F,w) as the mirror over an arbitrary display value (delegation-resolved)", {
+        PatternEngine pe; fillRandomGolden(pe);
+        WarpBank bank; pe.setWarpBank(&bank);
+        bank.warpF[WarpBank::index(4, MEL)] = dotModular::PowerWarp{2};
+        bank.warpW[WarpBank::index(4, MEL)] = 0.25f;
+        // A DELEGATED OCT cell: the own slot says power @ w=1, but delegation must win —
+        // the mix uses Macro's GLOBAL curve/w, exactly like rebuildWarpMirror*.
+        bank.warpF[WarpBank::index(4, OCT)] = dotModular::PowerWarp{2};
+        bank.warpW[WarpBank::index(4, OCT)] = 1.f;
+        bank.globalWarpF[OCT] = dotModular::ReversedPowerWarp{2};
+        bank.globalWarpW[OCT] = 0.5f;
+        pe.setWarpDelegated(4, OCT, true);
+        const double disp = 0.6;   // a spread-interpolated DISPLAY value, not random_
+        EXPECT(pe.warpDisplayMix(4, MEL, disp) ==
+               (float)((1.0 - 0.25) * disp + 0.25 * dotModular::PowerWarp{2}.invCDF(disp)));
+        EXPECT(pe.warpDisplayMix(4, OCT, disp) ==
+               (float)((1.0 - 0.5) * disp + 0.5 * dotModular::ReversedPowerWarp{2}.invCDF(disp)));
+        // out-of-range args clamp like every accessor (v→0, lane→0)
+        EXPECT(pe.warpDisplayMix(-3, MEL, disp) == pe.warpDisplayMix(0, MEL, disp));
+        EXPECT(pe.warpDisplayMix(4, 99, disp) == pe.warpDisplayMix(4, 0, disp));
+    });
+
+    TEST("S8 warpDisplayMix: no bank ⇒ bit-identical passthrough (bank-less hosts unchanged)", {
+        PatternEngine pe; fillRandomGolden(pe);   // no bank wired
+        const float u = pe.random_[6][OCT][3];
+        const float got = pe.warpDisplayMix(6, OCT, (double)u);
+        EXPECT(std::memcmp(&got, &u, sizeof(float)) == 0);
+    });
+
+    TEST("S8 warpDisplayMix: consistency with the mirror — same u ⇒ same cell (display never disagrees with audio)", {
+        PatternEngine pe; fillRandomGolden(pe);
+        WarpBank bank; pe.setWarpBank(&bank);
+        bank.warpF[WarpBank::index(9, MEL)] = dotModular::KumaraswamyWarp{2, 3};
+        bank.warpW[WarpBank::index(9, MEL)] = 0.7f;
+        bank.globalWarpF[MEL] = dotModular::TruncNormalWarp{0.4, 0.15};
+        bank.globalWarpW[MEL] = 0.9f;
+        pe.setWarpDelegated(9, MEL, true);   // the delegated branch, against the mirror
+        pe.rebuildWarpMirrorAll();
+        for (int s = 0; s < 16; ++s) {
+            const double u = (double)pe.random_[9][MEL][s];
+            EXPECT(pe.warpDisplayMix(9, MEL, u) == pe.warped_[9][MEL][s]);
+        }
     });
 
     std::cout << "-----\n";

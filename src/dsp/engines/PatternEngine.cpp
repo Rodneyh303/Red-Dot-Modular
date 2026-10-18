@@ -134,6 +134,17 @@ float PatternEngine::warpMixCell(int v, int lane, int step) const {
     return (float)warpBank_->warpedValue(v, lane, u, warpDelegated_[v][lane]);
 }
 
+// The DISPLAY composition twin (CC_PROMPT_04 feel-test bug 1): same (F,w) resolution
+// as warpMixCell — WarpBank::warpedValue(v, lane, u, delegated), the Macro-global
+// default for delegated cells — but over the caller's spread-interpolated display
+// value instead of random_. No bank ⇒ bit-identical passthrough. See PatternEngine.hpp.
+float PatternEngine::warpDisplayMix(int v, int lane, double u) const {
+    const int vv = (v >= 0 && v < 16) ? v : 0;
+    const int ll = (lane >= 0 && lane < 7) ? lane : 0;
+    if (!warpBank_) return (float)u;
+    return (float)warpBank_->warpedValue(vv, ll, u, warpDelegated_[vv][ll]);
+}
+
 void PatternEngine::rebuildWarpMirrorAll() {
     if (!warpBank_) return;   // no bank ⇒ nothing to mix; consumers fall back to random_
     for (int v = 0; v < 16; ++v)
