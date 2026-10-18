@@ -151,6 +151,8 @@ Register `"test_warp_f_bank|"` in run_all.sh TESTS[]. GREEN.
 - Warp composition at genPitchLive (melody/octave) + finalRandomByStrand (CC_PROMPT_03).
 - The UI columns / popup editor (CC_PROMPT_04).
 - Parameter (theta) modulation + w send/tap routing (later; after 03/04).
-- ReversedPowerWarp's underlying ReversedPowerDistribution is ADDED TO Distribution.hpp by
-  CC_PROMPT_P1 (sub-task C). If P1 hasn't landed when you start, either coordinate or stub
-  ReversedPowerWarp and wire it when the class exists. Prefer landing P1's reversed-power first.
+- ReversedPowerDistribution is ALREADY in Distribution.hpp (P1 / PR #287 merged — verified:
+  typeName "reversed-power", fromJson dispatch, battery coverage). ReversedPowerWarp wraps it
+  exactly like the other 8 — no stub needed. (KumaraswamyDistribution also gained
+  abFromModeConc/modeConcFromAb from P1 — that's a UI-authoring map, NOT used by the engine bank,
+  which stays (a,b). Ignore it here; it's for CC_PROMPT_04.)
