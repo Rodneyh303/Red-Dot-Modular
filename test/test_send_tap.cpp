@@ -14,7 +14,7 @@
 //   2. IDENTITY: att==1 ⟹ blend_A == blend_B (PRE and POST coincide at unity atten).
 //   3. ENDPOINTS: tap=1 == the old POST delta (cv·att·span); tap=0 == PRE (raw cv·span).
 //   4. PERSISTENCE: per-voice taps {0.0, 0.3, 1.0} round-trip save→load exactly; a patch
-//                with NO macroTap key loads all voices at 1.0 (POST — old patches identical).
+//                with NO macroTap key loads all voices at 1.0 (the POST default).
 //
 // Pure floats/bools/json in → floats out; builds and runs OUTSIDE Rack (no SDK needed),
 // modelled on test_spread_resolver.cpp (same TEST/EXPECT style; SpreadResolver + the pure
@@ -126,7 +126,7 @@ int main() {
             if (i != iA && i != iB && i != iC && loaded[i] != MacroTapBank::kDefault) othersDefault = false;
         EXPECT_TRUE(othersDefault);
     });
-    TEST("a patch with NO macroTap key loads all voices at 1.0 (POST — old patches identical)", {
+    TEST("a patch with NO macroTap key loads all voices at 1.0 (the POST default)", {
         json_t* root = json_object();   // no macroTap key at all
         float loaded[MacroTapBank::N];
         MacroTapBank::parse(root, "macroTap", loaded);

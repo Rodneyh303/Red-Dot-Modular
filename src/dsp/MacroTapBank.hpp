@@ -7,8 +7,8 @@
 //
 // This header is the PURE, Rack-free contract — the store itself lives in Monsoon's editor
 // slice, the JSON round-trip is called by MonsoonPersistenceManager, and the unit test
-// drives both from here. Default 1.0 (POST): a patch with NO macroTap key loads every
-// voice at POST, so old patches sound identical.
+// drives both from here. Default 1.0 (POST): a patch with no macroTap key loads every
+// voice at POST.
 #include <jansson.h>
 
 namespace dotModular {

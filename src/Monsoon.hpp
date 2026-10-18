@@ -815,9 +815,9 @@ struct Monsoon : Module {
         // (kind 0 = LOR items 0-2, 1 = spread item 3) — MacroTapBank's stride, mirroring
         // macroSend's shape/conventions. The per-voice fix for the P9b global-tap regression:
         // the send is per-voice, so the tap must be too (a global tap forces every receiving
-        // voice onto one PRE/POST choice). Default 1.0 = POST (set in the Monsoon ctor), so
-        // un-touched patches sound identical; globalTap[14] below stays as the Macro-panel
-        // DELEGATION DEFAULT that seeds per-voice values. See CC_PROMPT_per_voice_send_tap.md.
+        // voice onto one PRE/POST choice). Default 1.0 = POST (set in the Monsoon ctor);
+        // globalTap[14] below is the Macro-panel delegation default. See
+        // CC_PROMPT_per_voice_send_tap.md.
         float macroTap[224] = {0};  // 16 × 7 lanes × 2 kinds (MacroTapBank::N)
         // macroAtten: atten depth per (v=0..15)×(lane*4+col, 28 wide). index = v*28 + lane*4+col.
         // CONVENTION: VoiceResolver::voiceSlot (mono = slot 0). Verified against call sites.
