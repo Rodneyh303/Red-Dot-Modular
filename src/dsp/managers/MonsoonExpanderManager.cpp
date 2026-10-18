@@ -290,7 +290,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 float blend = 0.f;
                 if (macroPresent && ownerEast) {
                     float send = mmOwn ? mmOwn->getMacroSend(slot, lane, item) : 0.f;
-                    blend = macroVis->macroSendDelta[lane][item] * send;  // P9: tapped send delta
+                    // P9b: THIS voice's tap selects between the published pre/post endpoints
+                    // (was the Macro-global tap baked into one macroSendDelta).
+                    const float tap = (mmOwn ? mmOwn->getMacroTap(slot, lane, (item == 3 ? 1 : 0)) : 1.f);
+                    blend = macroVis->tappedDelta(tap, lane, item) * send;
                 }
                 return (int)math::clamp(base + blend, lo, hi);
             };
@@ -318,7 +321,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 float blend = 0.f;
                 if (macroPresent && ownerEast) {
                     float send = mmOwn ? mmOwn->getMacroSend(slot, lane, 3) : 0.f;
-                    blend = macroVis->macroSendDelta[lane][3] * send;  // P9: tapped send delta
+                    // P9b: per-voice tap (spread kind) selects between the endpoints.
+                    const float tap = (mmOwn ? mmOwn->getMacroTap(slot, lane, 1) : 1.f);
+                    blend = macroVis->tappedDelta(tap, lane, 3) * send;
                 }
                 return math::clamp(base + blend, -1.f, 1.f);
             };
@@ -662,11 +667,13 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // At this site East-visual is absent (the East branch above is an if, this
             // is its else if), so "no Mono" here means exactly MACRO_SOLE.
             if (topo.config == dotModular::SandsTopology::Config::MACRO_SOLE) {
-                const float spR = math::clamp(macroVis->macroBase[PL::PL_REST][3]   + macroVis->macroSendDelta[PL::PL_REST][3],   -1.f, 1.f);
-                const float spM = math::clamp(macroVis->macroBase[PL::PL_MELODY][3] + macroVis->macroSendDelta[PL::PL_MELODY][3], -1.f, 1.f);
-                const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->macroSendDelta[PL::PL_OCTAVE][3], -1.f, 1.f);
-                const float spA = math::clamp(macroVis->macroBase[PL::PL_ACCENT][3] + macroVis->macroSendDelta[PL::PL_ACCENT][3], -1.f, 1.f);
-                const float spQ = math::clamp(macroVis->macroBase[PL::PL_QMIX][3]   + macroVis->macroSendDelta[PL::PL_QMIX][3],   -1.f, 1.f);   // QMIX (Task 4c)
+                // Macro's OWN value (it has no receiving voice) → the POST endpoint
+                // (P9b: identical to the old expression at the default tap 1.0).
+                const float spR = math::clamp(macroVis->macroBase[PL::PL_REST][3]   + macroVis->macroPostDelta[PL::PL_REST][3],   -1.f, 1.f);
+                const float spM = math::clamp(macroVis->macroBase[PL::PL_MELODY][3] + macroVis->macroPostDelta[PL::PL_MELODY][3], -1.f, 1.f);
+                const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->macroPostDelta[PL::PL_OCTAVE][3], -1.f, 1.f);
+                const float spA = math::clamp(macroVis->macroBase[PL::PL_ACCENT][3] + macroVis->macroPostDelta[PL::PL_ACCENT][3], -1.f, 1.f);
+                const float spQ = math::clamp(macroVis->macroBase[PL::PL_QMIX][3]   + macroVis->macroPostDelta[PL::PL_QMIX][3],   -1.f, 1.f);   // QMIX (Task 4c)
                 for (int j = 0; j < 16; ++j) {
                     if (msR) {
                         engine.pe.rhythmRandom[j] = redDot::SpreadInterp::applyMono(engine.pe, PL::PL_REST,   j, spR);
@@ -715,11 +722,20 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                     engine.polyRotERef(v, lane) = ((int)std::round(macroVis->macroBase[lane][2]) % 16 + 16) % 16;
                 }
                 // Global spread per lane → spread-applied final arrays for this voice.
-                const float spR = math::clamp(macroVis->macroBase[PL::PL_REST][3]   + macroVis->macroSendDelta[PL::PL_REST][3],   -1.f, 1.f);
-                const float spM = math::clamp(macroVis->macroBase[PL::PL_MELODY][3] + macroVis->macroSendDelta[PL::PL_MELODY][3], -1.f, 1.f);
-                const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->macroSendDelta[PL::PL_OCTAVE][3], -1.f, 1.f);
-                const float spA = math::clamp(macroVis->macroBase[PL::PL_ACCENT][3] + macroVis->macroSendDelta[PL::PL_ACCENT][3], -1.f, 1.f);
-                const float spQ = math::clamp(macroVis->macroBase[PL::PL_QMIX][3]   + macroVis->macroSendDelta[PL::PL_QMIX][3],   -1.f, 1.f);   // QMIX (Task 4c)
+                // P9b: each voice v selects its OWN tap between the published endpoints
+                // (this loop is per-voice — v is a receiving voice tracking Macro, so the
+                // ceding-voice rule applies, not the Macro-display rule).
+                auto* mmV = redDot::findMonsoonEitherSide(macroVis);
+                const float tapR = (mmV ? mmV->getMacroTap(v, PL::PL_REST,   1) : 1.f);
+                const float tapM = (mmV ? mmV->getMacroTap(v, PL::PL_MELODY, 1) : 1.f);
+                const float tapO = (mmV ? mmV->getMacroTap(v, PL::PL_OCTAVE, 1) : 1.f);
+                const float tapA = (mmV ? mmV->getMacroTap(v, PL::PL_ACCENT, 1) : 1.f);
+                const float tapQ = (mmV ? mmV->getMacroTap(v, PL::PL_QMIX,   1) : 1.f);
+                const float spR = math::clamp(macroVis->macroBase[PL::PL_REST][3]   + macroVis->tappedDelta(tapR, PL::PL_REST,   3), -1.f, 1.f);
+                const float spM = math::clamp(macroVis->macroBase[PL::PL_MELODY][3] + macroVis->tappedDelta(tapM, PL::PL_MELODY, 3), -1.f, 1.f);
+                const float spO = math::clamp(macroVis->macroBase[PL::PL_OCTAVE][3] + macroVis->tappedDelta(tapO, PL::PL_OCTAVE, 3), -1.f, 1.f);
+                const float spA = math::clamp(macroVis->macroBase[PL::PL_ACCENT][3] + macroVis->tappedDelta(tapA, PL::PL_ACCENT, 3), -1.f, 1.f);
+                const float spQ = math::clamp(macroVis->macroBase[PL::PL_QMIX][3]   + macroVis->tappedDelta(tapQ, PL::PL_QMIX,   3), -1.f, 1.f);   // QMIX (Task 4c)
                 // Stage 2a: cache spread values for step-rate refresh (was: full-field applyPoly loop)
                 engine.pe.cachedPolySpread[v][PL::PL_REST]   = spR;
                 engine.pe.cachedPolySpread[v][PL::PL_ACCENT] = spA;

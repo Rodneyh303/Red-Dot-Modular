@@ -182,16 +182,18 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     // Old patches with editorVarlegAtten are still migrated on load (see the load block).
 
     // MACRO owner (112) + send (448) + atten (448), migrated out of params[]. SANDS
-    // CONSOLIDATION Step 2: 7 poly lanes (REST/MEL/OCT/ACC/QMIX/VAR/LEG) — VAR/LEG atten
-    // now shares macroAtten (was 320 at 5 lanes; getMacroAtten already read a 7-lane stride
-    // into the 320 array → OOB, fixed). Own/send save loops stay at the 5-lane count because
-    // VAR/LEG are East-only (never Macro-owned), so their own/send slots are always 0.
+    // Per-voice Macro banks — ALL 7 lanes, every lane uniform (the old 5-lane counts here
+    // were vestigial from the pre-consolidation Mono-owns-VAR/LEG era and silently dropped
+    // lanes 5/6 from every save).
     json_t* mo = json_array();
-    for (int i = 0; i < 80; ++i) json_array_append_new(mo, json_real(m->editor.macroOwn[i]));
+    for (int i = 0; i < 112; ++i) json_array_append_new(mo, json_real(m->editor.macroOwn[i]));   // 16 × 7
     json_object_set_new(root, "editorMacroOwn", mo);
     json_t* ms = json_array();
-    for (int i = 0; i < 320; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));
+    for (int i = 0; i < 448; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));  // 16 × 7 × 4
     json_object_set_new(root, "editorMacroSend", ms);
+    // P9b: the per-voice send-tap bank (missing key on load ⟹ all voices 1.0 = POST,
+    // so pre-fix patches sound identical).
+    dotModular::MacroTapBank::serialize(m->editor.macroTap, root, "editorMacroTap");
     json_t* ma = json_array();
     for (int i = 0; i < 448; ++i) json_array_append_new(ma, json_real(m->editor.macroAtten[i]));
     json_object_set_new(root, "editorMacroAtten", ma);
@@ -214,26 +216,26 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
         for (int i = 0; i < n; ++i) json_array_append_new(j, json_real(a[i]));
         json_object_set_new(root, key, j);
     };
-    // Sizes track the QMIX-widened EditorState arrays: 5 poly lanes, 7 mono lanes.
-    saveArr("editorGlobalLor",    m->editor.globalLor,    15);   // 5 poly lanes × 3
-    saveArr("editorGlobalSpread", m->editor.globalSpread,  5);   // 5 poly lanes
-    saveArr("editorGlobalAtten",  m->editor.globalAtten,  20);   // 5 poly lanes × 4 cols
-    saveArr("editorGlobalTap",    m->editor.globalTap,    10);   // 5 poly lanes × 2
-    saveArr("editorGlobalDir",    m->editor.globalDir,     5);   // 5 poly lanes
-    saveArr("editorMonoAtten",    m->editor.monoAtten,    28);   // 7 mono lanes × 4 cols
-    saveArr("editorMonoOwner",    m->editor.monoOwner,     5);   // 5 poly lanes
+    // All 7 lanes everywhere (the 5-lane counts were the same vestige).
+    saveArr("editorGlobalLor",    m->editor.globalLor,     21);   // 7 lanes × 3
+    saveArr("editorGlobalSpread", m->editor.globalSpread,   7);   // 7 lanes
+    saveArr("editorGlobalAtten",  m->editor.globalAtten,   28);   // 7 lanes × 4 cols
+    saveArr("editorGlobalTap",    m->editor.globalTap,     14);   // 7 lanes × 2
+    saveArr("editorGlobalDir",    m->editor.globalDir,      7);   // 7 lanes
+    saveArr("editorMonoAtten",    m->editor.monoAtten,     28);   // 7 mono lanes × 4 cols
+    saveArr("editorMonoOwner",    m->editor.monoOwner,      7);   // 7 lanes
 
     // Spread target modes (SPREAD_TARGET_MODES.md): per-lane target mode, per-mode defaults
-    // (-1/0/+1), and the apply-on-mode-change toggle. All per-lane (5 lanes).
+    // (-1/0/+1), and the apply-on-mode-change toggle. All per-lane, 7 lanes.
     {
         json_t* stm = json_array();
-        for (int i = 0; i < 5; ++i) json_array_append_new(stm, json_integer(m->editor.spreadTargetMode[i]));
+        for (int i = 0; i < 7; ++i) json_array_append_new(stm, json_integer(m->editor.spreadTargetMode[i]));
         json_object_set_new(root, "editorSpreadTargetMode", stm);
         json_t* sdef = json_array();
-        for (int i = 0; i < 10; ++i) json_array_append_new(sdef, json_real(m->editor.spreadDefault[i]));
+        for (int i = 0; i < 14; ++i) json_array_append_new(sdef, json_real(m->editor.spreadDefault[i]));
         json_object_set_new(root, "editorSpreadDefault", sdef);
         json_t* saom = json_array();
-        for (int i = 0; i < 5; ++i) json_array_append_new(saom, json_boolean(m->editor.spreadApplyOnModeChange[i]));
+        for (int i = 0; i < 7; ++i) json_array_append_new(saom, json_boolean(m->editor.spreadApplyOnModeChange[i]));
         json_object_set_new(root, "editorSpreadApplyOnModeChange", saom);
     }
 
@@ -453,14 +455,16 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     }
     if (auto j = json_object_get(root, "editorMacroOwn")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 80 && i < json_array_size(j); ++i)    // 16 × 5 poly lanes
+            for (size_t i = 0; i < 112 && i < json_array_size(j); ++i)   // 16 × 7
                 m->editor.macroOwn[i] = (float)json_real_value(json_array_get(j, i));
     }
     if (auto j = json_object_get(root, "editorMacroSend")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 320 && i < json_array_size(j); ++i)   // 16 × 5 × 4 items
+            for (size_t i = 0; i < 448 && i < json_array_size(j); ++i)   // 16 × 7 × 4
                 m->editor.macroSend[i] = (float)json_real_value(json_array_get(j, i));
     }
+    // P9b: per-voice send-tap bank. Absent key (pre-fix patch) → every voice POST (1.0).
+    dotModular::MacroTapBank::parse(root, "editorMacroTap", m->editor.macroTap);
     if (auto j = json_object_get(root, "editorMacroAtten")) {
         if (json_is_array(j))
             for (size_t i = 0; i < 448 && i < json_array_size(j); ++i)   // 16 × 7 × 4 cols
@@ -483,29 +487,29 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
                     a[i] = (float)json_real_value(json_array_get(j, i));
         }
     };
-    // Sizes track the QMIX-widened EditorState arrays: 5 poly lanes, 7 mono lanes.
-    loadArrN("editorGlobalLor",    m->editor.globalLor,    15);   // 5 poly lanes × 3
-    loadArrN("editorGlobalSpread", m->editor.globalSpread,  5);   // 5 poly lanes
-    loadArrN("editorGlobalAtten",  m->editor.globalAtten,  20);   // 5 poly lanes × 4 cols
-    loadArrN("editorGlobalTap",    m->editor.globalTap,    10);   // 5 poly lanes × 2
-    loadArrN("editorGlobalDir",    m->editor.globalDir,     5);   // 5 poly lanes
-    loadArrN("editorMonoAtten",    m->editor.monoAtten,    28);   // 7 mono lanes × 4 cols
-    loadArrN("editorMonoOwner",    m->editor.monoOwner,     5);   // 5 poly lanes
+    // All 7 lanes everywhere.
+    loadArrN("editorGlobalLor",    m->editor.globalLor,     21);   // 7 lanes × 3
+    loadArrN("editorGlobalSpread", m->editor.globalSpread,   7);   // 7 lanes
+    loadArrN("editorGlobalAtten",  m->editor.globalAtten,   28);   // 7 lanes × 4 cols
+    loadArrN("editorGlobalTap",    m->editor.globalTap,     14);   // 7 lanes × 2
+    loadArrN("editorGlobalDir",    m->editor.globalDir,      7);   // 7 lanes
+    loadArrN("editorMonoAtten",    m->editor.monoAtten,     28);   // 7 mono lanes × 4 cols
+    loadArrN("editorMonoOwner",    m->editor.monoOwner,      7);   // 7 lanes
     // Spread target modes (SPREAD_TARGET_MODES.md): per-lane target mode + defaults +
     // apply-on-mode-change toggle. Missing keys → keep defaults (anchor V1, 0/+1, true).
     if (auto j = json_object_get(root, "editorSpreadTargetMode")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 5 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 7 && i < json_array_size(j); ++i)
                 m->editor.spreadTargetMode[i] = (uint8_t)json_integer_value(json_array_get(j, i));
     }
     if (auto j = json_object_get(root, "editorSpreadDefault")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 10 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 14 && i < json_array_size(j); ++i)
                 m->editor.spreadDefault[i] = (float)json_real_value(json_array_get(j, i));
     }
     if (auto j = json_object_get(root, "editorSpreadApplyOnModeChange")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 5 && i < json_array_size(j); ++i)
+            for (size_t i = 0; i < 7 && i < json_array_size(j); ++i)
                 m->editor.spreadApplyOnModeChange[i] = json_boolean_value(json_array_get(j, i));
     }
 }

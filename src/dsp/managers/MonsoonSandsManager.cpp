@@ -223,14 +223,17 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 // STEP 3b: delegated ⟺ topo.owner(0,l) == MACRO.
                 const bool delegated = (topo.owner(0, l) == dotModular::SandsTopology::Role::MACRO);
                 if (delegated) {
-                    // Delegated → track Macro's base + the TAPPED CV delta (macroSendDelta),
-                    // so the per-lane PRE/POST send tap controls how Macro's modulation
-                    // reaches the delegated lane: PRE (tap=0) = raw CV even when the left
-                    // atten is 0; POST (tap=1) = CV × left atten. (Was macroCVDelta = always
-                    // POST, so the tap did nothing and att=0 killed all modulation here.)
-                    baseLen = macroVis->macroBase[l][0] + macroVis->macroSendDelta[l][0];
-                    baseOff = macroVis->macroBase[l][1] + macroVis->macroSendDelta[l][1];
-                    baseRot = macroVis->macroBase[l][2] + macroVis->macroSendDelta[l][2];
+                    // Delegated → track Macro's base + the CEDING VOICE's tapped CV delta
+                    // (P9b per-voice: the ceding voice here is the mono strand, slot 0 —
+                    // its own macroTap lerps between the published endpoints). PRE (tap=0)
+                    // = raw CV even when the left atten is 0; POST (tap=1) = CV × atten.
+                    // (Was the Macro-GLOBAL tap baked into one macroSendDelta — every
+                    // receiving voice forced onto the same pre/post choice.)
+                    auto* mmDeleg = redDot::findMonsoonEitherSide(macroVis);
+                    const float tapL = (mmDeleg ? mmDeleg->getMacroTap(dotModular::VoiceResolver::kMonoSlot, l, 0) : 1.f);
+                    baseLen = macroVis->macroBase[l][0] + macroVis->tappedDelta(tapL, l, 0);
+                    baseOff = macroVis->macroBase[l][1] + macroVis->tappedDelta(tapL, l, 1);
+                    baseRot = macroVis->macroBase[l][2] + macroVis->tappedDelta(tapL, l, 2);
                 }
             }
 
@@ -279,8 +282,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // Returns the UNCLAMPED Macro send delta (0 when no Macro). Summed with East's, clamped once.
             auto macroDelta = [&](int engLane, int item)->float {
                 if (!hasMacro || !macroVis) return 0.f;
-                float send = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, engLane, item) : 0.f);   // slot 0 = mono
-                return macroVis->macroSendDelta[engLane][item] * send;  // P9: tapped send delta
+                auto* mm = redDot::findMonsoonEitherSide(macroVis);   // slot 0 = mono (V1)
+                float send = (mm ? mm->getMacroSend(dotModular::VoiceResolver::kMonoSlot, engLane, item) : 0.f);
+                // P9b: the PER-VOICE tapped delta — V1's own macroTap selects between the
+                // published pre/post endpoints (was the Macro-global tap, one choice for all).
+                const float tap = (mm ? mm->getMacroTap(dotModular::VoiceResolver::kMonoSlot, engLane, (item == 3 ? 1 : 0)) : 1.f);
+                return macroVis->tappedDelta(tap, engLane, item) * send;
             };
             // East CV exists only for the 4 poly lanes (MEL/OCT/REST/ACC); VAR/LEG
             // (editor l>=4) are mono-only with no East jack → skip the eastMix there.
@@ -359,7 +366,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 }
                 if (sin.macroPresent) {
                     sin.macroBase      = macroVis->macroBase[l][3];
-                    sin.macroSendDelta = macroVis->macroSendDelta[l][3];
+                    // P9b: both endpoints + the ceding voice's (mono slot) tap — the
+                    // resolver lerps (SpreadResolver::effective → tappedDelta).
+                    sin.macroPreDelta  = macroVis->macroPreDelta[l][3];
+                    sin.macroPostDelta = macroVis->macroPostDelta[l][3];
+                    sin.macroTap       = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroTap(dotModular::VoiceResolver::kMonoSlot, l, 1) : 1.f);
                     sin.macroSend      = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, l, 3) : 0.f);
                 }
                 engine.spreadERef(0, l) = redDot::SpreadResolver::effective(sin);   // slot 0 = mono/V1
@@ -502,7 +513,9 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                     auto sendBlend = [&](int item)->float {
                         if (!macroVis) return 0.f;   // match the widget's guard exactly
                         float send = mmV1 ? mmV1->getMacroSend(kMono, el, item) : 0.f;
-                        return macroVis->macroSendDelta[el][item] * send;
+                        // P9b: V1's own tap selects between the published endpoints.
+                        const float tap = (mmV1 ? mmV1->getMacroTap(kMono, el, (item == 3 ? 1 : 0)) : 1.f);
+                        return macroVis->tappedDelta(tap, el, item) * send;
                     };
                     auto addCV = [&](float base, int item, float lo, float hi)->float {
                         if (eastV1->inputs[East::cvId(el,item)].isConnected()) {
@@ -546,10 +559,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                     sp = sp + cv * att * 2.f;
                 }
                 // Macro send blend on East-owned V1 spread (mirrors poly combineSpread):
-                // macroSendDelta[lane][3] * mono-slot send.
+                // the per-voice tapped delta (V1's own tap, P9b) × mono-slot send.
                 if (macroHere) {
-                    float send = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, lane, 3) : 0.f);
-                    sp += macroVis->macroSendDelta[lane][3] * send;
+                    auto* mm = redDot::findMonsoonEitherSide(macroVis);
+                    float send = (mm ? mm->getMacroSend(dotModular::VoiceResolver::kMonoSlot, lane, 3) : 0.f);
+                    const float tap = (mm ? mm->getMacroTap(dotModular::VoiceResolver::kMonoSlot, lane, 1) : 1.f);
+                    sp += macroVis->tappedDelta(tap, lane, 3) * send;
                 }
                 return rack::math::clamp(sp, -1.f, 1.f);
             };
@@ -625,23 +640,37 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 msin.ownCv.atten       = (gMon ? gMon->getGlobalAtten(lane, 3) : 0.f);
             }
             float cvSpr = redDot::SpreadResolver::effective(msin);
-            // P9 send-tap: the delta the SENDS distribute can be tapped PRE or POST the
-            // left attenuverter. POST(tap=1)=cv*att (== the true delta); PRE(tap=0)=raw cv.
-            // effective atten = lerp(1, att, tap) = 1 + (att-1)*tap.
-            auto tappedDelta = [&](int item, float lo, float hi) -> float {
-                if (!macroVis || !macroVis->inputs[Macro::macroCvId(lane,item)].isConnected()) return 0.f;
-                float cv  = macroVis->inputs[Macro::macroCvId(lane,item)].getVoltage() / 10.f;
-                float att = (gMon ? gMon->getGlobalAtten(lane, item) : 0.f);
-                float tap = (gMon ? gMon->getGlobalTap(lane, ((item) == 3 ? 1 : 0)) : 0.f);  // P9b: LOR tap (0-2) or spread tap (3)
-                float effAtt = 1.f + (att - 1.f) * tap;
-                return cv * effAtt * (hi - lo);
+            // P9b PER-VOICE send-tap: the publish now carries BOTH endpoints of the pre/post
+            // lerp; each receiving VOICE selects via its own macroTap (the send is per-voice,
+            // so the tap is too — the old single globally-tapped macroSendDelta forced every
+            // voice onto one tap). pre = raw cv·(hi-lo) (tap=0); post = cv·att·(hi-lo)
+            // (tap=1, == the old tappedDelta at POST). macroSendDelta (still written below)
+            // dies once every reader migrates.
+            auto endpointDeltas = [&](int item, float lo, float hi, float& pre, float& post) {
+                pre = post = 0.f;
+                if (!macroVis || !macroVis->inputs[Macro::macroCvId(lane,item)].isConnected()) return;
+                const float cv  = macroVis->inputs[Macro::macroCvId(lane,item)].getVoltage() / 10.f;
+                const float att = (gMon ? gMon->getGlobalAtten(lane, item) : 0.f);
+                pre  = cv * (hi - lo);
+                post = cv * att * (hi - lo);
             };
-            // macroCVDelta = true POST delta (Macro's own display). macroSendDelta =
-            // tapped delta (what the sends carry). item 0=LEN 1=OFF 2=ROT 3=SPR.
-            macroVis->macroBase[lane][0] = baseLen;  macroVis->macroCVDelta[lane][0] = cvLen - baseLen;  macroVis->macroSendDelta[lane][0] = tappedDelta(0, 1.f, 16.f);
-            macroVis->macroBase[lane][1] = baseOff;  macroVis->macroCVDelta[lane][1] = cvOff - baseOff;  macroVis->macroSendDelta[lane][1] = tappedDelta(1, 0.f, 15.f);
-            macroVis->macroBase[lane][2] = baseRot;  macroVis->macroCVDelta[lane][2] = cvRot - baseRot;  macroVis->macroSendDelta[lane][2] = tappedDelta(2, 0.f, 15.f);
-            macroVis->macroBase[lane][3] = baseSpr;  macroVis->macroCVDelta[lane][3] = cvSpr - baseSpr;  macroVis->macroSendDelta[lane][3] = tappedDelta(3, -1.f, 1.f);
+            float preD[4], postD[4];
+            endpointDeltas(0, 1.f, 16.f, preD[0], postD[0]);
+            endpointDeltas(1, 0.f, 15.f, preD[1], postD[1]);
+            endpointDeltas(2, 0.f, 15.f, preD[2], postD[2]);
+            endpointDeltas(3, -1.f, 1.f,  preD[3], postD[3]);
+            for (int item = 0; item < 4; ++item) {
+                macroVis->macroPreDelta[lane][item]  = preD[item];
+                macroVis->macroPostDelta[lane][item] = postD[item];
+            }
+            // macroCVDelta = true POST delta (Macro's own display). The per-voice
+            // endpoints (preD/postD above) are what the sends carry now; the old single
+            // globally-tapped macroSendDelta is DELETED (every reader migrated).
+            // item 0=LEN 1=OFF 2=ROT 3=SPR.
+            macroVis->macroBase[lane][0] = baseLen;  macroVis->macroCVDelta[lane][0] = cvLen - baseLen;
+            macroVis->macroBase[lane][1] = baseOff;  macroVis->macroCVDelta[lane][1] = cvOff - baseOff;
+            macroVis->macroBase[lane][2] = baseRot;  macroVis->macroCVDelta[lane][2] = cvRot - baseRot;
+            macroVis->macroBase[lane][3] = baseSpr;  macroVis->macroCVDelta[lane][3] = cvSpr - baseSpr;
             // spread display reads the CV-applied global spread (base+CV, no blend)
             macroVis->spreadEffective[lane] = cvSpr;
         };

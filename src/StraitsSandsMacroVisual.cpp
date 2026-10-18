@@ -252,17 +252,34 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                     });
             }
         // PRE/POST CV taps per lane — anchor param_taplor_/tapspr_<el>, store the same lane.
+        // P9b: PER-VOICE, following the send-knob pattern in the columns beside them — the
+        // SAME trimpots, now authoring the VIEWED voice's own macroTap (continuous PRE↔POST
+        // lerp, default 1.0 = POST) exactly like the sends resolve the tab's voice. No
+        // controls added/changed; the Macro-global tap store (the delegation default,
+        // editor.globalTap) is kept untouched for the delegation wiring.
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_taplor_" + std::to_string(el), storeResolver(),
-                0.f, 1.f, 1.f, std::string(EDN[el]) + " LOR send tap (PRE-POST)",
-                [el](Monsoon& m)          { return m.getGlobalTap(el, 0); },
-                [el](Monsoon& m, float v) { m.setGlobalTap(el, 0, v); });
+                0.f, 1.f, 1.f, std::string(EDN[el]) + " LOR send tap (PRE-POST, viewed voice)",
+                [this, el](Monsoon& m) {
+                    const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
+                    return m.getMacroTap(slot, el, 0);
+                },
+                [this, el](Monsoon& m, float v) {
+                    const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
+                    m.setMacroTap(slot, el, 0, v);
+                });
             redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_tapspr_" + std::to_string(el), storeResolver(),
-                0.f, 1.f, 1.f, std::string(EDN[el]) + " spread send tap (PRE-POST)",
-                [el](Monsoon& m)          { return m.getGlobalTap(el, 1); },
-                [el](Monsoon& m, float v) { m.setGlobalTap(el, 1, v); });
+                0.f, 1.f, 1.f, std::string(EDN[el]) + " spread send tap (PRE-POST, viewed voice)",
+                [this, el](Monsoon& m) {
+                    const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
+                    return m.getMacroTap(slot, el, 1);
+                },
+                [this, el](Monsoon& m, float v) {
+                    const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
+                    m.setMacroTap(slot, el, 1, v);
+                });
         }
 
         // ── Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong).
@@ -402,7 +419,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         auto& pe = mon->engine.pe;
         // Macro's own spread for this lane (base knob + send-tapped delta, clamped) — the
         // SAME expression the engine's MACRO_SOLE branch uses (MonsoonExpanderManager.cpp).
-        const float sp = rack::math::clamp(mod->macroBase[engLane][3] + mod->macroSendDelta[engLane][3], -1.f, 1.f);
+        // Macro's OWN display → the POST endpoint (P9b: Macro has no receiving voice; the
+        // per-voice tap lerp is for blend-into-a-voice sites only).
+        const float sp = rack::math::clamp(mod->macroBase[engLane][3] + mod->macroPostDelta[engLane][3], -1.f, 1.f);
         // The pre-spread base draw buffer for this lane (mono strand vs poly bank).
         // The Change Alley pin remap now lives UPSTREAM in the slewed buffers
         // (pe.remapSlewedByPins, pre-spread), so reading this voice's OWN slewed buffer

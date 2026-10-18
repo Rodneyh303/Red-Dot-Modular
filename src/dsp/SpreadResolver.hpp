@@ -22,10 +22,10 @@
 // SUMMED, then clamped ONCE at the end (end-clamp). This is order-independent and preserves the net of
 // a large-then-opposite pair — an intermediate that overflows ±1 is not pinned before a later term can
 // pull it back (which per-term clamping would do). Absent terms (unconnected CV / no macro) add 0.
-//   eff = base + ownCv·2 + eastCv·2 + macroSendDelta·send
+//   eff = base + ownCv·2 + eastCv·2 + lerp(pre,post,tap_v)·send
 //   eff = clamp(eff, -1, 1)                (single clamp at the end)
 // For a DELEGATED lane (Mono cedes to Macro, per topology owner()==MACRO):
-//   eff = clamp(macroBase + macroSendDelta)   (track Macro; ignore own base/CV)
+//   eff = clamp(macroBase + tappedDelta)      (track Macro; ignore own base/CV)
 //
 // Lane index is the SPREAD/engine lane (0=REST,1=MEL,2=OCT,3=ACC), matching
 // spreadEffective[], sprId(), and SpreadInterp's lane arg. There are exactly 4
@@ -61,9 +61,26 @@ struct SpreadResolver {
 
         // Macro contributions (used both for the delegated override and the additive send):
         float macroBase = 0.f;        // Macro's base spread for the lane  (macroBase[lane][3])
-        float macroSendDelta = 0.f;   // Macro's tapped send delta         (macroSendDelta[lane][3])
         float macroSend = 0.f;        // the send amount (0..1)            (sendId param)
+
+        // PER-VOICE SEND-TAP (the P9b fix): the publish now carries BOTH endpoints and each
+        // receiving VOICE selects its own tap — the pre/post choice moves downstream of
+        // Macro's publish (which can no longer bake one globally-tapped delta).
+        //   macroPreDelta  = raw cv·(hi-lo)          (tap=0 endpoint, PRE the attenuverter)
+        //   macroPostDelta = cv·att·(hi-lo)          (tap=1 endpoint, POST — the old tappedDelta)
+        //   macroTap      = THIS voice's tap (0..1; default 1.0 = POST, the old behaviour)
+        // NOTE (test-first): these fields are the seam test_send_tap.cpp drives. effective()
+        // does not read them YET — wiring the lerp in is what turns the bug assert green.
+        float macroPreDelta  = 0.f;
+        float macroPostDelta = 0.f;
+        float macroTap       = 1.f;
     };
+
+    // The per-voice tap selection: lerp between the two published endpoints. Pure; the
+    // reader-side half of the publish-both-endpoints contract (voiceBlend = tappedDelta·send).
+    static float tappedDelta(const Inputs& in) {
+        return in.macroPreDelta + (in.macroPostDelta - in.macroPreDelta) * in.macroTap;
+    }
 
     // The single authority. Pure: same inputs → same output, no hidden state.
     // Sums the present contributions and clamps ONCE at the end (end-clamp; see header note) — order-
@@ -72,13 +89,14 @@ struct SpreadResolver {
     // no-op — exactly as the manager's if (connected) / if (hasMacro) guards intend.
     static float effective(const Inputs& in) {
         if (in.delegated) {
-            // Ceded lane: mirror Macro entirely, ignore own base/CV.
-            return clampSpread(in.macroBase + in.macroSendDelta);
+            // Ceded lane: mirror Macro entirely, ignore own base/CV. The ceding VOICE's
+            // tap selects the delta (P9b) — the caller fills macroTap with that voice's.
+            return clampSpread(in.macroBase + tappedDelta(in));
         }
         float eff = in.base;
         if (in.ownCv.connected)  eff += in.ownCv.contribution();   // applyMono/MacroSprCV
         if (in.eastCv.connected) eff += in.eastCv.contribution();  // East V1 spread add
-        if (in.macroPresent)     eff += in.macroSendDelta * in.macroSend;  // tapped send
+        if (in.macroPresent)     eff += tappedDelta(in) * in.macroSend;  // P9b per-voice tapped send
         return clampSpread(eff);
     }
 

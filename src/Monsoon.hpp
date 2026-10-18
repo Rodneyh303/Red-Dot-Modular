@@ -37,6 +37,7 @@
 #include "dsp/managers/MonsoonTimingController.hpp"
 #include "dsp/managers/MonsoonCVRouter.hpp"
 #include "dsp/managers/MonsoonOutputGenerator.hpp"
+#include "dsp/MacroTapBank.hpp"
 #include "dsp/gates/GateState.hpp"
 #include "dsp/engines/SequencerEngine.hpp"
 
@@ -807,9 +808,17 @@ struct Monsoon : Module {
         // index = v*5 + lane. NOTE this differs from lorBase/spread/varlegAtten/macroSend/
         // macroAtten, which all use VoiceResolver::voiceSlot (mono = slot 0).
         float macroOwn[112] = {0};   // 16 × 7 poly lanes (SANDS CONSOLIDATION Step 1)
-        // macroSend: Macro-CV blend send per (v=0..15)×lane(0..4)×item(0..3). index=(v*5+lane)*4+item.
+        // macroSend: Macro-CV blend send per (v=0..15)×lane×item(0..3). index=(v*7+lane)*4+item.
         // CONVENTION: VoiceResolver::voiceSlot (mono = slot 0). Verified against call sites.
         float macroSend[448] = {0};  // 16 × 7 lanes × 4 items (SANDS CONSOLIDATION Step 1)
+        // macroTap: PER-VOICE PRE/POST send-tap per (v=0..15)×lane×kind. index=(v*7+lane)*2+kind
+        // (kind 0 = LOR items 0-2, 1 = spread item 3) — MacroTapBank's stride, mirroring
+        // macroSend's shape/conventions. The per-voice fix for the P9b global-tap regression:
+        // the send is per-voice, so the tap must be too (a global tap forces every receiving
+        // voice onto one PRE/POST choice). Default 1.0 = POST (set in the Monsoon ctor);
+        // globalTap[14] below is the Macro-panel delegation default. See
+        // CC_PROMPT_per_voice_send_tap.md.
+        float macroTap[224] = {0};  // 16 × 7 lanes × 2 kinds (MacroTapBank::N)
         // macroAtten: atten depth per (v=0..15)×(lane*4+col, 28 wide). index = v*28 + lane*4+col.
         // CONVENTION: VoiceResolver::voiceSlot (mono = slot 0). Verified against call sites.
         // SANDS CONSOLIDATION Step 2: now 7 poly lanes (REST/MEL/OCT/ACC/QMIX/VAR/LEG) × 4 cols
@@ -938,6 +947,10 @@ struct Monsoon : Module {
     void  setMacroOwn(int v, int lane, float x) { editor.macroOwn[v*7 + lane] = x; }
     float getMacroSend(int v, int lane, int item) const { return editor.macroSend[(v*7 + lane)*4 + item]; }
     void  setMacroSend(int v, int lane, int item, float x) { editor.macroSend[(v*7 + lane)*4 + item] = x; }
+    // Per-voice send-tap (P9b fix): which = 0 for LOR items 0-2, 1 for spread item 3.
+    // Same stride convention as macroSend (MacroTapBank::index).
+    float getMacroTap(int v, int lane, int which) const { return editor.macroTap[(v*7 + lane)*2 + which]; }
+    void  setMacroTap(int v, int lane, int which, float x) { editor.macroTap[(v*7 + lane)*2 + which] = x; }
     float getMacroAtten(int v, int laneCol) const { return editor.macroAtten[v*28 + laneCol]; }
     void  setMacroAtten(int v, int laneCol, float x) { editor.macroAtten[v*28 + laneCol] = x; }
 
