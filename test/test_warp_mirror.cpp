@@ -21,6 +21,7 @@
 // Companion source: PatternEngine.cpp (the run_all.sh:59 test_slew_copula pattern).
 #include "test_stubs.hpp"
 #include "PatternEngine.hpp"
+#include "SequencerEngine.hpp"
 #include "WarpF.hpp"
 #include <cstdio>
 #include <cstring>
@@ -328,7 +329,93 @@ int main() {
                 }
     });
 
+    // ── S6: CONSUMER ROUTING — no consumer reads raw random_ for melody/octave ───
+    TEST("S6 display routing: finalRandomByStrand returns the MIRROR for MEL/OCT (w>0); RHYTHM stays raw", {
+        PatternEngine pe; fillRandomGolden(pe);
+        WarpBank bank; pe.setWarpBank(&bank);
+        bank.warpW[WarpBank::index(0, MEL)] = 1.f;
+        bank.warpF[WarpBank::index(0, MEL)] = dotModular::TriangularWarp{0.25};
+        bank.warpW[WarpBank::index(0, OCT)] = 1.f;
+        bank.warpF[WarpBank::index(0, OCT)] = dotModular::PowerWarp{2};
+        // Warp authored on a BOOLEAN lane too — the gate must keep its display raw
+        // (a lane's display reads the mirror IFF its engine consumer does).
+        bank.warpW[WarpBank::index(0, PatternEngine::PL_REST)] = 1.f;
+        bank.warpF[WarpBank::index(0, PatternEngine::PL_REST)] = dotModular::PowerWarp{3};
+        pe.rebuildWarpMirrorAll();
+        int melDiffs = 0, octDiffs = 0;
+        for (int s = 0; s < 16; ++s) {
+            const float m = pe.finalRandomByStrand(dotModular::STRAND_MELODY, s);
+            EXPECT(m == pe.warped_[0][MEL][s]);
+            if (m != pe.random_[0][MEL][s]) ++melDiffs;
+            const float o = pe.finalRandomByStrand(dotModular::STRAND_OCTAVE, s);
+            EXPECT(o == pe.warped_[0][OCT][s]);
+            if (o != pe.random_[0][OCT][s]) ++octDiffs;
+            // boolean lane: raw even with warp authored on it (flip-together gate)
+            EXPECT(pe.finalRandomByStrand(dotModular::STRAND_RHYTHM, s) == pe.random_[0][PatternEngine::PL_REST][s]);
+        }
+        EXPECT(melDiffs > 0 && octDiffs > 0);   // visibly warped, not a vacuous pass
+        // Null-bank host: raw everywhere (byte-identical legacy).
+        PatternEngine pe2; fillRandomGolden(pe2);
+        for (int s = 0; s < 16; ++s)
+            EXPECT(pe2.finalRandomByStrand(dotModular::STRAND_MELODY, s) == pe2.random_[0][MEL][s]);
+    });
+
+    TEST("S6 sounding routing: polyRandomSrc(MEL/OCT) carries the mirror; other lanes raw", {
+        SequencerEngine se;
+        fillRandomGolden(se.pe);
+        WarpBank bank; se.pe.setWarpBank(&bank);
+        bank.warpW[WarpBank::index(3, MEL)] = 1.f;
+        bank.warpF[WarpBank::index(3, MEL)] = dotModular::TriangularWarp{0.25};
+        bank.warpW[WarpBank::index(3, OCT)] = 1.f;
+        bank.warpF[WarpBank::index(3, OCT)] = dotModular::PowerWarp{2};
+        se.pe.rebuildWarpMirrorAll();
+        int melDiffs = 0, octDiffs = 0;
+        for (int s = 0; s < 16; ++s) {
+            const float m = se.polyRandomSrc(3, SequencerEngine::PL_MELODY)[s];
+            EXPECT(m == se.pe.warped_[3][MEL][s]);
+            if (m != se.pe.random_[3][MEL][s]) ++melDiffs;
+            const float o = se.polyRandomSrc(3, SequencerEngine::PL_OCTAVE)[s];
+            EXPECT(o == se.pe.warped_[3][OCT][s]);
+            if (o != se.pe.random_[3][OCT][s]) ++octDiffs;
+            // non-melody lanes stay on the raw bank (their consumers don't warp yet):
+            EXPECT(se.polyRandomSrc(3, SequencerEngine::PL_REST)[s] == se.pe.random_[3][PatternEngine::PL_REST][s]);
+            EXPECT(se.polyRandomSrc(3, SequencerEngine::PL_ACCENT)[s] == se.pe.random_[3][PatternEngine::PL_ACCENT][s]);
+        }
+        EXPECT(melDiffs > 0 && octDiffs > 0);
+    });
+
+    // ── S7: the NO-OP PROOF — a wired bank at defaults is byte-identical to raw ──
+    TEST("S7 no-op proof: bank wired at defaults (all-identity, w=0) — every consumer byte-identical", {
+        PatternEngine pe; fillRandomGolden(pe);
+        // A freshly-defaulted bank is exactly what Monsoon wires today (02 shipped
+        // all-Identity + w=0). Wire it, rebuild, and prove BIT-IDENTITY end to end.
+        WarpBank bank;
+        pe.setWarpBank(&bank);   // wires + full rebuild from random_
+        PatternInput in;
+        in.octaveLo = 0.f; in.octaveHi = 3.f;
+        for (int i = 0; i < 24; ++i) in.semiWeights[i] = (i % 3 == 0) ? 0.f : (0.25f + 0.5f * (float)((i * 7) % 5) / 4.f);
+        for (int s = 0; s < 16; ++s) {
+            int semA = 0, semB = 0;
+            const float a = pe.genPitchLive(semA, in, pe.random_[0][MEL][s], pe.random_[0][OCT][s]);
+            const float b = pe.genPitchLive(semB, in, pe.warpRow(0, MEL)[s], pe.warpRow(0, OCT)[s]);
+            EXPECT(semA == semB);
+            EXPECT(std::memcmp(&a, &b, sizeof(float)) == 0);
+            // every strand's display funnel:
+            for (int st = 0; st < dotModular::NUM_STRANDS; ++st)
+                EXPECT(pe.finalRandomByStrand(st, s) == pe.random_[0][st][s]);
+        }
+        // and the sounding accessor, through a real SequencerEngine:
+        SequencerEngine se;
+        fillRandomGolden(se.pe);
+        se.pe.setWarpBank(&bank);
+        se.pe.rebuildWarpMirrorAll();
+        for (int v = 0; v < 16; v += 5)
+            for (int l = 0; l < 7; ++l)
+                for (int s = 0; s < 16; ++s)
+                    EXPECT(se.polyRandomSrc(v, l)[s] == se.pe.random_[v][l][s]);
+    });
+
     std::cout << "-----\n";
-    std::printf("warp mirror (STEP 2-3): %d passed, %d failed\n", s_pass, s_fail);
+    std::printf("warp mirror (STEP 2-5): %d passed, %d failed\n", s_pass, s_fail);
     return s_fail ? 1 : 0;
 }

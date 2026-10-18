@@ -547,8 +547,11 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     // note is EITHER seq OR quant; q-mix selects one source. isQuant is threaded into the note-on calls.
     const bool isQuant = quantiserPitchSource && !qmixUseGenerated;
     float pitchV = voicePitch(0, sem, input,
-                              pe.melodyRandom[getMelodyStep()],
-                              pe.octaveRandom[getOctaveStep()],
+                              // Warp mirror (CC_PROMPT_03 STEP 4a): the mono voice's
+                              // sounding pitch reads the effective w-mixture (== the raw
+                              // row when no warp is authored — byte-identical legacy).
+                              pe.warpRow(0, PL_MELODY)[getMelodyStep()],
+                              pe.warpRow(0, PL_OCTAVE)[getOctaveStep()],
                               /*forceGenerated=*/qmixUseGenerated);
 
     // ── Leading-edge legato (STEP 2, the only legato model) ──
