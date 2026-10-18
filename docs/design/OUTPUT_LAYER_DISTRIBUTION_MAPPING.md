@@ -596,9 +596,15 @@ TYPE: a copula with a SINGULAR COMPONENT — NOT absolutely continuous. Continuo
 Gaussian-MA interior) + singular part (the rail atoms). The corner atoms are EXACTLY the
 MARSHALL-OLKIN singular component (MO's famous singular diagonal = a mass where two coords take
 an identical extreme together = "both clamp to the same rail"). So:
-  clamp gives a GAUSS-MA ⊕ MARSHALL-OLKIN mixed copula — Gaussian-MA interior with an MO-type
-  singular component glued on at the rails. This IS the family that carries lambda>0; the lambda
-  value = the corner-atom mass. (This is finally WHY clamp was always "the atoms route to lambda>0".)
+  clamp gives a copula that is NOT absolutely continuous. By the Lebesgue decomposition it splits
+  into a CONTINUOUS part (the Gaussian-MA interior — has a density) + a SINGULAR part (the
+  Marshall-Olkin-type rail atoms — positive probability concentrated on a measure-zero set, the
+  corners/edges): C = C_abscont + C_singular. (NOTATION: the earlier draft wrote "Gauss-MA (+)
+  MO"; the "(+)" is NOT a direct sum ⊕ — it is this continuous+singular measure decomposition.
+  Informally a MIXTURE of a Gaussian-MA-like copula and an MO-like copula with clamp-geometry
+  weights; the one-clamped/one-interior strips are the loose edge of that gloss.) The SINGULAR
+  part is what carries lambda>0; the lambda value = the corner-atom mass. (Finally WHY clamp was
+  always "the atoms route to lambda>0".)
 
 THE PAPER CONNECTION — clamp and DMO are the SAME singular component from OPPOSITE directions:
   - DMO (the QF paper): CONSTRUCTS the MO atom directly — a shock fires, forces simultaneity; the
@@ -621,7 +627,8 @@ clamp+CA trades DMO's calibration-freedom + marginal-independence for REUSING EX
 THE COMPLETE TAIL-DEPENDENCE MAP (all three points now pinned):
   1. no-atoms warp (shared-theta modulation): lambda=0, clean UNIQUE uniform-margin Gauss-MA copula.
      Finite-quantile co-movement only. (The distribution layer — what we're building.)
-  2. clamp + CA: lambda>0 EMERGENT. Gauss-MA ⊕ MO singular, MO mass = monotone image of CA
+  2. clamp + CA: lambda>0 EMERGENT. Gauss-MA continuous part + MO singular part (not abs.
+     continuous; Lebesgue decomp, NOT a direct sum), MO mass = monotone image of CA
      correlation. Tune by ear. Reuses existing machinery. (A LIKELY FUTURE DIRECTION — Rodney.)
   3. DMO / common-shock: lambda>0 CALIBRATED. MO constructed directly via shock intensities.
      The rigorous/pricing version; the published route (arXiv 2009.00368).
