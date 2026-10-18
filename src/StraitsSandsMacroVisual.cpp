@@ -16,6 +16,7 @@
 #include "ui/ModArcOverlay.hpp"
 #include "ui/OwnerCell.hpp"       // DirCell
 #include "ui/WarpCurveButton.hpp" // CC_PROMPT_04: the CRV-column popup trigger
+#include "ui/WarpCurvePopup.hpp"  // CC_PROMPT_04 STEP 3: the curve editor popup
 #include "dsp/engines/SequencerEngine.hpp"  // LaneDir
 #include "dsp/managers/SandsParameterManager.hpp"
 #include "dsp/VoiceResolver.hpp"   // activeVoiceCount + voice identity, single source of truth for the tab→voice mapping and uniform 16-voice addressing for prob-out
@@ -396,11 +397,47 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         return module ? findMonsoonEitherSide(module) : nullptr;
     }
 
-    // CC_PROMPT_04: opened by the CRV-column buttons (param_warpedit_<el>). STEP 3 lands
-    // the curve popup itself (WarpCurvePopup over the left cluster — the lane's bars stay
-    // visible; Macro edits globalWarpF[lane], its delegated-default curve); STEP 2 wires
-    // the trigger so the control is bound from the start.
-    void openWarpPopup(int lane) { (void)lane; }
+    // ── CC_PROMPT_04 STEP 3: the warp curve popup ──────────────────────────────────
+    // Macro's popup edits globalWarpF[lane] — ITS OWN delegated-default curve (the curve
+    // every ceded voice on that lane tracks; the button is always available). Closes on
+    // tab switch or Monsoon detach. Placed over the LEFT cluster (3..83mm) so the lane's
+    // bars + the w-level column stay visible; a full-panel scrim under it closes on any
+    // click. Every edit path commits setGlobalWarpF + bumps requestWarpRebuildLane-
+    // Delegating — the lane's bars across DELEGATING voices redistribute live (prompt-
+    // 03's "Macro curve/w edit" dirty scope).
+    dotModular::WarpCurvePopup* warpPopup_ = nullptr;
+    rack::widget::Widget*       warpScrim_  = nullptr;
+    int warpPopupTab_ = -1;
+
+    void openWarpPopup(int lane) {
+        closeWarpPopup();
+        Monsoon* m = getMonsoon();
+        if (!m || lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return;
+        auto* scrim = new dotModular::WarpPopupScrim();
+        scrim->box.pos  = rack::math::Vec(0.f, 0.f);
+        scrim->box.size = box.size;
+        scrim->onClick  = [this]() { closeWarpPopup(); };
+        addChild(scrim);                     // BEFORE the popup → popup on top (draw + events)
+        auto* pop = new dotModular::WarpCurvePopup();
+        pop->resolveMon  = [this]() { return getMonsoon(); };
+        pop->slot        = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);  // informational
+        pop->lane        = lane;
+        pop->macroGlobal = true;             // Macro authors the delegated default
+        pop->laneName    = dotModular::SandsLaneNames::EDITOR[lane];
+        pop->voiceName   = "MACRO";
+        pop->isLight     = [this]() { auto* mm = getMonsoon(); return mm && mm->lightTheme; };
+        pop->box.pos     = mm2px(Vec(3.f, 16.f));
+        addChild(pop);
+        pop->refresh();
+        warpScrim_  = scrim;
+        warpPopup_  = pop;
+        warpPopupTab_ = tabGroup ? tabGroup->getSelectedTab() : -1;
+    }
+    void closeWarpPopup() {
+        if (warpScrim_) { removeChild(warpScrim_); delete warpScrim_; warpScrim_ = nullptr; }
+        if (warpPopup_) { removeChild(warpPopup_); delete warpPopup_; warpPopup_ = nullptr; }
+        warpPopupTab_ = -1;
+    }
 
     // STEP 4b: ownership authority for the Macro widget's V1 view. Macro is present
     // (this widget IS Macro). SANDS CONSOLIDATION Step 7: monoV1Owner removed — V1
@@ -509,6 +546,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         kitStep();   // kit: dev-mode live-reload poll (no-op unless enabled)
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
+        // CC_PROMPT_04: close the curve popup when its bound target goes away — tab
+        // switch or Monsoon detach.
+        if (warpPopup_ && (!monsoon || warpPopupTab_ < 0 ||
+                           (tabGroup && tabGroup->getSelectedTab() != warpPopupTab_)))
+            closeWarpPopup();
         if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
 
         // MVC step 1: the dual-write GLOBAL mirror is fully RETIRED. Every global-slice
