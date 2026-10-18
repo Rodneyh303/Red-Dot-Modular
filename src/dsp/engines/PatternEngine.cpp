@@ -870,8 +870,12 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     }
     if (melodyChanged) {
         for (int i = 0; i < 16; ++i) {
-            float mVal = (displayedVoice_ == 0) ? melodyRandom[i] : polyRandom(displayedVoice_, PL_MELODY)[i];
-            float oVal = (displayedVoice_ == 0) ? octaveRandom[i] : polyRandom(displayedVoice_, PL_OCTAVE)[i];
+            // Warp mirror (CC_PROMPT_03 STEP 4b — the DISPLAY site): the bars derive
+            // from the SAME effective w-mixture the sounding path consumes, keyed to
+            // displayedVoice_ (warpRow(0,·) degenerates to the mono row — the ternary
+            // the raw path needed is built into the accessor).
+            float mVal = warpRow(displayedVoice_, PL_MELODY)[i];
+            float oVal = warpRow(displayedVoice_, PL_OCTAVE)[i];
             int sem = 0;
             melodyPitchV[i]   = genPitchLive(sem, in, mVal, oVal);
             melodySemitone[i] = sem;

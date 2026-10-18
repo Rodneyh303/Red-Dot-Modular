@@ -436,7 +436,9 @@ int Monsoon::pickSemitoneWeighted() {
     float w[12];
     for(int i=0; i<12; ++i) w[i] = getSemitoneParam(i);
     int idx = engine.getMelodyStep();
-    return engine.pe.pickSemitone(w, 12, melodyRandom[idx]);   // Monsoon's own 12 faders → n=12
+    // Warp mirror (CC_PROMPT_03): the degree map reads the effective w-mixture — the
+    // faderMap∘F⁻¹ seam where melody warp lands (no raw melody/octave OUTPUT reads).
+    return engine.pe.pickSemitone(w, 12, engine.pe.warpRow(0, PatternEngine::PL_MELODY)[idx]);   // Monsoon's own 12 faders → n=12
 }
 
 // generate a pitch V in 1V/oct format, returnh semitone via out parameter
@@ -445,7 +447,10 @@ int Monsoon::pickSemitoneWeighted() {
 // returns 0V and -1 semitone if no semitone is selected
 // (should be rare, only if all semitone weights are zero)
 float Monsoon::genPitchV(int& outSemitone) {
-    return engine.pe.genPitchLive(outSemitone, modeController->currentPatternInput, melodyRandom[engine.getMelodyStep()], octaveRandom[engine.getOctaveStep()]);
+    // Warp mirror (CC_PROMPT_03): same consumer contract as pickSemitoneWeighted.
+    return engine.pe.genPitchLive(outSemitone, modeController->currentPatternInput,
+                                  engine.pe.warpRow(0, PatternEngine::PL_MELODY)[engine.getMelodyStep()],
+                                  engine.pe.warpRow(0, PatternEngine::PL_OCTAVE)[engine.getOctaveStep()]);
 }
 
     // allowed note lengths depend on noteVariationMask - note we defined NoteLength enum and allowednoteLengths function
@@ -689,6 +694,14 @@ void Monsoon::process(const ProcessArgs& args) {
     _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
     _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
 #endif
+
+    // Warp mirror (CC_PROMPT_03 STEP 4): wire the editor's warp bank into the engine
+    // BEFORE any draw/consumer this block. Per-block pointer compare — a no-op after
+    // the first block; the first wire triggers the initial full mirror rebuild (the
+    // 02 defaults are all-Identity + w=0, so this is a byte-identical no-op today —
+    // pinned by test_warp_mirror S7). Patch loads mutate the bank in place (same
+    // address) and are covered by pendingRegenB → recomputeEffective* → rebuild.
+    engine.pe.setWarpBank(&editor.warp);
 
     // --- Audio-rate Input Fetching ---
     InputState input;
