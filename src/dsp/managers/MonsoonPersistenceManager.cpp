@@ -184,13 +184,15 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     // MACRO owner (112) + send (448) + atten (448), migrated out of params[]. SANDS
     // CONSOLIDATION Step 2: 7 poly lanes (REST/MEL/OCT/ACC/QMIX/VAR/LEG) — VAR/LEG atten
     // now shares macroAtten (was 320 at 5 lanes; getMacroAtten already read a 7-lane stride
-    // into the 320 array → OOB, fixed). Own/send save loops stay at the 5-lane count because
-    // VAR/LEG are East-only (never Macro-owned), so their own/send slots are always 0.
+    // into the 320 array → OOB, fixed). macroOwn stays at the 5-lane count (80) deliberately:
+    // VAR/LEG are never Macro-owned, so those own slots are always 0. macroSend is the FULL
+    // 448 (16 × 7 lanes × 4 items): the Macro panel's send StoreKnobs author ALL 7 lanes, so
+    // the old 320 bound silently dropped user-authored VAR/LEG sends on every save.
     json_t* mo = json_array();
     for (int i = 0; i < 80; ++i) json_array_append_new(mo, json_real(m->editor.macroOwn[i]));
     json_object_set_new(root, "editorMacroOwn", mo);
     json_t* ms = json_array();
-    for (int i = 0; i < 320; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));
+    for (int i = 0; i < 448; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));
     json_object_set_new(root, "editorMacroSend", ms);
     // P9b: the per-voice send-tap bank (missing key on load ⟹ all voices 1.0 = POST,
     // so pre-fix patches sound identical).
@@ -461,7 +463,10 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     }
     if (auto j = json_object_get(root, "editorMacroSend")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 320 && i < json_array_size(j); ++i)   // 16 × 5 × 4 items
+            // Full 16 × 7 × 4 bank; old patches' 320-entry arrays load their prefix (the
+            // size guard handles short arrays) — VAR/LEG sends simply stay at their defaults,
+            // exactly as before the fix.
+            for (size_t i = 0; i < 448 && i < json_array_size(j); ++i)
                 m->editor.macroSend[i] = (float)json_real_value(json_array_get(j, i));
     }
     // P9b: per-voice send-tap bank. Absent key (pre-fix patch) → every voice POST (1.0).
