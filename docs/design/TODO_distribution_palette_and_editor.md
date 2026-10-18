@@ -51,7 +51,17 @@ SCOPE:
   is no distmath layer — CC_PROMPT_02 uses a value-variant with single-impl concrete types).
 
 ────────────────────────────────────────────────────────────────────────────────
-## 3. PDF display scaling — editor bug  [CORRECTED 2026-10-18b: it's a Y-MAX fix, not X-axis]
+## 3. PDF display scaling — RETRACTED (not a real concern)
+
+RETRACTED 2026-10-18b: Rodney's actual concern was whether the PDF support/CDF shape was
+WRONG (pdf outside [0,1]? CDF atoms?) — both checked and CORRECT (pdf stays in [0,1]; steep
+CDF corners are high edge density, not atoms). The 'flat-top clip' was an incidental artefact
+Claude noticed, NOT something Rodney raised. Computed: the clip is ~1% and only for trunc-normal
+with mu outside [0,1]; the dramatic screenshot dome is not reproducible from the code. Nobody is
+bothered by it → NO FIX. Dropped from CC_PROMPT_P1. Revisit only if it genuinely bothers someone
+in Rack. [original y-max text below, superseded]
+
+## 3-OLD. PDF display scaling
 
 CORRECTION: the original '2nd x-axis' framing was WRONG — the PDF never leaves [0,1] on x.
 The observed problem (trunc-normal mu+0.48 sigma0.50: flat-topped clipped teal dome) is the

@@ -1,6 +1,6 @@
-# CC PROMPT P1 — palette/editor: reversed-power + Kumaraswamy reparam + PDF y-max edge-clip fix
+# CC PROMPT P1 — palette: reversed-power distribution + Kumaraswamy (mode,conc) reparam
 
-Standalone, parallel to the main warp work. THREE independent sub-tasks; do them as three
+Standalone, parallel to the main warp work. THREE independent sub-tasks; do them as two
 commits on one branch. NONE depends on the warp Phase 3 prompts. (The old "distmath:: refactor"
 gating on reversed-power is GONE — there is no distmath layer; see CC_PROMPT_02, which uses a
 value-variant with single-implementation concrete types. Reversed-power is just a new
@@ -9,7 +9,7 @@ Distribution.hpp class, added here like any other palette type.)
 ## READ FIRST
 1. `CLAUDE.md` (root) — non-negotiables (verify against tests; red→green; branch discipline).
 2. `docs/design/CHAT_HANDOFF.md` — primer + working model.
-3. `docs/design/TODO_distribution_palette_and_editor.md` — items #1 and #3 (the what-and-why).
+3. `docs/design/TODO_distribution_palette_and_editor.md` — items #1 and #2 (the what-and-why).
 4. `src/dsp/Distribution.hpp` (KumaraswamyDistribution + TruncatedNormalDistribution classes)
    and `src/ui/DistributionCurveWidget.hpp` (the editor; PDF scaling ~L141-191).
 
@@ -91,71 +91,7 @@ thresholds or transcendental region boundaries, STOP — the clamps above alread
 analysis is not wanted and is why this was rewritten.
 
 ────────────────────────────────────────────────────────────────────────────────
-## SUB-TASK B — fix the PDF y-max so edge-heavy densities don't clip
-
-(This is a Y-AXIS fix. The PDF never leaves [0,1] on X — there is NO x-axis change. An earlier
-"2nd x-axis" idea was a misdiagnosis and is dropped.)
-
-THE BUG (DistributionCurveWidget.hpp ~L145-191): maxD is taken over the OPEN interval —
-`if (i > 0 && i < N && pdfs[i] > maxD)` (L149) excludes the endpoints — then the fill clamps
-`if (d > 1.0) d = 1.0` (L184). Excluding endpoints is CORRECT for DIVERGENT densities (arcsine,
-power k<1, Kumaraswamy a<1/b<1: edge→∞, a finite floored proxy must NOT define the scale). It is
-WRONG for a BOUNDED density whose true max is AT an endpoint — TRUNCATED-NORMAL with mu OUTSIDE
-[0,1]: the bell's peak is off the window, so the density is monotone across [0,1] and its real
-max is the edge value. The open-interval maxD excludes exactly that sample → the fill normalises
-to a slightly-too-small interior max → the edge clips flat against the ceiling.
-
-*** NOTE ON THE REPRO (do not chase this): the exact screenshot params (mu≈0.48, sigma 0.50/0.67)
-have their peak at x=0.48, INTERIOR — so by the math they do NOT clip, and a test at those params
-would PASS on the current (buggy) code (not a red test). The dramatic flat dome in that screenshot
-could not be reproduced from the code; its cause is unknown and does not need to be matched. What
-IS a real, verified bug is the mechanism above (open-max excluding a true EDGE max), which the
-test cases below trigger with mu OUTSIDE [0,1]. Fix the MECHANISM; do not try to reproduce the
-screenshot. ***
-
-THE FIX (decided — use this, do not re-evaluate the alternative):
-Distinguish divergent edge from finite edge by the EDGE/NEIGHBOUR RATIO. For each endpoint,
-r = pdf(edge) / pdf(just inside, at 1/(2N) or 1-1/(2N)). A FINITE edge has r ≈ 1 (the density is
-smooth, so edge ≈ neighbour); a DIVERGENT edge has r ≫ 1 (the floored proxy towers over its
-neighbour). Threshold: include the edge in maxD iff r <= 2.0; else exclude it (divergent).
-(Verified: TN mu=1.3..2.0 → r ≈ 0.98–1.01 → include, fixes the clip. power k=0.5 → r ≈ 1580,
-k=0.9 → r ≈ 4.4 → both excluded, divergent-edge rendering UNCHANGED from today.)
-Do NOT use the "cap at a multiple of interior max" alternative — it CHANGES existing divergent-edge
-rendering (it would shrink the power(k<1) dome), a regression. The ratio approach leaves divergent
-cases byte-identical to today and only ADDS finite edges. That's why it's the one to use.
-
-DISPLAY-ONLY: stored curve, params, math, schema ALL unchanged. X axis stays a single true
-0->1 (CDF gold, bottom). Only the PDF Y normalisation changes. DistributionCurveWidget.hpp only;
-no Distribution.hpp / engine change.
-
-TESTABLE: factor the max-finding into a pure free fn
-`double pdfVisibleYMax(const Distribution&, int N=200)` and test it header-only. USE THESE
-VERIFIED CASES (the trunc-normal ones genuinely clip on current code = RED; computed, not guessed):
-  - trunc-normal(mu=1.48, sigma=0.50): RED on current code. pdfVisibleYMax must EQUAL the max over
-    CLOSED [0,1] sampling (edge at x=1), NOT the open-interval max (~2.99). This is the core fix.
-  - trunc-normal(mu=2.0, sigma=0.60): same, a second clip case.
-  - trunc-normal(mu=0.48, sigma=0.50): peak interior (x=0.48) → closed==open already; asserts the
-    fix does NOT change the common no-clip case (still equals the interior/closed max).
-  - power(k=0.5): divergent 0-edge (r≈1580 > 2) EXCLUDED → maxD is the interior max (~0.50 at x≈1),
-    NOT the floored proxy (~15811). Asserts divergent rendering is unchanged.
-  - power(k=0.9): divergent 0-edge (r≈4.4 > 2) EXCLUDED → interior max (~0.9). Asserts the
-    threshold catches MILD divergence too.
-  - triangular(mode=0.5): interior peak, unchanged.
-Register `"test_pdf_ymax|"` in run_all.sh. GREEN. The RENDERING (dome no longer clipped) you
-CANNOT verify — say "needs Rack feel-test" in the PR; the pure-fn test proves the scale logic.
-
-NOT A BUG — do NOT "fix" the CDF: with the same edge-heavy params the CDF looks like it has
-ATOMS (near-vertical segments at x≈0 and x≈1). It does NOT. CDF slope = density; high edge
-density → steep (near-vertical) CDF corners that READ as jumps but are continuous. Verified:
-TruncatedNormalDistribution::cdf is correctly renormalised ((Phi((x-mu)/sigma)-Pa)/Z) and pinned
-to exactly 0 at x<=0 and 1 at x>=1 — the curve DOES span 0->1; the 0->~0.2 climb just happens in
-a sub-pixel x-sliver so only the vertical shows. SAME ROOT as the dome clip. Once the y-max fix
-lands, the tall-PDF-at-edges will visually EXPLAIN the steep CDF corners. The editor's strict-
-increase constraint guarantees no TRUE atoms exist, so a near-vertical CDF segment is always high
-density, never a jump. (Optional: a one-line widget comment to that effect. Not required.)
-
-────────────────────────────────────────────────────────────────────────────────
-## SUB-TASK C — add ReversedPowerDistribution to the palette
+## SUB-TASK B — add ReversedPowerDistribution to the palette
 
 WHY (TODO #2): F(x)=1-(1-x)^theta is the MIRROR of Power (x^theta) — frailty in -log(1-x), the
 upper-tail counterpart to Power's lower-tail. Fills the one empty palette corner; it's the only
@@ -205,9 +141,7 @@ theta). No new test file needed; it's a palette member like the others. Run_all 
 ## DONE =
 - A: abFromModeConc/modeConcFromAb on KumaraswamyDistribution; internal (a,b) + schema
   unchanged; test_kumaraswamy_reparam green (round-trip, mode-correct, validity, edge).
-- B: pdfVisibleYMax pure fn + its test green; finite edge-maxima now define the PDF scale (no
-  flat-top clip on trunc-normal) while divergent edges stay excluded; X axis stays single 0->1.
-- C: ReversedPowerDistribution in Distribution.hpp, wired (fromJson tag, palette comments,
+- B: ReversedPowerDistribution in Distribution.hpp, wired (fromJson tag, palette comments,
   devhost, fromDistribution); test_distribution battery + JSON round-trip cover it, green.
 - `bash test/run_all.sh` ALL GREEN. No warp/engine changes (C adds a palette type only; no
   schema break — it's a new optional type tag). Three clean commits.
@@ -216,4 +150,3 @@ theta). No new test file needed; it's a palette member like the others. Run_all 
 ## NOT THIS PROMPT
 - The Kumaraswamy UI knobs/labels — pair with the warp UI prompt (CC_PROMPT_04).
 - Any warp / mirror / w / modulation engine code.
-- The CDF rendering (it is correct — see the "NOT A BUG" note in sub-task B).
