@@ -30,6 +30,11 @@
 #include "../MovingAverageCopula.hpp"   // Phase 1: slew as normal-space moving-average copula (replaces L1 linear-uniform window)
 #include "../../tuning/TuningTable.hpp"   // dotModular::TuningTable — shared per-degree tuning (Sikit)
 
+// CC_PROMPT_03 (warp mirror): the per-voice warp bank. Full definition lives in
+// ../WarpF.hpp — included by PatternEngine.cpp (and tests) only, keeping this header
+// light; the pointer member below needs just the forward declaration.
+namespace dotModular { struct WarpBank; }
+
 template<typename T>
 static inline T pe_clamp(T v, T lo, T hi){ return v<lo?lo:(v>hi?hi:v); }
 
@@ -146,6 +151,54 @@ struct PatternEngine {
         int edLane = (engLane >= 0 && engLane < 7) ? engLane : 0;
         return random_[voiceSlot][edLane];
     }
+
+    // ── Warp mirror (CC_PROMPT_03 STEP 2): the EFFECTIVE w-mixture over random_ ──
+    // ONE array, no raw↔warped display toggle (SESSION_LOG 2026-10-18b §2 — the toggle
+    // was dropped: the display ALWAYS shows the effective mix). Each cell =
+    //     (1-w)·u + w·F⁻¹(u),   u = random_[v][lane][step]
+    // computed in DOUBLE via WarpBank::warpedValue (exact invCDF — the mirror IS the
+    // cache, no new LUT; the warp is a CACHED caller) and stored FLOAT (float32
+    // monotonicity already pinned by test_warp_f_bank S7). random_ stays underneath
+    // as the UNWARPED w=0 basis; warp composes AFTER slew on the settled uniform.
+    // Every random_ writer triggers a rebuild of the cells it wrote, so the mirror is
+    // consistent with random_ by construction — the single-source keystone that keeps
+    // the sounding path (voice v) and the display (displayedVoice_) in agreement.
+    float warped_[16][dotModular::NUM_STRANDS][16] = {};
+
+    // The bank the mirror mixes with (Monsoon::editor.warp, wired by the module layer —
+    // the TuningTable "populated by the module layer" pattern). null ⇒ no warp anywhere
+    // ⇒ consumers read raw random_ (bank-less hosts keep byte-identical legacy paths).
+    const dotModular::WarpBank* warpBank_ = nullptr;
+    // (v,lane) ⇒ the lane is DELEGATED to Macro (SandsTopology owner()==MACRO, mirrored
+    // per control cycle by MonsoonSandsManager — the spreadTargetMode pattern). A
+    // delegating cell mixes with Macro's GLOBAL curve (WarpBank's delegated form);
+    // default false = the voice's own (v*7+lane) slot.
+    bool warpDelegated_[16][7] = {};
+
+    // Consumer read: the EFFECTIVE row — the mirror when a bank is wired, the raw row
+    // otherwise. Same indexing/shape as polyRandom, so consumer call sites are
+    // one-token swaps and the fallback needs no branching at the read site.
+    const float (&warpRow(int v, int lane) const)[16] {
+        const int vv = (v >= 0 && v < 16) ? v : 0;
+        const int ll = (lane >= 0 && lane < 7) ? lane : 0;
+        return warpBank_ ? warped_[vv][ll] : random_[vv][ll];
+    }
+    // Wire the bank (module layer, per block — same-pointer is a no-op). First wire /
+    // re-wire rebuilds the full mirror from current random_.
+    void setWarpBank(const dotModular::WarpBank* b);
+    // Delegation matrix entry (module layer; raw setter — the manager triggers the
+    // rebuild when the matrix actually changes).
+    void setWarpDelegated(int v, int lane, bool d) {
+        if (v >= 0 && v < 16 && lane >= 0 && lane < 7) warpDelegated_[v][lane] = d;
+    }
+    // Full mirror rebuild from random_ + warpBank_ (the "rebuild all 1792" scope —
+    // pattern regen / new draw / scrub / pin-remap; 0.064ms worst case per the
+    // verified cost in CC_PROMPT_03 STEP 3, so callers need not be stingy).
+    // No-op without a bank. (Scoped rebuilds — lane/cell dirty mask — land with STEP 3.)
+    void rebuildWarpMirrorAll();
+    // The shared cell compute (CONTRACT: warpBank_ != nullptr — every rebuild entry
+    // point checks before calling): DOUBLE mix → FLOAT store.
+    float warpMixCell(int v, int lane, int step) const;
 
     // Final post-everything (A/B-mix + spread + LOR feed in upstream) probability value for a given
     // ENGINE STRAND at a given step, 0..1. Now a direct index into random_[0] (mono row): strand index
@@ -384,6 +437,10 @@ struct PatternEngine {
                 }
             }
         }
+        // Warp mirror (CC_PROMPT_03): the promote above rewrote random_ — rebuild the
+        // mirror from the settled w=0 basis. Full scope: this runs at roll/pin-change
+        // rate (remapSigChanged_ gates re-entry), not per block.
+        rebuildWarpMirrorAll();
         // V16-FLICKER FIX (classification (c), two-writer race): PUBLISH here. The remap
         // rewrites slewed* (incl. the mono row every spread-anchored voice tracks) but
         // previously left pubSlewed* at whatever forceRecomputeSlewed() published just

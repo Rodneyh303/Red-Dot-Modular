@@ -112,6 +112,7 @@ TESTS=(
   "test_voice_conventions|$SE $GS $PE"
   "test_voice_resolver|$SE $GS $PE"
   "test_warp_f_bank|"   # header-only: the per-voice warp-F variant bank (CC_PROMPT_02 — identity default, single-impl holders, branchless mix)
+  "test_warp_mirror|src/dsp/engines/PatternEngine.cpp"   # CC_PROMPT_03: the warp mirror + consumer routing (companion: PE, the run_all.sh:59 pattern)
 )
 
 verbose=0; filter=""

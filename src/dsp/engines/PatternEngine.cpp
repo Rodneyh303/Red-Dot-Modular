@@ -1,5 +1,6 @@
 #include "PatternEngine.hpp"
 #include "../SpreadInterp.hpp"
+#include "../WarpF.hpp"   // CC_PROMPT_03: dotModular::WarpBank — the warp mirror's mix source
 
 // ── OU-bridge blend coefficients (UNIFIED 2×2 conditioning for ALL r) ─────────
 // File-local: lives here (not in the header) to avoid pulling PhiInvLUT::table()
@@ -114,6 +115,37 @@ void PatternEngine::reset() {
             slewedQmix[v][i]=polyRandom(v, PL_QMIX)[i];
         }
     }
+    // Warp mirror: reset rewrote random_ (defaults) — refresh the mirror so a wired
+    // bank never observes a stale mixture after Monsoon reset. No-op without a bank.
+    rebuildWarpMirrorAll();
+}
+
+// ── Warp mirror (CC_PROMPT_03 STEP 2) ──────────────────────────────────────────
+// Each cell = the EFFECTIVE w-mixture (1-w)·u + w·F⁻¹(u) over random_[v][lane][step]:
+// DOUBLE compute via the bank's branchless mix (exact invCDF — the mirror IS the
+// cache, no new LUT) and FLOAT store. w=0 or IdentityF ⟹ bit-exact u (pinned by
+// test_warp_f_bank + test_warp_mirror S1/S2), so wiring the bank changes nothing
+// until a curve/w is authored. random_ itself is NEVER warped — it stays the w=0
+// basis the mixture is rebuilt from.
+
+float PatternEngine::warpMixCell(int v, int lane, int step) const {
+    // CONTRACT: warpBank_ != nullptr (every rebuild entry point checks).
+    const double u = (double)random_[v][lane][step];
+    return (float)warpBank_->warpedValue(v, lane, u, warpDelegated_[v][lane]);
+}
+
+void PatternEngine::rebuildWarpMirrorAll() {
+    if (!warpBank_) return;   // no bank ⇒ nothing to mix; consumers fall back to random_
+    for (int v = 0; v < 16; ++v)
+        for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
+            for (int s = 0; s < 16; ++s)
+                warped_[v][l][s] = warpMixCell(v, l, s);
+}
+
+void PatternEngine::setWarpBank(const dotModular::WarpBank* b) {
+    if (warpBank_ == b) return;   // same bank every block — no-op (one compare)
+    warpBank_ = b;
+    rebuildWarpMirrorAll();       // first wire / re-wire: refresh from current random_
 }
 
 // ── Core generation ───────────────────────────────────────────────────────
@@ -385,6 +417,9 @@ void PatternEngine::recomputeEffectiveRhythm() {
             for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_LEGATO)[i]=applyR?
                 redDot::SpreadInterp::applyPoly(*this,PL_LEGATO,v,i,cachedPolySpread[v][PL_LEGATO]):slewedLegato[v][i];
         }
+        // Warp mirror (CC_PROMPT_03): the write-back above rewrote random_ — rebuild
+        // from the settled w=0 basis (full scope; draw/scrub-rate, prompt-blessed cost).
+        rebuildWarpMirrorAll();
     }
     publishSlewedRhythm();   // publish coherent snapshot for the UI thread
     rhythmMixApplied = rhythmMixLatched; rhythmSlewApplied = slew; rhythmCtrApplied = N;
@@ -465,6 +500,10 @@ void PatternEngine::recomputeEffectiveMelody() {
                                     polyRandom(v, PL_OCTAVE)[i]=applyM?
                 redDot::SpreadInterp::applyPoly(*this,PL_OCTAVE,v,i,cachedPolySpread[v][PL_OCTAVE]):slewedOctave[v][i]; }
         }
+        // Warp mirror (CC_PROMPT_03): rebuild AFTER the slew write-back — random_ now
+        // holds the settled post-slew uniform, the single w=0 basis for BOTH consumers
+        // (the load-bearing ordering in the prompt's STEP 4(a) note).
+        rebuildWarpMirrorAll();
     }
     publishSlewedMelody();
     melodyMixApplied = melodyMixLatched; melodySlewApplied = slew; melodyCtrApplied = N;
@@ -539,6 +578,8 @@ void PatternEngine::recomputeEffectiveQmix() {
             for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_QMIX)[i]=applyQ?
                 redDot::SpreadInterp::applyPoly(*this,PL_QMIX,v,i,cachedPolySpread[v][PL_QMIX]):slewedQmix[v][i];
         }
+        // Warp mirror (CC_PROMPT_03): same write-back companion as rhythm/melody.
+        rebuildWarpMirrorAll();
     }
     publishSlewedQmix();
     qmixMixApplied = qmixMixLatched; qmixSlewApplied = slew; qmixCtrApplied = N;
