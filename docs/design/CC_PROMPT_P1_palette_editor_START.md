@@ -27,32 +27,68 @@ WHY (TODO #1): native (a,b) interact badly as controls (both pull mode AND sprea
 conversion, it does not change cdf/pdf/invCDF or the .dmcurve schema.
 
 ADD to Distribution.hpp, as static helpers on KumaraswamyDistribution (or free fns beside it):
-    static void   abFromModeConc(double mode, double conc, double& a, double& b);
-    static void   modeConcFromAb(double a, double b, double& mode, double& conc);
-Kumaraswamy mode (for a>1, b>1) = ((a-1)/(a*b-1))^(1/a). Choose a concentration definition
-that is monotone and invertible with mode held — a practical choice: conc ties to b (the
-peakedness) with mode fixed, solving for a. Document the exact definition you pick in a comment;
-what matters is that the two coords are (near-)orthogonal and the round-trip is exact.
+    static void abFromModeConc(double mode, double conc, double& a, double& b);
+    static void modeConcFromAb(double a, double b, double& mode, double& conc);
 
-EDGE REGIMES: a<=1 or b<=1 have no interior mode (monotone / J / U shapes). Handle explicitly:
-define the mapping's behaviour there (e.g. clamp mode to the boundary, let concentration cover
-the monotone family) rather than producing NaN. State the choice in the comment.
+### USE THIS EXACT DEFINITION (decided — do NOT re-derive or search for a "better" one):
+**conc := a** (the left shape exponent), and b is SOLVED CLOSED-FORM to hold the mode. This has
+an exact inverse BOTH ways (no root-finding), which conc:=b does NOT (it's transcendental in a).
+Forward (abFromModeConc), for mode m ∈ (0,1), conc c ≥ 1:
+    a = c
+    if (c == 1) { a = 1; b = 1; return; }          // uniform; mode irrelevant (documented)
+    b = (a - 1 + m^a) / (a * m^a)                   // holds mode exactly; derivation below
+Inverse (modeConcFromAb), for a,b (interior-mode case a>1,b>1):
+    conc = a
+    mode = ((a - 1) / (a*b - 1))^(1/a)
+Derivation (put in the comment): mode^a = (a-1)/(ab-1)  ⟹  b = (a-1+m^a)/(a·m^a). And one can
+show b-1 = (a-1)(1-m^a)/(a·m^a) > 0 for a>1, m<1, so this always lands in the a>1,b>1 unimodal
+region. Orthogonality is EXACT in the sense that matters for a UI: the conc knob never moves the
+mode (b is solved to hold it), and the mode knob never moves the mode (trivially). That is all
+"(near-)orthogonal" needs to mean here.
 
-HARD CONSTRAINT: the (mode,conc)->(a,b) image MUST stay in the valid, STRICTLY-INCREASING
-region (a,b>0; and the mapped curve must satisfy the editor's eps-monotonicity floor — a
-concentration extreme that drives b->0 FLATTENS the curve = the atom case the editor forbids,
-rank-destroying). Clamp in (mode,conc) space to the safe region. Do NOT emit (a,b) that the
-editor would reject.
+### RANGES + CLAMPS (fixed numbers — stop here, do not optimise):
+    conc ∈ [1, 100]   (CONC_MAX = 100; 1 = uniform, up = more peaked; clamp inputs to this)
+    mode ∈ [0.02, 0.98]  (MODE_EPS = 0.02; clamp the mode INPUT to this before computing)
+The mode clamp at 0.02 (NOT 1e-3) is deliberate and is the WHOLE answer to the float-flatness
+worry below — a mode of 0.02 with conc 100 gives a large-but-finite b whose CDF is still
+strictly increasing across a 1000-pt grid in double. Wider isn't needed; tighter re-opens the
+problem. Just use 0.02.
+
+### THE VALIDITY REQUIREMENT IS LOOSER THAN THE OLD PROMPT IMPLIED — read this:
+The PARAMETRIC distribution is NOT the editor's edited object and does NOT face the editor's
+MIN_SPACING / eps-monotonicity gate. (Verified: MonotoneCurve.hpp:82-92 — a parametric only
+meets that gate IF the user hits "convert to editable", which SAMPLES the CDF at 9 points; until
+then it's evaluated by its exact analytic invCDF, which is strictly increasing for ALL a,b>0.)
+So you do NOT need to prove a safe region or guard against the editor rejecting the curve. The
+only real requirement is: **the mapping returns finite a,b>0 and never NaN/inf over the clamped
+input box.** The clamps above guarantee that. Do NOT derive transcendental safe-region bounds —
+that rabbit hole is why this section was rewritten.
+
+### EDGE / DEGENERATE (just handle these three, no analysis):
+  - conc == 1 (any mode)  → (a,b) = (1,1), uniform. modeConcFromAb(1,1): the mode formula is
+    0/0 → return mode = 0.5, conc = 1 (documented sentinel).
+  - modeConcFromAb with a<=1 OR b<=1 (no interior mode — a J/U/monotone shape that did NOT come
+    from this forward map): return conc = clamp(a,1,100), mode = (density decreasing ? 0.0 : 1.0)
+    i.e. clamp mode to whichever boundary the mass sits against. This path only matters for
+    curves authored directly in (a,b); the forward map never produces it.
+  - mode input outside [0.02,0.98] or conc outside [1,100] → clamp to the box, then proceed.
 
 TEST `test/test_kumaraswamy_reparam.cpp` (header-only, model on test_distribution.cpp):
-  - ROUND-TRIP: for a grid of valid (mode,conc): abFromModeConc then modeConcFromAb returns the
-    input to tolerance. And (a,b)->(mode,conc)->(a,b) for a grid of valid (a,b).
-  - MODE CORRECT: for mapped (a,b) with a,b>1, the analytic mode ((a-1)/(ab-1))^(1/a) equals the
-    requested mode.
-  - VALIDITY: every mapped (a,b) is strictly-increasing per the editor constraint (invCDF strictly
-    increasing over a dense u grid; no flat segment within eps).
-  - EDGE: a<=1/b<=1 inputs map to the documented boundary behaviour, no NaN/inf.
+  - ROUND-TRIP: grid of (mode ∈ [0.05,0.95] step 0.05) × (conc ∈ [1.5,100] a few values):
+    abFromModeConc then modeConcFromAb returns the input to ~1e-9. (Stay off the 0.02/0.98/1.0
+    boundaries for the exact round-trip; those are the clamped/sentinel cases, tested separately.)
+  - MODE CORRECT: for the mapped (a,b), the analytic mode ((a-1)/(ab-1))^(1/a) == the requested
+    mode to ~1e-9. (This is the orthogonality guarantee.)
+  - FINITE + VALID: every mapped (a,b) over the full clamped box is finite, a>0, b>0, and the
+    Kumaraswamy invCDF is strictly increasing over a 1000-pt u grid in double (it will be — this
+    asserts the clamps are sufficient, NOT a tight bound).
+  - EDGE: conc=1 → (1,1); modeConcFromAb(1,1) → (mode 0.5, conc 1); an a<=1 / b<=1 input →
+    documented boundary, no NaN/inf.
 Register `"test_kumaraswamy_reparam|"` in test/run_all.sh TESTS[]. GREEN.
+
+TIME-BOX: this is ~40 lines of code + a test. If you find yourself deriving float-saturation
+thresholds or transcendental region boundaries, STOP — the clamps above already handle it; that
+analysis is not wanted and is why this was rewritten.
 
 ────────────────────────────────────────────────────────────────────────────────
 ## SUB-TASK B — fix the PDF y-max so edge-heavy densities don't clip
