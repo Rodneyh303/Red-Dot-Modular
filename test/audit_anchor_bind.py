@@ -62,6 +62,7 @@ MODULES = {
             "param_atten_": 28,
             "param_spr_": 7,          # 7 poly spread bases (editor-lane indexed; VAR/LEG added)
             "param_wlevel_": 7,       # CC_PROMPT_04 STEP 1: warp depth knobs (every lane incl booleans)
+            "param_warpedit_": 7,     # CC_PROMPT_04 STEP 2: curve-editor trigger buttons ("CRV" column)
             # input_varlegcv_ / param_varlegatten_ RETIRED: VAR/LEG now use input_cv_/param_atten_
             # (sands consolidation Step 3) — the separate varleg CV/atten path is gone.
             "param_owner_": 7,        # 7 poly (incl QMIX/VAR/LEG)
@@ -83,6 +84,7 @@ MODULES = {
             "param_atten_": 28,
             "param_spr_": 7,          # 7 poly spread bases
             "param_wlevel_": 7,       # CC_PROMPT_04 STEP 1: warp depth knobs (Macro's delegated default)
+            "param_warpedit_": 7,     # CC_PROMPT_04 STEP 2: curve-editor trigger buttons ("CRV" column)
             "output_prob_": 7,
             "param_send_": 28,        # 7 lanes × 4 mix-in items
             "param_taplor_": 7,

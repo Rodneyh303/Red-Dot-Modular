@@ -15,6 +15,7 @@
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "ui/OwnerCell.hpp"       // DirCell
+#include "ui/WarpCurveButton.hpp" // CC_PROMPT_04: the CRV-column popup trigger
 #include "dsp/engines/SequencerEngine.hpp"  // LaneDir
 #include "dsp/managers/SandsParameterManager.hpp"
 #include "dsp/VoiceResolver.hpp"   // activeVoiceCount + voice identity, single source of truth for the tab→voice mapping and uniform 16-voice addressing for prob-out
@@ -342,6 +343,24 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             );
         }
 
+        // ── CC_PROMPT_04 STEP 2: warp curve-editor trigger buttons (param_warpedit_<el>).
+        //    Macro's button is ALWAYS available — it edits Macro's own delegated-default
+        //    curve for the lane (the curve every ceded voice tracks) — locked only with no
+        //    Monsoon attached (the store lives on Monsoon; the DirCell lock precedent).
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+            bindWidget<dotModular::WarpCurveButton>(
+                "param_warpedit_" + std::to_string(el),
+                std::function<void(dotModular::WarpCurveButton*)>([this, el](dotModular::WarpCurveButton* w) {
+                    w->laneCol = editorDirCol[el];
+                    Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
+                    w->box.size = mm2px(Vec(6.5f, ED_LANE_H * 0.9f));   // the cell-column rhythm
+                    w->box.pos  = ctr.minus(w->box.size.div(2.f));
+                    w->lockWhen = [this]() { return !getMonsoon(); };
+                    w->onOpen   = [this, el]() { openWarpPopup(el); };
+                })
+            );
+        }
+
         // Direction gate-mod jacks (input_dir_mod_<lane>) — mono, gate cycles Fwd→Rev→Pend→PingPong.
         {
             Module* mod_ = module;
@@ -376,6 +395,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     Monsoon* getMonsoon() {
         return module ? findMonsoonEitherSide(module) : nullptr;
     }
+
+    // CC_PROMPT_04: opened by the CRV-column buttons (param_warpedit_<el>). STEP 3 lands
+    // the curve popup itself (WarpCurvePopup over the left cluster — the lane's bars stay
+    // visible; Macro edits globalWarpF[lane], its delegated-default curve); STEP 2 wires
+    // the trigger so the control is bound from the start.
+    void openWarpPopup(int lane) { (void)lane; }
 
     // STEP 4b: ownership authority for the Macro widget's V1 view. Macro is present
     // (this widget IS Macro). SANDS CONSOLIDATION Step 7: monoV1Owner removed — V1
@@ -716,6 +741,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         const float headerY = mm2px(ED_Y - 3.0f);   // 11mm — above lane 0 (14), below the tab band
         for (int c = 0; c < 6; ++c)
             nvgText(vg, colX[c], headerY, colName[c], nullptr);
+        // CC_PROMPT_04: the warp curve-editor ("CRV") column header, at the button column's X.
+        { bool ok = false; Vec cw = anchorMM("param_warpedit_0", ok);
+          if (ok) nvgText(vg, cw.x, headerY, "CRV", nullptr); }
     }
 };
 

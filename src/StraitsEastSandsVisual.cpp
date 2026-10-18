@@ -11,6 +11,7 @@
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/SvgPanelKit.hpp"
 #include "ui/OwnerCell.hpp"
+#include "ui/WarpCurveButton.hpp"   // CC_PROMPT_04: the CRV-column popup trigger
 #include "ui/DimmableTrimpot.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "ui/StoreBound.hpp"      // bindStoreKnob (de-param)
@@ -544,6 +545,27 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 }
             );
         }
+
+        // ── CC_PROMPT_04 STEP 2: warp curve-editor trigger buttons (param_warpedit_<el>).
+        //    One per lane in the "CRV" column, right of the dir cell. Gating per the settled
+        //    forks: available iff the lane is East's OWN for the CURRENTLY-SELECTED tab's
+        //    voice — grey + inert while Macro owns it (laneOwnedByMacroTopo, the same
+        //    predicate family as the spread knob / DirCell locks; with no Macro attached
+        //    every lane is East's own and its own slot IS what plays, so the button stays
+        //    live). The gate keys on the SELECTED tab's voice, not a fixed voice.
+        for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
+            bindWidget<dotModular::WarpCurveButton>(
+                "param_warpedit_" + std::to_string(el),
+                [this, el](dotModular::WarpCurveButton* w) {
+                    w->laneCol = dirCol[el];
+                    Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
+                    w->box.size = mm2px(Vec(6.5f, ED_LANE_H * 0.9f));   // the cell-column rhythm
+                    w->box.pos  = ctr.minus(w->box.size.div(2.f));
+                    w->lockWhen = [this, el]() { return laneOwnedByMacroTopo(el); };
+                    w->onOpen   = [this, el]() { openWarpPopup(el); };
+                }
+            );
+        }
         flushSpreadArcs();
 
         // dot.modular connect mark (brand mark; greyed when no Monsoon attached).
@@ -699,6 +721,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         Monsoon* m = getMonsoon();
         return m && m->expanderManager.cachedMacroSandsVisual != nullptr;
     }
+
+    // CC_PROMPT_04: opened by the CRV-column buttons (param_warpedit_<el>). STEP 3 lands
+    // the curve popup itself (WarpCurvePopup over the left cluster — the lane's bars stay
+    // visible); STEP 2 wires the trigger + gating so the control is bound from the start.
+    void openWarpPopup(int lane) { (void)lane; }
     // For East's OWN controls (base-spread, CV-depth): inert only when Macro is present
     // AND owns the lane (East base bypassed). Fully usable solo.
     // Topology-backed lane ownership for the CURRENT tab, used by laneEditBlockedFn and the

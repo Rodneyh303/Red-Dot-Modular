@@ -16,23 +16,24 @@ namespace StraitsMacroVisualIds {
     // rather than per-lane. SANDS CONSOLIDATION Step 3: widened 48→52HP (the extra
     // 10HP on the RIGHT carries the 6-column mix-in send row per lane); left/center column
     // geometry still matches East for consistency.
-    // CC_PROMPT_04 STEP 1: +9mm for the w-level column (ED_X 88→97, right side +9);
-    // STEP 2 adds the warp-edit button column (+9mm more).
-    static constexpr float W_MM    = 303.64f;   // 58HP + 9mm (warp w-level column)
+    // CC_PROMPT_04: +9mm for the w-level column (ED_X 88→97) + 9mm for the warp-edit
+    // button column ("CRV", right of the dir cell).
+    static constexpr float W_MM    = 312.64f;   // 58HP + 9mm (w-level) + 9mm (warp-edit)
     static constexpr float WLEVEL_X   = 88.f;   // w-level knob column (the OLD ED_X slot)
     static constexpr float OWNER_X    = 214.f;  // owner cell column (matches East; +9 with ED_X)
     static constexpr float DIR_X      = 221.f;  // direction cell column (matches East)
-    static constexpr float DIR_MOD_X  = 229.f;  // direction gate-mod jack column
-    static constexpr float PROB_OUT_X = 239.f;  // poly prob-out jack (moved L to clear the send cols)
+    static constexpr float WARPEDIT_X = 229.f;  // CC_PROMPT_04 STEP 2: "CRV" button column
+    static constexpr float DIR_MOD_X  = 238.f;  // direction gate-mod jack column (+9 for CRV)
+    static constexpr float PROB_OUT_X = 248.f;  // poly prob-out jack (moved L to clear the send cols)
     // ── RHS mix-in SEND grid (6 columns × 7 rows, row-aligned per lane). SANDS CONSOLIDATION
     //    Step 3: single 6-knob row per lane, 9mm pitch (matches left-side mod knobs).
     //    Cols 0..3 = LEN/OFF/ROT/SPR sends, col 4 = LOR tap, col 5 = SPR tap.
-    static constexpr float SEND_COL0_X = 249.f;   // LEN send   (+9 with the grid shift)
-    static constexpr float SEND_COL1_X = 258.f;   // OFF send
-    static constexpr float SEND_COL2_X = 267.f;   // ROT send
-    static constexpr float SEND_COL3_X = 276.f;   // SPR send
-    static constexpr float SEND_COL4_X = 285.f;   // LOR tap (PRE/POST)
-    static constexpr float SEND_COL5_X = 294.f;   // SPR tap (PRE/POST)
+    static constexpr float SEND_COL0_X = 258.f;   // LEN send   (+9 grid shift, +9 CRV column)
+    static constexpr float SEND_COL1_X = 267.f;   // OFF send
+    static constexpr float SEND_COL2_X = 276.f;   // ROT send
+    static constexpr float SEND_COL3_X = 285.f;   // SPR send
+    static constexpr float SEND_COL4_X = 294.f;   // LOR tap (PRE/POST)
+    static constexpr float SEND_COL5_X = 303.f;   // SPR tap (PRE/POST)
     // Bound to the grid so Mono/East/Macro cannot drift (mirrors East). 7 poly lanes
     // (MEL/OCT/QMIX/REST/ACC/VAR/LEG), LANE_H=13. Was a stale hardcoded ROW_BOT=108 /
     // N_ROWS=4 (pre-QMIX "REST/MEL/OCT/ACCENT"); keep them grid-derived so the file can

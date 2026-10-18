@@ -5,7 +5,7 @@ red corner screws. nanosvg-safe (no masks/gradients/text-for-controls)."""
 import math, os
 S = 75.0/25.4
 def px(mm): return round(mm*S, 2)
-W_MM, H_MM = 252.84, 128.5  # 48HP + 9mm for the w-level column (CC_PROMPT_04 STEP 1: ED_X shifts +9; STEP 2 adds the warp-edit button column, +9 more)
+W_MM, H_MM = 261.84, 128.5  # 48HP + 9mm (w-level column, CC_PROMPT_04 STEP 1) + 9mm (warp-edit button column, STEP 2)
 PW, PH = px(W_MM), px(H_MM)
 
 N = 7   # 7 editor lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG), one row each
@@ -21,11 +21,12 @@ ED_X, ED_Y = 97.0, 14.0   # +9mm: the w-level column sits LEFT of the grid (bars
 ED_W = 111.0        # editor width (fixed; no longer tied to PROB_OUT_X — matches hpp)
 OWNER_X = 214.0     # owner-source cell column, right of the editor (matches hpp; +9 with ED_X)
 DIR_X = 221.0       # direction cell column (Fwd/Rev/Pend/PingPong), right of owner (matches hpp)
+WARPEDIT_X = 229.0  # CC_PROMPT_04 STEP 2: warp curve-editor trigger button column ("CRV"), right of the dir cell
 # Jack columns follow the TOGGLE order left->right (owner/delegation cell, then dir cell),
 # so each jack sits under the control it modulates instead of crossing over.
-DELEG_MOD_X = 229.0 # delegation gate-mod jack column (gate flips local/delegated)
-DIR_MOD_X = 237.0   # direction gate-mod jack column (gate cycles Fwd→Rev→Pend→PingPong)
-PROB_OUT_X = 245.0  # right-strip jack column, pushed right by the mod jack columns (matches hpp)
+DELEG_MOD_X = 238.0 # delegation gate-mod jack column (gate flips local/delegated; +9 for the CRV column)
+DIR_MOD_X = 246.0   # direction gate-mod jack column (gate cycles Fwd→Rev→Pend→PingPong)
+PROB_OUT_X = 254.0  # right-strip jack column, pushed right by the mod jack columns (matches hpp)
 ED_H = 91.0   # OPT-B: 7 lanes x 13mm — East adds Q-MIX at index 2 (MEL/OCT/QMIX/REST/ACC/VAR/LEG); editor 14->105, ~6mm above MBS
 ED_LANES = 7  # OPT-B: editor lanes drawn (Q-MIX added at index 2)
 POLY_LANES = 7  # spread/poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG) — all rows now carry
@@ -183,6 +184,12 @@ def gen(dark):
     A(f'<line x1="{px(_ed_right+1.4):.1f}" y1="{px(_by):.1f}" x2="{px(_ed_right+1.4):.1f}" y2="{px(_by+_bh):.1f}" stroke="{t["edborder"]}" stroke-width="1.2" opacity="0.8"/>')
     A(f'<text x="{px(OWNER_X):.1f}" y="{px(_by-1.4):.1f}" font-family="sans-serif" font-size="{px(2.0):.1f}" fill="{t["edborder"]}" text-anchor="middle">SRC</text>')
 
+    # ── CC_PROMPT_04 STEP 2: the warp curve-editor ("CRV") button column — a faint
+    #    backing + header, right of the dir cell (the live WarpCurveButton draws itself).
+    _cw2 = 6.5
+    A(f'<rect x="{px(WARPEDIT_X-_cw2*0.5-_pad):.1f}" y="{px(_by):.1f}" width="{px(_cw2+2*_pad):.1f}" height="{px(_bh):.1f}" rx="{px(1.0):.1f}" fill="#ffffff" fill-opacity="0.05"/>')
+    A(f'<text x="{px(WARPEDIT_X):.1f}" y="{px(_by-1.4):.1f}" font-family="sans-serif" font-size="{px(2.0):.1f}" fill="{t["edborder"]}" text-anchor="middle">CRV</text>')
+
     # ── below the editor + footer: Marina Bay water (waves) as an integrated
     #    base band spanning the full control-to-edge width ──
     A(waves(ED_X, 112.0, t, op=0.6, rows=3, span_mm=ED_W))
@@ -264,6 +271,9 @@ def gen(dark):
         # East store warpW[slot*7+lane] (slot = the selected tab's voice). EVERY lane gets one
         # (booleans too — inert until their engine consumer warps, the -18b §3 deferral).
         named(f"param_wlevel_{el}", WLEVEL_X, y)
+        # warp curve-editor trigger buttons (param_warpedit_<editorLane>) — CC_PROMPT_04 STEP 2:
+        # opens the popup for (this panel, lane). Same on every lane (no lane is special).
+        named(f"param_warpedit_{el}", WARPEDIT_X, y)
     # Owner cells (param_owner_<editorLane>) — 5 poly (0..4) + VAR/LEG (5,6). All editor lane.
     for el in range(ED_LANES):
         A(f'<circle id="param_owner_{el}" cx="{px(OWNER_X):.2f}" cy="{px(rowY(el)):.2f}" '
