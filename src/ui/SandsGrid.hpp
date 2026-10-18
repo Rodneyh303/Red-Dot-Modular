@@ -40,8 +40,10 @@ namespace SandsGrid {
     static_assert(TAB_TOP + TAB_ROWS * TAB_ROW_H <= LANE_TOP,
                   "voice-tab band must finish above lane 0");
 
-    // Editor column (unchanged; already shared by all three).
-    static constexpr float ED_X = 88.f;
+    // Editor column. CC_PROMPT_04 STEP 1: ED_X 88→97 — the w-level knob column takes the
+    // old 88 slot LEFT of the grid on East+Macro (bars keep width; everything downstream
+    // of the grid shifts +9 with it in the generators + widget headers).
+    static constexpr float ED_X = 97.f;
     static constexpr float ED_W = 111.f;
 
     static constexpr float monoBottom() { return LANE_TOP + MONO_LANES * LANE_H; }  // 105 (7×13)

@@ -9,17 +9,19 @@ using namespace MonsoonIds;
 
 namespace StraitsEastVisualIds {
 
-    // ── Panel geometry (48HP — +4HP for dir_mod + deleg_mod + prob_out jack columns) ──
-    static constexpr float W_MM        = 243.84f;  // 48HP
-    static constexpr float ED_X        = 88.f;
+    // ── Panel geometry (48HP + 9mm w-level column — CC_PROMPT_04 STEP 1; STEP 2 adds the
+    //    warp-edit button column, +9mm more) ──
+    static constexpr float W_MM        = 252.84f;  // 48HP + 9mm (warp w-level column)
+    static constexpr float WLEVEL_X    = 88.f;     // w-level knob column (the OLD ED_X slot)
+    static constexpr float ED_X        = 97.f;     // +9mm: w-level column sits left of the grid
     static constexpr float ED_W        = 111.f;
-    static constexpr float OWNER_X     = 205.f;
-    static constexpr float DIR_X       = 212.f;
+    static constexpr float OWNER_X     = 214.f;
+    static constexpr float DIR_X       = 221.f;
     // Column order matches the TOGGLE order left->right (delegation cell, then direction
     // cell), so the jacks line up with the controls they modulate instead of crossing over.
-    static constexpr float DELEG_MOD_X = 220.f;    // delegation gate-mod jack column
-    static constexpr float DIR_MOD_X   = 228.f;    // direction gate-mod jack column
-    static constexpr float PROB_OUT_X  = 236.f;    // prob-out jack column (shifted right)
+    static constexpr float DELEG_MOD_X = 229.f;    // delegation gate-mod jack column
+    static constexpr float DIR_MOD_X   = 237.f;    // direction gate-mod jack column
+    static constexpr float PROB_OUT_X  = 245.f;    // prob-out jack column (shifted right)
     static constexpr int   N_ROWS      = dotModular::SandsGrid::POLY_LANES;  // 5 — 1 row per spread lane
     // Bound to the grid so Mono/East/Macro cannot drift. Option B: LANE_H=13.
     static constexpr float ROW_TOP = dotModular::SandsGrid::LANE_TOP;      // 14

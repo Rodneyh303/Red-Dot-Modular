@@ -939,6 +939,37 @@ struct Monsoon : Module {
     float getGlobalWarpW(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpW[lane] : 0.f; }
     void  setGlobalWarpW(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpW[lane] = x; }
 
+    // ── CC_PROMPT_04 (warp UI): UI-thread warp edits → scoped mirror rebuild ─────
+    // The panel StoreKnob setters / the curve popup write the warp stores above on the
+    // UI thread, then bump a pending SCOPE here; Monsoon::process consumes it right
+    // after the bank wire and performs the matching rebuildWarpMirror* on the AUDIO
+    // thread — warped_ keeps a single writer (the gate-mod edge-counter pattern,
+    // inverted: UI bumps, audio consumes; plain fields, like params[]). Latency is
+    // ≤1 block (~3ms) — "display rebuilds immediately" at screen cadence (03 §2).
+    // Scopes follow 03's dirty-mask ruling: a Sands (East) edit is per-(voice,lane)
+    // (16 cells); a Macro edit is the lane across DELEGATING voices. Mixed scopes
+    // accumulating before the next block widen to ALL (a full rebuild is 0.064ms —
+    // 03's cost ruling — so the accumulation errs simple, never stale).
+    enum class WarpUiScope : uint8_t { NONE = 0, ALL, VOICE_LANE, LANE_DELEGATING };
+    WarpUiScope warpUiScope_ = WarpUiScope::NONE;
+    int  warpUiV_ = -1, warpUiLane_ = -1;
+    void requestWarpRebuildVoiceLane(int v, int lane) {
+        if (v < 0 || v >= 16 || lane < 0 || lane >= 7) return;
+        if (warpUiScope_ == WarpUiScope::NONE) {
+            warpUiScope_ = WarpUiScope::VOICE_LANE; warpUiV_ = v; warpUiLane_ = lane;
+        } else if (warpUiScope_ != WarpUiScope::VOICE_LANE || warpUiV_ != v || warpUiLane_ != lane) {
+            warpUiScope_ = WarpUiScope::ALL;   // a second, different scope in flight
+        }
+    }
+    void requestWarpRebuildLaneDelegating(int lane) {
+        if (lane < 0 || lane >= 7) return;
+        if (warpUiScope_ == WarpUiScope::NONE) {
+            warpUiScope_ = WarpUiScope::LANE_DELEGATING; warpUiLane_ = lane;
+        } else if (warpUiScope_ != WarpUiScope::LANE_DELEGATING || warpUiLane_ != lane) {
+            warpUiScope_ = WarpUiScope::ALL;
+        }
+    }
+
     // Spread target mode (0=Anchor V1, 1=Follow CA) per poly lane, UNIFIED PL_* order
     // (0=MEL,1=OCT,2=QMIX,3=REST,4=ACC,5=VAR,6=LEG — the menu indexes SandsLaneNames::
     // EDITOR_LONG, which is this order; pe.spreadTargetMode mirrors it 1:1).

@@ -387,6 +387,38 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             }
         }
 
+        // ── CC_PROMPT_04 STEP 1: w-level knobs (param_wlevel_<el>) — the warp depth for
+        //    (selected tab's voice, lane), store warpW[slot*7+lane] via get/setWarpW.
+        //    Store-backed (StoreKnob), NOT host-exposed. East authors the voice's OWN
+        //    value: a lane ceded to Macro locks + DISPLAYS the Macro-delegated default
+        //    (getGlobalWarpW — the value in effect, engine-side) exactly like the spread
+        //    base above; reclaiming reverts to the stored value. Present on EVERY lane
+        //    incl booleans (inert there until their engine consumer warps — the -18b §3
+        //    deferral; present-but-inert, not a bug). The setter bumps Monsoon's pending
+        //    warp-rebuild scope; process() performs the scoped rebuildWarpMirrorVoiceLane
+        //    on the audio thread (single writer of warped_ — the gate-mod pattern, inverted).
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+            auto* wk = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                "param_wlevel_" + std::to_string(el),
+                [this](){ return getMonsoon(); },
+                0.f, 1.f, 0.f, std::string(EDN[el]) + " warp level",
+                [this, el](Monsoon& m)          { return m.getWarpW(currentSlot(), el); },
+                [this, el](Monsoon& m, float v) {
+                    m.setWarpW(currentSlot(), el, v);
+                    m.requestWarpRebuildVoiceLane(currentSlot(), el);
+                });
+            if (wk) {
+                wk->lockWhen = [this, el]() { return laneOwnedByMacroTopo(el); };
+                wk->displayValueFn = [this, el]() {
+                    // Delegated ⟺ Macro owns the lane for the SELECTED tab's voice: show
+                    // the default depth actually in effect. NaN = not delegated, show own.
+                    if (!laneOwnedByMacroTopo(el)) return std::numeric_limits<float>::quiet_NaN();
+                    Monsoon* m = getMonsoon();
+                    return m ? m->getGlobalWarpW(el) : std::numeric_limits<float>::quiet_NaN();
+                };
+            }
+        }
+
         // Macro/East blend controls (bound to the display proxies; copied to/from
         // the per-voice MACRO params on voice switch + each frame). Owner = a
         // latching on/off button (off=Macro owns base, on=East owns). With NO Macro

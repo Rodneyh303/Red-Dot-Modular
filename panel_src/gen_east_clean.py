@@ -5,7 +5,7 @@ red corner screws. nanosvg-safe (no masks/gradients/text-for-controls)."""
 import math, os
 S = 75.0/25.4
 def px(mm): return round(mm*S, 2)
-W_MM, H_MM = 243.84, 128.5  # 48HP (44 + 4HP for dir_mod + deleg_mod + prob_out jack columns)
+W_MM, H_MM = 252.84, 128.5  # 48HP + 9mm for the w-level column (CC_PROMPT_04 STEP 1: ED_X shifts +9; STEP 2 adds the warp-edit button column, +9 more)
 PW, PH = px(W_MM), px(H_MM)
 
 N = 7   # 7 editor lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG), one row each
@@ -15,15 +15,17 @@ N = 7   # 7 editor lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG), one row each
 # Mirrors src/ui/SandsGrid.hpp — tabs sit ABOVE the grid (3..13mm), lane 0 starts at 14.
 TAB_TOP, TAB_ROW_H = 3.0, 5.0
 TAB_TOP_OFFSET_MM = 5.0
-ED_X, ED_Y = 88.0, 14.0
+WLEVEL_X = 88.0     # w-level knob column (CC_PROMPT_04 STEP 1) — the OLD ED_X slot, so the
+                    # left cluster keeps its 9mm rhythm (…61,70 attens, 80 spread, 88 w-level)
+ED_X, ED_Y = 97.0, 14.0   # +9mm: the w-level column sits LEFT of the grid (bars keep width/ED_W)
 ED_W = 111.0        # editor width (fixed; no longer tied to PROB_OUT_X — matches hpp)
-OWNER_X = 205.0     # owner-source cell column, right of the editor (matches hpp)
-DIR_X = 212.0       # direction cell column (Fwd/Rev/Pend/PingPong), right of owner (matches hpp)
+OWNER_X = 214.0     # owner-source cell column, right of the editor (matches hpp; +9 with ED_X)
+DIR_X = 221.0       # direction cell column (Fwd/Rev/Pend/PingPong), right of owner (matches hpp)
 # Jack columns follow the TOGGLE order left->right (owner/delegation cell, then dir cell),
 # so each jack sits under the control it modulates instead of crossing over.
-DELEG_MOD_X = 220.0 # delegation gate-mod jack column (gate flips local/delegated)
-DIR_MOD_X = 228.0   # direction gate-mod jack column (gate cycles Fwd→Rev→Pend→PingPong)
-PROB_OUT_X = 236.0  # right-strip jack column, pushed right by the mod jack columns (matches hpp)
+DELEG_MOD_X = 229.0 # delegation gate-mod jack column (gate flips local/delegated)
+DIR_MOD_X = 237.0   # direction gate-mod jack column (gate cycles Fwd→Rev→Pend→PingPong)
+PROB_OUT_X = 245.0  # right-strip jack column, pushed right by the mod jack columns (matches hpp)
 ED_H = 91.0   # OPT-B: 7 lanes x 13mm — East adds Q-MIX at index 2 (MEL/OCT/QMIX/REST/ACC/VAR/LEG); editor 14->105, ~6mm above MBS
 ED_LANES = 7  # OPT-B: editor lanes drawn (Q-MIX added at index 2)
 POLY_LANES = 7  # spread/poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG) — all rows now carry
@@ -190,8 +192,9 @@ def gen(dark):
     # ── control group recess (left) — wraps the editor-aligned rows ──
     # box left edge clears the leftmost jack (JACK_X[0]=6, r=3.9 → left extent 2.1mm)
     gx,gy=1.5,ctrlY(0)-ED_LANE_H*0.5-3.0
-    # recess spans all 7 control rows (5 spread lanes + VAR/LEG rows 5,6)
-    gw,gh=(SPREAD_X+6.0)-gx,(ctrlY(N-1)+ED_LANE_H*0.5+3.0)-gy
+    # recess spans all 7 control rows (5 spread lanes + VAR/LEG rows 5,6), now wrapping the
+    # w-level column too (CC_PROMPT_04 STEP 1: the recess grew from SPREAD_X+6 to WLEVEL_X+6)
+    gw,gh=(WLEVEL_X+6.0)-gx,(ctrlY(N-1)+ED_LANE_H*0.5+3.0)-gy
     A(f'<rect x="{px(gx):.1f}" y="{px(gy):.1f}" width="{px(gw):.1f}" height="{px(gh):.1f}" rx="{px(2):.1f}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="1"/>')
     sepx=0.5*(JACK_X[-1]+ATTEN_X[0])  # separator between jack cluster and atten cluster
     A(f'<line x1="{px(sepx):.1f}" y1="{px(gy+2):.1f}" x2="{px(sepx):.1f}" y2="{px(gy+gh-2):.1f}" stroke="{t["groupline"]}" stroke-width="0.75" opacity="0.6"/>')
@@ -214,6 +217,7 @@ def gen(dark):
         for x in JACK_X:  jack(x,y)
         for x in ATTEN_X: trim(x,y,t["gold"])
         trim(SPREAD_X,y,t["teal"])
+        trim(WLEVEL_X,y,t["wellring"])   # CC_PROMPT_04: w-level (warp depth) — neutral ring, distinct from teal spread / gold attens
 
     # ── Macro/East blend controls — 3 labelled groups (REST / MELODY / OCTAVE),
     #    each a demarked box stacked as: lane-name header → owner latch (OWN) →
@@ -256,6 +260,10 @@ def gen(dark):
         for c,x in enumerate(JACK_X):  named(f"input_cv_{el}_{c}",    x, y)
         for c,x in enumerate(ATTEN_X): named(f"param_atten_{el}_{c}", x, y)
         named(f"param_spr_{el}", SPREAD_X, y)
+        # w-level knobs (param_wlevel_<editorLane>) — CC_PROMPT_04 STEP 1: per-lane warp depth,
+        # East store warpW[slot*7+lane] (slot = the selected tab's voice). EVERY lane gets one
+        # (booleans too — inert until their engine consumer warps, the -18b §3 deferral).
+        named(f"param_wlevel_{el}", WLEVEL_X, y)
     # Owner cells (param_owner_<editorLane>) — 5 poly (0..4) + VAR/LEG (5,6). All editor lane.
     for el in range(ED_LANES):
         A(f'<circle id="param_owner_{el}" cx="{px(OWNER_X):.2f}" cy="{px(rowY(el)):.2f}" '

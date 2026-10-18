@@ -234,6 +234,25 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             if (sp) pendingSpreadArcs.push_back({sp, el});   // arc reads the lane's spread
         }
 
+        // ── CC_PROMPT_04 STEP 1: w-level knobs (param_wlevel_<el>) — Macro's
+        //    Macro-delegated DEFAULT depth per lane (globalWarpW[lane]): the value every
+        //    ceded (owner()==MACRO) voice on that lane tracks (WarpBank's delegated mix).
+        //    Same delegation pattern as the spread base above (getGlobalSpread) — Macro
+        //    authors the default, always editable (its globals exist regardless of East).
+        //    The setter bumps Monsoon's pending warp-rebuild scope; process() performs
+        //    rebuildWarpMirrorLaneDelegating (that lane across DELEGATING voices only) on
+        //    the audio thread — prompt-03's "Macro curve/w edit" dirty scope.
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+            redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                "param_wlevel_" + std::to_string(el), storeResolver(),
+                0.f, 1.f, 0.f, std::string(EDN[el]) + " warp level (delegated default)",
+                [el](Monsoon& m)          { return m.getGlobalWarpW(el); },
+                [el](Monsoon& m, float v) {
+                    m.setGlobalWarpW(el, v);
+                    m.requestWarpRebuildLaneDelegating(el);
+                });
+        }
+
         // Macro→voice MIX-IN send 2×2 grids — anchor param_send_<el>_<item>, store the same lane.
         // STORE-BACKED: reads/writes editor.macroSend for the viewed voice (slot resolved LIVE).
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el)

@@ -703,6 +703,21 @@ void Monsoon::process(const ProcessArgs& args) {
     // address) and are covered by pendingRegenB → recomputeEffective* → rebuild.
     engine.pe.setWarpBank(&editor.warp);
 
+    // CC_PROMPT_04 (warp UI): consume any pending UI warp-edit scope — the East/Macro
+    // panel StoreKnobs + curve popup bumped it after writing the warp stores. The
+    // audio thread performs the scoped rebuildWarpMirror* here, so warped_ keeps a
+    // single writer; ≤1 block of latency reads as an immediate display refresh.
+    switch (warpUiScope_) {
+        case WarpUiScope::VOICE_LANE:
+            engine.pe.rebuildWarpMirrorVoiceLane(warpUiV_, warpUiLane_); break;
+        case WarpUiScope::LANE_DELEGATING:
+            engine.pe.rebuildWarpMirrorLaneDelegating(warpUiLane_); break;
+        case WarpUiScope::ALL:
+            engine.pe.rebuildWarpMirrorAll(); break;
+        default: break;
+    }
+    warpUiScope_ = WarpUiScope::NONE;
+
     // --- Audio-rate Input Fetching ---
     InputState input;
     input.clk   = cachedClkConnected ? inputs[CLK_INPUT].getVoltage() : 0.f;
