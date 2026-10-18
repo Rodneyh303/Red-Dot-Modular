@@ -656,3 +656,48 @@ THE COMPLETE TAIL-DEPENDENCE MAP (all three points now pinned):
      correlation. Tune by ear. Reuses existing machinery. (A LIKELY FUTURE DIRECTION — Rodney.)
   3. DMO / common-shock: lambda>0 CALIBRATED. MO constructed directly via shock intensities.
      The rigorous/pricing version; the published route (arXiv 2009.00368).
+
+────────────────────────────────────────────────────────────────────────────────
+## IF ALL CDFs ARE STEP FUNCTIONS (Rodney) — the DISCRETE regime (≠ clamp; the native lane case)
+
+DISTINCT from clamp. A step CDF means the output distribution is purely DISCRETE (mass at a
+finite set of points, NO continuous stretch anywhere). F^-1 is then itself a step function = a
+BIN/FADER map: partition [0,1] at the CDF jumps into intervals I_1..I_K, and Y_v = bin k iff
+U_v in I_k. (Clamp = PARTIAL stepping: a continuous CDF with 2 flat spots → MIXED cont+singular.
+Full step CDF = COMPLETE stepping: no continuous stretch → DISCRETE. Different objects.)
+
+THE JOINT LAW = the Gaussian-MA copula measure on the bin-rectangle GRID:
+    Pr[Y_i=k, Y_j=l] = C_Gauss-MA( I^i_k x I^j_l )   (the copula's measure of that rectangle)
+So the dependence is the continuous Gaussian-MA copula INTEGRATED over rectangles — its discrete
+footprint. NO Lebesgue cont/singular split to make: the output is discrete, full stop; the copula
+is the discrete copula of a lattice-supported vector.
+
+UNIQUENESS (at its most extreme): with discrete margins Sklar uniqueness fails hard — the copula
+is pinned ONLY at the grid corners (F_i(jump), F_j(jump)) and is arbitrary (2-increasing) off the
+grid. Infinitely many copulas reproduce the same box masses. The output keeps ONLY the rectangle
+masses; all sub-rectangle info is gone. "The copula is Gaussian-MA" is true only in the weak
+sense that A Gauss-MA copula reproduces the grid.
+
+DOES MA SURVIVE? Yes, but QUANTIZED at the grid resolution (better than the clamp-to-binary case,
+because bin assignment is a monotone COARSENING of the rank, not a collapse to one bit):
+  - FINE step CDF (many bins): discrete copula ≈ a close lattice approximation of the continuous
+    Gaussian-MA copula. MA essentially intact, just quantized.
+  - COARSE step CDF (few bins): blocky — rho still present via the rectangle measures, coarsely
+    resolved.
+  - 2 BINS = one threshold: the binary/PROBIT limit — orthant probabilities Phibar_2(t_i,t_j;rho)
+    (= the "full clamp to binary" case; see that note). The classical Gaussian-copula default
+    model (Li/CreditMetrics), the ancestor of the DMO paper.
+So step-CDF INTERPOLATES: infinitely many bins → clean continuous copula; 2 bins → probit. MA
+doesn't die, it renders at the grid resolution.
+
+NOT A CORNER CASE — IT'S WHAT THE DISCRETE VALUE LANES ALREADY DO: a step CDF IS a fader/weight
+set, and MELODY/OCTAVE already consume their uniform through a step map (pickSemitone on the
+fader weights — the discrete inverse-CDF). So:
+  - the discrete value lanes are ALREADY in the step-CDF regime (not a special mode);
+  - a CONTINUOUS warp F^-1 composed BEFORE the fader step (faderMap ∘ F^-1 — the melody-seam
+    result) is step ∘ continuous = STILL a step CDF overall, with warp-ADJUSTED bin masses. Warp
+    on these lanes = reshaping the bin masses of a quantized Gaussian-MA copula.
+This reframes the three regimes cleanly:
+  CONTINUOUS warp  → clean, unique, uniform-margin Gauss-MA copula (abs. continuous).
+  CLAMP (partial step) → MIXED: Gauss-MA continuous part + Marshall-Olkin singular part.
+  STEP CDF (full)  → DISCRETE: Gauss-MA copula measure on the bin grid; MA quantized; 2-bin=probit.
