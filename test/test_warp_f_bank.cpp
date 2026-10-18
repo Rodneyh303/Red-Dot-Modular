@@ -493,6 +493,50 @@ int main() {
               "out-of-range pool ref loads identity (safe default)");
     }
 
+    std::printf("[S7] MONOTONE (Sklar-safety): strictly increasing in double AND stored float32\n");
+    {
+        // The four VERIFIED cases (CC_PROMPT_02 — pre-computed, not estimated: ZERO
+        // inversions AND ZERO ties over a 10,000-pt grid at these w in float32). The
+        // conc=5 Kumaraswamy is the STEEPEST curve the editor allows — the binding case
+        // (it passes ⟹ the gentler curves do too).
+        double ka = 0.0, kb = 0.0;
+        dotModular::KumaraswamyDistribution::abFromModeConc(0.5, 5.0, ka, kb);
+        check(ka == 5.0 && kb == 25.8, "the conc=5 case is exactly (a=5, b=25.8) via abFromModeConc");
+
+        struct Case { const char* name; dotModular::WarpF f; };
+        const Case cases[] = {
+            {"IdentityWarp (the default)",                 dotModular::IdentityWarp{}},
+            {"PowerWarp(k=5) — steep near 0",              dotModular::PowerWarp{5.0}},
+            {"KumaraswamyWarp(5,25.8) — conc=5 steepest",  dotModular::KumaraswamyWarp{ka, kb}},
+            {"ReversedPowerWarp(theta=5) — steep near 1",  dotModular::ReversedPowerWarp{5.0}},
+        };
+        const float ws[3] = {0.f, 0.5f, 1.f};
+        const int N = 10000;
+        for (const Case& c : cases) {
+            for (float w : ws) {
+                dotModular::WarpBank bank;
+                bank.warpF[dotModular::WarpBank::index(8, 3)] = c.f;   // fixed (v,lane)
+                bank.warpW[dotModular::WarpBank::index(8, 3)] = w;
+                bool monoD = true, monoF = true;
+                double prevD = bank.warpedValue(8, 3, 0.0);
+                float  prevF = (float)prevD;
+                for (int i = 1; i < N; ++i) {
+                    const double u = (double)i / (double)(N - 1);
+                    const double d = bank.warpedValue(8, 3, u);
+                    const float  f = (float)d;                          // matching warped_
+                    if (!(prevD < d)) monoD = false;   // STRICT: no inversions, no ties
+                    if (!(prevF < f)) monoF = false;
+                    prevD = d; prevF = f;
+                }
+                char buf[128];
+                std::snprintf(buf, sizeof buf, "%s at w=%g: strictly increasing (double)", c.name, (double)w);
+                check(monoD, buf);
+                std::snprintf(buf, sizeof buf, "%s at w=%g: strictly increasing (stored float32)", c.name, (double)w);
+                check(monoF, buf);
+            }
+        }
+    }
+
     std::printf("%s: %d passed, %d failed\n", (g_fail == 0 ? "ALL OK" : "FAILURES"), g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
