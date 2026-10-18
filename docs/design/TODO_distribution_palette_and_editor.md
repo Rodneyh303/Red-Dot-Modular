@@ -51,7 +51,17 @@ SCOPE:
   do it AFTER that so the free-fn pattern exists to follow.
 
 ────────────────────────────────────────────────────────────────────────────────
-## 3. PDF X-AXIS autoscale (2nd x-axis) — editor display bug
+## 3. PDF display scaling — editor bug  [CORRECTED 2026-10-18b: it's a Y-MAX fix, not X-axis]
+
+CORRECTION: the original '2nd x-axis' framing was WRONG — the PDF never leaves [0,1] on x.
+The observed problem (trunc-normal mu+0.48 sigma0.50: flat-topped clipped teal dome) is the
+PDF Y-MAX excluding real FINITE edge-maxima. maxD is taken over the OPEN interval (correct for
+DIVERGENT edges: arcsine/power k<1), but trunc-normal has a real finite edge max that then
+clips flat. FIX: include finite edge-maxima in maxD, still exclude divergent ones. Display-only,
+single 0->1 x-axis kept. Full spec: CC_PROMPT_P1_palette_editor_START.md sub-task B.
+
+[original x-axis text below, superseded — kept for context]
+## 3-OLD. PDF X-AXIS autoscale (2nd x-axis) — editor display bug
 
 WHAT WE HAVE: dual Y-axis is done (DMCURVE_EDITOR §2) — LHS CDF 0->1, RHS PDF 0->AUTO-MAX
 (the y-autoscale we added). X axis is fixed 0->1.

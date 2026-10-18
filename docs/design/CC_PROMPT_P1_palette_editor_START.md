@@ -1,4 +1,4 @@
-# CC PROMPT P1 — palette/editor fixes: Kumaraswamy reparam + PDF x-axis autoscale
+# CC PROMPT P1 — palette/editor fixes: Kumaraswamy reparam + PDF y-max edge-clip fix
 
 Standalone, parallel to the main warp work. Two independent sub-tasks; do them as two commits
 on one branch. NEITHER depends on the warp Phase 3 prompts. Reversed-power (TODO #2) is NOT
@@ -53,46 +53,54 @@ TEST `test/test_kumaraswamy_reparam.cpp` (header-only, model on test_distributio
 Register `"test_kumaraswamy_reparam|"` in test/run_all.sh TESTS[]. GREEN.
 
 ────────────────────────────────────────────────────────────────────────────────
-## SUB-TASK B — PDF x-axis autoscale (2nd x-axis) for open-support types
+## SUB-TASK B — PDF y-max edge-clipping fix (NOT an x-axis change — see note)
 
-WHY (TODO #3): all types output [0,1], but LOGIT-NORMAL and LOGIT-SIGMOID have OPEN SUPPORT —
-density approaches the 0/1 edges asymptotically, so tight params cram nearly all visible density
-into a central sliver (e.g. [0.45,0.55]). On the fixed 0->1 x-axis that's a thin useless spike.
-The y-axis already autoscales (DistributionCurveWidget.hpp ~L141-191: sample pdf at N+1 pts,
-maxD over the OPEN interval excluding endpoints, normalize fill to maxD). Do the SAME for x.
+RETRACTED: the original "2nd x-axis" idea is dropped (Rodney). The PDF never leaves [0,1] on
+x — that was a misread of a CLIPPED TOP. The real bug is on the Y axis.
 
-THE FIX — a second x-range for the PDF, auto-ranged to where the visible density lives:
-- After sampling pdfs[] (the existing loop ~L145-149), compute an x-WINDOW [xLo,xHi] capturing
-  the visible mass: e.g. the smallest central span where pdf >= some fraction (say 1%) of maxD,
-  or the ~[0.5%, 99.5%] CDF quantile span (dist->invCDF is available — cheaper + robust). Pick
-  one; document it.
-- The PDF overlay + its RHS teal axis then plot against [xLo,xHi] instead of [0,1]: i.e. the PDF
-  fill's x maps through [xLo,xHi]->pixels, and a SECOND x-axis (ticked/labelled, teal, matched to
-  the PDF) shows that zoomed range. The CDF keeps its TRUE 0->1 x-axis (the main/bottom axis,
-  gold) — CDF value semantics are unchanged.
-- Only engage the zoom when it helps: if [xLo,xHi] is ~[0,1] already (bounded types: power,
-  mobius, triangular, ordinary kumaraswamy), DON'T draw a second x-axis — leave the single 0->1.
-  The zoom appears only when the density is actually concentrated (open-support tight params).
-- Follow the existing autoscale discipline (the comment at DistributionCurveWidget.hpp:29:
-  "smooth-on-release rescale, and a spike display-clamp") — the x-range rescales smoothly on
-  release, not jittering live per drag frame.
+THE BUG (DistributionCurveWidget.hpp ~L145-191): maxD is taken over the OPEN interval —
+`if (i > 0 && i < N && pdfs[i] > maxD)` (L149) excludes the endpoints — then the fill clamps
+`if (d > 1.0) d = 1.0` (L184). That's correct for DIVERGENT densities (arcsine, power k<1,
+Kumaraswamy a<1/b<1: edge→∞, a finite floored proxy must NOT define the scale). But it's WRONG
+for BOUNDED densities whose true max is AT or NEAR an endpoint — TRUNCATED-NORMAL especially
+("bounded bell, NON-ZERO edge density", per the palette notes): with mu≈0.48, sigma=0.50 the
+real normal's peak can sit near/outside [0,1] so the edge density is the genuine maximum. maxD
+excludes those samples → fill normalises to a too-small interior max → the edge regions CLIP
+FLAT against the ceiling. That flat-topped teal dome is the bug (observed in Rack, trunc-normal
+mu +0.48 sigma 0.50). Logit-normal / logit-sigmoid can hit the same at some params.
 
-DISPLAY-ONLY: stored curve, params, math, .dmcurve schema ALL unchanged. CDF x stays 0->1.
-No Distribution.hpp change, no engine change — only DistributionCurveWidget.hpp + its axis draw.
+THE FIX — distinguish "divergent edge" from "high FINITE edge":
+- Divergent edge → keep excluding it (the proxy is not a real max).
+- Finite edge that is a real maximum → INCLUDE it in maxD so the fill doesn't clip.
+Robust discrimination: for each endpoint, compare pdf(edge) to pdf(just inside, e.g. 1/(2N)).
+If the endpoint is finite and comparable to its neighbour (not exploding — not >> neighbour and
+below a divergence threshold), it's a REAL max → count it. If it's blowing up → divergent →
+exclude as now. (Alternative, simpler: cap every sample at a sane multiple — say 8–10× — of the
+INTERIOR max before taking maxD; a divergent edge is capped to "tall but finite" and counts
+partially, a finite edge counts fully. Pick whichever is cleaner; document it.)
+Net: trunc-normal's edge-max defines the scale → the dome reaches its true peak, nothing clips;
+power(k<1) still scales to its interior so the divergent spike doesn't flatten everything else.
 
-TESTABLE PART: factor the x-window computation into a pure free fn
-(e.g. `pdfVisibleXRange(const Distribution&, double fracOrQuantile, double& xLo, double& xHi)`)
-and test it header-only: logit-normal(mu=0.5,sigma=0.1) returns a narrow central [xLo,xHi];
-a bounded type (triangular, power ordinary param) returns ~[0,1]; monotone/degenerate returns
-sane bounds, no NaN. Register the test. The RENDERING (second axis drawn correctly) you CANNOT
-verify — say "needs Rack feel-test" in the PR.
+DISPLAY-ONLY: stored curve, params, math, schema ALL unchanged. X axis stays a single true
+0->1 (CDF gold, bottom). Only the PDF Y normalisation changes. DistributionCurveWidget.hpp only;
+no Distribution.hpp / engine change.
+
+TESTABLE: factor the max-finding into a pure free fn
+`double pdfVisibleYMax(const Distribution&, int N=200)` and test it header-only:
+  - trunc-normal(mu=0.48, sigma=0.50): the returned max INCLUDES the edge density (assert it
+    equals the actual max over the CLOSED [0,1] sampling, i.e. the edge is not excluded).
+  - power(k=0.5): the returned max is the INTERIOR-bounded one (the divergent 0-edge does NOT
+    blow the scale — assert max is finite and ~ the interior, not the floored edge proxy).
+  - triangular / ordinary kumaraswamy: unchanged, interior peak defines it.
+Register `"test_pdf_ymax|"` in run_all.sh. GREEN. The RENDERING (dome no longer clipped) you
+CANNOT verify — say "needs Rack feel-test" in the PR; the pure-fn test proves the scale logic.
 
 ────────────────────────────────────────────────────────────────────────────────
 ## DONE =
 - A: abFromModeConc/modeConcFromAb on KumaraswamyDistribution; internal (a,b) + schema
   unchanged; test_kumaraswamy_reparam green (round-trip, mode-correct, validity, edge).
-- B: pdfVisibleXRange pure fn + its test green; the widget draws a 2nd PDF x-axis when density
-  is concentrated, single 0->1 otherwise; CDF x untouched; smooth-on-release.
+- B: pdfVisibleYMax pure fn + its test green; finite edge-maxima now define the PDF scale (no
+  flat-top clip on trunc-normal) while divergent edges stay excluded; X axis stays single 0->1.
 - `bash test/run_all.sh` ALL GREEN. No warp/engine/schema changes. Two clean commits.
 - PR body: paste both tests' output; for B, state clearly that the rendering needs Rack feel-test.
 
