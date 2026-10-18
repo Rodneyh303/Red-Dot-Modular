@@ -355,6 +355,59 @@ PITCH LANGUAGE: "common-factor dependence", "co-spiking at audible quantiles", "
 marginals". NOT "tail dependence" — a reader who knows the frailty literature will check it.
 Full derivations: SESSION_LOG_2026-10-18.md sections 5-7.
 
+### THE TAIL-DEPENDENCE DOOR HAS A KNOWN KEY — the common-shock / DMO construction (Rodney)
+We kept finding lambda>0 unreachable: bounded factor + continuous marginals + Gaussian conditional coupling
+all force lambda=0, and the only exits (atoms, unbounded mixing) each cost a gift. There IS a principled
+construction that reaches genuine, CALIBRATABLE tail dependence, and it's Rodney's own published work:
+the DYNAMIC MARSHALL-OLKIN (DMO) / COMMON-SHOCK copula — Albanese, Crepey, Hoskinson, Saadeddine, "XVA
+Analysis From the Balance Sheet", Quantitative Finance 21(1), 2021 (arXiv 2009.00368); the common-shock
+default model is Crepey-Bielecki-Brigo (2014, ch.8-10), Crepey-Song (2016), Elouerkhaoui (2007,2017).
+
+How it works (credit → music translation): shocks are indexed by SUBSETS Y of names (voices); each shock
+fires at an independent exponential time with intensity gamma_Y, and when it fires it hits EVERY name in Y
+SIMULTANEOUSLY. A shock on {3,4} defaults names 3 and 4 at the same instant. That SIMULTANEITY puts an
+ATOM on the diagonal of the joint survival function for subset Y — and THAT atom IS the tail dependence
+(lambda>0), calibratable via gamma_Y. Conditional on the shock structure the names are INDEPENDENT, which
+is exactly the conditional-independence property our warp construction LACKS (ours keeps Gaussian-MA
+coupling under conditioning) — so DMO sits squarely in the Marshall-Olkin / Archimedean family, where ours
+does not.
+
+The relationship to our warp, stated exactly:
+- Our shared-theta warp = common FACTOR on the MARGINALS, continuous, bounded → frailty mixture, lambda=0,
+  enriched finite-quantile dependence. The lambda=0 CORNER of the common-shock family.
+- DMO = common SHOCKS on the values DIRECTLY, with simultaneous (atom) outcomes → genuine joint events,
+  lambda>0, calibratable joint rate. The lambda>0 INTERIOR of the same family.
+Same family; opposite choices about the atom. Ours declines it (to keep uniform margins + an identifiable
+Gaussian-MA copula); DMO embraces it (to get joint extremity).
+
+IF Monsoon ever wants real cross-voice JOINT-EXTREMITY — voices slamming to a shared value at the same step
+as a CALIBRATABLE RATE, not an inaudible knife-edge and not an accidental clamp artefact — DMO is the
+principled route: a per-step "shock" indexed by a voice-subset, firing at a controllable intensity, forcing
+a shared value on that subset. This is the rigorous version of the "tutti unison as an explicit feature with
+its own probability knob" idea (deferred). It gives lambda>0 HONESTLY with a calibratable joint rate.
+NOT scheduled — later, if ever; the warp foundation comes first. Recorded so the closed door's key isn't
+lost: it's a published, owned construction.
+
+### ATOMS, REVERSIBILITY, AND "STILL A COPULA?" (the precise statement)
+An atom (clamp, flat segment, or a DMO shared-value shock) does NOT break reversibility — the generative
+pipeline (Philox counter → MA sum → warp/clamp → output) is a DETERMINISTIC function of the position
+counter, and reversibility = RE-RUNNING it forward from an earlier counter, never INVERTING it. A
+non-invertible step (clamp: can't recover which u produced a pinned value) in a forward-reproducible chain
+is still perfectly reversible. Reproducibility != invertibility (cf. y=round(x): reproducible, not
+invertible). Reversibility rides on the first.
+What the atom DOES break is SKLAR UNIQUENESS, not Sklar existence. Existence survives: the output always has
+*a* copula. Uniqueness dies: with an atom the marginal CDF jumps, its range has gaps, and the copula is
+pinned only on that range → infinitely many copulas reproduce the identical joint law → "the copula is
+Gaussian-MA" stops being well-posed. You also lose uniform margins (an atom is a point mass; a uniform has
+none). So the honest line is NOT "reversible but no longer a copula" — it's: reversible, STILL has a copula
+(existence), but NO LONGER uniform-margin and NO LONGER an identifiable/unique copula. Operationally you
+lose: (1) reading the copula back off the output (empirical estimate returns some class member, not
+necessarily Gaussian-MA); (2) rank-correlation stability (ties shift Spearman/Kendall → Spread calibration
+drifts); (3) uniform marginals. This is EXACTLY why atoms belong to a deliberate OUTPUT-STAGE effect
+(clamp / DMO shock), never the distribution layer — the warp's value is the clean identifiable
+uniform-margin Sklar decomposition; atoms trade that description away for a specific effect, so they must be
+a visible, chosen stage, not a property of the warp.
+
 ## CONCRETE — what you SEE on the Sands bars (2 voices x 16 steps)
 Bars show the per-step per-voice probability/value. For two SPREAD-correlated voices:
 - **BASELINE (uniform marginals + positive spread):** the two rows' up/down PATTERNS track — high-together,
