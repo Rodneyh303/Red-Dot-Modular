@@ -196,6 +196,15 @@ struct WarpCurvePopup : rack::widget::Widget {
 
     // ── construction ────────────────────────────────────────────────────────────────
     WarpCurvePopup() {
+        // SIZE THE POPUP (feel-test bug 2): Rack's recursePositionEvent only forwards an
+        // event INTO this subtree when the POPUP's own box contains the point — a
+        // zero-size widget (this ctor previously never set box.size) receives nothing:
+        // the right-click kind menu, the StoreKnobs and the curve drags were all
+        // unreachable while the full-panel scrim below closed the popup on any click.
+        // Cover the children with margin: curve (2,8)..(78,68)mm; knobs centred
+        // (20,74)/(56,74)mm (9mm SVG → y 69.5..78.5mm); hint text at y=78mm — all
+        // inside (80,82)mm.
+        box.size = rack::mm2px(rack::math::Vec(80.f, 82.f));
         curve = new WarpCurveEditor();
         curve->box.pos  = rack::mm2px(rack::math::Vec(2.f, 8.f));
         curve->box.size = rack::mm2px(rack::math::Vec(76.f, 60.f));
@@ -323,6 +332,12 @@ struct WarpCurvePopup : rack::widget::Widget {
             return;
         }
         rack::widget::Widget::onButton(e);
+        // A press that lands INSIDE the popup but on no interactive child (bezel,
+        // header, blank chrome) is still ours: consume it so the full-panel scrim
+        // UNDER the popup never sees it. Rack keeps offering the event to lower
+        // siblings until something consumes (EventContext is shared across the
+        // recursion), so without this a click on the popup's own frame would close it.
+        if (e.action == GLFW_PRESS) e.consume(this);
     }
     void openKindMenu() {
         using rack::ui::Menu;
