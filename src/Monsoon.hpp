@@ -38,6 +38,7 @@
 #include "dsp/managers/MonsoonCVRouter.hpp"
 #include "dsp/managers/MonsoonOutputGenerator.hpp"
 #include "dsp/MacroTapBank.hpp"
+#include "dsp/WarpF.hpp"
 #include "dsp/gates/GateState.hpp"
 #include "dsp/engines/SequencerEngine.hpp"
 
@@ -872,6 +873,13 @@ struct Monsoon : Module {
         // Mono V1 ownership per poly lane (MEL/OCT/REST/ACC): 0 = Macro owns V1's base for
         // this lane, 1 = Mono owns it. Was a param (ownerDispId), cross-read by Macro.
         float monoOwner[7]     = {1,1,1,1,1,1,1};  // 7 poly lanes (SANDS CONSOLIDATION Step 1; default: Mono owns)
+
+        // Warp-F bank (CC_PROMPT_02): per-voice-per-lane warp curve + depth — flat like
+        // spread[112], same stride — plus Macro's global default (the delegation source)
+        // and the set-time drawn-curve pool. Default-constructed = all IdentityWarp with
+        // w=0 (no warp; old patches unchanged). NO mirror/engine wiring yet (CC_PROMPT_03).
+        // Kept at struct END (ABI hygiene — see the modViz note above).
+        dotModular::WarpBank warp;
     } editor;
 
     // Unified LOR base accessors. slot = voiceSlot (0 = V1/mono), bank 0..6, c 0..2.
@@ -914,6 +922,22 @@ struct Monsoon : Module {
 
     float getSpread(int slot, int lane) const { return editor.spread[slot*7 + lane]; }  // 7 poly lanes
     void  setSpread(int slot, int lane, float x) { editor.spread[slot*7 + lane] = x; }  // 7 poly lanes
+
+    // ── Warp-F bank accessors (CC_PROMPT_02). Per-voice: slot = voiceSlot (0 = V1/mono),
+    //    lane 0..6 — the spread[112] convention (unguarded, like getSpread/setSpread).
+    //    Global: Macro's delegation default — a ceded lane (owner()==MACRO) tracks it
+    //    instead of its own slot; same shape as getGlobalSpread vs getSpread.
+    const dotModular::WarpF& getWarpF(int slot, int lane) const { return editor.warp.warpF[slot*7 + lane]; }
+    void  setWarpF(int slot, int lane, const dotModular::WarpF& f) { editor.warp.warpF[slot*7 + lane] = f; }
+    float getWarpW(int slot, int lane) const { return editor.warp.warpW[slot*7 + lane]; }
+    void  setWarpW(int slot, int lane, float x) { editor.warp.warpW[slot*7 + lane] = x; }
+    const dotModular::WarpF& getGlobalWarpF(int lane) const {
+        static const dotModular::WarpF kIdentity = dotModular::IdentityWarp{};
+        return gLaneOk(lane) ? editor.warp.globalWarpF[lane] : kIdentity;
+    }
+    void  setGlobalWarpF(int lane, const dotModular::WarpF& f) { if (gLaneOk(lane)) editor.warp.globalWarpF[lane] = f; }
+    float getGlobalWarpW(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpW[lane] : 0.f; }
+    void  setGlobalWarpW(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpW[lane] = x; }
 
     // Spread target mode (0=Anchor V1, 1=Follow CA) per poly lane, UNIFIED PL_* order
     // (0=MEL,1=OCT,2=QMIX,3=REST,4=ACC,5=VAR,6=LEG — the menu indexes SandsLaneNames::
