@@ -1,5 +1,6 @@
 #include "PatternEngine.hpp"
 #include "../SpreadInterp.hpp"
+#include "../WarpF.hpp"   // CC_PROMPT_03: dotModular::WarpBank — the warp mirror's mix source
 
 // ── OU-bridge blend coefficients (UNIFIED 2×2 conditioning for ALL r) ─────────
 // File-local: lives here (not in the header) to avoid pulling PhiInvLUT::table()
@@ -114,6 +115,72 @@ void PatternEngine::reset() {
             slewedQmix[v][i]=polyRandom(v, PL_QMIX)[i];
         }
     }
+    // Warp mirror: reset rewrote random_ (defaults) — refresh the mirror so a wired
+    // bank never observes a stale mixture after Monsoon reset. No-op without a bank.
+    rebuildWarpMirrorAll();
+}
+
+// ── Warp mirror (CC_PROMPT_03 STEP 2) ──────────────────────────────────────────
+// Each cell = the EFFECTIVE w-mixture (1-w)·u + w·F⁻¹(u) over random_[v][lane][step]:
+// DOUBLE compute via the bank's branchless mix (exact invCDF — the mirror IS the
+// cache, no new LUT) and FLOAT store. w=0 or IdentityF ⟹ bit-exact u (pinned by
+// test_warp_f_bank + test_warp_mirror S1/S2), so wiring the bank changes nothing
+// until a curve/w is authored. random_ itself is NEVER warped — it stays the w=0
+// basis the mixture is rebuilt from.
+
+float PatternEngine::warpMixCell(int v, int lane, int step) const {
+    // CONTRACT: warpBank_ != nullptr (every rebuild entry point checks).
+    const double u = (double)random_[v][lane][step];
+    return (float)warpBank_->warpedValue(v, lane, u, warpDelegated_[v][lane]);
+}
+
+void PatternEngine::rebuildWarpMirrorAll() {
+    if (!warpBank_) return;   // no bank ⇒ nothing to mix; consumers fall back to random_
+    for (int v = 0; v < 16; ++v)
+        for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
+            for (int s = 0; s < 16; ++s)
+                warped_[v][l][s] = warpMixCell(v, l, s);
+}
+
+void PatternEngine::setWarpBank(const dotModular::WarpBank* b) {
+    if (warpBank_ == b) return;   // same bank every block — no-op (one compare)
+    warpBank_ = b;
+    rebuildWarpMirrorAll();       // first wire / re-wire: refresh from current random_
+}
+
+// ── The dirty mask (STEP 3): scoped rebuilds — see PatternEngine.hpp for the map ──
+
+void PatternEngine::rebuildWarpMirrorVoice(int v) {
+    if (!warpBank_) return;
+    const int vv = (v >= 0 && v < 16) ? v : 0;
+    for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
+        for (int s = 0; s < 16; ++s)
+            warped_[vv][l][s] = warpMixCell(vv, l, s);
+}
+
+void PatternEngine::rebuildWarpMirrorLaneDelegating(int lane) {
+    if (!warpBank_) return;
+    const int l = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : 0;
+    for (int v = 0; v < 16; ++v) {
+        if (!warpDelegated_[v][l]) continue;   // own-slot voices: a Macro edit can't move them
+        for (int s = 0; s < 16; ++s)
+            warped_[v][l][s] = warpMixCell(v, l, s);
+    }
+}
+
+void PatternEngine::rebuildWarpMirrorVoiceLane(int v, int lane) {
+    if (!warpBank_) return;
+    const int vv = (v >= 0 && v < 16) ? v : 0;
+    const int l = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : 0;
+    for (int s = 0; s < 16; ++s)
+        warped_[vv][l][s] = warpMixCell(vv, l, s);
+}
+
+void PatternEngine::rebuildWarpMirrorCell(int v, int lane, int step) {
+    if (!warpBank_) return;
+    const int vv = (v >= 0 && v < 16) ? v : 0;
+    const int l = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : 0;
+    warped_[vv][l][step & 0x0F] = warpMixCell(vv, l, step & 0x0F);
 }
 
 // ── Core generation ───────────────────────────────────────────────────────
@@ -385,6 +452,9 @@ void PatternEngine::recomputeEffectiveRhythm() {
             for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_LEGATO)[i]=applyR?
                 redDot::SpreadInterp::applyPoly(*this,PL_LEGATO,v,i,cachedPolySpread[v][PL_LEGATO]):slewedLegato[v][i];
         }
+        // Warp mirror (CC_PROMPT_03): the write-back above rewrote random_ — rebuild
+        // from the settled w=0 basis (full scope; draw/scrub-rate, prompt-blessed cost).
+        rebuildWarpMirrorAll();
     }
     publishSlewedRhythm();   // publish coherent snapshot for the UI thread
     rhythmMixApplied = rhythmMixLatched; rhythmSlewApplied = slew; rhythmCtrApplied = N;
@@ -465,6 +535,10 @@ void PatternEngine::recomputeEffectiveMelody() {
                                     polyRandom(v, PL_OCTAVE)[i]=applyM?
                 redDot::SpreadInterp::applyPoly(*this,PL_OCTAVE,v,i,cachedPolySpread[v][PL_OCTAVE]):slewedOctave[v][i]; }
         }
+        // Warp mirror (CC_PROMPT_03): rebuild AFTER the slew write-back — random_ now
+        // holds the settled post-slew uniform, the single w=0 basis for BOTH consumers
+        // (the load-bearing ordering in the prompt's STEP 4(a) note).
+        rebuildWarpMirrorAll();
     }
     publishSlewedMelody();
     melodyMixApplied = melodyMixLatched; melodySlewApplied = slew; melodyCtrApplied = N;
@@ -539,6 +613,8 @@ void PatternEngine::recomputeEffectiveQmix() {
             for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_QMIX)[i]=applyQ?
                 redDot::SpreadInterp::applyPoly(*this,PL_QMIX,v,i,cachedPolySpread[v][PL_QMIX]):slewedQmix[v][i];
         }
+        // Warp mirror (CC_PROMPT_03): same write-back companion as rhythm/melody.
+        rebuildWarpMirrorAll();
     }
     publishSlewedQmix();
     qmixMixApplied = qmixMixLatched; qmixSlewApplied = slew; qmixCtrApplied = N;
@@ -595,6 +671,9 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(int voice) {
             }
         }
     }
+    // Warp mirror: this function rewrote random_ rows for `voice` (mono row when
+    // voice==0, poly row otherwise) — refresh that voice's mirror cells only.
+    rebuildWarpMirrorVoice(voice);
     publishSlewedRhythm();
     rhythmMixApplied = rhythmMixLatched;
 }
@@ -637,6 +716,8 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(int voice) {
             }
         }
     }
+    // Warp mirror: same voice-scoped companion as the rhythm ForVoice above.
+    rebuildWarpMirrorVoice(voice);
     publishSlewedMelody();
     melodyMixApplied = melodyMixLatched;
 }
@@ -666,6 +747,8 @@ void PatternEngine::recomputeEffectiveQmixForVoice(int voice) {
                 redDot::SpreadInterp::applyPoly(*this,PL_QMIX,voice,i,cachedPolySpread[voice][PL_QMIX]):slewedQmix[voice][i];
         }
     }
+    // Warp mirror: same voice-scoped companion as the rhythm/melody ForVoice above.
+    rebuildWarpMirrorVoice(voice);
     publishSlewedQmix();
     qmixMixApplied = qmixMixLatched;
 }
@@ -787,8 +870,12 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     }
     if (melodyChanged) {
         for (int i = 0; i < 16; ++i) {
-            float mVal = (displayedVoice_ == 0) ? melodyRandom[i] : polyRandom(displayedVoice_, PL_MELODY)[i];
-            float oVal = (displayedVoice_ == 0) ? octaveRandom[i] : polyRandom(displayedVoice_, PL_OCTAVE)[i];
+            // Warp mirror (CC_PROMPT_03 STEP 4b — the DISPLAY site): the bars derive
+            // from the SAME effective w-mixture the sounding path consumes, keyed to
+            // displayedVoice_ (warpRow(0,·) degenerates to the mono row — the ternary
+            // the raw path needed is built into the accessor).
+            float mVal = warpRow(displayedVoice_, PL_MELODY)[i];
+            float oVal = warpRow(displayedVoice_, PL_OCTAVE)[i];
             int sem = 0;
             melodyPitchV[i]   = genPitchLive(sem, in, mVal, oVal);
             melodySemitone[i] = sem;
