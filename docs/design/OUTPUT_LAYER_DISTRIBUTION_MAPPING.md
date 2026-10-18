@@ -521,3 +521,58 @@ interaction cases above. Carve back on (a) computational cost + (b) FUN FACTOR. 
 the visualiser line (warp-worthy<=>visualiser-worthy), but OVERRIDE it wherever an interaction/mode/subgate
 effect surprises in play. Reasoning sets the default; EXPERIENCE sets the verdict. (Perceptual question ->
 build cheap, feel, decide — don't settle it analytically.)
+
+────────────────────────────────────────────────────────────────────────────────
+## CHANGE ALLEY AS THE WHOLE-STACK DEPENDENCE ROUTER (Rodney) — + clamp co-clipping
+
+Two facets of one realization: CA is not just the LATENT-layer router — it can drive the whole
+dependence stack coherently, and the clamp's co-clipping is its output-layer shadow.
+
+### CA + clamp = emergent co-clipping, a faithful shadow of the latent structure (NOT DMO)
+CA defines correlated submatrices in the UNIFORM layer: e.g. voices 7,8 take input from 6, and
+6,7,8 all correlate to 5 to varying degrees — a clean, unique, CA-defined Gaussian-MA copula on
+the U's. If those voices also have similar output distributions AND similar clamp geometry, they
+cross the rail in near-unison → they CO-CLIP. Key properties:
+- The joint-clipping RATE is NOT a parameter you set — it EMERGES from (a) latent correlation (CA)
+  and (b) closeness of clamp thresholds + output shapes. Tune by EAR ("more CA correlation → more
+  co-clipping"), not by formula.
+- This is DISTINCT FROM DMO. DMO puts the atom IN THE CONSTRUCTION (an independent shock forces
+  simultaneity; conditional independence otherwise; exact calibratable joint rate — right for
+  PRICING a joint event). CA+clamp puts the correlation IN THE UNIFORMS and lets the clamp INDUCE
+  co-clipping as a consequence; the atoms are correlated THROUGH the latent Gaussian layer, not an
+  independent shock. For an INSTRUMENT this is the better interface (dial a feel, degrades
+  gracefully, reuses existing machinery).
+- "Correlations still have meaning up to the uniforms" (Rodney): with clamp engaged you ACCEPT you
+  are no longer in the unique-copula regime at the OUTPUT (atoms → Sklar non-unique, non-invertible)
+  — and that's fine, because your correlation SEMANTICS live at the UNIFORM layer where everything
+  is clean and unique. The output co-clipping is a MONOTONE IMAGE (faithful but non-invertible
+  shadow) of the latent CA structure: more latent correlation → more co-clipping, controllably.
+- SUBTLETY (a feature): co-clipping needs latent correlation AND similar clamp geometry. Two
+  voices CA-correlated at 0.9 but with DIFFERENT output shapes / rails cross their thresholds at
+  different times → correlated but NOT co-clipping. So "correlated" alone doesn't predict
+  co-clipping; "correlated AND similarly-shaped-and-clamped" does. Extra handle: decorrelate the
+  clipping of correlated voices by giving them different shapes.
+- NOT a "uniqueness opt-out feature" — there is no coherent such feature (the equivalence class is
+  output-identical, nothing to navigate). It's just the honest acceptance that clamp → work at the
+  uniform layer for correlation meaning, treat the output as a non-unique projection.
+
+### CA can route the w / param MODULATION through its SAME correlation mappings — whole-stack coherence
+CA_EXPRESSION_CV_CORRELATION.md already establishes the pattern (option B, CHOSEN + built): CA
+PERMUTES EXTERNAL POLY CV through its per-stream LIVE voice correlation (a permutation lookup, no
+new draw) — external envelopes come out reordered exactly as CA reorders that stream's notes,
+feeding Keppel MPE. Pointing that SAME mechanism at the w-modulation (and the distribution param
+modulation) input is NOT a new mechanism — same permute-poly-CV-by-stream-correlation, different
+target. Consequence:
+- ONE CA mapping then drives BOTH layers coherently: the LATENT coupling (copula on U) AND the
+  COMMON-FACTOR loading (shared w-modulation → frailty/marginal structure). The voices CA
+  correlates in the uniform layer are the SAME voices whose w-modulation is permuted by the SAME
+  correlation → the two layers' loadings are ALIGNED BY CONSTRUCTION, set once.
+- This upgrades the §6 "homogeneous loadings add positive dependence" result: the loadings are no
+  longer set independently per layer — CA sets the pattern once and both inherit it. Latent
+  co-movement and marginal co-opening REINFORCE through one control.
+- Combined with clamp: the co-clipping shadow is then driven by a SINGLE coherent CA structure
+  spanning all three layers (latent correlation → aligned w-modulation → aligned clamp crossing).
+- NOT scheduled — recorded as the design understanding. Routing w/param-mod through CA is a
+  natural extension of the existing expression-CV permutation; it belongs AFTER the warp
+  foundation (w, mirror) and the param-mod layer exist. The CA plumbing it reuses is already
+  designed (CA_EXPRESSION_CV_CORRELATION.md).
