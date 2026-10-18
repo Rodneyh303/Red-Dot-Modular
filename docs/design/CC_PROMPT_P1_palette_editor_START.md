@@ -96,43 +96,51 @@ analysis is not wanted and is why this was rewritten.
 (This is a Y-AXIS fix. The PDF never leaves [0,1] on X — there is NO x-axis change. An earlier
 "2nd x-axis" idea was a misdiagnosis and is dropped.)
 
-THE SYMPTOM (observed in Rack): truncated-normal with a wide sigma (e.g. mu +0.48, sigma 0.50
-or 0.67) draws a FLAT-TOPPED teal PDF dome — clipped against the ceiling instead of reaching a
-rounded peak. (The CDF in the same view looks like it has near-vertical "atom" jumps at the
-corners — it does NOT; see the note at the end of this sub-task.)
-
 THE BUG (DistributionCurveWidget.hpp ~L145-191): maxD is taken over the OPEN interval —
 `if (i > 0 && i < N && pdfs[i] > maxD)` (L149) excludes the endpoints — then the fill clamps
 `if (d > 1.0) d = 1.0` (L184). Excluding endpoints is CORRECT for DIVERGENT densities (arcsine,
 power k<1, Kumaraswamy a<1/b<1: edge→∞, a finite floored proxy must NOT define the scale). It is
-WRONG for BOUNDED densities whose true max is AT or NEAR an endpoint — TRUNCATED-NORMAL
-especially ("bounded bell, NON-ZERO edge density"): a wide sigma puts the real peak near/outside
-[0,1], so the genuine maximum is at the edge. maxD excludes it → the fill normalises to a
-too-small interior max → the edge regions clip flat. That flat top is the bug.
+WRONG for a BOUNDED density whose true max is AT an endpoint — TRUNCATED-NORMAL with mu OUTSIDE
+[0,1]: the bell's peak is off the window, so the density is monotone across [0,1] and its real
+max is the edge value. The open-interval maxD excludes exactly that sample → the fill normalises
+to a slightly-too-small interior max → the edge clips flat against the ceiling.
 
-THE FIX — distinguish "divergent edge" from "high FINITE edge":
-- Divergent edge → keep excluding it (the proxy is not a real max).
-- Finite edge that is a real maximum → INCLUDE it in maxD so the fill doesn't clip.
-Robust discrimination: for each endpoint, compare pdf(edge) to pdf(just inside, e.g. 1/(2N)).
-If the endpoint is finite and comparable to its neighbour (not exploding — not >> neighbour and
-below a divergence threshold), it's a REAL max → count it. If it's blowing up → divergent →
-exclude as now. (Alternative, simpler: cap every sample at a sane multiple — say 8–10× — of the
-INTERIOR max before taking maxD; a divergent edge is capped to "tall but finite" and counts
-partially, a finite edge counts fully. Pick whichever is cleaner; document it.)
-Net: trunc-normal's edge-max defines the scale → the dome reaches its true peak, nothing clips;
-power(k<1) still scales to its interior so the divergent spike doesn't flatten everything else.
+*** NOTE ON THE REPRO (do not chase this): the exact screenshot params (mu≈0.48, sigma 0.50/0.67)
+have their peak at x=0.48, INTERIOR — so by the math they do NOT clip, and a test at those params
+would PASS on the current (buggy) code (not a red test). The dramatic flat dome in that screenshot
+could not be reproduced from the code; its cause is unknown and does not need to be matched. What
+IS a real, verified bug is the mechanism above (open-max excluding a true EDGE max), which the
+test cases below trigger with mu OUTSIDE [0,1]. Fix the MECHANISM; do not try to reproduce the
+screenshot. ***
+
+THE FIX (decided — use this, do not re-evaluate the alternative):
+Distinguish divergent edge from finite edge by the EDGE/NEIGHBOUR RATIO. For each endpoint,
+r = pdf(edge) / pdf(just inside, at 1/(2N) or 1-1/(2N)). A FINITE edge has r ≈ 1 (the density is
+smooth, so edge ≈ neighbour); a DIVERGENT edge has r ≫ 1 (the floored proxy towers over its
+neighbour). Threshold: include the edge in maxD iff r <= 2.0; else exclude it (divergent).
+(Verified: TN mu=1.3..2.0 → r ≈ 0.98–1.01 → include, fixes the clip. power k=0.5 → r ≈ 1580,
+k=0.9 → r ≈ 4.4 → both excluded, divergent-edge rendering UNCHANGED from today.)
+Do NOT use the "cap at a multiple of interior max" alternative — it CHANGES existing divergent-edge
+rendering (it would shrink the power(k<1) dome), a regression. The ratio approach leaves divergent
+cases byte-identical to today and only ADDS finite edges. That's why it's the one to use.
 
 DISPLAY-ONLY: stored curve, params, math, schema ALL unchanged. X axis stays a single true
 0->1 (CDF gold, bottom). Only the PDF Y normalisation changes. DistributionCurveWidget.hpp only;
 no Distribution.hpp / engine change.
 
 TESTABLE: factor the max-finding into a pure free fn
-`double pdfVisibleYMax(const Distribution&, int N=200)` and test it header-only:
-  - trunc-normal(mu=0.48, sigma=0.50): the returned max INCLUDES the edge density (assert it
-    equals the actual max over the CLOSED [0,1] sampling — the edge is not excluded).
-  - power(k=0.5): the returned max is the INTERIOR-bounded one (the divergent 0-edge does NOT
-    blow the scale — assert finite and ~ the interior, not the floored edge proxy).
-  - triangular / ordinary kumaraswamy: unchanged, interior peak defines it.
+`double pdfVisibleYMax(const Distribution&, int N=200)` and test it header-only. USE THESE
+VERIFIED CASES (the trunc-normal ones genuinely clip on current code = RED; computed, not guessed):
+  - trunc-normal(mu=1.48, sigma=0.50): RED on current code. pdfVisibleYMax must EQUAL the max over
+    CLOSED [0,1] sampling (edge at x=1), NOT the open-interval max (~2.99). This is the core fix.
+  - trunc-normal(mu=2.0, sigma=0.60): same, a second clip case.
+  - trunc-normal(mu=0.48, sigma=0.50): peak interior (x=0.48) → closed==open already; asserts the
+    fix does NOT change the common no-clip case (still equals the interior/closed max).
+  - power(k=0.5): divergent 0-edge (r≈1580 > 2) EXCLUDED → maxD is the interior max (~0.50 at x≈1),
+    NOT the floored proxy (~15811). Asserts divergent rendering is unchanged.
+  - power(k=0.9): divergent 0-edge (r≈4.4 > 2) EXCLUDED → interior max (~0.9). Asserts the
+    threshold catches MILD divergence too.
+  - triangular(mode=0.5): interior peak, unchanged.
 Register `"test_pdf_ymax|"` in run_all.sh. GREEN. The RENDERING (dome no longer clipped) you
 CANNOT verify — say "needs Rack feel-test" in the PR; the pure-fn test proves the scale logic.
 
