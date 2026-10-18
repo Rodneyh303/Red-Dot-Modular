@@ -1,8 +1,10 @@
-# CC PROMPT P1 — palette/editor fixes: Kumaraswamy reparam + PDF y-max edge-clip fix
+# CC PROMPT P1 — palette/editor: reversed-power + Kumaraswamy reparam + PDF y-max edge-clip fix
 
-Standalone, parallel to the main warp work. Two independent sub-tasks; do them as two commits
-on one branch. NEITHER depends on the warp Phase 3 prompts. Reversed-power (TODO #2) is NOT
-here — it waits for the distmath:: refactor (CC_PROMPT_02 step 0), which doesn't exist yet.
+Standalone, parallel to the main warp work. THREE independent sub-tasks; do them as three
+commits on one branch. NONE depends on the warp Phase 3 prompts. (The old "distmath:: refactor"
+gating on reversed-power is GONE — there is no distmath layer; see CC_PROMPT_02, which uses a
+value-variant with single-implementation concrete types. Reversed-power is just a new
+Distribution.hpp class, added here like any other palette type.)
 
 ## READ FIRST
 1. `CLAUDE.md` (root) — non-negotiables (verify against tests; red→green; branch discipline).
@@ -109,16 +111,65 @@ increase constraint guarantees no TRUE atoms exist, so a near-vertical CDF segme
 density, never a jump. (Optional: a one-line widget comment to that effect. Not required.)
 
 ────────────────────────────────────────────────────────────────────────────────
+## SUB-TASK C — add ReversedPowerDistribution to the palette
+
+WHY (TODO #2): F(x)=1-(1-x)^theta is the MIRROR of Power (x^theta) — frailty in -log(1-x), the
+upper-tail counterpart to Power's lower-tail. Fills the one empty palette corner; it's the only
+marginal form that, at r=0 with shared-theta modulation, yields the genuine Joe copula (vs
+Power→Clayton). Cheap closed-form inverse, one param, bounded density away from the edge.
+
+ADD to src/dsp/Distribution.hpp — a new concrete class, same shape as PowerDistribution
+(verified formulas, mirror of Power's x<->1-x):
+    class ReversedPowerDistribution : public Distribution {
+    public:
+        double theta;   // > 0 (validated on load)
+        explicit ReversedPowerDistribution(double t) : theta(t) {}
+        const char* typeName() const override { return "reversed-power"; }
+        double cdf(double x) const override {
+            x = distClamp01(x);
+            return 1.0 - std::pow(1.0 - x, theta);
+        }
+        double pdf(double x) const override {
+            x = distClamp01(x);
+            double tail = 1.0 - x;
+            if (tail < DIST_EDGE_EPS) tail = DIST_EDGE_EPS;   // divergent at x=1 for theta<1
+            return theta * std::pow(tail, theta - 1.0);
+        }
+        double invCDF(double u) const override {
+            u = distClamp01(u);
+            return 1.0 - std::pow(1.0 - u, 1.0 / theta);
+        }
+        json_t* toJson() const override {
+            json_t* p = json_object();
+            json_object_set_new(p, "theta", json_real(theta));
+            return paramEnvelope(p);
+        }
+    };
+
+WIRE IT IN (the standard new-type checklist — grep "power" / PowerDistribution to find each site):
+  - the type-tag dispatch in fromJson (add "reversed-power" → ReversedPowerDistribution).
+  - the palette list comment (WARPS section) + the type-tag list comment.
+  - the devhost (so it's selectable/feel-testable).
+  - MonotoneCurve::fromDistribution coverage (convert-to-editable).
+
+TEST: add reversed-power to the existing test_distribution.cpp battery — the same contract
+checks every type gets (cdf/pdf/invCDF consistency: cdf(invCDF(u))≈u; pdf≈d/dx cdf numerically;
+monotone invCDF; edge-floor finite for theta<1) + a JSON round-trip (toJson→fromJson preserves
+theta). No new test file needed; it's a palette member like the others. Run_all green.
+
+────────────────────────────────────────────────────────────────────────────────
 ## DONE =
 - A: abFromModeConc/modeConcFromAb on KumaraswamyDistribution; internal (a,b) + schema
   unchanged; test_kumaraswamy_reparam green (round-trip, mode-correct, validity, edge).
 - B: pdfVisibleYMax pure fn + its test green; finite edge-maxima now define the PDF scale (no
   flat-top clip on trunc-normal) while divergent edges stay excluded; X axis stays single 0->1.
-- `bash test/run_all.sh` ALL GREEN. No warp/engine/schema changes. Two clean commits.
-- PR body: paste both tests' output; for B, state clearly that the rendering needs Rack feel-test.
+- C: ReversedPowerDistribution in Distribution.hpp, wired (fromJson tag, palette comments,
+  devhost, fromDistribution); test_distribution battery + JSON round-trip cover it, green.
+- `bash test/run_all.sh` ALL GREEN. No warp/engine changes (C adds a palette type only; no
+  schema break — it's a new optional type tag). Three clean commits.
+- PR body: paste tests' output; for B, state clearly that the rendering needs Rack feel-test.
 
 ## NOT THIS PROMPT
-- Reversed-power distribution (TODO #2) — waits for the distmath:: refactor (CC_PROMPT_02 step 0).
 - The Kumaraswamy UI knobs/labels — pair with the warp UI prompt (CC_PROMPT_04).
-- Any warp / mirror / w / modulation code.
+- Any warp / mirror / w / modulation engine code.
 - The CDF rendering (it is correct — see the "NOT A BUG" note in sub-task B).

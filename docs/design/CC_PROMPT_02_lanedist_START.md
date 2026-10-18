@@ -1,109 +1,156 @@
-# CC PROMPT 02 — Phase 3 step 1: LaneDist POD bank + tested lower() + shared-math refactor
+# CC PROMPT 02 — Phase 3 step 1: per-voice warp-F bank (variant, identity-default) + tests
 
-PREREQUISITE: CC_PROMPT_01 (per-voice send-tap) is merged and green. This prompt does NOT
-depend on the tap code, but it is the next build step and assumes a clean trunk.
+PREREQUISITE: CC_PROMPT_01 (per-voice send-tap) is merged and green (it is). This does NOT
+depend on the tap code; it's the next build step and assumes a clean trunk.
 
-## READ FIRST (same discipline as prompt 01)
+## READ FIRST
 1. `CLAUDE.md` (root) — auto-context + non-negotiables.
 2. `docs/design/CHAT_HANDOFF.md` — primer + working model + current state.
-3. `docs/design/SESSION_LOG_2026-10-18b.md` §1 — the FULL reasoning for this design (why POD
-   not unique_ptr/variant, why lower(), why the shared-math refactor). Read it; this prompt is
-   the build steps, that section is the why.
-4. `src/dsp/Distribution.hpp` — the existing polymorphic palette you are lowering FROM.
+3. `docs/design/SESSION_LOG_2026-10-18b.md` §1 — the ownership reasoning (POD-vs-polymorphic,
+   why not unique_ptr). NOTE: the design BELOW SUPERSEDES the POD-switch-plus-distmath scheme
+   described there — later discussion (this prompt) simplified it to a value-variant with an
+   identity default. Read §1 for the WHY (allocation on the control path is the thing to avoid);
+   trust THIS prompt for the HOW.
+4. `src/dsp/Distribution.hpp` — the existing polymorphic palette (8 concrete types).
 
-Branch: off `lane-expander-refactor`, `git checkout -b feat/lanedist-bank`. PR into it.
-Rules unchanged: verify against tests, red→green for any claim, header-only tests where
-possible, you can't test Rack.
+Branch: off `lane-expander-refactor`, `git checkout -b feat/warp-f-bank`. PR into it.
+Rules: verify against tests, red→green for any claim, header-only tests where possible, you
+can't test Rack.
 
 ## GOAL
-Give the engine a flat, allocation-free, per-voice distribution bank that mirrors the house
-pattern (macroSend[448], spread[112]), WITHOUT touching the control path with heap or vtables.
-Distribution.hpp stays as the AUTHORED/editor/set-time form; the engine reads a POD lowering.
+Give the engine a per-voice-per-lane "warp F" bank that is: value-type (no heap on the
+modulation/draw path), trivially copyable, persistable, and SINGLE-IMPLEMENTATION (no duplicated
+math). The default is IDENTITY (= uniform / no warp), so the mix formula is BRANCHLESS.
 
-## THE DESIGN (settled — SESSION_LOG_2026-10-18b.md §1)
-`Distribution` is polymorphic (virtual cdf/pdf/invCDF). Per-voice banks are flat float arrays.
-These don't compose. Resolution: store per-voice the TAG + PARAMS (plain data); dispatch
-behaviour by switch to the SAME math. unique_ptr allocates on the modulation control path
-(rejected); variant wrecks the flat array (rejected).
+## THE DESIGN (converged — this is the authority)
+
+### Why a variant, not a POD-switch, not unique_ptr
+- unique_ptr<Distribution> per slot → allocates when a curve is chosen, and breaks the flat,
+  copyable, memcpy-persistable house pattern. Rejected.
+- A POD {kind; params[4]} + a switch(kind) → needs the math in TWO places (the switch AND the
+  Distribution subclasses) → divergence risk (the lying-abstraction failure). Rejected — it was
+  the earlier plan; the variant removes the duplication entirely.
+- std::variant<...> held BY VALUE → value-type (no heap for the parametric types), trivially
+  copyable, sits in a flat array like spread[112], and there is ONE implementation per curve
+  (the concrete type's own invCDF). No switch, no parallel math, nothing to keep in sync.
+
+### Cadence makes this safe (verified this session)
+Warp is evaluated in the MIRROR, rebuilt on a DIRTY event (curve/param edit, new draw, scrub) —
+NOT per audio sample (the per-sample path reads a float out of warped_). And a voice/lane holds
+ONE F evaluated at 16 steps; a full regen re-evaluates the HELD Fs, it does not reconstruct them
+(regen changes uniforms, not curves). Construction happens only on a user curve edit (UI rate).
+So "construct where needed" is fine — you HOLD the F and mutate its params in place on
+modulation; you never `new` one per cell. Value-variant has zero heap for parametric types, so
+even construction is alloc-free.
+
+### IDENTITY is the default F — uniform is not a special case
+The warp mix is ALWAYS evaluated, branchlessly:
+    warped(u) = (1-w)*u + w * F.invCDF(u)
+For "no warp / uniform", F must be IDENTITY (invCDF(u)=u), so the formula yields u with no
+branch. Provide identity as a REAL F (the default variant alternative), NOT as an empty/monostate
+slot to test for:
+    struct IdentityWarp {
+        double invCDF(double u) const { return u; }
+        double cdf  (double x) const { return x; }
+        double pdf  (double /*x*/) const { return 1.0; }
+        const char* typeName() const { return "identity"; }
+    };
+A default-constructed bank is all-IdentityWarp = all-uniform = no warp, and the mirror rebuild
+runs the SAME code over every slot. Identity is strictly increasing (slope 1) so Sklar-safety
+holds for the default exactly as for any curve; w·(identity,identity)=identity; no corner cases.
+
+### The variant
+    using WarpF = std::variant<
+        IdentityWarp,              // index 0 = default = uniform / no warp
+        TriangularWarp, PowerWarp, KumaraswamyWarp, LogitNormalWarp,
+        LogitSigmoidWarp, MobiusWarp, TruncNormalWarp, ReversedPowerWarp,  // NB reversed-power:
+        DrawnWarp >;               //   added to Distribution.hpp by CC_PROMPT_P1 sub-task C
+Each alternative exposes invCDF/cdf/pdf. Dispatch via a thin forwarder (std::visit or a small
+switch-on-index that calls the ONE implementation each type owns — there is no second copy of
+any formula, so this switch cannot diverge: it only forwards). Prefer a forwarding member:
+    inline double invCDF(const WarpF& f, double u) {
+        return std::visit([u](auto& d){ return d.invCDF(u); }, f);
+    }
+(and cdf/pdf likewise). std::visit over value types is non-allocating.
+
+### Relationship to Distribution.hpp (single implementation, no distmath layer)
+The concrete warp types ARE the single implementation. Two clean options — pick the lower-churn:
+  (a) Make the WarpF alternatives THIN WRAPPERS that each hold the existing Distribution subclass
+      (by value) and forward invCDF/cdf/pdf to it. Distribution.hpp is untouched; the variant is
+      a value-type holder over the existing classes. LOWEST churn — do this unless it's awkward.
+  (b) If the Distribution subclasses aren't cheaply value-holdable (check: they're small structs
+      with double params + an inline method body — they ARE, so (a) should work), fall back to
+      the subclasses being the impl and the variant holding them.
+Either way there is ONE body per curve's math. The "distmath:: refactor" from the older plan is
+NOT needed and should NOT be created — it only existed to de-duplicate a POD-switch that no
+longer exists.
+
+### DRAWN curves — pool index, NOT inline (verified: MonotoneCurve holds a std::vector)
+MonotoneCurve stores std::vector<Point> (heap-backed, MAX_POINTS=32) → NOT trivially copyable,
+must NOT sit inline in the variant (would make WarpF heap-copying + non-POD). So DrawnWarp holds
+a LIGHTWEIGHT POOL INDEX (uint16_t) into a set-time MonotoneCurve pool; its invCDF/cdf/pdf
+forward to pool[idx]. Modulation never touches drawn curves (no scalar param) → the pool is
+set-time only, no control-path alloc. Only voices using a drawn curve consume a pool slot.
 
 ## STEPS (test-first; suite green after each)
 
-### STEP 0 — the shared-math refactor (do this FIRST; it's the lying-abstraction guard)
-Today each curve's invCDF/cdf/pdf lives in a Distribution subclass method. You are about to
-add a SECOND evaluation path (the switch). Two copies of the same formula WILL diverge — that
-is the exact failure class this project has paid weeks for. So BEFORE adding the second path:
-factor each curve's math into ONE inline free function in a shared header, e.g.
-`src/dsp/DistributionMath.hpp`:
-    namespace redDot::distmath {
-      inline double triangular_invCDF(double u, double mode) { ... }   // the body currently
-      inline double triangular_cdf   (double x, double mode) { ... }   // in TriangularDistribution
-      inline double triangular_pdf   (double x, double mode) { ... }
-      // ... power, kumaraswamy, logitnormal, logitsigmoid, mobius, truncnormal
+### STEP 1 — IdentityWarp + the WarpF variant + the forwarder
+Add IdentityWarp, define WarpF (identity first = default), and the invCDF/cdf/pdf forwarders.
+For the parametric alternatives, use option (a): thin value-holders over the existing
+Distribution subclasses. DrawnWarp holds the pool index (pool in STEP 3).
+
+### STEP 2 — the mix + the bank
+    float warpW[112] = {};            // per-voice-per-lane depth, index v*7+lane, like spread[112]
+    WarpF warpF[112];                 // default-constructed = all IdentityWarp = uniform
+    // effective warp of uniform u for (v,lane):
+    inline double warpedValue(int v, int lane, double u) {
+        const int i = v*7+lane;
+        return (1.0 - warpW[i]) * u + warpW[i] * invCDF(warpF[i], u);   // BRANCHLESS
     }
-Then make each Distribution subclass method CALL the free function (one-line bodies). This is a
-PURE REFACTOR: `bash test/run_all.sh test_distribution` must stay green (all 56k+ asserts),
-byte-identical. Commit as "refactor: distribution math to shared free fns (no behaviour change)".
-Do NOT proceed until that is green — the shared fn is the single source of truth both paths use.
-
-### STEP 1 — the POD struct + enum
-`src/dsp/LaneDist.hpp` (NEW):
-    enum DistKind : uint8_t { DK_UNIFORM=0, DK_TRIANGULAR, DK_POWER, DK_KUMARASWAMY,
-                              DK_LOGITNORMAL, DK_LOGITSIGMOID, DK_MOBIUS, DK_TRUNCNORMAL,
-                              DK_DRAWN };
-    struct LaneDist {                 // POD, trivially copyable, memcpy-persistable
-        uint8_t kind   = DK_UNIFORM;
-        uint8_t drawId = 0;           // index into the drawn-curve pool when kind==DK_DRAWN
-        float   p[4]   = {};          // params; DK_UNIFORM ignores
-    };
-    // switch-dispatched evaluation, calling distmath:: free fns:
-    double laneInvCDF(const LaneDist&, double u, const class DrawnPool&);
-    double laneCdf   (const LaneDist&, double x, const DrawnPool&);
-    double lanePdf   (const LaneDist&, double x, const DrawnPool&);
-DK_UNIFORM returns u/x identity (the w=0 / no-warp fast path — no math). DK_DRAWN indexes the
-pool (STEP 3). Keep LaneDist trivially copyable: NO methods that allocate, NO std::function.
-
-### STEP 2 — lower(): Distribution -> LaneDist (the tested seam)
-In LaneDist.hpp (or a .cpp if it needs jansson): `LaneDist lower(const Distribution&)`.
-Reads the distribution's typeName()/params, fills kind + p[]. Drawn curves: register the PCHIP
-into the pool, store the returned index in drawId.
-CONTRACT TEST `test/test_lanedist.cpp` (header-only, model on test_distribution.cpp):
-  - For EVERY parametric kind, across a param sweep: `laneInvCDF(lower(d), u, pool) == d.invCDF(u)`
-    to double tolerance, over a dense u grid. (Proves the switch path and the subclass path —
-    now both calling distmath:: — agree.)
-  - Same for laneCdf/lanePdf.
-  - DK_UNIFORM: laneInvCDF == u exactly (identity).
-  - A drawn curve: lower() then laneInvCDF matches the source MonotoneCurve::invCDF.
-Register `"test_lanedist|"` in run_all.sh TESTS[] (header-only form). Must be GREEN.
+getWarpF/setWarpF, getWarpW/setWarpW. Delegation (Macro default / Sands override) reuses the
+owner()/topo pattern — do NOT invent a new delegation mechanism.
+(No mirror / engine wiring yet — that's CC_PROMPT_03. This prompt lands the bank + mix + tests.)
 
 ### STEP 3 — the drawn-curve pool
-A set-time pool (DK_DRAWN only; modulation never touches drawn curves → no control-path alloc).
-Simplest correct form: a fixed-capacity array of MonotoneCurve in the engine state (or a
-std::vector populated only at set-time / load). LaneDist.drawId indexes it. Only voices using a
-drawn curve consume a slot. Document the capacity choice; assert drawId < capacity.
+A set-time pool of MonotoneCurve (fixed-capacity array or a vector populated only at set-time/
+load). DrawnWarp.idx indexes it; assert idx < capacity. Document the capacity.
 
-### STEP 4 — the per-voice bank in engine state
-In Monsoon::editor (beside spread[112]): `LaneDist laneDist[112];` (16 voices × 7 lanes,
-index v*7+lane — SAME scheme as spread/macroOwn). Add getLaneDist(v,lane)/setLaneDist(v,lane).
-Delegation (Macro default / Sands override) works identically to spread — do NOT invent a new
-delegation mechanism; reuse the owner()/topo pattern.
-NO engine evaluation wired yet — that's prompt 03 (the mirror). This prompt just lands the
-bank + lowering + tests, so the data structure exists and is proven before the hot path uses it.
+### STEP 4 — persistence
+warpW[112] (trivial floats) and warpF[112] round-trip in MonsoonPersistenceManager. For each
+slot persist the variant's active type tag + its params (reuse each Distribution's existing
+toJson/fromJson); drawn slots persist their MonotoneCurve (reuse the .dmcurve JSON) keyed by the
+pool index. Missing key / default slot ⟹ IdentityWarp + w=0 (no warp — old patches unchanged).
 
-### STEP 5 — persistence
-laneDist[112] round-trips in MonsoonPersistenceManager. kind+params are trivial; drawn curves
-persist their PCHIP (reuse the .dmcurve/MonotoneCurve JSON already in the codebase) keyed by
-drawId. Missing key ⟹ DK_UNIFORM (no warp — old patches unchanged). Add a persistence assert
-to test_lanedist (save→load a mixed bank: a parametric, a drawn, a uniform → all survive).
+### STEP 5 — tests  `test/test_warp_f_bank.cpp` (header-only, model on test_distribution.cpp)
+  - DEFAULT: a default-constructed bank is all IdentityWarp; warpedValue(v,lane,u)==u for all u,
+    for any w (identity makes the mix u regardless of w). This is the no-warp guarantee.
+  - IDENTITY EXACT: invCDF(IdentityWarp,u)==u, cdf==x, pdf==1, over a dense grid.
+  - MIX ENDPOINTS: w=0 ⟹ warpedValue==u exactly (any F); w=1 ⟹ warpedValue==invCDF(F,u) exactly.
+  - SINGLE-IMPL AGREEMENT: for each parametric alternative, invCDF(WarpF,u) == the corresponding
+    Distribution subclass invCDF(u) over a dense grid (proves the holder forwards, no divergence).
+  - MONOTONE: for fixed (v,lane,F,w), u1<=u2 ⟹ warpedValue(u1)<=warpedValue(u2), dense grid, in
+    the float the bank will store (Sklar-safety; strict where the editor guarantees strict).
+  - DRAWN: a DrawnWarp over a pooled MonotoneCurve matches the curve's invCDF.
+  - PERSISTENCE: save→load a mixed bank (identity, a parametric, a drawn, assorted w) → all
+    survive exactly; a bank with no stored key loads all-identity + w=0.
+Register `"test_warp_f_bank|"` in run_all.sh TESTS[]. GREEN.
 
 ## DONE =
-- distmath:: shared free fns; Distribution subclasses call them; test_distribution still green.
-- LaneDist.hpp: POD struct + switch eval + lower(); test_lanedist green (agreement + uniform +
-  drawn + persistence asserts).
-- Drawn pool; laneDist[112] bank in editor with delegation; persistence round-trips.
-- `bash test/run_all.sh` ALL GREEN. No mirror, no engine hot-path wiring, no UI (prompt 03+).
-- PR body: paste test_lanedist output; confirm test_distribution byte-identical after the refactor.
+- IdentityWarp + WarpF variant (identity default) + invCDF/cdf/pdf forwarders; ONE impl per
+  curve (thin holders over the existing Distribution subclasses); NO distmath layer, NO POD
+  switch, NO unique_ptr.
+- warpW[112] + warpF[112] banks in editor with delegation; branchless warpedValue mix.
+- Drawn-curve pool; DrawnWarp holds a pool index (MonotoneCurve is NOT inline — it's vector-backed).
+- Persistence round-trips; default = identity + w=0 (old patches unchanged).
+- test_warp_f_bank green (default no-op, identity exact, mix endpoints, single-impl agreement,
+  monotone, drawn, persistence). `bash test/run_all.sh` ALL GREEN.
+- No mirror, no engine hot-path, no UI (CC_PROMPT_03+). PR body: paste test output.
 
 ## NOT THIS PROMPT
-- The warped_ mirror / hot-path evaluation (prompt 03).
-- w (depth) param, modulation, the UI columns, the popup editor (prompts 03/04).
-- Melody/octave warp composition (prompt 03 — the genPitchLive seam).
+- The warped_ mirror / scoped dirty mask / engine hot-path wiring (CC_PROMPT_03).
+- Warp composition at genPitchLive (melody/octave) + finalRandomByStrand (CC_PROMPT_03).
+- The UI columns / popup editor (CC_PROMPT_04).
+- Parameter (theta) modulation + w send/tap routing (later; after 03/04).
+- ReversedPowerWarp's underlying ReversedPowerDistribution is ADDED TO Distribution.hpp by
+  CC_PROMPT_P1 (sub-task C). If P1 hasn't landed when you start, either coordinate or stub
+  ReversedPowerWarp and wire it when the class exists. Prefer landing P1's reversed-power first.

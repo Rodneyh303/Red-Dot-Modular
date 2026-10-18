@@ -6,8 +6,9 @@ next starts. The DETAILED what-and-why for all of them is SESSION_LOG_2026-10-18
 
 | # | Prompt file | What it builds | Depends on | Testable? |
 |---|-------------|----------------|------------|-----------|
-| 01 | CC_PROMPT_01_send_tap_START.md | per-voice send-tap fix (bug). macroTap[224], dual-delta publish. | — (ships first, alone) | YES — test_send_tap, 4 asserts red→green |
-| 02 | CC_PROMPT_02_lanedist_START.md | LaneDist POD bank + lower() + drawn pool. distmath:: shared-math refactor. | 01 merged (clean trunk) | YES — test_lanedist (agreement + persistence) |
+| 01 | CC_PROMPT_01_send_tap_START.md | per-voice send-tap fix (bug). macroTap[224], dual-delta publish. MERGED (#286). | — (ships first, alone) | YES — test_send_tap, 4 asserts red→green |
+| P1 | CC_PROMPT_P1_palette_editor_START.md | palette/editor: reversed-power dist + Kumaraswamy (mode,conc) reparam mapping + PDF y-max edge-clip fix. | — (parallel, independent of warp) | YES — reparam/ymax/distribution-battery tests |
+| 02 | CC_PROMPT_02_lanedist_START.md | Per-voice warp-F bank: std::variant<IdentityWarp, 8 types, DrawnWarp> by value, identity-default (branchless mix), warpW[112]. NO distmath, NO POD-switch, NO unique_ptr. Drawn = pool index. | 01 merged (clean trunk) | YES — test_warp_f_bank (default no-op, mix endpoints, single-impl agreement, persistence) |
 | 03 | CC_PROMPT_03_mirror_warp_START.md | warp mirror (effective w-mixture), w[112], scoped dirty mask, warp composition at genPitchLive (melody+octave) + finalRandomByStrand. | 02 | YES — test_warp_mirror (no-op@w0, monotone, dirty-scope, consumer-routing) |
 | 04 | CC_PROMPT_04_warp_ui_START.md | panel columns (w/param left; Macro send/tap right), popup editor (reuses DistributionCurveWidget), audit-guarded layout. | 03 + 01 | PARTIAL — audit_anchor_bind guards geometry; Rack render/feel is human-only |
 

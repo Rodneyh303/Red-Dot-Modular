@@ -47,8 +47,8 @@ SCOPE:
   CC_PROMPT_02). Edge-density floor like Power (DIST_EDGE_EPS) for theta<1.
 - Add to the palette list comment, the type-tag list, the devhost, the test_distribution
   battery (contract + json round-trip), and MonotoneCurve::fromDistribution coverage.
-- This is a straightforward CC task once the distmath:: refactor (prompt 02 step 0) has landed —
-  do it AFTER that so the free-fn pattern exists to follow.
+- Straightforward palette addition — NOW IN CC_PROMPT_P1 sub-task C (no distmath gating; there
+  is no distmath layer — CC_PROMPT_02 uses a value-variant with single-impl concrete types).
 
 ────────────────────────────────────────────────────────────────────────────────
 ## 3. PDF display scaling — editor bug  [CORRECTED 2026-10-18b: it's a Y-MAX fix, not X-axis]
@@ -89,7 +89,7 @@ to X.
 
 ────────────────────────────────────────────────────────────────────────────────
 ## Sequencing
-- #2 (reversed-power) after the distmath:: refactor (prompt 02 step 0) — reuses the pattern.
+- #2 (reversed-power) — DONE as CC_PROMPT_P1 sub-task C (a plain Distribution.hpp class).
 - #1 (Kumaraswamy reparam) any time; the mapping on the Distribution class is small + testable;
   the UI wiring pairs naturally with the warp UI work (prompt 04) since that's when the param
   knobs/labels get built.
