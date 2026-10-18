@@ -178,10 +178,20 @@ UI ATTACHMENT — SETTLED 2026-10-18b (full detail: SESSION_LOG_2026-10-18b.md �
   add anchors in panel_src gen + binds in widget + `counts` IN THE SAME COMMIT (the audit's one gap: a
   wrong/absent count is only caught if you added it). Only 4 modules migrated (east/macro/keppel/causeway);
   UNMIGRATED={} is empty (others just absent) — GOAL: migrate ALL panels eventually.
-- SUBPANELS (param mods' right long-term home) BLOCKED by the adjacency bug: subpanels follow the main
-  panel but the user can INSERT a panel between (Rack has no API to forbid it; engine can only detect +
-  degrade). Deferred until warp is proven AND insertion-break degradation is designed; then migrate the
-  WHOLE modulation tier at once, not piecemeal.
+- SUBPANELS (param mods' right long-term home) BLOCKED by the adjacency problem, which is NOT a bespoke
+  bug — it is the GENERAL connection/binding problem the suite already has a LOCKED SPEC + partial
+  migration for. See docs/design/CONNECTION_MODEL_MIGRATION_NOTE.md (added 2026-10-18b) and the spec
+  CONNECTION_MODEL_SPEC.md. Short version: Rack has no API to forbid a user inserting a module between a
+  host and its expanders/subpanels; the adjacency walk then breaks. The FIX is the id-pairing model
+  (hostPairId, resolveFollowedT<Monsoon>, graceful unbind) — already built + tested as generic templates
+  (ui/IntertropicalPairing.hpp), used by Lantern/Changi/MicroTuning/ChangeAlley, and being rolled out per
+  CONNECTION_MODEL_SPEC §7 stages (1-2 appear DONE: segment-rule findMonsoonEitherSide + Monsoon.pairId;
+  3-4 = explicit selection + CA primary = PENDING). The subpanel-loses-adjacency fix IS stage 3, not a
+  new mechanism. NEW STRAITS has the SAME exposure (StraitsBase.cpp spawns lanes + tracks them by walking
+  rightExpander — insert-between breaks it; StraitsLaneExpander.hpp). So: do NOT write a bespoke subpanel
+  fix (it would be a 5th mechanism — exactly what the spec forbids). Warp modulation-tier → subpanel
+  migration is GATED on connection-model stages 3-4 DONE *and* warp proven. Warp ships on WIDE PANELS now,
+  independent of all this (prompts 01-04).
 
 STILL OPEN — BLOCKS CC:
 1. Distribution OWNERSHIP: ANSWERED 2026-10-18b (SESSION_LOG_2026-10-18b.md §1). NOT unique_ptr (allocates

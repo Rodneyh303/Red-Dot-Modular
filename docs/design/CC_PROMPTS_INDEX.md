@@ -30,7 +30,15 @@ next starts. The DETAILED what-and-why for all of them is SESSION_LOG_2026-10-18
 - Boolean-lane response curves: deferred BY PROOF (-18b §3) — booleans have a RATE not a
   distribution; warp there is a modulation-response curve, different name + UI, not core warp.
 - Effective-distribution VISUALISER module: separate module, not the popup, not the bars.
-- Subpanel migration of the modulation tier: BLOCKED by the adjacency/user-insertion bug;
-  deferred until warp proven AND degradation designed, then done whole-tier.
+- Subpanel migration of the modulation tier: BLOCKED. The adjacency/user-insertion problem is
+  the GENERAL connection-model problem (locked spec CONNECTION_MODEL_SPEC.md; status +
+  dependency in CONNECTION_MODEL_MIGRATION_NOTE.md). The subpanel fix IS stage 3 of that
+  migration (bind by hostPairId, not adjacency) — NOT a bespoke fix. Gated on connection-model
+  stages 3-4 DONE + warp proven, then migrate the whole modulation tier at once. NEW STRAITS
+  (StraitsBase↔lane tracking) has the same exposure + wants the same stage-3 treatment.
+- Connection-model migration itself (SUITE INFRASTRUCTURE, separate track from warp): stages
+  1-2 appear DONE (segment-rule walk + Monsoon.pairId + HostBadge), 3-4 PENDING. Resume on its
+  own branch with contract tests — the discovery layer is where the spread/QMIX crash cluster
+  lived. Not warp work; warp ships independently on wide panels.
 - Output-stage clamp (co-clipping): deferred; CV-outs only; affine-range safe, hard-clamp makes
   atoms. Not core warp.
