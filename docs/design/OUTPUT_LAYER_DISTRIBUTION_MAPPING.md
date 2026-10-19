@@ -765,3 +765,69 @@ the allowed update CADENCE is DERIVED from one rule (Sklar/uniformity safety), n
      manual edit would feel laggy). KEEP manual=next-step. (FEEL-TEST caveat: if a mid-phrase pin
      move audibly GLITCHES rather than cleanly step-transitions, reconsider — phrase-gate it or
      quantise to next beat. Theory says next-step is fine; ears decide if the seam is ugly.)
+
+────────────────────────────────────────────────────────────────────────────────
+## CLAMP ATOMS AT THE DRAW LEVEL — what they DO, and DIRECTIONAL tail via spread sign (Rodney)
+
+### The atoms, concretely (single voice)
+Clamping the first/last part of F puts DIRAC MASSES at the output rails: the warped uniform hits
+0 with prob p0 = F(lo) and 1 with prob p1 = 1-F(hi). The output marginal is
+    mu_Y = p0·delta_0 + p1·delta_1  (SINGULAR part)  +  f_cont(y)dy on (0,1)  (ABS-CONTINUOUS part).
+delta_0, delta_1 sit on {0},{1} — LEBESGUE-measure-zero points carrying POSITIVE probability (the
+definition of an atom; why the output is not abs. continuous). In COPULA space they land on the
+boundary/Fréchet CORNERS — which is WHY they carry lambda>0 (an atom at the (1,1) corner IS the
+comonotone/upper-Fréchet touching point); the location is the whole reason clamp reaches lambda,
+not an inert spike. (Atoms at exactly 0/1 only if lo/hi = the support rails; interior clamp → atoms
+at interior points, still singular, but off the Fréchet corners so the clean lambda reading needs
+rail-clamping.)
+
+### Through the lane maps (the draw-level picture)
+- MELODY: uniform=0 → bottom bin → LOWEST degree; =1 → top → HIGHEST. So P(lowest pitch) >= p0,
+  P(highest) >= p1. ("AT LEAST": the atom is a FLOOR (rigid mass exactly at the rail) ON TOP of the
+  continuous part's near-rail mass. The atom is the RIGID extreme; the continuous tail is the SOFT
+  near-extreme.)
+- OCTAVE: roll=0 → bottom octave, =1 → top. Same.
+- VARIATION (gate-mode subgate density): atom at 0 → MUCH shorter/sparsest, atom at 1 → MUCH
+  longer/densest, each >= p0/p1. Rodney's "a bit vs much": the CONTINUOUS part gives graded (a bit
+  shorter/longer); the ATOMS superimpose rigid EXTREMES (much shorter/longer). Variation becomes
+  graded-middle + rigid-extreme spikes.
+
+### Why the atom (not the continuous tail) is the lambda-bearer, seen from the draw
+The ATOM mass CO-OCCURS rigidly (two voices both at U=0 → both lowest, locked, same step); the
+continuous near-rail mass is correlated but NOT locked. So cross-voice lambda>0 comes from the atom
+floor, not the continuous tail — the draw-level reason only atoms reach lambda and the continuous
+Gaussian part stays lambda=0. CLEAN TWO-KNOB PICTURE: clamp depth = MARGINAL atom rate (p0,p1);
+cross-voice correlation = how much the atoms CO-OCCUR = lambda.
+
+### DIRECTIONAL tail via spread SIGN — and the per-voice structure (VERIFIED)
+spread is PER-VOICE-SLOT, PER-LANE, BIPOLAR: spread[kVoiceSlots][NUM_STRANDS], clamped [-1,1],
+"negative spread inverts the target" (SequencerEngine.hpp:433; MonsoonExpanderManager.cpp:305 the
+spread-sign fix). The leader is the voice's CA-assigned pre-remap draw
+(MonsoonExpanderManager.cpp:420). So EACH voice independently sets (leader, signed rho).
+  - POSITIVE spread → atoms CO-OCCUR SAME-rail: both lowest together, or both highest together
+    (comonotone corners (0,0),(1,1)). Musical: unison tutti at an extreme.
+  - NEGATIVE spread → atoms co-occur OPPOSITE-rail vs the leader: voice bottoms as leader tops
+    (countermonotone corners (0,1),(1,0)). Musical: voices SPLIT to opposite extremes together —
+    max chord spread / one voice sparse while another dense, same step.
+  - rho^2 PROPAGATION (the structure, NOT a single global leader-vs-pack): two voices sharing a
+    leader get follower-follower corr = (sign_a·rho)(sign_b·rho). SAME sign → +rho^2 (co-occur
+    same-rail); OPPOSITE sign → -rho^2 (co-occur opposite-rail). So Rodney's example — V6 at +rho to
+    V5, V7&V8 at -rho to V5 — yields: V7↔V8 = +rho^2 (together), V6↔V7 = -rho^2 (opposed). A
+    STRUCTURED 3-way split around leader V5: {V6} vs {V7,V8}, buildable from per-voice spread SIGN
+    alone, at the LATENT layer, before any warp orientation. (Corrects the earlier "spread sign =
+    one global leader-vs-pack": per-voice signed spread via CA gives arbitrary signed subgroups.)
+
+### TWO INDEPENDENT LEVERS for opposite-tail structure
+1. CA per-voice (leader + signed rho) → sets the CORRELATION sign between any voice and its leader →
+   structured same-rail / opposite-rail subgroups via rho^2 propagation (latent layer).
+2. PER-VOICE WARP ORIENTATION (top-clamp vs bottom-clamp — which rail the atom sits on) → flips
+   which rail a voice lands on INDEPENDENTLY of its correlation sign; even +correlated voices can
+   land opposite rails if oppositely clamped (output layer).
+Combined, the full matrix is authorable: WHICH voices co-occur (CA), in WHICH direction
+(spread sign), onto WHICH rail (warp orientation).
+
+### FORMAL CAVEAT (so the write-up is airtight)
+lambda_U, lambda_L are defined for SAME-direction co-extremity; the opposite-rail (negative-spread)
+case is COUNTERMONOTONE atom co-occurrence on the (0,1)/(1,0) corners — sometimes "negative tail
+dependence", stated via the survival/countermonotone framing. lambda stays >=0 by definition; what
+the spread SIGN flips is WHICH CORNERS carry the atoms, not the sign of lambda.
