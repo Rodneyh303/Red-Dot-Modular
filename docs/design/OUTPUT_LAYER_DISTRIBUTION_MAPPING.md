@@ -809,13 +809,19 @@ spread-sign fix). The leader is the voice's CA-assigned pre-remap draw
   - NEGATIVE spread → atoms co-occur OPPOSITE-rail vs the leader: voice bottoms as leader tops
     (countermonotone corners (0,1),(1,0)). Musical: voices SPLIT to opposite extremes together —
     max chord spread / one voice sparse while another dense, same step.
-  - rho^2 PROPAGATION (the structure, NOT a single global leader-vs-pack): two voices sharing a
-    leader get follower-follower corr = (sign_a·rho)(sign_b·rho). SAME sign → +rho^2 (co-occur
-    same-rail); OPPOSITE sign → -rho^2 (co-occur opposite-rail). So Rodney's example — V6 at +rho to
-    V5, V7&V8 at -rho to V5 — yields: V7↔V8 = +rho^2 (together), V6↔V7 = -rho^2 (opposed). A
-    STRUCTURED 3-way split around leader V5: {V6} vs {V7,V8}, buildable from per-voice spread SIGN
-    alone, at the LATENT layer, before any warp orientation. (Corrects the earlier "spread sign =
-    one global leader-vs-pack": per-voice signed spread via CA gives arbitrary signed subgroups.)
+  - SPREAD TARGET = mono OR follow-CA (VERIFIED, MonsoonExpanderManager.cpp:420): in follow-CA mode
+    the correlation is PAIRWISE ALONG THE CA ROUTING EDGE — "the leader is the post-remap value =
+    src[v]'s material" (the voice CA channelled THIS voice from), with this voice's own pre-remap
+    draw as the idiosyncratic endpoint. So if CA routes V4 from V2, V4's spread is corr(V2, V4)
+    SPECIFICALLY — a signed edge in the CA routing TREE, NOT correlation to one global leader.
+    => NEGATIVE edge V2→V4: V2 tops as V4 bottoms, a LOCKED PAIRWISE opposite-tail couple
+    (independent of other voices). POSITIVE edge: they co-occur same-rail.
+  - The routing is a SIGNED TREE: CA builds the graph (who follows whom), spread signs each EDGE
+    independently. Correlations COMPOUND along a path (V4→V2→V1: the V4-V1 corr is the product along
+    the edges). Two voices sharing a parent node, with signs, get ±rho^2 between them (same sign →
+    +rho^2 same-rail; opposite → -rho^2 opposite-rail) — Rodney's V6+/V7-,V8- into V5 = a structured
+    3-way split {V6} vs {V7,V8} around parent V5. (Corrects the earlier "one global leader-vs-pack"
+    AND the "shared-leader star": it's a per-voice-signed CA routing tree with PAIRWISE edges.)
 
 ### TWO INDEPENDENT LEVERS for opposite-tail structure
 1. CA per-voice (leader + signed rho) → sets the CORRELATION sign between any voice and its leader →
