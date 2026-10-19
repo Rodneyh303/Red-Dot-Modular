@@ -1,3 +1,20 @@
+# ⚠️ CORRECTION (verified against HEAD) — the POLY audio path is ALREADY mirror-routed
+CC verification + re-read of HEAD: polyRandomSrc (SequencerEngine.hpp:542-546) ALREADY routes
+MEL/OCT through pe.warpRow(voiceIdx, lane); refreshPolyRandomCell (SequencerEngine.cpp:1053)
+rebuilds the mirror cell BEFORE the read (fresh, guarded by test S6). So the POLY AUDIO PATH IS
+CORRECT — my earlier "poly site :1148 reads RAW" claim was WRONG (I misread polyRandomSrc as a raw
+accessor). DO NOT change the poly audio path — it works.
+THE ACTUAL BUG is ONE site: PatternEngine.cpp:787 (redrawMelody — the DISPLAY/DRAW melodyPitchV
+writer) feeds genPitchLive RAW slewedMelody[0]/slewedOctave[0], disagreeing with the :888 writer
+which is warp-routed. Fix :787 (and its qmix/rhythm redraw twins if they have the same raw-draw
+disagreement) to route through warpRow, so the two melodyPitchV writers agree.
+Everything below is the original diagnosis; IGNORE the "POLY site :1148" instructions — that site
+is already correct. The mono/poly split framing was wrong; this is a single-site DISPLAY/DRAW bug.
+NOTE: CC_PROMPT_05 (route ALL consumers through warpRow + contract test over all 112 cells)
+SUBSUMES this — if doing 05, the :787 site gets fixed as part of the uniform-plumbing sweep, and
+the all-cells no-op test proves it. Prefer 05 as the single clean sweep.
+
+────────────────────────────────────────────────────────────────────────────────
 # CC PROMPT 04-FIX-2 — warp has NO engine effect: the DRAW path bypasses the mirror
 
 CONTEXT: feat/warp-ui. Rodney verified ON THE SCOPE (not just bars) that selecting a non-uniform
