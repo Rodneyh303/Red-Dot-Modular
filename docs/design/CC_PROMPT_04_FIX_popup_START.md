@@ -73,3 +73,18 @@ it worked standalone before the popup hosted it), so the popup must not pre-empt
 - bash test/run_all.sh green; audit_anchor_bind green; plugin builds.
 - PR body: state the z-order fix, and "needs Rack feel-test: popup on top, knobs grab, points drag;
   re-test the display-bars warp (fdc6a03) for the macro/voice behaviour."
+
+## ADDITIONAL popup issues (Rodney feel-test — address WITH the z-order fix, same file)
+3. SIZE — the popup has clear headroom in its location (image shows unused space). Make it BIGGER for
+   legibility (the CDF/PDF editor + param knobs all read better larger). Pure sizing change in
+   WarpCurvePopup box dimensions; low-risk win. Independent of z-order.
+4. SCROLL DISCONNECT — scrolling the rack detaches the popup from its host (it floats away). ROOT:
+   once parented to the scene overlay (the z-order fix), the popup is in SCENE coords, which are
+   FIXED while the rack scrolls underneath. Two valid fixes, pick one:
+   (a) TRACK the host — re-anchor the popup to the host module's current absolute position each frame
+       (nicer for an editor you're actively using; more work), OR
+   (b) CLOSE ON SCROLL — the standard Rack idiom (context menus do this; simpler). Less nice for a
+       curve editor mid-edit.
+   Recommend (a) track-on-scroll for a curve editor, with (b) as the fallback if tracking is fiddly.
+   This is PART OF getting the overlay parenting right — the z-order fix isn't complete until the
+   popup stays attached to its host through scroll/move.
