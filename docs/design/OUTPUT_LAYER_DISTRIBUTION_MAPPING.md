@@ -735,7 +735,7 @@ the allowed update CADENCE is DERIVED from one rule (Sklar/uniformity safety), n
 | Spread (r) | latent / cross-voice | lane-grp | base copula correlation | it IS the base, not a factor | step | no (Gaussian) | yes |
 | A/B mix | SOURCING (raw draw) | lane-grp | picks draw source | yes — REGIME-SWITCH / MIXTURE factor (mixes two draw regimes; NOT a Gaussian-corr factor) | STEP (uniform-safe) | no (both regimes tail-indep) | yes (source is position-keyed) |
 | Slew-rho | latent / TEMPORAL (cross-step) | lane-grp | sets MA autocorrelation (temporal smoothness); applies CONTINUOUSLY | yes — common factor in TEMPORAL autocorrelation (stoch-vol-of-smoothness) | PHRASE (per-step breaks in-flight window uniformity → Sklar) | no (steps jointly Gaussian → temporally tail-indep) | iff rho-sequence is position-keyed |
-| CA routing | latent / cross-voice | lane-grp | correlation submatrix structure | yes — routes the shared drive → LATENT cross-voice factor | manual pin→NEXT-STEP; triggered struct→PHRASE | no (Gaussian) | yes |
+| CA routing | latent / cross-voice | lane-grp | correlation submatrix structure | yes — routes the shared drive → LATENT cross-voice factor | manual pin→NEXT-STEP; triggered struct→PHRASE (gated by COHERENCE, NOT Sklar — see note) | no (Gaussian) | yes |
 | w (depth) | MARGINAL | PER-VOICE | shapes marginals; w=1 static = full F^-1, **NO factor** (Sklar-invariant per-coord map) | yes — MARGINAL / FRAILTY factor | STEP (monotone mix = Sklar-safe) | no (bounded, no clamp) | yes (draw-time latched) |
 | theta (dist params) | MARGINAL | per-voice | shapes marginal family | yes — marginal/frailty factor | step (draw-time latch) | no (bounded) | yes if latched & position-keyed |
 | w UNDER CLAMP | marginal + OUTPUT | per-voice | dials the Lebesgue decomp (cont ↔ MO-singular weight) | yes — frailty factor **+ CO-MODULATED λ** (atom masses breathe together → common factor IN the tail) | step | **YES (atoms)** | yes |
@@ -749,5 +749,19 @@ the allowed update CADENCE is DERIVED from one rule (Sklar/uniformity safety), n
    latent-cross-voice (CA), temporal (slew-rho), sourcing/regime (A/B), or marginal/frailty (w,θ).
 3. λ>0 IS REACHABLE ONLY BY ATOMS (clamp / DMO). No modulation of ANY bounded continuous
    parameter — correlation, rho, source, w, θ — ever breaks the tail barrier; all give λ=0.
-4. CADENCE IS DERIVED, NOT CHOSEN: Sklar-safe-per-step → step/next-step; Sklar-unsafe-per-step
-   → phrase boundary. Same derivation for every row.
+4. CADENCE IS DERIVED, NOT CHOSEN — from one of TWO risks:
+   - UNIFORMITY (Sklar) risk → phrase: a change that corrupts an in-flight window's uniform
+     margin if applied per-step. Slew-rho (changes the MA window WEIGHTS mid-blend → margin
+     no longer uniform). w/θ are Sklar-SAFE per step → step-latched.
+   - COHERENCE risk → phrase: a change that seams the DEPENDENCE mid-pattern (margins fine,
+     but the correlation structure has a discontinuity inside the phrase). This is CA's reason,
+     NOT Sklar — a CA pin move swaps the draw SOURCE (not the window weights), so a blend of
+     uniforms stays uniform → margins survive a mid-window swap. What it risks is a correlation
+     seam mid-phrase.
+   The manual-vs-triggered SPLIT within CA is then by trigger-source-and-frequency, NOT by layer:
+   - TRIGGERED (CV/mod) structural change can fire ANYWHERE → PHRASE-gate so no mid-pattern seam.
+   - MANUAL pin edit is deliberate + rare → NEXT-STEP: the one-step coherence seam is acceptable
+     (and immediate feedback matters more — same feel rule as w's edit→next-step; phrase-gating a
+     manual edit would feel laggy). KEEP manual=next-step. (FEEL-TEST caveat: if a mid-phrase pin
+     move audibly GLITCHES rather than cleanly step-transitions, reconsider — phrase-gate it or
+     quantise to next beat. Theory says next-step is fine; ears decide if the seam is ugly.)
