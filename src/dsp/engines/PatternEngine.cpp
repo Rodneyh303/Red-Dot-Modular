@@ -350,7 +350,13 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
         legatoSource[0][i]=slewedLegato[0][i]; accentSource[0][i]=slewedAccent[0][i];
         for (int v=1;v<=numPolyVoicesHint;v++) rhythmSource[v][i]=slewedRhythm[v][i];
         for (int v=1;v<=numPolyVoicesHint;v++) accentSource[v][i]=slewedAccent[v][i];
-        rhythmPattern[i] = (slewedRhythm[0][i] >= in.restProb);
+        // Warp mirror (CC_PROMPT_05 — the RHYTHM redraw twin of the melody draw site):
+        // the pattern preview derives from the SAME effective w-mixture + voice key the
+        // refreshVisualCache rhythmChanged writer uses (warpRow(displayedVoice_, PL_REST))
+        // — the two rhythmPattern writers agree by construction. warpRow(0,·) IS the
+        // mono row, so at identity defaults this is byte-identical to the old raw
+        // slewedRhythm[0] read (the recompute's write-back just copied slewed→random_).
+        rhythmPattern[i] = (warpRow(displayedVoice_, PL_REST)[i] >= in.restProb);
     }
 }
 
@@ -886,8 +892,11 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     // rhythm-mix forced the unconditional loop to re-run.
     if (rhythmChanged) {
         for (int i = 0; i < 16; ++i) {
-            float rVal = (displayedVoice_ == 0) ? rhythmRandom[i] : polyRandom(displayedVoice_, PL_REST)[i];
-            rhythmPattern[i] = (rVal >= in.restProb);
+            // Warp mirror (CC_PROMPT_05): the displayedVoice_==0 mono/poly ternary
+            // COLLAPSES — warpRow(displayedVoice_, PL_REST) IS the mono row when
+            // displayedVoice_ is 0 (rhythmRandom is a view onto random_[0][REST]) and
+            // the displayed poly row otherwise. One accessor, every lane, every voice.
+            rhythmPattern[i] = (warpRow(displayedVoice_, PL_REST)[i] >= in.restProb);
         }
     }
     if (melodyChanged) {

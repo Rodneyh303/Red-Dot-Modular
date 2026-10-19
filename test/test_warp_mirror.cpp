@@ -20,14 +20,14 @@
 //   S8. DISPLAY COMPOSITION (CC_PROMPT_04 feel-test bug 1): warpDisplayMix(v,lane,u)
 //       composes the SAME per-(voice,lane) (F,w) the mirror resolves (WarpBank::
 //       warpedValue(v,lane,u,delegated) — Macro-global for delegated cells) over a
-//       caller-supplied DISPLAY value; no bank ⇒ bit-identical passthrough. The
-//       MEL/OCT gate lives at the UI call sites (polyRandomSrc's rule), not here.
+//       caller-supplied DISPLAY value; no bank ⇒ bit-identical passthrough. (CC_PROMPT_05:
+//       callers compose EVERY lane — the per-lane MEL/OCT gate died with the uniform plumbing.)
 //   S9. DRAW-PATH WARP CONTRACT (CC_PROMPT_04-FIX-2): the redrawMelody DRAW feeds
 //       genPitchLive the MIRROR — warpRow(displayedVoice_, MEL/OCT), the SAME
 //       accessor + voice key the refreshVisualCache display writer uses — so a draw
 //       with warp set produces a DIFFERENT pattern than the same draw at w=0, the
 //       two melodyPitchV writers agree bit-exactly, and the POLY landing
-//       (refreshPolyRandomCell → polyRandomSrc) reads the FRESH mirror cell.
+//       (refreshPolyRandomCell → warpRow) reads the FRESH mirror cell.
 //
 // Companion source: PatternEngine.cpp (the run_all.sh:59 test_slew_copula pattern).
 #include "test_stubs.hpp"
@@ -340,20 +340,21 @@ int main() {
                 }
     });
 
-    // ── S6: CONSUMER ROUTING — no consumer reads raw random_ for melody/octave ───
-    TEST("S6 display routing: finalRandomByStrand returns the MIRROR for MEL/OCT (w>0); RHYTHM stays raw", {
+    // ── S6: CONSUMER ROUTING — no consumer reads raw random_ for ANY lane ────────
+    TEST("S6 display routing: finalRandomByStrand returns the MIRROR for EVERY strand (w>0; CC_PROMPT_05 uniform)", {
         PatternEngine pe; fillRandomGolden(pe);
         WarpBank bank; pe.setWarpBank(&bank);
         bank.warpW[WarpBank::index(0, MEL)] = 1.f;
         bank.warpF[WarpBank::index(0, MEL)] = dotModular::TriangularWarp{0.25};
         bank.warpW[WarpBank::index(0, OCT)] = 1.f;
         bank.warpF[WarpBank::index(0, OCT)] = dotModular::PowerWarp{2};
-        // Warp authored on a BOOLEAN lane too — the gate must keep its display raw
-        // (a lane's display reads the mirror IFF its engine consumer does).
+        // Warp authored on a BOOLEAN lane too — CC_PROMPT_05: the per-lane gate is
+        // GONE; every lane's display reads the mirror because every lane's engine
+        // consumer does (the flip-together rule, now uniform by construction).
         bank.warpW[WarpBank::index(0, PatternEngine::PL_REST)] = 1.f;
         bank.warpF[WarpBank::index(0, PatternEngine::PL_REST)] = dotModular::PowerWarp{3};
         pe.rebuildWarpMirrorAll();
-        int melDiffs = 0, octDiffs = 0;
+        int melDiffs = 0, octDiffs = 0, restDiffs = 0;
         for (int s = 0; s < 16; ++s) {
             const float m = pe.finalRandomByStrand(dotModular::STRAND_MELODY, s);
             EXPECT(m == pe.warped_[0][MEL][s]);
@@ -361,17 +362,20 @@ int main() {
             const float o = pe.finalRandomByStrand(dotModular::STRAND_OCTAVE, s);
             EXPECT(o == pe.warped_[0][OCT][s]);
             if (o != pe.random_[0][OCT][s]) ++octDiffs;
-            // boolean lane: raw even with warp authored on it (flip-together gate)
-            EXPECT(pe.finalRandomByStrand(dotModular::STRAND_RHYTHM, s) == pe.random_[0][PatternEngine::PL_REST][s]);
+            // boolean lane: the mirror too — warp REACHES it now (test_warp_all_lanes
+            // A3 pins the full 7-strand version of this contract).
+            const float r = pe.finalRandomByStrand(dotModular::STRAND_RHYTHM, s);
+            EXPECT(r == pe.warped_[0][PatternEngine::PL_REST][s]);
+            if (r != pe.random_[0][PatternEngine::PL_REST][s]) ++restDiffs;
         }
-        EXPECT(melDiffs > 0 && octDiffs > 0);   // visibly warped, not a vacuous pass
+        EXPECT(melDiffs > 0 && octDiffs > 0 && restDiffs > 0);   // visibly warped, not a vacuous pass
         // Null-bank host: raw everywhere (byte-identical legacy).
         PatternEngine pe2; fillRandomGolden(pe2);
         for (int s = 0; s < 16; ++s)
             EXPECT(pe2.finalRandomByStrand(dotModular::STRAND_MELODY, s) == pe2.random_[0][MEL][s]);
     });
 
-    TEST("S6 sounding routing: polyRandomSrc(MEL/OCT) carries the mirror; other lanes raw", {
+    TEST("S6 sounding routing: the CV-out consumer carries the mirror for EVERY lane (CC_PROMPT_05 uniform)", {
         SequencerEngine se;
         fillRandomGolden(se.pe);
         WarpBank bank; se.pe.setWarpBank(&bank);
@@ -382,15 +386,16 @@ int main() {
         se.pe.rebuildWarpMirrorAll();
         int melDiffs = 0, octDiffs = 0;
         for (int s = 0; s < 16; ++s) {
-            const float m = se.polyRandomSrc(3, SequencerEngine::PL_MELODY)[s];
+            const float m = se.polyLaneProbabilityAtStep(SequencerEngine::PL_MELODY, 3, s);
             EXPECT(m == se.pe.warped_[3][MEL][s]);
             if (m != se.pe.random_[3][MEL][s]) ++melDiffs;
-            const float o = se.polyRandomSrc(3, SequencerEngine::PL_OCTAVE)[s];
+            const float o = se.polyLaneProbabilityAtStep(SequencerEngine::PL_OCTAVE, 3, s);
             EXPECT(o == se.pe.warped_[3][OCT][s]);
             if (o != se.pe.random_[3][OCT][s]) ++octDiffs;
-            // non-melody lanes stay on the raw bank (their consumers don't warp yet):
-            EXPECT(se.polyRandomSrc(3, SequencerEngine::PL_REST)[s] == se.pe.random_[3][PatternEngine::PL_REST][s]);
-            EXPECT(se.polyRandomSrc(3, SequencerEngine::PL_ACCENT)[s] == se.pe.random_[3][PatternEngine::PL_ACCENT][s]);
+            // non-authored lanes: mirror == raw at their identity defaults (warp
+            // reaches ONLY authored cells — test_warp_all_lanes A2/A3 pin the rest):
+            EXPECT(se.polyLaneProbabilityAtStep(SequencerEngine::PL_REST, 3, s) == se.pe.random_[3][PatternEngine::PL_REST][s]);
+            EXPECT(se.polyLaneProbabilityAtStep(SequencerEngine::PL_ACCENT, 3, s) == se.pe.random_[3][PatternEngine::PL_ACCENT][s]);
         }
         EXPECT(melDiffs > 0 && octDiffs > 0);
     });
@@ -415,7 +420,7 @@ int main() {
             for (int st = 0; st < dotModular::NUM_STRANDS; ++st)
                 EXPECT(pe.finalRandomByStrand(st, s) == pe.random_[0][st][s]);
         }
-        // and the sounding accessor, through a real SequencerEngine:
+        // and the sounding accessor, through a real SequencerEngine (every lane):
         SequencerEngine se;
         fillRandomGolden(se.pe);
         se.pe.setWarpBank(&bank);
@@ -423,7 +428,7 @@ int main() {
         for (int v = 0; v < 16; v += 5)
             for (int l = 0; l < 7; ++l)
                 for (int s = 0; s < 16; ++s)
-                    EXPECT(se.polyRandomSrc(v, l)[s] == se.pe.random_[v][l][s]);
+                    EXPECT(se.polyLaneProbabilityAtStep(l, v, s) == se.pe.random_[v][l][s]);
     });
 
     // ── S8: DISPLAY COMPOSITION (CC_PROMPT_04 feel-test bug 1) ─────────────────────
@@ -587,9 +592,9 @@ int main() {
         EXPECT(diffs > 0);
     });
 
-    TEST("S9 poly landing: refreshPolyRandomCell → polyRandomSrc reads the CURRENT cell's mirror (fresh, not raw)", {
+    TEST("S9 poly landing: refreshPolyRandomCell → warpRow reads the CURRENT cell's mirror (fresh, not raw)", {
         // The executePolyVoice call sequence (refresh the cell, then read the pitch
-        // uniform through polyRandomSrc) must land on the mirror of the JUST-written
+        // uniform through warpRow) must land on the mirror of the JUST-written
         // random_ value — the freshness half of the sounding-path contract.
         SequencerEngine se;
         fillRandomGolden(se.pe);
@@ -607,9 +612,9 @@ int main() {
         const float u = se.pe.random_[v][MEL][step];   // the JUST-refreshed basis
         EXPECTF(u != 0.123456f, "refresh did not move the cell (u=%.9g)", (double)u);
         const float want = (float)dotModular::TriangularWarp{0.25}.invCDF((double)u);   // w=1
-        EXPECTF(se.polyRandomSrc(v, SequencerEngine::PL_MELODY)[step] == want,
+        EXPECTF(se.pe.warpRow(v, SequencerEngine::PL_MELODY)[step] == want,
                 "poly landing read %.9g, want the FRESH mirror %.9g (u=%.9g)",
-                (double)se.polyRandomSrc(v, SequencerEngine::PL_MELODY)[step], (double)want, (double)u);
+                (double)se.pe.warpRow(v, SequencerEngine::PL_MELODY)[step], (double)want, (double)u);
         EXPECT(se.pe.warped_[v][MEL][step] == want);   // the cell-scope rebuild landed
     });
 

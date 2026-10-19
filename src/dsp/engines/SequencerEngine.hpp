@@ -532,22 +532,19 @@ struct SequencerEngine {
     // The pin remap now lives UPSTREAM in the slewed buffers (pe.remapSlewedByPins,
     // pre-spread), so every read here is a PLAIN own-bank read — a pinned voice's
     // borrowed draw already carries the consumer's own spread. No read-time indirection.
-    // Warp mirror (CC_PROMPT_03 STEP 4a): the MELODY/OCTAVE OUTPUT — what genPitchLive
-    // consumes for pitch (mono + poly landings) and the poly prob CV outs read — comes
-    // from the EFFECTIVE w-mixture (pe.warpRow: the mirror when a bank is wired, the
-    // raw row otherwise, so bank-less hosts stay byte-identical). Every other lane
-    // reads the raw bank: its consumers don't warp yet (boolean lanes deferred by
-    // proof; q-mix with the w send/tap routing). Each lane's gate flips TOGETHER with
-    // its consumer — the sounding path and the display agree by construction.
-    inline const float (&polyRandomSrc(int voiceIdx, int polyLane) const)[16] {
-        if (polyLane == PL_MELODY || polyLane == PL_OCTAVE)
-            return pe.warpRow(voiceIdx, polyLane);
-        return pe.polyRandom(voiceIdx, polyLane);
-    }
+    // Warp mirror (CC_PROMPT_05 — UNIFORM): EVERY lane's uniform — what genPitchLive
+    // consumes for pitch (mono + poly landings), what the threshold consumers roll
+    // against, and what the poly prob CV outs read — comes from the ONE accessor
+    // pe.warpRow (the mirror when a bank is wired, the raw row otherwise, so
+    // bank-less hosts stay byte-identical). The old per-lane gated seam (MEL/OCT →
+    // mirror, boolean/qmix → raw) is DELETED: there is no second path to drift, so
+    // "lane is special / voice is special" divergence is impossible by construction.
+    // pe.polyRandom survives ONLY as the WRITE target (the spread passes and
+    // refreshPolyRandomCell write random_; the mirror rebuilds from it).
     // Stage 2a: refresh ONE cell of polyRandom at step advance, using the cached spread
     // value from the last control-rate sync(). Checks the lane's lock axis; if not live,
     // returns without writing (frozen value persists). Called from executePolyVoice before
-    // each polyRandomSrc read — replaces the old full-field (15 voices x 7 lanes x 16 steps)
+    // each warpRow read — replaces the old full-field (15 voices x 7 lanes x 16 steps)
     // control-rate rebuild.
     void refreshPolyRandomCell(int voice, int engLane, int step);
     static inline int polyLaneToStrand(int polyLane) {
@@ -558,7 +555,7 @@ struct SequencerEngine {
              : (polyLane == PL_QMIX)   ? dotModular::STRAND_QMIX
                                        : dotModular::STRAND_RHYTHM;  // fallback
     }
-    // (monoStrand deleted — V1 reads via pe.polyRandom(0, PL_*) now, same path as V2+)
+    // (monoStrand deleted — V1 reads via pe.warpRow(0, PL_*) now, same path as V2+)
     bool muted = false;
     bool runGateActive = false;
     bool resetArmed = false;
@@ -671,9 +668,10 @@ struct SequencerEngine {
         int idx = getStrandIdx(polyLaneTick(voice, polyLane), polyLenE(voice, polyLane),
                                polyOffE(voice, polyLane), polyRotE(voice, polyLane));
         idx &= 0x0F;
-        // Through the Change Alley remap: the CV out reports what the voice will CONSUME.
+        // Through the Change Alley remap + the ONE uniform source (CC_PROMPT_05):
+        // the CV out reports what the voice will CONSUME — warpRow, every lane.
         if (polyLane < 0 || polyLane >= PL_LANES) return 0.f;
-        return polyRandomSrc(voice, polyLane)[idx];
+        return pe.warpRow(voice, polyLane)[idx];
     }
     // Per-voice draw value for a poly lane at an EXPLICIT step (caller supplies the
     // step from its own LOR view). Used by Macro's prob-out, which samples each voice's
@@ -682,7 +680,7 @@ struct SequencerEngine {
     inline float polyLaneProbabilityAtStep(int polyLane, int voice, int step) const {
         if (voice < 0 || voice >= 16 || polyLane < 0 || polyLane >= PL_LANES) return 0.f;
         step &= 0x0F;
-        return polyRandomSrc(voice, polyLane)[step];   // through the Change Alley remap
+        return pe.warpRow(voice, polyLane)[step];   // the ONE uniform source (warp mirror)
     }
 
     // Step indices (for S&H edge detection) matching the probability accessors above.

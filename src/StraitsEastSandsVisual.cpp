@@ -1226,8 +1226,8 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // source, so they can't diverge by timing (torn reads of live slewed* vs published
             // pubSlewed*). The spread may differ on East-owned lanes (East's combined spread vs
             // Macro's own) — that's correct: East shows the actual per-voice output.
-            // Previously this read resolver.laneProbabilityAtStep → polyRandomSrc (post-spread
-            // final array), which could disagree with Macro's pre-spread+spread when the manager
+            // Previously this read the old gated per-voice accessor (post-spread final
+            // array), which could disagree with Macro's pre-spread+spread when the manager
             // wrote the final array at a different time than the widget read it.
             auto* eastMod = static_cast<StraitsEastSandsVisual*>(module);
             // pubSlewedPoly* is VOICESLOT-indexed: writer PatternEngine.hpp:506
@@ -1256,15 +1256,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     }
                     const float spread = (vs >= 0 && vs < 16) ? eastMod->polySpreadEffective[vs][lane] : 0.f;
                     const float disp = redDot::SpreadInterp::applyAnchorV1Only(peRef, lane, s, base, spread);
-                    // Warp display composition (feel-test bug 1): the engine consumes the
-                    // warp MIRROR for MEL/OCT (polyRandomSrc → warpRow), so the bars show
-                    // the same mixture composed ON TOP of the spread-applied display value —
-                    // never a value the audio doesn't consume. warpDisplayMix resolves the
-                    // per-(voice,lane) (F,w) exactly like the mirror (delegation included).
+                    // Warp display composition (CC_PROMPT_05 uniform): the engine consumes
+                    // the warp MIRROR for EVERY lane (warpRow), so the bars compose the
+                    // same mixture ON TOP of the spread-applied display value for all
+                    // lanes — never a value the audio doesn't consume. warpDisplayMix
+                    // resolves the per-(voice,lane) (F,w) exactly like the mirror
+                    // (delegation included).
                     visualEditor->currentState.lanes[lane].probabilities[s] =
-                        (lane == SequencerEngine::PL_MELODY || lane == SequencerEngine::PL_OCTAVE)
-                            ? peRef.warpDisplayMix(vs, lane, disp)
-                            : disp;
+                        peRef.warpDisplayMix(vs, lane, disp);
                 }
             }
         }
@@ -1311,12 +1310,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
                     // instead of applyAnchorV1Only (hard-codes own=target=monoSlewed → self-target no-op).
                     const float disp = redDot::SpreadInterp::interpolate(base, base, spread);
-                    // Warp display composition (feel-test bug 1): MEL/OCT only (the
-                    // polyRandomSrc gate), over the mono/V1 row the audio path reads.
+                    // Warp display composition (CC_PROMPT_05 uniform): every lane (no
+                    // per-lane gate), over the mono/V1 row the audio path reads.
                     visualEditor->currentState.lanes[lane].probabilities[s] =
-                        (lane == SequencerEngine::PL_MELODY || lane == SequencerEngine::PL_OCTAVE)
-                            ? peRef.warpDisplayMix(kMono, lane, disp)
-                            : disp;
+                        peRef.warpDisplayMix(kMono, lane, disp);
                 }
             }
         }
@@ -1422,14 +1419,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             spread = monsoon->engine.spreadE(0, el);
                         // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
                         const float disp = redDot::SpreadInterp::interpolate(base, base, spread);
-                        // Warp display composition (feel-test bug 1): MEL/OCT only (the
-                        // polyRandomSrc gate), over the mono/V1 row. (This block is currently
+                        // Warp display composition (CC_PROMPT_05 uniform): every lane (no
+                        // per-lane gate), over the mono/V1 row. (This block is currently
                         // dead — tab1Mono is always false — but kept consistent with the live
                         // V1 branches so a revival can't diverge.)
                         visualEditor->currentState.lanes[el].probabilities[s] =
-                            (el == SequencerEngine::PL_MELODY || el == SequencerEngine::PL_OCTAVE)
-                                ? peRef.warpDisplayMix(dotModular::VoiceResolver::kMonoSlot, el, disp)
-                                : disp;
+                            peRef.warpDisplayMix(dotModular::VoiceResolver::kMonoSlot, el, disp);
                     }
                 }
             }
@@ -1543,12 +1538,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         spread = rack::math::clamp(spread, -1.f, 1.f);
                         // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
                         const float disp = redDot::SpreadInterp::interpolate(base, base, spread);
-                        // Warp display composition (feel-test bug 1): MEL/OCT only (the
-                        // polyRandomSrc gate), over the mono/V1 row the audio path reads.
+                        // Warp display composition (CC_PROMPT_05 uniform): every lane (no
+                        // per-lane gate), over the mono/V1 row the audio path reads.
                         visualEditor->currentState.lanes[el].probabilities[s] =
-                            (el == SequencerEngine::PL_MELODY || el == SequencerEngine::PL_OCTAVE)
-                                ? peRef.warpDisplayMix(kMono, el, disp)
-                                : disp;
+                            peRef.warpDisplayMix(kMono, el, disp);
                     }
                 }
             }

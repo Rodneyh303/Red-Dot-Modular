@@ -221,8 +221,9 @@ struct PatternEngine {
     // instead of random_[v][lane][step]. Same per-(voice,lane) (F,w) resolution as the
     // mirror — it calls the SAME WarpBank::warpedValue(v, lane, u, delegated) overload
     // warpMixCell uses, including the Macro-global default vs own-slot delegation —
-    // so a bar can never show a value the audio path doesn't consume. The MEL/OCT
-    // gate is the CALLER's job (polyRandomSrc's rule: boolean/qmix lanes stay raw).
+    // so a bar can never show a value the audio path doesn't consume. (CC_PROMPT_05:
+    // callers compose EVERY lane — the per-lane MEL/OCT gate died with the uniform
+    // plumbing; boolean/qmix lanes are inert warp slots at their identity defaults.)
     // No bank ⇒ u returned bit-identically (bank-less hosts unchanged).
     float warpDisplayMix(int v, int lane, double u) const;
 
@@ -501,16 +502,15 @@ struct PatternEngine {
 
     inline float finalRandomByStrand(int strand, int step) const {
         const int s = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? strand : dotModular::STRAND_RHYTHM;
-        // Warp mirror (CC_PROMPT_03 STEP 4b): the MELODY/OCTAVE strands return the
-        // mirror's EFFECTIVE w-mixture — the Sands bars + prob CV outs carry the mix
-        // automatically (the bar-data funnel: this ONE accessor feeds both UIs). The
-        // other strands stay raw: a lane's display reads the mirror IFF its engine
-        // consumer does (boolean-lane warp is deferred by proof, -18b §3; q-mix warp
-        // arrives with the w send/tap routing) — so the bars can never show a value
-        // the audio doesn't consume. Flip each lane's gate TOGETHER with its consumer.
-        if (warpBank_ && (s == dotModular::STRAND_MELODY || s == dotModular::STRAND_OCTAVE))
-            return warped_[0][s][step & 0x0F];
-        return random_[0][s][step & 0x0F];   // plain own-bank; pin remap lives upstream in slewed
+        // Warp mirror (CC_PROMPT_05): ALL strands return the EFFECTIVE w-mixture via
+        // the ONE uniform source (warpRow) — the Sands bars + prob CV outs carry the
+        // mix automatically (the bar-data funnel: this ONE accessor feeds both UIs).
+        // The old MEL/OCT-only gate is REMOVED: every lane's engine consumer reads
+        // warpRow now, so every lane's display must too (the flip-together rule) —
+        // the bars can never show a value the audio doesn't consume. No bank ⇒
+        // warpRow degenerates to the raw mono row (bank-less hosts byte-identical);
+        // pin remap lives upstream in slewed; out-of-range falls back to rhythm (legacy).
+        return warpRow(0, s)[step & 0x0F];
     }
 
     // Poly strands: 15 voices, each with Rhythm, Melody, and Octave draws

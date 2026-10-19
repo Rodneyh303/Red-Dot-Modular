@@ -382,6 +382,12 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     loadPolyArr("polyRhythmRandom", SequencerEngine::PL_REST,   m->engine.pe.rhythmSource);
     loadPolyArr("polyMelodyRandom", SequencerEngine::PL_MELODY, m->engine.pe.melodySource);
     loadPolyArr("polyOctaveRandom", SequencerEngine::PL_OCTAVE, m->engine.pe.octaveSource);
+    // Warp mirror (CC_PROMPT_05): the loaders above rewrote random_ (the w=0 basis)
+    // — rebuild ALL lanes' mirror cells so a bank already wired (preset drag onto a
+    // running module) never observes the pre-load mixture. No-op without a bank
+    // (fresh-load path: the first wire's rebuild covers it). Every random_ writer
+    // rebuilds the cells it wrote — the 03 rule, now for ALL lanes.
+    m->engine.pe.rebuildWarpMirrorAll();
 
     //  Scrub model: restore the scrub state (counter, slew, mix, firstDraw) and recompute the
     //  effective pattern from it. No A/B endpoints to restore -- the pattern is re-derived from
