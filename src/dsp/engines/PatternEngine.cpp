@@ -784,7 +784,18 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
         for (int v=1;v<=numPolyVoicesHint;v++){ melodySource[v][i]=slewedMelody[v][i];
                                 octaveSource[v][i]=slewedOctave[v][i]; }
         int sem = 0;
-        melodyPitchV[i]   = genPitchLive(sem, in, slewedMelody[0][i], slewedOctave[0][i]);
+        // Warp mirror (CC_PROMPT_04-FIX-2 — the DRAW site): the pitch uniform comes
+        // from the EFFECTIVE w-mixture via warpRow(displayedVoice_,·) — the SAME
+        // accessor + voice key the refreshVisualCache melodyChanged writer uses, so
+        // the two melodyPitchV writers agree by construction and a draw with warp
+        // set produces a DIFFERENT pattern than the same draw at w=0. (This site
+        // previously fed RAW slewedMelody[0]/slewedOctave[0] — the hardcoded-[0]
+        // mono residue that bypassed the mirror and left the drawn pattern
+        // unwarped.) The mirror was just rebuilt by recomputeEffectiveMelody's
+        // post-write-back hook above, so the row is fresh from the settled basis.
+        melodyPitchV[i]   = genPitchLive(sem, in,
+                                         warpRow(displayedVoice_, PL_MELODY)[i],
+                                         warpRow(displayedVoice_, PL_OCTAVE)[i]);
         melodySemitone[i] = sem;
     }
 }
