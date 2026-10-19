@@ -1,3 +1,19 @@
+# ⚠️ UPDATE (while CC is on 06) — two things that sharpen the fix
+1. THE DIAGNOSIS IS A DOCUMENTED BUG CLASS: voiceSlot-vs-polyBank. VoiceResolver.hpp is the
+   AUTHORITY — V1 = slot 0 = mono (kMonoSlot); V2..V16 = poly, voiceSlot = V-1. The 0-based
+   polyBank (0=V2) is DEAD "since the COLLAPSE". This is the same class as the V16-flicker war
+   (git: ba3d4a6 "polyBankIndex LIES", aeb7a8b/26fa2a3 "read by POLY-BANK not VOICESLOT"). FIX =
+   conform EVERY warp index to VoiceResolver voiceSlot; kill any v±1 / polyBank / raw-tab-index.
+   See CC_PROMPT_07 for the full site list + the authority.
+2. WHY 05 IS GREEN BUT RACK ISN'T (CC's own correct find): test_warp_all_lanes writes the bank
+   directly at WarpBank::index(v,l) and checks consumers — it NEVER exercises the manager's
+   slot/voice remap or the UI (Macro/East) write paths. The bug lives in THAT untested seam. So
+   the fix MUST extend the contract test to the WRITE PATH: drive the actual setWarpF/setGlobalWarpF
+   + currentSlot() + the manager's warpDelegated_/topo.owner mapping, and assert per-voice isolation
+   (no Macro→East leak; V1 slot0 and V2 slot1 both correct — the two the symptoms distinguish).
+   A green that writes index(v,l) directly proves nothing about the remap. Test the remap.
+
+────────────────────────────────────────────────────────────────────────────────
 # CC PROMPT 06 — DIAGNOSE the warp voice/slot + Macro→East leak (symptom fingerprint)
 
 CONTEXT: feat/warp-ui, warp wired but WRONG per-voice. This is a DIAGNOSTIC-FIRST task: the three
