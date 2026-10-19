@@ -701,3 +701,53 @@ This reframes the three regimes cleanly:
   CONTINUOUS warp  → clean, unique, uniform-margin Gauss-MA copula (abs. continuous).
   CLAMP (partial step) → MIXED: Gauss-MA continuous part + Marshall-Olkin singular part.
   STEP CDF (full)  → DISCRETE: Gauss-MA copula measure on the bin grid; MA quantized; 2-bin=probit.
+
+────────────────────────────────────────────────────────────────────────────────
+## REACHABLE MATH STRUCTURES × DRIVERS — the master table (Rodney)
+
+The dependence drivers do NOT live on one axis. There are THREE things a driver can touch, and
+the allowed update CADENCE is DERIVED from one rule (Sklar/uniformity safety), not independent.
+
+### The three axes
+- WHAT it drives: draw-source | temporal (cross-step) correlation | cross-voice correlation
+  structure | marginal shape | output atoms.
+- SCOPE: cross-voice & temporal & sourcing drivers are LANE-GROUP scoped (all melody / all
+  rhythm / all qmix together); marginal drivers (w, theta) are PER-VOICE. (Finding: DEPENDENCE
+  is authored for the group — it's a property AMONG voices; MARGINALS are per-voice.)
+- CADENCE, derived from the rule: SKLAR-SAFE per step -> STEP (or next-step); SKLAR-UNSAFE per
+  step -> PHRASE boundary. (Phrase boundary is reserved for exactly the things that would break
+  uniform margins / the copula if changed mid-window.)
+
+### Verified facts behind the table (read from code, not assumed)
+- Slew applies CONTINUOUSLY, not only on a fresh draw: the z-cache is keyed on (N, frac, r) with
+  r = slew-rho (PatternEngine.cpp:688), so a rho change re-interpolates the in-flight window.
+  => modulating rho mid-window would break that window's uniformity -> PHRASE-gated. Confirmed.
+- A/B mix selects/blends the RAW UNIFORM DRAW SOURCE (not correlation), at lane-group level,
+  PER-STEP allowed (switching between independently-uniform sources per step stays uniform ->
+  no Sklar violation -> no phrase gate).
+- CA: manual pin move -> NEXT STEP; trigger-modulated STRUCTURAL change -> PHRASE boundary
+  (a structural correlation change mid-window disturbs in-flight copula consistency).
+- w: Sklar-safe per step (monotone mix) -> STEP-latched (from CC_PROMPT_03 / -18b §2).
+
+### THE TABLE
+| Driver | Layer / axis | Scope | Static effect | Shared-MODULATED → factor? | Cadence (why) | λ>0? | Reversible? |
+|---|---|---|---|---|---|---|---|
+| Spread (r) | latent / cross-voice | lane-grp | base copula correlation | it IS the base, not a factor | step | no (Gaussian) | yes |
+| A/B mix | SOURCING (raw draw) | lane-grp | picks draw source | yes — REGIME-SWITCH / MIXTURE factor (mixes two draw regimes; NOT a Gaussian-corr factor) | STEP (uniform-safe) | no (both regimes tail-indep) | yes (source is position-keyed) |
+| Slew-rho | latent / TEMPORAL (cross-step) | lane-grp | sets MA autocorrelation (temporal smoothness); applies CONTINUOUSLY | yes — common factor in TEMPORAL autocorrelation (stoch-vol-of-smoothness) | PHRASE (per-step breaks in-flight window uniformity → Sklar) | no (steps jointly Gaussian → temporally tail-indep) | iff rho-sequence is position-keyed |
+| CA routing | latent / cross-voice | lane-grp | correlation submatrix structure | yes — routes the shared drive → LATENT cross-voice factor | manual pin→NEXT-STEP; triggered struct→PHRASE | no (Gaussian) | yes |
+| w (depth) | MARGINAL | PER-VOICE | shapes marginals; w=1 static = full F^-1, **NO factor** (Sklar-invariant per-coord map) | yes — MARGINAL / FRAILTY factor | STEP (monotone mix = Sklar-safe) | no (bounded, no clamp) | yes (draw-time latched) |
+| theta (dist params) | MARGINAL | per-voice | shapes marginal family | yes — marginal/frailty factor | step (draw-time latch) | no (bounded) | yes if latched & position-keyed |
+| w UNDER CLAMP | marginal + OUTPUT | per-voice | dials the Lebesgue decomp (cont ↔ MO-singular weight) | yes — frailty factor **+ CO-MODULATED λ** (atom masses breathe together → common factor IN the tail) | step | **YES (atoms)** | yes |
+| Clamp depth | OUTPUT | tbd | sets atom mass (MO singular weight) | tbd | tbd | yes (atoms) | yes (deterministic map) |
+| DMO shock (future) | OUTPUT | tbd | constructs MO atom directly | calibrated joint rate | tbd | yes (calibrated) | yes if shocks position-keyed |
+
+### THE FOUR ONE-LINE LAWS the table encodes
+1. STATIC LEVEL NEVER MAKES A FACTOR (any layer). w=1 static = max marginal shaping, ZERO
+   dependence-structure change — it was never a factor model, so w=1 doesn't "lose" one.
+2. SHARED MODULATION ALWAYS MAKES A FACTOR — and the factor's TYPE = the layer it acts on:
+   latent-cross-voice (CA), temporal (slew-rho), sourcing/regime (A/B), or marginal/frailty (w,θ).
+3. λ>0 IS REACHABLE ONLY BY ATOMS (clamp / DMO). No modulation of ANY bounded continuous
+   parameter — correlation, rho, source, w, θ — ever breaks the tail barrier; all give λ=0.
+4. CADENCE IS DERIVED, NOT CHOSEN: Sklar-safe-per-step → step/next-step; Sklar-unsafe-per-step
+   → phrase boundary. Same derivation for every row.
