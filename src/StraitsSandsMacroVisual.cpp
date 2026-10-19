@@ -560,7 +560,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                  : (engLane == PL::PL_VARIATION) ? pe.pubSlewedPolyVariation[0][step & 0x0F]
                  :                                pe.pubSlewedPolyLegato[0][step & 0x0F];
         } else {
-            int v = rack::math::clamp(polyVoice + 1, 0, 15);   // Phase A: V1=0, V2+=1..15
+            // CC_PROMPT_07: polyVoice is ALREADY the voiceSlot (the caller passes
+            // VoiceResolver::polyVoiceSlot: V2→1 … V16→15). The old +1 treated it as
+            // the dead 0-based poly bank — a double shift that made Macro's V2 tab
+            // bars show V3's row (V16 clamped back onto its own).
+            int v = rack::math::clamp(polyVoice, 0, 15);   // voiceSlot: V2+=1..15 (V1 takes the mono path)
             base = (engLane == PL::PL_REST)      ? pe.pubSlewedPolyRhythm[v][step & 0x0F]
                  : (engLane == PL::PL_MELODY)    ? pe.pubSlewedPolyMelody[v][step & 0x0F]
                  : (engLane == PL::PL_OCTAVE)    ? pe.pubSlewedPolyOctave[v][step & 0x0F]
@@ -581,8 +585,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // mixture over the spread-applied value for all lanes — the SAME
         // per-(voice,lane) (F,w) the mirror resolves (delegated lane → Macro's
         // global curve; own-slot lane → the voice's own).
-        // Displayed voice: V1/mono = slot 0; poly = the poly bank index + 1 = voiceSlot.
-        return pe.warpDisplayMix(mono ? 0 : rack::math::clamp(polyVoice + 1, 0, 15), engLane, disp);
+        // Displayed voice: V1/mono = slot 0; poly = polyVoice (already the voiceSlot).
+        return pe.warpDisplayMix(mono ? 0 : rack::math::clamp(polyVoice, 0, 15), engLane, disp);
     }
 
     void step() override {

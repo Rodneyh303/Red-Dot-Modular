@@ -714,11 +714,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // only flushed to the persistent slot on tab-exit — so for the current voice,
             // read the LIVE proxy, else buildTopo would lag live edits (and the 4c cross-
             // check would fire spuriously). ownerDispId is engine-ordered.
-            const int cv = currentVoice() - 1;   // 0 = V1/mono
+            const int cv = currentVoice() - 1;   // voiceSlot: 0 = V1/mono, 1..15 = V2..V16
             for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
                 bool live = eastOwnsLane(el);   // MVC step 1d: store-backed (was ownerDispId proxy)
+                // CC_PROMPT_07: cv IS the voiceSlot — the old [cv - 1] (a 0-based-poly
+                // remnant) wrote the PREVIOUS voice's row, corrupting V2's owner in
+                // this local lock topology whenever a later tab was viewed.
                 if (cv == 0)                       in.eastV1Owner[el] = live;
-                else if (cv >= 1 && cv <= 15)      in.eastPolyOwner[cv - 1][el] = live;
+                else if (cv >= 1 && cv <= 15)      in.eastPolyOwner[cv][el] = live;
             }
         }
         return dotModular::SandsTopology::build(in);
