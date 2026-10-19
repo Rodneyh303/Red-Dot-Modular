@@ -26,8 +26,11 @@
 //
 // PLACEMENT: the HOST places the popup over the LEFT control cluster (explicit mm, no
 // panel anchor) so the lane's probability bars stay visible while editing (prompt: don't
-// occlude what you're previewing). A full-panel scrim (WarpPopupScrim) below it closes
-// on any click; the host also closes on tab switch / Monsoon detach.
+// occlude what you're previewing). Z-ORDER (CC_PROMPT_04-FIX): the host attaches the
+// scrim + popup to APP->scene — the createMenu/MenuOverlay idiom — NOT to the module
+// widget, so the popup floats above every layer (later-drawn module children, adjacent
+// modules, cables) and owns its events. A module-sized scrim (WarpPopupScrim) below it
+// closes on any click; the host also closes on tab switch / Monsoon detach.
 #include <rack.hpp>
 #include <cstdio>
 #include <cstring>
@@ -82,7 +85,11 @@ struct MonotoneCurveView : Distribution {
 };
 
 // ── WarpCurvePopup ─────────────────────────────────────────────────────────────────
-struct WarpCurvePopup : rack::widget::Widget {
+// OpaqueWidget base (the MenuOverlay rule): children consume FIRST — a knob press or
+// curve-point press keeps ITS EventContext target, which is what Rack tracks as the
+// drag owner — then the popup consumes what's left (its own chrome) and stops
+// hover/scroll/key events from leaking to the rack beneath.
+struct WarpCurvePopup : rack::widget::OpaqueWidget {
     // ── target (set by the host BEFORE refresh(); monsoon resolved LIVE each use) ──
     std::function<Monsoon*()> resolveMon;
     int  slot = 0;            // East: the selected tab's voiceSlot (captured at open)
@@ -331,13 +338,19 @@ struct WarpCurvePopup : rack::widget::Widget {
             e.consume(this);
             return;
         }
-        rack::widget::Widget::onButton(e);
-        // A press that lands INSIDE the popup but on no interactive child (bezel,
-        // header, blank chrome) is still ours: consume it so the full-panel scrim
-        // UNDER the popup never sees it. Rack keeps offering the event to lower
-        // siblings until something consumes (EventContext is shared across the
-        // recursion), so without this a click on the popup's own frame would close it.
-        if (e.action == GLFW_PRESS) e.consume(this);
+        // OpaqueWidget::onButton = children FIRST, then stopPropagating, then a
+        // GUARDED consume (LEFT button, and only if no child consumed). The
+        // previous unconditional `if (PRESS) e.consume(this)` ran AFTER the
+        // children and OVERWROTE their EventContext target — Rack tracks the
+        // press's target as the drag owner, so every knob press and curve-point
+        // press was re-targeted at the POPUP: the press itself still ran the
+        // child's onButton (points could be ADDED) but DragStart/DragMove never
+        // came back to the child — knobs could not be grabbed, points could not
+        // be dragged. The guard preserves the child's gesture; stopPropagating
+        // keeps a chrome press from falling through to the scrim UNDER the popup
+        // (Rack keeps offering an unconsumed event to lower siblings — the
+        // EventContext is shared across the recursion).
+        rack::widget::OpaqueWidget::onButton(e);
     }
     void openKindMenu() {
         using rack::ui::Menu;

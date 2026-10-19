@@ -384,7 +384,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         }
     }
 
-    ~StraitsSandsMacroVisualWidget() override { delete paramMgr; }
+    ~StraitsSandsMacroVisualWidget() override {
+        // The scrim + popup are SCENE children while open, and their lambdas
+        // capture this widget — detach + delete them now (immediate, not the
+        // deferred requestDelete path) so they can never outlive the host.
+        closeWarpPopup(/*immediate=*/true);
+        delete paramMgr;
+    }
 
     void appendContextMenu(Menu* menu) override {
         ModuleWidget::appendContextMenu(menu);
@@ -401,10 +407,18 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     // Macro's popup edits globalWarpF[lane] — ITS OWN delegated-default curve (the curve
     // every ceded voice on that lane tracks; the button is always available). Closes on
     // tab switch or Monsoon detach. Placed over the LEFT cluster (3..83mm) so the lane's
-    // bars + the w-level column stay visible; a full-panel scrim under it closes on any
+    // bars + the w-level column stay visible; a module-sized scrim under it closes on any
     // click. Every edit path commits setGlobalWarpF + bumps requestWarpRebuildLane-
     // Delegating — the lane's bars across DELEGATING voices redistribute live (prompt-
     // 03's "Macro curve/w edit" dirty scope).
+    // Z-ORDER (CC_PROMPT_04-FIX): the scrim + popup attach to APP->scene — the
+    // createMenu/MenuOverlay host — NOT to this module widget. A module child draws
+    // and receives events WITHIN the module's own layer: later-drawn module children,
+    // adjacent modules and cables render on top of it (controls show through) and
+    // higher layers intercept presses before the popup's knobs (can't grab / can't
+    // drag). As the scene's LAST children they float above everything and own their
+    // events; geometry is SCENE-space, converted from module-local via
+    // getAbsoluteOffset (the box.pos chain through rack scroll + zoom).
     dotModular::WarpCurvePopup* warpPopup_ = nullptr;
     rack::widget::Widget*       warpScrim_  = nullptr;
     int warpPopupTab_ = -1;
@@ -413,11 +427,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         closeWarpPopup();
         Monsoon* m = getMonsoon();
         if (!m || lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return;
+        const rack::math::Vec sceneOrigin = getAbsoluteOffset(rack::math::Vec(0.f, 0.f));
         auto* scrim = new dotModular::WarpPopupScrim();
-        scrim->box.pos  = rack::math::Vec(0.f, 0.f);
+        scrim->box.pos  = sceneOrigin;       // this module's rect, in SCENE coordinates
         scrim->box.size = box.size;
         scrim->onClick  = [this]() { closeWarpPopup(); };
-        addChild(scrim);                     // BEFORE the popup → popup on top (draw + events)
+        APP->scene->addChild(scrim);         // BEFORE the popup → popup on top (draw + events)
         auto* pop = new dotModular::WarpCurvePopup();
         pop->resolveMon  = [this]() { return getMonsoon(); };
         pop->slot        = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);  // informational
@@ -426,16 +441,38 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         pop->laneName    = dotModular::SandsLaneNames::EDITOR[lane];
         pop->voiceName   = "MACRO";
         pop->isLight     = [this]() { auto* mm = getMonsoon(); return mm && mm->lightTheme; };
-        pop->box.pos     = mm2px(Vec(3.f, 16.f));
-        addChild(pop);
+        pop->box.pos     = getAbsoluteOffset(mm2px(Vec(3.f, 16.f)));   // module-local → scene-space
+        APP->scene->addChild(pop);
         pop->refresh();
         warpScrim_  = scrim;
         warpPopup_  = pop;
         warpPopupTab_ = tabGroup ? tabGroup->getSelectedTab() : -1;
     }
-    void closeWarpPopup() {
-        if (warpScrim_) { removeChild(warpScrim_); delete warpScrim_; warpScrim_ = nullptr; }
-        if (warpPopup_) { removeChild(warpPopup_); delete warpPopup_; warpPopup_ = nullptr; }
+    // Detach from the SCENE — the owner while open, NOT this module widget. The
+    // default path uses requestDelete (deferred to the scene's next step) because
+    // closeWarpPopup runs inside event dispatch (the scrim's own onButton) and
+    // inside step(): deleting a widget mid-dispatch invalidates the parent's child
+    // iteration. immediate=true (host destruction) detaches + deletes NOW via the
+    // widget's current parent.
+    void closeWarpPopup(bool immediate = false) {
+        if (warpScrim_) {
+            if (immediate) {
+                if (warpScrim_->parent) warpScrim_->parent->removeChild(warpScrim_);
+                delete warpScrim_;
+            } else {
+                warpScrim_->requestDelete();
+            }
+            warpScrim_ = nullptr;
+        }
+        if (warpPopup_) {
+            if (immediate) {
+                if (warpPopup_->parent) warpPopup_->parent->removeChild(warpPopup_);
+                delete warpPopup_;
+            } else {
+                warpPopup_->requestDelete();
+            }
+            warpPopup_ = nullptr;
+        }
         warpPopupTab_ = -1;
     }
 
