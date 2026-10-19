@@ -80,11 +80,17 @@ it worked standalone before the popup hosted it), so the popup must not pre-empt
    WarpCurvePopup box dimensions; low-risk win. Independent of z-order.
 4. SCROLL DISCONNECT — scrolling the rack detaches the popup from its host (it floats away). ROOT:
    once parented to the scene overlay (the z-order fix), the popup is in SCENE coords, which are
-   FIXED while the rack scrolls underneath. Two valid fixes, pick one:
-   (a) TRACK the host — re-anchor the popup to the host module's current absolute position each frame
-       (nicer for an editor you're actively using; more work), OR
-   (b) CLOSE ON SCROLL — the standard Rack idiom (context menus do this; simpler). Less nice for a
-       curve editor mid-edit.
-   Recommend (a) track-on-scroll for a curve editor, with (b) as the fallback if tracking is fiddly.
-   This is PART OF getting the overlay parenting right — the z-order fix isn't complete until the
-   popup stays attached to its host through scroll/move.
+   FIXED while the rack scrolls underneath.
+   *** KEY OBSERVATION (Rodney): Rack's OWN native context menu (on the Audio module) has the SAME
+   bug — it blocks MOUSE-WHEEL scroll but NOT ARROW-KEY scroll, and arrow-scroll DETACHES it from its
+   host. So even first-party Rack overlays float on scroll paths they don't intercept. => (i) this is
+   inherent to scene-overlay widgets, not our popup's fault; (ii) "copy what Rack does" is
+   INSUFFICIENT — Rack itself gets it wrong (blocks wheel, ignores arrows). ***
+   FIX = CLOSE-ON-SCROLL, on ALL rack-move inputs, not just the wheel:
+   - Close the popup on ANY event that MOVES the rack view: mouse-wheel, ARROW-KEY scroll, drag-pan,
+     zoom, jump-to-module. (Rack's menus miss the arrow path — do NOT.)
+   - Do NOT close on events that don't move the view: a click/knob-drag inside the popup, the curve edit.
+   Rejected: "track the host each frame" — it must chase EVERY rack-move path; Rack's own menus prove
+   first-party code doesn't manage that. A floated popup (edit the wrong lane) is WORSE than a closed
+   one (reopen with one click). The z-order fix isn't complete until the popup CAN'T float — and the
+   robust guarantee is close-on-any-view-move, not host-chasing.
