@@ -52,19 +52,43 @@ FLEXIBLE (per-modifier Policy — the ONLY things that vary, all value-math not 
 ## THE TWO SUB-FAMILIES (same skeleton, different pipeline consumption)
 - PROBABILITY-SHAPING: spread(latent coupling), warp + θ(marginal), clamp(output atoms). Take the
   post-slew/post-AB probability and shape its VALUE.
-- STRUCTURAL/POSITIONAL: LOR(len/off/rot), direction(fwd/rev/…), + the FUTURE offset/mask-vs-playhead
-  lane. Shape WHERE/WHICH-STEPS a voice reads, not the probability value.
+- STRUCTURAL/POSITIONAL: LOR(len/off/rot), direction(fwd/rev/…), + the FUTURE per-voice LOR level
+  (UNIFIED_ADDRESSING_SYSTEM.md). Shape WHERE/WHICH-STEPS a voice reads, not the probability value.
+  NOTE: these are NESTED (global→voice→lane, same LOR transform each level); the resolver produces
+  each level's per-(voice,lane) VALUE, the addressing system COMPOSES them (laneLOR(voiceLOR(counter)),
+  direction = sign-product). Resolver ≠ composer — keep distinct.
 Both are per-(voice,lane) + delegated → both are resolver members. The sub-family only affects how
 the ENGINE consumes the resolved value, not how the resolver produces it.
 
-## THE FUTURE OFFSET/MASK LANE (Rodney — the final planned Sands/East lane)
-NOT a probability lane (draws no uniform). Applies OFFSETS + MASKS relative to the GLOBAL PLAYHEAD
-and the voice equivalent. Classification: STRUCTURAL sub-family (like LOR — positional). Fits the
-resolver as a policy: Value=(offset,mask); combine = add-offset / select-or-override-mask; Inputs +=
-global-playhead reference (its specific wrinkle — the only reference-relative member). PAYOFF made
-concrete: because the resolver exists, adding this lane = "write a policy", not a 5th hand-rolled
-delegation copy waiting to become a 5th bug. This is the argument for doing the resolver BEFORE more
-lanes land: every future addition is then a cheap safe policy, not an expensive buggy hand-roll.
+## THE FUTURE PER-VOICE LANE = the UNIFIED ADDRESSING SYSTEM (fully specced — UNIFIED_ADDRESSING_SYSTEM.md)
+The "final planned Sands/East lane" (offsets+masks vs global playhead + voice equivalent) is NOT vague
+future work — it is the fully worked PER-VOICE LOR design in docs/design/UNIFIED_ADDRESSING_SYSTEM.md.
+Read that doc; this resolver must COHERE with it, not reinvent it. Key facts from it that bear on the
+resolver:
+- ADDRESSING IS NESTED: global step → voice step → lane step. Each level is the SAME transform
+  (Length/Offset/Rotation/Direction). read_position(voice,lane) = laneLOR(voiceLOR(counter)). Lane LOR
+  is RE-BASED to map VOICE-step-1 (not global-1); voice LOR is NEW, maps global-1 → voice-1.
+- So LOR is NESTED, not flat-per-lane. The RESOLVER still only produces the per-(voice,lane) LOR
+  VALUES given Macro/East ownership (its one job); the ADDRESSING SYSTEM composes those values into
+  read positions (a SEPARATE stage, like the engine applying a resolved warp). Resolver = value
+  resolution; addressing = composition/application. Keep them distinct (same split as resolver-vs-
+  topology). The resolver must FEED the nested composer correctly — i.e. it resolves voice-LOR and
+  lane-LOR values; the addressing system nests them.
+- DIRECTION COMPOSES BY SIGN-PRODUCT across three levels: effective = playhead_dir × voice_dir ×
+  lane_dir (instantaneous sign; ping-pong/pendulum flip per-level at their own window boundary). So
+  DirPolicy's RESOLUTION is still pure-selection per (voice,lane) [owner picks the sign], but the
+  COMPOSITION (the product across levels) belongs to the ADDRESSING SYSTEM, not the resolver. Don't
+  put the sign-multiply in the resolver — it resolves each level's sign; the composer multiplies them.
+- HARD CONSTRAINT from that doc: voice LOR changes ONLY the probability-READ position — no
+  generation/gate/timing/correlation change. Backward-compatible by construction (voice LOR=identity
+  ⇒ bit-identical to today). The resolver inherits this: resolving a voice-LOR value must not perturb
+  anything but the read.
+
+PAYOFF (the argument for the resolver BEFORE per-voice LOR lands): per-voice LOR ADDS a whole new
+addressing level (voice), each level LOR-delegated Macro/East. Without the resolver that is a 5th+6th
+hand-rolled delegation copy (voice-LOR + voice-direction) — i.e. the NEXT two bug sources. With the
+resolver, each is a policy on the proven skeleton. Doing the resolver first de-risks the unified
+addressing system's rollout.
 
 ## BUILD ORDER (each a commit, uniformity-harness gate, Rack check between)
 0. (prereq) Build the per-(voice,lane) UNIFORMITY HARNESS (SEAM_ERADICATION_PLAN Stage 0): drives the
