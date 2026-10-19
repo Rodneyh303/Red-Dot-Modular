@@ -29,14 +29,31 @@ docs/design/SANDS_LANE_INDEX_AUDIT.md, docs/design/SANDS_CONSOLIDATION.md, plans
 
 ## THE REMAINING SEAMS (verified present in current code — these are what warp trips on)
 
-### SEAM 1 — VOICE: voiceSlot vs raw voiceIdx / 0-based loops (PARTIAL residue)
-- VoiceResolver IS the authority (V1=slot0=mono, V2..16=slot V-1; 0-based polyBank DEAD).
-- BUT `voiceIdx` still appears 48× in SequencerEngine.cpp and raw 0-based loops (`dv=0..16`) remain.
-  SOME is legitimate (the poly execution path genuinely iterates voices) — the AUDIT must separate
-  "this is a real per-voice loop using the right base" from "this crosses conventions / is debt".
-- THIS IS THE ACTIVE WARP BUG: warp write (Macro/East) ↔ warp read (engine) ↔ warpDelegated_ do NOT
-  all speak voiceSlot. Symptoms: Macro no-effect on V1 / works V2+; Macro→East leak on V2+.
-- ENFORCEMENT GAP: voiceSlot is an `int`, so nothing stops a raw int / wrong base. (See Stage 4.)
+### SEAM 1 — VOICE: it is an EXECUTION-PATH (class-structure) seam, NOT an index seam  [CORRECTED by code-read]
+VERIFIED (don't trust the docs' "index residue" framing — checked the code):
+- The INDEX base is already CONSISTENT voiceSlot here: `voices[16]` is 0=V1 (SequencerEngine.hpp:134
+  "Phase A: voices[0] = V1"), and executePolyVoice's `voiceIdx` is voiceSlot. So this is NOT a
+  voiceSlot-vs-polyBank index bug in the execution path.
+- THE REAL SEAM is TWO SEPARATE EXECUTION FUNCTIONS — the mono/poly class split the
+  convention_unification doc called "the THIRD level (CLASS structure), UN-STARTED":
+    · V1 runs through `executeStep` (SequencerEngine.cpp:474), which reads warp HARDCODED as
+      `pe.warpRow(0, PL_MELODY)` / `warpRow(0, PL_OCTAVE)` (:553-554). V1-ONLY path.
+    · V2..V16 run through `executePolyVoice` (:1056), reading `polyRandomSrc(voiceIdx, ...)` (11
+      sites, voiceSlot). The caller loop is `for i=1..numPolyVoices` (:1334) — SKIPS slot 0 (V1).
+  So any per-voice feature must be wired into BOTH functions, identically, or V1 diverges. THIS is
+  "Macro no-effect on V1 / works V2+": warp is wired one way in executeStep, another in
+  executePolyVoice. An INDEX fix would NOT have caught it (both use the right base); the seam is
+  that the two PATHS exist at all.
+- LIVE LYING COMMENT (delete regardless): SequencerEngine.hpp:132 "voices[0] = voice 2" sits 2 lines
+  above :134 "voices[0] = V1" — contradictory, the exact stale-comment smell of the polyBank lie.
+- THE MACRO→EAST LEAK on V2+ (incl non-delegated lanes) is a DIFFERENT site — the UI/manager WRITE
+  path (Macro setGlobalWarpF / East currentSlot / warpDelegated_ population), which the Stage-1 audit
+  must map separately. (05's test passed because it wrote WarpBank::index directly, never this path.)
+- ENFORCEMENT GAP: voiceSlot is a bare `int`; nothing stops a wrong base OR a path that forgets V1.
+  (Stage 4 strong types + Stage 2 path-unification both bear on this.)
+- REMEDY shifts: Seam 1 is closed by UNIFYING the execution path (one per-voice execute that V1 and
+  V2..16 both flow through, no hardcoded warpRow(0) vs voiceIdx split) — NOT by renaming indices.
+  This is bigger than an index sweep; it is the class-structure merge the docs flagged as un-started.
 
 ### SEAM 2 — LANE: VAR/LEG (editor 5,6) still SECOND-CLASS (14 special-case sites)
 - sands_consolidation_build.md §2 SPEC: lane uniformity = EVERY lane has the COMPLETE feature set
@@ -83,10 +100,14 @@ per-lane loop on the correct base (keep), (b) DEBT (crosses conventions / drops 
 NO edits. This is the map; later stages fix against the WHOLE map, not symptom-by-symptom (the thing
 that made bugs MOVE instead of die — 6+ failed attempts, documented).
 
-### STAGE 2 — VOICE seam close (Seam 1)
-Against the audit: convert every DEBT voice index to voiceSlot (VoiceResolver). 0-based ONLY at the
-genuine cable-channel I/O boundary. Fixes the warp Macro↔East/V1 bug as a SIDE EFFECT. Gate: the
-uniformity harness goes green for all voice cells incl V1/V2.
+### STAGE 2 — VOICE seam close (Seam 1): UNIFY THE EXECUTION PATH (not an index sweep)
+CORRECTED scope (code-verified): the seam is executeStep(V1) vs executePolyVoice(V2+), two paths with
+hardcoded warpRow(0) vs voiceIdx. Close it by making V1 and V2..16 flow through ONE per-voice execute
+(V1 = slot 0 of the same loop), so no feature can be wired into one path and not the other. Delete the
+V1-special executeStep branch where it duplicates executePolyVoice; delete the lying :132 comment.
+Convert any genuine DEBT index (0-based at a non-I/O site) to voiceSlot as part of it. Also map+fix the
+UI/manager WRITE path (Macro→East leak) found in Stage 1. Gate: uniformity harness green for ALL voice
+cells incl V1/V2, driving the REAL execute path (not a direct-index-write bypass).
 
 ### STAGE 3 — LANE seam close (Seam 2): finish VAR/LEG to FULL uniformity
 Against the audit + sands_consolidation_build.md §2: give VAR/LEG (and confirm ALL 7 lanes have)
