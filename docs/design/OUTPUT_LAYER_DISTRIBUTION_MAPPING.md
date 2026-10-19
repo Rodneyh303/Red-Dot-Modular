@@ -816,12 +816,22 @@ spread-sign fix). The leader is the voice's CA-assigned pre-remap draw
     SPECIFICALLY — a signed edge in the CA routing TREE, NOT correlation to one global leader.
     => NEGATIVE edge V2→V4: V2 tops as V4 bottoms, a LOCKED PAIRWISE opposite-tail couple
     (independent of other voices). POSITIVE edge: they co-occur same-rail.
-  - The routing is a SIGNED TREE: CA builds the graph (who follows whom), spread signs each EDGE
-    independently. Correlations COMPOUND along a path (V4→V2→V1: the V4-V1 corr is the product along
-    the edges). Two voices sharing a parent node, with signs, get ±rho^2 between them (same sign →
-    +rho^2 same-rail; opposite → -rho^2 opposite-rail) — Rodney's V6+/V7-,V8- into V5 = a structured
-    3-way split {V6} vs {V7,V8} around parent V5. (Corrects the earlier "one global leader-vs-pack"
-    AND the "shared-leader star": it's a per-voice-signed CA routing tree with PAIRWISE edges.)
+  - STRUCTURE = RANK-1 PER BLOCK (depth-1 single-anchor), NOT a deep tree. The authoritative map is
+    SPREAD_TARGET_MODES.md § "Reachable correlation structures": spread gets ONE anchor per lane;
+    each voice reads that single anchor's material (follow-CA) with a signed rho. Within a CA block
+    the correlation is RANK-1 (one common factor) — so two voices sharing a block anchor get
+    ±rho^2 between them (same spread sign → +rho^2 same-rail co-occur; opposite → -rho^2
+    opposite-rail). Rodney's V6+/V7-,V8- into anchor V5 = a structured 3-way split {V6} vs {V7,V8},
+    which IS a signed rank-1 star on that block. Reachable structures (per that doc): diagonal (no
+    corr) / signed rank-1 star / block-diagonal rank-1-per-block (arbitrary partition, per-voice
+    sign+strength, zero across blocks) / neighbour-only banded (scatter cycles).
+  - NOT reachable (and correct): arbitrary correlation matrices, and COMPOUNDING MULTI-HOP CHAINS
+    (V4→V2→V1 products). Spread is depth-1 single-anchor by design (a per-voice target map IS the CA
+    pin matrix — not rebuilt in spread); and CA pin CHAINS are a NON-IDEMPOTENT hazard it guards
+    against (CHANGE_ALLEY_DESIGN.md:227), not a correlation-authoring feature. (CORRECTS my earlier
+    "signed tree with compounding chains" — the shipped structure is rank-1-per-block, not a deep
+    tree. The pairwise-edge READ is real (a voice reads its anchor's material), but the reachable
+    STRUCTURE is the depth-1 star/block, per SPREAD_TARGET_MODES.md.)
 
 ### TWO INDEPENDENT LEVERS for opposite-tail structure
 1. CA per-voice (leader + signed rho) → sets the CORRELATION sign between any voice and its leader →
