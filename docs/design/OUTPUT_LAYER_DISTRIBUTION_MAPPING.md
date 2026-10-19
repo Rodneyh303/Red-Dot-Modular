@@ -847,3 +847,59 @@ lambda_U, lambda_L are defined for SAME-direction co-extremity; the opposite-rai
 case is COUNTERMONOTONE atom co-occurrence on the (0,1)/(1,0) corners — sometimes "negative tail
 dependence", stated via the survival/countermonotone framing. lambda stays >=0 by definition; what
 the spread SIGN flips is WHICH CORNERS carry the atoms, not the sign of lambda.
+
+────────────────────────────────────────────────────────────────────────────────
+## DEFERRED CLAMP — control surface DECIDED (Rodney) — "when we build it, this is the shape"
+
+STATUS: DEFERRED, de-risked. Build order: warp foundation + hand-drawn STEP functions FIRST
+(step functions already give the dramatic-effect case without atom machinery). Atoms via clamp
+come later — but the theory is fully mapped (named structures, reversibility preserved, Lebesgue
+decomp controllable, directional tail via signed spread), so switching it on is understood, not
+a leap. This note records the DECIDED control surface so the eventual spec starts from decisions,
+not a re-derivation.
+
+### Control surface
+- lo / hi KNOBS (clamp thresholds in OUTPUT space) + MODULATION inputs, per-voice-per-lane.
+- Atom masses: p0 = F(lo) at output 0-rail, p1 = 1-F(hi) at the 1-rail (the Dirac masses).
+
+### CONSTRAINT: lo < hi (enforced) — and what it guards
+- lo < hi keeps the continuous middle NON-EMPTY → the MIXED (cont + MO-singular) regime.
+- lo == hi collapses to a single step = the full-step-CDF DISCRETE limit (valid, but a DIFFERENT
+  regime reached deliberately, not by accident — enforce lo<hi so you don't fall into it).
+- lo→0 / hi→1 continuously shrink their atom to zero → sweeps the whole CONTINUOUS↔MIXED spectrum.
+  So the two knobs ARE the continuous-to-mixed dial; lo<hi is the guard that keeps you in "mixed".
+- POSSIBLE further constraint (feel-decision, later): rail-aligned vs free-interior clamp. Atoms
+  at exactly 0/1 land on the Fréchet CORNERS → clean lambda interpretation. Interior clamps are
+  legal + musical but their lambda reading is murkier (off-corner). Two modes ("snap to rails" vs
+  "free interior") is an option — decide by ear, not now.
+
+### MODULATION cadence — probably STEP-rate (unlike slew)
+Modulating lo/hi modulates the ATOM MASS (p0,p1) → modulates lambda itself when shared across
+voices (the tail-dependence control; master table). CADENCE: clamp is a POINTWISE output map, NOT
+a window operation — changing the threshold per-step does NOT corrupt an in-flight MA window the
+way slew-rho does. So by the Sklar-safety cadence rule it is likely STEP-latchable (like w), not
+phrase-gated (like slew). CONFIRM against the master-table logic when specced, but
+clamp-is-pointwise ⇒ step-safe is the expectation.
+
+### WHY THIS IS MORE REASON FOR SANDS SUBPANELS (the forcing function)
+Clamp adds, per lane: lo knob, hi knob, lo-mod jack, hi-mod jack (+ attenuverters) — more
+per-voice-per-lane columns on an already-wide panel. Combined with w-level / w-mod / param-mod,
+the output+modulation tier exceeds what the WIDE-PANEL interim absorbs gracefully. So "we'll
+eventually want clamp" is a concrete FORCING FUNCTION for the subpanel migration. Dependency chain
+(all already specced): clamp wants subpanels → subpanels want the connection-model migration
+stages 3-4 (id-pairing, see CONNECTION_MODEL_MIGRATION_NOTE.md) → which is half-done. So finishing
+the connection-model migration is the real prerequisite for clamp's UI, and clamp is one more
+reason to prioritise it.
+
+### WHAT'S ALREADY SETTLED (so the eventual spec inherits, not re-derives)
+- The copula it yields: Gauss-MA continuous part + Marshall-Olkin singular part (Lebesgue decomp);
+  w (if clamp F) dials the decomposition weight; lambda>0 via the atoms.
+- Reversibility: PRESERVED (clamp is a deterministic pointwise map; re-run forward from the
+  position counter — invertibility not required).
+- Directional tail: +spread = same-rail co-occur (comonotone), -spread = opposite-rail
+  (countermonotone), authored via the signed rank-1-per-block spread structure (SPREAD_TARGET_MODES.md).
+- Draw-level effect: lowest/highest pitch >= p0/p1 (melody/octave), much-shorter/longer variation;
+  atoms co-occur rigidly (the lambda-bearer), continuous tail does not.
+- Output-stage placement: a DELIBERATE, VISIBLE stage AFTER the distribution layer (never folded
+  into the warp — the warp's value is the clean unique uniform-margin Sklar decomposition; atoms
+  trade that away for an effect, so they stay a chosen stage).
