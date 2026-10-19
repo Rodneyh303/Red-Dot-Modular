@@ -576,3 +576,330 @@ target. Consequence:
   natural extension of the existing expression-CV permutation; it belongs AFTER the warp
   foundation (w, mirror) and the param-mod layer exist. The CA plumbing it reuses is already
   designed (CA_EXPRESSION_CV_CORRELATION.md).
+
+────────────────────────────────────────────────────────────────────────────────
+## WHAT COPULA TYPE DOES CLAMP/ATOM GIVE? (Rodney) — completes the tail-dependence map
+
+Worked out: with clamp enabled the map g_v = clamp ∘ F_v^-1 is monotone but NOT strictly
+increasing — flat on U_v <= F_v(lo) and U_v >= F_v(hi). Those flat regions ARE the atoms (an
+interval of U maps to the single value lo/hi). The output copula becomes a PATCHWORK over the
+(U_i,U_j) square:
+  - BOTH interior (unclamped middle): copula = C_Gauss-MA exactly (restricted to that sub-square) —
+    unchanged.
+  - ONE clamped, one interior: the pinned coordinate carries no rank info → dependence collapses
+    to independence-like on that strip.
+  - BOTH clamped SAME rail: Y_i=Y_j=rail → a point mass (perfect comonotonicity on that corner).
+  - BOTH clamped OPPOSITE rails: a countermonotone corner point mass.
+Region weights are set by the clamp thresholds via F_v(lo), F_v(hi).
+
+TYPE: a copula with a SINGULAR COMPONENT — NOT absolutely continuous. Continuous part (the
+Gaussian-MA interior) + singular part (the rail atoms). The corner atoms are EXACTLY the
+MARSHALL-OLKIN singular component (MO's famous singular diagonal = a mass where two coords take
+an identical extreme together = "both clamp to the same rail"). So:
+  clamp gives a copula that is NOT absolutely continuous. By the Lebesgue decomposition it splits
+  into a CONTINUOUS part (the Gaussian-MA interior — has a density) + a SINGULAR part (the
+  Marshall-Olkin-type rail atoms — positive probability concentrated on a measure-zero set, the
+  corners/edges): C = C_abscont + C_singular. (NOTATION: the earlier draft wrote "Gauss-MA (+)
+  MO"; the "(+)" is NOT a direct sum ⊕ — it is this continuous+singular measure decomposition.
+  Informally a MIXTURE of a Gaussian-MA-like copula and an MO-like copula with clamp-geometry
+  weights; the one-clamped/one-interior strips are the loose edge of that gloss.) The SINGULAR
+  part is what carries lambda>0; the lambda value = the corner-atom mass. (Finally WHY clamp was
+  always "the atoms route to lambda>0".)
+
+IS THE SINGULAR PART STILL "MOVING AVERAGE"? (Rodney) — NO, and the reason is structural.
+The two parts share the SAME underlying MA correlation rho_{s,s'}=sum_j w_j w_{j+|s-s'|} but
+express it through DIFFERENT functions:
+  - CONTINUOUS part: correlation = rho_{s,s'} itself — LINEAR in the MA weights. MA structure
+    preserved (strictly-monotone warp F^-1 preserves the copula by Sklar → rank structure, hence
+    the MA dependence, is untouched).
+  - SINGULAR part: the atom-to-atom co-occurrence between steps s,s' both at the rail is the
+    bivariate Gaussian ORTHANT PROBABILITY Phibar_2(t,t; rho_{s,s'}), t=Phi^-1(F(rail)) — a
+    NONLINEAR (arcsine-type), threshold-dependent function of rho. So the atoms are the
+    EXCEEDANCE INDICATORS {z_s>t} — a THRESHOLDED (clipped) Gaussian process — whose dependence
+    is the MA correlation passed through the orthant nonlinearity, NOT the MA correlation itself.
+WHY MA dies on the atoms: MA is a LINEAR correlation structure; only linear/affine ops preserve
+it. The clamp is a THRESHOLD (maximally nonlinear, rank-destroying on the clamped region) → it
+turns the continuous field's MA dependence into the binary field's exceedance-correlation, a
+different object. Strictly-monotone warp keeps MA; thresholding (the thing that makes the atom)
+does not.
+WHAT SURVIVES (the controllable residue): atom co-occurrence is MONOTONE INCREASING in
+rho_{s,s'} → more MA/CA correlation at a lag ⟹ more joint-clipping at that lag. So the TEMPORAL
+PROFILE of co-clipping inherits the SHAPE of the MA autocorrelation (bursts cluster at the lags
+where the MA windows overlap most) — a faithful MONOTONE (non-invertible) shadow. But "inherits
+the shape, monotonically" is NOT "is an MA process": the atoms are a clipped-Gaussian process
+whose own autocorrelation is the arcsine-warped MA autocorrelation. Do not model/estimate the
+singular part AS an MA — it's a thresholded-Gaussian exceedance process.
+
+THE PAPER CONNECTION — clamp and DMO are the SAME singular component from OPPOSITE directions:
+  - DMO (the QF paper): CONSTRUCTS the MO atom directly — a shock fires, forces simultaneity; the
+    atom mass (hence lambda) is a FREE parameter gamma_Y you calibrate. Right for PRICING a joint event.
+  - CLAMP + CA: INDUCES the MO atom indirectly — CA-correlated continuous variables both cross a
+    threshold and pile at the rail. The atom mass is NOT free: it's a MONOTONE IMAGE of the CA
+    correlation (+ closeness of thresholds/shapes). lambda is EMERGENT from the latent structure,
+    steered through the correlation layer, not dialed. Right for PLAYING joint-unison (tune by ear:
+    turn up CA correlation → voices clip together more).
+Same family (mixed continuous+singular, lambda>0); DIFFERENT handle (DMO calibrates at the shock
+layer; clamp+CA steers at the latent layer).
+
+CAVEAT (bounds the clamp+CA route): the interior stays Gaussian (tail-independent), so ALL the
+tail dependence comes from the corner atoms, whose mass is capped by how much probability the
+clamp cuts off. => can't get arbitrarily strong lambda this way without heavily clamping (which
+also flattens the marginals). DMO decouples these (strong joint-default, mild marginal effect).
+clamp+CA trades DMO's calibration-freedom + marginal-independence for REUSING EXISTING MACHINERY
+(CA correlation + a clamp stage).
+
+THE COMPLETE TAIL-DEPENDENCE MAP (all three points now pinned):
+  1. no-atoms warp (shared-theta modulation): lambda=0, clean UNIQUE uniform-margin Gauss-MA copula.
+     Finite-quantile co-movement only. (The distribution layer — what we're building.)
+  2. clamp + CA: lambda>0 EMERGENT. Gauss-MA continuous part + MO singular part (not abs.
+     continuous; Lebesgue decomp, NOT a direct sum), MO mass = monotone image of CA
+     correlation. Tune by ear. Reuses existing machinery. (A LIKELY FUTURE DIRECTION — Rodney.)
+  3. DMO / common-shock: lambda>0 CALIBRATED. MO constructed directly via shock intensities.
+     The rigorous/pricing version; the published route (arXiv 2009.00368).
+
+────────────────────────────────────────────────────────────────────────────────
+## IF ALL CDFs ARE STEP FUNCTIONS (Rodney) — the DISCRETE regime (≠ clamp; the native lane case)
+
+DISTINCT from clamp. A step CDF means the output distribution is purely DISCRETE (mass at a
+finite set of points, NO continuous stretch anywhere). F^-1 is then itself a step function = a
+BIN/FADER map: partition [0,1] at the CDF jumps into intervals I_1..I_K, and Y_v = bin k iff
+U_v in I_k. (Clamp = PARTIAL stepping: a continuous CDF with 2 flat spots → MIXED cont+singular.
+Full step CDF = COMPLETE stepping: no continuous stretch → DISCRETE. Different objects.)
+
+THE JOINT LAW = the Gaussian-MA copula measure on the bin-rectangle GRID:
+    Pr[Y_i=k, Y_j=l] = C_Gauss-MA( I^i_k x I^j_l )   (the copula's measure of that rectangle)
+So the dependence is the continuous Gaussian-MA copula INTEGRATED over rectangles — its discrete
+footprint. NO Lebesgue cont/singular split to make: the output is discrete, full stop; the copula
+is the discrete copula of a lattice-supported vector.
+
+UNIQUENESS (at its most extreme): with discrete margins Sklar uniqueness fails hard — the copula
+is pinned ONLY at the grid corners (F_i(jump), F_j(jump)) and is arbitrary (2-increasing) off the
+grid. Infinitely many copulas reproduce the same box masses. The output keeps ONLY the rectangle
+masses; all sub-rectangle info is gone. "The copula is Gaussian-MA" is true only in the weak
+sense that A Gauss-MA copula reproduces the grid.
+
+DOES MA SURVIVE? Yes, but QUANTIZED at the grid resolution (better than the clamp-to-binary case,
+because bin assignment is a monotone COARSENING of the rank, not a collapse to one bit):
+  - FINE step CDF (many bins): discrete copula ≈ a close lattice approximation of the continuous
+    Gaussian-MA copula. MA essentially intact, just quantized.
+  - COARSE step CDF (few bins): blocky — rho still present via the rectangle measures, coarsely
+    resolved.
+  - 2 BINS = one threshold: the binary/PROBIT limit — orthant probabilities Phibar_2(t_i,t_j;rho)
+    (= the "full clamp to binary" case; see that note). The classical Gaussian-copula default
+    model (Li/CreditMetrics), the ancestor of the DMO paper.
+So step-CDF INTERPOLATES: infinitely many bins → clean continuous copula; 2 bins → probit. MA
+doesn't die, it renders at the grid resolution.
+
+NOT A CORNER CASE — IT'S WHAT THE DISCRETE VALUE LANES ALREADY DO: a step CDF IS a fader/weight
+set, and MELODY/OCTAVE already consume their uniform through a step map (pickSemitone on the
+fader weights — the discrete inverse-CDF). So:
+  - the discrete value lanes are ALREADY in the step-CDF regime (not a special mode);
+  - a CONTINUOUS warp F^-1 composed BEFORE the fader step (faderMap ∘ F^-1 — the melody-seam
+    result) is step ∘ continuous = STILL a step CDF overall, with warp-ADJUSTED bin masses. Warp
+    on these lanes = reshaping the bin masses of a quantized Gaussian-MA copula.
+This reframes the three regimes cleanly:
+  CONTINUOUS warp  → clean, unique, uniform-margin Gauss-MA copula (abs. continuous).
+  CLAMP (partial step) → MIXED: Gauss-MA continuous part + Marshall-Olkin singular part.
+  STEP CDF (full)  → DISCRETE: Gauss-MA copula measure on the bin grid; MA quantized; 2-bin=probit.
+
+────────────────────────────────────────────────────────────────────────────────
+## REACHABLE MATH STRUCTURES × DRIVERS — the master table (Rodney)
+
+The dependence drivers do NOT live on one axis. There are THREE things a driver can touch, and
+the allowed update CADENCE is DERIVED from one rule (Sklar/uniformity safety), not independent.
+
+### The three axes
+- WHAT it drives: draw-source | temporal (cross-step) correlation | cross-voice correlation
+  structure | marginal shape | output atoms.
+- SCOPE: cross-voice & temporal & sourcing drivers are LANE-GROUP scoped (all melody / all
+  rhythm / all qmix together); marginal drivers (w, theta) are PER-VOICE. (Finding: DEPENDENCE
+  is authored for the group — it's a property AMONG voices; MARGINALS are per-voice.)
+- CADENCE, derived from the rule: SKLAR-SAFE per step -> STEP (or next-step); SKLAR-UNSAFE per
+  step -> PHRASE boundary. (Phrase boundary is reserved for exactly the things that would break
+  uniform margins / the copula if changed mid-window.)
+
+### Verified facts behind the table (read from code, not assumed)
+- Slew applies CONTINUOUSLY, not only on a fresh draw: the z-cache is keyed on (N, frac, r) with
+  r = slew-rho (PatternEngine.cpp:688), so a rho change re-interpolates the in-flight window.
+  => modulating rho mid-window would break that window's uniformity -> PHRASE-gated. Confirmed.
+- A/B mix selects/blends the RAW UNIFORM DRAW SOURCE (not correlation), at lane-group level,
+  PER-STEP allowed (switching between independently-uniform sources per step stays uniform ->
+  no Sklar violation -> no phrase gate).
+- CA: manual pin move -> NEXT STEP; trigger-modulated STRUCTURAL change -> PHRASE boundary
+  (a structural correlation change mid-window disturbs in-flight copula consistency).
+- w: Sklar-safe per step (monotone mix) -> STEP-latched (from CC_PROMPT_03 / -18b §2).
+
+### THE TABLE
+| Driver | Layer / axis | Scope | Static effect | Shared-MODULATED → factor? | Cadence (why) | λ>0? | Reversible? |
+|---|---|---|---|---|---|---|---|
+| Spread (r) | latent / cross-voice | lane-grp | base copula correlation | it IS the base, not a factor | step | no (Gaussian) | yes |
+| A/B mix | SOURCING (raw draw) | lane-grp | picks draw source | yes — REGIME-SWITCH / MIXTURE factor (mixes two draw regimes; NOT a Gaussian-corr factor) | STEP (uniform-safe) | no (both regimes tail-indep) | yes (source is position-keyed) |
+| Slew-rho | latent / TEMPORAL (cross-step) | lane-grp | sets MA autocorrelation (temporal smoothness); applies CONTINUOUSLY | yes — common factor in TEMPORAL autocorrelation (stoch-vol-of-smoothness) | PHRASE (per-step breaks in-flight window uniformity → Sklar) | no (steps jointly Gaussian → temporally tail-indep) | iff rho-sequence is position-keyed |
+| CA routing | latent / cross-voice | lane-grp | correlation submatrix structure | yes — routes the shared drive → LATENT cross-voice factor | manual pin→NEXT-STEP; triggered struct→PHRASE (gated by COHERENCE, NOT Sklar — see note) | no (Gaussian) | yes |
+| w (depth) | MARGINAL | PER-VOICE | shapes marginals; w=1 static = full F^-1, **NO factor** (Sklar-invariant per-coord map) | yes — MARGINAL / FRAILTY factor | STEP (monotone mix = Sklar-safe) | no (bounded, no clamp) | yes (draw-time latched) |
+| theta (dist params) | MARGINAL | per-voice | shapes marginal family | yes — marginal/frailty factor | step (draw-time latch) | no (bounded) | yes if latched & position-keyed |
+| w UNDER CLAMP | marginal + OUTPUT | per-voice | dials the Lebesgue decomp (cont ↔ MO-singular weight) | yes — frailty factor **+ CO-MODULATED λ** (atom masses breathe together → common factor IN the tail) | step | **YES (atoms)** | yes |
+| Clamp depth | OUTPUT | tbd | sets atom mass (MO singular weight) | tbd | tbd | yes (atoms) | yes (deterministic map) |
+| DMO shock (future) | OUTPUT | tbd | constructs MO atom directly | calibrated joint rate | tbd | yes (calibrated) | yes if shocks position-keyed |
+
+### THE FOUR ONE-LINE LAWS the table encodes
+1. STATIC LEVEL NEVER MAKES A FACTOR (any layer). w=1 static = max marginal shaping, ZERO
+   dependence-structure change — it was never a factor model, so w=1 doesn't "lose" one.
+2. SHARED MODULATION ALWAYS MAKES A FACTOR — and the factor's TYPE = the layer it acts on:
+   latent-cross-voice (CA), temporal (slew-rho), sourcing/regime (A/B), or marginal/frailty (w,θ).
+3. λ>0 IS REACHABLE ONLY BY ATOMS (clamp / DMO). No modulation of ANY bounded continuous
+   parameter — correlation, rho, source, w, θ — ever breaks the tail barrier; all give λ=0.
+4. CADENCE IS DERIVED, NOT CHOSEN — from one of TWO risks:
+   - UNIFORMITY (Sklar) risk → phrase: a change that corrupts an in-flight window's uniform
+     margin if applied per-step. Slew-rho (changes the MA window WEIGHTS mid-blend → margin
+     no longer uniform). w/θ are Sklar-SAFE per step → step-latched.
+   - COHERENCE risk → phrase: a change that seams the DEPENDENCE mid-pattern (margins fine,
+     but the correlation structure has a discontinuity inside the phrase). This is CA's reason,
+     NOT Sklar — a CA pin move swaps the draw SOURCE (not the window weights), so a blend of
+     uniforms stays uniform → margins survive a mid-window swap. What it risks is a correlation
+     seam mid-phrase.
+   The manual-vs-triggered SPLIT within CA is then by trigger-source-and-frequency, NOT by layer:
+   - TRIGGERED (CV/mod) structural change can fire ANYWHERE → PHRASE-gate so no mid-pattern seam.
+   - MANUAL pin edit is deliberate + rare → NEXT-STEP: the one-step coherence seam is acceptable
+     (and immediate feedback matters more — same feel rule as w's edit→next-step; phrase-gating a
+     manual edit would feel laggy). KEEP manual=next-step. (FEEL-TEST caveat: if a mid-phrase pin
+     move audibly GLITCHES rather than cleanly step-transitions, reconsider — phrase-gate it or
+     quantise to next beat. Theory says next-step is fine; ears decide if the seam is ugly.)
+
+────────────────────────────────────────────────────────────────────────────────
+## CLAMP ATOMS AT THE DRAW LEVEL — what they DO, and DIRECTIONAL tail via spread sign (Rodney)
+
+### The atoms, concretely (single voice)
+Clamping the first/last part of F puts DIRAC MASSES at the output rails: the warped uniform hits
+0 with prob p0 = F(lo) and 1 with prob p1 = 1-F(hi). The output marginal is
+    mu_Y = p0·delta_0 + p1·delta_1  (SINGULAR part)  +  f_cont(y)dy on (0,1)  (ABS-CONTINUOUS part).
+delta_0, delta_1 sit on {0},{1} — LEBESGUE-measure-zero points carrying POSITIVE probability (the
+definition of an atom; why the output is not abs. continuous). In COPULA space they land on the
+boundary/Fréchet CORNERS — which is WHY they carry lambda>0 (an atom at the (1,1) corner IS the
+comonotone/upper-Fréchet touching point); the location is the whole reason clamp reaches lambda,
+not an inert spike. (Atoms at exactly 0/1 only if lo/hi = the support rails; interior clamp → atoms
+at interior points, still singular, but off the Fréchet corners so the clean lambda reading needs
+rail-clamping.)
+
+### Through the lane maps (the draw-level picture)
+- MELODY: uniform=0 → bottom bin → LOWEST degree; =1 → top → HIGHEST. So P(lowest pitch) >= p0,
+  P(highest) >= p1. ("AT LEAST": the atom is a FLOOR (rigid mass exactly at the rail) ON TOP of the
+  continuous part's near-rail mass. The atom is the RIGID extreme; the continuous tail is the SOFT
+  near-extreme.)
+- OCTAVE: roll=0 → bottom octave, =1 → top. Same.
+- VARIATION (gate-mode subgate density): atom at 0 → MUCH shorter/sparsest, atom at 1 → MUCH
+  longer/densest, each >= p0/p1. Rodney's "a bit vs much": the CONTINUOUS part gives graded (a bit
+  shorter/longer); the ATOMS superimpose rigid EXTREMES (much shorter/longer). Variation becomes
+  graded-middle + rigid-extreme spikes.
+
+### Why the atom (not the continuous tail) is the lambda-bearer, seen from the draw
+The ATOM mass CO-OCCURS rigidly (two voices both at U=0 → both lowest, locked, same step); the
+continuous near-rail mass is correlated but NOT locked. So cross-voice lambda>0 comes from the atom
+floor, not the continuous tail — the draw-level reason only atoms reach lambda and the continuous
+Gaussian part stays lambda=0. CLEAN TWO-KNOB PICTURE: clamp depth = MARGINAL atom rate (p0,p1);
+cross-voice correlation = how much the atoms CO-OCCUR = lambda.
+
+### DIRECTIONAL tail via spread SIGN — and the per-voice structure (VERIFIED)
+spread is PER-VOICE-SLOT, PER-LANE, BIPOLAR: spread[kVoiceSlots][NUM_STRANDS], clamped [-1,1],
+"negative spread inverts the target" (SequencerEngine.hpp:433; MonsoonExpanderManager.cpp:305 the
+spread-sign fix). The leader is the voice's CA-assigned pre-remap draw
+(MonsoonExpanderManager.cpp:420). So EACH voice independently sets (leader, signed rho).
+  - POSITIVE spread → atoms CO-OCCUR SAME-rail: both lowest together, or both highest together
+    (comonotone corners (0,0),(1,1)). Musical: unison tutti at an extreme.
+  - NEGATIVE spread → atoms co-occur OPPOSITE-rail vs the leader: voice bottoms as leader tops
+    (countermonotone corners (0,1),(1,0)). Musical: voices SPLIT to opposite extremes together —
+    max chord spread / one voice sparse while another dense, same step.
+  - SPREAD TARGET = mono OR follow-CA (VERIFIED, MonsoonExpanderManager.cpp:420): in follow-CA mode
+    the correlation is PAIRWISE ALONG THE CA ROUTING EDGE — "the leader is the post-remap value =
+    src[v]'s material" (the voice CA channelled THIS voice from), with this voice's own pre-remap
+    draw as the idiosyncratic endpoint. So if CA routes V4 from V2, V4's spread is corr(V2, V4)
+    SPECIFICALLY — a signed edge in the CA routing TREE, NOT correlation to one global leader.
+    => NEGATIVE edge V2→V4: V2 tops as V4 bottoms, a LOCKED PAIRWISE opposite-tail couple
+    (independent of other voices). POSITIVE edge: they co-occur same-rail.
+  - STRUCTURE = RANK-1 PER BLOCK (depth-1 single-anchor), NOT a deep tree. The authoritative map is
+    SPREAD_TARGET_MODES.md § "Reachable correlation structures": spread gets ONE anchor per lane;
+    each voice reads that single anchor's material (follow-CA) with a signed rho. Within a CA block
+    the correlation is RANK-1 (one common factor) — so two voices sharing a block anchor get
+    ±rho^2 between them (same spread sign → +rho^2 same-rail co-occur; opposite → -rho^2
+    opposite-rail). Rodney's V6+/V7-,V8- into anchor V5 = a structured 3-way split {V6} vs {V7,V8},
+    which IS a signed rank-1 star on that block. Reachable structures (per that doc): diagonal (no
+    corr) / signed rank-1 star / block-diagonal rank-1-per-block (arbitrary partition, per-voice
+    sign+strength, zero across blocks) / neighbour-only banded (scatter cycles).
+  - NOT reachable (and correct): arbitrary correlation matrices, and COMPOUNDING MULTI-HOP CHAINS
+    (V4→V2→V1 products). Spread is depth-1 single-anchor by design (a per-voice target map IS the CA
+    pin matrix — not rebuilt in spread); and CA pin CHAINS are a NON-IDEMPOTENT hazard it guards
+    against (CHANGE_ALLEY_DESIGN.md:227), not a correlation-authoring feature. (CORRECTS my earlier
+    "signed tree with compounding chains" — the shipped structure is rank-1-per-block, not a deep
+    tree. The pairwise-edge READ is real (a voice reads its anchor's material), but the reachable
+    STRUCTURE is the depth-1 star/block, per SPREAD_TARGET_MODES.md.)
+
+### TWO INDEPENDENT LEVERS for opposite-tail structure
+1. CA per-voice (leader + signed rho) → sets the CORRELATION sign between any voice and its leader →
+   structured same-rail / opposite-rail subgroups via rho^2 propagation (latent layer).
+2. PER-VOICE WARP ORIENTATION (top-clamp vs bottom-clamp — which rail the atom sits on) → flips
+   which rail a voice lands on INDEPENDENTLY of its correlation sign; even +correlated voices can
+   land opposite rails if oppositely clamped (output layer).
+Combined, the full matrix is authorable: WHICH voices co-occur (CA), in WHICH direction
+(spread sign), onto WHICH rail (warp orientation).
+
+### FORMAL CAVEAT (so the write-up is airtight)
+lambda_U, lambda_L are defined for SAME-direction co-extremity; the opposite-rail (negative-spread)
+case is COUNTERMONOTONE atom co-occurrence on the (0,1)/(1,0) corners — sometimes "negative tail
+dependence", stated via the survival/countermonotone framing. lambda stays >=0 by definition; what
+the spread SIGN flips is WHICH CORNERS carry the atoms, not the sign of lambda.
+
+────────────────────────────────────────────────────────────────────────────────
+## DEFERRED CLAMP — control surface DECIDED (Rodney) — "when we build it, this is the shape"
+
+STATUS: DEFERRED, de-risked. Build order: warp foundation + hand-drawn STEP functions FIRST
+(step functions already give the dramatic-effect case without atom machinery). Atoms via clamp
+come later — but the theory is fully mapped (named structures, reversibility preserved, Lebesgue
+decomp controllable, directional tail via signed spread), so switching it on is understood, not
+a leap. This note records the DECIDED control surface so the eventual spec starts from decisions,
+not a re-derivation.
+
+### Control surface
+- lo / hi KNOBS (clamp thresholds in OUTPUT space) + MODULATION inputs, per-voice-per-lane.
+- Atom masses: p0 = F(lo) at output 0-rail, p1 = 1-F(hi) at the 1-rail (the Dirac masses).
+
+### CONSTRAINT: lo < hi (enforced) — and what it guards
+- lo < hi keeps the continuous middle NON-EMPTY → the MIXED (cont + MO-singular) regime.
+- lo == hi collapses to a single step = the full-step-CDF DISCRETE limit (valid, but a DIFFERENT
+  regime reached deliberately, not by accident — enforce lo<hi so you don't fall into it).
+- lo→0 / hi→1 continuously shrink their atom to zero → sweeps the whole CONTINUOUS↔MIXED spectrum.
+  So the two knobs ARE the continuous-to-mixed dial; lo<hi is the guard that keeps you in "mixed".
+- POSSIBLE further constraint (feel-decision, later): rail-aligned vs free-interior clamp. Atoms
+  at exactly 0/1 land on the Fréchet CORNERS → clean lambda interpretation. Interior clamps are
+  legal + musical but their lambda reading is murkier (off-corner). Two modes ("snap to rails" vs
+  "free interior") is an option — decide by ear, not now.
+
+### MODULATION cadence — probably STEP-rate (unlike slew)
+Modulating lo/hi modulates the ATOM MASS (p0,p1) → modulates lambda itself when shared across
+voices (the tail-dependence control; master table). CADENCE: clamp is a POINTWISE output map, NOT
+a window operation — changing the threshold per-step does NOT corrupt an in-flight MA window the
+way slew-rho does. So by the Sklar-safety cadence rule it is likely STEP-latchable (like w), not
+phrase-gated (like slew). CONFIRM against the master-table logic when specced, but
+clamp-is-pointwise ⇒ step-safe is the expectation.
+
+### WHY THIS IS MORE REASON FOR SANDS SUBPANELS (the forcing function)
+Clamp adds, per lane: lo knob, hi knob, lo-mod jack, hi-mod jack (+ attenuverters) — more
+per-voice-per-lane columns on an already-wide panel. Combined with w-level / w-mod / param-mod,
+the output+modulation tier exceeds what the WIDE-PANEL interim absorbs gracefully. So "we'll
+eventually want clamp" is a concrete FORCING FUNCTION for the subpanel migration. Dependency chain
+(all already specced): clamp wants subpanels → subpanels want the connection-model migration
+stages 3-4 (id-pairing, see CONNECTION_MODEL_MIGRATION_NOTE.md) → which is half-done. So finishing
+the connection-model migration is the real prerequisite for clamp's UI, and clamp is one more
+reason to prioritise it.
+
+### WHAT'S ALREADY SETTLED (so the eventual spec inherits, not re-derives)
+- The copula it yields: Gauss-MA continuous part + Marshall-Olkin singular part (Lebesgue decomp);
+  w (if clamp F) dials the decomposition weight; lambda>0 via the atoms.
+- Reversibility: PRESERVED (clamp is a deterministic pointwise map; re-run forward from the
+  position counter — invertibility not required).
+- Directional tail: +spread = same-rail co-occur (comonotone), -spread = opposite-rail
+  (countermonotone), authored via the signed rank-1-per-block spread structure (SPREAD_TARGET_MODES.md).
+- Draw-level effect: lowest/highest pitch >= p0/p1 (melody/octave), much-shorter/longer variation;
+  atoms co-occur rigidly (the lambda-bearer), continuous tail does not.
+- Output-stage placement: a DELIBERATE, VISIBLE stage AFTER the distribution layer (never folded
+  into the warp — the warp's value is the clean unique uniform-margin Sklar decomposition; atoms
+  trade that away for an effect, so they stay a chosen stage).
