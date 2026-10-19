@@ -83,3 +83,20 @@ fails on current HEAD (787 raw) and passes after the fix.
 ## NOT THIS PROMPT
 - The popup z-order fix (separate prompt CC_PROMPT_04_FIX_popup).
 - Boolean/qmix-lane warp (deferred — only MEL/OCT warp).
+
+## AUDIT RESULT — is the residue systemic across lanes? NO (Rodney asked). Scope is bounded.
+Checked every poly/mono uniform-read in SequencerEngine.cpp:
+- MELODY/OCTAVE (the warped lanes): the warp bug is EXACTLY the two pitch sites above (mono :553
+  warped ✓, poly :1148 raw ✗; + display draw :787). That's the COMPLETE melody/octave surface —
+  no hidden third site.
+- RHYTHM/QMIX/VARIATION/LEGATO/ACCENT: read RAW by the per-lane gate (-18b §3, warp deferred) —
+  CORRECT today, NOT a bug. AND their mono/poly voice-indexing is ALREADY CORRECT: mono/executeStep
+  reads polyRandom(0, PL_*) (:753-757, the mono row), poly/executePolyVoice reads
+  polyRandomSrc(voiceIdx, PL_*) (:1080,:1138). So the residue did NOT spread to these lanes.
+- CONCLUSION: the mono-special residue is SPECIFIC to the melody/octave WARP wiring (warp only
+  touches pitch; the wirer converted the mono pitch site, missed the poly pitch site). It is NOT a
+  pervasive cross-lane pattern.
+- LATENT FUTURE EXTENSION POINT (not a bug now): when warp is extended to QMIX or boolean lanes,
+  route the poly site's polyRandomSrc(voiceIdx, PL_QMIX/...) through warpRow(voiceIdx, ...) and the
+  mono site through warpRow(0, ...) — EXACTLY the melody fix. The voice-indexing is already right;
+  only the raw→mirror swap is needed per lane. Small, patterned, no hidden structural work.
