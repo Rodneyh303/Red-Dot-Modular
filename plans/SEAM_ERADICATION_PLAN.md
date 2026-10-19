@@ -16,6 +16,36 @@ some places and not others. The off-by-ones live exactly at the boundary between
 Enforced by COMMENT/DISCIPLINE, never by the TYPE SYSTEM or a test — so it can't be reasoned about
 (polyBankIndex LITERALLY LIED: name said 0=V2, code returned v-1) and can't be caught before Rack.
 
+## THE ROOT OF THE WARP BUGS SPECIFICALLY — warp did NOT copy spread's ARCHITECTURE (code-verified)
+Rodney asked: warp is semantically identical to spread (which works) — why couldn't warp just copy
+spread? ANSWER (verified): because warp didn't copy spread's ARCHITECTURE, only its surface.
+- SPREAD routes EVERYTHING through `SpreadResolver` (src/dsp/SpreadResolver.hpp) — "the SINGLE
+  definition of effective spread amount". ONE tested `effective(Inputs)` encodes the FULL delegation
+  algebra in ONE place: `eff = base + ownCv·2 + eastCv·2 + lerp(pre,post,tap_v)·send` (non-delegated),
+  `eff = clamp(macroBase + tappedDelta)` (delegated). The caller just POPULATES Inputs (base, ownCv,
+  eastCv, macroBase, macroSend, macroTap, delegated) and calls effective(). Every subtlety — the
+  delegated branch, Macro send, per-voice tap, pre/post lerp, CV mixing — lives inside that ONE
+  contract-tested function. THAT is why spread has no Macro→East leak / no V1 asymmetry.
+- WARP has NO WarpResolver. It is a bare 15-line `warpedValue` (WarpF.hpp:354) + a crude 2-branch
+  delegation (`if delegated: globalWarpF[lane] else warpF[i]`) + a `warpDelegated_[v][l]` flag array,
+  with the East/Macro/send/tap resolution SCATTERED across UI + manager + engine. VERIFIED: warp's
+  code has 0 send/tap/CV terms; SpreadResolver has 23. Warp REIMPLEMENTED a SUBSET of spread's
+  delegation algebra, by hand, incompletely. (Its own comment even says "the SpreadResolver::Inputs
+  shape" — it KNEW the model and didn't use it.)
+- THEREFORE every warp bug (Macro→East leak, V1 asymmetry, per-voice inconsistency) = warp's bespoke
+  resolution diverging from spread's unified one. Spread works because the algebra is in ONE tested
+  place; warp breaks because its hand-copy is partial.
+
+### THE WARP-SPECIFIC CURE (do this; it is cleaner + smaller than a path-unification refactor)
+Build `WarpResolver` modeled EXACTLY on SpreadResolver: same Inputs shape (base=the lane's warp
+curve+w, ownCv, eastCv, macroBase=globalWarpF/W, macroSend, macroTap, delegated), ONE `effective()`
+authority, ONE contract test (the SpreadResolver test is the template). Route BOTH executeStep(V1)
+and executePolyVoice(V2+) through it, populating Inputs identically. Then warp IS spread, structurally
+— the leak/asymmetry can't exist because the algebra is in one tested place, same as spread.
+This may make the Stage-2 execution-path unification unnecessary FOR WARP (both paths just call the
+resolver) — though the mono/poly execute split is still worth closing for other features.
+
+────────────────────────────────────────────────────────────────────────────────
 ## STATE OF THE WAR (what past-you ALREADY WON — verified in current code)
 Huge progress already landed — do NOT redo these:
 - `polyBankIndex` the lying function: DELETED. ✓ (plans/V16_FLICKER_root_smell.md was the diagnosis.)
