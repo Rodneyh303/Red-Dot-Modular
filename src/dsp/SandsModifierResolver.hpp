@@ -2,6 +2,11 @@
 #include <algorithm>
 #include <concepts>
 
+#include "WarpF.hpp"   // dotModular::WarpF — WarpPolicy's curve member. The include pair
+                       // is a GUARD-SAFE CYCLE: WarpF.hpp includes THIS header as its
+                       // last line (see the WarpBank section at the bottom of this file
+                       // for why that is safe in both entry orders).
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SandsModifierResolver — the ONE shared resolution skeleton for every
 // per-(voice,lane) modifier that delegates between Macro and East.
@@ -43,7 +48,15 @@
 // test_resolver_spread_bridge.cpp fuzzes ≥100k seeded Inputs against a
 // verbatim copy of the OLD SpreadResolver::effective and asserts same-BITS
 // equality for both SandsModifierResolver<SpreadPolicy> and the compat shell
-// SpreadResolver. Later steps (warp/LOR/direction) extend the same pin.
+// SpreadResolver.
+//
+// Step 2 (second rider): WarpPolicy — WarpBank's mix/effective members now
+// resolve their (curve, depth) pair through this skeleton (the hand-rolled
+// `if (delegated)` branch in WarpF.hpp is DELETED; the definitions live at the
+// bottom of this file). Gate: test_resolver_warp_bridge.cpp fuzzes seeded
+// banks against a verbatim copy of the OLD WarpBank mix/selection and asserts
+// same-BITS mix outputs + the same resolved (f,w). Later steps
+// (LOR/direction) extend the same pin.
 // ─────────────────────────────────────────────────────────────────────────────
 
 namespace redDot {
@@ -162,4 +175,109 @@ struct SpreadPolicy {
 // error at its declaration — this assert fails loudly if the contract drifts).
 static_assert(SandsModifierPolicy<SpreadPolicy>);
 
+// ── WARP, the second policy — the (curve, depth) pair the bank mixes ──────────
+// Value is WarpCell{f, w}: the resolved curve + depth whose branchless mix
+// (1-w)·u + w·F⁻¹(u) shapes a lane's probability. WarpF is a trivially
+// copyable std::variant (pinned by test_warp_f_bank's static_assert); BY VALUE
+// is correct — resolution runs on the mirror rebuild path, never per sample.
+//
+// CV/send/delegation modulate the DEPTH only; the curve is set-time (sketch §4
+// — curve-PARAM modulation is a separate future θ policy that composes at
+// apply-time, never fused here). Every op below touches v.w and leaves v.f
+// untouched.
+//
+// applyDelegated's general form {mb.f, clamp01(mb.w + td)} is DORMANT today:
+// no warp send/tap plumbing exists, so the bank wires no pre/post deltas and
+// tappedDelta ≡ 0 — the resolved cell is bit-identical to the OLD pure
+// selection (own slot vs Macro's global default; pinned same-BITS by
+// test_resolver_warp_bridge). When warp grows the spread send/tap shape, this
+// policy already implements it; only the Inputs wiring changes.
+//
+// constrain clamps the RESOLVED w to [0,1] — a different layer from the mix's
+// documented no-clamp (WarpF.hpp: the MIX trusts its inputs; the RESOLVER
+// clamps its output). Identity on valid inputs (authored w lives in [0,1]).
+struct WarpCell {
+    dotModular::WarpF f;   // the curve (set-time; never modulated here)
+    float w = 0.f;         // the depth in [0,1] (0 = no warp; NSDMI so a
+                           // default-constructed cell is the no-warp state)
+};
+
+struct WarpPolicy {
+    using Value = WarpCell;
+    struct Extra {};        // warp needs no extra inputs (yet)
+
+    // [0,1] clamp in SpreadPolicy's max/min form (NOT std::clamp — they differ
+    // on NaN; one convention for the whole resolver file).
+    static float clamp01(float x) { return std::max(0.f, std::min(1.f, x)); }
+
+    static float scaleCv(float raw) { return raw; }   // depth CV is already unit-scaled
+    static WarpCell addCv  (WarpCell v, float c) { v.w = clamp01(v.w + c); return v; }
+    static WarpCell addSend(WarpCell v, float s) { v.w = clamp01(v.w + s); return v; }
+    static WarpCell applyDelegated(WarpCell mb, float td, const Extra&) {
+        mb.w = clamp01(mb.w + td);   // DORMANT general form — td ≡ 0 today (section note)
+        return mb;
+    }
+    static WarpCell constrain(WarpCell v, const Extra&) { v.w = clamp01(v.w); return v; }
+};
+
+// The concept must BITE here too (the located-error enforcement, same as spread).
+static_assert(SandsModifierPolicy<WarpPolicy>);
+
 } // namespace redDot
+
+// ── WarpBank rides the resolver (STEP 2) — the bank's mix, defined HERE ───────
+// WarpF.hpp DECLARES warpedValue/effectiveF/effectiveW and includes THIS header
+// as its LAST line; the definitions live here because this is the only place
+// where dotModular::WarpBank and the resolver skeleton are both complete. The
+// include pair is a guard-safe cycle (this header → WarpF.hpp at the top;
+// WarpF.hpp → this header at the bottom): whichever header a TU enters first,
+// the definitions below always execute after WarpF.hpp's full body, so they
+// see the complete bank. No resolver-dependent code may live in WarpF.hpp.
+//
+// The hand-rolled `if (delegated)` hand-copy this routing replaces was the
+// design doc's INCOMPLETE warp delegation copy (0 CV/send/tap terms) — the
+// Macro→East/V1 bug class dies by construction once those terms are wired;
+// today the wiring is base/macroBase/delegated only. Signatures are FROZEN
+// (the uniformity-harness U2 oracle calls the 4-arg form; test_warp_f_bank S4
+// pins all four).
+namespace dotModular {
+
+// The one wiring: this voice's own slot is the base, Macro's global default is
+// the macroBase, the topology-resolved flag is the delegation. No warp
+// CV/send/tap plumbing exists yet, so every other Input stays absent — the
+// resolver's output is PURE SELECTION, bit-identical to the old branch. When
+// warp grows the spread send/tap shape, ONLY this wiring changes.
+inline redDot::WarpCell resolveWarpCell(const WarpBank& b, int v, int lane, bool delegated) {
+    redDot::SandsModifierResolver<redDot::WarpPolicy>::Inputs in;
+    const int i = WarpBank::index(v, lane);
+    in.base      = redDot::WarpCell{b.warpF[i], b.warpW[i]};
+    in.macroBase = redDot::WarpCell{b.globalWarpF[lane], b.globalWarpW[lane]};
+    in.delegated = delegated;
+    return redDot::SandsModifierResolver<redDot::WarpPolicy>::effective(in);
+}
+
+// THE MIX, branchless, on the RESOLVED pair (see the declaration site in
+// WarpF.hpp for the w=0/identity bit-exactness pins). The 4-arg form is the
+// delegation-resolved entry (PatternEngine::warpMixCell — the ONLY production
+// caller); the 2-arg form is the same authority with delegated=false.
+inline double WarpBank::warpedValue(int v, int lane, double u, bool delegated) const {
+    const redDot::WarpCell c = resolveWarpCell(*this, v, lane, delegated);
+    return (1.0 - c.w) * u + c.w * invCDF(c.f, u);
+}
+
+inline double WarpBank::warpedValue(int v, int lane, double u) const {
+    return warpedValue(v, lane, u, /*delegated=*/false);
+}
+
+// The resolved cell's members (no production callers; test_warp_f_bank S4c
+// pins the selection semantics). effectiveF returns BY VALUE: the resolver
+// produces a resolved cell, not a reference into the bank (WarpF is trivially
+// copyable, pinned).
+inline WarpF WarpBank::effectiveF(int v, int lane, bool delegated) const {
+    return resolveWarpCell(*this, v, lane, delegated).f;
+}
+inline float WarpBank::effectiveW(int v, int lane, bool delegated) const {
+    return resolveWarpCell(*this, v, lane, delegated).w;
+}
+
+} // namespace dotModular

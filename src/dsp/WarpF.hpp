@@ -349,28 +349,25 @@ struct WarpBank {
     // THE MIX — branchless. The default F (identity) and w=0 both make this u with no
     // branch; w=0 is a BIT-EXACT no-op in the stored float and w=1 is exactly
     // invCDF(F,u) (both pinned by tests). w ∈ [0,1] is the caller's contract — no clamp
-    // (clamping would add the very branch this exists to avoid). Evaluated on the
-    // rebuild path only; the per-sample path reads a stored float.
-    double warpedValue(int v, int lane, double u) const {
-        const int i = index(v, lane);
-        return (1.0 - warpW[i]) * u + warpW[i] * invCDF(warpF[i], u);
-    }
-
-    // Delegation-resolved mix (see struct comment): `delegated` comes from SandsTopology
-    // (owner()==MACRO), wired by the caller — the SpreadResolver::Inputs shape.
-    double warpedValue(int v, int lane, double u, bool delegated) const {
-        if (delegated) {
-            const double w = globalWarpW[lane];
-            return (1.0 - w) * u + w * invCDF(globalWarpF[lane], u);
-        }
-        return warpedValue(v, lane, u);
-    }
-    const WarpF& effectiveF(int v, int lane, bool delegated) const {
-        return delegated ? globalWarpF[lane] : warpF[index(v, lane)];
-    }
-    float effectiveW(int v, int lane, bool delegated) const {
-        return delegated ? globalWarpW[lane] : warpW[index(v, lane)];
-    }
+    // in the MIX itself (clamping would add the very branch this exists to avoid); the
+    // RESOLVER clamps the resolved w — a different layer (SandsModifierResolver.hpp).
+    // Evaluated on the rebuild path only; the per-sample path reads a stored float.
+    //
+    // RESOLVER STEP 2: these four members are DECLARED here and DEFINED
+    // out-of-line in SandsModifierResolver.hpp — the (f,w) pair they mix onto is
+    // resolved by SandsModifierResolver<WarpPolicy> (base = this voice's own
+    // slot, macroBase = Macro's global default, delegated = the topology-resolved
+    // flag — see the struct comment above), and the definitions must live in the
+    // one header where the bank AND the skeleton are both complete (the
+    // include-order note there). The old hand-rolled `if (delegated)` hand-copy
+    // is DELETED: value resolution has ONE authority. Signatures frozen (the
+    // uniformity-harness U2 oracle + test_warp_f_bank S4 call them); effectiveF
+    // now returns BY VALUE (the resolver produces a resolved cell; WarpF is
+    // trivially copyable, pinned).
+    double warpedValue(int v, int lane, double u) const;
+    double warpedValue(int v, int lane, double u, bool delegated) const;
+    WarpF effectiveF(int v, int lane, bool delegated) const;
+    float effectiveW(int v, int lane, bool delegated) const;
 
     // ── The set-time drawn-curve pool (CC_PROMPT_02 step 3) ─────────────────────────────
     // Populated ONLY at set-time (UI commit / patch load). Identical curves SHARE a slot
@@ -512,3 +509,13 @@ private:
 };
 
 } // namespace dotModular
+
+// RESOLVER STEP 2 (SandsModifierResolver): the bank's mix/effective member
+// DEFINITIONS live in SandsModifierResolver.hpp — the only place both the bank
+// and the resolver skeleton are complete. This include is the LAST line of the
+// file ON PURPOSE: the header pair forms a guard-safe cycle (this header → the
+// skeleton at the bottom; the skeleton → this header at the top), safe in BOTH
+// include orders precisely because every cross-referencing definition lives in
+// the skeleton, which always completes after this file's body. No code may
+// follow this line.
+#include "SandsModifierResolver.hpp"

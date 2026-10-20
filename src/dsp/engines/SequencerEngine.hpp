@@ -532,17 +532,19 @@ struct SequencerEngine {
     // The pin remap now lives UPSTREAM in the slewed buffers (pe.remapSlewedByPins,
     // pre-spread), so every read here is a PLAIN own-bank read — a pinned voice's
     // borrowed draw already carries the consumer's own spread. No read-time indirection.
-    // Warp mirror (CC_PROMPT_03 STEP 4a): the MELODY/OCTAVE OUTPUT — what genPitchLive
-    // consumes for pitch (mono + poly landings) and the poly prob CV outs read — comes
-    // from the EFFECTIVE w-mixture (pe.warpRow: the mirror when a bank is wired, the
-    // raw row otherwise, so bank-less hosts stay byte-identical). Every other lane
-    // reads the raw bank: its consumers don't warp yet (boolean lanes deferred by
-    // proof; q-mix with the w send/tap routing). Each lane's gate flips TOGETHER with
-    // its consumer — the sounding path and the display agree by construction.
+    // Warp mirror (CC_PROMPT_03 STEP 4a; ALL-LANES routing closed by the resolver
+    // step 2): EVERY poly lane's consumers — what genPitchLive reads for pitch
+    // (mono + poly landings), the poly prob CV outs, REST/VAR/LEG/QMIX/ACCENT —
+    // read the EFFECTIVE w-mixture through this ONE choke point (pe.warpRow:
+    // the mirror when a bank is wired, the raw row otherwise, so bank-less
+    // hosts stay byte-identical). All-lanes is SAFE for the lanes the old gate
+    // held back: an unauthored warp is w=0 or IdentityF, and the mix
+    // (1-0)·u + 0·F⁻¹(u) is bit-exactly u (pinned by test_warp_f_bank S4/S7 +
+    // test_warp_mirror S1/S2), so the mirror row equals the raw row until a
+    // curve/w is authored on the lane. The display gate
+    // (PatternEngine::finalRandomByStrand) flipped TOGETHER with this one.
     inline const float (&polyRandomSrc(int voiceIdx, int polyLane) const)[16] {
-        if (polyLane == PL_MELODY || polyLane == PL_OCTAVE)
-            return pe.warpRow(voiceIdx, polyLane);
-        return pe.polyRandom(voiceIdx, polyLane);
+        return pe.warpRow(voiceIdx, polyLane);
     }
     // Stage 2a: refresh ONE cell of polyRandom at step advance, using the cached spread
     // value from the last control-rate sync(). Checks the lane's lock axis; if not live,

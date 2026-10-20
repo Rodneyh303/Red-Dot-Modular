@@ -491,14 +491,16 @@ struct PatternEngine {
 
     inline float finalRandomByStrand(int strand, int step) const {
         const int s = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? strand : dotModular::STRAND_RHYTHM;
-        // Warp mirror (CC_PROMPT_03 STEP 4b): the MELODY/OCTAVE strands return the
-        // mirror's EFFECTIVE w-mixture — the Sands bars + prob CV outs carry the mix
-        // automatically (the bar-data funnel: this ONE accessor feeds both UIs). The
-        // other strands stay raw: a lane's display reads the mirror IFF its engine
-        // consumer does (boolean-lane warp is deferred by proof, -18b §3; q-mix warp
-        // arrives with the w send/tap routing) — so the bars can never show a value
-        // the audio doesn't consume. Flip each lane's gate TOGETHER with its consumer.
-        if (warpBank_ && (s == dotModular::STRAND_MELODY || s == dotModular::STRAND_OCTAVE))
+        // Warp mirror (CC_PROMPT_03 STEP 4b; ALL-STRANDS routing closed by the
+        // resolver step 2): EVERY strand returns the mirror's EFFECTIVE
+        // w-mixture — the Sands bars + prob CV outs carry the mix automatically
+        // (the bar-data funnel: this ONE accessor feeds both UIs), lane-for-lane
+        // with the engine's polyRandomSrc gate (they flipped TOGETHER — the bars
+        // can never show a value the audio doesn't consume). Safe for the strands
+        // the old gate held raw: an unauthored warp is w=0/IdentityF ⇒ mirror row
+        // ≡ raw row, bit-exact (pinned); a bank-less host keeps reading raw
+        // random_ below (the null fallback, byte-identical legacy).
+        if (warpBank_)
             return warped_[0][s][step & 0x0F];
         return random_[0][s][step & 0x0F];   // plain own-bank; pin remap lives upstream in slewed
     }

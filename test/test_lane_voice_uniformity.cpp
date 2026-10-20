@@ -71,25 +71,15 @@ struct KnownSeam {
 
 // The manifest. Stage discipline: each stage DELETES its entries; nothing is ever added
 // without a plan-stage pointer. A green that required adding an entry is NOT a fix.
-static bool seam_warp_consumer(const Fail& f) {
-    return f.feature == "U3-warp-consumer" && f.l >= 0
-        && (f.l == PatternEngine::PL_QMIX || f.l == PatternEngine::PL_REST
-            || f.l == PatternEngine::PL_ACCENT || f.l == PatternEngine::PL_VARIATION
-            || f.l == PatternEngine::PL_LEGATO);
-}
+// (FIRST SHRINK — resolver step 2: WARP-CONSUMER-GATE deleted. polyRandomSrc now
+// routes ALL lanes through pe.warpRow and finalRandomByStrand through the mirror,
+// so U3's row-identity check is green across the whole 16×7 matrix.)
 static bool seam_dir_slot0(const Fail& f) {
     return f.feature == "U7-direction-promote" && f.v == 0;
 }
 
 static const std::vector<KnownSeam>& knownSeams() {
     static const std::vector<KnownSeam> K = {
-        { "WARP-CONSUMER-GATE",
-          "route ALL lanes through warpRow (feat/warp-ui CC_PROMPT_05, unmerged) — then delete",
-          "SequencerEngine.hpp:542 polyRandomSrc returns pe.warpRow ONLY for PL_MELODY/PL_OCTAVE; "
-          "every other lane reads the raw bank even when a warp is authored+mirrored (boolean "
-          "lanes deferred by proof, -18b §3; q-mix with the w send/tap routing). S6 of "
-          "test_warp_mirror pins the same state; this is its full-matrix form.",
-          seam_warp_consumer },
         { "DIR-SLOT0-ROW-INERT",
           "Stage 3 (unify executeStep/executePolyVoice into ONE per-voice path) — then delete",
           "advancePlayhead promotes laneDirVPending_ for v=1..numPolyVoices ONLY "
