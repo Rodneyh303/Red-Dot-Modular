@@ -189,7 +189,7 @@ int main() {
         }
 
         // SequencerEngine probability chain: polyLaneProbabilityAtStep(lane, voice, step)
-        // -> polyRandomSrc(voice) -> pe.polyRandom(voice) -> random_[voice].
+        // -> pe.warpRow(voice, lane) -> random_[voice] (bank-less: warpRow IS the raw row).
         {
             SequencerEngine se;
             for (int slot : {0, 1, 15}) se.pe.random_[slot][PL_MEL][9] = stepSentinel(slot, 9);

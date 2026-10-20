@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import dotmod_design as D
 from dotmod_design import px, theme
 
-def gen_macro(dark, W_MM=294.64):   # 58HP (48HP + 10HP widened on the RIGHT for the 6-col send row per lane)
+def gen_macro(dark, W_MM=312.64):   # 58HP + 9mm (w-level column, CC_PROMPT_04 STEP 1) + 9mm (warp-edit button column, STEP 2)
     # Macro mirrors the East visual's 7-lane geometry EXACTLY (same lane tops/heights); it does
     # the same spread job but GLOBAL rather than per-lane. Must match StraitsSandsMacroVisual.hpp
     # (W_MM, ROW_BOT=105, ED_H=91) and src/ui/SandsGrid.hpp (LANE_TOP=14, LANE_H=13, POLY_LANES=7).
@@ -30,7 +30,9 @@ def gen_macro(dark, W_MM=294.64):   # 58HP (48HP + 10HP widened on the RIGHT for
     TAB_TOP_OFFSET_MM = 5.0
     # Geometry: 7 lanes × 13mm, editor 14→105 (matches East). Left/center/right columns are
     # UNCHANGED from the 5-lane layout; the extra 20mm is added on the RIGHT for the send grid.
-    ED_X=88.; ED_W=111.; OWNER_X=205.; DIR_X=212.; DIR_MOD_X=220.; PROB_OUT_X=230.; ED_Y=14.; ED_H=91.   # 7 lanes x 13mm, editor 14->105; PROB_OUT moved L to clear send col
+    WLEVEL_X=88.   # w-level knob column (CC_PROMPT_04 STEP 1) — the OLD ED_X slot (9mm left-cluster rhythm)
+    WARPEDIT_X=229.   # CC_PROMPT_04 STEP 2: warp curve-editor trigger button column, right of the dir cell
+    ED_X=97.; ED_W=111.; OWNER_X=214.; DIR_X=221.; DIR_MOD_X=238.; PROB_OUT_X=248.; ED_Y=14.; ED_H=91.   # +9mm (w-level col) +9mm (CRV col); 7 lanes x 13mm, editor 14->105
     ED_LANE_H=ED_H/N
     # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY).
     def rowY(r): return ED_Y+(r+0.5)*ED_LANE_H
@@ -43,7 +45,7 @@ def gen_macro(dark, W_MM=294.64):   # 58HP (48HP + 10HP widened on the RIGHT for
     # left-side modulation knobs). Row-aligned to each LED lane (Y = ctrlY(el)). Cols 0..3 =
     # LEN/OFF/ROT/SPR sends (gold), col 4 = LOR tap, col 5 = SPR tap (wellring). Anchor NAMES
     # are UNCHANGED — only X/Y move — so widget name-binds still resolve.
-    SEND_COL_X=[240.,249.,258.,267.,276.,285.]   # 6 columns at 9mm pitch
+    SEND_COL_X=[258.,267.,276.,285.,294.,303.]   # 6 columns at 9mm pitch (+9 grid shift, +9 CRV column)
     L=[]; A=L.append
     A(D.svg_open(PW,PH))
     A('<g inkscape:label="artwork" inkscape:groupmode="layer">')
@@ -54,10 +56,13 @@ def gen_macro(dark, W_MM=294.64):   # 58HP (48HP + 10HP widened on the RIGHT for
     # + shorter. A full helix reposition is deferred to Step 4.
     A(D.helix_sands(4.0, 107.0, 60.0, 20.0, t, op=0.95))
     A(D.accent_rules(PW,t))
-    gx,gy=1.5,ctrlY(0)-ED_LANE_H*0.5-3.0; gw,gh=(SPREAD_X+6.0)-gx,(ctrlY(N-1)+ED_LANE_H*0.5+3.0)-gy  # gx clears leftmost jack
+    gx,gy=1.5,ctrlY(0)-ED_LANE_H*0.5-3.0; gw,gh=(WLEVEL_X+6.0)-gx,(ctrlY(N-1)+ED_LANE_H*0.5+3.0)-gy  # gx clears leftmost jack; recess wraps the w-level column too (CC_PROMPT_04)
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
     A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=7))
     A(D.owner_block(OWNER_X, [ctrlY(r) for r in range(N)], ED_X+ED_W, t, cell_w_mm=6.0))
+    # CC_PROMPT_04 STEP 2: faint backing for the warp curve-editor ("CRV") button column,
+    # right of the dir cell (header text is widget-drawn on Macro, matching its other headers).
+    A(f'<rect x="{px(WARPEDIT_X-4.85):.1f}" y="{px(ED_Y):.1f}" width="{px(9.7):.1f}" height="{px(ED_H):.1f}" rx="{px(1.0):.1f}" fill="#ffffff" fill-opacity="0.05"/>')
     # RHS send-grid recess: a faint panel-coloured frame behind the 3×2 send knob blocks.
     sg_x=SEND_COL_X[0]-3.0; sg_y=ED_Y; sg_w=(SEND_COL_X[-1]-SEND_COL_X[0])+6.0; sg_h=ED_H
     A(f'<rect x="{px(sg_x):.1f}" y="{px(sg_y):.1f}" width="{px(sg_w):.1f}" height="{px(sg_h):.1f}" rx="{px(1.4):.1f}" fill="{t["edrecess"]}" stroke="{t["edborder"]}" stroke-width="0.9" opacity="0.55"/>')
@@ -73,6 +78,7 @@ def gen_macro(dark, W_MM=294.64):   # 58HP (48HP + 10HP widened on the RIGHT for
         for x in JACK_X:  A(D.jack(x,y,t))
         for x in ATTEN_X: A(D.trim(x,y,t,t["gold"]))
         A(D.trim(SPREAD_X,y,t,t["wellring"]))
+        A(D.trim(WLEVEL_X,y,t,t["wellring"]))   # CC_PROMPT_04: w-level (warp depth) — Macro authors the DELEGATED DEFAULT (globalWarpW)
     # ── Macro→voice MIX-IN send row: 6 knobs in a single horizontal row per lane, 9mm pitch.
     #    Cols 0..3 = LEN/OFF/ROT/SPR sends (gold), col 4 = LOR tap, col 5 = SPR tap (wellring).
     #    Row-aligned to each LED lane (Y = ctrlY(el)), mirroring the left-side modulation knobs.
@@ -98,6 +104,13 @@ def gen_macro(dark, W_MM=294.64):   # 58HP (48HP + 10HP widened on the RIGHT for
         for c,x in enumerate(JACK_X):  named(f"input_cv_{el}_{c}",    x, y)
         for c,x in enumerate(ATTEN_X): named(f"param_atten_{el}_{c}", x, y)
         named(f"param_spr_{el}",  SPREAD_X,   y)
+        # w-level knobs (param_wlevel_<editorLane>) — CC_PROMPT_04 STEP 1: Macro's delegated
+        # DEFAULT depth per lane (globalWarpW[lane]), same delegation pattern as the spread
+        # base above. EVERY lane gets one (booleans too — inert until their consumer warps).
+        named(f"param_wlevel_{el}", WLEVEL_X, y)
+        # warp curve-editor trigger buttons (param_warpedit_<editorLane>) — CC_PROMPT_04 STEP 2:
+        # Macro's button is ALWAYS available (edits Macro's own delegated-default curve).
+        named(f"param_warpedit_{el}", WARPEDIT_X, y)
         named(f"output_prob_{el}", PROB_OUT_X, y)
     # Macro→voice mix-in send + PRE/POST tap anchors — single row per lane, 6 columns at 9mm pitch.
     for el in range(ED_LANES):

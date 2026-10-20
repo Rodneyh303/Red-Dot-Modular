@@ -130,6 +130,19 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // migrate onto topo.owner(0, l). See docs/design/SANDS_TOPOLOGY_RESOLVER_PLAN.md.
     dotModular::SandsTopology::Inputs topoIn;
     expanderManager.fillPresence(topoIn, engine.numPolyVoices);   // single presence authority
+    // CC_PROMPT_07 (the warp voice/slot + Macro→East leak): presence alone is NOT enough.
+    // Without the owner rows, topo.owner() answers the Inputs STRUCT DEFAULTS —
+    // eastV1Owner all-true (V1 never delegated) and eastPolyOwner all-false (EVERY poly
+    // (v,lane) Macro-owned) — so warpDelegated_ below went all-true for V2+ on EVERY
+    // lane: Macro's global curve reached even East-owned cells (the "non-delegated
+    // leak"), East's own-slot warp was bypassed for V2+ ("East warp has no effect"),
+    // and V1 never tracked Macro ("no effect on voice 1"). Fill the rows from the store
+    // (getMacroOwn, voiceSlot rows: v=0 → V1, 1..15 → V2..V16; no Macro ⇒ East is the
+    // sole owner) — the ONE shared Inputs::fillOwners both managers use.
+    topoIn.fillOwners(/*eastPresent=*/expanderManager.cachedEastSandsVisual != nullptr,
+                      [&hasMacro, gMon](int v, int l) {
+                          return !hasMacro || (gMon && gMon->getMacroOwn(v, l) > 0.5f);
+                      });
     if (monoVis) {
         // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
         // SANDS CONSOLIDATION Step 7: monoV1Owner removed — V1 ownership now via eastV1Owner only.
@@ -269,8 +282,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // the ensemble; like every poly voice it can receive the East per-lane CV
             // and the Macro global-CV mix-in, summed on top of the mono base. We use
             // SLOT 0 of the East/Macro per-voice banks — which is now voice 1 / mono under
-            // the voice-number (N→N) indexing (slot v = voice v+1). Poly voices read slot v+1,
-            // so they no longer collide with this mono slot.
+            // the voice-number (N→N) indexing (slot v = voice v+1 — i.e. EXACTLY
+            // VoiceResolver::voiceSlot: V1→0, V2→1, …, V16→15; the ONE slot convention,
+            // the same one fillOwners/warpDelegated_/the warp banks use). Poly voices read
+            // slot v+1, so they no longer collide with this mono slot.
             // Only when the respective module is attached. Lane/item→East(r,c) mirrors
             // the poly combineLOR mapping. (Base stays mono's — this is modulation only.)
             auto* eastVis = expanderManager.cachedEastSandsVisual;

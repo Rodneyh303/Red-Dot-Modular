@@ -134,6 +134,17 @@ float PatternEngine::warpMixCell(int v, int lane, int step) const {
     return (float)warpBank_->warpedValue(v, lane, u, warpDelegated_[v][lane]);
 }
 
+// The DISPLAY composition twin (CC_PROMPT_04 feel-test bug 1): same (F,w) resolution
+// as warpMixCell — WarpBank::warpedValue(v, lane, u, delegated), the Macro-global
+// default for delegated cells — but over the caller's spread-interpolated display
+// value instead of random_. No bank ⇒ bit-identical passthrough. See PatternEngine.hpp.
+float PatternEngine::warpDisplayMix(int v, int lane, double u) const {
+    const int vv = (v >= 0 && v < 16) ? v : 0;
+    const int ll = (lane >= 0 && lane < 7) ? lane : 0;
+    if (!warpBank_) return (float)u;
+    return (float)warpBank_->warpedValue(vv, ll, u, warpDelegated_[vv][ll]);
+}
+
 void PatternEngine::rebuildWarpMirrorAll() {
     if (!warpBank_) return;   // no bank ⇒ nothing to mix; consumers fall back to random_
     for (int v = 0; v < 16; ++v)
@@ -339,7 +350,13 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
         legatoSource[0][i]=slewedLegato[0][i]; accentSource[0][i]=slewedAccent[0][i];
         for (int v=1;v<=numPolyVoicesHint;v++) rhythmSource[v][i]=slewedRhythm[v][i];
         for (int v=1;v<=numPolyVoicesHint;v++) accentSource[v][i]=slewedAccent[v][i];
-        rhythmPattern[i] = (slewedRhythm[0][i] >= in.restProb);
+        // Warp mirror (CC_PROMPT_05 — the RHYTHM redraw twin of the melody draw site):
+        // the pattern preview derives from the SAME effective w-mixture + voice key the
+        // refreshVisualCache rhythmChanged writer uses (warpRow(displayedVoice_, PL_REST))
+        // — the two rhythmPattern writers agree by construction. warpRow(0,·) IS the
+        // mono row, so at identity defaults this is byte-identical to the old raw
+        // slewedRhythm[0] read (the recompute's write-back just copied slewed→random_).
+        rhythmPattern[i] = (warpRow(displayedVoice_, PL_REST)[i] >= in.restProb);
     }
 }
 
@@ -773,7 +790,18 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
         for (int v=1;v<=numPolyVoicesHint;v++){ melodySource[v][i]=slewedMelody[v][i];
                                 octaveSource[v][i]=slewedOctave[v][i]; }
         int sem = 0;
-        melodyPitchV[i]   = genPitchLive(sem, in, slewedMelody[0][i], slewedOctave[0][i]);
+        // Warp mirror (CC_PROMPT_04-FIX-2 — the DRAW site): the pitch uniform comes
+        // from the EFFECTIVE w-mixture via warpRow(displayedVoice_,·) — the SAME
+        // accessor + voice key the refreshVisualCache melodyChanged writer uses, so
+        // the two melodyPitchV writers agree by construction and a draw with warp
+        // set produces a DIFFERENT pattern than the same draw at w=0. (This site
+        // previously fed RAW slewedMelody[0]/slewedOctave[0] — the hardcoded-[0]
+        // mono residue that bypassed the mirror and left the drawn pattern
+        // unwarped.) The mirror was just rebuilt by recomputeEffectiveMelody's
+        // post-write-back hook above, so the row is fresh from the settled basis.
+        melodyPitchV[i]   = genPitchLive(sem, in,
+                                         warpRow(displayedVoice_, PL_MELODY)[i],
+                                         warpRow(displayedVoice_, PL_OCTAVE)[i]);
         melodySemitone[i] = sem;
     }
 }
@@ -864,8 +892,11 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     // rhythm-mix forced the unconditional loop to re-run.
     if (rhythmChanged) {
         for (int i = 0; i < 16; ++i) {
-            float rVal = (displayedVoice_ == 0) ? rhythmRandom[i] : polyRandom(displayedVoice_, PL_REST)[i];
-            rhythmPattern[i] = (rVal >= in.restProb);
+            // Warp mirror (CC_PROMPT_05): the displayedVoice_==0 mono/poly ternary
+            // COLLAPSES — warpRow(displayedVoice_, PL_REST) IS the mono row when
+            // displayedVoice_ is 0 (rhythmRandom is a view onto random_[0][REST]) and
+            // the displayed poly row otherwise. One accessor, every lane, every voice.
+            rhythmPattern[i] = (warpRow(displayedVoice_, PL_REST)[i] >= in.restProb);
         }
     }
     if (melodyChanged) {

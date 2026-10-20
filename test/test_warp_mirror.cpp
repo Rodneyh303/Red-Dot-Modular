@@ -17,6 +17,17 @@
 //   S4. MONOTONE (Sklar-safety): dense ascending sweep ⟹ stored float never decreases,
 //       strictly increasing for meaningful u-gaps (ties-at-eps tolerated) — incl. the
 //       steep kuma (5, 25.8) case from test_warp_f_bank S7.
+//   S8. DISPLAY COMPOSITION (CC_PROMPT_04 feel-test bug 1): warpDisplayMix(v,lane,u)
+//       composes the SAME per-(voice,lane) (F,w) the mirror resolves (WarpBank::
+//       warpedValue(v,lane,u,delegated) — Macro-global for delegated cells) over a
+//       caller-supplied DISPLAY value; no bank ⇒ bit-identical passthrough. (CC_PROMPT_05:
+//       callers compose EVERY lane — the per-lane MEL/OCT gate died with the uniform plumbing.)
+//   S9. DRAW-PATH WARP CONTRACT (CC_PROMPT_04-FIX-2): the redrawMelody DRAW feeds
+//       genPitchLive the MIRROR — warpRow(displayedVoice_, MEL/OCT), the SAME
+//       accessor + voice key the refreshVisualCache display writer uses — so a draw
+//       with warp set produces a DIFFERENT pattern than the same draw at w=0, the
+//       two melodyPitchV writers agree bit-exactly, and the POLY landing
+//       (refreshPolyRandomCell → warpRow) reads the FRESH mirror cell.
 //
 // Companion source: PatternEngine.cpp (the run_all.sh:59 test_slew_copula pattern).
 #include "test_stubs.hpp"
@@ -329,16 +340,17 @@ int main() {
                 }
     });
 
-    // ── S6: CONSUMER ROUTING — ALL lanes read the mirror (resolver step 2) ───────
-    TEST("S6 display routing: finalRandomByStrand returns the MIRROR for MEL/OCT AND the boolean lanes (w>0)", {
+    // ── S6: CONSUMER ROUTING — no consumer reads raw random_ for ANY lane ────────
+    TEST("S6 display routing: finalRandomByStrand returns the MIRROR for EVERY strand (w>0; CC_PROMPT_05 uniform)", {
         PatternEngine pe; fillRandomGolden(pe);
         WarpBank bank; pe.setWarpBank(&bank);
         bank.warpW[WarpBank::index(0, MEL)] = 1.f;
         bank.warpF[WarpBank::index(0, MEL)] = dotModular::TriangularWarp{0.25};
         bank.warpW[WarpBank::index(0, OCT)] = 1.f;
         bank.warpF[WarpBank::index(0, OCT)] = dotModular::PowerWarp{2};
-        // Warp authored on a BOOLEAN lane too — its display carries the mirror as
-        // well now (the all-lanes routing; the resolver step-2 gate flip).
+        // Warp authored on a BOOLEAN lane too — CC_PROMPT_05: the per-lane gate is
+        // GONE; every lane's display reads the mirror because every lane's engine
+        // consumer does (the flip-together rule, now uniform by construction).
         bank.warpW[WarpBank::index(0, PatternEngine::PL_REST)] = 1.f;
         bank.warpF[WarpBank::index(0, PatternEngine::PL_REST)] = dotModular::PowerWarp{3};
         pe.rebuildWarpMirrorAll();
@@ -350,7 +362,8 @@ int main() {
             const float o = pe.finalRandomByStrand(dotModular::STRAND_OCTAVE, s);
             EXPECT(o == pe.warped_[0][OCT][s]);
             if (o != pe.random_[0][OCT][s]) ++octDiffs;
-            // boolean lane: the MIRROR (all-lanes routing — same gate as the engine)
+            // boolean lane: the mirror too — warp REACHES it now (test_warp_all_lanes
+            // A3 pins the full 7-strand version of this contract).
             const float r = pe.finalRandomByStrand(dotModular::STRAND_RHYTHM, s);
             EXPECT(r == pe.warped_[0][PatternEngine::PL_REST][s]);
             if (r != pe.random_[0][PatternEngine::PL_REST][s]) ++restDiffs;
@@ -362,7 +375,7 @@ int main() {
             EXPECT(pe2.finalRandomByStrand(dotModular::STRAND_MELODY, s) == pe2.random_[0][MEL][s]);
     });
 
-    TEST("S6 sounding routing: polyRandomSrc carries the mirror for EVERY lane (MEL/OCT and the boolean lanes)", {
+    TEST("S6 sounding routing: the CV-out consumer carries the mirror for EVERY lane (CC_PROMPT_05 uniform)", {
         SequencerEngine se;
         fillRandomGolden(se.pe);
         WarpBank bank; se.pe.setWarpBank(&bank);
@@ -370,30 +383,21 @@ int main() {
         bank.warpF[WarpBank::index(3, MEL)] = dotModular::TriangularWarp{0.25};
         bank.warpW[WarpBank::index(3, OCT)] = 1.f;
         bank.warpF[WarpBank::index(3, OCT)] = dotModular::PowerWarp{2};
-        // Warp authored on boolean lanes too — their consumers carry the mirror as
-        // well now (the all-lanes routing; the resolver step-2 gate flip).
-        bank.warpW[WarpBank::index(3, SequencerEngine::PL_REST)] = 1.f;
-        bank.warpF[WarpBank::index(3, SequencerEngine::PL_REST)] = dotModular::PowerWarp{3};
-        bank.warpW[WarpBank::index(3, SequencerEngine::PL_ACCENT)] = 1.f;
-        bank.warpF[WarpBank::index(3, SequencerEngine::PL_ACCENT)] = dotModular::KumaraswamyWarp{2, 6};
         se.pe.rebuildWarpMirrorAll();
-        int melDiffs = 0, octDiffs = 0, restDiffs = 0, accDiffs = 0;
+        int melDiffs = 0, octDiffs = 0;
         for (int s = 0; s < 16; ++s) {
-            const float m = se.polyRandomSrc(3, SequencerEngine::PL_MELODY)[s];
+            const float m = se.polyLaneProbabilityAtStep(SequencerEngine::PL_MELODY, 3, s);
             EXPECT(m == se.pe.warped_[3][MEL][s]);
             if (m != se.pe.random_[3][MEL][s]) ++melDiffs;
-            const float o = se.polyRandomSrc(3, SequencerEngine::PL_OCTAVE)[s];
+            const float o = se.polyLaneProbabilityAtStep(SequencerEngine::PL_OCTAVE, 3, s);
             EXPECT(o == se.pe.warped_[3][OCT][s]);
             if (o != se.pe.random_[3][OCT][s]) ++octDiffs;
-            // boolean lanes carry the MIRROR (all-lanes routing — same gate as the display):
-            const float r = se.polyRandomSrc(3, SequencerEngine::PL_REST)[s];
-            EXPECT(r == se.pe.warped_[3][PatternEngine::PL_REST][s]);
-            if (r != se.pe.random_[3][PatternEngine::PL_REST][s]) ++restDiffs;
-            const float a = se.polyRandomSrc(3, SequencerEngine::PL_ACCENT)[s];
-            EXPECT(a == se.pe.warped_[3][PatternEngine::PL_ACCENT][s]);
-            if (a != se.pe.random_[3][PatternEngine::PL_ACCENT][s]) ++accDiffs;
+            // non-authored lanes: mirror == raw at their identity defaults (warp
+            // reaches ONLY authored cells — test_warp_all_lanes A2/A3 pin the rest):
+            EXPECT(se.polyLaneProbabilityAtStep(SequencerEngine::PL_REST, 3, s) == se.pe.random_[3][PatternEngine::PL_REST][s]);
+            EXPECT(se.polyLaneProbabilityAtStep(SequencerEngine::PL_ACCENT, 3, s) == se.pe.random_[3][PatternEngine::PL_ACCENT][s]);
         }
-        EXPECT(melDiffs > 0 && octDiffs > 0 && restDiffs > 0 && accDiffs > 0);
+        EXPECT(melDiffs > 0 && octDiffs > 0);
     });
 
     // ── S7: the NO-OP PROOF — a wired bank at defaults is byte-identical to raw ──
@@ -416,7 +420,7 @@ int main() {
             for (int st = 0; st < dotModular::NUM_STRANDS; ++st)
                 EXPECT(pe.finalRandomByStrand(st, s) == pe.random_[0][st][s]);
         }
-        // and the sounding accessor, through a real SequencerEngine:
+        // and the sounding accessor, through a real SequencerEngine (every lane):
         SequencerEngine se;
         fillRandomGolden(se.pe);
         se.pe.setWarpBank(&bank);
@@ -424,7 +428,194 @@ int main() {
         for (int v = 0; v < 16; v += 5)
             for (int l = 0; l < 7; ++l)
                 for (int s = 0; s < 16; ++s)
-                    EXPECT(se.polyRandomSrc(v, l)[s] == se.pe.random_[v][l][s]);
+                    EXPECT(se.polyLaneProbabilityAtStep(l, v, s) == se.pe.random_[v][l][s]);
+    });
+
+    // ── S8: DISPLAY COMPOSITION (CC_PROMPT_04 feel-test bug 1) ─────────────────────
+    // The bar fills must compose the warp mix ON TOP of the display's spread-
+    // interpolated value via warpDisplayMix — the display twin of warpMixCell. It has
+    // to resolve (F,w) EXACTLY as the mirror does (delegation included), so a bar can
+    // never show a value the audio doesn't consume.
+    TEST("S8 warpDisplayMix: same (F,w) as the mirror over an arbitrary display value (delegation-resolved)", {
+        PatternEngine pe; fillRandomGolden(pe);
+        WarpBank bank; pe.setWarpBank(&bank);
+        bank.warpF[WarpBank::index(4, MEL)] = dotModular::PowerWarp{2};
+        bank.warpW[WarpBank::index(4, MEL)] = 0.25f;
+        // A DELEGATED OCT cell: the own slot says power @ w=1, but delegation must win —
+        // the mix uses Macro's GLOBAL curve/w, exactly like rebuildWarpMirror*.
+        bank.warpF[WarpBank::index(4, OCT)] = dotModular::PowerWarp{2};
+        bank.warpW[WarpBank::index(4, OCT)] = 1.f;
+        bank.globalWarpF[OCT] = dotModular::ReversedPowerWarp{2};
+        bank.globalWarpW[OCT] = 0.5f;
+        pe.setWarpDelegated(4, OCT, true);
+        const double disp = 0.6;   // a spread-interpolated DISPLAY value, not random_
+        EXPECT(pe.warpDisplayMix(4, MEL, disp) ==
+               (float)((1.0 - 0.25) * disp + 0.25 * dotModular::PowerWarp{2}.invCDF(disp)));
+        EXPECT(pe.warpDisplayMix(4, OCT, disp) ==
+               (float)((1.0 - 0.5) * disp + 0.5 * dotModular::ReversedPowerWarp{2}.invCDF(disp)));
+        // out-of-range args clamp like every accessor (v→0, lane→0)
+        EXPECT(pe.warpDisplayMix(-3, MEL, disp) == pe.warpDisplayMix(0, MEL, disp));
+        EXPECT(pe.warpDisplayMix(4, 99, disp) == pe.warpDisplayMix(4, 0, disp));
+    });
+
+    TEST("S8 warpDisplayMix: no bank ⇒ bit-identical passthrough (bank-less hosts unchanged)", {
+        PatternEngine pe; fillRandomGolden(pe);   // no bank wired
+        const float u = pe.random_[6][OCT][3];
+        const float got = pe.warpDisplayMix(6, OCT, (double)u);
+        EXPECT(std::memcmp(&got, &u, sizeof(float)) == 0);
+    });
+
+    TEST("S8 warpDisplayMix: consistency with the mirror — same u ⇒ same cell (display never disagrees with audio)", {
+        PatternEngine pe; fillRandomGolden(pe);
+        WarpBank bank; pe.setWarpBank(&bank);
+        bank.warpF[WarpBank::index(9, MEL)] = dotModular::KumaraswamyWarp{2, 3};
+        bank.warpW[WarpBank::index(9, MEL)] = 0.7f;
+        bank.globalWarpF[MEL] = dotModular::TruncNormalWarp{0.4, 0.15};
+        bank.globalWarpW[MEL] = 0.9f;
+        pe.setWarpDelegated(9, MEL, true);   // the delegated branch, against the mirror
+        pe.rebuildWarpMirrorAll();
+        for (int s = 0; s < 16; ++s) {
+            const double u = (double)pe.random_[9][MEL][s];
+            EXPECT(pe.warpDisplayMix(9, MEL, u) == pe.warped_[9][MEL][s]);
+        }
+    });
+
+    // ── S9: DRAW-PATH WARP CONTRACT (CC_PROMPT_04-FIX-2 — the :787 raw bypass) ───
+    // redrawMelody is the PRIMARY draw and one of the TWO melodyPitchV writers (the
+    // other is refreshVisualCache's melodyChanged site). The contract: the uniform
+    // fed to genPitchLive at the DRAW is the MIRROR row warpRow(displayedVoice_,
+    // MEL/OCT) — the same accessor + voice key the display writer uses — so (a) a
+    // draw with warp set produces a DIFFERENT pattern than the same draw at w=0
+    // (the thing the scope should show), and (b) the two writers can never disagree.
+    // (Pre-fix, the draw fed RAW slewedMelody[0]/slewedOctave[0] — the residue the
+    // prompt pinned at PatternEngine.cpp:787.)
+
+    // Deterministic twin setup: identical seed + latch + draw sequence per engine;
+    // ONLY the warp bank differs between engines.
+    auto makeInput = [] {
+        PatternInput in;
+        in.octaveLo = 0.f; in.octaveHi = 3.f;
+        for (int i = 0; i < 24; ++i) in.semiWeights[i] = (i % 3 == 0) ? 0.f : (0.25f + 0.5f * (float)((i * 7) % 5) / 4.f);
+        return in;
+    };
+    auto drawTwice = [](PatternEngine& pe, const PatternInput& in) {
+        pe.seedMelodyPhilox(0.42f);
+        pe.latchMix(0.f, 0.f, 0.f, 0.f, 0.f, 0.f, /*R=*/false, /*M=*/true, /*Q=*/false);
+        pe.redrawMelody(in);   // first draw (no counter advance)
+        pe.redrawMelody(in);   // second draw (advanceMelodyDraw path)
+    };
+
+    TEST("S9 draw-path warp: redrawMelody feeds genPitchLive the MIRROR, not raw slewed (w>0 ⇒ different pattern)", {
+        const PatternInput in = makeInput();
+        PatternEngine peW, pe0, peNoBank;
+        // peW: non-identity warp on (displayedVoice_=0, MELODY) at w=1.
+        // pe0: same bank wired, w=0 (the no-op twin). peNoBank: bank-less legacy twin.
+        WarpBank bankW, bank0;
+        bankW.warpF[WarpBank::index(0, MEL)] = dotModular::PowerWarp{3};
+        bankW.warpW[WarpBank::index(0, MEL)] = 1.f;
+        peW.setWarpBank(&bankW);
+        pe0.setWarpBank(&bank0);
+        drawTwice(peW, in); drawTwice(pe0, in); drawTwice(peNoBank, in);
+        // Non-vacuous: the warp actually moves the MEL mirror row (w=1, u→u³).
+        int mirrorDiffs = 0;
+        for (int i = 0; i < 16; ++i)
+            if (peW.warpRow(0, MEL)[i] != peW.random_[0][MEL][i]) ++mirrorDiffs;
+        EXPECT(mirrorDiffs > 0);
+        // (1) EXACT: the drawn melodyPitchV/semitone ARE the mirror-fed values.
+        for (int i = 0; i < 16; ++i) {
+            int sem = 0;
+            const float want = peW.genPitchLive(sem, in, peW.warpRow(0, MEL)[i], peW.warpRow(0, OCT)[i]);
+            EXPECTF(peW.melodyPitchV[i] == want && peW.melodySemitone[i] == sem,
+                    "step %d: draw got (%.9g, %d) want the mirror-fed (%.9g, %d)",
+                    i, (double)peW.melodyPitchV[i], peW.melodySemitone[i], (double)want, sem);
+        }
+        // (2) DIFFERENTIAL: a warp-on draw differs from the SAME draw at w=0, and
+        // w=0 with a bank is bit-identical to bank-less legacy (the no-op guarantee
+        // must hold at the DRAW site too, not just in the mirror).
+        int pitchDiffs = 0, semDiffs = 0;
+        for (int i = 0; i < 16; ++i) {
+            if (peW.melodyPitchV[i] != pe0.melodyPitchV[i]) ++pitchDiffs;
+            if (peW.melodySemitone[i] != pe0.melodySemitone[i]) ++semDiffs;
+            EXPECT(pe0.melodyPitchV[i] == peNoBank.melodyPitchV[i]);
+            EXPECT(pe0.melodySemitone[i] == peNoBank.melodySemitone[i]);
+        }
+        EXPECTF(pitchDiffs > 0 && semDiffs > 0, "warp changed %d pitchV / %d semitone steps", pitchDiffs, semDiffs);
+    });
+
+    TEST("S9 draw/display agreement: the melodyChanged refresh re-derive leaves the drawn melodyPitchV bit-identical", {
+        const PatternInput in = makeInput();
+        PatternEngine pe;
+        WarpBank bank;
+        bank.warpF[WarpBank::index(0, MEL)] = dotModular::PowerWarp{3};
+        bank.warpW[WarpBank::index(0, MEL)] = 1.f;
+        pe.setWarpBank(&bank);
+        drawTwice(pe, in);
+        static float snapV[16]; static int snapS[16];
+        std::memcpy(snapV, pe.melodyPitchV, sizeof snapV);
+        std::memcpy(snapS, pe.melodySemitone, sizeof snapS);
+        // Trigger the OTHER melodyPitchV writer (the melodyChanged display refresh)
+        // WITHOUT a new draw: a pending mix change re-derives from the same
+        // warpRow(displayedVoice_,·) — the two writers must agree bit-exactly.
+        pe.melodyMixLatched = 0.5f;   // != melodyMixApplied (0) ⇒ the melodyChanged path
+        pe.refreshVisualCache(in);
+        for (int i = 0; i < 16; ++i)
+            EXPECTF(pe.melodyPitchV[i] == snapV[i] && pe.melodySemitone[i] == snapS[i],
+                    "step %d: display refresh rewrote the draw ((%.9g, %d) vs (%.9g, %d))",
+                    i, (double)pe.melodyPitchV[i], pe.melodySemitone[i], (double)snapV[i], snapS[i]);
+    });
+
+    TEST("S9 draw-path warp keys the DISPLAYED voice: displayedVoice_=4 draws from warpRow(4,·)", {
+        const PatternInput in = makeInput();
+        PatternEngine pe;
+        pe.numPolyVoicesHint = 5;    // the recompute covers rows 0..5, mirror rebuilt for all
+        pe.displayedVoice_ = 4;
+        WarpBank bank;
+        bank.warpF[WarpBank::index(4, MEL)] = dotModular::PowerWarp{3};
+        bank.warpW[WarpBank::index(4, MEL)] = 1.f;
+        pe.setWarpBank(&bank);
+        drawTwice(pe, in);
+        for (int i = 0; i < 16; ++i) {
+            int sem = 0;
+            const float want = pe.genPitchLive(sem, in, pe.warpRow(4, MEL)[i], pe.warpRow(4, OCT)[i]);
+            EXPECTF(pe.melodyPitchV[i] == want && pe.melodySemitone[i] == sem,
+                    "step %d: got (%.9g, %d) want the mirror(4)-fed (%.9g, %d)",
+                    i, (double)pe.melodyPitchV[i], pe.melodySemitone[i], (double)want, sem);
+        }
+        // And NOT the old voice-0 raw read in disguise: the draw must differ from
+        // what raw slewed[0] would have produced (the pre-fix :787 expression).
+        int diffs = 0;
+        for (int i = 0; i < 16; ++i) {
+            int semRaw = 0;
+            const float raw = pe.genPitchLive(semRaw, in, pe.slewedMelody[0][i], pe.slewedOctave[0][i]);
+            if (raw != pe.melodyPitchV[i] || semRaw != pe.melodySemitone[i]) ++diffs;
+        }
+        EXPECT(diffs > 0);
+    });
+
+    TEST("S9 poly landing: refreshPolyRandomCell → warpRow reads the CURRENT cell's mirror (fresh, not raw)", {
+        // The executePolyVoice call sequence (refresh the cell, then read the pitch
+        // uniform through warpRow) must land on the mirror of the JUST-written
+        // random_ value — the freshness half of the sounding-path contract.
+        SequencerEngine se;
+        fillRandomGolden(se.pe);
+        WarpBank bank; se.pe.setWarpBank(&bank);
+        const int v = 6, step = 9;
+        bank.warpF[WarpBank::index(v, MEL)] = dotModular::TriangularWarp{0.25};
+        bank.warpW[WarpBank::index(v, MEL)] = 1.f;
+        // Make the step-rate refresh live and deterministic (Anchor-V1 spread).
+        se.pe.cachedSpreadInitialized = true;          // cachedSpreadLiveM defaults true
+        se.pe.cachedPolySpread[v][MEL] = 0.5f;
+        se.pe.slewedMelody[v][step] = 0.2f;            // the voice's own draw
+        se.pe.slewedMelody[0][step] = 0.9f;            // the V1 anchor target
+        se.pe.random_[v][MEL][step] = 0.123456f;       // clearly-stale basis
+        se.refreshPolyRandomCell(v, SequencerEngine::PL_MELODY, step);
+        const float u = se.pe.random_[v][MEL][step];   // the JUST-refreshed basis
+        EXPECTF(u != 0.123456f, "refresh did not move the cell (u=%.9g)", (double)u);
+        const float want = (float)dotModular::TriangularWarp{0.25}.invCDF((double)u);   // w=1
+        EXPECTF(se.pe.warpRow(v, SequencerEngine::PL_MELODY)[step] == want,
+                "poly landing read %.9g, want the FRESH mirror %.9g (u=%.9g)",
+                (double)se.pe.warpRow(v, SequencerEngine::PL_MELODY)[step], (double)want, (double)u);
+        EXPECT(se.pe.warped_[v][MEL][step] == want);   // the cell-scope rebuild landed
     });
 
     std::cout << "-----\n";

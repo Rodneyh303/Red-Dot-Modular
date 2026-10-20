@@ -88,12 +88,15 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         // to MACRO in the topology → laneOwnedByMacroTopo returns true → the V1 spread
         // knob is LOCKED (inert) and the V1 bar fill falls to engine.spreadE (stale/0).
         const bool noMacro = (cachedMacroSandsVisual == nullptr);
-        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            topoIn.eastV1Owner[el] = noMacro || (mmTopo ? mmTopo->getMacroOwn(Monsoon::kMonoMacroOwnRow, el) > 0.5f : false);
-            // voiceSlot convention: pv = 1..effPolyVoices (V2..V(effPolyVoices+1)). V1 at [0] unused.
-            for (int pv = 1; pv <= effPolyVoices; ++pv)
-                topoIn.eastPolyOwner[pv][el] = (mmTopo ? mmTopo->getMacroOwn(pv, el) > 0.5f : false);
-        }
+        // CC_PROMPT_07: the ONE store→Inputs fill (SandsTopology::Inputs::fillOwners),
+        // shared with MonsoonSandsManager::processDNA — the hand-rolled loop is gone so
+        // the two topologies can never drift (that drift left the warp delegation matrix
+        // at its struct defaults). voiceSlot rows throughout: v=0 → V1, 1..15 → V2..V16
+        // (the old loop stopped at effPolyVoices; the store holds all 16 rows and
+        // owner() is only queried for live voices, so filling 1..15 is a safe superset).
+        topoIn.fillOwners(/*eastPresent=*/true, [mmTopo, noMacro](int v, int l) {
+            return noMacro || (mmTopo && mmTopo->getMacroOwn(v, l) > 0.5f);
+        });
     }
     const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
 

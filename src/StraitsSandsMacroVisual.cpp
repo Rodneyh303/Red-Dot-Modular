@@ -15,6 +15,8 @@
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/ModArcOverlay.hpp"
 #include "ui/OwnerCell.hpp"       // DirCell
+#include "ui/WarpCurveButton.hpp" // CC_PROMPT_04: the CRV-column popup trigger
+#include "ui/WarpCurvePopup.hpp"  // CC_PROMPT_04 STEP 3: the curve editor popup
 #include "dsp/engines/SequencerEngine.hpp"  // LaneDir
 #include "dsp/managers/SandsParameterManager.hpp"
 #include "dsp/VoiceResolver.hpp"   // activeVoiceCount + voice identity, single source of truth for the tab→voice mapping and uniform 16-voice addressing for prob-out
@@ -234,6 +236,25 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             if (sp) pendingSpreadArcs.push_back({sp, el});   // arc reads the lane's spread
         }
 
+        // ── CC_PROMPT_04 STEP 1: w-level knobs (param_wlevel_<el>) — Macro's
+        //    Macro-delegated DEFAULT depth per lane (globalWarpW[lane]): the value every
+        //    ceded (owner()==MACRO) voice on that lane tracks (WarpBank's delegated mix).
+        //    Same delegation pattern as the spread base above (getGlobalSpread) — Macro
+        //    authors the default, always editable (its globals exist regardless of East).
+        //    The setter bumps Monsoon's pending warp-rebuild scope; process() performs
+        //    rebuildWarpMirrorLaneDelegating (that lane across DELEGATING voices only) on
+        //    the audio thread — prompt-03's "Macro curve/w edit" dirty scope.
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+            redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                "param_wlevel_" + std::to_string(el), storeResolver(),
+                0.f, 1.f, 0.f, std::string(EDN[el]) + " warp level (delegated default)",
+                [el](Monsoon& m)          { return m.getGlobalWarpW(el); },
+                [el](Monsoon& m, float v) {
+                    m.setGlobalWarpW(el, v);
+                    m.requestWarpRebuildLaneDelegating(el);
+                });
+        }
+
         // Macro→voice MIX-IN send 2×2 grids — anchor param_send_<el>_<item>, store the same lane.
         // STORE-BACKED: reads/writes editor.macroSend for the viewed voice (slot resolved LIVE).
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el)
@@ -323,6 +344,24 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             );
         }
 
+        // ── CC_PROMPT_04 STEP 2: warp curve-editor trigger buttons (param_warpedit_<el>).
+        //    Macro's button is ALWAYS available — it edits Macro's own delegated-default
+        //    curve for the lane (the curve every ceded voice tracks) — locked only with no
+        //    Monsoon attached (the store lives on Monsoon; the DirCell lock precedent).
+        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
+            bindWidget<dotModular::WarpCurveButton>(
+                "param_warpedit_" + std::to_string(el),
+                std::function<void(dotModular::WarpCurveButton*)>([this, el](dotModular::WarpCurveButton* w) {
+                    w->laneCol = editorDirCol[el];
+                    Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
+                    w->box.size = mm2px(Vec(6.5f, ED_LANE_H * 0.9f));   // the cell-column rhythm
+                    w->box.pos  = ctr.minus(w->box.size.div(2.f));
+                    w->lockWhen = [this]() { return !getMonsoon(); };
+                    w->onOpen   = [this, el]() { openWarpPopup(el); };
+                })
+            );
+        }
+
         // Direction gate-mod jacks (input_dir_mod_<lane>) — mono, gate cycles Fwd→Rev→Pend→PingPong.
         {
             Module* mod_ = module;
@@ -345,7 +384,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         }
     }
 
-    ~StraitsSandsMacroVisualWidget() override { delete paramMgr; }
+    ~StraitsSandsMacroVisualWidget() override {
+        // The scrim + popup are SCENE children while open, and their lambdas
+        // capture this widget — detach + delete them now (immediate, not the
+        // deferred requestDelete path) so they can never outlive the host.
+        closeWarpPopup(/*immediate=*/true);
+        delete paramMgr;
+    }
 
     void appendContextMenu(Menu* menu) override {
         ModuleWidget::appendContextMenu(menu);
@@ -356,6 +401,79 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
 
     Monsoon* getMonsoon() {
         return module ? findMonsoonEitherSide(module) : nullptr;
+    }
+
+    // ── CC_PROMPT_04 STEP 3: the warp curve popup ──────────────────────────────────
+    // Macro's popup edits globalWarpF[lane] — ITS OWN delegated-default curve (the curve
+    // every ceded voice on that lane tracks; the button is always available). Closes on
+    // tab switch or Monsoon detach. Placed over the LEFT cluster (3..83mm) so the lane's
+    // bars + the w-level column stay visible; a module-sized scrim under it closes on any
+    // click. Every edit path commits setGlobalWarpF + bumps requestWarpRebuildLane-
+    // Delegating — the lane's bars across DELEGATING voices redistribute live (prompt-
+    // 03's "Macro curve/w edit" dirty scope).
+    // Z-ORDER (CC_PROMPT_04-FIX): the scrim + popup attach to APP->scene — the
+    // createMenu/MenuOverlay host — NOT to this module widget. A module child draws
+    // and receives events WITHIN the module's own layer: later-drawn module children,
+    // adjacent modules and cables render on top of it (controls show through) and
+    // higher layers intercept presses before the popup's knobs (can't grab / can't
+    // drag). As the scene's LAST children they float above everything and own their
+    // events; geometry is SCENE-space, converted from module-local via
+    // getAbsoluteOffset (the box.pos chain through rack scroll + zoom).
+    dotModular::WarpCurvePopup* warpPopup_ = nullptr;
+    rack::widget::Widget*       warpScrim_  = nullptr;
+    int warpPopupTab_ = -1;
+
+    void openWarpPopup(int lane) {
+        closeWarpPopup();
+        Monsoon* m = getMonsoon();
+        if (!m || lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return;
+        const rack::math::Vec sceneOrigin = getAbsoluteOffset(rack::math::Vec(0.f, 0.f));
+        auto* scrim = new dotModular::WarpPopupScrim();
+        scrim->box.pos  = sceneOrigin;       // this module's rect, in SCENE coordinates
+        scrim->box.size = box.size;
+        scrim->onClick  = [this]() { closeWarpPopup(); };
+        APP->scene->addChild(scrim);         // BEFORE the popup → popup on top (draw + events)
+        auto* pop = new dotModular::WarpCurvePopup();
+        pop->resolveMon  = [this]() { return getMonsoon(); };
+        pop->slot        = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);  // informational
+        pop->lane        = lane;
+        pop->macroGlobal = true;             // Macro authors the delegated default
+        pop->laneName    = dotModular::SandsLaneNames::EDITOR[lane];
+        pop->voiceName   = "MACRO";
+        pop->isLight     = [this]() { auto* mm = getMonsoon(); return mm && mm->lightTheme; };
+        pop->box.pos     = getAbsoluteOffset(mm2px(Vec(3.f, 16.f)));   // module-local → scene-space
+        APP->scene->addChild(pop);
+        pop->refresh();
+        warpScrim_  = scrim;
+        warpPopup_  = pop;
+        warpPopupTab_ = tabGroup ? tabGroup->getSelectedTab() : -1;
+    }
+    // Detach from the SCENE — the owner while open, NOT this module widget. The
+    // default path uses requestDelete (deferred to the scene's next step) because
+    // closeWarpPopup runs inside event dispatch (the scrim's own onButton) and
+    // inside step(): deleting a widget mid-dispatch invalidates the parent's child
+    // iteration. immediate=true (host destruction) detaches + deletes NOW via the
+    // widget's current parent.
+    void closeWarpPopup(bool immediate = false) {
+        if (warpScrim_) {
+            if (immediate) {
+                if (warpScrim_->parent) warpScrim_->parent->removeChild(warpScrim_);
+                delete warpScrim_;
+            } else {
+                warpScrim_->requestDelete();
+            }
+            warpScrim_ = nullptr;
+        }
+        if (warpPopup_) {
+            if (immediate) {
+                if (warpPopup_->parent) warpPopup_->parent->removeChild(warpPopup_);
+                delete warpPopup_;
+            } else {
+                warpPopup_->requestDelete();
+            }
+            warpPopup_ = nullptr;
+        }
+        warpPopupTab_ = -1;
     }
 
     // STEP 4b: ownership authority for the Macro widget's V1 view. Macro is present
@@ -442,7 +560,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                  : (engLane == PL::PL_VARIATION) ? pe.pubSlewedPolyVariation[0][step & 0x0F]
                  :                                pe.pubSlewedPolyLegato[0][step & 0x0F];
         } else {
-            int v = rack::math::clamp(polyVoice + 1, 0, 15);   // Phase A: V1=0, V2+=1..15
+            // CC_PROMPT_07: polyVoice is ALREADY the voiceSlot (the caller passes
+            // VoiceResolver::polyVoiceSlot: V2→1 … V16→15). The old +1 treated it as
+            // the dead 0-based poly bank — a double shift that made Macro's V2 tab
+            // bars show V3's row (V16 clamped back onto its own).
+            int v = rack::math::clamp(polyVoice, 0, 15);   // voiceSlot: V2+=1..15 (V1 takes the mono path)
             base = (engLane == PL::PL_REST)      ? pe.pubSlewedPolyRhythm[v][step & 0x0F]
                  : (engLane == PL::PL_MELODY)    ? pe.pubSlewedPolyMelody[v][step & 0x0F]
                  : (engLane == PL::PL_OCTAVE)    ? pe.pubSlewedPolyOctave[v][step & 0x0F]
@@ -455,9 +577,16 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // is meaningless. Use interpolate(base, base, sp) so V1 bars are identical
         // regardless of spread (matches East V1 which uses interpolate(base, base, spread)).
         // Poly voices (mono=false): still use applyAnchorV1Only (interpolates toward V1).
-        if (mono)
-            return redDot::SpreadInterp::interpolate(base, base, sp);
-        return redDot::SpreadInterp::applyAnchorV1Only(pe, engLane, step, base, sp);
+        const float disp = mono
+            ? redDot::SpreadInterp::interpolate(base, base, sp)
+            : redDot::SpreadInterp::applyAnchorV1Only(pe, engLane, step, base, sp);
+        // Warp display composition (CC_PROMPT_05 uniform): the engine consumes the
+        // warp MIRROR for EVERY lane (warpRow), so Macro's bars compose the same
+        // mixture over the spread-applied value for all lanes — the SAME
+        // per-(voice,lane) (F,w) the mirror resolves (delegated lane → Macro's
+        // global curve; own-slot lane → the voice's own).
+        // Displayed voice: V1/mono = slot 0; poly = polyVoice (already the voiceSlot).
+        return pe.warpDisplayMix(mono ? 0 : rack::math::clamp(polyVoice, 0, 15), engLane, disp);
     }
 
     void step() override {
@@ -465,6 +594,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         kitStep();   // kit: dev-mode live-reload poll (no-op unless enabled)
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
+        // CC_PROMPT_04: close the curve popup when its bound target goes away — tab
+        // switch or Monsoon detach.
+        if (warpPopup_ && (!monsoon || warpPopupTab_ < 0 ||
+                           (tabGroup && tabGroup->getSelectedTab() != warpPopupTab_)))
+            closeWarpPopup();
         if (!monsoon) { if (visualEditor) visualEditor->clearPlaySteps(); return; }
 
         // MVC step 1: the dual-write GLOBAL mirror is fully RETIRED. Every global-slice
@@ -697,6 +831,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         const float headerY = mm2px(ED_Y - 3.0f);   // 11mm — above lane 0 (14), below the tab band
         for (int c = 0; c < 6; ++c)
             nvgText(vg, colX[c], headerY, colName[c], nullptr);
+        // CC_PROMPT_04: the warp curve-editor ("CRV") column header, at the button column's X.
+        { bool ok = false; Vec cw = anchorMM("param_warpedit_0", ok);
+          if (ok) nvgText(vg, cw.x, headerY, "CRV", nullptr); }
     }
 };
 

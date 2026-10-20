@@ -55,9 +55,32 @@ struct SandsTopology {
 
         // Ownership params. EDITOR-lane indexed, 7 lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG).
         //   eastV1Owner[l]      : East's   ownerDispId(l)  > 0.5  (true = East local-owns)
-        //   eastPolyOwner[v][l] : East's   ownerId(v,l)    > 0.5  (true = East local-owns; v = poly index 0..14)
+        //   eastPolyOwner[v][l] : East's   ownerId(v,l)    > 0.5  (true = East local-owns; v = voiceSlot, [0]=V1 unused)
         bool eastV1Owner[7]      = { true, true, true, true, true, true, true };
         bool eastPolyOwner[16][7] = {};   // default false → Macro-owned until set; caller fills when East present
+
+        // ── fillOwners — THE one store→Inputs ownership fill (CC_PROMPT_07) ─────────
+        // Root cause it kills: MonsoonSandsManager::processDNA built its topology from
+        // fillPresence ONLY (presence flags), so owner() answered these rows at their
+        // STRUCT DEFAULTS — eastV1Owner all-true (V1 never delegated) and eastPolyOwner
+        // all-false (EVERY poly (voice,lane) Macro-owned). warpDelegated_ followed, and
+        // Macro's global curve reached every V2+ cell regardless of the OwnerCells while
+        // East's own-slot warp was bypassed (the Macro→East leak + V1-vs-V2+ asymmetry).
+        // This is the ONE implementation both managers call; the STEP 5b hand-roll in
+        // MonsoonExpanderManager migrated onto it so the two topologies can never drift.
+        //   ownerIsEast(voiceSlot, editorLane) — the store read (getMacroOwn(v,l) > 0.5),
+        //   voiceSlot convention (VoiceResolver): 0 = V1, 1..15 = V2..V16.
+        //   eastPresent=false ⇒ rows stay defaulted (V1 local / poly Macro-when-Macro-
+        //   present — the MACRO_SOLE semantics; nothing to fill from).
+        template <typename Pred>
+        void fillOwners(bool eastPresent, Pred&& ownerIsEast) {
+            if (!eastPresent) return;
+            for (int l = 0; l < 7; ++l) {
+                eastV1Owner[l] = ownerIsEast(0, l);
+                for (int v = 1; v < 16; ++v)
+                    eastPolyOwner[v][l] = ownerIsEast(v, l);
+            }
+        }
     };
 
     Config config = Config::EMPTY;

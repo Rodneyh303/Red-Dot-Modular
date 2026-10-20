@@ -215,6 +215,17 @@ struct PatternEngine {
     // The shared cell compute (CONTRACT: warpBank_ != nullptr — every rebuild entry
     // point checks before calling): DOUBLE mix → FLOAT store.
     float warpMixCell(int v, int lane, int step) const;
+    // ── Warp DISPLAY composition (CC_PROMPT_04 feel-test bug 1) ──
+    // The display twin of warpMixCell: compose the effective w-mixture over a
+    // CALLER-SUPPLIED value (the spread-interpolated display value the bars compute)
+    // instead of random_[v][lane][step]. Same per-(voice,lane) (F,w) resolution as the
+    // mirror — it calls the SAME WarpBank::warpedValue(v, lane, u, delegated) overload
+    // warpMixCell uses, including the Macro-global default vs own-slot delegation —
+    // so a bar can never show a value the audio path doesn't consume. (CC_PROMPT_05:
+    // callers compose EVERY lane — the per-lane MEL/OCT gate died with the uniform
+    // plumbing; boolean/qmix lanes are inert warp slots at their identity defaults.)
+    // No bank ⇒ u returned bit-identically (bank-less hosts unchanged).
+    float warpDisplayMix(int v, int lane, double u) const;
 
     // Final post-everything (A/B-mix + spread + LOR feed in upstream) probability value for a given
     // ENGINE STRAND at a given step, 0..1. Now a direct index into random_[0] (mono row): strand index
@@ -491,18 +502,15 @@ struct PatternEngine {
 
     inline float finalRandomByStrand(int strand, int step) const {
         const int s = (strand >= 0 && strand < dotModular::NUM_STRANDS) ? strand : dotModular::STRAND_RHYTHM;
-        // Warp mirror (CC_PROMPT_03 STEP 4b; ALL-STRANDS routing closed by the
-        // resolver step 2): EVERY strand returns the mirror's EFFECTIVE
-        // w-mixture — the Sands bars + prob CV outs carry the mix automatically
-        // (the bar-data funnel: this ONE accessor feeds both UIs), lane-for-lane
-        // with the engine's polyRandomSrc gate (they flipped TOGETHER — the bars
-        // can never show a value the audio doesn't consume). Safe for the strands
-        // the old gate held raw: an unauthored warp is w=0/IdentityF ⇒ mirror row
-        // ≡ raw row, bit-exact (pinned); a bank-less host keeps reading raw
-        // random_ below (the null fallback, byte-identical legacy).
-        if (warpBank_)
-            return warped_[0][s][step & 0x0F];
-        return random_[0][s][step & 0x0F];   // plain own-bank; pin remap lives upstream in slewed
+        // Warp mirror (CC_PROMPT_05): ALL strands return the EFFECTIVE w-mixture via
+        // the ONE uniform source (warpRow) — the Sands bars + prob CV outs carry the
+        // mix automatically (the bar-data funnel: this ONE accessor feeds both UIs).
+        // The old MEL/OCT-only gate is REMOVED: every lane's engine consumer reads
+        // warpRow now, so every lane's display must too (the flip-together rule) —
+        // the bars can never show a value the audio doesn't consume. No bank ⇒
+        // warpRow degenerates to the raw mono row (bank-less hosts byte-identical);
+        // pin remap lives upstream in slewed; out-of-range falls back to rhythm (legacy).
+        return warpRow(0, s)[step & 0x0F];
     }
 
     // Poly strands: 15 voices, each with Rhythm, Melody, and Octave draws
