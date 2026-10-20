@@ -272,5 +272,8 @@ brief.
   answer, the store-level verification stays separate.
 - Widening the recompute loops to v=0 (no readers; laneTickV_/laneSignV_ slot-0
   semantics untouched).
-- θ/clamp policies, V1 mono LOR copies, concept-signature changes, feat/warp-ui
-  merge, any new manifest entry.
+- θ/clamp policies and the voiceLor policy (the per-voice LOR level) — PLANNED framework
+  members, PLANS ONLY (sketch :172 `VoiceLorPolicy`; design doc build-order step 5). The
+  V1 mono LOR copies (MonsoonSandsManager.cpp) stay untouched this step; their unification,
+  if ever, belongs to that future policy's own brief — not here.
+- Concept-signature changes, feat/warp-ui merge, any new manifest entry.
