@@ -110,6 +110,29 @@ addressing system's rollout.
    order. Interface already admits them (per-policy Value/Extra/constrain hooks present from step 1;
    the sketch :150-152 retracts the separate jointConstrain hook — constrain sees the whole Value).
 
+## EARMARKS (post-campaign debt — Rodney-decidable, plans only)
+The extraction campaign (steps 1-4) is DONE: the manifest is EMPTY and UNIFORMITY_STRICT=1 is the
+permanent stage gate ("a red cell is now always a bug"). Nothing below is scheduled; each item gets
+its own brief when picked up.
+1. OWNERSHIP STORE → BOOLEAN (earmarked by Rodney 2026-10-21). `Monsoon::editor.macroOwn[112]`
+   (Monsoon.hpp:970) is a FLOAT consumed through a scattered `> 0.5f` threshold at every call site,
+   and the NAME is INVERTED vs its content: `getMacroOwn(v,l) > 0.5f` means **EAST owns** (the East
+   UI's per-lane owner switch writes 1 = East; StraitsEastSandsVisual.cpp OwnerCell; corroborated by
+   the topology feed `eastPolyOwner[pv][el] = getMacroOwn(pv,el) > 0.5f`, MonsoonExpanderManager.cpp
+   :95). That inversion is the root cause of the step-4 brief's polarity error — the executor's
+   verify-against-code caught it and shipped the byte-identical complement (delegated = the
+   COMPLEMENT of the flag, :427, polarity documented). Fix: ONE named boolean predicate (e.g.
+   `eastOwns(v,l)`) as the ONLY threshold site — or a true bool store — with all consumers migrated
+   (manager :92/:95/:398-399/:427 + the visual's OwnerCell read/write), then a Rack-eyes pass
+   (store-layer semantics, UI write paths). Byte-identical discipline + plugin build as usual.
+   Do NOT unify the two authorities (store flag vs topo.owner) in the same breath — separate
+   decision, keep the membership rule's "resolver consumes the boolean" intact.
+2. Already-flagged, unchanged: the mono `lane >= 4` stale set {ACC,VAR,LEG} in monoDirAuthority
+   (CC_PROMPT_08 territory); the dead `(item==3?1:0)` tap ternary (3 sites); the mono LOR copies
+   (sum-once form / round+unclamped-delegated); the harness RESIDUALS printf wording (still cites
+   combineLOR + pre-step-4 line numbers — cosmetic); the feat/warp-ui merge (expect a trivial
+   conflict on the two closed gate bodies — take either side).
+
 ## NAMING
 `SandsModifierResolver` (or `DelegatedLaneVoiceResolver`). The header carries the one-sentence rule so
 no future person folds a uniform-across-group modifier (slew/AB) or a topology concern into it.
