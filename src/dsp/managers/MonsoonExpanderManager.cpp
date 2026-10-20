@@ -3,6 +3,7 @@
 #include "../SpreadInterp.hpp"
 #include "../VoiceResolver.hpp"   // read-only shadow (step 1)
 #include "../SandsTopology.hpp"   // step 3: solo/none write-guard migration
+#include "../SandsModifierResolver.hpp"   // resolver step 3 (LorPolicy): combineLOR's delegation algebra — redDot::resolveLorItem
 #include "../../Monsoon.hpp"
 #include <cassert>
 //#include "../../MonsoonDeepStraitsSands.hpp"
@@ -275,27 +276,42 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 // (step 5+6 cross-check assert removed — the resolver is now the single
                 // source of truth; the old ownerId-match check fired on load-time transients
                 // during attach/teardown. Same strip as the other 7 topology cross-checks.)
-                // Macro owns → use Macro's CV-APPLIED value (base + its own main-modulator
-                // CV delta), not just the base. macroCVDelta is Macro's true POST delta
-                // (published in processDNA). Previously this used macroBase only, so a lane
-                // delegated to Macro ignored Macro's main LOR modulators on East's display.
-                // Same V1 ownership fix as combineSpread: no Macro → East owns everything.
-                float base = (ownerEast || !macroPresent) ? eastLorVal(lane, item, r, c, lo, hi)
-                                       : (macroVis->macroBase[lane][item] + macroVis->macroCVDelta[lane][item]);
-                // Macro-CV blend: only meaningful when EAST owns the lane (when Macro
-                // owns, the lane already IS the Macro value — nothing to blend). The
-                // send is a PER-VOICE attenuverter on Macro's CV contribution
-                // (macroCVDelta), summed with East's own per-voice poly-CV term that
-                // eastLorVal already folded into base. Default 0 → opt-in.
-                float blend = 0.f;
-                if (macroPresent && ownerEast) {
-                    float send = mmOwn ? mmOwn->getMacroSend(slot, lane, item) : 0.f;
-                    // P9b: THIS voice's tap selects between the published pre/post endpoints
-                    // (was the Macro-global tap baked into one macroSendDelta).
-                    const float tap = (mmOwn ? mmOwn->getMacroTap(slot, lane, (item == 3 ? 1 : 0)) : 1.f);
-                    blend = macroVis->tappedDelta(tap, lane, item) * send;
-                }
-                return (int)math::clamp(base + blend, lo, hi);
+                // RESOLVER STEP 3: the delegation algebra — the ownership ternary (Macro
+                // owns → Macro's CV-APPLIED value macroBase+macroCVDelta, not just the
+                // base, so a lane delegated to Macro follows Macro's main LOR modulators
+                // on East's display; no Macro → East owns everything, the V1 fallback),
+                // the P9b tap-lerp Macro-CV blend (only meaningful when EAST owns the
+                // lane — the send is a PER-VOICE attenuverter on macroCVDelta, default
+                // 0 → opt-in, summed with East's own per-voice poly-CV term that
+                // eastLorVal already folded into its result), the end-clamp and the (int)
+                // truncation — now lives in SandsModifierResolver<LorPolicy> via
+                // redDot::resolveLorItem (SandsModifierResolver.hpp). This lambda is the
+                // WIRING only: eastLorVal's port reads + the send/tap store reads + the
+                // Visual's published pre/post endpoints. BYTE-IDENTICAL to the old
+                // inline algebra (pinned by test_resolver_lor_bridge: int equality +
+                // same-BITS pre-cast float).
+                const float east = eastLorVal(lane, item, r, c, lo, hi);   // port reads + INTERMEDIATE clamp — VERBATIM, unchanged (the mid-clamp is load-bearing: clamp(clamp(base+cv)+blend), not sum-once)
+                const bool mp = macroPresent;
+                // send/tap are read ONLY under the old blend guard (macroPresent && ownerEast
+                // && mmOwn) — the same condition the old `if` used, so the no-Macro /
+                // mmOwn-null behaviour is preserved bit-for-bit.
+                const float send = (mp && ownerEast && mmOwn) ? mmOwn->getMacroSend(slot, lane, item) : 0.f;
+                // P9b: THIS voice's tap selects between the published pre/post endpoints
+                // (was the Macro-global tap baked into one macroSendDelta).
+                // (item == 3 ? 1 : 0) is a DEAD ternary — item ∈ {0,1,2} here; copy-paste
+                // residue of the shared template where item 3 meant "the spread item"
+                // (getMacroTap slot 1 = the spread kind — combineSpread passes literal 1 —
+                // slot 0 = the LOR kind). PRESERVED VERBATIM (the byte-identical law); a
+                // future cleanup may rename it to literal 0. The same residue lives at
+                // MonsoonSandsManager.cpp:306 and :534.
+                const float tap = (mp && ownerEast && mmOwn) ? mmOwn->getMacroTap(slot, lane, (item == 3 ? 1 : 0)) : 1.f;
+                return redDot::resolveLorItem(ownerEast, mp, east,
+                                              macroVis ? macroVis->macroBase[lane][item] : 0.f,
+                                              macroVis ? macroVis->macroCVDelta[lane][item] : 0.f,
+                                              send,
+                                              macroVis ? macroVis->macroPreDelta[lane][item] : 0.f,
+                                              macroVis ? macroVis->macroPostDelta[lane][item] : 0.f,
+                                              tap, lo, hi);
             };
 
             // Spread (item 3) counterpart of combineLOR. owner picks East's own

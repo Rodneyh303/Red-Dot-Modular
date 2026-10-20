@@ -57,6 +57,17 @@
 // banks against a verbatim copy of the OLD WarpBank mix/selection and asserts
 // same-BITS mix outputs + the same resolved (f,w). Later steps
 // (LOR/direction) extend the same pin.
+//
+// Step 3 (third rider): LorPolicy — MonsoonExpanderManager's combineLOR (the
+// design doc's "near-verbatim DUPLICATE", 15 send/tap call sites) rides this
+// skeleton via resolveLorItem below: the ownership ternary, the P9b tap-lerp
+// send blend, the end-clamp and the (int) truncation live HERE; the manager
+// lambda keeps only the port/store reads. eastLorVal does NOT move — its
+// CV-span math is interleaved with module port reads, and its INTERMEDIATE
+// clamp is load-bearing (see LorPolicy). Gate: test_resolver_lor_bridge.cpp
+// fuzzes seeded inputs against a verbatim copy of the OLD combineLOR algebra
+// and asserts int EQUALITY + same-BITS of the pre-cast float. BYTE-IDENTICAL,
+// step-1 discipline (no gate flips this time).
 // ─────────────────────────────────────────────────────────────────────────────
 
 namespace redDot {
@@ -222,6 +233,115 @@ struct WarpPolicy {
 
 // The concept must BITE here too (the located-error enforcement, same as spread).
 static_assert(SandsModifierPolicy<WarpPolicy>);
+
+// ── LOR, the third policy — ONE item's LEN/OFF/ROT window value ───────────────
+// Value is a SINGLE float (one item's value), NOT a len/off/rot triple: the
+// manager resolves per item — the 15 call sites each pass their own (lo,hi)
+// window and jack coords, so a triple would fake a batch the call structure
+// doesn't have. Extra carries that per-item window {lo, hi} to constrain.
+//
+// LOR's CV-span math (cv·att·(hi−lo) + the INTERMEDIATE clamp) does NOT live
+// here: it is interleaved with module port reads inside the manager's
+// eastLorVal (eastVisual->inputs[cvId(r,c)], getMacroAtten, getPolyVoltage),
+// and port reads cannot enter a pure policy — the design doc never asked for
+// a port-abstraction layer. The wiring (resolveLorItem below) therefore
+// leaves ownCv/eastCv default-disconnected; scaleCv/addCv exist to satisfy
+// the concept and are unused by LOR's resolution path. The intermediate clamp
+// is LOAD-BEARING: poly East-owned is clamp(clamp(base+cv) + blend) —
+// sum-once would differ (hi=16, base+cv=21, blend=−3 → old 13, sum-once 16)
+// — so it stays verbatim inside eastLorVal while the resolver's
+// end-clamp-once applies to the blend sum, exactly like the old final
+// clamp(base+blend).
+//
+// addSend is the Macro send blend, NOT clamped (end-clamp-once law).
+// applyDelegated is the ceded branch (macroBase + delta). constrain is the
+// max/min form — the NaN convention, one convention for the whole resolver
+// file (same as SpreadPolicy/WarpPolicy; NOT std::clamp).
+struct LorPolicy {
+    using Value = float;         // ONE item's window value (pre-cast)
+    struct Extra {               // the per-item window: LEN {1,16}, OFF/ROT {0,15}
+        float lo = 0.f;
+        float hi = 0.f;
+    };
+
+    static float scaleCv(float raw)                                { return raw; }   // identity — LOR's CV math stays inside eastLorVal (port reads)
+    static float addCv  (float v, float c)                         { return v + c; }  // concept-only: ownCv/eastCv stay disconnected in the wiring
+    static float addSend(float v, float s)                         { return v + s; }  // the blend term, UNCLAMPED — end-clamp-once
+    static float applyDelegated(float mb, float td, const Extra&)  { return mb + td; }
+    static float constrain(float v, const Extra& e)                { return std::max(e.lo, std::min(e.hi, v)); }
+};
+
+// The concept must BITE here too (the located-error enforcement, same as spread/warp).
+static_assert(SandsModifierPolicy<LorPolicy>);
+
+// ── resolveLorItem — the ONE LOR wiring, header-side (resolveWarpCell's ────────
+// counterpart for LOR; type-pure — no manager types — so it lives here beside
+// its policy rather than down in the dotModular section the warp wiring needs
+// for the bank). Fills SandsModifierResolver<LorPolicy>::Inputs EXACTLY like
+// the old combineLOR algebra (MonsoonExpanderManager.cpp, pre-step-3),
+// bit-for-bit; the port reads (eastLorVal) and the store reads (send/tap)
+// stay call-site:
+//
+//   delegated = !ownerEast && macroPresent
+//     reproduces the old ternary `(ownerEast || !macroPresent) ? eastVal
+//     : macroBase + macroCVDelta` EXACTLY — the no-Macro case (ownerEast ==
+//     false && macroPresent == false) takes the FREE path with base = eastVal.
+//     Do NOT write `delegated = !ownerEast`: that breaks the no-Macro case.
+//
+//   free path: base = eastVal (the CALLER-computed eastLorVal result); when
+//     macroPresent, macroSend/macroPreDelta/macroPostDelta/macroTap pass
+//     through and the resolver does addSend(v, tappedDelta(in)·send). The
+//     skeleton's lerp (pre + (post−pre)·tap) is BIT-IDENTICAL to
+//     StraitsSandsMacroVisual::tappedDelta — same expression order — so
+//     passing pre/post/tap separately reproduces the old Visual call
+//     bit-exactly. The header never calls the Visual (it stays Rack-free;
+//     the CALLER reads the published arrays and this voice's tap).
+//
+//   delegated path: macroBase passes through and the tap is NEUTRALIZED —
+//     pre = post = macroCvDelta (any tap): the lerp yields macroCvDelta
+//     bit-exactly ((post−pre) == +0.0f, ·tap == +0.0f, pre+0.0f == pre), so
+//     the ONE shared applyDelegated(mb, td) reproduces the old
+//     `macroBase + macroCVDelta` (the old delegated delta was the POST delta
+//     directly — no lerp, no send) instead of a special case.
+//
+// resolveLorValue returns the PRE-CAST float (the bridge test pins this layer
+// same-BITS); resolveLorItem adds the (int) cast — TRUNCATION toward zero
+// after the clamp, NOT round (the mono path rounds; that difference is why
+// the cast lives HERE, keeping the call sites one-token thin, and not inside
+// constrain).
+inline float resolveLorValue(bool ownerEast, bool macroPresent,
+                             float eastVal,
+                             float macroBase, float macroCvDelta,
+                             float macroSend, float pre, float post, float tap,
+                             float lo, float hi) {
+    SandsModifierResolver<LorPolicy>::Inputs in;
+    in.delegated    = !ownerEast && macroPresent;
+    in.macroPresent = macroPresent;
+    in.extra        = LorPolicy::Extra{lo, hi};
+    if (in.delegated) {
+        in.macroBase      = macroBase;
+        in.macroPreDelta  = macroCvDelta;   // NEUTRALIZE the tap: pre == post
+        in.macroPostDelta = macroCvDelta;   // → the lerp yields macroCvDelta bit-exactly
+    } else {
+        in.base = eastVal;
+        if (macroPresent) {
+            in.macroSend      = macroSend;
+            in.macroPreDelta  = pre;
+            in.macroPostDelta = post;
+            in.macroTap       = tap;
+        }
+    }
+    return SandsModifierResolver<LorPolicy>::effective(in);
+}
+
+inline int resolveLorItem(bool ownerEast, bool macroPresent,
+                          float eastVal,
+                          float macroBase, float macroCvDelta,
+                          float macroSend, float pre, float post, float tap,
+                          float lo, float hi) {
+    return (int)resolveLorValue(ownerEast, macroPresent, eastVal, macroBase,
+                                macroCvDelta, macroSend, pre, post, tap, lo, hi);
+}
 
 } // namespace redDot
 

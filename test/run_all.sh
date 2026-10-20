@@ -102,6 +102,7 @@ TESTS=(
   "test_qmix_poly|"
   "test_qmix_rng|"
   "test_quantize_engine|$SE $GS $PE"
+  "test_resolver_lor_bridge|"   # header-only: resolver step-3 BYTE-IDENTICAL gate — combineLOR's moved delegation algebra (LorPolicy via redDot::resolveLorItem) vs a verbatim copy of the OLD MonsoonExpanderManager combineLOR (seeded 120k-case fuzz, int equality + same-BITS pre-cast float). The LOR pin; step 1's spread bridge is the template.
   "test_resolver_spread_bridge|"   # header-only: resolver step-1 BYTE-IDENTICAL gate — SandsModifierResolver<SpreadPolicy> + the compat shell vs a verbatim copy of the OLD SpreadResolver formula (seeded 120k-case fuzz, same-BITS). The permanent pin; steps 2-4 extend the pattern.
   "test_resolver_warp_bridge|"   # header-only: resolver step-2 BYTE-IDENTICAL gate — WarpBank's resolver-routed mix/effective members vs a verbatim copy of the OLD WarpF.hpp formulas (seeded 120k-case fuzz, same-BITS mix + same resolved (f,w)). The warp pin; step 1's spread bridge is the template.
   "test_rule2_consume|"
