@@ -178,6 +178,56 @@ struct VoiceLorPolicy {
 // reference). Most policies have `struct Extra {};` (empty). The skeleton doesn't change.
 ```
 
+### 5. LorPolicy — the EXISTING duplicate (combineLOR) folded in. Scalar-PER-ITEM, passed-in clamp.
+VERIFIED against the real combineLOR (MonsoonExpanderManager.cpp ~264): LOR is NOT a joint triple —
+it resolves LEN/OFF/ROT as THREE INDEPENDENT scalars, each through the SAME delegation algebra as
+spread (base = ownerEast ? eastVal : macroBase+macroCVDelta; blend = tappedDelta(tap)·send;
+clamp(base+blend, lo, hi); cast int). So LorPolicy's Value is ONE scalar (resolved 3× — once per
+item), NOT struct{len,off,rot}. The only differences from spread: Value is int (end-cast), and the
+clamp bounds are PASSED IN per item (LEN range ≠ ROT range) → they go in Extra.
+```cpp
+struct LorPolicy {
+  using Value = int;
+  struct Extra { float lo, hi; };                 // per-ITEM clamp bounds (passed by caller)
+  static float scaleCv(float raw)                 { return raw; }   // LOR CV already unit-scaled
+  static int   addCv  (int v, float c)            { return v + (int)std::lround(c); }
+  static int   addSend(int v, float s)            { return v + (int)std::lround(s); }
+  static int   applyDelegated(int mb, float td, const Extra&) { return mb + (int)std::lround(td); }
+  static int   constrain(int v, const Extra& e)   { return (int)std::clamp((float)v, e.lo, e.hi); }
+};
+// FOLD PAYOFF: routing LOR through the resolver DELETES combineLOR's ~40-line hand-copy of spread's
+// algebra (one of the 4 duplicates). LOR keeps working (byte-identical where no macro/CV). This is
+// why LOR is high-value early in the build order: it removes a verified duplicate, not just adds a user.
+// NOTE: the int-rounding of CV/send (lround) is a choice to PIN with CC against combineLOR's real
+// behaviour — combineLOR casts to int only at the END (clamp(base+blend)); if intermediate rounding
+// differs from "sum in float, cast once", match combineLOR (sum float, single end-cast). The Value=int
+// + float-internal-accumulation may want Value=float with an int VIEW. RECONCILE WITH combineLOR — it
+// is the source of truth for LOR's exact arithmetic, as SpreadResolver is for spread.
+
+### 6. DistributionPolicy (θ) — structurally identical to LOR: N independent params, each spread's algebra.
+VERIFIED: θ's param COUNT varies by curve kind (Power/ReversedPower: 1 [k/theta]; Kumaraswamy: 2 [a,b];
+etc.). Each param is independently resolved through the SAME delegation algebra, with its own valid
+range. So θ = LOR shape: a fixed-size param slot resolved once PER ACTIVE PARAM, each a spread-algebra
+scalar with a per-param clamp. (NOT one fused vector-combine.)
+```cpp
+struct DistributionPolicy {
+  using Value = float;                            // ONE param; resolved once per active param index
+  struct Extra { float lo, hi; };                 // this param's valid range (kind-dependent)
+  static float scaleCv(float raw)                 { return raw; }
+  static float addCv  (float v, float c)          { return v + c; }
+  static float addSend(float v, float s)          { return v + s; }
+  static float applyDelegated(float mb, float td, const Extra&) { return mb + td; }
+  static float constrain(float v, const Extra& e) { return std::clamp(v, e.lo, e.hi); }
+};
+// So DistributionPolicy IS SpreadPolicy with passed-in bounds instead of fixed [-1,1] — i.e. it's
+// LorPolicy-as-float. INSIGHT: LOR, θ, and spread are the SAME policy up to {Value int-vs-float,
+// clamp fixed-vs-passed}. That's strong evidence the skeleton is right: three "different" modifiers
+// collapse to one shape with two tiny knobs. θ caveat: the param's MEANING (which curve param it is)
+// is caller business — the policy just resolves A scalar in A range; the caller resolves param[0],
+// param[1]... each as its own DistributionPolicy instance and reassembles the (a,b) / (k) / (mu,sigma)
+// for the curve. And θ feeds WARP's curve (θ resolves the curve's params; warp applies the curve) —
+// two policies, composed at apply-time, NOT fused.
+
 ## WHAT THE SKETCH PROVED / CHANGED (feed these into the extraction)
 1. The shape HOLDS for all six — one skeleton, each policy ~6 small static fns. The abstraction is
    right-sized: rigid where bugs live (delegation flow, tap, topology-consumption), flexible only in
@@ -192,7 +242,10 @@ struct VoiceLorPolicy {
    SYSTEM's job, not the resolver's. Resolver resolves per-level direction only.
 6. Warp modulates only `w`; curve-param modulation is a SEPARATE θ policy that composes. Keep them
    distinct — don't fold θ into WarpPolicy.
-7. CONTRACT ENFORCEMENT = a C++20 CONCEPT (SandsModifierPolicy), not comments and not a static_assert
+7. SPREAD ≈ LOR ≈ θ — they are the SAME policy up to {int-vs-float Value, fixed-vs-passed clamp}.
+   LOR/θ add a `struct Extra { float lo, hi; }` (passed bounds) vs spread's fixed [-1,1]. Three of
+   the six members collapse to one shape — the skeleton is validated by how little actually varies.
+8. CONTRACT ENFORCEMENT = a C++20 CONCEPT (SandsModifierPolicy), not comments and not a static_assert
    fallback — the project moved to C++20 (CI-green all platforms, 2026-10). An incomplete policy is a
    LOCATED build error at the declaration. This is the whole-point enforcement: the resolver exists to
    stop half-implemented delegation; the concept stops a half-implemented POLICY from compiling.
