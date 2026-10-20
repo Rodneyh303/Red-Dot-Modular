@@ -483,16 +483,17 @@ static void U6_spread_resolver_lane_free() {
         std::snprintf(buf, sizeof buf, "delegated effective differs on lane %d", l);
         expectCell(d == refDeleg, F, -1, l, buf);
     }
-    // And the algebra itself (SpreadResolver.hpp:90-103): delegated =
+    // And the algebra itself (SandsModifierResolver.hpp, SpreadPolicy): delegated =
     // clamp(macroBase + tappedDelta); free = clamp(base + ownCv + eastCv + tappedSend).
-    // NOTE: CvTerm::contribution() ALREADY carries the ×2 kBipolarSpan (:47) — the real
-    // header differs from the SandsModifierResolver_SKETCH (which moves ×2 into
-    // SpreadPolicy::scaleCv); reconcile during the extraction step.
+    // NOTE: since the resolver step-1 extraction, CvTerm::contribution() is the RAW
+    // uV·atten product — the ×2 kBipolarSpan moved into SpreadPolicy::scaleCv (inside
+    // the resolver), so this oracle re-applies it explicitly.
     const float td = in.macroPreDelta + (in.macroPostDelta - in.macroPreDelta) * in.macroTap;
     expectCell(refDeleg == std::clamp(in.macroBase + td, -1.f, 1.f), F, -1, -1,
                "delegated branch != clamp(macroBase + tappedDelta)");
-    expectCell(refFree == std::clamp(in.base + in.ownCv.contribution()
-                                     + in.eastCv.contribution() + td * in.macroSend, -1.f, 1.f),
+    expectCell(refFree == std::clamp(in.base + in.ownCv.contribution() * SpreadResolver::kBipolarSpan
+                                     + in.eastCv.contribution() * SpreadResolver::kBipolarSpan
+                                     + td * in.macroSend, -1.f, 1.f),
                F, -1, -1, "non-delegated branch != clamp(base + ownCv + eastCv + tappedSend)");
 }
 

@@ -102,6 +102,7 @@ TESTS=(
   "test_qmix_poly|"
   "test_qmix_rng|"
   "test_quantize_engine|$SE $GS $PE"
+  "test_resolver_spread_bridge|"   # header-only: resolver step-1 BYTE-IDENTICAL gate — SandsModifierResolver<SpreadPolicy> + the compat shell vs a verbatim copy of the OLD SpreadResolver formula (seeded 120k-case fuzz, same-BITS). The permanent pin; steps 2-4 extend the pattern.
   "test_rule2_consume|"
   "test_rule2_integration|"
   "test_scale_list|"
