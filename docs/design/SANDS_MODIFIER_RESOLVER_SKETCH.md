@@ -32,8 +32,28 @@ struct CvTerm {
     // moves OUT of CvTerm into SpreadPolicy::scaleCv. CvTerm stays the raw uV·atten; the policy scales.
 };
 
-// ── the skeleton: templated on a Policy ─────────────────────────────────────
-template <class Policy>
+// ── the POLICY CONTRACT as a C++20 CONCEPT (the project moved to C++20 2026-10,
+//    CI-green all platforms — so this is a real concept, NOT a static_assert fallback).
+//    A malformed policy now fails AT THE DECLARATION with a located, readable
+//    "BrokenPolicy does not satisfy SandsModifierPolicy: ..." instead of a deep
+//    cryptic instantiation error inside effective(). This is the policy-layer analogue
+//    of the strong-type/contract-test discipline: make an incomplete policy a BUILD
+//    error, located, not a comment nobody is forced to honour (the polyBankIndex-lie
+//    failure mode, one level up).
+template <class P>
+concept SandsModifierPolicy = requires(typename P::Value v, float f,
+                                        typename P::Value mb, typename P::Extra e) {
+    typename P::Value;
+    typename P::Extra;
+    { P::scaleCv(f) }               -> std::convertible_to<float>;
+    { P::addCv(v, f) }              -> std::same_as<typename P::Value>;
+    { P::addSend(v, f) }            -> std::same_as<typename P::Value>;
+    { P::applyDelegated(mb, f, e) } -> std::same_as<typename P::Value>;
+    { P::constrain(v, e) }          -> std::same_as<typename P::Value>;
+};
+
+// ── the skeleton: templated on a (CONSTRAINED) Policy ───────────────────────
+template <SandsModifierPolicy Policy>
 struct SandsModifierResolver {
     using Value = typename Policy::Value;      // float|triple|enum|(WarpF,w)|θ|(lo,hi)|(off,mask)
 
@@ -172,6 +192,10 @@ struct VoiceLorPolicy {
    SYSTEM's job, not the resolver's. Resolver resolves per-level direction only.
 6. Warp modulates only `w`; curve-param modulation is a SEPARATE θ policy that composes. Keep them
    distinct — don't fold θ into WarpPolicy.
+7. CONTRACT ENFORCEMENT = a C++20 CONCEPT (SandsModifierPolicy), not comments and not a static_assert
+   fallback — the project moved to C++20 (CI-green all platforms, 2026-10). An incomplete policy is a
+   LOCATED build error at the declaration. This is the whole-point enforcement: the resolver exists to
+   stop half-implemented delegation; the concept stops a half-implemented POLICY from compiling.
 
 ## FOR CC (the extraction task, when it runs)
 - Reconcile THIS sketch with the REAL SpreadResolver.hpp (field names, the 4-lane kSpreadLanes note,
