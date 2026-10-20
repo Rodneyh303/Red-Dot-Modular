@@ -80,6 +80,7 @@ TESTS=(
   "test_voice_count_partial|$PE"
   "test_simd_compat|"   # header-only: SIMD compat layer (SIMDe: native SSE on x86, NEON emulation on arm64)
   "test_lane_types|"
+  "test_lane_voice_uniformity|$PE $SE $GS"   # SEAM_ERADICATION_PLAN Stage 0: the per-(voice,lane) uniformity harness. Known seams print but don't fail CI; UNIFORMITY_STRICT=1 = the per-stage gate.
   "test_legato_leading_edge|"
   "test_lock_behaviour|$PE"
   "test_mode_b_gate|$SE $GS $PE"
