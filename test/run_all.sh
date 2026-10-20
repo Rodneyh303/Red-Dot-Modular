@@ -31,7 +31,7 @@ if [ -n "${RACK_DIR:-}" ] && [ -d "${RACK_DIR}/dep/include" ]; then
 elif [ -d "../../dep/include" ]; then
   INCS="$INCS -I../../dep/include"
 fi
-STD="-std=c++17"
+STD="-std=c++20"
 # SSE4.1 for SIMD Philox (x86 only; arm64 uses SIMDe NEON emulation, no flag needed)
 ARCHF=""
 if [ "$(uname -m)" = "x86_64" ] || [ "$(uname -m)" = "i686" ] || [ "$(uname -m)" = "i386" ]; then

@@ -32,11 +32,12 @@ DISTRIBUTABLES += $(wildcard presets)
 
 include $(RACK_DIR)/plugin.mk
 
-# C++17 (overrides Rack's default -std=c++11; lands after it so it wins).
+# C++20 (confirmed CI-green on lin/mac/win 2026-10 via test/cpp20-probe: full engine+SIMD+simde+libRack link all clean). Overrides Rack SDK default (c++17). Enables concepts (SandsModifierResolver policy contracts) + the SvgPanelKit fold expr.
 # Required by the fold expression in src/ui/SvgPanelKit.hpp.
-CXXFLAGS += -std=c++17
+CXXFLAGS += -std=c++20
 
-# FIX: Silences the specific diagnostic warning about fold-expressions
+# FIX: silences the fold-expr c++17-extension warning. Under C++20 fold exprs are standard so this
+# MAY be removable now (C++20 move 2026-10) — left in (harmless) pending a CI-green confirmation without it.
 CXXFLAGS += -Wno-c++17-extensions
 
 # ── Deterministic floating point for the copula / draw pipeline ──────────────────────────────
