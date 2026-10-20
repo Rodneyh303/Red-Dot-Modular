@@ -17,7 +17,8 @@ is not "complete each copy" — it's ONE authority all route through, so a copy 
 ## THE ONE-SENTENCE MEMBERSHIP RULE (inclusion AND exclusion)
 A modifier belongs in the resolver IFF it VARIES PER (voice, lane) AND DELEGATES between Macro and
 East. That one rule includes/excludes everything:
-  IN : spread, LOR, direction, warp, θ (distribution params), clamp (lo/hi), + the future offset/mask lane.
+  IN : spread, LOR, direction, warp, θ (distribution params), clamp (lo/hi), + the future offset/mask lane
+       (that lane IS the per-voice LOR level — "voiceLor"; PLANS ONLY, see step 5).
   OUT: slew-rho, A/B mix — UNIFORM across all voices/lanes (one value for the group; NO per-voice
        divergence, NO delegation). Their correctness comes from SIMPLICITY, not a resolver; forcing
        them through it would MANUFACTURE the 16×7 divergence surface the resolver exists to remove.
@@ -102,8 +103,12 @@ addressing system's rollout.
    verified ~40-line duplicate; LOR keeps working (harness byte-identical where spread=0).
 4. DIRECTION as `<DirPolicy>` (pure-selection, no blend); route the laneDir path through the resolver.
    Fixes the VAR/LEG direction bug + the stale-reset bug by construction.
-5. (future) θ, clamp, offset/mask lane as policies when those features are built. Interface already
-   admits them (constrain/jointConstrain/extra-Inputs hooks present from step 1).
+5. (future — PLANS ONLY, nothing queued, no briefs written) θ, clamp, the per-voice LOR level
+   (voiceLor — drawn as `VoiceLorPolicy` in SANDS_MODIFIER_RESOLVER_SKETCH.md:172, specced in
+   UNIFIED_ADDRESSING_SYSTEM.md), the offset/mask lane, and voice-direction (PAYOFF's "next two bug
+   sources") as policies when those features are built. Steps 1-4 are the COMPLETE current build
+   order. Interface already admits them (per-policy Value/Extra/constrain hooks present from step 1;
+   the sketch :150-152 retracts the separate jointConstrain hook — constrain sees the whole Value).
 
 ## NAMING
 `SandsModifierResolver` (or `DelegatedLaneVoiceResolver`). The header carries the one-sentence rule so
