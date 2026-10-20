@@ -2,6 +2,17 @@ RACK_DIR ?= ../..
 
 FLAGS += -Idep/include
 
+# The Rack SDK's headers (rack.hpp, helpers.hpp) are THIRD-PARTY: include them as SYSTEM
+# headers so THEIR diagnostics don't flood the build. Under C++20 the SDK's own [=]-implicit-
+# this captures in helpers.hpp deprecation-warn for every TU, and each such TU then ALSO gets
+# GCC's "unrecognized -Wno-vla-extension" note (the SDK passes that clang-only flag; GCC only
+# prints the note when the TU produced other diagnostics) — one -isystem kills both families.
+# Our own sources keep full -Wall -Wextra. This must come BEFORE `include $(RACK_DIR)/plugin.mk`:
+# the SDK's compile.mk later adds plain -I on the same dirs, and the EARLIER -isystem copy wins
+# header resolution (search order), so the headers are found as system headers.
+FLAGS += -isystem $(RACK_DIR)/include
+FLAGS += -isystem $(RACK_DIR)/dep/include
+
 
 # Link Time Optimization (LTO) can significantly improve performance
 # by optimizing across your separate manager/engine files.
