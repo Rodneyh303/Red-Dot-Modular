@@ -73,9 +73,11 @@ struct KnownSeam {
 
 // The manifest. Stage discipline: each stage DELETES its entries; nothing is ever added
 // without a plan-stage pointer. A green that required adding an entry is NOT a fix.
-// (FIRST SHRINK — resolver step 2: WARP-CONSUMER-GATE deleted. polyRandomSrc now
-// routes ALL lanes through pe.warpRow and finalRandomByStrand through the mirror,
-// so U3's row-identity check is green across the whole 16×7 matrix.)
+// (FIRST SHRINK — resolver step 2: WARP-CONSUMER-GATE deleted. All lanes route
+// through pe.warpRow and finalRandomByStrand through the mirror, so U3's
+// row-identity check is green across the whole 16×7 matrix. feat/warp-ui merge
+// (CC_PROMPT_05): the polyRandomSrc wrapper is GONE from production — U3 pins
+// pe.warpRow directly; same row-identity contract, one accessor.)
 // (LAST SHRINK — resolver step 4: DIR-SLOT0-ROW-INERT deleted. advancePlayhead now
 // promotes slot 0's poly row too (both StepEdge and Phrase blocks start the v loop
 // at 0), so U7's slot-0 sub-check asserts promotion and the whole 16×7 matrix is
@@ -215,10 +217,11 @@ static void U2_warp_delegation() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// U3 — WARP consumer gate: polyRandomSrc must hand EVERY lane's consumer the
-// mirror row (same row object), for every voice. GREEN across the whole 16×7
-// matrix since resolver step 2 (WARP-CONSUMER-GATE closed: all lanes route
-// through pe.warpRow / the mirror) — pinned so the gate can never regress.
+// U3 — WARP consumer gate: the ONE uniform source (pe.warpRow; the polyRandomSrc
+// wrapper was deleted by the feat/warp-ui merge, CC_PROMPT_05) must hand EVERY
+// lane's consumer the mirror row (same row object), for every voice. GREEN
+// across the whole 16×7 matrix since resolver step 2 (WARP-CONSUMER-GATE closed)
+// — pinned so the gate can never regress.
 // ══════════════════════════════════════════════════════════════════════════════
 static void U3_warp_consumer_gate() {
     const std::string F = "U3-warp-consumer";
@@ -233,10 +236,9 @@ static void U3_warp_consumer_gate() {
             bank.warpW[WarpBank::index(v0, l0)] = 1.f;
             se.pe.rebuildWarpMirrorAll();
 
-            const float (&src)[16] = se.polyRandomSrc(v0, l0);
-            const bool sameRow = (&src[0] == &se.pe.warpRow(v0, l0)[0]);
+            const bool sameRow = (&se.pe.warpRow(v0, l0)[0] == &se.pe.warped_[v0][l0][0]);
             char buf[128];
-            std::snprintf(buf, sizeof buf, "polyRandomSrc(%d,%s) is the RAW row, not the mirror",
+            std::snprintf(buf, sizeof buf, "warpRow(%d,%s) is the RAW row, not the mirror",
                           v0, LANE_NAME[l0]);
             expectCell(sameRow, F, v0, l0, buf);
         }
