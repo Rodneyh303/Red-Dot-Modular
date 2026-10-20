@@ -126,38 +126,51 @@ UNVERIFIED guess because no test caught "voice N / lane L behaves like the other
 CC produces `plans/SEAM_AUDIT_RESULT.md`: every lane/voice-special site in the Sands/engine/expander
 path — each `voiceIdx` / `dv=0` / `pv=0` / `+1`/`-1`-near-voice / `l < 4` / `l < 5` / `l < POLY_LANES`
 / `VAR/LEG` branch / `if (voice==0)` / `kMonoSlot` special-case — classified: (a) REAL per-voice/
-per-lane loop on the correct base (keep), (b) DEBT (crosses conventions / drops a lane / wrong base).
-NO edits. This is the map; later stages fix against the WHOLE map, not symptom-by-symptom (the thing
-that made bugs MOVE instead of die — 6+ failed attempts, documented).
+per-lane loop on the correct base (keep, convert to the strong type), (b) DEBT (crosses conventions /
+drops a lane / wrong base — delete/fix). NO edits. This is the map; later stages fix against the WHOLE
+map, not symptom-by-symptom (the thing that made bugs MOVE instead of die — 6+ failed attempts).
 
-### STAGE 2 — VOICE seam close (Seam 1): UNIFY THE EXECUTION PATH (not an index sweep)
+### STAGE 2 — STRONG TYPES FIRST (the scaffolding — moved EARLY now that C++20 is confirmed)
+RATIONALE FOR THE REORDER (C++20 green-light): strong types used to be the capstone (old Stage 4).
+But with C++20 confirmed, the types are the SCAFFOLDING that makes Stages 3-4 UN-REGRESSABLE — once
+`warpRow(0)` and a raw-int voice index DON'T COMPILE, the voice/lane/execution-path refactor that
+follows CANNOT re-introduce the mono-special assumption. The type system HOLDS THE LINE during the
+refactor instead of being checked after it. This is the difference between "we fixed the instances"
+and "the instance can't exist."
+Introduce (against the Stage-1 map):
+- `struct VoiceSlot` — mintable ONLY via VoiceResolver (VoiceResolver::mono() = slot 0 = V1;
+  VoiceResolver::slot(n)). NO implicit int→VoiceSlot. So `warpRow(0)` / any magic-zero mono path is a
+  COMPILE ERROR; the mono path becomes explicit+searchable (`VoiceSlot::mono()`), not an anonymous 0.
+- `struct LaneId` — all 7 lanes, one canonical descriptor (merge LaneMapping(dsp) + any ui lane-name
+  split). A lane loop that stops at 4/5 can't silently drop 6 (iterate LaneId, not `l < N`).
+- Convert the REAL per-voice/lane sites (Stage-1 class (a)) to take VoiceSlot/LaneId. This is MOSTLY
+  mechanical (the audit says which), and it's where the DEBT sites (class (b)) surface as compile
+  errors — the type migration IS the debt-finder.
+Gate: compiles; uniformity harness still green (types are a no-op on behaviour); no raw-int
+voice/lane index remains in the Sands/engine hot path.
+NOTE: this is the C++20 payoff — concepts (SandsModifierPolicy) + strong types (VoiceSlot/LaneId)
+together make BOTH an incomplete policy AND a wrong/mono-special index un-compilable.
+
+### STAGE 3 — VOICE seam close (Seam 1): UNIFY THE EXECUTION PATH (now type-guarded)
 CORRECTED scope (code-verified): the seam is executeStep(V1) vs executePolyVoice(V2+), two paths with
 hardcoded warpRow(0) vs voiceIdx. Close it by making V1 and V2..16 flow through ONE per-voice execute
-(V1 = slot 0 of the same loop), so no feature can be wired into one path and not the other. Delete the
-V1-special executeStep branch where it duplicates executePolyVoice; delete the lying :132 comment.
-Convert any genuine DEBT index (0-based at a non-I/O site) to voiceSlot as part of it. Also map+fix the
-UI/manager WRITE path (Macro→East leak) found in Stage 1. Gate: uniformity harness green for ALL voice
-cells incl V1/V2, driving the REAL execute path (not a direct-index-write bypass).
+taking a VoiceSlot (V1 = VoiceSlot::mono() = slot 0 of the same loop), so no feature can be wired into
+one path and not the other. Delete the V1-special executeStep branch where it duplicates
+executePolyVoice; delete the lying :132 comment. Also map+fix the UI/manager WRITE path (Macro→East
+leak). Because Stage 2 landed the types, this refactor CAN'T reintroduce a mono-special 0 — it won't
+compile. Gate: uniformity harness green for ALL voice cells incl V1/V2, driving the REAL execute path.
 
-### STAGE 3 — LANE seam close (Seam 2): finish VAR/LEG to FULL uniformity
-Against the audit + sands_consolidation_build.md §2: give VAR/LEG (and confirm ALL 7 lanes have)
-the complete feature set — direction, direction-mod, delegation + delegation-mod-input, spread,
-prob-outs. DELETE every `VAR/LEG` / `l < 4|5` special-case that is debt. Fixes the direction bug.
-Gate: uniformity harness green for all lane cells incl VAR/LEG.
-
-### STAGE 4 — ENFORCEMENT: make the seam UN-WRITABLE (Seam 4 — the thing that ENDS recurrence)
-Introduce STRONG TYPES so a wrong base / dropped lane does NOT COMPILE:
-- `struct VoiceSlot { int v; }` mintable ONLY via VoiceResolver (not from a raw int). Consumers take
-  VoiceSlot, not int. `warpRow(rawInt)` stops compiling.
-- `struct LaneId { int l; }` covering all 7 lanes, one canonical descriptor (merge LaneMapping(dsp)
-  + any ui lane-name system if still split). A lane loop that stops at 4/5 can't silently drop 6.
-- This converts the WHOLE bug class from "caught in Rack" to "caught by the compiler" — the same leap
-  anchor/bind did for panels and contract tests did for the convention war.
-Gate: it compiles, uniformity harness green, no raw-int voice/lane index remains in the hot path.
+### STAGE 4 — LANE seam close (Seam 2): finish VAR/LEG to FULL uniformity (now type-guarded)
+Against the audit + sands_consolidation_build.md §2: give VAR/LEG (confirm ALL 7 lanes have) the
+complete feature set — direction, direction-mod, delegation + delegation-mod-input, spread, prob-outs.
+DELETE every `VAR/LEG` / `l < 4|5` special-case that is debt. With LaneId from Stage 2, a loop that
+drops lane 6 won't compile. Fixes the direction bug. Gate: uniformity harness green for all lane cells
+incl VAR/LEG.
 
 ### STAGE 5 — VALUE-store audit (Seam 3) + retire any remaining vestigial bridge
 Finish convention_unification_INCOMPLETE's "REMAINING Phase-2 value-store audit"; confirm warp's
-value store (warpF/W/globalWarpF) is indexed uniformly and did not re-introduce a mismatch.
+value store (warpF/W/globalWarpF) is indexed uniformly (VoiceSlot/LaneId) and did not re-introduce a
+mismatch.
 
 ### THEN — WARP (and anything after) wires in like spread. The mines are gone.
 
