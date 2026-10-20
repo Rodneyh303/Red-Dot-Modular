@@ -127,6 +127,12 @@ its own brief when picked up.
    (store-layer semantics, UI write paths). Byte-identical discipline + plugin build as usual.
    Do NOT unify the two authorities (store flag vs topo.owner) in the same breath — separate
    decision, keep the membership rule's "resolver consumes the boolean" intact.
+   **STATUS (2026-10-21): BRIEFED — `ZAI_PROMPT_ownership_boolean.md`** (same folder). Grounding
+   re-done on the merged tree @ 09830b3c: 14 sites (13 threshold + the monoOwnedByMacro ZERO-test
+   at MonsoonSandsManager.cpp:511), all writers verified 0/1-valued, persistence = raw-float
+   round-trip (format untouched). Predicate named `ownerIsEast(v,l)` — the topology's own
+   fillOwners vocabulary (SandsTopology.hpp:71), not this entry's provisional `eastOwns`. The
+   :970/:95/:398-399/:427 anchors above are PRE-MERGE; the brief re-anchors everything.
 2. Already-flagged, unchanged: the mono `lane >= 4` stale set {ACC,VAR,LEG} in monoDirAuthority
    (CC_PROMPT_08 territory); the dead `(item==3?1:0)` tap ternary (3 sites); the mono LOR copies
    (sum-once form / round+unclamped-delegated); the harness RESIDUALS printf wording (still cites
