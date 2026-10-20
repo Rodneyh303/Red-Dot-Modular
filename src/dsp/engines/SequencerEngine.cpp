@@ -186,7 +186,14 @@ bool SequencerEngine::advancePlayhead(int dir) {
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             if (!dirLive_(l)) continue;   // this strand's direction stays latched
             laneDir_[l] = laneDirPending_[l];
-            for (int v = 1; v <= numPolyVoices; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
+            // v starts at 0 (resolver step 4 — DIR-SLOT0-ROW-INERT closed): slot 0's poly
+            // row now promotes for STORE consistency. The manager resets + pushes pending
+            // for all 16 slots; the engine silently dropping slot 0 was the seam. NO
+            // consumer reads laneDirV_[0][*]: the recompute loops below stay v = 1..
+            // UNTOUCHED (widening THEM would touch laneTickV_/laneSignV_ slot-0 semantics
+            // for zero readers), and V1's audio reads the MONO channel laneDir_[l] — this
+            // change cannot move the audio.
+            for (int v = 0; v <= numPolyVoices; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
         }
     }
 
@@ -303,7 +310,12 @@ bool SequencerEngine::advancePlayhead(int dir) {
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             if (!dirLive_(l)) continue;
             laneDir_[l] = laneDirPending_[l];
-            for (int v = 1; v <= numPolyVoices; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
+            // v = 0 here too (resolver step 4 — DIR-SLOT0-ROW-INERT closed): slot 0's
+            // poly row promotes for STORE consistency on BOTH flip quantizations (the
+            // StepEdge site above carries the full note). NO consumer reads
+            // laneDirV_[0][*] — the recompute loops stay v = 1.. untouched, and V1's
+            // audio reads the MONO channel laneDir_[l] — this cannot move the audio.
+            for (int v = 0; v <= numPolyVoices; ++v) laneDirV_[v][l] = laneDirVPending_[v][l];
         }
 
     return wrapped;

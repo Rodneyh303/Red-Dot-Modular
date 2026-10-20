@@ -11,13 +11,15 @@
 //
 // EXIT CONTRACT (the Stage-0 gate):
 //   - Failures matching an entry in KNOWN_SEAMS print as "KNOWN SEAM (expected red)" with the
-//     plan stage that closes them. They do NOT fail CI by default: the harness is RED on
-//     today's code BY DESIGN (it catches the warp consumer gate + the direction slot-0 split),
-//     and run_all.sh green must keep gating every OTHER task.
+//     plan stage that closes them. They do NOT fail CI by default. (Historical: the harness
+//     was RED on today's code BY DESIGN while the warp consumer gate + the direction slot-0
+//     split were open; both are now CLOSED — resolver steps 2 and 4 — and the tree is
+//     ALL-GREEN with an EMPTY manifest, strict included.)
 //   - UNEXPECTED failures exit 1 — that is the harness doing its job (a seam nobody mapped).
 //   - UNIFORMITY_STRICT=1 in the environment fails on ANY failure (use it as the per-stage
 //     gate: a stage is done when its manifest entries are DELETED and strict passes).
-//   Each later stage DELETES its manifest lines. The manifest only ever shrinks.
+//   Each later stage DELETES its manifest lines. The manifest only ever shrinks — with
+//   DIR-SLOT0-ROW-INERT closed (resolver step 4) it has reached its terminus: EMPTY.
 //
 // Headless reach (honest scope): the harness drives the ENGINE + headless-constructible
 // MANAGER layers (PatternEngine/SequencerEngine/WarpBank/SpreadManager/SpreadResolver/
@@ -74,20 +76,15 @@ struct KnownSeam {
 // (FIRST SHRINK — resolver step 2: WARP-CONSUMER-GATE deleted. polyRandomSrc now
 // routes ALL lanes through pe.warpRow and finalRandomByStrand through the mirror,
 // so U3's row-identity check is green across the whole 16×7 matrix.)
-static bool seam_dir_slot0(const Fail& f) {
-    return f.feature == "U7-direction-promote" && f.v == 0;
-}
-
+// (LAST SHRINK — resolver step 4: DIR-SLOT0-ROW-INERT deleted. advancePlayhead now
+// promotes slot 0's poly row too (both StepEdge and Phrase blocks start the v loop
+// at 0), so U7's slot-0 sub-check asserts promotion and the whole 16×7 matrix is
+// uniform.)
 static const std::vector<KnownSeam>& knownSeams() {
-    static const std::vector<KnownSeam> K = {
-        { "DIR-SLOT0-ROW-INERT",
-          "Stage 3 (unify executeStep/executePolyVoice into ONE per-voice path) — then delete",
-          "advancePlayhead promotes laneDirVPending_ for v=1..numPolyVoices ONLY "
-          "(SequencerEngine.cpp:189/306); slot 0's poly row is never promoted — V1 is driven by "
-          "the separate mono channel laneDirPending_→laneDir_. The mono/poly execution-path "
-          "split (Seam 1) in miniature, pinned here until the paths unify.",
-          seam_dir_slot0 },
-    };
+    // manifest EMPTY — the stage-0 goal state (every seam closed; the only-shrink
+    // rule reaches its terminus). New seams must NEVER be added; a red cell is now
+    // always a bug.
+    static const std::vector<KnownSeam> K = {};
     return K;
 }
 
@@ -219,8 +216,9 @@ static void U2_warp_delegation() {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // U3 — WARP consumer gate: polyRandomSrc must hand EVERY lane's consumer the
-// mirror row (same row object), for every voice. RED for lanes 2..6 on HEAD —
-// KNOWN SEAM "WARP-CONSUMER-GATE" (feat/warp-ui CC_PROMPT_05 routes all lanes).
+// mirror row (same row object), for every voice. GREEN across the whole 16×7
+// matrix since resolver step 2 (WARP-CONSUMER-GATE closed: all lanes route
+// through pe.warpRow / the mirror) — pinned so the gate can never regress.
 // ══════════════════════════════════════════════════════════════════════════════
 static void U3_warp_consumer_gate() {
     const std::string F = "U3-warp-consumer";
@@ -489,9 +487,11 @@ static void U6_spread_resolver_lane_free() {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // U7 — DIRECTION promotion (engine boundary): the exact store the manager push
-// writes (MonsoonExpanderManager.cpp:398 laneDirVPending_[v][l] = ...) must
+// writes (MonsoonExpanderManager.cpp laneDirVPending_[v][l] = ...) must
 // promote uniformly for EVERY (v,l) — and the mono channel for every lane.
-// Slot 0's poly row is INERT on HEAD → KNOWN SEAM "DIR-SLOT0-ROW-INERT".
+// Slot 0's poly row promotes too since resolver step 4 (the advancePlayhead
+// loops start at v=0; DIR-SLOT0-ROW-INERT closed, manifest EMPTY) — uniform
+// across the whole 16×7 matrix.
 // ══════════════════════════════════════════════════════════════════════════════
 static void U7_direction_promote() {
     const std::string F = "U7-direction-promote";
@@ -522,9 +522,9 @@ static void U7_direction_promote() {
                               v0, LANE_NAME[l0]);
                 expectCell(se.laneDirV_[v0][l0] == SequencerEngine::LaneDir::Reverse, F, v0, l0, buf);
             } else {
-                // KNOWN SEAM: slot 0's poly row is never promoted (v loop starts at 1).
-                expectCell(se.laneDirV_[0][l0] == SequencerEngine::LaneDir::Forward, F, 0, l0,
-                           "slot-0 poly row promoted (unexpected — manifest says inert)");
+                // Slot 0's poly row promotes too (resolver step 4: the v loop starts at 0).
+                expectCell(se.laneDirV_[0][l0] == SequencerEngine::LaneDir::Reverse, F, 0, l0,
+                           "slot-0 poly row did not promote");
             }
 
             bool leak = false; int lv = -1, ll = -1;

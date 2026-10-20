@@ -3,7 +3,7 @@
 #include "../SpreadInterp.hpp"
 #include "../VoiceResolver.hpp"   // read-only shadow (step 1)
 #include "../SandsTopology.hpp"   // step 3: solo/none write-guard migration
-#include "../SandsModifierResolver.hpp"   // resolver step 3 (LorPolicy): combineLOR's delegation algebra — redDot::resolveLorItem
+#include "../SandsModifierResolver.hpp"   // resolver step 3 (LorPolicy): combineLOR's delegation algebra — redDot::resolveLorItem; step 4 (DirPolicy): BOTH direction pushes — redDot::resolveDirItem
 #include "../../Monsoon.hpp"
 #include <cassert>
 //#include "../../MonsoonDeepStraitsSands.hpp"
@@ -33,6 +33,15 @@ MonsoonExpanderManager::MonoDirSrc MonsoonExpanderManager::monoDirAuthority(int 
     // (monoVis removed — Mono killed Step 6, cachedSandsVisualExpander always null)
     auto* macroVis = cachedMacroSandsVisual;
     auto* eastVis  = cachedEastSandsVisual;
+    // STALE-INDEX ARTIFACT (flagged, NOT fixed — Rodney-decidable, CC_PROMPT_08 territory):
+    // `lane >= 4` was written pre-QMIX, when VAR/LEG were lanes 4,5. Post-QMIX the engine
+    // order is MEL/OCT/QMIX/REST/ACC/VAR/LEG (PL_VARIATION=5, PL_LEGATO=6), so this check's
+    // set is now {ACC(4), VAR(5), LEG(6)} — ACC is included even though Macro DOES have an
+    // ACCENT lane (the name/intent "Macro has no such lane" no longer matches the set).
+    // Changing it to `lane >= PL_VARIATION` would be a REAL behaviour change: V1's ACCENT
+    // direction source flips from East's V1 field to Macro-global, on a lane CC_PROMPT_08's
+    // report describes as "DOES follow" — that contradiction needs Rack eyes, not a blind
+    // edit. PRESERVED VERBATIM (resolver step 4 flag).
     const bool varleg = (lane >= 4);          // VARIATION / LEGATO: Macro has no such lane
 
     // (Mono killed Step 6 — cachedSandsVisualExpander always null, if(monoVis) block removed)
@@ -166,13 +175,15 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             if (src.isField()) {
                 // Field-backed (MVC de-param): direction lives in the Monsoon store. Resolve the
                 // Monsoon from ANY owning expander (Mono/Macro/East all hang off it). macroGlobal
-                // picks Macro's globalDir vs the mono-lane dir (Mono/East V1).
+                // picks Macro's globalDir vs the mono-lane dir (Mono/East V1) — the selection +
+                // [0,3] clamp + lround ride the resolver (DirPolicy, step 4): src.macroGlobal IS
+                // the delegated flag (monoDirAuthority sets it only on the Macro-owns arm), so
+                // this is byte-identical to the old local ternary.
                 if (auto* mm = owner) {
-                    const float v = src.macroGlobal
-                        ? mm->getGlobalDir(src.eastMonoLane)
-                        : mm->getLaneDir(Monsoon::kMonoLaneDirRow, src.eastMonoLane);
-                    engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
-                        math::clamp(v, 0.f, 3.f));
+                    engine.laneDirPending_[l] = (SequencerEngine::LaneDir)
+                        redDot::resolveDirItem(src.macroGlobal,
+                                               mm->getLaneDir(Monsoon::kMonoLaneDirRow, src.eastMonoLane),
+                                               mm->getGlobalDir(src.eastMonoLane));
                 }
             } else if (src.paramId >= 0) {
                 engine.laneDirPending_[l] = (SequencerEngine::LaneDir)(int)std::lround(
@@ -397,21 +408,25 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 // with laneDirSign(Pendulum)=+1 every pass and the lane would never turn around.
                 if (mmOwn) {
                     for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-                        // MVC: resolve through ownership — delegated to Macro → Macro's globalDir;
-                        // else the voice's own getLaneDir (cached for reclaim). Lanes 4/5 (VAR/LEG)
-                        // have no Macro ownership, so always use the voice's getLaneDir.
+                        // MVC: resolve through ownership, UNIFORM across all 7 lanes — Macro owns
+                        // → Macro's globalDir; East owns → the voice's own getLaneDir (cached for
+                        // reclaim). VAR/LEG are full lanes: they follow Macro IFF their store
+                        // ownership flag says so, exactly like every other lane. (The old
+                        // `l < POLY_LANES` else-arm — "Lanes 4/5 (VAR/LEG) have no Macro
+                        // ownership" — was DEAD CODE: this loop runs l < NUM_STRANDS and
+                        // NUM_STRANDS == POLY_LANES == 7, static_asserted in ui/SandsGrid.hpp;
+                        // deleted together with its stale comment.)
+                        // Resolver step 4: the selection + [0,3] clamp + lround ride
+                        // SandsModifierResolver<DirPolicy> — redDot::resolveDirItem —
+                        // byte-identical to the old local ternary. NOTE the store flag's
+                        // polarity: getMacroOwn > 0.5 means EAST owns (the East UI's per-lane
+                        // owner switch writes 1 = East owns, StraitsEastSandsVisual.cpp), so
+                        // delegated-to-Macro is its COMPLEMENT.
                         // getMacroOwn/getGlobalDir take the unified lane order — same as l
                         // (editor == engine == strand) — so l passes through directly.
-                        float dirVal;
-                        if (l < dotModular::SandsGrid::POLY_LANES) {
-                            dirVal = (mmOwn->getMacroOwn(v, l) > 0.5f)
-                                   ? mmOwn->getLaneDir(v, l)       // East owns → voice's own (cached)
-                                   : mmOwn->getGlobalDir(l);       // Macro owns → Macro's global
-                        } else {
-                            dirVal = mmOwn->getLaneDir(v, l);      // VAR/LEG: always voice's own
-                        }
-                        int dv = (int)std::lround(math::clamp(dirVal, 0.f, 3.f));
-                        engine.laneDirVPending_[v][l] = (SequencerEngine::LaneDir)dv;
+                        const bool delegated = !(mmOwn->getMacroOwn(v, l) > 0.5f);
+                        engine.laneDirVPending_[v][l] = (SequencerEngine::LaneDir)
+                            redDot::resolveDirItem(delegated, mmOwn->getLaneDir(v, l), mmOwn->getGlobalDir(l));
                     }
                 }
 #if RULE2_DEBUG

@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <cmath>     // std::lround — resolveDirItem's round+cast (the moved direction algebra)
 #include <concepts>
 
 #include "WarpF.hpp"   // dotModular::WarpF — WarpPolicy's curve member. The include pair
@@ -68,6 +69,20 @@
 // fuzzes seeded inputs against a verbatim copy of the OLD combineLOR algebra
 // and asserts int EQUALITY + same-BITS of the pre-cast float. BYTE-IDENTICAL,
 // step-1 discipline (no gate flips this time).
+//
+// Step 4 (fourth rider — the LAST hand-rolled delegation shape): DirPolicy —
+// BOTH direction pushes (MonsoonExpanderManager's poly laneDirVPending_ block
+// + the mono laneDirPending_ field arm) ride the skeleton via resolveDirItem
+// below: the ownership selection, the [0,3] end-clamp and the (int)lround
+// live HERE; the manager keeps only the store reads. PURE SELECTION — the
+// resolved value is bit-identical to the old local ternary (the dead
+// `l < POLY_LANES` else-arm dies with it; NUM_STRANDS == POLY_LANES == 7).
+// Step 4 also widens advancePlayhead's promotion loops to slot 0, closing
+// DIR-SLOT0-ROW-INERT — the LAST manifest entry; the uniformity harness's
+// knownSeams() goes EMPTY. Gate: test_resolver_dir_bridge.cpp — EXHAUSTIVE
+// over the tiny selection space (delegated × ownDir × globalDir, ~242 grid
+// cases) + a seeded fuzz, asserting int equality AND same-BITS of the
+// pre-round float vs a verbatim copy of the old line.
 // ─────────────────────────────────────────────────────────────────────────────
 
 namespace redDot {
@@ -274,6 +289,52 @@ struct LorPolicy {
 // The concept must BITE here too (the located-error enforcement, same as spread/warp).
 static_assert(SandsModifierPolicy<LorPolicy>);
 
+// ── DIRECTION, the fourth policy — the LAST hand-rolled delegation shape ──────
+// ONE (voice,lane)'s lane direction. Value is the RAW 0..3 store direction
+// FLOAT — 0=Forward, 1=Reverse, 2=Pendulum, 3=PingPong (SequencerEngine::
+// LaneDir, enum class : uint8_t, SequencerEngine.hpp:214) — NOT LaneDir
+// itself: this header must stay engine-include-free (layering: engines
+// include dsp-root, never the reverse; a second direction enum here would be
+// worse than one documented float+mapping).
+//
+// The old algebra selects on the RAW floats and rounds ONCE after selection:
+//   (int)std::lround(math::clamp(dirVal, 0.f, 3.f))   with dirVal = own-or-global.
+// lround is monotone so round-then-select ≡ select-then-round, but the old
+// order is kept VERBATIM (the byte-identical law): select in the resolver,
+// round+cast in the wiring helper (resolveDirItem below), exactly like the
+// old line. Do NOT pre-round the sources.
+//
+// PURE SELECTION, no blend — direction has no delta term (no CV/send/tap
+// jack exists for it). applyDelegated is EXPLICITLY `return mb;` — td is
+// structurally ignored, unlike spread/warp/LOR's mb + td. A future
+// direction-modulation feature would be a NEW policy member (e.g. a depth
+// input in Extra), never a silent td. scaleCv/addCv/addSend exist to satisfy
+// the concept and are structurally UNUSED by direction's resolution path:
+// the wiring leaves ownCv/eastCv disconnected and macroSend = 0 — but the
+// policy must not DEPEND on that (the bridge test's full-Inputs fuzz pins
+// the concept members anyway).
+//
+// constrain is the max/min form — the NaN convention, one convention for the
+// whole resolver file (same as SpreadPolicy/WarpPolicy/LorPolicy; NOT
+// std::clamp). Identity on valid inputs: the old code clamped the same
+// [0,3] AFTER selection; the resolver owns that clamp now (end-clamp-once).
+struct DirPolicy {
+    using Value = float;         // the RAW store direction 0..3 (the float+mapping above)
+    struct Extra {};             // direction needs no extra inputs
+
+    static float scaleCv(float raw)                                { return raw; }   // identity — concept-only: no direction CV exists; the wiring leaves ownCv/eastCv disconnected
+    static float addCv  (float v, float c)                         { return v + c; }  // concept-only (same)
+    static float addSend(float v, float s)                         { return v + s; }  // concept-only: the wiring leaves macroSend = 0
+    // PURE SELECTION — td structurally ignored (NOT mb + td like spread/warp/LOR:
+    // direction has no delta term; a future direction-modulation feature would be
+    // a NEW policy member, never a silent td).
+    static float applyDelegated(float mb, float /*td*/, const Extra&) { return mb; }
+    static float constrain(float v, const Extra&)                  { return std::max(0.f, std::min(3.f, v)); }
+};
+
+// The concept must BITE here too (the located-error enforcement, same as spread/warp/LOR).
+static_assert(SandsModifierPolicy<DirPolicy>);
+
 // ── resolveLorItem — the ONE LOR wiring, header-side (resolveWarpCell's ────────
 // counterpart for LOR; type-pure — no manager types — so it lives here beside
 // its policy rather than down in the dotModular section the warp wiring needs
@@ -341,6 +402,33 @@ inline int resolveLorItem(bool ownerEast, bool macroPresent,
                           float lo, float hi) {
     return (int)resolveLorValue(ownerEast, macroPresent, eastVal, macroBase,
                                 macroCvDelta, macroSend, pre, post, tap, lo, hi);
+}
+
+// ── resolveDirItem — the ONE direction wiring, header-side (resolveWarpCell's /
+// resolveLorItem's counterpart; type-pure — no manager/engine types — so it
+// lives here beside its policy). Fills SandsModifierResolver<DirPolicy>::Inputs
+// with delegated/base/macroBase only; every other Input stays at defaults
+// (ownCv/eastCv disconnected, macroSend 0, pre/post/tap neutral — macroPresent
+// is irrelevant: the delegated branch never reads send terms and the free path
+// adds none). BOTH direction pushes call this (MonsoonExpanderManager's poly
+// laneDirVPending_ block and the mono laneDirPending_ field arm); the mono
+// param arm is a SOURCE-TYPE dispatch (which module owns the value), not a
+// Macro/East selection, and stays call-site.
+//
+// resolveDirValue returns the PRE-ROUND float (the bridge test pins this layer
+// same-BITS); resolveDirItem adds the round+cast — (int)std::lround AFTER the
+// clamp, the old order VERBATIM (the round+cast is part of the MOVED algebra;
+// keeping it here keeps both pushes one-token thin).
+inline float resolveDirValue(bool delegated, float ownDir, float macroGlobalDir) {
+    SandsModifierResolver<DirPolicy>::Inputs in;
+    in.delegated = delegated;
+    in.base      = ownDir;          // the voice's own store direction (East owns)
+    in.macroBase = macroGlobalDir;  // Macro's global direction (Macro owns)
+    return SandsModifierResolver<DirPolicy>::effective(in);
+}
+
+inline int resolveDirItem(bool delegated, float ownDir, float macroGlobalDir) {
+    return (int)std::lround(resolveDirValue(delegated, ownDir, macroGlobalDir));
 }
 
 } // namespace redDot
