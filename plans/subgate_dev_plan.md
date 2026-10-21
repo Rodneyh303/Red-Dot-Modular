@@ -121,41 +121,58 @@ Variation-driven-articulation:
 - RE-DRAW melody → both per-subgate → SAME-RATE coupling: each ratchet hit's pitch couples to its own
   articulation. (The cross-lane note currently assumes the HOLD/cross-rate case — flag it contingent.)
 
-ASSIGNABLE CONSUMER MATRIX (Rodney — the resolution, corrected) — one draw, MANY reacting knobs:
-The clean model: ONE Variation draw per gate, POST-w / POST-distribution / POST-clamp (the fully
-SHAPED probability out of the output layer) — and MULTIPLE independent KNOBS that each THRESHOLD that
-shaped value for a different decision. The knobs CONSUME the shaped draw (they do NOT feed it), each
-independent (the whole point of a separate knob). NOTHING changes on the resolver or Sands — these are
-pure DOWNSTREAM read-side consumers; the resolver resolves the VALUE, these threshold it.
-The assignable roles are a (REGION × DECISION) MATRIX, each cell an optional independent threshold on
-the shaped Variation draw:
-            legato   rest    pitch-hold
-  ghost      ✓        ✓       (?? confirm — ghost is a gap/new-note; "hold" may be n/a)
-  ratchet    ✓        ✓       ✓  (hold pitch across the ratchet burst — the open-question above)
-  main-gate  (base)   (base)  (hold across subgates)
-Each cell = a knob = a threshold on the SAME shaped draw. CONSEQUENCE (free coupling): because all
-cells read the SAME shaped value, they are CORRELATED BY CONSTRUCTION (same draw) but independently
-THRESHOLDED (different knobs) — so the cross-lane/clamp COUPLING theory applies WITHIN the matrix for
-free ("ratchet-rest and ratchet-legato both lock when the shaped Variation hits its clamp atom"). The
-matrix is N correlated-by-shared-draw thresholds = "gang the extremes" at the subgate-decision level.
+CONSUMER-GROUP MODEL (Rodney — the uniform pattern; corrected + simplified):
+ONE pattern repeated everywhere, no special lanes: a LANE produces a SHAPED draw (post-w / post-
+distribution / post-clamp, out of the output layer) at its DECISION EVENT; GROUPS OF CONSUMER-KNOBS
+each THRESHOLD that draw at their own event. Knobs CONSUME the shaped value (not feed it); NOTHING
+changes on resolver/Sands (pure downstream read-side).
 
-PHYSICAL HOME (Sands is FULL — no room for more lanes/knobs):
-- SANDS keeps the SINGLE Variation knob → user CHOICE: point it at ONE purpose, OR at BOTH and accept
-  the CONFLATION (one level drives several decisions — a feature-with-tradeoff the user OWNS: "I want
-  these linked" vs "separate"). No new Sands real estate.
-- STRAITS = the home for the full matrix: optional groups of SMALL threshold knobs. Shrinking knobs is
-  ACCEPTABLE HERE (unlike warp's live controls) because these are SET-AND-FORGET assignment/threshold
-  knobs, not performance controls — low-interaction → small is fine. Users wanting independent control
-  add the Straits group(s); users who don't keep Sands compact.
-- CAUSEWAY must get matching coverage: everything on Straits so far is CAUSEWAY-modulatable (Causeway =
-  the CV/mod expander layer, CHAT_HANDOFF:98 "Causeway mod"). A new Straits assignable-consumer group
-  would need corresponding Causeway modulation, or it becomes the one Straits group that CAN'T be
-  modulated — a modulation-layer inconsistency (the "this one's special" seam class). So: add the
-  Straits consumer group AND its Causeway mod path together.
+  LANE (draw source)      →  CONSUMER-KNOB GROUPS (each at its OWN event)
+  ─────────────────────────────────────────────────────────────────────
+  REST                    →  main-gate (base) · ghost-rest · ratchet-rest
+  LEGATO                  →  main-gate (base) · ghost-legato · ratchet-legato
+  VARIATION (gate mode)   →  pitch-hold (at main onset) · tie-across-rest (at rest-arrival)
 
-INVARIANT to preserve when built: all matrix consumers must read the SAME sampled shaped value for a
-given gate (no re-draw per consumer) — that shared draw is WHAT makes them correlatable. Separate
-thresholds (knobs), ONE shaped draw.
+Every cell is the SAME thing: a knob thresholding a lane's shaped draw at a specific event. No lane
+hosts a compound/special value; no knob means two things.
+
+WHY THE REQUIREMENT NEEDED THIS (not the overkill original): the point of independent subgate
+legato/rest is a RATE independent of the main-gate level. The original idea (assign VARIATION to
+subgate legato/rest) was OVERKILL — it added a whole separate draw when all you need is a separate
+THRESHOLD on the main rest/legato lane. The consumer-group model gives the independence minimally.
+And it FREES Variation for its best gate-mode use: PITCH-HOLD (hold vs re-draw pitch across a ratchet
+burst) — the one NEW decision with no existing lane (rest/legato already have lanes; pitch-hold
+doesn't), so it's the role that specifically WANTS Variation. More fundamental than the competitors
+("tie across rests", "advance playhead on tie into rest") — those MODIFY existing behaviour; pitch-
+hold adds a new DEGREE OF FREEDOM (ratchet = tremolo vs flourish). And "tie across rest" then becomes
+just ANOTHER Variation consumer group (parallel to ratchet-rest), not a special second use.
+
+INDEPENDENCE comes from DIFFERENT DRAW EVENTS + OWN KNOBS — the key timing fact:
+- Ghost / ratchet / main advance the playhead at DIFFERENT moments → a ghost-rest knob and a ratchet-
+  rest knob read the REST lane at DIFFERENT playhead steps = DIFFERENT, INDEPENDENT DRAWS (successive
+  draws on a lane are independent). Same for Variation: pitch-hold samples at MAIN ONSET, tie-across-
+  rest samples at REST-ARRIVAL → different events → independent.
+- So same-lane-different-EVENT consumers are INDEPENDENT (not auto-correlated). CORRECTION to an
+  earlier draft: the matrix does NOT "auto-correlate within a column" in general — that only holds
+  where two consumers read the SAME SAMPLE (e.g. a ratchet subgate landing COINCIDENT with a main
+  gate draw → same value). The robust coupling is CROSS-LANE at a SHARED draw event (rest-lane vs
+  melody-lane at the same playhead position), per OUTPUT_LAYER_DISTRIBUTION_MAPPING.md.
+- Because events differ, you need SEPARATE THRESHOLDS anyway to express different rates — so the
+  consumer-knobs aren't adding fake independence, they EXPOSE control over already-distinct draws.
+
+PHYSICAL HOME (Sands FULL):
+- SANDS keeps the single per-lane knob (main level). User can leave subgate behaviour inheriting it.
+- STRAITS = the consumer-group home: optional groups of SMALL set-and-forget threshold knobs (shrink
+  OK — assignment controls, not performance controls). Add the groups you want (ghost/ratchet rest/
+  legato, tie-across-rest, pitch-hold).
+- CAUSEWAY must get matching mod coverage for any new Straits group — everything on Straits is
+  Causeway-modulatable (the CV/mod layer, CHAT_HANDOFF:98); a group without it = the one that can't
+  be modulated = a modulation-layer seam. Add the Straits group AND its Causeway mod path together.
+
+GHOST pitch-hold cell: flagged to confirm — ghost is a gap/new-note, "hold" may be n/a there.
+INVARIANT: within a SINGLE draw event, all consumers of that event read the SAME sampled shaped value
+(no re-draw per consumer) — that is what makes SAME-EVENT consumers correlatable; DIFFERENT-event
+consumers are independent.
 
 ---
 
