@@ -903,3 +903,46 @@ reason to prioritise it.
 - Output-stage placement: a DELIBERATE, VISIBLE stage AFTER the distribution layer (never folded
   into the warp — the warp's value is the clean unique uniform-margin Sklar decomposition; atoms
   trade that away for an effect, so they stay a chosen stage).
+
+────────────────────────────────────────────────────────────────────────────────
+## CLAMP + CROSS-LANE TAIL DEPENDENCE — the first (and only) cross-LANE coupling mechanism (Rodney)
+
+VERIFIED PREMISE: cross-LANE correlation is ZERO by architecture. Lanes draw from DOMAIN-SEPARATED
+Philox streams — "one seed produces N INDEPENDENT stream keys via a per-stream offset" (PhiloxRng.hpp
+:110-114). So a melody uniform and an octave uniform are INDEPENDENT. Everything in the dependence
+theory so far (spread, CA, warp/θ modulation) is cross-VOICE (within a lane); cross-LANE has been
+structurally zero. Clamp is the FIRST thing that can change that — and only under one condition.
+
+### Does clamp create cross-lane tail dependence? ONLY with a SHARED FACTOR spanning the lanes.
+- WITHOUT a shared factor (today's independent lane streams): NO. Two independent lane uniforms, each
+  clamped, hit their rails independently → joint rail-hit rate = p_mel · p_oct (the PRODUCT = the
+  INDEPENDENCE value). Atoms exist per lane but DON'T co-occur beyond chance. Clamp alone gives
+  cross-VOICE tail dependence (same lane, correlated voices) but NOT cross-lane.
+- WITH a shared factor across lanes: YES, and it is EXACTLY MARSHALL-OLKIN. If ONE modulation source
+  drives the clamp depth (or warp) on BOTH melody AND octave, then when that source pushes both toward
+  their rails together, the two lanes atom-hit SIMULTANEOUSLY — an MO shock indexed by the lane-SUBSET
+  the modulation touches. The simultaneous rail-hit IS the MO singular diagonal, now in LANE space
+  (where before it was only in voice space). Genuine cross-lane tail dependence, calibratable by the
+  shared factor's reach.
+
+### Why this is a NEW axis (and musically pointed)
+It's the FIRST mechanism that creates cross-LANE coupling at all (the streams are independent by
+design). And it does it specifically IN THE TAIL (the atoms). Musically: "melody AND octave both slam
+to their extremes in the SAME step" = the whole VOICE lurches together across lanes — distinct from
+cross-voice ("voices 1-4 all go high together, in one lane"). Two orthogonal co-extremity gestures.
+
+### λ status — true λ>0 here (atoms), bounded by the shared factor's reach
+Unlike the continuous frailty case (λ=0, bounded factor), clamp makes a REAL point mass, so the
+cross-lane MO atom is genuine λ>0. But the MASS in that cross-lane atom (how often the lanes co-hit)
+is set by BOTH: clamp depth (per-lane marginal atom rate p_lane) AND the shared factor's reach (how
+correlated the two lanes' rail-crossings are). Bounded shared factor → elevated finite-quantile
+cross-lane co-occurrence + a real-but-small cross-lane atom. The product-rate (no shared factor) is
+the λ=0 cross-lane floor.
+
+### DESIGN RECIPE (if cross-lane tail coupling is ever wanted — the whole-voice-lurch gesture)
+Now known precisely: (1) clamp BOTH lanes; (2) route ONE modulation source to BOTH lanes' clamp-depth
+(or warp). Clamp provides the atoms; the shared cross-lane modulation provides the coupling; together
+= an MO singular component in lane-space. WITHOUT step (2), clamp's atoms stay cross-lane-independent
+(product rate, no coupling). This is the ONLY route to cross-lane dependence in the whole architecture
+(domain-separated streams give nothing else), so if the gesture is wanted, this is how; if cross-lane
+independence is wanted (the default), simply don't share a factor across lanes' clamps.
