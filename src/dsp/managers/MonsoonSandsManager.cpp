@@ -137,12 +137,22 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // lane: Macro's global curve reached even East-owned cells (the "non-delegated
     // leak"), East's own-slot warp was bypassed for V2+ ("East warp has no effect"),
     // and V1 never tracked Macro ("no effect on voice 1"). Fill the rows from the store
-    // (getMacroOwn, voiceSlot rows: v=0 → V1, 1..15 → V2..V16; no Macro ⇒ East is the
-    // sole owner) — the ONE shared Inputs::fillOwners both managers use.
-    topoIn.fillOwners(/*eastPresent=*/expanderManager.cachedEastSandsVisual != nullptr,
-                      [&hasMacro, gMon](int v, int l) {
-                          return !hasMacro || (gMon && gMon->ownerIsEast(v, l));
-                      });
+    // (voiceSlot rows: v=0 → V1, 1..15 → V2..V16; no Macro ⇒ East is the sole owner).
+    // Layer-2 (ZAI_PROMPT_delegation_decision.md §2B): the ONE shared fill is now
+    // Inputs::fillOwnersFromStore. The lambda's `gMon &&` guard moves to the caller —
+    // gMon is the store owner resolved above; where it is null the store is unreadable
+    // and the fallback reproduces the old guard value EXACTLY (!hasMacro per cell — the
+    // lambda's short-circuit: a CONSTANT, no store read, so not the drift class the
+    // one-fill rule targets; it also keeps this file's B3 pin in test_warp_voice_isolation
+    // true). The helper's raw `> 0.5f` is bit-identical to ownerIsEast (Monsoon.hpp).
+    if (gMon) {
+        topoIn.fillOwnersFromStore(gMon->editor.macroOwn,
+                                   /*eastPresent=*/expanderManager.cachedEastSandsVisual != nullptr,
+                                   /*macroPresent=*/hasMacro);
+    } else {
+        topoIn.fillOwners(/*eastPresent=*/expanderManager.cachedEastSandsVisual != nullptr,
+                          [hasMacro](int, int) { return !hasMacro; });
+    }
     if (monoVis) {
         // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
         // SANDS CONSOLIDATION Step 7: monoV1Owner removed — V1 ownership now via eastV1Owner only.

@@ -83,20 +83,23 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
     // Now 5 poly lanes: MEL/OCT/QMIX/REST/ACC (editor order).
     if (cachedEastSandsVisual) {
         Monsoon* mmTopo = owner;   // back-pointer (set in Monsoon::process)
-        // No Macro → East is the sole owner of V1 (and everything). Without this,
-        // getMonoMacroOwn returns false (row 15 defaults to 0), so V1's owner resolves
-        // to MACRO in the topology → laneOwnedByMacroTopo returns true → the V1 spread
-        // knob is LOCKED (inert) and the V1 bar fill falls to engine.spreadE (stale/0).
-        const bool noMacro = (cachedMacroSandsVisual == nullptr);
-        // CC_PROMPT_07: the ONE store→Inputs fill (SandsTopology::Inputs::fillOwners),
-        // shared with MonsoonSandsManager::processDNA — the hand-rolled loop is gone so
-        // the two topologies can never drift (that drift left the warp delegation matrix
-        // at its struct defaults). voiceSlot rows throughout: v=0 → V1, 1..15 → V2..V16
-        // (the old loop stopped at effPolyVoices; the store holds all 16 rows and
-        // owner() is only queried for live voices, so filling 1..15 is a safe superset).
-        topoIn.fillOwners(/*eastPresent=*/true, [mmTopo, noMacro](int v, int l) {
-            return noMacro || (mmTopo && mmTopo->ownerIsEast(v, l));
-        });
+        // CC_PROMPT_07 → layer-2 (ZAI_PROMPT_delegation_decision.md §2A): the ONE
+        // store→topo fill is SandsTopology::Inputs::fillOwnersFromStore — the hand-written
+        // lambda is gone so the two topologies can never drift (that drift left the warp
+        // delegation matrix at its struct defaults). voiceSlot rows throughout: v=0 → V1,
+        // 1..15 → V2..V16 (the old loop stopped at effPolyVoices; the store holds all 16
+        // rows and owner() is only queried for live voices, so filling 1..15 is a safe
+        // superset). The old noMacro guard's effect lives on as the helper's !macroPresent
+        // term: no Macro attached ⇒ East is the sole owner of V1 and everything (without
+        // that term V1's spread knob locked inert and its bars fell to engine.spreadE).
+        // The helper's raw `> 0.5f` is bit-identical to ownerIsEast (Monsoon.hpp —
+        // getMacroOwn(v,l) > 0.5f over this same array); it stays raw because the helper
+        // cannot include Monsoon — that is what makes it rig-testable (test_ownership_flip).
+        // owner (mmTopo) is non-null here by construction: Monsoon.cpp sets
+        // expanderManager.owner = this immediately before sync() (verified at brief
+        // execution) — the old lambda's `mmTopo &&` term guarded a null that cannot be.
+        topoIn.fillOwnersFromStore(mmTopo->editor.macroOwn, /*eastPresent=*/true,
+                                   /*macroPresent=*/cachedMacroSandsVisual != nullptr);
     }
     const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
 
@@ -421,14 +424,17 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                         // deleted together with its stale comment.)
                         // Resolver step 4: the selection + [0,3] clamp + lround ride
                         // SandsModifierResolver<DirPolicy> — redDot::resolveDirItem —
-                        // byte-identical to the old local ternary. NOTE the store flag's
-                        // polarity: ownerIsEast (getMacroOwn > 0.5) means EAST owns (the
-                        // East UI's per-lane owner switch writes 1 = East owns,
-                        // StraitsEastSandsVisual.cpp), so delegated-to-Macro is its
-                        // COMPLEMENT.
+                        // byte-identical to the old local ternary.
+                        // Layer-2 §3 DECIDED — option B (Rodney 2026-10-21): delegated is
+                        // the TOPOLOGY answer (owner()==MACRO), not a raw store read;
+                        // direction joins warp's semantics ("Direction can't get anything
+                        // from a missing module"). Byte-identical in every Macro-attached
+                        // state (macroPresent parity verified); the ONE changed state is
+                        // no-Macro ∧ store-0, where delegated flips true→false and
+                        // direction plays East's own per the 3-case rule (case 1).
                         // getMacroOwn/getGlobalDir take the unified lane order — same as l
                         // (editor == engine == strand) — so l passes through directly.
-                        const bool delegated = !mmOwn->ownerIsEast(v, l);
+                        const bool delegated = (topo.owner(v, l) == dotModular::SandsTopology::Role::MACRO);
                         engine.laneDirVPending_[v][l] = (SequencerEngine::LaneDir)
                             redDot::resolveDirItem(delegated, mmOwn->getLaneDir(v, l), mmOwn->getGlobalDir(l));
                     }

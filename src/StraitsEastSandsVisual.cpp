@@ -704,12 +704,18 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         }
         if (module) {
             Monsoon* mmT = getMonsoon();
-            for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-                in.eastV1Owner[el] = mmT ? mmT->ownerIsEast(Monsoon::kMonoMacroOwnRow, el) : false;
-                // voiceSlot: pv = 1..15 (V2..V16). V1 at [0] unused (eastV1Owner covers it).
-                for (int pv = 1; pv < 16; ++pv)
-                    in.eastPolyOwner[pv][el] = mmT ? mmT->ownerIsEast(pv, el) : false;
-            }
+            // Layer-2 (ZAI_PROMPT_delegation_decision.md §2C): the base fill routes through
+            // the ONE store→topo helper (fillOwnersFromStore), same as both managers. The
+            // old loop was a pure ownerIsEast read (no !macroPresent term), so with Macro
+            // absent the ROW BITS now read all-East-owned where they used to echo the raw
+            // store — provably outcome-identical: every consumer reaches these rows
+            // through owner(), which consults them only under in.macroPresent, and with
+            // Macro absent owner() answers EAST for all 112 cells under either fill (the
+            // 3-case rule's case 1). Bit-identical in every Macro-attached state. The
+            // live-proxy overlay below is UI-live semantics and stays exactly as is.
+            if (mmT)
+                in.fillOwnersFromStore(mmT->editor.macroOwn, /*eastPresent=*/true,
+                                       /*macroPresent=*/in.macroPresent);
             // The CURRENT tab's owner cells live in the display proxy (ownerDispId) and are
             // only flushed to the persistent slot on tab-exit — so for the current voice,
             // read the LIVE proxy, else buildTopo would lag live edits (and the 4c cross-

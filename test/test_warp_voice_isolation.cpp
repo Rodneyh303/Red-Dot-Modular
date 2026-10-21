@@ -326,11 +326,12 @@ int main() {
                 "⇒ warpDelegated_ all-true for V2+ on every lane, V1 never delegated");
     });
 
-    TEST("B3 one implementation: MonsoonExpanderManager's STEP 5b owner fill routes through the SAME fillOwners helper", {
+    TEST("B3 one implementation: MonsoonExpanderManager's STEP 5b owner fill routes through the SAME one-fill home (fillOwnersFromStore — the layer-2 helper both managers + the visual share)", {
         const std::string src = slurp(repoRoot() + "/src/dsp/managers/MonsoonExpanderManager.cpp");
-        EXPECTF(contains(src, "fillOwners("),
-                "MonsoonExpanderManager.cpp does not call fillOwners( — the owner fill is a second, "
-                "hand-rolled implementation that can drift from the manager's");
+        EXPECTF(contains(src, "fillOwnersFromStore("),
+                "MonsoonExpanderManager.cpp does not call fillOwnersFromStore( — the owner fill is a second, "
+                "hand-rolled implementation that can drift from the manager's (layer-2 moved the one "
+                "home to SandsTopology::Inputs::fillOwnersFromStore; this pin tracks it)");
     });
 
     TEST("B3 Macro bars off-by-one gone: no `polyVoice + 1` in StraitsSandsMacroVisual.cpp (macroOwnProbability receives voiceSlot; +1 double-shifted V2's bars onto V3's row)", {

@@ -82,6 +82,16 @@ struct SandsTopology {
                     eastPolyOwner[v][l] = ownerIsEast(v, l);
             }
         }
+
+        // Layer-2 home of the store→topo fill (ZAI_PROMPT_delegation_decision.md): the ONE
+        // derivation every consumer uses. Plain-data in — the 112-float macroOwn store, no
+        // Monsoon — so the rig can pin the whole owner-flip matrix (test_ownership_flip).
+        // Same predicate the manager lambdas hand-wrote: !macroPresent || store > 0.5.
+        void fillOwnersFromStore(const float* macroOwn112, bool eastPresent, bool macroPresent) {
+            fillOwners(eastPresent, [macroOwn112, macroPresent](int v, int l) {
+                return !macroPresent || macroOwn112[v * 7 + l] > 0.5f;
+            });
+        }
     };
 
     Config config = Config::EMPTY;
