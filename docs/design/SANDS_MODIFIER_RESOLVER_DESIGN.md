@@ -133,11 +133,25 @@ its own brief when picked up.
    round-trip (format untouched). Predicate named `ownerIsEast(v,l)` — the topology's own
    fillOwners vocabulary (SandsTopology.hpp:71), not this entry's provisional `eastOwns`. The
    :970/:95/:398-399/:427 anchors above are PRE-MERGE; the brief re-anchors everything.
+   **STATUS (2026-10-21, later): EXECUTED — commit ac8cfd34** (all 14 sites migrated byte-identically;
+   rig 71/71 both modes, STRICT 1494/1494 clean, manifest EMPTY; plugin build still owed — SDK
+   unreachable from the verification sandbox, executor-side gate).
 2. Already-flagged, unchanged: the mono `lane >= 4` stale set {ACC,VAR,LEG} in monoDirAuthority
    (CC_PROMPT_08 territory); the dead `(item==3?1:0)` tap ternary (3 sites); the mono LOR copies
    (sum-once form / round+unclamped-delegated); the harness RESIDUALS printf wording (still cites
    combineLOR + pre-step-4 line numbers — cosmetic); the feat/warp-ui merge (expect a trivial
    conflict on the two closed gate bodies — take either side).
+3. DELEGATION-DECISION UNIFICATION (layer 2) — RULING (Rodney, 2026-10-21, after asking whether
+   delegation should move INTO the resolver): it does NOT — the resolver CONSUMES the `delegated`
+   boolean (bridge methodology + rig-visibility depend on that seam; "one topology authority feeds
+   MANY value resolvers" stands). Instead the DECISION side gets the one-home discipline in three
+   named layers: (1) store polarity = `Monsoon::ownerIsEast` (done, ac8cfd34); (2) derivation = ONE
+   store→topo fill (`fillOwnersFromStore`, rig-visible, plain-data) + all consumers ask
+   `topo.owner()` — the direction push's RAW-STORE second path retires or is pinned (decision
+   point: in the no-Macro ∧ store-0 state, warp plays own-slot but direction plays Macro's global
+   — the two behaviors DISAGREE today; one of them is wrong per product intent); (3) selection =
+   the policies, unchanged. Brief: `ZAI_PROMPT_delegation_decision.md` (same folder) — §3 needs
+   Rodney's option A/B call before execution.
 
 ## NAMING
 `SandsModifierResolver` (or `DelegatedLaneVoiceResolver`). The header carries the one-sentence rule so
