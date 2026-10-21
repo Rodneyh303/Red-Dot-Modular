@@ -92,6 +92,43 @@ Tie=same pitch, Legato=new pitch, NewNote=retrigger). The legato lane decides
 retrigger-vs-not. Quantiser (Mode D) samples the incoming CV at each subGate onset, so a
 repeated incoming pitch naturally yields a Tie.
 
+### OPEN DESIGN QUESTION (Rodney, 2026-10) — should ratchet subgates RE-DRAW pitch, or HOLD it?
+CURRENT BEHAVIOUR (verified in code): subgates advance the playhead on ANY rise
+(mainGateRise || subGateRise || ghostRise → advancePlayhead; SequencerEngine.cpp:947), and ALL
+pitch lanes (melody/octave/qmix) DRAW FRESH at each subgate (SequencerEngine.cpp:1015 "all pitch
+lanes draw, Tie/Legato emergent from pitch equality"). So a ratchet is N independent fresh draws;
+a Tie EMERGES only when a fresh draw happens to equal the previous pitch. This FELL OUT of the
+"advance on any subgate" decision — applying step machinery one level down was simpler/consistent —
+it was NEVER deliberately decided whether to hold pitch across a ratchet burst. (Ghost DOES redraw
+because it's genuinely a new note; the ratchet-pitch question is the unconsidered one.)
+
+TWO REGIMES (both legitimate, different instruments):
+- RE-DRAW (current): a ratchet is a MELODIC FLOURISH — N hits, N (potentially) different pitches
+  (arpeggiated/moving stutters). Pitch is a per-SUBGATE property.
+- HOLD: a ratchet is a RHYTHMIC subdivision of ONE note — N hits, SAME pitch (drum-roll/tremolo).
+  Pitch is the STEP's property; the ratchet divides TIME/articulation only, not pitch. Matches the
+  common sequencer mental model ("ratchet subdivides the step; pitch is the step's").
+A defensible default: HOLD (ratchet = time/articulation tool), with RE-DRAW as an opt-in
+("re-pitch ratchets") — so the melodic-flourish is chosen, not a surprise to someone expecting a
+tremolo. But it is a MUSICAL call (Rodney's), not an engineering one. The point: make it a DECISION,
+not an inherited accident.
+
+COUPLING-THEORY DEPENDENCY (OUTPUT_LAYER_DISTRIBUTION_MAPPING.md cross-lane note): this decision
+picks which cross-lane coupling regime applies between a per-step lane (melody) and the per-subgate
+Variation-driven-articulation:
+- HOLD melody → melody is per-STEP, Variation per-SUBGATE → CROSS-RATE coupling: the step's melody
+  atom gates the WHOLE ratchet burst's articulation ("accented step ⟺ its whole burst locks long").
+- RE-DRAW melody → both per-subgate → SAME-RATE coupling: each ratchet hit's pitch couples to its own
+  articulation. (The cross-lane note currently assumes the HOLD/cross-rate case — flag it contingent.)
+
+INTERESTING OPTION (Rodney) — hold-probability as ANOTHER assignable-Variation use in gate mode:
+Variation on the MAIN gate draw could be assigned to the PROBABILITY of holding pitch across
+subgates (so hold-vs-redraw becomes a probabilistic per-step decision, not a global mode). CAVEAT:
+the Variation KNOB LEVEL would then CONFLATE this with Variation's other gate-mode uses (subgate
+rest/legato assignment) — one knob, multiple assigned meanings. Needs a resolution (separate
+assignment slots? a routing matrix? per-use scaling?) so one knob setting doesn't mean three things.
+Captured as a candidate, not a decision.
+
 ---
 
 ## Where the code changes land (verified against the tree)
