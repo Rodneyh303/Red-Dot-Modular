@@ -144,9 +144,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // and the fallback reproduces the old guard value EXACTLY (!hasMacro per cell — the
     // lambda's short-circuit: a CONSTANT, no store read, so not the drift class the
     // one-fill rule targets; it also keeps this file's B3 pin in test_warp_voice_isolation
-    // true). The helper's raw `> 0.5f` is bit-identical to ownerIsEast (Monsoon.hpp).
+    // true). The helper takes the boolean store directly (editor.eastOwns) — the
+    // boolean-model migration (Rodney, 2026-10-22) removed the float `> 0.5f`; there is
+    // no threshold anywhere in the ownership pipeline now.
     if (gMon) {
-        topoIn.fillOwnersFromStore(gMon->editor.macroOwn,
+        topoIn.fillOwnersFromStore(gMon->editor.eastOwns,
                                    /*eastPresent=*/expanderManager.cachedEastSandsVisual != nullptr,
                                    /*macroPresent=*/hasMacro);
     } else {

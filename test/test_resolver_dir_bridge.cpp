@@ -18,7 +18,8 @@
 // duplicated VERBATIM from the pre-step-4 MonsoonExpanderManager.cpp (tests
 // may duplicate; production may not) — with one naming note: the old ternary's
 // true-branch was "store flag set → the voice's OWN getLaneDir", and the store
-// flag (getMacroOwn) is EAST-owns (the East UI's owner switch writes 1 = East
+// flag (Monsoon::ownerIsEast over the boolean eastOwns store) is EAST-owns (the
+// East UI's owner switch writes true = East
 // owns), so delegated-to-Macro is the flag's COMPLEMENT at the poly call
 // site. The mono line's field arms (macroGlobal ? getGlobalDir : getLaneDir)
 // reduce to the SAME oracle shape with delegated = macroGlobal

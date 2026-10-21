@@ -7,19 +7,21 @@
 // Everything here runs through the ONE store→topo fill,
 // SandsTopology::Inputs::fillOwnersFromStore (plain-data, rig-visible):
 //   F1. Owner-flip grid: 16 voices × 7 lanes × {eastPresent × macroPresent} × store
-//       {0,1} — store 0→1 flips topo.owner() MACRO↔EAST (rule case 3); no-Macro ⇒
-//       all-EAST (case 1); Macro-present ∧ store-0 ⇒ MACRO (case 2); MACRO_SOLE (no
-//       East) ⇒ MACRO regardless of store (case 2's no-East form); neither ⇒ NONE.
-//   F2. Store-domain pin: only 0.0/1.0 are meaningful (the ownership brief §3 — every
-//       writer is 0/1-valued); the two domain values resolve OPPOSITE owners cellwise.
+//       {false,true} — store false→true flips topo.owner() MACRO↔EAST (rule case 3);
+//       no-Macro ⇒ all-EAST (case 1); Macro-present ∧ store-false ⇒ MACRO (case 2);
+//       MACRO_SOLE (no East) ⇒ MACRO regardless of store (case 2's no-East form);
+//       neither ⇒ NONE.
+//   F2. Store-domain pin: the store IS a boolean (boolean model, Rodney 2026-10-22 —
+//       the old float store + >0.5 threshold is retired); the two domain values
+//       resolve OPPOSITE owners cellwise (guards a short-circuit collapsing the domain).
 //   F3. Warp-derivation pin at pattern level: warpDelegated_[v][l] ==
 //       (topo.owner(v,l)==MACRO) given the same Inputs — the manager's derivation rule
 //       as an executable contract, so a polarity flip fails THIS suite, not ears. The
 //       store flip propagates through re-derivation; counts are non-vacuous.
 //   F4. No-Macro warp pin (rule case 1 at pattern level): macroPresent=false derives
-//       delegated=false on ALL 112 cells even with a fully-Macro store — the state
-//       direction used to read from the raw store and get wrong (layer-2 §3 option B
-//       fixed the manager side; this pin holds the RULE).
+//       delegated=false on ALL 112 cells even with a fully-Macro-owned store — the
+//       state direction used to read from the raw store and get wrong (layer-2 §3
+//       option B fixed the manager side; this pin holds the RULE).
 // Honesty clause (brief §4): if a rule case were unreachable in the plain-data fill,
 // pin the reachable subset and document — none was: all four presence states are
 // expressible with plain-data Inputs.
@@ -52,23 +54,23 @@ using Role = SandsTopology::Role;
 
 // Expected owner under the 3-case rule for a cell — pure function of presence + store.
 // This is the SPEC the fill+owner() pair must satisfy (ruleOwner is the suite's oracle).
-static Role ruleOwner(bool east, bool macro, float storeCell) {
+static Role ruleOwner(bool east, bool macro, bool storeCell) {
     if (!east && !macro) return Role::NONE;
     if (!east)           return Role::MACRO;   // case 2 (no East)
     if (!macro)          return Role::EAST;    // case 1
-    return storeCell > 0.5f ? Role::EAST : Role::MACRO;  // case 3
+    return storeCell ? Role::EAST : Role::MACRO;  // case 3
 }
 
 int main() {
     std::cout << "\033[1mOwnership flip (layer-2 §4) Tests\033[0m\n" << std::string(58, '=') << "\n";
 
     // ── F1: the owner-flip grid ──────────────────────────────────────────────
-    TEST("F1 owner-flip grid: 16x7 x {eastPresent x macroPresent} x store {0,1} — owner() follows the 3-case rule on every cell through fillOwnersFromStore", {
+    TEST("F1 owner-flip grid: 16x7 x {eastPresent x macroPresent} x store {false,true} — owner() follows the 3-case rule on every cell through fillOwnersFromStore", {
         for (int east = 0; east <= 1; ++east)
         for (int macro = 0; macro <= 1; ++macro)
         for (int sv = 0; sv <= 1; ++sv) {
-            float store[112];
-            for (int i = 0; i < 112; ++i) store[i] = (float)sv;   // F2: domain values only
+            bool store[112];
+            for (int i = 0; i < 112; ++i) store[i] = (sv != 0);   // F2: domain values only
             SandsTopology::Inputs in;
             in.eastPresent = east != 0; in.macroPresent = macro != 0;
             in.fillOwnersFromStore(store, east != 0, macro != 0);
@@ -81,9 +83,9 @@ int main() {
         }
     });
 
-    TEST("F1 store 0→1 flip: with East+Macro attached the flip turns MACRO↔EAST on every one of the 112 cells (the delegation toggle the whole feature rides on)", {
-        float store0[112] = {0}, store1[112];
-        for (int i = 0; i < 112; ++i) store1[i] = 1.0f;
+    TEST("F1 store false→true flip: with East+Macro attached the flip turns MACRO↔EAST on every one of the 112 cells (the delegation toggle the whole feature rides on)", {
+        bool store0[112] = {}, store1[112];
+        for (int i = 0; i < 112; ++i) store1[i] = true;
         SandsTopology::Inputs in0; in0.eastPresent = true; in0.macroPresent = true;
         in0.fillOwnersFromStore(store0, true, true);
         SandsTopology::Inputs in1; in1.eastPresent = true; in1.macroPresent = true;
@@ -98,9 +100,9 @@ int main() {
     });
 
     // ── F2: the store-domain pin ─────────────────────────────────────────────
-    TEST("F2 store-domain pin: the writable domain is {0.0, 1.0} (every writer is 0/1-valued) — the two domain values resolve OPPOSITE owners on all 112 cells, east+macro", {
-        float store0[112] = {0}, store1[112];
-        for (int i = 0; i < 112; ++i) store1[i] = 1.0f;
+    TEST("F2 store-domain pin: the store IS boolean (true = East owns, false = Macro owns) — the two domain values resolve OPPOSITE owners on all 112 cells, east+macro", {
+        bool store0[112] = {}, store1[112];
+        for (int i = 0; i < 112; ++i) store1[i] = true;
         SandsTopology::Inputs a; a.eastPresent = true; a.macroPresent = true;
         a.fillOwnersFromStore(store0, true, true);
         SandsTopology::Inputs b; b.eastPresent = true; b.macroPresent = true;
@@ -110,7 +112,7 @@ int main() {
         for (int v = 0; v < 16; ++v)
             for (int l = 0; l < 7; ++l)
                 EXPECTF((ta.owner(v, l) == Role::MACRO) != (tb.owner(v, l) == Role::MACRO),
-                        "domain cell (v=%d,l=%d): 0.0 and 1.0 must resolve opposite", v, l);
+                        "domain cell (v=%d,l=%d): false and true must resolve opposite", v, l);
     });
 
     // ── F3: the warp-derivation pin (pattern level) ──────────────────────────
@@ -118,11 +120,11 @@ int main() {
         SequencerEngine se;
         // Store model: East owns everything except three ceded cells (V1 melody, V4
         // octave, V16 legato — the V1-vs-poly edge rows the old bugs lived on).
-        float store[112];
-        for (int i = 0; i < 112; ++i) store[i] = 1.0f;
-        store[0 * 7 + 0] = 0.0f;
-        store[3 * 7 + 1] = 0.0f;
-        store[15 * 7 + 6] = 0.0f;
+        bool store[112];
+        for (int i = 0; i < 112; ++i) store[i] = true;
+        store[0 * 7 + 0]  = false;
+        store[3 * 7 + 1]  = false;
+        store[15 * 7 + 6] = false;
         auto derive = [&se](const SandsTopology& topo) {
             for (int v = 0; v < 16; ++v)
                 for (int l = 0; l < 7; ++l)
@@ -143,8 +145,8 @@ int main() {
             }
         EXPECTF(deleg == 3, "non-vacuous: want exactly the 3 ceded cells delegated, got %d", deleg);
         // Flip: V4 octave reclaimed by East, V2 QMIX ceded — re-derive, matrix follows.
-        store[3 * 7 + 1] = 1.0f;
-        store[1 * 7 + 2] = 0.0f;
+        store[3 * 7 + 1] = true;
+        store[1 * 7 + 2] = false;
         SandsTopology::Inputs in2; in2.eastPresent = true; in2.macroPresent = true;
         in2.fillOwnersFromStore(store, true, true);
         const SandsTopology topo2 = SandsTopology::build(in2);
@@ -160,10 +162,9 @@ int main() {
     });
 
     // ── F4: no-Macro warp pin (rule case 1 at pattern level) ─────────────────
-    TEST("F4 no-Macro warp (rule case 1): macroPresent=false derives delegated=false on ALL 112 cells even with a fully-Macro store — warp (and, post-layer-2 §3 option B, direction) play East's own in the no-Macro state", {
+    TEST("F4 no-Macro warp (rule case 1): macroPresent=false derives delegated=false on ALL 112 cells even with a fully-Macro-owned store — warp (and, post-layer-2 §3 option B, direction) play East's own in the no-Macro state", {
         SequencerEngine se;
-        float store[112];
-        for (int i = 0; i < 112; ++i) store[i] = 0.0f;   // "Macro owns everything" per raw store
+        bool store[112] = {};   // false = "Macro owns everything" per the raw store
         SandsTopology::Inputs in; in.eastPresent = true; in.macroPresent = false;
         in.fillOwnersFromStore(store, true, false);      // store is UNREAD (short-circuit)
         const SandsTopology topo = SandsTopology::build(in);

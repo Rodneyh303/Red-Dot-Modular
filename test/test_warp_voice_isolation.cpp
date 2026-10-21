@@ -209,7 +209,8 @@ int main() {
         SequencerEngine se;
         fillRandomGolden(se.pe);
         WarpBank bank; se.pe.setWarpBank(&bank);
-        // The owner STORE model (what getMacroOwn(v,l) > 0.5 returns; voiceSlot rows).
+        // The owner STORE model (Monsoon::ownerIsEast over the boolean eastOwns store;
+        // voiceSlot rows — boolean model, Rodney 2026-10-22).
         bool store[16][7];
         for (int v = 0; v < 16; ++v)
             for (int l = 0; l < 7; ++l) store[v][l] = true;     // default East owns

@@ -69,7 +69,7 @@ struct SandsTopology {
         // This is the ONE implementation both managers call; the STEP 5b hand-roll in
         // MonsoonExpanderManager migrated onto it so the two topologies can never drift.
         //   ownerIsEast(voiceSlot, editorLane) — the store read (Monsoon::ownerIsEast(v,l),
-        //   i.e. getMacroOwn(v,l) > 0.5),
+        //   the boolean eastOwns store — no threshold since the boolean-model migration),
         //   voiceSlot convention (VoiceResolver): 0 = V1, 1..15 = V2..V16.
         //   eastPresent=false ⇒ rows stay defaulted (V1 local / poly Macro-when-Macro-
         //   present — the MACRO_SOLE semantics; nothing to fill from).
@@ -84,12 +84,15 @@ struct SandsTopology {
         }
 
         // Layer-2 home of the store→topo fill (ZAI_PROMPT_delegation_decision.md): the ONE
-        // derivation every consumer uses. Plain-data in — the 112-float macroOwn store, no
+        // derivation every consumer uses. Plain-data in — the 112-bool eastOwns store, no
         // Monsoon — so the rig can pin the whole owner-flip matrix (test_ownership_flip).
-        // Same predicate the manager lambdas hand-wrote: !macroPresent || store > 0.5.
-        void fillOwnersFromStore(const float* macroOwn112, bool eastPresent, bool macroPresent) {
-            fillOwners(eastPresent, [macroOwn112, macroPresent](int v, int l) {
-                return !macroPresent || macroOwn112[v * 7 + l] > 0.5f;
+        // BOOLEAN MODEL (Rodney, 2026-10-22): the store IS the boolean. The old
+        // `> 0.5f` threshold existed only because the store was float — it is GONE; this
+        // is now pure boolean algebra. !macroPresent keeps the no-Macro short-circuit
+        // (rule case 1: nothing to delegate to ⇒ East owns every cell, store unread).
+        void fillOwnersFromStore(const bool* eastOwns112, bool eastPresent, bool macroPresent) {
+            fillOwners(eastPresent, [eastOwns112, macroPresent](int v, int l) {
+                return !macroPresent || eastOwns112[v * 7 + l];
             });
         }
     };

@@ -434,11 +434,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // lane here is the EDITOR lane (0 MEL,1 OCT,2 QMIX,3 REST,4 ACC): the panel places
         // param_owner_<el> at editor row el (gen_east_clean.py), exactly like param_dir_<el>.
         // The macroOwn store is lane-indexed and editor == engine (identity), so the same
-        // index feeds every get/setMacroOwn / get/setMonoMacroOwn call. Colours are editor-ordered.
+        // index feeds every get/setOwnerEast call. Colours are editor-ordered.
         for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
-            // STORE-BACKED (MVC step 1d): OwnerCell reads/writes editor.macroOwn via
-            // get/setMacroOwn (poly) or get/setMonoMacroOwn (V1). V1+Mono (tab1MonoMirror) is
-            // locked and DISPLAYS Mono's owner (getMonoOwner, editor-indexed). Live slot
+            // STORE-BACKED (MVC step 1d): OwnerCell reads/writes the boolean eastOwns store
+            // via get/setOwnerEast (boolean model, Rodney 2026-10-22). V1+Mono (tab1MonoMirror)
+            // is dead (Mono killed Step 6). Live slot
             // resolution: onMonoTab()/polyVoice() per tab. Was ownerDispId param.
             bindWidget<OwnerCell>(
                 "param_owner_" + std::to_string(lane),
@@ -448,9 +448,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     const float stepW = (ED_W - 2.f*6.f) / 16.f;
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
-                    // V1→voice-0: unified ownership via getMacroOwn at the voice's row.
-                    // V1 (onMonoTab) = row kMonoMacroOwnRow (15); V2+ = poly bank index.
-                    // No separate getMonoMacroOwn call — same accessor, different index.
+                    // V1→voice-0: unified ownership via getOwnerEast at the voice's row.
+                    // V1 = row 0 (kMonoMacroOwnRow); V2+ = poly bank rows 1..15.
+                    // No separate mono call — same accessor, different index.
                     w->getOwnsFn = [this, lane]() {
                         Monsoon* m = getMonsoon(); if (!m) return true;
                         // (tab1MonoMirror removed — Mono killed Step 6)
@@ -460,14 +460,18 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->setOwnsFn = [this, lane](bool b) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
-                        if (vi >= 0 && vi < 16) m->setMacroOwn(vi, lane, b ? 1.f : 0.f);
+                        if (vi >= 0 && vi < 16) m->setOwnerEast(vi, lane, b);
                     };
                     w->pushUndoFn = [this, lane](bool oldB, bool newB) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         const int vi = currentSlot();   // Phase A: V1=0, V2+=1..15 (unified)
                         redDot::applyAndPushStoreEdit<Monsoon>(m, "lane owner",
                             [lane, vi](Monsoon& mm, float val) {
-                                mm.setMacroOwn(vi, lane, val > 0.5f);
+                                // applyAndPushStoreEdit is float-valued (Rack history): the
+                                // > 0.5f here is the sanctioned WIDGET-boundary quantization
+                                // (write-side edge), not a store read — the store is boolean
+                                // (boolean model, Rodney 2026-10-22).
+                                mm.setOwnerEast(vi, lane, val > 0.5f);
                             },
                             oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
                     };
@@ -714,7 +718,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // 3-case rule's case 1). Bit-identical in every Macro-attached state. The
             // live-proxy overlay below is UI-live semantics and stays exactly as is.
             if (mmT)
-                in.fillOwnersFromStore(mmT->editor.macroOwn, /*eastPresent=*/true,
+                in.fillOwnersFromStore(mmT->editor.eastOwns, /*eastPresent=*/true,
                                        /*macroPresent=*/in.macroPresent);
             // The CURRENT tab's owner cells live in the display proxy (ownerDispId) and are
             // only flushed to the persistent slot on tab-exit — so for the current voice,
@@ -887,7 +891,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
 
     // lane is the EDITOR lane (onLaneRightClick passes the editor row: 0 MEL,1 OCT,2 QMIX,
     // 3 REST,4 ACC). laneNames[] is editor-ordered; the macroOwn store is lane-indexed and
-    // editor == engine (identity), so the same index feeds get/setMacroOwn / eastOwnsLane.
+    // editor == engine (identity), so the same index feeds get/setOwnerEast / eastOwnsLane.
     void openLaneOwnershipMenu(int lane, rack::math::Vec editorLocalPos) {
         if (!module) return;
         const int voice = currentSlot();   // Phase A: V1=0, V2+=1..15 (was polyVoice)
@@ -909,8 +913,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             void onAction(const event::Action& e) override {
                 // MVC step 1d: write the store directly (was proxy param + saveVoiceMacro flush,
                 // both deleted). voice = currentSlot() (0..15, V1=0); lane = the unified lane.
-                float val = setToEast ? 1.f : 0.f;
-                if (auto* m = widget->getMonsoon()) m->setMacroOwn(voice, lane, val);
+                if (auto* m = widget->getMonsoon()) m->setOwnerEast(voice, lane, setToEast);
             }
         };
 
@@ -936,11 +939,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             int lane;
             bool setToEast;
             void onAction(const event::Action& e) override {
-                float val = setToEast ? 1.f : 0.f;
                 // Set display proxy and persist to all 15 poly voice slots
-                // (owner proxy write DELETED — MVC step 1d: setMacroOwn below is the home.)
+                // (owner proxy write DELETED — MVC step 1d: setOwnerEast below is the home.)
                 if (auto* mmA = redDot::findMonsoonEitherSide(widget->module))
-                    for (int v = 1; v < 16; ++v) mmA->setMacroOwn(v, lane, val);
+                    for (int v = 1; v < 16; ++v) mmA->setOwnerEast(v, lane, setToEast);
             }
         };
 
@@ -1051,11 +1053,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (!(d & 1)) continue;          // an even number of flips is a no-op
                 if (lane >= dotModular::SandsGrid::POLY_LANES && ch == 0) continue;   // mono has no VAR/LEG delegation
                 if (lane < dotModular::SandsGrid::POLY_LANES) {
-                    // owner delegation (MACRO_OWN) migrated to Monsoon::editor.macroOwn
+                    // owner delegation (MACRO_OWN) lives in Monsoon::editor.eastOwns (boolean model)
                     if (auto* mm = findMonsoonEitherSide(mod)) {
                         // Phase A: ch IS the new index (V1=0, V2=1..15). Was ch-1 (old poly bank index).
-                        mm->setMacroOwn(ch, eng, mm->ownerIsEast(ch, eng) ? 0.f : 1.f);
-                        // (owner proxy write DELETED — MVC step 1d: setMonoMacroOwn/setMacroOwn above is the home.)
+                        mm->setOwnerEast(ch, eng, !mm->ownerIsEast(ch, eng));
+                        // (owner proxy write DELETED — MVC step 1d: setOwnerEast above is the home.)
                     }
                 } else {
                     // VAR/LEG delegation migrated to Monsoon::editor.varlegDeleg (fields)

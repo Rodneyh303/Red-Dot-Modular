@@ -185,9 +185,14 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     // Per-voice Macro banks — ALL 7 lanes, every lane uniform (the old 5-lane counts here
     // were vestigial from the pre-consolidation Mono-owns-VAR/LEG era and silently dropped
     // lanes 5/6 from every save).
+    // BOOLEAN MODEL (Rodney, 2026-10-22): ownership saves as JSON BOOLEANS under the
+    // polarity-explicit key "editorEastOwns" (true = East owns). NOT patch-compatible
+    // with the old "editorMacroOwn" 0.0/1.0 float array — compatibility is explicitly
+    // not kept (Rodney); a stale patch fails the new key lookup and keeps the defaulted
+    // store. No version shim, no numeric fallback.
     json_t* mo = json_array();
-    for (int i = 0; i < 112; ++i) json_array_append_new(mo, json_real(m->editor.macroOwn[i]));   // 16 × 7
-    json_object_set_new(root, "editorMacroOwn", mo);
+    for (int i = 0; i < 112; ++i) json_array_append_new(mo, json_boolean(m->editor.eastOwns[i]));   // 16 × 7
+    json_object_set_new(root, "editorEastOwns", mo);
     json_t* ms = json_array();
     for (int i = 0; i < 448; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));  // 16 × 7 × 4
     json_object_set_new(root, "editorMacroSend", ms);
@@ -465,10 +470,17 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
                     }
         }
     }
-    if (auto j = json_object_get(root, "editorMacroOwn")) {
+    // BOOLEAN MODEL: "editorEastOwns" entries are JSON true/false. A legacy
+    // "editorMacroOwn" float patch fails the key lookup → the store stays defaulted
+    // (compatibility not kept, per Rodney). There is NO numeric fallback and NO >0.5f
+    // here — the threshold class is fully retired from the ownership pipeline; the only
+    // sanctioned float boundary left is the undo widget edge (StraitsEastSandsVisual).
+    if (auto j = json_object_get(root, "editorEastOwns")) {
         if (json_is_array(j))
-            for (size_t i = 0; i < 112 && i < json_array_size(j); ++i)   // 16 × 7
-                m->editor.macroOwn[i] = (float)json_real_value(json_array_get(j, i));
+            for (size_t i = 0; i < 112 && i < json_array_size(j); ++i) {   // 16 × 7
+                json_t* cell = json_array_get(j, i);
+                if (json_is_boolean(cell)) m->editor.eastOwns[i] = json_boolean_value(cell) != 0;
+            }
     }
     if (auto j = json_object_get(root, "editorMacroSend")) {
         if (json_is_array(j))

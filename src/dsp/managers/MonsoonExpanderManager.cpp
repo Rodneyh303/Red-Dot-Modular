@@ -92,13 +92,15 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         // superset). The old noMacro guard's effect lives on as the helper's !macroPresent
         // term: no Macro attached ⇒ East is the sole owner of V1 and everything (without
         // that term V1's spread knob locked inert and its bars fell to engine.spreadE).
-        // The helper's raw `> 0.5f` is bit-identical to ownerIsEast (Monsoon.hpp —
-        // getMacroOwn(v,l) > 0.5f over this same array); it stays raw because the helper
-        // cannot include Monsoon — that is what makes it rig-testable (test_ownership_flip).
+        // The helper takes the boolean store directly (editor.eastOwns) — the
+        // boolean-model migration (Rodney, 2026-10-22) removed the float `> 0.5f` and
+        // with it the last threshold between the store and the topology. The helper
+        // still cannot include Monsoon and no longer needs any of its values: plain
+        // bool*, which is exactly what keeps it rig-testable (test_ownership_flip).
         // owner (mmTopo) is non-null here by construction: Monsoon.cpp sets
         // expanderManager.owner = this immediately before sync() (verified at brief
         // execution) — the old lambda's `mmTopo &&` term guarded a null that cannot be.
-        topoIn.fillOwnersFromStore(mmTopo->editor.macroOwn, /*eastPresent=*/true,
+        topoIn.fillOwnersFromStore(mmTopo->editor.eastOwns, /*eastPresent=*/true,
                                    /*macroPresent=*/cachedMacroSandsVisual != nullptr);
     }
     const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
