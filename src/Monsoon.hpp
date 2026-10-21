@@ -803,11 +803,14 @@ struct Monsoon : Module {
         // separate VAR/LEG atten path was a relic of the "VAR/LEG are mono-only, no spread"
         // era; the sands consolidation (POLY_LANES=7) ends it. varlegDeleg stays (it is the
         // VAR/LEG LOR delegation toggle, a distinct feature — see getVarlegDeleg).
-        // macroOwn: owner per poly lane(0..4, QMIX-widened). INDEXING IS POLY-BANK, NOT voiceSlot:
-        //   v = 0..14  -> V2..V16 (poly bank index)
-        //   v = 15     -> V1/mono   (see getMonoMacroOwn/setMonoMacroOwn)
-        // index = v*5 + lane. NOTE this differs from lorBase/spread/varlegAtten/macroSend/
-        // macroAtten, which all use VoiceResolver::voiceSlot (mono = slot 0).
+        // macroOwn: owner per lane, 7 lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG), 16 voiceSlot
+        //   rows. index = v*7 + lane — the SAME VoiceResolver::voiceSlot convention as
+        //   lorBase/spread/macroSend/macroAtten. Row 0 = V1/mono via kMonoMacroOwnRow
+        //   (getMonoMacroOwn/setMonoMacroOwn are DELETED; the old poly-bank v*5+lane
+        //   indexing is gone with them).
+        // VALUES: 0.0/1.0 only — written by the East owner menu / OwnerCell
+        // (StraitsEastSandsVisual.cpp :907/:937/:463/:1053), read via Monsoon::ownerIsEast
+        // (the polarity predicate: 1.0 = EAST owns the lane, 0.0 = Macro owns).
         float macroOwn[112] = {0};   // 16 × 7 poly lanes (SANDS CONSOLIDATION Step 1)
         // macroSend: Macro-CV blend send per (v=0..15)×lane×item(0..3). index=(v*7+lane)*4+item.
         // CONVENTION: VoiceResolver::voiceSlot (mono = slot 0). Verified against call sites.
@@ -1000,6 +1003,13 @@ struct Monsoon : Module {
     static constexpr int kMonoMacroOwnRow = 0;
     float getMacroOwn(int v, int lane) const { return editor.macroOwn[v*7 + lane]; }
     void  setMacroOwn(int v, int lane, float x) { editor.macroOwn[v*7 + lane] = x; }
+    // THE polarity predicate (post-campaign earmark): the macroOwn float store writes
+    // 1.0 = EAST owns the lane (East UI owner menu / OwnerCell), 0.0 = Macro owns — the
+    // name getMacroOwn does NOT say which side "> 0.5" selects. EVERY threshold read of
+    // the store goes through this from now on; hand-rolled `getMacroOwn(...) > 0.5f`
+    // comparisons are forbidden (review-enforced). Same name as SandsTopology::Inputs's
+    // fillOwners parameter (SandsTopology.hpp:71) — one vocabulary, store to topology.
+    bool ownerIsEast(int v, int lane) const { return getMacroOwn(v, lane) > 0.5f; }
     float getMacroSend(int v, int lane, int item) const { return editor.macroSend[(v*7 + lane)*4 + item]; }
     void  setMacroSend(int v, int lane, int item, float x) { editor.macroSend[(v*7 + lane)*4 + item] = x; }
     // Per-voice send-tap (P9b fix): which = 0 for LOR items 0-2, 1 for spread item 3.

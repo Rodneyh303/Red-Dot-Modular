@@ -141,7 +141,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // sole owner) — the ONE shared Inputs::fillOwners both managers use.
     topoIn.fillOwners(/*eastPresent=*/expanderManager.cachedEastSandsVisual != nullptr,
                       [&hasMacro, gMon](int v, int l) {
-                          return !hasMacro || (gMon && gMon->getMacroOwn(v, l) > 0.5f);
+                          return !hasMacro || (gMon && gMon->ownerIsEast(v, l));
                       });
     if (monoVis) {
         // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
@@ -508,7 +508,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             const bool macroHere = hasMacro && (macroVis != nullptr);
             auto monoOwnedByMacro = [&](int lane)->bool {
                 // MVC step 1d: owner is STORE-BACKED (editor.macroOwn via getMacroOwn at kMonoMacroOwnRow).
-                return macroHere && !(mmV1 ? mmV1->getMacroOwn(Monsoon::kMonoMacroOwnRow, lane) : false);
+                // ==0 vs <=0.5: identical on the writable domain {0.0, 1.0} (all writers are 0/1; see ZAI_PROMPT_ownership_boolean.md §3)
+                return macroHere && !(mmV1 && mmV1->ownerIsEast(Monsoon::kMonoMacroOwnRow, lane));
             };
 
             // Stage 3b: V1 LOR derivation — moved here from the East widget's v1Editable

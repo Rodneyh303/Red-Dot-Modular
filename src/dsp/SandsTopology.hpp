@@ -68,7 +68,8 @@ struct SandsTopology {
         // East's own-slot warp was bypassed (the Macro→East leak + V1-vs-V2+ asymmetry).
         // This is the ONE implementation both managers call; the STEP 5b hand-roll in
         // MonsoonExpanderManager migrated onto it so the two topologies can never drift.
-        //   ownerIsEast(voiceSlot, editorLane) — the store read (getMacroOwn(v,l) > 0.5),
+        //   ownerIsEast(voiceSlot, editorLane) — the store read (Monsoon::ownerIsEast(v,l),
+        //   i.e. getMacroOwn(v,l) > 0.5),
         //   voiceSlot convention (VoiceResolver): 0 = V1, 1..15 = V2..V16.
         //   eastPresent=false ⇒ rows stay defaulted (V1 local / poly Macro-when-Macro-
         //   present — the MACRO_SOLE semantics; nothing to fill from).

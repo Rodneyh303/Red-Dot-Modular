@@ -197,7 +197,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // BEHAVIOUR change (persistent-until-tab-exit vs live), not a pure
                     // refactor. Deferred until the live-vs-persistent semantics for the
                     // current tab are decided (same question as the deferred edit-lock one).
-                    bool eastOwns = (redDot::findMonsoonEitherSide(mod) ? redDot::findMonsoonEitherSide(mod)->getMacroOwn(v, lane) > 0.5f : false);
+                    bool eastOwns = (redDot::findMonsoonEitherSide(mod) ? redDot::findMonsoonEitherSide(mod)->ownerIsEast(v, lane) : false);
                     if (eastOwns)
                         macroBlend = StraitsMacroVisualIds::macroSpreadModulatesLane(
                             macroVis, lane, /*delegated=*/false, /*sendSlot=*/v);
@@ -455,7 +455,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         Monsoon* m = getMonsoon(); if (!m) return true;
                         // (tab1MonoMirror removed — Mono killed Step 6)
                         int vi = currentSlot();   // Phase A: V1=0, V2+=1..15 (unified index)
-                        return (vi >= 0 && vi < 16) ? (m->getMacroOwn(vi, lane) > 0.5f) : true;
+                        return (vi >= 0 && vi < 16) ? m->ownerIsEast(vi, lane) : true;
                     };
                     w->setOwnsFn = [this, lane](bool b) {
                         Monsoon* m = getMonsoon(); if (!m) return;
@@ -705,10 +705,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         if (module) {
             Monsoon* mmT = getMonsoon();
             for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-                in.eastV1Owner[el] = mmT ? (mmT->getMacroOwn(Monsoon::kMonoMacroOwnRow, el) > 0.5f) : false;
+                in.eastV1Owner[el] = mmT ? mmT->ownerIsEast(Monsoon::kMonoMacroOwnRow, el) : false;
                 // voiceSlot: pv = 1..15 (V2..V16). V1 at [0] unused (eastV1Owner covers it).
                 for (int pv = 1; pv < 16; ++pv)
-                    in.eastPolyOwner[pv][el] = mmT ? (mmT->getMacroOwn(pv, el) > 0.5f) : false;
+                    in.eastPolyOwner[pv][el] = mmT ? mmT->ownerIsEast(pv, el) : false;
             }
             // The CURRENT tab's owner cells live in the display proxy (ownerDispId) and are
             // only flushed to the persistent slot on tab-exit — so for the current voice,
@@ -843,10 +843,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // bar fill fell to engine.spreadE (stale/0) instead of the knob's getSpread.
             auto* macroVis = m ? m->expanderManager.cachedMacroSandsVisual : nullptr;
             if (!macroVis) return true;
-            return m->getMacroOwn(Monsoon::kMonoMacroOwnRow, engLane) > 0.5f;
+            return m->ownerIsEast(Monsoon::kMonoMacroOwnRow, engLane);
         }
         int vi = currentSlot();   // voiceSlot: V2..V16 = 1..15 (== polyVoice() on poly tabs)
-        return (vi >= 0 && vi < 16) ? (m->getMacroOwn(vi, engLane) > 0.5f) : true;
+        return (vi >= 0 && vi < 16) ? m->ownerIsEast(vi, engLane) : true;
     }
     // The voice NUMBER (1..16) for the selected tab: tab 0 = V1 (mono), tab v = V(v+1).
     // All mono/poly identity + bank mapping flows through VoiceResolver so there's one
@@ -1048,9 +1048,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // owner delegation (MACRO_OWN) migrated to Monsoon::editor.macroOwn
                     if (auto* mm = findMonsoonEitherSide(mod)) {
                         // Phase A: ch IS the new index (V1=0, V2=1..15). Was ch-1 (old poly bank index).
-                        const float cur = mm->getMacroOwn(ch, eng);
-                        const float nv = (cur > 0.5f) ? 0.f : 1.f;
-                        mm->setMacroOwn(ch, eng, nv);
+                        mm->setMacroOwn(ch, eng, mm->ownerIsEast(ch, eng) ? 0.f : 1.f);
                         // (owner proxy write DELETED — MVC step 1d: setMonoMacroOwn/setMacroOwn above is the home.)
                     }
                 } else {
@@ -1606,7 +1604,7 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
         // lane is the EDITOR lane (ownerLightId is an editor-row light); the macroOwn store
         // is ENGINE-indexed, so convert editor→engine before getMonoMacroOwn.
         lights[ownerLightId(lane)].setBrightness(
-            (cachedMon_ && (cachedMon_->getMacroOwn(Monsoon::kMonoMacroOwnRow, lane) > 0.5f)) ? 1.f : 0.f);
+            (cachedMon_ && cachedMon_->ownerIsEast(Monsoon::kMonoMacroOwnRow, lane)) ? 1.f : 0.f);
 
     // PERF: findMonsoonEitherSide walks the expander chain. Topology only changes at
     // control rate, so refresh the cached pointer on the same /8 divider as the gate scan

@@ -95,7 +95,7 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
         // (the old loop stopped at effPolyVoices; the store holds all 16 rows and
         // owner() is only queried for live voices, so filling 1..15 is a safe superset).
         topoIn.fillOwners(/*eastPresent=*/true, [mmTopo, noMacro](int v, int l) {
-            return noMacro || (mmTopo && mmTopo->getMacroOwn(v, l) > 0.5f);
+            return noMacro || (mmTopo && mmTopo->ownerIsEast(v, l));
         });
     }
     const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
@@ -398,8 +398,8 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 // Local East — the two flags are unified so taking East ownership of a VAR/LEG
                 // lane automatically un-delegates (otherwise the per-voice LOR is written but
                 // short-circuited by varlegDelegated before generation reads it).
-                engine.setVarlegLocalEast(v, 0, mmOwn && (mmOwn->getVarlegDeleg(v, 0) > 0.5f || mmOwn->getMacroOwn(v, PL::PL_VARIATION) > 0.5f));
-                engine.setVarlegLocalEast(v, 1, mmOwn && (mmOwn->getVarlegDeleg(v, 1) > 0.5f || mmOwn->getMacroOwn(v, PL::PL_LEGATO)    > 0.5f));
+                engine.setVarlegLocalEast(v, 0, mmOwn && (mmOwn->getVarlegDeleg(v, 0) > 0.5f || mmOwn->ownerIsEast(v, PL::PL_VARIATION)));
+                engine.setVarlegLocalEast(v, 1, mmOwn && (mmOwn->getVarlegDeleg(v, 1) > 0.5f || mmOwn->ownerIsEast(v, PL::PL_LEGATO)));
 
                 // Per-voice LANE DIRECTION, from East's bank — same shape as the delegation
                 // push above. This is what frees direction from the widget: the editor owns the
@@ -422,12 +422,13 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                         // Resolver step 4: the selection + [0,3] clamp + lround ride
                         // SandsModifierResolver<DirPolicy> — redDot::resolveDirItem —
                         // byte-identical to the old local ternary. NOTE the store flag's
-                        // polarity: getMacroOwn > 0.5 means EAST owns (the East UI's per-lane
-                        // owner switch writes 1 = East owns, StraitsEastSandsVisual.cpp), so
-                        // delegated-to-Macro is its COMPLEMENT.
+                        // polarity: ownerIsEast (getMacroOwn > 0.5) means EAST owns (the
+                        // East UI's per-lane owner switch writes 1 = East owns,
+                        // StraitsEastSandsVisual.cpp), so delegated-to-Macro is its
+                        // COMPLEMENT.
                         // getMacroOwn/getGlobalDir take the unified lane order — same as l
                         // (editor == engine == strand) — so l passes through directly.
-                        const bool delegated = !(mmOwn->getMacroOwn(v, l) > 0.5f);
+                        const bool delegated = !mmOwn->ownerIsEast(v, l);
                         engine.laneDirVPending_[v][l] = (SequencerEngine::LaneDir)
                             redDot::resolveDirItem(delegated, mmOwn->getLaneDir(v, l), mmOwn->getGlobalDir(l));
                     }
