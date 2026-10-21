@@ -989,3 +989,45 @@ can't, and that something is cross-lane tail coupling.
 So "distribution goes beyond rescaling" is TRUE for booleans precisely WHEN scoped to shared modulation
 — exactly the boundary Rodney drew. The headline: shared-modulated clamp/θ is the ONE regime that gives
 boolean-lane distribution control a job knobs cannot do, and that job is cross-lane MO tail coupling.
+
+────────────────────────────────────────────────────────────────────────────────
+## DECISION: DON'T exclude boolean lanes from the distribution layer (Rodney) — the justification ledger
+
+A plausible SCOPE-CUT was available and nearly correct: "boolean lanes have a threshold; static warp
+on a threshold is PROVABLY redundant with the knob ({F^-1(U)>t}≡{U>F(t)}); therefore don't wire
+distribution to boolean lanes — save the complexity." That logic is CORRECT FOR THE MARGINAL and
+LOCALLY airtight. It is GLOBALLY WRONG. Record of why, so the cut isn't re-proposed:
+
+### The justification ledger — which reasons are REAL vs CONVENIENCE
+1. Shared modulation of a boolean's OWN firing RATE → KNOB-REACHABLE = CONVENIENCE ONLY. Modulating
+   the clamp/θ to change a single lane's own rate over time is reachable by modulating the KNOB
+   directly (marginal redundancy holds under modulation too, for a lane's own rate). A CV shaper does
+   it. Real but weak.
+2. RANDOM SOURCE (the probability CV OUT) → NOT knob-reachable = REAL. The boolean uniform feeds BOTH
+   the threshold AND the continuous prob-CV-out. On the CV OUT, warp is a genuine marginal reshape —
+   the lane EMITS a shaped continuous value; the knob only moves the fire/don't-fire decision, never
+   the emitted signal. The redundancy proof covered the THRESHOLDED consumption, NOT the CONTINUOUS
+   emission. Same uniform, two consumers, different verdicts (cf. the per-lane display gate).
+3. CROSS-LANE MO COUPLING under shared modulation → NOT knob-reachable = STRONG. Joint co-extremity
+   across lanes (legato⟺rest/accent) that per-lane-INDEPENDENT knobs structurally cannot produce.
+4. PER-VOICE MODULATION-RESPONSE under shared modulation (Sands unlock) → NOT knob-reachable = REAL.
+   16 voices, 16 different response curves to one shared CV; one knob per lane can't do per-voice.
+=> THREE of four reasons (2,3,4) are genuinely non-redundant; only (1) is convenience. Any one of 2/3/4
+alone justifies keeping booleans in.
+
+### The OVERRIDING (decision-level) reason — stronger than any individual item
+Even if every reason were weak, DON'T exclude, because:
+- Excluding is STRUCTURAL not behavioural: it removes the CAPACITY for 2/3/4, which can't be retrofit
+  onto a lane whose distribution machinery was never built. And 2/3/4 were NOT VISIBLE when the
+  exclusion decision would have been made — the marginal proof is a LOCAL maximum that forecloses the
+  better global result.
+- Excluding creates a LANE-IS-SPECIAL SEAM in the distribution layer ("these lanes don't have warp") —
+  exactly the class of distinction that breeds the bugs the whole seam-eradication effort exists to
+  kill. Including costs only INERT DEFAULT STATE (IdentityWarp, w=0) on those lanes.
+This is the SAME discipline as routing every voice through warpRow (CC_PROMPT_05): uniformity in the
+plumbing is what lets capability arrive later WITHOUT a seam-closing fight. Keep ALL lanes in the
+distribution layer, inert-by-default on booleans.
+
+GENERALIZABLE RULE: do NOT exclude a lane/voice from a layer on MARGINAL-REDUNDANCY grounds — the
+joint/modulated/alternate-consumer effects are often invisible at exclusion time, excluding
+forecloses them, and the exclusion is itself a seam. Inert-uniform beats absent-special.
