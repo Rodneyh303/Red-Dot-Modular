@@ -1,7 +1,7 @@
 # ZAI PROMPT — Delegation-Decision Unification (layer 2): ONE store→topo path, rig-pinned owner flip
 
-**Status:** DRAFT — Rodney-approved direction (2026-10-21), decision point §3 needs his call before execution.
-**Size:** ~45 minutes + one feel-test if §3 unifies. **Behaviour change: ZERO except §3 option B (deliberate, one state).**
+**Status:** READY — §3 DECIDED: option B (Rodney, 2026-10-21; ruling block in §3). No open decision points.
+**Size:** ~45 minutes + one mandatory feel-test (§3 = option B, protocol in exit contract #5). **Behaviour change: ZERO except §3 option B (deliberate, one state).**
 **Base:** `lane-expander-refactor` @ ac8cfd34 (ownerIsEast landed). Re-verify anchors before editing.
 
 ## Why (the ruling, one paragraph)
@@ -72,10 +72,30 @@ Equivalence when Macro IS attached: `macroPresent` parity verified (fillPresence
 hasMacro), so Option B is byte-identical in every Macro-attached state. Rodney decides; if B,
 the exit report must name the changed state verbatim.
 
+**DECIDED — Rodney, 2026-10-21: OPTION B.** Verbatim rationale: "Direction can't get anything
+from a missing module." That elevates the answer from preference to SPEC. The canonical rule for
+everything resolver-routed (warp, spread, direction, LOR), Rodney's words:
+
+> 1. East only → then east plays.
+> 2. Macro only → macro plays.
+> 3. Both → east plays for voice and lane delegated to east, otherwise macro plays for the
+>    voice and lane.
+
+Ear-verified by Rodney on the 2026-10-21 rack: case 1 "seems ok" (warp), and "Spread gets it
+right" — SpreadPolicy::applyDelegated (resolver :196) consumes the SAME delegated seam, so Spread
+is the ear-calibrated reference for delegation semantics, not a counter-example. Under option B,
+direction agrees with warp everywhere, and the one changed state (no-Macro ∧ store-0) is exactly
+the state the rule's case 1 calls wrong. §4's pin asserts THIS RULE on the full grid — rule
+violations must fail a suite, not fail in ears.
+
 ### 4. The rig pin — new suite `test_ownership_flip.cpp` (register in run_all.sh, 72nd)
 
 - 16×7 × {eastPresent × macroPresent} grid: store 0→1 flip ⇒ `fillOwnersFromStore` output flips
-  ⇒ `topo.owner()` flips MACRO↔EAST; no-Macro ⇒ all-EAST (warp semantics).
+  ⇒ `topo.owner()` flips MACRO↔EAST; no-Macro ⇒ all-EAST (rule case 1); Macro-present ∧ store-0
+  ⇒ MACRO (rule case 2). The grid asserts Rodney's 3-case rule (§3 ruling block) end-to-end.
+  Honesty clause: if east-present gating makes a rule case unreachable in the plain-data fill,
+  pin the reachable subset and DOCUMENT the unreachable case in the suite header — do not
+  silently drop it.
 - Store-domain pin: only 0.0/1.0 are meaningful (mirrors ownership-brief §3).
 - Warp-derivation pin at pattern level: `warpDelegated_[v][l] == (topo.owner(v,l)==MACRO)` given
   the same Inputs (the harness already derives warpDelegated_ this way — assert the identity).
@@ -95,8 +115,8 @@ the exit report must name the changed state verbatim.
 3. Grep: zero `fillOwners(` lambdas with hand-written `ownerIsEast` bodies remain in managers;
    the visual's base fill greps through the helper.
 4. Plugin build SUCCESS (executor-side gate — the visual/manager hunks are rig-invisible).
-5. If §3 option B: one-line feel-test protocol for Rodney (no-Macro patch: East lane-dir knob
-   must respond; with Macro: unchanged).
+5. §3 = option B (DECIDED): feel-test protocol REQUIRED in the exit report (no-Macro patch:
+   East lane-dir knob must respond — case 1 of the rule; with Macro attached: unchanged).
 
 ## Honesty block
 
