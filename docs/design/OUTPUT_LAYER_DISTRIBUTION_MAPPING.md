@@ -1031,3 +1031,57 @@ distribution layer, inert-by-default on booleans.
 GENERALIZABLE RULE: do NOT exclude a lane/voice from a layer on MARGINAL-REDUNDANCY grounds — the
 joint/modulated/alternate-consumer effects are often invisible at exclusion time, excluding
 forecloses them, and the exclusion is itself a seam. Inert-uniform beats absent-special.
+
+────────────────────────────────────────────────────────────────────────────────
+## CROSS-LANE COUPLING — the USER-FACING feature + the singular-part rule (Rodney)
+
+### THE UNIFYING CRITERION (supersedes/refines the two prior cross-lane notes)
+Shared modulation creates cross-lane / binary-lane MO coupling under clamp IFF it moves the SINGULAR
+part of the Lebesgue decomposition (the atom) in a SHARED, DIRECTIONAL way. Sort every modulation by
+"does it move the atom directionally?":
+  MOVES THE SINGULAR PART → COUPLES:
+   - shared w (THE Lebesgue MIXING WEIGHT — `(1-w)·id + w·curve`; w scales the atom's weight directly;
+     shared-w makes the decomposition more/less discontinuous in sync → couples). [corrects my earlier
+     under-statement of w.]
+   - shared clamp-point (lo/hi) — moves where/how big the atoms are, jointly.
+   - shared GAUSSIAN-CORRELATION (spread) under clamp — the clamp RECTIFIES bounded-Gaussian corr into
+     atom co-occurrence; modulating the shared corr modulates that co-occurrence. [CORRECTS last note's
+     "cross-voice only / cross-lane synchronized-only" restriction — under clamp on a continuous dist
+     it DOES create cross-lane incl binary coupling.]
+  MOVES ONLY THE CONTINUOUS PART → DOES NOT COUPLE:
+   - shared θ (distribution PARAMS) — reshapes the interior density; the atom comes from the CLAMP
+     operation, which θ doesn't control. w = "how much atom"; θ = "shape of the non-atom part". Only w
+     is singular-part modulation.
+  MOVES THE WHOLE THING NON-DIRECTIONALLY → DOES NOT COUPLE:
+   - A/B mix (regime switch — moves between draw sources, not toward/away a shared rail).
+   - slew-rho (temporal autocorrelation — within-lane across-step, not cross-lane atoms).
+WHY w co+θ differ (airtight): w is the MIXING COEFFICIENT of the decomposition (scales atom weight);
+θ parameterizes the continuous CURVE SHAPE (the atom's existence/mass is the clamp's, not θ's).
+
+### THE USER-FACING FEATURE: "gang chosen lanes' extremes"
+The copula/MO math is the HOW; the WHAT is a compositional control: pick a set of lanes, a DIRECTION
+(same/opposite extreme) per lane, and a shared mod source → those lanes' EXTREME events fire together.
+All SEVEN lanes are coupling-capable (each has a uniform → clampable): MEL/OCT/QMIX/REST/ACCENT/
+VARIATION/LEGATO. (Confirms the "don't exclude any lane from distribution" decision — the feature NEEDS
+all 7 distribution-capable.) Note on "binary": REST/ACCENT/LEGATO are threshold lanes — their "extreme"
+= extreme FIRING PROBABILITY (locked-fire / locked-rest), NOT a continuous value. VARIATION is the
+probabilistic NOTE-LENGTH-amount lane (how far length varies from base) — NOT LOR — so "long/short
+notes" couples via the standard mechanism.
+
+Worked musical couplings (each via clamp + shared singular-mod):
+  - accent/legato/rest ⟺ high/low OCTAVE or scale DEGREE ("accented notes land high", "rests cluster low")
+  - accent/legato ⟺ VARIATION extreme ("accents come with longest/shortest notes")
+  - accent/legato ⟺ QMIX extreme ("accented steps favour quantiser notes over seq notes")
+Direction (same-rail vs opposite-rail) = the SIGN of the shared mod into each lane's clamp (cf. the
+per-voice signed-spread result). None reachable by per-lane-independent knobs.
+
+### GATE-MODE SUBGATE COUPLING — mostly FREE (planned subgate design, not cross-lane machinery)
+PLANNED: in gate mode, VARIATION is assignable to subgate rest/legato decisions, which can ALSO take
+signal from the main rest/legato knobs. CONSEQUENCE: the subgates in a ratchet burst SHARE their
+driving uniform BY CONSTRUCTION (Variation drives them, optionally blended with main rest/legato). So
+"correlate subgates" is NOT the cross-lane MO machinery — it's intrinsic: CLAMPING VARIATION directly
+shapes the whole burst's articulation together (all subgates read the same clamped Variation uniform).
+Two intrinsic channels: Variation→subgates, and main-rest/legato→subgates (the blend) — each clampable.
+The cross-lane MO machinery is for DIFFERENT lanes; the subgate coupling is WITHIN Variation's reach,
+shared by design → cheaper. (Design consequence to realise when the planned gate-mode subgate feature
+is built; not verified in code — it's planned.)
