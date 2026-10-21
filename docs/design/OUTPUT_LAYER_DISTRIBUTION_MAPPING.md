@@ -946,3 +946,46 @@ Now known precisely: (1) clamp BOTH lanes; (2) route ONE modulation source to BO
 (product rate, no coupling). This is the ONLY route to cross-lane dependence in the whole architecture
 (domain-separated streams give nothing else), so if the gesture is wanted, this is how; if cross-lane
 independence is wanted (the default), simply don't share a factor across lanes' clamps.
+
+────────────────────────────────────────────────────────────────────────────────
+## BOOLEAN-LANE CROSS-LANE COUPLING — the case that STRENGTHENS "booleans need shared modulation" (Rodney)
+
+Rodney's example: link legato's "long" extreme to rest's (or accent's) extreme — same OR opposite
+direction — via one modulation source driving both lanes' clamp (or θ). This is the cross-lane MO
+result applied to BOOLEAN lanes, and it is the MOST musically vivid form.
+
+### What it does (boolean lanes = threshold, not value)
+Legato/rest/accent are BOOLEAN lanes: the uniform crosses a threshold (r < prob), it does not pick a
+value. So there is no "extreme value" atom like melody's lowest-pitch — the clamp atom on a boolean
+lane is an atom in the FIRING DECISION: "this step LOCKED to fire" / "LOCKED to rest". A shared mod
+source at its extreme then makes, in the SAME step: legato LOCKED-long AND rest LOCKED-present (same
+rail) — or legato-long with rest LOCKED-absent (opposite rail, sign of the mod into each lane's clamp).
+=> a RIGID cross-lane co-occurrence of the GATE decisions — the whole voice's ARTICULATION snaps to a
+configuration together. HARDER / more audible than value-lane co-leaning (a rhythmic co-event, not a
+soft lean). Examples: "long held notes ⟺ sparse rests" (same-rail), "sustained ⟺ dense activity"
+(opposite-rail) — neither reachable by any per-lane knob setting.
+
+### Why it SURVIVES the boolean-redundancy proof (and strengthens the earlier conclusion)
+Earlier result (-18b §3): on a boolean lane, STATIC warp/clamp is REDUNDANT with the threshold knob
+({F^-1(U)>t} ≡ {U>F(t)} — a knob move). We concluded boolean-lane distribution is "only relevant
+under shared modulation". THIS RESULT STRENGTHENS THAT, because it shows WHY and gives the missing
+positive content:
+- The redundancy is MARGINAL (a single lane's own firing RATE). It does NOT touch the cross-lane JOINT
+  structure. Knobs are per-lane-INDEPENDENT → they CANNOT correlate two lanes' firing.
+- So shared-modulated clamp/θ across booleans is NOT redundant: it creates cross-lane co-occurrence
+  (MO coupling of the gate decisions) that NO knob arrangement reaches — a JOINT effect, not a marginal
+  one. The redundancy proof only ever ruled out the marginal; the joint was always open.
+TWO EARLIER THEOREMS CONVERGE on the same gate: (1) boolean static warp = redundant (marginal), and
+(2) cross-lane = independent by default (product rate). BOTH are escaped ONLY by shared modulation —
+which is therefore the UNIQUE regime where boolean-lane distribution control does something knobs
+can't, and that something is cross-lane tail coupling.
+
+### "Distribution beyond rescaling knob output" — scoped precisely
+- VALUE lanes (mel/oct): warp is beyond-rescaling even STATICALLY (non-affine marginal reshape; a knob
+  only shifts/scales). PLUS cross-lane coupling under shared mod.
+- BOOLEAN lanes (rest/acc/var/leg): warp is beyond-rescaling ONLY under shared modulation — where it
+  becomes cross-lane coupling (this note) or per-voice modulation-response (-18b §3). Static boolean
+  warp is exactly a rescaled knob.
+So "distribution goes beyond rescaling" is TRUE for booleans precisely WHEN scoped to shared modulation
+— exactly the boundary Rodney drew. The headline: shared-modulated clamp/θ is the ONE regime that gives
+boolean-lane distribution control a job knobs cannot do, and that job is cross-lane MO tail coupling.
