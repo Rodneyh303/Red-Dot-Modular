@@ -277,3 +277,52 @@ Mono phases (0-5) land and verify first. Then, in the same branch:
   and RATE_DISCIPLINE_UNIFICATION) — the same "which edge samples the mod?" question.
 - **Naming** — user-facing label **subGate** everywhere; keep it distinct from the existing
   STEP_GATE OUTPUT family in code comments to prevent future conflation.
+
+────────────────────────────────────────────────────────────────────────────────
+## GLOBAL-vs-POLY SCOPE + SUBGATE CONTROL — the settled model (Rodney)
+
+### CORRECTION ON RECORD (Claude error, Rodney caught):
+"Global" does NOT mean "all voices get the identical outcome / comonotone / rho=1". That was WRONG.
+GLOBAL = SHARED CONTROL PARAMETER, INDEPENDENT DRAWS. A global accent knob = all voices share the same
+accent PROBABILITY but still draw independently (they don't accent on the same steps). A global
+VARIATION knob = all voices share the same variation RANGE/amount but still pick DIFFERENT lengths
+within it. So global-vs-poly is a CONTROL-SHARING choice, ORTHOGONAL to the copula/correlation layer
+(spread/CA govern how DRAWS relate; global-vs-poly governs whether the KNOB is shared). A global-knob
+lane can still be spread-correlated. Do NOT conflate "share a control" with "correlate the outcomes".
+Also: MELODY/OCTAVE have NO Straits per-voice (poly) knobs → the global-vs-poly choice does NOT apply
+to them; it applies to the Straits MAIN-GATE lanes that HAVE poly knobs (rest/accent/qmix/legato/
+variation).
+
+### THE MODEL
+1. GLOBAL-vs-POLY per STRAITS MAIN-GATE LANE: each such lane gets a user choice — GLOBAL (one shared
+   control knob for all voices) or POLY (the per-voice knob group). e.g. global accent + global qmix +
+   poly rest + poly legato + global variation. Shared knob = same parameter, independent draws.
+2. SUBGATE control = the SAME choice applied to ghost/ratchet decisions, with THREE ways to source it
+   (highest engaged wins, per decision, uniform resolution):
+   - FOLLOW MAIN (free): subgate inherits the lane's main knob (global or poly, whichever main is).
+   - GLOBAL SUBGATE KNOB: a shared global knob gives the subgate its own character distinct from main,
+     WITHOUT consuming the main level's modulation budget.
+   - ASSIGNED POLY SUBGATE GROUP on STRAITS (opt-in, a FEW assignable groups, e.g. 3): full per-voice
+     control for the ghost/ratchet decisions the user prioritises. Costs Straits/Causeway space; capped
+     + assignable (user points the 3 at whatever they want poly). Decisions without an assigned group
+     fall back to global-subgate or main (graceful — no decision is ever uncontrolled).
+3. VARIATION in GATE MODE:
+   - WITH subgates: Variation does PITCH-HOLD (hold vs re-draw pitch across the ratchet burst) — again
+     a GLOBAL or POLY choice (poly reuses the idle gate-mode Variation per-voice knobs = free).
+   - WITHOUT subgates: Variation is free for another gate-mode role (candidates: tie-across-rest,
+     advance-playhead-on-tie-into-rest — see the open-question + consumer-group notes above).
+
+### ADJUNCT TECHNIQUE (not a built tier): main-gate-state as a region modulation KEY
+In poly/follow-main, a user CAN get region-independent ghost/ratchet levels by modulating the main
+level with the MAIN GATE STATE as key (gate HIGH = ratchet region → one offset; gate LOW = ghost
+region → another; step modulation). Gate state IS the region signal (no new source needed). COST: it
+CONSUMES the main level's modulation path → can't also apply other modulation to that level. THAT is
+why the dedicated GLOBAL SUBGATE KNOB (tier 2) exists — it gets region-independence WITHOUT spending
+the main modulation budget. (VERIFY when building: is gate state accessible as a mod source at the
+point the subgate rest/legato threshold is read.)
+
+### SEAM-SAFETY
+global-vs-poly is a uniform SCOPE flag per lane/decision (resolver reads a shared value vs a per-voice
+bank for `Inputs.base` — upstream of resolution, algebra unchanged). Same mechanism everywhere, no
+per-lane special-casing → seam-free. Subgate = the same flag at a finer event, housed on Straits
+(Sands full). Assignable groups are the same structure wherever pointed.
