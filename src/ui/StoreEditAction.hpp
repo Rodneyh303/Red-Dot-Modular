@@ -28,9 +28,9 @@
 //
 // WIRING GUIDE
 //   Click/step edits (owner cells, dir cells, delegation toggles):
-//       float oldV = read(store);                        // BEFORE the edit
+//       bool oldV = read(store);                         // BEFORE the edit
 //       redDot::applyAndPushStoreEdit<Monsoon>(mon, "change lane owner",
-//           [voice, lane](Monsoon& m, float v) { m.editor.owner[voice][lane] = (int)v; },
+//           [voice, lane](Monsoon& m, bool v) { m.setOwnerEast(voice, lane, v); },
 //           oldV, newV);
 //   Drag edits (send cells, atten cells) — coalesce to ONE action per drag, mimicking
 //   ParamWidget: live-write the store during the drag, record once at the end:
@@ -41,8 +41,12 @@
 //                         read(store));
 //   Escape/abort paths call coal.cancel().
 //
-// VALUES are carried as float; integer cells (owners, directions) round-trip exactly —
-// cast inside the setter. Equal old/new never records (no zero-size undo steps).
+// VALUES are carried at their NATIVE type (V, deduced from the setter + old/new pair):
+// bool for ownership cells, float for float stores. The undo path has NO encode/decode
+// step — the action transports exactly what the setter consumes, so no quantization
+// threshold can survive in it (boolean-model ruling, Rodney 2026-10-22). Equal old/new
+// never records (no zero-size undo steps). A null std::function setter is the CALLER's
+// bug to guard (StoreBound checks; click sites always pass a fresh lambda).
 
 #include <rack.hpp>
 #include <functional>
@@ -51,52 +55,52 @@
 
 namespace redDot {
 
-template <typename TModule>
+template <typename TModule, typename V, typename FSetter>
 struct StoreEditAction : rack::history::Action {
     int64_t moduleId;
-    std::function<void(TModule&, float)> setter;
-    float oldValue;
-    float newValue;
+    FSetter setter;
+    V oldValue;
+    V newValue;
 
-    StoreEditAction(std::string label, int64_t moduleId_,
-                    std::function<void(TModule&, float)> setter_,
-                    float oldValue_, float newValue_)
+    StoreEditAction(std::string label, int64_t moduleId_, FSetter setter_,
+                    V oldValue_, V newValue_)
         : moduleId(moduleId_), setter(std::move(setter_)),
           oldValue(oldValue_), newValue(newValue_) {
         name = std::move(label);   // shows in Edit menu as "Undo <name>"
     }
 
-    void apply(float v) {
+    void apply(V v) {
         // Re-resolve every time: the module may have been deleted (or deleted and
         // undo-restored, in which case Rack re-creates it under the SAME id — this is
         // why an id outlives a pointer).
         auto* m = dynamic_cast<TModule*>(APP->engine->getModule(moduleId));
-        if (m && setter) setter(*m, v);
+        if (m) setter(*m, v);
     }
     void undo() override { apply(oldValue); }
     void redo() override { apply(newValue); }
 };
 
 // Record an ALREADY-APPLIED edit. No-ops on null module or unchanged value.
-template <typename TModule>
+// V is deduced from the old/new pair, FSetter from the callable; TModule stays the
+// only explicit argument at call sites (applyAndPushStoreEdit<Monsoon>(...)).
+template <typename TModule, typename V, typename FSetter>
 inline void pushStoreEdit(TModule* module, std::string label,
-                          std::function<void(TModule&, float)> setter,
-                          float oldValue, float newValue) {
+                          FSetter setter, V oldValue, V newValue) {
     if (!module) return;
     if (oldValue == newValue) return;
-    APP->history->push(new StoreEditAction<TModule>(
+    APP->history->push(new StoreEditAction<TModule, V, FSetter>(
         std::move(label), module->id, std::move(setter), oldValue, newValue));
 }
 
 // Apply the edit AND record it — the one-call form for click-style edits.
-template <typename TModule>
+template <typename TModule, typename V, typename FSetter>
 inline void applyAndPushStoreEdit(TModule* module, std::string label,
-                                  std::function<void(TModule&, float)> setter,
-                                  float oldValue, float newValue) {
+                                  FSetter setter, V oldValue, V newValue) {
     if (!module) return;
     if (oldValue == newValue) return;
     setter(*module, newValue);
-    pushStoreEdit<TModule>(module, std::move(label), std::move(setter), oldValue, newValue);
+    pushStoreEdit<TModule, V, FSetter>(module, std::move(label), std::move(setter),
+                                       oldValue, newValue);
 }
 
 // Drag coalescer: ONE history action per drag gesture, however many live writes the

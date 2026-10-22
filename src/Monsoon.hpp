@@ -1009,10 +1009,10 @@ struct Monsoon : Module {
     // BOOLEAN MODEL (Rodney, 2026-10-22): the accessors are boolean — true = EAST owns
     // the (voice,lane), false = Macro owns. The float get/setMacroOwn pair and its
     // "> 0.5f" threshold are DELETED; no threshold remains between the store and the
-    // topology (fillOwnersFromStore takes const bool*). The one sanctioned float boundary
-    // left is the undo plumbing: applyAndPushStoreEdit is float-valued (Rack history),
-    // so the OwnerCell undo lambda quantizes `val > 0.5f` at the widget boundary — a
-    // write-side edge, not a store read (review-enforced contract).
+    // topology (fillOwnersFromStore takes const bool*). The undo envelope is typed too:
+    // StoreEditAction carries V natively, so the OwnerCell undo pushes a BOOL action
+    // straight into setOwnerEast — the float encode/decode edge is gone (Rodney:
+    // "why float instead of bool for undo?" — no reason; deleted 2026-10-22).
     bool getOwnerEast(int v, int lane) const { return editor.eastOwns[v*7 + lane]; }
     void  setOwnerEast(int v, int lane, bool east) { editor.eastOwns[v*7 + lane] = east; }
     // THE polarity predicate: true = EAST owns the lane (East UI owner menu / OwnerCell),

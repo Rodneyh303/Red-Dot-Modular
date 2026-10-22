@@ -283,8 +283,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             const int aft0=after[0], aft1=after[1], aft2=after[2];
             auto* ed = visualEditor;
             redDot::applyAndPushStoreEdit<Monsoon>(m, "LOR edit",
-                [slot, bank, lane, bef0,bef1,bef2, aft0,aft1,aft2, ed](Monsoon& mm, float dir) {
-                    const bool redo = dir > 0.5f;
+                [slot, bank, lane, bef0,bef1,bef2, aft0,aft1,aft2, ed](Monsoon& mm, bool redo) {
+                    // Typed envelope: the undo/redo SELECTOR rides Rack history as a bool
+                    // (was a 0.f/1.f float decoded with `dir > 0.5f` — envelope abuse).
                     const int L = redo?aft0:bef0, O = redo?aft1:bef1, R = redo?aft2:bef2;
                     mm.setLorBase(slot, bank, 0, (float)L);
                     mm.setLorBase(slot, bank, 1, (float)O);
@@ -295,7 +296,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         ed->currentState.lanes[lane].rotation = R;
                     }
                 },
-                0.f, 1.f);
+                false, true);
         };
         addChild(visualEditor);
 
@@ -465,15 +466,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->pushUndoFn = [this, lane](bool oldB, bool newB) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         const int vi = currentSlot();   // Phase A: V1=0, V2+=1..15 (unified)
+                        // Typed undo envelope: StoreEditAction carries V natively, so the
+                        // owner bool rides Rack history as a BOOL — no float encode at the
+                        // widget, no decode threshold in the setter. This was the last
+                        // "> 0.5f" in the ownership pipeline (Rodney: "why float instead
+                        // of bool for undo?" — there was no reason; deleted).
                         redDot::applyAndPushStoreEdit<Monsoon>(m, "lane owner",
-                            [lane, vi](Monsoon& mm, float val) {
-                                // applyAndPushStoreEdit is float-valued (Rack history): the
-                                // > 0.5f here is the sanctioned WIDGET-boundary quantization
-                                // (write-side edge), not a store read — the store is boolean
-                                // (boolean model, Rodney 2026-10-22).
-                                mm.setOwnerEast(vi, lane, val > 0.5f);
+                            [lane, vi](Monsoon& mm, bool val) {
+                                mm.setOwnerEast(vi, lane, val);
                             },
-                            oldB ? 1.f : 0.f, newB ? 1.f : 0.f);
+                            oldB, newB);
                     };
                     // Locked when no Macro (nothing to delegate to) OR V1+Mono (Mono owns V1).
                     w->lockWhen = [this](){ return !macroAttached(); };

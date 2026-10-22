@@ -473,8 +473,9 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     // BOOLEAN MODEL: "editorEastOwns" entries are JSON true/false. A legacy
     // "editorMacroOwn" float patch fails the key lookup → the store stays defaulted
     // (compatibility not kept, per Rodney). There is NO numeric fallback and NO >0.5f
-    // here — the threshold class is fully retired from the ownership pipeline; the only
-    // sanctioned float boundary left is the undo widget edge (StraitsEastSandsVisual).
+    // here — the threshold class is fully retired from the ownership pipeline, undo
+    // included: the undo envelope is typed (StoreEditAction carries bool natively),
+    // so no float boundary remains anywhere in the pipeline.
     if (auto j = json_object_get(root, "editorEastOwns")) {
         if (json_is_array(j))
             for (size_t i = 0; i < 112 && i < json_array_size(j); ++i) {   // 16 × 7

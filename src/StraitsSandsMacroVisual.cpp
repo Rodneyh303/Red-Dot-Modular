@@ -169,8 +169,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             const int aft0=after[0], aft1=after[1], aft2=after[2];
             auto* ed = visualEditor;
             redDot::applyAndPushStoreEdit<Monsoon>(m, "LOR edit",
-                [lane, bef0,bef1,bef2, aft0,aft1,aft2, ed](Monsoon& mm, float dir) {
-                    const bool redo = dir > 0.5f;
+                [lane, bef0,bef1,bef2, aft0,aft1,aft2, ed](Monsoon& mm, bool redo) {
+                    // Typed envelope: the undo/redo SELECTOR rides Rack history as a bool
+                    // (was a 0.f/1.f float decoded with `dir > 0.5f` — envelope abuse).
                     const int L = redo?aft0:bef0, O = redo?aft1:bef1, R = redo?aft2:bef2;
                     mm.setGlobalLor(lane, 0, (float)L);
                     mm.setGlobalLor(lane, 1, (float)O);
@@ -181,7 +182,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                         ed->currentState.lanes[lane].rotation = R;
                     }
                 },
-                0.f, 1.f);
+                false, true);
         };
 
         Module* mod_ = module;

@@ -21,6 +21,7 @@ static int s_pass = 0, s_fail = 0;
 struct FakeMonsoon : rack::engine::Module {
     static constexpr int VOICES = 4, LANES = 2;
     float macroSend[VOICES][LANES] = {};
+    bool  ownedLane = false;          // raw-lambda bool helper target (owner-cell shape)
     int   selectedVoice = 0;          // the UI tab — must NOT affect undo targeting
 };
 
@@ -126,18 +127,61 @@ int main() {
         TEST("commit without begin records nothing",   hist.size() == before);
     }
 
-    SUITE("integer cells round-trip through float");
+    SUITE("typed envelope: bool owner cells ride Rack history as BOOL");
     {
-        // Separate module type to prove the template is not Monsoon-specific. No registry
-        // needed: the round-trip claim is about the setter/value path, exercised directly.
+        // The production contract (boolean model, Rodney 2026-10-22): the owner cell's
+        // undo action carries bool natively — StoreEditAction<Monsoon, bool, F> — so no
+        // float encode at the widget and no decode threshold in the setter. Direct
+        // construction: the action is built DIRECTLY here, so TModule/V/FSetter are
+        // spelled (TModule is not CTAD-deducible — it hides inside FSetter; production
+        // sites never construct the action, they go through the helpers).
+        struct FakeOwner : rack::engine::Module { bool eastOwns[4] = {}; };
+        FakeOwner own; own.id = 7;
+        redDot::StoreEditAction<FakeOwner, bool, void(*)(FakeOwner&, bool)> act(
+            "lane owner", own.id,
+            [](FakeOwner& m, bool v) { m.eastOwns[2] = v; }, false, true);
+        act.setter(own, act.newValue);
+        TEST("bool cell receives exact true",          own.eastOwns[2] == true);
+        act.setter(own, act.oldValue);
+        TEST("bool cell restores exact false",         own.eastOwns[2] == false);
+    }
+
+    SUITE("integer cells still round-trip through float (float-backed stores)");
+    {
+        // Direction cells (and other float-backed stores carrying discrete values) keep
+        // the float envelope — exact round-trip, cast inside the setter. Direct
+        // construction with the FSetter parameter spelled (see the bool block above).
         struct FakeOwner : rack::engine::Module { int owner[4] = {0, 0, 0, 0}; };
         FakeOwner own; own.id = 7;
-        redDot::StoreEditAction<FakeOwner> act("owner", own.id,
+        redDot::StoreEditAction<FakeOwner, float, void(*)(FakeOwner&, float)> act(
+            "owner", own.id,
             [](FakeOwner& m, float v) { m.owner[2] = (int)v; }, 0.f, 3.f);
         act.setter(own, act.newValue);
         TEST("int cell receives exact 3",              own.owner[2] == 3);
         act.setter(own, act.oldValue);
         TEST("int cell restores exact 0",              own.owner[2] == 0);
+    }
+
+    SUITE("raw-lambda helpers — the production call shapes");
+    {
+        // Production sites pass RAW lambdas (FSetter = closure type) — a different
+        // template instantiation from the std::function wrappers used above.
+        size_t before = hist.size();
+        const float prev = mon.macroSend[0][0];
+        redDot::applyAndPushStoreEdit<FakeMonsoon>(&mon, "raw float edit",
+            [](FakeMonsoon& m, float v) { m.macroSend[0][0] = v; },
+            mon.macroSend[0][0], 0.65f);
+        TEST("raw-lambda float applies + records",     mon.macroSend[0][0] == 0.65f && hist.size() == before + 1);
+        hist.back()->undo();
+        TEST("raw-lambda float undo restores",         mon.macroSend[0][0] == prev);
+
+        // The owner-cell production shape: raw lambda, bool envelope, no threshold.
+        redDot::applyAndPushStoreEdit<FakeMonsoon>(&mon, "raw bool edit",
+            [](FakeMonsoon& m, bool v) { m.ownedLane = v; },
+            mon.ownedLane, true);
+        TEST("raw-lambda bool applies + records",      mon.ownedLane == true && hist.size() == before + 2);
+        hist.back()->undo();
+        TEST("raw-lambda bool undo restores",          mon.ownedLane == false);
     }
 
     std::cout << "\n" << s_pass << " passed, " << s_fail << " failed\n";
