@@ -1375,6 +1375,10 @@ void Monsoon::process(const ProcessArgs& args) {
         for (int l = 0; l < 5; ++l)
             engine.pe.spreadTargetMode[l] = getSpreadTargetMode(l);
         engine.beginStrandWriteBlock();   // debug-only: reset the per-block strand-writer ledger
+        // Back-pointer set BEFORE processDNA: the SandsManager gMon null-walk rescue
+        // reads it (see MonsoonSandsManager.cpp hardening). Idempotent — sync() below
+        // uses the same pointer instead of findMonsoonEitherSide.
+        expanderManager.owner = this;
         dnaManager.processDNA(expanderManager);
 
         // ── Deep Straits Sands Expanders (Control Rate Orchestration) ──
@@ -1382,7 +1386,6 @@ void Monsoon::process(const ProcessArgs& args) {
         // trigger inside sync() reads this cycle's edges. Uses engine.stepIndex (transport
         // authority) -- replaces the old caV2PrevStep_/caV2PrevLocked_ shadow state.
         lockManager.tick(engine.stepIndex);
-        expanderManager.owner = this;   // back-pointer: sync() uses this instead of findMonsoonEitherSide
         expanderManager.sync(engine, lockManager.queueFires());
         
         // Refresh Audio-Rate Caches (Throttled)
