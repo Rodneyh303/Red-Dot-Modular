@@ -91,11 +91,18 @@ struct VoiceResolver {
         return -1;
     }
 
-    // Probability sampled at an EXPLICIT step (e.g. Macro's prob-out samples every voice
-    // at Macro's own global LOR step). Mono ignores the explicit step (single strand).
+    // Probability sampled at an EXPLICIT step — Macro's prob-OUT source (the module
+    // samples every voice at Macro's own global LOR step). CC_PROMPT_macro_output_east_leak:
+    // this is Macro-OWN — the shared PRE-spread base + Macro's OWN spread via the ONE
+    // engine accessor the bars also read (eng.macroOwnLaneProbability) — NEVER the shared
+    // final (masterLaneProbability/finalRandomByStrand → warpRow → random_), which East's
+    // spread writes on an East-owned lane (the backwards-delegation leak: East's spread
+    // moved Macro's scope but not its bars). One-way borrowing: Macro never borrows East.
+    // V1 uses the explicit step too (the old mono branch self-resolved the engine's mono
+    // LOR step — Macro's own step is the out's sampling grid, same as the poly channels).
     float laneProbabilityAtStep(int v, int lane, int step) const {
-        if (isMono(v)) return eng.masterLaneProbability(lane);
-        if (isPoly(v)) return eng.polyLaneProbabilityAtStep(lane, polyVoiceSlot(v), step);
+        if (isMono(v)) return eng.macroOwnLaneProbability(lane, step, /*mono=*/true,  /*polyVoice=*/0);
+        if (isPoly(v)) return eng.macroOwnLaneProbability(lane, step, /*mono=*/false, polyVoiceSlot(v));
         return 0.f;
     }
 

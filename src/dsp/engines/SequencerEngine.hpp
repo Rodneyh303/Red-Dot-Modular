@@ -1,5 +1,6 @@
 #pragma once
 #include "PatternEngine.hpp"
+#include "../SpreadInterp.hpp"   // CC_PROMPT_macro_output_east_leak: macroOwnLaneProbability (below)
 #include "../gates/GateState.hpp"
 #include "ClockEngine.hpp"
 #include "../NoteValues.hpp"
@@ -729,6 +730,40 @@ struct SequencerEngine {
         // VAR/LEG display fell back to STRAND_RHYTHM (showing rhythm values — a bug).
         int strand = polyLaneStrand(polyLane);
         return pe.finalRandomByStrand(strand, masterLaneStep(polyLane));
+    }
+
+    // ── Macro-own probability: ONE accessor, BOTH Macro consumers (bars + prob CV out) ──
+    // CC_PROMPT_macro_output_east_leak: the one-way-borrowing fix was display-only —
+    // Macro's BARS already resolved Macro's own value (the widget's macroOwnProbability)
+    // but the prob CV OUT still read the SHARED final (finalRandomByStrand → warpRow →
+    // random_), which East's spread WRITES on an East-owned lane: East's modulation leaked
+    // BACKWARDS into Macro's output (Rodney: move East's SPREAD → Macro's scope moves,
+    // Macro's bars don't). THE FIX: this ONE engine-side resolution, read by BOTH
+    // consumers — the widget's macroOwnProbability (the BARS, continuous) and
+    // VoiceResolver::laneProbabilityAtStep (the prob CV OUT, latched per-step at the
+    // module). Same source; only the timing differs (by design — do NOT flatten
+    // bars==out). Neither consumer borrows East:
+    //   • base   = the shared PRE-spread PUBLISHED draw (pubSlewedPoly*) — the spread
+    //     passes write random_, NEVER pubSlewed*, so an East-owned lane's East spread
+    //     cannot reach this read (the same trick the fixed bars use);
+    //   • spread = macroOwnSpread[lane] — Macro's OWN effective spread (macroBase[l][3]
+    //     + macroPostDelta[l][3], clamped — the SAME expression the manager's MACRO_SOLE
+    //     branch uses), published each block by StraitsSandsMacroVisual::process.
+    //     Owner-INDEPENDENT: Macro's own value exists whether or not Macro owns the lane.
+    // V1/mono is the spread anchor: interpolate(base, base, sp) — self-target no-op, so
+    // V1's value is spread-invariant at positive spread (matches East's V1 display).
+    float macroOwnSpread[PL_LANES] = {};   // per PL lane; published by the Macro module
+    float macroOwnLaneProbability(int engLane, int step, bool mono, int polyVoice) const {
+        const int l = (engLane >= 0 && engLane < PL_LANES) ? engLane : PL_REST;
+        const int v = mono ? 0 : rack::math::clamp(polyVoice, 0, 15);   // voiceSlot (V2+=1..15)
+        const float sp = macroOwnSpread[l];
+        const float base = redDot::SpreadInterp::polySlewedPub(pe, l, v, step & 0x0F);
+        const float disp = mono
+            ? redDot::SpreadInterp::interpolate(base, base, sp)                    // anchor self-target
+            : redDot::SpreadInterp::applyAnchorV1Only(pe, l, step & 0x0F, base, sp);
+        // Warp display composition (CC_PROMPT_05 uniform): the same per-(voice,lane)
+        // mixture the engine consumes, keyed to the sampled voice.
+        return pe.warpDisplayMix(v, l, (double)disp);
     }
 
 

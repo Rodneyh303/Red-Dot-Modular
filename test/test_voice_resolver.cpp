@@ -2,10 +2,14 @@
 //
 // Proves the read-only resolver shadow faithfully mirrors reality BEFORE any caller depends
 // on it: for every voice V (1..16) and lane (REST/MELODY/OCTAVE), the resolver's
-// laneProbability / laneStep / laneProbabilityAtStep must return BIT-EXACTLY what the direct
-// engine accessors return —
+// laneProbability / laneStep must return BIT-EXACTLY what the direct engine accessors
+// return —
 //     V1  → eng.masterLane* (the mono master strand)
 //     V≥2 → eng.polyLane*(.., V-1 = voiceSlot)
+// laneProbabilityAtStep is the EXCEPTION (CC_PROMPT_macro_output_east_leak): it is Macro's
+// prob-OUT source and routes to eng.macroOwnLaneProbability (the ONE Macro-own accessor
+// the bars also read) — never the shared master/poly funnels East's spread writes on an
+// East-owned lane (the backwards-delegation leak).
 // plus the metadata dispatch (isMono/isPoly/polyVoiceSlot/baseEditableHere/spreadMode).
 //
 // Strategy: construct a REAL SequencerEngine (now possible post-Xoroshiro-deprecation — the
@@ -71,6 +75,24 @@ static void seedEngine(SequencerEngine& eng) {
             eng.pe.polyRandom(v + 1, E::PL_ACCENT)[s] = sentinel(v + 2, E::PL_ACCENT, s);
             // identity LOR so step index is predictable (= totalStepsElapsed & 0x0F = 0)
             eng.polyLenERef(v, s % 3) = 16; // harmless; lanes use [v][lane]
+        }
+    // Macro-own base (CC_PROMPT_macro_output_east_leak): the pubSlewed* snapshots — what
+    // laneProbabilityAtStep resolves from (via SequencerEngine::macroOwnLaneProbability;
+    // macroOwnSpread defaults 0, no warp bank ⇒ the base comes back bit-exactly). The SAME
+    // sentinels, so the no-leak SUITE below pins the (voice, lane, step) addressing
+    // through the NEW source.
+    for (int s = 0; s < 16; ++s) {
+        eng.pe.pubSlewedPolyRhythm[0][s] = sentinel(1, E::PL_REST,   s);
+        eng.pe.pubSlewedPolyMelody[0][s] = sentinel(1, E::PL_MELODY, s);
+        eng.pe.pubSlewedPolyOctave[0][s] = sentinel(1, E::PL_OCTAVE, s);
+        eng.pe.pubSlewedPolyAccent[0][s] = sentinel(1, E::PL_ACCENT, s);
+    }
+    for (int v = 0; v < 15; ++v)
+        for (int s = 0; s < 16; ++s) {
+            eng.pe.pubSlewedPolyRhythm[v + 1][s] = sentinel(v + 2, E::PL_REST,   s);
+            eng.pe.pubSlewedPolyMelody[v + 1][s] = sentinel(v + 2, E::PL_MELODY, s);
+            eng.pe.pubSlewedPolyOctave[v + 1][s] = sentinel(v + 2, E::PL_OCTAVE, s);
+            eng.pe.pubSlewedPolyAccent[v + 1][s] = sentinel(v + 2, E::PL_ACCENT, s);
         }
     // identity LOR per (voice, lane)
     for (int v = 0; v < 15; ++v)
@@ -139,19 +161,22 @@ int main() {
                 EXPECT_EQ(r.laneStep(v, lanes[li]), eng.polyLaneStep(lanes[li], v - 1));
     });
 
-    SUITE("VoiceResolver — laneProbabilityAtStep == direct accessors (every step)");
-    TEST("V2..V16 laneProbabilityAtStep matches at all 16 steps", {
+    SUITE("VoiceResolver — laneProbabilityAtStep == the Macro-own accessor (every step)");
+    // CC_PROMPT_macro_output_east_leak: AtStep is Macro's prob-OUT source — it routes to
+    // SequencerEngine::macroOwnLaneProbability (the ONE accessor the bars also read), NOT
+    // the shared master/poly funnels (which East's spread writes on an East-owned lane).
+    TEST("V2..V16 laneProbabilityAtStep == macroOwnLaneProbability at all 16 steps", {
         for (int v = 2; v <= 16; ++v)
             for (int li = 0; li < 4; ++li)
                 for (int s = 0; s < 16; ++s)
                     EXPECT_BITEQ(r.laneProbabilityAtStep(v, lanes[li], s),
-                                 eng.polyLaneProbabilityAtStep(lanes[li], v - 1, s));
+                                 eng.macroOwnLaneProbability(lanes[li], s, /*mono=*/false, v - 1));
     });
-    TEST("V1 laneProbabilityAtStep == masterLaneProbability (mono ignores explicit step)", {
+    TEST("V1 laneProbabilityAtStep == macroOwnLaneProbability at Macro's explicit step", {
         for (int li = 0; li < 4; ++li)
             for (int s = 0; s < 16; ++s)
                 EXPECT_BITEQ(r.laneProbabilityAtStep(1, lanes[li], s),
-                             eng.masterLaneProbability(lanes[li]));
+                             eng.macroOwnLaneProbability(lanes[li], s, /*mono=*/true, 0));
     });
 
     SUITE("VoiceResolver — sentinels prove no cross-voice / cross-lane leakage");
