@@ -406,6 +406,12 @@ taxonomy (constant/inc/dec/bathtub/UBT/S).
 SCOPE FENCE: this family is a pure density everywhere (their eq (5)) — it is NOT the clamp/atom math.
 The singular branch (rail atoms, lambda>0) stands on the DMO/common-shock references above plus
 Marshall-Olkin 1997. Member proposal with scope/tests: PALETTE_KUMARASWAMY_TILT_NOTE.md.
+PALETTE-WIDE (2026-10-22 Q&A): the tilt map R_p is EXACTLY the shipped Mobius member's invCDF
+(a = 1-p) — the palette already contains the pure MO-extended uniform; the tilt composes with
+EVERY member sample-side (monotone self-map of [0,1]; p=0 bit-identical; one mul+div per draw)
+and brings NO atoms of its own (absolutely continuous for all p<1; 1/(1-p) density ceiling at
+the approached rail; it is the clamp's mass feeder, not a rail source). Applicability table,
+rails composition, p=1 ruling and the provisional P_MAX: PALETTE_KUMARASWAMY_TILT_NOTE.md.
 
 ### ATOMS, REVERSIBILITY, AND "STILL A COPULA?" (the precise statement)
 An atom (clamp, flat segment, or a DMO shared-value shock) does NOT break reversibility — the generative

@@ -109,3 +109,9 @@ to X.
   authoring clamp p<1). PROPOSAL — Rodney's call pending. Reuses the landed
   modeConcFromAb/abFromModeConc helpers, so item #1 is not a blocker. Citation for the KwMO
   family filed in OUTPUT_LAYER_DISTRIBUTION_MAPPING.md (CLASSICAL MO REFERENCE section).
+  EXTENDED same day (Rodney Q&A): the tilt applies to ALL palette members — R_p is EXACTLY the
+  shipped Mobius invCDF (a=1-p; Mobius absorbs it, uniform+tilt IS Mobius); sample-side
+  convention pinned; shared tilt-stage implementation shape proposed (decision widened:
+  member-as-filed vs shared stage). Tilt brings NO rails of its own — it is the planned
+  clamp's mass feeder (lambda_eff = F_base(R_p^-1(eps)), ~1/(1-p) amplifier). p=1 ruled out
+  in favor of the clamp. P_MAX=0.95 PROVISIONAL pending feel test.

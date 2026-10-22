@@ -1,7 +1,12 @@
 # PALETTE NOTE — "Kumaraswamy-tilt" (KwMO-Uniform) member proposal
 
 STATUS: PROPOSAL — Rodney's call pending (filed 2026-10-22). Not scheduled; does not block warp
-Phase 3. SOURCE: Rodney uploaded the KwMO paper alongside "Kumaraswamy is one of our output
+Phase 3. 2026-10-22 Q&A EXTENSION: the MO tilt applies to ALL palette members (R_p is EXACTLY
+the shipped Mobius member's invCDF at a=1-p — see PALETTE-WIDE APPLICABILITY); the tilt brings
+no rails of its own but composes with the planned clamps as their mass feeder (RAILS section);
+p=1 ruled out in favor of the clamp; P_MAX=0.95 marked PROVISIONAL pending a feel test.
+Decision widened to: member-as-filed vs SHARED TILT STAGE.
+SOURCE: Rodney uploaded the KwMO paper alongside "Kumaraswamy is one of our output
 distributions and we plan to introduce clamp on distributions which generates Marshall-Olkin
 copula". This note is the PALETTE half of that thread. The CLAMP half (singular branch, rail
 atoms, lambda>0) lives in OUTPUT_LAYER_DISTRIBUTION_MAPPING.md (DMO/common-shock) and is
@@ -55,7 +60,8 @@ preset/UI space this one extra knob unlocks on top of Kumaraswamy.
 
 - VALID RANGE: p < 1 with an AUTHORING CLAMP (house convention: R_MAX=0.97 / CONC_MAX=5 style).
   p→1⁻ collapses R_p → 0 for every u<1: the atom-at-zero, rank-destroying — the editor's
-  forbidden case. Suggested P_MAX = 0.95, authored as a signed tilt in (−P_MAX, +P_MAX).
+  forbidden case. P_MAX = 0.95 PROVISIONAL, authored as a signed tilt in (−P_MAX, +P_MAX);
+  provenance, feel-test derivation recipe and the p=1 ruling: P_MAX PROVENANCE section below.
 - Negative p is mathematically valid (upward tilt) and R_p stays strictly increasing for every
   p<1 — no extra floor beyond the symmetric authoring clamp.
 - Respect the editor's eps-monotonicity floor (same constraint item #1 puts on the (mode,conc)
@@ -70,6 +76,118 @@ construction (Albanese-Crepey-Hoskinson-Saadeddine, QF 21(1) 2021; Marshall-Olki
 singular diagonal). Different object, different references, different feature. Do not conflate
 the two when reading "Marshall-Olkin" in the docs.
 
+────────────────────────────────────────────────────────────────────────────────
+## PALETTE-WIDE APPLICABILITY (Rodney Q&A, filed 2026-10-22)
+
+Q: can the MO variation apply to the other palette members? A: YES — all of them, one shared
+mechanism, and the tilt curve is ALREADY IN THE PALETTE:
+
+- IDENTITY: R_p(t) = (1-p)t/(1-pt) is EXACTLY MobiusDistribution's invCDF with a = 1-p
+  (a·u/(1-(1-a)·u)). The shipped "mobius" member IS the Marshall-Olkin extended uniform —
+  the paper's construction viewed from Monsoon is "compose the Mobius warp after another
+  member". Same validity domain (p<1 <=> a>0), same rail directions (p>0 / a<1 toward 0).
+- CLOSURE: m_a ∘ m_b = m_{ab} (verified by hand: ab·t/(1-(1-ab)t)) — on the Mobius member
+  itself the tilt is ABSORBED by its parameter (a <- a·(1-p)); nothing new needed there.
+- UNIVERSALITY: R_p is a monotone self-map of [0,1] (fixes 0 and 1, strictly increasing for
+  p<1, slope in [(1-p), 1/(1-p)]). Monotone ∘ monotone = valid quantile for EVERY member —
+  no per-member derivation. p=0 bit-identity holds palette-wide in one stroke. Cost identical
+  everywhere: one multiply + one divide per draw.
+- PER-MEMBER VERDICTS: uniform -> tilt alone IS Mobius (shipped; the reference curve/test);
+  kumaraswamy -> this proposal (the paper's named instance); power / reversed-power -> compose
+  cleanly, two rail-bends in series, both mirror corners covered; triangular -> composes,
+  stays in [0,1]; logit-sigmoid / logit-normal -> open-support character preserved (R_p maps
+  (0,1) onto (0,1)); truncated-normal -> edges stay edges, edge density re-weighted but
+  finite; pchip (drawn) -> monotone ∘ monotone, stored curve untouched — "draw, then tilt";
+  mobius -> absorbed (a <- a·(1-p)).
+- CONVENTION (pinned): SAMPLE-SIDE tilt — out = R_p(member.invCDF(u)) — matches the filed
+  eq-(14) form and the output-layer transfer-curve framing; the knob's meaning is
+  member-independent ("bend toward bottom/top rail"). The alternative u-side tilt
+  (member.invCDF(R_p(u)) — the classical MO-extended-X, G(x)=F(x)/(1-p+pF(x)), MO 1997) is
+  also universal and citable, but the resulting shape depends on the member, so the knob feel
+  changes per member. Do not ship both meanings on one knob.
+- HONEST CAVEAT: the hazard-ratio-monotone property is the paper's result for the Kw case;
+  for other members the qualitative "one knob, monotone rail-bend" survives, but the Fig-2
+  taxonomy (bathtub/UBT/S) is not guaranteed verbatim per member. Label the knob "rail tilt",
+  not a per-member hazard promise.
+- IMPLEMENTATION SHAPE: ONE shared stage, not nine subclasses — either a tilted(base,p)
+  wrapper kind tag or an output-layer tilt knob beside the palette. The Kw case is the paper's
+  named instance; uniform is the reference; Mobius is absorbed.
+
+## RAILS — composition with the planned clamps (Rodney Q&A, filed 2026-10-22)
+
+Q: does the tilt directly bring in rails, or does it compose with the planned top/bottom clamp
+rails? A: NO DIRECT RAILS; YES IT COMPOSES, as the clamp's mass feeder.
+
+- TILT ALONE: absolutely continuous for EVERY p<1 — pure density re-weighting, no atom
+  anywhere. Near the approached rail the density multiplier is 1/(1-p) (bottom for p>0): at
+  P_MAX=0.95 a 20x CEILING — bounded, no divergence created even on members whose density
+  already runs hot at an edge (Power k<1, Kw a<1 — the DIST_EDGE_EPS proxies just get
+  re-weighted). The atom exists only in the p->1 limit — the case P_MAX forbids. The tilt is
+  the APPROACH to the rail; it never arrives.
+- WITH THE CLAMP (house order warp -> clamp): the clamp sees the TILTED distribution and
+  captures what the tilt left under its threshold. Bottom rail, threshold eps: untilted atom
+  mass ~ F_base(eps); tilted lambda_eff = F_base(R_p^-1(eps)) = F_base(eps/(1-p+p·eps)), and
+  R_p^-1(eps) > eps for p>0 — downward tilt ENLARGES the bottom atom, shrinks the top one,
+  monotone in p. Near the rail the amplifier is ~1/(1-p) again — the same constant as the
+  density ceiling. Top rail: exact mirror for p<0.
+  Musical reading: TILT = how much mass gathers NEAR the rail; CLAMP = how much SNAPS ONTO it.
+  Orthogonal stages that cooperate.
+- CALIBRATION DECISION (Rodney's call): house order makes the clamp's captured mass
+  tilt-dependent (clamp-then-tilt would preserve it — R_p(0)=0 pins the rail atom — but that
+  is not the pipeline order). Either clamp by TARGET ATOM MASS (reads the post-warp
+  distribution, auto-compensates; lambda stays calibrated under any tilt) or by THRESHOLD
+  (lambda_eff moves with the tilt knob — one knob continuously pre-shapes what the clamp
+  catches). Nothing structural breaks either way: both stages stateless + monotone; the tilt
+  is STRICTLY monotone so it adds no flat segments; the clamp's flats remain the only atoms.
+- CITATION FENCE STAYS PER-BRANCH: the composed object (KwMO warp + clamp atom) is NOT
+  "KwMO" — the paper governs only the continuous piece; the atom piece stands on MO 1997 /
+  DMO as filed.
+
+## P_MAX PROVENANCE + THE p=1 RULING (Rodney Q&A, filed 2026-10-22)
+
+WHERE 0.95 CAME FROM: a PROVISIONAL SUGGESTION from this note's first filing — chosen by
+ANALOGY to the house clamp pattern, NOT derived. Honest comparison with the two precedents it
+leans on:
+- R_MAX = 0.97 (MovingAverageCopula) IS derived: geometric weights degenerate as r -> 1; 0.97
+  keeps the sum well-conditioned.
+- CONC_MAX = 5 (Kumaraswamy) IS derived: numerical cliff mapped (conc=8 -> invCDF flat/ties,
+  the numerical atom) and peak height ~3.7 at conc=5 judged musically ample.
+- P_MAX = 0.95 has NO equivalent derivation yet. The math is valid for ALL p<1 — no numerical
+  cliff analogous to conc=8 (the only hard failure is exactly p=1, ruled out below). So the
+  number must come from a FEEL TEST.
+DERIVATION RECIPE (when we do it): uniform member, tilt at 0.90 / 0.95 / 0.98 / 0.99 through
+slew + quantizer on a real patch; find where rail-HUG becomes rail-PINNED by ear; set the top
+stop there and round down to a clean constant. Audibility taper for orientation — median of
+the tilted uniform R_p(0.5): 4.8% of range at p=0.95, 1% at 0.99, 0.1% at 0.999 — differences
+above ~0.95-0.99 get progressively harder to hear post-slew/quantizer. Also check the editor
+display at those settings (the edge spike stays finite, but usable?). Knob-real-estate rule:
+the top stop belongs where further travel stops being audible (the CONC_MAX logic), not where
+the math ends.
+
+COULD WE ALLOW p=1 INSTEAD OF THE CLAMP? Ruled NO for now — p=1 is the mass-1 atom at the
+bottom rail (R_1(t) = 0 for all t<1; every draw returns exactly the rail):
+- PROS: family closure (the endpoint is genuinely MO 1997's singular branch); one-knob
+  uniform->pinned gesture; no magic constant.
+- CONS: (1) NaN at exactly 1.0 — R_1(1) = 0/0, and members DO saturate Q(u)=1.0 in double
+  precision at high concentration (the conc=8 finding); (2) p>1 is catastrophic — the
+  denominator's pole t=1/p lands INSIDE (0,1), the quantile folds back negative/inf; the
+  clamp margin is what keeps modulation overshoot / automation ramps / hand-edited JSON away
+  from it (the float-equality boundary problem: 1.0000001 in a patch -> reject or clamp?);
+  (3) rank destruction legal — constant output is the editor's forbidden case, exceptions
+  carved into copula identification / the eps-monotonicity gate / PDF display; (4) behavior
+  cliff under modulation through 1.0 — the lane snaps dense->dead and back mid-flight;
+  (5) dead knob travel — above ~0.95-0.99 nothing audibly changes while the math degrades;
+  (6) it is a DEGENERATE SHADOW of the clamp feature: bottom-rail-only, mass-100%, no
+  calibration — pin-to-rail done properly is the clamp (calibratable lambda, BOTH rails,
+  designed pipeline position, the co-clipping story).
+- IF EVER WANTED: ship as an explicit mode — runtime guard p >= 1 -> rail constant (NaN-safe,
+  also covers p>1), editor rail-flag instead of the PDF, modulation hard-stop, dedicated test
+  (constant output, no NaN, JSON round-trip). Four special cases for one point the clamp
+  supersedes.
+- ENFORCEMENT NOTE: the clamp is EVAL-SIDE (clamp p into [-P_MAX, +P_MAX] before computing
+  R_p — the clampR precedent) — modulation overshoot is caught at the evaluation boundary, so
+  neither the knob nor a modulator can ever present the hot path with |p| >= 1.
+
 ## Tests (mirror the reversed-power battery)
 
 1. p=0 BIT-IDENTITY vs existing KumaraswamyWarp across the (mode,conc) grid.
@@ -79,9 +197,17 @@ the two when reading "Marshall-Olkin" in the docs.
 5. Tilt-direction sanity: median of Q shifts toward 0 for p>0, toward 1 for p<0; |shift|
    monotone in |p|.
 6. JSON round-trip with the new kind tag; pre-existing "kumaraswamy" patches unaffected.
+7. PALETTE-WIDE (if the shared-stage path is chosen): for EVERY member, the composite
+   invCDF u -> R_p(member.invCDF(u)) is strictly increasing across the editor grid for all
+   |p| <= P_MAX; Mobius absorption identity tilt(Mobius(a), p) == Mobius(a·(1-p)) to fp
+   tolerance; uniform member + tilt == pure Mobius reference curve.
 
 ## Sequencing
 
 - Any time — independent of warp Phase 3 prompts; reuses landed helpers, so item #1 is NOT a
   blocker (it only unifies where the canonical map lives).
+- OPEN DECISION (widened 2026-10-22): member-as-filed vs SHARED TILT STAGE (palette-wide, one
+  knob beside the palette; the Kw member becomes its first instance; Mobius absorbed).
+  Rails-composition additionally needs the clamp calibration model decided (mass vs
+  threshold). P_MAX=0.95 provisional pending the feel test.
 - Pointer filed in TODO_distribution_palette_and_editor.md → Sequencing.
