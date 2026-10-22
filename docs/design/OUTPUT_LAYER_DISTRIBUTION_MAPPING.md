@@ -387,6 +387,17 @@ a shared value on that subset. This is the rigorous version of the "tutti unison
 its own probability knob" idea (deferred). It gives lambda>0 HONESTLY with a calibratable joint rate.
 NOT scheduled — later, if ever; the warp foundation comes first. Recorded so the closed door's key isn't
 lost: it's a published, owned construction.
+SCOPE RULING (Rodney 2026-10-22): MO stays AT CLAMPING — no DMO implementation planned. Cross-LANE
+common shocks DECLINED — hardly worth it: lanes are not commensurate objects (a "shared rail value"
+means different things per lane), smooth cross-lane dependence already lives in the copula/spread
+structure, and discrete cross-lane atoms would risk the lane-routing invariants for little payoff.
+Within-LANE across VOICES: the worthwhile scope if the door ever reopens — voices on a lane share the
+value universe (unison is meaningful there), and once the clamp lands most of the texture arrives free
+(the co-hit corridor product -> min(lambda) via r; hit clustering by r; emergent co-clipping where
+clamp geometry matches), with a scale quantizer collapsing near-unison at the comonotone end to ACTUAL
+unison. What would still require the shock: a CALIBRATED unison rate (the corridor is emergent and
+caps at min(lambda)) and unison at NON-rail values (shared-value shock, a different atom than the rail
+event). Key stays on file.
 
 ### CLASSICAL MO REFERENCE — the KwMO tilt family (filed 2026-10-22)
 The CLASSICAL, absolutely-continuous (lambda=0) branch of the same MO family tree — the formal home of the
