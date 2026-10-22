@@ -1196,3 +1196,44 @@ ONE-LINER: Clamp provides the atom (the joint-occupiable set — necessary for a
 that makes atoms co-occur is whatever correlates the rail-hits: within a lane, the Gaussian-copula
 correlation of the shared stream (clamp rectifies it); across lanes, where streams are independent,
 ONLY shared modulation of the atom probability itself.
+
+────────────────────────────────────────────────────────────────────────────────
+## CLAMP BUILD-CASE VERDICT (Rodney 2026-10-22) — threshold-relativity demotes it; distribution-mod suffices
+
+### THE DECIDING PRINCIPLE: an atom carries λ only against a threshold AT the atom (threshold-relativity)
+λ is a LIMITING property ("as the decision threshold → the extreme"). So a rail atom at 1.0 creates
+tail dependence ONLY when the operative musical decision tests for EXACTLY the rail (or a threshold
+approaching it). Against a FIXED SUB-RAIL threshold it is indistinguishable from continuous mass in
+the same region — MARGINALLY AND JOINTLY.
+WORKED (Rodney): legato & accent both 5% base, both trigger on OUTPUT > 0.95, independent uniforms,
+warp maps 30% of mass to output > 0.95. Joint P(both > 0.95) = 0.30×0.30 = 0.09 — THE SAME whether
+the 30% got there by continuous warp OR by a rail atom at 1.0. Because 1.0 and 0.96 are BOTH just
+"> 0.95" — the atom sits INTERIOR to the trigger region, not AT the boundary. The knobs can't tell
+how the mass got above 0.95. (Corrects an earlier overstatement that the atom is "jointly essential"
+— it is essential ONLY when the threshold coincides with the atom.)
+
+### CONSEQUENCE: clamp is only worth building if a musical decision tests EXACTLY 0 or 1
+The test for clamp's value: does dot.modular make (or want) a decision that fires on EXACTLY-the-rail
+("hard max/min" events — "max density ONLY when variation is maxed", "both at the ABSOLUTE top") as
+opposed to the threshold/high-low decisions it actually uses? If NO → the continuous warp already does
+everything the thresholds can perceive, and clamp adds machinery (lo/hi knobs, singular branch,
+Straits/Causeway layout) with NO audible return. If YES → build clamp, scoped NARROWLY to those
+rail-tested decisions only.
+HONEST READ: the instrument's decisions are "how likely / how high / how dense" (threshold + value-map),
+NOT "exactly maxed". So clamp's build-case is WEAK. DISTRIBUTION MODULATION SUFFICES.
+
+### STATUS: DEFERRED, NOT DISMISSED (Rodney — "experience says don't dismiss features")
+Clamp stays documented + decided (control surface, copula type, DMO link — all filed) so it can be
+picked up IMMEDIATELY if a rail-tested use appears. Demoted from "likely future direction" to "build
+only if an exact-0/1 decision is specifically wanted." The MO/DMO/cross-lane theory remains a correct
+DESCRIPTION of what clamp would do — it's just that what clamp does isn't something the instrument's
+current decisions can see.
+
+### WHERE THE MO TILT FITS (relative to this verdict) — it's the WIN, independent of clamp
+The KwMO "MO tilt" R_p (PALETTE_KUMARASWAMY_TILT_NOTE.md) is CONTINUOUS distribution mod — it bends
+mass TOWARD a rail via one hazard-tilt knob but creates NO atom (λ=0, monotone (0,1)->(0,1)). So it is
+squarely in the "distribution-mod suffices" category: it delivers rail-ward shaping as CONTINUOUS mod,
+palette-wide, cheap (one mul+div, p=0 bit-identical), WITHOUT needing clamp. And it is forward-
+compatible — it's the clamp's MASS FEEDER if clamp is ever built — so shipping the tilt de-risks a
+future clamp without committing to it. The tilt is the buildable embodiment of "distribution-mod
+suffices, clamp deferred-not-dismissed".
