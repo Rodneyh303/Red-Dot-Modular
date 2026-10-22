@@ -104,3 +104,8 @@ to X.
   the UI wiring pairs naturally with the warp UI work (prompt 04) since that's when the param
   knobs/labels get built.
 - #3 (x-axis autoscale) any time — self-contained editor-widget fix, independent of warp.
+- NEW 2026-10-22: PALETTE_KUMARASWAMY_TILT_NOTE.md — "Kumaraswamy-tilt" (KwMO-Uniform) member
+  proposal: shipped Kw quantile + ONE rational MO-tilt knob (closed form, p=0 bit-identical,
+  authoring clamp p<1). PROPOSAL — Rodney's call pending. Reuses the landed
+  modeConcFromAb/abFromModeConc helpers, so item #1 is not a blocker. Citation for the KwMO
+  family filed in OUTPUT_LAYER_DISTRIBUTION_MAPPING.md (CLASSICAL MO REFERENCE section).

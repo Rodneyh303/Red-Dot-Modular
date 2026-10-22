@@ -388,6 +388,25 @@ its own probability knob" idea (deferred). It gives lambda>0 HONESTLY with a cal
 NOT scheduled — later, if ever; the warp foundation comes first. Recorded so the closed door's key isn't
 lost: it's a published, owned construction.
 
+### CLASSICAL MO REFERENCE — the KwMO tilt family (filed 2026-10-22)
+The CLASSICAL, absolutely-continuous (lambda=0) branch of the same MO family tree — the formal home of the
+"lambda=0 CORNER" above — is the KwMO tilt family: Alizadeh, Tahir, Cordeiro, Mansoor, Zubair, Hamedani,
+"The Kumaraswamy Marshal-Olkin Family of Distributions", J. Egyptian Math. Soc. 23 (2015) 546-557,
+doi:10.1016/j.joems.2014.12.002. Table 1 nests Kw-G (p=0), the MO family (a=b=1) and the PH/RH models; the
+MO tilt is their eq (1), the composed family eq (4)-(5), and eq (14) is the CLOSED-FORM quantile:
+
+    Q(u) = Q_G( (1-p)·H(u) / (1 - p·H(u)) ),   H(u) = (1-(1-u)^(1/b))^(1/a) = our KumaraswamyWarp quantile
+
+With uniform baseline this is a candidate palette member ("Kumaraswamy-tilt"): the shipped Kw quantile
+composed with ONE rational map; p=0 is BIT-IDENTICAL to the shipped warp (house neutral-parameter rule);
+needs an authoring clamp p < 1 (p→1⁻ collapses R_p→0 for all u<1 — the atom-at-zero, rank-destroying case
+the editor forbids). The tilt's defining property (hazard ratio h_KwMO/h_G monotone on the support:
+increasing for p<0, decreasing for p∈(0,1)) is the knob's musical meaning; their Fig 2 gives the shape
+taxonomy (constant/inc/dec/bathtub/UBT/S).
+SCOPE FENCE: this family is a pure density everywhere (their eq (5)) — it is NOT the clamp/atom math.
+The singular branch (rail atoms, lambda>0) stands on the DMO/common-shock references above plus
+Marshall-Olkin 1997. Member proposal with scope/tests: PALETTE_KUMARASWAMY_TILT_NOTE.md.
+
 ### ATOMS, REVERSIBILITY, AND "STILL A COPULA?" (the precise statement)
 An atom (clamp, flat segment, or a DMO shared-value shock) does NOT break reversibility — the generative
 pipeline (Philox counter → MA sum → warp/clamp → output) is a DETERMINISTIC function of the position
