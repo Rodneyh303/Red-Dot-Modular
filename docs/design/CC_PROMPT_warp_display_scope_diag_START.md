@@ -1,3 +1,41 @@
+# ⚠️⚠️ CRITICAL CONSTRAINT (Rodney) — the bars MUST stay CONTINUOUS; do NOT make bars==scope
+The visual bars DELIBERATELY show the CONTINUOUS live warp (immediate response to the knob/CV),
+while the engine/scope shows the LATCHED, per-step value (warp read at draw time). This is the
+intended "sight leads sound by one step" design: display immediate+continuous, engine stepped.
+VERIFIED this is how it's built: warpDisplayMix computes LIVE each frame from warpBank_ (continuous);
+finalRandomByStrand reads warpRow/warped_ (the latched mirror). The continuous-vs-latched split is
+CORRECT and must be PRESERVED.
+=> THE "bars == scope" CONTRACT TEST BELOW IS WRONG — it would assert away the continuous display.
+   The A/B "bars follow out / out follows bars by VALUE" framing is also WRONG for the same reason.
+   IGNORE the value-equality framing. The REAL fix is narrower:
+
+THE ACTUAL BUG (still real): bars and scope respond to a different SOURCE (East vs Macro), because
+they read a different VOICE — bars = displayed poly voice (StraitsSandsMacroVisual:590), scope =
+hardcoded V1 (finalRandomByStrand → warpRow(0,...), PatternEngine.hpp:503). SOURCE mismatch, not a
+timing/continuity issue.
+
+THE CORRECT FIX: align the SOURCE (voice + owner + delegation) that the bars read to the one the
+prob-out represents — WHILE KEEPING THE BARS CONTINUOUS (live warpDisplayMix) and the scope latched.
+  - Same voice, same delegation → editing the OWNING source moves BOTH (bars immediately/continuously,
+    scope at the next step); editing a NON-owning source moves NEITHER.
+  - Bars STAY continuous (warpDisplayMix live), scope STAYS latched (warped_). Only the VOICE the bars
+    read changes to match the prob-out's voice.
+So: if the Macro prob-out is the MONO (V1) output, the Macro bars should read warpDisplayMix(0, ...)
+(V1) — continuous V1 warp matching the V1 out's source — NOT the displayed poly voice. (This is "A"
+but corrected: bars show V1's CONTINUOUS warp, not V1's latched value.) If per-voice poly prob-outs
+are wanted ("B"), the out gets a voice arg and the bars keep the displayed voice — but bars still
+continuous. Rodney picks A/B on the OUTPUT design; either way bars stay continuous, source aligns.
+
+CORRECTED CONTRACT TEST (replaces the wrong bars==scope one):
+Assert the SOURCE alignment, NOT value equality:
+  - Editing the owning source (e.g. Macro global on a delegated lane, OR V1's own curve) changes the
+    bars' continuous value AND, at the next step, the scope's latched value — BOTH respond.
+  - Editing a NON-owning source (e.g. an own-slot East curve on a Macro-delegated lane, OR a different
+    voice than the out represents) changes NEITHER the bars nor the scope.
+  - The bars' value may DIFFER from the scope's at any instant (continuous vs latched) — that is
+    CORRECT and must NOT be asserted equal. Assert same-SOURCE-responsiveness, not same-value.
+
+────────────────────────────────────────────────────────────────────────────────
 # ⚠️ ROOT CAUSE CONFIRMED (upgraded from diagnostic to FIX) — voice mismatch, not delegation
 Pinned in code: the two sides read DIFFERENT VOICES.
 - PROB-OUT / scope: finalRandomByStrand(strand, step) (PatternEngine.hpp:503) returns
