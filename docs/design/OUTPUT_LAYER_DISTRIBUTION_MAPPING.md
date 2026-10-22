@@ -1085,3 +1085,36 @@ Two intrinsic channels: Variation→subgates, and main-rest/legato→subgates (t
 The cross-lane MO machinery is for DIFFERENT lanes; the subgate coupling is WITHIN Variation's reach,
 shared by design → cheaper. (Design consequence to realise when the planned gate-mode subgate feature
 is built; not verified in code — it's planned.)
+
+────────────────────────────────────────────────────────────────────────────────
+## 3×3 CROSS-DOMAIN CORRELATION — considered, SET ASIDE (Rodney; echoes the earlier CA decision)
+
+QUESTION: a standing correlation among the THREE RNG DOMAINS — pitch (mel+oct), rhythm (rest+accent+
+variation+legato), qmix — i.e. ρ_pitch-rhythm, ρ_pitch-qmix, ρ_rhythm-qmix. (NOT 7×7 by lane: the 7
+lanes aren't independent DOF — mel/oct share the pitch stream, the rhythm lanes share the rhythm
+stream. The 3 DOMAINS are where the independence is enforced, so 3×3 is the correctly-dimensioned
+object, not a reduced 7×7.)
+
+FEASIBILITY: genuinely feasible (unlike a 7×7): 3 numbers, PSD-trivial, implementable as ONE shared
+Gaussian factor injected into the 3 domains' latent draws with per-domain loadings. A clean, legible
+control ("how much do pitch / rhythm / qmix decisions move together").
+
+WHY SET ASIDE (same reasoning that made CA back away from it earlier — and it still holds):
+1. It BREAKS a DESIGNED INVARIANT — the 3 domains are independent Philox streams BY DESIGN (pitch
+   randomness must not contaminate rhythm randomness). A standing 3×3 factor couples them ALWAYS,
+   sacrificing that cleanliness even when you don't want the coupling.
+2. λ=0 WITHOUT CLAMP — a continuous cross-domain correlation is bounded-Gaussian → finite-quantile
+   co-leaning only, weak/subtle. The AUDIBLE cross-domain effect (co-EXTREMITY: "melody slams high
+   exactly when rhythm goes dense") needs CLAMP — at which point it's the cross-lane MO route already
+   mapped (clamp + shared SINGULAR-part modulation), which needs NO standing correlation matrix.
+3. STANDING vs OPT-IN — the decisive point. The clamp route gives the SAME cross-domain coupling but
+   OPT-IN and TRANSIENT (domains independent by default; coupled only when you deliberately modulate
+   their clamps/w together). A standing 3×3 factor is coupled ALWAYS — strictly worse: it spends the
+   domain-independence invariant permanently for an effect you only sometimes want and can get
+   on-demand. This is why CA set it aside: standing coupling < on-demand clamp coupling.
+
+CONCLUSION: do NOT build the standing 3×3 cross-domain correlation. Cross-domain co-movement is better
+served by clamp + shared-singular-modulation (opt-in, keeps domain independence as the default,
+mechanism already in the theory). 7×7 cross-lane is even less justified (needs up-to-7 factors, PSD
+projection, same λ=0-without-clamp weakness). The independent-streams architecture is a FEATURE here:
+it makes cross-domain coupling opt-in-via-clamp rather than a standing cost.
