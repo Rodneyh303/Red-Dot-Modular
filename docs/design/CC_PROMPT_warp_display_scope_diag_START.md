@@ -1,3 +1,32 @@
+# ⚠️ ROOT CAUSE CONFIRMED (upgraded from diagnostic to FIX) — voice mismatch, not delegation
+Pinned in code: the two sides read DIFFERENT VOICES.
+- PROB-OUT / scope: finalRandomByStrand(strand, step) (PatternEngine.hpp:503) returns
+  warpRow(0, s) — HARDCODED VOICE 0 (mono/V1). The prob CV out always shows V1's warp.
+- MACRO BARS: StraitsSandsMacroVisual.cpp:590 draws warpDisplayMix(mono ? 0 : polyVoice, ...)
+  — the DISPLAYED voice, which is a POLY voice (V2/V3/…) whenever you've selected one on the tab.
+So when viewing a poly voice: BARS show that poly voice's warp; SCOPE shows V1's warp. They diverge
+because they read DIFFERENT VOICES — exactly Rodney's symptom:
+  edit East on the displayed poly voice (own-slot) → BARS move, scope (V1) doesn't;
+  edit Macro global → V1 (delegated) picks it up → SCOPE moves, but the displayed poly voice's bars
+  show its own-slot East curve → bars don't.
+This is NOT delegation polarity (that's clean) — it is the mono/voice-0-special residue AGAIN:
+finalRandomByStrand is hardcoded warpRow(0,...). Same bug class as the melodyPitchV double-writer.
+
+THE FIX — a DESIGN CALL for Rodney, then CC implements:
+The prob CV OUT is genuinely the MONO (V1) output — so V1's warp on the scope is arguably CORRECT for
+the mono out. The inconsistency is the BARS showing a DIFFERENT (poly) voice than the mono out. Two
+coherent fixes:
+  (A) If the Macro prob-out/scope is meant to be the MONO voice: the Macro BARS should also show V1
+      (voice 0) — i.e. warpDisplayMix(0, ...) — so bars == the mono out they represent. (Bars follow
+      the out.) Simplest; makes Macro bars always the mono/V1 view.
+  (B) If the Macro bars are meant to show the SELECTED poly voice: then there must be a per-voice prob
+      OUT for that voice, and the scope should be taken from THAT voice's out — i.e. finalRandomByStrand
+      needs a voice arg (not hardcoded 0) for the poly prob-outs. (Out follows the bars.) Bigger.
+RODNEY DECIDES A vs B. Likely (A) for the Macro mono-out case (bars show the voice the out emits), with
+(B) reserved for if/when per-voice poly prob-outs are wanted. Until Rodney picks, DO NOT patch — the
+diagnostic below confirms the mechanism; the fix is gated on the A/B design call.
+
+────────────────────────────────────────────────────────────────────────────────
 # CC PROMPT — DIAGNOSE: warp bars vs scope disagree (display bug, NOT ownership polarity)
 
 CONTEXT: Rodney's REFRAMED repro (this is the real symptom — supersedes "East controls Macro"):
