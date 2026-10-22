@@ -531,63 +531,17 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     // East-spread-modulated shared final (rhythmRandom[] etc.). This enforces the one-way
     // borrowing rule (East may borrow Macro; Macro never borrows East). See
     // docs/design/DISPLAY_STORE_ENGINE_SEPARATION.md. engLane = PL_REST/MEL/OCT/ACC (0..3).
+    // CC_PROMPT_macro_output_east_leak: the RESOLUTION now lives in the ENGINE —
+    // SequencerEngine::macroOwnLaneProbability, the ONE accessor BOTH the bars (here,
+    // continuous) and the prob CV OUT (VoiceResolver::laneProbabilityAtStep, latched
+    // per-step at the module) read — so the two can never diverge and neither borrows
+    // East. The spread input is eng.macroOwnSpread, published by this module's process()
+    // from macroBase + macroPostDelta (the SAME expression the manager's MACRO_SOLE
+    // branch uses; P9b POST endpoint — Macro has no receiving voice).
     float macroOwnProbability(int engLane, int step, bool mono, int polyVoice) {
-        auto* mod = dynamic_cast<StraitsSandsMacroVisual*>(module);
         Monsoon* mon = getMonsoon();
-        if (!mod || !mon) return 0.5f;
-        auto& pe = mon->engine.pe;
-        // Macro's own spread for this lane (base knob + send-tapped delta, clamped) — the
-        // SAME expression the engine's MACRO_SOLE branch uses (MonsoonExpanderManager.cpp).
-        // Macro's OWN display → the POST endpoint (P9b: Macro has no receiving voice; the
-        // per-voice tap lerp is for blend-into-a-voice sites only).
-        const float sp = rack::math::clamp(mod->macroBase[engLane][3] + mod->macroPostDelta[engLane][3], -1.f, 1.f);
-        // The pre-spread base draw buffer for this lane (mono strand vs poly bank).
-        // The Change Alley pin remap now lives UPSTREAM in the slewed buffers
-        // (pe.remapSlewedByPins, pre-spread), so reading this voice's OWN slewed buffer
-        // already yields the pinned source's draw — Macro's own spread then applies on top.
-        // Plain own-voice read; no srcRow indirection here.
-        using PL = SequencerEngine;  // PL::PL_REST etc. (enum lives in SequencerEngine)
-        // Read PUBLISHED snapshots (pubSlewed*) — NOT the live slewed* arrays the audio thread
-        // is rewriting during recomputeEffective* (now ~116µs at r>0). Reading live arrays
-        // mid-rewrite → torn read → flicker. (East already reads published values; this brings
-        // Macro in line.)
-        float base;
-        if (mono) {
-            base = (engLane == PL::PL_REST)      ? pe.pubSlewedPolyRhythm[0][step & 0x0F]
-                 : (engLane == PL::PL_MELODY)    ? pe.pubSlewedPolyMelody[0][step & 0x0F]
-                 : (engLane == PL::PL_OCTAVE)    ? pe.pubSlewedPolyOctave[0][step & 0x0F]
-                 : (engLane == PL::PL_ACCENT)    ? pe.pubSlewedPolyAccent[0][step & 0x0F]
-                 : (engLane == PL::PL_QMIX)      ? pe.pubSlewedPolyQmix[0][step & 0x0F]
-                 : (engLane == PL::PL_VARIATION) ? pe.pubSlewedPolyVariation[0][step & 0x0F]
-                 :                                pe.pubSlewedPolyLegato[0][step & 0x0F];
-        } else {
-            // CC_PROMPT_07: polyVoice is ALREADY the voiceSlot (the caller passes
-            // VoiceResolver::polyVoiceSlot: V2→1 … V16→15). The old +1 treated it as
-            // the dead 0-based poly bank — a double shift that made Macro's V2 tab
-            // bars show V3's row (V16 clamped back onto its own).
-            int v = rack::math::clamp(polyVoice, 0, 15);   // voiceSlot: V2+=1..15 (V1 takes the mono path)
-            base = (engLane == PL::PL_REST)      ? pe.pubSlewedPolyRhythm[v][step & 0x0F]
-                 : (engLane == PL::PL_MELODY)    ? pe.pubSlewedPolyMelody[v][step & 0x0F]
-                 : (engLane == PL::PL_OCTAVE)    ? pe.pubSlewedPolyOctave[v][step & 0x0F]
-                 : (engLane == PL::PL_ACCENT)    ? pe.pubSlewedPolyAccent[v][step & 0x0F]
-                 : (engLane == PL::PL_QMIX)      ? pe.pubSlewedPolyQmix[v][step & 0x0F]
-                 : (engLane == PL::PL_VARIATION) ? pe.pubSlewedPolyVariation[v][step & 0x0F]
-                 :                                pe.pubSlewedPolyLegato[v][step & 0x0F];
-        }
-        // V1 (mono=true): self-target no-op — V1 is the anchor, spread toward itself
-        // is meaningless. Use interpolate(base, base, sp) so V1 bars are identical
-        // regardless of spread (matches East V1 which uses interpolate(base, base, spread)).
-        // Poly voices (mono=false): still use applyAnchorV1Only (interpolates toward V1).
-        const float disp = mono
-            ? redDot::SpreadInterp::interpolate(base, base, sp)
-            : redDot::SpreadInterp::applyAnchorV1Only(pe, engLane, step, base, sp);
-        // Warp display composition (CC_PROMPT_05 uniform): the engine consumes the
-        // warp MIRROR for EVERY lane (warpRow), so Macro's bars compose the same
-        // mixture over the spread-applied value for all lanes — the SAME
-        // per-(voice,lane) (F,w) the mirror resolves (delegated lane → Macro's
-        // global curve; own-slot lane → the voice's own).
-        // Displayed voice: V1/mono = slot 0; poly = polyVoice (already the voiceSlot).
-        return pe.warpDisplayMix(mono ? 0 : rack::math::clamp(polyVoice, 0, 15), engLane, disp);
+        if (!mon) return 0.5f;
+        return mon->engine.macroOwnLaneProbability(engLane, step, mono, polyVoice);
     }
 
     void step() override {
@@ -875,13 +829,38 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     const float scaleV = (mon->probOutScale == 0) ? 1.f : (mon->probOutScale == 1) ? 5.f : 10.f;
     const bool sh = mon->probOutSampleHold;
     auto& eng = mon->engine;
+    // ONE publish (CC_PROMPT_macro_output_east_leak): Macro's OWN effective spread per
+    // lane → the engine store. BOTH Macro consumers — the bars (the widget's
+    // macroOwnProbability) and the prob CV outs below (VoiceResolver::
+    // laneProbabilityAtStep) — resolve through SequencerEngine::macroOwnLaneProbability,
+    // which reads THIS store: one source, owner-independent (Macro's own value exists
+    // whether or not Macro owns the lane; Macro never borrows East). Same expression as
+    // the manager's MACRO_SOLE branch (macroBase[l][3] + macroPostDelta[l][3], clamped).
+    for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
+        eng.macroOwnSpread[l] = rack::math::clamp(macroBase[l][3] + macroPostDelta[l][3], -1.f, 1.f);
     const int nV = eng.numPolyVoices;
     const int nCh = 1 + nV;
-    const int gs = eng.stepIndex;
+    // PERF (Rodney audit item 2 precedent — East got this throttle, Macro didn't):
+    // recomputing every lane × voice probability EVERY SAMPLE was pointless. The sweep
+    // is 5 lanes × (1+numPolyVoices) channels × macroOwnLaneProbability — each call is
+    // polySlewedPub + spread lerp + WarpBank::warpedValue → invCDF (std::visit +
+    // transcendental math, or a drawn-curve binary search). At 48 kHz × 16 voices that
+    // was ~4M invCDF calls/sec — the Macro module's meter-pinning cost (the "124%").
+    // EVERY input of the chain is control-rate (pubSlewed* rewrites, macroOwnSpread
+    // publish above, stepIndex, warp bank edits, numPolyVoices), so per-sample recompute
+    // re-derived a constant ~32× per control block. /32 = control rate (~1.5 kHz @48k);
+    // the output VOLTAGE is not gated — Rack ports hold their last value, so the CV is
+    // continuous; only the COMPUTATION is throttled. Channel count is likewise set every
+    // sample so polyphony changes take effect at once. The S&H latch still catches every
+    // step change (a musical step lasts orders of magnitude longer than /32). Dir-mod
+    // edge scan above stays per-sample (gate edges are sample events).
+    const bool recompute = probOutDiv.process();
     dotModular::VoiceResolver resolver(eng);
     for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // 5 poly lanes incl QMIX
         auto& out = outputs[PROB_OUT_START + l];
         out.setChannels(nCh < 1 ? 1 : nCh);
+        if (!recompute) continue;                      // ports hold their last voltage
+        const int gs = eng.stepIndex;
         // Macro's OWN global LOR step for this lane (from macroBase+CVDelta — identical
         // to Macro's editor playhead, independent of East/ownership). Same step for
         // every voice (Macro's view is global); each voice contributes its own draw.
@@ -889,9 +868,12 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
         int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
         int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
         int step = calcPlayhead(gs, ownLen, ownOff, ownRot) & 0x0F;
-        // Uniform addressing: VCV channel ch carries voice ch+1. ch0 → voice 1 (mono;
-        // the resolver ignores the explicit step and returns the master draw) — was a 0V
-        // stub. ch v → voice v+1 (poly), sampled at Macro's global step.
+        // Uniform addressing: VCV channel ch carries voice ch+1. ch0 → voice 1 (mono) —
+        // was a 0V stub. Every channel is Macro-OWN at Macro's global step: the resolver
+        // routes to SequencerEngine::macroOwnLaneProbability — the SAME source the bars
+        // read (one accessor, both consumers). East's spread on an East-owned lane cannot
+        // reach this out (one-way borrowing); only the S&H latch + scale differ from the
+        // continuous bars, by design.
         for (int ch = 0; ch < nCh; ++ch) {
             const int voice = ch + 1;                 // 1..16
             float raw = resolver.laneProbabilityAtStep(voice, l, step);

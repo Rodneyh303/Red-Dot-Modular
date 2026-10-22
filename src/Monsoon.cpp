@@ -655,12 +655,7 @@ void Monsoon::onPhraseBoundary_() {
 // and is reached by walking one step further.  If no DNA is present,
 // PolyVoice may attach directly to Monsoon's right.
 void Monsoon::onExpanderChange(const ExpanderChangeEvent& e) {
-    static uint64_t n=0, ns=0;
-    auto t0 = std::chrono::high_resolution_clock::now();
     updateExpanderPointers();
-     auto t1 = std::chrono::high_resolution_clock::now();
-    ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0).count();
-    if (++n % 50000 == 0) INFO("blockEXP(594): avgNs=%llu", (unsigned long long)(ns/n));
 }
 
 // ---------------- Helper: reset hook -----------------------------------------
@@ -682,9 +677,6 @@ int Monsoon::computeNoteLengthIdx(int requestedIdx, int ppqnMask) { return engin
 // Calls helper functions as needed
 void Monsoon::process(const ProcessArgs& args) {
 
-     static uint64_t n=0, ns=0;
-    auto t0 = std::chrono::high_resolution_clock::now();
-    
     // Flush denormals to zero on the audio thread. Decaying float state (pulses,
     // smoothing, pitch CV) can drift into the denormal range, where FPU ops cost
     // ~10-100x normal — a classic cause of sudden CPU spikes that scale with the
@@ -1383,6 +1375,10 @@ void Monsoon::process(const ProcessArgs& args) {
         for (int l = 0; l < 5; ++l)
             engine.pe.spreadTargetMode[l] = getSpreadTargetMode(l);
         engine.beginStrandWriteBlock();   // debug-only: reset the per-block strand-writer ledger
+        // Back-pointer set BEFORE processDNA: the SandsManager gMon null-walk rescue
+        // reads it (see MonsoonSandsManager.cpp hardening). Idempotent — sync() below
+        // uses the same pointer instead of findMonsoonEitherSide.
+        expanderManager.owner = this;
         dnaManager.processDNA(expanderManager);
 
         // ── Deep Straits Sands Expanders (Control Rate Orchestration) ──
@@ -1390,7 +1386,6 @@ void Monsoon::process(const ProcessArgs& args) {
         // trigger inside sync() reads this cycle's edges. Uses engine.stepIndex (transport
         // authority) -- replaces the old caV2PrevStep_/caV2PrevLocked_ shadow state.
         lockManager.tick(engine.stepIndex);
-        expanderManager.owner = this;   // back-pointer: sync() uses this instead of findMonsoonEitherSide
         expanderManager.sync(engine, lockManager.queueFires());
         
         // Refresh Audio-Rate Caches (Throttled)
@@ -1496,9 +1491,6 @@ void Monsoon::process(const ProcessArgs& args) {
             paramManager->setCv3Offset(i, clampv<float>(cv3Mods[i], -1.f, 1.f));
         }
     }
-    auto t1 = std::chrono::high_resolution_clock::now();
-    ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1-t0).count();
-    if (++n % 50000 == 0) INFO("process TOTAL avgNs=%llu", (unsigned long long)(ns/n));
 }
 
 

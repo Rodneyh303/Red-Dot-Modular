@@ -202,14 +202,19 @@ int main() {
                   "V16's chain value is its OWN (adjacent-slot independence)");
         }
 
-        // VoiceResolver read facade: laneProbabilityAtStep dispatches V1->master, V(k)->slot k-1.
+        // VoiceResolver read facade: laneProbabilityAtStep dispatches V1->slot 0, V(k)->slot
+        // k-1 — through the MACRO-OWN source (CC_PROMPT_macro_output_east_leak: pubSlewed*
+        // base + macroOwnSpread via SequencerEngine::macroOwnLaneProbability, the ONE
+        // accessor the bars also read — NOT the shared random_ rows East's spread writes
+        // on an East-owned lane). macroOwnSpread defaults 0, no warp bank wired ⇒ the
+        // accessor returns the pubSlewed base bit-exactly, so the sentinels pin the
+        // (voice, lane, step) addressing through the NEW source.
         {
             SequencerEngine se;
-            for (int slot = 0; slot < 16; ++slot) se.pe.random_[slot][PL_MEL][2] = stepSentinel(slot, 2);
+            for (int slot = 0; slot < 16; ++slot) se.pe.pubSlewedPolyMelody[slot][2] = stepSentinel(slot, 2);
             dotModular::VoiceResolver vr(se);
-            check(vr.laneProbabilityAtStep(1, PL_MEL, 2) == se.masterLaneProbability(PL_MEL)
-                  || vr.laneProbabilityAtStep(1, PL_MEL, 2) == stepSentinel(0, 2),
-                  "resolver V1 -> mono row (slot 0)");
+            check(vr.laneProbabilityAtStep(1, PL_MEL, 2) == stepSentinel(0, 2),
+                  "resolver V1 -> mono row (pubSlewed slot 0)");
             check(vr.laneProbabilityAtStep(2, PL_MEL, 2) == stepSentinel(1, 2),
                   "resolver V2 -> slot 1");
             check(vr.laneProbabilityAtStep(16, PL_MEL, 2) == stepSentinel(15, 2),

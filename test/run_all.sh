@@ -83,6 +83,7 @@ TESTS=(
   "test_lane_voice_uniformity|$PE $SE $GS"   # SEAM_ERADICATION_PLAN Stage 0: the per-(voice,lane) uniformity harness. Known seams print but don't fail CI; UNIFORMITY_STRICT=1 = the per-stage gate.
   "test_legato_leading_edge|"
   "test_lock_behaviour|$PE"
+  "test_macro_own_output|$PE $SE $GS"   # CC_PROMPT_macro_output_east_leak: the backwards-delegation contract — East's spread on an East-delegated lane must not reach Macro's prob OUT (who-responds at the source; the bars were already one-way-fixed)
   "test_mode_b_gate|$SE $GS $PE"
   "test_mode_b_gap|$SE $GS $PE"
   "test_gate_mode_agnostic|$SE $GS $PE"

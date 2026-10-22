@@ -107,6 +107,14 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     Monsoon* gMon = nullptr;
     if (macroVis)      gMon = redDot::findMonsoonEitherSide(macroVis);
     else if (monoVis)  gMon = redDot::findMonsoonEitherSide(monoVis);
+    // HARDENING (mmOwn precedent — delegation-bug round): the chain walk can return null
+    // at a rack boundary even with the expander attached; the old code then filled
+    // ownership via the !hasMacro lambda = ALL-EAST, and warp followed East with
+    // Macro+East both attached (the gMon-null state also zeroes every other store read —
+    // the documented spread/QMIX-arc cluster). expanderManager.owner is the back-pointer
+    // Monsoon::process sets before this call — same store, no walk. Walk first (keeps
+    // shared-expander semantics where the walk works), back-pointer as null-walk rescue.
+    if (!gMon && expanderManager.owner) gMon = expanderManager.owner;
 
     // Sands final-ownership lifecycle (Option W): default each cycle to whether
     // any Sands visual stage will own final (Mono, Macro, or East poly). When
@@ -177,6 +185,36 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 }
             }
         if (warpTopoChanged) engine.pe.rebuildWarpMirrorAll();
+        // ── DIAGNOSTIC (delegation-bug hunt; REVERT after fix) ──────────────
+        // Throttled authority-state burst (~1 line / 1.4 s at the 1500 Hz control
+        // rate). If warp follows East with Macro attached, one of these fields
+        // explains it:
+        //   gMon=ok/NULL + the fallback above — old code filled ALL-EAST on NULL;
+        //   own=hex(7 lanes; bit l set = store says EAST owns) for V1/V2;
+        //   ndel=hex(7 lanes; bit l set = NOT delegated → own-slot/East-side warp);
+        //   chg = topology flips this burst; rb = total mirror rebuilds (a per-tick
+        //   climb here = rebuild storm = CPU).
+        // Statics shared across Monsoon instances — fine for the single-Monsoon repro.
+        {
+            static unsigned diagTick = 0, rbCnt = 0;
+            if (warpTopoChanged) ++rbCnt;
+            if ((diagTick++ & 0x7FF) == 0) {
+                auto packs = [&](int v, unsigned& own, unsigned& ndel) {
+                    own = ndel = 0;
+                    for (int l = 0; l < 7; ++l) {
+                        if (gMon && gMon->getOwnerEast(v, l)) own |= (1u << l);
+                        if (!engine.pe.warpDelegated_[v][l])  ndel |= (1u << l);
+                    }
+                };
+                unsigned o0, d0, o1, d1;
+                packs(0, o0, d0);
+                packs(1, o1, d1);
+                INFO("[WARPDIAG] gMon=%s macro=%d east=%d poly=%d | V1 own=%02x ndel=%02x V2 own=%02x ndel=%02x | chg=%d rb=%u",
+                     gMon ? "ok" : "NULL", hasMacro ? 1 : 0,
+                     expanderManager.cachedEastSandsVisual ? 1 : 0, polyBaseActive ? 1 : 0,
+                     o0, d0, o1, d1, (int)warpTopoChanged, rbCnt);
+            }
+        }
     }
     // sandsActive must be true whenever ANYTHING writes the spread-applied final arrays,
     // or PatternEngine's slew stage copies the raw slewed draws back over them every
