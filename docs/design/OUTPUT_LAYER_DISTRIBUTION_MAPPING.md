@@ -1289,3 +1289,58 @@ ALREADY HAVE it via hand-drawn curves. Rail-parametric CLAMP feature: unmotivate
 cluster-perceived, no exact-rail decision exists, so it adds machinery with no audible return. Not "atoms
 are useless"; rather "the useful atoms are interior and already available; the clamp FEATURE specifically
 is what's unmotivated."
+
+────────────────────────────────────────────────────────────────────────────────
+## THE ONE USEFUL ATOM FEATURE — injected interior atom on a parametric curve (Rodney 2026-10-22)
+
+Supersedes BOTH clamp (rail atoms, perceptually inert) AND static hand-drawn atoms (interior but NOT
+modulatable). This is the one place the mechanism, the perception, the modulation, and the coupling all
+line up.
+
+### THE GAP IT FILLS
+- Static arbitrary shape incl. interior atoms → hand-drawn ✓ but NOT modulatable (a curve is a VECTOR
+  of points — no scalar axis to route a CV at; drawn curves are a STATIC AUTHORING tool, inherently).
+- Modulatable shape → parametric ✓ but can't place an ARBITRARY interior atom.
+- Modulatable INTERIOR atom → NEITHER does it. ← this feature.
+(The only clean way to modulate a DRAWN curve is A→B CDF-morph: resample both to a common u-grid and
+lerp the OUTPUTS — monotone-preserving, Sklar-safe — but that is a heavier, separate thing. The injected
+atom below is lighter and more useful.)
+
+### THE CONSTRUCTION
+Parametric quantile (Kumaraswamy etc. — fully modulatable via its own handles) PLUS one injected atom:
+  Q(u) = parametric F^-1(u), EXCEPT a u-sub-interval of width m all maps to the single output ℓ.
+TWO SCALAR HANDLES, both MODULATABLE (the whole point — scalars are CV destinations, a point-vector is not):
+  - ℓ (LOCATION) — modulate it → the recurring anchor DRIFTS.
+  - m (MASS)     — modulate it → the atom BREATHES (m=0 absent → dominant); m=0 = NEUTRAL = bit-identical
+    to the un-injected parametric curve (house neutral-parameter rule, as MO-tilt p=0 / spread r=0).
+
+### PROPERTIES
+- MONOTONE-SAFE: inserting a flat into a monotone quantile stays monotone → Sklar structure intact; the
+  output is the parametric continuous part + ONE Dirac at ℓ of mass m — a CONTROLLED Lebesgue decomp
+  where you MODULATE the singular part's LOCATION and WEIGHT. (Clamp's "modulate the atom" capability,
+  but for one INTERIOR atom instead of inert rail atoms.)
+- PERCEPTUALLY LIVE: interior atom on a VALUE lane = a recurring exact value the listener TRACKS =
+  anchor / pedal / motif (melody degree, octave register, qmix point). Unlike the rail atom (just
+  "high/low", perceptually inert).
+- CHEAP: a branch in invCDF ("u in the atom interval → return ℓ; else parametric F^-1 rescaled for the
+  consumed mass m"). One compare + a rescale.
+- MASS MODEL (a feel choice to pin when built): INSERT/DISPLACE (atom ADDS an anchor, pushes the rest of
+  the distribution — "add a recurring note on top of my shape") — LEAN THIS; vs REPLACE (atom absorbs the
+  local continuous mass near ℓ). Insert/displace reads as additive-anchor, the more musical default.
+
+### THE COUPLING PAYOFF — performable voice-convergence-on-anchor
+SHARED MODULATION of m across within-lane CORRELATED voices → the injected atoms grow TOGETHER → the
+voices LOCK onto the shared anchor ℓ together, and you DIAL how strongly with a CV. "Voices converge on a
+recurring unison note, modulatably." The within-lane MO coupling becomes a PERFORMABLE gesture — reachable
+ONLY this way (static drawn atoms can't modulate the convergence strength). (Cross-lane still needs
+shared atom-mass modulation per the independence rule; here that's literally sharing the m-modulation
+across lanes' injected atoms — a clean, concrete realization of the cross-lane MO route, now with a REAL
+modulatable m to share.)
+
+### VERDICT
+IF any atom feature is ever built, it is THIS — injected interior atom (ℓ, m) on a parametric curve — NOT
+clamp. It is the only atom construction that is simultaneously perceptually relevant (interior),
+modulatable (two scalars), cheap, neutral-at-m=0, and coupling-capable (shared-m → performable
+convergence). Clamp (rail-parametric) remains unmotivated. Static hand-drawn interior atoms remain
+available + useful for FIXED anchors (no new feature). This is the MODULATABLE upgrade, filed as the
+atom feature to build IF the performable-anchor gesture is wanted. Not scheduled; sequenced after warp.
