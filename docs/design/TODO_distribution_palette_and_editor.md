@@ -118,3 +118,7 @@ to X.
   SEQUENCED (Rodney 2026-10-22): try the tilt WITH the clamp feature, then decide broad
   rollout (keeper test) — the mass-feeder composition is the evaluation target; the P_MAX
   feel test + clamp calibration (mass vs threshold) happen as one listening session then.
+  CLAMP DESIGN DIRECTION (Rodney, same day): clamp-by-target-MASS, BOTH rails — closed-form
+  thresholds eps_B = R_p(Q(lambda_B)) / eps_T = R_p(Q(1-lambda_T)), joint clamp
+  lambda_B+lambda_T < 1; lambda = per-draw rail-hit probability (density knob; r = clustering
+  of hits, p = inter-hit material). Full model + lambda semantics: PALETTE_KUMARASWAMY_TILT_NOTE.md RAILS.

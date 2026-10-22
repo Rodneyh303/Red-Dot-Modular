@@ -7,6 +7,8 @@ the shipped Mobius member's invCDF at a=1-p — see PALETTE-WIDE APPLICABILITY);
 no rails of its own but composes with the planned clamps as their mass feeder (RAILS section);
 p=1 ruled out in favor of the clamp; P_MAX=0.95 marked PROVISIONAL pending a feel test.
 Decision widened to: member-as-filed vs SHARED TILT STAGE.
+CLAMP DIRECTION (Rodney 2026-10-22): clamp-by-target-mass with BOTH rails is "a better design
+for clamp" — two-rail model + lambda semantics filed in the RAILS section.
 SOURCE: Rodney uploaded the KwMO paper alongside "Kumaraswamy is one of our output
 distributions and we plan to introduce clamp on distributions which generates Marshall-Olkin
 copula". This note is the PALETTE half of that thread. The CLAMP half (singular branch, rail
@@ -140,6 +142,35 @@ rails? A: NO DIRECT RAILS; YES IT COMPOSES, as the clamp's mass feeder.
   (lambda_eff moves with the tilt knob — one knob continuously pre-shapes what the clamp
   catches). Nothing structural breaks either way: both stages stateless + monotone; the tilt
   is STRICTLY monotone so it adds no flat segments; the clamp's flats remain the only atoms.
+  DECIDED (Rodney 2026-10-22): TARGET-ATOM-MASS — the two-rail model below.
+- CLAMP-BY-TARGET-MASS — TWO-RAIL MODEL (Rodney: "a better design for clamp", 2026-10-22):
+  BOTH rails on ONE member, each with its own target mass, each ONE closed-form solve on the
+  same tilted CDF:
+      bottom: eps_B = R_p(Q_base(lambda_B))     (capture x <= eps_B -> bottom rail)
+      top:    eps_T = R_p(Q_base(1 - lambda_T)) (capture x >= eps_T -> top rail)
+  Disjoint value regions -> the clamps COMMUTE, never fight; post-clamp mass =
+  lambda_B + middle + lambda_T = 1 exactly. SOLE CONSTRAINT: lambda_B + lambda_T < 1 (joint
+  authoring clamp, e.g. <= 0.9) — the leftover 1 - lambda_B - lambda_T IS the non-rail
+  material. The lambda_B + lambda_T -> 1 limit is the two-point Bernoulli (coin flip between
+  rails — hard hocket between two fixed values) — rank-destroying; stay short of it.
+  WHAT lambda DIRECTLY INDICATES: the per-draw MARGINAL rail-hit probability = the expected
+  FRACTION OF STEPS that output exactly the rail value (lambda_B = 0.1 -> one step in ten
+  snaps to the bottom rail). Three-knob decomposition of the heard texture:
+      lambda_B / lambda_T = DENSITY of rail hits (how often each rail fires);
+      r (copula)          = CLUSTERING of those hits (MA autocorrelation -> runs of rail hits,
+                            not coin-flip scatter);
+      p (tilt)            = the material BETWEEN hits + where the capture nets sit (masses
+                            stay exact; the approached net narrows, the far net widens).
+  WHAT lambda IS NOT: (1) not a clock rate — the rhythm of rail hits is fixed by the RNG
+  stream (deterministic, scrub/reverse-safe); lambda sets average density only. (2) not the
+  DMO lambda — these are per-lane marginal atom masses (per-draw Bernoulli probabilities),
+  NOT the copula tail-dependence coefficient; the joint co-hit rate stays emergent through
+  C(eps_B, eps_T); calibrated joint lambda remains DMO's deferred territory. (3) not a level
+  control — WHAT the rail value is, is separate; lambda only says HOW OFTEN.
+  MASS vs THRESHOLD contrast (both closed-form, both stateless/reversible): mass mode =
+  lambda exact, capture position drifts with tilt (the rail-event RATE is the musical
+  object); threshold mode = position exact, lambda drifts with tilt (the rail POSITION is
+  the musical object). MASS MODE IS THE LANDED DESIGN.
 - CITATION FENCE STAYS PER-BRANCH: the composed object (KwMO warp + clamp atom) is NOT
   "KwMO" — the paper governs only the continuous piece; the atom piece stands on MO 1997 /
   DMO as filed.
