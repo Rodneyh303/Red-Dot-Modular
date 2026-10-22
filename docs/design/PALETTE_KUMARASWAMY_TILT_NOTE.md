@@ -1,7 +1,8 @@
 # PALETTE NOTE — "Kumaraswamy-tilt" (KwMO-Uniform) member proposal
 
-STATUS: PROPOSAL — Rodney's call pending (filed 2026-10-22). Not scheduled; does not block warp
-Phase 3. 2026-10-22 Q&A EXTENSION: the MO tilt applies to ALL palette members (R_p is EXACTLY
+STATUS: SEQUENCED BY RODNEY 2026-10-22 — TRY THE TILT WITH THE CLAMP FEATURE, then decide if
+it is a KEEPER to roll out broadly. Filed 2026-10-22; not scheduled ahead of the clamp; does
+not block warp Phase 3. 2026-10-22 Q&A EXTENSION: the MO tilt applies to ALL palette members (R_p is EXACTLY
 the shipped Mobius member's invCDF at a=1-p — see PALETTE-WIDE APPLICABILITY); the tilt brings
 no rails of its own but composes with the planned clamps as their mass feeder (RAILS section);
 p=1 ruled out in favor of the clamp; P_MAX=0.95 marked PROVISIONAL pending a feel test.
@@ -204,10 +205,15 @@ bottom rail (R_1(t) = 0 for all t<1; every draw returns exactly the rail):
 
 ## Sequencing
 
-- Any time — independent of warp Phase 3 prompts; reuses landed helpers, so item #1 is NOT a
-  blocker (it only unifies where the canonical map lives).
-- OPEN DECISION (widened 2026-10-22): member-as-filed vs SHARED TILT STAGE (palette-wide, one
-  knob beside the palette; the Kw member becomes its first instance; Mobius absorbed).
-  Rails-composition additionally needs the clamp calibration model decided (mass vs
-  threshold). P_MAX=0.95 provisional pending the feel test.
+- RODNEY'S CALL (2026-10-22): try the tilt WHEN WE DO THE CLAMP — evaluate the pair together
+  (the mass-feeder composition IS the interesting behavior; a standalone tilt evaluation
+  would only show the continuous rail-hug and miss the composed behavior), then decide if the
+  tilt is a KEEPER worth rolling out broadly (the shared tilt stage). Until then this note
+  stays a filed proposal; nothing schedules it ahead of the clamp.
+- When that work starts: the P_MAX feel test (derivation recipe above) and the clamp
+  calibration decision (mass vs threshold) are ONE listening session — the two knobs'
+  calibrations interact by design (lambda_eff = F_base(R_p^-1(eps))).
+- Reuses landed helpers (modeConcFromAb/abFromModeConc), so item #1 is NOT a blocker (it only
+  unifies where the canonical map lives). Tests 1-7 stand as written when implementation day
+  comes.
 - Pointer filed in TODO_distribution_palette_and_editor.md → Sequencing.

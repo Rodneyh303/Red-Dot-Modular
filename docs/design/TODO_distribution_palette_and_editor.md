@@ -115,3 +115,6 @@ to X.
   member-as-filed vs shared stage). Tilt brings NO rails of its own — it is the planned
   clamp's mass feeder (lambda_eff = F_base(R_p^-1(eps)), ~1/(1-p) amplifier). p=1 ruled out
   in favor of the clamp. P_MAX=0.95 PROVISIONAL pending feel test.
+  SEQUENCED (Rodney 2026-10-22): try the tilt WITH the clamp feature, then decide broad
+  rollout (keeper test) — the mass-feeder composition is the evaluation target; the P_MAX
+  feel test + clamp calibration (mass vs threshold) happen as one listening session then.
