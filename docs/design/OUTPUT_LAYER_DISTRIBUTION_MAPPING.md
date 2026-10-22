@@ -1237,3 +1237,55 @@ palette-wide, cheap (one mul+div, p=0 bit-identical), WITHOUT needing clamp. And
 compatible — it's the clamp's MASS FEEDER if clamp is ever built — so shipping the tilt de-risks a
 future clamp without committing to it. The tilt is the buildable embodiment of "distribution-mod
 suffices, clamp deferred-not-dismissed".
+
+────────────────────────────────────────────────────────────────────────────────
+## FINAL ATOM/CLAMP RESOLUTION (Rodney 2026-10-22) — separate the MECHANISM (atom) from the PLACEMENT (rail)
+
+### Tutti needs NO rail — continuous joint-skew delivers it
+The "whole voice/ensemble lands at the extreme together" gesture does NOT need atoms. Jointly skewing
+the relevant distributions toward the top (shared MO-tilt / shared θ, under correlation) gives a strong
+CLUSTER of high values co-occurring = the tutti SOUND, as continuous mass, λ=0. The rail would only add
+EXACT simultaneity at the identical value — and a listener CANNOT distinguish "all at 0.98" from "all at
+exactly 1.0". Tutti is a cluster-at-the-top perception, not an exact-rail perception → continuous
+joint-skew suffices, rail adds nothing audible. (Removes the last candidate internal use for rail atoms.)
+
+### THE CRYSTALLIZED PRINCIPLE: musical perception is CLUSTER/THRESHOLD, never MEASURE-ZERO
+An atom is positive mass on a MEASURE-ZERO set. That mathematical specialness (→ λ>0) has a perceptual
+correlate ONLY if an explicit decision tests the EXACT point. The instrument's perceptions are all "how
+high / how likely / how clustered / how dense" — threshold/cluster based, never "is it exactly this
+measure-zero value". So atoms at perceptually-undifferentiated locations (the RAILS — extremes are just
+"high/low") are perceptually INERT. This is WHY continuous distribution mod suffices: not as an
+approximation to clamp, but because clamp's distinguishing feature is perceptually invisible here.
+(Atoms matter in CREDIT because default IS a rail/boundary event; music has no such exact-boundary
+decision.)
+
+### SO: the rail-parametric CLAMP feature has NO internal application → NOT worth building
+Every internal gesture that SOUNDS like it wants the rail (tutti, co-extremity, "everyone maxed") is a
+cluster/threshold perception that continuous joint-skew delivers WITHOUT atoms. The only conceivable use
+is EXTERNAL: a user patches a CV OUT into a downstream module that behaves differently at EXACTLY max (a
+comparator at the rail, a precise clip stage) — rare, user-constructed, not an instrument need. Clamp
+(parametric lo/hi rail mass + mod) stays DEFERRED-NOT-DISMISSED but with essentially no pull.
+
+### BUT — atoms as a MECHANISM are useful at INTERIOR locations, and you ALREADY HAVE them (hand-drawn)
+The atom is a MECHANISM; the rail is one PLACEMENT. The HAND-DRAWN curve editor can place a flat segment
+— hence an atom — ANYWHERE, not just the rails. And an INTERIOR atom IS perceptually live on value lanes,
+because the lane maps the uniform to a VALUE the listener TRACKS:
+- MELODY: atom at a degree = a recurring exact note = an ANCHOR / PEDAL / motif. Musically strong
+  (unlike the rail atom, which was just "lowest/highest").
+- OCTAVE / QMIX: atom at a mid value = "keeps returning to this register / this exact mix".
+- CO-OCCURRENCE works too: two within-lane correlated voices with a hand-drawn atom at the SAME degree
+  LOCK onto that exact note TOGETHER (recurring unison on a specific pitch) — within-lane MO coupling via
+  the flat, reachable through the editor, NO clamp feature needed.
+This needs NO new feature — the drawn-curve pool already exists (CC_PROMPT_02). Interior atoms come FREE
+from the editor you built.
+CAVEAT: interior atoms carry the SAME Sklar/singular consequences as rail atoms (a flat = an atom = a
+singular component = loss of copula uniqueness + rank-recoverability over that segment). The difference
+is LOCATION (→ perceptual relevance), not math. Hand-drawn flats are interior atoms with the full
+singular-part behaviour, placed where they're musically useful.
+
+### THE DEFINITIVE STATEMENT
+Atom MECHANISM: useful — INTERIOR, as recurring-value anchors + voices-lock-to-shared-anchor, and you
+ALREADY HAVE it via hand-drawn curves. Rail-parametric CLAMP feature: unmotivated — extremes are
+cluster-perceived, no exact-rail decision exists, so it adds machinery with no audible return. Not "atoms
+are useless"; rather "the useful atoms are interior and already available; the clamp FEATURE specifically
+is what's unmotivated."
