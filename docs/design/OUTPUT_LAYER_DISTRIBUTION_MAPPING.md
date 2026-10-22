@@ -1344,3 +1344,47 @@ modulatable (two scalars), cheap, neutral-at-m=0, and coupling-capable (shared-m
 convergence). Clamp (rail-parametric) remains unmotivated. Static hand-drawn interior atoms remain
 available + useful for FIXED anchors (no new feature). This is the MODULATABLE upgrade, filed as the
 atom feature to build IF the performable-anchor gesture is wanted. Not scheduled; sequenced after warp.
+
+────────────────────────────────────────────────────────────────────────────────
+## INJECTED-ATOM SCOPE — per-CONSUMER not per-lane; build on ALL lanes (Rodney 2026-10-22)
+
+### CORRECTIONS
+- QMIX IS BINARY (a which-source gate: quantiser vs seq, not a continuous blend). So qmix joins
+  rest/accent/legato as a THRESHOLD lane — the injected atom's INTERNAL effect is inert there too
+  (threshold-relativity: an atom not AT the threshold is marginally invisible; a binary decision has
+  no exact value to recur). So the value lanes with a real INTERNAL anchor effect are just MELODY,
+  OCTAVE, VARIATION.
+- ℓ=0 or ℓ=1 are valid locations (no harm) → the injected atom at a rail IS a rail atom. So this
+  feature SUBSUMES clamp entirely (clamp = this with ℓ pinned to a rail, non-modulatable). Another
+  reason clamp-as-its-own-feature is dead: this does it and more, modulatably.
+
+### THE SCOPE RULE: applicability is per-CONSUMER, not per-lane (same as warp's gate)
+Every lane has TWO consumers of its uniform (the session's recurring "same uniform, two consumers"):
+the INTERNAL decision, and the continuous probability CV OUT (random source).
+- INTERNAL decision consumer: injected atom live only where the decision TRACKS AN EXACT VALUE →
+  MELODY / OCTAVE / VARIATION (recurring anchor pitch / register / exact length). INERT on the
+  threshold lanes REST/ACCENT/LEGATO/QMIX (binary — no exact value to recur; atom marginally invisible).
+- CV-OUT (random-source) consumer: the CV out is CONTINUOUS on EVERY lane → the atom is live on ALL 7
+  lanes (a recurring EXACT VOLTAGE = a usable quantized-CV modulation source downstream, regardless of
+  whether that lane's internal decision is binary). An injected atom on ACCENT does nothing to accent's
+  gate but makes accent's CV OUT emit a recurring exact voltage — a real mod source.
+
+### THEREFORE: BUILD IT ON ALL 7 LANES (uniform, seam-free)
+Rodney: "keep it on all lanes for random source." Correct — and seam-consistent with the whole
+architecture: PLUMB uniformly (every lane gets the injected-atom capability), let the CONSUMER determine
+the effect. NO boolean-lane carve-out (which would be a lane-is-special seam). Cost of all-lanes =
+only the inert-on-booleans-INTERNALLY default (m=0-equivalent effect on those gates even when set —
+harmless); the CV-OUT use JUSTIFIES the uniformity.
+Summary:
+  Lane      Internal-decision effect     CV-out effect
+  MELODY    anchor pitch (strong)        exact-voltage source
+  OCTAVE    anchor register (weaker)     exact-voltage source
+  VARIATION anchor length/motif          exact-voltage source
+  QMIX      inert (binary)               exact-voltage source
+  REST      inert (binary)               exact-voltage source
+  ACCENT    inert (binary)               exact-voltage source
+  LEGATO    inert (binary)               exact-voltage source
+PRINCIPLE: the injected atom is plumbed uniformly on all lanes; its INTERNAL effect is live only where
+the decision tracks an exact value (mel/oct/var), its CV-OUT effect is live everywhere (all CV outs
+continuous). Per-consumer, not per-lane — exactly warp's gate pattern. That is WHY "all lanes" is right
+rather than "just the three".
