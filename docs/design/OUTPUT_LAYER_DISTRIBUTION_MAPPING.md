@@ -1388,3 +1388,39 @@ PRINCIPLE: the injected atom is plumbed uniformly on all lanes; its INTERNAL eff
 the decision tracks an exact value (mel/oct/var), its CV-OUT effect is live everywhere (all CV outs
 continuous). Per-consumer, not per-lane — exactly warp's gate pattern. That is WHY "all lanes" is right
 rather than "just the three".
+
+────────────────────────────────────────────────────────────────────────────────
+## MO TILT × INTERNAL RAIL ATOM — they COMPOSE (reinforce, same direction) (Rodney 2026-10-22)
+
+Two distribution features that point the same way: MO tilt R_p bends CONTINUOUS density toward a rail
+(p>0 → bottom, p<0 → top; no atom); the injected rail atom (ℓ=0 or 1, mass m) piles mass EXACTLY at
+that rail. Composing them = a REINFORCED RAIL CONCENTRATION: the tilt makes the near-rail neighbourhood
+dense, the atom adds an exact-rail point mass right in that dense region → a big atom + a heavy continuous
+shoulder beside it, same direction, compounding. (This is the "tilt is the clamp's MASS FEEDER" relation,
+now concrete.)
+
+### WHAT IT OFFERS — per consumer (same per-consumer scope as the injected atom)
+- CV OUT (all lanes, STRONG): a CV that LIVES at the max/min rail with frequent EXACT-rail hits. Tilt =
+  how clustered near the rail; atom mass m = how often exactly AT it. Two knobs shaping a rail-dwelling
+  CV source. Genuinely useful ("a signal pinned at the ceiling, spiking to exactly max").
+- INTERNAL VALUE LANE (mel/oct/var, REAL): tilt-toward-top + rail-atom at ℓ=1 = "notes strongly favour
+  the top AND frequently land on exactly the top note" — hover-near-the-ceiling + exact-top anchor/pedal.
+  More specific than tilt alone (tilt = high common; atom = exact-top recurs).
+- INTERNAL THRESHOLD LANE (rest/accent/legato/qmix, NOTHING NEW): threshold-relativity — tilt-toward-top
+  shifts the firing RATE (marginal, knob-reachable → redundant-but-harmless); the rail atom is INTERIOR
+  to a sub-rail trigger → invisible. Booleans see the marginal, never the atom. (Consistent with every
+  prior boolean result.)
+
+### DESIGN COUPLING: the interaction informs the atom's MASS MODEL choice
+How the tilt's near-rail mass meets the atom depends on the injected-atom mass model (insert/displace vs
+replace/absorb — flagged open in the injected-atom note):
+- REPLACE/ABSORB: the tilt's near-rail density is partly absorbed INTO the atom → more tilt FEEDS a bigger
+  effective atom. ONE control (tilt) grows the rail mass. This is the cleaner "tilt feeds the rail"
+  behaviour and probably the more musical (one knob dialing rail-concentration).
+- INSERT/DISPLACE: the atom ADDS exact-rail mass ON TOP of the tilt's cluster → two INDEPENDENT controls
+  (tilt = cluster, m = exact-rail anchor), but risks near-degenerate "almost always at the rail" when both
+  are high.
+=> if "tilt feeds the rail" (one-knob rail concentration) is wanted, lean REPLACE/ABSORB; if independent
+cluster + anchor is wanted, lean INSERT/DISPLACE. The two features' interaction is thus a factor in the
+mass-model decision — pin together when either is built. They do NOT conflict either way (same direction);
+the choice is only about whether tilt and m are coupled (absorb) or independent (displace).
