@@ -226,6 +226,12 @@ struct StraitsSandsMacroVisual : Module {
         config(0, StraitsMacroVisualIds::NUM_INPUTS,
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
         monLookupDiv.setDivision(8);   // topology changes are control-rate
+        // PERF (Rodney audit item 2 precedent — East got this throttle, Macro didn't):
+        // prob CV outs = CONTROL rate /32 (~1.5 kHz @48k, matches controlDivider). The
+        // sweep's every input (pubSlewed* rewrites, macroOwnSpread publish, stepIndex,
+        // warp bank edits, numPolyVoices) is control-rate — per-sample recompute
+        // re-derived a constant value ~32x per control block, with invCDF inside.
+        probOutDiv.setDivision(32);
         for (auto& a : probLastStep) for (auto& x : a) x = -1;
         // Labels from the canonical table — the old local literal was OLD-order, so
         // every jack tooltip named the wrong lane (id 0 carries MEL, was labelled "REST").
@@ -282,6 +288,7 @@ struct StraitsSandsMacroVisual : Module {
     // PERF: chain walk is control-rate work (Rodney audit item 3).
     Monsoon* cachedMon_ = nullptr;
     rack::dsp::ClockDivider monLookupDiv;
+    rack::dsp::ClockDivider probOutDiv;   // prob CV outs: /32 = control rate (audit item 2 precedent — was East-only)
     bool dirModPrev[dotModular::SandsGrid::POLY_LANES] = {};
 
     // S&H latch state for the poly prob outs: [lane][channel] (ch0 reserved, 1..15 voices).

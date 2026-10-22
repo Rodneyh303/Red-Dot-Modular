@@ -840,11 +840,27 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
         eng.macroOwnSpread[l] = rack::math::clamp(macroBase[l][3] + macroPostDelta[l][3], -1.f, 1.f);
     const int nV = eng.numPolyVoices;
     const int nCh = 1 + nV;
-    const int gs = eng.stepIndex;
+    // PERF (Rodney audit item 2 precedent — East got this throttle, Macro didn't):
+    // recomputing every lane × voice probability EVERY SAMPLE was pointless. The sweep
+    // is 5 lanes × (1+numPolyVoices) channels × macroOwnLaneProbability — each call is
+    // polySlewedPub + spread lerp + WarpBank::warpedValue → invCDF (std::visit +
+    // transcendental math, or a drawn-curve binary search). At 48 kHz × 16 voices that
+    // was ~4M invCDF calls/sec — the Macro module's meter-pinning cost (the "124%").
+    // EVERY input of the chain is control-rate (pubSlewed* rewrites, macroOwnSpread
+    // publish above, stepIndex, warp bank edits, numPolyVoices), so per-sample recompute
+    // re-derived a constant ~32× per control block. /32 = control rate (~1.5 kHz @48k);
+    // the output VOLTAGE is not gated — Rack ports hold their last value, so the CV is
+    // continuous; only the COMPUTATION is throttled. Channel count is likewise set every
+    // sample so polyphony changes take effect at once. The S&H latch still catches every
+    // step change (a musical step lasts orders of magnitude longer than /32). Dir-mod
+    // edge scan above stays per-sample (gate edges are sample events).
+    const bool recompute = probOutDiv.process();
     dotModular::VoiceResolver resolver(eng);
     for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // 5 poly lanes incl QMIX
         auto& out = outputs[PROB_OUT_START + l];
         out.setChannels(nCh < 1 ? 1 : nCh);
+        if (!recompute) continue;                      // ports hold their last voltage
+        const int gs = eng.stepIndex;
         // Macro's OWN global LOR step for this lane (from macroBase+CVDelta — identical
         // to Macro's editor playhead, independent of East/ownership). Same step for
         // every voice (Macro's view is global); each voice contributes its own draw.
