@@ -1154,3 +1154,45 @@ served by clamp + shared-singular-modulation (opt-in, keeps domain independence 
 mechanism already in the theory). 7×7 cross-lane is even less justified (needs up-to-7 factors, PSD
 projection, same λ=0-without-clamp weakness). The independent-streams architecture is a FEATURE here:
 it makes cross-domain coupling opt-in-via-clamp rather than a standing cost.
+
+────────────────────────────────────────────────────────────────────────────────
+## THE CRISPEST STATEMENT — why only atoms give λ, + the two coupling routes by scope (Rodney)
+
+### INTUITION PUMP: same marginal mass, spread vs atomic — only atomic is JOINTLY-OCCUPIABLE
+Two ways to get "30% chance of output above 0.99", marginally near-identical:
+- CONTINUOUS TILT (distribution params θ): 30% of mass SPREAD across (0.99, 1.0). Each lane lands
+  there independently AT DIFFERENT EXACT VALUES (0.994 vs 0.997 — both high, neither EQUAL/locked).
+- RAIL ATOM (clamp at 1.0): 30% of mass piled EXACTLY at 1.0 — a point mass.
+Marginally the same (~30% very-high). CATEGORICALLY different jointly:
+- Continuous: as the threshold → 1 (0.99 → 0.999 → …), P(both high) → P_i·P_j (the PRODUCT). It keeps
+  FACTORING. That limiting product IS λ=0. A continuous tail is tail-independent NO MATTER how extreme
+  you tilt it — and λ>0 is UNREACHABLE (no set two variables can hit EXACTLY together).
+- Atom: {1.0} is a set of POSITIVE measure that two variables can occupy SIMULTANEOUSLY AND EXACTLY.
+  That joint-occupiable set is the ENTIRE source of tail dependence — the lump at the (1,1) corner is
+  what λ measures. An atom, however small, is the ONLY thing that can CARRY λ>0.
+ESSENCE: tail dependence is NOT "how much mass is in the tail" (both have 30%) — it is the GEOMETRY of
+the extreme (SPREAD vs ATOMIC). Spreading mass near 1 = "often high, independently"; piling mass at
+exactly 1 = "often maxed, and COUPLABLE to other lanes being maxed". Same marginal, different joint
+potential. (This is the intuition-pump form of the orthant-probability Phibar_2 math above.)
+
+### THE TWO COUPLING ROUTES, SCOPED BY WHERE THE UNIFORMS ARE CORRELATED
+Atom = the ENABLER (necessary for any λ>0, both cases). The COUPLING that makes atoms CO-OCCUR comes
+from whatever correlates the rail-hits — and that differs by scope because of the stream architecture:
+- CROSS-VOICE (within a lane): the voices SHARE the stream → real latent Gaussian-copula correlation
+  (spread/CA). Pushing that correlation UP, WITH CLAMP, drives correlated voices across the rail
+  TOGETHER — the clamp RECTIFIES existing ρ into atom co-occurrence. Strength tunable ρ=0 (independent)
+  → ρ=1 (locked) via the correlation you already control. Works BECAUSE within-lane uniforms are
+  correlated.
+- CROSS-LANE: the uniforms are INDEPENDENT (domain-separated streams) → NO latent ρ exists to turn up
+  → Gaussian-copula correlation CANNOT be the mechanism. The ONLY route is SHARED MODULATION OF THE
+  ATOM PROBABILITY (shared w / clamp-point / singular-part mod): when the shared signal pushes, both
+  lanes' atom masses grow/fire TOGETHER. Coupling = the SYNC of the shared modulation's effect on each
+  lane's atom mass, NOT any draw correlation (there is none to use).
+THE DIVIDING LINE IS FORCED BY THE ARCHITECTURE: shared streams within a lane → correlation+clamp
+works; independent streams across lanes → only shared-atom-modulation works. (Within a lane,
+shared-mod would ALSO work; cross-lane it is the ONLY option.)
+
+ONE-LINER: Clamp provides the atom (the joint-occupiable set — necessary for any λ>0). The coupling
+that makes atoms co-occur is whatever correlates the rail-hits: within a lane, the Gaussian-copula
+correlation of the shared stream (clamp rectifies it); across lanes, where streams are independent,
+ONLY shared modulation of the atom probability itself.
