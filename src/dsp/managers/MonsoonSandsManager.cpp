@@ -14,6 +14,7 @@
 #include "../../StraitsEastSandsVisual.hpp"
 #include "../../ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide (MACRO field reads)
 #include <cassert>
+#include <cstring>   // memcmp/memcpy — the control-tick redundancy gates (perf round 2)
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -104,9 +105,23 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // they hang off the SAME Monsoon. Was macroVis-only, which left gMon null when Macro was
     // absent and broke Mono store reads (attens). Macro-global reads below stay guarded by
     // hasMacro/macroVis, so broadening is safe.
+    //
+    // PERF (perf round 2 — the controlDiv fire): findMonsoonEitherSide is a dynamic_cast
+    // chain walk (≤2×12 hops, each hop a dynamic_cast + suite-model compare) and the
+    // call sites below used to re-walk it PER LANE / PER ITEM — several of them TWICE
+    // per line (null-check + read), ~90 walks per control tick in a Mono-visual rig.
+    // Within ONE processDNA call the walk is a PURE function of a chain that cannot
+    // change mid-call (Rack rewrites expander pointers between process() calls, never
+    // during one; module types are immutable), so every walk with the same argument
+    // returns the same pointer. These once-per-call memos are therefore BIT-IDENTICAL
+    // to the per-site walks they replace.
+    Monsoon* const macroHost = macroVis ? redDot::findMonsoonEitherSide(macroVis) : nullptr;
+    Monsoon* const monoHost  = monoVis  ? redDot::findMonsoonEitherSide(monoVis)  : nullptr;
+    Monsoon* const eastHost  = expanderManager.cachedEastSandsVisual
+                             ? redDot::findMonsoonEitherSide(expanderManager.cachedEastSandsVisual) : nullptr;
     Monsoon* gMon = nullptr;
-    if (macroVis)      gMon = redDot::findMonsoonEitherSide(macroVis);
-    else if (monoVis)  gMon = redDot::findMonsoonEitherSide(monoVis);
+    if (macroVis)      gMon = macroHost;
+    else if (monoVis)  gMon = monoHost;
     // HARDENING (mmOwn precedent — delegation-bug round): the chain walk can return null
     // at a rack boundary even with the expander attached; the old code then filled
     // ownership via the !hasMacro lambda = ALL-EAST, and warp followed East with
@@ -155,19 +170,53 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // true). The helper takes the boolean store directly (editor.eastOwns) — the
     // boolean-model migration (Rodney, 2026-10-22) removed the float `> 0.5f`; there is
     // no threshold anywhere in the ownership pipeline now.
-    if (gMon) {
-        topoIn.fillOwnersFromStore(gMon->editor.eastOwns,
-                                   /*eastPresent=*/expanderManager.cachedEastSandsVisual != nullptr,
-                                   /*macroPresent=*/hasMacro);
-    } else {
-        topoIn.fillOwners(/*eastPresent=*/expanderManager.cachedEastSandsVisual != nullptr,
-                          [hasMacro](int, int) { return !hasMacro; });
+    // GATE 1 (perf round 2): skip the ownership fill + topology build + the warpDelegated_
+    // mirror rescan when the fingerprint is unchanged. BIT-IDENTICAL ARGUMENT: the fill is
+    // a pure function of (eastPresent, macroPresent, gMon-null, eastOwns[112],
+    // polyVoiceCount); SandsTopology::build is a pure function of the filled Inputs; the
+    // mirror scan below writes only cells whose owner() flipped (and rebuilds only then).
+    // Fingerprint unchanged ⇒ fill output unchanged ⇒ owner() answers identically ⇒ the
+    // scan would find ZERO flips ⇒ warpTopoChanged stays false and no rebuild runs —
+    // exactly what skipping produces. warpDelegated_ has no writer outside that scan
+    // (grep: the only setter path), so an unchanged fingerprint also means the mirror is
+    // already in sync. The WARPDIAG log below stays UNGATED — it keeps its own 1/2048-tick
+    // rate limit and reads live state, so its output is unchanged (chg=0, the observed
+    // steady state).
+    const bool topoUnchanged = lastTopoSig_.valid
+        && lastTopoSig_.eastPresent == topoIn.eastPresent
+        && lastTopoSig_.macroPresent == topoIn.macroPresent
+        && lastTopoSig_.polyBaseActive == topoIn.polyBaseActive
+        && lastTopoSig_.polyVoiceCount == topoIn.polyVoiceCount
+        && lastTopoSig_.gMonNull == (gMon == nullptr)
+        && (gMon == nullptr
+            || 0 == std::memcmp(lastTopoSig_.own, gMon->editor.eastOwns, sizeof lastTopoSig_.own));
+    if (!topoUnchanged) {
+        if (gMon) {
+            topoIn.fillOwnersFromStore(gMon->editor.eastOwns,
+                                       /*eastPresent=*/expanderManager.cachedEastSandsVisual != nullptr,
+                                       /*macroPresent=*/hasMacro);
+        } else {
+            topoIn.fillOwners(/*eastPresent=*/expanderManager.cachedEastSandsVisual != nullptr,
+                              [hasMacro](int, int) { return !hasMacro; });
+        }
+        cachedTopo_ = dotModular::SandsTopology::build(topoIn);
+        lastTopoSig_.valid = true;
+        lastTopoSig_.eastPresent = topoIn.eastPresent;
+        lastTopoSig_.macroPresent = topoIn.macroPresent;
+        lastTopoSig_.polyBaseActive = topoIn.polyBaseActive;
+        lastTopoSig_.polyVoiceCount = topoIn.polyVoiceCount;
+        lastTopoSig_.gMonNull = (gMon == nullptr);
+        if (gMon) std::memcpy(lastTopoSig_.own, gMon->editor.eastOwns, sizeof lastTopoSig_.own);
+        else      std::memset(lastTopoSig_.own, 0, sizeof lastTopoSig_.own);
     }
     if (monoVis) {
         // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
         // SANDS CONSOLIDATION Step 7: monoV1Owner removed — V1 ownership now via eastV1Owner only.
     }
-    const dotModular::SandsTopology topo = dotModular::SandsTopology::build(topoIn);
+    // (was: build a fresh topology every tick; now the gate reuses the cached one —
+    // a const REF, so every topo.owner() read below is the identical value the fresh
+    // build would have produced.)
+    const dotModular::SandsTopology& topo = cachedTopo_;
     const bool macroDrivesOutput = hasMacro && polyBaseActive;
     // Warp mirror delegation (CC_PROMPT_03 STEP 3): mirror the topology's Macro-owned
     // (v,lane) matrix onto the engine (the spreadTargetMode pattern), and rebuild the
@@ -176,15 +225,17 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // actions. Inert while no bank is wired (the rebuilds no-op).
     {
         bool warpTopoChanged = false;
-        for (int v = 0; v < 16; ++v)
-            for (int l = 0; l < 7; ++l) {
-                const bool d = (topo.owner(v, l) == dotModular::SandsTopology::Role::MACRO);
-                if (engine.pe.warpDelegated_[v][l] != d) {
-                    engine.pe.warpDelegated_[v][l] = d;
-                    warpTopoChanged = true;
+        if (!topoUnchanged) {   // GATE 1: unchanged fingerprint ⇒ owner() unchanged ⇒ no flips possible
+            for (int v = 0; v < 16; ++v)
+                for (int l = 0; l < 7; ++l) {
+                    const bool d = (topo.owner(v, l) == dotModular::SandsTopology::Role::MACRO);
+                    if (engine.pe.warpDelegated_[v][l] != d) {
+                        engine.pe.warpDelegated_[v][l] = d;
+                        warpTopoChanged = true;
+                    }
                 }
-            }
-        if (warpTopoChanged) engine.pe.rebuildWarpMirrorAll();
+            if (warpTopoChanged) engine.pe.rebuildWarpMirrorAll();
+        }
         // ── DIAGNOSTIC (delegation-bug hunt; REVERT after fix) ──────────────
         // Throttled authority-state burst (~1 line / 1.4 s at the 1500 Hz control
         // rate). If warp follows East with Macro attached, one of these fields
@@ -309,7 +360,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                     // = raw CV even when the left atten is 0; POST (tap=1) = CV × atten.
                     // (Was the Macro-GLOBAL tap baked into one macroSendDelta — every
                     // receiving voice forced onto the same pre/post choice.)
-                    auto* mmDeleg = redDot::findMonsoonEitherSide(macroVis);
+                    auto* mmDeleg = macroHost;   // PERF: once-per-call walk memo (see top of processDNA)
                     const float tapL = (mmDeleg ? mmDeleg->getMacroTap(dotModular::VoiceResolver::kMonoSlot, l, 0) : 1.f);
                     baseLen = macroVis->macroBase[l][0] + macroVis->tappedDelta(tapL, l, 0);
                     baseOff = macroVis->macroBase[l][1] + macroVis->tappedDelta(tapL, l, 1);
@@ -350,7 +401,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // and makes the result order-dependent (East-then-Macro != Macro-then-East).
             auto eastDelta = [&](int engLane, int item, float lo, float hi)->float {
                 if (!eastVis || !eastVis->inputs[East::cvId(engLane,item)].isConnected()) return 0.f;
-                float att = (redDot::findMonsoonEitherSide(eastVis) ? redDot::findMonsoonEitherSide(eastVis)->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, engLane*4 + item) : 0.f);   // slot 0 = mono
+                float att = (eastHost ? eastHost->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, engLane*4 + item) : 0.f);   // slot 0 = mono — PERF: walk memo (was TWO walks per call)
                 float cv  = eastVis->inputs[East::cvId(engLane,item)].getVoltage(0) / 10.f; // ch0
                 return cv * att * (hi - lo);
             };
@@ -364,7 +415,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // Returns the UNCLAMPED Macro send delta (0 when no Macro). Summed with East's, clamped once.
             auto macroDelta = [&](int engLane, int item)->float {
                 if (!hasMacro || !macroVis) return 0.f;
-                auto* mm = redDot::findMonsoonEitherSide(macroVis);   // slot 0 = mono (V1)
+                auto* mm = macroHost;   // slot 0 = mono (V1) — PERF: walk memo
                 float send = (mm ? mm->getMacroSend(dotModular::VoiceResolver::kMonoSlot, engLane, item) : 0.f);
                 // P9b: the PER-VOICE tapped delta — V1's own macroTap selects between the
                 // published pre/post endpoints (was the Macro-global tap, one choice for all).
@@ -425,7 +476,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 auto* eastVisS = expanderManager.cachedEastSandsVisual;
                 // MVC step 1d: spread base + atten are now STORE-BACKED (editor.spread /
                 // editor.monoAtten), not params. gMon is the store owner; was NOT in scope here.
-                Monsoon* gMon = redDot::findMonsoonEitherSide(monoVis);
+                Monsoon* gMon = monoHost;   // PERF: walk memo (was a per-lane re-walk)
                 redDot::SpreadResolver::Inputs sin;
                 sin.delegated    = hasMacro && macroVis &&
                                    SandsMonoVisualIds::monoMacroOwnsEngineLane(monoVis, l);
@@ -444,7 +495,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 if (eastVisS && eastVisS->inputs[East::cvId(l,3)].isConnected()) {
                     sin.eastCv.connected   = true;
                     sin.eastCv.unitVoltage = eastVisS->inputs[East::cvId(l,3)].getVoltage(0) / 10.f;
-                    sin.eastCv.atten       = (redDot::findMonsoonEitherSide(eastVisS) ? redDot::findMonsoonEitherSide(eastVisS)->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, l*4 + 3) : 0.f);
+                    sin.eastCv.atten       = (eastHost ? eastHost->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, l*4 + 3) : 0.f);   // PERF: walk memo (was TWO walks)
                 }
                 if (sin.macroPresent) {
                     sin.macroBase      = macroVis->macroBase[l][3];
@@ -452,8 +503,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                     // resolver lerps (SpreadResolver::effective → tappedDelta).
                     sin.macroPreDelta  = macroVis->macroPreDelta[l][3];
                     sin.macroPostDelta = macroVis->macroPostDelta[l][3];
-                    sin.macroTap       = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroTap(dotModular::VoiceResolver::kMonoSlot, l, 1) : 1.f);
-                    sin.macroSend      = (redDot::findMonsoonEitherSide(macroVis) ? redDot::findMonsoonEitherSide(macroVis)->getMacroSend(dotModular::VoiceResolver::kMonoSlot, l, 3) : 0.f);
+                    sin.macroTap       = (macroHost ? macroHost->getMacroTap(dotModular::VoiceResolver::kMonoSlot, l, 1) : 1.f);    // PERF: walk memo (was TWO walks)
+                    sin.macroSend      = (macroHost ? macroHost->getMacroSend(dotModular::VoiceResolver::kMonoSlot, l, 3) : 0.f);  // PERF: walk memo (was TWO walks)
                 }
                 engine.spreadERef(0, l) = redDot::SpreadResolver::effective(sin);   // slot 0 = mono/V1
             }
@@ -482,6 +533,25 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // QMIX is its OWN axis (SB_SANDS_Q), not melody. Spread is LATCH: !locked OR the q-mix bit.
             const bool sprQ = !engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0;   // == dotModular::SB_SANDS_Q
             if (sprR || sprM || sprQ) {
+            // GATE 2 (perf round 2): the 16×N applyMono pass below is a pure function of
+            // (per-lane spread values, spreadTargetMode, the mono slewed + pre-remap rows)
+            // — and it writes random_[0], so the sig also carries the row AS LAST WRITTEN:
+            // ANY other writer of the row (pin-remap promote, rotates, resets) breaks the
+            // match and the pass re-runs, preserving the unconditional version's every-tick
+            // healing exactly. Inputs unchanged AND row still ours ⇒ the pass would rewrite
+            // bit-identical cells ⇒ skip is value-identical. (The assert path's pe.ca*Src
+            // reads are compiled out wherever this TU ships — REDDOT_SPREAD_ASSERT is 0 by
+            // default and the test rig does not compile this file.)
+            const float sigSpM[7] = {
+                engine.spreadE(0, SequencerEngine::PL_MELODY),
+                engine.spreadE(0, SequencerEngine::PL_OCTAVE),
+                engine.spreadE(0, SequencerEngine::PL_QMIX),
+                engine.spreadE(0, SequencerEngine::PL_REST),
+                engine.spreadE(0, SequencerEngine::PL_ACCENT),
+                engine.spreadE(0, SequencerEngine::PL_VARIATION),
+                engine.spreadE(0, SequencerEngine::PL_LEGATO),
+            };
+            if (v1SpreadDirty_(sprR, sprM, sprQ, sigSpM)) {
             for (int i = 0; i < 16; ++i) {
                 if (sprR) {
                     // LANE UNIFICATION (Phase 2): the spread-value stores are ALL unified
@@ -520,6 +590,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         engine.spreadE(0, SequencerEngine::PL_QMIX));
                 }
             }
+            v1SpreadCapture_(sprR, sprM, sprQ, sigSpM);
+            }  // end GATE 2 dirty check (perf round 2)
             }  // end if(sprR || sprM || sprQ)
         //}
         // Drive all 6 mono strands via the single-source-of-truth lane map.
@@ -554,7 +626,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // Stage 3a: the BASE is read from the unified store (Model), not SPREAD_* (View).
             // saveSlot(kMonoSlot) mirrors SPREAD_*→spread[0] every UI frame, so this is
             // value-preserving; the View is now only edited, never read for the engine.
-            Monsoon* mmV1 = redDot::findMonsoonEitherSide(eastV1);
+            Monsoon* mmV1 = eastHost;   // PERF: walk memo (eastV1 == cachedEastSandsVisual — the memo's argument)
             const bool macroHere = hasMacro && (macroVis != nullptr);
             auto monoOwnedByMacro = [&](int lane)->bool {
                 // MVC step 1d: owner is STORE-BACKED (editor.macroOwn via getMacroOwn at kMonoMacroOwnRow).
@@ -644,7 +716,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 // Macro send blend on East-owned V1 spread (mirrors poly combineSpread):
                 // the per-voice tapped delta (V1's own tap, P9b) × mono-slot send.
                 if (macroHere) {
-                    auto* mm = redDot::findMonsoonEitherSide(macroVis);
+                    auto* mm = macroHost;   // PERF: walk memo (was a per-lane re-walk inside sprForLane)
                     float send = (mm ? mm->getMacroSend(dotModular::VoiceResolver::kMonoSlot, lane, 3) : 0.f);
                     const float tap = (mm ? mm->getMacroTap(dotModular::VoiceResolver::kMonoSlot, lane, 1) : 1.f);
                     sp += macroVis->tappedDelta(tap, lane, 3) * send;
@@ -664,6 +736,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             engine.pe.setSandsActive(true);
             // V1/mono spread: applyMono reads the mode from pe.spreadTargetMode[lane] and
             // handles both original + target selection internally. No Monsoon pointer needed.
+            // GATE 2 (perf round 2): the Mono-branch gate's East twin — see the sig comment
+            // in MonsoonSandsManager.hpp (inputs + row-as-last-written; ONE shared sig, so a
+            // Mono↔East branch switch is just an input change). Unified PL order.
+            const float sigSpE[7] = { spM, spO, spQ, spR, spA, spV, spL };
+            if (v1SpreadDirty_(axR, axM, axQ, sigSpE)) {
             for (int i = 0; i < 16; ++i) {
                 if (axR) {
                     engine.pe.rhythmRandom[i] = redDot::SpreadInterp::applyMono(
@@ -690,6 +767,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         engine.pe, SequencerEngine::PL_QMIX, i, spQ);
                 }
             }
+            v1SpreadCapture_(axR, axM, axQ, sigSpE);
+            }   // end GATE 2 dirty check (perf round 2)
             }   // end if (axR || axM) — spread only; V1 LOR above runs under lock too
         }
     }
@@ -835,7 +914,28 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // random_ — refresh that row's mirror cells (voice-scoped, 112 cells ≈ 0.004ms,
     // per control block). Poly rows are step-rate refreshed via refreshPolyRandomCell
     // (which carries its own cell-scope rebuild).
-    engine.pe.rebuildWarpMirrorVoice(0);
+    // GATE 3 (perf round 2): the mono-row rebuild is a pure function of
+    // (random_[0], warpDelegated_[0], warpBank_) — warpMixCell reads exactly those
+    // three. Fingerprint them; when bit-identical to the last REBUILD's inputs, the
+    // rebuild would rewrite identical cells, so skip. Every other path that changes
+    // them carries its own rebuild (rolls/pin remaps → rebuildWarpMirrorAll inside
+    // remapSlewedByPins; bank re-wire → setWarpBank's rebuildAll; curve/w edits → the
+    // scoped dirty-mask rebuilds; delegation flips → GATE 1's rebuildWarpMirrorAll) —
+    // and any writer the map missed still trips this fingerprint, because the
+    // comparison is against LIVE state, not a schedule.
+    {
+        auto& pe = engine.pe;
+        if (!lastMirrorSig_.valid
+            || pe.warpBank_ != lastMirrorSig_.bank
+            || 0 != std::memcmp(lastMirrorSig_.row, pe.random_[0], sizeof lastMirrorSig_.row)
+            || 0 != std::memcmp(lastMirrorSig_.deleg, pe.warpDelegated_[0], sizeof lastMirrorSig_.deleg)) {
+            pe.rebuildWarpMirrorVoice(0);
+            lastMirrorSig_.valid = true;
+            lastMirrorSig_.bank = pe.warpBank_;
+            std::memcpy(lastMirrorSig_.row, pe.random_[0], sizeof lastMirrorSig_.row);
+            std::memcpy(lastMirrorSig_.deleg, pe.warpDelegated_[0], sizeof lastMirrorSig_.deleg);
+        }
+    }
 
     // Note: Poly DNA windows handled in Monsoon::process controlDivider block.
 }
@@ -882,4 +982,65 @@ void MonsoonSandsManager::captureRemapSig_(const uint8_t* rSrc, const uint8_t* m
     lastRemap_.rCtr = pe.rhythmDrawCtr;  lastRemap_.mCtr = pe.melodyDrawCtr;  lastRemap_.qCtr = pe.qmixDrawCtr;
     // Mix + Slew are NOT captured (phrase-boundary consumption — see remapSigChanged_ comment).
     lastRemap_.wasIdentity = identity;
+}
+
+// ── GATE 2 helpers (perf round 2 — the V1 spread-pass fingerprint; see the sig
+// comment in MonsoonSandsManager.hpp) ──────────────────────────────────────────────
+// The dirty check compares against LIVE engine state (not a schedule), so any writer
+// the header comment didn't enumerate still trips it — the skip is only ever taken
+// when the pass would rewrite bit-identical cells.
+bool MonsoonSandsManager::v1SpreadDirty_(bool axR, bool axM, bool axQ, const float sp[7]) {
+    const auto& s = lastV1Spread_;
+    const auto& pe = engine.pe;
+    if (!s.valid) return true;
+    if (s.axR != axR || s.axM != axM || s.axQ != axQ) return true;
+    if (std::memcmp(s.sp, sp, sizeof s.sp) != 0) return true;
+    if (std::memcmp(s.mode, pe.spreadTargetMode, sizeof s.mode) != 0) return true;
+    // applyMono's pe inputs: the mono (V1) row of each strand family's slewed and
+    // pre-remap buffers. (The REDDOT_SPREAD_ASSERT path also reads pe.ca*Src, but it is
+    // compiled out wherever this TU ships — the macro defaults 0 and the test rig does
+    // not compile MonsoonSandsManager.)
+    if (std::memcmp(s.swRhythm,    pe.slewedRhythm[0],        sizeof s.swRhythm)    != 0
+     || std::memcmp(s.swVariation, pe.slewedVariation[0],     sizeof s.swVariation) != 0
+     || std::memcmp(s.swLegato,    pe.slewedLegato[0],        sizeof s.swLegato)    != 0
+     || std::memcmp(s.swAccent,    pe.slewedAccent[0],        sizeof s.swAccent)    != 0
+     || std::memcmp(s.swMelody,    pe.slewedMelody[0],        sizeof s.swMelody)    != 0
+     || std::memcmp(s.swOctave,    pe.slewedOctave[0],        sizeof s.swOctave)    != 0
+     || std::memcmp(s.swQmix,      pe.slewedQmix[0],          sizeof s.swQmix)      != 0) return true;
+    if (std::memcmp(s.prRhythm,    pe.preRemapSlewedRhythm[0],    sizeof s.prRhythm)    != 0
+     || std::memcmp(s.prVariation, pe.preRemapSlewedVariation[0], sizeof s.prVariation) != 0
+     || std::memcmp(s.prLegato,    pe.preRemapSlewedLegato[0],    sizeof s.prLegato)    != 0
+     || std::memcmp(s.prAccent,    pe.preRemapSlewedAccent[0],    sizeof s.prAccent)    != 0
+     || std::memcmp(s.prMelody,    pe.preRemapSlewedMelody[0],    sizeof s.prMelody)    != 0
+     || std::memcmp(s.prOctave,    pe.preRemapSlewedOctave[0],    sizeof s.prOctave)    != 0
+     || std::memcmp(s.prQmix,      pe.preRemapSlewedQmix[0],      sizeof s.prQmix)      != 0) return true;
+    // The row as last written: an external writer (pin-remap promote, rotate, reset)
+    // breaks this and the pass re-runs — the healing property of the unconditional
+    // every-tick rewrite is preserved exactly.
+    if (std::memcmp(s.row, pe.random_[0], sizeof s.row) != 0) return true;
+    return false;
+}
+
+void MonsoonSandsManager::v1SpreadCapture_(bool axR, bool axM, bool axQ, const float sp[7]) {
+    auto& s = lastV1Spread_;
+    const auto& pe = engine.pe;
+    s.valid = true;
+    s.axR = axR; s.axM = axM; s.axQ = axQ;
+    std::memcpy(s.sp, sp, sizeof s.sp);
+    std::memcpy(s.mode, pe.spreadTargetMode, sizeof s.mode);
+    std::memcpy(s.swRhythm,    pe.slewedRhythm[0],        sizeof s.swRhythm);
+    std::memcpy(s.swVariation, pe.slewedVariation[0],     sizeof s.swVariation);
+    std::memcpy(s.swLegato,    pe.slewedLegato[0],        sizeof s.swLegato);
+    std::memcpy(s.swAccent,    pe.slewedAccent[0],        sizeof s.swAccent);
+    std::memcpy(s.swMelody,    pe.slewedMelody[0],        sizeof s.swMelody);
+    std::memcpy(s.swOctave,    pe.slewedOctave[0],        sizeof s.swOctave);
+    std::memcpy(s.swQmix,      pe.slewedQmix[0],          sizeof s.swQmix);
+    std::memcpy(s.prRhythm,    pe.preRemapSlewedRhythm[0],    sizeof s.prRhythm);
+    std::memcpy(s.prVariation, pe.preRemapSlewedVariation[0], sizeof s.prVariation);
+    std::memcpy(s.prLegato,    pe.preRemapSlewedLegato[0],    sizeof s.prLegato);
+    std::memcpy(s.prAccent,    pe.preRemapSlewedAccent[0],    sizeof s.prAccent);
+    std::memcpy(s.prMelody,    pe.preRemapSlewedMelody[0],    sizeof s.prMelody);
+    std::memcpy(s.prOctave,    pe.preRemapSlewedOctave[0],    sizeof s.prOctave);
+    std::memcpy(s.prQmix,      pe.preRemapSlewedQmix[0],      sizeof s.prQmix);
+    std::memcpy(s.row, pe.random_[0], sizeof s.row);
 }

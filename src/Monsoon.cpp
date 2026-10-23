@@ -59,6 +59,14 @@ static uint64_t monsoonProfAcc_cvModeB = 0;      // CV routing + Mode-B gate-sta
 static uint64_t monsoonProfAcc_outputGen = 0;    // outputGenerator->drive — PRIME SUSPECT B (per sample)
 static uint64_t monsoonProfAcc_lightDiv = 0;     // lightDivider block
 static uint64_t monsoonProfAcc_controlDiv = 0;   // controlDivider block
+// Finer brackets INSIDE controlDiv (this round — decompose the ~21µs/tick block; the
+// outer controlDiv accumulator stays and measures the whole block incl. the scaffolding
+// between these five). Same safe pattern: rdtsc brackets, logged only at the 50k window.
+static uint64_t monsoonProfAcc_ctrl_raf = 0;     // controlDiv: updateExpanderPointers + Raffles gate loop
+static uint64_t monsoonProfAcc_ctrl_pat = 0;     // controlDiv: modeController->updatePatternInput
+static uint64_t monsoonProfAcc_ctrl_dna = 0;     // controlDiv: spreadTargetMode mirror + dnaManager.processDNA
+static uint64_t monsoonProfAcc_ctrl_sync = 0;    // controlDiv: lockManager.tick + expanderManager.sync
+static uint64_t monsoonProfAcc_ctrl_rest = 0;    // controlDiv: cached* reads + CV logic + updateWindow + CV3/Raffles tail
 static uint64_t monsoonProfWindow = 0;           // samples since the last section log
 #endif
 
@@ -1382,6 +1390,7 @@ void Monsoon::process(const ProcessArgs& args) {
     MONSOON_PROF_BEGIN(controlDiv);
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
     if (controlDivider.process()) {
+        MONSOON_PROF_BEGIN(ctrl_raf);   // rafExp: expander-scan + Raffles gate edge loop
         updateExpanderPointers();
 
         if (expanderManager.cachedRafflesExpander) {
@@ -1399,14 +1408,18 @@ void Monsoon::process(const ProcessArgs& args) {
                 }
             }
         }
+        MONSOON_PROF_END(ctrl_raf);
 
+        MONSOON_PROF_BEGIN(ctrl_pat);   // patIn: throttled knob/CV sampling
         // Refresh Sequencer Parameters (Throttled sampling of all knobs/CV)
         modeController->updatePatternInput();
+        MONSOON_PROF_END(ctrl_pat);
         // ACCENT now assembled inside updatePatternInput() as currentPatternInput.accentProb (single
         // writer, latches with the other Big-5). The control-rate engine.accentProb write + its
         // WriteLedger A1 tripwire are gone — the multi-writer hazard they policed is designed out.
 
         // Check for expander changes and update cached pointers
+        MONSOON_PROF_BEGIN(ctrl_dna);   // dna: spreadTargetMode mirror + Sands pipeline
         // Mirror the per-lane spread target mode onto the engine so the spread path
         // (which only has PatternEngine&) can read it without a Monsoon pointer.
         for (int l = 0; l < 5; ++l)
@@ -1417,14 +1430,18 @@ void Monsoon::process(const ProcessArgs& args) {
         // uses the same pointer instead of findMonsoonEitherSide.
         expanderManager.owner = this;
         dnaManager.processDNA(expanderManager);
+        MONSOON_PROF_END(ctrl_dna);
 
         // ── Deep Straits Sands Expanders (Control Rate Orchestration) ──
         // Tick lock-manager boundary/unlock detection BEFORE expander sync so the CA QUEUE
         // trigger inside sync() reads this cycle's edges. Uses engine.stepIndex (transport
         // authority) -- replaces the old caV2PrevStep_/caV2PrevLocked_ shadow state.
+        MONSOON_PROF_BEGIN(ctrl_sync);  // sync: lock boundary detect + expander sync
         lockManager.tick(engine.stepIndex);
         expanderManager.sync(engine, lockManager.queueFires());
-        
+        MONSOON_PROF_END(ctrl_sync);
+
+        MONSOON_PROF_BEGIN(ctrl_rest);  // rest: cached* + CV logic + updateWindow + CV3 tail
         // Refresh Audio-Rate Caches (Throttled)
         cachedBpmParam = params[BPM_PARAM].getValue();
         cachedClkConnected = inputs[CLK_INPUT].isConnected();
@@ -1527,6 +1544,7 @@ void Monsoon::process(const ProcessArgs& args) {
         for (int i = 0; i < 6; ++i) {   // 6 slew/mix targets (R/M/Q × slew/mix)
             paramManager->setCv3Offset(i, clampv<float>(cv3Mods[i], -1.f, 1.f));
         }
+        MONSOON_PROF_END(ctrl_rest);
     }
     MONSOON_PROF_END(controlDiv);
 #ifdef MONSOON_PROFILE
@@ -1550,17 +1568,30 @@ void Monsoon::process(const ProcessArgs& args) {
             const double sOut   = monsoonProfAcc_outputGen  * npt / n;
             const double sLight = monsoonProfAcc_lightDiv   * npt / n;
             const double sCtrl  = monsoonProfAcc_controlDiv * npt / n;
+            // Finer controlDiv decomposition (this round): the five inner brackets. Each is
+            // per-sample ns like the outer sections (the /32 control tick cost shows as
+            // 32× a single tick's ns — read RELATIVE shares to find the fire).
+            const double sRaf   = monsoonProfAcc_ctrl_raf   * npt / n;
+            const double sPat   = monsoonProfAcc_ctrl_pat   * npt / n;
+            const double sDna   = monsoonProfAcc_ctrl_dna   * npt / n;
+            const double sSync  = monsoonProfAcc_ctrl_sync  * npt / n;
+            const double sRest  = monsoonProfAcc_ctrl_rest  * npt / n;
             INFO("[MONSOON PROFILE] Monsoon ns/sample: head=%.0f clock/phase=%.0f gates/trig=%.0f "
                  "shophouse=%.0f step-exec=%.0f cv/modeB=%.0f outputGen=%.0f lightDiv=%.0f "
                  "controlDiv=%.0f | sum=%.0f",
                  sHead, sClock, sGates, sShop, sStep, sCv, sOut, sLight, sCtrl,
                  sHead + sClock + sGates + sShop + sStep + sCv + sOut + sLight + sCtrl);
+            INFO("[MONSOON PROFILE] controlDiv ns/sample: rafExp=%.0f patIn=%.0f dna=%.0f "
+                 "sync=%.0f rest=%.0f | innerSum=%.0f",
+                 sRaf, sPat, sDna, sSync, sRest, sRaf + sPat + sDna + sSync + sRest);
         } else {
             INFO("[MONSOON PROFILE] Monsoon: TSC calibrating, ns/sample from the next window");
         }
         monsoonProfAcc_head = monsoonProfAcc_clockPhase = monsoonProfAcc_gatesTrig =
         monsoonProfAcc_shophouse = monsoonProfAcc_stepExec = monsoonProfAcc_cvModeB =
         monsoonProfAcc_outputGen = monsoonProfAcc_lightDiv = monsoonProfAcc_controlDiv = 0;
+        monsoonProfAcc_ctrl_raf = monsoonProfAcc_ctrl_pat = monsoonProfAcc_ctrl_dna =
+        monsoonProfAcc_ctrl_sync = monsoonProfAcc_ctrl_rest = 0;
     }
 #endif
 }

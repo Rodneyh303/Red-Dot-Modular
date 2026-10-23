@@ -1,7 +1,9 @@
 #pragma once
 
 #include <rack.hpp>
+#include <cstdint>
 #include "../engines/SequencerEngine.hpp"
+#include "../SandsTopology.hpp"   // cachedTopo_ — the topology-rebuild fingerprint gate
 
 struct MonsoonExpanderManager;
 
@@ -41,4 +43,52 @@ private:
     } lastRemap_;
     bool remapSigChanged_(const uint8_t* rSrc, const uint8_t* mSrc, const uint8_t* qSrc, bool identity) const;
     void captureRemapSig_(const uint8_t* rSrc, const uint8_t* mSrc, const uint8_t* qSrc, bool identity);
+
+    // ── Control-tick redundancy gates (perf round 2 — CC_PROMPT_cpu_section_profile) ──
+    // processDNA runs at ~1500 Hz but several of its outputs change only on UI/presence
+    // edits or rolls. Each gate fingerprints the ACTUAL inputs of the gated work and
+    // skips the work when they are bit-unchanged. The bit-identical argument lives at
+    // the gate site; all state is per-Monsoon (this manager is a Monsoon member).
+
+    // GATE 1 — SandsTopology rebuild + warpDelegated_ mirror rescan. The fill is a pure
+    // function of (presence bits, gMon-null, eastOwns[112], polyVoiceCount); build is a
+    // pure function of the filled Inputs; the mirror scan only writes owner() flips.
+    struct TopoSig {
+        bool valid = false;
+        bool eastPresent = false, macroPresent = false, polyBaseActive = false;
+        bool gMonNull = true;
+        int  polyVoiceCount = 0;
+        bool own[112] = {};   // raw eastOwns bytes (meaningful only when !gMonNull)
+    } lastTopoSig_;
+    dotModular::SandsTopology cachedTopo_{};
+
+    // GATE 2 — the V1 spread pass (Mono-visual branch AND East-V1 branch; ONE sig because
+    // it captures (inputs → row), not which branch ran). Inputs: per-lane spread values,
+    // axis gates, spreadTargetMode, the mono slewed + pre-remap rows — PLUS random_[0]
+    // as last written, so ANY external writer of the row (pin-remap promote, rotates,
+    // resets) breaks the match and the pass re-runs, preserving the unconditional
+    // version's every-tick healing property exactly.
+    struct V1SpreadSig {
+        bool valid = false;
+        bool axR = true, axM = true, axQ = true;
+        float sp[7] = {};          // unified PL lane order (MEL,OCT,QMIX,REST,ACC,VAR,LEG)
+        uint8_t mode[7] = {};
+        float swRhythm[16] = {}, swMelody[16] = {}, swOctave[16] = {}, swQmix[16] = {},
+              swAccent[16] = {}, swVariation[16] = {}, swLegato[16] = {};
+        float prRhythm[16] = {}, prMelody[16] = {}, prOctave[16] = {}, prQmix[16] = {},
+              prAccent[16] = {}, prVariation[16] = {}, prLegato[16] = {};
+        float row[7][16] = {};     // random_[0] as last written by the pass
+    } lastV1Spread_;
+    bool v1SpreadDirty_(bool axR, bool axM, bool axQ, const float sp[7]);
+    void v1SpreadCapture_(bool axR, bool axM, bool axQ, const float sp[7]);
+
+    // GATE 3 — rebuildWarpMirrorVoice(0) after the spread passes: the mirror row is a
+    // pure function of (random_[0], warpDelegated_[0], warpBank_) — warpMixCell reads
+    // exactly those three, so fingerprinting them at the call site is complete.
+    struct MirrorSig {
+        bool valid = false;
+        const void* bank = nullptr;
+        bool deleg[7] = {};
+        float row[7][16] = {};
+    } lastMirrorSig_;
 };

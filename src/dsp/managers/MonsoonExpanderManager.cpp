@@ -760,6 +760,12 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // strands the MACRO_SOLE mono block above already writes; the old
             // 0-based loop clobbered V1's store slot with the globals AND
             // dropped V16 (slot 15).
+            // PERF (perf round 2): the host walk below is loop-invariant — hoisted out
+            // of the per-voice loop (was up to 15 dynamic_cast chain walks per control
+            // tick). BIT-IDENTICAL: same pure function, same argument, and the chain
+            // cannot change within one sync() call (Rack rewrites expander pointers
+            // between process() calls, never during one).
+            auto* mmV = redDot::findMonsoonEitherSide(macroVis);
             for (int v = 1; v <= effPolyVoices; ++v) {
                 // Global LOR per lane (Macro owns → no per-voice/ownership branch).
                 // macroBase[lane][item]: item 0=LEN 1=OFF 2=ROT, engine-lane indexed.
@@ -772,7 +778,6 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 // P9b: each voice v selects its OWN tap between the published endpoints
                 // (this loop is per-voice — v is a receiving voice tracking Macro, so the
                 // ceding-voice rule applies, not the Macro-display rule).
-                auto* mmV = redDot::findMonsoonEitherSide(macroVis);
                 const float tapR = (mmV ? mmV->getMacroTap(v, PL::PL_REST,   1) : 1.f);
                 const float tapM = (mmV ? mmV->getMacroTap(v, PL::PL_MELODY, 1) : 1.f);
                 const float tapO = (mmV ? mmV->getMacroTap(v, PL::PL_OCTAVE, 1) : 1.f);
