@@ -89,3 +89,64 @@ Three faces of "same thing decided in multiple places drifts." Building all thre
 bug-class family that ate this week. The patches don't — each patch is a NEW place to drift (the
 delegation patch spawned the CPU spike spawned the cross-layer mess). STOP patching; build the
 authorities.
+
+────────────────────────────────────────────────────────────────────────────────
+## CORRECTION + CORE STRUCTURE: PER-MODE RATE CHAINS (Rodney) — supersedes the earlier framing
+
+The earlier "ORDERED and NESTED-SUBSET single hierarchy" framing is WRONG/incomplete (Rodney):
+rates are NOT one universal nested hierarchy derived from a single clock — that would couple them
+(e.g. deriving Step from frame count → frame-rate changes break musical timing). The correct
+structure is PER-MODE RATE CHAINS, computed in ONE place, with independent sources per tier.
+
+### RATES ARE INDEPENDENT CLOCKS (freshness via published slots, NOT tick-subset)
+Each rate has its OWN source: Sample←audio clock; Frame←video clock (user-settable in standalone —
+MUST NOT drive any other rate); Control←a wall-clock division (NOT frames); PPQN/Step/Phrase←the
+transport (mode-dependent — see chains). A producer writes its result to a stable SLOT at its rate;
+a consumer reads the latest published slot value at ITS rate → always fresh, no tick-nesting needed.
+=> Changing FRAME rate perturbs ONLY frame consumers. Changing SAMPLE rate scales ONLY sample-bound
+work. No rate is defined as "every N of another rate's ticks" (that coupling is UN-WRITABLE).
+
+### SAMPLE-RATE AWARENESS (the CPU invariant + a test)
+Rates are EVENT/TIME-anchored, not sample-count-anchored. So at higher SR, non-Sample work fires the
+SAME number of times per SECOND → its per-SAMPLE cost FALLS. Only the irreducible Sample sliver scales
+with SR. INVARIANT (and regression test): raising SR must raise CPU ONLY by the Sample-tier work; if
+non-Sample CPU-per-second rises with SR, something heavy is wrongly sample-bound.
+
+### THE PER-MODE RATE CHAIN — the single authority (Rodney: "one place to calculate them")
+Each MODE declares its CHAIN: the ordered tiers Sample→…→Phrase that the mode actually uses, each
+tier WITH ITS SOURCE (what triggers it). ONE declaration per mode = the single source of truth for
+that mode's timing. Everything else CONSUMES the chain; nothing re-derives timing.
+  CLOCK mode:  Sample → PPQN(periodic clock) → Step(= N PPQN) → Phrase
+  PHASE mode:  Sample → PPQN(mapped from phase position) → Step(= N PPQN) → Phrase
+  GATE  mode:  Sample(edge detect) → Step(= gate rise, nominal 1/16) → Phrase     [NO PPQN TIER]
+KEY FACTS:
+- Step/Phrase are MODE-INDEPENDENT at the top (the HEAVY work lives here); only the Step TRIGGER
+  SOURCE differs (PPQN-count for clock/phase, direct gate-edge for gate).
+- PPQN is a MODE-CONDITIONAL tier: PRESENT (clock/phase), ABSENT (gate — gates advance the step
+  directly, there is no sub-step pulse grid). Absence is STRUCTURAL (not in the chain), not a runtime
+  flag → "ask for PPQN in gate mode" is UN-EXPRESSIBLE, not a check that can be forgotten.
+- PHASE drive is PPQN-QUANTIZED, NOT continuous: phase position → PPQN, so the heavy resolve fires on
+  PPQN/Step ticks, NOT per-sample. The ONLY sample-rate work in phase mode is read-phase→map-PPQN→
+  detect-tick (cheap). *** CHECK IN THE MEASUREMENT: does phase mode resolve per-PPQN (correct) or on
+  RAW continuous phase per-sample (CPU bug)? If heavy work rides the per-sample phase read, that's a
+  prime suspect for the 8%/124%. ***
+- GATE/PHASE Step is TRIGGERED (aperiodic, emitted by a Sample-rate detector: gate-edge / phase-tick);
+  CLOCK Step is CLOCKED. BOTH: the cheap detector is Sample-rate, the heavy Step work is Step-rate —
+  they MUST be separated (detector emits trigger; heavy work runs on trigger). Tangling them = heavy
+  work pays the per-sample tax (likely a current CPU contributor — verify the step-compute isn't on
+  the per-sample edge/phase path).
+
+### MODE-SWITCH = SWAP THE ACTIVE CHAIN
+Producers (per tier) and consumers (declare a tier) do NOT change with mode. Switching mode swaps the
+active chain → changes which tiers exist and each tier's source. Heavy Step work is mode-independent,
+so NO downstream mode-specific code. A mode's ENTIRE timing identity = its chain declaration.
+
+### THE CONTRACT (folds the 5 properties onto the chain)
+1. ONE producer per tier, computed in ONE place at the tier's rate/source (the chain).
+2. ALL modules (Monsoon, Macro, expanders) CONSUME the same computed tier values — never recompute,
+   never reach into another module's timing (the Macro 124% was Macro re-deriving timing/values).
+3. Consumer declares which tier (IN THE ACTIVE CHAIN) it reads; reads the published slot at that rate.
+4. Batched over lanes/channels (one op all cells per tier, not per-cell-per-call).
+5. ENFORCED: manager owns dispatch; can't request a tier absent from the active chain; can't force a
+   faster rate than the tier's; no raw `if(divider.process())` to get wrong. Wrong-rate / cross-module
+   recompute / duplicate-compute are UN-WRITABLE.
