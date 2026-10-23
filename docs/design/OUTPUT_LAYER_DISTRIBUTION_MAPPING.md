@@ -1484,3 +1484,45 @@ WHY FREE ℓ IS STRICTLY BETTER THAN CORNER-ONLY:
 RECORD so nobody later proposes "just do rails, it's simpler": corner-only is both LESS expressive AND
 not actually simpler (free ℓ is one knob either way). The corner (MO) case is retained as the ℓ=0/1
 ENDPOINTS, for completeness, not as the feature.
+
+────────────────────────────────────────────────────────────────────────────────
+## THREE RESULTS TO BANK (Rodney, feel-test session 2026-10)
+
+### 1. HETEROGENEOUS-ℓ ATOMS + ρ-MODULATION = controllable off-diagonal co-occurrence (a chord-anchor)
+Set DIFFERENT ℓ per voice (voice i atom at a rail, voice j atom at a middle value). Their atoms are at
+DIFFERENT output values → the joint singular structure is an OFF-DIAGONAL point mass at (ℓ_i, ℓ_j) —
+NOT comonotone (different values), NOT MO (not joint-extreme), λ=0. Its WEIGHT = the Gaussian-MA copula
+measure of "i's u-slice × j's u-slice". STATICALLY the ranks fight you (a top-slice and a middle-slice
+are pulled APART by positive ρ). BUT MODULATING ρ sidesteps it: drive ρ toward the value that maximizes
+that rectangle's copula measure ON THE STEPS you want the coincidence → the two DIFFERENT-pitch anchors
+LAND TOGETHER = a controllable structured CHORD (top-note + mid-note sounding together, at a rate you
+steer). More voices at more ℓ → an arbitrary chord of anchors that locks under ρ-modulation. The
+aligning-ρ depends on the atoms' RANK positions (similar ranks→+ρ, opposite→−ρ, top+middle→mild/slightly
+−); user finds by ear (default) or derive-ρ-from-ℓ (elegant option). Distinct gesture from same-ℓ
+(unison) and shared-mass (tutti): a MODULATABLE STRUCTURED-CHORD-ANCHOR.
+
+### 2. CROSS-LANE COUPLING: shared W modulation is THE lever (atom needed; NOT static placement)
+Lanes are INDEPENDENT streams → placing an atom on melody AND an atom on octave does NOT correlate them
+(independent → product rate, no coupling). The ONLY cross-lane route is SHARED MODULATION of the
+singular part across lanes — and W IS THAT LEVER: w is the Lebesgue mixing weight ((1-w)u + w·F^-1),
+so w scales the EFFECTIVE ATOM MASS. Shared w-mod across lanes (one CV → both lanes' w), WITH atoms set
+on those lanes, grows both atoms together → cross-lane co-occurrence. CONDITIONS: (a) atoms present
+(else shared-w just co-moves the CONTINUOUS marginal = weak finite-quantile, λ=0); (b) w-mod genuinely
+SHARED. INTERIOR atoms + shared w → cross-lane CO-OCCURRENCE (λ=0); CORNER atoms + shared w → cross-lane
+MO TAIL DEPENDENCE (λ>0). NO NEW MECHANISM — w is already per-voice-per-lane + modulatable; atoms are
+the built feature. (θ-mod does NOT do this — it moves the continuous part, not the atom; the master-table
+singular-part criterion.) So "cross-lane correlation" = YES, specifically via shared w-mod of lanes
+carrying atoms — never via static atom placement on independent lanes.
+
+### 3. SHAPING-DOMINATES → the dice become a FROZEN RELATIONAL SEED (design philosophy, EMERGENT, no knob consequences)
+With shaping this rich (warp + tilt + interior/corner atoms + correlation + LOR), the SHAPING carries
+most of the musical structure → the raw DRAW becomes a small ingredient (a dither on a largely-authored
+landscape). CONSEQUENCE: you need not re-roll often. Two distinct musical ACTS emerge:
+  - ROLL = "give me a new RELATIONAL SKELETON" (new correlations/pattern-shape) — a bigger, RARE gesture.
+  - SHAPE = "sculpt this skeleton's REALIZATION" (values/anchors/lean) — the CONTINUOUS performance.
+This is the LATENT/MARGINAL separation made PERFORMABLE: the frozen draw = the latent (copula,
+correlations = the RELATIONSHIPS); the distribution knobs = the marginal (the VALUES). Freeze the latent,
+PLAY the marginal. Works because warp/tilt/atom are (mostly) RANK-PRESERVING transforms of a fixed
+uniform → a frozen draw's correlations survive re-shaping; only surface values re-map. EMERGENT (fell
+out of shaping depth, not designed) and — Rodney — NO KNOB CONSEQUENCES (recorded as character/philosophy,
+no new control implied; "freeze/hold draw" is an existing/obvious affordance, not a new knob).
