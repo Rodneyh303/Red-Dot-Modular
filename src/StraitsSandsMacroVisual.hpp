@@ -295,6 +295,30 @@ struct StraitsSandsMacroVisual : Module {
     float probHeld[dotModular::SandsGrid::POLY_LANES][16] = {};
     int   probLastStep[dotModular::SandsGrid::POLY_LANES][16];
 
+    // ── /32 sweep input-change gate (CC_PROMPT_cpu_section_profile Part 3) ──────────
+    // Shadow of EVERY input the prob-CV sweep's resolved+written values depend on;
+    // the full enumeration + the bit-identical argument live at the gate site in
+    // process(). Same discipline as MonsoonSandsManager's GATE 1/2/3: fingerprint the
+    // actual inputs, skip the work when bit-unchanged. NOTE the spread publish is NOT
+    // shadowed here — the gate compares the freshly computed publish value against the
+    // LIVE eng.macroOwnSpread store (the resolve reads the store; a live compare keeps
+    // the unconditional version's every-tick healing against any external writer).
+    struct SweepSig {
+        bool valid = false;
+        int  nV = -1;                          // eng.numPolyVoices — 1+nV channels resolved+written
+        int  scaleIdx = -1;                    // mon->probOutScale (0/1/2 → 1/5/10 V)
+        bool sh = false;                       // mon->probOutSampleHold
+        int  step[7] = {};                     // per-lane masked playheads (resolve + S&H key)
+        float pub[7][16] = {};                 // pubSlewed cells the resolve reads: [lane][voiceSlot 0..nV]
+        const void* bank = nullptr;            // pe.warpBank_ (null ⇒ warpDisplayMix is passthrough)
+        bool deleg[16][7] = {};                // pe.warpDelegated_ (rows 0..nV are read)
+        float warpW[112] = {};                 // bank own-slot depths (prefix (nV+1)*7 is read)
+        dotModular::WarpF warpF[112] = {};     // bank own-slot curves (same prefix; trivially copyable)
+        float globalWarpW[7] = {};             // Macro's delegated-default depth
+        dotModular::WarpF globalWarpF[7] = {}; // Macro's delegated-default curve
+        uint16_t poolUsed = 0;                 // drawn-curve pool high-water mark (append-only pool)
+    } sweepSig_;
+
     // CV-applied global spread per lane (0=REST,1=MEL,2=OCT). processDNA writes
     // these from base + spread CV; the display reads them so spread CV is visible
     // WITHOUT moving the base knob (the old code wrote the modulated value back to
