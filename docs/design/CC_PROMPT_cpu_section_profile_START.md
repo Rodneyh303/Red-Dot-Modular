@@ -1,3 +1,26 @@
+# ⚡ FAST PATH (check these FIRST — reading already cleared the easy suspects)
+Before/alongside the general section-profiler, DIRECTLY instrument the TWO prime suspects — a per-sample
+call-COUNTER on each is enough to confirm/kill without full timing:
+
+PRIME SUSPECT A (the Macro 124%): macroOwnLaneProbability (SequencerEngine.hpp:756) — its OWN comment
+flags "5 lanes × (1+numPolyVoices) channels × macroOwnLaneProbability — each call" and it runs
+SpreadInterp::polySlewedPub + applyAnchorV1Only + warpDisplayMix. If the Macro module's output path
+calls it PER SAMPLE × channels, that is the 124%. INSTRUMENT: a static counter incremented in
+macroOwnLaneProbability, logged every 50000 samples as "calls/sample". If it's ~5×(1+N) per sample → CONFIRMED.
+  => IF CONFIRMED, the FIX IS THE UI-TO-RESOLVER MIGRATION (CC_PROMPT_UI_TO_RESOLVER_SPEC): that deletes
+     macroOwnLaneProbability and routes the heavy resolve to STEP rate (cached), read latched by the
+     output + continuous-thin by the bars. So a confirmed suspect-A means: don't point-patch, do the
+     resolver migration (it fixes the CPU AND the bars/leak/direction bugs together). This profile just
+     CONFIRMS the target before that bigger change.
+
+PRIME SUSPECT B (the Monsoon 8%): outputGenerator->drive(...) (Monsoon.cpp:1151) — runs PER SAMPLE
+(outside the dividers). Reading found no obvious heavy call inside, but it loops voices and sets outputs
+each sample. INSTRUMENT: bracket drive() with the section timer; if it dominates Monsoon's share, look
+inside for a per-sample read that's actually recomputing (vs reading a cached value).
+
+If A and B are both cleared by the counters, fall through to the full section-profiler below.
+
+────────────────────────────────────────────────────────────────────────────────
 # CC PROMPT — SECTION-PROFILE process() to find the clock-mode CPU fire (Monsoon 8%, Macro 124%)
 
 CONTEXT: CPU regressed from ~1% to Monsoon 8% / Macro 124%, observed in CLOCK MODE. Multiple
