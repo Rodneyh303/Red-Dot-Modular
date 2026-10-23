@@ -1461,3 +1461,26 @@ decomposition type, a continuum of diagonal locations; the musical meaning track
 - corner ℓ = rail atom (MO, tail) — perceptually inert unless a decision tests the exact rail
   (CLAMP BUILD-CASE VERDICT) — so musically the weaker end, kept for completeness.
 This is why the feel-test frees ℓ: interior is where the value is; the corner is the MO special case.
+
+────────────────────────────────────────────────────────────────────────────────
+## DECISION: FREE ℓ (atom anywhere), NOT corner-only — confirmed by feel-test (Rodney 2026-10)
+
+Feel-tested live in the editor (tilt p + atom ℓ + atom m, three knobs): sweeping ℓ from interior
+(0.56, 0.71 — sings a recurring anchor pitch) to the corner (1.00 — just "stuck at the top") CONFIRMED
+by ear what the theory predicted. DECISION: the atom's location ℓ is FREE over [0,1]; we do NOT restrict
+to corners (which is what a dedicated "clamp" feature would have been).
+
+WHY FREE ℓ IS STRICTLY BETTER THAN CORNER-ONLY:
+- CORNER-ONLY gives exactly TWO gestures (stuck-top / stuck-bottom), both perceptually blunt and both
+  the MO case the clamp verdict demoted to "inert unless a decision tests the exact rail".
+- FREE ℓ reaches the ENTIRE diagonal — a continuous family of recurring anchors at ANY value — and the
+  USEFUL region (interior comonotone anchors) is the part corner-only could NOT reach at all.
+- ONE mechanism, ONE parameter, SUBSUMES clamp: clamp = this atom with ℓ pinned to an endpoint. So we
+  build ONE injected atom (free ℓ), not clamp + a separate interior feature. Consolidation that EXPANDS
+  capability — fewer concepts, fewer controls, more range. The opposite of feature bloat.
+- Upholds "distribution-mod suffices, don't dismiss features": the free-ℓ atom IS distribution-mod (a
+  continuous shape control that includes the atom mechanism, placeable anywhere) — the expressive atom
+  gesture WITHOUT dedicated clamp machinery and WITHOUT the rail-only perceptual deadness.
+RECORD so nobody later proposes "just do rails, it's simpler": corner-only is both LESS expressive AND
+not actually simpler (free ℓ is one knob either way). The corner (MO) case is retained as the ℓ=0/1
+ENDPOINTS, for completeness, not as the feature.
