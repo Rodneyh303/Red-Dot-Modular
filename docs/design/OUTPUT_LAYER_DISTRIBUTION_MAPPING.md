@@ -1424,3 +1424,63 @@ replace/absorb — flagged open in the injected-atom note):
 cluster + anchor is wanted, lean INSERT/DISPLACE. The two features' interaction is thus a factor in the
 mass-model decision — pin together when either is built. They do NOT conflict either way (same direction);
 the choice is only about whether tilt and m are coupled (absorb) or independent (displace).
+
+────────────────────────────────────────────────────────────────────────────────
+## DESCRIBING THE ATOM DISTRIBUTION — MO at the CORNER, comonotone INTERIOR; ℓ slides the diagonal (Rodney)
+
+Our injected atom is authorable at ANY ℓ ∈ [0,1] — INTERIOR or CORNER. Both are the SAME mechanism
+(a Dirac of mass m at ℓ) and the SAME decomposition TYPE; only the diagonal LOCATION differs, and that
+location determines whether it is a tail object or a co-occurrence object. This refines the earlier MO
+notes, which were all written for the rail/corner case.
+
+### THE DECOMPOSITION (same form for interior OR corner)
+Marginal: a MIXED distribution — NOT absolutely continuous. Lebesgue decomp:
+    mu_Y = f_cont(y)dy  (abs-continuous: the tilted parametric density)  +  m·delta_ℓ  (singular: one
+    Dirac of mass m at ℓ).
+Joint (two within-lane correlated voices, atoms at the same ℓ): Gaussian-MA copula (continuous part)
++ a SINGULAR DIAGONAL POINT-MASS on {Y_i=ℓ, Y_j=ℓ}. The decomposition form is identical whether ℓ is
+interior or corner.
+
+### WHAT CHANGES WITH ℓ — the naming + the λ consequence
+- ℓ = CORNER (0 or 1): the singular diagonal mass is at the EXTREME corner → MARSHALL-OLKIN. MO is
+  SPECIFICALLY the joint-extreme/corner structure; it carries lambda>0 (tail dependence) — a TAIL object.
+- ℓ = INTERIOR (0,1): the singular diagonal mass is at a NON-extreme point → NOT MO. It is a
+  COMONOTONE INTERIOR ATOM (a co-occurrence atom): two voices land on the exact value ℓ TOGETHER, but
+  lambda = 0 — tail dependence is a LIMITING property as you approach the extreme, and an interior atom
+  (bounded away from the extreme) contributes nothing in that limit. So interior = FINITE co-occurrence
+  at ℓ, NOT tail dependence.
+=> Reserve "Marshall-Olkin" for ℓ at a rail. Interior ℓ → "interior comonotone atom" / "co-occurrence
+   atom", lambda=0. The tell is lambda: >0 at the corner (MO), =0 inside.
+
+### THE UNIFYING FRAME
+ℓ SLIDES THE ATOM ALONG THE DIAGONAL. Corner → MO / lambda>0 / tail object. Interior → comonotone /
+lambda=0 / co-occurrence object. Crossing to the corner is what TURNS it into MO. One mechanism, one
+decomposition type, a continuum of diagonal locations; the musical meaning tracks ℓ:
+- interior ℓ = recurring ANCHOR/PEDAL value, and (correlated voices) a mid-range UNISON on that value —
+  the musically useful case (co-occurrence, no tail).
+- corner ℓ = rail atom (MO, tail) — perceptually inert unless a decision tests the exact rail
+  (CLAMP BUILD-CASE VERDICT) — so musically the weaker end, kept for completeness.
+This is why the feel-test frees ℓ: interior is where the value is; the corner is the MO special case.
+
+────────────────────────────────────────────────────────────────────────────────
+## DECISION: FREE ℓ (atom anywhere), NOT corner-only — confirmed by feel-test (Rodney 2026-10)
+
+Feel-tested live in the editor (tilt p + atom ℓ + atom m, three knobs): sweeping ℓ from interior
+(0.56, 0.71 — sings a recurring anchor pitch) to the corner (1.00 — just "stuck at the top") CONFIRMED
+by ear what the theory predicted. DECISION: the atom's location ℓ is FREE over [0,1]; we do NOT restrict
+to corners (which is what a dedicated "clamp" feature would have been).
+
+WHY FREE ℓ IS STRICTLY BETTER THAN CORNER-ONLY:
+- CORNER-ONLY gives exactly TWO gestures (stuck-top / stuck-bottom), both perceptually blunt and both
+  the MO case the clamp verdict demoted to "inert unless a decision tests the exact rail".
+- FREE ℓ reaches the ENTIRE diagonal — a continuous family of recurring anchors at ANY value — and the
+  USEFUL region (interior comonotone anchors) is the part corner-only could NOT reach at all.
+- ONE mechanism, ONE parameter, SUBSUMES clamp: clamp = this atom with ℓ pinned to an endpoint. So we
+  build ONE injected atom (free ℓ), not clamp + a separate interior feature. Consolidation that EXPANDS
+  capability — fewer concepts, fewer controls, more range. The opposite of feature bloat.
+- Upholds "distribution-mod suffices, don't dismiss features": the free-ℓ atom IS distribution-mod (a
+  continuous shape control that includes the atom mechanism, placeable anywhere) — the expressive atom
+  gesture WITHOUT dedicated clamp machinery and WITHOUT the rail-only perceptual deadness.
+RECORD so nobody later proposes "just do rails, it's simpler": corner-only is both LESS expressive AND
+not actually simpler (free ℓ is one knob either way). The corner (MO) case is retained as the ℓ=0/1
+ENDPOINTS, for completeness, not as the feature.
