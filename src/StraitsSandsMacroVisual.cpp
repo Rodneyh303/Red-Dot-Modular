@@ -21,11 +21,22 @@
 #include "dsp/managers/SandsParameterManager.hpp"
 #include "dsp/VoiceResolver.hpp"   // activeVoiceCount + voice identity, single source of truth for the tab→voice mapping and uniform 16-voice addressing for prob-out
 #include "dsp/LaneMapping.hpp"        // lane constants + strong types (identity — tables deleted Phase 3b)
+#include "MonsoonProfile.hpp"   // CC_PROMPT_cpu_section_profile: Suspect-A counter + section timers (no-op flag-off)
 
 using namespace rack;
 using namespace redDot;
 using namespace MonsoonIds;
 using namespace StraitsMacroVisualIds;
+
+#ifdef MONSOON_PROFILE
+// CC_PROMPT_cpu_section_profile — DIAGNOSTIC SCAFFOLDING (never ships; delete together
+// with the MONSOON_PROF_* call sites in StraitsSandsMacroVisual::process). TSC-tick
+// accumulators for the Macro module's process sections; the control-rate log (~50000
+// samples) converts to ns/sample. Aggregate across Macro instances — read RELATIVE shares.
+static uint64_t monsoonProfAcc_lookup = 0;   // Monsoon lookup (div /8) + dir-mod edge scan — per sample
+static uint64_t monsoonProfAcc_sweep = 0;    // spread publish + resolver + 5-lane x nCh prob-CV sweep — PRIME SUSPECT A
+static uint64_t monsoonProfWindow = 0;       // samples since the last log
+#endif
 
 extern Plugin* pluginInstance;
 
@@ -795,6 +806,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
 // ── Module process(): 3 poly probability CV outs (ch1 reserved, voices ch2+) ──
 void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     using namespace StraitsMacroVisualIds;
+    MONSOON_PROF_BEGIN(lookup);   // lookup: Monsoon chain walk (div /8) + dir-mod edge scan
     // PERF (Rodney audit item 3): findMonsoonEitherSide walks the expander chain and ran
     // every sample. Topology is control-rate, so cache it and refresh on a divider.
     if (monLookupDiv.process()) cachedMon_ = redDot::findMonsoonEitherSide(this);
@@ -826,6 +838,8 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
             dirModPrev[el] = high;
         }
     }
+    MONSOON_PROF_END(lookup);
+    MONSOON_PROF_BEGIN(sweep);   // sweep: spread publish + resolver + the 5-lane prob-CV out sweep
     const float scaleV = (mon->probOutScale == 0) ? 1.f : (mon->probOutScale == 1) ? 5.f : 10.f;
     const bool sh = mon->probOutSampleHold;
     auto& eng = mon->engine;
@@ -885,6 +899,39 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
             out.setVoltage(rack::math::clamp(val, 0.f, 1.f) * scaleV, ch);
         }
     }
+    MONSOON_PROF_END(sweep);
+#ifdef MONSOON_PROFILE
+    // CC_PROMPT_cpu_section_profile — FAST PATH + section log (every ~50000 samples, ~1 s
+    // @ 48k). Suspect-A decision rule (macroOwnLaneProbability calls/sample, counted IN
+    // the engine accessor so both consumers — the sweep here + the bars' refresh — land in
+    // the same number):
+    //   ~ 5x(1+N)      => CONFIRMED per-sample sweep: the fix is CC_PROMPT_UI_TO_RESOLVER_SPEC
+    //                     (the UI->resolver migration — deletes macroOwnLaneProbability,
+    //                     resolves at STEP rate), NOT a point-patch. Stop after confirming.
+    //   ~ 5x(1+N)/32   => the /32 throttle is working; read the section shares instead
+    //                     (sweep vs lookup) for the remaining fire.
+    if (++monsoonProfWindow >= 50000) {
+        monsoonProfWindow = 0;
+        const double npt = monsoonProfile::calibrateNsPerTick(monsoonProfile::now());
+        static uint64_t prevCalls = 0;
+        const uint64_t calls =
+            monsoonProfile::macroOwnLaneProbCalls.load(std::memory_order_relaxed);
+        const double cps = double(calls - prevCalls) / 50000.0;   // calls/sample this window
+        prevCalls = calls;
+        const double perSample = 5.0 * (1.0 + (double)nV);        // the CONFIRM threshold
+        const double throttled = perSample / 32.0;                // /32 control-rate throttle
+        if (npt > 0.0)
+            INFO("[MONSOON PROFILE] Macro ns/sample: lookup=%.0f sweep=%.0f sum=%.0f | Suspect-A "
+                 "macroOwnLaneProbability calls/sample=%.2f (per-sample 5x(1+N)=%.1f, /32=%.2f, N=%d)",
+                 monsoonProfAcc_lookup * npt / 50000.0, monsoonProfAcc_sweep * npt / 50000.0,
+                 (monsoonProfAcc_lookup + monsoonProfAcc_sweep) * npt / 50000.0,
+                 cps, perSample, throttled, nV);
+        else
+            INFO("[MONSOON PROFILE] Macro: Suspect-A calls/sample=%.2f (per-sample 5x(1+N)=%.1f, "
+                 "/32=%.2f, N=%d); TSC calibrating", cps, perSample, throttled, nV);
+        monsoonProfAcc_lookup = monsoonProfAcc_sweep = 0;
+    }
+#endif
 }
 
 Model* modelStraitsSandsMacroVisual =

@@ -2,6 +2,9 @@
 #include "PatternEngine.hpp"
 #include "../SpreadInterp.hpp"   // CC_PROMPT_macro_output_east_leak: macroOwnLaneProbability (below)
 #include "../gates/GateState.hpp"
+#ifdef MONSOON_PROFILE
+#include "../../MonsoonProfile.hpp"   // CC_PROMPT_cpu_section_profile: Suspect-A call counter (empty flag-off)
+#endif
 #include "ClockEngine.hpp"
 #include "../NoteValues.hpp"
 #include "../LaneMapping.hpp"
@@ -754,6 +757,14 @@ struct SequencerEngine {
     // V1's value is spread-invariant at positive spread (matches East's V1 display).
     float macroOwnSpread[PL_LANES] = {};   // per PL lane; published by the Macro module
     float macroOwnLaneProbability(int engLane, int step, bool mono, int polyVoice) const {
+#ifdef MONSOON_PROFILE
+        // FAST-PATH Suspect A (CC_PROMPT_cpu_section_profile): count EVERY call — both
+        // consumers land here (the Macro prob-CV sweep, engine thread, and the bars'
+        // refresh, UI thread; hence the relaxed atomic). Macro's process() logs
+        // calls/sample at ~50k cadence: ~5x(1+N) per sample => CONFIRMED per-sample
+        // sweep — fix is CC_PROMPT_UI_TO_RESOLVER_SPEC, NOT a point-patch.
+        monsoonProfile::macroOwnLaneProbCalls.fetch_add(1, std::memory_order_relaxed);
+#endif
         const int l = (engLane >= 0 && engLane < PL_LANES) ? engLane : PL_REST;
         const int v = mono ? 0 : rack::math::clamp(polyVoice, 0, 15);   // voiceSlot (V2+=1..15)
         const float sp = macroOwnSpread[l];

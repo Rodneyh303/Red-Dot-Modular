@@ -38,9 +38,29 @@
 #include "dsp/managers/MonsoonConfigurator.hpp"
 #include "dsp/engines/PatternEngine.hpp"
 #include "dsp/gates/GateState.hpp"
+#include "MonsoonProfile.hpp"   // CC_PROMPT_cpu_section_profile: MONSOON_PROFILE section timers (no-op flag-off)
 
 using namespace rack;
 using namespace MonsoonIds;
+
+#ifdef MONSOON_PROFILE
+// CC_PROMPT_cpu_section_profile — DIAGNOSTIC SCAFFOLDING (never ships; delete together with
+// the MONSOON_PROF_* call sites in Monsoon::process). Section accumulators in TSC ticks;
+// the control-rate log (every ~50000 samples) converts to ns/sample via calibrateNsPerTick.
+// Aggregate across Monsoon instances — read RELATIVE SHARES, not absolutes: the dominant
+// section is the fix target regardless of bracketing overhead (the safe pattern — the old
+// 124% was a per-sample std::chrono; now() runs only AROUND sections, LOGS at control rate).
+static uint64_t monsoonProfAcc_head = 0;         // warp-mirror wire + input fetch
+static uint64_t monsoonProfAcc_clockPhase = 0;   // clock.process + phase.process
+static uint64_t monsoonProfAcc_gatesTrig = 0;    // run/reset + gate edge detect + assignments
+static uint64_t monsoonProfAcc_shophouse = 0;    // every-frame shophouse scale-override block
+static uint64_t monsoonProfAcc_stepExec = 0;     // mode dispatch: shouldExecute -> executeMode/jump/drift (gross of the nested boundary shophouse)
+static uint64_t monsoonProfAcc_cvModeB = 0;      // CV routing + Mode-B gate-state drive
+static uint64_t monsoonProfAcc_outputGen = 0;    // outputGenerator->drive — PRIME SUSPECT B (per sample)
+static uint64_t monsoonProfAcc_lightDiv = 0;     // lightDivider block
+static uint64_t monsoonProfAcc_controlDiv = 0;   // controlDivider block
+static uint64_t monsoonProfWindow = 0;           // samples since the last section log
+#endif
 
 // Plugin* pluginInstance and init(Plugin*) now live in src/plugin.cpp (Rack convention: a dedicated
 // entry-point TU). The extern declaration remains in Monsoon.hpp.
@@ -687,6 +707,7 @@ void Monsoon::process(const ProcessArgs& args) {
     _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
 #endif
 
+    MONSOON_PROF_BEGIN(head);   // head: warp-mirror wire + input fetch
     // Warp mirror (CC_PROMPT_03 STEP 4): wire the editor's warp bank into the engine
     // BEFORE any draw/consumer this block. Per-block pointer compare — a no-op after
     // the first block; the first wire triggers the initial full mirror rebuild (the
@@ -728,6 +749,8 @@ void Monsoon::process(const ProcessArgs& args) {
     ModeController& mc = *modeController;
     CVRouter& cvr = *cvRouter;
 
+    MONSOON_PROF_END(head);
+    MONSOON_PROF_BEGIN(clockPhase);
     // ── Centralised clock tick (processes CLK IN once, before all mode handlers) ──
     // Derives bpm from external clock period or BPM knob, emits sixteenthEdge + quarterEdge.
     clock.process(
@@ -766,6 +789,8 @@ void Monsoon::process(const ProcessArgs& args) {
         engine.pe.setReverseActive(false);
     }
 
+    MONSOON_PROF_END(clockPhase);
+    MONSOON_PROF_BEGIN(gatesTrig);
     // ── Run/Reset Gate Processing ──
     runGateActive = tc.processRunGate(
         runGateActive,
@@ -850,6 +875,8 @@ void Monsoon::process(const ProcessArgs& args) {
         tc.handleGate2Assignment(gate2Assign, input.gate2Rise, tc.getGate2High(), invertMuteLogic);
     }
 
+    MONSOON_PROF_END(gatesTrig);
+    MONSOON_PROF_BEGIN(shophouse);
     // --- Shophouse scale expander: sync + apply the ACTIVE front's scale EVERY process frame,
     //     independent of the clock (so editing a scale knob dims the faders immediately, and it
     //     works even when the sequencer is stopped). The boundary-quantised FRONT SWITCH (CV) is
@@ -895,6 +922,8 @@ void Monsoon::process(const ProcessArgs& args) {
         shopScaleChangePending_ = false;
     }
 
+    MONSOON_PROF_END(shophouse);
+    MONSOON_PROF_BEGIN(stepExec);
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
         // Gate-close on the PPQN grid pulse. In Mode E the pulse source is the phase
@@ -1041,6 +1070,8 @@ void Monsoon::process(const ProcessArgs& args) {
 
     }
 
+    MONSOON_PROF_END(stepExec);
+    MONSOON_PROF_BEGIN(cvModeB);
     // --- CV Routing (via CVRouter) ---
     // In Mode E, CV1 is EXCLUSIVELY the phase input (handled above), so its normal
     // pitch/BPM routing is suppressed — mirrors Mode B fully repurposing gate1.
@@ -1141,6 +1172,7 @@ void Monsoon::process(const ProcessArgs& args) {
             }
         }
     }
+    MONSOON_PROF_END(cvModeB);   // cv/modeB = CV routing + Mode-B gate-state drive (outputGen is its own section below)
 
     {
     //static uint64_t n = 0, ns = 0;
@@ -1149,7 +1181,9 @@ void Monsoon::process(const ProcessArgs& args) {
     // Mode B gate state was set from Gate 1 just above; generateOutputs' gs.process()/gsStep.process()
     // now emit the Gate-1-driven gate (the old post-drive GATE_OUTPUT override is removed — it could
     // not fix the Lantern, which reads engine state, and risked output/state divergence).
+    MONSOON_PROF_BEGIN(outputGen);   // PRIME SUSPECT B: runs PER SAMPLE, outside the dividers
     outputGenerator->drive(engine, outputs.data(), expanderManager, args.sampleTime);
+    MONSOON_PROF_END(outputGen);
 
      // auto t1 = std::chrono::high_resolution_clock::now();
     // ns += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
@@ -1173,6 +1207,7 @@ void Monsoon::process(const ProcessArgs& args) {
     // drew a transient arc each frame that read as a red "trail" — even with no
     // modulator attached. Cheap (~17 scalar getters/sample).
 
+    MONSOON_PROF_BEGIN(lightDiv);
     // ── Throttle UI and Light processing ──
     if (lightDivider.process()) {
         // ── modViz: DISPLAY-ONLY modulation visualisation ────────────────────────────
@@ -1343,6 +1378,8 @@ void Monsoon::process(const ProcessArgs& args) {
         engine.pe.refreshVisualCache(modeController->currentPatternInput);
     }
 
+    MONSOON_PROF_END(lightDiv);
+    MONSOON_PROF_BEGIN(controlDiv);
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
     if (controlDivider.process()) {
         updateExpanderPointers();
@@ -1491,6 +1528,41 @@ void Monsoon::process(const ProcessArgs& args) {
             paramManager->setCv3Offset(i, clampv<float>(cv3Mods[i], -1.f, 1.f));
         }
     }
+    MONSOON_PROF_END(controlDiv);
+#ifdef MONSOON_PROFILE
+    // CC_PROMPT_cpu_section_profile: the section log — every ~50000 samples (~1 s @ 48k).
+    // ns/sample per section, RELATIVE SHARES only (bracketing's own rdtsc cost is inside
+    // the numbers; the DOMINANT section is the target). stepExec is GROSS of the nested
+    // boundary-quantised shophouse commit (rare; runs only on wrapped steps). The prompt's
+    // "tail" section is empty in the current code (nothing follows controlDivider); the
+    // pre-clock region is bracketed as "head" so the whole function is accounted.
+    if (++monsoonProfWindow >= 50000) {
+        monsoonProfWindow = 0;
+        const double npt = monsoonProfile::calibrateNsPerTick(monsoonProfile::now());
+        if (npt > 0.0) {
+            const double n = 50000.0;
+            const double sHead  = monsoonProfAcc_head       * npt / n;
+            const double sClock = monsoonProfAcc_clockPhase * npt / n;
+            const double sGates = monsoonProfAcc_gatesTrig  * npt / n;
+            const double sShop  = monsoonProfAcc_shophouse  * npt / n;
+            const double sStep  = monsoonProfAcc_stepExec   * npt / n;
+            const double sCv    = monsoonProfAcc_cvModeB    * npt / n;
+            const double sOut   = monsoonProfAcc_outputGen  * npt / n;
+            const double sLight = monsoonProfAcc_lightDiv   * npt / n;
+            const double sCtrl  = monsoonProfAcc_controlDiv * npt / n;
+            INFO("[MONSOON PROFILE] Monsoon ns/sample: head=%.0f clock/phase=%.0f gates/trig=%.0f "
+                 "shophouse=%.0f step-exec=%.0f cv/modeB=%.0f outputGen=%.0f lightDiv=%.0f "
+                 "controlDiv=%.0f | sum=%.0f",
+                 sHead, sClock, sGates, sShop, sStep, sCv, sOut, sLight, sCtrl,
+                 sHead + sClock + sGates + sShop + sStep + sCv + sOut + sLight + sCtrl);
+        } else {
+            INFO("[MONSOON PROFILE] Monsoon: TSC calibrating, ns/sample from the next window");
+        }
+        monsoonProfAcc_head = monsoonProfAcc_clockPhase = monsoonProfAcc_gatesTrig =
+        monsoonProfAcc_shophouse = monsoonProfAcc_stepExec = monsoonProfAcc_cvModeB =
+        monsoonProfAcc_outputGen = monsoonProfAcc_lightDiv = monsoonProfAcc_controlDiv = 0;
+    }
+#endif
 }
 
 
