@@ -1526,3 +1526,25 @@ PLAY the marginal. Works because warp/tilt/atom are (mostly) RANK-PRESERVING tra
 uniform → a frozen draw's correlations survive re-shaping; only surface values re-map. EMERGENT (fell
 out of shaping depth, not designed) and — Rodney — NO KNOB CONSEQUENCES (recorded as character/philosophy,
 no new control implied; "freeze/hold draw" is an existing/obvious affordance, not a new knob).
+
+────────────────────────────────────────────────────────────────────────────────
+## BERNOULLI MEMBER + the TILT APPLICABILITY RULE (Rodney 2026-10) — decided, bank for when added
+
+### Bernoulli palette member: p + atom, NO tilt
+Bernoulli = a pure TWO-ATOM distribution (all mass at 0 and 1, split by p). Add it as a palette member:
+- p — the 0-vs-1 split, authorable. (Natural for the BOOLEAN lanes; a clean discrete 2-way for value lanes.)
+- the injected atom (ℓ, m) — adds a placeable THIRD discrete point → an authorable TERNARY distribution
+  (0, ℓ, 1 with weights). This is the genuinely new capability; ℓ free so the third outcome goes anywhere.
+- NO TILT knob.
+
+### THE TILT APPLICABILITY RULE (general, per-member)
+TILT (signed R_p, bidirectional — p<0 one rail, p>0 the other) acts on CONTINUOUS DENSITY. It applies
+ONLY to members that HAVE a continuous part (Kumaraswamy, logit-sigmoid, power, reversed-power, Mobius,
+…). It is ABSENT on PURE-ATOM members (Bernoulli, and any sum-of-point-masses): a monotone bend of a
+step/atom distribution only REPOSITIONS thresholds, which the split/location params (p, ℓ) already
+control directly → tilt would be redundant with no continuous density to bend. (NOTE: the reason is
+"no continuous part", NOT "p is the tilt" — tilt is SIGNED/bidirectional, p is a position; different
+things. The conclusion stands on the continuous-part reason.)
+=> Per-member flag: tilt present ⇔ member has a continuous component. Keeps each member's control
+surface honest (no knob duplicating another). The injected atom (ℓ,m) is available on ALL members
+(it ADDS a point mass — orthogonal to whether a continuous part exists).
