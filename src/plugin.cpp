@@ -25,6 +25,14 @@ Plugin* pluginInstance = nullptr;
 
 void init(rack::Plugin* p) {
 	pluginInstance = p;
+	// ── DIAGNOSTIC (bug hunt; REVERT after fix) ────────────────────────────
+	// Build marker: ONE line at plugin load. Compile __DATE__/__TIME__ of this TU +
+	// the diagnostic round tag — proves WHICH binary the running Rack actually has.
+	// Two retest cycles were burned on build-freshness ambiguity (794cde6d vs
+	// 54c4b030 print identical runtime diagnostics); any rack.log excerpt now
+	// self-identifies. Same diagnostic class as WARPDIAG.
+	INFO("[MONSOON DIAG] build marker: compiled %s %s | round 3 (post 54c4b030 macro prob-out /32)",
+	     __DATE__, __TIME__);
 	// Lane expander: registered + hidden. Registered so Rack's native save/load
 	// works (no "Cannot find Module" warning). Hidden so it doesn't appear in the
 	// browser — only the base spawns it via context menu.
