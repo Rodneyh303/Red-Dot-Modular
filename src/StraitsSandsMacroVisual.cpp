@@ -9,6 +9,7 @@
 #include "StraitsSandsMacroVisual.hpp"
 #include "dsp/SandsTopology.hpp"           // step 4b: Macro lock predicate via the resolver
 #include <cassert>
+#include <cstring>   // memcmp — the prob-CV out write-elimination bit-compare (perf fix)
 #include "MonsoonSandsVisualExpander.hpp"  // complete mono type + SandsMonoVisualIds for the tab-1 mono mirror
 #include "ui/SandsVisualEditorV4.hpp"
 #include "ui/TabButton.hpp"
@@ -813,8 +814,17 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     Monsoon* mon = cachedMon_;
     if (!mon) {
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            outputs[PROB_OUT_START + l].setChannels(1);
-            outputs[PROB_OUT_START + l].setVoltage(0.f);
+            auto& out = outputs[PROB_OUT_START + l];
+            out.setChannels(1);
+            // WRITE-ELIMINATION (perf fix, same discipline as the sweep below): setVoltage
+            // only on BIT-difference. The port's own voltages[] is the last-written cache
+            // (Rack holds output values once set), so an identical write was a no-op store;
+            // comparing the LIVE port (not a shadow cache) makes this immune to
+            // setChannels' shrink-zeroing and cable events — a skipped write is provably
+            // one that would not have changed a bit.
+            const float zero = 0.f;
+            if (std::memcmp(&out.voltages[0], &zero, sizeof(float)) != 0)
+                out.setVoltage(0.f);
         }
         return;
     }
@@ -843,15 +853,6 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     const float scaleV = (mon->probOutScale == 0) ? 1.f : (mon->probOutScale == 1) ? 5.f : 10.f;
     const bool sh = mon->probOutSampleHold;
     auto& eng = mon->engine;
-    // ONE publish (CC_PROMPT_macro_output_east_leak): Macro's OWN effective spread per
-    // lane → the engine store. BOTH Macro consumers — the bars (the widget's
-    // macroOwnProbability) and the prob CV outs below (VoiceResolver::
-    // laneProbabilityAtStep) — resolve through SequencerEngine::macroOwnLaneProbability,
-    // which reads THIS store: one source, owner-independent (Macro's own value exists
-    // whether or not Macro owns the lane; Macro never borrows East). Same expression as
-    // the manager's MACRO_SOLE branch (macroBase[l][3] + macroPostDelta[l][3], clamped).
-    for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
-        eng.macroOwnSpread[l] = rack::math::clamp(macroBase[l][3] + macroPostDelta[l][3], -1.f, 1.f);
     const int nV = eng.numPolyVoices;
     const int nCh = 1 + nV;
     // PERF (Rodney audit item 2 precedent — East got this throttle, Macro didn't):
@@ -869,6 +870,26 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     // step change (a musical step lasts orders of magnitude longer than /32). Dir-mod
     // edge scan above stays per-sample (gate edges are sample events).
     const bool recompute = probOutDiv.process();
+    // ONE publish (CC_PROMPT_macro_output_east_leak): Macro's OWN effective spread per
+    // lane → the engine store. BOTH Macro consumers — the bars (the widget's
+    // macroOwnProbability) and the prob CV outs below (VoiceResolver::
+    // laneProbabilityAtStep) — resolve through SequencerEngine::macroOwnLaneProbability,
+    // which reads THIS store: one source, owner-independent (Macro's own value exists
+    // whether or not Macro owns the lane; Macro never borrows East). Same expression as
+    // the manager's MACRO_SOLE branch (macroBase[l][3] + macroPostDelta[l][3], clamped).
+    // PERF (this fix): the publish used to run EVERY SAMPLE, but its sources —
+    // macroBase/macroPostDelta — are written by MonsoonSandsManager::processDNA at
+    // CONTROL rate, the same cadence as this /32 divider. Publishing on the recompute
+    // tick, immediately before the sweep reads the store, is BIT-IDENTICAL for the prob
+    // CV outs (they only change on recompute ticks, and each tick sees the same fresh
+    // value the per-sample publish would have left there). The only other reader is the
+    // bars' macroOwnProbability (UI thread, ~60 Hz refresh) — at most one control block
+    // (~0.7 ms) of extra lag, sub-frame and non-audio. macroOwnSpread has no other
+    // consumer (grep: read only inside macroOwnLaneProbability).
+    if (recompute) {
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
+            eng.macroOwnSpread[l] = rack::math::clamp(macroBase[l][3] + macroPostDelta[l][3], -1.f, 1.f);
+    }
     dotModular::VoiceResolver resolver(eng);
     for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // 5 poly lanes incl QMIX
         auto& out = outputs[PROB_OUT_START + l];
@@ -896,7 +917,18 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
                 if (step != probLastStep[l][ch]) { probHeld[l][ch] = raw; probLastStep[l][ch] = step; }
                 val = probHeld[l][ch];
             } else val = raw;
-            out.setVoltage(rack::math::clamp(val, 0.f, 1.f) * scaleV, ch);
+            // WRITE-ELIMINATION (this fix): setVoltage ONLY on bit-difference. These CVs
+            // are latched control-rate values (the /32 recompute + the S&H step latch), so
+            // between step/latch/spread changes every recompute derives the SAME float and
+            // the write was a no-op store into the port. The port's own voltages[] is the
+            // "last written" cache — Rack holds output values once set — and comparing the
+            // LIVE port (rather than a shadow NaN-init cache) keeps the invariant
+            // port==desired automatically true through setChannels shrink-zeroing,
+            // cable (dis)connects and polyphony changes: a skipped write is always one
+            // that would not have changed a single bit. Steady state: zero writes.
+            const float v = rack::math::clamp(val, 0.f, 1.f) * scaleV;
+            if (std::memcmp(&out.voltages[ch], &v, sizeof(float)) != 0)
+                out.setVoltage(v, ch);
         }
     }
     MONSOON_PROF_END(sweep);
