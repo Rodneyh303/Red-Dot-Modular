@@ -60,6 +60,7 @@
 
 #include "Distribution.hpp"   // the parametric impls + loadDistribution (one body per curve)
 #include "MonotoneCurve.hpp"  // the drawn case (via the bank's pool)
+#include "WarpStages.hpp"     // FEEL-TEST: the MO rail-tilt + injected-atom stages (pure, Rack-free)
 
 namespace dotModular {
 
@@ -341,6 +342,33 @@ struct WarpBank {
     WarpF globalWarpF[LANES];       // Macro's default curve (default = identity)
     MonotoneCurve pool[kWarpPoolCap];   // set-time drawn-curve pool (DrawnWarp.idx indexes it)
 
+    // ── FEEL-TEST STAGES (CC_PROMPT_TILT_AND_RAIL_FEELTEST_START): rail tilt + injected
+    // atom, per (voice,lane), beside the (curve, depth) pair — ADDITIVE flat arrays
+    // following the bank's own shape (warpW/warpF), plus Macro's global delegation
+    // defaults (the globalWarpW/globalWarpF twin). NEUTRAL defaults: tilt 0, mass 0 ⟹
+    // warpedValue's early-outs keep the mix BIT-IDENTICAL to the pre-feel-test line, so
+    // existing patches and every pinned bridge are unaffected. The atom LEVEL's interior
+    // default (0.5) is only reachable while mass > 0 — the level store is inert at m=0.
+    // Eval-side clamps live in WarpStages.hpp (never here — the STORE trusts its writer).
+    float warpTilt[N]        = {};   // rail tilt p (neutral 0; authored |p| ≤ 0.95)
+    float warpAtomLevel[N]   = {};   // atom location ℓ (interior default 0.5 via the ctor)
+    float warpAtomMass[N]    = {};   // atom mass m (neutral 0; authored m ≤ 0.9)
+    float globalWarpTilt[LANES] = {};          // Macro's delegated-default tilt
+    float globalWarpAtomLevel[LANES] = {};     // Macro's delegated-default atom location
+    float globalWarpAtomMass[LANES] = {};      // Macro's delegated-default atom mass
+
+    // The neutral-default constructor: everything zero/identity except the atom LEVEL,
+    // whose authored default is INTERIOR (warpStages::kAtomLevelDefault — the prompt's
+    // "interior default; 0/1 = rail atom allowed"). A user-provided default ctor does
+    // NOT affect trivial copyability (copy/move/assign/dtor stay trivial — the flat,
+    // memcpy-persistable contract test_warp_f_bank pins), and `WarpBank{}` value-init
+    // runs it, so every construction path (Monsoon's editor slice, parse's reset, the
+    // tests) starts from the same documented neutral state.
+    WarpBank() {
+        for (int i = 0; i < N; ++i)     warpAtomLevel[i]     = (float)warpStages::kAtomLevelDefault;
+        for (int l = 0; l < LANES; ++l) globalWarpAtomLevel[l] = (float)warpStages::kAtomLevelDefault;
+    }
+
     // The bank's 2-arg forwarder form: threads THIS bank's pool for drawn slots.
     double invCDF(const WarpF& f, double u) const { return dotModular::invCDF(f, u, pool); }
     double cdf  (const WarpF& f, double x) const { return dotModular::cdf(f, x, pool); }
@@ -432,6 +460,27 @@ struct WarpBank {
         json_t* gf = json_array();
         for (int l = 0; l < LANES; ++l) json_array_append_new(gf, warpToJson(b.globalWarpF[l]));
         json_object_set_new(root, (pfx + "GlobalWarpF").c_str(), gf);
+        // FEEL-TEST stages (additive): tilt + atom (level, mass) per voice/lane + Macro's
+        // global defaults. Missing keys on load ⟹ the neutral defaults survive (same
+        // contract as every key above — old patches unchanged, bit-identical).
+        json_t* jt = json_array();
+        for (int i = 0; i < N; ++i) json_array_append_new(jt, json_real((double)b.warpTilt[i]));
+        json_object_set_new(root, (pfx + "WarpTilt").c_str(), jt);
+        json_t* jl = json_array();
+        for (int i = 0; i < N; ++i) json_array_append_new(jl, json_real((double)b.warpAtomLevel[i]));
+        json_object_set_new(root, (pfx + "WarpAtomLevel").c_str(), jl);
+        json_t* jm = json_array();
+        for (int i = 0; i < N; ++i) json_array_append_new(jm, json_real((double)b.warpAtomMass[i]));
+        json_object_set_new(root, (pfx + "WarpAtomMass").c_str(), jm);
+        json_t* gt = json_array();
+        for (int l = 0; l < LANES; ++l) json_array_append_new(gt, json_real((double)b.globalWarpTilt[l]));
+        json_object_set_new(root, (pfx + "GlobalWarpTilt").c_str(), gt);
+        json_t* gl = json_array();
+        for (int l = 0; l < LANES; ++l) json_array_append_new(gl, json_real((double)b.globalWarpAtomLevel[l]));
+        json_object_set_new(root, (pfx + "GlobalWarpAtomLevel").c_str(), gl);
+        json_t* gm = json_array();
+        for (int l = 0; l < LANES; ++l) json_array_append_new(gm, json_real((double)b.globalWarpAtomMass[l]));
+        json_object_set_new(root, (pfx + "GlobalWarpAtomMass").c_str(), gm);
     }
 
     // Load: RESETS the bank to defaults first (deterministic — never merges into stale
@@ -493,6 +542,51 @@ struct WarpBank {
                     out.globalWarpF[l] = warpFromJson(json_array_get(gf, (size_t)l));
             }
         }
+        // FEEL-TEST stages (additive): same short-array-keeps-the-default-tail shape as
+        // the keys above; absent keys leave the neutral defaults (the ctor's reset).
+        // These do NOT participate in the `full` return (that stays the two original
+        // 112-banks' contract — additive keys never change an old patch's verdict).
+        if (json_t* jt = json_object_get(root, (pfx + "WarpTilt").c_str())) {
+            if (json_is_array(jt)) {
+                const size_t n = json_array_size(jt);
+                for (int i = 0; i < N && (size_t)i < n; ++i) {
+                    json_t* jv = json_array_get(jt, (size_t)i);
+                    if (json_is_number(jv)) out.warpTilt[i] = (float)json_number_value(jv);
+                }
+            }
+        }
+        if (json_t* jl = json_object_get(root, (pfx + "WarpAtomLevel").c_str())) {
+            if (json_is_array(jl)) {
+                const size_t n = json_array_size(jl);
+                for (int i = 0; i < N && (size_t)i < n; ++i) {
+                    json_t* jv = json_array_get(jl, (size_t)i);
+                    if (json_is_number(jv)) out.warpAtomLevel[i] = (float)json_number_value(jv);
+                }
+            }
+        }
+        if (json_t* jm = json_object_get(root, (pfx + "WarpAtomMass").c_str())) {
+            if (json_is_array(jm)) {
+                const size_t n = json_array_size(jm);
+                for (int i = 0; i < N && (size_t)i < n; ++i) {
+                    json_t* jv = json_array_get(jm, (size_t)i);
+                    if (json_is_number(jv)) out.warpAtomMass[i] = (float)json_number_value(jv);
+                }
+            }
+        }
+        auto loadGlobalStage = [&](const char* key, float* a) {
+            if (json_t* j = json_object_get(root, (pfx + key).c_str())) {
+                if (json_is_array(j)) {
+                    const size_t n = json_array_size(j);
+                    for (int l = 0; l < LANES && (size_t)l < n; ++l) {
+                        json_t* jv = json_array_get(j, (size_t)l);
+                        if (json_is_number(jv)) a[l] = (float)json_number_value(jv);
+                    }
+                }
+            }
+        };
+        loadGlobalStage("GlobalWarpTilt", out.globalWarpTilt);
+        loadGlobalStage("GlobalWarpAtomLevel", out.globalWarpAtomLevel);
+        loadGlobalStage("GlobalWarpAtomMass", out.globalWarpAtomMass);
         return full;
     }
 

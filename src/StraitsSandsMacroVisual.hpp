@@ -316,6 +316,16 @@ struct StraitsSandsMacroVisual : Module {
         dotModular::WarpF warpF[112] = {};     // bank own-slot curves (same prefix; trivially copyable)
         float globalWarpW[7] = {};             // Macro's delegated-default depth
         dotModular::WarpF globalWarpF[7] = {}; // Macro's delegated-default curve
+        // FEEL-TEST stages (CC_PROMPT_TILT_AND_RAIL_FEELTEST): the bank's rail-tilt +
+        // injected-atom stores, same read shape as warpW/warpF (own-slot prefix (nV+1)*7,
+        // globals in full). warpedValue composes them AFTER the mix's member invCDF, so a
+        // knob turn that only moves these MUST trip the gate — or the outs go stale.
+        float warpTilt[112] = {};              // bank own-slot rail tilts (same prefix)
+        float warpAtomLevel[112] = {};         // bank own-slot atom locations (same prefix)
+        float warpAtomMass[112] = {};          // bank own-slot atom masses (same prefix)
+        float globalWarpTilt[7] = {};          // Macro's delegated-default tilt
+        float globalWarpAtomLevel[7] = {};     // Macro's delegated-default atom location
+        float globalWarpAtomMass[7] = {};      // Macro's delegated-default atom mass
         uint16_t poolUsed = 0;                 // drawn-curve pool high-water mark (append-only pool)
     } sweepSig_;
 

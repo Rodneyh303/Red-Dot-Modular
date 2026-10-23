@@ -36,6 +36,7 @@ using namespace StraitsMacroVisualIds;
 // samples) converts to ns/sample. Aggregate across Macro instances — read RELATIVE shares.
 static uint64_t monsoonProfAcc_lookup = 0;   // Monsoon lookup (div /8) + dir-mod edge scan — per sample
 static uint64_t monsoonProfAcc_sweep = 0;    // spread publish + gate + resolver + 7-lane x nCh prob-CV sweep — PRIME SUSPECT A
+static uint64_t monsoonProfAcc_total = 0;    // WHOLE-process (CC_PROMPT_TILT_AND_RAIL_FEELTEST: restored safely — see the guard in process())
 static uint64_t monsoonProfWindow = 0;       // samples since the last log
 // The sweep's OWN macroOwnLaneProbability calls (engine thread) — the shared accessor
 // counter also tallies the bars' UI-thread refresh, so this split pins which consumer
@@ -827,6 +828,18 @@ static const float* pubSlewedLane_(const PatternEngine& pe, int lane) {
 // ── Module process(): 3 poly probability CV outs (ch1 reserved, voices ch2+) ──
 void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     using namespace StraitsMacroVisualIds;
+#ifdef MONSOON_PROFILE
+    // WHOLE-PROCESS avgNs, RESTORED SAFELY (CC_PROMPT_TILT_AND_RAIL_FEELTEST — Rodney noted
+    // it went missing): rdtsc bracket around ALL of process(), RAII so the no-Monsoon early
+    // return below is covered too; logged at the existing ~50k-sample window as process=.
+    // This is the MonsoonProfile.hpp SAFE FORM (now() = one rdtsc, chrono ONLY inside the
+    // window's calibrateNsPerTick) — NEVER the per-sample std::chrono pair that caused the
+    // 124%. Flag-off builds compile this guard to NOTHING (zero cost, byte-identical).
+    struct MonsoonProfTotal {
+        uint64_t t0 = monsoonProfile::now();
+        ~MonsoonProfTotal() { monsoonProfAcc_total += monsoonProfile::now() - t0; }
+    } monsoonProfTotal;
+#endif
     MONSOON_PROF_BEGIN(lookup);   // lookup: Monsoon chain walk (div /8) + dir-mod edge scan
     // PERF (Rodney audit item 3): findMonsoonEitherSide walks the expander chain and ran
     // every sample. Topology is control-rate, so cache it and refresh on a divider.
@@ -970,10 +983,19 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
         if (!run && pe.warpBank_) {
             const dotModular::WarpBank& b = *pe.warpBank_;
             const size_t own = (size_t)(nV + 1) * 7;   // own slots read: index(v,l) = v*7+l, v ≤ nV
+            // FEEL-TEST stages: the tilt/atom stores fingerprint EXACTLY like warpW/warpF
+            // (own prefix + globals) — warpedValue composes them, so a knob turn that only
+            // moves these must trip the gate or the prob-CV outs go stale.
             run = 0 != std::memcmp(b.warpW, sweepSig_.warpW, own * sizeof(float))
                || 0 != std::memcmp(b.warpF, sweepSig_.warpF, own * sizeof(dotModular::WarpF))
+               || 0 != std::memcmp(b.warpTilt, sweepSig_.warpTilt, own * sizeof(float))
+               || 0 != std::memcmp(b.warpAtomLevel, sweepSig_.warpAtomLevel, own * sizeof(float))
+               || 0 != std::memcmp(b.warpAtomMass, sweepSig_.warpAtomMass, own * sizeof(float))
                || 0 != std::memcmp(b.globalWarpW, sweepSig_.globalWarpW, sizeof b.globalWarpW)
                || 0 != std::memcmp(b.globalWarpF, sweepSig_.globalWarpF, sizeof b.globalWarpF)
+               || 0 != std::memcmp(b.globalWarpTilt, sweepSig_.globalWarpTilt, sizeof b.globalWarpTilt)
+               || 0 != std::memcmp(b.globalWarpAtomLevel, sweepSig_.globalWarpAtomLevel, sizeof b.globalWarpAtomLevel)
+               || 0 != std::memcmp(b.globalWarpAtomMass, sweepSig_.globalWarpAtomMass, sizeof b.globalWarpAtomMass)
                || b.poolUsed != sweepSig_.poolUsed;
         }
         if (run) {
@@ -1018,8 +1040,14 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
                 const size_t own = (size_t)(nV + 1) * 7;
                 std::memcpy(sweepSig_.warpW, b.warpW, own * sizeof(float));
                 std::memcpy(sweepSig_.warpF, b.warpF, own * sizeof(dotModular::WarpF));
+                std::memcpy(sweepSig_.warpTilt, b.warpTilt, own * sizeof(float));
+                std::memcpy(sweepSig_.warpAtomLevel, b.warpAtomLevel, own * sizeof(float));
+                std::memcpy(sweepSig_.warpAtomMass, b.warpAtomMass, own * sizeof(float));
                 std::memcpy(sweepSig_.globalWarpW, b.globalWarpW, sizeof b.globalWarpW);
                 std::memcpy(sweepSig_.globalWarpF, b.globalWarpF, sizeof b.globalWarpF);
+                std::memcpy(sweepSig_.globalWarpTilt, b.globalWarpTilt, sizeof b.globalWarpTilt);
+                std::memcpy(sweepSig_.globalWarpAtomLevel, b.globalWarpAtomLevel, sizeof b.globalWarpAtomLevel);
+                std::memcpy(sweepSig_.globalWarpAtomMass, b.globalWarpAtomMass, sizeof b.globalWarpAtomMass);
                 sweepSig_.poolUsed = b.poolUsed;
             }
 #ifdef MONSOON_PROFILE
@@ -1092,6 +1120,8 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     if (++monsoonProfWindow >= 50000) {
         monsoonProfWindow = 0;
         const double npt = monsoonProfile::calibrateNsPerTick(monsoonProfile::now());
+        // (process= below reads the accumulator BEFORE this call's RAII guard folds its
+        // ticks in — one call of 50000 lags, a 0.002% bookkeeping detail, not a lie.)
         static uint64_t prevCalls = 0, prevSweep = 0;
         const uint64_t calls =
             monsoonProfile::macroOwnLaneProbCalls.load(std::memory_order_relaxed);
@@ -1103,17 +1133,18 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
         const double perSample = 7.0 * (1.0 + (double)nV);        // POLY_LANES x (1+N)
         const double throttled = perSample / 32.0;                // /32 control-rate throttle
         if (npt > 0.0)
-            INFO("[MONSOON PROFILE] Macro ns/sample: lookup=%.0f sweep=%.0f sum=%.0f | Suspect-A "
-                 "macroOwnLaneProbability calls/sample=%.2f (engine sweep=%.2f, UI bars=%.2f) "
-                 "(per-sample 7x(1+N)=%.1f, /32=%.2f, N=%d)",
+            INFO("[MONSOON PROFILE] Macro ns/sample: lookup=%.0f sweep=%.0f sum=%.0f process=%.0f "
+                 "| Suspect-A macroOwnLaneProbability calls/sample=%.2f (engine sweep=%.2f, "
+                 "UI bars=%.2f) (per-sample 7x(1+N)=%.1f, /32=%.2f, N=%d)",
                  monsoonProfAcc_lookup * npt / 50000.0, monsoonProfAcc_sweep * npt / 50000.0,
                  (monsoonProfAcc_lookup + monsoonProfAcc_sweep) * npt / 50000.0,
+                 monsoonProfAcc_total * npt / 50000.0,
                  cps, scps, cps - scps, perSample, throttled, nV);
         else
             INFO("[MONSOON PROFILE] Macro: Suspect-A calls/sample=%.2f (engine sweep=%.2f, UI "
                  "bars=%.2f) (per-sample 7x(1+N)=%.1f, /32=%.2f, N=%d); TSC calibrating",
                  cps, scps, cps - scps, perSample, throttled, nV);
-        monsoonProfAcc_lookup = monsoonProfAcc_sweep = 0;
+        monsoonProfAcc_lookup = monsoonProfAcc_sweep = monsoonProfAcc_total = 0;
     }
 #endif
 }

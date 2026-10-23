@@ -84,6 +84,38 @@ struct MonotoneCurveView : Distribution {
     json_t* toJson() const override        { return c.toJson(); }
 };
 
+// ── FEEL-TEST (CC_PROMPT_TILT_AND_RAIL_FEELTEST_START): the composing VIEW ──────────
+// Wraps whatever member is current (Identity default, any parametric, the LIVE drawn
+// pool view — the wrapper composes the member, so the drawn-curve edit path keeps
+// working under it) in the two stages, member → tilt → atom, with the CLOSED FORMS from
+// WarpStages.hpp:
+//   G⁻¹ = R_p∘F⁻¹ · G = F∘R_p⁻¹ · g = f(R_p⁻¹)·(R_p⁻¹)' — then the atom CDF
+//   x<ℓ → G(x)(1-m); x≥ℓ → G(x)(1-m)+m, and the pdf's CONTINUOUS part (1-m)·g (the
+//   Dirac is NOT a density value — the widget draws it as the explicit bar).
+// The CDF's riser at ℓ renders through the widget's sampling for free; the PDF bar is
+// driven by the widget's atomLevel/atomMass, which refresh() sets beside this view.
+// p/ℓ/m pass through RAW (the store's floats) — the eval-side clamps live in
+// WarpStages, exactly like the engine path.
+struct WarpStagesView : Distribution {
+    const Distribution* m = nullptr;   // the member (owned by the popup's memberView_)
+    double p = 0.0, ell = 0.5, mass = 0.0;
+    WarpStagesView(const Distribution* member, double tilt, double level, double m_)
+        : m(member), p(tilt), ell(level), mass(m_) {}
+    double invCDF(double u) const override {
+        return warpStages::invCDF(u, p, ell, mass,
+            [this](double uu) { return m->invCDF(uu); },
+            [this](double x)  { return m->cdf(x); });
+    }
+    double cdf(double x) const override {
+        return warpStages::cdf(x, p, ell, mass, [this](double xx) { return m->cdf(xx); });
+    }
+    double pdf(double x) const override {
+        return warpStages::pdf(x, p, mass, [this](double xx) { return m->pdf(xx); });
+    }
+    const char* typeName() const override { return m->typeName(); }   // same curve, viewed composed
+    json_t* toJson() const override       { return m->toJson(); }     // the member persists; stages have their own keys
+};
+
 // ── WarpCurvePopup ─────────────────────────────────────────────────────────────────
 // OpaqueWidget base (the MenuOverlay rule): children consume FIRST — a knob press or
 // curve-point press keeps ITS EventContext target, which is what Rack tracks as the
@@ -102,8 +134,16 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
     WarpCurveEditor*              curve = nullptr;
     redDot::StoreKnob<Monsoon>*   p1 = nullptr;
     redDot::StoreKnob<Monsoon>*   p2 = nullptr;
-    std::unique_ptr<Distribution> view_;
+    // FEEL-TEST: the three stage knobs ("rail tilt" p, "atom level" ℓ, "atom amount" m)
+    // — visible ALWAYS (the stages apply to every kind incl. Identity/Drawn), bound in
+    // refreshStages() with the same capture-free pattern as p1/p2.
+    redDot::StoreKnob<Monsoon>*   pTilt  = nullptr;
+    redDot::StoreKnob<Monsoon>*   pLevel = nullptr;
+    redDot::StoreKnob<Monsoon>*   pMass  = nullptr;
+    std::unique_ptr<Distribution> memberView_;   // the bare member (what refresh() used to bind)
+    std::unique_ptr<Distribution> view_;         // the COMPOSING view over memberView_ (feel-test)
     WarpF lastF_{};                     // external-change detector (undo): memcmp per step
+    double lastTilt_ = 0.0, lastLevel_ = 0.5, lastMass_ = 0.0;   // ...and the stage triple
 
     Monsoon* mon() const { return resolveMon ? resolveMon() : nullptr; }
     const WarpF& cur() const {
@@ -116,6 +156,20 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         Monsoon* m = mon();
         if (!m) return 0.f;
         return macroGlobal ? m->getGlobalWarpW(lane) : m->getWarpW(slot, lane);
+    }
+    // The FEEL-TEST stage triple from the same source (own slot vs Macro global).
+    double curTilt() const {
+        Monsoon* m = mon();
+        return !m ? 0.0 : (macroGlobal ? m->getGlobalWarpTilt(lane) : m->getWarpTilt(slot, lane));
+    }
+    double curLevel() const {
+        Monsoon* m = mon();
+        return !m ? warpStages::kAtomLevelDefault
+                  : (macroGlobal ? m->getGlobalWarpAtomLevel(lane) : m->getWarpAtomLevel(slot, lane));
+    }
+    double curMass() const {
+        Monsoon* m = mon();
+        return !m ? 0.0 : (macroGlobal ? m->getGlobalWarpAtomMass(lane) : m->getWarpAtomMass(slot, lane));
     }
 
     // Write-through: store + the scoped rebuild request (prompt-03's dirty scope, UI side).
@@ -208,10 +262,11 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         // zero-size widget (this ctor previously never set box.size) receives nothing:
         // the right-click kind menu, the StoreKnobs and the curve drags were all
         // unreachable while the full-panel scrim below closed the popup on any click.
-        // Cover the children with margin: curve (2,8)..(78,68)mm; knobs centred
-        // (20,74)/(56,74)mm (9mm SVG → y 69.5..78.5mm); hint text at y=78mm — all
-        // inside (80,82)mm.
-        box.size = rack::mm2px(rack::math::Vec(80.f, 82.f));
+        // Cover the children with margin: curve (2,8)..(78,68)mm; member-param knobs
+        // centred (20,74)/(56,74)mm (9mm SVG → y 69.5..78.5mm); the FEEL-TEST stage
+        // knobs centred (12,85)/(40,85)/(68,85)mm (y 80.5..89.5mm) with tiny labels at
+        // y=90.5mm; hint text at y=93.5mm — all inside (80,96)mm.
+        box.size = rack::mm2px(rack::math::Vec(80.f, 96.f));
         curve = new WarpCurveEditor();
         curve->box.pos  = rack::mm2px(rack::math::Vec(2.f, 8.f));
         curve->box.size = rack::mm2px(rack::math::Vec(76.f, 60.f));
@@ -227,6 +282,9 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         };
         p1 = mkKnob(rack::math::Vec(20.f, 74.f));
         p2 = mkKnob(rack::math::Vec(56.f, 74.f));
+        pTilt  = mkKnob(rack::math::Vec(12.f, 85.f));   // FEEL-TEST: the stage row (always visible)
+        pLevel = mkKnob(rack::math::Vec(40.f, 85.f));
+        pMass  = mkKnob(rack::math::Vec(68.f, 85.f));
     }
 
     // Rebind everything to the CURRENT target state (open, kind pick, undo, external edit).
@@ -236,21 +294,30 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         const WarpF& f = cur();
         lastF_ = f;
 
-        // The display + (for drawn) the live in-place edit curve.
+        // The member + (for drawn) the live in-place edit curve.
         curve->editCurve = nullptr;
         if (const auto* dw = std::get_if<DrawnWarp>(&f)) {
             if (dw->idx < kWarpPoolCap) {
                 // LIVE view over the pool slot (edits mutate it in place; the display tracks).
-                view_ = std::make_unique<MonotoneCurveView>(m->editor.warp.pool[dw->idx]);
+                memberView_ = std::make_unique<MonotoneCurveView>(m->editor.warp.pool[dw->idx]);
                 curve->editCurve = &m->editor.warp.pool[dw->idx];
             } else {
-                view_ = std::make_unique<PchipDistribution>();   // corrupt idx: safe default view
+                memberView_ = std::make_unique<PchipDistribution>();   // corrupt idx: safe default view
             }
         } else {
-            view_ = distFromWarp(f);
+            memberView_ = distFromWarp(f);
         }
+        // FEEL-TEST: compose member → tilt → atom for the DISPLAY (the engine's
+        // warpedValue composes the same stages over the same member — at w=1 the editor
+        // shows EXACTLY what the engine hears), and hand the widget the atom-bar params
+        // (the Dirac is drawn explicitly; the CDF riser renders through sampling).
+        const double tp = curTilt(), al = curLevel(), am = curMass();
+        lastTilt_ = tp; lastLevel_ = al; lastMass_ = am;
+        view_ = std::make_unique<WarpStagesView>(memberView_.get(), tp, al, am);
         curve->dist = view_.get();
         curve->isLight = isLight;
+        curve->atomLevel = al;
+        curve->atomMass  = am;
 
         // Drawn edits → the scoped mirror rebuild (the pool slot itself changed; the
         // WarpF still points at the same index, so ONLY this hook can fire the rebuild).
@@ -262,6 +329,49 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         };
 
         refreshParams(f);
+        refreshStages();
+    }
+
+    // ── FEEL-TEST: the three stage knobs (bound ONCE per refresh; always visible) ────
+    // The p1/p2 pattern exactly (capture-free setters, resolveStore live): "rail tilt"
+    // (bipolar ±kTiltMax) · "atom level" (ℓ ∈ [0,1], interior default) · "atom amount"
+    // (m ∈ [0, kAtomMassMax], 0 = neutral). Setters write the store + bump the SAME
+    // scoped rebuild requests the member knobs use, so the mirror + bars move live.
+    void refreshStages() {
+        struct StageSpec { const char* label; float lo, hi, def; };
+        const StageSpec spec[3] = {
+            { "rail tilt",  -(float)warpStages::kTiltMax, (float)warpStages::kTiltMax, 0.f },
+            { "atom level", 0.f, 1.f, (float)warpStages::kAtomLevelDefault },
+            { "atom amount", 0.f, (float)warpStages::kAtomMassMax, 0.f },
+        };
+        redDot::StoreKnob<Monsoon>* knobs[3] = { pTilt, pLevel, pMass };
+        for (int which = 0; which < 3; ++which) {
+            auto* k = knobs[which];
+            if (!k) continue;
+            const StageSpec& s = spec[which];
+            k->visible = true;   // the stages apply to EVERY kind, incl. Identity/Drawn
+            k->label = std::string(laneName) + " warp " + s.label;
+            k->minValue = s.lo; k->maxValue = s.hi; k->defaultValue = s.def;
+            k->resolveStore = [this]() { return mon(); };
+            k->getValue = [this, which]() {
+                return which == 0 ? (float)curTilt()
+                     : which == 1 ? (float)curLevel()
+                                  : (float)curMass();
+            };
+            k->setter = [slot = slot, lane = lane, macroGlobal = macroGlobal, which](Monsoon& m, float v) {
+                if (macroGlobal) {
+                    if (which == 0)      m.setGlobalWarpTilt(lane, v);
+                    else if (which == 1) m.setGlobalWarpAtomLevel(lane, v);
+                    else                 m.setGlobalWarpAtomMass(lane, v);
+                    m.requestWarpRebuildLaneDelegating(lane);
+                } else {
+                    if (which == 0)      m.setWarpTilt(slot, lane, v);
+                    else if (which == 1) m.setWarpAtomLevel(slot, lane, v);
+                    else                 m.setWarpAtomMass(slot, lane, v);
+                    m.requestWarpRebuildVoiceLane(slot, lane);
+                }
+            };
+        }
     }
 
     void refreshParams(const WarpF& f) {
@@ -322,13 +432,16 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
     // External-change detector: undo / another surface editing the same target rebinds
     // the display + knobs (a stale curve after Ctrl+Z is a lying display). memcmp over
     // the trivially-copyable variant is exact for the active bytes (padded tail bytes
-    // can only cause a harmless extra refresh).
+    // can only cause a harmless extra refresh). The FEEL-TEST stage triple is compared
+    // too — a tilt/atom edit from ANY surface must rebind the composing view + bar.
     void step() override {
         rack::widget::Widget::step();
         Monsoon* m = mon();
         if (!m || !curve) return;
         const WarpF& f = cur();
-        if (std::memcmp(&f, &lastF_, sizeof(WarpF)) != 0) refresh();
+        if (std::memcmp(&f, &lastF_, sizeof(WarpF)) != 0
+            || curTilt() != lastTilt_ || curLevel() != lastLevel_ || curMass() != lastMass_)
+            refresh();
     }
 
     // Right-click anywhere on the popup: the curve-type picker.
@@ -419,19 +532,29 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         auto font = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
         if (!font) font = APP->window->uiFont;
         if (font) {
-            char buf[96];
-            std::snprintf(buf, sizeof buf, "%s %s  —  %s  ·  w %.2f",
-                          voiceName.c_str(), laneName.c_str(),
-                          warpTypeName(cur()), (double)curW());
             nvgFontFaceId(vg, font->handle);
-            nvgFontSize(vg, 9.f);
             nvgFillColor(vg, textCol);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            // The readout now carries the FEEL-TEST stages (p/ℓ/m) beside w — 7.5px keeps
+            // the longer line inside the 80mm bezel.
+            char buf[128];
+            std::snprintf(buf, sizeof buf, "%s %s  —  %s  ·  w %.2f  ·  p %+.2f  ·  ℓ %.2f  ·  m %.2f",
+                          voiceName.c_str(), laneName.c_str(),
+                          warpTypeName(cur()), (double)curW(),
+                          curTilt(), curLevel(), curMass());
+            nvgFontSize(vg, 7.5f);
             nvgText(vg, w * 0.5f, rack::mm2px(4.0f), buf, nullptr);
+            // Tiny labels under the FEEL-TEST stage-knob row (tooltips carry the full
+            // "rail tilt"/"atom level"/"atom amount" names; these make the row readable
+            // at a glance during the feel-test).
+            nvgFontSize(vg, 6.5f);
+            nvgText(vg, rack::mm2px(12.f), rack::mm2px(90.5f), "tilt", nullptr);
+            nvgText(vg, rack::mm2px(40.f), rack::mm2px(90.5f), "level", nullptr);
+            nvgText(vg, rack::mm2px(68.f), rack::mm2px(90.5f), "amount", nullptr);
             const int kind = (int)cur().index();
             if (kind == 0 || kind == 9) {   // identity/drawn: point at the picker
                 nvgFontSize(vg, 7.f);
-                nvgText(vg, w * 0.5f, rack::mm2px(78.0f),
+                nvgText(vg, w * 0.5f, rack::mm2px(93.5f),
                         kind == 0 ? "right-click: pick a curve type"
                                   : "drag points to shape · right-click: type",
                         nullptr);

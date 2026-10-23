@@ -53,8 +53,21 @@ struct DistributionCurveWidget : rack::widget::Widget {
     // ── data bindings ────────────────────────────────────────────────────────────────────
     const Distribution* dist = nullptr;   // REQUIRED: what to draw (the interface — any type)
     MonotoneCurve* editCurve = nullptr;   // OPTIONAL: non-null only for the drawn/Pchip case
-                                          // → live editing; null = display-only
+                                           // → live editing; null = display-only
     std::function<bool()> isLight;        // house theme callback (bezel + gutters only)
+
+    // ── FEEL-TEST: the injected atom's Dirac bar (CC_PROMPT_TILT_AND_RAIL_FEELTEST_START)
+    // A Dirac is not a density value, so the wrapped distribution's pdf() returns the
+    // CONTINUOUS part only and the atom is drawn HERE, EXPLICITLY: a distinct finite bar
+    // at atomLevel, height ∝ atomMass (read against the well height — m is a probability,
+    // like the CDF axis), in a distinct colour so it reads as "a lump of probability
+    // here" vs the teal continuous density. It MOVES with atomLevel and GROWS with
+    // atomMass. Purely additive: mass 0 (the neutral default) draws NOTHING — every
+    // other host of this widget is unchanged. The CDF's riser at ℓ needs no help: it
+    // appears through the CDF sampling (the vertical jump between the last x<ℓ and the
+    // first x≥ℓ sample).
+    double atomLevel = 0.0;   // ℓ — where the bar sits (only drawn when atomMass > 0)
+    double atomMass  = 0.0;   // m — the bar's height ∝ this; 0 = no atom = no bar
 
     // ── feel (tuned in Rack via the dev host) ────────────────────────────────────────────
     float  grabRadius    = 12.f;          // px — control-point hit radius
@@ -190,6 +203,36 @@ struct DistributionCurveWidget : rack::widget::Widget {
         pdfFill.a = 0.22f;
         nvgFillColor(vg, pdfFill);
         nvgFill(vg);
+
+        // The ATOM BAR — the Dirac drawn explicitly (see the atomLevel/atomMass binding
+        // note above): a warm ember rectangle, visually distinct from both the teal
+        // density and the gold CDF, sitting at ℓ with height ∝ m. Drawn INSIDE the
+        // scissor before the CDF stroke so the gold curve rides over it.
+        if (atomMass > 0.0) {
+            const double m = atomMass > 1.0 ? 1.0 : atomMass;
+            const double l = atomLevel < 0.0 ? 0.0 : (atomLevel > 1.0 ? 1.0 : atomLevel);
+            const float bx = px + (float)l * pw;
+            const float bw = 2.6f;                       // px — reads as a bar, not a line
+            const float byTop = py + ph - (float)m * ph; // height ∝ mass, from the well floor
+            NVGcolor atomCol = nvgRGB(0xff, 0x7a, 0x45); // ember — distinct from gold/teal
+            atomCol.a = 0.88f;
+            nvgBeginPath(vg);
+            nvgRect(vg, bx - bw * 0.5f, byTop, bw, py + ph - byTop);
+            nvgFillColor(vg, atomCol);
+            nvgFill(vg);
+            // A thin bright core + a floor tick mark the exact ℓ even at small m.
+            NVGcolor core = nvgRGB(0xff, 0xc8, 0xa8);
+            nvgBeginPath(vg);
+            nvgRect(vg, bx - 0.5f, byTop, 1.0f, py + ph - byTop);
+            nvgFillColor(vg, core);
+            nvgFill(vg);
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, bx - 3.f, py + ph - 0.5f);
+            nvgLineTo(vg, bx + 3.f, py + ph - 0.5f);
+            nvgStrokeColor(vg, core);
+            nvgStrokeWidth(vg, 1.4f);
+            nvgStroke(vg);
+        }
 
         // The CDF — the main (and, when drawn, EDITED) curve
         nvgBeginPath(vg);

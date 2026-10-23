@@ -226,6 +226,15 @@ struct WarpCell {
     dotModular::WarpF f;   // the curve (set-time; never modulated here)
     float w = 0.f;         // the depth in [0,1] (0 = no warp; NSDMI so a
                            // default-constructed cell is the no-warp state)
+    // FEEL-TEST STAGES (CC_PROMPT_TILT_AND_RAIL_FEELTEST_START): rail tilt + injected
+    // atom ride the cell so they resolve from the SAME source as (f, w) — own slot vs
+    // Macro's global default — through this resolver's ONE selection (no re-derived
+    // delegation anywhere else). The policy ops below touch v.w only, so these ride
+    // along untouched; NEUTRAL NSDMIs keep the default cell the no-warp state the
+    // bridge test pins. Eval happens in WarpBank::warpedValue (the bottom of this file).
+    float tilt      = 0.f;   // rail tilt p (neutral 0)
+    float atomLevel = 0.5f;  // atom location ℓ (interior default; inert at mass 0)
+    float atomMass  = 0.f;   // atom mass m (neutral 0)
 };
 
 struct WarpPolicy {
@@ -458,8 +467,11 @@ namespace dotModular {
 inline redDot::WarpCell resolveWarpCell(const WarpBank& b, int v, int lane, bool delegated) {
     redDot::SandsModifierResolver<redDot::WarpPolicy>::Inputs in;
     const int i = WarpBank::index(v, lane);
-    in.base      = redDot::WarpCell{b.warpF[i], b.warpW[i]};
-    in.macroBase = redDot::WarpCell{b.globalWarpF[lane], b.globalWarpW[lane]};
+    in.base      = redDot::WarpCell{b.warpF[i], b.warpW[i],
+                                    b.warpTilt[i], b.warpAtomLevel[i], b.warpAtomMass[i]};
+    in.macroBase = redDot::WarpCell{b.globalWarpF[lane], b.globalWarpW[lane],
+                                    b.globalWarpTilt[lane], b.globalWarpAtomLevel[lane],
+                                    b.globalWarpAtomMass[lane]};
     in.delegated = delegated;
     return redDot::SandsModifierResolver<redDot::WarpPolicy>::effective(in);
 }
@@ -468,9 +480,31 @@ inline redDot::WarpCell resolveWarpCell(const WarpBank& b, int v, int lane, bool
 // WarpF.hpp for the w=0/identity bit-exactness pins). The 4-arg form is the
 // delegation-resolved entry (PatternEngine::warpMixCell — the ONLY production
 // caller); the 2-arg form is the same authority with delegated=false.
+//
+// FEEL-TEST STAGES (CC_PROMPT_TILT_AND_RAIL_FEELTEST_START): the member's invCDF is
+// composed member → tilt → atom (the prompt's FEATURE 1/2 — "out = R_p(member.invCDF(u))"
+// then the atom over the TILTED member's CDF G; both stages' closed forms + the verified
+// algebra live in WarpStages.hpp), and the existing branchless mix runs over the
+// COMPOSED quantile:
+//     out = (1-w)·u + w·H⁻¹(u),    H⁻¹ = atom ∘ R_p ∘ F⁻¹
+// so the stages are the member-level feature the design notes specify (the palette's
+// shared tilt stage; the atom's "branch in invCDF, one compare + a rescale"), heard
+// through the SAME depth blend as every curve — at w=1 the engine evaluates exactly the
+// popup's displayed composition. The NEUTRAL early-out (tilt==0 AND mass==0 — every
+// pinned bridge's state) runs the ORIGINAL mix line verbatim: BIT-IDENTICAL, by the
+// early-outs' construction, never by trusting R_0 ≡ id arithmetic.
 inline double WarpBank::warpedValue(int v, int lane, double u, bool delegated) const {
     const redDot::WarpCell c = resolveWarpCell(*this, v, lane, delegated);
-    return (1.0 - c.w) * u + c.w * invCDF(c.f, u);
+    if (c.tilt == 0.f && c.atomMass == 0.f)
+        return (1.0 - c.w) * u + c.w * invCDF(c.f, u);   // neutral: the pre-feel-test mix
+    const double p    = warpStages::clampTilt((double)c.tilt);
+    const double ell  = warpStages::clampLevel((double)c.atomLevel);
+    const double m    = warpStages::clampMass((double)c.atomMass);
+    const double q    = warpStages::invCDF(
+        u, p, ell, m,
+        [this, &c](double uu) { return invCDF(c.f, uu); },     // the member quantile F⁻¹
+        [this, &c](double x)  { return cdf(c.f, x); });        // the member CDF F
+    return (1.0 - c.w) * u + c.w * q;
 }
 
 inline double WarpBank::warpedValue(int v, int lane, double u) const {

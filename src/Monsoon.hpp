@@ -947,6 +947,24 @@ struct Monsoon : Module {
     float getGlobalWarpW(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpW[lane] : 0.f; }
     void  setGlobalWarpW(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpW[lane] = x; }
 
+    // ── FEEL-TEST STAGES (CC_PROMPT_TILT_AND_RAIL_FEELTEST_START): the rail-tilt /
+    //    injected-atom stores beside the (curve, depth) pair — per-voice (the spread[112]
+    //    convention, unguarded like getWarpF) + Macro's global delegation default (same
+    //    shape as getGlobalWarpW). Neutral: tilt 0 / mass 0 (level's interior default is
+    //    inert at mass 0). Eval-side clamps live in WarpStages.hpp, NOT here.
+    float getWarpTilt(int slot, int lane) const { return editor.warp.warpTilt[slot*7 + lane]; }
+    void  setWarpTilt(int slot, int lane, float x) { editor.warp.warpTilt[slot*7 + lane] = x; }
+    float getWarpAtomLevel(int slot, int lane) const { return editor.warp.warpAtomLevel[slot*7 + lane]; }
+    void  setWarpAtomLevel(int slot, int lane, float x) { editor.warp.warpAtomLevel[slot*7 + lane] = x; }
+    float getWarpAtomMass(int slot, int lane) const { return editor.warp.warpAtomMass[slot*7 + lane]; }
+    void  setWarpAtomMass(int slot, int lane, float x) { editor.warp.warpAtomMass[slot*7 + lane] = x; }
+    float getGlobalWarpTilt(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpTilt[lane] : 0.f; }
+    void  setGlobalWarpTilt(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpTilt[lane] = x; }
+    float getGlobalWarpAtomLevel(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpAtomLevel[lane] : 0.5f; }
+    void  setGlobalWarpAtomLevel(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpAtomLevel[lane] = x; }
+    float getGlobalWarpAtomMass(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpAtomMass[lane] : 0.f; }
+    void  setGlobalWarpAtomMass(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpAtomMass[lane] = x; }
+
     // ── CC_PROMPT_04 (warp UI): UI-thread warp edits → scoped mirror rebuild ─────
     // The panel StoreKnob setters / the curve popup write the warp stores above on the
     // UI thread, then bump a pending SCOPE here; Monsoon::process consumes it right
