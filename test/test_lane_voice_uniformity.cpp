@@ -46,6 +46,7 @@
 #include <vector>
 
 using dotModular::WarpBank;
+using dotModular::VoiceResolver;
 using redDot::SpreadManager;
 
 // ── failure ledger + KNOWN_SEAMS manifest ──────────────────────────────────────
@@ -135,6 +136,61 @@ static void fillSlewFamilies(PatternEngine& pe) {
 }
 
 static const char* LANE_NAME[7] = { "MEL", "OCT", "QMIX", "REST", "ACC", "VAR", "LEG" };
+
+// ══════════════════════════════════════════════════════════════════════════════
+// U0 — SLOT MINTING (CC_PROMPT_STRONG_TYPES_START): VoiceSlot is mint-ONLY via
+// VoiceResolver. mono() is the typed mono ROLE (V1 = slot 0), slot(V) takes the
+// VOICE NUMBER (1..16), allSlots() covers the 16-wide storage range exactly once,
+// allLanes() the 7 lanes exactly once. The spec's required round-trip pin — the
+// minting cannot drift (compile-time twins live in VoiceResolver.hpp).
+// ══════════════════════════════════════════════════════════════════════════════
+static void U0_slot_minting() {
+    const std::string F = "U0-slot-minting";
+    using VR = VoiceResolver;
+    using dotModular::VoiceSlot;
+    using dotModular::LaneId;
+
+    expectCell(VR::mono().v == 0, F, -1, -1, "mono() must mint slot 0 (V1, the anchor)");
+
+    bool slotOk = true;
+    for (int V = 1; V <= 16; ++V)
+        if (VR::slot(V).v != V - 1) { slotOk = false; break; }
+    expectCell(slotOk, F, -1, -1, "slot(V) must mint V-1 (voice NUMBER -> storage slot)");
+
+    {
+        bool seen[16] = {}; bool ok = true;
+        for (VoiceSlot s : VR::allSlots()) {
+            if (s.v < 0 || s.v >= 16 || seen[s.v]) { ok = false; break; }
+            seen[s.v] = true;
+        }
+        for (int i = 0; i < 16; ++i) if (!seen[i]) ok = false;
+        expectCell(ok, F, -1, -1, "allSlots() must cover slots 0..15 exactly once");
+    }
+    {
+        bool seen[7] = {}; bool ok = true;
+        for (LaneId lane : dotModular::allLanes()) {
+            if (lane.l < 0 || lane.l >= 7 || seen[lane.l]) { ok = false; break; }
+            seen[lane.l] = true;
+        }
+        for (int i = 0; i < 7; ++i) if (!seen[i]) ok = false;
+        expectCell(ok, F, -1, -1, "allLanes() must cover lanes 0..6 exactly once");
+    }
+    // The typed overloads hand back the SAME rows as the int path (mint -> identical cell).
+    {
+        SequencerEngine se; fillRandomGolden(se.pe);
+        const VoiceSlot s = VR::slot(4);   // V4 -> slot 3
+        const LaneId   mel{SequencerEngine::PL_MELODY};
+        expectCell(&se.pe.warpRow(s, mel)[0] == &se.pe.warpRow(3, SequencerEngine::PL_MELODY)[0],
+                   F, 3, 0, "typed warpRow must alias the int path's row");
+        expectCell(&se.pe.polyRandom(s, mel)[0] == &se.pe.polyRandom(3, SequencerEngine::PL_MELODY)[0],
+                   F, 3, 0, "typed polyRandom must alias the int path's row");
+        // VoiceBank: the typed operator[] addresses the same cell the int shim does.
+        se.voices[VR::mono()].restProb = 0.25f;
+        se.voices[0].restProb          = 0.75f;   // int MIGRATION shim — same cell
+        expectCell(se.voices[VR::mono()].restProb == 0.75f,
+                   F, 0, -1, "VoiceBank typed + int indexing must address the same cells");
+    }
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // U1 — WARP own-slot: bank → rebuildWarpMirrorAll → warpRow. 16×7 cells.
@@ -663,6 +719,7 @@ int main() {
     std::printf("lane/voice UNIFORMITY HARNESS — SEAM_ERADICATION_PLAN Stage 0 "
                 "(16 voiceSlots x 7 lanes, V1 + VAR/LEG explicit)\n");
 
+    U0_slot_minting();
     U1_warp_own_slot();
     U2_warp_delegation();
     U3_warp_consumer_gate();

@@ -8,6 +8,7 @@
 #include "ClockEngine.hpp"
 #include "../NoteValues.hpp"
 #include "../LaneMapping.hpp"
+#include "../VoiceLaneTypes.hpp"   // VoiceSlot — the VoiceBank below (strong per-voice indexing)
 #include <cassert>
 #include <cstdio>
 
@@ -62,6 +63,23 @@ struct PolyVoice {
     // per-voice VAR/LEG draw is now unconditional — SANDS CONSOLIDATION Step 2). Reset at each
     // new onset and when mono rests.
     bool  participating = false;
+};
+
+// ── VoiceBank — per-voice storage, VoiceSlot-indexed (CC_PROMPT_STRONG_TYPES) ──
+// voices[] takes a MINTED VoiceSlot (VoiceResolver::mono() / slot(V) / allSlots());
+// the 16-wide storage convention (0 = V1 … 15 = V16) made STRUCTURAL. The int
+// operator[] below is a MIGRATION SHIM so unconverted callers keep compiling while
+// the sweep proceeds file-by-file; the tighten commit DELETES it — after which a
+// bare voices[0] does not compile and the mono role must be spelled mono().
+// Layout- and behaviour-identical to the raw PolyVoice[16] it wraps (same cells,
+// typed addressing).
+struct VoiceBank {
+    PolyVoice slots[16];
+    PolyVoice&       operator[](dotModular::VoiceSlot s)       { return slots[s.v]; }
+    const PolyVoice& operator[](dotModular::VoiceSlot s) const { return slots[s.v]; }
+    // MIGRATION SHIM (deleted by the tighten commit — CC_PROMPT_STRONG_TYPES):
+    PolyVoice&       operator[](int i)                         { return slots[i]; }
+    const PolyVoice& operator[](int i) const                   { return slots[i]; }
 };
 
 // ── SequencerEngine ────────────────────────────────────────────────────────────
@@ -132,12 +150,13 @@ struct SequencerEngine {
     GateState gs;
     GateState gsStep;   // STEP mirror of gs (mono) — see STEP_GATE_IMPLEMENTATION.md
 
-    // ── Poly voices ───────────────────────────────────────────────────────────
-    // voices[0] = voice 2, voices[6] = voice 8.
+    // ── Poly voices (VoiceSlot-indexed — see VoiceBank above) ──────────────────
+    // voices[VoiceResolver::mono()] = V1 (voice 0 of the unified per-voice system);
+    // slots 1..15 = V2..V16 (was a 15-wide V2..V16 bank pre-COLLAPSE; widened to 16
+    // with V1 at 0). The stale pre-COLLAPSE comment that claimed slot 0 was V2 —
+    // the polyBank-era lie the seam plan flagged — is deleted with the typed bank.
     // numPolyVoices is set from the context-menu user preference (0 = mono only).
-    // Phase A: voices[0] = V1 (voice 0 of the unified per-voice system).
-    // Was 15 (V2..V16); now 16 (V1..V16). All poly access shifted by +1.
-    PolyVoice voices[16];
+    VoiceBank voices;
     int       numPolyVoices = 0;
     // Phase B: track the poly count used last step. When numPolyVoices increases,
     // newly-activated voices have stale gs state (gateHeld/holdRemain from when

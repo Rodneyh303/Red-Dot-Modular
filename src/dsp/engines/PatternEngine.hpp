@@ -27,6 +27,7 @@
 #include <utility>
 #include "../PhiloxRng.hpp"
 #include "../LaneMapping.hpp"   // dotModular::STRAND_* for finalRandomByStrand
+#include "../VoiceLaneTypes.hpp"   // VoiceSlot/LaneId — strong per-voice/lane indices (typed overloads below)
 #include "../MovingAverageCopula.hpp"   // Phase 1: slew as normal-space moving-average copula (replaces L1 linear-uniform window)
 #include "../../tuning/TuningTable.hpp"   // dotModular::TuningTable — shared per-degree tuning (Sikit)
 
@@ -139,6 +140,14 @@ struct PatternEngine {
     static_assert((int)PL_QMIX == (int)dotModular::STRAND_QMIX,
                   "PL_QMIX poly lane must map to editor lane STRAND_QMIX (=2)");
 
+    // STRONG typed indices (CC_PROMPT_STRONG_TYPES): the typed polyRandom/warpRow
+    // overloads take MINTED indices — VoiceSlot (via VoiceResolver::mono()/slot(V)/
+    // allSlots()) and LaneId (explicit construction, e.g. LaneId{PL_MELODY}). The
+    // bare-int versions are MIGRATION shims; the tighten commit deletes them.
+    using VoiceSlot = dotModular::VoiceSlot;
+    using LaneId    = dotModular::LaneId;
+    static_assert((int)PL_LANES == dotModular::kLaneIdCount, "LaneId covers exactly the PL_* lanes");
+
     // Poly probability view: voice bank b (0..14 = V2..V16) → slot b+1; lane is the engine PL_ lane,
     // converted to editor order. Returns the 16-step row (float(&)[16]) so callers index [step].
     // Phase A: polyRandom now takes voiceSlot directly (V1=0, V2+=1..15). Was bank+1 (skipping V1).
@@ -151,6 +160,11 @@ struct PatternEngine {
         int edLane = (engLane >= 0 && engLane < 7) ? engLane : 0;
         return random_[voiceSlot][edLane];
     }
+    // STRONG-typed overloads: the SAME rows as the int versions, minted indices only.
+    // The int versions are MIGRATION shims — the tighten commit deletes them, after
+    // which polyRandom(bare int, …) does not compile.
+    float (&polyRandom(VoiceSlot vs, LaneId lane))[16] { return polyRandom(vs.v, lane.l); }
+    const float (&polyRandom(VoiceSlot vs, LaneId lane) const)[16] { return polyRandom(vs.v, lane.l); }
 
     // ── Warp mirror (CC_PROMPT_03 STEP 2): the EFFECTIVE w-mixture over random_ ──
     // ONE array, no raw↔warped display toggle (SESSION_LOG 2026-10-18b §2 — the toggle
@@ -183,6 +197,9 @@ struct PatternEngine {
         const int ll = (lane >= 0 && lane < 7) ? lane : 0;
         return warpBank_ ? warped_[vv][ll] : random_[vv][ll];
     }
+    // STRONG-typed twin (CC_PROMPT_STRONG_TYPES): minted indices only; the int
+    // version is a MIGRATION shim deleted by the tighten commit.
+    const float (&warpRow(VoiceSlot v, LaneId lane) const)[16] { return warpRow(v.v, lane.l); }
     // Wire the bank (module layer, per block — same-pointer is a no-op). First wire /
     // re-wire rebuilds the full mirror from current random_.
     void setWarpBank(const dotModular::WarpBank* b);
