@@ -1548,3 +1548,57 @@ things. The conclusion stands on the continuous-part reason.)
 => Per-member flag: tilt present ⇔ member has a continuous component. Keeps each member's control
 surface honest (no knob duplicating another). The injected atom (ℓ,m) is available on ALL members
 (it ADDS a point mass — orthogonal to whether a continuous part exists).
+
+────────────────────────────────────────────────────────────────────────────────
+## FACTOR COPULA UNDER THE NEW MACHINERY — spread=0 (pure factor) vs spread>0 (frailty) (Rodney)
+
+### SPREAD DIALS FRAILTY ↔ PURE FACTOR
+Earlier we said the shared-modulation construction is a FRAILTY mixture, NOT a Krupskii-Joe factor
+copula, because Gaussian coupling persists conditional on the factor. That was FOR SPREAD>0.
+AT SPREAD=0 the within-lane Gaussian coupling is GONE → conditional on the shared factor the voices
+are INDEPENDENT → this is the DEFINING property of a genuine FACTOR COPULA (conditional independence
+given the factor). So:
+  - spread = 0  → PURE one-factor copula (all dependence flows through the shared modulation;
+                   conditional independence given it). The Krupskii-Joe-style object IS reachable here.
+  - spread > 0  → FRAILTY (latent Gaussian coupling ADDED on top of the factor; conditional coupling
+                   remains). The factor + a residual correlated part.
+Spread is the dial between them. The ATOMS give either regime its λ (corner) or value-coincidence
+(interior), driven by the factor.
+
+### SOURCES OF FACTOR DEPENDENCE AT SPREAD=0 (the enumeration)
+At spread=0 the ONLY dependence is factor dependence, so these ARE the whole dependence structure.
+Each factor = a SHARED modulation of an output-shaping parameter; conditioning on the shared signal
+leaves voices independent. The factor TYPE = which part it moves:
+  | Factor (shared signal) | part moved        | effect                         | λ                      |
+  | w (atom mass/Leb weight)| SINGULAR          | value-coincidence / MO          | 0 interior, >0 corner  |
+  | ℓ (atom location)       | SINGULAR (locus)  | moves the coincidence TARGET    | (as ℓ)                 |
+  | θ (dist params)         | CONTINUOUS        | marginal co-shift               | 0                      |
+  | tilt p                  | CONTINUOUS        | rail-ward co-lean               | 0                      |
+  | A/B mix                 | SOURCING          | regime-switch co-movement       | 0                      |
+  | slew-rho                | TEMPORAL (autoc.) | common smoothness-volatility    | 0 (temporal axis)      |
+Four axes: SINGULAR (w, ℓ → can reach λ>0 via atoms), CONTINUOUS (θ, tilt → λ=0), SOURCING (A/B),
+TEMPORAL (slew-rho). Share MULTIPLE signals → a genuine MULTI-FACTOR copula (each shared signal = one
+factor).
+NOT factors at spread=0 (exclusions):
+  - PER-VOICE INDEPENDENT modulation (w/θ/ℓ not shared) = idiosyncratic NOISE, leaves independence.
+  - SPREAD itself = 0 by assumption (it IS the latent coupling; off here).
+  - CA ROUTING = INERT at spread=0. CA routes WHERE correlation flows, but the correlation flows VIA
+    spread; spread=0 ⇒ zero correlation to route ⇒ CA contributes no factor dependence. (CA is the
+    latent-correlation ROUTING layer, not a factor SOURCE.)
+
+### WHEN WE ALLOW THE GAUSSIAN FACTOR (spread>0) — what we have
+Turning spread back on ADDS the Gaussian-MA latent coupling to whatever shared-modulation factors are
+active. So spread>0 = FRAILTY = {all the shared-modulation factors above} + {a correlated Gaussian
+part conditional on them}. Concretely what we HAVE:
+  - The shared-modulation factors (w/ℓ/θ/tilt/AB/slew) STILL operate — same as the table above.
+  - PLUS the Gaussian factor: spread (per-voice-per-lane, signed, via mix2/CA routing) couples the
+    voices' LATENT draws — a one-factor leader structure (follower-follower = rho^2>=0; signed per
+    voice via CA). This is a CONTINUOUS latent factor (bounded Gaussian → λ=0 on its own).
+  - The λ>0 still comes ONLY from the ATOMS (corner), NOW driven EITHER by the shared-w factor OR
+    rectified by the Gaussian factor through the clamp/atom (spread-correlated voices cross the rail
+    together). So with spread>0 + corner atoms you get λ>0 from BOTH routes composing.
+So "what we have" across the spread dial: spread=0 = pure (conditional-independence) factor copula with
+the six shared-modulation factors; spread>0 = frailty = those factors + the Gaussian latent factor
+(continuous, λ=0 alone) + atom-driven λ reachable via either. The atoms are the λ carrier throughout;
+spread adds the latent-correlation factor and a second route to atom co-occurrence. STILL not strict
+Krupskii-Joe at spread>0 (conditional coupling remains); IS Krupskii-Joe-style at spread=0.
