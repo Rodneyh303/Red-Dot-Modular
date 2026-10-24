@@ -27,6 +27,9 @@
 #include "MonsoonChangiT3Expander.hpp"
 #include "MonsoonShophouseExpander.hpp"
 #include "MonsoonChangeAlleyV2.hpp"   // full type needed: reseedCorrKeys/seedCorrKeysInternal called in handleRestart
+#include "dsp/VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (mono/slot)
+
+using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be constructed here)
 // West retired (Straits redesign): #include "MonsoonStraitWestExpander.hpp"
 //#include "MonsoonStraitsSands.hpp"            // NEW (Macro): global DNA controls
 //#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
@@ -473,7 +476,7 @@ int Monsoon::pickSemitoneWeighted() {
     int idx = engine.getMelodyStep();
     // Warp mirror (CC_PROMPT_03): the degree map reads the effective w-mixture — the
     // faderMap∘F⁻¹ seam where melody warp lands (no raw melody/octave OUTPUT reads).
-    return engine.pe.pickSemitone(w, 12, engine.pe.warpRow(0, PatternEngine::PL_MELODY)[idx]);   // Monsoon's own 12 faders → n=12
+    return engine.pe.pickSemitone(w, 12, engine.pe.warpRow(VoiceResolver::mono(), dotModular::LaneId{PatternEngine::PL_MELODY})[idx]);   // Monsoon's own 12 faders → n=12 (mono ROLE, typed)
 }
 
 // generate a pitch V in 1V/oct format, returnh semitone via out parameter
@@ -484,8 +487,8 @@ int Monsoon::pickSemitoneWeighted() {
 float Monsoon::genPitchV(int& outSemitone) {
     // Warp mirror (CC_PROMPT_03): same consumer contract as pickSemitoneWeighted.
     return engine.pe.genPitchLive(outSemitone, modeController->currentPatternInput,
-                                  engine.pe.warpRow(0, PatternEngine::PL_MELODY)[engine.getMelodyStep()],
-                                  engine.pe.warpRow(0, PatternEngine::PL_OCTAVE)[engine.getOctaveStep()]);
+                                  engine.pe.warpRow(VoiceResolver::mono(), dotModular::LaneId{PatternEngine::PL_MELODY})[engine.getMelodyStep()],
+                                  engine.pe.warpRow(VoiceResolver::mono(), dotModular::LaneId{PatternEngine::PL_OCTAVE})[engine.getOctaveStep()]);
 }
 
     // allowed note lengths depend on noteVariationMask - note we defined NoteLength enum and allowednoteLengths function
@@ -948,8 +951,9 @@ void Monsoon::process(const ProcessArgs& args) {
             engine.gs.tickPulse();
             engine.gsStep.tickPulse();
             for (int i = 1; i <= engine.numPolyVoices; ++i) {
-                engine.voices[i].gs.tickPulse();
-                engine.voices[i].gsStep.tickPulse();
+                const auto vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+                engine.voices[vs].gs.tickPulse();
+                engine.voices[vs].gsStep.tickPulse();
             }
         }
         // Optimization: Only execute mode logic if a relevant trigger/state is active.
@@ -985,7 +989,7 @@ void Monsoon::process(const ProcessArgs& args) {
             // follows Gate 1 / ghost (not a 1-step internal hold).  Mode B only.
             if (modeSelect == 1) {
                 for (int i = 1; i <= engine.numPolyVoices; ++i)
-                    polyVoiceActive[i] = engine.voices[i].gs.gateHeld;
+                    polyVoiceActive[i] = engine.voices[VoiceResolver::slot(i + 1)].gs.gateHeld;
             }
 
             // ── Shophouse scale expander: boundary-quantised scale/root ──
@@ -1046,8 +1050,9 @@ void Monsoon::process(const ProcessArgs& args) {
                     engine.gs.tickPulse();
                     engine.gsStep.tickPulse();
                     for (int i = 1; i <= engine.numPolyVoices; ++i) {
-                        engine.voices[i].gs.tickPulse();
-                        engine.voices[i].gsStep.tickPulse();
+                        const auto vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+                        engine.voices[vs].gs.tickPulse();
+                        engine.voices[vs].gsStep.tickPulse();
                     }
                 }
             }
@@ -1180,10 +1185,11 @@ void Monsoon::process(const ProcessArgs& args) {
         // gate closes also gets its holdRemain zeroed (Lantern sounding-test parity with the mono).
         for (int i = 1; i <= engine.numPolyVoices; ++i) {
             const bool vOpen = gateOpen && polyVoiceActive[i];
-            engine.voices[i].gs.gateHeld = vOpen;
+            const auto vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+            engine.voices[vs].gs.gateHeld = vOpen;
             if (!vOpen) {
-                engine.voices[i].gs.holdRemain      = 0.f;
-                engine.voices[i].gs.gatePulseRemain = -1;
+                engine.voices[vs].gs.holdRemain      = 0.f;
+                engine.voices[vs].gs.gatePulseRemain = -1;
             }
         }
     }
@@ -1356,8 +1362,9 @@ void Monsoon::process(const ProcessArgs& args) {
                     b = engine.gs.semiLedBrightness(i);
                     q = engine.gs.semiQuantLedBrightness(i);
                     for (int v = 1; v <= engine.numPolyVoices; ++v) {
-                        b = std::max(b, engine.voices[v].gs.semiLedBrightness(i));
-                        q = std::max(q, engine.voices[v].gs.semiQuantLedBrightness(i));
+                        const auto vs = VoiceResolver::slot(v + 1);   // v = voiceSlot; slot(V) takes the VOICE number
+                        b = std::max(b, engine.voices[vs].gs.semiLedBrightness(i));
+                        q = std::max(q, engine.voices[vs].gs.semiQuantLedBrightness(i));
                     }
                 }
                 semiLedBrightness[i] = b;

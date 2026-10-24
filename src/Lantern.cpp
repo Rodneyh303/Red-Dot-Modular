@@ -66,6 +66,7 @@
 #include "ui/StoreBound.hpp"
 #include "ui/Controls.hpp"
 #include "Monsoon.hpp"
+#include "dsp/VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (slot)
 #include "Intertropical.hpp"   // IT-source mode: read routed output via inverse map
 #include "ui/RedScrew.hpp"
 #include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide
@@ -299,7 +300,12 @@ struct Lantern : Module {
                 if (pv_i < 0 || pv_i >= eng.numPolyVoices || pv_i >= 15) {
                     cells[row][writeStep].type = lantern::NoteType::Inactive; return;
                 }
-                const PolyVoice& pv = eng.voices[pv_i];
+                // NOTE (CC_PROMPT_STRONG_TYPES audit — behaviour PRESERVED, flagged not
+                // fixed): pv_i = g-1 addresses the SAME slot the old code did; the block
+                // comment above still describes the pre-COLLAPSE voices[g-1]-=V2 mapping.
+                // Post-COLLAPSE slot g is V(g+1) — if rows look one-voice-shifted in Rack,
+                // this is the site (fix = its own red-first commit, not the typed sweep).
+                const PolyVoice& pv = eng.voices[dotModular::VoiceResolver::slot(pv_i + 1)];
                 const bool voiceSlur = pv.gs.slurForward;   // SANDS CONSOLIDATION Step 5: per-voice slur (flag removed)
                 recordCell(row, writeStep, pv.gs, dec, pv.accented, lenSteps, voiceSlur, monoSlur,
                            eng.lastPlayDir, lapArrival);

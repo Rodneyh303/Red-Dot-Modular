@@ -5,6 +5,7 @@
 #include "../../MonsoonStraitsExpander.hpp"
 #include "../../MonsoonChangiExpander.hpp"
 #include "../../MonsoonChangiT2Expander.hpp"
+#include "../VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (slot)
 
 using namespace rack;
 
@@ -59,20 +60,28 @@ void OutputGenerator::drive(SequencerEngine& engine,
     float polyAccentV[16] = {};
     float polySlegV[16]   = {};
     if (anyPolyConsumer) {
+        // NOTE (CC_PROMPT_STRONG_TYPES audit — behaviour PRESERVED, flagged not fixed):
+        // this loop indexes voices[i] for i = 0..14 against cable channels documented
+        // "ch1..15 = poly voices 2..16" (V2..V16 = slots 1..15). voices[0] is V1's
+        // DORMANT per-voice slot post-COLLAPSE (mono runs on eng.gs), so ch1 reads a
+        // dead gate and every later channel shows the PREVIOUS voice — the suspected
+        // pre-existing off-by-one this migration exists to expose. Fix belongs in its
+        // own red-first commit + Rack feel-test, NOT in the behaviour-identical sweep.
         for (int i = 0; i < 15; ++i) {
             if (effectiveMuted || i >= (int)engine.numPolyVoices) {
                 // Skipped voice: leave arrays at 0 and DON'T advance process() (frozen gate).
                 continue;
             }
-            float vg     = engine.voices[i].gs.process(sampleTime);
-            float vgStep = engine.voices[i].gsStep.process(sampleTime);   // STEP mirror (per voice)
+            const auto vs = dotModular::VoiceResolver::slot(i + 1);   // i = the slot being read (preserved)
+            float vg     = engine.voices[vs].gs.process(sampleTime);
+            float vgStep = engine.voices[vs].gsStep.process(sampleTime);   // STEP mirror (per voice)
             polyGateV[i]   = vg;
             polyStepV[i]   = vgStep;
-            polyCV[i]      = engine.voices[i].gs.currentPitchV;
+            polyCV[i]      = engine.voices[vs].gs.currentPitchV;
             // Accent is a poly lane: each voice fires its OWN accent (drawn per-voice in
             // executePolyVoice), gated by the voice actually sounding.
-            polyAccentV[i] = (engine.voices[i].accented && vg > 5.f) ? 10.f : 0.f;
-            polySlegV[i]   = engine.voices[i].gs.slurMember ? vgStep : 0.f;  // SLEG: slur-masked
+            polyAccentV[i] = (engine.voices[vs].accented && vg > 5.f) ? 10.f : 0.f;
+            polySlegV[i]   = engine.voices[vs].gs.slurMember ? vgStep : 0.f;  // SLEG: slur-masked
         }
     }
 

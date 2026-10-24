@@ -21,6 +21,7 @@ static_assert((uint32_t)dotModular::SB_SANDS_Q == (1u << 13), "SB_SANDS_Q bit ou
 #include "../../MonsoonCausewayPolyExpander.hpp"
 #include "../../MonsoonStraitsExpander.hpp"   // Q2: poly quantiser CV-in (StraitsIds::QUANT_CV_INPUT)
 #include "MonsoonExpanderManager.hpp"
+#include "../VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (mono/slot)
 
 using namespace rack;
 
@@ -45,17 +46,19 @@ void ModeController::updatePolyVoiceRest_() {
     // voices[i]; the getEffectivePoly* family below is 0-based poly (0=V2) — hence i - 1.
     // The matching +1 lives INSIDE those functions, at the cable boundary (ch0 = mono/V1).
     for (int i = 1; i <= engine.numPolyVoices; ++i) {
-        engine.voices[i].restProb   = mainModule->getEffectivePolyRest(i - 1);
-        engine.voices[i].accentProb = mainModule->getEffectivePolyAccent(i - 1);
+        // i = voiceSlot (V2..); slot(V) takes the VOICE number (= i+1)
+        const auto vs = dotModular::VoiceResolver::slot(i + 1);
+        engine.voices[vs].restProb   = mainModule->getEffectivePolyRest(i - 1);
+        engine.voices[vs].accentProb = mainModule->getEffectivePolyAccent(i - 1);
         // Task 4 (poly QMIX): per-voice q-mix LEVEL, mirroring rest/accent. The engine reads
-        // voices[i].qmixLevel per-step in executePolyVoice's source-select. getEffectivePolyQmix
+        // the slot's qmixLevel per-step in executePolyVoice's source-select. getEffectivePolyQmix
         // is the single resolver (Straits knob; no Causeway q-mix CV yet).
-        engine.voices[i].qmixLevel  = mainModule->getEffectivePolyQmix(i - 1);
+        engine.voices[vs].qmixLevel  = mainModule->getEffectivePolyQmix(i - 1);
         // VAR/LEG per-voice knobs — mirror rest/accent/q-mix. The engine reads these in
         // executePolyVoice to threshold the per-voice VAR/LEG draws (which already exist
         // as slewedPolyVariation/Legato → polyRandom(PL_VARIATION/PL_LEGATO)).
-        engine.voices[i].variationProb = mainModule->getEffectivePolyVariation(i - 1);
-        engine.voices[i].legatoProb    = mainModule->getEffectivePolyLegato(i - 1);
+        engine.voices[vs].variationProb = mainModule->getEffectivePolyVariation(i - 1);
+        engine.voices[vs].legatoProb    = mainModule->getEffectivePolyLegato(i - 1);
     }
     polyVoiceCachePrimed_ = true;
 }
@@ -118,17 +121,19 @@ void ModeController::updatePatternInput() {
         engine.writeLedger.noteWrite(WriteRole::MONO, WriteField::RestProb); // STEP1 WriteLedger: mono currentPatternInput.restProb (R2)
         currentPatternInput.variationAmount = paramManager.getVariation();
         currentPatternInput.noteValue     = paramManager.getNoteValue();
-        // Phase A: V1's per-voice params (legato, accent, qmix) now written DIRECTLY to
-        // voices[0] — NOT transported through PatternInput scalars (deleted). The
-        // controller is the SOLE writer of voices[0], mirroring how
-        // updatePolyVoiceRest_() is the sole writer of voices[1..15].
-        engine.voices[0].restProb      = currentPatternInput.restProb;
-        engine.voices[0].legatoProb   = paramManager.getLegato();
-        engine.voices[0].accentProb   = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
-                                                    : paramManager.getAccent();
-        engine.voices[0].qmixLevel    = mainModule ? mainModule->getEffectiveMonoQmix(paramManager.getQmixLevel())
-                                                    : paramManager.getQmixLevel();
-        engine.voices[0].variationProb = currentPatternInput.variationAmount;
+        // Phase A: V1's per-voice params (legato, accent, qmix) now written DIRECTLY to the
+        // mono slot — NOT transported through PatternInput scalars (deleted). The
+        // controller is the SOLE writer of the mono slot, mirroring how
+        // updatePolyVoiceRest_() is the sole writer of the poly slots.
+        // CC_PROMPT_STRONG_TYPES: the mono ROLE, TYPED (was the bare voices[0] hardcode).
+        auto& monoVoice = engine.voices[dotModular::VoiceResolver::mono()];
+        monoVoice.restProb      = currentPatternInput.restProb;
+        monoVoice.legatoProb   = paramManager.getLegato();
+        monoVoice.accentProb   = mainModule ? mainModule->getEffectiveMonoAccent(paramManager.getAccentUnclamped())
+                                             : paramManager.getAccent();
+        monoVoice.qmixLevel    = mainModule ? mainModule->getEffectiveMonoQmix(paramManager.getQmixLevel())
+                                             : paramManager.getQmixLevel();
+        monoVoice.variationProb = currentPatternInput.variationAmount;
     }
     if (octLive) {   // OctaveRange LATCH — hold OCT LO/HI under lock (see pitch-axis note above)
         currentPatternInput.octaveLo      = paramManager.getOctaveLo();
@@ -298,8 +303,8 @@ bool ModeController::executeModeB(const InputState& input,
         PatternInput modeBPatternInput = currentPatternInput; // Start with current settings
         modeBPatternInput.noteVariationMask = 0b111; // Allow all note lengths (e.g., 1/1 to 1/32T)
         // Phase A: Mode B overrides V1's variation to neutral (no bias for longer/shorter notes).
-        // Was modeBPatternInput.variationAmount = 0.5f; now writes voices[0] directly.
-        engine.voices[0].variationProb = 0.5f;
+        // Was modeBPatternInput.variationAmount = 0.5f; now writes the mono slot directly (TYPED).
+        engine.voices[dotModular::VoiceResolver::mono()].variationProb = 0.5f;
 
         // Execute the mode
         StepResult result = engine.executeModeB(

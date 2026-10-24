@@ -121,18 +121,19 @@ void SequencerEngine::reset() {
         }
     }
     for (int i = 1; i < 16; i++) {
+        const VoiceSlot vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
         for (int l = 0; l < PL_LANES; ++l) {   // was l < 3 — PL_ACCENT(3) was never reset (pre-existing bug)
-            polyLenERef(i, l) = 16;
-            polyOffERef(i, l) = 0;
-            polyRotERef(i, l) = 0;
+            polyLenERef(vs, LaneId{l}) = 16;
+            polyOffERef(vs, LaneId{l}) = 0;
+            polyRotERef(vs, LaneId{l}) = 0;
         }
         // VARIATION/LEGATO per-voice LOR were NEVER seeded (lorStore_ is zero-init, so len==0 →
         // getStrandIdx's max(1,len) pinned every step to index 0 — NOT identity). Editor-order
         // accessor: these lanes have no PL_ id.
         for (int el : { EDITOR_LANE_VARIATION, EDITOR_LANE_LEGATO }) {
-            polyLORRef(i, el, LOR_LEN) = 16;
-            polyLORRef(i, el, LOR_OFF) = 0;
-            polyLORRef(i, el, LOR_ROT) = 0;
+            polyLORRef(vs, LaneId{el}, LOR_LEN) = 16;
+            polyLORRef(vs, LaneId{el}, LOR_OFF) = 0;
+            polyLORRef(vs, LaneId{el}, LOR_ROT) = 0;
         }
     }
     windowMask = 0xFFFF;
@@ -763,11 +764,12 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float noteVal
         gs.slurForward = false;
         gsStep.gateHeld = false; gsStep.holdRemain = 0.f;      // STEP: stop with the fused gate
         for (int i = 1; i <= numPolyVoices; ++i) {
-            voices[i].gs.gateHeld   = false;
-            voices[i].gs.holdRemain = 0.f;
-            voices[i].gs.slurForward = false;
-            voices[i].participating = false;
-            voices[i].gsStep.gateHeld = false; voices[i].gsStep.holdRemain = 0.f;
+            const VoiceSlot vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+            voices[vs].gs.gateHeld   = false;
+            voices[vs].gs.holdRemain = 0.f;
+            voices[vs].gs.slurForward = false;
+            voices[vs].participating = false;
+            voices[vs].gsStep.gateHeld = false; voices[vs].gsStep.holdRemain = 0.f;
         }
     }
 
@@ -900,10 +902,11 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
         hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
         for (int i = 1; i <= numPolyVoices; ++i) {
-            wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
-            float ph = voices[i].gs.holdRemain;
-            voices[i].gs.tick();
-            voices[i].gsStep.tick();
+            const VoiceSlot vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+            wasHeldPolyPrev[i] = voices[vs].gs.gateHeld || (voices[vs].gs.holdRemain > 0.0001f);
+            float ph = voices[vs].gs.holdRemain;
+            voices[vs].gs.tick();
+            voices[vs].gsStep.tick();
             hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
         }
 

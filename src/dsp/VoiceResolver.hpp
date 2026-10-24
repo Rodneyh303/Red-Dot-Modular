@@ -110,7 +110,8 @@ struct VoiceResolver {
     // Resolved probability draw (0..1) for (voice, lane) at the voice's own LOR step.
     float laneProbability(int v, int lane) const {
         if (isMono(v)) return eng.masterLaneProbability(lane);
-        if (isPoly(v)) return eng.polyLaneProbability(lane, polyVoiceSlot(v));
+        // STRONG types (CC_PROMPT_STRONG_TYPES): minted VoiceSlot + explicit LaneId.
+        if (isPoly(v)) return eng.polyLaneProbability(LaneId{lane}, slot(v));
         return 0.f;
     }
 
@@ -133,10 +134,15 @@ struct VoiceResolver {
     // V1 uses the explicit step too (the old mono branch self-resolved the engine's mono
     // LOR step — Macro's own step is the out's sampling grid, same as the poly channels).
     float laneProbabilityAtStep(int v, int lane, int step) const {
-        if (isMono(v)) return eng.effectiveProbability(/*voice=*/kMonoSlot, lane, step,
-                                                       SequencerEngine::ProbLens::MacroOwn);
-        if (isPoly(v)) return eng.effectiveProbability(polyVoiceSlot(v), lane, step,
-                                                       SequencerEngine::ProbLens::MacroOwn);
+        // STRONG types (CC_PROMPT_STRONG_TYPES): minted VoiceSlot (mono()/slot(V)) + LaneId.
+        // (LaneId uses PAREN init here, not brace-init: test_macro_own_output C4 extracts
+        // this body with a naive scan-to-first-close-brace — a brace initializer or a
+        // brace in this comment would truncate it before the lens. The pin's
+        // tighten-time update can restore brace style.)
+        if (isMono(v)) return eng.effectiveProbability(mono(), LaneId(lane), step,
+                                                        SequencerEngine::ProbLens::MacroOwn);
+        if (isPoly(v)) return eng.effectiveProbability(slot(v), LaneId(lane), step,
+                                                        SequencerEngine::ProbLens::MacroOwn);
         return 0.f;
     }
 
