@@ -1,8 +1,11 @@
 #include "SequencerEngine.hpp"
 #include "../SpreadInterp.hpp"   // Stage 2a: refreshPolyRandomCell -> applyPoly
+#include "../VoiceResolver.hpp"  // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (mono/slot) for the typed accessors
 #include <cmath>
 #include <algorithm>
 #include <cstdio>
+
+using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be constructed here)
 
 // RULE2_DEBUG is defined in SequencerEngine.hpp (shared with the manager). The trace uses
 // Rack's INFO() logger (writes to log.txt); fprintf(stderr) is discarded under a GUI launch.
@@ -485,8 +488,11 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
 
 StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail) {
     // Phase A: ALL V1 per-voice params (rest, legato, accent, qmix, variation) now read from
-    // voices[0].* — no separate parameters. V1 = voice 0 of the unified per-voice system.
-    // voices[0] is populated by the controller (updatePatternInput), not by the mode executors.
+    // voices[monoSlot].* — no separate parameters. V1 = voice 0 of the unified per-voice system.
+    // The mono slot is populated by the controller (updatePatternInput), not by the mode executors.
+    // CC_PROMPT_STRONG_TYPES: the mono ROLE is TYPED — monoSlot is the minted anchor
+    // (was the bare voices[0] hardcode, indistinguishable from residue).
+    const VoiceSlot monoSlot = VoiceResolver::mono();
     // ── Fractional notes (1/4T=2.667, 1/8T=1.333, 1/32=0.5 steps) & legato/tie ──
     // These notes end MID-STEP (closed by the gateSecRemain seconds-timer), not on
     // a 1/16 grid edge. Legato/tie decisions only happen AT an edge and require the
@@ -549,7 +555,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     // POLARITY (MODE_COLLAPSE_6_TO_3 §29): 0 = generated, 1 = quantised. The draw crosses UPWARD
     // (r >= level → use generated), so level 0 forces generated, level 1 forces quantised. (Pre-collapse
     // this was r < level, i.e. high q-mix = generated — the opposite.)
-    const bool qmixUseGenerated = quantiserPitchSource && (r_qmix >= voices[0].qmixLevel);
+    const bool qmixUseGenerated = quantiserPitchSource && (r_qmix >= voices[monoSlot].qmixLevel);
     // QUANTISER (Q1): mono/voice-0 pitch = quantised external CV when in a quantiser mode, else the
     // internal melody+octave draw. voicePitch bypasses genPitchLive (no RNG/lane perturbation) when
     // quantiserPitchSource is set; off = byte-identical legacy path. qmixUseGenerated forces the
@@ -562,8 +568,8 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
                               // Warp mirror (CC_PROMPT_03 STEP 4a): the mono voice's
                               // sounding pitch reads the effective w-mixture (== the raw
                               // row when no warp is authored — byte-identical legacy).
-                              pe.warpRow(0, PL_MELODY)[getMelodyStep()],
-                              pe.warpRow(0, PL_OCTAVE)[getOctaveStep()],
+                              pe.warpRow(monoSlot, LaneId{PL_MELODY})[getMelodyStep()],
+                              pe.warpRow(monoSlot, LaneId{PL_OCTAVE})[getOctaveStep()],
                               /*forceGenerated=*/qmixUseGenerated);
 
     // ── Leading-edge legato (STEP 2, the only legato model) ──
@@ -600,7 +606,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     // r_legato_tie is consumed only at the LEAD commitment (gs.slurForward, at the bottom of
     // this cascade), i.e. by the note that produces the next note's prevSlur.
     // legatoProb>=0.999 (LegatoMax) still forces connection.
-    const bool legatoConnects = (voices[0].legatoProb >= 0.999f) || prevSlur;
+    const bool legatoConnects = (voices[monoSlot].legatoProb >= 0.999f) || prevSlur;
 
     // A genuine committed slur reaching THIS note: it connects AND has a held predecessor to
     // connect to (exactly the condition the legato branch below uses). "Rest beats legato"
@@ -610,12 +616,12 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     const bool slurReachesHere    = legatoConnects && (wasHeld || hadTail) && prevPlayedSounded;
     const bool slurSuppressesRest = !generatedRestBeatsLegato && slurReachesHere;
 
-    if (voices[0].legatoProb >= 0.999f) {
+    if (voices[monoSlot].legatoProb >= 0.999f) {
         gs.slideMax(pitchV, sem, nvIdx, isQuant);
         gsStep.triggerNote(pitchV, sem, nvIdx, isQuant);            // STEP: re-strike (un-fused)
         result.decision = MonoDecision::LegatoMax;
     }
-    else if ((r_rest < voices[0].restProb) && !slurSuppressesRest) {
+    else if ((r_rest < voices[monoSlot].restProb) && !slurSuppressesRest) {
         // Rest precedence:
         //  - A fractional NOTE TAIL always outranks a rest (physical — !canRest). Unchanged.
         //  - "Rest beats legato" ON (default): a rest CANCELS an optional slur reach ("can't
@@ -666,7 +672,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
                         ((result.decision == MonoDecision::Legato || result.decision == MonoDecision::LegatoMax) && !wasHeld && !hadTail);
 
     if (monoStarting) {
-        result.accented = (r_accent < voices[0].accentProb);
+        result.accented = (r_accent < voices[monoSlot].accentProb);
     } else if (result.decision == MonoDecision::Rest) {
         result.accented = false;
     } else {
@@ -683,7 +689,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     // always false; qmixHit keeps its raw-draw semantics via the r_qmix>=qmixLevel form (behaviour-
     // inert there, matching prior code). POLARITY: 0 = generated, 1 = quantised (§29).
     if (monoStarting) {
-        result.qmixHit = (r_qmix >= voices[0].qmixLevel);
+        result.qmixHit = (r_qmix >= voices[monoSlot].qmixLevel);
     } else if (result.decision == MonoDecision::Rest) {
         result.qmixHit = false;
     } else {
@@ -712,7 +718,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
                    || (result.decision == MonoDecision::Tie);
     bool leadsSlur = leStarting
                   && noteCanLeadLegato(nvIdx)
-                  && (voices[0].legatoProb >= 0.999f || r_legato_tie < voices[0].legatoProb);
+                  && (voices[monoSlot].legatoProb >= 0.999f || r_legato_tie < voices[monoSlot].legatoProb);
     gs.slurForward = leadsSlur;
     gs.slurMember  = prevSlur || leadsSlur;   // SLEG mask: this note leads OR continues a slur
 
@@ -765,11 +771,12 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float noteVal
     // Warp mirror (CC_PROMPT_05): the mono feeders read EVERY lane through the ONE
     // uniform source pe.warpRow (mirror when a bank is wired, raw row otherwise —
     // byte-identical at the identity defaults). No per-lane gate, no mono/poly branch.
-    float r_vary   = pe.warpRow(0, PL_VARIATION)[getVariationStep()];
-    float r_rest   = pe.warpRow(0, PL_REST)[getRhythmStep()];
-    float r_legato = pe.warpRow(0, PL_LEGATO)[getLegatoStep()];
-    float r_accent = pe.warpRow(0, PL_ACCENT)[getAccentStep()];  // New: accent strand
-    float r_qmix   = pe.warpRow(0, PL_QMIX)[getQmixStep()];      // Task 4: q-mix strand
+    const VoiceSlot monoSlot = VoiceResolver::mono();   // the mono ROLE, typed (was the bare [0])
+    float r_vary   = pe.warpRow(monoSlot, LaneId{PL_VARIATION})[getVariationStep()];
+    float r_rest   = pe.warpRow(monoSlot, LaneId{PL_REST})[getRhythmStep()];
+    float r_legato = pe.warpRow(monoSlot, LaneId{PL_LEGATO})[getLegatoStep()];
+    float r_accent = pe.warpRow(monoSlot, LaneId{PL_ACCENT})[getAccentStep()];  // New: accent strand
+    float r_qmix   = pe.warpRow(monoSlot, LaneId{PL_QMIX})[getQmixStep()];      // Task 4: q-mix strand
     
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
@@ -814,9 +821,10 @@ void SequencerEngine::legatoCheckpointOnFall() {
     }
     // The legato draw at the rested step decides slur survival (generatedRestBeatsLegato is
     // IRRELEVANT — the incoming rest already makes it silent; only the slur candidacy is in play).
-    // Phase A: legato threshold read from voices[0].legatoProb (V1 = voice 0).
-    float r_legato = pe.warpRow(0, PL_LEGATO)[getLegatoStep()];
-    bool survives = (voices[0].legatoProb >= 0.999f) || (r_legato < voices[0].legatoProb);
+    // Phase A: legato threshold read from the mono slot's legatoProb (V1 = voice 0, TYPED).
+    const VoiceSlot monoSlot = VoiceResolver::mono();
+    float r_legato = pe.warpRow(monoSlot, LaneId{PL_LEGATO})[getLegatoStep()];
+    bool survives = (voices[monoSlot].legatoProb >= 0.999f) || (r_legato < voices[monoSlot].legatoProb);
     if (!survives) gs.slurForward = false;   // chain ENDS at the rest checkpoint
     // else slurForward stays pending across the rest (tieAcrossRests bridge carries it to the rise)
     pendingCheckpointArrival = true;
@@ -862,11 +870,12 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
                 voices[i].gsStep.gateHeld = false; voices[i].gsStep.holdRemain = 0.f;
             }
         }
-        float r_vary   = pe.warpRow(0, PL_VARIATION)[getVariationStep()];
-        float r_rest   = pe.warpRow(0, PL_REST)[getRhythmStep()];
-        float r_legato = pe.warpRow(0, PL_LEGATO)[getLegatoStep()];
-        float r_accent = pe.warpRow(0, PL_ACCENT)[getAccentStep()];  // New: accent strand
-        float r_qmix   = pe.warpRow(0, PL_QMIX)[getQmixStep()];      // Task 4: q-mix strand
+        const VoiceSlot monoSlot = VoiceResolver::mono();   // the mono ROLE, typed (was the bare [0])
+        float r_vary   = pe.warpRow(monoSlot, LaneId{PL_VARIATION})[getVariationStep()];
+        float r_rest   = pe.warpRow(monoSlot, LaneId{PL_REST})[getRhythmStep()];
+        float r_legato = pe.warpRow(monoSlot, LaneId{PL_LEGATO})[getLegatoStep()];
+        float r_accent = pe.warpRow(monoSlot, LaneId{PL_ACCENT})[getAccentStep()];  // New: accent strand
+        float r_qmix   = pe.warpRow(monoSlot, LaneId{PL_QMIX})[getQmixStep()];      // Task 4: q-mix strand
         
         // Mode B: the note DURATION is Gate 1's width, so the INTERNAL note length is nullified
         // to a single 1/16 step (index 6 in NoteValues.hpp = 1.0 step). Using the controller's
@@ -962,10 +971,11 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
         }
     }
 
-    float r_rest   = pe.warpRow(0, PL_REST)[getRhythmStep()];
-    float r_legato = pe.warpRow(0, PL_LEGATO)[getLegatoStep()];
-    float r_accent = pe.warpRow(0, PL_ACCENT)[getAccentStep()];
-    float r_qmix   = pe.warpRow(0, PL_QMIX)[getQmixStep()];
+    const VoiceSlot monoSlot = VoiceResolver::mono();   // the mono ROLE, typed (was the bare [0])
+    float r_rest   = pe.warpRow(monoSlot, LaneId{PL_REST})[getRhythmStep()];
+    float r_legato = pe.warpRow(monoSlot, LaneId{PL_LEGATO})[getLegatoStep()];
+    float r_accent = pe.warpRow(monoSlot, LaneId{PL_ACCENT})[getAccentStep()];
+    float r_qmix   = pe.warpRow(monoSlot, LaneId{PL_QMIX})[getQmixStep()];
 
     // Mode B nullification: the note DURATION is the main gate's width, not an internal
     // note-length.  nvIdx = 6 (1/16 = 1 step) so the internal countdown does not govern.
@@ -996,8 +1006,8 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     // no ghost ever fires.  (Ratchet sub-cells and main onsets are NOT variation-gated — only the
     // ghost is.)  Then executeStep rolls the rest lane, which may still silence a ghost candidate.
     if (ghostRise) {
-        float r_vary = pe.warpRow(0, PL_VARIATION)[getVariationStep()];
-        if (r_vary >= voices[0].variationProb) {
+        float r_vary = pe.warpRow(monoSlot, LaneId{PL_VARIATION})[getVariationStep()];
+        if (r_vary >= voices[monoSlot].variationProb) {
             // No ghost candidate — silent gap.  Preserve the decision (slur bridge) + own cell.
             ghostActive = false;
             result = lastStepResult;
@@ -1214,7 +1224,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                 polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_LEN),
                 polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_OFF),
                 polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_ROT),
-                r_polyLegato, voices[0].legatoProb, nvV, (int)noteCanLeadLegato(nvV),
+                r_polyLegato, voices[VoiceResolver::mono()].legatoProb, nvV, (int)noteCanLeadLegato(nvV),
                 (int)v.gs.slurForward);
 #endif
         }

@@ -540,7 +540,9 @@ struct PatternEngine {
         // the bars can never show a value the audio doesn't consume. No bank ⇒
         // warpRow degenerates to the raw mono row (bank-less hosts byte-identical);
         // pin remap lives upstream in slewed; out-of-range falls back to rhythm (legacy).
-        return warpRow(0, s)[step & 0x0F];
+        // STRONG types: the mono row, TYPED — kMonoVoiceSlot (VoiceResolver::mono()'s
+        // value; the header cannot include VoiceResolver — engine include cycle).
+        return warpRow(dotModular::kMonoVoiceSlot, LaneId{s})[step & 0x0F];
     }
 
     // Poly strands: 15 voices, each with Rhythm, Melody, and Octave draws

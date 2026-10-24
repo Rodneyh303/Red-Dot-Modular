@@ -378,6 +378,13 @@ struct SequencerEngine {
     // Streams: MELODY=0..1, QMIX=2, RHYTHM=3..6 (stream-contiguous).
     enum PolyLane { PL_MELODY = 0, PL_OCTAVE = 1, PL_QMIX = 2, PL_REST = 3, PL_ACCENT = 4, PL_VARIATION = 5, PL_LEGATO = 6, PL_LANES = 7 };
 
+    // STRONG typed indices (CC_PROMPT_STRONG_TYPES): the typed per-voice/lane accessors
+    // take MINTED VoiceSlot (VoiceResolver::mono()/slot(V)/allSlots()) and explicit
+    // LaneId (e.g. LaneId{PL_MELODY}). The bare-int overloads are MIGRATION shims.
+    using VoiceSlot = dotModular::VoiceSlot;
+    using LaneId    = dotModular::LaneId;
+    static_assert((int)PL_LANES == dotModular::kLaneIdCount, "LaneId covers exactly the PL_* lanes");
+
     // ── EAST_EXTRA_LANES stage 2: per-voice ARTICULATION (clamped) ─────────────────────────────
     // VARIATION/LEGATO are mono STRANDS, not poly lanes, so they have no PL_ id and CANNOT be
     // addressed via polyLenE()/editorLane() (that masks & 7 and would alias VAR->QMIX). Use the
