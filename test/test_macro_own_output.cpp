@@ -26,11 +26,13 @@
 // SOURCE, not the timing):
 //   C1. Lane delegated to EAST: the East-spread write (simulated DIRECTLY — the manager is
 //       rig-invisible: applyMono on the mono row + cachedPolySpread/refreshPolyRandomCell
-//       on the poly rows, exactly what the spread pass does) changes EAST's/shared
-//       consumers (masterLaneProbability, finalRandomByStrand, warpRow) but changes
-//       NEITHER Macro's bars-source NOR Macro's OUTPUT. The OUT is asserted through
-//       VoiceResolver::laneProbabilityAtStep — the exact call StraitsSandsMacroVisual::
-//       process() makes.
+//       on the poly rows, exactly what the spread pass does) changes the SHARED consumers
+//       (finalRandomByStrand, warpRow — the engine's raw rows) but changes NEITHER Macro's
+//       bars-source NOR Macro's OUTPUT NOR — since the UI-to-resolver FINISH — the MASTER
+//       prob-out entry (masterLaneProbability, now the ONE accessor, MacroOwn lens; pre-
+//       FINISH it read the shared row and moved, and was listed here as a moving consumer).
+//       The OUT is asserted through VoiceResolver::laneProbabilityAtStep — the exact call
+//       StraitsSandsMacroVisual::process() makes.
 //   C2. Lane delegated to MACRO: East's own-slot edit (the same raw write — the value
 //       East's spread pass WOULD land) still moves the shared rows but changes NEITHER
 //       Macro's bars-source NOR Macro's output (Macro overrides; East inert). The
@@ -251,14 +253,20 @@ int main() {
         for (int s = 0; s < 16; ++s) frBefore[s] = se.pe.finalRandomByStrand(MEL, s);
         // ── East's SPREAD edit on the East-owned lane (the manager's pass, simulated) ──
         eastSpreadWrite(se, MEL, -0.8f);
-        // Sanity: the write TOOK — the shared final (what the engine consumes and East's
-        // own V1 out reports) moved. If this fails the simulation is vacuous.
+        // Sanity: the write TOOK — the shared final (what the engine's audio consumes)
+        // moved. If this fails the simulation is vacuous.
         int moved = 0;
         for (int s = 0; s < 16; ++s)
             if (se.pe.finalRandomByStrand(MEL, s) != frBefore[s]) ++moved;
         EXPECTF(moved == 16, "vacuous simulation: finalRandomByStrand moved only %d/16 steps", moved);
-        EXPECTF(se.masterLaneProbability(MEL) != mpBefore,
-                "vacuous simulation: masterLaneProbability did not move");
+        // UI-to-resolver FINISH (CC_PROMPT_UI_TO_RESOLVER_FINISH_START): the master
+        // prob-out entry now routes through the ONE accessor (MacroOwn lens) — it JOINS
+        // the does-not-move side (pinned as T6 in test_ui_to_resolver). Pre-FINISH it
+        // read the shared row and moved (it was this suite's second vacuous guard).
+        EXPECTF(se.masterLaneProbability(MEL) == mpBefore,
+                "LEAK at the master entry: masterLaneProbability moved under the East "
+                "write — the out entry still reads the shared row (the FINISH rewire "
+                "regressed)");
         // THE CONTRACT: Macro's OUT is UNCHANGED — East never reaches it (one-way
         // borrowing: Macro never borrows East).
         for (int v = 1; v <= 16; ++v)

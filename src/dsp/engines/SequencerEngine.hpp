@@ -1,6 +1,6 @@
 #pragma once
 #include "PatternEngine.hpp"
-#include "../SpreadInterp.hpp"   // CC_PROMPT_macro_output_east_leak: macroOwnLaneProbability (below)
+#include "../SpreadInterp.hpp"   // effectiveProbability's spread term (was macroOwnLaneProbability — CC_PROMPT_macro_output_east_leak, deleted by UI_TO_RESOLVER step 2)
 #include "../gates/GateState.hpp"
 #ifdef MONSOON_PROFILE
 #include "../../MonsoonProfile.hpp"   // CC_PROMPT_cpu_section_profile: Suspect-A call counter (empty flag-off)
@@ -728,11 +728,22 @@ struct SequencerEngine {
                             strandOff(strand), strandRot(strand)) & 0x0F;
     }
     inline float masterLaneProbability(int polyLane) const {
-        // SANDS CONSOLIDATION: use polyLaneStrand (now handles all 7 lanes incl. VAR/LEG).
-        // Previously this duplicated the switch WITHOUT the VAR/LEG cases, so voice 1's
-        // VAR/LEG display fell back to STRAND_RHYTHM (showing rhythm values — a bug).
-        int strand = polyLaneStrand(polyLane);
-        return pe.finalRandomByStrand(strand, masterLaneStep(polyLane));
+        // UI-to-resolver FINISH (CC_PROMPT_UI_TO_RESOLVER_FINISH_START): the MASTER
+        // prob-out entry (VoiceResolver::laneProbability's V1 branch — East's ch0 out
+        // channel) reads the ONE accessor: effectiveProbability at the EXPLICIT V1
+        // voiceSlot (0), MacroOwn lens, at the master's own LOR step. The OLD path
+        // (finalRandomByStrand → warpRow(0) — the hardcoded voice-0 residue) read the
+        // SHARED mono row, which the owner's spread pass WRITES, so East's spread
+        // modulated this out (the leak Rodney scoped). The MacroOwn lens reads the
+        // published base + macroOwnSpread only — one-way borrowing by construction —
+        // and the value is bit-identical to VoiceResolver::laneProbabilityAtStep(1, ·)
+        // at the same step: the ONE V1 out value (bars and out read the same voice by
+        // construction). masterLaneStep keeps the direction-aware mono lane position
+        // (SANDS CONSOLIDATION: polyLaneStrand handles all 7 lanes incl. VAR/LEG —
+        // previously this switch lacked the VAR/LEG cases, so voice 1's VAR/LEG
+        // display fell back to STRAND_RHYTHM — a bug).
+        return effectiveProbability(/*voice=*/0, polyLane, masterLaneStep(polyLane),
+                                    ProbLens::MacroOwn);
     }
 
     // ── THE ONE effective-probability accessor (CC_PROMPT_UI_TO_RESOLVER_SPEC step 1) ──
@@ -779,11 +790,13 @@ struct SequencerEngine {
     enum class ProbLens { Owner, MacroOwn };
     float effectiveProbability(int voice, int lane, int step, ProbLens lens) const {
 #ifdef MONSOON_PROFILE
-        // FAST-PATH Suspect A (CC_PROMPT_cpu_section_profile): count EVERY call — both
-        // consumers land here (the Macro prob-CV sweep, engine thread — STEP-cached by
-        // the module's step-3 cache — and the bars' refresh, UI thread; hence the
-        // relaxed atomic). Macro's process() logs calls at ~50k cadence: the fix for a
-        // per-sample count is THIS spec (the step cache), not a point-patch.
+        // FAST-PATH Suspect A (CC_PROMPT_cpu_section_profile): count EVERY call — the
+        // consumers landing here: the Macro prob-CV sweep (engine thread — STEP-cached
+        // by the module's step-3 cache), the bars' refresh (UI thread), and the master
+        // prob-out entry (East's ch0 out channel, engine thread — control-rate-throttled
+        // by East's own out sweep; hence the relaxed atomic). Macro's process() logs
+        // calls at ~50k cadence: the fix for a per-sample count is THIS spec (the step
+        // cache), not a point-patch.
         monsoonProfile::effProbCalls.fetch_add(1, std::memory_order_relaxed);
 #endif
         const int l = (lane >= 0 && lane < PL_LANES) ? lane : PL_REST;

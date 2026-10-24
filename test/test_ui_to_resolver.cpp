@@ -34,6 +34,17 @@
 //   T5 RATE (lands with the step cache): the heavy resolve runs at STEP rate inside
 //     the module's cache — the /32 throttle and the SweepSig fingerprint gate are
 //     GONE. STRUCTURAL + the purity/stability behavioural half.
+//   T6 THE OUT ENTRY (CC_PROMPT_UI_TO_RESOLVER_FINISH_START — the CC_PROMPT_05 lesson,
+//     made structural): a green suite at the ACCESSOR is worthless if the OUT still
+//     reads the old path — this suite was green while masterLaneProbability (the
+//     master prob-out entry: VoiceResolver::laneProbability's V1 branch, East's ch0
+//     out channel) still called finalRandomByStrand → warpRow(0), the hardcoded
+//     voice-0 residue. T6 drives the REAL entry: the one-producer identity (T6a:
+//     masterLaneProbability IS effectiveProbability(kMonoSlot, ·, MacroOwn) at the
+//     master's own step), the one-way no-leak rule (T6b: the East spread write never
+//     moves it), the explicit-voice rule (T6c: it does NOT follow warpRow(0)) — all
+//     THROUGH the entry, never the accessor in isolation. RED on the pre-FINISH tree;
+//     the structural half pins the wiring in source.
 //
 // SUBSUMPTION (the C3(d) regression guard, carried from test_macro_own_output): the
 // MacroOwn lens reproduces the OLD macroOwnLaneProbability formula bit-exactly — the
@@ -93,6 +104,26 @@ static void fillSlewedGolden(PatternEngine& pe) {
     pe.publishSlewedRhythm();   // rhythm + accent + variation + legato
     pe.publishSlewedMelody();   // melody + octave
     pe.publishSlewedQmix();
+}
+
+// Simulate the manager's East-spread pass on `lane` (the test_macro_own_output basis,
+// reused verbatim — the manager is rig-invisible; these are the exact writes it
+// performs, at the engine's own seams): the control-rate mono write (polyRandom(0,·) =
+// applyMono with the OWNER's spread) + the step-rate poly writes (cachedPolySpread +
+// refreshPolyRandomCell, which also refreshes the warp mirror cells). NEGATIVE spread
+// so the mono row actually moves (positive self-target spread is the anchor no-op).
+// These writes touch random_/warpRow ONLY — never the pubSlewed* published base nor
+// macroOwnSpread — the exact seam the master out entry must not read.
+static void eastSpreadWrite(SequencerEngine& se, int lane, float eastSpread) {
+    PatternEngine& pe = se.pe;
+    pe.cachedSpreadInitialized = true;   // refreshPolyRandomCell's gate (set in sync())
+    se.spreadERef(0, lane) = eastSpread; // the store holds the OWNER's spread on this lane
+    for (int i = 0; i < 16; ++i)
+        pe.polyRandom(0, lane)[i] = redDot::SpreadInterp::applyMono(pe, lane, i, eastSpread);
+    for (int v = 1; v < 16; ++v) {
+        pe.cachedPolySpread[v][lane] = eastSpread;
+        for (int i = 0; i < 16; ++i) se.refreshPolyRandomCell(v, lane, i);
+    }
 }
 
 // ── Structural-pin helpers (the B3 precedent) ─────────────────────────────────
@@ -273,6 +304,109 @@ int main() {
                     ch, ch + 1, ch);
     });
 
+    // ── T6: THE OUT ENTRY (CC_PROMPT_UI_TO_RESOLVER_FINISH_START) ────────────────
+    // The CC_PROMPT_05 lesson, made structural: this suite was GREEN while the real
+    // output wiring (masterLaneProbability → finalRandomByStrand → warpRow(0)) never
+    // called the accessor — a green test at the accessor ≠ the output using it. Every
+    // T6 assertion goes THROUGH masterLaneProbability (the actual prob-out entry —
+    // VoiceResolver::laneProbability's V1 branch, East's ch0 out channel), never the
+    // accessor in isolation.
+    TEST("T6a THE OUT ENTRY: masterLaneProbability IS effectiveProbability(V1=kMonoSlot, MacroOwn) at the master's own step — the one-producer identity at the OUTPUT entry, all 7 lanes, driven playhead steps", {
+        SequencerEngine se;
+        fillSlewedGolden(se.pe);
+        // Macro's OWN spread, NEGATIVE per lane: the V1 anchor self-target no-op holds
+        // only at spread >= 0 (negative inverts toward the complement), so the lens
+        // actually composes and the accessor's value is maximally distinguishable from
+        // the OLD path's raw-row read (the RED condition).
+        for (int l = 0; l < 7; ++l) se.macroOwnSpread[l] = -0.15f - 0.07f * l;
+        // Identity LOR per strand so masterLaneStep follows the driven tick (lorStore_
+        // zero-inits: len 0 would pin every step to 0 — set len 16, off/rot 0):
+        for (int s = 0; s < 7; ++s) {
+            se.strandLenRef(s) = 16; se.strandOffRef(s) = 0; se.strandRotRef(s) = 0;
+        }
+        dotModular::VoiceResolver resolver(se);
+        const int ticks[4] = { 0, 3, 7, 15 };
+        int seen[4] = { -1, -1, -1, -1 };
+        for (int l = 0; l < 7; ++l) {
+            const int strand = SequencerEngine::polyLaneStrand(l);
+            for (int ti = 0; ti < 4; ++ti) {
+                se.laneTick_[strand] = ticks[ti];          // drive the master playhead
+                const int step = se.masterLaneStep(l);
+                if (l == 0) seen[ti] = step;
+                const float want = se.effectiveProbability(0, l, step, Lens::MacroOwn);
+                EXPECTF(se.masterLaneProbability(l) == want,
+                        "master out != the ONE accessor (lane=%d step=%d: %.9g vs %.9g) — "
+                        "the out entry still reads its own path",
+                        l, step, (double)se.masterLaneProbability(l), (double)want);
+                // ONE V1 out value: the resolver's at-step entry (the Macro-out V1
+                // channel) and the master entry are the SAME source at the same step.
+                EXPECTF(resolver.laneProbabilityAtStep(1, l, step) == want,
+                        "the master entry diverged from the resolver's V1 at-step entry "
+                        "(lane=%d step=%d) — two V1 out values",
+                        l, step);
+                EXPECTF(resolver.laneProbability(1, l) == want,
+                        "VoiceResolver::laneProbability(1,·) diverged (lane=%d step=%d) — "
+                        "the V1 branch left the master entry",
+                        l, step);
+            }
+        }
+        for (int ti = 0; ti < 4; ++ti)
+            for (int tj = ti + 1; tj < 4; ++tj)
+                EXPECTF(seen[ti] != seen[tj],
+                        "vacuous: the driven ticks did not produce distinct steps "
+                        "(%d,%d,%d,%d) — the identity ran at one step only",
+                        seen[0], seen[1], seen[2], seen[3]);
+    });
+
+    TEST("T6b NO-LEAK THROUGH THE OUT ENTRY: the East spread write (the raw write East's pass would land — owner either way, the C2 strong form) does NOT move masterLaneProbability on ANY lane", {
+        SequencerEngine se;
+        fillSlewedGolden(se.pe);
+        float before[7], frBefore[7];
+        for (int l = 0; l < 7; ++l) {
+            before[l] = se.masterLaneProbability(l);
+            frBefore[l] = se.pe.finalRandomByStrand(SequencerEngine::polyLaneStrand(l),
+                                                    se.masterLaneStep(l));
+        }
+        for (int l = 0; l < 7; ++l) {
+            eastSpreadWrite(se, l, -0.8f);
+            // Vacuous guard: the shared voice-0 row (what the OLD out read) really
+            // moved on this lane — the write took.
+            EXPECTF(se.pe.finalRandomByStrand(SequencerEngine::polyLaneStrand(l),
+                                              se.masterLaneStep(l)) != frBefore[l],
+                    "vacuous: the East write did not move the shared row (lane %d)", l);
+            // THE ONE-WAY RULE at the master entry: East's spread never reaches it.
+            EXPECTF(se.masterLaneProbability(l) == before[l],
+                    "LEAK through the master out entry (lane %d: %.9g -> %.9g) — East's "
+                    "spread write moved the prob-out",
+                    l, (double)before[l], (double)se.masterLaneProbability(l));
+        }
+    });
+
+    TEST("T6c EXPLICIT VOICE AT THE OUT ENTRY: after the East write, masterLaneProbability does NOT follow finalRandomByStrand → warpRow(0) (the hardcoded voice-0 residue) — it follows the explicit-voice accessor", {
+        SequencerEngine se;
+        fillSlewedGolden(se.pe);
+        for (int l = 0; l < 7; ++l) {
+            const int strand = SequencerEngine::polyLaneStrand(l);
+            const int step = se.masterLaneStep(l);
+            const float clean = se.pe.finalRandomByStrand(strand, step);
+            eastSpreadWrite(se, l, -0.85f);
+            const float dirty = se.pe.finalRandomByStrand(strand, step);
+            EXPECTF(dirty != clean,
+                    "vacuous: the East write did not move the voice-0 row (lane %d)", l);
+            // The OLD wiring returned exactly this dirty row (the leak Rodney scoped).
+            EXPECTF(se.masterLaneProbability(l) != dirty,
+                    "the master out still tracks warpRow(0) (lane %d: %.9g == %.9g) — "
+                    "the hardcoded voice-0 residue is still on the out's route",
+                    l, (double)se.masterLaneProbability(l), (double)dirty);
+            // The NEW wiring: the explicit-voice accessor's value, in this divergent
+            // state too (macroOwnSpread defaults 0 → the published base, bit-exact).
+            EXPECTF(se.masterLaneProbability(l) ==
+                        se.effectiveProbability(0, l, step, Lens::MacroOwn),
+                    "the master out diverged from the explicit-voice accessor (lane %d)",
+                    l);
+        }
+    });
+
     // ── SUBSUMPTION: the MacroOwn lens reproduces the OLD formula bit-exactly ───
     TEST("SUBSUMPTION: effectiveProbability(MacroOwn) == the OLD macroOwnLaneProbability formula (pubSlewed base + macroOwnSpread via SpreadInterp + warpDisplayMix) — bit-exact; the bars' values do not change", {
         SequencerEngine se;
@@ -356,6 +490,28 @@ int main() {
         EXPECTF(contains(eng, "enum class ProbLens { Owner, MacroOwn }"),
                 "SequencerEngine.hpp: the lens enum is gone — the one-way borrowing "
                 "contract has no structural anchor");
+    });
+
+    // ── T6 STRUCTURAL (the FINISH wiring pin — the aspirational-comment failure
+    //    mode): masterLaneProbability's BODY calls the ONE accessor and NOT the old
+    //    path. The pre-FINISH tree's accessor comment claimed "the prob-outs ALL read
+    //    THIS function" while the master entry still called the old path — comments
+    //    are not wiring; this pin is.
+    TEST("T6 STRUCTURAL: masterLaneProbability (the master prob-out entry) calls effectiveProbability — NOT finalRandomByStrand (the warpRow(0) voice-0 residue)", {
+        const std::string eng = slurp(repoRoot() + "/src/dsp/engines/SequencerEngine.hpp");
+        const size_t fn = eng.find("inline float masterLaneProbability");
+        EXPECTF(fn != std::string::npos,
+                "SequencerEngine.hpp: masterLaneProbability not found");
+        const size_t end = eng.find("}", fn);
+        EXPECTF(end != std::string::npos,
+                "SequencerEngine.hpp: masterLaneProbability body not found");
+        const std::string body = eng.substr(fn, end - fn);
+        EXPECTF(contains(body, "effectiveProbability("),
+                "masterLaneProbability does not call the ONE accessor — the out entry "
+                "is off the one-producer route (the aspirational-comment failure mode)");
+        EXPECTF(!contains(body, "finalRandomByStrand("),
+                "masterLaneProbability still calls finalRandomByStrand — the old path "
+                "(warpRow(0), the hardcoded voice-0 residue) is still on the out's route");
     });
 
     // ── T4 DIRECTION (structural — the manager is rig-invisible): all 7 lanes
