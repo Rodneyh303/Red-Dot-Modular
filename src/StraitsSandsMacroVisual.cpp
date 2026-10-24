@@ -867,6 +867,15 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     // inert on THIS module's outs now; the value between steps is held by design).
     // macroOwnSpread is published by the MANAGER (publishGlobal's resolver output),
     // not here.
+    // PERF (CPU regression fix): the per-lane step-detect + resolve + out-walk below is
+    // throttled to control rate (/32). 70dd837 removed the old /32 throttle and relied on the
+    // step-cache's per-sample gate (calcPlayhead×7 + compares every sample); that per-sample
+    // scaffolding — not the resolve — was the regression (Macro-only 3% vs East 1%). The out is
+    // latched per step BY DESIGN, so running the step-detect at control rate instead of per
+    // sample is behaviour-identical (a musical step lasts orders of magnitude longer than one
+    // control cycle): the step change is caught at the next throttle tick, and between ticks the
+    // ports hold their last-written voltages (Rack port-hold + the outFresh write-elimination).
+    if (probOutDiv.process())
     for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // 7 poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG)
         // Macro's OWN global LOR step for this lane (from macroBase+CVDelta — identical
         // to Macro's editor playhead, independent of East/ownership). Same step for

@@ -226,6 +226,7 @@ struct StraitsSandsMacroVisual : Module {
         config(0, StraitsMacroVisualIds::NUM_INPUTS,
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
         monLookupDiv.setDivision(8);   // topology changes are control-rate
+        probOutDiv.setDivision(32);    // prob-out step-cache throttle — the known-good /32 (restored)
         // (the control-rate prob-CV throttle DELETED: CC_PROMPT_UI_TO_RESOLVER_SPEC step 3.
         //  The resolve is STEP-cached (stepProb_, below); no control-rate recompute
         //  exists to throttle.)
@@ -284,6 +285,13 @@ struct StraitsSandsMacroVisual : Module {
     // PERF: chain walk is control-rate work (Rodney audit item 3).
     Monsoon* cachedMon_ = nullptr;
     rack::dsp::ClockDivider monLookupDiv;
+    // PERF (CPU regression fix — 70dd837 deleted the /32 throttle for a step-cache that gates
+    // worse; restore a control-rate throttle ON TOP of the step-cache). The step-detect +
+    // resolve loop runs at most at control rate (~1.5 kHz), never per-sample. Between throttle
+    // ticks the ports hold their last-written values (the step-cache's design — the out is
+    // latched per step). A real step advance is caught at the next throttle tick (a musical step
+    // lasts orders of magnitude longer than one control cycle), so correctness is unchanged.
+    rack::dsp::ClockDivider probOutDiv;
     bool dirModPrev[dotModular::SandsGrid::POLY_LANES] = {};
 
     // ── The prob-out STEP CACHE (CC_PROMPT_UI_TO_RESOLVER_SPEC step 3) ──────────────
