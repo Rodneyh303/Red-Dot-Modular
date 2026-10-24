@@ -1602,3 +1602,35 @@ the six shared-modulation factors; spread>0 = frailty = those factors + the Gaus
 (continuous, λ=0 alone) + atom-driven λ reachable via either. The atoms are the λ carrier throughout;
 spread adds the latent-correlation factor and a second route to atom co-occurrence. STILL not strict
 Krupskii-Joe at spread>0 (conditional coupling remains); IS Krupskii-Joe-style at spread=0.
+
+────────────────────────────────────────────────────────────────────────────────
+## IS IT CLAYTON / HOW ARCHIMEDEAN? (Rodney) — Archimedean only at the symmetric vertex; tail is MO not Clayton
+
+### Clayton: NO (not without Gamma-shaping + it'd be inert anyway)
+Clayton is the Gamma-frailty, exponential-margin Archimedean copula: generator t^-θ-1, λ_L>0 / λ_U=0,
+conditional independence given a GAMMA factor. Our frailty setup is the right FAMILY SHAPE (frailty →
+Archimedean at spread=0) but Clayton SPECIFICALLY needs: (a) the frailty law = GAMMA (ours is whatever
+the modulation SIGNAL's distribution is — an LFO/CV/sweep, NOT Gamma by default; general frailty →
+Archimedean with generator = inverse MGF of the mixing law, Clayton is only the Gamma case); (b)
+continuous λ_L>0 (our CONTINUOUS frailty gives λ=0 by the bounded-factor result — Clayton is DEFINED by
+λ_L>0, so the continuous version CAN'T be Clayton). The tail dependence we CAN reach is via ATOMS →
+MARSHALL-OLKIN (singular, common-shock), NOT Clayton (absolutely continuous, Gamma). So the reachable
+tail family is MO, Clayton's SIBLING but a different copula. To actually reach Clayton: Gamma-shape the
+modulation signal + exponential-ish margins — a deliberate move, and it'd give the same perceptually-inert
+continuous λ as the MO tail (clamp verdict), so a curiosity not a gain.
+
+### How Archimedean: FULLY, but only at the maximally-SYMMETRIC vertex (a measure-zero corner)
+Archimedean ⇔ EXCHANGEABLE + generator form C = φ^-1(Σφ(u_i)). Our construction is GENUINELY Archimedean
+EXACTLY when: spread=0 (no Gaussian-MA term) AND shared frailty is the only coupling AND HOMOGENEOUS
+loadings (every voice same loading) AND same ℓ. Under all of these → a real Archimedean copula (generator
+= inverse MGF of the frailty law).
+EVERY asymmetry EXITS the Archimedean class:
+  - spread>0 → + Gaussian-MA coupling → not Archimedean (no single generator).
+  - per-voice loadings (w-mod depth/sign via Sands unlock) → not exchangeable → not Archimedean.
+  - heterogeneous ℓ (chord-anchors) → not exchangeable → not Archimedean.
+  - CA (leader-follower / routing tree) → asymmetric → not Archimedean.
+So Archimedean is the DEGENERATE SYMMETRIC LIMIT, not the general behaviour — and the asymmetric cases
+are the musically-DISTINCTIVE ones. The architecture is BUILT to break exchangeability (that's what
+spread/CA/per-voice ARE for), so Archimedean is the vertex it DEPARTS from, not where it lives. The
+instrument is firmly non-Archimedean in normal use; Archimedean (and within it, Clayton) is a
+doubly-special corner.
