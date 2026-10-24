@@ -30,6 +30,7 @@
 #include <string>
 
 #include "engines/SequencerEngine.hpp"
+#include "VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting
 
 #define SUITE(n) std::cout << "\n\033[1;34m[" << (n) << "]\033[0m\n"
 #define TEST(desc, ...) do { try { __VA_ARGS__; \
@@ -56,11 +57,11 @@ static PatternInput makeInput() {
 // Drive one Gate 1 RISE through the real engine. gate1High=true models the gate high at the edge.
 static StepResult rise(SequencerEngine& eng, float restProb, float legatoProb, float noteVal) {
     PatternInput in = makeInput();
-    eng.voices[0].restProb      = restProb;
-    eng.voices[0].legatoProb    = legatoProb;
-    eng.voices[0].accentProb    = 0.25f;     // default (PatternInput::accentProb deleted)
-    eng.voices[0].qmixLevel     = 0.f;       // default (PatternInput::qmixLevel deleted)
-    eng.voices[0].variationProb = in.variationAmount;
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].restProb      = restProb;
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].legatoProb    = legatoProb;
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].accentProb    = 0.25f;     // default (PatternInput::accentProb deleted)
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].qmixLevel     = 0.f;       // default (PatternInput::qmixLevel deleted)
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = in.variationAmount;
     return eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, noteVal, in);
 }
 
@@ -229,7 +230,7 @@ int main() {
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
         rise(eng, 0.f, 1.0f, 4.f);               // A commits slurForward
         EXPECT(eng.gs.slurForward == true);
-        eng.voices[0].legatoProb = 0.0f;   // simulate legato=0 at the checkpoint step
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].legatoProb = 0.0f;   // simulate legato=0 at the checkpoint step
         eng.legatoCheckpointOnFall();   // the fall checkpoint; legato=0 -> never survives
         EXPECT(eng.gs.slurForward == false);     // chain ENDED at the rest checkpoint
         EXPECT(eng.pendingCheckpointArrival == true);

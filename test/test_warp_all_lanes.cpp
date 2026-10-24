@@ -225,10 +225,10 @@ int main() {
         pe.setWarpBank(&bank);
         pe.redrawRhythm(in);
         for (int i = 0; i < 16; ++i)
-            EXPECTF(pe.rhythmPattern[i] == (pe.warpRow(0, REST)[i] >= in.restProb),
+            EXPECTF(pe.rhythmPattern[i] == (pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{REST})[i] >= in.restProb),
                     "step %d: pattern %d != warpRow-fed %d (warped %.9g vs restProb %.9g)",
-                    i, (int)pe.rhythmPattern[i], (int)(pe.warpRow(0, REST)[i] >= in.restProb),
-                    (double)pe.warpRow(0, REST)[i], (double)in.restProb);
+                    i, (int)pe.rhythmPattern[i], (int)(pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{REST})[i] >= in.restProb),
+                    (double)pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{REST})[i], (double)in.restProb);
         // Non-vacuous: the warp must move at least one cell across the threshold
         // vs what the RAW row would have produced (the pre-05 expression).
         int diffs = 0;
@@ -258,10 +258,10 @@ int main() {
         pe.refreshVisualCache(in);
         EXPECT(pe.rhythmDrawCtr == pe.rhythmCtrApplied);   // the recompute consumed it
         for (int i = 0; i < 16; ++i)
-            EXPECTF(pe.rhythmPattern[i] == (pe.warpRow(3, REST)[i] >= in.restProb),
+            EXPECTF(pe.rhythmPattern[i] == (pe.warpRow(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{REST})[i] >= in.restProb),
                     "step %d: pattern %d != warpRow(3,REST)-fed %d (warped %.9g)",
-                    i, (int)pe.rhythmPattern[i], (int)(pe.warpRow(3, REST)[i] >= in.restProb),
-                    (double)pe.warpRow(3, REST)[i]);
+                    i, (int)pe.rhythmPattern[i], (int)(pe.warpRow(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{REST})[i] >= in.restProb),
+                    (double)pe.warpRow(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{REST})[i]);
         int diffs = 0;
         for (int i = 0; i < 16; ++i)
             if (pe.rhythmPattern[i] != (pe.random_[3][REST][i] >= in.restProb)) ++diffs;

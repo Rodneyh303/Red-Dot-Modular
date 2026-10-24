@@ -113,16 +113,16 @@ int main() {
     SUITE("Poly LOR: set/read polyLen/Off/Rot[bank][lane] — 15 banks × 4 lanes, no leak");
     for (int b = 1; b < 16; ++b)
         for (int l = 0; l < SequencerEngine::PL_LANES; ++l) {
-            eng.polyLenERef(b, l) = polySentinel(0, b, l);
-            eng.polyOffERef(b, l) = polySentinel(1, b, l);
-            eng.polyRotERef(b, l) = polySentinel(2, b, l);
+            eng.polyLenERef(dotModular::VoiceResolver::slot(b + 1), dotModular::LaneId{l}) = polySentinel(0, b, l);
+            eng.polyOffERef(dotModular::VoiceResolver::slot(b + 1), dotModular::LaneId{l}) = polySentinel(1, b, l);
+            eng.polyRotERef(dotModular::VoiceResolver::slot(b + 1), dotModular::LaneId{l}) = polySentinel(2, b, l);
         }
     TEST("every poly (bank,lane) reads its OWN sentinel (no cross-bank / cross-lane leak)", {
         for (int b = 1; b < 16; ++b)
             for (int l = 0; l < SequencerEngine::PL_LANES; ++l) {
-                EXPECT_EQ(eng.polyLenE(b, l), polySentinel(0, b, l));
-                EXPECT_EQ(eng.polyOffE(b, l), polySentinel(1, b, l));
-                EXPECT_EQ(eng.polyRotE(b, l), polySentinel(2, b, l));
+                EXPECT_EQ(eng.polyLenE(dotModular::VoiceResolver::slot(b + 1), dotModular::LaneId{l}), polySentinel(0, b, l));
+                EXPECT_EQ(eng.polyOffE(dotModular::VoiceResolver::slot(b + 1), dotModular::LaneId{l}), polySentinel(1, b, l));
+                EXPECT_EQ(eng.polyRotE(dotModular::VoiceResolver::slot(b + 1), dotModular::LaneId{l}), polySentinel(2, b, l));
             }
     });
 
@@ -138,9 +138,9 @@ int main() {
             for (int ed = 0; ed < SequencerEngine::PL_LANES; ++ed) {   // 5 poly editor lanes (PL_LANES incl QMIX)
                 int engLane = ed;   // identity (editor == engine since lane-index unification)
                 // reading via editor lane `ed` must return the sentinel stored at engine lane `engLane`
-                EXPECT_EQ(eng.polyLOR(b, ed, SequencerEngine::LOR_LEN), polySentinel(0, b, engLane));
-                EXPECT_EQ(eng.polyLOR(b, ed, SequencerEngine::LOR_OFF), polySentinel(1, b, engLane));
-                EXPECT_EQ(eng.polyLOR(b, ed, SequencerEngine::LOR_ROT), polySentinel(2, b, engLane));
+                EXPECT_EQ(eng.polyLOR(dotModular::VoiceResolver::slot(b + 1), dotModular::LaneId{ed}, SequencerEngine::LOR_LEN), polySentinel(0, b, engLane));
+                EXPECT_EQ(eng.polyLOR(dotModular::VoiceResolver::slot(b + 1), dotModular::LaneId{ed}, SequencerEngine::LOR_OFF), polySentinel(1, b, engLane));
+                EXPECT_EQ(eng.polyLOR(dotModular::VoiceResolver::slot(b + 1), dotModular::LaneId{ed}, SequencerEngine::LOR_ROT), polySentinel(2, b, engLane));
             }
     });
     TEST("polyLORRef(editorLane) and polyLenE(engineLane) address the SAME unified cell", {
@@ -151,14 +151,14 @@ int main() {
             for (int ed = 0; ed < SequencerEngine::PL_LANES; ++ed) {
                 int engLane = ed;   // identity (editor == engine since lane-index unification)
                 int val = 7000 + b*5 + ed;
-                eng.polyLORRef(b, ed, SequencerEngine::LOR_LEN) = val;
-                EXPECT_EQ(eng.polyLOR(b, ed, SequencerEngine::LOR_LEN), val);   // editor round-trip
-                EXPECT_EQ(eng.polyLenE(b, engLane), val);                       // engine accessor agrees
+                eng.polyLORRef(dotModular::VoiceResolver::slot(b + 1), dotModular::LaneId{ed}, SequencerEngine::LOR_LEN) = val;
+                EXPECT_EQ(eng.polyLOR(dotModular::VoiceResolver::slot(b + 1), dotModular::LaneId{ed}, SequencerEngine::LOR_LEN), val);   // editor round-trip
+                EXPECT_EQ(eng.polyLenE(dotModular::VoiceResolver::slot(b + 1), dotModular::LaneId{engLane}), val);                       // engine accessor agrees
             }
         // restore the sentinels (engine-order) for later suites
         for (int b = 1; b < 16; ++b)
             for (int l = 0; l < SequencerEngine::PL_LANES; ++l)
-                eng.polyLenERef(b, l) = polySentinel(0, b, l);
+                eng.polyLenERef(dotModular::VoiceResolver::slot(b + 1), dotModular::LaneId{l}) = polySentinel(0, b, l);
     });
 
     // ── 3. Mono ↔ poly independence (separate storage today; must still hold as
@@ -175,7 +175,7 @@ int main() {
         for (int i = 0; i < kNStrands; ++i) eng.strandLenRef(kStrands[i]) = monoSentinel(0, kStrands[i]) + 1;
         for (int b = 1; b < 16; ++b)
             for (int l = 0; l < SequencerEngine::PL_LANES; ++l)
-                EXPECT_EQ(eng.polyLenE(b, l), polySentinel(0, b, l));
+                EXPECT_EQ(eng.polyLenE(dotModular::VoiceResolver::slot(b + 1), dotModular::LaneId{l}), polySentinel(0, b, l));
     });
 
     // ── 4. Spread storage on the engine (B-corrected): spread[16][6] editor-ordered, accessed
@@ -231,18 +231,18 @@ int main() {
         // Poly rows via polyRandom(bank, engLane): distinct per (voice, lane, step).
         for (int v = 0; v < 15; ++v)
             for (int s = 0; s < 16; ++s) {
-                pe.polyRandom(v + 1, SequencerEngine::PL_REST)[s]   = 1.0f + v * 0.1f + s * 0.001f;
-                pe.polyRandom(v + 1, SequencerEngine::PL_MELODY)[s] = 2.0f + v * 0.1f + s * 0.001f;
-                pe.polyRandom(v + 1, SequencerEngine::PL_OCTAVE)[s] = 3.0f + v * 0.1f + s * 0.001f;
-                pe.polyRandom(v + 1, SequencerEngine::PL_ACCENT)[s] = 4.0f + v * 0.1f + s * 0.001f;
+                pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{SequencerEngine::PL_REST})[s]   = 1.0f + v * 0.1f + s * 0.001f;
+                pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[s] = 2.0f + v * 0.1f + s * 0.001f;
+                pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{SequencerEngine::PL_OCTAVE})[s] = 3.0f + v * 0.1f + s * 0.001f;
+                pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{SequencerEngine::PL_ACCENT})[s] = 4.0f + v * 0.1f + s * 0.001f;
             }
         TEST("poly rows hold distinct per-(voice,lane,step) values, no aliasing", {
             for (int v = 0; v < 15; ++v)
                 for (int s = 0; s < 16; ++s) {
-                    EXPECT_NEAR(pe.polyRandom(v + 1, SequencerEngine::PL_REST)[s],   1.0f + v * 0.1f + s * 0.001f);
-                    EXPECT_NEAR(pe.polyRandom(v + 1, SequencerEngine::PL_MELODY)[s], 2.0f + v * 0.1f + s * 0.001f);
-                    EXPECT_NEAR(pe.polyRandom(v + 1, SequencerEngine::PL_OCTAVE)[s], 3.0f + v * 0.1f + s * 0.001f);
-                    EXPECT_NEAR(pe.polyRandom(v + 1, SequencerEngine::PL_ACCENT)[s], 4.0f + v * 0.1f + s * 0.001f);
+                    EXPECT_NEAR(pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{SequencerEngine::PL_REST})[s],   1.0f + v * 0.1f + s * 0.001f);
+                    EXPECT_NEAR(pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[s], 2.0f + v * 0.1f + s * 0.001f);
+                    EXPECT_NEAR(pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{SequencerEngine::PL_OCTAVE})[s], 3.0f + v * 0.1f + s * 0.001f);
+                    EXPECT_NEAR(pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{SequencerEngine::PL_ACCENT})[s], 4.0f + v * 0.1f + s * 0.001f);
                 }
         });
         TEST("mono and poly probability storage are independent (no cross-write)", {

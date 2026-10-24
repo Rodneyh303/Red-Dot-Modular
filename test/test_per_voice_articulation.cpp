@@ -11,6 +11,7 @@
 //       but ALWAYS holds <= mono's (the clamp)
 //   4. table contract the clamp relies on: slowest -> fastest
 #include "SequencerEngine.hpp"
+#include "VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting
 #include "NoteValues.hpp"
 #include <cstdio>
 #include <cmath>
@@ -36,7 +37,7 @@ int main() {
     // voice (mono step + own draw) is provably different from mono and from other voices.
     for (int v = 1; v < 16; ++v)
         for (int i = 0; i < 16; ++i)
-            e.pe.polyRandom(v, SequencerEngine::PL_VARIATION)[i] =
+            e.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_VARIATION})[i] =
                 (float)(((i * 7 + 3) + v * 13) % 16) / 16.f;
 
     e.lastNoteVal_ = 4.f;   // NOTE_VALUE = 1/8
@@ -45,7 +46,7 @@ int main() {
     // draw at mono's step, then clamp to the mono event grid (a voice may release early, never
     // hold past mono's next note — NOTE_VALUES is slowest->fastest, so max() picks the shorter).
     auto expectedDelegated = [&](int v, int monoIdx)->int {
-        float rVoice = e.pe.polyRandom(v, SequencerEngine::PL_VARIATION)[monoIdx];
+        float rVoice = e.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_VARIATION})[monoIdx];
         int nv = e.getNoteLenIdx(e.lastNoteVal_, in, rVoice);
         return (nv > e.lastStepResult.nvIdx) ? nv : e.lastStepResult.nvIdx;
     };
@@ -57,7 +58,7 @@ int main() {
         int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
         e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
         for (int v = 1; v < 16; ++v)
-            check(e.nvIdxForVoice(v, in) == expectedDelegated(v, monoIdx),
+            check(e.nvIdxForVoice(dotModular::VoiceResolver::slot(v + 1), in) == expectedDelegated(v, monoIdx),
                   "delegated -> voice's own draw at mono step, clamped");
     }
 
@@ -69,15 +70,15 @@ int main() {
         int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
         e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
         for (int v = 1; v < 16; ++v)
-            check(e.nvIdxForVoice(v, in) == expectedDelegated(v, monoIdx),
+            check(e.nvIdxForVoice(dotModular::VoiceResolver::slot(v + 1), in) == expectedDelegated(v, monoIdx),
                   "identity LOR -> mono step, own draw, clamped");
     }
 
     // ── 3. per-voice LOR windows: delegation default, then divergence + clamp ──
-    e.polyLORRef(2, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_LEN) = 6;   // V3 (voiceSlot 2)
-    e.polyLORRef(3, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_LEN) = 12;  // V4 (voiceSlot 3)
-    e.polyLORRef(3, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_OFF) = 3;
-    e.polyLORRef(3, SequencerEngine::EDITOR_LANE_VARIATION, SequencerEngine::LOR_ROT) = 2;
+    e.polyLORRef(dotModular::VoiceResolver::slot(2 + 1), dotModular::LaneId{SequencerEngine::EDITOR_LANE_VARIATION}, SequencerEngine::LOR_LEN) = 6;   // V3 (voiceSlot 2)
+    e.polyLORRef(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{SequencerEngine::EDITOR_LANE_VARIATION}, SequencerEngine::LOR_LEN) = 12;  // V4 (voiceSlot 3)
+    e.polyLORRef(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{SequencerEngine::EDITOR_LANE_VARIATION}, SequencerEngine::LOR_OFF) = 3;
+    e.polyLORRef(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{SequencerEngine::EDITOR_LANE_VARIATION}, SequencerEngine::LOR_ROT) = 2;
 
     // 3a. DELEGATION DEFAULT (§4d): even with a dialed LOR, a delegated voice reads MONO's step
     //     (the dialed LOR is ignored) + its own draw → same expectation as case 1. Divergence from
@@ -88,7 +89,7 @@ int main() {
         int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
         e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
         for (int v : {2, 3})
-            check(e.nvIdxForVoice(v, in) == expectedDelegated(v, monoIdx),
+            check(e.nvIdxForVoice(dotModular::VoiceResolver::slot(v + 1), in) == expectedDelegated(v, monoIdx),
                   "delegated (default) -> mono step (dialed LOR ignored), own draw, clamped");
     }
 
@@ -108,7 +109,7 @@ int main() {
         e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
         float monoDur = noteValueSteps(e.lastStepResult.nvIdx);
         for (int v : {2, 3}) {
-            int nv = e.nvIdxForVoice(v, in);
+            int nv = e.nvIdxForVoice(dotModular::VoiceResolver::slot(v + 1), in);
             float dur = noteValueSteps(nv);
             // THE CLAMP: a voice may release early, never hold past mono's next event.
             check(dur <= monoDur + 1e-6f, "clamp: voice hold <= mono hold");

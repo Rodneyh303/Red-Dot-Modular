@@ -107,7 +107,7 @@ int main() {
         PatternEngine pe; fillRandomGolden(pe);   // no bank wired
         for (int v = 0; v < 16; v += 5)
             for (int l = 0; l < 7; ++l)
-                EXPECT(&pe.warpRow(v, l)[0] == &pe.random_[v][l][0]);
+                EXPECT(&pe.warpRow(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{l})[0] == &pe.random_[v][l][0]);
     });
 
     // ── S1b: the rebuild fires inside the REAL recompute path (after the write-back) ──
@@ -414,7 +414,7 @@ int main() {
         for (int s = 0; s < 16; ++s) {
             int semA = 0, semB = 0;
             const float a = pe.genPitchLive(semA, in, pe.random_[0][MEL][s], pe.random_[0][OCT][s]);
-            const float b = pe.genPitchLive(semB, in, pe.warpRow(0, MEL)[s], pe.warpRow(0, OCT)[s]);
+            const float b = pe.genPitchLive(semB, in, pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL})[s], pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{OCT})[s]);
             EXPECT(semA == semB);
             EXPECT(std::memcmp(&a, &b, sizeof(float)) == 0);
             // every strand's display funnel:
@@ -520,12 +520,12 @@ int main() {
         // Non-vacuous: the warp actually moves the MEL mirror row (w=1, u→u³).
         int mirrorDiffs = 0;
         for (int i = 0; i < 16; ++i)
-            if (peW.warpRow(0, MEL)[i] != peW.random_[0][MEL][i]) ++mirrorDiffs;
+            if (peW.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL})[i] != peW.random_[0][MEL][i]) ++mirrorDiffs;
         EXPECT(mirrorDiffs > 0);
         // (1) EXACT: the drawn melodyPitchV/semitone ARE the mirror-fed values.
         for (int i = 0; i < 16; ++i) {
             int sem = 0;
-            const float want = peW.genPitchLive(sem, in, peW.warpRow(0, MEL)[i], peW.warpRow(0, OCT)[i]);
+            const float want = peW.genPitchLive(sem, in, peW.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL})[i], peW.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{OCT})[i]);
             EXPECTF(peW.melodyPitchV[i] == want && peW.melodySemitone[i] == sem,
                     "step %d: draw got (%.9g, %d) want the mirror-fed (%.9g, %d)",
                     i, (double)peW.melodyPitchV[i], peW.melodySemitone[i], (double)want, sem);
@@ -577,7 +577,7 @@ int main() {
         drawTwice(pe, in);
         for (int i = 0; i < 16; ++i) {
             int sem = 0;
-            const float want = pe.genPitchLive(sem, in, pe.warpRow(4, MEL)[i], pe.warpRow(4, OCT)[i]);
+            const float want = pe.genPitchLive(sem, in, pe.warpRow(dotModular::VoiceResolver::slot(4 + 1), dotModular::LaneId{MEL})[i], pe.warpRow(dotModular::VoiceResolver::slot(4 + 1), dotModular::LaneId{OCT})[i]);
             EXPECTF(pe.melodyPitchV[i] == want && pe.melodySemitone[i] == sem,
                     "step %d: got (%.9g, %d) want the mirror(4)-fed (%.9g, %d)",
                     i, (double)pe.melodyPitchV[i], pe.melodySemitone[i], (double)want, sem);
@@ -609,13 +609,13 @@ int main() {
         se.pe.slewedMelody[v][step] = 0.2f;            // the voice's own draw
         se.pe.slewedMelody[0][step] = 0.9f;            // the V1 anchor target
         se.pe.random_[v][MEL][step] = 0.123456f;       // clearly-stale basis
-        se.refreshPolyRandomCell(v, SequencerEngine::PL_MELODY, step);
+        se.refreshPolyRandomCell(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_MELODY}, step);
         const float u = se.pe.random_[v][MEL][step];   // the JUST-refreshed basis
         EXPECTF(u != 0.123456f, "refresh did not move the cell (u=%.9g)", (double)u);
         const float want = (float)dotModular::TriangularWarp{0.25}.invCDF((double)u);   // w=1
-        EXPECTF(se.pe.warpRow(v, SequencerEngine::PL_MELODY)[step] == want,
+        EXPECTF(se.pe.warpRow(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[step] == want,
                 "poly landing read %.9g, want the FRESH mirror %.9g (u=%.9g)",
-                (double)se.pe.warpRow(v, SequencerEngine::PL_MELODY)[step], (double)want, (double)u);
+                (double)se.pe.warpRow(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[step], (double)want, (double)u);
         EXPECT(se.pe.warped_[v][MEL][step] == want);   // the cell-scope rebuild landed
     });
 

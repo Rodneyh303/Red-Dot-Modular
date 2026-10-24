@@ -36,6 +36,7 @@
 #include <vector>
 
 #include "engines/SequencerEngine.hpp"
+#include "VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting
 
 #define SUITE(n) std::cout << "\n\033[1;34m[" << (n) << "]\033[0m\n"
 #define TEST(desc, ...) do { try { __VA_ARGS__; \
@@ -90,11 +91,11 @@ static std::vector<Snap> runSeq(bool quantiserSrc, float qmixLevel, float quanti
     const float v0accent = 0.0f;   // accent off (deterministic) — gate behaviour we compare
     std::vector<Snap> out;
     auto step = [&](float restProb, float legatoProb) {
-        eng.voices[0].restProb   = restProb;
-        eng.voices[0].legatoProb = legatoProb;
-        eng.voices[0].accentProb    = v0accent;
-        eng.voices[0].qmixLevel     = v0qmix;
-        eng.voices[0].variationProb = in.variationAmount;
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].restProb   = restProb;
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].legatoProb = legatoProb;
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].accentProb    = v0accent;
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].qmixLevel     = v0qmix;
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = in.variationAmount;
         StepResult r = eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, 4.f, in);
         out.push_back({ category(r.decision), eng.gs.gateHeld, r.accented, eng.gs.currentPitchV, r.decision });
     };

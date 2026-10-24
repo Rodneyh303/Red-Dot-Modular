@@ -58,21 +58,21 @@ int main() {
             // Rhythm (REST lane)
             bool restNonzero = false;
             for (int s = 0; s < 16; ++s)
-                if (pe.polyRandom(v, SequencerEngine::PL_REST)[s] != 0.f) { restNonzero = true; break; }
+                if (pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_REST})[s] != 0.f) { restNonzero = true; break; }
             std::snprintf(label, sizeof(label), "N=%d voiceSlot=%d (V%d) REST nonzero", N, v, v + 1);
             check(restNonzero, label);
 
             // Melody
             bool melNonzero = false;
             for (int s = 0; s < 16; ++s)
-                if (pe.polyRandom(v, SequencerEngine::PL_MELODY)[s] != 0.f) { melNonzero = true; break; }
+                if (pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[s] != 0.f) { melNonzero = true; break; }
             std::snprintf(label, sizeof(label), "N=%d voiceSlot=%d (V%d) MELODY nonzero", N, v, v + 1);
             check(melNonzero, label);
 
             // Qmix
             bool qmixNonzero = false;
             for (int s = 0; s < 16; ++s)
-                if (pe.polyRandom(v, SequencerEngine::PL_QMIX)[s] != 0.f) { qmixNonzero = true; break; }
+                if (pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_QMIX})[s] != 0.f) { qmixNonzero = true; break; }
             std::snprintf(label, sizeof(label), "N=%d voiceSlot=%d (V%d) QMIX nonzero", N, v, v + 1);
             check(qmixNonzero, label);
         }
@@ -103,13 +103,13 @@ int main() {
             for (int s = 0; s < 16; ++s) {
                 // The !sandsActive promote writes: polyRandom(v,PL_REST)[s] = slewedRhythm[v][s]
                 // (no spread when cachedSpreadInitialized=false). Check bit-equality.
-                float gotRest = pe.polyRandom(v, SequencerEngine::PL_REST)[s];
+                float gotRest = pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_REST})[s];
                 float wantRest = pe.slewedRhythm[v][s];
                 if (gotRest != wantRest) { restOk = false; ++mismatches; }
-                float gotMel = pe.polyRandom(v, SequencerEngine::PL_MELODY)[s];
+                float gotMel = pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[s];
                 float wantMel = pe.slewedMelody[v][s];
                 if (gotMel != wantMel) { melOk = false; ++mismatches; }
-                float gotQmix = pe.polyRandom(v, SequencerEngine::PL_QMIX)[s];
+                float gotQmix = pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_QMIX})[s];
                 float wantQmix = pe.slewedQmix[v][s];
                 if (gotQmix != wantQmix) { qmixOk = false; ++mismatches; }
             }
@@ -142,7 +142,7 @@ int main() {
             uint64_t h = 1469598103934665603ULL;  // FNV-1a offset basis
             for (int v = 0; v < 16; ++v) {
                 for (int lane = 0; lane < SequencerEngine::PL_LANES; ++lane) {
-                    const float* arr = pe.polyRandom(v, lane);
+                    const float* arr = pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane});
                     for (int s = 0; s < 16; ++s) {
                         uint32_t bits;
                         std::memcpy(&bits, &arr[s], sizeof(bits));
@@ -177,7 +177,7 @@ int main() {
             uint64_t h = 1469598103934665603ULL;
             for (int v = 0; v < 16; ++v)
                 for (int lane = 0; lane < SequencerEngine::PL_LANES; ++lane) {
-                    const float* arr = pe.polyRandom(v, lane);
+                    const float* arr = pe.polyRandom(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane});
                     for (int s = 0; s < 16; ++s) {
                         uint32_t bits;
                         std::memcpy(&bits, &arr[s], sizeof(bits));
@@ -217,7 +217,7 @@ int main() {
         // (i) nonzero — raw store and bar source
         bool rawNonzero = false, pubNonzero = false;
         for (int s = 0; s < 16; ++s) {
-            if (pe.polyRandom(15, SequencerEngine::PL_MELODY)[s] != 0.f) rawNonzero = true;
+            if (pe.polyRandom(dotModular::VoiceResolver::slot(15 + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[s] != 0.f) rawNonzero = true;
             if (pe.pubSlewedPolyMelody[15][s] != 0.f) pubNonzero = true;
         }
         check(rawNonzero, "V16 (voiceSlot 15) MELODY nonzero (random_)");
@@ -229,7 +229,7 @@ int main() {
         pe.latchMix(0.f, 0.30f, 0.f, 0.f, 0.4f, 0.f, true, true, true);
         pe.refreshVisualCache(in);   // first 0.30: z-cache cold at this r → FULL recompute
         for (int s = 0; s < 16; ++s) {
-            rawA[s] = pe.polyRandom(15, SequencerEngine::PL_MELODY)[s];
+            rawA[s] = pe.polyRandom(dotModular::VoiceResolver::slot(15 + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[s];
             pubA[s] = pe.pubSlewedPolyMelody[15][s];
         }
         pe.latchMix(0.f, 0.31f, 0.f, 0.f, 0.4f, 0.f, true, true, true);
@@ -238,7 +238,7 @@ int main() {
         pe.refreshVisualCache(in);   // back to 0.30: ForVoice(15), cache hit
         bool rawStable = true, pubStable = true;
         for (int s = 0; s < 16; ++s) {
-            rawB[s] = pe.polyRandom(15, SequencerEngine::PL_MELODY)[s];
+            rawB[s] = pe.polyRandom(dotModular::VoiceResolver::slot(15 + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[s];
             pubB[s] = pe.pubSlewedPolyMelody[15][s];
             if (rawB[s] != rawA[s]) rawStable = false;
             if (pubB[s] != pubA[s]) pubStable = false;
@@ -258,7 +258,7 @@ int main() {
         pe.refreshVisualCache(in);   // rhythm mix change → rhythm ForVoice path only
         bool isoRaw = true, isoPub = true;
         for (int s = 0; s < 16; ++s) {
-            if (pe.polyRandom(15, SequencerEngine::PL_MELODY)[s] != rawB[s]) isoRaw = false;
+            if (pe.polyRandom(dotModular::VoiceResolver::slot(15 + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[s] != rawB[s]) isoRaw = false;
             if (pe.pubSlewedPolyMelody[15][s] != pubB[s]) isoPub = false;
         }
         check(isoRaw, "V16 MELODY data unaffected by rhythm-mix change (random_)");

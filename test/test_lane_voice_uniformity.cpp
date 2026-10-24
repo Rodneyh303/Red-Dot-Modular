@@ -175,20 +175,21 @@ static void U0_slot_minting() {
         for (int i = 0; i < 7; ++i) if (!seen[i]) ok = false;
         expectCell(ok, F, -1, -1, "allLanes() must cover lanes 0..6 exactly once");
     }
-    // The typed overloads hand back the SAME rows as the int path (mint -> identical cell).
+    // The typed accessors address the SAME cells the raw arrays hold (mint -> identical
+    // cell; a bank-less warpRow IS the raw row). Two DIFFERENT mints of one voice agree.
     {
         SequencerEngine se; fillRandomGolden(se.pe);
         const VoiceSlot s = VR::slot(4);   // V4 -> slot 3
         const LaneId   mel{SequencerEngine::PL_MELODY};
-        expectCell(&se.pe.warpRow(s, mel)[0] == &se.pe.warpRow(3, SequencerEngine::PL_MELODY)[0],
-                   F, 3, 0, "typed warpRow must alias the int path's row");
-        expectCell(&se.pe.polyRandom(s, mel)[0] == &se.pe.polyRandom(3, SequencerEngine::PL_MELODY)[0],
-                   F, 3, 0, "typed polyRandom must alias the int path's row");
-        // VoiceBank: the typed operator[] addresses the same cell the int shim does.
+        expectCell(&se.pe.warpRow(s, mel)[0] == &se.pe.random_[3][SequencerEngine::PL_MELODY][0],
+                   F, 3, 0, "typed warpRow must alias random_[slot 3][MEL] (bank-less twin)");
+        expectCell(&se.pe.polyRandom(s, mel)[0] == &se.pe.random_[3][SequencerEngine::PL_MELODY][0],
+                   F, 3, 0, "typed polyRandom must alias random_[slot 3][MEL]");
+        // VoiceBank: mono() and slot(1) are TWO mints of V1 — they must address the same cell.
         se.voices[VR::mono()].restProb = 0.25f;
-        se.voices[0].restProb          = 0.75f;   // int MIGRATION shim — same cell
+        se.voices[VR::slot(1)].restProb = 0.75f;   // V1 again, minted by voice number
         expectCell(se.voices[VR::mono()].restProb == 0.75f,
-                   F, 0, -1, "VoiceBank typed + int indexing must address the same cells");
+                   F, 0, -1, "VoiceBank: mono() and slot(1) must address the same cell (V1)");
     }
 }
 
@@ -292,7 +293,7 @@ static void U3_warp_consumer_gate() {
             bank.warpW[WarpBank::index(v0, l0)] = 1.f;
             se.pe.rebuildWarpMirrorAll();
 
-            const bool sameRow = (&se.pe.warpRow(v0, l0)[0] == &se.pe.warped_[v0][l0][0]);
+            const bool sameRow = (&se.pe.warpRow(VoiceResolver::slot(v0 + 1), dotModular::LaneId{l0})[0] == &se.pe.warped_[v0][l0][0]);
             char buf[128];
             std::snprintf(buf, sizeof buf, "warpRow(%d,%s) is the RAW row, not the mirror",
                           v0, LANE_NAME[l0]);
@@ -703,11 +704,11 @@ static void U9_lor_store_roundtrip() {
         for (int l = 0; l < 7; ++l)
             for (int item = 0; item < SequencerEngine::LOR_ITEMS; ++item) {
                 const int tag = (v * 7 + l) * 3 + item + 1;
-                se.polyLORRef(v, l, item) = tag;
+                se.polyLORRef(VoiceResolver::slot(v + 1), dotModular::LaneId{l}, item) = tag;
                 char buf[96];
                 std::snprintf(buf, sizeof buf, "polyLOR(%d,%s,item %d)=%d != wrote %d",
-                              v, LANE_NAME[l], item, se.polyLOR(v, l, item), tag);
-                expectCell(se.polyLOR(v, l, item) == tag, F, v, l, buf);
+                              v, LANE_NAME[l], item, se.polyLOR(VoiceResolver::slot(v + 1), dotModular::LaneId{l}, item), tag);
+                expectCell(se.polyLOR(VoiceResolver::slot(v + 1), dotModular::LaneId{l}, item) == tag, F, v, l, buf);
             }
 }
 

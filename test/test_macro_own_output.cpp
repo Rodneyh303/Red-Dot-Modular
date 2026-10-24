@@ -6,7 +6,7 @@
 // *** PINNED-TEST RECONCILIATION (the spec's explicit instruction — a contract
 // update, NOT a cover-up): the spec DELETES SequencerEngine::macroOwnLaneProbability
 // (the third computation of the effective probability) and replaces it with the ONE
-// accessor, SequencerEngine::effectiveProbability(voice, lane, step, ProbLens::
+// accessor, SequencerEngine::effectiveProbability(dotModular::VoiceResolver::slot(voice + 1), dotModular::LaneId{lane}, step, ProbLens::
 // MacroOwn). This suite keeps pinning the SAME who-responds / leak-killing intent —
 // C1/C2's who-moves-what is untouched (they run through VoiceResolver::
 // laneProbabilityAtStep, the prob-out seam, exactly as before); C3/C4 now pin the
@@ -121,10 +121,10 @@ static void eastSpreadWrite(SequencerEngine& se, int lane, float eastSpread) {
     pe.cachedSpreadInitialized = true;   // refreshPolyRandomCell's gate (set in sync())
     se.spreadERef(0, lane) = eastSpread; // the store holds the OWNER's spread on this lane
     for (int i = 0; i < 16; ++i)
-        pe.polyRandom(0, lane)[i] = redDot::SpreadInterp::applyMono(pe, lane, i, eastSpread);
+        pe.polyRandom(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{lane})[i] = redDot::SpreadInterp::applyMono(pe, lane, i, eastSpread);
     for (int v = 1; v < 16; ++v) {
         pe.cachedPolySpread[v][lane] = eastSpread;
-        for (int i = 0; i < 16; ++i) se.refreshPolyRandomCell(v, lane, i);
+        for (int i = 0; i < 16; ++i) se.refreshPolyRandomCell(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane}, i);
     }
 }
 
@@ -154,7 +154,7 @@ static std::string repoRoot() {
 // branch runs.
 template <typename Eng>
 static void macroAccessorContract(Eng& se, int& absent) {
-    if constexpr (requires { se.effectiveProbability(0, PatternEngine::PL_MELODY, 0,
+    if constexpr (requires { se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{PatternEngine::PL_MELODY}, 0,
                                                      SequencerEngine::ProbLens::MacroOwn); }) {
         using Lens = SequencerEngine::ProbLens;
         const int LANE = PatternEngine::PL_MELODY;
@@ -162,9 +162,9 @@ static void macroAccessorContract(Eng& se, int& absent) {
         // Baseline (Macro's own spread = 0 — the store default before the module publishes).
         float before[16][16];
         for (int s = 0; s < 16; ++s) {
-            before[0][s] = se.effectiveProbability(0, LANE, s, Lens::MacroOwn);
+            before[0][s] = se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{LANE}, s, Lens::MacroOwn);
             for (int v = 1; v < 16; ++v)
-                before[v][s] = se.effectiveProbability(v, LANE, s, Lens::MacroOwn);
+                before[v][s] = se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{LANE}, s, Lens::MacroOwn);
         }
         // (a) East-write invariance at the accessor — the BARS' property (Rodney: the bars
         // don't move), now the out's too: the MacroOwn lens reads pubSlewed* +
@@ -172,15 +172,15 @@ static void macroAccessorContract(Eng& se, int& absent) {
         // spread stores.
         eastSpreadWrite(se, LANE, -0.8f);
         for (int s = 0; s < 16; ++s) {
-            EXPECTF(se.effectiveProbability(0, LANE, s, Lens::MacroOwn) == before[0][s],
+            EXPECTF(se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{LANE}, s, Lens::MacroOwn) == before[0][s],
                     "V1 accessor moved under the East write (step %d: %.9g -> %.9g)", s,
                     (double)before[0][s],
-                    (double)se.effectiveProbability(0, LANE, s, Lens::MacroOwn));
+                    (double)se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{LANE}, s, Lens::MacroOwn));
             for (int v = 1; v < 16; ++v)
-                EXPECTF(se.effectiveProbability(v, LANE, s, Lens::MacroOwn) == before[v][s],
+                EXPECTF(se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{LANE}, s, Lens::MacroOwn) == before[v][s],
                         "poly accessor moved under the East write (v=%d step %d: %.9g -> %.9g)",
                         v, s, (double)before[v][s],
-                        (double)se.effectiveProbability(v, LANE, s, Lens::MacroOwn));
+                        (double)se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{LANE}, s, Lens::MacroOwn));
         }
         // (b) Macro's OWN spread drives the accessor for the POLY voices (the delegating
         // voices' bars + out on a Macro-delegated lane); V1 stays spread-invariant (the
@@ -191,10 +191,10 @@ static void macroAccessorContract(Eng& se, int& absent) {
         int moved = 0;
         for (int v = 1; v < 16; ++v)
             for (int s = 0; s < 16; ++s)
-                if (se.effectiveProbability(v, LANE, s, Lens::MacroOwn) != before[v][s]) ++moved;
+                if (se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{LANE}, s, Lens::MacroOwn) != before[v][s]) ++moved;
         EXPECTF(moved == 15 * 16, "Macro's own spread moved only %d/240 poly cells", moved);
         for (int s = 0; s < 16; ++s)
-            EXPECTF(se.effectiveProbability(0, LANE, s, Lens::MacroOwn) == before[0][s],
+            EXPECTF(se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{LANE}, s, Lens::MacroOwn) == before[0][s],
                     "V1 (anchor) moved under Macro's own spread (step %d)", s);
         // (c) ROUTING IDENTITY — the OUT is the SAME source the bars read: the resolver's
         // call (what the module's process() invokes) is bit-exactly the accessor. This
@@ -205,10 +205,10 @@ static void macroAccessorContract(Eng& se, int& absent) {
             for (int s = 0; s < 16; ++s) {
                 const int slot = v - 1;   // voiceSlot: V1→0 ... V16→15
                 EXPECTF(resolver.laneProbabilityAtStep(v, LANE, s) ==
-                            se.effectiveProbability(slot, LANE, s, Lens::MacroOwn),
+                            se.effectiveProbability(dotModular::VoiceResolver::slot(slot + 1), dotModular::LaneId{LANE}, s, Lens::MacroOwn),
                         "out != accessor (voice=%d step=%d: %.9g vs %.9g) — two sources",
                         v, s, (double)resolver.laneProbabilityAtStep(v, LANE, s),
-                        (double)se.effectiveProbability(slot, LANE, s, Lens::MacroOwn));
+                        (double)se.effectiveProbability(dotModular::VoiceResolver::slot(slot + 1), dotModular::LaneId{LANE}, s, Lens::MacroOwn));
             }
         // (d) Regression guard — the accessor reproduces the a2ccb842 bars formula
         // bit-exactly (pubSlewed base + Macro spread via SpreadInterp + the warp mix),
@@ -225,7 +225,7 @@ static void macroAccessorContract(Eng& se, int& absent) {
                     ? redDot::SpreadInterp::interpolate(base, base, sp)
                     : redDot::SpreadInterp::applyAnchorV1Only(se.pe, LANE, s, base, sp);
                 const float want = se.pe.warpDisplayMixMacroOwn(v, LANE, (double)disp);
-                const float got = se.effectiveProbability(v, LANE, s, Lens::MacroOwn);
+                const float got = se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{LANE}, s, Lens::MacroOwn);
                 EXPECTF(got == want, "old-bars-formula mismatch (v=%d step=%d: %.9g vs %.9g)",
                         v, s, (double)got, (double)want);
             }
@@ -291,7 +291,7 @@ int main() {
         for (int v = 1; v <= 16; ++v)
             for (int s = 0; s < 16; ++s) {
                 outBefore[v - 1][s] = resolver.laneProbabilityAtStep(v, OCT, s);
-                rowBefore[v - 1][s] = se.pe.warpRow(v - 1, OCT)[s];   // East's per-slot rows
+                rowBefore[v - 1][s] = se.pe.warpRow(dotModular::VoiceResolver::slot(v - 1 + 1), dotModular::LaneId{OCT})[s];   // East's per-slot rows
             }
         // East's own-slot edit on the Macro-delegated lane: the raw write East's spread
         // pass WOULD land (the manager must NOT apply it — Macro owns the lane — but the
@@ -301,7 +301,7 @@ int main() {
         int rowMoved = 0;
         for (int v = 1; v <= 16; ++v)
             for (int s = 0; s < 16; ++s)
-                if (se.pe.warpRow(v - 1, OCT)[s] != rowBefore[v - 1][s]) ++rowMoved;
+                if (se.pe.warpRow(dotModular::VoiceResolver::slot(v - 1 + 1), dotModular::LaneId{OCT})[s] != rowBefore[v - 1][s]) ++rowMoved;
         EXPECTF(rowMoved == 16 * 16, "vacuous simulation: only %d/256 shared cells moved", rowMoved);
         // THE CONTRACT: Macro's OUT is UNCHANGED under East's own-slot edit.
         for (int v = 1; v <= 16; ++v)

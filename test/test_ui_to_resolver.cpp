@@ -120,10 +120,10 @@ static void eastSpreadWrite(SequencerEngine& se, int lane, float eastSpread) {
     pe.cachedSpreadInitialized = true;   // refreshPolyRandomCell's gate (set in sync())
     se.spreadERef(0, lane) = eastSpread; // the store holds the OWNER's spread on this lane
     for (int i = 0; i < 16; ++i)
-        pe.polyRandom(0, lane)[i] = redDot::SpreadInterp::applyMono(pe, lane, i, eastSpread);
+        pe.polyRandom(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{lane})[i] = redDot::SpreadInterp::applyMono(pe, lane, i, eastSpread);
     for (int v = 1; v < 16; ++v) {
         pe.cachedPolySpread[v][lane] = eastSpread;
-        for (int i = 0; i < 16; ++i) se.refreshPolyRandomCell(v, lane, i);
+        for (int i = 0; i < 16; ++i) se.refreshPolyRandomCell(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane}, i);
     }
 }
 
@@ -188,34 +188,34 @@ int main() {
         // Simulate the engine's own refresh (the manager's V1 applyMono pass + the
         // step-rate refreshPolyRandomCell — which also rebuilds the warp mirror cells):
         for (int i = 0; i < 16; ++i)
-            se.pe.polyRandom(0, MEL)[i] =
+            se.pe.polyRandom(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL})[i] =
                 redDot::SpreadInterp::applyMono(se.pe, MEL, i, se.spreadE(0, MEL));
         se.pe.rebuildWarpMirrorVoiceLane(0, MEL);
         for (int v = 1; v < 16; ++v)
-            for (int i = 0; i < 16; ++i) se.refreshPolyRandomCell(v, MEL, i);
+            for (int i = 0; i < 16; ++i) se.refreshPolyRandomCell(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{MEL}, i);
         for (int v = 0; v < 16; ++v)
             for (int s = 0; s < 16; ++s)
-                EXPECTF(se.pe.warpRow(v, MEL)[s] == se.effectiveProbability(v, MEL, s, Lens::Owner),
+                EXPECTF(se.pe.warpRow(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{MEL})[s] == se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{MEL}, s, Lens::Owner),
                         "engine draw != accessor (v=%d step=%d: %.9g vs %.9g) — two producers",
-                        v, s, (double)se.pe.warpRow(v, MEL)[s],
-                        (double)se.effectiveProbability(v, MEL, s, Lens::Owner));
+                        v, s, (double)se.pe.warpRow(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{MEL})[s],
+                        (double)se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{MEL}, s, Lens::Owner));
         // ...and again on a rhythm-family lane beyond the spread core (VAR rides the
         // rhythm axis; the golden fill gives it distinct rows too):
         se.spreadERef(0, VAR) = 0.6f;
         for (int v = 1; v < 16; ++v) se.pe.cachedPolySpread[v][VAR] = -0.2f;
         se.pe.cachedPolySpread[0][VAR] = se.spreadE(0, VAR);
         for (int i = 0; i < 16; ++i)
-            se.pe.polyRandom(0, VAR)[i] =
+            se.pe.polyRandom(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{VAR})[i] =
                 redDot::SpreadInterp::applyMono(se.pe, VAR, i, se.spreadE(0, VAR));
         se.pe.rebuildWarpMirrorVoiceLane(0, VAR);
         for (int v = 1; v < 16; ++v)
-            for (int i = 0; i < 16; ++i) se.refreshPolyRandomCell(v, VAR, i);
+            for (int i = 0; i < 16; ++i) se.refreshPolyRandomCell(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{VAR}, i);
         for (int v = 0; v < 16; ++v)
             for (int s = 0; s < 16; ++s)
-                EXPECTF(se.pe.warpRow(v, VAR)[s] == se.effectiveProbability(v, VAR, s, Lens::Owner),
+                EXPECTF(se.pe.warpRow(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{VAR})[s] == se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{VAR}, s, Lens::Owner),
                         "engine draw != accessor on VAR (v=%d step=%d: %.9g vs %.9g)",
-                        v, s, (double)se.pe.warpRow(v, VAR)[s],
-                        (double)se.effectiveProbability(v, VAR, s, Lens::Owner));
+                        v, s, (double)se.pe.warpRow(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{VAR})[s],
+                        (double)se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{VAR}, s, Lens::Owner));
     });
 
     // ── T1(b): the bars' source == the out's source — ONE function ──────────────
@@ -228,12 +228,12 @@ int main() {
         for (int voice = 1; voice <= 16; ++voice)
             for (int s = 0; s < 16; ++s) {
                 const int slot = voice - 1;   // voiceSlot: V1→0 ... V16→15
-                const float want = se.effectiveProbability(slot, MEL, s, Lens::MacroOwn);
+                const float want = se.effectiveProbability(dotModular::VoiceResolver::slot(slot + 1), dotModular::LaneId{MEL}, s, Lens::MacroOwn);
                 EXPECTF(resolver.laneProbabilityAtStep(voice, MEL, s) == want,
                         "out != accessor (voice=%d step=%d: %.9g vs %.9g) — two sources",
                         voice, s, (double)resolver.laneProbabilityAtStep(voice, MEL, s),
                         (double)want);
-                const float wantO = se.effectiveProbability(slot, OCT, s, Lens::MacroOwn);
+                const float wantO = se.effectiveProbability(dotModular::VoiceResolver::slot(slot + 1), dotModular::LaneId{OCT}, s, Lens::MacroOwn);
                 EXPECTF(resolver.laneProbabilityAtStep(voice, OCT, s) == wantO,
                         "out != accessor, OCT (voice=%d step=%d)", voice, s);
             }
@@ -249,18 +249,18 @@ int main() {
         se.spreadERef(0, MEL) = -0.8f;
         for (int v = 1; v < 16; ++v) se.pe.cachedPolySpread[v][MEL] = -0.8f;
         se.macroOwnSpread[MEL] = 0.5f;
-        const float ownerBefore = se.effectiveProbability(3, MEL, 7, Lens::Owner);
-        const float macroBefore = se.effectiveProbability(3, MEL, 7, Lens::MacroOwn);
+        const float ownerBefore = se.effectiveProbability(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{MEL}, 7, Lens::Owner);
+        const float macroBefore = se.effectiveProbability(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{MEL}, 7, Lens::MacroOwn);
         EXPECTF(ownerBefore != macroBefore,
                 "vacuous: the lenses agree at East=%.2f Macro=%.2f — pick a step where they differ",
                 -0.8, 0.5);
         // East's edit (the Owner stores move — the manager republishes East's amount):
         se.spreadERef(0, MEL) = -0.95f;
         for (int v = 1; v < 16; ++v) se.pe.cachedPolySpread[v][MEL] = -0.95f;
-        EXPECTF(se.effectiveProbability(3, MEL, 7, Lens::Owner) != ownerBefore,
+        EXPECTF(se.effectiveProbability(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{MEL}, 7, Lens::Owner) != ownerBefore,
                 "East's edit did not move the Owner lens — East's bars would be dead");
         // THE LEAK KILL: Macro's bars/out are UNCHANGED under East's edit.
-        EXPECTF(se.effectiveProbability(3, MEL, 7, Lens::MacroOwn) == macroBefore,
+        EXPECTF(se.effectiveProbability(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{MEL}, 7, Lens::MacroOwn) == macroBefore,
                 "LEAK: East's spread edit moved Macro's value (MacroOwn lens) — "
                 "the one-way borrowing rule is broken");
     });
@@ -272,24 +272,24 @@ int main() {
         // (combineSpread's delegated branch); macroOwnSpread carries Macro's own.
         se.macroOwnSpread[OCT] = 0.4f;
         for (int v = 1; v < 16; ++v) se.pe.cachedPolySpread[v][OCT] = 0.4f;
-        const float macroBefore = se.effectiveProbability(5, OCT, 3, Lens::MacroOwn);
+        const float macroBefore = se.effectiveProbability(dotModular::VoiceResolver::slot(5 + 1), dotModular::LaneId{OCT}, 3, Lens::MacroOwn);
         // Macro's edit moves its own lens (Macro drives):
         se.macroOwnSpread[OCT] = -0.65f;
-        EXPECTF(se.effectiveProbability(5, OCT, 3, Lens::MacroOwn) != macroBefore,
+        EXPECTF(se.effectiveProbability(dotModular::VoiceResolver::slot(5 + 1), dotModular::LaneId{OCT}, 3, Lens::MacroOwn) != macroBefore,
                 "Macro's own spread edit did not move the MacroOwn lens — Macro's bars dead");
         // East's own-slot edit (the raw Owner-store write East's pass WOULD land —
         // the manager must not apply it on a Macro-owned lane, and even if it did,
         // Macro's value never reads that store): inert on the MacroOwn lens.
-        const float withEdit = se.effectiveProbability(5, OCT, 3, Lens::MacroOwn);
+        const float withEdit = se.effectiveProbability(dotModular::VoiceResolver::slot(5 + 1), dotModular::LaneId{OCT}, 3, Lens::MacroOwn);
         for (int v = 1; v < 16; ++v) se.pe.cachedPolySpread[v][OCT] = 0.9f;   // rogue East value
-        EXPECTF(se.effectiveProbability(5, OCT, 3, Lens::MacroOwn) == withEdit,
+        EXPECTF(se.effectiveProbability(dotModular::VoiceResolver::slot(5 + 1), dotModular::LaneId{OCT}, 3, Lens::MacroOwn) == withEdit,
                 "LEAK: an East own-slot write moved Macro's value — Macro never borrows East");
         // V1 anchor: the MacroOwn lens at voiceSlot 0 is spread-invariant at POSITIVE
         // spread (the anchor self-target no-op — matches the pinned C3(b) contract).
         se.macroOwnSpread[OCT] = 0.75f;
-        const float v1Pos = se.effectiveProbability(0, OCT, 3, Lens::MacroOwn);
+        const float v1Pos = se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{OCT}, 3, Lens::MacroOwn);
         se.macroOwnSpread[OCT] = 0.25f;
-        EXPECTF(se.effectiveProbability(0, OCT, 3, Lens::MacroOwn) == v1Pos,
+        EXPECTF(se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{OCT}, 3, Lens::MacroOwn) == v1Pos,
                 "V1 (anchor) moved under positive Macro spread — the self-target no-op broke");
     });
 
@@ -304,15 +304,15 @@ int main() {
         // Both lenses, per voice: the value must depend on the VOICE argument (the
         // displayed voice — not a hardcoded row 0):
         for (int v = 0; v < 16; ++v) {
-            const float own = se.effectiveProbability(v, MEL, 4, Lens::Owner);
-            const float mac = se.effectiveProbability(v, MEL, 4, Lens::MacroOwn);
+            const float own = se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{MEL}, 4, Lens::Owner);
+            const float mac = se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{MEL}, 4, Lens::MacroOwn);
             const float rowV = se.pe.pubSlewedPolyMelody[v][4];   // spread 0 → base bit-exact
             EXPECTF(own == rowV, "Owner lens (v=%d): %.9g != its own row %.9g — wrong voice",
                     v, (double)own, (double)rowV);
             EXPECTF(mac == rowV, "MacroOwn lens (v=%d): %.9g != its own row %.9g — wrong voice",
                     v, (double)mac, (double)rowV);
             if (v > 0)
-                EXPECTF(own != se.effectiveProbability(v - 1, MEL, 4, Lens::Owner) || rowV == se.pe.pubSlewedPolyMelody[v - 1][4],
+                EXPECTF(own != se.effectiveProbability(dotModular::VoiceResolver::slot(v - 1 + 1), dotModular::LaneId{MEL}, 4, Lens::Owner) || rowV == se.pe.pubSlewedPolyMelody[v - 1][4],
                         "voices %d and %d returned the same value from distinct rows — a hardcoded voice",
                         v - 1, v);
         }
@@ -355,7 +355,7 @@ int main() {
                 se.laneTick_[strand] = ticks[ti];          // drive the master playhead
                 const int step = se.masterLaneStep(l);
                 if (l == 0) seen[ti] = step;
-                const float want = se.effectiveProbability(0, l, step, Lens::MacroOwn);
+                const float want = se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{l}, step, Lens::MacroOwn);
                 EXPECTF(se.masterLaneProbability(l) == want,
                         "master out != the ONE accessor (lane=%d step=%d: %.9g vs %.9g) — "
                         "the out entry still reads its own path",
@@ -423,7 +423,7 @@ int main() {
             // The NEW wiring: the explicit-voice accessor's value, in this divergent
             // state too (macroOwnSpread defaults 0 → the published base, bit-exact).
             EXPECTF(se.masterLaneProbability(l) ==
-                        se.effectiveProbability(0, l, step, Lens::MacroOwn),
+                        se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{l}, step, Lens::MacroOwn),
                     "the master out diverged from the explicit-voice accessor (lane %d)",
                     l);
         }
@@ -463,16 +463,16 @@ int main() {
         //     (neutral global ⇒ bit-exact the raw base) — NOT the East-slot mix.
         for (int s = 0; s < 16; ++s) {
             const float base0 = redDot::SpreadInterp::polySlewedPub(se.pe, MEL, 0, s);
-            EXPECTF(se.effectiveProbability(0, MEL, s, Lens::MacroOwn) == base0,
+            EXPECTF(se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL}, s, Lens::MacroOwn) == base0,
                     "MacroOwn(V1) composes with the EAST own-slot curve (step %d: %.9g != "
                     "base %.9g) — the warp layer is not Macro-own",
-                    s, (double)se.effectiveProbability(0, MEL, s, Lens::MacroOwn),
+                    s, (double)se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL}, s, Lens::MacroOwn),
                     (double)base0);
             const float base4 = redDot::SpreadInterp::polySlewedPub(se.pe, MEL, 4, s);
-            EXPECTF(se.effectiveProbability(4, MEL, s, Lens::MacroOwn) == base4,
+            EXPECTF(se.effectiveProbability(dotModular::VoiceResolver::slot(4 + 1), dotModular::LaneId{MEL}, s, Lens::MacroOwn) == base4,
                     "MacroOwn(v=4) composes with the EAST own-slot curve (step %d: %.9g != "
                     "base %.9g) — the warp layer is not Macro-own",
-                    s, (double)se.effectiveProbability(4, MEL, s, Lens::MacroOwn),
+                    s, (double)se.effectiveProbability(dotModular::VoiceResolver::slot(4 + 1), dotModular::LaneId{MEL}, s, Lens::MacroOwn),
                     (double)base4);
         }
         // (b) THE PERTURBATION (the one-layer-down catcher): EDIT the East-authored
@@ -480,19 +480,19 @@ int main() {
         //     own slot is East's to author — the vacuous guard).
         float macBefore[16], ownBefore[16];
         for (int s = 0; s < 16; ++s) {
-            macBefore[s] = se.effectiveProbability(0, MEL, s, Lens::MacroOwn);
-            ownBefore[s] = se.effectiveProbability(0, MEL, s, Lens::Owner);
+            macBefore[s] = se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL}, s, Lens::MacroOwn);
+            ownBefore[s] = se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL}, s, Lens::Owner);
         }
         bank.warpF[dotModular::WarpBank::index(0, MEL)] = dotModular::PowerWarp{0.3};
         bank.warpW[dotModular::WarpBank::index(0, MEL)] = 1.0f;
         int ownMoved = 0;
         for (int s = 0; s < 16; ++s) {
-            EXPECTF(se.effectiveProbability(0, MEL, s, Lens::MacroOwn) == macBefore[s],
+            EXPECTF(se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL}, s, Lens::MacroOwn) == macBefore[s],
                     "LEAK: an East own-slot CURVE edit moved Macro's value (step %d: %.9g -> "
                     "%.9g) — East still modulates Macro warp",
                     s, (double)macBefore[s],
-                    (double)se.effectiveProbability(0, MEL, s, Lens::MacroOwn));
-            if (se.effectiveProbability(0, MEL, s, Lens::Owner) != ownBefore[s]) ++ownMoved;
+                    (double)se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL}, s, Lens::MacroOwn));
+            if (se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL}, s, Lens::Owner) != ownBefore[s]) ++ownMoved;
         }
         EXPECTF(ownMoved == 16,
                 "vacuous: the East slot edit did not move the Owner lens (only %d/16) — "
@@ -508,10 +508,10 @@ int main() {
             const float base0 = redDot::SpreadInterp::polySlewedPub(se.pe, MEL, 0, s);
             const float want =
                 (float)bank.warpedValue(0, MEL, (double)base0, /*delegated=*/true);
-            EXPECTF(se.effectiveProbability(0, MEL, s, Lens::MacroOwn) == want,
+            EXPECTF(se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL}, s, Lens::MacroOwn) == want,
                     "MacroOwn != the GLOBAL-cell mix (step %d: %.9g vs %.9g) — the warp "
                     "composition left Macro's curve",
-                    s, (double)se.effectiveProbability(0, MEL, s, Lens::MacroOwn),
+                    s, (double)se.effectiveProbability(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL}, s, Lens::MacroOwn),
                     (double)want);
             if (want != base0) ++macMovedVsA;
         }
@@ -567,7 +567,7 @@ int main() {
         for (int v = 0; v < 16; ++v)
             for (int l = 0; l < 7; ++l)
                 for (int s = 0; s < 16; ++s)
-                    snap[v][l][s] = se.effectiveProbability(v, l, s, Lens::MacroOwn);
+                    snap[v][l][s] = se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{l}, s, Lens::MacroOwn);
         // ── THE PERTURBATION: every array an East pass writes, at full field size ──
         for (int l = 0; l < 7; ++l) {
             se.spreadERef(0, l) = 0.77f;                        // the V1 spread store (sprForLane's publish)
@@ -581,7 +581,7 @@ int main() {
         for (int v = 0; v < 16; ++v)
             for (int l = 0; l < 7; ++l)
                 for (int s = 0; s < 16; ++s)
-                    if (se.effectiveProbability(v, l, s, Lens::MacroOwn) == snap[v][l][s]) ++unchanged;
+                    if (se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{l}, s, Lens::MacroOwn) == snap[v][l][s]) ++unchanged;
         EXPECTF(unchanged == 16 * 7 * 16,
                 "LEAK: the East-written arrays moved the MacroOwn lens (%d/1792 cells "
                 "unchanged) — the lens reads an East-written shared array",
@@ -592,7 +592,7 @@ int main() {
         for (int v = 0; v < 16; v += 5)
             for (int l = 0; l < 7; ++l)
                 for (int s = 0; s < 16; s += 3)
-                    if (se.effectiveProbability(v, l, s, Lens::Owner) !=
+                    if (se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{l}, s, Lens::Owner) !=
                         redDot::SpreadInterp::polySlewedPub(se.pe, l, v, s)) ++ownerMoved;
         EXPECTF(ownerMoved > 0,
                 "vacuous: the perturbation moved nothing the Owner lens reads — the "
@@ -644,9 +644,9 @@ int main() {
                         ? redDot::SpreadInterp::interpolate(base, base, sp)
                         : redDot::SpreadInterp::applyAnchorV1Only(se.pe, LANE, s, base, sp);
                     const float want = se.pe.warpDisplayMixMacroOwn(v, LANE, (double)disp);
-                    EXPECTF(se.effectiveProbability(v, LANE, s, Lens::MacroOwn) == want,
+                    EXPECTF(se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{LANE}, s, Lens::MacroOwn) == want,
                             "old-formula mismatch (lane=%d v=%d step=%d: %.9g vs %.9g)",
-                            LANE, v, s, (double)se.effectiveProbability(v, LANE, s, Lens::MacroOwn),
+                            LANE, v, s, (double)se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{LANE}, s, Lens::MacroOwn),
                             (double)want);
                 }
         }
@@ -663,18 +663,18 @@ int main() {
         float snap[16][16][2];
         for (int v = 0; v < 16; ++v)
             for (int s = 0; s < 16; ++s) {
-                snap[v][s][0] = se.effectiveProbability(v, MEL, s, Lens::Owner);
-                snap[v][s][1] = se.effectiveProbability(v, MEL, s, Lens::MacroOwn);
+                snap[v][s][0] = se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{MEL}, s, Lens::Owner);
+                snap[v][s][1] = se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{MEL}, s, Lens::MacroOwn);
             }
         // Re-read after a burst of intervening calls on OTHER cells (a "sample-rate
         // stretch" with unchanged inputs): every value must be bit-identical.
-        for (int i = 0; i < 1000; ++i) (void)se.effectiveProbability(i & 15, MEL, (i * 7) & 15, Lens::Owner);
+        for (int i = 0; i < 1000; ++i) (void)se.effectiveProbability(dotModular::VoiceResolver::slot(i & 15 + 1), dotModular::LaneId{MEL}, (i * 7) & 15, Lens::Owner);
         for (int v = 0; v < 16; ++v)
             for (int s = 0; s < 16; ++s) {
-                EXPECTF(se.effectiveProbability(v, MEL, s, Lens::Owner) == snap[v][s][0],
+                EXPECTF(se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{MEL}, s, Lens::Owner) == snap[v][s][0],
                         "Owner lens not stable (v=%d s=%d) — step-caching would show stale/drift",
                         v, s);
-                EXPECTF(se.effectiveProbability(v, MEL, s, Lens::MacroOwn) == snap[v][s][1],
+                EXPECTF(se.effectiveProbability(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{MEL}, s, Lens::MacroOwn) == snap[v][s][1],
                         "MacroOwn lens not stable (v=%d s=%d)", v, s);
             }
     });
