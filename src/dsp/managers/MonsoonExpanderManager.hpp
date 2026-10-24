@@ -94,8 +94,11 @@ struct MonsoonExpanderManager {
         bool valid() const { return mod && (paramId >= 0 || eastMonoLane >= 0); }
         bool isField() const { return eastMonoLane >= 0; }
     };
-    // lane = STRAND index 0..5. Precedence: Mono (if it owns the lane; it always owns
-    // VAR/LEG) → Macro (lanes 0..3 only; it has no VAR/LEG) → East's V1 slot → nothing.
+    // lane = STRAND index 0..6. Precedence (CC_PROMPT_UI_TO_RESOLVER_SPEC step 2 — the
+    // stale pre-QMIX lane>=4 carve-out DELETED): Macro → East's V1 slot → nothing.
+    // ALL 7 lanes uniform — VAR/LEG follow Macro like 0-4 (Mono is dead; the "Macro has
+    // no VAR/LEG lane" rule died with the 5-lane order — the POLY push already followed
+    // Macro on all 7 lanes via resolveDirItem).
     MonoDirSrc monoDirAuthority(int lane) const;
 
     MonsoonInterchangeExpander*  cachedScaleExpander              = nullptr;

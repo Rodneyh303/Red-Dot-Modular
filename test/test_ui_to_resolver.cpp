@@ -358,6 +358,25 @@ int main() {
                 "contract has no structural anchor");
     });
 
+    // ── T4 DIRECTION (structural — the manager is rig-invisible): all 7 lanes
+    //    resolve through the ONE selection (resolveDirValue/resolveDirItem); the
+    //    mono/V1 authority has no lane-range carve-out — VAR/LEG follow Macro
+    //    like 0-4. ──────────────────────────────────────────────────────────────
+    TEST("T4 DIRECTION: both direction pushes ride resolveDirItem; monoDirAuthority has no lane carve-out — VAR/LEG follow Macro like 0-4", {
+        const std::string mgr = slurp(repoRoot() + "/src/dsp/managers/MonsoonExpanderManager.cpp");
+        EXPECTF(contains(mgr, "resolveDirItem("),
+                "MonsoonExpanderManager.cpp: a direction push left the ONE resolver "
+                "selection (DirPolicy) — a second direction path");
+        EXPECTF(!contains(mgr, "const bool varleg"),
+                "MonsoonExpanderManager.cpp: the stale pre-QMIX `lane >= 4` carve-out is "
+                "back — VAR/LEG (and ACC) must follow Macro like 0-4 through the ONE "
+                "authority");
+        EXPECTF(contains(mgr, "r.macroGlobal = true"),
+                "MonsoonExpanderManager.cpp: monoDirAuthority lost its Macro arm");
+        // The behavioural twin lives in test_mono_dir_authority (the replica of the
+        // authority's precedence, restructured to the same contract).
+    });
+
     std::cout << std::string(70, '=') << "\n" << s_pass << " passed, " << s_fail << " failed\n";
     return s_fail == 0 ? 0 : 1;
 }
