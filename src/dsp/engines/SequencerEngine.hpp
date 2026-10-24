@@ -807,17 +807,11 @@ struct SequencerEngine {
     // (MacroOwn); written ONLY by MonsoonSandsManager::publishGlobal.
     float macroOwnSpread[PL_LANES] = {};
 
-    // (CC_PROMPT_UI_TO_RESOLVER_SPEC step 1) TRANSITIONAL SHIM — the resolution now
-    // lives in effectiveProbability (the ONE accessor, MacroOwn lens). Deleted in
-    // step 2 together with the rerouting of both callers (the widget's bars and
-    // VoiceResolver::laneProbabilityAtStep); kept THIS commit so the pinned tests
-    // (test_macro_own_output C3/C4, test_voice_resolver) keep pinning the routing
-    // bit-exactly while the accessor lands. Body is the old algebra, verbatim.
-    float macroOwnLaneProbability(int engLane, int step, bool mono, int polyVoice) const {
-        const int l = (engLane >= 0 && engLane < PL_LANES) ? engLane : PL_REST;
-        const int v = mono ? 0 : rack::math::clamp(polyVoice, 0, 15);   // voiceSlot (V2+=1..15)
-        return effectiveProbability(v, l, step, ProbLens::MacroOwn);
-    }
+    // (macroOwnLaneProbability DELETED — CC_PROMPT_UI_TO_RESOLVER_SPEC step 2: the
+    //  third computation dies. Both former callers — the Macro bars and
+    //  VoiceResolver::laneProbabilityAtStep, the prob-out seam — now call
+    //  effectiveProbability(voice, lane, step, ProbLens::MacroOwn) directly; the
+    //  shim was a one-commit bridge while the accessor landed.)
 
 
     // Independent lookup indices for each "DNA strand"

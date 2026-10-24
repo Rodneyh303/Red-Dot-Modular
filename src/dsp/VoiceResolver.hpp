@@ -92,17 +92,21 @@ struct VoiceResolver {
     }
 
     // Probability sampled at an EXPLICIT step — Macro's prob-OUT source (the module
-    // samples every voice at Macro's own global LOR step). CC_PROMPT_macro_output_east_leak:
-    // this is Macro-OWN — the shared PRE-spread base + Macro's OWN spread via the ONE
-    // engine accessor the bars also read (eng.macroOwnLaneProbability) — NEVER the shared
-    // final (masterLaneProbability/finalRandomByStrand → warpRow → random_), which East's
+    // samples every voice at Macro's own global LOR step). CC_PROMPT_UI_TO_RESOLVER_SPEC
+    // step 2: this is the ONE accessor (eng.effectiveProbability, MacroOwn lens — the
+    // same call Macro's BARS make for the displayed voice), NEVER the shared final
+    // (masterLaneProbability/finalRandomByStrand → warpRow → random_), which East's
     // spread writes on an East-owned lane (the backwards-delegation leak: East's spread
-    // moved Macro's scope but not its bars). One-way borrowing: Macro never borrows East.
+    // moved Macro's scope but not its bars). One-way borrowing: Macro never borrows East
+    // — the MacroOwn lens reads macroOwnSpread only, so East's edit cannot reach the out.
+    // v is a VOICE NUMBER (1..16) → the accessor's explicit voiceSlot; V1 → slot 0.
     // V1 uses the explicit step too (the old mono branch self-resolved the engine's mono
     // LOR step — Macro's own step is the out's sampling grid, same as the poly channels).
     float laneProbabilityAtStep(int v, int lane, int step) const {
-        if (isMono(v)) return eng.macroOwnLaneProbability(lane, step, /*mono=*/true,  /*polyVoice=*/0);
-        if (isPoly(v)) return eng.macroOwnLaneProbability(lane, step, /*mono=*/false, polyVoiceSlot(v));
+        if (isMono(v)) return eng.effectiveProbability(/*voice=*/kMonoSlot, lane, step,
+                                                       SequencerEngine::ProbLens::MacroOwn);
+        if (isPoly(v)) return eng.effectiveProbability(polyVoiceSlot(v), lane, step,
+                                                       SequencerEngine::ProbLens::MacroOwn);
         return 0.f;
     }
 

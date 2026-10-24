@@ -105,41 +105,14 @@ struct SandsParameterManager {
     patternEngine->rebuildWarpMirrorVoiceLane(vs, SequencerEngine::PL_OCTAVE);
   }
 
-  // ── READ direction (Macro): engine spread-interpolated values → editor bars ──
-  // Shows interpolated values with spread applied to all voices (average from
-  // only the active/requested voices). viewVoice selects WHICH voice's
-  // resulting probabilities to display — Macro has no per-voice editing; this
-  // is a read-only viewing lens so the user can flip through voices and see
-  // how spread/blend fans them out.
-  //
-  // (A per-voice variant syncPatternEngineToEditor(voiceIdx, state) was DELETED
-  // pre-merge (cleanup/dead-poly-sync): it filled only REST/MEL/OCT — never
-  // ACCENT — from PRE-spread values, and every call site was overwritten by
-  // step()'s resolver fill the same frame. Do not reintroduce it. The WRITE
-  // direction above is live and load-bearing.)
-  void syncPatternEngineToEditor(SandsVisualEditorV4::VoiceState& editorState, int viewVoice = 0) {
-    if (!patternEngine) return;
-
-    // Rest lane - show interpolated values for the viewed voice.
-    // Lane args are the UNIFIED PL_* order (lane unification): REST=3, MEL=0, OCT=1.
-    // (These used to pass the OLD spread order 0/1/2 = REST/MEL/OCT.)
-    for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      editorState.lanes[SandsVisualEditorV4::REST].probabilities[i] =
-        spreadMgr.getInterpolatedValue(viewVoice, PatternEngine::PL_REST, i);
-    }
-
-    // Melody lane
-    for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i] =
-        spreadMgr.getInterpolatedValue(viewVoice, PatternEngine::PL_MELODY, i);
-    }
-
-    // Octave lane
-    for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i] =
-        spreadMgr.getInterpolatedValue(viewVoice, PatternEngine::PL_OCTAVE, i);
-    }
-  }
+  // (syncPatternEngineToEditor DELETED — CC_PROMPT_UI_TO_RESOLVER_SPEC step 2: the
+  //  engine→editor probability READ path was the last SpreadInterp-in-UI bar
+  //  composition outside the ONE accessor. Its only caller (the Macro widget's
+  //  step()) overwrote all 7 lanes from SequencerEngine::effectiveProbability the
+  //  same frame, so the writes were dead; the per-voice variant was already deleted
+  //  pre-merge for the same reason (cleanup/dead-poly-sync). The WRITE direction
+  //  above (syncEditorToPatternEngine) is live and load-bearing. Do not reintroduce
+  //  an engine→editor probability fill — the bars read the ONE accessor.)
 };
 
 }  // namespace redDot

@@ -542,24 +542,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         }
     }
 
-    // Macro's OWN probability for a lane/step — the shared base draw with MACRO's own
-    // spread applied (NOT East's). Mirrors how Macro's LOR display uses macroBase instead
-    // of reading East's LOR: Macro shows its own modulation on the shared draw, never the
-    // East-spread-modulated shared final (rhythmRandom[] etc.). This enforces the one-way
-    // borrowing rule (East may borrow Macro; Macro never borrows East). See
-    // docs/design/DISPLAY_STORE_ENGINE_SEPARATION.md. engLane = PL_REST/MEL/OCT/ACC (0..3).
-    // CC_PROMPT_macro_output_east_leak: the RESOLUTION now lives in the ENGINE —
-    // SequencerEngine::macroOwnLaneProbability, the ONE accessor BOTH the bars (here,
-    // continuous) and the prob CV OUT (VoiceResolver::laneProbabilityAtStep, latched
-    // per-step at the module) read — so the two can never diverge and neither borrows
-    // East. The spread input is eng.macroOwnSpread, published by this module's process()
-    // from macroBase + macroPostDelta (the SAME expression the manager's MACRO_SOLE
-    // branch uses; P9b POST endpoint — Macro has no receiving voice).
-    float macroOwnProbability(int engLane, int step, bool mono, int polyVoice) {
-        Monsoon* mon = getMonsoon();
-        if (!mon) return 0.5f;
-        return mon->engine.macroOwnLaneProbability(engLane, step, mono, polyVoice);
-    }
+    // (macroOwnProbability DELETED — CC_PROMPT_UI_TO_RESOLVER_SPEC step 2. The bars
+    //  now call the ONE accessor directly — monsoon->engine.effectiveProbability(
+    //  voice, lane, step, SequencerEngine::ProbLens::MacroOwn) — the same call the
+    //  prob CV OUT makes through VoiceResolver::laneProbabilityAtStep. One producer,
+    //  both consumers; the widget-level wrapper had nowhere left to add value.)
 
     void step() override {
         ModuleWidget::step();
@@ -664,38 +651,23 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // load/store sync dance and its clobber guard are gone -- no display proxy to sync.
 
         saveLOR();
-        if (!onMonoTab)
-            paramMgr->syncPatternEngineToEditor(visualEditor->currentState, pv);
-        // Bug fix (same as East): the sync reads slewedPoly* which isn't populated for a voice
-        // when Macro owns the lane → blank lanes. Macro's editor is read-only (display only),
-        // so overwrite ALL displayed lanes from the resolver (polyRhythmRandom — the final
-        // output the sequencer plays, populated regardless of owner; the prob-outs use it too).
-        // POLY TAB: show MACRO's OWN probability (shared base draw + Macro's own spread),
-        // NOT resolver.laneProbabilityAtStep (which returns the shared final that East's spread
-        // writes on East-owned lanes → leak). One-way borrowing: Macro never borrows East.
-        // lane = the unified lane (editor == engine); pv = poly bank index.
-        if (!onMonoTab) {
+        // (syncPatternEngineToEditor DELETED — CC_PROMPT_UI_TO_RESOLVER_SPEC step 2: its
+        //  probability writes were dead the same frame — the loop below overwrote all 7
+        //  lanes from the ONE accessor — and its SpreadManager::getInterpolatedValue path
+        //  was the last SpreadInterp-in-UI bar composition outside the accessor.)
+        // ── The bars read the ONE accessor (CC_PROMPT_UI_TO_RESOLVER_SPEC step 2) ──
+        // Every lane, every step, the DISPLAYED voice (pv on poly tabs, voiceSlot 0 on
+        // the mono/V1 tab) — the SAME call the prob CV OUT makes through
+        // VoiceResolver::laneProbabilityAtStep (MacroOwn lens: the published base draw +
+        // Macro's OWN spread + the ONE warp composition; Macro never borrows East). One
+        // producer, both consumers — bars and out can no longer diverge.
+        {
+            const int barVoice = onMonoTab ? dotModular::VoiceResolver::kMonoSlot : pv;
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[lane].probabilities[s] =
-                        macroOwnProbability(lane, s, /*mono=*/false, /*polyVoice=*/pv);
-            }
-        } else {
-            // MONO TAB (V1): neither sync nor the resolver-overwrite above ran (both
-            // gated !onMonoTab), so V1's probability bars were NEVER populated from the
-            // engine — they showed stale currentState. That's why standalone-Macro spread
-            // looked dead: with numPolyVoices=0 the ONLY tab is V1. Read V1 per-step from
-            // the engine MONO final arrays (finalRandomByStrand — what Mono/East/standalone-
-            // Macro spread write); editor lane == engine strand (identity).
-            // MONO TAB (V1): show MACRO's OWN probability — the shared base draw with Macro's
-            // OWN spread — NOT the shared finalRandomByStrand (which East's spread writes on an
-            // East-owned lane, leaking East's modulation into Macro's display). One-way
-            // borrowing: Macro never borrows East. el = EDITOR lane; macroOwnProbability wants
-            // the ENGINE PL lane — identity, el passes through.
-            for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
-                    visualEditor->currentState.lanes[el].probabilities[s] =
-                        macroOwnProbability(el, s, /*mono=*/true, /*polyVoice=*/0);
+                        monsoon->engine.effectiveProbability(barVoice, lane, s,
+                                                             SequencerEngine::ProbLens::MacroOwn);
             }
         }
 
@@ -810,8 +782,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
 };
 
 // Lane → that lane's pubSlewed twin, flattened ([voiceSlot*16 + step]). The same
-// dispatch SpreadInterp::polySlewedPub switches on, hoisted so the sweep gate can walk
-// the exact cells the resolve reads without a switch per cell.
+// lane dispatch the published-snapshot accessor switches on, hoisted so the sweep
+// gate can walk the exact cells the resolve reads without a switch per cell.
 static const float* pubSlewedLane_(const PatternEngine& pe, int lane) {
     switch (lane) {
         case PatternEngine::PL_MELODY:    return &pe.pubSlewedPolyMelody[0][0];
@@ -929,8 +901,8 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     //                 against ANY external writer of the store (engine reset included).
     //   • pub cells = pe.pubSlewedPoly{lane}[v][step[l]] for voiceSlots v = 0..nV (ch0's
     //                 mono base row 0, poly base rows 1..nV, and the row-0 target that
-    //                 applyAnchorV1Only reads) → sweepSig_.pub. interpolate/mix2 and the
-    //                 V1 self-target anchor add no further state.
+    //                 the anchor-V1 interpolation reads) → sweepSig_.pub. interpolate/
+    //                 mix2 and the V1 self-target anchor add no further state.
     //   • warp      = pe.warpDisplayMix reads pe.warpBank_ (→ sweepSig_.bank) +
     //                 warpDelegated_[v][l] (→ sweepSig_.deleg, rows 0..nV) +, through
     //                 resolveWarpCell's PURE SELECTION (no CV/send/tap terms exist), the

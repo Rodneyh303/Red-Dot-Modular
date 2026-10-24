@@ -325,25 +325,37 @@ int main() {
             }
     });
 
-    // (T1c — the STRUCTURAL consumer-routing pins — lands with the step-2 commit that
-    //  reroutes the visual files; asserting them here would pin a state that does not
-    //  exist yet. Until then, the minimal structural pin: the accessor IS the engine's
-    //  documented authority (the header block + the lens enum), and the deleted-symbol
-    //  grep helpers stay warm for the step-2 pins.)
-    TEST("T1c (minimal, step-1 state): the ONE accessor is the engine-side authority — declared once, lens-explicit, beside the spread stores it reads", {
+    // ── T1(c) + T5 STRUCTURAL: the ONE producer is the only bar path; the deleted
+    //    machinery stays deleted (the B3 "grep in test" precedent — rig-invisible
+    //    files, pinned by source). ─────────────────────────────────────────────────
+    TEST("T1c ONE-PRODUCER (structural): the Macro bars route through the ONE accessor; no independent bar-composition path (SpreadInterp/warpDisplayMix hand-rolls) in the visual bar fills", {
+        const std::string macro = slurp(repoRoot() + "/src/StraitsSandsMacroVisual.cpp");
+        EXPECTF(contains(macro, "effectiveProbability("),
+                "StraitsSandsMacroVisual.cpp: the bars do not call the ONE accessor");
+        EXPECTF(!contains(macro, "macroOwnLaneProbability("),
+                "StraitsSandsMacroVisual.cpp: still routes through the deleted "
+                "macroOwnLaneProbability — a second producer");
+        EXPECTF(!contains(macro, "SpreadInterp::") && !contains(macro, "warpDisplayMix("),
+                "StraitsSandsMacroVisual.cpp: a SpreadInterp/warpDisplayMix hand-rolled bar "
+                "composition survives — the exact third-computation this spec deletes");
+        const std::string east = slurp(repoRoot() + "/src/StraitsEastSandsVisual.cpp");
+        EXPECTF(contains(east, "effectiveProbability("),
+                "StraitsEastSandsVisual.cpp: the East bars do not call the ONE accessor");
+        EXPECTF(!contains(east, "SpreadInterp::") && !contains(east, "warpDisplayMix("),
+                "StraitsEastSandsVisual.cpp: a SpreadInterp/warpDisplayMix hand-rolled bar "
+                "composition survives — the exact third-computation this spec deletes");
+        EXPECTF(!contains(east, "finalRandomByStrand("),
+                "StraitsEastSandsVisual.cpp: a bar fill still reads finalRandomByStrand "
+                "(the mono-row engine funnel) instead of the voice-explicit accessor");
+        // The accessor stays the engine-side authority (the signature + lens anchors the
+        // consumers' routing pins hang from):
         const std::string eng = slurp(repoRoot() + "/src/dsp/engines/SequencerEngine.hpp");
         EXPECTF(contains(eng, "float effectiveProbability(int voice, int lane, int step, ProbLens lens) const"),
                 "SequencerEngine.hpp: the ONE accessor's signature changed — the consumers' "
-                "routing pins (step 2) must follow it");
+                "routing pins must follow it");
         EXPECTF(contains(eng, "enum class ProbLens { Owner, MacroOwn }"),
                 "SequencerEngine.hpp: the lens enum is gone — the one-way borrowing "
                 "contract has no structural anchor");
-        EXPECTF(contains(eng, "spreadE(0, l) : pe.cachedPolySpread[v][l]"),
-                "SequencerEngine.hpp: the Owner lens no longer reads the engine's spread "
-                "stores — it would be a second resolution");
-        EXPECTF(contains(eng, "pe.warpDisplayMix(v, l, (double)disp)"),
-                "SequencerEngine.hpp: the warp term left the ONE composition "
-                "(warpDisplayMix → resolveWarpCell) — a second warp path");
     });
 
     std::cout << std::string(70, '=') << "\n" << s_pass << " passed, " << s_fail << " failed\n";

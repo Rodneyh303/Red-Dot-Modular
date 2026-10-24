@@ -1,42 +1,54 @@
-// test_macro_own_output.cpp — CC_PROMPT_macro_output_east_leak: the BACKWARDS-delegation
-// contract — East's spread on an East-DELEGATED lane must NOT reach Macro's probability
-// OUTPUT (the bars were already one-way-fixed; the out was not).
+// test_macro_own_output.cpp — CC_PROMPT_macro_output_east_leak → RESTRUCTURED by
+// CC_PROMPT_UI_TO_RESOLVER_SPEC step 2: the BACKWARDS-delegation contract — East's
+// spread on an East-DELEGATED lane must NOT reach Macro's probability OUTPUT (the bars
+// were already one-way-fixed; the out was not).
+//
+// *** PINNED-TEST RECONCILIATION (the spec's explicit instruction — a contract
+// update, NOT a cover-up): the spec DELETES SequencerEngine::macroOwnLaneProbability
+// (the third computation of the effective probability) and replaces it with the ONE
+// accessor, SequencerEngine::effectiveProbability(voice, lane, step, ProbLens::
+// MacroOwn). This suite keeps pinning the SAME who-responds / leak-killing intent —
+// C1/C2's who-moves-what is untouched (they run through VoiceResolver::
+// laneProbabilityAtStep, the prob-out seam, exactly as before); C3/C4 now pin the
+// routing identity against the NEW accessor (the deleted symbol's one-commit bridge
+// shim made the migration bit-exact, so the pinned VALUES are unchanged). ***
 //
 // CONTEXT (Rodney's repro): lane delegated to EAST → moving East's SPREAD moves East's
 // bars (correct, East owns it) AND Macro's probability CV OUTPUT on the scope (WRONG),
-// but NOT Macro's bars (already fixed). Root cause: the bars read macroOwnProbability
-// (Macro's OWN base + Macro's OWN spread) but the out read the SHARED finalRandomByStrand
-// → warpRow → random_, which East's spread WRITES on an East-owned lane. Bars = Macro-own,
+// but NOT Macro's bars (already fixed). Root cause: the bars read the Macro-own
+// resolution but the out read the SHARED finalRandomByStrand → warpRow → random_,
+// which East's spread WRITES on an East-owned lane. Bars = Macro-own,
 // out = East-contaminated → they disagree, and the output leaks East backwards.
 //
 // THE CONTRACT (who-responds, at the SOURCE level — NOT bars==output values; the module's
-// S&H latch + scale are rig-invisible and intentionally NOT asserted here. Bars stay
-// continuous, out stays latched — the fix is the SOURCE, not the timing):
+// S&H latch + scale are rig-invisible and intentionally NOT asserted here. The out is
+// step-latched by the module's step-3 cache; the bars are continuous — the fix is the
+// SOURCE, not the timing):
 //   C1. Lane delegated to EAST: the East-spread write (simulated DIRECTLY — the manager is
 //       rig-invisible: applyMono on the mono row + cachedPolySpread/refreshPolyRandomCell
-//       on the poly rows, exactly what MonsoonSandsManager's spread pass does) changes
-//       EAST's/shared consumers (masterLaneProbability, finalRandomByStrand, warpRow) but
-//       changes NEITHER Macro's bars-source NOR Macro's OUTPUT. The OUT is asserted through
+//       on the poly rows, exactly what the spread pass does) changes EAST's/shared
+//       consumers (masterLaneProbability, finalRandomByStrand, warpRow) but changes
+//       NEITHER Macro's bars-source NOR Macro's OUTPUT. The OUT is asserted through
 //       VoiceResolver::laneProbabilityAtStep — the exact call StraitsSandsMacroVisual::
-//       process() makes — so this section is RED on HEAD (the out moved) and GREEN after.
+//       process() makes.
 //   C2. Lane delegated to MACRO: East's own-slot edit (the same raw write — the value
 //       East's spread pass WOULD land) still moves the shared rows but changes NEITHER
 //       Macro's bars-source NOR Macro's output (Macro overrides; East inert). The
 //       "Macro drives" half of this case is pinned in C3 (the accessor + the store the
-//       module publishes — on a Macro-delegated lane the manager's write IS Macro's spread).
-//   C3. (Post-fix — a function TEMPLATE gated on the accessor existing via if-constexpr +
-//       requires, so this file still COMPILES+RUNS on a pre-fix tree, where it reports
-//       "absent" and C1/C2 are already RED.) ONE accessor, both consumers: the out IS
-//       eng.macroOwnLaneProbability (bit-exact routing identity); Macro's own spread
-//       drives it for the poly voices (the delegating voices' out) and leaves V1
-//       spread-invariant (the anchor self-target no-op); the accessor is invariant under
-//       the East write; and it reproduces the OLD bars formula bit-exactly (the bars'
-//       values do not change — only the out's source is fixed).
+//       manager publishes — on a Macro-delegated lane the manager's write IS Macro's
+//       spread).
+//   C3. ONE accessor, both consumers: the out IS eng.effectiveProbability(MacroOwn)
+//       (bit-exact routing identity); Macro's own spread drives it for the poly voices
+//       (the delegating voices' out) and leaves V1 spread-invariant (the anchor
+//       self-target no-op); the accessor is invariant under the East write; and it
+//       reproduces the OLD bars formula bit-exactly (the bars' values do not change —
+//       only the out's source was fixed, and the accessor subsumes the old accessor's
+//       arithmetic verbatim).
 //   C4. STRUCTURAL (the B3 "grep in test" precedent from test_warp_voice_isolation): the
-//       routing pins — the resolver's laneProbabilityAtStep routes to macroOwnLaneProbability
-//       (NOT the shared masterLaneProbability/polyLaneProbabilityAtStep), the widget's
-//       macroOwnProbability delegates to the SAME engine accessor, and the module
-//       publishes macroOwnSpread (the one spread source).
+//       routing pins — the resolver's laneProbabilityAtStep routes to the ONE accessor
+//       with the MacroOwn lens (NOT the shared masterLaneProbability/polyLaneProbabilityAtStep),
+//       the widget's bars call the SAME accessor directly, and the manager (not the
+//       module) publishes macroOwnSpread (the one Macro-own spread source).
 //
 // Companion sources: PatternEngine.cpp + SequencerEngine.cpp + GateState.cpp
 // (the test_warp_voice_isolation pattern).
@@ -96,7 +108,7 @@ static void fillSlewedGolden(PatternEngine& pe) {
 // Simulate the manager's East-spread pass on `lane` (the manager is rig-invisible — these
 // are the exact writes it performs, at the engine's own seams):
 //   • the CONTROL-RATE mono write: polyRandom(0,lane)[i] = applyMono(pe, lane, i, spread)
-//     with the OWNER's spread from the engine spread store (MonsoonSandsManager's pass);
+//     with the OWNER's spread from the engine spread store (the spread pass);
 //   • the STEP-RATE poly writes: cachedPolySpread[v][lane] + refreshPolyRandomCell (which
 //     also refreshes the warp mirror cell — the full rig-visible spread path).
 // NEGATIVE spread so the mono row actually moves (applyMono self-targets under anchor-V1:
@@ -135,66 +147,70 @@ static std::string repoRoot() {
 
 // ── C3: the ONE accessor, both consumers ──────────────────────────────────────
 // A function TEMPLATE on purpose: the if-constexpr/requires guard makes the dependent
-// branch NOT INSTANTIATE when the accessor is absent, so this file compiles on a pre-fix
-// tree (where C1/C2 already fail — the RED). On the fixed tree the branch runs.
+// branch NOT INSTANTIATE when the accessor is absent, so this file compiles on a
+// pre-migration tree (where C1/C2 already fail — the RED). On the migrated tree the
+// branch runs.
 template <typename Eng>
 static void macroAccessorContract(Eng& se, int& absent) {
-    if constexpr (requires { se.macroOwnLaneProbability(PatternEngine::PL_MELODY, 0, true, 0); }) {
+    if constexpr (requires { se.effectiveProbability(0, PatternEngine::PL_MELODY, 0,
+                                                     SequencerEngine::ProbLens::MacroOwn); }) {
+        using Lens = SequencerEngine::ProbLens;
         const int LANE = PatternEngine::PL_MELODY;
         dotModular::VoiceResolver resolver(se);
         // Baseline (Macro's own spread = 0 — the store default before the module publishes).
         float before[16][16];
         for (int s = 0; s < 16; ++s) {
-            before[0][s] = se.macroOwnLaneProbability(LANE, s, /*mono=*/true,  /*polyVoice=*/0);
+            before[0][s] = se.effectiveProbability(0, LANE, s, Lens::MacroOwn);
             for (int v = 1; v < 16; ++v)
-                before[v][s] = se.macroOwnLaneProbability(LANE, s, /*mono=*/false, /*polyVoice=*/v);
+                before[v][s] = se.effectiveProbability(v, LANE, s, Lens::MacroOwn);
         }
         // (a) East-write invariance at the accessor — the BARS' property (Rodney: the bars
-        // don't move), now the out's too: the accessor reads pubSlewed* + macroOwnSpread,
-        // never the East-written shared random_/warpRow.
+        // don't move), now the out's too: the MacroOwn lens reads pubSlewed* +
+        // macroOwnSpread, never the East-written shared random_/warpRow or the Owner
+        // spread stores.
         eastSpreadWrite(se, LANE, -0.8f);
         for (int s = 0; s < 16; ++s) {
-            EXPECTF(se.macroOwnLaneProbability(LANE, s, true, 0) == before[0][s],
+            EXPECTF(se.effectiveProbability(0, LANE, s, Lens::MacroOwn) == before[0][s],
                     "V1 accessor moved under the East write (step %d: %.9g -> %.9g)", s,
-                    (double)before[0][s], (double)se.macroOwnLaneProbability(LANE, s, true, 0));
+                    (double)before[0][s],
+                    (double)se.effectiveProbability(0, LANE, s, Lens::MacroOwn));
             for (int v = 1; v < 16; ++v)
-                EXPECTF(se.macroOwnLaneProbability(LANE, s, false, v) == before[v][s],
+                EXPECTF(se.effectiveProbability(v, LANE, s, Lens::MacroOwn) == before[v][s],
                         "poly accessor moved under the East write (v=%d step %d: %.9g -> %.9g)",
                         v, s, (double)before[v][s],
-                        (double)se.macroOwnLaneProbability(LANE, s, false, v));
+                        (double)se.effectiveProbability(v, LANE, s, Lens::MacroOwn));
         }
         // (b) Macro's OWN spread drives the accessor for the POLY voices (the delegating
         // voices' bars + out on a Macro-delegated lane); V1 stays spread-invariant (the
         // anchor self-target no-op — matches East's V1 display). The store write stands in
-        // for the module's publish (macroBase[l][3] + macroPostDelta[l][3], clamped — the
-        // SAME expression the manager's MACRO_SOLE branch uses).
+        // for the manager's publish (publishGlobal's resolver output — the same value the
+        // old module publish wrote: clamp(macroBase[l][3] + macroPostDelta[l][3])).
         se.macroOwnSpread[LANE] = 0.6f;
         int moved = 0;
         for (int v = 1; v < 16; ++v)
             for (int s = 0; s < 16; ++s)
-                if (se.macroOwnLaneProbability(LANE, s, false, v) != before[v][s]) ++moved;
+                if (se.effectiveProbability(v, LANE, s, Lens::MacroOwn) != before[v][s]) ++moved;
         EXPECTF(moved == 15 * 16, "Macro's own spread moved only %d/240 poly cells", moved);
         for (int s = 0; s < 16; ++s)
-            EXPECTF(se.macroOwnLaneProbability(LANE, s, true, 0) == before[0][s],
+            EXPECTF(se.effectiveProbability(0, LANE, s, Lens::MacroOwn) == before[0][s],
                     "V1 (anchor) moved under Macro's own spread (step %d)", s);
         // (c) ROUTING IDENTITY — the OUT is the SAME source the bars read: the resolver's
         // call (what the module's process() invokes) is bit-exactly the accessor. This
-        // asserts ONE SOURCE, not bars==latched-out values (the module's S&H latch and
-        // scale live downstream, rig-invisible, and are untouched by design).
+        // asserts ONE SOURCE, not bars==latched-out values (the module's step-3 step
+        // cache, latch and scale live downstream, rig-invisible, and are untouched by
+        // design).
         for (int v = 1; v <= 16; ++v)
             for (int s = 0; s < 16; ++s) {
-                const bool mono = dotModular::VoiceResolver::isMono(v);
-                const float want = mono
-                    ? se.macroOwnLaneProbability(LANE, s, true, 0)
-                    : se.macroOwnLaneProbability(LANE, s, false,
-                                                  dotModular::VoiceResolver::polyVoiceSlot(v));
-                EXPECTF(resolver.laneProbabilityAtStep(v, LANE, s) == want,
+                const int slot = v - 1;   // voiceSlot: V1→0 ... V16→15
+                EXPECTF(resolver.laneProbabilityAtStep(v, LANE, s) ==
+                            se.effectiveProbability(slot, LANE, s, Lens::MacroOwn),
                         "out != accessor (voice=%d step=%d: %.9g vs %.9g) — two sources",
-                        v, s, (double)resolver.laneProbabilityAtStep(v, LANE, s), (double)want);
+                        v, s, (double)resolver.laneProbabilityAtStep(v, LANE, s),
+                        (double)se.effectiveProbability(slot, LANE, s, Lens::MacroOwn));
             }
         // (d) Regression guard — the accessor reproduces the OLD bars formula bit-exactly
         // (pubSlewed base + Macro spread via SpreadInterp + warpDisplayMix): the BARS'
-        // values do not change; only the out's source is fixed.
+        // values do not change; only the producer is unified.
         for (int s = 0; s < 16; ++s)
             for (int v = 0; v < 16; ++v) {
                 const float sp = se.macroOwnSpread[LANE];
@@ -203,20 +219,20 @@ static void macroAccessorContract(Eng& se, int& absent) {
                     ? redDot::SpreadInterp::interpolate(base, base, sp)
                     : redDot::SpreadInterp::applyAnchorV1Only(se.pe, LANE, s, base, sp);
                 const float want = se.pe.warpDisplayMix(v, LANE, (double)disp);
-                const float got = (v == 0) ? se.macroOwnLaneProbability(LANE, s, true, 0)
-                                           : se.macroOwnLaneProbability(LANE, s, false, v);
+                const float got = se.effectiveProbability(v, LANE, s, Lens::MacroOwn);
                 EXPECTF(got == want, "old-bars-formula mismatch (v=%d step=%d: %.9g vs %.9g)",
                         v, s, (double)got, (double)want);
             }
     } else {
         ++absent;
-        std::cout << "  \033[33m?\033[0m (engine accessor macroOwnLaneProbability absent — "
-                     "pre-fix build; C1/C2 carry the RED)\n";
+        std::cout << "  \033[33m?\033[0m (engine accessor effectiveProbability absent — "
+                     "pre-migration build; C1/C2 carry the RED)\n";
     }
 }
 
 int main() {
-    std::cout << "\033[1mMacro-own output (CC_PROMPT_macro_output_east_leak) Tests\033[0m\n"
+    std::cout << "\033[1mMacro-own output (CC_PROMPT_macro_output_east_leak → "
+                 "CC_PROMPT_UI_TO_RESOLVER_SPEC) Tests\033[0m\n"
               << std::string(62, '=') << "\n";
     const int MEL = PatternEngine::PL_MELODY, OCT = PatternEngine::PL_OCTAVE;
 
@@ -244,7 +260,7 @@ int main() {
         EXPECTF(se.masterLaneProbability(MEL) != mpBefore,
                 "vacuous simulation: masterLaneProbability did not move");
         // THE CONTRACT: Macro's OUT is UNCHANGED — East never reaches it (one-way
-        // borrowing: Macro never borrows East). RED on HEAD: the out read the shared.
+        // borrowing: Macro never borrows East).
         for (int v = 1; v <= 16; ++v)
             for (int s = 0; s < 16; ++s)
                 EXPECTF(resolver.laneProbabilityAtStep(v, MEL, s) == outBefore[v - 1][s],
@@ -285,14 +301,14 @@ int main() {
                         (double)resolver.laneProbabilityAtStep(v, OCT, s));
     });
 
-    // ── C3: ONE accessor, both consumers (post-fix; gated — see above) ───────────
-    TEST("C3 ONE accessor both consumers: out == macroOwnLaneProbability bit-exact; Macro's spread drives poly voices, V1 anchor-invariant; East-write invariant; old-bars-formula bit-exact", {
+    // ── C3: ONE accessor, both consumers (post-migration; gated — see above) ─────
+    TEST("C3 ONE accessor both consumers: out == effectiveProbability(MacroOwn) bit-exact; Macro's spread drives poly voices, V1 anchor-invariant; East-write invariant; old-bars-formula bit-exact", {
         SequencerEngine se;
         fillSlewedGolden(se.pe);
         int absent = 0;
         macroAccessorContract(se, absent);
         EXPECTF(absent == 0,
-                "engine accessor macroOwnLaneProbability absent (pre-fix build)");
+                "engine accessor effectiveProbability absent (pre-migration build)");
     });
 
     // ── C4: STRUCTURAL routing pins (the B3 "grep in test" precedent) ────────────
@@ -303,26 +319,29 @@ int main() {
         const size_t end = src.find("}", fn);
         EXPECTF(end != std::string::npos, "VoiceResolver.hpp: laneProbabilityAtStep body not found");
         const std::string body = src.substr(fn, end - fn);
-        EXPECTF(contains(body, "macroOwnLaneProbability("),
-                "the prob-out still routes to the SHARED final — no macroOwnLaneProbability "
+        EXPECTF(contains(body, "effectiveProbability("),
+                "the prob-out still routes to the SHARED final — no effectiveProbability "
                 "call in laneProbabilityAtStep, so East's spread on an East-owned lane "
                 "reaches Macro's out (the backwards-delegation leak)");
+        EXPECTF(contains(body, "MacroOwn"),
+                "laneProbabilityAtStep lost the MacroOwn lens — the one-way borrowing "
+                "rule has no structural anchor at the out");
         EXPECTF(!contains(body, "masterLaneProbability(") && !contains(body, "polyLaneProbabilityAtStep("),
                 "laneProbabilityAtStep still reads the shared master/poly funnels");
     });
 
-    TEST("C4 bars + publish: the widget's macroOwnProbability delegates to the SAME engine accessor; the module publishes macroOwnSpread (the one spread source)", {
+    TEST("C4 bars + publish: the widget's bars call the ONE accessor directly; the MANAGER publishes macroOwnSpread (the one Macro-own spread source)", {
         const std::string src = slurp(repoRoot() + "/src/StraitsSandsMacroVisual.cpp");
-        const size_t fn = src.find("float macroOwnProbability(");
-        EXPECTF(fn != std::string::npos, "StraitsSandsMacroVisual.cpp: macroOwnProbability not found");
-        const size_t end = src.find("}", fn);
-        EXPECTF(end != std::string::npos, "StraitsSandsMacroVisual.cpp: macroOwnProbability body not found");
-        const std::string body = src.substr(fn, end - fn);
-        EXPECTF(contains(body, "macroOwnLaneProbability("),
-                "the bars do not route through the ONE engine accessor — bars and out are "
+        EXPECTF(contains(src, "effectiveProbability("),
+                "the bars do not route through the ONE accessor — bars and out are "
                 "two resolutions that can diverge");
-        EXPECTF(contains(src, "macroOwnSpread["),
-                "the module does not publish macroOwnSpread — the engine store has no source");
+        EXPECTF(!contains(src, "macroOwnProbability("),
+                "the widget still wraps the bars in its own macroOwnProbability — a "
+                "second seam between the bars and the ONE accessor");
+        const std::string mgr = slurp(repoRoot() + "/src/dsp/managers/MonsoonSandsManager.cpp");
+        EXPECTF(contains(mgr, "engine.macroOwnSpread[lane]"),
+                "the manager does not publish macroOwnSpread — the MacroOwn lens's "
+                "store has no source (publishGlobal's resolver output)");
     });
 
     std::cout << std::string(62, '=') << "\n" << s_pass << " passed, " << s_fail << " failed\n";
