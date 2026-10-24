@@ -1,6 +1,6 @@
 #pragma once
 #include "PatternEngine.hpp"
-#include "../SpreadInterp.hpp"   // effectiveProbability's spread term (was macroOwnLaneProbability — CC_PROMPT_macro_output_east_leak, deleted by UI_TO_RESOLVER step 2)
+#include "../SpreadInterp.hpp"   // effectiveProbability's spread term (the a2ccb842 one-accessor design it subsumes was deleted by UI_TO_RESOLVER step 2)
 #include "../gates/GateState.hpp"
 #ifdef MONSOON_PROFILE
 #include "../../MonsoonProfile.hpp"   // CC_PROMPT_cpu_section_profile: Suspect-A call counter (empty flag-off)
@@ -748,9 +748,10 @@ struct SequencerEngine {
 
     // ── THE ONE effective-probability accessor (CC_PROMPT_UI_TO_RESOLVER_SPEC step 1) ──
     // ONE call produces the effective (voice, lane, step) probability = the published
-    // base draw + the RESOLVER-resolved spread + the warp mix. It SUBSUMES the old
-    // macroOwnLaneProbability (CC_PROMPT_macro_output_east_leak) — the same value,
-    // produced through the one authority instead of a third hand-rolled resolution.
+    // base draw + the RESOLVER-resolved spread + the warp mix. It SUBSUMES the
+    // a2ccb842 one-accessor design (CC_PROMPT_macro_output_east_leak — deleted by
+    // UI_TO_RESOLVER step 2) — the same value, produced through the one authority
+    // instead of a third hand-rolled resolution.
     // The engine draw, the bars, and the prob-outs ALL read THIS function; there is
     // no second computation of the quantity anywhere (the spec's one-producer law).
     //
@@ -782,11 +783,41 @@ struct SequencerEngine {
     // SpreadInterp is the underlying interpolation math the term wraps — the DISPLAY
     // entry points only (published snapshots + the anchor-V1 target): torn-read safe,
     // never the live slewed* the audio path reads (the V16-flicker law).
-    // THE WARP TERM is the ONE composition: warpDisplayMix → WarpBank::warpedValue →
-    // resolveWarpCell — the SAME path the warp mirror consumes, tilt+atom feel-test
-    // stages included. No second warp path exists.
+    // THE WARP TERM is the ONE composition per LENS: Owner → warpDisplayMix (the
+    // engine draw's twin — warpDisplayMix → WarpBank::warpedValue → resolveWarpCell,
+    // the SAME path the warp mirror consumes, tilt+atom feel-test stages included);
+    // MacroOwn → warpDisplayMixMacroOwn (Macro's GLOBAL cell — see below). No second
+    // warp path exists per lens.
     // V1/mono is the spread anchor: interpolate(base, base, sp) — self-target no-op,
     // so V1's value is spread-invariant at positive spread (matches East's V1 display).
+    //
+    // ── THE MACRO-OWN TRACE (CC_PROMPT_UI_TO_RESOLVER_FINISH2 BUG 1): which arrays
+    // the MacroOwn lens reads, and why NO East path can write them ──────────────────
+    //   base   = pe.pubSlewedPoly*[voice][step] (via polySlewedPub) — the PUBLISHED
+    //            pre-spread slew. Writers: publishSlewedRhythm/Melody/Qmix ONLY,
+    //            copying the authored A/B blend in slewed* (recomputeEffective*, the
+    //            Change-Alley pin remap, reset). East's spread passes write random_
+    //            (the post-spread finals: applyMono → rhythmRandom/melodyRandom/…,
+    //            cachedPolySpread + refreshPolyRandomCell → polyRandom) — NEVER
+    //            slewed* or pubSlewedPoly*. (Verified mechanically: the pubs' only
+    //            writers are the publish* twins; pinned by test_ui_to_resolver T8,
+    //            which clobbers every East-written array and asserts the lens is
+    //            bit-unchanged.)
+    //   amount = macroOwnSpread[lane] — published ONLY by MonsoonSandsManager's
+    //            publishGlobal (Macro's knob + Macro's own CV; no East term).
+    //   target = monoSlewedPub → pubSlewedPoly*[0][step] (the V2+ anchor) — the same
+    //            East-unwritable store as the base.
+    //   warp   = Macro's GLOBAL bank cell via warpDisplayMixMacroOwn (delegated=TRUE):
+    //            globalWarp{W,F,Tilt,AtomLevel,AtomMass}[lane], authored ONLY by
+    //            Macro's panel. The per-(voice,lane) OWN-SLOT pair
+    //            (warpW/warpF/warpTilt/warpAtom*[v*7+lane]) is EAST-authorable
+    //            (East's V1/poly tabs author those slots) and is what warpDisplayMix
+    //            selects through warpDelegated_ on East-owned lanes — the lens must
+    //            NOT read it. That was the one-layer-down leak ("East STILL modulates
+    //            Macro warp"): pre-FINISH2 the lens composed with the own-slot pair,
+    //            so East's curve/w edits moved Macro's bars + prob-outs on East-owned
+    //            lanes while every spread-layer test stayed green (pinned by T7).
+    // Macro-own ALL THE WAY DOWN: base + amount + target + warp.
     enum class ProbLens { Owner, MacroOwn };
     float effectiveProbability(int voice, int lane, int step, ProbLens lens) const {
 #ifdef MONSOON_PROFILE
@@ -809,8 +840,12 @@ struct SequencerEngine {
             ? redDot::SpreadInterp::interpolate(base, base, sp)                    // anchor self-target
             : redDot::SpreadInterp::applyAnchorV1Only(pe, l, step & 0x0F, base, sp);
         // Warp display composition (CC_PROMPT_05 uniform): the same per-(voice,lane)
-        // mixture the engine consumes, keyed to the sampled voice.
-        return pe.warpDisplayMix(v, l, (double)disp);
+        // mixture the engine consumes, keyed to the sampled voice. MacroOwn composes
+        // with Macro's GLOBAL cell (the Macro-own trace above) — never the
+        // East-authorable own-slot pair warpDisplayMix selects on East-owned lanes.
+        return (lens == ProbLens::MacroOwn)
+            ? pe.warpDisplayMixMacroOwn(v, l, (double)disp)
+            : pe.warpDisplayMix(v, l, (double)disp);
     }
 
     // Macro's own effective spread per PL lane — the MacroOwn lens's amount. The ONE
@@ -820,11 +855,11 @@ struct SequencerEngine {
     // (MacroOwn); written ONLY by MonsoonSandsManager::publishGlobal.
     float macroOwnSpread[PL_LANES] = {};
 
-    // (macroOwnLaneProbability DELETED — CC_PROMPT_UI_TO_RESOLVER_SPEC step 2: the
-    //  third computation dies. Both former callers — the Macro bars and
-    //  VoiceResolver::laneProbabilityAtStep, the prob-out seam — now call
-    //  effectiveProbability(voice, lane, step, ProbLens::MacroOwn) directly; the
-    //  shim was a one-commit bridge while the accessor landed.)
+    // (The a2ccb842 third-computation accessor is DELETED — CC_PROMPT_UI_TO_RESOLVER_SPEC
+    //  step 2. Both former callers — the Macro bars and VoiceResolver::
+    //  laneProbabilityAtStep, the prob-out seam — now call effectiveProbability(voice,
+    //  lane, step, ProbLens::MacroOwn) directly; the shim was a one-commit bridge while
+    //  the accessor landed.)
 
 
     // Independent lookup indices for each "DNA strand"

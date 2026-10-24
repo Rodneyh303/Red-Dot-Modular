@@ -57,6 +57,7 @@
 #include "SequencerEngine.hpp"
 #include "SpreadInterp.hpp"
 #include "VoiceResolver.hpp"
+#include "WarpF.hpp"   // T7: author an East own-slot curve + Macro's global cell (bank-wired warp)
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -135,6 +136,27 @@ static std::string slurp(const std::string& path) {
 }
 static bool contains(const std::string& hay, const std::string& needle) {
     return hay.find(needle) != std::string::npos;
+}
+// T9: the FINISH2 literal-acceptance counts — occurrences of a substring, and LINES
+// containing any of a set of substrings (the acceptance greps are raw line counts:
+// comment tombstones count exactly like live refs).
+static int countOccurrences(const std::string& hay, const std::string& needle) {
+    int n = 0;
+    for (size_t p = hay.find(needle); p != std::string::npos; p = hay.find(needle, p + needle.size()))
+        ++n;
+    return n;
+}
+static int countLinesWith(const std::string& hay, const char* const subs[], int nSubs) {
+    int lines = 0;
+    size_t pos = 0;
+    while (pos != std::string::npos) {
+        const size_t eol = hay.find('\n', pos);
+        const std::string line = hay.substr(pos, (eol == std::string::npos ? hay.size() : eol) - pos);
+        for (int i = 0; i < nSubs; ++i)
+            if (line.find(subs[i]) != std::string::npos) { ++lines; break; }
+        pos = (eol == std::string::npos) ? std::string::npos : eol + 1;
+    }
+    return lines;
 }
 static std::string repoRoot() {
     static const char* candidates[] = { ".", "..", "../.." };
@@ -407,8 +429,206 @@ int main() {
         }
     });
 
-    // ── SUBSUMPTION: the MacroOwn lens reproduces the OLD formula bit-exactly ───
-    TEST("SUBSUMPTION: effectiveProbability(MacroOwn) == the OLD macroOwnLaneProbability formula (pubSlewed base + macroOwnSpread via SpreadInterp + warpDisplayMix) — bit-exact; the bars' values do not change", {
+    // ── T7: THE WARP LAYER (CC_PROMPT_UI_TO_RESOLVER_FINISH2 BUG 1) ────────────────
+    // The ONE-LAYER-DOWN leak. The MacroOwn lens's three inputs were audited layer by
+    // layer: the BASE (pubSlewedPoly*, via polySlewedPub) is written ONLY by
+    // publishSlewed* copying the authored A/B slewed blend — East's spread passes write
+    // random_ (applyMono → *Random, cachedPolySpread + refreshPolyRandomCell →
+    // polyRandom), never the pubs — and the AMOUNT (macroOwnSpread) is the manager's
+    // publishGlobal output. Both clean. The WARP layer was NOT: the lens composed via
+    // warpDisplayMix, which resolves (F,w) through warpDelegated_[v][lane] — on an
+    // EAST-OWNED lane that selects the per-(voice,lane) OWN-SLOT pair
+    // (warpW/warpF/warpTilt/warpAtom*[v*7+lane]), which EAST'S V1/poly tabs author.
+    // East's curve/w edit on an East-owned lane therefore modulated Macro's bars and
+    // prob-outs — Rodney's "East STILL modulates Macro warp" — while every spread-layer
+    // test stayed green. The contract: the MacroOwn lens composes with MACRO'S GLOBAL
+    // bank cell (delegated=TRUE semantics) all the way down; the Owner lens keeps the
+    // own-slot selection (the engine draw's twin — the audio consumes the own-slot
+    // curve on East-owned lanes, and East's bars must show exactly that).
+    TEST("T7 THE WARP LAYER: effectiveProbability(MacroOwn) composes with MACRO'S GLOBAL curve — an East-authored own-slot curve (deleg=false, the East-owned topology) never reaches the lens or the master out; the Owner lens (the engine twin) still follows the own slot", {
+        SequencerEngine se;
+        fillSlewedGolden(se.pe);
+        se.macroOwnSpread[MEL] = 0.f;   // isolate the warp layer: disp == base bit-exact
+        // EAST's authorship: strong non-identity curves on the OWN slots (V1 + a poly voice).
+        // MACRO's global cell stays neutral (w=0, identity — Macro authored nothing).
+        dotModular::WarpBank bank;
+        bank.warpW[dotModular::WarpBank::index(0, MEL)] = 0.9f;
+        bank.warpF[dotModular::WarpBank::index(0, MEL)] = dotModular::PowerWarp{2.5};
+        bank.warpW[dotModular::WarpBank::index(4, MEL)] = 0.85f;
+        bank.warpF[dotModular::WarpBank::index(4, MEL)] = dotModular::PowerWarp{0.4};
+        se.pe.setWarpBank(&bank);
+        se.pe.setWarpDelegated(0, MEL, false);   // East-owned lane: own slot selected pre-fix
+        se.pe.setWarpDelegated(4, MEL, false);
+        // (a) THE COMPOSITION: the MacroOwn value is the GLOBAL-cell mix over the base
+        //     (neutral global ⇒ bit-exact the raw base) — NOT the East-slot mix.
+        for (int s = 0; s < 16; ++s) {
+            const float base0 = redDot::SpreadInterp::polySlewedPub(se.pe, MEL, 0, s);
+            EXPECTF(se.effectiveProbability(0, MEL, s, Lens::MacroOwn) == base0,
+                    "MacroOwn(V1) composes with the EAST own-slot curve (step %d: %.9g != "
+                    "base %.9g) — the warp layer is not Macro-own",
+                    s, (double)se.effectiveProbability(0, MEL, s, Lens::MacroOwn),
+                    (double)base0);
+            const float base4 = redDot::SpreadInterp::polySlewedPub(se.pe, MEL, 4, s);
+            EXPECTF(se.effectiveProbability(4, MEL, s, Lens::MacroOwn) == base4,
+                    "MacroOwn(v=4) composes with the EAST own-slot curve (step %d: %.9g != "
+                    "base %.9g) — the warp layer is not Macro-own",
+                    s, (double)se.effectiveProbability(4, MEL, s, Lens::MacroOwn),
+                    (double)base4);
+        }
+        // (b) THE PERTURBATION (the one-layer-down catcher): EDIT the East-authored
+        //     slot curve + depth → MacroOwn UNCHANGED; the Owner lens DOES move (the
+        //     own slot is East's to author — the vacuous guard).
+        float macBefore[16], ownBefore[16];
+        for (int s = 0; s < 16; ++s) {
+            macBefore[s] = se.effectiveProbability(0, MEL, s, Lens::MacroOwn);
+            ownBefore[s] = se.effectiveProbability(0, MEL, s, Lens::Owner);
+        }
+        bank.warpF[dotModular::WarpBank::index(0, MEL)] = dotModular::PowerWarp{0.3};
+        bank.warpW[dotModular::WarpBank::index(0, MEL)] = 1.0f;
+        int ownMoved = 0;
+        for (int s = 0; s < 16; ++s) {
+            EXPECTF(se.effectiveProbability(0, MEL, s, Lens::MacroOwn) == macBefore[s],
+                    "LEAK: an East own-slot CURVE edit moved Macro's value (step %d: %.9g -> "
+                    "%.9g) — East still modulates Macro warp",
+                    s, (double)macBefore[s],
+                    (double)se.effectiveProbability(0, MEL, s, Lens::MacroOwn));
+            if (se.effectiveProbability(0, MEL, s, Lens::Owner) != ownBefore[s]) ++ownMoved;
+        }
+        EXPECTF(ownMoved == 16,
+                "vacuous: the East slot edit did not move the Owner lens (only %d/16) — "
+                "the own-slot curve is not being consumed anywhere",
+                ownMoved);
+        // (c) MACRO'S OWN CURVE DRIVES THE LENS: author the GLOBAL cell → the MacroOwn
+        //     value is exactly the global-cell mix over the base (the authoritative
+        //     formula), and it MOVED vs (a).
+        bank.globalWarpW[MEL] = 0.8f;
+        bank.globalWarpF[MEL] = dotModular::PowerWarp{3.0};
+        int macMovedVsA = 0;
+        for (int s = 0; s < 16; ++s) {
+            const float base0 = redDot::SpreadInterp::polySlewedPub(se.pe, MEL, 0, s);
+            const float want =
+                (float)bank.warpedValue(0, MEL, (double)base0, /*delegated=*/true);
+            EXPECTF(se.effectiveProbability(0, MEL, s, Lens::MacroOwn) == want,
+                    "MacroOwn != the GLOBAL-cell mix (step %d: %.9g vs %.9g) — the warp "
+                    "composition left Macro's curve",
+                    s, (double)se.effectiveProbability(0, MEL, s, Lens::MacroOwn),
+                    (double)want);
+            if (want != base0) ++macMovedVsA;
+        }
+        EXPECTF(macMovedVsA == 16,
+                "vacuous: Macro's global curve did not move the lens (%d/16) — the "
+                "global cell is inert", macMovedVsA);
+        // (d) THROUGH THE REAL ENTRY: the master prob-out does not move under the East
+        //     slot edit (identity LOR so masterLaneStep is driven, the T6a setup).
+        for (int s = 0; s < 7; ++s) {
+            se.strandLenRef(s) = 16; se.strandOffRef(s) = 0; se.strandRotRef(s) = 0;
+        }
+        se.laneTick_[SequencerEngine::polyLaneStrand(MEL)] = 5;
+        const float masterBefore = se.masterLaneProbability(MEL);
+        bank.warpF[dotModular::WarpBank::index(0, MEL)] = dotModular::PowerWarp{0.7};
+        bank.warpW[dotModular::WarpBank::index(0, MEL)] = 1.0f;
+        EXPECTF(se.masterLaneProbability(MEL) == masterBefore,
+                "LEAK through the master out: an East own-slot curve edit moved "
+                "masterLaneProbability (%.9g -> %.9g) — the out carries East's warp",
+                (double)masterBefore, (double)se.masterLaneProbability(MEL));
+        // (e) the delegated (Macro-owned) topology is unchanged by the fix: the global
+        //     cell serves the lens there too (the pre-fix behaviour on those lanes).
+        se.pe.setWarpDelegated(0, MEL, true);
+        const int step = se.masterLaneStep(MEL);
+        const float baseNow = redDot::SpreadInterp::polySlewedPub(se.pe, MEL, 0, step);
+        const float wantNow = (float)bank.warpedValue(0, MEL, (double)baseNow, true);
+        EXPECTF(se.masterLaneProbability(MEL) == wantNow,
+                "the delegated (Macro-owned) lane left the global-cell composition "
+                "(%.9g vs %.9g)",
+                (double)se.masterLaneProbability(MEL), (double)wantNow);
+    });
+
+    // ── T8: BASE-INDEPENDENCE — the direct shared-array perturbation ─────────────
+    // The prompt's (b): write the arrays East's passes write, DIRECTLY, in the test —
+    // every voice × lane × step of random_ (the post-spread finals: the applyMono mono
+    // rows + the refreshPolyRandomCell poly rows), the warp mirror rebuilt from them
+    // (East's own companion write), cachedPolySpread, and the engine spread store —
+    // and the MacroOwn lens must come back bit-identical on every (voice, lane, step).
+    TEST("T8 BASE-INDEPENDENCE: clobbering EVERY East-written shared array (random_ all rows, the mirror rebuilt from it, cachedPolySpread, spreadE) leaves effectiveProbability(MacroOwn) bit-identical — the lens reads none of them", {
+        SequencerEngine se;
+        fillSlewedGolden(se.pe);
+        for (int l = 0; l < 7; ++l) se.macroOwnSpread[l] = ((l & 1) ? -0.4f : 0.55f) - 0.03f * l;
+        // A wired bank with BOTH topologies live (some delegated, some not) and a
+        // non-neutral global — the warp layer is exercised, not bypassed.
+        dotModular::WarpBank bank;
+        bank.globalWarpW[OCT] = 0.5f;
+        bank.globalWarpF[OCT] = dotModular::PowerWarp{2.0};
+        bank.warpW[dotModular::WarpBank::index(3, OCT)] = 0.9f;
+        bank.warpF[dotModular::WarpBank::index(3, OCT)] = dotModular::PowerWarp{0.5};
+        se.pe.setWarpBank(&bank);
+        for (int l = 0; l < 7; ++l)
+            for (int v = 0; v < 16; ++v) se.pe.setWarpDelegated(v, l, (v + l) & 1);
+        static float snap[16][7][16];
+        for (int v = 0; v < 16; ++v)
+            for (int l = 0; l < 7; ++l)
+                for (int s = 0; s < 16; ++s)
+                    snap[v][l][s] = se.effectiveProbability(v, l, s, Lens::MacroOwn);
+        // ── THE PERTURBATION: every array an East pass writes, at full field size ──
+        for (int l = 0; l < 7; ++l) {
+            se.spreadERef(0, l) = 0.77f;                        // the V1 spread store (sprForLane's publish)
+            for (int v = 0; v < 16; ++v) se.pe.cachedPolySpread[v][l] = -0.66f;   // combineSpread's cache
+            for (int v = 0; v < 16; ++v)
+                for (int s = 0; s < 16; ++s)
+                    se.pe.random_[v][l][s] = 0.123f + 0.0001f * (v * 7 + l);      // the finals: applyMono + refreshPolyRandomCell
+        }
+        se.pe.rebuildWarpMirrorAll();   // the mirror rebuilt from the dirty random_ — East's companion write
+        int unchanged = 0;
+        for (int v = 0; v < 16; ++v)
+            for (int l = 0; l < 7; ++l)
+                for (int s = 0; s < 16; ++s)
+                    if (se.effectiveProbability(v, l, s, Lens::MacroOwn) == snap[v][l][s]) ++unchanged;
+        EXPECTF(unchanged == 16 * 7 * 16,
+                "LEAK: the East-written arrays moved the MacroOwn lens (%d/1792 cells "
+                "unchanged) — the lens reads an East-written shared array",
+                unchanged);
+        // Vacuous guard: the writes TOOK — the Owner lens (which legitimately reads the
+        // spread stores + mirror) moved on a sample of cells.
+        int ownerMoved = 0;
+        for (int v = 0; v < 16; v += 5)
+            for (int l = 0; l < 7; ++l)
+                for (int s = 0; s < 16; s += 3)
+                    if (se.effectiveProbability(v, l, s, Lens::Owner) !=
+                        redDot::SpreadInterp::polySlewedPub(se.pe, l, v, s)) ++ownerMoved;
+        EXPECTF(ownerMoved > 0,
+                "vacuous: the perturbation moved nothing the Owner lens reads — the "
+                "writes did not land");
+    });
+
+    // ── T9: THE LITERAL DELETIONS (the FINISH2 acceptance greps, pinned) ─────────
+    // Raw counts, comments included — a comment tombstone counts exactly like a live
+    // ref (the acceptance is grep -c, a line count). The deleted third-computation
+    // accessor's name must be GONE from the engine header; the control-rate throttle
+    // literal and the shadow-signature gate name must be GONE from the Macro module.
+    TEST("T9 THE LITERAL DELETIONS: the deleted accessor's name has ZERO occurrences in SequencerEngine.hpp; the throttle literal + the shadow-sig gate name have ZERO lines in StraitsSandsMacroVisual.cpp (comments count)", {
+        const std::string eng = slurp(repoRoot() + "/src/dsp/engines/SequencerEngine.hpp");
+        EXPECTF(countOccurrences(eng, "macroOwnLaneProbability") == 0,
+                "SequencerEngine.hpp still names the deleted third-computation accessor "
+                "(%d occurrences) — the acceptance grep is a raw count; comment "
+                "tombstones count",
+                countOccurrences(eng, "macroOwnLaneProbability"));
+        const std::string macro = slurp(repoRoot() + "/src/StraitsSandsMacroVisual.cpp");
+        static const char* const throttleAndGate[] = { "/32", "SweepSig" };
+        const int lines = countLinesWith(macro, throttleAndGate, 2);
+        EXPECTF(lines == 0,
+                "StraitsSandsMacroVisual.cpp still carries %d lines naming the deleted "
+                "control-rate throttle and/or the shadow-signature gate — the acceptance "
+                "grep is a raw line count; comment tombstones count",
+                lines);
+    });
+
+    // ── SUBSUMPTION: the MacroOwn lens reproduces the a2ccb842 formula, warp layer
+    //    reconciled (FINISH2 BUG 1): pubSlewed base + macroOwnSpread via SpreadInterp +
+    //    the MACRO-GLOBAL warp composition (warpDisplayMixMacroOwn — was warpDisplayMix,
+    //    the East-authorable own-slot selection that leaked East's curve edits into
+    //    Macro's bars/outs; the pinned-test reconciliation for the deliberate warp-layer
+    //    change — bank-less rigs are bit-identical either way, so the a2ccb842-era
+    //    VALUES this pin guarded are unchanged wherever no East-authored curve exists).
+    TEST("SUBSUMPTION: effectiveProbability(MacroOwn) == the a2ccb842 formula (pubSlewed base + macroOwnSpread via SpreadInterp + Macro's GLOBAL warp cell) — bit-exact", {
         SequencerEngine se;
         fillSlewedGolden(se.pe);
         se.macroOwnSpread[MEL] = 0.62f;
@@ -423,7 +643,7 @@ int main() {
                     const float disp = (v == 0)
                         ? redDot::SpreadInterp::interpolate(base, base, sp)
                         : redDot::SpreadInterp::applyAnchorV1Only(se.pe, LANE, s, base, sp);
-                    const float want = se.pe.warpDisplayMix(v, LANE, (double)disp);
+                    const float want = se.pe.warpDisplayMixMacroOwn(v, LANE, (double)disp);
                     EXPECTF(se.effectiveProbability(v, LANE, s, Lens::MacroOwn) == want,
                             "old-formula mismatch (lane=%d v=%d step=%d: %.9g vs %.9g)",
                             LANE, v, s, (double)se.effectiveProbability(v, LANE, s, Lens::MacroOwn),

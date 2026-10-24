@@ -210,9 +210,13 @@ static void macroAccessorContract(Eng& se, int& absent) {
                         v, s, (double)resolver.laneProbabilityAtStep(v, LANE, s),
                         (double)se.effectiveProbability(slot, LANE, s, Lens::MacroOwn));
             }
-        // (d) Regression guard — the accessor reproduces the OLD bars formula bit-exactly
-        // (pubSlewed base + Macro spread via SpreadInterp + warpDisplayMix): the BARS'
-        // values do not change; only the producer is unified.
+        // (d) Regression guard — the accessor reproduces the a2ccb842 bars formula
+        // bit-exactly (pubSlewed base + Macro spread via SpreadInterp + the warp mix),
+        // warp layer reconciled by FINISH2 BUG 1: the composition is Macro's GLOBAL
+        // cell (warpDisplayMixMacroOwn — was warpDisplayMix, the East-authorable
+        // own-slot selection). Bank-less rigs are bit-identical either way, so the
+        // a2ccb842-era VALUES this pin guarded are unchanged wherever no East-authored
+        // curve exists; only the producer is unified.
         for (int s = 0; s < 16; ++s)
             for (int v = 0; v < 16; ++v) {
                 const float sp = se.macroOwnSpread[LANE];
@@ -220,7 +224,7 @@ static void macroAccessorContract(Eng& se, int& absent) {
                 const float disp = (v == 0)
                     ? redDot::SpreadInterp::interpolate(base, base, sp)
                     : redDot::SpreadInterp::applyAnchorV1Only(se.pe, LANE, s, base, sp);
-                const float want = se.pe.warpDisplayMix(v, LANE, (double)disp);
+                const float want = se.pe.warpDisplayMixMacroOwn(v, LANE, (double)disp);
                 const float got = se.effectiveProbability(v, LANE, s, Lens::MacroOwn);
                 EXPECTF(got == want, "old-bars-formula mismatch (v=%d step=%d: %.9g vs %.9g)",
                         v, s, (double)got, (double)want);

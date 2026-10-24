@@ -226,6 +226,19 @@ struct PatternEngine {
     // plumbing; boolean/qmix lanes are inert warp slots at their identity defaults.)
     // No bank ⇒ u returned bit-identically (bank-less hosts unchanged).
     float warpDisplayMix(int v, int lane, double u) const;
+    // ── The MacroOwn warp composition (CC_PROMPT_UI_TO_RESOLVER_FINISH2 BUG 1) ──
+    // The Macro-own twin: the (F,w,tilt,atom) pair is ALWAYS Macro's GLOBAL cell
+    // (delegated=TRUE semantics), never the per-(voice,lane) own-slot pair. WHY: the
+    // own-slot pair (warpW/warpF/warpTilt/warpAtom*[v*7+lane]) is EAST-AUTHORABLE —
+    // East's V1/poly tabs author those bank slots, and warpDelegated_[v][lane] is
+    // false on an East-owned lane — so composing the MacroOwn lens through
+    // warpDisplayMix let East's curve/w edits modulate Macro's bars and prob-outs on
+    // East-owned lanes ("East STILL modulates Macro warp" — the one-layer-down leak:
+    // the base layer was already clean, reading pubSlewedPoly*, which no East spread
+    // pass writes). Macro never borrows East — in the warp layer too: this reads the
+    // globalWarp{W,F,Tilt,AtomLevel,AtomMass}[lane] cells, which only Macro's panel
+    // authors. No bank ⇒ u returned bit-identically (bank-less hosts unchanged).
+    float warpDisplayMixMacroOwn(int v, int lane, double u) const;
 
     // Final post-everything (A/B-mix + spread + LOR feed in upstream) probability value for a given
     // ENGINE STRAND at a given step, 0..1. Now a direct index into random_[0] (mono row): strand index

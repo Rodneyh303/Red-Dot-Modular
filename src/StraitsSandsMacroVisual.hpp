@@ -226,7 +226,7 @@ struct StraitsSandsMacroVisual : Module {
         config(0, StraitsMacroVisualIds::NUM_INPUTS,
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
         monLookupDiv.setDivision(8);   // topology changes are control-rate
-        // (the /32 prob-CV throttle DELETED: CC_PROMPT_UI_TO_RESOLVER_SPEC step 3.
+        // (the control-rate prob-CV throttle DELETED: CC_PROMPT_UI_TO_RESOLVER_SPEC step 3.
         //  The resolve is STEP-cached (stepProb_, below); no control-rate recompute
         //  exists to throttle.)
         // Labels from the canonical table — the old local literal was OLD-order, so
@@ -287,18 +287,25 @@ struct StraitsSandsMacroVisual : Module {
     bool dirModPrev[dotModular::SandsGrid::POLY_LANES] = {};
 
     // ── The prob-out STEP CACHE (CC_PROMPT_UI_TO_RESOLVER_SPEC step 3) ──────────────
-    // Replaces the /32 control-rate throttle, the change-fingerprint gate AND the S&H
+    // Replaces the old control-rate throttle, the change-fingerprint gate AND the S&H
     // latch state (all three deleted with it — the latch is inherent: the cache only
     // moves on a step/polyphony change). Per lane: the Macro-lens step the row was
     // resolved at, the voice count it covers, and the resolved per-voice values
     // (voiceSlot-indexed: val[ch] = channel ch's voice). process() refreshes a row
     // ONLY when its Macro-lens step or the voice count changed — STEP rate, not per
     // sample — and the out writes read the cache with bit-difference write-elimination.
+    // The out-write EPOCH (CC_PROMPT_UI_TO_RESOLVER_FINISH2 — the CPU fix): the
+    // per-channel bit-diff walk runs only when the row was refreshed or the scale/
+    // channel count changed (outFresh/outScale/outCh); steady state is one compare
+    // per lane per sample instead of (1+N) clamp+memcmp iterations.
     struct StepProbRow {
         bool  valid = false;
         int   step = -1;        // the lane's Macro-lens masked playhead the row holds
         int   nVoices = -1;     // eng.numPolyVoices when resolved (a change refreshes)
         float val[16] = {};     // [voiceSlot] — the ONE accessor's MacroOwn-lens values
+        bool  outFresh = false; // the val[] row was written to the port at outScale/outCh
+        float outScale = -1.f;  // the scaleV the last out walk used
+        int   outCh = -1;       // the channel count the last out walk covered
     } stepProb_[dotModular::SandsGrid::POLY_LANES];
     // NOTE probOutSampleHold is inert on THIS module's outs now (the value between
     // steps is held by design); the store option stays for East's outs.

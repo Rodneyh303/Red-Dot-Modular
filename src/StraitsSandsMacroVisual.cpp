@@ -781,7 +781,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     }
 };
 
-// (pubSlewedLane_ DELETED with the SweepSig gate — CC_PROMPT_UI_TO_RESOLVER_SPEC
+// (pubSlewedLane_ DELETED with the old change-fingerprint gate — CC_PROMPT_UI_TO_RESOLVER_SPEC
 //  step 3: the step cache reads the ONE accessor directly; nothing walks the raw
 //  pubSlewed twins here any more.)
 
@@ -851,16 +851,17 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
         outputs[PROB_OUT_START + l].setChannels(nCh < 1 ? 1 : nCh);
     // ── THE STEP CACHE (CC_PROMPT_UI_TO_RESOLVER_SPEC step 3) ─────────────────────
-    // THE /32 WORKAROUND IS WHAT THIS REPLACES: the CPU fix throttled the recompute to
-    // control rate (/32) and fingerprinted every input (a shadow sig) to skip idle
-    // ticks — a STOPGAP whose own comments said the proper fix is this migration. The resolve
+    // THE CONTROL-RATE THROTTLE WORKAROUND IS WHAT THIS REPLACES: the CPU fix throttled
+    // the recompute to control rate and fingerprinted every input (a shadow sig) to skip
+    // idle ticks — a STOPGAP whose own comments said the proper fix is this migration. The resolve
     // (the ONE accessor: polySlewedPub + spread mix2 + WarpBank::warpedValue → invCDF)
     // is a pure function of the engine stores, and the OUT is LATCHED per step by
     // design — so the resolve runs ONLY when a lane's Macro-lens step changes (or the
     // voice count does), into this cache; the ports hold the last written bits between
     // steps (Rack's port-hold + the write-elimination below). Per-sample work is now:
     // 7 playhead computes (a multiply-add + mask each) + cache compares. The heavy
-    // resolve is STEP-rate only (8-16 Hz × 7×(1+N) calls ≈ 0.02%); the /32 throttle,
+    // resolve is STEP-rate only (8-16 Hz × 7×(1+N) calls ≈ 0.02%); the control-rate
+    // throttle,
     // the change-fingerprint gate and the S&H latch state are DELETED (the latch is
     // inherent: the cache only moves on a step/polyphony change — probOutSampleHold is
     // inert on THIS module's outs now; the value between steps is held by design).
@@ -879,6 +880,7 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
             row.valid = true;
             row.step = step;
             row.nVoices = nV;
+            row.outFresh = false;   // new values: the out walk must run once
             // Uniform addressing: VCV channel ch carries voice ch+1; ch0 → voice 1
             // (mono). Every channel is Macro-OWN at Macro's global step — the resolver
             // routes to the ONE accessor (effectiveProbability, MacroOwn lens) — the
@@ -892,17 +894,26 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
             monsoonProfSweepCalls += (uint64_t)nCh;   // this lane's step-rate resolve count
 #endif
         }
-        // The OUT reads the STEP-CACHED value. WRITE-ELIMINATION (the perf fix, KEPT):
-        // setVoltage ONLY on bit-difference — the port's own voltages[] is the
-        // last-written cache (Rack holds output values once set), and comparing the
-        // LIVE port (not a shadow cache) keeps this immune to setChannels'
-        // shrink-zeroing and cable events: a skipped write is provably one that would
-        // not have changed a bit. Steady state: zero writes.
+        // The OUT reads the STEP-CACHED value. WRITE-ELIMINATION (the perf fix, KEPT —
+        // now ROW-scoped, the FINISH2 CPU fix): setVoltage ONLY on bit-difference, and
+        // the per-channel bit-diff WALK itself runs only when the row (or the scale, or
+        // the channel count) changed since the last walk. Steady state per sample is
+        // one lane compare instead of (1+N) clamp+memcmp iterations — at 16 channels
+        // that walk was ~112 iterations/sample, the dominant per-sample cost on this
+        // module's meter. A walk that DOES run keeps the LIVE-port compare (not a
+        // shadow cache), so it re-heals any external port mutation: setChannels'
+        // shrink-zeroing rides the nCh change, which forces the walk; cable events
+        // leave held voltages intact. Steady state: zero walks, zero writes.
         auto& out = outputs[PROB_OUT_START + l];
-        for (int ch = 0; ch < nCh; ++ch) {
-            const float v = rack::math::clamp(row.val[ch], 0.f, 1.f) * scaleV;
-            if (std::memcmp(&out.voltages[ch], &v, sizeof(float)) != 0)
-                out.setVoltage(v, ch);
+        if (!row.outFresh || scaleV != row.outScale || nCh != row.outCh) {
+            for (int ch = 0; ch < nCh; ++ch) {
+                const float v = rack::math::clamp(row.val[ch], 0.f, 1.f) * scaleV;
+                if (std::memcmp(&out.voltages[ch], &v, sizeof(float)) != 0)
+                    out.setVoltage(v, ch);
+            }
+            row.outFresh = true;
+            row.outScale = scaleV;
+            row.outCh = nCh;
         }
     }
     MONSOON_PROF_END(sweep);
@@ -911,7 +922,7 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     // Suspect-A (the old 124%) RESOLVED by CC_PROMPT_UI_TO_RESOLVER_SPEC: the
     // effectiveProbability resolve is STEP-cached above. Expected reads:
     //   engine step-cache ≈ 0.00x calls/sample at idle; when playing ≈
-    //   7×(1+N)/steps-per-second ÷ 48000 (a fraction of the old /32 number);
+    //   7×(1+N)/steps-per-second ÷ 48000 (a fraction of the old control-rate-throttle number);
     //   total= also counts the bars' UI-thread refresh (7 lanes × 16 steps per UI
     //   frame — NOT on the audio meter; step-cache= is the meter's number).
     if (++monsoonProfWindow >= 50000) {
