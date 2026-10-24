@@ -1634,3 +1634,46 @@ are the musically-DISTINCTIVE ones. The architecture is BUILT to break exchangea
 spread/CA/per-voice ARE for), so Archimedean is the vertex it DEPARTS from, not where it lives. The
 instrument is firmly non-Archimedean in normal use; Archimedean (and within it, Clayton) is a
 doubly-special corner.
+
+────────────────────────────────────────────────────────────────────────────────
+## ★ GLOBAL-MACRO IS GENUINELY ARCHIMEDEAN — the symmetric HOME (Rodney) — + modulation generator-selector + corner-atom = DMO
+
+### The result (a very interesting point)
+Macro with everything GLOBAL across voices — spread=0, global output distribution, global w, global
+modulation — IS a GENUINE Archimedean copula. The two requirements both hold:
+- EXCHANGEABLE: V1 has NO special role (earned by the entire voice-0-eradication / seam work — V1 is a
+  true peer). This is the HARD requirement, and it's the mathematical PAYOFF of killing the mono-residue:
+  a true-peer V1 makes the voices exchangeable, which leader-follower (V1-anchor) never could.
+- CONDITIONAL INDEPENDENCE given the factor: A/B sets the draw SOURCE but voice uniform draws stay
+  INDEPENDENT; spread=0 → no Gaussian coupling → conditioned on the shared modulation the voices are
+  independent. Generator form holds.
+Generator = the INVERSE MGF of the shared modulation signal's DISTRIBUTION.
+ARCHITECTURAL PICTURE: global-Macro is the SYMMETRIC VERTEX / "HOME", and every expressive control is a
+symmetry-BREAKING departure from it: spread→Gaussian coupling (leave Arch), per-voice (Sands/East)→
+heterogeneous frailty (leave Arch), heterogeneous ℓ / CA→asymmetric/hierarchical (leave Arch),
+atoms→MO. Archimedean is where the instrument STARTS; the controls are departures.
+
+### MODULATION PATTERNS OF NOTE — the signal's amplitude-DISTRIBUTION selects the Archimedean GENERATOR
+In global-Macro, the shared modulation's AMPLITUDE DISTRIBUTION (not its rate) picks which Archimedean
+copula you get (via inverse-MGF):
+- GAMMA-distributed modulation → CLAYTON (lower-tail Archimedean — the one path to Clayton).
+- POSITIVE-STABLE modulation → GUMBEL (upper-tail Archimedean).
+- EXPONENTIAL/geometric-ish → AMH (Ali-Mikhail-Haq) neighbourhood.
+- CONSTANT / near-zero-variance → INDEPENDENCE copula (no factor variation = no coupling; degenerate).
+- MAXIMAL-variance / bimodal (factor swings between extremes) → approaches COMONOTONE (factor dominates).
+RATE is ORTHOGONAL: modulation amplitude-distribution = WHICH Archimedean copula (the generator);
+modulation RATE = how fast you SWEEP that copula's parameter over time (slow = long stretches of a fixed
+dependence regime; fast = rapidly cycling the parameter). Two independent controls: shape picks the
+family member, rate animates the parameter.
+
+### GLOBAL-MACRO + CORNER ATOM = Archimedean continuous + MO singular = the DMO structure (your paper)
+Add a CORNER atom (ℓ at a rail, global w/mass) to the global-Macro Archimedean base:
+= a MIXED copula: Archimedean CONTINUOUS part + an EXCHANGEABLE MARSHALL-OLKIN SINGULAR diagonal at the
+corner. Because spread=0 gives conditional independence, the MO part is the PURE common-shock / frailty
+form — i.e. EXACTLY the DYNAMIC MARSHALL-OLKIN (DMO) construction (Albanese-Crépey-Hoskinson-Saadeddine):
+shared modulation = the frailty FACTOR, corner atom = the common SHOCK / joint-extreme event, spread=0 =
+the conditional-independence-given-the-factor assumption. λ>0, CALIBRATABLE via the atom-mass-vs-
+modulation relation (E_w[p(w)^k] — the clean factor-driven common-shock λ, NO Gaussian confounding).
+=> This is the ONE instrument configuration that reproduces the paper's DMO copula EXACTLY (pure, not
+spread-confounded). INTERIOR atom in the same config → comonotone coincidence (λ=0), NOT DMO; CORNER →
+DMO. ℓ slides between Archimedean+interior-comonotone (λ=0) and Archimedean+MO/DMO-corner (λ>0).
