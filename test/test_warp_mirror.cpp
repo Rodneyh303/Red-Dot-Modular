@@ -114,7 +114,7 @@ int main() {
         PatternEngine pe;
         pe.seedMelodyPhilox(0.17f);
         for (int k = 0; k < 5; ++k) pe.advanceMelodyDraw(+1);
-        pe.latchMix(0.f, 0.f, 0.f, 0.f, 0.f, 0.f, /*R=*/false, /*M=*/true, /*Q=*/false);
+        pe.latchMix(0.f, 0.f, 0.f, /*R=*/false, /*M=*/true, /*Q=*/false);
         pe.recomputeEffectiveMelody();   // settles random_[0][MEL/OCT] from the draw
         WarpBank bank;
         bank.warpW[WarpBank::index(0, MEL)] = 1.f;
@@ -500,7 +500,7 @@ int main() {
     };
     auto drawTwice = [](PatternEngine& pe, const PatternInput& in) {
         pe.seedMelodyPhilox(0.42f);
-        pe.latchMix(0.f, 0.f, 0.f, 0.f, 0.f, 0.f, /*R=*/false, /*M=*/true, /*Q=*/false);
+        pe.latchMix(0.f, 0.f, 0.f, /*R=*/false, /*M=*/true, /*Q=*/false);
         pe.redrawMelody(in);   // first draw (no counter advance)
         pe.redrawMelody(in);   // second draw (advanceMelodyDraw path)
     };

@@ -1142,15 +1142,29 @@ public:
     // Called at phrase boundaries and on reset.
     void applyPendingSeedsAndRedraw(const PatternInput& in);
 
-    // ── Playable slew ──────────────────────────────────────────────────────────
-    // Latch the live slew (call at step-0 wrap), then recompute effective arrays
-    // if the latched value changed. Cheap; safe to call every step.
-    // applyRhythm/applyMelody (LOCK_SCOPE_MENU): gate each stream's mix latch+recompute independently
-    // (a frozen A/B axis holds its latched value). Default both true = latch both (unlocked).
-    // q-mix mix/slew latched alongside melody (melody family; own stream). applyQmix gates it
-    // independently, mirroring applyMelody. Callers that pre-date q-mix pass the melody defaults.
+    // ── Playable slew/mix latch (control rate) ─────────────────────────────────
+    // SPLIT (slew-latch regression): SLEW and MIX latch through SEPARATE calls —
+    // slew must NEVER sit behind the ABMix-liveness gate (the old shape latched it
+    // inside latchMix, so a locked ABMix left *SlewLatched STALE and the roll
+    // re-derived with the OLD slew).
+    // latchSlew: UNCONDITIONAL, every control cycle — slew is an independent
+    // distributional param (NOT an A/B-mix property) and has NO own Lock control.
+    // Consumed ONLY at the roll: redrawRhythm/Melody/Qmix advance the counter,
+    // recomputeEffective* read *SlewLatched via slewKnobToR, and the new r misses
+    // the ZCache → re-derive. Mid-phrase slew changes are latched but do NOT
+    // trigger recompute (a control-rate recompute is the CPU spike — the roll is
+    // the correct trigger; see the remapSigChanged_ spec comment in
+    // MonsoonSandsManager.cpp).
+    // Per-stream semantics: a stream whose A/B is FROZEN still latches SLEW here —
+    // only its MIX holds (see latchMix). Freezing slew per-stream would need its
+    // OWN lock control (out of scope; today slew is unlocked = always latches).
+    void latchSlew(float rhythmSlew, float melodySlew, float qmixSlew);
+    // latchMix: MIX ONLY (the A<->B scrub position). applyRhythm/applyMelody/
+    // applyQmix (LOCK_SCOPE_MENU) gate each stream independently — a frozen A/B
+    // axis holds its latched mix. Default all true = latch all (unlocked). The mix
+    // change is consumed by refreshVisualCache (for-voice recompute at the display
+    // rate), not here.
     void latchMix(float rhythmMix, float melodyMix, float qmixMix,
-                  float rhythmSlew, float melodySlew, float qmixSlew,
                   bool applyRhythm = true, bool applyMelody = true, bool applyQmix = true);
     void recomputeEffectiveRhythm();   // public[] = A + rhythmMixLatched*(B-A)
     void recomputeEffectiveMelody();   // public[] = A + melodyMixLatched*(B-A)

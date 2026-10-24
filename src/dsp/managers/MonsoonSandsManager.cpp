@@ -984,11 +984,12 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
 // buffers from last cycle are already correct and re-running just churns them under the UI reader.
 //
 // SLEW IS INTENTIONALLY EXCLUDED from this check (phrase-boundary slew consumption). Slew is a
-// distributional parameter that must be constant across a phrase; latchMix latches it every
-// control-rate cycle, but the slewed buffers are only re-derived at the ROLL (phrase boundary),
+// distributional parameter that must be constant across a phrase; latchSlew latches it every
+// control-rate cycle (unconditionally — never behind the ABMix gate), but the slewed buffers
+// are only re-derived at the ROLL (phrase boundary),
 // where redrawRhythm/Melody/Qmix advance the draw counter. The draw-counter checks below detect
 // that roll and re-fire the remap with the new slewed content. Mid-phrase slew changes do NOT
-// re-derive the slewed buffers (latchMix + refreshVisualCache skip recompute on slew-only change),
+// re-derive the slewed buffers (latchSlew + refreshVisualCache skip recompute on slew-only change),
 // so checking slew here would fire forceRecomputeSlewed() at control rate on every slew modulation
 // tick — the CPU spike. The counter advance at the roll is the correct and sufficient trigger.
 bool MonsoonSandsManager::remapSigChanged_(const uint8_t* rSrc, const uint8_t* mSrc, const uint8_t* qSrc, bool identity) const {

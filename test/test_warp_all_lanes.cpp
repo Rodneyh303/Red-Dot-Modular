@@ -217,7 +217,7 @@ int main() {
         const PatternInput in = rhythmInput();
         PatternEngine pe;
         pe.seedRhythmPhilox(0.42f);
-        pe.latchMix(0.f, 0.f, 0.f, 0.f, 0.f, 0.f, /*R=*/true, /*M=*/false, /*Q=*/false);
+        pe.latchMix(0.f, 0.f, 0.f, /*R=*/true, /*M=*/false, /*Q=*/false);
         WarpBank bank;
         bank.warpF[WarpBank::index(0, REST)] = dotModular::PowerWarp{3};
         bank.warpW[WarpBank::index(0, REST)] = 1.f;
@@ -244,7 +244,7 @@ int main() {
         pe.seedRhythmPhilox(0.42f);
         pe.seedMelodyPhilox(0.17f);
         pe.seedQmixPhilox(0.23f);
-        pe.latchMix(0.f, 0.f, 0.f, 0.f, 0.f, 0.f, /*R=*/true, /*M=*/true, /*Q=*/true);
+        pe.latchMix(0.f, 0.f, 0.f, /*R=*/true, /*M=*/true, /*Q=*/true);
         WarpBank bank;
         bank.warpF[WarpBank::index(3, REST)] = dotModular::PowerWarp{3};
         bank.warpW[WarpBank::index(3, REST)] = 1.f;

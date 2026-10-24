@@ -3,7 +3,7 @@
 // The key invariant the rework must hold (docs/design/SLEW_COPULA_PLAN.md, DISTRIBUTION_REWORK_PLAN):
 //   slew KNOB = 0  ->  copula r = 0  ->  out == the raw draw u[0]  BIT-IDENTICALLY
 // (bipolar knob: 0 = independent/raw, +1 = correlated/smooth, -1 = anti-correlated/hocket).
-// This test pins that through the REAL engine path (latchMix + recomputeEffective*), not just
+// This test pins that through the REAL engine path (latchSlew/latchMix + recomputeEffective*), not just
 // the copula unit, and checks the scrub mix is parked so the readout is patternAt(N) with no blend.
 #include "test_stubs.hpp"
 #include "PatternEngine.hpp"
@@ -36,8 +36,8 @@ int main(){
         for (int k=0;k<3;++k) pe.advanceRhythmDraw(+1);
         const int64_t N = pe.rhythmDrawCtr;
         // Park scrub at mix=0 and slew knob=0 (r=0), then recompute.
+        pe.latchSlew(/*rSlew=*/0.f, /*mSlew=*/0.f, /*qSlew=*/0.f);
         pe.latchMix(/*rMix=*/0.f, /*mMix=*/0.f, /*qMix=*/0.f,
-                    /*rSlew=*/0.f, /*mSlew=*/0.f, /*qSlew=*/0.f,
                     /*applyRhythm=*/true, /*applyMelody=*/false, /*applyQmix=*/false);
         pe.recomputeEffectiveRhythm();
         // The raw draw at N (what r=0 must reproduce).
@@ -53,7 +53,8 @@ int main(){
         pe.seedMelodyPhilox(0.17f);
         for (int k=0;k<5;++k) pe.advanceMelodyDraw(+1);
         const int64_t N = pe.melodyDrawCtr;
-        pe.latchMix(0.f,0.f,0.f, 0.f,0.f,0.f, /*R=*/false, /*M=*/true, /*Q=*/false);
+        pe.latchSlew(0.f,0.f,0.f);
+        pe.latchMix(0.f,0.f,0.f, /*R=*/false, /*M=*/true, /*Q=*/false);
         pe.recomputeEffectiveMelody();
         PatternEngine::MelodyDraw raw;
         pe.rawDrawMelodyPatternAt(N, raw);
@@ -69,7 +70,8 @@ int main(){
         pe.seedQmixPhilox(0.9f);
         for (int k=0;k<2;++k) pe.advanceQmixDraw(+1);
         const int64_t N = pe.qmixDrawCtr;
-        pe.latchMix(0.f,0.f,0.f, 0.f,0.f,0.f, /*R=*/false, /*M=*/false, /*Q=*/true);
+        pe.latchSlew(0.f,0.f,0.f);
+        pe.latchMix(0.f,0.f,0.f, /*R=*/false, /*M=*/false, /*Q=*/true);
         pe.recomputeEffectiveQmix();
         PatternEngine::QmixDraw raw;
         pe.rawDrawQmixPatternAt(N, raw);
@@ -156,7 +158,8 @@ int main(){
                 PatternInput in;
                 for (int p=0; p<M; ++p) {
                     pe.rhythmDrawCtr = p * 64;  // thin by K=64 (independent samples)
-                    pe.latchMix(mixVal, 0.f, 0.f, slewKnob, 0.f, 0.f, true, false, false);
+                    pe.latchSlew(slewKnob, 0.f, 0.f);
+                    pe.latchMix(mixVal, 0.f, 0.f, true, false, false);
                     pe.recomputeEffectiveRhythm();
                     const double v = pe.slewedRhythm[0][0];
                     sum += v; sumsq += v*v; ++n;
@@ -179,14 +182,16 @@ int main(){
         PatternInput in;
         for (int k=0;k<5;++k) pe.advanceRhythmDraw(+1);
         const int64_t N = pe.rhythmDrawCtr;
-        pe.latchMix(mixVal, 0.f, 0.f, slew, 0.f, 0.f, true, false, false);
+        pe.latchSlew(slew, 0.f, 0.f);
+        pe.latchMix(mixVal, 0.f, 0.f, true, false, false);
         pe.recomputeEffectiveRhythm();
         float fwd[16]; for (int i=0;i<16;++i) fwd[i] = pe.slewedRhythm[0][i];
         // Walk backward past N then forward to N again
         for (int k=0;k<3;++k) pe.advanceRhythmDraw(-1);
         for (int k=0;k<3;++k) pe.advanceRhythmDraw(+1);
         EXPECT(pe.rhythmDrawCtr == N);
-        pe.latchMix(mixVal, 0.f, 0.f, slew, 0.f, 0.f, true, false, false);
+        pe.latchSlew(slew, 0.f, 0.f);
+        pe.latchMix(mixVal, 0.f, 0.f, true, false, false);
         pe.recomputeEffectiveRhythm();
         for (int i=0;i<16;++i)
             EXPECT(std::memcmp(&fwd[i], &pe.slewedRhythm[0][i], sizeof(float)) == 0);
@@ -202,7 +207,8 @@ int main(){
         const int64_t N = pe.rhythmDrawCtr;
         const float slew = 0.5f;  // r > 0, exercises the OU path
         // mix=0 -> s=0, f=0, frac=0 -> OU-bridge gives X=z0 exactly (a=1, b=0, v=0).
-        pe.latchMix(0.f, 0.f, 0.f, slew, 0.f, 0.f, true, false, false);
+        pe.latchSlew(slew, 0.f, 0.f);
+        pe.latchMix(0.f, 0.f, 0.f, true, false, false);
         pe.recomputeEffectiveRhythm();
         // z0 = sumZ(window@N, r). patternRhythmAt(N, slew) = PhiFast(sumZ(window@N, r)) = PhiFast(z0).
         PatternEngine::RhythmDraw raw;

@@ -836,34 +836,37 @@ void PatternEngine::redrawQmix(const PatternInput& in) {
     }
 }
 
+// SLEW latch — UNCONDITIONAL (slew-latch regression fix). Slew is an independent
+// distributional param, NOT an A/B-mix property, and has NO own Lock control: it latches
+// EVERY control cycle regardless of the ABMix lock liveness. (The old shape — slew latched
+// inside the ABMix-gated latchMix — left *SlewLatched STALE under lock, so the
+// phrase-boundary roll re-derived with the OLD slew and moving the knob did nothing.)
+// Consumed ONLY at the roll: redrawRhythm/Melody/Qmix advance the draw counter, then
+// recomputeEffective* read *SlewLatched (slewKnobToR → r) and the ZCache miss forces the
+// re-derive. Mid-phrase slew changes are latched but do NOT trigger recompute
+// (distributional correctness: slew must be constant across a phrase; a control-rate
+// recompute is the CPU spike — the roll is the correct trigger).
+// Per-stream semantics: a stream whose A/B is FROZEN still latches SLEW here — only its
+// MIX holds (see latchMix). Freezing slew per-stream would need its OWN lock control —
+// out of scope; today slew is unlocked = always latches.
+void PatternEngine::latchSlew(float rhythmSlew, float melodySlew, float qmixSlew) {
+    rhythmSlewLatched = rhythmSlew;
+    melodySlewLatched = melodySlew;
+    qmixSlewLatched   = qmixSlew;
+}
+
+// MIX latch — the A<->B scrub position ONLY (slew lives in latchSlew).
+// LOCK_SCOPE_MENU: applyRhythm/applyMelody/applyQmix gate EACH stream independently. A
+// frozen stream (apply false) does NOT re-latch its mix — its latched value + effective
+// pattern hold from before the lock. Default all true = latch all (unlocked).
+// B3: mix is NOT consumed here — refreshVisualCache handles the for-voice recompute at
+// the display rate (~90Hz lightDivider). latchMix just latches; the mix change stays
+// pending (mixApplied unchanged) so refreshVisualCache can detect and consume it.
 void PatternEngine::latchMix(float rhythmMix, float melodyMix, float qmixMix,
-                             float rhythmSlew, float melodySlew, float qmixSlew,
                              bool applyRhythm, bool applyMelody, bool applyQmix) {
-    // Sample the live SCRUB inputs (control rate). Under the scrub model BOTH the scrub position
-    // (MIX repurposed) AND slew (FIR smoothing width) feed the effective pattern, so latch both.
-    // SLEW is consumed at the PHRASE BOUNDARY (the roll/redraw already calls recomputeEffective*
-    // with the latched slew). Mid-phrase slew changes are LATCHED but do NOT trigger recompute —
-    // the effect applies at the next roll (distributional correctness: slew must be constant across
-    // a phrase). MIX/scrub changes DO trigger recompute (they're instantaneous position controls,
-    // not distributional parameters).
-    // LOCK_SCOPE_MENU: applyRhythm/applyMelody gate EACH stream independently. A frozen stream (apply
-    // false) does NOT re-latch its mix/slew and does NOT recompute — its latched value + effective
-    // pattern hold from before the lock. Default true/true = latch both (unlocked).
-    // B3: mix is NOT consumed here — refreshVisualCache handles the for-voice recompute at
-    // the display rate (~90Hz lightDivider). latchMix just latches; the mix change stays
-    // pending (mixApplied unchanged) so refreshVisualCache can detect and consume it.
-    if (applyRhythm) {
-        rhythmMixLatched  = rhythmMix;
-        rhythmSlewLatched = rhythmSlew;
-    }
-    if (applyMelody) {
-        melodyMixLatched  = melodyMix;
-        melodySlewLatched = melodySlew;
-    }
-    if (applyQmix) {
-        qmixMixLatched  = qmixMix;
-        qmixSlewLatched = qmixSlew;
-    }
+    if (applyRhythm)  rhythmMixLatched = rhythmMix;
+    if (applyMelody)  melodyMixLatched = melodyMix;
+    if (applyQmix)    qmixMixLatched   = qmixMix;
 }
 
 // Updates the rhythm/melody arrays used for UI and LEDs based on the 

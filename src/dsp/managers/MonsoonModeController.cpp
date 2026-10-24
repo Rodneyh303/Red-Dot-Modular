@@ -164,11 +164,25 @@ void ModeController::updatePatternInput() {
             paramManager.setJunctionOffset(i, cv * att);
         }
     }
+    // SLEW latches UNCONDITIONALLY every control cycle (slew-latch regression fix): slew
+    // is an independent distributional param — NOT an A/B-mix property, no own Lock
+    // control — so it must NOT sit behind the ABMix-liveness gate below. It used to ride
+    // along inside latchMix, which left *SlewLatched STALE under an ABMix lock and the
+    // phrase-boundary roll re-derived with the OLD slew (moving the knob did nothing).
+    // Consumed only at the roll (redraw → recomputeEffective* reads *SlewLatched via
+    // slewKnobToR → new r → ZCache miss → re-derive); latching here is what makes "move
+    // slew → probabilities change at the next phrase boundary" work with ABMix LOCKED.
+    // Macro AND east slew both flow through the paramManager getters above → one site.
+    // Per-stream: a frozen A/B stream still latches SLEW — only its MIX holds. A
+    // per-stream slew freeze would need its OWN lock control (out of scope).
+    engine.pe.latchSlew(currentPatternInput.rhythmSlew,
+                        currentPatternInput.melodySlew,
+                        currentPatternInput.qmixSlew);
     // PLAYABLE LIVE MORPH: apply the live MIX every process (control rate), like
     // spread — this is the continuous A<->B blend. recomputeEffective only does
     // work when MIX actually changes, so it is cheap. SLEW is NOT applied here;
     // it is consumed at roll time (shapes B). Lock freezes the morph.
-    // A/B mix scope (LOCK_SCOPE_MENU): latchMix now gates each stream independently, so the freeze is
+    // A/B mix scope (LOCK_SCOPE_MENU): latchMix gates each stream independently, so the freeze is
     // EXACT per axis — rhythm A/B and melody A/B latch/free on their own bits (no combined coupling).
     {
         const bool abR = dotModular::LockManager::liveNow(dotModular::Control::ABMix, engine.locked, engine.scopeLiveMask, /*melodyAxis=*/false);
@@ -182,9 +196,6 @@ void ModeController::updatePatternInput() {
             engine.pe.latchMix(currentPatternInput.rhythmMix,
                                currentPatternInput.melodyMix,
                                currentPatternInput.qmixMix,
-                               currentPatternInput.rhythmSlew,
-                               currentPatternInput.melodySlew,
-                               currentPatternInput.qmixSlew,
                                /*applyRhythm=*/abR, /*applyMelody=*/abM, /*applyQmix=*/abQ);
     }
     if (mainModule) {

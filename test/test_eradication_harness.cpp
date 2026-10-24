@@ -225,15 +225,16 @@ int main() {
         // (ii) same-mix determinism: full recompute at 0.30, ForVoice at 0.31,
         // ForVoice back at 0.30 — the two 0.30 reads must be bit-identical.
         float rawA[16], rawB[16], pubA[16], pubB[16];
-        pe.latchMix(0.f, 0.30f, 0.f, 0.f, 0.4f, 0.f, true, true, true);
+        pe.latchSlew(0.f, 0.4f, 0.f);   // constant melody slew across the mix probes below
+        pe.latchMix(0.f, 0.30f, 0.f, true, true, true);
         pe.refreshVisualCache(in);   // first 0.30: z-cache cold at this r → FULL recompute
         for (int s = 0; s < 16; ++s) {
             rawA[s] = pe.polyRandom(15, SequencerEngine::PL_MELODY)[s];
             pubA[s] = pe.pubSlewedPolyMelody[15][s];
         }
-        pe.latchMix(0.f, 0.31f, 0.f, 0.f, 0.4f, 0.f, true, true, true);
+        pe.latchMix(0.f, 0.31f, 0.f, true, true, true);
         pe.refreshVisualCache(in);   // 0.31: ForVoice(15), cache hit
-        pe.latchMix(0.f, 0.30f, 0.f, 0.f, 0.4f, 0.f, true, true, true);
+        pe.latchMix(0.f, 0.30f, 0.f, true, true, true);
         pe.refreshVisualCache(in);   // back to 0.30: ForVoice(15), cache hit
         bool rawStable = true, pubStable = true;
         for (int s = 0; s < 16; ++s) {
@@ -253,7 +254,7 @@ int main() {
         check(distinctFromV15, "V16 MELODY distinct from V15 (ForVoice slot not off-by-one)");
 
         // (iv) rhythm-mix modulation must not perturb V16's melody values
-        pe.latchMix(0.70f, 0.30f, 0.f, 0.f, 0.4f, 0.f, true, true, true);
+        pe.latchMix(0.70f, 0.30f, 0.f, true, true, true);
         pe.refreshVisualCache(in);   // rhythm mix change → rhythm ForVoice path only
         bool isoRaw = true, isoPub = true;
         for (int s = 0; s < 16; ++s) {
