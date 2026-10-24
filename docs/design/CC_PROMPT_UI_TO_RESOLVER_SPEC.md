@@ -1,3 +1,23 @@
+# ⟳ CURRENT-STATE UPDATE (verified at HEAD 52e6123 — read before the spec below)
+Re-verified anchors + three updates since this spec was written:
+1. LINE DRIFT: macroOwnLaneProbability is now SequencerEngine.hpp:759 (was :756);
+   macroOwnProbability forwards to it (StraitsSandsMacroVisual.cpp:558-561); it's called in the
+   Macro output sweep (StraitsSandsMacroVisual.cpp:681). Resolver helpers present:
+   resolveSpread / resolveLorValue(:382) / resolveDirValue(:431), effective(:164).
+2. THE /32 WORKAROUND IS WHAT THIS MIGRATION REPLACES: the CPU fix added a /32 control-rate throttle
+   + a change-fingerprint gate around macroOwnLaneProbability (StraitsSandsMacroVisual.cpp:900-1117).
+   The code's OWN comments say it's a STOPGAP: ":1109 ~7x(1+N)/32 => the /32 throttle is working but the
+   resolve still runs every [control block]". The PROPER fix = this migration: resolve ONCE at STEP rate
+   (cached), consumers read the cache. So this spec SUPERSEDES the /32 workaround — when the resolver
+   produces the step-cached value, the /32 throttle + fingerprint gate around the recompute can be
+   REMOVED (the recompute no longer exists; there's a cached value to read). Do that as part of step 3.
+3. CARRY THE ATOM/TILT PARAMS: the tilt (p) + atom (ℓ, m) feel-test stores fingerprint "EXACTLY like
+   warpW/warpF" (StraitsSandsMacroVisual.cpp:986) and compose inside the warp mix. The ONE resolver
+   value must include them (warp mix already composes invCDF with tilt+atom — the resolver's warp term
+   inherits it). No separate handling; just ensure the resolver's warp composition is the SAME one the
+   feel-test uses (don't fork a second warp path).
+
+────────────────────────────────────────────────────────────────────────────────
 # SPEC — fold the UI into SandsModifierResolver (one effective-value authority, all consumers read it)
 
 GOAL: end the bars-vs-output / East↔Macro-leak / lane-direction / cross-module-recompute bug CLASS by
