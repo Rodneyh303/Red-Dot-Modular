@@ -704,7 +704,7 @@ int main() {
         // The accessor stays the engine-side authority (the signature + lens anchors the
         // consumers' routing pins hang from):
         const std::string eng = slurp(repoRoot() + "/src/dsp/engines/SequencerEngine.hpp");
-        EXPECTF(contains(eng, "float effectiveProbability(int voice, int lane, int step, ProbLens lens) const"),
+        EXPECTF(contains(eng, "float effectiveProbability(VoiceSlot voice, LaneId lane, int step, ProbLens lens) const"),
                 "SequencerEngine.hpp: the ONE accessor's signature changed — the consumers' "
                 "routing pins must follow it");
         EXPECTF(contains(eng, "enum class ProbLens { Owner, MacroOwn }"),

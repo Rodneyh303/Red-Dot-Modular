@@ -164,10 +164,12 @@ struct SpreadManager {
     // Cheap checksum: active count + a few sampled cells. Catches re-rolls and
     // voice-count changes without summing the whole grid every frame.
     float cs = activeVoiceCount * 1000.f;
-    cs += patternEngine->polyRandom(1, SequencerEngine::PL_REST)[0]
-        + patternEngine->polyRandom(activeVoiceCount, SequencerEngine::PL_MELODY)[7]
-        + patternEngine->polyRandom(1, SequencerEngine::PL_OCTAVE)[15]
-        + patternEngine->polyRandom(activeVoiceCount, SequencerEngine::PL_ACCENT)[3];
+    // STRONG types (CC_PROMPT_STRONG_TYPES): minted slots (1 = V2's slot; the count = the
+    // last active slot — same cells the int calls addressed).
+    cs += patternEngine->polyRandom(dotModular::VoiceResolver::slot(2), dotModular::LaneId{SequencerEngine::PL_REST})[0]
+        + patternEngine->polyRandom(dotModular::VoiceResolver::slot(activeVoiceCount + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[7]
+        + patternEngine->polyRandom(dotModular::VoiceResolver::slot(2), dotModular::LaneId{SequencerEngine::PL_OCTAVE})[15]
+        + patternEngine->polyRandom(dotModular::VoiceResolver::slot(activeVoiceCount + 1), dotModular::LaneId{SequencerEngine::PL_ACCENT})[3];
     if (avgValid_ && cs == avgChecksum_) return;   // unchanged → keep cache
 
     const float inv = 1.f / activeVoiceCount;
@@ -177,11 +179,13 @@ struct SpreadManager {
       // v = 0..count-1 — pre-Phase-A polyRandom(bank) semantics that averaged
       // V1's row and dropped the top active voice.
       for (int v = 1; v <= activeVoiceCount; ++v) {
-        r += patternEngine->polyRandom(v, SequencerEngine::PL_REST)[s];
-        m += patternEngine->polyRandom(v, SequencerEngine::PL_MELODY)[s];
-        o += patternEngine->polyRandom(v, SequencerEngine::PL_OCTAVE)[s];
-        a += patternEngine->polyRandom(v, SequencerEngine::PL_ACCENT)[s];
-        q += patternEngine->polyRandom(v, SequencerEngine::PL_QMIX)[s];
+        // v = voiceSlot; slot(V) takes the VOICE number (= v+1)  [CC_PROMPT_STRONG_TYPES]
+        const auto vs = dotModular::VoiceResolver::slot(v + 1);
+        r += patternEngine->polyRandom(vs, dotModular::LaneId{SequencerEngine::PL_REST})[s];
+        m += patternEngine->polyRandom(vs, dotModular::LaneId{SequencerEngine::PL_MELODY})[s];
+        o += patternEngine->polyRandom(vs, dotModular::LaneId{SequencerEngine::PL_OCTAVE})[s];
+        a += patternEngine->polyRandom(vs, dotModular::LaneId{SequencerEngine::PL_ACCENT})[s];
+        q += patternEngine->polyRandom(vs, dotModular::LaneId{SequencerEngine::PL_QMIX})[s];
       }
       avgCache_[0][s] = r * inv;
       avgCache_[1][s] = m * inv;
@@ -242,7 +246,7 @@ struct SpreadManager {
     // Lane is the UNIFIED PL_* order (MEL=0, OCT=1, QMIX=2, REST=3, ACC=4 — the lane
     // unification made this an identity into polyRandom: editor lane == engine lane).
     // (This switch used to translate the OLD spread order 0=REST/1=MEL/2=OCT/3=ACC/4=QMIX.)
-    return patternEngine->polyRandom(voiceIdx, lane)[step];
+    return patternEngine->polyRandom(dotModular::VoiceResolver::slot(voiceIdx + 1), dotModular::LaneId{lane})[step];
   }
   
   /**

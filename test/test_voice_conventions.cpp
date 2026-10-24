@@ -155,7 +155,7 @@ int main() {
                 if (se.polyOffE(dotModular::VoiceResolver::slot(slot + 1), dotModular::LaneId{PL_MEL}) != slot)     okOff = false;
                 if (se.polyRotE(dotModular::VoiceResolver::slot(slot + 1), dotModular::LaneId{PL_MEL}) != slot + 1) okRot = false;
                 // Editor-order accessor must agree (lane order unified: identity).
-                if (se.polyLOR(slot, SequencerEngine::editorLane(PL_MEL), SequencerEngine::LOR_LEN) != 3 + slot) okLen = false;
+                if (se.polyLOR(dotModular::VoiceResolver::slot(slot + 1), dotModular::LaneId{SequencerEngine::editorLane(PL_MEL)}, SequencerEngine::LOR_LEN) != 3 + slot) okLen = false;
             }
             check(okLen, "polyLenE/polyLOR(slot) read lorStore_[slot]  (16-wide, slot 0 = V1)");
             check(okOff, "polyOffE(slot) reads lorStore_[slot]");
@@ -177,14 +177,14 @@ int main() {
             }
             bool okTick = true, okSign = true;
             for (int slot : {0, 1, 15}) {
-                if (se.polyLaneTick(slot, PL_MEL) != 5 + slot) okTick = false;
+                if (se.polyLaneTick(dotModular::VoiceResolver::slot(slot + 1), dotModular::LaneId{PL_MEL}) != 5 + slot) okTick = false;
                 if (se.polyLaneSign(slot, rstStrand) != ((slot == 15) ? -1 : 1)) okSign = false;
             }
             check(okTick, "polyLaneTick(bank) reads laneTickV_[bank]  (16-wide voiceSlot)");
             check(okSign, "polyLaneSign(bank) reads laneSignV_[bank]  (16-wide voiceSlot)");
             // Out-of-range bank falls back to mono's lane, never reads OOB.
             se.laneTick_[melStrand] = 9;
-            check(se.polyLaneTick(-1, PL_MEL) == 9 && se.polyLaneTick(16, PL_MEL) == 9,
+            check(se.polyLaneTick(dotModular::VoiceResolver::slot(0), dotModular::LaneId{PL_MEL}) == 9 && se.polyLaneTick(dotModular::VoiceResolver::slot(17), dotModular::LaneId{PL_MEL}) == 9,
                   "polyLaneTick out-of-range bank falls back to mono laneTick_ (no OOB)");
         }
 
@@ -195,9 +195,9 @@ int main() {
             for (int slot : {0, 1, 15}) se.pe.random_[slot][PL_MEL][9] = stepSentinel(slot, 9);
             bool ok = true;
             for (int slot : {0, 1, 15})
-                if (se.polyLaneProbabilityAtStep(PL_MEL, slot, 9) != stepSentinel(slot, 9)) ok = false;
+                if (se.polyLaneProbabilityAtStep(dotModular::LaneId{PL_MEL}, dotModular::VoiceResolver::slot(slot + 1), 9) != stepSentinel(slot, 9)) ok = false;
             check(ok, "polyLaneProbabilityAtStep(lane, voice=slot) reads random_[slot] (chain pin)");
-            check(se.polyLaneProbabilityAtStep(PL_MEL, 15, 9) != se.polyLaneProbabilityAtStep(PL_MEL, 14, 9)
+            check(se.polyLaneProbabilityAtStep(dotModular::LaneId{PL_MEL}, dotModular::VoiceResolver::slot(16), 9) != se.polyLaneProbabilityAtStep(dotModular::LaneId{PL_MEL}, dotModular::VoiceResolver::slot(15), 9)
                   || se.pe.random_[14][PL_MEL][9] == se.pe.random_[15][PL_MEL][9],
                   "V16's chain value is its OWN (adjacent-slot independence)");
         }

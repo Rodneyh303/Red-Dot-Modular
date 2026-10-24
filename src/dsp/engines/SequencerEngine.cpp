@@ -246,13 +246,13 @@ bool SequencerEngine::advancePlayhead(int dir) {
         // macroLOR_ fix generalised to laneTickV_. strand → this voice's LOR length:
         auto polyStrandLen = [&](int v, int strand) -> int {
             switch (strand) {
-                case dotModular::STRAND_MELODY:    return polyLenE(v, PL_MELODY);
-                case dotModular::STRAND_OCTAVE:    return polyLenE(v, PL_OCTAVE);
-                case dotModular::STRAND_QMIX:      return polyLenE(v, PL_QMIX);
-                case dotModular::STRAND_RHYTHM:    return polyLenE(v, PL_REST);
-                case dotModular::STRAND_ACCENT:    return polyLenE(v, PL_ACCENT);
-                case dotModular::STRAND_VARIATION: return polyLOR(v, EDITOR_LANE_VARIATION, LOR_LEN);
-                case dotModular::STRAND_LEGATO:    return polyLOR(v, EDITOR_LANE_LEGATO, LOR_LEN);
+                case dotModular::STRAND_MELODY:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_MELODY});
+                case dotModular::STRAND_OCTAVE:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_OCTAVE});
+                case dotModular::STRAND_QMIX:      return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_QMIX});
+                case dotModular::STRAND_RHYTHM:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_REST});
+                case dotModular::STRAND_ACCENT:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_ACCENT});
+                case dotModular::STRAND_VARIATION: return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_VARIATION}, LOR_LEN);
+                case dotModular::STRAND_LEGATO:    return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_LEGATO}, LOR_LEN);
             }
             return 16;
         };
@@ -345,13 +345,13 @@ void SequencerEngine::recomputeLaneTicks() {
     };
     auto polyStrandLen = [&](int v, int strand) -> int {
         switch (strand) {
-            case dotModular::STRAND_MELODY:    return polyLenE(v, PL_MELODY);
-            case dotModular::STRAND_OCTAVE:    return polyLenE(v, PL_OCTAVE);
-            case dotModular::STRAND_QMIX:      return polyLenE(v, PL_QMIX);
-            case dotModular::STRAND_RHYTHM:    return polyLenE(v, PL_REST);
-            case dotModular::STRAND_ACCENT:    return polyLenE(v, PL_ACCENT);
-            case dotModular::STRAND_VARIATION: return polyLOR(v, EDITOR_LANE_VARIATION, LOR_LEN);
-            case dotModular::STRAND_LEGATO:    return polyLOR(v, EDITOR_LANE_LEGATO, LOR_LEN);
+            case dotModular::STRAND_MELODY:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_MELODY});
+            case dotModular::STRAND_OCTAVE:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_OCTAVE});
+            case dotModular::STRAND_QMIX:      return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_QMIX});
+            case dotModular::STRAND_RHYTHM:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_REST});
+            case dotModular::STRAND_ACCENT:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_ACCENT});
+            case dotModular::STRAND_VARIATION: return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_VARIATION}, LOR_LEN);
+            case dotModular::STRAND_LEGATO:    return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_LEGATO}, LOR_LEN);
         }
         return 16;
     };
@@ -1064,10 +1064,10 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
 // Stage 2a: refresh ONE cell of polyRandom at step advance, using the cached spread
 // from the last control-rate sync(). If the lane's lock axis is not live, return without
 // writing (frozen value persists — same as the old loop skipping when locked).
-void SequencerEngine::refreshPolyRandomCell(int voice, int engLane, int step) {
+void SequencerEngine::refreshPolyRandomCell(VoiceSlot voice, LaneId engLane, int step) {
     // Determine which lock axis this lane rides.
     bool live;
-    switch (engLane) {
+    switch (engLane.l) {
         case PL_REST:     live = pe.cachedSpreadLiveR; break;   // rhythm axis
         case PL_ACCENT:   live = pe.cachedSpreadLiveR; break;
         case PL_VARIATION: live = pe.cachedSpreadLiveR; break;
@@ -1079,13 +1079,13 @@ void SequencerEngine::refreshPolyRandomCell(int voice, int engLane, int step) {
     }
     if (!pe.cachedSpreadInitialized || !live) return;   // not yet cached or frozen — leave existing value
     pe.polyRandom(voice, engLane)[step & 0x0F] =
-        redDot::SpreadInterp::applyPoly(pe, engLane, voice, step & 0x0F,
-                                        pe.cachedPolySpread[voice][engLane]);
+        redDot::SpreadInterp::applyPoly(pe, engLane.l, voice.v, step & 0x0F,
+                                        pe.cachedPolySpread[voice.v][engLane.l]);
     // Warp mirror (CC_PROMPT_03/05): this cell of random_ just moved — refresh exactly
     // that mirror cell so the next warpRow read (the same call sequence in
     // executePolyVoice) sees the effective w-mixture of the CURRENT value. One
     // warpedValue eval per step per lane; no-op without a bank.
-    pe.rebuildWarpMirrorCell(voice, engLane, step & 0x0F);
+    pe.rebuildWarpMirrorCell(voice.v, engLane.l, step & 0x0F);
 }
 
 // Phase B (see the header): reset newly-activated voices' stale gs state. Definition
@@ -1228,7 +1228,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         // gate forward into the NEXT note iff its OWN legato draw fires. The draw reads the
         // legato strand at THIS voice's cell (getLegatoStepForVoice → mono's cell when delegated
         // (default) so it matches V1, own cell when Local East). Phase A: the THRESHOLD is
-        // per-voice (v.legatoProb, with voices[0].legatoProb = V1's threshold); mono/V1 reads
+        // per-voice (v.legatoProb, with the mono slot legatoProb = V1 threshold); mono/V1 reads
         // the same voice-0 cell. Rolled here at the leading edge and consumed at the NEXT landing
         // (v.gs.slurForward → prevSlur). Delegated voices read V1's legato cell → their slur
         // matches V1's; Local-East voices read their own.
@@ -1252,9 +1252,9 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                  "r=%.3f prob=%.3f nvV=%d canLead=%d -> slur=%d",
                 voiceIdx.v, (int)totalStepsElapsed, (int)!varlegDelegated(voiceIdx.v, 1),
                 getLegatoStepForVoice(voiceIdx), getLegatoStep(),
-                polyLOR(voiceIdx.v, EDITOR_LANE_LEGATO, LOR_LEN),
-                polyLOR(voiceIdx.v, EDITOR_LANE_LEGATO, LOR_OFF),
-                polyLOR(voiceIdx.v, EDITOR_LANE_LEGATO, LOR_ROT),
+                polyLOR(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, LOR_LEN),
+                polyLOR(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, LOR_OFF),
+                polyLOR(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, LOR_ROT),
                 r_polyLegato, voices[VoiceResolver::mono()].legatoProb, nvV, (int)noteCanLeadLegato(nvV),
                 (int)v.gs.slurForward);
 #endif
@@ -1472,31 +1472,31 @@ int SequencerEngine::getStrandIdx(int tickCount, int len, int off, int mutation)
 // ── EAST_EXTRA_LANES stage 2 ──────────────────────────────────────────────────────────────────
 int SequencerEngine::getVariationStepForVoice(VoiceSlot bank) const {
     // Delegated (default) → read mono's VARIATION position, so the voice mirrors mono.
-    if (varlegDelegated(bank.v, 0)) return getVariationStep();
+    if (varlegDelegated(bank, 0)) return getVariationStep();
     // Local East: read THIS voice's own window, advanced on its per-voice tick (which inherits
     // mono's per-lane direction — a reversed mono VARIATION lane reverses this voice too).
     return getStrandIdx(laneTickV_[bank.v][dotModular::STRAND_VARIATION],
-                        polyLOR(bank.v, EDITOR_LANE_VARIATION, LOR_LEN),
-                        polyLOR(bank.v, EDITOR_LANE_VARIATION, LOR_OFF),
-                        polyLOR(bank.v, EDITOR_LANE_VARIATION, LOR_ROT));
+                        polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_LEN),
+                        polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_OFF),
+                        polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_ROT));
 }
 
 int SequencerEngine::getLegatoStepForVoice(VoiceSlot bank) const {
     // Delegated (default) → read mono's LEGATO position, so the voice's slur roll matches mono.
-    if (varlegDelegated(bank.v, 1)) return getLegatoStep();
+    if (varlegDelegated(bank, 1)) return getLegatoStep();
     // Local East: read THIS voice's own window, advanced on its per-voice tick (inherits mono's
     // per-lane direction — a reversed mono LEGATO lane reverses this voice's slur roll too).
     return getStrandIdx(laneTickV_[bank.v][dotModular::STRAND_LEGATO],
-                        polyLOR(bank.v, EDITOR_LANE_LEGATO, LOR_LEN),
-                        polyLOR(bank.v, EDITOR_LANE_LEGATO, LOR_OFF),
-                        polyLOR(bank.v, EDITOR_LANE_LEGATO, LOR_ROT));
+                        polyLOR(bank, LaneId{EDITOR_LANE_LEGATO}, LOR_LEN),
+                        polyLOR(bank, LaneId{EDITOR_LANE_LEGATO}, LOR_OFF),
+                        polyLOR(bank, LaneId{EDITOR_LANE_LEGATO}, LOR_ROT));
 }
 
-int SequencerEngine::nvIdxForVoice(int bank, const PatternInput& input) const {
-    if (bank < 1 || bank >= 16) return lastStepResult.nvIdx;
+int SequencerEngine::nvIdxForVoice(VoiceSlot bank, const PatternInput& input) const {
+    if (bank.v < 1 || bank.v >= 16) return lastStepResult.nvIdx;
     // The probability array stays MONO (one shared shape); only the reading position is per-voice.
-    const int idx = getVariationStepForVoice(VoiceResolver::slot(bank + 1)) & 0x0F;   // bank = voiceSlot; mint for the typed-only def
-    const float r = pe.warpRow(bank, PL_VARIATION)[idx];
+    const int idx = getVariationStepForVoice(bank) & 0x0F;
+    const float r = pe.warpRow(bank, LaneId{PL_VARIATION})[idx];
     const int nv  = const_cast<SequencerEngine*>(this)->getNoteLenIdx(lastNoteVal_, input, r);
     // CLAMP to the mono event grid: a voice may release early, never hold past mono's next note.
     // NOTE_VALUES is ordered slowest→fastest, so max() picks the SHORTER of the two.

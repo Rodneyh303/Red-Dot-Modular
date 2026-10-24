@@ -111,7 +111,7 @@ int main() {
         for (int v = 0; v < 16; ++v)
             for (int l = 0; l < 7; ++l)
                 for (int s = 0; s < 16; ++s) {
-                    const float c = se.polyLaneProbabilityAtStep(l, v, s);
+                    const float c = se.polyLaneProbabilityAtStep(dotModular::LaneId{l}, dotModular::VoiceResolver::slot(v + 1), s);
                     EXPECTF(std::memcmp(&c, &se.pe.random_[v][l][s], sizeof(float)) == 0,
                             "cell (v=%d,l=%d,s=%d): consumer %.9g != raw %.9g",
                             v, l, s, (double)c, (double)se.pe.random_[v][l][s]);
@@ -129,7 +129,7 @@ int main() {
         for (int v = 0; v < 16; ++v)
             for (int l = 0; l < 7; ++l)
                 for (int s = 0; s < 16; ++s)
-                    EXPECT(se.polyLaneProbabilityAtStep(l, v, s) == se.pe.random_[v][l][s]);
+                    EXPECT(se.polyLaneProbabilityAtStep(dotModular::LaneId{l}, dotModular::VoiceResolver::slot(v + 1), s) == se.pe.random_[v][l][s]);
         for (int st = 0; st < dotModular::NUM_STRANDS; ++st)
             for (int s = 0; s < 16; ++s)
                 EXPECT(se.pe.finalRandomByStrand(st, s) == se.pe.random_[0][st][s]);
@@ -145,7 +145,7 @@ int main() {
         se.pe.rebuildWarpMirrorAll();
         int rowDiffs = 0;
         for (int s = 0; s < 16; ++s) {
-            const float c = se.polyLaneProbabilityAtStep(REST, 5, s);
+            const float c = se.polyLaneProbabilityAtStep(dotModular::LaneId{REST}, dotModular::VoiceResolver::slot(6), s);
             EXPECTF(c == se.pe.warped_[5][REST][s],
                     "step %d: consumer %.9g != mirror %.9g (raw %.9g)",
                     s, (double)c, (double)se.pe.warped_[5][REST][s], (double)se.pe.random_[5][REST][s]);
@@ -156,7 +156,7 @@ int main() {
             for (int l = 0; l < 7; ++l) {
                 if (v == 5 && l == REST) continue;
                 for (int s = 0; s < 16; ++s)
-                    EXPECTF(se.polyLaneProbabilityAtStep(l, v, s) == se.pe.random_[v][l][s],
+                    EXPECTF(se.polyLaneProbabilityAtStep(dotModular::LaneId{l}, dotModular::VoiceResolver::slot(v + 1), s) == se.pe.random_[v][l][s],
                             "collateral change at (v=%d,l=%d,s=%d)", v, l, s);
             }
     });
@@ -176,7 +176,7 @@ int main() {
         for (int v = 0; v < 16; ++v)
             for (int l = 0; l < 7; ++l)
                 for (int s = 0; s < 16; ++s) {
-                    const float c = se.polyLaneProbabilityAtStep(l, v, s);
+                    const float c = se.polyLaneProbabilityAtStep(dotModular::LaneId{l}, dotModular::VoiceResolver::slot(v + 1), s);
                     EXPECTF(c == se.pe.warped_[v][l][s],
                             "RAW LEAK at (v=%d,l=%d,s=%d): consumer %.9g != mirror %.9g (raw %.9g)",
                             v, l, s, (double)c, (double)se.pe.warped_[v][l][s], (double)se.pe.random_[v][l][s]);
@@ -286,6 +286,16 @@ int main() {
             // The display ternary's raw poly arm + the draw twin's raw slewed read.
             { "src/dsp/engines/PatternEngine.cpp",   "polyRandom(displayedVoice_" },
             { "src/dsp/engines/PatternEngine.cpp",   "slewedRhythm[0][i] >= in.restProb" },
+            // CC_PROMPT_STRONG_TYPES tighten: the BARE-INT per-voice/lane paths are GONE —
+            // every consumer mints a VoiceSlot (mono() for the anchor role) and passes an
+            // explicit LaneId. A regressed bare index is a compile error AND this pin.
+            { "src/dsp/engines/PatternEngine.hpp",   "warpRow(0, " },
+            { "src/dsp/engines/PatternEngine.cpp",   "warpRow(0, PL_" },
+            { "src/dsp/engines/PatternEngine.cpp",   "polyRandom(0, PL_" },
+            { "src/dsp/engines/PatternEngine.hpp",   "voices[0]." },
+            { "src/dsp/engines/SequencerEngine.hpp", "voices[0]." },
+            { "src/dsp/engines/SequencerEngine.cpp", "voices[0]." },
+            { "src/dsp/engines/SequencerEngine.cpp", "pe.warpRow(0" },
         };
         for (const Probe& p : probes) {
             const std::string src = slurp(root + "/" + p.file);

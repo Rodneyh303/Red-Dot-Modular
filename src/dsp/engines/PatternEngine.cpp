@@ -38,6 +38,41 @@ struct OUBridgeCoeffs {
 };
 } // anon namespace
 
+// CC_PROMPT_STRONG_TYPES TIGHTEN: the remap promote, extracted from the header inline so
+// the poly writes can MINT VoiceSlots (the header cannot include VoiceResolver.hpp).
+// Byte-identical to the inline loops it replaces (same writes, same order).
+void PatternEngine::promoteRemappedDraws_(bool doR, bool doM, bool doQ) {
+    for (int i = 0; i < 16; ++i) {
+        if (doR) {
+            rhythmRandom[i]=slewedRhythm[0][i]; accentRandom[i]=slewedAccent[0][i];
+            variationRandom[i]=slewedVariation[0][i]; legatoRandom[i]=slewedLegato[0][i];
+        }
+        if (doM) {
+            melodyRandom[i]=slewedMelody[0][i]; octaveRandom[i]=slewedOctave[0][i];
+        }
+        if (doQ) {
+            qmixRandom[i]=slewedQmix[0][i];
+        }
+        for (int v=1;v<16;v++){
+            // v = voiceSlot (V2..); slot(V) takes the VOICE number (= v+1)
+            const VoiceSlot vs = VoiceResolver::slot(v + 1);
+            if (doR) {
+                polyRandom(vs, LaneId{PL_REST})[i]=slewedRhythm[v][i];
+                polyRandom(vs, LaneId{PL_ACCENT})[i]=slewedAccent[v][i];
+                polyRandom(vs, LaneId{PL_VARIATION})[i]=slewedVariation[v][i];
+                polyRandom(vs, LaneId{PL_LEGATO})[i]=slewedLegato[v][i];
+            }
+            if (doM) {
+                polyRandom(vs, LaneId{PL_MELODY})[i]=slewedMelody[v][i];
+                polyRandom(vs, LaneId{PL_OCTAVE})[i]=slewedOctave[v][i];
+            }
+            if (doQ) {
+                polyRandom(vs, LaneId{PL_QMIX})[i]=slewedQmix[v][i];
+            }
+        }
+    }
+}
+
 void PatternEngine::reset() {
     rhythmSeedPending = melodySeedPending = qmixSeedPending = false;
     rhythmRollPending = melodyRollPending = qmixRollPending = false;
@@ -67,25 +102,27 @@ void PatternEngine::reset() {
         qmixRandom[i]   = 0.5f;     // q-mix twin — default to middle
         
         for (int v = 1; v < 16; v++) {
-            polyRandom(v, PL_REST)[i] = 1.0f; // Poly voices trigger by default
-            polyRandom(v, PL_ACCENT)[i] = 1.0f; // No accent by default (1.0 < accentProb is false).
+            // v = voiceSlot (V2..); slot(V) takes the VOICE number (= v+1)
+            const VoiceSlot vs = VoiceResolver::slot(v + 1);
+            polyRandom(vs, LaneId{PL_REST})[i] = 1.0f; // Poly voices trigger by default
+            polyRandom(vs, LaneId{PL_ACCENT})[i] = 1.0f; // No accent by default (1.0 < accentProb is false).
                                            // BUG FIX: this seed was missing (rhythm had it, accent
                                            // didn't), so polyAccentRandom stayed 0 → 0<accentProb
                                            // always true → EVERY poly note accented on any nonzero
                                            // accent knob. Mirrors polyAccentSource=1.0 below.
-            polyRandom(v, PL_MELODY)[i] = 0.5f;
-            polyRandom(v, PL_OCTAVE)[i] = 0.5f;
-            polyRandom(v, PL_QMIX)[i]   = 0.5f;   // q-mix twin
-            polyRandom(v, PL_VARIATION)[i] = 0.5f;  // Default — V1 is voice 0, not a mono reference
-            polyRandom(v, PL_LEGATO)[i]   = 0.0f;   // Default — V1 is voice 0, not a mono reference
+            polyRandom(vs, LaneId{PL_MELODY})[i] = 0.5f;
+            polyRandom(vs, LaneId{PL_OCTAVE})[i] = 0.5f;
+            polyRandom(vs, LaneId{PL_QMIX})[i]   = 0.5f;   // q-mix twin
+            polyRandom(vs, LaneId{PL_VARIATION})[i] = 0.5f;  // Default — V1 is voice 0, not a mono reference
+            polyRandom(vs, LaneId{PL_LEGATO})[i]   = 0.0f;   // Default — V1 is voice 0, not a mono reference
             
             rhythmSource[v][i] = 1.0f;
             accentSource[v][i] = 1.0f;
-            melodySource[v][i] = polyRandom(v, PL_MELODY)[i];
-            octaveSource[v][i] = polyRandom(v, PL_OCTAVE)[i];
-            qmixSource[v][i]   = polyRandom(v, PL_QMIX)[i];
-            variationSource[v][i] = polyRandom(v, PL_VARIATION)[i];
-            legatoSource[v][i]   = polyRandom(v, PL_LEGATO)[i];
+            melodySource[v][i] = polyRandom(vs, LaneId{PL_MELODY})[i];
+            octaveSource[v][i] = polyRandom(vs, LaneId{PL_OCTAVE})[i];
+            qmixSource[v][i]   = polyRandom(vs, LaneId{PL_QMIX})[i];
+            variationSource[v][i] = polyRandom(vs, LaneId{PL_VARIATION})[i];
+            legatoSource[v][i]   = polyRandom(vs, LaneId{PL_LEGATO})[i];
         }
         
         rhythmSource[0][i] = rhythmRandom[i];
@@ -367,7 +404,7 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
         // Warp mirror (CC_PROMPT_05 — the RHYTHM redraw twin of the melody draw site):
         // the pattern preview derives from the SAME effective w-mixture + voice key the
         // refreshVisualCache rhythmChanged writer uses (warpRow(displayedVoice_, PL_REST))
-        // — the two rhythmPattern writers agree by construction. warpRow(0,·) IS the
+        // — the two rhythmPattern writers agree by construction. warpRow(mono,·) IS the
         // mono row, so at identity defaults this is byte-identical to the old raw
         // slewedRhythm[0] read (the recompute's write-back just copied slewed→random_).
         rhythmPattern[i] = (warpRow(displayedVoice_, LaneId{PL_REST})[i] >= in.restProb);
@@ -926,7 +963,7 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
         for (int i = 0; i < 16; ++i) {
             // Warp mirror (CC_PROMPT_03 STEP 4b — the DISPLAY site): the bars derive
             // from the SAME effective w-mixture the sounding path consumes, keyed to
-            // displayedVoice_ (warpRow(0,·) degenerates to the mono row — the ternary
+            // displayedVoice_ (warpRow(mono,·) degenerates to the mono row — the ternary
             // the raw path needed is built into the accessor).
             float mVal = warpRow(displayedVoice_, LaneId{PL_MELODY})[i];
             float oVal = warpRow(displayedVoice_, LaneId{PL_OCTAVE})[i];

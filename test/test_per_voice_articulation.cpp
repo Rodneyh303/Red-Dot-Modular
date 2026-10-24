@@ -95,8 +95,8 @@ int main() {
 
     // 3b. Flip V3/V4 VAR to Local East, THEN the dialed LOR takes effect: the voice uses its OWN
     //     step (per-voice tick) + its own draw, and diverges. The clamp still holds.
-    e.setVarlegLocalEast(2, 0, true);   // V3 VAR: Local East (voiceSlot 2)
-    e.setVarlegLocalEast(3, 0, true);   // V4 VAR: Local East (voiceSlot 3)
+    e.setVarlegLocalEast(dotModular::VoiceResolver::slot(3), 0, true);   // V3 VAR: Local East (voiceSlot 2)
+    e.setVarlegLocalEast(dotModular::VoiceResolver::slot(4), 0, true);   // V4 VAR: Local East (voiceSlot 3)
 
     int diverged = 0, checked = 0;
     for (int step = 0; step < 96; ++step) {

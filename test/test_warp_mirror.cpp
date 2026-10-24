@@ -387,16 +387,16 @@ int main() {
         se.pe.rebuildWarpMirrorAll();
         int melDiffs = 0, octDiffs = 0;
         for (int s = 0; s < 16; ++s) {
-            const float m = se.polyLaneProbabilityAtStep(SequencerEngine::PL_MELODY, 3, s);
+            const float m = se.polyLaneProbabilityAtStep(dotModular::LaneId{SequencerEngine::PL_MELODY}, dotModular::VoiceResolver::slot(4), s);
             EXPECT(m == se.pe.warped_[3][MEL][s]);
             if (m != se.pe.random_[3][MEL][s]) ++melDiffs;
-            const float o = se.polyLaneProbabilityAtStep(SequencerEngine::PL_OCTAVE, 3, s);
+            const float o = se.polyLaneProbabilityAtStep(dotModular::LaneId{SequencerEngine::PL_OCTAVE}, dotModular::VoiceResolver::slot(4), s);
             EXPECT(o == se.pe.warped_[3][OCT][s]);
             if (o != se.pe.random_[3][OCT][s]) ++octDiffs;
             // non-authored lanes: mirror == raw at their identity defaults (warp
             // reaches ONLY authored cells — test_warp_all_lanes A2/A3 pin the rest):
-            EXPECT(se.polyLaneProbabilityAtStep(SequencerEngine::PL_REST, 3, s) == se.pe.random_[3][PatternEngine::PL_REST][s]);
-            EXPECT(se.polyLaneProbabilityAtStep(SequencerEngine::PL_ACCENT, 3, s) == se.pe.random_[3][PatternEngine::PL_ACCENT][s]);
+            EXPECT(se.polyLaneProbabilityAtStep(dotModular::LaneId{SequencerEngine::PL_REST}, dotModular::VoiceResolver::slot(4), s) == se.pe.random_[3][PatternEngine::PL_REST][s]);
+            EXPECT(se.polyLaneProbabilityAtStep(dotModular::LaneId{SequencerEngine::PL_ACCENT}, dotModular::VoiceResolver::slot(4), s) == se.pe.random_[3][PatternEngine::PL_ACCENT][s]);
         }
         EXPECT(melDiffs > 0 && octDiffs > 0);
     });
@@ -429,7 +429,7 @@ int main() {
         for (int v = 0; v < 16; v += 5)
             for (int l = 0; l < 7; ++l)
                 for (int s = 0; s < 16; ++s)
-                    EXPECT(se.polyLaneProbabilityAtStep(l, v, s) == se.pe.random_[v][l][s]);
+                    EXPECT(se.polyLaneProbabilityAtStep(dotModular::LaneId{l}, dotModular::VoiceResolver::slot(v + 1), s) == se.pe.random_[v][l][s]);
     });
 
     // ── S8: DISPLAY COMPOSITION (CC_PROMPT_04 feel-test bug 1) ─────────────────────

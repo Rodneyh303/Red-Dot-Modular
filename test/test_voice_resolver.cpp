@@ -75,7 +75,7 @@ static void seedEngine(SequencerEngine& eng) {
             eng.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{E::PL_OCTAVE})[s] = sentinel(v + 2, E::PL_OCTAVE, s);
             eng.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{E::PL_ACCENT})[s] = sentinel(v + 2, E::PL_ACCENT, s);
             // identity LOR so step index is predictable (= totalStepsElapsed & 0x0F = 0)
-            eng.polyLenERef(v, s % 3) = 16; // harmless; lanes use [v][lane]
+            eng.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{s % 3}) = 16; // harmless; lanes use [v][lane]
         }
     // Macro-own base (CC_PROMPT_macro_output_east_leak): the pubSlewed* snapshots — what
     // laneProbabilityAtStep resolves from (via SequencerEngine::macroOwnLaneProbability;
@@ -159,7 +159,7 @@ int main() {
     TEST("V2..V16 laneStep == polyLaneStep(lane, V-2)", {
         for (int v = 2; v <= 16; ++v)
             for (int li = 0; li < 4; ++li)
-                EXPECT_EQ(r.laneStep(v, lanes[li]), eng.polyLaneStep(lanes[li], v - 1));
+                EXPECT_EQ(r.laneStep(v, lanes[li]), eng.polyLaneStep(dotModular::LaneId{lanes[li]}, dotModular::VoiceResolver::slot(v)));
     });
 
     SUITE("VoiceResolver — laneProbabilityAtStep == the ONE accessor (every step)");
@@ -174,14 +174,14 @@ int main() {
             for (int li = 0; li < 4; ++li)
                 for (int s = 0; s < 16; ++s)
                     EXPECT_BITEQ(r.laneProbabilityAtStep(v, lanes[li], s),
-                                 eng.effectiveProbability(v - 1, lanes[li], s,
+                                 eng.effectiveProbability(dotModular::VoiceResolver::slot(v), dotModular::LaneId{lanes[li]}, s,
                                                           SequencerEngine::ProbLens::MacroOwn));
     });
     TEST("V1 laneProbabilityAtStep == effectiveProbability(MacroOwn) at Macro's explicit step", {
         for (int li = 0; li < 4; ++li)
             for (int s = 0; s < 16; ++s)
                 EXPECT_BITEQ(r.laneProbabilityAtStep(1, lanes[li], s),
-                             eng.effectiveProbability(0, lanes[li], s,
+                             eng.effectiveProbability(dotModular::VoiceResolver::slot(1), dotModular::LaneId{lanes[li]}, s,
                                                       SequencerEngine::ProbLens::MacroOwn));
     });
 

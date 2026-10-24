@@ -51,7 +51,7 @@ struct PatternInput {
     // LOCK Phase 2 (LOCK_SEMANTICS §9): mono BigFive NOTE_VALUE staged on the
     // snapshot so it LATCHES like restProb/variationAmount. NOTE_VALUE was previously passed
     // live at the executeMode call sites. LEGATO/ACCENT/QMIX were staged here too, but Phase A
-    // collapsed them: they now live on voices[0].* (V1 = voice 0), written by the controller
+    // collapsed them: they now live on the mono slot (V1 = voice 0), written by the controller
     // in updatePatternInput — NOT transported through PatternInput.
     // restProb and variationAmount remain here because PatternEngine reads them for
     // pattern generation (snapshotPreRemap, varyNoteIndex, etc.) — not just the step cascade.
@@ -148,23 +148,22 @@ struct PatternEngine {
     using LaneId    = dotModular::LaneId;
     static_assert((int)PL_LANES == dotModular::kLaneIdCount, "LaneId covers exactly the PL_* lanes");
 
-    // Poly probability view: voice bank b (0..14 = V2..V16) → slot b+1; lane is the engine PL_ lane,
-    // converted to editor order. Returns the 16-step row (float(&)[16]) so callers index [step].
-    // Phase A: polyRandom now takes voiceSlot directly (V1=0, V2+=1..15). Was bank+1 (skipping V1).
-    // Callers must pass voiceSlot (0..15), NOT a 0-based poly bank (dead convention). Old patches discarded.
-    float (&polyRandom(int voiceSlot, int engLane))[16] {
-        int edLane = (engLane >= 0 && engLane < 7) ? engLane : 0;
-        return random_[voiceSlot][edLane];
+    // Poly probability view: the caller passes a MINTED VoiceSlot (0=V1, 1..15=V2..V16) and an
+    // explicit LaneId. Returns the 16-step row (float(&)[16]) so callers index [step].
+    // CC_PROMPT_STRONG_TYPES TIGHTEN: the bare-int twins are DELETED — a raw voice/lane
+    // index no longer compiles; every caller mints (VoiceResolver) / constructs LaneId.
+    // (The legacy range guards are kept verbatim — minted values are always in range, but
+    // the clamp is the old behaviour and costs nothing.)
+    float (&polyRandom(VoiceSlot vs, LaneId lane))[16] {
+        const int v = (vs.v >= 0 && vs.v < 16) ? vs.v : 0;
+        const int l = (lane.l >= 0 && lane.l < 7) ? lane.l : 0;
+        return random_[v][l];
     }
-    const float (&polyRandom(int voiceSlot, int engLane) const)[16] {
-        int edLane = (engLane >= 0 && engLane < 7) ? engLane : 0;
-        return random_[voiceSlot][edLane];
+    const float (&polyRandom(VoiceSlot vs, LaneId lane) const)[16] {
+        const int v = (vs.v >= 0 && vs.v < 16) ? vs.v : 0;
+        const int l = (lane.l >= 0 && lane.l < 7) ? lane.l : 0;
+        return random_[v][l];
     }
-    // STRONG-typed overloads: the SAME rows as the int versions, minted indices only.
-    // The int versions are MIGRATION shims — the tighten commit deletes them, after
-    // which polyRandom(bare int, …) does not compile.
-    float (&polyRandom(VoiceSlot vs, LaneId lane))[16] { return polyRandom(vs.v, lane.l); }
-    const float (&polyRandom(VoiceSlot vs, LaneId lane) const)[16] { return polyRandom(vs.v, lane.l); }
 
     // ── Warp mirror (CC_PROMPT_03 STEP 2): the EFFECTIVE w-mixture over random_ ──
     // ONE array, no raw↔warped display toggle (SESSION_LOG 2026-10-18b §2 — the toggle
@@ -192,14 +191,14 @@ struct PatternEngine {
     // Consumer read: the EFFECTIVE row — the mirror when a bank is wired, the raw row
     // otherwise. Same indexing/shape as polyRandom, so consumer call sites are
     // one-token swaps and the fallback needs no branching at the read site.
-    const float (&warpRow(int v, int lane) const)[16] {
-        const int vv = (v >= 0 && v < 16) ? v : 0;
-        const int ll = (lane >= 0 && lane < 7) ? lane : 0;
+    // CC_PROMPT_STRONG_TYPES TIGHTEN: minted VoiceSlot + explicit LaneId ONLY — the
+    // bare-int twin is DELETED (a bare-0 call no longer compiles; the mono role is
+    // VoiceResolver::mono()). Legacy range guards kept verbatim.
+    const float (&warpRow(VoiceSlot v, LaneId lane) const)[16] {
+        const int vv = (v.v >= 0 && v.v < 16) ? v.v : 0;
+        const int ll = (lane.l >= 0 && lane.l < 7) ? lane.l : 0;
         return warpBank_ ? warped_[vv][ll] : random_[vv][ll];
     }
-    // STRONG-typed twin (CC_PROMPT_STRONG_TYPES): minted indices only; the int
-    // version is a MIGRATION shim deleted by the tighten commit.
-    const float (&warpRow(VoiceSlot v, LaneId lane) const)[16] { return warpRow(v.v, lane.l); }
     // Wire the bank (module layer, per block — same-pointer is a no-op). First wire /
     // re-wire rebuilds the full mirror from current random_.
     void setWarpBank(const dotModular::WarpBank* b);
@@ -362,6 +361,10 @@ struct PatternEngine {
             }
         }
     }
+    // CC_PROMPT_STRONG_TYPES TIGHTEN: the remap's promote loops, extracted to the .cpp so
+    // the poly writes can MINT VoiceSlots (the header cannot include VoiceResolver.hpp).
+    // Byte-identical to the inline loops it replaces (same writes, same order).
+    void promoteRemappedDraws_(bool doR, bool doM, bool doQ);
     void remapSlewedByPins(bool doR = true, bool doM = true, bool doQ = true) {
         snapshotPreRemap();   // always snapshot, even on identity skip (pre == post then)
         // Fast identity skip — only over the families we would actually remap.
@@ -467,33 +470,7 @@ struct PatternEngine {
         // The earlier if (!sandsActive) guard broke exactly this: with Macro attached but no
         // Mono visual, sandsActive was true yet the mono spread block (inside if(hasMonoVisual))
         // never ran, so remapped melody/octave never reached random_ while rhythm did.
-        for (int i = 0; i < 16; ++i) {
-            if (doR) {
-                rhythmRandom[i]=slewedRhythm[0][i]; accentRandom[i]=slewedAccent[0][i];
-                variationRandom[i]=slewedVariation[0][i]; legatoRandom[i]=slewedLegato[0][i];
-            }
-            if (doM) {
-                melodyRandom[i]=slewedMelody[0][i]; octaveRandom[i]=slewedOctave[0][i];
-            }
-            if (doQ) {
-                qmixRandom[i]=slewedQmix[0][i];
-            }
-            for (int v=1;v<16;v++){
-                if (doR) {
-                    polyRandom(v, PL_REST)[i]=slewedRhythm[v][i];
-                    polyRandom(v, PL_ACCENT)[i]=slewedAccent[v][i];
-                    polyRandom(v, PL_VARIATION)[i]=slewedVariation[v][i];
-                    polyRandom(v, PL_LEGATO)[i]=slewedLegato[v][i];
-                }
-                if (doM) {
-                    polyRandom(v, PL_MELODY)[i]=slewedMelody[v][i];
-                    polyRandom(v, PL_OCTAVE)[i]=slewedOctave[v][i];
-                }
-                if (doQ) {
-                    polyRandom(v, PL_QMIX)[i]=slewedQmix[v][i];
-                }
-            }
-        }
+        promoteRemappedDraws_(doR, doM, doQ);
         // Warp mirror (CC_PROMPT_03): the promote above rewrote random_ — rebuild the
         // mirror from the settled w=0 basis. Full scope: this runs at roll/pin-change
         // rate (remapSigChanged_ gates re-entry), not per block.

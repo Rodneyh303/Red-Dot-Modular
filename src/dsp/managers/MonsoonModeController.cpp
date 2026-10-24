@@ -114,7 +114,7 @@ void ModeController::updatePatternInput() {
     }
     if (rhythmLive) {   // BigFive LATCH — hold REST/VARIATION/NOTE_VALUE under lock
         // MONO rest: use the Causeway-modulated effective value (mirrors the poly idiom
-        // engine.voices[i].restProb = mainModule->getEffectivePolyRest(i - 1) above). Falls back to the
+        // engine.voices[dotModular::VoiceResolver::slot(i + 1)].restProb = mainModule->getEffectivePolyRest(i - 1) above). Falls back to the
         // raw param when there's no mainModule.
         currentPatternInput.restProb      = mainModule ? mainModule->getEffectiveMonoRest(paramManager.getRestUnclamped())
                                                        : paramManager.getRest();

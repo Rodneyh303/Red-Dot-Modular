@@ -34,7 +34,7 @@ int main() {
     int fail = 0;
     for (auto& c : cases) {
         for (int s = 0; s < 16; ++s) {
-            float got = pe.polyRandom(0, c.lane)[s];
+            float got = pe.polyRandom(dotModular::VoiceResolver::slot(1), dotModular::LaneId{c.lane})[s];
             float want = c.base + s * 0.001f;
             if (got != want) {
                 printf("FAIL %s step %d: got %.4f want %.4f\n", c.n, s, got, want);

@@ -199,9 +199,9 @@ int main() {
                 EXPECTF(se.pe.warpRow(dotModular::VoiceResolver::slot(1 + 1), dotModular::LaneId{MEL})[st] != macroMix1,
                         "V2 step %d: LEAK — warpRow equals Macro's global mix (%.9g)", st, (double)macroMix1);
             // The CV-out funnel (what East's panel meters report) reads the same rows.
-            EXPECTF(se.polyLaneProbabilityAtStep(MEL, 1, st) == eastMix1,
+            EXPECTF(se.polyLaneProbabilityAtStep(dotModular::LaneId{MEL}, dotModular::VoiceResolver::slot(2), st) == eastMix1,
                     "V2 step %d: CV-out funnel %.9g != own mix %.9g", st,
-                    (double)se.polyLaneProbabilityAtStep(MEL, 1, st), (double)eastMix1);
+                    (double)se.polyLaneProbabilityAtStep(dotModular::LaneId{MEL}, dotModular::VoiceResolver::slot(2), st), (double)eastMix1);
         }
     });
 

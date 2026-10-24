@@ -423,7 +423,7 @@ int main() {
         eng.strandOffRef(dotModular::STRAND_VARIATION) = 0;
         eng.polyLORRef(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{SequencerEngine::EDITOR_LANE_VARIATION}, SequencerEngine::LOR_LEN) = 1;
         eng.polyLORRef(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{SequencerEngine::EDITOR_LANE_VARIATION}, SequencerEngine::LOR_OFF) = 1;
-        eng.setVarlegLocalEast(0, 0, true);   // voice 0 reads its own VAR LOR (Local East)
+        eng.setVarlegLocalEast(dotModular::VoiceResolver::slot(1), 0, true);   // voice 0 reads its own VAR LOR (Local East)
         const float variation = 0.5f;
         stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f, variation);  // main onset
         stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f, variation); // gap

@@ -118,7 +118,8 @@ struct VoiceResolver {
     // Resolved step index (for S&H edge detection) for (voice, lane).
     int laneStep(int v, int lane) const {
         if (isMono(v)) return eng.masterLaneStep(lane);
-        if (isPoly(v)) return eng.polyLaneStep(lane, polyVoiceSlot(v));
+        // STRONG types (CC_PROMPT_STRONG_TYPES): minted VoiceSlot + explicit LaneId.
+        if (isPoly(v)) return eng.polyLaneStep(LaneId{lane}, slot(v));
         return -1;
     }
 
