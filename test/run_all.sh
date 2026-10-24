@@ -114,6 +114,7 @@ TESTS=(
   "test_scale_nondestructive|"
   "test_send_tap|"   # header-only: per-voice send-tap contract (SpreadResolver + MacroTapBank seams)
   "test_spread_resolver|"
+  "test_ui_to_resolver|$PE $SE $GS"   # CC_PROMPT_UI_TO_RESOLVER_SPEC: the ONE-PRODUCER contract suite — effectiveProbability is the single producer (engine draw == bars == out, modulo the latch); ownership lenses, explicit voice, subsumption of the old formula; T4 (direction) + T5 (rate) structural halves land with their commits
   "test_subgate|$SE $GS $PE"
   "test_var_leg_rest|"
   "test_voice_conventions|$SE $GS $PE"

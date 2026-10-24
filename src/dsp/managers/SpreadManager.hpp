@@ -268,9 +268,14 @@ struct SpreadManager {
   }
   
   /**
-   * Get the final interpolated value for display and DSP use.
-   * 
-   * This is what the sequencer will actually use.
+   * Get the final interpolated value (display/DSP shape).
+   *
+   * CC_PROMPT_UI_TO_RESOLVER_SPEC step 2: TEST-ONLY ORACLE now — the uniformity
+   * harness (test_lane_voice_uniformity) and test_voice_conventions drive it to
+   * pin the per-(voice,lane) addressing + the spread arithmetic. The PRODUCTION
+   * bars read SequencerEngine::effectiveProbability (the ONE accessor) since the
+   * last SpreadInterp-in-UI path (SandsParameterManager::syncPatternEngineToEditor)
+   * was deleted. Do not wire this back into a widget.
    */
   float getInterpolatedValue(int voiceIdx, int lane, int step) const {
     if (!patternEngine) return 0.5f;

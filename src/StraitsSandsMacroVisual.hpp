@@ -226,13 +226,9 @@ struct StraitsSandsMacroVisual : Module {
         config(0, StraitsMacroVisualIds::NUM_INPUTS,
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
         monLookupDiv.setDivision(8);   // topology changes are control-rate
-        // PERF (Rodney audit item 2 precedent — East got this throttle, Macro didn't):
-        // prob CV outs = CONTROL rate /32 (~1.5 kHz @48k, matches controlDivider). The
-        // sweep's every input (pubSlewed* rewrites, macroOwnSpread publish, stepIndex,
-        // warp bank edits, numPolyVoices) is control-rate — per-sample recompute
-        // re-derived a constant value ~32x per control block, with invCDF inside.
-        probOutDiv.setDivision(32);
-        for (auto& a : probLastStep) for (auto& x : a) x = -1;
+        // (the control-rate prob-CV throttle DELETED: CC_PROMPT_UI_TO_RESOLVER_SPEC step 3.
+        //  The resolve is STEP-cached (stepProb_, below); no control-rate recompute
+        //  exists to throttle.)
         // Labels from the canonical table — the old local literal was OLD-order, so
         // every jack tooltip named the wrong lane (id 0 carries MEL, was labelled "REST").
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
@@ -288,46 +284,31 @@ struct StraitsSandsMacroVisual : Module {
     // PERF: chain walk is control-rate work (Rodney audit item 3).
     Monsoon* cachedMon_ = nullptr;
     rack::dsp::ClockDivider monLookupDiv;
-    rack::dsp::ClockDivider probOutDiv;   // prob CV outs: /32 = control rate (audit item 2 precedent — was East-only)
     bool dirModPrev[dotModular::SandsGrid::POLY_LANES] = {};
 
-    // S&H latch state for the poly prob outs: [lane][channel] (ch0 reserved, 1..15 voices).
-    float probHeld[dotModular::SandsGrid::POLY_LANES][16] = {};
-    int   probLastStep[dotModular::SandsGrid::POLY_LANES][16];
-
-    // ── /32 sweep input-change gate (CC_PROMPT_cpu_section_profile Part 3) ──────────
-    // Shadow of EVERY input the prob-CV sweep's resolved+written values depend on;
-    // the full enumeration + the bit-identical argument live at the gate site in
-    // process(). Same discipline as MonsoonSandsManager's GATE 1/2/3: fingerprint the
-    // actual inputs, skip the work when bit-unchanged. NOTE the spread publish is NOT
-    // shadowed here — the gate compares the freshly computed publish value against the
-    // LIVE eng.macroOwnSpread store (the resolve reads the store; a live compare keeps
-    // the unconditional version's every-tick healing against any external writer).
-    struct SweepSig {
-        bool valid = false;
-        int  nV = -1;                          // eng.numPolyVoices — 1+nV channels resolved+written
-        int  scaleIdx = -1;                    // mon->probOutScale (0/1/2 → 1/5/10 V)
-        bool sh = false;                       // mon->probOutSampleHold
-        int  step[7] = {};                     // per-lane masked playheads (resolve + S&H key)
-        float pub[7][16] = {};                 // pubSlewed cells the resolve reads: [lane][voiceSlot 0..nV]
-        const void* bank = nullptr;            // pe.warpBank_ (null ⇒ warpDisplayMix is passthrough)
-        bool deleg[16][7] = {};                // pe.warpDelegated_ (rows 0..nV are read)
-        float warpW[112] = {};                 // bank own-slot depths (prefix (nV+1)*7 is read)
-        dotModular::WarpF warpF[112] = {};     // bank own-slot curves (same prefix; trivially copyable)
-        float globalWarpW[7] = {};             // Macro's delegated-default depth
-        dotModular::WarpF globalWarpF[7] = {}; // Macro's delegated-default curve
-        // FEEL-TEST stages (CC_PROMPT_TILT_AND_RAIL_FEELTEST): the bank's rail-tilt +
-        // injected-atom stores, same read shape as warpW/warpF (own-slot prefix (nV+1)*7,
-        // globals in full). warpedValue composes them AFTER the mix's member invCDF, so a
-        // knob turn that only moves these MUST trip the gate — or the outs go stale.
-        float warpTilt[112] = {};              // bank own-slot rail tilts (same prefix)
-        float warpAtomLevel[112] = {};         // bank own-slot atom locations (same prefix)
-        float warpAtomMass[112] = {};          // bank own-slot atom masses (same prefix)
-        float globalWarpTilt[7] = {};          // Macro's delegated-default tilt
-        float globalWarpAtomLevel[7] = {};     // Macro's delegated-default atom location
-        float globalWarpAtomMass[7] = {};      // Macro's delegated-default atom mass
-        uint16_t poolUsed = 0;                 // drawn-curve pool high-water mark (append-only pool)
-    } sweepSig_;
+    // ── The prob-out STEP CACHE (CC_PROMPT_UI_TO_RESOLVER_SPEC step 3) ──────────────
+    // Replaces the old control-rate throttle, the change-fingerprint gate AND the S&H
+    // latch state (all three deleted with it — the latch is inherent: the cache only
+    // moves on a step/polyphony change). Per lane: the Macro-lens step the row was
+    // resolved at, the voice count it covers, and the resolved per-voice values
+    // (voiceSlot-indexed: val[ch] = channel ch's voice). process() refreshes a row
+    // ONLY when its Macro-lens step or the voice count changed — STEP rate, not per
+    // sample — and the out writes read the cache with bit-difference write-elimination.
+    // The out-write EPOCH (CC_PROMPT_UI_TO_RESOLVER_FINISH2 — the CPU fix): the
+    // per-channel bit-diff walk runs only when the row was refreshed or the scale/
+    // channel count changed (outFresh/outScale/outCh); steady state is one compare
+    // per lane per sample instead of (1+N) clamp+memcmp iterations.
+    struct StepProbRow {
+        bool  valid = false;
+        int   step = -1;        // the lane's Macro-lens masked playhead the row holds
+        int   nVoices = -1;     // eng.numPolyVoices when resolved (a change refreshes)
+        float val[16] = {};     // [voiceSlot] — the ONE accessor's MacroOwn-lens values
+        bool  outFresh = false; // the val[] row was written to the port at outScale/outCh
+        float outScale = -1.f;  // the scaleV the last out walk used
+        int   outCh = -1;       // the channel count the last out walk covered
+    } stepProb_[dotModular::SandsGrid::POLY_LANES];
+    // NOTE probOutSampleHold is inert on THIS module's outs now (the value between
+    // steps is held by design); the store option stays for East's outs.
 
     // CV-applied global spread per lane (0=REST,1=MEL,2=OCT). processDNA writes
     // these from base + spread CV; the display reads them so spread CV is visible

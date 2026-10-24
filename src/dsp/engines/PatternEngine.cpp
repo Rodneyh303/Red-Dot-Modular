@@ -145,6 +145,15 @@ float PatternEngine::warpDisplayMix(int v, int lane, double u) const {
     return (float)warpBank_->warpedValue(vv, ll, u, warpDelegated_[vv][ll]);
 }
 
+// The MacroOwn twin (CC_PROMPT_UI_TO_RESOLVER_FINISH2 BUG 1): delegated=TRUE — Macro's
+// GLOBAL cell — never the East-authorable own-slot pair. See the declaration comment.
+float PatternEngine::warpDisplayMixMacroOwn(int v, int lane, double u) const {
+    const int vv = (v >= 0 && v < 16) ? v : 0;
+    const int ll = (lane >= 0 && lane < 7) ? lane : 0;
+    if (!warpBank_) return (float)u;
+    return (float)warpBank_->warpedValue(vv, ll, u, /*delegated=*/true);
+}
+
 void PatternEngine::rebuildWarpMirrorAll() {
     if (!warpBank_) return;   // no bank ⇒ nothing to mix; consumers fall back to random_
     for (int v = 0; v < 16; ++v)

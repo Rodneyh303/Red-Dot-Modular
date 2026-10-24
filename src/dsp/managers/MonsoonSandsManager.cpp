@@ -704,24 +704,45 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             const bool axQ = !engine.locked || (engine.scopeLiveMask & (1u << 13)) != 0;   // == dotModular::SB_SANDS_Q (q-mix own axis)
             if (axR || axM || axQ) {
             auto sprForLane = [&](int lane)->float {
-                if (monoOwnedByMacro(lane))
-                    return rack::math::clamp(macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3], -1.f, 1.f);
-                float sp = mmV1 ? mmV1->getSpread(dotModular::VoiceResolver::kMonoSlot, lane)
-                                : 0.f;   // MVC step 1d: SPREAD_* param gone; no Monsoon → no spread
-                if (eastV1->inputs[East::cvId(lane,3)].isConnected()) {
-                    float att = (mmV1 ? mmV1->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + 3) : 0.f);
-                    float cv  = eastV1->inputs[East::cvId(lane,3)].getPolyVoltage(0) / 10.f;  // ch0 = V1
-                    sp = sp + cv * att * 2.f;
+                // CC_PROMPT_UI_TO_RESOLVER_SPEC step 1: the delegation rides the ONE
+                // skeleton — SpreadResolver (SandsModifierResolver<SpreadPolicy>) — the
+                // same authority combineSpread (poly) and publishGlobal (Macro-own) use,
+                // and the resolved amount is PUBLISHED to the engine spread store
+                // (spreadERef(0, lane)): the ONE owner-resolved V1 spread, read by BOTH
+                // the audio pass below and SequencerEngine::effectiveProbability's
+                // Owner lens (the display/out twin) — no second resolution anywhere.
+                // BIT-IDENTICAL to the old inline shape by expression order (the
+                // combineSpread note applies verbatim; the delegated branch NEUTRALIZES
+                // the tap — the old delegated delta was the POST macroCVDelta directly).
+                const bool delegated = monoOwnedByMacro(lane);
+                redDot::SpreadResolver::Inputs sin;
+                sin.delegated    = delegated;
+                sin.macroPresent = macroHere;
+                if (delegated) {
+                    sin.macroBase      = macroVis->macroBase[lane][3];
+                    sin.macroPreDelta  = macroVis->macroCVDelta[lane][3];   // NEUTRALIZE the tap: pre == post
+                    sin.macroPostDelta = macroVis->macroCVDelta[lane][3];   // → the lerp yields macroCVDelta bit-exactly
+                } else {
+                    sin.base = mmV1 ? mmV1->getSpread(dotModular::VoiceResolver::kMonoSlot, lane)
+                                    : 0.f;   // MVC step 1d: SPREAD_* param gone; no Monsoon → no spread
+                    if (eastV1->inputs[East::cvId(lane,3)].isConnected()) {
+                        sin.ownCv.connected   = true;
+                        sin.ownCv.unitVoltage = eastV1->inputs[East::cvId(lane,3)].getPolyVoltage(0) / 10.f;  // ch0 = V1
+                        sin.ownCv.atten       = (mmV1 ? mmV1->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + 3) : 0.f);
+                    }
+                    // Macro send blend on East-owned V1 spread (mirrors poly combineSpread):
+                    // the per-voice tapped delta (V1's own tap, P9b) × mono-slot send.
+                    if (macroHere) {
+                        auto* mm = macroHost;   // PERF: walk memo (was a per-lane re-walk inside sprForLane)
+                        sin.macroSend      = (mm ? mm->getMacroSend(dotModular::VoiceResolver::kMonoSlot, lane, 3) : 0.f);
+                        sin.macroPreDelta  = macroVis->macroPreDelta[lane][3];
+                        sin.macroPostDelta = macroVis->macroPostDelta[lane][3];
+                        sin.macroTap       = (mm ? mm->getMacroTap(dotModular::VoiceResolver::kMonoSlot, lane, 1) : 1.f);
+                    }
                 }
-                // Macro send blend on East-owned V1 spread (mirrors poly combineSpread):
-                // the per-voice tapped delta (V1's own tap, P9b) × mono-slot send.
-                if (macroHere) {
-                    auto* mm = macroHost;   // PERF: walk memo (was a per-lane re-walk inside sprForLane)
-                    float send = (mm ? mm->getMacroSend(dotModular::VoiceResolver::kMonoSlot, lane, 3) : 0.f);
-                    const float tap = (mm ? mm->getMacroTap(dotModular::VoiceResolver::kMonoSlot, lane, 1) : 1.f);
-                    sp += macroVis->tappedDelta(tap, lane, 3) * send;
-                }
-                return rack::math::clamp(sp, -1.f, 1.f);
+                const float sp = redDot::SpreadResolver::effective(sin);
+                engine.spreadERef(0, lane) = sp;   // publish: the ONE owner-resolved V1 amount
+                return sp;
             };
             // LANE UNIFICATION (Phase 2): sprForLane fetches UNIFIED stores (editor.spread,
             // cvId jacks, atten/send banks) — pass PL_* so each axis reads its own lane.
@@ -802,6 +823,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 msin.ownCv.atten       = (gMon ? gMon->getGlobalAtten(lane, 3) : 0.f);
             }
             float cvSpr = redDot::SpreadResolver::effective(msin);
+            // UI-to-resolver step 1: publish Macro's OWN effective spread to the ENGINE
+            // store — the MacroOwn lens's amount for SequencerEngine::
+            // effectiveProbability. Bit-identical to the module's old publish
+            // (clamp(macroBase[l][3] + macroPostDelta[l][3]): cvSpr IS that resolver
+            // output — base + (cv·att)·2, end-clamped, same expression order). The
+            // module's /32-gated publish is deleted with its sweep (step 3).
+            engine.macroOwnSpread[lane] = cvSpr;
             // P9b PER-VOICE send-tap: the publish now carries BOTH endpoints of the pre/post
             // lerp; each receiving VOICE selects via its own macroTap (the send is per-voice,
             // so the tap is too — the old single globally-tapped macroSendDelta forced every
@@ -868,6 +896,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 float sp = redDot::SpreadResolver::effective(ssin);
                 macroVis->spreadEffective[lane] = sp;
                 spv[lane] = sp;
+                // UI-to-resolver step 1: standalone Macro owns EVERYTHING (no East) —
+                // publish the owner-resolved V1 amount to the engine spread store so
+                // effectiveProbability's Owner lens reads what this pass applies.
+                engine.spreadERef(0, lane) = sp;
             }
             engine.pe.setSandsActive(true);
             // V1 (mono final arrays): converge the mono draw toward the ensemble.

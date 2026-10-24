@@ -6,9 +6,10 @@
 // return —
 //     V1  → eng.masterLane* (the mono master strand)
 //     V≥2 → eng.polyLane*(.., V-1 = voiceSlot)
-// laneProbabilityAtStep is the EXCEPTION (CC_PROMPT_macro_output_east_leak): it is Macro's
-// prob-OUT source and routes to eng.macroOwnLaneProbability (the ONE Macro-own accessor
-// the bars also read) — never the shared master/poly funnels East's spread writes on an
+// laneProbabilityAtStep is the EXCEPTION (CC_PROMPT_macro_output_east_leak →
+// CC_PROMPT_UI_TO_RESOLVER_SPEC step 2): it is Macro's prob-OUT source and routes to
+// eng.effectiveProbability(MacroOwn) (the ONE Macro-own accessor the bars also read) —
+// never the shared master/poly funnels East's spread writes on an
 // East-owned lane (the backwards-delegation leak).
 // plus the metadata dispatch (isMono/isPoly/polyVoiceSlot/baseEditableHere/spreadMode).
 //
@@ -161,22 +162,27 @@ int main() {
                 EXPECT_EQ(r.laneStep(v, lanes[li]), eng.polyLaneStep(lanes[li], v - 1));
     });
 
-    SUITE("VoiceResolver — laneProbabilityAtStep == the Macro-own accessor (every step)");
-    // CC_PROMPT_macro_output_east_leak: AtStep is Macro's prob-OUT source — it routes to
-    // SequencerEngine::macroOwnLaneProbability (the ONE accessor the bars also read), NOT
-    // the shared master/poly funnels (which East's spread writes on an East-owned lane).
-    TEST("V2..V16 laneProbabilityAtStep == macroOwnLaneProbability at all 16 steps", {
+    SUITE("VoiceResolver — laneProbabilityAtStep == the ONE accessor (every step)");
+    // CC_PROMPT_UI_TO_RESOLVER_SPEC step 2 (was CC_PROMPT_macro_output_east_leak): AtStep
+    // is Macro's prob-OUT source — it routes to SequencerEngine::effectiveProbability
+    // (MacroOwn lens — the ONE accessor the bars also read; the deleted
+    // macroOwnLaneProbability was its bridge shim for one commit), NOT the shared
+    // master/poly funnels (which East's spread writes on an East-owned lane). The
+    // routing identity is unchanged: same lens, same (voiceSlot, lane, step) addressing.
+    TEST("V2..V16 laneProbabilityAtStep == effectiveProbability(MacroOwn) at all 16 steps", {
         for (int v = 2; v <= 16; ++v)
             for (int li = 0; li < 4; ++li)
                 for (int s = 0; s < 16; ++s)
                     EXPECT_BITEQ(r.laneProbabilityAtStep(v, lanes[li], s),
-                                 eng.macroOwnLaneProbability(lanes[li], s, /*mono=*/false, v - 1));
+                                 eng.effectiveProbability(v - 1, lanes[li], s,
+                                                          SequencerEngine::ProbLens::MacroOwn));
     });
-    TEST("V1 laneProbabilityAtStep == macroOwnLaneProbability at Macro's explicit step", {
+    TEST("V1 laneProbabilityAtStep == effectiveProbability(MacroOwn) at Macro's explicit step", {
         for (int li = 0; li < 4; ++li)
             for (int s = 0; s < 16; ++s)
                 EXPECT_BITEQ(r.laneProbabilityAtStep(1, lanes[li], s),
-                             eng.macroOwnLaneProbability(lanes[li], s, /*mono=*/true, 0));
+                             eng.effectiveProbability(0, lanes[li], s,
+                                                      SequencerEngine::ProbLens::MacroOwn));
     });
 
     SUITE("VoiceResolver — sentinels prove no cross-voice / cross-lane leakage");

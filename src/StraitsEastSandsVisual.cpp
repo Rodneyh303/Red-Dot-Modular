@@ -18,7 +18,6 @@
 #include "ui/StoreBound.hpp"      // bindStoreKnob (de-param)
 #include "ui/Controls.hpp"        // Tag_Grey_Trim_Bar
 #include "dsp/SandsTopology.hpp"   // step 3c: East V1 write ownership via the resolver
-#include "dsp/SpreadInterp.hpp"    // applyAnchorV1Only for poly-voice display (matches Macro)
 #include <cassert>
 #include <cmath>
 #include <limits>
@@ -642,8 +641,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             int mRot = m->engine.lor(el, SequencerEngine::LOR_ROT);
             auto& lane = visualEditor->currentState.lanes[el];
             lane.setDisplayLOR(mLen, mOff, mRot);
+            // CC_PROMPT_UI_TO_RESOLVER_SPEC step 2: the ONE accessor (Owner lens,
+            // explicit voice V1) — NOT finalRandomByStrand (the mono-row engine funnel:
+            // a live-array read that ignores the resolver's spread/warp composition).
             for (int st = 0; st < SandsVisualEditorV4::STEP_COUNT; ++st)
-                lane.probabilities[st] = m->engine.pe.finalRandomByStrand(el, st);
+                lane.probabilities[st] = m->engine.effectiveProbability(
+                    dotModular::VoiceResolver::kMonoSlot, el, st,
+                    SequencerEngine::ProbLens::Owner);
             int ph580 = (m->engine.stepIndex >= 0) ? m->engine.laneTick_[el] : -1;
             visualEditor->setLanePlayStep(el, calcPlayhead(ph580, mLen, mOff, mRot));
         }
@@ -1231,16 +1235,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // individual step probabilities — those are display-only. Show the SPREAD-APPLIED
             // probabilities for EVERY lane.
             //
-            // SOURCE MATCHING (East↔Macro alignment): read pubSlewedPoly*[voice] — the SAME
-            // pre-spread published snapshot Macro's macroOwnProbability reads — and apply spread
-            // via applyAnchorV1Only. This makes East and Macro read the IDENTICAL pre-spread
-            // source, so they can't diverge by timing (torn reads of live slewed* vs published
-            // pubSlewed*). The spread may differ on East-owned lanes (East's combined spread vs
-            // Macro's own) — that's correct: East shows the actual per-voice output.
-            // Previously this read the old gated per-voice accessor (post-spread final
-            // array), which could disagree with Macro's pre-spread+spread when the manager
-            // wrote the final array at a different time than the widget read it.
-            auto* eastMod = static_cast<StraitsEastSandsVisual*>(module);
+            // CC_PROMPT_UI_TO_RESOLVER_SPEC step 2: the bars read the ONE accessor —
+            // effectiveProbability(vs, lane, s, Owner lens). The hand-rolled pubSlewed
+            // switch + polySpreadEffective + applyAnchorV1Only + warpDisplayMix sequence
+            // (and its three V1 twins further down) is DELETED — the exact
+            // SpreadInterp-in-UI duplication this spec removes. East and Macro still read
+            // the IDENTICAL pre-spread source (both lenses compose the published base
+            // inside the ONE accessor, torn-read safe); the spread differs per LENS
+            // (East's combined vs Macro's own) — the one-way borrowing rule, unchanged.
+            //
             // pubSlewedPoly* is VOICESLOT-indexed: writer PatternEngine.hpp:506
             // `for v=0..15; pubSlewedPolyMelody[v]=slewedMelody[v]`, and [0]=V1/mono
             // (the mono branch reads pubSlewedPolyMelody[0]). So the per-voice bar read
@@ -1251,32 +1254,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // a no-op. The flicker is NOT an index error at this site. currentSlot()
             // kept for the explicit voiceSlot name.
             const int vs = currentSlot();   // voiceSlot: V1=0, V2..V16 = 1..15
-            auto& peRef = monsoon->engine.pe;
-            for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
-                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
-                    float base;
-                    switch (lane) {
-                        case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[vs][s]; break;
-                        case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[vs][s]; break;
-                        case SequencerEngine::PL_OCTAVE:   base = peRef.pubSlewedPolyOctave[vs][s]; break;
-                        case SequencerEngine::PL_ACCENT:   base = peRef.pubSlewedPolyAccent[vs][s]; break;
-                        case SequencerEngine::PL_QMIX:     base = peRef.pubSlewedPolyQmix[vs][s]; break;
-                        case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[vs][s]; break;
-                        case SequencerEngine::PL_LEGATO:   base = peRef.pubSlewedPolyLegato[vs][s]; break;
-                        default: base = 0.5f; break;
-                    }
-                    const float spread = (vs >= 0 && vs < 16) ? eastMod->polySpreadEffective[vs][lane] : 0.f;
-                    const float disp = redDot::SpreadInterp::applyAnchorV1Only(peRef, lane, s, base, spread);
-                    // Warp display composition (CC_PROMPT_05 uniform): the engine consumes
-                    // the warp MIRROR for EVERY lane (warpRow), so the bars compose the
-                    // same mixture ON TOP of the spread-applied display value for all
-                    // lanes — never a value the audio doesn't consume. warpDisplayMix
-                    // resolves the per-(voice,lane) (F,w) exactly like the mirror
-                    // (delegation included).
+            for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
+                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[lane].probabilities[s] =
-                        peRef.warpDisplayMix(vs, lane, disp);
-                }
-            }
+                        monsoon->engine.effectiveProbability(vs, lane, s,
+                                                             SequencerEngine::ProbLens::Owner);
         }
         // ── Mono tab (V1) bar fill: same pattern but base from MONO slewed arrays
         //    and spread from V1 computation (store + East CV + Macro send), NOT
@@ -1285,48 +1267,19 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         //    has no visible effect on the mono tab.
         else {
             saveSlot(currentSlot());
-            auto& peRef = monsoon->engine.pe;
-            const int kMono = dotModular::VoiceResolver::kMonoSlot;
-            auto* macroVis = monsoon ? monsoon->expanderManager.cachedMacroSandsVisual : nullptr;
-            for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
-                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
-                    float base;
-                    switch (lane) {
-                        // Phase A: V1 reads PUBLISHED poly voice 0 (not LIVE mono) — matches Macro
-                        case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[0][s]; break;
-                        case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[0][s]; break;
-                        case SequencerEngine::PL_OCTAVE:    base = peRef.pubSlewedPolyOctave[0][s]; break;
-                        case SequencerEngine::PL_ACCENT:    base = peRef.pubSlewedPolyAccent[0][s]; break;
-                        case SequencerEngine::PL_QMIX:      base = peRef.pubSlewedPolyQmix[0][s]; break;
-                        case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[0][s]; break;
-                        case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedPolyLegato[0][s]; break;
-                        default: base = 0.5f; break;
-                    }
-                    (void)base;   // applyMono computes own internally; base kept for clarity
-                    // V1 spread: store + East CV × att × 2 + Macro send (bipolar, mirrors
-                    // the mod-arc's mono path at lines 130-136, but WITHOUT the [0,1] mapping
-                    // — applyAnchorV1Only takes bipolar [-1,1]).
-                    float spread = monsoon ? monsoon->getSpread(kMono, lane) : 0.f;
-                    if (module->inputs[cvId(lane,3)].isConnected()) {
-                        float att = monsoon ? monsoon->getMacroAtten(kMono, lane*4 + 3) : 0.f;
-                        float cv  = module->inputs[cvId(lane,3)].getPolyVoltage(0) / 10.f;
-                        spread += cv * att * 2.f;
-                    }
-                    if (macroVis) {
-                        float send = monsoon ? monsoon->getMacroSend(kMono, lane, 3) : 0.f;
-                        // P9b: V1's own tap selects between the published endpoints.
-                        const float tap = (monsoon ? monsoon->getMacroTap(kMono, lane, 1) : 1.f);
-                        spread += macroVis->tappedDelta(tap, lane, 3) * send;
-                    }
-                    // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
-                    // instead of applyAnchorV1Only (hard-codes own=target=monoSlewed → self-target no-op).
-                    const float disp = redDot::SpreadInterp::interpolate(base, base, spread);
-                    // Warp display composition (CC_PROMPT_05 uniform): every lane (no
-                    // per-lane gate), over the mono/V1 row the audio path reads.
+            // CC_PROMPT_UI_TO_RESOLVER_SPEC step 2: the V1 bars read the ONE accessor
+            // (Owner lens, explicit voiceSlot 0) — the manager's resolver-resolved V1
+            // spread (engine.spread[0][lane], published by sprForLane) + the ONE warp
+            // composition over the published snapshots. The hand-rolled spread
+            // expression (getSpread + East CV + Macro send blend) was a third
+            // re-implementation of the delegation algebra — deleted with the pubSlewed
+            // switch above it.
+            for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
+                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[lane].probabilities[s] =
-                        peRef.warpDisplayMix(kMono, lane, disp);
-                }
-            }
+                        monsoon->engine.effectiveProbability(
+                            dotModular::VoiceResolver::kMonoSlot, lane, s,
+                            SequencerEngine::ProbLens::Owner);
         }
 
         // Surface the engine's CV-APPLIED L/O/R to the display window so the
@@ -1392,52 +1345,18 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // store is editor-lane indexed (el).
             // (V1+Mono owner mirror DELETED — MVC step 1d: the store-backed OwnerCell's getOwnsFn
             //  reads getMonoOwner directly for the V1+Mono case, so no proxy mirror is needed.)
-            // Probabilities: V1 display reads pubSlewed* (mono published snapshot) + applies
-            // spread via applyAnchorV1Only — the SAME source and function Macro's
-            // macroOwnProbability uses, so V1 and Macro can't diverge. When Macro is present,
-            // uses Macro's spread (macroBase+macroSendDelta); otherwise falls back to the
-            // engine's V1 spread. Previously read finalRandomByStrand (post-spread final array
-            // written with sprForLane's spread), which differed from Macro's display spread on
-            // East-owned V1 rhythm-axis lanes (REST/ACC/VAR/LEG).
+            // Probabilities (CC_PROMPT_UI_TO_RESOLVER_SPEC step 2): the ONE accessor,
+            // Owner lens, explicit voiceSlot 0 — the manager's resolver-resolved V1
+            // spread + the ONE warp composition. (This block is currently dead —
+            // tab1Mono is always false — but kept consistent with the live V1 branches
+            // so a revival can't diverge.)
             {
-                auto& peRef = monsoon->engine.pe;
-                auto* macroMod = monsoon->expanderManager.cachedMacroSandsVisual;
-                for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
-                    for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
-                        float base;
-                        switch (el) {
-                            case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[0][s]; break;
-                            case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[0][s]; break;
-                            case SequencerEngine::PL_OCTAVE:    base = peRef.pubSlewedPolyOctave[0][s]; break;
-                            case SequencerEngine::PL_ACCENT:    base = peRef.pubSlewedPolyAccent[0][s]; break;
-                            case SequencerEngine::PL_QMIX:      base = peRef.pubSlewedPolyQmix[0][s]; break;
-                            case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[0][s]; break;
-                            case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedPolyLegato[0][s]; break;
-                            default: base = 0.5f; break;
-                        }
-                        (void)base;   // applyMono computes own internally; base kept for clarity
-                        // V1 spread: respect lane ownership. East owns → East's V1
-                        // spread knob; Macro owns → Macro's spread (matches Macro's
-                        // display); no Macro → engine's V1 spread.
-                        float spread;
-                        if (macroMod && !eastOwnsLane(el))
-                            // Macro's OWN value (matches Macro's display) → the POST
-                            // endpoint (P9b; identical at the default tap 1.0).
-                            spread = rack::math::clamp(macroMod->macroBase[el][3] + macroMod->macroPostDelta[el][3], -1.f, 1.f);
-                        else if (macroMod)
-                            spread = monsoon->getSpread(dotModular::VoiceResolver::kMonoSlot, el);
-                        else
-                            spread = monsoon->engine.spreadE(0, el);
-                        // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
-                        const float disp = redDot::SpreadInterp::interpolate(base, base, spread);
-                        // Warp display composition (CC_PROMPT_05 uniform): every lane (no
-                        // per-lane gate), over the mono/V1 row. (This block is currently
-                        // dead — tab1Mono is always false — but kept consistent with the live
-                        // V1 branches so a revival can't diverge.)
+                for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el)
+                    for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                         visualEditor->currentState.lanes[el].probabilities[s] =
-                            peRef.warpDisplayMix(dotModular::VoiceResolver::kMonoSlot, el, disp);
-                    }
-                }
+                            monsoon->engine.effectiveProbability(
+                                dotModular::VoiceResolver::kMonoSlot, el, s,
+                                SequencerEngine::ProbLens::Owner);
             }
         } else if (v1Editable()) {
             // ── V1 (East-alone) persistence ──────────────────────────────────────────────
@@ -1492,69 +1411,21 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int ph1222 = (eng.stepIndex >= 0) ? eng.laneTick_[el] : -1;
                 visualEditor->setLanePlayStep(el, calcPlayhead(ph1222, cvLen, cvOff, cvRot));
             }
-            // Probabilities: V1 display reads pubSlewed* (mono published snapshot) + applies
-            // spread via applyAnchorV1Only — the SAME source and function Macro's
-            // macroOwnProbability uses. When Macro is present, uses Macro's spread; otherwise
-            // the engine's V1 spread. This matches the onMonoTab() block and the poly-voice
-            // block, so V1 and Macro read ONE source and can't diverge. Previously read
-            // finalRandomByStrand (post-spread final array), which used sprForLane's spread —
-            // different from Macro's display spread on East-owned rhythm-axis V1 lanes.
+            // Probabilities (CC_PROMPT_UI_TO_RESOLVER_SPEC step 2): the ONE accessor,
+            // Owner lens, explicit voiceSlot 0 — the manager's resolver-resolved V1
+            // spread (engine.spread[0][lane], sprForLane's publish) + the ONE warp
+            // composition over the published snapshots. The hand-rolled per-lane
+            // ownership switch below (macroBase+macroCVDelta / getSpread+CV+send /
+            // spreadE fallback) re-implemented sprForLane's delegation algebra a
+            // THIRD time in the UI — deleted. The bars still animate under live CV:
+            // the store IS the resolver's live output, republished every control block.
             {
-                auto& peRef = monsoon->engine.pe;
-                auto* macroMod = monsoon->expanderManager.cachedMacroSandsVisual;
-                for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el) {
-                    for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s) {
-                        float base;
-                        switch (el) {
-                            case SequencerEngine::PL_REST:      base = peRef.pubSlewedPolyRhythm[0][s]; break;
-                            case SequencerEngine::PL_MELODY:    base = peRef.pubSlewedPolyMelody[0][s]; break;
-                            case SequencerEngine::PL_OCTAVE:    base = peRef.pubSlewedPolyOctave[0][s]; break;
-                            case SequencerEngine::PL_ACCENT:    base = peRef.pubSlewedPolyAccent[0][s]; break;
-                            case SequencerEngine::PL_QMIX:      base = peRef.pubSlewedPolyQmix[0][s]; break;
-                            case SequencerEngine::PL_VARIATION: base = peRef.pubSlewedPolyVariation[0][s]; break;
-                            case SequencerEngine::PL_LEGATO:    base = peRef.pubSlewedPolyLegato[0][s]; break;
-                            default: base = 0.5f; break;
-                        }
-                        (void)base;   // applyMono computes own internally; base kept for clarity
-                        // V1 spread: respect lane ownership, and mirror the ENGINE's sprForLane
-                        // EXACTLY (MonsoonSandsManager processDNA) so the displayed bars match the
-                        // audible spread AND animate under live CV/LFO modulation.
-                        const int kMono = dotModular::VoiceResolver::kMonoSlot;
-                        float spread;
-                        if (macroMod && !eastOwnsLane(el)) {
-                            // Delegated → Macro's EFFECTIVE spread = base + CV delta (the LIVE
-                            // CV/LFO contribution), matching sprForLane's delegated branch.
-                            spread = macroMod->macroBase[el][3] + macroMod->macroCVDelta[el][3];
-                        } else if (eastOwnsLane(el)) {
-                            // East-owned → East's V1 spread base + East's own spread CV (the LIVE
-                            // contribution that was MISSING — the display read only the static store
-                            // base, so East-owned V1 bars didn't animate) + the Macro send blend.
-                            // Mirrors sprForLane's owned branch exactly. module is this East module.
-                            Monsoon* mmV1 = monsoon;
-                            spread = mmV1 ? mmV1->getSpread(kMono, el) : 0.f;
-                            if (module->inputs[cvId(el,3)].isConnected()) {
-                                float att = mmV1 ? mmV1->getMacroAtten(kMono, el*4 + 3) : 0.f;
-                                float cv  = module->inputs[cvId(el,3)].getPolyVoltage(0) / 10.f;  // ch0 = V1
-                                spread += cv * att * 2.f;
-                            }
-                            if (macroMod) {
-                                float send = mmV1 ? mmV1->getMacroSend(kMono, el, 3) : 0.f;
-                                // P9b: V1's own tap selects between the published endpoints.
-                                const float tap = (mmV1 ? mmV1->getMacroTap(kMono, el, 1) : 1.f);
-                                spread += macroMod->tappedDelta(tap, el, 3) * send;
-                            }
-                        } else {
-                            spread = monsoon->engine.spreadE(0, el);
-                        }
-                        spread = rack::math::clamp(spread, -1.f, 1.f);
-                        // V1: use applyMono (respects follow-CA where own=preRemap ≠ target=postRemap)
-                        const float disp = redDot::SpreadInterp::interpolate(base, base, spread);
-                        // Warp display composition (CC_PROMPT_05 uniform): every lane (no
-                        // per-lane gate), over the mono/V1 row the audio path reads.
+                for (int el = 0; el < dotModular::SandsGrid::EAST_LANES; ++el)
+                    for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                         visualEditor->currentState.lanes[el].probabilities[s] =
-                            peRef.warpDisplayMix(kMono, el, disp);
-                    }
-                }
+                            monsoon->engine.effectiveProbability(
+                                dotModular::VoiceResolver::kMonoSlot, el, s,
+                                SequencerEngine::ProbLens::Owner);
             }
         } else if (selectedVoice >= 1) {
             const int pv = polyVoice();
@@ -1569,12 +1440,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int ph1253 = (eng.stepIndex >= 0) ? eng.laneTickV_[pv][l] : -1;
                 visualEditor->setLanePlayStep(l, calcPlayhead(ph1253, cvLen, cvOff, cvRot));
             }
-            // VARIATION (4) / LEGATO (5): show the window the ENGINE actually reads for this voice
-            // — mono's when the lane DELEGATES (default), the voice's own when Local East — plus the
-            // moving playhead and mono's SHARED VAR/LEG probability array (per §4d the array is
-            // global; only the reading window is per-voice). strand == editor lane (VAR 4, LEG 5).
-            // Use polyLOR (editor-order, masks &7) NOT polyLenE (engine-order, masks &3 → would
-            // alias VAR→REST). eng.lor(el) / finalRandomByStrand(el) are mono's, as in mirrorMono.
+            // VARIATION (4) / LEGATO (5): show the window the ENGINE actually reads for
+            // this voice — mono's when the lane DELEGATES (default), the voice's own
+            // when Local East — plus the moving playhead. strand == editor lane
+            // (VAR 4, LEG 5). Use polyLOR (editor-order, masks &7) NOT polyLenE
+            // (engine-order, masks &3 → would alias VAR→REST); eng.lor(el) is mono's.
             for (int el = dotModular::SandsGrid::POLY_LANES; el < dotModular::SandsGrid::EAST_LANES; ++el) {
                 const bool localEast =
                     (getMonsoon() && getMonsoon()->getVarlegDeleg(pv, el - dotModular::SandsGrid::POLY_LANES) > 0.5f);
@@ -1592,8 +1462,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int pvTick = eng.laneTickV_[pv][el];
                 int ph1276 = (eng.stepIndex >= 0) ? pvTick : -1;
                 visualEditor->setLanePlayStep(el, calcPlayhead(ph1276, cvLen, cvOff, cvRot));
+                // CC_PROMPT_UI_TO_RESOLVER_SPEC step 2 + VOICE CONSISTENCY: the ONE
+                // accessor at THIS voice's voiceSlot (pv) — NOT finalRandomByStrand,
+                // which read the MONO row regardless of the displayed voice (the
+                // CC_PROMPT_warp_display_scope voice-0 residue) and skipped the
+                // resolver's spread/warp composition.
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
-                    visualEditor->currentState.lanes[el].probabilities[s] = eng.pe.finalRandomByStrand(el, s);
+                    visualEditor->currentState.lanes[el].probabilities[s] =
+                        eng.effectiveProbability(pv, el, s, SequencerEngine::ProbLens::Owner);
             }
         }
     }

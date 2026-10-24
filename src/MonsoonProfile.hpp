@@ -36,10 +36,12 @@ inline uint64_t now() {
 #endif
 }
 
-// FAST-PATH Suspect A: total call count of SequencerEngine::macroOwnLaneProbability,
-// incremented in the accessor itself so BOTH consumers are counted — the Macro prob-CV
-// sweep (engine thread) and the bars' refresh (UI thread; hence the relaxed atomic).
-inline std::atomic<uint64_t> macroOwnLaneProbCalls{0};
+// FAST-PATH Suspect A: total call count of SequencerEngine::effectiveProbability (the
+// ONE effective-probability accessor, CC_PROMPT_UI_TO_RESOLVER_SPEC — it subsumes the
+// deleted a2ccb842 one-accessor design), incremented in the accessor itself so BOTH
+// consumers are counted — the Macro prob-CV sweep (engine thread, STEP-cached by the
+// spec's step-3 cache) and the bars' refresh (UI thread; hence the relaxed atomic).
+inline std::atomic<uint64_t> effProbCalls{0};
 
 // ticks→ns calibration, updated only at control-rate log events (chrono never runs per
 // sample). Returns 0 until one log-event pair >=100 ms apart has been seen — log sites
