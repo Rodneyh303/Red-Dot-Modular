@@ -57,6 +57,7 @@ TESTS=(
   "test_SandsTopology|"
   "test_SpreadInterp|"
   "test_slew_copula|src/dsp/engines/PatternEngine.cpp"
+  "test_slew_latch_regression|$PE"   # CC_PROMPT_slew_latch_regression: slew latches UNCONDITIONALLY (latchSlew) — ABMix lock must not gate it; probabilities change at the roll, macro + east
   "test_SquaresRng|"
   "test_ScalaFile|"
   "test_ScaleMaskArbiter|"
