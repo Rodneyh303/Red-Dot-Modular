@@ -1677,3 +1677,57 @@ modulation relation (E_w[p(w)^k] — the clean factor-driven common-shock λ, NO
 => This is the ONE instrument configuration that reproduces the paper's DMO copula EXACTLY (pure, not
 spread-confounded). INTERIOR atom in the same config → comonotone coincidence (λ=0), NOT DMO; CORNER →
 DMO. ℓ slides between Archimedean+interior-comonotone (λ=0) and Archimedean+MO/DMO-corner (λ>0).
+
+────────────────────────────────────────────────────────────────────────────────
+## ★ THE REAL MO PAYOFF — rail atoms on CATEGORICAL lanes = modulatable discrete decisions + ensemble coordination (Rodney)
+
+This REPLACES the "corner atom = mere convenience" conclusion. The failure was taking the current
+consumers as fixed and treating a rail as a quantitative EXTREME. The escape: on boolean/articulation
+lanes the EXACT rail value carries a DISTINCT CATEGORICAL MEANING, so hitting it is a genuine discrete
+DECISION — and an atom is the ONLY mechanism that makes that decision happen at a CONTROLLABLE RATE
+(continuous dists hit an exact value with probability 0; an atom gives probability m).
+
+### The categorical meaning escapes the perception bound
+Threshold-relativity / "atoms inert unless a decision tests the exact rail" assumed the consumer reads a
+QUANTITY (exact-vs-near inaudible). On categorical lanes the consumer reads a CATEGORY where exact-vs-near
+is the WHOLE difference:
+  - LEGATO = 1.0 → TIE (hold pitch); = 0.95 → legato but MAKE A NEW PITCH decision. 1.0 is a distinct MODE,
+    not "more legato".
+  - REST = 1.0 → "rest beats legato" / don't tie across rest; < 1 → ordinary rest probability.
+So the exact rail = a distinct behaviour, and the atom MASS = how often the voice takes that behaviour.
+
+### Context-menu behaviours BECOME atom choices (the design shift)
+Today these are static menu/config toggles (tie-vs-repitch, rest-overrides-legato…). RECONCEIVE them as
+RAIL-ATOM choices: a context-menu entry reads "rest beats legato: T / F / ATOM-DECIDES". With ATOM-DECIDES,
+an atom at the rail makes the categorical override a MODULATABLE PROBABILITY (mass m), and the menu T/F
+are just the m=1 / m=0 endpoints. So the menu picks WHICH categorical meaning the rail carries; the atom
+makes it a rate; modulation automates it. Strictly more expressive than the toggle — the categorical
+choice becomes a probability you can modulate, with the old toggle as the two endpoints.
+
+### Correlated categorical atoms = genuine COMPOSITIONAL COORDINATION (the non-convenience payoff)
+This is where MO λ becomes directly musical. Correlate two voices' categorical atoms (shared factor):
+  - Voice1 atom legato=1 (sustain) + Voice2 atom rest=1, CORRELATED → V2 reliably RESTS when V1 SUSTAINS
+    = CALL-AND-RESPONSE / space-making (voices coordinate so they don't collide).
+  - Rest-atoms CORRELATED → voices rest TOGETHER = unison phrasing.
+  - Rest-atoms ANTI-correlated (−spread/opposite) → HOCKET (one plays when the other rests = interlocking)
+    — a real named technique, UNREACHABLE from independent rest probabilities (they collide/gap randomly);
+    needs correlation of the exact-rest DECISION = atom co-occurrence (MO) on a categorical lane.
+MO λ between the atoms = the TIGHTNESS of the coordination (how reliably they interlock/coincide) — a
+thing a composer directly wants to control. THIS is what the boolean-lane cross-lane coupling result was
+FOR: coordinated categorical decisions across voices = ensemble phrasing / hocket / call-response /
+space-making. Independent randomness cannot produce it.
+
+### HONEST STATUS
+- NOT convenience: categorical-override meaning + correlated coordination is something NO static knob/menu
+  gives (the knob gives the marginal rate; it cannot give modulatable-rate NOR cross-voice coordination).
+- Specifically on BOOLEAN/ARTICULATION lanes (legato/rest/accent) — exactly where we earlier (too narrowly)
+  called atoms "redundant with the knob". Redundant MARGINALLY; the categorical + coordinated use is new.
+- Also: TIE is an ALREADY-EXISTING exact-equality consumer (Tie = fresh pitch == previous). An atom at a
+  pitch makes TIE-RATE controllable (today ties are near-zero accidents). Non-hypothetical.
+- DESIGN: route the gate-mode / subgate categorical behaviours (tie-vs-repitch, rest-overrides-legato,
+  advance-on-tie-into-rest) through the T/F/ATOM-DECIDES pattern — the atom unifies the menu toggles into
+  one modulatable+correlatable mechanism. Flag for the subgate/gate-mode work (subgate_dev_plan.md).
+OTHER outside-the-box exact-value consumers worth noting (atoms become the ONLY mechanism): coincidence
+detectors (fire when 2 lanes hit atoms together → λ = firing rate, the honest audible MO); rendezvous
+events (voices share an atom = periodic convergence point); multi-atom weighted PITCH-SETS (mostly point
+masses at chosen degrees = authorable weighted note-set, a different primitive — Bernoulli+atom seed).
