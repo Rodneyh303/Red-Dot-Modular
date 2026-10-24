@@ -1731,3 +1731,49 @@ OTHER outside-the-box exact-value consumers worth noting (atoms become the ONLY 
 detectors (fire when 2 lanes hit atoms together → λ = firing rate, the honest audible MO); rendezvous
 events (voices share an atom = periodic convergence point); multi-atom weighted PITCH-SETS (mostly point
 masses at chosen degrees = authorable weighted note-set, a different primitive — Bernoulli+atom seed).
+
+────────────────────────────────────────────────────────────────────────────────
+## RAIL-ATOM ESCAPE MEANINGS, per lane — where the pattern is strong vs just coordination (Rodney)
+
+Extends the categorical-atom principle. The rail atom's meaning is chosen PER LANE. Two regimes, by
+whether the lane has a CONTINUOUS INTERIOR to escape from:
+
+### STRONG — continuous-interior lanes: rail = a SPECIFIC EXACT ESCAPE from the normal range
+- OCTAVE: interior = normal register span; rail atoms = REGISTER ESCAPE — one octave BELOW (ℓ=0) / ABOVE
+  (ℓ=1) the normal range, at rate m. Normal range stays INTACT (continuous interior), atom adds discrete
+  rate-controlled excursions. ORTHOGONAL to the planned deterministic/modulatable octave OFFSET: offset
+  TRANSPOSES the window (where the range sits), the atom is an ESCAPE FROM the window (leaves it in place).
+  Composable — offset places, atom ornaments. Escape defined RELATIVE to the post-offset range (so
+  modulating offset carries the escape target with it; keeps them independent). Correlation: correlated
+  offsets = parallel transposition (organum); correlated escape-atoms = coordinated register leaps.
+- VARIATION: interior = length in the leaned range (amount>0.5 → shorter, <0.5 → longer). Rail atoms =
+  DIRECTIONAL escapes RELATIVE TO THE LEAN: one rail "beyond the lean" (exaggerate — even shorter when
+  short-leaning), the other "AGAINST the lean" (contradict — a long note amid short ones). Defined
+  relative to the CURRENT lean so it survives variation modulation. Correlation = coordinated
+  PATTERN-BREAKING (ensemble fills/accents; anti-corr = interlocking contrast).
+  HONEST OVERLAP: "sometimes a longer note" also comes from WIDENING the variation range. The atom's
+  GENUINE difference: a SPECIFIC EXACT length reached DETERMINISTICALLY at the rail (a recognizable
+  rhythmic value, not one sample from a widened range), keeping the normal range CLEAN (widening blurs
+  it), at a modulatable RATE, CORRELATABLE. Justified when the pattern-break is a SPECIFIC RECOGNIZABLE
+  EVENT, not just added variance. If you only want "more varied lengths", range-widening suffices — the
+  atom earns its place by precision + cleanliness + rate + coordination, NOT by the longer note existing.
+
+### COORDINATION-ONLY — already-categorical lanes: rail = rate-controlled categorical decision (no new "escape")
+LEGATO / REST / QMIX / ACCENT are already binary/categorical → little continuous interior to escape FROM,
+so the rail atom's role is the CATEGORICAL-COORDINATION case already recorded (menu→atom: tie-vs-repitch,
+rest-override, source-pick, accent; correlated = unison phrasing / hocket / ensemble hits; MO λ =
+coordination tightness). Real and strong — but it's the COORDINATION use, not a novel escape.
+
+### MELODY (scale degree) — in-between; one tentative SEED, not decided
+Degree is mostly discrete → the escape pattern fits weakly. The one candidate worth keeping: rail =
+OFF-SCALE / CHROMATIC escape (interior = in-scale degrees; rail atom = a specific out-of-scale/chromatic
+note at rate m — occasional controllable chromaticism; correlated = chromatic planing). SEED only, not
+decided. (Other angles — relational "unison with another voice", drone degree — noted but likely too
+exotic / overlap the interior anchor.)
+
+### THE HONEST GRID
+Continuous-interior (octave, variation) → rail = exact ESCAPE (strong, new). Already-categorical (legato,
+rest, qmix, accent) → rail = coordination (strong, but the earlier result, not escape). Melody → chromatic
+-escape SEED only. Don't force an escape meaning where there isn't one — "atom available, meaning TBD" is
+an honest state. The pattern is STRONGEST exactly where there's a continuous interior for the rail to be a
+clean discontinuity FROM.
