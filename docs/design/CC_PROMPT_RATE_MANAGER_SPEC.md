@@ -1,16 +1,14 @@
-# ⚠️ PREREQUISITE NOT YET MET — DO NOT START until feat/ui-to-resolver is MERGED to trunk
-Verified: the UI-to-resolver work is DONE on feat/ui-to-resolver (effectiveProbability authority, old
-paths deleted, East-leak fixed, CPU down, T8 test) but NOT YET MERGED to lane-expander-refactor
-(effectiveProbability = 0 refs on trunk). The rate manager's Step 3 routes the HEAVY RESOLVER to a
-Step-rate producer — that resolver only exists on the branch. Building the rate manager on trunk NOW =
-scheduling the OLD duplicated graph, which the resolver merge then rewrites = building it TWICE (the
-exact trap this spec warns against).
-SO: (1) MERGE feat/ui-to-resolver to lane-expander-refactor first (verify on trunk: effectiveProbability
-present, macroOwnLaneProbability + /32 = 0 refs, CPU down, East-no-leak). (2) THEN start this spec.
-A GOOD SIGN already on the branch: publishGlobal (MonsoonSandsManager.cpp:784) is a nascent "publish at
-control rate, consumers read" pattern — the rate manager GENERALIZES exactly this (it's a proto-producer/
-slot). Fold it into the manager rather than leaving it as a one-off.
-POPULATION still deferred to the section-profile inventory (unchanged).
+# ✅ PREREQUISITE MET — resolver merged (PR #290, trunk 2b3a308). START HERE.
+Verified on trunk lane-expander-refactor: effectiveProbability present (6 refs),
+macroOwnLaneProbability = 0, /32 + SweepSig = 0, East-leak fixed, CPU down. The clean resolver graph
+exists → build the rate manager on it now.
+KEY REUSE: publishGlobal (MonsoonSandsManager.cpp:784, 6 refs) is ALREADY a "publish at control rate,
+consumers read" pattern = a proto-producer/slot. The rate manager GENERALIZES it — do NOT reinvent;
+fold publishGlobal (and the resolver's step-cache) INTO the manager's declareProducer/slot API so there
+is ONE producer/slot mechanism, not two. (That's the migration's first concrete win.)
+Rate primitives to replace (verified present): lightDivider ~90Hz (Monsoon.cpp:77), controlDivider
+~1500Hz (:78), clock/phase → gridPulse/pulseEdge (:946), ppqnSetting. POPULATION still from the
+section-profile inventory (unchanged).
 
 ────────────────────────────────────────────────────────────────────────────────
 # SPEC — Compute Rate Manager (FRAMEWORK) — unify the scattered rate control into one authority
