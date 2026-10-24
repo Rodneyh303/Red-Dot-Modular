@@ -407,9 +407,17 @@ struct SequencerEngine {
     void setVarlegLocalEast(int bank, int lane, bool localEast) {
         if (bank >= 0 && bank < 16 && lane >= 0 && lane < 2) varlegLocalEast_[bank][lane] = localEast;
     }
+    // STRONG typed twin (CC_PROMPT_STRONG_TYPES); the int version is a MIGRATION shim.
+    // (lane stays int: 0=VAR/1=LEG is the 2-wide varleg axis, NOT a PL_ LaneId.)
+    void setVarlegLocalEast(VoiceSlot bank, int lane, bool localEast) {
+        setVarlegLocalEast(bank.v, lane, localEast);
+    }
     // VAR = lane 0, LEG = lane 1.
     bool varlegDelegated(int bank, int lane) const {
         return !(bank >= 0 && bank < 16 && lane >= 0 && lane < 2 && varlegLocalEast_[bank][lane]);
+    }
+    bool varlegDelegated(VoiceSlot bank, int lane) const {   // STRONG typed twin (shim above)
+        return varlegDelegated(bank.v, lane);
     }
 
     // Per-voice VARIATION step — mono's getStrandIdx transform, driven by THIS voice's LOR window.

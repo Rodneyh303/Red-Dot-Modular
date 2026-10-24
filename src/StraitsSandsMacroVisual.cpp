@@ -662,11 +662,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // Macro's OWN spread + the ONE warp composition; Macro never borrows East). One
         // producer, both consumers — bars and out can no longer diverge.
         {
-            const int barVoice = onMonoTab ? dotModular::VoiceResolver::kMonoSlot : pv;
+            const auto barVoice = onMonoTab ? dotModular::VoiceResolver::mono() : dotModular::VoiceResolver::slot(pv + 1);
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[lane].probabilities[s] =
-                        monsoon->engine.effectiveProbability(barVoice, lane, s,
+                        monsoon->engine.effectiveProbability(barVoice, dotModular::LaneId{lane}, s,
                                                              SequencerEngine::ProbLens::MacroOwn);
             }
         }
