@@ -735,46 +735,88 @@ struct SequencerEngine {
         return pe.finalRandomByStrand(strand, masterLaneStep(polyLane));
     }
 
-    // ── Macro-own probability: ONE accessor, BOTH Macro consumers (bars + prob CV out) ──
-    // CC_PROMPT_macro_output_east_leak: the one-way-borrowing fix was display-only —
-    // Macro's BARS already resolved Macro's own value (the widget's macroOwnProbability)
-    // but the prob CV OUT still read the SHARED final (finalRandomByStrand → warpRow →
-    // random_), which East's spread WRITES on an East-owned lane: East's modulation leaked
-    // BACKWARDS into Macro's output (Rodney: move East's SPREAD → Macro's scope moves,
-    // Macro's bars don't). THE FIX: this ONE engine-side resolution, read by BOTH
-    // consumers — the widget's macroOwnProbability (the BARS, continuous) and
-    // VoiceResolver::laneProbabilityAtStep (the prob CV OUT, latched per-step at the
-    // module). Same source; only the timing differs (by design — do NOT flatten
-    // bars==out). Neither consumer borrows East:
-    //   • base   = the shared PRE-spread PUBLISHED draw (pubSlewedPoly*) — the spread
-    //     passes write random_, NEVER pubSlewed*, so an East-owned lane's East spread
-    //     cannot reach this read (the same trick the fixed bars use);
-    //   • spread = macroOwnSpread[lane] — Macro's OWN effective spread (macroBase[l][3]
-    //     + macroPostDelta[l][3], clamped — the SAME expression the manager's MACRO_SOLE
-    //     branch uses), published each block by StraitsSandsMacroVisual::process.
-    //     Owner-INDEPENDENT: Macro's own value exists whether or not Macro owns the lane.
-    // V1/mono is the spread anchor: interpolate(base, base, sp) — self-target no-op, so
-    // V1's value is spread-invariant at positive spread (matches East's V1 display).
-    float macroOwnSpread[PL_LANES] = {};   // per PL lane; published by the Macro module
-    float macroOwnLaneProbability(int engLane, int step, bool mono, int polyVoice) const {
+    // ── THE ONE effective-probability accessor (CC_PROMPT_UI_TO_RESOLVER_SPEC step 1) ──
+    // ONE call produces the effective (voice, lane, step) probability = the published
+    // base draw + the RESOLVER-resolved spread + the warp mix. It SUBSUMES the old
+    // macroOwnLaneProbability (CC_PROMPT_macro_output_east_leak) — the same value,
+    // produced through the one authority instead of a third hand-rolled resolution.
+    // The engine draw, the bars, and the prob-outs ALL read THIS function; there is
+    // no second computation of the quantity anywhere (the spec's one-producer law).
+    //
+    //   voice = voiceSlot (0=V1/mono ... 15=V16) — EXPLICIT, never hardcoded: the bars
+    //           pass the DISPLAYED voice, the prob-outs pass the CHANNEL's voice
+    //           (ch0=V1, ch v = voice v+1), so bars and out read the same voice by
+    //           construction (CC_PROMPT_warp_display_scope's voice-0 residue dies).
+    //   lane  = PL_* engine lane (0..6).  step = 0..15.
+    //   lens  = the delegation LENS (the one-way borrowing rule, pinned by
+    //           test_macro_own_output):
+    //             MacroOwn — Macro's OWN resolved amount (macroOwnSpread[lane], the
+    //                        delegated branch of the ONE algebra — the manager's
+    //                        publishGlobal resolver output). Macro's bars + prob-outs
+    //                        read this lens. Macro NEVER borrows East: the amount
+    //                        never reads East's spread, so on an East-owned lane East's
+    //                        edit cannot reach Macro's bars/out (the leak dies by
+    //                        construction). Owner-INDEPENDENT: Macro's own value exists
+    //                        whether or not Macro owns the lane.
+    //             Owner    — the OWNER's resolved amount (spread[0][lane] for V1,
+    //                        pe.cachedPolySpread[voice][lane] for V2+) — the same
+    //                        SpreadPolicy::effective outputs the manager writes for
+    //                        the ENGINE's audio spread pass, so the engine draw and
+    //                        East's bars read the value the audio consumes (East MAY
+    //                        borrow Macro: a Macro-owned lane reads Macro's amount).
+    //
+    // THE SPREAD TERM comes through SandsModifierResolver<SpreadPolicy>::effective —
+    // the ONE delegation algebra (ownerEast/macroBase/tap decided ONCE, manager-side,
+    // store-mediated; every store this accessor reads is that resolver's output).
+    // SpreadInterp is the underlying interpolation math the term wraps — the DISPLAY
+    // entry points only (published snapshots + the anchor-V1 target): torn-read safe,
+    // never the live slewed* the audio path reads (the V16-flicker law).
+    // THE WARP TERM is the ONE composition: warpDisplayMix → WarpBank::warpedValue →
+    // resolveWarpCell — the SAME path the warp mirror consumes, tilt+atom feel-test
+    // stages included. No second warp path exists.
+    // V1/mono is the spread anchor: interpolate(base, base, sp) — self-target no-op,
+    // so V1's value is spread-invariant at positive spread (matches East's V1 display).
+    enum class ProbLens { Owner, MacroOwn };
+    float effectiveProbability(int voice, int lane, int step, ProbLens lens) const {
 #ifdef MONSOON_PROFILE
         // FAST-PATH Suspect A (CC_PROMPT_cpu_section_profile): count EVERY call — both
-        // consumers land here (the Macro prob-CV sweep, engine thread, and the bars'
-        // refresh, UI thread; hence the relaxed atomic). Macro's process() logs
-        // calls/sample at ~50k cadence: ~5x(1+N) per sample => CONFIRMED per-sample
-        // sweep — fix is CC_PROMPT_UI_TO_RESOLVER_SPEC, NOT a point-patch.
-        monsoonProfile::macroOwnLaneProbCalls.fetch_add(1, std::memory_order_relaxed);
+        // consumers land here (the Macro prob-CV sweep, engine thread — STEP-cached by
+        // the module's step-3 cache — and the bars' refresh, UI thread; hence the
+        // relaxed atomic). Macro's process() logs calls at ~50k cadence: the fix for a
+        // per-sample count is THIS spec (the step cache), not a point-patch.
+        monsoonProfile::effProbCalls.fetch_add(1, std::memory_order_relaxed);
 #endif
-        const int l = (engLane >= 0 && engLane < PL_LANES) ? engLane : PL_REST;
-        const int v = mono ? 0 : rack::math::clamp(polyVoice, 0, 15);   // voiceSlot (V2+=1..15)
-        const float sp = macroOwnSpread[l];
+        const int l = (lane >= 0 && lane < PL_LANES) ? lane : PL_REST;
+        const int v = (voice >= 0 && voice < 16) ? voice : 0;   // voiceSlot (V2+=1..15)
+        const float sp = (lens == ProbLens::MacroOwn)
+            ? macroOwnSpread[l]
+            : ((v == 0) ? spreadE(0, l) : pe.cachedPolySpread[v][l]);
         const float base = redDot::SpreadInterp::polySlewedPub(pe, l, v, step & 0x0F);
-        const float disp = mono
+        const float disp = (v == 0)
             ? redDot::SpreadInterp::interpolate(base, base, sp)                    // anchor self-target
             : redDot::SpreadInterp::applyAnchorV1Only(pe, l, step & 0x0F, base, sp);
         // Warp display composition (CC_PROMPT_05 uniform): the same per-(voice,lane)
         // mixture the engine consumes, keyed to the sampled voice.
         return pe.warpDisplayMix(v, l, (double)disp);
+    }
+
+    // Macro's own effective spread per PL lane — the MacroOwn lens's amount. The ONE
+    // delegated-branch output of the spread resolver (publishGlobal's
+    // SpreadResolver::effective call: clamp(macroBase[l][3] + macroPostDelta[l][3])),
+    // published by the manager at control rate. Read ONLY by effectiveProbability
+    // (MacroOwn); written ONLY by MonsoonSandsManager::publishGlobal.
+    float macroOwnSpread[PL_LANES] = {};
+
+    // (CC_PROMPT_UI_TO_RESOLVER_SPEC step 1) TRANSITIONAL SHIM — the resolution now
+    // lives in effectiveProbability (the ONE accessor, MacroOwn lens). Deleted in
+    // step 2 together with the rerouting of both callers (the widget's bars and
+    // VoiceResolver::laneProbabilityAtStep); kept THIS commit so the pinned tests
+    // (test_macro_own_output C3/C4, test_voice_resolver) keep pinning the routing
+    // bit-exactly while the accessor lands. Body is the old algebra, verbatim.
+    float macroOwnLaneProbability(int engLane, int step, bool mono, int polyVoice) const {
+        const int l = (engLane >= 0 && engLane < PL_LANES) ? engLane : PL_REST;
+        const int v = mono ? 0 : rack::math::clamp(polyVoice, 0, 15);   // voiceSlot (V2+=1..15)
+        return effectiveProbability(v, l, step, ProbLens::MacroOwn);
     }
 
 

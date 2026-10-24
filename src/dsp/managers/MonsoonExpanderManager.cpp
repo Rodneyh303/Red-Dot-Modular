@@ -4,6 +4,7 @@
 #include "../VoiceResolver.hpp"   // read-only shadow (step 1)
 #include "../SandsTopology.hpp"   // step 3: solo/none write-guard migration
 #include "../SandsModifierResolver.hpp"   // resolver step 3 (LorPolicy): combineLOR's delegation algebra — redDot::resolveLorItem; step 4 (DirPolicy): BOTH direction pushes — redDot::resolveDirItem
+#include "../SpreadResolver.hpp"         // UI-to-resolver step 1: combineSpread rides SpreadResolver (SpreadPolicy) — the ONE spread delegation algebra
 #include "../../Monsoon.hpp"
 #include <cassert>
 //#include "../../MonsoonDeepStraitsSands.hpp"
@@ -344,6 +345,20 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // [-1,1] so Macro ownership/blend can still reach negative spread.
             auto combineSpread = [&](int lane, float eastInterpVal)-> float {
                 // STEP 5b: same poly write ownership via the resolver (spread path).
+                // CC_PROMPT_UI_TO_RESOLVER_SPEC step 1: the delegation now rides the ONE
+                // skeleton — SandsModifierResolver<SpreadPolicy>::effective — so every
+                // spread amount the ONE effectiveProbability accessor reads is the
+                // resolver's own output (this store, cachedPolySpread, is the Owner
+                // lens's per-voice amount). BIT-IDENTICAL to the old inline shape by
+                // expression order (resolveLorValue's wiring pattern):
+                //   free      : constrain(eastVal + tappedDelta(tap)·send)
+                //               == math::clamp(base + blend)   [non-NaN; the resolver's
+                //               max/min constrain form differs only on NaN — the
+                //               documented one-convention-for-the-resolver-file rule]
+                //   delegated : constrain(macroBase + macroCVDelta)
+                //               == math::clamp(macroBase[lane][3] + macroCVDelta[lane][3])
+                // The delegated branch NEUTRALIZES the tap (pre == post == macroCVDelta):
+                // the old delegated delta was the POST value directly — no lerp, no send.
                 const int els = lane;
                 const bool ownerEast = (topo.owner(v, els) == dotModular::SandsTopology::Role::EAST);
                 // (step 5+6 cross-check assert removed — see the poly-write path above.)
@@ -351,16 +366,24 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 // when Macro is actually present AND owns the lane. Without this, V1's
                 // owner defaulted to Macro (getMonoMacroOwn returns false without Macro
                 // ever connected), suppressing East's V1 spread → bars flat.
-                float base = (ownerEast || !macroPresent) ? eastInterpVal
-                                       : (macroVis->macroBase[lane][3] + macroVis->macroCVDelta[lane][3]);
-                float blend = 0.f;
-                if (macroPresent && ownerEast) {
-                    float send = mmOwn ? mmOwn->getMacroSend(slot, lane, 3) : 0.f;
-                    // P9b: per-voice tap (spread kind) selects between the endpoints.
-                    const float tap = (mmOwn ? mmOwn->getMacroTap(slot, lane, 1) : 1.f);
-                    blend = macroVis->tappedDelta(tap, lane, 3) * send;
+                redDot::SpreadResolver::Inputs sin;
+                sin.delegated    = !ownerEast && macroPresent;
+                sin.macroPresent = macroPresent;
+                if (sin.delegated) {
+                    sin.macroBase      = macroVis->macroBase[lane][3];
+                    sin.macroPreDelta  = macroVis->macroCVDelta[lane][3];   // NEUTRALIZE the tap: pre == post
+                    sin.macroPostDelta = macroVis->macroCVDelta[lane][3];   // → the lerp yields macroCVDelta bit-exactly
+                } else {
+                    sin.base = eastInterpVal;
+                    if (macroPresent && ownerEast) {
+                        sin.macroSend      = mmOwn ? mmOwn->getMacroSend(slot, lane, 3) : 0.f;
+                        // P9b: per-voice tap (spread kind) selects between the endpoints.
+                        sin.macroPreDelta  = macroVis->macroPreDelta[lane][3];
+                        sin.macroPostDelta = macroVis->macroPostDelta[lane][3];
+                        sin.macroTap       = (mmOwn ? mmOwn->getMacroTap(slot, lane, 1) : 1.f);
+                    }
                 }
-                return math::clamp(base + blend, -1.f, 1.f);
+                return redDot::SpreadResolver::effective(sin);
             };
 
             // REST lane (0): owner+blend equation. r/c are East CV jack coords.

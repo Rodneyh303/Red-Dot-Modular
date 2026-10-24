@@ -1124,7 +1124,7 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
         // ticks in — one call of 50000 lags, a 0.002% bookkeeping detail, not a lie.)
         static uint64_t prevCalls = 0, prevSweep = 0;
         const uint64_t calls =
-            monsoonProfile::macroOwnLaneProbCalls.load(std::memory_order_relaxed);
+            monsoonProfile::effProbCalls.load(std::memory_order_relaxed);
         const uint64_t swp = monsoonProfSweepCalls;
         const double cps  = double(calls - prevCalls) / 50000.0;  // total calls/sample this window
         const double scps = double(swp - prevSweep) / 50000.0;    // engine-thread (sweep) share
