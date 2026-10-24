@@ -1,6 +1,9 @@
 #include "PatternEngine.hpp"
 #include "../SpreadInterp.hpp"
+#include "../VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (slot/mono) for the typed calls below
 #include "../WarpF.hpp"   // CC_PROMPT_03: dotModular::WarpBank — the warp mirror's mix source
+
+using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be constructed here)
 
 // ── OU-bridge blend coefficients (UNIFIED 2×2 conditioning for ALL r) ─────────
 // File-local: lives here (not in the header) to avoid pulling PhiInvLUT::table()
@@ -109,10 +112,12 @@ void PatternEngine::reset() {
         slewedMelody[0][i]=melodyRandom[i]; slewedOctave[0][i]=octaveRandom[i];
         slewedQmix[0][i]=qmixRandom[i];
         for (int v=1;v<=numPolyVoicesHint;v++){
-            slewedRhythm[v][i]=polyRandom(v, PL_REST)[i];
-            slewedMelody[v][i]=polyRandom(v, PL_MELODY)[i];
-            slewedOctave[v][i]=polyRandom(v, PL_OCTAVE)[i];
-            slewedQmix[v][i]=polyRandom(v, PL_QMIX)[i];
+            // STRONG types: v is the voiceSlot (V2..); slot(V) takes the VOICE number (= v+1)
+            const VoiceSlot vs = VoiceResolver::slot(v + 1);
+            slewedRhythm[v][i]=polyRandom(vs, LaneId{PL_REST})[i];
+            slewedMelody[v][i]=polyRandom(vs, LaneId{PL_MELODY})[i];
+            slewedOctave[v][i]=polyRandom(vs, LaneId{PL_OCTAVE})[i];
+            slewedQmix[v][i]=polyRandom(vs, LaneId{PL_QMIX})[i];
         }
     }
     // Warp mirror: reset rewrote random_ (defaults) — refresh the mirror so a wired
@@ -365,7 +370,7 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
         // — the two rhythmPattern writers agree by construction. warpRow(0,·) IS the
         // mono row, so at identity defaults this is byte-identical to the old raw
         // slewedRhythm[0] read (the recompute's write-back just copied slewed→random_).
-        rhythmPattern[i] = (warpRow(displayedVoice_, PL_REST)[i] >= in.restProb);
+        rhythmPattern[i] = (warpRow(displayedVoice_, LaneId{PL_REST})[i] >= in.restProb);
     }
 }
 
@@ -469,14 +474,19 @@ void PatternEngine::recomputeEffectiveRhythm() {
         for (int i = 0; i < 16; ++i) {
             rhythmRandom[i]=slewedRhythm[0][i]; variationRandom[i]=slewedVariation[0][i];
             legatoRandom[i]=slewedLegato[0][i]; accentRandom[i]=slewedAccent[0][i];
-            for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_REST)[i]=applyR?
-                redDot::SpreadInterp::applyPoly(*this,PL_REST,v,i,cachedPolySpread[v][PL_REST]):slewedRhythm[v][i];
-            for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_ACCENT)[i]=applyR?
-                redDot::SpreadInterp::applyPoly(*this,PL_ACCENT,v,i,cachedPolySpread[v][PL_ACCENT]):slewedAccent[v][i];
-            for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_VARIATION)[i]=applyR?
-                redDot::SpreadInterp::applyPoly(*this,PL_VARIATION,v,i,cachedPolySpread[v][PL_VARIATION]):slewedVariation[v][i];
-            for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_LEGATO)[i]=applyR?
-                redDot::SpreadInterp::applyPoly(*this,PL_LEGATO,v,i,cachedPolySpread[v][PL_LEGATO]):slewedLegato[v][i];
+            // v = voiceSlot; slot(V) takes the VOICE number (= v+1)
+            for (int v=1;v<=numPolyVoicesHint;v++){ const VoiceSlot vs = VoiceResolver::slot(v + 1);
+                polyRandom(vs, LaneId{PL_REST})[i]=applyR?
+                redDot::SpreadInterp::applyPoly(*this,PL_REST,v,i,cachedPolySpread[v][PL_REST]):slewedRhythm[v][i]; }
+            for (int v=1;v<=numPolyVoicesHint;v++){ const VoiceSlot vs = VoiceResolver::slot(v + 1);
+                polyRandom(vs, LaneId{PL_ACCENT})[i]=applyR?
+                redDot::SpreadInterp::applyPoly(*this,PL_ACCENT,v,i,cachedPolySpread[v][PL_ACCENT]):slewedAccent[v][i]; }
+            for (int v=1;v<=numPolyVoicesHint;v++){ const VoiceSlot vs = VoiceResolver::slot(v + 1);
+                polyRandom(vs, LaneId{PL_VARIATION})[i]=applyR?
+                redDot::SpreadInterp::applyPoly(*this,PL_VARIATION,v,i,cachedPolySpread[v][PL_VARIATION]):slewedVariation[v][i]; }
+            for (int v=1;v<=numPolyVoicesHint;v++){ const VoiceSlot vs = VoiceResolver::slot(v + 1);
+                polyRandom(vs, LaneId{PL_LEGATO})[i]=applyR?
+                redDot::SpreadInterp::applyPoly(*this,PL_LEGATO,v,i,cachedPolySpread[v][PL_LEGATO]):slewedLegato[v][i]; }
         }
         // Warp mirror (CC_PROMPT_03): the write-back above rewrote random_ — rebuild
         // from the settled w=0 basis (full scope; draw/scrub-rate, prompt-blessed cost).
@@ -556,9 +566,11 @@ void PatternEngine::recomputeEffectiveMelody() {
         const bool applyM = cachedSpreadInitialized && cachedSpreadLiveM;
         for (int i = 0; i < 16; ++i) {
             melodyRandom[i]=slewedMelody[0][i]; octaveRandom[i]=slewedOctave[0][i];
-            for (int v=1;v<=numPolyVoicesHint;v++){ polyRandom(v, PL_MELODY)[i]=applyM?
+            // v = voiceSlot; slot(V) takes the VOICE number (= v+1)
+            for (int v=1;v<=numPolyVoicesHint;v++){ const VoiceSlot vs = VoiceResolver::slot(v + 1);
+                                     polyRandom(vs, LaneId{PL_MELODY})[i]=applyM?
                 redDot::SpreadInterp::applyPoly(*this,PL_MELODY,v,i,cachedPolySpread[v][PL_MELODY]):slewedMelody[v][i];
-                                    polyRandom(v, PL_OCTAVE)[i]=applyM?
+                                    polyRandom(vs, LaneId{PL_OCTAVE})[i]=applyM?
                 redDot::SpreadInterp::applyPoly(*this,PL_OCTAVE,v,i,cachedPolySpread[v][PL_OCTAVE]):slewedOctave[v][i]; }
         }
         // Warp mirror (CC_PROMPT_03): rebuild AFTER the slew write-back — random_ now
@@ -636,8 +648,10 @@ void PatternEngine::recomputeEffectiveQmix() {
         const bool applyQ = cachedSpreadInitialized && cachedSpreadLiveQ;
         for (int i = 0; i < 16; ++i) {
             qmixRandom[i]=slewedQmix[0][i];
-            for (int v=1;v<=numPolyVoicesHint;v++) polyRandom(v, PL_QMIX)[i]=applyQ?
-                redDot::SpreadInterp::applyPoly(*this,PL_QMIX,v,i,cachedPolySpread[v][PL_QMIX]):slewedQmix[v][i];
+            // v = voiceSlot; slot(V) takes the VOICE number (= v+1)
+            for (int v=1;v<=numPolyVoicesHint;v++){ const VoiceSlot vs = VoiceResolver::slot(v + 1);
+                polyRandom(vs, LaneId{PL_QMIX})[i]=applyQ?
+                redDot::SpreadInterp::applyPoly(*this,PL_QMIX,v,i,cachedPolySpread[v][PL_QMIX]):slewedQmix[v][i]; }
         }
         // Warp mirror (CC_PROMPT_03): same write-back companion as rhythm/melody.
         rebuildWarpMirrorAll();
@@ -649,7 +663,7 @@ void PatternEngine::recomputeEffectiveQmix() {
 // ── Voice-scoped recompute: blend only the given voice's 16 steps from cached z0/z1 ──
 // Called by refreshVisualCache for the DISPLAYED voice only (not all 15 poly voices).
 // ~16x less work than the full recomputeEffective*. Cache hit required (populated at roll).
-void PatternEngine::recomputeEffectiveRhythmForVoice(int voice) {
+void PatternEngine::recomputeEffectiveRhythmForVoice(VoiceSlot voice) {
     const float s = rack::math::clamp(rhythmMixLatched, 0.f, 1.f) * 6.f;
     const int   f = (int)s;
     const float frac = s - (float)f;
@@ -664,7 +678,7 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(int voice) {
     auto bl = [&](int fi) -> float {
         return (float)redDot::copula::PhiFast(ouBC.blend(rhythmZCache_.z0[fi], rhythmZCache_.z1[fi]));
     };
-    if (voice == 0) {
+    if (voice == VoiceResolver::mono()) {
         for (int i = 0; i < 16; ++i) {
             int b = i * stride;
             slewedRhythm[0][i]    = bl(b); slewedVariation[0][i] = bl(b+1);
@@ -675,35 +689,35 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(int voice) {
             legatoRandom[i]=slewedLegato[0][i]; accentRandom[i]=slewedAccent[0][i];
         }
     } else {
-        if (voice > numPolyVoicesHint) return;
-        int off = 4 + (voice - 1) * 4;  // z-cache field offset: V2 at field 4
+        if (voice.v > numPolyVoicesHint) return;
+        int off = 4 + (voice.v - 1) * 4;  // z-cache field offset: V2 at field 4
         for (int i = 0; i < 16; ++i) {
             int b = i * stride + off;
-            slewedRhythm[voice][i]    = bl(b); slewedAccent[voice][i]    = bl(b+1);
-            slewedVariation[voice][i] = bl(b+2); slewedLegato[voice][i]    = bl(b+3);
+            slewedRhythm[voice.v][i]    = bl(b); slewedAccent[voice.v][i]    = bl(b+1);
+            slewedVariation[voice.v][i] = bl(b+2); slewedLegato[voice.v][i]    = bl(b+3);
         }
         // Always write random_[voice] — V1's path writes random_[0]; poly must too (no !sandsActive guard)
         {
             const bool applyR = cachedSpreadInitialized && cachedSpreadLiveR;
             for (int i = 0; i < 16; ++i) {
-                polyRandom(voice, PL_REST)[i]=applyR?
-                    redDot::SpreadInterp::applyPoly(*this,PL_REST,voice,i,cachedPolySpread[voice][PL_REST]):slewedRhythm[voice][i];
-                polyRandom(voice, PL_ACCENT)[i]=applyR?
-                    redDot::SpreadInterp::applyPoly(*this,PL_ACCENT,voice,i,cachedPolySpread[voice][PL_ACCENT]):slewedAccent[voice][i];
-                polyRandom(voice, PL_VARIATION)[i]=applyR?
-                    redDot::SpreadInterp::applyPoly(*this,PL_VARIATION,voice,i,cachedPolySpread[voice][PL_VARIATION]):slewedVariation[voice][i];
-                polyRandom(voice, PL_LEGATO)[i]=applyR?
-                    redDot::SpreadInterp::applyPoly(*this,PL_LEGATO,voice,i,cachedPolySpread[voice][PL_LEGATO]):slewedLegato[voice][i];
+                polyRandom(voice, LaneId{PL_REST})[i]=applyR?
+                    redDot::SpreadInterp::applyPoly(*this,PL_REST,voice.v,i,cachedPolySpread[voice.v][PL_REST]):slewedRhythm[voice.v][i];
+                polyRandom(voice, LaneId{PL_ACCENT})[i]=applyR?
+                    redDot::SpreadInterp::applyPoly(*this,PL_ACCENT,voice.v,i,cachedPolySpread[voice.v][PL_ACCENT]):slewedAccent[voice.v][i];
+                polyRandom(voice, LaneId{PL_VARIATION})[i]=applyR?
+                    redDot::SpreadInterp::applyPoly(*this,PL_VARIATION,voice.v,i,cachedPolySpread[voice.v][PL_VARIATION]):slewedVariation[voice.v][i];
+                polyRandom(voice, LaneId{PL_LEGATO})[i]=applyR?
+                    redDot::SpreadInterp::applyPoly(*this,PL_LEGATO,voice.v,i,cachedPolySpread[voice.v][PL_LEGATO]):slewedLegato[voice.v][i];
             }
         }
     }
     // Warp mirror: this function rewrote random_ rows for `voice` (mono row when
     // voice==0, poly row otherwise) — refresh that voice's mirror cells only.
-    rebuildWarpMirrorVoice(voice);
+    rebuildWarpMirrorVoice(voice.v);   // int seam (mirror-scope helper — its own pass)
     publishSlewedRhythm();
     rhythmMixApplied = rhythmMixLatched;
 }
-void PatternEngine::recomputeEffectiveMelodyForVoice(int voice) {
+void PatternEngine::recomputeEffectiveMelodyForVoice(VoiceSlot voice) {
     const float s = rack::math::clamp(melodyMixLatched, 0.f, 1.f) * 6.f;
     const int   f = (int)s;
     const float frac = s - (float)f;
@@ -717,7 +731,7 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(int voice) {
     auto bl = [&](int fi) -> float {
         return (float)redDot::copula::PhiFast(ouBC.blend(melodyZCache_.z0[fi], melodyZCache_.z1[fi]));
     };
-    if (voice == 0) {
+    if (voice == VoiceResolver::mono()) {
         for (int i = 0; i < 16; ++i) {
             int b = i * stride;
             slewedMelody[0][i] = bl(b); slewedOctave[0][i] = bl(b+1);
@@ -726,28 +740,28 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(int voice) {
             melodyRandom[i]=slewedMelody[0][i]; octaveRandom[i]=slewedOctave[0][i];
         }
     } else {
-        if (voice > numPolyVoicesHint) return;
-        int off = 2 + (voice - 1) * 2;
+        if (voice.v > numPolyVoicesHint) return;
+        int off = 2 + (voice.v - 1) * 2;
         for (int i = 0; i < 16; ++i) {
             int b = i * stride + off;
-            slewedMelody[voice][i] = bl(b); slewedOctave[voice][i] = bl(b+1);
+            slewedMelody[voice.v][i] = bl(b); slewedOctave[voice.v][i] = bl(b+1);
         }
         {
             const bool applyM = cachedSpreadInitialized && cachedSpreadLiveM;
             for (int i = 0; i < 16; ++i) {
-                polyRandom(voice, PL_MELODY)[i]=applyM?
-                    redDot::SpreadInterp::applyPoly(*this,PL_MELODY,voice,i,cachedPolySpread[voice][PL_MELODY]):slewedMelody[voice][i];
-                polyRandom(voice, PL_OCTAVE)[i]=applyM?
-                    redDot::SpreadInterp::applyPoly(*this,PL_OCTAVE,voice,i,cachedPolySpread[voice][PL_OCTAVE]):slewedOctave[voice][i];
+                polyRandom(voice, LaneId{PL_MELODY})[i]=applyM?
+                    redDot::SpreadInterp::applyPoly(*this,PL_MELODY,voice.v,i,cachedPolySpread[voice.v][PL_MELODY]):slewedMelody[voice.v][i];
+                polyRandom(voice, LaneId{PL_OCTAVE})[i]=applyM?
+                    redDot::SpreadInterp::applyPoly(*this,PL_OCTAVE,voice.v,i,cachedPolySpread[voice.v][PL_OCTAVE]):slewedOctave[voice.v][i];
             }
         }
     }
     // Warp mirror: same voice-scoped companion as the rhythm ForVoice above.
-    rebuildWarpMirrorVoice(voice);
+    rebuildWarpMirrorVoice(voice.v);   // int seam (mirror-scope helper — its own pass)
     publishSlewedMelody();
     melodyMixApplied = melodyMixLatched;
 }
-void PatternEngine::recomputeEffectiveQmixForVoice(int voice) {
+void PatternEngine::recomputeEffectiveQmixForVoice(VoiceSlot voice) {
     const float s = rack::math::clamp(qmixMixLatched, 0.f, 1.f) * 6.f;
     const int   f = (int)s;
     const float frac = s - (float)f;
@@ -761,20 +775,20 @@ void PatternEngine::recomputeEffectiveQmixForVoice(int voice) {
     auto bl = [&](int fi) -> float {
         return (float)redDot::copula::PhiFast(ouBC.blend(qmixZCache_.z0[fi], qmixZCache_.z1[fi]));
     };
-    if (voice == 0) {
+    if (voice == VoiceResolver::mono()) {
         for (int i = 0; i < 16; ++i) slewedQmix[0][i] = bl(i * stride);
         for (int i = 0; i < 16; ++i) qmixRandom[i]=slewedQmix[0][i];
     } else {
-        if (voice > numPolyVoicesHint) return;
-        for (int i = 0; i < 16; ++i) slewedQmix[voice][i] = bl(i * stride + 1 + (voice - 1));
+        if (voice.v > numPolyVoicesHint) return;
+        for (int i = 0; i < 16; ++i) slewedQmix[voice.v][i] = bl(i * stride + 1 + (voice.v - 1));
         {
             const bool applyQ = cachedSpreadInitialized && cachedSpreadLiveQ;
-            for (int i = 0; i < 16; ++i) polyRandom(voice, PL_QMIX)[i]=applyQ?
-                redDot::SpreadInterp::applyPoly(*this,PL_QMIX,voice,i,cachedPolySpread[voice][PL_QMIX]):slewedQmix[voice][i];
+            for (int i = 0; i < 16; ++i) polyRandom(voice, LaneId{PL_QMIX})[i]=applyQ?
+                redDot::SpreadInterp::applyPoly(*this,PL_QMIX,voice.v,i,cachedPolySpread[voice.v][PL_QMIX]):slewedQmix[voice.v][i];
         }
     }
     // Warp mirror: same voice-scoped companion as the rhythm/melody ForVoice above.
-    rebuildWarpMirrorVoice(voice);
+    rebuildWarpMirrorVoice(voice.v);   // int seam (mirror-scope helper — its own pass)
     publishSlewedQmix();
     qmixMixApplied = qmixMixLatched;
 }
@@ -809,8 +823,8 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
         // unwarped.) The mirror was just rebuilt by recomputeEffectiveMelody's
         // post-write-back hook above, so the row is fresh from the settled basis.
         melodyPitchV[i]   = genPitchLive(sem, in,
-                                         warpRow(displayedVoice_, PL_MELODY)[i],
-                                         warpRow(displayedVoice_, PL_OCTAVE)[i]);
+                                         warpRow(displayedVoice_, LaneId{PL_MELODY})[i],
+                                         warpRow(displayedVoice_, LaneId{PL_OCTAVE})[i]);
         melodySemitone[i] = sem;
     }
 }
@@ -905,7 +919,7 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
             // COLLAPSES — warpRow(displayedVoice_, PL_REST) IS the mono row when
             // displayedVoice_ is 0 (rhythmRandom is a view onto random_[0][REST]) and
             // the displayed poly row otherwise. One accessor, every lane, every voice.
-            rhythmPattern[i] = (warpRow(displayedVoice_, PL_REST)[i] >= in.restProb);
+            rhythmPattern[i] = (warpRow(displayedVoice_, LaneId{PL_REST})[i] >= in.restProb);
         }
     }
     if (melodyChanged) {
@@ -914,8 +928,8 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
             // from the SAME effective w-mixture the sounding path consumes, keyed to
             // displayedVoice_ (warpRow(0,·) degenerates to the mono row — the ternary
             // the raw path needed is built into the accessor).
-            float mVal = warpRow(displayedVoice_, PL_MELODY)[i];
-            float oVal = warpRow(displayedVoice_, PL_OCTAVE)[i];
+            float mVal = warpRow(displayedVoice_, LaneId{PL_MELODY})[i];
+            float oVal = warpRow(displayedVoice_, LaneId{PL_OCTAVE})[i];
             int sem = 0;
             melodyPitchV[i]   = genPitchLive(sem, in, mVal, oVal);
             melodySemitone[i] = sem;

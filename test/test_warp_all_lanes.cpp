@@ -34,6 +34,7 @@
 #include "test_stubs.hpp"
 #include "PatternEngine.hpp"
 #include "SequencerEngine.hpp"
+#include "VoiceResolver.hpp"
 #include "WarpF.hpp"
 #include <cstdio>
 #include <cstring>
@@ -240,7 +241,7 @@ int main() {
         const PatternInput in = rhythmInput();
         PatternEngine pe;
         pe.numPolyVoicesHint = 5;
-        pe.displayedVoice_ = 3;      // a POLY displayed voice — the old ternary's other arm
+        pe.displayedVoice_ = dotModular::VoiceResolver::slot(4);   // V4 = slot 3, a POLY displayed voice — the old ternary's other arm
         pe.seedRhythmPhilox(0.42f);
         pe.seedMelodyPhilox(0.17f);
         pe.seedQmixPhilox(0.23f);

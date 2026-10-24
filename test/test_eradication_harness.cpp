@@ -6,6 +6,7 @@
 //   3. Bit-compare golden: fixed seed → hash of all voices' output → deterministic + reproducible.
 #include "engines/PatternEngine.hpp"
 #include "engines/SequencerEngine.hpp"
+#include "VoiceResolver.hpp"   // VoiceSlot minting (displayedVoice_ is typed)
 #include <cstdio>
 #include <cstring>
 #include <cstdint>
@@ -209,7 +210,7 @@ int main() {
     std::printf("[Test 4: V16 melody stability (flicker)]\n");
     {
         PatternEngine pe = makeSeededEngine(15);   // 15 poly + V1 = 16 voices
-        pe.displayedVoice_ = 15;                    // V16 displayed (the flickering bars)
+        pe.displayedVoice_ = dotModular::VoiceResolver::slot(16);   // V16 displayed (the flickering bars)
         PatternInput in;
         rollDice(pe, in);
 

@@ -35,11 +35,20 @@ private:
     // neither write VoiceSlot(0) nor pass a bare 0 where a VoiceSlot is required.
     explicit constexpr VoiceSlot(int raw) : v(raw) {}
     friend struct VoiceResolver;
+    friend constexpr VoiceSlot monoVoiceSlot_();   // the kMonoVoiceSlot mint (below)
 
 public:
     constexpr bool operator==(VoiceSlot o) const { return v == o.v; }
     constexpr bool operator!=(VoiceSlot o) const { return v != o.v; }
 };
+
+// The named default-anchor constant. Member declarations that default to the mono
+// slot init through this (engine headers cannot include VoiceResolver.hpp — the
+// resolver includes the engine, so the ONE default mint lives here instead). Every
+// OTHER slot value still mints via VoiceResolver::slot()/allSlots(); this constant
+// is only ever the mono default — the same value mono() returns.
+inline constexpr VoiceSlot monoVoiceSlot_() { return VoiceSlot(0); }
+inline constexpr VoiceSlot kMonoVoiceSlot = monoVoiceSlot_();
 
 // ── LaneId ────────────────────────────────────────────────────────────────────
 struct LaneId {
@@ -66,6 +75,7 @@ static_assert(allLanes().size() == 7, "allLanes covers exactly the 7 lanes");
 static_assert(allLanes()[0] == LaneId(0) && allLanes()[6] == LaneId(6), "allLanes spans 0..6");
 static_assert(allLanes()[2] == LaneId(2) && allLanes()[5] == LaneId(5), "QMIX 2 / VAR 5 in range");
 static_assert(LaneId(0) == LaneId(0) && LaneId(0) != LaneId(6), "LaneId compares by value");
+static_assert(kMonoVoiceSlot.v == 0, "kMonoVoiceSlot is the mono anchor (slot 0)");
 // (VoiceSlot minting math is asserted in VoiceResolver.hpp, where the friend lives.)
 
 } // namespace dotModular

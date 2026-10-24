@@ -70,7 +70,7 @@ struct VoiceResolver {
     //   slot(V)     VOICE NUMBER (1..16, the UI-tab convention) → storage slot V-1.
     //   allSlots()  the 16-wide storage range, each slot exactly once — poly loops
     //               iterate it (or mint slot(V) from voice numbers).
-    static constexpr VoiceSlot mono() { return VoiceSlot(kMonoSlot); }
+    static constexpr VoiceSlot mono() { return kMonoVoiceSlot; }
     static constexpr VoiceSlot slot(int voiceNumber) { return VoiceSlot(voiceNumber - kMonoVoice); }
     static constexpr std::array<VoiceSlot, (size_t)kVoiceSlots> allSlots() {
         return { VoiceSlot(0),  VoiceSlot(1),  VoiceSlot(2),  VoiceSlot(3),

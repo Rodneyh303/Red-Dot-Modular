@@ -33,6 +33,7 @@
 #include "test_stubs.hpp"
 #include "PatternEngine.hpp"
 #include "SequencerEngine.hpp"
+#include "VoiceResolver.hpp"
 #include "WarpF.hpp"
 #include <cstdio>
 #include <cstring>
@@ -568,7 +569,7 @@ int main() {
         const PatternInput in = makeInput();
         PatternEngine pe;
         pe.numPolyVoicesHint = 5;    // the recompute covers rows 0..5, mirror rebuilt for all
-        pe.displayedVoice_ = 4;
+        pe.displayedVoice_ = dotModular::VoiceResolver::slot(5);   // V5 = slot 4 (typed member)
         WarpBank bank;
         bank.warpF[WarpBank::index(4, MEL)] = dotModular::PowerWarp{3};
         bank.warpW[WarpBank::index(4, MEL)] = 1.f;
