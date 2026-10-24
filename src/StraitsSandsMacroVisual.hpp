@@ -5,6 +5,7 @@
 #include "Monsoon.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/StoreBound.hpp"   // redDot::StoreKnob (de-parammed controls)   // redDot::findMonsoonEitherSide (MACRO field accessors)
+#include "ui/SweepSigGate.hpp"   // RESTORED: SweepSig — the prob-out sweep's input-change gate (CC_PROMPT_restore_sweepsig_gate_START)
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -226,9 +227,12 @@ struct StraitsSandsMacroVisual : Module {
         config(0, StraitsMacroVisualIds::NUM_INPUTS,
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
         monLookupDiv.setDivision(8);   // topology changes are control-rate
-        // (the control-rate prob-CV throttle DELETED: CC_PROMPT_UI_TO_RESOLVER_SPEC step 3.
-        //  The resolve is STEP-cached (stepProb_, below); no control-rate recompute
-        //  exists to throttle.)
+        // RESTORED (CC_PROMPT_restore_sweepsig_gate_START): the /32 tick the prob-CV
+        // sweep's input-change gate runs on. 70dd837 deleted it for a step-cache that
+        // resolved on step edges unconditionally — Rodney's bisect: Macro-only 0.4% →
+        // ~3%. The gate (ui/SweepSigGate.hpp) skips the whole resolve when its inputs
+        // are bit-unchanged; the /32 cadence ALONE is not the fix (e0981d5, reverted).
+        probOutDiv.setDivision(32);
         // Labels from the canonical table — the old local literal was OLD-order, so
         // every jack tooltip named the wrong lane (id 0 carries MEL, was labelled "REST").
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
@@ -284,20 +288,20 @@ struct StraitsSandsMacroVisual : Module {
     // PERF: chain walk is control-rate work (Rodney audit item 3).
     Monsoon* cachedMon_ = nullptr;
     rack::dsp::ClockDivider monLookupDiv;
+    rack::dsp::ClockDivider probOutDiv;   // the /32 tick the SweepSig gate runs on (RESTORED — 70dd837 deleted it with the gate; Rodney's bisect put the 0.4% here)
     bool dirModPrev[dotModular::SandsGrid::POLY_LANES] = {};
 
-    // ── The prob-out STEP CACHE (CC_PROMPT_UI_TO_RESOLVER_SPEC step 3) ──────────────
-    // Replaces the old control-rate throttle, the change-fingerprint gate AND the S&H
-    // latch state (all three deleted with it — the latch is inherent: the cache only
-    // moves on a step/polyphony change). Per lane: the Macro-lens step the row was
-    // resolved at, the voice count it covers, and the resolved per-voice values
-    // (voiceSlot-indexed: val[ch] = channel ch's voice). process() refreshes a row
-    // ONLY when its Macro-lens step or the voice count changed — STEP rate, not per
-    // sample — and the out writes read the cache with bit-difference write-elimination.
-    // The out-write EPOCH (CC_PROMPT_UI_TO_RESOLVER_FINISH2 — the CPU fix): the
-    // per-channel bit-diff walk runs only when the row was refreshed or the scale/
-    // channel count changed (outFresh/outScale/outCh); steady state is one compare
-    // per lane per sample instead of (1+N) clamp+memcmp iterations.
+    // ── The prob-out sweep: the input-change gate + the value cache ────────────────
+    // RESTORED (CC_PROMPT_restore_sweepsig_gate_START): WHEN the rows re-resolve is
+    // decided by the SweepSig fingerprint gate (ui/SweepSigGate.hpp) at the /32 tick —
+    // input-driven (idle ⇒ ≈ 0 resolves; playing ⇒ step-rate), replacing 70dd837's
+    // per-row step/nV trigger (keyed on the step NUMBER, it fired at every step edge
+    // and could skip nothing else — Rodney's bisect: Macro-only ~3%). The rows are the
+    // VALUE cache + the out-write epoch (CC_PROMPT_UI_TO_RESOLVER_FINISH2 — the CPU
+    // fix, KEPT): the per-channel bit-diff walk runs only when the gate re-resolved
+    // the row or the scale/channel count changed (outFresh/outScale/outCh); steady
+    // state is one compare per lane per sample. val[] is voiceSlot-indexed
+    // (val[ch] = channel ch's voice); one gate run fills ALL 7 rows.
     struct StepProbRow {
         bool  valid = false;
         int   step = -1;        // the lane's Macro-lens masked playhead the row holds
@@ -307,6 +311,9 @@ struct StraitsSandsMacroVisual : Module {
         float outScale = -1.f;  // the scaleV the last out walk used
         int   outCh = -1;       // the channel count the last out walk covered
     } stepProb_[dotModular::SandsGrid::POLY_LANES];
+    // The gate's shadow signature — every input the resolve reads, nothing it doesn't
+    // (the exhaustive enumeration + the deliberate drops: ui/SweepSigGate.hpp).
+    SweepSig sweepSig_;
     // NOTE probOutSampleHold is inert on THIS module's outs now (the value between
     // steps is held by design); the store option stays for East's outs.
 

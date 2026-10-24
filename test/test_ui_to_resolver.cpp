@@ -31,9 +31,10 @@
 //     the SAME row the bars would draw for that voice. No hardcoded 0 anywhere.
 //   T4 DIRECTION (lands with the monoDirAuthority fix): all 7 lanes resolve through
 //     resolveDirValue; VAR/LEG follow Macro like 0-4. STRUCTURAL.
-//   T5 RATE (lands with the step cache): the heavy resolve runs at STEP rate inside
-//     the module's cache — the /32 throttle and the SweepSig fingerprint gate are
-//     GONE. STRUCTURAL + the purity/stability behavioural half.
+//   T5 RATE (REVERSED by CC_PROMPT_restore_sweepsig_gate_START — Rodney's bisect: the
+//     step-cache's step-edge trigger could not skip idle ticks, Macro-only ~3%): the
+//     heavy resolve runs at INPUT-CHANGE rate inside the RESTORED SweepSig gate at
+//     the /32 tick. STRUCTURAL (+ the gate's own contract suite: test_sweepsig_gate).
 //   T6 THE OUT ENTRY (CC_PROMPT_UI_TO_RESOLVER_FINISH_START — the CC_PROMPT_05 lesson,
 //     made structural): a green suite at the ACCESSOR is worthless if the OUT still
 //     reads the old path — this suite was green while masterLaneProbability (the
@@ -599,26 +600,36 @@ int main() {
                 "writes did not land");
     });
 
-    // ── T9: THE LITERAL DELETIONS (the FINISH2 acceptance greps, pinned) ─────────
-    // Raw counts, comments included — a comment tombstone counts exactly like a live
-    // ref (the acceptance is grep -c, a line count). The deleted third-computation
-    // accessor's name must be GONE from the engine header; the control-rate throttle
-    // literal and the shadow-signature gate name must be GONE from the Macro module.
-    TEST("T9 THE LITERAL DELETIONS: the deleted accessor's name has ZERO occurrences in SequencerEngine.hpp; the throttle literal + the shadow-sig gate name have ZERO lines in StraitsSandsMacroVisual.cpp (comments count)", {
+    // ── T9: THE LITERAL DELETIONS (the FINISH2 acceptance greps, pinned — the second
+    // half REVERSED by CC_PROMPT_restore_sweepsig_gate_START: "/32" and "SweepSig" are
+    // back in the Macro module BY DESIGN, so this pin now guards the FINGERPRINT's
+    // exactness instead: the fields the MacroOwn lens does NOT read — the
+    // East-authorable own-slot stores and the delegation matrix (pure selection,
+    // delegated hardcoded TRUE; defended behaviourally by test_sweepsig_gate G2) —
+    // must stay OUT of the sig, or East edits re-fire Macro's resolve for zero
+    // correctness). Raw counts, comments included — a comment tombstone counts
+    // exactly like a live ref. ────────────────────────────────────────────────────
+    TEST("T9 THE LITERAL DELETIONS: the deleted accessor's name has ZERO occurrences in SequencerEngine.hpp; the UNREAD fingerprint fields have ZERO lines in the gate header + the Macro hpp (comments count)", {
         const std::string eng = slurp(repoRoot() + "/src/dsp/engines/SequencerEngine.hpp");
         EXPECTF(countOccurrences(eng, "macroOwnLaneProbability") == 0,
                 "SequencerEngine.hpp still names the deleted third-computation accessor "
                 "(%d occurrences) — the acceptance grep is a raw count; comment "
                 "tombstones count",
                 countOccurrences(eng, "macroOwnLaneProbability"));
-        const std::string macro = slurp(repoRoot() + "/src/StraitsSandsMacroVisual.cpp");
-        static const char* const throttleAndGate[] = { "/32", "SweepSig" };
-        const int lines = countLinesWith(macro, throttleAndGate, 2);
-        EXPECTF(lines == 0,
-                "StraitsSandsMacroVisual.cpp still carries %d lines naming the deleted "
-                "control-rate throttle and/or the shadow-signature gate — the acceptance "
-                "grep is a raw line count; comment tombstones count",
-                lines);
+        const std::string hpp  = slurp(repoRoot() + "/src/StraitsSandsMacroVisual.hpp");
+        const std::string gate = slurp(repoRoot() + "/src/ui/SweepSigGate.hpp");
+        static const char* const unreadSigFields[] = {
+            "warpW[112]", "warpF[112]", "warpTilt[112]", "warpAtomLevel[112]",
+            "warpAtomMass[112]", "deleg[16][7]"
+        };
+        const int gateLines = countLinesWith(gate, unreadSigFields, 6);
+        const int hppLines  = countLinesWith(hpp, unreadSigFields, 6);
+        EXPECTF(gateLines == 0 && hppLines == 0,
+                "the sig still carries %d+%d lines naming the UNREAD fingerprint "
+                "fields (the own-slot stores / the delegation matrix) — the MacroOwn "
+                "lens cannot read them (pure selection, delegated TRUE); "
+                "fingerprinting them only re-runs the resolve spuriously",
+                gateLines, hppLines);
     });
 
     // ── SUBSUMPTION: the MacroOwn lens reproduces the a2ccb842 formula, warp layer
@@ -754,26 +765,35 @@ int main() {
     });
 
     // ── T5 RATE (structural — the module is rig-invisible): the heavy resolve runs at
-    //    STEP rate inside the cache; the /32 throttle, the change-fingerprint gate and
-    //    the S&H latch state are GONE; the write-elimination stays. ─────────────────
-    TEST("T5 RATE (structural): the prob-out resolve is STEP-cached — inside the step-change gate; the /32 throttle + the SweepSig fingerprint gate + the S&H latch are GONE; write-elimination kept", {
+    //    INPUT-CHANGE rate inside the RESTORED SweepSig gate (CC_PROMPT_restore_
+    //    sweepsig_gate_START — Rodney's bisect reversed 70dd837's rate decision: the
+    //    step-cache's step-edge trigger could not skip idle ticks and Macro-only sat
+    //    at ~3%, was 0.4% with the gate). The /32 tick + the fingerprint gate are
+    //    BACK; the step-NUMBER trigger and the S&H latch stay gone; the
+    //    write-elimination + the out-write epoch stay. ──────────────────────────────
+    TEST("T5 RATE (structural): the prob-out resolve is SweepSig-gated — the /32 probOutDiv tick + the input-change fingerprint; the resolve runs only inside the gate's run; the step-NUMBER trigger + the S&H latch stay gone; write-elimination + out-epoch kept", {
         const std::string macro = slurp(repoRoot() + "/src/StraitsSandsMacroVisual.cpp");
         const std::string hpp   = slurp(repoRoot() + "/src/StraitsSandsMacroVisual.hpp");
-        EXPECTF(contains(macro, "step != row.step"),
-                "StraitsSandsMacroVisual.cpp: the resolve left the STEP-change gate — it "
-                "would run per-sample again");
-        EXPECTF(contains(macro, "laneProbabilityAtStep(ch + 1, l, step)"),
+        EXPECTF(contains(hpp, "probOutDiv.setDivision(32)"),
+                "StraitsSandsMacroVisual.hpp: the /32 tick is not restored — the gate "
+                "has no cadence");
+        EXPECTF(contains(macro, "probOutDiv.process()"),
+                "StraitsSandsMacroVisual.cpp: the /32 tick is not consumed");
+        EXPECTF(contains(macro, "sweepSigChanged(sweepSig_, eng, stepArr, nV)"),
+                "StraitsSandsMacroVisual.cpp: the fingerprint gate decision is missing "
+                "— the resolve would run unconditionally again");
+        EXPECTF(contains(macro, "laneProbabilityAtStep(ch + 1, l, stepArr[l])"),
                 "StraitsSandsMacroVisual.cpp: the out no longer reads the ONE accessor "
                 "through the resolver seam (ch v → voice v+1)");
-        EXPECTF(!contains(macro, "probOutDiv") && !contains(hpp, "probOutDiv"),
-                "the /32 probOutDiv throttle survives — superseded by the step cache");
-        EXPECTF(!contains(macro, "sweepSig_") && !contains(hpp, "sweepSig_"),
-                "the SweepSig change-fingerprint gate survives — the recompute it guarded "
-                "no longer exists");
+        EXPECTF(!contains(macro, "step != row.step"),
+                "the per-row step-NUMBER trigger survives — keyed on the step edge it "
+                "cannot skip anything else (Rodney's bisect: the 3% regression)");
         EXPECTF(!contains(hpp, "probHeld") && !contains(hpp, "probLastStep"),
-                "the S&H latch state survives — superseded by the step-keyed cache");
+                "the S&H latch state is back — the cache holds between runs by design");
         EXPECTF(contains(macro, "memcmp(&out.voltages[ch], &v"),
                 "the output write-elimination was lost — steady-state writes are back");
+        EXPECTF(contains(macro, "row.outFresh"),
+                "the out-write epoch (FINISH2 CPU fix) was lost");
     });
 
     std::cout << std::string(70, '=') << "\n" << s_pass << " passed, " << s_fail << " failed\n";

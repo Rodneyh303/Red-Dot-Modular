@@ -58,6 +58,7 @@ TESTS=(
   "test_SpreadInterp|"
   "test_slew_copula|src/dsp/engines/PatternEngine.cpp"
   "test_slew_latch_regression|$PE"   # CC_PROMPT_slew_latch_regression: slew latches UNCONDITIONALLY (latchSlew) — ABMix lock must not gate it; probabilities change at the roll, macro + east
+  "test_sweepsig_gate|$PE $SE $GS"   # CC_PROMPT_restore_sweepsig_gate_START: the RESTORED prob-out gate — fires on every fingerprinted input, skips unchanged, bit-identical skips, the own-slot defense (MacroOwn reads Macro's global cells only)
   "test_SquaresRng|"
   "test_ScalaFile|"
   "test_ScaleMaskArbiter|"
