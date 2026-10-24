@@ -38,7 +38,7 @@ static uint64_t monsoonProfAcc_lookup = 0;   // Monsoon lookup (div /8) + dir-mo
 static uint64_t monsoonProfAcc_sweep = 0;    // spread publish + gate + resolver + 7-lane x nCh prob-CV sweep — PRIME SUSPECT A
 static uint64_t monsoonProfAcc_total = 0;    // WHOLE-process (CC_PROMPT_TILT_AND_RAIL_FEELTEST: restored safely — see the guard in process())
 static uint64_t monsoonProfWindow = 0;       // samples since the last log
-// The sweep's OWN macroOwnLaneProbability calls (engine thread) — the shared accessor
+// The step cache's OWN effectiveProbability calls (engine thread) — the shared accessor
 // counter also tallies the bars' UI-thread refresh, so this split pins which consumer
 // a calls/sample number belongs to (the meter only sees the engine side).
 static uint64_t monsoonProfSweepCalls = 0;
@@ -781,21 +781,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     }
 };
 
-// Lane → that lane's pubSlewed twin, flattened ([voiceSlot*16 + step]). The same
-// lane dispatch the published-snapshot accessor switches on, hoisted so the sweep
-// gate can walk the exact cells the resolve reads without a switch per cell.
-static const float* pubSlewedLane_(const PatternEngine& pe, int lane) {
-    switch (lane) {
-        case PatternEngine::PL_MELODY:    return &pe.pubSlewedPolyMelody[0][0];
-        case PatternEngine::PL_OCTAVE:    return &pe.pubSlewedPolyOctave[0][0];
-        case PatternEngine::PL_QMIX:      return &pe.pubSlewedPolyQmix[0][0];
-        case PatternEngine::PL_REST:      return &pe.pubSlewedPolyRhythm[0][0];
-        case PatternEngine::PL_ACCENT:    return &pe.pubSlewedPolyAccent[0][0];
-        case PatternEngine::PL_VARIATION: return &pe.pubSlewedPolyVariation[0][0];
-        case PatternEngine::PL_LEGATO:    return &pe.pubSlewedPolyLegato[0][0];
-        default:                          return &pe.pubSlewedPolyRhythm[0][0];   // invalid lane → rhythm fallback (polySlewedPub parity)
-    }
-}
+// (pubSlewedLane_ DELETED with the SweepSig gate — CC_PROMPT_UI_TO_RESOLVER_SPEC
+//  step 3: the step cache reads the ONE accessor directly; nothing walks the raw
+//  pubSlewed twins here any more.)
 
 // ── Module process(): 3 poly probability CV outs (ch1 reserved, voices ch2+) ──
 void StraitsSandsMacroVisual::process(const ProcessArgs&) {
@@ -854,241 +842,78 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
         }
     }
     MONSOON_PROF_END(lookup);
-    MONSOON_PROF_BEGIN(sweep);   // sweep: spread publish + the sweep gate + resolver + the 7-lane prob-CV out sweep
+    MONSOON_PROF_BEGIN(sweep);   // sweep: the per-lane step detect + the STEP-cached resolve + the 7-lane prob-CV out writes
     const float scaleV = (mon->probOutScale == 0) ? 1.f : (mon->probOutScale == 1) ? 5.f : 10.f;
-    const bool sh = mon->probOutSampleHold;
     auto& eng = mon->engine;
-    auto& pe = mon->engine.pe;
     const int nV = eng.numPolyVoices;
     const int nCh = 1 + nV;
-    // PERF (Rodney audit item 2 precedent — East got this throttle, Macro didn't):
-    // recomputing every lane × voice probability EVERY SAMPLE was pointless. The sweep
-    // is 7 lanes × (1+numPolyVoices) channels × macroOwnLaneProbability — each call is
-    // polySlewedPub + spread mix2 + WarpBank::warpedValue → invCDF (std::visit +
-    // transcendental math, or a drawn-curve binary search). At 48 kHz × 16 voices that
-    // was ~5M invCDF calls/sec — the Macro module's meter-pinning cost (the "124%").
-    // EVERY input of the chain is control-rate (pubSlewed* rewrites, macroOwnSpread
-    // publish above, stepIndex, warp bank edits, numPolyVoices), so per-sample recompute
-    // re-derived a constant ~32× per control block. /32 = control rate (~1.5 kHz @48k);
-    // the output VOLTAGE is not gated — Rack ports hold their last value, so the CV is
-    // continuous; only the COMPUTATION is throttled. Channel count is likewise set every
-    // sample so polyphony changes take effect at once. The S&H latch still catches every
-    // step change (a musical step lasts orders of magnitude longer than /32). Dir-mod
-    // edge scan above stays per-sample (gate edges are sample events).
-    const bool recompute = probOutDiv.process();
     // Channel count is set EVERY sample (polyphony takes effect at once), all 7 lanes.
     for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
         outputs[PROB_OUT_START + l].setChannels(nCh < 1 ? 1 : nCh);
-    // ── THE SWEEP GATE (CC_PROMPT_cpu_section_profile Part 3) ──────────────────────
-    // Part 1's write-elimination didn't move the meter because the /32 throttle already
-    // gated the WRITES — the remaining fire is the RESOLVE itself, which ran
-    // unconditionally on every tick: 7×(1+N) macroOwnLaneProbability calls (~300 ns
-    // each ≈ 22.7 µs/tick ≈ 0.7 µs/sample ≈ 3.4%) even when NOTHING changed (Rodney's
-    // log: chg=0, idle). The resolve is a PURE FUNCTION of its inputs, so when they are
-    // bit-unchanged since the last RUN, the recomputed outs are bit-identical and the
-    // whole sweep (publish + resolve + write-check) is skipped: the ports hold the exact
-    // bits the last run wrote (Part 1's write-elimination keeps port == desired) — the
-    // same discipline as MonsoonSandsManager's GATE 1/2/3. INPUT ENUMERATION — every
-    // symbol the resolved+written value reads, and where the gate fingerprints it:
-    //   • step[l]   = calcPlayhead(eng.stepIndex, lround(macroBase[l][0..2] +
-    //                 macroCVDelta[l][0..2])) & 0x0F → sweepSig_.step. The ONLY step
-    //                 input: the resolve indexes pubSlewed* by it and the S&H latch keys
-    //                 on it (a step advance is a legitimate recompute trigger).
-    //   • spread    = eng.macroOwnSpread[l] — compared LIVE against the freshly computed
-    //                 publish value clamp(macroBase[l][3] + macroPostDelta[l][3]): the
-    //                 STORE is what the resolve reads, and comparing the live store (not
-    //                 a shadow) keeps the unconditional version's every-tick healing
-    //                 against ANY external writer of the store (engine reset included).
-    //   • pub cells = pe.pubSlewedPoly{lane}[v][step[l]] for voiceSlots v = 0..nV (ch0's
-    //                 mono base row 0, poly base rows 1..nV, and the row-0 target that
-    //                 the anchor-V1 interpolation reads) → sweepSig_.pub. interpolate/
-    //                 mix2 and the V1 self-target anchor add no further state.
-    //   • warp      = pe.warpDisplayMix reads pe.warpBank_ (→ sweepSig_.bank) +
-    //                 warpDelegated_[v][l] (→ sweepSig_.deleg, rows 0..nV) +, through
-    //                 resolveWarpCell's PURE SELECTION (no CV/send/tap terms exist), the
-    //                 bank's own-slot warpW/warpF (prefix v ≤ nV → sweepSig_.warpW/F)
-    //                 and the delegated defaults globalWarpW/globalWarpF (→ sig). The
-    //                 DrawnWarp pool is append-only (putCurve appends; every append
-    //                 accompanies the warpF/globalWarpF rewrite that points a slot at
-    //                 it), so the variant bits + poolUsed cover it. WarpF is trivially
-    //                 copyable, so the byte compare is conservative-complete: it can
-    //                 only re-run spuriously (padding / +0-vs−0), never miss a change.
-    //   • nV, scaleIdx, sh = the channel count (1+nV channels resolved AND written) and
-    //                 the output transform (probOutScale → scaleV; probOutSampleHold)
-    //                 → sweepSig_.
-    // Everything else the loop touches is output state (the ports — held) or S&H latch
-    // state (probHeld/probLastStep — an unchanged step leaves their state machine
-    // exactly where it was: no latch edge, and a skipped write is one that would not
-    // have changed a bit). Steady state: stopped+idle ≈ 0 resolves; playing ≈ step-rate
-    // resolves only (8-16 Hz × 22.7 µs ≈ 0.02%).
-    bool run = false;
-    if (recompute) {
-        // The gate's own arithmetic — the SAME expressions the sweep uses (same tick,
-        // same inputs), ~100 ns: three orders below the resolve it guards.
-        const int gs = eng.stepIndex;
-        int stepArr[dotModular::SandsGrid::POLY_LANES];
-        float newSpread[dotModular::SandsGrid::POLY_LANES];
-        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
-            int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
-            int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
-            stepArr[l] = calcPlayhead(gs, ownLen, ownOff, ownRot) & 0x0F;
-            newSpread[l] = rack::math::clamp(macroBase[l][3] + macroPostDelta[l][3], -1.f, 1.f);
-        }
-        run = !sweepSig_.valid
-           || nV != sweepSig_.nV
-           || mon->probOutScale != sweepSig_.scaleIdx
-           || sh != sweepSig_.sh
-           || 0 != std::memcmp(stepArr, sweepSig_.step, sizeof stepArr)
-           || 0 != std::memcmp(newSpread, eng.macroOwnSpread, sizeof newSpread);
-        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES && !run; ++l) {
-            const float* p = pubSlewedLane_(pe, l);   // flat [v*16 + step]
-            for (int v = 0; v <= nV; ++v)
-                if (0 != std::memcmp(&p[v * 16 + stepArr[l]], &sweepSig_.pub[l][v], sizeof(float))) {
-                    run = true;
-                    break;
-                }
-        }
-        if (!run)
-            run = (const void*)pe.warpBank_ != sweepSig_.bank
-               || 0 != std::memcmp(pe.warpDelegated_, sweepSig_.deleg, (size_t)(nV + 1) * 7);
-        if (!run && pe.warpBank_) {
-            const dotModular::WarpBank& b = *pe.warpBank_;
-            const size_t own = (size_t)(nV + 1) * 7;   // own slots read: index(v,l) = v*7+l, v ≤ nV
-            // FEEL-TEST stages: the tilt/atom stores fingerprint EXACTLY like warpW/warpF
-            // (own prefix + globals) — warpedValue composes them, so a knob turn that only
-            // moves these must trip the gate or the prob-CV outs go stale.
-            run = 0 != std::memcmp(b.warpW, sweepSig_.warpW, own * sizeof(float))
-               || 0 != std::memcmp(b.warpF, sweepSig_.warpF, own * sizeof(dotModular::WarpF))
-               || 0 != std::memcmp(b.warpTilt, sweepSig_.warpTilt, own * sizeof(float))
-               || 0 != std::memcmp(b.warpAtomLevel, sweepSig_.warpAtomLevel, own * sizeof(float))
-               || 0 != std::memcmp(b.warpAtomMass, sweepSig_.warpAtomMass, own * sizeof(float))
-               || 0 != std::memcmp(b.globalWarpW, sweepSig_.globalWarpW, sizeof b.globalWarpW)
-               || 0 != std::memcmp(b.globalWarpF, sweepSig_.globalWarpF, sizeof b.globalWarpF)
-               || 0 != std::memcmp(b.globalWarpTilt, sweepSig_.globalWarpTilt, sizeof b.globalWarpTilt)
-               || 0 != std::memcmp(b.globalWarpAtomLevel, sweepSig_.globalWarpAtomLevel, sizeof b.globalWarpAtomLevel)
-               || 0 != std::memcmp(b.globalWarpAtomMass, sweepSig_.globalWarpAtomMass, sizeof b.globalWarpAtomMass)
-               || b.poolUsed != sweepSig_.poolUsed;
-        }
-        if (run) {
-            // ONE publish (CC_PROMPT_macro_output_east_leak): Macro's OWN effective
-            // spread per lane → the engine store. BOTH Macro consumers — the bars (the
-            // widget's macroOwnProbability) and the prob CV outs below (VoiceResolver::
-            // laneProbabilityAtStep) — resolve through SequencerEngine::
-            // macroOwnLaneProbability, which reads THIS store: one source,
-            // owner-independent (Macro's own value exists whether or not Macro owns the
-            // lane; Macro never borrows East). Same expression as the manager's
-            // MACRO_SOLE branch (macroBase[l][3] + macroPostDelta[l][3], clamped).
-            // PERF (Parts 1+3): the sources — macroBase/macroPostDelta — are written by
-            // MonsoonSandsManager::processDNA at CONTROL rate, the same cadence as this
-            // /32 divider, and the gate has just proven the computed value bit-identical
-            // to the LIVE store — so the store already holds exactly what a per-sample
-            // publish would have left there, and each lane is written only on
-            // bit-difference (steady state: zero writes; any external writer of the
-            // store breaks the gate's live compare and the next tick republishes — the
-            // unconditional version's every-tick healing, preserved). The only other
-            // reader is the bars' macroOwnProbability (UI thread, ~60 Hz refresh),
-            // which reads the same held bits. macroOwnSpread has no other consumer
-            // (grep: read only inside macroOwnLaneProbability).
-            for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
-                if (0 != std::memcmp(&eng.macroOwnSpread[l], &newSpread[l], sizeof(float)))
-                    eng.macroOwnSpread[l] = newSpread[l];
-            // Capture the sig exactly as the resolve is about to consume it (the sweep
-            // is read-only on every fingerprinted input, so the placement here is free).
-            sweepSig_.valid = true;
-            sweepSig_.nV = nV;
-            sweepSig_.scaleIdx = mon->probOutScale;
-            sweepSig_.sh = sh;
-            std::memcpy(sweepSig_.step, stepArr, sizeof stepArr);
-            for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-                const float* p = pubSlewedLane_(pe, l);
-                for (int v = 0; v <= nV; ++v)
-                    sweepSig_.pub[l][v] = p[v * 16 + stepArr[l]];
-            }
-            sweepSig_.bank = pe.warpBank_;
-            std::memcpy(sweepSig_.deleg, pe.warpDelegated_, (size_t)(nV + 1) * 7);
-            if (pe.warpBank_) {
-                const dotModular::WarpBank& b = *pe.warpBank_;
-                const size_t own = (size_t)(nV + 1) * 7;
-                std::memcpy(sweepSig_.warpW, b.warpW, own * sizeof(float));
-                std::memcpy(sweepSig_.warpF, b.warpF, own * sizeof(dotModular::WarpF));
-                std::memcpy(sweepSig_.warpTilt, b.warpTilt, own * sizeof(float));
-                std::memcpy(sweepSig_.warpAtomLevel, b.warpAtomLevel, own * sizeof(float));
-                std::memcpy(sweepSig_.warpAtomMass, b.warpAtomMass, own * sizeof(float));
-                std::memcpy(sweepSig_.globalWarpW, b.globalWarpW, sizeof b.globalWarpW);
-                std::memcpy(sweepSig_.globalWarpF, b.globalWarpF, sizeof b.globalWarpF);
-                std::memcpy(sweepSig_.globalWarpTilt, b.globalWarpTilt, sizeof b.globalWarpTilt);
-                std::memcpy(sweepSig_.globalWarpAtomLevel, b.globalWarpAtomLevel, sizeof b.globalWarpAtomLevel);
-                std::memcpy(sweepSig_.globalWarpAtomMass, b.globalWarpAtomMass, sizeof b.globalWarpAtomMass);
-                sweepSig_.poolUsed = b.poolUsed;
-            }
-#ifdef MONSOON_PROFILE
-            // The sweep's exact macroOwnLaneProbability call count (7 lanes × nCh
-            // channels, one call per (l, ch) — no early-outs inside the loop).
-            monsoonProfSweepCalls += (uint64_t)dotModular::SandsGrid::POLY_LANES * (uint64_t)nCh;
-#endif
+    // ── THE STEP CACHE (CC_PROMPT_UI_TO_RESOLVER_SPEC step 3) ─────────────────────
+    // THE /32 WORKAROUND IS WHAT THIS REPLACES: the CPU fix throttled the recompute to
+    // control rate (/32) and fingerprinted every input (a shadow sig) to skip idle
+    // ticks — a STOPGAP whose own comments said the proper fix is this migration. The resolve
+    // (the ONE accessor: polySlewedPub + spread mix2 + WarpBank::warpedValue → invCDF)
+    // is a pure function of the engine stores, and the OUT is LATCHED per step by
+    // design — so the resolve runs ONLY when a lane's Macro-lens step changes (or the
+    // voice count does), into this cache; the ports hold the last written bits between
+    // steps (Rack's port-hold + the write-elimination below). Per-sample work is now:
+    // 7 playhead computes (a multiply-add + mask each) + cache compares. The heavy
+    // resolve is STEP-rate only (8-16 Hz × 7×(1+N) calls ≈ 0.02%); the /32 throttle,
+    // the change-fingerprint gate and the S&H latch state are DELETED (the latch is
+    // inherent: the cache only moves on a step/polyphony change — probOutSampleHold is
+    // inert on THIS module's outs now; the value between steps is held by design).
+    // macroOwnSpread is published by the MANAGER (publishGlobal's resolver output),
+    // not here.
+    for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // 7 poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG)
+        // Macro's OWN global LOR step for this lane (from macroBase+CVDelta — identical
+        // to Macro's editor playhead, independent of East/ownership). Same step for
+        // every voice (Macro's view is global); each voice contributes its own draw.
+        const int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
+        const int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
+        const int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
+        const int step = calcPlayhead(eng.stepIndex, ownLen, ownOff, ownRot) & 0x0F;
+        StepProbRow& row = stepProb_[l];
+        if (!row.valid || step != row.step || nV != row.nVoices) {
+            row.valid = true;
+            row.step = step;
+            row.nVoices = nV;
+            // Uniform addressing: VCV channel ch carries voice ch+1; ch0 → voice 1
+            // (mono). Every channel is Macro-OWN at Macro's global step — the resolver
+            // routes to the ONE accessor (effectiveProbability, MacroOwn lens) — the
+            // SAME source the bars read. East's spread on an East-owned lane cannot
+            // reach this out (one-way borrowing); only the step latch + scale differ
+            // from the continuous bars, by design.
             dotModular::VoiceResolver resolver(eng);
-            for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // 7 poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG)
-                auto& out = outputs[PROB_OUT_START + l];
-                // Macro's OWN global LOR step for this lane (from macroBase+CVDelta —
-                // identical to Macro's editor playhead, independent of East/ownership).
-                // Same step for every voice (Macro's view is global); each voice
-                // contributes its own draw. Computed by the gate above — same
-                // expression, same tick, so value-identical by construction.
-                const int step = stepArr[l];
-                // Uniform addressing: VCV channel ch carries voice ch+1. ch0 → voice 1
-                // (mono) — was a 0V stub. Every channel is Macro-OWN at Macro's global
-                // step: the resolver routes to SequencerEngine::macroOwnLaneProbability
-                // — the SAME source the bars read (one accessor, both consumers). East's
-                // spread on an East-owned lane cannot reach this out (one-way borrowing);
-                // only the S&H latch + scale differ from the continuous bars, by design.
-                for (int ch = 0; ch < nCh; ++ch) {
-                    const int voice = ch + 1;                 // 1..16
-                    float raw = resolver.laneProbabilityAtStep(voice, l, step);
-                    float val;
-                    if (sh) {
-                        if (step != probLastStep[l][ch]) { probHeld[l][ch] = raw; probLastStep[l][ch] = step; }
-                        val = probHeld[l][ch];
-                    } else val = raw;
-                    // WRITE-ELIMINATION (Part 1, kept): setVoltage ONLY on bit-difference.
-                    // These CVs are latched control-rate values (the /32 recompute + the
-                    // S&H step latch), so between step/latch/spread changes every run
-                    // derives the SAME float and the write was a no-op store into the
-                    // port. The port's own voltages[] is the "last written" cache — Rack
-                    // holds output values once set — and comparing the LIVE port (rather
-                    // than a shadow NaN-init cache) keeps the invariant port==desired
-                    // automatically true through setChannels shrink-zeroing, cable
-                    // (dis)connects and polyphony changes: a skipped write is always one
-                    // that would not have changed a single bit. Steady state: zero writes.
-                    const float v = rack::math::clamp(val, 0.f, 1.f) * scaleV;
-                    if (std::memcmp(&out.voltages[ch], &v, sizeof(float)) != 0)
-                        out.setVoltage(v, ch);
-                }
-            }
+            for (int ch = 0; ch < nCh; ++ch)
+                row.val[ch] = resolver.laneProbabilityAtStep(ch + 1, l, step);
+#ifdef MONSOON_PROFILE
+            monsoonProfSweepCalls += (uint64_t)nCh;   // this lane's step-rate resolve count
+#endif
+        }
+        // The OUT reads the STEP-CACHED value. WRITE-ELIMINATION (the perf fix, KEPT):
+        // setVoltage ONLY on bit-difference — the port's own voltages[] is the
+        // last-written cache (Rack holds output values once set), and comparing the
+        // LIVE port (not a shadow cache) keeps this immune to setChannels'
+        // shrink-zeroing and cable events: a skipped write is provably one that would
+        // not have changed a bit. Steady state: zero writes.
+        auto& out = outputs[PROB_OUT_START + l];
+        for (int ch = 0; ch < nCh; ++ch) {
+            const float v = rack::math::clamp(row.val[ch], 0.f, 1.f) * scaleV;
+            if (std::memcmp(&out.voltages[ch], &v, sizeof(float)) != 0)
+                out.setVoltage(v, ch);
         }
     }
     MONSOON_PROF_END(sweep);
 #ifdef MONSOON_PROFILE
-    // CC_PROMPT_cpu_section_profile — FAST PATH + section log (every ~50000 samples, ~1 s
-    // @ 48k). Suspect-A decision rule (macroOwnLaneProbability calls/sample, counted IN
-    // the engine accessor so both consumers — the sweep here (engine thread) + the bars'
-    // refresh (UI thread) — land in the same number; the sweep= split below separates
-    // them, because only the engine side is on the audio meter):
-    //   ~ 7x(1+N)      => CONFIRMED per-sample sweep (pre-throttle): the fix is
-    //                     CC_PROMPT_UI_TO_RESOLVER_SPEC (the UI->resolver migration —
-    //                     deletes macroOwnLaneProbability, resolves at STEP rate), NOT a
-    //                     point-patch. Stop after confirming.
-    //   ~ 7x(1+N)/32   => the /32 throttle is working but the resolve still runs every
-    //                     tick; read the section shares (sweep vs lookup) for the fire.
-    //   sweep ≈ 0      => the Part-3 sweep GATE is working (idle: 0 resolves; playing:
-    //                     step-rate only). total keeps counting the bars' UI-thread
-    //                     refresh (7 lanes × 16 steps per UI frame — NOT on the audio
-    //                     meter; sweep= is the meter's number).
-    // N.B. the sweep is SEVEN lanes (SandsGrid::POLY_LANES=7 since SANDS CONSOLIDATION).
-    // The old "5x(1+N)" threshold was stale 5-lane arithmetic: the measured "3.4 vs
-    // 2.34" gap was the two VAR/LEG lanes (2x(1+N)/32 ≈ 0.94 calls/sample) plus the
-    // bars (~0.14) — not an extra cadence; the mono/V1 channel resolves inside the same
-    // /32 sweep as every other channel.
+    // CC_PROMPT_cpu_section_profile — section log (every ~50000 samples, ~1 s @ 48k).
+    // Suspect-A (the old 124%) RESOLVED by CC_PROMPT_UI_TO_RESOLVER_SPEC: the
+    // effectiveProbability resolve is STEP-cached above. Expected reads:
+    //   engine step-cache ≈ 0.00x calls/sample at idle; when playing ≈
+    //   7×(1+N)/steps-per-second ÷ 48000 (a fraction of the old /32 number);
+    //   total= also counts the bars' UI-thread refresh (7 lanes × 16 steps per UI
+    //   frame — NOT on the audio meter; step-cache= is the meter's number).
     if (++monsoonProfWindow >= 50000) {
         monsoonProfWindow = 0;
         const double npt = monsoonProfile::calibrateNsPerTick(monsoonProfile::now());
@@ -1099,23 +924,22 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
             monsoonProfile::effProbCalls.load(std::memory_order_relaxed);
         const uint64_t swp = monsoonProfSweepCalls;
         const double cps  = double(calls - prevCalls) / 50000.0;  // total calls/sample this window
-        const double scps = double(swp - prevSweep) / 50000.0;    // engine-thread (sweep) share
+        const double scps = double(swp - prevSweep) / 50000.0;    // engine-thread (step cache) share
         prevCalls = calls;
         prevSweep = swp;
-        const double perSample = 7.0 * (1.0 + (double)nV);        // POLY_LANES x (1+N)
-        const double throttled = perSample / 32.0;                // /32 control-rate throttle
+        const double perStep = 7.0 * (1.0 + (double)nV);          // POLY_LANES x (1+N) per STEP
         if (npt > 0.0)
             INFO("[MONSOON PROFILE] Macro ns/sample: lookup=%.0f sweep=%.0f sum=%.0f process=%.0f "
-                 "| Suspect-A macroOwnLaneProbability calls/sample=%.2f (engine sweep=%.2f, "
-                 "UI bars=%.2f) (per-sample 7x(1+N)=%.1f, /32=%.2f, N=%d)",
+                 "| effProbability calls/sample=%.3f (engine step-cache=%.3f, UI bars=%.3f) "
+                 "(step-rate 7x(1+N)=%.1f per step, N=%d)",
                  monsoonProfAcc_lookup * npt / 50000.0, monsoonProfAcc_sweep * npt / 50000.0,
                  (monsoonProfAcc_lookup + monsoonProfAcc_sweep) * npt / 50000.0,
                  monsoonProfAcc_total * npt / 50000.0,
-                 cps, scps, cps - scps, perSample, throttled, nV);
+                 cps, scps, cps - scps, perStep, nV);
         else
-            INFO("[MONSOON PROFILE] Macro: Suspect-A calls/sample=%.2f (engine sweep=%.2f, UI "
-                 "bars=%.2f) (per-sample 7x(1+N)=%.1f, /32=%.2f, N=%d); TSC calibrating",
-                 cps, scps, cps - scps, perSample, throttled, nV);
+            INFO("[MONSOON PROFILE] Macro: effProbability calls/sample=%.3f (engine step-cache=%.3f, "
+                 "UI bars=%.3f) (step-rate 7x(1+N)=%.1f per step, N=%d); TSC calibrating",
+                 cps, scps, cps - scps, perStep, nV);
         monsoonProfAcc_lookup = monsoonProfAcc_sweep = monsoonProfAcc_total = 0;
     }
 #endif

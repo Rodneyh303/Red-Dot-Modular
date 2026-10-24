@@ -377,6 +377,29 @@ int main() {
         // authority's precedence, restructured to the same contract).
     });
 
+    // ── T5 RATE (structural — the module is rig-invisible): the heavy resolve runs at
+    //    STEP rate inside the cache; the /32 throttle, the change-fingerprint gate and
+    //    the S&H latch state are GONE; the write-elimination stays. ─────────────────
+    TEST("T5 RATE (structural): the prob-out resolve is STEP-cached — inside the step-change gate; the /32 throttle + the SweepSig fingerprint gate + the S&H latch are GONE; write-elimination kept", {
+        const std::string macro = slurp(repoRoot() + "/src/StraitsSandsMacroVisual.cpp");
+        const std::string hpp   = slurp(repoRoot() + "/src/StraitsSandsMacroVisual.hpp");
+        EXPECTF(contains(macro, "step != row.step"),
+                "StraitsSandsMacroVisual.cpp: the resolve left the STEP-change gate — it "
+                "would run per-sample again");
+        EXPECTF(contains(macro, "laneProbabilityAtStep(ch + 1, l, step)"),
+                "StraitsSandsMacroVisual.cpp: the out no longer reads the ONE accessor "
+                "through the resolver seam (ch v → voice v+1)");
+        EXPECTF(!contains(macro, "probOutDiv") && !contains(hpp, "probOutDiv"),
+                "the /32 probOutDiv throttle survives — superseded by the step cache");
+        EXPECTF(!contains(macro, "sweepSig_") && !contains(hpp, "sweepSig_"),
+                "the SweepSig change-fingerprint gate survives — the recompute it guarded "
+                "no longer exists");
+        EXPECTF(!contains(hpp, "probHeld") && !contains(hpp, "probLastStep"),
+                "the S&H latch state survives — superseded by the step-keyed cache");
+        EXPECTF(contains(macro, "memcmp(&out.voltages[ch], &v"),
+                "the output write-elimination was lost — steady-state writes are back");
+    });
+
     std::cout << std::string(70, '=') << "\n" << s_pass << " passed, " << s_fail << " failed\n";
     return s_fail == 0 ? 0 : 1;
 }
