@@ -1,3 +1,18 @@
+# ⚠️ PREREQUISITE NOT YET MET — DO NOT START until feat/ui-to-resolver is MERGED to trunk
+Verified: the UI-to-resolver work is DONE on feat/ui-to-resolver (effectiveProbability authority, old
+paths deleted, East-leak fixed, CPU down, T8 test) but NOT YET MERGED to lane-expander-refactor
+(effectiveProbability = 0 refs on trunk). The rate manager's Step 3 routes the HEAVY RESOLVER to a
+Step-rate producer — that resolver only exists on the branch. Building the rate manager on trunk NOW =
+scheduling the OLD duplicated graph, which the resolver merge then rewrites = building it TWICE (the
+exact trap this spec warns against).
+SO: (1) MERGE feat/ui-to-resolver to lane-expander-refactor first (verify on trunk: effectiveProbability
+present, macroOwnLaneProbability + /32 = 0 refs, CPU down, East-no-leak). (2) THEN start this spec.
+A GOOD SIGN already on the branch: publishGlobal (MonsoonSandsManager.cpp:784) is a nascent "publish at
+control rate, consumers read" pattern — the rate manager GENERALIZES exactly this (it's a proto-producer/
+slot). Fold it into the manager rather than leaving it as a one-off.
+POPULATION still deferred to the section-profile inventory (unchanged).
+
+────────────────────────────────────────────────────────────────────────────────
 # SPEC — Compute Rate Manager (FRAMEWORK) — unify the scattered rate control into one authority
 
 Implements RATE_MANAGER_AND_RESOLVER_UI_DESIGN.md. This spec is the FRAMEWORK (types, API, per-mode
