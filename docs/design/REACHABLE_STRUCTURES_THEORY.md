@@ -1,0 +1,240 @@
+# REACHABLE DEPENDENCE STRUCTURES — the coherent theory (Rodney)
+
+Capstone synthesizing the output-layer copula corpus. Detailed derivations live in
+OUTPUT_LAYER_DISTRIBUTION_MAPPING.md; this is the ORGANIZING map. The structure a user can reach
+decomposes into TWO ORTHOGONAL AXES — keep them separate (that's what keeps the theory coherent):
+
+  AXIS I  — WITHIN-DRAW (instantaneous) dependence: how voices/lanes relate AT EACH STEP.  (harmony/voicing)
+  AXIS II — TEMPORAL (moving-average / slew) dependence: how each stream flows ACROSS STEPS. (phrasing/flow)
+
+Any Axis-I structure composes with any Axis-II structure. They are different maths, different musical
+concerns, independently set.
+
+════════════════════════════════════════════════════════════════════════════════
+## AXIS I — WITHIN-DRAW DEPENDENCE (the instantaneous copula over the voice×lane grid)
+Built in layers; each layer is a control the user turns.
+
+### Layer 0 — THE PARTITION (delegation / Sands unlock) → authority BLOCKS
+Delegation partitions the voice×lane GRID into AUTHORITY cells (Macro-owned vs East-owned). Per-lane
+delegation = clean lane-aligned blocks; per-(voice,lane) unlock = RAGGED cells. Each block has its own
+AUTHORITY (its modulation, distribution, w). The copula is BLOCK-STRUCTURED: within-block structure per
+block + between-block relationship. (Global-Macro = the degenerate ONE-block case = the whole grid.)
+
+### Layer 1 — PER-BLOCK FACTOR (the shared modulation) → the Archimedean generator
+Within a block, at SPREAD=0, the shared modulation is the ONLY coupling → conditional independence given
+it → a GENUINE ARCHIMEDEAN copula (requires EXCHANGEABLE voices — EARNED by the voice-0-eradication/seam
+work: V1 a true peer). The GENERATOR = inverse-MGF of the modulation signal's AMPLITUDE DISTRIBUTION:
+  Gamma→CLAYTON (lower tail) · positive-stable→GUMBEL (upper tail) · exponential→AMH ·
+  constant→INDEPENDENCE · bimodal/max-variance→COMONOTONE.
+FACTOR SCOPE: modulation shared WITHIN a lane only → per-lane Archimedean, lanes independent; shared
+ACROSS lanes (one signal → all lanes' w) → a SINGLE factor spanning the whole block's grid. (Modulation
+RATE is orthogonal — it sweeps the generator's PARAMETER over time, doesn't change the family.)
+
+### Layer 2 — PER-BLOCK ATOMS (ℓ, m — injected atom) → MO / DMO / comonotone
+Add atoms to the block's distribution:
+  - CORNER atom (ℓ=0/1) + the factor → Archimedean continuous + EXCHANGEABLE MARSHALL-OLKIN singular
+    diagonal = the PURE common-shock DMO structure (THE PAPER: ACHS). λ>0, calibratable via
+    atom-mass-vs-modulation. (The one config reproducing the DMO copula EXACTLY — spread=0 gives the
+    conditional independence DMO needs.)
+  - INTERIOR atom (ℓ∈(0,1)) → comonotone COINCIDENCE on the interior diagonal, λ=0 (NOT MO).
+  - ℓ SLIDES the singular mass along the diagonal: corner=MO/DMO(λ>0), interior=comonotone(λ=0).
+
+### Layer 3 — PER-BLOCK GAUSSIAN (spread) → departs Archimedean
+spread=0 → pure factor (Archimedean, Layers 1-2). spread>0 → ADD Gaussian-MA latent coupling → NOT
+Archimedean any more (frailty + a correlated Gaussian part). Still: λ>0 only via atoms; spread>0 gives a
+SECOND route to atom co-occurrence (spread-correlated voices rectified through the clamp/atom cross the
+rail together). Per-voice spread (SIGN too) → heterogeneous/leader-follower → also leaves exchangeability.
+
+### Layer 4 — CA (correlation routing) — cuts ACROSS the authority partition
+CA routes correlation WITHIN blocks (leader-follower / routing tree among a block's voices — the signed
+pairwise CA tree, rho^2 sibling propagation) AND ACROSS blocks (CA can couple voices in DIFFERENT
+authority blocks). So the AUTHORITY partition (delegation) and the CORRELATION partition (CA/spread) are
+DIFFERENT partitions that CAN CUT ACROSS EACH OTHER — a Macro-block voice and an East-block voice can be
+CA-correlated even though they're authored separately. CA at spread=0 is INERT (nothing to route);
+CA shapes the correlation that spread CARRIES.
+
+### Layer 5 — BETWEEN-BLOCK relationship
+Set by (a) the inter-authority FACTOR relationship (East's modulation vs Macro's: independent → blocks
+independent; shared/correlated → cross-block factor coupling) AND (b) whatever CA routes across blocks.
+With CORNER atoms + a factor SHARED ACROSS blocks → GRID-WIDE common-shock DMO (the whole ensemble
+co-hits the extreme). With independent block factors → blocks independent (product copula).
+
+### AXIS-I SUMMARY (the reachable within-draw copula is fully described by):
+  { partition (blocks) } × { per-block: generator(modulation dist) + atoms(ℓ,m) + spread + per-voice } ×
+  { CA routing (within + across, may cross the partition) } × { between-block factor relationship }.
+Global-Macro = one block, spread=0, shared factor, no atoms, no CA = the ARCHIMEDEAN HOME. Everything
+else is a departure: delegation→blocks; spread→Gaussian; per-voice/CA→asymmetric; atoms→MO/DMO.
+
+════════════════════════════════════════════════════════════════════════════════
+## AXIS II — TEMPORAL (MOVING-AVERAGE / SLEW) DEPENDENCE — a SEPARATE concern
+The MA (slew-rho) is CROSS-STEP, not cross-voice: it sets how a stream's draw at step t relates to t-1
+via the finite MA window (geometric weights, L2-normalised). This is ORTHOGONAL to all of Axis I — any
+within-draw copula composes with any temporal structure.
+  - slew-rho per (voice,lane): the autocorrelation / smoothness of that stream over steps.
+  - SHARED slew-rho modulation across voices → a COMMON TEMPORAL-SMOOTHNESS factor (stochastic-vol-of-
+    smoothness) — voices' temporal flow co-varies, distinct from their instantaneous coupling.
+  - Cadence: slew-rho is PHRASE-gated (per-step change breaks in-flight window uniformity → Sklar).
+  - λ temporal = 0 (steps jointly Gaussian → temporally tail-independent); only atoms would add temporal
+    atoms, not in scope.
+MUSICALLY: Axis II is PHRASING/FLOW (slow rho = smooth evolving lines; fast = jittery/independent steps);
+Axis I is the HARMONIC/VOICING relationship at each moment. Set independently.
+
+════════════════════════════════════════════════════════════════════════════════
+## POINTS OF MUSICAL INTEREST (where a configuration SOUNDS like something)
+- GLOBAL-MACRO, spread=0, no atoms = the ARCHIMEDEAN HOME: a coherent ensemble moving together under one
+  gentle shared drift; the symmetric baseline.
+- GLOBAL-MACRO + Gamma-ish modulation = Clayton-flavoured (lower-tail lean); + bimodal mod = voices
+  swing toward comonotone (strong unison tendency); mod RATE = how fast the ensemble's coherence breathes.
+- GLOBAL-MACRO + CORNER atom, factor shared across lanes = GRID-WIDE DMO: rare TUTTI SLAM — the whole
+  ensemble hits the extreme together (calibratable rate). The paper's common shock, as a gesture.
+- INTERIOR atom (same config) = a recurring ANCHOR/PEDAL the ensemble converges on (λ=0, no slam).
+- HETEROGENEOUS ℓ per voice + rho-modulation = a CHORD-ANCHOR that LOCKS on demand (different-pitch
+  anchors coincide when you drive the correlation) — a performable structured chord.
+- DELEGATE some lanes to EAST = independent (or CA-coupled) SUB-ENSEMBLES: Macro lanes one coherent
+  group, East lanes another (different generator), between = independent unless CA/shared-factor bridges.
+- CA ACROSS blocks = cross-GROUP coupling that defies the authority split — e.g. an East voice shadowing
+  a Macro voice.
+- spread>0 (per-voice, signed) = leader-follower / anti-phase voicings (the signed CA tree: + same-rail,
+  - opposite-rail co-extremes).
+- AXIS II slow slew = flowing legato evolution; fast = pointillist; shared slew-mod = the ensemble's
+  flow breathing together independent of its harmonic coupling.
+- THE "FROZEN DICE" mode (shaping-dominates): freeze the draw, play the DISTRIBUTION knobs → sculpt a
+  fixed relational skeleton's realization live (latent/marginal separation made performable).
+
+════════════════════════════════════════════════════════════════════════════════
+## THE COHERENT ONE-PARAGRAPH THEORY
+The reachable dependence = (AXIS I) an instantaneous copula over the voice×lane grid, determined by the
+AUTHORITY PARTITION (delegation → blocks), each block's FACTOR (shared modulation; its amplitude
+distribution = the Archimedean generator), ATOMS (ℓ,m; corner=MO/DMO λ>0, interior=comonotone λ=0),
+GAUSSIAN coupling (spread; 0=pure Archimedean, >0=frailty+Gaussian), and CA correlation ROUTING (which
+can cut ACROSS the authority partition), with BETWEEN-BLOCK structure set by inter-factor relationship +
+CA; COMPOSED WITH (AXIS II) an independent TEMPORAL MA structure (slew-rho; cross-step autocorrelation,
+phrase-gated, λ_temporal=0). Global-Macro/spread=0/shared-factor/no-atoms is the exchangeable ARCHIMEDEAN
+HOME (earned by the voice-0 eradication); every control is a symmetry-breaking departure; corner-atom +
+grid-shared-factor + spread=0 reproduces the paper's DMO common-shock copula EXACTLY.
+
+════════════════════════════════════════════════════════════════════════════════
+# ENUMERATION OF REACHABLE STRUCTURES (the catalog — named, unnamed, and how reached)
+Synthesizes OUTPUT_LAYER_DISTRIBUTION_MAPPING.md + the 2026-10 thread discussion. Paper-grade.
+
+## A. THE GENERATOR FAMILY — reachable by MODULATION AMPLITUDE DISTRIBUTION (global-Macro, spread=0)
+At the Archimedean home (global-Macro, exchangeable, spread=0, no atoms), the shared modulation signal's
+AMPLITUDE DISTRIBUTION is the frailty mixing law; the copula generator = its inverse MGF. So the
+distribution of your modulation source LITERALLY SELECTS which named copula you get:
+  | Modulation amplitude distribution | Copula          | Tail            | How reached                         |
+  | Gamma                             | CLAYTON         | lower (λ_L>0)*  | shape the mod CV to Gamma           |
+  | Positive-stable                   | GUMBEL          | upper (λ_U>0)*  | positive-stable mod                 |
+  | Exponential / geometric-ish       | ALI-MIKHAIL-HAQ | weak/none       | exponential mod                     |
+  | Constant (zero variance)          | INDEPENDENCE    | none            | DC / no modulation                  |
+  | Bimodal / maximal variance        | → COMONOTONE    | →full           | mod swinging between extremes       |
+  | (generic LFO/CV/noise)            | UNNAMED Archim. | none (λ=0)      | any other mod shape — see F         |
+  * CAVEAT: these named tails (Clayton λ_L, Gumbel λ_U) are the CONTINUOUS-frailty tails. In THIS
+    architecture continuous λ is bounded-factor → effectively 0 / perceptually inert unless a decision
+    tests the exact extreme (clamp verdict). The MUSICALLY REAL tail comes from ATOMS (section C), which
+    is Marshall-Olkin, NOT the Archimedean generator's tail. So "reaches Clayton" = reaches the Clayton
+    GENERATOR SHAPE (the dependence curvature), not a usable Clayton tail event.
+MODULATION RATE is ORTHOGONAL to all of the above: amplitude-distribution picks the FAMILY MEMBER; rate
+SWEEPS that member's PARAMETER over time (slow = long stretches in one regime; fast = cycling the
+parameter — the ensemble's coherence "breathes").
+
+## B. THE PARTITION FAMILY — reachable by DELEGATION / UNLOCK (authority blocks)
+  | Config                                  | Structure                                           |
+  | Global-Macro (one block, whole grid)    | single Archimedean/DMO world (the HOME)             |
+  | Delegate some lanes to East             | BLOCK-STRUCTURED: Macro block (its generator) +     |
+  |                                         | East block (ITS generator) + between-block relation |
+  | Per-(voice,lane) unlock (Sands)         | RAGGED cells — finest partition; per-cell authority |
+  | Clean lane-delegation                   | lane-aligned blocks (the special case of ragged)    |
+BETWEEN-BLOCK: independent IF block factors independent (product copula); coupled IF factors shared/
+correlated OR CA routes across (section E). So delegation reaches: independent sub-ensembles, OR coupled
+sub-ensembles (via shared factor / CA), OR — same factor both blocks — effectively one block again.
+
+## C. THE SINGULAR FAMILY — reachable by ATOMS (ℓ, m) — MO / DMO / comonotone / discrete
+  | Atom config                              | Joint singular structure            | λ    | Named?        |
+  | CORNER atom (ℓ=0/1) + shared factor      | exchangeable MARSHALL-OLKIN diagonal | >0  | MO / DMO      |
+  |   └ + spread=0 (cond. indep.)           | = PURE common-shock DMO (THE PAPER)  | >0  | DMO (ACHS)    |
+  |   └ + factor shared ACROSS lanes        | GRID-WIDE common shock (tutti slam)  | >0  | DMO, grid     |
+  | INTERIOR atom (ℓ∈(0,1)) same ℓ voices    | comonotone COINCIDENCE on diagonal   | 0   | (comonotone@ℓ)|
+  | HETEROGENEOUS ℓ (voice i≠j) + ρ-mod      | OFF-DIAGONAL mass at (ℓ_i,ℓ_j),      | 0   | UNNAMED —     |
+  |                                          | ρ-MODULATED → controllable chord-lock|     | "chord-anchor"|
+  | ALL CDFs step functions (full discrete)  | Gauss-MA copula on the BIN GRID      | grid| discrete copula|
+  |   └ 2-bin limit                         | PROBIT / Gaussian-copula default     | —   | Li/CreditMetrics|
+  | Opposite-corner atoms (±spread sign)     | countermonotone corner (split tutti) | >0* | MO (lower-Fréchet)|
+ℓ SLIDES the singular mass along the diagonal: corner→MO/DMO(λ>0), interior→comonotone(λ=0). The
+reachable λ>0 is ALWAYS Marshall-Olkin-family (atoms), NEVER the continuous Archimedean tail.
+
+## D. THE GAUSSIAN FAMILY — reachable by SPREAD (within a block)
+  | spread                                   | Structure                                           |
+  | spread = 0                               | PURE factor → Archimedean (home); cond. independence|
+  | spread > 0 (homogeneous)                 | FRAILTY: factor + Gaussian-MA latent coupling       |
+  |                                          | (leaves Archimedean); 2nd route to atom co-occur    |
+  | spread > 0, PER-VOICE, SIGNED            | leader-follower / anti-phase (signed CA tree);      |
+  |                                          | +=same-rail, −=opposite-rail co-extremes; follower- |
+  |                                          | follower = ρ² ≥ 0 always                            |
+  | spread → ρ=1                             | comonotone (Fréchet M) for any warp                 |
+The Gaussian factor is CONTINUOUS (bounded → λ=0 alone). It gives λ>0 ONLY by rectification through an
+atom (spread-correlated voices cross the rail together = a 2nd DMO route, composing with the shared-w
+route).
+
+## E. CORRELATION ROUTING — CA — cuts ACROSS the authority partition
+CA routes correlation WITHIN blocks (leader-follower tree, pairwise signed edges, ρ² sibling propagation)
+AND ACROSS blocks (an East-block voice CA-correlated to a Macro-block voice). So the CORRELATION partition
+(CA/spread) is a DIFFERENT partition from the AUTHORITY partition (delegation) and CAN CUT ACROSS IT.
+Reachable: cross-group coupling that defies the authority split (e.g. East voice shadows a Macro voice).
+CA is INERT at spread=0 (routes correlation that spread CARRIES; none to route). Depth-1 single-anchor =
+rank-1-per-block (SPREAD_TARGET_MODES); reachable correlation = diagonal / signed rank-1 star / block-
+diagonal rank-1 / neighbour-banded. NOT reachable: arbitrary PSD matrices (rank-1-per-block limit).
+
+## F. WHAT'S REACHABLE BUT NOT SPECIFICALLY NAMED (the un-named region — most of the space)
+Most of the reachable space is NOT a textbook-named copula — and that's expected (named families are
+special points). The un-named reachable structures, each genuinely distinct:
+  1. GENERIC-MODULATION ARCHIMEDEAN — any mod shape that isn't Gamma/stable/exponential gives an
+     Archimedean copula with a generator = inverse-MGF of THAT distribution. A continuum of un-named
+     Archimedean members between the named ones.
+  2. CHORD-ANCHOR (heterogeneous-ℓ + ρ-mod) — off-diagonal controllable co-occurrence; a modulatable
+     structured chord-lock. No standard name (it's a factor-modulated off-diagonal singular copula).
+  3. BLOCK-MIXED (delegation) — a copula that is Archimedean-A on one block, Archimedean-B on another,
+     coupled-or-not between — a nested/hierarchical factor copula with per-block generators. (Closest
+     named relative: multi-group/nested factor copulas from credit — but with DIFFERENT per-block
+     generators it's un-named.)
+  4. FRAILTY+GAUSSIAN (spread>0 + shared mod) — neither pure Archimedean nor pure Gaussian; a frailty
+     mixture with Gaussian conditional coupling. (NOT Krupskii-Joe — cond. coupling remains.)
+  5. REGIME-MIXTURE (A/B-mix modulated) — a mixture over draw-source regimes; a regime-switching copula,
+     un-named in this exact form.
+  6. TEMPORAL (Axis II) composed with ANY of the above — the within-draw copula × the MA autocorrelation
+     is a space-time dependence object with no single name.
+  7. ATOM+TILT COMPOSITES — reinforced rail concentration (tilt feeds the atom) at a chosen ℓ, mass model
+     (insert/displace vs absorb) selecting coupled-vs-independent tilt/mass — a parametrized singular+
+     continuous family.
+
+## G. WITHIN-LANE vs CROSS-LANE — the SCOPE matrix (what's reachable where)
+Lanes are DOMAIN-SEPARATED independent streams → cross-lane needs a SHARED FACTOR (the only bridge).
+  | Mechanism                        | WITHIN-LANE (voices share stream) | CROSS-LANE (streams independent)        |
+  | Gaussian spread/CA correlation   | YES (real latent ρ)               | NO (no cross-lane latent ρ exists)      |
+  | Shared w-modulation (atom mass)  | couples (if atoms)                | couples (if atoms + mod shared ACROSS   |
+  |                                  |                                   | lanes) — the ONLY cross-lane λ route    |
+  | Shared θ / tilt (continuous)     | co-move λ=0                       | co-move λ=0 (if shared across lanes)    |
+  | Shared ℓ-modulation              | moves shared anchor               | moves shared anchor across lanes        |
+  | Corner atom + shared-across-lane |                                   | GRID-WIDE DMO (λ>0) — whole ensemble    |
+  | A/B-mix (shared source)          | regime factor (lane-group)        | regime co-switch across lane-group      |
+  | slew-rho (TEMPORAL)              | own autocorrelation               | shared-mod = common smoothness factor   |
+KEY: cross-lane λ>0 is reachable ONLY via shared-w(-or-clamp)-modulation of atom-bearing lanes — NEVER by
+static atom placement on independent lanes (product rate). Cross-lane continuous coupling (θ/tilt shared)
+is λ=0. CA/spread give NOTHING cross-lane (no latent ρ there). The factor's SCOPE (within-lane vs across-
+lane) is the single switch for per-lane-vs-grid-wide structure.
+
+## H. THE BOOLEAN-LANE SPECIAL CASE (rest/accent/legato/qmix — threshold consumers)
+On threshold (boolean) lanes the atom/warp is marginally INVISIBLE (threshold-relativity: an atom not AT
+the threshold = a knob-move). So: STATIC warp/atom on booleans = redundant with the knob (λ-irrelevant);
+coupling appears ONLY under SHARED MODULATION, and ONLY as the JOINT effect (cross-lane MO of the gate
+decisions — "articulation snaps to a configuration together"). The CV-OUT consumer (continuous) DOES see
+the atom on every lane. So boolean-lane structure is reachable but per-CONSUMER: inert internally
+(static), live jointly (shared-mod) and on the CV out always.
+
+## I. PERCEPTION BOUND (what's reachable vs what's AUDIBLE)
+Musical perception is CLUSTER/THRESHOLD, never measure-zero. So: continuous-tail λ (Archimedean
+generators, bounded-Gaussian) is reachable but perceptually INERT (no decision tests the exact extreme).
+ATOM λ (MO/DMO) is audible only where a consumer sees the exact value (value lanes: anchor; CV out: exact
+voltage; NOT boolean-internal). So the AUDIBLE reachable set is narrower than the mathematical one — the
+named Archimedean TAILS (Clayton/Gumbel) are reachable as GENERATOR SHAPES but their tails are inaudible;
+the audible tail dependence is atom/MO/DMO only. This is WHY continuous distribution-mod suffices and
+rail-clamp was demoted: the perception bound, not the math, sets what's worth reaching.
