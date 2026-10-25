@@ -15,12 +15,24 @@ IN SCOPE (the timing that computes the music — all must route through the mana
 - the Macro sync-population block (MonsoonExpanderManager::sync, the profiled 3%).
 - ModeController's controlDivider.process() gates (:~178 and 2 others), PatternEngine/SequencerEngine
   divider gates.
-OUT OF SCOPE (flag, do NOT absorb now — different concern): per-module UI-CACHE-REFRESH throttles that are
-NOT sequencing timing — monLookupDiv (Macro/SandsVisual expander-chain lookup), Lantern itLookupDiv_,
-Intertropical hostLookupDiv_, MicroTuning ixScanDiv_, the Changi/Interchange scan divs. These refresh an
-expander-pointer CACHE in a module's own draw/process, not the music clock. (If Rodney wants these too,
-that's a follow-up — they live in modules that may not host the manager.) NAME them in the PR as the
-remaining raw dividers and WHY they're excluded, so the boundary is explicit and auditable.
+ALSO IN SCOPE — the LOOKUP DIVIDERS are N copies of ONE question (Rodney): monLookupDiv
+(findMonsoonEitherSide), Lantern itLookupDiv_ (resolveFollowedIT), Interchange targetScanDiv_
+(resolveFollowedT), Intertropical hostLookupDiv_, MicroTuning ixScanDiv_, Changi scan divs — these each
+PRIVATELY POLL the SAME underlying thing: the rack EXPANDER/MODULE ADJACENCY ("who is my host / target /
+followed module"). N modules × N private ClockDividers × N copies of the same findMonsoon/resolveFollowed
+walk. That IS the duplication this effort kills — one question computed in N places at N rates.
+=> UNIFY into ONE TOPOLOGY-RESOLUTION authority, and make it EVENT-DRIVEN, not polled: Rack fires
+onExpanderChange when adjacency changes, so resolve the topology/adjacency ONCE on that event, PUBLISH to
+a slot, and every module READS the slot (no private walk, no private divider). This is a different
+PRODUCER KIND than the rate-gated recomputes (it's event-gated on topology-change, not rate-gated), but it
+belongs to the same manager as a producer. The lookup dividers DELETE (their walks collapse to one shared
+resolve + slot reads). Likely a further CPU win (N adjacency walks → 1; poll → event).
+  TWO PRODUCER KINDS the manager hosts: (a) RATE-gated recompute-on-input-change (sync, resolver, SweepSig
+  — fingerprint + tier tick); (b) EVENT-gated topology resolution (the lookup dividers → one
+  onExpanderChange-driven adjacency slot). Both: computed ONCE, read by all, bypass impossible.
+  CROSS-MODULE: the topology slot is read by Lantern/Macro/Interchange/MicroTuning/Changi (different
+  modules) — so the adjacency authority must be reachable across modules (a shared resolve + published
+  result), the one genuinely cross-module piece. Do it carefully; it's the highest-value unification.
 
 ## THE ENFORCEMENT — "compile error to not use it" = DELETE THE ALTERNATIVES
 There is no C++ type that makes "I gated work on a raw divider" fail to compile (timing is control flow,
@@ -73,5 +85,4 @@ The MACRO-ONLY 3% dies in step 2 (the sync-population producer with its fingerpr
 - PR: the in-scope sites converted, the OUT-of-scope raw dividers named + why excluded, sync ns + Rack %.
 
 ## NOT THIS PROMPT
-- The OUT-of-scope per-module UI-cache lookup throttles (named above) — a follow-up IF wanted.
 - LaneId→named-enum refinement; the slew re-test — separate follow-ups.
