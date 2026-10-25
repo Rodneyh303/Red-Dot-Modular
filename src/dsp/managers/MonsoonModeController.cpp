@@ -243,21 +243,19 @@ void ModeController::postExecute_(const StepResult& result) {
 
 // ──── Mode A: Clock-Driven Sequencing ───────────────────────────────────────
 
-// Mode E: phase-driven. The dispatch (Monsoon.cpp) only calls this when
-// phase.sixteenthEdge fired, so a 1/16 step is due now. Reuses the Mode A decision
-// path exactly (clock-style stepping) — the only difference is the edge SOURCE is
-// the phase ramp, not the clock. A synthesized clock-view carries sixteenthEdge=true
-// into engine.executeModeA, which reads nothing else from the clock. (Forward only;
+// Mode E: phase-driven. The dispatch (Monsoon.cpp) only calls this when the Step tier
+// ticked (fed from the phase sixteenth edge), so a 1/16 step is due now. Reuses the Mode A
+// decision path exactly (clock-style stepping) — the only difference is the tier feed's
+// SOURCE is the phase ramp, not the clock. (The old synthesized phaseView — a ClockEngine
+// with sixteenthEdge=true — died with the S3b tier conversion: executeModeA asks the
+// RateManager, which the dispatch already advanced on the phase edge.) (Forward only;
 // reverse traversal is the next branch.)
 bool ModeController::executeModeE() {
     // Phase A: accent assembled once in updatePatternInput() → voices[0].accentProb.
     PatternInput in = assemblePatternInput_();
 
-    ClockEngine phaseView;            // edge-only view; executeModeA reads sixteenthEdge
-    phaseView.sixteenthEdge = true;
-
     StepResult result = engine.executeModeA(
-        phaseView,
+        rateManager,
         in.noteValue,       // BigFive LATCH: staged in updatePatternInput (was paramManager.getNoteValue())
         in,                 // Phase A: V1 params via voices[0] (populated in updatePatternInput)
         phaseReverse ? -1 : +1        // within-draw reverse traversal
@@ -268,14 +266,16 @@ bool ModeController::executeModeE() {
 }
 
 bool ModeController::executeModeA() {
-    if (clock.sixteenthEdge) {
+    // RATE MANAGER (S3b): the Step tier — the same condition the dispatch gated on
+    // (the tier is fed by the clock sixteenth edge in this mode); no raw clock re-read.
+    if (rateManager.ticked(redDot::Rate::Step)) {
         // Phase A: accent assembled in updatePatternInput() → voices[0].accentProb.
         // Ensure pattern input is fresh
         PatternInput in = assemblePatternInput_();
 
         // Execute the mode
         StepResult result = engine.executeModeA(
-            clock,
+            rateManager,
             in.noteValue,       // BigFive LATCH: staged in updatePatternInput (was paramManager.getNoteValue())
             in                  // Phase A: V1 params via voices[0] (populated in updatePatternInput)
         );

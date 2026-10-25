@@ -3,6 +3,7 @@
 #include "ui/SandsGrid.hpp"
 #include "dsp/LaneMapping.hpp"     // lane order + canonical lane names (Phase 3b-3 merge)
 #include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (onExpanderChange bump — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
+#include "ui/RateManager.hpp"        // THE compute-rate authority (CC_PROMPT_RATE_MANAGER_START, S5): the detector + prob-out tiers
 #include "Monsoon.hpp"
 
 using namespace rack;
@@ -266,6 +267,55 @@ struct StraitsEastSandsVisual : Module {
         // delegation convention; toggle per lane via the V1 owner cell).
         gateModDiv.setDivision(GATE_MOD_DIV);   // gate-mod scan runs at /8, not per sample
         probOutDiv.setDivision(32);             // prob CV outs = CONTROL rate (~1.5 kHz @48k, matches controlDivider)
+        // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START, S5): the dir/deleg CV-edge scan is
+        // a DETECTOR-PRODUCER on the Sample tier (fed by the /8 gateModDiv edge — the
+        // detector cadence; /8 preserved EXACTLY). Its fingerprint is the raw CV image
+        // (all dir/deleg jack voltages + channel counts): bit-identical voltages ⇒ no
+        // edge is possible ⇒ the skip is semantically exact. The edge counters/prev
+        // states are the produce's own I/O, so a skip is a no-op by construction.
+        rateManager.declareProducer(
+            redDot::Rate::Sample,
+            [this](void* dst) {
+                struct __attribute__((packed)) Img {
+                    float   dir[dotModular::SandsGrid::EAST_LANES][16];
+                    float   deleg[dotModular::SandsGrid::EAST_LANES][16];
+                    uint8_t dirCh[dotModular::SandsGrid::EAST_LANES], delegCh[dotModular::SandsGrid::EAST_LANES];
+                } img{};
+                for (int lane = 0; lane < dotModular::SandsGrid::EAST_LANES; ++lane) {
+                    auto& din = inputs[dirModId(lane)];
+                    img.dirCh[lane] = din.isConnected() ? (uint8_t)std::min(din.getChannels(), 16) : 0;
+                    for (int ch = 0; ch < img.dirCh[lane]; ++ch) img.dir[lane][ch] = din.getVoltage(ch);
+                    auto& gin = inputs[delegModId(lane)];
+                    img.delegCh[lane] = gin.isConnected() ? (uint8_t)std::min(gin.getChannels(), 16) : 0;
+                    for (int ch = 0; ch < img.delegCh[lane]; ++ch) img.deleg[lane][ch] = gin.getVoltage(ch);
+                }
+                std::memcpy(dst, &img, sizeof img);
+                return sizeof img;
+            },
+            [this] {
+                for (int lane = 0; lane < dotModular::SandsGrid::EAST_LANES; ++lane) {
+                    auto& din = inputs[dirModId(lane)];
+                    dirModChans[lane] = din.isConnected() ? (uint8_t)din.getChannels() : 0;
+                    if (din.isConnected()) {
+                        int nch = std::min(din.getChannels(), 16);
+                        for (int ch = 0; ch < nch; ++ch) {
+                            bool high = din.getVoltage(ch) > 1.f;
+                            if (high && !dirModPrev[lane][ch]) ++dirModEdges[lane][ch];
+                            dirModPrev[lane][ch] = high;
+                        }
+                    }
+                    auto& gin = inputs[delegModId(lane)];
+                    delegModChans[lane] = gin.isConnected() ? (uint8_t)gin.getChannels() : 0;
+                    if (gin.isConnected()) {
+                        int nch = std::min(gin.getChannels(), 16);
+                        for (int ch = 0; ch < nch; ++ch) {
+                            bool high = gin.getVoltage(ch) > 1.f;
+                            if (high && !delegModPrev[lane][ch]) ++delegModEdges[lane][ch];
+                            delegModPrev[lane][ch] = high;
+                        }
+                    }
+                }
+            });
         // East LANE DIRECTION bank: 16 slots (0..14 = poly V2..V16, 15 = V1/mono spare slot,
         // the monoOwnerId trick) x 6 strands. Real params, so Rack persists them and the
         // LANE_DIR migrated out of params[] to Monsoon::editor.laneDir (NUM_PARAMS_MIGRATION.md).
@@ -330,9 +380,13 @@ struct StraitsEastSandsVisual : Module {
     // The scan runs on a divider rather than every sample: a gate is milliseconds long
     // (hundreds of samples), so /8 still catches every edge at an eighth of the cost.
     static constexpr int GATE_MOD_DIV = 8;
-    rack::dsp::ClockDivider gateModDiv;   // the /8 EDGE-SCAN cadence ONLY (the host lookup left the divider — LOOKUP AUTHORITY)
-    bool     gateModScan_ = false;    // set when gateModDiv ticks; consumed by the gate scan
-    rack::dsp::ClockDivider probOutDiv;   // prob CV outs: /32 = control rate
+    // RATE MANAGER (S5): the module's OWN manager — the dir/deleg CV-edge detector
+    // (Sample tier, fed by the /8 gateModDiv edge — the cadence preserved exactly) and
+    // the prob-out recompute (Control tier, fed by the /32 probOutDiv edge). The raw
+    // gateModScan_ flag is DELETED (the tier's tick is the flag).
+    redDot::RateManager rateManager;
+    rack::dsp::ClockDivider gateModDiv;   // the /8 DETECTOR cadence (feeds the Sample tier)
+    rack::dsp::ClockDivider probOutDiv;   // prob CV outs: /32 = control rate (feeds the Control tier)
     bool    dirModPrev[dotModular::SandsGrid::EAST_LANES][16]    = {};
     bool    delegModPrev[dotModular::SandsGrid::EAST_LANES][16]  = {};
     uint8_t dirModEdges[dotModular::SandsGrid::EAST_LANES][16]   = {};   // audio thread is the sole writer

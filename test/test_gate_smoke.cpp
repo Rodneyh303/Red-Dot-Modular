@@ -66,13 +66,13 @@ static void populateV0(SequencerEngine& eng, const PatternInput& in, float restP
     eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb  = in.variationAmount;
 }
 
-// A clock/phase view with a 1/16 edge asserted — exactly what the module layer passes into
-// engine.executeModeA for the clock and phase origins (the controller routes both through
-// engine.executeModeA; only the edge SOURCE differs — clock.sixteenthEdge vs phase.sixteenthEdge).
-static ClockEngine edgeClock() {
-    ClockEngine ck;
-    ck.sixteenthEdge = true;
-    return ck;
+// A RateManager with the Step tier ticked — exactly what the module layer passes into
+// engine.executeModeA for the clock and phase origins (the dispatch advances the tier
+// from the sixteenth edge — clock or phase — and the engine asks the manager; S3b).
+static redDot::RateManager stepTick() {
+    redDot::RateManager rm;
+    rm.advance(redDot::Rate::Step, true);
+    return rm;
 }
 
 // ── Faithful copy of the module-layer shouldExecute gate (Monsoon.cpp ~830, POST-collapse). ──
@@ -107,7 +107,8 @@ int main() {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
         populateV0(eng, in, 0.f);
-        StepResult r = eng.executeModeA(edgeClock(), /*noteVal=*/2.f, in);
+        const auto rm = stepTick();
+        StepResult r = eng.executeModeA(rm, /*noteVal=*/2.f, in);
         EXPECT(r.stepped);
         EXPECT(r.decision != D::Rest);
         EXPECT(eng.gs.gateHeld);                       // GATE_OUTPUT would emit
@@ -124,11 +125,13 @@ int main() {
     });
 
     TEST("Phase origin (mode 2): a 1/16 phase step, no rest -> gate high", {
-        // Phase routes through engine.executeModeA with a phase-derived edge view (sixteenthEdge=true).
+        // Phase routes through engine.executeModeA with the Step tier ticked (the
+        // dispatch fed it from the phase sixteenth edge).
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
         populateV0(eng, in, 0.f);
-        StepResult r = eng.executeModeA(edgeClock(), 2.f, in);
+        const auto rm = stepTick();
+        StepResult r = eng.executeModeA(rm, 2.f, in);
         EXPECT(r.stepped);
         EXPECT(r.decision != D::Rest);
         EXPECT(eng.gs.gateHeld);
@@ -146,7 +149,8 @@ int main() {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
         populateV0(eng, in, 0.5f);
-        StepResult r = eng.executeModeA(edgeClock(), 2.f, in);
+        const auto rm = stepTick();
+        StepResult r = eng.executeModeA(rm, 2.f, in);
         EXPECT(r.decision == D::Rest);
         EXPECT(!eng.gs.gateHeld);
     });
@@ -164,7 +168,8 @@ int main() {
         SequencerEngine eng; eng.numPolyVoices = 0;
         const PatternInput in = makeInput();
         populateV0(eng, in, 0.5f);
-        StepResult r = eng.executeModeA(edgeClock(), 2.f, in);
+        const auto rm = stepTick();
+        StepResult r = eng.executeModeA(rm, 2.f, in);
         EXPECT(r.decision == D::Rest);
         EXPECT(!eng.gs.gateHeld);
     });

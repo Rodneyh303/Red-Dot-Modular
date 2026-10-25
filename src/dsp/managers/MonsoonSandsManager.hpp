@@ -6,6 +6,7 @@
 #include "../SandsTopology.hpp"   // cachedTopo_ — the topology-rebuild fingerprint gate
 
 struct MonsoonExpanderManager;
+struct Monsoon;
 
 /**
  * MonsoonSandsManager
@@ -24,9 +25,22 @@ public:
     /// Main update loop called at control rate
     void processDNA(const MonsoonExpanderManager& expanderManager);
 
+    // ── RATE MANAGER (CC_PROMPT_RATE_MANAGER_START, S4) ──────────────────────────
+    // publishGlobal — the Macro display/global publish, the SPEC's proto-producer/slot
+    // ("publish at control rate, consumers read") — folds into the ONE producer/slot
+    // mechanism: a Control-rate producer with an input+produced-cells fingerprint (the
+    // S0b pattern), dispatched at the sync position. DECLARATION ORDER IS LOAD-BEARING:
+    // this producer must be declared BEFORE the expander manager's sync-population
+    // producer (it writes the macroBase that population reads).
+    void declareRateProducers(redDot::RateManager& rm, Monsoon& ownerMon);
+
 private:
     SequencerEngine& engine;
     PatternEngine& patternEngine;
+
+    // RATE MANAGER (S4): publishGlobal's producer halves.
+    size_t publishGlobalFingerprint_(Monsoon& ownerMon, void* dst);
+    void   publishGlobalProduce_(Monsoon& ownerMon);
 
     // Guard for the CA pin remap (forceRecomputeSlewed + remapSlewedByPins). That pair used to run
     // EVERY control block while the pins were non-identity, rewriting the slewed buffers in place --

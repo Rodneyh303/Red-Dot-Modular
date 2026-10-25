@@ -4,28 +4,29 @@
 
 /**
  * UIManager
- * 
+ *
  * Encapsulates all LED/light management and visual state handling.
- * 
+ *
  * Centralizes:
  *   1. Status light updates (dice, lock, mute, run, reset)
  *   2. Expander indicator lights (green for valid, red for multiple)
  *   3. Mode selector lights (A, B, C, D)
  *   4. Step ring indicator lights
  *   5. Semitone LED brightness (red channel for note playing flash)
- *   6. Light update throttling via divider
- *   7. Button trigger processing (dice, lock, mute, mode)
- * 
+ *   6. Button trigger processing (dice, lock, mute, mode)
+ *
  * Design: UIManager reads module state and updates lights.
  * It is NOT responsible for what logic triggers state changes (that's in process()).
  * It IS responsible for translating module state into visual feedback.
+ *
+ * RATE MANAGER (CC_PROMPT_RATE_MANAGER_START): the light-update CADENCE is owned by
+ * Monsoon's RateManager (the Frame tier); UIManager no longer holds a divider
+ * reference (it never called it — the member was vestigial).
  */
 class UIManager {
 public:
-    UIManager(rack::engine::Module* mainModule,
-              rack::dsp::ClockDivider& lightDivider)
-        : mainModule(mainModule),
-          lightDivider(lightDivider) {}
+    explicit UIManager(rack::engine::Module* mainModule)
+        : mainModule(mainModule) {}
     
     // ──── Status Light Updates ──────────────────────────────────────────────
     
@@ -85,7 +86,7 @@ public:
     
     // ──── Batch Updates ────────────────────────────────────────────────────
     
-    /// Update all lights at once (called once per lightDivider process)
+    /// Update all lights at once (called once per Frame-tier tick — see Monsoon::process)
     void updateAllLights(bool rhythmSeedPending,
                          bool melodySeedPending,
                          bool locked,
@@ -103,7 +104,6 @@ public:
 
 private:
     rack::engine::Module* mainModule;
-    rack::dsp::ClockDivider& lightDivider;
     
     // Button trigger state
     rack::dsp::SchmittTrigger diceRTrigger;

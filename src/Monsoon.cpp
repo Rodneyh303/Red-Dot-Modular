@@ -78,8 +78,10 @@ static uint64_t monsoonProfWindow = 0;           // samples since the last secti
 // entry-point TU). The extern declaration remains in Monsoon.hpp.
 
 void Monsoon::onSampleRateChange(const SampleRateChangeEvent& e) {
-    lightDivider.setDivision(std::max(1, (int)std::round(e.sampleRate / 90.f)));
-    controlDivider.setDivision(std::max(1, (int)std::round(e.sampleRate / 1500.f)));
+    // RATE MANAGER (S7): the SR-aware divisions live INSIDE the manager now — the old
+    // lightDivider/controlDivider setDivision pair, generalized (fixed Hz regardless
+    // of SR; the raw divider members are DELETED — deletion is the enforcement).
+    rateManager.setSampleRate(e.sampleRate);
 }
 
 Monsoon::Monsoon() {
@@ -110,11 +112,18 @@ Monsoon::Monsoon() {
         // Initialize managers
         scaleManager = std::unique_ptr<ScaleManager>(new ScaleManager(this));
         paramManager = std::unique_ptr<ParameterManager>(new ParameterManager(this, &expanderManager.cachedScaleExpander, &expanderManager.cachedPolyVoiceExpander));
-        modeController = std::unique_ptr<ModeController>(new ModeController(this, engine, clock, *paramManager));
-        uiManager = std::unique_ptr<UIManager>(new UIManager(this, lightDivider));
+        modeController = std::unique_ptr<ModeController>(new ModeController(this, engine, clock, rateManager, *paramManager));
+        uiManager = std::unique_ptr<UIManager>(new UIManager(this));
         timingController = std::unique_ptr<TimingController>(new TimingController(this));
         cvRouter = std::unique_ptr<CVRouter>(new CVRouter());
         outputGenerator = std::unique_ptr<OutputGenerator>(new OutputGenerator());
+
+        // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START): declare the Control producers
+        // ONCE. ORDER IS LOAD-BEARING — dispatch runs producers in declaration order:
+        // publishGlobal FIRST (it writes the macroBase...), then the sync-population
+        // (the measured Macro-only 3% fix), which reads it.
+        dnaManager.declareRateProducers(rateManager, *this);
+        expanderManager.declareRateProducers(rateManager, *this);
 
         // Initialize dividers
         onSampleRateChange({APP->engine->getSampleRate(), APP->engine->getSampleRate()});
@@ -950,10 +959,35 @@ void Monsoon::process(const ProcessArgs& args) {
     MONSOON_PROF_BEGIN(stepExec);
     // --- Mode dispatch (only if running) ---
     if (runGateActive) {
-        // Gate-close on the PPQN grid pulse. In Mode E the pulse source is the phase
-        // ramp; otherwise the internal/external clock.
-        bool gridPulse = (modeSelect == 2) ? phase.pulseEdge : clock.pulseEdge;   // phase origin vs clock
-        if (gridPulse) {
+        // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START, S3): the PPQN + Step tiers, fed by the
+        // EXISTING per-mode edges — a pure wrapper, behaviour-identical. Step's source is the
+        // sixteenth edge in clock/phase modes and the composite gate-edge stream in gate mode
+        // (the per-mode chains are declared in ONE place: ui/RateManager.hpp). The PPQN grid
+        // pulse serves gate-width counting in EVERY mode (tickPulse below), so its feed is the
+        // same phase-vs-clock ternary as before.
+        bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
+        // GATE modes (B + D): three edge streams — main (Gate 1) always wins; ratchet (Gate 2)
+        //   drives in-gate; ghost (Gate 3) drives in-gap.  Other modes: their usual clock/phase edges.
+        // B and D share the SAME shouldExecute gate (§421 mode-agnostic invariant): only the pitch
+        //   source differs (D quantises CV2), handled downstream in executeModeD — NOT here. One branch
+        //   for both PREVENTS the B/D drift bug (a205093 left D on the old : true continuous logic,
+        //   which called executeMode every sample and jammed gate state — see
+        //   plans/fix_gate_output_regression_a205093.md).
+        const bool stepEdge = [&]{
+            if (modeSelect == 1) {   // gate origin: event-driven (was B/D)
+                const bool inGate = gate1High;
+                return input.gate1Rise || (gate1High && engine.stepIndex == -1)          // main onset / held-at-start
+                    || (inGate && input.subGateRise)                                     // ratchet in-gate (Gate 2)
+                    || (!inGate && input.ghostRise);                                     // ghost in-gap (Gate 3)
+            }
+            if (modeSelect == 0) return clock.sixteenthEdge;       // clock origin (was A/C)
+            return phase.sixteenthEdge;                            // phase origin (was E/F)
+        }();
+        rateManager.advance(redDot::Rate::PPQN,
+                            (modeSelect == 2) ? phase.pulseEdge : clock.pulseEdge);   // phase origin vs clock
+        rateManager.advance(redDot::Rate::Step, stepEdge);
+
+        if (rateManager.ticked(redDot::Rate::PPQN)) {
             engine.gs.tickPulse();
             engine.gsStep.tickPulse();
             for (int i = 1; i <= engine.numPolyVoices; ++i) {
@@ -962,29 +996,8 @@ void Monsoon::process(const ProcessArgs& args) {
                 engine.voices[vs].gsStep.tickPulse();
             }
         }
-        // Optimization: Only execute mode logic if a relevant trigger/state is active.
-        // This avoids calling executeMode and its internal switch every sample for Modes A, B, C.
-        bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
-        // GATE modes (B + D): three edge streams — main (Gate 1) always wins; ratchet (Gate 2)
-        //   drives in-gate; ghost (Gate 3) drives in-gap.  Other modes: their usual clock/phase edges.
-        // B and D share the SAME shouldExecute gate (§421 mode-agnostic invariant): only the pitch
-        // source differs (D quantises CV2), handled downstream in executeModeD — NOT here. One branch
-        // for both PREVENTS the B/D drift bug (a205093 left D on the old : true continuous logic,
-        // which called executeMode every sample and jammed gate state — see
-        // plans/fix_gate_output_regression_a205093.md).
-        bool shouldExecute;
-        if (modeSelect == 1) {   // gate origin: event-driven (was B/D)
-            const bool inGate = gate1High;
-            shouldExecute = input.gate1Rise || (gate1High && engine.stepIndex == -1)              // main onset / held-at-start
-                          || (inGate && input.subGateRise)                                        // ratchet in-gate (Gate 2)
-                          || (!inGate && input.ghostRise);                                        // ghost in-gap (Gate 3)
-        } else {
-            shouldExecute = false;
-            if (modeSelect == 0) shouldExecute = clock.sixteenthEdge;       // clock origin (was A/C)
-            else if (modeSelect == 2) shouldExecute = phase.sixteenthEdge;  // phase origin (was E/F)
-        }
 
-        if (shouldExecute) {
+        if (rateManager.ticked(redDot::Rate::Step)) {
             mc.executeMode(modeSelect, input, tc.getGate2High());
 
             // Latch each poly voice's sounding decision (Mode B poly gate-width follow).  In Mode B
@@ -1236,7 +1249,13 @@ void Monsoon::process(const ProcessArgs& args) {
 
     MONSOON_PROF_BEGIN(lightDiv);
     // ── Throttle UI and Light processing ──
-    if (lightDivider.process()) {
+    // RATE MANAGER (S7): tickClocks() — ONCE per sample, at the earliest consumer —
+    // advances the internal SR-aware Control (~1500 Hz) + Frame (~90 Hz) tier sources
+    // (the deleted lightDivider/controlDivider pair's divisions, generalized INTO the
+    // manager). This block guards on ticked(Frame); the control block below reads
+    // ticked(Control) (level-within-sample — the order of the two blocks is free).
+    rateManager.tickClocks();
+    if (rateManager.ticked(redDot::Rate::Frame)) {
         // ── modViz: DISPLAY-ONLY modulation visualisation ────────────────────────────
         // Moved inside lightDivider. It was running EVERY SAMPLE, gated only on the
         // always-true if (paramManager), resolving ~35 modulated values per call purely
@@ -1409,7 +1428,11 @@ void Monsoon::process(const ProcessArgs& args) {
     MONSOON_PROF_END(lightDiv);
     MONSOON_PROF_BEGIN(controlDiv);
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
-    if (controlDivider.process()) {
+    // RATE MANAGER (S7): the Control tier's tick comes from the manager's INTERNAL
+    // SR-aware source (tickClocks, above — the deleted controlDivider's division,
+    // generalized). This block guards on ticked(Control); the Control producers
+    // (publishGlobal, the Macro sync population) dispatch from this position.
+    if (rateManager.ticked(redDot::Rate::Control)) {
         MONSOON_PROF_BEGIN(ctrl_raf);   // rafExp: expander-scan + Raffles gate edge loop
         // LOOKUP AUTHORITY: the expander scan re-runs ONLY when the topology epoch
         // moved (an onExpanderChange fired somewhere — the multi-hop fan-out; the
@@ -1463,6 +1486,11 @@ void Monsoon::process(const ProcessArgs& args) {
         // authority) -- replaces the old caV2PrevStep_/caV2PrevLocked_ shadow state.
         MONSOON_PROF_BEGIN(ctrl_sync);  // sync: lock boundary detect + expander sync
         lockManager.tick(engine.stepIndex);
+        // RATE MANAGER (S0b): dispatch the Control producers at the population's old
+        // position in the tick — after processDNA published macroBase + lockManager.tick,
+        // before sync's remaining work (the extracted block ran at the tail of sync).
+        // The Macro sync-population producer skips on unchanged inputs (the 3% fix).
+        rateManager.dispatch(redDot::Rate::Control);
         expanderManager.sync(engine, lockManager.queueFires());
         MONSOON_PROF_END(ctrl_sync);
 

@@ -881,50 +881,15 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
     // SAME cached values at the new transform. Steady state: stopped+idle ≈ 0
     // resolves; playing ≈ step-rate (8-16 Hz × 22.7 µs ≈ 0.02%). Polyphony changes
     // land at the next tick (≤ 0.7 ms — the shipped pre-70dd837 behaviour).
-    const bool recompute = probOutDiv.process();
-    if (recompute) {
-        // The gate's own arithmetic — the SAME step expressions the resolve indexes
-        // with (same tick, same inputs): three lrounds + a playhead compute per lane.
-        int stepArr[dotModular::SandsGrid::POLY_LANES];
-        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
-            // Macro's OWN global LOR step for this lane (from macroBase+CVDelta —
-            // identical to Macro's editor playhead, independent of East/ownership).
-            const int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
-            const int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
-            const int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
-            stepArr[l] = calcPlayhead(eng.stepIndex, ownLen, ownOff, ownRot) & 0x0F;
-        }
-        if (sweepSigChanged(sweepSig_, eng, stepArr, nV)) {
-#ifdef MONSOON_PROFILE
-            // The idle diagnostic: name WHICH fingerprint field fired (see the log).
-            ++monsoonProfGateRuns;
-            ++monsoonProfGateWhy[sweepSigWhy(sweepSig_, eng, stepArr, nV)];
-#endif
-            // Capture the sig exactly as the resolve is about to consume it (the
-            // resolve is read-only on every fingerprinted input, so the placement
-            // here is free).
-            sweepSigCapture(sweepSig_, eng, stepArr, nV);
-            dotModular::VoiceResolver resolver(eng);
-            for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // 7 poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG)
-                StepProbRow& row = stepProb_[l];
-                row.valid = true;
-                row.step = stepArr[l];
-                row.nVoices = nV;
-                row.outFresh = false;   // new values: the out walk must run once
-                // Uniform addressing: VCV channel ch carries voice ch+1; ch0 → voice 1
-                // (mono). Every channel is Macro-OWN at Macro's global step — the
-                // resolver routes to the ONE accessor (effectiveProbability, MacroOwn
-                // lens) — the SAME source the bars read. East's spread on an
-                // East-owned lane cannot reach this out (one-way borrowing); only the
-                // step latch + scale differ from the continuous bars, by design.
-                for (int ch = 0; ch < nCh; ++ch)
-                    row.val[ch] = resolver.laneProbabilityAtStep(ch + 1, l, stepArr[l]);
-#ifdef MONSOON_PROFILE
-                monsoonProfSweepCalls += (uint64_t)nCh;   // this lane's resolve count
-#endif
-            }
-        }
-    }
+    // RATE MANAGER (S5): the Control tier is fed by the probOutDiv edge (the wrapper
+    // pattern — /32, same cadence + phase as before), and the sweep resolve is the
+    // DECLARED producer: the SweepSig gate IS the fingerprint (a one-byte changed-flag
+    // image — true resolves, false skips; the post-run re-snapshot re-evaluates the
+    // gate AFTER the capture, so the shadow settles to "unchanged" until an input
+    // really moves). The gate arithmetic (stepArr) runs in the fingerprint; the resolve
+    // recomputes it identically (a pure expression — a few ns, bit-identical).
+    rateManager.advance(redDot::Rate::Control, probOutDiv.process());
+    rateManager.dispatch(redDot::Rate::Control);
     // The OUT reads the CACHED value. WRITE-ELIMINATION (the perf fix, KEPT — now
     // ROW-scoped, the FINISH2 CPU fix): setVoltage ONLY on bit-difference, and the
     // per-channel bit-diff WALK itself runs only when the gate re-resolved the row
@@ -987,6 +952,74 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
         monsoonProfAcc_lookup = monsoonProfAcc_sweep = monsoonProfAcc_total = 0;
     }
 #endif
+}
+
+// ── RATE MANAGER (S5): the sweep producer halves ──────────────────────────────
+size_t StraitsSandsMacroVisual::sweepFingerprint_(void* dst) {
+    // The SweepSig gate AS the fingerprint: a one-byte changed-flag image. The gate
+    // arithmetic is the SAME step expressions the resolve indexes with (the old block
+    // computed them once; the fingerprint/produce split recomputes — a pure expression,
+    // bit-identical). The post-run re-snapshot re-evaluates the gate AFTER the capture
+    // (inside the produce), so the shadow settles to "unchanged" until an input moves.
+    Monsoon* mon = redDot::lookupMonsoon(this);
+    uint8_t changed = 0;
+    if (mon) {
+        auto& eng = mon->engine;
+        const int nV = eng.numPolyVoices;
+        int stepArr[dotModular::SandsGrid::POLY_LANES];
+        for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
+            const int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
+            const int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
+            const int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
+            stepArr[l] = calcPlayhead(eng.stepIndex, ownLen, ownOff, ownRot) & 0x0F;
+        }
+        const bool ch = sweepSigChanged(sweepSig_, eng, stepArr, nV);
+#ifdef MONSOON_PROFILE
+        if (ch) {   // the idle diagnostic: name WHICH fingerprint field fired
+            ++monsoonProfGateRuns;
+            ++monsoonProfGateWhy[sweepSigWhy(sweepSig_, eng, stepArr, nV)];
+        }
+#endif
+        changed = ch ? 1 : 0;
+    }
+    std::memcpy(dst, &changed, sizeof changed);
+    return sizeof changed;
+}
+
+void StraitsSandsMacroVisual::sweepProduce_() {
+    Monsoon* mon = redDot::lookupMonsoon(this);
+    if (!mon) return;
+    auto& eng = mon->engine;
+    const int nV = eng.numPolyVoices;
+    const int nCh = 1 + nV;
+    int stepArr[dotModular::SandsGrid::POLY_LANES];
+    for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
+        const int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
+        const int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
+        const int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
+        stepArr[l] = calcPlayhead(eng.stepIndex, ownLen, ownOff, ownRot) & 0x0F;
+    }
+    // Capture the sig exactly as the resolve is about to consume it (the resolve is
+    // read-only on every fingerprinted input, so the placement here is free).
+    sweepSigCapture(sweepSig_, eng, stepArr, nV);
+    dotModular::VoiceResolver resolver(eng);
+    for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // 7 poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG)
+        StepProbRow& row = stepProb_[l];
+        row.valid = true;
+        row.step = stepArr[l];
+        row.nVoices = nV;
+        row.outFresh = false;   // new values: the out walk must run once
+        // Uniform addressing: VCV channel ch carries voice ch+1; ch0 → voice 1 (mono).
+        // Every channel is Macro-OWN at Macro's global step — the resolver routes to
+        // the ONE accessor (effectiveProbability, MacroOwn lens) — the SAME source the
+        // bars read. East's spread on an East-owned lane cannot reach this out
+        // (one-way borrowing); only the step latch + scale differ from the bars, by design.
+        for (int ch = 0; ch < nCh; ++ch)
+            row.val[ch] = resolver.laneProbabilityAtStep(ch + 1, l, stepArr[l]);
+#ifdef MONSOON_PROFILE
+        monsoonProfSweepCalls += (uint64_t)nCh;   // this lane's resolve count
+#endif
+    }
 }
 
 Model* modelStraitsSandsMacroVisual =

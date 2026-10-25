@@ -6,6 +6,7 @@
 #include "../../MonsoonProfile.hpp"   // CC_PROMPT_cpu_section_profile: Suspect-A call counter (empty flag-off)
 #endif
 #include "ClockEngine.hpp"
+#include "../../ui/RateManager.hpp"   // RATE MANAGER (S3b): executeModeA gates on the Step tier (rack-free)
 #include "../NoteValues.hpp"
 #include "../LaneMapping.hpp"
 #include "../VoiceLaneTypes.hpp"   // VoiceSlot — the VoiceBank below (strong per-voice indexing)
@@ -905,7 +906,10 @@ struct SequencerEngine {
     void resetActivatedPolyVoices_();
     StepResult executeStep(int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
-    StepResult executeModeA(const ClockEngine& clock, float noteVal, const PatternInput& input, int dir = +1);
+    // RATE MANAGER (S3b): the Step tier replaced the ClockEngine& — the dispatch feeds
+    // the tier from the same sixteenth edge (clock or phase), so the engine no longer
+    // re-reads a clock object (and Mode E's synthesized phaseView hack is gone).
+    StepResult executeModeA(const redDot::RateManager& rm, float noteVal, const PatternInput& input, int dir = +1);
     StepResult executeModeB(bool gate1Rise, bool gate1High, float noteVal, const PatternInput& input);
     // subGate subdivision (GATE_SUBDIVISION_STEP_GATE.md).  Three edge streams advance the playhead
     // and each runs executeStep (rest/legato/accent/pitch — all Sands lanes draw, Tie emergent from

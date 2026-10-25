@@ -1500,7 +1500,10 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
     // topology epoch), zero walks on a static rack. Was: cachedMon_ refreshed on the
     // /8 divider (a walk every 8 samples even when idle). The divider keeps ONLY the
     // gate-mod edge-scan cadence (gates are ms — /8 catches every edge).
-    if (gateModDiv.process()) gateModScan_ = true;
+    // RATE MANAGER (S5): the /8 edge feeds the Sample TIER (the detector-producer's
+    // cadence — /8 preserved exactly); dispatch happens below, after the host check,
+    // so a detached East keeps its old frozen-while-detached behaviour.
+    rateManager.advance(redDot::Rate::Sample, gateModDiv.process());
     Monsoon* mon = redDot::lookupMonsoon(this);
     if (!mon) {
         // Phase 2: Now 5 poly outputs
@@ -1517,31 +1520,14 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
     // is the only place that knows the selected tab — so nothing reads the tab at audio rate.
     // Scanned on a divider: gates are milliseconds (hundreds of samples), so /8 catches every
     // edge at an eighth of the cost. dir/deleg share the scan since they share the cadence.
-    if (gateModScan_) {
-        gateModScan_ = false;
-        for (int lane = 0; lane < dotModular::SandsGrid::EAST_LANES; ++lane) {
-            auto& din = inputs[dirModId(lane)];
-            dirModChans[lane] = din.isConnected() ? (uint8_t)din.getChannels() : 0;
-            if (din.isConnected()) {
-                int nch = std::min(din.getChannels(), 16);
-                for (int ch = 0; ch < nch; ++ch) {
-                    bool high = din.getVoltage(ch) > 1.f;
-                    if (high && !dirModPrev[lane][ch]) ++dirModEdges[lane][ch];
-                    dirModPrev[lane][ch] = high;
-                }
-            }
-            auto& gin = inputs[delegModId(lane)];
-            delegModChans[lane] = gin.isConnected() ? (uint8_t)gin.getChannels() : 0;
-            if (gin.isConnected()) {
-                int nch = std::min(gin.getChannels(), 16);
-                for (int ch = 0; ch < nch; ++ch) {
-                    bool high = gin.getVoltage(ch) > 1.f;
-                    if (high && !delegModPrev[lane][ch]) ++delegModEdges[lane][ch];
-                    delegModPrev[lane][ch] = high;
-                }
-            }
-        }
-    }
+    // RATE MANAGER (S5): dispatch the DETECTOR-PRODUCER (the old gateModScan_ block —
+    // verbatim as the produce; the CV image fingerprint makes the skip exact: identical
+    // voltages ⇒ no edge is possible).
+    rateManager.dispatch(redDot::Rate::Sample);
+    // RATE MANAGER (S5): the /32 prob-out recompute feeds the Control TIER (the
+    // wrapper conversion — /32, same cadence + phase; a change-gated producer needs
+    // an EAST-lens input enumeration, the SweepSigGate pattern — named follow-up).
+    rateManager.advance(redDot::Rate::Control, probOutDiv.process());
     const float scaleV = (mon->probOutScale == 0) ? 1.f : (mon->probOutScale == 1) ? 5.f : 10.f;
     const bool sh = mon->probOutSampleHold;
     auto& eng = mon->engine;
@@ -1556,7 +1542,7 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
     // The output VOLTAGE is not gated -- Rack ports hold their last value, so channels are
     // still set every sample and the CV is continuous; only the COMPUTATION is throttled.
     // Channel count is likewise set every sample so polyphony changes take effect at once.
-    const bool recompute = probOutDiv.process();
+    const bool recompute = rateManager.ticked(redDot::Rate::Control);
     dotModular::VoiceResolver resolver(eng);
     // Phase 2: Now 5 poly outputs
     for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {

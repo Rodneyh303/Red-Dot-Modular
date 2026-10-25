@@ -1,6 +1,7 @@
 #pragma once
 #include <rack.hpp>
 #include "../SandsTopology.hpp"   // for SandsTopology::Inputs (the presence authority target)
+#include "../../ui/RateManager.hpp"   // THE compute-rate authority (rack-free core — CC_PROMPT_RATE_MANAGER_START)
 
 // Forward declarations
 struct SequencerEngine;
@@ -286,6 +287,28 @@ struct MonsoonExpanderManager {
 
     /// Synchronizes data between the engine and specific expanders (Deep Straits, Visual Editors, etc.)
     void sync(SequencerEngine& engine, bool caQueueFires);
+
+    // ── RATE MANAGER (CC_PROMPT_RATE_MANAGER_START, Stage 0 / S0b) ──────────────────
+    // The MACRO-ONLY sync population — the measured Macro-only 3% (controlDiv sync
+    // 515-578 ns/sample vs 33 East+Macro; the 15×7 LOR+spread re-population ran every
+    // control cycle UNCONDITIONALLY) — is the FIRST Control-rate producer: work handed
+    // to the manager, dispatched at the population's old position in the control tick,
+    // SKIPPED while its fingerprint is unchanged. The fingerprint covers every input
+    // the population reads AND the cells it writes (self-healing: the runtime engine
+    // reset foreign-writes the LOR store; the image detects it and the producer
+    // re-asserts, exactly as the old per-tick code did — the SweepSig live-store
+    // compare, generalized). Declared ONCE (Monsoon's ctor) via declareRateProducers().
+    void declareRateProducers(redDot::RateManager& rm, Monsoon& ownerMon);
+    /// The else-if reachability guard, recomputed: the produce must be INERT exactly
+    /// when sync's chain would NOT have reached the MACRO-ONLY branch (the East branch
+    /// owns the cells then). The guard's inputs are fingerprint fields too.
+    bool macroPopulationActive_(const SequencerEngine& engine) const;
+    /// The input + produced-cells image (packed, ≈2.5 KB — see the .cpp).
+    size_t macroPopulationFingerprint_(const SequencerEngine& engine, void* dst) const;
+    /// The extracted population — VERBATIM (same writes, same order, same liveness gates).
+    void macroPopulationProduce_(SequencerEngine& engine);
+    /// The topology build sync's head uses (shared with produce_ — one place, no drift).
+    dotModular::SandsTopology buildTopology_(const SequencerEngine& engine) const;
 
     // ── Single presence authority for SandsTopology ─────────────────────────────
     // THE one place the topology's presence/base fields are populated. Every consumer

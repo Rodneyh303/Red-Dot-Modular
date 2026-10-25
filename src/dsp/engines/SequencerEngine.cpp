@@ -742,13 +742,17 @@ void SequencerEngine::handlePhraseBoundary(PatternInput input, bool isMelodyReal
     pe.applyPendingSeedsAndRedraw(input);
 }
 
-StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float noteVal, const PatternInput& input, int dir) {
+StepResult SequencerEngine::executeModeA(const redDot::RateManager& rm, float noteVal, const PatternInput& input, int dir) {
     lastNoteVal_ = noteVal;   // poly voices derive their own nvIdx from this (stage 2)
     // Phase A: voices[0] (V1) is populated by the controller (updatePatternInput),
     // not here — same single-writer pattern as voices[1..15] (updatePolyVoiceRest_).
     resetActivatedPolyVoices_();  // Phase B: reset newly-activated voices' stale gs state
     StepResult result;
-    if (!clock.sixteenthEdge || muted) return result;
+    // RATE MANAGER (S3b): the Step tier — the dispatch fed it from the same sixteenth
+    // edge (clock or phase mode), so this is the old raw sixteenth-edge check without
+    // the engine re-reading a clock object. Level-within-sample by design: the Mode E
+    // jump replay calls this once per crossed 1/16, all legitimately stepping.
+    if (!rm.ticked(redDot::Rate::Step) || muted) return result;
 
     bool wrapped = advancePlayhead(dir);
 
