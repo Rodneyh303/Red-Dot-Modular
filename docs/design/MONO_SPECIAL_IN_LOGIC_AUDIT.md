@@ -146,3 +146,46 @@ For EACH lane (mel/oct/qmix/rest/accent/variation/legato), establish and DOCUMEN
 STATUS: note only. First action = trace rhythmPattern's consumer (play vs rest) to classify the rest
 smell as (a) harmless-complement or (b) bug. Then the per-lane polarity table. Fits with the atom/escape
 work (polarity is a prerequisite for coherent rail-atom semantics) and any UI-label pass.
+
+────────────────────────────────────────────────────────────────────────────────
+## DECISION AUTHORITY — engine is the sole decider; "UI" is a pure view (Rodney) — CORRECTED target
+
+Rodney: there's no good reason for a separate calculation of rest/legato/accent; only display modules
+(Lantern, maybe Intertropical) show output, and they should VIEW the engine's decision, not recompute.
+VERIFIED — and the finding is BETTER than feared + RELOCATES the target:
+- Lantern ALREADY does it right: it READS eng.lastStepResult.decision + gs.gateHeld/holdRemain/slurForward
+  (the engine's COMMITTED decision + per-voice sounding state), NEVER re-derives from probabilities.
+  Comments: "Trusts MonoDecision", "reads the engine's decision". ZERO restProb/prob-comparison refs in
+  Lantern/Intertropical/Macro/East visuals. So the DISPLAY MODULES are the model — keep them as views.
+- THE DUPLICATION IS ENGINE-INTERNAL, not UI: the rest `<` vs `>=` discrepancy is BOTH in the engine
+  layer — the LIVE decision path (SequencerEngine.cpp:628,1161 `r_rest < restProb` → REST) vs the
+  rhythmPattern DISPLAY-CACHE builder (PatternEngine.cpp:410,962 `draw >= restProb`). rhythmPattern is the
+  engine PRE-COMPUTING a prospective pattern VIEW, and that builder uses the OPPOSITE comparison from the
+  live path. Two decision computations in the engine, drifted.
+
+### THE FIFTH AUTHORITY — the decision resolver (one decision fn, live + prospective)
+There is NO legitimate separate output-decision. The engine is the SOLE decider of anything that becomes
+output. ONE engine decision function, used by BOTH:
+  (a) the LIVE path (decide-and-commit the current step), AND
+  (b) the DISPLAY-CACHE / prospective builder (rhythmPattern and any "what the pattern would be" view) —
+      which must CALL the same decision fn, not re-derive with its own comparison.
+So rhythmPattern is DERIVED FROM the same decide() the audio uses → structurally cannot diverge → the
+polarity discrepancy becomes impossible. The display modules (Lantern/Intertropical) stay pure views
+(read committed decisions for played steps; for a PROSPECTIVE all-steps view, query the engine's PURE
+decision fn — never a UI/second comparison).
+ENABLING REFACTOR: separate DECIDE (pure: given value+draw+ownership+step, return the decision) from
+COMMIT (advances playhead/gate-state). The live path = decide+commit; the display-cache + any prospective
+view = decide only. This pure/queryable split is ALSO what the mono-articulation-delegation fix and the
+rate manager's detect-vs-apply want — shared groundwork.
+ENFORCEMENT: every draw-vs-probability OUTPUT-DECISION comparison lives ONLY in the decision fn. Delete the
+parallel comparison in rhythmPattern (derive it from decide() instead). Grep-gate: a draw-vs-prob
+gate/articulation comparison OUTSIDE the decision fn (engine display-cache builders OR any Visual file) →
+fail. (The gate targets OUTPUT-DECISION comparisons specifically — NOT layout/colour/showing the
+probability VALUE, which are legit view work.)
+
+### THIS UNIFIES THE NOTED ITEMS
+The decision resolver is the HOME for: the polarity fix (one comparison, can't invert), the mono-
+articulation-delegation (independent-vs-mono = a decide() input, like spread/warp delegation), and the
+categorical-atom / T-F-ATOM-DECIDES work (rail-meaning = a decide() rule). Not a separate 5th project —
+the vehicle for several already-noted items. Schedule after the rate manager (needs the per-voice +
+pure-decide machinery).
