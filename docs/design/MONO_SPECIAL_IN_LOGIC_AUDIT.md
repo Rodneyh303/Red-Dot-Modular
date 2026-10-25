@@ -101,3 +101,48 @@ manager provides. Worth doing as part of the gateModDiv → detector-producer mi
 STATUS: note only; revisit when the rate manager migration reaches gateModDiv (it's in scope as a
 detector-producer). Both refinements fit the manager's tiered model (Sample detect, Step apply) and the
 shared-detector idea — so they're natural to fold in THEN rather than now.
+
+────────────────────────────────────────────────────────────────────────────────
+## POLARITY AUDIT — per-lane, what does prob→0 vs prob→1 MEAN, and is it CONSISTENT? (Rodney)
+
+Rodney observed: rest probability near 0 seems to mean REST, near 1 means DON'T rest — a possible
+polarity REVERSAL (or at least a confusing/inconsistent convention). AUDIT every lane's probability
+polarity and the engine-vs-display consistency. NOTE ONLY — but a real smell found (below); resolve it.
+
+### THE SPECIFIC SMELL FOUND (rest) — engine and display use OPPOSITE comparisons
+- ENGINE decision (SequencerEngine.cpp:628, 1161): `if (r_rest < restProb) → REST`. So high restProb =
+  wider rest band = MORE resting. That is the INTUITIVE polarity (prob up → rest up). ✓
+- DISPLAY/pattern (PatternEngine.cpp:410, 962): `rhythmPattern[i] = (warpRow(...)[i] >= restProb)` — the
+  OPPOSITE comparison (`>=` vs the engine's `<`).
+So the two paths compare against restProb in OPPOSITE directions. EITHER:
+  (a) CONSISTENT COMPLEMENT: rhythmPattern[true] means "PLAY" (a note sounds), so `draw >= restProb =
+      play` is exactly the complement of `draw < restProb = rest` — both correct, just expressed from
+      opposite sides. (The comment at :406-410 says the two DISPLAY writers agree by construction, but
+      does NOT establish display-vs-ENGINE agreement — that's the open bit.)
+  (b) GENUINE REVERSAL: if rhythmPattern[true] is meant to mean "REST", the display is inverted vs the
+      engine and Rodney's observation is a real bug.
+UNRESOLVED: trace rhythmPattern's CONSUMER — does true = play or rest? That settles (a) vs (b). If PLAY,
+it's fine (document it); if REST, it's a polarity bug to fix.
+
+### THE FULL AUDIT (do per lane)
+For EACH lane (mel/oct/qmix/rest/accent/variation/legato), establish and DOCUMENT:
+- What does the uniform/prob near 0 produce? near 1 produce?
+- Is it INTUITIVE (prob of X up → more X) or INVERTED? (VARIATION is known-inverted by design: amount>0.5
+  = SHORTER notes, <0.5 = longer — document, don't "fix", but flag it as the inverted one.)
+- Does the ENGINE decision and the DISPLAY/pattern use the SAME polarity (same comparison direction)? The
+  rest smell above shows they can diverge — check every lane for engine-vs-display agreement.
+- Does the planned RAIL-ATOM / escape meaning agree with the lane's polarity? (rest-atom at ℓ=1 must mean
+  "certain rest" ONLY if rest=1 means rest; if rest polarity is inverted/complemented, the atom + the
+  cross-voice coordination theory (hocket/unison) invert too — the copula notes assume prob=1 → the named
+  event. RECONCILE the atom/escape semantics with the AUDITED polarity before building them.)
+
+### WHY IT MATTERS
+- User clarity: "turning rest up rests less" is a bug-feel even if internally consistent.
+- Atom/categorical work: the whole rail-atom coordination (REST atoms → correlated resting = unison/
+  hocket) is defined assuming prob=1 → rest. If polarity differs, that work must account for it.
+- Cross-lane consistency: if some lanes are prob=1→do and rest is prob=1→don't, modulating "toward 1"
+  does inconsistent directional things per lane — a usability + modulation-mapping hazard.
+
+STATUS: note only. First action = trace rhythmPattern's consumer (play vs rest) to classify the rest
+smell as (a) harmless-complement or (b) bug. Then the per-lane polarity table. Fits with the atom/escape
+work (polarity is a prerequisite for coherent rail-atom semantics) and any UI-label pass.
