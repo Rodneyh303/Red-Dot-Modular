@@ -287,9 +287,10 @@ struct Lantern : Module {
                                 : (writeStep < lastWriteStepObs));
         lastWriteStepObs = writeStep;
 
-        // Record a GLOBAL voice's state into a display ROW. Global voice 0 = mono/V1 (eng.gs),
-        // global voice g>=1 = poly voice g-1 (eng.voices[g-1]). Shared by both source modes; only the
-        // row<->voice pairing differs. Writes cells[row][writeStep].
+        // Record a GLOBAL voice's state into a display ROW. Global voice 0 = mono/V1 (eng.gs);
+        // global voice g>=1 = poly voice V(g+1), i.e. VoiceSlot{g} = slot(g+1) (post-COLLAPSE:
+        // slot 0 is V1's dormant slot, poly voices V2..V16 are slots 1..15). Shared by both
+        // source modes; only the row<->voice pairing differs. Writes cells[row][writeStep].
         auto recordGlobalVoice = [&](int row, int g) {
             if (row < 0 || row >= 16) return;
             if (g == 0) {
@@ -300,12 +301,13 @@ struct Lantern : Module {
                 if (pv_i < 0 || pv_i >= eng.numPolyVoices || pv_i >= 15) {
                     cells[row][writeStep].type = lantern::NoteType::Inactive; return;
                 }
-                // NOTE (CC_PROMPT_STRONG_TYPES audit — behaviour PRESERVED, flagged not
-                // fixed): pv_i = g-1 addresses the SAME slot the old code did; the block
-                // comment above still describes the pre-COLLAPSE voices[g-1]-=V2 mapping.
-                // Post-COLLAPSE slot g is V(g+1) — if rows look one-voice-shifted in Rack,
-                // this is the site (fix = its own red-first commit, not the typed sweep).
-                const PolyVoice& pv = eng.voices[dotModular::VoiceResolver::slot(pv_i + 1)];
+                // OFF-BY-ONE FIX (audit item 2, confirmed in Rack — display row 2 missing,
+                // rows one-voice-shifted). Global poly voice g (g>=1) IS poly voice V(g+1):
+                // g=1 → V2 = VoiceSlot{1} = slot(2) = slot(pv_i+2). Was slot(pv_i+1) =
+                // slot(g) = VoiceSlot{0} for g=1 = V1's DORMANT per-voice slot (post-COLLAPSE
+                // mono runs on eng.gs), so row 2 read a dead slot and later rows showed the
+                // previous voice.
+                const PolyVoice& pv = eng.voices[dotModular::VoiceResolver::slot(pv_i + 2)];
                 const bool voiceSlur = pv.gs.slurForward;   // SANDS CONSOLIDATION Step 5: per-voice slur (flag removed)
                 recordCell(row, writeStep, pv.gs, dec, pv.accented, lenSteps, voiceSlur, monoSlur,
                            eng.lastPlayDir, lapArrival);

@@ -72,7 +72,13 @@ void OutputGenerator::drive(SequencerEngine& engine,
                 // Skipped voice: leave arrays at 0 and DON'T advance process() (frozen gate).
                 continue;
             }
-            const auto vs = dotModular::VoiceResolver::slot(i + 1);   // i = the slot being read (preserved)
+            // OFF-BY-ONE FIX (audit item 1, confirmed in Rack — Lantern row 2 missing,
+            // Straits lane N drove row N+1): this loop is 0-BASED (writes polyGateV[i] →
+            // ch = i+1), so ch(i+1) must show poly voice V(i+2) = VoiceSlot{i+1} = slot(i+2).
+            // Was slot(i+1) = VoiceSlot{i}: ch1 read V1's DORMANT slot and V16 was never
+            // output. (The other poly loops here are 1-BASED (i=1..numPolyVoices) where
+            // slot(i+1) is already correct — do NOT change those.)
+            const auto vs = dotModular::VoiceResolver::slot(i + 2);
             float vg     = engine.voices[vs].gs.process(sampleTime);
             float vgStep = engine.voices[vs].gsStep.process(sampleTime);   // STEP mirror (per voice)
             polyGateV[i]   = vg;
