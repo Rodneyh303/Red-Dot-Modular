@@ -69,8 +69,9 @@
 #include "dsp/VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (slot)
 #include "Intertropical.hpp"   // IT-source mode: read routed output via inverse map
 #include "ui/RedScrew.hpp"
-#include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide
-#include "ui/IntertropicalPairing.hpp"    // shared pairing: resolveFollowedIT, findIntertropicalEitherSide
+#include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide (service-internal)
+#include "ui/IntertropicalPairing.hpp"    // shared pairing: resolveFollowedIT, findIntertropicalEitherSide (service-internal)
+#include "ui/ModuleLookup.hpp"   // THE lookup authority: lookupMonsoon / lookupIntertropical (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include <string>
 #include <algorithm>
 #include <cmath>
@@ -119,10 +120,10 @@ struct Lantern : Module {
     // historical behaviour); >0 = the Intertropical whose pairId matches, anywhere in the rack.
     // See ui/IntertropicalPairing.hpp. Persisted.
     int followIT = 0;
-    // Rate discipline: resolveFollowedIT() rack-scans; topology is control-rate, so cache the
-    // resolved IT on a divider (the engine read via it->getHost() stays per-step). Runtime-only.
-    Intertropical* cachedIT_ = nullptr;
-    rack::dsp::ClockDivider itLookupDiv_;
+    // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the followed-IT and
+    // host resolves are the memoized lookupIntertropical/lookupMonsoon — one walk per
+    // topology generation (event-driven); the /512 itLookupDiv_ poll + cachedIT_ are
+    // DELETED.
     int zoomMode   = 0;   // 0=x1 1=x2 2=x4
     int followMode = 1;   // 0=Off 1=On
     int rollView   = 0;   // 0=Grid (lane) view, 1=Piano roll
@@ -214,7 +215,11 @@ struct Lantern : Module {
     Lantern() {
         // No params at all: Lantern is a display. Its view state lives in the fields above.
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
-        itLookupDiv_.setDivision(512);   // topology lookup at ~94 Hz @ 48k (control rate)
+    }
+    // THE LOOKUP AUTHORITY: the event bumps the global topology epoch — this module's
+    // adjacency (the lookup* memos) re-resolves on the next read.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
     }
 
     // Read-only sampler: records the observed per-step state into Lantern's own
@@ -232,10 +237,10 @@ struct Lantern : Module {
         // LANTERN_CROSS_ROW_FIX.md. Build the inverse map row -> global voice for the active scene
         // (output channel r shows the voice routed to output r); Monsoon mode uses identity (row 0 =
         // mono/V1, row v+1 = poly voice v). The rest of the record path is shared.
-        if (itLookupDiv_.process())
-            cachedIT_ = (sourceMode == 1) ? redDot::resolveFollowedIT(this, followIT) : nullptr;
-        Intertropical* it = cachedIT_;
-        Monsoon* mon = (it && it->getHost()) ? it->getHost() : redDot::findMonsoonEitherSide(this);
+        // LOOKUP AUTHORITY: memoized (one walk per generation — event-driven; was the
+        // /512 divider poll). sourceMode != 1 keeps `it` null exactly as before.
+        Intertropical* it = (sourceMode == 1) ? redDot::lookupIntertropical(this, followIT) : nullptr;
+        Monsoon* mon = (it && it->getHost()) ? it->getHost() : redDot::lookupMonsoon(this);
         if (!mon) return;
         SequencerEngine& eng = mon->engine;
 
@@ -1272,10 +1277,11 @@ struct FollowBadge : rack::widget::Widget {
     void draw(const DrawArgs& args) override {
         if (!module || module->sourceMode != 1) return;   // raw-voices mode → no pair badge at all
 
-        // Pinned intent vs the actually-resolved instance. cachedIT_ is refreshed at control rate in
-        // process() for sourceMode==1 (resolveFollowedIT: followIT>0 by id, else nearest).
+        // Pinned intent vs the actually-resolved instance. The resolved IT comes from
+        // the LOOKUP AUTHORITY memo (sourceMode==1: lookupIntertropical — followIT>0
+        // by id, else nearest; the same resolve process() reads).
         const int pinned   = module->followIT;             // 0 = auto, >0 = pinned id
-        Intertropical* it  = module->cachedIT_;
+        Intertropical* it  = redDot::lookupIntertropical(module, module->followIT);
         const int resolved = it ? it->pairId : 0;
 
         NVGcontext* vg = args.vg;
@@ -1427,7 +1433,7 @@ struct LanternWidget : ModuleWidget {
         if (!module) return;
         // Follow the connected Monsoon. If none is attached, hold the last theme rather than
         // snapping to dark -- matches the Sands expanders, which return early without a host.
-        Monsoon* mon = redDot::findMonsoonEitherSide(module);
+        Monsoon* mon = redDot::lookupMonsoon(module);
         if (!mon) return;
         const int wantLight = mon->lightTheme ? 1 : 0;
         if (wantLight == lastThemeLight) return;
