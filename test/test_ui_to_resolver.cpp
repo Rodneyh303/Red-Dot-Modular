@@ -796,6 +796,88 @@ int main() {
                 "the out-write epoch (FINISH2 CPU fix) was lost");
     });
 
+    // ── T10: follow-CA — the display reads the SAME resolution as the audio ────
+    // (CC_PROMPT_east_spread_followCA_display_bug_START, Rodney's final architecture.)
+    // The scenario: East, spread target = FOLLOW CA, v2 sourced from v3 (the repro).
+    // The convergence is sampled AT THE STEP BOUNDARY (pub == live — the published
+    // state): the display accessor's value EQUALS the audio-path resolve for the same
+    // inputs, in BOTH modes. The between-step lead (display ahead of the latched
+    // engine) is correct and NOT tested against. Anchor mode is pinned to the OLD
+    // formula bit-exactly (the regression guard). RED on the current tree: the
+    // accessor's applyAnchorV1Only ignores spreadTargetMode → follow-CA diverges.
+    TEST("T10 FOLLOW-CA: display==audio AT THE STEP (both modes) — v2←v3: spread 0 = v2's OWN (pre-remap), spread→+1 = the CA SOURCE's material, NEVER V1; anchor mode bit-identical to the old formula", {
+        SequencerEngine se;
+        fillSlewedGolden(se.pe);              // distinct per-voice rows; pub == slewed
+        PatternEngine& pe = se.pe;
+        const int S = 5;
+
+        // The CA pin on MEL: v2 (voiceSlot 1) sourced from v3 (voiceSlot 2). The remap
+        // puts v3's material into v2's row; preRemap keeps v2's TRUE original. Everyone
+        // else's pre-remap == their own (no pin). Then re-publish (pub[1] = v3's).
+        float v2own[16], v1val = pe.pubSlewedPolyMelody[0][S];
+        for (int s2 = 0; s2 < 16; ++s2) {
+            for (int v = 0; v < 16; ++v) pe.preRemapSlewedMelody[v][s2] = pe.slewedMelody[v][s2];
+            v2own[s2] = pe.slewedMelody[1][s2];
+            pe.slewedMelody[1][s2] = pe.slewedMelody[2][s2];   // the remap (v2's row = v3's)
+        }
+        pe.publishSlewedMelody();
+        const float v3mat = pe.pubSlewedPolyMelody[2][S];      // the CA source's material
+        EXPECTF(v2own[S] != v3mat && v3mat != v1val && v2own[S] != v1val,
+                "the golden fill must keep the three endpoints distinct (own=%.4g src=%.4g v1=%.4g)",
+                (double)v2own[S], (double)v3mat, (double)v1val);
+
+        // ── follow-CA mode ──────────────────────────────────────────────────────
+        pe.spreadTargetMode[MEL] = 1;
+        const float sp = 0.8f;
+        se.pe.cachedPolySpread[1][MEL] = sp;   // the Owner amount for v2 (voiceSlot 1)
+        se.spreadERef(0, MEL) = sp;            // the Owner amount for V1
+
+        // CONTRACT: spread 0 → v2's OWN (its pre-remap — NOT v3's, NOT V1's).
+        se.pe.cachedPolySpread[1][MEL] = 0.f;
+        const float at0 = se.effectiveProbability(dotModular::VoiceResolver::slot(1 + 1), dotModular::LaneId{MEL}, S, Lens::Owner);
+        EXPECTF(at0 == v2own[S],
+                "spread 0 must show v2's OWN (pre-remap) value — got %.9g, want %.9g (the CA-remapped base collapse)",
+                (double)at0, (double)v2own[S]);
+
+        // CONTRACT: spread→+1 → the CA SOURCE's material, and NEVER V1's.
+        se.pe.cachedPolySpread[1][MEL] = 0.95f;
+        const float at1 = se.effectiveProbability(dotModular::VoiceResolver::slot(1 + 1), dotModular::LaneId{MEL}, S, Lens::Owner);
+        EXPECTF(std::fabs(at1 - v3mat) < std::fabs(at1 - v1val),
+                "spread→+1 must converge to the CA SOURCE (%.4g), not V1 (%.4g) — got %.4g",
+                (double)v3mat, (double)v1val, (double)at1);
+        EXPECTF(at1 != v1val, "the follow-CA display must NEVER show V1's value at full spread");
+
+        // CONVERGENCE (at the step boundary, pub == live): the display accessor EQUALS
+        // the audio-path resolve for the same inputs — poly (v2) AND mono (V1) — at a
+        // mid spread and at 0.
+        for (float s2 : {0.f, -0.6f, 0.35f, 0.8f}) {
+            se.pe.cachedPolySpread[1][MEL] = s2;
+            se.spreadERef(0, MEL) = s2;
+            const float dispPoly = se.effectiveProbability(dotModular::VoiceResolver::slot(1 + 1), dotModular::LaneId{MEL}, S, Lens::Owner);
+            const float audioPoly = redDot::SpreadInterp::applyPoly(pe, MEL, 1, S, s2);
+            EXPECTF(dispPoly == audioPoly,
+                    "follow-CA poly divergence (sp=%.2f): display %.9g vs audio %.9g — the accessor is not reading the same resolution",
+                    (double)s2, (double)dispPoly, (double)audioPoly);
+            const float dispMono = se.effectiveProbability(dotModular::VoiceResolver::mono(), dotModular::LaneId{MEL}, S, Lens::Owner);
+            const float audioMono = redDot::SpreadInterp::applyMono(pe, MEL, S, s2);
+            EXPECTF(dispMono == audioMono,
+                    "follow-CA mono divergence (sp=%.2f): display %.9g vs audio %.9g",
+                    (double)s2, (double)dispMono, (double)audioMono);
+        }
+
+        // ── anchor mode: the regression guard — bit-identical to the OLD formula ──
+        pe.spreadTargetMode[MEL] = 0;
+        for (float s2 : {0.f, -0.45f, 0.7f}) {
+            se.pe.cachedPolySpread[1][MEL] = s2;
+            const float base = redDot::SpreadInterp::polySlewedPub(pe, MEL, 1, S);
+            const float want = redDot::SpreadInterp::applyAnchorV1Only(pe, MEL, S, base, s2);
+            const float got  = se.effectiveProbability(dotModular::VoiceResolver::slot(1 + 1), dotModular::LaneId{MEL}, S, Lens::Owner);
+            EXPECTF(got == want,
+                    "anchor mode drifted (sp=%.2f): %.9g vs the old formula %.9g — must be bit-identical",
+                    (double)s2, (double)got, (double)want);
+        }
+    });
+
     std::cout << std::string(70, '=') << "\n" << s_pass << " passed, " << s_fail << " failed\n";
     return s_fail == 0 ? 0 : 1;
 }

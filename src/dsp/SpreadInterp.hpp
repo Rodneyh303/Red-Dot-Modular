@@ -21,6 +21,7 @@
 #define REDDOT_SPREAD_ASSERT(cond, msg) ((void)0)
 #endif
 #include "engines/PatternEngine.hpp"
+#include "SandsModifierResolver.hpp"   // resolveFollowCaSpread — the ONE follow-CA/anchor decision (the fifth rider)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SpreadInterp — the SINGLE definition of spread interpolation, shared by the
@@ -170,19 +171,27 @@ struct SpreadInterp {
     //
     // spreadAmount == 0 → return original exactly (bit-identity at spread 0).
     static float interpolate(float original, float targetValue, float spreadAmount) {
-        if (spreadAmount == 0.0f) return original;
-        if (spreadAmount > 0.0f && targetValue == original) return original;  // V1 self-target no-op
-        return (float)redDot::copula::mix2((double)original, (double)targetValue, (double)spreadAmount);
+        // ONE definition: the primitive lives in the resolver (spreadMixEndpoints —
+        // the fifth rider); this delegate keeps the SpreadInterp entry for the
+        // existing callers. Bit-identical (same expression, moved verbatim).
+        return redDot::spreadMixEndpoints(original, targetValue, spreadAmount);
     }
 
-    // DISPLAY-ONLY entry point (anchor-V1 target, caller supplies original). Used by
-    // SpreadManager and macroOwnProbability for visual interpolation. Named explicitly
-    // to prevent accidental use on the audio path where Follow-CA mode requires
-    // applyMono/applyPoly (which resolve the target from the CA source).
+    // ANCHOR-V1-ONLY twin (caller supplies original; target = V1's pub draw).
+    // CONTRACT (east-spread follow-CA C2 audit): this entry HARDCODES the anchor
+    // composition — it ignores pe.spreadTargetMode, so on a FOLLOW-CA lane it
+    // diverges from the audio path. The ONE remaining caller is
+    // SpreadManager::getInterpolatedValue, a TEST-ONLY oracle (the uniformity +
+    // voice-convention addressing pins); production display reads
+    // effectiveProbability, which resolves through redDot::resolveFollowCaSpread
+    // (mode-aware) exactly like the audio path. (The old "macroOwnProbability"
+    // caller was deleted — CC_PROMPT_UI_TO_RESOLVER_SPEC step 2.) Do NOT wire
+    // this into anything that can display a follow-CA lane — that reintroduces
+    // display != audio.
     static float applyAnchorV1Only(const PatternEngine& pe, int lane, int step,
                                    float original, float spreadAmount) {
-        // DISPLAY-ONLY: the target comes from the PUBLISHED snapshot, not the live
-        // slewed* (the live read here was the V16 flicker — see monoSlewedPub).
+        // Pub-snapshot target, not the live slewed* (the live read here was the
+        // V16 flicker — see monoSlewedPub).
         return interpolate(original, monoSlewedPub(pe, lane, step), spreadAmount);
     }
 
@@ -223,7 +232,16 @@ struct SpreadInterp {
         // knob a silent no-op — the bug that bit three times. Assert loudly in debug builds.
         REDDOT_SPREAD_ASSERT(!(followCA && spreadAmount != 0.0f && v1caSrc(pe, lane) != 0 && own == t),
                "follow-CA mono spread: own==target (pre-remap collapsed) — knob would be a silent no-op");
-        return interpolate(own, t, spreadAmount);
+        // FOLLOW-CA (the fifth rider): the AUDIO view of the ONE decision — the
+        // endpoints come from the LIVE buffers (engine thread, the writer's own
+        // thread); the display fills the same entry from the PUB snapshots.
+        return redDot::resolveFollowCaSpread({
+            .mode = pe.spreadTargetMode[lane],
+            .ownAnchor = t,
+            .ownPreRemap = own,
+            .targetV1 = t,
+            .targetPostRemap = t,
+            .amount = spreadAmount });
     }
 
     // Poly path — reads the mode from pe.spreadTargetMode[lane], so the caller
@@ -232,13 +250,26 @@ struct SpreadInterp {
     //   Follow CA:  own = polyPreRemap (voice's pre-remap draw), target = polySlewed
     //               (voice's post-remap = src[v]'s material, already in the poly buffer).
     static float applyPoly(const PatternEngine& pe, int lane, int voice, int step, float spreadAmount) {
-        bool followCA = (pe.spreadTargetMode[lane] == 1);
-        float own = followCA ? polyPreRemap(pe, lane, voice, step) : polySlewed(pe, lane, voice, step);
-        float t = followCA ? polySlewed(pe, lane, voice, step) : monoSlewed(pe, lane, step);
+        const bool followCA = (pe.spreadTargetMode[lane] == 1);
+        const float ownSlewed = polySlewed(pe, lane, voice, step);   // the voice's post-remap draw
+        const float monoS    = monoSlewed(pe, lane, step);           // V1's draw (the anchor)
+        const float own = followCA ? polyPreRemap(pe, lane, voice, step) : ownSlewed;
+        // SPREAD CONTRACT (same as applyMono): under follow-CA with the voice actually
+        // pinned (src != voice), own (pre-remap) MUST differ from ownSlewed (post-remap =
+        // the source's material, already in the poly buffer). The old local `t` is folded
+        // in — in follow-CA mode t WAS polySlewed, so the comparison is unchanged.
         REDDOT_SPREAD_ASSERT(!(followCA && spreadAmount != 0.0f
-                 && (int)pe.caSrcRow(voice, laneToStrand(lane)) != voice && own == t),
+                 && (int)pe.caSrcRow(voice, laneToStrand(lane)) != voice && own == ownSlewed),
                "follow-CA poly spread: own==target (pre-remap collapsed) — knob would be a silent no-op");
-        return interpolate(own, t, spreadAmount);
+        // FOLLOW-CA (the fifth rider): the AUDIO view of the ONE decision (LIVE reads) —
+        // each endpoint read exactly once; the initializers read like the spec.
+        return redDot::resolveFollowCaSpread({
+            .mode = pe.spreadTargetMode[lane],
+            .ownAnchor = ownSlewed,
+            .ownPreRemap = own,
+            .targetV1 = monoS,
+            .targetPostRemap = ownSlewed,
+            .amount = spreadAmount });
     }
 
     // Spread lane (0=REST,1=MEL,2=OCT,3=ACC,4=QMIX) → engine strand, for the poly assertion's

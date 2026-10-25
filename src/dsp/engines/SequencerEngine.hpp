@@ -861,10 +861,24 @@ struct SequencerEngine {
         const float sp = (lens == ProbLens::MacroOwn)
             ? macroOwnSpread[l]
             : ((v == 0) ? spreadE(0, l) : pe.cachedPolySpread[v][l]);
+        // FOLLOW-CA (CC_PROMPT_east_spread_followCA_display_bug_START, Rodney's final
+        // architecture): the DISPLAY view of the ONE decision — the SAME resolver
+        // entry the audio path reads (redDot::resolveFollowCaSpread), with the
+        // endpoints from the PUB snapshots (the V16-flicker rule — the UI never reads
+        // the live slewed*) + the pin-gated live preRemap (the approved µs,
+        // self-healing window; no new pub arrays). The old unconditional
+        // applyAnchorV1Only was the bug: follow-CA bars anchored to V1 (not the CA
+        // source) and showed the CA-remapped base as the spread-0 "own".
+        const float monoPub = redDot::SpreadInterp::monoSlewedPub(pe, l, step & 0x0F);
         const float base = redDot::SpreadInterp::polySlewedPub(pe, l, v, step & 0x0F);
-        const float disp = (v == 0)
-            ? redDot::SpreadInterp::interpolate(base, base, sp)                    // anchor self-target
-            : redDot::SpreadInterp::applyAnchorV1Only(pe, l, step & 0x0F, base, sp);
+        const float disp = redDot::resolveFollowCaSpread({
+            .mode = pe.spreadTargetMode[l],
+            .ownAnchor = (v == 0) ? monoPub : base,
+            .ownPreRemap = (v == 0) ? redDot::SpreadInterp::monoPreRemap(pe, l, step & 0x0F)
+                                    : redDot::SpreadInterp::polyPreRemap(pe, l, v, step & 0x0F),
+            .targetV1 = monoPub,
+            .targetPostRemap = (v == 0) ? monoPub : base,
+            .amount = sp });
         // Warp display composition (CC_PROMPT_05 uniform): the same per-(voice,lane)
         // mixture the engine consumes, keyed to the sampled voice. MacroOwn composes
         // with Macro's GLOBAL cell (the Macro-own trace above) — never the
