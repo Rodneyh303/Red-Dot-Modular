@@ -3,6 +3,7 @@
 #include <cmath>     // std::lround — resolveDirItem's round+cast (the moved direction algebra)
 #include <concepts>
 
+#include "GaussianCopula.hpp"   // redDot::copula::mix2 — the polarity primitive (leaf; no cycles)
 #include "WarpF.hpp"   // dotModular::WarpF — WarpPolicy's curve member. The include pair
                        // is a GUARD-SAFE CYCLE: WarpF.hpp includes THIS header as its
                        // last line (see the WarpBank section at the bottom of this file
@@ -200,6 +201,47 @@ struct SpreadPolicy {
 // The concept must BITE: spread is a member (an incomplete policy is a build
 // error at its declaration — this assert fails loudly if the contract drifts).
 static_assert(SandsModifierPolicy<SpreadPolicy>);
+
+// ── FOLLOW-CA TARGET SELECTION (the fifth rider — Rodney's final architecture,
+//    CC_PROMPT_east_spread_followCA_display_bug_START) ─────────────────────────
+// CA-spread target selection was the GAP in the resolver scope: it lived in
+// SpreadInterp::applyMono/applyPoly (the AUDIO view) and was never taught to the
+// DISPLAY accessor (effectiveProbability) — which hardcoded the V1-anchor twin and
+// drifted (the East follow-CA bars bug: spread→+1 showed V1, spread-0 showed the
+// CA-remapped base). ONE decision, two read-rates: BOTH views call THIS entry —
+// the audio fills the endpoints from the LIVE slewed*, the display from the PUB
+// snapshots (+ the pin-gated live preRemap — a µs, self-healing window; no new
+// pub arrays). Convergence-at-step is STRUCTURAL: same function, same inputs at
+// the step boundary → same value — the bars CANNOT show something the engine
+// won't read. (This rider does NOT fit the delegation skeleton — it selects
+// endpoints per voice, it does not delegate Macro↔East — so it is a sibling
+// resolver entry, not a SandsModifierPolicy.)
+struct FollowCaSpread {
+    uint8_t mode = 0;               // pe.spreadTargetMode[lane]: 0=anchor V1, 1=follow CA
+    float   ownAnchor = 0.f;        // mode 0: the voice's own (post-remap) value
+    float   ownPreRemap = 0.f;      // mode 1: the voice's PRE-remap value (its TRUE own)
+    float   targetV1 = 0.f;         // mode 0: V1's value (the anchor)
+    float   targetPostRemap = 0.f;  // mode 1: the voice's post-remap value (the CA source's material)
+    float   amount = 0.f;           // the bipolar spread amount
+};
+
+// The polarity primitive — ONE definition (was SpreadInterp::interpolate's body;
+// interpolate() delegates here). spread==0 → own exactly (bit-identity at zero);
+// positive self-target → a no-op (blending a value with itself in normal space
+// would concentrate it); else the copula mix (negative → toward the complement).
+inline float spreadMixEndpoints(float own, float target, float amount) {
+    if (amount == 0.0f) return own;
+    if (amount > 0.0f && target == own) return own;   // V1 self-target no-op
+    return (float)redDot::copula::mix2((double)own, (double)target, (double)amount);
+}
+
+// THE follow-CA/anchor endpoint-selection decision. Pure; rate-agnostic.
+inline float resolveFollowCaSpread(const FollowCaSpread& in) {
+    const bool followCA = (in.mode == 1);
+    const float own = followCA ? in.ownPreRemap    : in.ownAnchor;
+    const float tgt = followCA ? in.targetPostRemap : in.targetV1;
+    return spreadMixEndpoints(own, tgt, in.amount);
+}
 
 // ── WARP, the second policy — the (curve, depth) pair the bank mixes ──────────
 // Value is WarpCell{f, w}: the resolved curve + depth whose branchless mix
