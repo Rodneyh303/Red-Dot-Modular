@@ -211,3 +211,34 @@ FOLDS into the authorities at the right stages: routing = CA; the gate CLAMP = t
 (decision manager). NON-BUG NOTE: two FOLLOW-CA voices with DIFFERENT warps legitimately show DIFFERENT
 bars (same latent, own marginal) — the warp-marginal, NOT the follow-CA display bug we just fixed; the
 resolver includes per-voice warp so the bars correctly differ.
+
+────────────────────────────────────────────────────────────────────────────────
+## ENVELOPE PLANE CONSTRAINT — same functional acyclic forest as CA (Rodney)
+
+CA constraint: each DESTINATION ← exactly ONE source; one SOURCE → MANY destinations = a FUNCTION from
+destinations to sources, which (with acyclicity) is a FOREST (each node one parent, parents many children,
+no cycles). The envelope (containment) plane has the SAME constraint — and that identity is WHY it fits as
+a fourth CA plane (not merely "similar" — the same constraint SHAPE; CA's machinery enforces all four
+planes uniformly):
+- ONE source per destination: "I'm nested in ONE envelope." ✓
+- MANY destinations per source: one voice's envelope contains many inner voices. ✓
+- NESTING via CHAINING: v2 ⊂ v3 ⊂ v1 holds transitively (each level clamps before the next reads) — covers
+  the nested-depth case. ✓
+- NO CYCLES, enforced PER-PLANE: the envelope tree is independently acyclic; it and the rhythm/mel/qmix
+  trees can have DIFFERENT shapes with no cross-plane concern (independent relations). CA already does
+  per-plane cycle checks for its three independent planes → the 4th inherits the same. ✓
+
+### DELIBERATELY EXCLUDED — multi-parent containment (gate-intersection)
+Containment has a coherent multi-source meaning correlation LACKS: contained in A AND B = sound only where
+BOTH gates open (intersection). But keep the plane SINGLE-source anyway:
+1. STRUCTURAL UNIFORMITY — single-source keeps the envelope plane the SAME constraint (forest) as the
+   other three; multi-parent would make it a DAG, structurally different, breaking the uniform CA/UI
+   handling. Exception cost > gain.
+2. CHAINING already gives nesting DEPTH (hierarchical intersection: nest in A, A nested in B → in A∩B
+   transitively). The only thing lost is NON-hierarchical multi-parent intersection (A,B unrelated, both
+   constrain you) — niche.
+3. If that niche ever matters it is a SEPARATE later extension (multi-parent = DAG), explicitly flagged as
+   breaking forest uniformity — NOT the default.
+So: envelope plane = single-source-per-destination, many-dest-per-source, nesting via chaining, no cycles
+(per-plane) — identical to CA's correlation planes. Multi-parent gate-intersection excluded by choice to
+preserve uniformity; deferred niche.
