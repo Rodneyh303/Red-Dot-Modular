@@ -17,9 +17,12 @@
 #include "RateManager.hpp"
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 static int s_pass = 0, s_fail = 0;
 #define TEST(desc, ...) do { \
@@ -247,6 +250,69 @@ int main() {
         // The Phase/Step tiers are NOT touched by tickClocks (independent clocks):
         EXPECT(!rm.ticked(redDot::Rate::Step));
         EXPECT(!rm.ticked(redDot::Rate::PPQN));
+    });
+
+    TEST("R7 STRUCTURAL grep-gate: no raw sequencing-rate primitives outside the authority (FATAL by default; RATE_MANAGER_STRICT=0 = local debug hatch)", {
+        // The enforcement backstop (deletion is the braces; this is the belt — the
+        // module-lookup L5 precedent). Forbidden, outside the allow-listed sources:
+        //   1. "ClockDivider" in Monsoon.hpp + dsp/engines/ — the in-scope raw divider
+        //      MEMBERS (deleted in S7; a deleted member cannot be .process()'d).
+        //   2. "gridPulse" anywhere — the S3a deletion (the PPQN tier owns it).
+        //   3. ".pulseEdge" / ".sixteenthEdge" / ".quarterEdge" outside the SOURCE
+        //      engines (ClockEngine/PhaseEngine compute them) and Monsoon.cpp (the ONE
+        //      tier-feed site: advance(Rate::PPQN, <source edge>)) and this test.
+        //   4. "% controlRate" anywhere — a hand-rolled control-rate modulo.
+        // ALLOWED by design (documented dispositions): the expander wrapper FEEDS
+        // (gateModDiv/probOutDiv on the two Sands visuals — the /8-exact detector
+        // ruling + the /32 recompute feeds; their .process() calls feed manager tiers).
+        static const char* const edgeAllowFiles[] = {
+            "src/dsp/engines/ClockEngine.hpp", "src/dsp/engines/ClockEngine.cpp",
+            "src/dsp/engines/PhaseEngine.hpp", "src/dsp/engines/PhaseEngine.cpp",
+            "src/Monsoon.cpp",                // the tier feed (advance's source argument)
+            "test/test_rate_manager.cpp",     // this gate
+        };
+        auto isEdgeAllowed = [&](const std::string& rel) {
+            for (const char* a : edgeAllowFiles) if (rel == a) return true;
+            return false;
+        };
+        struct Residual { std::string file; int line; };
+        std::vector<Residual> residuals;
+        for (const auto& entry : std::filesystem::recursive_directory_iterator("src")) {
+            if (!entry.is_regular_file()) continue;
+            const std::string ext = entry.path().extension().string();
+            if (ext != ".cpp" && ext != ".hpp" && ext != ".ipp") continue;
+            const std::string rel = std::filesystem::relative(entry.path()).generic_string();
+            std::ifstream f(entry.path());
+            std::string line;
+            int lineNo = 0;
+            while (std::getline(f, line)) {
+                ++lineNo;
+                if (line.find("RATE-MANAGER-GATE") != std::string::npos) continue;  // the ack marker
+                if ((rel == "src/Monsoon.hpp"
+                     || rel.rfind("src/dsp/engines/", 0) == 0)
+                    && line.find("ClockDivider") != std::string::npos)
+                    residuals.push_back({rel, lineNo});
+                if (line.find("gridPulse") != std::string::npos)
+                    residuals.push_back({rel, lineNo});
+                if (!isEdgeAllowed(rel)
+                    && (line.find(".pulseEdge") != std::string::npos
+                        || line.find(".sixteenthEdge") != std::string::npos
+                        || line.find(".quarterEdge") != std::string::npos))
+                    residuals.push_back({rel, lineNo});
+                if (line.find("% controlRate") != std::string::npos)
+                    residuals.push_back({rel, lineNo});
+            }
+        }
+        std::cout << "      residuals: " << residuals.size() << " raw rate-primitive line(s) outside the authority"
+                  << " (expect 0 — deletion is the braces, this gate is the belt)" << std::endl;
+        for (size_t i = 0; i < residuals.size() && i < 12; ++i)
+            std::cout << "        " << residuals[i].file << ":" << residuals[i].line << "\n";
+        // FATAL BY DEFAULT (the module-lookup L5 precedent): RATE_MANAGER_STRICT=0 is a
+        // LOCAL debug hatch only (never CI).
+        const char* relax = std::getenv("RATE_MANAGER_STRICT");
+        const bool enforce = !(relax && relax[0] == '0');
+        if (enforce)
+            EXPECTF(residuals.empty(), "%zu raw rate-primitive sites remain outside the authority", residuals.size());
     });
 
     std::cout << std::string(74, '=') << "\n" << s_pass << " passed, " << s_fail << " failed\n";

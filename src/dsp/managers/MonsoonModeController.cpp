@@ -244,7 +244,7 @@ void ModeController::postExecute_(const StepResult& result) {
 // ──── Mode A: Clock-Driven Sequencing ───────────────────────────────────────
 
 // Mode E: phase-driven. The dispatch (Monsoon.cpp) only calls this when the Step tier
-// ticked (fed from phase.sixteenthEdge), so a 1/16 step is due now. Reuses the Mode A
+// ticked (fed from the phase sixteenth edge), so a 1/16 step is due now. Reuses the Mode A
 // decision path exactly (clock-style stepping) — the only difference is the tier feed's
 // SOURCE is the phase ramp, not the clock. (The old synthesized phaseView — a ClockEngine
 // with sixteenthEdge=true — died with the S3b tier conversion: executeModeA asks the
@@ -267,7 +267,7 @@ bool ModeController::executeModeE() {
 
 bool ModeController::executeModeA() {
     // RATE MANAGER (S3b): the Step tier — the same condition the dispatch gated on
-    // (the tier is fed by clock.sixteenthEdge in this mode); no raw clock re-read.
+    // (the tier is fed by the clock sixteenth edge in this mode); no raw clock re-read.
     if (rateManager.ticked(redDot::Rate::Step)) {
         // Phase A: accent assembled in updatePatternInput() → voices[0].accentProb.
         // Ensure pattern input is fresh

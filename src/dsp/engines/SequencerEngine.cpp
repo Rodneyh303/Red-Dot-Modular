@@ -749,7 +749,7 @@ StepResult SequencerEngine::executeModeA(const redDot::RateManager& rm, float no
     resetActivatedPolyVoices_();  // Phase B: reset newly-activated voices' stale gs state
     StepResult result;
     // RATE MANAGER (S3b): the Step tier — the dispatch fed it from the same sixteenth
-    // edge (clock or phase mode), so this is the old clock.sixteenthEdge check without
+    // edge (clock or phase mode), so this is the old raw sixteenth-edge check without
     // the engine re-reading a clock object. Level-within-sample by design: the Mode E
     // jump replay calls this once per crossed 1/16, all legitimately stepping.
     if (!rm.ticked(redDot::Rate::Step) || muted) return result;
