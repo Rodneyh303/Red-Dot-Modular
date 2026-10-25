@@ -1,10 +1,28 @@
 # CC PROMPT — Compute Rate Manager: the SINGLE rate authority (centralize ALL sequencing rate computation)
 
-Implements RATE_MANAGER_AND_RESOLVER_UI_DESIGN.md. Prereqs MET (trunk d4637a9): resolver, strong types,
-SweepSig all merged. REQUIREMENT (Rodney): this is NOT a partial framework — CENTRALIZE ALL sequencing
+Implements RATE_MANAGER_AND_RESOLVER_UI_DESIGN.md. Prereqs MET: resolver, strong types, SweepSig, AND the module-lookup authority all merged
+(so adjacency/lookup is already event-driven + out of scope here — this prompt is PURE rate-gated work). REQUIREMENT (Rodney): this is NOT a partial framework — CENTRALIZE ALL sequencing
 rate computation into one authority, and make bypassing it STRUCTURALLY IMPOSSIBLE (ideally a compile
 error). A half-migration (manager + leftover raw dividers) is WORSE than none — it's two authorities, the
 exact split this kills. Branch off lane-expander-refactor.
+
+## ★ START HERE — STAGE 0: the Macro-only CPU fix (prove the framework on the measured 3%)
+Rodney: start with the Macro CPU issue. Before the full migration, land the framework + the FIRST producer
+= the measured Macro-only 3%, so the manager proves itself on a real win immediately.
+MEASURED (MONSOON_PROFILE, both configs): Macro-only 3% vs East+Macro 1% is ENTIRELY the "sync" section
+(controlDiv sync 515-578ns Macro-only vs 33ns East+Macro). ROOT CAUSE: MonsoonExpanderManager::sync, the
+Macro-drives-poly population block (polyLenERef/polyOffERef/polyRotERef + spread taps, v=1..effPolyVoices
+× 7 lanes) runs EVERY control cycle UNCONDITIONALLY when Macro is present. East-absent → Macro owns the
+whole grid → full 15×7 re-population every cycle, IDENTICAL values ~1500×/sec = the ~500ns. (The
+findMonsoonEitherSide walk there is already memoized via lookupMonsoon post module-lookup-authority — the
+remaining cost is the POPULATION, not the walk.)
+STAGE 0 = RateManager + the Control tier (driven by the existing controlDivider edge, behaviour-identical
+wrapper) + make the sync-population a Control-rate PRODUCER with an input fingerprint (shadow macroBase
+[7][*], effPolyVoices, the spread params the taps read, macro/east presence; memcmp each cycle; SKIP the
+15×7 population when unchanged). Verify: MONSOON_PROFILE sync Macro-only == East+Macro; Rack both ~1%;
+populated arrays BIT-IDENTICAL (perturb an input → re-runs; static → skips). This is the SweepSig pattern
+as the first declareProducer. Land Stage 0 green before the rest.
+
 
 ## SCOPE — the SEQUENCING rate authority (what "all rate computation" means here)
 IN SCOPE (the timing that computes the music — all must route through the manager, raw primitives DELETED):
