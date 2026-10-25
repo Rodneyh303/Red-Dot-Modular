@@ -38,6 +38,7 @@ using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be co
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
 #include "ui/IntertropicalPairing.hpp"   // assignPairIdT<Monsoon> / resolveFollowedT (host identity + shared-CA)
+#include "ui/ModuleLookup.hpp"   // THE module-lookup authority: the topology epoch (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "dsp/managers/MonsoonConfigurator.hpp"
 #include "dsp/engines/PatternEngine.hpp"
 #include "dsp/gates/GateState.hpp"
@@ -142,7 +143,7 @@ void Monsoon::updateExpanderPointers() {
             }
         }
         if (pairId <= 0 || pairId > kMaxParticipatingMonsoons || clash) {
-            int cand = redDot::assignPairIdT<Monsoon>(this);   // lowest 1..N free
+            int cand = redDot::assignPairIdT<Monsoon>(this);   // lowest 1..N free  — LOOKUP-AUTHORITY (the event-driven identity settle: updateExpanderPointers runs on onExpanderChange / the epoch guard)
             pairId = (cand <= kMaxParticipatingMonsoons) ? cand : 0;   // >8 → unparticipating (no colour)
         }
         if (pairId > 0) pairChecked = true;   // latch only on success; a capped-out Monsoon keeps retrying
@@ -153,7 +154,7 @@ void Monsoon::updateExpanderPointers() {
     // from the controlDivider block), so the rack-wide scan in resolveFollowedT is not per-sample.
     if (followCA > 0) {
         expanderManager.cachedChangeAlleyV2 =
-            redDot::resolveFollowedT<MonsoonChangeAlleyV2>(this, followCA);  // nullptr if no match present
+            redDot::resolveFollowedT<MonsoonChangeAlleyV2>(this, followCA);  // nullptr if no match present  — LOOKUP-AUTHORITY (event-driven)
     }
 
     // ── Tuning-source resolution (microtonal Phase 1 Sikit + Phase 2 Micro-12) ───────────────────
@@ -693,6 +694,11 @@ void Monsoon::onPhraseBoundary_() {
 // and is reached by walking one step further.  If no DNA is present,
 // PolyVoice may attach directly to Monsoon's right.
 void Monsoon::onExpanderChange(const ExpanderChangeEvent& e) {
+    // THE LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event is
+    // the sole trigger — it bumps the global topology epoch (every consumer's memo
+    // re-resolves on its next read) AND refreshes Monsoon's own claimed-expander
+    // publication.
+    redDot::bumpTopologyEpoch();
     updateExpanderPointers();
 }
 
@@ -1405,7 +1411,12 @@ void Monsoon::process(const ProcessArgs& args) {
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
     if (controlDivider.process()) {
         MONSOON_PROF_BEGIN(ctrl_raf);   // rafExp: expander-scan + Raffles gate edge loop
-        updateExpanderPointers();
+        // LOOKUP AUTHORITY: the expander scan re-runs ONLY when the topology epoch
+        // moved (an onExpanderChange fired somewhere — the multi-hop fan-out; the
+        // handler already resolved eagerly). The old control-rate poll re-walked
+        // every tick even on a static rack.
+        if (redDot::lookupEpochStale(lookupEpoch_))
+            updateExpanderPointers();
 
         if (expanderManager.cachedRafflesExpander) {
             rack::Module* cw = expanderManager.cachedRafflesExpander;

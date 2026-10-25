@@ -6,6 +6,7 @@
 #include "ui/VisualExpanderHelpers.hpp"
 #include "ui/StoreBound.hpp"   // redDot::StoreKnob (de-parammed controls)   // redDot::findMonsoonEitherSide (MACRO field accessors)
 #include "ui/SweepSigGate.hpp"   // RESTORED: SweepSig — the prob-out sweep's input-change gate (CC_PROMPT_restore_sweepsig_gate_START)
+#include "ui/ModuleLookup.hpp"   // THE module-lookup authority: lookupMonsoon (event-driven adjacency; the monLookupDiv poll is deleted)
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -226,7 +227,10 @@ struct StraitsSandsMacroVisual : Module {
         // Macro has left the host/DAW param list entirely -- the point of the de-param.
         config(0, StraitsMacroVisualIds::NUM_INPUTS,
                StraitsMacroVisualIds::NUM_OUTPUTS, 0);
-        monLookupDiv.setDivision(8);   // topology changes are control-rate
+        // (the monLookupDiv /8 topology poll is DELETED — CC_PROMPT_MODULE_LOOKUP_
+        //  AUTHORITY_START: adjacency is event-driven now, onExpanderChange bumps the
+        //  topology epoch and lookupMonsoon's memo re-resolves; a static rack walks
+        //  ZERO times. See ui/ModuleLookup.hpp.)
         // RESTORED (CC_PROMPT_restore_sweepsig_gate_START): the /32 tick the prob-CV
         // sweep's input-change gate runs on. 70dd837 deleted it for a step-cache that
         // resolved on step edges unconditionally — Rodney's bisect: Macro-only 0.4% →
@@ -282,12 +286,19 @@ struct StraitsSandsMacroVisual : Module {
         }
     }
 
-    void process(const ProcessArgs&) override;   // defined in .cpp (needs findMonsoonEitherSide)
+    void process(const ProcessArgs&) override;   // defined in .cpp (adjacency via redDot::lookupMonsoon)
+    // THE LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event bumps
+    // the global topology epoch — this module's adjacency (the lookupMonsoon memo)
+    // re-resolves on the next read, from BOTH threads (engine process + widget
+    // lambdas). The old /8 divider poll is deleted; a static rack walks zero times.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+    }
 
     // Gate edge detection state for dir_mod inputs (mono, 1 channel per jack).
-    // PERF: chain walk is control-rate work (Rodney audit item 3).
-    Monsoon* cachedMon_ = nullptr;
-    rack::dsp::ClockDivider monLookupDiv;
+    // LOOKUP AUTHORITY: cachedMon_ + the /8 monLookupDiv poll are DELETED — the host
+    // resolves through redDot::lookupMonsoon (the memoized, event-driven authority);
+    // the dir-mod edge scan reads the same accessor.
     rack::dsp::ClockDivider probOutDiv;   // the /32 tick the SweepSig gate runs on (RESTORED — 70dd837 deleted it with the gate; Rodney's bisect put the 0.4% here)
     bool dirModPrev[dotModular::SandsGrid::POLY_LANES] = {};
 
