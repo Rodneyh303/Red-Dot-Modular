@@ -207,8 +207,10 @@ namespace StraitsMacroVisualIds {
         if (!macro || engineLane < 0 || engineLane >= 7) return false;
         bool sprCvLive = macro->inputs[cvId(engineLane, 3)].isConnected();
         if (delegated) return sprCvLive;
-        float send = (redDot::findMonsoonEitherSide(macro)
-            ? redDot::findMonsoonEitherSide(macro)->getMacroSend(sendSlot, engineLane, 3) : 0.f);
+        // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): ONE memoized resolve
+        // (was a DOUBLE raw walk — the host was chain-walked twice per call).
+        Monsoon* mon = redDot::lookupMonsoon(macro);
+        float send = mon ? mon->getMacroSend(sendSlot, engineLane, 3) : 0.f;
         return std::fabs(send) > 1e-4f && sprCvLive;
     }
     // P9b: PRE/POST tap params re-homed to this expander's namespace (TAP_START, above):
