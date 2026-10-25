@@ -116,8 +116,11 @@ Monsoon::Monsoon() {
         cvRouter = std::unique_ptr<CVRouter>(new CVRouter());
         outputGenerator = std::unique_ptr<OutputGenerator>(new OutputGenerator());
 
-        // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START, S0b): declare the Control producers
-        // ONCE — the Macro sync-population is the first (the measured Macro-only 3%).
+        // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START): declare the Control producers
+        // ONCE. ORDER IS LOAD-BEARING — dispatch runs producers in declaration order:
+        // publishGlobal FIRST (it writes the macroBase...), then the sync-population
+        // (the measured Macro-only 3% fix), which reads it.
+        dnaManager.declareRateProducers(rateManager, *this);
         expanderManager.declareRateProducers(rateManager, *this);
 
         // Initialize dividers

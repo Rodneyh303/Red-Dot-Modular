@@ -297,13 +297,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         return clamp(base + cv * att * (hi - lo), lo, hi);
     };
 
-    // ── Helper: apply macro CV offset at read site ────────────────────────
-    auto applyMacroCV = [&](float base, int lane, int param, float lo, float hi) -> float {
-        if (!macroVis || !macroVis->inputs[Macro::macroCvId(lane,param)].isConnected()) return base;
-        float cv  = macroVis->inputs[Macro::macroCvId(lane,param)].getVoltage() / 10.f;
-        float att = (gMon ? gMon->getGlobalAtten(lane, param) : 0.f);
-        return clamp(base + cv * att * (hi - lo), lo, hi);
-    };
+    // (applyMacroCV — the macro CV-offset read-site helper — moved VERBATIM into
+    //  publishGlobalProduce_ with its only caller, the RATE MANAGER S4 extraction.)
     // Macro SPREAD CV: bipolar, unit-scaled (cv*att over ±1) to match Mono's
     // applyMonoSprCV. The spread param is BIPOLAR ±1 → span (hi-lo) = 2. To make a
     // full-depth CV reach the full range from a centered base, multiply by the span
@@ -792,82 +787,21 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     }
 
     // ── Macro global LOR with CV (poly: per-lane, SAME for every voice) ────
-    // Macro publishes its OWN display data (macroBase / macroCVDelta / macroSendDelta /
+    // Macro publishes its OWN display data (macroBase / macroCVDelta / macroPre/PostDelta /
     // spreadEffective) whenever a Macro is present — this is what Sands Helix renders, and it must
     // work standalone (no Straits / no poly output). The output-application (blend into the poly
     // voices) is separately gated on macroDrivesOutput below. (Regression from the Straits refactor:
     // publishGlobal used to be gated on macroDrivesOutput, so with no Straits attached Sands Helix's
     // macroBase stayed zero and the module looked completely inert.)
+    // RATE MANAGER (S4): the publish itself — the publishGlobal lambda + its POLY_LANES
+    // loop — is now a Control-rate PRODUCER (publishGlobalProduce_ below, declared via
+    // declareRateProducers), dispatched at the sync position with a skip-on-unchanged
+    // input+produced-cells fingerprint. It runs BEFORE the sync-population producer
+    // (declaration order), which reads the macroBase it writes; every earlier reader in
+    // this function already read LAST tick's published values, so nothing changes for
+    // them. The standalone output-application block below stays INLINE (it is output
+    // application, not publish — and entangled with the warp-mirror refresh ordering).
     if (hasMacro && macroVis) {
-        auto publishGlobal = [&](int lane) {
-            // bases (knob, no CV)
-            float baseLen = gMon ? gMon->getGlobalLor(lane,0) : 0.f;
-            float baseOff = gMon ? gMon->getGlobalLor(lane,1) : 0.f;
-            float baseRot = gMon ? gMon->getGlobalLor(lane,2) : 0.f;
-            float baseSpr = gMon ? gMon->getGlobalSpread(lane) : 0.f;
-            // CV-applied (Macro's OWN value — true POST, drives Macro's own display).
-            float cvLen = applyMacroCV(baseLen, lane, 0, 1.f, 16.f);
-            float cvOff = applyMacroCV(baseOff, lane, 1, 0.f, 15.f);
-            float cvRot = applyMacroCV(baseRot, lane, 2, 0.f, 15.f);
-            // Effective macro global spread via the single authority. Macro publishing its own global
-            // has only its own CV (no East, no delegation, no macro-send-to-self), so only ownCv is
-            // set — SpreadResolver then yields clamp(base + ownCv·2), identical to applyMacroSprCV.
-            redDot::SpreadResolver::Inputs msin;
-            msin.base = baseSpr;
-            if (macroVis->inputs[Macro::macroCvId(lane,3)].isConnected()) {
-                msin.ownCv.connected   = true;
-                msin.ownCv.unitVoltage = macroVis->inputs[Macro::macroCvId(lane,3)].getVoltage() / 10.f;
-                msin.ownCv.atten       = (gMon ? gMon->getGlobalAtten(lane, 3) : 0.f);
-            }
-            float cvSpr = redDot::SpreadResolver::effective(msin);
-            // UI-to-resolver step 1: publish Macro's OWN effective spread to the ENGINE
-            // store — the MacroOwn lens's amount for SequencerEngine::
-            // effectiveProbability. Bit-identical to the module's old publish
-            // (clamp(macroBase[l][3] + macroPostDelta[l][3]): cvSpr IS that resolver
-            // output — base + (cv·att)·2, end-clamped, same expression order). The
-            // module's /32-gated publish is deleted with its sweep (step 3).
-            engine.macroOwnSpread[lane] = cvSpr;
-            // P9b PER-VOICE send-tap: the publish now carries BOTH endpoints of the pre/post
-            // lerp; each receiving VOICE selects via its own macroTap (the send is per-voice,
-            // so the tap is too — the old single globally-tapped macroSendDelta forced every
-            // voice onto one tap). pre = raw cv·(hi-lo) (tap=0); post = cv·att·(hi-lo)
-            // (tap=1, == the old tappedDelta at POST). macroSendDelta (still written below)
-            // dies once every reader migrates.
-            auto endpointDeltas = [&](int item, float lo, float hi, float& pre, float& post) {
-                pre = post = 0.f;
-                if (!macroVis || !macroVis->inputs[Macro::macroCvId(lane,item)].isConnected()) return;
-                const float cv  = macroVis->inputs[Macro::macroCvId(lane,item)].getVoltage() / 10.f;
-                const float att = (gMon ? gMon->getGlobalAtten(lane, item) : 0.f);
-                pre  = cv * (hi - lo);
-                post = cv * att * (hi - lo);
-            };
-            float preD[4], postD[4];
-            endpointDeltas(0, 1.f, 16.f, preD[0], postD[0]);
-            endpointDeltas(1, 0.f, 15.f, preD[1], postD[1]);
-            endpointDeltas(2, 0.f, 15.f, preD[2], postD[2]);
-            endpointDeltas(3, -1.f, 1.f,  preD[3], postD[3]);
-            for (int item = 0; item < 4; ++item) {
-                macroVis->macroPreDelta[lane][item]  = preD[item];
-                macroVis->macroPostDelta[lane][item] = postD[item];
-            }
-            // macroCVDelta = true POST delta (Macro's own display). The per-voice
-            // endpoints (preD/postD above) are what the sends carry now; the old single
-            // globally-tapped macroSendDelta is DELETED (every reader migrated).
-            // item 0=LEN 1=OFF 2=ROT 3=SPR.
-            macroVis->macroBase[lane][0] = baseLen;  macroVis->macroCVDelta[lane][0] = cvLen - baseLen;
-            macroVis->macroBase[lane][1] = baseOff;  macroVis->macroCVDelta[lane][1] = cvOff - baseOff;
-            macroVis->macroBase[lane][2] = baseRot;  macroVis->macroCVDelta[lane][2] = cvRot - baseRot;
-            macroVis->macroBase[lane][3] = baseSpr;  macroVis->macroCVDelta[lane][3] = cvSpr - baseSpr;
-            // spread display reads the CV-applied global spread (base+CV, no blend)
-            macroVis->spreadEffective[lane] = cvSpr;
-        };
-        // Publish EVERY poly lane's global LOR+spread, incl. QMIX (PL_QMIX=4). The manual unroll
-        // stopped at 3 (accent), so q-mix's macroBase[4] stayed zero → Macro's q-mix LOR knob and
-        // spread had no effect on the observed probability. Loop over POLY_LANES so it can't drop a
-        // lane again (matches the OUTPUT-application loops below at PL_LANES).
-        for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
-            publishGlobal(lane);   // unified PL_* order (0=MEL, 1=OCT, 2=QMIX, 3=REST, 4=ACC, 5=VAR, 6=LEG)
-
         // Output application: only when Macro actually drives real output voices (Straits attached
         // with poly active). When macroDrivesOutput, East's per-voice sync (runs after) combines
         // Macro's base+delta into each voice via the owner/blend send. When NOT — standalone Macro
@@ -967,6 +901,157 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     }
 
     // Note: Poly DNA windows handled in Monsoon::process controlDivider block.
+}
+
+// ── RATE MANAGER (S4): publishGlobal — the SECOND Control-rate producer ───────
+// The VERBATIM extraction of the publish loop (same writes, same order); the guard
+// is the reachability recomputed (hasMacro && macroVis). Declared BEFORE the
+// sync-population producer (Monsoon's ctor order) — dispatch is in-order and the
+// population reads the macroBase this publishes.
+void MonsoonSandsManager::publishGlobalProduce_(Monsoon& ownerMon) {
+    auto& expanderManager = ownerMon.expanderManager;
+    auto* macroVis = expanderManager.cachedMacroSandsVisual;
+    if (!macroVis) return;   // the reachability guard (hasMacro && macroVis)
+    // gMon — the store owner, recomputed exactly as processDNA's head resolves it
+    // (the memoized walk first, the owner back-pointer as the null-walk rescue; the
+    // produce only runs with macroVis present).
+    Monsoon* gMon = redDot::lookupMonsoon(macroVis);
+    if (!gMon && expanderManager.owner) gMon = expanderManager.owner;
+    // (applyMacroCV copied VERBATIM from processDNA's local helper — same reads: the
+    //  Macro CV jacks + gMon's global attens. Both are fingerprint fields below.)
+    auto applyMacroCV = [&](float base, int lane, int param, float lo, float hi) -> float {
+        if (!macroVis || !macroVis->inputs[Macro::macroCvId(lane,param)].isConnected()) return base;
+        float cv  = macroVis->inputs[Macro::macroCvId(lane,param)].getVoltage() / 10.f;
+        float att = (gMon ? gMon->getGlobalAtten(lane, param) : 0.f);
+        return clamp(base + cv * att * (hi - lo), lo, hi);
+    };
+    auto publishGlobal = [&](int lane) {
+        // bases (knob, no CV)
+        float baseLen = gMon ? gMon->getGlobalLor(lane,0) : 0.f;
+        float baseOff = gMon ? gMon->getGlobalLor(lane,1) : 0.f;
+        float baseRot = gMon ? gMon->getGlobalLor(lane,2) : 0.f;
+        float baseSpr = gMon ? gMon->getGlobalSpread(lane) : 0.f;
+        // CV-applied (Macro's OWN value — true POST, drives Macro's own display).
+        float cvLen = applyMacroCV(baseLen, lane, 0, 1.f, 16.f);
+        float cvOff = applyMacroCV(baseOff, lane, 1, 0.f, 15.f);
+        float cvRot = applyMacroCV(baseRot, lane, 2, 0.f, 15.f);
+        // Effective macro global spread via the single authority. Macro publishing its own global
+        // has only its own CV (no East, no delegation, no macro-send-to-self), so only ownCv is
+        // set — SpreadResolver then yields clamp(base + ownCv·2), identical to applyMacroSprCV.
+        redDot::SpreadResolver::Inputs msin;
+        msin.base = baseSpr;
+        if (macroVis->inputs[Macro::macroCvId(lane,3)].isConnected()) {
+            msin.ownCv.connected   = true;
+            msin.ownCv.unitVoltage = macroVis->inputs[Macro::macroCvId(lane,3)].getVoltage() / 10.f;
+            msin.ownCv.atten       = (gMon ? gMon->getGlobalAtten(lane, 3) : 0.f);
+        }
+        float cvSpr = redDot::SpreadResolver::effective(msin);
+        // UI-to-resolver step 1: publish Macro's OWN effective spread to the ENGINE
+        // store — the MacroOwn lens's amount for SequencerEngine::
+        // effectiveProbability. Bit-identical to the module's old publish
+        // (clamp(macroBase[l][3] + macroPostDelta[l][3]): cvSpr IS that resolver
+        // output — base + (cv·att)·2, end-clamped, same expression order). The
+        // module's /32-gated publish is deleted with its sweep (step 3).
+        engine.macroOwnSpread[lane] = cvSpr;
+        // P9b PER-VOICE send-tap: the publish now carries BOTH endpoints of the pre/post
+        // lerp; each receiving VOICE selects via its own macroTap (the send is per-voice,
+        // so the tap is too — the old single globally-tapped macroSendDelta forced every
+        // voice onto one tap). pre = raw cv·(hi-lo) (tap=0); post = cv·att·(hi-lo)
+        // (tap=1, == the old tappedDelta at POST). macroSendDelta (still written below)
+        // dies once every reader migrates.
+        auto endpointDeltas = [&](int item, float lo, float hi, float& pre, float& post) {
+            pre = post = 0.f;
+            if (!macroVis || !macroVis->inputs[Macro::macroCvId(lane,item)].isConnected()) return;
+            const float cv  = macroVis->inputs[Macro::macroCvId(lane,item)].getVoltage() / 10.f;
+            const float att = (gMon ? gMon->getGlobalAtten(lane, item) : 0.f);
+            pre  = cv * (hi - lo);
+            post = cv * att * (hi - lo);
+        };
+        float preD[4], postD[4];
+        endpointDeltas(0, 1.f, 16.f, preD[0], postD[0]);
+        endpointDeltas(1, 0.f, 15.f, preD[1], postD[1]);
+        endpointDeltas(2, 0.f, 15.f, preD[2], postD[2]);
+        endpointDeltas(3, -1.f, 1.f,  preD[3], postD[3]);
+        for (int item = 0; item < 4; ++item) {
+            macroVis->macroPreDelta[lane][item]  = preD[item];
+            macroVis->macroPostDelta[lane][item] = postD[item];
+        }
+        // macroCVDelta = true POST delta (Macro's own display). The per-voice
+        // endpoints (preD/postD above) are what the sends carry now; the old single
+        // globally-tapped macroSendDelta is DELETED (every reader migrated).
+        // item 0=LEN 1=OFF 2=ROT 3=SPR.
+        macroVis->macroBase[lane][0] = baseLen;  macroVis->macroCVDelta[lane][0] = cvLen - baseLen;
+        macroVis->macroBase[lane][1] = baseOff;  macroVis->macroCVDelta[lane][1] = cvOff - baseOff;
+        macroVis->macroBase[lane][2] = baseRot;  macroVis->macroCVDelta[lane][2] = cvRot - baseRot;
+        macroVis->macroBase[lane][3] = baseSpr;  macroVis->macroCVDelta[lane][3] = cvSpr - baseSpr;
+        // spread display reads the CV-applied global spread (base+CV, no blend)
+        macroVis->spreadEffective[lane] = cvSpr;
+    };
+    // Publish EVERY poly lane's global LOR+spread, incl. QMIX (PL_QMIX=4). The manual unroll
+    // stopped at 3 (accent), so q-mix's macroBase[4] stayed zero → Macro's q-mix LOR knob and
+    // spread had no effect on the observed probability. Loop over POLY_LANES so it can't drop a
+    // lane again (matches the OUTPUT-application loops below at PL_LANES).
+    for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
+        publishGlobal(lane);   // unified PL_* order (0=MEL, 1=OCT, 2=QMIX, 3=REST, 4=ACC, 5=VAR, 6=LEG)
+}
+
+// The input + produced-cells image (the S0b pattern): every input the publish reads
+// (the global LOR/spread/atten stores on the owner, the Macro CV jacks, presence) plus
+// the published cells (macroBase/CVDelta/preD/postD/spreadEffective on the visual +
+// macroOwnSpread on the engine) — self-healing against foreign writers (UI store edits
+// on the visual land in the image and re-publish).
+size_t MonsoonSandsManager::publishGlobalFingerprint_(Monsoon& ownerMon, void* dst) {
+    auto& expanderManager = ownerMon.expanderManager;
+    auto* macroVis = expanderManager.cachedMacroSandsVisual;
+    Monsoon* gMon = macroVis ? redDot::lookupMonsoon(macroVis) : nullptr;
+    if (!gMon && macroVis && expanderManager.owner) gMon = expanderManager.owner;
+    struct __attribute__((packed)) Image {
+        uint64_t macroVis, gMon;
+        float    lor[7][3];        // getGlobalLor(lane, 0..2) — the LOR knobs
+        float    spr[7];           // getGlobalSpread(lane)
+        float    atten[7][4];      // getGlobalAtten(lane, item) — the CV depths
+        uint8_t  cvConnected[7][4];
+        float    cvVoltage[7][4];  // macroCvId(lane,item): connected + voltage
+        // produced cells (self-healing)
+        float    macroBase[7][4];
+        float    macroCVDelta[7][4];
+        float    macroPreDelta[7][4];
+        float    macroPostDelta[7][4];
+        float    spreadEffective[7];
+        float    macroOwnSpread[7];
+    };
+    Image img{};
+    img.macroVis = (uint64_t)(uintptr_t)macroVis;
+    img.gMon     = (uint64_t)(uintptr_t)gMon;
+    if (gMon)
+        for (int l = 0; l < 7; ++l) {
+            for (int i = 0; i < 3; ++i) img.lor[l][i] = gMon->getGlobalLor(l, i);
+            img.spr[l] = gMon->getGlobalSpread(l);
+            for (int i = 0; i < 4; ++i) img.atten[l][i] = gMon->getGlobalAtten(l, i);
+        }
+    if (macroVis) {
+        for (int l = 0; l < 7; ++l)
+            for (int i = 0; i < 4; ++i) {
+                auto& in = macroVis->inputs[Macro::macroCvId(l, i)];   // Port's readers are non-const
+                img.cvConnected[l][i] = in.isConnected() ? 1 : 0;
+                img.cvVoltage[l][i]   = in.isConnected() ? in.getVoltage() : 0.f;
+            }
+        std::memcpy(img.macroBase,      macroVis->macroBase,      sizeof img.macroBase);
+        std::memcpy(img.macroCVDelta,   macroVis->macroCVDelta,   sizeof img.macroCVDelta);
+        std::memcpy(img.macroPreDelta,  macroVis->macroPreDelta,  sizeof img.macroPreDelta);
+        std::memcpy(img.macroPostDelta, macroVis->macroPostDelta, sizeof img.macroPostDelta);
+        std::memcpy(img.spreadEffective, macroVis->spreadEffective, sizeof img.spreadEffective);
+    }
+    std::memcpy(img.macroOwnSpread, engine.macroOwnSpread, sizeof img.macroOwnSpread);
+    std::memcpy(dst, &img, sizeof img);
+    return sizeof img;
+}
+
+void MonsoonSandsManager::declareRateProducers(redDot::RateManager& rm, Monsoon& ownerMon) {
+    rm.declareProducer(
+        redDot::Rate::Control,
+        [this, &ownerMon](void* dst) { return publishGlobalFingerprint_(ownerMon, dst); },
+        [this, &ownerMon]()           { publishGlobalProduce_(ownerMon); });
 }
 
 // ──── Scramble Operations ────────────────────────────────────────────────
