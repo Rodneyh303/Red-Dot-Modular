@@ -177,14 +177,21 @@ struct SpreadInterp {
         return redDot::spreadMixEndpoints(original, targetValue, spreadAmount);
     }
 
-    // DISPLAY-ONLY entry point (anchor-V1 target, caller supplies original). Used by
-    // SpreadManager and macroOwnProbability for visual interpolation. Named explicitly
-    // to prevent accidental use on the audio path where Follow-CA mode requires
-    // applyMono/applyPoly (which resolve the target from the CA source).
+    // ANCHOR-V1-ONLY twin (caller supplies original; target = V1's pub draw).
+    // CONTRACT (east-spread follow-CA C2 audit): this entry HARDCODES the anchor
+    // composition — it ignores pe.spreadTargetMode, so on a FOLLOW-CA lane it
+    // diverges from the audio path. The ONE remaining caller is
+    // SpreadManager::getInterpolatedValue, a TEST-ONLY oracle (the uniformity +
+    // voice-convention addressing pins); production display reads
+    // effectiveProbability, which resolves through redDot::resolveFollowCaSpread
+    // (mode-aware) exactly like the audio path. (The old "macroOwnProbability"
+    // caller was deleted — CC_PROMPT_UI_TO_RESOLVER_SPEC step 2.) Do NOT wire
+    // this into anything that can display a follow-CA lane — that reintroduces
+    // display != audio.
     static float applyAnchorV1Only(const PatternEngine& pe, int lane, int step,
                                    float original, float spreadAmount) {
-        // DISPLAY-ONLY: the target comes from the PUBLISHED snapshot, not the live
-        // slewed* (the live read here was the V16 flicker — see monoSlewedPub).
+        // Pub-snapshot target, not the live slewed* (the live read here was the
+        // V16 flicker — see monoSlewedPub).
         return interpolate(original, monoSlewedPub(pe, lane, step), spreadAmount);
     }
 

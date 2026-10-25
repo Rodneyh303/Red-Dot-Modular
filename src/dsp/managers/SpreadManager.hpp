@@ -280,6 +280,13 @@ struct SpreadManager {
    * bars read SequencerEngine::effectiveProbability (the ONE accessor) since the
    * last SpreadInterp-in-UI path (SandsParameterManager::syncPatternEngineToEditor)
    * was deleted. Do not wire this back into a widget.
+   *
+   * ANCHOR-ONLY BY CONTRACT (east-spread follow-CA C2 audit): the body composes
+   * SpreadInterp::applyAnchorV1Only — the anchor-V1 twin, spreadTargetMode-
+   * agnostic. Under FOLLOW-CA this is NOT the display truth (that is
+   * effectiveProbability -> resolveFollowCaSpread, mode-aware); the oracle's
+   * tests run anchor mode, and T10 (test_ui_to_resolver) pins the mode-aware
+   * display==audio convergence separately.
    */
   float getInterpolatedValue(int voiceIdx, int lane, int step) const {
     if (!patternEngine) return 0.5f;
