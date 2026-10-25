@@ -189,3 +189,37 @@ articulation-delegation (independent-vs-mono = a decide() input, like spread/war
 categorical-atom / T-F-ATOM-DECIDES work (rail-meaning = a decide() rule). Not a separate 5th project —
 the vehicle for several already-noted items. Schedule after the rate manager (needs the per-voice +
 pure-decide machinery).
+
+────────────────────────────────────────────────────────────────────────────────
+## CORRECTION — what rhythmPattern IS (Rodney: "what is it even for?") — traced
+
+Earlier I called rhythmPattern a "display-cache / prospective decision view". TRACED the consumers — more
+specific and it raises a real question:
+- CONSUMER 1 (SequencerEngine.cpp:454-455): `bool isNote = pe.rhythmPattern[dnaIdx]; baseActive = isNote ?
+  0.35f : 0.07f;` — in the LIGHT-rendering loop (tickForLight / playhead / comet LEDs). So rhythmPattern
+  drives STEP-LED BRIGHTNESS — "which step LEDs glow note-bright (0.35) vs rest-dim (0.07)". NOT audio,
+  NOT a separate module — the PANEL STEP INDICATORS.
+- CONSUMER 2 (MonsoonPersistenceManager:166,429): PERSISTED in the patch JSON.
+- Filled: default true (:136); then `warpRow(displayedVoice_,PL_REST)[i] >= restProb` across all 16 steps
+  (:410,962) — a PROSPECTIVE 16-step note/rest MAP.
+
+### THE REAL QUESTION (Rodney) — what SHOULD the step LEDs show, and is this vestigial?
+The step LEDs show a PRECOMPUTED note/rest prediction (`>=restProb`, all 16 steps, computed once), but the
+LIVE AUDIO rests via a FRESH per-step roll (`r_rest < restProb`, SequencerEngine:628). So the LED pattern
+and the actual audio CAN DISAGREE — the LED is a static PREDICTION, the audio is a live ROLL. Options:
+- If LEDs should show "what WILL play": impossible — audio rolls live per step (unknowable ahead).
+- If LEDs show "the likely/weighted pattern": `>=restProb` is a PREDICTION viz — reasonable, but should be
+  understood as "likely", and its polarity should at least MATCH the audio's direction (currently `>=` vs
+  the audio's `<` — opposite; even as a prediction it points the wrong way unless rhythmPattern[true]=NOTE
+  and the audio's rest-band is the complement, which needs confirming).
+- If rhythmPattern is VESTIGIAL: a precomputed/authored DETERMINISTIC pattern system (note the `=true`
+  default + persisted) that predates rest becoming a LIVE per-step roll — still lighting LEDs + persisted
+  but no longer reflecting the actual rhythm. If so it may be REMOVABLE (drive the step LEDs from the live
+  decision / the decision resolver instead, and drop the persisted array).
+=> OPEN ENGINE-DESIGN QUESTION: does the instrument intentionally have TWO rhythm concepts (a precomputed
+pattern for LEDs+persistence, and a live roll for audio), or is rhythmPattern legacy? Resolve this BEFORE
+the decision-resolver work — if vestigial, delete it (lights read live decisions); if a deliberate
+prediction viz, define its semantics + fix its polarity to match the audio. This supersedes the
+"engine-internal duplication" framing above: it may not be duplication at all but a SEPARATE (possibly
+dead) pattern system. TRACE how/whether rhythmPattern's isNote affects anything beyond LED brightness
+(does baseActive feed only lights, or also gate/CV?) to be sure it's lights-only before removing.
