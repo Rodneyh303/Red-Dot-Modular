@@ -106,3 +106,54 @@ stayed in SpreadInterp outside it. Fold it toward the one-decision model here.)
 
 PROCEED with: pub-reading (approved); ONE shared follow-CA decision if cleanly factorable, else twins +
 the mandatory equivalence test; anchor bit-identical; no new pub arrays.
+
+────────────────────────────────────────────────────────────────────────────────
+## FINAL ARCHITECTURE (Rodney) — resolver-proper + rate-manager timing + convergence-at-step
+
+Supersedes the "down payment / shared helper" and the "display==audio always" test above. Two authorities,
+clean division:
+
+### RESOLVER-PROPER for the COMPUTATION (follow-CA included) — NOT a helper outside it
+The resolver ALREADY serves BOTH views (engine + display) for spread/warp/LOR/direction — effectiveProbability
+IS the display reading the resolver. So follow-CA TARGET SELECTION being OUTSIDE it (in SpreadInterp) is the
+ANOMALY, the GAP — fill it. Bring follow-CA target selection INTO SandsModifierResolver as a proper modifier
+policy (own / CA-source / V1-anchor + polarity), so there is ONE resolver function both views call. NOT twins,
+NOT a shared helper outside the resolver — IN the resolver, which is already the dual-view authority. (This is
+LESS work than feared: the lens/pub mechanism the other modifiers use for the display read already exists —
+CA-spread just uses the same mechanism. The resolver is pure/rate-agnostic; it computes WHAT resolves.)
+
+### RATE MANAGER owns the WHEN (not the resolver)
+The display and engine read the SAME resolver function at DIFFERENT rates — a rate-manager concern:
+- DISPLAY: reads the resolver every FRAME (video rate) — a LIVE PREVIEW. Reflects knob/CV/source changes
+  (incl. a spread-SOURCE change) IMMEDIATELY, before the engine reads. The bars LEAD.
+- ENGINE: reads the resolver at the STEP (commit). A spread-SOURCE change takes MUSICAL effect at the NEXT
+  STEP (step-latched — do NOT apply a source change mid-step; same discipline as dir/deleg step-latching).
+So between steps the bars show the new source while the audio still plays the old — CORRECT (sight-leads-
+sound, same as the continuous warp display leading the latched engine).
+
+### CONVERGENCE-AT-STEP IS STRUCTURAL (why resolver-proper, not twins)
+THE INVARIANT (Rodney): the bars show the current resolved value continuously; AT THE STEP the bars show
+EXACTLY what the engine reads. Because BOTH read the SAME resolver function, bars == engine AT THE STEP is
+AUTOMATIC (same function, same inputs at that instant → same value). The display CANNOT show something the
+engine won't read — it's reading the same thing, just more often. With TWINS this convergence would have to
+be PROVEN (could drift); with ONE resolver function it is STRUCTURAL. That is the core reason to do it
+resolver-proper.
+
+### THE TEST (corrected — supersedes "display==audio always")
+WRONG: "display == engine at every instant" (violates the intended between-step LEAD).
+RIGHT: sample display AND engine AT THE STEP BOUNDARY → assert EQUAL, in BOTH spreadTargetMode modes
+(anchor AND follow-CA). This confirms the structural convergence. The between-step lead (display reflects
+in-flight modulation the engine hasn't read) is CORRECT and is NOT tested against. RED on current (display
+reads applyAnchorV1Only, a different function → won't converge to the follow-CA engine value) → GREEN when
+the display reads the resolver's follow-CA value.
+
+### FLICKER (CC's constraint, still honored)
+Display reads the resolver against the PUB snapshot (not live slewed) — the resolver's display read-path,
+same as the other modifiers already use. No V16-flicker; no 7 new pub arrays (the self-healing µs
+preRemap transient is acceptable, per CC).
+
+PROCEED: follow-CA INTO the resolver (proper modifier policy, dual-view via the existing display read-path);
+rate manager owns frame-preview-vs-step-commit + source-change-latches-to-step; test samples AT THE STEP in
+both modes. If the resolver integration proves a genuinely large refactor THIS cycle, an interim shared helper
+is tolerable ONLY as explicitly "pending resolver integration" with the step-boundary test — but the TARGET
+is resolver-proper, and the interim must not calcify.
