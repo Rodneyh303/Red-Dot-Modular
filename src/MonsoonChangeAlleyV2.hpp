@@ -21,7 +21,7 @@
 #include "dsp/ChangeAlleyTransforms.hpp"   // ca::applyCorrelation (transform apply owned here)
 #include "dsp/CATrajectoryBuffer.hpp"      // TRUE REVERSE: per-stream committed-state trajectory ring
 #include "dsp/CAPendingOrder.hpp"          // chronological pending-transform ordering
-#include "ui/IntertropicalPairing.hpp"     // shared pairing: assignPairIdT / resolveFollowedT<T>
+#include "ui/IntertropicalPairing.hpp"     // shared pairing: assignPairIdT / resolveFollowedT (templates)
 #include "ui/ConnectMark.hpp"              // shared dot.modular connect indicator (same as other panels)
 #include "ui/SvgPanelKit.hpp"             // Option B-full: bind ports/params/lights by name from anchors
 

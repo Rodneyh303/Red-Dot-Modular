@@ -16,13 +16,12 @@
 //      this test documents and pins exactly that contract.
 //   L5 STRUCTURAL (the grep-gate): raw walk-helper call sites (findMonsoonEitherSide /
 //      resolveFollowedT / findPairHubEitherSide / assignPairId / isConnectedAndClaimed /
-//      findMonsoon) are allowed ONLY in the service + primitive headers, or on lines
-//      carrying the LOOKUP-AUTHORITY marker (an onExpanderChange / epoch-guarded
-//      resolve). Everything else is a hot-path walk — the anti-pattern this authority
-//      kills. Commit 1 runs this in RESIDUAL mode (prints, non-fatal — the migration
-//      sweep converts one module per commit; the stage-0 precedent). Set
-//      MODULE_LOOKUP_STRICT=1 to make residuals fatal now; the final migration commit
-//      flips the default to fatal.
+//      findMonsoon — paren AND template-argument forms) are allowed ONLY in the service +
+//      primitive headers, or on lines carrying the LOOKUP-AUTHORITY marker (an
+//      onExpanderChange / epoch-guarded resolve). Everything else is a hot-path walk —
+//      the anti-pattern this authority kills. FATAL BY DEFAULT since the module-lookup
+//      TAIL migration finished (every in-build site converted or marked): a residual
+//      FAILS the suite. MODULE_LOOKUP_STRICT=0 is a local debug hatch ONLY (never CI).
 //
 // Header-only: the core (ui/ModuleLookupCore.hpp) is deliberately lean — no rack, no
 // Monsoon — exactly so this rig can drive the REAL epoch + memo (never a copy).
@@ -157,12 +156,16 @@ int main() {
         EXPECT(walks == 2);
     });
 
-    // ── L5: the structural grep-gate (residual mode in commit 1) ───────────────────
-    TEST("L5 STRUCTURAL grep-gate: raw walk-helper call sites only in the service/primitive headers or LOOKUP-AUTHORITY-marked resolves (residual mode: prints, MODULE_LOOKUP_STRICT=1 to enforce)", {
+    // ── L5: the structural grep-gate (FATAL by default since the TAIL migration) ───
+    TEST("L5 STRUCTURAL grep-gate: raw walk-helper call sites only in the service/primitive headers or LOOKUP-AUTHORITY-marked resolves (FATAL by default — MODULE_LOOKUP_STRICT=0 is the local debug hatch)", {
         static const char* const rawWalks[] = {
             "findMonsoonEitherSide(", "findPairHubEitherSide(", "resolveFollowedT(",
             "resolveFollowedIT(", "findIntertropicalEitherSide(", "assignPairId(",
             "assignPairIdT(", "isConnectedAndClaimed(", "findMonsoon(",
+            // Template-argument forms — the plain patterns above cannot see foo<T>(...);
+            // these close the hole (a raw resolveFollowedT<T> / assignPairIdT<T> /
+            // findPairHubEitherSide<T> call site is the same anti-pattern).
+            "resolveFollowedT<", "assignPairIdT<", "findPairHubEitherSide<",
         };
         static const char* const allowFiles[] = {
             "src/ui/ModuleLookup.hpp", "src/ui/ModuleLookupCore.hpp",
@@ -207,13 +210,17 @@ int main() {
             }
         }
         std::cout << "      residuals: " << residuals.size() << " raw walk-site line(s) outside the authority"
-                  << " (expect 0 after the migration sweep; this commit converted Monsoon + Macro)\n";
+                  << " (expect 0 — the migration sweep is COMPLETE; any residual fails this suite)\n";
         for (size_t i = 0; i < residuals.size() && i < 12; ++i)
             std::cout << "        " << residuals[i].file << ":" << residuals[i].line << "\n";
         if (residuals.size() > 12)
             std::cout << "        … " << (residuals.size() - 12) << " more\n";
-        const char* strict = std::getenv("MODULE_LOOKUP_STRICT");
-        if (strict && strict[0] == '1')
+        // FATAL BY DEFAULT (the module-lookup TAIL migration is done — its final commit
+        // flipped this). MODULE_LOOKUP_STRICT=0 is a LOCAL debug hatch (e.g. bisecting an
+        // unrelated change with a knowingly-raw walk in flight); CI never sets it.
+        const char* relax = std::getenv("MODULE_LOOKUP_STRICT");
+        const bool enforce = !(relax && relax[0] == '0');
+        if (enforce)
             EXPECTF(residuals.empty(),
                     "%zu raw walk sites remain outside the lookup authority", residuals.size());
     });

@@ -685,7 +685,7 @@ struct Monsoon : Module {
 
     // ── Host identity (CONNECTION_MODEL_SPEC.md §2, node-anchored) ────────────────────────────────
     // Each Monsoon owns a small pairId (1..8), lowest-unused, persisted, stable across reload — the
-    // SAME scheme as Intertropical/CA (assignPairIdT<Monsoon>). Bound expanders DISPLAY this via
+    // SAME scheme as Intertropical/CA (assignPairIdT on Monsoon). Bound expanders DISPLAY this via
     // pairColour(pairId); the Monsoon owns identity, they inherit it. The colour+number badge only
     // renders when 2+ Monsoons exist (§4/Q6); single-Monsoon rigs show a plain connect dot.
     //   pairId == 0 → NOT participating: either not yet assigned, OR the 8-cap was hit (a 9th Monsoon

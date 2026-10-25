@@ -9,7 +9,7 @@
 #include <cassert>
 //#include "../../MonsoonDeepStraitsSands.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
-#include "../../ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide (LANE_DIR field reads)
+#include "../../ui/VisualExpanderHelpers.hpp"   // legacy include (transitive Monsoon complete type); no walk helpers used here anymore — adjacency reads ride the memoized lookupMonsoon
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "../../MonsoonSandsVisualExpander.hpp"   // SandsMonoVisualIds::dirDispId for mono direction push
 #include "../../MonsoonChangeAlleyV2.hpp"           // single-module transforms

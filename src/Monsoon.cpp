@@ -37,7 +37,7 @@ using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be co
 #include "StraitsSandsMacroVisual.hpp"        // Visual DNA editor (Macro)
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
-#include "ui/IntertropicalPairing.hpp"   // assignPairIdT<Monsoon> / resolveFollowedT (host identity + shared-CA)
+#include "ui/IntertropicalPairing.hpp"   // assignPairIdT / resolveFollowedT — host identity + shared-CA (template forms; the calls below carry the gate marker)
 #include "ui/ModuleLookup.hpp"   // THE module-lookup authority: the topology epoch (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "dsp/managers/MonsoonConfigurator.hpp"
 #include "dsp/engines/PatternEngine.hpp"
