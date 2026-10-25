@@ -132,6 +132,27 @@ public:
         }
     }
 
+    // ── Internal time-anchored tier sources (the S7 deletion) ────────────────────
+    // Control (WallClockDiv, ~1500 Hz) and Frame (VideoClock cadence, ~90 Hz) are
+    // TIME-anchored: fixed Hz regardless of sample rate — the SR-aware controlDivider
+    // pattern (division = round(SR/Hz), min 1) generalized INTO the manager, so the
+    // raw ClockDivider members could be deleted (deletion = the enforcement: a deleted
+    // member cannot be .process()'d). Call setSampleRate on SR change (and once at
+    // construction), then tickClocks() ONCE per sample; the tiers' ticks come from
+    // these internal counters — the owner no longer feeds them.
+    void setSampleRate(float sampleRate) {
+        controlDivision_ = sampleRate > 0.f ? (int)(sampleRate * (1.f / 1500.f) + 0.5f) : 1;
+        frameDivision_   = sampleRate > 0.f ? (int)(sampleRate * (1.f /   90.f) + 0.5f) : 1;
+        if (controlDivision_ < 1) controlDivision_ = 1;
+        if (frameDivision_   < 1) frameDivision_   = 1;
+    }
+    void tickClocks() {
+        advance(Rate::Control, ++controlCount_ >= controlDivision_);
+        if (controlCount_ >= controlDivision_) controlCount_ = 0;
+        advance(Rate::Frame,   ++frameCount_   >= frameDivision_);
+        if (frameCount_   >= frameDivision_)   frameCount_   = 0;
+    }
+
     // ── Observation (harness/diagnostics only) ─────────────────────────────────
     uint64_t runs(int id) const { return producers_[(size_t)id].runs; }
     bool everRan(int id) const { return producers_[(size_t)id].everRan; }
@@ -153,6 +174,9 @@ private:
     Tier tiers_[6] = {};
     std::vector<Producer> producers_;
     std::vector<uint8_t> scratch_ = std::vector<uint8_t>(kMaxFingerprint);
+    // The internal time-anchored counters (see setSampleRate/tickClocks).
+    int controlDivision_ = 1, controlCount_ = 0;
+    int frameDivision_ = 1, frameCount_ = 0;
 };
 
 }  // namespace redDot

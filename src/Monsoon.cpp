@@ -78,8 +78,10 @@ static uint64_t monsoonProfWindow = 0;           // samples since the last secti
 // entry-point TU). The extern declaration remains in Monsoon.hpp.
 
 void Monsoon::onSampleRateChange(const SampleRateChangeEvent& e) {
-    lightDivider.setDivision(std::max(1, (int)std::round(e.sampleRate / 90.f)));
-    controlDivider.setDivision(std::max(1, (int)std::round(e.sampleRate / 1500.f)));
+    // RATE MANAGER (S7): the SR-aware divisions live INSIDE the manager now — the old
+    // lightDivider/controlDivider setDivision pair, generalized (fixed Hz regardless
+    // of SR; the raw divider members are DELETED — deletion is the enforcement).
+    rateManager.setSampleRate(e.sampleRate);
 }
 
 Monsoon::Monsoon() {
@@ -1247,12 +1249,12 @@ void Monsoon::process(const ProcessArgs& args) {
 
     MONSOON_PROF_BEGIN(lightDiv);
     // ── Throttle UI and Light processing ──
-    // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START): the Frame tier is fed by the existing
-    // lightDivider edge (~90 Hz, SR-aware; the VideoClock source lands with the per-mode
-    // chains). The manager is the divider's only reader; this block guards on
-    // ticked(Frame). (S1 likewise: the controlDivider's only reader is the Control
-    // advance above — verified, no other consumers.)
-    rateManager.advance(redDot::Rate::Frame, lightDivider.process());
+    // RATE MANAGER (S7): tickClocks() — ONCE per sample, at the earliest consumer —
+    // advances the internal SR-aware Control (~1500 Hz) + Frame (~90 Hz) tier sources
+    // (the deleted lightDivider/controlDivider pair's divisions, generalized INTO the
+    // manager). This block guards on ticked(Frame); the control block below reads
+    // ticked(Control) (level-within-sample — the order of the two blocks is free).
+    rateManager.tickClocks();
     if (rateManager.ticked(redDot::Rate::Frame)) {
         // ── modViz: DISPLAY-ONLY modulation visualisation ────────────────────────────
         // Moved inside lightDivider. It was running EVERY SAMPLE, gated only on the
@@ -1426,11 +1428,10 @@ void Monsoon::process(const ProcessArgs& args) {
     MONSOON_PROF_END(lightDiv);
     MONSOON_PROF_BEGIN(controlDiv);
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
-    // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START, Stage 0): the Control tier is fed by the
-    // EXISTING controlDivider edge — a pure wrapper, behaviour-identical. The manager is the
-    // divider's only reader; this block guards on ticked(Control). Producers dispatch from
-    // this same position in the control tick (S0b: the Macro sync population).
-    rateManager.advance(redDot::Rate::Control, controlDivider.process());
+    // RATE MANAGER (S7): the Control tier's tick comes from the manager's INTERNAL
+    // SR-aware source (tickClocks, above — the deleted controlDivider's division,
+    // generalized). This block guards on ticked(Control); the Control producers
+    // (publishGlobal, the Macro sync population) dispatch from this position.
     if (rateManager.ticked(redDot::Rate::Control)) {
         MONSOON_PROF_BEGIN(ctrl_raf);   // rafExp: expander-scan + Raffles gate edge loop
         // LOOKUP AUTHORITY: the expander scan re-runs ONLY when the topology epoch

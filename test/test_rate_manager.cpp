@@ -218,6 +218,37 @@ int main() {
         EXPECTF(produced == 2, "%d runs after healing — must settle/skip", produced);
     });
 
+    TEST("R6 INTERNAL SR-AWARE CLOCKS (the S7 shape): setSampleRate + tickClocks — Control every round(SR/1500) samples, Frame every round(SR/90); raising SR scales only the sample divisor (same times/SECOND)", {
+        redDot::RateManager rm;
+        rm.setSampleRate(48000.f);   // Control /32, Frame /533 (the old divider divisions)
+        int ctrl = 0, frame = 0;
+        for (int i = 0; i < 32000; ++i) {          // 2/3 s @ 48k
+            rm.tickClocks();
+            if (rm.ticked(redDot::Rate::Control)) ++ctrl;
+            if (rm.ticked(redDot::Rate::Frame))   ++frame;
+        }
+        EXPECTF(ctrl == 1000, "%d Control ticks in 32000 samples @48k — want 1000 (/32)", ctrl);
+        EXPECTF(frame == 60,  "%d Frame ticks in 32000 samples @48k — want ~60 (/533)", frame);
+        // SR-UP: the SAME one-second wall time → the SAME tick counts (only the Sample
+        // tier scales with SR — the CPU invariant S9 pins per-second).
+        redDot::RateManager rm2;
+        rm2.setSampleRate(96000.f);   // Control /64, Frame /1067
+        int ctrl2 = 0, frame2 = 0;
+        for (int i = 0; i < 96000; ++i) {          // 1 s @ 96k
+            rm2.tickClocks();
+            if (rm2.ticked(redDot::Rate::Control)) ++ctrl2;
+            if (rm2.ticked(redDot::Rate::Frame))   ++frame2;
+        }
+        EXPECTF(ctrl2 == 1500, "%d Control ticks in 1 s @96k — want 1500 (same per-second)", ctrl2);
+        // Frame @96k: division = round(96000/90) = 1067 → floor(96000/1067) = 89 ticks
+        // in the first second (89.97 Hz — the integer-division quantization the old
+        // lightDivider had too; the 90th lands 30 samples into second two).
+        EXPECTF(frame2 == 89,  "%d Frame ticks in 1 s @96k — want 89 (÷1067 quantization)", frame2);
+        // The Phase/Step tiers are NOT touched by tickClocks (independent clocks):
+        EXPECT(!rm.ticked(redDot::Rate::Step));
+        EXPECT(!rm.ticked(redDot::Rate::PPQN));
+    });
+
     std::cout << std::string(74, '=') << "\n" << s_pass << " passed, " << s_fail << " failed\n";
     return s_fail == 0 ? 0 : 1;
 }

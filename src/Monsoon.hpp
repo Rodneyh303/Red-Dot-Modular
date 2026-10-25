@@ -780,8 +780,10 @@ struct Monsoon : Module {
         // Per-lane pitch flags: 0..11 = semitones, 12 = octaveLo, 13 = octaveHi.
         bool  pitchLane[14] = {false};
     } modViz;
-    dsp::ClockDivider lightDivider;
-    dsp::ClockDivider controlDivider; // For DNA modulation at "Control Rate"
+    // (lightDivider + controlDivider DELETED — CC_PROMPT_RATE_MANAGER_START, S7: their
+    //  SR-aware divisions live INSIDE the RateManager (setSampleRate/tickClocks — the
+    //  controlDivider pattern generalized); the raw members cannot be .process()'d.
+    //  Deletion IS the compile-time enforcement.)
     // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START): the compute-rate authority — producers
     // DECLARE (rate, fingerprint, work) and the manager owns dispatch. Stage 0: the Control
     // tier is fed by the controlDivider edge (pure wrapper, behaviour-identical); the Macro
