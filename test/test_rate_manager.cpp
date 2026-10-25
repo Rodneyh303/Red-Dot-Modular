@@ -315,6 +315,43 @@ int main() {
             EXPECTF(residuals.empty(), "%zu raw rate-primitive sites remain outside the authority", residuals.size());
     });
 
+    TEST("R8 SR INVARIANT (producer call-count): a Control producer with a per-tick-moving input fires the SAME times per SECOND at 48k and 96k — only Sample-tier work scales with SR", {
+        // The design's CPU invariant, at the PRODUCER level (R6 pinned the tier ticks):
+        // a producer whose input moves every tick (the L3 key-change shape — the
+        // honest moving-input producer, not a constant one that would skip) must fire
+        // ~1500×/second regardless of SR. If non-Sample CPU-per-second rose with SR,
+        // something heavy would be wrongly sample-bound — this is the regression test.
+        auto oneSecond = [](float sr) {
+            redDot::RateManager rm;
+            rm.setSampleRate(sr);
+            uint64_t inputCounter = 0;   // the moving input (bumped every sample)
+            int ctrlRuns = 0, frameRuns = 0;
+            rm.declareProducer(redDot::Rate::Control,
+                [&](void* dst) { std::memcpy(dst, &inputCounter, sizeof inputCounter); return sizeof inputCounter; },
+                [&] { ++ctrlRuns; });
+            rm.declareProducer(redDot::Rate::Frame,
+                [&](void* dst) { std::memcpy(dst, &inputCounter, sizeof inputCounter); return sizeof inputCounter; },
+                [&] { ++frameRuns; });
+            const int n = (int)sr;       // exactly one second of samples
+            for (int i = 0; i < n; ++i) {
+                ++inputCounter;
+                rm.tickClocks();
+                rm.dispatch(redDot::Rate::Control);
+                rm.dispatch(redDot::Rate::Frame);
+            }
+            return std::pair<int, int>{ctrlRuns, frameRuns};
+        };
+        const auto [c48, f48] = oneSecond(48000.f);
+        const auto [c96, f96] = oneSecond(96000.f);
+        EXPECTF(c48 == 1500, "%d Control producer runs/s @48k — want 1500", c48);
+        EXPECTF(c96 == 1500, "%d Control producer runs/s @96k — want 1500 (SR-up must NOT add non-Sample work)", c96);
+        // Frame: the integer-division quantization (round(SR/90)) differs per SR —
+        // 48k÷533→90/s, 96k÷1067→89/s (89.97 Hz) — both ~90, and neither scales WITH
+        // SR (a sample-bound bug would give 90→180).
+        EXPECTF(f48 == 90,  "%d Frame producer runs/s @48k — want 90 (÷533)", f48);
+        EXPECTF(f96 == 89,  "%d Frame producer runs/s @96k — want 89 (÷1067 quantization)", f96);
+    });
+
     std::cout << std::string(74, '=') << "\n" << s_pass << " passed, " << s_fail << " failed\n";
     return s_fail == 0 ? 0 : 1;
 }
