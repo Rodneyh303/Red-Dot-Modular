@@ -12,7 +12,7 @@
 #include "../SandsTopology.hpp"   // step 3b: readStrand owner migration
 #include "../../MonsoonStraitsExpander.hpp"
 #include "../../StraitsEastSandsVisual.hpp"
-#include "../../ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide (MACRO field reads)
+#include "../../ui/ModuleLookup.hpp"   // THE lookup authority: lookupMonsoon (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include <cassert>
 #include <cstring>   // memcmp/memcpy — the control-tick redundancy gates (perf round 2)
 
@@ -106,19 +106,16 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // absent and broke Mono store reads (attens). Macro-global reads below stay guarded by
     // hasMacro/macroVis, so broadening is safe.
     //
-    // PERF (perf round 2 — the controlDiv fire): findMonsoonEitherSide is a dynamic_cast
-    // chain walk (≤2×12 hops, each hop a dynamic_cast + suite-model compare) and the
-    // call sites below used to re-walk it PER LANE / PER ITEM — several of them TWICE
-    // per line (null-check + read), ~90 walks per control tick in a Mono-visual rig.
-    // Within ONE processDNA call the walk is a PURE function of a chain that cannot
-    // change mid-call (Rack rewrites expander pointers between process() calls, never
-    // during one; module types are immutable), so every walk with the same argument
-    // returns the same pointer. These once-per-call memos are therefore BIT-IDENTICAL
-    // to the per-site walks they replace.
-    Monsoon* const macroHost = macroVis ? redDot::findMonsoonEitherSide(macroVis) : nullptr;
-    Monsoon* const monoHost  = monoVis  ? redDot::findMonsoonEitherSide(monoVis)  : nullptr;
+    // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the host resolve is
+    // the memoized lookupMonsoon — event-driven (onExpanderChange bumps the topology
+    // epoch), ONE walk per module per generation on this thread instead of the old
+    // hand-rolled once-per-call memos (perf round 2) which still re-walked every
+    // control tick on a static rack. Same pointers (the same segment-rule walk),
+    // BIT-IDENTICAL to the per-site walks both replaced.
+    Monsoon* const macroHost = macroVis ? redDot::lookupMonsoon(macroVis) : nullptr;
+    Monsoon* const monoHost  = monoVis  ? redDot::lookupMonsoon(monoVis)  : nullptr;
     Monsoon* const eastHost  = expanderManager.cachedEastSandsVisual
-                             ? redDot::findMonsoonEitherSide(expanderManager.cachedEastSandsVisual) : nullptr;
+                             ? redDot::lookupMonsoon(expanderManager.cachedEastSandsVisual) : nullptr;
     Monsoon* gMon = nullptr;
     if (macroVis)      gMon = macroHost;
     else if (monoVis)  gMon = monoHost;

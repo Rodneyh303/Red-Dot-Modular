@@ -778,8 +778,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // of the per-voice loop (was up to 15 dynamic_cast chain walks per control
             // tick). BIT-IDENTICAL: same pure function, same argument, and the chain
             // cannot change within one sync() call (Rack rewrites expander pointers
-            // between process() calls, never during one).
-            auto* mmV = redDot::findMonsoonEitherSide(macroVis);
+            // between process() calls, never during one). LOOKUP AUTHORITY: the
+            // memoized lookupMonsoon — one walk per generation, not per tick.
+            auto* mmV = redDot::lookupMonsoon(macroVis);
             for (int v = 1; v <= effPolyVoices; ++v) {
                 // Global LOR per lane (Macro owns → no per-voice/ownership branch).
                 // macroBase[lane][item]: item 0=LEN 1=OFF 2=ROT, engine-lane indexed.
