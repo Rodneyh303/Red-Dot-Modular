@@ -111,7 +111,7 @@ Monsoon::Monsoon() {
         scaleManager = std::unique_ptr<ScaleManager>(new ScaleManager(this));
         paramManager = std::unique_ptr<ParameterManager>(new ParameterManager(this, &expanderManager.cachedScaleExpander, &expanderManager.cachedPolyVoiceExpander));
         modeController = std::unique_ptr<ModeController>(new ModeController(this, engine, clock, *paramManager));
-        uiManager = std::unique_ptr<UIManager>(new UIManager(this, lightDivider));
+        uiManager = std::unique_ptr<UIManager>(new UIManager(this));
         timingController = std::unique_ptr<TimingController>(new TimingController(this));
         cvRouter = std::unique_ptr<CVRouter>(new CVRouter());
         outputGenerator = std::unique_ptr<OutputGenerator>(new OutputGenerator());
@@ -1240,7 +1240,13 @@ void Monsoon::process(const ProcessArgs& args) {
 
     MONSOON_PROF_BEGIN(lightDiv);
     // ── Throttle UI and Light processing ──
-    if (lightDivider.process()) {
+    // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START): the Frame tier is fed by the existing
+    // lightDivider edge (~90 Hz, SR-aware; the VideoClock source lands with the per-mode
+    // chains). The manager is the divider's only reader; this block guards on
+    // ticked(Frame). (S1 likewise: the controlDivider's only reader is the Control
+    // advance above — verified, no other consumers.)
+    rateManager.advance(redDot::Rate::Frame, lightDivider.process());
+    if (rateManager.ticked(redDot::Rate::Frame)) {
         // ── modViz: DISPLAY-ONLY modulation visualisation ────────────────────────────
         // Moved inside lightDivider. It was running EVERY SAMPLE, gated only on the
         // always-true if (paramManager), resolving ~35 modulated values per call purely
