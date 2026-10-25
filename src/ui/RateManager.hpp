@@ -51,6 +51,28 @@ namespace redDot {
 // the per-mode rate chains (see the design doc's CORRECTION section).
 enum class Rate { Sample, Frame, Control, PPQN, Step, Phrase };
 
+// ── Per-mode rate chains — the timing topology in ONE place ────────────────────
+// Rates are INDEPENDENT clocks; a chain declares which tiers a MODE uses and each
+// tier's SOURCE. GATE's Step source is the gate-edge detector (PPQN plays no role in
+// gate-mode STEP derivation — structural absence); the PPQN grid still serves
+// gate-width counting in every mode (a consumer, not the step source). Frame/Control
+// are always present, never divide the others. Mode switch = the active chain.
+enum class RateSource { AudioClock, VideoClock, WallClockDiv, Periodic, PhaseMap, GateEdge, TickCount };
+struct RateTierDecl { Rate rate; RateSource source; };
+inline constexpr RateTierDecl kChainClock[] = {
+    {Rate::Sample, RateSource::AudioClock}, {Rate::PPQN, RateSource::Periodic},
+    {Rate::Step,  RateSource::TickCount},   {Rate::Phrase, RateSource::TickCount},
+};
+inline constexpr RateTierDecl kChainPhase[] = {
+    {Rate::Sample, RateSource::AudioClock}, {Rate::PPQN, RateSource::PhaseMap},
+    {Rate::Step,  RateSource::TickCount},   {Rate::Phrase, RateSource::TickCount},
+};
+inline constexpr RateTierDecl kChainGate[] = {
+    {Rate::Sample, RateSource::AudioClock}, {Rate::Step, RateSource::GateEdge},
+    {Rate::Phrase, RateSource::TickCount},
+    // NO PPQN tier — structural absence in gate-mode step derivation.
+};
+
 class RateManager {
 public:
     // Fingerprint budget: the Stage-0 sync-population image is ≈ 2.5 KB (its inputs PLUS
