@@ -58,3 +58,51 @@ concrete instance; fix it by unifying the spread call.
 
 ## NOT THIS PROMPT
 - The broader decision-manager (this is one instance; the authority is later). Rate-manager follow-ups.
+
+────────────────────────────────────────────────────────────────────────────────
+## REFINEMENT (Rodney + CC) — pub-reading approved; ONE shared decision, enforced agreement
+
+CC correctly REJECTED the prompt's naive "just call applyMono/applyPoly in the display": those read the
+LIVE slewed* buffers, and UI reading live slewed IS the V16-flicker bug (torn reads during the ~116µs
+recomputes; the pub snapshots exist precisely to prevent that). So:
+
+### APPROVED
+- PUB-READING, mode-aware display (not live) — do NOT reintroduce the flicker. ✓
+- Anchor mode BIT-IDENTICAL to today (the regression guard). ✓
+- Rejecting 7 new pubPreRemap arrays: the one live preRemapSlewed* read is in the pin-change-GATED
+  snapshot — a µs window on a user action, self-healing next frame; 7 arrays to cover a self-healing µs
+  transient is a cost-justification mismatch. ✓ (good reasoning.)
+
+### THE REFINEMENT — this is the probability-modifier-resolver disease (Rodney); fix it structurally
+Rodney's framing: this is "different UI and engine view of CA-MODIFIED probability" — the modifier-
+resolver / decision-authority disease, in the CA-spread domain. CA-SPREAD TARGET SELECTION (own vs
+CA-source vs V1-anchor, + polarity) was NOT routed through a single resolver — it lives in
+SpreadInterp::applyMono/applyPoly (audio) and was NOT taught to effectiveProbability (display). That gap
+IS the bug.
+CC's twin approach (applyMonoDisplay/applyPolyDisplay copying the branch structure) FIXES this instance
+but re-creates the duplication: the follow-CA/target/polarity DECISION logic would exist TWICE (audio +
+display twins), which can DRIFT later (change applyMono's CA logic, forget the display twin). PREFER:
+- Factor the DECISION — "given spreadTargetMode[lane], which TARGET (own/CA-source/V1) and which
+  POLARITY/endpoints" — into ONE shared helper that BOTH audio and display call, differing ONLY in the
+  READ SOURCE (audio passes live slewed; display passes pub snapshots). One follow-CA decision, two
+  read-sources. That is the "one computation, two read-rates" model (the resolver principle), not two
+  twins kept in sync.
+- IF the live-vs-pub read is too entangled to factor cleanly, CC's twins are an ACCEPTABLE fallback —
+  but ONLY WITH the mandatory equivalence test below (non-negotiable; it is what converts "two twins that
+  happen to agree" into "two twins that MUST agree or CI fails").
+
+### MANDATORY TEST (the drift guard — required either way)
+Assert the display spread result EQUALS the audio spread result for the same inputs, in BOTH
+spreadTargetMode values (anchor AND follow-CA), in STEADY STATE (pub == live when no recompute in flight).
+RED on current (display uses applyAnchorV1Only always) → GREEN when unified/agreeing. This test is the
+structural enforcement: display CANNOT silently diverge from audio for the spread modifier.
+
+### DOWN-PAYMENT ON THE MODIFIER RESOLVER
+Doing it as ONE shared decision (not twins) makes this fix a down-payment on the probability-modifier /
+decision authority: spread-target-selection becomes a single resolved decision both views read. That is
+the structural end state; this bug is the concrete first case. (CA-spread was a GAP in the resolver scope
+— the SandsModifierResolver handles spread/warp/LOR/direction DELEGATION, but follow-CA TARGET SELECTION
+stayed in SpreadInterp outside it. Fold it toward the one-decision model here.)
+
+PROCEED with: pub-reading (approved); ONE shared follow-CA decision if cleanly factorable, else twins +
+the mandatory equivalence test; anchor bit-identical; no new pub arrays.
