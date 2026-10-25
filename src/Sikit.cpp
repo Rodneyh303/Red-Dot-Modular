@@ -2,7 +2,8 @@
 #include <string>
 #include "Sikit.hpp"
 #include "Monsoon.hpp"
-#include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide
+#include "ui/VisualExpanderHelpers.hpp"   // redDot::findMonsoonEitherSide (service-internal)
+#include "ui/ModuleLookup.hpp"   // THE lookup authority: lookupMonsoon (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/WrappingMenuLabel.hpp"   // wrap a long .scl description in the context menu
@@ -20,7 +21,7 @@ void Sikit::process(const ProcessArgs&) {
     // against preset/.scl writes trying to move it.
     params[CENTS_PARAM_0].setValue(0.f);
 
-    Monsoon* mon = redDot::findMonsoonEitherSide(this);
+    Monsoon* mon = redDot::lookupMonsoon(this);
     if (!mon) return;                       // standalone: nothing to publish (ConnectMark greys)
     if (!mon->claimAsTuningSource(this)) return;   // not the claimant: don't write (loser greys)
 
@@ -57,7 +58,7 @@ struct SikitLabels : Widget {
         std::shared_ptr<window::Font> f = loadFont();
         if (!f) return;
         NVGcontext* vg = args.vg;
-        const bool light = [&]{ Monsoon* m = module ? redDot::findMonsoonEitherSide(module) : nullptr;
+        const bool light = [&]{ Monsoon* m = module ? redDot::lookupMonsoon(module) : nullptr;
                                 return m && m->lightTheme; }();
         const NVGcolor ink = light ? nvgRGB(0x1a,0x1a,0x1a) : nvgRGB(0xf0,0xf0,0xf0);
         const NVGcolor sub = light ? nvgRGB(0x5a,0x64,0x70) : nvgRGB(0x8a,0x94,0xa0);
@@ -138,7 +139,7 @@ struct SikitWidget : ModuleWidget,
             connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));
             rack::Module* self = module;
             connectMark->connected = [self]() {
-                Monsoon* m = self ? redDot::findMonsoonEitherSide(self) : nullptr;
+                Monsoon* m = self ? redDot::lookupMonsoon(self) : nullptr;
                 return m && m->getTuningSourceExpander() == self;
             };
             addChild(connectMark);
@@ -203,7 +204,7 @@ struct SikitWidget : ModuleWidget,
         ModuleWidget::step();
         kitStep();
         if (!module) return;
-        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        Monsoon* m = redDot::lookupMonsoon(module);
         int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;

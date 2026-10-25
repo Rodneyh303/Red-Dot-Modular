@@ -693,6 +693,11 @@ struct Monsoon : Module {
     // Assigned lazily in updateExpanderPointers() (control rate; NOT ctor — getModuleIds re-lock).
     int  pairId = 0;
     bool pairChecked = false;   // one-shot clash-scan latch (mirrors Intertropical::pairChecked); runtime only
+    // The lookup-authority epoch cache (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START):
+    // updateExpanderPointers() re-runs only when the topology generation moved (an
+    // onExpanderChange fired somewhere — the multi-hop fan-out; see
+    // ui/ModuleLookupCore.hpp). Runtime only.
+    uint64_t lookupEpoch_ = 0;
     // Hard cap: 8 connection-participating Monsoons = the 8-hue pairColour palette, so colour is a
     // COMPLETE unique identifier (never wraps). Locked to the palette width in IntertropicalPairing.hpp.
     static constexpr int kMaxParticipatingMonsoons = 8;

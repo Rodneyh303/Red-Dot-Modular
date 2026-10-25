@@ -1,4 +1,5 @@
 #pragma once
+#include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 // ── Sikit — the Tuning Expander (microtonal Phase 1) ─────────────────────────────────────────
 // A lightweight, cents-only tuning expander: 12 per-degree CENTS knobs that RETUNE Monsoon's
 // existing 12-degree system without touching the scale mask. Writes cents[] into the engine's
@@ -35,6 +36,12 @@ namespace SikitIds {
 }
 
 struct Sikit : rack::engine::Module {
+    // THE LOOKUP AUTHORITY: the event bumps the global topology epoch — adjacency
+    // (the lookup* memos) re-resolves on the next read.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+    }
+
     // Equal-division default for degree i: i*100 cents (0,100,…,1100). SIKIT_CLAUDE_CODE_GUIDE §Cents.
     static float defaultCents(int i) { return (float)i * 100.f; }
 

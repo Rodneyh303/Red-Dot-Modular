@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (onExpanderChange bump — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 
 using namespace rack;
 
@@ -46,15 +47,13 @@ struct MonsoonChangiT3Expander : Module {
     // See ui/IntertropicalPairing.hpp.
     int followIT = 0;
 
-    // Rate discipline: resolveFollowedIT() does a rack-wide getModuleIds() scan — topology is
-    // control-rate, so cache the resolved pointer on a divider (mirrors the sibling-expander idiom
-    // in PROCESS_RATE_AUDIT). The 40-jack MIRROR still runs per-sample from the cache, so signal
-    // stays continuous; only the lookup is throttled. Runtime-only (not persisted).
-    Intertropical* cachedIT_ = nullptr;
-    rack::dsp::ClockDivider itLookupDiv_;
+    // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the followed-IT
+    // resolve is the memoized lookupIntertropical (one walk per topology generation,
+    // event-driven); the /512 itLookupDiv_ poll + cachedIT_ are DELETED. The 40-jack
+    // MIRROR still runs per-sample from the memoized pointer, so signal stays
+    // continuous. Runtime-only (not persisted).
 
     MonsoonChangiT3Expander() {
-        itLookupDiv_.setDivision(512);   // ~94 Hz @ 48k — control rate for topology
         config(0, 0, ChangiT3Ids::NUM_OUTPUTS, 0);
         using namespace ChangiT3Ids;
         for (int ch = 0; ch < N_CH; ++ch) {
@@ -65,6 +64,11 @@ struct MonsoonChangiT3Expander : Module {
             configOutput(idx(ch, STEP),        "Ch " + c + " step gate");
             configOutput(idx(ch, STEP_LEGATO), "Ch " + c + " step legato gate");
         }
+    }
+    // THE LOOKUP AUTHORITY: the event bumps the global topology epoch — this module's
+    // adjacency (the lookupIntertropical memo) re-resolves on the next read.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
     }
 
     // process() lives in the .cpp (needs the complete Intertropical type + pairing).

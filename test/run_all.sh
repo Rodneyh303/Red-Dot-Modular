@@ -93,6 +93,7 @@ TESTS=(
   "test_modes_bcd|"
   "test_modes_cd_microtonal|"
   "test_monsoon_discovery|"
+  "test_module_lookup|"   # CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START: the fourth authority — event-driven adjacency (onExpanderChange → topology epoch → memoized lookups); L5 is the raw-walk grep-gate (residual mode during the migration)
   "test_mono_dir_authority|"
   "test_monotone_curve|"   # header-only: the .dmcurve Phase 1 math module (jansson via test/jansson.h shim)
   "test_MpeMath|"

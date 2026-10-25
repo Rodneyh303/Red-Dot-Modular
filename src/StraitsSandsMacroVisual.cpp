@@ -94,7 +94,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     std::function<Monsoon*()> storeResolver() {
         auto* self = this;
         return [self]() -> Monsoon* {
-            return self->module ? redDot::findMonsoonEitherSide(self->module) : nullptr; };
+            return self->module ? redDot::lookupMonsoon(self->module) : nullptr; };
     }
  std::vector<rack::Widget*> leftAttenuverters;  // 12 CV-depth knobs; hidden on tab-1 when mono attached
     void flushSpreadArcs() {
@@ -111,7 +111,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // same number) and after it (the store becomes authoritative). This removes the
             // arcs' dependence on paramId -- what made them a step-1d blocker.
             arc->getSetNorm = [mm, lane]() -> float {
-                Monsoon* mon = mm ? findMonsoonEitherSide(mm) : nullptr;
+                Monsoon* mon = mm ? redDot::lookupMonsoon(mm) : nullptr;
                 if (!mon) return 0.5f;
                 return rack::math::clamp((mon->getGlobalSpread(lane) + 1.f) * 0.5f, 0.f, 1.f);
             };
@@ -121,7 +121,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             };
             arc->isActive = [mm, lane]() -> bool {
                 if (!mm || lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return false;
-                Monsoon* mon = findMonsoonEitherSide(mm);
+                Monsoon* mon = redDot::lookupMonsoon(mm);
                 if (!mon || !mon->modVizMacro) return false;
                 // Gate on the spread CV jack actually being connected — NOT a
                 // set-vs-effective delta, which races during a manual knob turn
@@ -209,7 +209,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
 
         Module* mod_ = module;
         auto themeOut = [mod_](redDot::GoldPolyPort* p) {
-            p->lightTheme = [mod_]() { Monsoon* m = mod_ ? redDot::findMonsoonEitherSide(mod_) : nullptr;
+            p->lightTheme = [mod_]() { Monsoon* m = mod_ ? redDot::lookupMonsoon(mod_) : nullptr;
                                        return m && m->lightTheme; };
         };
 
@@ -389,7 +389,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         {
             Module* mod_ = module;
             auto themeIn = [mod_](redDot::GoldPolyPort* p) {
-                p->lightTheme = [mod_]() { Monsoon* m = mod_ ? redDot::findMonsoonEitherSide(mod_) : nullptr;
+                p->lightTheme = [mod_]() { Monsoon* m = mod_ ? redDot::lookupMonsoon(mod_) : nullptr;
                                           return m && m->lightTheme; };
             };
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
@@ -423,7 +423,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     }
 
     Monsoon* getMonsoon() {
-        return module ? findMonsoonEitherSide(module) : nullptr;
+        return module ? redDot::lookupMonsoon(module) : nullptr;
     }
 
     // ── CC_PROMPT_04 STEP 3: the warp curve popup ──────────────────────────────────
@@ -805,11 +805,14 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
         ~MonsoonProfTotal() { monsoonProfAcc_total += monsoonProfile::now() - t0; }
     } monsoonProfTotal;
 #endif
-    MONSOON_PROF_BEGIN(lookup);   // lookup: Monsoon chain walk (div /8) + dir-mod edge scan
-    // PERF (Rodney audit item 3): findMonsoonEitherSide walks the expander chain and ran
-    // every sample. Topology is control-rate, so cache it and refresh on a divider.
-    if (monLookupDiv.process()) cachedMon_ = redDot::findMonsoonEitherSide(this);
-    Monsoon* mon = cachedMon_;
+    MONSOON_PROF_BEGIN(lookup);   // lookup: the adjacency memo + dir-mod edge scan
+    // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): findMonsoonEitherSide
+    // ran behind a /8 divider — a chain walk every 8 samples even on a STATIC rack. It
+    // is now the memoized lookupMonsoon: a hit costs one relaxed atomic load + two
+    // compares; the WALK runs once per topology generation (onExpanderChange bumped
+    // the epoch; the multi-hop fan-out is the epoch's whole point — see
+    // ui/ModuleLookupCore.hpp).
+    Monsoon* mon = redDot::lookupMonsoon(this);
     if (!mon) {
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
             auto& out = outputs[PROB_OUT_START + l];
@@ -838,7 +841,7 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
             if (!in.isConnected()) continue;
             bool high = in.getVoltage(0) > 1.f;
             if (high && !dirModPrev[el]) {
-                if (auto* mm = redDot::findMonsoonEitherSide(this)) {
+                if (auto* mm = redDot::lookupMonsoon(this)) {
                     int cur = (int)std::lround(mm->getGlobalDir(el));
                     mm->setGlobalDir(el, (float)((cur + 1) % 4));
                 }

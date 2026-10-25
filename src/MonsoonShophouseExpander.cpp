@@ -6,6 +6,7 @@
 #include "MonsoonShophouseExpander.hpp"
 #include "dsp/managers/MonsoonScaleManager.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModuleLookup.hpp"   // THE lookup authority: lookupMonsoon (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/WrappingMenuLabel.hpp"                 // MONSOON_SCALE_AUTHORING: wrapped slot name
@@ -398,7 +399,7 @@ struct MonsoonShophouseExpanderWidget : ModuleWidget,
         ModuleWidget::step();
         kitStep();
         if (!module) return;
-        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        Monsoon* m = redDot::lookupMonsoon(module);
         int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;

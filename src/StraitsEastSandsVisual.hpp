@@ -2,6 +2,7 @@
 #include <rack.hpp>
 #include "ui/SandsGrid.hpp"
 #include "dsp/LaneMapping.hpp"     // lane order + canonical lane names (Phase 3b-3 merge)
+#include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (onExpanderChange bump — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "Monsoon.hpp"
 
 using namespace rack;
@@ -304,7 +305,14 @@ struct StraitsEastSandsVisual : Module {
         }
    }
 
-    void process(const ProcessArgs&) override;   // defined in .cpp (needs findMonsoonEitherSide)
+    void process(const ProcessArgs&) override;   // defined in .cpp (adjacency via redDot::lookupMonsoon)
+    // THE LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event bumps
+    // the global topology epoch — this module's adjacency (the lookupMonsoon memo)
+    // re-resolves on the next read, engine + widget threads. cachedMon_ and its
+    // divider refresh are DELETED.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+    }
 
     // Gate edge detection state for dir_mod and deleg_mod inputs.
     // dirModPrev[lane][channel] — 7 lanes × 16 channels (ch0=mono, ch1..15=voices 2..16)
@@ -322,8 +330,7 @@ struct StraitsEastSandsVisual : Module {
     // The scan runs on a divider rather than every sample: a gate is milliseconds long
     // (hundreds of samples), so /8 still catches every edge at an eighth of the cost.
     static constexpr int GATE_MOD_DIV = 8;
-    rack::dsp::ClockDivider gateModDiv;
-    Monsoon* cachedMon_  = nullptr;   // refreshed on gateModDiv (topology is control-rate)
+    rack::dsp::ClockDivider gateModDiv;   // the /8 EDGE-SCAN cadence ONLY (the host lookup left the divider — LOOKUP AUTHORITY)
     bool     gateModScan_ = false;    // set when gateModDiv ticks; consumed by the gate scan
     rack::dsp::ClockDivider probOutDiv;   // prob CV outs: /32 = control rate
     bool    dirModPrev[dotModular::SandsGrid::EAST_LANES][16]    = {};

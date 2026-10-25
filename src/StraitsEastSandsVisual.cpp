@@ -112,7 +112,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // East knob + East V1 spread CV + Macro send blend. lane = spread index
                     // 0=REST,1=MEL,2=OCT,3=ACC,4=Q-MIX; CV jack cvId(lane,3).
                     if (lane < 0 || lane >= dotModular::SandsGrid::POLY_LANES) return 0.5f;
-                    Monsoon* mon = findMonsoonEitherSide(mod);
+                    Monsoon* mon = redDot::lookupMonsoon(mod);
                     auto* macroVis = mon ? mon->expanderManager.cachedMacroSandsVisual : nullptr;
                     bool delegated = macroVis && !eastOwnsLane(lane);   // MVC step 1d: store-backed
                     float sp;
@@ -126,12 +126,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         // getSetNorm above. V1/mono tab → currentSlot()==0.
                         sp = mon ? mon->getSpread(currentSlot(), lane) : 0.f;   // bipolar -1..1
                         if (mod->inputs[cvId(lane,3)].isConnected()) {
-                            float att = (redDot::findMonsoonEitherSide(mod) ? redDot::findMonsoonEitherSide(mod)->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + 3) : 0.f);
+                            float att = (mon ? mon->getMacroAtten(dotModular::VoiceResolver::kMonoSlot, lane*4 + 3) : 0.f);
                             float cv  = mod->inputs[cvId(lane,3)].getVoltage(0) / 10.f;
                             sp += cv * att * 2.f;
                         }
                         if (macroVis) {
-                            auto* mm = redDot::findMonsoonEitherSide(macroVis);
+                            auto* mm = redDot::lookupMonsoon(macroVis);
                             float send = (mm ? mm->getMacroSend(dotModular::VoiceResolver::kMonoSlot, lane, 3) : 0.f);
                             // P9b: V1's own tap selects between the published endpoints.
                             const float tap = (mm ? mm->getMacroTap(dotModular::VoiceResolver::kMonoSlot, lane, 1) : 1.f);
@@ -155,7 +155,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             };
             arc->isActive = [mod, this, lane]() -> bool {
                 if (!mod) return false;
-                Monsoon* mon = findMonsoonEitherSide(mod);
+                Monsoon* mon = redDot::lookupMonsoon(mod);
                 if (!mon || !mon->modVizEast) return false;
                 int v = currentSlot();   // Phase A: V1=0, V2+=1..15 (was polyVoice)
                 if (onMonoTab()) {
@@ -196,7 +196,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     // BEHAVIOUR change (persistent-until-tab-exit vs live), not a pure
                     // refactor. Deferred until the live-vs-persistent semantics for the
                     // current tab are decided (same question as the deferred edit-lock one).
-                    bool eastOwns = (redDot::findMonsoonEitherSide(mod) ? redDot::findMonsoonEitherSide(mod)->ownerIsEast(v, lane) : false);
+                    bool eastOwns = (mon ? mon->ownerIsEast(v, lane) : false);
                     if (eastOwns)
                         macroBlend = StraitsMacroVisualIds::macroSpreadModulatesLane(
                             macroVis, lane, /*delegated=*/false, /*sendSlot=*/v);
@@ -306,7 +306,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         {
             Module* mod = module;
             auto themeOut = [mod](redDot::GoldPolyPort* p) {
-                p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::lookupMonsoon(mod) : nullptr;
                                           return m && m->lightTheme; };
             };
             for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
@@ -320,7 +320,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         {
             Module* mod = module;
             auto themeIn = [mod](redDot::GoldPolyPort* p) {
-                p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::lookupMonsoon(mod) : nullptr;
                                           return m && m->lightTheme; };
             };
             for (int lane = 0; lane < dotModular::SandsGrid::EAST_LANES; ++lane) {
@@ -341,7 +341,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             Module* mod = module;
             auto themeCfg = [mod](redDot::GoldPolyPort* p) {
-                p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::lookupMonsoon(mod) : nullptr;
                                            return m && m->lightTheme; };
             };
             for (int c = 0; c < 4; ++c)
@@ -699,7 +699,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     }
 
     Monsoon* getMonsoon() const {
-        return module ? findMonsoonEitherSide(module) : nullptr;
+        return module ? redDot::lookupMonsoon(module) : nullptr;
     }
 
     // STEP 4c: full ownership authority for East. Populates V1 + all poly owners from the
@@ -947,7 +947,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             void onAction(const event::Action& e) override {
                 // Set display proxy and persist to all 15 poly voice slots
                 // (owner proxy write DELETED — MVC step 1d: setOwnerEast below is the home.)
-                if (auto* mmA = redDot::findMonsoonEitherSide(widget->module))
+                if (auto* mmA = redDot::lookupMonsoon(widget->module))
                     for (int v = 1; v < 16; ++v) mmA->setOwnerEast(v, lane, setToEast);
             }
         };
@@ -1040,7 +1040,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 // through monoDirAuthority above (which IS East's monoDirId when East owns V1,
                 // and Mono's/Macro's cell otherwise — writing monoDirId unconditionally would
                 // just poke a store nobody reads).
-                if (ch != 0) { if (auto* m = findMonsoonEitherSide(mod)) m->setLaneDir(ch - 1, lane, (float)nxt); }
+                if (ch != 0) { if (auto* m = redDot::lookupMonsoon(mod)) m->setLaneDir(ch - 1, lane, (float)nxt); }
                 // (dirDispId proxy write DELETED — MVC step 1d: the store-backed DirCell reads
                 // getLaneDir live; the store write above is what the cell now displays.)
             }
@@ -1060,14 +1060,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 if (lane >= dotModular::SandsGrid::POLY_LANES && ch == 0) continue;   // mono has no VAR/LEG delegation
                 if (lane < dotModular::SandsGrid::POLY_LANES) {
                     // owner delegation (MACRO_OWN) lives in Monsoon::editor.eastOwns (boolean model)
-                    if (auto* mm = findMonsoonEitherSide(mod)) {
+                    if (auto* mm = redDot::lookupMonsoon(mod)) {
                         // Phase A: ch IS the new index (V1=0, V2=1..15). Was ch-1 (old poly bank index).
                         mm->setOwnerEast(ch, eng, !mm->ownerIsEast(ch, eng));
                         // (owner proxy write DELETED — MVC step 1d: setOwnerEast above is the home.)
                     }
                 } else {
                     // VAR/LEG delegation migrated to Monsoon::editor.varlegDeleg (fields)
-                    if (auto* mm = findMonsoonEitherSide(mod)) {
+                    if (auto* mm = redDot::lookupMonsoon(mod)) {
                         const int vlLane = lane - 4;
                         const float nv = (mm->getVarlegDeleg(ch - 1, vlLane) > 0.5f) ? 0.f : 1.f;
                         mm->setVarlegDeleg(ch - 1, vlLane, nv);
@@ -1488,17 +1488,20 @@ void StraitsEastSandsVisual::process(const ProcessArgs&) {
     // Phase 2: Now 5 poly lanes
     for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
         // MVC step 1d: module process has no tab context; light the V1 owner (the OwnerCell
-        // widget draws the live per-voice state via getOwnsFn). cachedMon_ is the store owner.
+        // widget draws the live per-voice state via getOwnsFn). The store owner resolves
+        // via the lookupMonsoon memo (LOOKUP AUTHORITY).
         // lane is the EDITOR lane (ownerLightId is an editor-row light); the macroOwn store
         // is ENGINE-indexed, so convert editor→engine before getMonoMacroOwn.
         lights[ownerLightId(lane)].setBrightness(
-            (cachedMon_ && cachedMon_->ownerIsEast(Monsoon::kMonoMacroOwnRow, lane)) ? 1.f : 0.f);
+            (redDot::lookupMonsoon(this) && redDot::lookupMonsoon(this)->ownerIsEast(Monsoon::kMonoMacroOwnRow, lane)) ? 1.f : 0.f);
 
-    // PERF: findMonsoonEitherSide walks the expander chain. Topology only changes at
-    // control rate, so refresh the cached pointer on the same /8 divider as the gate scan
-    // rather than every sample. (Rodney's audit, item 3.)
-    if (gateModDiv.process()) { cachedMon_ = redDot::findMonsoonEitherSide(this); gateModScan_ = true; }
-    Monsoon* mon = cachedMon_;
+    // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the host resolves
+    // through the memoized lookupMonsoon — event-driven (onExpanderChange bumps the
+    // topology epoch), zero walks on a static rack. Was: cachedMon_ refreshed on the
+    // /8 divider (a walk every 8 samples even when idle). The divider keeps ONLY the
+    // gate-mod edge-scan cadence (gates are ms — /8 catches every edge).
+    if (gateModDiv.process()) gateModScan_ = true;
+    Monsoon* mon = redDot::lookupMonsoon(this);
     if (!mon) {
         // Phase 2: Now 5 poly outputs
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {

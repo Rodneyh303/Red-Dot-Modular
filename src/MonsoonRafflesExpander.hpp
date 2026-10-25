@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "Monsoon.hpp"
 
 using namespace rack;
@@ -10,6 +11,12 @@ using namespace rack;
 //   4 CV + attenuverters: slew R/M, mix R/M  (sum into the same targets as CV3)
 //   10 dedicated die-action gates (see RafflesInputIds order)
 struct MonsoonRafflesExpander : Module {
+    // THE LOOKUP AUTHORITY: the event bumps the global topology epoch — adjacency
+    // (the lookup* memos) re-resolves on the next read.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+    }
+
     MonsoonRafflesExpander() {
         config(MonsoonIds::NUM_RAFFLES_PARAMS, MonsoonIds::NUM_RAFFLES_INPUTS, 0, 0);
         configParam(MonsoonIds::RAFFLES_SLEW_R_ATT, -1.f, 1.f, 0.f, "Rhythm slew CV attenuverter");
