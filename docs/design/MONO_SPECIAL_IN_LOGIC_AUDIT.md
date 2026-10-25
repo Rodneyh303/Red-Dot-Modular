@@ -62,3 +62,42 @@ NOTE ONLY — not scheduled. Fits naturally AFTER the rate manager (the resolver
 builds on is the vehicle). Flagged here so it's not lost: poly articulation is the last big mono-special,
 and it's in the LOGIC, which strong types can't catch — only a per-voice-resolved-articulation refactor
 (+ tests) closes it.
+
+────────────────────────────────────────────────────────────────────────────────
+## REVISIT (after rate manager lands) — direction/delegation mod detection + step-boundary latching (Rodney)
+
+Two related refinements for the dir-mod / deleg-mod CV-edge handling (StraitsEastSandsVisual, the
+gateModDiv /8 scan + the dirModEdges/delegModEdges counters). NOTE ONLY — revisit when the rate manager
+changes land (it will own gateModDiv as a detector-producer, so the right time to reconsider the whole
+mechanism).
+
+### 1. A more STANDARD edge-detection mechanism?
+Current: a /8-divider scan (gateModDiv) walks each dir/deleg CV input, compares voltage>1V vs a per-
+channel prev[], increments an edge COUNTER (dirModEdges[lane][ch]), and the consumer reads a wrap-safe
+unsigned COUNTER-DIFF (n - dirModSeen) to consume accumulated edges. It works, but it's a hand-rolled
+accumulate-and-diff. STANDARD alternatives to weigh:
+- rack::dsp::SchmittTrigger / BooleanTrigger per channel (Rack's idiomatic edge detector — hysteresis,
+  no manual prev[] bookkeeping). The reason it may not have been used: these are per-sample and there are
+  EAST_LANES×16 of them (cost), hence the /8 counter approach. Under the rate manager, the detector is a
+  Sample-tier producer anyway — so SchmittTrigger-per-channel at the detector tier may be both cleaner
+  AND correctly placed.
+- A single generalized "CV-edge-count" detector-producer in the rate manager that any lane/channel
+  registers with — one mechanism, not a bespoke scan per expander (dir-mod, deleg-mod, and any future
+  CV-edge input share it). This is the rate-manager-native version and the likely end state.
+Decide when the rate manager owns the detector: keep the counter-diff, or move to SchmittTrigger /
+a shared CV-edge producer. Preserve the gateModSeenInit settle (adopt counts on rebuild, no spurious burst).
+
+### 2. Apply dir/deleg changes only at the STEP BOUNDARY (worst case)
+Current: edges accumulate continuously (/8) and the counter-diff is consumed in process/draw, so a
+direction FLIP or delegation CHANGE can take effect MID-STEP. That's musically incoherent — a lane
+reversing direction or ceding/claiming delegation partway through a step. CONSTRAINT to add: a detected
+dir/deleg edge should be LATCHED and APPLIED at the next STEP BOUNDARY (worst case), not mid-step — the
+same cadence discipline as slew (a distributional param latched per phrase) and the gate-window rules.
+So: detect continuously (catch the edge), but APPLY at the step boundary. Under the rate manager this is
+natural: the detector is Sample-tier (catches the edge), the APPLICATION is a Step-tier consumer (reads
+the latched edge at the step). i.e. detection rate ≠ application rate — exactly the tiered structure the
+manager provides. Worth doing as part of the gateModDiv → detector-producer migration.
+
+STATUS: note only; revisit when the rate manager migration reaches gateModDiv (it's in scope as a
+detector-producer). Both refinements fit the manager's tiered model (Sample detect, Step apply) and the
+shared-detector idea — so they're natural to fold in THEN rather than now.
