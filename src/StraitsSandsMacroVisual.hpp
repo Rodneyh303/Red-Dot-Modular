@@ -7,6 +7,7 @@
 #include "ui/StoreBound.hpp"   // redDot::StoreKnob (de-parammed controls)   // redDot::findMonsoonEitherSide (MACRO field accessors)
 #include "ui/SweepSigGate.hpp"   // RESTORED: SweepSig — the prob-out sweep's input-change gate (CC_PROMPT_restore_sweepsig_gate_START)
 #include "ui/ModuleLookup.hpp"   // THE module-lookup authority: lookupMonsoon (event-driven adjacency; the monLookupDiv poll is deleted)
+#include "ui/RateManager.hpp"    // THE compute-rate authority (CC_PROMPT_RATE_MANAGER_START, S5): the sweep is a Control producer
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -239,6 +240,14 @@ struct StraitsSandsMacroVisual : Module {
         // ~3%. The gate (ui/SweepSigGate.hpp) skips the whole resolve when its inputs
         // are bit-unchanged; the /32 cadence ALONE is not the fix (e0981d5, reverted).
         probOutDiv.setDivision(32);
+        // RATE MANAGER (S5): declare the sweep producer ONCE — the SweepSig gate IS the
+        // fingerprint (a changed-flag image), the resolve is the produce. Dispatch rides
+        // the Control tier, fed by the probOutDiv edge (the wrapper pattern — /32, same
+        // cadence + phase; the divider's internal tier source lands with the S7 deletion).
+        rateManager.declareProducer(
+            redDot::Rate::Control,
+            [this](void* dst) { return sweepFingerprint_(dst); },
+            [this]()           { sweepProduce_(); });
         // Labels from the canonical table — the old local literal was OLD-order, so
         // every jack tooltip named the wrong lane (id 0 carries MEL, was labelled "REST").
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l)
@@ -302,7 +311,19 @@ struct StraitsSandsMacroVisual : Module {
     // resolves through redDot::lookupMonsoon (the memoized, event-driven authority);
     // the dir-mod edge scan reads the same accessor.
     rack::dsp::ClockDivider probOutDiv;   // the /32 tick the SweepSig gate runs on (RESTORED — 70dd837 deleted it with the gate; Rodney's bisect put the 0.4% here)
+    // RATE MANAGER (S5): the module's OWN manager instance. The probOutDiv feeds its
+    // Control tier; the SweepSig-gated resolve is a declared producer (the gate is the
+    // fingerprint, the resolve the produce). Same /32 cadence, same phase, same skip
+    // semantics — the fold is mechanism-only. (No host sharing needed: this producer's
+    // output is the module's own prob-CV jacks — no cross-module consumer, so the
+    // design's shared-producer property doesn't bite here; the host's manager owns the
+    // cross-module quantities, e.g. publishGlobal.)
+    redDot::RateManager rateManager;
     bool dirModPrev[dotModular::SandsGrid::POLY_LANES] = {};
+
+    /// The sweep producer halves (S5): the gate-as-fingerprint + the verbatim resolve.
+    size_t sweepFingerprint_(void* dst);
+    void   sweepProduce_();
 
     // ── The prob-out sweep: the input-change gate + the value cache ────────────────
     // RESTORED (CC_PROMPT_restore_sweepsig_gate_START): WHEN the rows re-resolve is
