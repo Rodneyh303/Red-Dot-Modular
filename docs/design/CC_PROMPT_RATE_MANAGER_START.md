@@ -41,6 +41,19 @@ one first SIMPLIFIES this: the rate manager then owns ONLY rate-gated recompute 
 never adjacency. So this prompt is purely RATE-gated producers; the lookup dividers are deleted THERE, not
 here.
 
+## EAST-VISUAL DIVIDERS (CC found; disposition)
+- probOutDiv (StraitsEastSandsVisual.cpp:1559, /32 + prob-CV-out recompute): SAME SweepSig/recompute-gate
+  class as Macro's prob-out sweep → IN SCOPE, fold into the manager as a declared producer (same fingerprint
+  pattern). Leaving it = two mechanisms for one pattern. Do it in the cross-module step.
+- gateModDiv (StraitsEastSandsVisual.cpp:1503, /8 → sets gateModScan_): a Sample-tier EDGE-DETECTOR cadence
+  (NOT a recompute gate — gates are ms, /8 catches every edge). Disposition: it is NOT in the recompute/
+  Stage-0 work, BUT it is NOT "out of scope" either — edge detectors ARE Sample-tier detector-PRODUCERS in
+  the design (gate-mode Step is triggered by a Sample-rate edge detector). So MIGRATE it through the manager
+  as a detector-producer, BEHAVIOUR-IDENTICAL: preserve the /8 cadence exactly (changing /8 is a separate
+  timing-ACCURACY question, not this plumbing migration). The end state has NO raw gateModDiv.process() —
+  it is a manager-owned detector at /8. (Calling it "out of scope" would leave a raw divider = the straggler
+  the enforcement-by-deletion forbids.)
+
 ## THE ENFORCEMENT — "compile error to not use it" = DELETE THE ALTERNATIVES
 There is no C++ type that makes "I gated work on a raw divider" fail to compile (timing is control flow,
 not a typed value). So enforcement = REMOVE THE RAW PRIMITIVES so there is nothing to bypass WITH:
