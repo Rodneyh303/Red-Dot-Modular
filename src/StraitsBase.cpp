@@ -10,7 +10,7 @@
 #include <rack.hpp>
 #include "Monsoon.hpp"
 #include "MonsoonStraitsExpander.hpp"
-#include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModuleLookup.hpp"   // THE module-lookup authority: lookupMonsoon — memoized, event-driven (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/Controls.hpp"
@@ -238,7 +238,7 @@ struct StraitsBaseWidget : ModuleWidget,
     void step() override {
         // ── step() logic COPIED from MonsoonStraitsExpanderWidget, plus lane sync ──
         if (module) {
-            Monsoon* mm = redDot::findMonsoonEitherSide(module);
+            Monsoon* mm = redDot::lookupMonsoon(module);
             themeLight_ = (mm && mm->lightTheme);
             // ── Seam filler: toggle based on neighbour detection ──
             NVGcolor bg = themeLight_ ? nvgRGB(0xdc, 0xdc, 0xdc) : nvgRGB(0x14, 0x17, 0x1b);
@@ -331,7 +331,7 @@ struct StraitsBaseWidget : ModuleWidget,
         ModuleWidget::step();
         kitStep();
         if (!module) return;
-        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        Monsoon* m = redDot::lookupMonsoon(module);
         int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;

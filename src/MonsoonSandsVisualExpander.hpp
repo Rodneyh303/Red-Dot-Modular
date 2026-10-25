@@ -3,7 +3,7 @@
 #include "ui/SandsGrid.hpp"
 #include "Monsoon.hpp"
 #include "dsp/LaneMapping.hpp"   // strand constants + strong lane types (identity — tables deleted Phase 3b)
-#include "ui/VisualExpanderHelpers.hpp"  // findMonsoonEitherSide (monoMacroOwnsEngineLane store read)
+#include "ui/ModuleLookup.hpp"  // THE module-lookup authority: lookupMonsoon (monoMacroOwnsEngineLane store read — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 
 using namespace rack;
 
@@ -61,7 +61,9 @@ namespace SandsMonoVisualIds {
         if (!mod || engineLane < 0 || engineLane >= dotModular::SandsGrid::POLY_LANES) return false;
         // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
         // Returns true iff Macro owns (delegated); no Monsoon → treat as Mono-owned (not delegated).
-        Monsoon* m = redDot::findMonsoonEitherSide(mod);
+        // LOOKUP AUTHORITY: the host resolves through the memoized redDot::lookupMonsoon —
+        // event-driven (onExpanderChange bumps the topology epoch), one walk per generation.
+        Monsoon* m = redDot::lookupMonsoon(mod);
         return !(m ? m->getMonoOwner(engineLane) : true);
     }
 
@@ -120,7 +122,8 @@ struct MonsoonSandsVisualExpander : Module {
         // config() reserves ZERO host param slots — Mono has left the host/DAW param list. The
         // id enums (LEN_MELODY…NUM_PARAMS) stay declared (they name panel slots) but reserve none.
         config(0, SandsMonoVisualIds::NUM_INPUTS, SandsMonoVisualIds::NUM_OUTPUTS, 0);
-        monLookupDiv.setDivision(8);   // topology changes are control-rate
+        // (monLookupDiv DELETED — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START: adjacency is event-driven;
+        //  this module is RETIRED (uninstantiable — stub .cpp), so the divider pair was dead weight.)
         // PROB_OUT ids are EDITOR-ordered (one per editor lane MEL/OCT/QMIX/REST/ACC/VAR/LEG),
         // so label from the canonical EDITOR table (q-mix at index 2). Loop bound = MONO_LANES.
         for (int l = 0; l < dotModular::SandsGrid::MONO_LANES; ++l)
@@ -167,9 +170,8 @@ struct MonsoonSandsVisualExpander : Module {
     void process(const ProcessArgs&) override;   // defined in .cpp (needs calcPlayhead)
 
     // Gate edge detection state (mono, 1 channel per jack).
-    // PERF: chain walk is control-rate work (Rodney audit item 3).
-    Monsoon* cachedMon_ = nullptr;
-    rack::dsp::ClockDivider monLookupDiv;
+    // (cachedMon_ + the monLookupDiv poll DELETED — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START; the
+    //  retired module's stub process() never read them.)
     bool dirModPrev[dotModular::SandsGrid::MONO_LANES] = {};
     bool delegModPrev[dotModular::SandsGrid::POLY_LANES] = {};
 

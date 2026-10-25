@@ -11,7 +11,7 @@
 #include <cmath>
 #include "Monsoon.hpp"
 #include "StraitsLaneExpander.hpp"
-#include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModuleLookup.hpp"   // THE module-lookup authority: lookupMonsoon — memoized, event-driven (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/ModArcOverlay.hpp"
@@ -144,15 +144,15 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
                 }
             };
             arc->getSetNorm = [self, voice, setOf]() -> float {
-                Monsoon* m = redDot::findMonsoonEitherSide(self->module);
+                Monsoon* m = redDot::lookupMonsoon(self->module);
                 return m ? setOf(m, voice) : 0.f;
             };
             arc->getModNorm = [self, voice, modOf]() -> float {
-                Monsoon* m = redDot::findMonsoonEitherSide(self->module);
+                Monsoon* m = redDot::lookupMonsoon(self->module);
                 return m ? modOf(m, voice) : 0.f;
             };
             arc->isActive = [self, voice, setOf, modOf]() -> bool {
-                Monsoon* m = redDot::findMonsoonEitherSide(self->module);
+                Monsoon* m = redDot::lookupMonsoon(self->module);
                 if (!m || !m->modVizEast) return false;
                 if (voice >= 0 && self->activeVoices_ >= 0 && voice >= self->activeVoices_) return false;
                 if (voice >= 0 && (voice < 0 || voice >= 15)) return false;
@@ -193,7 +193,7 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
                 k->lightWhen = [this](){ return themeLight_; };
                 k->lockWhen = [](){ return true; };
                 k->displayValueFn = [this]() -> float {
-                    Monsoon* m = redDot::findMonsoonEitherSide(module);
+                    Monsoon* m = redDot::lookupMonsoon(module);
                     return m ? m->params[desc->monoParamId].getValue() : NAN;
                 };
                 queueArc(k, -1, desc->arcLane);
@@ -260,12 +260,12 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
     void step() override {
         // COPIED from MonsoonStraitsExpanderWidget — theme + active-voice tracking.
         // The lane expander finds the BASE (leftExpander) for voice count, and
-        // Monsoon (findMonsoonEitherSide) for theme + mod-arc values.
+        // Monsoon (the memoized lookupMonsoon) for theme + mod-arc values.
         if (module) {
             // Voice count: read from the base (leftExpander), which owns it.
             // The base is a MonsoonStraitsExpander; its VOICE_COUNT_PARAM drives
             // Monsoon's numPolyVoices. We read activeVoices_ from Monsoon directly.
-            Monsoon* mm = redDot::findMonsoonEitherSide(module);
+            Monsoon* mm = redDot::lookupMonsoon(module);
             themeLight_ = (mm && mm->lightTheme);
             // ── Seam filler: toggle based on neighbour detection ──
             NVGcolor bg = themeLight_ ? nvgRGB(0xdc, 0xdc, 0xdc) : nvgRGB(0x14, 0x17, 0x1b);
@@ -280,7 +280,7 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
         ModuleWidget::step();
         kitStep();
         if (!module) return;
-        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        Monsoon* m = redDot::lookupMonsoon(module);
         int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;

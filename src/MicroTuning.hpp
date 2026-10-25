@@ -18,6 +18,7 @@
 #include <vector>
 #include "tuning/TuningTable.hpp"        // dotModular::TuningTable::MAXN
 #include "ui/SvgPanelKit.hpp"            // dotModular::Compose
+#include "ui/ModuleLookupCore.hpp"       // THE lookup authority: the topology epoch (onExpanderChange bump — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 
 namespace redDot { struct ConnectMark; }
 
@@ -75,13 +76,13 @@ struct MicroTuningModule : rack::engine::Module {
     // pairChecked; persisted. 0 until assigned. pairColour(pairId) tints the ConnectMark.
     int  pairId = 0;
     bool pairChecked = false;              // runtime-only one-shot guard for the assign scan
-    // Bound-Interchange cache (3C-ii): the rack-wide getModuleIds() discovery is control-rate (a
-    // per-sample scan is the CA CPU pitfall). Cache the bound Interchange module pointers on a divider;
-    // read their live CV every sample. Runtime-only.
+    // Bound-Interchange cache (3C-ii): the rack-wide getModuleIds() discovery is EVENT-DRIVEN now —
+    // rebuilt only when the topology epoch moved (onExpanderChange bumps it; a static rack scans
+    // zero times; was the /64 ixScanDiv_ poll — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START). The live
+    // CV is still read every sample from the cache. Runtime-only.
     std::vector<rack::Module*> boundInterchanges_;
-    rack::dsp::ClockDivider    ixScanDiv_;
-    // Bound Shophouse Micro (Model Q scene source). Same divider-cached discovery — a per-sample
-    // getModuleIds() scan is the CA CPU pitfall. Runtime-only.
+    uint64_t                   ixScanEpoch_ = 0;
+    // Bound Shophouse Micro (Model Q scene source). Same epoch-gated discovery. Runtime-only.
     rack::Module*              boundShophouseMicro_ = nullptr;
     // Per-degree MODULATION VIZ (3C-ii): the published weight AFTER Interchange CV, + whether it
     // differs from the fader's set value. The fader widget draws a mod-arc marker from these (like
@@ -115,6 +116,13 @@ struct MicroTuningModule : rack::engine::Module {
     // Root cents-lock + (when claimed) publish cents[]+weight[]+maskAuthored into the shared
     // TuningTable, and drive the per-degree play-flash LEDs. Defined in MicroTuning.cpp (needs Monsoon).
     void process(const ProcessArgs& args) override;
+
+    // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event is THE trigger — bump
+    // the global topology epoch so the bound-Interchange / Shophouse-Micro discovery and the
+    // lookup* memos re-resolve on the next read, engine + widget threads.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+    }
 
     json_t* dataToJson() override {
         json_t* root = json_object();

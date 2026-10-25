@@ -4,7 +4,7 @@
 #include <cmath>
 #include "Monsoon.hpp"
 #include "MonsoonStraitsExpander.hpp"
-#include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModuleLookup.hpp"   // THE module-lookup authority: lookupMonsoon — memoized, event-driven (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "ui/SvgPanelKit.hpp"
 #include "ui/ConnectMark.hpp"
 #include "ui/ModArcOverlay.hpp"
@@ -24,7 +24,8 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     // Cached once per frame in step(); the 32 knobs' lightWhen read THIS, not a
-    // per-frame findMonsoonEitherSide() each (that would be 32 chain-walks/frame).
+    // per-frame host lookup each (the memoized lookupMonsoon makes even that cheap —
+    // one walk per topology generation — but one cached bool per frame stays simplest).
     bool themeLight_ = false;
     // Also cached per frame: how many poly voices Monsoon has active (numPolyVoices,
     // 0..15 meaning 1..16). -1 = no Monsoon connected. The poly knobs' dimWhen reads
@@ -104,15 +105,15 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                 }
             };
             arc->getSetNorm = [self, voice, lane, setOf]() -> float {
-                Monsoon* m = redDot::findMonsoonEitherSide(self->module);
+                Monsoon* m = redDot::lookupMonsoon(self->module);
                 return m ? setOf(m, voice, lane) : 0.f;
             };
             arc->getModNorm = [self, voice, lane, modOf]() -> float {
-                Monsoon* m = redDot::findMonsoonEitherSide(self->module);
+                Monsoon* m = redDot::lookupMonsoon(self->module);
                 return m ? modOf(m, voice, lane) : 0.f;
             };
             arc->isActive = [self, voice, lane, setOf, modOf]() -> bool {
-                Monsoon* m = redDot::findMonsoonEitherSide(self->module);
+                Monsoon* m = redDot::lookupMonsoon(self->module);
                 if (!m || !m->modVizEast) return false;
                 // Inactive poly voice (beyond Monsoon's active count) → no arc: the knob is
                 // dimmed + locked, so it isn't a live param. voice 0..14 = V2..V16; active iff
@@ -155,7 +156,7 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                 k->lightWhen = [this](){ return themeLight_; };
                 k->lockWhen = [](){ return true; };
                 k->displayValueFn = [this]() -> float {
-                    Monsoon* m = redDot::findMonsoonEitherSide(module);
+                    Monsoon* m = redDot::lookupMonsoon(module);
                     return m ? m->params[MonsoonIds::REST_PARAM].getValue() : NAN;
                 };
                 queueArc(k, -1, 0);
@@ -165,7 +166,7 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                 k->lightWhen = [this](){ return themeLight_; };
                 k->lockWhen = [](){ return true; };
                 k->displayValueFn = [this]() -> float {
-                    Monsoon* m = redDot::findMonsoonEitherSide(module);
+                    Monsoon* m = redDot::lookupMonsoon(module);
                     return m ? m->params[MonsoonIds::ACCENT_KNOB].getValue() : NAN;
                 };
                 queueArc(k, -1, 1);
@@ -178,7 +179,7 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                 k->lightWhen = [this](){ return themeLight_; };
                 k->lockWhen = [](){ return true; };
                 k->displayValueFn = [this]() -> float {
-                    Monsoon* m = redDot::findMonsoonEitherSide(module);
+                    Monsoon* m = redDot::lookupMonsoon(module);
                     return m ? m->params[MonsoonIds::QMIX_LEVEL_PARAM].getValue() : NAN;
                 };
                 queueArc(k, -1, 2);
@@ -190,7 +191,7 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                 k->lightWhen = [this](){ return themeLight_; };
                 k->lockWhen = [](){ return true; };
                 k->displayValueFn = [this]() -> float {
-                    Monsoon* m = redDot::findMonsoonEitherSide(module);
+                    Monsoon* m = redDot::lookupMonsoon(module);
                     return m ? m->params[MonsoonIds::VARIATION_PARAM].getValue() : NAN;
                 };
                 queueArc(k, -1, 5);
@@ -200,7 +201,7 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                 k->lightWhen = [this](){ return themeLight_; };
                 k->lockWhen = [](){ return true; };
                 k->displayValueFn = [this]() -> float {
-                    Monsoon* m = redDot::findMonsoonEitherSide(module);
+                    Monsoon* m = redDot::lookupMonsoon(module);
                     return m ? m->params[MonsoonIds::LEGATO_PARAM].getValue() : NAN;
                 };
                 queueArc(k, -1, 6);
@@ -291,7 +292,7 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
         // themeLight_, and ModuleWidget::step() is what steps them. Doing this after
         // would leave every knob a frame behind the panel on a toggle.
         if (module) {
-            Monsoon* mm = redDot::findMonsoonEitherSide(module);
+            Monsoon* mm = redDot::lookupMonsoon(module);
             themeLight_ = (mm && mm->lightTheme);
             // Straits OWNS the poly voice count: write its knob (1..16) into Monsoon's
             // numPolyVoices (0..15) so that field stays the SINGLE authority every consumer
@@ -323,7 +324,7 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
         ModuleWidget::step();
         kitStep();
         if (!module) return;
-        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        Monsoon* m = redDot::lookupMonsoon(module);
         int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;

@@ -1,6 +1,7 @@
 #pragma once
 #include <rack.hpp>
 #include "Monsoon.hpp"
+#include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (onExpanderChange bump — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 
 // ── Straits Lane Expander — generic per-lane panel extension ─────────────────
 // SANDS CONSOLIDATION / LANE EXTENSION MODEL: each rhythm lane (REST/ACCENT/QMIX/
@@ -57,4 +58,11 @@ struct StraitsLaneExpander : Module {
     }
 
     void process(const ProcessArgs&) override {}
+
+    // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event is THE trigger — bump
+    // the global topology epoch so this module's adjacency (the lookup* memos) re-resolves on the
+    // next read, engine + widget threads.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+    }
 };
