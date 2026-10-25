@@ -15,6 +15,7 @@
 #include <atomic>
 #include "Monsoon.hpp"
 #include "ui/VisualExpanderHelpers.hpp"
+#include "ui/ModuleLookup.hpp"           // THE module-lookup authority: lookupMonsoon — memoized, event-driven (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "ui/ModArcOverlay.hpp"
 #include "ui/StoreEditAction.hpp"   // pin edits: store-backed, undoable (DAW_PARAM_AUDIT 5b)
 #include "dsp/ChangeAlleyTransforms.hpp"   // ca::applyCorrelation (transform apply owned here)
@@ -55,8 +56,9 @@ struct MonsoonChangeAlleyV2 : Module {
     // the designation returns if that host comes back. Runtime helpers below resolve the effective one.
     int primaryPairId = 0;
 
-    // The pairIds of every Monsoon currently bound to THIS CA (its scan cached us). Rebuilt at control
-    // rate by refreshConnectedHosts(); read by the widget's 8-slot row + primary menu. Sorted ascending.
+    // The pairIds of every Monsoon currently bound to THIS CA (its scan cached us). Rebuilt when the
+    // topology epoch moves (refreshConnectedHosts(); was the /1024 hostScanDiv_ poll — CC_PROMPT_
+    // MODULE_LOOKUP_AUTHORITY_START); read by the widget's 8-slot row + primary menu. Sorted ascending.
     std::vector<int> connectedHostIds_;
 
     // Which pairId is EFFECTIVELY primary right now: the designation if it's connected, else the lowest
@@ -68,11 +70,13 @@ struct MonsoonChangeAlleyV2 : Module {
             for (int id : connectedHostIds_) if (id == primaryPairId) return primaryPairId;
         return connectedHostIds_.front();   // sorted → lowest connected = auto default / promotion
     }
-    rack::dsp::ClockDivider hostScanDiv_;   // control-rate rebuild of connectedHostIds_
+    uint64_t hostScanEpoch_ = 0;            // epoch guard: rebuild connectedHostIds_ once per generation
 
     // Rebuild connectedHostIds_ = pairIds of every Monsoon whose expander scan cached THIS CA (covers
-    // both adjacency and explicit followCA — both resolve into cachedChangeAlleyV2). Rack-wide walk,
-    // control-rate only. A capped/unassigned host (pairId 0) is skipped for the slot row (no colour).
+    // both adjacency and explicit followCA — both resolve into cachedChangeAlleyV2). Rack-wide
+    // enumeration, EPOCH-GATED only (the Monsoon caches it reads are themselves event/epoch-driven;
+    // Monsoon::onExpanderChange updates them eagerly inside the event). A capped/unassigned host
+    // (pairId 0) is skipped for the slot row (no colour).
     void refreshConnectedHosts() {
         connectedHostIds_.clear();
         if (!(APP && APP->engine)) return;
@@ -246,7 +250,8 @@ struct MonsoonChangeAlleyV2 : Module {
         }
         resetToIdentity();
         seedCorrKeysInternal();   // fresh module: no seed known yet, entropy keys are correct
-        hostScanDiv_.setDivision(1024);   // ~47 Hz @ 48 kHz: control-rate host enumeration (§3b)
+        // (hostScanDiv_ DELETED — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START: connectedHostIds_ rebuilds
+        //  on the topology-epoch guard; see process().)
     }
 
     static int grainFromKnob(float v) {
@@ -405,6 +410,13 @@ struct MonsoonChangeAlleyV2 : Module {
         if (!anyArmed) pendingStampCounter_ = 0;
     }
 
+    // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event is THE trigger — bump the
+    // global topology epoch so the bound-host enumeration and the lookup* memos re-resolve on the
+    // next read, engine + widget threads.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+    }
+
     void process(const ProcessArgs&) override {
         // Shared-CA pairing: assign a stable pairId ONCE (0 = unassigned, or a clash from a
         // duplicated/pasted module carrying its origin's id). Done here, not the ctor, to avoid the
@@ -421,12 +433,15 @@ struct MonsoonChangeAlleyV2 : Module {
                         if (ca->pairId == pairId) { clash = true; break; }
                 }
             }
-            if (pairId <= 0 || clash) pairId = redDot::assignPairIdT<MonsoonChangeAlleyV2>(this);
+            if (pairId <= 0 || clash) pairId = redDot::assignPairIdT<MonsoonChangeAlleyV2>(this);   // LOOKUP-AUTHORITY (one-shot identity settle — runs once per lifetime behind pairChecked; not a hot-path walk)
         }
-        // Enumerate the Monsoons bound to THIS CA at control rate (§3b): feeds the 8-slot connect-mark
-        // row + the primary-selector menu. Rack-wide getModuleIds() walk is too costly per-sample, so
-        // it's divided; the first block runs immediately (divider fires on the initial count).
-        if (hostScanDiv_.process()) refreshConnectedHosts();
+        // Enumerate the Monsoons bound to THIS CA (§3b): feeds the 8-slot connect-mark row + the
+        // primary-selector menu. LOOKUP AUTHORITY (Rodney's ruling): EVENT-DRIVEN — rebuilt only when
+        // the topology epoch moved (onExpanderChange bumps it; the Monsoon caches this reads are
+        // updated eagerly inside Monsoon's own handler, so this always sees fresh data; a static rack
+        // enumerates zero times). Was: the /1024 hostScanDiv_ poll (re-scanning forever even when
+        // idle). The first block still refreshes (the epoch starts at 1 != the 0 cache).
+        if (redDot::lookupEpochStale(hostScanEpoch_)) refreshConnectedHosts();
         // Owner guard: reset each block; the first ExpanderManager::sync() that applies transforms
         // sets it, so a second (reader) Monsoon skips the mutation. See CA_SHARED_EXPANDER_BUILD §Step4.
         transformsAppliedThisBlock = false;
@@ -748,7 +763,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
             };
             arc->getModNorm = resolved;
             arc->isActive   = [mod]() -> bool {
-                Monsoon* mm = mod ? redDot::findMonsoonEitherSide(mod) : nullptr;
+                Monsoon* mm = mod ? redDot::lookupMonsoon(mod) : nullptr;
                 return mm ? mm->modVizChangeAlley : false;
             };
             arc->attachOverKnob(knob, 1.5f);
@@ -899,7 +914,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
 
         int getPolyCount() const {
             if (!module) return 0;
-            auto* mon = redDot::findMonsoonEitherSide(module);
+            auto* mon = redDot::lookupMonsoon(module);
             return mon ? mon->engine.numPolyVoices : 0;
         }
 
@@ -953,7 +968,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
                     // (The earlier 'only row 1 numbered' bug was dark ink on a dark body;
                     //  the fix is theme-correct ink, not permanently-light ink.)
                     // Same source as the panel swap: the connected Monsoon's flag.
-                    Monsoon* themeM = module ? redDot::findMonsoonEitherSide(module) : nullptr;
+                    Monsoon* themeM = module ? redDot::lookupMonsoon(module) : nullptr;
                     const bool lightBody = themeM && themeM->lightTheme;
                     NVGcolor ink    = lightBody ? nvgRGB(0x2a,0x2a,0x2e) : nvgRGB(0xe8,0xe2,0xd0);
                     NVGcolor inkdim = lightBody ? nvgRGBA(0x88,0x8d,0x96,0xd0)
@@ -1384,7 +1399,7 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
             ca->undoTail.store(t, std::memory_order_release);
         }
 
-        Monsoon* m = redDot::findMonsoonEitherSide(module);
+        Monsoon* m = redDot::lookupMonsoon(module);
         const int wantLight = (m && m->lightTheme) ? 1 : 0;
         if (wantLight != lastThemeLight) {
             lastThemeLight = wantLight;
