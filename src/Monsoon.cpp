@@ -110,7 +110,7 @@ Monsoon::Monsoon() {
         // Initialize managers
         scaleManager = std::unique_ptr<ScaleManager>(new ScaleManager(this));
         paramManager = std::unique_ptr<ParameterManager>(new ParameterManager(this, &expanderManager.cachedScaleExpander, &expanderManager.cachedPolyVoiceExpander));
-        modeController = std::unique_ptr<ModeController>(new ModeController(this, engine, clock, *paramManager));
+        modeController = std::unique_ptr<ModeController>(new ModeController(this, engine, clock, rateManager, *paramManager));
         uiManager = std::unique_ptr<UIManager>(new UIManager(this));
         timingController = std::unique_ptr<TimingController>(new TimingController(this));
         cvRouter = std::unique_ptr<CVRouter>(new CVRouter());

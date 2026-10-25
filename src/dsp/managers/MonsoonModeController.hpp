@@ -3,6 +3,7 @@
 #include "rack.hpp"
 #include "../engines/SequencerEngine.hpp"
 #include "../engines/ClockEngine.hpp"
+#include "../../ui/RateManager.hpp"   // RATE MANAGER (S3b): the Step tier is the step-edge truth
 #include "MonsoonParameterManager.hpp"
 
 struct Monsoon; // Forward declaration
@@ -31,12 +32,20 @@ public:
     ModeController(Monsoon* mainModule,
                    SequencerEngine& engine,
                    const ClockEngine& clock,
+                   redDot::RateManager& rateManager,
                    ParameterManager& paramManager)
-        : mainModule(mainModule),
+        : rateManager(rateManager),   // declared above the private members — init order matches
+          mainModule(mainModule),
           engine(engine),
           clock(clock),
           paramManager(paramManager),
           lastStepIndex(-1) {}
+
+    // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START, S3b): the compute-rate authority.
+    // The Step tier is the step-edge truth — the dispatch (Monsoon::process) advances
+    // it from the clock/phase sixteenth edge or the gate-edge stream; nothing here
+    // re-reads a raw clock edge.
+    redDot::RateManager& rateManager;
     
     // ──── Mode Execution ────────────────────────────────────────────────────
     // MODE_COLLAPSE_6_TO_3: three TIMING ORIGINS — clock(0) / gate(1) / phase(2). Pitch origin
