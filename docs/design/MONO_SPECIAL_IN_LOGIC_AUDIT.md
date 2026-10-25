@@ -223,3 +223,41 @@ prediction viz, define its semantics + fix its polarity to match the audio. This
 "engine-internal duplication" framing above: it may not be duplication at all but a SEPARATE (possibly
 dead) pattern system. TRACE how/whether rhythmPattern's isNote affects anything beyond LED brightness
 (does baseActive feed only lights, or also gate/CV?) to be sure it's lights-only before removing.
+
+────────────────────────────────────────────────────────────────────────────────
+## CLOSE — rhythmPattern vestigial (delete); decision manager re-justified on TIMING + simplified (Rodney)
+
+### rhythmPattern: VESTIGIAL → DELETE (Rodney's call)
+The step-LED prospective pattern is unhelpful under modulation (a precomputed prediction is wrong the
+moment any CV moves) and there's no reason to persist it. REVERT to the LIVE engine view: light the step
+ring from the ACTUAL decision as it happens; delete the precomputed fill (PatternEngine.cpp:136,410,962),
+the rhythmPattern[16] member, and the JSON cache (PersistenceManager:166,429). The POLARITY BUG DIES BY
+DELETION (no precomputed `>=restProb` comparison to be wrong). Less code, less computation. CARE: old
+patches have "rhythmPattern" in their JSON — IGNORE it on load (don't error). VERIFY baseActive/isNote is
+LIGHTS-ONLY before removing (grep showed only :455 baseActive; confirm no gate/CV consumer).
+
+### decision manager: NOT UI-drift (moot) — justified by DECISION TIMING, and it SIMPLIFIES
+The "engine vs UI drift" motivation is MOOT: Lantern already reads the engine's decision; deleting
+rhythmPattern removes the only duplication. The REAL justification (Rodney) is TIMING: decisions have a
+cadence that's currently IMPLICIT in code location —
+- probability-reading decisions (rest/legato/accent/qmix) fire AT STEP.
+- gate-mode subgate decisions fire on gate/subgate RISE.
+BUT (Rodney, the unifying detail): GATE RISE IS MAPPED TO A STEP EDGE ("advance on any rise" — a gate/
+subgate rise is what advances the playhead to the next step; subgates = step machinery one level down).
+So decisions are NOT on a separate timing axis — they ALL fire at STEP EDGE, MODE-INDEPENDENT. What
+DIFFERS by mode is only what GENERATES the step edge: clock tick (clock) / phase crossing (phase) /
+gate-rise-mapped-to-step (gate) / subgate-rise-mapped-to-step. That source is the RATE MANAGER's per-mode
+chain — NOT the decision manager's concern.
+=> The decision manager is MODE-INDEPENDENT: it is the registry of (input probability → decision) that
+fires on the STEP-edge tick the rate manager provides. It rides the rate manager's Step tier; it has NO
+per-mode timing logic (the chain handles clock/phase/gate-rise upstream). Same simplification as the
+rate-manager design (Step/Phrase mode-independent; only the trigger source differs) — applied to decisions.
+
+### SCOPE + SEQUENCING
+Decision manager = a CONSUMER of the rate manager (fires decisions on its Step tier), centralizing the
+scattered engine decision sites (SequencerEngine:628,679,696,1161,… the draw<prob comparisons) into ONE
+decide(prob, draw, lane, ownership) that fires at step edge. HOME for: the mono-articulation-delegation
+(independent voice decides on ITS step edge / own draw vs mono), the categorical-atom / T-F-ATOM-DECIDES
+(rail-meaning = a decide rule), the polarity (one comparison, defined once). NOT a cross-layer authority
+(no UI policing needed). SEQUENCE: AFTER the rate manager (rides its Step tier). Do it WITH the
+articulation-delegation / atom work (its real drivers), not standalone.
