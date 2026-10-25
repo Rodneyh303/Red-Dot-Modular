@@ -1,6 +1,6 @@
 #pragma once
 #include <rack.hpp>
-#include "VisualExpanderHelpers.hpp"
+#include "ModuleLookup.hpp"   // THE module-lookup authority: lookupMonsoon / lookupConnectedAndClaimed (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 // dot.modular connection indicator built from the brand MARK (the little red dot
 // with its Lissajous figure), instead of a plain LED. When the expander is
 // connected to a Monsoon core the mark shows in full brand colour; when not, it
@@ -53,7 +53,7 @@ struct ConnectMark : rack::widget::Widget {
 };
 
 // Build a ConnectMark sized to sizePx (square) centred on panel coordinate
-// center, wired to a module via findMonsoonEitherSide. Explicit, robust
+// center, wired to a module via the memoized lookup authority. Explicit, robust
 // placement — avoids the createWidgetCentered-then-resize ordering subtlety that
 // can leave a kit bindChild-placed mark mis-centred. The mark's rendered art is
 // scaled to fill ~85% of the box so a larger box gives a larger mark.
@@ -63,8 +63,14 @@ inline ConnectMark* makeConnectMark(TModule* module, rack::math::Vec center, flo
     w->box.size = rack::math::Vec(sizePx, sizePx);
     w->box.pos  = center.minus(w->box.size.div(2));
     w->markPx   = sizePx * 0.85f;
-    w->connected  = [module]() { return redDot::isConnectedAndClaimed(module); };
-    w->lightTheme = [module]() { Monsoon* mm = module ? redDot::findMonsoonEitherSide(module) : nullptr; return mm && mm->lightTheme; };
+    // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): both questions ride the
+    // memoized accessors — lookupConnectedAndClaimed is literally "the ConnectMark question",
+    // and the theme reads the same lookupMonsoon memo. Stable key: the captured module pointer
+    // (one widget per module); different Walk types ⇒ separate memos ⇒ the two draws never
+    // thrash each other. Was: raw chain walks at draw time (findMonsoonEitherSide /
+    // isConnectedAndClaimed).
+    w->connected  = [module]() { return redDot::lookupConnectedAndClaimed(module); };
+    w->lightTheme = [module]() { Monsoon* mm = module ? redDot::lookupMonsoon(module) : nullptr; return mm && mm->lightTheme; };
     return w;
 }
 
