@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "Monsoon.hpp"
 
 using namespace rack;
@@ -8,6 +9,12 @@ using namespace rack;
 // CV (x attenuverter) is summed into NOTE VALUE / VARIATION / LEGATO / REST /
 // ACCENT by the ParameterManager via the cached pointer.
 struct MonsoonJunctionExpander : Module {
+    // THE LOOKUP AUTHORITY: the event bumps the global topology epoch — adjacency
+    // (the lookup* memos) re-resolves on the next read.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+    }
+
     MonsoonJunctionExpander() {
         config(MonsoonIds::NUM_JUNCTION_PARAMS, MonsoonIds::NUM_JUNCTION_INPUTS, 0, 0);
         configParam(MonsoonIds::JUNCTION_NOTEVAL_ATT,   -1.f, 1.f, 0.f, "Note value CV attenuverter");
