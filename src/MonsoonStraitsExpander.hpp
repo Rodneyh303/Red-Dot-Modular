@@ -1,6 +1,7 @@
 #pragma once
 #include <rack.hpp>
 #include "Monsoon.hpp"
+#include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (onExpanderChange bump — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 
 using namespace rack;
 using namespace MonsoonIds;
@@ -123,4 +124,11 @@ struct MonsoonStraitsExpander : Module {
     // which does its param mirroring widget-side, not on the audio thread), since the mirror is
     // display-only (the engine reads Monsoon's own knob; see getRest/getAccent). Nothing per-sample.
     void process(const ProcessArgs& args) override {}
+
+    // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event is THE trigger — bump
+    // the global topology epoch so this module's adjacency (the lookup* memos) re-resolves on the
+    // next read, engine + widget threads.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+    }
 };
