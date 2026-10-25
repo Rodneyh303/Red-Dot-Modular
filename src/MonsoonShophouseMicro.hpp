@@ -1,4 +1,5 @@
 #pragma once
+#include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 // ── Shophouse Micro — tuning+scale SCENE modulation for the Colonnades family (SHOPHOUSE_MICRO_SPEC) ─
 // The microtonal generalisation of Shophouse: instead of (scale, root) slots within 12-TET, it holds
 // FOUR (12-mode) / TWO (24-mode) full-.dmtune tuning+scale FRONTS; a CV input sampled AT THE PHRASE
@@ -35,6 +36,12 @@ namespace ShophouseMicroIds {
 }
 
 struct MonsoonShophouseMicro : Module {
+    // THE LOOKUP AUTHORITY: the event bumps the global topology epoch — adjacency
+    // (the lookup* memos) re-resolves on the next read.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
+    }
+
     // The tuning-slot street. degrees() = 12/24 mode; front count = 4 at 12, 2 at 24.
     TuningList list{4, 12};
     bool  modeConflict = false;    // host N != loaded-slot N (flagged, never auto-wiped). Runtime-only.
