@@ -8,6 +8,7 @@
 #include "MonsoonStraitsExpander.hpp"   // complete type for cachedPolyVoiceExpander->outputs
 #include "MonsoonChangeAlleyV2.hpp"      // complete type for cachedChangeAlleyV2->outputs (EXPR_OUT)
 #include "ui/IntertropicalPairing.hpp"  // assignPairId (shared pairing mechanism)
+#include "ui/ModuleLookup.hpp"   // THE module-lookup authority: lookupMonsoon — memoized, event-driven (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 #include "ui/SvgPanelKit.hpp"
 #include "ui/GoldPolyPort.hpp"
 #include "ui/DimmableTrimpot.hpp"
@@ -28,7 +29,8 @@ Intertropical::Intertropical() {
     for (int s = 0; s < Ids::MAX_VOICES_PER_SCENE; ++s)
         effectiveTranspose[s] = 0.f;
     config(Ids::NUM_PARAMS, Ids::NUM_INPUTS, Ids::NUM_OUTPUTS, Ids::NUM_LIGHTS);
-    hostLookupDiv_.setDivision(512);   // host chain-walk at ~94 Hz @ 48k (control rate)
+    // (hostLookupDiv_ DELETED — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START: the host resolve is the
+    //  memoized lookupMonsoon, event-driven; nothing to throttle.)
     // 8 per-output transpose knobs: -24..+24 semitones, integer-detented (snap), default 0.
     for (int o = 0; o < 8; ++o) {
         configParam(Ids::TRANSPOSE_FIRST + o, -24.f, 24.f, 0.f,
@@ -55,6 +57,16 @@ Intertropical::Intertropical() {
     }
 }
 
+// LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the host accessor resolves through
+// the memoized redDot::lookupMonsoon — event-driven (onExpanderChange bumps the topology epoch),
+// one walk per topology generation; a static rack walks zero times. Was: the cachedHost member
+// refreshed on the /512 hostLookupDiv_ poll (a walk every ~10 ms even when idle). Defined here,
+// NOT in the header: ui/ModuleLookup.hpp includes ui/IntertropicalPairing.hpp, which includes
+// Intertropical.hpp (include cycle).
+Monsoon* Intertropical::getHost() {
+    return redDot::lookupMonsoon(this);
+}
+
 void Intertropical::process(const ProcessArgs& args) {
     // ── One-shot pair-id resolution (runs here, NOT onAdd) ───────────────────────
     // onAdd() executes while Rack holds the engine mutex during module insertion;
@@ -73,15 +85,14 @@ void Intertropical::process(const ProcessArgs& args) {
                     if (it->pairId == pairId) { clash = true; break; }
             }
         }
-        if (pairId <= 0 || clash) pairId = redDot::assignPairId(this);
+        if (pairId <= 0 || clash) pairId = redDot::assignPairId(this);   // LOOKUP-AUTHORITY (one-shot identity settle — runs once per lifetime behind pairChecked, mirrors Monsoon/CA; not a hot-path walk)
     }
 
-    // Refresh the host pointer at control rate (chain walk; topology is not audio-rate). cachedHost
-    // is also read by transitive consumers (Lantern via getHost()). First divider tick fires after
-    // ~one division (~10 ms) — imperceptible on load.
-    if (hostLookupDiv_.process())
-        cachedHost = redDot::findMonsoonEitherSide(this);
-    Monsoon* host = cachedHost;
+    // LOOKUP AUTHORITY: the host resolves through the memoized redDot::lookupMonsoon — event-driven
+    // (onExpanderChange bumps the topology epoch), ONE walk per topology generation; a static rack
+    // walks zero times. Was: cachedHost refreshed on the /512 hostLookupDiv_ poll. Transitive
+    // consumers (Lantern via getHost()) ride the same memo.
+    Monsoon* host = redDot::lookupMonsoon(this);
     if (!host) {
         for (int o = 0; o < Ids::NUM_OUTPUTS; ++o) outputs[o].setChannels(0);
         return;
@@ -631,7 +642,7 @@ struct IntertropicalWidget : ModuleWidget,
             // (can we see a Monsoon/Straits system?) not isConnectedAndClaimed (which requires
             // a claim slot that doesn't exist for observers and can't scale to N pairs).
             cm->connected = [module]() {
-                return module && redDot::findMonsoonEitherSide(module) != nullptr;
+                return module && redDot::lookupMonsoon(module) != nullptr;
             };
             addChild(cm);
         }
