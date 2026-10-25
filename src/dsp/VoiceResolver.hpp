@@ -22,6 +22,8 @@
 // generation (executePolyVoice) are untouched; this wraps their outputs.
 
 #include "engines/SequencerEngine.hpp"
+#include "VoiceLaneTypes.hpp"   // VoiceSlot/LaneId — the strong indices, MINTED here (the friend)
+#include <array>
 
 namespace dotModular {
 
@@ -61,6 +63,34 @@ struct VoiceResolver {
                                              // with a mono mix-in read here; the off-by-one
                                              // was a poly voice wrongly landing on this slot.
 
+    // ── STRONG VoiceSlot minting (CC_PROMPT_STRONG_TYPES_START) ────────────────
+    // VoiceSlot is mintable ONLY here (private ctor + friend — see VoiceLaneTypes.hpp).
+    //   mono()      the TYPED mono ROLE: V1, slot 0, the anchor voice. PRESERVED,
+    //               not removed — but now explicit + searchable, never a magic 0.
+    //   slot(V)     VOICE NUMBER (1..16, the UI-tab convention) → storage slot V-1.
+    //   allSlots()  the 16-wide storage range, each slot exactly once — poly loops
+    //               iterate it (or mint slot(V) from voice numbers).
+    static constexpr VoiceSlot mono() { return kMonoVoiceSlot; }
+    static constexpr VoiceSlot slot(int voiceNumber) { return VoiceSlot(voiceNumber - kMonoVoice); }
+    static constexpr std::array<VoiceSlot, (size_t)kVoiceSlots> allSlots() {
+        return { VoiceSlot(0),  VoiceSlot(1),  VoiceSlot(2),  VoiceSlot(3),
+                 VoiceSlot(4),  VoiceSlot(5),  VoiceSlot(6),  VoiceSlot(7),
+                 VoiceSlot(8),  VoiceSlot(9),  VoiceSlot(10), VoiceSlot(11),
+                 VoiceSlot(12), VoiceSlot(13), VoiceSlot(14), VoiceSlot(15) };
+    }
+    // Minting round-trip helper, pinned at compile time in voiceResolverIndexSelfTest_
+    // below (a static_assert INSIDE this struct cannot call mono()/slot() before the
+    // class is complete — the free function after the struct is the house pattern).
+    static constexpr bool slotsCoverOnce_() {
+        bool seen[kVoiceSlots] = {};
+        for (const VoiceSlot& s : allSlots()) {
+            if (s.v < 0 || s.v >= kVoiceSlots || seen[s.v]) return false;
+            seen[s.v] = true;
+        }
+        for (int i = 0; i < kVoiceSlots; ++i) if (!seen[i]) return false;
+        return true;
+    }
+
 
     // Is the per-lane BASE editable on a poly-aware module (East/Macro) for this voice?
     // FALSE for mono: voice 1's base belongs to the standalone Mono module — East/Macro
@@ -80,14 +110,16 @@ struct VoiceResolver {
     // Resolved probability draw (0..1) for (voice, lane) at the voice's own LOR step.
     float laneProbability(int v, int lane) const {
         if (isMono(v)) return eng.masterLaneProbability(lane);
-        if (isPoly(v)) return eng.polyLaneProbability(lane, polyVoiceSlot(v));
+        // STRONG types (CC_PROMPT_STRONG_TYPES): minted VoiceSlot + explicit LaneId.
+        if (isPoly(v)) return eng.polyLaneProbability(LaneId{lane}, slot(v));
         return 0.f;
     }
 
     // Resolved step index (for S&H edge detection) for (voice, lane).
     int laneStep(int v, int lane) const {
         if (isMono(v)) return eng.masterLaneStep(lane);
-        if (isPoly(v)) return eng.polyLaneStep(lane, polyVoiceSlot(v));
+        // STRONG types (CC_PROMPT_STRONG_TYPES): minted VoiceSlot + explicit LaneId.
+        if (isPoly(v)) return eng.polyLaneStep(LaneId{lane}, slot(v));
         return -1;
     }
 
@@ -103,10 +135,15 @@ struct VoiceResolver {
     // V1 uses the explicit step too (the old mono branch self-resolved the engine's mono
     // LOR step — Macro's own step is the out's sampling grid, same as the poly channels).
     float laneProbabilityAtStep(int v, int lane, int step) const {
-        if (isMono(v)) return eng.effectiveProbability(/*voice=*/kMonoSlot, lane, step,
-                                                       SequencerEngine::ProbLens::MacroOwn);
-        if (isPoly(v)) return eng.effectiveProbability(polyVoiceSlot(v), lane, step,
-                                                       SequencerEngine::ProbLens::MacroOwn);
+        // STRONG types (CC_PROMPT_STRONG_TYPES): minted VoiceSlot (mono()/slot(V)) + LaneId.
+        // (LaneId uses PAREN init here, not brace-init: test_macro_own_output C4 extracts
+        // this body with a naive scan-to-first-close-brace — a brace initializer or a
+        // brace in this comment would truncate it before the lens. The pin's
+        // tighten-time update can restore brace style.)
+        if (isMono(v)) return eng.effectiveProbability(mono(), LaneId(lane), step,
+                                                        SequencerEngine::ProbLens::MacroOwn);
+        if (isPoly(v)) return eng.effectiveProbability(slot(v), LaneId(lane), step,
+                                                        SequencerEngine::ProbLens::MacroOwn);
         return 0.f;
     }
 
@@ -145,6 +182,19 @@ inline void voiceResolverIndexSelfTest_() {
     static_assert(VoiceResolver::isPoly(2) && VoiceResolver::isPoly(16), "V2..V16 poly");
     static_assert(!VoiceResolver::baseEditableHere(1),    "mono base not editable on East/Macro");
     static_assert(VoiceResolver::baseEditableHere(2),     "poly base editable");
+    // ── VoiceSlot minting (CC_PROMPT_STRONG_TYPES) — compile-time twins of the
+    // harness's U0. VoiceSlot cannot be constructed here (mint-only), so the
+    // asserts compare minted .v values and minted-equality, never raw construction.
+    static_assert(VoiceResolver::mono().v == VoiceResolver::kMonoSlot, "mono() mints slot 0 (V1)");
+    static_assert(VoiceResolver::mono() == VoiceResolver::slot(1),     "mono() == slot(V1)");
+    static_assert(VoiceResolver::slot(1).v == 0 && VoiceResolver::slot(2).v == 1
+                  && VoiceResolver::slot(16).v == 15,
+                  "slot(V) mints V-1 (voice NUMBER -> storage slot)");
+    static_assert(VoiceResolver::slot(2).v == VoiceResolver::voiceSlot(2)
+                  && VoiceResolver::slot(16).v == VoiceResolver::voiceSlot(16),
+                  "typed mint matches the int helper — ONE convention");
+    static_assert(VoiceResolver::slotsCoverOnce_(), "allSlots() covers 0..15 exactly once");
+    static_assert(dotModular::allLanes().size() == 7, "allLanes covers exactly the 7 lanes");
 }
 
 } // namespace dotModular

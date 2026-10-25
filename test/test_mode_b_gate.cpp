@@ -29,6 +29,7 @@
 #include <string>
 
 #include "engines/SequencerEngine.hpp"
+#include "VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting
 
 #define SUITE(n) std::cout << "\n\033[1;34m[" << (n) << "]\033[0m\n"
 #define TEST(desc, ...) do { try { __VA_ARGS__; \
@@ -57,11 +58,11 @@ static PatternInput makeInput() {
 // module layer, not here). restProb/legatoProb/noteVal are the Mode-A-identical shaping inputs.
 static StepResult rise(SequencerEngine& eng, float restProb, float legatoProb, float noteVal) {
     PatternInput in = makeInput();
-    eng.voices[0].restProb      = restProb;
-    eng.voices[0].legatoProb    = legatoProb;
-    eng.voices[0].accentProb    = 0.25f;     // default (PatternInput::accentProb deleted)
-    eng.voices[0].qmixLevel     = 0.f;       // default (PatternInput::qmixLevel deleted)
-    eng.voices[0].variationProb = in.variationAmount;
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].restProb      = restProb;
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].legatoProb    = legatoProb;
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].accentProb    = 0.25f;     // default (PatternInput::accentProb deleted)
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].qmixLevel     = 0.f;       // default (PatternInput::qmixLevel deleted)
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = in.variationAmount;
     return eng.executeModeB(/*gate1Rise=*/true, /*gate1High=*/true, noteVal, in);
 }
 

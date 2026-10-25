@@ -34,6 +34,7 @@
 #include "test_stubs.hpp"
 #include "PatternEngine.hpp"
 #include "SequencerEngine.hpp"
+#include "VoiceResolver.hpp"
 #include "WarpF.hpp"
 #include <cstdio>
 #include <cstring>
@@ -110,7 +111,7 @@ int main() {
         for (int v = 0; v < 16; ++v)
             for (int l = 0; l < 7; ++l)
                 for (int s = 0; s < 16; ++s) {
-                    const float c = se.polyLaneProbabilityAtStep(l, v, s);
+                    const float c = se.polyLaneProbabilityAtStep(dotModular::LaneId{l}, dotModular::VoiceResolver::slot(v + 1), s);
                     EXPECTF(std::memcmp(&c, &se.pe.random_[v][l][s], sizeof(float)) == 0,
                             "cell (v=%d,l=%d,s=%d): consumer %.9g != raw %.9g",
                             v, l, s, (double)c, (double)se.pe.random_[v][l][s]);
@@ -128,7 +129,7 @@ int main() {
         for (int v = 0; v < 16; ++v)
             for (int l = 0; l < 7; ++l)
                 for (int s = 0; s < 16; ++s)
-                    EXPECT(se.polyLaneProbabilityAtStep(l, v, s) == se.pe.random_[v][l][s]);
+                    EXPECT(se.polyLaneProbabilityAtStep(dotModular::LaneId{l}, dotModular::VoiceResolver::slot(v + 1), s) == se.pe.random_[v][l][s]);
         for (int st = 0; st < dotModular::NUM_STRANDS; ++st)
             for (int s = 0; s < 16; ++s)
                 EXPECT(se.pe.finalRandomByStrand(st, s) == se.pe.random_[0][st][s]);
@@ -144,7 +145,7 @@ int main() {
         se.pe.rebuildWarpMirrorAll();
         int rowDiffs = 0;
         for (int s = 0; s < 16; ++s) {
-            const float c = se.polyLaneProbabilityAtStep(REST, 5, s);
+            const float c = se.polyLaneProbabilityAtStep(dotModular::LaneId{REST}, dotModular::VoiceResolver::slot(6), s);
             EXPECTF(c == se.pe.warped_[5][REST][s],
                     "step %d: consumer %.9g != mirror %.9g (raw %.9g)",
                     s, (double)c, (double)se.pe.warped_[5][REST][s], (double)se.pe.random_[5][REST][s]);
@@ -155,7 +156,7 @@ int main() {
             for (int l = 0; l < 7; ++l) {
                 if (v == 5 && l == REST) continue;
                 for (int s = 0; s < 16; ++s)
-                    EXPECTF(se.polyLaneProbabilityAtStep(l, v, s) == se.pe.random_[v][l][s],
+                    EXPECTF(se.polyLaneProbabilityAtStep(dotModular::LaneId{l}, dotModular::VoiceResolver::slot(v + 1), s) == se.pe.random_[v][l][s],
                             "collateral change at (v=%d,l=%d,s=%d)", v, l, s);
             }
     });
@@ -175,7 +176,7 @@ int main() {
         for (int v = 0; v < 16; ++v)
             for (int l = 0; l < 7; ++l)
                 for (int s = 0; s < 16; ++s) {
-                    const float c = se.polyLaneProbabilityAtStep(l, v, s);
+                    const float c = se.polyLaneProbabilityAtStep(dotModular::LaneId{l}, dotModular::VoiceResolver::slot(v + 1), s);
                     EXPECTF(c == se.pe.warped_[v][l][s],
                             "RAW LEAK at (v=%d,l=%d,s=%d): consumer %.9g != mirror %.9g (raw %.9g)",
                             v, l, s, (double)c, (double)se.pe.warped_[v][l][s], (double)se.pe.random_[v][l][s]);
@@ -224,10 +225,10 @@ int main() {
         pe.setWarpBank(&bank);
         pe.redrawRhythm(in);
         for (int i = 0; i < 16; ++i)
-            EXPECTF(pe.rhythmPattern[i] == (pe.warpRow(0, REST)[i] >= in.restProb),
+            EXPECTF(pe.rhythmPattern[i] == (pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{REST})[i] >= in.restProb),
                     "step %d: pattern %d != warpRow-fed %d (warped %.9g vs restProb %.9g)",
-                    i, (int)pe.rhythmPattern[i], (int)(pe.warpRow(0, REST)[i] >= in.restProb),
-                    (double)pe.warpRow(0, REST)[i], (double)in.restProb);
+                    i, (int)pe.rhythmPattern[i], (int)(pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{REST})[i] >= in.restProb),
+                    (double)pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{REST})[i], (double)in.restProb);
         // Non-vacuous: the warp must move at least one cell across the threshold
         // vs what the RAW row would have produced (the pre-05 expression).
         int diffs = 0;
@@ -240,7 +241,7 @@ int main() {
         const PatternInput in = rhythmInput();
         PatternEngine pe;
         pe.numPolyVoicesHint = 5;
-        pe.displayedVoice_ = 3;      // a POLY displayed voice — the old ternary's other arm
+        pe.displayedVoice_ = dotModular::VoiceResolver::slot(4);   // V4 = slot 3, a POLY displayed voice — the old ternary's other arm
         pe.seedRhythmPhilox(0.42f);
         pe.seedMelodyPhilox(0.17f);
         pe.seedQmixPhilox(0.23f);
@@ -257,10 +258,10 @@ int main() {
         pe.refreshVisualCache(in);
         EXPECT(pe.rhythmDrawCtr == pe.rhythmCtrApplied);   // the recompute consumed it
         for (int i = 0; i < 16; ++i)
-            EXPECTF(pe.rhythmPattern[i] == (pe.warpRow(3, REST)[i] >= in.restProb),
+            EXPECTF(pe.rhythmPattern[i] == (pe.warpRow(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{REST})[i] >= in.restProb),
                     "step %d: pattern %d != warpRow(3,REST)-fed %d (warped %.9g)",
-                    i, (int)pe.rhythmPattern[i], (int)(pe.warpRow(3, REST)[i] >= in.restProb),
-                    (double)pe.warpRow(3, REST)[i]);
+                    i, (int)pe.rhythmPattern[i], (int)(pe.warpRow(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{REST})[i] >= in.restProb),
+                    (double)pe.warpRow(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{REST})[i]);
         int diffs = 0;
         for (int i = 0; i < 16; ++i)
             if (pe.rhythmPattern[i] != (pe.random_[3][REST][i] >= in.restProb)) ++diffs;
@@ -285,6 +286,16 @@ int main() {
             // The display ternary's raw poly arm + the draw twin's raw slewed read.
             { "src/dsp/engines/PatternEngine.cpp",   "polyRandom(displayedVoice_" },
             { "src/dsp/engines/PatternEngine.cpp",   "slewedRhythm[0][i] >= in.restProb" },
+            // CC_PROMPT_STRONG_TYPES tighten: the BARE-INT per-voice/lane paths are GONE —
+            // every consumer mints a VoiceSlot (mono() for the anchor role) and passes an
+            // explicit LaneId. A regressed bare index is a compile error AND this pin.
+            { "src/dsp/engines/PatternEngine.hpp",   "warpRow(0, " },
+            { "src/dsp/engines/PatternEngine.cpp",   "warpRow(0, PL_" },
+            { "src/dsp/engines/PatternEngine.cpp",   "polyRandom(0, PL_" },
+            { "src/dsp/engines/PatternEngine.hpp",   "voices[0]." },
+            { "src/dsp/engines/SequencerEngine.hpp", "voices[0]." },
+            { "src/dsp/engines/SequencerEngine.cpp", "voices[0]." },
+            { "src/dsp/engines/SequencerEngine.cpp", "pe.warpRow(0" },
         };
         for (const Probe& p : probes) {
             const std::string src = slurp(root + "/" + p.file);

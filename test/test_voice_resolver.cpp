@@ -70,12 +70,12 @@ static void seedEngine(SequencerEngine& eng) {
     // Poly banks (voices 2..16 → bank 0..14).
     for (int v = 0; v < 15; ++v)
         for (int s = 0; s < 16; ++s) {
-            eng.pe.polyRandom(v + 1, E::PL_REST)[s] = sentinel(v + 2, E::PL_REST,   s);
-            eng.pe.polyRandom(v + 1, E::PL_MELODY)[s] = sentinel(v + 2, E::PL_MELODY, s);
-            eng.pe.polyRandom(v + 1, E::PL_OCTAVE)[s] = sentinel(v + 2, E::PL_OCTAVE, s);
-            eng.pe.polyRandom(v + 1, E::PL_ACCENT)[s] = sentinel(v + 2, E::PL_ACCENT, s);
+            eng.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{E::PL_REST})[s] = sentinel(v + 2, E::PL_REST,   s);
+            eng.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{E::PL_MELODY})[s] = sentinel(v + 2, E::PL_MELODY, s);
+            eng.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{E::PL_OCTAVE})[s] = sentinel(v + 2, E::PL_OCTAVE, s);
+            eng.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{E::PL_ACCENT})[s] = sentinel(v + 2, E::PL_ACCENT, s);
             // identity LOR so step index is predictable (= totalStepsElapsed & 0x0F = 0)
-            eng.polyLenERef(v, s % 3) = 16; // harmless; lanes use [v][lane]
+            eng.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{s % 3}) = 16; // harmless; lanes use [v][lane]
         }
     // Macro-own base (CC_PROMPT_macro_output_east_leak): the pubSlewed* snapshots — what
     // laneProbabilityAtStep resolves from (via SequencerEngine::macroOwnLaneProbability;
@@ -97,7 +97,7 @@ static void seedEngine(SequencerEngine& eng) {
         }
     // identity LOR per (voice, lane)
     for (int v = 0; v < 15; ++v)
-        for (int l = 0; l < 4; ++l) { eng.polyLenERef(v, l) = 16; eng.polyOffERef(v, l) = 0; eng.polyRotERef(v, l) = 0; }
+        for (int l = 0; l < 4; ++l) { eng.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{l}) = 16; eng.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{l}) = 0; eng.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{l}) = 0; }
 }
 
 int main() {
@@ -148,7 +148,7 @@ int main() {
         for (int v = 2; v <= 16; ++v)
             for (int li = 0; li < 4; ++li)
                 EXPECT_BITEQ(r.laneProbability(v, lanes[li]),
-                             eng.polyLaneProbability(lanes[li], v - 1));
+                             eng.polyLaneProbability(dotModular::LaneId{lanes[li]}, dotModular::VoiceResolver::slot(v - 1 + 1)));
     });
 
     SUITE("VoiceResolver — laneStep == direct accessors");
@@ -159,7 +159,7 @@ int main() {
     TEST("V2..V16 laneStep == polyLaneStep(lane, V-2)", {
         for (int v = 2; v <= 16; ++v)
             for (int li = 0; li < 4; ++li)
-                EXPECT_EQ(r.laneStep(v, lanes[li]), eng.polyLaneStep(lanes[li], v - 1));
+                EXPECT_EQ(r.laneStep(v, lanes[li]), eng.polyLaneStep(dotModular::LaneId{lanes[li]}, dotModular::VoiceResolver::slot(v)));
     });
 
     SUITE("VoiceResolver — laneProbabilityAtStep == the ONE accessor (every step)");
@@ -174,14 +174,14 @@ int main() {
             for (int li = 0; li < 4; ++li)
                 for (int s = 0; s < 16; ++s)
                     EXPECT_BITEQ(r.laneProbabilityAtStep(v, lanes[li], s),
-                                 eng.effectiveProbability(v - 1, lanes[li], s,
+                                 eng.effectiveProbability(dotModular::VoiceResolver::slot(v), dotModular::LaneId{lanes[li]}, s,
                                                           SequencerEngine::ProbLens::MacroOwn));
     });
     TEST("V1 laneProbabilityAtStep == effectiveProbability(MacroOwn) at Macro's explicit step", {
         for (int li = 0; li < 4; ++li)
             for (int s = 0; s < 16; ++s)
                 EXPECT_BITEQ(r.laneProbabilityAtStep(1, lanes[li], s),
-                             eng.effectiveProbability(0, lanes[li], s,
+                             eng.effectiveProbability(dotModular::VoiceResolver::slot(1), dotModular::LaneId{lanes[li]}, s,
                                                       SequencerEngine::ProbLens::MacroOwn));
     });
 

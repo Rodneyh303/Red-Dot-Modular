@@ -82,18 +82,18 @@ struct SandsParameterManager {
 
     const int vs = voiceIdx;  // voiceSlot
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      patternEngine->polyRandom(vs, SequencerEngine::PL_REST)[i] = editorState.lanes[SandsVisualEditorV4::REST].probabilities[i];
-      patternEngine->rhythmSource[vs][i] = patternEngine->polyRandom(vs, SequencerEngine::PL_REST)[i];
+      patternEngine->polyRandom(dotModular::VoiceResolver::slot(vs + 1), dotModular::LaneId{SequencerEngine::PL_REST})[i] = editorState.lanes[SandsVisualEditorV4::REST].probabilities[i];
+      patternEngine->rhythmSource[vs][i] = patternEngine->polyRandom(dotModular::VoiceResolver::slot(vs + 1), dotModular::LaneId{SequencerEngine::PL_REST})[i];
     }
 
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      patternEngine->polyRandom(vs, SequencerEngine::PL_MELODY)[i] = editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i];
-      patternEngine->melodySource[vs][i] = patternEngine->polyRandom(vs, SequencerEngine::PL_MELODY)[i];
+      patternEngine->polyRandom(dotModular::VoiceResolver::slot(vs + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[i] = editorState.lanes[SandsVisualEditorV4::MELODY].probabilities[i];
+      patternEngine->melodySource[vs][i] = patternEngine->polyRandom(dotModular::VoiceResolver::slot(vs + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[i];
     }
 
     for (int i = 0; i < SandsVisualEditorV4::STEP_COUNT; ++i) {
-      patternEngine->polyRandom(vs, SequencerEngine::PL_OCTAVE)[i] = editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i];
-      patternEngine->octaveSource[vs][i] = patternEngine->polyRandom(vs, SequencerEngine::PL_OCTAVE)[i];
+      patternEngine->polyRandom(dotModular::VoiceResolver::slot(vs + 1), dotModular::LaneId{SequencerEngine::PL_OCTAVE})[i] = editorState.lanes[SandsVisualEditorV4::OCTAVE].probabilities[i];
+      patternEngine->octaveSource[vs][i] = patternEngine->polyRandom(dotModular::VoiceResolver::slot(vs + 1), dotModular::LaneId{SequencerEngine::PL_OCTAVE})[i];
     }
 
     // Warp mirror (CC_PROMPT_03 STEP 3 — the "Sands (East) edit" dirty scope): the

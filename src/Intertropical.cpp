@@ -4,6 +4,7 @@
 
 #include "Intertropical.hpp"
 #include "Monsoon.hpp"
+#include "dsp/VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (slot)
 #include "MonsoonStraitsExpander.hpp"   // complete type for cachedPolyVoiceExpander->outputs
 #include "MonsoonChangeAlleyV2.hpp"      // complete type for cachedChangeAlleyV2->outputs (EXPR_OUT)
 #include "ui/IntertropicalPairing.hpp"  // assignPairId (shared pairing mechanism)
@@ -163,12 +164,13 @@ void Intertropical::process(const ProcessArgs& args) {
         const float leg  = straits->outputs[1].getVoltage(v);
         const float sleg = straits->outputs[2].getVoltage(v);
         // Tie vs legato for the transpose rule. Read the SAME articulation Lantern reads: global
-        // voice v -> mono/V1 uses eng.gs, poly uses eng.voices[v-1].gs. lastNoteType is Single/Tie/
+        // voice v -> mono/V1 uses eng.gs, poly uses the voiceSlot v (V(v+1)). lastNoteType is Single/Tie/
         // Legato. TRUE TIE = one sustained note, pitch must NOT move, so hold transpose from the
         // tie's onset. LEGATO = a connected note allowed to glide, so transpose reads LIVE (worst
         // case a legato with unchanged transpose just looks like a tie -- a valid note). Single =
         // fresh onset, live. Rule: hold while lastNoteType==Tie, else re-capture the live knob.
-        const GateState& vgs = (v == 0) ? eng.gs : eng.voices[v].gs;
+        const GateState& vgs = (v == 0) ? eng.gs
+                                         : eng.voices[dotModular::VoiceResolver::slot(v + 1)].gs;   // v = voiceSlot
         const bool tieHold = (vgs.lastNoteType == GateState::NoteType::Tie);
         for (int ch = 0; ch < Ids::MAX_VOICES_PER_SCENE; ++ch) {
             if (!((mask >> ch) & 1u)) continue;    // this slot doesn't drive output ch

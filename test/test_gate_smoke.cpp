@@ -31,6 +31,7 @@
 #include <string>
 
 #include "engines/SequencerEngine.hpp"
+#include "VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting
 #include "engines/ClockEngine.hpp"
 
 #define SUITE(n) std::cout << "\n\033[1;34m[" << (n) << "]\033[0m\n"
@@ -58,11 +59,11 @@ static PatternInput makeInput() {
 // Phase A: populate voices[0] (V1) — the controller normally does this in
 // updatePatternInput; tests bypass the controller, so do it here.
 static void populateV0(SequencerEngine& eng, const PatternInput& in, float restProb) {
-    eng.voices[0].restProb       = restProb;
-    eng.voices[0].legatoProb     = 0.f;       // default (PatternInput::legato deleted)
-    eng.voices[0].accentProb     = 0.25f;     // default (PatternInput::accentProb deleted)
-    eng.voices[0].qmixLevel      = 0.f;       // default (PatternInput::qmixLevel deleted)
-    eng.voices[0].variationProb  = in.variationAmount;
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].restProb       = restProb;
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].legatoProb     = 0.f;       // default (PatternInput::legato deleted)
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].accentProb     = 0.25f;     // default (PatternInput::accentProb deleted)
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].qmixLevel      = 0.f;       // default (PatternInput::qmixLevel deleted)
+    eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb  = in.variationAmount;
 }
 
 // A clock/phase view with a 1/16 edge asserted — exactly what the module layer passes into

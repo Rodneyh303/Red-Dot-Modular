@@ -33,6 +33,7 @@
 #include "test_stubs.hpp"
 #include "PatternEngine.hpp"
 #include "SequencerEngine.hpp"
+#include "VoiceResolver.hpp"
 #include "WarpF.hpp"
 #include <cstdio>
 #include <cstring>
@@ -106,7 +107,7 @@ int main() {
         PatternEngine pe; fillRandomGolden(pe);   // no bank wired
         for (int v = 0; v < 16; v += 5)
             for (int l = 0; l < 7; ++l)
-                EXPECT(&pe.warpRow(v, l)[0] == &pe.random_[v][l][0]);
+                EXPECT(&pe.warpRow(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{l})[0] == &pe.random_[v][l][0]);
     });
 
     // ── S1b: the rebuild fires inside the REAL recompute path (after the write-back) ──
@@ -386,16 +387,16 @@ int main() {
         se.pe.rebuildWarpMirrorAll();
         int melDiffs = 0, octDiffs = 0;
         for (int s = 0; s < 16; ++s) {
-            const float m = se.polyLaneProbabilityAtStep(SequencerEngine::PL_MELODY, 3, s);
+            const float m = se.polyLaneProbabilityAtStep(dotModular::LaneId{SequencerEngine::PL_MELODY}, dotModular::VoiceResolver::slot(4), s);
             EXPECT(m == se.pe.warped_[3][MEL][s]);
             if (m != se.pe.random_[3][MEL][s]) ++melDiffs;
-            const float o = se.polyLaneProbabilityAtStep(SequencerEngine::PL_OCTAVE, 3, s);
+            const float o = se.polyLaneProbabilityAtStep(dotModular::LaneId{SequencerEngine::PL_OCTAVE}, dotModular::VoiceResolver::slot(4), s);
             EXPECT(o == se.pe.warped_[3][OCT][s]);
             if (o != se.pe.random_[3][OCT][s]) ++octDiffs;
             // non-authored lanes: mirror == raw at their identity defaults (warp
             // reaches ONLY authored cells — test_warp_all_lanes A2/A3 pin the rest):
-            EXPECT(se.polyLaneProbabilityAtStep(SequencerEngine::PL_REST, 3, s) == se.pe.random_[3][PatternEngine::PL_REST][s]);
-            EXPECT(se.polyLaneProbabilityAtStep(SequencerEngine::PL_ACCENT, 3, s) == se.pe.random_[3][PatternEngine::PL_ACCENT][s]);
+            EXPECT(se.polyLaneProbabilityAtStep(dotModular::LaneId{SequencerEngine::PL_REST}, dotModular::VoiceResolver::slot(4), s) == se.pe.random_[3][PatternEngine::PL_REST][s]);
+            EXPECT(se.polyLaneProbabilityAtStep(dotModular::LaneId{SequencerEngine::PL_ACCENT}, dotModular::VoiceResolver::slot(4), s) == se.pe.random_[3][PatternEngine::PL_ACCENT][s]);
         }
         EXPECT(melDiffs > 0 && octDiffs > 0);
     });
@@ -413,7 +414,7 @@ int main() {
         for (int s = 0; s < 16; ++s) {
             int semA = 0, semB = 0;
             const float a = pe.genPitchLive(semA, in, pe.random_[0][MEL][s], pe.random_[0][OCT][s]);
-            const float b = pe.genPitchLive(semB, in, pe.warpRow(0, MEL)[s], pe.warpRow(0, OCT)[s]);
+            const float b = pe.genPitchLive(semB, in, pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL})[s], pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{OCT})[s]);
             EXPECT(semA == semB);
             EXPECT(std::memcmp(&a, &b, sizeof(float)) == 0);
             // every strand's display funnel:
@@ -428,7 +429,7 @@ int main() {
         for (int v = 0; v < 16; v += 5)
             for (int l = 0; l < 7; ++l)
                 for (int s = 0; s < 16; ++s)
-                    EXPECT(se.polyLaneProbabilityAtStep(l, v, s) == se.pe.random_[v][l][s]);
+                    EXPECT(se.polyLaneProbabilityAtStep(dotModular::LaneId{l}, dotModular::VoiceResolver::slot(v + 1), s) == se.pe.random_[v][l][s]);
     });
 
     // ── S8: DISPLAY COMPOSITION (CC_PROMPT_04 feel-test bug 1) ─────────────────────
@@ -519,12 +520,12 @@ int main() {
         // Non-vacuous: the warp actually moves the MEL mirror row (w=1, u→u³).
         int mirrorDiffs = 0;
         for (int i = 0; i < 16; ++i)
-            if (peW.warpRow(0, MEL)[i] != peW.random_[0][MEL][i]) ++mirrorDiffs;
+            if (peW.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL})[i] != peW.random_[0][MEL][i]) ++mirrorDiffs;
         EXPECT(mirrorDiffs > 0);
         // (1) EXACT: the drawn melodyPitchV/semitone ARE the mirror-fed values.
         for (int i = 0; i < 16; ++i) {
             int sem = 0;
-            const float want = peW.genPitchLive(sem, in, peW.warpRow(0, MEL)[i], peW.warpRow(0, OCT)[i]);
+            const float want = peW.genPitchLive(sem, in, peW.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL})[i], peW.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{OCT})[i]);
             EXPECTF(peW.melodyPitchV[i] == want && peW.melodySemitone[i] == sem,
                     "step %d: draw got (%.9g, %d) want the mirror-fed (%.9g, %d)",
                     i, (double)peW.melodyPitchV[i], peW.melodySemitone[i], (double)want, sem);
@@ -568,7 +569,7 @@ int main() {
         const PatternInput in = makeInput();
         PatternEngine pe;
         pe.numPolyVoicesHint = 5;    // the recompute covers rows 0..5, mirror rebuilt for all
-        pe.displayedVoice_ = 4;
+        pe.displayedVoice_ = dotModular::VoiceResolver::slot(5);   // V5 = slot 4 (typed member)
         WarpBank bank;
         bank.warpF[WarpBank::index(4, MEL)] = dotModular::PowerWarp{3};
         bank.warpW[WarpBank::index(4, MEL)] = 1.f;
@@ -576,7 +577,7 @@ int main() {
         drawTwice(pe, in);
         for (int i = 0; i < 16; ++i) {
             int sem = 0;
-            const float want = pe.genPitchLive(sem, in, pe.warpRow(4, MEL)[i], pe.warpRow(4, OCT)[i]);
+            const float want = pe.genPitchLive(sem, in, pe.warpRow(dotModular::VoiceResolver::slot(4 + 1), dotModular::LaneId{MEL})[i], pe.warpRow(dotModular::VoiceResolver::slot(4 + 1), dotModular::LaneId{OCT})[i]);
             EXPECTF(pe.melodyPitchV[i] == want && pe.melodySemitone[i] == sem,
                     "step %d: got (%.9g, %d) want the mirror(4)-fed (%.9g, %d)",
                     i, (double)pe.melodyPitchV[i], pe.melodySemitone[i], (double)want, sem);
@@ -608,13 +609,13 @@ int main() {
         se.pe.slewedMelody[v][step] = 0.2f;            // the voice's own draw
         se.pe.slewedMelody[0][step] = 0.9f;            // the V1 anchor target
         se.pe.random_[v][MEL][step] = 0.123456f;       // clearly-stale basis
-        se.refreshPolyRandomCell(v, SequencerEngine::PL_MELODY, step);
+        se.refreshPolyRandomCell(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_MELODY}, step);
         const float u = se.pe.random_[v][MEL][step];   // the JUST-refreshed basis
         EXPECTF(u != 0.123456f, "refresh did not move the cell (u=%.9g)", (double)u);
         const float want = (float)dotModular::TriangularWarp{0.25}.invCDF((double)u);   // w=1
-        EXPECTF(se.pe.warpRow(v, SequencerEngine::PL_MELODY)[step] == want,
+        EXPECTF(se.pe.warpRow(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[step] == want,
                 "poly landing read %.9g, want the FRESH mirror %.9g (u=%.9g)",
-                (double)se.pe.warpRow(v, SequencerEngine::PL_MELODY)[step], (double)want, (double)u);
+                (double)se.pe.warpRow(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SequencerEngine::PL_MELODY})[step], (double)want, (double)u);
         EXPECT(se.pe.warped_[v][MEL][step] == want);   // the cell-scope rebuild landed
     });
 

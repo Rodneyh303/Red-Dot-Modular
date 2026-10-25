@@ -1,8 +1,11 @@
 #include "SequencerEngine.hpp"
 #include "../SpreadInterp.hpp"   // Stage 2a: refreshPolyRandomCell -> applyPoly
+#include "../VoiceResolver.hpp"  // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (mono/slot) for the typed accessors
 #include <cmath>
 #include <algorithm>
 #include <cstdio>
+
+using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be constructed here)
 
 // RULE2_DEBUG is defined in SequencerEngine.hpp (shared with the manager). The trace uses
 // Rack's INFO() logger (writes to log.txt); fprintf(stderr) is discarded under a GUI launch.
@@ -77,7 +80,10 @@ void SequencerEngine::reset() {
     pe.reset();
     gs.reset();
     gsStep.reset();
-    for (int i = 1; i < 16; ++i) { voices[i].gs.reset(); voices[i].gsStep.reset(); }
+    for (const VoiceSlot vs : VoiceResolver::allSlots()) {   // slots 1..15 = V2..V16 (V1 is gs/gsStep above)
+        if (vs == VoiceResolver::mono()) continue;
+        voices[vs].gs.reset(); voices[vs].gsStep.reset();
+    }
     // restProb values are NOT reset — the caller re-applies them from expander knobs.
     for (int i = 0; i < 16; i++) wasHeldPolyPrev[i] = false;
     lastStepResult = StepResult{};
@@ -115,18 +121,19 @@ void SequencerEngine::reset() {
         }
     }
     for (int i = 1; i < 16; i++) {
+        const VoiceSlot vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
         for (int l = 0; l < PL_LANES; ++l) {   // was l < 3 — PL_ACCENT(3) was never reset (pre-existing bug)
-            polyLenERef(i, l) = 16;
-            polyOffERef(i, l) = 0;
-            polyRotERef(i, l) = 0;
+            polyLenERef(vs, LaneId{l}) = 16;
+            polyOffERef(vs, LaneId{l}) = 0;
+            polyRotERef(vs, LaneId{l}) = 0;
         }
         // VARIATION/LEGATO per-voice LOR were NEVER seeded (lorStore_ is zero-init, so len==0 →
         // getStrandIdx's max(1,len) pinned every step to index 0 — NOT identity). Editor-order
         // accessor: these lanes have no PL_ id.
         for (int el : { EDITOR_LANE_VARIATION, EDITOR_LANE_LEGATO }) {
-            polyLORRef(i, el, LOR_LEN) = 16;
-            polyLORRef(i, el, LOR_OFF) = 0;
-            polyLORRef(i, el, LOR_ROT) = 0;
+            polyLORRef(vs, LaneId{el}, LOR_LEN) = 16;
+            polyLORRef(vs, LaneId{el}, LOR_OFF) = 0;
+            polyLORRef(vs, LaneId{el}, LOR_ROT) = 0;
         }
     }
     windowMask = 0xFFFF;
@@ -239,13 +246,13 @@ bool SequencerEngine::advancePlayhead(int dir) {
         // macroLOR_ fix generalised to laneTickV_. strand → this voice's LOR length:
         auto polyStrandLen = [&](int v, int strand) -> int {
             switch (strand) {
-                case dotModular::STRAND_MELODY:    return polyLenE(v, PL_MELODY);
-                case dotModular::STRAND_OCTAVE:    return polyLenE(v, PL_OCTAVE);
-                case dotModular::STRAND_QMIX:      return polyLenE(v, PL_QMIX);
-                case dotModular::STRAND_RHYTHM:    return polyLenE(v, PL_REST);
-                case dotModular::STRAND_ACCENT:    return polyLenE(v, PL_ACCENT);
-                case dotModular::STRAND_VARIATION: return polyLOR(v, EDITOR_LANE_VARIATION, LOR_LEN);
-                case dotModular::STRAND_LEGATO:    return polyLOR(v, EDITOR_LANE_LEGATO, LOR_LEN);
+                case dotModular::STRAND_MELODY:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_MELODY});
+                case dotModular::STRAND_OCTAVE:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_OCTAVE});
+                case dotModular::STRAND_QMIX:      return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_QMIX});
+                case dotModular::STRAND_RHYTHM:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_REST});
+                case dotModular::STRAND_ACCENT:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_ACCENT});
+                case dotModular::STRAND_VARIATION: return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_VARIATION}, LOR_LEN);
+                case dotModular::STRAND_LEGATO:    return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_LEGATO}, LOR_LEN);
             }
             return 16;
         };
@@ -338,13 +345,13 @@ void SequencerEngine::recomputeLaneTicks() {
     };
     auto polyStrandLen = [&](int v, int strand) -> int {
         switch (strand) {
-            case dotModular::STRAND_MELODY:    return polyLenE(v, PL_MELODY);
-            case dotModular::STRAND_OCTAVE:    return polyLenE(v, PL_OCTAVE);
-            case dotModular::STRAND_QMIX:      return polyLenE(v, PL_QMIX);
-            case dotModular::STRAND_RHYTHM:    return polyLenE(v, PL_REST);
-            case dotModular::STRAND_ACCENT:    return polyLenE(v, PL_ACCENT);
-            case dotModular::STRAND_VARIATION: return polyLOR(v, EDITOR_LANE_VARIATION, LOR_LEN);
-            case dotModular::STRAND_LEGATO:    return polyLOR(v, EDITOR_LANE_LEGATO, LOR_LEN);
+            case dotModular::STRAND_MELODY:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_MELODY});
+            case dotModular::STRAND_OCTAVE:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_OCTAVE});
+            case dotModular::STRAND_QMIX:      return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_QMIX});
+            case dotModular::STRAND_RHYTHM:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_REST});
+            case dotModular::STRAND_ACCENT:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_ACCENT});
+            case dotModular::STRAND_VARIATION: return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_VARIATION}, LOR_LEN);
+            case dotModular::STRAND_LEGATO:    return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_LEGATO}, LOR_LEN);
         }
         return 16;
     };
@@ -485,8 +492,11 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
 
 StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail) {
     // Phase A: ALL V1 per-voice params (rest, legato, accent, qmix, variation) now read from
-    // voices[0].* — no separate parameters. V1 = voice 0 of the unified per-voice system.
-    // voices[0] is populated by the controller (updatePatternInput), not by the mode executors.
+    // voices[monoSlot].* — no separate parameters. V1 = voice 0 of the unified per-voice system.
+    // The mono slot is populated by the controller (updatePatternInput), not by the mode executors.
+    // CC_PROMPT_STRONG_TYPES: the mono ROLE is TYPED — monoSlot is the minted anchor
+    // (was the bare voices[0] hardcode, indistinguishable from residue).
+    const VoiceSlot monoSlot = VoiceResolver::mono();
     // ── Fractional notes (1/4T=2.667, 1/8T=1.333, 1/32=0.5 steps) & legato/tie ──
     // These notes end MID-STEP (closed by the gateSecRemain seconds-timer), not on
     // a 1/16 grid edge. Legato/tie decisions only happen AT an edge and require the
@@ -549,7 +559,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     // POLARITY (MODE_COLLAPSE_6_TO_3 §29): 0 = generated, 1 = quantised. The draw crosses UPWARD
     // (r >= level → use generated), so level 0 forces generated, level 1 forces quantised. (Pre-collapse
     // this was r < level, i.e. high q-mix = generated — the opposite.)
-    const bool qmixUseGenerated = quantiserPitchSource && (r_qmix >= voices[0].qmixLevel);
+    const bool qmixUseGenerated = quantiserPitchSource && (r_qmix >= voices[monoSlot].qmixLevel);
     // QUANTISER (Q1): mono/voice-0 pitch = quantised external CV when in a quantiser mode, else the
     // internal melody+octave draw. voicePitch bypasses genPitchLive (no RNG/lane perturbation) when
     // quantiserPitchSource is set; off = byte-identical legacy path. qmixUseGenerated forces the
@@ -558,12 +568,12 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     // generated). Routes the fader flash to the green (quant) timer instead of red (seq). Per voice a
     // note is EITHER seq OR quant; q-mix selects one source. isQuant is threaded into the note-on calls.
     const bool isQuant = quantiserPitchSource && !qmixUseGenerated;
-    float pitchV = voicePitch(0, sem, input,
+    float pitchV = voicePitch(monoSlot, sem, input,
                               // Warp mirror (CC_PROMPT_03 STEP 4a): the mono voice's
                               // sounding pitch reads the effective w-mixture (== the raw
                               // row when no warp is authored — byte-identical legacy).
-                              pe.warpRow(0, PL_MELODY)[getMelodyStep()],
-                              pe.warpRow(0, PL_OCTAVE)[getOctaveStep()],
+                              pe.warpRow(monoSlot, LaneId{PL_MELODY})[getMelodyStep()],
+                              pe.warpRow(monoSlot, LaneId{PL_OCTAVE})[getOctaveStep()],
                               /*forceGenerated=*/qmixUseGenerated);
 
     // ── Leading-edge legato (STEP 2, the only legato model) ──
@@ -600,7 +610,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     // r_legato_tie is consumed only at the LEAD commitment (gs.slurForward, at the bottom of
     // this cascade), i.e. by the note that produces the next note's prevSlur.
     // legatoProb>=0.999 (LegatoMax) still forces connection.
-    const bool legatoConnects = (voices[0].legatoProb >= 0.999f) || prevSlur;
+    const bool legatoConnects = (voices[monoSlot].legatoProb >= 0.999f) || prevSlur;
 
     // A genuine committed slur reaching THIS note: it connects AND has a held predecessor to
     // connect to (exactly the condition the legato branch below uses). "Rest beats legato"
@@ -610,12 +620,12 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     const bool slurReachesHere    = legatoConnects && (wasHeld || hadTail) && prevPlayedSounded;
     const bool slurSuppressesRest = !generatedRestBeatsLegato && slurReachesHere;
 
-    if (voices[0].legatoProb >= 0.999f) {
+    if (voices[monoSlot].legatoProb >= 0.999f) {
         gs.slideMax(pitchV, sem, nvIdx, isQuant);
         gsStep.triggerNote(pitchV, sem, nvIdx, isQuant);            // STEP: re-strike (un-fused)
         result.decision = MonoDecision::LegatoMax;
     }
-    else if ((r_rest < voices[0].restProb) && !slurSuppressesRest) {
+    else if ((r_rest < voices[monoSlot].restProb) && !slurSuppressesRest) {
         // Rest precedence:
         //  - A fractional NOTE TAIL always outranks a rest (physical — !canRest). Unchanged.
         //  - "Rest beats legato" ON (default): a rest CANCELS an optional slur reach ("can't
@@ -666,7 +676,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
                         ((result.decision == MonoDecision::Legato || result.decision == MonoDecision::LegatoMax) && !wasHeld && !hadTail);
 
     if (monoStarting) {
-        result.accented = (r_accent < voices[0].accentProb);
+        result.accented = (r_accent < voices[monoSlot].accentProb);
     } else if (result.decision == MonoDecision::Rest) {
         result.accented = false;
     } else {
@@ -683,7 +693,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     // always false; qmixHit keeps its raw-draw semantics via the r_qmix>=qmixLevel form (behaviour-
     // inert there, matching prior code). POLARITY: 0 = generated, 1 = quantised (§29).
     if (monoStarting) {
-        result.qmixHit = (r_qmix >= voices[0].qmixLevel);
+        result.qmixHit = (r_qmix >= voices[monoSlot].qmixLevel);
     } else if (result.decision == MonoDecision::Rest) {
         result.qmixHit = false;
     } else {
@@ -712,7 +722,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
                    || (result.decision == MonoDecision::Tie);
     bool leadsSlur = leStarting
                   && noteCanLeadLegato(nvIdx)
-                  && (voices[0].legatoProb >= 0.999f || r_legato_tie < voices[0].legatoProb);
+                  && (voices[monoSlot].legatoProb >= 0.999f || r_legato_tie < voices[monoSlot].legatoProb);
     gs.slurForward = leadsSlur;
     gs.slurMember  = prevSlur || leadsSlur;   // SLEG mask: this note leads OR continues a slur
 
@@ -754,22 +764,24 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float noteVal
         gs.slurForward = false;
         gsStep.gateHeld = false; gsStep.holdRemain = 0.f;      // STEP: stop with the fused gate
         for (int i = 1; i <= numPolyVoices; ++i) {
-            voices[i].gs.gateHeld   = false;
-            voices[i].gs.holdRemain = 0.f;
-            voices[i].gs.slurForward = false;
-            voices[i].participating = false;
-            voices[i].gsStep.gateHeld = false; voices[i].gsStep.holdRemain = 0.f;
+            const VoiceSlot vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+            voices[vs].gs.gateHeld   = false;
+            voices[vs].gs.holdRemain = 0.f;
+            voices[vs].gs.slurForward = false;
+            voices[vs].participating = false;
+            voices[vs].gsStep.gateHeld = false; voices[vs].gsStep.holdRemain = 0.f;
         }
     }
 
     // Warp mirror (CC_PROMPT_05): the mono feeders read EVERY lane through the ONE
     // uniform source pe.warpRow (mirror when a bank is wired, raw row otherwise —
     // byte-identical at the identity defaults). No per-lane gate, no mono/poly branch.
-    float r_vary   = pe.warpRow(0, PL_VARIATION)[getVariationStep()];
-    float r_rest   = pe.warpRow(0, PL_REST)[getRhythmStep()];
-    float r_legato = pe.warpRow(0, PL_LEGATO)[getLegatoStep()];
-    float r_accent = pe.warpRow(0, PL_ACCENT)[getAccentStep()];  // New: accent strand
-    float r_qmix   = pe.warpRow(0, PL_QMIX)[getQmixStep()];      // Task 4: q-mix strand
+    const VoiceSlot monoSlot = VoiceResolver::mono();   // the mono ROLE, typed (was the bare [0])
+    float r_vary   = pe.warpRow(monoSlot, LaneId{PL_VARIATION})[getVariationStep()];
+    float r_rest   = pe.warpRow(monoSlot, LaneId{PL_REST})[getRhythmStep()];
+    float r_legato = pe.warpRow(monoSlot, LaneId{PL_LEGATO})[getLegatoStep()];
+    float r_accent = pe.warpRow(monoSlot, LaneId{PL_ACCENT})[getAccentStep()];  // New: accent strand
+    float r_qmix   = pe.warpRow(monoSlot, LaneId{PL_QMIX})[getQmixStep()];      // Task 4: q-mix strand
     
     int nvIdx = getNoteLenIdx(noteVal, input, r_vary);
 
@@ -780,10 +792,11 @@ StepResult SequencerEngine::executeModeA(const ClockEngine& clock, float noteVal
     hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
     for (int i = 1; i <= numPolyVoices; ++i) {
-        wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
-        float ph = voices[i].gs.holdRemain;
-        voices[i].gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
-        voices[i].gsStep.tick(ClockEngine::pulsesPer16th(ppqnSetting));
+        const VoiceSlot vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+        wasHeldPolyPrev[i] = voices[vs].gs.gateHeld || (voices[vs].gs.holdRemain > 0.0001f);
+        float ph = voices[vs].gs.holdRemain;
+        voices[vs].gs.tick(ClockEngine::pulsesPer16th(ppqnSetting));
+        voices[vs].gsStep.tick(ClockEngine::pulsesPer16th(ppqnSetting));
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
     
@@ -814,9 +827,10 @@ void SequencerEngine::legatoCheckpointOnFall() {
     }
     // The legato draw at the rested step decides slur survival (generatedRestBeatsLegato is
     // IRRELEVANT — the incoming rest already makes it silent; only the slur candidacy is in play).
-    // Phase A: legato threshold read from voices[0].legatoProb (V1 = voice 0).
-    float r_legato = pe.warpRow(0, PL_LEGATO)[getLegatoStep()];
-    bool survives = (voices[0].legatoProb >= 0.999f) || (r_legato < voices[0].legatoProb);
+    // Phase A: legato threshold read from the mono slot's legatoProb (V1 = voice 0, TYPED).
+    const VoiceSlot monoSlot = VoiceResolver::mono();
+    float r_legato = pe.warpRow(monoSlot, LaneId{PL_LEGATO})[getLegatoStep()];
+    bool survives = (voices[monoSlot].legatoProb >= 0.999f) || (r_legato < voices[monoSlot].legatoProb);
     if (!survives) gs.slurForward = false;   // chain ENDS at the rest checkpoint
     // else slurForward stays pending across the rest (tieAcrossRests bridge carries it to the rise)
     pendingCheckpointArrival = true;
@@ -857,16 +871,18 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
             gs.gateHeld = false; gs.holdRemain = 0.f; gs.slurForward = false;
             gsStep.gateHeld = false; gsStep.holdRemain = 0.f;      // STEP: stop with the fused gate
             for (int i = 1; i <= numPolyVoices; ++i) {
-                voices[i].gs.gateHeld = false; voices[i].gs.holdRemain = 0.f;
-                voices[i].gs.slurForward = false; voices[i].participating = false;
-                voices[i].gsStep.gateHeld = false; voices[i].gsStep.holdRemain = 0.f;
+                const VoiceSlot vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+                voices[vs].gs.gateHeld = false; voices[vs].gs.holdRemain = 0.f;
+                voices[vs].gs.slurForward = false; voices[vs].participating = false;
+                voices[vs].gsStep.gateHeld = false; voices[vs].gsStep.holdRemain = 0.f;
             }
         }
-        float r_vary   = pe.warpRow(0, PL_VARIATION)[getVariationStep()];
-        float r_rest   = pe.warpRow(0, PL_REST)[getRhythmStep()];
-        float r_legato = pe.warpRow(0, PL_LEGATO)[getLegatoStep()];
-        float r_accent = pe.warpRow(0, PL_ACCENT)[getAccentStep()];  // New: accent strand
-        float r_qmix   = pe.warpRow(0, PL_QMIX)[getQmixStep()];      // Task 4: q-mix strand
+        const VoiceSlot monoSlot = VoiceResolver::mono();   // the mono ROLE, typed (was the bare [0])
+        float r_vary   = pe.warpRow(monoSlot, LaneId{PL_VARIATION})[getVariationStep()];
+        float r_rest   = pe.warpRow(monoSlot, LaneId{PL_REST})[getRhythmStep()];
+        float r_legato = pe.warpRow(monoSlot, LaneId{PL_LEGATO})[getLegatoStep()];
+        float r_accent = pe.warpRow(monoSlot, LaneId{PL_ACCENT})[getAccentStep()];  // New: accent strand
+        float r_qmix   = pe.warpRow(monoSlot, LaneId{PL_QMIX})[getQmixStep()];      // Task 4: q-mix strand
         
         // Mode B: the note DURATION is Gate 1's width, so the INTERNAL note length is nullified
         // to a single 1/16 step (index 6 in NoteValues.hpp = 1.0 step). Using the controller's
@@ -886,10 +902,11 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
         hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
         for (int i = 1; i <= numPolyVoices; ++i) {
-            wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
-            float ph = voices[i].gs.holdRemain;
-            voices[i].gs.tick();
-            voices[i].gsStep.tick();
+            const VoiceSlot vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+            wasHeldPolyPrev[i] = voices[vs].gs.gateHeld || (voices[vs].gs.holdRemain > 0.0001f);
+            float ph = voices[vs].gs.holdRemain;
+            voices[vs].gs.tick();
+            voices[vs].gsStep.tick();
             hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
         }
 
@@ -956,16 +973,18 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
         gs.gateHeld = false; gs.holdRemain = 0.f; gs.slurForward = false;
         gsStep.gateHeld = false; gsStep.holdRemain = 0.f;
         for (int i = 1; i <= numPolyVoices; ++i) {
-            voices[i].gs.gateHeld = false; voices[i].gs.holdRemain = 0.f;
-            voices[i].gs.slurForward = false; voices[i].participating = false;
-            voices[i].gsStep.gateHeld = false; voices[i].gsStep.holdRemain = 0.f;
+            const VoiceSlot vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+            voices[vs].gs.gateHeld = false; voices[vs].gs.holdRemain = 0.f;
+            voices[vs].gs.slurForward = false; voices[vs].participating = false;
+            voices[vs].gsStep.gateHeld = false; voices[vs].gsStep.holdRemain = 0.f;
         }
     }
 
-    float r_rest   = pe.warpRow(0, PL_REST)[getRhythmStep()];
-    float r_legato = pe.warpRow(0, PL_LEGATO)[getLegatoStep()];
-    float r_accent = pe.warpRow(0, PL_ACCENT)[getAccentStep()];
-    float r_qmix   = pe.warpRow(0, PL_QMIX)[getQmixStep()];
+    const VoiceSlot monoSlot = VoiceResolver::mono();   // the mono ROLE, typed (was the bare [0])
+    float r_rest   = pe.warpRow(monoSlot, LaneId{PL_REST})[getRhythmStep()];
+    float r_legato = pe.warpRow(monoSlot, LaneId{PL_LEGATO})[getLegatoStep()];
+    float r_accent = pe.warpRow(monoSlot, LaneId{PL_ACCENT})[getAccentStep()];
+    float r_qmix   = pe.warpRow(monoSlot, LaneId{PL_QMIX})[getQmixStep()];
 
     // Mode B nullification: the note DURATION is the main gate's width, not an internal
     // note-length.  nvIdx = 6 (1/16 = 1 step) so the internal countdown does not govern.
@@ -978,10 +997,11 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     hadMonoTail = (prevHold > 0.0001f && prevHold < 0.999f);
 
     for (int i = 1; i <= numPolyVoices; ++i) {
-        wasHeldPolyPrev[i] = voices[i].gs.gateHeld || (voices[i].gs.holdRemain > 0.0001f);
-        float ph = voices[i].gs.holdRemain;
-        voices[i].gs.tick();
-        voices[i].gsStep.tick();
+        const VoiceSlot vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+        wasHeldPolyPrev[i] = voices[vs].gs.gateHeld || (voices[vs].gs.holdRemain > 0.0001f);
+        float ph = voices[vs].gs.holdRemain;
+        voices[vs].gs.tick();
+        voices[vs].gsStep.tick();
         hadPolyTail[i] = (ph > 0.0001f && ph < 0.999f);
     }
 
@@ -996,8 +1016,8 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     // no ghost ever fires.  (Ratchet sub-cells and main onsets are NOT variation-gated — only the
     // ghost is.)  Then executeStep rolls the rest lane, which may still silence a ghost candidate.
     if (ghostRise) {
-        float r_vary = pe.warpRow(0, PL_VARIATION)[getVariationStep()];
-        if (r_vary >= voices[0].variationProb) {
+        float r_vary = pe.warpRow(monoSlot, LaneId{PL_VARIATION})[getVariationStep()];
+        if (r_vary >= voices[monoSlot].variationProb) {
             // No ghost candidate — silent gap.  Preserve the decision (slur bridge) + own cell.
             ghostActive = false;
             result = lastStepResult;
@@ -1044,10 +1064,10 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
 // Stage 2a: refresh ONE cell of polyRandom at step advance, using the cached spread
 // from the last control-rate sync(). If the lane's lock axis is not live, return without
 // writing (frozen value persists — same as the old loop skipping when locked).
-void SequencerEngine::refreshPolyRandomCell(int voice, int engLane, int step) {
+void SequencerEngine::refreshPolyRandomCell(VoiceSlot voice, LaneId engLane, int step) {
     // Determine which lock axis this lane rides.
     bool live;
-    switch (engLane) {
+    switch (engLane.l) {
         case PL_REST:     live = pe.cachedSpreadLiveR; break;   // rhythm axis
         case PL_ACCENT:   live = pe.cachedSpreadLiveR; break;
         case PL_VARIATION: live = pe.cachedSpreadLiveR; break;
@@ -1059,20 +1079,41 @@ void SequencerEngine::refreshPolyRandomCell(int voice, int engLane, int step) {
     }
     if (!pe.cachedSpreadInitialized || !live) return;   // not yet cached or frozen — leave existing value
     pe.polyRandom(voice, engLane)[step & 0x0F] =
-        redDot::SpreadInterp::applyPoly(pe, engLane, voice, step & 0x0F,
-                                        pe.cachedPolySpread[voice][engLane]);
+        redDot::SpreadInterp::applyPoly(pe, engLane.l, voice.v, step & 0x0F,
+                                        pe.cachedPolySpread[voice.v][engLane.l]);
     // Warp mirror (CC_PROMPT_03/05): this cell of random_ just moved — refresh exactly
     // that mirror cell so the next warpRow read (the same call sequence in
     // executePolyVoice) sees the effective w-mixture of the CURRENT value. One
     // warpedValue eval per step per lane; no-op without a bank.
-    pe.rebuildWarpMirrorCell(voice, engLane, step & 0x0F);
+    pe.rebuildWarpMirrorCell(voice.v, engLane.l, step & 0x0F);
 }
 
-void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, bool wasHeldPoly, bool hadPolyTail) {
+// Phase B (see the header): reset newly-activated voices' stale gs state. Definition
+// lives here (not inline in the header) because the loop MINTS VoiceSlots — the
+// header cannot include VoiceResolver.hpp (engine include cycle).
+void SequencerEngine::resetActivatedPolyVoices_() {
+    if (numPolyVoices > prevNumPolyVoices_) {
+        for (int i = prevNumPolyVoices_ + 1; i <= numPolyVoices && i < 16; ++i) {
+            const VoiceSlot vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+            voices[vs].gs.gateHeld = false;
+            voices[vs].gs.holdRemain = 0.f;
+            voices[vs].gs.slurForward = false;
+            voices[vs].gs.gatePulseRemain = -1;
+            voices[vs].gsStep.gateHeld = false;
+            voices[vs].gsStep.holdRemain = 0.f;
+            voices[vs].gsStep.gatePulseRemain = -1;
+            voices[vs].participating = false;
+        }
+    }
+    pe.syncPolyVoiceCount();  // Voice-count opt: fill delta voices' z in cache on increase
+    prevNumPolyVoices_ = numPolyVoices;
+}
+
+void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& input, bool wasHeldPoly, bool hadPolyTail) {
     PolyVoice& v = voices[voiceIdx];
     // Stage 2a: refresh VARIATION cell before nvIdxForVoice reads it (nvIdxForVoice
     // reads the uniform via pe.warpRow at the voice's variation step to pick the note length).
-    refreshPolyRandomCell(voiceIdx, PL_VARIATION, getVariationStepForVoice(voiceIdx) & 0x0F);
+    refreshPolyRandomCell(voiceIdx, LaneId{PL_VARIATION}, getVariationStepForVoice(voiceIdx) & 0x0F);
     // Stage 2: this voice's note length. Identical to lastStepResult.nvIdx when the voice's VAR
     // LOR is identity (delegated → reads mono's step). Clamped so the voice can never hold past
     // mono's next event — articulation is subtractive.
@@ -1088,11 +1129,11 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // Each strand indexes with ITS OWN lane LOR (rest/melody/octave).
         // Per-voice tick (inherits mono's per-lane direction) so a reversed mono lane reverses
         // this voice's read on the same lane.
-        int restIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_REST),   polyLenE(voiceIdx, PL_REST),   polyOffE(voiceIdx, PL_REST),   polyRotE(voiceIdx, PL_REST));
-        int melIdx  = getStrandIdx(polyLaneTick(voiceIdx, PL_MELODY), polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
-        int octIdx  = getStrandIdx(polyLaneTick(voiceIdx, PL_OCTAVE), polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
-        refreshPolyRandomCell(voiceIdx, PL_REST, restIdx);
-        float r_rest = pe.warpRow(voiceIdx, PL_REST)[restIdx];
+        int restIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_REST}),   polyLenE(voiceIdx, LaneId{PL_REST}),   polyOffE(voiceIdx, LaneId{PL_REST}),   polyRotE(voiceIdx, LaneId{PL_REST}));
+        int melIdx  = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_MELODY}), polyLenE(voiceIdx, LaneId{PL_MELODY}), polyOffE(voiceIdx, LaneId{PL_MELODY}), polyRotE(voiceIdx, LaneId{PL_MELODY}));
+        int octIdx  = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_OCTAVE}), polyLenE(voiceIdx, LaneId{PL_OCTAVE}), polyOffE(voiceIdx, LaneId{PL_OCTAVE}), polyRotE(voiceIdx, LaneId{PL_OCTAVE}));
+        refreshPolyRandomCell(voiceIdx, LaneId{PL_REST}, restIdx);
+        float r_rest = pe.warpRow(voiceIdx, LaneId{PL_REST})[restIdx];
 
         // ── Phase 5: per-voice ghost placement (§398/§227) ────────────────────────────────
         // At a ghost cell (ghostActive: the mono ghosted this onset), each poly voice rolls its
@@ -1106,8 +1147,8 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // by anything today" (§227).
         if (ghostActive) {
             int varIdx = getVariationStepForVoice(voiceIdx) & 0x0F;
-            refreshPolyRandomCell(voiceIdx, PL_VARIATION, varIdx);
-            float r_vary_voice = pe.warpRow(voiceIdx, PL_VARIATION)[varIdx];
+            refreshPolyRandomCell(voiceIdx, LaneId{PL_VARIATION}, varIdx);
+            float r_vary_voice = pe.warpRow(voiceIdx, LaneId{PL_VARIATION})[varIdx];
             if (r_vary_voice >= v.variationProb) {
                 // Rested ghost: transparent — silent, not part of the chain.
                 v.accented = false;
@@ -1148,9 +1189,9 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // qmixUseGenerated is only ever true in quantiser modes (voicePitch gates forceGenerated on
         // quantiserPitchSource); outside them it's inert and byte-identical to the legacy poly path.
         // POLARITY (§29): 0 = generated, 1 = quantised (draw crosses upward: r >= level → generated).
-        int qmixIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_QMIX), polyLenE(voiceIdx, PL_QMIX), polyOffE(voiceIdx, PL_QMIX), polyRotE(voiceIdx, PL_QMIX));
-        refreshPolyRandomCell(voiceIdx, PL_QMIX, qmixIdx);
-        float r_qmix_voice = pe.warpRow(voiceIdx, PL_QMIX)[qmixIdx];
+        int qmixIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_QMIX}), polyLenE(voiceIdx, LaneId{PL_QMIX}), polyOffE(voiceIdx, LaneId{PL_QMIX}), polyRotE(voiceIdx, LaneId{PL_QMIX}));
+        refreshPolyRandomCell(voiceIdx, LaneId{PL_QMIX}, qmixIdx);
+        float r_qmix_voice = pe.warpRow(voiceIdx, LaneId{PL_QMIX})[qmixIdx];
         bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice >= v.qmixLevel);
         const bool isQuant = quantiserPitchSource && !qmixUseGenerated;   // FADER_SEQ_QUANT_COLOURS (green flash)
         // QUANTISER (Q1): this voice's pitch = quantised external CV (its own channel) in quantiser
@@ -1160,14 +1201,14 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // exists in the code). When qmixUseGenerated, forceGenerated pushes voicePitch through
         // genPitchLive (mode-A pitch).
         float pitchV = voicePitch(voiceIdx, sem, input,
-                                  (refreshPolyRandomCell(voiceIdx, PL_MELODY, melIdx), pe.warpRow(voiceIdx, PL_MELODY)[melIdx]),
-                                  (refreshPolyRandomCell(voiceIdx, PL_OCTAVE, octIdx), pe.warpRow(voiceIdx, PL_OCTAVE)[octIdx]),
+                                  (refreshPolyRandomCell(voiceIdx, LaneId{PL_MELODY}, melIdx), pe.warpRow(voiceIdx, LaneId{PL_MELODY})[melIdx]),
+                                  (refreshPolyRandomCell(voiceIdx, LaneId{PL_OCTAVE}, octIdx), pe.warpRow(voiceIdx, LaneId{PL_OCTAVE})[octIdx]),
                                   qmixUseGenerated);
         // Accent as a poly lane (modelled after rest): this voice draws its OWN accent at
         // its own accent LOR and compares to its own accentProb — not shared from mono.
-        int accIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_ACCENT), polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
-        refreshPolyRandomCell(voiceIdx, PL_ACCENT, accIdx);
-        v.accented = (pe.warpRow(voiceIdx, PL_ACCENT)[accIdx] < v.accentProb);
+        int accIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_ACCENT}), polyLenE(voiceIdx, LaneId{PL_ACCENT}), polyOffE(voiceIdx, LaneId{PL_ACCENT}), polyRotE(voiceIdx, LaneId{PL_ACCENT}));
+        refreshPolyRandomCell(voiceIdx, LaneId{PL_ACCENT}, accIdx);
+        v.accented = (pe.warpRow(voiceIdx, LaneId{PL_ACCENT})[accIdx] < v.accentProb);
         if (lastStepResult.decision == MonoDecision::NewNote)
             v.gs.triggerNote(pitchV, sem, nvV, isQuant);
         else if (wasHeldPoly || hadPolyTail)
@@ -1187,7 +1228,7 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
         // gate forward into the NEXT note iff its OWN legato draw fires. The draw reads the
         // legato strand at THIS voice's cell (getLegatoStepForVoice → mono's cell when delegated
         // (default) so it matches V1, own cell when Local East). Phase A: the THRESHOLD is
-        // per-voice (v.legatoProb, with voices[0].legatoProb = V1's threshold); mono/V1 reads
+        // per-voice (v.legatoProb, with the mono slot legatoProb = V1 threshold); mono/V1 reads
         // the same voice-0 cell. Rolled here at the leading edge and consumed at the NEXT landing
         // (v.gs.slurForward → prevSlur). Delegated voices read V1's legato cell → their slur
         // matches V1's; Local-East voices read their own.
@@ -1200,8 +1241,8 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                             || (lastStepResult.decision == MonoDecision::LegatoMax)
                             || (lastStepResult.decision == MonoDecision::Tie);
             int legIdx = getLegatoStepForVoice(voiceIdx);
-            refreshPolyRandomCell(voiceIdx, PL_LEGATO, legIdx);
-            float r_polyLegato = pe.warpRow(voiceIdx, PL_LEGATO)[legIdx];
+            refreshPolyRandomCell(voiceIdx, LaneId{PL_LEGATO}, legIdx);
+            float r_polyLegato = pe.warpRow(voiceIdx, LaneId{PL_LEGATO})[legIdx];
             v.gs.slurForward = leStartingV
                              && noteCanLeadLegato(nvV)
                              && (v.legatoProb >= 0.999f || r_polyLegato < v.legatoProb);
@@ -1209,12 +1250,12 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
 #if RULE2_DEBUG
             INFO("[R2 roll ] v=%2d step=%3d LE=%d legCell=%2d monoCell=%2d legLOR=(%2d,%2d,%2d) "
                  "r=%.3f prob=%.3f nvV=%d canLead=%d -> slur=%d",
-                voiceIdx, (int)totalStepsElapsed, (int)!varlegDelegated(voiceIdx, 1),
+                voiceIdx.v, (int)totalStepsElapsed, (int)!varlegDelegated(voiceIdx.v, 1),
                 getLegatoStepForVoice(voiceIdx), getLegatoStep(),
-                polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_LEN),
-                polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_OFF),
-                polyLOR(voiceIdx, EDITOR_LANE_LEGATO, LOR_ROT),
-                r_polyLegato, voices[0].legatoProb, nvV, (int)noteCanLeadLegato(nvV),
+                polyLOR(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, LOR_LEN),
+                polyLOR(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, LOR_OFF),
+                polyLOR(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, LOR_ROT),
+                r_polyLegato, voices[VoiceResolver::mono()].legatoProb, nvV, (int)noteCanLeadLegato(nvV),
                 (int)v.gs.slurForward);
 #endif
         }
@@ -1263,8 +1304,8 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                 const bool connect = prevSlur && stillSounding;
 #if RULE2_DEBUG
                 INFO("[R2 land ] v=%2d step=%3d LE=%d part=%d prevSlur=%d sound=%d isTie=%d -> %s",
-                    voiceIdx, (int)totalStepsElapsed, (int)!varlegDelegated(voiceIdx, 1),
-                    (int)v.participating, (int)prevSlur, (int)stillSounding, (int)isTie,
+                    voiceIdx.v, (int)totalStepsElapsed, (int)!varlegDelegated(voiceIdx.v, 1),
+                        (int)v.participating, (int)prevSlur, (int)stillSounding, (int)isTie,
                     connect ? "CONNECT" : "REARTICULATE");
 #endif
                 if (connect && isTie) {
@@ -1275,29 +1316,29 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                     // committed legato → slide to own new pitch; opted out / not still sounding →
                     // re-articulate fresh. Either way this voice draws its OWN pitch (melody/octave
                     // LOR), never mono's.
-                    int melIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_MELODY), polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
-                    int octIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_OCTAVE), polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
+                    int melIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_MELODY}), polyLenE(voiceIdx, LaneId{PL_MELODY}), polyOffE(voiceIdx, LaneId{PL_MELODY}), polyRotE(voiceIdx, LaneId{PL_MELODY}));
+                    int octIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_OCTAVE}), polyLenE(voiceIdx, LaneId{PL_OCTAVE}), polyOffE(voiceIdx, LaneId{PL_OCTAVE}), polyRotE(voiceIdx, LaneId{PL_OCTAVE}));
                     int sem = 0;
-                    refreshPolyRandomCell(voiceIdx, PL_MELODY, melIdx);
-                    refreshPolyRandomCell(voiceIdx, PL_OCTAVE, octIdx);
-                    float pitchV = pe.genPitchLive(sem, input, pe.warpRow(voiceIdx, PL_MELODY)[melIdx], pe.warpRow(voiceIdx, PL_OCTAVE)[octIdx]);
+                    refreshPolyRandomCell(voiceIdx, LaneId{PL_MELODY}, melIdx);
+                    refreshPolyRandomCell(voiceIdx, LaneId{PL_OCTAVE}, octIdx);
+                    float pitchV = pe.genPitchLive(sem, input, pe.warpRow(voiceIdx, LaneId{PL_MELODY})[melIdx], pe.warpRow(voiceIdx, LaneId{PL_OCTAVE})[octIdx]);
                     if (connect) {
                         v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true);   // connect (keep chain accent)
                     } else {
                         // re-articulate: a fresh onset, so draw this voice's OWN accent (its accent
                         // LOR vs its own accentProb), exactly as the chain onset does — a re-struck
                         // note isn't stuck with the accent the chain opened on.
-                        int accIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_ACCENT), polyLenE(voiceIdx, PL_ACCENT), polyOffE(voiceIdx, PL_ACCENT), polyRotE(voiceIdx, PL_ACCENT));
-                        refreshPolyRandomCell(voiceIdx, PL_ACCENT, accIdx);
-                        v.accented = (pe.warpRow(voiceIdx, PL_ACCENT)[accIdx] < v.accentProb);
+                        int accIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_ACCENT}), polyLenE(voiceIdx, LaneId{PL_ACCENT}), polyOffE(voiceIdx, LaneId{PL_ACCENT}), polyRotE(voiceIdx, LaneId{PL_ACCENT}));
+                        refreshPolyRandomCell(voiceIdx, LaneId{PL_ACCENT}, accIdx);
+                        v.accented = (pe.warpRow(voiceIdx, LaneId{PL_ACCENT})[accIdx] < v.accentProb);
                         v.gs.triggerNote(pitchV, sem, nvV);                   // re-articulate
                     }
                     v.gsStep.triggerNote(pitchV, sem, nvV);   // STEP: slide/re-artic both re-strike
                 }
                 // Re-roll the forward commitment for the NEXT landing (mirror mono's LEAD, per voice).
                 { int legIdx2 = getLegatoStepForVoice(voiceIdx);
-                  refreshPolyRandomCell(voiceIdx, PL_LEGATO, legIdx2);
-                float r_polyLegato = pe.warpRow(voiceIdx, PL_LEGATO)[legIdx2];
+                  refreshPolyRandomCell(voiceIdx, LaneId{PL_LEGATO}, legIdx2);
+                float r_polyLegato = pe.warpRow(voiceIdx, LaneId{PL_LEGATO})[legIdx2];
                 v.gs.slurForward = noteCanLeadLegato(nvV)
                                  && (v.legatoProb >= 0.999f || r_polyLegato < v.legatoProb);
                 v.gs.slurMember = prevSlur || v.gs.slurForward;  // SLEG: continues OR leads
@@ -1311,12 +1352,12 @@ void SequencerEngine::executePolyVoice(int voiceIdx, const PatternInput& input, 
                     // Mono slid to a NEW pitch (a real pitch move) → poly draws its OWN new pitch
                     // (its own melody/octave LOR) and slides to it. Poly tracks mono's articulation
                     // shape, never mono's actual notes.
-                    int melIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_MELODY), polyLenE(voiceIdx, PL_MELODY), polyOffE(voiceIdx, PL_MELODY), polyRotE(voiceIdx, PL_MELODY));
-                    int octIdx = getStrandIdx(polyLaneTick(voiceIdx, PL_OCTAVE), polyLenE(voiceIdx, PL_OCTAVE), polyOffE(voiceIdx, PL_OCTAVE), polyRotE(voiceIdx, PL_OCTAVE));
+                    int melIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_MELODY}), polyLenE(voiceIdx, LaneId{PL_MELODY}), polyOffE(voiceIdx, LaneId{PL_MELODY}), polyRotE(voiceIdx, LaneId{PL_MELODY}));
+                    int octIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_OCTAVE}), polyLenE(voiceIdx, LaneId{PL_OCTAVE}), polyOffE(voiceIdx, LaneId{PL_OCTAVE}), polyRotE(voiceIdx, LaneId{PL_OCTAVE}));
                     int sem = 0;
-                    refreshPolyRandomCell(voiceIdx, PL_MELODY, melIdx);
-                    refreshPolyRandomCell(voiceIdx, PL_OCTAVE, octIdx);
-                    float pitchV = pe.genPitchLive(sem, input, pe.warpRow(voiceIdx, PL_MELODY)[melIdx], pe.warpRow(voiceIdx, PL_OCTAVE)[octIdx]);
+                    refreshPolyRandomCell(voiceIdx, LaneId{PL_MELODY}, melIdx);
+                    refreshPolyRandomCell(voiceIdx, LaneId{PL_OCTAVE}, octIdx);
+                    float pitchV = pe.genPitchLive(sem, input, pe.warpRow(voiceIdx, LaneId{PL_MELODY})[melIdx], pe.warpRow(voiceIdx, LaneId{PL_OCTAVE})[octIdx]);
                     v.gs.slideNote(pitchV, sem, nvV, wasHeldPoly);
                     v.gsStep.triggerNote(pitchV, sem, nvV); v.gs.slurMember = true;  // STEP/SLEG
                 } else if (lastStepResult.decision == MonoDecision::Tie) {
@@ -1351,7 +1392,8 @@ void SequencerEngine::executePolyVoices(const PatternInput& input) {
         // we still consider it "active" for slaving to a continuing mono gate.
         // hadPolyTail is kept for safety with fractional start/ends.
         bool wasHeldPoly = wasHeldPolyPrev[i] || hadPolyTail[i];
-        executePolyVoice(i, input, wasHeldPoly, hadPolyTail[i]);
+        // i is the voiceSlot (V2..); slot(V) takes the VOICE number (= i+1)
+        executePolyVoice(VoiceResolver::slot(i + 1), input, wasHeldPoly, hadPolyTail[i]);
     }
 }
 
@@ -1428,33 +1470,33 @@ int SequencerEngine::getStrandIdx(int tickCount, int len, int off, int mutation)
 }
 
 // ── EAST_EXTRA_LANES stage 2 ──────────────────────────────────────────────────────────────────
-int SequencerEngine::getVariationStepForVoice(int bank) const {
+int SequencerEngine::getVariationStepForVoice(VoiceSlot bank) const {
     // Delegated (default) → read mono's VARIATION position, so the voice mirrors mono.
     if (varlegDelegated(bank, 0)) return getVariationStep();
     // Local East: read THIS voice's own window, advanced on its per-voice tick (which inherits
     // mono's per-lane direction — a reversed mono VARIATION lane reverses this voice too).
-    return getStrandIdx(laneTickV_[bank][dotModular::STRAND_VARIATION],
-                        polyLOR(bank, EDITOR_LANE_VARIATION, LOR_LEN),
-                        polyLOR(bank, EDITOR_LANE_VARIATION, LOR_OFF),
-                        polyLOR(bank, EDITOR_LANE_VARIATION, LOR_ROT));
+    return getStrandIdx(laneTickV_[bank.v][dotModular::STRAND_VARIATION],
+                        polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_LEN),
+                        polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_OFF),
+                        polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_ROT));
 }
 
-int SequencerEngine::getLegatoStepForVoice(int bank) const {
+int SequencerEngine::getLegatoStepForVoice(VoiceSlot bank) const {
     // Delegated (default) → read mono's LEGATO position, so the voice's slur roll matches mono.
     if (varlegDelegated(bank, 1)) return getLegatoStep();
     // Local East: read THIS voice's own window, advanced on its per-voice tick (inherits mono's
     // per-lane direction — a reversed mono LEGATO lane reverses this voice's slur roll too).
-    return getStrandIdx(laneTickV_[bank][dotModular::STRAND_LEGATO],
-                        polyLOR(bank, EDITOR_LANE_LEGATO, LOR_LEN),
-                        polyLOR(bank, EDITOR_LANE_LEGATO, LOR_OFF),
-                        polyLOR(bank, EDITOR_LANE_LEGATO, LOR_ROT));
+    return getStrandIdx(laneTickV_[bank.v][dotModular::STRAND_LEGATO],
+                        polyLOR(bank, LaneId{EDITOR_LANE_LEGATO}, LOR_LEN),
+                        polyLOR(bank, LaneId{EDITOR_LANE_LEGATO}, LOR_OFF),
+                        polyLOR(bank, LaneId{EDITOR_LANE_LEGATO}, LOR_ROT));
 }
 
-int SequencerEngine::nvIdxForVoice(int bank, const PatternInput& input) const {
-    if (bank < 1 || bank >= 16) return lastStepResult.nvIdx;
+int SequencerEngine::nvIdxForVoice(VoiceSlot bank, const PatternInput& input) const {
+    if (bank.v < 1 || bank.v >= 16) return lastStepResult.nvIdx;
     // The probability array stays MONO (one shared shape); only the reading position is per-voice.
     const int idx = getVariationStepForVoice(bank) & 0x0F;
-    const float r = pe.warpRow(bank, PL_VARIATION)[idx];
+    const float r = pe.warpRow(bank, LaneId{PL_VARIATION})[idx];
     const int nv  = const_cast<SequencerEngine*>(this)->getNoteLenIdx(lastNoteVal_, input, r);
     // CLAMP to the mono event grid: a voice may release early, never hold past mono's next note.
     // NOTE_VALUES is ordered slowest→fastest, so max() picks the SHORTER of the two.

@@ -646,7 +646,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             // a live-array read that ignores the resolver's spread/warp composition).
             for (int st = 0; st < SandsVisualEditorV4::STEP_COUNT; ++st)
                 lane.probabilities[st] = m->engine.effectiveProbability(
-                    dotModular::VoiceResolver::kMonoSlot, el, st,
+                    dotModular::VoiceResolver::mono(), dotModular::LaneId{el}, st,
                     SequencerEngine::ProbLens::Owner);
             int ph580 = (m->engine.stepIndex >= 0) ? m->engine.laneTick_[el] : -1;
             visualEditor->setLanePlayStep(el, calcPlayhead(ph580, mLen, mOff, mRot));
@@ -1164,7 +1164,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         int newSel = tabGroup->getSelectedTab();
         if (newSel != selectedVoice) onVoiceTabChanged(newSel);
         // B3: set the displayed voice for the for-voice recompute in refreshVisualCache.
-        monsoon->engine.pe.displayedVoice_ = selectedVoice;
+        // STRONG types: selectedVoice is the tab index = voiceSlot; the setter takes a
+        // MINTED VoiceSlot (slot(V) takes the voice number = slot + 1), never a raw int.
+        monsoon->engine.pe.setDisplayedVoice(dotModular::VoiceResolver::slot(selectedVoice + 1));
 
         // Per-frame write-back of display proxies → the selected voice's params, so edits
         // take effect immediately. Poly tabs only — the mono tab (index 0) is display-only
@@ -1257,7 +1259,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[lane].probabilities[s] =
-                        monsoon->engine.effectiveProbability(vs, lane, s,
+                        monsoon->engine.effectiveProbability(dotModular::VoiceResolver::slot(vs + 1), dotModular::LaneId{lane}, s,
                                                              SequencerEngine::ProbLens::Owner);
         }
         // ── Mono tab (V1) bar fill: same pattern but base from MONO slewed arrays
@@ -1278,7 +1280,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[lane].probabilities[s] =
                         monsoon->engine.effectiveProbability(
-                            dotModular::VoiceResolver::kMonoSlot, lane, s,
+                            dotModular::VoiceResolver::mono(), dotModular::LaneId{lane}, s,
                             SequencerEngine::ProbLens::Owner);
         }
 
@@ -1355,7 +1357,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                         visualEditor->currentState.lanes[el].probabilities[s] =
                             monsoon->engine.effectiveProbability(
-                                dotModular::VoiceResolver::kMonoSlot, el, s,
+                                dotModular::VoiceResolver::mono(), dotModular::LaneId{el}, s,
                                 SequencerEngine::ProbLens::Owner);
             }
         } else if (v1Editable()) {
@@ -1424,16 +1426,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                         visualEditor->currentState.lanes[el].probabilities[s] =
                             monsoon->engine.effectiveProbability(
-                                dotModular::VoiceResolver::kMonoSlot, el, s,
+                                dotModular::VoiceResolver::mono(), dotModular::LaneId{el}, s,
                                 SequencerEngine::ProbLens::Owner);
             }
         } else if (selectedVoice >= 1) {
             const int pv = polyVoice();
             // l = the unified lane (editor == engine)
             for (int l=0; l<dotModular::SandsGrid::POLY_LANES; ++l) {
-                int cvLen = eng.polyLenE(pv, l);
-                int cvOff = eng.polyOffE(pv, l);
-                int cvRot = eng.polyRotE(pv, l);
+                int cvLen = eng.polyLenE(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{l});
+                int cvOff = eng.polyOffE(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{l});
+                int cvRot = eng.polyRotE(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{l});
                 visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
                 // Use the PER-VOICE tick (laneTickV_), not mono's laneTick_ — otherwise
                 // the poly playhead always follows mono's direction, ignoring the DirCell.
@@ -1450,9 +1452,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     (getMonsoon() && getMonsoon()->getVarlegDeleg(pv, el - dotModular::SandsGrid::POLY_LANES) > 0.5f);
                 int cvLen, cvOff, cvRot;
                 if (localEast) {   // voice's own window (what the engine reads under Local East)
-                    cvLen = std::max(1, eng.polyLOR(pv, el, SequencerEngine::LOR_LEN));
-                    cvOff = eng.polyLOR(pv, el, SequencerEngine::LOR_OFF);
-                    cvRot = eng.polyLOR(pv, el, SequencerEngine::LOR_ROT);
+                    cvLen = std::max(1, eng.polyLOR(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{el}, SequencerEngine::LOR_LEN));
+                    cvOff = eng.polyLOR(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{el}, SequencerEngine::LOR_OFF);
+                    cvRot = eng.polyLOR(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{el}, SequencerEngine::LOR_ROT);
                 } else {           // delegated → mono's window (what the engine reads under delegate)
                     cvLen = std::max(1, eng.lor(el, SequencerEngine::LOR_LEN));
                     cvOff = eng.lor(el, SequencerEngine::LOR_OFF);
@@ -1469,7 +1471,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 // resolver's spread/warp composition.
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[el].probabilities[s] =
-                        eng.effectiveProbability(pv, el, s, SequencerEngine::ProbLens::Owner);
+                        eng.effectiveProbability(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{el}, s, SequencerEngine::ProbLens::Owner);
             }
         }
     }

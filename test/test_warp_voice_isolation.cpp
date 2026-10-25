@@ -47,6 +47,7 @@
 #include "test_stubs.hpp"
 #include "PatternEngine.hpp"
 #include "SequencerEngine.hpp"
+#include "VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting
 #include "WarpF.hpp"
 #include "SandsTopology.hpp"
 #include <cstdio>
@@ -150,7 +151,7 @@ int main() {
                 for (int st = 0; st < 16; ++st) {
                     const float u = se.pe.random_[s][l][st];
                     const float expected = (float)bank.warpedValue(s, l, (double)u, delegated[s][l]);
-                    const float got = se.pe.warpRow(s, l)[st];
+                    const float got = se.pe.warpRow(dotModular::VoiceResolver::slot(s + 1), dotModular::LaneId{l})[st];
                     EXPECTF(got == expected,
                             "cell (s=%d,l=%d,st=%d): warpRow %.9g != expected %.9g (raw %.9g, delegated=%d)",
                             s, l, st, (double)got, (double)expected, (double)u, (int)delegated[s][l]);
@@ -188,19 +189,19 @@ int main() {
             const float macroMix0 = (float)bank.warpedValue(0, MEL, u0, true);
             const float eastMix1   = (float)bank.warpedValue(1, MEL, u1, false);
             const float macroMix1  = (float)bank.warpedValue(1, MEL, u1, true);
-            EXPECTF(se.pe.warpRow(0, MEL)[st] == macroMix0,
+            EXPECTF(se.pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL})[st] == macroMix0,
                     "V1 step %d: warpRow %.9g != Macro-global mix %.9g", st,
-                    (double)se.pe.warpRow(0, MEL)[st], (double)macroMix0);
-            EXPECTF(se.pe.warpRow(1, MEL)[st] == eastMix1,
+                    (double)se.pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{MEL})[st], (double)macroMix0);
+            EXPECTF(se.pe.warpRow(dotModular::VoiceResolver::slot(1 + 1), dotModular::LaneId{MEL})[st] == eastMix1,
                     "V2 step %d: warpRow %.9g != V2's OWN mix %.9g", st,
-                    (double)se.pe.warpRow(1, MEL)[st], (double)eastMix1);
+                    (double)se.pe.warpRow(dotModular::VoiceResolver::slot(1 + 1), dotModular::LaneId{MEL})[st], (double)eastMix1);
             if (eastMix1 != macroMix1)
-                EXPECTF(se.pe.warpRow(1, MEL)[st] != macroMix1,
+                EXPECTF(se.pe.warpRow(dotModular::VoiceResolver::slot(1 + 1), dotModular::LaneId{MEL})[st] != macroMix1,
                         "V2 step %d: LEAK — warpRow equals Macro's global mix (%.9g)", st, (double)macroMix1);
             // The CV-out funnel (what East's panel meters report) reads the same rows.
-            EXPECTF(se.polyLaneProbabilityAtStep(MEL, 1, st) == eastMix1,
+            EXPECTF(se.polyLaneProbabilityAtStep(dotModular::LaneId{MEL}, dotModular::VoiceResolver::slot(2), st) == eastMix1,
                     "V2 step %d: CV-out funnel %.9g != own mix %.9g", st,
-                    (double)se.polyLaneProbabilityAtStep(MEL, 1, st), (double)eastMix1);
+                    (double)se.polyLaneProbabilityAtStep(dotModular::LaneId{MEL}, dotModular::VoiceResolver::slot(2), st), (double)eastMix1);
         }
     });
 
@@ -261,7 +262,7 @@ int main() {
                     const double u = (double)se.pe.random_[s][l][st];
                     const bool deleg = !store[s][l];
                     const float expected = (float)bank.warpedValue(s, l, u, deleg);
-                    const float got = se.pe.warpRow(s, l)[st];
+                    const float got = se.pe.warpRow(dotModular::VoiceResolver::slot(s + 1), dotModular::LaneId{l})[st];
                     EXPECTF(got == expected,
                             "cell (s=%d,l=%d,st=%d): warpRow %.9g != store-resolved %.9g (store=%s)",
                             s, l, st, (double)got, (double)expected, store[s][l] ? "EAST" : "MACRO");
@@ -281,7 +282,7 @@ int main() {
             int leaks = 0;
             for (int st = 0; st < 16; ++st) {
                 const double u = (double)se.pe.random_[s][1][st];
-                if (se.pe.warpRow(s, 1)[st] == (float)bank.warpedValue(s, 1, u, true)) ++leaks;
+                if (se.pe.warpRow(dotModular::VoiceResolver::slot(s + 1), dotModular::LaneId{1})[st] == (float)bank.warpedValue(s, 1, u, true)) ++leaks;
             }
             EXPECTF(leaks == 0, "lane 1 (all East-owned): slot %d shows Macro's global mix at %d steps", s, leaks);
         }
@@ -308,7 +309,7 @@ int main() {
             for (int l = 0; l < 7; ++l)
                 for (int st = 0; st < 16; ++st) {
                     const double u = (double)se.pe.random_[v][l][st];
-                    EXPECTF(se.pe.warpRow(v, l)[st] == (float)bank.warpedValue(v, l, u, true),
+                    EXPECTF(se.pe.warpRow(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{l})[st] == (float)bank.warpedValue(v, l, u, true),
                             "MACRO_SOLE cell (v=%d,l=%d,st=%d) does not track the global curve", v, l, st);
                 }
     });

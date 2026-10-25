@@ -5,6 +5,7 @@
 #include <cstdio>
 #include "MicroTuning.hpp"
 #include "Monsoon.hpp"
+#include "dsp/VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting (slot)
 #include "MonsoonInterchangeExpander.hpp"   // 3C-ii: read paired Interchange CV into weight[]
 #include "MonsoonShophouseMicro.hpp"        // Shophouse Micro (Model Q): scene-front FOLD into weight/cents
 #include "ui/IntertropicalPairing.hpp"      // redDot::assignPairIdT / findPairHubEitherSide (templates)
@@ -182,7 +183,8 @@ void MicroTuningModule::process(const ProcessArgs&) {
     for (int i = 0; i < n; ++i) {
         float b = (i < tt.N) ? mon->engine.gs.semiLedBrightness(i) : 0.f;   // greyed (>= tuning size): no flash
         for (int v = 0; v < mon->engine.numPolyVoices && i < tt.N; ++v)
-            b = std::max(b, mon->engine.voices[v].gs.semiLedBrightness(i));
+            // v = the voiceSlot being read (preserved; includes the dormant V1 slot at 0)
+            b = std::max(b, mon->engine.voices[dotModular::VoiceResolver::slot(v + 1)].gs.semiLedBrightness(i));
         lights[weightLed(i) + 0].setBrightness(0.f);   // green sub unused (match Monsoon)
         lights[weightLed(i) + 1].setBrightness(b);     // red sub = play flash
     }
