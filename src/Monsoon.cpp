@@ -1409,7 +1409,12 @@ void Monsoon::process(const ProcessArgs& args) {
     MONSOON_PROF_END(lightDiv);
     MONSOON_PROF_BEGIN(controlDiv);
     // ── Control-Rate DNA and Window Updates (Optimized CPU) ──
-    if (controlDivider.process()) {
+    // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START, Stage 0): the Control tier is fed by the
+    // EXISTING controlDivider edge — a pure wrapper, behaviour-identical. The manager is the
+    // divider's only reader; this block guards on ticked(Control). Producers dispatch from
+    // this same position in the control tick (S0b: the Macro sync population).
+    rateManager.advance(redDot::Rate::Control, controlDivider.process());
+    if (rateManager.ticked(redDot::Rate::Control)) {
         MONSOON_PROF_BEGIN(ctrl_raf);   // rafExp: expander-scan + Raffles gate edge loop
         // LOOKUP AUTHORITY: the expander scan re-runs ONLY when the topology epoch
         // moved (an onExpanderChange fired somewhere — the multi-hop fan-out; the

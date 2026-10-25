@@ -107,6 +107,7 @@ TESTS=(
   "test_qmix_poly|"
   "test_qmix_rng|"
   "test_quantize_engine|$SE $GS $PE"
+  "test_rate_manager|"   # CC_PROMPT_RATE_MANAGER_START: the compute-rate authority — manager-dispatched producers + skip-on-unchanged fingerprints (Stage 0: lean core; the Macro sync population is the first producer)
   "test_resolver_dir_bridge|"   # header-only: resolver step-4 BYTE-IDENTICAL gate — BOTH direction pushes' moved selection algebra (DirPolicy via redDot::resolveDirItem) vs a verbatim copy of the OLD poly line (exhaustive 242-case grid + seeded 20k full-Inputs fuzz, int equality + same-BITS pre-round float). The direction pin; step 1's spread bridge is the template.
   "test_resolver_lor_bridge|"   # header-only: resolver step-3 BYTE-IDENTICAL gate — combineLOR's moved delegation algebra (LorPolicy via redDot::resolveLorItem) vs a verbatim copy of the OLD MonsoonExpanderManager combineLOR (seeded 120k-case fuzz, int equality + same-BITS pre-cast float). The LOR pin; step 1's spread bridge is the template.
   "test_resolver_spread_bridge|"   # header-only: resolver step-1 BYTE-IDENTICAL gate — SandsModifierResolver<SpreadPolicy> + the compat shell vs a verbatim copy of the OLD SpreadResolver formula (seeded 120k-case fuzz, same-BITS). The permanent pin; steps 2-4 extend the pattern.

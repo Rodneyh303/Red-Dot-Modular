@@ -1,0 +1,127 @@
+#pragma once
+// src/ui/RateManager.hpp — THE COMPUTE-RATE AUTHORITY (CC_PROMPT_RATE_MANAGER_START /
+// RATE_MANAGER_AND_RESOLVER_UI_DESIGN.md / CC_PROMPT_RATE_MANAGER_SPEC.md).
+// One authority for WHEN in-scope sequencing work runs: producers DECLARE
+// (rate, fingerprint, work); the manager owns dispatch. There is NO public
+// "run now" — the declaring site hands the work over and never keeps it callable.
+//
+// STAGE 0 (this header's first landing): the LEAN core — the Rate identity, tier
+// tick/generation state, and the producer mechanism (declareProducer + dispatch).
+// The per-mode RateChains + tier SOURCES (AudioClock/VideoClock/WallClockDiv/
+// PhaseMap/GateEdge/TickCount) grow here in the later migration steps; the API is
+// already the target shape so no producer is rewritten when they land.
+//
+// DESIGN CONTRACT (the enforced properties):
+//   1. ONE producer per quantity: work is a lambda handed to the manager. Duplicate
+//      computation and "call the heavy fn yourself" are un-writable.
+//   2. The manager dispatches a producer ONLY on its declared tier's tick, at most
+//      ONCE per tier generation (per tick).
+//   3. SKIP-ON-UNCHANGED — the SweepSig pattern, now the ONE change-detection
+//      mechanism (publishGlobal + SweepSig fold into it): on each tick the producer's
+//      input FINGERPRINT is snapshotted and memcmp'd against the shadow of its last
+//      RUN; identical inputs → the produce is SKIPPED (the published state is already
+//      correct). The first tick always runs (nothing to compare against). A moving
+//      input re-runs — correct: the value really changed. THE FINGERPRINT MUST COVER
+//      EVERY INPUT THE PRODUCE READS; a missed input = stale state.
+//   4. RATES ARE INDEPENDENT CLOCKS — the enum is an IDENTITY, not an ordering and
+//      not a nested subset. Freshness comes from published state (the produce's
+//      side effects), never from tick-nesting. Frame never drives another tier;
+//      Control is a wall-clock division (the SR-aware controlDivider pattern this
+//      generalizes).
+//   5. Rack-free + header-only so the headless rig drives the REAL manager (the
+//      ModuleLookupCore pattern).
+//
+// Stage 0 tier drive: tiers are fed EXTERNALLY by the existing edges (advance()) —
+// a pure wrapper, behaviour-identical. The migration converts one site at a time and
+// DELETES the raw primitives at the end; deletion is the compile-time enforcement.
+//
+// THREADING: single-threaded use (the owning module's process()). The cross-module
+// shared-manager step (design property 3) reuses the adjacency authority's reach;
+// until then this instance is Monsoon-internal.
+
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <vector>
+
+namespace redDot {
+
+// Identity only. NOT comparable for "faster/slower" — that framing was superseded by
+// the per-mode rate chains (see the design doc's CORRECTION section).
+enum class Rate { Sample, Frame, Control, PPQN, Step, Phrase };
+
+class RateManager {
+public:
+    static constexpr size_t kMaxFingerprint = 1024;   // sync-population inputs ≈ 200 B; headroom
+
+    // ── Tier state ─────────────────────────────────────────────────────────────
+    // Record whether tier r fired THIS sample; bump its generation when it did.
+    // Stage 0: the owner feeds the EXISTING edge (e.g. controlDivider.process()).
+    // Later steps replace the feed with the tier's own source from the active chain.
+    void advance(Rate r, bool tickedNow) {
+        Tier& t = tiers_[index(r)];
+        t.tick = tickedNow;
+        if (tickedNow) ++t.generation;
+    }
+    bool ticked(Rate r) const { return tiers_[index(r)].tick; }
+    uint64_t generation(Rate r) const { return tiers_[index(r)].generation; }
+
+    // ── Producers (manager-dispatched work) ────────────────────────────────────
+    // fingerprint: write the producer's INPUT snapshot into dst (a plain byte image —
+    //   memcpy-able struct or field-by-field copies; beware padding) and return the
+    //   byte count. Must cover EVERY input the produce reads.
+    // produce: the work. The manager runs it only on this tier's tick, at most once
+    //   per tick, and only when the fingerprint changed since its last run (or on
+    //   its first run ever).
+    using SnapshotFn = std::function<size_t(void* dst)>;
+    using ProduceFn  = std::function<void()>;
+    int declareProducer(Rate at, SnapshotFn fingerprint, ProduceFn produce) {
+        producers_.push_back(Producer{at, std::move(fingerprint), std::move(produce),
+                                      /*lastGen*/ 0, /*everRan*/ false, /*runs*/ 0, /*shadow*/ {}});
+        return (int)producers_.size() - 1;
+    }
+
+    // Dispatch one tier's due producers. The owner calls this on the tier's tick
+    // (after advance()). NOT a "run now": it touches only producers DECLARED at this
+    // tier, at most once per generation, and only when their fingerprint changed.
+    void dispatch(Rate r) {
+        const uint64_t gen = generation(r);
+        for (Producer& p : producers_) {
+            if (p.at != r || p.lastGen == gen) continue;   // other tier / already dispatched this tick
+            p.lastGen = gen;
+            const size_t n = p.fingerprint ? p.fingerprint(scratch_.data()) : 0;
+            if (!p.everRan || n != p.shadow.size() ||
+                std::memcmp(scratch_.data(), p.shadow.data(), n) != 0) {
+                p.produce();
+                p.everRan = true;
+                ++p.runs;
+                p.shadow.assign(scratch_.data(), scratch_.data() + n);
+            }
+        }
+    }
+
+    // ── Observation (harness/diagnostics only) ─────────────────────────────────
+    uint64_t runs(int id) const { return producers_[(size_t)id].runs; }
+    bool everRan(int id) const { return producers_[(size_t)id].everRan; }
+    int producerCount() const { return (int)producers_.size(); }
+
+private:
+    struct Tier { bool tick = false; uint64_t generation = 0; };
+    struct Producer {
+        Rate at = Rate::Control;
+        SnapshotFn fingerprint;
+        ProduceFn produce;
+        uint64_t lastGen = 0;                 // generation this producer last dispatched in
+        bool everRan = false;
+        uint64_t runs = 0;
+        std::vector<uint8_t> shadow;          // fingerprint image of the last RUN
+    };
+    static size_t index(Rate r) { return (size_t)r; }
+
+    Tier tiers_[6] = {};
+    std::vector<Producer> producers_;
+    std::vector<uint8_t> scratch_ = std::vector<uint8_t>(kMaxFingerprint);
+};
+
+}  // namespace redDot
