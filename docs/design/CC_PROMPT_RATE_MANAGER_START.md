@@ -45,14 +45,16 @@ here.
 - probOutDiv (StraitsEastSandsVisual.cpp:1559, /32 + prob-CV-out recompute): SAME SweepSig/recompute-gate
   class as Macro's prob-out sweep → IN SCOPE, fold into the manager as a declared producer (same fingerprint
   pattern). Leaving it = two mechanisms for one pattern. Do it in the cross-module step.
-- gateModDiv (StraitsEastSandsVisual.cpp:1503, /8 → sets gateModScan_): a Sample-tier EDGE-DETECTOR cadence
-  (NOT a recompute gate — gates are ms, /8 catches every edge). Disposition: it is NOT in the recompute/
-  Stage-0 work, BUT it is NOT "out of scope" either — edge detectors ARE Sample-tier detector-PRODUCERS in
-  the design (gate-mode Step is triggered by a Sample-rate edge detector). So MIGRATE it through the manager
-  as a detector-producer, BEHAVIOUR-IDENTICAL: preserve the /8 cadence exactly (changing /8 is a separate
-  timing-ACCURACY question, not this plumbing migration). The end state has NO raw gateModDiv.process() —
-  it is a manager-owned detector at /8. (Calling it "out of scope" would leave a raw divider = the straggler
-  the enforcement-by-deletion forbids.)
+- gateModDiv (StraitsEastSandsVisual.cpp:1503, /8 → sets gateModScan_): MISNAMED — NOT gate-MODE timing.
+  VERIFIED (code at :1520-1543): it is a Sample-tier EDGE DETECTOR that scans the East DIRECTION-mod and
+  DELEGATION-mod CV INPUT jacks (dirModId/delegModId) for rising edges (>1V), counting dirModEdges/
+  delegModEdges per lane per channel. The /8 is cost (the CV pulses are ms = hundreds of samples, /8
+  catches every edge at 1/8 cost). NOT a recompute gate; NOT gate-mode / triggered-Step detection.
+  Disposition: it IS a Sample-tier detector-PRODUCER (the design's detector kind) — MIGRATE it through the
+  manager as a detector-producer, BEHAVIOUR-IDENTICAL, /8 PRESERVED (changing /8 = a separate edge-capture-
+  accuracy question). End state: no raw gateModDiv.process(); a manager-owned /8 CV-edge detector. NOT
+  "out of scope" (that leaves a raw divider = a straggler). Keep the init-settle behaviour (gateModSeenInit
+  at :989 — adopt current counts on (re)build, don't fire a spurious edge burst).
 
 ## THE ENFORCEMENT — "compile error to not use it" = DELETE THE ALTERNATIVES
 There is no C++ type that makes "I gated work on a raw divider" fail to compile (timing is control flow,
