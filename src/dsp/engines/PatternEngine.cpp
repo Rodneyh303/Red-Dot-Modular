@@ -892,11 +892,13 @@ void PatternEngine::redrawQmix(const PatternInput& in) {
 // EVERY control cycle regardless of the ABMix lock liveness. (The old shape — slew latched
 // inside the ABMix-gated latchMix — left *SlewLatched STALE under lock, so the
 // phrase-boundary roll re-derived with the OLD slew and moving the knob did nothing.)
-// Consumed ONLY at the roll: redrawRhythm/Melody/Qmix advance the draw counter, then
-// recomputeEffective* read *SlewLatched (slewKnobToR → r) and the ZCache miss forces the
-// re-derive. Mid-phrase slew changes are latched but do NOT trigger recompute
-// (distributional correctness: slew must be constant across a phrase; a control-rate
-// recompute is the CPU spike — the roll is the correct trigger).
+// Consumed at the PHRASE BOUNDARY: a redraw (roll/realtime-reroll/seed) re-runs
+// recomputeEffective* with the latched slew, AND — the f01b4ed4 gap this closes (acf6d65d) —
+// applyPendingSeedsAndRedraw's slew-boundary consumption re-runs it WITHOUT a redraw, so a
+// latched slew change reaches engine arrays + pubSlewed* (bars) even in dice/static mode
+// where no redraw ever fires. Mid-phrase slew changes are latched but do NOT trigger
+// recompute (distributional correctness: slew must be constant across a phrase; a
+// control-rate recompute is the CPU spike — the boundary is the correct trigger).
 // Per-stream semantics: a stream whose A/B is FROZEN still latches SLEW here — only its
 // MIX holds (see latchMix). Freezing slew per-stream would need its OWN lock control —
 // out of scope; today slew is unlocked = always latches.
@@ -1041,6 +1043,41 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     // at unlock — clearing it unconditionally would silently DROP the roll (and blank its dice light).
     if (drawAllowedR) { rhythmRollPending = false; rhythmReseedRollPending = false; }
     if (shouldRedrawR) redrawRhythm(in);
+    // ── SLEW-BOUNDARY CONSUMPTION (regression fix, Rodney 2026-10-23: "slew doesn't work ... even
+    // at phrase boundary we dont see updated probability bars") ──────────────────────────────
+    // f01b4ed4 ("Slew consumed at phrase boundary") removed the control-rate
+    // SlewLatched!=SlewApplied recompute triggers, intending the latched slew to be consumed at
+    // the next phrase boundary — but it left NO boundary consumer: the only remaining recompute
+    // paths are the redraw (roll / realtime per-cycle reroll / seed) and the mix-changed branches.
+    // In dice/static mode (mode 0, no pending roll or seed) a redraw NEVER runs, so a latched
+    // slew change sat unconsumed forever — engine arrays AND pubSlewed* kept the old r, so
+    // neither the audio nor the probability bars ever reflected the new slew until a manual roll.
+    // Consume it HERE, at the boundary, WITHOUT a new draw: same position N, same A/B grooves,
+    // same scrub pair — ONLY the copula weights move (the moving average is re-read at the
+    // current r; the K-window content is unchanged — "still update the moving average").
+    // recomputeEffective* publishes pubSlewed* unconditionally (the bars funnel) and rewrites
+    // the public arrays when !sandsActive (audio; under Sands the step-rate refreshPolyRandomCell
+    // re-derives the finals from the new slewed*). Boundary rate keeps the phrase-fixed-r
+    // contract. When the stream DID redraw above, recompute already ran with the latched slew
+    // and set SlewApplied == clamped latch, so this branch is naturally skipped (no double work).
+    // drawAllowed* keeps locked+frozen streams frozen (the all-frozen early return above already
+    // handled the blanket case; a dice-live stream consumes its queued slew exactly like it may
+    // roll). Out-of-range latches re-fire idempotently each boundary (clamped compare) — cheap
+    // and safe; NaN latches fail the range test inside slewKnobToR and land on the r==0 path.
+    // The SlewApplied != -1 guard keeps the INITIAL computation (the force-first-recompute
+    // sentinel) owned by the existing paths (redraw / refreshVisualCache ctr-mix triggers) —
+    // this branch consumes only genuine mid-life slew changes, so first-boundary semantics are
+    // byte-identical to pre-fix (test_lock_behaviour's seed-on-unlock bit-identity pins this).
+    else if (drawAllowedR && rhythmSlewApplied != -1.f
+             && rack::math::clamp(rhythmSlewLatched, -1.f, 1.f) != rhythmSlewApplied) {
+        recomputeEffectiveRhythm();
+        // Preview follows the audio: this recompute consumed the ctr/mix bookkeeping that
+        // refreshVisualCache's triggers key on, so derive the rest-pattern here — the SAME
+        // expression as redrawRhythm's preview writer and refreshVisualCache's rhythmChanged
+        // writer (the two writers agree by construction; warpRow IS the mono row at voice 0).
+        for (int i = 0; i < 16; ++i)
+            rhythmPattern[i] = (warpRow(displayedVoice_, LaneId{PL_REST})[i] >= in.restProb);
+    }
     if (drawAllowedR) rhythmPendingLast = false;   // one-shot: consumed only if this stream drew (held otherwise)
 
     if (!in.locked && melodySeedPending) {   // seeds stay frozen under lock (Reseed-scoped)
@@ -1056,6 +1093,17 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     // Only consume the melody roll flags if melody was allowed to draw (see rhythm note above).
     if (drawAllowedM) { melodyRollPending = false; melodyReseedRollPending = false; }
     if (shouldRedrawM) redrawMelody(in);
+    else if (drawAllowedM && melodySlewApplied != -1.f
+             && rack::math::clamp(melodySlewLatched, -1.f, 1.f) != melodySlewApplied) {
+        recomputeEffectiveMelody();   // slew-boundary consumption (see rhythm block above)
+        for (int i = 0; i < 16; ++i) {   // preview follows (refreshVisualCache's melodyChanged writer)
+            float mVal = warpRow(displayedVoice_, LaneId{PL_MELODY})[i];
+            float oVal = warpRow(displayedVoice_, LaneId{PL_OCTAVE})[i];
+            int sem = 0;
+            melodyPitchV[i]   = genPitchLive(sem, in, mVal, oVal);
+            melodySemitone[i] = sem;
+        }
+    }
     if (drawAllowedM) melodyPendingLast = false;   // one-shot: consumed only if this stream drew (held otherwise)
 
     // q-mix twin of the melody block — its OWN independent stream (STREAM_SOURCE_SELECT).
@@ -1071,6 +1119,10 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     }
     if (drawAllowedQ) { qmixRollPending = false; qmixReseedRollPending = false; }
     if (shouldRedrawQ) redrawQmix(in);
+    else if (drawAllowedQ && qmixSlewApplied != -1.f
+             && rack::math::clamp(qmixSlewLatched, -1.f, 1.f) != qmixSlewApplied)
+        recomputeEffectiveQmix();     // slew-boundary consumption (see rhythm block above; no
+                                      // Monsoon-side preview — q-mix bars read pubSlewed* funnels)
     if (drawAllowedQ) qmixPendingLast = false;   // one-shot: consumed only if this stream drew (held otherwise)
 
     // ── Dice-undo capture (item 4): record the AFTER (seedFloat, counter) now that the roll's
