@@ -53,7 +53,9 @@ enum class Rate { Sample, Frame, Control, PPQN, Step, Phrase };
 
 class RateManager {
 public:
-    static constexpr size_t kMaxFingerprint = 1024;   // sync-population inputs ≈ 200 B; headroom
+    // Fingerprint budget: the Stage-0 sync-population image is ≈ 2.5 KB (its inputs PLUS
+    // the produced cells it self-heals — see MonsoonExpanderManager). 4 KiB headroom.
+    static constexpr size_t kMaxFingerprint = 4096;
 
     // ── Tier state ─────────────────────────────────────────────────────────────
     // Record whether tier r fired THIS sample; bump its generation when it did.
@@ -85,6 +87,11 @@ public:
     // Dispatch one tier's due producers. The owner calls this on the tier's tick
     // (after advance()). NOT a "run now": it touches only producers DECLARED at this
     // tier, at most once per generation, and only when their fingerprint changed.
+    // The shadow is the POST-RUN image: after a produce the fingerprint is
+    // re-snapshotted, so an input change costs exactly ONE run (the post-run state
+    // matches what the produce wrote) and any later difference is a genuine foreign
+    // change (an input moved, or — when the image includes the produced cells — an
+    // external writer touched them).
     void dispatch(Rate r) {
         const uint64_t gen = generation(r);
         for (Producer& p : producers_) {
@@ -96,7 +103,9 @@ public:
                 p.produce();
                 p.everRan = true;
                 ++p.runs;
-                p.shadow.assign(scratch_.data(), scratch_.data() + n);
+                // Re-snapshot AFTER the produce: the shadow holds the post-run image.
+                const size_t n2 = p.fingerprint ? p.fingerprint(scratch_.data()) : 0;
+                p.shadow.assign(scratch_.data(), scratch_.data() + n2);
             }
         }
     }

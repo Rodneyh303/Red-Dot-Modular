@@ -116,6 +116,10 @@ Monsoon::Monsoon() {
         cvRouter = std::unique_ptr<CVRouter>(new CVRouter());
         outputGenerator = std::unique_ptr<OutputGenerator>(new OutputGenerator());
 
+        // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START, S0b): declare the Control producers
+        // ONCE — the Macro sync-population is the first (the measured Macro-only 3%).
+        expanderManager.declareRateProducers(rateManager, *this);
+
         // Initialize dividers
         onSampleRateChange({APP->engine->getSampleRate(), APP->engine->getSampleRate()});
 
@@ -1468,6 +1472,11 @@ void Monsoon::process(const ProcessArgs& args) {
         // authority) -- replaces the old caV2PrevStep_/caV2PrevLocked_ shadow state.
         MONSOON_PROF_BEGIN(ctrl_sync);  // sync: lock boundary detect + expander sync
         lockManager.tick(engine.stepIndex);
+        // RATE MANAGER (S0b): dispatch the Control producers at the population's old
+        // position in the tick — after processDNA published macroBase + lockManager.tick,
+        // before sync's remaining work (the extracted block ran at the tail of sync).
+        // The Macro sync-population producer skips on unchanged inputs (the 3% fix).
+        rateManager.dispatch(redDot::Rate::Control);
         expanderManager.sync(engine, lockManager.queueFires());
         MONSOON_PROF_END(ctrl_sync);
 

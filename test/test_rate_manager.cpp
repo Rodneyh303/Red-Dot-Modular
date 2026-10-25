@@ -180,6 +180,44 @@ int main() {
         EXPECTF(produced == 3, "%d runs on identical (resized) inputs — must skip", produced);
     });
 
+    TEST("R5 SELF-HEALING IMAGE (the S0b shape): a fingerprint covering the produced cells re-runs after a FOREIGN write, re-asserts, then settles", {
+        // The Stage-0 sync-population producer's fingerprint includes BOTH its inputs AND
+        // the cells it writes — so an external write to those cells (the engine-reset
+        // path resets the LOR store at runtime) is a fingerprint change: the producer
+        // re-runs and re-asserts its values, exactly as the old unconditional per-tick
+        // code did. This pins the MECHANISM on the real manager; the real block is a
+        // verbatim extraction (bit-identity by construction + Rack feel-test).
+        redDot::RateManager rm;
+        struct State { float cell[4] = {1, 2, 3, 4}; float input = 0.5f; };
+        State st;
+        int produced = 0;
+        rm.declareProducer(
+            redDot::Rate::Control,
+            [&](void* dst) {
+                struct __attribute__((packed)) Img { float input; float cell[4]; };
+                Img img{};
+                img.input = st.input;
+                std::memcpy(img.cell, st.cell, sizeof img.cell);
+                std::memcpy(dst, &img, sizeof img);
+                return sizeof img;
+            },
+            [&] { ++produced; for (auto& c : st.cell) c = 42.f; });   // "the population"
+        rm.advance(redDot::Rate::Control, true);
+        rm.dispatch(redDot::Rate::Control);
+        EXPECT(produced == 1);                                    // first tick runs
+        rm.advance(redDot::Rate::Control, true);
+        rm.dispatch(redDot::Rate::Control);
+        EXPECTF(produced == 1, "%d runs on a static tick — must skip", produced);
+        st.cell[2] = 7.f;                                         // a FOREIGN write (the reset shape)
+        rm.advance(redDot::Rate::Control, true);
+        rm.dispatch(redDot::Rate::Control);
+        EXPECTF(produced == 2, "%d runs after a foreign write — the image must detect it", produced);
+        EXPECTF(st.cell[2] == 42.f, "%f — the re-run must re-assert", st.cell[2]);
+        rm.advance(redDot::Rate::Control, true);
+        rm.dispatch(redDot::Rate::Control);
+        EXPECTF(produced == 2, "%d runs after healing — must settle/skip", produced);
+    });
+
     std::cout << std::string(74, '=') << "\n" << s_pass << " passed, " << s_fail << " failed\n";
     return s_fail == 0 ? 0 : 1;
 }
