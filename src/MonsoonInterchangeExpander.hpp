@@ -1,8 +1,9 @@
 #pragma once
 #include <rack.hpp>
 #include "Monsoon.hpp"
-#include "MicroTuning.hpp"                   // MicroTuningModule (for the control-rate bound-Micro resolve)
-#include "ui/IntertropicalPairing.hpp"       // redDot::resolveFollowedT
+#include "MicroTuning.hpp"                   // MicroTuningModule (for the bound-Micro resolve)
+#include "ui/IntertropicalPairing.hpp"       // the shared pairing templates (service-internal)
+#include "ui/ModuleLookup.hpp"               // THE module-lookup authority: lookupFollowed — memoized, event-driven (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 
 using namespace rack;
 
@@ -33,12 +34,13 @@ struct MonsoonInterchangeExpander : Module {
     // behaviour change is the intended one (a bound Micro stops double-driving Monsoon).
     int targetMode = 0;
 
-    // Runtime cache (NOT persisted): does a Micro currently resolve for THIS Interchange? Refreshed at
-    // control rate in process() so drivesMonsoon() is self-contained on the Monsoon-fader read side
+    // Runtime cache (NOT persisted): does a Micro currently resolve for THIS Interchange? Refreshed
+    // EVERY process block through the memoized redDot::lookupFollowed (a hit costs one relaxed atomic
+    // load + compares; strictly fresher than the old /64 targetScanDiv_ poll — CC_PROMPT_MODULE_
+    // LOOKUP_AUTHORITY_START) so drivesMonsoon() is self-contained on the Monsoon-fader read side
     // without that side repeating the rack-wide resolve. MicroTuning's own bound-scan is the authority
     // for the MICRO read; this mirror only gates the Monsoon read under AUTO.
     bool  microBoundCached_ = false;
-    rack::dsp::ClockDivider targetScanDiv_;
 
     // Effective routing predicates. microBound = is a Micro reachable for this Interchange (AUTO
     // needs it; the fixed modes ignore it). Kept as small pure helpers so both read sites agree.
@@ -73,14 +75,20 @@ struct MonsoonInterchangeExpander : Module {
     }
 
     void process(const ProcessArgs& args) override {
-        // Refresh microBoundCached_ at control rate (rack-wide resolve is too costly per-sample). Only
-        // AUTO actually needs it, but the resolve is cheap on a divider and keeps the flag honest for
-        // the display too. resolveFollowedT handles both followTarget>0 (by id) and 0 (nearest).
-        if (targetScanDiv_.getDivision() == 0) targetScanDiv_.setDivision(64);
-        if (targetScanDiv_.process()) {
-            MicroTuningModule* hub = redDot::resolveFollowedT<MicroTuningModule>(this, followTarget);
-            microBoundCached_ = (hub && hub->pairId > 0);
-        }
+        // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): microBoundCached_ refreshes
+        // EVERY block through the memoized redDot::lookupFollowed — event-driven (onExpanderChange
+        // bumps the topology epoch) AND key-driven (turning followTarget re-resolves via the memo
+        // key), ONE walk per (target, generation). Was: the /64 targetScanDiv_ poll (up to ~1.3 ms
+        // stale). Only AUTO consumes the flag for gating, but the per-block refresh keeps it honest
+        // for the display too. lookupFollowed handles both followTarget>0 (by id) and 0 (nearest).
+        MicroTuningModule* hub = redDot::lookupFollowed<MicroTuningModule>(this, followTarget);
+        microBoundCached_ = (hub && hub->pairId > 0);
+    }
+
+    // LOOKUP AUTHORITY: the event is THE trigger — bump the global topology epoch so this module's
+    // adjacency (the lookup* memos) re-resolves on the next read, engine + widget threads.
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        redDot::bumpTopologyEpoch();
     }
 
     json_t* dataToJson() override {
