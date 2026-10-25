@@ -238,3 +238,24 @@ voltage; NOT boolean-internal). So the AUDIBLE reachable set is narrower than th
 named Archimedean TAILS (Clayton/Gumbel) are reachable as GENERATOR SHAPES but their tails are inaudible;
 the audible tail dependence is atom/MO/DMO only. This is WHY continuous distribution-mod suffices and
 rail-clamp was demoted: the perception bound, not the math, sets what's worth reaching.
+
+════════════════════════════════════════════════════════════════════════════════
+# PIPELINE-LAYER CONFIRMATION — CA=copula/latent, warp=marginal, containment=support (Rodney)
+
+Confirms the copula↔marginal separation is IMPLEMENTED by the pipeline stages:
+- CA ROUTING (correlation/containment source) operates at the LATENT/UNIFORM layer = the COPULA
+  (dependence) layer. Correlation is uniform→uniform.
+- WARP (tilt + injected atom + w-mix) is the per-voice MARGINAL, applied AFTER CA. So two correlated voices
+  (shared latent via CA) can have DIFFERENT output distributions (different warps) — correlated RANKS,
+  different VALUES. Textbook copula/marginal factoring, implemented by stage order.
+CONSEQUENCE for the atom-coordination gestures (§C, cross-voice/cross-lane): atoms are MARGINAL (warp
+layer, per-voice-post-CA), so the coordination gestures (shared atoms → unison; correlated rail-hits → MO)
+require SHARED ATOMS, not just shared CA routing. CA shares the LATENT; atoms are the MARGINAL — sharing CA
+correlates the draws, but the atoms must ALSO be shared for the atom co-occurrence. (Consistent with
+AXIS-I: the singular-part coupling needs the atom present on both, driven by a shared modulation.)
+NEW DEPENDENCE RELATION — CONTAINMENT (support nesting), NOT a copula: containment clamps a voice to the
+SOURCE's REALIZED GATES (post-uniform, post-warp, post-reaction-surface) = a hard SUPPORT constraint at the
+OUTPUT/gate layer, a different pipeline stage from the copula (latent) and the marginal (warp). So the full
+dependence map is THREE layers: COPULA (latent, CA) + MARGINAL (warp, per-voice) + SUPPORT-NESTING
+(containment, realized gates). Containment is the one that is NOT a copula and NOT a marginal — a
+support-domain constraint. Composable with both. (See ARTICULATION_ENVELOPE_VS_CORRELATION.md.)

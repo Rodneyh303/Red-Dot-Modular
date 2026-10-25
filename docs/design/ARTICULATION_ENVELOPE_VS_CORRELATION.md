@@ -166,3 +166,48 @@ envelope system (which needs its own full UI + its own acyclic machinery).
 
 STATUS: conceptual home settled (CA, 4th pinning plane). Build: after the decision-manager/modifier-
 resolver + the 2nd-knob poly articulation; the CA UI refactor (3→4 planes) is the gating practical work.
+
+────────────────────────────────────────────────────────────────────────────────
+## THE FOUR-OPTION MENU + CA UI DIRECTION + PIPELINE LAYERING (Rodney) — settled
+
+### The envelope menu — FOUR options (Rodney)
+  NONE                     — uncontained (full copula correlation + atoms still apply; no nesting). DEFAULT.
+  FOLLOW V1                — nested in V1's envelope (the Vermona behaviour, as one preset).
+  FOLLOW CA (rhythm source)— containment rides the RHYTHM-CORRELATION pin = COUPLED-DRAMATIC mode: a CA
+                             phrase-reroute moves BOTH correlation AND nesting together → whole-architecture
+                             reshuffle. (The reroute-amplification is the point — expose as intentional.)
+  FOLLOW CA (containment pin)— containment on its OWN 4th pin = STABLE-SKELETON mode: independent tree, its
+                             OWN cadence (slower / phrase-boundary), correlations breathe within a held
+                             structure.
+The last two are DISTINCT musical modes (coupled-dramatic vs stable-skeleton), surfaced as menu entries,
+not implementation detail. Reroute CADENCE is separable from routing STRUCTURE (a rate-manager concern):
+the containment pin can change more slowly than CA's per-phrase correlation reroutes.
+
+### CA UI refactor — the direction (Rodney; needs it anyway)
+CA (3 planes: rhythm/mel/qmix) is already crowded; the 4th plane is the OCCASION for a refactor CA needs
+regardless, not a burden it imposes. Options weighed:
+- REJECT: strip CA to 1-D + separate small CAs per plane — DESTROYS "all on one pin matrix" (the unified
+  cross-plane view is a real feature: see voice 2's rhythm+melody+qmix+envelope pins in ONE picture).
+- LEAN: 4th COLOUR (yellow) = containment, ON the unified matrix (it IS a 4th pinning plane, belongs on the
+  matrix like mel/qmix) + a PLANE-FOCUS control (active plane bright, others ghosted / tab to edit one) to
+  manage 4-colour overload. Matches the "4th pinning plane" concept; preserves the unified matrix.
+- OPTIONAL/combinable: relocate the matrix to an optional SUBPANEL (like new Straits) if the main panel is
+  too tight — orthogonal to the colour choice (subpanel = WHERE the matrix lives; colour = HOW the plane
+  shows). Can do both.
+
+### PIPELINE LAYERING — what "follow CA" actually clamps to (Rodney)
+Full chain to a gate: UNIFORM probability → WARP (final per-voice marginal) → REACTION SURFACE (legato/
+rest/variation responding to the warped prob) → REALIZED GATES (gate open/close, length, ties, subdivs).
+- CA ROUTING operates at the LATENT/UNIFORM layer (cheap, acyclic) — correlation is uniform→uniform;
+  containment ROUTING (which source) is also here.
+- WARP is the per-voice MARGINAL (final prob shaping).
+- CONTAINMENT ("follow CA for envelope") clamps a voice to the SOURCE's REALIZED GATES — the END PRODUCT of
+  the source's FULL pipeline (its uniform + ITS warp + ITS reaction surface). So the envelope reflects the
+  source's COMPLETE musical character (sparse-rest source → tight envelope; legato source → wide envelope).
+=> CORRELATION and CONTAINMENT share CA ROUTING but act at DIFFERENT PIPELINE STAGES: correlation couples
+the DRAWS (uniform→uniform); containment nests the REALIZED GATE SUPPORTS (gate→gate, post-reaction-surface).
+That is the DEEPEST form of containment≠correlation: not just hard-vs-soft, but different pipeline layers.
+FOLDS into the authorities at the right stages: routing = CA; the gate CLAMP = the decision/gate layer
+(decision manager). NON-BUG NOTE: two FOLLOW-CA voices with DIFFERENT warps legitimately show DIFFERENT
+bars (same latent, own marginal) — the warp-marginal, NOT the follow-CA display bug we just fixed; the
+resolver includes per-voice warp so the bars correctly differ.
