@@ -122,3 +122,47 @@ Design substantially advanced; still future work (with the decision-manager/modi
 planned 2nd-knob poly articulation). To build: the envelope as a resolver modifier policy (clamp gate to
 {None/V1/CA-source} window), the separate context menu, transitive nesting via the acyclic CA tree, valid
 in all modes. The containment-vs-correlation two-axis structure (two menus) is the core.
+
+────────────────────────────────────────────────────────────────────────────────
+## WHERE ENVELOPE ROUTING BELONGS — CA, as a FOURTH PINNING PLANE (Rodney) — conceptually settled
+
+Earlier tension ("reuse CA's one correlation tree = couples containment+correlation structure" vs "a
+separate routing system = flexible but reinvents acyclic enforcement") is RESOLVED by recognizing what
+CA actually IS and how it's already structured.
+
+### CA is the ACYCLIC PER-VOICE SOURCE-ROUTING authority — and hosts MULTIPLE PLANES
+CA = "for each voice, which other voice is its source, constrained ACYCLIC, forming a tree/forest." That
+primitive is RELATION-AGNOSTIC — it means "who points at whom without cycles", not inherently
+"correlation". CA already hosts THREE independent pinning planes: RHYTHM, MELODY, QMIX (each its own
+caRhythmSrc/… tree). Containment is STRUCTURALLY THE SAME THING: a per-voice directed source assignment
+(v2's envelope source = v3), acyclic (no mutual clamp), chaining → transitive nesting. So the envelope
+routing is naturally a FOURTH PINNING PLANE after rhythm/melody/qmix.
+
+### Why CA, not a separate system (the acyclic point is a REASON-FOR, not just a constraint)
+Cycle-prevention is HARD/subtle (dynamic per-voice routing, re-check on change, partial-cycle transients).
+CA ALREADY solves it (correlation needed it). A SEPARATE envelope-routing system would REIMPLEMENT acyclic
+enforcement — the exact duplication-of-a-hard-thing every authority here exists to prevent. So the acyclic
+requirement is a REASON to route the envelope through CA, not merely a constraint to satisfy.
+
+### The PLANE model RESOLVES the coupling weakness (Rodney's "joins correlation + hierarchy")
+Reusing CA's RHYTHM-correlation tree for the envelope would COUPLE the two axes' STRUCTURE (same source for
+both) — partially undoing the independence we established (containment ⟂ correlation). A FOURTH PLANE fixes
+it: correlation (rhythm/mel/qmix planes) and containment (the envelope plane) are SEPARATE independent
+trees sharing CA's ONE acyclic machinery. So "correlate to A, be contained in B" IS expressible (different
+planes). Independent TARGETS, not just independent strengths — the full independence the two axes deserve.
+
+### ONE DISTINCTION for the UI refactor
+The three existing planes route CORRELATION (whose draws you track); the envelope plane routes CONTAINMENT
+(whose gate you're nested in) — a different KIND of relation (binary nest-or-not per voice, vs
+source-to-track). Same routing PRIMITIVE (acyclic per-voice source), different CONSUMER. The UI may want
+slightly different affordances for the containment plane.
+
+### COST = UI, not concept
+Conceptually SETTLED: envelope routing = a fourth CA pinning plane, shared acyclic authority, independent
+tree, resolves the coupling, avoids reinventing cycle-prevention. The only cost is a CA UI REFACTOR to
+accommodate a fourth plane (CA's panel is built for three) — a PRESENTATION problem (how to surface four
+planes without overcrowding), NOT a where-does-it-belong problem. Arguably LESS total UI than a separate
+envelope system (which needs its own full UI + its own acyclic machinery).
+
+STATUS: conceptual home settled (CA, 4th pinning plane). Build: after the decision-manager/modifier-
+resolver + the 2nd-knob poly articulation; the CA UI refactor (3→4 planes) is the gating practical work.
