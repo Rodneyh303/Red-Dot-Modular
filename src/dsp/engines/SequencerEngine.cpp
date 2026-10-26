@@ -1137,10 +1137,10 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
     // mono's next event — articulation is subtractive.
     const int nvV = nvIdxForVoice(voiceIdx, input);
 
-    // Start Detection: A new note/retrigger happens on NewNote, or on 
-    // Legato shifts from a dead state (low gate and no tail).
-    bool monoGateStart = (monoParent.decision == MonoDecision::NewNote) || 
-                         ((monoParent.decision == MonoDecision::Legato || monoParent.decision == MonoDecision::LegatoMax) && !monoParent.wasHeld && !monoParent.hadTail);
+    // Start Detection (C1 onsetPermission): a new note/retrigger happens on NewNote, or on
+    // Legato shifts from a dead state (low gate and no tail). Single-parent star call; Stage F
+    // folds the union over the containers (D3).
+    bool monoGateStart = onsetPermission(monoParent);
 
     if (monoGateStart) {
         // This is the decision point for this entire mono gate.
@@ -1281,7 +1281,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
     }
 
     // If mono is Sustaining or Resting, poly must stick to its current role.
-    if (monoParent.decision == MonoDecision::Rest) {
+    if (restClose(monoParent)) {   // C2: the container rested → force-close, no draws
         v.gs.gateHeld = false;
         v.gsStep.gateHeld = false;   // STEP: mirror mono rest
         v.gs.slurMember = false;     // SLEG: mono rested
@@ -1365,7 +1365,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         } else {
             // ── MidNote hold path (mono is sustaining mid-note, not at a landing edge) ─────
             // Poly follows mono gate presence strictly IF it was already active ("in").
-            if (monoParent.gateHeld && wasHeldPoly) {
+            if (holdFollow(monoParent) && wasHeldPoly) {   // C4: container still holding
                 if (monoParent.decision == MonoDecision::Legato || monoParent.decision == MonoDecision::LegatoMax) {
                     // Mono slid to a NEW pitch (a real pitch move) → poly draws its OWN new pitch
                     // (its own melody/octave LOR) and slides to it. Poly tracks mono's articulation
@@ -1516,10 +1516,10 @@ int SequencerEngine::nvIdxForVoice(VoiceSlot bank, const PatternInput& input) co
     const int idx = getVariationStepForVoice(bank) & 0x0F;
     const float r = pe.warpRow(bank, LaneId{PL_VARIATION})[idx];
     const int nv  = const_cast<SequencerEngine*>(this)->getNoteLenIdx(lastNoteVal_, input, r);
-    // CLAMP to the parent event grid: a voice may release early, never hold past the parent's
-    // next note. NOTE_VALUES is ordered slowest→fastest, so max() picks the SHORTER of the two.
-    const int parentNv = monoParentView().nvIdx;
-    return (nv > parentNv) ? nv : parentNv;
+    // CLAMP to the parent event grid (C3 lengthCeiling): a voice may release early, never
+    // hold past the parent's next note. NOTE_VALUES is ordered slowest→fastest, so the
+    // SHORTER window (the larger index) wins.
+    return lengthCeiling(nv, monoParentView());
 }
 
 int SequencerEngine::getRhythmStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_RHYTHM],    lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT)); }

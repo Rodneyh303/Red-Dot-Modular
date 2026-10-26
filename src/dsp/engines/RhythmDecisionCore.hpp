@@ -47,3 +47,51 @@ struct ParentView {
     bool         wasHeld;       // the container was held at the edge (captured pre-tick)
     bool         hadTail;       // the container has a fractional tail still sounding
 };
+
+// ── The five named predicates (plan §2.3, R-3) ─────────────────────────────────
+// The C1–C5 mechanisms of VOICE1_CONTAINMENT_ALGORITHM.md's mechanism table, extracted as
+// PER-CONTAINER pure functions: Stage R calls each with the single V1 ParentView; Stage F
+// folds them over parentsOf(v) — D3's UNION for onsets (events), D1's INTERSECTION for
+// everything state-shaped (rests, ceilings, holds, envelopes). Own state (wasHeldPoly /
+// hadPolyTail, polyVoiceActive, the voice's own draws) stays at the call site — it is the
+// CONTAINED voice's, not a parent read. Byte-identity gate: test_rhythm_decision_differential.
+
+// C1 — onset permission: this container OFFERS A TRIGGER this edge — a NewNote, or a
+// Legato/LegatoMax shift from a dead state (low gate, no tail; the isolated-teal guard).
+// EVENTS: union over containers (D3). (SequencerEngine.cpp executePolyVoice monoGateStart.)
+inline bool onsetPermission(const ParentView& p) {
+    return (p.decision == MonoDecision::NewNote) ||
+           ((p.decision == MonoDecision::Legato || p.decision == MonoDecision::LegatoMax) &&
+            !p.wasHeld && !p.hadTail);
+}
+
+// C2 — rest close: this container rested → every contained voice force-closes and consults
+// no draws. STATES: intersection — ANY resting container closes (D1).
+// (SequencerEngine.cpp Rest branch; Monsoon.cpp gateOpen's !isRest term.)
+inline bool restClose(const ParentView& p) {
+    return p.decision == MonoDecision::Rest;
+}
+
+// C3 — length ceiling: the voice may never hold past this container's next event.
+// NOTE_VALUES is ordered slowest→fastest, so the LARGER index is the SHORTER note — the
+// result is the shorter window; folding over containers keeps the shortest ceiling (D1).
+// (SequencerEngine.cpp nvIdxForVoice clamp.)
+inline int lengthCeiling(int ownNv, const ParentView& p) {
+    return (ownNv > p.nvIdx) ? ownNv : p.nvIdx;
+}
+
+// C4 — hold follow: mid-hold, the voice follows the articulation shape only while this
+// container is still holding. The voice's OWN armed window (gatePulseRemain/holdRemain)
+// stays at the call site. STATES: intersection — follow the shortest still-sounding
+// container (D1). (SequencerEngine.cpp MidNote branch's parent term.)
+inline bool holdFollow(const ParentView& p) {
+    return p.gateHeld;
+}
+
+// C5 — envelope AND: this container's gate contributes one open cell to the contained
+// voice's output envelope; the voice's own latched candidacy (polyVoiceActive) stays at
+// the call site. STATES: intersection over containers (D1). In clock mode C5 is implicit
+// in C1+C2+C4; gate mode gives it this explicit form. (Monsoon.cpp vOpen.)
+inline bool envelopeAnd(const ParentView& p) {
+    return p.gateHeld;
+}

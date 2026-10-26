@@ -118,6 +118,7 @@ TESTS=(
   "test_resolver_warp_bridge|"   # header-only: resolver step-2 BYTE-IDENTICAL gate — WarpBank's resolver-routed mix/effective members vs a verbatim copy of the OLD WarpF.hpp formulas (seeded 120k-case fuzz, same-BITS mix + same resolved (f,w)). The warp pin; step 1's spread bridge is the template.
   "test_rule2_consume|"
   "test_rule2_integration|"
+  "test_rhythm_decision_core|"   # STAGE R R-3: the five named predicates (C1-C5) table-driven over every MonoDecision x own-state combination — the pure-layer spec (grows with the ladder: R-4 tuple assembly, R-5 star data)
   "test_rhythm_decision_differential|$SE $GS $PE $CE"   # STAGE R R-1: the reference oracle — 24 seeded marches x 64 steps x 3 modes (clock / plain gate / gate+subgates) through the REAL executors + the shipped IMPL 2b drive; per-voice gate/accent/pitch/decision streams -> per-mode FNV-1a golden digests (the byte-identity pin for every Stage-R commit); INV-C2 (mono rest closes all poly gates), INV-ENV (poly gate never exceeds the mono envelope), INV-DET (double-run determinism)
   "test_scale_list|"
   "test_scale_nondestructive|"

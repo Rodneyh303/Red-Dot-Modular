@@ -1151,7 +1151,7 @@ void Monsoon::process(const ProcessArgs& args) {
     //                for the Lantern/SLEG either way; only its gate-bridging differs by mode.
     if (modeSelect == 1 && runGateActive) {   // gate origin (was B/D)
         const bool gate1High = tc.getGate1SchmittHigh();   // hysteresis-filtered (robust vs noisy gates)
-        const bool isRest    = (engine.lastStepResult.decision == MonoDecision::Rest);
+        const bool isRest    = restClose(engine.monoParentView());   // C2: the container rested
         // Ghost tie-through-rise (GATE_SUBDIVISION_STEP_GATE.md §352/§368): a ghost still high when
         // the main gate rises MAY continue with no re-attack (a ghost-led pickup; the output gate may
         // start before the main-gate rise) — but ONLY if the ghost committed slurForward at its own
@@ -1202,8 +1202,10 @@ void Monsoon::process(const ProcessArgs& args) {
         // 1-step internal hold.  gsStep is left to executePolyVoice's per-onset retrigger (the STEP
         // output re-articulates by design); only the fused GATE width is driven here.  A voice whose
         // gate closes also gets its holdRemain zeroed (Lantern sounding-test parity with the mono).
+        const ParentView monoP = engine.monoParentView();   // C5 parent read: captured AFTER the
+        // mono envelope write above, so monoP.gateHeld == gateOpen exactly; once per sample.
         for (int i = 1; i <= engine.numPolyVoices; ++i) {
-            const bool vOpen = gateOpen && polyVoiceActive[i];
+            const bool vOpen = envelopeAnd(monoP) && polyVoiceActive[i];   // C5: envelope ∧ own latch
             const auto vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
             engine.voices[vs].gs.gateHeld = vOpen;
             if (!vOpen) {
