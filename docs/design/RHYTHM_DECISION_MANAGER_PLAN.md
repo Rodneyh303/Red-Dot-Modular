@@ -10,10 +10,11 @@ decisions you documented. That's a pre-requisite to building a more flexible des
 how we can build the 'forest rhythm decision' by applying the decisions though the containment
 structure."
 
-Status: RULED 2026-10-26 (Rodney, chat) — D1, D2, D3, D5, D6, D7 DECIDED (§7); D4 pending
-the mechanics refresher now written up as §3.8. Stage R needs no rulings at all. F-1 is
-simplified by the D2 ruling: no legacy mode, no module-presence switch — graph truth
-everywhere, the all-follow-V1 sound becomes a Cantonment preset.
+Status: FULLY RULED 2026-10-26 (Rodney, chat) — all seven decisions banked (§7). D4 = the
+topologically-first sounding onsetting container (option i). The D3 union/intersection split
+is confirmed PRINCIPLED (§3.9): containment is a STATE relation (states intersect); onsets
+are EVENTS (events union) — and the intersection envelope is still in force at every onset
+moment, so no sound ever escapes containment. Stage R and the whole F ladder are unblocked.
 
 ---
 
@@ -335,12 +336,38 @@ MULTIPLE containers onset on the same edge with different verdicts (one Ties, on
 one NewNotes): does the voice extend, slide, or re-strike?
 
 **Options**: (i) the topologically-first SOUNDING onsetting container's verdict names the
-opportunity — RECOMMENDED: deterministic, mode-independent, reduces exactly to V1 in the
-star, composes with nesting (the chain's head dominates — "the voice tracks the shape of
-its container chain"); (ii) first in voice order — arbitrary under INVERT-produced graphs;
-(iii) earliest onset in sample time — ill-defined in clock/phase (all voices fire on one
-stepEdge) and unstable across gate streams. Note the voice's OWN commitment still gates
-whether it connects: D4 only names whose verdict DEFINES THE OPPORTUNITY TYPE.
+opportunity — **RULED (Rodney, 2026-10-26: "Option (i) seems best")**: deterministic,
+mode-independent, reduces exactly to V1 in the star, composes with nesting (the chain's
+head dominates — "the voice tracks the shape of its container chain"); (ii) first in voice
+order — arbitrary under INVERT-produced graphs; (iii) earliest onset in sample time —
+ill-defined in clock/phase (all voices fire on one stepEdge) and unstable across gate
+streams. Note the voice's OWN commitment still gates whether it connects: D4 only names
+whose verdict DEFINES THE OPPORTUNITY TYPE.
+
+### 3.9 Why the D3 split is principled (states intersect, events union)
+
+Rodney's consistency challenge ("is it inconsistent to use intersection for length and
+union for onset? should it be intersection throughout?") — answered, and the split stands:
+
+- **Containment is a STATE relation.** Where the voice may BE SOUNDING is bounded by all
+  containers — rests, gate width, hold extent, length clamp: all states, all intersection.
+  The original asymmetry ("can rest when V1 rests, can't sound when V1 rests") is a state
+  asymmetry and stays intersection-exact.
+- **Onsets are EVENTS.** When the voice may RE-ARTICULATE is an opportunity question, not
+  a boundary question: a container's attack offers a trigger, it does not bound the voice.
+  In one formula: `mayOnset = (∨ container onsets) ∧ (∧ envelopes open)` — the intersection
+  is STILL in force at the onset moment (the all-open gate is part of C1), so no sound ever
+  escapes containment; the union only selects among events the intersection permits.
+- **Intersection-throughout is coherent but severe**: with two containers of independent
+  rhythms, simultaneous onsets are rare — the voice would be capable of sounding in the
+  intersection yet only ever ATTACK at coincidences, holding rigidly between. Multi-parent
+  containment collapses into a rhythm-lock novelty (v under a kick + a pad: union re-strikes
+  every beat inside the pad's envelope; intersection speaks twice a phrase).
+- **The clincher**: with a single parent, union-over-{V1} and intersection-over-{V1} are
+  IDENTICAL — both reduce to today's `monoGateStart`. The rules differ only where
+  multi-parent exists, and there union keeps it musically alive.
+- Escape hatch: the strict coincidence-only texture stays expressible later as a per-voice
+  onset-mode toggle — under the RDM centralisation that is a one-predicate change.
 
 ---
 
@@ -395,16 +422,14 @@ rings heap-holds them (the 2 MiB / Windows-2MB-stack rule); R7 token hygiene in 
 |---|---|---|
 | D1 | Multi-parent envelope semantics | **RULED: INTERSECTION** — "intersection seems OK (voice can only sound if parents are)". Matches the multi-pin row language and the CA pin precedent. |
 | D2 | The zero-row / legacy mapping | **RULED: no legacy mode.** "No need to worry about legacy patches. All following V1 (current behaviour) just becomes a cantonment preset." Graph truth everywhere; absent/zero graph = free voices, intended; the all-contained-in-V1 star ships as a preset; test suites inject the star explicitly (§3.1). |
-| D3 | Onset permission under multi-parent | **RULED: UNION for onset, INTERSECTION for extent.** "D3 allowing any container onset is union. So it seems like union for onset and intersection for length." A permission point = ANY container onsetting, subject to the intersection envelope open; C3 length clamp stays the SHORTEST container window. |
-| D4 | Gate-type authority at a shared onset | **PENDING** — mechanics refresher written up (§3.8). Recommendation stands: the topologically-first sounding onsetting container's verdict names the opportunity. |
+| D3 | Onset permission under multi-parent | **RULED: UNION for onset, INTERSECTION for extent** — "union for onset and intersection for length"; confirmed principled in §3.9 (states intersect, events union; the intersection envelope still gates every onset moment). A permission point = ANY container onsetting, subject to the intersection envelope open; C3 length clamp stays the SHORTEST container window. |
+| D4 | Gate-type authority at a shared onset | **RULED: option (i)** — the topologically-first SOUNDING onsetting container's verdict names the opportunity ("Option (i) seems best"). Refresher in §3.8. |
 | D5 | Ghost hosting under a forest | **RULED: INTERSECTION** — "agree intersection". A voice's ghost exists only in gaps of the intersection envelope; candidacy = its own VAR draw. |
 | D6 | Phasing scope | **RULED: engine-internal.** "I see no connection to LOR which is about the probabilities that feed the rhythm decisions" — the draw production is not the decision structure. Closed. |
 | D7 | The mono voice inside the forest | **RULED: V1 inside the algebra, no privilege.** "No reason for V1 to stay privileged and this is part of it. All voices could be contained in voice 2 to 16 as well." F-3 confirmed; INVERT-produced V1-as-leaf graphs are first-class. |
 
-Stage R is blocked by NONE of these — it is pure centralisation with a byte-identical gate.
-Stage F is unblocked on all ladders except F-2's D4 detail (which only matters when multiple
-containers onset on the same edge with differing verdicts — every other F step can land
-before D4 is ruled).
+Stage R is blocked by NONE of these, and now neither is Stage F: all seven rulings are
+banked. The full ladder R-1..R-5, F-1..F-5 is GO on Rodney's word.
 
 ---
 
