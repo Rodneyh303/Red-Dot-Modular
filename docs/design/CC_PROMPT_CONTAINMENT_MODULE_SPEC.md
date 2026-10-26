@@ -88,3 +88,36 @@ decision-manager work.
   makes it safe) but whether to expose it is Rodney's call.
 - Dynamic containment via non-forest modulation (the priority-order escape hatch) — not needed; the
   forest-closed transforms ARE the safe dynamism.
+
+────────────────────────────────────────────────────────────────────────────────
+## TRANSFORMS ARE NO/FEW-PARAM TRIGGERED GESTURES (like CA) — the gesture-vs-edit split (Rodney)
+
+CA transforms are TRIGGERED VERBS with no/few params (rotate/reflect/collapse/scatter — fire it, applied
+at phrase boundary; NOT continuous parametric functions). Containment transforms follow the SAME model —
+and the forest-closed ops are NATURALLY gestural ("invert the hierarchy", "rotate the roles") so they
+WANT no params. This SORTS the transform set:
+
+### CORE TRANSFORM SET — triggered gestures, 0-1 param each (build these)
+- INVERT (0 params) — topological inversion, flip root↔leaf. Pure verb.
+- ROTATE ROLES (≤1 param: step, default 1) — similitude: rotate WHICH VOICES hold which roles through the
+  voices, shape preserved. (Mirrors CA rotate.)
+- REFLECT ROLES (0 params) — mirror the role assignment (the similitude mirror; mirrors CA reflect).
+- COLLAPSE / EXPAND depth (0-1 params) — flatten a level toward root / restore nesting. Collapse-all and
+  expand are 0-param; a "collapse to depth N" variant is the only place a param appears, keep it optional.
+All are forest-closed endomorphisms (§ transform class) AND no/few-param — exactly CA's gesture model.
+
+### SELECTION-HEAVY OPS → EDITING, not transforms (the split)
+Subtree SWAP and specific-subtree GRAFT are forest-closed but need a TARGET SELECTION (which subtrees /
+which subtree to move) — that is NOT a no/few-param gesture, it's a choice. Per CA's model (anything
+needing a selection is done by EDITING THE PINS, not a triggered transform):
+- Do deliberate re-parenting / specific swaps/grafts via PIN EDITING (which already has the cycle-reject
+  guard → stays a forest). NOT as triggered transforms.
+- IF a swap/graft gesture is wanted as a trigger, CANONICALIZE it to ZERO params (e.g. "swap the two
+  largest sibling subtrees", "graft the deepest leaf-chain to root") — a deterministic no-param verb, not
+  a selection. Only add if musically justified; default is: selection = edit, gesture = trigger.
+
+### NET
+Containment transforms = the SAME gesture model as CA: a handful of no/few-param triggered verbs (INVERT,
+ROTATE, REFLECT, COLLAPSE/EXPAND), armed and applied at phrase boundary. Target-selection work is EDITING
+(pin matrix + cycle-reject), not transforms. This keeps the transform set small, gestural, and parameter-
+light — and every verb is forest-closed so no cycle can ever arise.
