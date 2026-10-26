@@ -29,12 +29,16 @@
 // automation-visible. Lands with the step-3/4 UI work.
 //
 // STEP 0 SCAFFOLD: registration + panel + the pure dsp headers (ContainmentGraph.hpp /
-// ContainmentTransforms.hpp). Pending/boundary machinery = step 3; pin-matrix UI + store-backed
-// edits = step 4; trajectory ring = follow-up. Kept honest: process() is a no-op until the
-// machinery lands — no silent fake work.
+// ContainmentTransforms.hpp). STEP 1: the module now HOLDS the editor-side graph state and
+// serializes it (raw uint16 array round-trip via ContainmentGraph::serializeTo/deserializeFrom,
+// the WARPDIAG round-trip lesson; reject-invalid-blob falls back to the R2 all-disconnected
+// default). Pending/boundary machinery = step 3; pin-matrix UI + store-backed edits = step 4;
+// trajectory ring = follow-up. Kept honest: process() is a no-op until the machinery lands —
+// no silent fake work.
 
 #include <cstdio>
 #include <rack.hpp>
+#include <jansson.h>
 #include "Monsoon.hpp"                        // extern Plugin* pluginInstance
 #include "ui/SvgPanelKit.hpp"                 // Option B-full: loadPanel/kitStep/findNamed
 #include "ui/ModuleLookup.hpp"                // THE lookup authority: redDot::lookupMonsoon
@@ -52,6 +56,11 @@ struct MonsoonContainment : Module {
     enum OutputIds { NUM_OUTPUTS };
     enum LightIds { NUM_LIGHTS };
 
+    // The editor-side containment graph (the engine-side authoritative publish lands at step 4,
+    // mirroring the CA seam: PatternEngine owns caRhythmSrc, the CA module edits and drives it).
+    // Until then this member is the ONLY state, and it round-trips through the Rack save.
+    dotModular::ct::ContainmentGraph graph;
+
     MonsoonContainment() {
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
     }
@@ -63,8 +72,40 @@ struct MonsoonContainment : Module {
         // nothing. The graph is pure state; silence is the correct scaffold behaviour.
     }
 
-    // Serialization lands in step 1 with the store wiring (raw uint16 array round-trip via
-    // ContainmentGraph::serializeTo/deserializeFrom, the WARPDIAG round-trip lesson).
+    // ── serialization (step 1): the raw uint16 array IS the state ─────────────
+    // THE WARPDIAG LESSON: no bit-packing, no derived fields, no cleverness — 16 plain words
+    // in, the same 16 words out. The consumer side re-validates and re-derives nothing.
+    json_t* dataToJson() override {
+        json_t* rootJ = json_object();
+        json_t* arrJ = json_array();
+        uint16_t raw[dotModular::ct::VOICES];
+        graph.serializeTo(raw);
+        for (int v = 0; v < dotModular::ct::VOICES; ++v)
+            json_array_append_new(arrJ, json_integer(raw[v]));
+        json_object_set_new(rootJ, "containmentParents", arrJ);
+        return rootJ;
+    }
+
+    void dataFromJson(json_t* rootJ) override {
+        // Reject-invalid-blob policy: ANY malformation — missing/short/long array, non-integer
+        // or out-of-range element, or a blob that fails re-validation (acyclic + no self-bits) —
+        // falls back to the R2 all-disconnected default. A corrupt or hand-edited save never
+        // promotes garbage into the editor state (the WARPDIAG round-trip lesson). A wholly
+        // ABSENT key keeps whatever the module already holds (partial-patch load semantics).
+        auto setDefault = [this]() { graph = dotModular::ct::ContainmentGraph{}; };
+        json_t* arrJ = json_object_get(rootJ, "containmentParents");
+        if (!arrJ || !json_is_array(arrJ)) return;
+        if (json_array_size(arrJ) != (size_t)dotModular::ct::VOICES) { setDefault(); return; }
+        uint16_t raw[dotModular::ct::VOICES];
+        for (int v = 0; v < dotModular::ct::VOICES; ++v) {
+            json_t* eJ = json_array_get(arrJ, v);
+            if (!json_is_integer(eJ)) { setDefault(); return; }
+            int x = json_integer_value(eJ);
+            if (x < 0 || x > 0xFFFF) { setDefault(); return; }
+            raw[v] = (uint16_t)x;
+        }
+        if (!graph.deserializeFrom(raw)) setDefault();
+    }
 };
 
 // ── Panel geometry in mm — MUST MATCH panel_src/gen_containment.py ──────────────

@@ -71,6 +71,7 @@ TESTS=(
   "test_ca_true_reverse|"
   "test_ca_pending_order|"
   "test_change_alley_transforms|"
+  "test_containment_edits|"   # Containment step 1: edit checks (self reject, ancestor-closure wavefront reject, valid accept, idempotent re-pin, remove/clear always valid) + raw uint16[16] serialize/deserialize round-trip identity (the WARPDIAG lesson) + reject-invalid-blob guard; seeded-Philox random-DAG march (600 seeds x 80 edits, validity asserted at every step)
   "test_distribution|"   # header-only: the Distribution probability core (parametrics + Pchip; jansson via test/jansson.h shim)
   "test_edge_cases|"
   "test_eradication_harness|$PE"
