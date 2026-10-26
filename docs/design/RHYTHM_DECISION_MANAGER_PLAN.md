@@ -10,9 +10,10 @@ decisions you documented. That's a pre-requisite to building a more flexible des
 how we can build the 'forest rhythm decision' by applying the decisions though the containment
 structure."
 
-Status: PLAN — awaiting Rodney's read. Stage R needs NO rulings (pure centralisation, gated
-byte-identical). Stage F consumes the ruling table (§7) — including D7, which is NEW: the mono
-voice inside the forest (§3.6).
+Status: RULED 2026-10-26 (Rodney, chat) — D1, D2, D3, D5, D6, D7 DECIDED (§7); D4 pending
+the mechanics refresher now written up as §3.8. Stage R needs no rulings at all. F-1 is
+simplified by the D2 ruling: no legacy mode, no module-presence switch — graph truth
+everywhere, the all-follow-V1 sound becomes a Cantonment preset.
 
 ---
 
@@ -187,14 +188,18 @@ says); does not change the module, the transforms, the pending stack, or the pan
 `MonsoonSandsManager::processDNA`, src/dsp/managers/MonsoonSandsManager.cpp:95/97 — the
 step-4 publish contract, today write-only).
 
-The module-presence switch (D2, recommended reading):
-- **Containment module ABSENT from the patch** → LEGACY_STAR. Today's sound, exactly,
-  unconditionally. The publish path already writes all-zeros when absent; the RDM maps
-  "absent" to the star BEFORE the algebra sees it.
-- **Containment module PRESENT** → GRAPH truth. The pin plane is the authoring surface;
-  an all-zeros graph means FREE voices (R2 — disconnected vertices valid). The module's
-  DEFAULT graph should be AUTHORED as the star (every voice pinned to voice 1) so a fresh
-  module sounds like legacy until the user unpins — the migration default D2 recommends.
+D2 RULED (Rodney: "no need to worry about legacy patches. All following V1 (current
+behaviour) just becomes a cantonment preset."):
+- **Graph truth everywhere.** No module-presence switch, no engine-side legacy mode, no
+  migration default. The RDM's parent source is `containmentParents` whenever a containment
+  module publishes; all-zeros / absent module = FREE voices — intended.
+- **The legacy sound is an authored preset**: the all-contained-in-V1 star graph, loadable
+  from Cantonment/module state like any other structure.
+- **Test seam (required by the ruling)**: the differential harness and the existing
+  V1-semantics suites must inject the star EXPLICITLY (the RDM's parent source is settable
+  in tests) — they keep pinning the legacy sound as one authored graph among many. Without
+  this injection the old suites would break at F-1 for the right reason (voices free under
+  an empty graph) and stop testing what they exist to test.
 
 ### 3.2 Topological evaluation (F-2)
 
@@ -219,7 +224,7 @@ With `parents(v) = {u : bit u set in containmentParents[v]}`, `E(v) = Own(v) ∧
 
 | Mech | Forest form | Reduces to today when |
 |---|---|---|
-| C1 | `mayOnset(v)` = all containers' envelopes open ∧ ≥1 container has an onset (D3 recommended: ANY-container onset under ALL-open) | parents = {V1} → exactly `monoGateStart` |
+| C1 | `mayOnset(v)` = (∃ container onsetting) ∧ (all containers' envelopes open) — D3 RULED: UNION for onset permission, INTERSECTION for temporal extent (envelope + length) | parents = {V1} → exactly `monoGateStart` |
 | C2 | `forcedRest(v)` = ∨ over containers of container-rested (the ∧ of envelopes closes on any rest) | exactly the 1270-1276 branch |
 | C3 | `lengthCeiling(v)` = max over containers of `nvIdx` (higher = shorter; the SHORTEST container window wins) | exactly the 1507 clamp |
 | C4 | `holdFollow(v)` = containers mid-gate ∧ own armed window; the SHAPE followed is the topologically-first sounding container (D4) | exactly the 1352-1388 branch |
@@ -248,8 +253,10 @@ With `parents(v) = {u : bit u set in containmentParents[v]}`, `E(v) = Own(v) ∧
 
 ### 3.5 The commit ladder
 
-- **F-1** — source re-point + the module-presence switch + the authored star default (D2).
-  Star graphs byte-identical; a NEW suite covers free-voice graphs.
+- **F-1** — source re-point (D2 RULED: graph truth everywhere; no switch, no engine legacy
+  mode). The all-contained-in-V1 star ships as a Cantonment preset / module graph state.
+  The differential harness + existing V1-semantics suites inject the star explicitly
+  (§3.1 test seam). Star graphs byte-identical; a NEW suite covers free-voice graphs.
 - **F-2** — topological order + the C1-C5 forest compose + participating generalisation.
   Star graphs byte-identical; nested/diamond suites land here.
 - **F-3** — the mono drive inside the algebra (D7, §3.6).
@@ -275,13 +282,65 @@ therefore the honest generalisation is:
   contradicts INVERT's proven closure and adds a special case to every mechanism. Not
   recommended.
 
-### 3.7 Phasing scope (D6)
+### 3.7 Phasing scope (D6 — RULED)
 
-Recommended: engine-internal first — the envelope algebra over the existing per-voice
-GateState, LOR windows unchanged (VAR/LEG delegation keeps reading the root's cell under
-the default; per-container LOR positioning is a later, separate step with its own musical
-question). This keeps F's diff surface in the permission scaffolding, where the reference
-work is.
+Engine-internal. Rodney's note: "I see no connection to LOR which is about the
+probabilities that feed the rhythm decisions" — exactly: the LOR/warp plumbing produces the
+DRAWS, the decision layer consumes them; generalising the decision structure does not touch
+the draw production. VAR/LEG delegation keeps reading the root's cell under the default.
+Closed.
+
+### 3.8 D4 refresher — how poly trigger/slide works TODAY (written for the ruling)
+
+The three gate-type methods (src/dsp/gates/GateState.hpp:15-17): `triggerNote` = fresh
+attack (retrigger, the 1 ms dip lives in process()); `slideNote` = legato (pitch glides to
+the new note, NO retrigger, gate stays held); `extendHold` = tie (same pitch continues).
+
+A poly voice's gate type is decided at TWO event classes:
+
+**(a) Chain ONSET** — V1 starts a chain (verdict NewNote, or Legato/LegatoMax from a dead
+gate); SequencerEngine.cpp:1216-1227:
+- V1 NewNote → voice triggers FRESH. A new chain always opens with an attack (own pitch,
+  own accent draw).
+- V1 slurring AND the voice genuinely still sounding (wasHeldPoly || hadPolyTail) → voice
+  SLIDES to its own newly drawn pitch.
+- V1 slurring but the voice NOT sounding (it rested, never joined) → fresh trigger anyway
+  — the isolated-teal guard: no slide from nothing.
+
+**(b) LANDING** — V1 mid-chain (verdict Legato/LegatoMax/Tie); 1290-1350, Rule-2 consume:
+- Not participating (rested at the chain onset) → silent.
+- Participating: `connect = v.gs.slurForward && stillSounding` — the voice's OWN commitment
+  (rolled at the PREVIOUS onset from its own legato draw; delegated → V1's LEG cell) AND
+  the clamp-accurate still-sounding read.
+  - connect && V1 Ties → `extendHold` own pitch.
+  - connect && V1 Legato/LegatoMax → `slideNote` to own new pitch (keeps the chain's
+    opening accent).
+  - !connect (own slur didn't fire, or the short note already clamped closed) →
+    RE-ARTICULATE `triggerNote` fresh with a NEW own accent draw — a re-struck note is not
+    stuck with the accent the chain opened on.
+- Either way the voice re-rolls its own slurForward for the next landing.
+
+**THE STRUCTURE**: V1's verdict names the OPPORTUNITY at the edge (Tie → extend possible,
+Legato → slide possible, NewNote → attack); the voice's OWN prior commitment +
+still-sounding state decides whether it CONNECTS or re-strikes. The voice never slides
+merely because V1 slides. Gate mode: identical shape at every gate rise (main/ratchet/
+ghost streams all run the same cascade); the C5 per-sample AND holds the envelope width;
+the gap bridge can carry a committed slur across structural gaps; ghost→main tie-through
+is emergent.
+
+**Why D4 exists under the union-onset ruling**: at a permission point, containers that did
+NOT onset are mid-hold (no verdict to read). Exactly one container onsetting is
+unambiguous — its verdict names the opportunity, matching today. The question is ONLY when
+MULTIPLE containers onset on the same edge with different verdicts (one Ties, one Legatos,
+one NewNotes): does the voice extend, slide, or re-strike?
+
+**Options**: (i) the topologically-first SOUNDING onsetting container's verdict names the
+opportunity — RECOMMENDED: deterministic, mode-independent, reduces exactly to V1 in the
+star, composes with nesting (the chain's head dominates — "the voice tracks the shape of
+its container chain"); (ii) first in voice order — arbitrary under INVERT-produced graphs;
+(iii) earliest onset in sample time — ill-defined in clock/phase (all voices fire on one
+stepEdge) and unstable across gate streams. Note the voice's OWN commitment still gates
+whether it connects: D4 only names whose verdict DEFINES THE OPPORTUNITY TYPE.
 
 ---
 
@@ -309,7 +368,7 @@ work is.
 | Pure predicates | NEW test_rhythm_decision_core | Table-driven C1-C5 over every MonoDecision × own-state combo; star data; tuple assembly. |
 | Differential | NEW test_rhythm_decision_differential | Seeded marches, all three modes + subgates + locks; golden per-voice gate/accent/pitch streams; THE acceptance gate for every Stage-R commit and the star-equivalence pin for every Stage-F commit. |
 | Forest property | NEW test_forest_rhythm | `E(v) ⊆ E(u)` ∀u∈parents(v) at every edge, seeded random forests; nested depth ≥ 3; diamonds; free voices; INVERT-produced V1-as-leaf graphs; star-graph byte-identity vs the Stage-R engine. |
-| Compat pin | the ten existing V1-semantics suites | Untouched and green throughout — they ARE the "legacy sound preserved" proof. |
+| Compat pin | the ten existing V1-semantics suites | Untouched and green from Stage R; at F-1 they run with the STAR graph injected explicitly (the legacy sound as an authored preset, D2) — they pin that graph's byte-identity. |
 | Graph layer | the existing containment suites (transform/pending/module) | Already landed; unchanged; they keep proving the DAG invariants the algebra stands on. |
 
 Discipline carried: the mock battery stays rack-free; any suite instantiating trajectory
@@ -321,7 +380,7 @@ rings heap-holds them (the 2 MiB / Windows-2MB-stack rule); R7 token hygiene in 
 
 | Risk | Mitigation |
 |---|---|
-| Behaviour break at the D2 switch | Module-absent = star (exact legacy); module-present defaults to the authored star; free voices require an explicit unpin. |
+| Behaviour break at D2 | RULED INTENDED — no mitigation required. The star preset preserves the legacy sound as an authored choice; existing suites inject the star so the compat pin stays meaningful (§3.1 test seam). |
 | Topo-order cost in the per-sample loop | 16 nodes, order cached on graph change (one 32-byte memcmp per block); the loop's shape is unchanged from today's AND. |
 | The differential harness misses a mode/lock interaction | Marches enumerate mode × subgate × lock × per-voice params as crossed dimensions (the S8 march skeleton), 60+ seeds; existing suites double as an independent pin. |
 | INVERT-produced graphs surprise the engine | D7 recommended reading makes V1-as-leaf FIRST-CLASS; the property suite explicitly marches such graphs (they are in the proven transform closure already). |
@@ -332,19 +391,20 @@ rings heap-holds them (the 2 MiB / Windows-2MB-stack rule); R7 token hygiene in 
 
 ## 7. The ruling table (Rodney's calls)
 
-| # | Question | Recommended | Stages blocked |
-|---|---|---|---|
-| D1 | Multi-parent envelope semantics | INTERSECTION (matches the multi-pin row language and the CA pin precedent; the build plan's ruling (1)) | F-2 |
-| D2 | The zero-row / module-presence mapping | Module absent = legacy star; module present = graph truth (zeros = free voices, R2); fresh module's default graph AUTHORED as the star | F-1 |
-| D3 | Onset permission under multi-parent | ANY container onset while ALL containers' envelopes open | F-2 |
-| D4 | Gate-type authority at a shared onset | The topologically-first sounding container's verdict (deterministic; "tracks the shape of its container chain") | F-2 |
-| D5 | Ghost hosting under a forest | Ghost = own VAR draw, hosted only in gaps of the INTERSECTION envelope, riding the host containers' ghost stream | F-4 |
-| D6 | Phasing scope | Engine-internal first; per-container LOR later, separately | F-4 |
-| D7 | **NEW — the mono voice inside the forest** | V1 inside the algebra (mono drive ANDs parents' envelopes); no V1 privilege — INVERT's proven closure already produces V1-as-leaf graphs | F-3 |
+| # | Question | RULING (Rodney, 2026-10-26) |
+|---|---|---|
+| D1 | Multi-parent envelope semantics | **RULED: INTERSECTION** — "intersection seems OK (voice can only sound if parents are)". Matches the multi-pin row language and the CA pin precedent. |
+| D2 | The zero-row / legacy mapping | **RULED: no legacy mode.** "No need to worry about legacy patches. All following V1 (current behaviour) just becomes a cantonment preset." Graph truth everywhere; absent/zero graph = free voices, intended; the all-contained-in-V1 star ships as a preset; test suites inject the star explicitly (§3.1). |
+| D3 | Onset permission under multi-parent | **RULED: UNION for onset, INTERSECTION for extent.** "D3 allowing any container onset is union. So it seems like union for onset and intersection for length." A permission point = ANY container onsetting, subject to the intersection envelope open; C3 length clamp stays the SHORTEST container window. |
+| D4 | Gate-type authority at a shared onset | **PENDING** — mechanics refresher written up (§3.8). Recommendation stands: the topologically-first sounding onsetting container's verdict names the opportunity. |
+| D5 | Ghost hosting under a forest | **RULED: INTERSECTION** — "agree intersection". A voice's ghost exists only in gaps of the intersection envelope; candidacy = its own VAR draw. |
+| D6 | Phasing scope | **RULED: engine-internal.** "I see no connection to LOR which is about the probabilities that feed the rhythm decisions" — the draw production is not the decision structure. Closed. |
+| D7 | The mono voice inside the forest | **RULED: V1 inside the algebra, no privilege.** "No reason for V1 to stay privileged and this is part of it. All voices could be contained in voice 2 to 16 as well." F-3 confirmed; INVERT-produced V1-as-leaf graphs are first-class. |
 
 Stage R is blocked by NONE of these — it is pure centralisation with a byte-identical gate.
-The recommended sequencing: Rodney rules D2 (only the F-1-blocking one) whenever convenient;
-Stage R starts now; Stage F follows on D1-D7.
+Stage F is unblocked on all ladders except F-2's D4 detail (which only matters when multiple
+containers onset on the same edge with differing verdicts — every other F step can land
+before D4 is ruled).
 
 ---
 
