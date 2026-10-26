@@ -242,3 +242,42 @@ BOTH gates open (intersection). But keep the plane SINGLE-source anyway:
 So: envelope plane = single-source-per-destination, many-dest-per-source, nesting via chaining, no cycles
 (per-plane) — identical to CA's correlation planes. Multi-parent gate-intersection excluded by choice to
 preserve uniformity; deferred niche.
+
+────────────────────────────────────────────────────────────────────────────────
+## CYCLES: valid for CORRELATION, forbidden for CONTAINMENT — the mechanistic reason (Rodney)
+
+CORRECTS the earlier "envelope inherits CA's acyclic check". The SAME routing ring is VALID as correlation
+but INVALID as containment. The reason (Rodney): correlation READS the underlying DRAW; containment
+COMPOSES a derived gate.
+
+### Worked ring: 4→1, 1→2, 2→3, 3→4
+AS CORRELATION — VALID. "1 spreads to 2's underlying DRAW; 4 spreads to 1's underlying DRAW." The DRAWS
+are INDEPENDENT, already-SAMPLED values that PRE-EXIST the spread blending. Spread just READS other voices'
+draws to blend toward them. A cycle is only in WHICH draw you read — and all draws already exist — so
+nothing depends on a not-yet-computed value. Nothing to regress into → well-defined in ANY pattern,
+cycles included. (Implementation: the CA target reads pubSlewed* snapshots, SpreadInterp.hpp:98-111 — the
+realization of "read a pre-existing value", effectively a one-generation-delayed feedback that converges.)
+
+AS CONTAINMENT — INVALID (cycle). Containment does NOT read a pre-existing value — it COMPUTES a DERIVED
+constraint: gate(X) = clamp(own_gate(X), gate(container(X))), where gate(container) is ITSELF derived
+(clamped) one level up. A chain of DERIVATIONS, not reads. 4⊂1⊂2⊂3⊂4 (follow the chain) has NO base case
+(no root with no container) and NO valid evaluation order → non-terminating recursion. A hard support
+constraint CANNOT be one-generation-delayed (stale container gate = you sound in a window the container has
+since closed = wrong). It needs the container's CURRENT-step clamped gate → in-order eval → acyclic.
+
+### THE FUNDAMENTAL DISTINCTION
+- CORRELATION = READING pre-existing independent DRAWS (any pattern, cycles fine — nothing to compute in
+  order).
+- CONTAINMENT = COMPOSING derived clamped GATES up a dependency chain (needs order + base case → acyclic).
+Reading pre-existing values is cycle-safe by nature; composing derived values up a chain is not.
+
+### CONSEQUENCE (corrects the inherited-check claim)
+- CA CORRELATION planes (rhythm/mel/qmix): cycles ALLOWED (read pre-existing draws / pub snapshot).
+- The ENVELOPE/CONTAINMENT plane: cycles FORBIDDEN — needs a STRICTER per-plane acyclic check the
+  correlation planes do NOT have. So the 4th plane shares CA's ROUTING STRUCTURE (single-source functional
+  mapping, the pin matrix) but imposes an ADDITIONAL acyclicity constraint. The envelope routing must
+  REJECT a pin that would close a containment cycle (while the correlation planes allow the analogous
+  ring). Single-source makes the check O(depth): follow the one container-pointer, reject if it returns to
+  start. Runs at routing-change (phrase/deliberate), not per-sample.
+This is WHY the decision-manager recursion up the containment tree is well-founded: the acyclic check
+guarantees a base case (a root envelope) and finite depth.
