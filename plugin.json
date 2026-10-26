@@ -226,6 +226,16 @@
       ]
     },
     {
+      "slug": "Containment",
+      "name": "Containment",
+      "description": "Articulation-envelope routing: a multi-parent acyclic containment DAG over the 16 voices. Pin edits reject cycles; DAG-closed transforms (invert/rotate/reflect/collapse) apply at phrase boundaries. Each voice's gate support is the intersection of its containments.",
+      "tags": [
+        "Expander",
+        "Random",
+        "Sequencer"
+      ]
+    },
+    {
       "slug": "Intertropical",
       "name": "Intertropical",
       "description": "Scene sequencer / voice arranger for Monsoon: 8 scenes of per-voice opt-in with per-scene repeats, routed to poly outputs. Advances on phrase-boundary crossings.",
