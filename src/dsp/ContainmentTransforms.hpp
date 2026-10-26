@@ -10,11 +10,13 @@
 // property test (seeded random DAGs x every verb -> assert acyclic + no self-bits) re-proves
 // them all in CI on every run — the test is the guarantee.
 //
-// ACTIVE-POOL DISCIPLINE (the CA convention): only rows < activeCount are transformed; rows
-// >= activeCount are LEFT UNTOUCHED (manual pins persist beyond the live pool). Parent bits
-// pointing at voices >= activeCount are likewise left untouched (they reference voices outside
-// the permuted pool — e.g. pins that outlived a polyphony reduction). ROTATE/REFLECT remap
-// within [0, activeCount) and pass higher bits through unchanged.
+// ACTIVE-POOL DISCIPLINE (the CA convention; the plan's formula new_parents[pi(v)] =
+// pi_bits(parents[v]) with pi = identity above the pool): rows >= activeCount KEEP their row
+// slot and their above-pool bits — an all-above row is byte-untouched (manual pins that
+// outlived a polyphony reduction persist). A dead row's pin INTO the live pool conjugates
+// with the pool: it follows the ROLE, not the bare voice (that is what makes the whole gesture
+// the isomorphism below). Parent bits pointing at voices >= activeCount likewise pass through
+// unchanged. ROTATE/REFLECT remap within [0, activeCount) and pass higher bits through.
 //
 // Pure / rack-free / header-only (the ChangeAlleyTransforms.hpp discipline).
 
@@ -111,8 +113,11 @@ inline void invert(ContainmentGraph& g) {
 //      subset of the old — the old graph is acyclic, so the new one is.
 //   2. No self-bit can appear: bit v in parents[u] means u ⊂ v, while u in parents[v] means
 //      v ⊂ u — both at once would be the 2-cycle the invariants forbid.
-// Composes per trigger: each application shortens the longest chain by >= 1; the march flattens
-// toward the all-stars fixpoint (roots + direct children only).
+// Composes per trigger: each application strictly shortens the longest chain (d_new <=
+// floor(d_old/2): every old 2-hop path becomes a new 1-hop edge). Iterated, the march
+// therefore terminates on the EMPTY graph — the unique fixpoint — within <= 16 applications.
+// The spec's "flatten a subtree TOWARD ITS ROOT" landing is collapseAll's job (below), NOT
+// iterated collapse (the step-0 smoke's semantic catch; pinned by test_containment_transforms).
 inline void collapse(ContainmentGraph& g) {
     uint16_t out[VOICES];
     for (int v = 0; v < VOICES; ++v) {

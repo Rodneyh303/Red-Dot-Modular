@@ -65,7 +65,10 @@ struct ContainmentGraph {
     // FULL ancestor closure of v: every voice reachable upward via parent edges (v's parents,
     // their parents, ...). Excludes v itself unless v is on a cycle (which the invariants
     // forbid). Used by the edit check, the property tests, and (later) the decision manager's
-    // topological evaluation. Returns the closure mask; *depth (optional) = longest chain.
+    // topological evaluation. Returns the closure mask; *depth (optional) = wavefront ROUNDS =
+    // the max SHORTEST upward distance — NOT the longest chain: with multi-parent a direct
+    // edge can shadow a longer path (0->2->8 alongside 0->8 reads depth 1). The property
+    // harness computes the true longest chain with a memoized DP when it needs one.
     uint16_t ancestorClosure(int v, int* depth = nullptr) const {
         uint16_t closure = 0, frontier = parents[v];
         int d = 0;
