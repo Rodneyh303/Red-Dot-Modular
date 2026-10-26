@@ -1125,13 +1125,13 @@ ParentView SequencerEngine::monoParentView() const {
 
 void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& input, bool wasHeldPoly, bool hadPolyTail) {
     PolyVoice& v = voices[voiceIdx];
-    // R-2: the parent view, captured once. Nothing in this function or the helpers it calls
-    // writes mono state (the pre-R-2 code read the same four scalars live; the capture is
-    // proven equivalent by the differential goldens).
-    const ParentView monoParent = monoParentView();
-    // R-4: ONE address now answers every permission question the cascade asks (plan §2.3) —
-    // the RDM assembles the per-voice per-edge verdicts; the branches below consume the tuple.
-    const RhythmDecision rd = RhythmDecisionCore::decide(monoParent);
+    // R-2/R-5 (plan §2.3): the parent view is read ONLY through the RDM now. The FOREST FOLD
+    // iterates the parents bitmask; on LEGACY_STAR every poly voice's sole container is V1
+    // (bit 0), so the loop body runs ONCE and IS the pre-R-5 path — a 1-parent loop is
+    // today's code. The capture-once equivalence (nothing here writes mono state) is proven
+    // by the differential goldens. Stage F-1 re-points rdm at ParentSource::GRAPH and
+    // provides per-container views — the branches below do not change.
+    const RhythmDecision rd = rdm.decide(voiceIdx.v, [this](int) { return monoParentView(); });
     // Stage 2a: refresh VARIATION cell before nvIdxForVoice reads it (nvIdxForVoice
     // reads the uniform via pe.warpRow at the voice's variation step to pick the note length).
     refreshPolyRandomCell(voiceIdx, LaneId{PL_VARIATION}, getVariationStepForVoice(voiceIdx) & 0x0F);

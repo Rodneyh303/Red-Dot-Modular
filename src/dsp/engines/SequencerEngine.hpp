@@ -157,6 +157,12 @@ struct SequencerEngine {
     // Most recent mono decision — written by executeStep, read by executePolyVoices.
     StepResult lastStepResult;
 
+    // R-5 (RHYTHM_DECISION_MANAGER_PLAN §2.3): the RDM instance — the engine is now a
+    // FOREST MACHINE running a star forest. source = LEGACY_STAR (the D2 legacy graph as
+    // DATA); Stage F-1 re-points it at ParentSource::GRAPH (containmentParents) and the
+    // same cascade runs any forest. Byte-identity gate: test_rhythm_decision_differential.
+    RhythmDecisionCore rdm;
+
     // (lastLegatoProb_ REMOVED — Phase A: V1 legato lives on the mono slot's legatoProb, read
     // directly by executeStep, legatoCheckpointOnFall, and the debug print in executePolyVoice.)
 

@@ -16,6 +16,7 @@
 // star as DATA. Each step is gated on the marches' golden digests.
 
 #include <cstdint>
+#include <algorithm>
 
 // ── MonoDecision ────────────────────────────────────────────────────────────────
 // MOVED HERE from SequencerEngine.hpp (R-2): the decision vocabulary is RDM vocabulary —
@@ -114,10 +115,42 @@ struct RhythmDecision {
 };
 
 struct RhythmDecisionCore {
-    // R-4: the five named predicates composed ONCE. Single-parent star today (a 1-parent
-    // composition IS today's code path); R-5 adds ParentSource/parentsOf and Stage F turns
-    // this into the fold over the parents bitmask — D3's union for mayOnset/gateType,
-    // D1's intersection for forcedRest/lengthCeiling/holdFollow/envelopeOpen.
+    // ── R-5: the parents source — the star made explicit ───────────────────────────
+    // THE SEAM Stage F re-points (plan §2.2). Stage R runs LEGACY_STAR: every poly voice's
+    // sole container is V1 (the D2 legacy graph, declared as DATA below). Stage F re-points
+    // at ParentSource::GRAPH — the staged containmentParents, topologically ordered — and
+    // D2's legacy mapping becomes a TOGGLE, not a rewrite.
+    enum class ParentSource {
+        LEGACY_STAR,   // word[v] = bit 0 (V1) for v >= 1, 0 for v = 0 — today's graph, as data
+        GRAPH          // Stage F: the staged containment graph (containmentParents[16])
+    };
+
+    // LEGACY_STAR AS DATA (D2): one parents-bitmask word per contained voice (storage slots
+    // 0..15 = V1..V16; bit u set = voice u contains v). V1 is the root — no container. The
+    // all-follow-V1 graph ships as a Cantonment PRESET under D2; test suites inject graphs
+    // through this same seam.
+    static constexpr uint16_t LEGACY_STAR_PARENTS[16] = {
+        0x0000,                                   // v0 = V1: the root
+        0x0001, 0x0001, 0x0001, 0x0001, 0x0001,   // v1..v5  (V2..V6)   -> bit 0 = V1
+        0x0001, 0x0001, 0x0001, 0x0001, 0x0001,   // v6..v10 (V7..V11)  -> bit 0 = V1
+        0x0001, 0x0001, 0x0001, 0x0001, 0x0001    // v11..v15 (V12..V16) -> bit 0 = V1
+    };
+
+    ParentSource source = ParentSource::LEGACY_STAR;
+
+    void     setParentSource(ParentSource src) { source = src; }
+
+    // The parents bitmask AS DATA. GRAPH reads neutral (no containers) until Stage F-1
+    // re-points it at the staged graph — a no-container voice decides as uncontained
+    // (D2: absent/zero graph = free voices, INTENDED).
+    uint16_t parentsOf(int v) const {
+        if (source == ParentSource::LEGACY_STAR)
+            return (v >= 0 && v < 16) ? LEGACY_STAR_PARENTS[v] : 0x0000;
+        return 0x0000;   // GRAPH: wired in Stage F-1
+    }
+
+    // ── R-4: the per-container composition ─────────────────────────────────────
+    // The five named predicates composed ONCE for ONE container.
     static RhythmDecision decide(const ParentView& p) {
         RhythmDecision d;
         d.mayOnset      = onsetPermission(p);   // C1
@@ -128,6 +161,47 @@ struct RhythmDecisionCore {
                                                 //        lengthCeiling fold)
         d.holdFollow    = holdFollow(p);        // C4
         d.gateType      = p.decision;           // D4
+        return d;
+    }
+
+    // ── R-5: the forest fold — the C-compositions loop over the bitmask ─────────
+    // A 1-parent loop IS today's code path (the star: exactly one bit set, so the body
+    // runs once and the fold is the identity over the single container). ViewOf is the
+    // caller's per-container view projection — on the star it returns the V1 view for the
+    // one bit; Stage F provides per-container views over the containment graph.
+    // Fold semantics (the banked rulings):
+    //   mayOnset      — D3 UNION (events: any container's attack offers a trigger)
+    //   forcedRest    — D1 (any resting container closes the envelope)
+    //   lengthCeiling — D1 (max-fold: the SHORTEST container window wins)
+    //   holdFollow    — D1 (follow the shortest still-sounding container)
+    //   envelopeOpen  — D1 (the AND of the containers' envelope cells)
+    //   gateType      — D4 (the FIRST onsetting container in bit order names the verdict;
+    //                    with no onsetting container, the first container's verdict stands)
+    template <typename ViewOf>
+    RhythmDecision decide(int v, ViewOf viewOf) const {
+        return decideMask(parentsOf(v), viewOf);
+    }
+
+    // The fold core over an explicit parents bitmask — the source-driven decide() delegates
+    // here; tests (and Stage F) can fold over hand-built masks to spec the multi-parent
+    // rules directly.
+    template <typename ViewOf>
+    static RhythmDecision decideMask(uint16_t parents, ViewOf viewOf) {
+        RhythmDecision d{};                     // no containers -> uncontained (all neutral)
+        bool first = true, gateTypeNamed = false;
+        for (int u = 0; u < 16; ++u) {
+            if (!(parents & (1u << u))) continue;
+            const RhythmDecision c = decide(viewOf(u));
+            d.mayOnset      = d.mayOnset || c.mayOnset;                          // D3 union
+            d.forcedRest    = d.forcedRest || c.forcedRest;                      // D1
+            d.lengthCeiling = first ? c.lengthCeiling
+                                    : std::max(d.lengthCeiling, c.lengthCeiling); // D1
+            d.holdFollow    = first ? c.holdFollow    : (d.holdFollow && c.holdFollow);    // D1
+            d.envelopeOpen  = first ? c.envelopeOpen  : (d.envelopeOpen && c.envelopeOpen); // D1
+            if (first) d.gateType = c.gateType;                                  // D4 default
+            if (c.mayOnset && !gateTypeNamed) { d.gateType = c.gateType; gateTypeNamed = true; }
+            first = false;
+        }
         return d;
     }
 };

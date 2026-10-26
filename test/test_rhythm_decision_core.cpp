@@ -165,6 +165,107 @@ int main() {
                         });
                     }
 
+    // ── R-5: the star as DATA — LEGACY_STAR_PARENTS ────────────────────────────────
+    // The D2 legacy graph, declared as a constexpr word per voice: V1 (slot 0) is the root;
+    // every other voice's sole container is V1 (exactly bit 0 set, nothing else).
+    SUITE("R-5 star data — LEGACY_STAR_PARENTS is exactly the all-follow-V1 graph");
+    TEST("root has no container", {
+        EXPECT_EQ((int)RhythmDecisionCore::LEGACY_STAR_PARENTS[0], 0);
+    });
+    for (int v = 1; v < 16; ++v) {
+        std::ostringstream desc;
+        desc << "v" << (v + 1) << " -> {V1} only";
+        TEST(desc.str(), {
+            const uint16_t w = RhythmDecisionCore::LEGACY_STAR_PARENTS[v];
+            EXPECT_EQ((int)w, 1);                       // bit 0 set, nothing else
+        });
+    }
+
+    // ── R-5: parentsOf — the star source and the (inert-until-F) graph source ──────
+    SUITE("R-5 parentsOf — star reads the data; GRAPH reads neutral until Stage F-1");
+    {
+        RhythmDecisionCore core;
+        TEST("star: v0 -> 0, v1..v15 -> bit0", {
+            EXPECT_EQ((int)core.parentsOf(0), 0);
+            for (int v = 1; v < 16; ++v) EXPECT_EQ((int)core.parentsOf(v), 1);
+        });
+        TEST("star: out-of-range v is defensive-zero", {
+            EXPECT_EQ((int)core.parentsOf(-1), 0);
+            EXPECT_EQ((int)core.parentsOf(16), 0);
+        });
+        TEST("toggle: GRAPH -> all zero (D2: absent graph = free voices, INTENDED)", {
+            core.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
+            for (int v = 0; v < 16; ++v) EXPECT_EQ((int)core.parentsOf(v), 0);
+            core.setParentSource(RhythmDecisionCore::ParentSource::LEGACY_STAR);
+            EXPECT_EQ((int)core.parentsOf(3), 1);       // the toggle goes both ways
+        });
+    }
+
+    // ── R-5: the forest fold == the single-parent composition on the star ──────────
+    // The engine's actual call shape: rdm.decide(v, projection) must equal the per-container
+    // static decide(p) for EVERY voice and EVERY ParentView, because the star's fold body
+    // runs exactly once.
+    SUITE("R-5 fold — rdm.decide(v, proj) == static decide(p) over the star (6x2x2x2 grid x 15 voices)");
+    {
+        RhythmDecisionCore core;
+        for (int v = 1; v < 16; ++v)
+            for (int i = 0; i < 6; ++i)
+                for (int w = 0; w < 2; ++w)
+                    for (int t = 0; t < 2; ++t)
+                        for (int h = 0; h < 2; ++h) {
+                            const ParentView p = pv(all[i], 3, h != 0, w != 0, t != 0);
+                            const RhythmDecision folded =
+                                core.decide(v, [&](int) { return p; });
+                            const RhythmDecision direct = RhythmDecisionCore::decide(p);
+                            TEST("fold == direct", {
+                                EXPECT(folded.mayOnset      == direct.mayOnset);
+                                EXPECT(folded.envelopeOpen  == direct.envelopeOpen);
+                                EXPECT(folded.forcedRest    == direct.forcedRest);
+                                EXPECT(folded.lengthCeiling == direct.lengthCeiling);
+                                EXPECT(folded.holdFollow    == direct.holdFollow);
+                                EXPECT(folded.gateType      == direct.gateType);
+                            });
+                        }
+    }
+
+    // ── R-5: the fold's multi-parent semantics, spec'd directly (the Stage-F preview) ──
+    // Two synthetic containers through decideMask — the same fold core the engine runs:
+    // D3 union for the onset, D1 intersection for the state terms, shortest ceiling,
+    // D4 first-onsetting container names the gate type.
+    SUITE("R-5 fold semantics — two parents through the bitmask (union/intersection/D4)");
+    {
+        const ParentView pa = pv(MonoDecision::NewNote, 2, true,  true,  false); // onsets, short window, holds
+        const ParentView pb = pv(MonoDecision::Rest,    5, false, true,  true);  // rested, long window
+        // parents {0,1}: bit0 = pa, bit1 = pb (projection dispatches by container index)
+        auto projAB = [&](int u) { return u == 0 ? pa : pb; };
+        auto projBA = [&](int u) { return u == 0 ? pb : pa; };
+        TEST("D3 union: the NewNote container offers the onset despite the rested one", {
+            const RhythmDecision d = RhythmDecisionCore::decideMask(0x0003, projAB);
+            EXPECT(d.mayOnset);                      // events union (D3) — pa's attack counts
+        });
+        TEST("D1 intersection: one rested container closes the envelope", {
+            const RhythmDecision d = RhythmDecisionCore::decideMask(0x0003, projAB);
+            EXPECT(d.forcedRest);                    // any resting container closes (D1)
+            EXPECT(!d.holdFollow && !d.envelopeOpen); // pb holds nothing -> the ANDs collapse
+        });
+        TEST("D1: the shortest container window wins the ceiling (max index)", {
+            const RhythmDecision d = RhythmDecisionCore::decideMask(0x0003, projAB);
+            EXPECT_EQ(d.lengthCeiling, 5);           // max(2, 5): the shorter window
+        });
+        TEST("D4: the FIRST ONSETTING container names the gate type (order-independent)", {
+            // pa (NewNote) at bit 0 -> it is both first and first-onsetting:
+            EXPECT(RhythmDecisionCore::decideMask(0x0003, projAB).gateType == MonoDecision::NewNote);
+            // pa moved to bit 1 (pb the rested one is first): the first parent does NOT
+            // onset, so the first ONSETTING container (pa) still names the verdict:
+            EXPECT(RhythmDecisionCore::decideMask(0x0003, projBA).gateType == MonoDecision::NewNote);
+        });
+        TEST("empty mask -> the uncontained tuple (all neutral)", {
+            const RhythmDecision d = RhythmDecisionCore::decideMask(0x0000, projAB);
+            EXPECT(!d.mayOnset && !d.forcedRest && !d.holdFollow && !d.envelopeOpen);
+            EXPECT_EQ(d.lengthCeiling, 0);
+        });
+    }
+
     std::cout << "\n" << s_pass << " passed, " << s_fail << " failed\n";
     return s_fail ? 1 : 0;
 }
