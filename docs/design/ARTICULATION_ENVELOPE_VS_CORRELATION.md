@@ -281,3 +281,51 @@ Reading pre-existing values is cycle-safe by nature; composing derived values up
   start. Runs at routing-change (phrase/deliberate), not per-sample.
 This is WHY the decision-manager recursion up the containment tree is well-founded: the acyclic check
 guarantees a base case (a root envelope) and finite depth.
+
+────────────────────────────────────────────────────────────────────────────────
+## RESOLUTION — containment = a FIXED acyclic forest, CA-transform-free (Rodney)
+
+The whole Follow-CA-containment exploration FAILS at CA TRANSFORM MODULATION, and that failure is the
+answer. Supersedes the fourth-plane / flat-subgroup / external-leader attempts above.
+
+### Why Follow-CA containment is ILL-CONCEIVED at root
+CA correlation is CYCLE-SAFE (reads pre-existing draws), so CA is FREE to modulate into ANY configuration
+INCLUDING cyclic ones. Containment is CYCLE-FATAL (composes derived gates — non-terminating on a cycle,
+and a hard support constraint can't be stale-delayed). A STATIC acyclic check is insufficient: CA transform
+modulation re-partitions subgroups and reroutes leaders at RUNTIME → reaches containment-cyclic states the
+user never configured (e.g. 1-4 follow 6∈{5-8}, then CA modulates 5-8 to follow into 1-4 → cycle mid-
+performance = non-terminating gate resolution). You CANNOT put a cycle-fatal relation on a routing layer
+designed to freely reach cyclic states. So containment canNOT ride CA — not nesting specifically, the WHOLE
+idea of containment-following-(modulatable)-CA.
+
+### The resolution: containment is its OWN FIXED routing
+Containment = a dedicated, FIXED (NOT modulation-driven; user-EDITABLE by hand), acyclic FOREST over the
+16 voices — each voice: container ∈ {none | a voice}, single-parent, acyclic, CHECKED ONCE at config
+(no modulation to invalidate). "Fixed" = not on the modulation bus, NOT immutable (edit the skeleton
+deliberately).
+VALID ARRANGEMENTS = ANY FOREST (single container/voice, acyclic). Musically useful subset:
+- FLAT-SINGLE-ROOT (universal envelope — Follow-V1 generalized to any chosen voice).
+- GROUPED-FLAT (a leader per group, members contained in their leader) — the common case.
+- TWO-LEVEL / NESTED (nested voice groups) — the rich texture; RECOVERED safely BECAUSE fixed (nesting
+  wasn't the problem — MODULATABLE nesting was; fixed-check-once makes arbitrary depth valid). [Rodney:
+  not sure we want nesting — but it's AVAILABLE if fixed.]
+- deeper chains if ever wanted.
+
+### FIXED-NESS IS THE STABLE-SKELETON DESIGN (not a limitation)
+Containment being fixed while CA correlation is modulatable IS the containment-vs-correlation distinction
+made concrete: DIFFERENT MUTABILITY BY DESIGN. Containment = the SLOW/FIXED skeleton; correlation (CA) =
+the FAST/EVOLVING layer breathing WITHIN the fixed skeleton. CA transforms evolve the draw-dependencies
+inside a held containment structure. The skeleton holds; the correlations reconfigure within it.
+
+### CA TRANSFORMS vs containment — none drive it
+- CA STRUCTURAL transforms (reroute who-pins-whom, re-partition subgroups): canNOT drive containment
+  (reach cyclic states it can't have). These are the interesting CA transforms → so effectively NO CA
+  transform drives containment.
+- CA NON-structural transforms (correlation strength/weight/output, graph unchanged): IRRELEVANT to
+  containment (modulate correlation; containment is a hard clamp, ignores them).
+=> Containment is CA-TRANSFORM-FREE. Fixed forest, held; CA transforms the correlations within it.
+
+### FUTURE ESCAPE HATCH (if dynamic containment ever wanted) — NOT CA
+Dynamic containment would need a BESPOKE ACYCLIC-PRESERVING modulation — e.g. modulate a voice PRIORITY-
+ORDER and derive the containment forest from the order (a total order can NEVER cycle → always acyclic).
+That's a NEW mechanism, not CA. Flagged, not committed — alongside nesting as "consider later".
