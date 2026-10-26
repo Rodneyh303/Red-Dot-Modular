@@ -37,6 +37,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>   // the cores are ~2 MiB each (the embedded trajectory ring) — heap-held; the CI Windows runner's 2 MB stack is the frame authority (the P-suite lesson, step 3)
 
 static int pass = 0, fail = 0;
 #define CHK(c, m) do { if (c) ++pass; else { ++fail; std::printf("  FAIL: %s\n", (m)); } } while (0)
@@ -89,7 +90,8 @@ int main() {
 
     // ── S0. fresh-core defaults ────────────────────────────────────────────────────────────────
     {
-        ContainmentModuleCore c;
+        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
+        ContainmentModuleCore& c = *cOwner;
         bool allZero = true;
         for (int v = 0; v < VOICES; ++v) allZero &= (c.graph.parents[v] == 0);
         CHK(allZero, "S0: default graph all zeros (R2 all-disconnected)");
@@ -103,7 +105,8 @@ int main() {
 
     // ── S1. the pin-edit path ──────────────────────────────────────────────────────────────────
     {
-        ContainmentModuleCore c;
+        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
+        ContainmentModuleCore& c = *cOwner;
         CHK(c.setPin(1, 0, true), "S1: valid add accepted");
         CHK(c.graph.isContainedIn(1, 0), "S1: pin landed");
         CHK(!c.setPin(0, 1, true), "S1: 2-cycle add REJECTED");
@@ -122,7 +125,8 @@ int main() {
 
     // ── S2. THE CYCLE: edit -> latch (hold) -> boundary commit -> publish ─────────────────────
     {
-        ContainmentModuleCore c;
+        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
+        ContainmentModuleCore& c = *cOwner;
         buildChain(c);
         expectChain(c.graph, "S2: chain built via the edit path");
 
@@ -155,7 +159,8 @@ int main() {
 
     // ── S3. the owner-guard protocol (the manager's shape) ────────────────────────────────────
     {
-        ContainmentModuleCore c;
+        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
+        ContainmentModuleCore& c = *cOwner;
         buildChain(c);
         // Driver A (the first sync this block): the module's process() opened the window.
         c.transformsAppliedThisBlock = false;
@@ -183,7 +188,8 @@ int main() {
 
     // ── S4. a no-op batch publishes NO undo snapshot ──────────────────────────────────────────
     {
-        ContainmentModuleCore c;
+        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
+        ContainmentModuleCore& c = *cOwner;
         const uint32_t head0 = c.undoHead.load();
         c.pending.latch(ContainmentPending::V_EXPAND);
         const int applied = c.applyAtBoundary(16);
@@ -195,7 +201,8 @@ int main() {
 
     // ── S5. serialization: the exact production schema round-trips ────────────────────────────
     {
-        ContainmentModuleCore a;
+        auto aOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
+        ContainmentModuleCore& a = *aOwner;
         buildChain(a);
         a.setPin(3, 0, true);                 // a second component (R2: disconnected vertices valid)
         a.pending.rotateStep = 3;
@@ -211,7 +218,8 @@ int main() {
         json_t* parsed = text ? json_loads(text, 0, &err) : nullptr;
         CHK(parsed != nullptr, "S5: json_loads parses the schema back");
 
-        ContainmentModuleCore b;
+        auto bOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
+        ContainmentModuleCore& b = *bOwner;
         b.fromJson(rootJ);
         CHK(sameGraph(a.graph, b.graph), "S5: graph bytes identical (the WARPDIAG lesson)");
         CHK(b.pending.rotateStep == 3, "S5: rotate-step config restored");
@@ -226,7 +234,8 @@ int main() {
         }
 
         if (parsed) {
-            ContainmentModuleCore d;
+            auto dOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
+            ContainmentModuleCore& d = *dOwner;
             d.fromJson(parsed);
             CHK(sameGraph(a.graph, d.graph), "S5: TEXT-parsed load is byte-identical too");
             CHK(d.trajectory.serialise().count == a.trajectory.serialise().count,
@@ -240,7 +249,8 @@ int main() {
     // ── S6. the corrupt-save policies ─────────────────────────────────────────────────────────
     {
         // (a-e) the graph key.
-        ContainmentModuleCore c;
+        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
+        ContainmentModuleCore& c = *cOwner;
         buildChain(c);
         expectChain(c.graph, "S6: pre-state = the chain");
 
@@ -309,7 +319,8 @@ int main() {
         }
 
         // (g-h) the trajectory tail: stale or cyclic -> DROPPED (ring cleared), never garbage.
-        ContainmentModuleCore t;
+        auto tOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
+        ContainmentModuleCore& t = *tOwner;
         buildChain(t);
         t.pending.latch(ContainmentPending::V_INVERT);
         t.applyAtBoundary(16);
@@ -354,7 +365,8 @@ int main() {
 
     // ── S7. the SPSC undo ring: order continuity + the drop-if-full cap ───────────────────────
     {
-        ContainmentModuleCore c;
+        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
+        ContainmentModuleCore& c = *cOwner;
         buildChain(c);
         // 20 commits with a guaranteed change each (INVERT over a non-empty graph always
         // changes it — the dual of a non-empty DAG differs in row 0), UI never drains.
@@ -383,7 +395,8 @@ int main() {
     {
         for (int seed = 1; seed <= 60; ++seed) {
             redDot::PhiloxRng rng((uint64_t)seed * 0x9E3779B97F4A7C15ull);
-            ContainmentModuleCore c;
+            auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
+            ContainmentModuleCore& c = *cOwner;
             bool marchOk = true;
             const char* why = "";
             for (int iter = 0; iter < 30 && marchOk; ++iter) {
@@ -424,7 +437,8 @@ int main() {
 
             // Mid-march save/load: the whole state round-trips byte-identically.
             json_t* rootJ = c.toJson();
-            ContainmentModuleCore probe;
+            auto probeOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
+            ContainmentModuleCore& probe = *probeOwner;
             probe.fromJson(rootJ);
             CHK(sameGraph(c.graph, probe.graph), "S8: save/load graph identical");
             CHK(probe.pending.rotateStep == c.pending.rotateStep, "S8: save/load rotate-step identical");
