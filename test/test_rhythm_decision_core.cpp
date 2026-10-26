@@ -134,6 +134,37 @@ int main() {
         }
     });
 
+    // ── R-4: tuple assembly vs the predicates' direct composition ───────────────────
+    // The plan §2.5 row: RhythmDecisionCore::decide() must equal the predicates' direct
+    // composition over EVERY MonoDecision x own-state x nv combination. On the star the
+    // ceiling field is the container's own nv (the voice applies its draw under it at
+    // nvIdxForVoice); gateType is the container's decision (D4's single-container case).
+    SUITE("R-4 tuple — decide() == direct predicate composition (exhaustive 6x2x2 grid)");
+    for (int i = 0; i < 6; ++i)
+        for (int w = 0; w < 2; ++w)
+            for (int t = 0; t < 2; ++t)
+                for (int nv = 0; nv <= 6; nv += 3)
+                    for (int h = 0; h < 2; ++h) {
+                        const bool wasHeld = (w != 0), hadTail = (t != 0), held = (h != 0);
+                        const ParentView p = pv(all[i], nv, held, wasHeld, hadTail);
+                        std::ostringstream desc;
+                        desc << decName(all[i]) << " nv=" << nv << " held=" << h
+                             << " wasHeld=" << w << " hadTail=" << t;
+                        TEST(desc.str(), {
+                            const RhythmDecision rd = RhythmDecisionCore::decide(p);
+                            EXPECT(rd.mayOnset      == onsetPermission(p));   // C1
+                            EXPECT(rd.envelopeOpen  == envelopeAnd(p));       // C5
+                            EXPECT(rd.forcedRest    == restClose(p));         // C2
+                            EXPECT(rd.lengthCeiling == nv);                   // C3 ceiling = container nv
+                            EXPECT(rd.holdFollow    == holdFollow(p));        // C4
+                            EXPECT(rd.gateType      == all[i]);               // D4
+                            // The branch-consumption contract the cascade relies on:
+                            // forcedRest is exclusive with the landing/articulation reads —
+                            // a rest tuple never carries a mid-gate follow or an onset.
+                            if (rd.forcedRest) { EXPECT(!rd.mayOnset); }
+                        });
+                    }
+
     std::cout << "\n" << s_pass << " passed, " << s_fail << " failed\n";
     return s_fail ? 1 : 0;
 }

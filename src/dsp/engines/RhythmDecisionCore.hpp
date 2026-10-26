@@ -95,3 +95,39 @@ inline bool holdFollow(const ParentView& p) {
 inline bool envelopeAnd(const ParentView& p) {
     return p.gateHeld;
 }
+
+// ── The verdict tuple + its assembly (plan §2.2, R-4) ──────────────────────────
+// The per-voice, per-edge verdicts the engine consumes, assembled ONCE per voice per edge;
+// the cascade reads the tuple instead of re-deriving permissions mid-flight. THIS is the
+// commit where "all decisions centralised" becomes literally true — one address answers
+// every permission question the engine asks.
+struct RhythmDecision {
+    bool         mayOnset;       // C1: a permission point exists this edge (union in F, D3)
+    bool         envelopeOpen;   // C5: this container's envelope cell is open (intersection in F, D1)
+    bool         forcedRest;     // C2: a container rested -> close, consult no draws (intersection, D1)
+    int          lengthCeiling;  // C3: the NOTE_VALUES index ceiling; the voice applies its own
+                                  //     draw under it (nvIdxForVoice -> the lengthCeiling fold;
+                                  //     the shortest ceiling across containers in F, D1)
+    bool         holdFollow;     // C4: containers mid-gate -> follow the articulation shape (D1)
+    MonoDecision gateType;        // D4: whose verdict names trigger vs slide at a shared onset
+                                  //     (topologically-first SOUNDING onsetting container in F)
+};
+
+struct RhythmDecisionCore {
+    // R-4: the five named predicates composed ONCE. Single-parent star today (a 1-parent
+    // composition IS today's code path); R-5 adds ParentSource/parentsOf and Stage F turns
+    // this into the fold over the parents bitmask — D3's union for mayOnset/gateType,
+    // D1's intersection for forcedRest/lengthCeiling/holdFollow/envelopeOpen.
+    static RhythmDecision decide(const ParentView& p) {
+        RhythmDecision d;
+        d.mayOnset      = onsetPermission(p);   // C1
+        d.envelopeOpen  = envelopeAnd(p);       // C5
+        d.forcedRest    = restClose(p);         // C2
+        d.lengthCeiling = p.nvIdx;              // C3 — the ceiling; the own draw is applied
+                                                //        under it at nvIdxForVoice (the named
+                                                //        lengthCeiling fold)
+        d.holdFollow    = holdFollow(p);        // C4
+        d.gateType      = p.decision;           // D4
+        return d;
+    }
+};
