@@ -112,6 +112,20 @@ MODULES = {
             "param_qmixatt_": 17,
         },
     },
+    "containment": {
+        # Containment step 4 (CC_PROMPT_CONTAINMENT_BUILD_PLAN.md): the module opts in —
+        # "anchor/bind audit (new panel)" is the step-4 gate. The widget lives in the header
+        # (MonsoonContainment.cpp is the 4-line createModel instantiation, the CA layout).
+        # 18 anchors = 6 verbs x (trig jack + fire button + pending lamp), bound by the
+        # prefix+"verb" concat form in the ctor loop.
+        "widget": ["src/MonsoonContainment.hpp"],
+        "panel": "res/panels/Containment_panel_dark.svg",
+        "counts": {
+            "input_trig_": 6,       # one trig jack per verb (rotate/reflect/invert/collapse/collapseall/expand)
+            "param_btn_": 6,        # one fire button per verb
+            "light_pending_": 6,    # one pending lamp per verb
+        },
+    },
     # NOTE: intertropical is bind-by-name (param_%d / output_%d via rack::string::f, light_connect via
     # findNamed) and its panel markers exist, but the audit's bind-regex classifies the "%d"-format
     # binds as PREFIX binds and only matches output_5.., not output_0.. — a pre-existing audit-tooling

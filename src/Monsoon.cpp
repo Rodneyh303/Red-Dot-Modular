@@ -1486,6 +1486,12 @@ void Monsoon::process(const ProcessArgs& args) {
         // authority) -- replaces the old caV2PrevStep_/caV2PrevLocked_ shadow state.
         MONSOON_PROF_BEGIN(ctrl_sync);  // sync: lock boundary detect + expander sync
         lockManager.tick(engine.stepIndex);
+        // RATE::PHRASE tier feed: the boundary edge (stepIndex wrap — the TickCount source per the
+        // per-mode chains in ui/RateManager.hpp) advances the first-class Phrase tier. Containment's
+        // pending machinery commits on THIS edge (fired from expanderManager.sync below — the CA
+        // pattern: the module never owns a clock). Declaring the tier here makes the phrase
+        // boundary a RateManager citizen for the producers that follow, not a CA-private shadow.
+        rateManager.advance(redDot::Rate::Phrase, lockManager.boundaryNow());
         // RATE MANAGER (S0b): dispatch the Control producers at the population's old
         // position in the tick — after processDNA published macroBase + lockManager.tick,
         // before sync's remaining work (the extracted block ran at the tail of sync).

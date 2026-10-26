@@ -1324,6 +1324,7 @@ extern Model* modelMonsoonRafflesExpander;
 extern Model* modelMonsoonJunctionExpander;
 extern Model* modelMonsoonChangeAlleyExpander;
 extern Model* modelMonsoonChangeAlleyV2;
+extern Model* modelContainment;            // articulation-envelope routing (containment DAG; CA sibling)
 extern Model* modelMonsoonTemasekExpander;
 //extern Model* modelMonsoonSandsExpander;
 extern Model* modelMonsoonStraitsExpander; // base poly expander
