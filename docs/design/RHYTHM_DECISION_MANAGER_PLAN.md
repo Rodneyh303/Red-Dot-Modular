@@ -131,6 +131,18 @@ the degenerate forest, so nothing about the algebra is speculative.
 
 ### 2.3 The migration steps (each = one commit, each gated)
 
+> **STATUS (2026-10-26): Stage R EXECUTED** on `feat/rhythm-decision-manager`, every step
+> byte-identical-gated on the marches (the goldens hold EXACTLY through every step):
+> R-1 `7891599f` the reference oracle · R-2 `f2c416e3` ParentView + the `monoParentView()`
+> seam · R-3 `cf68f620` the five named predicates · R-4 `fb094dbb` the RhythmDecision tuple
+> + `RhythmDecisionCore::decide()` · R-5 `c5e2c904` the star as DATA + the forest fold
+> (`decideMask`) — the engine is now a forest machine running a star forest. Battery 86/86;
+> `test_rhythm_decision_core` 970 rows; two deviations from the sketch below, both noted
+> in the worklog: MonoDecision MOVED into RhythmDecisionCore.hpp (the vocabulary is RDM
+> vocabulary), and the fold core is exposed as `decideMask(parents, viewOf)` so the
+> multi-parent rules are spec'd directly before Stage F. Stage F is unblocked: F-1 re-points
+> `rdm` at `ParentSource::GRAPH`.
+
 **R-1 — The reference oracle.** NEW `test/test_rhythm_decision_differential.cpp`: seeded
 marches (the S8 march pattern, 60+ seeds) through all three modes with subgates, locks and
 per-voice params varied; records per-voice per-edge `gateHeld` / `gsStep.gateHeld` /
