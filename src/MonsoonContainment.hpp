@@ -10,9 +10,19 @@
 // its own routing, structurally acyclic, CA-untouched. The graph state is ENGINE-SIDE
 // authoritative (mirroring the CA seam: PatternEngine owns caRhythmSrc, the CA module edits and
 // drives it); this module edits pins (cycle-rejecting) and drives the DAG-closed gesture verbs
-// (INVERT / ROTATE ROLES / REFLECT ROLES / COLLAPSE-EXPAND) armed as pending and applied at the
-// PHRASE BOUNDARY. The gate-clamp recursion that CONSUMES the graph is the decision manager's
-// job (separate work — MONO_SPECIAL_IN_LOGIC_AUDIT.md); this module only PRODUCES the graph.
+// (INVERT / ROTATE ROLES / REFLECT ROLES / COLLAPSE / COLLAPSE-ALL / EXPAND) armed as pending
+// and applied at the PHRASE BOUNDARY. The gate-clamp recursion that CONSUMES the graph is the
+// decision manager's job (separate work — MONO_SPECIAL_IN_LOGIC_AUDIT.md); this module only
+// PRODUCES the graph.
+//
+// PANEL (Rodney correction 2026-10-26): "a 16 by 16 panel like change alley (square near full
+// module height with controls jacks to the side not underneath). Full Polyphony is 16 voices."
+// So the matrix is CA V2's square at CA scale (99.6mm, 6.225mm cells, top at 16.0mm — 40HP
+// module), ALWAYS 16x16: rows = voices, columns = parents; rows/cols >= activeCount get dimmed
+// by the UI at step 4, the geometry never shrinks. Trig jacks run down the LEFT flank, fire
+// buttons + pending lamps down the RIGHT (one row per verb, two groups of three). Art is
+// GENERATED: panel_src/gen_containment.py (house pipeline, dark+light); ALL lettering is
+// widget-drawn here because nanosvg — the parser Rack uses — silently drops <text>.
 //
 // ZERO PARAM SLOTS BY DESIGN (DAW_PARAM_AUDIT.md, the ChangeAlleyV2 rule): transforms are
 // triggered verbs (buttons/CV), config lives in context menus — nothing here is
@@ -23,8 +33,12 @@
 // edits = step 4; trajectory ring = follow-up. Kept honest: process() is a no-op until the
 // machinery lands — no silent fake work.
 
+#include <cstdio>
 #include <rack.hpp>
 #include "Monsoon.hpp"                        // extern Plugin* pluginInstance
+#include "ui/SvgPanelKit.hpp"                 // Option B-full: loadPanel/kitStep/findNamed
+#include "ui/ModuleLookup.hpp"                // THE lookup authority: redDot::lookupMonsoon
+#include "ui/RedScrew.hpp"                    // house screws
 #include "dsp/ContainmentGraph.hpp"           // the state (pure, rack-free)
 #include "dsp/ContainmentTransforms.hpp"      // the DAG-closed verbs (pure, rack-free)
 
@@ -53,17 +67,108 @@ struct MonsoonContainment : Module {
     // ContainmentGraph::serializeTo/deserializeFrom, the WARPDIAG round-trip lesson).
 };
 
-struct MonsoonContainmentWidget : ModuleWidget {
+// ── Panel geometry in mm — MUST MATCH panel_src/gen_containment.py ──────────────
+// (the gen_change_alley_v2.py GRID_Y rule: one authority per number, cross-declared)
+namespace ContainmentPanelMm {
+    constexpr float PW = 203.2f;                   // 40HP
+    constexpr float GRID_X = 51.8f, GRID_Y = 16.0f, GRID_W = 99.6f;
+    constexpr float CELL = GRID_W / 16.0f;         // 6.225
+    constexpr float J_X = 18.75f, L_X = 27.75f;    // trig-jack col (left); lamp col (right)
+    constexpr float ROW_Y[6] = {31.0f, 45.0f, 59.0f, 78.0f, 92.0f, 106.0f};
+    constexpr const char* VERB_ID[6]    = {"rotate", "reflect", "invert", "collapse", "collapseall", "expand"};
+    constexpr const char* VERB_LABEL[6] = {"ROTATE", "REFLECT", "INVERT", "COLLAPSE", "COLLAPSE-ALL", "EXPAND"};
+    constexpr float LABEL_X = 47.4f, NUM_X = 50.4f;
+    constexpr float TITLE_Y = 9.8f, SIDE_Y = 14.8f, CAP1_Y = 121.0f, CAP2_Y = 125.2f;
+} // namespace ContainmentPanelMm
+
+struct MonsoonContainmentWidget : ModuleWidget,
+    dotModular::Compose<MonsoonContainmentWidget,
+                        dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
+    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
+    int lastThemeLight = -1;
+
     MonsoonContainmentWidget(MonsoonContainment* module) {
         setModule(module);
-        // Placeholder scaffold panel (house dark palette); the real panel art + the one-plane
-        // multi-pin matrix UI arrive with step 4. Light-theme variant follows the house
-        // dual-panel convention when the art lands.
-        setPanel(createPanel(asset::plugin(pluginInstance, "res/panels/Containment_panel_dark.svg")));
+        // Dual-panel house convention (theme follows the host Monsoon, the junction idiom);
+        // loadPanel = kit: sets the panel AND caches the #components anchors for bind-by-name
+        // at step 3/4 (input_trig_* / param_btn_* / light_pending_* from gen_containment.py).
+        panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/Containment_panel_dark.svg"));
+        panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/Containment_panel_light.svg"));
+        loadPanel(asset::plugin(pluginInstance, "res/panels/Containment_panel_dark.svg"));
+        redDot::addRedScrews(this);
+    }
 
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+    void step() override {
+        ModuleWidget::step();
+        kitStep();          // kit: dev live-reload poll (Option B-full)
+        if (!module) return;
+        Monsoon* m = redDot::lookupMonsoon(module);
+        const int wantLight = (m && m->lightTheme) ? 1 : 0;
+        if (wantLight != lastThemeLight) {
+            lastThemeLight = wantLight;
+            for (Widget* child : children) {
+                if (auto* sp = dynamic_cast<app::SvgPanel*>(child)) {
+                    sp->setBackground(wantLight ? panelSvgLight : panelSvgDark);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Lettering is widget-drawn at the generator's mm coordinates (nanosvg drops <text>):
+    // title, side captions, group captions, verb labels, and the 1..16 vertex numbers on both
+    // matrix axes. ASCII only — uiFont glyph coverage is not guaranteed beyond that.
+    void draw(const DrawArgs& args) override {
+        ModuleWidget::draw(args);
+        std::shared_ptr<window::Font> font = APP->window->uiFont;
+        if (!font) return;
+        NVGcontext* vg = args.vg;
+        nvgFontFaceId(vg, font->handle);
+        using namespace ContainmentPanelMm;
+        const bool lit = (lastThemeLight > 0);
+        const NVGcolor ink = lit ? nvgRGB(0x2a, 0x2a, 0x2e) : nvgRGB(0xe8, 0xe2, 0xd0);
+        const NVGcolor dim = lit ? nvgRGB(0x88, 0x8d, 0x96) : nvgRGB(0x8a, 0x85, 0x78);
+
+        // Title — centred, CA's widget-drawn-title idiom.
+        nvgFillColor(vg, ink);
+        nvgFontSize(vg, mm2px(3.6f));
+        nvgTextLetterSpacing(vg, mm2px(0.4f));
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgText(vg, box.size.x * 0.5f, mm2px(TITLE_Y), "CONTAINMENT", NULL);
+        nvgTextLetterSpacing(vg, 0.f);
+
+        // Side captions over the control columns; group captions over each verb trio.
+        nvgFillColor(vg, dim);
+        nvgFontSize(vg, mm2px(2.0f));
+        nvgText(vg, mm2px(J_X), mm2px(SIDE_Y), "TRIG", NULL);
+        nvgText(vg, mm2px(PW - J_X), mm2px(SIDE_Y), "FIRE", NULL);
+        nvgText(vg, mm2px(J_X), mm2px(ROW_Y[0] - 7.5f), "ROLES", NULL);
+        nvgText(vg, mm2px(J_X), mm2px(ROW_Y[3] - 7.5f), "FOLD", NULL);
+
+        // Verb labels — right-aligned inboard of the voice-number column.
+        nvgFillColor(vg, ink);
+        nvgFontSize(vg, mm2px(2.8f));
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+        for (int k = 0; k < 6; ++k)
+            nvgText(vg, mm2px(LABEL_X), mm2px(ROW_Y[k]), VERB_LABEL[k], NULL);
+
+        // Vertex numbers: voices 1..16 down the left edge, parents 1..16 across the top edge.
+        nvgFillColor(vg, dim);
+        nvgFontSize(vg, mm2px(2.0f));
+        for (int i = 0; i < 16; ++i) {
+            char b[4];
+            snprintf(b, sizeof(b), "%d", i + 1);
+            nvgText(vg, mm2px(NUM_X), mm2px(GRID_Y + (i + 0.5f) * CELL), b, NULL);
+            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+            nvgText(vg, mm2px(GRID_X + (i + 0.5f) * CELL), mm2px(SIDE_Y), b, NULL);
+            nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+        }
+
+        // Bottom captions (ASCII separators only).
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgText(vg, box.size.x * 0.5f, mm2px(CAP1_Y),
+                "ROWS = VOICE    COLUMNS = PARENT (CONTAINED-BY)", NULL);
+        nvgText(vg, box.size.x * 0.5f, mm2px(CAP2_Y),
+                "MULTI-PARENT ACYCLIC DAG    INTERSECTION OF CONTAINMENTS", NULL);
     }
 };
