@@ -8,6 +8,7 @@
 //#include "../../MonsoonSandsExpander.hpp"
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "MonsoonExpanderManager.hpp"
+#include "../../MonsoonContainment.hpp"             // the publish block below dereferences core.graph — complete type required (ExpanderManager.hpp only forward-declares)
 #include "../../MonsoonChangeAlleyV2.hpp"           // V2 shares the pin contract
 #include "../SandsTopology.hpp"   // step 3b: readStrand owner migration
 #include "../../MonsoonStraitsExpander.hpp"
