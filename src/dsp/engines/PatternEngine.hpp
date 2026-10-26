@@ -279,6 +279,21 @@ struct PatternEngine {
     // probability — CA parity for q-mix. Identity default = no-op (Straits per-voice level as before).
     uint8_t caQmixSrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
 
+    // ── Containment graph (CC_PROMPT_CONTAINMENT_BUILD_PLAN.md §"THE STATE") ──
+    // The ENGINE-SIDE AUTHORITATIVE home of the containment DAG (the CA seam mirrored:
+    // PatternEngine owns the array; the Containment module is the store-backed editor/driver).
+    // Bit u of containmentParents[v] set = "voice v is contained in voice u" — a MULTI-PARENT
+    // ACYCLIC DAG (Rodney's R1 ruling; containment = the INTERSECTION of the parent
+    // containments). Default all-zeros = the all-disconnected graph (R2) = the full-equality
+    // case, so an absent module is a no-op exactly like CA's identity diagonal. Staged each
+    // control block from the module's editor graph (MonsoonSandsManager::processDNA, the same
+    // staging point as caRhythmSrc). The CONSUMER — the gate-clamp recursion in topological
+    // order (gate(v) = clamp(own, ∩ resolved parents)) — is the future decision manager
+    // (MONO_SPECIAL_IN_LOGIC_AUDIT.md); this array is the contract it will read. Acyclicity is
+    // enforced upstream at every edit AND every transform (ContainmentGraph/Transforms); the
+    // engine-side reader may assume a DAG unconditionally.
+    uint16_t containmentParents[16] = {};
+
     // ── Shared tuning table (Sikit Phase 1) ─────────────────────────────────────────────────────
     // The degree->voltage map read by genPitchLive (mono + all poly voices — single source of truth).
     // Default is inert equal-division 12-TET; a claimed Sikit publishes cents[] into it (Step F).

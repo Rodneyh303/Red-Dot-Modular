@@ -82,6 +82,19 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     } else {
         for (int v = 0; v < 16; ++v) { engine.pe.caRhythmSrc[v] = (uint8_t)v; engine.pe.caMelodySrc[v] = (uint8_t)v; engine.pe.caQmixSrc[v] = (uint8_t)v; }
     }
+    // ── Containment PUBLISH (the CA seam mirrored — the build plan's step-4 "engine-side publish").
+    // PatternEngine owns the authoritative array (the decision manager's future read); the
+    // Containment module is the editor/driver. Staged EVERY block like the CA pins: the graph is
+    // HELD between boundaries, so the staging is idempotent within a phrase and always current at
+    // a boundary. ABSENT module => the R2 all-disconnected default (all zeros = full equality),
+    // the same absent-module reset the CA block above performs with its identity diagonal.
+    if (expanderManager.cachedContainment) {
+        const auto* ctm = expanderManager.cachedContainment;
+        for (int v = 0; v < 16; ++v)
+            engine.pe.containmentParents[v] = ctm->core.graph.parents[v];
+    } else {
+        for (int v = 0; v < 16; ++v) engine.pe.containmentParents[v] = 0;
+    }
     // ── Expander-presence / activity flags (names chosen to avoid the old trap) ──
     //   hasMonoVisual    : the SANDS MONO editor is attached (NOT "any visual"; NOT Macro).
     //   hasMacro         : the MACRO visual is attached (standalone counts — the right flag
