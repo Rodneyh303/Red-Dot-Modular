@@ -29,12 +29,22 @@
 // automation-visible. Lands with the step-3/4 UI work.
 //
 // STEP 0 SCAFFOLD: registration + panel + the pure dsp headers (ContainmentGraph.hpp /
-// ContainmentTransforms.hpp). STEP 1: the module now HOLDS the editor-side graph state and
-// serializes it (raw uint16 array round-trip via ContainmentGraph::serializeTo/deserializeFrom,
-// the WARPDIAG round-trip lesson; reject-invalid-blob falls back to the R2 all-disconnected
-// default). Pending/boundary machinery = step 3; pin-matrix UI + store-backed edits = step 4;
-// trajectory ring = follow-up. Kept honest: process() is a no-op until the machinery lands —
-// no silent fake work.
+// ContainmentTransforms.hpp). STEP 1: the module HOLDS the editor-side graph state and serializes
+// it (raw uint16 array round-trip via ContainmentGraph::serializeTo/deserializeFrom, the WARPDIAG
+// round-trip lesson; reject-invalid-blob falls back to the R2 all-disconnected default). STEP 2:
+// the pure verbs re-proven in CI (test_containment_transforms). STEP 3: the pending machinery —
+// verb rows latch chronologically (redDot::CAPendingOrder reused AS-IS, stamped on arm), the
+// EXPAND trajectory ring (ContainmentTrajectory, the CA TRUE-REVERSE precedent narrowed to the
+// one plane), and applyPendingTransforms() which the HOST calls at the phrase boundary /
+// unlock flush (expanderManager.sync, the CA pattern — the module never owns a clock; the R7
+// grep-gate discipline: no raw rate primitives, no clock-divider/grid-pulse members, by design).
+// The owner guard
+// (transformsAppliedThisBlock) is the CA idiom: reset at the top of process(), set by the first
+// driver to apply this block — with a shared rack only ONE containment instance mutates.
+// Pin-matrix UI + store-backed edits + engine-side publish = step 4.
+// Kept honest: process() does NOT apply anything itself — the module is DRIVEN; arming inputs
+// (the 6 trig jacks + fire buttons) land at step 4 with the UI binding; until then armVerb() is
+// the single arming choke point and the graph only moves at host-driven boundaries.
 
 #include <cstdio>
 #include <rack.hpp>
@@ -45,6 +55,7 @@
 #include "ui/RedScrew.hpp"                    // house screws
 #include "dsp/ContainmentGraph.hpp"           // the state (pure, rack-free)
 #include "dsp/ContainmentTransforms.hpp"      // the DAG-closed verbs (pure, rack-free)
+#include "dsp/ContainmentPending.hpp"         // step 3: pending rows + EXPAND trajectory (pure, rack-free)
 
 using namespace rack;
 // Qualified ids on purpose: Monsoon.hpp exposes MonsoonIds/ChangeAlleyIds with the same
@@ -58,18 +69,46 @@ struct MonsoonContainment : Module {
 
     // The editor-side containment graph (the engine-side authoritative publish lands at step 4,
     // mirroring the CA seam: PatternEngine owns caRhythmSrc, the CA module edits and drives it).
-    // Until then this member is the ONLY state, and it round-trips through the Rack save.
+    // It round-trips through the Rack save (step 1). The pending rows + trajectory ring are
+    // RUNTIME-ONLY (performance gestures die with a save/load, the CA pendingRows precedent; the
+    // ring tail's json plumbing is step-4 store work — ContainmentTrajectory::serialise is ready
+    // and unit-tested). Between boundaries the graph is HELD: latch never touches it.
     dotModular::ct::ContainmentGraph graph;
+    dotModular::ct::ContainmentPending pending;
+    dotModular::ct::ContainmentTrajectory trajectory;
+
+    // OWNER GUARD (the CA precedent, MonsoonChangeAlleyV2::transformsAppliedThisBlock):
+    // applyPendingTransforms MUTATES the graph, so only ONE driver may call it per block. Reset
+    // at the top of process() each block; the FIRST driver to apply sets it (the manager's fire
+    // block) — a second reader Monsoon skips the mutation. Runtime only (not persisted).
+    bool transformsAppliedThisBlock = false;
 
     MonsoonContainment() {
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
     }
 
+    // The single arming choke point (the CA latchRow rule): step-4 trig jacks + fire buttons call
+    // THIS. Stamps on the unarmed->armed transition only; re-arming an armed row keeps its stamp.
+    // NEVER touches the graph — the verb waits for the host-driven boundary (the hold).
+    void armVerb(int verb) { pending.latch(verb); }
+
+    // The host-driven boundary commit (expanderManager.sync, the CA applyPendingTransforms
+    // shape): the manager decides WHEN (phrase boundary / unlock flush) and passes the operating
+    // voice count (numPolyVoices+1, the owner's count — the CA convention); the module owns the
+    // mutation. axisMask: bit0 = the containment plane (default = commit; the out-of-axis
+    // persistence machinery is core-tested — test_containment_pending — and narrows here when a
+    // lock-scope bit lands). Returns rows applied (0 = nothing committed).
+    int applyPendingTransforms(int active, unsigned axisMask = dotModular::ct::ContainmentPending::AXIS_PLANE) {
+        return pending.applyAll(graph, active, trajectory, axisMask);
+    }
+
     void process(const ProcessArgs& args) override {
-        // Step 3 lands the pending machinery here: armed verbs (CAPendingOrder reuse, stamped
-        // chronologically) applied at the Rate::Phrase tier fed from Monsoon::process (the CA
-        // pattern — the module never owns a clock; the R7 grep-gate discipline). Until then:
-        // nothing. The graph is pure state; silence is the correct scaffold behaviour.
+        // Owner-guard window opens: the first driver to apply this block becomes the mutator (the
+        // CA transformsAppliedThisBlock idiom — reset here, set by expanderManager.sync).
+        transformsAppliedThisBlock = false;
+        // Arming trigger processing (6 trig jacks + 6 fire buttons -> armVerb) lands at step 4
+        // with the pin-matrix UI binding the 18 panel anchors. The module is DRIVEN for applies;
+        // it never self-clocks, so process() itself intentionally does nothing else.
     }
 
     // ── serialization (step 1): the raw uint16 array IS the state ─────────────

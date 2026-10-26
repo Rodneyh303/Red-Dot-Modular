@@ -24,6 +24,7 @@ struct MonsoonInterchangeExpander;
 struct MonsoonChangeAlleyExpander;
 struct MonsoonTemasekExpander;
 struct MonsoonChangeAlleyV2;
+struct MonsoonContainment;
 struct MonsoonSandsExpander;
 struct MonsoonSandsVisualExpander;       // Mono visual DNA editor
 struct MonsoonStraitsExpander;
@@ -45,6 +46,7 @@ extern rack::Model* modelMonsoonJunctionExpander;
 extern rack::Model* modelMonsoonChangeAlleyExpander;
 extern rack::Model* modelMonsoonTemasekExpander;
 extern rack::Model* modelMonsoonChangeAlleyV2;
+extern rack::Model* modelContainment;       // articulation-envelope routing (CA sibling; step 3 driver)
 extern rack::Model* modelMonsoonSandsExpander;
 extern rack::Model* modelSikit;            // tuning expander (microtonal Phase 1)
 extern rack::Model* modelColonnades;       // tuning+scale authoring expander (microtonal Phase 2)
@@ -106,6 +108,7 @@ struct MonsoonExpanderManager {
     rack::Module*                cachedRafflesExpander           = nullptr;
     rack::Module*                cachedJunctionExpander          = nullptr;
     MonsoonChangeAlleyV2*        cachedChangeAlleyV2             = nullptr;
+    MonsoonContainment*          cachedContainment               = nullptr;
     int  caPrevStep_   = 0;
     bool caPrevLocked_ = false;  // unlock-edge detect for restructure queue
     //MonsoonSandsExpander*        cachedDnaExpander                = nullptr;
@@ -139,6 +142,7 @@ struct MonsoonExpanderManager {
         cachedRafflesExpander           = nullptr;
         cachedJunctionExpander          = nullptr;
         cachedChangeAlleyV2             = nullptr;
+        cachedContainment               = nullptr;
         //cachedDnaExpander                = nullptr;
         cachedSandsVisualExpander        = nullptr;
         cachedPolyVoiceExpander          = nullptr;
@@ -187,6 +191,12 @@ struct MonsoonExpanderManager {
                 } else if (curr->model == modelMonsoonChangeAlleyV2) {
                     if (!cachedChangeAlleyV2)
                         cachedChangeAlleyV2 = reinterpret_cast<MonsoonChangeAlleyV2*>(curr);
+                } else if (curr->model == modelContainment) {
+                    // Containment (the CA sibling): first-found = the claimed mutator. The sync()
+                    // fire block drives ONLY the claimed instance (the owner-guard precedent — a
+                    // second Containment in the chain stays a reader).
+                    if (!cachedContainment)
+                        cachedContainment = reinterpret_cast<MonsoonContainment*>(curr);
                 // } else if (curr->model == modelMonsoonSandsExpander) {
                 //     if (!cachedDnaExpander) cachedDnaExpander = reinterpret_cast<MonsoonSandsExpander*>(curr);
                 //     dnaExpanderCount++;

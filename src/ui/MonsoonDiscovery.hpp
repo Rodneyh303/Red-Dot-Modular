@@ -36,6 +36,10 @@ inline bool isSuiteChainModel(const rack::Model* m) {
         || m == modelMonsoonRafflesExpander
         || m == modelMonsoonJunctionExpander
         || m == modelMonsoonChangeAlleyV2
+        || m == modelContainment          // CA sibling (containment DAG; claimed via the manager's
+                                          //   cachedContainment) — hop-through, same fix class as
+                                          //   ChangiT2/Intertropical: mid-chain it must NOT act as
+                                          //   a foreign boundary and un-bind everything past it
         || m == modelMonsoonStraitsExpander
         || m == modelStraitsBase          // lane-extension base (replaces Straits in the new model)
         || m == modelStraitsLaneQMIX     // lane expander (base-spawned, hidden, hop-through)
