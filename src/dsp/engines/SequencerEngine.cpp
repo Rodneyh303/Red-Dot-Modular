@@ -1113,8 +1113,22 @@ void SequencerEngine::resetActivatedPolyVoices_() {
     prevNumPolyVoices_ = numPolyVoices;
 }
 
+// R-2 seam (RHYTHM_DECISION_MANAGER_PLAN §2.3): the mono voice as PARENT. The step's decision
+// + note length (lastStepResult — written by executeStep, read-only from here on), the live
+// mono gate (gs.gateHeld), and the pre-tick captures wasHeldMono/hadMonoTail (the "still
+// sounding" read the executors made before ticking). The byte-identity gate for every
+// Stage-R commit: test_rhythm_decision_differential.
+ParentView SequencerEngine::monoParentView() const {
+    return ParentView{ lastStepResult.decision, lastStepResult.nvIdx,
+                       gs.gateHeld, wasHeldMono, hadMonoTail };
+}
+
 void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& input, bool wasHeldPoly, bool hadPolyTail) {
     PolyVoice& v = voices[voiceIdx];
+    // R-2: the parent view, captured once. Nothing in this function or the helpers it calls
+    // writes mono state (the pre-R-2 code read the same four scalars live; the capture is
+    // proven equivalent by the differential goldens).
+    const ParentView monoParent = monoParentView();
     // Stage 2a: refresh VARIATION cell before nvIdxForVoice reads it (nvIdxForVoice
     // reads the uniform via pe.warpRow at the voice's variation step to pick the note length).
     refreshPolyRandomCell(voiceIdx, LaneId{PL_VARIATION}, getVariationStepForVoice(voiceIdx) & 0x0F);
@@ -1125,8 +1139,8 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
 
     // Start Detection: A new note/retrigger happens on NewNote, or on 
     // Legato shifts from a dead state (low gate and no tail).
-    bool monoGateStart = (lastStepResult.decision == MonoDecision::NewNote) || 
-                         ((lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) && !wasHeldMono && !hadMonoTail);
+    bool monoGateStart = (monoParent.decision == MonoDecision::NewNote) || 
+                         ((monoParent.decision == MonoDecision::Legato || monoParent.decision == MonoDecision::LegatoMax) && !monoParent.wasHeld && !monoParent.hadTail);
 
     if (monoGateStart) {
         // This is the decision point for this entire mono gate.
@@ -1213,7 +1227,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         int accIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_ACCENT}), polyLenE(voiceIdx, LaneId{PL_ACCENT}), polyOffE(voiceIdx, LaneId{PL_ACCENT}), polyRotE(voiceIdx, LaneId{PL_ACCENT}));
         refreshPolyRandomCell(voiceIdx, LaneId{PL_ACCENT}, accIdx);
         v.accented = (pe.warpRow(voiceIdx, LaneId{PL_ACCENT})[accIdx] < v.accentProb);
-        if (lastStepResult.decision == MonoDecision::NewNote)
+        if (monoParent.decision == MonoDecision::NewNote)
             v.gs.triggerNote(pitchV, sem, nvV, isQuant);
         else if (wasHeldPoly || hadPolyTail)
             // Mono is slurring/tying and THIS poly voice had a held predecessor → real slide.
@@ -1240,10 +1254,10 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         {
             // This voice played at the chain onset → it is part of the chain for its life.
             v.participating = true;
-            bool leStartingV = (lastStepResult.decision == MonoDecision::NewNote)
-                            || (lastStepResult.decision == MonoDecision::Legato)
-                            || (lastStepResult.decision == MonoDecision::LegatoMax)
-                            || (lastStepResult.decision == MonoDecision::Tie);
+            bool leStartingV = (monoParent.decision == MonoDecision::NewNote)
+                            || (monoParent.decision == MonoDecision::Legato)
+                            || (monoParent.decision == MonoDecision::LegatoMax)
+                            || (monoParent.decision == MonoDecision::Tie);
             int legIdx = getLegatoStepForVoice(voiceIdx);
             refreshPolyRandomCell(voiceIdx, LaneId{PL_LEGATO}, legIdx);
             float r_polyLegato = pe.warpRow(voiceIdx, LaneId{PL_LEGATO})[legIdx];
@@ -1267,7 +1281,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
     }
 
     // If mono is Sustaining or Resting, poly must stick to its current role.
-    if (lastStepResult.decision == MonoDecision::Rest) {
+    if (monoParent.decision == MonoDecision::Rest) {
         v.gs.gateHeld = false;
         v.gsStep.gateHeld = false;   // STEP: mirror mono rest
         v.gs.slurMember = false;     // SLEG: mono rested
@@ -1275,9 +1289,9 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
     } else {
         // A LANDING = mono connects at this edge (Legato / LegatoMax / Tie). MidNote is a
         // mid-hold, not an onset edge, so it never consumes or rolls a slur.
-        const bool monoConnectLanding = (lastStepResult.decision == MonoDecision::Legato)
-                                      || (lastStepResult.decision == MonoDecision::LegatoMax)
-                                      || (lastStepResult.decision == MonoDecision::Tie);
+        const bool monoConnectLanding = (monoParent.decision == MonoDecision::Legato)
+                                      || (monoParent.decision == MonoDecision::LegatoMax)
+                                      || (monoParent.decision == MonoDecision::Tie);
 
         if (monoConnectLanding) {
             // ── Rule 2 CONSUME (per-voice landing) ────────────────────────────────────────
@@ -1293,7 +1307,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                 v.gsStep.gateHeld = false; v.gs.slurMember = false;   // STEP/SLEG mirror
             } else {
                 const bool prevSlur = v.gs.slurForward;
-                const bool isTie    = (lastStepResult.decision == MonoDecision::Tie);
+                const bool isTie    = (monoParent.decision == MonoDecision::Tie);
                 // Mono invariant: "a slur can only connect to a still-sounding predecessor."
                 // A participating voice whose short note already closed via the Stage-2 clamp
                 // (gatePulseRemain hit 0 mid-step) is NOT still sounding at this edge, so it must
@@ -1351,8 +1365,8 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         } else {
             // ── MidNote hold path (mono is sustaining mid-note, not at a landing edge) ─────
             // Poly follows mono gate presence strictly IF it was already active ("in").
-            if (gs.gateHeld && wasHeldPoly) {
-                if (lastStepResult.decision == MonoDecision::Legato || lastStepResult.decision == MonoDecision::LegatoMax) {
+            if (monoParent.gateHeld && wasHeldPoly) {
+                if (monoParent.decision == MonoDecision::Legato || monoParent.decision == MonoDecision::LegatoMax) {
                     // Mono slid to a NEW pitch (a real pitch move) → poly draws its OWN new pitch
                     // (its own melody/octave LOR) and slides to it. Poly tracks mono's articulation
                     // shape, never mono's actual notes.
@@ -1364,7 +1378,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                     float pitchV = pe.genPitchLive(sem, input, pe.warpRow(voiceIdx, LaneId{PL_MELODY})[melIdx], pe.warpRow(voiceIdx, LaneId{PL_OCTAVE})[octIdx]);
                     v.gs.slideNote(pitchV, sem, nvV, wasHeldPoly);
                     v.gsStep.triggerNote(pitchV, sem, nvV); v.gs.slurMember = true;  // STEP/SLEG
-                } else if (lastStepResult.decision == MonoDecision::Tie) {
+                } else if (monoParent.decision == MonoDecision::Tie) {
                     // Mono held the same pitch (tie) → poly holds its own current pitch, extends hold.
                     v.gs.extendHold(v.gs.lastSemitone, nvV);
                     v.gsStep.triggerNote(v.gs.currentPitchV, v.gs.lastSemitone, nvV); v.gs.slurMember = true;  // STEP/SLEG
@@ -1497,14 +1511,15 @@ int SequencerEngine::getLegatoStepForVoice(VoiceSlot bank) const {
 }
 
 int SequencerEngine::nvIdxForVoice(VoiceSlot bank, const PatternInput& input) const {
-    if (bank.v < 1 || bank.v >= 16) return lastStepResult.nvIdx;
+    if (bank.v < 1 || bank.v >= 16) return monoParentView().nvIdx;
     // The probability array stays MONO (one shared shape); only the reading position is per-voice.
     const int idx = getVariationStepForVoice(bank) & 0x0F;
     const float r = pe.warpRow(bank, LaneId{PL_VARIATION})[idx];
     const int nv  = const_cast<SequencerEngine*>(this)->getNoteLenIdx(lastNoteVal_, input, r);
-    // CLAMP to the mono event grid: a voice may release early, never hold past mono's next note.
-    // NOTE_VALUES is ordered slowest→fastest, so max() picks the SHORTER of the two.
-    return (nv > lastStepResult.nvIdx) ? nv : lastStepResult.nvIdx;
+    // CLAMP to the parent event grid: a voice may release early, never hold past the parent's
+    // next note. NOTE_VALUES is ordered slowest→fastest, so max() picks the SHORTER of the two.
+    const int parentNv = monoParentView().nvIdx;
+    return (nv > parentNv) ? nv : parentNv;
 }
 
 int SequencerEngine::getRhythmStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_RHYTHM],    lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT)); }

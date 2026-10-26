@@ -1,4 +1,5 @@
 #pragma once
+#include "RhythmDecisionCore.hpp"   // RDM: MonoDecision + ParentView — the R-2 seam (plan §2)
 #include "PatternEngine.hpp"
 #include "../SpreadInterp.hpp"   // effectiveProbability's spread term (the a2ccb842 one-accessor design it subsumes was deleted by UI_TO_RESOLVER step 2)
 #include "../gates/GateState.hpp"
@@ -20,16 +21,9 @@
 
 // ── Poly voice architecture ────────────────────────────────────────────────────
 
-// What mono decided on the most recent step edge.
-// Poly voices read this to determine their own behaviour.
-enum class MonoDecision {
-    MidNote,    // note still held from a previous step — poly just ticks, no new draw
-    Rest,       // mono rested — poly cannot initiate
-    Tie,        // mono extended hold (same pitch) — poly voices hold their own notes
-    Legato,     // mono slid to a new pitch (no retrigger) — poly may draw new notes
-    LegatoMax,  // legatoProb >= 0.999 — poly may draw, no retrigger
-    NewNote     // mono retriggered — poly may retrigger independently
-};
+// (MonoDecision MOVED to RhythmDecisionCore.hpp — R-2 of RHYTHM_DECISION_MANAGER_PLAN:
+//  the decision vocabulary is RDM vocabulary, carried by ParentView. Included above, so
+//  every existing user sees the type unchanged.)
 
 // Returned by executeStep and the mode executors.
 struct StepResult {
@@ -951,4 +945,11 @@ struct SequencerEngine {
     // STRONG types (CC_PROMPT_STRONG_TYPES): voiceIdx is a MINTED VoiceSlot.
     void executePolyVoice(VoiceSlot voiceIdx, const PatternInput& input, bool wasHeld, bool hadTail);
     void executePolyVoices(const PatternInput& input);
+
+    // R-2 (RHYTHM_DECISION_MANAGER_PLAN §2.3): the named parent read — the four mono scalars
+    // the poly cascade consumed as loose state (lastStepResult.decision/nvIdx, gs.gateHeld,
+    // wasHeldMono/hadMonoTail) assembled as ONE ParentView. executePolyVoice + nvIdxForVoice
+    // read mono ONLY through this. Stage-F seam: re-point THIS producer at the containment
+    // graph (PatternEngine::containmentParents) and the same cascade reads any forest.
+    ParentView monoParentView() const;
 };
