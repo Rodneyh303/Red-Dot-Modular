@@ -191,3 +191,88 @@ neither new verb occupies a trigger slot — their trigger wiring parks with the
 panel work. Reduction keeps its EXPLICIT-only rule: the strip deletes deliberate shortcut
 offers (C1/C4 read direct edges), so it runs only when the user pulls the trigger, and the
 EXPAND trajectory ring makes that trigger reversible.
+
+### RANDOM uncloses the gesture rows (ruled 2026-10-27, Rodney) — the seed verb becomes row 7
+
+Rodney's ruling at seed-verb pull-forward: "Random needs to unclose the 6 gesture rows. It
+needs to be on panel with jack and button." The closure recorded above was an anti-SYNONYMY
+ruling — no third entry point over an operation the rows already span. RANDOM is not
+synonymy: it is a genuinely new decision class (introduce randomness into the graph), so the
+vocabulary accepts it. The closure stands against synonymy; it does not stand against new
+decisions.
+
+**The row: V_RANDOM = 6, N_VERBS 6 -> 7.** Same shape as the six: trig jack (left flank) +
+fire button + pending lamp, armed through the single choke point (armVerb — the CA latchRow
+rule), stamped on the unarmed->armed edge, applied at the phrase boundary in stamp order,
+committed (pre-push held state, post-push result), consumed. Row order stays lockstep with
+the panel flank (gen_containment.py + MonsoonContainment.hpp + ContainmentPending.hpp — the
+three-file change). ZERO param slots preserved (the DAW_PARAM_AUDIT / ChangeAlleyV2 rule):
+draw configuration lives in context menus, like ROTATE's step.
+
+**Two variations (Rodney), and they split cleanly along CA's own state fork**
+(CA_DICE_COUNTER_MODEL.md, state-dependent vs stateless/absolute):
+- OUTRIGHT NEW FOREST — the STATELESS/ABSOLUTE model: the draw specifies the graph
+  absolutely, the graph IS f(counter, key), so reverse-draw IS an exact state restore
+  (at(N-1) re-derives the previous forest bit-for-bit). This is the CA doc's own "when
+  stateless would be right" case: a teleport to fresh configs, counter-alone
+  reproducibility, reverse-as-undo for free. Proven core already in the tree: the F-5
+  generator recipe (Fisher-Yates topological permutation of the 16 slots, parents only from
+  earlier positions — acyclic by construction — density plus lone-parent connectivity
+  boost), lifted from the test harness into the module layer with the stream position in
+  place of the test seed.
+- MODIFY FOREST (state-dependent scatter) — "more like change alley scatter which randomly
+  modified pins state dependent." The STATE-DEPENDENT model exactly: the draw transforms
+  the CURRENT graph (re-pin edges dependent on where the pins are), path-dependent,
+  successive scatters evolve a trajectory, composes with the other six rows. Wanted
+  CONDITIONALLY ("if a sensible method available") — the sensible method exists and is the
+  CA scatter shape applied to edges: per-voice draw under wouldCycle gating (add/remove/
+  re-source parent bits), validity preserved by the QUERY layer the pin plane already
+  trusts. The exact method (which bits, the anti-knob budget — rate knobs/filters/
+  tie-breaks stay NO per the collapseAllOnto precedent) parks with the wiring work; the
+  requirement is recorded now.
+
+**The four either-way requirements (Rodney), each grounded in the CA model:**
+1. OWN PHILox DRAW — a domain-separated Philox stream of its own (fixed key encodes the
+   domain, the CA dice-stream rule), counter = signed addressable POSITION in the stream
+   (rng.at(position)), NOT seed-keying (the CA doc's "before" anti-pattern: a counter used
+   as a key jumps to a different sequence per count instead of stepping the draw).
+2. REVERSE-DRAW ACTION like change alley — counter-- -> at(N-1) is EXACTLY the previous
+   draw; a generative scrub (apply the previous randomisation to the current graph), NOT an
+   undo. For OUTRIGHT the scrub is also the exact state restore (stateless); for MODIFY it
+   is not (state-dependent) — which is exactly why requirement 3 exists.
+3. INCLUDED IN THE GLOBAL REVERSE — "like change alley, philox key reverse is not enough to
+   fully reverse a state dependent modification": draw-reversible != state-restorable. The
+   global reverse (the CA true-reverse proposal; LOR_BACKLOG §5's transport-level direction
+   — advancePlayhead(dir) + the draw-index rewind, named MIRROR if built) must replay
+   containment's committed-state trajectory backward. Containment already owns the
+   ingredient: ContainmentTrajectory (65,536 committed phrase-boundary states, sparse via
+   pushIfChanged, stepBack, verb-agnostic — built true-reverse-shaped on purpose; the
+   EXPAND note cites CA's true-reverse as its precedent). RANDOM commits enter that
+   trajectory like any row, so a state-dependent MODIFY steps back through the trajectory,
+   not through the counter.
+4. UNDO PARITY — "if change alley supports undo so should containment." ALREADY LANDED at
+   step 4: ContainmentModuleCore publishes before/after snapshots into the 16-slot SPSC
+   undo ring at every phrase-boundary commit; the widget drains them into Rack history
+   (ContainmentTransformUndoAction — one commit = one undo step, no-op batches publish
+   nothing, drop-if-full the CA rule); pin edits ride StoreEditAction. A V_RANDOM row
+   inherits all of it BY CONSTRUCTION — its commit is just another verb batch through
+   applyAll. Nothing new to build for this requirement; the parity Rodney asked for is the
+   step-4 work already in the tree.
+
+**Engine surface: ZERO.** Both variations write the graph through the same module-layer
+choke point the verbs use; the engine re-derives (materializeForest) at the next graph
+change; the transport (containmentParents staged every block) is the producer interface.
+The Philox stream is module-layer — the engine's own draws are untouched (domain
+separation is the point).
+
+**Still parked with the row:**
+- The three-file wiring itself (V_RANDOM = 6: panel row + module param/input/lamp + pending
+  dispatch + the two pure verbs) — parked with the containment panel work, alongside the
+  COLLAPSE-ALL-ONTO / DECLUTTER trigger rows.
+- MODIFY's exact scatter method and its parameter budget (density only, as in the F-5
+  recipe; no shape presets, no per-edge kinds — the graph has no kinds).
+- The reverse-draw affordance shape (a back jack like CA's, a context-menu action, or a
+  modifier — CA's back-jack is the precedent).
+- The global reverse itself (requirement 3) is cross-module work tracked by
+  CA_DICE_COUNTER_MODEL.md and LOR_BACKLOG.md; containment's obligation is recorded here so
+  the row lands reverse-ready — its trajectory is the data the global reverse replays.
