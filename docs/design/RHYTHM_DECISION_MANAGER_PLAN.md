@@ -342,7 +342,42 @@ all three platforms before the next lands — the standing discipline.
 > materialized drive. Full battery 87/87, UNIFORMITY_STRICT=1 green, -Wall -Wextra clean,
 > anchor audit green. Next: F-3 (the mono drive inside the algebra, D7).
 
-### 3.6 D7 — the mono voice inside the forest (NEW, needs a ruling)
+> **STATUS (2026-10-27): F-3 EXECUTED** — the MONO DRIVE INSIDE THE ALGEBRA (D7). The
+> materialization now includes slot 0: `materializeForest` runs Kahn over ALL 16 voices (a
+> poly voice's bit 0 is a REAL dependency — V1 orders; V1's own self-bit dropped
+> defensively), smallest-index-first, so a PARENTLESS V1 (the star, the empty graph) is
+> always picked FIRST and the poly visit order is untouched — the star's order is 0,1,…,15
+> with the poly sequence 1..15 = the pre-F-3 slot order, the byte-identity anchor. The NSDMI
+> default order is {0..15} (pre-materialization reads behave as the empty graph). The
+> per-sample drive's C5 loop gains the V1 branch: `gs.gateHeld = gateOpen ∧ ∧ containers`
+> (the materialized `parentSlot[0]`, live poly gates; an INERT container — beyond
+> numPolyVoices, no poly machinery drives it — cannot bound the root and is skipped,
+> symmetric with the visit's own inert-voice guard), the SAME zero-on-close the poly drive
+> applies (the Lantern-read state matches the output; a container cut re-strikes at the next
+> permission edge — the poly-voice treatment, no privilege), and `monoP` is RE-CAPTURED after
+> the bounded write so V1's poly children read the BOUNDED envelope — E(v) = Own(v) ∧ ∧ E(u)
+> closed transitively through the root. `executePolyVoices` skips slot 0 (V1's cascade is
+> executeStep, which runs before the visit). DELIBERATE BOUNDARIES (documented, revisit at
+> F-4/F-5 if the property suite demands): executeStep stays §8-unchanged — containment
+> bounds where V1 SOUNDS (the per-sample envelope), not when its own chain advances (the
+> edge machinery is its own, the same shape as a free voice's); the STEP mirror
+> (`gsStep.gateHeld`) stays own-shaped — the mirror carries V1's own articulation events,
+> while C5 is the envelope mechanism. In CLOCK mode there is no per-sample drive, so a
+> contained V1 is bounded only through the harness-mirrored cascade semantics — the F-5
+> property suite marches V1-as-leaf in every mode the differential covers. NEW suites
+> (test_forest_rhythm, gate mode, full IMPL-2b mirror incl. the D7 V1 branch): G1 (V1 in V2
+> — the root bounded, V1 still plays, V2 free), G2 (the INVERT star: V1 under ALL 15 — the
+> full intersection holds, V1 fires in the all-open coincidence, V1-as-leaf is FIRST-CLASS),
+> G3 (V1 MID-CHAIN V2→V1→V3 — transitive through the root at the drive level), each with a
+> byte-determinism double-run. Core suite: the materialization table re-pinned (star/empty =
+> 0..15; chain = {0,3,1,2,…}; diamond = {0,3,1,2,4,…}) + the V1-as-leaf order ({1..15,0}) and
+> the V1-mid-chain order ({1,0,2,3,…}) rows — 991 → 993. Differential harness mirrors updated
+> to the exact shipped shape (the D7 branch is a no-op on the injected star). GOLDENS HOLD
+> EXACTLY (0xa843e2ff14883ab9 / 0x3169e28ca3cc206a / 0x166132accd092fce) — parentless-V1
+> bit-identity PROVEN on the re-point. Full battery 87/87, UNIFORMITY_STRICT=1 green,
+> -Wall -Wextra clean, anchor audit green. Next: F-4 (ghost hosting D5 + VAR/LEG scope D6).
+
+### 3.6 D7 — the mono voice inside the forest (RULED + LANDED at F-3)
 
 The reference doc's D1-D6 assumed the forest contains voices 2..16. It need not: the pin
 plane allows pinning voice 1 UNDER another voice, and INVERT (a proven-safe transform)

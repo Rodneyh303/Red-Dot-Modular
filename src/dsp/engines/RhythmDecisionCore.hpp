@@ -14,12 +14,14 @@
 // Migration ladder (plan §2.3): Stage R LANDED (7891599f → f2c416e3 → cf68f620 → fb094dbb →
 // c5e2c904) — the engine is a forest machine. Stage F (plan §3): F-1 LANDED (2148dec3 — the
 // source re-point; parentsOf(GRAPH) reads the staged containmentParents; the empty mask is a
-// FREE voice, the self-rooted tuple E(v) = Own(v)) → F-2 (this commit) the MATERIALIZED
-// forest (D8: resolved at the graph-change boundary — topological visit order + per-voice
-// container lists; the per-sample drive reads plain state, no per-sample work) → F-3 the
-// mono drive inside the algebra → F-4 ghost/D5 + VAR-LEG scope → F-5 the property suite +
-// compat pin. Star graphs stay byte-identity-gated on the marches at every step; the
-// free-voice and poly-container semantics are spec'd in test_forest_rhythm.
+// FREE voice, the self-rooted tuple E(v) = Own(v)) → F-2 LANDED (f56a2ab6 — the MATERIALIZED
+// forest, D8: resolved at the graph-change boundary — topological visit order + per-voice
+// container lists; the per-sample drive reads plain state, no per-sample work) → F-3 (this
+// commit) the MONO DRIVE INSIDE THE ALGEBRA (D7 RULED: "V1 inside the algebra, no privilege"
+// — the materialized order and the drive's C5 loop include slot 0; a parentless V1 is
+// bit-identical to the pre-F-3 drive) → F-4 ghost/D5 + VAR-LEG scope → F-5 the property
+// suite + compat pin. Star graphs stay byte-identity-gated on the marches at every step;
+// the free-voice and poly-container semantics are spec'd in test_forest_rhythm.
 
 #include <cstdint>
 #include <algorithm>
@@ -185,22 +187,28 @@ struct RhythmDecisionCore {
     // author pe.containmentParents directly, without the manager). The per-sample path NEVER
     // calls it — that is the ruling.
     //
-    //   topoOrder[]/topoCount      — the poly voices (storage 1..15) in topological order,
+    //   topoOrder[]/topoCount      — ALL 16 voices (storage 0..15) in topological order,
     //                                smallest-index-first among ready nodes (deterministic;
-    //                                the STAR resolves to 1,2,…,15 = slot order = today's
-    //                                visit order — the byte-identity anchor). V1 (storage 0)
-    //                                never visits: its cascade is executeStep (F-3 brings it
-    //                                inside the algebra).
+    //                                the STAR resolves to 0,1,…,15 — the poly visit skips
+    //                                slot 0, so the poly order stays 1..15 = slot order =
+    //                                today's visit order, the byte-identity anchor). F-3/D7:
+    //                                V1 (storage 0) IS in the order — the per-sample DRIVE
+    //                                needs its position (a poly container's gate must be
+    //                                complete before V1's AND reads it, and V1's gate
+    //                                complete before its poly children read the mono view);
+    //                                the EDGE visit (executePolyVoices) skips slot 0 — V1's
+    //                                cascade is executeStep, which runs before the visit.
     //   parentCount[]/parentSlot[] — the materialized container list per voice (storage slots
-    //                                0..15; slot 0 = V1 the mono voice). ZERO parents = a
-    //                                FREE voice (its envelope is its own).
+    //                                0..15; slot 0 = V1 the mono voice — F-3: its list is
+    //                                REAL, the drive ANDs it into the mono gate). ZERO
+    //                                parents = a FREE voice (its envelope is its own).
     //   materializeGeneration      — bumped per rebuild (test observability of the cache).
     //
     // A cycle cannot occur (the pin plane rejects cycles; invariants CI-marched on 600+ seeds)
     // — but defensively, any unplaceable voice is appended in slot order so the visit is TOTAL
     // and the engine can never silently skip a voice.
-    int      topoOrder[16] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0 };
-    int      topoCount     = 15;
+    int      topoOrder[16] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+    int      topoCount     = 16;
     int      parentCount[16] = {};
     uint8_t  parentSlot[16][16] = {};
     uint32_t materializeGeneration = 0;
@@ -208,28 +216,36 @@ struct RhythmDecisionCore {
     bool     materializedValid_ = false;
 
     void materializeForest() {
-        // Kahn's algorithm, smallest-index-first. Parents among POLY voices only (bit 0 = V1
-        // dropped — the mono voice is a ROOT SOURCE: its cascade runs outside this visit).
+        // Kahn's algorithm, smallest-index-first, over ALL 16 voices — V1 INCLUDED (F-3, D7:
+        // the mono voice is inside the algebra; the DRIVE needs its position — containers
+        // complete before V1's AND, V1 complete before its poly children read the mono view).
+        // Bit 0 of a POLY voice's word is a REAL dependency now (V1 orders). Bit v of voice v's
+        // OWN word is dropped defensively (a self-loop is rejected by the pin plane; the drop
+        // keeps the visit total even against a hostile hand-authored word). The smallest-index
+        // scan keeps the byte-identity anchor: a PARENTLESS V1 (the star, the empty graph) is
+        // always picked FIRST (index 0, indeg 0) and the poly voices' relative order is
+        // untouched — the star's order is 0,1,…,15 and the poly visit (skipping 0) is exactly
+        // the pre-F-3 slot order.
         int indeg[16] = {};
-        for (int v = 1; v < 16; ++v) {
-            const uint16_t polyParents = parentsOf(v) & uint16_t(~1u);
+        for (int v = 0; v < 16; ++v) {
+            const uint16_t pars = parentsOf(v) & uint16_t(~(1u << v));   // drop self defensively
             int n = 0;
-            for (int u = 1; u < 16; ++u) if (polyParents & (1u << u)) ++n;
+            for (int u = 0; u < 16; ++u) if (pars & (1u << u)) ++n;
             indeg[v] = n;
         }
         bool placed[16] = {};
         topoCount = 0;
         for (;;) {
             int pick = -1;
-            for (int v = 1; v < 16; ++v)
+            for (int v = 0; v < 16; ++v)
                 if (!placed[v] && indeg[v] == 0) { pick = v; break; }   // smallest index first
             if (pick < 0) break;
             placed[pick] = true;
             topoOrder[topoCount++] = pick;
-            for (int c = 1; c < 16; ++c)
+            for (int c = 0; c < 16; ++c)
                 if (!placed[c] && (parentsOf(c) & (1u << pick))) --indeg[c];
         }
-        for (int v = 1; v < 16; ++v)                 // defensive cycle fallback: total order
+        for (int v = 0; v < 16; ++v)                 // defensive cycle fallback: total order
             if (!placed[v]) topoOrder[topoCount++] = v;
         for (int v = 0; v < 16; ++v) {               // the materialized container lists
             int n = 0;

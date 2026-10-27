@@ -375,12 +375,13 @@ int main() {
     // ── F-2: the MATERIALIZED forest (D8) — topo order + container lists, cache-on-change ──
     SUITE("F-2 materializeForest — the star, chains, diamonds, staleness, cycle fallback");
     {
-        TEST("the STAR materializes to slot order 1..15 (the byte-identity anchor) + single-V1 lists", {
+        TEST("the STAR materializes to 0,1..15 — V1 first, polys in slot order (the byte-identity anchor)", {
             RhythmDecisionCore core;   // LEGACY_STAR source
             core.materializeIfStale();
-            EXPECT_EQ(core.topoCount, 15);
-            for (int k = 0; k < 15; ++k) EXPECT_EQ(core.topoOrder[k], k + 1);
-            EXPECT_EQ(core.parentCount[0], 0);                       // V1: no containers
+            EXPECT_EQ(core.topoCount, 16);
+            for (int k = 0; k < 16; ++k) EXPECT_EQ(core.topoOrder[k], k);   // F-3/D7: V1 (slot 0) first;
+                                                                            // the poly order 1..15 is UNCHANGED
+            EXPECT_EQ(core.parentCount[0], 0);                       // V1: no containers (the root)
             for (int v = 1; v < 16; ++v) {
                 EXPECT_EQ(core.parentCount[v], 1);
                 EXPECT_EQ((int)core.parentSlot[v][0], 0);            // the mono voice, slot 0
@@ -395,9 +396,39 @@ int main() {
             core.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
             core.graphWords = zeros;
             core.materializeIfStale();
-            EXPECT_EQ(core.topoCount, 15);
-            for (int k = 0; k < 15; ++k) EXPECT_EQ(core.topoOrder[k], k + 1);   // smallest-first = slot order
+            EXPECT_EQ(core.topoCount, 16);
+            for (int k = 0; k < 16; ++k) EXPECT_EQ(core.topoOrder[k], k);   // smallest-first = slot order
             for (int v = 0; v < 16; ++v) EXPECT_EQ(core.parentCount[v], 0);     // FREE everywhere (D2)
+        });
+        TEST("F-3/D7: V1 AS LEAF (the INVERT star) visits LAST — {1..15, then 0}", {
+            uint16_t words[16] = {};
+            words[0] = 0xFFFE;   // every poly voice contains V1 (full edge reversal of the star)
+            RhythmDecisionCore core;
+            core.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
+            core.graphWords = words;
+            core.materializeIfStale();
+            EXPECT_EQ(core.topoCount, 16);
+            for (int k = 0; k < 15; ++k) EXPECT_EQ(core.topoOrder[k], k + 1);   // the free containers first
+            EXPECT_EQ(core.topoOrder[15], 0);   // V1 last — its 15 containers complete before its AND
+            EXPECT_EQ(core.parentCount[0], 15);
+            EXPECT_EQ((int)core.parentSlot[0][0], 1);                    // ascending slot order, verbatim
+            EXPECT_EQ((int)core.parentSlot[0][14], 15);
+            for (int v = 1; v < 16; ++v) EXPECT_EQ(core.parentCount[v], 0);      // the polys are free
+        });
+        TEST("F-3/D7: V1 MID-CHAIN (V2 -> V1 -> V3) orders the root between its container and child", {
+            uint16_t words[16] = {};
+            words[0] = 0x0002;   // V1 in {V2}
+            words[2] = 0x0001;   // V3 in {V1}
+            RhythmDecisionCore core;
+            core.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
+            core.graphWords = words;
+            core.materializeIfStale();
+            EXPECT_EQ(core.topoCount, 16);
+            EXPECT_EQ(core.topoOrder[0], 1);   // V2 (the root's container)
+            EXPECT_EQ(core.topoOrder[1], 0);   // V1 — inside the algebra, mid-order
+            EXPECT_EQ(core.topoOrder[2], 2);   // V3 (the root's child)
+            EXPECT_EQ(core.parentCount[0], 1); EXPECT_EQ((int)core.parentSlot[0][0], 1);
+            EXPECT_EQ(core.parentCount[2], 1); EXPECT_EQ((int)core.parentSlot[2][0], 0);
         });
         TEST("a CHAIN V3->V2->V4 visits containers before children (topo order)", {
             uint16_t words[16] = {};
@@ -407,10 +438,11 @@ int main() {
             core.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
             core.graphWords = words;
             core.materializeIfStale();
-            EXPECT_EQ(core.topoCount, 15);
-            EXPECT_EQ(core.topoOrder[0], 3);   // V4 first (no containers)
-            EXPECT_EQ(core.topoOrder[1], 1);   // V2 (its container V4 placed)
-            EXPECT_EQ(core.topoOrder[2], 2);   // V3 (its container V2 placed)
+            EXPECT_EQ(core.topoCount, 16);
+            EXPECT_EQ(core.topoOrder[0], 0);   // V1 (no containers — smallest index first)
+            EXPECT_EQ(core.topoOrder[1], 3);   // V4 first among the polys (no containers)
+            EXPECT_EQ(core.topoOrder[2], 1);   // V2 (its container V4 placed)
+            EXPECT_EQ(core.topoOrder[3], 2);   // V3 (its container V2 placed)
             EXPECT_EQ(core.parentCount[2], 1); EXPECT_EQ((int)core.parentSlot[2][0], 1);
             EXPECT_EQ(core.parentCount[1], 1); EXPECT_EQ((int)core.parentSlot[1][0], 3);
         });
@@ -423,10 +455,11 @@ int main() {
             core.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
             core.graphWords = words;
             core.materializeIfStale();
-            EXPECT_EQ(core.topoOrder[0], 3);   // V4 (the shared container) first
-            EXPECT_EQ(core.topoOrder[1], 1);   // V2
-            EXPECT_EQ(core.topoOrder[2], 2);   // V3
-            EXPECT_EQ(core.topoOrder[3], 4);   // V5 last among the four (both containers placed)
+            EXPECT_EQ(core.topoOrder[0], 0);   // V1 (parentless)
+            EXPECT_EQ(core.topoOrder[1], 3);   // V4 (the shared container) first among the polys
+            EXPECT_EQ(core.topoOrder[2], 1);   // V2
+            EXPECT_EQ(core.topoOrder[3], 2);   // V3
+            EXPECT_EQ(core.topoOrder[4], 4);   // V5 last among the five (both containers placed)
             EXPECT_EQ(core.parentCount[4], 2);
             EXPECT_EQ((int)core.parentSlot[4][0], 1); EXPECT_EQ((int)core.parentSlot[4][1], 2);
         });
@@ -464,13 +497,13 @@ int main() {
             core.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
             core.graphWords = words;
             core.materializeIfStale();
-            EXPECT_EQ(core.topoCount, 15);                       // appended in slot order
+            EXPECT_EQ(core.topoCount, 16);                       // appended in slot order
             bool seen[16] = {};
             for (int k = 0; k < core.topoCount; ++k) {
                 EXPECT(!seen[core.topoOrder[k]]);                // each voice exactly once
                 seen[core.topoOrder[k]] = true;
             }
-            for (int v = 1; v < 16; ++v) EXPECT(seen[v]);
+            for (int v = 0; v < 16; ++v) EXPECT(seen[v]);        // V1 included (F-3: the visit is total over 0..15)
         });
     }
 

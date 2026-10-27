@@ -1475,6 +1475,12 @@ void SequencerEngine::executePolyVoices(const PatternInput& input) {
     rdm.materializeIfStale();
     for (int k = 0; k < rdm.topoCount; ++k) {
         const int i = rdm.topoOrder[k];
+        // F-3 (D7): the materialized order now includes slot 0 — the mono voice. Its cascade is
+        // executeStep, which already ran (the mode executors call it before this visit); the
+        // EDGE visit stays poly-only. V1's position in the order is the per-sample DRIVE's
+        // concern (Monsoon.cpp: a poly container completes before V1's AND, V1 before its poly
+        // children read the mono view).
+        if (i == 0) continue;
         if (i > numPolyVoices) continue;   // voices beyond the active count are not executed
         // Use the state from BEFORE the tick to decide if we were active.
         // This ensures that if a note ended exactly at the boundary, 

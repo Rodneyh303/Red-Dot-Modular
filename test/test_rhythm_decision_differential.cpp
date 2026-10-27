@@ -225,12 +225,29 @@ static void marchModeB(int seed, Capture& cap, int& c2n, int& envn) {
             eng.gsStep.holdRemain = 0.f;   eng.gsStep.gatePulseRemain = -1;
         }
         prevMainHigh = main.high;
-        // The C5 FOREST AND + closed-gate zeroing (the F-2 drive, Monsoon.cpp — D8): the
-        // MATERIALIZED compose, visited in the cached topological order (the star's order IS
-        // slot order — the goldens' anchor). Free voices (no containers) are skipped: their
-        // envelope is their own. gateOpen is the mono envelope cell (== envelopeAnd(monoP)).
+        // The C5 FOREST AND + closed-gate zeroing (the F-3 drive, Monsoon.cpp — D8 + D7): the
+        // MATERIALIZED compose, visited in the cached topological order. F-3/D7: the order now
+        // INCLUDES slot 0 — the mono voice's own branch (parentCount[0] == 0 on the injected
+        // star: the mono write above IS the envelope, the branch exits before touching
+        // anything — the goldens pin that bit-identity). Free voices (no containers) are
+        // skipped: their envelope is their own. gateOpen is the mono envelope cell.
         for (int k = 0; k < eng.rdm.topoCount; ++k) {
             const int i = eng.rdm.topoOrder[k];
+            if (i == 0) {   // D7 mirror: the mono voice inside the algebra (a no-op on the star)
+                if (eng.rdm.parentCount[0] == 0) continue;
+                bool monoOpen = gateOpen;
+                for (int p = 0; p < eng.rdm.parentCount[0]; ++p) {
+                    const int u = eng.rdm.parentSlot[0][p];
+                    if (u > eng.numPolyVoices) continue;
+                    monoOpen = monoOpen && eng.voices[dotModular::VoiceResolver::slot(u + 1)].gs.gateHeld;
+                }
+                eng.gs.gateHeld = monoOpen;
+                if (!monoOpen) {
+                    eng.gs.holdRemain = 0.f;       eng.gs.gatePulseRemain = -1;
+                    eng.gsStep.holdRemain = 0.f;   eng.gsStep.gatePulseRemain = -1;
+                }
+                continue;
+            }
             if (i > eng.numPolyVoices || eng.rdm.parentCount[i] == 0) continue;
             bool vOpen = latch[i + 1];
             for (int p = 0; p < eng.rdm.parentCount[i]; ++p) {
@@ -284,9 +301,24 @@ static void marchModeBS(int seed, Capture& cap, int& c2n, int& envn) {
             eng.gsStep.holdRemain = 0.f;   eng.gsStep.gatePulseRemain = -1;
         }
         prevMainHigh = main.high;
-        // The F-2 drive mirror (same materialized compose as mode B above; D8).
+        // The F-3 drive mirror (same materialized compose incl. the D7 V1 branch as mode B above).
         for (int k = 0; k < eng.rdm.topoCount; ++k) {
             const int i = eng.rdm.topoOrder[k];
+            if (i == 0) {   // D7 mirror: the mono voice inside the algebra (a no-op on the star)
+                if (eng.rdm.parentCount[0] == 0) continue;
+                bool monoOpen = gateOpen;
+                for (int p = 0; p < eng.rdm.parentCount[0]; ++p) {
+                    const int u = eng.rdm.parentSlot[0][p];
+                    if (u > eng.numPolyVoices) continue;
+                    monoOpen = monoOpen && eng.voices[dotModular::VoiceResolver::slot(u + 1)].gs.gateHeld;
+                }
+                eng.gs.gateHeld = monoOpen;
+                if (!monoOpen) {
+                    eng.gs.holdRemain = 0.f;       eng.gs.gatePulseRemain = -1;
+                    eng.gsStep.holdRemain = 0.f;   eng.gsStep.gatePulseRemain = -1;
+                }
+                continue;
+            }
             if (i > eng.numPolyVoices || eng.rdm.parentCount[i] == 0) continue;
             bool vOpen = latch[i + 1];
             for (int p = 0; p < eng.rdm.parentCount[i]; ++p) {

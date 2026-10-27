@@ -3,8 +3,8 @@
  *
  * F-1 re-pointed the RDM at ParentSource::GRAPH — the staged containmentParents is the
  * rhythm truth (D2: graph truth everywhere, no engine legacy mode). This suite pins the
- * three graph shapes the cascade now runs, in mode A (clock/phase — no per-sample C5
- * drive yet; the gate-mode forest compose is F-2):
+ * graph shapes the cascade runs, in mode A (clock/phase — the edge-level cascade) AND,
+ * since F-3, in mode B (the per-sample drive — the C5 envelope compose):
  *
  *   FREE VOICES   parents(v) = ∅ ⇒ E(v) = Own(v) (D2/R2 ruled). A parentless voice detaches
  *                 from V1 entirely: it self-clocks at its own window expiry (mono's
@@ -27,6 +27,18 @@
  *                 (D8: resolved at the graph-change boundary), so every container — any
  *                 direction — executes before its child; the read is fresh everywhere. Pinned
  *                 here as defined-and-deterministic (the core suite pins the order itself).
+ *
+ *   V1 INSIDE THE ALGEBRA (F-3, D7 RULED: "no reason for V1 to stay privileged")  the
+ *                 per-sample drive bounds the MONO voice by its containers' envelopes — the
+ *                 same per-parent ∧ the poly drive performs, applied to the root path. A
+ *                 parentless V1 (the star, the empty graph) takes no AND — bit-identical to
+ *                 the pre-F-3 drive (the differential goldens pin it). V1-as-leaf graphs
+ *                 (INVERT's full edge reversal of the star) are FIRST-CLASS: suite G2 marches
+ *                 the INVERT star (V1 under ALL 15 poly voices), suite G1 the single-parent
+ *                 root, suite G3 the root MID-CHAIN (V2 → V1 → V3 — transitive through the
+ *                 root at the drive level). V1's edge cascade (executeStep) stays own-
+ *                 machinery (plan §8): containment bounds where V1 SOUNDS (the envelope),
+ *                 not when its own chain advances.
  *
  * Determinism: PhiloxRng counter-based seeding, pitches quantised to semitones for
  * FP-hash safety — the differential-harness idioms. Byte-identity for STAR graphs is the
@@ -110,10 +122,6 @@ static void authorGraph(SequencerEngine& eng, const uint16_t words[16]) {
 }
 static void authorStar(SequencerEngine& eng) {
     authorGraph(eng, RhythmDecisionCore::LEGACY_STAR_PARENTS);
-}
-static void authorFree(SequencerEngine& eng) {
-    uint16_t zeros[16] = {};
-    authorGraph(eng, zeros);
 }
 
 // ── The mode-A march (clock origin; the differential idiom) ─────────────────────
@@ -216,8 +224,125 @@ static void marchStar(int seed, Tallies& t) {
 
 static const int kSeeds = 8;
 
+// ── The gate stream (the differential-harness idiom) ────────────────────────────
+// Simple two-state gate stream: rise p while low, fall p while high.
+struct GateStream {
+    bool high = false;
+    void step(PhiloxRng& rng, float pRise, float pFall, bool& rose) {
+        rose = false;
+        if (high) { if (rng.nextFloat() < pFall) high = false; }
+        else      { if (rng.nextFloat() < pRise) { high = true; rose = true; } }
+    }
+};
+
+// ── The mode-B march (gate origin; the full IMPL-2b drive mirror incl. the F-3/D7 V1 branch) ──
+// The differential-harness marchModeB idiom, on AUTHORED graphs: executeModeB + the poly
+// latch + the mono own-term write + the MATERIALIZED C5 compose (the V1 branch included).
+// This is the harness that proves the drive's NEW shapes (the goldens pin the star's).
+struct GateTallies {
+    long v1Fires              = 0;   // V1's BOUNDED envelope high (the drive's output)
+    long v1WhileContainerLow  = 0;   // V1 high while SOME authored container's gate is low (must stay 0)
+    long v1WhileV2Low         = 0;   // V1 high while V2 low (the G1/G3 named-container row)
+    long polyFires            = 0;   // any poly voice gate high
+    long v2Fires              = 0;   // V2 high
+    long v3Fires              = 0;   // V3 high
+    long v3WhileV1Low         = 0;   // V3 high while V1's bounded envelope low
+    long v3WhileV2Low         = 0;   // V3 high while V2 low (the transitive row)
+    long allPolyHigh          = 0;   // all 15 poly gates high simultaneously (the INVERT coincidence)
+    std::vector<uint8_t> stream;     // V1 + poly gate bits (the determinism double-run)
+};
+
+static void marchGate(int seed, const uint16_t words[16], GateTallies& t) {
+    PhiloxRng rng; rng.seed64((uint64_t)seed * 747796405u + 2891336453u + 131u);
+    SequencerEngine eng; eng.reset();
+    authorGraph(eng, words);
+    eng.numPolyVoices = 15;
+    seedEngine(eng, rng);
+    const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+    const float varAmt  = 0.20f + 0.70f * rng.nextFloat();
+    const PatternInput in = makeInput(varAmt);
+    GateStream main; bool prevMainHigh = false;
+    bool latch[17] = {};   // indexed by VOICE number 2..16 ([0..1] unused)
+    for (int step = 0; step < kSteps; ++step) {
+        bool rose; main.step(rng, 0.50f, 0.40f, rose);
+        StepResult r = eng.executeModeB(/*gate1Rise=*/rose, /*gate1High=*/main.high, noteVal, in);
+        if (r.stepped && eng.numPolyVoices > 0) eng.executePolyVoices(in);
+        // The polyVoiceActive latch (Monsoon.cpp:1009-1012), after the stepped execution.
+        for (int i = 1; i <= eng.numPolyVoices; ++i)
+            latch[i + 1] = eng.voices[dotModular::VoiceResolver::slot(i + 1)].gs.gateHeld;
+        // IMPL 2b mono drive, OWN term (Monsoon.cpp:1152-1196) — plain B, no ghost term.
+        const bool isRest    = (r.decision == MonoDecision::Rest);
+        const bool gapBridge = eng.tieAcrossRests ? eng.gs.slurForward : prevMainHigh;
+        const bool gateOpen  = !isRest && (main.high || gapBridge);
+        eng.gs.gateHeld     = gateOpen;
+        eng.gsStep.gateHeld = !isRest && main.high;
+        if (!gateOpen) {
+            eng.gs.holdRemain = 0.f;       eng.gs.gatePulseRemain = -1;
+            eng.gsStep.holdRemain = 0.f;   eng.gsStep.gatePulseRemain = -1;
+        }
+        prevMainHigh = main.high;
+        // The F-3 drive mirror (Monsoon.cpp:1198-1262 — D8 materialized compose + the D7 V1
+        // branch): V1's envelope = own term ∧ its containers' live gates; the re-zero on
+        // close; children of V1 read the BOUNDED mono view.
+        for (int k = 0; k < eng.rdm.topoCount; ++k) {
+            const int i = eng.rdm.topoOrder[k];
+            if (i == 0) {
+                if (eng.rdm.parentCount[0] == 0) continue;
+                bool monoOpen = gateOpen;
+                for (int p = 0; p < eng.rdm.parentCount[0]; ++p) {
+                    const int u = eng.rdm.parentSlot[0][p];
+                    if (u > eng.numPolyVoices) continue;
+                    monoOpen = monoOpen && eng.voices[dotModular::VoiceResolver::slot(u + 1)].gs.gateHeld;
+                }
+                eng.gs.gateHeld = monoOpen;
+                if (!monoOpen) {
+                    eng.gs.holdRemain = 0.f;       eng.gs.gatePulseRemain = -1;
+                    eng.gsStep.holdRemain = 0.f;   eng.gsStep.gatePulseRemain = -1;
+                }
+                continue;
+            }
+            if (i > eng.numPolyVoices || eng.rdm.parentCount[i] == 0) continue;
+            bool vOpen = latch[i + 1];
+            for (int p = 0; p < eng.rdm.parentCount[i]; ++p) {
+                const int u = eng.rdm.parentSlot[i][p];
+                vOpen = vOpen && (u == 0 ? eng.gs.gateHeld
+                                         : eng.voices[dotModular::VoiceResolver::slot(u + 1)].gs.gateHeld);
+            }
+            const auto vs = dotModular::VoiceResolver::slot(i + 1);
+            eng.voices[vs].gs.gateHeld = vOpen;
+            if (!vOpen) { eng.voices[vs].gs.holdRemain = 0.f; eng.voices[vs].gs.gatePulseRemain = -1; }
+        }
+        // Tallies + the determinism stream (post-drive state).
+        const bool v1h = eng.gs.gateHeld;
+        if (v1h) {
+            ++t.v1Fires;
+            for (int u = 1; u < 16; ++u) {
+                if (!(words[0] & (1u << u))) continue;             // V1's authored containers (self-bit excluded)
+                if (!eng.voices[dotModular::VoiceResolver::slot(u + 1)].gs.gateHeld) {
+                    ++t.v1WhileContainerLow;                        // the D7 headline violation
+                    break;
+                }
+            }
+            if (!eng.voices[dotModular::VoiceResolver::slot(2)].gs.gateHeld) ++t.v1WhileV2Low;
+        }
+        int highCount = 0;
+        for (int v = 1; v < 16; ++v) {
+            const auto vs = dotModular::VoiceResolver::slot(v + 1);
+            const bool high = eng.voices[vs].gs.gateHeld;
+            if (high) { ++t.polyFires; ++highCount; }
+            t.stream.push_back(high ? 1u : 0u);
+        }
+        if (highCount == 15) ++t.allPolyHigh;
+        const bool v2h = eng.voices[dotModular::VoiceResolver::slot(2)].gs.gateHeld;
+        const bool v3h = eng.voices[dotModular::VoiceResolver::slot(3)].gs.gateHeld;
+        if (v2h) ++t.v2Fires;
+        if (v3h) { ++t.v3Fires; if (!v1h) ++t.v3WhileV1Low; if (!v2h) ++t.v3WhileV2Low; }
+        t.stream.push_back(v1h ? 1u : 0u);
+    }
+}
+
 int main() {
-    std::printf("[test_forest_rhythm] the FOREST behavioral spec (STAGE F-1, plan §5)\n");
+    std::printf("[test_forest_rhythm] the FOREST behavioral spec (STAGE F-3, plan §5)\n");
 
     // ── Suite A — FREE VOICES: parents(v) = ∅ ⇒ E(v) = Own(v) ───────────────────
     std::printf("  suite A: free voices (the empty graph, D2/R2)\n");
@@ -426,6 +551,63 @@ int main() {
         check(v5WhileV3Low == 0,   "DIAMOND: V5 high implies V3 high (parent 2)");
         check(v5WhileMonoLow == 0, "DIAMOND: V5 high implies mono high (grandparent, transitive)");
         check(v5WithBoth > 0,      "DIAMOND: the coupling observed (V5 high while both parents high)");
+    }
+
+    // ── Suite G — V1 INSIDE THE ALGEBRA (F-3, D7): the gate-mode drive bounds the root ─────
+    // Mode B (the only mode with a per-sample drive): the mono envelope = own term ∧ the
+    // materialized containers. The marchGate mirror is the differential idiom on AUTHORED
+    // graphs; the star's byte-identity stays the differential suite's contract.
+    std::printf("  suite G1: V1 in V2 (the root has ONE container — D7's headline)\n");
+    {
+        uint16_t words[16] = {};
+        words[0] = 0x0002;   // V1 in {V2}; V2 free
+        GateTallies a, b;
+        for (int seed = 0; seed < kSeeds; ++seed) marchGate(seed, words, a);
+        for (int seed = 0; seed < kSeeds; ++seed) marchGate(seed, words, b);
+        std::printf("    v1Fires=%ld v1WhileContainerLow=%ld v2Fires=%ld polyFires=%ld\n",
+                    a.v1Fires, a.v1WhileContainerLow, a.v2Fires, a.polyFires);
+        check(a.v1WhileContainerLow == 0, "D7-G1: V1's gate is NEVER high while its container V2 is low (the root is bounded)");
+        check(a.v1Fires > 0,              "D7-G1: V1 still plays inside V2's envelope (containment, not silence)");
+        check(a.v2Fires > 0,              "D7-G1: free V2 plays its own rhythm (the container is alive)");
+        check(a.polyFires > 0,            "D7-G1: the poly bank plays (the march is live)");
+        check(a.stream == b.stream && a.v1Fires == b.v1Fires,
+              "D7-G1: the bounded-root drive is byte-deterministic (double-run)");
+    }
+
+    std::printf("  suite G2: the INVERT star (V1 under ALL 15 — the V1-as-leaf graph, first-class)\n");
+    {
+        uint16_t words[16] = {};
+        words[0] = 0xFFFE;   // every poly voice contains V1 (INVERT's full edge reversal)
+        GateTallies a, b;
+        for (int seed = 0; seed < kSeeds; ++seed) marchGate(seed, words, a);
+        for (int seed = 0; seed < kSeeds; ++seed) marchGate(seed, words, b);
+        std::printf("    v1Fires=%ld v1WhileContainerLow=%ld allPolyHigh=%ld polyFires=%ld\n",
+                    a.v1Fires, a.v1WhileContainerLow, a.allPolyHigh, a.polyFires);
+        check(a.v1WhileContainerLow == 0, "D7-G2: V1's gate is NEVER high while ANY of its 15 containers is low (the full intersection)");
+        check(a.v1Fires > 0,              "D7-G2: V1 fires inside the 15-voice intersection (V1-as-leaf is playable, not a dead end)");
+        check(a.allPolyHigh > 0,          "D7-G2: the all-15-open coincidence occurs (the AND has teeth)");
+        check(a.polyFires > 0,            "D7-G2: the free poly bank plays (INVERT left them free)");
+        check(a.stream == b.stream && a.v1Fires == b.v1Fires,
+              "D7-G2: the INVERT-star drive is byte-deterministic (double-run)");
+    }
+
+    std::printf("  suite G3: V1 MID-CHAIN (V2 -> V1 -> V3 — transitive through the root)\n");
+    {
+        uint16_t words[16] = {};
+        words[0] = 0x0002;   // V1 in {V2}
+        words[2] = 0x0001;   // V3 in {V1}
+        GateTallies a, b;
+        for (int seed = 0; seed < kSeeds; ++seed) marchGate(seed, words, a);
+        for (int seed = 0; seed < kSeeds; ++seed) marchGate(seed, words, b);
+        std::printf("    v1Fires=%ld v3Fires=%ld v3WhileV1Low=%ld v3WhileV2Low=%ld v1WhileV2Low=%ld\n",
+                    a.v1Fires, a.v3Fires, a.v3WhileV1Low, a.v3WhileV2Low, a.v1WhileV2Low);
+        check(a.v1WhileV2Low == 0,  "D7-G3: V1 high implies V2 high (the root's own container)");
+        check(a.v3WhileV1Low == 0,  "D7-G3: V3 high implies V1's BOUNDED envelope high (the root as parent)");
+        check(a.v3WhileV2Low == 0,  "D7-G3: V3 high implies V2 high (TRANSITIVE through the root — the drive's topo order)");
+        check(a.v3Fires > 0,        "D7-G3: V3 plays inside the chain through the root (depth-2 alive at the drive)");
+        check(a.v1Fires > 0,        "D7-G3: V1 plays mid-chain (the root is inside the algebra, not gone)");
+        check(a.stream == b.stream && a.v1Fires == b.v1Fires,
+              "D7-G3: the mid-chain drive is byte-deterministic (double-run)");
     }
 
     std::printf("\n%s: %d passed, %d failed\n", "test_forest_rhythm", g_pass, g_fail);
