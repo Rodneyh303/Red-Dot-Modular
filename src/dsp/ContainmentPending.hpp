@@ -187,11 +187,18 @@ struct ContainmentPending {
     // it arms the SAME row (one stamp, the lamp lights — the CA latchRow choke point) with the
     // backward direction; direction = the LATEST arm. randomMode picks the page interpretation
     // (0 = OUTRIGHT stateless new forest, 1 = SCATTER state-dependent modify); randomDensity
-    // is the 1..10 dial (p = density/10) — context-menu config, the rotateStep precedent.
+    // is the 1..10 dial (p = density/10); randomIslands is the 1..16 partition dial (path B,
+    // Rodney 2026-10-27: the drawn forest's island count — each island internally connected
+    // with exactly one root, islands mutually disconnected, size-1 islands = free single
+    // voices; consumed by OUTRIGHT, ignored by SCATTER) — context-menu config, the
+    // rotateStep precedent. The draw SPANS THE POOL (the polyphony at apply); rows above the
+    // pool clear to free singles ("size of forest linked to polyphony at draw with other
+    // pins cleared").
     // (The domain constant + page strides live with the draws in ContainmentTransforms.hpp.)
     int64_t  randomCounter = 0;
     int      randomMode    = 0;
     int      randomDensity = 3;
+    int      randomIslands = 1;
     bool     reverseArmed  = false;   // runtime-only (like armed[] — a save never carries a request)
 
     // ── the TRUE-REVERSE request queue (the global-reverse consumer) ────────────────
@@ -307,7 +314,8 @@ struct ContainmentPending {
                         * (randomMode == 0 ? RANDOM_PAGE_OUTRIGHT : RANDOM_PAGE_SCATTER);
                     redDot::PhiloxRng rng;                   // stateless facade: the key is the draw's
                     rng.setKey(redDot::philoxMakeKey(RANDOM_STREAM_DOMAIN));
-                    if (randomMode == 0) seedForest(g, rng, pageBase, randomDensity);
+                    if (randomMode == 0) seedForest(g, rng, pageBase, randomDensity,
+                                                    randomIslands, activeCount);
                     else                 scatterEdges(g, rng, pageBase, randomDensity);
                     reverseArmed = false;                    // consumed either way (the CA lamp rule)
                     break;

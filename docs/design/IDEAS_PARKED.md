@@ -336,3 +336,46 @@ STOP, the mixed-boundary bracket starting at the RESTORED state, the uncommitted
 discard, out-of-axis persistence, branching, the RANDOM commit replaying back, reset clears
 the queue). Full battery green; goldens untouched (zero engine surface — the consume is
 module-layer over the module's own ring).
+
+## The RANDOM row's islands dial + the polyphony-spanned draw — LANDED (path B, Rodney 2026-10-27)
+
+The check-in Q&A ("why 1 root? how many forests?") ended in a ruling: **islands are desired**
+("1-3 a group and 4-7 a group... multiple groups connected within and disconnected from
+others with some disconnected single voices too — part of the whole point"), multi-parent and
+diamonds are ALREADY in the grammar (the per-pair edge coins; wouldCycle gates cycles, not
+diamonds — the engine's ancestorMask/deepestChain machinery resolves multi-chain ancestry),
+and the ONE gap was the Outright boost welding every orphan (no page ever showed a free voice
+or a second group). Offered A (density-as-structure-axis, no new control) vs B (explicit
+dial); Rodney: "first try path B" + the second requirement: **"size of forest drawn should be
+linked to polyphony at draw with other pins cleared."**
+
+LANDED in the same commit:
+- **The islands dial** — `randomIslands` 1..16, default 1 (context-menu "Random islands",
+  zero param slots, the rotateStep/density precedent; persisted under the same absent ->
+  default / out-of-range -> ignored policy). The pool's permutation is partitioned into
+  exactly K contiguous blocks by an exact-K hypergeometric boundary walk (uniform over the
+  C(pool-1, K-1) gap subsets, self-forcing when the slack runs out); edge coins apply WITHIN
+  islands only; the connectivity boost welds orphans WITHIN their island — each island is
+  internally connected with EXACTLY ONE root (its head), islands mutually disconnected, a
+  size-1 island is a free single voice. SCATTER ignores the dial (a modify pass over current
+  edges; removing a bridging pin already splits islands there).
+- **The pool span** — the draw permutes/pins only the first `pool` voices (the polyphony at
+  apply, the getActiveCount idiom); rows at/above the pool are CLEARED to free singles by the
+  wholesale zero (deliberately overriding the transforms' above-pool HOLD rule FOR THIS DRAW:
+  an outright generation replaces the whole state, and the state it now draws is the
+  polyphony-sized one).
+- **Page layout** — the outright stride grows 151 -> 165 (15 shuffle + 120 edge coins + 15
+  boost + 15 island boundaries); islands=1 with the full pool reproduces the pre-islands
+  draw BIT-FOR-BIT (same slots, same formulas), so every legacy T12/P10 row is the
+  regression anchor and older counter positions only re-derive differently because the
+  stride changed, not because the K=1 draw changed shape.
+- **Tests** — transforms 148 (+6: root count == dial + cleared singles, in-pool components ==
+  the dial, above-pool rows clean both ways, islands determinism, islands = pool -> 0 pins,
+  explicit-(1,full) == default), pending 112 (+3: the islands+pool fire oracle, the root
+  count), module 511 (S5/S6g extended: absent -> 1, out-of-range ignored, the dial survives
+  the production save/load cycle). Battery 87/87 + anchor audit 5/5 + the plugin-TU smoke
+  43/43 under the real SDK.
+
+Still parked: the density-gated-boost variant (path A as a FALLBACK if B feels wrong in
+rack — one gate, no persisted field), MODIFY/Scatter refinements (conditional), the global
+reverse cross-module items (CA_DICE_COUNTER_MODEL.md + LOR_BACKLOG §5).

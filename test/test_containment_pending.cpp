@@ -480,6 +480,27 @@ int main() {
         p.applyAll(g, 16, *traj);
         CHK(p.randomCounter == 3, "random: the cleared arm fired FORWARD (counter 2 -> 3)");
 
+        // ISLANDS + POOL (path B + the polyphony ruling): the dial + the span ride the page
+        // oracle; above-pool rows clear to free singles (the root count shows both effects).
+        {
+            CP q; auto t3 = std::make_unique<ContainmentTrajectory>();
+            ContainmentGraph h;
+            q.randomIslands = 4;
+            q.randomDensity = 5;
+            q.latch(CP::V_RANDOM);
+            q.applyAll(h, 10, *t3);                            // polyphony 10 at draw
+            CHK(h.isValid() && noSelfBits(h) && roundTripOk(h),
+                "random: the islands draw is a valid loadable DAG");
+            ContainmentGraph islOracle;
+            seedForest(islOracle, rr, 1ull * RANDOM_PAGE_OUTRIGHT, q.randomDensity, q.randomIslands, 10);
+            CHK(sameState(h, islOracle),
+                "random: the islands dial + the pool span ride the page oracle (path B + polyphony)");
+            int roots = 0;
+            for (int v = 0; v < VOICES; ++v) if (h.isRoot(v)) ++roots;
+            CHK(roots == 4 + 6,
+                "random: 4 drawn islands + 6 cleared above-pool singles = the root count");
+        }
+
         // SCATTER mode: fire = the page driven over the CURRENT graph; reverse = the previous
         // page on the CURRENT graph — the CA scrub, NOT the state restore.
         {

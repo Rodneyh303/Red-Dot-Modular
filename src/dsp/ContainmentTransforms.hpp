@@ -274,7 +274,7 @@ inline void reduceTransitive(ContainmentGraph& g) {
 // Page strides (fixed over content — the CA "stable 16-wide page" rule generalized): each
 // application consumes exactly one page regardless of what the draws decide, so position+1
 // is always the NEXT forest/scatter and position-1 always the previous.
-static constexpr uint64_t RANDOM_PAGE_OUTRIGHT = 151;   // 15 shuffle + 120 edge coins + 16 boost
+static constexpr uint64_t RANDOM_PAGE_OUTRIGHT = 165;   // 15 shuffle + 120 coins + 15 boost + 15 island bounds
 static constexpr uint64_t RANDOM_PAGE_SCATTER  = 48;    // 16 voices x 3 draws
 
 // The stream's FIXED domain key seed ("CONTAINM" — the containment module's OWN draw): never
@@ -283,57 +283,106 @@ static constexpr uint64_t RANDOM_PAGE_SCATTER  = 48;    // 16 voices x 3 draws
 static constexpr uint64_t RANDOM_STREAM_DOMAIN = 0x434F4E5441494E4DULL;
 
 // OUTRIGHT NEW FOREST — the STATELESS/ABSOLUTE variation: the page SPECIFIES the graph (the
-// graph IS f(page, density)), so reverse-draw IS the exact state restore (at(page-1)
-// re-derives the previous forest bit-for-bit — the CA doc's own "when stateless would be
-// right" case: a teleport to fresh configs, counter-alone reproducibility). The F-5
+// graph IS f(page, density, islands, pool)), so reverse-draw IS the exact state restore
+// (at(page-1) re-derives the previous forest bit-for-bit — the CA doc's own "when stateless
+// would be right" case: a teleport to fresh configs, counter-alone reproducibility). The F-5
 // property-suite recipe lifted into the module layer (test_forest_rhythm randomForest):
-// a Fisher-Yates TOPOLOGICAL permutation of the 16 slots — each voice may take parents only
-// from EARLIER permutation positions, so the result is acyclic BY CONSTRUCTION (the pin
-// plane's guarantee reproduced in data); the connectivity boost gives every non-head voice
-// at least one parent when the coins drew none (the head of the permutation is the lone
-// guaranteed root). V1 is NOT special — D7 proved V1-anywhere legal and the property suite
-// marches it. The WHOLE graph is rewritten, above-pool rows included: an outright generation
-// is a wholesale replacement, the one verb that is not a shape verb over existing structure
-// (store-backed undo + the trajectory bracket own the reversal, and they ride the commit).
+// a Fisher-Yates TOPOLOGICAL permutation of the pool's slots — each voice may take parents
+// only from EARLIER permutation positions, so the result is acyclic BY CONSTRUCTION (the pin
+// plane's guarantee reproduced in data).
 //
-// PAGE LAYOUT (draws atUniform(page + k), all pure functions of (page, density)):
-//   [0,15)    Fisher-Yates: i = 15..1, j = floor(u * (i+1)), swap(perm[i], perm[j])
+// ISLANDS (path B, Rodney 2026-10-27: "islands are desired... groups connected within and
+// disconnected from others with some disconnected single voices too"): the pool's
+// permutation is partitioned into `islands` contiguous blocks by the exact-K hypergeometric
+// boundary walk (uniform over the C(pool-1, K-1) gap subsets); the edge coins apply WITHIN
+// islands only, and the connectivity boost welds every non-head orphan WITHIN its island —
+// so EACH island is internally connected with EXACTLY ONE root (its head), islands are
+// mutually disconnected, and a size-1 island is a free single voice. V1 is NOT special — D7
+// proved V1-anywhere legal and the property suite marches it.
+//
+// THE DRAW SPANS THE POOL (the polyphony at draw — the getActiveCount idiom): only the
+// first `pool` voices are permuted and pinned; rows at/above the pool are CLEARED to free
+// singles by the wholesale zero ("size of forest drawn linked to polyphony at draw with
+// other pins cleared" — Rodney 2026-10-27). The graph is still REPLACED wholesale (an
+// outright generation is the one verb that is not a shape verb over existing structure;
+// store-backed undo + the trajectory bracket own the reversal, and they ride the commit).
+// islands=1 with the full pool reproduces the pre-islands draw BIT-FOR-BIT (the same slots,
+// the same formulas — the legacy lone-root rows are the regression anchor).
+//
+// PAGE LAYOUT (draws atUniform(page + k), all pure functions of (page, density, islands,
+// pool); the stride is fixed, the layout never content-dependent):
+//   [0,15)    Fisher-Yates over the pool: i = pool-1..1, j = floor(u * (i+1)),
+//             swap(perm[i], perm[j])   (slot = pool-1-i; pool = 16 = the legacy addressing)
 //   [15,135)  edge coins: for permutation position 1..15, each earlier position in order,
-//             coin < p  ->  that parent bit is set
-//   [135,151) boost: position 1..15 with no parents draws j = floor(u * pos) and takes
-//             perm[j] (15 used, 1 pad — the stride is fixed, the layout never content-dependent)
+//             coin < p  ->  that parent bit is set — APPLIED only when both positions sit in
+//             the pool AND in the same island (the slot counter advances for EVERY pair, so
+//             the pair->slot map stays content-independent)
+//   [135,150) boost: pool position 1..pool-1 with no parents draws j = islandStart +
+//             floor(u * (pos - islandStart)) and takes perm[j] (an EARLIER position IN ITS
+//             OWN ISLAND, never the head itself — the head is that island's root)
+//   [150,165) island boundaries: the gap between positions pos-1 and pos is a boundary
+//             while boundaries remain, P = left/remaining (the sequential-sampling form —
+//             self-forcing when the slack runs out; exactly islands-1 boundaries)
 // density 1..10 -> p = density/10 (the context-menu dial; 10 = every candidate edge, the
-// DAG-complete upper shape — still acyclic). The graph is REPLACED: all 16 rows are zeroed
-// first — an outright generation is the wholesale replacement (the one verb that is not a
-// shape verb over existing structure), which is exactly what makes reverse-draw the exact
-// state restore.
-inline void seedForest(ContainmentGraph& g, const redDot::PhiloxRng& rng, uint64_t page, int density) {
+// DAG-complete upper shape — still acyclic). islands 1..pool (clamped) = the partition dial;
+// the graph is REPLACED: all 16 rows are zeroed first — which is exactly what makes
+// reverse-draw the exact state restore.
+inline void seedForest(ContainmentGraph& g, const redDot::PhiloxRng& rng, uint64_t page,
+                       int density, int islands = 1, int pool = VOICES) {
     if (density < 1) density = 1;
     if (density > 10) density = 10;
+    if (pool < 1) pool = 1;
+    if (pool > VOICES) pool = VOICES;
+    if (islands < 1) islands = 1;
+    if (islands > pool) islands = pool;   // a partition cannot exceed the span it partitions
     const float p = density * 0.1f;
     for (int v = 0; v < VOICES; ++v) g.parents[v] = 0;   // WHOLESALE replacement, not an accumulate
+                                                          // (rows above the pool stay cleared: the
+                                                          // draw sizes to the polyphony at draw)
     int perm[VOICES];
     for (int i = 0; i < VOICES; ++i) perm[i] = i;
-    for (int i = VOICES - 1; i >= 1; --i) {
-        const int j = (int)(rng.atUniform(page + (uint64_t)(VOICES - 1 - i)) * (float)(i + 1));
+    for (int i = pool - 1; i >= 1; --i) {                 // draws [0,15): Fisher-Yates over the POOL
+        const int j = (int)(rng.atUniform(page + (uint64_t)(pool - 1 - i)) * (float)(i + 1));
         const int t = perm[i]; perm[i] = perm[j]; perm[j] = t;
     }
-    int coin = VOICES - 1;                                   // draws [15,135)
-    for (int pos = 1; pos < VOICES; ++pos) {
+
+    // the exact-K island partition of the pool's permutation positions (draws [150,165));
+    // islandStart[pos] = the first position of pos's island (the head — that island's root)
+    int islandStart[VOICES];
+    islandStart[0] = 0;
+    {
+        int left = islands - 1;                           // boundaries still to place
+        for (int pos = 1; pos < pool; ++pos) {            // the gap between positions pos-1 and pos
+            islandStart[pos] = islandStart[pos - 1];
+            if (left > 0 && rng.atUniform(page + 150 + (uint64_t)(pos - 1))
+                                * (float)(pool - pos) < (float)left) {
+                --left;
+                islandStart[pos] = pos;                   // a new island begins here
+            }
+        }
+        for (int pos = pool; pos < VOICES; ++pos) islandStart[pos] = pos;   // above-pool: inert
+    }
+
+    int coin = VOICES - 1;                                   // draws [15,135): the pair->slot map is
+    for (int pos = 1; pos < VOICES; ++pos) {                 // the row-major order over ALL 16 slots
         const int v = perm[pos];
         for (int up = 0; up < pos; ++up) {
             const int u = perm[up];
-            if (rng.atUniform(page + (uint64_t)coin) < p)
+            if (pos < pool                                   // the draw spans the pool only
+                && islandStart[pos] == islandStart[up]       // islands are mutually disconnected
+                && rng.atUniform(page + (uint64_t)coin) < p)
                 g.parents[v] |= (uint16_t)(1u << u);         // u is EARLIER in perm: acyclic by construction
             ++coin;
         }
     }
-    for (int pos = 1; pos < VOICES; ++pos) {                 // draws [135,151), one per position
+    for (int pos = 1; pos < pool; ++pos) {                   // draws [135,150), one per pool position
         const int v = perm[pos];
-        if (g.parents[v] == 0) {
-            const int j = (int)(rng.atUniform(page + 135 + (uint64_t)(pos - 1)) * (float)pos);
-            g.parents[v] |= (uint16_t)(1u << perm[j]);       // j < pos: an earlier voice, never v itself
-        }
+        if (g.parents[v] == 0 && pos > islandStart[pos]) {   // non-head orphans only — the head is
+            const int start = islandStart[pos];              // the island's root; the weld stays
+            const int j = start + (int)(rng.atUniform(page + 135 + (uint64_t)(pos - 1))   // WITHIN
+                                         * (float)(pos - start));   // the island
+            g.parents[v] |= (uint16_t)(1u << perm[j]);       // start <= j < pos: an earlier voice,
+        }                                                    // never v itself — acyclic, no self-bits
     }
 }
 

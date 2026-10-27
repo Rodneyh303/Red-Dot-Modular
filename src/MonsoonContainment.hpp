@@ -670,6 +670,22 @@ struct MonsoonContainmentWidget : ModuleWidget,
                         [module, d]() { module->core.pending.randomDensity = d; }));
                 }
             }));
+        // The islands dial (path B, Rodney 2026-10-27: "islands are desired... groups
+        // connected within and disconnected from others with some disconnected single
+        // voices too"): the drawn forest's partition count — each island internally
+        // connected with exactly one root, islands mutually disconnected, a size-1 island
+        // is a free single voice. Consumed by OUTRIGHT (the stateless draw); SCATTER
+        // ignores it (a modify pass over current edges). The draw spans the polyphony at
+        // draw; rows above the pool clear to free singles.
+        menu->addChild(createSubmenuItem("Random islands", "",
+            [module](Menu* sub) {
+                for (int k = 1; k <= 16; ++k) {
+                    sub->addChild(createCheckMenuItem(
+                        (k == 1) ? "1  (default)" : std::to_string(k), "",
+                        [module, k]() { return module->core.pending.randomIslands == k; },
+                        [module, k]() { module->core.pending.randomIslands = k; }));
+                }
+            }));
         // The reverse-draw action (requirement 2 — the CA back action): arms the RANDOM row
         // backward; the boundary commit re-derives the previous page (an EXACT state restore
         // in Outright mode, the generative scrub in Scatter mode). One pending row, one undo

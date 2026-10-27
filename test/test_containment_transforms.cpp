@@ -843,7 +843,7 @@ int main() {
         // result has EXACTLY ONE root (the permutation head) — the F-5 recipe's guarantee.
         int badValid = -1, badRoots = -1, badDet = -1, badSer = -1;
         for (int seed = 1; seed <= 600 && (badValid < 0 && badRoots < 0 && badDet < 0 && badSer < 0); ++seed) {
-            const uint64_t page = (uint64_t)seed * 151ull + (uint64_t)(seed % 7) - 3ull;   // signed-range pages
+            const uint64_t page = (uint64_t)seed * RANDOM_PAGE_OUTRIGHT + (uint64_t)(seed % 7) - 3ull;   // signed-range pages
             const int density = 1 + (seed % 3) * 4 + (seed % 2);   // 1..10-ish spread: {1,2,6,7,...}
             redDot::PhiloxRng r2 = rng;                                  // same fixed key
             ContainmentGraph g;
@@ -907,6 +907,79 @@ int main() {
             seedForest(fresh,   r5, 4241ull, 5);
             CHK(sameState(stepped, fresh),
                 "outright: reverse-draw = EXACT state restore (f(k-1) after f(k) == f(k-1) fresh)");
+        }
+
+        // ISLANDS + POOL (path B + the polyphony ruling, Rodney 2026-10-27): the partition is
+        // a dial; each island is internally connected with EXACTLY ONE root; islands are
+        // mutually disconnected; the draw spans the pool and rows above it clear to free
+        // singles. The legacy rows above (default args = islands 1, full pool) double as the
+        // bit-exactness anchor: they were written against the pre-islands layout and still
+        // pass unchanged.
+        {
+            auto countComponents = [](const ContainmentGraph& gg, int pool) {
+                int comp[VOICES];
+                for (int v = 0; v < pool; ++v) comp[v] = v;
+                for (int v = 0; v < pool; ++v)
+                    for (int u = 0; u < pool; ++u)
+                        if (gg.parents[v] & (1u << u)) {
+                            int rv = v; while (comp[rv] != rv) rv = comp[rv];
+                            int ru = u; while (comp[ru] != ru) ru = comp[ru];
+                            if (rv != ru) comp[rv] = ru;
+                        }
+                int n = 0;
+                for (int v = 0; v < pool; ++v) {
+                    int r = v; while (comp[r] != r) r = comp[r];
+                    if (r == v) ++n;
+                }
+                return n;
+            };
+            int badRoots = -1, badComp = -1, badAbove = -1, badDet = -1;
+            const int kiPairs[8][2] = {{1,16},{2,16},{3,16},{7,16},{16,16},{4,8},{2,5},{1,1}};
+            for (int c = 0; c < 8 && (badRoots < 0 && badComp < 0 && badAbove < 0 && badDet < 0); ++c) {
+                const int K = kiPairs[c][0], pool = kiPairs[c][1];
+                for (uint64_t pg = 30000ull; pg < 30040ull; ++pg) {
+                    const int dens = 1 + (int)(pg % 10);
+                    redDot::PhiloxRng r7 = rng;
+                    ContainmentGraph gi;
+                    seedForest(gi, r7, pg, dens, K, pool);
+                    if (!gi.isValid() || !noSelfBits(gi) || !roundTripOk(gi)) { badRoots = (int)pg; break; }
+                    int roots = 0;
+                    for (int v = 0; v < VOICES; ++v) if (gi.isRoot(v)) ++roots;
+                    if (roots != K + (VOICES - pool)) { badRoots = (int)pg; break; }
+                    if (countComponents(gi, pool) != K) { badComp = (int)pg; break; }
+                    bool aboveClean = true;                    // above-pool rows: no parents, no children
+                    for (int v = pool; v < VOICES; ++v) if (gi.parents[v]) aboveClean = false;
+                    for (int v = 0; v < pool; ++v) if (gi.parents[v] >> pool) aboveClean = false;
+                    if (!aboveClean) { badAbove = (int)pg; break; }
+                    ContainmentGraph again;
+                    seedForest(again, r7, pg, dens, K, pool);
+                    if (!sameState(gi, again)) { badDet = (int)pg; break; }
+                }
+            }
+            if (badRoots >= 0) std::printf("  detail: islands root-count broke at page %d\n", badRoots);
+            if (badComp  >= 0) std::printf("  detail: islands connectivity broke at page %d\n", badComp);
+            if (badAbove >= 0) std::printf("  detail: above-pool clearing broke at page %d\n", badAbove);
+            if (badDet   >= 0) std::printf("  detail: islands determinism broke at page %d\n", badDet);
+            CHK(badRoots < 0, "islands: root count == the dial + the cleared above-pool singles (8 configs x 40 pages)");
+            CHK(badComp  < 0, "islands: each island is CONNECTED within (in-pool components == the dial)");
+            CHK(badAbove < 0, "islands: the draw spans the pool — rows above it carry no pins either way");
+            CHK(badDet   < 0, "islands: f(page, density, islands, pool) is a PURE function (determinism)");
+
+            // the dial's extremes: islands = pool -> every voice a free single (0 pins);
+            // the explicit (1, full pool) call is byte-identical to the default call.
+            {
+                redDot::PhiloxRng r8 = rng;
+                ContainmentGraph gAll;
+                seedForest(gAll, r8, 4444ull, 10, 16, 16);
+                CHK(totalEdges(gAll) == 0,
+                    "islands: islands = pool -> every voice its own island (0 pins, all valid roots)");
+                ContainmentGraph dflt, expl;
+                redDot::PhiloxRng r9 = rng;
+                seedForest(dflt, r9, 5555ull, 7);
+                seedForest(expl,  r9, 5555ull, 7, 1, VOICES);
+                CHK(sameState(dflt, expl),
+                    "islands: explicit (1 island, full pool) == the default call (the legacy anchor)");
+            }
         }
 
         // SCATTER: validity + determinism over random start graphs; the CA state-dependence
