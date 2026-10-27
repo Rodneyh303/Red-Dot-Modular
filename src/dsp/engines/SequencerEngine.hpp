@@ -349,6 +349,17 @@ struct SequencerEngine {
     MonoDecision polyVerdict_[16] = {};   // zero-init = MidNote; reset() fills Rest
     int polyNv_[16] = {};                 // the voice's drawn window this edge (the C3 ceiling
                                           // a child clamps against); 0 = no clamp contribution
+    // F-4 (D5 — RHYTHM_DECISION_MANAGER_PLAN §3.3): each poly voice's THIS-EDGE GHOST EVENT —
+    // the voice PLAYED an onset at a permission point that was a ghost cell of ITS containers
+    // (rd.ghostCell). Captured by executePolyVoice at the play verdict (the polyVerdict_
+    // discipline: written on EVERY executed edge, true only on the ghost-placed play path), and
+    // read back through containerView(u) as ParentView::ghostEvent when a CHILD folds its
+    // containers — the recursion that lets ghost events propagate DOWN the forest (a child
+    // ghosts inside its containers' ghost notes, one level per edge). Indexed by STORAGE slot
+    // (0 = V1, unused — the mono's ghost event is its own stream latch, engine.ghostActive,
+    // carried by monoParentView()). Default false = no ghost event (fail-closed, same as the
+    // Rest verdict); reset() restores it.
+    bool polyGhostOnset_[16] = {};
     // Ghost (subGate_ghost): true while a ghost note is sustaining — set when a ghost candidate
     // (variation-gated) plays, cleared when it rests/fails or a main/ratchet onset takes over.
     // The module-layer IMPL 2b reads this (&& ghostHigh) so the gate only opens for a ghost that

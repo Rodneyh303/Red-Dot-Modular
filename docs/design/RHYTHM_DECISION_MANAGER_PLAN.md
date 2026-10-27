@@ -253,14 +253,14 @@ With `parents(v) = {u : bit u set in containmentParents[v]}`, `E(v) = Own(v) ∧
 
 | Mech | Forest form | Reduces to today when |
 |---|---|---|
-| C1 | `mayOnset(v)` = (∃ container onsetting) ∧ (all containers' envelopes open) — D3 RULED: UNION for onset permission, INTERSECTION for temporal extent (envelope + length). **F-2 refinement (goldens-forced): a GAP-HOSTED offer — the offering container's own cell closed at its onset — rides through (the ghost path, D5; forest form in F-4)** | parents = {V1} → exactly `monoGateStart` |
+| C1 | `mayOnset(v)` = (∃ container onsetting) ∧ (all containers' envelopes open) — D3 RULED: UNION for onset permission, INTERSECTION for temporal extent (envelope + length). **F-2 refinement (goldens-forced): a GAP-HOSTED offer — the offering container's own cell closed at its onset — rides through (the ghost path, D5; its forest form LANDED at F-4 as the ghost-cell ∀)** | parents = {V1} → exactly `monoGateStart` |
 | C2 | `forcedRest(v)` = ∨ over containers of container-rested (the ∧ of envelopes closes on any rest) | exactly the 1270-1276 branch |
 | C3 | `lengthCeiling(v)` = max over containers of `nvIdx` (higher = shorter; the SHORTEST container window wins) | exactly the 1507 clamp |
 | C4 | `holdFollow(v)` = containers mid-gate ∧ own armed window; the SHAPE followed is the topologically-first sounding container (D4) | exactly the 1352-1388 branch |
 | C5 | `envelopeOpen(v) = Own(v) ∧ ∧_{u} envelopeOpen(u)`, per sample, topo order | exactly the 1206 AND |
 | Chain latch | `participating(v)` latches at every onset permission point, clears whenever the envelope closes (a superset of today's V1-rest clear) | exactly Rule-2 |
 | Accent | own draw at every permission point; re-articulation draws fresh (1332-1338 rule, unchanged) | unchanged |
-| Ghost (D5) | v's ghost candidacy = own VAR draw, hosted only in a gap of the INTERSECTION envelope (a gap for every container simultaneously), riding the host containers' ghost stream | exactly today's mono-gap ghost |
+| Ghost (D5) | **LANDED at F-4**: the placement block keys on the GHOST CELL — `ghostCell(v) = mayOnset(v) ∧ ∧ over ONSETTING containers of container.ghostEvent` ("agree intersection": every onsetting container is itself ghosting this edge — a gap for every container simultaneously). The event stream is `ParentView::ghostEvent` (slot 0 = the mono's own stream latch `ghostActive`; poly containers = the child's `polyGhostOnset_` capture) — ghost events propagate DOWN the forest, one level per edge. Candidacy at a ghost cell = v's OWN VAR draw (D5); the note's EXTENT stays the landed C5 intersection | star: EXACTLY the old global `ghostActive` read, bit for bit (the per-verdict-shape reduction proof lives in the decideMask comment) |
 
 ### 3.4 The Cantonment connection (what F unlocks)
 
@@ -376,6 +376,48 @@ all three platforms before the next lands — the standing discipline.
 > EXACTLY (0xa843e2ff14883ab9 / 0x3169e28ca3cc206a / 0x166132accd092fce) — parentless-V1
 > bit-identity PROVEN on the re-point. Full battery 87/87, UNIFORMITY_STRICT=1 green,
 > -Wall -Wextra clean, anchor audit green. Next: F-4 (ghost hosting D5 + VAR/LEG scope D6).
+
+> **STATUS (2026-10-27): F-4 EXECUTED** — the GHOST HOSTING UNDER A FOREST (D5) + the D6
+> sweep. THE GHOST CELL: a permission point is a ghost cell of the containers iff EVERY
+> ONSETTING container is itself ghosting this edge (`d.ghostCell = d.mayOnset ∧
+> allOnsettingGhost`, folded in `decideMask` over the offering containers; the
+> single-container form `ghostCell = mayOnset ∧ ghostEvent` in `decide`; a FREE voice never
+> ghost-places — no containers, no ghost stream to ride). THE EVENT STREAM:
+> `ParentView::ghostEvent` — slot 0 carries the mono's OWN stream latch (`ghostActive`, §8:
+> the mono ghost machinery is the mono's own articulation; D7's drive bounds its
+> audibility); poly containers carry `polyGhostOnset_[u]`, written by `executePolyVoice` on
+> EVERY executed edge (the polyVerdict_ discipline: default false fail-closed, true only on
+> the ghost-placed play path; a ghost-placed note that SLID is still a ghost-cell note — the
+> event is "this note lives inside the containers' ghost cell", not "this note re-struck").
+> Ghost events propagate DOWN the forest, one level per edge (topo order guarantees the
+> capture is this-edge fresh). THE DE-PRIVILEGING (the headline, the "mono not special"
+> objective): the placement block keyed on the GLOBAL mono latch — exact on the star, wrong
+> under a forest (a voice under V2 would ghost-ride V1's stream: a +1 correlation with a
+> voice it is not contained by). The key is now the RDM's ghostCell. Candidacy UNCHANGED
+> (D5): the voice's OWN variation draw at its own VAR step; delegated voices read mono's VAR
+> cell, Local-East voices their own. The note's EXTENT stays the landed C5 intersection (the
+> per-sample drive — the audibility bound, no F-4 change). D6 SWEEP (engine-internal,
+> RULED closed §3.7): NO code change — the delegated VAR/LEG getters keep reading V1's cell
+> under any forest shape (the draw production is not the decision structure); documented at
+> the getters. NEW gate-mode suites (test_forest_rhythm, the marchGateBS march — the
+> differential marchModeBS idiom on AUTHORED graphs with the ghost stream + the F-3 drive
+> mirror): H1 the RECURSION (V2 in V1, V3 in V2 — V3 ghost-rides V2's ghost-PLACED notes,
+> poly containers host ghosts), H2 the DE-PRIVILEGING probe (V1 ghosts heavily, free V2 and
+> V3-under-V2 never ghost-place — the old key would have fired here — while both still play
+> their own rhythms: de-privileging is not silence), H3 the TWO-HOST implication (V3 in
+> {V1,V2}: the ghost-cell ∀ over both hosts; the coincidence occurs), each byte-deterministic
+> on a double-run. The H marches run HOT (widened gaps, probe thresholds pinned) so the
+> PLACEMENT KEYING is the property under test — and the D5 HARNESS NOTE is CORRECTED to the
+> settled truth: the playhead DOES advance on ghost rises (Rodney,
+> GATE_SUBDIVISION_STEP_GATE.md §379 "PLAYHEAD ADVANCE for ghosts"; the edge-driven model,
+> probe-verified — the draw starvation is the conjunction over few ghost cells, not a frozen
+> playhead). Core suite: the ghostCell rows (the star shapes, the ∀ over onsetting
+> containers only, the main-offer veto, the freeDecision neutrality, the decide()
+> single-container form) — 993 → 1002. GOLDENS HOLD EXACTLY (0xa843e2ff14883ab9 /
+> 0x3169e28ca3cc206a / 0x166132accd092fce) — star byte-identity PROVEN through the
+> ghost-cell fold. Full battery 87/87, UNIFORMITY_STRICT=1 green, -Wall -Wextra clean
+> (engine + test TUs), anchor audit green. Next: F-5 (the property suite + the full
+> compat-pin run).
 
 ### 3.6 D7 — the mono voice inside the forest (RULED + LANDED at F-3)
 

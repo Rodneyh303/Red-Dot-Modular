@@ -38,8 +38,9 @@ static int s_pass = 0, s_fail = 0;
 #define EXPECT(e) do{if(!(e))throw std::runtime_error("EXPECT(" #e ")");}while(0)
 #define EXPECT_EQ(a,b) do{if((a)!=(b)){std::ostringstream s;s<<#a<<"="<<(a)<<" != "<<(b);throw std::runtime_error(s.str());}}while(0)
 
-static ParentView pv(MonoDecision d, int nv, bool held, bool wasHeld, bool tail) {
-    return ParentView{ d, nv, held, wasHeld, tail };
+static ParentView pv(MonoDecision d, int nv, bool held, bool wasHeld, bool tail,
+                     bool ghostEvent = false) {
+    return ParentView{ d, nv, held, wasHeld, tail, ghostEvent };
 }
 
 static const char* decName(MonoDecision d) {
@@ -341,8 +342,8 @@ int main() {
         TEST("C1 forest form: a GAP-HOSTED offer rides the closed envelope (the D5 carve-out)", {
             // pg offers from INSIDE its own gap (NewNote with its own gate LOW — the ghost
             // path; the goldens forced this carve-out: the strict veto killed the poly-ghost
-            // roll and GOLDEN_BS diverged). The offer is let through — the ghost-hosted
-            // forest form is F-4's; until then the legacy roll is preserved exactly.
+            // roll and GOLDEN_BS diverged). The offer is let through — F-4 landed the ghost
+            // cell's candidacy form below; the carve-out itself is the mayOnset gate.
             const ParentView pg = pv(MonoDecision::NewNote, 2, false, true, false); // offers, gate LOW
             auto projGB = [&](int u) { return u == 0 ? pg : pb; };
             const RhythmDecision g = RhythmDecisionCore::decideMask(0x0003, projGB);
@@ -369,6 +370,89 @@ int main() {
             const RhythmDecision d = RhythmDecisionCore::decideMask(0x0000, projAB);
             EXPECT(!d.mayOnset && !d.forcedRest && !d.holdFollow && !d.envelopeOpen);
             EXPECT_EQ(d.lengthCeiling, 0);
+        });
+    }
+
+    // ── F-4 (D5): the GHOST CELL — every onsetting container is itself ghosting ──────
+    // The permission point is a ghost cell of the containers iff every container that OFFERS
+    // an onset this edge is itself ghosting (ParentView::ghostEvent — the mono's stream latch
+    // for slot 0, the child's polyGhostOnset_ capture for poly containers). The engine keys
+    // its placement block on this (star: exactly the old global ghostActive read — the fold
+    // comment in RhythmDecisionCore.hpp carries the per-verdict-shape reduction proof).
+    SUITE("F-4 ghostCell — the D5 forest form (all onsetting containers ghosting)");
+    {
+        TEST("single container, ghosting offer -> the permission point IS a ghost cell", {
+            // The star shape: the mono offers (NewNote) AND its stream latched a played ghost.
+            const ParentView pm = pv(MonoDecision::NewNote, 3, false, true, false, /*ghostEvent=*/true);
+            auto projM = [&](int) { return pm; };
+            const RhythmDecision d = RhythmDecisionCore::decideMask(0x0001, projM);
+            EXPECT(d.mayOnset);                      // the gap-hosted carve-out lets it ride
+            EXPECT(d.ghostCell);                     // the placement block rolls the child's VAR
+        });
+        TEST("single container, main offer -> NOT a ghost cell (the main-onset shape)", {
+            const ParentView pm = pv(MonoDecision::NewNote, 3, true, true, false, /*ghostEvent=*/false);
+            auto projM = [&](int) { return pm; };
+            const RhythmDecision d = RhythmDecisionCore::decideMask(0x0001, projM);
+            EXPECT(d.mayOnset);
+            EXPECT(!d.ghostCell);                    // an ordinary onset — no candidacy roll
+        });
+        TEST("MidNote/bridge-held ghost rise (no onset offer) -> mayOnset false, ghostCell false", {
+            // The bridge case: the mono's stream blipped (ghostEvent true — the latch) but the
+            // verdict is MidNote (the gate was bridge-held; the MidNote guard ate the onset).
+            // No offer -> no permission point -> the placement never runs — exactly the shipped
+            // shape (the old placement sat inside the mayOnset branch too).
+            const ParentView pm = pv(MonoDecision::MidNote, 3, true, true, false, /*ghostEvent=*/true);
+            auto projM = [&](int) { return pm; };
+            const RhythmDecision d = RhythmDecisionCore::decideMask(0x0001, projM);
+            EXPECT(!d.mayOnset);
+            EXPECT(!d.ghostCell);                    // gated on mayOnset — the vacuous-∀ is closed
+        });
+        TEST("{ghost, ghost}: both onsetting containers ghosting -> a ghost cell", {
+            const ParentView pg1 = pv(MonoDecision::NewNote, 2, false, true, false, true);
+            const ParentView pg2 = pv(MonoDecision::NewNote, 4, false, false, false, true);
+            auto projGG = [&](int u) { return u == 0 ? pg1 : pg2; };
+            const RhythmDecision d = RhythmDecisionCore::decideMask(0x0003, projGG);
+            EXPECT(d.mayOnset);                      // both offers gap-hosted
+            EXPECT(d.ghostCell);                     // "a gap for every container simultaneously"
+        });
+        TEST("{main, ghost}: one main offer makes it an ordinary onset (no candidacy roll)", {
+            const ParentView pg = pv(MonoDecision::NewNote, 2, false, true, false, true);  // ghosting
+            const ParentView pm = pv(MonoDecision::NewNote, 4, true,  true,  false, false); // main cell
+            auto projGM = [&](int u) { return u == 0 ? pg : pm; };
+            const RhythmDecision d = RhythmDecisionCore::decideMask(0x0003, projGM);
+            EXPECT(d.mayOnset);                      // the main offer carries the envelope anyway
+            EXPECT(!d.ghostCell);                    // a main cell is not a gap — real note
+        });
+        TEST("{ghosting, mid-note non-onsetting}: the ∀ is over ONSETTING containers only", {
+            // pg ghosts and offers; ph holds mid-note (no offer) — ph's ghostEvent is moot.
+            const ParentView pg = pv(MonoDecision::NewNote, 2, false, true, false, true);
+            const ParentView ph = pv(MonoDecision::MidNote,  4, true,  true,  false, false);
+            auto projGH = [&](int u) { return u == 0 ? pg : ph; };
+            const RhythmDecision d = RhythmDecisionCore::decideMask(0x0003, projGH);
+            EXPECT(d.mayOnset);
+            EXPECT(d.ghostCell);
+        });
+        TEST("offers exist but NONE onsetting-ghost and mayOnset vetoed -> ghostCell false", {
+            // The F-2 sibling-gate veto: a MAIN offer (pa) with a closed intersection envelope
+            // — mayOnset false; ghostCell must be false with it (no permission point at all).
+            const ParentView pa = pv(MonoDecision::NewNote, 2, true, true, false, false);
+            const ParentView pc = pv(MonoDecision::MidNote, 4, false, true, false, false);
+            auto projAC = [&](int u) { return u == 0 ? pa : pc; };
+            const RhythmDecision d = RhythmDecisionCore::decideMask(0x0003, projAC);
+            EXPECT(!d.mayOnset);
+            EXPECT(!d.ghostCell);
+        });
+        TEST("freeDecision never ghost-places (a free voice has no containers to ride)", {
+            const RhythmDecision d = RhythmDecisionCore::freeDecision(false, true, true);
+            EXPECT(d.mayOnset);                      // an expiry edge IS a permission point
+            EXPECT(!d.ghostCell);                    // ...but its own — never a container ghost cell
+        });
+        TEST("decide(p) single-container form: ghostCell = mayOnset ∧ ghostEvent", {
+            const ParentView pg = pv(MonoDecision::NewNote, 2, false, true, false, true);
+            const RhythmDecision d = RhythmDecisionCore::decide(pg);
+            EXPECT(d.ghostCell);
+            const ParentView pr = pv(MonoDecision::Rest, 2, false, true, false, true);
+            EXPECT(!RhythmDecisionCore::decide(pr).ghostCell);   // a rest is no offer
         });
     }
 

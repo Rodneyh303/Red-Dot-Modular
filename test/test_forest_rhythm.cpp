@@ -341,8 +341,145 @@ static void marchGate(int seed, const uint16_t words[16], GateTallies& t) {
     }
 }
 
+// ── The mode-B+ghost march (F-4/D5: the differential marchModeBS idiom on AUTHORED graphs) ──
+// marchGate + the GHOST stream (the third subgate: fires only genuinely in-gap, one sample
+// clear of the fall — the marchModeBS mechanics verbatim) + the F-3 drive mirror. The mono's
+// own-term write includes the ghost term (ghostSounding = ghostActive && ghostHigh), so the
+// mono's fused envelope opens during its own ghost blips — the window a child's ghost-placed
+// note rides through the C5 intersection. The GHOST-CELL OBSERVABLES are read straight after
+// the stepped execution (executePolyVoices): eng.ghostActive (the mono's latch, edge-truth —
+// only executeModeBSubdivided writes it) and eng.polyGhostOnset_[u] (the F-4 captures — only
+// executePolyVoice writes them). Neither is touched by the drive compose that follows.
+// STREAM NOTE: the H marches run HOT on purpose — the legacy marchModeBS probabilities yield
+// ~7 genuine in-gap ghost cells over 8×64 steps (gaps mostly close in one step), which starves
+// the DEEP hops (a V3 placement needs its container's placement AND its own VAR+rest draws at
+// the same edge). The H streams widen the gaps (main pFall 0.60 / pRise 0.30) and raise the
+// ghost rise rate so the recursion is exercised at depth; the golden marches keep the legacy
+// probabilities and the star byte-identity.
+struct GhostTallies {
+    long ghostCells            = 0;   // edges where the mono's ghost latch fired at the edge
+    long v2GhostPlacements     = 0;   // V2 played a ghost-placed note (polyGhostOnset_[1])
+    long v3GhostPlacements     = 0;   // V3 played a ghost-placed note (polyGhostOnset_[2])
+    long v2GhostWhileMonoNot   = 0;   // VIOLATION: V2 ghost-placed with NO mono ghost event
+    long v3GhostWhileV2Not     = 0;   // VIOLATION: V3 ghost-placed with NO V2 ghost event (D5 ∀)
+    long v3Fires               = 0;   // V3 gate high (post-drive)
+    long v2Fires               = 0;   // V2 gate high (post-drive)
+    std::vector<uint8_t> stream;      // ghost + capture bits (the determinism double-run)
+};
+
+static void marchGateBS(int seed, const uint16_t words[16], GhostTallies& t) {
+    PhiloxRng rng; rng.seed64((uint64_t)seed * 747796405u + 2891336453u + 197u);
+    SequencerEngine eng; eng.reset();
+    authorGraph(eng, words);
+    eng.numPolyVoices = 15;
+    seedEngine(eng, rng);
+    // D5 HARNESS NOTE (playhead TRUTH, Rodney's settled ruling — GATE_SUBDIVISION_STEP_GATE.md
+    // §379 "PLAYHEAD ADVANCE for ghosts"): the playhead DOES advance on ghost rises. The
+    // edge-driven model treats a ghost onset as one more onset type (executeModeBSubdivided:
+    // anyEdge = main ∨ ratchet ∨ ghost → advancePlayhead), so stepIndex, the DNA clock and every
+    // lane tick move on a ghost-only rise — probe-verified. Lane positions are NOT frozen inside
+    // a gap; what starves the deep hops is the draw CONJUNCTION over the few ghost cells (the
+    // STREAM NOTE above): a V3 hop needs V2 to have PLAYED at that same edge AND V3's own VAR +
+    // rest draws to pass at the same position. The property under test is the PLACEMENT KEYING
+    // (which containers' ghost events gate candidacy), not the draw statistics — the core suite
+    // and the star marches own those — so the H marches pin the probe voices' thresholds to
+    // always-pass: variationProb 0.98 (the VAR roll passes iff r < prob) and restProb 0.02 (the
+    // rest draw rests iff r < prob). Candidacy then rides the containers' ghost events
+    // deterministically, one hop per edge.
+    eng.voices[dotModular::VoiceResolver::slot(2)].variationProb = 0.98f;   // V2: the VAR roll passes
+    eng.voices[dotModular::VoiceResolver::slot(2)].restProb      = 0.02f;   // V2: the rest draw passes
+    eng.voices[dotModular::VoiceResolver::slot(3)].variationProb = 0.98f;   // V3: same
+    eng.voices[dotModular::VoiceResolver::slot(3)].restProb      = 0.02f;
+    const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+    const float varAmt  = 0.20f + 0.70f * rng.nextFloat();
+    const PatternInput in = makeInput(varAmt);
+    GateStream main, ghost; bool prevMainHigh = false;
+    bool latch[17] = {};   // indexed by VOICE number 2..16 ([0..1] unused)
+    for (int step = 0; step < kSteps; ++step) {
+        bool rose; main.step(rng, 0.30f, 0.60f, rose);   // HOT: long gaps feed the ghost stream
+        // Ratchet: fires only IN-gate (Monsoon.cpp:878). The G suites' marches omit it; the
+        // ghost march keeps the plain main+ghost pair (the ratchet adds nothing to D5).
+        // Ghost: fires only genuinely in-gap, one sample clear of the fall (887-888).
+        const bool inGap = !main.high && !prevMainHigh;
+        bool ghostRose = false;
+        if (inGap) ghost.step(rng, 0.55f, 0.50f, ghostRose);
+        StepResult r = eng.executeModeBSubdivided(/*mainGateRise=*/rose, /*mainGateHigh=*/main.high,
+                                                  /*subGateRise=*/false, noteVal, in,
+                                                  /*ghostRise=*/ghostRose, /*ghostHigh=*/ghost.high);
+        if (r.stepped && eng.numPolyVoices > 0) eng.executePolyVoices(in);
+        // ── The F-4/D5 observables (edge truth, pre-drive) ────────────────────────────────
+        const bool monoGhostCell = eng.ghostActive;
+        const bool v2Ghost = eng.polyGhostOnset_[1];
+        const bool v3Ghost = eng.polyGhostOnset_[2];
+        if (monoGhostCell) ++t.ghostCells;
+        if (v2Ghost) {
+            ++t.v2GhostPlacements;
+            if (!monoGhostCell) ++t.v2GhostWhileMonoNot;   // V2's containers include V1?
+        }
+        if (v3Ghost) {
+            ++t.v3GhostPlacements;
+            if (!v2Ghost) ++t.v3GhostWhileV2Not;           // the D5 ∀: V3 rides V2's ghost events
+        }
+        // The polyVoiceActive latch (Monsoon.cpp:1009-1012), after the stepped execution.
+        for (int i = 1; i <= eng.numPolyVoices; ++i)
+            latch[i + 1] = eng.voices[dotModular::VoiceResolver::slot(i + 1)].gs.gateHeld;
+        // IMPL 2b mono drive, OWN term with the ghost term (Monsoon.cpp:1152-1196).
+        const bool isRest        = (r.decision == MonoDecision::Rest);
+        const bool ghostSounding = eng.ghostActive && ghost.high;
+        const bool gapBridge     = eng.tieAcrossRests ? eng.gs.slurForward : prevMainHigh;
+        const bool gateOpen      = !isRest && (main.high || ghostSounding || gapBridge);
+        eng.gs.gateHeld     = gateOpen;
+        eng.gsStep.gateHeld = !isRest && (main.high || ghostSounding);
+        if (!gateOpen) {
+            eng.gs.holdRemain = 0.f;       eng.gs.gatePulseRemain = -1;
+            eng.gsStep.holdRemain = 0.f;   eng.gsStep.gatePulseRemain = -1;
+        }
+        prevMainHigh = main.high;
+        // The F-3 drive mirror (Monsoon.cpp:1198-1262 — D8 materialized compose + the D7 V1
+        // branch), identical to marchGate's.
+        for (int k = 0; k < eng.rdm.topoCount; ++k) {
+            const int i = eng.rdm.topoOrder[k];
+            if (i == 0) {
+                if (eng.rdm.parentCount[0] == 0) continue;
+                bool monoOpen = gateOpen;
+                for (int p = 0; p < eng.rdm.parentCount[0]; ++p) {
+                    const int u = eng.rdm.parentSlot[0][p];
+                    if (u > eng.numPolyVoices) continue;
+                    monoOpen = monoOpen && eng.voices[dotModular::VoiceResolver::slot(u + 1)].gs.gateHeld;
+                }
+                eng.gs.gateHeld = monoOpen;
+                if (!monoOpen) {
+                    eng.gs.holdRemain = 0.f;       eng.gs.gatePulseRemain = -1;
+                    eng.gsStep.holdRemain = 0.f;   eng.gsStep.gatePulseRemain = -1;
+                }
+                continue;
+            }
+            if (i > eng.numPolyVoices || eng.rdm.parentCount[i] == 0) continue;
+            bool vOpen = latch[i + 1];
+            for (int p = 0; p < eng.rdm.parentCount[i]; ++p) {
+                const int u = eng.rdm.parentSlot[i][p];
+                vOpen = vOpen && (u == 0 ? eng.gs.gateHeld
+                                         : eng.voices[dotModular::VoiceResolver::slot(u + 1)].gs.gateHeld);
+            }
+            const auto vs = dotModular::VoiceResolver::slot(i + 1);
+            eng.voices[vs].gs.gateHeld = vOpen;
+            if (!vOpen) { eng.voices[vs].gs.holdRemain = 0.f; eng.voices[vs].gs.gatePulseRemain = -1; }
+        }
+        // Tallies + the determinism stream (post-drive gates + the edge-truth capture bits).
+        const bool v2h = eng.voices[dotModular::VoiceResolver::slot(2)].gs.gateHeld;
+        const bool v3h = eng.voices[dotModular::VoiceResolver::slot(3)].gs.gateHeld;
+        if (v2h) ++t.v2Fires;
+        if (v3h) ++t.v3Fires;
+        t.stream.push_back(monoGhostCell ? 1u : 0u);
+        t.stream.push_back(v2Ghost ? 1u : 0u);
+        t.stream.push_back(v3Ghost ? 1u : 0u);
+        t.stream.push_back(v2h ? 1u : 0u);
+        t.stream.push_back(v3h ? 1u : 0u);
+    }
+}
+
 int main() {
-    std::printf("[test_forest_rhythm] the FOREST behavioral spec (STAGE F-3, plan §5)\n");
+    std::printf("[test_forest_rhythm] the FOREST behavioral spec (STAGE F-4, plan §5)\n");
 
     // ── Suite A — FREE VOICES: parents(v) = ∅ ⇒ E(v) = Own(v) ───────────────────
     std::printf("  suite A: free voices (the empty graph, D2/R2)\n");
@@ -608,6 +745,81 @@ int main() {
         check(a.v1Fires > 0,        "D7-G3: V1 plays mid-chain (the root is inside the algebra, not gone)");
         check(a.stream == b.stream && a.v1Fires == b.v1Fires,
               "D7-G3: the mid-chain drive is byte-deterministic (double-run)");
+    }
+
+    // ── Suite H — GHOST HOSTING UNDER A FOREST (F-4, D5): candidacy rides the HOST
+    // CONTAINERS' ghost events, never V1's stream alone. The marchGateBS march carries the
+    // ghost stream; the observables are the F-4 captures (polyGhostOnset_) + the mono latch,
+    // read at edge truth. The STAR's ghost byte-identity stays the differential suite's
+    // contract (GOLDEN_BS marches the star's ghost path — the reduction argument lives in
+    // RhythmDecisionCore.hpp's decideMask comment and the core suite's ghostCell rows).
+    std::printf("  suite H1: the ghost RECURSION (V2 in V1, V3 in V2 — ghost events propagate down)\n");
+    {
+        uint16_t words[16] = {};
+        words[1] = 0x0001;   // V2 in {V1} — the star edge: V2 ghost-rides V1's stream
+        words[2] = 0x0002;   // V3 in {V2} — the recursion: V3 ghost-rides V2's ghost-placed notes
+        GhostTallies a, b;
+        for (int seed = 0; seed < kSeeds; ++seed) marchGateBS(seed, words, a);
+        for (int seed = 0; seed < kSeeds; ++seed) marchGateBS(seed, words, b);
+        std::printf("    ghostCells=%ld v2Ghost=%ld v3Ghost=%ld v3WhileV2Not=%ld v2Fires=%ld v3Fires=%ld\n",
+                    a.ghostCells, a.v2GhostPlacements, a.v3GhostPlacements,
+                    a.v3GhostWhileV2Not, a.v2Fires, a.v3Fires);
+        check(a.ghostCells > 0,        "D5-H1: the mono ghosted (the march exercises the ghost path)");
+        check(a.v2GhostPlacements > 0, "D5-H1: V2 ghost-rides its container V1 (the star-edge shape)");
+        check(a.v3GhostPlacements > 0, "D5-H1: V3 ghost-rides V2's ghost-PLACED notes (the recursion — poly containers host ghosts)");
+        check(a.v2GhostWhileMonoNot == 0, "D5-H1: V2's ghost placements imply the mono ghost event (its only container)");
+        check(a.v3GhostWhileV2Not == 0,   "D5-H1: V3's ghost placements imply V2's ghost event (the D5 ∀ at work)");
+        check(a.v3Fires > 0,           "D5-H1: V3 plays through the chain (the recursion is not silence)");
+        check(a.stream == b.stream && a.v3GhostPlacements == b.v3GhostPlacements,
+              "D5-H1: the ghost recursion is byte-deterministic (double-run)");
+    }
+
+    std::printf("  suite H2: the DE-PRIVILEGING probe (free V2 with V3 in V2 — V1 ghosts, nobody under it)\n");
+    {
+        // THE HEADLINE: pre-F-4 the placement keyed on the GLOBAL mono latch — V3 (whose only
+        // container is the FREE V2) would roll ghost candidacy at V1's ghost cells whenever
+        // one coincided with a V2 onset: a +1 correlation with a voice V3 is not contained by.
+        // F-4: candidacy rides the host containers' ghost stream — free V2 has no containers,
+        // so it never ghost-places and never emits a ghost event; V3 can never ghost-place.
+        // De-privileging ≠ silence: V3 still plays V2's rhythm (its own draws).
+        uint16_t words[16] = {};
+        words[2] = 0x0002;   // V3 in {V2}; V2 FREE (no containers); V1 parentless
+        GhostTallies a, b;
+        for (int seed = 0; seed < kSeeds; ++seed) marchGateBS(seed, words, a);
+        for (int seed = 0; seed < kSeeds; ++seed) marchGateBS(seed, words, b);
+        std::printf("    ghostCells=%ld v2Ghost=%ld v3Ghost=%ld v2Fires=%ld v3Fires=%ld\n",
+                    a.ghostCells, a.v2GhostPlacements, a.v3GhostPlacements, a.v2Fires, a.v3Fires);
+        check(a.ghostCells > 0,        "D5-H2: the mono ghosted heavily (the old key would have fired here)");
+        check(a.v2GhostPlacements == 0, "D5-H2: a FREE voice never ghost-places (no containers — no ghost stream to ride)");
+        check(a.v3GhostPlacements == 0, "D5-H2: V3 NEVER ghost-places off V1's stream (the V1 privilege is gone — the headline)");
+        check(a.v2Fires > 0,           "D5-H2: free V2 plays its own rhythm (the container is alive)");
+        check(a.v3Fires > 0,           "D5-H2: V3 plays V2's rhythm (de-privileging is not silence)");
+        check(a.stream == b.stream && a.v3GhostPlacements == b.v3GhostPlacements,
+              "D5-H2: the de-privileged march is byte-deterministic (double-run)");
+    }
+
+    std::printf("  suite H3: V3 in {V1, V2} with V2 in V1 (the two-host implication, both directions)\n");
+    {
+        // V3's ghost cell requires BOTH onsetting containers ghosting: V1's stream latch AND
+        // V2's ghost-placed note. The per-edge implication is asserted directly; the
+        // coincidence (V3 ghost-placed inside the {V1-ghost ∧ V2-ghost-note} overlap) is the
+        // observed positive — rare by construction (two VAR draws must both pass at one edge),
+        // so the suite asserts the implication tightly and the occurrence when it fires.
+        uint16_t words[16] = {};
+        words[1] = 0x0001;   // V2 in {V1}
+        words[2] = 0x0003;   // V3 in {V1, V2} — two hosts
+        GhostTallies a, b;
+        for (int seed = 0; seed < kSeeds; ++seed) marchGateBS(seed, words, a);
+        for (int seed = 0; seed < kSeeds; ++seed) marchGateBS(seed, words, b);
+        std::printf("    ghostCells=%ld v2Ghost=%ld v3Ghost=%ld v3WhileV2Not=%ld v3Fires=%ld\n",
+                    a.ghostCells, a.v2GhostPlacements, a.v3GhostPlacements,
+                    a.v3GhostWhileV2Not, a.v3Fires);
+        check(a.v2GhostWhileMonoNot == 0, "D5-H3: V2's ghost placements imply the mono ghost event");
+        check(a.v3GhostWhileV2Not == 0,   "D5-H3: V3's ghost placements imply V2's ghost event (and transitively V1's — the full ∀ over both hosts)");
+        check(a.v3GhostPlacements > 0,    "D5-H3: the two-host ghost coincidence occurs (V3 ghost-rides the {V1, V2} overlap)");
+        check(a.v3Fires > 0,              "D5-H3: V3 plays through the diamond-host shape");
+        check(a.stream == b.stream && a.v3GhostPlacements == b.v3GhostPlacements,
+              "D5-H3: the two-host march is byte-deterministic (double-run)");
     }
 
     std::printf("\n%s: %d passed, %d failed\n", "test_forest_rhythm", g_pass, g_fail);

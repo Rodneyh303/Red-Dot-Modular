@@ -96,8 +96,10 @@ void SequencerEngine::reset() {
     rdm.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
     rdm.graphWords = pe.containmentParents;
     // F-1 per-container capture state: a voice that has not executed this run is at Rest —
-    // it offers no onset and closes its children (fail-closed).
+    // it offers no onset and closes its children (fail-closed). F-4: no ghost event either —
+    // a voice that has not executed hosts no ghost cell for its children.
     for (int i = 0; i < 16; i++) { polyVerdict_[i] = MonoDecision::Rest; polyNv_[i] = 0; }
+    for (int i = 0; i < 16; i++) polyGhostOnset_[i] = false;
     lastStepResult = StepResult{};
     stepIndex = -1;
     lastStepIndex = -1;
@@ -1131,8 +1133,13 @@ void SequencerEngine::resetActivatedPolyVoices_() {
 // sounding" read the executors made before ticking). The byte-identity gate for every
 // Stage-R commit: test_rhythm_decision_differential.
 ParentView SequencerEngine::monoParentView() const {
+    // F-4 (D5): the mono's ghost event is its OWN stream latch (ghostActive, §8 — the mono
+    // ghost machinery is the mono's own articulation; D7's drive bounds its audibility). At
+    // the moment executePolyVoices reads this view, ghostActive is exactly "the mono's
+    // this-edge onset was a played ghost": latched at the ghost rise (executeModeBSubdivided),
+    // cleared at every main/ratchet onset BEFORE the cascade runs.
     return ParentView{ lastStepResult.decision, lastStepResult.nvIdx,
-                       gs.gateHeld, wasHeldMono, hadMonoTail };
+                       gs.gateHeld, wasHeldMono, hadMonoTail, ghostActive };
 }
 
 // ── F-1: the per-container view (RHYTHM_DECISION_MANAGER_PLAN §3.1) ─────────────────
@@ -1151,8 +1158,13 @@ ParentView SequencerEngine::containerView(int u) const {
     if (u <= 0) return monoParentView();
     if (u >= 16) return ParentView{};              // defensive: fail-closed neutral view
     const VoiceSlot us = VoiceResolver::slot(u + 1);
+    // F-4 (D5): the container's ghost event rides the view (the capture its own cascade wrote
+    // this edge — the polyGhostOnset_ discipline) so a child's decideMask fold can require
+    // every onsetting container to be ghosting (the ghost-cell ∀). Topo order guarantees the
+    // capture is THIS-edge fresh (the same guarantee the verdict/length captures ride).
     return ParentView{ polyVerdict_[u], polyNv_[u],
-                       voices[us].gs.gateHeld, wasHeldPolyPrev[u], hadPolyTail[u] };
+                       voices[us].gs.gateHeld, wasHeldPolyPrev[u], hadPolyTail[u],
+                       polyGhostOnset_[u] };
 }
 
 void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& input, bool wasHeldPoly, bool hadPolyTail) {
@@ -1172,6 +1184,14 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
               (v.gs.holdRemain >= 1.f) || (v.gs.gatePulseRemain > 0),   // mono's MidNote guard
               v.gs.slurForward,
               wasHeldPoly || hadPolyTail);
+    // F-4 (D5): the ghost-placed-onset capture — default NO ghost event this edge; the play
+    // path below overwrites it when this onset was ghost-placed (the polyVerdict_ discipline:
+    // every executed edge writes, children read THIS-edge truth). A rested/rested-ghost/
+    // landing/mid-hold edge leaves it false — none of those host a child ghost cell.
+    polyGhostOnset_[voiceIdx.v] = false;
+    const bool inGhostCell = rd.ghostCell;   // F-4 (D5): read once, used by the placement
+                                             // block and the play capture (the block may
+                                             // return early on the rested-ghost path).
     // Stage 2a: refresh VARIATION cell before nvIdxForVoice reads it (nvIdxForVoice
     // reads the uniform via pe.warpRow at the voice's variation step to pick the note length).
     refreshPolyRandomCell(voiceIdx, LaneId{PL_VARIATION}, getVariationStepForVoice(voiceIdx) & 0x0F);
@@ -1197,17 +1217,30 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         refreshPolyRandomCell(voiceIdx, LaneId{PL_REST}, restIdx);
         float r_rest = pe.warpRow(voiceIdx, LaneId{PL_REST})[restIdx];
 
-        // ── Phase 5: per-voice ghost placement (§398/§227) ────────────────────────────────
-        // At a ghost cell (ghostActive: the mono ghosted this onset), each poly voice rolls its
-        // OWN variation to decide if it ghosts HERE. A voice whose variation does not pass is a
-        // RESTED GHOST — transparent (silent; the slur passes through it, §458), not part of the
-        // chain. The mono voice is already gated (executeModeBSubdivided). Delegated voices read
-        // mono's step → all voices read the same value = shared ghost rhythm (+1 correlation).
-        // Local-East voices read their own East VARIATION LOR step = independent placement (0).
-        // The graded [-1,+1] copula correlation is a future refinement (variation is not yet a
-        // spread lane); this is the per-voice read the doc says "already exists, just not read
-        // by anything today" (§227).
-        if (ghostActive) {
+        // ── Phase 5: per-voice ghost placement (§398/§227; F-4 = plan §3.3's D5 forest form) ──
+        // At a GHOST CELL of the containers (rd.ghostCell: every ONSETTING container is itself
+        // ghosting this edge), each poly voice rolls its OWN variation to decide if it ghosts
+        // HERE. A voice whose variation does not pass is a RESTED GHOST — transparent (silent;
+        // the slur passes through it, §458), not part of the chain.
+        //
+        // F-4 DE-PRIVILEGING (the "mono not special" objective, D5 RULED "agree
+        // intersection"): this block keyed on the GLOBAL mono latch (engine.ghostActive) —
+        // exact on the star (every voice's container IS the mono), wrong under a forest (a
+        // voice under V2 would ghost-ride V1's stream). The key is now the RDM's ghostCell:
+        // the containers' own ghost events (ParentView::ghostEvent — the mono's stream latch
+        // for slot 0, the child's polyGhostOnset_ capture for poly containers), folded as
+        // "every onsetting container is ghosting". Candidacy is UNCHANGED (D5): the voice's
+        // OWN variation draw at its own VAR step. Delegated voices read mono's VAR cell (D6
+        // RULED: the delegated default keeps reading the root's cell — the draw production is
+        // not the decision structure) → the shared ghost rhythm (+1 correlation) rides the
+        // DEFAULT delegation, not the graph; Local-East voices read their own East VARIATION
+        // LOR step = independent placement (0). The graded [-1,+1] copula correlation is a
+        // future refinement (variation is not yet a spread lane); this is the per-voice read
+        // the doc says "already exists, just not read by anything today" (§227).
+        // The ghost note's EXTENT is the landed C5 intersection (the per-sample drive — the
+        // audibility bound: every container's fused envelope must hold the note open; a
+        // container's ghost holds its own gate high via its ghost/ghost-placed-note term).
+        if (inGhostCell) {
             int varIdx = getVariationStepForVoice(voiceIdx) & 0x0F;
             refreshPolyRandomCell(voiceIdx, LaneId{PL_VARIATION}, varIdx);
             float r_vary_voice = pe.warpRow(voiceIdx, LaneId{PL_VARIATION})[varIdx];
@@ -1291,6 +1324,13 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         // container names the opportunity type).
         polyVerdict_[voiceIdx.v] = (rd.gateType != MonoDecision::NewNote && (wasHeldPoly || hadPolyTail))
                                        ? MonoDecision::Legato : MonoDecision::NewNote;
+        // F-4 (D5): this onset was ghost-placed (the voice PLAYED at a ghost cell of its
+        // containers) — the ghost event its children will fold. A ghost-placed note that
+        // SLID (the container's verdict was a Legato-from-dead offer) is still a ghost-cell
+        // note: the event is "this note lives inside the containers' ghost cell", not "this
+        // note re-struck". The rested-ghost / rest / landing / mid-hold paths leave the
+        // top-of-edge false above.
+        polyGhostOnset_[voiceIdx.v] = inGhostCell;
 
         // ── Rule 2 LEAD (per-voice leading-edge slur roll) ────────────────────────────────
         // Mirror mono's LEAD commitment (executeStep), per voice: this note commits to slur its
@@ -1567,6 +1607,12 @@ int SequencerEngine::getStrandIdx(int tickCount, int len, int off, int mutation)
 // ── EAST_EXTRA_LANES stage 2 ──────────────────────────────────────────────────────────────────
 int SequencerEngine::getVariationStepForVoice(VoiceSlot bank) const {
     // Delegated (default) → read mono's VARIATION position, so the voice mirrors mono.
+    // D6 SWEEP (F-4, RULED engine-internal): this default is the DELIBERATE boundary under a
+    // forest — the delegated voice keeps reading V1's cell ("the root's cell") regardless of
+    // the graph: the LOR windows produce DRAWS (lane positions), not permissions, and the
+    // draw production is not the decision structure (plan §3.7). V1's own containment does
+    // not touch its lane positions, so the delegated read is well-defined under any forest
+    // shape (V1-as-leaf included). varlegLocalEast_ remains the per-voice opt-out.
     if (varlegDelegated(bank, 0)) return getVariationStep();
     // Local East: read THIS voice's own window, advanced on its per-voice tick (which inherits
     // mono's per-lane direction — a reversed mono VARIATION lane reverses this voice too).
@@ -1578,6 +1624,9 @@ int SequencerEngine::getVariationStepForVoice(VoiceSlot bank) const {
 
 int SequencerEngine::getLegatoStepForVoice(VoiceSlot bank) const {
     // Delegated (default) → read mono's LEGATO position, so the voice's slur roll matches mono.
+    // D6 SWEEP (F-4): same boundary as the VAR getter above — the delegated default keeps
+    // reading V1's cell under any forest shape (draw production, not the decision structure);
+    // varlegLocalEast_ is the per-voice opt-out.
     if (varlegDelegated(bank, 1)) return getLegatoStep();
     // Local East: read THIS voice's own window, advanced on its per-voice tick (inherits mono's
     // per-lane direction — a reversed mono LEGATO lane reverses this voice's slur roll too).

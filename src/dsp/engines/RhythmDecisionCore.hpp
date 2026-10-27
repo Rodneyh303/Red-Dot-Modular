@@ -16,10 +16,13 @@
 // source re-point; parentsOf(GRAPH) reads the staged containmentParents; the empty mask is a
 // FREE voice, the self-rooted tuple E(v) = Own(v)) → F-2 LANDED (f56a2ab6 — the MATERIALIZED
 // forest, D8: resolved at the graph-change boundary — topological visit order + per-voice
-// container lists; the per-sample drive reads plain state, no per-sample work) → F-3 (this
-// commit) the MONO DRIVE INSIDE THE ALGEBRA (D7 RULED: "V1 inside the algebra, no privilege"
-// — the materialized order and the drive's C5 loop include slot 0; a parentless V1 is
-// bit-identical to the pre-F-3 drive) → F-4 ghost/D5 + VAR-LEG scope → F-5 the property
+// container lists; the per-sample drive reads plain state, no per-sample work) → F-3 LANDED
+// (a304a4cd — the MONO DRIVE INSIDE THE ALGEBRA, D7: the materialized order and the drive's
+// C5 loop include slot 0; a parentless V1 is bit-identical to the pre-F-3 drive) → F-4 (this
+// commit) the GHOST HOSTING UNDER A FOREST (D5 RULED: "agree intersection" — a voice's ghost
+// exists only in gaps of the intersection envelope; candidacy = its own VAR draw) + the D6
+// VAR/LEG delegation sweep (engine-internal, no code change: the delegated default keeps
+// reading V1's cell — the draw production is not the decision structure) → F-5 the property
 // suite + compat pin. Star graphs stay byte-identity-gated on the marches at every step;
 // the free-voice and poly-container semantics are spec'd in test_forest_rhythm.
 
@@ -55,6 +58,16 @@ struct ParentView {
     bool         gateHeld;      // the container's gate is high right now (live read)
     bool         wasHeld;       // the container was held at the edge (captured pre-tick)
     bool         hadTail;       // the container has a fractional tail still sounding
+    // F-4 (D5): the container's THIS-EDGE GHOST EVENT — its onset (iff it offered one) is a
+    // ghost-cell note. u = 0: the mono's own stream latch (engine.ghostActive, §8 — the mono
+    // ghost machinery is the mono's own articulation; D7's drive bounds its audibility).
+    // u > 0: polyGhostOnset_[u] — the capture the voice's own cascade wrote (it PLAYED at a
+    // permission point that was a ghost cell of ITS containers — the recursion: ghost events
+    // propagate DOWN the forest, one level per edge). This is stream truth captured by the
+    // producer that KNOWS, never inferred from envelope reads (a bridge-held ghost rise or a
+    // first-ever main onset reads identical to a main cell in the gate words — the latch does
+    // not, which is exactly why the star reduction is exact where an inference would not be).
+    bool         ghostEvent = false;
 };
 
 // ── The five named predicates (plan §2.3, R-3) ─────────────────────────────────
@@ -120,6 +133,13 @@ struct RhythmDecision {
     bool         holdFollow;     // C4: containers mid-gate -> follow the articulation shape (D1)
     MonoDecision gateType;        // D4: whose verdict names trigger vs slide at a shared onset
                                   //     (topologically-first SOUNDING onsetting container in F)
+    bool         ghostCell;      // F-4 (D5): this permission point is a GHOST CELL of the
+                                  //     containers — every ONSETTING container is itself ghosting
+                                  //     this edge (its offer rides its own gap). The engine's
+                                  //     placement block keys on this (star: exactly the old
+                                  //     global ghostActive read — see decideMask). Candidacy at
+                                  //     a ghost cell is the voice's OWN VAR draw (D5); the
+                                  //     note's EXTENT is the landed C5 intersection (the drive).
 };
 
 struct RhythmDecisionCore {
@@ -282,6 +302,7 @@ struct RhythmDecisionCore {
                                                 //        lengthCeiling fold)
         d.holdFollow    = holdFollow(p);        // C4
         d.gateType      = p.decision;           // D4
+        d.ghostCell     = d.mayOnset && p.ghostEvent;   // F-4 (D5), the single-container form
         return d;
     }
 
@@ -325,6 +346,11 @@ struct RhythmDecisionCore {
         d.forcedRest    = false;   // nothing forces a rest
         d.lengthCeiling = 0;       // no clamp: the own draw IS the window (the nvIdxForVoice
                                    // fold is max(own, containers); the empty fold adds nothing)
+        // ghostCell stays false (F-4/D5): the ghost is a CONTAINMENT texture — a gap event of
+        // the containers' envelopes. A FREE voice has no containers, hence no container gaps to
+        // ride: its notes are all its own (candidacy rides the host containers' ghost stream,
+        // and there is no stream). Same for its children: a free voice never ghost-places, so
+        // it never emits a ghost event for them either.
         if (windowOpen) {
             d.mayOnset   = false;
             d.holdFollow = true;   // hold own gate per the own-window predicate (MidNote path)
@@ -346,6 +372,7 @@ struct RhythmDecisionCore {
     static RhythmDecision decideMask(uint16_t parents, ViewOf viewOf) {
         RhythmDecision d{};                     // no containers -> uncontained (all neutral)
         bool first = true, gateTypeNamed = false, unionMayOnset = false, offerGapHosted = false;
+        bool allOnsettingGhost = true;          // F-4 (D5): every ONSETTING container is ghosting
         for (int u = 0; u < 16; ++u) {
             if (!(parents & (1u << u))) continue;
             const RhythmDecision c = decide(viewOf(u));
@@ -356,20 +383,40 @@ struct RhythmDecisionCore {
             d.holdFollow    = first ? c.holdFollow    : (d.holdFollow && c.holdFollow);    // D1
             d.envelopeOpen  = first ? c.envelopeOpen  : (d.envelopeOpen && c.envelopeOpen); // D1
             if (first) d.gateType = c.gateType;                                  // D4 default
-            if (c.mayOnset && !gateTypeNamed) { d.gateType = c.gateType; gateTypeNamed = true; }
-            if (c.mayOnset && !offerGapHosted) offerGapHosted = !c.envelopeOpen; // D5: an offer FROM a gap
+            if (c.mayOnset) {
+                if (!gateTypeNamed) { d.gateType = c.gateType; gateTypeNamed = true; }
+                if (!offerGapHosted) offerGapHosted = !c.envelopeOpen;           // D5: an offer FROM a gap
+                allOnsettingGhost = allOnsettingGhost && c.ghostCell;            // D5: the ghost cell ∀
+            }
             first = false;
         }
         // C1's FOREST form (plan §3.3 + §3.9), with the D5 carve-out the goldens forced: the
         // union of onset OFFERS is gated by the INTERSECTION envelope — UNLESS the offer is
         // GAP-HOSTED (the offering container's own envelope cell is closed at its onset: the
-        // ghost path, whose forest form lands in F-4 — ghosts LIVE in envelope gaps, and the
-        // legacy poly-ghost roll rides this branch on the star). On the star both shapes
-        // reduce to today's behavior (a main onset implies the mono gate high; a ghost onset
-        // rides the mono gap), so the marches stay byte-identical; with poly containers the
-        // gate closes the hole the F-2 forest marches caught (a child firing while a sibling
-        // container's gate had fallen and the offer was a MAIN onset).
+        // ghost path — ghosts LIVE in envelope gaps, and the legacy poly-ghost roll rides this
+        // branch on the star). On the star both shapes reduce to today's behavior (a main
+        // onset implies the mono gate high; a ghost onset rides the mono gap), so the marches
+        // stay byte-identical; with poly containers the gate closes the hole the F-2 forest
+        // marches caught (a child firing while a sibling container's gate had fallen and the
+        // offer was a MAIN onset).
         d.mayOnset = unionMayOnset && (d.envelopeOpen || offerGapHosted);
+        // F-4 (D5 RULED: "agree intersection" — plan §3.3's ghost row): a permission point is
+        // a GHOST CELL of the containers iff EVERY ONSETTING container is itself ghosting this
+        // edge (all the offers ride container gaps — "hosted only in a gap of the INTERSECTION
+        // envelope", a gap for every onsetting container simultaneously). One main-cell offer
+        // among them makes it an ordinary onset: the voice plays a real note and does not roll
+        // ghost candidacy (a main cell is not a gap). STAR REDUCTION (the byte-identity
+        // argument, per verdict shape): Rest → no offer, mayOnset false; MidNote / a
+        // bridge-held ghost rise → no onset offer (the MidNote guard / the isolated-teal
+        // guard), mayOnset false — the old placement never ran either (it sat inside the
+        // mayOnset branch); NewNote / Legato-from-dead → the mono offers AND ghostActive is
+        // its stream latch ⇒ allOnsettingGhost == ghostActive. So on the star ghostCell is
+        // EXACTLY [mayOnset ∧ ghostActive] — the global read it replaces, bit for bit — and
+        // under a forest it is the containers' ghost events, not V1's (the F-4 de-privileging).
+        // The engine consumes this in the placement block (executePolyVoice); candidacy is the
+        // voice's OWN VAR draw (D5); the note's extent stays the landed C5 intersection (the
+        // per-sample drive — the audibility bound, no F-4 change).
+        d.ghostCell = d.mayOnset && allOnsettingGhost;
         return d;
     }
 };
