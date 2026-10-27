@@ -418,6 +418,38 @@ all three platforms before the next lands — the standing discipline.
 > ghost-cell fold. Full battery 87/87, UNIFORMITY_STRICT=1 green, -Wall -Wextra clean
 > (engine + test TUs), anchor audit green. Next: F-5 (the property suite + the full
 > compat-pin run).
+>
+> **STATUS (2026-10-27): F-5 EXECUTED — STAGE F COMPLETE.** The PROPERTY SUITE (§5
+> "Forest property" landed in full) + the full compat-pin run; no engine surface changed —
+> the shipped algebra (R-1..F-4) validates AS-IS. NEW in test_forest_rhythm: the suite-P
+> harness — 12 seeded random forests drawn from a Fisher-Yates TOPOLOGICAL permutation
+> (parents only from earlier positions: acyclic by construction — the pin plane's
+> guarantee reproduced in data — and every transform-reachable shape class generated),
+> each marched with 8 engine seeds in EVERY mode the differential covers, one shape set
+> shared across the three marches. Shape coverage pinned as rows: 20 free voices, depth-10
+> nesting, 100 diamond/shortcut shapes, 12 V1-as-leaf graphs. P1 (mode A, clock): gate(v)
+> high ⇒ every DIRECT container high — zero violations over 28,724 fires; the TRANSITIVE
+> form on the MODE-A closure (V1 a TERMINAL ancestor: the cascade's containerView reads
+> the mono gate, so "child high ⇒ V1 high" composes, but clock mode has no per-sample
+> drive and executeStep is V1's own machinery — the F-3 boundary). THE MARCH EARNED ITS
+> KEEP: the naive full-closure transitive check tripped 1,033 times — every hit diagnosed
+> as exactly and only chains THROUGH V1 mid-forest in mode A (the documented boundary),
+> zero engine defects — and the corrected row now pins the boundary AS A TESTED CONTRACT,
+> with P2 as its complement. P2 (mode B, the per-sample drive mirror): the FULL closure
+> incl. V1 — zero violations over 24,480 fires; the D7 drive composes transitivity through
+> the root (6,144 V1-leaf edges marched, 820 contained-V1 fires, ZERO structurally-silenced
+> voices across the set — de-privileging is not just V1). P3 (mode BS, the ghost stream):
+> the D5 ∀ generalized to arbitrary forests — a ghost placement implies EVERY ONSETTING
+> container's ghost event, zero violations over 1,160 placements (the H idiom's pinned
+> draws + HOT gaps, all 15 poly voices); every march byte-deterministic on a double-run.
+> THE FULL COMPAT-PIN RUN: the ten V1-semantics suites untouched and green; goldens EXACT
+> (0xa843e2ff14883ab9 / 0x3169e28ca3cc206a / 0x166132accd092fce — 92,876 checks); full
+> battery 87/87; UNIFORMITY_STRICT=1 (manifest EMPTY, all cells uniform); anchor audit all
+> 5 modules consistent; -Wall -Wextra clean. The F-3 "revisit at F-5" question is ANSWERED:
+> the property suite does NOT demand the executeStep boundary move — the boundary is the
+> mode-A closure line, now tested. Branch ready for step 6 (the PR). Post-F queue: the
+> explicit reduction gesture (DECLUTTER/PRUNE), the seed verb, the three deferred rulings
+> (§3.4).
 
 ### 3.6 D7 — the mono voice inside the forest (RULED + LANDED at F-3)
 
