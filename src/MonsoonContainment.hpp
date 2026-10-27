@@ -154,7 +154,11 @@ struct MonsoonContainment : Module {
     // step, like any row commit.
     void armRandomReverse() {
         core.pending.latchRandomReverse();
-        lights[PENDING_LIGHT_START + dotModular::ct::ContainmentPending::V_RANDOM].setBrightness(1.f);
+        // static_cast: Verb is a DIFFERENT enum from LightIds, and C++20 deprecates
+        // enum-enum arithmetic (-Wdeprecated-enum-enum-conversion, the MSYS2 build's
+        // -std=c++20 -Wall flags it). armVerb(int) already crosses as int; this is the
+        // same index spelled through the enumerator — the cast changes nothing numerically.
+        lights[PENDING_LIGHT_START + static_cast<int>(dotModular::ct::ContainmentPending::V_RANDOM)].setBrightness(1.f);
     }
 
     // The TRUE-REVERSE arm (the global-reverse consumer; the CA jack/button gesture): arms the
