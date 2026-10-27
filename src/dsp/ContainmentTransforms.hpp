@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <cstring>
 #include "ContainmentGraph.hpp"
+#include "PhiloxRng.hpp"   // the RANDOM draws' addressable core (rack-free; simde via RACK_DIR in tests)
 
 namespace dotModular { namespace ct {
 
@@ -141,14 +142,330 @@ inline void collapse(ContainmentGraph& g) {
 // voice's closure-roots are exactly its parents. CLOSED: every new edge points at a former
 // root (no parents), so the result has depth <= 1 — trivially acyclic, and a self-bit cannot
 // appear (v reaches itself only on a cycle, which the invariants forbid).
+//
+// DERIVED (the 2026-10-27 anchor ruling, IDEAS_PARKED.md): with anchors = the derived root
+// mask the anchored form's membership key always holds (every upward path in a DAG terminates
+// at a parentless voice), so this IS collapseAllOnto(g, roots) — byte-identical to the
+// pre-anchoring body, compat-pinned per seed in test_containment_transforms. One
+// implementation; the shipped gesture is the same function it always was.
+inline void collapseAllOnto(ContainmentGraph& g, uint16_t anchors);   // the anchored general, below
+
 inline void collapseAll(ContainmentGraph& g) {
     uint16_t roots = 0;
     for (int v = 0; v < VOICES; ++v)
         if (g.isRoot(v)) roots |= (uint16_t)(1u << v);
+    collapseAllOnto(g, roots);
+}
+
+// ── COLLAPSE-ALL-ONTO (1 param: the anchor mask — the closure gesture's missing 10%) ───────
+// The 2026-10-27 ruling (Rodney: "should we have a closure gesture? should collapseAll take
+// parameters?"): NO third closure verb — COLLAPSE and COLLAPSE-ALL already span the axis
+// (one level / all the way), and a distinct CLOSER differing only by its mask would be
+// synonymy, not a new decision. The missing generality lands HERE instead, as ONE parameter
+// on the flatten (the ROTATE "≤1 param: step, default 1" precedent): flatten every voice
+// UNDER the anchor set ONTO the set —
+//     new_parents[v] = (closure(v) ∩ anchors)  when that is non-empty,
+//     parents[v] kept VERBATIM                 otherwise.
+// The membership key is load-bearing: the naive mask form (out[v] = closure(v) & A for ALL v)
+// would silently DETACH any voice whose ancestors miss A — 0<1<2<3 plus a separate 9<10 with
+// A={3} would orphan 9. Detaching is the edit verbs' deliberate business, never a flatten's
+// side effect. The anchor's own containment is untouched (A={2} in 0<1<2<3 keeps 2<3:
+// "flatten the cluster under 2 onto 2" — the upstream wiring survives).
+//
+// CLOSED, mask-uniform (the collapseAll argument generalized): 1. every new edge v->a
+// satisfies a ∈ old closure(v) (flatten branch: a ∈ closure ∩ anchors; keep branch: old
+// edge ⊆ closure), so new reachability ⊆ old — a new cycle would compose to an old one;
+// 2. a self-bit would need v ∈ closure(v) — a cycle the invariants forbid. IDEMPOTENT by
+// the same shrink: new edges only point upward, so closure_after ⊆ closure_before, and a
+// second pass re-derives exactly the same parents (pinned per seed in T10).
+// THE HONESTY CONTRACT this bakes in: a flatten can only PROMOTE existing ancestors to
+// direct parents — it never invents a containment relation.
+//
+// WHAT STAYS PARKED (the ruling, kept honest): the full-ancestor form (anchors = 0xFFFF —
+// every voice gains ALL its ancestors as direct parents) is the flooding case — C1's offer
+// union and C4's hold-follow candidates multiply by the closure size; that is
+// closure-as-stored-state arriving through a gesture's back door. It remains ONE CALL away
+// (collapseAllOnto(g, 0xFFFF), T10 proves it still a valid, loadable DAG) but no verb row,
+// no default, no panel button ships it. Depth/level counts: NO permanently — iterated
+// collapse already composes per trigger and the step-0 smoke ruled flatten-toward-root to
+// be THIS verb's job, not iterated collapse's. Predicate filters and tie-break modes: NO —
+// cleanup-with-knobs is the §8 trap and R1 killed tie-breaks. Trigger wiring (which panel
+// row / context voice feeds the mask) is module layer, parked with the containment panel
+// work; the pure verb is ready.
+inline void collapseAllOnto(ContainmentGraph& g, uint16_t anchors) {
     uint16_t out[VOICES];
-    for (int v = 0; v < VOICES; ++v)
-        out[v] = (uint16_t)(g.ancestorClosure(v) & roots);
+    for (int v = 0; v < VOICES; ++v) {
+        const uint16_t onto = (uint16_t)(g.ancestorClosure(v) & anchors);
+        out[v] = onto ? onto : g.parents[v];   // the membership key: flatten IFF under an anchor
+    }
     for (int v = 0; v < VOICES; ++v) g.parents[v] = out[v];
+}
+
+// ── REDUCE — the transitive reduction (DECLUTTER/PRUNE's pure verb; the parked verdict,
+// pulled forward 2026-10-27 per Rodney's "reduction as an EXPLICIT gesture: YES") ────────────
+// Strip every SHADOW EDGE: v->u is redundant iff ANOTHER parent w of v reaches u upward in the
+// ORIGINAL graph (u ∈ ancestorClosure(w) — the edge v->w⇝u then carries the same reachability;
+// the banked formulation's "∪ {w}" term is vacuous in the bitmask world — one bit per u — so
+// the strict form below is exact). What it buys (IDEAS_PARKED.md): after a gesture march the
+// drawn pin graph can carry shadow edges — COLLAPSE re-links grandparents, authored shortcuts
+// accumulate; REDUCE shows the load-bearing spine. It is COLLAPSE's exact mirror: collapse
+// makes implied structure explicit, reduction makes implied structure implicit — and it is the
+// seed verb's parked post-pass (a flag, not forced: random shortcut edges may be exactly the
+// variety wanted).
+//
+// THE DECIDING FACT (why this is an EXPLICIT gesture, never auto): the EVENT mechanisms (C1's
+// offer union, C4's hold-follow shape pick, D4's first-onsetting container) read the DIRECT
+// edge set verbatim — a redundant edge is a musical feature ("the child hears the grandparent's
+// onsets directly"), and stripping it CHANGES THE SOUND. Cleanup that changes sound is exactly
+// what §8 forbids — so reduce runs only when the user pulls the trigger (stamped,
+// EXPAND-reversible), never as a background pass, and never per-sample (edit-rate only; the
+// engine is untouched — materializeForest re-derives from the words at the next graph change).
+//
+// CORRECTNESS (why "compute the full redundant mask first, then strip" is exact, not
+// heuristic): every witness read is against the ORIGINAL graph (the `before` snapshot), which
+// makes the strip PURE and ORDER-FREE — a witness path from another parent w can never touch
+// the deleted edge v->u itself (an upward path from w cannot revisit v: v->w and w⇝v would be
+// a cycle), so simultaneous stripping cannot break any witness. Reachability is PRESERVED —
+// closure(reduce(g)) == closure(g), mask-exact — by induction along any original route: a
+// length-1 hop is never redundant (a redundant edge by definition has a longer alternative)
+// and each longer hop's route survives through kept-or-re-proven edges. IDEMPOTENT: a kept
+// edge's witness cannot exist in the reduced graph either (reduced closure ⊆ original
+// closure), so the second pass strips nothing — the result is THE transitive reduction
+// (unique for DAGs). ROOT-SET INVARIANT: stripping needs a SECOND parent, and the
+// "stripped-by" relation among a vertex's parents is acyclic (a cycle would be a closure
+// cycle), so a maximal parent always survives — reduction never orphans a voice. No pool
+// discipline: reduce only DELETES (never re-points), so like collapse/collapseAll it is a
+// shape verb over all 16 rows. T11 re-proves all of this per seed (the test is the guarantee).
+inline void reduceTransitive(ContainmentGraph& g) {
+    const ContainmentGraph before = g;   // every witness read against the ORIGINAL graph
+    for (int v = 0; v < VOICES; ++v) {
+        const uint16_t parents = before.parents[v];
+        if ((parents & (parents - 1)) == 0) continue;   // 0 or 1 parent: no OTHER parent, no witness
+        uint16_t closure[VOICES];
+        bool have[VOICES] = {};
+        uint16_t kept = parents, m = parents;
+        while (m) {
+            const int u = __builtin_ctz(m);
+            m &= (uint16_t)(m - 1);
+            uint16_t om = (uint16_t)(parents & ~(1u << u));
+            bool redundant = false;
+            while (om) {
+                const int w = __builtin_ctz(om);
+                om &= (uint16_t)(om - 1);
+                if (!have[w]) { closure[w] = before.ancestorClosure(w); have[w] = true; }
+                if ((closure[w] >> u) & 1u) { redundant = true; break; }
+            }
+            if (redundant) kept &= (uint16_t)~(1u << u);
+        }
+        g.parents[v] = kept;
+    }
+}
+
+// ── RANDOM — the two pure draws (the seed verb; Rodney's ruling 2026-10-27: the gesture
+// rows UNCLOSED, V_RANDOM = 6, panel jack + button; IDEAS_PARKED.md) ────────────────────────
+// ONE own Philox stream, TWO page interpretations (the CA dice model,
+// CA_DICE_COUNTER_MODEL.md): the stream has a FIXED domain key (domain separation — it does
+// NOT ride the shared SEED jack), and the caller addresses it by a SIGNED page index; a page
+// is a FIXED number of draws, so page N and page N-1 are stable neighbouring draws and
+// position-- re-derives the previous draw EXACTLY. NOT seed-keying: the counter is the
+// POSITION in the stream — a counter used as a key would jump to a different sequence per
+// count instead of stepping the draw (the CA doc's "before" anti-pattern).
+
+// Page strides (fixed over content — the CA "stable 16-wide page" rule generalized): each
+// application consumes exactly one page regardless of what the draws decide, so position+1
+// is always the NEXT forest/scatter and position-1 always the previous.
+static constexpr uint64_t RANDOM_PAGE_OUTRIGHT = 165;   // 15 shuffle + 120 coins + 15 boost + 15 island bounds
+static constexpr uint64_t RANDOM_PAGE_SCATTER  = 48;    // 16 voices x 3 draws
+
+// The stream's FIXED domain key seed ("CONTAINM" — the containment module's OWN draw): never
+// the shared SEED jack, never another stream's key. philoxMakeKey conditions it once; the
+// page index does the addressing (the dice model — key = WHO, counter = WHERE).
+static constexpr uint64_t RANDOM_STREAM_DOMAIN = 0x434F4E5441494E4DULL;
+
+// OUTRIGHT NEW FOREST — the STATELESS/ABSOLUTE variation: the page SPECIFIES the graph (the
+// graph IS f(page, density, islands, pool)), so reverse-draw IS the exact state restore
+// (at(page-1) re-derives the previous forest bit-for-bit — the CA doc's own "when stateless
+// would be right" case: a teleport to fresh configs, counter-alone reproducibility). The F-5
+// property-suite recipe lifted into the module layer (test_forest_rhythm randomForest):
+// a Fisher-Yates TOPOLOGICAL permutation of the pool's slots — each voice may take parents
+// only from EARLIER permutation positions, so the result is acyclic BY CONSTRUCTION (the pin
+// plane's guarantee reproduced in data).
+//
+// ISLANDS (path B, Rodney 2026-10-27: "islands are desired... groups connected within and
+// disconnected from others with some disconnected single voices too"): the pool's
+// permutation is partitioned into `islands` contiguous blocks by the exact-K hypergeometric
+// boundary walk (uniform over the C(pool-1, K-1) gap subsets); the edge coins apply WITHIN
+// islands only, and the connectivity boost welds every non-head orphan WITHIN its island —
+// so EACH island is internally connected with EXACTLY ONE root (its head), islands are
+// mutually disconnected, and a size-1 island is a free single voice. V1 is NOT special — D7
+// proved V1-anywhere legal and the property suite marches it.
+//
+// THE DRAW SPANS THE POOL (the polyphony at draw — the getActiveCount idiom): only the
+// first `pool` voices are permuted and pinned; rows at/above the pool are CLEARED to free
+// singles by the wholesale zero ("size of forest drawn linked to polyphony at draw with
+// other pins cleared" — Rodney 2026-10-27). The graph is still REPLACED wholesale (an
+// outright generation is the one verb that is not a shape verb over existing structure;
+// store-backed undo + the trajectory bracket own the reversal, and they ride the commit).
+// islands=1 with the full pool reproduces the pre-islands draw BIT-FOR-BIT (the same slots,
+// the same formulas — the legacy lone-root rows are the regression anchor).
+//
+// PAGE LAYOUT (draws atUniform(page + k), all pure functions of (page, density, islands,
+// pool); the stride is fixed, the layout never content-dependent):
+//   [0,15)    Fisher-Yates over the pool: i = pool-1..1, j = floor(u * (i+1)),
+//             swap(perm[i], perm[j])   (slot = pool-1-i; pool = 16 = the legacy addressing)
+//   [15,135)  edge coins: for permutation position 1..15, each earlier position in order,
+//             coin < p  ->  that parent bit is set — APPLIED only when both positions sit in
+//             the pool AND in the same island (the slot counter advances for EVERY pair, so
+//             the pair->slot map stays content-independent)
+//   [135,150) boost: pool position 1..pool-1 with no parents draws j = islandStart +
+//             floor(u * (pos - islandStart)) and takes perm[j] (an EARLIER position IN ITS
+//             OWN ISLAND, never the head itself — the head is that island's root)
+//   [150,165) island boundaries: the gap between positions pos-1 and pos is a boundary
+//             while boundaries remain, P = left/remaining (the sequential-sampling form —
+//             self-forcing when the slack runs out; exactly islands-1 boundaries)
+// density 1..10 -> p = density/10 (the context-menu dial; 10 = every candidate edge, the
+// DAG-complete upper shape — still acyclic). islands 1..pool (clamped) = the partition dial;
+// the graph is REPLACED: all 16 rows are zeroed first — which is exactly what makes
+// reverse-draw the exact state restore.
+// reduce (default FALSE) = the seed verb's banked reduction post-pass (IDEAS_PARKED.md: "a
+// flag, not forced: random shortcut edges may be exactly the variety wanted"): when on,
+// reduceTransitive(g) runs after the boost — the page's implied shortcut pins strip to the
+// load-bearing spine (at density 10 the DAG-complete page becomes the island chains:
+// pool - islands pins). T11's properties ride the strip: closure preserved mask-exact (so
+// islands, roots and the pool clear survive), delete-only, idempotent, root-set invariant.
+// NO draws consumed — the page stays a pure function of (page, density, islands, pool,
+// reduce), so the reverse draw remains the exact state restore under the flag.
+inline void seedForest(ContainmentGraph& g, const redDot::PhiloxRng& rng, uint64_t page,
+                       int density, int islands = 1, int pool = VOICES, bool reduce = false) {
+    if (density < 1) density = 1;
+    if (density > 10) density = 10;
+    if (pool < 1) pool = 1;
+    if (pool > VOICES) pool = VOICES;
+    if (islands < 1) islands = 1;
+    if (islands > pool) islands = pool;   // a partition cannot exceed the span it partitions
+    const float p = density * 0.1f;
+    for (int v = 0; v < VOICES; ++v) g.parents[v] = 0;   // WHOLESALE replacement, not an accumulate
+                                                          // (rows above the pool stay cleared: the
+                                                          // draw sizes to the polyphony at draw)
+    int perm[VOICES];
+    for (int i = 0; i < VOICES; ++i) perm[i] = i;
+    for (int i = pool - 1; i >= 1; --i) {                 // draws [0,15): Fisher-Yates over the POOL
+        const int j = (int)(rng.atUniform(page + (uint64_t)(pool - 1 - i)) * (float)(i + 1));
+        const int t = perm[i]; perm[i] = perm[j]; perm[j] = t;
+    }
+
+    // the exact-K island partition of the pool's permutation positions (draws [150,165));
+    // islandStart[pos] = the first position of pos's island (the head — that island's root)
+    int islandStart[VOICES];
+    islandStart[0] = 0;
+    {
+        int left = islands - 1;                           // boundaries still to place
+        for (int pos = 1; pos < pool; ++pos) {            // the gap between positions pos-1 and pos
+            islandStart[pos] = islandStart[pos - 1];
+            if (left > 0 && rng.atUniform(page + 150 + (uint64_t)(pos - 1))
+                                * (float)(pool - pos) < (float)left) {
+                --left;
+                islandStart[pos] = pos;                   // a new island begins here
+            }
+        }
+        for (int pos = pool; pos < VOICES; ++pos) islandStart[pos] = pos;   // above-pool: inert
+    }
+
+    int coin = VOICES - 1;                                   // draws [15,135): the pair->slot map is
+    for (int pos = 1; pos < VOICES; ++pos) {                 // the row-major order over ALL 16 slots
+        const int v = perm[pos];
+        for (int up = 0; up < pos; ++up) {
+            const int u = perm[up];
+            if (pos < pool                                   // the draw spans the pool only
+                && islandStart[pos] == islandStart[up]       // islands are mutually disconnected
+                && rng.atUniform(page + (uint64_t)coin) < p)
+                g.parents[v] |= (uint16_t)(1u << u);         // u is EARLIER in perm: acyclic by construction
+            ++coin;
+        }
+    }
+    for (int pos = 1; pos < pool; ++pos) {                   // draws [135,150), one per pool position
+        const int v = perm[pos];
+        if (g.parents[v] == 0 && pos > islandStart[pos]) {   // non-head orphans only — the head is
+            const int start = islandStart[pos];              // the island's root; the weld stays
+            const int j = start + (int)(rng.atUniform(page + 135 + (uint64_t)(pos - 1))   // WITHIN
+                                         * (float)(pos - start));   // the island
+            g.parents[v] |= (uint16_t)(1u << perm[j]);       // start <= j < pos: an earlier voice,
+        }                                                    // never v itself — acyclic, no self-bits
+    }
+    if (reduce) reduceTransitive(g);   // the banked ONE CALL (IDEAS_PARKED.md): the drawn page's
+                                       // implied shortcut pins strip to the spine — no draws
+                                       // consumed, the reverse draw stays exact (see the header
+                                       // note above; the strip's proof lives on reduceTransitive).
+}
+
+// MODIFY FOREST — the STATE-DEPENDENT scatter variation (Rodney: "more like change alley
+// scatter which randomly modified pins state dependent"): the page drives a pass of CHECKED
+// EDIT VERBS over the CURRENT graph — the draw is the HOW-MUCH, the current graph is the
+// WHERE-FROM. Path-dependent BY DESIGN (the CA model: scatter builds on what you did,
+// successive scatters evolve a trajectory, the six rows compose) — so this verb is
+// deliberately NOT an order-free whole-graph rewrite: it is an RNG driver over the edit
+// layer (addParent/removeParent carry their own cycle checks), deterministic given (current
+// graph, page, density). Draw-reversible != state-restorable for THIS variation: the
+// reverse-draw re-applies the previous page to the CURRENT graph — a generative scrub,
+// never a state restore; the trajectory/undo machinery owns the state (IDEAS_PARKED.md
+// requirement 3 — that is exactly why the global reverse must replay the trajectory).
+//
+// PAGE LAYOUT (fixed stride 48): voice v in SLOT order 0..15 (the march order of the
+// current graph — no permutation; the state-dependent pass walks what is there):
+//   3v+0 event coin  < p    -> this voice scatters this pass
+//   3v+1 mode coin   < 0.5  -> ADD a parent, else REMOVE one
+//   3v+2 pick        (32b)  -> the candidate / selection
+// ADD: scan u = pick%pool, +1, ... (pool steps, u != v): the first u that is a VALID new
+//      parent (not already pinned, wouldCycle == false against the CURRENT partially-
+//      scattered graph) takes the edge; none valid -> the event is spent, no re-roll. The
+//      scan-from-drawn-start keeps ONE draw per voice and makes density meaningful.
+// REMOVE: the (pick % popcount)-th set bit of the CURRENT parents[v] MASKED TO THE POOL;
+//      no in-pool parent (a root within the sandbox) skips.
+// POOL SPAN (the polyphony ruling, fixed 2026-10-27 — Rodney: "relative random now puts
+// some pins outside the area defined by polyphony"): the pass SPANS THE POOL like every
+// other writer — voices v >= pool are HELD (their draws are counter-ADDRESSED, so skipping
+// them consumes nothing and no other voice's page addressing moves), the ADD scan picks
+// parents WITHIN the pool, and REMOVE works on the pool-masked parent set (an above-pool
+// held parent survives — the hold rule: the wholesale clear is Outright's business, a
+// modify pass never reaches outside its sandbox). pool = VOICES (the default) is
+// BIT-FOR-BIT the pre-fix pass — every legacy T12/P10 scatter row stays the anchor.
+inline void scatterEdges(ContainmentGraph& g, const redDot::PhiloxRng& rng, uint64_t page,
+                         int density, int pool = VOICES) {
+    if (density < 1) density = 1;
+    if (density > 10) density = 10;
+    if (pool < 1) pool = 1;
+    if (pool > VOICES) pool = VOICES;
+    const float p = density * 0.1f;
+    const uint16_t poolMask = (uint16_t)((1u << pool) - 1);   // the sandbox: pins live in [0, pool)
+    for (int v = 0; v < VOICES; ++v) {
+        if (v >= pool) continue;                              // the draw spans the pool (rows
+                                                              // above are HELD, not cleared)
+        if (!(rng.atUniform(page + (uint64_t)(3 * v)) < p)) continue;          // the event coin
+        const bool add = rng.atUniform(page + (uint64_t)(3 * v + 1)) < 0.5f;   // the mode coin
+        const uint32_t pick = rng.at(page + (uint64_t)(3 * v + 2));            // the pick
+        if (add) {
+            const int start = (int)(pick % (uint32_t)pool);
+            for (int step = 0; step < pool; ++step) {
+                const int u = (start + step) % pool;
+                if (u == v) continue;
+                if (g.isContainedIn(v, u)) continue;         // already pinned — not a new offer
+                if (g.wouldCycle(v, u)) continue;            // the QUERY layer owns validity
+                g.addParent(v, u);                           // the edit verb re-checks: the only writer
+                break;
+            }
+        } else {
+            const uint16_t m = (uint16_t)(g.parents[v] & poolMask);
+            if (!m) continue;                                // a root within the pool has nothing
+                                                             // to remove (held bits are not ours)
+            int nth = (int)(pick % (uint32_t)__builtin_popcount(m));
+            uint16_t mm = m;
+            while (mm) {
+                const int u = __builtin_ctz(mm);
+                mm &= (uint16_t)(mm - 1);
+                if (nth-- == 0) { g.removeParent(v, u); break; }
+            }
+        }
+    }
 }
 
 // ── EXPAND — NOT HERE (R3) ─────────────────────────────────────────────────────────────────

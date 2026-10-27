@@ -38,6 +38,11 @@
 //       and a byte-identical autosave round-trip. The verbs' closure is proven per-verb in
 //       test_containment_transforms; THIS pins the composition: a whole committed batch —
 //       any number of verbs, any stamp order, any active count — is an endomorphism on DAGs.
+//   P10 the RANDOM row (row 7; IDEAS_PARKED.md 2026-10-27) — the CA dice model on the row's
+//       OWN Philox stream: the page counter advances per the armed direction; OUTRIGHT's
+//       reverse-draw is the EXACT state restore (stateless reverse-as-undo); forward
+//       re-derivation is exact; the latest arm owns the direction; SCATTER's reverse is the
+//       previous page on the CURRENT graph — the CA scrub, NOT a state restore.
 //
 // Compile (registered in test/run_all.sh as header-only; PhiloxRng needs the simde include):
 //   g++ -std=c++20 -Itest -Isrc -I${RACK_DIR}/dep/include test/test_containment_pending.cpp
@@ -417,6 +422,268 @@ int main() {
         CHK(allRoundTrip, "march: every post-commit state is a byte-identical loadable save");
         CHK(commits > 1000, "march: coverage volume (boundary commit count)");
         (void)expandNoOps; (void)maxRing;   // diagnostics, not gates
+    }
+
+    // ── P10. the RANDOM row (row 7; IDEAS_PARKED.md 2026-10-27) ────────────────────────────
+    // The CA dice model on containment's OWN stream: the counter is a signed addressable PAGE
+    // index; the dispatch moves the pointer in the armed direction FIRST, then applies the
+    // page — so OUTRIGHT's graph is always f(counter) and the reverse-draw IS the exact state
+    // restore (the stateless model's reverse-as-undo), while SCATTER re-applies the previous
+    // page to the CURRENT graph (the CA generative scrub — draw-reversible, NOT state-
+    // restorable; the trajectory + undo bracket own the state side, requirements 3 and 4).
+    {
+        CP p; auto traj = std::make_unique<ContainmentTrajectory>();
+        ContainmentGraph g;
+        redDot::PhiloxRng rr;                                  // the draw oracle: the SAME fixed domain
+        rr.setKey(redDot::philoxMakeKey(RANDOM_STREAM_DOMAIN));
+
+        // forward fire twice (OUTRIGHT, the default mode/density)
+        p.latch(CP::V_RANDOM);
+        CHK(!p.reverseArmed, "random: a plain latch arms FORWARD (no reverse request)");
+        CHK(p.applyAll(g, 16, *traj) == 1, "random: the row commits at the boundary");
+        CHK(p.randomCounter == 1, "random: forward fire advanced the page counter 0 -> 1");
+        ContainmentGraph oracle;
+        seedForest(oracle, rr, 1ull * RANDOM_PAGE_OUTRIGHT, p.randomDensity);
+        CHK(sameState(g, oracle), "random: fire 1 == the outright page-1 forest (the draw oracle)");
+        CHK(g.isValid() && noSelfBits(g) && roundTripOk(g), "random: the generated forest is a valid loadable DAG");
+        p.latch(CP::V_RANDOM);
+        p.applyAll(g, 16, *traj);
+        CHK(p.randomCounter == 2, "random: fire 2 advanced to page 2");
+        seedForest(oracle, rr, 2ull * RANDOM_PAGE_OUTRIGHT, p.randomDensity);
+        CHK(sameState(g, oracle), "random: fire 2 == the outright page-2 forest");
+        CHK(traj->size() >= 2, "random: the commits entered the trajectory (requirement 3's data rides every row)");
+
+        // REVERSE-DRAW: the EXACT state restore (the stateless model's reverse-as-undo)
+        const ContainmentGraph afterFire2 = g;
+        p.latchRandomReverse();
+        CHK(p.armed[CP::V_RANDOM] && p.reverseArmed,
+            "random: the reverse arm holds the SAME row with the backward direction (one stamp, the lamp)");
+        CHK(p.applyAll(g, 16, *traj) == 1, "random: the reverse commits at the boundary");
+        CHK(p.randomCounter == 1, "random: reverse stepped the counter 2 -> 1");
+        seedForest(oracle, rr, 1ull * RANDOM_PAGE_OUTRIGHT, p.randomDensity);
+        CHK(sameState(g, oracle), "random: reverse-draw == the EXACT previous page state (reverse-as-undo)");
+        CHK(!sameState(g, afterFire2), "random: the reverse moved the graph (an active gesture)");
+        CHK(!p.reverseArmed, "random: the reverse request is consumed at the boundary (the lamp rule)");
+
+        // forward again re-derives page 2 bit-for-bit (deterministic revisit)
+        p.latch(CP::V_RANDOM);
+        p.applyAll(g, 16, *traj);
+        CHK(p.randomCounter == 2 && sameState(g, afterFire2),
+            "random: forward re-derivation is exact (f(counter) is f(counter))");
+
+        // direction = the LATEST arm (one pending row, one decision)
+        p.latchRandomReverse();
+        CHK(p.reverseArmed, "random: reverse arm set");
+        p.latch(CP::V_RANDOM);
+        CHK(p.armed[CP::V_RANDOM] && !p.reverseArmed,
+            "random: the latest arm owns the direction (a forward latch clears the reverse request)");
+        p.applyAll(g, 16, *traj);
+        CHK(p.randomCounter == 3, "random: the cleared arm fired FORWARD (counter 2 -> 3)");
+
+        // ISLANDS + POOL (path B + the polyphony ruling): the dial + the span ride the page
+        // oracle; above-pool rows clear to free singles (the root count shows both effects).
+        {
+            CP q; auto t3 = std::make_unique<ContainmentTrajectory>();
+            ContainmentGraph h;
+            q.randomIslands = 4;
+            q.randomDensity = 5;
+            q.latch(CP::V_RANDOM);
+            q.applyAll(h, 10, *t3);                            // polyphony 10 at draw
+            CHK(h.isValid() && noSelfBits(h) && roundTripOk(h),
+                "random: the islands draw is a valid loadable DAG");
+            ContainmentGraph islOracle;
+            seedForest(islOracle, rr, 1ull * RANDOM_PAGE_OUTRIGHT, q.randomDensity, q.randomIslands, 10);
+            CHK(sameState(h, islOracle),
+                "random: the islands dial + the pool span ride the page oracle (path B + polyphony)");
+            int roots = 0;
+            for (int v = 0; v < VOICES; ++v) if (h.isRoot(v)) ++roots;
+            CHK(roots == 4 + 6,
+                "random: 4 drawn islands + 6 cleared above-pool singles = the root count");
+        }
+
+        // the REDUCE POST-PASS flag (the banked ONE CALL, IDEAS_PARKED.md): with randomReduce
+        // the fire's oracle is seedForest(..., reduce=true) — the same page function with the
+        // spine stripped; the reverse-draw stays the EXACT previous page restore.
+        {
+            CP q; auto t4 = std::make_unique<ContainmentTrajectory>();
+            ContainmentGraph h;
+            q.randomReduce = true;
+            q.randomDensity = 6;
+            q.latch(CP::V_RANDOM);
+            q.applyAll(h, 16, *t4);
+            ContainmentGraph redOracle;
+            seedForest(redOracle, rr, 1ull * RANDOM_PAGE_OUTRIGHT, q.randomDensity,
+                       q.randomIslands, 16, true);
+            CHK(sameState(h, redOracle),
+                "random: the reduce flag rides the page oracle (the banked post-pass: drawn page -> spine)");
+            q.latchRandomReverse();
+            q.applyAll(h, 16, *t4);
+            ContainmentGraph redPrev;
+            seedForest(redPrev, rr, 0ull * RANDOM_PAGE_OUTRIGHT, q.randomDensity,
+                       q.randomIslands, 16, true);
+            CHK(sameState(h, redPrev),
+                "random: the reverse-draw stays the EXACT restore under the reduce flag");
+        }
+
+        // SCATTER mode: fire = the page driven over the CURRENT graph; reverse = the previous
+        // page on the CURRENT graph — the CA scrub, NOT the state restore.
+        {
+            CP q; auto t2 = std::make_unique<ContainmentTrajectory>();
+            ContainmentGraph h;
+            CHK(h.addParent(0, 1) && h.addParent(2, 5) && h.addParent(9, 10),
+                "scatter: setup graph accepted (the state scatter builds ON)");
+            q.randomMode = 1;                                  // the context-menu pick
+            q.randomDensity = 8;
+            const ContainmentGraph pre = h;
+            q.latch(CP::V_RANDOM);
+            q.applyAll(h, 16, *t2);
+            CHK(q.randomCounter == 1 && h.isValid() && noSelfBits(h) && roundTripOk(h),
+                "scatter: the pass is a valid checked-edit drive (counter advanced)");
+            ContainmentGraph fireOracle = pre;
+            scatterEdges(fireOracle, rr, 1ull * RANDOM_PAGE_SCATTER, 8);
+            CHK(sameState(h, fireOracle), "scatter: fire == the page driven over the current graph (the oracle)");
+            CHK(!sameState(h, pre), "scatter: the pass moved the graph (density 8 on a sparse start)");
+            const ContainmentGraph post = h;
+            q.latchRandomReverse();
+            q.applyAll(h, 16, *t2);
+            CHK(q.randomCounter == 0, "scatter: reverse stepped back to page 0");
+            ContainmentGraph scrubOracle = post;
+            scatterEdges(scrubOracle, rr, 0ull * RANDOM_PAGE_SCATTER, 8);
+            CHK(sameState(h, scrubOracle),
+                "scatter: reverse == the previous page on the CURRENT graph (the scrub oracle — NOT a restore)");
+            CHK(!sameState(h, pre),
+                "scatter: draw-reversible != state-restorable (the state side is the trajectory's job)");
+            CHK(h.isValid() && roundTripOk(h), "scatter: the scrubbed state is a valid loadable DAG");
+        }
+
+        // THE POOL SPAN on the row (the polyphony ruling, fixed 2026-10-27 — Rodney: "relative
+        // random now puts some pins outside the area defined by polyphony"): fire at polyphony
+        // 10 == the page oracle at pool 10; rows at/above the pool are HELD verbatim; a planted
+        // above-pool parent survives the pass (REMOVE is pool-masked — the hold rule).
+        {
+            CP q; auto t5 = std::make_unique<ContainmentTrajectory>();
+            ContainmentGraph h;
+            CHK(h.addParent(0, 1) && h.addParent(2, 5) && h.addParent(9, 12) && h.addParent(12, 13),
+                "scatter-pool: setup accepted (in-pool pins + held above-pool pins)");
+            q.randomMode = 1;
+            q.randomDensity = 8;
+            const ContainmentGraph pre = h;
+            q.latch(CP::V_RANDOM);
+            q.applyAll(h, 10, *t5);                            // polyphony 10 at draw
+            CHK(q.randomCounter == 1 && h.isValid() && noSelfBits(h) && roundTripOk(h),
+                "scatter-pool: the pool-10 pass is a valid checked-edit drive (counter advanced)");
+            ContainmentGraph fireOracle = pre;
+            scatterEdges(fireOracle, rr, 1ull * RANDOM_PAGE_SCATTER, 8, 10);
+            CHK(sameState(h, fireOracle),
+                "scatter: fire at polyphony 10 == the page oracle at pool 10 (the span rides the row)");
+            bool spanOk = true;
+            const uint16_t pm10 = (uint16_t)((1u << 10) - 1);
+            for (int v = 0; v < VOICES; ++v) {
+                if (v >= 10) { if (h.parents[v] != pre.parents[v]) spanOk = false; }       // held rows
+                else if ((h.parents[v] & (uint16_t)~pm10) != (pre.parents[v] & (uint16_t)~pm10))
+                    spanOk = false;                                                        // held bits exact
+            }
+            const bool heldOk = (h.parents[9] & (1u << 12)) != 0;  // the planted 9->12 pin survives
+            CHK(spanOk && heldOk,
+                "scatter: rows at/above the pool HOLD — nothing added or removed outside the pool (the hold rule)");
+        }
+    }
+
+    // ── P10c. the DECLUTTER row (the reduction gesture pulled forward, Rodney 2026-10-27:
+    // "it would be better to pull declutter forward since now it can only be applied to
+    // random") — the landed reduceTransitive pure verb as an explicit trigger row, so the
+    // MANUAL graph earns the strip the Random-reduce flag gives the draw. Known answer,
+    // delete-only + closure preservation (T11 rides the gesture), idempotence, the dice
+    // counters untouched, EXPAND-reversibility through the shared trajectory, and
+    // stamp-order composition with the fold family.
+    {
+        CP p; auto traj = std::make_unique<ContainmentTrajectory>();
+        ContainmentGraph g;
+        CHK(g.addParent(2, 1) && g.addParent(3, 1) && g.addParent(3, 2),
+            "declutter: setup accepted (3->1 rides 3->2->1 — the implied shortcut)");
+        const ContainmentGraph pre = g;
+        p.latch(CP::V_DECLUTTER);
+        CHK(p.armed[CP::V_DECLUTTER] && p.stamp[CP::V_DECLUTTER] == 0,
+            "declutter: the row arms through the latch (its own row, its own stamp)");
+        p.applyAll(g, 16, *traj);
+        ContainmentGraph reduced;
+        CHK(reduced.addParent(2, 1) && reduced.addParent(3, 2), "declutter: oracle setup accepted");
+        CHK(sameState(g, reduced),
+            "declutter: fire == reduceTransitive (the implied 3->1 strips; the spine stays)");
+        CHK(!g.isContainedIn(3, 1) && g.isContainedIn(3, 2) && g.isContainedIn(2, 1),
+            "declutter: the strip is delete-only (no pin invented)");
+        CHK(g.ancestorClosure(3) == pre.ancestorClosure(3) && g.ancestorClosure(2) == pre.ancestorClosure(2),
+            "declutter: closure preserved mask-exact (T11 rides the gesture — the envelopes cannot move)");
+        CHK(p.randomCounter == 0, "declutter: the dice's page counter is untouched (not a draw)");
+        p.latch(CP::V_DECLUTTER);
+        p.applyAll(g, 16, *traj);
+        CHK(sameState(g, reduced), "declutter: idempotent (the second fire strips nothing)");
+
+        // EXPAND-reversibility: the commit bracket recorded the pre-state — one stepBack
+        // lands back on it (the SAME ring every row shares; the reduction deletes deliberate
+        // shortcut offers, so the undo path is the escape — the §8 explicit-trigger rule).
+        {
+            ContainmentGraph restored;
+            CHK(traj->stepBack(restored) && sameState(restored, pre),
+                "declutter: the trajectory bracket holds the pre-state (EXPAND-reversible like every row)");
+        }
+
+        // Stamp-order composition with the fold family: COLLAPSE-ALL armed first, DECLUTTER
+        // second — one boundary applies collapse-then-reduce (row order is the tie-break;
+        // the strip composes like every other verb, never a background pass).
+        {
+            CP q; auto t2 = std::make_unique<ContainmentTrajectory>();
+            ContainmentGraph h;
+            CHK(h.addParent(1, 0) && h.addParent(2, 1) && h.addParent(3, 2) && h.addParent(3, 0),
+                "declutter-compose: setup accepted (a chain plus its shortcut)");
+            q.latch(CP::V_COLLAPSE_ALL);
+            q.latch(CP::V_DECLUTTER);
+            ContainmentGraph oracle = h;
+            collapseAll(oracle);
+            reduceTransitive(oracle);
+            CHK(q.applyAll(h, 16, *t2) == 2 && sameState(h, oracle),
+                "declutter: composes in stamp order (collapse-all first, the strip second)");
+            CHK(h.isValid() && noSelfBits(h) && roundTripOk(h),
+                "declutter: the composed state is a valid loadable DAG");
+        }
+    }
+
+    // ── P11. the TRUE-REVERSE queue (the global-reverse consumer; the CA engine shape) ──────
+    // The queue is NOT a verb row: no stamp, anyArmed() unaffected, applyAll does NOT consume it
+    // (the consume lives in ContainmentModuleCore::applyAtBoundary, BEFORE the verb undo bracket
+    // — the modulation-class rule). Here: the flag mechanics + the separation from the verb rows.
+    {
+        CP p; auto traj = std::make_unique<ContainmentTrajectory>();
+        ContainmentGraph g;
+
+        CHK(!p.trueRevRequested, "truerev: fresh pending — the queue is empty");
+        p.latchTrueReverse();
+        CHK(p.trueRevRequested, "truerev: latchTrueReverse arms the queue");
+        p.latchTrueReverse();
+        CHK(p.trueRevRequested, "truerev: idempotent while lit (the CA rule — one queued request)");
+        CHK(!p.anyArmed(), "truerev: the queue is NOT a verb row (anyArmed unaffected)");
+        CHK(p.counter == 0, "truerev: arming the queue consumed NO stamp");
+
+        // applyAll is the WRONG consumer: the queue survives a verb-path boundary untouched.
+        CHK(p.applyAll(g, 16, *traj) == 0, "truerev: applyAll applies nothing (no verb row armed)");
+        CHK(p.trueRevRequested, "truerev: applyAll does NOT consume the queue (the core owns the consume)");
+
+        // Separate queues: verb latches (including the RANDOM reverse arm) leave the queue alone.
+        p.latch(CP::V_INVERT);
+        CHK(p.trueRevRequested, "truerev: a verb latch leaves the queue armed (separate queues)");
+        p.latchRandomReverse();
+        CHK(p.trueRevRequested, "truerev: the RANDOM reverse arm leaves the queue armed (separate queues)");
+        CHK(p.armed[CP::V_RANDOM] && p.reverseArmed, "truerev: (sanity) the RANDOM row is armed backward");
+        p.applyAll(g, 16, *traj);   // drains the verb rows; the queue rides through
+        CHK(!p.anyArmed(), "truerev: (sanity) the verb rows drained");
+        CHK(p.trueRevRequested, "truerev: the queue rides through a verb-only boundary (the core consumes it)");
+
+        // Reset clears the queue (a save/reset never carries a request — runtime-only).
+        CP r;
+        r.latchTrueReverse();
+        CHK(r.trueRevRequested, "truerev: (reset setup) queue armed");
+        r = CP{};
+        CHK(!r.trueRevRequested, "truerev: a fresh pending clears the queue (runtime-only, the reverseArmed rule)");
     }
 
     std::printf("\n%d passed, %d failed\n", pass, fail);

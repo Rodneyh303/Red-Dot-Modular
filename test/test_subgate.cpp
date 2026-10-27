@@ -11,9 +11,9 @@
 // the rest lane first, so restProb may still silence it.
 //
 // Build (needs the engine TUs — see test/run_all.sh, entry "test_subgate|$SE $GS $PE"):
-//   g++ -std=c++17 -Itest -Isrc -Isrc/dsp -Isrc/dsp/engines -Isrc/dsp/gates -Isrc/dsp/managers \
-//       test/test_subgate.cpp \
-//       src/dsp/engines/SequencerEngine.cpp src/dsp/engines/PatternEngine.cpp \
+//   g++ -std=c++17 -Itest -Isrc -Isrc/dsp -Isrc/dsp/engines -Isrc/dsp/gates -Isrc/dsp/managers
+//       test/test_subgate.cpp
+//       src/dsp/engines/SequencerEngine.cpp src/dsp/engines/PatternEngine.cpp
 //       src/dsp/gates/GateState.cpp -o /tmp/tsg && /tmp/tsg
 
 #include <cmath>
@@ -24,6 +24,7 @@
 
 #include "engines/SequencerEngine.hpp"
 #include "VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting
+#include "star_seam.hpp"      // the D2 test seam (§3.1): every poly row here pins the STAR graph
 
 #define SUITE(n) std::cout << "\n\033[1;34m[" << (n) << "]\033[0m\n"
 #define TEST(desc, ...) do { try { __VA_ARGS__; \
@@ -279,6 +280,7 @@ int main() {
     SUITE("P1 — per-voice subdivision: poly voices independently rest/play at onsets");
     TEST("at a mono onset, voice 0 (restProb=0) plays, voice 1 (restProb=1) rests", {
         SequencerEngine eng; eng.numPolyVoices = 2;
+        injectLegacyStarGraph(eng);   // D2 seam (§3.1): this row pins the legacy star sound
         eng.voices[dotModular::VoiceResolver::slot(1 + 1)].restProb = 0.f; eng.voices[dotModular::VoiceResolver::slot(2 + 1)].restProb = 1.f;
         stepPoly(eng, true, true, false, true, false, 0.f, 0.f, 4.f);  // mono onset
         EXPECT(eng.voices[dotModular::VoiceResolver::slot(1 + 1)].gs.gateHeld);
@@ -287,6 +289,7 @@ int main() {
 
     TEST("a ratcheted sub-cell (mono NewNote, legato=0) re-articulates the playing voice", {
         SequencerEngine eng; eng.numPolyVoices = 1;
+        injectLegacyStarGraph(eng);   // D2 seam (§3.1): this row pins the legacy star sound
         eng.voices[dotModular::VoiceResolver::slot(1 + 1)].restProb = 0.f;
         stepPoly(eng, true, true, false, true, false, 0.f, 0.f, 4.f);
         StepResult r = stepPoly(eng, false, true, false, true, false, 0.f, 0.f, 4.f);
@@ -296,6 +299,7 @@ int main() {
 
     TEST("a ghost onset in a gap drives per-voice rolls (poly ghost notes)", {
         SequencerEngine eng; eng.numPolyVoices = 2;
+        injectLegacyStarGraph(eng);   // D2 seam (§3.1): this row pins the legacy star sound
         eng.voices[dotModular::VoiceResolver::slot(1 + 1)].restProb = 0.f; eng.voices[dotModular::VoiceResolver::slot(2 + 1)].restProb = 1.f;
         stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f);   // main onset
         stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f); // silent gap
@@ -310,6 +314,7 @@ int main() {
     SUITE("P2 — poly STEP output (un-fused) re-triggers per cell");
     TEST("at a mono onset, the playing voice's gsStep is high (re-struck)", {
         SequencerEngine eng; eng.numPolyVoices = 1;
+        injectLegacyStarGraph(eng);   // D2 seam (§3.1): this row pins the legacy star sound
         eng.voices[dotModular::VoiceResolver::slot(1 + 1)].restProb = 0.f;
         stepPoly(eng, true, true, false, true, false, 0.f, 0.f, 4.f);
         EXPECT(eng.voices[dotModular::VoiceResolver::slot(1 + 1)].gsStep.gateHeld);
@@ -317,6 +322,7 @@ int main() {
 
     TEST("a ghost onset re-strikes gsStep (ghost cells pulse the step output)", {
         SequencerEngine eng; eng.numPolyVoices = 1;
+        injectLegacyStarGraph(eng);   // D2 seam (§3.1): this row pins the legacy star sound
         eng.voices[dotModular::VoiceResolver::slot(1 + 1)].restProb = 0.f;
         stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f);
         stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f);
@@ -371,7 +377,7 @@ int main() {
         // passes THROUGH it (the bridge keeps the gate held). The returned decision is the preserved
         // prior one (not a fresh Rest) — transparency is ghostActive==false + chain survival, not a
         // Rest decision.
-        StepResult g = stepBridge(eng, false, true, false, true, 0.f, 0.5f, 4.f, /*variation=*/0.f);
+        stepBridge(eng, false, true, false, true, 0.f, 0.5f, 4.f, /*variation=*/0.f);   // driven for state, not its return
         EXPECT(!eng.ghostActive);                                  // no ghost sounded -> transparent
         EXPECT(eng.gs.slurForward == true);                        // A's slur survived (not consumed/broken)
         // The bridge still holds; a following main gate ties in (A's slur survived the transparent ghost).
@@ -392,6 +398,7 @@ int main() {
     SUITE("G5 — per-voice ghost placement (variation gate per voice)");
     TEST("shared (delegated): mono ghosts -> all poly voices ghost (per-voice draws pass)", {
         SequencerEngine eng; eng.numPolyVoices = 2;
+        injectLegacyStarGraph(eng);   // D2 seam (§3.1): this row pins the legacy star sound
         eng.voices[dotModular::VoiceResolver::slot(1 + 1)].restProb = 0.f; eng.voices[dotModular::VoiceResolver::slot(2 + 1)].restProb = 0.f;
         // variationAmount=1.0 -> ghost iff r_vary < 1.0. Seed every per-voice VAR draw to 0.1 so
         // both delegated voices (mono step + own draw) ghost deterministically; mono reads its
@@ -409,6 +416,7 @@ int main() {
     });
     TEST("Local East: voice 0's VAR LOR points to a high-variation step -> rested ghost (transparent); voice 1 (delegated) ghosts", {
         SequencerEngine eng; eng.numPolyVoices = 2;
+        injectLegacyStarGraph(eng);   // D2 seam (§3.1): this row pins the legacy star sound
         eng.voices[dotModular::VoiceResolver::slot(1 + 1)].restProb = 0.f; eng.voices[dotModular::VoiceResolver::slot(2 + 1)].restProb = 0.f;
         // Pin the LORs so the steps are deterministic (len=1 => step = off). Per-voice draws are
         // seeded in polyRandom(bank, PL_VARIATION) (the f9c4189 per-voice model); mono reads

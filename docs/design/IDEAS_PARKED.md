@@ -51,3 +51,384 @@ Note this makes the accent/connection colour a per-theme value too: pastel theme
 keep red-as-accent (no lane collision there), MRT theme uses amber-as-accent. So the
 functional-signal colour is bound to the lane palette, not global. Decide together when
 we do the colour pass.
+
+## Transitive reduction / closure as graph verbs (parked — post-Stage-F)
+
+Question (Rodney, 2026-10-27, after F-3 landed): is it worthwhile to add transitive
+reduction and closure to the graph verbs later?
+
+Banked answer: the two words earn OPPOSITE verdicts, and one fact decides it — which
+mechanisms read the DIRECT edge set.
+
+**The deciding fact.** The per-sample algebra self-closes: E(v) = Own(v) ∧ ∧ E(u)
+closes transitively through the materialized topo fold (F-2), C3's nv folds max over
+parents transitively, C2's rest propagates through the forced-rest cascade — so the
+STATE-intersection mechanisms (C5 envelope, C2 forcedRest, C3 lengthCeiling) are
+INVARIANT under redundant edges: an edge v→g implied by v→u→g adds nothing. But the
+EVENT mechanisms read the direct edge set verbatim: C1's offer union — a grandparent
+that onsets offers DIRECTLY through a redundant edge even when the intermediate
+container doesn't (the F-2 gap-hosted refinement rides the same way); C4's hold-follow
+picks its shape from the topologically-first SOUNDING container — a redundant edge adds
+an earlier candidate whose held-gate waveform can differ; D4's first-onsetting container
+names the gateType. A redundant edge is therefore NOT a no-op — it is a musical
+feature: "the child hears the grandparent's onsets directly."
+
+**Transitive closure as stored state: NO.** The fold already closes; storing closure
+would double-store truth, bloat the raw uint16[16] that IS the serialization (the
+byte-identity anchors pin it), and CHANGE C1/C4 semantics by manufacturing shortcut
+offers nobody authored. As a QUERY it already exists (ancestorClosure, wouldCycle); as
+a GESTURE it is 90% shipped (collapseAll = the closure onto roots; a full-ancestor
+variant is a one-liner if ever wanted).
+
+**Transitive reduction as AUTO-canonicalization: NO.** Not semantics-preserving (the
+same C1/C4 argument, reversed) — it would silently delete deliberate shortcut offers.
+Cleanup that changes sound is exactly what §8 forbids.
+
+**Reduction as an EXPLICIT gesture ("DECLUTTER"/PRUNE): YES, later.** Where it earns
+its slot: (a) legibility — COLLAPSE re-links grandparents, EXPAND restores from
+trajectory memory, INVERT transposes; after a gesture march the drawn pin graph can
+carry shadow edges, and a prune shows the load-bearing spine; (b) it is COLLAPSE's
+natural companion — collapse makes implied structure explicit, reduction makes implied
+structure implicit, and together they give the user full control of the offer/shape
+topology without touching the envelope algebra; (c) the parked SEED verb wants it — a
+random-forest generator can offer reduction as a post-pass (a flag, not forced: random
+shortcut edges may be exactly the variety wanted). Cost: trivial — edge v→u is
+redundant iff u ∈ ancestorClosure(w) ∪ {w} for some OTHER parent w of v; compute the
+full redundant mask first, then strip (pure, order-free), edit-rate only, never
+per-sample; the engine is untouched (materializeForest re-derives from the words at the
+next graph change). Two property rows in the existing seeded-DAG harness:
+closure(reduce(g)) == closure(g), and reduce is idempotent. Sits in
+ContainmentTransforms.hpp next to collapse/collapseAll, gated by the same DAG checks.
+
+Timing: NOT in the F ladder (F-4 ghost D5 + D6 VAR/LEG, F-5 property suite + compat
+pin). Slots in post-F with the seed verb and the three deferred rulings (plan §3.4) —
+module-layer only, zero engine surface.
+
+### Adjudication (2026-10-27, Rodney's questions): reduction and closure as QUERY / VERB / TRANSFORM / GESTURE
+
+Rodney pulled both ideas forward and asked two questions directly: should we have a closure
+gesture, and should collapseAll take parameters? Ruled on the axis the codebase already
+speaks. QUERY = read-only predicates (ContainmentGraph.hpp). VERB = the per-edge edit
+primitives (same header — addParent/removeParent/clearParents, the only deliberate routing
+writers). TRANSFORM = the pure whole-graph rewrites (ContainmentTransforms.hpp). GESTURE =
+the triggered row (ContainmentPending.hpp: armed, stamped, applied at the phrase boundary,
+reversible through the EXPAND trajectory ring). Laying both ideas on the axis:
+
+**REDUCTION, by layer:**
+- VERB: NO — never an edit primitive. Reduction is a derived whole-graph rewrite; the edit
+  verbs stay the only per-edge writers (closure-as-stored-state / reduction-as-auto are
+  already NO above, and the same argument covers the verb slot).
+- TRANSFORM: reduceTransitive(g) — YES, LANDED at this ruling next to collapse/collapseAll.
+  The strip is the banked trivial cost made exact: v→u is redundant iff ANOTHER parent w of
+  v reaches u upward in the ORIGINAL graph (all witness reads against the `before` snapshot,
+  so the strip is PURE and ORDER-FREE — a witness path from w can never touch the deleted
+  edge, since revisiting v would be a cycle). Root-set invariant (a strip needs a SECOND
+  parent; the "stripped-by" relation among a vertex's parents is acyclic — a maximal parent
+  always survives — reduction never orphans a voice). The two banked property rows landed
+  with it in T11: closure(reduce(g)) == closure(g) MASK-EXACT, and reduce is idempotent (the
+  result IS the unique DAG reduction), 300 random DAGs per run.
+- GESTURE: DECLUTTER/PRUNE — YES, explicit trigger only, stamped, EXPAND-reversible, never a
+  background pass (§8). The pure verb is landed; the trigger row parks with the panel work
+  (the same seam as COLLAPSE-ALL-ONTO — row order is lockstep with the panel generator).
+
+**CLOSURE, by layer:**
+- QUERY: SHIPPED (ancestorClosure, wouldCycle).
+- TRANSFORM: SHIPPED — collapse (peel one level, marches to empty) and collapseAll (flatten
+  onto roots); now joined by collapseAllOnto (Ruling 2).
+- GESTURE: SHIPPED as V_COLLAPSE_ALL — and ruled CLOSED as a vocabulary slot (Ruling 1).
+
+**Ruling 1 — should we have a closure gesture? NO new verb; the gesture already exists.**
+COLLAPSE and COLLAPSE-ALL already span the closure axis (one level / all the way onto
+roots). A distinct CLOSER verb would be a third entry point over the same underlying
+operation (new_parents[v] = closure(v) ∩ M for some mask M), differing only by its mask —
+synonymy, not a new decision, and the CA trigger discipline is one trigger = one decision.
+The gesture surface stays: ROTATE / REFLECT / INVERT / COLLAPSE / COLLAPSE-ALL / EXPAND.
+
+**Ruling 2 — should collapseAll take parameters? YES, exactly one: the anchor mask.
+LANDED at this ruling. Nothing else, ever:**
+- collapseAllOnto(g, anchors) — flatten every voice UNDER the anchor set ONTO the set:
+  new_parents[v] = closure(v) ∩ anchors when that is non-empty; every other voice keeps its
+  wiring VERBATIM. The membership key is load-bearing, not a nicety: the naive mask form
+  (out[v] = closure(v) & A for ALL v) would silently DETACH any voice whose ancestors miss
+  A — 0<1<2<3 plus a separate component 9<10 with A={3} would orphan 9. Detaching is the
+  edit verbs' deliberate business, never a flatten's side effect. The anchor's own
+  containment is untouched (A={2} in 0<1<2<3 keeps 2<3 — "flatten the cluster under 2 onto
+  2"). CLOSED and IDEMPOTENT by the mask-uniform argument (every new edge was an old
+  ancestor, so reachability only shrinks; self-bits need a cycle). collapseAll is now
+  DERIVED — the same function with the derived root mask (every upward path in a DAG
+  terminates at a parentless voice, so the membership key always holds there), byte-identical
+  to its pre-anchoring body, compat-pinned per seed in test_containment_transforms T10.
+  Honest-edge contract pinned alongside: a flatten can only PROMOTE existing ancestors to
+  direct parents, never invent a containment relation. One parameter is inside the house
+  idiom (ROTATE's "<=1 param: step, default 1" precedent in the same header).
+- Depth/level count: NO, permanently. Iterated collapse already composes per trigger — the
+  performer owns the counting; a depth knob would re-open the step-0 smoke adjudication
+  (flatten-toward-root is collapseAll's job, NOT iterated collapse) as a hidden mode.
+- Predicate/kind filters: NO, permanently. Cleanup-with-knobs is the §8 trap, and the graph
+  has no kinds — every edge is a deliberate offer.
+- Tie-break modes: NO, permanently. R1 killed tie-breaks; the OR-union needs none.
+
+**Still parked after this ruling:**
+- The full-ancestor form (anchors = 0xFFFF — every voice gains ALL its ancestors as direct
+  parents) is the flooding case: C1's offer union and C4's hold-follow candidates multiply
+  by the closure size — closure-as-stored-state arriving through a gesture's back door. It
+  stays ONE CALL away (collapseAllOnto(g, 0xFFFF); T10 proves it is still a valid, loadable
+  DAG) but no verb row, no default, no panel button ships it. Revisit only when a
+  performance need demonstrates itself.
+- The trigger wiring: which panel row / context voice feeds the mask is module layer,
+  parked with the containment panel work (row order is lockstep with the panel generator —
+  a new row is a three-file change). The pure verb is ready.
+- The seed verb's reduction post-pass flag — now ONE CALL: the flag invokes
+  reduceTransitive(g) when the seed verb lands (a flag, not forced: random shortcut edges
+  may be exactly the variety wanted).
+
+Update 2026-10-27 (twice over): BOTH sides of this entry pulled forward from post-F in the
+same stroke — closure first (collapseAllOnto + T10), then reduction (reduceTransitive + T11)
+per Rodney's "reduction as an EXPLICIT gesture: YES". Both are pure transforms + property
+rows + this ledger: module-layer only, zero engine surface, goldens untouched. The gesture
+vocabulary stays SIX rows (ROTATE / REFLECT / INVERT / COLLAPSE / COLLAPSE-ALL / EXPAND);
+neither new verb occupies a trigger slot — their trigger wiring parks with the containment
+panel work. Reduction keeps its EXPLICIT-only rule: the strip deletes deliberate shortcut
+offers (C1/C4 read direct edges), so it runs only when the user pulls the trigger, and the
+EXPAND trajectory ring makes that trigger reversible.
+
+### RANDOM uncloses the gesture rows (ruled 2026-10-27, Rodney) — the seed verb becomes row 7
+
+Rodney's ruling at seed-verb pull-forward: "Random needs to unclose the 6 gesture rows. It
+needs to be on panel with jack and button." The closure recorded above was an anti-SYNONYMY
+ruling — no third entry point over an operation the rows already span. RANDOM is not
+synonymy: it is a genuinely new decision class (introduce randomness into the graph), so the
+vocabulary accepts it. The closure stands against synonymy; it does not stand against new
+decisions.
+
+**The row: V_RANDOM = 6, N_VERBS 6 -> 7.** Same shape as the six: trig jack (left flank) +
+fire button + pending lamp, armed through the single choke point (armVerb — the CA latchRow
+rule), stamped on the unarmed->armed edge, applied at the phrase boundary in stamp order,
+committed (pre-push held state, post-push result), consumed. Row order stays lockstep with
+the panel flank (gen_containment.py + MonsoonContainment.hpp + ContainmentPending.hpp — the
+three-file change). ZERO param slots preserved (the DAW_PARAM_AUDIT / ChangeAlleyV2 rule):
+draw configuration lives in context menus, like ROTATE's step.
+
+**Two variations (Rodney), and they split cleanly along CA's own state fork**
+(CA_DICE_COUNTER_MODEL.md, state-dependent vs stateless/absolute):
+- OUTRIGHT NEW FOREST — the STATELESS/ABSOLUTE model: the draw specifies the graph
+  absolutely, the graph IS f(counter, key), so reverse-draw IS an exact state restore
+  (at(N-1) re-derives the previous forest bit-for-bit). This is the CA doc's own "when
+  stateless would be right" case: a teleport to fresh configs, counter-alone
+  reproducibility, reverse-as-undo for free. Proven core already in the tree: the F-5
+  generator recipe (Fisher-Yates topological permutation of the 16 slots, parents only from
+  earlier positions — acyclic by construction — density plus lone-parent connectivity
+  boost), lifted from the test harness into the module layer with the stream position in
+  place of the test seed.
+- MODIFY FOREST (state-dependent scatter) — "more like change alley scatter which randomly
+  modified pins state dependent." The STATE-DEPENDENT model exactly: the draw transforms
+  the CURRENT graph (re-pin edges dependent on where the pins are), path-dependent,
+  successive scatters evolve a trajectory, composes with the other six rows. Wanted
+  CONDITIONALLY ("if a sensible method available") — the sensible method exists and is the
+  CA scatter shape applied to edges: per-voice draw under wouldCycle gating (add/remove/
+  re-source parent bits), validity preserved by the QUERY layer the pin plane already
+  trusts. The exact method (which bits, the anti-knob budget — rate knobs/filters/
+  tie-breaks stay NO per the collapseAllOnto precedent) parks with the wiring work; the
+  requirement is recorded now.
+
+**The four either-way requirements (Rodney), each grounded in the CA model:**
+1. OWN PHILox DRAW — a domain-separated Philox stream of its own (fixed key encodes the
+   domain, the CA dice-stream rule), counter = signed addressable POSITION in the stream
+   (rng.at(position)), NOT seed-keying (the CA doc's "before" anti-pattern: a counter used
+   as a key jumps to a different sequence per count instead of stepping the draw).
+2. REVERSE-DRAW ACTION like change alley — counter-- -> at(N-1) is EXACTLY the previous
+   draw; a generative scrub (apply the previous randomisation to the current graph), NOT an
+   undo. For OUTRIGHT the scrub is also the exact state restore (stateless); for MODIFY it
+   is not (state-dependent) — which is exactly why requirement 3 exists.
+3. INCLUDED IN THE GLOBAL REVERSE — "like change alley, philox key reverse is not enough to
+   fully reverse a state dependent modification": draw-reversible != state-restorable. The
+   global reverse (the CA true-reverse proposal; LOR_BACKLOG §5's transport-level direction
+   — advancePlayhead(dir) + the draw-index rewind, named MIRROR if built) must replay
+   containment's committed-state trajectory backward. Containment already owns the
+   ingredient: ContainmentTrajectory (65,536 committed phrase-boundary states, sparse via
+   pushIfChanged, stepBack, verb-agnostic — built true-reverse-shaped on purpose; the
+   EXPAND note cites CA's true-reverse as its precedent). RANDOM commits enter that
+   trajectory like any row, so a state-dependent MODIFY steps back through the trajectory,
+   not through the counter.
+4. UNDO PARITY — "if change alley supports undo so should containment." ALREADY LANDED at
+   step 4: ContainmentModuleCore publishes before/after snapshots into the 16-slot SPSC
+   undo ring at every phrase-boundary commit; the widget drains them into Rack history
+   (ContainmentTransformUndoAction — one commit = one undo step, no-op batches publish
+   nothing, drop-if-full the CA rule); pin edits ride StoreEditAction. A V_RANDOM row
+   inherits all of it BY CONSTRUCTION — its commit is just another verb batch through
+   applyAll. Nothing new to build for this requirement; the parity Rodney asked for is the
+   step-4 work already in the tree.
+
+**Engine surface: ZERO.** Both variations write the graph through the same module-layer
+choke point the verbs use; the engine re-derives (materializeForest) at the next graph
+change; the transport (containmentParents staged every block) is the producer interface.
+The Philox stream is module-layer — the engine's own draws are untouched (domain
+separation is the point).
+
+**Still parked with the row:**
+- The three-file wiring itself (V_RANDOM = 6: panel row + module param/input/lamp + pending
+  dispatch + the two pure verbs) — parked with the containment panel work, alongside the
+  COLLAPSE-ALL-ONTO / DECLUTTER trigger rows.
+- MODIFY's exact scatter method and its parameter budget (density only, as in the F-5
+  recipe; no shape presets, no per-edge kinds — the graph has no kinds).
+- The reverse-draw affordance shape (a back jack like CA's, a context-menu action, or a
+  modifier — CA's back-jack is the precedent).
+- The global reverse itself (requirement 3) is cross-module work tracked by
+  CA_DICE_COUNTER_MODEL.md and LOR_BACKLOG.md; containment's obligation is recorded here so
+  the row lands reverse-ready — its trajectory is the data the global reverse replays.
+
+Update 2026-10-27 (later the same day — LANDED, Rodney: "start on the implementation now"):
+the RANDOM row is WIRED end to end. V_RANDOM = 6, N_VERBS 7 — the pending dispatch, the
+panel's seventh flank row (jack + fire button + pending lamp, ROW_H tightened 14 -> 12mm to
+keep seven rows in the grid band, gen_containment.py regenerated, 21 anchors), the module
+context menu (Random mode: Outright / Scatter; Random density 1..10, default 3; Random:
+reverse draw). The two pure draws live in ContainmentTransforms.hpp next to the other verbs:
+seedForest (the F-5 recipe — Fisher-Yates topological permutation, coins + connectivity
+boost, WHOLESALE replacement) and scatterEdges (the CA scatter shape applied to edges —
+per-voice event/mode/pick draws driving CHECKED addParent/removeParent over the CURRENT
+graph). The stream: fixed domain key ("CONTAINM"), counter = SIGNED page index, fixed page
+strides (151 outright / 48 scatter) — position++ / position-- IS the reverse-draw; the
+dispatch moves the pointer first, then applies the page, so OUTRIGHT's graph is always
+f(counter) and the reverse is the EXACT state restore (proven per page), while SCATTER's
+reverse is the CA scrub (proven NOT a restore). The counter + mode + density persist in the
+save schema (the rotateStep policy: absent -> defaults, out-of-range -> ignored) — a
+generated forest is a reproducible, shareable state. Requirements 3 and 4 INHERITED: the
+commit enters the trajectory (pushIfChanged) and publishes the undo snapshot
+(ContainmentTransformUndoAction) like any row. STILL PARKED after the landing: the hardware
+back jack (the context menu carries the reverse gesture), the global-reverse build
+(cross-module), MODIFY's method refinements if use demands them. TESTS: transforms T12 (the
+outright properties: 600-page validity/lone-root/determinism, the density extremes, V1 free,
+the reverse-as-undo; the scatter properties: gated validity, determinism, state-dependence,
+the scrub pins) + pending P10 (the row contract: counter fwd/rev, the exact restore, the
+direction rule, the scrub oracle) + module S5/S6g (schema round-trip incl. a negative page,
+absent/out-of-range policies, the RANDOM commit publishing undo + trajectory). Full battery
+green; goldens untouched (zero engine surface).
+
+Update 2026-10-27 (later still — the parked items LANDED, Rodney: "do the still parked items
+next"): the hardware back jack and the global-reverse consumer are ON THE PANEL. (1) THE BACK
+JACK: the RANDOM row carries its reverse-draw jack (input_back_random, inboard of the trig
+jack — the CA scatter-back shape: the row carries its back jack like CA's scatter rows carry
+theirs); the context-menu action remains as a second entry point; both ride armRandomReverse()
+(the same choke point, one stamp, the lamp). (2) THE GLOBAL-REVERSE CONSUMER: containment now
+carries the CA true-reverse ENGINE shape end to end — the TRUE-REV flank row (trig jack + arm
+button + queue lamp, its own group gap below RANDOM; NOT a verb row: no stamp, anyArmed
+unaffected, the CA queue rule) arms a committed-state trajectory step-back that the boundary
+consumes BEFORE the verb undo bracket (ContainmentModuleCore::applyAtBoundary, the CA consume
+order): a pure true-reverse restores the previous COMMITTED graph with NO undo snapshot (the
+modulation-class rule — undo is for USER actions, CA_DICE_COUNTER_MODEL.md CORRECTION^2), a
+mixed boundary's snapshot brackets only the verbs, uncommitted pin drift does not survive the
+restore (the trajectory retraces COMMITTED states, not edits — Rack undo owns the edit side),
+an out-of-axis request stays queued (the lamp stays lit), and the trajectory's buffer start
+STOPS — state unchanged, the request still spent, the lamp clears either way (the CA
+affordance rule). The walk is verb-agnostic over the SAME ring EXPAND steps (one consume = one
+commit back) — a RANDOM/SCATTER commit replays back like any row, which is requirement 3's
+mechanism made physical: the dice reverse alone cannot restore state-dependent modification;
+the committed-state trajectory can. CROSS-MODULE STATUS: CA's true-reverse engine itself
+landed earlier (021f2c45 — the per-stream CATrajectoryBuffer + the boundary consume; the CA
+doc's "NOT built" audit note predates it), so both trajectory-keeping modules now carry the
+gesture; what remains parked elsewhere is the LOR per-lane direction item (LOR_BACKLOG §7,
+separately tracked). PANEL: ROW_H 12 -> 10mm (eight flank rows — seven verbs + TRUE-REV in
+its own group gap; the RANDOM row's back jack), 25 anchors, the band assert green. STILL
+PARKED with the row: MODIFY's method refinements (conditional — only if use demands them).
+TESTS: pending P11 (the queue mechanics: idempotent, no stamp, applyAll does NOT consume it —
+the core does) + module S9/S9b (the consume semantics pinned: the no-undo restore chain, the
+STOP, the mixed-boundary bracket starting at the RESTORED state, the uncommitted-drift
+discard, out-of-axis persistence, branching, the RANDOM commit replaying back, reset clears
+the queue). Full battery green; goldens untouched (zero engine surface — the consume is
+module-layer over the module's own ring).
+
+## The RANDOM row's islands dial + the polyphony-spanned draw — LANDED (path B, Rodney 2026-10-27)
+
+The check-in Q&A ("why 1 root? how many forests?") ended in a ruling: **islands are desired**
+("1-3 a group and 4-7 a group... multiple groups connected within and disconnected from
+others with some disconnected single voices too — part of the whole point"), multi-parent and
+diamonds are ALREADY in the grammar (the per-pair edge coins; wouldCycle gates cycles, not
+diamonds — the engine's ancestorMask/deepestChain machinery resolves multi-chain ancestry),
+and the ONE gap was the Outright boost welding every orphan (no page ever showed a free voice
+or a second group). Offered A (density-as-structure-axis, no new control) vs B (explicit
+dial); Rodney: "first try path B" + the second requirement: **"size of forest drawn should be
+linked to polyphony at draw with other pins cleared."**
+
+LANDED in the same commit:
+- **The islands dial** — `randomIslands` 1..16, default 1 (context-menu "Random islands",
+  zero param slots, the rotateStep/density precedent; persisted under the same absent ->
+  default / out-of-range -> ignored policy). The pool's permutation is partitioned into
+  exactly K contiguous blocks by an exact-K hypergeometric boundary walk (uniform over the
+  C(pool-1, K-1) gap subsets, self-forcing when the slack runs out); edge coins apply WITHIN
+  islands only; the connectivity boost welds orphans WITHIN their island — each island is
+  internally connected with EXACTLY ONE root (its head), islands mutually disconnected, a
+  size-1 island is a free single voice. SCATTER ignores the dial (a modify pass over current
+  edges; removing a bridging pin already splits islands there).
+- **The pool span** — the draw permutes/pins only the first `pool` voices (the polyphony at
+  apply, the getActiveCount idiom); rows at/above the pool are CLEARED to free singles by the
+  wholesale zero (deliberately overriding the transforms' above-pool HOLD rule FOR THIS DRAW:
+  an outright generation replaces the whole state, and the state it now draws is the
+  polyphony-sized one).
+- **Page layout** — the outright stride grows 151 -> 165 (15 shuffle + 120 edge coins + 15
+  boost + 15 island boundaries); islands=1 with the full pool reproduces the pre-islands
+  draw BIT-FOR-BIT (same slots, same formulas), so every legacy T12/P10 row is the
+  regression anchor and older counter positions only re-derive differently because the
+  stride changed, not because the K=1 draw changed shape.
+- **Tests** — transforms 148 (+6: root count == dial + cleared singles, in-pool components ==
+  the dial, above-pool rows clean both ways, islands determinism, islands = pool -> 0 pins,
+  explicit-(1,full) == default), pending 112 (+3: the islands+pool fire oracle, the root
+  count), module 511 (S5/S6g extended: absent -> 1, out-of-range ignored, the dial survives
+  the production save/load cycle). Battery 87/87 + anchor audit 5/5 + the plugin-TU smoke
+  43/43 under the real SDK.
+
+Still parked: the density-gated-boost variant (path A as a FALLBACK if B feels wrong in
+rack — one gate, no persisted field), MODIFY/Scatter refinements (conditional), the global
+reverse cross-module items (CA_DICE_COUNTER_MODEL.md + LOR_BACKLOG §5).
+
+## The reduce flag lands; DECLUTTER pulled forward; the scatter pool span fixed (Rodney 2026-10-27, same day, third pass)
+
+Three movements complete the reduction/closure story:
+
+- **The seed verb's reduction post-pass flag LANDED** (f12765e7, Rodney's "what happened to
+  the closure/reduction?" pulled it forward): `randomReduce` — the FIFTH persisted config
+  field, context-menu "Random reduce" (Off (default) / On (declutter the draw)), zero param
+  slots; an OUTRIGHT draw runs reduceTransitive(g) after the boost, NO draws consumed, the
+  reverse-draw stays the exact restore under the flag; SCATTER ignores it. Density 10 +
+  reduce = the DAG-complete page's Hasse diagram (the island chains, pool - islands pins).
+
+- **DECLUTTER PULLED FORWARD as a flank row** (Rodney: "it would be better to pull declutter
+  forward since now it can only be applied to random" — the flag only ever stripped DRAWS;
+  the manual/hand-authored graph had no trigger). V_DECLUTTER = 5 in the FOLD group — the
+  flank reads ROLES (ROTATE / REFLECT / INVERT) then FOLD (COLLAPSE / COLLAPSE-ALL /
+  DECLUTTER / EXPAND) then RANDOM then TRUE-REV; N_VERBS 7 -> 8; ROW_H 10 -> 9mm (nine flank
+  rows), 28 anchors, the band assert green. The dispatch is the landed pure verb over the
+  CURRENT graph — whole-plane (the fold family's convention; the POOL span is the DRAWS'
+  convention), explicit-trigger-only (§8: the strip deletes deliberate shortcut offers — C1's
+  offer union and C4's hold-follow read DIRECT edges), stamped at arm, applied at the phrase
+  boundary in stamp order, committed through the same trajectory bracket (pre-push held
+  state, post-push result — EXPAND-reversible like every row), undo parity inherited. The
+  visible effect on the pin grid: shadow marks vanish, the lantern envelopes CANNOT move
+  (T11 closure-preservation is mask-exact — nesting lengths, gate intersections and the
+  forced-rest cascade are invariant; only the direct-offer event layer changes). Ruling 1
+  stands: no CLOSER row (synonymy) — DECLUTTER passes the RANDOM test (a decision class the
+  rows did not span: strip implied structure), which is why the vocabulary accepts it.
+  The "Random reduce" flag and the row are COMPLEMENTS, not duplicates: the flag shapes the
+  draw (before the page lands), the row shapes whatever graph exists (after marches,
+  collapse/expand sessions, manual edits). The anchor-mask trigger wiring for
+  collapseAllOnto stays parked (a flank row cannot carry a mask; a context gesture on the
+  pin grid would be the shape if ever wanted).
+
+- **THE SCATTER POOL SPAN FIXED** (Rodney's defect: "relative random now puts some pins
+  outside the area defined by polyphony" — scatterEdges never received the pool the
+  polyphony ruling gave seedForest): the pass now SPANS THE POOL like every other writer —
+  rows at/above the pool are HELD verbatim (their draws are counter-ADDRESSED, so skipping
+  them moves nobody's page addressing), the ADD scan picks parents WITHIN [0, pool), and
+  REMOVE works on the pool-masked parent set (a held above-pool parent survives — the hold
+  rule: the wholesale clear is Outright's business, a modify pass never reaches outside its
+  sandbox). pool = VOICES (the default) is BIT-FOR-BIT the pre-fix pass — every legacy
+  T12/P10 scatter row keeps its anchor; the fire oracle at polyphony 10 pins the row-level
+  span; the transforms march sweeps every pool 1..16 x 200 seeds (validity, the span, the
+  planted-pin hold, determinism, the pool-1 known no-op, default == explicit).
+
+TESTS: transforms 156 -> 350 checks (the pool march counts per-seed), pending 114 -> 130
+(the scatter-pool oracle block + the P10c DECLUTTER row contract: known answer, delete-only,
+closure mask-exact, idempotent, the dice counter untouched, trajectory stepBack reversibility,
+the collapse-all+declutter stamp-order compose). Battery 87/87 under BOTH mounts (simde-only:
+smoke skips gracefully; real SDK 2.5.2: the plugin-TU smoke 43/43) + UNIFORMITY_STRICT=1 +
+the anchor audit (28 anchors, all bound). Goldens untouched; zero engine surface (both
+changes are module-layer: the draws and the pending dispatch).

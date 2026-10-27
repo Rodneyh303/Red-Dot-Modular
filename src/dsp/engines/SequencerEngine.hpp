@@ -1,4 +1,5 @@
 #pragma once
+#include "RhythmDecisionCore.hpp"   // RDM: MonoDecision + ParentView — the R-2 seam (plan §2)
 #include "PatternEngine.hpp"
 #include "../SpreadInterp.hpp"   // effectiveProbability's spread term (the a2ccb842 one-accessor design it subsumes was deleted by UI_TO_RESOLVER step 2)
 #include "../gates/GateState.hpp"
@@ -20,16 +21,9 @@
 
 // ── Poly voice architecture ────────────────────────────────────────────────────
 
-// What mono decided on the most recent step edge.
-// Poly voices read this to determine their own behaviour.
-enum class MonoDecision {
-    MidNote,    // note still held from a previous step — poly just ticks, no new draw
-    Rest,       // mono rested — poly cannot initiate
-    Tie,        // mono extended hold (same pitch) — poly voices hold their own notes
-    Legato,     // mono slid to a new pitch (no retrigger) — poly may draw new notes
-    LegatoMax,  // legatoProb >= 0.999 — poly may draw, no retrigger
-    NewNote     // mono retriggered — poly may retrigger independently
-};
+// (MonoDecision MOVED to RhythmDecisionCore.hpp — R-2 of RHYTHM_DECISION_MANAGER_PLAN:
+//  the decision vocabulary is RDM vocabulary, carried by ParentView. Included above, so
+//  every existing user sees the type unchanged.)
 
 // Returned by executeStep and the mode executors.
 struct StepResult {
@@ -162,6 +156,16 @@ struct SequencerEngine {
 
     // Most recent mono decision — written by executeStep, read by executePolyVoices.
     StepResult lastStepResult;
+
+    // F-1 (RHYTHM_DECISION_MANAGER_PLAN §3.1): the RDM instance — source = GRAPH, reading
+    // the staged containment graph (pe.containmentParents, wired AT CONSTRUCTION via the
+    // NSDMI — pe is declared before rdm, so the array address is stable; reset() re-wires
+    // the same address as the documented seam). D2: graph truth everywhere — no engine
+    // legacy mode; the all-follow-V1 star is an AUTHORED graph (the Cantonment preset /
+    // the test seam), not a source the production engine switches to. Star graphs are
+    // byte-identity-gated on the differential marches; the empty graph is free voices (the
+    // self-rooted tuple); poly-container graphs are spec'd in test_forest_rhythm.
+    RhythmDecisionCore rdm = RhythmDecisionCore(pe.containmentParents);
 
     // (lastLegatoProb_ REMOVED — Phase A: V1 legato lives on the mono slot's legatoProb, read
     // directly by executeStep, legatoCheckpointOnFall, and the debug print in executePolyVoice.)
@@ -335,6 +339,27 @@ struct SequencerEngine {
     bool hadMonoTail = false;
     bool wasHeldMono = false; // Capture mono state before tick() for start-detection
     bool hadPolyTail[16] = {};
+    // F-1 per-container reads (RHYTHM_DECISION_MANAGER_PLAN §3.1): each poly voice's rhythm
+    // VERDICT + drawn note length, captured by executePolyVoice at its decision points and
+    // read back through containerView(u) when a CHILD folds its containers — under the
+    // forest a poly voice is a real parent, and its child needs the same four scalars V1
+    // exposes through monoParentView(). Indexed by STORAGE slot (0 = V1, unused — the mono
+    // verdict lives in lastStepResult). Default Rest = a voice that has not executed offers
+    // no onset and closes its children (fail-closed); reset() restores it.
+    MonoDecision polyVerdict_[16] = {};   // zero-init = MidNote; reset() fills Rest
+    int polyNv_[16] = {};                 // the voice's drawn window this edge (the C3 ceiling
+                                          // a child clamps against); 0 = no clamp contribution
+    // F-4 (D5 — RHYTHM_DECISION_MANAGER_PLAN §3.3): each poly voice's THIS-EDGE GHOST EVENT —
+    // the voice PLAYED an onset at a permission point that was a ghost cell of ITS containers
+    // (rd.ghostCell). Captured by executePolyVoice at the play verdict (the polyVerdict_
+    // discipline: written on EVERY executed edge, true only on the ghost-placed play path), and
+    // read back through containerView(u) as ParentView::ghostEvent when a CHILD folds its
+    // containers — the recursion that lets ghost events propagate DOWN the forest (a child
+    // ghosts inside its containers' ghost notes, one level per edge). Indexed by STORAGE slot
+    // (0 = V1, unused — the mono's ghost event is its own stream latch, engine.ghostActive,
+    // carried by monoParentView()). Default false = no ghost event (fail-closed, same as the
+    // Rest verdict); reset() restores it.
+    bool polyGhostOnset_[16] = {};
     // Ghost (subGate_ghost): true while a ghost note is sustaining — set when a ghost candidate
     // (variation-gated) plays, cleared when it rests/fails or a main/ratchet onset takes over.
     // The module-layer IMPL 2b reads this (&& ghostHigh) so the gate only opens for a ghost that
@@ -951,4 +976,22 @@ struct SequencerEngine {
     // STRONG types (CC_PROMPT_STRONG_TYPES): voiceIdx is a MINTED VoiceSlot.
     void executePolyVoice(VoiceSlot voiceIdx, const PatternInput& input, bool wasHeld, bool hadTail);
     void executePolyVoices(const PatternInput& input);
+
+    // R-2 (RHYTHM_DECISION_MANAGER_PLAN §2.3): the named parent read — the four mono scalars
+    // the poly cascade consumed as loose state (lastStepResult.decision/nvIdx, gs.gateHeld,
+    // wasHeldMono/hadMonoTail) assembled as ONE ParentView. executePolyVoice + nvIdxForVoice
+    // read mono ONLY through this.
+    // F-1 (plan §3.1): the producer for container slot 0 — V1 stays the mono voice's view.
+    // Containers on slots 1..15 read containerView(u) below (the captured poly verdict +
+    // live gate state), so the same cascade folds ANY forest the graph carries.
+    ParentView monoParentView() const;
+
+    // F-1: the per-container view — u is a STORAGE slot (0 = V1 … 15 = V16). u == 0
+    // delegates to monoParentView(); u >= 1 assembles the poly container's ParentView
+    // from its captured rhythm verdict (polyVerdict_), its captured drawn length
+    // (polyNv_), and its live VoiceBank gate state. Out-of-range u is defensive-neutral
+    // (fail-closed: no onset offer, envelope cell closed). F-2: executePolyVoices visits
+    // in the MATERIALIZED topological order, so every container — any slot, any direction —
+    // is captured fresh on the edge its child reads it.
+    ParentView containerView(int u) const;
 };

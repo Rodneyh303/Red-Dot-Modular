@@ -19,6 +19,16 @@
  *     on the EMPTY graph (the unique fixpoint) within <= 16 applications.
  *   COLLAPSE-ALL — ancestorClosure(v) & rootsMask: every new edge points at a former root, so
  *     depth <= 1; idempotent (after flattening, each voice's closure-roots are its parents).
+ *   COLLAPSE-ALL-ONTO — the anchored general (IDEAS_PARKED.md ruling 2026-10-27): flatten onto
+ *     an arbitrary anchor set under a MEMBERSHIP KEY (voices not under any anchor keep their
+ *     wiring verbatim — the naive mask form would detach them); every new edge was an old
+ *     ancestor (the honesty contract); collapseAll is the derived root-mask default,
+ *     byte-identical to its pre-anchoring body (the compat pin re-proves it per seed).
+ *   REDUCE — the transitive reduction (the parked verdict pulled forward 2026-10-27): strip
+ *     v->u iff ANOTHER parent w reaches u upward in the ORIGINAL graph (witness reads against
+ *     the `before` snapshot -> the strip is pure and order-free); closure(reduce(g)) ==
+ *     closure(g) mask-exact; idempotent; root-set invariant (never orphans a voice); the
+ *     EXPLICIT-only rule (C1/C4 read direct edges — a shortcut offer is a musical feature).
  *   EXPAND — NOT HERE (R3): collapse is LOSSY (T9 demonstrates two distinct DAGs sharing one
  *     collapse image), so expand is trajectory MEMORY in the module layer (the CA TRUE-REVERSE
  *     precedent; the ring lands with the pending machinery, step-3 seam). The involutions that
@@ -589,6 +599,580 @@ int main() {
         CHK(chain.isContainedIn(0, 2) && chain.parentCount(0) == 1 && chain.isRoot(1) && chain.isRoot(2),
             "expand: the shared image is the grandparent re-link, mid tier detached");
         CHK(chain.isValid(), "expand: the shared image is itself a valid DAG");
+    }
+
+    // ── T10. COLLAPSE-ALL-ONTO — the anchored flatten (the closure gesture's ONE parameter) ────
+    // IDEAS_PARKED.md ruling 2026-10-27: closure keeps ONE gesture word (V_COLLAPSE_ALL — a
+    // third closure verb would be synonymy, not a new decision); the missing generality lands
+    // as collapseAllOnto's anchor mask (the ROTATE "<=1 param" precedent). These rows pin the
+    // ruling's load-bearing claims: the anti-detach membership key (the whole point of the
+    // general form — the naive mask form detaches voices whose ancestors miss A), the
+    // byte-identity default reduction, the honesty contract (a flatten can only PROMOTE
+    // existing ancestors to direct parents), and anchored idempotence.
+    {
+        // Known-answer, the anti-detach row: 0<1<2<3 plus a SEPARATE component 9<10, A={3}.
+        // The 3-component flattens onto 3; the 9<10 component is BYTE-UNTOUCHED (closure(9)
+        // = {10} misses A — the naive form out[v] = closure(v) & A for ALL v would orphan 9).
+        ContainmentGraph g;
+        CHK(g.addParent(0, 1) && g.addParent(1, 2) && g.addParent(2, 3),
+            "onto: setup chain 0<1<2<3 accepted");
+        CHK(g.addParent(9, 10), "onto: setup separate component 9<10 accepted");
+        ContainmentGraph before = g;
+        collapseAllOnto(g, (uint16_t)(1u << 3));
+        CHK(g.isContainedIn(0, 3) && g.isContainedIn(1, 3) && g.isContainedIn(2, 3),
+            "onto: the chain flattens onto anchor 3");
+        CHK(g.isRoot(3), "onto: the anchor itself stays put (no ancestors to gain)");
+        CHK(g.parents[9] == before.parents[9] && g.parents[10] == before.parents[10],
+            "onto: the separate component is byte-untouched (anti-detach membership key)");
+        CHK(g.isValid() && noSelfBits(g) && depthOf(g) == 1,
+            "onto: anchored flatten valid, no self-bits, touched component lands depth 1");
+
+        // The anchor keeps its own container: A={2} in 0<1<2<3 flattens 0,1 onto 2 while
+        // 2<3 survives — "flatten the cluster under 2 onto 2", the upstream wiring intact.
+        ContainmentGraph m;
+        CHK(m.addParent(0, 1) && m.addParent(1, 2) && m.addParent(2, 3),
+            "onto: setup chain accepted (mid-anchor case)");
+        collapseAllOnto(m, (uint16_t)(1u << 2));
+        CHK(m.isContainedIn(0, 2) && m.isContainedIn(1, 2),
+            "onto: the cluster under 2 flattens onto 2");
+        CHK(m.isContainedIn(2, 3) && m.isRoot(3),
+            "onto: the anchor keeps its OWN container (2<3 survives, upstream untouched)");
+
+        // A = 0 is a total no-op (nobody is under an anchor), NOT the root flatten — which is
+        // exactly why collapseAll derives its OWN mask instead of passing a sentinel.
+        ContainmentGraph z = m;
+        collapseAllOnto(z, 0);
+        CHK(sameState(z, m), "onto: empty anchor mask is a no-op (the mask is derived, never 0)");
+
+        // Per seed, over random DAGs and random anchor masks: the compat pin (collapseAll(g)
+        // == collapseAllOnto(g, roots) BYTE-IDENTICAL), the membership law (flatten IFF
+        // closure(v) ∩ A ≠ ∅, then parents = closure ∩ A exactly; else verbatim), the honesty
+        // contract, validity + round-trip, anchored idempotence, and the A=0 no-op.
+        int badCompat = -1, badMember = -1, badHonest = -1, badValid = -1, badSer = -1,
+            badIdem = -1, badNoop = -1;
+        for (int seed = 1; seed <= 200 && (badCompat < 0 && badMember < 0 && badHonest < 0 &&
+                                           badValid < 0 && badSer < 0 && badIdem < 0 &&
+                                           badNoop < 0); ++seed) {
+            redDot::PhiloxRng rng((uint64_t)seed * 0x9E3779B97F4A7C15ull + 0xC10Cull);
+            ContainmentGraph g;
+            buildRandomDag(g, rng, 80);
+
+            // compat: the derived default IS the shipped root flatten, byte for byte
+            {
+                ContainmentGraph viaDefault = g, viaOnto = g;
+                uint16_t roots = 0;
+                for (int v = 0; v < VOICES; ++v)
+                    if (viaOnto.isRoot(v)) roots |= (uint16_t)(1u << v);
+                collapseAll(viaDefault);
+                collapseAllOnto(viaOnto, roots);
+                if (!sameState(viaDefault, viaOnto)) { badCompat = seed; continue; }
+            }
+
+            // anchored form over a random mask (sparse-ish, so kept components exist)
+            uint16_t A = 0;
+            for (int v = 0; v < VOICES; ++v)
+                if (rng() & 1u) A |= (uint16_t)(1u << v);
+            ContainmentGraph snap = g;
+            collapseAllOnto(g, A);
+            if (!g.isValid() || !noSelfBits(g)) { badValid = seed; continue; }
+            if (!roundTripOk(g)) { badSer = seed; continue; }
+
+            bool memberOK = true, honestOK = true;
+            for (int v = 0; v < VOICES; ++v) {
+                const uint16_t onto = (uint16_t)(snap.ancestorClosure(v) & A);
+                if (g.parents[v] != (onto ? onto : snap.parents[v])) { memberOK = false; break; }
+                const uint16_t gained = (uint16_t)(g.parents[v] & ~snap.parents[v]);
+                if (gained & ~snap.ancestorClosure(v)) { honestOK = false; break; }
+            }
+            if (!memberOK) { badMember = seed; continue; }
+            if (!honestOK) { badHonest = seed; continue; }
+
+            ContainmentGraph hold = g;
+            collapseAllOnto(g, A);
+            if (!sameState(g, hold)) { badIdem = seed; continue; }
+
+            ContainmentGraph z2 = snap;
+            collapseAllOnto(z2, 0);
+            if (!sameState(z2, snap)) { badNoop = seed; continue; }
+        }
+        if (badCompat >= 0) std::printf("  detail: default reduction broke at seed %d\n", badCompat);
+        if (badMember >= 0) std::printf("  detail: membership law broke at seed %d\n", badMember);
+        if (badHonest >= 0) std::printf("  detail: honesty contract broke at seed %d\n", badHonest);
+        if (badValid  >= 0) std::printf("  detail: validity broke at seed %d\n", badValid);
+        if (badSer    >= 0) std::printf("  detail: round-trip broke at seed %d\n", badSer);
+        if (badIdem   >= 0) std::printf("  detail: anchored idempotence broke at seed %d\n", badIdem);
+        if (badNoop   >= 0) std::printf("  detail: A=0 no-op broke at seed %d\n", badNoop);
+        CHK(badCompat < 0, "onto: collapseAll(g) == collapseAllOnto(g, roots) BYTE-IDENTICAL, 200 random DAGs (the compat pin)");
+        CHK(badMember < 0, "onto: membership law — flatten IFF closure∩A≠∅, then parents = closure∩A exactly; else verbatim");
+        CHK(badHonest < 0, "onto: honesty contract — every new edge was an old ancestor (flatten invents no relation)");
+        CHK(badValid  < 0, "onto: valid + no self-bits after the anchored flatten (200 seeds x random masks)");
+        CHK(badSer    < 0, "onto: every anchored result round-trips (loadable save, byte-identical)");
+        CHK(badIdem   < 0, "onto: double trigger idempotent under the anchored form");
+        CHK(badNoop   < 0, "onto: A=0 is a no-op on every random DAG");
+
+        // The parked flooding form is SAFE even where it is NOT SHIPPED: A = 0xFFFF (every
+        // voice gains ALL its ancestors as direct parents) stays a DAG by the same
+        // mask-uniform argument — one call away, no verb row, no default, no panel button.
+        {
+            redDot::PhiloxRng rng(0xFFFFC10Cull);
+            ContainmentGraph f;
+            buildRandomDag(f, rng, 90);
+            collapseAllOnto(f, (uint16_t)0xFFFFu);
+            CHK(f.isValid() && noSelfBits(f) && roundTripOk(f),
+                "onto: the parked full-ancestor form (A=0xFFFF) is still a valid, loadable DAG");
+        }
+    }
+
+    // ── T11. REDUCE — the transitive reduction (DECLUTTER/PRUNE's pure verb) ────────────────
+    // The parked verdict pulled forward (IDEAS_PARKED.md 2026-10-27): reduction as an EXPLICIT
+    // gesture is YES; the pure verb lands next to collapse/collapseAll, the trigger row parks
+    // with the panel work (the same seam as COLLAPSE-ALL-ONTO). The two banked property rows
+    // are the heart of the block — closure(reduce(g)) == closure(g) MASK-EXACT, and reduce is
+    // idempotent — plus the safety rows the verdict leans on: root-set invariance (reduction
+    // never orphans a voice), the no-op on the true diamond (multi-parent intersection
+    // structure is NOT shadow), and the shortcut-offer strip that motivates EXPLICIT-only.
+    {
+        // Known-answer, the spine: 0<1<2<3 with the shortcuts 0->2, 0->3, 1->3 — exactly the
+        // chain survives. The stripped 0->3 edge was a deliberate C1 OFFER ("the child hears
+        // the grandparent's onsets directly") — the SOUND changes, which is precisely why
+        // reduce is a trigger, never a background pass (§8).
+        ContainmentGraph g;
+        CHK(g.addParent(0, 1) && g.addParent(1, 2) && g.addParent(2, 3),
+            "reduce: setup chain 0<1<2<3 accepted");
+        CHK(g.addParent(0, 2) && g.addParent(0, 3) && g.addParent(1, 3),
+            "reduce: setup the three shortcut offers accepted");
+        reduceTransitive(g);
+        CHK(g.parents[0] == (uint16_t)(1u << 1) && g.parents[1] == (uint16_t)(1u << 2) &&
+            g.parents[2] == (uint16_t)(1u << 3) && g.parents[3] == 0,
+            "reduce: exactly the load-bearing chain survives (all shadow edges gone)");
+        CHK(g.ancestorClosure(0) == (uint16_t)((1u << 1) | (1u << 2) | (1u << 3)),
+            "reduce: reachability preserved through the spine (closure(0) still {1,2,3})");
+
+        // The true diamond is ALREADY the spine: 3 in {1,2}, both in 0 — no edge is redundant
+        // (multi-parent intersection structure is not shadow). Reduce is a no-op.
+        ContainmentGraph d;
+        CHK(d.addParent(3, 1) && d.addParent(3, 2) && d.addParent(1, 0) && d.addParent(2, 0),
+            "reduce: setup true diamond accepted");
+        ContainmentGraph d0 = d;
+        reduceTransitive(d);
+        CHK(sameState(d, d0), "reduce: the true diamond is a fixpoint (nothing to strip)");
+
+        // Separate components and single-parent rows are untouched; the shortcut goes, the
+        // component stays (a strip needs a SECOND parent — 9's only parent is load-bearing).
+        ContainmentGraph x;
+        CHK(x.addParent(0, 1) && x.addParent(1, 2) && x.addParent(0, 2) && x.addParent(9, 10),
+            "reduce: setup chain+shortcut + separate component accepted");
+        reduceTransitive(x);
+        CHK(x.parents[0] == (uint16_t)(1u << 1) && x.parents[1] == (uint16_t)(1u << 2),
+            "reduce: the chain+shortcut collapses to the chain");
+        CHK(x.parents[9] == (uint16_t)(1u << 10),
+            "reduce: the single-parent component is untouched (no OTHER parent, no witness)");
+
+        // Per seed, over random DAGs: THE TWO BANKED ROWS (closure(reduce(g)) ==
+        // closure(g) mask-exact per vertex; idempotent) + the safety rows (valid, no
+        // self-bits, round-trips; root set invariant; nobody orphaned; edges never grow).
+        int badClosure = -1, badIdem = -1, badRoots = -1, badValid = -1, badSer = -1,
+            badMono = -1;
+        for (int seed = 1; seed <= 300 && (badClosure < 0 && badIdem < 0 && badRoots < 0 &&
+                                           badValid < 0 && badSer < 0 && badMono < 0); ++seed) {
+            redDot::PhiloxRng rng((uint64_t)seed * 0xD1B54A32D192ED03ull + 0x5EEDull);
+            ContainmentGraph g;
+            buildRandomDag(g, rng, 85);
+            const ContainmentGraph snap = g;
+
+            uint16_t rootsBefore = 0, heldBefore = 0;
+            int edgesBefore = 0;
+            for (int v = 0; v < VOICES; ++v) {
+                if (snap.isRoot(v)) rootsBefore |= (uint16_t)(1u << v);
+                if (snap.parents[v]) heldBefore |= (uint16_t)(1u << v);
+                edgesBefore += __builtin_popcount(snap.parents[v]);
+            }
+
+            reduceTransitive(g);
+            if (!g.isValid() || !noSelfBits(g)) { badValid = seed; continue; }
+            if (!roundTripOk(g)) { badSer = seed; continue; }
+
+            // BANKED ROW 1: closure(reduce(g)) == closure(g), mask-exact per vertex
+            for (int v = 0; v < VOICES; ++v)
+                if (g.ancestorClosure(v) != snap.ancestorClosure(v)) { badClosure = seed; break; }
+            if (badClosure >= 0) continue;
+
+            // safety: root set invariant, nobody orphaned, edge count never grows
+            uint16_t rootsAfter = 0, heldAfter = 0;
+            int edgesAfter = 0;
+            for (int v = 0; v < VOICES; ++v) {
+                if (g.isRoot(v)) rootsAfter |= (uint16_t)(1u << v);
+                if (g.parents[v]) heldAfter |= (uint16_t)(1u << v);
+                edgesAfter += __builtin_popcount(g.parents[v]);
+            }
+            if (rootsAfter != rootsBefore || heldAfter != heldBefore) { badRoots = seed; continue; }
+            if (edgesAfter > edgesBefore) { badMono = seed; continue; }
+
+            // BANKED ROW 2: idempotent (the result IS the transitive reduction — unique for DAGs)
+            ContainmentGraph hold = g;
+            reduceTransitive(g);
+            if (!sameState(g, hold)) { badIdem = seed; continue; }
+        }
+        if (badClosure >= 0) std::printf("  detail: closure preservation broke at seed %d\n", badClosure);
+        if (badIdem   >= 0) std::printf("  detail: idempotence broke at seed %d\n", badIdem);
+        if (badRoots  >= 0) std::printf("  detail: root-set invariance broke at seed %d\n", badRoots);
+        if (badValid  >= 0) std::printf("  detail: validity broke at seed %d\n", badValid);
+        if (badSer    >= 0) std::printf("  detail: round-trip broke at seed %d\n", badSer);
+        if (badMono   >= 0) std::printf("  detail: edge monotonicity broke at seed %d\n", badMono);
+        CHK(badClosure < 0, "reduce: closure(reduce(g)) == closure(g) MASK-EXACT on 300 random DAGs (banked row 1)");
+        CHK(badIdem   < 0, "reduce: idempotent on every random DAG (banked row 2 — the unique reduction)");
+        CHK(badRoots  < 0, "reduce: root set + containment set invariant (never orphans a voice)");
+        CHK(badValid  < 0, "reduce: valid + no self-bits after the strip (300 seeds)");
+        CHK(badSer    < 0, "reduce: every reduced state round-trips (loadable save, byte-identical)");
+        CHK(badMono   < 0, "reduce: edge count never grows (delete-only, never re-points)");
+    }
+
+    // ── T12. RANDOM — the two pure draws (the seed verb, row 7; IDEAS_PARKED.md 2026-10-27) ──
+    // Rodney unclosed the gesture rows for the seed verb: ONE own Philox stream (fixed domain
+    // key, counter = signed addressable PAGE index — the CA dice model, NOT seed-keying), TWO
+    // page interpretations. OUTRIGHT = the STATELESS model: the graph IS f(page, density), so
+    // reverse-draw IS the exact state restore (the CA doc's "when stateless would be right"
+    // case). SCATTER = the STATE-DEPENDENT model: checked edit verbs driven by the page over
+    // the CURRENT graph — path-dependent by design, draw-reversible NOT state-restorable.
+    {
+        redDot::PhiloxRng rng;                       // the FIXED domain key, exactly as the row derives it
+        rng.setKey(redDot::philoxMakeKey(RANDOM_STREAM_DOMAIN));
+
+        // OUTRIGHT: validity + the lone-root guarantee + determinism, per (page, density).
+        // The connectivity boost gives every non-head permutation voice >= 1 parent, so the
+        // result has EXACTLY ONE root (the permutation head) — the F-5 recipe's guarantee.
+        int badValid = -1, badRoots = -1, badDet = -1, badSer = -1;
+        for (int seed = 1; seed <= 600 && (badValid < 0 && badRoots < 0 && badDet < 0 && badSer < 0); ++seed) {
+            const uint64_t page = (uint64_t)seed * RANDOM_PAGE_OUTRIGHT + (uint64_t)(seed % 7) - 3ull;   // signed-range pages
+            const int density = 1 + (seed % 3) * 4 + (seed % 2);   // 1..10-ish spread: {1,2,6,7,...}
+            redDot::PhiloxRng r2 = rng;                                  // same fixed key
+            ContainmentGraph g;
+            seedForest(g, r2, page, density);
+            if (!g.isValid() || !noSelfBits(g)) { badValid = seed; continue; }
+            if (!roundTripOk(g)) { badSer = seed; continue; }
+            int roots = 0;
+            for (int v = 0; v < VOICES; ++v) if (g.isRoot(v)) ++roots;
+            if (roots != 1) { badRoots = seed; continue; }
+            ContainmentGraph again;
+            seedForest(again, r2, page, density);
+            if (!sameState(g, again)) { badDet = seed; continue; }       // the stateless contract: f(page) is f(page)
+        }
+        if (badValid >= 0) std::printf("  detail: outright validity broke at page-seed %d\n", badValid);
+        if (badRoots >= 0) std::printf("  detail: outright lone-root broke at page-seed %d\n", badRoots);
+        if (badDet   >= 0) std::printf("  detail: outright determinism broke at page-seed %d\n", badDet);
+        if (badSer   >= 0) std::printf("  detail: outright round-trip broke at page-seed %d\n", badSer);
+        CHK(badValid < 0, "outright: acyclic + no self-bits on 600 addressed pages (acyclic BY CONSTRUCTION)");
+        CHK(badSer   < 0, "outright: every generated forest round-trips (loadable save)");
+        CHK(badRoots < 0, "outright: exactly ONE root per generation (the boost's lone guaranteed root)");
+        CHK(badDet   < 0, "outright: f(page, density) is a PURE function of the page (reverse-draw = exact re-derive)");
+
+        // Density dials: 10 = every candidate edge (the DAG-complete upper shape on the
+        // permutation — 120 edges exactly); 1 = the boost guarantee only (>= 15 edges).
+        {
+            redDot::PhiloxRng r3 = rng;
+            ContainmentGraph g10, g1;
+            seedForest(g10, r3, 7777ull, 10);
+            seedForest(g1,  r3, 7777ull, 1);
+            CHK(totalEdges(g10) == 120,
+                "outright: density 10 = the DAG-complete upper shape (120 edges — every earlier-pair)");
+            CHK(totalEdges(g1) >= 15,
+                "outright: density 1 still connects (the boost: >= 15 edges — a spanning structure)");
+            CHK(g10.isValid() && g1.isValid() && noSelfBits(g10) && noSelfBits(g1),
+                "outright: both density extremes stay valid DAGs");
+        }
+
+        // V1 is NOT special (D7): across pages, V1 is sometimes the root, sometimes contained.
+        {
+            int asRoot = 0, contained = 0;
+            for (uint64_t page = 9000ull; page < 9400ull; ++page) {
+                redDot::PhiloxRng r4 = rng;
+                ContainmentGraph g;
+                seedForest(g, r4, page, 3);
+                if (g.isRoot(0)) ++asRoot; else ++contained;
+            }
+            CHK(asRoot > 0 && contained > 0,
+                "outright: V1 placement is FREE across pages (root and contained both occur — D7 first-class)");
+        }
+
+        // OUTRIGHT reverse-as-undo: from a DIRTY graph, apply page k then page k-1 — the result
+        // is EXACTLY page k-1 applied fresh. The rewrite erases the previous page entirely
+        // (the stateless model: the graph is f(counter), the pointer move IS the restore).
+        {
+            ContainmentGraph dirty;
+            dirty.addParent(0, 5); dirty.addParent(3, 7); dirty.addParent(9, 2);
+            redDot::PhiloxRng r5 = rng;
+            ContainmentGraph stepped = dirty, fresh;
+            seedForest(stepped, r5, 4242ull, 5);
+            seedForest(stepped, r5, 4241ull, 5);
+            seedForest(fresh,   r5, 4241ull, 5);
+            CHK(sameState(stepped, fresh),
+                "outright: reverse-draw = EXACT state restore (f(k-1) after f(k) == f(k-1) fresh)");
+        }
+
+        // ISLANDS + POOL (path B + the polyphony ruling, Rodney 2026-10-27): the partition is
+        // a dial; each island is internally connected with EXACTLY ONE root; islands are
+        // mutually disconnected; the draw spans the pool and rows above it clear to free
+        // singles. The legacy rows above (default args = islands 1, full pool) double as the
+        // bit-exactness anchor: they were written against the pre-islands layout and still
+        // pass unchanged.
+        {
+            auto countComponents = [](const ContainmentGraph& gg, int pool) {
+                int comp[VOICES];
+                for (int v = 0; v < pool; ++v) comp[v] = v;
+                for (int v = 0; v < pool; ++v)
+                    for (int u = 0; u < pool; ++u)
+                        if (gg.parents[v] & (1u << u)) {
+                            int rv = v; while (comp[rv] != rv) rv = comp[rv];
+                            int ru = u; while (comp[ru] != ru) ru = comp[ru];
+                            if (rv != ru) comp[rv] = ru;
+                        }
+                int n = 0;
+                for (int v = 0; v < pool; ++v) {
+                    int r = v; while (comp[r] != r) r = comp[r];
+                    if (r == v) ++n;
+                }
+                return n;
+            };
+            int badRoots = -1, badComp = -1, badAbove = -1, badDet = -1;
+            const int kiPairs[8][2] = {{1,16},{2,16},{3,16},{7,16},{16,16},{4,8},{2,5},{1,1}};
+            for (int c = 0; c < 8 && (badRoots < 0 && badComp < 0 && badAbove < 0 && badDet < 0); ++c) {
+                const int K = kiPairs[c][0], pool = kiPairs[c][1];
+                for (uint64_t pg = 30000ull; pg < 30040ull; ++pg) {
+                    const int dens = 1 + (int)(pg % 10);
+                    redDot::PhiloxRng r7 = rng;
+                    ContainmentGraph gi;
+                    seedForest(gi, r7, pg, dens, K, pool);
+                    if (!gi.isValid() || !noSelfBits(gi) || !roundTripOk(gi)) { badRoots = (int)pg; break; }
+                    int roots = 0;
+                    for (int v = 0; v < VOICES; ++v) if (gi.isRoot(v)) ++roots;
+                    if (roots != K + (VOICES - pool)) { badRoots = (int)pg; break; }
+                    if (countComponents(gi, pool) != K) { badComp = (int)pg; break; }
+                    bool aboveClean = true;                    // above-pool rows: no parents, no children
+                    for (int v = pool; v < VOICES; ++v) if (gi.parents[v]) aboveClean = false;
+                    for (int v = 0; v < pool; ++v) if (gi.parents[v] >> pool) aboveClean = false;
+                    if (!aboveClean) { badAbove = (int)pg; break; }
+                    ContainmentGraph again;
+                    seedForest(again, r7, pg, dens, K, pool);
+                    if (!sameState(gi, again)) { badDet = (int)pg; break; }
+                }
+            }
+            if (badRoots >= 0) std::printf("  detail: islands root-count broke at page %d\n", badRoots);
+            if (badComp  >= 0) std::printf("  detail: islands connectivity broke at page %d\n", badComp);
+            if (badAbove >= 0) std::printf("  detail: above-pool clearing broke at page %d\n", badAbove);
+            if (badDet   >= 0) std::printf("  detail: islands determinism broke at page %d\n", badDet);
+            CHK(badRoots < 0, "islands: root count == the dial + the cleared above-pool singles (8 configs x 40 pages)");
+            CHK(badComp  < 0, "islands: each island is CONNECTED within (in-pool components == the dial)");
+            CHK(badAbove < 0, "islands: the draw spans the pool — rows above it carry no pins either way");
+            CHK(badDet   < 0, "islands: f(page, density, islands, pool) is a PURE function (determinism)");
+
+            // the dial's extremes: islands = pool -> every voice a free single (0 pins);
+            // the explicit (1, full pool) call is byte-identical to the default call.
+            {
+                redDot::PhiloxRng r8 = rng;
+                ContainmentGraph gAll;
+                seedForest(gAll, r8, 4444ull, 10, 16, 16);
+                CHK(totalEdges(gAll) == 0,
+                    "islands: islands = pool -> every voice its own island (0 pins, all valid roots)");
+                ContainmentGraph dflt, expl;
+                redDot::PhiloxRng r9 = rng;
+                seedForest(dflt, r9, 5555ull, 7);
+                seedForest(expl,  r9, 5555ull, 7, 1, VOICES);
+                CHK(sameState(dflt, expl),
+                    "islands: explicit (1 island, full pool) == the default call (the legacy anchor)");
+            }
+        }
+
+        // REDUCE POST-PASS (the banked ONE CALL, IDEAS_PARKED.md: "a flag, not forced: random
+        // shortcut edges may be exactly the variety wanted" — wired when Rodney asked "what
+        // happened to the closure/reduction?"): seedForest's optional last arg runs
+        // reduceTransitive(g) on the drawn page. DEFAULT OFF — every row above is the off
+        // anchor and stays bit-for-bit. The strip inherits T11's proven properties page-shape
+        // and all: closure preserved mask-exact (islands, roots and the pool clear survive),
+        // delete-only (never re-points), idempotent (THE unique DAG reduction), root-set
+        // invariant. At density 10 the DAG-complete page reduces to the ISLAND CHAINS.
+        {
+            auto popcount16 = [](uint16_t x) { int n = 0; while (x) { x = (uint16_t)(x & (x - 1)); ++n; } return n; };
+            int badValid = -1, badClo = -1, badSub = -1, badRoot = -1, badIdem = -1;
+            const int rdCfg[6][3] = {{1,1,16},{3,1,16},{7,3,16},{10,2,16},{5,4,8},{2,2,5}};
+            for (int c = 0; c < 6 && (badValid < 0 && badClo < 0 && badSub < 0 && badRoot < 0 && badIdem < 0); ++c) {
+                const int dens = rdCfg[c][0], K = rdCfg[c][1], pool = rdCfg[c][2];
+                for (uint64_t pg = 60000ull; pg < 60020ull; ++pg) {
+                    redDot::PhiloxRng ra = rng, rb = rng;
+                    ContainmentGraph off, on;
+                    seedForest(off, ra, pg, dens, K, pool);            // reduce defaults FALSE
+                    seedForest(on,  rb, pg, dens, K, pool, true);
+                    if (!on.isValid() || !noSelfBits(on) || !roundTripOk(on)) { badValid = (int)pg; break; }
+                    for (int v = 0; v < VOICES; ++v) {
+                        if (off.ancestorClosure(v) != on.ancestorClosure(v)) { badClo = (int)pg; break; }
+                        if (on.parents[v] & ~off.parents[v])                 { badSub = (int)pg; break; }
+                        if (off.isRoot(v) != on.isRoot(v))                   { badRoot = (int)pg; break; }
+                    }
+                    if (badClo >= 0 || badSub >= 0 || badRoot >= 0) break;
+                    ContainmentGraph twice = on;
+                    reduceTransitive(twice);
+                    if (!sameState(on, twice)) { badIdem = (int)pg; break; }
+                }
+            }
+            if (badValid >= 0) std::printf("  detail: reduce validity broke at page %d\n", badValid);
+            if (badClo  >= 0) std::printf("  detail: reduce closure broke at page %d\n", badClo);
+            if (badSub  >= 0) std::printf("  detail: reduce delete-only broke at page %d\n", badSub);
+            if (badRoot >= 0) std::printf("  detail: reduce root-set broke at page %d\n", badRoot);
+            if (badIdem >= 0) std::printf("  detail: reduce idempotence broke at page %d\n", badIdem);
+            CHK(badValid < 0, "reduce: every reduced page is a valid loadable DAG (islands configs included)");
+            CHK(badClo  < 0, "reduce: closure(reduce(page)) == closure(page) MASK-EXACT on drawn pages (islands + roots survive)");
+            CHK(badSub  < 0, "reduce: delete-only on drawn pages (kept pins are a subset of the drawn pins)");
+            CHK(badRoot < 0, "reduce: the root set is INVARIANT (never orphans a voice — the boost floor survives)");
+            CHK(badIdem < 0, "reduce: idempotent on drawn pages (the result IS the unique DAG reduction)");
+
+            // the density-10 known answer: the DAG-complete page's reduction is the island
+            // CHAIN — every non-head voice keeps exactly its permutation predecessor
+            // (pool - islands pins). Closure equality + <=1 parent per voice + acyclicity
+            // FORCE that shape: a single upward path must visit every earlier position.
+            {
+                redDot::PhiloxRng rc = rng, rd = rng;
+                ContainmentGraph full, chain;
+                seedForest(full,  rc, 4711ull, 10, 1, 16);
+                seedForest(chain, rd, 4711ull, 10, 1, 16, true);
+                int pins = 0; bool spine = true;
+                for (int v = 0; v < VOICES; ++v) {
+                    const int pc = popcount16(chain.parents[v]);
+                    if (pc > 1) spine = false;
+                    pins += pc;
+                }
+                CHK(pins == 15 && spine,
+                    "reduce @ density 10: the DAG-complete page's spine = 15 pins, <=1 parent per voice");
+                bool cloEq = true;
+                for (int v = 0; v < VOICES; ++v)
+                    if (full.ancestorClosure(v) != chain.ancestorClosure(v)) { cloEq = false; break; }
+                CHK(cloEq,
+                    "reduce @ density 10: the chain's closure == the DAG-complete page's (it IS the Hasse diagram)");
+            }
+
+            // the reverse-draw restore holds under the flag: the page function grew an
+            // argument, the statelessness did not — f(k-1, reduce) after f(k, reduce) ==
+            // f(k-1, reduce) fresh.
+            {
+                ContainmentGraph dirty;
+                dirty.addParent(0, 5); dirty.addParent(3, 7); dirty.addParent(9, 2);
+                redDot::PhiloxRng re = rng;
+                ContainmentGraph stepped = dirty, fresh;
+                seedForest(stepped, re, 4242ull, 5, 1, VOICES, true);
+                seedForest(stepped, re, 4241ull, 5, 1, VOICES, true);
+                seedForest(fresh,   re, 4241ull, 5, 1, VOICES, true);
+                CHK(sameState(stepped, fresh),
+                    "reduce: the reverse-draw stays the EXACT state restore under the flag");
+            }
+        }
+
+        // SCATTER: validity + determinism over random start graphs; the CA state-dependence
+        // pin (the same page on DIFFERENT start graphs diverges — the draw is the how-much,
+        // the current graph is the where-from); the scrub definition (re-applying page k-1 to
+        // the post-k graph == the recompute — NOT a state restore, the trajectory's job).
+        int sBadValid = -1, sBadDet = -1, sBadSer = -1, divergent = 0, scrubDiffers = 0, scrubMoves = 0;
+        for (int seed = 1; seed <= 200 && (sBadValid < 0 && sBadDet < 0 && sBadSer < 0); ++seed) {
+            redDot::PhiloxRng r6((uint64_t)seed * 0x9E3779B97F4A7C15ull + 0xC0FFEEull);
+            ContainmentGraph g;
+            buildRandomDag(g, r6, 60);
+            const uint64_t page = (uint64_t)seed * 48ull + 11ull;
+            const ContainmentGraph snap = g;
+            scatterEdges(g, rng, page, 1 + seed % 10);
+            if (!g.isValid() || !noSelfBits(g)) { sBadValid = seed; continue; }
+            if (!roundTripOk(g)) { sBadSer = seed; continue; }
+            ContainmentGraph again = snap;
+            scatterEdges(again, rng, page, 1 + seed % 10);
+            if (!sameState(g, again)) { sBadDet = seed; continue; }
+
+            // state-dependence: the SAME page on the empty graph diverges from this start
+            // for at least some seeds (pinned as an existence count below).
+            {
+                ContainmentGraph e;
+                scatterEdges(e, rng, page, 1 + seed % 10);
+                if (!sameState(e, g)) ++divergent;
+            }
+            // the scrub: page k-1 applied to the POST-k graph (the pending's reverse-draw
+            // oracle shape). It moves the graph (an active gesture) and — state-dependence —
+            // it does NOT generally land on the pre-k state (the trajectory owns that).
+            {
+                ContainmentGraph scrubbed = g;
+                scatterEdges(scrubbed, rng, page - 1ull, 1 + seed % 10);
+                if (!scrubbed.isValid() || !noSelfBits(scrubbed)) { sBadValid = seed; continue; }
+                if (!sameState(scrubbed, snap)) ++scrubDiffers;   // NOT a state restore
+                if (!sameState(scrubbed, g)) ++scrubMoves;        // an ACTIVE gesture
+            }
+        }
+        if (sBadValid >= 0) std::printf("  detail: scatter validity broke at seed %d\n", sBadValid);
+        if (sBadDet   >= 0) std::printf("  detail: scatter determinism/scrub broke at seed %d\n", sBadDet);
+        if (sBadSer   >= 0) std::printf("  detail: scatter round-trip broke at seed %d\n", sBadSer);
+        CHK(sBadValid < 0, "scatter: acyclic + no self-bits after every pass (wouldCycle-gated edit verbs, 200 seeds)");
+        CHK(sBadSer   < 0, "scatter: every scattered state round-trips (loadable save)");
+        CHK(sBadDet   < 0, "scatter: deterministic given (current graph, page, density) + the scrub definition holds");
+        CHK(divergent > 0, "scatter: STATE-DEPENDENT — the same page diverges on different start graphs (the CA model)");
+        CHK(scrubDiffers > 0, "scatter: draw-reversible != state-restorable (the scrub lands OFF the pre-page state)");
+        CHK(scrubMoves > 0, "scatter: the scrub is an ACTIVE gesture (page k-1 moves the post-k graph)");
+
+        // THE POOL SPAN (the polyphony ruling, fixed 2026-10-27 — Rodney: "relative random
+        // now puts some pins outside the area defined by polyphony"): the pass spans the
+        // pool like every other writer — rows at/above the pool are HELD verbatim (their
+        // draws are counter-ADDRESSED, so skipping them moves nobody's page), pool rows
+        // never GAIN an above-pool parent (the ADD scan stays inside [0, pool)), planted
+        // above-pool parents SURVIVE (REMOVE is pool-masked — the hold rule: the wholesale
+        // clear is Outright's business), and pool 1 is the known no-op.
+        {
+            int pBadValid = -1, pBadSpan = -1, pBadDet = -1, pBadHold = -1, pool1Differs = -1;
+            for (int seed = 1; seed <= 200 && (pBadValid < 0 && pBadSpan < 0 && pBadDet < 0 && pBadHold < 0); ++seed) {
+                redDot::PhiloxRng r7((uint64_t)seed * 0xA5A5335Dull + 0x5EEDull);
+                const int pool = 1 + seed % 16;                    // every pool 1..16 over the march
+                const int density = 1 + seed % 10;
+                const uint64_t page = (uint64_t)seed * 48ull + 7ull;
+                const uint16_t pm = (uint16_t)((1u << pool) - 1);
+                ContainmentGraph g;
+                buildRandomDag(g, r7, 60);
+                if (pool < 16) {
+                    for (int v = 0; v < VOICES; ++v)          // no edges INTO 0: nothing reaches 0,
+                        g.parents[v] &= (uint16_t)~(1u << 0); // so the plant can never cycle — the
+                    CHK(g.addParent(0, pool), "pool: held-pin setup accepted (0->pool, the child inside)");
+                }
+                const ContainmentGraph snap = g;
+                scatterEdges(g, rng, page, density, pool);
+                if (!g.isValid() || !noSelfBits(g) || !roundTripOk(g)) { pBadValid = seed; continue; }
+                bool spanOk = true, holdOk = true;
+                for (int v = 0; v < VOICES; ++v) {
+                    if (v >= pool) {                               // held rows: verbatim
+                        if (g.parents[v] != snap.parents[v]) spanOk = false;
+                    } else if ((g.parents[v] & (uint16_t)~pm) != (snap.parents[v] & (uint16_t)~pm)) {
+                        spanOk = false;                            // held bits preserved EXACTLY:
+                    }                                              // nothing added, nothing removed above
+                }
+                if (pool < 16 && !(g.parents[0] & (1u << pool))) holdOk = false;   // the planted pin survives
+                if (pool == 1 && !sameState(g, snap)) pool1Differs = seed;         // the known no-op
+                if (!spanOk) { pBadSpan = seed; continue; }
+                if (!holdOk) { pBadHold = seed; continue; }
+                ContainmentGraph again = snap;
+                scatterEdges(again, rng, page, density, pool);
+                if (!sameState(g, again)) { pBadDet = seed; continue; }
+            }
+            if (pBadValid >= 0) std::printf("  detail: scatter-pool validity broke at seed %d (pool %d)\n", pBadValid, 1 + pBadValid % 16);
+            if (pBadSpan  >= 0) std::printf("  detail: scatter-pool span broke at seed %d (pool %d)\n", pBadSpan, 1 + pBadSpan % 16);
+            if (pBadHold  >= 0) std::printf("  detail: scatter-pool hold broke at seed %d (pool %d)\n", pBadHold, 1 + pBadHold % 16);
+            if (pBadDet   >= 0) std::printf("  detail: scatter-pool determinism broke at seed %d (pool %d)\n", pBadDet, 1 + pBadDet % 16);
+            if (pool1Differs >= 0) std::printf("  detail: pool-1 no-op broke at seed %d\n", pool1Differs);
+            CHK(pBadValid < 0, "scatter-pool: acyclic + no self-bits + loadable at EVERY pool 1..16 (200 seeds)");
+            CHK(pBadSpan  < 0, "scatter-pool: rows at/above the pool held verbatim; no new above-pool parent (the span)");
+            CHK(pBadHold  < 0, "scatter-pool: a planted above-pool parent SURVIVES the pass (REMOVE is pool-masked)");
+            CHK(pBadDet   < 0, "scatter-pool: deterministic given (current graph, page, density, pool)");
+            CHK(pool1Differs < 0, "scatter-pool: pool 1 is the known no-op (ADD has no candidate, REMOVE has no in-pool bit)");
+            // pool = VOICES (the default) is bit-for-bit the legacy pass — the 200-seed legacy
+            // block above IS the anchor; this row pins the default/explicit identity.
+            {
+                redDot::PhiloxRng r8(0xC0FFEEull);
+                ContainmentGraph a, b;
+                buildRandomDag(a, r8, 60);
+                b = a;
+                scatterEdges(a, rng, 999ull, 7);            // the default pool
+                scatterEdges(b, rng, 999ull, 7, VOICES);    // the explicit pool
+                CHK(sameState(a, b), "scatter: the default pool IS VOICES (the legacy rows keep their anchor)");
+            }
+        }
     }
 
     std::printf(fail ? "\n%d passed, %d FAILED\n" : "\n%d passed, 0 failed\n", pass, fail);

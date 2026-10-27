@@ -72,9 +72,9 @@ TESTS=(
   "test_ca_pending_order|"
   "test_change_alley_transforms|"
   "test_containment_edits|"   # Containment step 1: edit checks (self reject, ancestor-closure wavefront reject, valid accept, idempotent re-pin, remove/clear always valid) + raw uint16[16] serialize/deserialize round-trip identity (the WARPDIAG lesson) + reject-invalid-blob guard; seeded-Philox random-DAG march (600 seeds x 80 edits, validity asserted at every step)
-  "test_containment_transforms|"   # Containment step 2: the DAG-closed gesture verbs — known-answers (spec chain invert, rotate/reflect conjugation, collapse union, collapse-all flat-single-root), per-verb closure property over seeded random DAGs (acyclic + no self-bits + save/loadable after EVERY verb), the plan's active-pool conjugation law via the sigma-pullback oracle, group laws (involutions, dihedral), composition marches (iterated collapse -> empty fixpoint; 200 DAGs x 100 mixed verbs), EXPAND lossiness (R3 seam)
-  "test_containment_pending|"   # Containment step 3: the phrase-boundary pending machinery — latch/stamp rules (stamp on unarmed->armed only), hold-then-commit (latch never touches the graph), chronological order (COLLAPSE-ALL x INVERT non-commuting = order audible; invert x collapse naturality pinned), row-index tie-break, out-of-axis persistence (mask-0 defers, stamps kept, no jump-to-front), reset-when-empty, EXPAND trajectory (pre+post push works from the first commit, STOP at start, branching, edit-ride), ring serialise/deserialise (corrupt-state reject), rotate-step config, 400-seed batch closure march
-  "test_containment_module|"   # Containment step 4: the MODULE-STATE core (ContainmentModuleCore, rack-free) — fresh-core defaults, the pin-edit path, THE CYCLE (edit->latch hold->boundary commit->undo publication + trajectory growth), the owner-guard protocol (driver A applies, driver B skips, window reopens), no-op batch publishes NO snapshot, the EXACT production save schema round-trips (object + TEXT), corrupt-save policies (malformed graph->R2 default, absent key->kept, stale/cyclic tail->dropped), SPSC undo ring (order continuity + drop-if-full), 60-seed march with mid-march save/load
+  "test_containment_transforms|"   # Containment step 2: the DAG-closed gesture verbs — known-answers (spec chain invert, rotate/reflect conjugation, collapse union, collapse-all flat-single-root), per-verb closure property over seeded random DAGs (acyclic + no self-bits + save/loadable after EVERY verb), the plan's active-pool conjugation law via the sigma-pullback oracle, group laws (involutions, dihedral), composition marches (iterated collapse -> empty fixpoint; 200 DAGs x 100 mixed verbs), EXPAND lossiness (R3 seam), the anchored flatten + the reduction (2026-10-27), the RANDOM draws (row 7: seedForest the outright stateless page + scatterEdges the state-dependent pass — validity/determinism/lone-root/V1-free/the reverse-as-undo + the CA scrub pins + the scatter POOL SPAN: held rows, pool-masked remove, the pool-1 no-op, default==explicit pool)
+  "test_containment_pending|"   # Containment step 3: the phrase-boundary pending machinery — latch/stamp rules (stamp on unarmed->armed only), hold-then-commit (latch never touches the graph), chronological order (COLLAPSE-ALL x INVERT non-commuting = order audible; invert x collapse naturality pinned), row-index tie-break, out-of-axis persistence (mask-0 defers, stamps kept, no jump-to-front), reset-when-empty, EXPAND trajectory (pre+post push works from the first commit, STOP at start, branching, edit-ride), ring serialise/deserialise (corrupt-state reject), rotate-step config, 400-seed batch closure march, the RANDOM row (page counter fwd/rev, the outright reverse-as-undo EXACT restore, the latest-arm direction rule, the scatter scrub oracle, the scatter POOL SPAN at polyphony 10: the pool oracle + held rows + the surviving above-pool pin), the DECLUTTER row (the reduction gesture: known answer, closure-preserved, idempotent, counter untouched, trajectory stepBack, stamp-order compose with collapse-all), the TRUE-REV queue (the global-reverse consumer: not a verb row, no stamp, applyAll does not consume it — the core does, before the verb bracket)
+  "test_containment_module|"   # Containment step 4: the MODULE-STATE core (ContainmentModuleCore, rack-free) — fresh-core defaults, the pin-edit path, THE CYCLE (edit->latch hold->boundary commit->undo publication + trajectory growth), the owner-guard protocol (driver A applies, driver B skips, window reopens), no-op batch publishes NO snapshot, the EXACT production save schema round-trips (object + TEXT, incl. the RANDOM row's signed page counter + mode + density), corrupt-save policies (malformed graph->R2 default, absent key->kept, stale/cyclic tail->dropped, RANDOM keys absent->defaults/out-of-range->ignored), SPSC undo ring (order continuity + drop-if-full), the RANDOM commit publishes undo + trajectory (requirement 3/4 inherited), 60-seed march with mid-march save/load, the TRUE-REV consume (the global-reverse consumer, the CA engine mirrored: pure consume restores the previous committed state with NO undo — the modulation-class rule; mixed boundary brackets only the verbs; uncommitted pin drift discarded; out-of-axis stays queued; buffer-start STOP; branching; the RANDOM commit replays back)
   "test_distribution|"   # header-only: the Distribution probability core (parametrics + Pchip; jansson via test/jansson.h shim)
   "test_edge_cases|"
   "test_eradication_harness|$PE"
@@ -118,6 +118,9 @@ TESTS=(
   "test_resolver_warp_bridge|"   # header-only: resolver step-2 BYTE-IDENTICAL gate — WarpBank's resolver-routed mix/effective members vs a verbatim copy of the OLD WarpF.hpp formulas (seeded 120k-case fuzz, same-BITS mix + same resolved (f,w)). The warp pin; step 1's spread bridge is the template.
   "test_rule2_consume|"
   "test_rule2_integration|"
+  "test_rhythm_decision_core|"   # STAGE R R-3: the five named predicates (C1-C5) table-driven over every MonoDecision x own-state combination — the pure-layer spec (grows with the ladder: R-4 tuple assembly, R-5 star data)
+  "test_rhythm_decision_differential|$SE $GS $PE $CE"   # STAGE R R-1: the reference oracle — 24 seeded marches x 64 steps x 3 modes (clock / plain gate / gate+subgates) through the REAL executors + the shipped IMPL 2b drive; per-voice gate/accent/pitch/decision streams -> per-mode FNV-1a golden digests (the byte-identity pin for every Stage-R commit); INV-C2 (mono rest closes all poly gates), INV-ENV (poly gate never exceeds the mono envelope), INV-DET (double-run determinism)
+  "test_forest_rhythm|$SE $GS $PE $CE"   # STAGE F F-1: the FOREST behavioral spec — free voices (E(v)=Own(v): mono rests do NOT close them, gates rise while mono is low, own-window self-clocking), poly containers (V3 in V2 follows V2, not V1; the captured per-container view), the star contrast (the legacy invariants hold on the AUTHORED graph), downward-edge determinism (the documented F-2 caveat)
   "test_scale_list|"
   "test_scale_nondestructive|"
   "test_send_tap|"   # header-only: per-voice send-tap contract (SpreadResolver + MacroTapBank seams)
@@ -278,9 +281,64 @@ if [ -z "$filter" ] || [[ "audit" == *"$filter"* ]]; then
   echo "-----"
 fi
 
-if [ $fail -gt 0 ] || [ $audit_fail -ne 0 ]; then
+# ── plugin-TU compile smoke (the CI-build guard the rack-free battery cannot give) ──
+# The unit tests compile the dsp headers rack-free; they NEVER see the widget-bearing
+# plugin headers (MonsoonContainment.hpp and friends need the real rack.hpp), so a scope
+# bug there ships battery-green locally and only surfaces as a red CI build (2026-10-27:
+# the containment widget's unqualified N_VERBS, red on all 3 platforms while the battery
+# stayed 87/87). When a REAL Rack SDK is mounted at RACK_DIR (include/rack.hpp exists —
+# always in CI; locally pass RACK_DIR=/path/to/Rack-SDK), -fsyntax-only every plugin TU
+# with the Makefile's include set. Skips with a note when RACK_DIR is absent or carries
+# only dep/include (the simde-only mount). Skipped by the name filter unless it matches
+# "smoke".
+smoke_fail=0
+if [ -z "$filter" ] || [[ "smoke" == *"$filter"* ]]; then
+  if [ -n "${RACK_DIR:-}" ] && [ -f "${RACK_DIR}/include/rack.hpp" ]; then
+    echo "plugin-TU syntax smoke (RACK_DIR=${RACK_DIR}):"
+    SMOKE_INCS="-Idep/include -isystem ${RACK_DIR}/include -isystem ${RACK_DIR}/dep/include"
+    SMOKE_STD="-std=c++20 -Wno-c++17-extensions"
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*) SMOKE_STD="$SMOKE_STD -D_USE_MATH_DEFINES -municode" ;;
+    esac
+    case "$(uname -m)" in
+      x86_64|i686)    SMOKE_ARCH="-march=nehalem" ;;        # compile.mk ARCH_X64 baseline (SSE4.1/4.2)
+      arm64|aarch64)  SMOKE_ARCH="-march=armv8-a+fp+simd" ;;
+      *)              SMOKE_ARCH="" ;;
+    esac
+    smoke_idx=0; smoke_running=0
+    for f in src/*.cpp src/dsp/engines/*.cpp src/dsp/managers/*.cpp src/dsp/gates/*.cpp; do
+      extra=""
+      case "$f" in *PatternEngine.cpp) case "$(uname -m)" in x86_64|i686) extra="-mavx" ;; esac ;; esac
+      ( if ! g++ $SMOKE_STD $SMOKE_ARCH $extra $SMOKE_INCS -fsyntax-only "$f" 2>"$workdir/smoke_$smoke_idx.err"; then
+          printf '%s\n' "$f" > "$workdir/smoke_$smoke_idx.bad"
+        fi ) &
+      smoke_idx=$((smoke_idx+1)); smoke_running=$((smoke_running+1))
+      if [ "$smoke_running" -ge "$jobs" ]; then wait; smoke_running=0; fi
+    done
+    wait
+    smoke_total=0
+    for ((i=0; i<smoke_idx; i++)); do
+      smoke_total=$((smoke_total+1))
+      if [ -f "$workdir/smoke_$i.bad" ]; then
+        printf "  \033[31m✗\033[0m  %s\n" "$(cat "$workdir/smoke_$i.bad")"
+        grep -m 2 -E "error:" "$workdir/smoke_$i.err" | sed 's/^/       /'
+        smoke_fail=$((smoke_fail+1))
+      fi
+    done
+    if [ $smoke_fail -eq 0 ]; then
+      printf "  \033[32m✓\033[0m  %d plugin TUs syntax-clean against the real SDK headers\n" "$smoke_total"
+    fi
+    echo "-----"
+  elif [ -z "$filter" ]; then
+    printf "  \033[33m?\033[0m  plugin-TU syntax smoke SKIPPED (no real SDK at RACK_DIR — point RACK_DIR at a Rack-SDK carrying include/rack.hpp to enable)\n"
+    echo "-----"
+  fi
+fi
+
+if [ $fail -gt 0 ] || [ $audit_fail -ne 0 ] || [ $smoke_fail -ne 0 ]; then
   [ $fail -gt 0 ] && echo "FAILED: ${failed_names[*]}"
   [ $audit_fail -ne 0 ] && echo "FAILED: anchor/bind audit"
+  [ $smoke_fail -ne 0 ] && echo "FAILED: plugin-TU syntax smoke"
   exit 1
 fi
 echo "all green"

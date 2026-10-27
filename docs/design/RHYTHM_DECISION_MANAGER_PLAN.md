@@ -131,6 +131,18 @@ the degenerate forest, so nothing about the algebra is speculative.
 
 ### 2.3 The migration steps (each = one commit, each gated)
 
+> **STATUS (2026-10-26): Stage R EXECUTED** on `feat/rhythm-decision-manager`, every step
+> byte-identical-gated on the marches (the goldens hold EXACTLY through every step):
+> R-1 `7891599f` the reference oracle · R-2 `f2c416e3` ParentView + the `monoParentView()`
+> seam · R-3 `cf68f620` the five named predicates · R-4 `fb094dbb` the RhythmDecision tuple
+> + `RhythmDecisionCore::decide()` · R-5 `c5e2c904` the star as DATA + the forest fold
+> (`decideMask`) — the engine is now a forest machine running a star forest. Battery 86/86;
+> `test_rhythm_decision_core` 970 rows; two deviations from the sketch below, both noted
+> in the worklog: MonoDecision MOVED into RhythmDecisionCore.hpp (the vocabulary is RDM
+> vocabulary), and the fold core is exposed as `decideMask(parents, viewOf)` so the
+> multi-parent rules are spec'd directly before Stage F. Stage F is unblocked: F-1 re-points
+> `rdm` at `ParentSource::GRAPH`.
+
 **R-1 — The reference oracle.** NEW `test/test_rhythm_decision_differential.cpp`: seeded
 marches (the S8 march pattern, 60+ seeds) through all three modes with subgates, locks and
 per-voice params varied; records per-voice per-edge `gateHeld` / `gsStep.gateHeld` /
@@ -202,6 +214,15 @@ behaviour) just becomes a cantonment preset."):
   this injection the old suites would break at F-1 for the right reason (voices free under
   an empty graph) and stop testing what they exist to test.
 
+OBJECTIVE (Rodney, 2026-10-27, stated at F-1): **"Mono not special."** Voices that are not
+graph connected do their own thing, unrestricted — exactly what the mono voice did after
+the lane-expander-refactor merge: self-clocked at its own window expiry, thinned by its own
+rest draws, sliding on its own slur commitment, tied to nobody. F-1's `freeDecision`
+(E(v) = Own(v)) is that behavior generalized; D7 (V1 inside the algebra, no privilege) is
+the same objective read from the other side. Every Stage-F step is checked against it: no
+code path may treat V1 as anything but container slot 0, and an empty parents row must
+leave a voice fully self-driving.
+
 ### 3.2 Topological evaluation (F-2)
 
 The graph is a DAG (cycle-reject at the pin plane; invariants CI-marched on 600+ seeds —
@@ -215,9 +236,16 @@ topological order exists and parents resolve before children.
 - **Per step edge**: `executePolyVoices` visits voices in topological order (today: slot
   order 1..15, which happens to be valid only because the star's parents are always slot 0 —
   under a general forest it must be the cached order).
-- **Per sample** (gate mode, C5): Monsoon.cpp's 1198-1213 loop walks the same cached order,
-  so each voice's final `gs.gateHeld` is complete before its children read it. Same AND
-  shape, per-parent instead of implicit-V1.
+- **Per sample (gate mode, C5) — RODNEY'S CORRECTION (2026-10-27): "'Per sample forest'?
+  Forest mod on phrase boundary, no per-sample work."** The per-sample drive
+  (Monsoon.cpp 1198-1213) does NO forest reasoning and NO per-voice parent walk. The forest
+  is resolved ONCE — when the graph changes (pin edit / transform / phrase boundary; the
+  same publish-point dirty check that recomputes the topological order) — into plain
+  per-voice state: the materialized parent list, a zero meaning FREE. The loop's per-sample
+  shape and cost are unchanged from today: each voice ANDs its own envelope with its
+  containers' already-computed `gateHeld` values read straight off the materialized list
+  (the star: exactly today's single AND with V1; a free voice: no container AND at all —
+  its envelope is its own). Nothing is derived, walked, or recomputed per sample.
 
 ### 3.3 The C1-C5 forest table (F-2/F-4)
 
@@ -225,14 +253,14 @@ With `parents(v) = {u : bit u set in containmentParents[v]}`, `E(v) = Own(v) ∧
 
 | Mech | Forest form | Reduces to today when |
 |---|---|---|
-| C1 | `mayOnset(v)` = (∃ container onsetting) ∧ (all containers' envelopes open) — D3 RULED: UNION for onset permission, INTERSECTION for temporal extent (envelope + length) | parents = {V1} → exactly `monoGateStart` |
+| C1 | `mayOnset(v)` = (∃ container onsetting) ∧ (all containers' envelopes open) — D3 RULED: UNION for onset permission, INTERSECTION for temporal extent (envelope + length). **F-2 refinement (goldens-forced): a GAP-HOSTED offer — the offering container's own cell closed at its onset — rides through (the ghost path, D5; its forest form LANDED at F-4 as the ghost-cell ∀)** | parents = {V1} → exactly `monoGateStart` |
 | C2 | `forcedRest(v)` = ∨ over containers of container-rested (the ∧ of envelopes closes on any rest) | exactly the 1270-1276 branch |
 | C3 | `lengthCeiling(v)` = max over containers of `nvIdx` (higher = shorter; the SHORTEST container window wins) | exactly the 1507 clamp |
 | C4 | `holdFollow(v)` = containers mid-gate ∧ own armed window; the SHAPE followed is the topologically-first sounding container (D4) | exactly the 1352-1388 branch |
 | C5 | `envelopeOpen(v) = Own(v) ∧ ∧_{u} envelopeOpen(u)`, per sample, topo order | exactly the 1206 AND |
 | Chain latch | `participating(v)` latches at every onset permission point, clears whenever the envelope closes (a superset of today's V1-rest clear) | exactly Rule-2 |
 | Accent | own draw at every permission point; re-articulation draws fresh (1332-1338 rule, unchanged) | unchanged |
-| Ghost (D5) | v's ghost candidacy = own VAR draw, hosted only in a gap of the INTERSECTION envelope (a gap for every container simultaneously), riding the host containers' ghost stream | exactly today's mono-gap ghost |
+| Ghost (D5) | **LANDED at F-4**: the placement block keys on the GHOST CELL — `ghostCell(v) = mayOnset(v) ∧ ∧ over ONSETTING containers of container.ghostEvent` ("agree intersection": every onsetting container is itself ghosting this edge — a gap for every container simultaneously). The event stream is `ParentView::ghostEvent` (slot 0 = the mono's own stream latch `ghostActive`; poly containers = the child's `polyGhostOnset_` capture) — ghost events propagate DOWN the forest, one level per edge. Candidacy at a ghost cell = v's OWN VAR draw (D5); the note's EXTENT stays the landed C5 intersection | star: EXACTLY the old global `ghostActive` read, bit for bit (the per-verdict-shape reduction proof lives in the decideMask comment) |
 
 ### 3.4 The Cantonment connection (what F unlocks)
 
@@ -267,7 +295,163 @@ With `parents(v) = {u : bit u set in containmentParents[v]}`, `E(v) = Own(v) ∧
 Every F commit: full battery + step-0 smoke + UNIFORMITY_STRICT + anchor audit, CI-green on
 all three platforms before the next lands — the standing discipline.
 
-### 3.6 D7 — the mono voice inside the forest (NEW, needs a ruling)
+> **STATUS (2026-10-27): F-1 EXECUTED** on `feat/rhythm-decision-manager`. The RDM reads
+> `ParentSource::GRAPH` — `rdm` is NSDMI-wired to `pe.containmentParents` at construction
+> and reset() re-wires the same address; `parentsOf` mirrors the staged words (null/absent
+> = every voice free, D2 INTENDED). NEW `freeDecision` (E(v) = Own(v), the "Mono not
+> special" tuple: own-window self-clocking, own rest thinning, own slur slides, no ties)
+> runs the SAME cascade branches through the empty-mask branch. Poly containers became
+> real parents: `containerView(u)` (slot 0 → `monoParentView()`; slots 1..15 → the captured
+> `polyVerdict_`/`polyNv_` + live gate), fail-closed defaults, reset() restores Rest. The
+> D2 seam is shared (`test/star_seam.hpp`): the differential harness + test_subgate's 7
+> poly rows + test_per_voice_articulation author the star INTO pe.containmentParents (the
+> preset path — the battery gates the GRAPH read itself); the other V1-semantics suites
+> turn out to be mirrors/pure-helper suites (no real poly cascade) — nothing to inject.
+> NEW `test/test_forest_rhythm.cpp` (battery 86 → 87): free voices PLAY through mono
+> rests (INV-C2 inverted), gates rise while mono is low (INV-ENV inverted), own-window
+> holds; V3-in-V2 follows V2 not V1 (poly container + directed independence probe, V2
+> restProb=1 → V3 silent while free V4 plays); star contrast (the legacy invariants on
+> the authored graph); downward-edge double-run determinism (the documented F-2 caveat).
+> GOLDENS HOLD EXACTLY THROUGH THE GRAPH READ (0xa843e2ff14883ab9 / 0x3169e28ca3cc206a /
+> 0x166132accd092fce) — star graphs byte-identical, byte-identity PROVEN. Core suite grew
+> the GRAPH contract + the freeDecision table (970 → 983 rows). Full battery 87/87,
+> UNIFORMITY_STRICT=1 green, -Wall -Wextra clean, anchor audit green. Next: F-2.
+
+> **STATUS (2026-10-27): F-2 EXECUTED** — the MATERIALIZED forest (D8). RhythmDecisionCore
+> gains `materializeForest()`/`materializeIfStale()`: the graph resolves ONCE per CHANGE (the
+> publish point per block — MonsoonSandsManager::processDNA — and the top of executePolyVoices
+> per edge; the per-sample path NEVER calls it) into `topoOrder`/`topoCount` (Kahn,
+> smallest-index-first: the STAR = slot order = today's visit order — the byte-identity
+> anchor; V1 never visits until F-3) + per-voice `parentCount`/`parentSlot` lists (zero =
+> FREE). executePolyVoices visits in the materialized order — the F-1 downward-edge staleness
+> is GONE (every containerView read is this-edge). The per-sample drive (Monsoon.cpp) reads
+> the materialized state only: the star materializes ONE container (= today's single AND with
+> monoP), a FREE voice materializes NONE (the drive leaves it entirely to its own edge-level
+> machinery — its envelope is its own), and a poly container's gate is COMPLETE before its
+> children read it; the differential harness's C5 mirrors updated to the same form. THE
+> MARCHES CAUGHT A REAL C1 HOLE: the naive "mayOnset = union ∧ envelope" veto killed the
+> ghost-hosted roll (GOLDEN_BS diverged — a ghost onsets FROM INSIDE its own gap); the C1
+> forest form landed as: union of offers ∧ (intersection envelope open ∨ the offer is
+> GAP-HOSTED — the offering container's own cell closed at its onset; D5's forest form is
+> F-4). The forest marches also caught the sibling-gate hole the veto exists for (a child
+> fired while a sibling container's gate had fallen): NEW suites E (nested chain V3∈{V2,V1},
+> depth 2) and F (diamond V5∈{V2,V3}) hold the E(v) ⊆ E(u) implication EXACTLY (64/64,
+> 128/128). Core suite: the materialization table (star slot-order, empty graph, chain,
+> diamond, multi-parent lists, staleness/generation, cycle fallback) — 991 rows. GOLDENS HOLD
+> EXACTLY (0xa843e2ff14883ab9 / 0x3169e28ca3cc206a / 0x166132accd092fce) through the
+> materialized drive. Full battery 87/87, UNIFORMITY_STRICT=1 green, -Wall -Wextra clean,
+> anchor audit green. Next: F-3 (the mono drive inside the algebra, D7).
+
+> **STATUS (2026-10-27): F-3 EXECUTED** — the MONO DRIVE INSIDE THE ALGEBRA (D7). The
+> materialization now includes slot 0: `materializeForest` runs Kahn over ALL 16 voices (a
+> poly voice's bit 0 is a REAL dependency — V1 orders; V1's own self-bit dropped
+> defensively), smallest-index-first, so a PARENTLESS V1 (the star, the empty graph) is
+> always picked FIRST and the poly visit order is untouched — the star's order is 0,1,…,15
+> with the poly sequence 1..15 = the pre-F-3 slot order, the byte-identity anchor. The NSDMI
+> default order is {0..15} (pre-materialization reads behave as the empty graph). The
+> per-sample drive's C5 loop gains the V1 branch: `gs.gateHeld = gateOpen ∧ ∧ containers`
+> (the materialized `parentSlot[0]`, live poly gates; an INERT container — beyond
+> numPolyVoices, no poly machinery drives it — cannot bound the root and is skipped,
+> symmetric with the visit's own inert-voice guard), the SAME zero-on-close the poly drive
+> applies (the Lantern-read state matches the output; a container cut re-strikes at the next
+> permission edge — the poly-voice treatment, no privilege), and `monoP` is RE-CAPTURED after
+> the bounded write so V1's poly children read the BOUNDED envelope — E(v) = Own(v) ∧ ∧ E(u)
+> closed transitively through the root. `executePolyVoices` skips slot 0 (V1's cascade is
+> executeStep, which runs before the visit). DELIBERATE BOUNDARIES (documented, revisit at
+> F-4/F-5 if the property suite demands): executeStep stays §8-unchanged — containment
+> bounds where V1 SOUNDS (the per-sample envelope), not when its own chain advances (the
+> edge machinery is its own, the same shape as a free voice's); the STEP mirror
+> (`gsStep.gateHeld`) stays own-shaped — the mirror carries V1's own articulation events,
+> while C5 is the envelope mechanism. In CLOCK mode there is no per-sample drive, so a
+> contained V1 is bounded only through the harness-mirrored cascade semantics — the F-5
+> property suite marches V1-as-leaf in every mode the differential covers. NEW suites
+> (test_forest_rhythm, gate mode, full IMPL-2b mirror incl. the D7 V1 branch): G1 (V1 in V2
+> — the root bounded, V1 still plays, V2 free), G2 (the INVERT star: V1 under ALL 15 — the
+> full intersection holds, V1 fires in the all-open coincidence, V1-as-leaf is FIRST-CLASS),
+> G3 (V1 MID-CHAIN V2→V1→V3 — transitive through the root at the drive level), each with a
+> byte-determinism double-run. Core suite: the materialization table re-pinned (star/empty =
+> 0..15; chain = {0,3,1,2,…}; diamond = {0,3,1,2,4,…}) + the V1-as-leaf order ({1..15,0}) and
+> the V1-mid-chain order ({1,0,2,3,…}) rows — 991 → 993. Differential harness mirrors updated
+> to the exact shipped shape (the D7 branch is a no-op on the injected star). GOLDENS HOLD
+> EXACTLY (0xa843e2ff14883ab9 / 0x3169e28ca3cc206a / 0x166132accd092fce) — parentless-V1
+> bit-identity PROVEN on the re-point. Full battery 87/87, UNIFORMITY_STRICT=1 green,
+> -Wall -Wextra clean, anchor audit green. Next: F-4 (ghost hosting D5 + VAR/LEG scope D6).
+
+> **STATUS (2026-10-27): F-4 EXECUTED** — the GHOST HOSTING UNDER A FOREST (D5) + the D6
+> sweep. THE GHOST CELL: a permission point is a ghost cell of the containers iff EVERY
+> ONSETTING container is itself ghosting this edge (`d.ghostCell = d.mayOnset ∧
+> allOnsettingGhost`, folded in `decideMask` over the offering containers; the
+> single-container form `ghostCell = mayOnset ∧ ghostEvent` in `decide`; a FREE voice never
+> ghost-places — no containers, no ghost stream to ride). THE EVENT STREAM:
+> `ParentView::ghostEvent` — slot 0 carries the mono's OWN stream latch (`ghostActive`, §8:
+> the mono ghost machinery is the mono's own articulation; D7's drive bounds its
+> audibility); poly containers carry `polyGhostOnset_[u]`, written by `executePolyVoice` on
+> EVERY executed edge (the polyVerdict_ discipline: default false fail-closed, true only on
+> the ghost-placed play path; a ghost-placed note that SLID is still a ghost-cell note — the
+> event is "this note lives inside the containers' ghost cell", not "this note re-struck").
+> Ghost events propagate DOWN the forest, one level per edge (topo order guarantees the
+> capture is this-edge fresh). THE DE-PRIVILEGING (the headline, the "mono not special"
+> objective): the placement block keyed on the GLOBAL mono latch — exact on the star, wrong
+> under a forest (a voice under V2 would ghost-ride V1's stream: a +1 correlation with a
+> voice it is not contained by). The key is now the RDM's ghostCell. Candidacy UNCHANGED
+> (D5): the voice's OWN variation draw at its own VAR step; delegated voices read mono's VAR
+> cell, Local-East voices their own. The note's EXTENT stays the landed C5 intersection (the
+> per-sample drive — the audibility bound, no F-4 change). D6 SWEEP (engine-internal,
+> RULED closed §3.7): NO code change — the delegated VAR/LEG getters keep reading V1's cell
+> under any forest shape (the draw production is not the decision structure); documented at
+> the getters. NEW gate-mode suites (test_forest_rhythm, the marchGateBS march — the
+> differential marchModeBS idiom on AUTHORED graphs with the ghost stream + the F-3 drive
+> mirror): H1 the RECURSION (V2 in V1, V3 in V2 — V3 ghost-rides V2's ghost-PLACED notes,
+> poly containers host ghosts), H2 the DE-PRIVILEGING probe (V1 ghosts heavily, free V2 and
+> V3-under-V2 never ghost-place — the old key would have fired here — while both still play
+> their own rhythms: de-privileging is not silence), H3 the TWO-HOST implication (V3 in
+> {V1,V2}: the ghost-cell ∀ over both hosts; the coincidence occurs), each byte-deterministic
+> on a double-run. The H marches run HOT (widened gaps, probe thresholds pinned) so the
+> PLACEMENT KEYING is the property under test — and the D5 HARNESS NOTE is CORRECTED to the
+> settled truth: the playhead DOES advance on ghost rises (Rodney,
+> GATE_SUBDIVISION_STEP_GATE.md §379 "PLAYHEAD ADVANCE for ghosts"; the edge-driven model,
+> probe-verified — the draw starvation is the conjunction over few ghost cells, not a frozen
+> playhead). Core suite: the ghostCell rows (the star shapes, the ∀ over onsetting
+> containers only, the main-offer veto, the freeDecision neutrality, the decide()
+> single-container form) — 993 → 1002. GOLDENS HOLD EXACTLY (0xa843e2ff14883ab9 /
+> 0x3169e28ca3cc206a / 0x166132accd092fce) — star byte-identity PROVEN through the
+> ghost-cell fold. Full battery 87/87, UNIFORMITY_STRICT=1 green, -Wall -Wextra clean
+> (engine + test TUs), anchor audit green. Next: F-5 (the property suite + the full
+> compat-pin run).
+>
+> **STATUS (2026-10-27): F-5 EXECUTED — STAGE F COMPLETE.** The PROPERTY SUITE (§5
+> "Forest property" landed in full) + the full compat-pin run; no engine surface changed —
+> the shipped algebra (R-1..F-4) validates AS-IS. NEW in test_forest_rhythm: the suite-P
+> harness — 12 seeded random forests drawn from a Fisher-Yates TOPOLOGICAL permutation
+> (parents only from earlier positions: acyclic by construction — the pin plane's
+> guarantee reproduced in data — and every transform-reachable shape class generated),
+> each marched with 8 engine seeds in EVERY mode the differential covers, one shape set
+> shared across the three marches. Shape coverage pinned as rows: 20 free voices, depth-10
+> nesting, 100 diamond/shortcut shapes, 12 V1-as-leaf graphs. P1 (mode A, clock): gate(v)
+> high ⇒ every DIRECT container high — zero violations over 28,724 fires; the TRANSITIVE
+> form on the MODE-A closure (V1 a TERMINAL ancestor: the cascade's containerView reads
+> the mono gate, so "child high ⇒ V1 high" composes, but clock mode has no per-sample
+> drive and executeStep is V1's own machinery — the F-3 boundary). THE MARCH EARNED ITS
+> KEEP: the naive full-closure transitive check tripped 1,033 times — every hit diagnosed
+> as exactly and only chains THROUGH V1 mid-forest in mode A (the documented boundary),
+> zero engine defects — and the corrected row now pins the boundary AS A TESTED CONTRACT,
+> with P2 as its complement. P2 (mode B, the per-sample drive mirror): the FULL closure
+> incl. V1 — zero violations over 24,480 fires; the D7 drive composes transitivity through
+> the root (6,144 V1-leaf edges marched, 820 contained-V1 fires, ZERO structurally-silenced
+> voices across the set — de-privileging is not just V1). P3 (mode BS, the ghost stream):
+> the D5 ∀ generalized to arbitrary forests — a ghost placement implies EVERY ONSETTING
+> container's ghost event, zero violations over 1,160 placements (the H idiom's pinned
+> draws + HOT gaps, all 15 poly voices); every march byte-deterministic on a double-run.
+> THE FULL COMPAT-PIN RUN: the ten V1-semantics suites untouched and green; goldens EXACT
+> (0xa843e2ff14883ab9 / 0x3169e28ca3cc206a / 0x166132accd092fce — 92,876 checks); full
+> battery 87/87; UNIFORMITY_STRICT=1 (manifest EMPTY, all cells uniform); anchor audit all
+> 5 modules consistent; -Wall -Wextra clean. The F-3 "revisit at F-5" question is ANSWERED:
+> the property suite does NOT demand the executeStep boundary move — the boundary is the
+> mode-A closure line, now tested. Branch ready for step 6 (the PR). Post-F queue: the
+> explicit reduction gesture (DECLUTTER/PRUNE), the seed verb, the three deferred rulings
+> (§3.4).
+
+### 3.6 D7 — the mono voice inside the forest (RULED + LANDED at F-3)
 
 The reference doc's D1-D6 assumed the forest contains voices 2..16. It need not: the pin
 plane allows pinning voice 1 UNDER another voice, and INVERT (a proven-safe transform)
@@ -427,9 +611,11 @@ rings heap-holds them (the 2 MiB / Windows-2MB-stack rule); R7 token hygiene in 
 | D5 | Ghost hosting under a forest | **RULED: INTERSECTION** — "agree intersection". A voice's ghost exists only in gaps of the intersection envelope; candidacy = its own VAR draw. |
 | D6 | Phasing scope | **RULED: engine-internal.** "I see no connection to LOR which is about the probabilities that feed the rhythm decisions" — the draw production is not the decision structure. Closed. |
 | D7 | The mono voice inside the forest | **RULED: V1 inside the algebra, no privilege.** "No reason for V1 to stay privileged and this is part of it. All voices could be contained in voice 2 to 16 as well." F-3 confirmed; INVERT-produced V1-as-leaf graphs are first-class. |
+| D8 | Per-sample cost of the forest compose | **RULED: none.** "'Per sample forest'? Forest mod on phrase boundary no per sample work." The forest is resolved when the graph changes (phrase boundary / pin edit / transform) into materialized per-voice state; the per-sample drive keeps today's exact shape and cost — it reads plain state, derives nothing. |
 
-Stage R is blocked by NONE of these, and now neither is Stage F: all seven rulings are
-banked. The full ladder R-1..R-5, F-1..F-5 is GO on Rodney's word.
+Stage R is blocked by NONE of these, and now neither is Stage F: all eight rulings are
+banked (D8 landed with F-1's push). The full ladder R-1..R-5, F-1..F-5 is GO on Rodney's
+word.
 
 ---
 

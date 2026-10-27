@@ -13,6 +13,7 @@
 #include "SequencerEngine.hpp"
 #include "VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting
 #include "NoteValues.hpp"
+#include "star_seam.hpp"      // the D2 test seam (§3.1) — this suite pins the STAR graph
 #include <cstdio>
 #include <cmath>
 
@@ -25,6 +26,9 @@ static void check(bool ok, const char* what) {
 int main() {
     SequencerEngine e;
     e.reset();
+    injectLegacyStarGraph(e);   // D2 seam (§3.1): the C3 clamp rows pin the legacy star — the
+                                // clamp reads the AUTHORED graph now (empty graph = free voices,
+                                // no clamp — a different contract, spec'd in test_forest_rhythm)
     PatternInput in{};
     in.variationAmount   = 0.85f;   // window widens toward shorter notes
     in.noteVariationMask = 0b111;   // all triplet/1-32 values legal

@@ -45,7 +45,7 @@ struct ContainmentUndoSnapshot {
 struct ContainmentModuleCore {
     // ── state (the step-1/2/3 members, now one unit) ──────────────────────────────────────────
     ContainmentGraph      graph;        // the DAG: bit u of parents[v] = v contained in u
-    ContainmentPending    pending;      // 6 verb rows (latch/stamp/order) + rotateStep config
+    ContainmentPending    pending;      // 7 verb rows (latch/stamp/order) + rotateStep config + the true-reverse queue
     ContainmentTrajectory trajectory;   // the EXPAND memory (committed-state ring)
 
     // OWNER GUARD (the CA idiom, MonsoonChangeAlleyV2::transformsAppliedThisBlock):
@@ -81,7 +81,23 @@ struct ContainmentModuleCore {
     // The snapshot brackets exactly the batch applied THIS call; a batch that leaves the graph
     // byte-identical (an EXPAND consumed at the trajectory buffer start) publishes NO snapshot —
     // zero-size undo steps never record (the StoreEditAction house rule).
+    //
+    // TRUE-REVERSE consume (the global-reverse consumer) runs FIRST, BEFORE the verb snapshot —
+    // the CA order (MonsoonChangeAlleyV2::applyPendingTransforms consumes the queue ahead of the
+    // verb path): a pure true-reverse changes the graph with NO undo snapshot (the modulation-
+    // class rule — undo is for USER actions, CA_DICE_COUNTER_MODEL.md CORRECTION^2), and a mixed
+    // boundary's snapshot brackets only the verbs (its BEFORE is the already-restored state).
+    // Gated by the SAME axisMask as the verbs; an out-of-axis request STAYS queued (the lamp
+    // stays lit, the CA out-of-axis rule). At the trajectory's buffer start stepBack returns
+    // false — STOP (state unchanged, don't wrap), the request still spent (the CA lamp rule:
+    // the affordance clears even though nothing moved). The restored state is the ring's new
+    // newest, so the verb path's pre-push below skips it — no double entry.
     int applyAtBoundary(int activeCount, unsigned axisMask = ContainmentPending::AXIS_PLANE) {
+        if (pending.trueRevRequested && (axisMask & ContainmentPending::AXIS_PLANE)) {
+            pending.trueRevRequested = false;
+            ContainmentGraph restored;
+            if (trajectory.stepBack(restored)) graph = restored;
+        }
         const ContainmentGraph before = graph;
         const int applied = pending.applyAll(graph, activeCount, trajectory, axisMask);
         if (applied > 0) {
@@ -115,6 +131,14 @@ struct ContainmentModuleCore {
     //   "rotateStep" — the context-menu config (the plan: transform step config via context
     //     menu, not param slots). Absent in step-1/2/3 saves -> the default (1) stands. Values
     //     outside 1..15 are IGNORED on load (the verb's clampStep owns the runtime clamp).
+    //   "randomCounter" / "randomMode" / "randomDensity" / "randomIslands" / "randomReduce" —
+    //     the RANDOM row's stream position (SIGNED page index — the dice model's addressable
+    //     draw address; persisted so a generated forest is a REPRODUCIBLE, shareable state)
+    //     and its context-menu config. The rotateStep policy verbatim: absent (older saves) ->
+    //     the defaults stand (0 / 0 outright / 3 / 1 island / reduce off); out-of-range
+    //     mode/density/islands/reduce IGNORED on load (the runtime dials re-clamp; the
+    //     reverse-draw REQUEST is runtime-only and never saved — a save never carries a
+    //     pending row).
     //   "trajectory" {v, n, states} — the EXPAND ring's bounded TAIL (ContainmentTrajectory::
     //     SERIAL_TAIL newest-first states, version-guarded; the CA tail shape narrowed to the
     //     one stream). Absent (old saves) -> the ring is untouched (a fresh module loads
@@ -130,6 +154,11 @@ struct ContainmentModuleCore {
         json_object_set_new(rootJ, "containmentParents", arrJ);
 
         json_object_set_new(rootJ, "rotateStep", json_integer(pending.rotateStep));
+        json_object_set_new(rootJ, "randomCounter", json_integer((json_int_t)pending.randomCounter));
+        json_object_set_new(rootJ, "randomMode", json_integer(pending.randomMode));
+        json_object_set_new(rootJ, "randomDensity", json_integer(pending.randomDensity));
+        json_object_set_new(rootJ, "randomIslands", json_integer(pending.randomIslands));
+        json_object_set_new(rootJ, "randomReduce", json_integer(pending.randomReduce ? 1 : 0));
 
         const ContainmentTrajectory::SerialBlob blob = trajectory.serialise();
         json_t* tj = json_object();
@@ -177,6 +206,31 @@ struct ContainmentModuleCore {
             if (json_is_integer(rsJ)) {
                 const int x = (int)json_integer_value(rsJ);
                 if (x >= 1 && x <= 15) pending.rotateStep = x;
+            }
+
+        // (2b) the RANDOM row's stream position + config (the rotateStep policy verbatim:
+        // absent -> defaults stand; out-of-range -> ignored, the runtime dials re-clamp).
+        if (json_t* rcJ = json_object_get(rootJ, "randomCounter"))
+            if (json_is_integer(rcJ)) pending.randomCounter = (int64_t)json_integer_value(rcJ);
+        if (json_t* rmJ = json_object_get(rootJ, "randomMode"))
+            if (json_is_integer(rmJ)) {
+                const int x = (int)json_integer_value(rmJ);
+                if (x == 0 || x == 1) pending.randomMode = x;
+            }
+        if (json_t* rdJ = json_object_get(rootJ, "randomDensity"))
+            if (json_is_integer(rdJ)) {
+                const int x = (int)json_integer_value(rdJ);
+                if (x >= 1 && x <= 10) pending.randomDensity = x;
+            }
+        if (json_t* riJ = json_object_get(rootJ, "randomIslands"))
+            if (json_is_integer(riJ)) {
+                const int x = (int)json_integer_value(riJ);
+                if (x >= 1 && x <= 16) pending.randomIslands = x;
+            }
+        if (json_t* rrJ = json_object_get(rootJ, "randomReduce"))
+            if (json_is_integer(rrJ)) {
+                const int x = (int)json_integer_value(rrJ);
+                if (x == 0 || x == 1) pending.randomReduce = (x != 0);
             }
 
         // (3) the EXPAND trajectory tail.
