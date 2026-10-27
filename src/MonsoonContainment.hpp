@@ -686,6 +686,21 @@ struct MonsoonContainmentWidget : ModuleWidget,
                         [module, k]() { module->core.pending.randomIslands = k; }));
                 }
             }));
+        // The reduction post-pass flag (the banked ONE CALL, IDEAS_PARKED.md — "a flag, not
+        // forced: random shortcut edges may be exactly the variety wanted"): when ON, an
+        // OUTRIGHT draw runs reduceTransitive(g) after the boost — the page's implied shortcut
+        // pins strip to the load-bearing spine. Islands, roots and the reverse-draw restore
+        // survive (the T11 properties ride the strip); off keeps the dice's full variety.
+        // SCATTER ignores it; the DECLUTTER gesture row (manual-graph reduce) stays parked.
+        menu->addChild(createSubmenuItem("Random reduce", "",
+            [module](Menu* sub) {
+                sub->addChild(createCheckMenuItem("Off  (default)", "",
+                    [module]() { return !module->core.pending.randomReduce; },
+                    [module]() { module->core.pending.randomReduce = false; }));
+                sub->addChild(createCheckMenuItem("On  (declutter the draw)", "",
+                    [module]() { return module->core.pending.randomReduce; },
+                    [module]() { module->core.pending.randomReduce = true; }));
+            }));
         // The reverse-draw action (requirement 2 — the CA back action): arms the RANDOM row
         // backward; the boundary commit re-derives the previous page (an EXACT state restore
         // in Outright mode, the generative scrub in Scatter mode). One pending row, one undo

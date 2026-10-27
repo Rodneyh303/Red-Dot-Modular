@@ -327,8 +327,16 @@ static constexpr uint64_t RANDOM_STREAM_DOMAIN = 0x434F4E5441494E4DULL;
 // DAG-complete upper shape — still acyclic). islands 1..pool (clamped) = the partition dial;
 // the graph is REPLACED: all 16 rows are zeroed first — which is exactly what makes
 // reverse-draw the exact state restore.
+// reduce (default FALSE) = the seed verb's banked reduction post-pass (IDEAS_PARKED.md: "a
+// flag, not forced: random shortcut edges may be exactly the variety wanted"): when on,
+// reduceTransitive(g) runs after the boost — the page's implied shortcut pins strip to the
+// load-bearing spine (at density 10 the DAG-complete page becomes the island chains:
+// pool - islands pins). T11's properties ride the strip: closure preserved mask-exact (so
+// islands, roots and the pool clear survive), delete-only, idempotent, root-set invariant.
+// NO draws consumed — the page stays a pure function of (page, density, islands, pool,
+// reduce), so the reverse draw remains the exact state restore under the flag.
 inline void seedForest(ContainmentGraph& g, const redDot::PhiloxRng& rng, uint64_t page,
-                       int density, int islands = 1, int pool = VOICES) {
+                       int density, int islands = 1, int pool = VOICES, bool reduce = false) {
     if (density < 1) density = 1;
     if (density > 10) density = 10;
     if (pool < 1) pool = 1;
@@ -384,6 +392,10 @@ inline void seedForest(ContainmentGraph& g, const redDot::PhiloxRng& rng, uint64
             g.parents[v] |= (uint16_t)(1u << perm[j]);       // start <= j < pos: an earlier voice,
         }                                                    // never v itself — acyclic, no self-bits
     }
+    if (reduce) reduceTransitive(g);   // the banked ONE CALL (IDEAS_PARKED.md): the drawn page's
+                                       // implied shortcut pins strip to the spine — no draws
+                                       // consumed, the reverse draw stays exact (see the header
+                                       // note above; the strip's proof lives on reduceTransitive).
 }
 
 // MODIFY FOREST — the STATE-DEPENDENT scatter variation (Rodney: "more like change alley

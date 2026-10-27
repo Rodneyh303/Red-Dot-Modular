@@ -210,6 +210,7 @@ int main() {
         a.pending.randomMode = 1;             // SCATTER
         a.pending.randomDensity = 9;
         a.pending.randomIslands = 5;          // path B: the partition dial round-trips too
+        a.pending.randomReduce = true;        // the banked post-pass flag round-trips (0/1 integer)
         a.pending.latch(ContainmentPending::V_COLLAPSE);
         a.applyAtBoundary(16);                // a real commit -> a non-empty trajectory tail
 
@@ -230,6 +231,8 @@ int main() {
         CHK(b.pending.randomCounter == -7 && b.pending.randomMode == 1 && b.pending.randomDensity == 9
             && b.pending.randomIslands == 5,
             "S5: the RANDOM row's stream position + config restored (the counter is a SIGNED page index)");
+        CHK(b.pending.randomReduce == true,
+            "S5: the reduce post-pass flag restored (the 0/1 json integer, the banked ONE CALL)");
         {
             const auto blobA = a.trajectory.serialise();
             const auto blobB = b.trajectory.serialise();
@@ -332,21 +335,24 @@ int main() {
             json_t* o = json_object();          // NONE of the random keys present
             r.fromJson(o);
             CHK(r.pending.randomCounter == 0 && r.pending.randomMode == 0 && r.pending.randomDensity == 3
-                && r.pending.randomIslands == 1,
+                && r.pending.randomIslands == 1 && r.pending.randomReduce == false,
                 "S6g: absent RANDOM keys -> defaults stand (older saves load clean)");
             json_decref(o);
             r.pending.randomCounter = 5; r.pending.randomMode = 0; r.pending.randomDensity = 4;
             r.pending.randomIslands = 3;
+            r.pending.randomReduce = true;
             json_t* o2 = json_object();
             json_object_set_new(o2, "randomCounter", json_integer((json_int_t)-3));   // signed: LEGAL
             json_object_set_new(o2, "randomMode", json_integer(7));                   // out-of-range
             json_object_set_new(o2, "randomDensity", json_integer(99));               // out-of-range
             json_object_set_new(o2, "randomIslands", json_integer(0));                // out-of-range
+            json_object_set_new(o2, "randomReduce", json_integer(2));                 // out-of-range
             r.fromJson(o2);
             CHK(r.pending.randomCounter == -3,
                 "S6g: a negative page index loads (the dice counter is a SIGNED position)");
-            CHK(r.pending.randomMode == 0 && r.pending.randomDensity == 4 && r.pending.randomIslands == 3,
-                "S6g: out-of-range mode/density/islands IGNORED (the runtime dials stand)");
+            CHK(r.pending.randomMode == 0 && r.pending.randomDensity == 4 && r.pending.randomIslands == 3
+                && r.pending.randomReduce == true,
+                "S6g: out-of-range mode/density/islands/reduce IGNORED (the runtime dials stand)");
             json_decref(o2);
 
             // A RANDOM commit is an ORDINARY commit: undo publication + trajectory + the exact
@@ -366,7 +372,8 @@ int main() {
             CHK(r2.pending.randomCounter == r.pending.randomCounter
                 && r2.pending.randomMode == r.pending.randomMode
                 && r2.pending.randomDensity == r.pending.randomDensity
-                && r2.pending.randomIslands == r.pending.randomIslands,
+                && r2.pending.randomIslands == r.pending.randomIslands
+                && r2.pending.randomReduce == r.pending.randomReduce,
                 "S6g: the stream position + config survive the EXACT production save/load cycle");
             CHK(sameGraph(r.graph, r2.graph),
                 "S6g: the generated forest round-trips byte-identical (a reproducible, shareable state)");

@@ -501,6 +501,30 @@ int main() {
                 "random: 4 drawn islands + 6 cleared above-pool singles = the root count");
         }
 
+        // the REDUCE POST-PASS flag (the banked ONE CALL, IDEAS_PARKED.md): with randomReduce
+        // the fire's oracle is seedForest(..., reduce=true) — the same page function with the
+        // spine stripped; the reverse-draw stays the EXACT previous page restore.
+        {
+            CP q; auto t4 = std::make_unique<ContainmentTrajectory>();
+            ContainmentGraph h;
+            q.randomReduce = true;
+            q.randomDensity = 6;
+            q.latch(CP::V_RANDOM);
+            q.applyAll(h, 16, *t4);
+            ContainmentGraph redOracle;
+            seedForest(redOracle, rr, 1ull * RANDOM_PAGE_OUTRIGHT, q.randomDensity,
+                       q.randomIslands, 16, true);
+            CHK(sameState(h, redOracle),
+                "random: the reduce flag rides the page oracle (the banked post-pass: drawn page -> spine)");
+            q.latchRandomReverse();
+            q.applyAll(h, 16, *t4);
+            ContainmentGraph redPrev;
+            seedForest(redPrev, rr, 0ull * RANDOM_PAGE_OUTRIGHT, q.randomDensity,
+                       q.randomIslands, 16, true);
+            CHK(sameState(h, redPrev),
+                "random: the reverse-draw stays the EXACT restore under the reduce flag");
+        }
+
         // SCATTER mode: fire = the page driven over the CURRENT graph; reverse = the previous
         // page on the CURRENT graph — the CA scrub, NOT the state restore.
         {

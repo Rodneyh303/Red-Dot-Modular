@@ -982,6 +982,88 @@ int main() {
             }
         }
 
+        // REDUCE POST-PASS (the banked ONE CALL, IDEAS_PARKED.md: "a flag, not forced: random
+        // shortcut edges may be exactly the variety wanted" — wired when Rodney asked "what
+        // happened to the closure/reduction?"): seedForest's optional last arg runs
+        // reduceTransitive(g) on the drawn page. DEFAULT OFF — every row above is the off
+        // anchor and stays bit-for-bit. The strip inherits T11's proven properties page-shape
+        // and all: closure preserved mask-exact (islands, roots and the pool clear survive),
+        // delete-only (never re-points), idempotent (THE unique DAG reduction), root-set
+        // invariant. At density 10 the DAG-complete page reduces to the ISLAND CHAINS.
+        {
+            auto popcount16 = [](uint16_t x) { int n = 0; while (x) { x = (uint16_t)(x & (x - 1)); ++n; } return n; };
+            int badValid = -1, badClo = -1, badSub = -1, badRoot = -1, badIdem = -1;
+            const int rdCfg[6][3] = {{1,1,16},{3,1,16},{7,3,16},{10,2,16},{5,4,8},{2,2,5}};
+            for (int c = 0; c < 6 && (badValid < 0 && badClo < 0 && badSub < 0 && badRoot < 0 && badIdem < 0); ++c) {
+                const int dens = rdCfg[c][0], K = rdCfg[c][1], pool = rdCfg[c][2];
+                for (uint64_t pg = 60000ull; pg < 60020ull; ++pg) {
+                    redDot::PhiloxRng ra = rng, rb = rng;
+                    ContainmentGraph off, on;
+                    seedForest(off, ra, pg, dens, K, pool);            // reduce defaults FALSE
+                    seedForest(on,  rb, pg, dens, K, pool, true);
+                    if (!on.isValid() || !noSelfBits(on) || !roundTripOk(on)) { badValid = (int)pg; break; }
+                    for (int v = 0; v < VOICES; ++v) {
+                        if (off.ancestorClosure(v) != on.ancestorClosure(v)) { badClo = (int)pg; break; }
+                        if (on.parents[v] & ~off.parents[v])                 { badSub = (int)pg; break; }
+                        if (off.isRoot(v) != on.isRoot(v))                   { badRoot = (int)pg; break; }
+                    }
+                    if (badClo >= 0 || badSub >= 0 || badRoot >= 0) break;
+                    ContainmentGraph twice = on;
+                    reduceTransitive(twice);
+                    if (!sameState(on, twice)) { badIdem = (int)pg; break; }
+                }
+            }
+            if (badValid >= 0) std::printf("  detail: reduce validity broke at page %d\n", badValid);
+            if (badClo  >= 0) std::printf("  detail: reduce closure broke at page %d\n", badClo);
+            if (badSub  >= 0) std::printf("  detail: reduce delete-only broke at page %d\n", badSub);
+            if (badRoot >= 0) std::printf("  detail: reduce root-set broke at page %d\n", badRoot);
+            if (badIdem >= 0) std::printf("  detail: reduce idempotence broke at page %d\n", badIdem);
+            CHK(badValid < 0, "reduce: every reduced page is a valid loadable DAG (islands configs included)");
+            CHK(badClo  < 0, "reduce: closure(reduce(page)) == closure(page) MASK-EXACT on drawn pages (islands + roots survive)");
+            CHK(badSub  < 0, "reduce: delete-only on drawn pages (kept pins are a subset of the drawn pins)");
+            CHK(badRoot < 0, "reduce: the root set is INVARIANT (never orphans a voice — the boost floor survives)");
+            CHK(badIdem < 0, "reduce: idempotent on drawn pages (the result IS the unique DAG reduction)");
+
+            // the density-10 known answer: the DAG-complete page's reduction is the island
+            // CHAIN — every non-head voice keeps exactly its permutation predecessor
+            // (pool - islands pins). Closure equality + <=1 parent per voice + acyclicity
+            // FORCE that shape: a single upward path must visit every earlier position.
+            {
+                redDot::PhiloxRng rc = rng, rd = rng;
+                ContainmentGraph full, chain;
+                seedForest(full,  rc, 4711ull, 10, 1, 16);
+                seedForest(chain, rd, 4711ull, 10, 1, 16, true);
+                int pins = 0; bool spine = true;
+                for (int v = 0; v < VOICES; ++v) {
+                    const int pc = popcount16(chain.parents[v]);
+                    if (pc > 1) spine = false;
+                    pins += pc;
+                }
+                CHK(pins == 15 && spine,
+                    "reduce @ density 10: the DAG-complete page's spine = 15 pins, <=1 parent per voice");
+                bool cloEq = true;
+                for (int v = 0; v < VOICES; ++v)
+                    if (full.ancestorClosure(v) != chain.ancestorClosure(v)) { cloEq = false; break; }
+                CHK(cloEq,
+                    "reduce @ density 10: the chain's closure == the DAG-complete page's (it IS the Hasse diagram)");
+            }
+
+            // the reverse-draw restore holds under the flag: the page function grew an
+            // argument, the statelessness did not — f(k-1, reduce) after f(k, reduce) ==
+            // f(k-1, reduce) fresh.
+            {
+                ContainmentGraph dirty;
+                dirty.addParent(0, 5); dirty.addParent(3, 7); dirty.addParent(9, 2);
+                redDot::PhiloxRng re = rng;
+                ContainmentGraph stepped = dirty, fresh;
+                seedForest(stepped, re, 4242ull, 5, 1, VOICES, true);
+                seedForest(stepped, re, 4241ull, 5, 1, VOICES, true);
+                seedForest(fresh,   re, 4241ull, 5, 1, VOICES, true);
+                CHK(sameState(stepped, fresh),
+                    "reduce: the reverse-draw stays the EXACT state restore under the flag");
+            }
+        }
+
         // SCATTER: validity + determinism over random start graphs; the CA state-dependence
         // pin (the same page on DIFFERENT start graphs diverges — the draw is the how-much,
         // the current graph is the where-from); the scrub definition (re-applying page k-1 to

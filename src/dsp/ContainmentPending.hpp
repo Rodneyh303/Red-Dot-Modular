@@ -199,6 +199,14 @@ struct ContainmentPending {
     int      randomMode    = 0;
     int      randomDensity = 3;
     int      randomIslands = 1;
+    bool     randomReduce  = false;   // the seed verb's reduction post-pass — the banked ONE CALL
+                                      // (IDEAS_PARKED.md): when on, an OUTRIGHT draw runs
+                                      // reduceTransitive(g) after the boost, stripping the page's
+                                      // implied shortcut pins to the load-bearing spine ("a flag,
+                                      // not forced: random shortcut edges may be exactly the
+                                      // variety wanted" — off keeps the dice's full variety).
+                                      // SCATTER ignores it (a modify pass over current edges; the
+                                      // DECLUTTER gesture row for the manual graph stays parked).
     bool     reverseArmed  = false;   // runtime-only (like armed[] — a save never carries a request)
 
     // ── the TRUE-REVERSE request queue (the global-reverse consumer) ────────────────
@@ -315,7 +323,7 @@ struct ContainmentPending {
                     redDot::PhiloxRng rng;                   // stateless facade: the key is the draw's
                     rng.setKey(redDot::philoxMakeKey(RANDOM_STREAM_DOMAIN));
                     if (randomMode == 0) seedForest(g, rng, pageBase, randomDensity,
-                                                    randomIslands, activeCount);
+                                                    randomIslands, activeCount, randomReduce);
                     else                 scatterEdges(g, rng, pageBase, randomDensity);
                     reverseArmed = false;                    // consumed either way (the CA lamp rule)
                     break;

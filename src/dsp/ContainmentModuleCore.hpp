@@ -131,13 +131,14 @@ struct ContainmentModuleCore {
     //   "rotateStep" — the context-menu config (the plan: transform step config via context
     //     menu, not param slots). Absent in step-1/2/3 saves -> the default (1) stands. Values
     //     outside 1..15 are IGNORED on load (the verb's clampStep owns the runtime clamp).
-    //   "randomCounter" / "randomMode" / "randomDensity" / "randomIslands" — the RANDOM
-    //     row's stream position (SIGNED page index — the dice model's addressable draw
-    //     address; persisted so a generated forest is a REPRODUCIBLE, shareable state) and
-    //     its context-menu config. The rotateStep policy verbatim: absent (older saves) ->
-    //     the defaults stand (0 / 0 outright / 3 / 1 island); out-of-range
-    //     mode/density/islands IGNORED on load (the runtime dials re-clamp; the reverse-draw
-    //     REQUEST is runtime-only and never saved — a save never carries a pending row).
+    //   "randomCounter" / "randomMode" / "randomDensity" / "randomIslands" / "randomReduce" —
+    //     the RANDOM row's stream position (SIGNED page index — the dice model's addressable
+    //     draw address; persisted so a generated forest is a REPRODUCIBLE, shareable state)
+    //     and its context-menu config. The rotateStep policy verbatim: absent (older saves) ->
+    //     the defaults stand (0 / 0 outright / 3 / 1 island / reduce off); out-of-range
+    //     mode/density/islands/reduce IGNORED on load (the runtime dials re-clamp; the
+    //     reverse-draw REQUEST is runtime-only and never saved — a save never carries a
+    //     pending row).
     //   "trajectory" {v, n, states} — the EXPAND ring's bounded TAIL (ContainmentTrajectory::
     //     SERIAL_TAIL newest-first states, version-guarded; the CA tail shape narrowed to the
     //     one stream). Absent (old saves) -> the ring is untouched (a fresh module loads
@@ -157,6 +158,7 @@ struct ContainmentModuleCore {
         json_object_set_new(rootJ, "randomMode", json_integer(pending.randomMode));
         json_object_set_new(rootJ, "randomDensity", json_integer(pending.randomDensity));
         json_object_set_new(rootJ, "randomIslands", json_integer(pending.randomIslands));
+        json_object_set_new(rootJ, "randomReduce", json_integer(pending.randomReduce ? 1 : 0));
 
         const ContainmentTrajectory::SerialBlob blob = trajectory.serialise();
         json_t* tj = json_object();
@@ -224,6 +226,11 @@ struct ContainmentModuleCore {
             if (json_is_integer(riJ)) {
                 const int x = (int)json_integer_value(riJ);
                 if (x >= 1 && x <= 16) pending.randomIslands = x;
+            }
+        if (json_t* rrJ = json_object_get(rootJ, "randomReduce"))
+            if (json_is_integer(rrJ)) {
+                const int x = (int)json_integer_value(rrJ);
+                if (x == 0 || x == 1) pending.randomReduce = (x != 0);
             }
 
         // (3) the EXPAND trajectory tail.
