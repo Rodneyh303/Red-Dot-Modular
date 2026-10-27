@@ -120,6 +120,7 @@ TESTS=(
   "test_rule2_integration|"
   "test_rhythm_decision_core|"   # STAGE R R-3: the five named predicates (C1-C5) table-driven over every MonoDecision x own-state combination — the pure-layer spec (grows with the ladder: R-4 tuple assembly, R-5 star data)
   "test_rhythm_decision_differential|$SE $GS $PE $CE"   # STAGE R R-1: the reference oracle — 24 seeded marches x 64 steps x 3 modes (clock / plain gate / gate+subgates) through the REAL executors + the shipped IMPL 2b drive; per-voice gate/accent/pitch/decision streams -> per-mode FNV-1a golden digests (the byte-identity pin for every Stage-R commit); INV-C2 (mono rest closes all poly gates), INV-ENV (poly gate never exceeds the mono envelope), INV-DET (double-run determinism)
+  "test_forest_rhythm|$SE $GS $PE $CE"   # STAGE F F-1: the FOREST behavioral spec — free voices (E(v)=Own(v): mono rests do NOT close them, gates rise while mono is low, own-window self-clocking), poly containers (V3 in V2 follows V2, not V1; the captured per-container view), the star contrast (the legacy invariants hold on the AUTHORED graph), downward-edge determinism (the documented F-2 caveat)
   "test_scale_list|"
   "test_scale_nondestructive|"
   "test_send_tap|"   # header-only: per-voice send-tap contract (SpreadResolver + MacroTapBank seams)

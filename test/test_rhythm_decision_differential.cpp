@@ -43,6 +43,7 @@
 #include "engines/SequencerEngine.hpp"
 #include "VoiceResolver.hpp"
 #include "PhiloxRng.hpp"
+#include "star_seam.hpp"   // the D2 test seam (§3.1) — the star authored INTO pe.containmentParents
 
 using redDot::PhiloxRng;   // the house counter-based RNG (namespace redDot)
 
@@ -169,6 +170,7 @@ static const int kSteps   = 64;
 static void marchModeA(int seed, Capture& cap, int& c2n, int& envn) {
     PhiloxRng rng; rng.seed64((uint64_t)seed * 747796405u + 2891336453u);
     SequencerEngine eng; eng.reset();
+    injectLegacyStarGraph(eng);   // D2 seam: the legacy sound as an authored graph
     eng.numPolyVoices = 15;
     seedEngine(eng, rng);
     const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);   // 1/4 .. 1/32
@@ -197,6 +199,7 @@ struct GateStream {
 static void marchModeB(int seed, Capture& cap, int& c2n, int& envn) {
     PhiloxRng rng; rng.seed64((uint64_t)seed * 747796405u + 2891336453u + 1u);
     SequencerEngine eng; eng.reset();
+    injectLegacyStarGraph(eng);   // D2 seam: the legacy sound as an authored graph
     eng.numPolyVoices = 15;
     seedEngine(eng, rng);
     const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
@@ -237,6 +240,7 @@ static void marchModeB(int seed, Capture& cap, int& c2n, int& envn) {
 static void marchModeBS(int seed, Capture& cap, int& c2n, int& envn) {
     PhiloxRng rng; rng.seed64((uint64_t)seed * 747796405u + 2891336453u + 2u);
     SequencerEngine eng; eng.reset();
+    injectLegacyStarGraph(eng);   // D2 seam: the legacy sound as an authored graph
     eng.numPolyVoices = 15;
     seedEngine(eng, rng);
     const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);

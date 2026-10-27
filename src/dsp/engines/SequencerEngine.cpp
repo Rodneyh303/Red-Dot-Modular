@@ -86,6 +86,18 @@ void SequencerEngine::reset() {
     }
     // restProb values are NOT reset — the caller re-applies them from expander knobs.
     for (int i = 0; i < 16; i++) wasHeldPolyPrev[i] = false;
+    // F-1 (RHYTHM_DECISION_MANAGER_PLAN §3.1): the RDM reads the STAGED containment graph —
+    // PatternEngine owns the array (the publish contract stages it every block from the
+    // Containment module's editor graph; an absent module stages zeros = free voices, D2
+    // INTENDED). The pointer is live: a re-staged graph is visible at the next edge with no
+    // re-wiring. The source is GRAPH permanently — D2: no engine legacy mode; the
+    // all-follow-V1 star is an AUTHORED graph (the Cantonment preset / the test seam), and
+    // the suites that pin the legacy sound author it into pe.containmentParents explicitly.
+    rdm.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
+    rdm.graphWords = pe.containmentParents;
+    // F-1 per-container capture state: a voice that has not executed this run is at Rest —
+    // it offers no onset and closes its children (fail-closed).
+    for (int i = 0; i < 16; i++) { polyVerdict_[i] = MonoDecision::Rest; polyNv_[i] = 0; }
     lastStepResult = StepResult{};
     stepIndex = -1;
     lastStepIndex = -1;
@@ -1123,15 +1135,42 @@ ParentView SequencerEngine::monoParentView() const {
                        gs.gateHeld, wasHeldMono, hadMonoTail };
 }
 
+// ── F-1: the per-container view (RHYTHM_DECISION_MANAGER_PLAN §3.1) ─────────────────
+// u is a STORAGE slot (0 = V1 … 15 = V16). Slot 0 is the mono voice — the R-2 producer,
+// unchanged. Slots 1..15 are poly containers: the verdict + drawn length their own cascade
+// captured THIS edge (polyVerdict_/polyNv_), the gate state read live from their VoiceBank
+// slice (the same four scalars V1 exposes, per container).
+// F-2 CAVEAT (documented, bounded): executePolyVoices visits voices in SLOT order, so a
+// container with a HIGHER slot than its child has not executed yet on this edge — the child
+// reads that container's PREVIOUS-edge capture (one edge stale on those edges). Edges that
+// point upward (u < v — the star, low-rooted chains/trees, every structure authored so far)
+// read fresh captures everywhere. The topological visit order (F-2) removes the caveat; the
+// fold, the views and the semantics do not change under it.
+ParentView SequencerEngine::containerView(int u) const {
+    if (u <= 0) return monoParentView();
+    if (u >= 16) return ParentView{};              // defensive: fail-closed neutral view
+    const VoiceSlot us = VoiceResolver::slot(u + 1);
+    return ParentView{ polyVerdict_[u], polyNv_[u],
+                       voices[us].gs.gateHeld, wasHeldPolyPrev[u], hadPolyTail[u] };
+}
+
 void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& input, bool wasHeldPoly, bool hadPolyTail) {
     PolyVoice& v = voices[voiceIdx];
-    // R-2/R-5 (plan §2.3): the parent view is read ONLY through the RDM now. The FOREST FOLD
-    // iterates the parents bitmask; on LEGACY_STAR every poly voice's sole container is V1
-    // (bit 0), so the loop body runs ONCE and IS the pre-R-5 path — a 1-parent loop is
-    // today's code. The capture-once equivalence (nothing here writes mono state) is proven
-    // by the differential goldens. Stage F-1 re-points rdm at ParentSource::GRAPH and
-    // provides per-container views — the branches below do not change.
-    const RhythmDecision rd = rdm.decide(voiceIdx.v, [this](int) { return monoParentView(); });
+    // F-1 (plan §3.1): the fold runs over the REAL containment graph. parentsOf(v) reads the
+    // staged containmentParents (MonsoonSandsManager::processDNA stages it every block; a
+    // zero row is an uncontained voice). An EMPTY mask is a FREE voice (D2/R2): the
+    // self-rooted tuple E(v) = Own(v) — the voice's own window drives its onset cadence
+    // (mono's MidNote-guard predicate), its own rest draw thins it, its own slur commitment
+    // slides it. A non-empty mask folds the per-container views (containerView); the star
+    // graph (bit 0 only) reduces to the R-2 mono view exactly — the branches below are
+    // unchanged by F-1 for every graph shape.
+    const uint16_t parents = rdm.parentsOf(voiceIdx.v);
+    const RhythmDecision rd = parents
+        ? rdm.decideMask(parents, [this](int u) { return containerView(u); })
+        : RhythmDecisionCore::freeDecision(
+              (v.gs.holdRemain >= 1.f) || (v.gs.gatePulseRemain > 0),   // mono's MidNote guard
+              v.gs.slurForward,
+              wasHeldPoly || hadPolyTail);
     // Stage 2a: refresh VARIATION cell before nvIdxForVoice reads it (nvIdxForVoice
     // reads the uniform via pe.warpRow at the voice's variation step to pick the note length).
     refreshPolyRandomCell(voiceIdx, LaneId{PL_VARIATION}, getVariationStepForVoice(voiceIdx) & 0x0F);
@@ -1139,6 +1178,10 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
     // LOR is identity (delegated → reads mono's step). Clamped so the voice can never hold past
     // mono's next event — articulation is subtractive.
     const int nvV = nvIdxForVoice(voiceIdx, input);
+    // F-1 capture: this voice's drawn window this edge — the C3 ceiling its children clamp
+    // against (containerView reads polyNv_). Captured before the branches; the value is the
+    // own draw under the parents' ceiling, exactly what nvIdxForVoice returned.
+    polyNv_[voiceIdx.v] = nvV;
 
     // Start Detection (C1): the tuple's mayOnset — a new note/retrigger on NewNote, or a
     // Legato shift from a dead state (low gate and no tail); Stage F folds the union (D3).
@@ -1172,6 +1215,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                 v.accented = false;
                 v.gs.gateHeld = false; v.gsStep.gateHeld = false;
                 v.participating = false; v.gs.slurMember = false;
+                polyVerdict_[voiceIdx.v] = MonoDecision::Rest;   // F-1: no onset offer for children
                 return;
             }
         }
@@ -1186,6 +1230,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
             // voice whose gate merely closed).
             v.gs.slurForward = false; v.participating = false;
             v.gs.slurMember = false;   // SLEG: a resting voice is not part of a slur
+            polyVerdict_[voiceIdx.v] = MonoDecision::Rest;   // F-1: a rest closes the children
             return;
         }
         
@@ -1240,6 +1285,11 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
             // mode but present forward too.)
             v.gs.triggerNote(pitchV, sem, nvV, isQuant);
         v.gsStep.triggerNote(pitchV, sem, nvV, isQuant);   // STEP: every played onset re-strikes (un-fused)
+        // F-1 capture: what this onset WAS — a fresh trigger (NewNote) or a real slide to a
+        // held state (Legato). Children fold this as the container's verdict (D4: an onsetting
+        // container names the opportunity type).
+        polyVerdict_[voiceIdx.v] = (rd.gateType != MonoDecision::NewNote && (wasHeldPoly || hadPolyTail))
+                                       ? MonoDecision::Legato : MonoDecision::NewNote;
 
         // ── Rule 2 LEAD (per-voice leading-edge slur roll) ────────────────────────────────
         // Mirror mono's LEAD commitment (executeStep), per voice: this note commits to slur its
@@ -1286,6 +1336,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         v.gsStep.gateHeld = false;   // STEP: mirror mono rest
         v.gs.slurMember = false;     // SLEG: mono rested
         v.participating = false;   // Rule 2: mono rested → the chain ends for this voice.
+        polyVerdict_[voiceIdx.v] = MonoDecision::Rest;   // F-1: the rest propagates to children
     } else {
         // A LANDING = mono connects at this edge (Legato / LegatoMax / Tie). MidNote is a
         // mid-hold, not an onset edge, so it never consumes or rolls a slur.
@@ -1305,6 +1356,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
             if (!v.participating) {
                 v.gs.gateHeld = false;   // rested at the onset → not part of this chain
                 v.gsStep.gateHeld = false; v.gs.slurMember = false;   // STEP/SLEG mirror
+                polyVerdict_[voiceIdx.v] = MonoDecision::Rest;   // F-1: silent at the landing
             } else {
                 const bool prevSlur = v.gs.slurForward;
                 const bool isTie    = (rd.gateType == MonoDecision::Tie);
@@ -1330,6 +1382,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                     // committed tie → hold own pitch and extend (no redraw), like the follow-mono tie
                     v.gs.extendHold(v.gs.lastSemitone, nvV);
                     v.gsStep.triggerNote(v.gs.currentPitchV, v.gs.lastSemitone, nvV);  // STEP
+                    polyVerdict_[voiceIdx.v] = MonoDecision::Tie;   // F-1: an extend names Tie
                 } else {
                     // committed legato → slide to own new pitch; opted out / not still sounding →
                     // re-articulate fresh. Either way this voice draws its OWN pitch (melody/octave
@@ -1342,6 +1395,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                     float pitchV = pe.genPitchLive(sem, input, pe.warpRow(voiceIdx, LaneId{PL_MELODY})[melIdx], pe.warpRow(voiceIdx, LaneId{PL_OCTAVE})[octIdx]);
                     if (connect) {
                         v.gs.slideNote(pitchV, sem, nvV, /*wasHeld=*/true);   // connect (keep chain accent)
+                        polyVerdict_[voiceIdx.v] = MonoDecision::Legato;   // F-1: a connect-slide
                     } else {
                         // re-articulate: a fresh onset, so draw this voice's OWN accent (its accent
                         // LOR vs its own accentProb), exactly as the chain onset does — a re-struck
@@ -1350,6 +1404,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                         refreshPolyRandomCell(voiceIdx, LaneId{PL_ACCENT}, accIdx);
                         v.accented = (pe.warpRow(voiceIdx, LaneId{PL_ACCENT})[accIdx] < v.accentProb);
                         v.gs.triggerNote(pitchV, sem, nvV);                   // re-articulate
+                        polyVerdict_[voiceIdx.v] = MonoDecision::NewNote;   // F-1: a re-strike
                     }
                     v.gsStep.triggerNote(pitchV, sem, nvV);   // STEP: slide/re-artic both re-strike
                 }
@@ -1378,10 +1433,12 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                     float pitchV = pe.genPitchLive(sem, input, pe.warpRow(voiceIdx, LaneId{PL_MELODY})[melIdx], pe.warpRow(voiceIdx, LaneId{PL_OCTAVE})[octIdx]);
                     v.gs.slideNote(pitchV, sem, nvV, wasHeldPoly);
                     v.gsStep.triggerNote(pitchV, sem, nvV); v.gs.slurMember = true;  // STEP/SLEG
+                    polyVerdict_[voiceIdx.v] = MonoDecision::Legato;   // F-1: a mid-hold slide
                 } else if (rd.gateType == MonoDecision::Tie) {
                     // Mono held the same pitch (tie) → poly holds its own current pitch, extends hold.
                     v.gs.extendHold(v.gs.lastSemitone, nvV);
                     v.gsStep.triggerNote(v.gs.currentPitchV, v.gs.lastSemitone, nvV); v.gs.slurMember = true;  // STEP/SLEG
+                    polyVerdict_[voiceIdx.v] = MonoDecision::Tie;   // F-1: a mid-hold extend
                 } else {
                     // MidNote: mono is HOLDING a note still sounding — nothing was chosen this step
                     // (the executeStep guard returned early). Poly follows mono's hold ONLY while THIS
@@ -1393,11 +1450,13 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                     // after a rest. So keep the gate high only if the voice is genuinely still sounding;
                     // otherwise honour the length clamp and leave it released.
                     v.gs.gateHeld = (v.gs.gatePulseRemain >= 0) || (v.gs.holdRemain > 0.0001f);
+                    polyVerdict_[voiceIdx.v] = MonoDecision::MidNote;   // F-1: a mid-hold, nothing chosen
                 }
             } else {
                 // Mono gate is low OR poly chose to rest for this current high cycle.
                 v.gs.gateHeld = false;
                 v.gsStep.gateHeld = false; v.gs.slurMember = false;  // STEP/SLEG mirror
+                polyVerdict_[voiceIdx.v] = MonoDecision::Rest;   // F-1: gate closed, no onset offer
             }
         }
     }
@@ -1516,10 +1575,18 @@ int SequencerEngine::nvIdxForVoice(VoiceSlot bank, const PatternInput& input) co
     const int idx = getVariationStepForVoice(bank) & 0x0F;
     const float r = pe.warpRow(bank, LaneId{PL_VARIATION})[idx];
     const int nv  = const_cast<SequencerEngine*>(this)->getNoteLenIdx(lastNoteVal_, input, r);
-    // CLAMP to the parent event grid (C3 lengthCeiling): a voice may release early, never
-    // hold past the parent's next note. NOTE_VALUES is ordered slowest→fastest, so the
-    // SHORTER window (the larger index) wins.
-    return lengthCeiling(nv, monoParentView());
+    // CLAMP to the parents' event grid (C3 lengthCeiling, F-1: the REAL fold over the staged
+    // graph): a voice may release early, never hold past any container's next note.
+    // NOTE_VALUES is ordered slowest→fastest, so the SHORTER window (the larger index) wins —
+    // the fold keeps the max ceiling across containers (the named lengthCeiling per parent).
+    // A FREE voice (empty mask, D2) holds its own drawn window — nothing clamps it.
+    const uint16_t parents = rdm.parentsOf(bank.v);
+    if (!parents) return nv;
+    int ceiling = nv;
+    if (parents & 0x0001u) ceiling = lengthCeiling(ceiling, monoParentView());
+    for (int u = 1; u < 16; ++u)
+        if (parents & (1u << u)) ceiling = lengthCeiling(ceiling, containerView(u));
+    return ceiling;
 }
 
 int SequencerEngine::getRhythmStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_RHYTHM],    lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT)); }

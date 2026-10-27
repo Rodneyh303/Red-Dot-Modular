@@ -11,9 +11,13 @@
 //   • Not a behavioural change. Every Stage-R commit is byte-identical on the differential
 //     marches (test_rhythm_decision_differential) or it does not land.
 //
-// Migration ladder (plan §2.3): R-1 the reference oracle (landed 7891599f) → R-2 ParentView
-// (this commit) → R-3 the five named predicates → R-4 the RhythmDecision tuple → R-5 the
-// star as DATA. Each step is gated on the marches' golden digests.
+// Migration ladder (plan §2.3): Stage R LANDED (7891599f → f2c416e3 → cf68f620 → fb094dbb →
+// c5e2c904) — the engine is a forest machine. Stage F (plan §3): F-1 the source re-point
+// (this commit — parentsOf(GRAPH) reads the staged containmentParents; the empty mask is a
+// FREE voice, the self-rooted tuple E(v) = Own(v)) → F-2 topological order + the per-sample
+// forest compose → F-3 the mono drive inside the algebra → F-4 ghost/D5 + VAR-LEG scope →
+// F-5 the property suite + compat pin. Star graphs stay byte-identity-gated on the marches
+// at every step; the free-voice and poly-container semantics are spec'd in test_forest_rhythm.
 
 #include <cstdint>
 #include <algorithm>
@@ -128,7 +132,9 @@ struct RhythmDecisionCore {
     // LEGACY_STAR AS DATA (D2): one parents-bitmask word per contained voice (storage slots
     // 0..15 = V1..V16; bit u set = voice u contains v). V1 is the root — no container. The
     // all-follow-V1 graph ships as a Cantonment PRESET under D2; test suites inject graphs
-    // through this same seam.
+    // through this same seam (the differential harness + the V1-semantics suites author the
+    // star INTO pe.containmentParents — the preset path — so the battery pins the GRAPH read,
+    // not a legacy code path).
     static constexpr uint16_t LEGACY_STAR_PARENTS[16] = {
         0x0000,                                   // v0 = V1: the root
         0x0001, 0x0001, 0x0001, 0x0001, 0x0001,   // v1..v5  (V2..V6)   -> bit 0 = V1
@@ -138,15 +144,33 @@ struct RhythmDecisionCore {
 
     ParentSource source = ParentSource::LEGACY_STAR;
 
+    // F-1: the GRAPH source's backing store — a pointer to PatternEngine::containmentParents
+    // (the engine-side authoritative array; the publish contract stages it every block, so a
+    // re-staged graph is visible at the next edge with no re-wiring). Rack-free discipline
+    // holds: the core owns nothing, it reads through the engine's array. Null (never wired)
+    // reads as the empty graph — every voice free (D2: absent graph = free voices, INTENDED).
+    const uint16_t* graphWords = nullptr;
+
+    // The ENGINE's composition (the NSDMI in SequencerEngine wires pe.containmentParents at
+    // construction — pe is declared first, so the address is stable before rdm initializes):
+    // GRAPH from the first edge, even for engines whose test sites skip reset(). D2: the
+    // production engine never runs LEGACY_STAR — the star is an authored graph, not a mode.
+    explicit RhythmDecisionCore(const uint16_t* stagedGraph)
+        : source(ParentSource::GRAPH), graphWords(stagedGraph) {}
+    // The core-level default (unit tests, the pure layer): LEGACY_STAR, no store. The ENGINE
+    // never uses this — its NSDMI composes the GRAPH ctor.
+    RhythmDecisionCore() = default;
+
     void     setParentSource(ParentSource src) { source = src; }
 
-    // The parents bitmask AS DATA. GRAPH reads neutral (no containers) until Stage F-1
-    // re-points it at the staged graph — a no-container voice decides as uncontained
-    // (D2: absent/zero graph = free voices, INTENDED).
+    // The parents bitmask AS DATA. GRAPH (F-1) reads the staged containment graph; the
+    // engine composes it at GRAPH permanently (D2: no engine legacy mode — the star is an
+    // authored graph, not a source the production engine ever switches to). LEGACY_STAR
+    // remains as core-level test data + the preset's word definition.
     uint16_t parentsOf(int v) const {
         if (source == ParentSource::LEGACY_STAR)
             return (v >= 0 && v < 16) ? LEGACY_STAR_PARENTS[v] : 0x0000;
-        return 0x0000;   // GRAPH: wired in Stage F-1
+        return (graphWords && v >= 0 && v < 16) ? graphWords[v] : 0x0000;
     }
 
     // ── R-4: the per-container composition ─────────────────────────────────────
@@ -180,6 +204,42 @@ struct RhythmDecisionCore {
     template <typename ViewOf>
     RhythmDecision decide(int v, ViewOf viewOf) const {
         return decideMask(parentsOf(v), viewOf);
+    }
+
+    // ── F-1: the self-rooted tuple — parents(v) = ∅ ⇒ E(v) = Own(v) ────────────────────
+    // D2/R2 RULED: a voice with NO containers is a FREE voice — it detaches from V1 and runs
+    // its own note machinery: E(v) = Own(v) (plan §4.2 — the algebra's parentless instance).
+    // The cascade consumes this tuple through the SAME branches a contained voice's takes;
+    // the difference is the state the engine feeds in — the voice's OWN window, own slur
+    // commitment, own still-sounding read — so the voice self-clocks at its own window
+    // expiry (mono's MidNote-guard predicate), thins itself with its own rest draws at each
+    // expiry edge, and slides on its own slur commitment (the Rule-2 shape, self-applied).
+    // Ties do not exist for free voices (a poly voice has no rhythm row to encode one):
+    // slides and fresh re-strikes only. Rhythm = own length draws (the expiry cadence) thinned
+    // by own rest draws.
+    //   windowOpen    — the voice's own note window is still open (mono's exact MidNote
+    //                   guard: holdRemain >= 1 whole step, or the gate pulse still counting —
+    //                   the fractional-tail term)
+    //   ownSlur       — the voice's own gs.slurForward, committed at its previous onset
+    //   stillSounding — the voice's own still-sounding read (wasHeld || hadTail)
+    static RhythmDecision freeDecision(bool windowOpen, bool ownSlur, bool stillSounding) {
+        RhythmDecision d{};
+        d.envelopeOpen  = true;    // no containers: the envelope is the voice's own — open
+        d.forcedRest    = false;   // nothing forces a rest
+        d.lengthCeiling = 0;       // no clamp: the own draw IS the window (the nvIdxForVoice
+                                   // fold is max(own, containers); the empty fold adds nothing)
+        if (windowOpen) {
+            d.mayOnset   = false;
+            d.holdFollow = true;   // hold own gate per the own-window predicate (MidNote path)
+            d.gateType   = MonoDecision::MidNote;
+        } else {
+            d.mayOnset   = true;   // every expiry edge is a permission point; the own rest
+                                   // draw shapes the rhythm from here
+            d.holdFollow = false;
+            d.gateType   = (ownSlur && stillSounding) ? MonoDecision::Legato    // slide to own
+                                                      : MonoDecision::NewNote;  // fresh strike
+        }
+        return d;
     }
 
     // The fold core over an explicit parents bitmask — the source-driven decide() delegates

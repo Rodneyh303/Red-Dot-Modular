@@ -214,6 +214,15 @@ behaviour) just becomes a cantonment preset."):
   this injection the old suites would break at F-1 for the right reason (voices free under
   an empty graph) and stop testing what they exist to test.
 
+OBJECTIVE (Rodney, 2026-10-27, stated at F-1): **"Mono not special."** Voices that are not
+graph connected do their own thing, unrestricted — exactly what the mono voice did after
+the lane-expander-refactor merge: self-clocked at its own window expiry, thinned by its own
+rest draws, sliding on its own slur commitment, tied to nobody. F-1's `freeDecision`
+(E(v) = Own(v)) is that behavior generalized; D7 (V1 inside the algebra, no privilege) is
+the same objective read from the other side. Every Stage-F step is checked against it: no
+code path may treat V1 as anything but container slot 0, and an empty parents row must
+leave a voice fully self-driving.
+
 ### 3.2 Topological evaluation (F-2)
 
 The graph is a DAG (cycle-reject at the pin plane; invariants CI-marched on 600+ seeds —
@@ -278,6 +287,28 @@ With `parents(v) = {u : bit u set in containmentParents[v]}`, `E(v) = Own(v) ∧
 
 Every F commit: full battery + step-0 smoke + UNIFORMITY_STRICT + anchor audit, CI-green on
 all three platforms before the next lands — the standing discipline.
+
+> **STATUS (2026-10-27): F-1 EXECUTED** on `feat/rhythm-decision-manager`. The RDM reads
+> `ParentSource::GRAPH` — `rdm` is NSDMI-wired to `pe.containmentParents` at construction
+> and reset() re-wires the same address; `parentsOf` mirrors the staged words (null/absent
+> = every voice free, D2 INTENDED). NEW `freeDecision` (E(v) = Own(v), the "Mono not
+> special" tuple: own-window self-clocking, own rest thinning, own slur slides, no ties)
+> runs the SAME cascade branches through the empty-mask branch. Poly containers became
+> real parents: `containerView(u)` (slot 0 → `monoParentView()`; slots 1..15 → the captured
+> `polyVerdict_`/`polyNv_` + live gate), fail-closed defaults, reset() restores Rest. The
+> D2 seam is shared (`test/star_seam.hpp`): the differential harness + test_subgate's 7
+> poly rows + test_per_voice_articulation author the star INTO pe.containmentParents (the
+> preset path — the battery gates the GRAPH read itself); the other V1-semantics suites
+> turn out to be mirrors/pure-helper suites (no real poly cascade) — nothing to inject.
+> NEW `test/test_forest_rhythm.cpp` (battery 86 → 87): free voices PLAY through mono
+> rests (INV-C2 inverted), gates rise while mono is low (INV-ENV inverted), own-window
+> holds; V3-in-V2 follows V2 not V1 (poly container + directed independence probe, V2
+> restProb=1 → V3 silent while free V4 plays); star contrast (the legacy invariants on
+> the authored graph); downward-edge double-run determinism (the documented F-2 caveat).
+> GOLDENS HOLD EXACTLY THROUGH THE GRAPH READ (0xa843e2ff14883ab9 / 0x3169e28ca3cc206a /
+> 0x166132accd092fce) — star graphs byte-identical, byte-identity PROVEN. Core suite grew
+> the GRAPH contract + the freeDecision table (970 → 983 rows). Full battery 87/87,
+> UNIFORMITY_STRICT=1 green, -Wall -Wextra clean, anchor audit green. Next: F-2.
 
 ### 3.6 D7 — the mono voice inside the forest (NEW, needs a ruling)
 

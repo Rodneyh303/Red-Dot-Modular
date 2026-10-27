@@ -16,8 +16,10 @@
  *   C5 envelopeAnd     — the container's gate contributes one open cell to the output
  *      envelope; the voice's own latched candidacy (polyVoiceActive) is the call site's.
  *
- * The file grows with the ladder: R-4 adds tuple-assembly-vs-direct-composition rows and
- * the star-graph data; R-5 pins LEGACY_STAR as data.
+ * The file grows with the ladder: R-4 tuple-assembly-vs-direct-composition rows + the
+ * star-graph data; R-5 pins LEGACY_STAR as data; F-1 the GRAPH contract (parentsOf reads
+ * the staged words; null = the empty graph = free voices, D2) + the self-rooted
+ * freeDecision table (E(v) = Own(v)).
  *
  * Rack-free: includes ONLY RhythmDecisionCore.hpp (the pure layer — no engine, no Rack).
  */
@@ -181,8 +183,8 @@ int main() {
         });
     }
 
-    // ── R-5: parentsOf — the star source and the (inert-until-F) graph source ──────
-    SUITE("R-5 parentsOf — star reads the data; GRAPH reads neutral until Stage F-1");
+    // ── R-5: parentsOf — the star source (core-level test data; the ENGINE runs GRAPH) ──
+    SUITE("R-5 parentsOf — the LEGACY_STAR source reads the data (core-level rows)");
     {
         RhythmDecisionCore core;
         TEST("star: v0 -> 0, v1..v15 -> bit0", {
@@ -193,11 +195,88 @@ int main() {
             EXPECT_EQ((int)core.parentsOf(-1), 0);
             EXPECT_EQ((int)core.parentsOf(16), 0);
         });
-        TEST("toggle: GRAPH -> all zero (D2: absent graph = free voices, INTENDED)", {
+        TEST("the source toggle goes both ways (core-level; the ENGINE never runs LEGACY_STAR)", {
             core.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
-            for (int v = 0; v < 16; ++v) EXPECT_EQ((int)core.parentsOf(v), 0);
+            for (int v = 0; v < 16; ++v) EXPECT_EQ((int)core.parentsOf(v), 0);   // null store = free
             core.setParentSource(RhythmDecisionCore::ParentSource::LEGACY_STAR);
-            EXPECT_EQ((int)core.parentsOf(3), 1);       // the toggle goes both ways
+            EXPECT_EQ((int)core.parentsOf(3), 1);
+        });
+    }
+
+    // ── F-1: parentsOf — the GRAPH source reads the staged words ──────────────────
+    SUITE("F-1 parentsOf — GRAPH reads the wired words; null = the empty graph (D2)");
+    {
+        RhythmDecisionCore core;
+        TEST("GRAPH + null store: every voice free (D2: absent graph = free voices, INTENDED)", {
+            core.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
+            EXPECT(core.graphWords == nullptr);
+            for (int v = 0; v < 16; ++v) EXPECT_EQ((int)core.parentsOf(v), 0);
+        });
+        TEST("GRAPH + wired store: parentsOf mirrors the words verbatim", {
+            uint16_t words[16] = {};
+            words[3] = 0x0005;   // V4 in {V1, V3}
+            words[7] = 0x0080;   // V8 in {V8} (self-ish bit — the graph layer rejects; read as-is)
+            words[15] = 0xFFFF;
+            core.graphWords = words;
+            EXPECT_EQ((int)core.parentsOf(3), 0x0005);
+            EXPECT_EQ((int)core.parentsOf(7), 0x0080);
+            EXPECT_EQ((int)core.parentsOf(15), 0xFFFF);
+            EXPECT_EQ((int)core.parentsOf(0), 0);          // untouched word reads through
+            words[3] = 0x0001;                              // a re-staged graph is visible live
+            EXPECT_EQ((int)core.parentsOf(3), 0x0001);
+            core.graphWords = nullptr;                      // re-wire back to free
+            EXPECT_EQ((int)core.parentsOf(3), 0);
+        });
+        TEST("GRAPH: out-of-range v is defensive-zero (with and without a store)", {
+            uint16_t words[16] = {};
+            words[2] = 0x0002;
+            core.graphWords = words;
+            EXPECT_EQ((int)core.parentsOf(-1), 0);
+            EXPECT_EQ((int)core.parentsOf(16), 0);
+        });
+        TEST("the star authored AS A GRAPH equals LEGACY_STAR word-for-word (the preset path)", {
+            uint16_t star[16] = {};
+            for (int v = 0; v < 16; ++v) star[v] = RhythmDecisionCore::LEGACY_STAR_PARENTS[v];
+            core.graphWords = star;
+            for (int v = 0; v < 16; ++v)
+                EXPECT_EQ((int)core.parentsOf(v), (int)RhythmDecisionCore::LEGACY_STAR_PARENTS[v]);
+        });
+    }
+
+    // ── F-1: the self-rooted tuple — parents(v) = ∅ ⇒ E(v) = Own(v) ────────────────
+    // The FREE voice's verdict table (D2/R2): the own window drives the onset cadence, the
+    // own slur commitment slides, nothing forces a rest, the envelope is the voice's own.
+    SUITE("F-1 freeDecision — the self-rooted tuple over {windowOpen, ownSlur, stillSounding}");
+    {
+        for (int w = 0; w < 2; ++w)
+            for (int s = 0; s < 2; ++s)
+                for (int t = 0; t < 2; ++t) {
+                    const bool windowOpen = w != 0, ownSlur = s != 0, still = t != 0;
+                    std::ostringstream desc;
+                    desc << "free(window=" << w << ", slur=" << s << ", sound=" << t << ")";
+                    TEST(desc.str(), {
+                        const RhythmDecision d = RhythmDecisionCore::freeDecision(windowOpen, ownSlur, still);
+                        EXPECT(!d.forcedRest);                    // nothing forces a free voice to rest
+                        EXPECT(d.envelopeOpen);                   // E(v) = Own(v): the envelope is open
+                        EXPECT_EQ(d.lengthCeiling, 0);            // no clamp — the own draw IS the window
+                        if (windowOpen) {
+                            EXPECT(!d.mayOnset);                  // mid-window: no onset edge
+                            EXPECT(d.holdFollow);                 // hold own gate per the own window
+                            EXPECT(d.gateType == MonoDecision::MidNote);
+                        } else {
+                            EXPECT(d.mayOnset);                   // expiry edge: a permission point
+                            EXPECT(!d.holdFollow);
+                            // own slur + still sounding → slide to own new pitch; else fresh strike
+                            EXPECT(d.gateType == ((ownSlur && still) ? MonoDecision::Legato
+                                                                     : MonoDecision::NewNote));
+                        }
+                    });
+                }
+        TEST("no free tuple ever carries a container's rest or a clamp (the empty-fold identity)", {
+            for (int w = 0; w < 2; ++w) for (int s = 0; s < 2; ++s) for (int t = 0; t < 2; ++t) {
+                const RhythmDecision d = RhythmDecisionCore::freeDecision(w != 0, s != 0, t != 0);
+                EXPECT(!d.forcedRest && d.envelopeOpen && d.lengthCeiling == 0);
+            }
         });
     }
 

@@ -157,11 +157,15 @@ struct SequencerEngine {
     // Most recent mono decision — written by executeStep, read by executePolyVoices.
     StepResult lastStepResult;
 
-    // R-5 (RHYTHM_DECISION_MANAGER_PLAN §2.3): the RDM instance — the engine is now a
-    // FOREST MACHINE running a star forest. source = LEGACY_STAR (the D2 legacy graph as
-    // DATA); Stage F-1 re-points it at ParentSource::GRAPH (containmentParents) and the
-    // same cascade runs any forest. Byte-identity gate: test_rhythm_decision_differential.
-    RhythmDecisionCore rdm;
+    // F-1 (RHYTHM_DECISION_MANAGER_PLAN §3.1): the RDM instance — source = GRAPH, reading
+    // the staged containment graph (pe.containmentParents, wired AT CONSTRUCTION via the
+    // NSDMI — pe is declared before rdm, so the array address is stable; reset() re-wires
+    // the same address as the documented seam). D2: graph truth everywhere — no engine
+    // legacy mode; the all-follow-V1 star is an AUTHORED graph (the Cantonment preset /
+    // the test seam), not a source the production engine switches to. Star graphs are
+    // byte-identity-gated on the differential marches; the empty graph is free voices (the
+    // self-rooted tuple); poly-container graphs are spec'd in test_forest_rhythm.
+    RhythmDecisionCore rdm = RhythmDecisionCore(pe.containmentParents);
 
     // (lastLegatoProb_ REMOVED — Phase A: V1 legato lives on the mono slot's legatoProb, read
     // directly by executeStep, legatoCheckpointOnFall, and the debug print in executePolyVoice.)
@@ -335,6 +339,16 @@ struct SequencerEngine {
     bool hadMonoTail = false;
     bool wasHeldMono = false; // Capture mono state before tick() for start-detection
     bool hadPolyTail[16] = {};
+    // F-1 per-container reads (RHYTHM_DECISION_MANAGER_PLAN §3.1): each poly voice's rhythm
+    // VERDICT + drawn note length, captured by executePolyVoice at its decision points and
+    // read back through containerView(u) when a CHILD folds its containers — under the
+    // forest a poly voice is a real parent, and its child needs the same four scalars V1
+    // exposes through monoParentView(). Indexed by STORAGE slot (0 = V1, unused — the mono
+    // verdict lives in lastStepResult). Default Rest = a voice that has not executed offers
+    // no onset and closes its children (fail-closed); reset() restores it.
+    MonoDecision polyVerdict_[16] = {};   // zero-init = MidNote; reset() fills Rest
+    int polyNv_[16] = {};                 // the voice's drawn window this edge (the C3 ceiling
+                                          // a child clamps against); 0 = no clamp contribution
     // Ghost (subGate_ghost): true while a ghost note is sustaining — set when a ghost candidate
     // (variation-gated) plays, cleared when it rests/fails or a main/ratchet onset takes over.
     // The module-layer IMPL 2b reads this (&& ghostHigh) so the gate only opens for a ghost that
@@ -955,7 +969,18 @@ struct SequencerEngine {
     // R-2 (RHYTHM_DECISION_MANAGER_PLAN §2.3): the named parent read — the four mono scalars
     // the poly cascade consumed as loose state (lastStepResult.decision/nvIdx, gs.gateHeld,
     // wasHeldMono/hadMonoTail) assembled as ONE ParentView. executePolyVoice + nvIdxForVoice
-    // read mono ONLY through this. Stage-F seam: re-point THIS producer at the containment
-    // graph (PatternEngine::containmentParents) and the same cascade reads any forest.
+    // read mono ONLY through this.
+    // F-1 (plan §3.1): the producer for container slot 0 — V1 stays the mono voice's view.
+    // Containers on slots 1..15 read containerView(u) below (the captured poly verdict +
+    // live gate state), so the same cascade folds ANY forest the graph carries.
     ParentView monoParentView() const;
+
+    // F-1: the per-container view — u is a STORAGE slot (0 = V1 … 15 = V16). u == 0
+    // delegates to monoParentView(); u >= 1 assembles the poly container's ParentView
+    // from its captured rhythm verdict (polyVerdict_), its captured drawn length
+    // (polyNv_), and its live VoiceBank gate state. Out-of-range u is defensive-neutral
+    // (fail-closed: no onset offer, envelope cell closed). The slot-order freshness
+    // caveat (a container with a higher slot than its child reads one edge stale until
+    // F-2's topological visit order) is documented at the definition.
+    ParentView containerView(int u) const;
 };
