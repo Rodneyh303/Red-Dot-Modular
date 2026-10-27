@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Containment -- articulation-envelope routing (the Change Alley SIBLING). 40HP.
+"""Cantonment -- articulation-envelope routing (the Change Alley SIBLING). 40HP.
 
 Rodney 2026-10-26 (panel correction): "It should produce a 16 by 16 panel like
 change alley (square near full module height with controls jacks to the side not
@@ -39,8 +39,8 @@ smaller one before TRUE-REV):
 
 ALL lettering is WIDGET-DRAWN (nanosvg -- the parser Rack uses -- silently
 drops <text>); this file emits art + the #components anchor layer ONLY.
-MonsoonContainment.hpp mirrors these constants in ContainmentPanelMm
-("MUST MATCH gen_containment.py" -- the gen_change_alley_v2.py rule).
+MonsoonCantonment.hpp mirrors these constants in CantonmentPanelMm
+("MUST MATCH gen_cantonment.py" -- the gen_change_alley_v2.py rule).
 
 Column order per side, OUTER -> INNER:
   LEFT : J_X (trig jack)
@@ -95,7 +95,7 @@ BACK_X    = 29.0               # the RANDOM row's back jack (inboard of J_X; CA 
 
 def lx(x, flip): return (PW_MM - x) if flip else x
 
-# ── Widget-drawn label geometry (mirrored in MonsoonContainment.hpp) ──────────
+# ── Widget-drawn label geometry (mirrored in MonsoonCantonment.hpp) ──────────
 NUM_X   = GRID_X - 1.4     # voice numbers, right-aligned to the grid's left edge
 LABEL_X = NUM_X - 3.0      # verb labels, right-aligned inboard of the numbers
 TITLE_Y = 9.8              # CONTAINMENT, centred (widget-drawn)
@@ -131,7 +131,7 @@ def gen(dark):
         E(f'<line x1="{px(GRID_X):.1f}" y1="{px(gy):.1f}" x2="{px(GRID_X + GRID_W):.1f}" y2="{px(gy):.1f}" '
           f'stroke="{t["gridln"]}" stroke-width="{px(0.2):.2f}"/>')
 
-    # Diagonal cells: self-containment is FORBIDDEN (no-self-bit invariant) --
+    # Diagonal cells: self-cantonment is FORBIDDEN (no-self-bit invariant) --
     # shade the diagonal so the illegal cells are visible in the art itself.
     diag_op = "0.30" if dark else "0.12"
     for k in range(16):
@@ -174,9 +174,9 @@ def gen(dark):
     th = "dark" if dark else "light"
     comps = ('<g inkscape:label="components" inkscape:groupmode="layer" id="components">\n'
              + "\n".join(anchors) + "\n</g>")
-    open(os.path.join(out, f"Containment_panel_{th}.svg"), "w").write(
+    open(os.path.join(out, f"Cantonment_panel_{th}.svg"), "w").write(
         svg_open(px(PW_MM), px(PH_MM)) + "\n" + "\n".join(els) + "\n" + comps + "\n</svg>\n")
-    print(f"Containment {th}: {HP}HP grid {GRID_W:.1f}mm cell {CELL:.3f}mm "
+    print(f"Cantonment {th}: {HP}HP grid {GRID_W:.1f}mm cell {CELL:.3f}mm "
           f"ctrl {CTRL_W:.2f}mm/side gutter {GUTTER:.2f}mm  anchors={len(anchors)}")
 
     # exact-mirror assertion (button/lamp columns are lx() images of the jack column)

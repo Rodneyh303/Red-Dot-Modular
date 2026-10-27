@@ -1,9 +1,9 @@
 #pragma once
-// MonsoonContainment — the articulation-envelope routing module (the "containment" sibling of
-// Change Alley). Authority: CC_PROMPT_CONTAINMENT_MODULE_SPEC.md + ARTICULATION_ENVELOPE_VS_
+// MonsoonCantonment — the articulation-envelope routing module (the "containment" sibling of
+// Change Alley). Authority: CC_PROMPT_CANTONMENT_MODULE_SPEC.md + ARTICULATION_ENVELOPE_VS_
 // CORRELATION.md, amended by Rodney's rulings 2026-10-26 (multi-parent acyclic DAG with
 // intersection semantics; disconnected vertices valid; EXPAND = trajectory memory). Build plan:
-// docs/design/CC_PROMPT_CONTAINMENT_BUILD_PLAN.md.
+// docs/design/CC_PROMPT_CANTONMENT_BUILD_PLAN.md.
 //
 // WHAT THIS MODULE IS: an EDITOR + DRIVER for the containment graph — per-voice gate-support
 // nesting (gate(v) = clamp(own, ∩ resolved parents)), which is cycle-FATAL and therefore owns
@@ -37,7 +37,7 @@
 // phrase-boundary batch = one undo step (the CA undoRing precedent; the audio thread publishes
 // snapshots, the widget drains them into rack history). Serialization: the raw uint16 array
 // (step 1), the rotate-step config, and the trajectory ring's bounded tail (the CA tail shape,
-// version-guarded) — all in ContainmentModuleCore (rack-free, CI-tested).
+// version-guarded) — all in CantonmentModuleCore (rack-free, CI-tested).
 //
 // ENGINE-SIDE PUBLISH (step 4, the CA seam mirrored): PatternEngine owns
 // containmentParents[16] (all-zeros default); MonsoonSandsManager::processDNA stages this
@@ -45,7 +45,7 @@
 // Kept honest: process() does NOT apply anything itself — the module is DRIVEN (the manager's
 // fire block calls applyPendingTransforms at the phrase boundary / unlock flush; the R7
 // grep-gate discipline: no raw rate primitives, no clock-divider/grid-pulse members, by
-// design — see ContainmentPending.hpp's header).
+// design — see CantonmentPending.hpp's header).
 
 #include <chrono>
 #include <rack.hpp>
@@ -55,10 +55,10 @@
 #include "ui/ModuleLookup.hpp"                // THE lookup authority: redDot::lookupMonsoon
 #include "ui/RedScrew.hpp"                    // house screws
 #include "ui/StoreEditAction.hpp"             // pin edits: store-backed, undoable (DAW_PARAM_AUDIT 5b)
-#include "dsp/ContainmentGraph.hpp"           // the state (pure, rack-free)
-#include "dsp/ContainmentTransforms.hpp"      // the DAG-closed verbs (pure, rack-free)
-#include "dsp/ContainmentPending.hpp"         // pending rows + EXPAND trajectory (pure, rack-free)
-#include "dsp/ContainmentModuleCore.hpp"      // step 4: the rack-free MODULE-STATE core
+#include "dsp/CantonmentGraph.hpp"           // the state (pure, rack-free)
+#include "dsp/CantonmentTransforms.hpp"      // the DAG-closed verbs (pure, rack-free)
+#include "dsp/CantonmentPending.hpp"         // pending rows + EXPAND trajectory (pure, rack-free)
+#include "dsp/CantonmentModuleCore.hpp"      // step 4: the rack-free MODULE-STATE core
 
 using namespace rack;
 // Qualified ids on purpose: Monsoon.hpp exposes MonsoonIds/ChangeAlleyIds with the same
@@ -67,7 +67,7 @@ using namespace rack;
 // ── Panel geometry in mm — MUST MATCH panel_src/gen_containment.py ──────────────
 // (the gen_change_alley_v2.py GRID_Y rule: one authority per number, cross-declared).
 // Declared ABOVE the module: the ctor's config labels read VERB_LABEL.
-namespace ContainmentPanelMm {
+namespace CantonmentPanelMm {
     constexpr float PW = 203.2f;                   // 40HP
     constexpr float GRID_X = 51.8f, GRID_Y = 16.0f, GRID_W = 99.6f;
     constexpr float CELL = GRID_W / 16.0f;         // 6.225
@@ -84,9 +84,9 @@ namespace ContainmentPanelMm {
     constexpr const char* VERB_LABEL[8] = {"ROTATE", "REFLECT", "INVERT", "COLLAPSE", "COLLAPSE-ALL", "DECLUTTER", "EXPAND", "RANDOM"};
     constexpr float LABEL_X = 47.4f, NUM_X = 50.4f;
     constexpr float TITLE_Y = 9.8f, SIDE_Y = 14.8f, CAP1_Y = 121.0f, CAP2_Y = 125.2f;
-} // namespace ContainmentPanelMm
+} // namespace CantonmentPanelMm
 
-struct MonsoonContainment : Module {
+struct MonsoonCantonment : Module {
     // Single-sourced row count (the pending header owns it — the panel constants above mirror
     // its ROW ORDER; the three-file lockstep is gen_containment.py + this file + the header).
     // The TRUE-REV row rides the SAME flank affordance families (trig jack / fire button /
@@ -94,20 +94,20 @@ struct MonsoonContainment : Module {
     // global-reverse consumer); TRIG_BACK_RANDOM is the RANDOM row's reverse-draw jack (the CA
     // scatter-back precedent, on the row like CA's back jacks). Zero param slots preserved: a
     // trigger input + one momentary button, both DAW-invisible gestures (DAW_PARAM_AUDIT rule).
-    enum ParamIds  { BTN_START = 0, BTN_TRUE_REV = dotModular::ct::ContainmentPending::N_VERBS,
+    enum ParamIds  { BTN_START = 0, BTN_TRUE_REV = dotModular::ct::CantonmentPending::N_VERBS,
                      NUM_PARAMS  = BTN_TRUE_REV + 1 };   // fire buttons + the TRUE-REV arm button
-    enum InputIds  { TRIG_START = 0, TRIG_TRUE_REV = dotModular::ct::ContainmentPending::N_VERBS,
+    enum InputIds  { TRIG_START = 0, TRIG_TRUE_REV = dotModular::ct::CantonmentPending::N_VERBS,
                      TRIG_BACK_RANDOM = TRIG_TRUE_REV + 1,
                      NUM_INPUTS  = TRIG_BACK_RANDOM + 1 }; // trig jacks + TRUE-REV + RANDOM back
-    enum LightIds  { PENDING_LIGHT_START = 0, LIGHT_TRUE_REV = dotModular::ct::ContainmentPending::N_VERBS,
+    enum LightIds  { PENDING_LIGHT_START = 0, LIGHT_TRUE_REV = dotModular::ct::CantonmentPending::N_VERBS,
                      NUM_LIGHTS  = LIGHT_TRUE_REV + 1 };  // pending lamps + the TRUE-REV lamp
 
-    static constexpr int N_VERBS = dotModular::ct::ContainmentPending::N_VERBS;
+    static constexpr int N_VERBS = dotModular::ct::CantonmentPending::N_VERBS;
 
-    // The rack-free MODULE-STATE core (ContainmentModuleCore.hpp): graph + pending + trajectory
+    // The rack-free MODULE-STATE core (CantonmentModuleCore.hpp): graph + pending + trajectory
     // + owner-guard flag + undo publication + the save schema. CI-tested as a unit
-    // (test_containment_module); this module adds only the SDK surface around it.
-    dotModular::ct::ContainmentModuleCore core;
+    // (test_cantonment_module); this module adds only the SDK surface around it.
+    dotModular::ct::CantonmentModuleCore core;
 
     // OWNER GUARD (the CA precedent, MonsoonChangeAlleyV2::transformsAppliedThisBlock): the
     // ExpanderManager's fire block reads AND writes this by name, so the CA idiom name is kept
@@ -132,11 +132,11 @@ struct MonsoonContainment : Module {
     rack::dsp::BooleanTrigger  trueRevBtn;
     rack::dsp::SchmittTrigger  backTrig;
 
-    MonsoonContainment() {
+    MonsoonCantonment() {
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
         for (int k = 0; k < N_VERBS; ++k) {
-            configInput(TRIG_START + k, std::string(ContainmentPanelMm::VERB_LABEL[k]) + " trigger");
-            configButton(BTN_START + k, std::string(ContainmentPanelMm::VERB_LABEL[k]) + " fire");
+            configInput(TRIG_START + k, std::string(CantonmentPanelMm::VERB_LABEL[k]) + " trigger");
+            configButton(BTN_START + k, std::string(CantonmentPanelMm::VERB_LABEL[k]) + " fire");
         }
         configInput(TRIG_BACK_RANDOM, "RANDOM reverse trigger (the back-draw jack)");
         configInput(TRIG_TRUE_REV, "TRUE-REV trigger (retrace one committed phrase)");
@@ -165,7 +165,7 @@ struct MonsoonContainment : Module {
         // enum-enum arithmetic (-Wdeprecated-enum-enum-conversion, the MSYS2 build's
         // -std=c++20 -Wall flags it). armVerb(int) already crosses as int; this is the
         // same index spelled through the enumerator — the cast changes nothing numerically.
-        lights[PENDING_LIGHT_START + static_cast<int>(dotModular::ct::ContainmentPending::V_RANDOM)].setBrightness(1.f);
+        lights[PENDING_LIGHT_START + static_cast<int>(dotModular::ct::CantonmentPending::V_RANDOM)].setBrightness(1.f);
     }
 
     // The TRUE-REVERSE arm (the global-reverse consumer; the CA jack/button gesture): arms the
@@ -185,11 +185,11 @@ struct MonsoonContainment : Module {
     // shape): the manager decides WHEN (phrase boundary / unlock flush) and passes the operating
     // voice count (numPolyVoices+1, the owner's count — the CA convention); the module owns the
     // mutation. axisMask: bit0 = the containment plane (default = commit; the out-of-axis
-    // persistence machinery is core-tested — test_containment_pending — and narrows here when a
+    // persistence machinery is core-tested — test_cantonment_pending — and narrows here when a
     // lock-scope bit lands). Returns rows applied (0 = nothing committed).
     // After the apply the pending lamps follow the pending set: applied rows cleared,
     // out-of-axis rows STAY lit (they are still armed — the persistence affordance, the CA rule).
-    int applyPendingTransforms(int active, unsigned axisMask = dotModular::ct::ContainmentPending::AXIS_PLANE) {
+    int applyPendingTransforms(int active, unsigned axisMask = dotModular::ct::CantonmentPending::AXIS_PLANE) {
         const int applied = core.applyAtBoundary(active, axisMask);
         for (int k = 0; k < N_VERBS; ++k)
             lights[PENDING_LIGHT_START + k].setBrightness(core.pending.armed[k] ? 1.f : 0.f);
@@ -233,7 +233,7 @@ struct MonsoonContainment : Module {
         Module::onReset(e);
     }
 
-    // ── serialization: delegated to the core (single-sourced; test_containment_module
+    // ── serialization: delegated to the core (single-sourced; test_cantonment_module
     // round-trips the EXACT production schema). The keys: "containmentParents" (the step-1
     // raw-uint16 array, absent-key-keeps / malformed-defaults policy), "rotateStep", and
     // "trajectory" (the EXPAND ring's bounded tail, version-guarded). ──
@@ -247,37 +247,37 @@ struct MonsoonContainment : Module {
 };
 
 // ── Widget ──────────────────────────────────────────────────────────────────────────────────
-struct MonsoonContainmentWidget : ModuleWidget,
-    dotModular::Compose<MonsoonContainmentWidget,
+struct MonsoonCantonmentWidget : ModuleWidget,
+    dotModular::Compose<MonsoonCantonmentWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
     int lastThemeLight = -1;
 
-    MonsoonContainmentWidget(MonsoonContainment* module) {
+    MonsoonCantonmentWidget(MonsoonCantonment* module) {
         setModule(module);
         // Dual-panel house convention (theme follows the host Monsoon, the junction idiom);
         // loadPanel = kit: sets the panel AND caches the #components anchors for bind-by-name.
-        panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/Containment_panel_dark.svg"));
-        panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/Containment_panel_light.svg"));
-        loadPanel(asset::plugin(pluginInstance, "res/panels/Containment_panel_dark.svg"));
+        panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/Cantonment_panel_dark.svg"));
+        panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance, "res/panels/Cantonment_panel_light.svg"));
+        loadPanel(asset::plugin(pluginInstance, "res/panels/Cantonment_panel_dark.svg"));
         redDot::addRedScrews(this);
 
         // The flank anchors (gen_containment.py): one trig jack + one fire button + one pending
         // lamp per verb row PLUS the TRUE-REV row (same families, NOT a verb row — it arms the
         // true-reverse queue) and the RANDOM row's back jack, bound BY NAME (the prefix+"verb"
         // concat form — the audit's prefix-family rule covers all of each). Verb order = the
-        // panel flank order = ContainmentPending's row order (the tie-break rule) — keep the
+        // panel flank order = CantonmentPending's row order (the tie-break rule) — keep the
         // three in lockstep.
-        for (int k = 0; k < MonsoonContainment::N_VERBS; ++k) {
-            const std::string verb = ContainmentPanelMm::VERB_ID[k];
-            bindInput <PJ301MPort>("input_trig_" + verb, MonsoonContainment::TRIG_START + k);
-            bindParam <TL1105>    ("param_btn_" + verb, MonsoonContainment::BTN_START + k);
-            bindLight<SmallLight<RedLight>>("light_pending_" + verb, MonsoonContainment::PENDING_LIGHT_START + k);
+        for (int k = 0; k < MonsoonCantonment::N_VERBS; ++k) {
+            const std::string verb = CantonmentPanelMm::VERB_ID[k];
+            bindInput <PJ301MPort>("input_trig_" + verb, MonsoonCantonment::TRIG_START + k);
+            bindParam <TL1105>    ("param_btn_" + verb, MonsoonCantonment::BTN_START + k);
+            bindLight<SmallLight<RedLight>>("light_pending_" + verb, MonsoonCantonment::PENDING_LIGHT_START + k);
         }
-        bindInput <PJ301MPort>("input_back_random",   MonsoonContainment::TRIG_BACK_RANDOM);
-        bindInput <PJ301MPort>("input_trig_truerev",  MonsoonContainment::TRIG_TRUE_REV);
-        bindParam <TL1105>    ("param_btn_truerev",   MonsoonContainment::BTN_TRUE_REV);
-        bindLight<SmallLight<RedLight>>("light_pending_truerev", MonsoonContainment::LIGHT_TRUE_REV);
+        bindInput <PJ301MPort>("input_back_random",   MonsoonCantonment::TRIG_BACK_RANDOM);
+        bindInput <PJ301MPort>("input_trig_truerev",  MonsoonCantonment::TRIG_TRUE_REV);
+        bindParam <TL1105>    ("param_btn_truerev",   MonsoonCantonment::BTN_TRUE_REV);
+        bindLight<SmallLight<RedLight>>("light_pending_truerev", MonsoonCantonment::LIGHT_TRUE_REV);
 
         // The multi-pin plane overlay (transparent: consumes ONLY genuine cell hits — the CA
         // PinOverlay rule, so panel dragging + the context menu keep working everywhere else).
@@ -297,16 +297,16 @@ struct MonsoonContainmentWidget : ModuleWidget,
     }
 
     // One committed phrase-boundary batch = one undo step (the CA precedent). Snapshots are
-    // published on the audio thread (ContainmentModuleCore::applyAtBoundary); this UI-thread
+    // published on the audio thread (CantonmentModuleCore::applyAtBoundary); this UI-thread
     // drain turns each into one rack history action. Same module-id resolution discipline as
     // StoreEditAction (survives deletion; no-ops while gone).
-    struct ContainmentTransformUndoAction : rack::history::Action {
+    struct CantonmentTransformUndoAction : rack::history::Action {
         int64_t  moduleId = -1;
         uint16_t before[16];
         uint16_t after[16];
-        ContainmentTransformUndoAction() { name = "Containment transform"; }
-        MonsoonContainment* resolve() {
-            return dynamic_cast<MonsoonContainment*>(APP->engine->getModule(moduleId));
+        CantonmentTransformUndoAction() { name = "Cantonment transform"; }
+        MonsoonCantonment* resolve() {
+            return dynamic_cast<MonsoonCantonment*>(APP->engine->getModule(moduleId));
         }
         void undo() override {
             // Restores a state that WAS valid (committed states are always DAGs — every verb
@@ -323,15 +323,15 @@ struct MonsoonContainmentWidget : ModuleWidget,
     // "Clear all containment pins" = up to 256 cell changes; one gesture must be ONE undo
     // step, so it gets a whole-graph snapshot action rather than N StoreEditActions (the CA
     // ResetPinsAction shape). Same module-id discipline (survives deletion; no-ops while gone).
-    struct ContainmentClearAllAction : rack::history::Action {
+    struct CantonmentClearAllAction : rack::history::Action {
         int64_t  moduleId;
         uint16_t oldG[16];
-        ContainmentClearAllAction(MonsoonContainment* m) : moduleId(m->id) {
+        CantonmentClearAllAction(MonsoonCantonment* m) : moduleId(m->id) {
             name = "clear containment pins";
             std::memcpy(oldG, m->core.graph.parents, sizeof(oldG));
         }
-        MonsoonContainment* resolve() {
-            return dynamic_cast<MonsoonContainment*>(APP->engine->getModule(moduleId));
+        MonsoonCantonment* resolve() {
+            return dynamic_cast<MonsoonCantonment*>(APP->engine->getModule(moduleId));
         }
         void undo() override {
             if (auto* m = resolve())
@@ -350,13 +350,13 @@ struct MonsoonContainmentWidget : ModuleWidget,
     // AFFORDANCE (red flash + WOULD-CYCLE hover readout), never silently (the build plan's
     // "UI SHOWS the rejection" rule).
     struct PinOverlay : widget::TransparentWidget {
-        MonsoonContainmentWidget* owner;   // theme + kit lookups
-        MonsoonContainment*       module;
+        MonsoonCantonmentWidget* owner;   // theme + kit lookups
+        MonsoonCantonment*       module;
         int hoverV = -1, hoverU = -1;      // crosshair target (-1 = none)
         int rejectV = -1, rejectU = -1;    // the cycle-reject flash cell (-1 = none)
         double rejectUntil = 0.0;          // steady-clock seconds: flash window end
 
-        PinOverlay(MonsoonContainmentWidget* o, MonsoonContainment* m) : owner(o), module(m) {}
+        PinOverlay(MonsoonCantonmentWidget* o, MonsoonCantonment* m) : owner(o), module(m) {}
 
         static double nowSec() {
             return std::chrono::duration<double>(
@@ -364,12 +364,12 @@ struct MonsoonContainmentWidget : ModuleWidget,
         }
 
         static Vec cellCentre(int v, int u) {
-            using namespace ContainmentPanelMm;
+            using namespace CantonmentPanelMm;
             return mm2px(Vec(GRID_X + (u + 0.5f) * CELL, GRID_Y + (v + 0.5f) * CELL));
         }
         static bool hitCell(Vec p, int v, int u) {
             const Vec c = cellCentre(v, u);
-            const float r = mm2px(ContainmentPanelMm::CELL * 0.5f);
+            const float r = mm2px(CantonmentPanelMm::CELL * 0.5f);
             const float dx = p.x - c.x, dy = p.y - c.y;
             return dx * dx + dy * dy <= r * r;
         }
@@ -412,8 +412,8 @@ struct MonsoonContainmentWidget : ModuleWidget,
             widget::TransparentWidget::draw(args);
             NVGcontext* vg = args.vg;
             const int active = getActiveCount();
-            const float r    = mm2px(ContainmentPanelMm::CELL * 0.32f);   // peg radius (CA ratio)
-            const float half = mm2px(ContainmentPanelMm::CELL * 0.5f);
+            const float r    = mm2px(CantonmentPanelMm::CELL * 0.32f);   // peg radius (CA ratio)
+            const float half = mm2px(CantonmentPanelMm::CELL * 0.5f);
 
             // Active-area frame around the operating pool (the CA Phase B idiom). Outside it,
             // pins are HELD (drawn dimmed) — not suspended, not identity (R2 + the transforms'
@@ -450,8 +450,8 @@ struct MonsoonContainmentWidget : ModuleWidget,
             // preview, so the rejection is visible BEFORE the click, not only after.
             if (module && hoverV >= 0 && hoverU >= 0) {
                 const Vec c = cellCentre(hoverV, hoverU);
-                const float gx0 = mm2px(ContainmentPanelMm::GRID_X);
-                const float gy0 = mm2px(ContainmentPanelMm::GRID_Y);
+                const float gx0 = mm2px(CantonmentPanelMm::GRID_X);
+                const float gy0 = mm2px(CantonmentPanelMm::GRID_Y);
                 nvgStrokeColor(vg, nvgRGBAf(1, 1, 1, 0.55f));
                 nvgStrokeWidth(vg, 0.8f);
                 nvgBeginPath(vg); nvgMoveTo(vg, gx0, c.y); nvgLineTo(vg, c.x - r * 1.4f, c.y); nvgStroke(vg);
@@ -478,8 +478,8 @@ struct MonsoonContainmentWidget : ModuleWidget,
                     nvgTextBounds(vg, 0, 0, buf, NULL, bounds);
                     const float tw = bounds[2] - bounds[0] + mm2px(2.f);
                     const float th = mm2px(4.6f);
-                    const float gx1 = mm2px(ContainmentPanelMm::GRID_X + ContainmentPanelMm::GRID_W);
-                    const float gy1 = mm2px(ContainmentPanelMm::GRID_Y + ContainmentPanelMm::GRID_W);
+                    const float gx1 = mm2px(CantonmentPanelMm::GRID_X + CantonmentPanelMm::GRID_W);
+                    const float gy1 = mm2px(CantonmentPanelMm::GRID_Y + CantonmentPanelMm::GRID_W);
                     float tx = c.x + r * 1.8f, ty = c.y - th * 0.5f;
                     if (tx + tw > gx1) tx = c.x - r * 1.8f - tw;
                     if (ty < gy0) ty = gy0;
@@ -548,10 +548,10 @@ struct MonsoonContainmentWidget : ModuleWidget,
                         e.consume(this);
                         return;
                     }
-                    redDot::applyAndPushStoreEdit<MonsoonContainment>(
+                    redDot::applyAndPushStoreEdit<MonsoonCantonment>(
                         module,
                         want ? "add containment pin" : "remove containment pin",
-                        [v, u](MonsoonContainment& m, bool contained) {
+                        [v, u](MonsoonCantonment& m, bool contained) {
                             if (contained) m.core.graph.addParent(v, u);
                             else           m.core.graph.removeParent(v, u);
                         },
@@ -578,10 +578,10 @@ struct MonsoonContainmentWidget : ModuleWidget,
     // Runtime toggle only (the context-menu check item) — NOT in the save schema, the five
     // persisted fields stay five, and the matrix returns on load.
     struct GraphOverlay : widget::TransparentWidget {
-        MonsoonContainmentWidget* owner;   // theme lookup (the PinOverlay idiom)
-        MonsoonContainment*       module;
+        MonsoonCantonmentWidget* owner;   // theme lookup (the PinOverlay idiom)
+        MonsoonCantonment*       module;
 
-        GraphOverlay(MonsoonContainmentWidget* o, MonsoonContainment* m) : owner(o), module(m) {}
+        GraphOverlay(MonsoonCantonmentWidget* o, MonsoonCantonment* m) : owner(o), module(m) {}
 
         // The operating pool (the PinOverlay idiom verbatim: numPolyVoices+1 clamped 1..16;
         // no host Monsoon or browser preview = the FULL pool, no dimming — R2).
@@ -636,7 +636,7 @@ struct MonsoonContainmentWidget : ModuleWidget,
         void draw(const DrawArgs& args) override {
             if (!module || !module->graphView) return;   // the matrix owns the square unless toggled
             NVGcontext* vg = args.vg;
-            using namespace ContainmentPanelMm;
+            using namespace CantonmentPanelMm;
             const bool lit = (owner && owner->lastThemeLight > 0);
             const NVGcolor ink = lit ? nvgRGB(0x2a, 0x2a, 0x2e) : nvgRGB(0xe8, 0xe2, 0xd0);
 
@@ -711,12 +711,12 @@ struct MonsoonContainmentWidget : ModuleWidget,
 
         // Drain the transform-undo ring produced on the audio thread. Each snapshot becomes one
         // rack history action (the UI-thread push is required). SPSC: we are the sole consumer.
-        if (auto* c = dynamic_cast<MonsoonContainment*>(module)) {
+        if (auto* c = dynamic_cast<MonsoonCantonment*>(module)) {
             uint32_t t = c->core.undoTail.load(std::memory_order_relaxed);
             uint32_t h = c->core.undoHead.load(std::memory_order_acquire);
             while (t != h) {
-                const auto& snap = c->core.undoRing[t % dotModular::ct::ContainmentModuleCore::UNDO_RING];
-                auto* act = new ContainmentTransformUndoAction();
+                const auto& snap = c->core.undoRing[t % dotModular::ct::CantonmentModuleCore::UNDO_RING];
+                auto* act = new CantonmentTransformUndoAction();
                 act->moduleId = c->id;
                 std::memcpy(act->before, snap.before, sizeof(act->before));
                 std::memcpy(act->after,  snap.after,  sizeof(act->after));
@@ -748,13 +748,13 @@ struct MonsoonContainmentWidget : ModuleWidget,
         if (!font) return;
         NVGcontext* vg = args.vg;
         nvgFontFaceId(vg, font->handle);
-        using namespace ContainmentPanelMm;
+        using namespace CantonmentPanelMm;
         const bool lit = (lastThemeLight > 0);
         const NVGcolor ink = lit ? nvgRGB(0x2a, 0x2a, 0x2e) : nvgRGB(0xe8, 0xe2, 0xd0);
         const NVGcolor dim = lit ? nvgRGB(0x88, 0x8d, 0x96) : nvgRGB(0x8a, 0x85, 0x78);
         // The graph diagram replaces the matrix-geometry lettering: the circle carries its
         // own 1..16 numbers, and the bottom captions describe the arrows instead of the axes.
-        auto* mcp = dynamic_cast<MonsoonContainment*>(module);
+        auto* mcp = dynamic_cast<MonsoonCantonment*>(module);
         const bool gview = (mcp && mcp->graphView);
 
         // Title — centred, CA's widget-drawn-title idiom.
@@ -777,7 +777,7 @@ struct MonsoonContainmentWidget : ModuleWidget,
         nvgFillColor(vg, ink);
         nvgFontSize(vg, mm2px(2.8f));
         nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
-        for (int k = 0; k < MonsoonContainment::N_VERBS; ++k)
+        for (int k = 0; k < MonsoonCantonment::N_VERBS; ++k)
             nvgText(vg, mm2px(LABEL_X), mm2px(ROW_Y[k]), VERB_LABEL[k], NULL);
         // The TRUE-REV row label (NOT a verb — the global-reverse consumer's flank row; the
         // generator places it in its own group gap below RANDOM, the CA true-rev group shape).
@@ -815,7 +815,7 @@ struct MonsoonContainmentWidget : ModuleWidget,
 
     void appendContextMenu(Menu* menu) override {
         ModuleWidget::appendContextMenu(menu);
-        auto* module = dynamic_cast<MonsoonContainment*>(this->module);
+        auto* module = dynamic_cast<MonsoonCantonment*>(this->module);
         if (!module) return;
         menu->addChild(new MenuSeparator);
 
@@ -899,7 +899,7 @@ struct MonsoonContainmentWidget : ModuleWidget,
                 for (int v = 0; v < dotModular::ct::VOICES; ++v)
                     if (module->core.graph.parents[v]) { empty = false; break; }
                 if (empty) return;
-                auto* act = new ContainmentClearAllAction(module);
+                auto* act = new CantonmentClearAllAction(module);
                 module->core.clearAllPins();
                 APP->history->push(act);
             }));

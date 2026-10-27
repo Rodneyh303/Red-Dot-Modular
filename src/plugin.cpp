@@ -58,7 +58,7 @@ void init(rack::Plugin* p) {
 	// DEPRECATED (§#7): superseded by Change Alley V2 (single module). Code retained.
 	// p->addModel(modelMonsoonChangeAlleyExpander);
 	p->addModel(modelMonsoonChangeAlleyV2);
-	p->addModel(modelContainment);
+	p->addModel(modelCantonment);
 	// DEPRECATED (§#7): folded into Change Alley V2. Code retained.
 	// p->addModel(modelMonsoonTemasekExpander);
 	p->addModel(modelMonsoonJunctionExpander);

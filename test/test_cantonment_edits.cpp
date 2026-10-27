@@ -1,6 +1,6 @@
 /**
- * test_containment_edits.cpp — Containment step 1: edit checks + serialization
- * (CC_PROMPT_CONTAINMENT_BUILD_PLAN.md §TESTS: "self reject, ancestor-reject (wavefront),
+ * test_cantonment_edits.cpp — Containment step 1: edit checks + serialization
+ * (CC_PROMPT_CANTONMENT_BUILD_PLAN.md §TESTS: "self reject, ancestor-reject (wavefront),
  * valid accept, remove/clear, autosave round-trip identity, default all-zeros").
  *
  * The graph is pure state (multi-parent acyclic DAG, R1) whose invariants are enforced at
@@ -15,10 +15,10 @@
  * + no self-bits) — the edit-level slice of the plan's "the test is the closure proof in
  * CI" principle. The transform property harness (step 2) shares this generator idiom.
  *
- * Compile: g++ -std=c++20 -Itest -Isrc test/test_containment_edits.cpp -o /tmp/t_cte && /tmp/t_cte
+ * Compile: g++ -std=c++20 -Itest -Isrc test/test_cantonment_edits.cpp -o /tmp/t_cte && /tmp/t_cte
  * (registered in test/run_all.sh as header-only; PhiloxRng is rack-free)
  */
-#include "../src/dsp/ContainmentGraph.hpp"
+#include "../src/dsp/CantonmentGraph.hpp"
 #include "../src/dsp/PhiloxRng.hpp"
 #include <cstdio>
 #include <cstring>
@@ -28,23 +28,23 @@ static int pass = 0, fail = 0;
 
 using namespace dotModular::ct;
 
-static int totalEdges(const ContainmentGraph& g) {
+static int totalEdges(const CantonmentGraph& g) {
     int n = 0;
     for (int v = 0; v < VOICES; ++v) n += __builtin_popcount(g.parents[v]);
     return n;
 }
-static bool sameState(const ContainmentGraph& a, const ContainmentGraph& b) {
+static bool sameState(const CantonmentGraph& a, const CantonmentGraph& b) {
     return std::memcmp(a.parents, b.parents, sizeof(a.parents)) == 0;
 }
 // Rejection is TOTAL: a refused edit must leave all 16 words byte-identical.
-static bool unchangedAfterReject(const ContainmentGraph& before, const ContainmentGraph& after) {
+static bool unchangedAfterReject(const CantonmentGraph& before, const CantonmentGraph& after) {
     return sameState(before, after);
 }
 
 int main() {
     // ── S0. default state = the R2 all-disconnected graph ─────────────────────
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         bool allZero = true;
         for (int v = 0; v < VOICES; ++v) allZero &= (g.parents[v] == 0);
         CHK(allZero, "default: all 16 parent words zero");
@@ -65,8 +65,8 @@ int main() {
 
     // ── S1. self-loop reject ──────────────────────────────────────────────────
     {
-        ContainmentGraph g;
-        ContainmentGraph before = g;
+        CantonmentGraph g;
+        CantonmentGraph before = g;
         CHK(g.wouldCycle(7, 7), "self: wouldCycle(v,v) true on empty graph");
         CHK(!g.addParent(7, 7), "self: addParent(v,v) rejected");
         CHK(unchangedAfterReject(before, g), "self: rejection changed nothing");
@@ -80,14 +80,14 @@ int main() {
 
     // ── S2. valid accept + the classic 2-cycle reject ─────────────────────────
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         CHK(g.addParent(1, 0), "accept: addParent(1,0) accepted");
         CHK(g.isContainedIn(1, 0), "accept: isContainedIn(1,0)");
         CHK(g.parentCount(1) == 1, "accept: voice 1 has exactly one parent");
         CHK(!g.isRoot(1) && g.isRoot(0), "accept: 1 is nested, 0 is its root");
         CHK(g.isolatedMask() == 0xFFFC, "accept: isolated mask drops 0 and 1");
         CHK(g.isValid(), "accept: single edge valid");
-        ContainmentGraph before = g;
+        CantonmentGraph before = g;
         CHK(g.wouldCycle(0, 1), "2-cycle: 0 is in closure(1) after 1->0");
         CHK(!g.addParent(0, 1), "2-cycle: addParent(0,1) rejected (would close 1->0->1)");
         CHK(unchangedAfterReject(before, g), "2-cycle: rejection changed nothing");
@@ -95,7 +95,7 @@ int main() {
 
     // ── S3. deep chain: the wavefront must see multi-hop ancestors ────────────
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         bool built = true;
         for (int k = 0; k < VOICES - 1; ++k) built &= g.addParent(k + 1, k); // 1 in 0 ... 15 in 14
         CHK(built, "chain: 15-deep chain built entirely via accepted edits");
@@ -105,7 +105,7 @@ int main() {
         CHK(depth == 15, "chain: closure depth = longest chain = 15");
         bool noSelf = (cl & (1u << 15)) == 0;
         CHK(noSelf, "chain: closure excludes v itself on valid graphs");
-        ContainmentGraph before = g;
+        CantonmentGraph before = g;
         CHK(g.wouldCycle(0, 15), "chain: wouldCycle(0,15) sees the 15-hop path (wavefront, not one-level)");
         CHK(!g.addParent(0, 15), "chain: closing the chain into a ring REJECTED");
         CHK(unchangedAfterReject(before, g), "chain: rejection changed nothing");
@@ -120,12 +120,12 @@ int main() {
 
     // ── S4. diamond: the wavefront OR-unions across branches ──────────────────
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         bool built = g.addParent(3, 1) && g.addParent(3, 2)   // 3 in 1 AND 3 in 2
                    && g.addParent(1, 0) && g.addParent(2, 0); // both branches root at 0
         CHK(built, "diamond: multi-parent diamond built (3 in {1,2}, both in 0)");
         CHK(g.ancestorClosure(3) == 0x0007, "diamond: closure(3) = {1,2,0} across BOTH branches");
-        ContainmentGraph before = g;
+        CantonmentGraph before = g;
         CHK(g.wouldCycle(0, 3), "diamond: wouldCycle(0,3) — 0 reached via both branches");
         CHK(!g.addParent(0, 3), "diamond: rooting 0 under 3 rejected (closes the diamond)");
         CHK(unchangedAfterReject(before, g), "diamond: rejection changed nothing");
@@ -133,7 +133,7 @@ int main() {
 
     // ── S5. idempotent re-pin is an accepted no-op ────────────────────────────
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         g.addParent(1, 0);
         int edges = totalEdges(g);
         CHK(g.addParent(1, 0), "idempotent: re-pin returns true (accepted no-op)");
@@ -142,13 +142,13 @@ int main() {
 
     // ── S6. remove/clear ALWAYS valid (detaching cannot cycle) ────────────────
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         g.addParent(1, 0);
         g.addParent(2, 1);
         g.addParent(2, 0);          // 2 in {1,0}
         g.removeParent(2, 1);
         CHK(!g.isContainedIn(2, 1) && g.isContainedIn(2, 0), "remove: drops exactly the named edge");
-        ContainmentGraph before = g;
+        CantonmentGraph before = g;
         g.removeParent(9, 4);       // edge that never existed
         CHK(unchangedAfterReject(before, g), "remove: removing a non-edge is a valid no-op");
         g.clearParents(2);
@@ -168,12 +168,12 @@ int main() {
         int builtDags = 0;
         for (int seed = 1; seed <= 600 && badValid < 0; ++seed) {
             redDot::PhiloxRng rng((uint64_t)seed * 0x9E3779B97F4A7C15ull);
-            ContainmentGraph g;
+            CantonmentGraph g;
             for (int attempt = 0; attempt < 80; ++attempt) {
                 int v = (int)(rng() & 15u);
                 int u = (int)(rng() & 15u);
                 if (rng() & 1u) {
-                    ContainmentGraph snap = g;
+                    CantonmentGraph snap = g;
                     bool accepted = g.addParent(v, u);
                     if (accepted) {
                         if (!g.isValid()) { badValid = seed; break; }
@@ -190,15 +190,15 @@ int main() {
             // round-trip into a fresh graph
             uint16_t raw[VOICES];
             g.serializeTo(raw);
-            ContainmentGraph g2;
+            CantonmentGraph g2;
             if (!g2.deserializeFrom(raw) || !sameState(g, g2)) badRt = seed;
             // round-trip into ITSELF (the actual autosave flow: save, then load back over self)
-            ContainmentGraph g3 = g;
+            CantonmentGraph g3 = g;
             if (!g3.deserializeFrom(raw) || !sameState(g, g3)) badSelfRt = seed;
             // edge count survives verbatim
             if (totalEdges(g2) != totalEdges(g)) badEdgeCount = seed;
             // removal after round-trip keeps validity (detaching cannot cycle — march it)
-            ContainmentGraph g4 = g2;
+            CantonmentGraph g4 = g2;
             for (int v = 0; v < VOICES; ++v) g4.clearParents(v);
             if (!g4.isValid() || totalEdges(g4) != 0) badRemoveValid = seed;
         }
@@ -219,9 +219,9 @@ int main() {
     // Cycles are UNREACHABLE via the edit API — that is exactly why the deserialize guard
     // must exist: a hand-edited or corrupt save is the only writer that can propose one.
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         for (int k = 0; k < VOICES - 1; ++k) g.addParent(k + 1, k);   // the 15-chain
-        ContainmentGraph original = g;
+        CantonmentGraph original = g;
         uint16_t raw[VOICES];
         g.serializeTo(raw);
 
@@ -229,7 +229,7 @@ int main() {
         uint16_t corrupt[VOICES];
         std::memcpy(corrupt, raw, sizeof(raw));
         corrupt[5] |= (uint16_t)(1u << 5);
-        ContainmentGraph target = original;
+        CantonmentGraph target = original;
         CHK(!target.deserializeFrom(corrupt), "guard: planted self-bit REJECTED");
         CHK(sameState(target, original), "guard: rejected blob left the state untouched");
 
@@ -249,13 +249,13 @@ int main() {
         CHK(sameState(target, original), "guard: 3-cycle rejection left the state untouched");
 
         // recovery: after rejections, a VALID blob still loads
-        target = ContainmentGraph{};
+        target = CantonmentGraph{};
         raw[7] |= 1u << 0;      // 7 additionally in 0 — still acyclic (multi-parent)
         CHK(target.deserializeFrom(raw), "guard: valid multi-parent blob accepted after rejects");
         CHK(target.parentCount(7) == 2, "guard: loaded blob carries the added second parent verbatim");
 
         // all-zeros blob into a non-default graph = the legitimate "clear everything" load
-        ContainmentGraph dirty = original;
+        CantonmentGraph dirty = original;
         uint16_t zeros[VOICES] = {};
         CHK(dirty.deserializeFrom(zeros), "guard: all-zeros blob accepted");
         CHK(totalEdges(dirty) == 0 && dirty.isolatedMask() == 0xFFFF,
@@ -264,7 +264,7 @@ int main() {
 
     // ── S9. isValid direct probes (the deserialize guard's inner oracle) ──────
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         CHK(g.isValid(), "oracle: empty graph valid");
         g.parents[9] = (uint16_t)(1u << 9);            // self-bit, hand-written
         CHK(!g.isValid(), "oracle: self-bit invalid");

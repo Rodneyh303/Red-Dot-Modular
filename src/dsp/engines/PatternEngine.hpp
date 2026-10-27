@@ -279,7 +279,7 @@ struct PatternEngine {
     // probability — CA parity for q-mix. Identity default = no-op (Straits per-voice level as before).
     uint8_t caQmixSrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
 
-    // ── Containment graph (CC_PROMPT_CONTAINMENT_BUILD_PLAN.md §"THE STATE") ──
+    // ── Containment graph (CC_PROMPT_CANTONMENT_BUILD_PLAN.md §"THE STATE") ──
     // The ENGINE-SIDE AUTHORITATIVE home of the containment DAG (the CA seam mirrored:
     // PatternEngine owns the array; the Containment module is the store-backed editor/driver).
     // Bit u of containmentParents[v] set = "voice v is contained in voice u" — a MULTI-PARENT
@@ -290,7 +290,7 @@ struct PatternEngine {
     // staging point as caRhythmSrc). The CONSUMER — the gate-clamp recursion in topological
     // order (gate(v) = clamp(own, ∩ resolved parents)) — is the future decision manager
     // (MONO_SPECIAL_IN_LOGIC_AUDIT.md); this array is the contract it will read. Acyclicity is
-    // enforced upstream at every edit AND every transform (ContainmentGraph/Transforms); the
+    // enforced upstream at every edit AND every transform (CantonmentGraph/Transforms); the
     // engine-side reader may assume a DAG unconditionally.
     uint16_t containmentParents[16] = {};
 

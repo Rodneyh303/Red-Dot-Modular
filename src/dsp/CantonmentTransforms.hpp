@@ -1,6 +1,6 @@
 #pragma once
-// ContainmentTransforms — the DAG-closed gesture verbs over ContainmentGraph.
-// Authority: CC_PROMPT_CONTAINMENT_MODULE_SPEC.md (gesture-vs-edit split: transforms are
+// CantonmentTransforms — the DAG-closed gesture verbs over CantonmentGraph.
+// Authority: CC_PROMPT_CANTONMENT_MODULE_SPEC.md (gesture-vs-edit split: transforms are
 // no/few-param TRIGGERED gestures, applied to the CURRENT graph so repeated triggers march —
 // the CA model), AMENDED by Rodney's rulings (2026-10-26): multi-parent DAG + intersection
 // semantics; disconnected vertices valid; EXPAND = trajectory memory (module layer, not here).
@@ -22,7 +22,7 @@
 
 #include <cstdint>
 #include <cstring>
-#include "ContainmentGraph.hpp"
+#include "CantonmentGraph.hpp"
 #include "PhiloxRng.hpp"   // the RANDOM draws' addressable core (rack-free; simde via RACK_DIR in tests)
 
 namespace dotModular { namespace ct {
@@ -64,7 +64,7 @@ inline void buildMirrorMap(int activeCount, int* map) {
 // The nesting SHAPE is identical; the voices rotate through it ("the hierarchy rotates through
 // the voices"). CLOSED: conjugation by a bijection is a graph isomorphism; if the new graph had
 // a cycle or a self-bit, applying pi^-1 would map it back into the old graph — contradiction.
-inline void rotateRoles(ContainmentGraph& g, int activeCount, int step) {
+inline void rotateRoles(CantonmentGraph& g, int activeCount, int step) {
     int map[VOICES];
     buildShiftMap(activeCount, step, map);
     uint16_t out[VOICES];
@@ -76,7 +76,7 @@ inline void rotateRoles(ContainmentGraph& g, int activeCount, int step) {
 // The similitude mirror: conjugation by v -> activeCount-1-v. Same isomorphism argument as
 // ROTATE (a reflection is a bijection) — closed. Self-inverse as a permutation, so a double
 // trigger restores the original role assignment.
-inline void reflectRoles(ContainmentGraph& g, int activeCount) {
+inline void reflectRoles(CantonmentGraph& g, int activeCount) {
     int map[VOICES];
     buildMirrorMap(activeCount, map);
     uint16_t out[VOICES];
@@ -90,7 +90,7 @@ inline void reflectRoles(ContainmentGraph& g, int activeCount) {
 // ruling): the dual of a single-parent forest is only a forest when it is a chain, but the
 // dual of any DAG is a DAG — a cycle in the reversed edges would imply a cycle in the forward
 // edges. No canonical tie-break rule is needed anywhere.
-inline void invert(ContainmentGraph& g) {
+inline void invert(CantonmentGraph& g) {
     uint16_t out[VOICES] = {};
     for (int v = 0; v < VOICES; ++v) {
         uint16_t m = g.parents[v];
@@ -118,8 +118,8 @@ inline void invert(ContainmentGraph& g) {
 // floor(d_old/2): every old 2-hop path becomes a new 1-hop edge). Iterated, the march
 // therefore terminates on the EMPTY graph — the unique fixpoint — within <= 16 applications.
 // The spec's "flatten a subtree TOWARD ITS ROOT" landing is collapseAll's job (below), NOT
-// iterated collapse (the step-0 smoke's semantic catch; pinned by test_containment_transforms).
-inline void collapse(ContainmentGraph& g) {
+// iterated collapse (the step-0 smoke's semantic catch; pinned by test_cantonment_transforms).
+inline void collapse(CantonmentGraph& g) {
     uint16_t out[VOICES];
     for (int v = 0; v < VOICES; ++v) {
         uint16_t m = g.parents[v], acc = 0;
@@ -146,11 +146,11 @@ inline void collapse(ContainmentGraph& g) {
 // DERIVED (the 2026-10-27 anchor ruling, IDEAS_PARKED.md): with anchors = the derived root
 // mask the anchored form's membership key always holds (every upward path in a DAG terminates
 // at a parentless voice), so this IS collapseAllOnto(g, roots) — byte-identical to the
-// pre-anchoring body, compat-pinned per seed in test_containment_transforms. One
+// pre-anchoring body, compat-pinned per seed in test_cantonment_transforms. One
 // implementation; the shipped gesture is the same function it always was.
-inline void collapseAllOnto(ContainmentGraph& g, uint16_t anchors);   // the anchored general, below
+inline void collapseAllOnto(CantonmentGraph& g, uint16_t anchors);   // the anchored general, below
 
-inline void collapseAll(ContainmentGraph& g) {
+inline void collapseAll(CantonmentGraph& g) {
     uint16_t roots = 0;
     for (int v = 0; v < VOICES; ++v)
         if (g.isRoot(v)) roots |= (uint16_t)(1u << v);
@@ -192,7 +192,7 @@ inline void collapseAll(ContainmentGraph& g) {
 // cleanup-with-knobs is the §8 trap and R1 killed tie-breaks. Trigger wiring (which panel
 // row / context voice feeds the mask) is module layer, parked with the containment panel
 // work; the pure verb is ready.
-inline void collapseAllOnto(ContainmentGraph& g, uint16_t anchors) {
+inline void collapseAllOnto(CantonmentGraph& g, uint16_t anchors) {
     uint16_t out[VOICES];
     for (int v = 0; v < VOICES; ++v) {
         const uint16_t onto = (uint16_t)(g.ancestorClosure(v) & anchors);
@@ -236,8 +236,8 @@ inline void collapseAllOnto(ContainmentGraph& g, uint16_t anchors) {
 // cycle), so a maximal parent always survives — reduction never orphans a voice. No pool
 // discipline: reduce only DELETES (never re-points), so like collapse/collapseAll it is a
 // shape verb over all 16 rows. T11 re-proves all of this per seed (the test is the guarantee).
-inline void reduceTransitive(ContainmentGraph& g) {
-    const ContainmentGraph before = g;   // every witness read against the ORIGINAL graph
+inline void reduceTransitive(CantonmentGraph& g) {
+    const CantonmentGraph before = g;   // every witness read against the ORIGINAL graph
     for (int v = 0; v < VOICES; ++v) {
         const uint16_t parents = before.parents[v];
         if ((parents & (parents - 1)) == 0) continue;   // 0 or 1 parent: no OTHER parent, no witness
@@ -335,7 +335,7 @@ static constexpr uint64_t RANDOM_STREAM_DOMAIN = 0x434F4E5441494E4DULL;
 // islands, roots and the pool clear survive), delete-only, idempotent, root-set invariant.
 // NO draws consumed — the page stays a pure function of (page, density, islands, pool,
 // reduce), so the reverse draw remains the exact state restore under the flag.
-inline void seedForest(ContainmentGraph& g, const redDot::PhiloxRng& rng, uint64_t page,
+inline void seedForest(CantonmentGraph& g, const redDot::PhiloxRng& rng, uint64_t page,
                        int density, int islands = 1, int pool = VOICES, bool reduce = false) {
     if (density < 1) density = 1;
     if (density > 10) density = 10;
@@ -429,7 +429,7 @@ inline void seedForest(ContainmentGraph& g, const redDot::PhiloxRng& rng, uint64
 // held parent survives — the hold rule: the wholesale clear is Outright's business, a
 // modify pass never reaches outside its sandbox). pool = VOICES (the default) is
 // BIT-FOR-BIT the pre-fix pass — every legacy T12/P10 scatter row stays the anchor.
-inline void scatterEdges(ContainmentGraph& g, const redDot::PhiloxRng& rng, uint64_t page,
+inline void scatterEdges(CantonmentGraph& g, const redDot::PhiloxRng& rng, uint64_t page,
                          int density, int pool = VOICES) {
     if (density < 1) density = 1;
     if (density > 10) density = 10;
@@ -473,6 +473,6 @@ inline void scatterEdges(ContainmentGraph& g, const redDot::PhiloxRng& rng, uint
 // same graph), so expand is NOT a synthesized inverse — it is trajectory MEMORY: the module
 // layer keeps the CA TRUE-REVERSE precedent (a ring of COMMITTED graph states pushed at each
 // phrase-boundary commit; EXPAND pops one). The seam is reserved; the ring lands with the
-// pending machinery (CC_PROMPT_CONTAINMENT_BUILD_PLAN.md, step 3/follow-up).
+// pending machinery (CC_PROMPT_CANTONMENT_BUILD_PLAN.md, step 3/follow-up).
 
 }} // namespace dotModular::ct

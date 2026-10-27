@@ -1,9 +1,9 @@
 /**
- * test_containment_module.cpp — Containment step 4: the MODULE-STATE core
- * (CC_PROMPT_CONTAINMENT_BUILD_PLAN.md §TESTS row 4: "test_containment_module — mock-SDK
+ * test_cantonment_module.cpp — Containment step 4: the MODULE-STATE core
+ * (CC_PROMPT_CANTONMENT_BUILD_PLAN.md §TESTS row 4: "test_cantonment_module — mock-SDK
  * module-level: edit->pending->boundary commit->publish cycle, serialization, owner guard").
  *
- * MonsoonContainment composes ContainmentModuleCore (src/dsp/ContainmentModuleCore.hpp,
+ * MonsoonCantonment composes CantonmentModuleCore (src/dsp/CantonmentModuleCore.hpp,
  * rack-free) and adds only the SDK surface — params/lights/triggers, the widget, the history
  * push. This suite drives that core through the EXACT production protocol the module + the
  * manager + the widget implement, so the module layer is CI-tested without the SDK:
@@ -29,10 +29,10 @@
  * The jansson include resolves to test/jansson.h (the shim — the MonotoneCurve discipline);
  * the plugin build runs the same schema against Rack's bundled libjansson.
  *
- * Compile: g++ -std=c++20 -Itest -Isrc test/test_containment_module.cpp -o /tmp/t_ctm && /tmp/t_ctm
+ * Compile: g++ -std=c++20 -Itest -Isrc test/test_cantonment_module.cpp -o /tmp/t_ctm && /tmp/t_ctm
  * (registered in test/run_all.sh as header-only)
  */
-#include "../src/dsp/ContainmentModuleCore.hpp"
+#include "../src/dsp/CantonmentModuleCore.hpp"
 #include "../src/dsp/PhiloxRng.hpp"
 #include <cstdio>
 #include <cstdlib>
@@ -47,51 +47,51 @@ using namespace dotModular::ct;
 static bool sameParents(const uint16_t* a, const uint16_t* b) {
     return std::memcmp(a, b, VOICES * sizeof(uint16_t)) == 0;
 }
-static bool sameGraph(const ContainmentGraph& a, const ContainmentGraph& b) {
+static bool sameGraph(const CantonmentGraph& a, const CantonmentGraph& b) {
     return sameParents(a.parents, b.parents);
 }
 // The spec chain 0<1<2 (voice 1 contained in 0, voice 2 contained in 1).
-static void buildChain(ContainmentModuleCore& c) {
+static void buildChain(CantonmentModuleCore& c) {
     c.clearAllPins();
     c.setPin(1, 0, true);
     c.setPin(2, 1, true);
 }
-static void expectChain(const ContainmentGraph& g, const char* m) {
+static void expectChain(const CantonmentGraph& g, const char* m) {
     CHK(g.parents[1] == (uint16_t)(1u << 0), m);
     CHK(g.parents[2] == (uint16_t)(1u << 1), m);
     for (int v = 0; v < VOICES; ++v)
         if (v != 1 && v != 2) CHK(g.parents[v] == 0, m);
 }
 // The dual of the chain (INVERT's image): 1 in 2, 0 in 1.
-static void expectDual(const ContainmentGraph& g, const char* m) {
+static void expectDual(const CantonmentGraph& g, const char* m) {
     CHK(g.parents[0] == (uint16_t)(1u << 1), m);
     CHK(g.parents[1] == (uint16_t)(1u << 2), m);
     for (int v = 0; v < VOICES; ++v)
         if (v != 0 && v != 1) CHK(g.parents[v] == 0, m);
 }
 // A snapshot's raw words as a graph value (layout-identical state, no aliasing games).
-static ContainmentGraph graphFromWords(const uint16_t* w) {
-    ContainmentGraph g;
+static CantonmentGraph graphFromWords(const uint16_t* w) {
+    CantonmentGraph g;
     std::memcpy(g.parents, w, sizeof(g.parents));
     return g;
 }
 // Drain one published snapshot; returns false when the ring is empty.
-static bool drainOne(ContainmentModuleCore& c, ContainmentUndoSnapshot& out) {
+static bool drainOne(CantonmentModuleCore& c, CantonmentUndoSnapshot& out) {
     const uint32_t t = c.undoTail.load(std::memory_order_relaxed);
     const uint32_t h = c.undoHead.load(std::memory_order_acquire);
     if (t == h) return false;
-    out = c.undoRing[t % ContainmentModuleCore::UNDO_RING];
+    out = c.undoRing[t % CantonmentModuleCore::UNDO_RING];
     c.undoTail.store(t + 1, std::memory_order_release);
     return true;
 }
 
 int main() {
-    std::printf("== test_containment_module — step 4: the module-state core ==\n");
+    std::printf("== test_cantonment_module — step 4: the module-state core ==\n");
 
     // ── S0. fresh-core defaults ────────────────────────────────────────────────────────────────
     {
-        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-        ContainmentModuleCore& c = *cOwner;
+        auto cOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+        CantonmentModuleCore& c = *cOwner;
         bool allZero = true;
         for (int v = 0; v < VOICES; ++v) allZero &= (c.graph.parents[v] == 0);
         CHK(allZero, "S0: default graph all zeros (R2 all-disconnected)");
@@ -105,8 +105,8 @@ int main() {
 
     // ── S1. the pin-edit path ──────────────────────────────────────────────────────────────────
     {
-        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-        ContainmentModuleCore& c = *cOwner;
+        auto cOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+        CantonmentModuleCore& c = *cOwner;
         CHK(c.setPin(1, 0, true), "S1: valid add accepted");
         CHK(c.graph.isContainedIn(1, 0), "S1: pin landed");
         CHK(!c.setPin(0, 1, true), "S1: 2-cycle add REJECTED");
@@ -125,16 +125,16 @@ int main() {
 
     // ── S2. THE CYCLE: edit -> latch (hold) -> boundary commit -> publish ─────────────────────
     {
-        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-        ContainmentModuleCore& c = *cOwner;
+        auto cOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+        CantonmentModuleCore& c = *cOwner;
         buildChain(c);
         expectChain(c.graph, "S2: chain built via the edit path");
 
         // Latch: the hold — the graph MUST NOT move until the host-driven boundary.
-        c.pending.latch(ContainmentPending::V_INVERT);
-        CHK(c.pending.armed[ContainmentPending::V_INVERT], "S2: INVERT armed");
+        c.pending.latch(CantonmentPending::V_INVERT);
+        CHK(c.pending.armed[CantonmentPending::V_INVERT], "S2: INVERT armed");
         {
-            ContainmentGraph probe = c.graph;
+            CantonmentGraph probe = c.graph;
             expectChain(probe, "S2: latch NEVER touches the graph (the hold)");
         }
 
@@ -143,12 +143,12 @@ int main() {
         const int applied = c.applyAtBoundary(16);
         CHK(applied == 1, "S2: one row committed");
         expectDual(c.graph, "S2: INVERT applied — the dual (full edge reversal)");
-        CHK(!c.pending.armed[ContainmentPending::V_INVERT], "S2: row consumed (disarmed)");
+        CHK(!c.pending.armed[CantonmentPending::V_INVERT], "S2: row consumed (disarmed)");
         CHK(!c.pending.anyArmed(), "S2: pending set fully drained");
         CHK(c.pending.counter == 0, "S2: counter reset-when-empty");
 
         // The undo publication: one committed batch = one undo step.
-        ContainmentUndoSnapshot snap;
+        CantonmentUndoSnapshot snap;
         CHK(drainOne(c, snap), "S2: one undo snapshot published");
         expectChain(graphFromWords(snap.before), "S2: snapshot BEFORE = the chain");
         expectDual (graphFromWords(snap.after),  "S2: snapshot AFTER = the dual");
@@ -159,12 +159,12 @@ int main() {
 
     // ── S3. the owner-guard protocol (the manager's shape) ────────────────────────────────────
     {
-        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-        ContainmentModuleCore& c = *cOwner;
+        auto cOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+        CantonmentModuleCore& c = *cOwner;
         buildChain(c);
         // Driver A (the first sync this block): the module's process() opened the window.
         c.transformsAppliedThisBlock = false;
-        c.pending.latch(ContainmentPending::V_INVERT);
+        c.pending.latch(CantonmentPending::V_INVERT);
         if (!c.transformsAppliedThisBlock) {
             c.applyAtBoundary(16);
             c.transformsAppliedThisBlock = true;   // first caller this block = the owner
@@ -178,7 +178,7 @@ int main() {
         expectDual(c.graph, "S3: driver B skipped — the graph moved exactly once");
         // Next block: the window reopens.
         c.transformsAppliedThisBlock = false;
-        c.pending.latch(ContainmentPending::V_INVERT);
+        c.pending.latch(CantonmentPending::V_INVERT);
         if (!c.transformsAppliedThisBlock) {
             c.applyAtBoundary(16);
             c.transformsAppliedThisBlock = true;
@@ -188,10 +188,10 @@ int main() {
 
     // ── S4. a no-op batch publishes NO undo snapshot ──────────────────────────────────────────
     {
-        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-        ContainmentModuleCore& c = *cOwner;
+        auto cOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+        CantonmentModuleCore& c = *cOwner;
         const uint32_t head0 = c.undoHead.load();
-        c.pending.latch(ContainmentPending::V_EXPAND);
+        c.pending.latch(CantonmentPending::V_EXPAND);
         const int applied = c.applyAtBoundary(16);
         CHK(applied == 1, "S4: the EXPAND row is still CONSUMED at the buffer start");
         CHK(!c.pending.anyArmed(), "S4: the row's request is spent (the CA true-reverse affordance rule)");
@@ -201,8 +201,8 @@ int main() {
 
     // ── S5. serialization: the exact production schema round-trips ────────────────────────────
     {
-        auto aOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-        ContainmentModuleCore& a = *aOwner;
+        auto aOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+        CantonmentModuleCore& a = *aOwner;
         buildChain(a);
         a.setPin(3, 0, true);                 // a second component (R2: disconnected vertices valid)
         a.pending.rotateStep = 3;
@@ -211,7 +211,7 @@ int main() {
         a.pending.randomDensity = 9;
         a.pending.randomIslands = 5;          // path B: the partition dial round-trips too
         a.pending.randomReduce = true;        // the banked post-pass flag round-trips (0/1 integer)
-        a.pending.latch(ContainmentPending::V_COLLAPSE);
+        a.pending.latch(CantonmentPending::V_COLLAPSE);
         a.applyAtBoundary(16);                // a real commit -> a non-empty trajectory tail
 
         json_t* rootJ = a.toJson();
@@ -223,8 +223,8 @@ int main() {
         json_t* parsed = text ? json_loads(text, 0, &err) : nullptr;
         CHK(parsed != nullptr, "S5: json_loads parses the schema back");
 
-        auto bOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-        ContainmentModuleCore& b = *bOwner;
+        auto bOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+        CantonmentModuleCore& b = *bOwner;
         b.fromJson(rootJ);
         CHK(sameGraph(a.graph, b.graph), "S5: graph bytes identical (the WARPDIAG lesson)");
         CHK(b.pending.rotateStep == 3, "S5: rotate-step config restored");
@@ -244,8 +244,8 @@ int main() {
         }
 
         if (parsed) {
-            auto dOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-            ContainmentModuleCore& d = *dOwner;
+            auto dOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+            CantonmentModuleCore& d = *dOwner;
             d.fromJson(parsed);
             CHK(sameGraph(a.graph, d.graph), "S5: TEXT-parsed load is byte-identical too");
             CHK(d.trajectory.serialise().count == a.trajectory.serialise().count,
@@ -259,8 +259,8 @@ int main() {
     // ── S6. the corrupt-save policies ─────────────────────────────────────────────────────────
     {
         // (a-e) the graph key.
-        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-        ContainmentModuleCore& c = *cOwner;
+        auto cOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+        CantonmentModuleCore& c = *cOwner;
         buildChain(c);
         expectChain(c.graph, "S6: pre-state = the chain");
 
@@ -330,8 +330,8 @@ int main() {
 
         // (g) the RANDOM row's keys: the rotateStep policy verbatim + the commit cycle.
         {
-            auto rOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-            ContainmentModuleCore& r = *rOwner;
+            auto rOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+            CantonmentModuleCore& r = *rOwner;
             json_t* o = json_object();          // NONE of the random keys present
             r.fromJson(o);
             CHK(r.pending.randomCounter == 0 && r.pending.randomMode == 0 && r.pending.randomDensity == 3
@@ -359,15 +359,15 @@ int main() {
             // production save/load cycle (requirements 3 and 4 ride the row — CA parity).
             r.pending.randomMode = 0;           // OUTRIGHT: a wholesale replacement always moves the graph
             const uint32_t headBefore = r.undoHead.load();
-            r.pending.latch(ContainmentPending::V_RANDOM);
+            r.pending.latch(CantonmentPending::V_RANDOM);
             r.applyAtBoundary(16);
             CHK(r.undoHead.load() == headBefore + 1,
                 "S6g: a RANDOM commit publishes its undo snapshot (requirement 4 — the step-4 parity, inherited)");
             CHK(r.trajectory.size() >= 2,
                 "S6g: the RANDOM commit entered the trajectory (requirement 3's replay data)");
             json_t* saved = r.toJson();
-            auto r2Owner = std::make_unique<ContainmentModuleCore>();  // heap-held — 2 MiB ring
-            ContainmentModuleCore& r2 = *r2Owner;
+            auto r2Owner = std::make_unique<CantonmentModuleCore>();  // heap-held — 2 MiB ring
+            CantonmentModuleCore& r2 = *r2Owner;
             r2.fromJson(saved);
             CHK(r2.pending.randomCounter == r.pending.randomCounter
                 && r2.pending.randomMode == r.pending.randomMode
@@ -381,10 +381,10 @@ int main() {
         }
 
         // (g-h) the trajectory tail: stale or cyclic -> DROPPED (ring cleared), never garbage.
-        auto tOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-        ContainmentModuleCore& t = *tOwner;
+        auto tOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+        CantonmentModuleCore& t = *tOwner;
         buildChain(t);
-        t.pending.latch(ContainmentPending::V_INVERT);
+        t.pending.latch(CantonmentPending::V_INVERT);
         t.applyAtBoundary(16);
         CHK(t.trajectory.size() >= 2, "S6: trajectory non-empty pre-test");
         {   // wrong version -> dropped.
@@ -406,7 +406,7 @@ int main() {
         {   // a state that is not a DAG -> the whole blob dropped.
             json_t* o = json_object();
             json_t* tj = json_object();
-            json_object_set_new(tj, "v", json_integer(ContainmentTrajectory::SERIAL_VERSION));
+            json_object_set_new(tj, "v", json_integer(CantonmentTrajectory::SERIAL_VERSION));
             json_object_set_new(tj, "n", json_integer(1));
             json_t* states = json_array();
             json_t* st = json_array();
@@ -427,20 +427,20 @@ int main() {
 
     // ── S7. the SPSC undo ring: order continuity + the drop-if-full cap ───────────────────────
     {
-        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-        ContainmentModuleCore& c = *cOwner;
+        auto cOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+        CantonmentModuleCore& c = *cOwner;
         buildChain(c);
         // 20 commits with a guaranteed change each (INVERT over a non-empty graph always
         // changes it — the dual of a non-empty DAG differs in row 0), UI never drains.
         for (int i = 0; i < 20; ++i) {
-            c.pending.latch(ContainmentPending::V_INVERT);
+            c.pending.latch(CantonmentPending::V_INVERT);
             c.applyAtBoundary(16);
             CHK(c.graph.isValid(), "S7: graph valid after every commit");
         }
-        CHK(c.undoHead.load() - c.undoTail.load() == (uint32_t)ContainmentModuleCore::UNDO_RING,
+        CHK(c.undoHead.load() - c.undoTail.load() == (uint32_t)CantonmentModuleCore::UNDO_RING,
             "S7: drop-if-full — exactly the 16 newest snapshots retained");
         // Drain: order continuity (each batch's before == the previous batch's after).
-        ContainmentUndoSnapshot prev, cur;
+        CantonmentUndoSnapshot prev, cur;
         CHK(drainOne(c, prev), "S7: first drained");
         int continuity = 0, count = 1;
         while (drainOne(c, cur)) {
@@ -448,7 +448,7 @@ int main() {
             prev = cur;
             ++count;
         }
-        CHK(count == ContainmentModuleCore::UNDO_RING, "S7: all 16 retained snapshots drained");
+        CHK(count == CantonmentModuleCore::UNDO_RING, "S7: all 16 retained snapshots drained");
         CHK(continuity == count - 1, "S7: trajectory continuity (before[i] == after[i-1])");
         CHK(c.undoHead.load() == c.undoTail.load(), "S7: ring fully drained");
     }
@@ -457,8 +457,8 @@ int main() {
     {
         for (int seed = 1; seed <= 60; ++seed) {
             redDot::PhiloxRng rng((uint64_t)seed * 0x9E3779B97F4A7C15ull);
-            auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-            ContainmentModuleCore& c = *cOwner;
+            auto cOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+            CantonmentModuleCore& c = *cOwner;
             bool marchOk = true;
             const char* why = "";
             for (int iter = 0; iter < 30 && marchOk; ++iter) {
@@ -471,15 +471,15 @@ int main() {
                         break;
                     }
                     case 6: case 7: case 8: {   // arm a random verb; the boundary commits it
-                        const int verb = (int)(rng() % (unsigned)ContainmentPending::N_VERBS);
+                        const int verb = (int)(rng() % (unsigned)CantonmentPending::N_VERBS);
                         c.pending.latch(verb);
                         const uint32_t h0 = c.undoHead.load();
                         const int appliedRows = c.applyAtBoundary(act);
                         (void)appliedRows;
                         if (c.undoHead.load() != h0) {
-                            ContainmentUndoSnapshot s;
+                            CantonmentUndoSnapshot s;
                             if (!drainOne(c, s)) { marchOk = false; why = "S8: snapshot missing after publish"; break; }
-                            ContainmentGraph b, a2;
+                            CantonmentGraph b, a2;
                             std::memcpy(b.parents, s.before, sizeof(b.parents));
                             std::memcpy(a2.parents, s.after, sizeof(a2.parents));
                             if (!b.isValid() || !a2.isValid()) { marchOk = false; why = "S8: snapshot state invalid"; break; }
@@ -499,8 +499,8 @@ int main() {
 
             // Mid-march save/load: the whole state round-trips byte-identically.
             json_t* rootJ = c.toJson();
-            auto probeOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-            ContainmentModuleCore& probe = *probeOwner;
+            auto probeOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+            CantonmentModuleCore& probe = *probeOwner;
             probe.fromJson(rootJ);
             CHK(sameGraph(c.graph, probe.graph), "S8: save/load graph identical");
             CHK(probe.pending.rotateStep == c.pending.rotateStep, "S8: save/load rotate-step identical");
@@ -522,25 +522,25 @@ int main() {
     // so the walk reaches through collapses and RANDOM commits alike; at the buffer start it
     // STOPS (state unchanged) but the request is still spent (the CA lamp rule).
     {
-        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-        ContainmentModuleCore& c = *cOwner;
+        auto cOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+        CantonmentModuleCore& c = *cOwner;
 
         // Two user commits: chain -> dual (INVERT) -> collapsed (COLLAPSE). Trajectory:
         // [chain, dual, collapsed] — the first commit's pre-push entered the HELD chain, so the
         // ring is complete from the first commit (the pre-push contract).
         buildChain(c);
-        const ContainmentGraph chainState = c.graph;
-        c.pending.latch(ContainmentPending::V_INVERT);
+        const CantonmentGraph chainState = c.graph;
+        c.pending.latch(CantonmentPending::V_INVERT);
         CHK(c.applyAtBoundary(16) == 1, "S9: (setup) commit 1 applied");
-        ContainmentUndoSnapshot snap;
+        CantonmentUndoSnapshot snap;
         CHK(drainOne(c, snap), "S9: (setup) commit 1 published its undo step");
-        const ContainmentGraph dualState = c.graph;
-        c.pending.latch(ContainmentPending::V_COLLAPSE);
+        const CantonmentGraph dualState = c.graph;
+        c.pending.latch(CantonmentPending::V_COLLAPSE);
         CHK(c.applyAtBoundary(16) == 1, "S9: (setup) commit 2 applied");
         CHK(drainOne(c, snap), "S9: (setup) commit 2 published its undo step");
         CHK(c.graph.parents[0] == (uint16_t)(1u << 2) && c.graph.parents[1] == 0,
             "S9: (setup) COLLAPSE landed (the dual folded one level: 0 onto 2)");
-        const ContainmentGraph collapsedState = c.graph;
+        const CantonmentGraph collapsedState = c.graph;
         CHK(c.trajectory.size() == 3, "S9: (setup) trajectory holds [chain, dual, collapsed]");
 
         // PURE true-reverse: one boundary, one commit back, NO undo, request spent.
@@ -562,7 +562,7 @@ int main() {
 
         // One real commit to grow the ring again (the walk floor is the first commit's HELD
         // chain; a mixed-restore test needs >= 2 live entries).
-        c.pending.latch(ContainmentPending::V_INVERT);
+        c.pending.latch(CantonmentPending::V_INVERT);
         c.applyAtBoundary(16);
         CHK(drainOne(c, snap), "S9: (regrow) the commit published its undo step");
 
@@ -570,7 +570,7 @@ int main() {
         // UNCOMMITTED pin drift (pin edits are not committed history; the trajectory retraces
         // commits) — and the verb's undo bracket then starts at the RESTORED state.
         c.setPin(3, 1, true);                                 // an uncommitted edit on top
-        c.pending.latch(ContainmentPending::V_COLLAPSE);      // a real verb armed on top of that
+        c.pending.latch(CantonmentPending::V_COLLAPSE);      // a real verb armed on top of that
         c.pending.latchTrueReverse();                         // + a queued true-reverse
         CHK(c.applyAtBoundary(16) >= 1, "S9: the mixed boundary committed the verb");
         CHK(drainOne(c, snap), "S9: the mixed boundary published ONE undo step (the verb's)");
@@ -599,10 +599,10 @@ int main() {
         // window over the ACTUAL committed history — undo-then-redo-branch, the ring header rule).
         // A RANDOM commit is an ordinary commit: it enters the trajectory and replays back.
         c.setPin(4, 2, true);                                 // a fresh edit (not yet committed)
-        c.pending.latch(ContainmentPending::V_RANDOM);
+        c.pending.latch(CantonmentPending::V_RANDOM);
         c.applyAtBoundary(16);
         CHK(drainOne(c, snap), "S9: (branch) the RANDOM commit published its undo step");
-        const ContainmentGraph afterRandom = c.graph;
+        const CantonmentGraph afterRandom = c.graph;
         const uint32_t head1 = c.undoHead.load();
         c.pending.latchTrueReverse();
         c.applyAtBoundary(16);
@@ -617,8 +617,8 @@ int main() {
 
     // S9b. resetAll clears a queued request (runtime-only, the save-never-carries-a-request rule).
     {
-        auto cOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
-        ContainmentModuleCore& c = *cOwner;
+        auto cOwner = std::make_unique<CantonmentModuleCore>();   // heap-held — 2 MiB ring
+        CantonmentModuleCore& c = *cOwner;
         c.pending.latchTrueReverse();
         c.resetAll();
         CHK(!c.pending.trueRevRequested, "S9b: resetAll clears the true-reverse queue");

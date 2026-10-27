@@ -1,11 +1,11 @@
 /**
- * test_containment_transforms.cpp — Containment step 2: pure verbs + property harness
- * (CC_PROMPT_CONTAINMENT_BUILD_PLAN.md §TESTS: "known-answer (spec chain example inverted:
+ * test_cantonment_transforms.cpp — Containment step 2: pure verbs + property harness
+ * (CC_PROMPT_CANTONMENT_BUILD_PLAN.md §TESTS: "known-answer (spec chain example inverted:
  * full reversal; rotate/reflect conjugation; collapse union; expand restore), per-verb
  * closure property test over seeded random DAGs, active-pool discipline (rows >= activeCount
  * untouched), composition marches").
  *
- * THE PRINCIPLE UNDER TEST (ContainmentTransforms.hpp): a containment transform is admissible
+ * THE PRINCIPLE UNDER TEST (CantonmentTransforms.hpp): a containment transform is admissible
  * IFF it is an endomorphism on acyclic graphs. Each verb carries its closure argument inline
  * in the header; THIS suite re-proves every one of those arguments in CI on every run — the
  * test is the guarantee. Per verb:
@@ -35,14 +35,14 @@
  *     DO self-reverse meanwhile (invert, reflect, even-step rotates) are pinned in T0/T7.
  *
  * Seeded-Philox random DAGs are built incrementally under the same edit checks (accepted
- * addParent calls only — the edit-level slice lives in test_containment_edits.cpp S7; this
+ * addParent calls only — the edit-level slice lives in test_cantonment_edits.cpp S7; this
  * suite shares that generator idiom, as its header promised).
  *
- * Compile: g++ -std=c++20 -Itest -Isrc -I${RACK_DIR}/dep/include test/test_containment_transforms.cpp
+ * Compile: g++ -std=c++20 -Itest -Isrc -I${RACK_DIR}/dep/include test/test_cantonment_transforms.cpp
  * (registered in test/run_all.sh as header-only; PhiloxRng needs the simde include from RACK_DIR)
  */
-#include "../src/dsp/ContainmentGraph.hpp"
-#include "../src/dsp/ContainmentTransforms.hpp"
+#include "../src/dsp/CantonmentGraph.hpp"
+#include "../src/dsp/CantonmentTransforms.hpp"
 #include "../src/dsp/PhiloxRng.hpp"
 #include <cstdio>
 #include <cstring>
@@ -53,15 +53,15 @@ static int pass = 0, fail = 0;
 using namespace dotModular::ct;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-static bool sameState(const ContainmentGraph& a, const ContainmentGraph& b) {
+static bool sameState(const CantonmentGraph& a, const CantonmentGraph& b) {
     return std::memcmp(a.parents, b.parents, sizeof(a.parents)) == 0;
 }
-static int totalEdges(const ContainmentGraph& g) {
+static int totalEdges(const CantonmentGraph& g) {
     int n = 0;
     for (int v = 0; v < VOICES; ++v) n += __builtin_popcount(g.parents[v]);
     return n;
 }
-static bool noSelfBits(const ContainmentGraph& g) {
+static bool noSelfBits(const CantonmentGraph& g) {
     for (int v = 0; v < VOICES; ++v)
         if ((g.parents[v] >> v) & 1u) return false;
     return true;
@@ -70,7 +70,7 @@ static bool noSelfBits(const ContainmentGraph& g) {
 // NOT ancestorClosure's depth out-param: the wavefront counts max SHORTEST distance (a direct
 // edge shadows a longer path), which under-counts exactly the dense multi-parent graphs this
 // suite must judge. (Doc mismatch caught here 2026-10-26; the graph header's comment now says so.)
-static int longestUp(const ContainmentGraph& g, int v, int* memo) {
+static int longestUp(const CantonmentGraph& g, int v, int* memo) {
     if (memo[v] >= 0) return memo[v];
     int best = 0;
     for (int u = 0; u < VOICES; ++u)
@@ -81,7 +81,7 @@ static int longestUp(const ContainmentGraph& g, int v, int* memo) {
     memo[v] = best;
     return best;
 }
-static int depthOf(const ContainmentGraph& g) {
+static int depthOf(const CantonmentGraph& g) {
     int memo[VOICES];
     for (int v = 0; v < VOICES; ++v) memo[v] = -1;
     int best = 0;
@@ -92,13 +92,13 @@ static int depthOf(const ContainmentGraph& g) {
     return best;
 }
 // Parent bits >= A held by pool rows (the pass-through zone of ROTATE/REFLECT).
-static int abovePoolBits(const ContainmentGraph& g, int A) {
+static int abovePoolBits(const CantonmentGraph& g, int A) {
     int n = 0;
     for (int v = 0; v < A; ++v) n += __builtin_popcount((unsigned)(g.parents[v] >> A));
     return n;
 }
 // Above-pool bits held by DEAD rows (>= A): must be untouched by the pool verbs.
-static int deadAboveBits(const ContainmentGraph& g, int A) {
+static int deadAboveBits(const CantonmentGraph& g, int A) {
     int n = 0;
     for (int v = A; v < VOICES; ++v) n += __builtin_popcount((unsigned)(g.parents[v] >> A));
     return n;
@@ -123,7 +123,7 @@ static void sigmaOfMirror(int A, int* sigma) {
 // every new edge a->b implies old edge sigma(a)->sigma(b). (a,b) |-> (sigma a, sigma b) is a
 // bijection on pairs, so combined with an equal edge count this is the EXACT law
 // new_parents[pi(v)] == pi_bits(parents[v]) — and a new cycle would pull back to an old one.
-static bool pullbackOk(const ContainmentGraph& before, const ContainmentGraph& after, const int* sigma) {
+static bool pullbackOk(const CantonmentGraph& before, const CantonmentGraph& after, const int* sigma) {
     for (int a = 0; a < VOICES; ++a)
         for (int b = 0; b < VOICES; ++b)
             if ((after.parents[a] >> b) & 1u)
@@ -132,14 +132,14 @@ static bool pullbackOk(const ContainmentGraph& before, const ContainmentGraph& a
 }
 // The WARPDIAG contract extended to transforms: any state a verb produces must be a
 // loadable save (the deserialize guard accepts it, byte-identical).
-static bool roundTripOk(const ContainmentGraph& g) {
+static bool roundTripOk(const CantonmentGraph& g) {
     uint16_t raw[VOICES];
     g.serializeTo(raw);
-    ContainmentGraph h;
+    CantonmentGraph h;
     return h.deserializeFrom(raw) && sameState(g, h);
 }
 // Random DAG built incrementally under the same edit checks (accepted addParent only).
-static void buildRandomDag(ContainmentGraph& g, redDot::PhiloxRng& rng, int attempts) {
+static void buildRandomDag(CantonmentGraph& g, redDot::PhiloxRng& rng, int attempts) {
     for (int i = 0; i < attempts; ++i) {
         const int v = (int)(rng() & 15u);
         const int u = (int)(rng() & 15u);
@@ -150,7 +150,7 @@ static void buildRandomDag(ContainmentGraph& g, redDot::PhiloxRng& rng, int atte
 int main() {
     // ── T0. INVERT known-answers: full reversal (the spec chain, the diamond) ──
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         CHK(g.addParent(2, 3) && g.addParent(3, 4), "invert: setup chain 2<3<4 accepted");
         invert(g);
         CHK(g.isContainedIn(4, 3) && g.isContainedIn(3, 2),
@@ -162,7 +162,7 @@ int main() {
 
         // diamond 3 in {1,2}, both in 0 -> dual: 0 in {1,2}... both dual parents on the co-root,
         // the most-contained voice 3 becomes the root. Multi-parent makes the dual total.
-        ContainmentGraph d;
+        CantonmentGraph d;
         CHK(d.addParent(3, 1) && d.addParent(3, 2) && d.addParent(1, 0) && d.addParent(2, 0),
             "invert: setup diamond accepted");
         invert(d);
@@ -175,9 +175,9 @@ int main() {
 
         // involution: invert is self-reverse (the expand-deferral leans on this)
         redDot::PhiloxRng rng0(0xC0FFEEull);
-        ContainmentGraph r;
+        CantonmentGraph r;
         buildRandomDag(r, rng0, 60);
-        ContainmentGraph snap = r;
+        CantonmentGraph snap = r;
         invert(r);
         invert(r);
         CHK(sameState(r, snap), "invert: double trigger restores byte-identical (involution)");
@@ -186,7 +186,7 @@ int main() {
 
     // ── T1. ROTATE conjugation: shape preserved, roles moved, composes ─────────
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         CHK(g.addParent(0, 2) && g.addParent(2, 5), "rotate: setup chain 0<2<5 accepted");
         rotateRoles(g, 16, 1);
         CHK(g.isContainedIn(1, 3) && g.isContainedIn(3, 6) && !g.isContainedIn(0, 2),
@@ -198,7 +198,7 @@ int main() {
             "rotate: composes per trigger — two step-1 triggers = net step 2");
 
         // clampStep cannot select nothing: step 0 and step span both behave as step 1
-        ContainmentGraph a, b, c;
+        CantonmentGraph a, b, c;
         a.addParent(0, 1);
         b = a; c = a;
         rotateRoles(a, 16, 0);
@@ -208,16 +208,16 @@ int main() {
         CHK(sameState(b, c), "rotate: step == span clamps to step 1 (16 % 16 = 0 -> 1)");
 
         // cyclic order: step-1 rotate applied `active` times is the identity
-        ContainmentGraph cyc;
+        CantonmentGraph cyc;
         CHK(cyc.addParent(0, 1) && cyc.addParent(2, 3), "rotate: setup pool-5 pair accepted");
-        ContainmentGraph cyc0 = cyc;
+        CantonmentGraph cyc0 = cyc;
         rotateRoles(cyc, 5, 1);
         CHK(!sameState(cyc, cyc0), "rotate: one trigger actually moved the roles (non-vacuous)");
         for (int k = 1; k < 5; ++k) rotateRoles(cyc, 5, 1);
         CHK(sameState(cyc, cyc0), "rotate: `active` step-1 triggers return to the start (order = active)");
 
         // above-pool pass-through: row 9 in 10 survives a pool-6 rotation untouched (smoke case)
-        ContainmentGraph p;
+        CantonmentGraph p;
         CHK(p.addParent(0, 2) && p.addParent(2, 5) && p.addParent(9, 10),
             "rotate: setup pool-6 chain + outside row accepted");
         rotateRoles(p, 6, 1);
@@ -229,7 +229,7 @@ int main() {
 
     // ── T2. REFLECT conjugation: the similitude mirror, self-inverse ───────────
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         CHK(g.addParent(0, 1), "reflect: setup chain 0<1 accepted");
         reflectRoles(g, 16);
         CHK(g.isContainedIn(15, 14) && !g.isContainedIn(0, 1),
@@ -242,7 +242,7 @@ int main() {
         CHK(g.isContainedIn(0, 1), "reflect: double trigger restores (involution)");
 
         // the smoke's conjugation case, pool 6: mirror of 1<3, 3<0 is 4<2, 2<5; row 9<10 intact
-        ContainmentGraph p;
+        CantonmentGraph p;
         CHK(p.addParent(0, 2) && p.addParent(2, 5) && p.addParent(9, 10),
             "reflect: setup pool-6 chain + outside row accepted");
         rotateRoles(p, 6, 1);          // -> 1<3, 3<0 (T1 case)
@@ -255,7 +255,7 @@ int main() {
 
     // ── T3. COLLAPSE union: grandparent re-link, total under multi-parent ──────
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         CHK(g.addParent(2, 3) && g.addParent(3, 4), "collapse: setup chain 2<3<4 accepted");
         collapse(g);
         CHK(g.isContainedIn(2, 4) && !g.isContainedIn(2, 3) && !g.isContainedIn(3, 4),
@@ -264,7 +264,7 @@ int main() {
         CHK(g.isValid(), "collapse: chain collapse stays valid");
 
         // convergent union: both branches agree — {0} ∪ {0} = {0}, no duplication
-        ContainmentGraph c1;
+        CantonmentGraph c1;
         c1.addParent(3, 1); c1.addParent(3, 2); c1.addParent(1, 0); c1.addParent(2, 0);
         collapse(c1);
         CHK(c1.parentCount(3) == 1 && c1.isContainedIn(3, 0),
@@ -273,7 +273,7 @@ int main() {
 
         // divergent union: grandparents differ — {0} ∪ {5} = BOTH (the totality R1 bought:
         // no tie-break rule anywhere, the OR-union is the whole story)
-        ContainmentGraph c2;
+        CantonmentGraph c2;
         c2.addParent(3, 1); c2.addParent(3, 2); c2.addParent(1, 0); c2.addParent(2, 5);
         collapse(c2);
         CHK(c2.parentCount(3) == 2 && c2.isContainedIn(3, 0) && c2.isContainedIn(3, 5),
@@ -281,21 +281,21 @@ int main() {
         CHK(c2.isValid() && depthOf(c2) == 1, "collapse: divergent union valid, depth dropped to 1");
 
         // the longest chain strictly shortens: depth 3 chain -> depth 1
-        ContainmentGraph ch;
+        CantonmentGraph ch;
         ch.addParent(1, 0); ch.addParent(2, 1); ch.addParent(3, 2);
         CHK(depthOf(ch) == 3, "collapse: chain depth is 3 before");
         collapse(ch);
         CHK(depthOf(ch) == 1, "collapse: one application strictly shortens the longest chain (3 -> 1)");
 
         // empty graph is a fixpoint
-        ContainmentGraph e;
+        CantonmentGraph e;
         collapse(e);
         CHK(totalEdges(e) == 0, "collapse: empty graph is a fixpoint (no-op)");
     }
 
     // ── T4. COLLAPSE-ALL: flatten ONTO ITS ROOTS (flat-single-root, idempotent) ─
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         CHK(g.addParent(0, 1) && g.addParent(1, 2) && g.addParent(2, 3) && g.addParent(9, 10),
             "collapseAll: setup chain 0<1<2<3 + separate component accepted");
         collapseAll(g);
@@ -308,7 +308,7 @@ int main() {
         CHK(depthOf(g) == 1 && g.isValid(), "collapseAll: depth <= 1 by construction; valid");
 
         // multi-root component: 3 in {1,2}, 1 in 0, 2 in 5 -> 3 flattens onto BOTH roots {0,5}
-        ContainmentGraph m;
+        CantonmentGraph m;
         m.addParent(3, 1); m.addParent(3, 2); m.addParent(1, 0); m.addParent(2, 5);
         collapseAll(m);
         CHK(m.parentCount(3) == 2 && m.isContainedIn(3, 0) && m.isContainedIn(3, 5),
@@ -318,11 +318,11 @@ int main() {
         CHK(m.isValid() && depthOf(m) == 1, "collapseAll: multi-root flatten valid, depth 1");
 
         // idempotent: after flattening, each voice's closure-roots are exactly its parents
-        ContainmentGraph before = g;
+        CantonmentGraph before = g;
         collapseAll(g);
         CHK(sameState(g, before), "collapseAll: double trigger is byte-identical (idempotent)");
 
-        ContainmentGraph e;
+        CantonmentGraph e;
         collapseAll(e);
         CHK(totalEdges(e) == 0, "collapseAll: empty graph is a fixpoint (no-op)");
     }
@@ -334,13 +334,13 @@ int main() {
     // pin INTO the live pool conjugates with the pool (it follows the role, not the bare
     // voice); bits pointing at voices >= A pass through unchanged.
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         CHK(g.addParent(0, 2) && g.addParent(2, 5)       // inside pool 6
             && g.addParent(9, 10)                        // all-above row (pure outside)
             && g.addParent(8, 1)                         // dead row pointing INTO the pool
             && g.addParent(3, 9),                        // live row pointing ABOVE the pool
             "pool: setup 6-voice pool with all three outside-edge shapes accepted");
-        ContainmentGraph before = g;
+        CantonmentGraph before = g;
         rotateRoles(g, 6, 2);
         CHK(g.isContainedIn(2, 4) && g.isContainedIn(4, 1),
             "pool: rotate shift-2 moves 0<2<5 to 2<4<1 (5 wraps to pool start)");
@@ -361,7 +361,7 @@ int main() {
         CHK(pullbackOk(before, g, sig),
             "pool: sigma-pullback oracle — rotate's image is exactly pi-conjugation of the source");
 
-        ContainmentGraph m = before;
+        CantonmentGraph m = before;
         reflectRoles(m, 6);
         CHK(m.isContainedIn(8, 4) && m.isContainedIn(9, 10) && m.isContainedIn(2, 9),
             "pool: reflect — dead row's pin mirrors (8 in 1 -> 8 in 4), all-above row intact, 3's bit -> row 2");
@@ -374,14 +374,14 @@ int main() {
             "pool: sigma-pullback oracle — reflect's image is exactly pi-conjugation of the source");
 
         // pool of ONE: both verbs are the identity map (clampStep span<=1 -> 0; mirror self-maps)
-        ContainmentGraph one = before;
+        CantonmentGraph one = before;
         rotateRoles(one, 1, 3);
         reflectRoles(one, 1);
         CHK(sameState(one, before), "pool: activeCount 1 makes rotate/reflect exact no-ops");
 
         // the partial-conjugation closure worry, hand-computed: a dead row feeding a pool
         // member rotates cleanly with the pool (2 in 0 + 0 in 1, pool {0,1}, shift 1)
-        ContainmentGraph mix;
+        CantonmentGraph mix;
         CHK(mix.addParent(0, 1) && mix.addParent(2, 0), "pool: setup dead-feeds-live chain accepted");
         rotateRoles(mix, 2, 1);
         CHK(mix.isContainedIn(1, 0) && mix.isContainedIn(2, 1) && !mix.isContainedIn(2, 0),
@@ -398,7 +398,7 @@ int main() {
         int builtNontrivial = 0;
         for (int seed = 1; seed <= 600 && badValid < 0; ++seed) {
             redDot::PhiloxRng rng((uint64_t)seed * 0x9E3779B97F4A7C15ull);
-            ContainmentGraph g;
+            CantonmentGraph g;
             buildRandomDag(g, rng, 80);
             if (totalEdges(g) > 0) ++builtNontrivial;
             const int A = 1 + (int)(rng() % 16u);
@@ -406,7 +406,7 @@ int main() {
             int sig[VOICES];
 
             // ROTATE: conjugation law (pullback oracle) + isomorphism laws + validity
-            ContainmentGraph snap = g;
+            CantonmentGraph snap = g;
             const int e0 = totalEdges(g), d0 = depthOf(g);
             const int stepA = 1 + (int)(rng() % 16u);
             rotateRoles(g, A, stepA);
@@ -449,7 +449,7 @@ int main() {
             collapseAll(g);
             if (!g.isValid() || !noSelfBits(g)) { badValid = seed; break; }
             if (depthOf(g) > 1) { badDepth = seed; break; }
-            ContainmentGraph hold = g;
+            CantonmentGraph hold = g;
             collapseAll(g);
             if (!sameState(g, hold)) { badIdem = seed; break; }
             if (!roundTripOk(g)) { badSer = seed; break; }
@@ -476,19 +476,19 @@ int main() {
         int badInv = -1, badRef = -1, badEven = -1;
         for (int seed = 1; seed <= 200 && (badInv < 0 && badRef < 0 && badEven < 0); ++seed) {
             redDot::PhiloxRng rng((uint64_t)seed * 0xD1B54A32D192ED03ull + 7);
-            ContainmentGraph g;
+            CantonmentGraph g;
             buildRandomDag(g, rng, 60);
             const int A = 2 + 2 * (int)(rng() % 8u);   // even pools: 2..16
 
-            ContainmentGraph s1 = g;
+            CantonmentGraph s1 = g;
             invert(s1); invert(s1);
             if (!sameState(s1, g)) { badInv = seed; continue; }
 
-            ContainmentGraph s2 = g;
+            CantonmentGraph s2 = g;
             reflectRoles(s2, A); reflectRoles(s2, A);
             if (!sameState(s2, g)) { badRef = seed; continue; }
 
-            ContainmentGraph s3 = g;
+            CantonmentGraph s3 = g;
             rotateRoles(s3, A, A / 2); rotateRoles(s3, A, A / 2);
             if (!sameState(s3, g)) { badEven = seed; continue; }
         }
@@ -500,7 +500,7 @@ int main() {
         CHK(badEven < 0, "group: rotate by active/2 is an involution (200 random even pools)");
 
         // conjugations compose: three step-2 triggers == one step-6 trigger (C_pi o C_pi = C_pi^2)
-        ContainmentGraph a, b;
+        CantonmentGraph a, b;
         a.addParent(0, 3); a.addParent(5, 9); a.addParent(2, 10);
         b = a;
         rotateRoles(a, 16, 2); rotateRoles(a, 16, 2); rotateRoles(a, 16, 2);
@@ -509,7 +509,7 @@ int main() {
 
         // dihedral: reflect-then-rotate(1) == rotate(-1)-then-reflect (the mirror and the
         // shift commute only through the sign — the group relation rho pi_s = pi_-s rho)
-        ContainmentGraph d1, d2;
+        CantonmentGraph d1, d2;
         d1.addParent(0, 2);
         d2 = d1;
         reflectRoles(d1, 8); rotateRoles(d1, 8, 1);
@@ -523,7 +523,7 @@ int main() {
         int badStrict = -1, badTerm = -1, badFix = -1, worstSteps = 0;
         for (int seed = 1; seed <= 200 && (badStrict < 0 && badTerm < 0 && badFix < 0); ++seed) {
             redDot::PhiloxRng rng((uint64_t)seed * 0x2545F4914F6CDD1Dull + 11);
-            ContainmentGraph g;
+            CantonmentGraph g;
             buildRandomDag(g, rng, 90);
             int d = depthOf(g), steps = 0;
             while (d > 0 && steps < 32) {
@@ -538,7 +538,7 @@ int main() {
             if (d != 0) { badTerm = seed; continue; }       // must reach the empty graph
             if (steps > worstSteps) worstSteps = steps;
             if (steps > 16) { badTerm = seed; continue; }
-            ContainmentGraph hold = g;
+            CantonmentGraph hold = g;
             collapse(g);
             if (!sameState(g, hold)) { badFix = seed; continue; }   // empty is a fixpoint
         }
@@ -555,7 +555,7 @@ int main() {
         int badMixed = -1, badMixedSer = -1;
         for (int seed = 1; seed <= 200 && (badMixed < 0 && badMixedSer < 0); ++seed) {
             redDot::PhiloxRng rng((uint64_t)seed * 0x9E3779B97F4A7C15ull + 3);
-            ContainmentGraph g;
+            CantonmentGraph g;
             buildRandomDag(g, rng, 70);
             for (int step = 0; step < 100; ++step) {
                 const int verb = (int)(rng() % 5u);
@@ -586,7 +586,7 @@ int main() {
     // pure layer offers meanwhile: the involutions self-reverse (T0/T7), so invert/reflect/
     // even-step rotates are their own expand.
     {
-        ContainmentGraph chain, redundant;
+        CantonmentGraph chain, redundant;
         CHK(chain.addParent(0, 1) && chain.addParent(1, 2),   // 0<1<2 — a genuine 2-level chain
             "expand: setup chain 0<1<2 accepted");
         CHK(redundant.addParent(0, 1) && redundant.addParent(1, 2) && redundant.addParent(0, 2),
@@ -613,11 +613,11 @@ int main() {
         // Known-answer, the anti-detach row: 0<1<2<3 plus a SEPARATE component 9<10, A={3}.
         // The 3-component flattens onto 3; the 9<10 component is BYTE-UNTOUCHED (closure(9)
         // = {10} misses A — the naive form out[v] = closure(v) & A for ALL v would orphan 9).
-        ContainmentGraph g;
+        CantonmentGraph g;
         CHK(g.addParent(0, 1) && g.addParent(1, 2) && g.addParent(2, 3),
             "onto: setup chain 0<1<2<3 accepted");
         CHK(g.addParent(9, 10), "onto: setup separate component 9<10 accepted");
-        ContainmentGraph before = g;
+        CantonmentGraph before = g;
         collapseAllOnto(g, (uint16_t)(1u << 3));
         CHK(g.isContainedIn(0, 3) && g.isContainedIn(1, 3) && g.isContainedIn(2, 3),
             "onto: the chain flattens onto anchor 3");
@@ -629,7 +629,7 @@ int main() {
 
         // The anchor keeps its own container: A={2} in 0<1<2<3 flattens 0,1 onto 2 while
         // 2<3 survives — "flatten the cluster under 2 onto 2", the upstream wiring intact.
-        ContainmentGraph m;
+        CantonmentGraph m;
         CHK(m.addParent(0, 1) && m.addParent(1, 2) && m.addParent(2, 3),
             "onto: setup chain accepted (mid-anchor case)");
         collapseAllOnto(m, (uint16_t)(1u << 2));
@@ -640,7 +640,7 @@ int main() {
 
         // A = 0 is a total no-op (nobody is under an anchor), NOT the root flatten — which is
         // exactly why collapseAll derives its OWN mask instead of passing a sentinel.
-        ContainmentGraph z = m;
+        CantonmentGraph z = m;
         collapseAllOnto(z, 0);
         CHK(sameState(z, m), "onto: empty anchor mask is a no-op (the mask is derived, never 0)");
 
@@ -654,12 +654,12 @@ int main() {
                                            badValid < 0 && badSer < 0 && badIdem < 0 &&
                                            badNoop < 0); ++seed) {
             redDot::PhiloxRng rng((uint64_t)seed * 0x9E3779B97F4A7C15ull + 0xC10Cull);
-            ContainmentGraph g;
+            CantonmentGraph g;
             buildRandomDag(g, rng, 80);
 
             // compat: the derived default IS the shipped root flatten, byte for byte
             {
-                ContainmentGraph viaDefault = g, viaOnto = g;
+                CantonmentGraph viaDefault = g, viaOnto = g;
                 uint16_t roots = 0;
                 for (int v = 0; v < VOICES; ++v)
                     if (viaOnto.isRoot(v)) roots |= (uint16_t)(1u << v);
@@ -672,7 +672,7 @@ int main() {
             uint16_t A = 0;
             for (int v = 0; v < VOICES; ++v)
                 if (rng() & 1u) A |= (uint16_t)(1u << v);
-            ContainmentGraph snap = g;
+            CantonmentGraph snap = g;
             collapseAllOnto(g, A);
             if (!g.isValid() || !noSelfBits(g)) { badValid = seed; continue; }
             if (!roundTripOk(g)) { badSer = seed; continue; }
@@ -687,11 +687,11 @@ int main() {
             if (!memberOK) { badMember = seed; continue; }
             if (!honestOK) { badHonest = seed; continue; }
 
-            ContainmentGraph hold = g;
+            CantonmentGraph hold = g;
             collapseAllOnto(g, A);
             if (!sameState(g, hold)) { badIdem = seed; continue; }
 
-            ContainmentGraph z2 = snap;
+            CantonmentGraph z2 = snap;
             collapseAllOnto(z2, 0);
             if (!sameState(z2, snap)) { badNoop = seed; continue; }
         }
@@ -715,7 +715,7 @@ int main() {
         // mask-uniform argument — one call away, no verb row, no default, no panel button.
         {
             redDot::PhiloxRng rng(0xFFFFC10Cull);
-            ContainmentGraph f;
+            CantonmentGraph f;
             buildRandomDag(f, rng, 90);
             collapseAllOnto(f, (uint16_t)0xFFFFu);
             CHK(f.isValid() && noSelfBits(f) && roundTripOk(f),
@@ -736,7 +736,7 @@ int main() {
         // chain survives. The stripped 0->3 edge was a deliberate C1 OFFER ("the child hears
         // the grandparent's onsets directly") — the SOUND changes, which is precisely why
         // reduce is a trigger, never a background pass (§8).
-        ContainmentGraph g;
+        CantonmentGraph g;
         CHK(g.addParent(0, 1) && g.addParent(1, 2) && g.addParent(2, 3),
             "reduce: setup chain 0<1<2<3 accepted");
         CHK(g.addParent(0, 2) && g.addParent(0, 3) && g.addParent(1, 3),
@@ -750,16 +750,16 @@ int main() {
 
         // The true diamond is ALREADY the spine: 3 in {1,2}, both in 0 — no edge is redundant
         // (multi-parent intersection structure is not shadow). Reduce is a no-op.
-        ContainmentGraph d;
+        CantonmentGraph d;
         CHK(d.addParent(3, 1) && d.addParent(3, 2) && d.addParent(1, 0) && d.addParent(2, 0),
             "reduce: setup true diamond accepted");
-        ContainmentGraph d0 = d;
+        CantonmentGraph d0 = d;
         reduceTransitive(d);
         CHK(sameState(d, d0), "reduce: the true diamond is a fixpoint (nothing to strip)");
 
         // Separate components and single-parent rows are untouched; the shortcut goes, the
         // component stays (a strip needs a SECOND parent — 9's only parent is load-bearing).
-        ContainmentGraph x;
+        CantonmentGraph x;
         CHK(x.addParent(0, 1) && x.addParent(1, 2) && x.addParent(0, 2) && x.addParent(9, 10),
             "reduce: setup chain+shortcut + separate component accepted");
         reduceTransitive(x);
@@ -776,9 +776,9 @@ int main() {
         for (int seed = 1; seed <= 300 && (badClosure < 0 && badIdem < 0 && badRoots < 0 &&
                                            badValid < 0 && badSer < 0 && badMono < 0); ++seed) {
             redDot::PhiloxRng rng((uint64_t)seed * 0xD1B54A32D192ED03ull + 0x5EEDull);
-            ContainmentGraph g;
+            CantonmentGraph g;
             buildRandomDag(g, rng, 85);
-            const ContainmentGraph snap = g;
+            const CantonmentGraph snap = g;
 
             uint16_t rootsBefore = 0, heldBefore = 0;
             int edgesBefore = 0;
@@ -809,7 +809,7 @@ int main() {
             if (edgesAfter > edgesBefore) { badMono = seed; continue; }
 
             // BANKED ROW 2: idempotent (the result IS the transitive reduction — unique for DAGs)
-            ContainmentGraph hold = g;
+            CantonmentGraph hold = g;
             reduceTransitive(g);
             if (!sameState(g, hold)) { badIdem = seed; continue; }
         }
@@ -846,14 +846,14 @@ int main() {
             const uint64_t page = (uint64_t)seed * RANDOM_PAGE_OUTRIGHT + (uint64_t)(seed % 7) - 3ull;   // signed-range pages
             const int density = 1 + (seed % 3) * 4 + (seed % 2);   // 1..10-ish spread: {1,2,6,7,...}
             redDot::PhiloxRng r2 = rng;                                  // same fixed key
-            ContainmentGraph g;
+            CantonmentGraph g;
             seedForest(g, r2, page, density);
             if (!g.isValid() || !noSelfBits(g)) { badValid = seed; continue; }
             if (!roundTripOk(g)) { badSer = seed; continue; }
             int roots = 0;
             for (int v = 0; v < VOICES; ++v) if (g.isRoot(v)) ++roots;
             if (roots != 1) { badRoots = seed; continue; }
-            ContainmentGraph again;
+            CantonmentGraph again;
             seedForest(again, r2, page, density);
             if (!sameState(g, again)) { badDet = seed; continue; }       // the stateless contract: f(page) is f(page)
         }
@@ -870,7 +870,7 @@ int main() {
         // permutation — 120 edges exactly); 1 = the boost guarantee only (>= 15 edges).
         {
             redDot::PhiloxRng r3 = rng;
-            ContainmentGraph g10, g1;
+            CantonmentGraph g10, g1;
             seedForest(g10, r3, 7777ull, 10);
             seedForest(g1,  r3, 7777ull, 1);
             CHK(totalEdges(g10) == 120,
@@ -886,7 +886,7 @@ int main() {
             int asRoot = 0, contained = 0;
             for (uint64_t page = 9000ull; page < 9400ull; ++page) {
                 redDot::PhiloxRng r4 = rng;
-                ContainmentGraph g;
+                CantonmentGraph g;
                 seedForest(g, r4, page, 3);
                 if (g.isRoot(0)) ++asRoot; else ++contained;
             }
@@ -898,10 +898,10 @@ int main() {
         // is EXACTLY page k-1 applied fresh. The rewrite erases the previous page entirely
         // (the stateless model: the graph is f(counter), the pointer move IS the restore).
         {
-            ContainmentGraph dirty;
+            CantonmentGraph dirty;
             dirty.addParent(0, 5); dirty.addParent(3, 7); dirty.addParent(9, 2);
             redDot::PhiloxRng r5 = rng;
-            ContainmentGraph stepped = dirty, fresh;
+            CantonmentGraph stepped = dirty, fresh;
             seedForest(stepped, r5, 4242ull, 5);
             seedForest(stepped, r5, 4241ull, 5);
             seedForest(fresh,   r5, 4241ull, 5);
@@ -916,7 +916,7 @@ int main() {
         // bit-exactness anchor: they were written against the pre-islands layout and still
         // pass unchanged.
         {
-            auto countComponents = [](const ContainmentGraph& gg, int pool) {
+            auto countComponents = [](const CantonmentGraph& gg, int pool) {
                 int comp[VOICES];
                 for (int v = 0; v < pool; ++v) comp[v] = v;
                 for (int v = 0; v < pool; ++v)
@@ -940,7 +940,7 @@ int main() {
                 for (uint64_t pg = 30000ull; pg < 30040ull; ++pg) {
                     const int dens = 1 + (int)(pg % 10);
                     redDot::PhiloxRng r7 = rng;
-                    ContainmentGraph gi;
+                    CantonmentGraph gi;
                     seedForest(gi, r7, pg, dens, K, pool);
                     if (!gi.isValid() || !noSelfBits(gi) || !roundTripOk(gi)) { badRoots = (int)pg; break; }
                     int roots = 0;
@@ -951,7 +951,7 @@ int main() {
                     for (int v = pool; v < VOICES; ++v) if (gi.parents[v]) aboveClean = false;
                     for (int v = 0; v < pool; ++v) if (gi.parents[v] >> pool) aboveClean = false;
                     if (!aboveClean) { badAbove = (int)pg; break; }
-                    ContainmentGraph again;
+                    CantonmentGraph again;
                     seedForest(again, r7, pg, dens, K, pool);
                     if (!sameState(gi, again)) { badDet = (int)pg; break; }
                 }
@@ -969,11 +969,11 @@ int main() {
             // the explicit (1, full pool) call is byte-identical to the default call.
             {
                 redDot::PhiloxRng r8 = rng;
-                ContainmentGraph gAll;
+                CantonmentGraph gAll;
                 seedForest(gAll, r8, 4444ull, 10, 16, 16);
                 CHK(totalEdges(gAll) == 0,
                     "islands: islands = pool -> every voice its own island (0 pins, all valid roots)");
-                ContainmentGraph dflt, expl;
+                CantonmentGraph dflt, expl;
                 redDot::PhiloxRng r9 = rng;
                 seedForest(dflt, r9, 5555ull, 7);
                 seedForest(expl,  r9, 5555ull, 7, 1, VOICES);
@@ -998,7 +998,7 @@ int main() {
                 const int dens = rdCfg[c][0], K = rdCfg[c][1], pool = rdCfg[c][2];
                 for (uint64_t pg = 60000ull; pg < 60020ull; ++pg) {
                     redDot::PhiloxRng ra = rng, rb = rng;
-                    ContainmentGraph off, on;
+                    CantonmentGraph off, on;
                     seedForest(off, ra, pg, dens, K, pool);            // reduce defaults FALSE
                     seedForest(on,  rb, pg, dens, K, pool, true);
                     if (!on.isValid() || !noSelfBits(on) || !roundTripOk(on)) { badValid = (int)pg; break; }
@@ -1008,7 +1008,7 @@ int main() {
                         if (off.isRoot(v) != on.isRoot(v))                   { badRoot = (int)pg; break; }
                     }
                     if (badClo >= 0 || badSub >= 0 || badRoot >= 0) break;
-                    ContainmentGraph twice = on;
+                    CantonmentGraph twice = on;
                     reduceTransitive(twice);
                     if (!sameState(on, twice)) { badIdem = (int)pg; break; }
                 }
@@ -1030,7 +1030,7 @@ int main() {
             // FORCE that shape: a single upward path must visit every earlier position.
             {
                 redDot::PhiloxRng rc = rng, rd = rng;
-                ContainmentGraph full, chain;
+                CantonmentGraph full, chain;
                 seedForest(full,  rc, 4711ull, 10, 1, 16);
                 seedForest(chain, rd, 4711ull, 10, 1, 16, true);
                 int pins = 0; bool spine = true;
@@ -1052,10 +1052,10 @@ int main() {
             // argument, the statelessness did not — f(k-1, reduce) after f(k, reduce) ==
             // f(k-1, reduce) fresh.
             {
-                ContainmentGraph dirty;
+                CantonmentGraph dirty;
                 dirty.addParent(0, 5); dirty.addParent(3, 7); dirty.addParent(9, 2);
                 redDot::PhiloxRng re = rng;
-                ContainmentGraph stepped = dirty, fresh;
+                CantonmentGraph stepped = dirty, fresh;
                 seedForest(stepped, re, 4242ull, 5, 1, VOICES, true);
                 seedForest(stepped, re, 4241ull, 5, 1, VOICES, true);
                 seedForest(fresh,   re, 4241ull, 5, 1, VOICES, true);
@@ -1071,21 +1071,21 @@ int main() {
         int sBadValid = -1, sBadDet = -1, sBadSer = -1, divergent = 0, scrubDiffers = 0, scrubMoves = 0;
         for (int seed = 1; seed <= 200 && (sBadValid < 0 && sBadDet < 0 && sBadSer < 0); ++seed) {
             redDot::PhiloxRng r6((uint64_t)seed * 0x9E3779B97F4A7C15ull + 0xC0FFEEull);
-            ContainmentGraph g;
+            CantonmentGraph g;
             buildRandomDag(g, r6, 60);
             const uint64_t page = (uint64_t)seed * 48ull + 11ull;
-            const ContainmentGraph snap = g;
+            const CantonmentGraph snap = g;
             scatterEdges(g, rng, page, 1 + seed % 10);
             if (!g.isValid() || !noSelfBits(g)) { sBadValid = seed; continue; }
             if (!roundTripOk(g)) { sBadSer = seed; continue; }
-            ContainmentGraph again = snap;
+            CantonmentGraph again = snap;
             scatterEdges(again, rng, page, 1 + seed % 10);
             if (!sameState(g, again)) { sBadDet = seed; continue; }
 
             // state-dependence: the SAME page on the empty graph diverges from this start
             // for at least some seeds (pinned as an existence count below).
             {
-                ContainmentGraph e;
+                CantonmentGraph e;
                 scatterEdges(e, rng, page, 1 + seed % 10);
                 if (!sameState(e, g)) ++divergent;
             }
@@ -1093,7 +1093,7 @@ int main() {
             // oracle shape). It moves the graph (an active gesture) and — state-dependence —
             // it does NOT generally land on the pre-k state (the trajectory owns that).
             {
-                ContainmentGraph scrubbed = g;
+                CantonmentGraph scrubbed = g;
                 scatterEdges(scrubbed, rng, page - 1ull, 1 + seed % 10);
                 if (!scrubbed.isValid() || !noSelfBits(scrubbed)) { sBadValid = seed; continue; }
                 if (!sameState(scrubbed, snap)) ++scrubDiffers;   // NOT a state restore
@@ -1125,14 +1125,14 @@ int main() {
                 const int density = 1 + seed % 10;
                 const uint64_t page = (uint64_t)seed * 48ull + 7ull;
                 const uint16_t pm = (uint16_t)((1u << pool) - 1);
-                ContainmentGraph g;
+                CantonmentGraph g;
                 buildRandomDag(g, r7, 60);
                 if (pool < 16) {
                     for (int v = 0; v < VOICES; ++v)          // no edges INTO 0: nothing reaches 0,
                         g.parents[v] &= (uint16_t)~(1u << 0); // so the plant can never cycle — the
                     CHK(g.addParent(0, pool), "pool: held-pin setup accepted (0->pool, the child inside)");
                 }
-                const ContainmentGraph snap = g;
+                const CantonmentGraph snap = g;
                 scatterEdges(g, rng, page, density, pool);
                 if (!g.isValid() || !noSelfBits(g) || !roundTripOk(g)) { pBadValid = seed; continue; }
                 bool spanOk = true, holdOk = true;
@@ -1147,7 +1147,7 @@ int main() {
                 if (pool == 1 && !sameState(g, snap)) pool1Differs = seed;         // the known no-op
                 if (!spanOk) { pBadSpan = seed; continue; }
                 if (!holdOk) { pBadHold = seed; continue; }
-                ContainmentGraph again = snap;
+                CantonmentGraph again = snap;
                 scatterEdges(again, rng, page, density, pool);
                 if (!sameState(g, again)) { pBadDet = seed; continue; }
             }
@@ -1165,7 +1165,7 @@ int main() {
             // block above IS the anchor; this row pins the default/explicit identity.
             {
                 redDot::PhiloxRng r8(0xC0FFEEull);
-                ContainmentGraph a, b;
+                CantonmentGraph a, b;
                 buildRandomDag(a, r8, 60);
                 b = a;
                 scatterEdges(a, rng, 999ull, 7);            // the default pool

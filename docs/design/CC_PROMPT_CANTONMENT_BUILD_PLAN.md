@@ -1,6 +1,6 @@
 # BUILD PLAN — Containment module (the articulation-envelope routing)
 
-Authority chain: `CC_PROMPT_CONTAINMENT_MODULE_SPEC.md` (the spec) <- `ARTICULATION_ENVELOPE_VS_CORRELATION.md`
+Authority chain: `CC_PROMPT_CANTONMENT_MODULE_SPEC.md` (the spec) <- `ARTICULATION_ENVELOPE_VS_CORRELATION.md`
 (the design lineage). AMENDED IN THIS PLAN by Rodney's rulings (2026-10-26):
 (1) MULTI-PARENT DAG IS OK — containment = the INTERSECTION of the parent containments.
 (2) EXPAND uses MEMORY — follow the CA precedent (trajectory restore).

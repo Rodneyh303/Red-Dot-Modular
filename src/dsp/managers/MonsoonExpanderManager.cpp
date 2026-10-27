@@ -13,7 +13,7 @@
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "../../MonsoonSandsVisualExpander.hpp"   // SandsMonoVisualIds::dirDispId for mono direction push
 #include "../../MonsoonChangeAlleyV2.hpp"           // single-module transforms
-#include "../../MonsoonContainment.hpp"             // containment boundary apply (the CA-sibling driver)
+#include "../../MonsoonCantonment.hpp"             // containment boundary apply (the CA-sibling driver)
 #include "../ChangeAlleyTransforms.hpp"           // restructure verbs (§10)
 
 // LOCK_SCOPE_MENU: this file hard-codes SB_CA_R/M bit values (1<<4 / 1<<5) in the scatter-scope fire
@@ -123,17 +123,17 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
     }
     // Containment (the CA sibling): SAME queue-fire semantics (phrase boundary while unlocked, or
     // the unlock flush) and the SAME owner-guard shape. The module owns its graph + pending
-    // machinery (applyPendingTransforms -> ContainmentPending::applyAll); the manager decides WHEN
+    // machinery (applyPendingTransforms -> CantonmentPending::applyAll); the manager decides WHEN
     // and passes the operating voice count (the owner's count — the CA convention). Rate::Phrase
     // is the boundary's first-class tier (fed in Monsoon::process right after lockManager.tick);
     // the fire rides lockManager.queueFires() exactly like CA's ("copy CA exactly" — the build
     // plan's TRANSFORM APPLICATION section). No live-under-lock scope bit yet (containment has no
     // LockManager Control entry) — the axisMask defaults to the commit plane; the out-of-axis
-    // persistence machinery is core-tested (test_containment_pending) and narrows here when a
+    // persistence machinery is core-tested (test_cantonment_pending) and narrows here when a
     // scope bit lands.
-    if (cachedContainment && caQueueFires && !cachedContainment->transformsAppliedThisBlock) {
-        cachedContainment->applyPendingTransforms(std::max(1, engine.numPolyVoices + 1));
-        cachedContainment->transformsAppliedThisBlock = true;   // first caller this block = the owner
+    if (cachedCantonment && caQueueFires && !cachedCantonment->transformsAppliedThisBlock) {
+        cachedCantonment->applyPendingTransforms(std::max(1, engine.numPolyVoices + 1));
+        cachedCantonment->transformsAppliedThisBlock = true;   // first caller this block = the owner
     }
     // Step 3 (plans/lane_direction_homes.md): poly direction is reset-then-pushed exactly like
     // delegation above. The reset is the half that was missing while the engine was direction's

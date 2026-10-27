@@ -8,7 +8,7 @@
 //#include "../../MonsoonSandsExpander.hpp"
 #include "../../StraitsSandsMacroVisual.hpp"
 #include "MonsoonExpanderManager.hpp"
-#include "../../MonsoonContainment.hpp"             // the publish block below dereferences core.graph — complete type required (ExpanderManager.hpp only forward-declares)
+#include "../../MonsoonCantonment.hpp"             // the publish block below dereferences core.graph — complete type required (ExpanderManager.hpp only forward-declares)
 #include "../../MonsoonChangeAlleyV2.hpp"           // V2 shares the pin contract
 #include "../SandsTopology.hpp"   // step 3b: readStrand owner migration
 #include "../../MonsoonStraitsExpander.hpp"
@@ -89,8 +89,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     // HELD between boundaries, so the staging is idempotent within a phrase and always current at
     // a boundary. ABSENT module => the R2 all-disconnected default (all zeros = full equality),
     // the same absent-module reset the CA block above performs with its identity diagonal.
-    if (expanderManager.cachedContainment) {
-        const auto* ctm = expanderManager.cachedContainment;
+    if (expanderManager.cachedCantonment) {
+        const auto* ctm = expanderManager.cachedCantonment;
         for (int v = 0; v < 16; ++v)
             engine.pe.containmentParents[v] = ctm->core.graph.parents[v];
     } else {

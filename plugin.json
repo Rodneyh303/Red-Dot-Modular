@@ -226,8 +226,8 @@
       ]
     },
     {
-      "slug": "Containment",
-      "name": "Containment",
+      "slug": "Cantonment",
+      "name": "Cantonment",
       "description": "Articulation-envelope routing: a multi-parent acyclic containment DAG over the 16 voices. Pin edits reject cycles; DAG-closed transforms (invert/rotate/reflect/collapse) apply at phrase boundaries. Each voice's gate support is the intersection of its containments.",
       "tags": [
         "Expander",

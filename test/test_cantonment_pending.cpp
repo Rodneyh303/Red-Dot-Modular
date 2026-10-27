@@ -1,6 +1,6 @@
-// test_containment_pending.cpp — Containment step 3: the phrase-boundary pending machinery.
+// test_cantonment_pending.cpp — Containment step 3: the phrase-boundary pending machinery.
 // Build plan row 3: "Pending + phrase-boundary apply (CAPendingOrder reuse; Rate::Phrase; owner
-// guard)" -> this suite. The core (dsp/ContainmentPending.hpp) is rack-free, so the whole
+// guard)" -> this suite. The core (dsp/CantonmentPending.hpp) is rack-free, so the whole
 // boundary path is testable without the SDK — the CA pending-suite discipline
 // (test_ca_pending_order.cpp) carried to the containment verb rows.
 //
@@ -36,7 +36,7 @@
 //   P9  batch closure march — seeded-Philox random DAGs x random verb BATCHES applied at
 //       simulated boundaries: after EVERY boundary commit the graph is acyclic, self-bit-free,
 //       and a byte-identical autosave round-trip. The verbs' closure is proven per-verb in
-//       test_containment_transforms; THIS pins the composition: a whole committed batch —
+//       test_cantonment_transforms; THIS pins the composition: a whole committed batch —
 //       any number of verbs, any stamp order, any active count — is an endomorphism on DAGs.
 //   P10 the RANDOM row (row 7; IDEAS_PARKED.md 2026-10-27) — the CA dice model on the row's
 //       OWN Philox stream: the page counter advances per the armed direction; OUTRIGHT's
@@ -45,8 +45,8 @@
 //       previous page on the CURRENT graph — the CA scrub, NOT a state restore.
 //
 // Compile (registered in test/run_all.sh as header-only; PhiloxRng needs the simde include):
-//   g++ -std=c++20 -Itest -Isrc -I${RACK_DIR}/dep/include test/test_containment_pending.cpp
-#include "../src/dsp/ContainmentPending.hpp"
+//   g++ -std=c++20 -Itest -Isrc -I${RACK_DIR}/dep/include test/test_cantonment_pending.cpp
+#include "../src/dsp/CantonmentPending.hpp"
 #include "../src/dsp/PhiloxRng.hpp"
 #include <cstdio>
 #include <cstring>
@@ -56,27 +56,27 @@ static int pass = 0, fail = 0;
 #define CHK(c, m) do { if (c) ++pass; else { ++fail; std::printf("  FAIL: %s\n", m); } } while (0)
 
 using namespace dotModular::ct;
-using CP = ContainmentPending;
+using CP = CantonmentPending;
 
 // ── helpers (the step-2 suite's idiom, shared verbatim where meanings coincide) ──────────────
-static bool sameState(const ContainmentGraph& a, const ContainmentGraph& b) {
+static bool sameState(const CantonmentGraph& a, const CantonmentGraph& b) {
     return std::memcmp(a.parents, b.parents, sizeof(a.parents)) == 0;
 }
-static bool noSelfBits(const ContainmentGraph& g) {
+static bool noSelfBits(const CantonmentGraph& g) {
     for (int v = 0; v < VOICES; ++v)
         if ((g.parents[v] >> v) & 1u) return false;
     return true;
 }
 // The WARPDIAG contract extended to the boundary path: any state a commit produces must be a
 // loadable save (the deserialize guard accepts it, byte-identical).
-static bool roundTripOk(const ContainmentGraph& g) {
+static bool roundTripOk(const CantonmentGraph& g) {
     uint16_t raw[VOICES];
     g.serializeTo(raw);
-    ContainmentGraph h;
+    CantonmentGraph h;
     return h.deserializeFrom(raw) && sameState(g, h);
 }
 // Random DAG built incrementally under the same edit checks (accepted addParent only).
-static void buildRandomDag(ContainmentGraph& g, redDot::PhiloxRng& rng, int attempts) {
+static void buildRandomDag(CantonmentGraph& g, redDot::PhiloxRng& rng, int attempts) {
     for (int i = 0; i < attempts; ++i) {
         const int v = (int)(rng() & 15u);
         const int u = (int)(rng() & 15u);
@@ -106,12 +106,12 @@ int main() {
 
     // ── P1. hold-then-commit (the phrase-boundary timing core) ────────────────────────────────
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         CHK(g.addParent(0, 2) && g.addParent(2, 5), "hold: setup chain accepted");
         CP p;
-        auto traj = std::make_unique<ContainmentTrajectory>();
+        auto traj = std::make_unique<CantonmentTrajectory>();
         p.latch(CP::V_ROTATE);
-        ContainmentGraph held = g;
+        CantonmentGraph held = g;
         // ... time passes (samples, edits elsewhere, CV wiggles) — the graph is HELD ...
         CHK(sameState(g, held), "hold: latching never touches the graph (the stable skeleton)");
         const int applied = p.applyAll(g, 6, *traj);   // the host-driven boundary
@@ -120,12 +120,12 @@ int main() {
         CHK(!p.armed[CP::V_ROTATE] && !p.anyArmed() && p.counter == 0,
             "hold: row disarmed after commit; pending set fully empty -> counter reset");
         // the result is exactly the verb's oracle (rotate +1 within the pool of 6)
-        ContainmentGraph oracle = held;
+        CantonmentGraph oracle = held;
         rotateRoles(oracle, 6, 1);
         CHK(sameState(g, oracle), "hold: committed result == the pure verb applied once");
         // a boundary with NOTHING armed is a no-op — and consumes no trajectory depth
         const int depthBefore = traj->size();
-        ContainmentGraph g2 = g;
+        CantonmentGraph g2 = g;
         CHK(p.applyAll(g, 6, *traj) == 0 && sameState(g, g2) && traj->size() == depthBefore,
             "hold: empty boundary = no-op (no graph move, no ring depth consumed)");
         CHK(g.isValid() && noSelfBits(g) && roundTripOk(g), "hold: committed state is a valid loadable DAG");
@@ -139,42 +139,42 @@ int main() {
         // example used collapse x rotate; containment's rotate is a CONJUGATION — natural too —
         // so the commuting pair to catch is COLLAPSE-ALL x INVERT below.)
         {
-            ContainmentGraph g;
+            CantonmentGraph g;
             CHK(g.addParent(2, 3) && g.addParent(3, 4), "order: setup chain accepted");
-            CP p; auto traj = std::make_unique<ContainmentTrajectory>();
+            CP p; auto traj = std::make_unique<CantonmentTrajectory>();
             p.latch(CP::V_INVERT);    // armed first
             p.latch(CP::V_COLLAPSE);  // armed later
             const int applied = p.applyAll(g, 16, *traj);
             CHK(applied == 2, "order: both rows committed at one boundary");
-            ContainmentGraph a = g;   // invert-then-collapse (what applyAll just did)
-            ContainmentGraph b;       // collapse-then-invert, from the SAME setup, fresh graph
+            CantonmentGraph a = g;   // invert-then-collapse (what applyAll just did)
+            CantonmentGraph b;       // collapse-then-invert, from the SAME setup, fresh graph
             b.addParent(2, 3); b.addParent(3, 4);
             collapse(b); invert(b);
             CHK(sameState(a, b), "order: invert x collapse commute ((R^T)^2 == (R^2)^T) — documented");
         }
         // The NON-commuting pair: COLLAPSE-ALL then INVERT != INVERT then COLLAPSE-ALL.
         {
-            ContainmentGraph g;
+            CantonmentGraph g;
             CHK(g.addParent(0, 1) && g.addParent(1, 2) && g.addParent(5, 6),
                 "order: setup chain + separate component accepted");
-            CP p; auto traj = std::make_unique<ContainmentTrajectory>();
+            CP p; auto traj = std::make_unique<CantonmentTrajectory>();
             p.latch(CP::V_COLLAPSE_ALL);   // stamp 0
             p.latch(CP::V_INVERT);         // stamp 1  -> applies COLLAPSE-ALL first
             const int applied = p.applyAll(g, 16, *traj);
             CHK(applied == 2, "order: non-commuting batch committed (2 rows)");
             // oracle: collapseAll FIRST, then invert
-            ContainmentGraph oracle;
+            CantonmentGraph oracle;
             oracle.addParent(0, 1); oracle.addParent(1, 2); oracle.addParent(5, 6);
             collapseAll(oracle); invert(oracle);
             CHK(sameState(g, oracle), "order: stamp order honoured (collapseAll-then-invert)");
             // the reverse arm order gives the OTHER composition — different graph
-            ContainmentGraph g2;
+            CantonmentGraph g2;
             g2.addParent(0, 1); g2.addParent(1, 2); g2.addParent(5, 6);
-            CP q; auto traj2 = std::make_unique<ContainmentTrajectory>();
+            CP q; auto traj2 = std::make_unique<CantonmentTrajectory>();
             q.latch(CP::V_INVERT);         // armed first now
             q.latch(CP::V_COLLAPSE_ALL);
             q.applyAll(g2, 16, *traj2);
-            ContainmentGraph oracle2;
+            CantonmentGraph oracle2;
             oracle2.addParent(0, 1); oracle2.addParent(1, 2); oracle2.addParent(5, 6);
             invert(oracle2); collapseAll(oracle2);
             CHK(sameState(g2, oracle2), "order: reversed arm order -> reversed composition");
@@ -190,21 +190,21 @@ int main() {
         // Two rows armed "in the same sample": equal stamps (a CV burst / chord of presses).
         // The API's latch always advances the counter, so the tie is written directly — the same
         // approach as test_ca_pending_order (orderRows is the unit under tie behaviour).
-        ContainmentGraph g;
+        CantonmentGraph g;
         CHK(g.addParent(0, 1) && g.addParent(1, 2) && g.addParent(5, 6), "tie: setup accepted");
-        CP p; auto traj = std::make_unique<ContainmentTrajectory>();
+        CP p; auto traj = std::make_unique<CantonmentTrajectory>();
         p.armed[CP::V_INVERT]       = true; p.stamp[CP::V_INVERT] = 7;   // same stamp...
         p.armed[CP::V_COLLAPSE_ALL] = true; p.stamp[CP::V_COLLAPSE_ALL] = 7;   // ...same sample
         const int applied = p.applyAll(g, 16, *traj);
         CHK(applied == 2, "tie: both tied rows committed");
         // row-index tie-break: INVERT (row 2) applies BEFORE COLLAPSE-ALL (row 4).
-        ContainmentGraph oracle;
+        CantonmentGraph oracle;
         oracle.addParent(0, 1); oracle.addParent(1, 2); oracle.addParent(5, 6);
         invert(oracle); collapseAll(oracle);
         CHK(sameState(g, oracle), "tie: equal stamps -> row-index order (INVERT row 2 before COLLAPSE-ALL row 4)");
         // and the tie result must equal plain row-index iteration (nothing regressed vs verb-major):
         // it must NOT be the swapped composition.
-        ContainmentGraph swapped;
+        CantonmentGraph swapped;
         swapped.addParent(0, 1); swapped.addParent(1, 2); swapped.addParent(5, 6);
         collapseAll(swapped); invert(swapped);
         CHK(!sameState(g, swapped), "tie: result is the row-index composition, not the swapped one");
@@ -212,11 +212,11 @@ int main() {
 
     // ── P4. out-of-axis persistence (the live-under-lock machinery) ───────────────────────────
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         CHK(g.addParent(0, 1) && g.addParent(1, 2) && g.addParent(5, 6), "axis: setup accepted");
-        CP p; auto traj = std::make_unique<ContainmentTrajectory>();
+        CP p; auto traj = std::make_unique<CantonmentTrajectory>();
         p.latch(CP::V_COLLAPSE_ALL);   // stamp 0 — armed "while locked", plane out-of-axis
-        ContainmentGraph held = g;
+        CantonmentGraph held = g;
         CHK(p.applyAll(g, 16, *traj, 0u) == 0,
             "axis: mask-0 apply commits nothing");
         CHK(sameState(g, held), "axis: graph untouched by the out-of-axis boundary");
@@ -233,7 +233,7 @@ int main() {
         CHK(applied == 2, "axis: the in-axis boundary commits both deferred rows");
         // order proof: COLLAPSE-ALL (stamp 0) BEFORE INVERT (stamp 1). The pair does not commute
         // (P2), so the resulting graph distinguishes the order.
-        ContainmentGraph oracle;
+        CantonmentGraph oracle;
         oracle.addParent(0, 1); oracle.addParent(1, 2); oracle.addParent(5, 6);
         collapseAll(oracle); invert(oracle);
         CHK(sameState(g, oracle),
@@ -244,8 +244,8 @@ int main() {
 
     // ── P5. reset-when-empty (CAPendingOrder rule 4) ──────────────────────────────────────────
     {
-        CP p; auto traj = std::make_unique<ContainmentTrajectory>();
-        ContainmentGraph g;   // empty graph: verbs run but must stay valid
+        CP p; auto traj = std::make_unique<CantonmentTrajectory>();
+        CantonmentGraph g;   // empty graph: verbs run but must stay valid
         p.latch(CP::V_REFLECT);
         p.applyAll(g, 16, *traj);                    // full commit -> set empty -> counter resets
         CHK(p.counter == 0 && !p.anyArmed(),
@@ -267,10 +267,10 @@ int main() {
 
     // ── P6. EXPAND trajectory (R3: memory, not an inverse) ────────────────────────────────────
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         CHK(g.addParent(0, 1) && g.addParent(1, 2), "expand: setup chain accepted");
-        CP p; auto traj = std::make_unique<ContainmentTrajectory>();
-        ContainmentGraph preCollapse = g;
+        CP p; auto traj = std::make_unique<CantonmentTrajectory>();
+        CantonmentGraph preCollapse = g;
         p.latch(CP::V_COLLAPSE);
         CHK(p.applyAll(g, 16, *traj) == 1, "expand: collapse committed");
         CHK(g.isContainedIn(0, 2) && !g.isContainedIn(0, 1) && !g.isContainedIn(1, 2),
@@ -295,7 +295,7 @@ int main() {
         // branching: expand, then a NEW verb — the popped future stays discarded
         p.latch(CP::V_INVERT);
         p.applyAll(g, 16, *traj);
-        ContainmentGraph inverted = g;
+        CantonmentGraph inverted = g;
         CHK(traj->size() == d0 + 1, "expand: the new commit pushed onto the branched trajectory");
         p.latch(CP::V_EXPAND);
         p.applyAll(g, 16, *traj);
@@ -303,13 +303,13 @@ int main() {
             "expand: stepping back lands on the pre-invert level of the branched trajectory");
         // edits since the last commit are part of the popped level (documented semantics)
         {
-            ContainmentGraph g3;
+            CantonmentGraph g3;
             g3.addParent(0, 1); g3.addParent(1, 2);   // the chain again
-            CP q; auto t2 = std::make_unique<ContainmentTrajectory>();
+            CP q; auto t2 = std::make_unique<CantonmentTrajectory>();
             q.latch(CP::V_COLLAPSE);
             q.applyAll(g3, 16, *t2);
             CHK(g3.isContainedIn(0, 2), "expand: (edit-ride) collapsed to {0<2}");
-            const ContainmentGraph committed = g3;
+            const CantonmentGraph committed = g3;
             g3.removeParent(0, 2);                     // an uncommitted pin edit: 0 detached -> EMPTY
             CHK(g3.isRoot(0) && !sameState(g3, committed), "expand: (edit-ride) uncommitted edit changed the held graph");
             q.latch(CP::V_EXPAND);
@@ -322,15 +322,15 @@ int main() {
 
     // ── P7. ring serialise/deserialise (bounded tail, version guard) ──────────────────────────
     {
-        CP p; auto traj = std::make_unique<ContainmentTrajectory>();
-        ContainmentGraph g;
+        CP p; auto traj = std::make_unique<CantonmentTrajectory>();
+        CantonmentGraph g;
         g.addParent(0, 1); g.addParent(1, 2);
         p.latch(CP::V_COLLAPSE); p.applyAll(g, 16, *traj);
         p.latch(CP::V_INVERT);   p.applyAll(g, 16, *traj);
         CHK(traj->size() == 3,
             "serial: two commits -> [pre, post1, post2] (commit 2's pre-push skipped: unchanged)");
         auto blob = traj->serialise();
-        auto t2 = std::make_unique<ContainmentTrajectory>();
+        auto t2 = std::make_unique<CantonmentTrajectory>();
         CHK(t2->deserialise(blob) && t2->size() == traj->size(),
             "serial: blob round-trips (count preserved)");
         // walk the restored trajectory and confirm the states match the source ring's, step for
@@ -339,7 +339,7 @@ int main() {
         bool walkOk = true;
         int steps = 0;
         while (true) {
-            ContainmentGraph a, b;
+            CantonmentGraph a, b;
             const bool ra = traj->stepBack(a), rb = t2->stepBack(b);
             if (ra != rb) { walkOk = false; break; }   // different depths = wrong restore order
             if (!ra) break;
@@ -350,33 +350,33 @@ int main() {
         // corrupt state in the blob -> REJECTED (the corrupt-save writer is why the guard exists)
         blob.states[1].parents[3] |= (uint16_t)(1u << 5);
         blob.states[1].parents[5] |= (uint16_t)(1u << 3);   // plant a 2-cycle
-        auto t3 = std::make_unique<ContainmentTrajectory>();
+        auto t3 = std::make_unique<CantonmentTrajectory>();
         CHK(!t3->deserialise(blob), "serial: a blob carrying an invalid state is rejected");
         // version guard
         auto blob2 = traj->serialise(); blob2.version = 99;
-        auto t4 = std::make_unique<ContainmentTrajectory>();
+        auto t4 = std::make_unique<CantonmentTrajectory>();
         CHK(!t4->deserialise(blob2), "serial: wrong-version blob rejected");
     }
 
     // ── P8. rotate step config (the <=1 param rides the pending row) ──────────────────────────
     {
-        ContainmentGraph g;
+        CantonmentGraph g;
         g.addParent(0, 2); g.addParent(2, 5);
-        CP p; auto traj = std::make_unique<ContainmentTrajectory>();
+        CP p; auto traj = std::make_unique<CantonmentTrajectory>();
         p.rotateStep = 2;
         p.latch(CP::V_ROTATE);
         p.applyAll(g, 6, *traj);
-        ContainmentGraph oracle;
+        CantonmentGraph oracle;
         oracle.addParent(0, 2); oracle.addParent(2, 5);
         rotateRoles(oracle, 6, 2);
         CHK(sameState(g, oracle), "rotate-step: config step 2 honoured at the boundary");
         // step 0 cannot select nothing (the clampStep contract: 0 -> 1)
-        const ContainmentGraph beforeClamp = g;
-        CP q; auto t2 = std::make_unique<ContainmentTrajectory>();
+        const CantonmentGraph beforeClamp = g;
+        CP q; auto t2 = std::make_unique<CantonmentTrajectory>();
         q.rotateStep = 0;
         q.latch(CP::V_ROTATE);
         q.applyAll(g, 6, *t2);
-        ContainmentGraph oracle2 = beforeClamp;
+        CantonmentGraph oracle2 = beforeClamp;
         rotateRoles(oracle2, 6, 1);
         CHK(sameState(g, oracle2), "rotate-step: step 0 clamps to 1 (cannot select nothing)");
         CHK(g.isValid() && roundTripOk(g), "rotate-step: results valid + loadable");
@@ -384,7 +384,7 @@ int main() {
 
     // ── P9. batch closure march (the composition is an endomorphism on DAGs) ──────────────────
     {
-        // The verbs are individually closure-proven (test_containment_transforms). This march
+        // The verbs are individually closure-proven (test_cantonment_transforms). This march
         // pins the BATCH: any number of verbs, any stamp order, any active count, EXPAND mixed
         // in — after EVERY boundary commit the graph is still an acyclic, self-bit-free,
         // byte-identically-loadable DAG. 400 seeds x up to 8 boundary rounds.
@@ -393,10 +393,10 @@ int main() {
         int maxRing = 0, expandNoOps = 0;
         for (int seed = 0; seed < 400; ++seed) {
             redDot::PhiloxRng rng((uint64_t)seed * 0x9E3779B97F4A7C15ull + 0x1234ull);
-            ContainmentGraph g;
+            CantonmentGraph g;
             buildRandomDag(g, rng, (int)(rng() % 60u));
             if (!g.isValid()) { allValid = false; break; }   // generator sanity
-            CP p; auto traj = std::make_unique<ContainmentTrajectory>();
+            CP p; auto traj = std::make_unique<CantonmentTrajectory>();
             const int rounds = 1 + (int)(rng() % 8u);
             for (int r = 0; r < rounds; ++r) {
                 // arm a random batch (1..3 latches; a repeated verb re-arms its row — the
@@ -414,7 +414,7 @@ int main() {
                 if (!(g.isValid() && noSelfBits(g))) allValid = false;
                 if (!roundTripOk(g)) allRoundTrip = false;
                 if (traj->size() > maxRing) maxRing = traj->size();
-                if (traj->size() > ContainmentTrajectory::DEPTH) allValid = false;
+                if (traj->size() > CantonmentTrajectory::DEPTH) allValid = false;
             }
         }
         CHK(holdsRespected, "march: whole batches commit at their boundary (hold respected)");
@@ -432,8 +432,8 @@ int main() {
     // page to the CURRENT graph (the CA generative scrub — draw-reversible, NOT state-
     // restorable; the trajectory + undo bracket own the state side, requirements 3 and 4).
     {
-        CP p; auto traj = std::make_unique<ContainmentTrajectory>();
-        ContainmentGraph g;
+        CP p; auto traj = std::make_unique<CantonmentTrajectory>();
+        CantonmentGraph g;
         redDot::PhiloxRng rr;                                  // the draw oracle: the SAME fixed domain
         rr.setKey(redDot::philoxMakeKey(RANDOM_STREAM_DOMAIN));
 
@@ -442,7 +442,7 @@ int main() {
         CHK(!p.reverseArmed, "random: a plain latch arms FORWARD (no reverse request)");
         CHK(p.applyAll(g, 16, *traj) == 1, "random: the row commits at the boundary");
         CHK(p.randomCounter == 1, "random: forward fire advanced the page counter 0 -> 1");
-        ContainmentGraph oracle;
+        CantonmentGraph oracle;
         seedForest(oracle, rr, 1ull * RANDOM_PAGE_OUTRIGHT, p.randomDensity);
         CHK(sameState(g, oracle), "random: fire 1 == the outright page-1 forest (the draw oracle)");
         CHK(g.isValid() && noSelfBits(g) && roundTripOk(g), "random: the generated forest is a valid loadable DAG");
@@ -454,7 +454,7 @@ int main() {
         CHK(traj->size() >= 2, "random: the commits entered the trajectory (requirement 3's data rides every row)");
 
         // REVERSE-DRAW: the EXACT state restore (the stateless model's reverse-as-undo)
-        const ContainmentGraph afterFire2 = g;
+        const CantonmentGraph afterFire2 = g;
         p.latchRandomReverse();
         CHK(p.armed[CP::V_RANDOM] && p.reverseArmed,
             "random: the reverse arm holds the SAME row with the backward direction (one stamp, the lamp)");
@@ -483,15 +483,15 @@ int main() {
         // ISLANDS + POOL (path B + the polyphony ruling): the dial + the span ride the page
         // oracle; above-pool rows clear to free singles (the root count shows both effects).
         {
-            CP q; auto t3 = std::make_unique<ContainmentTrajectory>();
-            ContainmentGraph h;
+            CP q; auto t3 = std::make_unique<CantonmentTrajectory>();
+            CantonmentGraph h;
             q.randomIslands = 4;
             q.randomDensity = 5;
             q.latch(CP::V_RANDOM);
             q.applyAll(h, 10, *t3);                            // polyphony 10 at draw
             CHK(h.isValid() && noSelfBits(h) && roundTripOk(h),
                 "random: the islands draw is a valid loadable DAG");
-            ContainmentGraph islOracle;
+            CantonmentGraph islOracle;
             seedForest(islOracle, rr, 1ull * RANDOM_PAGE_OUTRIGHT, q.randomDensity, q.randomIslands, 10);
             CHK(sameState(h, islOracle),
                 "random: the islands dial + the pool span ride the page oracle (path B + polyphony)");
@@ -505,20 +505,20 @@ int main() {
         // the fire's oracle is seedForest(..., reduce=true) — the same page function with the
         // spine stripped; the reverse-draw stays the EXACT previous page restore.
         {
-            CP q; auto t4 = std::make_unique<ContainmentTrajectory>();
-            ContainmentGraph h;
+            CP q; auto t4 = std::make_unique<CantonmentTrajectory>();
+            CantonmentGraph h;
             q.randomReduce = true;
             q.randomDensity = 6;
             q.latch(CP::V_RANDOM);
             q.applyAll(h, 16, *t4);
-            ContainmentGraph redOracle;
+            CantonmentGraph redOracle;
             seedForest(redOracle, rr, 1ull * RANDOM_PAGE_OUTRIGHT, q.randomDensity,
                        q.randomIslands, 16, true);
             CHK(sameState(h, redOracle),
                 "random: the reduce flag rides the page oracle (the banked post-pass: drawn page -> spine)");
             q.latchRandomReverse();
             q.applyAll(h, 16, *t4);
-            ContainmentGraph redPrev;
+            CantonmentGraph redPrev;
             seedForest(redPrev, rr, 0ull * RANDOM_PAGE_OUTRIGHT, q.randomDensity,
                        q.randomIslands, 16, true);
             CHK(sameState(h, redPrev),
@@ -528,26 +528,26 @@ int main() {
         // SCATTER mode: fire = the page driven over the CURRENT graph; reverse = the previous
         // page on the CURRENT graph — the CA scrub, NOT the state restore.
         {
-            CP q; auto t2 = std::make_unique<ContainmentTrajectory>();
-            ContainmentGraph h;
+            CP q; auto t2 = std::make_unique<CantonmentTrajectory>();
+            CantonmentGraph h;
             CHK(h.addParent(0, 1) && h.addParent(2, 5) && h.addParent(9, 10),
                 "scatter: setup graph accepted (the state scatter builds ON)");
             q.randomMode = 1;                                  // the context-menu pick
             q.randomDensity = 8;
-            const ContainmentGraph pre = h;
+            const CantonmentGraph pre = h;
             q.latch(CP::V_RANDOM);
             q.applyAll(h, 16, *t2);
             CHK(q.randomCounter == 1 && h.isValid() && noSelfBits(h) && roundTripOk(h),
                 "scatter: the pass is a valid checked-edit drive (counter advanced)");
-            ContainmentGraph fireOracle = pre;
+            CantonmentGraph fireOracle = pre;
             scatterEdges(fireOracle, rr, 1ull * RANDOM_PAGE_SCATTER, 8);
             CHK(sameState(h, fireOracle), "scatter: fire == the page driven over the current graph (the oracle)");
             CHK(!sameState(h, pre), "scatter: the pass moved the graph (density 8 on a sparse start)");
-            const ContainmentGraph post = h;
+            const CantonmentGraph post = h;
             q.latchRandomReverse();
             q.applyAll(h, 16, *t2);
             CHK(q.randomCounter == 0, "scatter: reverse stepped back to page 0");
-            ContainmentGraph scrubOracle = post;
+            CantonmentGraph scrubOracle = post;
             scatterEdges(scrubOracle, rr, 0ull * RANDOM_PAGE_SCATTER, 8);
             CHK(sameState(h, scrubOracle),
                 "scatter: reverse == the previous page on the CURRENT graph (the scrub oracle — NOT a restore)");
@@ -561,18 +561,18 @@ int main() {
         // 10 == the page oracle at pool 10; rows at/above the pool are HELD verbatim; a planted
         // above-pool parent survives the pass (REMOVE is pool-masked — the hold rule).
         {
-            CP q; auto t5 = std::make_unique<ContainmentTrajectory>();
-            ContainmentGraph h;
+            CP q; auto t5 = std::make_unique<CantonmentTrajectory>();
+            CantonmentGraph h;
             CHK(h.addParent(0, 1) && h.addParent(2, 5) && h.addParent(9, 12) && h.addParent(12, 13),
                 "scatter-pool: setup accepted (in-pool pins + held above-pool pins)");
             q.randomMode = 1;
             q.randomDensity = 8;
-            const ContainmentGraph pre = h;
+            const CantonmentGraph pre = h;
             q.latch(CP::V_RANDOM);
             q.applyAll(h, 10, *t5);                            // polyphony 10 at draw
             CHK(q.randomCounter == 1 && h.isValid() && noSelfBits(h) && roundTripOk(h),
                 "scatter-pool: the pool-10 pass is a valid checked-edit drive (counter advanced)");
-            ContainmentGraph fireOracle = pre;
+            CantonmentGraph fireOracle = pre;
             scatterEdges(fireOracle, rr, 1ull * RANDOM_PAGE_SCATTER, 8, 10);
             CHK(sameState(h, fireOracle),
                 "scatter: fire at polyphony 10 == the page oracle at pool 10 (the span rides the row)");
@@ -597,16 +597,16 @@ int main() {
     // counters untouched, EXPAND-reversibility through the shared trajectory, and
     // stamp-order composition with the fold family.
     {
-        CP p; auto traj = std::make_unique<ContainmentTrajectory>();
-        ContainmentGraph g;
+        CP p; auto traj = std::make_unique<CantonmentTrajectory>();
+        CantonmentGraph g;
         CHK(g.addParent(2, 1) && g.addParent(3, 1) && g.addParent(3, 2),
             "declutter: setup accepted (3->1 rides 3->2->1 — the implied shortcut)");
-        const ContainmentGraph pre = g;
+        const CantonmentGraph pre = g;
         p.latch(CP::V_DECLUTTER);
         CHK(p.armed[CP::V_DECLUTTER] && p.stamp[CP::V_DECLUTTER] == 0,
             "declutter: the row arms through the latch (its own row, its own stamp)");
         p.applyAll(g, 16, *traj);
-        ContainmentGraph reduced;
+        CantonmentGraph reduced;
         CHK(reduced.addParent(2, 1) && reduced.addParent(3, 2), "declutter: oracle setup accepted");
         CHK(sameState(g, reduced),
             "declutter: fire == reduceTransitive (the implied 3->1 strips; the spine stays)");
@@ -623,7 +623,7 @@ int main() {
         // lands back on it (the SAME ring every row shares; the reduction deletes deliberate
         // shortcut offers, so the undo path is the escape — the §8 explicit-trigger rule).
         {
-            ContainmentGraph restored;
+            CantonmentGraph restored;
             CHK(traj->stepBack(restored) && sameState(restored, pre),
                 "declutter: the trajectory bracket holds the pre-state (EXPAND-reversible like every row)");
         }
@@ -632,13 +632,13 @@ int main() {
         // second — one boundary applies collapse-then-reduce (row order is the tie-break;
         // the strip composes like every other verb, never a background pass).
         {
-            CP q; auto t2 = std::make_unique<ContainmentTrajectory>();
-            ContainmentGraph h;
+            CP q; auto t2 = std::make_unique<CantonmentTrajectory>();
+            CantonmentGraph h;
             CHK(h.addParent(1, 0) && h.addParent(2, 1) && h.addParent(3, 2) && h.addParent(3, 0),
                 "declutter-compose: setup accepted (a chain plus its shortcut)");
             q.latch(CP::V_COLLAPSE_ALL);
             q.latch(CP::V_DECLUTTER);
-            ContainmentGraph oracle = h;
+            CantonmentGraph oracle = h;
             collapseAll(oracle);
             reduceTransitive(oracle);
             CHK(q.applyAll(h, 16, *t2) == 2 && sameState(h, oracle),
@@ -650,11 +650,11 @@ int main() {
 
     // ── P11. the TRUE-REVERSE queue (the global-reverse consumer; the CA engine shape) ──────
     // The queue is NOT a verb row: no stamp, anyArmed() unaffected, applyAll does NOT consume it
-    // (the consume lives in ContainmentModuleCore::applyAtBoundary, BEFORE the verb undo bracket
+    // (the consume lives in CantonmentModuleCore::applyAtBoundary, BEFORE the verb undo bracket
     // — the modulation-class rule). Here: the flag mechanics + the separation from the verb rows.
     {
-        CP p; auto traj = std::make_unique<ContainmentTrajectory>();
-        ContainmentGraph g;
+        CP p; auto traj = std::make_unique<CantonmentTrajectory>();
+        CantonmentGraph g;
 
         CHK(!p.trueRevRequested, "truerev: fresh pending — the queue is empty");
         p.latchTrueReverse();

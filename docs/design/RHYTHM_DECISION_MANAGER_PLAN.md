@@ -1,8 +1,8 @@
 # RHYTHM DECISION MANAGER → FOREST RHYTHM DECISION — the two-stage plan
 
-Authority chain: `VOICE1_CONTAINMENT_ALGORITHM.md` (the algorithm reference, filed 2026-10-26,
-commit 1549ca89) <- `CC_PROMPT_CONTAINMENT_BUILD_PLAN.md` (the containment module, steps 1-4
-executed, CI-green through ae88a36b) <- `CC_PROMPT_CONTAINMENT_MODULE_SPEC.md` (the spec).
+Authority chain: `VOICE1_CANTONMENT_ALGORITHM.md` (the algorithm reference, filed 2026-10-26,
+commit 1549ca89) <- `CC_PROMPT_CANTONMENT_BUILD_PLAN.md` (the containment module, steps 1-4
+executed, CI-green through ae88a36b) <- `CC_PROMPT_CANTONMENT_MODULE_SPEC.md` (the spec).
 
 Rodney brief (2026-10-26): "make a plan to generalise the containment decisions and connect it
 to containment module? We need to build a 'rhythm decision manager' that centralises all the

@@ -1,14 +1,14 @@
 #pragma once
-// ContainmentPending — the phrase-boundary pending machinery for the containment verbs.
-// Authority: CC_PROMPT_CONTAINMENT_BUILD_PLAN.md §"TRANSFORM APPLICATION — at PHRASE BOUNDARY
-// (copy CA exactly)" + CC_PROMPT_CONTAINMENT_MODULE_SPEC.md. Step 3 of the build plan.
+// CantonmentPending — the phrase-boundary pending machinery for the containment verbs.
+// Authority: CC_PROMPT_CANTONMENT_BUILD_PLAN.md §"TRANSFORM APPLICATION — at PHRASE BOUNDARY
+// (copy CA exactly)" + CC_PROMPT_CANTONMENT_MODULE_SPEC.md. Step 3 of the build plan.
 //
 // REUSE, not re-invention: the chronological ORDER rides redDot::CAPendingOrder AS-IS (the plan's
 // explicit instruction — it is generic over rows/armed/stamp, rack-free). This header adds what
 // containment-specific logic hangs AROUND it: the verb-row model (7 rows = the panel flank order:
 // the ROLES trio, the FOLD trio, and RANDOM — the 2026-10-27 ruling UNCLOSED the vocabulary for
 // it: a genuinely new decision class, not synonymy), the latch/stamp rules, the apply dispatch
-// onto the pure verbs (ContainmentTransforms.hpp), the RANDOM row's own Philox stream +
+// onto the pure verbs (CantonmentTransforms.hpp), the RANDOM row's own Philox stream +
 // reverse-draw (the CA dice model — requirement 1/2 of the ruling), the EXPAND trajectory ring
 // (the CA TRUE-REVERSE precedent, Rodney's ruling R3), the TRUE-REVERSE request queue (the
 // global-reverse consumer — the CA engine shape MonsoonChangeAlleyV2.hpp carries, mirrored here
@@ -29,22 +29,22 @@
 // original chronological position (no jump-to-front). The counter therefore must NOT reset while
 // any row remains armed (the reset-when-empty rule — CAPendingOrder.hpp header rule 4). At step 3
 // containment has no LockManager Control entry, so the driver passes the default (commit plane);
-// the mask machinery is exercised by test_containment_pending and narrows here when a scope bit
+// the mask machinery is exercised by test_cantonment_pending and narrows here when a scope bit
 // lands.
 //
-// Pure / rack-free / header-only (the ContainmentGraph.hpp discipline): the whole pending path is
+// Pure / rack-free / header-only (the CantonmentGraph.hpp discipline): the whole pending path is
 // unit-testable without the SDK. Audio-thread-only use (control-rate boundary), single-threaded —
 // the module composes this struct; there is no cross-thread hand-off in it.
 
 #include <cstdint>
 #include <cstring>
-#include "ContainmentGraph.hpp"
-#include "ContainmentTransforms.hpp"
+#include "CantonmentGraph.hpp"
+#include "CantonmentTransforms.hpp"
 #include "CAPendingOrder.hpp"   // redDot::CAPendingOrder — REUSED AS-IS (the plan's instruction)
 
 namespace dotModular { namespace ct {
 
-// ── ContainmentTrajectory — the EXPAND memory (R3) ─────────────────────────────────────────
+// ── CantonmentTrajectory — the EXPAND memory (R3) ─────────────────────────────────────────
 // A single-stream ring of COMMITTED graph states, the CATrajectoryBuffer precedent (CA_DICE_
 // COUNTER_MODEL.md) narrowed to containment's one plane. The module pushes at every phrase-
 // boundary commit — the HELD state entering the boundary AND the post-verb result — so the ring
@@ -53,7 +53,7 @@ namespace dotModular { namespace ct {
 // commit and restores that level ("restore the level the last COLLAPSE removed" — verb-agnostic
 // like CA's true-reverse: any commit's level, reached through lossy collapses because states are
 // recorded, not causes). NOT a synthesized inverse: collapse is lossy (T9,
-// test_containment_transforms), and this memory is what R3 bought instead of one.
+// test_cantonment_transforms), and this memory is what R3 bought instead of one.
 //
 // WHY THE PRE-STATE PUSH (the one divergence from CATrajectoryBuffer, and why it is safe): CA's
 // ring records post-commit states only, so true-reverse cannot step back across the FIRST
@@ -70,7 +70,7 @@ namespace dotModular { namespace ct {
 // stepBack pops the newest; a later push overwrites the popped slot = branching (the reversed
 // future is discarded, exactly like undo-then-redo-branch). Fixed capacity, allocated once —
 // NO audio-thread allocation. 65536 states x 32 B = 2 MiB, the CA depth rationale at one stream.
-struct ContainmentTrajectory {
+struct CantonmentTrajectory {
     static constexpr int DEPTH = 65536;           // committed states (~2 MiB; "effectively unlimited")
     static constexpr int SERIAL_TAIL = 256;       // bounded tail persisted to JSON (~8 KiB), step 4 wires it
     static constexpr uint32_t SERIAL_VERSION = 1; // layout guard; bump on any change
@@ -86,7 +86,7 @@ struct ContainmentTrajectory {
 
     // Push a committed state IF it differs from the newest live entry. Called at each phrase-
     // boundary commit (held state before the verbs, result after — see the header note).
-    void pushIfChanged(const ContainmentGraph& g) {
+    void pushIfChanged(const CantonmentGraph& g) {
         if (count > 0) {
             const State& newest = ring[(base + count - 1) % DEPTH];
             if (std::memcmp(newest.parents, g.parents, sizeof(g.parents)) == 0) return;  // unchanged -> skip
@@ -105,7 +105,7 @@ struct ContainmentTrajectory {
     // into out. Returns true when a state was restored; false at the buffer start (0 or 1 live
     // entries -> nothing to reverse to -> STOP, don't wrap; the caller's consume still disarms
     // the row so the affordance stays consistent — the CA true-reverse rule).
-    bool stepBack(ContainmentGraph& out) {
+    bool stepBack(CantonmentGraph& out) {
         if (count <= 1) return false;
         --count;   // pop the newest
         const int prevSlot = (base + count - 1) % DEPTH;
@@ -149,7 +149,7 @@ struct ContainmentTrajectory {
             // a saved state is a committed state, but the corrupt-save writer is why the graph
             // guard exists (the step-1 lesson): validate every restored state, reject the blob
             // if ANY of them is not a DAG.
-            ContainmentGraph probe;
+            CantonmentGraph probe;
             for (int v = 0; v < VOICES; ++v) probe.parents[v] = b.states[i].parents[v];
             if (!probe.isValid()) return false;
         }
@@ -162,9 +162,9 @@ struct ContainmentTrajectory {
     }
 };
 
-// ── ContainmentPending — the verb rows + latch/stamp + boundary apply ──────────────────────
-// ROW ORDER = the panel flank order, top to bottom (ContainmentPanelMm::VERB_ID in
-// MonsoonContainment.hpp, generated by panel_src/gen_containment.py) — keep the three in
+// ── CantonmentPending — the verb rows + latch/stamp + boundary apply ──────────────────────
+// ROW ORDER = the panel flank order, top to bottom (CantonmentPanelMm::VERB_ID in
+// MonsoonCantonment.hpp, generated by panel_src/gen_containment.py) — keep the three in
 // lockstep: ROLES trio (ROTATE / REFLECT / INVERT), FOLD quartet (COLLAPSE / COLLAPSE-ALL /
 // DECLUTTER / EXPAND), then RANDOM (the 2026-10-27 ruling: the seed verb as the row after
 // the fold family, the vocabulary unclosed for a genuinely new decision class). DECLUTTER
@@ -173,7 +173,7 @@ struct ContainmentTrajectory {
 // the landed reduceTransitive pure verb, so the manual graph earns the same strip the
 // Random-reduce flag gives the draw. Row index is the chronological tie-break
 // (same-sample burst -> row order).
-struct ContainmentPending {
+struct CantonmentPending {
     static constexpr int N_VERBS = 8;
     enum Verb { V_ROTATE = 0, V_REFLECT = 1, V_INVERT = 2, V_COLLAPSE = 3, V_COLLAPSE_ALL = 4,
                 V_DECLUTTER = 5, V_EXPAND = 6, V_RANDOM = 7 };
@@ -199,7 +199,7 @@ struct ContainmentPending {
     // rotateStep precedent. The draw SPANS THE POOL (the polyphony at apply); rows above the
     // pool clear to free singles ("size of forest linked to polyphony at draw with other
     // pins cleared").
-    // (The domain constant + page strides live with the draws in ContainmentTransforms.hpp.)
+    // (The domain constant + page strides live with the draws in CantonmentTransforms.hpp.)
     int64_t  randomCounter = 0;
     int      randomMode    = 0;
     int      randomDensity = 3;
@@ -220,7 +220,7 @@ struct ContainmentPending {
     // step-back, consumed at the phrase boundary BEFORE the verb bracket — so a pure true-reverse
     // publishes NO undo (the modulation-class rule: undo is for USER actions; CA_DICE_COUNTER_
     // MODEL.md CORRECTION^2) and a mixed boundary's undo snapshot brackets only the verbs. The
-    // consume lives in ContainmentModuleCore::applyAtBoundary (which owns the undo bracket), NOT
+    // consume lives in CantonmentModuleCore::applyAtBoundary (which owns the undo bracket), NOT
     // in applyAll's verb loop — this flag is a separate queue, NOT a verb row: no stamp, anyArmed()
     // unaffected, idempotent while lit (the CA rule: further presses/triggers are ignored). At the
     // trajectory's buffer start the step-back STOPS (state unchanged) but the request is still
@@ -277,7 +277,7 @@ struct ContainmentPending {
     //   reset the counter ONLY when the pending set is now fully empty (resetting at every
     //     boundary would give new arms stamp 0 < the persistent rows' stamps -> they would jump
     //     to the FRONT of later commits — the exact wrong the rule forbids).
-    int applyAll(ContainmentGraph& g, int activeCount, ContainmentTrajectory& traj,
+    int applyAll(CantonmentGraph& g, int activeCount, CantonmentTrajectory& traj,
                  unsigned axisMask = AXIS_PLANE) {
         const bool inAxis = (axisMask & AXIS_PLANE) != 0;
         if (!inAxis || !anyArmed()) return 0;
@@ -296,7 +296,7 @@ struct ContainmentPending {
         //   if (!(axisMask & axisBitFor(row))) continue;   // out-of-axis: stay armed, stamp kept
         // and the early return narrows to "no IN-AXIS row armed" — the persisted-row machinery
         // (orderRows including all armed rows, stamps surviving, no jump-to-front) is already
-        // exactly that shape, which is what test_containment_pending pins.
+        // exactly that shape, which is what test_cantonment_pending pins.
         for (int oi = 0; oi < n; ++oi) {
             const int row = order[oi];
             switch (row) {
@@ -322,7 +322,7 @@ struct ContainmentPending {
                     // restore the level before it. At the buffer start stepBack returns false —
                     // STOP (state unchanged, don't wrap) — but the row is still consumed, the CA
                     // true-reverse affordance rule (the lamp clears; the request is spent).
-                    ContainmentGraph restored;
+                    CantonmentGraph restored;
                     if (traj.stepBack(restored)) g = restored;
                     break;
                 }

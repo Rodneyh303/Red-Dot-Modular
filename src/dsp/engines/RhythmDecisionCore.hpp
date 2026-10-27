@@ -1,6 +1,6 @@
 #pragma once
 // RhythmDecisionCore — the Rhythm Decision Manager (RDM), rack-free (no Rack headers; the mock
-// battery compiles it directly, same discipline as ContainmentModuleCore/ContainmentPending).
+// battery compiles it directly, same discipline as CantonmentModuleCore/CantonmentPending).
 // SequencerEngine composes it.
 //
 // Authority: docs/design/RHYTHM_DECISION_MANAGER_PLAN.md §2. Deliberately NOT:
@@ -71,7 +71,7 @@ struct ParentView {
 };
 
 // ── The five named predicates (plan §2.3, R-3) ─────────────────────────────────
-// The C1–C5 mechanisms of VOICE1_CONTAINMENT_ALGORITHM.md's mechanism table, extracted as
+// The C1–C5 mechanisms of VOICE1_CANTONMENT_ALGORITHM.md's mechanism table, extracted as
 // PER-CONTAINER pure functions: Stage R calls each with the single V1 ParentView; Stage F
 // folds them over parentsOf(v) — D3's UNION for onsets (events), D1's INTERSECTION for
 // everything state-shaped (rests, ceilings, holds, envelopes). Own state (wasHeldPoly /

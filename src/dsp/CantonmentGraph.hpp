@@ -1,6 +1,6 @@
 #pragma once
-// ContainmentGraph — the articulation-envelope routing state.
-// Authority: CC_PROMPT_CONTAINMENT_MODULE_SPEC.md, AMENDED by Rodney's rulings (2026-10-26):
+// CantonmentGraph — the articulation-envelope routing state.
+// Authority: CC_PROMPT_CANTONMENT_MODULE_SPEC.md, AMENDED by Rodney's rulings (2026-10-26):
 //   R1. MULTI-PARENT ACYCLIC DAG is the state space; containment = the INTERSECTION of the
 //       parent containments (gate(v) = clamp(own, ∩ resolved parents)). Supersedes the spec's
 //       single-parent forest invariant and the authority doc's "DELIBERATELY EXCLUDED
@@ -36,7 +36,7 @@ namespace dotModular { namespace ct {
 
 static constexpr int VOICES = 16;
 
-struct ContainmentGraph {
+struct CantonmentGraph {
     // Bit u of parents[v] = v is contained in u. Zero-initialized = uncontained (R2 default).
     uint16_t parents[VOICES] = {};
 
@@ -143,7 +143,7 @@ struct ContainmentGraph {
     // to the all-disconnected default rather than admit a cycle into the engine. Returns false
     // when the input was rejected.
     bool deserializeFrom(const uint16_t* in) {
-        ContainmentGraph candidate;
+        CantonmentGraph candidate;
         for (int v = 0; v < VOICES; ++v) candidate.parents[v] = in[v];
         if (!candidate.isValid()) return false;
         *this = candidate;

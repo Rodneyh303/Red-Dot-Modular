@@ -1,20 +1,20 @@
 #pragma once
-// ContainmentModuleCore — the MODULE-STATE core of MonsoonContainment, rack-free so the module
-// layer is CI-testable (test_containment_module, the build plan's step-4 row). The whole editor
-// state is ONE unit here: the containment DAG (ContainmentGraph), the pending verb rows
-// (ContainmentPending), the EXPAND trajectory ring (ContainmentTrajectory), the owner-guard
+// CantonmentModuleCore — the MODULE-STATE core of MonsoonCantonment, rack-free so the module
+// layer is CI-testable (test_cantonment_module, the build plan's step-4 row). The whole editor
+// state is ONE unit here: the containment DAG (CantonmentGraph), the pending verb rows
+// (CantonmentPending), the EXPAND trajectory ring (CantonmentTrajectory), the owner-guard
 // flag, the pin-edit path, the boundary-apply with the undo-snapshot publication, the save
-// schema (json), and the reset. The Rack module (MonsoonContainment.hpp) composes this and adds
+// schema (json), and the reset. The Rack module (MonsoonCantonment.hpp) composes this and adds
 // ONLY the SDK surface: params/lights/triggers, the widget, and the history push (APP->history
 // is UI-thread-only, so the audio thread can only PUBLISH snapshots — the widget drains them).
 //
-// Authority: CC_PROMPT_CONTAINMENT_BUILD_PLAN.md step 4 ("Module integration + one-plane
+// Authority: CC_PROMPT_CANTONMENT_BUILD_PLAN.md step 4 ("Module integration + one-plane
 // multi-pin UI + rejection affordance + store/undo + engine-side publish") + §"MODULE SHAPE"
 // (store-backed pin edits via StoreEditAction; one committed phrase-boundary batch = one undo
 // step — the CA precedent). The undo-ring + json-tail shapes mirror MonsoonChangeAlleyV2
 // (TransformUndoSnapshot / trajectory tail), narrowed to containment's ONE plane.
 //
-// Pure / rack-free / header-only (the ContainmentGraph.hpp discipline), EXCEPT the save schema,
+// Pure / rack-free / header-only (the CantonmentGraph.hpp discipline), EXCEPT the save schema,
 // which is jansson-typed: <jansson.h> is included DIRECTLY (the MonotoneCurve discipline — not
 // via rack.hpp) so the standalone harness resolves it to test/jansson.h while the plugin build
 // uses Rack's bundled libjansson. The exact production schema runs against both.
@@ -27,9 +27,9 @@
 #include <cstring>
 #include <atomic>
 #include <jansson.h>              // DIRECT include — test shim vs Rack's bundled lib (see header note)
-#include "ContainmentGraph.hpp"
-#include "ContainmentTransforms.hpp"
-#include "ContainmentPending.hpp"
+#include "CantonmentGraph.hpp"
+#include "CantonmentTransforms.hpp"
+#include "CantonmentPending.hpp"
 
 namespace dotModular { namespace ct {
 
@@ -37,16 +37,16 @@ namespace dotModular { namespace ct {
 // the audio thread snapshots before/after into this SPSC ring; the widget's step() (UI thread)
 // drains it and pushes one Rack history action per batch. Commits are phrase-boundary-
 // infrequent, so 16 slots is ample (the MonsoonChangeAlleyV2::TransformUndoSnapshot rationale).
-struct ContainmentUndoSnapshot {
+struct CantonmentUndoSnapshot {
     uint16_t before[VOICES];
     uint16_t after [VOICES];
 };
 
-struct ContainmentModuleCore {
+struct CantonmentModuleCore {
     // ── state (the step-1/2/3 members, now one unit) ──────────────────────────────────────────
-    ContainmentGraph      graph;        // the DAG: bit u of parents[v] = v contained in u
-    ContainmentPending    pending;      // 7 verb rows (latch/stamp/order) + rotateStep config + the true-reverse queue
-    ContainmentTrajectory trajectory;   // the EXPAND memory (committed-state ring)
+    CantonmentGraph      graph;        // the DAG: bit u of parents[v] = v contained in u
+    CantonmentPending    pending;      // 7 verb rows (latch/stamp/order) + rotateStep config + the true-reverse queue
+    CantonmentTrajectory trajectory;   // the EXPAND memory (committed-state ring)
 
     // OWNER GUARD (the CA idiom, MonsoonChangeAlleyV2::transformsAppliedThisBlock):
     // applyPendingTransforms MUTATES the graph, so only ONE driver may call it per block. Reset
@@ -56,7 +56,7 @@ struct ContainmentModuleCore {
 
     // ── undo publication (SPSC ring; producer = audio thread, consumer = widget/UI thread) ────
     static constexpr int UNDO_RING = 16;
-    ContainmentUndoSnapshot undoRing[UNDO_RING];
+    CantonmentUndoSnapshot undoRing[UNDO_RING];
     std::atomic<uint32_t> undoHead{0};   // producer (audio) writes, then advances
     std::atomic<uint32_t> undoTail{0};   // consumer (UI) reads, then advances
 
@@ -92,16 +92,16 @@ struct ContainmentModuleCore {
     // false — STOP (state unchanged, don't wrap), the request still spent (the CA lamp rule:
     // the affordance clears even though nothing moved). The restored state is the ring's new
     // newest, so the verb path's pre-push below skips it — no double entry.
-    int applyAtBoundary(int activeCount, unsigned axisMask = ContainmentPending::AXIS_PLANE) {
-        if (pending.trueRevRequested && (axisMask & ContainmentPending::AXIS_PLANE)) {
+    int applyAtBoundary(int activeCount, unsigned axisMask = CantonmentPending::AXIS_PLANE) {
+        if (pending.trueRevRequested && (axisMask & CantonmentPending::AXIS_PLANE)) {
             pending.trueRevRequested = false;
-            ContainmentGraph restored;
+            CantonmentGraph restored;
             if (trajectory.stepBack(restored)) graph = restored;
         }
-        const ContainmentGraph before = graph;
+        const CantonmentGraph before = graph;
         const int applied = pending.applyAll(graph, activeCount, trajectory, axisMask);
         if (applied > 0) {
-            const ContainmentGraph after = graph;
+            const CantonmentGraph after = graph;
             if (std::memcmp(before.parents, after.parents, sizeof(before.parents)) != 0)
                 publishUndo(before, after);
         }
@@ -112,8 +112,8 @@ struct ContainmentModuleCore {
     // empty trajectory, the step config back to its default. Undo snapshots already published
     // stay published (the CA resetToIdentity rule — drained actions are self-contained).
     void resetAll() {
-        graph = ContainmentGraph{};
-        pending = ContainmentPending{};
+        graph = CantonmentGraph{};
+        pending = CantonmentPending{};
         trajectory.clear();
         transformsAppliedThisBlock = false;
     }
@@ -139,7 +139,7 @@ struct ContainmentModuleCore {
     //     mode/density/islands/reduce IGNORED on load (the runtime dials re-clamp; the
     //     reverse-draw REQUEST is runtime-only and never saved — a save never carries a
     //     pending row).
-    //   "trajectory" {v, n, states} — the EXPAND ring's bounded TAIL (ContainmentTrajectory::
+    //   "trajectory" {v, n, states} — the EXPAND ring's bounded TAIL (CantonmentTrajectory::
     //     SERIAL_TAIL newest-first states, version-guarded; the CA tail shape narrowed to the
     //     one stream). Absent (old saves) -> the ring is untouched (a fresh module loads
     //     empty). Present-but-stale — wrong version/shape, a state that fails DAG validation —
@@ -160,7 +160,7 @@ struct ContainmentModuleCore {
         json_object_set_new(rootJ, "randomIslands", json_integer(pending.randomIslands));
         json_object_set_new(rootJ, "randomReduce", json_integer(pending.randomReduce ? 1 : 0));
 
-        const ContainmentTrajectory::SerialBlob blob = trajectory.serialise();
+        const CantonmentTrajectory::SerialBlob blob = trajectory.serialise();
         json_t* tj = json_object();
         json_object_set_new(tj, "v", json_integer((json_int_t)blob.version));
         json_object_set_new(tj, "n", json_integer(blob.count));
@@ -186,7 +186,7 @@ struct ContainmentModuleCore {
                 !json_is_array(arrJ)
                 || json_array_size(arrJ) != (size_t)VOICES;
             if (malformed) {
-                graph = ContainmentGraph{};
+                graph = CantonmentGraph{};
             } else {
                 uint16_t raw[VOICES];
                 bool ok = true;
@@ -197,7 +197,7 @@ struct ContainmentModuleCore {
                     if (x < 0 || x > 0xFFFF) { ok = false; break; }
                     raw[v] = (uint16_t)x;
                 }
-                if (!ok || !graph.deserializeFrom(raw)) graph = ContainmentGraph{};
+                if (!ok || !graph.deserializeFrom(raw)) graph = CantonmentGraph{};
             }
         }
 
@@ -236,7 +236,7 @@ struct ContainmentModuleCore {
         // (3) the EXPAND trajectory tail.
         if (json_t* tj = json_object_get(rootJ, "trajectory")) {
             bool ok = json_is_object(tj);
-            ContainmentTrajectory::SerialBlob blob{};
+            CantonmentTrajectory::SerialBlob blob{};
             if (ok) {
                 json_t* vJ      = json_object_get(tj, "v");
                 json_t* nJ      = json_object_get(tj, "n");
@@ -246,7 +246,7 @@ struct ContainmentModuleCore {
                     blob.version   = (uint32_t)json_integer_value(vJ);
                     blob.stateSize = VOICES;
                     const json_int_t n = json_integer_value(nJ);
-                    ok = (n >= 0 && n <= (json_int_t)ContainmentTrajectory::SERIAL_TAIL)
+                    ok = (n >= 0 && n <= (json_int_t)CantonmentTrajectory::SERIAL_TAIL)
                          && json_array_size(statesJ) == (size_t)n;
                     if (ok) {
                         blob.count = (int)n;
@@ -271,11 +271,11 @@ struct ContainmentModuleCore {
 private:
     // Drop-if-full publish (the CA undoRing rule: "drop if UI hasn't drained (never in
     // practice)" — phrase-boundary commits are infrequent relative to the UI drain rate).
-    void publishUndo(const ContainmentGraph& b, const ContainmentGraph& a) {
+    void publishUndo(const CantonmentGraph& b, const CantonmentGraph& a) {
         const uint32_t h = undoHead.load(std::memory_order_relaxed);
         const uint32_t t = undoTail.load(std::memory_order_acquire);
         if (h - t < (uint32_t)UNDO_RING) {
-            ContainmentUndoSnapshot& s = undoRing[h % UNDO_RING];
+            CantonmentUndoSnapshot& s = undoRing[h % UNDO_RING];
             std::memcpy(s.before, b.parents, sizeof(s.before));
             std::memcpy(s.after,  a.parents, sizeof(s.after));
             undoHead.store(h + 1, std::memory_order_release);

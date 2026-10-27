@@ -2,7 +2,7 @@
  * test_rhythm_decision_core.cpp — the RDM predicate layer, table-driven (STAGE R R-3).
  *
  * Specs the five named predicates of RHYTHM_DECISION_MANAGER_PLAN §2.2/§2.3 (the C1–C5
- * mechanisms of VOICE1_CONTAINMENT_ALGORITHM.md's mechanism table) over every
+ * mechanisms of VOICE1_CANTONMENT_ALGORITHM.md's mechanism table) over every
  * MonoDecision × own-state combination:
  *   C1 onsetPermission — EVENTS: a container OFFERS a trigger (NewNote unconditionally;
  *      Legato/LegatoMax only from a dead state: !wasHeld && !hadTail — the isolated-teal
@@ -116,7 +116,7 @@ int main() {
             const ParentView p = pv(MonoDecision::MidNote, 3, held, false, false);
             EXPECT_EQ((int)holdFollow(p), h);
             EXPECT_EQ((int)envelopeAnd(p), h);
-            // The degenerate-forest agreement (VOICE1_CONTAINMENT_ALGORITHM C5 row: in clock
+            // The degenerate-forest agreement (VOICE1_CANTONMENT_ALGORITHM C5 row: in clock
             // mode C5 is IMPLICIT in C1+C2+C4 — one parent makes the two predicates the same).
             EXPECT_EQ((int)holdFollow(p), (int)envelopeAnd(p));
         });
