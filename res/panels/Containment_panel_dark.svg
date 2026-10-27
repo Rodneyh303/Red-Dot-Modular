@@ -62,56 +62,62 @@
 
 
 </g>
-<circle cx="55.4" cy="85.6" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="85.6" r="5.0" fill="#101113"/>
-<circle cx="544.6" cy="85.6" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
-<circle cx="518.1" cy="85.6" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
-<circle cx="55.4" cy="115.2" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="115.2" r="5.0" fill="#101113"/>
-<circle cx="544.6" cy="115.2" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
-<circle cx="518.1" cy="115.2" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
-<circle cx="55.4" cy="144.7" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="144.7" r="5.0" fill="#101113"/>
-<circle cx="544.6" cy="144.7" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
-<circle cx="518.1" cy="144.7" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
-<circle cx="55.4" cy="187.5" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="187.5" r="5.0" fill="#101113"/>
-<circle cx="544.6" cy="187.5" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
-<circle cx="518.1" cy="187.5" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
-<circle cx="55.4" cy="217.0" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="217.0" r="5.0" fill="#101113"/>
-<circle cx="544.6" cy="217.0" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
-<circle cx="518.1" cy="217.0" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
-<circle cx="55.4" cy="246.6" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="246.6" r="5.0" fill="#101113"/>
-<circle cx="544.6" cy="246.6" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
-<circle cx="518.1" cy="246.6" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
-<circle cx="55.4" cy="276.1" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="276.1" r="5.0" fill="#101113"/>
-<circle cx="85.6" cy="276.1" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="85.6" cy="276.1" r="5.0" fill="#101113"/>
-<circle cx="544.6" cy="276.1" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
-<circle cx="518.1" cy="276.1" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
-<circle cx="55.4" cy="315.9" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="315.9" r="5.0" fill="#101113"/>
-<circle cx="544.6" cy="315.9" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
-<circle cx="518.1" cy="315.9" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
+<circle cx="55.4" cy="84.2" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="84.2" r="5.0" fill="#101113"/>
+<circle cx="544.6" cy="84.2" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
+<circle cx="518.1" cy="84.2" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
+<circle cx="55.4" cy="110.7" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="110.7" r="5.0" fill="#101113"/>
+<circle cx="544.6" cy="110.7" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
+<circle cx="518.1" cy="110.7" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
+<circle cx="55.4" cy="137.3" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="137.3" r="5.0" fill="#101113"/>
+<circle cx="544.6" cy="137.3" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
+<circle cx="518.1" cy="137.3" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
+<circle cx="55.4" cy="177.2" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="177.2" r="5.0" fill="#101113"/>
+<circle cx="544.6" cy="177.2" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
+<circle cx="518.1" cy="177.2" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
+<circle cx="55.4" cy="203.7" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="203.7" r="5.0" fill="#101113"/>
+<circle cx="544.6" cy="203.7" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
+<circle cx="518.1" cy="203.7" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
+<circle cx="55.4" cy="230.3" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="230.3" r="5.0" fill="#101113"/>
+<circle cx="544.6" cy="230.3" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
+<circle cx="518.1" cy="230.3" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
+<circle cx="55.4" cy="256.9" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="256.9" r="5.0" fill="#101113"/>
+<circle cx="544.6" cy="256.9" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
+<circle cx="518.1" cy="256.9" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
+<circle cx="55.4" cy="283.5" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="283.5" r="5.0" fill="#101113"/>
+<circle cx="85.6" cy="283.5" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="85.6" cy="283.5" r="5.0" fill="#101113"/>
+<circle cx="544.6" cy="283.5" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
+<circle cx="518.1" cy="283.5" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
+<circle cx="55.4" cy="320.4" r="11.5" fill="#0a0b0c" stroke="#46464c" stroke-width="1"/><circle cx="55.4" cy="320.4" r="5.0" fill="#101113"/>
+<circle cx="544.6" cy="320.4" r="7.7" fill="#2e2e33" stroke="#8a8578" stroke-width="1.48"/>
+<circle cx="518.1" cy="320.4" r="3.8" fill="#0f1012" stroke="#8a8578" stroke-width="0.89"/>
 <g inkscape:label="components" inkscape:groupmode="layer" id="components">
-<circle id="input_trig_rotate" cx="55.36" cy="85.63" r="1" fill="none" stroke="none"/>
-<circle id="param_btn_rotate" cx="544.64" cy="85.63" r="1" fill="none" stroke="none"/>
-<circle id="light_pending_rotate" cx="518.06" cy="85.63" r="1" fill="none" stroke="none"/>
-<circle id="input_trig_reflect" cx="55.36" cy="115.16" r="1" fill="none" stroke="none"/>
-<circle id="param_btn_reflect" cx="544.64" cy="115.16" r="1" fill="none" stroke="none"/>
-<circle id="light_pending_reflect" cx="518.06" cy="115.16" r="1" fill="none" stroke="none"/>
-<circle id="input_trig_invert" cx="55.36" cy="144.69" r="1" fill="none" stroke="none"/>
-<circle id="param_btn_invert" cx="544.64" cy="144.69" r="1" fill="none" stroke="none"/>
-<circle id="light_pending_invert" cx="518.06" cy="144.69" r="1" fill="none" stroke="none"/>
-<circle id="input_trig_collapse" cx="55.36" cy="187.50" r="1" fill="none" stroke="none"/>
-<circle id="param_btn_collapse" cx="544.64" cy="187.50" r="1" fill="none" stroke="none"/>
-<circle id="light_pending_collapse" cx="518.06" cy="187.50" r="1" fill="none" stroke="none"/>
-<circle id="input_trig_collapseall" cx="55.36" cy="217.03" r="1" fill="none" stroke="none"/>
-<circle id="param_btn_collapseall" cx="544.64" cy="217.03" r="1" fill="none" stroke="none"/>
-<circle id="light_pending_collapseall" cx="518.06" cy="217.03" r="1" fill="none" stroke="none"/>
-<circle id="input_trig_expand" cx="55.36" cy="246.56" r="1" fill="none" stroke="none"/>
-<circle id="param_btn_expand" cx="544.64" cy="246.56" r="1" fill="none" stroke="none"/>
-<circle id="light_pending_expand" cx="518.06" cy="246.56" r="1" fill="none" stroke="none"/>
-<circle id="input_trig_random" cx="55.36" cy="276.08" r="1" fill="none" stroke="none"/>
-<circle id="input_back_random" cx="85.63" cy="276.08" r="1" fill="none" stroke="none"/>
-<circle id="param_btn_random" cx="544.64" cy="276.08" r="1" fill="none" stroke="none"/>
-<circle id="light_pending_random" cx="518.06" cy="276.08" r="1" fill="none" stroke="none"/>
-<circle id="input_trig_truerev" cx="55.36" cy="315.94" r="1" fill="none" stroke="none"/>
-<circle id="param_btn_truerev" cx="544.64" cy="315.94" r="1" fill="none" stroke="none"/>
-<circle id="light_pending_truerev" cx="518.06" cy="315.94" r="1" fill="none" stroke="none"/>
+<circle id="input_trig_rotate" cx="55.36" cy="84.15" r="1" fill="none" stroke="none"/>
+<circle id="param_btn_rotate" cx="544.64" cy="84.15" r="1" fill="none" stroke="none"/>
+<circle id="light_pending_rotate" cx="518.06" cy="84.15" r="1" fill="none" stroke="none"/>
+<circle id="input_trig_reflect" cx="55.36" cy="110.73" r="1" fill="none" stroke="none"/>
+<circle id="param_btn_reflect" cx="544.64" cy="110.73" r="1" fill="none" stroke="none"/>
+<circle id="light_pending_reflect" cx="518.06" cy="110.73" r="1" fill="none" stroke="none"/>
+<circle id="input_trig_invert" cx="55.36" cy="137.30" r="1" fill="none" stroke="none"/>
+<circle id="param_btn_invert" cx="544.64" cy="137.30" r="1" fill="none" stroke="none"/>
+<circle id="light_pending_invert" cx="518.06" cy="137.30" r="1" fill="none" stroke="none"/>
+<circle id="input_trig_collapse" cx="55.36" cy="177.17" r="1" fill="none" stroke="none"/>
+<circle id="param_btn_collapse" cx="544.64" cy="177.17" r="1" fill="none" stroke="none"/>
+<circle id="light_pending_collapse" cx="518.06" cy="177.17" r="1" fill="none" stroke="none"/>
+<circle id="input_trig_collapseall" cx="55.36" cy="203.74" r="1" fill="none" stroke="none"/>
+<circle id="param_btn_collapseall" cx="544.64" cy="203.74" r="1" fill="none" stroke="none"/>
+<circle id="light_pending_collapseall" cx="518.06" cy="203.74" r="1" fill="none" stroke="none"/>
+<circle id="input_trig_declutter" cx="55.36" cy="230.31" r="1" fill="none" stroke="none"/>
+<circle id="param_btn_declutter" cx="544.64" cy="230.31" r="1" fill="none" stroke="none"/>
+<circle id="light_pending_declutter" cx="518.06" cy="230.31" r="1" fill="none" stroke="none"/>
+<circle id="input_trig_expand" cx="55.36" cy="256.89" r="1" fill="none" stroke="none"/>
+<circle id="param_btn_expand" cx="544.64" cy="256.89" r="1" fill="none" stroke="none"/>
+<circle id="light_pending_expand" cx="518.06" cy="256.89" r="1" fill="none" stroke="none"/>
+<circle id="input_trig_random" cx="55.36" cy="283.46" r="1" fill="none" stroke="none"/>
+<circle id="input_back_random" cx="85.63" cy="283.46" r="1" fill="none" stroke="none"/>
+<circle id="param_btn_random" cx="544.64" cy="283.46" r="1" fill="none" stroke="none"/>
+<circle id="light_pending_random" cx="518.06" cy="283.46" r="1" fill="none" stroke="none"/>
+<circle id="input_trig_truerev" cx="55.36" cy="320.37" r="1" fill="none" stroke="none"/>
+<circle id="param_btn_truerev" cx="544.64" cy="320.37" r="1" fill="none" stroke="none"/>
+<circle id="light_pending_truerev" cx="518.06" cy="320.37" r="1" fill="none" stroke="none"/>
 </g>
 </svg>

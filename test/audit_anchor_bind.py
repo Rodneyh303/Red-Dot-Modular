@@ -116,17 +116,19 @@ MODULES = {
         # Containment step 4 (CC_PROMPT_CONTAINMENT_BUILD_PLAN.md): the module opts in —
         # "anchor/bind audit (new panel)" is the step-4 gate. The widget lives in the header
         # (MonsoonContainment.cpp is the 4-line createModel instantiation, the CA layout).
-        # 25 anchors = 7 verb rows x (trig jack + fire button + pending lamp) — rotate/reflect/
-        # invert/collapse/collapseall/expand/random (the 2026-10-27 RANDOM row) — PLUS the
-        # TRUE-REV row (same three families; NOT a verb: it arms the true-reverse queue, the
+        # 28 anchors = 8 verb rows x (trig jack + fire button + pending lamp) — rotate/reflect/
+        # invert/collapse/collapseall/DECLUTTER/expand/random (the 2026-10-27 RANDOM row;
+        # DECLUTTER pulled forward the same day — the reduction gesture, Rodney: "it would be
+        # better to pull declutter forward since now it can only be applied to random") — PLUS
+        # the TRUE-REV row (same three families; NOT a verb: it arms the true-reverse queue, the
         # global-reverse consumer) and the RANDOM row's back jack (input_back_random, the CA
         # scatter-back shape). All bound by name in the ctor loop + the explicit binds.
         "widget": ["src/MonsoonContainment.hpp"],
         "panel": "res/panels/Containment_panel_dark.svg",
         "counts": {
-            "input_trig_": 8,       # 7 verb trig jacks + the TRUE-REV trigger
-            "param_btn_": 8,        # 7 fire buttons + the TRUE-REV arm button
-            "light_pending_": 8,    # 7 pending lamps + the TRUE-REV queue lamp
+            "input_trig_": 9,       # 8 verb trig jacks + the TRUE-REV trigger
+            "param_btn_": 9,        # 8 fire buttons + the TRUE-REV arm button
+            "light_pending_": 9,    # 8 pending lamps + the TRUE-REV queue lamp
             "input_back_": 1,       # the RANDOM row's back-draw jack (the CA scback shape)
         },
     },

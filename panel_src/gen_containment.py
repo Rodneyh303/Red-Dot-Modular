@@ -13,7 +13,7 @@ parent u.  Rows/cols >= activeCount are WIDGET-dimmed at step 4 (the generator
 always emits all 16 -- full polyphony is the geometry's ground state).
 
 Controls/jacks to the SIDES, never underneath:
-  LEFT  = one CV trig jack per verb (input_trig_<verb>), 7 rows + the RANDOM row's BACK jack
+  LEFT  = one CV trig jack per verb (input_trig_<verb>), 8 rows + the RANDOM row's BACK jack
           (input_back_random, inboard of the trig jack -- the CA scatter-back shape: the row
           carries its back-draw jack like CA's scatter rows carry theirs) + the TRUE-REV row
   RIGHT = one fire button + pending lamp per verb (param_btn_/light_pending_), mirrored via
@@ -22,16 +22,18 @@ Controls/jacks to the SIDES, never underneath:
           global-reverse consumer -- the CA true-rev group shape, Rodney's requirement 3:
           the committed-state trajectory replay that makes state-dependent RANDOM commits
           reversible where the dice reverse alone is not)
-Two verb groups: ROLES trio, then FOLD trio + RANDOM (the 2026-10-27 ruling: the seed
-verb as row 7 -- the gesture vocabulary unclosed for a genuinely new decision
-class; Rodney: "Random needs to unclose the 6 gesture rows. It needs to be on
-panel with jack and button"), then the TRUE-REV row in its own group gap.
-ROW_H tightened 14.0 -> 12.0 (seven rows) -> 10.0 (eight rows, the TRUE-REV row)
+Two verb groups: ROLES trio, then FOLD quartet + RANDOM (the 2026-10-27 ruling: the seed
+verb joins after the fold family -- the gesture vocabulary unclosed for a genuinely new
+decision class; Rodney: "Random needs to unclose the 6 gesture rows. It needs to be on
+panel with jack and button"; DECLUTTER pulled forward the same day: "it would be better
+to pull declutter forward since now it can only be applied to random" -- the manual-graph
+reduction trigger), then the TRUE-REV row in its own group gap.
+ROW_H tightened 14.0 -> 12.0 (seven rows) -> 10.0 (eight rows) -> 9.0 (nine rows, DECLUTTER)
 to keep the flank inside the grid band (one group gap after ROLES, a second
 smaller one before TRUE-REV):
-  ROLES     : ROTATE  REFLECT  INVERT                  (role conjugations + duality)
-  FOLD/RAND : COLLAPSE  COLLAPSE-ALL  EXPAND  RANDOM  (structure folding + restore +
-              generation; the row label speaks for itself)
+  ROLES     : ROTATE  REFLECT  INVERT                             (role conjugations + duality)
+  FOLD/RAND : COLLAPSE  COLLAPSE-ALL  DECLUTTER  EXPAND  RANDOM   (structure folding + pruning
+              + restore + generation; the row labels speak for themselves)
   TRUE-REV  : the committed-state trajectory step-back (NOT a verb -- the global-reverse
               consumer; the lamp is the queue affordance, cleared on consume)
 
@@ -73,20 +75,22 @@ PW_MM  = HP * 5.08
 GUTTER = (PW_MM - 2 * CTRL_W - GRID_W) / 2.0
 GRID_X = CTRL_W + GUTTER
 
-# ── Verb rows: ROLES trio, then FOLD trio + RANDOM, then TRUE-REV, spread down the band ──
+# ── Verb rows: ROLES trio, then FOLD quartet + RANDOM, then TRUE-REV, spread down the band ──
 ROW_TOP   = GRID_Y + 8.0
-ROW_H     = 10.0               # tightened 14 -> 12 (7 rows) -> 10 (8 rows, TRUE-REV)
+ROW_H     = 9.0                # tightened 14 -> 12 (7 rows) -> 10 (8 rows) -> 9 (9 rows: DECLUTTER
+                               # joins the FOLD group -- the reduction gesture pulled forward,
+                               # Rodney 2026-10-27 -- + TRUE-REV keeps its own group gap)
 GROUP_GAP = 4.5                # after ROLES (k >= 3)
-GROUP_GAP2 = 3.5               # before TRUE-REV (k >= 7) -- its own group, the CA true-rev shape
+GROUP_GAP2 = 3.5               # before TRUE-REV (k >= 8) -- its own group, the CA true-rev shape
 VERBS = [("rotate", "ROTATE"), ("reflect", "REFLECT"), ("invert", "INVERT"),
-         ("collapse", "COLLAPSE"), ("collapseall", "COLLAPSE-ALL"), ("expand", "EXPAND"),
-         ("random", "RANDOM")]
+         ("collapse", "COLLAPSE"), ("collapseall", "COLLAPSE-ALL"), ("declutter", "DECLUTTER"),
+         ("expand", "EXPAND"), ("random", "RANDOM")]
 
 def rowY(k):
     return ROW_TOP + k * ROW_H + (GROUP_GAP if k >= 3 else 0.0) \
-        + (GROUP_GAP2 if k >= 7 else 0.0) + ROW_H * 0.5
+        + (GROUP_GAP2 if k >= 8 else 0.0) + ROW_H * 0.5
 
-TRUEREV_Y = rowY(7)            # the TRUE-REV flank row (NOT a verb; 8th row)
+TRUEREV_Y = rowY(8)            # the TRUE-REV flank row (NOT a verb; 9th row)
 BACK_X    = 29.0               # the RANDOM row's back jack (inboard of J_X; CA scback shape)
 
 def lx(x, flip): return (PW_MM - x) if flip else x
@@ -188,7 +192,7 @@ def gen(dark):
     rand_start = LABEL_X - 0.66 * 2.8 * len("RANDOM")
     assert rand_start >= BACK_X + J_HALF + 1.0, f"back jack collides with RANDOM label ({rand_start:.2f})"
     assert BACK_X - J_X >= 2 * J_HALF + 1.0, "back jack collides with the trig jack column"
-    # rows live inside the grid band with breathing room (k=7 = the TRUE-REV row)
+    # rows live inside the grid band with breathing room (k=8 = the TRUE-REV row)
     assert rowY(0) - 4.5 >= GRID_Y + 1.5 and TRUEREV_Y + 4.5 <= GRID_Y + GRID_H - 1.5, "verb rows leave the grid band"
     print(f"  label zone: LABEL_X={LABEL_X:.2f} start>={label_start:.2f} vs jack rim "
           f"{J_X + J_HALF:.2f} (clear)  rows {rowY(0):.1f}..{TRUEREV_Y:.1f} in band "

@@ -1109,6 +1109,70 @@ int main() {
         CHK(divergent > 0, "scatter: STATE-DEPENDENT — the same page diverges on different start graphs (the CA model)");
         CHK(scrubDiffers > 0, "scatter: draw-reversible != state-restorable (the scrub lands OFF the pre-page state)");
         CHK(scrubMoves > 0, "scatter: the scrub is an ACTIVE gesture (page k-1 moves the post-k graph)");
+
+        // THE POOL SPAN (the polyphony ruling, fixed 2026-10-27 — Rodney: "relative random
+        // now puts some pins outside the area defined by polyphony"): the pass spans the
+        // pool like every other writer — rows at/above the pool are HELD verbatim (their
+        // draws are counter-ADDRESSED, so skipping them moves nobody's page), pool rows
+        // never GAIN an above-pool parent (the ADD scan stays inside [0, pool)), planted
+        // above-pool parents SURVIVE (REMOVE is pool-masked — the hold rule: the wholesale
+        // clear is Outright's business), and pool 1 is the known no-op.
+        {
+            int pBadValid = -1, pBadSpan = -1, pBadDet = -1, pBadHold = -1, pool1Differs = -1;
+            for (int seed = 1; seed <= 200 && (pBadValid < 0 && pBadSpan < 0 && pBadDet < 0 && pBadHold < 0); ++seed) {
+                redDot::PhiloxRng r7((uint64_t)seed * 0xA5A5335Dull + 0x5EEDull);
+                const int pool = 1 + seed % 16;                    // every pool 1..16 over the march
+                const int density = 1 + seed % 10;
+                const uint64_t page = (uint64_t)seed * 48ull + 7ull;
+                const uint16_t pm = (uint16_t)((1u << pool) - 1);
+                ContainmentGraph g;
+                buildRandomDag(g, r7, 60);
+                if (pool < 16) {
+                    for (int v = 0; v < VOICES; ++v)          // no edges INTO 0: nothing reaches 0,
+                        g.parents[v] &= (uint16_t)~(1u << 0); // so the plant can never cycle — the
+                    CHK(g.addParent(0, pool), "pool: held-pin setup accepted (0->pool, the child inside)");
+                }
+                const ContainmentGraph snap = g;
+                scatterEdges(g, rng, page, density, pool);
+                if (!g.isValid() || !noSelfBits(g) || !roundTripOk(g)) { pBadValid = seed; continue; }
+                bool spanOk = true, holdOk = true;
+                for (int v = 0; v < VOICES; ++v) {
+                    if (v >= pool) {                               // held rows: verbatim
+                        if (g.parents[v] != snap.parents[v]) spanOk = false;
+                    } else if ((g.parents[v] & (uint16_t)~pm) != (snap.parents[v] & (uint16_t)~pm)) {
+                        spanOk = false;                            // held bits preserved EXACTLY:
+                    }                                              // nothing added, nothing removed above
+                }
+                if (pool < 16 && !(g.parents[0] & (1u << pool))) holdOk = false;   // the planted pin survives
+                if (pool == 1 && !sameState(g, snap)) pool1Differs = seed;         // the known no-op
+                if (!spanOk) { pBadSpan = seed; continue; }
+                if (!holdOk) { pBadHold = seed; continue; }
+                ContainmentGraph again = snap;
+                scatterEdges(again, rng, page, density, pool);
+                if (!sameState(g, again)) { pBadDet = seed; continue; }
+            }
+            if (pBadValid >= 0) std::printf("  detail: scatter-pool validity broke at seed %d (pool %d)\n", pBadValid, 1 + pBadValid % 16);
+            if (pBadSpan  >= 0) std::printf("  detail: scatter-pool span broke at seed %d (pool %d)\n", pBadSpan, 1 + pBadSpan % 16);
+            if (pBadHold  >= 0) std::printf("  detail: scatter-pool hold broke at seed %d (pool %d)\n", pBadHold, 1 + pBadHold % 16);
+            if (pBadDet   >= 0) std::printf("  detail: scatter-pool determinism broke at seed %d (pool %d)\n", pBadDet, 1 + pBadDet % 16);
+            if (pool1Differs >= 0) std::printf("  detail: pool-1 no-op broke at seed %d\n", pool1Differs);
+            CHK(pBadValid < 0, "scatter-pool: acyclic + no self-bits + loadable at EVERY pool 1..16 (200 seeds)");
+            CHK(pBadSpan  < 0, "scatter-pool: rows at/above the pool held verbatim; no new above-pool parent (the span)");
+            CHK(pBadHold  < 0, "scatter-pool: a planted above-pool parent SURVIVES the pass (REMOVE is pool-masked)");
+            CHK(pBadDet   < 0, "scatter-pool: deterministic given (current graph, page, density, pool)");
+            CHK(pool1Differs < 0, "scatter-pool: pool 1 is the known no-op (ADD has no candidate, REMOVE has no in-pool bit)");
+            // pool = VOICES (the default) is bit-for-bit the legacy pass — the 200-seed legacy
+            // block above IS the anchor; this row pins the default/explicit identity.
+            {
+                redDot::PhiloxRng r8(0xC0FFEEull);
+                ContainmentGraph a, b;
+                buildRandomDag(a, r8, 60);
+                b = a;
+                scatterEdges(a, rng, 999ull, 7);            // the default pool
+                scatterEdges(b, rng, 999ull, 7, VOICES);    // the explicit pool
+                CHK(sameState(a, b), "scatter: the default pool IS VOICES (the legacy rows keep their anchor)");
+            }
+        }
     }
 
     std::printf(fail ? "\n%d passed, %d FAILED\n" : "\n%d passed, 0 failed\n", pass, fail);

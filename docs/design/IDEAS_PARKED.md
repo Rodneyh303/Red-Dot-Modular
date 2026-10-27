@@ -379,3 +379,56 @@ LANDED in the same commit:
 Still parked: the density-gated-boost variant (path A as a FALLBACK if B feels wrong in
 rack — one gate, no persisted field), MODIFY/Scatter refinements (conditional), the global
 reverse cross-module items (CA_DICE_COUNTER_MODEL.md + LOR_BACKLOG §5).
+
+## The reduce flag lands; DECLUTTER pulled forward; the scatter pool span fixed (Rodney 2026-10-27, same day, third pass)
+
+Three movements complete the reduction/closure story:
+
+- **The seed verb's reduction post-pass flag LANDED** (f12765e7, Rodney's "what happened to
+  the closure/reduction?" pulled it forward): `randomReduce` — the FIFTH persisted config
+  field, context-menu "Random reduce" (Off (default) / On (declutter the draw)), zero param
+  slots; an OUTRIGHT draw runs reduceTransitive(g) after the boost, NO draws consumed, the
+  reverse-draw stays the exact restore under the flag; SCATTER ignores it. Density 10 +
+  reduce = the DAG-complete page's Hasse diagram (the island chains, pool - islands pins).
+
+- **DECLUTTER PULLED FORWARD as a flank row** (Rodney: "it would be better to pull declutter
+  forward since now it can only be applied to random" — the flag only ever stripped DRAWS;
+  the manual/hand-authored graph had no trigger). V_DECLUTTER = 5 in the FOLD group — the
+  flank reads ROLES (ROTATE / REFLECT / INVERT) then FOLD (COLLAPSE / COLLAPSE-ALL /
+  DECLUTTER / EXPAND) then RANDOM then TRUE-REV; N_VERBS 7 -> 8; ROW_H 10 -> 9mm (nine flank
+  rows), 28 anchors, the band assert green. The dispatch is the landed pure verb over the
+  CURRENT graph — whole-plane (the fold family's convention; the POOL span is the DRAWS'
+  convention), explicit-trigger-only (§8: the strip deletes deliberate shortcut offers — C1's
+  offer union and C4's hold-follow read DIRECT edges), stamped at arm, applied at the phrase
+  boundary in stamp order, committed through the same trajectory bracket (pre-push held
+  state, post-push result — EXPAND-reversible like every row), undo parity inherited. The
+  visible effect on the pin grid: shadow marks vanish, the lantern envelopes CANNOT move
+  (T11 closure-preservation is mask-exact — nesting lengths, gate intersections and the
+  forced-rest cascade are invariant; only the direct-offer event layer changes). Ruling 1
+  stands: no CLOSER row (synonymy) — DECLUTTER passes the RANDOM test (a decision class the
+  rows did not span: strip implied structure), which is why the vocabulary accepts it.
+  The "Random reduce" flag and the row are COMPLEMENTS, not duplicates: the flag shapes the
+  draw (before the page lands), the row shapes whatever graph exists (after marches,
+  collapse/expand sessions, manual edits). The anchor-mask trigger wiring for
+  collapseAllOnto stays parked (a flank row cannot carry a mask; a context gesture on the
+  pin grid would be the shape if ever wanted).
+
+- **THE SCATTER POOL SPAN FIXED** (Rodney's defect: "relative random now puts some pins
+  outside the area defined by polyphony" — scatterEdges never received the pool the
+  polyphony ruling gave seedForest): the pass now SPANS THE POOL like every other writer —
+  rows at/above the pool are HELD verbatim (their draws are counter-ADDRESSED, so skipping
+  them moves nobody's page addressing), the ADD scan picks parents WITHIN [0, pool), and
+  REMOVE works on the pool-masked parent set (a held above-pool parent survives — the hold
+  rule: the wholesale clear is Outright's business, a modify pass never reaches outside its
+  sandbox). pool = VOICES (the default) is BIT-FOR-BIT the pre-fix pass — every legacy
+  T12/P10 scatter row keeps its anchor; the fire oracle at polyphony 10 pins the row-level
+  span; the transforms march sweeps every pool 1..16 x 200 seeds (validity, the span, the
+  planted-pin hold, determinism, the pool-1 known no-op, default == explicit).
+
+TESTS: transforms 156 -> 350 checks (the pool march counts per-seed), pending 114 -> 130
+(the scatter-pool oracle block + the P10c DECLUTTER row contract: known answer, delete-only,
+closure mask-exact, idempotent, the dice counter untouched, trajectory stepBack reversibility,
+the collapse-all+declutter stamp-order compose). Battery 87/87 under BOTH mounts (simde-only:
+smoke skips gracefully; real SDK 2.5.2: the plugin-TU smoke 43/43) + UNIFORMITY_STRICT=1 +
+the anchor audit (28 anchors, all bound). Goldens untouched; zero engine surface (both
+changes are module-layer: the draws and the pending dispatch).

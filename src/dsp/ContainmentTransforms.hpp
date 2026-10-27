@@ -415,23 +415,38 @@ inline void seedForest(ContainmentGraph& g, const redDot::PhiloxRng& rng, uint64
 //   3v+0 event coin  < p    -> this voice scatters this pass
 //   3v+1 mode coin   < 0.5  -> ADD a parent, else REMOVE one
 //   3v+2 pick        (32b)  -> the candidate / selection
-// ADD: scan u = pick%16, +1, ... (VOICES steps, u != v): the first u that is a VALID new
+// ADD: scan u = pick%pool, +1, ... (pool steps, u != v): the first u that is a VALID new
 //      parent (not already pinned, wouldCycle == false against the CURRENT partially-
 //      scattered graph) takes the edge; none valid -> the event is spent, no re-roll. The
 //      scan-from-drawn-start keeps ONE draw per voice and makes density meaningful.
-// REMOVE: the (pick % popcount)-th set bit of the CURRENT parents[v]; a root skips.
-inline void scatterEdges(ContainmentGraph& g, const redDot::PhiloxRng& rng, uint64_t page, int density) {
+// REMOVE: the (pick % popcount)-th set bit of the CURRENT parents[v] MASKED TO THE POOL;
+//      no in-pool parent (a root within the sandbox) skips.
+// POOL SPAN (the polyphony ruling, fixed 2026-10-27 — Rodney: "relative random now puts
+// some pins outside the area defined by polyphony"): the pass SPANS THE POOL like every
+// other writer — voices v >= pool are HELD (their draws are counter-ADDRESSED, so skipping
+// them consumes nothing and no other voice's page addressing moves), the ADD scan picks
+// parents WITHIN the pool, and REMOVE works on the pool-masked parent set (an above-pool
+// held parent survives — the hold rule: the wholesale clear is Outright's business, a
+// modify pass never reaches outside its sandbox). pool = VOICES (the default) is
+// BIT-FOR-BIT the pre-fix pass — every legacy T12/P10 scatter row stays the anchor.
+inline void scatterEdges(ContainmentGraph& g, const redDot::PhiloxRng& rng, uint64_t page,
+                         int density, int pool = VOICES) {
     if (density < 1) density = 1;
     if (density > 10) density = 10;
+    if (pool < 1) pool = 1;
+    if (pool > VOICES) pool = VOICES;
     const float p = density * 0.1f;
+    const uint16_t poolMask = (uint16_t)((1u << pool) - 1);   // the sandbox: pins live in [0, pool)
     for (int v = 0; v < VOICES; ++v) {
+        if (v >= pool) continue;                              // the draw spans the pool (rows
+                                                              // above are HELD, not cleared)
         if (!(rng.atUniform(page + (uint64_t)(3 * v)) < p)) continue;          // the event coin
         const bool add = rng.atUniform(page + (uint64_t)(3 * v + 1)) < 0.5f;   // the mode coin
         const uint32_t pick = rng.at(page + (uint64_t)(3 * v + 2));            // the pick
         if (add) {
-            const int start = (int)(pick % (uint32_t)VOICES);
-            for (int step = 0; step < VOICES; ++step) {
-                const int u = (start + step) % VOICES;
+            const int start = (int)(pick % (uint32_t)pool);
+            for (int step = 0; step < pool; ++step) {
+                const int u = (start + step) % pool;
                 if (u == v) continue;
                 if (g.isContainedIn(v, u)) continue;         // already pinned — not a new offer
                 if (g.wouldCycle(v, u)) continue;            // the QUERY layer owns validity
@@ -439,8 +454,9 @@ inline void scatterEdges(ContainmentGraph& g, const redDot::PhiloxRng& rng, uint
                 break;
             }
         } else {
-            const uint16_t m = g.parents[v];
-            if (!m) continue;                                // a root has nothing to remove
+            const uint16_t m = (uint16_t)(g.parents[v] & poolMask);
+            if (!m) continue;                                // a root within the pool has nothing
+                                                             // to remove (held bits are not ours)
             int nth = (int)(pick % (uint32_t)__builtin_popcount(m));
             uint16_t mm = m;
             while (mm) {

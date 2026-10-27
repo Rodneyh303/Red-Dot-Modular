@@ -73,13 +73,15 @@ namespace ContainmentPanelMm {
     constexpr float CELL = GRID_W / 16.0f;         // 6.225
     constexpr float J_X = 18.75f, L_X = 27.75f;    // trig-jack col (left); lamp col (right)
     constexpr float BACK_X = 29.0f;                // RANDOM row's back jack (inboard of J_X — CA scback shape)
-    // Verb rows at the 10.0mm pitch (ROW_H tightened 12 -> 10 to fit the 8th flank row: the
-    // TRUE-REV row at TRUE_REV_Y, its own 3.5mm group gap below RANDOM — 4.5mm between the
-    // verb groups). Mirrors gen_containment.py rowY() — keep the three in lockstep.
-    constexpr float ROW_Y[7] = {29.0f, 39.0f, 49.0f, 63.5f, 73.5f, 83.5f, 93.5f};
-    constexpr float TRUE_REV_Y = 107.0f;
-    constexpr const char* VERB_ID[7]    = {"rotate", "reflect", "invert", "collapse", "collapseall", "expand", "random"};
-    constexpr const char* VERB_LABEL[7] = {"ROTATE", "REFLECT", "INVERT", "COLLAPSE", "COLLAPSE-ALL", "EXPAND", "RANDOM"};
+    // Verb rows at the 9.0mm pitch (ROW_H tightened 12 -> 10 -> 9 to fit the 9th flank row:
+    // DECLUTTER joins the FOLD group — the reduction gesture pulled forward, Rodney 2026-10-27
+    // — leaving the TRUE-REV row at TRUE_REV_Y with its own 3.5mm group gap below RANDOM;
+    // 4.5mm between the verb groups). Mirrors gen_containment.py rowY() — keep the three in
+    // lockstep.
+    constexpr float ROW_Y[8] = {28.5f, 37.5f, 46.5f, 60.0f, 69.0f, 78.0f, 87.0f, 96.0f};
+    constexpr float TRUE_REV_Y = 108.5f;
+    constexpr const char* VERB_ID[8]    = {"rotate", "reflect", "invert", "collapse", "collapseall", "declutter", "expand", "random"};
+    constexpr const char* VERB_LABEL[8] = {"ROTATE", "REFLECT", "INVERT", "COLLAPSE", "COLLAPSE-ALL", "DECLUTTER", "EXPAND", "RANDOM"};
     constexpr float LABEL_X = 47.4f, NUM_X = 50.4f;
     constexpr float TITLE_Y = 9.8f, SIDE_Y = 14.8f, CAP1_Y = 121.0f, CAP2_Y = 125.2f;
 } // namespace ContainmentPanelMm
@@ -134,7 +136,7 @@ struct MonsoonContainment : Module {
         configButton(BTN_TRUE_REV, "TRUE-REV arm");
     }
 
-    // The single arming choke point (the CA latchRow rule): the 7 trig jacks + 7 fire buttons
+    // The single arming choke point (the CA latchRow rule): the 8 trig jacks + 8 fire buttons
     // (and any future UI gesture) call THIS. Stamps on the unarmed->armed transition only;
     // re-arming an armed row keeps its stamp. Lights the pending lamp. NEVER touches the
     // graph — the verb waits for the host-driven boundary (the hold).
@@ -592,7 +594,7 @@ struct MonsoonContainmentWidget : ModuleWidget,
         nvgText(vg, box.size.x * 0.5f, mm2px(TITLE_Y), "CONTAINMENT", NULL);
         nvgTextLetterSpacing(vg, 0.f);
 
-        // Side captions over the control columns; group captions over each verb trio.
+        // Side captions over the control columns; group captions over the verb groups.
         nvgFillColor(vg, dim);
         nvgFontSize(vg, mm2px(2.0f));
         nvgText(vg, mm2px(J_X), mm2px(SIDE_Y), "TRIG", NULL);

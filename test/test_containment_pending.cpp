@@ -555,6 +555,97 @@ int main() {
                 "scatter: draw-reversible != state-restorable (the state side is the trajectory's job)");
             CHK(h.isValid() && roundTripOk(h), "scatter: the scrubbed state is a valid loadable DAG");
         }
+
+        // THE POOL SPAN on the row (the polyphony ruling, fixed 2026-10-27 — Rodney: "relative
+        // random now puts some pins outside the area defined by polyphony"): fire at polyphony
+        // 10 == the page oracle at pool 10; rows at/above the pool are HELD verbatim; a planted
+        // above-pool parent survives the pass (REMOVE is pool-masked — the hold rule).
+        {
+            CP q; auto t5 = std::make_unique<ContainmentTrajectory>();
+            ContainmentGraph h;
+            CHK(h.addParent(0, 1) && h.addParent(2, 5) && h.addParent(9, 12) && h.addParent(12, 13),
+                "scatter-pool: setup accepted (in-pool pins + held above-pool pins)");
+            q.randomMode = 1;
+            q.randomDensity = 8;
+            const ContainmentGraph pre = h;
+            q.latch(CP::V_RANDOM);
+            q.applyAll(h, 10, *t5);                            // polyphony 10 at draw
+            CHK(q.randomCounter == 1 && h.isValid() && noSelfBits(h) && roundTripOk(h),
+                "scatter-pool: the pool-10 pass is a valid checked-edit drive (counter advanced)");
+            ContainmentGraph fireOracle = pre;
+            scatterEdges(fireOracle, rr, 1ull * RANDOM_PAGE_SCATTER, 8, 10);
+            CHK(sameState(h, fireOracle),
+                "scatter: fire at polyphony 10 == the page oracle at pool 10 (the span rides the row)");
+            bool spanOk = true;
+            const uint16_t pm10 = (uint16_t)((1u << 10) - 1);
+            for (int v = 0; v < VOICES; ++v) {
+                if (v >= 10) { if (h.parents[v] != pre.parents[v]) spanOk = false; }       // held rows
+                else if ((h.parents[v] & (uint16_t)~pm10) != (pre.parents[v] & (uint16_t)~pm10))
+                    spanOk = false;                                                        // held bits exact
+            }
+            const bool heldOk = (h.parents[9] & (1u << 12)) != 0;  // the planted 9->12 pin survives
+            CHK(spanOk && heldOk,
+                "scatter: rows at/above the pool HOLD — nothing added or removed outside the pool (the hold rule)");
+        }
+    }
+
+    // ── P10c. the DECLUTTER row (the reduction gesture pulled forward, Rodney 2026-10-27:
+    // "it would be better to pull declutter forward since now it can only be applied to
+    // random") — the landed reduceTransitive pure verb as an explicit trigger row, so the
+    // MANUAL graph earns the strip the Random-reduce flag gives the draw. Known answer,
+    // delete-only + closure preservation (T11 rides the gesture), idempotence, the dice
+    // counters untouched, EXPAND-reversibility through the shared trajectory, and
+    // stamp-order composition with the fold family.
+    {
+        CP p; auto traj = std::make_unique<ContainmentTrajectory>();
+        ContainmentGraph g;
+        CHK(g.addParent(2, 1) && g.addParent(3, 1) && g.addParent(3, 2),
+            "declutter: setup accepted (3->1 rides 3->2->1 — the implied shortcut)");
+        const ContainmentGraph pre = g;
+        p.latch(CP::V_DECLUTTER);
+        CHK(p.armed[CP::V_DECLUTTER] && p.stamp[CP::V_DECLUTTER] == 0,
+            "declutter: the row arms through the latch (its own row, its own stamp)");
+        p.applyAll(g, 16, *traj);
+        ContainmentGraph reduced;
+        CHK(reduced.addParent(2, 1) && reduced.addParent(3, 2), "declutter: oracle setup accepted");
+        CHK(sameState(g, reduced),
+            "declutter: fire == reduceTransitive (the implied 3->1 strips; the spine stays)");
+        CHK(!g.isContainedIn(3, 1) && g.isContainedIn(3, 2) && g.isContainedIn(2, 1),
+            "declutter: the strip is delete-only (no pin invented)");
+        CHK(g.ancestorClosure(3) == pre.ancestorClosure(3) && g.ancestorClosure(2) == pre.ancestorClosure(2),
+            "declutter: closure preserved mask-exact (T11 rides the gesture — the envelopes cannot move)");
+        CHK(p.randomCounter == 0, "declutter: the dice's page counter is untouched (not a draw)");
+        p.latch(CP::V_DECLUTTER);
+        p.applyAll(g, 16, *traj);
+        CHK(sameState(g, reduced), "declutter: idempotent (the second fire strips nothing)");
+
+        // EXPAND-reversibility: the commit bracket recorded the pre-state — one stepBack
+        // lands back on it (the SAME ring every row shares; the reduction deletes deliberate
+        // shortcut offers, so the undo path is the escape — the §8 explicit-trigger rule).
+        {
+            ContainmentGraph restored;
+            CHK(traj->stepBack(restored) && sameState(restored, pre),
+                "declutter: the trajectory bracket holds the pre-state (EXPAND-reversible like every row)");
+        }
+
+        // Stamp-order composition with the fold family: COLLAPSE-ALL armed first, DECLUTTER
+        // second — one boundary applies collapse-then-reduce (row order is the tie-break;
+        // the strip composes like every other verb, never a background pass).
+        {
+            CP q; auto t2 = std::make_unique<ContainmentTrajectory>();
+            ContainmentGraph h;
+            CHK(h.addParent(1, 0) && h.addParent(2, 1) && h.addParent(3, 2) && h.addParent(3, 0),
+                "declutter-compose: setup accepted (a chain plus its shortcut)");
+            q.latch(CP::V_COLLAPSE_ALL);
+            q.latch(CP::V_DECLUTTER);
+            ContainmentGraph oracle = h;
+            collapseAll(oracle);
+            reduceTransitive(oracle);
+            CHK(q.applyAll(h, 16, *t2) == 2 && sameState(h, oracle),
+                "declutter: composes in stamp order (collapse-all first, the strip second)");
+            CHK(h.isValid() && noSelfBits(h) && roundTripOk(h),
+                "declutter: the composed state is a valid loadable DAG");
+        }
     }
 
     // ── P11. the TRUE-REVERSE queue (the global-reverse consumer; the CA engine shape) ──────
