@@ -69,17 +69,19 @@ namespace ContainmentPanelMm {
     constexpr float GRID_X = 51.8f, GRID_Y = 16.0f, GRID_W = 99.6f;
     constexpr float CELL = GRID_W / 16.0f;         // 6.225
     constexpr float J_X = 18.75f, L_X = 27.75f;    // trig-jack col (left); lamp col (right)
-    constexpr float ROW_Y[6] = {31.0f, 45.0f, 59.0f, 78.0f, 92.0f, 106.0f};
-    constexpr const char* VERB_ID[6]    = {"rotate", "reflect", "invert", "collapse", "collapseall", "expand"};
-    constexpr const char* VERB_LABEL[6] = {"ROTATE", "REFLECT", "INVERT", "COLLAPSE", "COLLAPSE-ALL", "EXPAND"};
+    constexpr float ROW_Y[7] = {30.0f, 42.0f, 54.0f, 71.0f, 83.0f, 95.0f, 107.0f};
+    constexpr const char* VERB_ID[7]    = {"rotate", "reflect", "invert", "collapse", "collapseall", "expand", "random"};
+    constexpr const char* VERB_LABEL[7] = {"ROTATE", "REFLECT", "INVERT", "COLLAPSE", "COLLAPSE-ALL", "EXPAND", "RANDOM"};
     constexpr float LABEL_X = 47.4f, NUM_X = 50.4f;
     constexpr float TITLE_Y = 9.8f, SIDE_Y = 14.8f, CAP1_Y = 121.0f, CAP2_Y = 125.2f;
 } // namespace ContainmentPanelMm
 
 struct MonsoonContainment : Module {
-    enum ParamIds  { BTN_START = 0,             NUM_PARAMS  = BTN_START + 6 };             // 6 fire buttons
-    enum InputIds  { TRIG_START = 0,            NUM_INPUTS  = TRIG_START + 6 };            // 6 trig jacks
-    enum LightIds  { PENDING_LIGHT_START = 0,   NUM_LIGHTS  = PENDING_LIGHT_START + 6 };   // 6 pending lamps
+    // Single-sourced row count (the pending header owns it — the panel constants above mirror
+    // its ROW ORDER; the three-file lockstep is gen_containment.py + this file + the header).
+    enum ParamIds  { BTN_START = 0,             NUM_PARAMS  = BTN_START + dotModular::ct::ContainmentPending::N_VERBS };  // fire buttons
+    enum InputIds  { TRIG_START = 0,            NUM_INPUTS  = TRIG_START + dotModular::ct::ContainmentPending::N_VERBS };  // trig jacks
+    enum LightIds  { PENDING_LIGHT_START = 0,   NUM_LIGHTS  = PENDING_LIGHT_START + dotModular::ct::ContainmentPending::N_VERBS };  // pending lamps
 
     static constexpr int N_VERBS = dotModular::ct::ContainmentPending::N_VERBS;
 
@@ -115,6 +117,16 @@ struct MonsoonContainment : Module {
         core.pending.latch(verb);
         if (verb >= 0 && verb < N_VERBS)
             lights[PENDING_LIGHT_START + verb].setBrightness(1.f);
+    }
+
+    // The reverse-draw arm (requirement 2 — the CA back-jack ACTION; the hardware back jack
+    // parks with the panel iteration, the context menu carries the gesture this slice): arms
+    // the SAME RANDOM row (one stamp, the lamp lights — the latchRow choke point) with the
+    // backward direction. The STATE change happens at the phrase boundary and publishes its
+    // own undo step, like any row commit.
+    void armRandomReverse() {
+        core.pending.latchRandomReverse();
+        lights[PENDING_LIGHT_START + dotModular::ct::ContainmentPending::V_RANDOM].setBrightness(1.f);
     }
 
     // The host-driven boundary commit (expanderManager.sync, the CA applyPendingTransforms
@@ -533,7 +545,7 @@ struct MonsoonContainmentWidget : ModuleWidget,
         nvgFillColor(vg, ink);
         nvgFontSize(vg, mm2px(2.8f));
         nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
-        for (int k = 0; k < 6; ++k)
+        for (int k = 0; k < N_VERBS; ++k)
             nvgText(vg, mm2px(LABEL_X), mm2px(ROW_Y[k]), VERB_LABEL[k], NULL);
 
         // Vertex numbers: voices 1..16 down the left edge, parents 1..16 across the top edge.
@@ -574,6 +586,35 @@ struct MonsoonContainmentWidget : ModuleWidget,
                         [module, s]() { module->core.pending.rotateStep = s; }));
                 }
             }));
+
+        // The RANDOM row's config (the rotateStep precedent — context menu, zero param slots):
+        // the page interpretation (the two variations, Rodney 2026-10-27) and the density dial
+        // (p = density/10; the F-5 recipe's p=0.28 sits at the default 3).
+        menu->addChild(createSubmenuItem("Random mode", "",
+            [module](Menu* sub) {
+                sub->addChild(createCheckMenuItem("Outright new forest  (default)", "",
+                    [module]() { return module->core.pending.randomMode == 0; },
+                    [module]() { module->core.pending.randomMode = 0; }));
+                sub->addChild(createCheckMenuItem("Scatter (modify current)", "",
+                    [module]() { return module->core.pending.randomMode == 1; },
+                    [module]() { module->core.pending.randomMode = 1; }));
+            }));
+        menu->addChild(createSubmenuItem("Random density", "",
+            [module](Menu* sub) {
+                for (int d = 1; d <= 10; ++d) {
+                    sub->addChild(createCheckMenuItem(
+                        (d == 3) ? "3  (default)" : std::to_string(d), "",
+                        [module, d]() { return module->core.pending.randomDensity == d; },
+                        [module, d]() { module->core.pending.randomDensity = d; }));
+                }
+            }));
+        // The reverse-draw action (requirement 2 — the CA back action): arms the RANDOM row
+        // backward; the boundary commit re-derives the previous page (an EXACT state restore
+        // in Outright mode, the generative scrub in Scatter mode). One pending row, one undo
+        // step, the standard lamp affordance. (The hardware back jack parks with the panel
+        // iteration — the context menu carries the gesture this slice.)
+        menu->addChild(createMenuItem("Random: reverse draw", "",
+            [module]() { module->armRandomReverse(); }));
 
         menu->addChild(createMenuItem("Clear all containment pins", "",
             [module]() {

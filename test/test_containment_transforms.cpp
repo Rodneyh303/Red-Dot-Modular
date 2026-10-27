@@ -827,6 +827,135 @@ int main() {
         CHK(badMono   < 0, "reduce: edge count never grows (delete-only, never re-points)");
     }
 
+    // ── T12. RANDOM — the two pure draws (the seed verb, row 7; IDEAS_PARKED.md 2026-10-27) ──
+    // Rodney unclosed the gesture rows for the seed verb: ONE own Philox stream (fixed domain
+    // key, counter = signed addressable PAGE index — the CA dice model, NOT seed-keying), TWO
+    // page interpretations. OUTRIGHT = the STATELESS model: the graph IS f(page, density), so
+    // reverse-draw IS the exact state restore (the CA doc's "when stateless would be right"
+    // case). SCATTER = the STATE-DEPENDENT model: checked edit verbs driven by the page over
+    // the CURRENT graph — path-dependent by design, draw-reversible NOT state-restorable.
+    {
+        redDot::PhiloxRng rng;                       // the FIXED domain key, exactly as the row derives it
+        rng.setKey(redDot::philoxMakeKey(RANDOM_STREAM_DOMAIN));
+
+        // OUTRIGHT: validity + the lone-root guarantee + determinism, per (page, density).
+        // The connectivity boost gives every non-head permutation voice >= 1 parent, so the
+        // result has EXACTLY ONE root (the permutation head) — the F-5 recipe's guarantee.
+        int badValid = -1, badRoots = -1, badDet = -1, badSer = -1;
+        for (int seed = 1; seed <= 600 && (badValid < 0 && badRoots < 0 && badDet < 0 && badSer < 0); ++seed) {
+            const uint64_t page = (uint64_t)seed * 151ull + (uint64_t)(seed % 7) - 3ull;   // signed-range pages
+            const int density = 1 + (seed % 3) * 4 + (seed % 2);   // 1..10-ish spread: {1,2,6,7,...}
+            redDot::PhiloxRng r2 = rng;                                  // same fixed key
+            ContainmentGraph g;
+            seedForest(g, r2, page, density);
+            if (!g.isValid() || !noSelfBits(g)) { badValid = seed; continue; }
+            if (!roundTripOk(g)) { badSer = seed; continue; }
+            int roots = 0;
+            for (int v = 0; v < VOICES; ++v) if (g.isRoot(v)) ++roots;
+            if (roots != 1) { badRoots = seed; continue; }
+            ContainmentGraph again;
+            seedForest(again, r2, page, density);
+            if (!sameState(g, again)) { badDet = seed; continue; }       // the stateless contract: f(page) is f(page)
+        }
+        if (badValid >= 0) std::printf("  detail: outright validity broke at page-seed %d\n", badValid);
+        if (badRoots >= 0) std::printf("  detail: outright lone-root broke at page-seed %d\n", badRoots);
+        if (badDet   >= 0) std::printf("  detail: outright determinism broke at page-seed %d\n", badDet);
+        if (badSer   >= 0) std::printf("  detail: outright round-trip broke at page-seed %d\n", badSer);
+        CHK(badValid < 0, "outright: acyclic + no self-bits on 600 addressed pages (acyclic BY CONSTRUCTION)");
+        CHK(badSer   < 0, "outright: every generated forest round-trips (loadable save)");
+        CHK(badRoots < 0, "outright: exactly ONE root per generation (the boost's lone guaranteed root)");
+        CHK(badDet   < 0, "outright: f(page, density) is a PURE function of the page (reverse-draw = exact re-derive)");
+
+        // Density dials: 10 = every candidate edge (the DAG-complete upper shape on the
+        // permutation — 120 edges exactly); 1 = the boost guarantee only (>= 15 edges).
+        {
+            redDot::PhiloxRng r3 = rng;
+            ContainmentGraph g10, g1;
+            seedForest(g10, r3, 7777ull, 10);
+            seedForest(g1,  r3, 7777ull, 1);
+            CHK(totalEdges(g10) == 120,
+                "outright: density 10 = the DAG-complete upper shape (120 edges — every earlier-pair)");
+            CHK(totalEdges(g1) >= 15,
+                "outright: density 1 still connects (the boost: >= 15 edges — a spanning structure)");
+            CHK(g10.isValid() && g1.isValid() && noSelfBits(g10) && noSelfBits(g1),
+                "outright: both density extremes stay valid DAGs");
+        }
+
+        // V1 is NOT special (D7): across pages, V1 is sometimes the root, sometimes contained.
+        {
+            int asRoot = 0, contained = 0;
+            for (uint64_t page = 9000ull; page < 9400ull; ++page) {
+                redDot::PhiloxRng r4 = rng;
+                ContainmentGraph g;
+                seedForest(g, r4, page, 3);
+                if (g.isRoot(0)) ++asRoot; else ++contained;
+            }
+            CHK(asRoot > 0 && contained > 0,
+                "outright: V1 placement is FREE across pages (root and contained both occur — D7 first-class)");
+        }
+
+        // OUTRIGHT reverse-as-undo: from a DIRTY graph, apply page k then page k-1 — the result
+        // is EXACTLY page k-1 applied fresh. The rewrite erases the previous page entirely
+        // (the stateless model: the graph is f(counter), the pointer move IS the restore).
+        {
+            ContainmentGraph dirty;
+            dirty.addParent(0, 5); dirty.addParent(3, 7); dirty.addParent(9, 2);
+            redDot::PhiloxRng r5 = rng;
+            ContainmentGraph stepped = dirty, fresh;
+            seedForest(stepped, r5, 4242ull, 5);
+            seedForest(stepped, r5, 4241ull, 5);
+            seedForest(fresh,   r5, 4241ull, 5);
+            CHK(sameState(stepped, fresh),
+                "outright: reverse-draw = EXACT state restore (f(k-1) after f(k) == f(k-1) fresh)");
+        }
+
+        // SCATTER: validity + determinism over random start graphs; the CA state-dependence
+        // pin (the same page on DIFFERENT start graphs diverges — the draw is the how-much,
+        // the current graph is the where-from); the scrub definition (re-applying page k-1 to
+        // the post-k graph == the recompute — NOT a state restore, the trajectory's job).
+        int sBadValid = -1, sBadDet = -1, sBadSer = -1, divergent = 0, scrubDiffers = 0, scrubMoves = 0;
+        for (int seed = 1; seed <= 200 && (sBadValid < 0 && sBadDet < 0 && sBadSer < 0); ++seed) {
+            redDot::PhiloxRng r6((uint64_t)seed * 0x9E3779B97F4A7C15ull + 0xC0FFEEull);
+            ContainmentGraph g;
+            buildRandomDag(g, r6, 60);
+            const uint64_t page = (uint64_t)seed * 48ull + 11ull;
+            const ContainmentGraph snap = g;
+            scatterEdges(g, rng, page, 1 + seed % 10);
+            if (!g.isValid() || !noSelfBits(g)) { sBadValid = seed; continue; }
+            if (!roundTripOk(g)) { sBadSer = seed; continue; }
+            ContainmentGraph again = snap;
+            scatterEdges(again, rng, page, 1 + seed % 10);
+            if (!sameState(g, again)) { sBadDet = seed; continue; }
+
+            // state-dependence: the SAME page on the empty graph diverges from this start
+            // for at least some seeds (pinned as an existence count below).
+            {
+                ContainmentGraph e;
+                scatterEdges(e, rng, page, 1 + seed % 10);
+                if (!sameState(e, g)) ++divergent;
+            }
+            // the scrub: page k-1 applied to the POST-k graph (the pending's reverse-draw
+            // oracle shape). It moves the graph (an active gesture) and — state-dependence —
+            // it does NOT generally land on the pre-k state (the trajectory owns that).
+            {
+                ContainmentGraph scrubbed = g;
+                scatterEdges(scrubbed, rng, page - 1ull, 1 + seed % 10);
+                if (!scrubbed.isValid() || !noSelfBits(scrubbed)) { sBadValid = seed; continue; }
+                if (!sameState(scrubbed, snap)) ++scrubDiffers;   // NOT a state restore
+                if (!sameState(scrubbed, g)) ++scrubMoves;        // an ACTIVE gesture
+            }
+        }
+        if (sBadValid >= 0) std::printf("  detail: scatter validity broke at seed %d\n", sBadValid);
+        if (sBadDet   >= 0) std::printf("  detail: scatter determinism/scrub broke at seed %d\n", sBadDet);
+        if (sBadSer   >= 0) std::printf("  detail: scatter round-trip broke at seed %d\n", sBadSer);
+        CHK(sBadValid < 0, "scatter: acyclic + no self-bits after every pass (wouldCycle-gated edit verbs, 200 seeds)");
+        CHK(sBadSer   < 0, "scatter: every scattered state round-trips (loadable save)");
+        CHK(sBadDet   < 0, "scatter: deterministic given (current graph, page, density) + the scrub definition holds");
+        CHK(divergent > 0, "scatter: STATE-DEPENDENT — the same page diverges on different start graphs (the CA model)");
+        CHK(scrubDiffers > 0, "scatter: draw-reversible != state-restorable (the scrub lands OFF the pre-page state)");
+        CHK(scrubMoves > 0, "scatter: the scrub is an ACTIVE gesture (page k-1 moves the post-k graph)");
+    }
+
     std::printf(fail ? "\n%d passed, %d FAILED\n" : "\n%d passed, 0 failed\n", pass, fail);
     return fail ? 1 : 0;
 }

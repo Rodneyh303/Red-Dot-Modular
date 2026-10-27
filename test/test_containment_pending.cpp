@@ -38,6 +38,11 @@
 //       and a byte-identical autosave round-trip. The verbs' closure is proven per-verb in
 //       test_containment_transforms; THIS pins the composition: a whole committed batch —
 //       any number of verbs, any stamp order, any active count — is an endomorphism on DAGs.
+//   P10 the RANDOM row (row 7; IDEAS_PARKED.md 2026-10-27) — the CA dice model on the row's
+//       OWN Philox stream: the page counter advances per the armed direction; OUTRIGHT's
+//       reverse-draw is the EXACT state restore (stateless reverse-as-undo); forward
+//       re-derivation is exact; the latest arm owns the direction; SCATTER's reverse is the
+//       previous page on the CURRENT graph — the CA scrub, NOT a state restore.
 //
 // Compile (registered in test/run_all.sh as header-only; PhiloxRng needs the simde include):
 //   g++ -std=c++20 -Itest -Isrc -I${RACK_DIR}/dep/include test/test_containment_pending.cpp
@@ -417,6 +422,94 @@ int main() {
         CHK(allRoundTrip, "march: every post-commit state is a byte-identical loadable save");
         CHK(commits > 1000, "march: coverage volume (boundary commit count)");
         (void)expandNoOps; (void)maxRing;   // diagnostics, not gates
+    }
+
+    // ── P10. the RANDOM row (row 7; IDEAS_PARKED.md 2026-10-27) ────────────────────────────
+    // The CA dice model on containment's OWN stream: the counter is a signed addressable PAGE
+    // index; the dispatch moves the pointer in the armed direction FIRST, then applies the
+    // page — so OUTRIGHT's graph is always f(counter) and the reverse-draw IS the exact state
+    // restore (the stateless model's reverse-as-undo), while SCATTER re-applies the previous
+    // page to the CURRENT graph (the CA generative scrub — draw-reversible, NOT state-
+    // restorable; the trajectory + undo bracket own the state side, requirements 3 and 4).
+    {
+        CP p; auto traj = std::make_unique<ContainmentTrajectory>();
+        ContainmentGraph g;
+        redDot::PhiloxRng rr;                                  // the draw oracle: the SAME fixed domain
+        rr.setKey(redDot::philoxMakeKey(RANDOM_STREAM_DOMAIN));
+
+        // forward fire twice (OUTRIGHT, the default mode/density)
+        p.latch(CP::V_RANDOM);
+        CHK(!p.reverseArmed, "random: a plain latch arms FORWARD (no reverse request)");
+        CHK(p.applyAll(g, 16, *traj) == 1, "random: the row commits at the boundary");
+        CHK(p.randomCounter == 1, "random: forward fire advanced the page counter 0 -> 1");
+        ContainmentGraph oracle;
+        seedForest(oracle, rr, 1ull * RANDOM_PAGE_OUTRIGHT, p.randomDensity);
+        CHK(sameState(g, oracle), "random: fire 1 == the outright page-1 forest (the draw oracle)");
+        CHK(g.isValid() && noSelfBits(g) && roundTripOk(g), "random: the generated forest is a valid loadable DAG");
+        p.latch(CP::V_RANDOM);
+        p.applyAll(g, 16, *traj);
+        CHK(p.randomCounter == 2, "random: fire 2 advanced to page 2");
+        seedForest(oracle, rr, 2ull * RANDOM_PAGE_OUTRIGHT, p.randomDensity);
+        CHK(sameState(g, oracle), "random: fire 2 == the outright page-2 forest");
+        CHK(traj->size() >= 2, "random: the commits entered the trajectory (requirement 3's data rides every row)");
+
+        // REVERSE-DRAW: the EXACT state restore (the stateless model's reverse-as-undo)
+        const ContainmentGraph afterFire2 = g;
+        p.latchRandomReverse();
+        CHK(p.armed[CP::V_RANDOM] && p.reverseArmed,
+            "random: the reverse arm holds the SAME row with the backward direction (one stamp, the lamp)");
+        CHK(p.applyAll(g, 16, *traj) == 1, "random: the reverse commits at the boundary");
+        CHK(p.randomCounter == 1, "random: reverse stepped the counter 2 -> 1");
+        seedForest(oracle, rr, 1ull * RANDOM_PAGE_OUTRIGHT, p.randomDensity);
+        CHK(sameState(g, oracle), "random: reverse-draw == the EXACT previous page state (reverse-as-undo)");
+        CHK(!sameState(g, afterFire2), "random: the reverse moved the graph (an active gesture)");
+        CHK(!p.reverseArmed, "random: the reverse request is consumed at the boundary (the lamp rule)");
+
+        // forward again re-derives page 2 bit-for-bit (deterministic revisit)
+        p.latch(CP::V_RANDOM);
+        p.applyAll(g, 16, *traj);
+        CHK(p.randomCounter == 2 && sameState(g, afterFire2),
+            "random: forward re-derivation is exact (f(counter) is f(counter))");
+
+        // direction = the LATEST arm (one pending row, one decision)
+        p.latchRandomReverse();
+        CHK(p.reverseArmed, "random: reverse arm set");
+        p.latch(CP::V_RANDOM);
+        CHK(p.armed[CP::V_RANDOM] && !p.reverseArmed,
+            "random: the latest arm owns the direction (a forward latch clears the reverse request)");
+        p.applyAll(g, 16, *traj);
+        CHK(p.randomCounter == 3, "random: the cleared arm fired FORWARD (counter 2 -> 3)");
+
+        // SCATTER mode: fire = the page driven over the CURRENT graph; reverse = the previous
+        // page on the CURRENT graph — the CA scrub, NOT the state restore.
+        {
+            CP q; auto t2 = std::make_unique<ContainmentTrajectory>();
+            ContainmentGraph h;
+            CHK(h.addParent(0, 1) && h.addParent(2, 5) && h.addParent(9, 10),
+                "scatter: setup graph accepted (the state scatter builds ON)");
+            q.randomMode = 1;                                  // the context-menu pick
+            q.randomDensity = 8;
+            const ContainmentGraph pre = h;
+            q.latch(CP::V_RANDOM);
+            q.applyAll(h, 16, *t2);
+            CHK(q.randomCounter == 1 && h.isValid() && noSelfBits(h) && roundTripOk(h),
+                "scatter: the pass is a valid checked-edit drive (counter advanced)");
+            ContainmentGraph fireOracle = pre;
+            scatterEdges(fireOracle, rr, 1ull * RANDOM_PAGE_SCATTER, 8);
+            CHK(sameState(h, fireOracle), "scatter: fire == the page driven over the current graph (the oracle)");
+            CHK(!sameState(h, pre), "scatter: the pass moved the graph (density 8 on a sparse start)");
+            const ContainmentGraph post = h;
+            q.latchRandomReverse();
+            q.applyAll(h, 16, *t2);
+            CHK(q.randomCounter == 0, "scatter: reverse stepped back to page 0");
+            ContainmentGraph scrubOracle = post;
+            scatterEdges(scrubOracle, rr, 0ull * RANDOM_PAGE_SCATTER, 8);
+            CHK(sameState(h, scrubOracle),
+                "scatter: reverse == the previous page on the CURRENT graph (the scrub oracle — NOT a restore)");
+            CHK(!sameState(h, pre),
+                "scatter: draw-reversible != state-restorable (the state side is the trajectory's job)");
+            CHK(h.isValid() && roundTripOk(h), "scatter: the scrubbed state is a valid loadable DAG");
+        }
     }
 
     std::printf("\n%d passed, %d failed\n", pass, fail);

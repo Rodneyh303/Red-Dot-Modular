@@ -121,9 +121,9 @@ MODULES = {
         "widget": ["src/MonsoonContainment.hpp"],
         "panel": "res/panels/Containment_panel_dark.svg",
         "counts": {
-            "input_trig_": 6,       # one trig jack per verb (rotate/reflect/invert/collapse/collapseall/expand)
-            "param_btn_": 6,        # one fire button per verb
-            "light_pending_": 6,    # one pending lamp per verb
+            "input_trig_": 7,       # one trig jack per verb (rotate/reflect/invert/collapse/collapseall/expand/random — the 2026-10-27 RANDOM row)
+            "param_btn_": 7,        # one fire button per verb
+            "light_pending_": 7,    # one pending lamp per verb
         },
     },
     # NOTE: intertropical is bind-by-name (param_%d / output_%d via rack::string::f, light_connect via

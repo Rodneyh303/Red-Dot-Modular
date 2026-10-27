@@ -206,6 +206,9 @@ int main() {
         buildChain(a);
         a.setPin(3, 0, true);                 // a second component (R2: disconnected vertices valid)
         a.pending.rotateStep = 3;
+        a.pending.randomCounter = -7;         // a SIGNED page index (reverse territory) round-trips
+        a.pending.randomMode = 1;             // SCATTER
+        a.pending.randomDensity = 9;
         a.pending.latch(ContainmentPending::V_COLLAPSE);
         a.applyAtBoundary(16);                // a real commit -> a non-empty trajectory tail
 
@@ -223,6 +226,8 @@ int main() {
         b.fromJson(rootJ);
         CHK(sameGraph(a.graph, b.graph), "S5: graph bytes identical (the WARPDIAG lesson)");
         CHK(b.pending.rotateStep == 3, "S5: rotate-step config restored");
+        CHK(b.pending.randomCounter == -7 && b.pending.randomMode == 1 && b.pending.randomDensity == 9,
+            "S5: the RANDOM row's stream position + config restored (the counter is a SIGNED page index)");
         {
             const auto blobA = a.trajectory.serialise();
             const auto blobB = b.trajectory.serialise();
@@ -316,6 +321,50 @@ int main() {
             c.fromJson(o);
             CHK(c.pending.rotateStep == 2, "S6f: rotate-step 0 ignored");
             json_decref(o);
+        }
+
+        // (g) the RANDOM row's keys: the rotateStep policy verbatim + the commit cycle.
+        {
+            auto rOwner = std::make_unique<ContainmentModuleCore>();   // heap-held — 2 MiB ring
+            ContainmentModuleCore& r = *rOwner;
+            json_t* o = json_object();          // NONE of the random keys present
+            r.fromJson(o);
+            CHK(r.pending.randomCounter == 0 && r.pending.randomMode == 0 && r.pending.randomDensity == 3,
+                "S6g: absent RANDOM keys -> defaults stand (older saves load clean)");
+            json_decref(o);
+            r.pending.randomCounter = 5; r.pending.randomMode = 0; r.pending.randomDensity = 4;
+            json_t* o2 = json_object();
+            json_object_set_new(o2, "randomCounter", json_integer((json_int_t)-3));   // signed: LEGAL
+            json_object_set_new(o2, "randomMode", json_integer(7));                   // out-of-range
+            json_object_set_new(o2, "randomDensity", json_integer(99));               // out-of-range
+            r.fromJson(o2);
+            CHK(r.pending.randomCounter == -3,
+                "S6g: a negative page index loads (the dice counter is a SIGNED position)");
+            CHK(r.pending.randomMode == 0 && r.pending.randomDensity == 4,
+                "S6g: out-of-range mode/density IGNORED (the runtime dials stand)");
+            json_decref(o2);
+
+            // A RANDOM commit is an ORDINARY commit: undo publication + trajectory + the exact
+            // production save/load cycle (requirements 3 and 4 ride the row — CA parity).
+            r.pending.randomMode = 0;           // OUTRIGHT: a wholesale replacement always moves the graph
+            const uint32_t headBefore = r.undoHead.load();
+            r.pending.latch(ContainmentPending::V_RANDOM);
+            r.applyAtBoundary(16);
+            CHK(r.undoHead.load() == headBefore + 1,
+                "S6g: a RANDOM commit publishes its undo snapshot (requirement 4 — the step-4 parity, inherited)");
+            CHK(r.trajectory.size() >= 2,
+                "S6g: the RANDOM commit entered the trajectory (requirement 3's replay data)");
+            json_t* saved = r.toJson();
+            auto r2Owner = std::make_unique<ContainmentModuleCore>();  // heap-held — 2 MiB ring
+            ContainmentModuleCore& r2 = *r2Owner;
+            r2.fromJson(saved);
+            CHK(r2.pending.randomCounter == r.pending.randomCounter
+                && r2.pending.randomMode == r.pending.randomMode
+                && r2.pending.randomDensity == r.pending.randomDensity,
+                "S6g: the stream position + config survive the EXACT production save/load cycle");
+            CHK(sameGraph(r.graph, r2.graph),
+                "S6g: the generated forest round-trips byte-identical (a reproducible, shareable state)");
+            json_decref(saved);
         }
 
         // (g-h) the trajectory tail: stale or cyclic -> DROPPED (ring cleared), never garbage.

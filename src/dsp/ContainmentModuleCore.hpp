@@ -115,6 +115,13 @@ struct ContainmentModuleCore {
     //   "rotateStep" — the context-menu config (the plan: transform step config via context
     //     menu, not param slots). Absent in step-1/2/3 saves -> the default (1) stands. Values
     //     outside 1..15 are IGNORED on load (the verb's clampStep owns the runtime clamp).
+    //   "randomCounter" / "randomMode" / "randomDensity" — the RANDOM row's stream position
+    //     (SIGNED page index — the dice model's addressable draw address; persisted so a
+    //     generated forest is a REPRODUCIBLE, shareable state) and its context-menu config.
+    //     The rotateStep policy verbatim: absent (older saves) -> the defaults stand (0 / 0
+    //     outright / 3); out-of-range mode/density IGNORED on load (the runtime dials re-clamp;
+    //     the reverse-draw REQUEST is runtime-only and never saved — a save never carries a
+    //     pending row).
     //   "trajectory" {v, n, states} — the EXPAND ring's bounded TAIL (ContainmentTrajectory::
     //     SERIAL_TAIL newest-first states, version-guarded; the CA tail shape narrowed to the
     //     one stream). Absent (old saves) -> the ring is untouched (a fresh module loads
@@ -130,6 +137,9 @@ struct ContainmentModuleCore {
         json_object_set_new(rootJ, "containmentParents", arrJ);
 
         json_object_set_new(rootJ, "rotateStep", json_integer(pending.rotateStep));
+        json_object_set_new(rootJ, "randomCounter", json_integer((json_int_t)pending.randomCounter));
+        json_object_set_new(rootJ, "randomMode", json_integer(pending.randomMode));
+        json_object_set_new(rootJ, "randomDensity", json_integer(pending.randomDensity));
 
         const ContainmentTrajectory::SerialBlob blob = trajectory.serialise();
         json_t* tj = json_object();
@@ -177,6 +187,21 @@ struct ContainmentModuleCore {
             if (json_is_integer(rsJ)) {
                 const int x = (int)json_integer_value(rsJ);
                 if (x >= 1 && x <= 15) pending.rotateStep = x;
+            }
+
+        // (2b) the RANDOM row's stream position + config (the rotateStep policy verbatim:
+        // absent -> defaults stand; out-of-range -> ignored, the runtime dials re-clamp).
+        if (json_t* rcJ = json_object_get(rootJ, "randomCounter"))
+            if (json_is_integer(rcJ)) pending.randomCounter = (int64_t)json_integer_value(rcJ);
+        if (json_t* rmJ = json_object_get(rootJ, "randomMode"))
+            if (json_is_integer(rmJ)) {
+                const int x = (int)json_integer_value(rmJ);
+                if (x == 0 || x == 1) pending.randomMode = x;
+            }
+        if (json_t* rdJ = json_object_get(rootJ, "randomDensity"))
+            if (json_is_integer(rdJ)) {
+                const int x = (int)json_integer_value(rdJ);
+                if (x >= 1 && x <= 10) pending.randomDensity = x;
             }
 
         // (3) the EXPAND trajectory tail.

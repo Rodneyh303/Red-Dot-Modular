@@ -13,12 +13,17 @@ parent u.  Rows/cols >= activeCount are WIDGET-dimmed at step 4 (the generator
 always emits all 16 -- full polyphony is the geometry's ground state).
 
 Controls/jacks to the SIDES, never underneath:
-  LEFT  = one CV trig jack per verb (input_trig_<verb>), 6 rows
+  LEFT  = one CV trig jack per verb (input_trig_<verb>), 7 rows
   RIGHT = one fire button + pending lamp per verb (param_btn_/light_pending_),
           mirrored via lx() so each verb row reads as one left-right pair.
-Two groups of three rows (ROW_H 14.0, GROUP_GAP 5.0, captions widget-drawn):
-  ROLES     : ROTATE  REFLECT  INVERT        (role conjugations + duality)
-  FOLD      : COLLAPSE  COLLAPSE-ALL  EXPAND  (structure folding + restore)
+Two groups: ROLES trio, then FOLD trio + RANDOM (the 2026-10-27 ruling: the seed
+verb as row 7 -- the gesture vocabulary unclosed for a genuinely new decision
+class; Rodney: "Random needs to unclose the 6 gesture rows. It needs to be on
+panel with jack and button"). ROW_H tightened 14.0 -> 12.0 to keep all seven
+rows inside the grid band (one group gap only, after ROLES):
+  ROLES     : ROTATE  REFLECT  INVERT                  (role conjugations + duality)
+  FOLD/RAND : COLLAPSE  COLLAPSE-ALL  EXPAND  RANDOM  (structure folding + restore +
+              generation; the row label speaks for itself)
 
 ALL lettering is WIDGET-DRAWN (nanosvg -- the parser Rack uses -- silently
 drops <text>); this file emits art + the #components anchor layer ONLY.
@@ -58,12 +63,13 @@ PW_MM  = HP * 5.08
 GUTTER = (PW_MM - 2 * CTRL_W - GRID_W) / 2.0
 GRID_X = CTRL_W + GUTTER
 
-# ── Verb rows: two groups of three, spread down the grid band ─────────────────
+# ── Verb rows: ROLES trio, then FOLD trio + RANDOM, spread down the grid band ──────────
 ROW_TOP   = GRID_Y + 8.0
-ROW_H     = 14.0
+ROW_H     = 12.0
 GROUP_GAP = 5.0
 VERBS = [("rotate", "ROTATE"), ("reflect", "REFLECT"), ("invert", "INVERT"),
-         ("collapse", "COLLAPSE"), ("collapseall", "COLLAPSE-ALL"), ("expand", "EXPAND")]
+         ("collapse", "COLLAPSE"), ("collapseall", "COLLAPSE-ALL"), ("expand", "EXPAND"),
+         ("random", "RANDOM")]
 
 def rowY(k):
     return ROW_TOP + k * ROW_H + (GROUP_GAP if k >= 3 else 0.0) + ROW_H * 0.5
@@ -146,9 +152,9 @@ def gen(dark):
     label_start = LABEL_X - est_w
     assert label_start >= J_X + J_HALF + 1.0, f"verb labels collide with jack rim ({label_start:.2f})"
     # rows live inside the grid band with breathing room
-    assert rowY(0) - 4.5 >= GRID_Y + 1.5 and rowY(5) + 4.5 <= GRID_Y + GRID_H - 1.5, "verb rows leave the grid band"
+    assert rowY(0) - 4.5 >= GRID_Y + 1.5 and rowY(6) + 4.5 <= GRID_Y + GRID_H - 1.5, "verb rows leave the grid band"
     print(f"  label zone: LABEL_X={LABEL_X:.2f} start>={label_start:.2f} vs jack rim "
-          f"{J_X + J_HALF:.2f} (clear)  rows {rowY(0):.1f}..{rowY(5):.1f} in band "
+          f"{J_X + J_HALF:.2f} (clear)  rows {rowY(0):.1f}..{rowY(6):.1f} in band "
           f"{GRID_Y + 1.5:.1f}..{GRID_Y + GRID_H - 1.5:.1f}")
 
 if __name__ == "__main__":

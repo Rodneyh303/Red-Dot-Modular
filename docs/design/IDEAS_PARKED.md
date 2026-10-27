@@ -276,3 +276,30 @@ separation is the point).
 - The global reverse itself (requirement 3) is cross-module work tracked by
   CA_DICE_COUNTER_MODEL.md and LOR_BACKLOG.md; containment's obligation is recorded here so
   the row lands reverse-ready — its trajectory is the data the global reverse replays.
+
+Update 2026-10-27 (later the same day — LANDED, Rodney: "start on the implementation now"):
+the RANDOM row is WIRED end to end. V_RANDOM = 6, N_VERBS 7 — the pending dispatch, the
+panel's seventh flank row (jack + fire button + pending lamp, ROW_H tightened 14 -> 12mm to
+keep seven rows in the grid band, gen_containment.py regenerated, 21 anchors), the module
+context menu (Random mode: Outright / Scatter; Random density 1..10, default 3; Random:
+reverse draw). The two pure draws live in ContainmentTransforms.hpp next to the other verbs:
+seedForest (the F-5 recipe — Fisher-Yates topological permutation, coins + connectivity
+boost, WHOLESALE replacement) and scatterEdges (the CA scatter shape applied to edges —
+per-voice event/mode/pick draws driving CHECKED addParent/removeParent over the CURRENT
+graph). The stream: fixed domain key ("CONTAINM"), counter = SIGNED page index, fixed page
+strides (151 outright / 48 scatter) — position++ / position-- IS the reverse-draw; the
+dispatch moves the pointer first, then applies the page, so OUTRIGHT's graph is always
+f(counter) and the reverse is the EXACT state restore (proven per page), while SCATTER's
+reverse is the CA scrub (proven NOT a restore). The counter + mode + density persist in the
+save schema (the rotateStep policy: absent -> defaults, out-of-range -> ignored) — a
+generated forest is a reproducible, shareable state. Requirements 3 and 4 INHERITED: the
+commit enters the trajectory (pushIfChanged) and publishes the undo snapshot
+(ContainmentTransformUndoAction) like any row. STILL PARKED after the landing: the hardware
+back jack (the context menu carries the reverse gesture), the global-reverse build
+(cross-module), MODIFY's method refinements if use demands them. TESTS: transforms T12 (the
+outright properties: 600-page validity/lone-root/determinism, the density extremes, V1 free,
+the reverse-as-undo; the scatter properties: gated validity, determinism, state-dependence,
+the scrub pins) + pending P10 (the row contract: counter fwd/rev, the exact restore, the
+direction rule, the scrub oracle) + module S5/S6g (schema round-trip incl. a negative page,
+absent/out-of-range policies, the RANDOM commit publishing undo + trajectory). Full battery
+green; goldens untouched (zero engine surface).
