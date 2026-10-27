@@ -103,3 +103,91 @@ ContainmentTransforms.hpp next to collapse/collapseAll, gated by the same DAG ch
 Timing: NOT in the F ladder (F-4 ghost D5 + D6 VAR/LEG, F-5 property suite + compat
 pin). Slots in post-F with the seed verb and the three deferred rulings (plan §3.4) —
 module-layer only, zero engine surface.
+
+### Adjudication (2026-10-27, Rodney's questions): reduction and closure as QUERY / VERB / TRANSFORM / GESTURE
+
+Rodney pulled both ideas forward and asked two questions directly: should we have a closure
+gesture, and should collapseAll take parameters? Ruled on the axis the codebase already
+speaks. QUERY = read-only predicates (ContainmentGraph.hpp). VERB = the per-edge edit
+primitives (same header — addParent/removeParent/clearParents, the only deliberate routing
+writers). TRANSFORM = the pure whole-graph rewrites (ContainmentTransforms.hpp). GESTURE =
+the triggered row (ContainmentPending.hpp: armed, stamped, applied at the phrase boundary,
+reversible through the EXPAND trajectory ring). Laying both ideas on the axis:
+
+**REDUCTION, by layer:**
+- VERB: NO — never an edit primitive. Reduction is a derived whole-graph rewrite; the edit
+  verbs stay the only per-edge writers (closure-as-stored-state / reduction-as-auto are
+  already NO above, and the same argument covers the verb slot).
+- TRANSFORM: reduceTransitive(g) — YES, LANDED at this ruling next to collapse/collapseAll.
+  The strip is the banked trivial cost made exact: v→u is redundant iff ANOTHER parent w of
+  v reaches u upward in the ORIGINAL graph (all witness reads against the `before` snapshot,
+  so the strip is PURE and ORDER-FREE — a witness path from w can never touch the deleted
+  edge, since revisiting v would be a cycle). Root-set invariant (a strip needs a SECOND
+  parent; the "stripped-by" relation among a vertex's parents is acyclic — a maximal parent
+  always survives — reduction never orphans a voice). The two banked property rows landed
+  with it in T11: closure(reduce(g)) == closure(g) MASK-EXACT, and reduce is idempotent (the
+  result IS the unique DAG reduction), 300 random DAGs per run.
+- GESTURE: DECLUTTER/PRUNE — YES, explicit trigger only, stamped, EXPAND-reversible, never a
+  background pass (§8). The pure verb is landed; the trigger row parks with the panel work
+  (the same seam as COLLAPSE-ALL-ONTO — row order is lockstep with the panel generator).
+
+**CLOSURE, by layer:**
+- QUERY: SHIPPED (ancestorClosure, wouldCycle).
+- TRANSFORM: SHIPPED — collapse (peel one level, marches to empty) and collapseAll (flatten
+  onto roots); now joined by collapseAllOnto (Ruling 2).
+- GESTURE: SHIPPED as V_COLLAPSE_ALL — and ruled CLOSED as a vocabulary slot (Ruling 1).
+
+**Ruling 1 — should we have a closure gesture? NO new verb; the gesture already exists.**
+COLLAPSE and COLLAPSE-ALL already span the closure axis (one level / all the way onto
+roots). A distinct CLOSER verb would be a third entry point over the same underlying
+operation (new_parents[v] = closure(v) ∩ M for some mask M), differing only by its mask —
+synonymy, not a new decision, and the CA trigger discipline is one trigger = one decision.
+The gesture surface stays: ROTATE / REFLECT / INVERT / COLLAPSE / COLLAPSE-ALL / EXPAND.
+
+**Ruling 2 — should collapseAll take parameters? YES, exactly one: the anchor mask.
+LANDED at this ruling. Nothing else, ever:**
+- collapseAllOnto(g, anchors) — flatten every voice UNDER the anchor set ONTO the set:
+  new_parents[v] = closure(v) ∩ anchors when that is non-empty; every other voice keeps its
+  wiring VERBATIM. The membership key is load-bearing, not a nicety: the naive mask form
+  (out[v] = closure(v) & A for ALL v) would silently DETACH any voice whose ancestors miss
+  A — 0<1<2<3 plus a separate component 9<10 with A={3} would orphan 9. Detaching is the
+  edit verbs' deliberate business, never a flatten's side effect. The anchor's own
+  containment is untouched (A={2} in 0<1<2<3 keeps 2<3 — "flatten the cluster under 2 onto
+  2"). CLOSED and IDEMPOTENT by the mask-uniform argument (every new edge was an old
+  ancestor, so reachability only shrinks; self-bits need a cycle). collapseAll is now
+  DERIVED — the same function with the derived root mask (every upward path in a DAG
+  terminates at a parentless voice, so the membership key always holds there), byte-identical
+  to its pre-anchoring body, compat-pinned per seed in test_containment_transforms T10.
+  Honest-edge contract pinned alongside: a flatten can only PROMOTE existing ancestors to
+  direct parents, never invent a containment relation. One parameter is inside the house
+  idiom (ROTATE's "<=1 param: step, default 1" precedent in the same header).
+- Depth/level count: NO, permanently. Iterated collapse already composes per trigger — the
+  performer owns the counting; a depth knob would re-open the step-0 smoke adjudication
+  (flatten-toward-root is collapseAll's job, NOT iterated collapse) as a hidden mode.
+- Predicate/kind filters: NO, permanently. Cleanup-with-knobs is the §8 trap, and the graph
+  has no kinds — every edge is a deliberate offer.
+- Tie-break modes: NO, permanently. R1 killed tie-breaks; the OR-union needs none.
+
+**Still parked after this ruling:**
+- The full-ancestor form (anchors = 0xFFFF — every voice gains ALL its ancestors as direct
+  parents) is the flooding case: C1's offer union and C4's hold-follow candidates multiply
+  by the closure size — closure-as-stored-state arriving through a gesture's back door. It
+  stays ONE CALL away (collapseAllOnto(g, 0xFFFF); T10 proves it is still a valid, loadable
+  DAG) but no verb row, no default, no panel button ships it. Revisit only when a
+  performance need demonstrates itself.
+- The trigger wiring: which panel row / context voice feeds the mask is module layer,
+  parked with the containment panel work (row order is lockstep with the panel generator —
+  a new row is a three-file change). The pure verb is ready.
+- The seed verb's reduction post-pass flag — now ONE CALL: the flag invokes
+  reduceTransitive(g) when the seed verb lands (a flag, not forced: random shortcut edges
+  may be exactly the variety wanted).
+
+Update 2026-10-27 (twice over): BOTH sides of this entry pulled forward from post-F in the
+same stroke — closure first (collapseAllOnto + T10), then reduction (reduceTransitive + T11)
+per Rodney's "reduction as an EXPLICIT gesture: YES". Both are pure transforms + property
+rows + this ledger: module-layer only, zero engine surface, goldens untouched. The gesture
+vocabulary stays SIX rows (ROTATE / REFLECT / INVERT / COLLAPSE / COLLAPSE-ALL / EXPAND);
+neither new verb occupies a trigger slot — their trigger wiring parks with the containment
+panel work. Reduction keeps its EXPLICIT-only rule: the strip deletes deliberate shortcut
+offers (C1/C4 read direct edges), so it runs only when the user pulls the trigger, and the
+EXPAND trajectory ring makes that trigger reversible.

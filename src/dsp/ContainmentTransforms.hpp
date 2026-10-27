@@ -141,14 +141,123 @@ inline void collapse(ContainmentGraph& g) {
 // voice's closure-roots are exactly its parents. CLOSED: every new edge points at a former
 // root (no parents), so the result has depth <= 1 — trivially acyclic, and a self-bit cannot
 // appear (v reaches itself only on a cycle, which the invariants forbid).
+//
+// DERIVED (the 2026-10-27 anchor ruling, IDEAS_PARKED.md): with anchors = the derived root
+// mask the anchored form's membership key always holds (every upward path in a DAG terminates
+// at a parentless voice), so this IS collapseAllOnto(g, roots) — byte-identical to the
+// pre-anchoring body, compat-pinned per seed in test_containment_transforms. One
+// implementation; the shipped gesture is the same function it always was.
+inline void collapseAllOnto(ContainmentGraph& g, uint16_t anchors);   // the anchored general, below
+
 inline void collapseAll(ContainmentGraph& g) {
     uint16_t roots = 0;
     for (int v = 0; v < VOICES; ++v)
         if (g.isRoot(v)) roots |= (uint16_t)(1u << v);
+    collapseAllOnto(g, roots);
+}
+
+// ── COLLAPSE-ALL-ONTO (1 param: the anchor mask — the closure gesture's missing 10%) ───────
+// The 2026-10-27 ruling (Rodney: "should we have a closure gesture? should collapseAll take
+// parameters?"): NO third closure verb — COLLAPSE and COLLAPSE-ALL already span the axis
+// (one level / all the way), and a distinct CLOSER differing only by its mask would be
+// synonymy, not a new decision. The missing generality lands HERE instead, as ONE parameter
+// on the flatten (the ROTATE "≤1 param: step, default 1" precedent): flatten every voice
+// UNDER the anchor set ONTO the set —
+//     new_parents[v] = (closure(v) ∩ anchors)  when that is non-empty,
+//     parents[v] kept VERBATIM                 otherwise.
+// The membership key is load-bearing: the naive mask form (out[v] = closure(v) & A for ALL v)
+// would silently DETACH any voice whose ancestors miss A — 0<1<2<3 plus a separate 9<10 with
+// A={3} would orphan 9. Detaching is the edit verbs' deliberate business, never a flatten's
+// side effect. The anchor's own containment is untouched (A={2} in 0<1<2<3 keeps 2<3:
+// "flatten the cluster under 2 onto 2" — the upstream wiring survives).
+//
+// CLOSED, mask-uniform (the collapseAll argument generalized): 1. every new edge v->a
+// satisfies a ∈ old closure(v) (flatten branch: a ∈ closure ∩ anchors; keep branch: old
+// edge ⊆ closure), so new reachability ⊆ old — a new cycle would compose to an old one;
+// 2. a self-bit would need v ∈ closure(v) — a cycle the invariants forbid. IDEMPOTENT by
+// the same shrink: new edges only point upward, so closure_after ⊆ closure_before, and a
+// second pass re-derives exactly the same parents (pinned per seed in T10).
+// THE HONESTY CONTRACT this bakes in: a flatten can only PROMOTE existing ancestors to
+// direct parents — it never invents a containment relation.
+//
+// WHAT STAYS PARKED (the ruling, kept honest): the full-ancestor form (anchors = 0xFFFF —
+// every voice gains ALL its ancestors as direct parents) is the flooding case — C1's offer
+// union and C4's hold-follow candidates multiply by the closure size; that is
+// closure-as-stored-state arriving through a gesture's back door. It remains ONE CALL away
+// (collapseAllOnto(g, 0xFFFF), T10 proves it still a valid, loadable DAG) but no verb row,
+// no default, no panel button ships it. Depth/level counts: NO permanently — iterated
+// collapse already composes per trigger and the step-0 smoke ruled flatten-toward-root to
+// be THIS verb's job, not iterated collapse's. Predicate filters and tie-break modes: NO —
+// cleanup-with-knobs is the §8 trap and R1 killed tie-breaks. Trigger wiring (which panel
+// row / context voice feeds the mask) is module layer, parked with the containment panel
+// work; the pure verb is ready.
+inline void collapseAllOnto(ContainmentGraph& g, uint16_t anchors) {
     uint16_t out[VOICES];
-    for (int v = 0; v < VOICES; ++v)
-        out[v] = (uint16_t)(g.ancestorClosure(v) & roots);
+    for (int v = 0; v < VOICES; ++v) {
+        const uint16_t onto = (uint16_t)(g.ancestorClosure(v) & anchors);
+        out[v] = onto ? onto : g.parents[v];   // the membership key: flatten IFF under an anchor
+    }
     for (int v = 0; v < VOICES; ++v) g.parents[v] = out[v];
+}
+
+// ── REDUCE — the transitive reduction (DECLUTTER/PRUNE's pure verb; the parked verdict,
+// pulled forward 2026-10-27 per Rodney's "reduction as an EXPLICIT gesture: YES") ────────────
+// Strip every SHADOW EDGE: v->u is redundant iff ANOTHER parent w of v reaches u upward in the
+// ORIGINAL graph (u ∈ ancestorClosure(w) — the edge v->w⇝u then carries the same reachability;
+// the banked formulation's "∪ {w}" term is vacuous in the bitmask world — one bit per u — so
+// the strict form below is exact). What it buys (IDEAS_PARKED.md): after a gesture march the
+// drawn pin graph can carry shadow edges — COLLAPSE re-links grandparents, authored shortcuts
+// accumulate; REDUCE shows the load-bearing spine. It is COLLAPSE's exact mirror: collapse
+// makes implied structure explicit, reduction makes implied structure implicit — and it is the
+// seed verb's parked post-pass (a flag, not forced: random shortcut edges may be exactly the
+// variety wanted).
+//
+// THE DECIDING FACT (why this is an EXPLICIT gesture, never auto): the EVENT mechanisms (C1's
+// offer union, C4's hold-follow shape pick, D4's first-onsetting container) read the DIRECT
+// edge set verbatim — a redundant edge is a musical feature ("the child hears the grandparent's
+// onsets directly"), and stripping it CHANGES THE SOUND. Cleanup that changes sound is exactly
+// what §8 forbids — so reduce runs only when the user pulls the trigger (stamped,
+// EXPAND-reversible), never as a background pass, and never per-sample (edit-rate only; the
+// engine is untouched — materializeForest re-derives from the words at the next graph change).
+//
+// CORRECTNESS (why "compute the full redundant mask first, then strip" is exact, not
+// heuristic): every witness read is against the ORIGINAL graph (the `before` snapshot), which
+// makes the strip PURE and ORDER-FREE — a witness path from another parent w can never touch
+// the deleted edge v->u itself (an upward path from w cannot revisit v: v->w and w⇝v would be
+// a cycle), so simultaneous stripping cannot break any witness. Reachability is PRESERVED —
+// closure(reduce(g)) == closure(g), mask-exact — by induction along any original route: a
+// length-1 hop is never redundant (a redundant edge by definition has a longer alternative)
+// and each longer hop's route survives through kept-or-re-proven edges. IDEMPOTENT: a kept
+// edge's witness cannot exist in the reduced graph either (reduced closure ⊆ original
+// closure), so the second pass strips nothing — the result is THE transitive reduction
+// (unique for DAGs). ROOT-SET INVARIANT: stripping needs a SECOND parent, and the
+// "stripped-by" relation among a vertex's parents is acyclic (a cycle would be a closure
+// cycle), so a maximal parent always survives — reduction never orphans a voice. No pool
+// discipline: reduce only DELETES (never re-points), so like collapse/collapseAll it is a
+// shape verb over all 16 rows. T11 re-proves all of this per seed (the test is the guarantee).
+inline void reduceTransitive(ContainmentGraph& g) {
+    const ContainmentGraph before = g;   // every witness read against the ORIGINAL graph
+    for (int v = 0; v < VOICES; ++v) {
+        const uint16_t parents = before.parents[v];
+        if ((parents & (parents - 1)) == 0) continue;   // 0 or 1 parent: no OTHER parent, no witness
+        uint16_t closure[VOICES];
+        bool have[VOICES] = {};
+        uint16_t kept = parents, m = parents;
+        while (m) {
+            const int u = __builtin_ctz(m);
+            m &= (uint16_t)(m - 1);
+            uint16_t om = (uint16_t)(parents & ~(1u << u));
+            bool redundant = false;
+            while (om) {
+                const int w = __builtin_ctz(om);
+                om &= (uint16_t)(om - 1);
+                if (!have[w]) { closure[w] = before.ancestorClosure(w); have[w] = true; }
+                if ((closure[w] >> u) & 1u) { redundant = true; break; }
+            }
+            if (redundant) kept &= (uint16_t)~(1u << u);
+        }
+        g.parents[v] = kept;
+    }
 }
 
 // ── EXPAND — NOT HERE (R3) ─────────────────────────────────────────────────────────────────
