@@ -225,10 +225,20 @@ static void marchModeB(int seed, Capture& cap, int& c2n, int& envn) {
             eng.gsStep.holdRemain = 0.f;   eng.gsStep.gatePulseRemain = -1;
         }
         prevMainHigh = main.high;
-        // The C5 AND + closed-gate zeroing (Monsoon.cpp:1198-1213).
-        for (int i = 1; i <= eng.numPolyVoices; ++i) {
+        // The C5 FOREST AND + closed-gate zeroing (the F-2 drive, Monsoon.cpp — D8): the
+        // MATERIALIZED compose, visited in the cached topological order (the star's order IS
+        // slot order — the goldens' anchor). Free voices (no containers) are skipped: their
+        // envelope is their own. gateOpen is the mono envelope cell (== envelopeAnd(monoP)).
+        for (int k = 0; k < eng.rdm.topoCount; ++k) {
+            const int i = eng.rdm.topoOrder[k];
+            if (i > eng.numPolyVoices || eng.rdm.parentCount[i] == 0) continue;
+            bool vOpen = latch[i + 1];
+            for (int p = 0; p < eng.rdm.parentCount[i]; ++p) {
+                const int u = eng.rdm.parentSlot[i][p];
+                vOpen = vOpen && (u == 0 ? gateOpen
+                                         : eng.voices[dotModular::VoiceResolver::slot(u + 1)].gs.gateHeld);
+            }
             const auto vs = dotModular::VoiceResolver::slot(i + 1);
-            const bool vOpen = gateOpen && latch[i + 1];
             eng.voices[vs].gs.gateHeld = vOpen;
             if (!vOpen) { eng.voices[vs].gs.holdRemain = 0.f; eng.voices[vs].gs.gatePulseRemain = -1; }
         }
@@ -274,9 +284,17 @@ static void marchModeBS(int seed, Capture& cap, int& c2n, int& envn) {
             eng.gsStep.holdRemain = 0.f;   eng.gsStep.gatePulseRemain = -1;
         }
         prevMainHigh = main.high;
-        for (int i = 1; i <= eng.numPolyVoices; ++i) {
+        // The F-2 drive mirror (same materialized compose as mode B above; D8).
+        for (int k = 0; k < eng.rdm.topoCount; ++k) {
+            const int i = eng.rdm.topoOrder[k];
+            if (i > eng.numPolyVoices || eng.rdm.parentCount[i] == 0) continue;
+            bool vOpen = latch[i + 1];
+            for (int p = 0; p < eng.rdm.parentCount[i]; ++p) {
+                const int u = eng.rdm.parentSlot[i][p];
+                vOpen = vOpen && (u == 0 ? gateOpen
+                                         : eng.voices[dotModular::VoiceResolver::slot(u + 1)].gs.gateHeld);
+            }
             const auto vs = dotModular::VoiceResolver::slot(i + 1);
-            const bool vOpen = gateOpen && latch[i + 1];
             eng.voices[vs].gs.gateHeld = vOpen;
             if (!vOpen) { eng.voices[vs].gs.holdRemain = 0.f; eng.voices[vs].gs.gatePulseRemain = -1; }
         }

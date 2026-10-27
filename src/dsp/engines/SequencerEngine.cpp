@@ -1140,12 +1140,13 @@ ParentView SequencerEngine::monoParentView() const {
 // unchanged. Slots 1..15 are poly containers: the verdict + drawn length their own cascade
 // captured THIS edge (polyVerdict_/polyNv_), the gate state read live from their VoiceBank
 // slice (the same four scalars V1 exposes, per container).
-// F-2 CAVEAT (documented, bounded): executePolyVoices visits voices in SLOT order, so a
-// container with a HIGHER slot than its child has not executed yet on this edge — the child
-// reads that container's PREVIOUS-edge capture (one edge stale on those edges). Edges that
-// point upward (u < v — the star, low-rooted chains/trees, every structure authored so far)
-// read fresh captures everywhere. The topological visit order (F-2) removes the caveat; the
-// fold, the views and the semantics do not change under it.
+// F-2 NOTE (supersedes the F-1 caveat): executePolyVoices visits voices in the MATERIALIZED
+// topological order (rdm.materializeIfStale() at the top of the visit; the graph-change
+// boundaries are the publish point per block and the edge visit itself). Every container —
+// upward (u < v) or DOWNWARD (u > v) — has therefore already executed when its child runs, and
+// containerView reads THIS-edge captures EVERYWHERE. The F-1 slot-order staleness (a higher-slot
+// container read one edge stale) no longer exists; the forest suite's downward-edge row pins
+// the fresh-read behavior via double-run determinism.
 ParentView SequencerEngine::containerView(int u) const {
     if (u <= 0) return monoParentView();
     if (u >= 16) return ParentView{};              // defensive: fail-closed neutral view
@@ -1463,7 +1464,18 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
 }
 
 void SequencerEngine::executePolyVoices(const PatternInput& input) {
-    for (int i = 1; i <= numPolyVoices; ++i) {
+    // F-2 (plan §3.2, D8): the forest materializes at the graph-change boundary — per block at
+    // the publish point (MonsoonSandsManager::processDNA) and per edge HERE (which also covers
+    // test sites that author pe.containmentParents directly). The visit order is the MATERIALIZED
+    // topological order: every container — upward OR downward — executes before its children, so
+    // each child's containerView reads THIS-edge captures everywhere (the F-1 slot-order caveat
+    // is gone). The STAR's order is slot order (smallest-index-first Kahn) — byte-identical to
+    // the pre-F-2 loop. The per-sample drive (Monsoon.cpp) reads the same materialized state and
+    // does NO graph work (D8: no per-sample forest work).
+    rdm.materializeIfStale();
+    for (int k = 0; k < rdm.topoCount; ++k) {
+        const int i = rdm.topoOrder[k];
+        if (i > numPolyVoices) continue;   // voices beyond the active count are not executed
         // Use the state from BEFORE the tick to decide if we were active.
         // This ensures that if a note ended exactly at the boundary, 
         // we still consider it "active" for slaving to a continuing mono gate.

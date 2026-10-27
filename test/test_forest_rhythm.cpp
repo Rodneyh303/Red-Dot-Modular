@@ -22,9 +22,11 @@
  *                 the exact inversion of the free-voice rows, proving ONE code path runs
  *                 both graphs.
  *
- *   DOWNWARD EDGES a container with a HIGHER slot than its child is read one edge stale
- *                 (the documented F-2 caveat: slot-order visitation; the topological order
- *                 removes it). Pinned here as defined-and-deterministic.
+ *   DOWNWARD EDGES a container with a HIGHER slot than its child was read one edge stale in
+ *                 F-1 (slot-order visitation). F-2 materializes the topological visit order
+ *                 (D8: resolved at the graph-change boundary), so every container — any
+ *                 direction — executes before its child; the read is fresh everywhere. Pinned
+ *                 here as defined-and-deterministic (the core suite pins the order itself).
  *
  * Determinism: PhiloxRng counter-based seeding, pitches quantised to semitones for
  * FP-hash safety — the differential-harness idioms. Byte-identity for STAR graphs is the
@@ -316,20 +318,114 @@ int main() {
         check(t.polyFires > 0,  "STAR: the star still plays (the authored graph is the legacy sound)");
     }
 
-    // ── Suite D — DOWNWARD EDGES: the documented F-2 caveat is defined & deterministic ──
-    // V2 (slot 1) contained in V16 (bit 15): V2 reads V16's PREVIOUS-edge capture (V16 has
-    // not executed yet when V2 runs — slot order). Pinned: the read is defined and the run
-    // is byte-deterministic. F-2's topological order re-pins this with fresh reads.
-    std::printf("  suite D: downward edges (the documented F-2 caveat)\n");
+    // ── Suite D — DOWNWARD EDGES: fresh reads under the topological visit order ────
+    // V2 (slot 1) contained in V16 (bit 15): in F-1 this read V16's PREVIOUS-edge capture
+    // (slot order). F-2's materialized topo order visits V16 BEFORE V2, so the read is
+    // fresh on every edge. Pinned: the run is byte-deterministic and plays.
+    std::printf("  suite D: downward edges (fresh reads under the topo visit order)\n");
     {
         uint16_t words[16] = {};
-        words[1] = 0x8000;   // slot 1 = V2: bit 15 = V16 (a higher slot — the stale-read case)
+        words[1] = 0x8000;   // slot 1 = V2: bit 15 = V16 (a higher slot — was the stale-read case)
         Tallies a, b;
         marchFree(3, words, a);
         marchFree(3, words, b);
         check(a.stream == b.stream && a.polyFires == b.polyFires,
               "DOWN: a downward-edge graph runs byte-deterministically (double-run)");
         check(a.polyFires > 0, "DOWN: the downward-edge graph still plays (defined, not silent-by-crash)");
+    }
+
+    // ── Suite E — NESTED CHAIN: V3 in {V2, V1}, V2 in V1 (depth 2, mode A) ──────
+    // The E(v) ⊆ E(u) property (§3.4/§5) on a real depth-2 chain: V3's envelope is inside
+    // V2's, and V2's inside V1's — so V3 high implies BOTH containers high and mono high.
+    std::printf("  suite E: nested chain (V3 in V2 in V1 — the containment is transitive)\n");
+    {
+        uint16_t words[16] = {};
+        words[2] = 0x0003;   // slot 2 = V3: bits 0,1 = {V1, V2}
+        words[1] = 0x0001;   // slot 1 = V2: bit 0 = V1
+        long v3Fires = 0, v3WithBoth = 0, v3WhileV2Low = 0, v3WhileMonoLow = 0;
+        long v2Fires = 0, v2WhileMonoLow = 0, monoRests = 0;
+        for (int seed = 0; seed < kSeeds; ++seed) {
+            PhiloxRng rng; rng.seed64((uint64_t)seed * 747796405u + 2891336453u + 91u);
+            SequencerEngine eng; eng.reset();
+            authorGraph(eng, words);
+            eng.numPolyVoices = 15;
+            seedEngine(eng, rng);
+            const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+            const PatternInput in = makeInput(0.20f + 0.70f * rng.nextFloat());
+            redDot::RateManager rm;
+            for (int step = 0; step < kSteps; ++step) {
+                rm.advance(redDot::Rate::Step, true);
+                StepResult r = eng.executeModeA(rm, noteVal, in, +1);
+                if (r.stepped && eng.numPolyVoices > 0) eng.executePolyVoices(in);
+                const auto v2 = dotModular::VoiceResolver::slot(2);
+                const auto v3 = dotModular::VoiceResolver::slot(3);
+                const bool v2h = eng.voices[v2].gs.gateHeld;
+                const bool v3h = eng.voices[v3].gs.gateHeld;
+                const bool monoHigh = eng.gs.gateHeld;
+                if (r.decision == MonoDecision::Rest) ++monoRests;
+                if (v2h) { ++v2Fires; if (!monoHigh) ++v2WhileMonoLow; }
+                if (v3h) {
+                    ++v3Fires;
+                    if (v2h && monoHigh) ++v3WithBoth;
+                    if (!v2h)       ++v3WhileV2Low;
+                    if (!monoHigh)  ++v3WhileMonoLow;
+                }
+            }
+        }
+        std::printf("    v3Fires=%ld v3WithBoth=%ld v2Fires=%ld monoRests=%ld\n",
+                    v3Fires, v3WithBoth, v2Fires, monoRests);
+        check(monoRests > 0,       "NEST: the march exercised mono rests (the probe is live)");
+        check(v2Fires > 0,         "NEST: V2 plays inside V1 (the inner container is alive)");
+        check(v2WhileMonoLow == 0, "NEST: V2 high implies mono high (V2 in V1, mode A)");
+        check(v3Fires > 0,         "NEST: V3 plays inside the chain (depth-2 containment alive)");
+        check(v3WhileV2Low == 0,   "NEST: V3 high implies V2 high (its direct container)");
+        check(v3WhileMonoLow == 0, "NEST: V3 high implies mono high (transitive through V2)");
+        check(v3WithBoth > 0,      "NEST: the coupling observed (V3 high while V2 and mono high)");
+    }
+
+    // ── Suite F — DIAMOND: V5 in {V2, V3}, V2 and V3 both in V1 ────────────────
+    // Two parents, one grandparent: V5's envelope is the intersection of V2's and V3's —
+    // and both are inside V1. The same ONE code path as the star (the fold), now over a
+    // diamond the star can never express.
+    std::printf("  suite F: diamond (V5 in {V2,V3}, both in V1)\n");
+    {
+        uint16_t words[16] = {};
+        words[4] = 0x0006;   // slot 4 = V5: bits 1,2 = {V2, V3}
+        words[1] = 0x0001;   // V2 in {V1}
+        words[2] = 0x0001;   // V3 in {V1}
+        long v5Fires = 0, v5WithBoth = 0, v5WhileV2Low = 0, v5WhileV3Low = 0, v5WhileMonoLow = 0;
+        for (int seed = 0; seed < kSeeds; ++seed) {
+            PhiloxRng rng; rng.seed64((uint64_t)seed * 747796405u + 2891336453u + 97u);
+            SequencerEngine eng; eng.reset();
+            authorGraph(eng, words);
+            eng.numPolyVoices = 15;
+            seedEngine(eng, rng);
+            const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+            const PatternInput in = makeInput(0.20f + 0.70f * rng.nextFloat());
+            redDot::RateManager rm;
+            for (int step = 0; step < kSteps; ++step) {
+                rm.advance(redDot::Rate::Step, true);
+                StepResult r = eng.executeModeA(rm, noteVal, in, +1);
+                if (r.stepped && eng.numPolyVoices > 0) eng.executePolyVoices(in);
+                const bool v2h = eng.voices[dotModular::VoiceResolver::slot(2)].gs.gateHeld;
+                const bool v3h = eng.voices[dotModular::VoiceResolver::slot(3)].gs.gateHeld;
+                const bool v5h = eng.voices[dotModular::VoiceResolver::slot(5)].gs.gateHeld;
+                const bool monoHigh = eng.gs.gateHeld;
+                if (v5h) {
+                    ++v5Fires;
+                    if (v2h && v3h && monoHigh) ++v5WithBoth;
+                    if (!v2h)      ++v5WhileV2Low;
+                    if (!v3h)      ++v5WhileV3Low;
+                    if (!monoHigh) ++v5WhileMonoLow;
+                }
+            }
+        }
+        std::printf("    v5Fires=%ld v5WithBoth=%ld\n", v5Fires, v5WithBoth);
+        check(v5Fires > 0,         "DIAMOND: V5 plays inside the diamond (multi-parent alive)");
+        check(v5WhileV2Low == 0,   "DIAMOND: V5 high implies V2 high (parent 1)");
+        check(v5WhileV3Low == 0,   "DIAMOND: V5 high implies V3 high (parent 2)");
+        check(v5WhileMonoLow == 0, "DIAMOND: V5 high implies mono high (grandparent, transitive)");
+        check(v5WithBoth > 0,      "DIAMOND: the coupling observed (V5 high while both parents high)");
     }
 
     std::printf("\n%s: %d passed, %d failed\n", "test_forest_rhythm", g_pass, g_fail);

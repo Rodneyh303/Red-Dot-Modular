@@ -12,12 +12,14 @@
 //     marches (test_rhythm_decision_differential) or it does not land.
 //
 // Migration ladder (plan §2.3): Stage R LANDED (7891599f → f2c416e3 → cf68f620 → fb094dbb →
-// c5e2c904) — the engine is a forest machine. Stage F (plan §3): F-1 the source re-point
-// (this commit — parentsOf(GRAPH) reads the staged containmentParents; the empty mask is a
-// FREE voice, the self-rooted tuple E(v) = Own(v)) → F-2 topological order + the per-sample
-// forest compose → F-3 the mono drive inside the algebra → F-4 ghost/D5 + VAR-LEG scope →
-// F-5 the property suite + compat pin. Star graphs stay byte-identity-gated on the marches
-// at every step; the free-voice and poly-container semantics are spec'd in test_forest_rhythm.
+// c5e2c904) — the engine is a forest machine. Stage F (plan §3): F-1 LANDED (2148dec3 — the
+// source re-point; parentsOf(GRAPH) reads the staged containmentParents; the empty mask is a
+// FREE voice, the self-rooted tuple E(v) = Own(v)) → F-2 (this commit) the MATERIALIZED
+// forest (D8: resolved at the graph-change boundary — topological visit order + per-voice
+// container lists; the per-sample drive reads plain state, no per-sample work) → F-3 the
+// mono drive inside the algebra → F-4 ghost/D5 + VAR-LEG scope → F-5 the property suite +
+// compat pin. Star graphs stay byte-identity-gated on the marches at every step; the
+// free-voice and poly-container semantics are spec'd in test_forest_rhythm.
 
 #include <cstdint>
 #include <algorithm>
@@ -173,6 +175,85 @@ struct RhythmDecisionCore {
         return (graphWords && v >= 0 && v < 16) ? graphWords[v] : 0x0000;
     }
 
+    // ── F-2: the MATERIALIZED forest (D8 RULED: "forest mod on phrase boundary, no per-sample
+    // work") ─────────────────────────────────────────────────────────────────────────────
+    // The graph is resolved ONCE per CHANGE into plain per-voice state; every reader — the
+    // edge-level visit in executePolyVoices, the module-layer per-sample drive (Monsoon.cpp) —
+    // reads this state and derives NOTHING at read time. materializeIfStale() is called ONLY
+    // at graph-change boundaries: the publish point (MonsoonSandsManager::processDNA, per
+    // block) and the top of executePolyVoices (per edge — this also covers test sites that
+    // author pe.containmentParents directly, without the manager). The per-sample path NEVER
+    // calls it — that is the ruling.
+    //
+    //   topoOrder[]/topoCount      — the poly voices (storage 1..15) in topological order,
+    //                                smallest-index-first among ready nodes (deterministic;
+    //                                the STAR resolves to 1,2,…,15 = slot order = today's
+    //                                visit order — the byte-identity anchor). V1 (storage 0)
+    //                                never visits: its cascade is executeStep (F-3 brings it
+    //                                inside the algebra).
+    //   parentCount[]/parentSlot[] — the materialized container list per voice (storage slots
+    //                                0..15; slot 0 = V1 the mono voice). ZERO parents = a
+    //                                FREE voice (its envelope is its own).
+    //   materializeGeneration      — bumped per rebuild (test observability of the cache).
+    //
+    // A cycle cannot occur (the pin plane rejects cycles; invariants CI-marched on 600+ seeds)
+    // — but defensively, any unplaceable voice is appended in slot order so the visit is TOTAL
+    // and the engine can never silently skip a voice.
+    int      topoOrder[16] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0 };
+    int      topoCount     = 15;
+    int      parentCount[16] = {};
+    uint8_t  parentSlot[16][16] = {};
+    uint32_t materializeGeneration = 0;
+    uint16_t materializedWords_[16] = {};
+    bool     materializedValid_ = false;
+
+    void materializeForest() {
+        // Kahn's algorithm, smallest-index-first. Parents among POLY voices only (bit 0 = V1
+        // dropped — the mono voice is a ROOT SOURCE: its cascade runs outside this visit).
+        int indeg[16] = {};
+        for (int v = 1; v < 16; ++v) {
+            const uint16_t polyParents = parentsOf(v) & uint16_t(~1u);
+            int n = 0;
+            for (int u = 1; u < 16; ++u) if (polyParents & (1u << u)) ++n;
+            indeg[v] = n;
+        }
+        bool placed[16] = {};
+        topoCount = 0;
+        for (;;) {
+            int pick = -1;
+            for (int v = 1; v < 16; ++v)
+                if (!placed[v] && indeg[v] == 0) { pick = v; break; }   // smallest index first
+            if (pick < 0) break;
+            placed[pick] = true;
+            topoOrder[topoCount++] = pick;
+            for (int c = 1; c < 16; ++c)
+                if (!placed[c] && (parentsOf(c) & (1u << pick))) --indeg[c];
+        }
+        for (int v = 1; v < 16; ++v)                 // defensive cycle fallback: total order
+            if (!placed[v]) topoOrder[topoCount++] = v;
+        for (int v = 0; v < 16; ++v) {               // the materialized container lists
+            int n = 0;
+            for (int u = 0; u < 16; ++u)
+                if (parentsOf(v) & (1u << u)) parentSlot[v][n++] = (uint8_t)u;
+            parentCount[v] = n;
+        }
+        for (int v = 0; v < 16; ++v) materializedWords_[v] = parentsOf(v);
+        materializedValid_ = true;
+        ++materializeGeneration;
+    }
+
+    // The ONLY sanctioned entry points are the graph-change boundaries (see above). Cost:
+    // 16 parentsOf reads + compare — one 32-byte word compare in spirit; nothing per sample.
+    void materializeIfStale() {
+        if (materializedValid_) {
+            bool same = true;
+            for (int v = 0; v < 16; ++v)
+                if (materializedWords_[v] != parentsOf(v)) { same = false; break; }
+            if (same) return;
+        }
+        materializeForest();
+    }
+
     // ── R-4: the per-container composition ─────────────────────────────────────
     // The five named predicates composed ONCE for ONE container.
     static RhythmDecision decide(const ParentView& p) {
@@ -248,11 +329,11 @@ struct RhythmDecisionCore {
     template <typename ViewOf>
     static RhythmDecision decideMask(uint16_t parents, ViewOf viewOf) {
         RhythmDecision d{};                     // no containers -> uncontained (all neutral)
-        bool first = true, gateTypeNamed = false;
+        bool first = true, gateTypeNamed = false, unionMayOnset = false, offerGapHosted = false;
         for (int u = 0; u < 16; ++u) {
             if (!(parents & (1u << u))) continue;
             const RhythmDecision c = decide(viewOf(u));
-            d.mayOnset      = d.mayOnset || c.mayOnset;                          // D3 union
+            unionMayOnset   = unionMayOnset || c.mayOnset;                        // D3 union (the OFFERS)
             d.forcedRest    = d.forcedRest || c.forcedRest;                      // D1
             d.lengthCeiling = first ? c.lengthCeiling
                                     : std::max(d.lengthCeiling, c.lengthCeiling); // D1
@@ -260,8 +341,19 @@ struct RhythmDecisionCore {
             d.envelopeOpen  = first ? c.envelopeOpen  : (d.envelopeOpen && c.envelopeOpen); // D1
             if (first) d.gateType = c.gateType;                                  // D4 default
             if (c.mayOnset && !gateTypeNamed) { d.gateType = c.gateType; gateTypeNamed = true; }
+            if (c.mayOnset && !offerGapHosted) offerGapHosted = !c.envelopeOpen; // D5: an offer FROM a gap
             first = false;
         }
+        // C1's FOREST form (plan §3.3 + §3.9), with the D5 carve-out the goldens forced: the
+        // union of onset OFFERS is gated by the INTERSECTION envelope — UNLESS the offer is
+        // GAP-HOSTED (the offering container's own envelope cell is closed at its onset: the
+        // ghost path, whose forest form lands in F-4 — ghosts LIVE in envelope gaps, and the
+        // legacy poly-ghost roll rides this branch on the star). On the star both shapes
+        // reduce to today's behavior (a main onset implies the mono gate high; a ghost onset
+        // rides the mono gap), so the marches stay byte-identical; with poly containers the
+        // gate closes the hole the F-2 forest marches caught (a child firing while a sibling
+        // container's gate had fallen and the offer was a MAIN onset).
+        d.mayOnset = unionMayOnset && (d.envelopeOpen || offerGapHosted);
         return d;
     }
 };

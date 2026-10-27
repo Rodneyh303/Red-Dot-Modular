@@ -296,7 +296,11 @@ int main() {
                             const RhythmDecision folded =
                                 core.decide(v, [&](int) { return p; });
                             const RhythmDecision direct = RhythmDecisionCore::decide(p);
-                            TEST("fold == direct", {
+                            TEST("fold == direct (the C1 forest form is single-container transparent)", {
+                                // With the D5 gap-hosted carve-out the C1 forest form reduces
+                                // to the container's own verdict for ONE container (an offer is
+                                // either envelope-gated by siblings — none here — or gap-hosted
+                                // and let through), so the R-5 identity RESTORES exactly.
                                 EXPECT(folded.mayOnset      == direct.mayOnset);
                                 EXPECT(folded.envelopeOpen  == direct.envelopeOpen);
                                 EXPECT(folded.forcedRest    == direct.forcedRest);
@@ -318,9 +322,32 @@ int main() {
         // parents {0,1}: bit0 = pa, bit1 = pb (projection dispatches by container index)
         auto projAB = [&](int u) { return u == 0 ? pa : pb; };
         auto projBA = [&](int u) { return u == 0 ? pb : pa; };
-        TEST("D3 union: the NewNote container offers the onset despite the rested one", {
+        TEST("C1 forest form: a MAIN onset is gated by the intersection envelope (§3.3)", {
+            // pa offers a MAIN onset (NewNote, its own gate HIGH); pb's envelope cell is
+            // CLOSED (gate low, not rested-closed — a Rest would take the C2 branch) — the
+            // offer stands (D3 union of events) but the onset does NOT (the intersection
+            // envelope gates every MAIN onset moment, §3.9). The F-2 forest marches caught
+            // this hole (a child fired while a sibling container's gate had fallen).
             const RhythmDecision d = RhythmDecisionCore::decideMask(0x0003, projAB);
-            EXPECT(d.mayOnset);                      // events union (D3) — pa's attack counts
+            EXPECT(!d.mayOnset);                     // main offer AND closed envelope: vetoed
+            EXPECT(d.gateType == MonoDecision::NewNote);   // D4 naming is unaffected (moot here)
+            // Both envelopes open -> the union stands:
+            const ParentView pc = pv(MonoDecision::MidNote, 4, true, true, false); // holds, gate high
+            auto projAC = [&](int u) { return u == 0 ? pa : pc; };
+            const RhythmDecision e = RhythmDecisionCore::decideMask(0x0003, projAC);
+            EXPECT(e.mayOnset);                      // pa's attack counts, envelope open
+            EXPECT(!e.forcedRest);
+        });
+        TEST("C1 forest form: a GAP-HOSTED offer rides the closed envelope (the D5 carve-out)", {
+            // pg offers from INSIDE its own gap (NewNote with its own gate LOW — the ghost
+            // path; the goldens forced this carve-out: the strict veto killed the poly-ghost
+            // roll and GOLDEN_BS diverged). The offer is let through — the ghost-hosted
+            // forest form is F-4's; until then the legacy roll is preserved exactly.
+            const ParentView pg = pv(MonoDecision::NewNote, 2, false, true, false); // offers, gate LOW
+            auto projGB = [&](int u) { return u == 0 ? pg : pb; };
+            const RhythmDecision g = RhythmDecisionCore::decideMask(0x0003, projGB);
+            EXPECT(g.mayOnset);                      // gap-hosted: the legacy roll rides on
+            EXPECT(!g.envelopeOpen);                 // ...even though the envelope is closed
         });
         TEST("D1 intersection: one rested container closes the envelope", {
             const RhythmDecision d = RhythmDecisionCore::decideMask(0x0003, projAB);
@@ -342,6 +369,108 @@ int main() {
             const RhythmDecision d = RhythmDecisionCore::decideMask(0x0000, projAB);
             EXPECT(!d.mayOnset && !d.forcedRest && !d.holdFollow && !d.envelopeOpen);
             EXPECT_EQ(d.lengthCeiling, 0);
+        });
+    }
+
+    // ── F-2: the MATERIALIZED forest (D8) — topo order + container lists, cache-on-change ──
+    SUITE("F-2 materializeForest — the star, chains, diamonds, staleness, cycle fallback");
+    {
+        TEST("the STAR materializes to slot order 1..15 (the byte-identity anchor) + single-V1 lists", {
+            RhythmDecisionCore core;   // LEGACY_STAR source
+            core.materializeIfStale();
+            EXPECT_EQ(core.topoCount, 15);
+            for (int k = 0; k < 15; ++k) EXPECT_EQ(core.topoOrder[k], k + 1);
+            EXPECT_EQ(core.parentCount[0], 0);                       // V1: no containers
+            for (int v = 1; v < 16; ++v) {
+                EXPECT_EQ(core.parentCount[v], 1);
+                EXPECT_EQ((int)core.parentSlot[v][0], 0);            // the mono voice, slot 0
+            }
+            EXPECT_EQ(core.materializeGeneration, 1);
+            core.materializeIfStale();                               // unchanged -> cached
+            EXPECT_EQ(core.materializeGeneration, 1);
+        });
+        TEST("the EMPTY graph: every voice free (parentCount 0), the visit order still total", {
+            uint16_t zeros[16] = {};
+            RhythmDecisionCore core;
+            core.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
+            core.graphWords = zeros;
+            core.materializeIfStale();
+            EXPECT_EQ(core.topoCount, 15);
+            for (int k = 0; k < 15; ++k) EXPECT_EQ(core.topoOrder[k], k + 1);   // smallest-first = slot order
+            for (int v = 0; v < 16; ++v) EXPECT_EQ(core.parentCount[v], 0);     // FREE everywhere (D2)
+        });
+        TEST("a CHAIN V3->V2->V4 visits containers before children (topo order)", {
+            uint16_t words[16] = {};
+            words[2] = 0x0002;   // V3 in {V2}
+            words[1] = 0x0008;   // V2 in {V4}
+            RhythmDecisionCore core;
+            core.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
+            core.graphWords = words;
+            core.materializeIfStale();
+            EXPECT_EQ(core.topoCount, 15);
+            EXPECT_EQ(core.topoOrder[0], 3);   // V4 first (no containers)
+            EXPECT_EQ(core.topoOrder[1], 1);   // V2 (its container V4 placed)
+            EXPECT_EQ(core.topoOrder[2], 2);   // V3 (its container V2 placed)
+            EXPECT_EQ(core.parentCount[2], 1); EXPECT_EQ((int)core.parentSlot[2][0], 1);
+            EXPECT_EQ(core.parentCount[1], 1); EXPECT_EQ((int)core.parentSlot[1][0], 3);
+        });
+        TEST("a DIAMOND V5->{V2,V3}->V4 orders both containers before the child", {
+            uint16_t words[16] = {};
+            words[4] = 0x0006;   // V5 in {V2, V3}
+            words[1] = 0x0008;   // V2 in {V4}
+            words[2] = 0x0008;   // V3 in {V4}
+            RhythmDecisionCore core;
+            core.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
+            core.graphWords = words;
+            core.materializeIfStale();
+            EXPECT_EQ(core.topoOrder[0], 3);   // V4 (the shared container) first
+            EXPECT_EQ(core.topoOrder[1], 1);   // V2
+            EXPECT_EQ(core.topoOrder[2], 2);   // V3
+            EXPECT_EQ(core.topoOrder[3], 4);   // V5 last among the four (both containers placed)
+            EXPECT_EQ(core.parentCount[4], 2);
+            EXPECT_EQ((int)core.parentSlot[4][0], 1); EXPECT_EQ((int)core.parentSlot[4][1], 2);
+        });
+        TEST("multi-parent container lists mirror the bits verbatim (V6 in {V1, V3})", {
+            uint16_t words[16] = {};
+            words[5] = 0x0005;   // bit 0 (V1) + bit 2 (V3)
+            RhythmDecisionCore core;
+            core.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
+            core.graphWords = words;
+            core.materializeIfStale();
+            EXPECT_EQ(core.parentCount[5], 2);
+            EXPECT_EQ((int)core.parentSlot[5][0], 0);   // ascending slot order
+            EXPECT_EQ((int)core.parentSlot[5][1], 2);
+        });
+        TEST("staleness: a word change re-materializes; an unchanged graph does not", {
+            uint16_t words[16] = {};
+            words[2] = 0x0002;
+            RhythmDecisionCore core;
+            core.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
+            core.graphWords = words;
+            core.materializeIfStale();
+            EXPECT_EQ(core.materializeGeneration, 1);
+            core.materializeIfStale();
+            EXPECT_EQ(core.materializeGeneration, 1);            // same words -> cached
+            words[2] = 0x0000;                                   // V3 freed (live re-stage)
+            core.materializeIfStale();
+            EXPECT_EQ(core.materializeGeneration, 2);            // re-materialized
+            EXPECT_EQ(core.parentCount[2], 0);                   // the new graph's state
+        });
+        TEST("cycle fallback (defensive; the pin plane rejects cycles): the visit stays TOTAL", {
+            uint16_t words[16] = {};
+            words[1] = 0x0004;   // V2 in {V3}
+            words[2] = 0x0002;   // V3 in {V2}  — a cycle
+            RhythmDecisionCore core;
+            core.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
+            core.graphWords = words;
+            core.materializeIfStale();
+            EXPECT_EQ(core.topoCount, 15);                       // appended in slot order
+            bool seen[16] = {};
+            for (int k = 0; k < core.topoCount; ++k) {
+                EXPECT(!seen[core.topoOrder[k]]);                // each voice exactly once
+                seen[core.topoOrder[k]] = true;
+            }
+            for (int v = 1; v < 16; ++v) EXPECT(seen[v]);
         });
     }
 

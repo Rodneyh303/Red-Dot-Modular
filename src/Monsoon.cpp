@@ -1196,16 +1196,28 @@ void Monsoon::process(const ProcessArgs& args) {
         }
 
         // ── Poly gate-width follow (Phase 5 roll-out) ──────────────────────────────────────
-        // Each poly voice's gate rides the SAME mono envelope (Gate 1 width / ghost / slurForward
-        // bridge) ANDed with its latched sounding decision (polyVoiceActive[], set after the last
-        // executePolyVoices).  So poly ghost / ratchet notes match the mono envelope instead of a
-        // 1-step internal hold.  gsStep is left to executePolyVoice's per-onset retrigger (the STEP
-        // output re-articulates by design); only the fused GATE width is driven here.  A voice whose
-        // gate closes also gets its holdRemain zeroed (Lantern sounding-test parity with the mono).
+        // Each contained voice's gate rides the INTERSECTION of its containers' envelope cells
+        // (C5, D1) ANDed with its latched sounding decision (polyVoiceActive[], set after the
+        // last executePolyVoices). Per D8 ("forest mod on phrase boundary, no per-sample work")
+        // NOTHING is derived here: the container lists and the visit order are the RDM's
+        // MATERIALIZED state (refreshed only at graph-change boundaries — the publish point per
+        // block, and per edge in executePolyVoices). The per-sample shape and cost are today's:
+        // the star materializes ONE container (V1 → monoP.gateHeld — the same single AND), a
+        // FREE voice materializes NONE (the drive leaves it entirely to its own edge-level
+        // machinery — its envelope is its own). The loop visits in the materialized topological
+        // order so a poly container's gate is COMPLETE before its children read it (the star's
+        // order is slot order — byte-identical).
         const ParentView monoP = engine.monoParentView();   // C5 parent read: captured AFTER the
         // mono envelope write above, so monoP.gateHeld == gateOpen exactly; once per sample.
-        for (int i = 1; i <= engine.numPolyVoices; ++i) {
-            const bool vOpen = envelopeAnd(monoP) && polyVoiceActive[i];   // C5: envelope ∧ own latch
+        for (int k = 0; k < engine.rdm.topoCount; ++k) {
+            const int i = engine.rdm.topoOrder[k];
+            if (i > engine.numPolyVoices || engine.rdm.parentCount[i] == 0) continue;   // free voice: own envelope (D8)
+            bool vOpen = polyVoiceActive[i];                            // the voice's own latch
+            for (int p = 0; p < engine.rdm.parentCount[i]; ++p) {       // C5: ∧ containers (D1)
+                const int u = engine.rdm.parentSlot[i][p];
+                vOpen = vOpen && (u == 0 ? envelopeAnd(monoP)                     // V1, the mono voice
+                                         : engine.voices[VoiceResolver::slot(u + 1)].gs.gateHeld);
+            }
             const auto vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
             engine.voices[vs].gs.gateHeld = vOpen;
             if (!vOpen) {

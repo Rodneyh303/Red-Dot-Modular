@@ -979,8 +979,8 @@ struct SequencerEngine {
     // delegates to monoParentView(); u >= 1 assembles the poly container's ParentView
     // from its captured rhythm verdict (polyVerdict_), its captured drawn length
     // (polyNv_), and its live VoiceBank gate state. Out-of-range u is defensive-neutral
-    // (fail-closed: no onset offer, envelope cell closed). The slot-order freshness
-    // caveat (a container with a higher slot than its child reads one edge stale until
-    // F-2's topological visit order) is documented at the definition.
+    // (fail-closed: no onset offer, envelope cell closed). F-2: executePolyVoices visits
+    // in the MATERIALIZED topological order, so every container — any slot, any direction —
+    // is captured fresh on the edge its child reads it.
     ParentView containerView(int u) const;
 };

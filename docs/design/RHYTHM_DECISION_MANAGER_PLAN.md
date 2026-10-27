@@ -236,9 +236,16 @@ topological order exists and parents resolve before children.
 - **Per step edge**: `executePolyVoices` visits voices in topological order (today: slot
   order 1..15, which happens to be valid only because the star's parents are always slot 0 —
   under a general forest it must be the cached order).
-- **Per sample** (gate mode, C5): Monsoon.cpp's 1198-1213 loop walks the same cached order,
-  so each voice's final `gs.gateHeld` is complete before its children read it. Same AND
-  shape, per-parent instead of implicit-V1.
+- **Per sample (gate mode, C5) — RODNEY'S CORRECTION (2026-10-27): "'Per sample forest'?
+  Forest mod on phrase boundary, no per-sample work."** The per-sample drive
+  (Monsoon.cpp 1198-1213) does NO forest reasoning and NO per-voice parent walk. The forest
+  is resolved ONCE — when the graph changes (pin edit / transform / phrase boundary; the
+  same publish-point dirty check that recomputes the topological order) — into plain
+  per-voice state: the materialized parent list, a zero meaning FREE. The loop's per-sample
+  shape and cost are unchanged from today: each voice ANDs its own envelope with its
+  containers' already-computed `gateHeld` values read straight off the materialized list
+  (the star: exactly today's single AND with V1; a free voice: no container AND at all —
+  its envelope is its own). Nothing is derived, walked, or recomputed per sample.
 
 ### 3.3 The C1-C5 forest table (F-2/F-4)
 
@@ -246,7 +253,7 @@ With `parents(v) = {u : bit u set in containmentParents[v]}`, `E(v) = Own(v) ∧
 
 | Mech | Forest form | Reduces to today when |
 |---|---|---|
-| C1 | `mayOnset(v)` = (∃ container onsetting) ∧ (all containers' envelopes open) — D3 RULED: UNION for onset permission, INTERSECTION for temporal extent (envelope + length) | parents = {V1} → exactly `monoGateStart` |
+| C1 | `mayOnset(v)` = (∃ container onsetting) ∧ (all containers' envelopes open) — D3 RULED: UNION for onset permission, INTERSECTION for temporal extent (envelope + length). **F-2 refinement (goldens-forced): a GAP-HOSTED offer — the offering container's own cell closed at its onset — rides through (the ghost path, D5; forest form in F-4)** | parents = {V1} → exactly `monoGateStart` |
 | C2 | `forcedRest(v)` = ∨ over containers of container-rested (the ∧ of envelopes closes on any rest) | exactly the 1270-1276 branch |
 | C3 | `lengthCeiling(v)` = max over containers of `nvIdx` (higher = shorter; the SHORTEST container window wins) | exactly the 1507 clamp |
 | C4 | `holdFollow(v)` = containers mid-gate ∧ own armed window; the SHAPE followed is the topologically-first sounding container (D4) | exactly the 1352-1388 branch |
@@ -309,6 +316,31 @@ all three platforms before the next lands — the standing discipline.
 > 0x166132accd092fce) — star graphs byte-identical, byte-identity PROVEN. Core suite grew
 > the GRAPH contract + the freeDecision table (970 → 983 rows). Full battery 87/87,
 > UNIFORMITY_STRICT=1 green, -Wall -Wextra clean, anchor audit green. Next: F-2.
+
+> **STATUS (2026-10-27): F-2 EXECUTED** — the MATERIALIZED forest (D8). RhythmDecisionCore
+> gains `materializeForest()`/`materializeIfStale()`: the graph resolves ONCE per CHANGE (the
+> publish point per block — MonsoonSandsManager::processDNA — and the top of executePolyVoices
+> per edge; the per-sample path NEVER calls it) into `topoOrder`/`topoCount` (Kahn,
+> smallest-index-first: the STAR = slot order = today's visit order — the byte-identity
+> anchor; V1 never visits until F-3) + per-voice `parentCount`/`parentSlot` lists (zero =
+> FREE). executePolyVoices visits in the materialized order — the F-1 downward-edge staleness
+> is GONE (every containerView read is this-edge). The per-sample drive (Monsoon.cpp) reads
+> the materialized state only: the star materializes ONE container (= today's single AND with
+> monoP), a FREE voice materializes NONE (the drive leaves it entirely to its own edge-level
+> machinery — its envelope is its own), and a poly container's gate is COMPLETE before its
+> children read it; the differential harness's C5 mirrors updated to the same form. THE
+> MARCHES CAUGHT A REAL C1 HOLE: the naive "mayOnset = union ∧ envelope" veto killed the
+> ghost-hosted roll (GOLDEN_BS diverged — a ghost onsets FROM INSIDE its own gap); the C1
+> forest form landed as: union of offers ∧ (intersection envelope open ∨ the offer is
+> GAP-HOSTED — the offering container's own cell closed at its onset; D5's forest form is
+> F-4). The forest marches also caught the sibling-gate hole the veto exists for (a child
+> fired while a sibling container's gate had fallen): NEW suites E (nested chain V3∈{V2,V1},
+> depth 2) and F (diamond V5∈{V2,V3}) hold the E(v) ⊆ E(u) implication EXACTLY (64/64,
+> 128/128). Core suite: the materialization table (star slot-order, empty graph, chain,
+> diamond, multi-parent lists, staleness/generation, cycle fallback) — 991 rows. GOLDENS HOLD
+> EXACTLY (0xa843e2ff14883ab9 / 0x3169e28ca3cc206a / 0x166132accd092fce) through the
+> materialized drive. Full battery 87/87, UNIFORMITY_STRICT=1 green, -Wall -Wextra clean,
+> anchor audit green. Next: F-3 (the mono drive inside the algebra, D7).
 
 ### 3.6 D7 — the mono voice inside the forest (NEW, needs a ruling)
 
@@ -470,9 +502,11 @@ rings heap-holds them (the 2 MiB / Windows-2MB-stack rule); R7 token hygiene in 
 | D5 | Ghost hosting under a forest | **RULED: INTERSECTION** — "agree intersection". A voice's ghost exists only in gaps of the intersection envelope; candidacy = its own VAR draw. |
 | D6 | Phasing scope | **RULED: engine-internal.** "I see no connection to LOR which is about the probabilities that feed the rhythm decisions" — the draw production is not the decision structure. Closed. |
 | D7 | The mono voice inside the forest | **RULED: V1 inside the algebra, no privilege.** "No reason for V1 to stay privileged and this is part of it. All voices could be contained in voice 2 to 16 as well." F-3 confirmed; INVERT-produced V1-as-leaf graphs are first-class. |
+| D8 | Per-sample cost of the forest compose | **RULED: none.** "'Per sample forest'? Forest mod on phrase boundary no per sample work." The forest is resolved when the graph changes (phrase boundary / pin edit / transform) into materialized per-voice state; the per-sample drive keeps today's exact shape and cost — it reads plain state, derives nothing. |
 
-Stage R is blocked by NONE of these, and now neither is Stage F: all seven rulings are
-banked. The full ladder R-1..R-5, F-1..F-5 is GO on Rodney's word.
+Stage R is blocked by NONE of these, and now neither is Stage F: all eight rulings are
+banked (D8 landed with F-1's push). The full ladder R-1..R-5, F-1..F-5 is GO on Rodney's
+word.
 
 ---
 

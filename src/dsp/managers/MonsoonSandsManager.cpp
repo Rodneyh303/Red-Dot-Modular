@@ -96,6 +96,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
     } else {
         for (int v = 0; v < 16; ++v) engine.pe.containmentParents[v] = 0;
     }
+    // F-2 (D8 RULED: "forest mod on phrase boundary, no per-sample work"): THIS is the
+    // graph-change boundary — the forest materializes here (per block: topological visit
+    // order + per-voice container lists) so the per-sample drive and the edge visits read
+    // plain state only. Nothing forest-shaped is derived per sample anywhere.
+    engine.rdm.materializeIfStale();
     // ── Expander-presence / activity flags (names chosen to avoid the old trap) ──
     //   hasMonoVisual    : the SANDS MONO editor is attached (NOT "any visual"; NOT Macro).
     //   hasMacro         : the MACRO visual is attached (standalone counts — the right flag
