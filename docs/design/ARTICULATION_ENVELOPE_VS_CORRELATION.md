@@ -329,3 +329,33 @@ inside a held containment structure. The skeleton holds; the correlations reconf
 Dynamic containment would need a BESPOKE ACYCLIC-PRESERVING modulation — e.g. modulate a voice PRIORITY-
 ORDER and derive the containment forest from the order (a total order can NEVER cycle → always acyclic).
 That's a NEW mechanism, not CA. Flagged, not committed — alongside nesting as "consider later".
+
+────────────────────────────────────────────────────────────────────────────────
+## WHAT CONTAINMENT BUYS MUSICALLY (Rodney — verified in Rack: "fun messing with basslines by flipping containment")
+
+The module is BUILT + merged (PR #297; multi-parent DAG with intersection, disconnected vertices valid,
+DAG-closed gesture verbs, gate mode tested 109 refs, goldens byte-exact). What it buys:
+
+1. STRUCTURAL VARIATION WITHOUT NOTE VARIATION (the strongest, the bassline fun). INVERT/ROTATE/REFLECT
+   change WHO CONTAINS WHOM while draws + correlations are untouched → a recognizably-same-but-restructured
+   phrase. INVERT on a bassline re-assigns which voice holds the rhythmic floor (the sustained root becomes
+   a busy inner voice; a constrained voice becomes the envelope) — one trigger, the whole rhythmic
+   architecture re-pivots, notes unchanged. Theme-and-variation where the variation is HIERARCHICAL, not
+   melodic. Nothing else in the instrument does structural variation.
+2. INTERSECTION-NESTING (the multi-parent payoff). A voice in TWO parents sounds only where BOTH gates open
+   = a sparse PUNCTUATION voice firing at the COINCIDENCES of two envelopes. More parents → sparser (triple
+   coincidence). A controllable rhythmic-density gradient via parent count — "voices that sound at the
+   intersection of others' activity".
+3. NESTED VOICE GROUPS = arrangement density. Deep chains (v2⊂v3⊂v1) give inner-voices-within-inner-voices;
+   COLLAPSE/EXPAND modulate the arrangement busyness (flatten→all active in one envelope; expand→nested
+   sparseness). A density macro via structural depth.
+4. DE-PRIVILEGING as a creative affordance ("mono not special" made real). V1 can be a LEAF (bass contained
+   within a pad's envelope; no privileged voice) — arrangements the old Vermona-V1-envelope model FORBADE.
+
+WHAT IT IS NOT: no pitch/harmony change (that's correlation/warp), no added notes (it gates/subtracts). The
+space is rhythmic texture, density, and which-voice-is-the-floor — exactly right for an articulation/
+envelope feature, and a space the instrument didn't address before.
+THE DISTINCTIVE AXIS (paper point): STRUCTURAL MODULATION — modulate the dependency GRAPH (DAG-closed
+transform verbs, safe + gestural + phrase-boundary) rather than the VALUES. Most synths modulate
+parameters; this modulates RELATIONSHIPS. INVERT-on-a-bassline being fun is the proof: a single structural
+trigger yields a satisfying, non-obvious, musical transformation — a genuinely novel modulation axis.

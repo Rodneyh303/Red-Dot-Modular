@@ -1,0 +1,66 @@
+# STRAITS POLY SUBGATE KNOBS — the planned 2nd-knob poly articulation (consolidated)
+
+STATUS: PLANNED, not built. The containment module is merged (gate mode works on the DAG); this is the
+remaining piece that completes PER-VOICE gate-mode articulation. Consolidates the spec scattered across
+plans/subgate_dev_plan.md (the consumer-group model) + ARTICULATION_ENVELOPE_VS_CORRELATION.md ("the
+planned 2nd knobs") into one home. Build after the decision-manager / with the resolver work.
+
+## THE GAP IT FILLS
+In gate mode TODAY: V1 sources the gate/subgate TIMING GRID (main+ratchet+ghost → one mono gate), and
+poly voices make their OWN rest/variation decisions at those edges (clamped to the DAG containment via
+decideMask). But poly voices do NOT yet have their own SUBGATE-DECISION response knobs — they inherit the
+main/global thresholds. The 2nd knobs give per-voice control over the subgate articulation decisions
+(ghost/ratchet rest, legato, pitch-hold, tie-across-rest).
+
+## THE CONSUMER-GROUP MODEL (from subgate_dev_plan.md §consumer groups)
+Subgate articulation decisions are CONSUMERS of a draw event. Key invariant: within a SINGLE draw event,
+all consumers read the SAME sampled shaped value (no re-draw per consumer) — that is what makes SAME-EVENT
+consumers correlatable; DIFFERENT-event consumers are independent. Because ghost/ratchet/main are DIFFERENT
+events, they need SEPARATE THRESHOLDS to express different rates — so the consumer knobs EXPOSE control
+over already-distinct draws (not fake independence).
+
+## PHYSICAL HOME (Sands vs Straits)
+- SANDS (full): keeps the SINGLE per-lane knob (main level); subgate behaviour INHERITS it unless assigned.
+- STRAITS = the consumer-group HOME: optional groups of SMALL set-and-forget THRESHOLD knobs (shrink OK —
+  assignment controls, not performance controls). Add the groups you want: ghost/ratchet rest, legato,
+  tie-across-rest, pitch-hold.
+- CAUSEWAY MOD COVERAGE REQUIRED: everything on Straits is Causeway-modulatable; a new Straits group WITHOUT
+  its Causeway mod path = a modulation-layer seam. Add the Straits group AND its Causeway mod path TOGETHER.
+
+## GLOBAL vs POLY scope (the assignment)
+- GLOBAL subgate group: one threshold drives all voices' subgate decision of that kind (pattern-character;
+  the common/cheap case).
+- ASSIGNED POLY SUBGATE GROUP on Straits: opt-in, a FEW assignable groups (e.g. 3) — full per-voice control
+  for the ghost/ratchet decisions the user prioritises. Costs Straits/Causeway space; capped + assignable
+  (point the 3 at whatever you want poly). Decisions without an assigned group FALL BACK to global-subgate
+  or main (graceful — no decision is ever uncontrolled).
+- MELODY/OCTAVE have NO Straits poly knobs → the global-vs-poly choice does NOT apply to them; it applies to
+  the Straits MAIN-GATE lanes that HAVE poly knobs (rest/accent/qmix/legato/variation).
+
+## VARIATION IN GATE MODE (the specific 2nd-knob reuse)
+- WITH subgates: Variation does PITCH-HOLD (hold vs re-draw pitch across the ratchet burst) — GLOBAL or
+  POLY choice; POLY reuses the IDLE gate-mode Variation per-voice knobs (free — they're unused in gate mode
+  otherwise).
+- WITHOUT subgates: Variation is free for another gate-mode role (candidates: tie-across-rest,
+  advance-playhead-on-tie-into-rest — open).
+- GHOST pitch-hold cell: flagged to confirm — ghost is a gap/new-note, "hold" may be n/a there.
+
+## RELATION TO CONTAINMENT + THE DECISION MANAGER
+These knobs set the per-voice subgate DECISION thresholds; the containment DAG sets the per-voice gate
+SUPPORT (clamp to ∩ parents). They compose: a poly voice makes its OWN subgate articulation (2nd knobs)
+WITHIN its containment envelope (DAG clamp). Both are decide() inputs → the decision manager is the natural
+home for wiring them (decide(prob, draw, lane, ownership, envelope, subgate-thresholds)). Build with the
+decision-manager work; the containment consumption (gate clamp) and these thresholds are the two per-voice
+inputs the unified decide() takes.
+
+## DONE (when built) =
+- Straits optional consumer-group threshold knobs (ghost/ratchet rest, legato, pitch-hold, tie-across-rest),
+  each with its Causeway mod path.
+- Global-vs-poly scope per group; a few (≈3) assignable poly subgate groups; graceful fallback (poly →
+  global → main, never uncontrolled).
+- Gate-mode Variation = pitch-hold (reusing idle gate-mode Variation per-voice knobs).
+- Wired through the decision manager's per-voice decide() alongside the containment clamp.
+
+## NOT THIS DOC
+- The containment DAG (built, merged). The decision manager (consumes both; separate).
+- MELODY/OCTAVE (no poly Straits knobs — out of scope).
