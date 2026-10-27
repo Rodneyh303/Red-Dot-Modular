@@ -115,6 +115,13 @@ struct MonsoonContainment : Module {
     // Reset at the top of process() each block; the FIRST driver to apply sets it.
     bool& transformsAppliedThisBlock = core.transformsAppliedThisBlock;
 
+    // The read-only graph diagram toggle (Rodney 2026-10-28: "drawn diagrams like this,
+    // not editable just for visualisation"). A VIEW, not musical state: runtime-only,
+    // deliberately OUTSIDE the core's save schema (the matrix returns on load; the five
+    // persisted fields stay five). While it is up the PinOverlay consumes nothing — the
+    // matrix stays the only editor (the read-only contract is enforced, not implied).
+    bool graphView = false;
+
     // Arming edge detectors (the CA idiom: SchmittTrigger for the jacks, BooleanTrigger for
     // the buttons). Runtime only (not persisted) — like CA's trigger arrays. The TRUE-REV
     // jack/button arm the true-reverse QUEUE (not a verb row); the RANDOM back jack arms the
@@ -278,6 +285,15 @@ struct MonsoonContainmentWidget : ModuleWidget,
         ov->box.pos  = Vec(0, 0);
         ov->box.size = box.size;
         addChild(ov);
+
+        // The read-only graph diagram (Rodney 2026-10-28): the SAME square, re-rendered as
+        // the node-arrow circle. Added ABOVE the PinOverlay so its scrim covers the printed
+        // grid art; it declares no event handlers (read-only by construction) and the
+        // PinOverlay consumes nothing while it is up (the module's graphView gate).
+        auto* gv = new GraphOverlay(this, module);
+        gv->box.pos  = Vec(0, 0);
+        gv->box.size = box.size;
+        addChild(gv);
     }
 
     // One committed phrase-boundary batch = one undo step (the CA precedent). Snapshots are
@@ -390,6 +406,9 @@ struct MonsoonContainmentWidget : ModuleWidget,
         }
 
         void draw(const DrawArgs& args) override {
+            // The graph diagram owns the square while toggled (the module's graphView):
+            // nothing drawn here, the GraphOverlay scrims and re-renders instead.
+            if (module && module->graphView) return;
             widget::TransparentWidget::draw(args);
             NVGcontext* vg = args.vg;
             const int active = getActiveCount();
@@ -493,6 +512,7 @@ struct MonsoonContainmentWidget : ModuleWidget,
         // Track the hovered cell for the crosshair; keep events passing through.
         void onHover(const event::Hover& e) override {
             hoverV = hoverU = -1;
+            if (module && module->graphView) { TransparentWidget::onHover(e); return; }   // no crosshair under the diagram
             for (int v = 0; v < dotModular::ct::VOICES && hoverV < 0; ++v)
                 for (int u = 0; u < dotModular::ct::VOICES; ++u)
                     if (hitCell(e.pos, v, u)) { hoverV = v; hoverU = u; break; }
@@ -511,7 +531,10 @@ struct MonsoonContainmentWidget : ModuleWidget,
         // the roles underneath it) that would close a cycle simply no-ops — safety over
         // fidelity; the alternative (a promoted cycle) is the one thing this module may never do.
         void onButton(const event::Button& e) override {
-            if (!module || e.action != GLFW_PRESS) { TransparentWidget::onButton(e); return; }
+            // graphView: the read-only contract — while the diagram is up this plane
+            // consumes NOTHING (no edits, no rejection flashes); clicks fall through to the
+            // panel like any other square of blank fascia.
+            if (!module || e.action != GLFW_PRESS || module->graphView) { TransparentWidget::onButton(e); return; }
             for (int v = 0; v < dotModular::ct::VOICES; ++v) {
                 for (int u = 0; u < dotModular::ct::VOICES; ++u) {
                     if (!hitCell(e.pos, v, u)) continue;
@@ -538,6 +561,146 @@ struct MonsoonContainmentWidget : ModuleWidget,
                 }
             }
             TransparentWidget::onButton(e);
+        }
+    };
+
+    // ── the read-only graph diagram (Rodney 2026-10-28: "drawn diagrams like this, not
+    // editable just for visualisation") ─────────────────────────────────────────────────────
+    // The SAME one-plane direct-offer edges the matrix pegs, re-rendered as the classic
+    // node-arrow circle: 16 numbered pegs (voice 1 at 12 o'clock, clockwise), one arrow per
+    // containment edge pointing CHILD -> PARENT (the module's "points at my parent" language),
+    // roots (no parents) in the sample image's mint green, the operating pool arced (the
+    // matrix active-frame idiom, angular form), above-pool voices and their edges dimmed-held
+    // (the matrix 0.4-alpha idiom). MULTI-PARENT SAFE: the plane is a DAG, not just the draw's
+    // strict forests — every set bit draws its own arrow (the matrix's caption says so).
+    // Read-only BY CONSTRUCTION: no event overrides at all — events fall through to the
+    // PinOverlay, which consumes nothing while the diagram is up (the module's graphView gate).
+    // Runtime toggle only (the context-menu check item) — NOT in the save schema, the five
+    // persisted fields stay five, and the matrix returns on load.
+    struct GraphOverlay : widget::TransparentWidget {
+        MonsoonContainmentWidget* owner;   // theme lookup (the PinOverlay idiom)
+        MonsoonContainment*       module;
+
+        GraphOverlay(MonsoonContainmentWidget* o, MonsoonContainment* m) : owner(o), module(m) {}
+
+        // The operating pool (the PinOverlay idiom verbatim: numPolyVoices+1 clamped 1..16;
+        // no host Monsoon or browser preview = the FULL pool, no dimming — R2).
+        int getActiveCount() const {
+            if (!module) return dotModular::ct::VOICES;
+            Monsoon* mon = redDot::lookupMonsoon(module);
+            if (!mon) return dotModular::ct::VOICES;
+            return math::clamp(mon->engine.numPolyVoices + 1, 1, dotModular::ct::VOICES);
+        }
+
+        // Voice 1 at 12 o'clock, clockwise (16 slots = 22.5 degrees). Literal angles — no
+        // M_PI dependency (the -D_USE_MATH_DEFINES dance is Windows-only noise we skip).
+        static constexpr float kStartAngle = -1.57079632679f;   // -pi/2 (12 o'clock)
+        static constexpr float kTwoPi      =  6.28318530718f;
+        static float nodeAngle(int i) {
+            return kStartAngle + float(i) * (kTwoPi / float(dotModular::ct::VOICES));
+        }
+        static Vec nodeCentre(int i, Vec c0, float R) {
+            const float a = nodeAngle(i);
+            return Vec(c0.x + R * std::cos(a), c0.y + R * std::sin(a));
+        }
+
+        // Roots (no parents) wear the sample's mint green; contained voices stay house red
+        // (the PinOverlay plane colour).
+        static NVGcolor rootNode() { return nvgRGBf(0.36f, 0.72f, 0.50f); }
+
+        // One containment edge: shaft trimmed clear of both pegs + a filled head at the
+        // parent's rim (the sample's straight-arrow look, the house red).
+        static void drawArrow(NVGcontext* vg, Vec from, Vec to, float pegR, float alpha) {
+            const float dx = to.x - from.x, dy = to.y - from.y;
+            const float len = std::sqrt(dx * dx + dy * dy);
+            if (len < 1e-4f) return;
+            const float ux = dx / len, uy = dy / len;
+            NVGcolor col = PinOverlay::pinBody(); col.a *= 0.8f * alpha;
+            const float sx = from.x + ux * (pegR + mm2px(0.5f));
+            const float sy = from.y + uy * (pegR + mm2px(0.5f));
+            const float ex = to.x   - ux * (pegR + mm2px(1.9f));
+            const float ey = to.y   - uy * (pegR + mm2px(1.9f));
+            nvgBeginPath(vg); nvgMoveTo(vg, sx, sy); nvgLineTo(vg, ex, ey);
+            nvgStrokeColor(vg, col); nvgStrokeWidth(vg, mm2px(0.55f)); nvgStroke(vg);
+            const float tx = to.x - ux * (pegR + mm2px(0.4f));
+            const float ty = to.y - uy * (pegR + mm2px(0.4f));
+            const float px = -uy, py = ux;   // perpendicular for the head's base
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, tx, ty);
+            nvgLineTo(vg, ex + px * mm2px(0.85f), ey + py * mm2px(0.85f));
+            nvgLineTo(vg, ex - px * mm2px(0.85f), ey - py * mm2px(0.85f));
+            nvgClosePath(vg);
+            nvgFillColor(vg, col); nvgFill(vg);
+        }
+
+        void draw(const DrawArgs& args) override {
+            if (!module || !module->graphView) return;   // the matrix owns the square unless toggled
+            NVGcontext* vg = args.vg;
+            using namespace ContainmentPanelMm;
+            const bool lit = (owner && owner->lastThemeLight > 0);
+            const NVGcolor ink = lit ? nvgRGB(0x2a, 0x2a, 0x2e) : nvgRGB(0xe8, 0xe2, 0xd0);
+
+            // Scrim over the printed grid art (theme-matched: the diagram floats on its own
+            // paper, the generator's cells do not ghost through), hairline border in ink.
+            const float x0 = mm2px(GRID_X), y0 = mm2px(GRID_Y), gsz = mm2px(GRID_W);
+            nvgBeginPath(vg); nvgRoundedRect(vg, x0, y0, gsz, gsz, mm2px(1.2f));
+            nvgFillColor(vg, lit ? nvgRGBAf(0.95f, 0.94f, 0.91f, 0.94f)
+                                 : nvgRGBAf(0.055f, 0.055f, 0.065f, 0.94f));
+            nvgFill(vg);
+            NVGcolor rimc = ink; rimc.a *= 0.18f;
+            nvgBeginPath(vg); nvgRoundedRect(vg, x0, y0, gsz, gsz, mm2px(1.2f));
+            nvgStrokeColor(vg, rimc); nvgStrokeWidth(vg, mm2px(0.4f)); nvgStroke(vg);
+
+            const Vec c0 = Vec(x0 + gsz * 0.5f, y0 + gsz * 0.5f);
+            const float R  = gsz * 0.5f - mm2px(8.0f);   // 8 mm inboard: numbers live outside the ring
+            const float pr = mm2px(2.9f);
+            const int active = getActiveCount();
+
+            // The operating pool arc (the matrix active-frame idiom, angular form): the
+            // clockwise span from voice 1 over the active voices, same weight/alpha.
+            if (active < dotModular::ct::VOICES) {
+                nvgBeginPath(vg);
+                nvgArc(vg, c0.x, c0.y, R + pr + mm2px(1.0f),
+                       nodeAngle(0), nodeAngle(active - 1), NVG_CW);
+                nvgStrokeColor(vg, nvgRGBAf(1, 1, 1, 0.25f));
+                nvgStrokeWidth(vg, mm2px(0.4f));
+                nvgStroke(vg);
+            }
+
+            // Edges FIRST (under the pegs): the matrix's own isContainedIn read, so the
+            // diagram and the pegs can never disagree. Above-pool endpoints dim (the held idiom).
+            for (int v = 0; v < dotModular::ct::VOICES; ++v)
+                for (int u = 0; u < dotModular::ct::VOICES; ++u) {
+                    if (u == v || !module->core.graph.isContainedIn(v, u)) continue;
+                    const float ea = (v < active && u < active) ? 1.f : 0.4f;
+                    drawArrow(vg, nodeCentre(v, c0, R), nodeCentre(u, c0, R), pr, ea);
+                }
+
+            // Nodes: contained voices red, roots mint (the sample's two-colour scheme).
+            for (int v = 0; v < dotModular::ct::VOICES; ++v) {
+                const Vec c = nodeCentre(v, c0, R);
+                const float a = (v < active) ? 1.f : 0.4f;
+                PinOverlay::drawPin(vg, c.x, c.y, pr,
+                                    module->core.graph.parents[v] ? PinOverlay::pinBody() : rootNode(), a);
+            }
+
+            // Numbers 1..16, radially outside the ring (arrows never leave the circle) —
+            // uiFont, the widget-lettering idiom, theme-matched ink.
+            std::shared_ptr<window::Font> font = APP->window->uiFont;
+            if (font) {
+                nvgFontFaceId(vg, font->handle);
+                nvgFontSize(vg, mm2px(2.4f));
+                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+                nvgFillColor(vg, ink);
+                for (int v = 0; v < dotModular::ct::VOICES; ++v) {
+                    const float a = nodeAngle(v);
+                    const Vec c = Vec(c0.x + (R + pr + mm2px(2.6f)) * std::cos(a),
+                                      c0.y + (R + pr + mm2px(2.6f)) * std::sin(a));
+                    char b[4];
+                    snprintf(b, sizeof(b), "%d", v + 1);
+                    nvgText(vg, c.x, c.y, b, NULL);
+                }
+            }
         }
     };
 
@@ -589,6 +752,10 @@ struct MonsoonContainmentWidget : ModuleWidget,
         const bool lit = (lastThemeLight > 0);
         const NVGcolor ink = lit ? nvgRGB(0x2a, 0x2a, 0x2e) : nvgRGB(0xe8, 0xe2, 0xd0);
         const NVGcolor dim = lit ? nvgRGB(0x88, 0x8d, 0x96) : nvgRGB(0x8a, 0x85, 0x78);
+        // The graph diagram replaces the matrix-geometry lettering: the circle carries its
+        // own 1..16 numbers, and the bottom captions describe the arrows instead of the axes.
+        auto* mcp = dynamic_cast<MonsoonContainment*>(module);
+        const bool gview = (mcp && mcp->graphView);
 
         // Title — centred, CA's widget-drawn-title idiom.
         nvgFillColor(vg, ink);
@@ -617,23 +784,33 @@ struct MonsoonContainmentWidget : ModuleWidget,
         nvgText(vg, mm2px(LABEL_X), mm2px(TRUE_REV_Y), "TRUE-REV", NULL);
 
         // Vertex numbers: voices 1..16 down the left edge, parents 1..16 across the top edge.
-        nvgFillColor(vg, dim);
-        nvgFontSize(vg, mm2px(2.0f));
-        for (int i = 0; i < 16; ++i) {
-            char b[4];
-            snprintf(b, sizeof(b), "%d", i + 1);
-            nvgText(vg, mm2px(NUM_X), mm2px(GRID_Y + (i + 0.5f) * CELL), b, NULL);
-            nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            nvgText(vg, mm2px(GRID_X + (i + 0.5f) * CELL), mm2px(SIDE_Y), b, NULL);
-            nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+        // Matrix geometry only — the graph diagram's circle numbers take over in that view.
+        if (!gview) {
+            nvgFillColor(vg, dim);
+            nvgFontSize(vg, mm2px(2.0f));
+            for (int i = 0; i < 16; ++i) {
+                char b[4];
+                snprintf(b, sizeof(b), "%d", i + 1);
+                nvgText(vg, mm2px(NUM_X), mm2px(GRID_Y + (i + 0.5f) * CELL), b, NULL);
+                nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+                nvgText(vg, mm2px(GRID_X + (i + 0.5f) * CELL), mm2px(SIDE_Y), b, NULL);
+                nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+            }
         }
 
-        // Bottom captions (ASCII separators only).
+        // Bottom captions (ASCII separators only) — swapped under the graph diagram.
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        nvgText(vg, box.size.x * 0.5f, mm2px(CAP1_Y),
-                "ROWS = VOICE    COLUMNS = PARENT (CONTAINED-BY)", NULL);
-        nvgText(vg, box.size.x * 0.5f, mm2px(CAP2_Y),
-                "MULTI-PARENT ACYCLIC DAG    INTERSECTION OF CONTAINMENTS", NULL);
+        if (gview) {
+            nvgText(vg, box.size.x * 0.5f, mm2px(CAP1_Y),
+                    "READ-ONLY VIEW -- EDIT IN THE PIN MATRIX", NULL);
+            nvgText(vg, box.size.x * 0.5f, mm2px(CAP2_Y),
+                    "ARROWS POINT CHILD -> PARENT    GREEN = ROOT", NULL);
+        } else {
+            nvgText(vg, box.size.x * 0.5f, mm2px(CAP1_Y),
+                    "ROWS = VOICE    COLUMNS = PARENT (CONTAINED-BY)", NULL);
+            nvgText(vg, box.size.x * 0.5f, mm2px(CAP2_Y),
+                    "MULTI-PARENT ACYCLIC DAG    INTERSECTION OF CONTAINMENTS", NULL);
+        }
     }
 
     void appendContextMenu(Menu* menu) override {
@@ -726,5 +903,17 @@ struct MonsoonContainmentWidget : ModuleWidget,
                 module->core.clearAllPins();
                 APP->history->push(act);
             }));
+
+        // The read-only graph diagram (Rodney 2026-10-28: "drawn diagrams like this, not
+        // editable just for visualisation"): the same one-plane direct-offer edges the
+        // matrix pegs, re-rendered as the node-arrow circle (voice 1 at 12 o'clock, arrows
+        // child -> parent, roots green, the operating pool arced, above-pool dimmed-held).
+        // A VIEW, not a musical state: runtime-only, deliberately OUTSIDE the save schema
+        // (the matrix returns on load; the five persisted fields stay five). Read-only by
+        // construction — the overlay declares no event handlers, and the PinOverlay consumes
+        // nothing while the diagram is up. The matrix stays the editor, always.
+        menu->addChild(createCheckMenuItem("Graph diagram (read-only view)", "",
+            [module]() { return module->graphView; },
+            [module]() { module->graphView = !module->graphView; }));
     }
 };
