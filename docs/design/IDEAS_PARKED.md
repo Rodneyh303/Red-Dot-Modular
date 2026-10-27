@@ -303,3 +303,36 @@ the scrub pins) + pending P10 (the row contract: counter fwd/rev, the exact rest
 direction rule, the scrub oracle) + module S5/S6g (schema round-trip incl. a negative page,
 absent/out-of-range policies, the RANDOM commit publishing undo + trajectory). Full battery
 green; goldens untouched (zero engine surface).
+
+Update 2026-10-27 (later still — the parked items LANDED, Rodney: "do the still parked items
+next"): the hardware back jack and the global-reverse consumer are ON THE PANEL. (1) THE BACK
+JACK: the RANDOM row carries its reverse-draw jack (input_back_random, inboard of the trig
+jack — the CA scatter-back shape: the row carries its back jack like CA's scatter rows carry
+theirs); the context-menu action remains as a second entry point; both ride armRandomReverse()
+(the same choke point, one stamp, the lamp). (2) THE GLOBAL-REVERSE CONSUMER: containment now
+carries the CA true-reverse ENGINE shape end to end — the TRUE-REV flank row (trig jack + arm
+button + queue lamp, its own group gap below RANDOM; NOT a verb row: no stamp, anyArmed
+unaffected, the CA queue rule) arms a committed-state trajectory step-back that the boundary
+consumes BEFORE the verb undo bracket (ContainmentModuleCore::applyAtBoundary, the CA consume
+order): a pure true-reverse restores the previous COMMITTED graph with NO undo snapshot (the
+modulation-class rule — undo is for USER actions, CA_DICE_COUNTER_MODEL.md CORRECTION^2), a
+mixed boundary's snapshot brackets only the verbs, uncommitted pin drift does not survive the
+restore (the trajectory retraces COMMITTED states, not edits — Rack undo owns the edit side),
+an out-of-axis request stays queued (the lamp stays lit), and the trajectory's buffer start
+STOPS — state unchanged, the request still spent, the lamp clears either way (the CA
+affordance rule). The walk is verb-agnostic over the SAME ring EXPAND steps (one consume = one
+commit back) — a RANDOM/SCATTER commit replays back like any row, which is requirement 3's
+mechanism made physical: the dice reverse alone cannot restore state-dependent modification;
+the committed-state trajectory can. CROSS-MODULE STATUS: CA's true-reverse engine itself
+landed earlier (021f2c45 — the per-stream CATrajectoryBuffer + the boundary consume; the CA
+doc's "NOT built" audit note predates it), so both trajectory-keeping modules now carry the
+gesture; what remains parked elsewhere is the LOR per-lane direction item (LOR_BACKLOG §7,
+separately tracked). PANEL: ROW_H 12 -> 10mm (eight flank rows — seven verbs + TRUE-REV in
+its own group gap; the RANDOM row's back jack), 25 anchors, the band assert green. STILL
+PARKED with the row: MODIFY's method refinements (conditional — only if use demands them).
+TESTS: pending P11 (the queue mechanics: idempotent, no stamp, applyAll does NOT consume it —
+the core does) + module S9/S9b (the consume semantics pinned: the no-undo restore chain, the
+STOP, the mixed-boundary bracket starting at the RESTORED state, the uncommitted-drift
+discard, out-of-axis persistence, branching, the RANDOM commit replaying back, reset clears
+the queue). Full battery green; goldens untouched (zero engine surface — the consume is
+module-layer over the module's own ring).

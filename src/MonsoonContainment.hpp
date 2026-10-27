@@ -21,7 +21,10 @@
 // module), ALWAYS 16x16: rows = voices, columns = parents; rows/cols >= activeCount are
 // WIDGET-DIMMED (the pins there are HELD, not suspended — the transforms' above-pool rule),
 // the geometry never shrinks. Trig jacks run down the LEFT flank, fire buttons + pending
-// lamps down the RIGHT (one row per verb, two groups of three). Art is GENERATED:
+// lamps down the RIGHT (one row per verb — the ROLES trio, the FOLD trio + RANDOM — plus the
+// TRUE-REV row in its own group gap below, NOT a verb: it arms the true-reverse queue, the
+// global-reverse consumer; the RANDOM row also carries its back jack, the CA scatter-back
+// shape). Art is GENERATED:
 // panel_src/gen_containment.py (house pipeline, dark+light); ALL lettering is widget-drawn
 // here because nanosvg — the parser Rack uses — silently drops <text>.
 //
@@ -69,7 +72,12 @@ namespace ContainmentPanelMm {
     constexpr float GRID_X = 51.8f, GRID_Y = 16.0f, GRID_W = 99.6f;
     constexpr float CELL = GRID_W / 16.0f;         // 6.225
     constexpr float J_X = 18.75f, L_X = 27.75f;    // trig-jack col (left); lamp col (right)
-    constexpr float ROW_Y[7] = {30.0f, 42.0f, 54.0f, 71.0f, 83.0f, 95.0f, 107.0f};
+    constexpr float BACK_X = 29.0f;                // RANDOM row's back jack (inboard of J_X — CA scback shape)
+    // Verb rows at the 10.0mm pitch (ROW_H tightened 12 -> 10 to fit the 8th flank row: the
+    // TRUE-REV row at TRUE_REV_Y, its own 3.5mm group gap below RANDOM — 4.5mm between the
+    // verb groups). Mirrors gen_containment.py rowY() — keep the three in lockstep.
+    constexpr float ROW_Y[7] = {29.0f, 39.0f, 49.0f, 63.5f, 73.5f, 83.5f, 93.5f};
+    constexpr float TRUE_REV_Y = 107.0f;
     constexpr const char* VERB_ID[7]    = {"rotate", "reflect", "invert", "collapse", "collapseall", "expand", "random"};
     constexpr const char* VERB_LABEL[7] = {"ROTATE", "REFLECT", "INVERT", "COLLAPSE", "COLLAPSE-ALL", "EXPAND", "RANDOM"};
     constexpr float LABEL_X = 47.4f, NUM_X = 50.4f;
@@ -79,9 +87,18 @@ namespace ContainmentPanelMm {
 struct MonsoonContainment : Module {
     // Single-sourced row count (the pending header owns it — the panel constants above mirror
     // its ROW ORDER; the three-file lockstep is gen_containment.py + this file + the header).
-    enum ParamIds  { BTN_START = 0,             NUM_PARAMS  = BTN_START + dotModular::ct::ContainmentPending::N_VERBS };  // fire buttons
-    enum InputIds  { TRIG_START = 0,            NUM_INPUTS  = TRIG_START + dotModular::ct::ContainmentPending::N_VERBS };  // trig jacks
-    enum LightIds  { PENDING_LIGHT_START = 0,   NUM_LIGHTS  = PENDING_LIGHT_START + dotModular::ct::ContainmentPending::N_VERBS };  // pending lamps
+    // The TRUE-REV row rides the SAME flank affordance families (trig jack / fire button /
+    // pending lamp) but is NOT a verb row — it arms the core's true-reverse queue (the
+    // global-reverse consumer); TRIG_BACK_RANDOM is the RANDOM row's reverse-draw jack (the CA
+    // scatter-back precedent, on the row like CA's back jacks). Zero param slots preserved: a
+    // trigger input + one momentary button, both DAW-invisible gestures (DAW_PARAM_AUDIT rule).
+    enum ParamIds  { BTN_START = 0, BTN_TRUE_REV = dotModular::ct::ContainmentPending::N_VERBS,
+                     NUM_PARAMS  = BTN_TRUE_REV + 1 };   // fire buttons + the TRUE-REV arm button
+    enum InputIds  { TRIG_START = 0, TRIG_TRUE_REV = dotModular::ct::ContainmentPending::N_VERBS,
+                     TRIG_BACK_RANDOM = TRIG_TRUE_REV + 1,
+                     NUM_INPUTS  = TRIG_BACK_RANDOM + 1 }; // trig jacks + TRUE-REV + RANDOM back
+    enum LightIds  { PENDING_LIGHT_START = 0, LIGHT_TRUE_REV = dotModular::ct::ContainmentPending::N_VERBS,
+                     NUM_LIGHTS  = LIGHT_TRUE_REV + 1 };  // pending lamps + the TRUE-REV lamp
 
     static constexpr int N_VERBS = dotModular::ct::ContainmentPending::N_VERBS;
 
@@ -97,9 +114,14 @@ struct MonsoonContainment : Module {
     bool& transformsAppliedThisBlock = core.transformsAppliedThisBlock;
 
     // Arming edge detectors (the CA idiom: SchmittTrigger for the jacks, BooleanTrigger for
-    // the buttons). Runtime only (not persisted) — like CA's trigger arrays.
+    // the buttons). Runtime only (not persisted) — like CA's trigger arrays. The TRUE-REV
+    // jack/button arm the true-reverse QUEUE (not a verb row); the RANDOM back jack arms the
+    // RANDOM row backward (the same row, the reverse direction — the CA scatter-back shape).
     rack::dsp::SchmittTrigger trigTrig[N_VERBS];
     rack::dsp::BooleanTrigger  btnTrig[N_VERBS];
+    rack::dsp::SchmittTrigger  trueRevTrig;
+    rack::dsp::BooleanTrigger  trueRevBtn;
+    rack::dsp::SchmittTrigger  backTrig;
 
     MonsoonContainment() {
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
@@ -107,9 +129,12 @@ struct MonsoonContainment : Module {
             configInput(TRIG_START + k, std::string(ContainmentPanelMm::VERB_LABEL[k]) + " trigger");
             configButton(BTN_START + k, std::string(ContainmentPanelMm::VERB_LABEL[k]) + " fire");
         }
+        configInput(TRIG_BACK_RANDOM, "RANDOM reverse trigger (the back-draw jack)");
+        configInput(TRIG_TRUE_REV, "TRUE-REV trigger (retrace one committed phrase)");
+        configButton(BTN_TRUE_REV, "TRUE-REV arm");
     }
 
-    // The single arming choke point (the CA latchRow rule): the 6 trig jacks + 6 fire buttons
+    // The single arming choke point (the CA latchRow rule): the 7 trig jacks + 7 fire buttons
     // (and any future UI gesture) call THIS. Stamps on the unarmed->armed transition only;
     // re-arming an armed row keeps its stamp. Lights the pending lamp. NEVER touches the
     // graph — the verb waits for the host-driven boundary (the hold).
@@ -119,14 +144,28 @@ struct MonsoonContainment : Module {
             lights[PENDING_LIGHT_START + verb].setBrightness(1.f);
     }
 
-    // The reverse-draw arm (requirement 2 — the CA back-jack ACTION; the hardware back jack
-    // parks with the panel iteration, the context menu carries the gesture this slice): arms
-    // the SAME RANDOM row (one stamp, the lamp lights — the latchRow choke point) with the
-    // backward direction. The STATE change happens at the phrase boundary and publishes its
-    // own undo step, like any row commit.
+    // The reverse-draw arm (requirement 2 — the CA back-jack ACTION): arms the SAME RANDOM row
+    // (one stamp, the lamp lights — the latchRow choke point) with the backward direction. Two
+    // entry points share this choke point: the hardware back jack (TRIG_BACK_RANDOM, the CA
+    // scatter-back shape — the row carries its back jack like CA's carry theirs) and the context
+    // menu item. The STATE change happens at the phrase boundary and publishes its own undo
+    // step, like any row commit.
     void armRandomReverse() {
         core.pending.latchRandomReverse();
         lights[PENDING_LIGHT_START + dotModular::ct::ContainmentPending::V_RANDOM].setBrightness(1.f);
+    }
+
+    // The TRUE-REVERSE arm (the global-reverse consumer; the CA jack/button gesture): arms the
+    // committed-state trajectory step-back — a PERFORMANCE-class request, NOT a verb row. It is
+    // consumed at the phrase boundary BEFORE the verb bracket (core.applyAtBoundary), so a pure
+    // true-reverse publishes NO undo (the modulation-class rule) and the restored state is the
+    // previous COMMITTED graph — verb-agnostic, RANDOM commits included (requirement 3 of the
+    // 2026-10-27 ruling). The lamp is the queue affordance: lit while the request is pending,
+    // cleared on consume (applyPendingTransforms syncs it from the queue flag) — idempotent
+    // while lit, the CA rule.
+    void armTrueReverse() {
+        core.pending.latchTrueReverse();
+        lights[LIGHT_TRUE_REV].setBrightness(1.f);
     }
 
     // The host-driven boundary commit (expanderManager.sync, the CA applyPendingTransforms
@@ -141,6 +180,10 @@ struct MonsoonContainment : Module {
         const int applied = core.applyAtBoundary(active, axisMask);
         for (int k = 0; k < N_VERBS; ++k)
             lights[PENDING_LIGHT_START + k].setBrightness(core.pending.armed[k] ? 1.f : 0.f);
+        // The TRUE-REV lamp follows the queue flag (the CA consume rule): a consumed request —
+        // pure, mixed, or STOPPED at the buffer start — clears here; an out-of-axis request
+        // STAYS queued and STAYS lit (the persistence affordance, same as the verb rows).
+        lights[LIGHT_TRUE_REV].setBrightness(core.pending.trueRevRequested ? 1.f : 0.f);
         return applied;
     }
 
@@ -148,22 +191,32 @@ struct MonsoonContainment : Module {
         // Owner-guard window opens: the first driver to apply this block becomes the mutator (the
         // CA transformsAppliedThisBlock idiom — reset here, set by expanderManager.sync).
         core.transformsAppliedThisBlock = false;
-        // Arming: 6 trig jacks + 6 fire buttons -> armVerb (the single choke point). The module
-        // is DRIVEN for applies; it never self-clocks, so process() does nothing else.
+        // Arming: 7 trig jacks + 7 fire buttons -> armVerb, the RANDOM back jack ->
+        // armRandomReverse, the TRUE-REV jack/button -> armTrueReverse (all through their choke
+        // points; the module is DRIVEN for applies — it never self-clocks, so process() does
+        // nothing else).
         for (int k = 0; k < N_VERBS; ++k) {
             if (trigTrig[k].process(inputs[TRIG_START + k].getVoltage(), 0.1f, 1.f))
                 armVerb(k);
             if (btnTrig[k].process(params[BTN_START + k].getValue() > 0.5f))
                 armVerb(k);
         }
+        if (backTrig.process(inputs[TRIG_BACK_RANDOM].getVoltage(), 0.1f, 1.f))
+            armRandomReverse();
+        if (trueRevTrig.process(inputs[TRIG_TRUE_REV].getVoltage(), 0.1f, 1.f))
+            armTrueReverse();
+        if (trueRevBtn.process(params[BTN_TRUE_REV].getValue() > 0.5f))
+            armTrueReverse();
     }
 
     // Rack reset (context menu / init): the fresh-module state via the core (the R2
-    // all-disconnected graph, no pending rows, empty trajectory, rotate step back to default).
+    // all-disconnected graph, no pending rows, empty trajectory, rotate step back to default,
+    // the true-reverse queue clear).
     void onReset(const ResetEvent& e) override {
         core.resetAll();
         for (int k = 0; k < N_VERBS; ++k)
             lights[PENDING_LIGHT_START + k].setBrightness(0.f);
+        lights[LIGHT_TRUE_REV].setBrightness(0.f);
         Module::onReset(e);
     }
 
@@ -196,16 +249,22 @@ struct MonsoonContainmentWidget : ModuleWidget,
         loadPanel(asset::plugin(pluginInstance, "res/panels/Containment_panel_dark.svg"));
         redDot::addRedScrews(this);
 
-        // The 18 flank anchors (gen_containment.py): one trig jack + one fire button + one
-        // pending lamp per verb, bound BY NAME (the prefix+"verb" concat form — the audit's
-        // prefix-family rule covers all six of each). Verb order = the panel flank order =
-        // ContainmentPending's row order (the tie-break rule) — keep the three in lockstep.
+        // The flank anchors (gen_containment.py): one trig jack + one fire button + one pending
+        // lamp per verb row PLUS the TRUE-REV row (same families, NOT a verb row — it arms the
+        // true-reverse queue) and the RANDOM row's back jack, bound BY NAME (the prefix+"verb"
+        // concat form — the audit's prefix-family rule covers all of each). Verb order = the
+        // panel flank order = ContainmentPending's row order (the tie-break rule) — keep the
+        // three in lockstep.
         for (int k = 0; k < MonsoonContainment::N_VERBS; ++k) {
             const std::string verb = ContainmentPanelMm::VERB_ID[k];
             bindInput <PJ301MPort>("input_trig_" + verb, MonsoonContainment::TRIG_START + k);
             bindParam <TL1105>    ("param_btn_" + verb, MonsoonContainment::BTN_START + k);
             bindLight<SmallLight<RedLight>>("light_pending_" + verb, MonsoonContainment::PENDING_LIGHT_START + k);
         }
+        bindInput <PJ301MPort>("input_back_random",   MonsoonContainment::TRIG_BACK_RANDOM);
+        bindInput <PJ301MPort>("input_trig_truerev",  MonsoonContainment::TRIG_TRUE_REV);
+        bindParam <TL1105>    ("param_btn_truerev",   MonsoonContainment::BTN_TRUE_REV);
+        bindLight<SmallLight<RedLight>>("light_pending_truerev", MonsoonContainment::LIGHT_TRUE_REV);
 
         // The multi-pin plane overlay (transparent: consumes ONLY genuine cell hits — the CA
         // PinOverlay rule, so panel dragging + the context menu keep working everywhere else).
@@ -547,6 +606,9 @@ struct MonsoonContainmentWidget : ModuleWidget,
         nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
         for (int k = 0; k < N_VERBS; ++k)
             nvgText(vg, mm2px(LABEL_X), mm2px(ROW_Y[k]), VERB_LABEL[k], NULL);
+        // The TRUE-REV row label (NOT a verb — the global-reverse consumer's flank row; the
+        // generator places it in its own group gap below RANDOM, the CA true-rev group shape).
+        nvgText(vg, mm2px(LABEL_X), mm2px(TRUE_REV_Y), "TRUE-REV", NULL);
 
         // Vertex numbers: voices 1..16 down the left edge, parents 1..16 across the top edge.
         nvgFillColor(vg, dim);
@@ -611,8 +673,8 @@ struct MonsoonContainmentWidget : ModuleWidget,
         // The reverse-draw action (requirement 2 — the CA back action): arms the RANDOM row
         // backward; the boundary commit re-derives the previous page (an EXACT state restore
         // in Outright mode, the generative scrub in Scatter mode). One pending row, one undo
-        // step, the standard lamp affordance. (The hardware back jack parks with the panel
-        // iteration — the context menu carries the gesture this slice.)
+        // step, the standard lamp affordance. Two entry points share the choke point: this
+        // menu item and the RANDOM row's hardware back jack (the CA scatter-back shape).
         menu->addChild(createMenuItem("Random: reverse draw", "",
             [module]() { module->armRandomReverse(); }));
 

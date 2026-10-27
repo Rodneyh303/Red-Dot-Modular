@@ -45,7 +45,7 @@ struct ContainmentUndoSnapshot {
 struct ContainmentModuleCore {
     // ── state (the step-1/2/3 members, now one unit) ──────────────────────────────────────────
     ContainmentGraph      graph;        // the DAG: bit u of parents[v] = v contained in u
-    ContainmentPending    pending;      // 6 verb rows (latch/stamp/order) + rotateStep config
+    ContainmentPending    pending;      // 7 verb rows (latch/stamp/order) + rotateStep config + the true-reverse queue
     ContainmentTrajectory trajectory;   // the EXPAND memory (committed-state ring)
 
     // OWNER GUARD (the CA idiom, MonsoonChangeAlleyV2::transformsAppliedThisBlock):
@@ -81,7 +81,23 @@ struct ContainmentModuleCore {
     // The snapshot brackets exactly the batch applied THIS call; a batch that leaves the graph
     // byte-identical (an EXPAND consumed at the trajectory buffer start) publishes NO snapshot —
     // zero-size undo steps never record (the StoreEditAction house rule).
+    //
+    // TRUE-REVERSE consume (the global-reverse consumer) runs FIRST, BEFORE the verb snapshot —
+    // the CA order (MonsoonChangeAlleyV2::applyPendingTransforms consumes the queue ahead of the
+    // verb path): a pure true-reverse changes the graph with NO undo snapshot (the modulation-
+    // class rule — undo is for USER actions, CA_DICE_COUNTER_MODEL.md CORRECTION^2), and a mixed
+    // boundary's snapshot brackets only the verbs (its BEFORE is the already-restored state).
+    // Gated by the SAME axisMask as the verbs; an out-of-axis request STAYS queued (the lamp
+    // stays lit, the CA out-of-axis rule). At the trajectory's buffer start stepBack returns
+    // false — STOP (state unchanged, don't wrap), the request still spent (the CA lamp rule:
+    // the affordance clears even though nothing moved). The restored state is the ring's new
+    // newest, so the verb path's pre-push below skips it — no double entry.
     int applyAtBoundary(int activeCount, unsigned axisMask = ContainmentPending::AXIS_PLANE) {
+        if (pending.trueRevRequested && (axisMask & ContainmentPending::AXIS_PLANE)) {
+            pending.trueRevRequested = false;
+            ContainmentGraph restored;
+            if (trajectory.stepBack(restored)) graph = restored;
+        }
         const ContainmentGraph before = graph;
         const int applied = pending.applyAll(graph, activeCount, trajectory, axisMask);
         if (applied > 0) {

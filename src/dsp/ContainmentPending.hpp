@@ -10,8 +10,10 @@
 // it: a genuinely new decision class, not synonymy), the latch/stamp rules, the apply dispatch
 // onto the pure verbs (ContainmentTransforms.hpp), the RANDOM row's own Philox stream +
 // reverse-draw (the CA dice model — requirement 1/2 of the ruling), the EXPAND trajectory ring
-// (the CA TRUE-REVERSE precedent, Rodney's ruling R3), and the commit-side bookkeeping (push
-// results, reset-when-empty).
+// (the CA TRUE-REVERSE precedent, Rodney's ruling R3), the TRUE-REVERSE request queue (the
+// global-reverse consumer — the CA engine shape MonsoonChangeAlleyV2.hpp carries, mirrored here
+// for containment's one plane), and the commit-side bookkeeping (push results,
+// reset-when-empty).
 //
 // WHAT IS DELIBERATELY ABSENT HERE (the R7 grep-gate discipline, test_rate_manager R7): no raw
 // sequencing-rate primitives of any kind — no clock-divider member, no grid-pulse member, no
@@ -191,6 +193,27 @@ struct ContainmentPending {
     int      randomMode    = 0;
     int      randomDensity = 3;
     bool     reverseArmed  = false;   // runtime-only (like armed[] — a save never carries a request)
+
+    // ── the TRUE-REVERSE request queue (the global-reverse consumer) ────────────────
+    // The CA engine shape (MonsoonChangeAlleyV2.hpp trueRevRequested[], CATrajectoryBuffer.hpp):
+    // a PERFORMANCE-class gesture (jack OR button) that arms ONE committed-state trajectory
+    // step-back, consumed at the phrase boundary BEFORE the verb bracket — so a pure true-reverse
+    // publishes NO undo (the modulation-class rule: undo is for USER actions; CA_DICE_COUNTER_
+    // MODEL.md CORRECTION^2) and a mixed boundary's undo snapshot brackets only the verbs. The
+    // consume lives in ContainmentModuleCore::applyAtBoundary (which owns the undo bracket), NOT
+    // in applyAll's verb loop — this flag is a separate queue, NOT a verb row: no stamp, anyArmed()
+    // unaffected, idempotent while lit (the CA rule: further presses/triggers are ignored). At the
+    // trajectory's buffer start the step-back STOPS (state unchanged) but the request is still
+    // spent — the CA affordance-consistency rule (the lamp clears either way). Runtime-only: a
+    // save never carries a request (the reverseArmed rule). The trajectory it walks is the SAME
+    // ring EXPAND steps — one consume = one commit back, verb-agnostic (records RESULTS, not
+    // causes), which is exactly what makes RANDOM's state-dependent SCATTER commits reversible
+    // where the dice reverse alone is not (requirement 3 of the 2026-10-27 ruling).
+    bool     trueRevRequested = false;
+
+    // The queue's arm (the CA true-reverse jack/button action): idempotent — arming while the
+    // request is pending changes nothing (one queued request, the lamp is the affordance).
+    void latchTrueReverse() { trueRevRequested = true; }
 
     // The single choke point for arming (trig jacks + fire buttons at step 4; tests here). Stamp
     // ONLY on the unarmed->armed transition: re-arming an armed row keeps its original stamp and

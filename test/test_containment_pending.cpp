@@ -512,6 +512,44 @@ int main() {
         }
     }
 
+    // ── P11. the TRUE-REVERSE queue (the global-reverse consumer; the CA engine shape) ──────
+    // The queue is NOT a verb row: no stamp, anyArmed() unaffected, applyAll does NOT consume it
+    // (the consume lives in ContainmentModuleCore::applyAtBoundary, BEFORE the verb undo bracket
+    // — the modulation-class rule). Here: the flag mechanics + the separation from the verb rows.
+    {
+        CP p; auto traj = std::make_unique<ContainmentTrajectory>();
+        ContainmentGraph g;
+
+        CHK(!p.trueRevRequested, "truerev: fresh pending — the queue is empty");
+        p.latchTrueReverse();
+        CHK(p.trueRevRequested, "truerev: latchTrueReverse arms the queue");
+        p.latchTrueReverse();
+        CHK(p.trueRevRequested, "truerev: idempotent while lit (the CA rule — one queued request)");
+        CHK(!p.anyArmed(), "truerev: the queue is NOT a verb row (anyArmed unaffected)");
+        CHK(p.counter == 0, "truerev: arming the queue consumed NO stamp");
+
+        // applyAll is the WRONG consumer: the queue survives a verb-path boundary untouched.
+        CHK(p.applyAll(g, 16, *traj) == 0, "truerev: applyAll applies nothing (no verb row armed)");
+        CHK(p.trueRevRequested, "truerev: applyAll does NOT consume the queue (the core owns the consume)");
+
+        // Separate queues: verb latches (including the RANDOM reverse arm) leave the queue alone.
+        p.latch(CP::V_INVERT);
+        CHK(p.trueRevRequested, "truerev: a verb latch leaves the queue armed (separate queues)");
+        p.latchRandomReverse();
+        CHK(p.trueRevRequested, "truerev: the RANDOM reverse arm leaves the queue armed (separate queues)");
+        CHK(p.armed[CP::V_RANDOM] && p.reverseArmed, "truerev: (sanity) the RANDOM row is armed backward");
+        p.applyAll(g, 16, *traj);   // drains the verb rows; the queue rides through
+        CHK(!p.anyArmed(), "truerev: (sanity) the verb rows drained");
+        CHK(p.trueRevRequested, "truerev: the queue rides through a verb-only boundary (the core consumes it)");
+
+        // Reset clears the queue (a save/reset never carries a request — runtime-only).
+        CP r;
+        r.latchTrueReverse();
+        CHK(r.trueRevRequested, "truerev: (reset setup) queue armed");
+        r = CP{};
+        CHK(!r.trueRevRequested, "truerev: a fresh pending clears the queue (runtime-only, the reverseArmed rule)");
+    }
+
     std::printf("\n%d passed, %d failed\n", pass, fail);
     return fail ? 1 : 0;
 }

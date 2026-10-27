@@ -381,6 +381,18 @@ undoable, modulation-class not, true-reverse is modulation-class')."
 
 ## TRUE REVERSE — build status: front end DONE, ENGINE NOT BUILT (audit, Rodney)
 
+**UPDATE 2026-10-27: the ENGINE IS BUILT — this audit note predates it.** Commit 021f2c45
+landed the per-stream CATrajectoryBuffer (src/dsp/CATrajectoryBuffer.hpp: phrase-boundary
+pushIfChanged per axis after the verbs, stepBack pop-and-restore, depth 256, STOP-not-wrap)
+and replaced the TODO in MonsoonChangeAlleyV2::applyPendingTransforms with the real consume
+(queue -> lamp clear -> stepBack -> restore; modulation-class: NO undo push; runs BEFORE the
+verb snapshot so a mixed boundary's undo brackets only the verbs). Containment's mirror
+consumer landed the same day (IDEAS_PARKED.md, the RANDOM row's parked items): the TRUE-REV
+row arms a queue the boundary consumes before the verb undo bracket — both trajectory-keeping
+modules now carry the gesture. The section below is kept as written (it is the audit that
+prompted the build; the open points it lists resolved as: depth 256, stop-not-wrap, jack OR
+button = queue-arm idempotent).
+
 **Built already** (verified in code):
 - Panel: the centred per-stream group beneath the pin matrix — 3 jack+button pairs (rhythm/melody/q-mix),
   emitted by `panel_src/gen_change_alley_v2.py` (TRUEREV_* markers), stream-coloured rings.
