@@ -604,7 +604,7 @@ struct MonsoonContainmentWidget : ModuleWidget,
         nvgFillColor(vg, ink);
         nvgFontSize(vg, mm2px(2.8f));
         nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
-        for (int k = 0; k < N_VERBS; ++k)
+        for (int k = 0; k < MonsoonContainment::N_VERBS; ++k)
             nvgText(vg, mm2px(LABEL_X), mm2px(ROW_Y[k]), VERB_LABEL[k], NULL);
         // The TRUE-REV row label (NOT a verb — the global-reverse consumer's flank row; the
         // generator places it in its own group gap below RANDOM, the CA true-rev group shape).

@@ -281,9 +281,64 @@ if [ -z "$filter" ] || [[ "audit" == *"$filter"* ]]; then
   echo "-----"
 fi
 
-if [ $fail -gt 0 ] || [ $audit_fail -ne 0 ]; then
+# ── plugin-TU compile smoke (the CI-build guard the rack-free battery cannot give) ──
+# The unit tests compile the dsp headers rack-free; they NEVER see the widget-bearing
+# plugin headers (MonsoonContainment.hpp and friends need the real rack.hpp), so a scope
+# bug there ships battery-green locally and only surfaces as a red CI build (2026-10-27:
+# the containment widget's unqualified N_VERBS, red on all 3 platforms while the battery
+# stayed 87/87). When a REAL Rack SDK is mounted at RACK_DIR (include/rack.hpp exists —
+# always in CI; locally pass RACK_DIR=/path/to/Rack-SDK), -fsyntax-only every plugin TU
+# with the Makefile's include set. Skips with a note when RACK_DIR is absent or carries
+# only dep/include (the simde-only mount). Skipped by the name filter unless it matches
+# "smoke".
+smoke_fail=0
+if [ -z "$filter" ] || [[ "smoke" == *"$filter"* ]]; then
+  if [ -n "${RACK_DIR:-}" ] && [ -f "${RACK_DIR}/include/rack.hpp" ]; then
+    echo "plugin-TU syntax smoke (RACK_DIR=${RACK_DIR}):"
+    SMOKE_INCS="-Idep/include -isystem ${RACK_DIR}/include -isystem ${RACK_DIR}/dep/include"
+    SMOKE_STD="-std=c++20 -Wno-c++17-extensions"
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*) SMOKE_STD="$SMOKE_STD -D_USE_MATH_DEFINES -municode" ;;
+    esac
+    case "$(uname -m)" in
+      x86_64|i686)    SMOKE_ARCH="-march=nehalem" ;;        # compile.mk ARCH_X64 baseline (SSE4.1/4.2)
+      arm64|aarch64)  SMOKE_ARCH="-march=armv8-a+fp+simd" ;;
+      *)              SMOKE_ARCH="" ;;
+    esac
+    smoke_idx=0; smoke_running=0
+    for f in src/*.cpp src/dsp/engines/*.cpp src/dsp/managers/*.cpp src/dsp/gates/*.cpp; do
+      extra=""
+      case "$f" in *PatternEngine.cpp) case "$(uname -m)" in x86_64|i686) extra="-mavx" ;; esac ;; esac
+      ( if ! g++ $SMOKE_STD $SMOKE_ARCH $extra $SMOKE_INCS -fsyntax-only "$f" 2>"$workdir/smoke_$smoke_idx.err"; then
+          printf '%s\n' "$f" > "$workdir/smoke_$smoke_idx.bad"
+        fi ) &
+      smoke_idx=$((smoke_idx+1)); smoke_running=$((smoke_running+1))
+      if [ "$smoke_running" -ge "$jobs" ]; then wait; smoke_running=0; fi
+    done
+    wait
+    smoke_total=0
+    for ((i=0; i<smoke_idx; i++)); do
+      smoke_total=$((smoke_total+1))
+      if [ -f "$workdir/smoke_$i.bad" ]; then
+        printf "  \033[31m✗\033[0m  %s\n" "$(cat "$workdir/smoke_$i.bad")"
+        grep -m 2 -E "error:" "$workdir/smoke_$i.err" | sed 's/^/       /'
+        smoke_fail=$((smoke_fail+1))
+      fi
+    done
+    if [ $smoke_fail -eq 0 ]; then
+      printf "  \033[32m✓\033[0m  %d plugin TUs syntax-clean against the real SDK headers\n" "$smoke_total"
+    fi
+    echo "-----"
+  elif [ -z "$filter" ]; then
+    printf "  \033[33m?\033[0m  plugin-TU syntax smoke SKIPPED (no real SDK at RACK_DIR — point RACK_DIR at a Rack-SDK carrying include/rack.hpp to enable)\n"
+    echo "-----"
+  fi
+fi
+
+if [ $fail -gt 0 ] || [ $audit_fail -ne 0 ] || [ $smoke_fail -ne 0 ]; then
   [ $fail -gt 0 ] && echo "FAILED: ${failed_names[*]}"
   [ $audit_fail -ne 0 ] && echo "FAILED: anchor/bind audit"
+  [ $smoke_fail -ne 0 ] && echo "FAILED: plugin-TU syntax smoke"
   exit 1
 fi
 echo "all green"
