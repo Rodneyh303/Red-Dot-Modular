@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include <atomic>   // needsResnap crosses threads: engine (onExpanderChange) writes, UI (the base's step) reads/clears
 #include "Monsoon.hpp"
 #include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (onExpanderChange bump — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
 
@@ -37,7 +38,7 @@ struct LaneDescriptor {
 struct StraitsLaneExpander : Module {
     const LaneDescriptor* desc = nullptr;   // set by the widget constructor
     bool beingDragged = false;               // set by widget onButton (legacy, unused now)
-    bool needsResnap = false;                // set by widget onDragEnd, checked by base step()
+    std::atomic<bool> needsResnap{false};    // resnap request — writers: the widget's onDragEnd (UI) + onExpanderChange's left-link check (engine); reader/clearer: the base's step (UI). Relaxed — the topologyEpoch house pattern
 
     StraitsLaneExpander() {
         // Sized to Monsoon's full param namespace so POLY_*_PARAM IDs are valid.
@@ -62,7 +63,25 @@ struct StraitsLaneExpander : Module {
     // LOOKUP AUTHORITY (CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START): the event is THE trigger — bump
     // the global topology epoch so this module's adjacency (the lookup* memos) re-resolves on the
     // next read, engine + widget threads.
+    // RESNAP FAST PATH (CC_PROMPT_STRAITS_RESNAP_HARDENING): also flag our own needsResnap
+    // when the LEFT link is violated — the only adjacency signal for MID-chain insertions
+    // (a module dropped between two lanes never changes the BASE's own expanders, so the
+    // base's topologyDirty hook stays silent; it fires HERE instead). Naive model check,
+    // deliberately ownership-blind: a lane parked against ANOTHER chain passes here, but
+    // the base-side exact chainIntact() — fired by the base's own hook when we left it —
+    // heals that. Relaxed atomic (the topologyEpoch house pattern): this can run on the
+    // engine thread; the base's step() (UI) reads and clears the flag.
     void onExpanderChange(const ExpanderChangeEvent& e) override {
         redDot::bumpTopologyEpoch();
+        rack::Module* left = leftExpander.module;
+        const bool leftIsChain = left
+            && (left->model == modelStraitsBase
+             || left->model == modelStraitsLaneQMIX
+             || left->model == modelStraitsLaneREST
+             || left->model == modelStraitsLaneACCENT
+             || left->model == modelStraitsLaneVARIATION
+             || left->model == modelStraitsLaneLEGATO);
+        if (!leftIsChain)
+            needsResnap.store(true, std::memory_order_relaxed);
     }
 };
