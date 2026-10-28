@@ -109,3 +109,44 @@ ALTERNATIVES to subpanels NOT YET RULED OUT: expanded popups, context-menu-drive
 a redesigned single larger panel, or some combination. The subpanel is ONE candidate — the right one needs
 proving (does the Straits subpanel prototype work well? is it discoverable? does it scale?). Don't commit
 to subpanels-everywhere until the Straits subpanel is proven.
+
+────────────────────────────────────────────────────────────────────────────────
+## PANEL ALTERNATIVES — subpanel-expanders vs named standalone pairs (Rodney, with images)
+
+Two approaches to the "module grew too deep for one panel" problem. BOTH are live candidates; the Straits
+subpanel prototype + usage will prove which is right where.
+
+### THE ADJACENCY PROBLEM (image 2 — the risk both share)
+In VCV Rack, expanders can be physically separated by dragging other modules between them. When a Straits
+lane expander gets separated from StraitsBase, it reads as a broken/orphaned fragment. The alternative
+(named standalone pairs) degrades more gracefully — each module has its own identity and makes sense alone.
+
+### APPROACH A: subpanel-expanders (current Straits lane design)
+StraitsBase + StraitsLaneREST / StraitsLaneLEGATO / etc., chaining left. Per-lane, per-voice knobs.
+ALREADY BUILT (StraitsLaneExpander.cpp). The 2x8 compaction (smaller controls, 2 columns of 8 voices)
+is a panel-space improvement over the current 3-col layout.
+- PRO: tightest panel space (just the controls, no own framing).
+- PRO: reads as "one instrument" when adjacent.
+- CON: reads as "broken fragment" when separated.
+- BEST FOR: per-lane per-voice controls (where the lane-specific identity IS the subpanel identity).
+
+### APPROACH B: named standalone pairs (the alternative for wider modules)
+Split a large module into two named modules, each with its own identity. E.g.:
+- SANDS + SANDSDISTRIBUTION (probability controls + atom/warp/tilt depth — currently in popup).
+- STRAITS + STRAITSSUBGATES (global articulation + subgate per-voice thresholds).
+Each module makes sense alone; connected as expanders when adjacent, but not "broken" when apart.
+- PRO: graceful separation — each is a recognizable module in the browser, not an orphaned fragment.
+- PRO: cleaner naming — function-specific (SandsDistribution) not lane-specific (StraitsLaneREST).
+- CON: wider (needs its own panel framing/title).
+- CON: two browser entries instead of "base + optional parts."
+- BEST FOR: functional splits (distribution-depth vs main-controls) where each half has a clear role.
+
+### THE CHOICE MAY DIFFER PER MODULE
+Straits per-lane expanders (approach A) may stay right for Straits (the lane IS the identity).
+Sands distribution depth (approach B, named pair) may be right for Sands (the functional split is clean:
+"probability knobs you touch live" vs "distribution shape params you set and forget"). Don't force one
+approach everywhere — the right split depends on whether the depth is per-lane (A) or functional (B).
+
+STATUS: both candidates live. Prove via the Straits subpanel prototype and the Sands distribution-surface
+need. The adjacency problem exists either way (Rack has no module grouping); approach B degrades more
+gracefully but costs more panel width.
