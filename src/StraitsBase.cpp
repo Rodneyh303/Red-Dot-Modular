@@ -87,6 +87,7 @@ struct StraitsBaseWidget : ModuleWidget,
     int lastThemeLight = -1;
     bool lanesSpawned_ = false;   // false until auto-spawn/pending-spawn runs
     Vec lastBasePos_;             // detect base movement for one-shot re-snap
+    double lastAdjacencyCheck_ = -1.0;   // periodic chain-poll cadence (system::getTime)
     redDot::StraitsSeamFiller* leftFiller = nullptr;
     redDot::StraitsSeamFiller* rightFiller = nullptr;
 
@@ -298,6 +299,27 @@ struct StraitsBaseWidget : ModuleWidget,
                 lanesSpawned_ = true;
             }
 
+            // ── Periodic adjacency+order poll (CC_PROMPT_STRAITS_RESNAP_HARDENING #2)
+            // The INSERTION case: a foreign module dragged between base and lanes
+            // fires no Straits drag-end — only this poll heals it. Time-based 0.5s
+            // via system::getTime (NOT a frame counter: the prompt's 1024 frames is
+            // ~17s at 60fps, breaking its own within-~1-second DONE; time is
+            // refresh-rate-independent). Skipped while ANY widget drag is in progress
+            // (getDraggedWidget covers module drags — the only position changes; knob
+            // drags set it too, harmlessly: positions cannot change during a knob
+            // drag) — never fight an in-progress drag. Skipped until lanesSpawned_
+            // (never race Rack's restore placement / first-frame adoption). Only
+            // SETS the existing flag; the one-shot block below consumes it.
+            if (lanesSpawned_) {
+                const double now = system::getTime();
+                if (lastAdjacencyCheck_ < 0.0 || now - lastAdjacencyCheck_ >= 0.5) {
+                    lastAdjacencyCheck_ = now;
+                    auto* pollBase = dynamic_cast<StraitsBaseModule*>(module);
+                    if (pollBase && !APP->event->getDraggedWidget() && !chainIntact(pollBase))
+                        pollBase->needsResnap = true;
+                }
+            }
+
             // ── One-shot re-snap: fires ONLY when a needsResnap flag is set
             // by onDragEnd (base's own or a lane's). NOT per-frame — zero
             // box.pos writes in step() during drags → no flicker, no fighting.
@@ -366,6 +388,37 @@ struct StraitsBaseWidget : ModuleWidget,
             APP->scene->rack->setModulePosForce(lw, Vec(expectedX, box.pos.y));
             expectedX = lw->box.getTopRight().x;
         }
+    }
+
+    // ── Periodic-poll predicate: is the lane chain intact? ────────────────────
+    // Exact + ownership-aware: the lanes come from OUR orderedLaneIds_ and the
+    // links are checked by POINTER identity (leftExpander.module), so a foreign
+    // Straits chain parked adjacent to ours can never confuse it. One pass checks
+    // contiguity (a gap or an inserted module breaks a left-link) AND canonical
+    // order (the same comparator as resnapLanes). Dead IDs (deleted modules) are
+    // skipped, matching the flag-poll loop in step().
+    bool chainIntact(StraitsBaseModule* baseMod) {
+        std::vector<StraitsLaneExpander*> lanes;
+        lanes.reserve(baseMod->orderedLaneIds_.size());
+        for (int64_t id : baseMod->orderedLaneIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (!m) continue;
+            auto* lane = dynamic_cast<StraitsLaneExpander*>(m);
+            if (lane) lanes.push_back(lane);
+        }
+        if (lanes.empty()) return true;
+        std::sort(lanes.begin(), lanes.end(),
+            [](const StraitsLaneExpander* a, const StraitsLaneExpander* b) {
+                int oa = (a->desc) ? a->desc->arcLane : 99;
+                int ob = (b->desc) ? b->desc->arcLane : 99;
+                return oa < ob;
+            });
+        rack::Module* prev = module;   // lane[0]'s left neighbour must be the base (us)
+        for (StraitsLaneExpander* lane : lanes) {
+            if (lane->leftExpander.module != prev) return false;
+            prev = lane;
+        }
+        return true;
     }
 
     // ── onDragEnd: set the resnap flag (fires once on drag completion) ──────────
