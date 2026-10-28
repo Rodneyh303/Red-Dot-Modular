@@ -210,3 +210,23 @@ There is an existing context menu toggle: advance playhead on legato into rest (
 legato crossing a rest step). A natural candidate for T/F/ATOM-DECIDES (Variation draw) — making it a
 fifth consumer of the advance decision alongside main/ratchet/ghost/atom. But UNDECIDED whether to pull it
 into the Variation probability or keep it as a separate binary toggle. Note only.
+
+### CONFIRMED — playhead currently advances unconditionally (before the rest decision)
+SequencerEngine.cpp:771 advancePlayhead(dir) fires BEFORE executeStep (:821) where rest is decided. The
+subgate comment (:963) is explicit: "the playhead still advances but no note shapes (forced Rest)". So
+advance is UNCONDITIONAL today; rest controls whether you HEAR each step, not whether you VISIT it. This is
+the baseline Variation-as-step-advance would modify: p(advance) goes from 1.0 always to probabilistic.
+
+### IDEAS — advance probability modulation + bipolar direction (Rodney)
+- PHASE-MODULATED advance probability: advance probability driven by a PHASE signal (e.g. a slow LFO or
+  the phrase phase). The sequence advances readily at one part of the cycle, stutters at another — a
+  BREATHING movement pattern (forward-momentum → stutter → forward-momentum). CV-modulatable via Causeway
+  on the Variation lane.
+- BIPOLAR advance probability: NEGATIVE probability = p(go BACK one step). The knob/CV centre = stutter
+  (p=0, no movement); positive = p(advance forward); negative = p(step backward / retrograde). So a
+  bipolar modulation source (LFO, random, envelope) makes the sequence WANDER — forward, backward,
+  stutter — probabilistically. This is PROBABILISTIC DIRECTION, distinct from the deterministic dir
+  parameter (which flips direction absolutely). advancePlayhead(dir) already takes a direction argument —
+  the bipolar probability would modulate BOTH whether to step AND which direction, in one control.
+  Beautifully, this composes with the per-voice MO atom: correlated advance-atoms → voices wander in
+  lockstep; anti-correlated → voices wander in opposite directions through the pattern.
