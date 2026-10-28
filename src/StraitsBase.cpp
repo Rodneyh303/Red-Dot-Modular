@@ -15,6 +15,7 @@
 #include "ui/ConnectMark.hpp"
 #include "ui/Controls.hpp"
 #include <algorithm>   // std::sort
+#include <atomic>      // std::atomic — the resnap fast-path flags cross engine → UI threads
 #include "StraitsLaneExpander.hpp"
 #include "ui/StraitsSeamFiller.hpp"
 
@@ -44,6 +45,12 @@ struct StraitsBaseModule : MonsoonStraitsExpander {
     std::vector<int64_t> orderedLaneIds_;  // owned lane module IDs, in dock order
     bool needsResnap = false;   // set by onDragEnd, cleared by step() (one-shot)
     bool initialized = false;   // false until the widget's first step runs
+    // RESNAP FAST PATH (CC_PROMPT_STRAITS_RESNAP_HARDENING): set by onExpanderChange —
+    // Rack's own adjacency-change signal (the head-adjacent insertion event no drag-end
+    // covers). Only marks DIRTY; the exact chainIntact() evaluation runs UI-side in the
+    // widget's step (orderedLaneIds_ is UI-thread data). Relaxed atomic (the
+    // topologyEpoch house pattern) — the writer may be the engine thread.
+    std::atomic<bool> topologyDirty{false};
 
     json_t* dataToJson() override {
         json_t* rootJ = MonsoonStraitsExpander::dataToJson();
@@ -74,6 +81,13 @@ struct StraitsBaseModule : MonsoonStraitsExpander {
             }
         }
     }
+
+    // RESNAP FAST PATH: Rack fires this after an expander is added/removed/changed on
+    // either side of us. Chains the base-class epoch bump (the lookup authority).
+    void onExpanderChange(const ExpanderChangeEvent& e) override {
+        MonsoonStraitsExpander::onExpanderChange(e);
+        topologyDirty.store(true, std::memory_order_relaxed);
+    }
 };
 
 struct StraitsBaseWidget : ModuleWidget,
@@ -87,6 +101,7 @@ struct StraitsBaseWidget : ModuleWidget,
     int lastThemeLight = -1;
     bool lanesSpawned_ = false;   // false until auto-spawn/pending-spawn runs
     Vec lastBasePos_;             // detect base movement for one-shot re-snap
+    double lastAdjacencyCheck_ = -1.0;   // periodic chain-poll cadence (system::getTime)
     redDot::StraitsSeamFiller* leftFiller = nullptr;
     redDot::StraitsSeamFiller* rightFiller = nullptr;
 
@@ -298,6 +313,37 @@ struct StraitsBaseWidget : ModuleWidget,
                 lanesSpawned_ = true;
             }
 
+            // ── Resnap triggers (CC_PROMPT_STRAITS_RESNAP_HARDENING) ──────────────
+            // FAST PATH — event-driven (~1 frame): the base's onExpanderChange sets
+            // topologyDirty on ANY adjacency change around the base (head-adjacent
+            // insertions/removals/moves), and the LANES' hooks flag their own
+            // left-link violations (mid-chain insertions the base cannot see).
+            // Consumed here, UI-side, where orderedLaneIds_ lives: run the EXACT
+            // chainIntact() and set the existing needsResnap on a real break.
+            // BACKSTOP — a 0.1s poll (Rodney's ruling): heals anything the events
+            // might miss within ~100ms; ten ≤5-pointer walks per second — negligible.
+            // BOTH defer while ANY drag is in progress (getDraggedWidget covers
+            // module drags — the only position changes; knob drags set it too,
+            // harmlessly): mid-drag topology flips stay flagged, consumption lands
+            // the frame after release — never fight the drag. Both skip until
+            // lanesSpawned_ (never race Rack's restore placement / first-frame
+            // adoption). They only SET the existing flag; the one-shot block below
+            // consumes it.
+            if (lanesSpawned_) {
+                auto* trigBase = dynamic_cast<StraitsBaseModule*>(module);
+                if (trigBase) {
+                    const bool eventDirty = trigBase->topologyDirty.load(std::memory_order_relaxed);
+                    const double now = system::getTime();
+                    const bool pollDue = lastAdjacencyCheck_ < 0.0 || now - lastAdjacencyCheck_ >= 0.1;
+                    if ((eventDirty || pollDue) && !APP->event->getDraggedWidget()) {
+                        if (eventDirty) trigBase->topologyDirty.store(false, std::memory_order_relaxed);
+                        if (pollDue) lastAdjacencyCheck_ = now;
+                        if (!chainIntact(trigBase))
+                            trigBase->needsResnap = true;
+                    }
+                }
+            }
+
             // ── One-shot re-snap: fires ONLY when a needsResnap flag is set
             // by onDragEnd (base's own or a lane's). NOT per-frame — zero
             // box.pos writes in step() during drags → no flicker, no fighting.
@@ -314,7 +360,11 @@ struct StraitsBaseWidget : ModuleWidget,
                         }
                     }
                 }
-                if (needSnap) {
+                // Drag guard (the fast path's safety): topology events fire MID-DRAG
+                // too — a module dragged through the chain flips expanders
+                // continuously — so defer consumption to the frame after release;
+                // consuming here would fight the user's drag.
+                if (needSnap && !APP->event->getDraggedWidget()) {
                     if (baseMod) baseMod->needsResnap = false;
                     // Clear lane flags
                     for (int64_t laneId : baseMod->orderedLaneIds_) {
@@ -366,6 +416,37 @@ struct StraitsBaseWidget : ModuleWidget,
             APP->scene->rack->setModulePosForce(lw, Vec(expectedX, box.pos.y));
             expectedX = lw->box.getTopRight().x;
         }
+    }
+
+    // ── Periodic-poll predicate: is the lane chain intact? ────────────────────
+    // Exact + ownership-aware: the lanes come from OUR orderedLaneIds_ and the
+    // links are checked by POINTER identity (leftExpander.module), so a foreign
+    // Straits chain parked adjacent to ours can never confuse it. One pass checks
+    // contiguity (a gap or an inserted module breaks a left-link) AND canonical
+    // order (the same comparator as resnapLanes). Dead IDs (deleted modules) are
+    // skipped, matching the flag-poll loop in step().
+    bool chainIntact(StraitsBaseModule* baseMod) {
+        std::vector<StraitsLaneExpander*> lanes;
+        lanes.reserve(baseMod->orderedLaneIds_.size());
+        for (int64_t id : baseMod->orderedLaneIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (!m) continue;
+            auto* lane = dynamic_cast<StraitsLaneExpander*>(m);
+            if (lane) lanes.push_back(lane);
+        }
+        if (lanes.empty()) return true;
+        std::sort(lanes.begin(), lanes.end(),
+            [](const StraitsLaneExpander* a, const StraitsLaneExpander* b) {
+                int oa = (a->desc) ? a->desc->arcLane : 99;
+                int ob = (b->desc) ? b->desc->arcLane : 99;
+                return oa < ob;
+            });
+        rack::Module* prev = module;   // lane[0]'s left neighbour must be the base (us)
+        for (StraitsLaneExpander* lane : lanes) {
+            if (lane->leftExpander.module != prev) return false;
+            prev = lane;
+        }
+        return true;
     }
 
     // ── onDragEnd: set the resnap flag (fires once on drag completion) ──────────
