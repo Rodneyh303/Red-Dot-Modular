@@ -203,3 +203,10 @@ drifts during gaps, main events stutter in place.
 
 STATUS: the assignment and the three-level hierarchy. Specific thresholds + atom weight + the ratchet/
 ghost consumer-group Straits knobs are part of the broader Straits subgate-knobs work (this doc above).
+
+### OPEN — advance-on-legato-into-rest (currently context menu T/F)
+There is an existing context menu toggle: advance playhead on legato into rest (T/F). This is the SAME
+"does the playhead move?" question as the step-advance probability, in a different context (sustained
+legato crossing a rest step). A natural candidate for T/F/ATOM-DECIDES (Variation draw) — making it a
+fifth consumer of the advance decision alongside main/ratchet/ghost/atom. But UNDECIDED whether to pull it
+into the Variation probability or keep it as a separate binary toggle. Note only.
