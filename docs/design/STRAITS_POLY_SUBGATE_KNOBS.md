@@ -230,3 +230,12 @@ the baseline Variation-as-step-advance would modify: p(advance) goes from 1.0 al
   the bipolar probability would modulate BOTH whether to step AND which direction, in one control.
   Beautifully, this composes with the per-voice MO atom: correlated advance-atoms → voices wander in
   lockstep; anti-correlated → voices wander in opposite directions through the pattern.
+
+### PHASE × GATE HYBRID — ramp-modulated bipolar advance (Rodney)
+A phase/ramp signal modulating the bipolar advance probability: ramp UP = positive (forward bias), ramp
+DOWN = negative (backward bias). This is a CROSS BETWEEN GATE AND PHASE MODE — the gate provides the
+RHYTHM (discrete steps on edges), the phase provides the TRAJECTORY (directional tendency). The sequence
+tends to follow the phase direction but steps probabilistically at gate events, with stutter/wander. At
+the extremes: phase-mod amplitude maxed → approaches phase-mode determinism (direction locked to phase);
+phase-mod zeroed → pure gate mode (always forward). So it's a CONTINUOUS BLEND between the two modes via
+one modulation depth, not a mode switch. A genuinely novel sequencing behaviour.
