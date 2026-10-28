@@ -64,3 +64,48 @@ inputs the unified decide() takes.
 ## NOT THIS DOC
 - The containment DAG (built, merged). The decision manager (consumes both; separate).
 - MELODY/OCTAVE (no poly Straits knobs — out of scope).
+
+────────────────────────────────────────────────────────────────────────────────
+## TENTATIVE CONCLUSIONS — atom=tie, Sands distribution params, panel direction (Rodney)
+These are WORKING CONCLUSIONS, not commitments. The subpanel idea especially needs proving before commit.
+
+### ATOM=TIE on legato (Option 2 — the settled mechanism)
+- Atom on the legato lane = TIE (hold pitch + sustain). Atom weight = tie probability FLOOR. Legato knob
+  above the atom floor = legato-re-pitch. Below the floor, all legato is tie.
+- No separate pitch-hold knob needed. No Variation repurposing needed in gate mode (frees Variation).
+- Mode-independent (gate/clock/phase — it's the distribution).
+- MO correlation on the legato atom → correlated ties across voices (unison sustain / counterpoint).
+- Rest atom = rest-beats-legato (already established). Priority: rest atom > legato atom > continuous draws.
+- Atom=tie was chosen over a 2nd Straits knob because: (a) no extra controls, (b) MO cross-voice
+  correlation (the decisive advantage — knobs can't do it), (c) distribution-integrated / warp / copula
+  composable, (d) mode-independent, (e) uses the already-established rail semantics.
+- Trade-off accepted: atom weight couples with the legato distribution (changes the floor, legato knob
+  "changes meaning"). The T/F/ATOM-DECIDES context menu surfaces this as a deliberate user choice.
+
+### DISTRIBUTION PARAMS (including atom) belong on SANDS
+- Atom weight is a DISTRIBUTION parameter → Sands owns the distribution → atom weight knobs belong on
+  Sands, not Straits. This SAVES Straits space for per-voice subgate thresholds.
+- Sands currently big; distribution is currently a popup. The popup may need to become a proper panel
+  surface to give atom weight (and warp/tilt params) real knobs.
+
+### NEW STRAITS PLAN (global base + optional per-voice)
+- Straits base module: GLOBAL knobs (one set, all voices). Mirroring Monsoon, in line with Monsoon.
+- Optional per-voice subpanel: per-voice controls for subgate thresholds + any per-voice overrides.
+- Motivated by gate-mode subgates but applies to all modes.
+- Straits space is LIMITED — stays in line with Monsoon, doesn't freelance.
+- Tie does NOT need a Straits knob (atom on Sands handles it) — Straits spends its space on subgate
+  consumer-group thresholds that genuinely need per-voice controls.
+
+### PANEL ARCHITECTURE DIRECTION (TENTATIVE — needs proving)
+A converging pattern is EMERGING across the ecosystem: modules grew deep, the answer may be base + optional
+subpanels for depth. TENTATIVE (the subpanel idea needs development and proof before committing):
+- Sands: base (commonly-touched) + subpanel(s) for distribution depth (atom weights, warp detail —
+  currently buried in the popup → moving to a proper panel surface).
+- Straits: base (global, Monsoon-mirrored) + subpanel (per-voice, subgate thresholds).
+- CA: may eventually need refactoring too (4th colour/plane for the containment routing if that direction
+  is pursued, but Cantonment is now its own module so this may be moot).
+- Cantonment: already its own module (just merged + renamed).
+ALTERNATIVES to subpanels NOT YET RULED OUT: expanded popups, context-menu-driven params, more expanders,
+a redesigned single larger panel, or some combination. The subpanel is ONE candidate — the right one needs
+proving (does the Straits subpanel prototype work well? is it discoverable? does it scale?). Don't commit
+to subpanels-everywhere until the Straits subpanel is proven.
