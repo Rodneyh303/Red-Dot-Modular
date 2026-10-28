@@ -166,3 +166,40 @@ Cantonment is its OWN MODULE (merged PR #297, renamed to Cantonment). The earlie
 CA" design direction is SUPERSEDED — containment routing lives in Cantonment, not on CA. So CA does NOT
 need a fourth colour/plane refactor for containment. CA stays as-is (3 correlation planes: rhythm/mel/qmix).
 Any CA UI refactoring would be for its OWN reasons (existing crowding), not for containment.
+
+────────────────────────────────────────────────────────────────────────────────
+## GATE-MODE VARIATION = STEP-ADVANCE PROBABILITY (Rodney) — with per-level thresholds + atom
+
+### The assignment (freed because atom=tie handles pitch-hold on legato)
+Variation in gate mode = STEP-ADVANCE PROBABILITY. On a gate rise, p(advance playhead to next step) vs
+p(repeat current step). High = always advance (sequence progresses); low = stutter/repeat (machine-gun on
+the current step's material). Currently the playhead advances on every gate rise; this makes it
+PROBABILISTIC.
+
+### Three gate levels, THREE advance thresholds (the hierarchy)
+Each gate level has its own advance probability — Variation (base) for main, Straits consumer-group knobs
+for the subgate levels:
+- MAIN GATE RISE (from the primary gate input, e.g. 1/4): Variation knob = p(advance). The coarse
+  sequence-movement control.
+- RATCHET SUBGATE RISE (subdivisions WITHIN a main gate): own Straits threshold. Ratchet-advance-high =
+  the burst WALKS through the sequence (rapid-fire melodic run); ratchet-advance-low = the burst STUTTERS
+  on one step (machine-gun repetition). Two completely different textures from one threshold.
+- GHOST GATE RISE (a SEPARATE gate input, e.g. 1/16, firing BETWEEN main gates — NOT a subdivision of the
+  main gate): own Straits threshold. Ghost-advance-high = the sequence DRIFTS FORWARD in the gaps between
+  main gates, so the next main gate lands on an UNPREDICTABLE step (phase-drift between main rhythm and
+  sequence position). Ghost-advance-low = ghosts fill the gaps without moving the playhead, main gates
+  land on the expected next step. Ghost-advance = sequence position SCATTER between main events.
+
+### Atom connection
+An atom on Variation (gate mode = step-advance) at the rail = CERTAIN ADVANCE (the sequence definitely
+moves forward on this hit). With MO correlation:
+- CORRELATED advance atoms → voices advance in LOCKSTEP (moving through the sequence together).
+- ANTI-CORRELATED → one advances while another stutters → SEQUENCE-LEVEL COUNTERPOINT (not note-level but
+  WHERE IN THE SEQUENCE each voice is — voices at different playhead positions from the same pattern).
+This is a genuinely new coordination axis: not "do you play" (rest), not "do you sustain" (legato), but
+"do you MOVE FORWARD" — orthogonal to both. Composes: stutter+play+tie = sustained repetition;
+advance+rest = silent skip (sequence moves, you don't hear it); ghost-advance+main-stutter = sequence
+drifts during gaps, main events stutter in place.
+
+STATUS: the assignment and the three-level hierarchy. Specific thresholds + atom weight + the ratchet/
+ghost consumer-group Straits knobs are part of the broader Straits subgate-knobs work (this doc above).
