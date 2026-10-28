@@ -565,14 +565,25 @@ struct MonsoonCantonmentWidget : ModuleWidget,
     };
 
     // ── the read-only graph diagram (Rodney 2026-10-28: "drawn diagrams like this, not
-    // editable just for visualisation") ─────────────────────────────────────────────────────
-    // The SAME one-plane direct-offer edges the matrix pegs, re-rendered as the classic
-    // node-arrow circle: 16 numbered pegs (voice 1 at 12 o'clock, clockwise), one arrow per
-    // containment edge pointing CHILD -> PARENT (the module's "points at my parent" language),
-    // roots (no parents) in the sample image's mint green, the operating pool arced (the
-    // matrix active-frame idiom, angular form), above-pool voices and their edges dimmed-held
-    // (the matrix 0.4-alpha idiom). MULTI-PARENT SAFE: the plane is a DAG, not just the draw's
-    // strict forests — every set bit draws its own arrow (the matrix's caption says so).
+    // editable just for visualisation"; layout ruling the same day, after the first ring
+    // with arrowheads read cluttered: the HESSE DIAGRAM ON THE TRANSITIVE REDUCTION —
+    // "no arrowheads, minimal crossings", Hesse over Sugiyama) ─────────────────────────────
+    // THE RADIAL HASSE: rank rings — roots outermost on the task-74 circle, ONE RING INWARD
+    // PER CONTAINER — with the landed reduceTransitive verb run on a stack COPY (the spine
+    // is exactly the relation the RANDOM reduce flag banks; the matrix keeps the full plane,
+    // the diagram is a READING, not the state). Cover edges are rim-trimmed spokes with NO
+    // arrowheads: direction is pure geometry, stated once in the caption (INWARD = CONTAINED).
+    // FAMILY HUE: every spoke wears its child's primary household colour (climb the
+    // lowest-indexed parent chain to the root; a 7-hue palette cycles per root) — the
+    // cantonment read the single red could not give. WHY NOT SUGIYAMA: a live 16-voice
+    // mostly-forest diagram wants positions that are PURE FUNCTIONS of the matrix — angle
+    // fixed by voice index (voice 1 at 12 o'clock, clockwise, the task-74 idiom), radius by
+    // longest-path rank — so nothing is solved iteratively and nothing JUMPS when a pin
+    // lands or a FOLD verb marches (a voice only steps one ring in/out). MULTI-PARENT SAFE:
+    // ranks are longest-path depths over the FULL plane; a spine edge spans more than one
+    // ring only in hand-authored multi-parent states (the draw's strict forests never do).
+    // SINGLE-PARENT ROWS KEEP THEIR EDGE (the verb's own invariant: a 0-or-1-parent row has
+    // no witness, so is never redundant) — no voice is ever orphaned off the spine.
     // Read-only BY CONSTRUCTION: no event overrides at all — events fall through to the
     // PinOverlay, which consumes nothing while the diagram is up (the module's graphView gate).
     // Runtime toggle only (the context-menu check item) — NOT in the save schema, the five
@@ -605,32 +616,92 @@ struct MonsoonCantonmentWidget : ModuleWidget,
         }
 
         // Roots (no parents) wear the sample's mint green; contained voices stay house red
-        // (the PinOverlay plane colour).
+        // (the PinOverlay plane colour) — the peg scheme is unchanged, the RING now carries
+        // the depth the arrowheads used to.
         static NVGcolor rootNode() { return nvgRGBf(0.36f, 0.72f, 0.50f); }
 
-        // One containment edge: shaft trimmed clear of both pegs + a filled head at the
-        // parent's rim (the sample's straight-arrow look, the house red).
-        static void drawArrow(NVGcontext* vg, Vec from, Vec to, float pegR, float alpha) {
+        // The family palette: 7 hues cycled per root index, two rows per hue (the colours
+        // must clear BOTH the dark scrim and the light paper, and stay clear of the two peg
+        // colours — house red and the root mint). Consecutive root indices sit far apart on
+        // the wheel so neighbouring households never blur.
+        static constexpr int FAMILIES = 7;
+        static NVGcolor familyHue(int rootIdx, bool lit) {
+            static const float pal[FAMILIES][2][3] = {
+                {{1.00f, 0.71f, 0.33f}, {0.72f, 0.47f, 0.05f}},   // amber
+                {{0.35f, 0.84f, 0.91f}, {0.03f, 0.55f, 0.63f}},   // cyan
+                {{0.71f, 0.55f, 1.00f}, {0.43f, 0.28f, 0.78f}},   // violet
+                {{1.00f, 0.49f, 0.75f}, {0.78f, 0.22f, 0.52f}},   // pink
+                {{0.71f, 0.88f, 0.38f}, {0.35f, 0.56f, 0.10f}},   // lime
+                {{0.44f, 0.65f, 1.00f}, {0.16f, 0.38f, 0.78f}},   // blue
+                {{0.85f, 0.85f, 0.87f}, {0.42f, 0.42f, 0.45f}},   // silver
+            };
+            const int i = ((rootIdx % FAMILIES) + FAMILIES) % FAMILIES;
+            const float* c = pal[i][lit ? 1 : 0];
+            return nvgRGBf(c[0], c[1], c[2]);
+        }
+
+        // The per-draw derived state — pure functions of the matrix (the draw only reads).
+        // rank  = longest-path containment depth over the FULL plane (0 = root). Max-
+        //        relaxation from all-zeros on a DAG: monotone, bounded by the longest chain,
+        //        converged after <= VOICES passes; the fixed point is unique so pass order
+        //        cannot matter (the Bellman-Ford argument, downward).
+        // family= the primary household root: climb the LOWEST-INDEXED parent chain to a
+        //        root. The draw's strict forests land on THE root; a hand-authored
+        //        multi-parent row lands on a deterministic one (lowest index at every hop).
+        // spine = the transitive reduction COPY (reduceTransitive, the landed verb — the
+        //        exact relation the RANDOM reduce flag banks; closure-exact, idempotent).
+        struct Layout {
+            int              rank[dotModular::ct::VOICES] = {};
+            int              maxRank = 0;
+            int              family[dotModular::ct::VOICES] = {};
+            dotModular::ct::CantonmentGraph spine;
+        };
+        static Layout derive(const dotModular::ct::CantonmentGraph& g) {
+            Layout L;
+            for (int pass = 0; pass < dotModular::ct::VOICES; ++pass)
+                for (int v = 0; v < dotModular::ct::VOICES; ++v) {
+                    uint16_t m = g.parents[v];
+                    int r = 0;
+                    while (m) {
+                        const int u = __builtin_ctz(m);
+                        m &= (uint16_t)(m - 1);
+                        if (L.rank[u] + 1 > r) r = L.rank[u] + 1;
+                    }
+                    L.rank[v] = r;
+                    if (r > L.maxRank) L.maxRank = r;
+                }
+            for (int v = 0; v < dotModular::ct::VOICES; ++v) {
+                int f = v;
+                for (uint16_t m = g.parents[f]; m; m = g.parents[f])
+                    f = __builtin_ctz(m);
+                L.family[v] = f;
+            }
+            L.spine = g;                       // 16 words on the stack; the module state is sacred
+            dotModular::ct::reduceTransitive(L.spine);
+            return L;
+        }
+
+        // One spine edge: a rim-trimmed spoke, NO arrowhead — the direction is the geometry
+        // (the child rides an outer ring, the parent an inner one). Round caps, family hue,
+        // a slightly wider gap at the parent's rim so the arrival has breathing room.
+        static void drawSpoke(NVGcontext* vg, Vec from, Vec to, float pegR, NVGcolor col, float alpha) {
             const float dx = to.x - from.x, dy = to.y - from.y;
             const float len = std::sqrt(dx * dx + dy * dy);
             if (len < 1e-4f) return;
             const float ux = dx / len, uy = dy / len;
-            NVGcolor col = PinOverlay::pinBody(); col.a *= 0.8f * alpha;
+            col.a *= 0.85f * alpha;
             const float sx = from.x + ux * (pegR + mm2px(0.5f));
             const float sy = from.y + uy * (pegR + mm2px(0.5f));
-            const float ex = to.x   - ux * (pegR + mm2px(1.9f));
-            const float ey = to.y   - uy * (pegR + mm2px(1.9f));
-            nvgBeginPath(vg); nvgMoveTo(vg, sx, sy); nvgLineTo(vg, ex, ey);
-            nvgStrokeColor(vg, col); nvgStrokeWidth(vg, mm2px(0.55f)); nvgStroke(vg);
-            const float tx = to.x - ux * (pegR + mm2px(0.4f));
-            const float ty = to.y - uy * (pegR + mm2px(0.4f));
-            const float px = -uy, py = ux;   // perpendicular for the head's base
+            const float ex = to.x   - ux * (pegR + mm2px(0.9f));
+            const float ey = to.y   - uy * (pegR + mm2px(0.9f));
+            if ((ex - sx) * ux + (ey - sy) * uy <= 0.f) return;   // pegs closer than the trims
             nvgBeginPath(vg);
-            nvgMoveTo(vg, tx, ty);
-            nvgLineTo(vg, ex + px * mm2px(0.85f), ey + py * mm2px(0.85f));
-            nvgLineTo(vg, ex - px * mm2px(0.85f), ey - py * mm2px(0.85f));
-            nvgClosePath(vg);
-            nvgFillColor(vg, col); nvgFill(vg);
+            nvgMoveTo(vg, sx, sy);
+            nvgLineTo(vg, ex, ey);
+            nvgLineCap(vg, NVG_ROUND);
+            nvgStrokeColor(vg, col);
+            nvgStrokeWidth(vg, mm2px(0.7f));
+            nvgStroke(vg);
         }
 
         void draw(const DrawArgs& args) override {
@@ -652,9 +723,29 @@ struct MonsoonCantonmentWidget : ModuleWidget,
             nvgStrokeColor(vg, rimc); nvgStrokeWidth(vg, mm2px(0.4f)); nvgStroke(vg);
 
             const Vec c0 = Vec(x0 + gsz * 0.5f, y0 + gsz * 0.5f);
-            const float R  = gsz * 0.5f - mm2px(8.0f);   // 8 mm inboard: numbers live outside the ring
+            const float R  = gsz * 0.5f - mm2px(8.0f);   // 8 mm inboard: numbers live outside the root ring
             const float pr = mm2px(2.9f);
             const int active = getActiveCount();
+
+            // The derived Hasse geometry: rank rings from the outer circle down to the
+            // 0.30R floor (a pathological 15-deep chain compresses to the floor — the
+            // honest depth read; typical pages of <= 4 ranks get generous lanes).
+            const Layout lay = derive(module->core.graph);
+            float ringR[dotModular::ct::VOICES];
+            const float rMin = 0.30f * R;
+            const float step = (lay.maxRank > 0) ? (R - rMin) / float(lay.maxRank) : 0.f;
+            for (int k = 0; k < dotModular::ct::VOICES; ++k) ringR[k] = R - float(k) * step;
+
+            // Faint rank guides — the "one ring inward = one more container" ruler, drawn
+            // under everything that moves (pegs, spokes and numbers all cross them calmly).
+            NVGcolor guide = ink; guide.a *= 0.07f;
+            for (int k = 0; k <= lay.maxRank; ++k) {
+                nvgBeginPath(vg);
+                nvgCircle(vg, c0.x, c0.y, ringR[k]);
+                nvgStrokeColor(vg, guide);
+                nvgStrokeWidth(vg, mm2px(0.4f));
+                nvgStroke(vg);
+            }
 
             // The operating pool arc (the matrix active-frame idiom, angular form): the
             // clockwise span from voice 1 over the active voices, same weight/alpha.
@@ -667,35 +758,46 @@ struct MonsoonCantonmentWidget : ModuleWidget,
                 nvgStroke(vg);
             }
 
-            // Edges FIRST (under the pegs): the matrix's own isContainedIn read, so the
-            // diagram and the pegs can never disagree. Above-pool endpoints dim (the held idiom).
-            for (int v = 0; v < dotModular::ct::VOICES; ++v)
-                for (int u = 0; u < dotModular::ct::VOICES; ++u) {
-                    if (u == v || !module->core.graph.isContainedIn(v, u)) continue;
-                    const float ea = (v < active && u < active) ? 1.f : 0.4f;
-                    drawArrow(vg, nodeCentre(v, c0, R), nodeCentre(u, c0, R), pr, ea);
-                }
-
-            // Nodes: contained voices red, roots mint (the sample's two-colour scheme).
+            // Spine edges FIRST (under the pegs): the landed reduceTransitive verb on the
+            // stack copy, so the diagram and the RANDOM reduce flag show the same relation.
+            // Family hue from the CHILD's side — every spoke leaving a voice shares its
+            // household colour (the cantonment read). Above-pool endpoints dim (the held idiom).
             for (int v = 0; v < dotModular::ct::VOICES; ++v) {
-                const Vec c = nodeCentre(v, c0, R);
+                uint16_t m = lay.spine.parents[v];
+                while (m) {
+                    const int u = __builtin_ctz(m);
+                    m &= (uint16_t)(m - 1);
+                    const float ea = (v < active && u < active) ? 1.f : 0.4f;
+                    drawSpoke(vg, nodeCentre(v, c0, ringR[lay.rank[v]]),
+                                   nodeCentre(u, c0, ringR[lay.rank[u]]),
+                              pr, familyHue(lay.family[v], lit), ea);
+                }
+            }
+
+            // Nodes: contained voices red, roots mint (the sample's two-colour scheme) —
+            // placed on their RANK ring, not the outer circle.
+            for (int v = 0; v < dotModular::ct::VOICES; ++v) {
+                const Vec c = nodeCentre(v, c0, ringR[lay.rank[v]]);
                 const float a = (v < active) ? 1.f : 0.4f;
                 PinOverlay::drawPin(vg, c.x, c.y, pr,
                                     module->core.graph.parents[v] ? PinOverlay::pinBody() : rootNode(), a);
             }
 
-            // Numbers 1..16, radially outside the ring (arrows never leave the circle) —
-            // uiFont, the widget-lettering idiom, theme-matched ink.
+            // Numbers 1..16, radially outside each peg on its own ring (the root ring keeps
+            // the wider offset so the pool arc stays clear) — uiFont, the widget-lettering
+            // idiom, theme-matched ink.
             std::shared_ptr<window::Font> font = APP->window->uiFont;
             if (font) {
                 nvgFontFaceId(vg, font->handle);
                 nvgFontSize(vg, mm2px(2.4f));
                 nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
                 nvgFillColor(vg, ink);
+                const float noff = pr + mm2px(1.5f);
                 for (int v = 0; v < dotModular::ct::VOICES; ++v) {
                     const float a = nodeAngle(v);
-                    const Vec c = Vec(c0.x + (R + pr + mm2px(2.6f)) * std::cos(a),
-                                      c0.y + (R + pr + mm2px(2.6f)) * std::sin(a));
+                    const float rr = ringR[lay.rank[v]]
+                                   + ((lay.rank[v] == 0) ? pr + mm2px(2.6f) : noff);
+                    const Vec c = Vec(c0.x + rr * std::cos(a), c0.y + rr * std::sin(a));
                     char b[4];
                     snprintf(b, sizeof(b), "%d", v + 1);
                     nvgText(vg, c.x, c.y, b, NULL);
@@ -753,7 +855,7 @@ struct MonsoonCantonmentWidget : ModuleWidget,
         const NVGcolor ink = lit ? nvgRGB(0x2a, 0x2a, 0x2e) : nvgRGB(0xe8, 0xe2, 0xd0);
         const NVGcolor dim = lit ? nvgRGB(0x88, 0x8d, 0x96) : nvgRGB(0x8a, 0x85, 0x78);
         // The graph diagram replaces the matrix-geometry lettering: the circle carries its
-        // own 1..16 numbers, and the bottom captions describe the arrows instead of the axes.
+        // own 1..16 numbers, and the bottom captions describe the rings instead of the axes.
         auto* mcp = dynamic_cast<MonsoonCantonment*>(module);
         const bool gview = (mcp && mcp->graphView);
 
@@ -804,7 +906,7 @@ struct MonsoonCantonmentWidget : ModuleWidget,
             nvgText(vg, box.size.x * 0.5f, mm2px(CAP1_Y),
                     "READ-ONLY VIEW -- EDIT IN THE PIN MATRIX", NULL);
             nvgText(vg, box.size.x * 0.5f, mm2px(CAP2_Y),
-                    "ARROWS POINT CHILD -> PARENT    GREEN = ROOT", NULL);
+                    "INWARD = CONTAINED    GREEN = ROOT    HUE = FAMILY", NULL);
         } else {
             nvgText(vg, box.size.x * 0.5f, mm2px(CAP1_Y),
                     "ROWS = VOICE    COLUMNS = PARENT (CONTAINED-BY)", NULL);
@@ -905,13 +1007,15 @@ struct MonsoonCantonmentWidget : ModuleWidget,
             }));
 
         // The read-only graph diagram (Rodney 2026-10-28: "drawn diagrams like this, not
-        // editable just for visualisation"): the same one-plane direct-offer edges the
-        // matrix pegs, re-rendered as the node-arrow circle (voice 1 at 12 o'clock, arrows
-        // child -> parent, roots green, the operating pool arced, above-pool dimmed-held).
-        // A VIEW, not a musical state: runtime-only, deliberately OUTSIDE the save schema
-        // (the matrix returns on load; the five persisted fields stay five). Read-only by
-        // construction — the overlay declares no event handlers, and the PinOverlay consumes
-        // nothing while the diagram is up. The matrix stays the editor, always.
+        // editable just for visualisation"; Hesse ruling the same day): the RADIAL HASSE of
+        // the plane — rank rings (roots outermost, one ring inward per container), the
+        // landed reduceTransitive run on a stack copy (the spine the RANDOM reduce flag
+        // banks), rim-trimmed spokes with no arrowheads (direction = the geometry), family-
+        // hued by the child's primary root. A VIEW, not a musical state: runtime-only,
+        // deliberately OUTSIDE the save schema (the matrix returns on load; the five
+        // persisted fields stay five). Read-only by construction — the overlay declares no
+        // event handlers, and the PinOverlay consumes nothing while the diagram is up. The
+        // matrix stays the editor, always.
         menu->addChild(createCheckMenuItem("Graph diagram (read-only view)", "",
             [module]() { return module->graphView; },
             [module]() { module->graphView = !module->graphView; }));
