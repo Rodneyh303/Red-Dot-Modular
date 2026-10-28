@@ -105,7 +105,7 @@ subpanels for depth. TENTATIVE (the subpanel idea needs development and proof be
 - CA: may eventually need refactoring too (4th colour/plane for the containment routing if that direction
   is pursued, but Cantonment is now its own module so this may be moot).
 - Cantonment: already its own module (just merged + renamed).
-ALTERNATIVES to subpanels NOT YET RULED OUT: expanded popups, context-menu-driven params, more expanders,
+SUBPANELS VALIDATED for Straits (resnap hardening solved the adjacency problem — foreign modules get
 a redesigned single larger panel, or some combination. The subpanel is ONE candidate — the right one needs
 proving (does the Straits subpanel prototype work well? is it discoverable? does it scale?). Don't commit
 to subpanels-everywhere until the Straits subpanel is proven.
@@ -150,3 +150,19 @@ approach everywhere — the right split depends on whether the depth is per-lane
 STATUS: both candidates live. Prove via the Straits subpanel prototype and the Sands distribution-surface
 need. The adjacency problem exists either way (Rack has no module grouping); approach B degrades more
 gracefully but costs more panel width.
+
+────────────────────────────────────────────────────────────────────────────────
+## STATUS UPDATE — subpanels VALIDATED; CA fourth plane MOOT (Rodney)
+
+### Subpanels validated
+- STRAITS: subpanel-expanders PROVEN. The resnap hardening (lane drag-end + periodic adjacency poll) solves
+  the adjacency/insertion problem — foreign modules get shoved out, lanes snap back almost instantly. The
+  "one instrument reads as one instrument" property holds. No longer tentative for Straits.
+- SANDS: subpanel approach as well (for distribution depth — atom weights, warp/tilt params, currently in
+  popup). Same resnap-hardening pattern applies. Still to be built but the approach is validated by Straits.
+
+### CA fourth plane is MOOT
+Cantonment is its OWN MODULE (merged PR #297, renamed to Cantonment). The earlier "fourth pinning plane on
+CA" design direction is SUPERSEDED — containment routing lives in Cantonment, not on CA. So CA does NOT
+need a fourth colour/plane refactor for containment. CA stays as-is (3 correlation planes: rhythm/mel/qmix).
+Any CA UI refactoring would be for its OWN reasons (existing crowding), not for containment.
