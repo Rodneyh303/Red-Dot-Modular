@@ -108,3 +108,26 @@ mechanism exemplified by new Straits — the StraitsBase + StraitsLaneExpander p
   expander both snapped in a defined order).
 Reuse the Straits snapping code/pattern directly — do NOT reinvent. The snapping is what makes the
 multi-subpanel instrument read as one instrument (proven on Straits: foreign inserts get snapped out).
+
+────────────────────────────────────────────────────────────────────────────────
+## ATTACHMENT SIDES + which subpanel owns what (Rodney)
+
+### Attachment side = RIGHT of the host main panel
+- Distribution expander attaches to the RIGHT of MAIN STRAITS (for the Sands/East per-voice role).
+- For MACRO: BOTH the send-knob subpanel AND the Distribution expander attach to the RIGHT of MAIN MACRO,
+  in ANY ORDER (canonical ordering resolves ties, but either order is valid — both are right-side
+  subpanels of Macro).
+(Note: this is RIGHT-side attachment — adjust the chain direction from the StraitsLane* example if those
+chain left; the snapping/resnap mechanism is the same, only the side differs.)
+
+### The MACRO SEND-KNOB subpanel ENCAPSULATES ALL Macro→East sends
+The Macro send-knob subpanel is the home for ALL Macro→East sends — the EXISTING sends AND the NEW
+distribution-param sends (param1/param2/tilt/atom-ℓ/atom-m/warp mods that, per the decided design, flow
+through the per-voice send bus). So on Macro:
+- MACRO SEND SUBPANEL = every Macro→East send (existing per-voice sends + the new distribution-param
+  sends). One subpanel owns the whole send bus.
+- MACRO DISTRIBUTION EXPANDER (cross-voice role) = the distribution SHAPING controls + the permanent
+  editor (param knobs, atom, tilt, warp, visualiser) for the cross-voice distribution structure.
+So on Macro the two subpanels divide as: the DISTRIBUTION expander SHAPES the (cross-voice) distribution;
+the SEND subpanel ROUTES everything (including distribution-param mods) to East per-voice. Both right of
+main Macro, any order.
