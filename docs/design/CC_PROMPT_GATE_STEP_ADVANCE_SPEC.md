@@ -50,9 +50,9 @@ Scope: ONLY the main gate, ONLY forward-or-repeat (no bipolar, no subgate levels
 - MAIN gate: Variation (above).
 - RATCHET subgate rise: own advance threshold.
 - GHOST gate rise (separate input between main gates): own advance threshold.
-DEPENDENCY: the ratchet/ghost thresholds are STRAITS CONSUMER-GROUP KNOBS that DO NOT EXIST YET (part of
-the unbuilt Straits subgate-knobs work, STRAITS_POLY_SUBGATE_KNOBS.md). Stage 3 is BLOCKED until those
-knobs exist. Do NOT build Stage 3 before the Straits subgate consumer-group knobs land. (Each subgate
+DEPENDENCY: the ratchet/ghost thresholds are STRAITS CONSUMER-GROUP KNOBS, now specced as the NEXT STRAITS
+STEP in CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC.md (three-way source: own-subpanel > global-Straits | follow-
+main). Stage 3 is unblocked ONCE those land (not an indefinite block — it's the planned next Straits build). Do NOT build Stage 3 before the Straits subgate consumer-group knobs land. (Each subgate
 level reads its own threshold; same u-draw discipline; same one-playhead constraint.)
 
 ## STAGE 4 — phase-modulated / phase×gate hybrid (IDEAS — not yet a build)
