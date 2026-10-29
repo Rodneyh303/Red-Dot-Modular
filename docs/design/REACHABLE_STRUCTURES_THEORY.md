@@ -333,3 +333,37 @@ NO SPECIAL MEANINGS NEEDED: the bare atom (a point mass at the rail, no semantic
 this dependence structure. Special meanings (atom=tie, rest-beats-legato) only add specificity to WHAT the
 coordinated definite/extreme DOES — they do not create the dependence, which comes from the rail position
 alone.
+
+════════════════════════════════════════════════════════════════════════════════
+# CROSS-VOICE too — the symmetric completion; tail dependence is ATOM-ONLY in EVERY direction (Rodney)
+
+Everything about cross-LANE tail dependence applies symmetrically cross-VOICE, with one mechanism
+difference (voices SHARE the stream within a lane; lanes don't).
+
+## Cross-VOICE tail dependence (same atom-at-rail structure, across the ensemble)
+Shared atom modulation across voices → extreme values + definite decisions coordinate ACROSS THE ENSEMBLE:
+- CONTINUOUS lanes: octave extremes co-occur across voices = TUTTI REGISTER CLIMAX (ensemble leaps high
+  together); note-length extremes = TUTTI SUSTAIN; scale-degree extremes = ensemble at scale edge
+  together. Midrange octaves/lengths stay independent (ordinary voicing scatter).
+- THRESHOLD lanes: definite decisions co-occur across voices — tutti certain-rest (unison silence),
+  tutti certain-legato (unison sustain), tutti certain-accent (ensemble hit). Uncertain decisions scatter.
+
+## THE MECHANISM DIFFERENCE — body vs tail, by direction
+Within a lane voices SHARE the stream → CA/spread (Gaussian ρ) give cross-voice BODY dependence (real ρ).
+BUT that is λ=0 (CA/spread give NO tail dependence, cross-voice OR cross-lane). So:
+  |              | BODY dependence              | TAIL dependence            |
+  | Cross-VOICE  | CA/spread (real ρ)           | shared ATOM mod ONLY       |
+  | Cross-LANE   | shared CONTINUOUS mod        | shared ATOM mod ONLY       |
+TAIL dependence — coordination of the extremes/definite-values — is ALWAYS atom-only, in BOTH directions.
+CA/spread coordinate bodies across voices; continuous mod coordinates bodies across lanes; the EXTREMES
+coordinate only through atoms, every direction.
+
+## THE FULL ENSEMBLE PICTURE (both directions compose)
+- CROSS-VOICE atom coordination → tutti climaxes (all voices extreme/definite together).
+- CROSS-LANE atom coordination → coherent per-voice gestures (a voice's high-AND-long-AND-certain moment).
+- BOTH (shared mod across voices AND lanes) → the whole GRID coordinates its extremes = the §A grid-wide
+  DMO / TUTTI SLAM (entire ensemble hits the extreme as one gesture).
+KILLER APP, FULLY STATED: the atom coordinates the DEFINITE/EXTREME moments across both voices and lanes —
+tutti climaxes (cross-voice), coherent per-voice gestures (cross-lane), grid-wide slams (both) — while all
+ordinary/uncertain moments stay independent (CA/spread may correlate their bodies; the EXTREMES are
+atom-coordinated). Tail dependence is atom-only in every direction: the unique defining capability.
