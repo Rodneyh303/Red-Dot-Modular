@@ -1,4 +1,27 @@
-# AUDIT — "mono is special" surviving in DECISION LOGIC (not just indexing) (Rodney)
+# MONO SPECIAL IN LOGIC — AUDIT
+
+> ## TRIAGE STATUS (2026 — most of this doc is now HISTORY, built or superseded)
+> The design thinking in this doc LED TO the Rhythm Decision Manager (RDM), which is now BUILT
+> (RHYTHM_DECISION_MANAGER_PLAN.md, Stages R + F complete, merged). Re-read this doc as a RECORD,
+> not a to-do list. Item-by-item:
+> - ✅ BUILT (RDM): the original symptom (poly articulation gated on mono) — replaced by the RDM's
+>   mayOnset/forest consumption (C1). The mono-special REST/ACCENT/QMIX/TIE/VAR/LEG decisions —
+>   now the RDM's five predicates reading the Cantonment forest. The "fifth authority / decision
+>   resolver" reasoning below was the DESIGN that became the RDM; it is SUPERSEDED by the build.
+> - ❌ OUT OF SCOPE (Rodney): the broad cross-layer "decision manager polices UI" framing. Moot —
+>   the RDM is engine-side; the UI (Lantern) already reads engine decision state.
+> - ➡️ MOVED (Rodney): dir/deleg detection + step-boundary latching, and the subgate/advance knob
+>   work → STRAITS_POLY_SUBGATE_KNOBS.md.
+> - ⬜ STILL LIVE (the only outstanding items):
+>     (a) rhythmPattern DELETE — concluded vestigial (CLOSE section below) but NOT YET DONE.
+>         Still present (PatternEngine.cpp:136,410, 5 files) and still uses `>= restProb` (the
+>         polarity smell). Delete it, light step LEDs from the live decision, ignore the old-patch
+>         JSON field on load. Kills the polarity smell by deletion. Small, well-specified.
+>     (b) PER-LANE POLARITY AUDIT — still a prerequisite for the atom/escape work (does each lane's
+>         prob→0/1 mean what the atom semantics assume). The POLARITY AUDIT section below is the spec.
+> Everything else below is resolved design history.
+
+
 
 Strong types killed mono-is-special at the INDEX level (warpRow(0)/voices[0] won't compile). But mono
 still leaks into the DECISION LOGIC: poly voices' articulation (legato/rest/accent/tie) is structurally
