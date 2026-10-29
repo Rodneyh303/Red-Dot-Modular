@@ -90,3 +90,21 @@ voice from the shared state, don't have their own independent voice-select. LANE
 
 ## NOT THIS SPEC
 - The dynamic-MO math (built — warpStages). The decision manager. The reachable-structures theory (done).
+
+────────────────────────────────────────────────────────────────────────────────
+## HARD REQUIREMENT — subpanel snapping as exemplified by NEW STRAITS
+The SandsDistributionExpander (and the Macro per-voice-sends subpanel) MUST use the subpanel SNAPPING
+mechanism exemplified by new Straits — the StraitsBase + StraitsLaneExpander pattern:
+- Chain via rightExpander/leftExpander from the host (Macro or Sands/East), same as StraitsLane* chains
+  from StraitsBase.
+- resnapLanes()-style force-reposition (setModulePosForce) on drag-end so the subpanel snaps adjacent to
+  its host, shoving other modules aside.
+- The resnap HARDENING (CC_PROMPT_STRAITS_RESNAP_HARDENING.md): resnap also triggers on the SUBPANEL's own
+  drag-end (when separated) AND via the periodic adjacency poll (catches modules inserted between) — so a
+  foreign or own module dragged between host and expander gets shoved out and the expander snaps back
+  almost instantly.
+- StraitsSeamFiller-style edge continuity (seamless abutment when adjacent, visible seam when separated).
+- Canonical ordering if multiple subpanels attach to one host (e.g. Macro's per-voice-sends + Distribution
+  expander both snapped in a defined order).
+Reuse the Straits snapping code/pattern directly — do NOT reinvent. The snapping is what makes the
+multi-subpanel instrument read as one instrument (proven on Straits: foreign inserts get snapped out).
