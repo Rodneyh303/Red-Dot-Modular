@@ -28,12 +28,34 @@
 //     subpanel dragged off, foreign insert) still re-seats the run, exactly
 //     like StraitsBase's owned list. Dead IDs are skipped (the StraitsBase
 //     law); the family predicate re-validates every resolve.
+//
+// ── THE WHEEL ITSELF (task 84 — Rodney: "straitsbase and lane expander
+// exemplify it, don't reinvent the wheel"): StraitsLane models are UNREGISTERED
+// ("base-spawned only", src/plugin.cpp) — the user NEVER drops a lane; the
+// base SPAWNS it docked (spawnLane: exact flush coords, y = the base's row, so
+// addModule's updateExpanders links it from birth) and OWNS the ID forever
+// (orderedLaneIds_), pulling it back flush from any distance within the 0.1 s
+// poll. That ownership — not the drop — is the straits feel. The first port
+// kept only the browser magnet and never made the hosts OWN anything: a
+// subpanel that has never linked has an EMPTY snapshot, so nothing adopts it,
+// nothing pulls it in, and a near-miss window is hopeless with a 52 HP panel's
+// left edge far from the cursor. sandsToggleSubpanel / sandsSpawnSubpanel /
+// sandsRemoveSubpanel below are StraitsBase's spawnLane / removeLane /
+// toggleLane / hasLane, family-parameterised, with one sands addition: SPAWN
+// ADOPTS a parked family panel of that model instead of duplicating it (the
+// user's panels are browser-registered; a right-click "spawn" that already
+// owns the model removes it — the checkbox law — so adoption is the only path
+// a parked panel ever gets back into the dock). runIds stays the ONE owned
+// list: spawn pushes the ID, remove erases it, the snapshot keeps it fresh.
 // The StraitsLane differences, deliberate:
-//   - the subpanels are BROWSER-ADDED (not base-spawned), so there is no
-//     ordered-ID ownership list from spawn: the RIGHT CHAIN — and the snapshot
-//     taken from it — is the canonical order (the spec's "canonical ordering
-//     resolves ties, but either order is valid" — the user's physical order
-//     persists; the resnap preserves it, it never re-sorts);
+//   - the subpanels are ALSO browser-addable (registered models — the spec's
+//     law), so ownership is bootstrapped three ways: the context-menu spawn
+//     (the wheel — docked from birth), the near-miss magnet on a drop, and the
+//     intact-chain snapshot (a patch-restore or a manual flush push adopts
+//     into the same runIds). The RIGHT CHAIN — and the snapshot taken from it
+//     — is the canonical order (the spec's "canonical ordering resolves ties,
+//     but either order is valid" — the user's physical order persists; the
+//     resnap preserves it, it never re-sorts);
 //   - attachment is RIGHT of the host (the Straits lanes chain right too — same
 //     direction, expectedX steps rightward from the host's top-right edge).
 // The hardening (CC_PROMPT_STRAITS_RESNAP_HARDENING) is carried over whole:
@@ -182,6 +204,122 @@ inline void sandsResnapSubpanels(rack::ModuleWidget* hostW, FamilyFn isOwnFamily
             expectedX = sw->box.getTopRight().x;
         }
     }
+}
+
+// ══ THE STRAITS WHEEL (task 84): StraitsBase's spawnLane / removeLane /
+// toggleLane / hasLane, family-parameterised. The hosts OWN their subpanels —
+// the context menu spawns them DOCKED (linked from birth, never a drop skill
+// test), the owned ID list is st.runIds (ONE list shared with the snapshot).
+
+// ── the spawnLane edge walk, verbatim shape: right of the host, but past every
+// OWNED member's widget (StraitsBase: "right of the rightmost owned lane").
+template <class FamilyFn>
+inline float sandsOwnedEdgePx(rack::ModuleWidget* hostW, const SandsSnapHostState& st,
+                              FamilyFn isOwnFamily) {
+    float rightX = hostW->box.getTopRight().x;
+    for (int64_t id : st.runIds) {
+        rack::Module* m = APP->engine->getModule(id);
+        if (!m || !isOwnFamily(m)) continue;
+        if (rack::ModuleWidget* lw = APP->scene->rack->getModule(m->id))
+            rightX = std::max(rightX, lw->box.getTopRight().x);
+    }
+    return rightX;
+}
+
+// ── hasLane, verbatim shape: an OWNED member of this model?
+template <class FamilyFn>
+inline bool sandsHasOwnedSubpanel(const SandsSnapHostState& st, FamilyFn isOwnFamily,
+                                  rack::Model* model) {
+    for (int64_t id : st.runIds) {
+        rack::Module* m = APP->engine->getModule(id);
+        if (m && isOwnFamily(m) && m->model == model) return true;
+    }
+    return false;
+}
+
+// ── removeLane, verbatim shape: find the OWNED member of this model, remove its
+// widget from the rack, remove the engine module, erase the ID, resnap (close
+// the gap — the remaining owned members re-seat flush).
+template <class FamilyFn>
+inline bool sandsRemoveSubpanel(rack::ModuleWidget* hostW, SandsSnapHostState& st,
+                                FamilyFn isOwnFamily, rack::Model* model) {
+    if (!hostW || !hostW->module) return false;
+    for (size_t i = 0; i < st.runIds.size(); ++i) {
+        rack::Module* m = APP->engine->getModule(st.runIds[i]);
+        if (!m || !isOwnFamily(m) || m->model != model) continue;
+        if (rack::ModuleWidget* lw = APP->scene->rack->getModule(m->id))
+            APP->scene->rack->removeModule(lw);      // updateExpanders inside detaches the links
+        APP->engine->removeModule(m);
+        st.runIds.erase(st.runIds.begin() + i);
+        sandsResnapSubpanels(hostW, isOwnFamily, st);
+        return true;
+    }
+    return false;
+}
+
+// ── spawnLane, with one sands addition: ADOPT a parked family panel of this
+// model instead of spawning a duplicate. Seat = the owned edge (sandsOwnedEdgePx)
+// on the host's row; setModulePosForce there links the adoptee THIS frame
+// (updateExpanders runs inside it). A parked panel qualifies when it is family,
+// unowned, and its LEFT neighbour is LOOSE — null, or neither family nor a host
+// visual (never steal from another host's dock; never break into a parked
+// pair's middle — its loose head is the adoptable one). No loose candidate →
+// CREATE: the StraitsBase spawnLane order verbatim (engine module first, the ID
+// pushed, the widget created, box.pos set BEFORE rack addModule — addModule
+// preserves pos and runs updateExpanders, so the panel is LINKED FROM BIRTH),
+// then one setModulePosForce to shove any bystander off the seat.
+template <class FamilyFn, class LooseFn>
+inline bool sandsSpawnSubpanel(rack::ModuleWidget* hostW, SandsSnapHostState& st,
+                               FamilyFn isOwnFamily, LooseFn isLooseLeft,
+                               rack::Model* model) {
+    if (!hostW || !hostW->module || !model) return false;
+    if (sandsHasOwnedSubpanel(st, isOwnFamily, model)) return false;   // checkbox guard
+    const float seatX = sandsOwnedEdgePx(hostW, st, isOwnFamily);
+    const float seatY = hostW->box.pos.y;
+
+    rack::ModuleWidget* adopt = nullptr;
+    for (rack::ModuleWidget* mw : APP->scene->rack->getModules()) {
+        if (!mw || !mw->module || mw->module->model != model) continue;
+        rack::Module* m = mw->module;
+        bool owned = false;
+        for (int64_t id : st.runIds) if (id == m->id) { owned = true; break; }
+        if (owned) continue;
+        if (!isLooseLeft(m->leftExpander.module)) continue;
+        adopt = mw;
+        break;
+    }
+    if (adopt) {
+        APP->scene->rack->setModulePosForce(adopt, rack::Vec(seatX, seatY));
+        st.runIds.push_back(adopt->module->id);
+        return true;
+    }
+
+    // CREATE (StraitsBase spawnLane verbatim order)
+    rack::engine::Module* subMod = model->createModule();
+    APP->engine->addModule(subMod);
+    st.runIds.push_back(subMod->id);
+    rack::ModuleWidget* subW = model->createModuleWidget(subMod);
+    if (!subW) {   // never leave a tracked zombie
+        APP->engine->removeModule(subMod);
+        st.runIds.pop_back();
+        return false;
+    }
+    subW->box.pos = rack::Vec(seatX, seatY);
+    APP->scene->rack->addModule(subW);   // updateExpanders inside → LINKED from birth
+    APP->scene->rack->setModulePosForce(subW, rack::Vec(seatX, seatY));   // shove any bystander off the seat
+    return true;
+}
+
+// ── toggleLane, verbatim shape: owned → remove; else spawn (adopt-or-create).
+// The caller sets st.needsResnap on a true return so the one-shot consumer
+// re-seats the run cleanly on the next frame.
+template <class FamilyFn, class LooseFn>
+inline bool sandsToggleSubpanel(rack::ModuleWidget* hostW, SandsSnapHostState& st,
+                                FamilyFn isOwnFamily, LooseFn isLooseLeft,
+                                rack::Model* model) {
+    if (sandsHasOwnedSubpanel(st, isOwnFamily, model))
+        return sandsRemoveSubpanel(hostW, st, isOwnFamily, model);
+    return sandsSpawnSubpanel(hostW, st, isOwnFamily, isLooseLeft, model);
 }
 
 // ── the step() cluster: poll + fast path + drag guard + one-shot consumer.

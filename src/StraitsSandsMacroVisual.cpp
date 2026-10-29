@@ -375,11 +375,61 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         delete paramMgr;
     }
 
+    // ── the StraitsBase wheel (task 84): Macro OWNS its subpanels ────────────
+    // StraitsLane models are base-spawned ONLY (unregistered — plugin.cpp);
+    // the base spawns them docked and owns their IDs forever. The same wheel,
+    // family-parameterised (ui/SandsSnap.hpp): the context menu spawns the
+    // send subpanel and the Distribution expander DOCKED (linked from birth —
+    // addModule runs updateExpanders), ADOPTS parked panels of those models
+    // instead of duplicating them, and untoggle removes them from the dock.
+    // The owned IDs live in the SAME runIds the snap cluster already walks.
+    redDot::SandsSnapHostState* snapState() {
+        auto* m = dynamic_cast<StraitsSandsMacroVisual*>(module);
+        return m ? &m->snap : nullptr;
+    }
+    // Macro's seating family — the step() cluster's fam, verbatim (BOTH right-
+    // side subpanels, the spec's "any order": the right chain is the order).
+    static bool macroSeatingFamily(rack::Module* x) {
+        return x && (x->model == modelSandsDistributionExpander
+                  || x->model == modelSandsMacroSendSubpanel);
+    }
+    // The adopt-eligibility test: the candidate's LEFT neighbour must be loose —
+    // null, or neither a Sands host visual nor a Sands subpanel (never steal
+    // from another host's dock — East seats its own Distribution expander —
+    // never break into a parked pair's middle; its loose head is the adoptable
+    // one).
+    static bool macroLooseLeft(rack::Module* l) {
+        return !l || (l->model != modelStraitsEastSandsVisual
+                   && l->model != modelStraitsSandsMacroVisual
+                   && l->model != modelSandsDistributionExpander
+                   && l->model != modelSandsMacroSendSubpanel);
+    }
+    bool hasSubpanel(Model* model) {
+        auto* st = snapState();
+        return st && redDot::sandsHasOwnedSubpanel(*st, macroSeatingFamily, model);
+    }
+    bool toggleSubpanel(Model* model) {
+        auto* st = snapState();
+        if (!st) return false;
+        const bool acted = redDot::sandsToggleSubpanel(this, *st, macroSeatingFamily, macroLooseLeft, model);
+        if (acted) st->needsResnap = true;   // the one-shot consumer re-seats the run
+        return acted;
+    }
+
     void appendContextMenu(Menu* menu) override {
         ModuleWidget::appendContextMenu(menu);
         auto* mod = dynamic_cast<StraitsSandsMacroVisual*>(module);
         if (!mod) return;
         // Spread interpolation target moved to the Monsoon module context menu.
+        // ── the StraitsBase wheel (task 84): subpanel dock toggles ──
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Subpanels"));
+        menu->addChild(createCheckMenuItem("SENDS", "",
+            [this]() { return hasSubpanel(modelSandsMacroSendSubpanel); },
+            [this]() { toggleSubpanel(modelSandsMacroSendSubpanel); }));
+        menu->addChild(createCheckMenuItem("DISTRIBUTION", "",
+            [this]() { return hasSubpanel(modelSandsDistributionExpander); },
+            [this]() { toggleSubpanel(modelSandsDistributionExpander); }));
     }
 
     Monsoon* getMonsoon() {

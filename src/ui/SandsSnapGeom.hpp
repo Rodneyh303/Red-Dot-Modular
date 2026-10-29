@@ -24,15 +24,24 @@
 // Rack's own drop resolution (setModulePosNearest/Squeeze) already seats drops
 // without overlap, and a Ctrl-forced overlap is deliberate.
 //
+// THE WINDOW IS TWO HP (task 84): the subpanels are 26 and 52 HP wide — a
+// browser drop aims the panel's GRAB POINT, and its left edge lands where the
+// panel happens to hang; one HP of window asked for a pixel-perfect drop with
+// the biggest panels in the plugin. Two HP of "clearly meant it docked" is the
+// drop-path backstop; the FIRST-CLASS dock path is the hosts' context menu
+// (the StraitsBase wheel — see ui/SandsSnap.hpp), which never depends on the
+// drop at all.
+//
 // Both coordinates are ROUNDED GRID UNITS (ModuleWidget::getGridBox), i.e. HP
 // columns and 380px rows — the same quantisation the linker compares, so "snap
 // to flush" and "linked by Rack" are the same predicate by construction.
 namespace redDot {
 
-// Snap window width in grid units. 1.0 = one HP (15 px): a drop within one HP
+// Snap window width in grid units. 2.0 = two HP (30 px): a drop within two HP
 // right of the run's seating edge snaps flush; anything wider is a deliberate
-// park and stays where the user put it.
-inline constexpr float SANDS_SNAP_SLOP = 1.0f;
+// park and stays where the user put it (the context menu is the first-class
+// dock path — the wheel, not the drop).
+inline constexpr float SANDS_SNAP_SLOP = 2.0f;
 
 inline bool sandsNearMiss(float candTop, float candLeft,
                           float expectedTop, float expectedRight,

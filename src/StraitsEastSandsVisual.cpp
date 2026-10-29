@@ -589,11 +589,55 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         delete paramMgr;
     }
 
+    // ── the StraitsBase wheel (task 84): East OWNS its subpanel ──────────────
+    // StraitsLane models are base-spawned ONLY (unregistered — plugin.cpp);
+    // the base spawns them docked and owns their IDs forever. The same wheel,
+    // family-parameterised (ui/SandsSnap.hpp): the context menu spawns the
+    // Distribution expander DOCKED (linked from birth — addModule runs
+    // updateExpanders), ADOPTS a parked panel of the model instead of
+    // duplicating it, and untoggle removes it from the dock. The owned IDs
+    // live in the SAME runIds the snap cluster already walks.
+    redDot::SandsSnapHostState* snapState() {
+        auto* m = dynamic_cast<StraitsEastSandsVisual*>(module);
+        return m ? &m->snap : nullptr;
+    }
+    // East's seating family — the step() cluster's fam, verbatim.
+    static bool eastSeatingFamily(rack::Module* x) {
+        return x && x->model == modelSandsDistributionExpander;
+    }
+    // The adopt-eligibility test: the candidate's LEFT neighbour must be loose —
+    // null, or neither a Sands host visual nor a Sands subpanel (never steal
+    // from another host's dock, never break into a parked pair's middle — its
+    // loose head is the adoptable one).
+    static bool eastLooseLeft(rack::Module* l) {
+        return !l || (l->model != modelStraitsEastSandsVisual
+                   && l->model != modelStraitsSandsMacroVisual
+                   && l->model != modelSandsDistributionExpander
+                   && l->model != modelSandsMacroSendSubpanel);
+    }
+    bool hasSubpanel(Model* model) {
+        auto* st = snapState();
+        return st && redDot::sandsHasOwnedSubpanel(*st, eastSeatingFamily, model);
+    }
+    bool toggleSubpanel(Model* model) {
+        auto* st = snapState();
+        if (!st) return false;
+        const bool acted = redDot::sandsToggleSubpanel(this, *st, eastSeatingFamily, eastLooseLeft, model);
+        if (acted) st->needsResnap = true;   // the one-shot consumer re-seats the run
+        return acted;
+    }
+
     void appendContextMenu(Menu* menu) override {
         ModuleWidget::appendContextMenu(menu);
         auto* mod = dynamic_cast<StraitsEastSandsVisual*>(module);
         if (!mod) return;
         // Probability-out config lives on Monsoon (single source of truth).
+        // ── the StraitsBase wheel (task 84): subpanel dock toggles ──
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Subpanels"));
+        menu->addChild(createCheckMenuItem("DISTRIBUTION", "",
+            [this]() { return hasSubpanel(modelSandsDistributionExpander); },
+            [this]() { toggleSubpanel(modelSandsDistributionExpander); }));
     }
 
     // Unified per-slot store <-> editor for LOR + spread. slot = voiceSlot (0 = V1/mono,
