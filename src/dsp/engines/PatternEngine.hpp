@@ -219,6 +219,12 @@ struct PatternEngine {
     //                                             DELEGATING voices only (own-slot
     //                                             voices are untouched by a Macro edit)
     //   rebuildWarpMirrorVoiceLane(v, lane)   — Sands (East) edit on (v,lane): 16 cells
+    //   rebuildWarpMirrorLane(lane)           — the distribution send-bus' Macro-sent
+    //                                             delta on that lane: ALL 16 voices x
+    //                                             lane (the cross-voice expander's
+    //                                             global delta reaches delegated AND
+    //                                             own cells — the one lane scope the
+    //                                             Macro-edit scope can't express)
     //   rebuildWarpMirrorCell(v, lane, step)  — the step-rate spread-refresh companion:
     //                                             1 cell, ~0.0006ms
     // The scopes are for CLEANLINESS (don't recompute untouched voices), NOT
@@ -226,6 +232,7 @@ struct PatternEngine {
     void rebuildWarpMirrorAll();
     void rebuildWarpMirrorVoice(int v);
     void rebuildWarpMirrorLaneDelegating(int lane);
+    void rebuildWarpMirrorLane(int lane);
     void rebuildWarpMirrorVoiceLane(int v, int lane);
     void rebuildWarpMirrorCell(int v, int lane, int step);
     // The shared cell compute (CONTRACT: warpBank_ != nullptr — every rebuild entry

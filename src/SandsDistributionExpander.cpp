@@ -2,6 +2,8 @@
 // header; see there for the spec mapping and the role/snapping design notes).
 #include "SandsDistributionExpander.hpp"
 
+#include <cmath>
+
 #include "ui/SvgPanelKit.hpp"        // Compose<ShapeQuery, Bind, Reload> + loadPanel/findNamed
 #include "ui/StoreBound.hpp"         // bindStoreKnob (the de-param law)
 #include "ui/Controls.hpp"           // Tag_Grey_Trim_Bar (the popup's knob face)
@@ -47,10 +49,98 @@ bool SandsDistributionExpander::resolveMacroRole() {
 
 void SandsDistributionExpander::process(const ProcessArgs&) {
     // The role is a TOPOLOGY answer — event-driven via the epoch memo above.
-    macroRole.store(resolveMacroRole(), std::memory_order_relaxed);
-    // (The mod-jack plumbing — the CROSS-VOICE warpSendDelta publication and the
-    // PER-VOICE own-mod rows — activates with the send-bus commit; until then the
-    // 42 configured inputs are the spec's harmless no-ops.)
+    const bool macro    = resolveMacroRole();
+    const bool wasMacro = macroRole.load(std::memory_order_relaxed);
+    macroRole.store(macro, std::memory_order_relaxed);
+    Monsoon* m = redDot::lookupMonsoon(this);
+    if (!m) {
+        // Isolated from the suite (dragged away / host gone): nothing to publish
+        // into — the heartbeat freezes and Monsoon's watchdog drops whatever this
+        // expander last published. Nothing latches, including isolation.
+        return;
+    }
+
+    // Role flip (drag between hosts / host vanished): drop the plane this expander
+    // stops owning and reset the publish bookkeeping — nothing stale crosses the
+    // flip (rare event; the wide mirror rebuild inside the clear is fine).
+    if (macro != wasMacro) {
+        if (wasMacro) m->clearDistGlobalDeltas();
+        else          m->clearDistOwnDeltas();
+        lastOwnSlot_ = -1;
+        for (int l = 0; l < SandsDistributionIds::LANES; ++l)
+            for (int p = 0; p < SandsDistributionIds::PARAMS_PER_LANE; ++p) {
+                lastGlob_[l][p] = 0.f;
+                lastOwn_[l][p]  = 0.f;
+            }
+    }
+
+    if (macro) publishMacroSends(m);
+    else       publishOwnMods(m);
+
+    // The heartbeat (Monsoon::process's watchdog stamp — bumped every block we
+    // live, on OUR role's slot: 0 = the cross-voice publisher, 1 = per-voice).
+    ++m->editor.warp.distPublishSeq[macro ? 0 : 1];
+}
+
+// ── the CROSS-VOICE publish (Macro host): the jacks' unit deltas land in
+// distGlobalDelta — the Macro-sent component every voice receives (delegated
+// cells fold it into Macro's default, own cells take it as the send). A changed
+// lane rebuilds the FULL lane (the Macro-edit scope can't express "delegated
+// AND own") — rebuildWarpMirrorLane, inline on this audio thread.
+void SandsDistributionExpander::publishMacroSends(Monsoon* m) {
+    namespace ID = SandsDistributionIds;   // a NAMESPACE alias — `using ID = <ns>` is ill-formed
+    for (int l = 0; l < ID::LANES; ++l) {
+        bool laneDirty = false;
+        for (int p = 0; p < ID::PARAMS_PER_LANE; ++p) {
+            const int   id = ID::warpModId(l, p);
+            const float d  = inputs[id].isConnected() ? inputs[id].getVoltage() * 0.1f : 0.f;
+            if (std::fabs(d - lastGlob_[l][p]) > kPubEps) {
+                m->setDistGlobalDelta(l, p, d);
+                lastGlob_[l][p] = d;
+                laneDirty = true;
+            }
+        }
+        if (laneDirty) m->engine.pe.rebuildWarpMirrorLane(l);
+    }
+}
+
+// ── the PER-VOICE publish (East host): the jacks modulate the SHARED-SELECTED
+// voice's own rows (distOwnDelta[slot]) — the spec's "read the selected voice
+// from the shared state, don't have their own independent voice-select". On a
+// voice switch the previously written row is zeroed (and its lanes rebuilt) so
+// the mod follows the selection without leaving anything stale behind.
+void SandsDistributionExpander::publishOwnMods(Monsoon* m) {
+    namespace ID = SandsDistributionIds;   // a NAMESPACE alias — `using ID = <ns>` is ill-formed
+    const int slot = m->engine.pe.displayedVoice().v;
+    if (slot != lastOwnSlot_) {
+        if (lastOwnSlot_ >= 0) {
+            for (int l = 0; l < ID::LANES; ++l) {
+                bool rowHad = false;
+                for (int p = 0; p < ID::PARAMS_PER_LANE; ++p) {
+                    if (m->editor.warp.distOwnDelta[lastOwnSlot_][l][p] != 0.f) {
+                        m->setDistOwnDelta(lastOwnSlot_, l, p, 0.f);
+                        rowHad = true;
+                    }
+                    lastOwn_[l][p] = 0.f;
+                }
+                if (rowHad) m->engine.pe.rebuildWarpMirrorVoiceLane(lastOwnSlot_, l);
+            }
+        }
+        lastOwnSlot_ = slot;
+    }
+    for (int l = 0; l < ID::LANES; ++l) {
+        bool laneDirty = false;
+        for (int p = 0; p < ID::PARAMS_PER_LANE; ++p) {
+            const int   id = ID::warpModId(l, p);
+            const float d  = inputs[id].isConnected() ? inputs[id].getVoltage() * 0.1f : 0.f;
+            if (std::fabs(d - lastOwn_[l][p]) > kPubEps) {
+                m->setDistOwnDelta(slot, l, p, d);
+                lastOwn_[l][p] = d;
+                laneDirty = true;
+            }
+        }
+        if (laneDirty) m->engine.pe.rebuildWarpMirrorVoiceLane(slot, l);
+    }
 }
 
 // ── widget ────────────────────────────────────────────────────────────────────
@@ -155,14 +245,47 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         return s && s->macroRole.load(std::memory_order_relaxed);
     }
 
-    // The role-aware WarpF the (lane) controls address, live per call.
+    // The role-aware WarpF the (lane) controls address, live per call — DISPLAY
+    // edition: store + the send-bus deltas, the same fold the engine runs at
+    // rebuild time (same table, same clamps), so the permanent editor breathes
+    // with the mods exactly as the cells do (the spec's "you WATCH the
+    // distribution get modulated live").
     WarpF curF(int lane) const {
         Monsoon* m = redDot::lookupMonsoon(module);
         if (!m) return WarpF{};
-        return macroRoleNow() ? m->getGlobalWarpF(lane) : m->getWarpF(slotLive(), lane);
+        const bool role = macroRoleNow();
+        WarpF f = role ? m->getGlobalWarpF(lane) : m->getWarpF(slotLive(), lane);
+        if (m->editor.warp.distDeltasActive) {
+            const float* glob = m->editor.warp.distGlobalDelta[lane];
+            const float* own  = distOwnRow_(m, role, lane);
+            const int kind = (int)f.index();
+            for (int p = 0; p <= 1; ++p) {
+                const float d = glob[p] + (own ? own[p] : 0.f);
+                if (d == 0.f) continue;
+                const dotModular::WarpParamSpec win = dotModular::warpParamSpec(kind, p);
+                if (!win.present) continue;                    // unused-param: the no-op
+                const double base = dotModular::warpParamValue(f, p);
+                f = dotModular::warpWithParam(f, p,
+                    std::clamp(base + (double)d, (double)win.lo, (double)win.hi));
+            }
+        }
+        return f;
     }
 
-    // The curve editor's composing-view inputs (the popup's cur* twins).
+    // The East-local delta row this voice's cells actually take: the per-voice
+    // expander's row for the shared slot, NULL on a delegated lane (delegated
+    // cells mirror Macro entirely — the resolver's law; the display must match
+    // the engine or the editor would show a modulation the cells never play).
+    const float* distOwnRow_(Monsoon* m, bool role, int lane) const {
+        if (role) return nullptr;
+        const int slot = slotLive();
+        if (m->engine.pe.warpDelegated_[slot][lane]) return nullptr;
+        return m->editor.warp.distOwnDelta[slot][lane];
+    }
+
+    // The curve editor's composing-view inputs (the popup's cur* twins) — the
+    // stage deltas ride the same way (the eval-side clamps in WarpStages catch
+    // overshoot in both the engine path and this display path).
     void curStages(int lane, double& tp, double& al, double& am) const {
         Monsoon* m = redDot::lookupMonsoon(module);
         const int slot = slotLive();
@@ -173,6 +296,13 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
                   : (m ? m->getWarpAtomLevel(slot, lane) : 0.5f);
         am = role ? (m ? m->getGlobalWarpAtomMass(lane) : 0.f)
                   : (m ? m->getWarpAtomMass(slot, lane) : 0.f);
+        if (m && m->editor.warp.distDeltasActive) {
+            const float* glob = m->editor.warp.distGlobalDelta[lane];
+            const float* own  = distOwnRow_(m, role, lane);
+            tp += glob[2] + (own ? own[2] : 0.f);
+            al += glob[3] + (own ? own[3] : 0.f);
+            am += glob[4] + (own ? own[4] : 0.f);
+        }
     }
 
     void refreshEditor(int lane) {
@@ -372,7 +502,6 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         ModuleWidget::step();
         kitStep();
         if (!module) return;
-        SandsDistributionExpander* s = mod();
         Monsoon* mm = redDot::lookupMonsoon(module);
         themeLight_ = (mm && mm->lightTheme);
 

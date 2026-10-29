@@ -501,11 +501,53 @@ inline int resolveDirItem(bool delegated, float ownDir, float macroGlobalDir) {
 // pins all four).
 namespace dotModular {
 
+// ── the distribution send-bus fold (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC) ─────
+// One cell's share of the expander-published unit deltas: p1/p2 re-mint the member
+// (window-clamped against warpParamSpec — the same table the knobs bind, so a fold
+// and a lock can never disagree; kinds without the param are a no-op, the spec's
+// unused-param ruling), tilt/ℓ/m ADD (the eval-side clamps in WarpStages catch
+// overshoot — the same "the STORE trusts its writer" split the authored params use),
+// w adds through the policy's clamp01. glob = the Macro-sent component (the
+// cross-voice expander); own = the East-local component (the per-voice expander's
+// row for THIS voice, nullptr on delegated cells — delegated cells mirror Macro
+// entirely, the resolver's standing law). The future Macro send subpanel's per-voice
+// amounts scale the glob term here (identity until that subpanel lands — the spec's
+// "per-voice scaling lives in the receiving side's send amounts").
+inline void foldDistDeltas(redDot::WarpCell& c, const WarpBank& b,
+                           const float* glob, const float* own) {
+    const int kind = (int)c.f.index();
+    for (int p = 0; p < WarpBank::DPARS; ++p) {
+        const float d = glob[p] + (own ? own[p] : 0.f);
+        if (d == 0.f) continue;
+        switch (p) {
+            case 0: case 1: {
+                const WarpParamSpec win = warpParamSpec(kind, p);
+                if (!win.present) break;                     // unused-param: harmless no-op
+                const double base = warpParamValue(c.f, p);
+                c.f = warpWithParam(c.f, p,
+                    std::clamp(base + (double)d, (double)win.lo, (double)win.hi));
+                break;
+            }
+            case 2: c.tilt      += d; break;
+            case 3: c.atomLevel += d; break;
+            case 4: c.atomMass  += d; break;
+            default: c.w = redDot::WarpPolicy::clamp01(c.w + d); break;   // 5 = WARP
+        }
+    }
+}
+
 // The one wiring: this voice's own slot is the base, Macro's global default is
 // the macroBase, the topology-resolved flag is the delegation. No warp
 // CV/send/tap plumbing exists yet, so every other Input stays absent — the
 // resolver's output is PURE SELECTION, bit-identical to the old branch. When
 // warp grows the spread send/tap shape, ONLY this wiring changes.
+// THE SEND-BUS EXCEPTION (the spec's decided design): the distribution deltas ride
+// IN the bank (WarpBank::distGlobalDelta/distOwnDelta), so this frozen 4-arg
+// signature needs no change — the fold happens HERE, gated on distDeltasActive so
+// a flag-off bank (the U2 oracle, every pinned bridge, every patch without the
+// expander) takes the exact old path, BIT-IDENTICAL. The Macro-sent component
+// reaches BOTH branches (it is Macro-side machinery); the own component reaches
+// only the voice's own cells.
 inline redDot::WarpCell resolveWarpCell(const WarpBank& b, int v, int lane, bool delegated) {
     redDot::SandsModifierResolver<redDot::WarpPolicy>::Inputs in;
     const int i = WarpBank::index(v, lane);
@@ -515,6 +557,9 @@ inline redDot::WarpCell resolveWarpCell(const WarpBank& b, int v, int lane, bool
                                     b.globalWarpTilt[lane], b.globalWarpAtomLevel[lane],
                                     b.globalWarpAtomMass[lane]};
     in.delegated = delegated;
+    if (b.distDeltasActive)
+        foldDistDeltas(delegated ? in.macroBase : in.base, b,
+                       b.distGlobalDelta[lane], delegated ? nullptr : b.distOwnDelta[v][lane]);
     return redDot::SandsModifierResolver<redDot::WarpPolicy>::effective(in);
 }
 

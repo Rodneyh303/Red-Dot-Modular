@@ -230,6 +230,17 @@ void PatternEngine::rebuildWarpMirrorLaneDelegating(int lane) {
     }
 }
 
+// The distribution send-bus lane scope (the declaration comment has the why): the
+// cross-voice expander's Macro-sent delta folds into delegated AND own cells, so
+// unlike the Macro-edit scope this one sweeps ALL 16 voices of the lane.
+void PatternEngine::rebuildWarpMirrorLane(int lane) {
+    if (!warpBank_) return;
+    const int l = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : 0;
+    for (int v = 0; v < 16; ++v)
+        for (int s = 0; s < 16; ++s)
+            warped_[v][l][s] = warpMixCell(v, l, s);
+}
+
 void PatternEngine::rebuildWarpMirrorVoiceLane(int v, int lane) {
     if (!warpBank_) return;
     const int vv = (v >= 0 && v < 16) ? v : 0;

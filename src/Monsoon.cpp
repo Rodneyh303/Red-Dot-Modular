@@ -764,6 +764,25 @@ void Monsoon::process(const ProcessArgs& args) {
     }
     warpUiScope_ = WarpUiScope::NONE;
 
+    // The distribution send-bus watchdog (see the state comment in Monsoon.hpp): the
+    // SandsDistributionExpander republishes its deltas + bumps its role's heartbeat
+    // every block; a frozen heartbeat with deltas live means that publisher is gone
+    // (deleted / bypassed) — drop its plane so nothing latches. Audio thread, same
+    // writer discipline as the rebuild switch above.
+    for (int pi = 0; pi < 2; ++pi) {
+        if (editor.warp.distPublishSeq[pi] != distWatchSeq_[pi]) {
+            distWatchSeq_[pi]  = editor.warp.distPublishSeq[pi];
+            distWatchIdle_[pi] = 0.f;
+        } else if (editor.warp.distDeltasActive) {
+            distWatchIdle_[pi] += args.sampleTime;
+            if (distWatchIdle_[pi] >= 0.5f) {
+                distWatchIdle_[pi] = 0.f;
+                if (pi == 0) clearDistGlobalDeltas();   // the cross-voice publisher died
+                else         clearDistOwnDeltas();      // the per-voice publisher died
+            }
+        }
+    }
+
     // --- Audio-rate Input Fetching ---
     InputState input;
     input.clk   = cachedClkConnected ? inputs[CLK_INPUT].getVoltage() : 0.f;

@@ -85,15 +85,14 @@ struct SandsDistributionExpander : rack::Module, redDot::SandsSnapGuest {
     // drag-end") and by onExpanderChange when the left link is not family.
     // Consumed by the HOST's step() poll/consumer (ui/SandsSnap.hpp).
 
-    // ── CROSS-VOICE publisher: per (lane, param) the MOD-jack CV unit delta the
-    // send bus carries (the spec's "distribution param mods BECOME per-voice
-    // sends"). Written by process() each control block from the live jacks —
-    // disconnect ⇒ 0 (the publishGlobal law: the publish overwrites, nothing
-    // latches). POST-form only: the distribution expander's jacks are raw unit
-    // CV (no Macro-side attenuverter), so there is no pre/post pair to carry —
-    // the per-voice scaling lives in the receiving side's send amounts.
-    // The East blend reads these through the expander-manager cache.
-    float warpSendDelta[SandsDistributionIds::LANES][SandsDistributionIds::PARAMS_PER_LANE] = {};
+    // ── CROSS-VOICE publisher state: the deltas themselves live in MONSOON's bank
+    // (WarpBank::distGlobalDelta / distOwnDelta — see the send-bus plumbing block
+    // below for why the bank owns them, not this module); here only the
+    // change-gate shadows (what THIS expander last published) + the bookkeeping.
+    // POST-form only: the distribution expander's jacks are raw unit CV (no
+    // Macro-side attenuverter), so there is no pre/post pair to carry — the
+    // per-voice scaling lives in the receiving side's send amounts (the Macro
+    // send subpanel, when it lands).
 
     // ── PER-VOICE bookkeeping: the last selected slot whose own-mod row this
     // expander wrote. On a voice-switch the previously written row is CLEARED
@@ -101,6 +100,24 @@ struct SandsDistributionExpander : rack::Module, redDot::SandsSnapGuest {
     // selects voice 4 — the mod addresses the shared selection, so it follows
     // it; nothing stale stays behind).
     int lastOwnSlot_ = -1;
+
+    // ── THE MOD-JACK PLUMBING (the send-bus commit — spec §"MACRO: distribution
+    // param mods BECOME per-voice sends"): process() publishes the 42 live jack
+    // deltas into Monsoon's bank planes (WarpBank::distGlobalDelta for the
+    // CROSS-VOICE role — every voice receives them, delegated or not;
+    // distOwnDelta[slot] rows for the PER-VOICE role — the shared-selected
+    // voice's own cells) and performs the matching scoped mirror rebuilds inline
+    // (audio thread — the same thread Monsoon::process rebuilds on, so warped_
+    // keeps its single writer). Publish is change-gated (kPubEps on param units —
+    // a steady CV costs nothing; the publish overwrites, nothing latches), the
+    // heartbeat bumps every block, and a frozen heartbeat is Monsoon's watchdog
+    // signal to drop the plane (module deleted/bypassed). CV scale: volts/10 —
+    // the CvTerm unit convention (±10 V = a full unit of the param).
+    static constexpr float kPubEps = 1e-4f;
+    float lastGlob_[SandsDistributionIds::LANES][SandsDistributionIds::PARAMS_PER_LANE] = {};
+    float lastOwn_[SandsDistributionIds::LANES][SandsDistributionIds::PARAMS_PER_LANE]  = {};
+    void publishMacroSends(Monsoon* m);
+    void publishOwnMods(Monsoon* m);
 
     SandsDistributionExpander() {
         config(0, 0, SandsDistributionIds::NUM_MOD_INPUTS, 0);

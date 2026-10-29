@@ -189,57 +189,17 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         refresh();
     }
 
-    // ── per-kind param plumbing (all capture-free — Rack-history-safe) ──────────────
+    // ── per-kind param plumbing — DELEGATED (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC):
+    // the ONE authority moved to WarpF.hpp (dsp) so the expander's mod-jack fold can
+    // share it; these stay as the UI's thin aliases (every existing call site keeps
+    // compiling, and there is still exactly one implementation to change).
+    using WarpParamSpec = dotModular::WarpParamSpec;
     static double paramValue(const WarpF& f, int which) {
-        return std::visit([which](const auto& d) -> double {
-            using T = std::decay_t<decltype(d)>;
-            if constexpr (std::is_same_v<T, TriangularWarp>)        return which == 0 ? d.mode : 0.0;
-            else if constexpr (std::is_same_v<T, PowerWarp>)        return which == 0 ? d.k : 0.0;
-            else if constexpr (std::is_same_v<T, ReversedPowerWarp>)return which == 0 ? d.theta : 0.0;
-            else if constexpr (std::is_same_v<T, KumaraswamyWarp>) {
-                // Read on the (mode, conc) authoring basis — conc:=a, mode solved closed-form.
-                double mode = 0.5, conc = 2.0;
-                KumaraswamyDistribution::modeConcFromAb(d.a, d.b, mode, conc);
-                return which == 0 ? mode : conc;
-            }
-            else if constexpr (std::is_same_v<T, LogitNormalWarp>)  return which == 0 ? d.mu : d.sigma;
-            else if constexpr (std::is_same_v<T, LogitSigmoidWarp>) return which == 0 ? d.a : d.b;
-            else if constexpr (std::is_same_v<T, MobiusWarp>)       return which == 0 ? d.a : 0.0;
-            else if constexpr (std::is_same_v<T, TruncNormalWarp>)  return which == 0 ? d.mu : d.sigma;
-            else return 0.0;   // IdentityWarp / DrawnWarp: no parametric params
-        }, f);
+        return dotModular::warpParamValue(f, which);
     }
     static WarpF withParam(const WarpF& f, int which, double v, WarpBank& bank) {
-        return std::visit([&f, &bank, which, v](const auto& d) -> WarpF {
-            using T = std::decay_t<decltype(d)>;
-            if constexpr (std::is_same_v<T, TriangularWarp>)
-                return bank.fromDistribution(TriangularDistribution(which == 0 ? v : d.mode));
-            else if constexpr (std::is_same_v<T, PowerWarp>)
-                return bank.fromDistribution(PowerDistribution(which == 0 ? v : d.k));
-            else if constexpr (std::is_same_v<T, ReversedPowerWarp>)
-                return bank.fromDistribution(ReversedPowerDistribution(which == 0 ? v : d.theta));
-            else if constexpr (std::is_same_v<T, KumaraswamyWarp>) {
-                // Author on (mode, conc): b is SOLVED to hold the mode (exact orthogonality).
-                double mode = 0.5, conc = 2.0;
-                KumaraswamyDistribution::modeConcFromAb(d.a, d.b, mode, conc);
-                if (which == 0) mode = v; else conc = v;
-                double a, b;
-                KumaraswamyDistribution::abFromModeConc(mode, conc, a, b);
-                return bank.fromDistribution(KumaraswamyDistribution(a, b));
-            }
-            else if constexpr (std::is_same_v<T, LogitNormalWarp>)
-                return bank.fromDistribution(LogitNormalDistribution(which == 0 ? v : d.mu,
-                                                                    which == 1 ? v : d.sigma));
-            else if constexpr (std::is_same_v<T, LogitSigmoidWarp>)
-                return bank.fromDistribution(LogitSigmoidDistribution(which == 0 ? v : d.a,
-                                                                     which == 1 ? v : d.b));
-            else if constexpr (std::is_same_v<T, MobiusWarp>)
-                return bank.fromDistribution(MobiusDistribution(which == 0 ? v : d.a));
-            else if constexpr (std::is_same_v<T, TruncNormalWarp>)
-                return bank.fromDistribution(TruncatedNormalDistribution(which == 0 ? v : d.mu,
-                                                                        which == 1 ? v : d.sigma));
-            else { (void)d; (void)bank; return f; }   // Identity / Drawn: unreachable (knobs hidden)
-        }, f);
+        (void)bank;   // the dsp re-mint lowers through lowerWarp — no pool touch
+        return dotModular::warpWithParam(f, which, v);
     }
     // The authored Distribution for DISPLAY: identity shows the diagonal (a default
     // PchipDistribution IS the (0,0)-(1,1) line); parametrics re-construct via .dist().
@@ -374,41 +334,12 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         }
     }
 
-    // ── the per-kind p1/p2 spec — THE ONE AUTHORITY ────────────────────────────
-    // The popup's editor knobs AND the SandsDistributionExpander's permanent
-    // knobs both bind from this table (the expander reads the windows + the
-    // present flag live per kind; "modulation sent to a param a distribution
-    // doesn't use is HARMLESS" — the expander locks the control instead of
-    // hiding it, but the TABLE stays single-sourced here).
-    // { label, lo, hi, def } per param; present=false = the kind has no such param.
-    struct WarpParamSpec { const char* label; float lo, hi, def; bool present; };
+    // ── the per-kind p1/p2 spec — DELEGATED (the authority moved to WarpF.hpp) ─
+    // The table's one home is now the dsp layer (the expander's mod-jack fold
+    // window-clamps against the SAME table the knobs bind — a fold and a lock can
+    // never disagree about what a kind owns). This stays as the popup's alias.
     static WarpParamSpec warpParamSpec(int kind, int which) {
-        static const WarpParamSpec s1[] = {
-            /* identity    */ { "",        0.f,  1.f, 0.f,   false },
-            /* triangular  */ { "mode",    0.f,  1.f, 0.5f,  true  },
-            /* power       */ { "k",       0.2f, 5.f, 2.f,   true  },
-            /* kumaraswamy */ { "mode", 0.02f, 0.98f, 0.5f,  true  },
-            /* logit-norm  */ { "mu",     -3.f,  3.f, 0.f,   true  },
-            /* logit-sig   */ { "a",      0.25f, 4.f, 1.5f,  true  },
-            /* mobius      */ { "a",      0.25f, 4.f, 1.5f,  true  },
-            /* trunc-norm  */ { "mu",    -0.5f, 1.5f, 0.5f,  true  },
-            /* rev-power   */ { "theta",  0.2f, 5.f, 2.f,   true  },
-            /* drawn       */ { "",        0.f,  1.f, 0.f,   false },
-        };
-        static const WarpParamSpec s2[] = {
-            /* identity    */ { "",        0.f,  1.f, 0.f,   false },
-            /* triangular  */ { "",        0.f,  1.f, 0.f,   false },
-            /* power       */ { "",        0.f,  1.f, 0.f,   false },
-            /* kumaraswamy */ { "conc",    1.f,  5.f, 2.f,   true  },   // CONC_MAX=5 (load-bearing)
-            /* logit-norm  */ { "sigma",  0.2f,  3.f, 1.f,   true  },
-            /* logit-sig   */ { "b",      -3.f,  3.f, 0.f,   true  },
-            /* mobius      */ { "",        0.f,  1.f, 0.f,   false },
-            /* trunc-norm  */ { "sigma", 0.05f, 1.f, 0.2f,  true  },
-            /* rev-power   */ { "",        0.f,  1.f, 0.f,   false },
-            /* drawn       */ { "",        0.f,  1.f, 0.f,   false },
-        };
-        const int k = kind < 0 ? 0 : (kind > 9 ? 9 : kind);
-        return (which == 0 ? s1 : s2)[k];
+        return dotModular::warpParamSpec(kind, which);
     }
 
     void refreshParams(const WarpF& f) {

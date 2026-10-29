@@ -1010,6 +1010,57 @@ struct Monsoon : Module {
         }
     }
 
+    // ── the distribution send-bus planes (WarpBank::distGlobalDelta/distOwnDelta):
+    // AUDIO-THREAD-ONLY writers (the SandsDistributionExpander's process(); the UI
+    // thread never touches these — the single-writer law that lets the rebuild
+    // happen inline). Setters also raise the fold gate; the clears re-scan and
+    // lower it when BOTH planes land empty (rare events — role flips, the
+    // watchdog, a voice-switch leaving nothing behind). The clears rebuild the
+    // mirror inline (audio thread — the same thread Monsoon::process rebuilds on).
+    void setDistGlobalDelta(int lane, int p, float x) {
+        if (lane < 0 || lane >= 7 || p < 0 || p >= dotModular::WarpBank::DPARS) return;
+        editor.warp.distGlobalDelta[lane][p] = x;
+        if (x != 0.f) editor.warp.distDeltasActive = true;
+    }
+    void setDistOwnDelta(int v, int lane, int p, float x) {
+        if (v < 0 || v >= 16 || lane < 0 || lane >= 7 || p < 0 || p >= dotModular::WarpBank::DPARS) return;
+        editor.warp.distOwnDelta[v][lane][p] = x;
+        if (x != 0.f) editor.warp.distDeltasActive = true;
+    }
+    void recomputeDistDeltasActive() {
+        bool any = false;
+        for (int l = 0; l < 7 && !any; ++l)
+            for (int p = 0; p < dotModular::WarpBank::DPARS && !any; ++p)
+                any = editor.warp.distGlobalDelta[l][p] != 0.f;
+        for (int v = 0; v < 16 && !any; ++v)
+            for (int l = 0; l < 7 && !any; ++l)
+                for (int p = 0; p < dotModular::WarpBank::DPARS && !any; ++p)
+                    any = editor.warp.distOwnDelta[v][l][p] != 0.f;
+        editor.warp.distDeltasActive = any;
+    }
+    void clearDistGlobalDeltas() {
+        for (int l = 0; l < 7; ++l)
+            for (int p = 0; p < dotModular::WarpBank::DPARS; ++p)
+                editor.warp.distGlobalDelta[l][p] = 0.f;
+        engine.pe.rebuildWarpMirrorAll();   // rare event (death / role flip) — the wide scope
+        recomputeDistDeltasActive();
+    }
+    void clearDistOwnDeltas() {
+        for (int v = 0; v < 16; ++v)
+            for (int l = 0; l < 7; ++l)
+                for (int p = 0; p < dotModular::WarpBank::DPARS; ++p)
+                    editor.warp.distOwnDelta[v][l][p] = 0.f;
+        engine.pe.rebuildWarpMirrorAll();
+        recomputeDistDeltasActive();
+    }
+    // The watchdog state (consumed in Monsoon::process): per-publisher heartbeat
+    // shadows + idle accumulators. The expander bumps editor.warp.distPublishSeq[role]
+    // every block; a 0.5 s freeze with deltas live ⟹ the publisher is gone (deleted /
+    // bypassed) ⟹ drop its plane — a vanished expander must not leave deltas latched
+    // (the publish-overwrites law, extended to cover death).
+    uint32_t distWatchSeq_[2]  = {0, 0};
+    float    distWatchIdle_[2] = {0.f, 0.f};
+
     // Spread target mode (0=Anchor V1, 1=Follow CA) per poly lane, UNIFIED PL_* order
     // (0=MEL,1=OCT,2=QMIX,3=REST,4=ACC,5=VAR,6=LEG — the menu indexes SandsLaneNames::
     // EDITOR_LONG, which is this order; pe.spreadTargetMode mirrors it 1:1).
