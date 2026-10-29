@@ -567,9 +567,14 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         kitStep();   // kit: dev-mode live-reload poll (no-op unless enabled)
         // ── the Sands subpanel snap cluster (ui/SandsSnap.hpp): 0.1 s adjacency
         // poll + the event fast path + the one-shot consumer. The family run is
-        // the Distribution expander (the send subpanel joins when it lands).
+        // BOTH right-side subpanels (the spec's "any order" — the right chain IS
+        // the canonical order): the Distribution expander AND the Macro send
+        // subpanel.
         if (auto* m = dynamic_cast<StraitsSandsMacroVisual*>(module)) {
-            auto fam = [](rack::Module* x) { return x && x->model == modelSandsDistributionExpander; };
+            auto fam = [](rack::Module* x) {
+                return x && (x->model == modelSandsDistributionExpander
+                          || x->model == modelSandsMacroSendSubpanel);
+            };
             auto take = [](rack::Module* x) -> bool {
                 auto* g = dynamic_cast<redDot::SandsSnapGuest*>(x);
                 return g && g->needsResnap.exchange(false, std::memory_order_relaxed);

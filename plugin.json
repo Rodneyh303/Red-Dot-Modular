@@ -215,6 +215,16 @@
       ]
     },
     {
+      "slug": "SandsMacroSendSubpanel",
+      "name": "Sands Macro Send Subpanel",
+      "description": "The Macro send subpanel \u2014 every Macro\u2192voice send in one snapped panel: the per-voice mix-in sends and PRE/POST taps, plus the distribution-param send amounts. Snaps right of the Macro visual.",
+      "tags": [
+        "Expander",
+        "Digital",
+        "Random"
+      ]
+    },
+    {
       "slug": "Lantern",
       "name": "Lantern",
       "description": "Read-only note-output visualiser for Monsoon \u2014 16-lane display of notes, ties, legato and accents",

@@ -482,9 +482,21 @@ struct WarpBank {
     //     latched; the publish overwrites, nothing latches, including death).
     //   distDeltasActive — the fold's single gate, maintained by Monsoon's set/clear
     //     accessors (true on any nonzero write; recomputed on every clear).
+    //   distSend[v][lane][p] — the MACRO SEND SUBPANEL's per-voice send amounts (the
+    //     spec's "per-voice scaling lives in the receiving side's send amounts"): how
+    //     much of the Macro-sent global component voice v's (lane,p) cell receives.
+    //     Authored store state (the subpanel's store-backed knobs write it; persisted
+    //     via the DistSend key below) — NOT a CV plane, no watchdog. Default 1.0 =
+    //     IDENTITY: the fold's pre-subpanel behaviour is preserved bit-exactly for
+    //     every patch that never touches the subpanel (x·1.0f is exact IEEE, and a
+    //     patch without the subpanel never writes the store). 0 = the voice receives
+    //     none of the global distribution mod. The OWN component is NOT scaled — it
+    //     is already per-voice by construction (the receiving side's own expander).
     static constexpr int DPARS = 6;
+    static constexpr float kDistSendDefault = 1.0f;
     float    distGlobalDelta[LANES][DPARS]          = {};
     float    distOwnDelta[VOICES][LANES][DPARS]     = {};
+    float    distSend[VOICES][LANES][DPARS];
     uint32_t distPublishSeq[2]                      = {};
     bool     distDeltasActive                       = false;
 
@@ -498,6 +510,12 @@ struct WarpBank {
     WarpBank() {
         for (int i = 0; i < N; ++i)     warpAtomLevel[i]     = (float)warpStages::kAtomLevelDefault;
         for (int l = 0; l < LANES; ++l) globalWarpAtomLevel[l] = (float)warpStages::kAtomLevelDefault;
+        // the send amounts' IDENTITY default (see the distSend block above): every
+        // construction path — Monsoon's editor slice, parse's reset, the tests —
+        // starts at full send, so the fold is the pre-subpanel fold until authored.
+        for (int v = 0; v < VOICES; ++v)
+            for (int l = 0; l < LANES; ++l)
+                for (int p = 0; p < DPARS; ++p) distSend[v][l][p] = kDistSendDefault;
     }
 
     // The bank's 2-arg forwarder form: threads THIS bank's pool for drawn slots.
@@ -612,6 +630,15 @@ struct WarpBank {
         json_t* gm = json_array();
         for (int l = 0; l < LANES; ++l) json_array_append_new(gm, json_real((double)b.globalWarpAtomMass[l]));
         json_object_set_new(root, (pfx + "GlobalWarpAtomMass").c_str(), gm);
+        // THE MACRO SEND SUBPANEL's per-voice send amounts (additive, the same
+        // missing-key-⟹-defaults contract): flat VOICES×LANES×DPARS, index
+        // (v*LANES + lane)*DPARS + p — the bank's own stride convention.
+        json_t* js = json_array();
+        for (int v = 0; v < VOICES; ++v)
+            for (int l = 0; l < LANES; ++l)
+                for (int p = 0; p < DPARS; ++p)
+                    json_array_append_new(js, json_real((double)b.distSend[v][l][p]));
+        json_object_set_new(root, (pfx + "DistSend").c_str(), js);
     }
 
     // Load: RESETS the bank to defaults first (deterministic — never merges into stale
@@ -718,6 +745,22 @@ struct WarpBank {
         loadGlobalStage("GlobalWarpTilt", out.globalWarpTilt);
         loadGlobalStage("GlobalWarpAtomLevel", out.globalWarpAtomLevel);
         loadGlobalStage("GlobalWarpAtomMass", out.globalWarpAtomMass);
+        // DistSend (additive): short array keeps the identity tail; absent key leaves
+        // the ctor's 1.0 fill. Does NOT participate in `full` (the two 112-banks'
+        // contract — additive keys never change an old patch's verdict).
+        if (json_t* js = json_object_get(root, (pfx + "DistSend").c_str())) {
+            if (json_is_array(js)) {
+                const size_t n = json_array_size(js);
+                size_t i = 0;
+                for (int v = 0; v < VOICES; ++v)
+                    for (int l = 0; l < LANES; ++l)
+                        for (int p = 0; p < DPARS; ++p, ++i) {
+                            if (i >= n) break;
+                            json_t* jv = json_array_get(js, i);
+                            if (json_is_number(jv)) out.distSend[v][l][p] = (float)json_number_value(jv);
+                        }
+            }
+        }
         return full;
     }
 

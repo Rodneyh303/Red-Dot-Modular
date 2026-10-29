@@ -510,14 +510,17 @@ namespace dotModular {
 // w adds through the policy's clamp01. glob = the Macro-sent component (the
 // cross-voice expander); own = the East-local component (the per-voice expander's
 // row for THIS voice, nullptr on delegated cells — delegated cells mirror Macro
-// entirely, the resolver's standing law). The future Macro send subpanel's per-voice
-// amounts scale the glob term here (identity until that subpanel lands — the spec's
-// "per-voice scaling lives in the receiving side's send amounts").
+// entirely, the resolver's standing law). send = the MACRO SEND SUBPANEL's per-voice
+// amounts (WarpBank::distSend[v][lane], nullptr = all-identity): the glob term scales
+// by it BEFORE the add — the spec's "per-voice scaling lives in the receiving side's
+// send amounts". x·1.0f is exact IEEE, so the identity default is bit-exactly the
+// pre-subpanel fold (the pinned banks all run identity sends).
 inline void foldDistDeltas(redDot::WarpCell& c, const WarpBank& b,
-                           const float* glob, const float* own) {
+                           const float* glob, const float* own, const float* send) {
     const int kind = (int)c.f.index();
     for (int p = 0; p < WarpBank::DPARS; ++p) {
-        const float d = glob[p] + (own ? own[p] : 0.f);
+        const float d = glob[p] * (send ? send[p] : WarpBank::kDistSendDefault)
+                      + (own ? own[p] : 0.f);
         if (d == 0.f) continue;
         switch (p) {
             case 0: case 1: {
@@ -559,7 +562,8 @@ inline redDot::WarpCell resolveWarpCell(const WarpBank& b, int v, int lane, bool
     in.delegated = delegated;
     if (b.distDeltasActive)
         foldDistDeltas(delegated ? in.macroBase : in.base, b,
-                       b.distGlobalDelta[lane], delegated ? nullptr : b.distOwnDelta[v][lane]);
+                       b.distGlobalDelta[lane], delegated ? nullptr : b.distOwnDelta[v][lane],
+                       b.distSend[v][lane]);   // the send subpanel's per-voice amounts (identity default)
     return redDot::SandsModifierResolver<redDot::WarpPolicy>::effective(in);
 }
 

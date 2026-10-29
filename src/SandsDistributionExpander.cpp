@@ -21,10 +21,13 @@ using namespace rack;
 
 bool SandsDistributionExpander::isFamilyModel(const rack::Model* m) {
     // The Sands subpanel family (hop-through for the role walk and the left-link
-    // check; the Macro send subpanel joins this set when it lands).
+    // check; the Macro send subpanel JOINS as promised — a Distribution expander
+    // seated right of the send subpanel ([Macro][Send][Dist]) walks LEFT through
+    // it to find the Macro visual, and the seams/marks read the whole run).
     return m == modelStraitsSandsMacroVisual
         || m == modelStraitsEastSandsVisual
-        || m == modelSandsDistributionExpander;
+        || m == modelSandsDistributionExpander
+        || m == modelSandsMacroSendSubpanel;
 }
 
 bool SandsDistributionExpander::resolveMacroRole() {
@@ -258,9 +261,15 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         if (m->editor.warp.distDeltasActive) {
             const float* glob = m->editor.warp.distGlobalDelta[lane];
             const float* own  = distOwnRow_(m, role, lane);
+            // THE SEND SUBPANEL's per-voice amounts (per-voice role only): the
+            // engine folds glob * distSend[v][lane] on BOTH branches of voice v,
+            // so the display scales the same way. The Macro role shows the SHARED
+            // published structure (pre-send) — there is no single receiving voice;
+            // the per-voice amounts are the send subpanel's knobs' business.
+            const float* sendRow = role ? nullptr : m->editor.warp.distSend[slotLive()][lane];
             const int kind = (int)f.index();
             for (int p = 0; p <= 1; ++p) {
-                const float d = glob[p] + (own ? own[p] : 0.f);
+                const float d = glob[p] * (sendRow ? sendRow[p] : 1.f) + (own ? own[p] : 0.f);
                 if (d == 0.f) continue;
                 const dotModular::WarpParamSpec win = dotModular::warpParamSpec(kind, p);
                 if (!win.present) continue;                    // unused-param: the no-op
@@ -299,9 +308,14 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         if (m && m->editor.warp.distDeltasActive) {
             const float* glob = m->editor.warp.distGlobalDelta[lane];
             const float* own  = distOwnRow_(m, role, lane);
-            tp += glob[2] + (own ? own[2] : 0.f);
-            al += glob[3] + (own ? own[3] : 0.f);
-            am += glob[4] + (own ? own[4] : 0.f);
+            // the send subpanel's per-voice amounts, per-voice role only (see curF)
+            const float* sendRow = role ? nullptr : m->editor.warp.distSend[slot][lane];
+            const float g2 = glob[2] * (sendRow ? sendRow[2] : 1.f);
+            const float g3 = glob[3] * (sendRow ? sendRow[3] : 1.f);
+            const float g4 = glob[4] * (sendRow ? sendRow[4] : 1.f);
+            tp += g2 + (own ? own[2] : 0.f);
+            al += g3 + (own ? own[3] : 0.f);
+            am += g4 + (own ? own[4] : 0.f);
         }
     }
 

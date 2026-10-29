@@ -66,6 +66,9 @@ inline bool isSuiteChainModel(const rack::Model* m) {
         || m == modelSandsDistributionExpander  // the Sands subpanel (hop-through — a foreign
                                                 //   boundary here would un-bind everything past it;
                                                 //   the CONNECTION_UI_MODEL §4 bug class)
+        || m == modelSandsMacroSendSubpanel     // the Macro send subpanel (hop-through — the
+                                                //   Distribution expander may sit RIGHT of it:
+                                                //   [Macro][Send][Dist] must resolve CROSS-VOICE)
         || m == modelLantern       // observer — hop-only (never a boundary, never a host)
         || m == modelIntertropical;// arranger/observer (Model C: reads via findMonsoonEitherSide/
                                    //   getHost, has no claim slot). Was MISSING → a standalone

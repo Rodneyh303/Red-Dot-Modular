@@ -17,6 +17,13 @@
 //      identity/drawn are the spec's harmless no-op.
 //   6. TILT EVAL CLAMP: an overshooting tilt delta composes exactly like the
 //      eval-side clampTilt value (engine and display share the clamp).
+//   7. SEND IDENTITY: the bank's distSend defaults (1.0) leave the fold
+//      BIT-IDENTICAL to the pre-subpanel fold — including the nullptr-send form.
+//   8. SEND SCALING: the Macro send subpanel's per-voice amounts scale the glob
+//      term (0.5 halves it, 0 mutes it, the OWN term is never scaled, the scaling
+//      is per-voice, and the DELEGATED branch scales too).
+//   9. SEND PERSISTENCE: the DistSend key round-trips; a bank without the key
+//      loads at the identity default.
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -179,6 +186,92 @@ int main() {
             if (b.warpedValue(V0, L, i / 8.0, false) != hand.warpedValue(V0, L, i / 8.0, false))
                 same = false;
         check(same, "overshooting tilt delta composes bit-exact as the eval-side clamp");
+    }
+
+    // 7. SEND IDENTITY: the default amounts ARE the pre-subpanel fold ─────────
+    {
+        WarpBank b = ref;
+        b.distDeltasActive = true;
+        b.distGlobalDelta[L][2] = 0.2f;
+        b.distGlobalDelta[L][4] = 0.3f;
+        b.distOwnDelta[V0][L][2] = -0.05f;
+        // fresh-bank defaults: distSend all 1.0 (the ctor fill)
+        bool idDefault = true;
+        for (int v = 0; v < 16; ++v)
+            for (int l = 0; l < WarpBank::LANES; ++l)
+                for (int p = 0; p < WarpBank::DPARS; ++p)
+                    if (b.distSend[v][l][p] != WarpBank::kDistSendDefault) idDefault = false;
+        check(idDefault, "every construction path starts at the identity send amounts");
+        // the identity sends fold BIT-IDENTICALLY to the pre-subpanel arithmetic
+        // (d = glob + own, x·1.0f is exact IEEE) — both branches, hand-computed
+        const auto ownCell = dotModular::resolveWarpCell(b, V0, L, false);
+        checkBits(ownCell.tilt, 0.1f + (0.2f + -0.05f),
+                  "identity sends == the pre-subpanel own-branch fold");
+        const auto delCell = dotModular::resolveWarpCell(b, V0, L, true);
+        checkBits(delCell.tilt, ref.globalWarpTilt[L] + (0.2f + 0.f),
+                  "identity sends == the pre-subpanel delegated-branch fold");
+        // the direct fold: nullptr send == a pointer at 1.0s (bit-exact)
+        const auto cellNull = dotModular::resolveWarpCell(b, V0, L, false);
+        const float ones[WarpBank::DPARS] = {1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
+        WarpBank b2 = b;
+        for (int p = 0; p < WarpBank::DPARS; ++p) b2.distSend[V0][L][p] = ones[p];
+        const auto cellOnes = dotModular::resolveWarpCell(b2, V0, L, false);
+        checkBits(cellNull.tilt, cellOnes.tilt, "nullptr send row == all-ones row (tilt)");
+        checkBits(cellNull.atomMass, cellOnes.atomMass, "nullptr send row == all-ones row (mass)");
+    }
+
+    // 8. SEND SCALING: the subpanel's amounts scale the glob term, per voice ──
+    {
+        WarpBank b = ref;
+        b.distDeltasActive = true;
+        b.distGlobalDelta[L][2] = 0.2f;               // the Macro-sent tilt
+        b.distOwnDelta[V0][L][4] = 0.1f;              // an East-local mass — NEVER scaled
+        // half send: the global tilt arrives as glob*0.5, the own term untouched
+        b.distSend[V0][L][2] = 0.5f;
+        const auto half = dotModular::resolveWarpCell(b, V0, L, false);
+        const float wantTilt = 0.1f + (0.2f * 0.5f + 0.f) + 0.f;
+        checkBits(half.tilt, wantTilt, "half send scales ONLY the glob term (own untouched)");
+        // zero send on the tilt axis: the global tilt vanishes for THIS voice…
+        b.distSend[V0][L][2] = 0.f;
+        const auto muted = dotModular::resolveWarpCell(b, V0, L, false);
+        checkBits(muted.tilt, 0.1f, "zero send mutes the global delta for that voice");
+        // …and ONLY for that voice (the sibling still takes the full glob)
+        const auto sib = dotModular::resolveWarpCell(b, V1, L, false);
+        checkBits(sib.tilt, 0.f + (0.2f * 1.0f + 0.f), "the sibling voice's send is unaffected");
+        // the delegated branch scales too (the voice's amount shapes what its
+        // cell receives even when the lane mirrors Macro's default)
+        WarpBank d = ref;
+        d.distDeltasActive = true;
+        d.distGlobalDelta[L][2] = 0.2f;
+        d.distSend[V0][L][2] = 0.25f;
+        const auto del = dotModular::resolveWarpCell(d, V0, L, true);
+        checkBits(del.tilt, ref.globalWarpTilt[L] + (0.2f * 0.25f + 0.f),
+                  "the delegated branch folds the SCALED global delta");
+    }
+
+    // 9. SEND PERSISTENCE: the DistSend key round-trips; missing key ⟹ identity
+    {
+        WarpBank src = ref;
+        src.distSend[V0][L][3] = 0.25f;
+        src.distSend[V1][L][5] = 0.f;
+        json_t* root = json_object();
+        WarpBank::serialize(src, root, "editor");
+        WarpBank dst;
+        WarpBank::parse(root, "editor", dst);
+        json_decref(root);
+        bool rt = dst.distSend[V0][L][3] == 0.25f && dst.distSend[V1][L][5] == 0.f
+               && dst.distSend[V0][L][2] == WarpBank::kDistSendDefault;
+        check(rt, "the DistSend key round-trips (authored amounts survive)");
+        json_t* bare = json_object();          // a pre-subpanel patch: no key at all
+        WarpBank fresh;
+        WarpBank::parse(bare, "editor", fresh);
+        json_decref(bare);
+        bool idAll = true;
+        for (int v = 0; v < WarpBank::VOICES; ++v)
+            for (int l = 0; l < WarpBank::LANES; ++l)
+                for (int p = 0; p < WarpBank::DPARS; ++p)
+                    if (fresh.distSend[v][l][p] != WarpBank::kDistSendDefault) idAll = false;
+        check(idAll, "a patch without the DistSend key loads at the identity default");
     }
 
     if (g_fail == 0) { std::printf("ALL PASS (%d checks)\n", g_pass); return 0; }

@@ -1061,6 +1061,22 @@ struct Monsoon : Module {
     uint32_t distWatchSeq_[2]  = {0, 0};
     float    distWatchIdle_[2] = {0.f, 0.f};
 
+    // ── the Macro send subpanel's per-voice send amounts (WarpBank::distSend):
+    // UI-THREAD writer (the subpanel's store-backed knobs — the store-trusts-its-writer
+    // split, same as every authored param); the fold reads it on the audio thread at
+    // rebuild time. A write only matters when deltas are live, and the changed output
+    // is the mirrored warp cell — so the KNOB SETTER pairs this with
+    // requestWarpRebuildVoiceLane(slot, lane) (the pending-scope mechanism, consumed
+    // by Monsoon::process on the audio thread). Default 1.0 = identity (the bank ctor).
+    float getDistSend(int v, int lane, int p) const {
+        return (v >= 0 && v < 16 && lane >= 0 && lane < 7 && p >= 0 && p < dotModular::WarpBank::DPARS)
+            ? editor.warp.distSend[v][lane][p] : dotModular::WarpBank::kDistSendDefault;
+    }
+    void  setDistSend(int v, int lane, int p, float x) {
+        if (v < 0 || v >= 16 || lane < 0 || lane >= 7 || p < 0 || p >= dotModular::WarpBank::DPARS) return;
+        editor.warp.distSend[v][lane][p] = x;
+    }
+
     // Spread target mode (0=Anchor V1, 1=Follow CA) per poly lane, UNIFIED PL_* order
     // (0=MEL,1=OCT,2=QMIX,3=REST,4=ACC,5=VAR,6=LEG — the menu indexes SandsLaneNames::
     // EDITOR_LONG, which is this order; pe.spreadTargetMode mirrors it 1:1).
@@ -1403,6 +1419,7 @@ extern Model* modelMonsoonSandsVisualExpander;  // Mono visual DNA editor (voice
 extern Model* modelStraitsEastSandsVisual;      // East visual DNA editor (voices 2-8)
 extern Model* modelStraitsSandsMacroVisual;     // Macro visual DNA editor (global)
 extern Model* modelSandsDistributionExpander;   // the distribution sub-expander (dual role by host)
+extern Model* modelSandsMacroSendSubpanel;      // the Macro send subpanel (every Macro→East send, one snapped panel)
 extern Model* modelIntertropical;               // Intertropical scene sequencer
 
 // ─── Change Alley pin matrix expander ────────────────────────────────────────

@@ -146,6 +146,20 @@ MODULES = {
             "light_connect": 1,
         },
     },
+    "sands_macro_send": {
+        # SandsMacroSendSubpanel (the spec's §"MACRO PER-VOICE SENDS → their own
+        # subpanel" — the module opts in). 85 anchors = 7 lanes x (4 mix-in send
+        # knobs + 2 PRE/POST tap trimpots + 6 distribution-param send amounts)
+        # + the connect mark. All store-backed (the de-param law — no Rack params).
+        "widget": ["src/SandsMacroSendSubpanel.cpp"],
+        "panel": "res/panels/SandsMacroSend_dark.svg",
+        "counts": {
+            "param_msend_": 28,     # 7 lanes x 4 mix-in items (editor.macroSend)
+            "param_mtap_": 14,      # 7 lanes x 2 tap kinds (editor.macroTap)
+            "param_mdist_": 42,     # 7 lanes x 6 distribution params (editor.warp.distSend)
+            "light_connect": 1,
+        },
+    },
     # NOTE: intertropical is bind-by-name (param_%d / output_%d via rack::string::f, light_connect via
     # findNamed) and its panel markers exist, but the audit's bind-regex classifies the "%d"-format
     # binds as PREFIX binds and only matches output_5.., not output_0.. — a pre-existing audit-tooling
