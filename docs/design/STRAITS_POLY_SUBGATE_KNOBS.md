@@ -275,3 +275,17 @@ extremes. Unlike atom=tie on legato (where the atom creates a categorically DIFF
 distinct MODE, not just "more legato"), atom-on-advance at 1 is just "advance probability = 1" — the same
 outcome, not a new mode. Still useful: the atom gives MO-correlatable, phrase-timed go/hold gestures that
 are cleaner than knob-maxing, but it's not a categorical override like atom=tie. Note only.
+
+### THE TEST: "real" vs "convenience" atom — does the rail produce a categorically different decision?
+Globally modulating atom params gives MO copula on every lane (λ correlates atom hits across voices). But
+MUSICALLY MEANINGFUL tail dependence (the thing you hear as "when voices hit the extreme together,
+something DIFFERENT happens") only exists when the atom at the rail triggers a CATEGORICALLY DIFFERENT
+DECISION than just-below-rail:
+- Legato atom = TIE → categorical (tie ≠ legato-re-pitch). Tail dependence REAL / AUDIBLE.
+- Rest atom = REST-BEATS-LEGATO → categorical (override). Tail dependence REAL / AUDIBLE.
+- Advance atom = certain advance → same as high probability, no mode change. Tail dependence present
+  MATHEMATICALLY but INAUDIBLE (the output near the rail sounds the same as just below).
+THE TEST: does the exact rail produce a categorically different decision than just-below-rail? YES → real
+tail dependence (audible). NO → convenience (MO correlation, but the tail isn't musically distinctive).
+This confirms the reachable-structures theory §A: "named tails are generator SHAPES, inaudible; the atom
+tail is the REAL one" — but only when the atom DOES something at the rail.
