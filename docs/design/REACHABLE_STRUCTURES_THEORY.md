@@ -401,3 +401,22 @@ A DYNAMIC MARSHALL-OLKIN tail structure (time-modulated common-shock atoms, λ>0
 GAUSSIAN COPULA body (finite-threshold co-exceedance by the arcsin orthant law, λ=0). Dynamic-MO is the
 defining/distinctive layer (the unique tail-coordination mechanism); the arcsin-Gaussian is the body it is
 layered on. Honest about both mechanisms at their correct scales — and the distinctive term for the engine.
+
+════════════════════════════════════════════════════════════════════════════════
+# RETIRED — T-F-ATOM-DECIDES (atom as a local per-decision decider) (Rodney)
+
+The early categorical-atom idea: a context menu making a categorical decision (rest override, legato→tie)
+a three-way choice — True / False / ATOM-DECIDES (the atom makes it probabilistic). RETIRED, superseded by
+the atom killer-app conclusion.
+WHY RETIRED: that idea treated the atom as a LOCAL per-decision gadget. The killer-app conclusion reframed
+the atom as the CROSS-VOICE/CROSS-LANE TAIL-DEPENDENCE mechanism — a GLOBAL/STRUCTURAL role (coordinating
+extreme/definite moments across the ensemble), not a local per-decision one. Wiring the atom into local
+T/F decisions would OVERLOAD it with a second, unrelated job: turning up a "tie atom" would also perturb
+the cross-lane tail dependence as a side effect (the two jobs interfere), and it duplicates what a KNOB
+does better locally (direct, independent, doesn't touch the dependence structure).
+THE CLEAN SEPARATION (the result): atoms = STRUCTURAL tail coordination (global); local decision
+probability = KNOBS (per-lane/per-voice — the tie knob, the advance threshold, etc.). Each mechanism does
+ONE thing.
+WHAT SURVIVES: the categorical OUTCOMES (tie, rest-beats-legato) are still real features — they get KNOBS,
+not the atom-decides branch. Any such context menu is plain T/F (or a knob), NOT T/F/ATOM. Only the
+atom-as-the-decider MECHANISM is retired; the features live on via local controls.
