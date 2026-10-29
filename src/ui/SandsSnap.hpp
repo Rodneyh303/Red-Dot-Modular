@@ -8,26 +8,39 @@
 // may carry TWO subpanels: the per-voice-sends subpanel AND the Distribution
 // expander) and the East visual (per-voice) — run the SAME code.
 //
-// ── THE RUN MEMORY (the StraitsBase orderedLaneIds_ equivalent — the piece the
-// first port dropped, and the reason the subpanels "didn't snap together like
-// the straits example"): StraitsBase OWNS its lanes — they are SPAWNED at exact
-// flush positions, and resnapLanes() walks the base's owned-ID list, so the run
-// survives every unlink (the base dragged away, a lane dragged off, a foreign
-// insert rewiring the links). The Sands subpanels are BROWSER-ADDED (the spec's
-// law), and Rack v2 links expanders ONLY when the ROUNDED grid boxes touch
-// EXACTLY (RackWidget::updateExpanders: p2Left.equals(pRight), same row) — so a
-// drop with even one pixel of gap never links, and a live-chain walk then sees
-// NOTHING, forever. This cluster therefore keeps the two Straits-shaped pieces
-// the live chain cannot provide:
-//   - sandsAttractNearSubpanels: the near-miss adoption ("the subpanel snaps
-//     adjacent to its host" — seated flush via setModulePosForce, which is also
-//     the call that makes Rack LINK it, because updateExpanders runs inside);
-//   - the runIds snapshot in SandsSnapHostState: refreshed from the live chain
-//     whenever the chain reads intact, and the ONLY thing the resnap and the
-//     guest-flag harvest walk afterwards — so an unlink (host dragged away,
-//     subpanel dragged off, foreign insert) still re-seats the run, exactly
-//     like StraitsBase's owned list. Dead IDs are skipped (the StraitsBase
-//     law); the family predicate re-validates every resolve.
+// ── THE TWO STRAITS INVARIANTS (task 85 — Rodney's fix prompt
+// docs/design/CC_PROMPT_SANDS_SNAP_FIX.md, commit bf1ccd9f: "Sands snap diverged
+// from 2 Straits invariants (stable owned-ID list + unconditional reposition)").
+// The task-84 port kept a runIds SNAPSHOT that was REFRESHED FROM THE LIVE
+// CHAIN whenever the chain read intact (sandsSnapshotRun) — and that broke the
+// ownership in both visible ways: an intruder splitting the family run reads
+// "intact" at the split (the walk stops at the first non-family node), so the
+// re-snapshot DROPPED every subpanel beyond the break and the host forgot its
+// own panels; a host dragged off its run reads vacuously intact on an EMPTY
+// chain, so the re-snapshot WIPED the list. StraitsBase never re-derives:
+// orderedLaneIds_ is a STABLE OWNED LIST — recorded on attach, erased only on
+// deliberate delete, NEVER re-derived from the live chain (the chain only
+// DETECTS breakage, chainIntact() walks the owned list itself). Restored here
+// as the law of this cluster:
+//   INVARIANT 1 — runIds is the STABLE OWNED LIST. Grown ONLY by attach (the
+//     context-menu spawn, the spawn-adopt, the near-miss magnet's grab, and the
+//     ONE-TIME first-step adopt of the patch-restored run — StraitsBase's
+//     lanesSpawned_ walk verbatim), shrunk ONLY by deliberate remove
+//     (sandsRemoveSubpanel). Dead IDs linger and are skipped everywhere (the
+//     StraitsBase law). No code path clears or re-derives it.
+//   INVARIANT 2 — the resnap repositions every OWNED ID UNCONDITIONALLY
+//     (sandsResnapSubpanels walks runIds and setModulePosForce each to its
+//     seat, wherever it currently is — never gated on near-miss proximity), so
+//     an owned subpanel dragged FAR is reclaimed from any distance and an
+//     intruder seated between host and subpanel is SHOVED OUT by the force
+//     placement. The StraitsBase feel: drag the host and the run follows
+//     (drag-end flag), shove anything in the seam and it is ejected within the
+//     0.1 s poll.
+// The near-miss magnet (sandsAttractNearSubpanels) stays — it is the BROWSER-ADD
+// adoption path Straits never needed (its lanes are base-spawned), and it is
+// proximity-gated BY DESIGN because it only ever touches UNOWNED family panels;
+// owned members are invariant 2's business. On a grab the ID enters the owned
+// list (attach), so the magnet can never need to find the same panel twice.
 //
 // ── THE WHEEL ITSELF (task 84 — Rodney: "straitsbase and lane expander
 // exemplify it, don't reinvent the wheel"): StraitsLane models are UNREGISTERED
@@ -46,16 +59,16 @@
 // user's panels are browser-registered; a right-click "spawn" that already
 // owns the model removes it — the checkbox law — so adoption is the only path
 // a parked panel ever gets back into the dock). runIds stays the ONE owned
-// list: spawn pushes the ID, remove erases it, the snapshot keeps it fresh.
+// list: spawn pushes the ID, remove erases it — and NOTHING ever re-derives
+// it from the live chain (invariant 1).
 // The StraitsLane differences, deliberate:
 //   - the subpanels are ALSO browser-addable (registered models — the spec's
 //     law), so ownership is bootstrapped three ways: the context-menu spawn
 //     (the wheel — docked from birth), the near-miss magnet on a drop, and the
-//     intact-chain snapshot (a patch-restore or a manual flush push adopts
-//     into the same runIds). The RIGHT CHAIN — and the snapshot taken from it
-//     — is the canonical order (the spec's "canonical ordering resolves ties,
-//     but either order is valid" — the user's physical order persists; the
-//     resnap preserves it, it never re-sorts);
+//     ONE-TIME first-step adopt of the restored run (a patch-load). The DOCK
+//     ORDER (runIds) is the canonical order (the spec's "canonical ordering
+//     resolves ties, but either order is valid" — the user's physical order
+//     persists; the resnap preserves it, it never re-sorts);
 //   - attachment is RIGHT of the host (the Straits lanes chain right too — same
 //     direction, expectedX steps rightward from the host's top-right edge).
 // The hardening (CC_PROMPT_STRAITS_RESNAP_HARDENING) is carried over whole:
@@ -84,86 +97,102 @@ struct SandsSnapGuest {
 // ── the host state: each host module embeds one; the widget's step() drives it.
 // runIds is UI-thread-only data (read/written only from the host widget's step,
 // the same single-thread context as StraitsBaseWidget's orderedLaneIds_): the
-// family run captured by module ID while the live chain last read intact, and
-// the only memory of the run once links break.
+// STABLE owned list — recorded on attach, erased only on deliberate remove,
+// NEVER re-derived from the live chain (task-85 invariant 1), and the only
+// memory of the run once links break.
 struct SandsSnapHostState {
     std::atomic<bool> topologyDirty{false};  // the event fast path (onExpanderChange)
     bool   needsResnap = false;              // the host's own one-shot request
     double lastAdjacencyCheck = -1.0;        // the 0.1 s poll cadence (system::getTime)
-    std::vector<int64_t> runIds;             // the family run by module ID, chain order
+    std::vector<int64_t> runIds;             // the STABLE owned list by module ID, dock order (invariant 1)
+    bool   adoptedRun = false;               // the lanesSpawned_ gate: the one-time adopt ran
 };
 
-// ── chainIntact: the exact StraitsBase predicate — every right-chain family
-// subpanel's left link must be the previous node BY POINTER IDENTITY. A foreign
-// module inserted between host and subpanel rewires that link (or nulls it) and
-// the predicate fails. Dead/missing widgets are the chain's business, not the
-// predicate's (Rack nulls the link itself).
+// ── chainIntact: the exact StraitsBase predicate, ownership-aware — the walk
+// runs over OUR OWNED LIST (st.runIds), NEVER over the live chain: each live
+// owned subpanel's left link must be the previous node BY POINTER IDENTITY,
+// starting at the host. A foreign module inserted between host and subpanel
+// rewires that link (or nulls it) and the predicate fails; an owned subpanel
+// dragged off leaves its left link non-host and the predicate fails. Dead IDs
+// (deleted modules) are skipped, exactly like the StraitsBase poll (its
+// chainIntact builds the lane list from orderedLaneIds_ and skips dead IDs); an
+// empty owned set reads intact (nothing to defend yet). THE INVARIANT (task
+// 85): the live chain is used to DETECT breakage, never to redefine ownership —
+// membership changes only through attach and deliberate remove.
 template <class FamilyFn>
-inline bool sandsChainIntact(rack::Module* hostMod, FamilyFn isOwnFamily, int maxDepth = 12) {
+inline bool sandsChainIntact(rack::Module* hostMod, FamilyFn isOwnFamily,
+                             const SandsSnapHostState& st, int maxDepth = 12) {
     if (!hostMod) return true;
     rack::Module* prev = hostMod;
-    rack::Module* curr = hostMod->rightExpander.module;
-    for (int d = 0; curr && d < maxDepth; ++d) {
-        if (!isOwnFamily(curr)) break;             // end of the family run — intact
-        if (curr->leftExpander.module != prev) return false;
-        prev = curr;
-        curr = curr->rightExpander.module;
+    int depth = 0;
+    for (int64_t id : st.runIds) {
+        rack::Module* m = APP->engine->getModule(id);
+        if (!m || !isOwnFamily(m)) continue;       // dead IDs are skipped (the StraitsBase law)
+        if (++depth > maxDepth) return false;      // bounded like every walk here
+        if (m->leftExpander.module != prev) return false;
+        prev = m;
     }
     return true;
 }
 
-// ── the run snapshot: capture the family chain by module ID, in chain order —
-// the StraitsBase orderedLaneIds_ capture (its adopt walk), run every trigger
-// while the chain reads intact. Bounded like every walk here.
+// ── the ONE-TIME adopt (the StraitsBase lanesSpawned_ walk, verbatim shape):
+// on the host widget's FIRST step after construction/patch-load, Rack has
+// already restored the saved subpanels at their saved (flush) positions and
+// re-linked them (updateExpanders runs inside every load-time addModule) —
+// walk the live right chain ONCE and record the family members into the owned
+// list. This is the ONLY place the live chain ever DEFINES membership (task-85
+// invariant 1: attach grows the list; breakage never re-derives it).
+// Already-owned IDs are skipped (idempotent) and the list is NEVER cleared.
 template <class FamilyFn>
-inline void sandsSnapshotRun(rack::Module* hostMod, FamilyFn isOwnFamily,
-                             SandsSnapHostState& st, int maxDepth = 12) {
-    st.runIds.clear();
+inline void sandsAdoptLinkedRun(rack::Module* hostMod, FamilyFn isOwnFamily,
+                                SandsSnapHostState& st, int maxDepth = 12) {
     rack::Module* curr = hostMod ? hostMod->rightExpander.module : nullptr;
     for (int d = 0; curr && d < maxDepth; ++d) {
         if (!isOwnFamily(curr)) break;             // end of the family run
-        st.runIds.push_back(curr->id);
+        bool owned = false;
+        for (int64_t id : st.runIds) if (id == curr->id) { owned = true; break; }
+        if (!owned) st.runIds.push_back(curr->id);
         curr = curr->rightExpander.module;
     }
 }
 
 // ── attract: the near-miss adoption — the browser-add snap. Scans the rack for
-// OWN-family modules whose ROUNDED grid box sits in the snap window right of the
-// run's LIVE seating edge (the host, then each already-linked family node — so a
-// new arrival seats AFTER the canonical run, never between its members), and
-// seats them flush with setModulePosForce, stepping the edge. Returns true when
-// anything moved. The row test + window are Rack's own linker math
-// (ui/SandsSnapGeom.hpp): a seat lands on exact grid adjacency, so the
-// updateExpanders call inside setModulePosForce links it THIS frame.
+// UNOWNED family modules whose ROUNDED grid box sits in the snap window right of
+// the OWNED seating edge (the host, then every owned member's widget — walked
+// BY ID from runIds, not from the live chain: after a break the chain is empty
+// but ownership remains), seats them flush with setModulePosForce (which is
+// also the call that makes Rack LINK them, because updateExpanders runs
+// inside), and — invariant 1 — RECORDS each grab into the owned list: adoption
+// IS ownership. Owned members are excluded from the scan and are never
+// proximity-gated: their reclaim is the resnap's unconditional business
+// (invariant 2). Returns true when anything moved.
 template <class FamilyFn>
-inline bool sandsAttractNearSubpanels(rack::ModuleWidget* hostW, FamilyFn isOwnFamily) {
+inline bool sandsAttractNearSubpanels(rack::ModuleWidget* hostW, FamilyFn isOwnFamily,
+                                      SandsSnapHostState& st) {
     if (!hostW || !hostW->module) return false;
     float expectedPx    = hostW->box.getTopRight().x;
     rack::math::Rect hb = hostW->getGridBox();
     const float expectedTop   = hb.getTop();
     float expectedRight = hb.getTopRight().x;
-    // the already-linked run (excluded from the scan; its members define the edge)
-    rack::Module* run[12];
-    int runLen = 0;
-    rack::Module* curr = hostW->module->rightExpander.module;
-    for (int d = 0; curr && d < 12; ++d) {
-        if (!isOwnFamily(curr)) break;
-        run[runLen++] = curr;
-        if (rack::ModuleWidget* sw = APP->scene->rack->getModule(curr->id)) {
-            expectedPx    = sw->box.getTopRight().x;
-            expectedRight += sw->getGridSize().x;
+    // the OWNED run defines the seating edge (the StraitsBase owned-edge walk)
+    for (int64_t id : st.runIds) {
+        rack::Module* m = APP->engine->getModule(id);
+        if (!m || !isOwnFamily(m)) continue;       // dead IDs are skipped
+        if (rack::ModuleWidget* sw = APP->scene->rack->getModule(m->id)) {
+            expectedPx    = std::max(expectedPx,    sw->box.getTopRight().x);
+            expectedRight = std::max(expectedRight, sw->getGridBox().getTopRight().x);
         }
-        curr = curr->rightExpander.module;
     }
-    auto isRunMember = [&](rack::Module* m) {
-        for (int i = 0; i < runLen; ++i) if (run[i] == m) return true;
+    auto isOwned = [&](rack::Module* m) {
+        for (int64_t id : st.runIds) if (id == m->id) return true;
         return false;
     };
-    // the scan: family modules in the snap window, same row (Rack's linker math)
+    // the scan: UNOWNED family modules in the snap window, same row (Rack's
+    // linker math)
     std::vector<rack::ModuleWidget*> grabbed;
     for (rack::ModuleWidget* mw : APP->scene->rack->getModules()) {
         if (!mw || !mw->module || mw->module == hostW->module) continue;
-        if (isRunMember(mw->module)) continue;
+        if (isOwned(mw->module)) continue;
         if (!isOwnFamily(mw->module)) continue;
         rack::math::Rect gb = mw->getGridBox();
         if (!sandsNearMiss(gb.getTop(), gb.getLeft(), expectedTop, expectedRight)) continue;
@@ -178,6 +207,7 @@ inline bool sandsAttractNearSubpanels(rack::ModuleWidget* hostW, FamilyFn isOwnF
         rack::math::Rect gb = mw->getGridBox();
         if (!sandsNearMiss(gb.getTop(), gb.getLeft(), expectedTop, expectedRight)) continue;
         APP->scene->rack->setModulePosForce(mw, rack::Vec(expectedPx, hostW->box.pos.y));
+        st.runIds.push_back(mw->module->id);   // adoption = ownership (invariant 1: attach grows the list)
         expectedPx    = mw->box.getTopRight().x;
         expectedRight += mw->getGridSize().x;
         moved = true;
@@ -185,11 +215,14 @@ inline bool sandsAttractNearSubpanels(rack::ModuleWidget* hostW, FamilyFn isOwnF
     return moved;
 }
 
-// ── resnap: seat the RUN flush on the host's right edge, in snapshot order,
-// stepping rightward — Rack's setModulePosForce shoves bystanders aside without
-// overlap (the StraitsBase placement, verbatim shape — but walking the SNAPSHOT,
-// because after an unlink the live chain is empty, and the StraitsBase original
-// walks its owned list for exactly that reason).
+// ── resnap (INVARIANT 2 — the StraitsBase resnapLanes, verbatim shape): seat
+// every OWNED subpanel flush on the host's right edge, in owned-list order,
+// stepping rightward, UNCONDITIONALLY — each owned ID is setModulePosForce'd to
+// its seat REGARDLESS of where it currently sits (a subpanel shoved FAR is
+// reclaimed from any distance; never gated on near-miss proximity) and any
+// bystander on a seat (an intruder) is SHOVED aside by the force placement —
+// the eject behaviour falls out of the unconditional walk, exactly as Straits
+// resnapLanes walking orderedLaneIds_ ejects an inserted module.
 template <class FamilyFn>
 inline void sandsResnapSubpanels(rack::ModuleWidget* hostW, FamilyFn isOwnFamily,
                                  const SandsSnapHostState& st) {
@@ -209,7 +242,7 @@ inline void sandsResnapSubpanels(rack::ModuleWidget* hostW, FamilyFn isOwnFamily
 // ══ THE STRAITS WHEEL (task 84): StraitsBase's spawnLane / removeLane /
 // toggleLane / hasLane, family-parameterised. The hosts OWN their subpanels —
 // the context menu spawns them DOCKED (linked from birth, never a drop skill
-// test), the owned ID list is st.runIds (ONE list shared with the snapshot).
+// test), the owned ID list is st.runIds (the ONE stable owned list — invariant 1).
 
 // ── the spawnLane edge walk, verbatim shape: right of the host, but past every
 // OWNED member's widget (StraitsBase: "right of the rightmost owned lane").
@@ -322,16 +355,26 @@ inline bool sandsToggleSubpanel(rack::ModuleWidget* hostW, SandsSnapHostState& s
     return sandsSpawnSubpanel(hostW, st, isOwnFamily, isLooseLeft, model);
 }
 
-// ── the step() cluster: poll + fast path + drag guard + one-shot consumer.
-// Call from the HOST widget's step(), before drawing. takeGuestFlag reads AND
-// clears a chain node's guest flag (one-shot — the StraitsBase consumer clears
-// every lane's flag it consumed).
+// ── the step() cluster: the one-time adopt + poll + fast path + drag guard +
+// one-shot consumer. Call from the HOST widget's step(), before drawing.
+// takeGuestFlag reads AND clears an owned node's guest flag (one-shot — the
+// StraitsBase consumer clears every lane's flag it consumed).
 template <class FamilyFn, class TakeFlagFn>
 inline void sandsSnapStep(rack::ModuleWidget* hostW, SandsSnapHostState& st,
                           FamilyFn isOwnFamily, TakeFlagFn takeGuestFlag) {
     rack::Module* hostMod = hostW ? hostW->module : nullptr;
     if (!hostMod) return;
     const bool dragged = APP->event->getDraggedWidget() != nullptr;
+
+    // ── the ONE-TIME adopt (the StraitsBase lanesSpawned_ walk): the first step
+    // after construction/patch-load records the restored, linked family run into
+    // the owned list. From here on the list NEVER re-derives from the live
+    // chain — attach (spawn / spawn-adopt / magnet grab / this walk) grows it,
+    // deliberate remove shrinks it, and breakage only DETECTS (invariant 1). ──
+    if (!st.adoptedRun) {
+        st.adoptedRun = true;
+        sandsAdoptLinkedRun(hostMod, isOwnFamily, st);
+    }
 
     // ── the triggers (the StraitsBase trigger block: event fast path OR the
     // 0.1 s poll backstop, deferred while a drag owns the pointer) ──
@@ -342,21 +385,22 @@ inline void sandsSnapStep(rack::ModuleWidget* hostW, SandsSnapHostState& st,
         if (eventDirty) st.topologyDirty.store(false, std::memory_order_relaxed);
         if (pollDue) st.lastAdjacencyCheck = now;
         // THE ATTRACTION PASS (the browser-add snap — the piece Straits never
-        // needed because its lanes are SPAWNED flush): adopt family modules in
-        // the snap window right of the run's edge. setModulePosForce is also
-        // what makes Rack LINK them (updateExpanders runs inside it).
-        if (sandsAttractNearSubpanels(hostW, isOwnFamily))
+        // needed because its lanes are SPAWNED flush): adopt UNOWNED family
+        // modules in the snap window right of the owned edge; each grab ENTERS
+        // the owned list (attach). setModulePosForce is also what makes Rack
+        // LINK them (updateExpanders runs inside it).
+        if (sandsAttractNearSubpanels(hostW, isOwnFamily, st))
             st.needsResnap = true;
-        // THE RUN MEMORY: refresh the snapshot whenever the chain reads intact;
-        // on a break, KEEP it — the snapshot is the only memory of the run once
-        // the links are gone (the StraitsBase orderedLaneIds_ semantics).
-        if (sandsChainIntact(hostMod, isOwnFamily))
-            sandsSnapshotRun(hostMod, isOwnFamily, st);
-        else
+        // THE BREAK DETECTOR (the StraitsBase poll, ownership-aware — it walks
+        // the OWNED list, not the chain): an intact read is a NO-OP (the list
+        // is never refreshed — invariant 1), a broken read only RAISES the
+        // flag; the consumer's unconditional reposition then re-seats the run
+        // and shoves the intruder out (invariant 2).
+        if (!sandsChainIntact(hostMod, isOwnFamily, st))
             st.needsResnap = true;
     }
 
-    // ── the one-shot consumer: the host's flag OR any snapshot member's own
+    // ── the one-shot consumer: the host's flag OR any owned member's own
     // flag (the hardening: a subpanel drag-end must reach the resnap even when
     // the chain no longer reads intact — which is exactly the unlinked case),
     // consumed once, under the drag guard.
@@ -371,8 +415,9 @@ inline void sandsSnapStep(rack::ModuleWidget* hostW, SandsSnapHostState& st,
     if (flagged && !dragged) {
         st.needsResnap = false;
         // the host itself moved (its drag-end flag): adopt whatever now sits in
-        // its snap window first, then re-seat the run from the snapshot.
-        sandsAttractNearSubpanels(hostW, isOwnFamily);
+        // its snap window first (grabs enter the owned list), then re-seat the
+        // run from the owned list — UNCONDITIONALLY, wherever the members are.
+        sandsAttractNearSubpanels(hostW, isOwnFamily, st);
         sandsResnapSubpanels(hostW, isOwnFamily, st);
     }
 }
