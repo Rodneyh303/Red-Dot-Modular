@@ -266,3 +266,12 @@ probabilistically (advance/direction). Exploration FROM clock mode without clock
 Independent control of timing (clock instance) and exploration (gate instance), composed by a patch cable.
 Also works at subgate level: clock Monsoon's gates → gate Monsoon's GHOST input → ghost-advance-driven
 phase-drift exploration from a composed clock pattern. The modular answer, not a single-module feature.
+
+### ATOM ON ADVANCE — 1=go (certain advance), 0=hold (certain stutter / fermata)
+With MO correlation: 1-rail correlated = tutti forward push; 0-rail correlated = tutti fermata (ensemble
+freezes). Anti-correlated = divergence/convergence points in sequence position across voices.
+NOTE: atom here is a CONVENIENCE — the same result is achievable by setting advance probability to
+extremes. Unlike atom=tie on legato (where the atom creates a categorically DIFFERENT decision — tie is a
+distinct MODE, not just "more legato"), atom-on-advance at 1 is just "advance probability = 1" — the same
+outcome, not a new mode. Still useful: the atom gives MO-correlatable, phrase-timed go/hold gestures that
+are cleaner than knob-maxing, but it's not a categorical override like atom=tie. Note only.
