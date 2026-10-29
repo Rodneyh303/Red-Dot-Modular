@@ -278,53 +278,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 });
         }
 
-        // Macro→voice MIX-IN send 2×2 grids — anchor param_send_<el>_<item>, store the same lane.
-        // STORE-BACKED: reads/writes editor.macroSend for the viewed voice (slot resolved LIVE).
-        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el)
-            for (int item = 0; item < 4; ++item) {
-                redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                    "param_send_" + std::to_string(el) + "_" + std::to_string(item),
-                    storeResolver(), -1.f, 1.f, 0.f,
-                    std::string(EDN[el]) + " mix-in " + std::to_string(item) + " (viewed voice)",
-                    [this, el, item](Monsoon& m) {
-                        const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
-                        return m.getMacroSend(slot, el, item);
-                    },
-                    [this, el, item](Monsoon& m, float v) {
-                        const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
-                        m.setMacroSend(slot, el, item, v);
-                    });
-            }
-        // PRE/POST CV taps per lane — anchor param_taplor_/tapspr_<el>, store the same lane.
-        // P9b: PER-VOICE, following the send-knob pattern in the columns beside them — the
-        // SAME trimpots, now authoring the VIEWED voice's own macroTap (continuous PRE↔POST
-        // lerp, default 1.0 = POST) exactly like the sends resolve the tab's voice. No
-        // controls added/changed; the Macro-global tap store (the delegation default,
-        // editor.globalTap) is kept untouched for the delegation wiring.
-        for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
-            redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                "param_taplor_" + std::to_string(el), storeResolver(),
-                0.f, 1.f, 1.f, std::string(EDN[el]) + " LOR send tap (PRE-POST, viewed voice)",
-                [this, el](Monsoon& m) {
-                    const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
-                    return m.getMacroTap(slot, el, 0);
-                },
-                [this, el](Monsoon& m, float v) {
-                    const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
-                    m.setMacroTap(slot, el, 0, v);
-                });
-            redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
-                "param_tapspr_" + std::to_string(el), storeResolver(),
-                0.f, 1.f, 1.f, std::string(EDN[el]) + " spread send tap (PRE-POST, viewed voice)",
-                [this, el](Monsoon& m) {
-                    const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
-                    return m.getMacroTap(slot, el, 1);
-                },
-                [this, el](Monsoon& m, float v) {
-                    const int slot = dotModular::VoiceResolver::voiceSlot(viewVoice + 1);
-                    m.setMacroTap(slot, el, 1, v);
-                });
-        }
+        // ── THE SEND STRIP MOVED (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC §"MACRO
+        //    PER-VOICE SENDS → their own subpanel" + §"The MACRO SEND-KNOB subpanel
+        //    ENCAPSULATES ALL Macro→East sends"): the 7x4 mix-in sends + the 7x2
+        //    PRE/POST taps now live on the SandsMacroSendSubpanel (they bind the SAME
+        //    editor.macroSend/macroTap stores — the move is a UI RELOCATION, zero
+        //    engine change; the distribution-param send amounts were born there).
+        //    The Macro panel is narrower for it — the spec's "Macro is already big".
 
         // ── Direction cells (param_dir_<lane>) — per-lane direction toggle (Fwd/Rev/Pend/PingPong).
         // Macro is the global editor → DirCell sets the MONO direction (laneDirPending_).
@@ -760,9 +720,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         }
     }
 
-    // Mix-in SEND grid labels (NanoVG; panel carries no baked text). SANDS CONSOLIDATION Step 3:
-    // 6 send knobs in a single horizontal row per lane, 9mm pitch, row-aligned to each LED lane.
-    // Column headers (LEN/OFF/ROT/SPR/LOR/SPR) sit above lane 0. Geometry is owned by the generator.
+    // (the mix-in SEND grid labels MOVED with the strip — the send column headers
+    // now draw on the SandsMacroSendSubpanel. The CRV header stays here.)
     void draw(const DrawArgs& args) override {
         ModuleWidget::draw(args);
         NVGcontext* vg = args.vg;
@@ -785,27 +744,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             ok = false; return Vec(0, 0);
         };
 
-        // Column X positions from lane-0 anchors: items 0..3 = LEN/OFF/ROT/SPR sends,
-        // col 4 = LOR tap (param_taplor_0), col 5 = SPR tap (param_tapspr_0).
-        float colX[6] = {};
-        bool okAny = false;
-        for (int it = 0; it < 4; ++it) {
-            bool ok = false; Vec s = anchorMM("param_send_0_" + std::to_string(it), ok);
-            if (ok) { colX[it] = s.x; okAny = true; }
-        }
-        { bool ok = false; Vec l = anchorMM("param_taplor_0", ok);  if (ok) { colX[4] = l.x;  okAny = true; } }
-        { bool ok = false; Vec sp = anchorMM("param_tapspr_0", ok); if (ok) { colX[5] = sp.x; okAny = true; } }
-        if (!okAny) return;
-
-        // Column headers, sitting above lane 0 at the send columns' X.
-        const char* colName[6] = { "LEN", "OFF", "ROT", "SPR", "LOR", "SPR" };
+        // CC_PROMPT_04: the warp curve-editor ("CRV") column header, at the button column's X.
         nvgFontSize(vg, 6.0f);
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
         nvgFillColor(vg, head);
         const float headerY = mm2px(ED_Y - 3.0f);   // 11mm — above lane 0 (14), below the tab band
-        for (int c = 0; c < 6; ++c)
-            nvgText(vg, colX[c], headerY, colName[c], nullptr);
-        // CC_PROMPT_04: the warp curve-editor ("CRV") column header, at the button column's X.
         { bool ok = false; Vec cw = anchorMM("param_warpedit_0", ok);
           if (ok) nvgText(vg, cw.x, headerY, "CRV", nullptr); }
     }

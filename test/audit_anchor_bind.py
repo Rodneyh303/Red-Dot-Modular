@@ -79,6 +79,10 @@ MODULES = {
         # SANDS CONSOLIDATION Step 3: 7 poly lanes (was 5). Send knobs moved from below-editor
         # groups to a 6-column × 7-row RHS grid; label_mixin_ group-header anchors removed
         # (rows are now implicit — each == an editor lane; draw() labels column headers only).
+        # THE SEND STRIP MOVED OFF (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC §"MACRO
+        # PER-VOICE SENDS → their own subpanel"): the param_send_*/param_taplor_*/
+        # param_tapspr_* anchors + their StoreKnob binds live on the SandsMacroSendSubpanel
+        # (the "sands_macro_send" entry below); the panel is cut back to 258mm.
         "counts": {
             "input_cv_": 28,          # 7 poly lanes × 4 (LEN/OFF/ROT/SPR)
             "param_atten_": 28,
@@ -86,9 +90,6 @@ MODULES = {
             "param_wlevel_": 7,       # CC_PROMPT_04 STEP 1: warp depth knobs (Macro's delegated default)
             "param_warpedit_": 7,     # CC_PROMPT_04 STEP 2: curve-editor trigger buttons ("CRV" column)
             "output_prob_": 7,
-            "param_send_": 28,        # 7 lanes × 4 mix-in items
-            "param_taplor_": 7,
-            "param_tapspr_": 7,
             "param_dir_": 7,
             "input_dir_mod_": 7,
         },
