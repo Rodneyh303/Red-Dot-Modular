@@ -258,3 +258,11 @@ With probabilistic bipolar advance, direction's role per mode:
   The CONTINUOUS mode.
 Each mode has a different relationship to direction — that difference IS what distinguishes them. Clock
 mode's deterministic direction is its identity, not a gap to fill.
+
+### CLOCK MODE EXPLORATION via multi-instance patching (Rodney)
+Clock mode doesn't need built-in exploration — one clock-mode Monsoon's GATE OUTPUT feeds another gate-mode
+Monsoon's GATE INPUT. The clock instance sequences reliably (timing); the gate instance explores
+probabilistically (advance/direction). Exploration FROM clock mode without clock mode BEING exploratory.
+Independent control of timing (clock instance) and exploration (gate instance), composed by a patch cable.
+Also works at subgate level: clock Monsoon's gates → gate Monsoon's GHOST input → ghost-advance-driven
+phase-drift exploration from a composed clock pattern. The modular answer, not a single-module feature.
