@@ -300,3 +300,36 @@ the atom's killer app: coordinated EXTREME/categorical events across lanes (voic
 together at the shared-atom moments) — unreachable any other way. Route A = smooth coordination strength;
 Route B = gestural coordination bursts. (The theory's §G "shared-w-modulation of atom-bearing lanes" is
 these two routes made concrete; Route B's dwell-at-w≈1 is the sharpened necessary condition.)
+
+════════════════════════════════════════════════════════════════════════════════
+# THE KILLER APP, GENERALIZED — the atom coordinates DEFINITE/EXTREME moments (Rodney)
+
+Cross-lane tail dependence applies to ALL lanes (continuous AND threshold), and needs NO special atom
+meanings. The atom lives at the RAIL = the "definite/extreme" end of any lane. So shared-atom modulation
+coordinates the rail across lanes, whatever the lane means:
+
+## CONTINUOUS lanes (scale degree, octave, note length) — EXTREME VALUES co-occur
+Shared atom mod → the EXTREME values (top/bottom octave, longest/shortest note, edge of scale-degree
+range) co-occur across lanes MORE than their MIDRANGE values do. The "big moments" coordinate: when a
+voice hits its octave extreme it's more likely to also hit its note-length extreme (shared-mod lanes), so
+extremes arrive as COORDINATED GESTURES (a dramatic high-and-long moment) rather than scattered independent
+extremes. Midrange (ordinary notes, normal lengths) stays independent.
+
+## THRESHOLD lanes (legato, rest, accent, qmix) — DEFINITE T/F co-occur
+The atom at the rail = the DEFINITE T or F (certain legato, certain rest). Shared atom mod → the DEFINITE
+decisions co-occur across lanes (certain-legato on one coincides with certain-rest on another more than
+chance); the UNCERTAIN (midrange 0.3-0.7) decisions stay independent. The CERTAIN decisions coordinate;
+the probabilistic ones don't.
+
+## THE UNIFYING STATEMENT
+Both lane types are the SAME phenomenon — the atom is at the rail, the rail is the DEFINITE/EXTREME end,
+so tail dependence = coordination of the definite/extreme, whatever the lane means. Threshold "definite
+T/F" and continuous "extreme value" are both just THE RAIL; the atom coordinates the rail across lanes.
+=> THE KILLER APP, stated musically: the atom makes the ensemble's DEFINITE/EXTREME moments COORDINATE
+across lanes, while ORDINARY/UNCERTAIN moments stay INDEPENDENT. Climaxes cohere; business-as-usual
+scatters. Music is largely about coordinating the significant moments and letting the ordinary breathe —
+and this falls out of atom-at-the-rail + shared modulation, with NO special meanings required.
+NO SPECIAL MEANINGS NEEDED: the bare atom (a point mass at the rail, no semantic override) already gives
+this dependence structure. Special meanings (atom=tie, rest-beats-legato) only add specificity to WHAT the
+coordinated definite/extreme DOES — they do not create the dependence, which comes from the rail position
+alone.
