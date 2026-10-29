@@ -49,11 +49,23 @@ namespace dotModular {
 //    mutation so the host can request the scoped mirror rebuild — the live preview). ──
 struct WarpCurveEditor : DistributionCurveWidget {
     std::function<void()> onEdit;
+    // The right-click KIND picker (the spec's single-source discipline): the host
+    // that owns the addressing sets this — the popup keeps its own chrome-level
+    // menu; the Distribution expander's permanent home aims the SHARED builder
+    // (openWarpKindMenu, defined below) at its role-appropriate store.
+    std::function<void()> onKindMenu;
     void onDragMove(const rack::event::DragMove& e) override {
         DistributionCurveWidget::onDragMove(e);
         if (dragPoint >= 0 && onEdit) onEdit();   // interior point dragged
     }
     void onButton(const rack::event::Button& e) override {
+        // Right-click = the kind menu, when this editor has a host-owned one
+        // (consumed HERE so it never falls through to the module context menu).
+        if (onKindMenu && e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_RIGHT) {
+            onKindMenu();
+            e.consume(this);
+            return;
+        }
         const bool leftPress = (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT);
         DistributionCurveWidget::onButton(e);
         if (leftPress && editCurve && onEdit) onEdit();   // point added/removed (or a no-op press — idempotent)
@@ -408,37 +420,7 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         // EventContext is shared across the recursion).
         rack::widget::OpaqueWidget::onButton(e);
     }
-    void openKindMenu() {
-        using rack::ui::Menu;
-        using rack::ui::MenuItem;
-        Menu* menu = rack::createMenu();
-        menu->addChild(rack::createMenuLabel(std::string("Warp curve — ") + laneName));
-        menu->addChild(rack::createMenuLabel("click a type to author it (drawn = drag points)"));
-        const WarpF& f = cur();
-        const int curKind = (int)f.index();
-        struct KindItem : MenuItem {
-            WarpCurvePopup* pop;
-            int kind;
-            void onAction(const rack::event::Action&) override {
-                Monsoon* m = pop->mon();
-                if (!m) return;
-                if (kind == 0) { pop->commitF(IdentityWarp{}); pop->refresh(); return; }
-                std::unique_ptr<Distribution> d = pop->makeKindDefault(kind);
-                if (d) pop->commitDist(std::move(d));
-            }
-        };
-        static const char* const kNames[] = {
-            "Identity (uniform)", "Triangular", "Power", "Kumaraswamy", "Logit-normal",
-            "Logit-sigmoid", "Mobius", "Truncated normal", "Reversed power", "Drawn (freehand)",
-        };
-        for (int k = 0; k < 10; ++k) {
-            auto* it = new KindItem;
-            it->text = kNames[k];
-            it->rightText = (k == curKind) ? "✓" : "";
-            it->pop = this; it->kind = k;
-            menu->addChild(it);
-        }
-    }
+    void openKindMenu();   // defined below openWarpKindMenu — the ONE menu authority
     static std::unique_ptr<Distribution> makeKindDefault(int kind) {
         switch (kind) {
             case 1:  return std::make_unique<TriangularDistribution>(0.5);
@@ -506,5 +488,61 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         rack::widget::Widget::draw(args);   // children (curve editor + knobs) on top
     }
 };
+
+// ── THE WARP KIND MENU — ONE authority for BOTH hosts of the curve editor ─────────
+// (Rodney: "Popup panel has a context menu to select the distribution type, missing
+// from the distribution expander" — the fix is a SHARED builder, not a copy: the
+// popup and the expander's permanent home must offer the SAME 10 kinds with the
+// SAME defaults.) The target carries the addressing + the commit path — the
+// role-appropriate setter + scoped rebuild live with the OWNER (the popup's
+// macroGlobal branch; the expander's macroRoleNow() branch), the menu stays dumb.
+struct WarpKindMenuTarget {
+    std::function<Monsoon*()> resolveMon;
+    std::function<WarpF()> cur;                  // the current authored F (for the ✓)
+    std::function<void(const WarpF&)> commitF;   // store + scoped rebuild (the commitF shape)
+    std::function<void()> afterCommit;           // the owner's refresh
+    std::string laneName;
+};
+
+inline void openWarpKindMenu(const WarpKindMenuTarget& t) {
+    using rack::ui::Menu;
+    using rack::ui::MenuItem;
+    Menu* menu = rack::createMenu();
+    menu->addChild(rack::createMenuLabel(std::string("Warp curve — ") + t.laneName));
+    menu->addChild(rack::createMenuLabel("click a type to author it (drawn = drag points)"));
+    const int curKind = (int)t.cur().index();
+    struct KindItem : MenuItem {
+        WarpKindMenuTarget t;
+        int kind;
+        void onAction(const rack::event::Action&) override {
+            Monsoon* m = t.resolveMon ? t.resolveMon() : nullptr;
+            if (!m) return;
+            if (kind == 0) { t.commitF(IdentityWarp{}); if (t.afterCommit) t.afterCommit(); return; }
+            std::unique_ptr<Distribution> d = WarpCurvePopup::makeKindDefault(kind);
+            if (d) { t.commitF(m->editor.warp.fromDistribution(*d)); if (t.afterCommit) t.afterCommit(); }
+        }
+    };
+    static const char* const kNames[] = {
+        "Identity (uniform)", "Triangular", "Power", "Kumaraswamy", "Logit-normal",
+        "Logit-sigmoid", "Mobius", "Truncated normal", "Reversed power", "Drawn (freehand)",
+    };
+    for (int k = 0; k < 10; ++k) {
+        auto* it = new KindItem;
+        it->text = kNames[k];
+        it->rightText = (k == curKind) ? "✓" : "";
+        it->t = t; it->kind = k;
+        menu->addChild(it);
+    }
+}
+
+inline void WarpCurvePopup::openKindMenu() {
+    WarpKindMenuTarget t;
+    t.resolveMon  = [this]() -> Monsoon* { return mon(); };
+    t.cur         = [this]() -> WarpF { return cur(); };
+    t.commitF     = [this](const WarpF& f) { commitF(f); };
+    t.afterCommit = [this]() { refresh(); };
+    t.laneName    = laneName;
+    openWarpKindMenu(t);
+}
 
 } // namespace dotModular

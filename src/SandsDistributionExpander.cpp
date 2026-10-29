@@ -355,6 +355,28 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         };
     }
 
+    // The permanent editor's kind picker (Rodney: "Popup panel has a context menu
+    // to select the distribution type, missing from the distribution expander").
+    // The SAME menu the popup builds — ONE authority, dotModular::openWarpKindMenu,
+    // aimed at the expander's OWN addressing: the focused lane, the role-appropriate
+    // store (cross-voice = globalWarpF[lane], the delegated default; per-voice = the
+    // SHARED-selected voice's slot) + the matching scoped rebuild — the knobs'
+    // authoring path verbatim, so a menu pick and a knob write land identically.
+    void openEditorKindMenu() {
+        dotModular::WarpKindMenuTarget t;
+        t.resolveMon = [this]() -> Monsoon* { return redDot::lookupMonsoon(module); };
+        t.cur        = [this]() -> WarpF { return curF(editorLane_); };
+        t.commitF    = [this](const WarpF& f) {
+            Monsoon* mm = redDot::lookupMonsoon(module);
+            if (!mm) return;
+            if (macroRoleNow()) { mm->setGlobalWarpF(editorLane_, f); mm->requestWarpRebuildLaneDelegating(editorLane_); }
+            else                { mm->setWarpF(slotLive(), editorLane_, f); mm->requestWarpRebuildVoiceLane(slotLive(), editorLane_); }
+        };
+        t.afterCommit = [this]() { refreshEditor(editorLane_); };
+        t.laneName    = dotModular::SandsLaneNames::EDITOR[editorLane_];
+        dotModular::openWarpKindMenu(t);
+    }
+
     SandsDistributionExpanderWidget(SandsDistributionExpander* mod) {
         setModule(mod);
         // Browser preview creates widgets with mod=nullptr; guard against that.
@@ -481,6 +503,9 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         curve->box.pos = mm2px(Vec(141.0f, 20.0f));
         curve->box.size = mm2px(Vec(119.16f, 90.0f));
         addChild(curve);
+        // Right-click on the editor = the warp KIND menu (the popup's 10 kinds —
+        // the ONE authority; Rodney's "missing from the distribution expander").
+        curve->onKindMenu = [this]() { openEditorKindMenu(); };
         refreshEditor(0);
 
         // ── the seam fillers (family continuity — the lane-widget wiring) ─────
