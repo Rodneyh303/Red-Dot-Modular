@@ -28,7 +28,7 @@ namespace StraitsMacroVisualIds {
     // one subpanel owns the whole send bus) — the panel is cut back to the width its
     // remaining controls occupy; the stores and engine conventions are untouched
     // (the move is UI-only).
-    static constexpr float W_MM    = 258.0f;    // the old 58HP+18mm width minus the moved send strip
+    static constexpr float W_MM    = 259.08f;   // 51HP exactly (the old 58HP+18mm width minus the moved send strip, re-widened from 258.0 so the drawn art fills the whole-HP box Rack's setPanel rounds to — the subpanels seat against this edge)
     static constexpr float WLEVEL_X   = 88.f;   // w-level knob column (the OLD ED_X slot)
     static constexpr float OWNER_X    = 214.f;  // owner cell column (matches East; +9 with ED_X)
     static constexpr float DIR_X      = 221.f;  // direction cell column (matches East)

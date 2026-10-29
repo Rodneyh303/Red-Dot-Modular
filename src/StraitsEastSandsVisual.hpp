@@ -13,7 +13,7 @@ using namespace MonsoonIds;
 namespace StraitsEastVisualIds {
 
     // ── Panel geometry (48HP + 9mm w-level column + 9mm warp-edit column — CC_PROMPT_04) ──
-    static constexpr float W_MM        = 261.84f;  // 48HP + 9mm (w-level) + 9mm (warp-edit)
+    static constexpr float W_MM        = 264.16f;  // 52HP exactly (was 261.84 = "48HP + 9mm (w-level) + 9mm (warp-edit)"; re-widened so the drawn art fills the whole-HP box Rack's setPanel rounds to — the Distribution expander seats against this edge)
     static constexpr float WLEVEL_X    = 88.f;     // w-level knob column (the OLD ED_X slot)
     static constexpr float ED_X        = 97.f;     // +9mm: w-level column sits left of the grid
     static constexpr float ED_W        = 111.f;

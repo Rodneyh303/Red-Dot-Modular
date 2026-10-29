@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import dotmod_design as D
 from dotmod_design import px, theme
 
-def gen_macro(dark, W_MM=258.0):   # the old 58HP+18mm minus the MOVED send strip (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC)
+def gen_macro(dark, W_MM=259.08):  # 51HP exactly (51 x 5.08mm = 765px) — the old 58HP+18mm minus the MOVED send strip, re-widened from 258mm: Rack's ModuleWidget::setPanel rounds the widget box to WHOLE HP (761.81px art in a 765px box left a 3.19px rack-bg sliver at the seam the subpanels seat against — CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC "seamless abutment")
     # Macro mirrors the East visual's 7-lane geometry EXACTLY (same lane tops/heights); it does
     # the same spread job but GLOBAL rather than per-lane. Must match StraitsSandsMacroVisual.hpp
     # (W_MM, ROW_BOT=105, ED_H=91) and src/ui/SandsGrid.hpp (LANE_TOP=14, LANE_H=13, POLY_LANES=7).

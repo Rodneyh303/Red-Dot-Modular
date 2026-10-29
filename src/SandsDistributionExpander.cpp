@@ -509,18 +509,21 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         refreshEditor(0);
 
         // ── the seam fillers (family continuity — the lane-widget wiring) ─────
-        float rulePx = 1.2f * 75.f / 25.4f;
+        // RULE-FREE + host bg: the Sands family's seam design is the HOSTS'
+        // (dotmod_design: #16181c/#e8e8ea, no red top rule) — see the generator
+        // note. The filler bridges the sub-pixel seam with bg only; a red rule
+        // here would draw onto host panels that carry no rule.
         leftFiller = new redDot::StraitsSeamFiller();
         leftFiller->isLeft = true;
         leftFiller->box.pos = Vec(-2, 0);
         leftFiller->box.size.y = box.size.y;
-        leftFiller->ruleHeightPx = rulePx;
+        leftFiller->ruleHeightPx = 0.f;
         addChild(leftFiller);
         rightFiller = new redDot::StraitsSeamFiller();
         rightFiller->isLeft = false;
         rightFiller->box.pos = Vec(box.size.x - 2, 0);
         rightFiller->box.size.y = box.size.y;
-        rightFiller->ruleHeightPx = rulePx;
+        rightFiller->ruleHeightPx = 0.f;
         addChild(rightFiller);
 
         // ── the connect mark (its own next-hop: the left neighbour is the host
@@ -557,8 +560,8 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         }
 
         // seam fillers: family neighbours (the lane's isStraitsRPanel predicate,
-        // family swapped)
-        NVGcolor bg = themeLight_ ? nvgRGB(0xdc, 0xdc, 0xdc) : nvgRGB(0x14, 0x17, 0x1b);
+        // family swapped) — bg is the HOSTS' (dotmod_design), not the Straits lanes'
+        NVGcolor bg = themeLight_ ? nvgRGB(0xe8, 0xe8, 0xea) : nvgRGB(0x16, 0x18, 0x1c);
         auto familyModel = [](rack::Module* m) -> bool {
             return m && SandsDistributionExpander::isFamilyModel(m->model);
         };

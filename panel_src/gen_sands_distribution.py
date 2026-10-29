@@ -53,7 +53,14 @@ BAND_TINT_L = "#9fc4c0"
 
 def gen(dark=True):
     theme = THEMES["dark" if dark else "light"]
-    bg    = theme["bg"]
+    # ── the SEAM DESIGN is the HOSTS', not the Straits lanes' ────────────────
+    # These subpanels seat ONLY against the Macro/East visuals (the spec's
+    # attachment sides), whose edge design is dotmod_design's: bg #16181c dark /
+    # #e8e8ea light and NO red top rule. The straits_art THEMES bg (#14171b) +
+    # red rule matched StraitsBase+StraitsLane — at a flush host junction they
+    # read as a colour step plus a rule that starts/stops dead at the seam: the
+    # exact "not snapped together like the straits example" report.
+    bg    = "#16181c" if dark else "#e8e8ea"   # dotmod_design theme().bg — the hosts'
     spine = theme["spine"]
     band  = BAND_TINT_D if dark else BAND_TINT_L
     face  = "#1a2226" if dark else "#e8e8e8"   # knob face (theme-conditional)
@@ -62,7 +69,9 @@ def gen(dark=True):
 
     svg_open(A, px, W)
     bg_fill(A, px, W, bg)
-    top_rule(A, px, W)
+    # (top_rule DROPPED — the host panels carry no red top rule; a rule that
+    # exists only right of the seam is a visible "not joined" tell. The
+    # StraitsSeamFiller wiring on the widgets draws bg-only for the same reason.)
 
     # ── lane rows: tint band per row + knob/jack/focus anchors ────────────────
     grid_h = LANES * ROW_PITCH
