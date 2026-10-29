@@ -367,3 +367,37 @@ KILLER APP, FULLY STATED: the atom coordinates the DEFINITE/EXTREME moments acro
 tutti climaxes (cross-voice), coherent per-voice gestures (cross-lane), grid-wide slams (both) — while all
 ordinary/uncertain moments stay independent (CA/spread may correlate their bodies; the EXTREMES are
 atom-coordinated). Tail dependence is atom-only in every direction: the unique defining capability.
+
+════════════════════════════════════════════════════════════════════════════════
+# THE NAME — Dynamic Marshall-Olkin over moving-average Gaussian copulas (Rodney)
+
+## One-line characterization
+A generative sequencer / quantiser / gate-modifier / random-source compositional engine, driven by a
+DYNAMIC MARSHALL-OLKIN COPULA — derived from modulation and atomic distributions — laid over MOVING-AVERAGE
+GAUSSIAN COPULAS with musically interesting correlation structures.
+
+## Why "DYNAMIC Marshall-Olkin" (not static MO)
+Classical MO is static (fixed shock rates, fixed exchangeable tail). Here the shocks (atoms) are MODULATED
+through time by shared/moving modulation, over a Gaussian copula body that ITSELF moves (the moving-average
+Gaussian correlation from CA/spread). So λ (tail dependence) is TIME-VARYING, driven by shared atom
+modulation, sitting on a time-varying Gaussian body. Dynamic MO = MO common-shock with time-dependent
+shock intensities over a dynamic Gaussian copula.
+
+## The two layers, NESTED BY THRESHOLD (and why both names appear)
+- BODY / near-extreme co-exceedance = the moving-average GAUSSIAN COPULA. For a bivariate Gaussian the
+  joint-orthant probability follows the ARCSIN LAW: P(both > median) = 1/4 + arcsin(ρ)/(2π). Real,
+  ρ-driven co-exceedance at FINITE thresholds — but λ=0 (Gaussian copula has ZERO asymptotic tail
+  dependence; the arcsin orthant is a finite-threshold BODY effect, not a tail limit). This is the
+  quantitative form of "CA/spread give body dependence, λ=0".
+- TAIL / asymptotic co-occurrence = the MO ATOM common-shock. λ>0. The genuine tail dependence the
+  Gaussian body canNOT provide.
+NESTED BY THRESHOLD: at finite thresholds (ordinary high notes) the arcsin/Gaussian body dominates
+co-exceedance; pushing to the TRUE extreme (the rail) the Gaussian contribution vanishes (λ=0) and ONLY
+the MO atom survives (λ>0). Gaussian arcsin governs the near-extreme; MO governs the asymptotic tail.
+They are different phenomena at different scales, not competing descriptions.
+
+## The precise statement (for the paper)
+A DYNAMIC MARSHALL-OLKIN tail structure (time-modulated common-shock atoms, λ>0) over a MOVING-AVERAGE
+GAUSSIAN COPULA body (finite-threshold co-exceedance by the arcsin orthant law, λ=0). Dynamic-MO is the
+defining/distinctive layer (the unique tail-coordination mechanism); the arcsin-Gaussian is the body it is
+layered on. Honest about both mechanisms at their correct scales — and the distinctive term for the engine.
