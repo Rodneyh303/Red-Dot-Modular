@@ -239,3 +239,11 @@ tends to follow the phase direction but steps probabilistically at gate events, 
 the extremes: phase-mod amplitude maxed → approaches phase-mode determinism (direction locked to phase);
 phase-mod zeroed → pure gate mode (always forward). So it's a CONTINUOUS BLEND between the two modes via
 one modulation depth, not a mode switch. A genuinely novel sequencing behaviour.
+
+### CONSTRAINTS on bipolar advance (Rodney)
+- ONE PLAYHEAD: main and subgates (ratchet, ghost) share one playhead — they cannot disagree on position
+  or direction. So the advance direction is set by the LAST gate event (main or sub) that triggered an
+  advance. Each gate rise that passes its advance-probability check moves the shared playhead in the
+  direction the bipolar probability gave THAT event. No per-level independent playheads.
+- WRAP AT BOUNDARY: backward stepping must wrap at pattern boundaries (step 0 going back → wraps to step
+  N-1), same as phase mode wraps. The playhead is always modulo pattern-length.
