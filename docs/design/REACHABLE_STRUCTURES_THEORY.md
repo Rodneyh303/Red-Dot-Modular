@@ -259,3 +259,44 @@ OUTPUT/gate layer, a different pipeline stage from the copula (latent) and the m
 dependence map is THREE layers: COPULA (latent, CA) + MARGINAL (warp, per-voice) + SUPPORT-NESTING
 (containment, realized gates). Containment is the one that is NOT a copula and NOT a marginal — a
 support-domain constraint. Composable with both. (See ARTICULATION_ENVELOPE_VS_CORRELATION.md.)
+
+════════════════════════════════════════════════════════════════════════════════
+# CROSS-LANE DEPENDENCE — the two routes, and the ATOM KILLER APP (Rodney)
+
+Clarifies §G for the PRACTICAL modulation controls. Observing the lane output-probability sequences:
+
+## General (BODY) dependence ← shared CONTINUOUS param modulation
+Shared-across-lanes modulation of a CONTINUOUS distribution param (θ/tilt/mean) makes the lane marginals
+CO-MOVE through time — an observer of the sequences sees GENERAL correlation (bodies rise/fall together).
+But λ=0: NO tail dependence (the co-movement is in the bodies; rail/extreme co-occurrence stays at product
+rate). So continuous shared mod = observable general dependence, ZERO tail dependence.
+
+## TAIL dependence ← shared ATOM modulation (two sub-routes)
+Cross-lane λ>0 is reachable ONLY via shared-across-lanes modulation of ATOM-bearing lanes (§G: "the ONLY
+cross-lane λ route"; never static atoms = product rate). Two practical sub-routes, with DIFFERENT feel:
+
+### Route A — shared ATOM-MASS (m) modulation, w pinned at 1 (atom ALWAYS live)
+At w=1 the atom is a TRUE point mass (exact 0/1 rail event). Modulating m directly scales the rail-event
+PROBABILITY. Shared m-mod across lanes → the co-rail rate co-moves → cross-lane tail dependence that
+tracks m CONTINUOUSLY. No dwell condition (the atom is always categorical at w=1). FEEL: smooth control
+of coordination STRENGTH — dial cross-lane tie/rest co-occurrence up/down.
+
+### Route B — shared WARP (w) modulation — REQUIRES DWELL AT w≈1
+warped(u) = (1-w)·u + w·invCDF(u). The atom is a true point mass ONLY at w=1; at w<1 the identity blend
+SMEARS it into a near-rail continuous cluster (NOT a rail event — the earlier w-formula conclusion). So
+modulating w GATES the atom live (w≈1) vs smeared (w low). Shared w-mod → cross-lane tail dependence ONLY
+during the w≈1 DWELLS (when atoms are live on all lanes together and actual 0/1 rail events can co-occur).
+NECESSARY CONDITION: the w-modulation must DWELL at/near w=1 — a w signal that only sweeps THROUGH 1 (no
+dwell) produces few/no rail events = little observable λ. Between dwells (low w) = smeared clusters =
+body-correlation, λ=0. FEEL: GESTURAL — coordination arrives in BURSTS tied to the warp dwells
+(coordinated-articulation moments punctuating smeared stretches), not smooth.
+
+## THE CONCLUSION — the atom KILLER APP is CROSS-LANE TAIL DEPENDENCE
+- CONTINUOUS mod (θ/tilt) → cross-lane GENERAL (body) dependence, λ=0.
+- ATOM mod (m at w=1, or w with dwell) → cross-lane TAIL dependence, λ>0.
+Cross-lane tail dependence is reachable ONLY via atoms (shared m-mod or dwelling w-mod) — NOT via any
+continuous mechanism, NOT via static atoms, NOT via CA/spread (no cross-lane latent ρ). That UNIQUENESS is
+the atom's killer app: coordinated EXTREME/categorical events across lanes (voices rest-together / tie-
+together at the shared-atom moments) — unreachable any other way. Route A = smooth coordination strength;
+Route B = gestural coordination bursts. (The theory's §G "shared-w-modulation of atom-bearing lanes" is
+these two routes made concrete; Route B's dwell-at-w≈1 is the sharpened necessary condition.)
