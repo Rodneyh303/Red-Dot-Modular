@@ -34,9 +34,14 @@
 //
 // DE-PARAM LAW: every control is store-backed (StoreKnob onto Monsoon's
 // editor.warp — the NUM_PARAMS_MIGRATION convention). The module exposes NO
-// host params: config(0, 0, 42, 0) — the 42 are the MOD jack CV inputs (one per
-// param per lane; "modulation sent to a param a distribution doesn't use is
-// HARMLESS — a no-op" — the spec's unused-param ruling).
+// host params: config(0, NUM_MOD_INPUTS, 0, 0) — the 42 are the MOD jack CV
+// INPUTS (one per param per lane; "modulation sent to a param a distribution
+// doesn't use is HARMLESS — a no-op" — the spec's unused-param ruling).
+// NB the Rack config() signature is (numParams, numInputs, numOutputs,
+// numLights) — an earlier draft passed the 42 in the numOutputs slot, which
+// left inputs.size()==0 and made the ctor's first configInput() fire Rack's
+// inputInfo() assert (portId < inputs.size()) — the browser-add crash on
+// Rodney's Windows build (wassert -> abort under ModelBox::onButton).
 #pragma once
 #include <rack.hpp>
 #include <atomic>
@@ -120,7 +125,7 @@ struct SandsDistributionExpander : rack::Module, redDot::SandsSnapGuest {
     void publishOwnMods(Monsoon* m);
 
     SandsDistributionExpander() {
-        config(0, 0, SandsDistributionIds::NUM_MOD_INPUTS, 0);
+        config(0, SandsDistributionIds::NUM_MOD_INPUTS, 0, 0);
         // configInput with the canonical lane names + the param captions — the
         // tooltips the DAW/host sees for the 42 mod jacks.
         static const char* const* laneNames = dotModular::SandsLaneNames::EDITOR;
