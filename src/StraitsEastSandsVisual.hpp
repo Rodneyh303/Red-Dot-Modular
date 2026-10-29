@@ -3,6 +3,7 @@
 #include "ui/SandsGrid.hpp"
 #include "dsp/LaneMapping.hpp"     // lane order + canonical lane names (Phase 3b-3 merge)
 #include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (onExpanderChange bump — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
+#include "ui/SandsSnap.hpp"      // the Sands subpanel snap cluster (the Straits resnap pattern, family-parameterised)
 #include "ui/RateManager.hpp"        // THE compute-rate authority (CC_PROMPT_RATE_MANAGER_START, S5): the detector + prob-out tiers
 #include "Monsoon.hpp"
 
@@ -362,7 +363,13 @@ struct StraitsEastSandsVisual : Module {
     // divider refresh are DELETED.
     void onExpanderChange(const ExpanderChangeEvent& e) override {
         redDot::bumpTopologyEpoch();
+        snap.topologyDirty.store(true, std::memory_order_relaxed);   // the subpanel fast path
     }
+
+    // ── the Sands subpanel snap state (ui/SandsSnap.hpp): this module is a SNAP
+    // HOST — the Distribution expander chains RIGHT of it (the per-voice role's
+    // host side); the widget's step() runs the Straits resnap cluster on it.
+    redDot::SandsSnapHostState snap;
 
     // Gate edge detection state for dir_mod and deleg_mod inputs.
     // dirModPrev[lane][channel] — 7 lanes × 16 channels (ch0=mono, ch1..15=voices 2..16)

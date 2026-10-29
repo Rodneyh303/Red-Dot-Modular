@@ -374,11 +374,16 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         }
     }
 
-    void refreshParams(const WarpF& f) {
-        const int kind = (int)f.index();
-        // { label, lo, hi, def } per param; present=false hides the knob.
-        struct Spec { const char* label; float lo, hi, def; bool present; };
-        const Spec s1[] = {
+    // ── the per-kind p1/p2 spec — THE ONE AUTHORITY ────────────────────────────
+    // The popup's editor knobs AND the SandsDistributionExpander's permanent
+    // knobs both bind from this table (the expander reads the windows + the
+    // present flag live per kind; "modulation sent to a param a distribution
+    // doesn't use is HARMLESS" — the expander locks the control instead of
+    // hiding it, but the TABLE stays single-sourced here).
+    // { label, lo, hi, def } per param; present=false = the kind has no such param.
+    struct WarpParamSpec { const char* label; float lo, hi, def; bool present; };
+    static WarpParamSpec warpParamSpec(int kind, int which) {
+        static const WarpParamSpec s1[] = {
             /* identity    */ { "",        0.f,  1.f, 0.f,   false },
             /* triangular  */ { "mode",    0.f,  1.f, 0.5f,  true  },
             /* power       */ { "k",       0.2f, 5.f, 2.f,   true  },
@@ -390,7 +395,7 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
             /* rev-power   */ { "theta",  0.2f, 5.f, 2.f,   true  },
             /* drawn       */ { "",        0.f,  1.f, 0.f,   false },
         };
-        const Spec s2[] = {
+        static const WarpParamSpec s2[] = {
             /* identity    */ { "",        0.f,  1.f, 0.f,   false },
             /* triangular  */ { "",        0.f,  1.f, 0.f,   false },
             /* power       */ { "",        0.f,  1.f, 0.f,   false },
@@ -402,6 +407,13 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
             /* rev-power   */ { "",        0.f,  1.f, 0.f,   false },
             /* drawn       */ { "",        0.f,  1.f, 0.f,   false },
         };
+        const int k = kind < 0 ? 0 : (kind > 9 ? 9 : kind);
+        return (which == 0 ? s1 : s2)[k];
+    }
+
+    void refreshParams(const WarpF& f) {
+        const int kind = (int)f.index();
+        using Spec = WarpParamSpec;
         auto bind = [&](redDot::StoreKnob<Monsoon>* k, const Spec& s, int which) {
             k->visible = s.present;
             if (!s.present) return;
@@ -425,8 +437,8 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
                 else             { m.setWarpF(slot, lane, nf);  m.requestWarpRebuildVoiceLane(slot, lane); }
             };
         };
-        bind(p1, s1[kind], 0);
-        bind(p2, s2[kind], 1);
+        bind(p1, warpParamSpec(kind, 0), 0);
+        bind(p2, warpParamSpec(kind, 1), 1);
     }
 
     // External-change detector: undo / another surface editing the same target rebinds

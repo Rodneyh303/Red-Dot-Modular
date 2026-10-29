@@ -1086,9 +1086,29 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // (syncDirBank + lastDirDisp + dirDispInit DELETED — MVC step 1d: the DirCell writes the
     // store directly via get/setLaneDir, so the proxy→bank flush + clobber-guard are dead.)
 
+    // ── the resnap hardening, HOST side: this panel's own drag-end re-seats its
+    // subpanel run (the subpanel's own drag-end flags via SandsSnapGuest; the
+    // poll catches foreign inserts) ──
+    void onDragEnd(const rack::event::DragEnd& e) override {
+        ModuleWidget::onDragEnd(e);
+        if (auto* m = dynamic_cast<StraitsEastSandsVisual*>(module))
+            m->snap.needsResnap = true;
+    }
+
     void step() override {
         ModuleWidget::step();
         kitStep();
+        // ── the Sands subpanel snap cluster (ui/SandsSnap.hpp): 0.1 s adjacency
+        // poll + the event fast path + the one-shot consumer (the per-voice
+        // role's host side — the Distribution expander chains RIGHT of here).
+        if (auto* m = dynamic_cast<StraitsEastSandsVisual*>(module)) {
+            auto fam = [](rack::Module* x) { return x && x->model == modelSandsDistributionExpander; };
+            auto take = [](rack::Module* x) -> bool {
+                auto* g = dynamic_cast<redDot::SandsSnapGuest*>(x);
+                return g && g->needsResnap.exchange(false, std::memory_order_relaxed);
+            };
+            redDot::sandsSnapStep(this, m->snap, fam, take);
+        }
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
         // CC_PROMPT_04: close the curve popup when its bound target goes away — tab

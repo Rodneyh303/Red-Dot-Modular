@@ -7,6 +7,7 @@
 #include "ui/StoreBound.hpp"   // redDot::StoreKnob (de-parammed controls)   // redDot::findMonsoonEitherSide (MACRO field accessors)
 #include "ui/SweepSigGate.hpp"   // RESTORED: SweepSig — the prob-out sweep's input-change gate (CC_PROMPT_restore_sweepsig_gate_START)
 #include "ui/ModuleLookup.hpp"   // THE module-lookup authority: lookupMonsoon (event-driven adjacency; the monLookupDiv poll is deleted)
+#include "ui/SandsSnap.hpp"      // the Sands subpanel snap cluster (the Straits resnap pattern, family-parameterised)
 #include "ui/RateManager.hpp"    // THE compute-rate authority (CC_PROMPT_RATE_MANAGER_START, S5): the sweep is a Control producer
 
 using namespace rack;
@@ -304,7 +305,14 @@ struct StraitsSandsMacroVisual : Module {
     // lambdas). The old /8 divider poll is deleted; a static rack walks zero times.
     void onExpanderChange(const ExpanderChangeEvent& e) override {
         redDot::bumpTopologyEpoch();
+        snap.topologyDirty.store(true, std::memory_order_relaxed);   // the subpanel fast path
     }
+
+    // ── the Sands subpanel snap state (ui/SandsSnap.hpp): this module is a SNAP
+    // HOST — the Distribution expander (and the send subpanel when it lands) chain
+    // RIGHT of it, and the widget's step() runs the Straits resnap cluster on this
+    // state (0.1 s adjacency poll + the event fast path + the one-shot consumer).
+    redDot::SandsSnapHostState snap;
 
     // Gate edge detection state for dir_mod inputs (mono, 1 channel per jack).
     // LOOKUP AUTHORITY: cachedMon_ + the /8 monLookupDiv poll are DELETED — the host

@@ -1351,6 +1351,7 @@ extern Model* modelLantern;                    // Lantern note-output visualiser
 extern Model* modelMonsoonSandsVisualExpander;  // Mono visual DNA editor (voice 1)
 extern Model* modelStraitsEastSandsVisual;      // East visual DNA editor (voices 2-8)
 extern Model* modelStraitsSandsMacroVisual;     // Macro visual DNA editor (global)
+extern Model* modelSandsDistributionExpander;   // the distribution sub-expander (dual role by host)
 extern Model* modelIntertropical;               // Intertropical scene sequencer
 
 // ─── Change Alley pin matrix expander ────────────────────────────────────────

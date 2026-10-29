@@ -205,6 +205,16 @@
       ]
     },
     {
+      "slug": "SandsDistributionExpander",
+      "name": "Sands Distribution Expander",
+      "description": "The distribution sub-expander (dual role) \u2014 per-lane param1/param2/tilt/atom/warp with a mod jack each, the permanent distribution editor. Cross-voice on Macro, per-voice on East.",
+      "tags": [
+        "Expander",
+        "Digital",
+        "Random"
+      ]
+    },
+    {
       "slug": "Lantern",
       "name": "Lantern",
       "description": "Read-only note-output visualiser for Monsoon \u2014 16-lane display of notes, ties, legato and accents",

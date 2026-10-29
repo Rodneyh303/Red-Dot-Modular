@@ -133,6 +133,7 @@ TESTS=(
   "test_voice_resolver|$SE $GS $PE"
   "test_warp_f_bank|"   # header-only: the per-voice warp-F variant bank (CC_PROMPT_02 — identity default, single-impl holders, branchless mix)
   "test_warp_stages|"   # header-only: FEEL-TEST MO rail-tilt + injected-atom stages (CC_PROMPT_TILT_AND_RAIL_FEELTEST) — neutral bit-exact, monotone, atom mass, tilt direction, edge continuity, persistence
+  "test_sands_distribution_role|"   # header-only, rack-free: the distribution sub-expander's dual-role walk (host-on-first-hop, safe defaults, hop-through, the foreign boundary, first-host-wins, the depth guard, purity)
   "test_warp_mirror|$PE $SE $GS"   # CC_PROMPT_03: the warp mirror + consumer routing (STEP 4 adds the SequencerEngine accessor)
   "test_warp_all_lanes|$PE $SE $GS"   # CC_PROMPT_05: ONE uniform source (warpRow) for every lane × voice — default no-op, warp-reaches, no-raw-leak
   "test_warp_voice_isolation|$PE $SE $GS"   # CC_PROMPT_07: per-voice warp isolation + the delegation-SOURCE contract (manager fills owner rows; no Macro→East leak; V1/V2 distinguished)

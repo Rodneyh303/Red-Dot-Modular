@@ -132,6 +132,20 @@ MODULES = {
             "input_back_": 1,       # the RANDOM row's back-draw jack (the CA scback shape)
         },
     },
+    "sands_distribution": {
+        # SandsDistributionExpander (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC.md):
+        # the module opts into the audit. 91 anchors = 7 lanes x (6 distribution
+        # knobs p1/p2/tilt/level/mass/warp + 6 mod jacks — the spec's "each with
+        # its own MOD JACK") + 7 lane-focus buttons + the connect mark.
+        "widget": ["src/SandsDistributionExpander.cpp"],
+        "panel": "res/panels/SandsDistribution_dark.svg",
+        "counts": {
+            "param_dexp_": 42,      # 7 lanes x 6 distribution knobs (store-backed)
+            "input_dexpmod_": 42,   # 7 lanes x 6 mod jacks (the dynamic-MO surface)
+            "param_dfocus_": 7,     # the lane-focus buttons (which lane the editor shows)
+            "light_connect": 1,
+        },
+    },
     # NOTE: intertropical is bind-by-name (param_%d / output_%d via rack::string::f, light_connect via
     # findNamed) and its panel markers exist, but the audit's bind-regex classifies the "%d"-format
     # binds as PREFIX binds and only matches output_5.., not output_0.. — a pre-existing audit-tooling

@@ -582,6 +582,10 @@ struct PatternEngine {
     // display recompute to 1 voice. TYPED (CC_PROMPT_STRONG_TYPES): callers MINT via
     // VoiceResolver::slot(V); the default is the mono anchor (kMonoVoiceSlot).
     VoiceSlot displayedVoice_ = dotModular::kMonoVoiceSlot;
+    // The shared voice selection, readable (the SandsDistributionExpander honours
+    // it live — "read the selected voice from the shared state" — the spec's
+    // single-source-of-truth ruling; the East visual's tabs publish via the setter).
+    VoiceSlot displayedVoice() const { return displayedVoice_; }
     // The minting setter — the module layer's ONE entry point for the displayed voice.
     void setDisplayedVoice(VoiceSlot v) { displayedVoice_ = v; }
     // Voice-scoped recompute: blend only the given voice's 16 steps from cached z0/z1.

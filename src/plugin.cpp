@@ -90,6 +90,7 @@ void init(rack::Plugin* p) {
 	p->addModel(modelStraitsEastSandsVisual);       // East visual DNA editor (tabbed)
 	// RETIRED: West visual editor merged into East (15-voice). Source kept, not registered.
 	p->addModel(modelStraitsSandsMacroVisual);      // Macro visual DNA editor
+	p->addModel(modelSandsDistributionExpander);    // the distribution sub-expander (dual role: cross-voice on Macro / per-voice on East)
 	p->addModel(modelIntertropical);                // Intertropical scene sequencer
 	// DEV-ONLY: the .dmcurve editor widget host (Phase 2 scaffolding — browser-visible so
 	// Rodney can drag it in isolation; no engine wiring, no integration).

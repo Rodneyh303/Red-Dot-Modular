@@ -18,6 +18,7 @@ extern rack::Model* modelStraitsLaneACCENT;
 extern rack::Model* modelStraitsLaneVARIATION;
 extern rack::Model* modelStraitsLaneLEGATO;
 extern rack::Model* modelMonsoonShophouseMicro;
+extern rack::Model* modelSandsDistributionExpander;   // the Sands subpanel (hop-through)
 
 // Forward declarations
 struct MonsoonInterchangeExpander;
@@ -252,6 +253,7 @@ struct MonsoonExpanderManager {
                         || curr->model == modelStraitsLaneACCENT
                         || curr->model == modelStraitsLaneVARIATION
                         || curr->model == modelStraitsLaneLEGATO
+                        || curr->model == modelSandsDistributionExpander
                         || curr->model == modelMonsoonShophouseMicro) {
                     // Hop-through modules (no cache slot): observer/follower suite modules (Lantern;
                     // Changi T3) AND lane-extension sub-modules (StraitsLaneQMIX/REST/ACCENT/

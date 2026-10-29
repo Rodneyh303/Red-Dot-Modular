@@ -553,9 +553,29 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     //  prob CV OUT makes through VoiceResolver::laneProbabilityAtStep. One producer,
     //  both consumers; the widget-level wrapper had nowhere left to add value.)
 
+    // ── the resnap hardening, HOST side: this panel's own drag-end re-seats its
+    // subpanel run (the subpanel's own drag-end flags via SandsSnapGuest; the
+    // poll catches foreign inserts) ──
+    void onDragEnd(const rack::event::DragEnd& e) override {
+        ModuleWidget::onDragEnd(e);
+        if (auto* m = dynamic_cast<StraitsSandsMacroVisual*>(module))
+            m->snap.needsResnap = true;
+    }
+
     void step() override {
         ModuleWidget::step();
         kitStep();   // kit: dev-mode live-reload poll (no-op unless enabled)
+        // ── the Sands subpanel snap cluster (ui/SandsSnap.hpp): 0.1 s adjacency
+        // poll + the event fast path + the one-shot consumer. The family run is
+        // the Distribution expander (the send subpanel joins when it lands).
+        if (auto* m = dynamic_cast<StraitsSandsMacroVisual*>(module)) {
+            auto fam = [](rack::Module* x) { return x && x->model == modelSandsDistributionExpander; };
+            auto take = [](rack::Module* x) -> bool {
+                auto* g = dynamic_cast<redDot::SandsSnapGuest*>(x);
+                return g && g->needsResnap.exchange(false, std::memory_order_relaxed);
+            };
+            redDot::sandsSnapStep(this, m->snap, fam, take);
+        }
         if (!module || !paramMgr || !visualEditor) return;
         Monsoon* monsoon = getMonsoon();
         // CC_PROMPT_04: close the curve popup when its bound target goes away — tab
