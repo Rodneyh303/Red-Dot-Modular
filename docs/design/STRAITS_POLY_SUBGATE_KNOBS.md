@@ -247,3 +247,14 @@ one modulation depth, not a mode switch. A genuinely novel sequencing behaviour.
   direction the bipolar probability gave THAT event. No per-level independent playheads.
 - WRAP AT BOUNDARY: backward stepping must wrap at pattern boundaries (step 0 going back → wraps to step
   N-1), same as phase mode wraps. The playhead is always modulo pattern-length.
+
+### DIRECTION ACROSS MODES — the three-mode character (Rodney)
+With probabilistic bipolar advance, direction's role per mode:
+- CLOCK MODE: direction is INERT (deterministic forward or backward march). Clock mode is the RELIABLE
+  mode — "you get the sequence as written, predictably." Its identity.
+- GATE MODE: direction becomes ACTIVE via probabilistic bidirectional advance. The EXPLORATORY mode —
+  the sequence wanders through the phrase, gate-native (discrete steps on edges).
+- PHASE MODE: direction is INHERENT (phase signal positions the playhead, direction = the phase slope).
+  The CONTINUOUS mode.
+Each mode has a different relationship to direction — that difference IS what distinguishes them. Clock
+mode's deterministic direction is its identity, not a gap to fill.
