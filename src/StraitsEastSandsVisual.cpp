@@ -20,6 +20,7 @@
 #include "dsp/SandsTopology.hpp"   // step 3c: East V1 write ownership via the resolver
 #include <cassert>
 #include <cmath>
+#include <cstdio>   // snprintf — the Stage-3 range-strip caption
 #include <limits>
 #include "ui/ConnectMark.hpp"
 #include "ui/GoldPolyPort.hpp"
@@ -78,6 +79,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // (blend controls now dim/disable themselves via DimmableTrimpot/DimmableLatch
     //  predicates — no central visibility list needed.)
     int  selectedVoice = 0;
+    // Stage 3: the voice-range strip's caption buffer (setRangeState stores the
+    // pointer — it must outlive the call, so it lives here, not on the stack).
+    char rangeLabel_[16] = "V1";
     // V1 (East-alone) editor is seeded from Monsoon's eastV1Lor/Spread stores on the first
     // frame of each V1 entry, then mirrors live edits back. false = seed pending.
     bool v1Loaded_ = false;
@@ -296,6 +300,40 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     }
                 },
                 false, true);
+        };
+        // ── UNIFIED ADDRESSING Stage 3: the voice-range strip (top of the grid) ──
+        // The thin constant-block lane above lane 0 shows the SELECTED voice's
+        // effective read window (delegation-resolved) and is its drag-authoring
+        // surface: the gestures write the per-voice East row (the 2b store) live,
+        // and the release pushes a Rack history action (the onLorCommit idiom).
+        // A voice that FOLLOWS Macro shows the Macro row blocked (the delegation
+        // discipline — edit the global row on the Macro panel's own strip).
+        visualEditor->layout.rangeLaneH = mm2px(Vec(0.f, dotModular::SandsGrid::RANGE_LANE_H)).y;
+        visualEditor->onRangeEdit = [this](int L, int O, int R) {
+            auto* m = getMonsoon(); if (!m) return;
+            const int v = selectedVoice;
+            if (m->getVoiceLorLocalEast(v) == 0.f) return;   // follow-Macro: authored on Macro
+            m->setVoiceLorEast(v, 0, (float)L);
+            m->setVoiceLorEast(v, 1, (float)O);
+            m->setVoiceLorEast(v, 2, (float)R);
+        };
+        visualEditor->onRangeCommit = [this](const int before[3], const int after[3]) {
+            auto* m = getMonsoon(); if (!m) return;
+            const int v = selectedVoice;
+            if (m->getVoiceLorLocalEast(v) == 0.f) return;
+            const int b0=before[0],b1=before[1],b2=before[2];
+            const int a0=after[0], a1=after[1], a2=after[2];
+            redDot::applyAndPushStoreEdit<Monsoon>(m, "Voice range edit",
+                [v, b0,b1,b2, a0,a1,a2](Monsoon& mm, bool redo) {
+                    const int L = redo?a0:b0, O = redo?a1:b1, R = redo?a2:b2;
+                    mm.setVoiceLorEast(v, 0, (float)L);
+                    mm.setVoiceLorEast(v, 1, (float)O);
+                    mm.setVoiceLorEast(v, 2, (float)R);
+                },
+                false, true);
+        };
+        visualEditor->onRangeRightClick = [this](rack::math::Vec) -> bool {
+            return openVoiceRangeMenu();
         };
         addChild(visualEditor);
 
@@ -625,6 +663,51 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         const bool acted = redDot::sandsToggleSubpanel(this, *st, eastSeatingFamily, eastLooseLeft, model);
         if (acted) st->needsResnap = true;   // the one-shot consumer re-seats the run
         return acted;
+    }
+
+    // ── UNIFIED ADDRESSING Stage 3: the voice-range strip's context menu ────────
+    // Right-click on the strip (top of the grid): the SELECTED voice's range
+    // delegation switch (the 2b menu, relocated to the surface it governs), the
+    // row's DIRECTION (the LaneDir order — the same 4 states a lane's dir cell
+    // cycles), and the identity reset. The store is the single authority; the
+    // engine picks the row up on the next control block via pushVoiceLorEditor.
+    bool openVoiceRangeMenu() {
+        auto* m = getMonsoon();
+        if (!m) return false;
+        const int v = selectedVoice;
+        struct RangeDirItem : MenuItem {
+            StraitsEastSandsVisualWidget* widget;
+            int v; int dir;
+            void onAction(const event::Action& e) override {
+                if (auto* mm = widget->getMonsoon()) mm->setVoiceLorEastDir(v, (float)dir);
+            }
+        };
+        Menu* menu = createMenu();
+        menu->addChild(createMenuLabel(
+            std::string("Voice range (voice ") + std::to_string(v + 1) + ")"));
+        menu->addChild(new MenuSeparator);
+        const bool independent = (m->getVoiceLorLocalEast(v) != 0.f);
+        menu->addChild(createCheckMenuItem("Follow Macro (global range)", "",
+            [m, v]() { return m->getVoiceLorLocalEast(v) == 0.f; },
+            [m, v]() { m->setVoiceLorLocalEast(v, 0.f); }));
+        menu->addChild(createCheckMenuItem("Independent (East, this voice)", "",
+            [m, v]() { return m->getVoiceLorLocalEast(v) != 0.f; },
+            [m, v]() { m->setVoiceLorLocalEast(v, 1.f); }));
+        menu->addChild(new MenuSeparator);
+        static const char* const dirNames[4] =
+            { "Forward", "Reverse", "Pendulum", "PingPong" };
+        const int curDir = (int)std::lround(m->getVoiceLorEastDir(v)) & 3;
+        for (int d = 0; d < 4; ++d) {
+            auto* it = new RangeDirItem;
+            it->text = dirNames[d];
+            it->rightText = (independent && curDir == d) ? "✓" : "";
+            it->widget = this; it->v = v; it->dir = d;
+            menu->addChild(it);
+        }
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuItem("Reset range to identity (16/0/0, fwd)", "",
+            [m, v]() { m->resetVoiceLorEast(v); }));
+        return true;
     }
 
     void appendContextMenu(Menu* menu) override {
@@ -1561,6 +1644,27 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     visualEditor->currentState.lanes[el].probabilities[s] =
                         eng.effectiveProbability(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{el}, s, SequencerEngine::ProbLens::Owner);
             }
+        }
+
+        // ── UNIFIED ADDRESSING Stage 3: the voice-range strip (the selected voice) ──
+        // The thin lane above lane 0 shows this voice's EFFECTIVE read window (the
+        // delegation-resolved row — what the engine's map actually walks), the voice's
+        // cached read cell animating with the playhead, and the frame's walk sign as
+        // the leading-edge cue. A follow-Macro voice shows the Macro row BLOCKED
+        // (the delegation discipline — the global row is authored on Macro's strip).
+        // Data straight off the engine caches (recomputeVoiceDrivers_); the strip is
+        // display + gesture reporting, the store stays the single authority.
+        {
+            const int v = selectedVoice;   // tab index == voiceSlot (0 = V1 mono)
+            int L, O, R; SequencerEngine::LaneDir vd;
+            eng.effectiveVoiceLor(v, L, O, R, vd);
+            (void)vd;   // the direction CUE comes from the engine's walk-sign cache, not the row's setting
+            const bool independent = (monsoon->getVoiceLorLocalEast(v) != 0.f);
+            const auto vslot = dotModular::VoiceResolver::slot(v + 1);   // slot() is VOICE-NUMBER based
+            const int rp = (eng.stepIndex >= 0) ? eng.voiceReadPosition(vslot) : -1;
+            const int sg = eng.voiceReadSign(vslot);
+            snprintf(rangeLabel_, sizeof(rangeLabel_), "V%d", v + 1);
+            visualEditor->setRangeState(std::max(1, L), O, R, rp, sg, !independent, rangeLabel_);
         }
     }
 

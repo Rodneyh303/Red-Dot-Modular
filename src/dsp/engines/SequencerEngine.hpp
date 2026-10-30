@@ -485,10 +485,22 @@ struct SequencerEngine {
     // stateless law): voiceDriver_ = the 1-based tick the voice's LANES are driven by
     // (laneTickFor input), voiceDriverPrev_ = its wrap-normalized musical predecessor
     // (for the lane-sign derivation), voiceRead_ = the buffer cell the voice's frame
-    // reads (the Stage-3 range lane + tests).
+    // reads (the Stage-3 range lane + tests). voiceSign_ = the voice FRAME's
+    // instantaneous walk sign (+1/-1, 0 = not yet moved) — the Stage-3 range strip's
+    // direction cue, derived by the SAME rule as the lane signs: the sign of the
+    // window-walk delta, with a wrap/jump substituted by ONE musical step along the
+    // current motion (a window wrap is a BEAT, not a bounce — it must not flip the
+    // cue) and an endpoint repeat (delta 0) keeping the previous sign. UI cue only:
+    // nothing reads it to decide position (the laneSign_ discipline).
     long    voiceDriver_[kVoiceSlots]               = {};
     long    voiceDriverPrev_[kVoiceSlots]           = {};
     int     voiceRead_[kVoiceSlots]                 = {};
+    int     voiceSign_[kVoiceSlots]                 = {};
+    // The MACRO frame's read cell + walk sign — the global window walk itself (the
+    // Macro tier has no voice map, it IS the frame). The Macro panel's range strip
+    // animates this; the expression is the identity-voice branch's, computed once.
+    int     macroFrameRead_                         = 0;
+    int     macroFrameSign_                         = 0;
 
     // The EFFECTIVE voice LOR row (delegation + Macro tier) — the one resolution authority.
     void effectiveVoiceLor(int v, int& L, int& O, int& R, LaneDir& d) const {
@@ -532,8 +544,16 @@ struct SequencerEngine {
     // The voice frame's read position (the buffer cell, 0..15) — the Stage-3 range lane
     // and the tests. Cached by the same recompute that fills voiceDriver_.
     int     voiceReadPosition(dotModular::VoiceSlot bank) const  { return voiceRead_[bank.v]; }
+    // The voice frame's instantaneous walk sign (+1/-1, 0 = not yet moved) — the Stage-3
+    // range strip's direction cue (the laneSign_ discipline: derived for display only).
+    int     voiceReadSign(dotModular::VoiceSlot bank) const      { return voiceSign_[bank.v]; }
+    // The MACRO frame (the global window walk): read cell + walk sign, for the Macro
+    // panel's range strip (the tier with no voice map — the frame itself).
+    int     macroFrameRead() const  { return macroFrameRead_; }
+    int     macroFrameSign() const  { return macroFrameSign_; }
     // The recompute shared by advancePlayhead and recomputeLaneTicks (implemented .cpp):
-    // fills voiceDriver_/voiceDriverPrev_/voiceRead_ from the global driver pair.
+    // fills voiceDriver_/voiceDriverPrev_/voiceRead_/voiceSign_ (per voice) and
+    // macroFrameRead_/macroFrameSign_ (the Macro frame) from the global driver pair.
     void    recomputeVoiceDrivers_(long tNow, long tPrevGlobal, long tRawPrev, int dirMotion);
 
     // Lane-index unification: PL_* now matches the VISUAL/EDITOR/STRAND order

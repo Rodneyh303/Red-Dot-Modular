@@ -19,7 +19,9 @@
 // East/Macro's voice tabs (V1..V16, two rows) move ABOVE the grid, into 3..13 mm, so lane 0
 // (MELODY) can start at 14 mm like Mono's. Their module logo therefore moves to the panel FOOTER.
 //
-// Mirror any change here in panel_src/gen_east_clean.py and panel_src/gen_macro_mono.py.
+// Mirror any change here in panel_src/gen_east_clean.py and panel_src/gen_macro_mono.py
+// (both carry a RANGE_MM that must equal RANGE_LANE_H — the painted editor recess,
+// lane dividers and every rowY()-anchored control shift down by it in lockstep).
 // ─────────────────────────────────────────────────────────────────────────────
 namespace dotModular {
 namespace SandsGrid {
@@ -46,10 +48,25 @@ namespace SandsGrid {
     static constexpr float ED_X = 97.f;
     static constexpr float ED_W = 111.f;
 
+    // UNIFIED ADDRESSING Stage 3 (CC_PROMPT_UNIFIED_ADDRESSING_SPEC.md): the thin
+    // VOICE-RANGE strip — a constant-block lane reserved at the TOP of the Sands grid
+    // (the frame the probability lanes nest within), on the East + Macro editors only.
+    // It shows the selected voice's effective read window (flat lit = in-range, dim =
+    // out-of-range), animates with the engine's per-voice read cell, and is the drag-
+    // authoring surface for the voice-LOR rows. The probability lanes keep their full
+    // 13 mm — the editor BOX grows DOWN by the strip height instead (the gen scripts'
+    // ED_H +RANGE_MM, rowY() +RANGE_MM in lockstep), so lane 0 starts at LANE_TOP +
+    // RANGE_LANE_H and the strip occupies [LANE_TOP, LANE_TOP+RANGE_LANE_H).
+    static constexpr float RANGE_LANE_H = 5.f;
+
     static constexpr float monoBottom() { return LANE_TOP + MONO_LANES * LANE_H; }  // 105 (7×13)
     static constexpr float polyBottom() { return LANE_TOP + POLY_LANES * LANE_H; }  // 79  (5×13)
     static constexpr float monoHeight() { return MONO_LANES * LANE_H; }             // 91  (7×13)
     static constexpr float polyHeight() { return POLY_LANES * LANE_H; }             // 65  (5×13)
+    // The EDITOR BOX heights (strip + lanes). East/Macro size the editor widget and the
+    // painted recess with these; the lane area itself is still mono/polyHeight().
+    static constexpr float monoBoxHeight() { return RANGE_LANE_H + monoHeight(); }  // 96 (5+7×13)
+    static constexpr float polyBoxHeight() { return RANGE_LANE_H + polyHeight(); }  // 96 (5+7×13)
 
     // Lane centre for either family — the single formula both used separately before.
     static constexpr float laneCentre(int lane) { return LANE_TOP + (lane + 0.5f) * LANE_H; }

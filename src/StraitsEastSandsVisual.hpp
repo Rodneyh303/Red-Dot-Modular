@@ -48,15 +48,20 @@ namespace StraitsEastVisualIds {
     // East shows 7 editor lanes (MEL/OCT/QMIX/REST/ACC + VAR/LEG), spanning the SAME band as Mono
     // (14..105). ED_LANE_H (13mm) drives prob-out/control-row placement; matches the gen script.
     // Lanes 5/6 (VAR/LEG) are locked/display-only for now.
-    static constexpr float ED_H      = dotModular::SandsGrid::monoHeight();  // 91 (7×13)
+    // UNIFIED ADDRESSING Stage 3: the editor BOX grows DOWN by the voice-range strip
+    // (RANGE_LANE_H) — the lanes keep their full 13mm and start one strip lower; the
+    // painted recess + every rowY()-anchored control shift with it (the gen scripts'
+    // RANGE_MM/rowY in lockstep).
+    static constexpr float ED_H      = dotModular::SandsGrid::monoBoxHeight();  // 96 (5mm range strip + 7×13)
     static constexpr int   N_EDITOR_LANES = dotModular::SandsGrid::EAST_LANES;  // 7
     static constexpr float ED_LANE_H = dotModular::SandsGrid::LANE_H;        // 13
 
     // Left-control rows align with the EDITOR lane centres (not the full panel),
     // so each lane's CV jacks + attens sit beside the visual lane they modulate —
-    // matching SandsMonoVisual's behaviour.
+    // matching SandsMonoVisual's behaviour. Stage 3: + RANGE_LANE_H — the lanes
+    // start below the voice-range strip at the top of the editor box.
     static inline float rowY(int r) {
-        return ED_Y + (r + 0.5f) * ED_LANE_H;
+        return ED_Y + dotModular::SandsGrid::RANGE_LANE_H + (r + 0.5f) * ED_LANE_H;
     }
 
     // ── Row → lane mapping (mono-style: row == lane) ──────────────────────

@@ -27,16 +27,22 @@ WARPEDIT_X = 229.0  # CC_PROMPT_04 STEP 2: warp curve-editor trigger button colu
 DELEG_MOD_X = 238.0 # delegation gate-mod jack column (gate flips local/delegated; +9 for the CRV column)
 DIR_MOD_X = 246.0   # direction gate-mod jack column (gate cycles Fwd→Rev→Pend→PingPong)
 PROB_OUT_X = 254.0  # right-strip jack column, pushed right by the mod jack columns (matches hpp)
-ED_H = 91.0   # OPT-B: 7 lanes x 13mm — East adds Q-MIX at index 2 (MEL/OCT/QMIX/REST/ACC/VAR/LEG); editor 14->105, ~6mm above MBS
+ED_H = 96.0   # OPT-B: 7 lanes x 13mm — East adds Q-MIX at index 2 (MEL/OCT/QMIX/REST/ACC/VAR/LEG); editor 14->105, ~6mm above MBS
+              # UNIFIED ADDRESSING Stage 3: +5mm — the voice-range strip (RANGE_MM, the thin
+              # constant-block lane at the TOP of the grid). The editor BOX grows DOWN;
+              # the 7 probability lanes keep their full 13mm and start one strip lower
+              # (ED_Y+RANGE_MM). Mirrors src/ui/SandsGrid.hpp RANGE_LANE_H/monoBoxHeight().
+RANGE_MM = 5.0   # the voice-range strip height — MUST equal SandsGrid::RANGE_LANE_H
 ED_LANES = 7  # OPT-B: editor lanes drawn (Q-MIX added at index 2)
 POLY_LANES = 7  # spread/poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG) — all rows now carry
                 # CV/atten/spread/prob. Mirrors dotModular::SandsGrid::POLY_LANES (=7 after the
                 # sands consolidation; VAR/LEG are full poly lanes, no longer mono-only).
-ED_LANE_H = ED_H / ED_LANES
+ED_LANE_H = (ED_H - RANGE_MM) / ED_LANES   # 13mm — the LANE area below the range strip
 # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY):
 # each lane's CV jacks + attens sit beside the visual lane they modulate. Row == editor lane
-# (no ESLOT remap — q-mix is a real lane, not a preview gap).
-def rowY(r): return ED_Y + (r+0.5)*ED_LANE_H
+# (no ESLOT remap — q-mix is a real lane, not a preview gap). Stage 3: lanes start below
+# the voice-range strip, so every rowY()-anchored control shifts down by RANGE_MM.
+def rowY(r): return ED_Y + RANGE_MM + (r+0.5)*ED_LANE_H
 def ctrlY(k): return rowY(k)   # control/marker row for editor lane k (identity)
 # editor row -> ENGINE/spread poly lane (REST0/MEL1/OCT2/ACC3/QMIX4). Mirrors
 # dotModular::EDITOR_TO_ENGINE_LANE_QMIX (dsp/LaneMapping.hpp). East's SPREAD knobs bind by
@@ -166,8 +172,11 @@ def gen(dark):
     # MBS watermark centred in the editor, large + faint (reads as Marina Bay)
     A(mbs(ED_X+ED_W*0.28, ED_Y+ED_H-5.0, ED_W*0.46, ED_H*0.68, t, op=0.16))
     for k in range(1,ED_LANES):   # 6 lanes → 5 dividers (was /4, a 4-lane leftover)
-        ly=ED_Y+k*ED_LANE_H
+        ly=ED_Y+RANGE_MM+k*ED_LANE_H   # Stage 3: the LANE dividers start below the voice-range strip
         A(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ly):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ly):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" opacity="0.7"/>')
+    # the voice-range strip's own separator (the painted empty state shows 8 rows:
+    # 1 thin strip row + the 7 probability lanes)
+    A(f'<line x1="{px(ED_X+1):.1f}" y1="{px(ED_Y+RANGE_MM):.1f}" x2="{px(ED_X+ED_W-1):.1f}" y2="{px(ED_Y+RANGE_MM):.1f}" stroke="{t["edborder"]}" stroke-width="0.75" opacity="0.7"/>')
 
     # ── per-lane owner-source block, right of the editor before the prob-outs.
     #    The faint backing + separator + "SRC" label form the container; the LIVE

@@ -200,9 +200,11 @@ void SequencerEngine::reset() {
         voiceLorDir_[v] = LaneDir::Forward;
         voiceLorLocalEast_[v] = false;
         voiceDriver_[v] = 0; voiceDriverPrev_[v] = 0; voiceRead_[v] = 0;
+        voiceSign_[v] = 0;   // Stage 3: the walk-sign cue re-derives on the first step
     }
     macroVoiceLor_[LOR_LEN] = 16; macroVoiceLor_[LOR_OFF] = 0; macroVoiceLor_[LOR_ROT] = 0;
     macroVoiceLorDir_ = LaneDir::Forward;
+    macroFrameRead_ = 0; macroFrameSign_ = 0;   // Stage 3: the Macro frame's caches too
     runGateActive = false;
     resetArmed = false;
     prevGate1High = false;
@@ -478,7 +480,20 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLev
 // step 1, so the mechanical phase is (R-O) mod L), and the lanes are driven by the
 // voice's window position — the lane R re-base, the voice-length container, and the
 // voice direction all ride the chain (the sign product is inherited, not re-derived).
+// Stage 3: also fills the UI cue caches — voiceSign_ (the voice frame's instantaneous
+// walk sign) and macroFrameRead_/macroFrameSign_ (the Macro frame = the global window
+// walk). Same derivation rule as the caller's lane recomp: sign of the walk delta,
+// a wrap/jump reads as ONE musical step along the current motion (a BEAT, not a
+// bounce — the cue must not flip there), delta 0 (the PingPong endpoint repeat)
+// keeps the previous sign. Write-only caches; no read/generation path changes.
 void SequencerEngine::recomputeVoiceDrivers_(long tNow, long tPrevGlobal, long tRawPrev, int dirMotion) {
+    // The MACRO frame first (computed once, not per voice): the global window walk.
+    macroFrameRead_ = (int)(((tNow - 1) % 16 + 16) % 16);
+    {
+        const long gd = tNow - tPrevGlobal;   // wrap-normalized: -1/0/+1 (a window wrap was already folded to one step)
+        if (gd > 0)      macroFrameSign_ = +1;
+        else if (gd < 0) macroFrameSign_ = -1;   // 0 = held repeat: keep the previous cue
+    }
     for (int v = 0; v < kVoiceSlots; ++v) {
         const bool live = (v == 0) || (v >= 1 && v <= numPolyVoices);
         if (!live) { voiceDriver_[v] = tNow; voiceDriverPrev_[v] = tPrevGlobal; voiceRead_[v] = 0; continue; }
@@ -486,6 +501,11 @@ void SequencerEngine::recomputeVoiceDrivers_(long tNow, long tPrevGlobal, long t
             voiceDriver_[v]      = tNow;
             voiceDriverPrev_[v]  = tPrevGlobal;
             voiceRead_[v]        = (int)(((tNow - 1) % 16 + 16) % 16);
+            {   // identity frame = the global walk (same pair as macroFrame above)
+                const long gd = tNow - tPrevGlobal;
+                if (gd > 0)      voiceSign_[v] = +1;
+                else if (gd < 0) voiceSign_[v] = -1;
+            }
             continue;
         }
         int L, O, R; LaneDir vd;
@@ -500,6 +520,21 @@ void SequencerEngine::recomputeVoiceDrivers_(long tNow, long tPrevGlobal, long t
         // A wrap (the voice's own window, or the global window beneath it) is a BEAT,
         // not a bounce: the musical predecessor is one step along the current motion.
         voiceDriverPrev_[v] = (dd > 1 || dd < -1) ? (voiceDriver_[v] - dirMotion) : (wprev + 1);
+        {   // Stage 3: the voice frame's walk sign. A wrap/jump (|dd| > 1) reads as ONE
+            // musical step along the FRAME'S OWN motion — dirMotion x the voice's
+            // direction sign (a Reverse frame wrapping bottom->top is still walking
+            // backward; the raw walk delta there is an alias of the closed form, not a
+            // direction flip). Otherwise the raw window-walk delta carries it, including
+            // the Pendulum/PingPong endpoint flips. delta 0 = the PingPong endpoint
+            // repeat: keep the cue. (Pendulum/PingPong projections never jump — their
+            // walks bounce inside the window — so the raw delta is always the truth
+            // there; the guard is for the Forward/Reverse wraps and a global-window
+            // jump beneath the frame.)
+            const long vdSign  = (vd == LaneDir::Reverse) ? -1 : +1;
+            const long dstep   = (dd > 1 || dd < -1) ? (long)dirMotion * vdSign : dd;
+            if (dstep > 0)      voiceSign_[v] = +1;
+            else if (dstep < 0) voiceSign_[v] = -1;
+        }
     }
 }
 

@@ -38,10 +38,16 @@ def gen_macro(dark, W_MM=259.08):  # 51HP exactly (51 x 5.08mm = 765px) — the 
     # SandsMacroSendSubpanel — the spec's "Macro is already big").
     WLEVEL_X=88.   # w-level knob column (CC_PROMPT_04 STEP 1) — the OLD ED_X slot (9mm left-cluster rhythm)
     WARPEDIT_X=229.   # CC_PROMPT_04 STEP 2: warp curve-editor trigger button column, right of the dir cell
-    ED_X=97.; ED_W=111.; OWNER_X=214.; DIR_X=221.; DIR_MOD_X=238.; PROB_OUT_X=248.; ED_Y=14.; ED_H=91.   # +9mm (w-level col) +9mm (CRV col); 7 lanes x 13mm, editor 14->105
-    ED_LANE_H=ED_H/N
+    # UNIFIED ADDRESSING Stage 3: +5mm — the voice-range strip (RANGE_MM, the thin constant-block
+    # lane at the TOP of the grid, the Macro tier's authoring surface). The editor BOX grows
+    # DOWN; the 7 probability lanes keep their full 13mm and start one strip lower. Mirrors
+    # src/ui/SandsGrid.hpp RANGE_LANE_H/polyBoxHeight().
+    RANGE_MM=5.0
+    ED_X=97.; ED_W=111.; OWNER_X=214.; DIR_X=221.; DIR_MOD_X=238.; PROB_OUT_X=248.; ED_Y=14.; ED_H=96.   # +9mm (w-level col) +9mm (CRV col); 7 lanes x 13mm + 5mm range strip, editor 14->110
+    ED_LANE_H=(ED_H-RANGE_MM)/N   # 13mm — the LANE area below the range strip
     # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY).
-    def rowY(r): return ED_Y+(r+0.5)*ED_LANE_H
+    # Stage 3: lanes start below the voice-range strip — every row shifts down by RANGE_MM.
+    def rowY(r): return ED_Y+RANGE_MM+(r+0.5)*ED_LANE_H
     ctrlY = rowY   # alias: a few sites below use ctrlY (as gen_mono does); same lane-centre.
     # 4 CV jacks + 4 attens + spread base — columns match SandsMonoVisual, ED_X=88
     JACK_X=[6.,15.,24.,33.]            # LEN/OFF/ROT/SPR-cv
@@ -55,11 +61,13 @@ def gen_macro(dark, W_MM=259.08):  # 51HP exactly (51 x 5.08mm = 765px) — the 
     # now extend to Y=105, so the helix is scaled into the free bottom strip (105→128.5) to avoid
     # overlapping the VAR/LEG control rows. Still bottom-left (vs East's lower-right), just lower
     # + shorter. A full helix reposition is deferred to Step 4.
-    A(D.helix_sands(4.0, 107.0, 60.0, 20.0, t, op=0.95))
+    # Stage 3: the control rows (+RANGE_MM) push the group recess's bottom to ~113, so the helix
+    # shrinks into the remaining pocket (113.5→128) — the full mark stays visible, just flatter.
+    A(D.helix_sands(4.0, 113.5, 60.0, 14.5, t, op=0.95))
     A(D.accent_rules(PW,t))
     gx,gy=1.5,ctrlY(0)-ED_LANE_H*0.5-3.0; gw,gh=(WLEVEL_X+6.0)-gx,(ctrlY(N-1)+ED_LANE_H*0.5+3.0)-gy  # gx clears leftmost jack; recess wraps the w-level column too (CC_PROMPT_04)
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
-    A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=7))
+    A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=7,range_h=RANGE_MM))
     A(D.owner_block(OWNER_X, [ctrlY(r) for r in range(N)], ED_X+ED_W, t, cell_w_mm=6.0))
     # CC_PROMPT_04 STEP 2: faint backing for the warp curve-editor ("CRV") button column,
     # right of the dir cell (header text is widget-drawn on Macro, matching its other headers).

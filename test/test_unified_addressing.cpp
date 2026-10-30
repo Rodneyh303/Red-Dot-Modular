@@ -797,6 +797,140 @@ int main() {
         check(clamps, "STAGE2b: the push clamps to the store frame (L 1..16, O/R 0..15, dir 0..3, flag)");
     }
 
+    // ── STAGE 3: the voice-range strip's ENGINE data (the UI reads these caches) ──
+    // The strip (East: the selected voice; Macro: the Macro frame) displays three
+    // engine-backed things: the effective row (Stage 2's effectiveVoiceLor, already
+    // pinned), the voice's READ CELL (voiceReadPosition, pinned above), and the
+    // frame's instantaneous WALK SIGN (voiceReadSign / macroFrameSign — new). The
+    // sign follows the lane-sign discipline: sign of the window-walk delta, a wrap
+    // is a BEAT (one step along the current motion — never flips the cue), and a
+    // PingPong endpoint repeat (delta 0) keeps the previous sign. UI cue only —
+    // nothing downstream reads it, so the goldens above are untouched by definition
+    // (and re-pinned by the same run).
+    {
+        // IDENTITY voices ride the global walk: forward marching signs +1, backward -1;
+        // the Macro frame (the same walk, one tier up) agrees step for step.
+        SequencerEngine eng; eng.reset();
+        bool fwdOK = true, frameOK = true;
+        for (int k = 0; k < 24; ++k) {
+            eng.advancePlayhead(+1);
+            const long T = (long)k + 1;
+            fwdOK   = fwdOK && eng.voiceReadSign(dotModular::VoiceResolver::mono()) == +1;
+            frameOK = frameOK && eng.macroFrameRead()  == (int)(((T - 1) % 16 + 16) % 16)
+                    && eng.macroFrameSign() == +1;
+        }
+        check(fwdOK,   "STAGE3: identity voice — forward march signs +1 every step");
+        check(frameOK, "STAGE3: macroFrameRead == ((T-1) mod 16) with sign +1 (the global walk)");
+        bool backOK = true;
+        for (int k = 0; k < 24; ++k) {
+            eng.advancePlayhead(-1);
+            backOK = backOK && eng.voiceReadSign(dotModular::VoiceResolver::mono()) == -1
+                   && eng.macroFrameSign() == -1;
+        }
+        check(backOK,  "STAGE3: backward march flips the cue to -1 (voice + Macro frame)");
+    }
+    {
+        // A REVERSE voice: its own frame walks backward while the playhead runs
+        // forward — the strip's cue must read -1 (the sign product, one level up).
+        // k=0 is the ANCHOR LANDING (the cold walk-in — the closed form's delta into
+        // the anchor row is exempt; from the first walked step on, the cue is the
+        // frame's own motion), and the wrap 0->7 must NOT flip it (the beat rule with
+        // the frame's own direction: dirMotion x vdSign keeps -1 through the wrap).
+        SequencerEngine eng; eng.reset();
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
+        eng.macroVoiceLorDirRef() = SequencerEngine::LaneDir::Reverse;
+        bool revOK = true;
+        for (int k = 0; k < 16; ++k) {
+            eng.advancePlayhead(+1);
+            if (k == 0) continue;
+            revOK = revOK && eng.voiceReadSign(dotModular::VoiceResolver::mono()) == -1
+                  && eng.macroFrameSign() == +1;   // the frame above stays forward
+        }
+        check(revOK, "STAGE3: Reverse voice signs -1 under a forward playhead, through its own wrap (per-level cue)");
+    }
+    {
+        // THE BEAT RULE at the voice's own window wrap: the worked-table Macro row
+        // {L=8, O=5, R=7} reads 7,8,...,12 then WRAPS to 5 — the read jumps down 7,
+        // but the walk is still forward: the cue must stay +1 across the wrap.
+        SequencerEngine eng; eng.reset();
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
+        const auto M = dotModular::VoiceResolver::mono();
+        static const int kVoiceReads[16] = {7,8,9,10,11,12,5,6,7,8,9,10,11,12,5,6};
+        bool wrapOK = true; bool sawWrap = false;
+        int prevSign = 0;
+        for (int k = 0; k < 16; ++k) {
+            eng.advancePlayhead(+1);
+            const int rp = eng.voiceReadPosition(M);
+            const int sg = eng.voiceReadSign(M);
+            wrapOK = wrapOK && rp == kVoiceReads[k];
+            if (k > 0 && kVoiceReads[k - 1] == 12 && kVoiceReads[k] == 5) {
+                sawWrap = true;
+                wrapOK = wrapOK && sg == +1 && prevSign == +1;   // a beat, not a bounce
+            }
+            prevSign = sg;
+        }
+        check(wrapOK && sawWrap,
+              "STAGE3: the voice window's wrap keeps the cue +1 (a BEAT — the wrap-normalized rule, voice level)");
+    }
+    {
+        // TURNAROUND STYLES on the cue: Pendulum's endpoint read is ONCE (the read
+        // reverses on the next step -> the cue flips +1 -> -1); PingPong's endpoint
+        // repeat (delta 0) KEEPS the cue, flipping one step later on the descent.
+        SequencerEngine pend; pend.reset();
+        pend.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
+        pend.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
+        pend.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 5;
+        pend.macroVoiceLorDirRef() = SequencerEngine::LaneDir::Pendulum;
+        bool pendOK = true;
+        for (int k = 0; k < 12; ++k) {
+            pend.advancePlayhead(+1);
+            const int sg = pend.voiceReadSign(dotModular::VoiceResolver::mono());
+            if (k == 0)      pendOK = pendOK;               // the anchor landing — the closed form's phase
+            else if (k < 7)  pendOK = pendOK && sg == +1;   // the ascent 6..11 (walk 2..8)
+            else if (k == 7) pendOK = pendOK && sg == +1;   // read 12 (the single end read, still +1)
+            else             pendOK = pendOK && sg == -1;   // the descent 11.. — the flip landed
+        }
+        check(pendOK, "STAGE3: Pendulum — the cue flips exactly at the turnaround (the end read ONCE)");
+        SequencerEngine pong; pong.reset();
+        pong.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
+        pong.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
+        pong.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 5;
+        pong.macroVoiceLorDirRef() = SequencerEngine::LaneDir::PingPong;
+        bool pongOK = true;
+        for (int k = 0; k < 12; ++k) {
+            pong.advancePlayhead(+1);
+            const int rp = pong.voiceReadPosition(dotModular::VoiceResolver::mono());
+            const int sg = pong.voiceReadSign(dotModular::VoiceResolver::mono());
+            if (k == 0)      pongOK = pongOK;               // the anchor landing — the closed form's phase
+            else if (k < 7)  pongOK = pongOK && sg == +1;   // the ascent 6..11
+            else if (k == 7) pongOK = pongOK && rp == 12 && sg == +1;   // the FIRST end read
+            else if (k == 8) pongOK = pongOK && rp == 12 && sg == +1;   // the REPEAT (delta 0 keeps the cue)
+            else             pongOK = pongOK && rp == 12 - (k - 8) && sg == -1;   // the descent flips
+        }
+        check(pongOK, "STAGE3: PingPong — the double-tap keeps the cue through the repeat, flips on the descent");
+    }
+    {
+        // THE MACRO FRAME under a MAPPED GLOBAL WINDOW: macroFrameRead_ walks the
+        // window (the same expression the identity voice branch computes), so the
+        // Macro panel's strip animates inside the authored global range.
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(10.f, 0.f, false, 4.f, false, false);
+        bool walkOK = true;
+        for (int k = 0; k < 30; ++k) {
+            eng.advancePlayhead(+1);
+            const long T = (long)k + 1;
+            walkOK = walkOK && eng.macroFrameRead() == (int)(((((T - 1) % 10 + 10) % 10) + 4) & 0x0F);
+        }
+        check(walkOK, "STAGE3: macroFrameRead walks a mapped global window (10 @ off 4)");
+        // And reset() re-seeds the cues to 0 (they re-derive on the first step).
+        SequencerEngine r; r.reset();
+        check(r.voiceReadSign(dotModular::VoiceResolver::mono()) == 0
+              && r.macroFrameRead() == 0 && r.macroFrameSign() == 0,
+              "STAGE3: reset() seeds the sign/frame cues to 0 (re-derived on the first step)");
+    }
+
     std::printf("test_unified_addressing: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
