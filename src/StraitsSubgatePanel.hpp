@@ -1,21 +1,11 @@
 #pragma once
-// ── StraitsSubgateBase + subpanels — the subgate consumer-group surfaces ─────
-// CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC on its STRAITS home (Rodney: nothing on
-// the distribution expander — Sands/distribution is the DRAW-generation plane,
-// Straits the decision plane reacting to the draws; "Only panel changes are on
-// the new straits expander base and new subpanels").
+// ── StraitsSubgatePanel — the subgate per-voice panels (the subgate tier-1
+// surfaces). CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE: the subgate GLOBAL
+// tier (the 8 knobs + their mod jacks, the source switches, the wheel) lives
+// on STRAITSBASE now — the separate StraitsSubgateBase module is RETIRED
+// (deleted); these panels attach to the unified StraitsBase, docking after
+// the lane run.
 //
-//   StraitsSubgateBase        — the GLOBAL tier: one store-backed knob per
-//                               subgate decision ({RATCHET,GHOST}×{REST,LEG,
-//                               ADV,ACC}), one mod jack per knob (the Causeway
-//                               path — a Straits knob without its mod path is a
-//                               modulation-layer seam), the per-decision source
-//                               SWITCH as a context menu (follow main / global,
-//                               default follow main), and the SUBPANEL WHEEL:
-//                               it spawns/owns the per-voice subpanels exactly
-//                               the way StraitsBase owns its lanes (stable
-//                               owned-ID list + unconditional reposition — the
-//                               two Straits invariants, task-84 law).
 //   StraitsSubgatePanel{Level}{Decision} — the per-voice tier (tier 1), ONE
 //                               panel per (LEVEL × DECISION) — CC_PROMPT_FIX_
 //                               SUBGATE_PANELS, Rodney DECIDED option (a):
@@ -41,12 +31,10 @@
 #include <rack.hpp>
 #include <atomic>
 #include <string>
-#include <vector>
 
 #include "Monsoon.hpp"
 #include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (onExpanderChange bump)
 
-extern rack::Model* modelStraitsSubgateBase;
 extern rack::Model* modelStraitsSubgatePanelRatchetRest;
 extern rack::Model* modelStraitsSubgatePanelRatchetLegato;
 extern rack::Model* modelStraitsSubgatePanelRatchetAccent;
@@ -58,14 +46,6 @@ extern rack::Model* modelStraitsSubgatePanelGhostAdvance;
 
 namespace StraitsSubgateIds {
     namespace SK = dotModular::SubgateKnobs;
-
-    // The BASE's mod inputs: one per GLOBAL threshold, mono, ±10V → ±1.0 delta
-    // (×0.1 — the distribution expander's jack convention). Level-major order.
-    enum InputIds {
-        MOD_GLOBAL_0 = 0,
-        NUM_MOD_INPUTS = SK::LEVELS * SK::DECS
-    };
-    inline int globalModId(int level, int dec) { return level * SK::DECS + dec; }
 
     // Panel slugs (persistence + spawn dispatch — the StraitsBase lane-slug
     // shape), now per (level × decision). Old saves carried the per-LEVEL slugs
@@ -105,11 +85,9 @@ namespace StraitsSubgateIds {
 // The family predicate (seam detection + the resnap chain checks + the suite
 // scan's hop-through list). SUBGATE MERGE (CC_PROMPT_SUBGATE_MERGE_ONTO_
 // STRAITS_BASE): the panels dock on the UNIFIED Straits chain — their left
-// neighbour can be the StraitsBase, a lane expander, or another subgate panel
-// (the retired base model stays listed until the deletion commit removes it).
+// neighbour is the StraitsBase, a lane expander, or another subgate panel.
 inline bool isStraitsSubgateChainModel(rack::Model* m) {
-    return m == modelStraitsSubgateBase
-        || m == modelStraitsBase
+    return m == modelStraitsBase
         || m == modelStraitsLaneQMIX
         || m == modelStraitsLaneREST
         || m == modelStraitsLaneACCENT
@@ -124,47 +102,6 @@ inline bool isStraitsSubgateChainModel(rack::Model* m) {
         || m == modelStraitsSubgatePanelGhostAccent
         || m == modelStraitsSubgatePanelGhostAdvance;
 }
-
-// ── the BASE module — globals + switches + the owned-subpanel list ──────────
-struct StraitsSubgateBaseModule : rack::engine::Module {
-    // THE OWNED LIST (task-84 invariant 1): grown only by attach (menu spawn,
-    // spawn-adopt, one-time restore adopt), shrunk only by deliberate remove;
-    // NOTHING re-derives it from the live chain.
-    std::vector<int64_t> orderedPanelIds_;
-    std::vector<std::string> pendingPanels_;   // slugs to spawn on the widget's first step (restore)
-    bool needsResnap = false;                  // consumed + cleared by the widget's step (UI thread)
-    // RESNAP FAST PATH (the StraitsBase hook): Rack's own adjacency-change signal.
-    std::atomic<bool> topologyDirty{false};
-
-    // The last-published global deltas (change-gated publishing; audio thread only).
-    float lastGlob_[dotModular::SubgateKnobs::LEVELS][dotModular::SubgateKnobs::DECS] = {};
-
-    StraitsSubgateBaseModule() {
-        // THE b0012162 LAW: config(numParams, numInputs, numOutputs, numLights) —
-        // the mod jacks are INPUTS (the browser-crash assert was a mis-slotted 42).
-        config(0, StraitsSubgateIds::NUM_MOD_INPUTS, 0, 0);
-        // The jack tooltips (the Causeway mod path's labels — the captions are the
-        // one authority shared with the panels' strips).
-        for (int l = 0; l < dotModular::SubgateKnobs::LEVELS; ++l)
-            for (int d = 0; d < dotModular::SubgateKnobs::DECS; ++d)
-                configInput(StraitsSubgateIds::globalModId(l, d),
-                    std::string(dotModular::SubgateKnobs::LEVEL_CAPTIONS[l]) + " "
-                    + dotModular::SubgateKnobs::DEC_CAPTIONS[d] + " mod (±10V → ±1 threshold)");
-    }
-
-    void process(const ProcessArgs& args) override;   // .cpp — the global-delta publish + heartbeat
-    void onExpanderChange(const ExpanderChangeEvent& e) override {
-        redDot::bumpTopologyEpoch();
-        topologyDirty.store(true, std::memory_order_relaxed);
-    }
-
-    // Persistence: the OWNED subpanel list by slug (the straitLanes shape). The
-    // knob values live in MONSOON's bank (MonsoonPersistenceManager); the panels
-    // are registered+hidden so Rack restores them natively — the base adopts them
-    // on the widget's first step and re-spawns any the restore missed.
-    json_t* dataToJson() override;
-    void dataFromJson(json_t* rootJ) override;
-};
 
 // ── the SUBPANEL module — the per-voice tier for ONE (level × decision) ─────
 // CC_PROMPT_FIX_SUBGATE_PANELS option (a): ONE decision's 16 voices per panel

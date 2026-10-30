@@ -1541,8 +1541,8 @@ extern Model* modelStraitsLaneREST;        // REST lane expander
 extern Model* modelStraitsLaneACCENT;      // ACCENT lane expander
 extern Model* modelStraitsLaneVARIATION;   // VARIATION lane expander
 extern Model* modelStraitsLaneLEGATO;      // LEGATO lane expander
-extern Model* modelStraitsSubgateBase;             // subgate consumer-group base (globals + switches + subpanel wheel)
-extern Model* modelStraitsSubgatePanelRatchetRest;    // subgate per-voice panels — ONE per (level x decision) (base-spawned, hidden)
+extern Model* modelStraitsSubgatePanelRatchetRest;    // subgate per-voice panels — ONE per (level x decision)
+                                                       //   (StraitsBase-spawned, hidden; the global tier is on StraitsBase)
 extern Model* modelStraitsSubgatePanelRatchetLegato;  //   (CC_PROMPT_FIX_SUBGATE_PANELS option (a): the lane law —
 extern Model* modelStraitsSubgatePanelRatchetAccent;  //    one panel = one decision's 16 voices, 6/6/4 165-wide)
 extern Model* modelStraitsSubgatePanelRatchetAdvance;

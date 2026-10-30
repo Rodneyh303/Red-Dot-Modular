@@ -161,15 +161,22 @@ MODULES = {
             "light_connect": 1,
         },
     },
-    "straits_subgate_base": {
-        # StraitsSubgateBase (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): the GLOBAL tier
-        # opts in. 17 anchors = 2 levels x 4 decisions x (knob + mod jack — the
-        # Causeway law, born together) + the connect mark. All bound by name.
-        "widget": ["src/StraitsSubgateBase.cpp"],
-        "panel": "res/panels/StraitsSubgateBase_panel_dark.svg",
+    "straits_base": {
+        # StraitsBase (CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE): the ONE base
+        # surface — frame + IO + voice count + the subgate GLOBAL grid (the
+        # separate StraitsSubgateBase module is retired; its 16HP panel artwork
+        # merged into this one). 24 anchors = the voice-count knob + 2 levels x
+        # 4 decisions x (global knob + mod jack — the Causeway law, born
+        # together) + 5 poly-cable outputs + the quantiser CV in + the connect
+        # mark. All bound by name.
+        "widget": ["src/StraitsBase.cpp"],
+        "panel": "res/panels/StraitsBase_panel_dark.svg",
         "counts": {
+            "param_voicecount": 1,
             "param_sbg_": 8,        # 2 levels x 4 decisions (global thresholds)
             "mod_sbg_": 8,          # one mod jack per knob
+            "output_": 5,           # the poly-cable outs
+            "input_quantcv": 1,
             "light_connect": 1,
         },
     },

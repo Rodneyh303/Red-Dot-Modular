@@ -46,11 +46,12 @@ void init(rack::Plugin* p) {
         modelStraitsLaneVARIATION->hidden = true;
         p->addModel(modelStraitsLaneLEGATO);
         modelStraitsLaneLEGATO->hidden = true;
-        // Subgate consumer-group surfaces (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): the
-        // BASE is browser-visible (the user docks it in the Monsoon chain); the
-        // per-voice panels are registered + HIDDEN — base-spawned only (the lane law;
-        // Rack still restores them natively and the base adopts the run).
-        p->addModel(modelStraitsSubgateBase);
+        // Subgate consumer-group surfaces (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC):
+        // the GLOBAL tier lives on StraitsBase now (CC_PROMPT_SUBGATE_MERGE_ONTO_
+        // STRAITS_BASE — the separate subgate base module is RETIRED/deleted);
+        // the per-voice panels are registered + HIDDEN — StraitsBase-spawned only
+        // (the lane law; Rack still restores them natively and the base adopts
+        // the run).
         // CC_PROMPT_FIX_SUBGATE_PANELS option (a): ONE per-voice panel per
         // (level x decision) — eight registered + HIDDEN modules (base-spawned
         // only, the lane law; Rack still restores them natively).

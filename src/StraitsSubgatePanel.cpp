@@ -12,7 +12,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include "StraitsSubgateBase.hpp"
+#include "StraitsSubgatePanel.hpp"
 #include "ui/ModuleLookup.hpp"       // THE module-lookup authority: lookupMonsoon
 #include "ui/SvgPanelKit.hpp"        // Compose/bind*/findNamed/centerOf/kitStep
 #include "ui/ConnectMark.hpp"

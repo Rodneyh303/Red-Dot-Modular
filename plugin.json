@@ -313,14 +313,6 @@
       ]
     },
     {
-      "slug": "StraitsSubgateBase",
-      "name": "Straits Subgate",
-      "description": "Subgate consumer-group thresholds (ratchet/ghost tiers): global knobs + per-voice panels",
-      "tags": [
-        "expander"
-      ]
-    },
-    {
       "slug": "StraitsSubgatePanelRatchetRest",
       "name": "Straits Subgate Ratchet Rest",
       "description": "Subgate per-voice RATCHET REST thresholds: 16 voices, one decision (6/6/4 lane panel)",

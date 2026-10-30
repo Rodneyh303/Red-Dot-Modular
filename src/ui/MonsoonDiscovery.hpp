@@ -47,9 +47,8 @@ inline bool isSuiteChainModel(const rack::Model* m) {
         || m == modelStraitsLaneACCENT   // ACCENT lane expander
         || m == modelStraitsLaneVARIATION // VARIATION lane expander
         || m == modelStraitsLaneLEGATO   // LEGATO lane expander
-        || m == modelStraitsSubgateBase          // subgate consumer-group base (globals + switches +
-                                                 //   subpanel wheel) — docks after the lane run
         || m == modelStraitsSubgatePanelRatchetRest    // subgate per-voice panels — ONE per (level x decision)
+                                                       //   (dock after the lane run; the global tier is on StraitsBase)
         || m == modelStraitsSubgatePanelRatchetLegato  //   (base-spawned, hidden; option (a) — the lane law)
         || m == modelStraitsSubgatePanelRatchetAccent
         || m == modelStraitsSubgatePanelRatchetAdvance

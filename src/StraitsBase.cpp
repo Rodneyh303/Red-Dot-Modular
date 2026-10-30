@@ -19,7 +19,7 @@
 #include <atomic>      // std::atomic — the resnap fast-path flags cross engine → UI threads
 #include <cmath>       // std::fabs — the subgate global-delta publish
 #include "StraitsLaneExpander.hpp"
-#include "StraitsSubgateBase.hpp"   // SUBGATE MERGE: the panel module + ids (restructured in the deletion commit)
+#include "StraitsSubgatePanel.hpp"  // SUBGATE MERGE: the subgate panel module + ids (the base module is retired)
 #include "ui/StraitsSeamFiller.hpp"
 #include "ui/StoreBound.hpp"        // bindStoreKnob — the de-param law (the subgate globals)
 #include "ui/StraitsSubgateArt.hpp" // addSubgateCaption + subgateTint — the merged panel's lettering
