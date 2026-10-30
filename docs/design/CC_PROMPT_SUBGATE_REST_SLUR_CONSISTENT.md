@@ -57,3 +57,31 @@ Only the rest↔slur HARDCODING is wrong — make it flag-gated and main-consist
 "Tie across rests" is a GLOBAL gate-mode semantic (do rests break slurs?). It must apply uniformly at main
 and subgate. Hardcoding one behaviour at the subgate breaks the user's choice and the main/subgate
 consistency. One flag, one logic, every level.
+
+════════════════════════════════════════════════════════════════════════════════
+## CORRECTION — the governing flag is generatedRestBeatsLegato, NOT (only) tieAcrossRests (Rodney)
+There are TWO SEPARATE flags; the earlier text above conflated them:
+- generatedRestBeatsLegato ("Generated rest beats legato", ALL modes): a GENERATED REST decision vs a
+  committed slur. ON (default) = the generated rest CANCELS the slur (N+1 silent); OFF = slur wins, rest
+  ignored, N+1 plays legato/tie. Code: slurSuppressesRest = !generatedRestBeatsLegato && slurReachesHere
+  (SequencerEngine.cpp:687, consumed at :694).
+- tieAcrossRests ("Tie across rests", GATE MODE only): about STRUCTURAL GAPS (the source sent no gate). ON =
+  tie across the GAP (bridge); OFF = abutting-gates-only. This is a DIFFERENT thing (gap bridging, not a
+  generated-rest decision).
+
+### Which governs the subgate fix
+CC's hardcoded "a rested ghost does not sustain" is about a GENERATED SUBGATE REST (the subgate REST roll
+produced a rest) cancelling the slur — so the PRIMARY governing flag is generatedRestBeatsLegato, NOT
+tieAcrossRests. The subgate rested-cell-vs-slur must honour generatedRestBeatsLegato exactly like the main
+gate:
+- generatedRestBeatsLegato ON: a rested ghost/ratchet cell CANCELS the slur (CC's current hardcoded
+  behaviour — keep as the ON branch).
+- generatedRestBeatsLegato OFF: the slur WINS over the subgate rest (plays legato/tie) — the path CC
+  deleted; RESTORE it, gated on the flag. Reuse the main gate's slurSuppressesRest pattern at the subgate.
+SECONDARY: tieAcrossRests may ALSO apply to the STRUCTURAL GAP between subgate cells (gap bridging) — check
+whether the subgate path has a gap-bridge equivalent and keep it consistent with the main gap-bridge, but
+the GENERATED-REST-vs-slur decision (the thing CC hardcoded) is generatedRestBeatsLegato.
+
+So wherever the text above says "gated on tieAcrossRests" for the subgate REST decision, read
+"generatedRestBeatsLegato" (the generated-rest flag). tieAcrossRests governs the separate gap-bridge
+question. Honour BOTH consistently with main, but do not confuse them.
