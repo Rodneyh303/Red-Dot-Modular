@@ -76,6 +76,47 @@ long SequencerEngine::laneTickFor(LaneDir d, long t, int len) {
     }
 }
 
+// ── UNIFIED ADDRESSING Stage 1 (CC_PROMPT_UNIFIED_ADDRESSING_SPEC.md) ─────────────
+// The GLOBAL-level LOR map: read_position(voice, lane) = laneLOR(voiceLOR(globalLOR(t))).
+// Stage 1 inserts the top map; the lane machinery below it (laneTickFor + getStrandIdx)
+// is UNTOUCHED — the re-base of lane R from "global step 1" to "voice step 1" is carried
+// by the driver change itself (the lane's phase driver becomes the parent's walk).
+//
+// PASS-THROUGH at the default window (length 16, offset 0): the raw tick returns
+// unchanged, so EVERY read — any lane length (incl. the non-divisive 7/5/6 pinned in
+// test_unified_addressing), direction, poly voice — is bit-identical to the
+// pre-unification engine. That is the Stage-1 GOLDEN PIN.
+//
+// MAPPED once the window is authored (length < 16 or offset > 0 — the KNOWN ISSUE
+// config): the tick becomes the window walk — the 0-based count through
+// [offset, offset+length), returned as a 1-based tick for laneTickFor. Default lanes
+// (len 16, off 0) then read EXACTLY the global window's steps instead of the full 16;
+// a lane with its own window phases against the window walk (the polymeter beat against
+// the container length). The playhead's direction of motion is inherited automatically
+// (totalStepsElapsed moves ±1 with it — the same way lane direction composed with the
+// playhead before), and t's motion direction is the only direction input here.
+long SequencerEngine::driverTickAt(long t, int len, int off) {
+    if (len == 16 && off == 0) return t;   // the default window: PASS-THROUGH (the golden pin)
+    long w = (t - 1) % len;                // 0-based walk through the window
+    if (w < 0) w += len;
+    return w + off + 1;                    // 1-based tick: window start == tick 1
+}
+
+// The driver's musical predecessor (the value one step before tNow along the current
+// motion), for the lane-sign derivation. At a window wrap the walk JUMPS (that jump IS
+// the polymeter beat against the container), so the raw predecessor would read as a
+// direction flip; the true neighbor is one step along the motion. Pass-through keeps
+// today's exact expression (t - dir). tRawPrev is the driver evaluated at the raw-tick
+// predecessor (t - dir), precomputed by the caller.
+long SequencerEngine::driverTickBefore(long tNow, long tRawPrev, int dir, int len, int off) {
+    if (len == 16 && off == 0) {   // the pass-through config: today's exact expression
+        return tNow - dir;
+    }
+    const long dd = tNow - tRawPrev;
+    if (dd > 1 || dd < -1) return tNow - dir;   // window (or DNA_LCM) wrap: one musical step
+    return tRawPrev;
+}
+
 void SequencerEngine::reset() {
     pe.reset();
     gs.reset();
@@ -246,18 +287,28 @@ bool SequencerEngine::advancePlayhead(int dir) {
     //     always done so. A walker would make bouncers uniquely immune to a behaviour every
     //     other lane has — an inconsistency, not a feature.
     {
+        // UNIFIED ADDRESSING Stage 1: the lane walks are driven by the GLOBAL-level map
+        // (driverTickAt), not the raw DNA clock — the global window bounds the reads
+        // beneath it. Pass-through at the default window keeps every read bit-identical
+        // (the golden pin; the non-divisive lane lengths are pinned in
+        // test_unified_addressing). The sign predecessor is wrap-normalized
+        // (driverTickBefore): a window wrap is a BEAT, not a bounce, so the lane-sign
+        // cue must not flip there.
+        const int  drvLen = cachedLength;
+        const int  drvOff = cachedOffset;
+        const long tNow   = driverTickAt((long)totalStepsElapsed, drvLen, drvOff);
+        const long tPrevD = driverTickBefore(tNow,
+                                driverTickAt((long)totalStepsElapsed - dir, drvLen, drvOff),
+                                dir, drvLen, drvOff);
         auto recomp = [&](LaneDir d, int len, int& tickOut, int& signOut) {
-            const long t   = (long)totalStepsElapsed;
-            const long cur = laneTickFor(d, t, len);
-            const long prv = laneTickFor(d, t - dir, len);
+            const long cur = laneTickFor(d, tNow, len);
+            const long prv = laneTickFor(d, tPrevD, len);
             tickOut = (int)((cur % DNA_LCM + DNA_LCM) % DNA_LCM);
             const long delta = cur - prv;
             if (delta > 0)      signOut = +1;
             else if (delta < 0) signOut = -1;
             // delta == 0 is the PingPong endpoint repeat: keep the previous sign.
         };
-        // Poly voices bounce at THEIR OWN per-voice LOR length, not mono's strandLen — the
-        // macroLOR_ fix generalised to laneTickV_. strand → this voice's LOR length:
         auto polyStrandLen = [&](int v, int strand) -> int {
             switch (strand) {
                 case dotModular::STRAND_MELODY:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_MELODY});
@@ -381,10 +432,18 @@ void SequencerEngine::recomputeLaneTicks() {
     // This is the same recompute block as in advancePlayhead(), extracted so it can be
     // called after snapping totalStepsElapsed externally (e.g. Mode E phase jump snap)
     // without incrementing stepIndex/totalStepsElapsed.
+    // UNIFIED ADDRESSING Stage 1: same global-level driver as advancePlayhead
+    // (lastPlayDir stands in for the edge's motion direction here — this variant
+    // runs after external snaps, where the transport did not just advance).
+    const int  drvLen = cachedLength;
+    const int  drvOff = cachedOffset;
+    const long tNow   = driverTickAt((long)totalStepsElapsed, drvLen, drvOff);
+    const long tPrevD = driverTickBefore(tNow,
+                            driverTickAt((long)totalStepsElapsed - lastPlayDir, drvLen, drvOff),
+                            lastPlayDir, drvLen, drvOff);
     auto recomp = [&](LaneDir d, int len, int& tickOut, int& signOut) {
-        const long t   = (long)totalStepsElapsed;
-        const long cur = laneTickFor(d, t, len);
-        const long prv = laneTickFor(d, t - lastPlayDir, len);
+        const long cur = laneTickFor(d, tNow, len);
+        const long prv = laneTickFor(d, tPrevD, len);
         tickOut = (int)((cur % DNA_LCM + DNA_LCM) % DNA_LCM);
         const long delta = cur - prv;
         if (delta > 0)      signOut = +1;
@@ -493,10 +552,12 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
         // Calculate distance from current playhead to map physical LED to drifting DNA content
         int relCurrent = (stepIndex - startStep + 16) % 16;
         int relLight = (lightIdx - startStep + 16) % 16;
-        // totalStepsElapsed is 1-based; subtract 1 to get the 0-based tick (matching laneTick_,
-        // which laneTickFor now returns as 0-based). Without this, the DNA content (which steps
+        // totalStepsElapsed is 1-based; the unified-addressing GLOBAL map turns it into the
+        // window walk (pass-through at the default window — the expression below is then
+        // today's verbatim). Subtract 1 to get the 0-based walk (matching laneTick_, which
+        // laneTickFor now returns as 0-based). Without this, the DNA content (which steps
         // show notes) would be 1 step ahead of the playhead.
-        int tickForLight = totalStepsElapsed - 1 - relCurrent + relLight;
+        int tickForLight = (int)driverTickAt((long)totalStepsElapsed, cachedLength, cachedOffset) - 1 - relCurrent + relLight;
 
         int dnaIdx = getStrandIdx(tickForLight, lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT));
         bool isNote = pe.rhythmPattern[dnaIdx];

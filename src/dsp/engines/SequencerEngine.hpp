@@ -303,6 +303,16 @@ struct SequencerEngine {
     // readers (displays, prob-outs) need no change. Implemented in the .cpp.
     static long laneTickFor(LaneDir d, long t, int len);
 
+    // ── UNIFIED ADDRESSING Stage 1 (CC_PROMPT_UNIFIED_ADDRESSING_SPEC.md) ──────────
+    // The GLOBAL-level LOR map — the top of the nested global->voice->lane chain. The lane
+    // walks (laneTick_/laneTickV_/macroLaneTick_) are driven by THIS tick instead of the raw
+    // DNA clock, so the global window (PATTERN_LENGTH/PATTERN_OFFSET via updateWindow) bounds
+    // every read beneath it — the KNOWN ISSUE fix (Sands read/showed the full 16 while the
+    // playhead wrapped). Both are pure functions of the clock (the LANE_POSITION_MODEL law);
+    // implemented in the .cpp.
+    static long driverTickAt(long t, int len, int off);
+    static long driverTickBefore(long tNow, long tRawPrev, int dir, int len, int off);
+
     // Clear per-lane walk state on hard restart. Under the fully-stateless model this is
     // REDUNDANT — every lane is a pure function of totalStepsElapsed, so zeroing that at
     // handleRestart() already syncs all of them to Beat 1 (the next advancePlayhead recomputes
