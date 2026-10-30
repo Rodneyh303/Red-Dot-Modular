@@ -1,54 +1,57 @@
-# CC PROMPT — DE-SPECIAL-CASE the subgate per-voice panels: make them StraitsLaneExpander clones
+# CC PROMPT — subgate per-voice panels: KEEP StoreKnob (de-param), fix only VISUAL + POLY-DIM divergence
 
-Rodney: the subgate per-voice panels are STILL special-cased — different knobs, no poly-count lighting,
-and they caused a crash the main subpanels never needed. We do NOT want special cases. Make them IDENTICAL
-to the StraitsLaneExpander panels in EVERY way except TINT.
+CORRECTION (Rodney caught it): an earlier version of this prompt told CC to replace StoreKnob with real
+configParams. THAT WAS WRONG — it would UNDO the de-paramming migration (NUM_PARAMS_MIGRATION.md /
+PARAM_CLASSIFICATION.md) and reintroduce the DAW automation overflow (five modules sized to NUM_PARAMS
+export NOTHING; per-voice state MUST stay off params[]). The subgate per-voice knobs are per-voice state →
+store-backed (StoreKnob) is architecturally CORRECT. KEEP StoreKnob.
 
-## THE ROOT CAUSE (one unrequested decision cascaded into all three complaints)
-The subgate panels use `StoreKnob` (ui/StoreBound.hpp, "the de-param law") bound to the Monsoon bank store,
-instead of real Rack PARAMS like the lane panels (StraitsLaneExpander.cpp:202
-`bindParam<redDot::Themed_Compact_Cog_Dim>`). That ONE choice — never asked for — produced ALL THREE:
-1. DIFFERENT KNOBS: StoreKnob is a different widget than Themed_Compact_Cog_Dim → the subgate knobs render
-   differently. Not styling — a different widget class.
-2. NO POLY-COUNT LIGHTING: the lane panel has activeVoices_ + dimIfInactive (StraitsLaneExpander.cpp:220-221
-   `voiceNum > activeVoices_`) dimming/locking inactive voices; StoreKnob carries NONE of that machinery →
-   subgate voices don't dim with the poly count.
-3. THE CRASH (bd09335, "Rack config()-once law — subgate inputs join StraitsIds"): the custom input/config
-   handling of the de-param path hit a config-slot problem the lane panels NEVER have (same class as the
-   distribution expander's config(0,0,42,0) mis-slot — the de-param/custom-config path keeps crashing where
-   real params don't).
+## THE REAL PROBLEM — de-paramming is SEPARABLE from knob-widget + poly-dim (Rodney's distinction)
+De-paramming is about STORAGE (store field vs params[]). It says NOTHING about which WIDGET renders the
+knob or whether it dims with the poly count. The subgate panels' divergence is NOT caused by de-paramming —
+it is caused by CC not wiring the presentation/behaviour that StoreKnob CAN do:
+- StoreKnob HAS a lockWhen/dim hook (ui/StoreBound.hpp:54-62) — a store-backed knob CAN poly-dim.
+- StoreKnob can be styled to match the themed cog look.
+So FIX THE PRESENTATION, keep the storage.
 
-## THE DECISION (Rodney): StoreKnob was never requested and the cons outweigh any pro — USE REAL PARAMS
-The StoreKnob "benefit" (no param registry) is not worth it: the lane panels prove real params work for a
-16-voice per-decision bank; the de-param path has now caused TWO config crashes; it breaks visual +
-behavioural consistency. REJECTED. The subgate per-voice panels become StraitsLaneExpander clones.
+## THE THREE FIXES (keep StoreKnob throughout)
+1. KNOB LOOK: make the subgate StoreKnobs render like the lane panels' Themed_Compact_Cog_Dim — same cog
+   face, same size, same ring. (Match the visual; the binding stays StoreKnob. If StoreKnob's draw can
+   reuse the Themed_Compact_Cog_Dim art/draw path, do that — one look, two storage models.)
+2. POLY-COUNT DIM: wire StoreKnob's lockWhen/dim to the poly count exactly like the lane panel's
+   dimIfInactive (StraitsLaneExpander.cpp:214-221, `voiceNum > activeVoices_`). Carry the activeVoices_
+   tracking onto the subgate panel and feed it to StoreKnob's dim hook so inactive voices dim like
+   REST/LEGATO. (StoreKnob already supports this — it just was not wired.)
+3. THE CONFIG CRASH (bd09335): re-examine. The config()-once crash came from the subgate INPUT jacks
+   (now stripped — modulation is Causeway). With the mod jacks GONE and StoreKnob being a plain Widget (NO
+   configParam, NO configInput — it does not touch the Rack registry, per PARAM_CLASSIFICATION), the panel
+   should config like the distribution expander's StoreKnobs do (config(0,0,0,0) de-param law). Verify the
+   bd09335 hack is still needed AFTER the mod jacks are removed — it may now be unnecessary (the jacks were
+   the config-slot problem, not the StoreKnobs). Remove it if the jack removal already resolves it.
 
-## THE FIX — make each subgate per-voice panel a StraitsLaneExpander, tint the only difference
-1. KNOBS: bind real `Themed_Compact_Cog_Dim` params via the SAME bindParam path StraitsLaneExpander uses —
-   NOT StoreKnob. Delete the StoreKnob usage from the subgate panels. (The subgate values still live in the
-   Monsoon bank; wire the real params to that bank the way a lane expander's params reach their store — if
-   the lane expander uses real Rack params with IDs, the subgate panels do the SAME, registering their
-   param IDs properly so config() is correct and no crash-fix hack is needed.)
-2. POLY-COUNT LIGHTING: carry activeVoices_ + dimIfInactive VERBATIM from StraitsLaneExpander so subgate
-   voices dim/lock with the poly count exactly like REST/LEGATO do. Same machinery, not a reimplementation.
-3. CONFIG / NO CRASH: with real params registered correctly (the lane pattern), the config()-once crash and
-   its bd09335 workaround are UNNECESSARY — remove the hack; the panels config like a lane expander does.
-4. EVERYTHING ELSE from StraitsLaneExpander VERBATIM: the knob grid binding loop, the mod-arc overlay, the
-   theme following, the seam fillers, the dimensions (165-wide 6/6/4) — all the same. The ONLY permitted
-   difference is TINT (per level×decision, already done, fine).
-5. The 8 panels / option-a structure, the gen_straits_lane.py generation, the snapping — all KEEP (those
-   are correct). This fix is specifically: StoreKnob → real params, + the poly-dim machinery, + drop the
-   config hack.
+## THE ONE THING FOR RODNEY TO DECIDE (do not guess)
+The MAIN lane panels (StraitsLaneExpander) are NOT de-parammed — they still use real configParam
+(StraitsLaneExpander.hpp:52/56). The subgate panels ARE de-parammed (StoreKnob). So the two per-voice
+families use DIFFERENT storage models. PARAM_CLASSIFICATION.md has BOTH a "de-param per-voice state" rule
+AND a carve-out ("per-voice REST/ACC KEEP param — fixed addressing, no selection dependence", line 66).
+So which is right for subgates is a POLICY question:
+- If the lane panels' keep-param carve-out applies to subgates too → subgates could use real params like
+  the lanes (but that re-inflates NUM_PARAMS — check the budget).
+- If de-param is the direction → the LANE panels are a PENDING migration and the subgates are AHEAD.
+This prompt assumes KEEP StoreKnob (de-param, the safer/forward direction) and fixes only look + dim. If
+Rodney wants both families on the SAME storage model, that is a separate larger decision (either de-param
+the lanes too, or confirm the carve-out covers subgates). FLAG this; do not unify storage without his call.
 
 ## DONE =
-- Subgate per-voice panels use real Themed_Compact_Cog_Dim params (StoreKnob GONE), bound like a lane
-  expander; param IDs registered so config() is correct; the bd09335 config hack REMOVED (not needed).
-- activeVoices_/dimIfInactive carried verbatim → subgate voices dim with poly count like REST/LEGATO.
-- Visually + behaviourally IDENTICAL to the lane subpanels except tint. No special case remains.
-- run_all + anchor audit green; no browser-add crash (verify in a real-SDK/asserts build — the rack-free
-  gates can't catch config crashes, per b001216).
+- Subgate StoreKnobs render like the lane cog (same look); poly-count dim wired via StoreKnob lockWhen/dim
+  (inactive voices dim like REST/LEGATO); the bd09335 config hack removed IF the mod-jack removal resolved
+  it (else documented why still needed). StoreKnob KEPT (de-param intact — NUM_PARAMS not re-inflated).
+- Visually + behaviourally identical to the lane subpanels except tint AND storage model (store-backed,
+  which is invisible to the user). No DAW-overflow regression.
+- Storage-model unification (lanes vs subgates) FLAGGED for Rodney, not done unilaterally.
 
-## WHY (so it doesn't recur)
-Subpanels are StraitsLaneExpander-shaped — real params, the lane's dim/lock machinery, the lane's config.
-The "de-param / StoreKnob" path was never requested and keeps causing config crashes + visual/behavioural
-divergence. One pattern (the lane expander), tint-parameterised. No special cases. Reuse, don't re-shape.
+## WHY (the corrected lesson)
+De-paramming (NUM_PARAMS_MIGRATION) is REQUIRED for per-voice state (DAW export). KEEP StoreKnob. The
+divergence Rodney saw (different knobs, no poly-dim) is PRESENTATION not storage — StoreKnob supports both,
+it just was not wired. Fix the look + the dim hook; keep the storage. (The earlier 'use real params' fix
+was itself a failure to check the settled de-param architecture — exactly the error we keep correcting.)
