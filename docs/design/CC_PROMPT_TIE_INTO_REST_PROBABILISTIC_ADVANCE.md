@@ -22,10 +22,17 @@ Called from Monsoon.cpp ~:1215 on the fall transition.
   - DRAW: use r_vary at the STEP BEING ADVANCED INTO (the rest step the fall lands on) — the step-addressed
     variation draw at that target step, consistent with "the step-addressed draw at the target" the rise
     uses. (The rise reads getVariationStep() at its target; the fall reads the rest step's variation draw.)
-  - DECISION: advance-or-NOT only — UNIPOLAR. This is a tie-into-rest checkpoint, NOT bidirectional
-    wandering; backward/direction does NOT apply on the fall. Use the FORWARD/HOLD part of the mechanism
-    (p>=0 branch): advance iff the draw < resolved-Variation, else do not advance (the rest stays passive,
-    chain carries — the old not-advancing behaviour).
+  - DECISION: BIPOLAR — the FULL decideStepAdvance_ decision {BACKWARD, HOLD, FORWARD}, NOT unipolar.
+    (Rodney corrected an earlier unipolar draft.) The Variation value is BIPOLAR; the fall-advance draws
+    against it and gets BACKWARD/HOLD/FORWARD just like the rise. WHY bipolar is REQUIRED (not optional):
+    it is the SAME shared playhead. If the rise-advance is wandering BACKWARD (negative Variation,
+    retrograde) and a tie-into-rest fall advanced FORWARD, the playhead would LURCH forward mid-backward-
+    passage = incoherent. The fall direction MUST follow the same Variation-governed motion as the rise.
+    So: p>0 → forward fall-advance (rest re-draws at the NEXT step); p<0 → backward fall-advance (rest
+    re-draws at the PREVIOUS step, advancePlayhead(-1), 0->15 wrap); near 0 → HOLD (no advance, rest
+    passive — the old behaviour). Pass the decided direction to advancePlayhead(), exactly as the rise
+    sites do. The pendingCheckpointArrival accounting is direction-agnostic (the next rise skips its
+    advance either way) — bipolar does not break "one advance, one arrival".
 - EFFECT: the chain-ending-at-rest becomes a MODULATABLE PROBABILITY — high Variation at the rest step →
   the rest likely re-draws and may end the chain (more interruption); low → the rest likely stays passive
   (longer chains). Same Variation knob/draw as all advance. Consistent + expressive.
@@ -48,8 +55,8 @@ At legatoCheckpointOnFall (and/or the flag's menu), add a comment stating:
   dice roll.
 
 ## DONE =
-- legatoCheckpointOnFall advances PROBABILISTICALLY (rest step's r_vary vs resolved Variation, unipolar
-  forward/hold) when the flag is ON; never when OFF. Reuses the step-advance decision mechanism (one
+- legatoCheckpointOnFall advances PROBABILISTICALLY (rest step's r_vary vs resolved Variation, BIPOLAR
+  BACKWARD/HOLD/FORWARD, direction passed to advancePlayhead) when the flag is ON; never when OFF. Reuses the step-advance decision mechanism (one
   authority, not a second dice path).
 - Required code comment present (option 2 explained + option 3 noted as future).
 - Pins: flag-OFF byte-identical; flag-ON Variation=1 = deterministic-always identity; mid-range re-pinned;
