@@ -359,7 +359,8 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLev
     const float u = pe.stepRateUniform(rise);
     // The threshold, by LEVEL (the three-level hierarchy): a MAIN gate rise resolves to
     // the VARIATION probability (the per-voice resolver path — warps/correlates/CAs like
-    // every lane, NOT the raw knob); a ratchet/ghost rise resolves to THIS slot's subgate
+    // every lane, NOT the raw knob; BIPOLAR since Stage 2 — the signed advance value,
+    // negative = p(backward)); a ratchet/ghost rise resolves to THIS slot's subgate
     // ADVANCE column (the Straits consumer-group store, three-way: own-subpanel claim >
     // {global | follow-main}). subResLive gates the subgate read exactly like the
     // rest/legato/accent reads in executeStep: an engine that has never been through
@@ -927,13 +928,24 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
         } else if (stepIndex == -1) {
             // The seed: initialization, not a sequence-motion decision (no draw consumed).
             wrapped = advancePlayhead();
-        } else if (decideStepAdvance_(-1) == dotModular::StepAdvance::FORWARD) {
+        } else {
+            const dotModular::StepAdvance::Decision d = decideStepAdvance_(-1);
             // STAGE 1 (CC_PROMPT_GATE_STEP_ADVANCE_SPEC): the main-gate advance is
             // PROBABILISTIC — u < the resolved Variation probability in gate mode moves
             // the playhead. p=1 is the GOLDEN PIN: decide(1, u) == FORWARD for every
             // u in [0,1) → the playhead moves on every rise, byte-identical to the
             // pre-feature engine (the identity-with-today regression gate).
-            wrapped = advancePlayhead();
+            // STAGE 2 (CC_PROMPT_STEP_ADVANCE_CONSUMPTION): the resolved value is
+            // BIPOLAR [-1,+1] (the unclamped knob+CV2+Junction sum) — p < 0 walks the
+            // playhead BACKWARD this rise (probabilistic retrograde) through
+            // advancePlayhead's reverse traversal, which wraps past step 0 to step 15
+            // ((stepIndex - 1 + 16) & 0x0F) — the spec's wrap-at-boundary law, the
+            // same machinery the deterministic dir parameter uses. ONE PLAYHEAD: the
+            // direction is whatever THIS event's threshold sign gave.
+            if (d == dotModular::StepAdvance::FORWARD)
+                wrapped = advancePlayhead();
+            else if (d == dotModular::StepAdvance::BACKWARD)
+                wrapped = advancePlayhead(-1);
         }
         // else REPEAT (the corrected semantics, Rodney 91b100c): the playhead does not
         // move — the current step is unchanged, so every downstream read hits the SAME
@@ -1065,8 +1077,17 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
         const int advLevel = mainGateRise ? -1
                            : (subGateRise ? dotModular::SubgateKnobs::RATCHET
                                           : dotModular::SubgateKnobs::GHOST);
-        if (decideStepAdvance_(advLevel) == dotModular::StepAdvance::FORWARD)
+        const dotModular::StepAdvance::Decision adv = decideStepAdvance_(advLevel);
+        // FORWARD advances; BACKWARD (Stage 2 bipolar — a negative threshold at ANY
+        // level: the bipolar main through follow-main, or a bipolar mod delta into
+        // the level's ADVANCE jack) walks the SHARED playhead backward with wrap
+        // (advancePlayhead's reverse traversal — ONE PLAYHEAD, the direction set by
+        // the last event that advanced); REPEAT moves nothing (the held semantics —
+        // the step-addressed data re-outputs itself, no re-draw branch).
+        if (adv == dotModular::StepAdvance::FORWARD)
             wrapped = advancePlayhead();
+        else if (adv == dotModular::StepAdvance::BACKWARD)
+            wrapped = advancePlayhead(-1);
     }
 
     // Boundary interrupt (same as executeModeA/B): clear held gate at wrap so every lap
@@ -1119,7 +1140,14 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     // ghost is.)  Then executeStep rolls the rest lane, which may still silence a ghost candidate.
     if (ghostRise) {
         float r_vary = pe.warpRow(monoSlot, LaneId{PL_VARIATION})[getVariationStep()];
-        if (r_vary >= voices[monoSlot].variationProb) {
+        // The CANDIDACY threshold is the RECTIFIED strand rate (variationRateProb) —
+        // NOT the bipolar advance value variationProb became in Stage 2 (a negative
+        // advance threshold must not silence every ghost). Rack-free engines
+        // (subResLive false — never primed by the controller) keep reading
+        // variationProb verbatim: byte-identity for every un-primed engine.
+        const float ghostTh = voices[monoSlot].subResLive ? voices[monoSlot].variationRateProb
+                                                          : voices[monoSlot].variationProb;
+        if (r_vary >= ghostTh) {
             // No ghost candidate — silent gap.  Preserve the decision (slur bridge) + own cell.
             ghostActive = false;
             result = lastStepResult;
@@ -1347,7 +1375,12 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
             int varIdx = getVariationStepForVoice(voiceIdx) & 0x0F;
             refreshPolyRandomCell(voiceIdx, LaneId{PL_VARIATION}, varIdx);
             float r_vary_voice = pe.warpRow(voiceIdx, LaneId{PL_VARIATION})[varIdx];
-            if (r_vary_voice >= v.variationProb) {
+            // Rectified strand rate (the Stage 2 value pair) — see the mono
+            // candidacy note: the bipolar advance value must not gate the
+            // candidacy. Rack-free identity via subResLive (un-primed engines
+            // read variationProb verbatim).
+            const float ghostTh = v.subResLive ? v.variationRateProb : v.variationProb;
+            if (r_vary_voice >= ghostTh) {
                 // Rested ghost: transparent — silent, not part of the chain.
                 v.accented = false;
                 v.gs.gateHeld = false; v.gsStep.gateHeld = false;

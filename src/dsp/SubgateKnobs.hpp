@@ -20,9 +20,14 @@
 // THE DECISION SET (Rodney: "Add subgate accent too"): {RATCHET, GHOST} ×
 // {REST, LEGATO, ADVANCE, ACCENT} = 8. REST/LEGATO/ACCENT are the per-subgate
 // articulation; ADVANCE is the Stage-3 step-advance threshold (the ratchet/
-// ghost gate-rise advance probabilities — STORED here, consumed by the
-// step-advance Stage 3 build; CC_PROMPT_GATE_STEP_ADVANCE_SPEC.md §"Do NOT
-// build Stage 3 before the Straits subgate consumer-group knobs land").
+// ghost gate-rise advance probabilities — STORED here, CONSUMED by the
+// step-advance build: Stages 1+3 landed b7345992, Stage 2 the bipolar
+// sourcing — CC_PROMPT_STEP_ADVANCE_CONSUMPTION.md). ADVANCE is the
+// DIRECTION-bearing decision: its RESOLVED range is SIGNED [-1,+1]
+// (negative = p(step BACKWARD)) while the store knobs stay [0,1] — the
+// negative half arrives through the follow-main tier (the bipolar main
+// Variation value) and through bipolar mod deltas, and must survive the
+// resolver's clamp (see resolve/clampFor below).
 //
 // THE THREE-WAY SOURCE per (voice, level, decision) — the spec's precedence,
 // translated onto the expander surface (the spec's "own poly-knob subpanel
@@ -39,7 +44,9 @@
 //      Monsoon copies; the clarified spec's ruling).
 //   3. The MOD delta (the Causeway path — "a Straits knob without its mod path
 //      is a modulation-layer seam": every threshold has its expander mod jack)
-//      adds POST-resolution, clamped to [0,1].
+//      adds POST-resolution, clamped to the DECISION's range: [0,1] for
+//      REST/LEGATO/ACCENT (a probability), [-1,+1] for ADVANCE (the signed
+//      step-advance threshold — CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2).
 // DEFAULTS ARE THE BYTE-IDENTITY PIN: ownActive=false + followMain=true +
 // delta=0 resolves to the MAIN value — until a knob is touched or a switch
 // flips, every subgate decision behaves exactly as before (the spec's
@@ -203,15 +210,33 @@ namespace SubgateKnobs {
         }
     };
 
+    // ── THE DECISION RANGE (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2) ───────
+    // REST/LEGATO/ACCENT thresholds are probabilities: [0,1]. ADVANCE is the
+    // DIRECTION-bearing decision — its resolved threshold is SIGNED [-1,+1]
+    // (negative = p(step BACKWARD), the probabilistic retrograde). The STORE
+    // knobs stay [0,1] (own-claim/global cells author forward-or-hold); the
+    // negative half arrives (a) through the FOLLOW-MAIN tier — the main
+    // Variation value is bipolar in gate mode (the unclamped knob+CV2+Junction
+    // sum), so a follow-main ADVANCE cell inherits the sign — and (b) through
+    // bipolar mod deltas into the ADVANCE mod jacks (a bipolar modulation
+    // source makes the sequence WANDER — Rodney's design note). The clamp must
+    // NOT rectify that negative half to 0 (= "always hold") — hence the
+    // per-decision range. REST/LEGATO/ACCENT keep [0,1] exactly as pinned.
+    inline float clampFor(int dec, float x) {
+        return (dec == ADVANCE) ? std::clamp(x, -1.0f, 1.0f)
+                                : std::clamp(x,  0.0f, 1.0f);
+    }
+
     // ── THE THREE-WAY RESOLVER (pure, the one authority) ──────────────────────
     // Precedence: own (tier 1, claimed) > { follow-main (default) | global } by
-    // the switch; the mod delta adds post-resolution, clamped to [0,1] (a
-    // threshold is a probability). The byte-identity default:
-    // resolve(false, ·, true, ·, main, 0) == main, EXACTLY.
+    // the switch; the mod delta adds post-resolution, clamped to the DECISION's
+    // range (clampFor above). The byte-identity default:
+    // resolve(false, ·, true, ·, main, 0, dec) == main, EXACTLY (main is
+    // produced inside the decision's range by its writer).
     inline float resolve(bool ownActive, float ownTh, bool followMain, float globalTh,
-                         float mainValue, float delta) {
+                         float mainValue, float delta, int dec) {
         const float base = ownActive ? ownTh : (followMain ? mainValue : globalTh);
-        return std::clamp(base + delta, 0.0f, 1.0f);
+        return clampFor(dec, base + delta);
     }
 
 } // namespace SubgateKnobs

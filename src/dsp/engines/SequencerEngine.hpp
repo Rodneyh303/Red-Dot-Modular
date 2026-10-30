@@ -49,7 +49,27 @@ struct PolyVoice {
                                // draw is thresholded against. 0 = always quantised (legacy), 1 =
                                // always generated. Mirrors restProb/accentProb (per-voice decision
                                // cache written by ModeController from getEffectivePolyQmix).
-    float variationProb = 0.5f; // per-voice VARIATION probability — mirrors restProb/accentProb.
+    // STEP-ADVANCE VALUE PAIR (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2 — the
+    // bipolar sourcing). One knob+modulation sum, TWO clamps, written as a pair by
+    // ModeController (the sole writer, mirroring restProb/accentProb):
+    //   variationProb     = clamp(sum, -1, +1) — the GATE-MODE STEP-ADVANCE value:
+    //                       BIPOLAR (negative = p(step BACKWARD), the probabilistic
+    //                       retrograde; positive = p(forward); 0 = always hold). The
+    //                       advance decision (decideStepAdvance_) and the follow-main
+    //                       ADVANCE tier (subgateMainThreshold) read THIS field.
+    //   variationRateProb = clamp(sum,  0,  1) — the rectified VARIATION-STRAND RATE
+    //                       (the ghost-CANDIDACY threshold, r_vary >= rate → no
+    //                       ghost): a rate is inherently unipolar, and the candidacy
+    //                       must NOT inherit the advance's negative half (a negative
+    //                       threshold would silence every ghost). == the pre-Stage-2
+    //                       write bit-exactly, so the module-path candidacy is
+    //                       unchanged.
+    // With no negative modulation the two clamps agree bit-exactly (the sum is
+    // >= 0) — the default behaviour is unchanged. Rack-free engines (never
+    // primed by the controller) keep reading variationProb verbatim at BOTH
+    // consumers via the subResLive gates — every existing pin holds.
+    float variationProb = 0.5f;     // bipolar gate-mode step-advance value [-1,+1]
+    float variationRateProb = 0.5f; // rectified strand rate [0,1] — the ghost-candidacy threshold
     float legatoProb = 0.0f;    // per-voice LEGATO probability — mirrors restProb/accentProb.
     // SUBGATE TIER (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): the RESOLVED per-voice
     // subgate thresholds [SubgateKnobs::LEVELS][SubgateKnobs::DECS] — levels

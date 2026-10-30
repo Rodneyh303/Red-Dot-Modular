@@ -11,8 +11,15 @@
 //   3. TIER 2a: the switch flipped to global — the global knob drives, the main
 //      value is ignored.
 //   4. TIER 2b: follow-main — the main value drives, the global knob is ignored.
-//   5. MOD DELTA: adds POST-resolution, clamped to [0,1] (a threshold is a
-//      probability); the Causeway path cannot push a threshold out of range.
+//   5. MOD DELTA: adds POST-resolution, clamped to the decision's range — [0,1]
+//      for REST/LEGATO/ACCENT (a threshold is a probability), [-1,+1] for
+//      ADVANCE (the SIGNED step-advance threshold — CC_PROMPT_STEP_ADVANCE_
+//      CONSUMPTION Stage 2: negative = p(step BACKWARD), the bipolar main
+//      arrives through follow-main, bipolar deltas through the mod jacks);
+//      the Causeway path cannot push a threshold out of its decision's range.
+//   5b. THE ADVANCE RANGE: follow-main carries a bipolar main verbatim; the
+//      clamp floors at -1 (not the 0 = "always hold" rectification); the
+//      other three decisions keep [0,1] exactly.
 //   6. BANK DEFAULTS: fresh bank = globalTh 0.5, followMain true, ownActive
 //      false, deltas 0/inactive, publishSeq 0 — the no-new-surface patch state.
 //   7. PERSISTENCE ROUND-TRIP: authored cells serialize/parse deep-equal; the
@@ -46,7 +53,7 @@ int main() {
     {
         const float main = 0.123f;
         const float r = resolve(/*ownActive=*/false, /*ownTh=*/0.9f, /*followMain=*/true,
-                                /*globalTh=*/0.7f, main, /*delta=*/0.f);
+                                /*globalTh=*/0.7f, main, /*delta=*/0.f, REST);
         checkBits(r, main, "default resolve == main bit-exact");
         // Across the whole matrix: every (level, dec) cell of a fresh bank
         // resolves to the main value it is fed.
@@ -57,7 +64,7 @@ int main() {
                 const float mm = 0.1f + 0.05f * (l * DECS + d);
                 const float rr = resolve(b.ownActive[3][l][d], b.ownTh[3][l][d],
                                          b.followMain[l][d], b.globalTh[l][d], mm,
-                                         b.globalDelta[l][d] + b.ownDelta[3][l][d]);
+                                         b.globalDelta[l][d] + b.ownDelta[3][l][d], d);
                 if (std::memcmp(&rr, &mm, sizeof(float)) != 0) allIdentity = false;
             }
         check(allIdentity, "fresh bank resolves identity for every cell");
@@ -67,21 +74,49 @@ int main() {
     {
         const float main = 0.123f, own = 0.9f, glob = 0.7f;
         // Tier 1: own claim wins outright — even against a flipped switch.
-        checkBits(resolve(true, own, false, glob, main, 0.f), own, "tier 1: own claim wins");
-        checkBits(resolve(true, own, true, glob, main, 0.f), own, "tier 1 beats follow-main too");
+        checkBits(resolve(true, own, false, glob, main, 0.f, REST), own, "tier 1: own claim wins");
+        checkBits(resolve(true, own, true, glob, main, 0.f, REST), own, "tier 1 beats follow-main too");
         // Tier 2a: switch = global (no claim).
-        checkBits(resolve(false, own, false, glob, main, 0.f), glob, "tier 2a: global wins when switched");
+        checkBits(resolve(false, own, false, glob, main, 0.f, REST), glob, "tier 2a: global wins when switched");
         // Tier 2b: switch = follow-main (the default).
-        checkBits(resolve(false, own, true, glob, main, 0.f), main, "tier 2b: follow-main when not switched");
+        checkBits(resolve(false, own, true, glob, main, 0.f, REST), main, "tier 2b: follow-main when not switched");
     }
 
     // ── 5. MOD DELTA: post-resolution, clamped ───────────────────────────────
     {
         const float main = 0.5f;
-        checkBits(resolve(false, 0.f, true, 0.f, main, 0.25f), 0.75f, "delta adds post-resolution");
-        check(resolve(false, 0.f, true, 0.f, main, +2.f) == 1.f, "delta clamps high");
-        check(resolve(false, 0.f, true, 0.f, main, -2.f) == 0.f, "delta clamps low");
-        checkBits(resolve(true, 0.25f, false, 0.f, main, 0.1f), 0.35f, "delta composes with tier 1 too");
+        checkBits(resolve(false, 0.f, true, 0.f, main, 0.25f, REST), 0.75f, "delta adds post-resolution");
+        check(resolve(false, 0.f, true, 0.f, main, +2.f, REST) == 1.f, "delta clamps high");
+        check(resolve(false, 0.f, true, 0.f, main, -2.f, REST) == 0.f, "delta clamps low");
+        checkBits(resolve(true, 0.25f, false, 0.f, main, 0.1f, REST), 0.35f, "delta composes with tier 1 too");
+    }
+
+    // ── 5b. THE ADVANCE RANGE (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2) ───
+    // ADVANCE is the DIRECTION-bearing decision: its resolved range is SIGNED
+    // [-1,+1] — the bipolar main value arrives through follow-main and bipolar
+    // deltas through the mod jacks, and the clamp must NOT rectify the negative
+    // half to 0 (= "always hold"). REST/LEGATO/ACCENT stay [0,1] as pinned.
+    {
+        const float bipolarMain = -0.4f;
+        checkBits(resolve(false, 0.f, true, 0.f, bipolarMain, 0.f, ADVANCE), bipolarMain,
+                  "ADVANCE: follow-main carries the bipolar main value verbatim");
+        check(resolve(false, 0.f, true, 0.f, bipolarMain, -2.f, ADVANCE) == -1.f,
+              "ADVANCE: clamps low at -1 (NOT rectified to 0)");
+        check(resolve(false, 0.f, true, 0.f, bipolarMain, +2.f, ADVANCE) == 1.f,
+              "ADVANCE: clamps high at +1");
+        checkBits(resolve(false, 0.f, true, 0.f, 0.5f, -0.6f, ADVANCE), 0.5f - 0.6f,
+                  "ADVANCE: a bipolar delta reaches the negative half (own/global too)");
+        const float m2 = -0.75f;
+        checkBits(resolve(false, 0.f, true, 0.f, m2, 0.f, ADVANCE), m2,
+                  "ADVANCE: the byte-identity default holds across the signed range");
+        // The other three decisions keep the probability clamp — a negative main
+        // rectifies to 0 there (a rate is unipolar).
+        check(resolve(false, 0.f, true, 0.f, bipolarMain, 0.f, REST) == 0.f,
+              "REST: still clamps [0,1] — a negative main rectifies");
+        check(resolve(false, 0.f, true, 0.f, bipolarMain, 0.f, LEGATO) == 0.f,
+              "LEGATO: still clamps [0,1]");
+        check(resolve(false, 0.f, true, 0.f, bipolarMain, 0.f, ACCENT) == 0.f,
+              "ACCENT: still clamps [0,1]");
     }
 
     // ── 6. BANK DEFAULTS ─────────────────────────────────────────────────────
@@ -151,15 +186,15 @@ int main() {
         // The spec's tier checks THROUGH the resolver, post-restore:
         checkBits(resolve(b.ownActive[0][RATCHET][REST], b.ownTh[0][RATCHET][REST],
                           b.followMain[RATCHET][REST], b.globalTh[RATCHET][REST],
-                          /*main=*/0.9f, 0.f),
+                          /*main=*/0.9f, 0.f, REST),
                   0.33f, "restored V1 ratchet-rest claim resolves to its own knob");
         checkBits(resolve(b.ownActive[0][GHOST][REST], b.ownTh[0][GHOST][REST],
                           b.followMain[GHOST][REST], b.globalTh[GHOST][REST],
-                          /*main=*/0.9f, 0.f),
+                          /*main=*/0.9f, 0.f, REST),
                   0.8f, "restored ghost-rest global switch resolves to the global knob");
         checkBits(resolve(b.ownActive[0][RATCHET][ADVANCE], b.ownTh[0][RATCHET][ADVANCE],
                           b.followMain[RATCHET][ADVANCE], b.globalTh[RATCHET][ADVANCE],
-                          /*main=*/0.42f, 0.f),
+                          /*main=*/0.42f, 0.f, ADVANCE),
                   0.42f, "untouched ratchet-advance follows main");
 
         json_decref(root);

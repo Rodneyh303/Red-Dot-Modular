@@ -1214,7 +1214,7 @@ struct Monsoon : Module {
                            editor.subgate.ownTh[storageSlot][level][dec],
                            editor.subgate.followMain[level][dec],
                            editor.subgate.globalTh[level][dec],
-                           subgateMainThreshold(storageSlot, dec), d);
+                           subgateMainThreshold(storageSlot, dec), d, dec);
     }
 
     // Spread target mode (0=Anchor V1, 1=Follow CA) per poly lane, UNIFIED PL_* order

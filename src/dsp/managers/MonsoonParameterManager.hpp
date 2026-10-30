@@ -35,6 +35,10 @@ public:
     
     /// Variation probability (0–1) with CV2 offset
     float getVariation() const;
+    /// knob + CV2 + Junction, NO clamp — the bipolar step-advance source
+    /// (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2): the negative half is real
+    /// (CV2's normalized range is bipolar), the ADVANCE consumer clamps it [-1,+1].
+    float getVariationUnclamped() const;
     
     /// Legato probability (0–1) with CV2 offset
     float getLegato() const;

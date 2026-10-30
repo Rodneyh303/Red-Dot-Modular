@@ -11,10 +11,13 @@
 //
 // THE MAPPING (the spec's concrete table):
 //   p >= 0 : FORWARD  iff u < p,  else REPEAT        (p = +1 → always forward = today's identity)
-//   p <  0 : BACKWARD iff u < -p, else REPEAT        (STAGE 2 — bipolar, reserved: every source
-//                                                     this build is [0,1], so p < 0 is unreachable;
-//                                                     the branch is implemented + tested so Stage 2
-//                                                     is a sourcing change, not a logic change)
+//   p <  0 : BACKWARD iff u < -p, else REPEAT        (STAGE 2 — bipolar, SOURCED as of the
+//                                                     consumption completion: the resolved value
+//                                                     is the unclamped knob+CV2+Junction sum
+//                                                     clamped [-1,+1], so a bipolar modulation
+//                                                     source (LFO, random, envelope) into CV2
+//                                                     reaches the negative half — the sequence
+//                                                     WANDERS forward/backward/stutter)
 //   p == 0 : always REPEAT (stutter).
 //
 // REPEAT semantics (Rodney, spec correction 91b100c — there is NO held-vs-redraw choice; it is a
@@ -25,8 +28,10 @@
 // calling advancePlayhead — no re-draw branch exists or may exist.
 //
 // ONE PLAYHEAD (the spec's constraint): main + subgates share ONE playhead; each gate rise that
-// passes its level's check moves the shared playhead. Direction (BACKWARD) is Stage-2 sourcing;
-// with unipolar sources the playhead only ever moves forward this build.
+// passes its level's check moves the shared playhead in the direction ITS threshold's sign gave
+// (the last event that advanced sets the direction). Backward traversal is advancePlayhead's
+// reverse machinery, which wraps past step 0 to step N-1 (the spec's wrap-at-boundary law). With
+// no negative source patched the playhead only ever moves forward — the default is unchanged.
 
 #pragma once
 
@@ -38,7 +43,7 @@ struct StepAdvance {
     // Pure decision from (resolved probability, uniform draw). u ∈ [0,1) (the house Philox
     // uniform). Deterministic, no state, no Rack types.
     static constexpr Decision decide(float p, float u) {
-        if (p < 0.f) return (u < -p) ? BACKWARD : REPEAT;   // STAGE 2 (reserved — unreachable this build)
+        if (p < 0.f) return (u < -p) ? BACKWARD : REPEAT;   // STAGE 2 (bipolar — sourced, reachable)
         return (u < p) ? FORWARD : REPEAT;                  // STAGE 1/3 unipolar advance
     }
 };

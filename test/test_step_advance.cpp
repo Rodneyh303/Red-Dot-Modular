@@ -1,10 +1,12 @@
-// test_step_advance.cpp — the gate-mode step-advance feature (CC_PROMPT_GATE_STEP_ADVANCE_SPEC,
-// Stages 1+3; Stage 2's bipolar branch is implemented in the pure fn and table-pinned, but no
-// [0,1] source can reach it this build — it is a sourcing change, not a logic change).
+// test_step_advance.cpp — the gate-mode step-advance feature (CC_PROMPT_GATE_STEP_ADVANCE_SPEC
+// Stages 1+3 + CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2; the bipolar branch is implemented in
+// the pure fn, table-pinned, and SOURCED as of the consumption completion: the resolved value is
+// the unclamped knob+CV2+Junction sum clamped [-1,+1], so p < 0 is reachable through a bipolar
+// modulation source).
 //
 // What is pinned:
 //   PURE     : the decideAdvance table — p=1 → always FORWARD; p=0 → always REPEAT; mid → ratio
-//              (FORWARD iff u < p); p<0 → BACKWARD iff u < |p| (Stage 2, reserved/unreachable).
+//              (FORWARD iff u < p); p<0 → BACKWARD iff u < |p| (Stage 2, sourced + reachable).
 //   IDENTITY : the GOLDEN PIN — at p_advance = 1 (V1's resolved Variation = 1) plain Mode B and
 //              Mode B subdivided marches are BYTE-IDENTICAL to the pre-feature engine. The two
 //              digests below were captured on the PRE-CHANGE source (24 seeded marches x 64 steps
@@ -22,6 +24,11 @@
 //              voices[mono].variationProb); a coincident main+ratchet rise IS the main onset;
 //              the follow-main degenerate (subRes filled with the main value) is behaviourally
 //              identical to the ungated engine.
+//   STAGE2   : the bipolar sourcing — p<0 walks the playhead BACKWARD (exactly -1 per move,
+//              wrapping 0 -> 15 through advancePlayhead's reverse traversal); the ghost
+//              CANDIDACY reads the rectified strand rate (variationRateProb), NOT the bipolar
+//              advance value — the two consumers are decoupled by construction; a negative
+//              ghost-ADVANCE column walks the playhead backward in the gaps.
 //   SCOPE    : clock/phase (executeModeA) untouched — the playhead advances unconditionally there
 //              (Variation keeps its existing clock/phase meaning; p_advance is gate-mode only).
 //
@@ -475,6 +482,87 @@ int main() {
             if (eng.stepIndex == before) alwaysMoved = false;
         }
         check(alwaysMoved, "SCOPE: clock/phase advances unconditionally (Variation meaning unchanged there)");
+    }
+
+    // ── STAGE 2 (bipolar, CC_PROMPT_STEP_ADVANCE_CONSUMPTION): p < 0 REACHED ────
+    // The pure branch was always table-pinned; the SOURCING is the completion: the
+    // resolved value is the unclamped knob+CV2+Junction sum clamped [-1,+1] (the
+    // ModeController pair-writes variationProb bipolar / variationRateProb rectified),
+    // the ADVANCE resolver range widened to [-1,+1] (follow-main carries the sign;
+    // REST/LEGATO/ACCENT stay [0,1]), and the rise sites map BACKWARD ->
+    // advancePlayhead(-1) — the reverse traversal, which wraps past step 0 to 15.
+    {
+        // BACKWARD WALK (rack-free, plain Mode B, the RULE discipline): p = -0.4 —
+        // every decision rise moves EXACTLY -1 iff u < 0.4, else holds; the wrap is
+        // verified by driving the playhead across 0.
+        PhiloxRng rng; rng.seed64(0x51E7Aull);   // the RULE march's seed
+        SequencerEngine eng; eng.reset();
+        eng.numPolyVoices = 0;
+        seedEngine(eng, rng, -0.4f);
+        const PatternInput in = makeInput(0.5f);
+        int mismatches = 0, backwardMoves = 0, heldRises = 0;
+        bool crossedWrap = false;
+        for (int step = 0; step < 96; ++step) {
+            const bool rise = (step % 2) == 0;
+            const int before = eng.stepIndex;
+            bool expectBackward = false;
+            if (rise && eng.stepIndex != -1)
+                expectBackward = (eng.pe.stepRateUniform(eng.stepAdvanceRiseCtr_) < 0.4f);
+            StepResult r = eng.executeModeB(rise, rise, 3.f, in);
+            (void)r;
+            if (!rise || before == -1) continue;   // the seed advances forward, no decision
+            const bool moved     = (eng.stepIndex != before);
+            const bool movedBack = moved && (eng.stepIndex == ((before - 1 + 16) & 0xF));
+            if (moved != expectBackward) ++mismatches;
+            if (moved && !movedBack) ++mismatches;   // backward moves are EXACTLY -1 (mod 16)
+            if (movedBack) { ++backwardMoves; if (before == 0) crossedWrap = true; }
+            if (!moved) ++heldRises;
+        }
+        check(mismatches == 0, "STAGE2: p<0 walk == the mirrored BACKWARD rule, exactly -1 per move");
+        check(backwardMoves > 0, "STAGE2: the march actually exercised backward moves");
+        check(heldRises > 0, "STAGE2: the march actually exercised held (repeat) rises");
+        check(crossedWrap, "STAGE2: backward wrap verified (step 0 -> step 15)");
+    }
+    {
+        // CANDIDACY/ADVANCE DECOUPLING (the value pair, subResLive on — the module
+        // contract): variationProb = -1 (the main walks BACKWARD every rise) while
+        // variationRateProb = 1 (every ghost a candidate). If the candidacy still read
+        // the bipolar advance value, r_vary >= -1 would silence every ghost and the
+        // ghost-level advance would never run — so a backward move at a GHOST rise
+        // proves the two consumers read DIFFERENT fields. The ghost level's own
+        // ADVANCE column (-1) walks the shared playhead backward through the gaps.
+        PhiloxRng rng; rng.seed64(0xFA11ull);
+        SequencerEngine eng; eng.reset();
+        eng.numPolyVoices = 0;
+        seedEngine(eng, rng, -1.0f);
+        const auto m1 = dotModular::VoiceResolver::slot(1);
+        eng.voices[m1].subResLive = true;
+        eng.voices[m1].variationRateProb = 1.0f;   // ghosts always candidates
+        for (int l = 0; l < SK::LEVELS; ++l)
+            for (int d = 0; d < SK::DECS; ++d)
+                eng.voices[m1].subRes[l][d] = 0.0f;
+        eng.voices[m1].subRes[SK::GHOST][SK::ADVANCE] = -1.0f;   // ghosts walk backward too
+        const PatternInput in = makeInput(0.5f);
+        int backward = 0;
+        bool ghostMoved = false;
+        for (int step = 0; step < 32; ++step) {
+            const int ph = step % 4;
+            const bool mainRise  = (ph == 0);
+            const bool mainHigh  = (ph == 0 || ph == 1);
+            const bool ghostRise = (ph == 3);           // in-gap (main low)
+            const int before = eng.stepIndex;
+            StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, false, 3.f, in,
+                                                      ghostRise, ghostRise);
+            (void)r;
+            if (before == -1 || !(mainRise || ghostRise)) continue;
+            if (eng.stepIndex == ((before - 1 + 16) & 0xF)) {
+                ++backward;
+                if (ghostRise && !mainRise) ghostMoved = true;
+            }
+        }
+        check(backward > 0, "STAGE2: the bipolar march exercised backward moves at both levels");
+        check(ghostMoved, "STAGE2: ghost-ADVANCE -1 walks the playhead backward in the gaps "
+                          "(candidacy reads the rectified rate, not the bipolar advance)");
     }
 
     std::printf("  passed %d, failed %d\n", g_pass, g_fail);
