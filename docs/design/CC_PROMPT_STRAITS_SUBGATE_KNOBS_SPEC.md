@@ -60,3 +60,44 @@ u-draw discipline, same one-playhead constraint.
 
 ## NOT THIS SPEC
 - Step-advance Stages 1-2 (independent, build separately). The distribution expander. Phase-hybrid ideas.
+
+────────────────────────────────────────────────────────────────────────────────
+## CLARIFIED — no main-knob copies on Straits base; add subgate globals; the full resolution (Rodney)
+
+### Do NOT copy Monsoon main-lane knobs to the Straits base (for now at least)
+A global MAIN-lane knob (legato/rest/variation/accent) on the Straits base would be a redundant Monsoon
+copy needing sync (like the existing Straits V1 knobs). The global main value already lives on MONSOON. So
+do NOT add Straits-base copies of the main knobs. (May revisit for ergonomics later; not now — Straits
+space is limited.)
+
+### DO add subgate GLOBAL knobs on the Straits base
+The subgate global knobs are GENUINELY NEW values (how ratchet/ghost behave GLOBALLY — distinct from the
+main lane, e.g. "ghosts rest more than main notes"), NOT Monsoon copies. These belong on Straits base. This
+is why the subgate source is a real THREE-WAY (the global-subgate value is distinct from follow-main).
+
+### FULL RESOLUTION — main lanes and subgates
+
+MAIN LANE (legato/rest/variation/accent) per-voice value:
+- Straits poly subpanel ATTACHED for that lane → its per-voice knob.
+- NO Straits subpanel → FOLLOW MONSOON (the main knob). "No Straits = no poly" → every voice uses the
+  Monsoon global main value. (No Straits-base global copy involved; Monsoon IS the global.)
+
+SUBGATE decision (ratchet/ghost: legato, rest, step-advance) per-voice value — THREE-WAY:
+- Own SUBGATE poly subpanel ATTACHED → its per-voice subgate knob.
+- Else, SWITCH (Straits context menu, default follow-main):
+   (a) GLOBAL SUBGATE KNOB (the distinct Straits-base subgate value), OR
+   (b) FOLLOW MAIN POLY — the subgate follows the MAIN lane's resolved per-voice value (which is: main
+       Straits poly knob if attached, else Monsoon main knob).
+
+### THE DEGENERATE CASE (no Straits at all) — everything follows Monsoon
+With NO Straits attached (no main poly, no subgate knobs):
+- Both subgates' LEGATO follow MONSOON LEGATO (etc. for rest/accent).
+- Both subgates' STEP-ADVANCE follow MONSOON VARIATION (Variation = the step-advance lane in gate mode).
+So without Straits the whole subgate tier transparently inherits the Monsoon main values — the subgate
+knobs/choice only START to matter once a main lane has poly knobs (a Straits subpanel) OR a subgate global/
+subpanel is set. Until then, pure Monsoon-inherited behaviour, no new surface needed.
+
+### IMPLICATION for "follow main" vs "global subgate"
+follow-main only DIFFERS from global-subgate when the main lane has per-voice values worth following (a
+Straits main poly subpanel attached). Without that, both resolve to the Monsoon main value — identical. So
+the switch is MEANINGFUL only when main poly knobs exist; harmless (no-op choice) otherwise.
