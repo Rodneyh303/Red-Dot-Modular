@@ -25,10 +25,13 @@ Scope: ONLY the main gate, ONLY forward-or-repeat (no bipolar, no subgate levels
 - p_advance = the RESOLVED VARIATION probability in gate mode (per-voice, through the resolver/
   effectiveProbability path — NOT the raw knob; it must warp/correlate/CA like every other lane). In
   CLOCK/PHASE mode p_advance is not used (Variation keeps its existing clock/phase meaning).
-- REPEAT semantics: the playhead does not move; the current step's material is re-decided (re-drawn
-  rest/pitch/etc. for the repeated step) OR held — RULE: re-decide (a fresh draw on repeat), so stutter =
-  evolving repetition not frozen (matches "machine-gun on the current step's material"). Confirm with
-  Rodney if held-vs-redrawn is wanted; default = re-decide.
+- REPEAT semantics (Rodney — there is NO held-vs-redraw choice; it's a FALSE distinction): the random data
+  is addressed BY STEP POSITION (the Philox counter / strand index for that step). If the playhead does not
+  advance, the step is unchanged → the SAME counter position → the SAME random data → the SAME result, BY
+  CONSTRUCTION. "Repeat" = re-output the same step's data because you are reading the same address. Do NOT
+  implement a re-draw branch — not advancing simply means not moving the playhead; everything downstream
+  reads the same (step-addressed) draw it would have anyway. Stutter = identical repetition of the held
+  step, inherently.
 - GOLDEN PIN (mandatory): at p_advance = 1 (Variation set so gate-mode advance prob is 1), behaviour is
   BYTE-IDENTICAL to today (unconditional advance). The goldens MUST hold at p=1 — that is the identity-
   with-today regression gate. Only p<1 changes behaviour.
