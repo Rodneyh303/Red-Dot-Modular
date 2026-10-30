@@ -29,6 +29,30 @@ void OutputGenerator::drive(SequencerEngine& engine,
     
     generateOutputs(engine, outputs, currentPitchV, effectiveMuted, sampleTime);
 
+    // ── UNIFIED ADDRESSING Stage 4: the OUTPUT MASK (output-gate-only) ──────────
+    // The ONE output layer (the doc's containment hierarchy): a per-step play/mute
+    // mask per voice — cycle = the all-on degenerate mask (today's behaviour, the
+    // default), dynamic = the range-as-mask (O/L-derived = absolute-1), painted =
+    // the fixed-rotatable pattern (static = absolute-2, follows-R = absolute-3).
+    // Where the mask mutes the CURRENT PHRASE STEP, zero the voice's GATE + CV OUT
+    // (and the articulation terminals derived from them) — NOT the modulation CV
+    // inputs, NOT generation, NOT correlation: the same safe output-stage mute as
+    // the run/mute gates; marginals/correlation untouched. The phrase-wrap cut rule
+    // falls out of the per-step evaluation: a wrap INSIDE the mask carries the gate
+    // across normally; only the mask's real end cuts; step 1 outside = cut at 16.
+    // At defaults (cycle everywhere) outputMaskPasses is TRUE every step — every
+    // voltage below lands bit-identically (the goldens' output path untouched).
+    const int maskStep = engine.stepIndex;   // the GLOBAL phrase step (global-position space)
+    const bool monoMaskPass = engine.outputMaskPasses(dotModular::VoiceResolver::mono(), maskStep);
+    if (!monoMaskPass) {
+        outputs[GATE_OUTPUT].setVoltage(0.f);
+        outputs[CV_OUTPUT].setVoltage(0.f);
+        outputs[ACCENT_OUTPUT].setVoltage(0.f);
+        outputs[STEP_GATE_OUTPUT].setVoltage(0.f);
+        outputs[STEP_LEGATO_GATE_OUTPUT].setVoltage(0.f);
+        currentPitchV = 0.f;   // the cached local feeds the Straits/Changi ch0 writes below
+    }
+
     // Cache gate state for summary outputs
     float gateV = outputs[GATE_OUTPUT].getVoltage();
     float stepGateV   = outputs[STEP_GATE_OUTPUT].getVoltage();         // mono STEP  (for poly ch0)
@@ -88,6 +112,16 @@ void OutputGenerator::drive(SequencerEngine& engine,
             // executePolyVoice), gated by the voice actually sounding.
             polyAccentV[i] = (engine.voices[vs].accented && vg > 5.f) ? 10.f : 0.f;
             polySlegV[i]   = engine.voices[vs].gs.slurMember ? vgStep : 0.f;  // SLEG: slur-masked
+            // Stage 4: the voice's OUTPUT MASK — zero the whole terminal set where the
+            // mask mutes the current phrase step (output-gate-only; the state machines
+            // above ran untouched — the mute is post-process, read-side only).
+            if (!engine.outputMaskPasses(vs, maskStep)) {
+                polyGateV[i]   = 0.f;
+                polyStepV[i]   = 0.f;
+                polyCV[i]      = 0.f;
+                polyAccentV[i] = 0.f;
+                polySlegV[i]   = 0.f;
+            }
         }
     }
 

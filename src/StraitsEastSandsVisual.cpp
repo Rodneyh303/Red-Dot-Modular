@@ -18,6 +18,7 @@
 #include "ui/StoreBound.hpp"      // bindStoreKnob (de-param)
 #include "ui/Controls.hpp"        // Tag_Grey_Trim_Bar
 #include "dsp/SandsTopology.hpp"   // step 3c: East V1 write ownership via the resolver
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdio>   // snprintf — the Stage-3 range-strip caption
@@ -334,6 +335,22 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         };
         visualEditor->onRangeRightClick = [this](rack::math::Vec) -> bool {
             return openVoiceRangeMenu();
+        };
+        // Stage 4: the OUTPUT-MASK paint — a click on a PAINTED strip toggles the cell
+        // (the store first, then one Rack history action per toggle, the click-edit
+        // idiom). Only the voice's OWN East row paints here; a follow-Macro voice's
+        // mask is the Macro tier (authored on Macro's strip).
+        visualEditor->onMaskToggle = [this](int cell, bool play) {
+            auto* m = getMonsoon(); if (!m) return;
+            const int v = selectedVoice;
+            if (m->getMaskLocalEastMask(v) == 0.f) return;              // follow-Macro: paint on Macro
+            if ((int)std::lround(m->getMaskEastKind(v)) != 2) return;   // painted only
+            const bool oldPlay = m->getMaskEastCell(v, cell);
+            if (oldPlay == play) return;
+            m->setMaskEastCell(v, cell, play);                          // apply, then record
+            redDot::applyAndPushStoreEdit<Monsoon>(m, "Mask paint",
+                [v, cell](Monsoon& mm, bool p) { mm.setMaskEastCell(v, cell, p); },
+                oldPlay, play);
         };
         addChild(visualEditor);
 
@@ -703,6 +720,73 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             it->rightText = (independent && curDir == d) ? "✓" : "";
             it->widget = this; it->v = v; it->dir = d;
             menu->addChild(it);
+        }
+        // ── Stage 4: the OUTPUT MASK (the one output layer; the East row is the
+        // per-voice mask). Authored here only when the voice is INDEPENDENT — a
+        // follow-Macro voice reads the Macro tier's mask (the delegation discipline;
+        // break free with the switch above). Painting: click the strip cells when the
+        // kind is Painted (the strip renders lit=play / dim=mute).
+        if (independent) {
+            struct MaskKindItem : MenuItem {
+                StraitsEastSandsVisualWidget* widget;
+                int v; int kind;
+                void onAction(const event::Action& e) override {
+                    if (auto* mm = widget->getMonsoon()) {
+                        const int vi = v;   // the member, aliased for the setter lambda
+                        const float oldK = mm->getMaskEastKind(vi);
+                        mm->setMaskEastKind(vi, (float)kind);
+                        redDot::applyAndPushStoreEdit<Monsoon>(mm, "Mask kind",
+                            [vi](Monsoon& m2, float k) { m2.setMaskEastKind(vi, k); }, oldK, (float)kind);
+                    }
+                }
+            };
+            struct MaskBitsItem : MenuItem {
+                StraitsEastSandsVisualWidget* widget;
+                int v; float bits;
+                void onAction(const event::Action& e) override {
+                    if (auto* mm = widget->getMonsoon()) {
+                        const int vi = v;   // the member, aliased for the setter lambda
+                        const float oldB = mm->getMaskEastPatternBits(vi);
+                        mm->setMaskEastPatternBits(vi, bits);
+                        redDot::applyAndPushStoreEdit<Monsoon>(mm, "Mask pattern",
+                            [vi](Monsoon& m2, float b) { m2.setMaskEastPatternBits(vi, b); }, oldB, bits);
+                    }
+                }
+            };
+            menu->addChild(new MenuSeparator);
+            menu->addChild(createMenuLabel("Output mask"));
+            static const char* const kindNames[3] =
+                { "Cycle (no mask)", "Range (the window plays)", "Painted (click the strip)" };
+            for (int k = 0; k < 3; ++k) {
+                auto* it = new MaskKindItem;
+                it->text = kindNames[k];
+                it->rightText = (((int)std::lround(m->getMaskEastKind(v))) == k) ? "✓" : "";
+                it->widget = this; it->v = v; it->kind = k;
+                menu->addChild(it);
+            }
+            menu->addChild(createCheckMenuItem("Mask follows rotation (R)", "",
+                [m, v]() { return m->getMaskEastFollowR(v) != 0.f; },
+                [m, v]() {
+                    const float oldF = m->getMaskEastFollowR(v);
+                    const float newF = (oldF != 0.f) ? 0.f : 1.f;
+                    m->setMaskEastFollowR(v, newF);
+                    redDot::applyAndPushStoreEdit<Monsoon>(m, "Mask follow-R",
+                        [v](Monsoon& m2, float f) { m2.setMaskEastFollowR(v, f); }, oldF, newF);
+                }));
+            menu->addChild(new MenuSeparator);
+            auto* allOn = new MaskBitsItem;
+            allOn->text = "Set mask all on";
+            allOn->widget = this; allOn->v = v; allOn->bits = 65535.f;
+            menu->addChild(allOn);
+            auto* fromRange = new MaskBitsItem;
+            fromRange->text = "Set mask from range";
+            // the mask-from-range preset: the row's own O/L window as the play set
+            fromRange->widget = this;
+            fromRange->v = v;
+            fromRange->bits = (float)SequencerEngine::windowMaskBits(
+                std::max(1, (int)std::lround(m->getVoiceLorEast(v, 0))),
+                (int)std::lround(m->getVoiceLorEast(v, 1)));
+            menu->addChild(fromRange);
         }
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuItem("Reset range to identity (16/0/0, fwd)", "",
@@ -1665,6 +1749,19 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             const int sg = eng.voiceReadSign(vslot);
             snprintf(rangeLabel_, sizeof(rangeLabel_), "V%d", v + 1);
             visualEditor->setRangeState(std::max(1, L), O, R, rp, sg, !independent, rangeLabel_);
+            // Stage 4: the strip's mask surface — the EFFECTIVE pattern (delegation-
+            // resolved). Painted rows render the presence figure (lit = play) and
+            // accept the click-paint; the window rendering steps aside while painted.
+            const bool maskLocal = (monsoon->getMaskLocalEastMask(v) != 0.f);
+            const int  mkind = (int)std::lround(maskLocal ? monsoon->getMaskEastKind(v)
+                                                           : monsoon->getMaskMacroKind());
+            const bool painted = (mkind == 2);
+            unsigned pat = 0xFFFFu;
+            if (painted)
+                pat = (unsigned)std::lround(std::clamp(
+                    maskLocal ? monsoon->getMaskEastPatternBits(v)
+                              : monsoon->getMaskMacroPatternBits(), 0.f, 65535.f));
+            visualEditor->setRangeMask(painted, pat);
         }
     }
 

@@ -502,6 +502,100 @@ struct SequencerEngine {
     int     macroFrameRead_                         = 0;
     int     macroFrameSign_                         = 0;
 
+    // ── UNIFIED ADDRESSING Stage 4: the OUTPUT MASK (the ONE output layer) ─────────
+    // A per-step play/mute mask per voice + a rotation-source flag for the painted
+    // kind (the doc's containment hierarchy: cycle ⊂ abs1 ⊂ abs2 ⊂ abs3 are
+    // CONFIGURATIONS of one mechanism, not code paths):
+    //   MASK_CYCLE    the all-on degenerate mask — today's behaviour, the default;
+    //   MASK_DYNAMIC  dynamically-sized: the range-as-mask, derived from the row's
+    //                 O/L each evaluation (extent tracks the range) = absolute-1;
+    //   MASK_PAINTED  the fixed-rotatable painted pattern = absolute-2 (rotation
+    //                 STATIC, fixed to absolute phrase steps) or absolute-3 (the
+    //                 rotation SOURCE is the row's R — the mask travels with the
+    //                 content).
+    // Delegation: the MACRO tier is the GLOBAL mask (all voices), the EAST rows are
+    // per-voice; maskLocalEast_[v] picks (false = follow Macro, the default). The
+    // gate is OUTPUT-GATE-ONLY (MonsoonOutputGenerator zeroes the voice's GATE + CV
+    // OUT where the mask mutes the CURRENT PHRASE STEP): NOT the modulation CV
+    // inputs, NOT generation, NOT correlation — marginals untouched. The phrase-wrap
+    // cut rule falls out of the per-step evaluation: a wrap INSIDE the mask carries
+    // the gate across; only the mask's real end cuts; step 1 outside = cut at 16.
+    // THE ANCHOR LAW (mask <-> rotation, the doc's per-step rule): mask-step-1 is
+    // pinned to the BASE (unmodulated) rotation; the pinned copy re-rotates ONLY
+    // when the base changes (per-push change detection — the push is the per-block
+    // "per step" check), then the rotation MODULATION offsets relative to the
+    // anchor (none on the voice rows yet — the hook is the evaluation). Content
+    // direction, derived: R+1 moves the read +1, so the same window content arrives
+    // one phrase step SOONER — the re-pin rotates the pattern one step EARLIER per
+    // +1 R (the rhythm slides WITH the content either way).
+    enum MaskKind { MASK_CYCLE = 0, MASK_DYNAMIC = 1, MASK_PAINTED = 2 };
+    int      maskKind_[kVoiceSlots]                = {};      // per-voice (East tier) kind
+    uint16_t maskPainted_[kVoiceSlots]             = {0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,
+                                                      0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF};
+    bool     maskFollowR_[kVoiceSlots]             = {};      // the painted kind's rotation source
+    bool     maskLocalEast_[kVoiceSlots]           = {};      // false = follow the MACRO mask
+    uint16_t maskAnchored_[kVoiceSlots]            = {0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,
+                                                      0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF};
+    int      maskAnchorR_[kVoiceSlots]             = {};      // the base R the copy is pinned to
+    uint16_t maskLastPushed_[kVoiceSlots]          = {0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,
+                                                      0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF};
+    int      maskMacroKind_                        = MASK_CYCLE;
+    uint16_t maskMacroPainted_                     = 0xFFFF;
+    bool     maskMacroFollowR_                     = false;
+    uint16_t maskMacroAnchored_                    = 0xFFFF;
+    int      maskMacroAnchorR_                     = 0;
+    uint16_t maskMacroLastPushed_                  = 0xFFFF;
+    // The played steps move delta phrase steps EARLIER (the content direction — see
+    // the anchor note): new bit j = old bit (j + delta).
+    static uint16_t rotMask16(uint16_t m, int delta) {
+        delta = ((delta % 16) + 16) % 16;
+        return delta ? (uint16_t)((m >> delta) | (m << (16 - delta))) : m;
+    }
+    static bool maskWindowContains(int O, int L, int phraseStep) {
+        if (L >= 16) return true;
+        const int s = ((phraseStep - O) % 16 + 16) % 16;
+        return s < L;
+    }
+    // The window as a 16-bit play mask (bit c = phrase step c+1 in [O, O+L)) — the
+    // "mask from range" preset and the tests.
+    static uint16_t windowMaskBits(int L, int O) {
+        L = std::max(1, std::min(L, 16));
+        O = ((O % 16) + 16) % 16;
+        uint16_t m = 0;
+        for (int c = 0; c < 16; ++c) if (maskWindowContains(O, L, c)) m |= (uint16_t)(1u << c);
+        return m;
+    }
+    // The per-block authoring push (Monsoon's float mask rows -> this store), the
+    // pushVoiceLorEditor discipline: pure + rack-free (plain floats), clamps mirror
+    // the store frame (kind 0..2, cells != 0 -> play bit, followR/local != 0), the
+    // ALL-CYCLE default lands byte-identically on the reset() seed (no gating — the
+    // goldens' precondition on the module path). Runs AFTER pushVoiceLorEditor in
+    // Monsoon::process so the base rotation it re-pins against is the current one.
+    // Repaint detection: a pushed pattern that differs from the last pushed pattern
+    // re-anchors the working copy at the pushed base R (a paint or a load — the
+    // anchor law's "the paint was made at the painted R"); an unchanged pattern with
+    // a moved base R re-pins (rotates) the working copy — the base knob moves the
+    // mask. Abs2 rows (followR off) never re-pin (fixed to absolute phrase steps).
+    void pushMaskEditor(const float* macroPatternBits, float macroKind, float macroFollowR,
+                        const float* eastPatternBits, const float* eastKind,
+                        const float* eastFollowR, const float* localEast);
+    // THE ONE GATE: does this voice's output pass at phrase step s (0..15)? The
+    // OutputGenerator multiplies the voice's GATE + CV OUT by this every sample.
+    // s < 0 (transport stopped) passes — the run gate already silences everything.
+    bool outputMaskPasses(dotModular::VoiceSlot bank, int phraseStep) const {
+        if (phraseStep < 0 || phraseStep > 15) return true;
+        const int v = bank.v;
+        const bool local = maskLocalEast_[v];
+        const int  kind  = local ? maskKind_[v] : maskMacroKind_;
+        if (kind == MASK_CYCLE) return true;                    // all-on degenerate (today)
+        if (kind == MASK_DYNAMIC) {                             // abs1: the range-as-mask
+            int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
+            return maskWindowContains(O, L, phraseStep);
+        }
+        const uint16_t pat = local ? maskAnchored_[v] : maskMacroAnchored_;   // abs2/abs3
+        return (pat >> phraseStep) & 1u;
+    }
+
     // The EFFECTIVE voice LOR row (delegation + Macro tier) — the one resolution authority.
     void effectiveVoiceLor(int v, int& L, int& O, int& R, LaneDir& d) const {
         if (v < 0 || v >= kVoiceSlots) { L = 16; O = 0; R = 0; d = LaneDir::Forward; return; }

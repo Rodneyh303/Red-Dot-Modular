@@ -297,6 +297,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     const char* label = "";       // host caption (drawn like the lane labels)
     // drag state (the same zone shape as a probability lane):
     bool  dragging = false;
+    bool  paintPress = false;     // Stage 4: a click awaiting the mask toggle (no drag)
     DragState::Type type = DragState::NONE;
     math::Vec dragPos  = {};      // accumulated absolute position (DragMove gives delta)
     int   grabStep     = 0;       // step under cursor at press (relative WINDOW move)
@@ -307,6 +308,24 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   std::function<void(int L, int O, int R)> onRangeEdit;                        // per move
   std::function<void(const int before[3], const int after[3])> onRangeCommit;  // on release
   std::function<bool(rack::math::Vec pos)> onRangeRightClick;                  // host menu; true = consumed
+  // ── UNIFIED ADDRESSING Stage 4: the OUTPUT MASK on the strip ────────────────
+  // When the row's effective mask kind is PAINTED the strip becomes the paint
+  // surface (the spec: lit = play, dim = mute) and a CLICK (press->release with no
+  // window drag) toggles the cell under the cursor through onMaskToggle — the host
+  // writes the store (one Rack history action per toggle). LOR drags still author
+  // the window (press->move = window gesture; press->release = paint). The host
+  // pushes the EFFECTIVE pattern (delegation-resolved) each frame; edits are
+  // blocked while the row follows Macro (the delegation discipline).
+  bool     maskActive  = false;
+  unsigned maskPattern = 0xFFFFu;
+  std::function<void(int cell, bool play)> onMaskToggle;
+  void setRangeMask(bool active, unsigned pattern) {
+    maskActive  = active;
+    maskPattern = pattern & 0xFFFFu;
+  }
+  bool maskCellPlays(int cell) const {
+    return (cell >= 0 && cell < STEP_COUNT) && ((maskPattern >> cell) & 1u) != 0u;
+  }
   // Per-frame display push (host). While a drag is live the window L/O/R stays the
   // DRAG's local values (the store push lags one control block; overwriting would
   // fight the hand) — readPos/dir/blocked still update.
@@ -663,7 +682,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
     for (int step = 0; step < STEP_COUNT; ++step) {
       rack::Rect cell = rack::Rect(layout.getStepX(step), r.pos.y, layout.stepWidthF(), r.size.y);
-      const bool inWin = rangeBarInWindow(step);
+      // Stage 4: when the effective mask is PAINTED the strip shows the PRESENCE
+      // figure (lit = the mask plays this step, dim = mute — the paint surface);
+      // otherwise it shows the range window (lit = in-window).
+      const bool inWin = maskActive ? maskCellPlays(step) : rangeBarInWindow(step);
       nvgBeginPath(vg);
       nvgRect(vg, cell.pos.x, cell.pos.y, cell.size.x, cell.size.y);
       nvgFillColor(vg, inWin ? lit : dim);
@@ -1201,6 +1223,14 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
           e.consume(this);
           return;
         }
+        // Stage 4: on a PAINTED strip a click ANYWHERE (not just in the window — any
+        // subset paints) arms the mask toggle; released un-moved it toggles the cell.
+        if (maskActive && !rangeStrip.blocked && !readOnly) {
+          rangeStrip.paintPress = true;
+          rangeStrip.dragPos    = e.pos;
+          e.consume(this);
+          return;
+        }
         e.consume(this);   // a press on the strip (blocked/out-of-window) stays the strip's
         return;
       }
@@ -1209,14 +1239,32 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         return;   // the strip consumes its own right-clicks either way
       }
       if (e.action == GLFW_RELEASE && rangeStrip.dragging) {
+        const bool lorChanged = (rangeStrip.before[0] != rangeStrip.lor[0]
+                              || rangeStrip.before[1] != rangeStrip.lor[1]
+                              || rangeStrip.before[2] != rangeStrip.lor[2]);
         rangeStrip.dragging = false;
         rangeStrip.type     = DragState::NONE;
-        if (onRangeCommit
-            && (rangeStrip.before[0] != rangeStrip.lor[0]
-             || rangeStrip.before[1] != rangeStrip.lor[1]
-             || rangeStrip.before[2] != rangeStrip.lor[2])) {
-          const int after[3] = { rangeStrip.lor[0], rangeStrip.lor[1], rangeStrip.lor[2] };
-          onRangeCommit(rangeStrip.before, after);
+        if (lorChanged) {
+          if (onRangeCommit) {
+            const int after[3] = { rangeStrip.lor[0], rangeStrip.lor[1], rangeStrip.lor[2] };
+            onRangeCommit(rangeStrip.before, after);
+          }
+        }
+        // Stage 4: a CLICK (no window drag) on a PAINTED mask strip toggles the cell
+        // under the cursor — the spec's click-toggle paint action. The press position
+        // rides dragPos (unmoved on a click; armed for out-of-window presses too).
+        else if (maskActive && !rangeStrip.blocked && !readOnly && onMaskToggle) {
+          const int cell = getStepAtX(rangeStrip.dragPos.x);
+          if (cell >= 0 && cell < STEP_COUNT) onMaskToggle(cell, !maskCellPlays(cell));
+        }
+        e.consume(this);
+        return;
+      }
+      if (e.action == GLFW_RELEASE && rangeStrip.paintPress) {
+        rangeStrip.paintPress = false;
+        if (maskActive && !rangeStrip.blocked && !readOnly && onMaskToggle) {
+          const int cell = getStepAtX(rangeStrip.dragPos.x);
+          if (cell >= 0 && cell < STEP_COUNT) onMaskToggle(cell, !maskCellPlays(cell));
         }
         e.consume(this);
         return;

@@ -935,6 +935,28 @@ struct Monsoon : Module {
                                          16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f}; // 16 voices x {L,O,R}
         float voiceLorEastDir[16]     = {};                 // per-voice direction (LaneDir order)
         float voiceLorLocalEast[16]   = {};                 // 0 = follow Macro (default), !=0 = own East row
+
+        // ── UNIFIED ADDRESSING Stage 4: the OUTPUT-MASK rows (the ONE output layer) ──
+        // The same Macro/East delegation split as the voice-LOR rows: the MACRO tier
+        // is the GLOBAL mask (all voices), the EAST rows are per-voice;
+        // maskLocalEastMask[v] picks (0 = follow Macro, the default). Kind: 0 = CYCLE
+        // (the all-on degenerate mask — today's behaviour, the DEFAULT), 1 = DYNAMIC
+        // (the range-as-mask, derived from the row's O/L = absolute-1), 2 = PAINTED
+        // (the fixed-rotatable pattern; followR picks the rotation source: 0 = static
+        // absolute steps = absolute-2, !=0 = follows the row's R = absolute-3).
+        // Patterns are 16-bit play masks stored as ONE float holding the exact integer
+        // (bit c = phrase step c+1 plays; 65535 = all-on) — persistence/push friendly
+        // and exactly representable. Identity defaults (cycle everywhere, all-on
+        // patterns) are byte-neutral: the push lands on the reset() seed and nothing
+        // gates. Kept at struct END (the same ABI-hygiene note as warp/subgate/LOR).
+        float maskMacroKind        = 0.f;     // CYCLE
+        float maskMacroPatternBits = 65535.f;
+        float maskMacroFollowR     = 0.f;     // the painted kind's rotation source
+        float maskEastKind[16]         = {};   // per-voice kind (0 cycle default)
+        float maskEastPatternBits[16]  = {65535.f,65535.f,65535.f,65535.f, 65535.f,65535.f,65535.f,65535.f,
+                                          65535.f,65535.f,65535.f,65535.f, 65535.f,65535.f,65535.f,65535.f};
+        float maskEastFollowR[16]      = {};
+        float maskLocalEastMask[16]    = {};   // 0 = follow the MACRO mask (default)
     } editor;
 
     // Unified LOR base accessors. slot = voiceSlot (0 = V1/mono), bank 0..6, c 0..2.
@@ -996,6 +1018,45 @@ struct Monsoon : Module {
         if (!vLorOk(v)) return;
         editor.voiceLorEast[v*3 + 0] = 16.f; editor.voiceLorEast[v*3 + 1] = 0.f;
         editor.voiceLorEast[v*3 + 2] = 0.f;  editor.voiceLorEastDir[v] = 0.f; }
+
+    // ── UNIFIED ADDRESSING Stage 4: the output-mask row accessors (the vLorOk idiom:
+    // bounds-guarded, a bad index reads 0 / writes nothing — audio-path reads) ──
+    float getMaskMacroKind() const        { return editor.maskMacroKind; }
+    void  setMaskMacroKind(float x)       { editor.maskMacroKind = x; }
+    float getMaskMacroPatternBits() const { return editor.maskMacroPatternBits; }
+    void  setMaskMacroPatternBits(float x){ editor.maskMacroPatternBits = std::clamp(x, 0.f, 65535.f); }
+    float getMaskMacroFollowR() const     { return editor.maskMacroFollowR; }
+    void  setMaskMacroFollowR(float x)    { editor.maskMacroFollowR = x; }
+    // per-cell view over the bit pattern (the paint surface reads/writes cells)
+    bool  getMaskMacroCell(int c) const {
+        return (c >= 0 && c < 16) && ((((int)editor.maskMacroPatternBits) >> c) & 1) != 0; }
+    void  setMaskMacroCell(int c, bool play) {
+        if (c < 0 || c >= 16) return;
+        const int b = (int)editor.maskMacroPatternBits;
+        editor.maskMacroPatternBits = (float)(play ? (b | (1 << c)) : (b & ~(1 << c))); }
+    float getMaskEastKind(int v) const        { return vLorOk(v) ? editor.maskEastKind[v] : 0.f; }
+    void  setMaskEastKind(int v, float x)     { if (vLorOk(v)) editor.maskEastKind[v] = x; }
+    float getMaskEastPatternBits(int v) const { return vLorOk(v) ? editor.maskEastPatternBits[v] : 0.f; }
+    void  setMaskEastPatternBits(int v, float x) {
+        if (vLorOk(v)) editor.maskEastPatternBits[v] = std::clamp(x, 0.f, 65535.f); }
+    float getMaskEastFollowR(int v) const     { return vLorOk(v) ? editor.maskEastFollowR[v] : 0.f; }
+    void  setMaskEastFollowR(int v, float x)  { if (vLorOk(v)) editor.maskEastFollowR[v] = x; }
+    bool  getMaskEastCell(int v, int c) const {
+        return (vLorOk(v) && c >= 0 && c < 16) && ((((int)editor.maskEastPatternBits[v]) >> c) & 1) != 0; }
+    void  setMaskEastCell(int v, int c, bool play) {
+        if (!vLorOk(v) || c < 0 || c >= 16) return;
+        const int b = (int)editor.maskEastPatternBits[v];
+        editor.maskEastPatternBits[v] = (float)(play ? (b | (1 << c)) : (b & ~(1 << c))); }
+    float getMaskLocalEastMask(int v) const   { return vLorOk(v) ? editor.maskLocalEastMask[v] : 0.f; }
+    void  setMaskLocalEastMask(int v, float x){ if (vLorOk(v)) editor.maskLocalEastMask[v] = x; }
+    // Reset a mask row to CYCLE + all-on (the identity escape hatch — no gating).
+    void resetMaskMacro() {
+        editor.maskMacroKind = 0.f; editor.maskMacroPatternBits = 65535.f;
+        editor.maskMacroFollowR = 0.f; }
+    void resetMaskEast(int v) {
+        if (!vLorOk(v)) return;
+        editor.maskEastKind[v] = 0.f; editor.maskEastPatternBits[v] = 65535.f;
+        editor.maskEastFollowR[v] = 0.f; }
 
     //  MONO slice accessors (Mono Sands de-param) 
     // monoAtten: lane 0..5 (editor order), col 0..3 (0..2 = LOR len/off/rot, 3 = spread).

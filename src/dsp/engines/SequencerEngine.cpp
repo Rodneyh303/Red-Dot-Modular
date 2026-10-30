@@ -205,6 +205,15 @@ void SequencerEngine::reset() {
     macroVoiceLor_[LOR_LEN] = 16; macroVoiceLor_[LOR_OFF] = 0; macroVoiceLor_[LOR_ROT] = 0;
     macroVoiceLorDir_ = LaneDir::Forward;
     macroFrameRead_ = 0; macroFrameSign_ = 0;   // Stage 3: the Macro frame's caches too
+    // Stage 4: the output mask seeds to CYCLE everywhere (the all-on degenerate mask,
+    // today's behaviour) — no gating at defaults, the goldens' output path untouched.
+    for (int v = 0; v < kVoiceSlots; ++v) {
+        maskKind_[v] = MASK_CYCLE; maskPainted_[v] = 0xFFFF; maskFollowR_[v] = false;
+        maskLocalEast_[v] = false; maskAnchored_[v] = 0xFFFF; maskAnchorR_[v] = 0;
+        maskLastPushed_[v] = 0xFFFF;
+    }
+    maskMacroKind_ = MASK_CYCLE; maskMacroPainted_ = 0xFFFF; maskMacroFollowR_ = false;
+    maskMacroAnchored_ = 0xFFFF; maskMacroAnchorR_ = 0; maskMacroLastPushed_ = 0xFFFF;
     runGateActive = false;
     resetArmed = false;
     prevGate1High = false;
@@ -266,6 +275,67 @@ void SequencerEngine::pushVoiceLorEditor(
         voiceLorStore_[v][LOR_ROT] = lorInt(eastLor[v * 3 + LOR_ROT], 0.f, 15.f);
         voiceLorDir_[v]            = (LaneDir)lorInt(eastDir[v], 0.f, 3.f);
         voiceLorLocalEast_[v]      = (localEast[v] != 0.f);
+    }
+}
+
+// ── Stage 4: the output-mask authoring push (see the hpp decl) ─────────────────
+// The EditorState mask rows are the single authoring authority; this ONE copy per
+// control block is the only path they reach the output layer through (the push
+// runs AFTER pushVoiceLorEditor so the base rotation it re-pins against is the
+// current one). Clamps: kind 0..2, pattern bits 0..65535 (an exact float integer),
+// followR/local != 0. The ALL-CYCLE default (kinds 0, patterns all-on) lands
+// byte-identically on the reset() seed — no gating anywhere, the goldens' output
+// path is untouched. The ANCHOR LAW lives here (the push IS the per-block
+// "per step" check): a pushed pattern that differs from the last pushed pattern is
+// a PAINT (or a patch load) — the working copy re-anchors at the pushed base R;
+// an unchanged pattern whose base R moved is a KNOB TURN — the working copy
+// re-pins (rotates delta steps EARLIER, the content direction) so mask-step-1
+// stays pinned to the base rotation. followR-off rows (abs2) never re-pin.
+void SequencerEngine::pushMaskEditor(
+    const float* macroPatternBits, float macroKind, float macroFollowR,
+    const float* eastPatternBits, const float* eastKind,
+    const float* eastFollowR, const float* localEast) {
+    auto kindInt = [](float x) -> int {
+        return (int)std::lround(std::clamp(x, 0.f, 2.f));
+    };
+    auto bitsInt = [](float x) -> uint16_t {
+        return (uint16_t)std::lround(std::clamp(x, 0.f, 65535.f));
+    };
+    // Macro tier first (the GLOBAL mask every follower reads).
+    {
+        const uint16_t painted = bitsInt(macroPatternBits[0]);
+        const int kind         = kindInt(macroKind);
+        const bool followR     = (macroFollowR != 0.f);
+        const int  baseR       = macroVoiceLor_[LOR_ROT];
+        if (painted != maskMacroLastPushed_) {              // repaint / load: re-anchor
+            maskMacroAnchored_    = painted;
+            maskMacroAnchorR_     = baseR;
+            maskMacroLastPushed_  = painted;
+        } else if (followR && baseR != maskMacroAnchorR_) { // knob turn: re-pin
+            maskMacroAnchored_    = rotMask16(maskMacroAnchored_, baseR - maskMacroAnchorR_);
+            maskMacroAnchorR_     = baseR;
+        }
+        maskMacroKind_    = kind;
+        maskMacroPainted_ = painted;
+        maskMacroFollowR_ = followR;
+    }
+    for (int v = 0; v < kVoiceSlots; ++v) {
+        const uint16_t painted = bitsInt(eastPatternBits[v]);
+        const int      kind    = kindInt(eastKind[v]);
+        const bool     followR = (eastFollowR[v] != 0.f);
+        maskLocalEast_[v]      = (localEast[v] != 0.f);
+        const int  baseR       = voiceLorStore_[v][LOR_ROT];   // the row's base rotation
+        if (painted != maskLastPushed_[v]) {                    // repaint / load: re-anchor
+            maskAnchored_[v]    = painted;
+            maskAnchorR_[v]     = baseR;
+            maskLastPushed_[v]  = painted;
+        } else if (followR && baseR != maskAnchorR_[v]) {       // knob turn: re-pin
+            maskAnchored_[v]    = rotMask16(maskAnchored_[v], baseR - maskAnchorR_[v]);
+            maskAnchorR_[v]     = baseR;
+        }
+        maskKind_[v]    = kind;
+        maskPainted_[v] = painted;
+        maskFollowR_[v] = followR;
     }
 }
 

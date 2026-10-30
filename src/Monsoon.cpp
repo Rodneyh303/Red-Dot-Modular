@@ -1641,6 +1641,16 @@ void Monsoon::process(const ProcessArgs& args) {
             editor.voiceLorMacro, editor.voiceLorMacroDir,
             editor.voiceLorEast, editor.voiceLorEastDir, editor.voiceLorLocalEast);
 
+        // UNIFIED ADDRESSING Stage 4: the OUTPUT-MASK rows (the one output layer) ->
+        // the engine's mask store, the same one-block cadence. Runs AFTER the LOR push
+        // so the anchor law re-pins against the CURRENT base rotation (the mask's
+        // mask-step-1 pinned to the row's R). All-cycle defaults are byte-neutral: no
+        // gating anywhere, the output path is untouched at defaults.
+        engine.pushMaskEditor(
+            &editor.maskMacroPatternBits, editor.maskMacroKind, editor.maskMacroFollowR,
+            editor.maskEastPatternBits, editor.maskEastKind, editor.maskEastFollowR,
+            editor.maskLocalEastMask);
+
         // Update CV2 modulation offsets (Throttled)
         paramManager->clearCv2Offsets();
         // CV2 as a Big-5 modulation source (cv2Mode 0..4) in the clock/gate origins (modeSelect < 2).

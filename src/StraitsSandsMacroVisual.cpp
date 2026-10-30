@@ -8,6 +8,7 @@
 //#include "MonsoonStraitsSands.hpp"
 #include "StraitsSandsMacroVisual.hpp"
 #include "dsp/SandsTopology.hpp"           // step 4b: Macro lock predicate via the resolver
+#include <algorithm>
 #include <cassert>
 #include <cstring>   // memcmp — the prob-CV out write-elimination bit-compare (perf fix)
 #include "MonsoonSandsVisualExpander.hpp"  // complete mono type + SandsMonoVisualIds for the tab-1 mono mirror
@@ -195,6 +196,18 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         };
         visualEditor->onRangeRightClick = [this](rack::math::Vec) -> bool {
             return openVoiceRangeMenu();
+        };
+        // Stage 4: the OUTPUT-MASK paint on the MACRO tier (the GLOBAL mask every
+        // follow-Macro voice reads through) — the same click-toggle + history idiom.
+        visualEditor->onMaskToggle = [this](int cell, bool play) {
+            auto* m = getMonsoon(); if (!m) return;
+            if ((int)std::lround(m->getMaskMacroKind()) != 2) return;   // painted only
+            const bool oldPlay = m->getMaskMacroCell(cell);
+            if (oldPlay == play) return;
+            m->setMaskMacroCell(cell, play);                            // apply, then record
+            redDot::applyAndPushStoreEdit<Monsoon>(m, "Global mask paint",
+                [cell](Monsoon& mm, bool p) { mm.setMaskMacroCell(cell, p); },
+                oldPlay, play);
         };
         addChild(visualEditor);
 
@@ -507,6 +520,68 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuItem("Reset global range to identity (16/0/0, fwd)", "",
             [m]() { m->resetVoiceLorMacro(); }));
+        // ── Stage 4: the OUTPUT MASK (the MACRO tier — the GLOBAL mask every follow-
+        // Macro voice reads through). The per-voice masks live on East's strip menu.
+        {
+            struct MaskKindItem : MenuItem {
+                StraitsSandsMacroVisualWidget* widget;
+                int kind;
+                void onAction(const event::Action& e) override {
+                    if (auto* mm = widget->getMonsoon()) {
+                        const float oldK = mm->getMaskMacroKind();
+                        mm->setMaskMacroKind((float)kind);
+                        redDot::applyAndPushStoreEdit<Monsoon>(mm, "Global mask kind",
+                            [](Monsoon& m2, float k) { m2.setMaskMacroKind(k); }, oldK, (float)kind);
+                    }
+                }
+            };
+            struct MaskBitsItem : MenuItem {
+                StraitsSandsMacroVisualWidget* widget;
+                float bits;
+                void onAction(const event::Action& e) override {
+                    if (auto* mm = widget->getMonsoon()) {
+                        const float oldB = mm->getMaskMacroPatternBits();
+                        mm->setMaskMacroPatternBits(bits);
+                        redDot::applyAndPushStoreEdit<Monsoon>(mm, "Global mask pattern",
+                            [](Monsoon& m2, float b) { m2.setMaskMacroPatternBits(b); }, oldB, bits);
+                    }
+                }
+            };
+            menu->addChild(new MenuSeparator);
+            menu->addChild(createMenuLabel("Output mask (global)"));
+            static const char* const kindNames[3] =
+                { "Cycle (no mask)", "Range (the window plays)", "Painted (click the strip)" };
+            for (int k = 0; k < 3; ++k) {
+                auto* it = new MaskKindItem;
+                it->text = kindNames[k];
+                it->rightText = (((int)std::lround(m->getMaskMacroKind())) == k) ? "✓" : "";
+                it->widget = this; it->kind = k;
+                menu->addChild(it);
+            }
+            menu->addChild(createCheckMenuItem("Mask follows rotation (R)", "",
+                [m]() { return m->getMaskMacroFollowR() != 0.f; },
+                [m]() {
+                    const float oldF = m->getMaskMacroFollowR();
+                    const float newF = (oldF != 0.f) ? 0.f : 1.f;
+                    m->setMaskMacroFollowR(newF);
+                    redDot::applyAndPushStoreEdit<Monsoon>(m, "Global mask follow-R",
+                        [](Monsoon& m2, float f) { m2.setMaskMacroFollowR(f); }, oldF, newF);
+                }));
+            menu->addChild(new MenuSeparator);
+            auto* allOn = new MaskBitsItem;
+            allOn->text = "Set mask all on";
+            allOn->widget = this; allOn->bits = 65535.f;
+            menu->addChild(allOn);
+            auto* fromRange = new MaskBitsItem;
+            fromRange->text = "Set mask from range";
+            fromRange->widget = this;
+            fromRange->bits = (float)SequencerEngine::windowMaskBits(
+                std::max(1, (int)std::lround(m->getVoiceLorMacro(0))),
+                (int)std::lround(m->getVoiceLorMacro(1)));
+            menu->addChild(fromRange);
+            menu->addChild(createMenuItem("Reset mask to cycle (all on)", "",
+                [m]() { m->resetMaskMacro(); }));
+        }
         return true;
     }
 
@@ -860,6 +935,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             const int rp = (eng.stepIndex >= 0) ? se->macroFrameRead() : -1;
             const int sg = se->macroFrameSign();
             visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);
+            // Stage 4: the strip's mask surface (the MACRO tier's GLOBAL pattern).
+            const int  mkind = (int)std::lround(monsoon->getMaskMacroKind());
+            const bool painted = (mkind == 2);
+            unsigned pat = 0xFFFFu;
+            if (painted)
+                pat = (unsigned)std::lround(std::clamp(monsoon->getMaskMacroPatternBits(), 0.f, 65535.f));
+            visualEditor->setRangeMask(painted, pat);
         }
     }
 
