@@ -103,12 +103,18 @@ namespace StraitsSubgateIds {
 }
 
 // The family predicate (seam detection + the resnap chain checks + the suite
-// scan's hop-through list). Subgate chain only — the StraitsBase lane chain has
-// its OWN predicate; the two families dock as separate runs (a subgate surface
-// parked inside a lane run gets shoved out by the lanes' resnap, and vice versa
-// — deliberate, mirrors foreign inserts).
+// scan's hop-through list). SUBGATE MERGE (CC_PROMPT_SUBGATE_MERGE_ONTO_
+// STRAITS_BASE): the panels dock on the UNIFIED Straits chain — their left
+// neighbour can be the StraitsBase, a lane expander, or another subgate panel
+// (the retired base model stays listed until the deletion commit removes it).
 inline bool isStraitsSubgateChainModel(rack::Model* m) {
     return m == modelStraitsSubgateBase
+        || m == modelStraitsBase
+        || m == modelStraitsLaneQMIX
+        || m == modelStraitsLaneREST
+        || m == modelStraitsLaneACCENT
+        || m == modelStraitsLaneVARIATION
+        || m == modelStraitsLaneLEGATO
         || m == modelStraitsSubgatePanelRatchetRest
         || m == modelStraitsSubgatePanelRatchetLegato
         || m == modelStraitsSubgatePanelRatchetAccent

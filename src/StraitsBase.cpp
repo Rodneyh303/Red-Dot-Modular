@@ -1,10 +1,11 @@
-// StraitsBase — the frame + IO + voice count, NO lane knobs.
-// This is a REFACTOR of the working Straits widget (MonsoonStraitsExpander.cpp):
-// the IO bindings, voice-count knob, connect mark, and step() logic are COPIED
-// from MonsoonStraitsExpanderWidget — only the lane knob bindings are removed.
-// The base module IS a StraitsStraitsExpander subclass (same config, same params,
-// same IO). Lane expanders are UNREGISTERED — the base spawns them via context menu
-// and owns persistence (save/load the lane list).
+// StraitsBase — the ONE base surface: frame + IO + voice count, the lane run's
+// owner, AND (CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE) the subgate consumer
+// group's GLOBAL tier — the 8 global knobs + their mod jacks, the source
+// switches, and the subgate-panel wheel. The retired StraitsSubgateBase's
+// module logic, menu, and wheel are folded HERE (one base owns poly/outputs/
+// snapping/voice-select; the subgate tier joins it); the per-voice panels
+// (StraitsSubgatePanel.cpp) attach to THIS base, docking after the lane run.
+// Lane expanders are base-spawned; the base owns persistence for both lists.
 //
 // See docs/design/STRAITS_CAUSEWAY_LANE_EXTENSIONS.md REFINED MODEL + METHOD:REFACTOR.
 #include <rack.hpp>
@@ -16,12 +17,18 @@
 #include "ui/Controls.hpp"
 #include <algorithm>   // std::sort
 #include <atomic>      // std::atomic — the resnap fast-path flags cross engine → UI threads
+#include <cmath>       // std::fabs — the subgate global-delta publish
 #include "StraitsLaneExpander.hpp"
+#include "StraitsSubgateBase.hpp"   // SUBGATE MERGE: the panel module + ids (restructured in the deletion commit)
 #include "ui/StraitsSeamFiller.hpp"
+#include "ui/StoreBound.hpp"        // bindStoreKnob — the de-param law (the subgate globals)
+#include "ui/StraitsSubgateArt.hpp" // addSubgateCaption + subgateTint — the merged panel's lettering
 
 using namespace rack;
 
 // Helper: is this module a compatible StraitsR panel (for seam detection)?
+// SUBGATE MERGE: the subgate per-voice panels joined the chain family — they
+// dock after the lane run, so the base's right neighbour can be one.
 static bool isStraitsRPanel(rack::Module* m) {
     if (!m) return false;
     return m->model == modelStraitsBase
@@ -29,10 +36,19 @@ static bool isStraitsRPanel(rack::Module* m) {
         || m->model == modelStraitsLaneREST
         || m->model == modelStraitsLaneACCENT
         || m->model == modelStraitsLaneVARIATION
-        || m->model == modelStraitsLaneLEGATO;
+        || m->model == modelStraitsLaneLEGATO
+        || m->model == modelStraitsSubgatePanelRatchetRest
+        || m->model == modelStraitsSubgatePanelRatchetLegato
+        || m->model == modelStraitsSubgatePanelRatchetAccent
+        || m->model == modelStraitsSubgatePanelRatchetAdvance
+        || m->model == modelStraitsSubgatePanelGhostRest
+        || m->model == modelStraitsSubgatePanelGhostLegato
+        || m->model == modelStraitsSubgatePanelGhostAccent
+        || m->model == modelStraitsSubgatePanelGhostAdvance;
 }
 using namespace MonsoonIds;
 using namespace StraitsIds;
+namespace SKns = dotModular::SubgateKnobs;   // SUBGATE MERGE — the globals' tier constants
 
 // ── StraitsBaseModule — subclass with lane persistence ───────────────────────
 // Adds dataToJson/dataFromJson to save/restore the list of attached lane
@@ -45,12 +61,62 @@ struct StraitsBaseModule : MonsoonStraitsExpander {
     std::vector<int64_t> orderedLaneIds_;  // owned lane module IDs, in dock order
     bool needsResnap = false;   // set by onDragEnd, cleared by step() (one-shot)
     bool initialized = false;   // false until the widget's first step runs
+    // SUBGATE MERGE (CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE): the subgate
+    // panel list (the straitLanes shape) + the global-delta publish shadow.
+    std::vector<std::string> pendingSubgates_;   // panel slugs to spawn on the widget's first step (restore)
+    std::vector<int64_t> orderedSubgateIds_;     // owned subgate panel IDs, in dock order
+    float lastGlob_[SKns::LEVELS][SKns::DECS] = {};   // change-gated publishing; audio thread only
     // RESNAP FAST PATH (CC_PROMPT_STRAITS_RESNAP_HARDENING): set by onExpanderChange —
     // Rack's own adjacency-change signal (the head-adjacent insertion event no drag-end
     // covers). Only marks DIRTY; the exact chainIntact() evaluation runs UI-side in the
     // widget's step (orderedLaneIds_ is UI-thread data). Relaxed atomic (the
     // topologyEpoch house pattern) — the writer may be the engine thread.
     std::atomic<bool> topologyDirty{false};
+
+    // SUBGATE MERGE: the 8 global mod inputs appended ABOVE the Straits input
+    // namespace (config re-called with the grown count — vector resize-up
+    // preserves the parent's configured labels). Level-major: l*DECS + d.
+    enum SubgateInputIds {
+        SG_MOD_0 = StraitsIds::NUM_INPUTS,   // level-major: l*DECS + d
+    };
+    // NOT an enumerator: enum + enum arithmetic is deprecated (C++20); the
+    // count is a plain int so StraitsIds::NUM_INPUTS + SG_NUM_MOD_INPUTS stays
+    // enum + int.
+    static constexpr int SG_NUM_MOD_INPUTS = SKns::LEVELS * SKns::DECS;
+
+    StraitsBaseModule() {
+        config(StraitsIds::NUM_PARAMS, StraitsIds::NUM_INPUTS + SG_NUM_MOD_INPUTS,
+               StraitsIds::NUM_OUTPUTS, 0);
+        // The jack tooltips (the Causeway mod path's labels — the captions are
+        // the one authority shared with the retired base's strips).
+        for (int l = 0; l < SKns::LEVELS; ++l)
+            for (int d = 0; d < SKns::DECS; ++d)
+                configInput(SG_MOD_0 + l * SKns::DECS + d,
+                    std::string(SKns::LEVEL_CAPTIONS[l]) + " " + SKns::DEC_CAPTIONS[d]
+                    + " mod (±10V → ±1 threshold)");
+    }
+
+    // THE one process (the merge's poly/output clause): the parent's is empty —
+    // Monsoon writes the poly-cable outputs via the cached pointer — so this
+    // override carries the subgate GLOBAL-delta publish + heartbeat slot 0 (the
+    // retired base's process, verbatim: change-gated, publish-overwrites; the
+    // heartbeat vouches for liveness and MONSOON's watchdog drops the plane if
+    // it freezes — publisher gone).
+    void process(const ProcessArgs& args) override {
+        MonsoonStraitsExpander::process(args);
+        Monsoon* m = redDot::lookupMonsoon(this);
+        if (!m) return;   // isolated: heartbeat freezes → the watchdog drops what we last published
+        for (int l = 0; l < SKns::LEVELS; ++l)
+            for (int d = 0; d < SKns::DECS; ++d) {
+                const int id = SG_MOD_0 + l * SKns::DECS + d;
+                const float delta = inputs[id].isConnected() ? inputs[id].getVoltage() * 0.1f : 0.f;
+                if (std::fabs(delta - lastGlob_[l][d]) > 1e-6f) {
+                    m->setSubgateGlobalDelta(l, d, delta);
+                    lastGlob_[l][d] = delta;
+                }
+            }
+        ++m->editor.subgate.publishSeq[0];
+    }
 
     json_t* dataToJson() override {
         json_t* rootJ = MonsoonStraitsExpander::dataToJson();
@@ -67,6 +133,19 @@ struct StraitsBaseModule : MonsoonStraitsExpander {
             }
         }
         json_object_set_new(rootJ, "straitLanes", lanesJ);
+        // SUBGATE MERGE: the owned subgate panel list (the same shape; the
+        // retired base's "subgatePanels" key, so its saves restore here).
+        json_t* sgJ = json_array();
+        for (int64_t id : orderedSubgateIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (m) {
+                auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(m);
+                if (panel)
+                    json_array_append_new(sgJ,
+                        json_string(StraitsSubgateIds::panelSlug(panel->level, panel->dec)));
+            }
+        }
+        json_object_set_new(rootJ, "subgatePanels", sgJ);
         return rootJ;
     }
 
@@ -78,6 +157,16 @@ struct StraitsBaseModule : MonsoonStraitsExpander {
             json_array_foreach(lanesJ, i, v) {
                 const char* s = json_string_value(v);
                 if (s) pendingLanes.push_back(s);
+            }
+        }
+        // SUBGATE MERGE: the subgate panel slugs (spawned on the widget's first
+        // step; legacy per-LEVEL slugs parse false and skip gracefully).
+        json_t* sgJ = json_object_get(rootJ, "subgatePanels");
+        if (sgJ) {
+            size_t i; json_t* v;
+            json_array_foreach(sgJ, i, v) {
+                const char* s = json_string_value(v);
+                if (s) pendingSubgates_.push_back(s);
             }
         }
     }
@@ -147,11 +236,50 @@ struct StraitsBaseWidget : ModuleWidget,
                 k->lightWhen = [this](){ return themeLight_; };
             }));
 
+        // ── SUBGATE MERGE: the 8 GLOBAL store knobs + their mod jacks ──────────
+        // (the retired StraitsSubgateBaseWidget's binds, verbatim — the Causeway
+        // mod coverage law: each knob ships with its jack, born together).
+        {
+            auto resolveMon = [this]() -> Monsoon* { return redDot::lookupMonsoon(module); };
+            for (int l = 0; l < SKns::LEVELS; ++l)
+                for (int d = 0; d < SKns::DECS; ++d) {
+                    const std::string cap = std::string(SKns::LEVEL_CAPTIONS[l]) + " " + SKns::DEC_CAPTIONS[d];
+                    redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(
+                        this, "param_sbg_" + std::to_string(l) + "_" + std::to_string(d),
+                        resolveMon, 0.f, 1.f, SKns::kDefaultThreshold,
+                        "Subgate " + cap + " (global)",
+                        [l, d](Monsoon& m) { return m.getSubgateGlobal(l, d); },
+                        [l, d](Monsoon& m, float x) { m.setSubgateGlobal(l, d, x); });
+                    bindInput<PJ301MPort>("mod_sbg_" + std::to_string(l) + "_" + std::to_string(d),
+                                          StraitsBaseModule::SG_MOD_0 + l * SKns::DECS + d);
+                }
+        }
+
         if (auto* s = findNamed("light_connect")) {
             connectMark = redDot::makeConnectMark(module, centerOf(s), mm2px(8.f));
             addChild(connectMark);
         }
+
+        // ── SUBGATE MERGE lettering (the Cantonment idiom; coordinates match
+        // gen_straits_base.py's merged layout: W=81.28, MARGIN_L=17, COL_PITCH
+        // 14.82, knob rows 30/48, mod rows 63/77, voice 91, IO 111.1). The
+        // "MOD" label moves to the GUTTER (the centre band now carries the
+        // voice knob); "VOICES" labels it from below.
+        {
+            constexpr float Wmm = 81.28f, MARGIN_L = 17.0f, COL_PITCH = 59.28f / 4.f;
+            auto ink = [this]() { return themeLight_ ? nvgRGB(0x30, 0x34, 0x3a) : nvgRGB(0xc8, 0xcd, 0xd4); };
+            redDot::addSubgateCaption(this, "SUBGATE", Wmm * 0.5f, 16.5f, 9.f, ink);
+            for (int d = 0; d < SKns::DECS; ++d)
+                redDot::addSubgateCaption(this, SKns::DEC_CAPTIONS[d], MARGIN_L + COL_PITCH * (d + 0.5f), 21.0f, 6.f, ink);
+            for (int l = 0; l < SKns::LEVELS; ++l)
+                redDot::addSubgateCaption(this, SKns::LEVEL_CAPTIONS[l], 8.8f, 30.f + 18.f * l, 7.f,
+                                  [l]() { return redDot::subgateTint(l); });
+            redDot::addSubgateCaption(this, "MOD", 8.8f, 70.f, 6.f, ink);
+            redDot::addSubgateCaption(this, "VOICES", Wmm * 0.5f, 101.f, 6.f, ink);
+        }
     }
+
+    Monsoon* mon() { return module ? redDot::lookupMonsoon(module) : nullptr; }
 
     // ── Context menu: lane presence checkboxes ───────────────────────────────
     // Lanes are UNIQUE (at most one each). Checkboxes toggle presence.
@@ -181,7 +309,7 @@ struct StraitsBaseWidget : ModuleWidget,
                     if (lw) APP->scene->rack->removeModule(lw);
                     APP->engine->removeModule(m);
                     baseMod->orderedLaneIds_.erase(baseMod->orderedLaneIds_.begin() + i);
-                    resnapLanes();   // close the gap — reposition remaining lanes
+                    resnapRun();   // close the gap — reposition the remaining run
                     return;
                 }
             }
@@ -210,6 +338,48 @@ struct StraitsBaseWidget : ModuleWidget,
         menu->addChild(createCheckMenuItem("LEGATO", "",
             [this]() { return hasLane("StraitsLaneLEGATO"); },
             [this]() { toggleLane("StraitsLaneLEGATO"); }));
+
+        // ── SUBGATE MERGE: the source switches + the per-voice panels + clear ──
+        // (the retired StraitsSubgateBaseWidget's menu, verbatim.)
+        Monsoon* mm = mon();
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Subgate source (when no own subpanel)"));
+        if (mm) {
+            // The per-decision SWITCH (the spec's set-and-forget routing choice):
+            // tier 2a global vs tier 2b follow-main. Default FOLLOW MAIN (the
+            // least-surprising default — the subgate inherits the main lane until
+            // the user opts to a global subgate value or attaches a subpanel).
+            // Attached always wins (tier 1) — no switch needed.
+            for (int l = 0; l < SKns::LEVELS; ++l) {
+                menu->addChild(createMenuLabel(SKns::LEVEL_CAPTIONS[l]));
+                for (int d = 0; d < SKns::DECS; ++d) {
+                    const std::string cap = std::string(SKns::DEC_CAPTIONS[d]);
+                    menu->addChild(createCheckMenuItem(cap + " — follow main", "",
+                        [this, l, d]() { Monsoon* m2 = mon(); return m2 ? m2->isSubgateFollowMain(l, d) : true; },
+                        [this, l, d]() { if (auto* m2 = mon()) m2->setSubgateFollowMain(l, d, true); }));
+                    menu->addChild(createCheckMenuItem(cap + " — global knob", "",
+                        [this, l, d]() { Monsoon* m2 = mon(); return m2 ? !m2->isSubgateFollowMain(l, d) : false; },
+                        [this, l, d]() { if (auto* m2 = mon()) m2->setSubgateFollowMain(l, d, false); }));
+                }
+            }
+        } else {
+            menu->addChild(createMenuLabel("(no Monsoon attached)"));
+        }
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Subgate per-voice panels"));
+        for (int l = 0; l < SKns::LEVELS; ++l) {
+            menu->addChild(createMenuLabel(SKns::LEVEL_CAPTIONS[l]));
+            for (int d = 0; d < SKns::DECS; ++d) {
+                menu->addChild(createCheckMenuItem(
+                    std::string("   ") + SKns::DEC_CAPTIONS[d] + " panel", "",
+                    [this, l, d]() { return hasSubgatePanel(l, d); },
+                    [this, l, d]() { toggleSubgatePanel(l, d); }));
+            }
+        }
+        menu->addChild(new MenuSeparator);
+        // The menu's un-claim path (the touch-is-claim law's complement).
+        menu->addChild(createMenuItem("Clear per-voice overrides", "",
+            [this]() { if (auto* m2 = mon()) m2->clearSubgateOwnAll(); }));
     }
 
     // ── Spawn a lane expander module and dock it right ───────────────────────
@@ -248,6 +418,89 @@ struct StraitsBaseWidget : ModuleWidget,
 
         // Add to rack
         APP->scene->rack->addModule(laneW);
+    }
+
+    // ── SUBGATE MERGE: the subgate-panel wheel (the retired StraitsSubgateBase's,
+    // family-parameterised to the merged base — the StraitsLane law) ────────────
+    static Model* subgatePanelModel(int level, int dec) {
+        switch (level * SKns::DECS + dec) {
+            case SKns::RATCHET * SKns::DECS + 0: return modelStraitsSubgatePanelRatchetRest;
+            case SKns::RATCHET * SKns::DECS + 1: return modelStraitsSubgatePanelRatchetLegato;
+            case SKns::RATCHET * SKns::DECS + 2: return modelStraitsSubgatePanelRatchetAdvance;
+            case SKns::RATCHET * SKns::DECS + 3: return modelStraitsSubgatePanelRatchetAccent;
+            case SKns::GHOST   * SKns::DECS + 0: return modelStraitsSubgatePanelGhostRest;
+            case SKns::GHOST   * SKns::DECS + 1: return modelStraitsSubgatePanelGhostLegato;
+            case SKns::GHOST   * SKns::DECS + 2: return modelStraitsSubgatePanelGhostAdvance;
+            case SKns::GHOST   * SKns::DECS + 3: return modelStraitsSubgatePanelGhostAccent;
+        }
+        return nullptr;
+    }
+    static bool sameSubgatePanel(StraitsSubgatePanelModule* p, int level, int dec) {
+        return p && p->level == level && p->dec == dec;
+    }
+    bool hasSubgatePanel(int level, int dec) {
+        auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
+        if (!baseMod) return false;
+        for (int64_t id : baseMod->orderedSubgateIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (m) {
+                auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(m);
+                if (sameSubgatePanel(panel, level, dec)) return true;
+            }
+        }
+        return false;
+    }
+    void spawnSubgatePanel(int level, int dec) {
+        if (!module) return;
+        Model* model = subgatePanelModel(level, dec);
+        if (!model) return;
+        // spawnLane's verbatim order: engine module FIRST, ID pushed, widget
+        // created, box.pos set BEFORE the rack addModule → addModule preserves
+        // pos + runs updateExpanders → LINKED FROM BIRTH.
+        engine::Module* panelMod = model->createModule();
+        APP->engine->addModule(panelMod);
+        if (auto* baseMod = dynamic_cast<StraitsBaseModule*>(module))
+            baseMod->orderedSubgateIds_.push_back(panelMod->id);
+        ModuleWidget* panelW = model->createModuleWidget(panelMod);
+        // Position: the END of the whole run — right of the rightmost owned lane
+        // OR panel (the dock order: lanes first, then subgate panels).
+        float rightX = box.getTopRight().x;
+        if (auto* baseMod = dynamic_cast<StraitsBaseModule*>(module)) {
+            for (int64_t id : baseMod->orderedLaneIds_) {
+                ModuleWidget* w = APP->scene->rack->getModule(id);
+                if (w) rightX = std::max(rightX, w->box.getTopRight().x);
+            }
+            for (int64_t id : baseMod->orderedSubgateIds_) {
+                if (id == panelMod->id) continue;   // skip self (just added)
+                ModuleWidget* w = APP->scene->rack->getModule(id);
+                if (w) rightX = std::max(rightX, w->box.getTopRight().x);
+            }
+        }
+        panelW->box.pos = Vec(rightX, box.pos.y);
+        APP->scene->rack->addModule(panelW);
+    }
+    void removeSubgatePanel(int level, int dec) {
+        auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
+        if (!baseMod) return;
+        for (size_t i = 0; i < baseMod->orderedSubgateIds_.size(); ++i) {
+            int64_t id = baseMod->orderedSubgateIds_[i];
+            rack::Module* m = APP->engine->getModule(id);
+            if (m) {
+                auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(m);
+                if (sameSubgatePanel(panel, level, dec)) {
+                    ModuleWidget* pw = APP->scene->rack->getModule(id);
+                    if (pw) APP->scene->rack->removeModule(pw);
+                    APP->engine->removeModule(m);
+                    baseMod->orderedSubgateIds_.erase(baseMod->orderedSubgateIds_.begin() + i);
+                    resnapRun();   // close the gap
+                    return;
+                }
+            }
+        }
+    }
+    void toggleSubgatePanel(int level, int dec) {
+        if (hasSubgatePanel(level, dec)) removeSubgatePanel(level, dec);
+        else spawnSubgatePanel(level, dec);
     }
 
     void step() override {
@@ -309,6 +562,22 @@ struct StraitsBaseWidget : ModuleWidget,
                     // Auto-spawn QMIX if no lanes attached (first creation, no save)
                     if (baseMod->orderedLaneIds_.empty())
                         spawnLane("StraitsLaneQMIX");
+                    // SUBGATE MERGE: adopt the subgate panels (the run continues
+                    // right of the lanes — the SAME walk cursor), then spawn any
+                    // pending restore slugs (legacy per-LEVEL slugs parse false
+                    // and skip). No auto-spawn: the per-voice tier is OPT-IN.
+                    while (right) {
+                        auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(right);
+                        if (!panel) break;
+                        baseMod->orderedSubgateIds_.push_back(right->id);
+                        right = right->rightExpander.module;
+                    }
+                    for (const std::string& slug : baseMod->pendingSubgates_) {
+                        int l, d;
+                        if (!StraitsSubgateIds::parsePanelSlug(slug, l, d)) continue;
+                        if (!hasSubgatePanel(l, d)) spawnSubgatePanel(l, d);
+                    }
+                    baseMod->pendingSubgates_.clear();
                 }
                 lanesSpawned_ = true;
             }
@@ -338,7 +607,19 @@ struct StraitsBaseWidget : ModuleWidget,
                     if ((eventDirty || pollDue) && !APP->event->getDraggedWidget()) {
                         if (eventDirty) trigBase->topologyDirty.store(false, std::memory_order_relaxed);
                         if (pollDue) lastAdjacencyCheck_ = now;
-                        if (!chainIntact(trigBase))
+                        // The exact chain check (BOTH runs) + the panels' own
+                        // left-link flags (mid-chain insertions the base cannot see).
+                        bool broken = !chainIntact(trigBase);
+                        if (!broken) {
+                            for (int64_t pid : trigBase->orderedSubgateIds_) {
+                                rack::Module* pm = APP->engine->getModule(pid);
+                                if (pm) {
+                                    auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(pm);
+                                    if (panel && panel->needsResnap.load(std::memory_order_relaxed)) { broken = true; break; }
+                                }
+                            }
+                        }
+                        if (broken)
                             trigBase->needsResnap = true;
                     }
                 }
@@ -366,7 +647,7 @@ struct StraitsBaseWidget : ModuleWidget,
                 // consuming here would fight the user's drag.
                 if (needSnap && !APP->event->getDraggedWidget()) {
                     if (baseMod) baseMod->needsResnap = false;
-                    // Clear lane flags
+                    // Clear lane + subgate-panel flags
                     for (int64_t laneId : baseMod->orderedLaneIds_) {
                         rack::Module* m = APP->engine->getModule(laneId);
                         if (m) {
@@ -374,7 +655,14 @@ struct StraitsBaseWidget : ModuleWidget,
                             if (lane) lane->needsResnap = false;
                         }
                     }
-                    resnapLanes();
+                    for (int64_t pid : baseMod->orderedSubgateIds_) {
+                        rack::Module* pm = APP->engine->getModule(pid);
+                        if (pm) {
+                            auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(pm);
+                            if (panel) panel->needsResnap.store(false, std::memory_order_relaxed);
+                        }
+                    }
+                    resnapRun();
                 }
             }
         }
@@ -394,10 +682,13 @@ struct StraitsBaseWidget : ModuleWidget,
         }
     }
 
-    // ── Re-snap helper: sort by canonical order, position via Rack's API ──────
+    // ── Re-snap helper: the ONE run — lanes then subgate panels ────────────────
     // Uses setModulePosForce (Rack's placement-with-shoving) instead of raw
-    // box.pos — pushes other modules aside, no overlap.
-    void resnapLanes() {
+    // box.pos — pushes other modules aside, no overlap. SUBGATE MERGE: lanes in
+    // arcLane order, THEN the subgate panels in level-major/decision-major order
+    // (RATCHET REST/LEGATO/ADVANCE/ACCENT, then GHOST), positioned sequentially
+    // from the base's right edge — the dock order: base → lanes → panels.
+    void resnapRun() {
         auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
         if (!baseMod) return;
         std::sort(baseMod->orderedLaneIds_.begin(), baseMod->orderedLaneIds_.end(),
@@ -408,6 +699,14 @@ struct StraitsBaseWidget : ModuleWidget,
                 int ob = (mb && mb->desc) ? mb->desc->arcLane : 99;
                 return oa < ob;
             });
+        std::sort(baseMod->orderedSubgateIds_.begin(), baseMod->orderedSubgateIds_.end(),
+            [&](int64_t a, int64_t b) {
+                auto* ma = dynamic_cast<StraitsSubgatePanelModule*>(APP->engine->getModule(a));
+                auto* mb = dynamic_cast<StraitsSubgatePanelModule*>(APP->engine->getModule(b));
+                int oa = ma ? ma->level * SKns::DECS + ma->dec : 99 * SKns::DECS;
+                int ob = mb ? mb->level * SKns::DECS + mb->dec : 99 * SKns::DECS;
+                return oa < ob;
+            });
         float expectedX = box.getTopRight().x;
         for (int64_t laneId : baseMod->orderedLaneIds_) {
             ModuleWidget* lw = APP->scene->rack->getModule(laneId);
@@ -415,6 +714,12 @@ struct StraitsBaseWidget : ModuleWidget,
             // Use Rack's placement API (shoves neighbours, no overlap)
             APP->scene->rack->setModulePosForce(lw, Vec(expectedX, box.pos.y));
             expectedX = lw->box.getTopRight().x;
+        }
+        for (int64_t panelId : baseMod->orderedSubgateIds_) {
+            ModuleWidget* pw = APP->scene->rack->getModule(panelId);
+            if (!pw) continue;
+            APP->scene->rack->setModulePosForce(pw, Vec(expectedX, box.pos.y));
+            expectedX = pw->box.getTopRight().x;
         }
     }
 
@@ -434,17 +739,33 @@ struct StraitsBaseWidget : ModuleWidget,
             auto* lane = dynamic_cast<StraitsLaneExpander*>(m);
             if (lane) lanes.push_back(lane);
         }
-        if (lanes.empty()) return true;
+        std::vector<StraitsSubgatePanelModule*> panels;
+        panels.reserve(baseMod->orderedSubgateIds_.size());
+        for (int64_t id : baseMod->orderedSubgateIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (!m) continue;
+            auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(m);
+            if (panel) panels.push_back(panel);
+        }
+        if (lanes.empty() && panels.empty()) return true;
         std::sort(lanes.begin(), lanes.end(),
             [](const StraitsLaneExpander* a, const StraitsLaneExpander* b) {
                 int oa = (a->desc) ? a->desc->arcLane : 99;
                 int ob = (b->desc) ? b->desc->arcLane : 99;
                 return oa < ob;
             });
+        std::sort(panels.begin(), panels.end(),
+            [](const StraitsSubgatePanelModule* a, const StraitsSubgatePanelModule* b) {
+                return a->level * SKns::DECS + a->dec < b->level * SKns::DECS + b->dec;
+            });
         rack::Module* prev = module;   // lane[0]'s left neighbour must be the base (us)
         for (StraitsLaneExpander* lane : lanes) {
             if (lane->leftExpander.module != prev) return false;
             prev = lane;
+        }
+        for (StraitsSubgatePanelModule* panel : panels) {
+            if (panel->leftExpander.module != prev) return false;
+            prev = panel;
         }
         return true;
     }
