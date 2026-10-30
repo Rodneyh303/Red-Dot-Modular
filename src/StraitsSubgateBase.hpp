@@ -25,10 +25,11 @@
 //                               of 16, the settled 6/6/4 165-wide layout from
 //                               gen_straits_lane.py; NO crammed multi-decision
 //                               panel). Store-backed knobs (touch = claim —
-//                               the ownActive opt-in), one 16-channel mod jack
-//                               per panel (ch v = voice slot v). Registered +
-//                               HIDDEN — base-spawned only (the StraitsLane
-//                               law).
+//                               the ownActive opt-in). NO mod jack
+//                               (CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE:
+//                               modulation is Causeway, not per-panel jacks).
+//                               Registered + HIDDEN — base-spawned only (the
+//                               StraitsLane law).
 //
 // DE-PARAM LAW: every control is store-backed (StoreKnob onto Monsoon's
 // editor.subgate — the bank holds the authored cells; PARAM_CLASSIFICATION.md).
@@ -65,14 +66,6 @@ namespace StraitsSubgateIds {
         NUM_MOD_INPUTS = SK::LEVELS * SK::DECS
     };
     inline int globalModId(int level, int dec) { return level * SK::DECS + dec; }
-
-    // The SUBPANEL's mod input: ONE 16-channel poly jack per panel (ch v = voice
-    // storage slot v — 0 = V1's mono row). ±10V → ±1.0 delta. Option (a): one
-    // decision per panel, so one jack per panel.
-    enum PanelInputIds {
-        MOD_PANEL_0 = 0,
-        PANEL_NUM_MOD_INPUTS = 1
-    };
 
     // Panel slugs (persistence + spawn dispatch — the StraitsBase lane-slug
     // shape), now per (level × decision). Old saves carried the per-LEVEL slugs
@@ -173,22 +166,16 @@ struct StraitsSubgateBaseModule : rack::engine::Module {
 struct StraitsSubgatePanelModule : rack::engine::Module {
     int level = 0;   // dotModular::SubgateKnobs::RATCHET/GHOST — set by the per-panel subclass
     int dec   = 0;   // 0..3 = REST/LEGATO/ADVANCE/ACCENT (the DEC_CAPTIONS order)
-    float lastOwn_[dotModular::SubgateKnobs::VOICES] = {};
     std::atomic<bool> needsResnap{false};   // writers: widget drag-end (UI) + the left-link check (engine); reader/clearer: the base's step
 
+    // A pure attach-surface (CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE): no
+    // params, no inputs, no process — the StoreKnob authoring goes through
+    // Monsoon's store via the widget; per-voice deltas were the mod jack's
+    // path, which is gone (modulation is Causeway).
     StraitsSubgatePanelModule() {
-        config(0, StraitsSubgateIds::PANEL_NUM_MOD_INPUTS, 0, 0);
+        config(0, 0, 0, 0);
     }
 
-    // Per-panel ctor finish: the ONE decision jack's tooltip.
-    void configPanelInputs() {
-        configInput(StraitsSubgateIds::MOD_PANEL_0,
-            std::string("Per-voice ") + dotModular::SubgateKnobs::LEVEL_CAPTIONS[level]
-            + " " + dotModular::SubgateKnobs::DEC_CAPTIONS[dec]
-            + " mod (16ch: ch v = voice v; ±10V → ±1 threshold)");
-    }
-
-    void process(const ProcessArgs& args) override;   // .cpp — the per-voice delta publish + heartbeat
     // The lane's left-link fast path: a mid-chain insertion never changes the
     // BASE's own expanders, so it fires HERE (the StraitsLaneExpander hook
     // verbatim, family-parameterised).
@@ -203,18 +190,18 @@ struct StraitsSubgatePanelModule : rack::engine::Module {
 // The eight per-(level × decision) subclasses — one slug each, so the user can
 // attach exactly the decisions they want (the StraitsLane subclass law).
 struct StraitsSubgateRatchetRestModule    : StraitsSubgatePanelModule {
-    StraitsSubgateRatchetRestModule()    { level = dotModular::SubgateKnobs::RATCHET; dec = 0; configPanelInputs(); } };
+    StraitsSubgateRatchetRestModule()    { level = dotModular::SubgateKnobs::RATCHET; dec = 0; } };
 struct StraitsSubgateRatchetLegatoModule  : StraitsSubgatePanelModule {
-    StraitsSubgateRatchetLegatoModule()  { level = dotModular::SubgateKnobs::RATCHET; dec = 1; configPanelInputs(); } };
+    StraitsSubgateRatchetLegatoModule()  { level = dotModular::SubgateKnobs::RATCHET; dec = 1; } };
 struct StraitsSubgateRatchetAdvanceModule : StraitsSubgatePanelModule {
-    StraitsSubgateRatchetAdvanceModule() { level = dotModular::SubgateKnobs::RATCHET; dec = 2; configPanelInputs(); } };
+    StraitsSubgateRatchetAdvanceModule() { level = dotModular::SubgateKnobs::RATCHET; dec = 2; } };
 struct StraitsSubgateRatchetAccentModule  : StraitsSubgatePanelModule {
-    StraitsSubgateRatchetAccentModule()  { level = dotModular::SubgateKnobs::RATCHET; dec = 3; configPanelInputs(); } };
+    StraitsSubgateRatchetAccentModule()  { level = dotModular::SubgateKnobs::RATCHET; dec = 3; } };
 struct StraitsSubgateGhostRestModule      : StraitsSubgatePanelModule {
-    StraitsSubgateGhostRestModule()      { level = dotModular::SubgateKnobs::GHOST;   dec = 0; configPanelInputs(); } };
+    StraitsSubgateGhostRestModule()      { level = dotModular::SubgateKnobs::GHOST;   dec = 0; } };
 struct StraitsSubgateGhostLegatoModule    : StraitsSubgatePanelModule {
-    StraitsSubgateGhostLegatoModule()    { level = dotModular::SubgateKnobs::GHOST;   dec = 1; configPanelInputs(); } };
+    StraitsSubgateGhostLegatoModule()    { level = dotModular::SubgateKnobs::GHOST;   dec = 1; } };
 struct StraitsSubgateGhostAdvanceModule   : StraitsSubgatePanelModule {
-    StraitsSubgateGhostAdvanceModule()   { level = dotModular::SubgateKnobs::GHOST;   dec = 2; configPanelInputs(); } };
+    StraitsSubgateGhostAdvanceModule()   { level = dotModular::SubgateKnobs::GHOST;   dec = 2; } };
 struct StraitsSubgateGhostAccentModule    : StraitsSubgatePanelModule {
-    StraitsSubgateGhostAccentModule()    { level = dotModular::SubgateKnobs::GHOST;   dec = 3; configPanelInputs(); } };
+    StraitsSubgateGhostAccentModule()    { level = dotModular::SubgateKnobs::GHOST;   dec = 3; } };

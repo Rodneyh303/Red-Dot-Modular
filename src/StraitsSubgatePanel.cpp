@@ -3,9 +3,10 @@
 // ONE panel per (subgate level × decision) — {RATCHET,GHOST} × {REST,LEGATO,
 // ACCENT,ADVANCE} = eight attachable modules, each 16 voices × ONE decision,
 // the settled lane-panel form (gen_straits_lane.py: 6/6/4, 165-wide, col-major
-// v0=mono top-left, the wave field, the seam rails; ONE 16-channel mod jack in
-// the reserved JACK_Y row — the Causeway mod-coverage law). The old per-LEVEL
-// cram (16 voices × 4 decision columns on one 180-wide panel) is RETIRED.
+// v0=mono top-left, the wave field, the seam rails — artwork-identical to the
+// lane subpanels except tint; NO mod jack: CC_PROMPT_SUBGATE_MERGE_ONTO_
+// STRAITS_BASE — modulation is Causeway). The old per-LEVEL cram (16 voices ×
+// 4 decision columns on one 180-wide panel) is RETIRED.
 // The wheel side (spawn/adopt/resnap) lives in StraitsSubgateBase.cpp.
 #include <rack.hpp>
 #include <algorithm>
@@ -28,7 +29,7 @@ namespace SKns = dotModular::SubgateKnobs;
 // The lane-expander layout: the SVG carries the grid (param_sgv_0..15, tint-
 // neutral so one widget class binds all eight panels), the wave field and the
 // rails; the widget draws the LEVEL + DECISION captions (the Cantonment idiom)
-// and binds the 16 StoreKnobs + the one poly mod jack.
+// and binds the 16 StoreKnobs.
 struct StraitsSubgatePanelWidget : ModuleWidget,
     dotModular::Compose<StraitsSubgatePanelWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
@@ -85,8 +86,8 @@ struct StraitsSubgatePanelWidget : ModuleWidget,
                 [level, dec, v](Monsoon& m) { return m.subgateDisplayThreshold(v, level, dec); },
                 [level, dec, v](Monsoon& m, float x) { m.setSubgateOwn(v, level, dec, x); });
         }
-        // The ONE 16-channel mod jack (ch v = voice slot v; ±10V → ±1 delta).
-        bindInput<PJ301MPort>("input_sgmod", StraitsSubgateIds::MOD_PANEL_0);
+        // (No mod jack — CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE WRONG 2:
+        // per-panel modulation was not asked for; modulation is Causeway.)
 
         if (auto* s = findNamed("light_connect")) {
             addChild(redDot::makeConnectMark(module, centerOf(s), mm2px(8.f)));
@@ -132,37 +133,12 @@ struct StraitsSubgatePanelWidget : ModuleWidget,
     }
 };
 
-// ══ the panel module's process: publish THIS decision's per-voice deltas ═════
-// One 16-channel jack (ch v = voice storage slot v). An unpatched jack
-// publishes zeros for the cells it last owned (the publish-overwrite law —
-// nothing latches after an unplug). The heartbeat is slot 1 (shared by the
-// panel family — at least one live panel vouches for the per-voice plane).
-void StraitsSubgatePanelModule::process(const ProcessArgs&) {
-    Monsoon* m = redDot::lookupMonsoon(this);
-    if (!m) return;
-
-    rack::engine::Input& in = inputs[StraitsSubgateIds::MOD_PANEL_0];
-    if (in.isConnected()) {
-        const int chans = std::max(1, in.getChannels());
-        for (int v = 0; v < SKns::VOICES; ++v) {
-            // Beyond the cable's channels the mod is simply absent (no wrap) —
-            // the delta publishes 0 there, which is a no-op on a quiet cell.
-            const float delta = (v < chans) ? in.getPolyVoltage(v) * 0.1f : 0.f;
-            if (std::fabs(delta - lastOwn_[v]) > 1e-6f) {
-                m->setSubgateOwnDelta(v, level, dec, delta);
-                lastOwn_[v] = delta;
-            }
-        }
-    } else {
-        for (int v = 0; v < SKns::VOICES; ++v) {
-            if (lastOwn_[v] != 0.f) {
-                m->setSubgateOwnDelta(v, level, dec, 0.f);
-                lastOwn_[v] = 0.f;
-            }
-        }
-    }
-    ++m->editor.subgate.publishSeq[1];
-}
+// (No panel process — CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE: with the mod
+// jack gone there is no per-voice delta writer, and heartbeat slot 1 is
+// frozen-by-default already when no panels are attached (the opt-in tier) —
+// the watchdog drops the per-voice delta plane in its default state, which is
+// exactly all-zero deltas. The module is a pure attach-surface: StoreKnob
+// authoring goes through Monsoon's store via the widget.)
 
 // ── the eight per-(level × decision) models — one slug each ──────────────────
 Model* modelStraitsSubgatePanelRatchetRest =

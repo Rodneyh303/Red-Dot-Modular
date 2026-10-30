@@ -56,16 +56,16 @@ WAVE_H   = 5.5
 def gen(tintkey, dark=True, subgate=False):
     # subgate=True (CC_PROMPT_FIX_SUBGATE_PANELS): the knob grid, dimensions, 6/6/4
     # layout, wave field and rails are UNCHANGED; the only differences are (1) the
-    # ONE 16-channel mod jack in the already-reserved JACK_Y row (the Causeway law —
-    # a Straits knob ships with its mod path; the lane panels leave that row to the
-    # wave), and (2) the TINT-NEUTRAL anchor prefix param_sgv_ (one widget class
-    # binds all eight subgate panels, so the anchors cannot carry the tint key).
+    # TINT-NEUTRAL anchor prefix param_sgv_ (one widget class binds all eight
+    # subgate panels, so the anchors cannot carry the tint key), and (2) the
+    # identifying dot sits in the LEFT gutter (the centre carries the widget's
+    # LEVEL + DECISION captions). NO mod jack: CC_PROMPT_SUBGATE_MERGE_ONTO_
+    # STRAITS_BASE — modulation is CAUSEWAY (the base's global mod jacks), not
+    # per-panel jacks; the JACK_Y row returns to the lane idiom (empty, reserved).
     t = TINTS[tintkey]
     theme = THEMES["dark" if dark else "light"]
     bg = theme["bg"]
     spine = theme["spine"]
-    jackface = "#0c0e11" if dark else "#e2ddd2"
-    jackring = "#4a4a4a" if dark else "#b0a898"
     prefix = "param_sgv_" if subgate else f"param_{tintkey}_"
     px = make_px()
     o = []; A = o.append
@@ -113,13 +113,9 @@ def gen(tintkey, dark=True, subgate=False):
             K(f'<circle id="{prefix}{v}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
             v += 1
 
-    # The subgate panel's ONE 16-channel mod jack (the reserved JACK_Y row — the
-    # Causeway mod-coverage law). Anchor input_sgmod (REAL coordinates — the kit
-    # places the bound jack by them).
-    if subgate:
-        A(f'<circle cx="{px(W/2)}" cy="{px(JACK_Y)}" r="{px(4.0)}" fill="{jackface}" '
-          f'stroke="{t["tint"]}" stroke-width="{px(0.6)}" stroke-opacity="0.8"/>')
-        K(f'<circle id="input_sgmod" cx="{px(W/2)}" cy="{px(JACK_Y)}" r="0.5" fill="none" stroke="none"/>')
+    # (No per-panel mod jack — CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE: WRONG 2
+    # removed. Modulation is CAUSEWAY; the subgate panels are artwork-identical to
+    # the lane subpanels except tint.)
 
     # ── Bottom wave footer (edge-tiling: 1 cycle per panel width) ──
     bottom_wave_tiling(A, px, W, WAVE_Y, WAVE_H, spine, theme["wave_op"], n=7)
@@ -143,8 +139,9 @@ if __name__ == "__main__":
     # The subgate per-voice panels (CC_PROMPT_FIX_SUBGATE_PANELS, Rodney DECIDED option
     # (a)): ONE 6/6/4 165-wide panel per (subgate level x decision) — {RATCHET, GHOST} x
     # {REST, LEGATO, ACCENT, ADVANCE} — eight panels, each 16 voices x ONE decision, the
-    # lane layout EXACTLY (col-major v0=mono top-left, the wave field, the seam rails)
-    # plus the one 16-ch mod jack. NO crammed multi-decision panel, NO new layout.
+    # lane layout EXACTLY (col-major v0=mono top-left, the wave field, the seam rails).
+    # NO mod jack (CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE), NO crammed
+    # multi-decision panel, NO new layout.
     SUBGATE_PANELS = [
         ("ratchet", "rest"), ("ratchet", "legato"), ("ratchet", "accent"), ("ratchet", "advance"),
         ("ghost",   "rest"), ("ghost",   "legato"), ("ghost",   "accent"), ("ghost",   "advance"),

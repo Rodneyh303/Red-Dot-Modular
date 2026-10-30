@@ -177,16 +177,18 @@ MODULES = {
         # StraitsSubgatePanel (CC_PROMPT_FIX_SUBGATE_PANELS, Rodney DECIDED option
         # (a)): the per-voice tier opts in — ONE 6/6/4 165-wide panel per (level x
         # decision), 8 modules sharing ONE widget cpp + the tint-neutral anchor set.
-        # 18 anchors = 16 per-voice knobs (param_sgv_0..15, col-major v0=mono) + the
-        # ONE 16-ch mod jack + the connect mark. All eight SVGs carry the IDENTICAL
-        # components layer (same generator call, tint-only difference), so auditing
-        # the ratchet_rest SVG guards the family's anchor/bind contract; the other
-        # seven differ only in tint colours (no geometry, no anchors).
+        # 17 anchors = 16 per-voice knobs (param_sgv_0..15, col-major v0=mono) + the
+        # connect mark. NO mod jack (CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE
+        # WRONG 2: per-panel modulation removed — modulation is Causeway; the
+        # panels are artwork-identical to the lane subpanels except tint). All
+        # eight SVGs carry the IDENTICAL components layer (same generator call,
+        # tint-only difference), so auditing the ratchet_rest SVG guards the
+        # family's anchor/bind contract; the other seven differ only in tint
+        # colours (no geometry, no anchors).
         "widget": ["src/StraitsSubgatePanel.cpp"],
         "panel": "res/panels/StraitsSubgatePanel_ratchet_rest_dark.svg",
         "counts": {
             "param_sgv_": 16,       # 16 voices x ONE decision (the lane bank)
-            "input_sgmod": 1,       # the ONE 16-ch mod jack (the Causeway law)
             "light_connect": 1,
         },
     },
