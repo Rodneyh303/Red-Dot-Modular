@@ -47,3 +47,35 @@ tint — the same "one mechanism, not twins" discipline as everywhere else.
   panels.
 - If multiple decisions per voice were the reason for the reinvention: STOPPED and asked Rodney for the
   layout (one-panel-per-decision default), did not invent.
+
+════════════════════════════════════════════════════════════════════════════════
+## THE DEEPER LOGIC ERROR — crammed all decisions-per-level onto one panel (Rodney)
+
+VERIFIED structure on the branch: CC made per-LEVEL panels (modelStraitsSubgatePanelRatchet,
+modelStraitsSubgatePanelGhost) — but each one crams 16 voices × MULTIPLE decision columns (rest + legato +
+accent + advance) onto a SINGLE panel = the 180-wide / 154-circle monster. That is the cram.
+
+### The established pattern organizes by DECISION, not by level
+A StraitsLane panel = 16 voices × ONE decision (one lane = one bank of 16, 6/6/4, 165-wide). CC organized by
+SUBGATE LEVEL (one panel per ratchet/ghost, ALL decisions on it). WRONG axis. The subgate per-voice panels
+must follow the lane pattern: ONE panel = 16 voices × ONE decision, 6/6/4, 165-wide.
+
+### The real tension CC was (silently) avoiding — ASK RODNEY, don't cram
+Organizing by decision means up to 2 levels × 4 decisions (rest/legato/accent/advance) = up to EIGHT
+per-voice subgate panels. CC crammed to avoid 8 panels. That panel-count tradeoff is a DESIGN DECISION for
+Rodney, NOT something to silently resolve by cramming. Options to put to Rodney:
+  (a) One panel per (level × decision): 6/6/4 165-wide each, matches lanes exactly, but up to 8 panels.
+  (b) One panel per decision spanning BOTH levels (ratchet+ghost for REST on one panel): fewer panels,
+      but each would need a layout beyond plain 6/6/4 (two level-banks) — a NEW layout, so needs sign-off.
+  (c) A reduced decision set per level (maybe not all of rest/legato/accent/advance need per-voice on both
+      levels) — Rodney to say which decisions actually warrant per-voice subgate panels.
+DEFAULT if unsure: (a) — one 6/6/4 165-wide panel per (level, decision), reusing gen_straits_lane.py via a
+tint key. Do NOT ship the crammed 180-wide multi-decision panel.
+
+### So the FIX logic (not just the SVG)
+1. The MODULE structure: each subgate per-voice panel module = ONE decision's 16 voices (like a lane
+   expander is one lane's 16 voices), NOT one level's all-decisions. Restructure
+   StraitsSubgatePanel{Ratchet,Ghost} accordingly (or per Rodney's chosen option a/b/c).
+2. The PANEL SVG: 6/6/4, 165-wide, gen_straits_lane.py + tint key, per the fix above.
+3. RAISE the panel-count tradeoff (a/b/c) with Rodney BEFORE building — the cram was an attempt to dodge
+   it; surface it instead.
