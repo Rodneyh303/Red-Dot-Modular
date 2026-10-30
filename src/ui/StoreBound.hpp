@@ -68,6 +68,21 @@ struct StoreKnob : rack::widget::Widget {
         return getValue ? getValue() : defaultValue;
     }
 
+    // ── theme + dim (CC_PROMPT_SUBGATE_PANELS_DE_SPECIAL_CASE) ──────────────────
+    // StoreKnob is a plain Widget with its own draw (the SvgKnob framebuffer
+    // never refreshes without a ParamQuantity — the HISTORY above), so
+    // Controls.hpp's ThemedKnobT/Dimmable wrappers cannot wrap it. The SAME
+    // presentation, implemented natively: lightWhen picks the light-panel
+    // artwork (ThemedKnobT's job); dimWhen washes the grey scrim (Dimmable's
+    // job — the scrim in draw() is Controls.hpp Dimmable::draw VERBATIM).
+    // Storage stays store-backed; presentation follows the FORMAT (grid panels
+    // wire poly-dim; selection panels leave these unset — their Controls.hpp
+    // counterparts do the same). All optional: unset = the plain Tag look.
+    std::shared_ptr<rack::window::Svg> svgLight;   // the LIGHT-PANEL face; unset = single-artwork
+    std::function<bool()> lightWhen;
+    std::function<bool()> dimWhen;
+    bool isDimmed() const { return dimWhen && dimWhen(); }
+
     // ── tooltip (de-paramming loses the ParamQuantity tooltip; switch-like knobs need it) ──
     std::vector<std::string>     valueLabels;
     std::function<std::string()> tooltipTextFn;
@@ -96,14 +111,19 @@ struct StoreKnob : rack::widget::Widget {
     float glossAmount = 0.55f;
 
     void draw(const DrawArgs& args) override {
-        if (!svg || !svg->handle) return;
+        // The theme pick: svgLight is the LIGHT-PANEL face; unset leaves the
+        // single-Tag look. Evaluated per draw — there is no framebuffer to
+        // invalidate (the HISTORY), and the hook is a theme bool.
+        const std::shared_ptr<rack::window::Svg>& art =
+            (svgLight && lightWhen && lightWhen()) ? svgLight : svg;
+        if (!art || !art->handle) return;
         const float angle = rack::math::rescale(norm(), 0.f, 1.f, minAngle, maxAngle);
         // 1. the artwork, rotated
         nvgSave(args.vg);
         nvgTranslate(args.vg, box.size.x * 0.5f, box.size.y * 0.5f);
         nvgRotate(args.vg, angle);
         nvgTranslate(args.vg, -box.size.x * 0.5f, -box.size.y * 0.5f);
-        rack::window::svgDraw(args.vg, svg->handle);
+        rack::window::svgDraw(args.vg, art->handle);
         nvgRestore(args.vg);
 
         // 2. the light, NOT rotated
@@ -125,6 +145,19 @@ struct StoreKnob : rack::widget::Widget {
             nvgFillPaint(args.vg, nvgRadialGradient(args.vg, cx, cy - r * 0.46f,
                 r * 0.02f, r * 0.46f,
                 nvgRGBA(255, 255, 255, (unsigned char)(95 * a)), nvgRGBA(255, 255, 255, 0)));
+            nvgFill(args.vg);
+        }
+
+        // 3. the Dimmable scrim, VERBATIM (Controls.hpp Dimmable::draw): the
+        // knob at FULL opacity first (it occludes the panel), then the neutral
+        // grey wash — opaque but clearly muted. locked does NOT dim (a
+        // locked-but-shown control must stay readable).
+        if (isDimmed()) {
+            const float w = box.size.x, h = box.size.y;
+            const float r = (w < h ? w : h) * 0.5f;
+            nvgBeginPath(args.vg);
+            nvgCircle(args.vg, w * 0.5f, h * 0.5f, r);
+            nvgFillColor(args.vg, nvgRGBA(0x73, 0x73, 0x73, 0x8c));   // neutral grey wash (~55%)
             nvgFill(args.vg);
         }
     }
@@ -270,6 +303,28 @@ StoreKnob<M>* bindStoreKnob(Self* self, const std::string& shape,
     using SK = StoreKnob<M>;
     return self->template bindWidget<SK>(shape, std::function<void(SK*)>([=](SK* w) {
         configureStoreKnob<M, Tag>(w, resolve, lo, hi, def, label, get, set, snap, labels);
+    }));
+}
+
+// Placement A (themed) — the grid-format StoreKnob panels: the dark-panel AND
+// light-panel artwork (the ThemedKnobT pair), with the caller wiring
+// lightWhen/dimWhen/lockWhen on the returned knob afterwards (the lane law).
+// The SAME configureStoreKnob path (the consistency rule) — only the artwork
+// differs. Param names are EXPLICIT about panel theme → artwork (Controls.hpp's
+// ThemedKnobT<TagLight, TagDark> naming is inverted by its aliases; not
+// repeating that trap): TagForDarkPanel is the base svg (the dark-panel face),
+// TagForLightPanel is swapped in while lightWhen() is true.
+// (CC_PROMPT_SUBGATE_PANELS_DE_SPECIAL_CASE: one look, two storage models.)
+template <class M, class TagForDarkPanel, class TagForLightPanel, class Self>
+StoreKnob<M>* bindStoreThemedKnob(Self* self, const std::string& shape,
+                                  std::function<M*()> resolve,
+                                  float lo, float hi, float def, std::string label,
+                                  std::function<float(M&)> get, std::function<void(M&, float)> set,
+                                  bool snap = false, std::vector<std::string> labels = {}) {
+    using SK = StoreKnob<M>;
+    return self->template bindWidget<SK>(shape, std::function<void(SK*)>([=](SK* w) {
+        configureStoreKnob<M, TagForDarkPanel>(w, resolve, lo, hi, def, label, get, set, snap, labels);
+        w->svgLight = APP->window->loadSvg(rack::asset::plugin(pluginInstance, TagForLightPanel::path()));
     }));
 }
 

@@ -242,10 +242,11 @@ def read_anchors(svg_path):
 #   bindParam/Input/Output/Light/LightParam/Widget/Child/StoreKnob → 1st str = name
 #   bindParams/Inputs/Outputs/Lights/ParamsN/InputsN/OutputsN      → 1st str = prefix
 # bindStoreKnob's 1st arg is `this`, its FIRST STRING arg is the shape name — the
-# "first string token" rule handles that uniformly.
+# "first string token" rule handles that uniformly. bindStoreThemedKnob (the
+# dark/light artwork pair variant) follows the same shape.
 # Capture the bind METHOD NAME so we can tell single-name binders from prefix ones.
 _BIND_SITE_RE = re.compile(
-    r'\b(bind(?:Param|Input|Output|Light|LightParam|Widget|Child|StoreKnob'
+    r'\b(bind(?:Param|Input|Output|Light|LightParam|Widget|Child|StoreKnob|StoreThemedKnob'
     r'|Params|Inputs|Outputs|Lights|ParamsN|InputsN|OutputsN))\s*'
     # Template args, allowing ONE level of nesting (e.g. bindLight<SmallLight<GreenLight>>).
     # The old <[^>]*> stopped at the first '>' and silently missed nested-template binds, so a

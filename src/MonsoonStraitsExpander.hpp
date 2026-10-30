@@ -65,6 +65,12 @@ namespace StraitsIds {
         // parent's single config() sizes them: the plain Straits module carries
         // them unconfigured (unreachable — nothing binds them), StraitsBase's
         // ctor adds the tooltips.
+        // VERIFIED STILL NEEDED (CC_PROMPT_SUBGATE_PANELS_DE_SPECIAL_CASE fix 3):
+        // these slots serve the BASE's global mod jacks (kept by the merge — "a
+        // knob ships with its jack"), NOT the per-voice panels' stripped jacks
+        // (those were never on this module's config) and not the StoreKnobs
+        // (which touch no Rack registry). If the base's global jacks ever go too
+        // (pure Causeway), these slots die with them.
         SG_MOD_0,
         SG_NUM_MOD_INPUTS = SG_MOD_0 + 8 - 1,   // 8 = SubgateKnobs LEVELS(2) x DECS(4)
         NUM_INPUTS = SG_NUM_MOD_INPUTS + 1

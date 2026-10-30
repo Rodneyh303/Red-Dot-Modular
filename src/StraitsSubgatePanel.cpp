@@ -76,15 +76,29 @@ struct StraitsSubgatePanelWidget : ModuleWidget,
         // overrides" (on the base) is the un-claim path. The anchors are the
         // TINT-NEUTRAL param_sgv_ family (one widget class binds all eight
         // panels); the lane grid is col-major v0 = mono top-left.
+        // LOOK + DIM (CC_PROMPT_SUBGATE_PANELS_DE_SPECIAL_CASE): the lane
+        // panels' Themed_Compact_Cog_Dim pair on StoreKnob (one look, two
+        // storage models) + the LANE LAW poly-dim — v0 = V1's mono row (never
+        // dims, stays EDITABLE: it authors V1's own subgate cell, unlike the
+        // lane's locked Monsoon mirror); v1..15 dim + lock beyond the active
+        // poly count, exactly like REST/LEGATO.
         auto resolveMon = [this]() -> Monsoon* { return redDot::lookupMonsoon(module); };
         for (int v = 0; v < SKns::VOICES; ++v) {
             const std::string cap = std::string("V") + std::to_string(v + 1) + " "
                                   + SKns::LEVEL_CAPTIONS[level] + " " + SKns::DEC_CAPTIONS[dec];
-            redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Small_Cog>(
+            auto* k = redDot::bindStoreThemedKnob<Monsoon,
+                                                  redDot::Tag_OffWhite_Compact_Cog,
+                                                  redDot::Tag_Dark_Compact_Cog>(
                 this, "param_sgv_" + std::to_string(v),
                 resolveMon, 0.f, 1.f, SKns::kDefaultThreshold, cap,
                 [level, dec, v](Monsoon& m) { return m.subgateDisplayThreshold(v, level, dec); },
                 [level, dec, v](Monsoon& m, float x) { m.setSubgateOwn(v, level, dec, x); });
+            k->lightWhen = [this]() { return themeLight_; };
+            auto dimIfInactive = [this, v]() {
+                return activeVoices_ >= 0 && v > activeVoices_;
+            };
+            k->dimWhen  = dimIfInactive;
+            k->lockWhen = dimIfInactive;
         }
         // (No mod jack — CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE WRONG 2:
         // per-panel modulation was not asked for; modulation is Causeway.)
@@ -103,7 +117,8 @@ struct StraitsSubgatePanelWidget : ModuleWidget,
         redDot::addSubgateCaption(this, SKns::DEC_CAPTIONS[dec], Wmm * 0.5f, 10.6f, 6.5f, ink);
     }
 
-    bool themeLight_ = false;   // shared with the captions' colourFn
+    bool themeLight_ = false;   // shared with the captions' colourFn + the knobs' lightWhen
+    int activeVoices_ = -1;     // the poly-dim source (the lane law; -1 = no Monsoon attached)
 
     void step() override {
         ModuleWidget::step();
@@ -111,6 +126,7 @@ struct StraitsSubgatePanelWidget : ModuleWidget,
         if (!module) return;
         Monsoon* mm = redDot::lookupMonsoon(module);
         themeLight_ = (mm && mm->lightTheme);
+        activeVoices_ = mm ? mm->engine.numPolyVoices : -1;
         NVGcolor bg = themeLight_ ? nvgRGB(0xdc, 0xdc, 0xdc) : nvgRGB(0x14, 0x17, 0x1b);
         if (leftFiller)  { leftFiller->active  = isStraitsSubgateChainModel(module->leftExpander.module  ? module->leftExpander.module->model  : nullptr); leftFiller->bgColour  = bg; }
         if (rightFiller) { rightFiller->active = isStraitsSubgateChainModel(module->rightExpander.module ? module->rightExpander.module->model : nullptr); rightFiller->bgColour = bg; }
