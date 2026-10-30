@@ -59,6 +59,18 @@ void ModeController::updatePolyVoiceRest_() {
         // as slewedPolyVariation/Legato → polyRandom(PL_VARIATION/PL_LEGATO)).
         engine.voices[vs].variationProb = mainModule->getEffectivePolyVariation(i - 1);
         engine.voices[vs].legatoProb    = mainModule->getEffectivePolyLegato(i - 1);
+        // SUBGATE TIER (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): resolve the three-way
+        // per-voice thresholds from the Straits subgate bank — own-subpanel claim
+        // (tier 1) > {global | follow-main} by the per-decision switch, the mod
+        // deltas added post-resolution. The resolver reads the main values JUST
+        // written above (follow-main tier ⟹ subRes == the mains when nothing is
+        // authored — the byte-identity default), so this sits AFTER them in the
+        // same loop iteration. Same BigFive latch class as the main probs (the
+        // early-return above gates the whole loop).
+        for (int l = 0; l < dotModular::SubgateKnobs::LEVELS; ++l)
+            for (int d = 0; d < dotModular::SubgateKnobs::DECS; ++d)
+                engine.voices[vs].subRes[l][d] = mainModule->subgateDisplayThreshold(i, l, d);
+        engine.voices[vs].subResLive = true;   // the reads may trust subRes from here on
     }
     polyVoiceCachePrimed_ = true;
 }
@@ -134,6 +146,23 @@ void ModeController::updatePatternInput() {
         monoVoice.qmixLevel    = mainModule ? mainModule->getEffectiveMonoQmix(paramManager.getQmixLevel())
                                              : paramManager.getQmixLevel();
         monoVoice.variationProb = currentPatternInput.variationAmount;
+        // SUBGATE TIER: V1's resolved thresholds (storageSlot 0 = the mono row of the
+        // bank), the same three-way law as the poly rows. Without a mainModule the
+        // bank is unreachable — follow-main identity from the mono values just
+        // written (which is what the resolver would return with nothing authored).
+        if (mainModule) {
+            for (int l = 0; l < dotModular::SubgateKnobs::LEVELS; ++l)
+                for (int d = 0; d < dotModular::SubgateKnobs::DECS; ++d)
+                    monoVoice.subRes[l][d] = mainModule->subgateDisplayThreshold(0, l, d);
+        } else {
+            const float monoMain[dotModular::SubgateKnobs::DECS] = {
+                monoVoice.restProb, monoVoice.legatoProb,
+                monoVoice.variationProb, monoVoice.accentProb };   // SK dec order
+            for (int l = 0; l < dotModular::SubgateKnobs::LEVELS; ++l)
+                for (int d = 0; d < dotModular::SubgateKnobs::DECS; ++d)
+                    monoVoice.subRes[l][d] = monoMain[d];
+        }
+        monoVoice.subResLive = true;   // the reads may trust subRes from here on
     }
     if (octLive) {   // OctaveRange LATCH — hold OCT LO/HI under lock (see pitch-axis note above)
         currentPatternInput.octaveLo      = paramManager.getOctaveLo();

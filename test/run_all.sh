@@ -128,6 +128,7 @@ TESTS=(
   "test_spread_resolver|"
   "test_ui_to_resolver|$PE $SE $GS"   # CC_PROMPT_UI_TO_RESOLVER_SPEC: the ONE-PRODUCER contract suite — effectiveProbability is the single producer (engine draw == bars == out, modulo the latch); ownership lenses, explicit voice, subsumption of the old formula; T4 (direction) + T5 (rate) structural halves land with their commits
   "test_subgate|$SE $GS $PE"
+  "test_subgate_knobs|"   # header-only: the subgate-tier consumer-group bank + the three-way resolver (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC) — byte-identity default, tier 1 / 2a-global / 2b-follow-main precedence, post-resolution delta clamp, bank defaults, persistence round-trip (deltas session-lived), absent-keys ⟹ defaults, short/wrong-typed arrays
   "test_var_leg_rest|"
   "test_voice_channel_mapping|"   # header-only: pins poly output-channel(i+1)->V(i+2) and Lantern global-voice g->V(g+1) (the two off-by-ones: Rack showed row 2 missing / lane N drove row N+1 / V16 never output). RED on slot(i+1)/slot(pv_i+1).
   "test_voice_conventions|$SE $GS $PE"

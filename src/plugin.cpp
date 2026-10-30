@@ -24,76 +24,85 @@ using namespace rack;
 Plugin* pluginInstance = nullptr;
 
 void init(rack::Plugin* p) {
-	pluginInstance = p;
-	// ── DIAGNOSTIC (bug hunt; REVERT after fix) ────────────────────────────
-	// Build marker: ONE line at plugin load. Compile __DATE__/__TIME__ of this TU +
-	// the diagnostic round tag — proves WHICH binary the running Rack actually has.
-	// Two retest cycles were burned on build-freshness ambiguity (794cde6d vs
-	// 54c4b030 print identical runtime diagnostics); any rack.log excerpt now
-	// self-identifies. Same diagnostic class as WARPDIAG.
-	INFO("[MONSOON DIAG] build marker: compiled %s %s | round 3 (post 54c4b030 macro prob-out /32)",
-	     __DATE__, __TIME__);
-	// Lane expander: registered + hidden. Registered so Rack's native save/load
-	// works (no "Cannot find Module" warning). Hidden so it doesn't appear in the
-	// browser — only the base spawns it via context menu.
-	p->addModel(modelStraitsLaneQMIX);
-	modelStraitsLaneQMIX->hidden = true;
-	p->addModel(modelStraitsLaneREST);
-	modelStraitsLaneREST->hidden = true;
-	p->addModel(modelStraitsLaneACCENT);
-	modelStraitsLaneACCENT->hidden = true;
-	p->addModel(modelStraitsLaneVARIATION);
-	modelStraitsLaneVARIATION->hidden = true;
-	p->addModel(modelStraitsLaneLEGATO);
-	modelStraitsLaneLEGATO->hidden = true;
-	// Warm the Phi + PhiInv LUTs on the load thread (~1 ms total, once) so their one-time
-	// builds never land mid-block on the audio thread at first spread/slew use. NOT in a
-	// module constructor — multiple modules (Sands visuals, CA correlation) consume Phi.
-	// See SLEW_COPULA_PLAN.md and SPREAD_PERFORMANCE_PLAN.md.
-	redDot::copula::warmPhiLut();
-	redDot::copula::warmPhiInvLut();
-	p->addModel(modelMonsoon);
-	p->addModel(modelMonsoonInterchangeExpander);
-	p->addModel(modelMonsoonRafflesExpander);
-	// DEPRECATED (§#7): superseded by Change Alley V2 (single module). Code retained.
-	// p->addModel(modelMonsoonChangeAlleyExpander);
-	p->addModel(modelMonsoonChangeAlleyV2);
-	p->addModel(modelCantonment);
-	// DEPRECATED (§#7): folded into Change Alley V2. Code retained.
-	// p->addModel(modelMonsoonTemasekExpander);
-	p->addModel(modelMonsoonJunctionExpander);
-	//p->addModel(modelMonsoonSandsExpander);
-	p->addModel(modelMonsoonStraitsExpander);
-	p->addModel(modelStraitsBase);             // lane-extension base (frame + IO + docking) — spawns lane expanders
-	// StraitsLaneQMIX is UNREGISTERED — base-spawned only (not browser-draggable).
-	// The Model* is kept for the base to instantiate via context menu.
-	p->addModel(modelMonsoonCausewayPolyExpander);
-	p->addModel(modelMonsoonChangiExpander);
-	p->addModel(modelMonsoonChangiT2Expander);
-	p->addModel(modelMonsoonChangiT3Expander);
-	p->addModel(modelMonsoonShophouseExpander);
-	p->addModel(modelSikit);                         // tuning expander (microtonal Phase 1)
-	p->addModel(modelColonnades);                    // tuning+scale authoring (microtonal Phase 2)
-	p->addModel(modelColonnadesDuo);                 // tuning+scale authoring, 24-tone (microtonal Phase 3)
-	p->addModel(modelMonsoonShophouseMicro);         // tuning+scale scene modulator for Colonnades/Duo (.dmtune fronts)
-	p->addModel(modelKeppel);                        // poly microtonal CV → MPE MIDI out (standalone utility)
-	p->addModel(modelLantern);                       // Lantern note-output visualiser
-	// West retired (Straits redesign): p->addModel(modelMonsoonStraitWestExpander);
-	//p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
-	//p->addModel(modelMonsoonDeepStraitsSandsEast);  // Deep: voices 2-8
-	//p->addModel(modelMonsoonDeepStraitsSandsWest);  // Deep: voices 9-16
-	// Visual editor expanders
-	// Mono visual RETIRED (sands-consolidation Step 6): subsumed by Macro (7 lanes + mono mode).
-	// Source moved to src/deprecated/; modelMonsoonSandsVisualExpander is now nullptr (see stub),
-	// so cachedSandsVisualExpander detection is an inert no-op. Slug removed from plugin.json.
-	//p->addModel(modelMonsoonSandsVisualExpander);   // Mono visual DNA editor
-	p->addModel(modelStraitsEastSandsVisual);       // East visual DNA editor (tabbed)
-	// RETIRED: West visual editor merged into East (15-voice). Source kept, not registered.
-	p->addModel(modelStraitsSandsMacroVisual);      // Macro visual DNA editor
-	p->addModel(modelSandsDistributionExpander);    // the distribution sub-expander (dual role: cross-voice on Macro / per-voice on East)
-	p->addModel(modelSandsMacroSendSubpanel);       // the Macro send subpanel (every Macro→East send: mix-ins + taps + dist-param amounts)
-	p->addModel(modelIntertropical);                // Intertropical scene sequencer
-	// DEV-ONLY: the .dmcurve editor widget host (Phase 2 scaffolding — browser-visible so
-	// Rodney can drag it in isolation; no engine wiring, no integration).
-	p->addModel(modelDmcurveDevHost);
+        pluginInstance = p;
+        // ── DIAGNOSTIC (bug hunt; REVERT after fix) ────────────────────────────
+        // Build marker: ONE line at plugin load. Compile __DATE__/__TIME__ of this TU +
+        // the diagnostic round tag — proves WHICH binary the running Rack actually has.
+        // Two retest cycles were burned on build-freshness ambiguity (794cde6d vs
+        // 54c4b030 print identical runtime diagnostics); any rack.log excerpt now
+        // self-identifies. Same diagnostic class as WARPDIAG.
+        INFO("[MONSOON DIAG] build marker: compiled %s %s | round 3 (post 54c4b030 macro prob-out /32)",
+             __DATE__, __TIME__);
+        // Lane expander: registered + hidden. Registered so Rack's native save/load
+        // works (no "Cannot find Module" warning). Hidden so it doesn't appear in the
+        // browser — only the base spawns it via context menu.
+        p->addModel(modelStraitsLaneQMIX);
+        modelStraitsLaneQMIX->hidden = true;
+        p->addModel(modelStraitsLaneREST);
+        modelStraitsLaneREST->hidden = true;
+        p->addModel(modelStraitsLaneACCENT);
+        modelStraitsLaneACCENT->hidden = true;
+        p->addModel(modelStraitsLaneVARIATION);
+        modelStraitsLaneVARIATION->hidden = true;
+        p->addModel(modelStraitsLaneLEGATO);
+        modelStraitsLaneLEGATO->hidden = true;
+        // Subgate consumer-group surfaces (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): the
+        // BASE is browser-visible (the user docks it in the Monsoon chain); the
+        // per-voice panels are registered + HIDDEN — base-spawned only (the lane law;
+        // Rack still restores them natively and the base adopts the run).
+        p->addModel(modelStraitsSubgateBase);
+        p->addModel(modelStraitsSubgatePanelRatchet);
+        modelStraitsSubgatePanelRatchet->hidden = true;
+        p->addModel(modelStraitsSubgatePanelGhost);
+        modelStraitsSubgatePanelGhost->hidden = true;
+        // Warm the Phi + PhiInv LUTs on the load thread (~1 ms total, once) so their one-time
+        // builds never land mid-block on the audio thread at first spread/slew use. NOT in a
+        // module constructor — multiple modules (Sands visuals, CA correlation) consume Phi.
+        // See SLEW_COPULA_PLAN.md and SPREAD_PERFORMANCE_PLAN.md.
+        redDot::copula::warmPhiLut();
+        redDot::copula::warmPhiInvLut();
+        p->addModel(modelMonsoon);
+        p->addModel(modelMonsoonInterchangeExpander);
+        p->addModel(modelMonsoonRafflesExpander);
+        // DEPRECATED (§#7): superseded by Change Alley V2 (single module). Code retained.
+        // p->addModel(modelMonsoonChangeAlleyExpander);
+        p->addModel(modelMonsoonChangeAlleyV2);
+        p->addModel(modelCantonment);
+        // DEPRECATED (§#7): folded into Change Alley V2. Code retained.
+        // p->addModel(modelMonsoonTemasekExpander);
+        p->addModel(modelMonsoonJunctionExpander);
+        //p->addModel(modelMonsoonSandsExpander);
+        p->addModel(modelMonsoonStraitsExpander);
+        p->addModel(modelStraitsBase);             // lane-extension base (frame + IO + docking) — spawns lane expanders
+        // StraitsLaneQMIX is UNREGISTERED — base-spawned only (not browser-draggable).
+        // The Model* is kept for the base to instantiate via context menu.
+        p->addModel(modelMonsoonCausewayPolyExpander);
+        p->addModel(modelMonsoonChangiExpander);
+        p->addModel(modelMonsoonChangiT2Expander);
+        p->addModel(modelMonsoonChangiT3Expander);
+        p->addModel(modelMonsoonShophouseExpander);
+        p->addModel(modelSikit);                         // tuning expander (microtonal Phase 1)
+        p->addModel(modelColonnades);                    // tuning+scale authoring (microtonal Phase 2)
+        p->addModel(modelColonnadesDuo);                 // tuning+scale authoring, 24-tone (microtonal Phase 3)
+        p->addModel(modelMonsoonShophouseMicro);         // tuning+scale scene modulator for Colonnades/Duo (.dmtune fronts)
+        p->addModel(modelKeppel);                        // poly microtonal CV → MPE MIDI out (standalone utility)
+        p->addModel(modelLantern);                       // Lantern note-output visualiser
+        // West retired (Straits redesign): p->addModel(modelMonsoonStraitWestExpander);
+        //p->addModel(modelMonsoonStraitsSands);          // Macro: global DNA
+        //p->addModel(modelMonsoonDeepStraitsSandsEast);  // Deep: voices 2-8
+        //p->addModel(modelMonsoonDeepStraitsSandsWest);  // Deep: voices 9-16
+        // Visual editor expanders
+        // Mono visual RETIRED (sands-consolidation Step 6): subsumed by Macro (7 lanes + mono mode).
+        // Source moved to src/deprecated/; modelMonsoonSandsVisualExpander is now nullptr (see stub),
+        // so cachedSandsVisualExpander detection is an inert no-op. Slug removed from plugin.json.
+        //p->addModel(modelMonsoonSandsVisualExpander);   // Mono visual DNA editor
+        p->addModel(modelStraitsEastSandsVisual);       // East visual DNA editor (tabbed)
+        // RETIRED: West visual editor merged into East (15-voice). Source kept, not registered.
+        p->addModel(modelStraitsSandsMacroVisual);      // Macro visual DNA editor
+        p->addModel(modelSandsDistributionExpander);    // the distribution sub-expander (dual role: cross-voice on Macro / per-voice on East)
+        p->addModel(modelSandsMacroSendSubpanel);       // the Macro send subpanel (every Macro→East send: mix-ins + taps + dist-param amounts)
+        p->addModel(modelIntertropical);                // Intertropical scene sequencer
+        // DEV-ONLY: the .dmcurve editor widget host (Phase 2 scaffolding — browser-visible so
+        // Rodney can drag it in isolation; no engine wiring, no integration).
+        p->addModel(modelDmcurveDevHost);
 }

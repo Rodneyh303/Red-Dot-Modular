@@ -54,6 +54,9 @@ extern rack::Model* modelColonnades;       // tuning+scale authoring expander (m
 extern rack::Model* modelColonnadesDuo;    // tuning+scale authoring expander, 24-tone (microtonal Phase 3)
 extern rack::Model* modelMonsoonSandsVisualExpander;
 extern rack::Model* modelMonsoonStraitsExpander;
+extern rack::Model* modelStraitsSubgateBase;         // subgate consumer-group base (hop-through in the scan)
+extern rack::Model* modelStraitsSubgatePanelRatchet; // subgate per-voice panel (hop-through)
+extern rack::Model* modelStraitsSubgatePanelGhost;   // subgate per-voice panel (hop-through)
 extern rack::Model* modelMonsoonCausewayPolyExpander;
 extern rack::Model* modelMonsoonChangiExpander;
 extern rack::Model* modelMonsoonChangiT2Expander;
@@ -253,13 +256,18 @@ struct MonsoonExpanderManager {
                         || curr->model == modelStraitsLaneACCENT
                         || curr->model == modelStraitsLaneVARIATION
                         || curr->model == modelStraitsLaneLEGATO
+                        || curr->model == modelStraitsSubgateBase
+                        || curr->model == modelStraitsSubgatePanelRatchet
+                        || curr->model == modelStraitsSubgatePanelGhost
                         || curr->model == modelSandsDistributionExpander
                         || curr->model == modelMonsoonShophouseMicro) {
                     // Hop-through modules (no cache slot): observer/follower suite modules (Lantern;
                     // Changi T3) AND lane-extension sub-modules (StraitsLaneQMIX/REST/ACCENT/
-                    // VARIATION/LEGATO) AND ShophouseMicro. These live in the chain between Monsoon
-                    // and other expanders (e.g. Monsoon → StraitsBase → StraitsLaneQMIX → EastSands),
-                    // so HOP through them instead of stopping (Rule 1). Without this, anything past a
+                    // VARIATION/LEGATO) AND the Straits subgate surfaces (SubgateBase + its two
+                    // per-voice panels — the CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC chain, which may
+                    // dock after the lane run) AND ShophouseMicro. These live in the chain between
+                    // Monsoon and other expanders, so HOP through them instead of stopping (Rule 1).
+                    // Without this, anything past a
                     // lane expander was never cached → cachedEastSandsVisual stayed null → mmOwn null →
                     // getSpread returned 0 → polySpreadEffective written 0 → spread bars flat (the
                     // spread/QMIX-arc/de-param crash cluster — one root cause). Kept in LOCKSTEP with

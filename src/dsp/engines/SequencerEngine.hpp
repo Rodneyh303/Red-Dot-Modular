@@ -10,6 +10,7 @@
 #include "../../ui/RateManager.hpp"   // RATE MANAGER (S3b): executeModeA gates on the Step tier (rack-free)
 #include "../NoteValues.hpp"
 #include "../LaneMapping.hpp"
+#include "../SubgateKnobs.hpp"   // SUBGATE TIER: the resolved-threshold dims + the three-way resolver (rack-free)
 #include "../VoiceLaneTypes.hpp"   // VoiceSlot — the VoiceBank below (strong per-voice indexing)
 #include <cassert>
 #include <cstdio>
@@ -49,6 +50,26 @@ struct PolyVoice {
                                // cache written by ModeController from getEffectivePolyQmix).
     float variationProb = 0.5f; // per-voice VARIATION probability — mirrors restProb/accentProb.
     float legatoProb = 0.0f;    // per-voice LEGATO probability — mirrors restProb/accentProb.
+    // SUBGATE TIER (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): the RESOLVED per-voice
+    // subgate thresholds [SubgateKnobs::LEVELS][SubgateKnobs::DECS] — levels
+    // RATCHET/GHOST, decs REST/LEGATO/ADVANCE/ACCENT. Written per block by
+    // ModeController (the sole subgate writer, mirroring the main probs above)
+    // from the Straits subgate bank through SK::resolve: own-subpanel claim >
+    // {global | follow-main} by the per-decision switch, mod deltas added
+    // post-resolution. BYTE-IDENTITY DEFAULT: with nothing authored, follow-main
+    // resolves to the main values EXACTLY, so the subgate-edge reads below are
+    // bit-identical to the pre-subgate behaviour (the spec's degenerate case).
+    // The ADVANCE columns are resolved + stored here for the step-advance Stage 3
+    // build (its consumer does not exist yet — stored-only this build).
+    float subRes[dotModular::SubgateKnobs::LEVELS][dotModular::SubgateKnobs::DECS];
+    // The live gate for the reads above: subRes has no struct-level default that
+    // could equal the DYNAMIC main values, so an engine that has never been
+    // through ModeController's per-block write (the rack-free tests construct
+    // engines directly) must keep reading the main thresholds verbatim. The
+    // controller flips this once it owns the writes (first prime); from then on
+    // the subgate-edge reads use subRes. Default false ⟹ byte-identity for any
+    // engine nobody resolved.
+    bool subResLive = false;
     bool  accented = false;    // result of this voice's own accent draw this step
     // Rule 2 (EAST_EXTRA_LANES §4d): latched at the mono chain onset — true if this voice
     // PLAYED (vs rested) when mono started the gate, and held for the chain's life. It, not
@@ -349,6 +370,12 @@ struct SequencerEngine {
     MonoDecision polyVerdict_[16] = {};   // zero-init = MidNote; reset() fills Rest
     int polyNv_[16] = {};                 // the voice's drawn window this edge (the C3 ceiling
                                           // a child clamps against); 0 = no clamp contribution
+    // SUBGATE TIER: the edge level for the poly cascade this block (−1 = main, else
+    // SubgateKnobs::RATCHET/GHOST). Set by executeModeBSubdivided (which knows the
+    // edge stream), consumed + cleared by executePolyVoices at entry (the controller
+    // calls it exactly once per block, right after the mode exec — deterministic).
+    // Main paths never touch it; it stays −1.
+    int polySubLevel_ = -1;
     // F-4 (D5 — RHYTHM_DECISION_MANAGER_PLAN §3.3): each poly voice's THIS-EDGE GHOST EVENT —
     // the voice PLAYED an onset at a permission point that was a ghost cell of ITS containers
     // (rd.ghostCell). Captured by executePolyVoice at the play verdict (the polyVerdict_
@@ -943,7 +970,7 @@ struct SequencerEngine {
     // from a stale held gate. Also latches the count for this step (prevNumPolyVoices_).
     // (Definition in the .cpp — the loop MINTS VoiceSlots, which needs VoiceResolver.)
     void resetActivatedPolyVoices_();
-    StepResult executeStep(int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
+    StepResult executeStep(int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail, int subLevel = -1);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
     // RATE MANAGER (S3b): the Step tier replaced the ClockEngine& — the dispatch feeds
     // the tier from the same sixteenth edge (clock or phase), so the engine no longer
@@ -974,7 +1001,7 @@ struct SequencerEngine {
     // Call executePolyVoices() after any stepped executeModeA/B call.
     // voices[voiceSlot].restProb must be set by the caller before invoking.
     // STRONG types (CC_PROMPT_STRONG_TYPES): voiceIdx is a MINTED VoiceSlot.
-    void executePolyVoice(VoiceSlot voiceIdx, const PatternInput& input, bool wasHeld, bool hadTail);
+    void executePolyVoice(VoiceSlot voiceIdx, const PatternInput& input, bool wasHeld, bool hadTail, int subLevel = -1);
     void executePolyVoices(const PatternInput& input);
 
     // R-2 (RHYTHM_DECISION_MANAGER_PLAN §2.3): the named parent read — the four mono scalars

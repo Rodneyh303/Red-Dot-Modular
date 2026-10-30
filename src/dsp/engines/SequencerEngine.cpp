@@ -504,13 +504,29 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
     return true; 
 }
 
-StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail) {
+StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail, int subLevel) {
     // Phase A: ALL V1 per-voice params (rest, legato, accent, qmix, variation) now read from
     // voices[monoSlot].* — no separate parameters. V1 = voice 0 of the unified per-voice system.
     // The mono slot is populated by the controller (updatePatternInput), not by the mode executors.
     // CC_PROMPT_STRONG_TYPES: the mono ROLE is TYPED — monoSlot is the minted anchor
     // (was the bare voices[0] hardcode, indistinguishable from residue).
     const VoiceSlot monoSlot = VoiceResolver::mono();
+    // SUBGATE TIER (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): subLevel — −1 = the MAIN gate
+    // edge (read the main thresholds, the pre-subgate behaviour verbatim); otherwise a
+    // SubgateKnobs level (RATCHET/GHOST) whose edge this is — read the RESOLVED per-voice
+    // subgate thresholds (voices[monoSlot].subRes, written by ModeController through the
+    // three-way resolver). BYTE-IDENTITY: with nothing authored the resolved values EQUAL
+    // the main values exactly, so a ratchet/ghost edge shapes bit-identically to before.
+    // The variation-strand gates (ghost candidacy, step-advance) are NOT re-pointed here:
+    // candidacy stays on the main VARIATION lane, and the ADVANCE columns are consumed by
+    // the step-advance Stage 3 build (stored-only this build).
+    namespace SK = dotModular::SubgateKnobs;
+    const float restTh = (subLevel >= 0 && voices[monoSlot].subResLive) ? voices[monoSlot].subRes[subLevel][SK::REST]
+                                                                        : voices[monoSlot].restProb;
+    const float legTh  = (subLevel >= 0 && voices[monoSlot].subResLive) ? voices[monoSlot].subRes[subLevel][SK::LEGATO]
+                                                                        : voices[monoSlot].legatoProb;
+    const float accTh  = (subLevel >= 0 && voices[monoSlot].subResLive) ? voices[monoSlot].subRes[subLevel][SK::ACCENT]
+                                                                        : voices[monoSlot].accentProb;
     // ── Fractional notes (1/4T=2.667, 1/8T=1.333, 1/32=0.5 steps) & legato/tie ──
     // These notes end MID-STEP (closed by the gateSecRemain seconds-timer), not on
     // a 1/16 grid edge. Legato/tie decisions only happen AT an edge and require the
@@ -624,7 +640,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     // r_legato_tie is consumed only at the LEAD commitment (gs.slurForward, at the bottom of
     // this cascade), i.e. by the note that produces the next note's prevSlur.
     // legatoProb>=0.999 (LegatoMax) still forces connection.
-    const bool legatoConnects = (voices[monoSlot].legatoProb >= 0.999f) || prevSlur;
+    const bool legatoConnects = (legTh >= 0.999f) || prevSlur;
 
     // A genuine committed slur reaching THIS note: it connects AND has a held predecessor to
     // connect to (exactly the condition the legato branch below uses). "Rest beats legato"
@@ -634,12 +650,12 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     const bool slurReachesHere    = legatoConnects && (wasHeld || hadTail) && prevPlayedSounded;
     const bool slurSuppressesRest = !generatedRestBeatsLegato && slurReachesHere;
 
-    if (voices[monoSlot].legatoProb >= 0.999f) {
+    if (legTh >= 0.999f) {
         gs.slideMax(pitchV, sem, nvIdx, isQuant);
         gsStep.triggerNote(pitchV, sem, nvIdx, isQuant);            // STEP: re-strike (un-fused)
         result.decision = MonoDecision::LegatoMax;
     }
-    else if ((r_rest < voices[monoSlot].restProb) && !slurSuppressesRest) {
+    else if ((r_rest < restTh) && !slurSuppressesRest) {
         // Rest precedence:
         //  - A fractional NOTE TAIL always outranks a rest (physical — !canRest). Unchanged.
         //  - "Rest beats legato" ON (default): a rest CANCELS an optional slur reach ("can't
@@ -690,7 +706,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
                         ((result.decision == MonoDecision::Legato || result.decision == MonoDecision::LegatoMax) && !wasHeld && !hadTail);
 
     if (monoStarting) {
-        result.accented = (r_accent < voices[monoSlot].accentProb);
+        result.accented = (r_accent < accTh);
     } else if (result.decision == MonoDecision::Rest) {
         result.accented = false;
     } else {
@@ -736,7 +752,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
                    || (result.decision == MonoDecision::Tie);
     bool leadsSlur = leStarting
                   && noteCanLeadLegato(nvIdx)
-                  && (voices[monoSlot].legatoProb >= 0.999f || r_legato_tie < voices[monoSlot].legatoProb);
+                  && (legTh >= 0.999f || r_legato_tie < legTh);
     gs.slurForward = leadsSlur;
     gs.slurMember  = prevSlur || leadsSlur;   // SLEG mask: this note leads OR continues a slur
 
@@ -1056,7 +1072,14 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     // case (the spec's TRAP).  The gate width comes from whichever external gate is high (main or
     // ghost) via the module-layer IMPL 2b.
     result = executeStep(nvIdx, r_rest, r_legato, r_accent,
-                         r_qmix, input, wasHeldMono, hadMonoTail);
+                         r_qmix, input, wasHeldMono, hadMonoTail,
+                         ghostRise ? dotModular::SubgateKnobs::GHOST
+                                   : (subGateRise ? dotModular::SubgateKnobs::RATCHET : -1));
+    // POLY SUBGATE LEVEL: hand the cascade the same edge level (consumed + cleared
+    // by executePolyVoices at entry; the controller calls it once per block after
+    // the mode exec).
+    polySubLevel_ = ghostRise ? dotModular::SubgateKnobs::GHOST
+                              : (subGateRise ? dotModular::SubgateKnobs::RATCHET : -1);
     // A ghost candidate that played (not rested) sustains; a rested ghost does not.
     if (ghostRise) ghostActive = (result.decision != MonoDecision::Rest);
     result.stepped = true;
@@ -1167,8 +1190,18 @@ ParentView SequencerEngine::containerView(int u) const {
                        polyGhostOnset_[u] };
 }
 
-void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& input, bool wasHeldPoly, bool hadPolyTail) {
+void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& input, bool wasHeldPoly, bool hadPolyTail, int subLevel) {
     PolyVoice& v = voices[voiceIdx];
+    // SUBGATE TIER (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): the voice's own three-way
+    // thresholds at THIS edge's level (−1 = main — the main probs verbatim, the
+    // pre-subgate behaviour). BYTE-IDENTITY: nothing authored ⟹ subRes == the main
+    // values exactly. Same scope line as the mono path: the variation-strand gates
+    // (ghost placement below) stay on the main lane; ADVANCE columns are Stage-3
+    // stored-only.
+    namespace SK = dotModular::SubgateKnobs;
+    const float restTh = (subLevel >= 0 && v.subResLive) ? v.subRes[subLevel][SK::REST]   : v.restProb;
+    const float legTh  = (subLevel >= 0 && v.subResLive) ? v.subRes[subLevel][SK::LEGATO] : v.legatoProb;
+    const float accTh  = (subLevel >= 0 && v.subResLive) ? v.subRes[subLevel][SK::ACCENT] : v.accentProb;
     // F-1 (plan §3.1): the fold runs over the REAL containment graph. parentsOf(v) reads the
     // staged containmentParents (MonsoonSandsManager::processDNA stages it every block; a
     // zero row is an uncontained voice). An EMPTY mask is a FREE voice (D2/R2): the
@@ -1254,7 +1287,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
             }
         }
 
-        if (r_rest < v.restProb) {
+        if (r_rest < restTh) {
             // Decide to Rest: Stick with it until mono gate drops. No accent while resting.
             v.accented = false;
             if (v.gs.holdRemain > 0.0001f) v.gs.gateHeld = true; // allow previous note tail to finish
@@ -1305,7 +1338,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         // its own accent LOR and compares to its own accentProb — not shared from mono.
         int accIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_ACCENT}), polyLenE(voiceIdx, LaneId{PL_ACCENT}), polyOffE(voiceIdx, LaneId{PL_ACCENT}), polyRotE(voiceIdx, LaneId{PL_ACCENT}));
         refreshPolyRandomCell(voiceIdx, LaneId{PL_ACCENT}, accIdx);
-        v.accented = (pe.warpRow(voiceIdx, LaneId{PL_ACCENT})[accIdx] < v.accentProb);
+        v.accented = (pe.warpRow(voiceIdx, LaneId{PL_ACCENT})[accIdx] < accTh);
         if (rd.gateType == MonoDecision::NewNote)
             v.gs.triggerNote(pitchV, sem, nvV, isQuant);
         else if (wasHeldPoly || hadPolyTail)
@@ -1354,7 +1387,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
             float r_polyLegato = pe.warpRow(voiceIdx, LaneId{PL_LEGATO})[legIdx];
             v.gs.slurForward = leStartingV
                              && noteCanLeadLegato(nvV)
-                             && (v.legatoProb >= 0.999f || r_polyLegato < v.legatoProb);
+                             && (legTh >= 0.999f || r_polyLegato < legTh);
             v.gs.slurMember = v.gs.slurForward;   // SLEG: onset member iff it leads a slur
 #if RULE2_DEBUG
             INFO("[R2 roll ] v=%2d step=%3d LE=%d legCell=%2d monoCell=%2d legLOR=(%2d,%2d,%2d) "
@@ -1443,7 +1476,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                         // note isn't stuck with the accent the chain opened on.
                         int accIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_ACCENT}), polyLenE(voiceIdx, LaneId{PL_ACCENT}), polyOffE(voiceIdx, LaneId{PL_ACCENT}), polyRotE(voiceIdx, LaneId{PL_ACCENT}));
                         refreshPolyRandomCell(voiceIdx, LaneId{PL_ACCENT}, accIdx);
-                        v.accented = (pe.warpRow(voiceIdx, LaneId{PL_ACCENT})[accIdx] < v.accentProb);
+                        v.accented = (pe.warpRow(voiceIdx, LaneId{PL_ACCENT})[accIdx] < accTh);
                         v.gs.triggerNote(pitchV, sem, nvV);                   // re-articulate
                         polyVerdict_[voiceIdx.v] = MonoDecision::NewNote;   // F-1: a re-strike
                     }
@@ -1454,7 +1487,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                   refreshPolyRandomCell(voiceIdx, LaneId{PL_LEGATO}, legIdx2);
                 float r_polyLegato = pe.warpRow(voiceIdx, LaneId{PL_LEGATO})[legIdx2];
                 v.gs.slurForward = noteCanLeadLegato(nvV)
-                                 && (v.legatoProb >= 0.999f || r_polyLegato < v.legatoProb);
+                                 && (legTh >= 0.999f || r_polyLegato < legTh);
                 v.gs.slurMember = prevSlur || v.gs.slurForward;  // SLEG: continues OR leads
                 }
             }
@@ -1504,6 +1537,11 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
 }
 
 void SequencerEngine::executePolyVoices(const PatternInput& input) {
+    // SUBGATE TIER: consume the edge level executeModeBSubdivided staged for this
+    // block's cascade (−1 = main). Cleared immediately — one consume per cascade;
+    // a stray call without a subdivided edge reads the main thresholds verbatim.
+    const int subLevel = polySubLevel_;
+    polySubLevel_ = -1;
     // F-2 (plan §3.2, D8): the forest materializes at the graph-change boundary — per block at
     // the publish point (MonsoonSandsManager::processDNA) and per edge HERE (which also covers
     // test sites that author pe.containmentParents directly). The visit order is the MATERIALIZED
@@ -1528,7 +1566,7 @@ void SequencerEngine::executePolyVoices(const PatternInput& input) {
         // hadPolyTail is kept for safety with fractional start/ends.
         bool wasHeldPoly = wasHeldPolyPrev[i] || hadPolyTail[i];
         // i is the voiceSlot (V2..); slot(V) takes the VOICE number (= i+1)
-        executePolyVoice(VoiceResolver::slot(i + 1), input, wasHeldPoly, hadPolyTail[i]);
+        executePolyVoice(VoiceResolver::slot(i + 1), input, wasHeldPoly, hadPolyTail[i], subLevel);
     }
 }
 
