@@ -57,19 +57,12 @@ struct PolyVoice {
     //                       retrograde; positive = p(forward); 0 = always hold). The
     //                       advance decision (decideStepAdvance_) and the follow-main
     //                       ADVANCE tier (subgateMainThreshold) read THIS field.
-    //   variationRateProb = clamp(sum,  0,  1) — the rectified VARIATION-STRAND RATE
-    //                       (the ghost-CANDIDACY threshold, r_vary >= rate → no
-    //                       ghost): a rate is inherently unipolar, and the candidacy
-    //                       must NOT inherit the advance's negative half (a negative
-    //                       threshold would silence every ghost). == the pre-Stage-2
-    //                       write bit-exactly, so the module-path candidacy is
-    //                       unchanged.
-    // With no negative modulation the two clamps agree bit-exactly (the sum is
-    // >= 0) — the default behaviour is unchanged. Rack-free engines (never
-    // primed by the controller) keep reading variationProb verbatim at BOTH
-    // consumers via the subResLive gates — every existing pin holds.
+    //                       (CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE: the former
+    //                       rectified twin variationRateProb is RETIRED — its only
+    //                       consumer was the ghost-candidacy gate, which the
+    //                       companion change deleted; candidacy is the subgate REST
+    //                       decision now. The advance value is the single field.)
     float variationProb = 0.5f;     // bipolar gate-mode step-advance value [-1,+1]
-    float variationRateProb = 0.5f; // rectified strand rate [0,1] — the ghost-candidacy threshold
     float legatoProb = 0.0f;    // per-voice LEGATO probability — mirrors restProb/accentProb.
     // SUBGATE TIER (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): the RESOLVED per-voice
     // subgate thresholds [SubgateKnobs::LEVELS][SubgateKnobs::DECS] — levels
@@ -402,15 +395,10 @@ struct SequencerEngine {
     // calls it exactly once per block, right after the mode exec — deterministic).
     // Main paths never touch it; it stays −1.
     int polySubLevel_ = -1;
-    // STEP-ADVANCE (CC_PROMPT_GATE_STEP_ADVANCE_SPEC Stages 1-3): the advance-decision
-    // rise counter — the address of the step-rate uniform (PatternEngine::stepRateUniform,
-    // the rhythm Philox stream at its reserved chunk). Incremented ONCE per advance
-    // DECISION (each gate-mode rise that runs the decision: the plain-B main rise, each
-    // subdivided main/ratchet/ghost edge). The seed advance (stepIndex == −1) and the
-    // checkpoint arrival consume NO draw (no decision is made there). Session-lived,
-    // NOT persisted: the advance draw is an ephemeral per-rise decision input, not step
-    // content (unlike the lane drawCtr, which addresses regenerated cell CONTENT).
-    uint64_t stepAdvanceRiseCtr_ = 0;
+    // (The step-advance rise counter is DELETED — CC_PROMPT_STEP_ADVANCE_FIX_DRAW_
+    // SOURCE: the advance reads the VARIATION LANE's step-addressed draw, not a
+    // per-rise uniform, so there is no counter and NO new draw consumption. The
+    // held step rereading the same r_vary is the intended per-step threshold.)
     // F-4 (D5 — RHYTHM_DECISION_MANAGER_PLAN §3.3): each poly voice's THIS-EDGE GHOST EVENT —
     // the voice PLAYED an onset at a permission point that was a ghost cell of ITS containers
     // (rd.ghostCell). Captured by executePolyVoice at the play verdict (the polyVerdict_

@@ -335,20 +335,19 @@ static void marchModeBS(int seed, Capture& cap, int& c2n, int& envn) {
 }
 
 // ── Golden digests (the byte-identity oracle) ───────────────────────────────────
-// GOLDEN_A/B/BS captured on lane-expander-refactor @ 257fb351 (the containment merge,
-// pre-Stage-R) and committed with R-1; every Stage-R commit (R-2..R-5) and Stage-F march
-// held them EXACTLY.
-// RE-PINNED (deliberate, feat/step-advance Stages 1+3 — CC_PROMPT_GATE_STEP_ADVANCE_SPEC):
-// the gate-mode main advance is now PROBABILISTIC (u < the resolved Variation p, REPEAT =
-// held), so the B and BS marches (V1 variationProb mid-range 0.25..0.75) legitimately
-// changed — the gate-mode digests are the FEATURE's new baseline. GOLDEN_A is UNTOUCHED:
-// mode A (clock/phase) has no step-advance probability, and its unchanged digest is the
-// regression guard that the feature stayed gate-mode-only. The p=1 identity (byte-identity
-// with the PRE-feature engine) is pinned separately by test_step_advance (the spec's
-// golden pin: only p<1 changes behaviour).
+// History: R-1 captured A/B/BS on lane-expander-refactor @ 257fb351; the feat/step-advance
+// Stages 1+3 re-pinned B/BS (the probabilistic gate-mode advance); CC_PROMPT_STEP_ADVANCE_
+// FIX_DRAW_SOURCE re-pins them AGAIN — the mid-range B/BS marches (variationProb
+// 0.25..0.75) legitimately moved BOTH times: first the probabilistic advance, now the
+// draw source (the fresh reserved-chunk uniform → the variation lane's step-addressed
+// r_vary, the per-step threshold) + the ghost-candidacy gate's deletion (candidacy is
+// the subgate REST decision). GOLDEN_A is UNTOUCHED through every re-pin (mode A has no
+// step-advance probability — the unchanged digest is the regression guard that the
+// feature stays gate-mode-only). The p=1 identity (byte-identity with the PRE-feature
+// engine) is pinned separately by test_step_advance (the spec's golden pin).
 static const uint64_t GOLDEN_A  = 0xa843e2ff14883ab9ULL;
-static const uint64_t GOLDEN_B  = 0xcc4d19d45293b134ULL;
-static const uint64_t GOLDEN_BS = 0x7c00a247c8040799ULL;
+static const uint64_t GOLDEN_B  = 0x9e87dbdea46a4886ULL;   // re-captured (draw-source fix)
+static const uint64_t GOLDEN_BS = 0xf2ef8f431ab33e71ULL;   // re-captured (draw-source fix)
 
 int main() {
     std::printf("\033[1mrhythm decision differential — the R-1 oracle (stage R)\033[0m\n");

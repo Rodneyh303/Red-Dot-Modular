@@ -57,16 +57,15 @@ void ModeController::updatePolyVoiceRest_() {
         // VAR/LEG per-voice knobs — mirror rest/accent/q-mix. The engine reads these in
         // executePolyVoice to threshold the per-voice VAR/LEG draws (which already exist
         // as slewedPolyVariation/Legato → polyRandom(PL_VARIATION/PL_LEGATO)).
-        // STEP-ADVANCE VALUE PAIR (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2), poly
-        // rows: the poly per-voice VAR knobs are [0,1] params with no negative
+        // STEP-ADVANCE VALUE (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2; the rectified
+        // twin RETIRED by CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE — its only consumer,
+        // the ghost-candidacy gate, is deleted; candidacy is the subgate REST decision),
+        // poly rows: the poly per-voice VAR knobs are [0,1] params with no negative
         // modulation source yet (no poly VAR CV — the mono CV2/Junction path has no
-        // poly analogue), so the bipolar clamp agrees with the rectified one
-        // BIT-EXACTLY today; when a poly negative source lands, the unclamped sum
-        // replaces the single read exactly as the mono write below does. The ghost
-        // candidacy (variationRateProb) and the follow-main ADVANCE tier
-        // (variationProb) each get their own clamp of the same resolved value.
+        // poly analogue), so the clamp is a no-op today; when a poly negative source
+        // lands, the unclamped sum replaces the single read exactly as the mono write
+        // below does.
         const float pv = mainModule->getEffectivePolyVariation(i - 1);
-        engine.voices[vs].variationRateProb = pv;
         engine.voices[vs].variationProb     = pv;
         engine.voices[vs].legatoProb    = mainModule->getEffectivePolyLegato(i - 1);
         // SUBGATE TIER (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): resolve the three-way
@@ -155,20 +154,16 @@ void ModeController::updatePatternInput() {
                                              : paramManager.getAccent();
         monoVoice.qmixLevel    = mainModule ? mainModule->getEffectiveMonoQmix(paramManager.getQmixLevel())
                                              : paramManager.getQmixLevel();
-        // STEP-ADVANCE VALUE PAIR (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2):
-        // one unclamped knob+CV2+Junction sum, two clamps. variationProb goes
-        // BIPOLAR [-1,+1] — the advance decision's value, the negative half being
-        // the probabilistic retrograde (CV2's normalized range is already bipolar,
-        // so a bipolar modulation source into Variation makes the sequence WANDER);
-        // variationRateProb keeps the rectified [0,1] value the ghost candidacy has
-        // always thresholded (== the old write bit-exactly — same sum, rectified
-        // clamp; a rate is unipolar and must not inherit the advance's negative
-        // half). With nothing bipolar patched the two clamps agree bit-exactly:
-        // default behaviour unchanged. currentPatternInput.variationAmount above
-        // stays rectified (the mode-A longer–shorter consumer + the rack-free
-        // contract read the scalar).
+        // STEP-ADVANCE VALUE (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2; the rectified
+        // twin RETIRED — see the poly note above): one unclamped knob+CV2+Junction sum,
+        // ONE clamp. variationProb goes BIPOLAR [-1,+1] — the advance decision's value,
+        // the negative half being the probabilistic retrograde (CV2's normalized range
+        // is already bipolar, so a bipolar modulation source into Variation makes the
+        // sequence WANDER). With nothing bipolar patched the clamp is a no-op: default
+        // behaviour unchanged. currentPatternInput.variationAmount above stays
+        // rectified (the mode-A longer–shorter consumer + the rack-free contract
+        // read the scalar).
         const float varSum = paramManager.getVariationUnclamped();
-        monoVoice.variationRateProb = clampv(varSum, 0.f, 1.f);
         monoVoice.variationProb     = clampv(varSum, -1.f, +1.f);
         // SUBGATE TIER: V1's resolved thresholds (storageSlot 0 = the mono row of the
         // bank), the same three-way law as the poly rows. Without a mainModule the
@@ -377,8 +372,8 @@ bool ModeController::executeModeB(const InputState& input,
         // subdivided path read the resolved value (which never had this write).
         // Stage 1's spec clause: p_advance = the RESOLVED VARIATION probability, per
         // voice, through the resolver path — NOT a constant. The controller's
-        // per-block pair write (mono variationProb/variationRateProb above) now
-        // stands un-overridden in both Mode B paths.
+        // per-block write (mono variationProb above) now stands un-overridden in
+        // both Mode B paths.
 
         // Execute the mode
         StepResult result = engine.executeModeB(

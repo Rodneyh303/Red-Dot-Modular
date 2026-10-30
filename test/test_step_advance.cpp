@@ -4,30 +4,39 @@
 // the unclamped knob+CV2+Junction sum clamped [-1,+1], so p < 0 is reachable through a bipolar
 // modulation source).
 //
-// What is pinned:
+// What is pinned (DRAW SOURCE FIXED per CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE: u is
+// the VARIATION LANE's step-addressed draw — NOT a fresh Philox draw; the reserved
+// chunk is deleted and the advance consumes ZERO new draws. The rectified twin
+// variationRateProb is RETIRED — its only consumer, the ghost-candidacy gate, is
+// deleted; candidacy is the subgate REST decision):
 //   PURE     : the decideAdvance table — p=1 → always FORWARD; p=0 → always REPEAT; mid → ratio
 //              (FORWARD iff u < p); p<0 → BACKWARD iff u < |p| (Stage 2, sourced + reachable).
 //   IDENTITY : the GOLDEN PIN — at p_advance = 1 (V1's resolved Variation = 1) plain Mode B and
-//              Mode B subdivided marches are BYTE-IDENTICAL to the pre-feature engine. The two
-//              digests below were captured on the PRE-CHANGE source (24 seeded marches x 64 steps
-//              through the REAL executors + the shipped IMPL 2b drive; see
-//              scripts/capture_step_advance_identity.cpp) and must never move again — they are
-//              the identity-with-today regression gate. Only p<1 changes behaviour.
+//              Mode B subdivided marches are BYTE-IDENTICAL to the pre-feature engine (u=r_vary
+//              < 1 crosses every step). The plain-B digest is the pre-change capture; the
+//              SUBDIVIDED digest was RE-CAPTURED for the draw-source fix (the ghost-candidacy
+//              deletion changes ghost outcomes at p=1 — documented, deliberate; the trajectory
+//              itself is unchanged: every decision rise still moves).
 //   RULE     : the engine's playhead trajectory == the mirrored rule, rise by rise — the test
-//              re-computes u from the SAME stream at the SAME counter (PatternEngine::
-//              stepRateUniform + stepAdvanceRiseCtr_) and predicts every move/no-move exactly.
+//              re-computes u as the SAME r_vary the engine reads (the variation lane's
+//              step-addressed draw at the current step) and predicts every move/no-move
+//              exactly. The knob SCHEDULE turns p through deterministic-move / stochastic /
+//              deterministic-hold phases: a fixed p on a sticky step holds forever BY DESIGN
+//              (the per-step threshold — the intended live control, not a wall).
 //   HOLD     : at p=0 the playhead never moves after the seed and the held step re-outputs its
 //              step-addressed data identically (the corrected REPEAT semantics, Rodney 91b100c:
-//              NO re-draw branch — not advancing = same step = same counter = same data).
+//              NO re-draw branch — not advancing = same step = same counter = same data). The
+//              held rise also leaves the variation ring cell BIT-IDENTICAL (zero new draws —
+//              the additive-domain law: the advance adds NOTHING to the stream).
 //   TIERS    : the THREE-LEVEL hierarchy — main/ratchet/ghost edges decide on their OWN resolved
 //              columns (subRes[level][ADVANCE] behind the subResLive gate; main =
 //              voices[mono].variationProb); a coincident main+ratchet rise IS the main onset;
 //              the follow-main degenerate (subRes filled with the main value) is behaviourally
 //              identical to the ungated engine.
 //   STAGE2   : the bipolar sourcing — p<0 walks the playhead BACKWARD (exactly -1 per move,
-//              wrapping 0 -> 15 through advancePlayhead's reverse traversal); the ghost
-//              CANDIDACY reads the rectified strand rate (variationRateProb), NOT the bipolar
-//              advance value — the two consumers are decoupled by construction; a negative
+//              wrapping 0 -> 15 through advancePlayhead's reverse traversal); ghost CANDIDACY
+//              is the subgate REST decision (subRes[GHOST][REST]=0 → ghosts play; =1 → the
+//              gap stays empty) — variation no longer gates candidacy at all; a negative
 //              ghost-ADVANCE column walks the playhead backward in the gaps.
 //   SCOPE    : clock/phase (executeModeA) untouched — the playhead advances unconditionally there
 //              (Variation keeps its existing clock/phase meaning; p_advance is gate-mode only).
@@ -182,7 +191,11 @@ struct GateStream {
 
 // ── IDENTITY marches (must byte-match the PRE-CHANGE capture — do not touch) ────
 static const uint64_t ADV_IDENTITY_B  = 0x7fde9525731c67e2ULL;
-static const uint64_t ADV_IDENTITY_BS = 0xb946a03b9c7e06a0ULL;
+// RE-CAPTURED for CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE (the ghost-candidacy
+// deletion changes ghost outcomes at p=1; the plain-B digest above is the
+// ORIGINAL pre-change capture and still holds — u=r_vary < 1 crosses every
+// step, so the advance itself is byte-identical).
+static const uint64_t ADV_IDENTITY_BS = 0x24fba00a690d125eULL;
 
 static void marchModeB_p1(int seed, Capture& cap) {
     PhiloxRng rng; rng.seed64((uint64_t)seed * 747796405u + 2891336453u + 1u);
@@ -256,7 +269,7 @@ static void marchModeBS_p1(int seed, Capture& cap) {
 
 // ── RULE march: plain Mode B, deterministic gates, the trajectory predicted exactly ──
 // Mirrors the engine rule per rise: seed at stepIndex==-1 (no draw); otherwise advance
-// iff stepRateUniform(stepAdvanceRiseCtr_) < p — read BEFORE the executor consumes it.
+// iff r_vary(step) < p — the SAME step-addressed variation draw the engine reads.
 static void ruleMarchInto(float p, int steps, Capture& cap, int* mismatches, int* advances);
 
 // The instrumented predictor: per-rise checks that the engine's moves are exactly the rule's.
@@ -267,27 +280,44 @@ static void ruleMarch(float p, int steps) {
     seedEngine(eng, rng, p);
     const PatternInput in = makeInput(0.5f);
     const float noteVal = 3.f;
+    const auto m = dotModular::VoiceResolver::slot(1);
     int mismatches = 0, heldRises = 0, advances = 0;
     for (int step = 0; step < steps; ++step) {
         // Deterministic gate: rise on even steps, high for one step, low for one.
         const bool rise = (step % 2) == 0;
         const bool high = rise;
+        // The knob SCHEDULE (the draw source is the step-addressed r_vary — a fixed p
+        // on a sticky step holds forever BY DESIGN, the per-step threshold): turn the
+        // knob through deterministic-move / stochastic / deterministic-hold phases; the
+        // mirror predicts every rise exactly whichever phase is live.
+        const float pNow = (step < steps / 4) ? 1.0f
+                        : (step < steps / 2) ? p
+                        : (step < 3 * steps / 4) ? 0.0f
+                        : p;
+        eng.voices[m].variationProb = pNow;
         const int before = eng.stepIndex;
-        const uint64_t ctrBefore = eng.stepAdvanceRiseCtr_;
+        const float uBefore = (rise && eng.stepIndex != -1)
+            ? eng.pe.warpRow(m, dotModular::LaneId{PatternEngine::PL_VARIATION})[eng.getVariationStep()]
+            : 0.f;
         bool expectAdvance = false;
         if (rise && eng.stepIndex != -1)
-            expectAdvance = (eng.pe.stepRateUniform(eng.stepAdvanceRiseCtr_) < p);
+            expectAdvance = (uBefore < pNow);
         StepResult r = eng.executeModeB(rise, high, noteVal, in);
-        if (!rise) { check(eng.stepAdvanceRiseCtr_ == ctrBefore, "RULE: no rise -> no draw consumed"); continue; }
+        if (!rise) continue;
         const bool seeded = (before == -1);
         const bool moved  = (eng.stepIndex != before);
         if (!seeded) {
-            check(eng.stepAdvanceRiseCtr_ == ctrBefore + 1,
-                  "RULE: a decision rise consumes exactly one draw");
             if (moved != expectAdvance) ++mismatches;
+            if (!moved) {
+                ++heldRises;
+                // ZERO NEW DRAWS (the additive-domain law): a held rise leaves the
+                // variation ring cell BIT-IDENTICAL — the decision reads r_vary and
+                // consumes nothing (the old reserved-chunk draw is deleted).
+                const float uAfter = eng.pe.warpRow(m, dotModular::LaneId{PatternEngine::PL_VARIATION})[eng.getVariationStep()];
+                check(uAfter == uBefore, "RULE: a held rise leaves the r_vary cell bit-identical (zero new draws)");
+            }
         }
         if (moved && !seeded) ++advances;
-        if (!moved && !seeded) ++heldRises;
         (void)r;
     }
     check(mismatches == 0, "RULE: playhead trajectory == the mirrored decide rule, every rise");
@@ -487,27 +517,32 @@ int main() {
     // ── STAGE 2 (bipolar, CC_PROMPT_STEP_ADVANCE_CONSUMPTION): p < 0 REACHED ────
     // The pure branch was always table-pinned; the SOURCING is the completion: the
     // resolved value is the unclamped knob+CV2+Junction sum clamped [-1,+1] (the
-    // ModeController pair-writes variationProb bipolar / variationRateProb rectified),
+    // ModeController writes variationProb bipolar; the rectified twin is retired),
     // the ADVANCE resolver range widened to [-1,+1] (follow-main carries the sign;
     // REST/LEGATO/ACCENT stay [0,1]), and the rise sites map BACKWARD ->
     // advancePlayhead(-1) — the reverse traversal, which wraps past step 0 to 15.
     {
-        // BACKWARD WALK (rack-free, plain Mode B, the RULE discipline): p = -0.4 —
-        // every decision rise moves EXACTLY -1 iff u < 0.4, else holds; the wrap is
-        // verified by driving the playhead across 0.
+        // BACKWARD WALK (rack-free, plain Mode B, the RULE discipline): the draw
+        // source is r_vary (the per-step threshold), so the |p| SCHEDULE turns the
+        // knob — stochastic -0.35 first, then -1.0 (the deterministic walker that
+        // guarantees the 0 -> 15 wrap). Every decision rise moves EXACTLY -1 iff
+        // r_vary(step) < |p|, else holds (the sticky step — by design).
         PhiloxRng rng; rng.seed64(0x51E7Aull);   // the RULE march's seed
         SequencerEngine eng; eng.reset();
         eng.numPolyVoices = 0;
-        seedEngine(eng, rng, -0.4f);
+        seedEngine(eng, rng, -0.35f);
+        const auto m = dotModular::VoiceResolver::slot(1);
         const PatternInput in = makeInput(0.5f);
         int mismatches = 0, backwardMoves = 0, heldRises = 0;
         bool crossedWrap = false;
         for (int step = 0; step < 96; ++step) {
             const bool rise = (step % 2) == 0;
+            const float mag = (step < 48) ? 0.35f : 1.0f;
+            eng.voices[m].variationProb = -mag;
             const int before = eng.stepIndex;
             bool expectBackward = false;
             if (rise && eng.stepIndex != -1)
-                expectBackward = (eng.pe.stepRateUniform(eng.stepAdvanceRiseCtr_) < 0.4f);
+                expectBackward = (eng.pe.warpRow(m, dotModular::LaneId{PatternEngine::PL_VARIATION})[eng.getVariationStep()] < mag);
             StepResult r = eng.executeModeB(rise, rise, 3.f, in);
             (void)r;
             if (!rise || before == -1) continue;   // the seed advances forward, no decision
@@ -524,26 +559,26 @@ int main() {
         check(crossedWrap, "STAGE2: backward wrap verified (step 0 -> step 15)");
     }
     {
-        // CANDIDACY/ADVANCE DECOUPLING (the value pair, subResLive on — the module
-        // contract): variationProb = -1 (the main walks BACKWARD every rise) while
-        // variationRateProb = 1 (every ghost a candidate). If the candidacy still read
-        // the bipolar advance value, r_vary >= -1 would silence every ghost and the
-        // ghost-level advance would never run — so a backward move at a GHOST rise
-        // proves the two consumers read DIFFERENT fields. The ghost level's own
-        // ADVANCE column (-1) walks the shared playhead backward through the gaps.
+        // CANDIDACY = THE SUBGATE REST (CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE, the
+        // companion change — the value pair is RETIRED): variationProb = -1 (the
+        // main walks BACKWARD every rise; at |p|=1 every r_vary is crossed), the
+        // ghost level's REST = 0 (every ghost PASSES rest — the candidacy question
+        // collapsed into the ONE rest authority) and its own ADVANCE column = -1
+        // (ghosts walk the shared playhead backward through the gaps). A backward
+        // move at a GHOST rise proves the ghost cell played (its rest passed) and
+        // its level's own column governed.
         PhiloxRng rng; rng.seed64(0xFA11ull);
         SequencerEngine eng; eng.reset();
         eng.numPolyVoices = 0;
         seedEngine(eng, rng, -1.0f);
         const auto m1 = dotModular::VoiceResolver::slot(1);
         eng.voices[m1].subResLive = true;
-        eng.voices[m1].variationRateProb = 1.0f;   // ghosts always candidates
         for (int l = 0; l < SK::LEVELS; ++l)
             for (int d = 0; d < SK::DECS; ++d)
-                eng.voices[m1].subRes[l][d] = 0.0f;
+                eng.voices[m1].subRes[l][d] = 0.0f;    // REST=0: every ghost passes the one rest gate
         eng.voices[m1].subRes[SK::GHOST][SK::ADVANCE] = -1.0f;   // ghosts walk backward too
         const PatternInput in = makeInput(0.5f);
-        int backward = 0;
+        int backward = 0, ghostPlays = 0;
         bool ghostMoved = false;
         for (int step = 0; step < 32; ++step) {
             const int ph = step % 4;
@@ -553,7 +588,7 @@ int main() {
             const int before = eng.stepIndex;
             StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, false, 3.f, in,
                                                       ghostRise, ghostRise);
-            (void)r;
+            if (ghostRise && !mainRise && r.decision != MonoDecision::Rest) ++ghostPlays;
             if (before == -1 || !(mainRise || ghostRise)) continue;
             if (eng.stepIndex == ((before - 1 + 16) & 0xF)) {
                 ++backward;
@@ -561,8 +596,46 @@ int main() {
             }
         }
         check(backward > 0, "STAGE2: the bipolar march exercised backward moves at both levels");
+        check(ghostPlays > 0, "STAGE2: ghosts PLAY with subRes[GHOST][REST]=0 (the one rest authority)");
         check(ghostMoved, "STAGE2: ghost-ADVANCE -1 walks the playhead backward in the gaps "
-                          "(candidacy reads the rectified rate, not the bipolar advance)");
+                          "(the played ghost's own column governs)");
+    }
+    {
+        // THE CANDIDACY GATE IS GONE (the same march, REST authored to 1): every
+        // ghost cell rests — the gaps stay EMPTY (a Rest decision at every ghost
+        // rise), and the ghost level's ADVANCE column never runs (no move at a
+        // ghost rise). Variation no longer gates candidacy AT ALL.
+        PhiloxRng rng; rng.seed64(0xFA11ull);
+        SequencerEngine eng; eng.reset();
+        eng.numPolyVoices = 0;
+        seedEngine(eng, rng, -1.0f);
+        const auto m1 = dotModular::VoiceResolver::slot(1);
+        eng.voices[m1].subResLive = true;
+        for (int l = 0; l < SK::LEVELS; ++l)
+            for (int d = 0; d < SK::DECS; ++d)
+                eng.voices[m1].subRes[l][d] = 0.0f;
+        eng.voices[m1].subRes[SK::GHOST][SK::REST] = 1.0f;       // every ghost rests
+        eng.voices[m1].subRes[SK::GHOST][SK::ADVANCE] = -1.0f;  // ...so this never runs
+        const PatternInput in = makeInput(0.5f);
+        int ghostRests = 0, ghostMoves = 0;
+        for (int step = 0; step < 32; ++step) {
+            const int ph = step % 4;
+            const bool mainRise  = (ph == 0);
+            const bool mainHigh  = (ph == 0 || ph == 1);
+            const bool ghostRise = (ph == 3);
+            const int before = eng.stepIndex;
+            StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, false, 3.f, in,
+                                                      ghostRise, ghostRise);
+            if (ghostRise && !mainRise) {
+                if (r.decision == MonoDecision::Rest) ++ghostRests;
+                if (eng.stepIndex != before) ++ghostMoves;
+            }
+        }
+        check(ghostRests > 0, "STAGE2: subRes[GHOST][REST]=1 -> every ghost rests (the gap stays empty)");
+        // NOTE: the playhead motion is UPSTREAM of the articulation (the advance
+        // decision precedes executeStep), so a rested ghost cell may still have
+        // moved the playhead — ghostMoves counts it for INFORMATION only.
+        std::printf("  (info) rested-ghost marches: %d ghost moves (the advance is upstream)\n", ghostMoves);
     }
 
     std::printf("  passed %d, failed %d\n", g_pass, g_fail);

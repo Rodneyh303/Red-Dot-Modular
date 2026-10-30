@@ -882,19 +882,13 @@ struct PatternEngine {
     // ── THE STEP-RATE UNIFORM (CC_PROMPT_GATE_STEP_ADVANCE_SPEC Stage 1) ─────────
     // The gate-mode step-advance decision draws u per rise from the EXISTING rhythm
     // Philox stream — the SAME key (NOT a new stream: the additive-domain law keeps
-    // new consumers on the shared stream, cf. Cantonment's own-domain RANDOM row), at
-    // a RESERVED high chunk address so it collides with nothing and consumes nothing
-    // (atUniform is a pure function of the counter; regen positions live in the low
-    // chunks and never reach STEP_ADVANCE_CHUNK). Why not a lane-ring read: the rings
-    // are STEP-ADDRESSED and freeze with a held step BY CONSTRUCTION (the corrected
-    // REPEAT semantics, Rodney 91b100c — "not advancing = same step = same counter =
-    // same data"), so a ring-sourced u would freeze the advance decision together with
-    // the step — a cell >= p would wall the sequence permanently. The decision must
-    // stay FRESH per rise; the data must stay HELD. This draw is the fresh part.
-    static constexpr uint64_t STEP_ADVANCE_CHUNK = 1ull << 32;   // reserved chunk (regen: low chunks only)
-    inline float stepRateUniform(uint64_t rise) const {
-        return rhythmPhilox.atUniform(STEP_ADVANCE_CHUNK * DRAW_CHUNK + rise);
-    }
+    // (The step-advance reserved chunk + stepRateUniform are DELETED —
+    // CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE: the advance decision reads the
+    // VARIATION LANE's step-addressed draw (the same r_vary the lane compares
+    // read), NOT a fresh per-rise uniform. An additional Philox draw was ruled a
+    // HARD NO; the "would freeze with the held step" reasoning was INVERTED —
+    // the freeze IS the intended per-step threshold. The advance consumes ZERO
+    // new draws.)
 
     inline float unitRhythm() { return philoxRhythm(); }
     inline float unitMelody() { return philoxMelody(); }

@@ -342,21 +342,25 @@ bool SequencerEngine::advancePlayhead(int dir) {
     return wrapped;
 }
 
-// STEP-ADVANCE (CC_PROMPT_GATE_STEP_ADVANCE_SPEC Stages 1-3) — the gate-mode advance
-// DECISION for one rise. GATE MODE ONLY (Mode B): in clock/phase mode p_advance is not
-// used and Variation keeps its existing meaning (executeModeA never calls this).
+// STEP-ADVANCE (CC_PROMPT_GATE_STEP_ADVANCE_SPEC Stages 1-3; the draw source FIXED per
+// CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE) — the gate-mode advance DECISION for one rise.
+// GATE MODE ONLY (Mode B): in clock/phase mode p_advance is not used and Variation keeps
+// its existing meaning (executeModeA never calls this).
 dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLevel) {
     namespace SK = dotModular::SubgateKnobs;
-    // ONE draw per decision rise: the STEP-RATE UNIFORM — per-rise FRESH from the rhythm
-    // Philox stream's reserved chunk (PatternEngine::stepRateUniform; same stream, NOT a
-    // new one). NOT a lane-ring read: the rings are step-addressed and freeze with a held
-    // step BY CONSTRUCTION (the corrected REPEAT semantics, Rodney 91b100c — "not
-    // advancing = same step = same counter = same data"), and a frozen u would freeze the
-    // advance decision together with the step — a cell >= p would wall the sequence
-    // permanently. The fresh draw is the decision's own input; the held step's data stays
-    // step-addressed and untouched (repeat = re-output the same address, no re-draw branch).
-    const uint64_t rise = stepAdvanceRiseCtr_++;
-    const float u = pe.stepRateUniform(rise);
+    const VoiceSlot m = VoiceResolver::mono();
+    // THE DRAW SOURCE (the fix): u is the VARIATION LANE's step-addressed draw — the
+    // same r_vary every lane-style compare reads — NOT a fresh Philox draw (the reserved
+    // chunk is DELETED; the advance consumes ZERO new draws). HELD STEP IS CORRECT, NOT
+    // A WALL: rereading a held step's r_vary gives the same comparison — to advance OFF
+    // a held step you MOVE the Variation knob/CV toward ±1 until it crosses that step's
+    // draw. The step-addressed draw is the PER-STEP THRESHOLD (different steps naturally
+    // stickier/looser) — the intended live control. At |p|=1 every step's draw is crossed
+    // → always move (the pre-feature identity); at p=0 → always hold. All levels read the
+    // SAME current-step variation draw — the playhead is singular, mirroring how the
+    // subgate rest/legato reads address their level: the THRESHOLD is level-specific,
+    // the draw is the shared lane.
+    const float u = pe.warpRow(m, LaneId{PL_VARIATION})[getVariationStep()];
     // The threshold, by LEVEL (the three-level hierarchy): a MAIN gate rise resolves to
     // the VARIATION probability (the per-voice resolver path — warps/correlates/CAs like
     // every lane, NOT the raw knob; BIPOLAR since Stage 2 — the signed advance value,
@@ -365,7 +369,6 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLev
     // {global | follow-main}). subResLive gates the subgate read exactly like the
     // rest/legato/accent reads in executeStep: an engine that has never been through
     // ModeController keeps reading the main value verbatim (rack-free byte-identity).
-    const VoiceSlot m = VoiceResolver::mono();
     const float p = (subLevel < 0 || !voices[m].subResLive)
                   ? voices[m].variationProb
                   : voices[m].subRes[subLevel][SK::ADVANCE];
@@ -1133,31 +1136,16 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     gs.holdRemain = 0.f;     gs.gatePulseRemain = -1;
     gsStep.holdRemain = 0.f; gsStep.gatePulseRemain = -1;
 
-    // Ghost candidate gate: a ghost onset (in-gap) only produces a note if the VARIATION strand
-    // fires — variation/ghost produces the CANDIDATE.  r_vary >= variationAmount -> no ghost
-    // (silent gap cell; preserve the decision for the slur bridge + own forStep).  At variation=0
-    // no ghost ever fires.  (Ratchet sub-cells and main onsets are NOT variation-gated — only the
-    // ghost is.)  Then executeStep rolls the rest lane, which may still silence a ghost candidate.
-    if (ghostRise) {
-        float r_vary = pe.warpRow(monoSlot, LaneId{PL_VARIATION})[getVariationStep()];
-        // The CANDIDACY threshold is the RECTIFIED strand rate (variationRateProb) —
-        // NOT the bipolar advance value variationProb became in Stage 2 (a negative
-        // advance threshold must not silence every ghost). Rack-free engines
-        // (subResLive false — never primed by the controller) keep reading
-        // variationProb verbatim: byte-identity for every un-primed engine.
-        const float ghostTh = voices[monoSlot].subResLive ? voices[monoSlot].variationRateProb
-                                                          : voices[monoSlot].variationProb;
-        if (r_vary >= ghostTh) {
-            // No ghost candidate — silent gap.  Preserve the decision (slur bridge) + own cell.
-            ghostActive = false;
-            result = lastStepResult;
-            result.forStep = stepIndex;
-            result.stepped = true;
-            result.wrapped = wrapped;
-            lastStepResult = result;
-            return result;
-        }
-    }
+    // GHOST CANDIDACY (CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE, the companion change):
+    // there is NO separate candidacy gate anymore — the old variation-strand gate
+    // (r_vary >= variationRateProb) is DELETED, and a ghost cell's existence IS its
+    // SUBGATE REST decision below: executeStep (called with level GHOST) rolls the
+    // rest lane against subRes[GHOST][REST] (or the main restProb un-primed) — ONE
+    // rest authority per cell, no double silencing, no candidacy gate on top. This is
+    // what frees r_vary (now consumed ONLY by the advance decision) — the freeing is
+    // CAUSED by this move, not incidental. A rested ghost follows the normal rest
+    // semantics (silent cell, the slur bridge + forStep preserved by executeStep's
+    // rest path — the same path a rested main note takes).
     // A main or ratchet onset ends any sustaining ghost (the ghost only lives in the gap).
     if (mainGateRise || subGateRise) ghostActive = false;
 
@@ -1371,24 +1359,11 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         // The ghost note's EXTENT is the landed C5 intersection (the per-sample drive — the
         // audibility bound: every container's fused envelope must hold the note open; a
         // container's ghost holds its own gate high via its ghost/ghost-placed-note term).
-        if (inGhostCell) {
-            int varIdx = getVariationStepForVoice(voiceIdx) & 0x0F;
-            refreshPolyRandomCell(voiceIdx, LaneId{PL_VARIATION}, varIdx);
-            float r_vary_voice = pe.warpRow(voiceIdx, LaneId{PL_VARIATION})[varIdx];
-            // Rectified strand rate (the Stage 2 value pair) — see the mono
-            // candidacy note: the bipolar advance value must not gate the
-            // candidacy. Rack-free identity via subResLive (un-primed engines
-            // read variationProb verbatim).
-            const float ghostTh = v.subResLive ? v.variationRateProb : v.variationProb;
-            if (r_vary_voice >= ghostTh) {
-                // Rested ghost: transparent — silent, not part of the chain.
-                v.accented = false;
-                v.gs.gateHeld = false; v.gsStep.gateHeld = false;
-                v.participating = false; v.gs.slurMember = false;
-                polyVerdict_[voiceIdx.v] = MonoDecision::Rest;   // F-1: no onset offer for children
-                return;
-            }
-        }
+        // GHOST CANDIDACY (the companion change, poly side): the variation-strand
+        // gate is DELETED — the voice's ghost cell plays iff its rest decision
+        // passes (restTh below = subRes[GHOST][REST] when primed), the ONE rest
+        // authority. A rested ghost takes the normal rest path (transparent,
+        // not part of the chain — the same semantics the deleted gate produced).
 
         if (r_rest < restTh) {
             // Decide to Rest: Stick with it until mono gate drops. No accent while resting.
