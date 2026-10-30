@@ -916,6 +916,25 @@ struct Monsoon : Module {
         // follow main = byte-identical (the bank ctor). Kept at struct END (the
         // same ABI-hygiene note as warp).
         dotModular::SubgateKnobs::SubgateBank subgate;
+        // The UNIFIED ADDRESSING voice-range authoring rows (Stage 2b —
+        // CC_PROMPT_UNIFIED_ADDRESSING_SPEC on feat/unified-addressing): the Macro
+        // (GLOBAL) voice range + the per-voice East rows, the SAME float-store
+        // discipline as globalLor above — bounds-guarded accessors, persisted by
+        // MonsoonPersistenceManager, pushed to the engine's voiceLorStore_ once per
+        // control block (pushVoiceLorEditor). Row item order {L,O,R} = the engine's
+        // LOR_LEN/LOR_OFF/LOR_ROT. Dir 0..3 = the LaneDir order (Fwd/Rev/Pend/PingPong).
+        // Identity defaults (16/0/0, dir 0, follow-Macro) are byte-neutral: the push
+        // lands on the store reset() seeded and the pass-through branch holds — old
+        // patches (no persisted keys) play exactly as before. Kept at struct END
+        // (the same ABI-hygiene note as warp/subgate).
+        float voiceLorMacro[3]        = {16.f, 0.f, 0.f};  // the GLOBAL voice range L/O/R (Macro tier)
+        float voiceLorMacroDir        = 0.f;                // Macro tier direction (LaneDir order)
+        float voiceLorEast[48]        = {16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f,
+                                         16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f,
+                                         16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f,
+                                         16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f}; // 16 voices x {L,O,R}
+        float voiceLorEastDir[16]     = {};                 // per-voice direction (LaneDir order)
+        float voiceLorLocalEast[16]   = {};                 // 0 = follow Macro (default), !=0 = own East row
     } editor;
 
     // Unified LOR base accessors. slot = voiceSlot (0 = V1/mono), bank 0..6, c 0..2.
@@ -942,6 +961,41 @@ struct Monsoon : Module {
         if (gLaneOk(lane) && which >= 0 && which < 2) editor.globalTap[lane*2 + which] = x; }
     float getGlobalDir(int lane) const { return gLaneOk(lane) ? editor.globalDir[lane] : 0.f; }
     void  setGlobalDir(int lane, float x) { if (gLaneOk(lane)) editor.globalDir[lane] = x; }
+
+    // ── UNIFIED ADDRESSING voice-range rows (Stage 2b) ─────────────────────────
+    // The same bounds-guarded float-accessor discipline as the globalLor slice:
+    // a bad index returns 0 rather than reading past the array (these are read on
+    // the audio/control path every block). v = voiceSlot 0..15 (V1 mono + V2..V16).
+    // The Macro/East surfaces author these; MonsoonPersistenceManager persists them;
+    // the ONE engine reach is the per-block pushVoiceLorEditor call in process().
+    static bool vLorOk(int v) { return v >= 0 && v < 16; }
+    float getVoiceLorMacro(int c) const {
+        return (c >= 0 && c < 3) ? editor.voiceLorMacro[c] : 0.f; }
+    void  setVoiceLorMacro(int c, float x) {
+        if (c >= 0 && c < 3) editor.voiceLorMacro[c] = x; }
+    float getVoiceLorMacroDir() const { return editor.voiceLorMacroDir; }
+    void  setVoiceLorMacroDir(float x) { editor.voiceLorMacroDir = x; }
+    float getVoiceLorEast(int v, int c) const {
+        return (vLorOk(v) && c >= 0 && c < 3) ? editor.voiceLorEast[v*3 + c] : 0.f; }
+    void  setVoiceLorEast(int v, int c, float x) {
+        if (vLorOk(v) && c >= 0 && c < 3) editor.voiceLorEast[v*3 + c] = x; }
+    float getVoiceLorEastDir(int v) const {
+        return vLorOk(v) ? editor.voiceLorEastDir[v] : 0.f; }
+    void  setVoiceLorEastDir(int v, float x) {
+        if (vLorOk(v)) editor.voiceLorEastDir[v] = x; }
+    float getVoiceLorLocalEast(int v) const {
+        return vLorOk(v) ? editor.voiceLorLocalEast[v] : 0.f; }
+    void  setVoiceLorLocalEast(int v, float x) {
+        if (vLorOk(v)) editor.voiceLorLocalEast[v] = x; }
+    // Reset a row to the identity window (16/0/0/Forward) — the context menus' reset
+    // action and the identity law's escape hatch (identity = pass-through by value).
+    void resetVoiceLorMacro() {
+        editor.voiceLorMacro[0] = 16.f; editor.voiceLorMacro[1] = 0.f; editor.voiceLorMacro[2] = 0.f;
+        editor.voiceLorMacroDir = 0.f; }
+    void resetVoiceLorEast(int v) {
+        if (!vLorOk(v)) return;
+        editor.voiceLorEast[v*3 + 0] = 16.f; editor.voiceLorEast[v*3 + 1] = 0.f;
+        editor.voiceLorEast[v*3 + 2] = 0.f;  editor.voiceLorEastDir[v] = 0.f; }
 
     //  MONO slice accessors (Mono Sands de-param) 
     // monoAtten: lane 0..5 (editor order), col 0..3 (0..2 = LOR len/off/rot, 3 = spread).

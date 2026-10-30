@@ -517,6 +517,18 @@ struct SequencerEngine {
     bool    voiceLorFollowsMacro(dotModular::VoiceSlot bank) const { return !voiceLorLocalEast_[bank.v]; }
     int&    macroVoiceLorRef(int item)               { return macroVoiceLor_[item]; }
     LaneDir& macroVoiceLorDirRef()                   { return macroVoiceLorDir_; }
+    // Stage 2b — the AUTHORING PUSH (Monsoon's float editor rows -> this store). The
+    // EditorState rows (editor.voiceLorMacro / voiceLorEast[16x3] / ·Dir / ·LocalEast)
+    // are the single authoring authority; ONE push per control block copies them in as
+    // the int rows the map walks (the same discipline as the lane LOR push). Pure and
+    // rack-free (plain floats) so the unit tests author it directly. Clamps: L 1..16,
+    // O/R 0..15, dir 0..3 (the LaneDir order), localEast != 0 -> the voice's own East
+    // row. Identity floats (16/0/0, dir 0, follow) land byte-identically on the store —
+    // the pass-through branch reads the same values the Stage-1 goldens pinned, so the
+    // push is byte-neutral at defaults.
+    void    pushVoiceLorEditor(const float* macroLor, float macroDir,
+                               const float* eastLor, const float* eastDir,
+                               const float* localEast);
     // The voice frame's read position (the buffer cell, 0..15) — the Stage-3 range lane
     // and the tests. Cached by the same recompute that fills voiceDriver_.
     int     voiceReadPosition(dotModular::VoiceSlot bank) const  { return voiceRead_[bank.v]; }

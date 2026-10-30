@@ -645,6 +645,158 @@ int main() {
               "STAGE2: identity values = PASS-THROUGH — a len-7 lane free-runs on the raw tick");
     }
 
+    // ── STAGE 2b: the AUTHORING PUSH (pushVoiceLorEditor — the editor-store path) ──
+    // The Monsoon float rows reach the map ONLY through this one copy; these pins
+    // prove the lift is faithful (identity floats = reset bytes; authored floats land
+    // on the same store values the Stage-2a direct-ref tests pinned; clamps mirror
+    // the lane LOR ranges; the delegation flag maps 0=follow / nonzero=local) and
+    // byte-neutral at defaults (a pushed-identity engine marches bit-identically to
+    // an untouched one — the goldens' precondition on the module path).
+    {
+        // IDENTITY PUSH = RESET BYTES: every row reads exactly what reset() seeded.
+        SequencerEngine eng; eng.reset();
+        float macroLor[3] = {16.f, 0.f, 0.f}; float macroDir = 0.f;
+        float eastLor[48], eastDir[16], localEast[16];
+        for (int v = 0; v < 16; ++v) {
+            eastLor[v*3+0] = 16.f; eastLor[v*3+1] = 0.f; eastLor[v*3+2] = 0.f;
+            eastDir[v] = 0.f; localEast[v] = 0.f;
+        }
+        eng.pushVoiceLorEditor(macroLor, macroDir, eastLor, eastDir, localEast);
+        bool ident = true;
+        // slot(v+1): the resolver is VOICE-NUMBER based (V1..V16 -> bank.v 0..15).
+        for (int v = 0; v < 16; ++v) {
+            const auto vs = dotModular::VoiceResolver::slot(v + 1);
+            ident = ident && eng.voiceLor(vs, SequencerEngine::LOR_LEN) == 16;
+            ident = ident && eng.voiceLor(vs, SequencerEngine::LOR_OFF) == 0;
+            ident = ident && eng.voiceLor(vs, SequencerEngine::LOR_ROT) == 0;
+            ident = ident && eng.voiceLorDirRef(vs) == SequencerEngine::LaneDir::Forward;
+            ident = ident && eng.voiceLorFollowsMacro(vs);
+        }
+        ident = ident && eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) == 16;
+        ident = ident && eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) == 0;
+        ident = ident && eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) == 0;
+        ident = ident && eng.macroVoiceLorDirRef() == SequencerEngine::LaneDir::Forward;
+        check(ident, "STAGE2b: identity floats push to EXACTLY the reset() bytes");
+    }
+    {
+        // BYTE-NEUTRAL MARCH: a pushed-identity engine and an untouched one march
+        // bit-identically (lane ticks + voice reads + the mono row) — the push at
+        // defaults cannot move anything the Stage-1/2a goldens pinned.
+        SequencerEngine a; a.reset(); a.numPolyVoices = 4;
+        SequencerEngine b; b.reset(); b.numPolyVoices = 4;
+        float macroLor[3] = {16.f, 0.f, 0.f}; float macroDir = 0.f;
+        float eastLor[48], eastDir[16], localEast[16];
+        for (int v = 0; v < 16; ++v) {
+            eastLor[v*3+0] = 16.f; eastLor[v*3+1] = 0.f; eastLor[v*3+2] = 0.f;
+            eastDir[v] = 0.f; localEast[v] = 0.f;
+        }
+        b.pushVoiceLorEditor(macroLor, macroDir, eastLor, eastDir, localEast);
+        bool same = true;
+        for (int k = 0; k < 64; ++k) {
+            a.advancePlayhead(+1); b.advancePlayhead(+1);
+            same = same && a.getRhythmStep() == b.getRhythmStep();
+            for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
+                same = same && a.laneTick_[l] == b.laneTick_[l];
+            for (int v = 0; v < 4; ++v) {
+                const auto vs = dotModular::VoiceResolver::slot(v + 1);   // V1..V4
+                same = same && a.voiceReadPosition(vs) == b.voiceReadPosition(vs);
+                for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
+                    same = same && a.laneTickV_[v][l] == b.laneTickV_[v][l];
+            }
+        }
+        check(same, "STAGE2b: pushed-identity march == untouched march BIT-EXACTLY");
+    }
+    {
+        // FAITHFUL LIFT: floats through the push == the direct-ref authoring the
+        // Stage-2a pins used (the worked-table Macro row + one local-East voice),
+        // marched bit-identically against the direct-store engine.
+        SequencerEngine direct; direct.reset(); direct.numPolyVoices = 4;
+        const auto v2 = dotModular::VoiceResolver::slot(2);   // voice 2 -> bank.v 1 (the Stage-2a convention)
+        direct.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
+        direct.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
+        direct.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
+        direct.setVoiceLorLocalEast(v2, true);
+        direct.voiceLorRef(v2, SequencerEngine::LOR_LEN) = 4;
+        direct.voiceLorRef(v2, SequencerEngine::LOR_OFF) = 1;
+        direct.voiceLorRef(v2, SequencerEngine::LOR_ROT) = 2;
+        direct.voiceLorDirRef(v2) = SequencerEngine::LaneDir::Reverse;
+
+        SequencerEngine pushed; pushed.reset(); pushed.numPolyVoices = 4;
+        float macroLor[3] = {8.f, 5.f, 7.f}; float macroDir = 0.f;
+        float eastLor[48], eastDir[16], localEast[16];
+        for (int v = 0; v < 16; ++v) {
+            eastLor[v*3+0] = 16.f; eastLor[v*3+1] = 0.f; eastLor[v*3+2] = 0.f;
+            eastDir[v] = 0.f; localEast[v] = 0.f;
+        }
+        eastLor[1*3+0] = 4.f; eastLor[1*3+1] = 1.f; eastLor[1*3+2] = 2.f;
+        eastDir[1] = 1.f;          // Reverse (the LaneDir order)
+        localEast[1] = 1.f;        // V2 claims its own East row
+        pushed.pushVoiceLorEditor(macroLor, macroDir, eastLor, eastDir, localEast);
+
+        bool same = true;
+        for (int k = 0; k < 64; ++k) {
+            direct.advancePlayhead(+1); pushed.advancePlayhead(+1);
+            same = same && direct.getRhythmStep() == pushed.getRhythmStep();
+            for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
+                same = same && direct.laneTick_[l] == pushed.laneTick_[l];
+            for (int v = 0; v < 4; ++v) {
+                const auto vs = dotModular::VoiceResolver::slot(v + 1);   // V1..V4
+                same = same && direct.voiceReadPosition(vs) == pushed.voiceReadPosition(vs);
+                for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
+                    same = same && direct.laneTickV_[v][l] == pushed.laneTickV_[v][l];
+            }
+        }
+        check(same, "STAGE2b: pushed floats == direct-ref authoring, marched BIT-EXACTLY (worked table + claimed voice)");
+
+        // And the WORKED TABLE through the push: the follower V3 reads the Macro
+        // window L=8 O=5 R=7 — the same rows the Stage-2a delegation pins used.
+        bool v3OK = true;
+        const auto v3 = dotModular::VoiceResolver::slot(3);   // voice 3 (follows Macro)
+        for (int k = 0; k < 32; ++k) {
+            pushed.advancePlayhead(+1);
+            const long T = (long)k + 1;
+            v3OK = v3OK && pushed.voiceReadPosition(v3) == (((T + 1) % 8 + 5) & 0x0F);
+        }
+        check(v3OK, "STAGE2b: the follower's read walks the pushed Macro row (the doc's table)");
+    }
+    {
+        // THE CLAMPS mirror the lane LOR ranges exactly: L 1..16, O/R 0..15, dir
+        // 0..3, localEast != 0 -> local. Out-of-range floats land on the nearest
+        // legal value (std::lround of the clamp), never past the store's frame.
+        SequencerEngine eng; eng.reset();
+        float macroLor[3] = {0.f, -3.f, 99.f}; float macroDir = 7.4f;
+        float eastLor[48], eastDir[16], localEast[16];
+        for (int v = 0; v < 16; ++v) {
+            eastLor[v*3+0] = 0.4f; eastLor[v*3+1] = -1.f; eastLor[v*3+2] = 200.f;
+            eastDir[v] = -2.f; localEast[v] = 0.5f;
+        }
+        eastLor[15*3+0] = 31.f; eastLor[15*3+1] = 15.49f; eastLor[15*3+2] = -0.2f;
+        eastDir[15] = 2.6f; localEast[15] = 0.f;
+        eng.pushVoiceLorEditor(macroLor, macroDir, eastLor, eastDir, localEast);
+        bool clamps = true;
+        clamps = clamps && eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) == 1;
+        clamps = clamps && eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) == 0;
+        clamps = clamps && eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) == 15;
+        clamps = clamps && eng.macroVoiceLorDirRef() == SequencerEngine::LaneDir::PingPong;
+        for (int v = 0; v < 15; ++v) {
+            const auto vs = dotModular::VoiceResolver::slot(v + 1);
+            clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_LEN) == 1;
+            clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_OFF) == 0;
+            clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_ROT) == 15;
+            clamps = clamps && eng.voiceLorDirRef(vs) == SequencerEngine::LaneDir::Forward;
+            clamps = clamps && !eng.voiceLorFollowsMacro(vs);   // 0.5 != 0 -> local
+        }
+        {
+            const auto vs = dotModular::VoiceResolver::slot(16);   // the last voice (bank.v 15)
+            clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_LEN) == 16;
+            clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_OFF) == 15;
+            clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_ROT) == 0;
+            clamps = clamps && eng.voiceLorDirRef(vs) == SequencerEngine::LaneDir::PingPong;   // lround(2.6) = 3
+            clamps = clamps && eng.voiceLorFollowsMacro(vs);    // exactly 0 -> follow
+        }
+        check(clamps, "STAGE2b: the push clamps to the store frame (L 1..16, O/R 0..15, dir 0..3, flag)");
+    }
+
     std::printf("test_unified_addressing: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

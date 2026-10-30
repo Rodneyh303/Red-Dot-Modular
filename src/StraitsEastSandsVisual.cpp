@@ -638,6 +638,30 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         menu->addChild(createCheckMenuItem("DISTRIBUTION", "",
             [this]() { return hasSubpanel(modelSandsDistributionExpander); },
             [this]() { toggleSubpanel(modelSandsDistributionExpander); }));
+        // ── UNIFIED ADDRESSING Stage 2b: the per-voice RANGE delegation ─────────
+        // The voice-range rows (L/O/R + direction per voice — the global->voice map)
+        // are authored on the range surface (Stage 3); the DELEGATION switch lives
+        // here today, per SELECTED voice tab: follow the Macro global range (the
+        // default, every voice in one ensemble frame) or break free with this
+        // voice's own East row (soloists/canon voices — the spread two-module
+        // model, one axis over). The Monsoon EDITOR store is the single authority
+        // (get/setVoiceLorLocalEast); the engine picks the row up on the next
+        // control block via pushVoiceLorEditor. selectedVoice is the tab index ==
+        // the voiceSlot (0 = V1 mono) — the same indexing the store uses.
+        if (auto* mm = getMonsoon()) {
+            const int v = selectedVoice;
+            menu->addChild(new MenuSeparator);
+            menu->addChild(createMenuLabel(
+                std::string("Voice range (voice ") + std::to_string(v + 1) + ")"));
+            menu->addChild(createCheckMenuItem("Follow Macro (global range)", "",
+                [mm, v]() { return mm->getVoiceLorLocalEast(v) == 0.f; },
+                [mm, v]() { mm->setVoiceLorLocalEast(v, 0.f); }));
+            menu->addChild(createCheckMenuItem("Independent (East, this voice)", "",
+                [mm, v]() { return mm->getVoiceLorLocalEast(v) != 0.f; },
+                [mm, v]() { mm->setVoiceLorLocalEast(v, 1.f); }));
+            menu->addChild(createMenuItem("Reset range to identity (16/0/0, fwd)", "",
+                [mm, v]() { mm->resetVoiceLorEast(v); }));
+        }
     }
 
     // Unified per-slot store <-> editor for LOR + spread. slot = voiceSlot (0 = V1/mono,

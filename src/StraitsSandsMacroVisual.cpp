@@ -430,6 +430,19 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         menu->addChild(createCheckMenuItem("DISTRIBUTION", "",
             [this]() { return hasSubpanel(modelSandsDistributionExpander); },
             [this]() { toggleSubpanel(modelSandsDistributionExpander); }));
+        // ── UNIFIED ADDRESSING Stage 2b: the MACRO (global) voice range ──────────
+        // Macro's GLOBAL voice-range row (the L/O/R+dir every FOLLOWING voice reads —
+        // the Macro tier of the global->voice map) is authored on the range surface
+        // (Stage 3); the reset lives here today. The Monsoon EDITOR store is the
+        // single authority; the engine picks it up next control block via
+        // pushVoiceLorEditor. Resetting to identity (16/0/0/Forward) restores the
+        // pass-through law by VALUE — the Stage-1/2a goldens' precondition.
+        if (auto* mm = getMonsoon()) {
+            menu->addChild(new MenuSeparator);
+            menu->addChild(createMenuLabel("Voice range (global, unified addressing)"));
+            menu->addChild(createMenuItem("Reset global range to identity (16/0/0, fwd)", "",
+                [mm]() { mm->resetVoiceLorMacro(); }));
+        }
     }
 
     Monsoon* getMonsoon() {

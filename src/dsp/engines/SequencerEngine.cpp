@@ -237,6 +237,36 @@ void SequencerEngine::setWindow(int length, int offset) {
     }
 }
 
+// ── Stage 2b: the voice-LOR authoring push (see the hpp decl) ──────────────────
+// The EditorState float rows are the single authoring authority; this ONE copy per
+// control block is the only path they reach the map through (same discipline as the
+// lane LOR push in the Sands manager). The clamps mirror the lane LOR ranges exactly
+// (L 1..16, O/R 0..15, dir 0..3) and the rounding is std::lround — so an identity
+// row (16/0/0/0, follow) lands byte-identically on the store the reset() seeded and
+// the pass-through branch keeps the Stage-1 goldens verbatim. Pure: reads only its
+// arguments, writes only the voice-LOR store (no recompute here — the next step's
+// lane walk picks the rows up, the same one-block cadence every authored LOR uses).
+void SequencerEngine::pushVoiceLorEditor(
+    const float* macroLor, float macroDir,
+    const float* eastLor, const float* eastDir, const float* localEast) {
+    auto lorInt = [](float x, float lo, float hi) -> int {
+        return (int)std::lround(std::clamp(x, lo, hi));
+    };
+    // Row item order is the store's: LOR_LEN=0, LOR_OFF=1, LOR_ROT=2 — the editor rows
+    // are authored {L,O,R} in the same order (documented at the EditorState arrays).
+    macroVoiceLor_[LOR_LEN] = lorInt(macroLor[LOR_LEN], 1.f, 16.f);
+    macroVoiceLor_[LOR_OFF] = lorInt(macroLor[LOR_OFF], 0.f, 15.f);
+    macroVoiceLor_[LOR_ROT] = lorInt(macroLor[LOR_ROT], 0.f, 15.f);
+    macroVoiceLorDir_       = (LaneDir)lorInt(macroDir, 0.f, 3.f);
+    for (int v = 0; v < kVoiceSlots; ++v) {
+        voiceLorStore_[v][LOR_LEN] = lorInt(eastLor[v * 3 + LOR_LEN], 1.f, 16.f);
+        voiceLorStore_[v][LOR_OFF] = lorInt(eastLor[v * 3 + LOR_OFF], 0.f, 15.f);
+        voiceLorStore_[v][LOR_ROT] = lorInt(eastLor[v * 3 + LOR_ROT], 0.f, 15.f);
+        voiceLorDir_[v]            = (LaneDir)lorInt(eastDir[v], 0.f, 3.f);
+        voiceLorLocalEast_[v]      = (localEast[v] != 0.f);
+    }
+}
+
 bool SequencerEngine::advancePlayhead(int dir) {
     int prevStep = stepIndex;
     lastPlayDir = (dir < 0) ? -1 : +1;
