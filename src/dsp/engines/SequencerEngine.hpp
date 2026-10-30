@@ -465,6 +465,65 @@ struct SequencerEngine {
     int        lor   (int strand, int item) const { return lorStore_[0][strandClamp(strand)][item]; }
     static int strandClamp(int s) { return (s >= 0 && s < dotModular::NUM_STRANDS) ? s : dotModular::STRAND_RHYTHM; }
 
+    // ── UNIFIED ADDRESSING Stage 2 (CC_PROMPT_UNIFIED_ADDRESSING_SPEC.md) ──────────
+    // The VOICE-level LOR — the global->voice map, "lane is the probability half of voice".
+    // The voice's L/O/R+direction is its READ FRAME (not a probability lane): the frame its
+    // LANES nest within. R is the ANCHOR form (where the voice reads when the parent is at
+    // step 1); the mechanical phase is (R - O) mod L, derived. Indexed [bank.v] — slot 0 =
+    // V1 (mono, drives laneTick_), 1..15 = V2..V16 (drive laneTickV_) — the same indexing
+    // as lorStore_/laneTickV_. Macro tier = the GLOBAL voice range (all voices); the
+    // per-voice rows are the East tier; delegation per voice: follow-Macro (default) or
+    // local-East. Identity defaults (16/0/0/Forward) take the PASS-THROUGH branch — the
+    // raw parent driver verbatim — so the Stage-1 goldens hold until a voice LOR carries
+    // a setting. Seeded in reset().
+    int     voiceLorStore_[kVoiceSlots][LOR_ITEMS]  = {};   // {L,O,R} per voice
+    LaneDir voiceLorDir_[kVoiceSlots]               = {};   // per-voice direction
+    int     macroVoiceLor_[LOR_ITEMS]               = {};   // the Macro (global) voice range
+    LaneDir macroVoiceLorDir_                       = LaneDir::Forward;
+    bool    voiceLorLocalEast_[kVoiceSlots]         = {};   // false = follow Macro (default)
+    // The per-voice map's output caches, recomputed with the lane walks each step (the
+    // stateless law): voiceDriver_ = the 1-based tick the voice's LANES are driven by
+    // (laneTickFor input), voiceDriverPrev_ = its wrap-normalized musical predecessor
+    // (for the lane-sign derivation), voiceRead_ = the buffer cell the voice's frame
+    // reads (the Stage-3 range lane + tests).
+    long    voiceDriver_[kVoiceSlots]               = {};
+    long    voiceDriverPrev_[kVoiceSlots]           = {};
+    int     voiceRead_[kVoiceSlots]                 = {};
+
+    // The EFFECTIVE voice LOR row (delegation + Macro tier) — the one resolution authority.
+    void effectiveVoiceLor(int v, int& L, int& O, int& R, LaneDir& d) const {
+        if (v < 0 || v >= kVoiceSlots) { L = 16; O = 0; R = 0; d = LaneDir::Forward; return; }
+        if (voiceLorLocalEast_[v]) {
+            L = voiceLorStore_[v][LOR_LEN]; O = voiceLorStore_[v][LOR_OFF];
+            R = voiceLorStore_[v][LOR_ROT]; d = voiceLorDir_[v];
+        } else {
+            L = macroVoiceLor_[LOR_LEN]; O = macroVoiceLor_[LOR_OFF];
+            R = macroVoiceLor_[LOR_ROT]; d = macroVoiceLorDir_;
+        }
+    }
+    // Identity VALUES (16/0/0/Forward) mean PASS-THROUGH — deliberately NOT the mapped
+    // (L=16) form, whose mod-16 bounding would move non-divisive lane lengths (the
+    // UA_NONDIV goldens pin the distinction).
+    bool voiceLorIdentity(int v) const {
+        int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
+        return L == 16 && O == 0 && R == 0 && d == LaneDir::Forward;
+    }
+    // Store accessors (the manager/UI author these; tests author them rack-free).
+    // dotModular::VoiceSlot spelled out: the VoiceSlot alias is declared further below.
+    int&    voiceLorRef(dotModular::VoiceSlot bank, int item)    { return voiceLorStore_[bank.v][item]; }
+    int     voiceLor(dotModular::VoiceSlot bank, int item) const { return voiceLorStore_[bank.v][item]; }
+    LaneDir& voiceLorDirRef(dotModular::VoiceSlot bank)          { return voiceLorDir_[bank.v]; }
+    void    setVoiceLorLocalEast(dotModular::VoiceSlot bank, bool local) { voiceLorLocalEast_[bank.v] = local; }
+    bool    voiceLorFollowsMacro(dotModular::VoiceSlot bank) const { return !voiceLorLocalEast_[bank.v]; }
+    int&    macroVoiceLorRef(int item)               { return macroVoiceLor_[item]; }
+    LaneDir& macroVoiceLorDirRef()                   { return macroVoiceLorDir_; }
+    // The voice frame's read position (the buffer cell, 0..15) — the Stage-3 range lane
+    // and the tests. Cached by the same recompute that fills voiceDriver_.
+    int     voiceReadPosition(dotModular::VoiceSlot bank) const  { return voiceRead_[bank.v]; }
+    // The recompute shared by advancePlayhead and recomputeLaneTicks (implemented .cpp):
+    // fills voiceDriver_/voiceDriverPrev_/voiceRead_ from the global driver pair.
+    void    recomputeVoiceDrivers_(long tNow, long tPrevGlobal, long tRawPrev, int dirMotion);
+
     // Lane-index unification: PL_* now matches the VISUAL/EDITOR/STRAND order
     // (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6). Editor==engine==strand —
     // the old EDITOR_TO_ENGINE_LANE_QMIX table is deleted (Phase 3b, identity).

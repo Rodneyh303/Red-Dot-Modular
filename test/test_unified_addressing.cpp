@@ -473,6 +473,178 @@ int main() {
         check(bounded, "RE-AUTHOR: after updateWindow(5), the reads bound to [0,5) from the next step");
     }
 
+    // ── 8. STAGE 2 — the VOICE map (the global->voice level) ─────────────────────
+    {
+        // THE DESIGN DOC'S WORKED TWO-LANE TABLE, pinned verbatim (the composition's
+        // correctness anchor). Voice: L=8 O=5 R=7 (window 5..12). Lane A = the mono REST
+        // lane: L=4 O=1 R=3. Lane B = the mono MELODY lane: L=6 O=3 R=6. The voice reads
+        // 7 at global 1; the lanes hit THEIR rotations exactly when the VOICE is at its
+        // window start (global 7) — the lane R re-base to voice-step-1.
+        static const int kVoiceReads[16] = {7,8,9,10,11,12,5,6,7,8,9,10,11,12,5,6};
+        static const int kLaneA[16]      = {1,2,3,4,1,2,3,4,1,2,3,4,1,2,3,4};
+        static const int kLaneB[16]      = {8,3,4,5,6,7,6,7,8,3,4,5,6,7,6,7};
+        SequencerEngine eng; eng.reset();
+        const auto M = dotModular::VoiceResolver::mono();
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;   // the Macro row: all voices follow
+        eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
+        // The LANES' stored rot is MECHANICAL (getStrandIdx applies it directly); the doc's
+        // lane R values are ANCHOR-form (the read at voice-step-1): rot = (R_anchor - O) mod L
+        // -> lane A: (3-1) mod 4 = 2; lane B: (6-3) mod 6 = 3. The VOICE row's R is stored in
+        // ANCHOR form (the engine derives (R-O) mod L itself).
+        eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_LEN) = 4;
+        eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_OFF) = 1;
+        eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_ROT) = 2;
+        eng.lorRef(dotModular::STRAND_MELODY, SequencerEngine::LOR_LEN) = 6;
+        eng.lorRef(dotModular::STRAND_MELODY, SequencerEngine::LOR_OFF) = 3;
+        eng.lorRef(dotModular::STRAND_MELODY, SequencerEngine::LOR_ROT) = 3;
+        bool voiceOK = true, laneAOK = true, laneBOK = true;
+        for (int k = 0; k < 16; ++k) {
+            eng.advancePlayhead(+1);
+            voiceOK = voiceOK && eng.voiceReadPosition(M) == kVoiceReads[k];
+            laneAOK = laneAOK && eng.getRhythmStep()  == kLaneA[k];
+            laneBOK = laneBOK && eng.getMelodyStep()  == kLaneB[k];
+        }
+        check(voiceOK, "STAGE2: the worked table — the voice reads exactly the doc's column");
+        check(laneAOK, "STAGE2: the worked table — lane A (win 1..4, R=3) matches every row");
+        check(laneBOK, "STAGE2: the worked table — lane B (win 3..8, R=6) matches every row");
+        // THE ANCHOR LAW: the lanes read their R when the VOICE is at its window start —
+        // wherever in the phrase that falls. Change the voice R to 6: voice-step-1 moves
+        // to global 8, and the lanes' rotations move WITH it (voice R propagates).
+        eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 6;
+        bool anchorOK = true; int atVoiceStart = 0;
+        for (int k = 0; k < 16; ++k) {
+            eng.advancePlayhead(+1);
+            if (eng.voiceReadPosition(M) == 5) {   // the voice at its window start
+                ++atVoiceStart;
+                anchorOK = anchorOK && eng.getRhythmStep() == 3 && eng.getMelodyStep() == 6;
+            }
+        }
+        check(anchorOK && atVoiceStart == 2,
+              "STAGE2: lanes read their R exactly at voice-step-1 (the re-based anchor, voice R propagates)");
+    }
+    {
+        // DIRECTION — the sign product falls out of the chain (voice dir is RELATIVE to
+        // the parent's motion; the lanes inherit by composition). Voice Reverse x lane
+        // Forward reads BACKWARD in real time; voice Reverse x lane Reverse reads
+        // FORWARD (the double negative). Voice L=8 O=0 R=0 (rho 0).
+        SequencerEngine eng; eng.reset();
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
+        eng.macroVoiceLorDirRef() = SequencerEngine::LaneDir::Reverse;
+        // Lane A: the mono REST lane FORWARD len 4; Lane B: the mono MELODY lane REVERSE len 4.
+        eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_LEN) = 4;
+        eng.lorRef(dotModular::STRAND_MELODY, SequencerEngine::LOR_LEN) = 4;
+        eng.laneDir_[dotModular::STRAND_MELODY] = SequencerEngine::LaneDir::Reverse;
+        eng.laneDirPending_[dotModular::STRAND_MELODY] = SequencerEngine::LaneDir::Reverse;
+        int prevA = -1, prevB = -1; bool aBackward = true, bForward = true;
+        for (int k = 0; k < 12; ++k) {
+            eng.advancePlayhead(+1);
+            const int a = eng.getRhythmStep(), b = eng.getMelodyStep();
+            if (prevA >= 0) aBackward = aBackward && a == ((prevA + 3) & 0x03);  // -1 mod 4
+            if (prevB >= 0) bForward  = bForward  && b == ((prevB + 1) & 0x03);  // +1
+            prevA = a; prevB = b;
+        }
+        check(aBackward, "STAGE2: voice Reverse x lane Forward reads BACKWARD (sign product)");
+        check(bForward,  "STAGE2: voice Reverse x lane Reverse reads FORWARD (double negative)");
+    }
+    {
+        // TURNAROUND STYLES: a Pendulum voice reads its window END once per turn
+        // (pre-direction); a PingPong voice reads it TWICE (the double-tap). L=8 O=5 R=5.
+        SequencerEngine pend; pend.reset();
+        pend.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
+        pend.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
+        pend.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 5;
+        pend.macroVoiceLorDirRef() = SequencerEngine::LaneDir::Pendulum;
+        SequencerEngine pong; pong.reset();
+        pong.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
+        pong.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
+        pong.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 5;
+        pong.macroVoiceLorDirRef() = SequencerEngine::LaneDir::PingPong;
+        bool pendOK = true, pongOK = true;
+        for (int k = 0; k < 17; ++k) {
+            pend.advancePlayhead(+1); pong.advancePlayhead(+1);
+            // Pendulum: 5,6,...,12,11,...,5,6 (single endpoint read)
+            const int p = pend.voiceReadPosition(dotModular::VoiceResolver::mono());
+            const int tri = (k % 14 < 8) ? (k % 14) : (14 - (k % 14));   // 0..7..1 triangle
+            pendOK = pendOK && p == tri + 5;
+            // PingPong: 5,...,12,12,11,... (the endpoint repeats)
+            const int g = pong.voiceReadPosition(dotModular::VoiceResolver::mono());
+            const int per = k % 16;
+            const int walk = (per < 8) ? per : (15 - per);               // 0..7,7..0
+            pongOK = pongOK && g == walk + 5;
+        }
+        check(pendOK, "STAGE2: Pendulum voice — the window end read ONCE per turn (no double-tap)");
+        check(pongOK, "STAGE2: PingPong voice — the window end read TWICE (the double-tap)");
+    }
+    {
+        // ROUND-TRIP under a mapped voice: the voice map is a pure function of the clock.
+        SequencerEngine eng; eng.reset();
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 2;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 6;
+        eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_LEN) = 6;
+        eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_ROT) = 2;
+        std::vector<int> fwd, back;
+        for (int k = 0; k < 24; ++k) { eng.advancePlayhead(+1); fwd.push_back(eng.getRhythmStep()); }
+        for (int k = 0; k < 24; ++k) { eng.advancePlayhead(-1); back.push_back(eng.getRhythmStep()); }
+        bool retraces = true;
+        for (int j = 0; j < 23; ++j) retraces = retraces && back[j] == fwd[22 - j];
+        check(retraces, "STAGE2: REVERSIBILITY — a mapped voice + authored lane retraces bit-exactly");
+    }
+    {
+        // DELEGATION: the Macro row is the default for every voice; a local-East claim
+        // overrides for that voice alone.
+        SequencerEngine eng; eng.reset();
+        eng.numPolyVoices = 2;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;   // V2 (follow) and V3 (follow)
+        eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
+        const auto v2 = dotModular::VoiceResolver::slot(2);   // bank.v = 1
+        const auto v3 = dotModular::VoiceResolver::slot(3);   // bank.v = 2
+        eng.setVoiceLorLocalEast(v2, true);                   // V2 claims its own range
+        eng.voiceLorRef(v2, SequencerEngine::LOR_LEN) = 4;    // V2: L=4 O=0 R=0
+        bool v2OK = true, v3OK = true;
+        for (int k = 0; k < 16; ++k) {
+            eng.advancePlayhead(+1);
+            const long T = (long)k + 1;
+            v2OK = v2OK && eng.voiceReadPosition(v2) == (int)((T - 1) % 4);
+            v3OK = v3OK && eng.voiceReadPosition(v3) == (((T + 1) % 8 + 5) & 0x0F);
+        }
+        check(v2OK, "STAGE2: a local-East voice reads ITS OWN window (L=4)");
+        check(v3OK, "STAGE2: a following voice reads the Macro window (L=8 O=5 R=7)");
+        // V2's lanes are driven by V2's driver: a default REST lane reads (driver-1).
+        bool laneOK = true;
+        SequencerEngine e2; e2.reset(); e2.numPolyVoices = 2;
+        e2.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
+        e2.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
+        e2.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
+        e2.setVoiceLorLocalEast(v2, true);
+        e2.voiceLorRef(v2, SequencerEngine::LOR_LEN) = 4;
+        for (int k = 0; k < 16; ++k) {
+            e2.advancePlayhead(+1);
+            laneOK = laneOK && e2.laneTickV_[1][dotModular::STRAND_RHYTHM] == (int)k % 4;
+        }
+        check(laneOK, "STAGE2: the claimed voice's LANES are driven by its own voice walk");
+    }
+    {
+        // IDENTITY VALUES = PASS-THROUGH (not the mapped L=16 form): a voice authored at
+        // exactly {16,0,0,Forward} keeps the raw-tick driver, so a non-divisive lane
+        // length free-runs exactly as the pre-unification engine.
+        SequencerEngine eng; eng.reset();
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 16;   // authored, but identity values
+        eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_LEN) = 7;
+        eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_ROT) = 3;
+        bool isPassthrough = true;
+        for (int k = 0; k < 40; ++k) {
+            eng.advancePlayhead(+1);
+            const long T = (long)k + 1;
+            const int expect = (int)(((T - 1 + 3) % 7 + 7) % 7);
+            isPassthrough = isPassthrough && eng.getRhythmStep() == expect;
+        }
+        check(isPassthrough,
+              "STAGE2: identity values = PASS-THROUGH — a len-7 lane free-runs on the raw tick");
+    }
+
     std::printf("test_unified_addressing: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
