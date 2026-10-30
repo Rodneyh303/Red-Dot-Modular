@@ -66,3 +66,53 @@ Audit the whole step-advance build for anything that assumed the fresh-draw mode
 - Bipolar/direction/wrap unchanged; the variationProb/variationRateProb two-field split kept.
 - Comments/tests that assumed fresh-draw rewritten; p=1 identity holds; mid-range digests re-pinned if
   moved; GOLDEN_A untouched. Full battery green.
+
+════════════════════════════════════════════════════════════════════════════════
+## THE COMPANION CHANGE (same piece) — ghost/ratchet CANDIDACY moves OFF Variation onto subgate REST/LEGATO
+
+This is WHAT FREES VARIATION (Rodney). Do it IN THE SAME fix, because it is the reason r_vary becomes spare.
+
+### Current (to change)
+Ghost (and ratchet) CANDIDACY — "does this in-gap ghost cell / ratchet sub-cell produce a candidate note" —
+is gated on the VARIATION strand: SequencerEngine.cpp:1137-1148 (mono) + :1382 (poly):
+`r_vary >= ghostTh → no ghost`, where ghostTh = variationRateProb (the rectified variation rate). So
+Variation is doing DOUBLE DUTY (candidacy gate). THEN executeStep separately rolls the REST lane which may
+ALSO silence the candidate (two rest-like gates on one ghost).
+
+### The change — candidacy from the SUBGATE GHOST/RATCHET REST (+ LEGATO) decisions
+Ghost/ratchet candidacy becomes a function of the per-level SUBGATE REST (and LEGATO) thresholds — the
+consumer-group knobs built in task-85 (subRes[GHOST/RATCHET][REST], [LEGATO]) — NOT of r_vary. A ghost/
+ratchet cell is a candidate per its subgate REST decision (and LEGATO where it applies), exactly the tier
+that now owns per-level articulation. This REMOVES the `r_vary >= variationRateProb` candidacy gate →
+r_vary is then GENUINELY SPARE in gate mode → free for step-advance (the fix above). The freeing is CAUSED
+by this move, not incidental.
+
+### Resolve cleanly (CC — flag the double-gate, don't blindly keep both)
+Today candidacy (variation) + executeStep's rest roll were TWO silencing gates on a ghost. Moving candidacy
+onto subgate REST risks DOUBLE-COUNTING rest (candidacy-rest AND executeStep-rest both silencing). Decide
+the clean semantics:
+- Candidacy = the subgate REST decision at that level (a ghost/ratchet cell exists iff its subgate rest
+  passes), and executeStep should NOT re-roll rest for a cell whose candidacy already came from rest (no
+  double rest gate) — OR keep executeStep's rest as the single rest authority and make candidacy a
+  LEGATO/existence decision only. Pick the one that gives ONE rest gate per cell, and document it.
+- LEGATO's role in candidacy (if any) per the subgate design — a ghost tied from the prior cell vs a fresh
+  ghost. Keep consistent with the main-level legato/tie semantics.
+
+### Consequence for variationRateProb
+With candidacy off Variation, variationRateProb (the rectified rate that fed ghost candidacy at :1148/1382)
+may have NO remaining consumer. If so, REMOVE it (and simplify the 5647e7c two-field split to just the
+bipolar variationProb for advance — the rectified field existed ONLY to feed candidacy a non-negative rate).
+Verify no other reader before removing. (If a reader remains, keep it; but the candidacy reader is gone.)
+
+### Net after both changes
+- Gate-mode Variation strand (r_vary) has ONE consumer: STEP-ADVANCE (the sole reader — cleaner than the
+  "shared with candidacy" note earlier in this doc, which is SUPERSEDED: candidacy no longer reads r_vary).
+- Ghost/ratchet candidacy reads subgate REST(/LEGATO) — the articulation tier that owns it.
+- variationRateProb removed if unused; the advance value is the single bipolar variationProb.
+- Note length in gate mode already doesn't use r_vary (fixed 1/16), so nothing else claims it.
+
+## DONE (updated) =
+- (advance draw fix as above) + ghost/ratchet candidacy sourced from subgate REST(/LEGATO), not r_vary;
+  ONE rest gate per cell (no double-count); variationRateProb removed if it has no remaining reader;
+  r_vary's SOLE gate-mode consumer is step-advance. Goldens: candidacy moving changes ghost behaviour →
+  re-pin the affected digests deliberately (documented), GOLDEN_A untouched, p=1 advance identity holds.
