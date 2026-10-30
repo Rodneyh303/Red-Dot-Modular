@@ -334,13 +334,21 @@ static void marchModeBS(int seed, Capture& cap, int& c2n, int& envn) {
     }
 }
 
-// ── Golden digests (pinned on the PRE-refactor engine — the byte-identity oracle) ──
-// Captured on lane-expander-refactor @ 257fb351 (the containment merge, pre-Stage-R) and
-// committed with R-1. Every later Stage-R commit (R-2..R-5) and every Stage-F star-graph
-// march must hold these EXACTLY.
+// ── Golden digests (the byte-identity oracle) ───────────────────────────────────
+// GOLDEN_A/B/BS captured on lane-expander-refactor @ 257fb351 (the containment merge,
+// pre-Stage-R) and committed with R-1; every Stage-R commit (R-2..R-5) and Stage-F march
+// held them EXACTLY.
+// RE-PINNED (deliberate, feat/step-advance Stages 1+3 — CC_PROMPT_GATE_STEP_ADVANCE_SPEC):
+// the gate-mode main advance is now PROBABILISTIC (u < the resolved Variation p, REPEAT =
+// held), so the B and BS marches (V1 variationProb mid-range 0.25..0.75) legitimately
+// changed — the gate-mode digests are the FEATURE's new baseline. GOLDEN_A is UNTOUCHED:
+// mode A (clock/phase) has no step-advance probability, and its unchanged digest is the
+// regression guard that the feature stayed gate-mode-only. The p=1 identity (byte-identity
+// with the PRE-feature engine) is pinned separately by test_step_advance (the spec's
+// golden pin: only p<1 changes behaviour).
 static const uint64_t GOLDEN_A  = 0xa843e2ff14883ab9ULL;
-static const uint64_t GOLDEN_B  = 0x3169e28ca3cc206aULL;
-static const uint64_t GOLDEN_BS = 0x166132accd092fceULL;
+static const uint64_t GOLDEN_B  = 0xcc4d19d45293b134ULL;
+static const uint64_t GOLDEN_BS = 0x7c00a247c8040799ULL;
 
 int main() {
     std::printf("\033[1mrhythm decision differential — the R-1 oracle (stage R)\033[0m\n");

@@ -342,6 +342,39 @@ bool SequencerEngine::advancePlayhead(int dir) {
     return wrapped;
 }
 
+// STEP-ADVANCE (CC_PROMPT_GATE_STEP_ADVANCE_SPEC Stages 1-3) — the gate-mode advance
+// DECISION for one rise. GATE MODE ONLY (Mode B): in clock/phase mode p_advance is not
+// used and Variation keeps its existing meaning (executeModeA never calls this).
+dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLevel) {
+    namespace SK = dotModular::SubgateKnobs;
+    // ONE draw per decision rise: the STEP-RATE UNIFORM — per-rise FRESH from the rhythm
+    // Philox stream's reserved chunk (PatternEngine::stepRateUniform; same stream, NOT a
+    // new one). NOT a lane-ring read: the rings are step-addressed and freeze with a held
+    // step BY CONSTRUCTION (the corrected REPEAT semantics, Rodney 91b100c — "not
+    // advancing = same step = same counter = same data"), and a frozen u would freeze the
+    // advance decision together with the step — a cell >= p would wall the sequence
+    // permanently. The fresh draw is the decision's own input; the held step's data stays
+    // step-addressed and untouched (repeat = re-output the same address, no re-draw branch).
+    const uint64_t rise = stepAdvanceRiseCtr_++;
+    const float u = pe.stepRateUniform(rise);
+    // The threshold, by LEVEL (the three-level hierarchy): a MAIN gate rise resolves to
+    // the VARIATION probability (the per-voice resolver path — warps/correlates/CAs like
+    // every lane, NOT the raw knob); a ratchet/ghost rise resolves to THIS slot's subgate
+    // ADVANCE column (the Straits consumer-group store, three-way: own-subpanel claim >
+    // {global | follow-main}). subResLive gates the subgate read exactly like the
+    // rest/legato/accent reads in executeStep: an engine that has never been through
+    // ModeController keeps reading the main value verbatim (rack-free byte-identity).
+    const VoiceSlot m = VoiceResolver::mono();
+    const float p = (subLevel < 0 || !voices[m].subResLive)
+                  ? voices[m].variationProb
+                  : voices[m].subRes[subLevel][SK::ADVANCE];
+    // SCOPE LINE (the ONE PLAYHEAD law): the playhead is singular, so the advance consumer
+    // is the MONO slot alone (V1's row — the mono subgate row). Poly voices' ADVANCE
+    // columns stay resolved + stored with no per-voice consumer this build (a per-voice
+    // playhead is Stage-4/atom territory; the columns exist, resolved, never uncontrolled).
+    return dotModular::StepAdvance::decide(p, u);
+}
+
 void SequencerEngine::recomputeLaneTicks() {
     // Recompute all laneTick_/laneTickV_/macroLaneTick_ caches from totalStepsElapsed.
     // This is the same recompute block as in advancePlayhead(), extracted so it can be
@@ -517,9 +550,11 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     // subgate thresholds (voices[monoSlot].subRes, written by ModeController through the
     // three-way resolver). BYTE-IDENTITY: with nothing authored the resolved values EQUAL
     // the main values exactly, so a ratchet/ghost edge shapes bit-identically to before.
-    // The variation-strand gates (ghost candidacy, step-advance) are NOT re-pointed here:
-    // candidacy stays on the main VARIATION lane, and the ADVANCE columns are consumed by
-    // the step-advance Stage 3 build (stored-only this build).
+    // The variation-strand gates are NOT re-pointed here: ghost candidacy stays on the
+    // main VARIATION lane, and the ADVANCE columns are consumed UPSTREAM of this call —
+    // at the advance site (decideStepAdvance_, before advancePlayhead; the playhead
+    // decision precedes this step's articulation). The rolls below stay
+    // rest/legato/accent (the step-advance Stage 1/3 build).
     namespace SK = dotModular::SubgateKnobs;
     const float restTh = (subLevel >= 0 && voices[monoSlot].subResLive) ? voices[monoSlot].subRes[subLevel][SK::REST]
                                                                         : voices[monoSlot].restProb;
@@ -889,9 +924,21 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
             // do NOT advance again ("one advance, one arrival" — no double-advance jump).
             pendingCheckpointArrival = false;
             wrapped = false;
-        } else {
+        } else if (stepIndex == -1) {
+            // The seed: initialization, not a sequence-motion decision (no draw consumed).
+            wrapped = advancePlayhead();
+        } else if (decideStepAdvance_(-1) == dotModular::StepAdvance::FORWARD) {
+            // STAGE 1 (CC_PROMPT_GATE_STEP_ADVANCE_SPEC): the main-gate advance is
+            // PROBABILISTIC — u < the resolved Variation probability in gate mode moves
+            // the playhead. p=1 is the GOLDEN PIN: decide(1, u) == FORWARD for every
+            // u in [0,1) → the playhead moves on every rise, byte-identical to the
+            // pre-feature engine (the identity-with-today regression gate).
             wrapped = advancePlayhead();
         }
+        // else REPEAT (the corrected semantics, Rodney 91b100c): the playhead does not
+        // move — the current step is unchanged, so every downstream read hits the SAME
+        // step-addressed draw it would anyway. No re-draw branch exists; the held step
+        // re-outputs itself identically for as long as the rises keep repeating.
         triggered = true;
     } else if (gate1High && !prevGate1High && stepIndex == -1) {
         advancePlayhead();
@@ -999,7 +1046,28 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     if (muted || !anyEdge) return result;
     (void)mainGateHigh; (void)ghostHigh;   // engine is region-agnostic; IMPL 2b (caller) uses these for width
 
-    bool wrapped = advancePlayhead();
+    // STAGE 3 (CC_PROMPT_GATE_STEP_ADVANCE_SPEC): the THREE-LEVEL advance hierarchy.
+    // Each edge decides on its OWN level's threshold — a MAIN rise: the resolved
+    // Variation probability; a RATCHET rise: the resolved ratchet-advance column (the
+    // burst WALKS through the sequence vs STUTTERS on one step); a GHOST rise: the
+    // resolved ghost-advance column (the sequence DRIFTS FORWARD in the gaps vs ghosts
+    // that fill without moving the playhead). ONE PLAYHEAD (the spec's constraint):
+    // exactly ONE advance-or-repeat per edge event — the regions are exclusive (ratchet
+    // in-gate, ghost in-gap), and a coincident main+ratchet rise IS the main onset (main
+    // dominates: it is the event that starts the gate). p=1 everywhere is the GOLDEN PIN
+    // (byte-identical to the pre-feature unconditional advance); REPEAT moves nothing
+    // (the corrected held semantics — the step-addressed data re-outputs itself, no
+    // re-draw branch exists).
+    bool wrapped = false;
+    if (stepIndex == -1) {
+        wrapped = advancePlayhead();   // the seed: initialization, not a motion decision (no draw)
+    } else {
+        const int advLevel = mainGateRise ? -1
+                           : (subGateRise ? dotModular::SubgateKnobs::RATCHET
+                                          : dotModular::SubgateKnobs::GHOST);
+        if (decideStepAdvance_(advLevel) == dotModular::StepAdvance::FORWARD)
+            wrapped = advancePlayhead();
+    }
 
     // Boundary interrupt (same as executeModeA/B): clear held gate at wrap so every lap
     // starts fresh.  Applied before wasHeld capture, mono + poly.
@@ -1196,8 +1264,10 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
     // thresholds at THIS edge's level (−1 = main — the main probs verbatim, the
     // pre-subgate behaviour). BYTE-IDENTITY: nothing authored ⟹ subRes == the main
     // values exactly. Same scope line as the mono path: the variation-strand gates
-    // (ghost placement below) stay on the main lane; ADVANCE columns are Stage-3
-    // stored-only.
+    // (ghost placement below) stay on the main lane; the ADVANCE columns have NO poly
+    // consumer — the playhead is singular (ONE PLAYHEAD, the spec's law), the advance
+    // decision is mono-only (decideStepAdvance_, V1's row), so this voice's ADVANCE
+    // cell stays resolved + stored (a per-voice playhead is Stage-4/atom territory).
     namespace SK = dotModular::SubgateKnobs;
     const float restTh = (subLevel >= 0 && v.subResLive) ? v.subRes[subLevel][SK::REST]   : v.restProb;
     const float legTh  = (subLevel >= 0 && v.subResLive) ? v.subRes[subLevel][SK::LEGATO] : v.legatoProb;

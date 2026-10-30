@@ -11,6 +11,7 @@
 #include "../NoteValues.hpp"
 #include "../LaneMapping.hpp"
 #include "../SubgateKnobs.hpp"   // SUBGATE TIER: the resolved-threshold dims + the three-way resolver (rack-free)
+#include "../StepAdvance.hpp"     // STEP-ADVANCE: the pure decideAdvance(p, u) (CC_PROMPT_GATE_STEP_ADVANCE_SPEC, rack-free)
 #include "../VoiceLaneTypes.hpp"   // VoiceSlot — the VoiceBank below (strong per-voice indexing)
 #include <cassert>
 #include <cstdio>
@@ -59,8 +60,13 @@ struct PolyVoice {
     // post-resolution. BYTE-IDENTITY DEFAULT: with nothing authored, follow-main
     // resolves to the main values EXACTLY, so the subgate-edge reads below are
     // bit-identical to the pre-subgate behaviour (the spec's degenerate case).
-    // The ADVANCE columns are resolved + stored here for the step-advance Stage 3
-    // build (its consumer does not exist yet — stored-only this build).
+    // The ADVANCE columns ARE consumed as of the step-advance Stage 1/3 build: the
+    // MONO playhead's advance decision (decideStepAdvance_, at the rise sites) reads
+    // THIS slot's subRes[level][ADVANCE] — V1's row is the mono subgate row. The
+    // playhead is SINGULAR (ONE PLAYHEAD, the spec's law), so the poly voices'
+    // ADVANCE columns (rows 1..15) stay resolved + stored with no per-voice consumer
+    // (documented scope line at decideStepAdvance_ — they exist for a per-voice
+    // playhead if one ever lands; graceful, never uncontrolled).
     float subRes[dotModular::SubgateKnobs::LEVELS][dotModular::SubgateKnobs::DECS];
     // The live gate for the reads above: subRes has no struct-level default that
     // could equal the DYNAMIC main values, so an engine that has never been
@@ -376,6 +382,15 @@ struct SequencerEngine {
     // calls it exactly once per block, right after the mode exec — deterministic).
     // Main paths never touch it; it stays −1.
     int polySubLevel_ = -1;
+    // STEP-ADVANCE (CC_PROMPT_GATE_STEP_ADVANCE_SPEC Stages 1-3): the advance-decision
+    // rise counter — the address of the step-rate uniform (PatternEngine::stepRateUniform,
+    // the rhythm Philox stream at its reserved chunk). Incremented ONCE per advance
+    // DECISION (each gate-mode rise that runs the decision: the plain-B main rise, each
+    // subdivided main/ratchet/ghost edge). The seed advance (stepIndex == −1) and the
+    // checkpoint arrival consume NO draw (no decision is made there). Session-lived,
+    // NOT persisted: the advance draw is an ephemeral per-rise decision input, not step
+    // content (unlike the lane drawCtr, which addresses regenerated cell CONTENT).
+    uint64_t stepAdvanceRiseCtr_ = 0;
     // F-4 (D5 — RHYTHM_DECISION_MANAGER_PLAN §3.3): each poly voice's THIS-EDGE GHOST EVENT —
     // the voice PLAYED an onset at a permission point that was a ghost cell of ITS containers
     // (rd.ghostCell). Captured by executePolyVoice at the play verdict (the polyVerdict_
@@ -712,6 +727,18 @@ struct SequencerEngine {
     bool isStepInWindow(int idx) const;
     void setWindow(int length, int offset);
     bool advancePlayhead(int dir = +1);   // dir<0 = reverse traversal (within-draw)
+    // STEP-ADVANCE (CC_PROMPT_GATE_STEP_ADVANCE_SPEC Stages 1-3): the gate-mode advance
+    // DECISION for one rise — consumes the step-rate uniform (per-rise fresh, the rhythm
+    // Philox stream's reserved chunk), picks the level's resolved threshold (subLevel −1 =
+    // the MAIN gate: voices[mono].variationProb, the resolved Variation path; otherwise a
+    // SubgateKnobs level: voices[mono].subRes[subLevel][ADVANCE], the three-way-resolved
+    // Straits consumer-group column — the SOLE consumer of the ADVANCE store), and returns
+    // the pure StepAdvance::decide verdict. The caller moves the playhead on FORWARD and
+    // does NOTHING on REPEAT (the corrected held semantics — not moving the playhead IS
+    // the repeat; the step-addressed data re-outputs itself by construction). SCOPE: the
+    // playhead is singular — MONO-ONLY (V1's row); poly voices' ADVANCE columns stay
+    // resolved + stored (no per-voice playhead this build).
+    dotModular::StepAdvance::Decision decideStepAdvance_(int subLevel);
     // Recompute all laneTick_/laneTickV_/macroLaneTick_ caches from totalStepsElapsed.
     // Called after snapping totalStepsElapsed externally (e.g. Mode E phase jump snap)
     // so the lane position caches match the new transport position without a full

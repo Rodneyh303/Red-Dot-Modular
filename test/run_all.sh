@@ -127,6 +127,7 @@ TESTS=(
   "test_sands_snap_geom|"   # header-only: the Sands snap magnet's PURE near-miss decision (ui/SandsSnapGeom.hpp) — same-row gap window [0,2] grid units, mirroring Rack v2 updateExpanders' exact rounded-grid-box equality (the "subpanels not snapping together" fix)
   "test_spread_resolver|"
   "test_ui_to_resolver|$PE $SE $GS"   # CC_PROMPT_UI_TO_RESOLVER_SPEC: the ONE-PRODUCER contract suite — effectiveProbability is the single producer (engine draw == bars == out, modulo the latch); ownership lenses, explicit voice, subsumption of the old formula; T4 (direction) + T5 (rate) structural halves land with their commits
+  "test_step_advance|$SE $GS $PE $CE"   # CC_PROMPT_GATE_STEP_ADVANCE_SPEC Stages 1+3: the gate-mode probabilistic step-advance — decideAdvance table (incl. the Stage-2 bipolar branch, reserved), the p=1 GOLDEN PIN (byte-identity with the pre-feature engine, digests captured pre-change), the trajectory == the mirrored rule per rise, the p=0 held repeat (no re-draw branch — Rodney 91b100c), the three-level main/ratchet/ghost hierarchy on the resolved ADVANCE columns behind subResLive, clock/phase untouched
   "test_subgate|$SE $GS $PE"
   "test_subgate_knobs|"   # header-only: the subgate-tier consumer-group bank + the three-way resolver (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC) — byte-identity default, tier 1 / 2a-global / 2b-follow-main precedence, post-resolution delta clamp, bank defaults, persistence round-trip (deltas session-lived), absent-keys ⟹ defaults, short/wrong-typed arrays
   "test_var_leg_rest|"
