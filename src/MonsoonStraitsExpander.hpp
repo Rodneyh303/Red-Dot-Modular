@@ -58,7 +58,16 @@ namespace StraitsIds {
     // can't collide with the reused host input ids.
     enum InputIds {
         QUANT_CV_INPUT = MonsoonIds::NUM_INPUTS,   // 16ch external CV for the quantiser
-        NUM_INPUTS
+        // SUBGATE MERGE (CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE): the 8 subgate
+        // GLOBAL mod jacks, level-major (SG_MOD_0 + l*DECS + d). Rack's config()
+        // may be called ONCE per module (a re-call ASSERTS — the crash Rodney's
+        // Rack run caught), so the ports live in this SHARED namespace and the
+        // parent's single config() sizes them: the plain Straits module carries
+        // them unconfigured (unreachable — nothing binds them), StraitsBase's
+        // ctor adds the tooltips.
+        SG_MOD_0,
+        SG_NUM_MOD_INPUTS = SG_MOD_0 + 8 - 1,   // 8 = SubgateKnobs LEVELS(2) x DECS(4)
+        NUM_INPUTS = SG_NUM_MOD_INPUTS + 1
     };
 }
 

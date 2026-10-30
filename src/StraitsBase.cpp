@@ -73,25 +73,16 @@ struct StraitsBaseModule : MonsoonStraitsExpander {
     // topologyEpoch house pattern) — the writer may be the engine thread.
     std::atomic<bool> topologyDirty{false};
 
-    // SUBGATE MERGE: the 8 global mod inputs appended ABOVE the Straits input
-    // namespace (config re-called with the grown count — vector resize-up
-    // preserves the parent's configured labels). Level-major: l*DECS + d.
-    enum SubgateInputIds {
-        SG_MOD_0 = StraitsIds::NUM_INPUTS,   // level-major: l*DECS + d
-    };
-    // NOT an enumerator: enum + enum arithmetic is deprecated (C++20); the
-    // count is a plain int so StraitsIds::NUM_INPUTS + SG_NUM_MOD_INPUTS stays
-    // enum + int.
-    static constexpr int SG_NUM_MOD_INPUTS = SKns::LEVELS * SKns::DECS;
-
+    // SUBGATE MERGE: the 8 global mod inputs live in the SHARED StraitsIds
+    // namespace (StraitsIds::SG_MOD_0) — Rack's config() may be called ONCE per
+    // module (the re-call from the first attempt ASSERTED — Rodney's Rack run
+    // caught it). The parent's single config() already sized them; this ctor
+    // only adds the tooltips (the Causeway mod path's labels — the captions are
+    // the one authority shared with the retired base's strips).
     StraitsBaseModule() {
-        config(StraitsIds::NUM_PARAMS, StraitsIds::NUM_INPUTS + SG_NUM_MOD_INPUTS,
-               StraitsIds::NUM_OUTPUTS, 0);
-        // The jack tooltips (the Causeway mod path's labels — the captions are
-        // the one authority shared with the retired base's strips).
         for (int l = 0; l < SKns::LEVELS; ++l)
             for (int d = 0; d < SKns::DECS; ++d)
-                configInput(SG_MOD_0 + l * SKns::DECS + d,
+                configInput(StraitsIds::SG_MOD_0 + l * SKns::DECS + d,
                     std::string(SKns::LEVEL_CAPTIONS[l]) + " " + SKns::DEC_CAPTIONS[d]
                     + " mod (±10V → ±1 threshold)");
     }
@@ -251,7 +242,7 @@ struct StraitsBaseWidget : ModuleWidget,
                         [l, d](Monsoon& m) { return m.getSubgateGlobal(l, d); },
                         [l, d](Monsoon& m, float x) { m.setSubgateGlobal(l, d, x); });
                     bindInput<PJ301MPort>("mod_sbg_" + std::to_string(l) + "_" + std::to_string(d),
-                                          StraitsBaseModule::SG_MOD_0 + l * SKns::DECS + d);
+                                          StraitsIds::SG_MOD_0 + l * SKns::DECS + d);
                 }
         }
 
