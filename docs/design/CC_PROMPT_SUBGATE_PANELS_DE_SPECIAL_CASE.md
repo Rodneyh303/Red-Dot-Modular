@@ -55,3 +55,31 @@ De-paramming (NUM_PARAMS_MIGRATION) is REQUIRED for per-voice state (DAW export)
 divergence Rodney saw (different knobs, no poly-dim) is PRESENTATION not storage — StoreKnob supports both,
 it just was not wired. Fix the look + the dim hook; keep the storage. (The earlier 'use real params' fix
 was itself a failure to check the settled de-param architecture — exactly the error we keep correcting.)
+
+════════════════════════════════════════════════════════════════════════════════
+## CONTEXT — the de-param family + why poly-dim applies to subgates but NOT dist/send (Rodney)
+Verified de-param status across recent per-voice panels:
+- Distribution expander: configParam 0, StoreKnob — DE-PARAMMED.
+- Macro send subpanel: configParam 0, StoreKnob — DE-PARAMMED.
+- Subgate panels: configParam 0, StoreKnob — DE-PARAMMED (CONSISTENT with the above, NOT special-cased).
+- StraitsLaneExpander: real configParam — NOT de-parammed (the OUTLIER; predates the migration, pending).
+So the subgate StoreKnob choice MATCHES the recent de-param convention (dist + send). CC was CONSISTENT, not
+special-casing. KEEP StoreKnob (confirmed correct, re-confirmed by the family).
+
+### Poly-dim is a FORMAT property, not a storage property — applies to GRID panels only
+None of the StoreKnob panels wire poly-dim today (dist ~1 incidental, send 0, subgate 0). But poly-dim is
+only APPROPRIATE for the 16-VOICES-VISIBLE GRID format (the lane panels + the subgate panels: a 6/6/4 grid
+showing all 16 voices at once — dimming the inactive ones is meaningful). It is NOT appropriate for the
+ONE-VOICE-SELECTED format (distribution + send: you pick a voice via the shared selection and edit its
+row — there is no 16-voice grid to dim). So:
+- SUBGATE panels (grid format, like the lanes) → ADD poly-dim. Correct.
+- DISTRIBUTION + SEND (selection format) → do NOT add poly-dim; leave them. Their lack of poly-dim is
+  CORRECT for their format, not a gap to fix. Do NOT "unify" them to match.
+The format (grid vs selection), not the storage (param vs store), decides whether poly-dim applies. Subgate
+and lane are both grid → both poly-dim. Dist and send are both selection → neither poly-dims.
+
+### Net for the subgate fix
+KEEP StoreKnob (de-param, matches the family). ADD poly-dim (subgate is grid format). MATCH the lane cog
+look. The subgate panels should end up looking + behaving like the LANE panels (same grid format) while
+sharing the STORAGE model of dist/send (StoreKnob). No contradiction — look/behaviour follow the FORMAT,
+storage follows the de-param migration.
