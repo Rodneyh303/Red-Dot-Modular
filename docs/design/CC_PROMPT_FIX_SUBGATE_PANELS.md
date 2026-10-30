@@ -79,3 +79,12 @@ tint key. Do NOT ship the crammed 180-wide multi-decision panel.
 2. The PANEL SVG: 6/6/4, 165-wide, gen_straits_lane.py + tint key, per the fix above.
 3. RAISE the panel-count tradeoff (a/b/c) with Rodney BEFORE building — the cram was an attempt to dodge
    it; surface it instead.
+
+════════════════════════════════════════════════════════════════════════════════
+## DECIDED (Rodney): OPTION (a) — one panel per (level × decision). Do NOT ask, BUILD IT.
+- One 6/6/4, 165-wide panel per (subgate level × decision): {RATCHET, GHOST} × {REST, LEGATO, ACCENT,
+  ADVANCE} = the full set, each its OWN per-voice panel (16 voices, 6/6/4, col-major v0=mono), generated
+  from gen_straits_lane.py with a tint key. Same as a lane expander, one decision each.
+- Each is its own attachable module (like each StraitsLane* is its own module), snapping per the fixed
+  Straits snap invariants.
+- NO crammed multi-decision panel. NO new layout. NO panel-count question — (a) is chosen; build it.
