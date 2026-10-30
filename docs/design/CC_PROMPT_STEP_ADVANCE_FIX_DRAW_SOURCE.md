@@ -87,14 +87,13 @@ that now owns per-level articulation. This REMOVES the `r_vary >= variationRateP
 r_vary is then GENUINELY SPARE in gate mode → free for step-advance (the fix above). The freeing is CAUSED
 by this move, not incidental.
 
-### Resolve cleanly (CC — flag the double-gate, don't blindly keep both)
-Today candidacy (variation) + executeStep's rest roll were TWO silencing gates on a ghost. Moving candidacy
-onto subgate REST risks DOUBLE-COUNTING rest (candidacy-rest AND executeStep-rest both silencing). Decide
-the clean semantics:
-- Candidacy = the subgate REST decision at that level (a ghost/ratchet cell exists iff its subgate rest
-  passes), and executeStep should NOT re-roll rest for a cell whose candidacy already came from rest (no
-  double rest gate) — OR keep executeStep's rest as the single rest authority and make candidacy a
-  LEGATO/existence decision only. Pick the one that gives ONE rest gate per cell, and document it.
+### GET RID OF THE DOUBLE CANDIDACY — one rest decision per cell (Rodney)
+There is no separate "candidacy" gate anymore. A ghost/ratchet cell plays IFF its SUBGATE REST decision
+passes — that is the whole test. DELETE the old variation-candidacy gate (r_vary >= variationRateProb at
+:1137-1148 / :1382) entirely; do NOT replace it with a second rest gate on top of executeStep's rest.
+Candidacy and rest were always the SAME question asked twice — collapse to ONE: the cell's existence IS the
+subgate rest-or-not at that level. (executeStep's rest roll for that cell becomes the single rest authority
+via the subgate REST threshold; there is no additional candidacy silencing.)
 - LEGATO's role in candidacy (if any) per the subgate design — a ghost tied from the prior cell vs a fresh
   ghost. Keep consistent with the main-level legato/tie semantics.
 
@@ -107,7 +106,7 @@ Verify no other reader before removing. (If a reader remains, keep it; but the c
 ### Net after both changes
 - Gate-mode Variation strand (r_vary) has ONE consumer: STEP-ADVANCE (the sole reader — cleaner than the
   "shared with candidacy" note earlier in this doc, which is SUPERSEDED: candidacy no longer reads r_vary).
-- Ghost/ratchet candidacy reads subgate REST(/LEGATO) — the articulation tier that owns it.
+- No double candidacy: a ghost/ratchet cell plays iff its subgate REST passes — ONE rest decision, no separate candidacy gate.
 - variationRateProb removed if unused; the advance value is the single bipolar variationProb.
 - Note length in gate mode already doesn't use r_vary (fixed 1/16), so nothing else claims it.
 
