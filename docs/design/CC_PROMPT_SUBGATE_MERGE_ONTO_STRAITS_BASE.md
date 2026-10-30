@@ -54,3 +54,23 @@ not per-panel jacks.
 Modulation = Causeway, not per-panel jacks. Subgate globals = Straits decisions = on the Straits base, not
 a duplicate module. One base owns poly/outputs/snapping/voice-select; the subgate tier joins it. The per-
 voice panels are just more Straits expanders — same dimensions, tint only. Reuse/merge, don't duplicate.
+
+════════════════════════════════════════════════════════════════════════════════
+## PART OF THIS SAME SUBGATE WORK — the step-advance DRAW-SOURCE fix (Rodney)
+CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE.md (now on this branch) is PART OF the subgate work, not separate.
+It must land TOGETHER with the subgate merge, because:
+- The step-advance consumer reads the subgate ADVANCE thresholds; the draw-source fix (u = the VARIATION
+  LANE draw r_vary, NOT a fresh Philox chunk) + the companion candidacy change (ghost/ratchet candidacy
+  moves OFF Variation onto the subgate REST decision — one rest gate per cell, no double candidacy) are the
+  SAME subgate/step-advance subsystem.
+- MERGE ORDERING (critical): this branch is the SHARED BASE that feat/unified-addressing also sits on
+  (both branched off 5647e7c). So the step-advance draw-source fix MUST land here (on the consolidated
+  subgate base that becomes trunk) BEFORE unified-addressing rebases — otherwise unified inherits the
+  fresh-Philox bug. Fix it HERE, not only on trunk.
+- Note for the later unified rebase: fixing the step-advance draw source MOVES the gate-mode advance
+  behaviour → the step-advance identity digests AND unified's UA_* identity digests (pinned against the
+  pre-fix base) will move. That is a BASELINE shift, not a regression — re-capture both on the fixed base
+  during the rebase. Expect SequencerEngine conflicts at the advance sites (both the draw-source fix and
+  unified edit advancePlayhead/executeModeB) — resolve by hand with the golden battery as the check.
+DO BOTH on this branch: the subgate merge (above) AND the step-advance draw-source fix
+(CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE.md) — they are one subgate landing.
