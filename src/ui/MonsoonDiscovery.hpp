@@ -49,8 +49,14 @@ inline bool isSuiteChainModel(const rack::Model* m) {
         || m == modelStraitsLaneLEGATO   // LEGATO lane expander
         || m == modelStraitsSubgateBase          // subgate consumer-group base (globals + switches +
                                                  //   subpanel wheel) — docks after the lane run
-        || m == modelStraitsSubgatePanelRatchet  // subgate per-voice panel (base-spawned, hidden)
-        || m == modelStraitsSubgatePanelGhost    // subgate per-voice panel (base-spawned, hidden)
+        || m == modelStraitsSubgatePanelRatchetRest    // subgate per-voice panels — ONE per (level x decision)
+        || m == modelStraitsSubgatePanelRatchetLegato  //   (base-spawned, hidden; option (a) — the lane law)
+        || m == modelStraitsSubgatePanelRatchetAccent
+        || m == modelStraitsSubgatePanelRatchetAdvance
+        || m == modelStraitsSubgatePanelGhostRest
+        || m == modelStraitsSubgatePanelGhostLegato
+        || m == modelStraitsSubgatePanelGhostAccent
+        || m == modelStraitsSubgatePanelGhostAdvance
         || m == modelMonsoonCausewayPolyExpander
         || m == modelMonsoonChangiExpander
         || m == modelMonsoonChangiT2Expander   // claimed expander (manager caches it) — was MISSING here,

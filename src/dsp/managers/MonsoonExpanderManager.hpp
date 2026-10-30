@@ -54,9 +54,15 @@ extern rack::Model* modelColonnades;       // tuning+scale authoring expander (m
 extern rack::Model* modelColonnadesDuo;    // tuning+scale authoring expander, 24-tone (microtonal Phase 3)
 extern rack::Model* modelMonsoonSandsVisualExpander;
 extern rack::Model* modelMonsoonStraitsExpander;
-extern rack::Model* modelStraitsSubgateBase;         // subgate consumer-group base (hop-through in the scan)
-extern rack::Model* modelStraitsSubgatePanelRatchet; // subgate per-voice panel (hop-through)
-extern rack::Model* modelStraitsSubgatePanelGhost;   // subgate per-voice panel (hop-through)
+extern rack::Model* modelStraitsSubgateBase;             // subgate consumer-group base (hop-through in the scan)
+extern rack::Model* modelStraitsSubgatePanelRatchetRest;    // subgate per-voice panels — ONE per (level x decision)
+extern rack::Model* modelStraitsSubgatePanelRatchetLegato;  //   (hop-through; option (a))
+extern rack::Model* modelStraitsSubgatePanelRatchetAccent;
+extern rack::Model* modelStraitsSubgatePanelRatchetAdvance;
+extern rack::Model* modelStraitsSubgatePanelGhostRest;
+extern rack::Model* modelStraitsSubgatePanelGhostLegato;
+extern rack::Model* modelStraitsSubgatePanelGhostAccent;
+extern rack::Model* modelStraitsSubgatePanelGhostAdvance;
 extern rack::Model* modelMonsoonCausewayPolyExpander;
 extern rack::Model* modelMonsoonChangiExpander;
 extern rack::Model* modelMonsoonChangiT2Expander;
@@ -257,8 +263,14 @@ struct MonsoonExpanderManager {
                         || curr->model == modelStraitsLaneVARIATION
                         || curr->model == modelStraitsLaneLEGATO
                         || curr->model == modelStraitsSubgateBase
-                        || curr->model == modelStraitsSubgatePanelRatchet
-                        || curr->model == modelStraitsSubgatePanelGhost
+                        || curr->model == modelStraitsSubgatePanelRatchetRest
+                        || curr->model == modelStraitsSubgatePanelRatchetLegato
+                        || curr->model == modelStraitsSubgatePanelRatchetAccent
+                        || curr->model == modelStraitsSubgatePanelRatchetAdvance
+                        || curr->model == modelStraitsSubgatePanelGhostRest
+                        || curr->model == modelStraitsSubgatePanelGhostLegato
+                        || curr->model == modelStraitsSubgatePanelGhostAccent
+                        || curr->model == modelStraitsSubgatePanelGhostAdvance
                         || curr->model == modelSandsDistributionExpander
                         || curr->model == modelMonsoonShophouseMicro) {
                     // Hop-through modules (no cache slot): observer/follower suite modules (Lantern;

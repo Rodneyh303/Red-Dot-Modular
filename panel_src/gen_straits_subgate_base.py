@@ -48,6 +48,8 @@ def gen(dark=True):
     knobface = "#2a2e33" if dark else "#e8e2d6"
     px = make_px()
     o = []; A = o.append
+    anchors = []   # the kit anchor layer (the anchor audit's read_anchors requires it)
+    K = anchors.append
 
     svg_open(A, px, W)
     bg_fill(A, px, W, bg)
@@ -71,18 +73,22 @@ def gen(dark=True):
               f'stroke="{tint}" stroke-width="{px(0.5)}"/>')
             A(f'<line x1="{px(cx)}" y1="{px(KNOB_Y[l])}" x2="{px(cx)}" y2="{px(KNOB_Y[l]-KNOB_R*0.8)}" '
               f'stroke="#c0c8d0" stroke-width="{px(0.5)}"/>')
-            A(f'<circle id="param_sbg_{l}_{d}" cx="{px(cx)}" cy="{px(KNOB_Y[l])}" r="0.5" fill="none" stroke="none"/>')
+            K(f'<circle id="param_sbg_{l}_{d}" cx="{px(cx)}" cy="{px(KNOB_Y[l])}" r="0.5" fill="none" stroke="none"/>')
             # mod jack (the knob's Causeway path — born together)
             A(f'<circle cx="{px(cx)}" cy="{px(JACK_Y[l])}" r="{px(JACK_R)}" fill="{jackface}" '
               f'stroke="{tint}" stroke-width="{px(0.6)}" stroke-opacity="0.8"/>')
-            A(f'<circle id="mod_sbg_{l}_{d}" cx="{px(cx)}" cy="{px(JACK_Y[l])}" r="0.5" fill="none" stroke="none"/>')
+            K(f'<circle id="mod_sbg_{l}_{d}" cx="{px(cx)}" cy="{px(JACK_Y[l])}" r="0.5" fill="none" stroke="none"/>')
 
     # ── Bottom wave footer (edge-tiling) + rails ──
     bottom_wave_tiling(A, px, W, WAVE_Y, WAVE_H, theme["spine"], theme["wave_op"], n=7)
     panel_rails(A, px, W, 2.0, WAVE_Y + WAVE_H, theme)
 
-    # Connect mark anchor
-    A(f'<circle id="light_connect" cx="{px(W/2)}" cy="{px(H-8)}" r="0.5" fill="none" stroke="none"/>')
+    # ── SvgPanelKit component (anchor) layer — THE SINGLE GEOMETRY SOURCE ──
+    A('<g inkscape:label="components" inkscape:groupmode="layer">')
+    K(f'<circle id="light_connect" cx="{px(W/2)}" cy="{px(H-8)}" r="0.5" fill="none" stroke="none"/>')
+    for a in anchors:
+        A(a)
+    A('</g>')
     A('</svg>')
     return '\n'.join(o)
 

@@ -161,6 +161,35 @@ MODULES = {
             "light_connect": 1,
         },
     },
+    "straits_subgate_base": {
+        # StraitsSubgateBase (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): the GLOBAL tier
+        # opts in. 17 anchors = 2 levels x 4 decisions x (knob + mod jack — the
+        # Causeway law, born together) + the connect mark. All bound by name.
+        "widget": ["src/StraitsSubgateBase.cpp"],
+        "panel": "res/panels/StraitsSubgateBase_panel_dark.svg",
+        "counts": {
+            "param_sbg_": 8,        # 2 levels x 4 decisions (global thresholds)
+            "mod_sbg_": 8,          # one mod jack per knob
+            "light_connect": 1,
+        },
+    },
+    "straits_subgate_panel": {
+        # StraitsSubgatePanel (CC_PROMPT_FIX_SUBGATE_PANELS, Rodney DECIDED option
+        # (a)): the per-voice tier opts in — ONE 6/6/4 165-wide panel per (level x
+        # decision), 8 modules sharing ONE widget cpp + the tint-neutral anchor set.
+        # 18 anchors = 16 per-voice knobs (param_sgv_0..15, col-major v0=mono) + the
+        # ONE 16-ch mod jack + the connect mark. All eight SVGs carry the IDENTICAL
+        # components layer (same generator call, tint-only difference), so auditing
+        # the ratchet_rest SVG guards the family's anchor/bind contract; the other
+        # seven differ only in tint colours (no geometry, no anchors).
+        "widget": ["src/StraitsSubgatePanel.cpp"],
+        "panel": "res/panels/StraitsSubgatePanel_ratchet_rest_dark.svg",
+        "counts": {
+            "param_sgv_": 16,       # 16 voices x ONE decision (the lane bank)
+            "input_sgmod": 1,       # the ONE 16-ch mod jack (the Causeway law)
+            "light_connect": 1,
+        },
+    },
     # NOTE: intertropical is bind-by-name (param_%d / output_%d via rack::string::f, light_connect via
     # findNamed) and its panel markers exist, but the audit's bind-regex classifies the "%d"-format
     # binds as PREFIX binds and only matches output_5.., not output_0.. — a pre-existing audit-tooling

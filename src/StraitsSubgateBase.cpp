@@ -1,9 +1,12 @@
-// StraitsSubgateBase — the subgate consumer-group surfaces (see the .hpp for the
+// StraitsSubgateBase — the subgate consumer-group BASE surface (see the .hpp for the
 // homing + model law). The wheel here is StraitsBase's VERBATIM, family-
 // parameterised to the subgate models: stable owned-ID list, unconditional
 // reposition, event fast path + 0.1 s poll, drag guard, restore adoption. The
 // knobs are store-backed (the de-param law — StoreKnob onto Monsoon's
 // editor.subgate bank; PARAM_CLASSIFICATION.md).
+// The per-voice PANELS live in StraitsSubgatePanel.cpp (CC_PROMPT_FIX_SUBGATE_
+// PANELS option (a): one 6/6/4 165-wide panel per (level × decision), the
+// gen_straits_lane.py layout — the panel widget is that file's concern).
 #include <rack.hpp>
 #include <algorithm>
 #include <cmath>
@@ -14,49 +17,12 @@
 #include "ui/ConnectMark.hpp"
 #include "ui/StoreBound.hpp"         // StoreKnob — the de-param law
 #include "ui/StraitsSeamFiller.hpp"
+#include "ui/StraitsSubgateArt.hpp"  // the shared lettering + tint helpers
 #include "ui/Controls.hpp"           // control-face Tags
 
 using namespace rack;
 
 namespace SKns = dotModular::SubgateKnobs;
-
-namespace {
-
-// The Cantonment lettering idiom: nanosvg drops <text>, so the widget draws the
-// captions (the WarpCurvePopup font block verbatim). mm-anchored, theme-aware
-// via colourFn.
-struct SubgateCaption : rack::widget::Widget {
-    std::string text;
-    float sizePx = 7.f;
-    std::function<NVGcolor()> colourFn;
-    void draw(const DrawArgs& args) override {
-        auto font = APP->window->loadFont(rack::asset::system("res/fonts/DejaVuSans-Bold.ttf"));
-        if (!font) font = APP->window->uiFont;
-        if (!font) return;
-        nvgFontFaceId(args.vg, font->handle);
-        nvgFillColor(args.vg, colourFn ? colourFn() : nvgRGB(0xc8, 0xcd, 0xd4));
-        nvgTextAlign(args.vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        nvgFontSize(args.vg, sizePx);
-        nvgText(args.vg, 0, 0, text.c_str(), nullptr);
-    }
-};
-void addCaption(rack::widget::Widget* parent, const std::string& text,
-                float xmm, float ymm, float sizePx, std::function<NVGcolor()> colourFn) {
-    auto* c = rack::createWidget<SubgateCaption>(rack::Vec(0, 0));
-    c->text = text;
-    c->sizePx = sizePx;
-    c->colourFn = std::move(colourFn);
-    c->box.pos = rack::mm2px(rack::Vec(xmm, ymm));
-    parent->addChild(c);
-}
-
-// The row tints — ONE authority with the generators (gen_straits_subgate_*.py).
-NVGcolor subgateTint(int level) {
-    return level == dotModular::SubgateKnobs::GHOST ? nvgRGB(0x58, 0x78, 0xb8)
-                                                    : nvgRGB(0xc0, 0x58, 0x50);
-}
-
-} // namespace
 
 // ── the BASE's process: publish the GLOBAL mod deltas + heartbeat slot 0 ─────
 // The dist-delta single-writer law: audio-thread-only writer of the delta
@@ -78,39 +44,6 @@ void StraitsSubgateBaseModule::process(const ProcessArgs&) {
     ++m->editor.subgate.publishSeq[0];
 }
 
-// ── the SUBPANEL's process: publish the PER-VOICE deltas + heartbeat slot 1 ──
-// One 16-channel jack per decision column, ch v = voice storage slot v. An
-// unpatched column publishes zeros for the cells it last owned (the
-// publish-overwrite law — nothing latches after an unplug).
-void StraitsSubgatePanelModule::process(const ProcessArgs&) {
-    Monsoon* m = redDot::lookupMonsoon(this);
-    if (!m) return;
-
-    for (int d = 0; d < SKns::DECS; ++d) {
-        rack::engine::Input& in = inputs[StraitsSubgateIds::MOD_PANEL_0 + d];
-        if (in.isConnected()) {
-            const int chans = std::max(1, in.getChannels());
-            for (int v = 0; v < SKns::VOICES; ++v) {
-                // Beyond the cable's channels the mod is simply absent (no wrap) —
-                // the delta publishes 0 there, which is a no-op on a quiet cell.
-                const float delta = (v < chans) ? in.getPolyVoltage(v) * 0.1f : 0.f;
-                if (std::fabs(delta - lastOwn_[v][d]) > 1e-6f) {
-                    m->setSubgateOwnDelta(v, level, d, delta);
-                    lastOwn_[v][d] = delta;
-                }
-            }
-        } else {
-            for (int v = 0; v < SKns::VOICES; ++v) {
-                if (lastOwn_[v][d] != 0.f) {
-                    m->setSubgateOwnDelta(v, level, d, 0.f);
-                    lastOwn_[v][d] = 0.f;
-                }
-            }
-        }
-    }
-    ++m->editor.subgate.publishSeq[1];
-}
-
 // ── persistence: the owned subpanel list (the straitLanes shape) ─────────────
 json_t* StraitsSubgateBaseModule::dataToJson() {
     json_t* rootJ = json_object();
@@ -120,7 +53,8 @@ json_t* StraitsSubgateBaseModule::dataToJson() {
         if (m) {
             auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(m);
             if (panel)
-                json_array_append_new(panelsJ, json_string(StraitsSubgateIds::panelSlug(panel->level)));
+                json_array_append_new(panelsJ,
+                    json_string(StraitsSubgateIds::panelSlug(panel->level, panel->dec)));
         }
     }
     json_object_set_new(rootJ, "subgatePanels", panelsJ);
@@ -203,38 +137,53 @@ struct StraitsSubgateBaseWidget : ModuleWidget,
         // COL_PITCH=14.82, KNOB_Y={30,48}, JACK_Y={63,77}.
         constexpr float Wmm = 81.28f, MARGIN_L = 17.0f, COL_PITCH = 59.28f / 4.f;
         auto ink = [this]() { return themeLight_ ? nvgRGB(0x30, 0x34, 0x3a) : nvgRGB(0xc8, 0xcd, 0xd4); };
-        addCaption(this, "SUBGATE", Wmm * 0.5f, 16.5f, 9.f, ink);
+        redDot::addSubgateCaption(this, "SUBGATE", Wmm * 0.5f, 16.5f, 9.f, ink);
         for (int d = 0; d < SKns::DECS; ++d)
-            addCaption(this, SKns::DEC_CAPTIONS[d], MARGIN_L + COL_PITCH * (d + 0.5f), 21.0f, 6.f, ink);
+            redDot::addSubgateCaption(this, SKns::DEC_CAPTIONS[d], MARGIN_L + COL_PITCH * (d + 0.5f), 21.0f, 6.f, ink);
         for (int l = 0; l < SKns::LEVELS; ++l)
-            addCaption(this, SKns::LEVEL_CAPTIONS[l], 8.8f, 30.f + 18.f * l, 7.f,
-                       [this, l]() { return subgateTint(l); });
-        addCaption(this, "MOD", Wmm * 0.5f, 85.0f, 5.5f, ink);
+            redDot::addSubgateCaption(this, SKns::LEVEL_CAPTIONS[l], 8.8f, 30.f + 18.f * l, 7.f,
+                              [l]() { return redDot::subgateTint(l); });
+        redDot::addSubgateCaption(this, "MOD", Wmm * 0.5f, 85.0f, 5.5f, ink);
     }
 
     Monsoon* mon() { return module ? redDot::lookupMonsoon(module) : nullptr; }
     bool themeLight_ = false;   // shared with the captions' colourFn
 
     // ── the SUBPANEL WHEEL (StraitsBase verbatim, family-parameterised) ──────
-    Model* panelModel(int level) {
-        return level == SKns::GHOST ? modelStraitsSubgatePanelGhost
-                                    : modelStraitsSubgatePanelRatchet;
+    // CC_PROMPT_FIX_SUBGATE_PANELS option (a): the wheel keys on (level, dec) —
+    // one panel per (subgate level × decision), spawned/removed/adopted
+    // individually (the StraitsLane law: each is its own attachable module).
+    Model* panelModel(int level, int dec) {
+        switch (level * SKns::DECS + dec) {
+            case SKns::RATCHET * SKns::DECS + 0: return modelStraitsSubgatePanelRatchetRest;
+            case SKns::RATCHET * SKns::DECS + 1: return modelStraitsSubgatePanelRatchetLegato;
+            case SKns::RATCHET * SKns::DECS + 2: return modelStraitsSubgatePanelRatchetAdvance;
+            case SKns::RATCHET * SKns::DECS + 3: return modelStraitsSubgatePanelRatchetAccent;
+            case SKns::GHOST   * SKns::DECS + 0: return modelStraitsSubgatePanelGhostRest;
+            case SKns::GHOST   * SKns::DECS + 1: return modelStraitsSubgatePanelGhostLegato;
+            case SKns::GHOST   * SKns::DECS + 2: return modelStraitsSubgatePanelGhostAdvance;
+            case SKns::GHOST   * SKns::DECS + 3: return modelStraitsSubgatePanelGhostAccent;
+        }
+        return nullptr;
     }
-    bool hasPanel(int level) {
+    static bool samePanel(StraitsSubgatePanelModule* p, int level, int dec) {
+        return p && p->level == level && p->dec == dec;
+    }
+    bool hasPanel(int level, int dec) {
         auto* baseMod = dynamic_cast<StraitsSubgateBaseModule*>(module);
         if (!baseMod) return false;
         for (int64_t id : baseMod->orderedPanelIds_) {
             rack::Module* m = APP->engine->getModule(id);
             if (m) {
                 auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(m);
-                if (panel && panel->level == level) return true;
+                if (samePanel(panel, level, dec)) return true;
             }
         }
         return false;
     }
-    void spawnPanel(int level) {
+    void spawnPanel(int level, int dec) {
         if (!module) return;
-        Model* model = panelModel(level);
+        Model* model = panelModel(level, dec);
         if (!model) return;
         // spawnLane's verbatim order: engine module FIRST, ID pushed, widget
         // created, box.pos set BEFORE the rack addModule → addModule preserves
@@ -255,7 +204,7 @@ struct StraitsSubgateBaseWidget : ModuleWidget,
         panelW->box.pos = Vec(rightX, box.pos.y);
         APP->scene->rack->addModule(panelW);
     }
-    void removePanel(int level) {
+    void removePanel(int level, int dec) {
         auto* baseMod = dynamic_cast<StraitsSubgateBaseModule*>(module);
         if (!baseMod) return;
         for (size_t i = 0; i < baseMod->orderedPanelIds_.size(); ++i) {
@@ -263,7 +212,7 @@ struct StraitsSubgateBaseWidget : ModuleWidget,
             rack::Module* m = APP->engine->getModule(id);
             if (m) {
                 auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(m);
-                if (panel && panel->level == level) {
+                if (samePanel(panel, level, dec)) {
                     ModuleWidget* pw = APP->scene->rack->getModule(id);
                     if (pw) APP->scene->rack->removeModule(pw);
                     APP->engine->removeModule(m);
@@ -274,15 +223,20 @@ struct StraitsSubgateBaseWidget : ModuleWidget,
             }
         }
     }
-    void togglePanel(int level) {
-        if (hasPanel(level)) removePanel(level);
-        else spawnPanel(level);
+    void togglePanel(int level, int dec) {
+        if (hasPanel(level, dec)) removePanel(level, dec);
+        else spawnPanel(level, dec);
     }
 
-    // ── Re-snap: sort by canonical order (RATCHET then GHOST), position via
-    // Rack's placement API — the UNCONDITIONAL reclaim (task-84 invariant 2):
-    // every owned ID setModulePosForce'd to its seat REGARDLESS of where it
-    // sits, from any distance; an intruder seated in the run is SHOVED OUT.
+    // ── Re-snap: sort by canonical order — level-major then decision-major
+    // (RATCHET-REST, RATCHET-LEGATO, RATCHET-ADVANCE, RATCHET-ACCENT, then the
+    // GHOST row) — position via Rack's placement API, the UNCONDITIONAL reclaim
+    // (task-84 invariant 2): every owned ID setModulePosForce'd to its seat
+    // REGARDLESS of where it sits, from any distance; an intruder seated in the
+    // run is SHOVED OUT.
+    static int panelOrder(StraitsSubgatePanelModule* p) {
+        return p ? p->level * SKns::DECS + p->dec : 99 * SKns::DECS;
+    }
     void resnapPanels() {
         auto* baseMod = dynamic_cast<StraitsSubgateBaseModule*>(module);
         if (!baseMod) return;
@@ -290,9 +244,7 @@ struct StraitsSubgateBaseWidget : ModuleWidget,
             [&](int64_t a, int64_t b) {
                 auto* ma = dynamic_cast<StraitsSubgatePanelModule*>(APP->engine->getModule(a));
                 auto* mb = dynamic_cast<StraitsSubgatePanelModule*>(APP->engine->getModule(b));
-                int la = ma ? ma->level : 99;
-                int lb = mb ? mb->level : 99;
-                return la < lb;
+                return panelOrder(ma) < panelOrder(mb);
             });
         float expectedX = box.getTopRight().x;
         for (int64_t panelId : baseMod->orderedPanelIds_) {
@@ -318,7 +270,7 @@ struct StraitsSubgateBaseWidget : ModuleWidget,
         if (panels.empty()) return true;
         std::sort(panels.begin(), panels.end(),
             [](const StraitsSubgatePanelModule* a, const StraitsSubgatePanelModule* b) {
-                return a->level < b->level;
+                return a->level * SKns::DECS + a->dec < b->level * SKns::DECS + b->dec;
             });
         rack::Module* prev = module;   // panel[0]'s left neighbour must be the base (us)
         for (StraitsSubgatePanelModule* panel : panels) {
@@ -356,14 +308,18 @@ struct StraitsSubgateBaseWidget : ModuleWidget,
             menu->addChild(createMenuLabel("(no Monsoon attached)"));
         }
 
+        // ── the per-voice panels — ONE per (level × decision), option (a) ──
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuLabel("Per-voice panels"));
-        menu->addChild(createCheckMenuItem("RATCHET panel", "",
-            [this]() { return hasPanel(SKns::RATCHET); },
-            [this]() { togglePanel(SKns::RATCHET); }));
-        menu->addChild(createCheckMenuItem("GHOST panel", "",
-            [this]() { return hasPanel(SKns::GHOST); },
-            [this]() { togglePanel(SKns::GHOST); }));
+        for (int l = 0; l < SKns::LEVELS; ++l) {
+            menu->addChild(createMenuLabel(SKns::LEVEL_CAPTIONS[l]));
+            for (int d = 0; d < SKns::DECS; ++d) {
+                menu->addChild(createCheckMenuItem(
+                    std::string("   ") + SKns::DEC_CAPTIONS[d] + " panel", "",
+                    [this, l, d]() { return hasPanel(l, d); },
+                    [this, l, d]() { togglePanel(l, d); }));
+            }
+        }
 
         menu->addChild(new MenuSeparator);
         // The menu's un-claim path (the touch-is-claim law's complement).
@@ -399,8 +355,10 @@ struct StraitsSubgateBaseWidget : ModuleWidget,
         // Rack restores the registered+hidden panels natively; the base ADOPTS
         // them by walking the rightExpander chain (the ONLY live-chain-defined
         // membership — the restore adoption). Any pending slug (the dataFromJson
-        // fallback) with no live panel is spawned docked. No auto-spawn: the
-        // globals work standalone; the per-voice tier is OPT-IN (tier 1).
+        // fallback) with no live panel is spawned docked; LEGACY slugs (the old
+        // per-LEVEL "RATCHET"/"GHOST" — the retired crammed panels) parse false
+        // and are skipped. No auto-spawn: the globals work standalone; the
+        // per-voice tier is OPT-IN (tier 1).
         if (!panelsSpawned_) {
             rack::Module* right = module->rightExpander.module;
             while (right) {
@@ -410,8 +368,9 @@ struct StraitsSubgateBaseWidget : ModuleWidget,
                 right = right->rightExpander.module;
             }
             for (const std::string& slug : baseMod->pendingPanels_) {
-                const int level = (slug == "GHOST") ? SKns::GHOST : SKns::RATCHET;
-                if (!hasPanel(level)) spawnPanel(level);
+                int l, d;
+                if (!StraitsSubgateIds::parsePanelSlug(slug, l, d)) continue;   // legacy/corrupt slug
+                if (!hasPanel(l, d)) spawnPanel(l, d);
             }
             baseMod->pendingPanels_.clear();
             panelsSpawned_ = true;
@@ -472,117 +431,5 @@ struct StraitsSubgateBaseWidget : ModuleWidget,
     bool lastThemeCheckValid_ = false;
 };
 
-// ══ the SUBPANEL widget — 16 voice rows × 4 decision columns, store-backed ═══
-struct StraitsSubgatePanelWidget : ModuleWidget,
-    dotModular::Compose<StraitsSubgatePanelWidget,
-                        dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
-    std::shared_ptr<rack::window::Svg> panelSvgDark, panelSvgLight;
-    int lastThemeLight_ = -1;
-    redDot::StraitsSeamFiller* leftFiller = nullptr;
-    redDot::StraitsSeamFiller* rightFiller = nullptr;
-
-    StraitsSubgatePanelWidget(StraitsSubgatePanelModule* mod) {
-        setModule(mod);
-        const int level = mod ? mod->level : 0;
-        const char* key = (level == SKns::GHOST) ? "ghost" : "ratchet";
-        const std::string darkPath  = std::string("res/panels/StraitsSubgatePanel_") + key + "_dark.svg";
-        const std::string lightPath = std::string("res/panels/StraitsSubgatePanel_") + key + "_light.svg";
-        panelSvgDark  = APP->window->loadSvg(asset::plugin(pluginInstance, darkPath));
-        panelSvgLight = APP->window->loadSvg(asset::plugin(pluginInstance, lightPath));
-        loadPanel(asset::plugin(pluginInstance, darkPath));
-
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-
-        float rulePx = 1.2f * 75.f / 25.4f;
-        leftFiller = new redDot::StraitsSeamFiller();
-        leftFiller->isLeft = true;
-        leftFiller->box.pos = Vec(-2, 0);
-        leftFiller->box.size.y = box.size.y;
-        leftFiller->ruleHeightPx = rulePx;
-        addChild(leftFiller);
-        rightFiller = new redDot::StraitsSeamFiller();
-        rightFiller->isLeft = false;
-        rightFiller->box.pos = Vec(box.size.x - 2, 0);
-        rightFiller->box.size.y = box.size.y;
-        rightFiller->ruleHeightPx = rulePx;
-        addChild(rightFiller);
-
-        // ── the 64 per-voice store knobs (touch = claim — the tier-1 opt-in) ──
-        // Unclaimed cells DISPLAY the resolved three-way value (what the voice
-        // plays now — inherited main/global/deltas); the first drag gesture
-        // starts from that shown value and the write CLAIMS the cell. The
-        // double-click default claims 0.5 (mid); the menu's "Clear per-voice
-        // overrides" (on the base) is the un-claim path.
-        auto resolveMon = [this]() -> Monsoon* { return redDot::lookupMonsoon(module); };
-        for (int d = 0; d < SKns::DECS; ++d) {
-            for (int v = 0; v < SKns::VOICES; ++v) {
-                const std::string cap = std::string("V") + std::to_string(v + 1) + " "
-                                      + SKns::LEVEL_CAPTIONS[level] + " " + SKns::DEC_CAPTIONS[d];
-                redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Small_Cog>(
-                    this, "param_sbp_" + std::to_string(d) + "_" + std::to_string(v),
-                    resolveMon, 0.f, 1.f, SKns::kDefaultThreshold, cap,
-                    [level, d, v](Monsoon& m) { return m.subgateDisplayThreshold(v, level, d); },
-                    [level, d, v](Monsoon& m, float x) { m.setSubgateOwn(v, level, d, x); });
-            }
-            bindInput<PJ301MPort>("mod_sbp_" + std::to_string(d),
-                                  StraitsSubgateIds::MOD_PANEL_0 + d);
-        }
-
-        if (auto* s = findNamed("light_connect")) {
-            addChild(redDot::makeConnectMark(module, centerOf(s), mm2px(8.f)));
-        }
-
-        // ── Lettering (the Cantonment idiom — the SVG carries no text) ──
-        // Coordinates match gen_straits_subgate_panel.py: W=60.96, MARGIN=4,
-        // COL_PITCH=13.24, GRID_TOP=17, ROW_H=5.625.
-        constexpr float Wmm = 60.96f, MARGIN = 4.0f, COL_PITCH = 52.96f / 4.f;
-        constexpr float GRID_TOP = 17.0f, ROW_H = 5.625f;
-        auto ink = [this]() { return themeLight_ ? nvgRGB(0x30, 0x34, 0x3a) : nvgRGB(0xc8, 0xcd, 0xd4); };
-        addCaption(this, SKns::LEVEL_CAPTIONS[level], Wmm * 0.5f, 7.5f, 9.f,
-                   [level]() { return subgateTint(level); });
-        for (int d = 0; d < SKns::DECS; ++d)
-            addCaption(this, SKns::DEC_CAPTIONS[d], MARGIN + COL_PITCH * (d + 0.5f), 11.6f, 5.5f, ink);
-        for (int v = 0; v < SKns::VOICES; v += 4)
-            addCaption(this, "V" + std::to_string(v + 1), 2.9f,
-                       GRID_TOP + ROW_H * (v + 0.5f), 3.5f, ink);
-    }
-
-    bool themeLight_ = false;   // shared with the captions' colourFn
-
-    void step() override {
-        ModuleWidget::step();
-        kitStep();
-        if (!module) return;
-        Monsoon* mm = redDot::lookupMonsoon(module);
-        themeLight_ = (mm && mm->lightTheme);
-        NVGcolor bg = themeLight_ ? nvgRGB(0xdc, 0xdc, 0xdc) : nvgRGB(0x14, 0x17, 0x1b);
-        if (leftFiller)  { leftFiller->active  = isStraitsSubgateChainModel(module->leftExpander.module  ? module->leftExpander.module->model  : nullptr); leftFiller->bgColour  = bg; }
-        if (rightFiller) { rightFiller->active = isStraitsSubgateChainModel(module->rightExpander.module ? module->rightExpander.module->model : nullptr); rightFiller->bgColour = bg; }
-        if (themeLight_ != lastThemeLight_) {
-            lastThemeLight_ = themeLight_;
-            for (Widget* child : children) {
-                if (auto* sp = dynamic_cast<app::SvgPanel*>(child)) {
-                    sp->setBackground(themeLight_ ? panelSvgLight : panelSvgDark);
-                    break;
-                }
-            }
-        }
-    }
-
-    void onDragEnd(const event::DragEnd& e) override {
-        ModuleWidget::onDragEnd(e);
-        // The panel flags its own drag; the BASE's step consumes it (the lane hook).
-        if (auto* panelMod = dynamic_cast<StraitsSubgatePanelModule*>(module))
-            panelMod->needsResnap.store(true, std::memory_order_relaxed);
-    }
-};
-
 Model* modelStraitsSubgateBase =
     createModel<StraitsSubgateBaseModule, StraitsSubgateBaseWidget>("StraitsSubgateBase");
-Model* modelStraitsSubgatePanelRatchet =
-    createModel<StraitsSubgateRatchetModule, StraitsSubgatePanelWidget>("StraitsSubgatePanelRatchet");
-Model* modelStraitsSubgatePanelGhost =
-    createModel<StraitsSubgateGhostModule, StraitsSubgatePanelWidget>("StraitsSubgatePanelGhost");

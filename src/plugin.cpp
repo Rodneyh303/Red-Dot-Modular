@@ -51,10 +51,25 @@ void init(rack::Plugin* p) {
         // per-voice panels are registered + HIDDEN — base-spawned only (the lane law;
         // Rack still restores them natively and the base adopts the run).
         p->addModel(modelStraitsSubgateBase);
-        p->addModel(modelStraitsSubgatePanelRatchet);
-        modelStraitsSubgatePanelRatchet->hidden = true;
-        p->addModel(modelStraitsSubgatePanelGhost);
-        modelStraitsSubgatePanelGhost->hidden = true;
+        // CC_PROMPT_FIX_SUBGATE_PANELS option (a): ONE per-voice panel per
+        // (level x decision) — eight registered + HIDDEN modules (base-spawned
+        // only, the lane law; Rack still restores them natively).
+        p->addModel(modelStraitsSubgatePanelRatchetRest);
+        modelStraitsSubgatePanelRatchetRest->hidden = true;
+        p->addModel(modelStraitsSubgatePanelRatchetLegato);
+        modelStraitsSubgatePanelRatchetLegato->hidden = true;
+        p->addModel(modelStraitsSubgatePanelRatchetAccent);
+        modelStraitsSubgatePanelRatchetAccent->hidden = true;
+        p->addModel(modelStraitsSubgatePanelRatchetAdvance);
+        modelStraitsSubgatePanelRatchetAdvance->hidden = true;
+        p->addModel(modelStraitsSubgatePanelGhostRest);
+        modelStraitsSubgatePanelGhostRest->hidden = true;
+        p->addModel(modelStraitsSubgatePanelGhostLegato);
+        modelStraitsSubgatePanelGhostLegato->hidden = true;
+        p->addModel(modelStraitsSubgatePanelGhostAccent);
+        modelStraitsSubgatePanelGhostAccent->hidden = true;
+        p->addModel(modelStraitsSubgatePanelGhostAdvance);
+        modelStraitsSubgatePanelGhostAdvance->hidden = true;
         // Warm the Phi + PhiInv LUTs on the load thread (~1 ms total, once) so their one-time
         // builds never land mid-block on the audio thread at first spread/slew use. NOT in a
         // module constructor — multiple modules (Sands visuals, CA correlation) consume Phi.

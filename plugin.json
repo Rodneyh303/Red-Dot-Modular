@@ -321,17 +321,65 @@
       ]
     },
     {
-      "slug": "StraitsSubgatePanelRatchet",
-      "name": "Straits Subgate Panel (Ratchet)",
-      "description": "Subgate consumer-group thresholds (ratchet/ghost tiers): global knobs + per-voice panels",
+      "slug": "StraitsSubgatePanelRatchetRest",
+      "name": "Straits Subgate Ratchet Rest",
+      "description": "Subgate per-voice RATCHET REST thresholds: 16 voices, one decision (6/6/4 lane panel)",
       "tags": [
         "expander"
       ]
     },
     {
-      "slug": "StraitsSubgatePanelGhost",
-      "name": "Straits Subgate Panel (Ghost)",
-      "description": "Subgate consumer-group thresholds (ratchet/ghost tiers): global knobs + per-voice panels",
+      "slug": "StraitsSubgatePanelRatchetLegato",
+      "name": "Straits Subgate Ratchet Legato",
+      "description": "Subgate per-voice RATCHET LEGATO thresholds: 16 voices, one decision (6/6/4 lane panel)",
+      "tags": [
+        "expander"
+      ]
+    },
+    {
+      "slug": "StraitsSubgatePanelRatchetAccent",
+      "name": "Straits Subgate Ratchet Accent",
+      "description": "Subgate per-voice RATCHET ACCENT thresholds: 16 voices, one decision (6/6/4 lane panel)",
+      "tags": [
+        "expander"
+      ]
+    },
+    {
+      "slug": "StraitsSubgatePanelRatchetAdvance",
+      "name": "Straits Subgate Ratchet Advance",
+      "description": "Subgate per-voice RATCHET ADVANCE thresholds: 16 voices, one decision (6/6/4 lane panel)",
+      "tags": [
+        "expander"
+      ]
+    },
+    {
+      "slug": "StraitsSubgatePanelGhostRest",
+      "name": "Straits Subgate Ghost Rest",
+      "description": "Subgate per-voice GHOST REST thresholds: 16 voices, one decision (6/6/4 lane panel)",
+      "tags": [
+        "expander"
+      ]
+    },
+    {
+      "slug": "StraitsSubgatePanelGhostLegato",
+      "name": "Straits Subgate Ghost Legato",
+      "description": "Subgate per-voice GHOST LEGATO thresholds: 16 voices, one decision (6/6/4 lane panel)",
+      "tags": [
+        "expander"
+      ]
+    },
+    {
+      "slug": "StraitsSubgatePanelGhostAccent",
+      "name": "Straits Subgate Ghost Accent",
+      "description": "Subgate per-voice GHOST ACCENT thresholds: 16 voices, one decision (6/6/4 lane panel)",
+      "tags": [
+        "expander"
+      ]
+    },
+    {
+      "slug": "StraitsSubgatePanelGhostAdvance",
+      "name": "Straits Subgate Ghost Advance",
+      "description": "Subgate per-voice GHOST ADVANCE thresholds: 16 voices, one decision (6/6/4 lane panel)",
       "tags": [
         "expander"
       ]
