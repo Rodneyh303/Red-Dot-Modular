@@ -24,12 +24,21 @@ TINTS = {
     "qmix":      dict(tint="#8060c0", wave="#4e3a78", knob="#241a3a", tinttext="#8060c0"),
     "variation": dict(tint="#7a9a3a", wave="#5a7a2a", knob="#2a3a14", tinttext="#7a9a3a"),
     "legato":    dict(tint="#3a6a9a", wave="#2a4a7a", knob="#14223a", tinttext="#3a6a9a"),
-    # CC_PROMPT_FIX_SUBGATE_PANELS: the SUBGATE per-voice panels reuse THIS generator
-    # via tint keys (the settled 6/6/4 165-wide layout — never a new generator or new
-    # dimensions). The tints are the subgate identity colours (gen_straits_subgate_base.py
-    # TINTS — the base's row tints): ratchet = the red family, ghost = the blue family.
-    "ratchet":   dict(tint="#c05850", wave="#7a3630", knob="#3a1a16", tinttext="#c05850"),
-    "ghost":     dict(tint="#5878b8", wave="#36486f", knob="#16203a", tinttext="#5878b8"),
+    # CC_PROMPT_FIX_SUBGATE_PANELS (the REWRITTEN prompt, 3a19db18): the SUBGATE
+    # per-voice panels reuse THIS generator — EIGHT tint keys, ONE PER (level x
+    # decision): {ratchet,ghost} x {rest,legato,accent,advance}. The level carries
+    # the identity hue (the subgate base's row tints); the decision steps the
+    # lightness WITHIN the family (rest = the level colour verbatim, then legato /
+    # advance / accent progressively deeper) so each panel is subtly distinguishable
+    # while unmistakably its level's family — no new hue families, the palette law.
+    "ratchet_rest":    dict(tint="#c05850", wave="#7a3630", knob="#3a1a16", tinttext="#c05850"),
+    "ratchet_legato":  dict(tint="#b55148", wave="#723129", knob="#371814", tinttext="#b55148"),
+    "ratchet_advance": dict(tint="#aa4b41", wave="#6a2d24", knob="#331612", tinttext="#aa4b41"),
+    "ratchet_accent":  dict(tint="#9f443b", wave="#622920", knob="#2f1411", tinttext="#9f443b"),
+    "ghost_rest":      dict(tint="#5878b8", wave="#36486f", knob="#16203a", tinttext="#5878b8"),
+    "ghost_legato":    dict(tint="#5070ac", wave="#304364", knob="#141d35", tinttext="#5070ac"),
+    "ghost_advance":   dict(tint="#4868a0", wave="#2b3e5a", knob="#121a30", tinttext="#4868a0"),
+    "ghost_accent":    dict(tint="#406094", wave="#273850", knob="#10172b", tinttext="#406094"),
 }
 
 MARGIN   = 5.0
@@ -141,11 +150,12 @@ if __name__ == "__main__":
         ("ghost",   "rest"), ("ghost",   "legato"), ("ghost",   "accent"), ("ghost",   "advance"),
     ]
     for lv, dec in SUBGATE_PANELS:
+        key = f"{lv}_{dec}"   # the per-(level x decision) tint key (the rewritten prompt's 8-key law)
         for dark in [True, False]:
             suffix = "dark" if dark else "light"
             path = os.path.join(outdir, f"StraitsSubgatePanel_{lv}_{dec}_{suffix}.svg")
             with open(path, 'w') as f:
-                f.write(gen(lv, dark, subgate=True))
+                f.write(gen(key, dark, subgate=True))
             print(f"Generated {path}")
     # The lane panels (the original behaviour, unchanged)
     tintkey = sys.argv[1] if len(sys.argv) > 1 else "qmix"
