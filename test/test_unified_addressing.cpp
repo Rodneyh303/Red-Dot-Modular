@@ -65,14 +65,14 @@ struct Capture {
 
 // ── The Stage-1 golden pins (captured PRE-CHANGE — do not touch) ────────────────
 static const uint64_t UA_IDENTITY_A  = 0xa843e2ff14883ab9ULL;
-static const uint64_t UA_IDENTITY_B  = 0xcc4d19d45293b134ULL;
-static const uint64_t UA_IDENTITY_BS = 0x7c00a247c8040799ULL;
+static const uint64_t UA_IDENTITY_B  = 0x30aed95ef0e65fb8ULL;   // re-pinned (== GOLDEN_B post-merge)
+static const uint64_t UA_IDENTITY_BS = 0xcffae9458b9257fdULL;   // re-pinned (== GOLDEN_BS post-merge)
 static const uint64_t UA_NONDIV_A    = 0x73a9b8753ca0c395ULL;
-static const uint64_t UA_NONDIV_B    = 0xd107b614f138d27fULL;
-static const uint64_t UA_NONDIV_BS   = 0xd2796ca5aa236a1aULL;
+static const uint64_t UA_NONDIV_B    = 0x91c918e1e8d8b09cULL;   // re-pinned (post-merge)
+static const uint64_t UA_NONDIV_BS   = 0xd1fa2e8a6d5e2a33ULL;   // re-pinned (post-merge)
 // The MAPPED-mode digests (new behaviour — captured on the Stage-1 engine).
 static const uint64_t UA_WIN10_A     = 0x8ed5fcb47ac148a2ULL;
-static const uint64_t UA_WIN10_B     = 0xed6a06beb47d30a7ULL;
+static const uint64_t UA_WIN10_B     = 0x98174b5f37a3e0ceULL;   // re-pinned (post-merge)
 static const uint64_t UA_WIN10O4_A   = 0xc83f5b01041db8dbULL;
 
 static PatternInput makeInput(float variationAmount) {
@@ -340,25 +340,52 @@ static void marchReadsA(SequencerEngine& eng, int steps, std::vector<int>& reads
 
 int main() {
     // ── 1. PASS-THROUGH IDENTITY — the Stage-1 golden pin (six digests) ──────────
-    check(runMarches(MODE_A,  false, 16, 0).digest() == UA_IDENTITY_A,
+    // (Computed first + printed — the differential's re-pin facility: a documented
+    // behaviour move re-captures in place. History: the six were captured on the
+    // PRE-CHANGE engine at this branch's fork point (5647e7cc); the mode-B rows
+    // were re-pinned ONCE after merging fix/subgate-merge-onto-straits-base — the
+    // step-advance draw-source fix (74897d64) + the freeze-fix scan (8679c2d3)
+    // legitimately moved every mid-range mode-B march, the SAME two moves the
+    // differential's GOLDEN_B/BS were re-pinned for (its history comment documents
+    // all three of its moves). Mode A never moved — the gate-mode-only guard; the
+    // A rows passing un-re-pinned is the evidence the moves are mode-B-scoped.)
+    const uint64_t digIdA   = runMarches(MODE_A,  false, 16, 0).digest();
+    const uint64_t digIdB   = runMarches(MODE_B,  false, 16, 0).digest();
+    const uint64_t digIdBS  = runMarches(MODE_BS, false, 16, 0).digest();
+    const uint64_t digNdA   = runMarches(MODE_A,  true,  16, 0).digest();
+    const uint64_t digNdB   = runMarches(MODE_B,  true,  16, 0).digest();
+    const uint64_t digNdBS  = runMarches(MODE_BS, true,  16, 0).digest();
+    const uint64_t digW10A  = runMarches(MODE_A,  false, 10, 0).digest();
+    const uint64_t digW10B  = runMarches(MODE_B,  false, 10, 0).digest();
+    const uint64_t digW10O4 = runMarches(MODE_A,  false, 10, 4).digest();
+    std::printf("  UA_IDENTITY_A  = 0x%016llxULL\n", (unsigned long long)digIdA);
+    std::printf("  UA_IDENTITY_B  = 0x%016llxULL\n", (unsigned long long)digIdB);
+    std::printf("  UA_IDENTITY_BS = 0x%016llxULL\n", (unsigned long long)digIdBS);
+    std::printf("  UA_NONDIV_A    = 0x%016llxULL\n", (unsigned long long)digNdA);
+    std::printf("  UA_NONDIV_B    = 0x%016llxULL\n", (unsigned long long)digNdB);
+    std::printf("  UA_NONDIV_BS   = 0x%016llxULL\n", (unsigned long long)digNdBS);
+    std::printf("  UA_WIN10_A     = 0x%016llxULL\n", (unsigned long long)digW10A);
+    std::printf("  UA_WIN10_B     = 0x%016llxULL\n", (unsigned long long)digW10B);
+    std::printf("  UA_WIN10O4_A   = 0x%016llxULL\n", (unsigned long long)digW10O4);
+    check(digIdA == UA_IDENTITY_A,
           "IDENTITY: default config, mode A march == the pre-change engine (== GOLDEN_A)");
-    check(runMarches(MODE_B,  false, 16, 0).digest() == UA_IDENTITY_B,
+    check(digIdB == UA_IDENTITY_B,
           "IDENTITY: default config, mode B march == the pre-change engine (== GOLDEN_B)");
-    check(runMarches(MODE_BS, false, 16, 0).digest() == UA_IDENTITY_BS,
+    check(digIdBS == UA_IDENTITY_BS,
           "IDENTITY: default config, mode B subdivided == the pre-change engine (== GOLDEN_BS)");
-    check(runMarches(MODE_A,  true,  16, 0).digest() == UA_NONDIV_A,
+    check(digNdA == UA_NONDIV_A,
           "IDENTITY: non-divisive LOR (7/5/6 + pendulum/pingpong), mode A is BIT-IDENTICAL");
-    check(runMarches(MODE_B,  true,  16, 0).digest() == UA_NONDIV_B,
+    check(digNdB == UA_NONDIV_B,
           "IDENTITY: non-divisive LOR (7/5/6 + pendulum/pingpong), mode B is BIT-IDENTICAL");
-    check(runMarches(MODE_BS, true,  16, 0).digest() == UA_NONDIV_BS,
+    check(digNdBS == UA_NONDIV_BS,
           "IDENTITY: non-divisive LOR (7/5/6 + pendulum/pingpong), mode B subdivided is BIT-IDENTICAL");
 
     // ── 2. MAPPED digests (the fix's new pins) ───────────────────────────────────
-    check(runMarches(MODE_A, false, 10, 0).digest() == UA_WIN10_A,
+    check(digW10A == UA_WIN10_A,
           "MAPPED: window 10, mode A march == the Stage-1 pin");
-    check(runMarches(MODE_B, false, 10, 0).digest() == UA_WIN10_B,
+    check(digW10B == UA_WIN10_B,
           "MAPPED: window 10, mode B march == the Stage-1 pin");
-    check(runMarches(MODE_A, false, 10, 4).digest() == UA_WIN10O4_A,
+    check(digW10O4 == UA_WIN10O4_A,
           "MAPPED: window 10 offset 4, mode A march == the Stage-1 pin");
 
     // ── 3. driverTickAt unit table ───────────────────────────────────────────────
