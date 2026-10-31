@@ -1470,9 +1470,9 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
               // like the legacy triplets, all DEFAULT OFF (existing patches
               // byte-identical until flipped). A dotted/triplet BASE note always
               // plays (varyNoteIndex keeps the base rung regardless of its bit).
-              add("Allow 1/4T",0); add("Allow 1/8T",1); add("Allow 1/32",2);
-              add("Allow 1/2.",3); add("Allow 1/4.",4); add("Allow 1/8.",5); add("Allow 1/16.",6);
-              add("Allow 1/16T",7); }
+              add("Allow 1/4T",0); add("Allow 1/8T",1); add("Allow 1/16T",7);
+              add("Allow 1/32",2);
+              add("Allow 1/2.",3); add("Allow 1/4.",4); add("Allow 1/8.",5); add("Allow 1/16.",6); }
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "PPQN"; sub->addChild(l);
               struct PItem : ui::MenuItem { Monsoon* module=nullptr; int value=4;

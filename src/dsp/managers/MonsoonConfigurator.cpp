@@ -8,13 +8,15 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
 
     // Main controls — labels come from the single source of truth in NoteValues.hpp
+    // The NOTE_VALUE PARAM stores the DIAL SLOT: the switch's labels (and the knob's
+    // detents) walk the DIAL_ORDER grouped reading; the engine index is derived at
+    // ParameterManager::getNoteValue (the ONE seam).
     std::vector<std::string> noteValueLabels;
     for (int i = 0; i < NUM_NOTE_VALUES; ++i)
-        noteValueLabels.push_back(NOTE_VALUES[i].label);
+        noteValueLabels.push_back(NOTE_VALUES[DIAL_ORDER[i]].label);
     m->configSwitch(NOTE_VALUE_PARAM, 0.f, (float)(NUM_NOTE_VALUES - 1), 7.f,
         "Note value", noteValueLabels);
-    // (default 7 = 1/8 — the SAME value the pre-dotted default index 4 named;
-    //  the duration interleave shifted the index, not the default)
+    // (default slot 7 = 1/8 — the SAME value the pre-dotted default index 4 named)
     m->configParam(VARIATION_PARAM,   0.f, 1.f, 0.5f, "Variation (longer–shorter)");
     m->configParam(LEGATO_PARAM,      0.f, 1.f, 0.00f, "Legato probability");
     m->configParam(REST_PARAM,        0.f, 1.f, 0.00f, "Rest probability");

@@ -31,8 +31,12 @@ public:
     
     // ──── Core Parameter Getters ────────────────────────────────────────────
     
-    /// Note length grid value with CV2 offset applied
+    /// Note length grid value with CV2 offset applied — the ENGINE index (the table's
+    /// strict-duration order); the ONE translation from the param's DIAL SLOT.
     float getNoteValue() const;
+    /// The raw dial slot (0..NUM-1, CV applied) — the param's own domain: the knob's
+    /// detents, the arc labels, and the mod-arc norm all live in slot space.
+    float getNoteValueDial() const;
     
     /// Variation probability (0–1) with CV2 offset
     float getVariation() const;
@@ -69,7 +73,7 @@ public:
     // 12 values, indices 0..11 — was 8) so this matches paramQuantities->
     // getScaledValue() (the mod-arc's setNorm). A hardcoded divisor desynced set
     // vs mod and left a permanent arc.
-    float getNoteValueNorm() const { return getNoteValue() / (float)(NUM_NOTE_VALUES - 1); }
+    float getNoteValueNorm() const { return getNoteValueDial() / (float)(NUM_NOTE_VALUES - 1); }
     float getVariationNorm() const { return getVariation(); }
     float getLegatoNorm()    const { return getLegato(); }
     float getRestNorm()      const { return getRest(); }

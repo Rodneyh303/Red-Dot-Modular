@@ -65,8 +65,14 @@ constexpr NoteValue NOTE_VALUES[NUM_NOTE_VALUES] = {
 
 // The DIAL display permutation (the spec's grouped reading: families together —
 // base, triplet, then the next family's dotted): the ENGINE table stays in strict
-// duration order; the knob's arc labels walk THIS order so it reads musically.
-constexpr int DIAL_ORDER[NUM_NOTE_VALUES] = { 0, 1, 2, 3, 4, 6, 5, 7, 9, 8, 10, 11, 12 };
+// duration order. The NOTE_VALUE PARAM stores the DIAL SLOT (0..NUM-1) — the knob's
+// detents, labels, and CV sweep all walk THIS order — and the ONE seam
+// (ParameterManager::getNoteValue) translates slot → engine index. DIAL_SLOT_OF is
+// the inverse (engine index → dial slot), used by the patch remap.
+constexpr int DIAL_ORDER[NUM_NOTE_VALUES]   = { 0, 1, 2, 3, 4, 6, 5, 7, 9, 8, 10, 11, 12 };
+constexpr int DIAL_SLOT_OF[NUM_NOTE_VALUES] = { 0, 1, 2, 3, 4, 6, 5, 7, 9, 8, 10, 11, 12 };
+static_assert(DIAL_ORDER[DIAL_SLOT_OF[5]] == 5 && DIAL_ORDER[DIAL_SLOT_OF[8]] == 8,
+              "DIAL_SLOT_OF must be the inverse of DIAL_ORDER");
 
 // The LEGACY index map (the pre-dotted 8-entry table): old index → the SAME musical
 // value's index in the 12-entry table. Used by (a) the test harnesses — the marches'

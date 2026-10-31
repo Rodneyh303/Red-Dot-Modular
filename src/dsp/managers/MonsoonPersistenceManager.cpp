@@ -333,9 +333,12 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     // Idempotent: the remapped value is what a subsequent save persists, WITH the
     // marker.)
     if (!json_object_get(root, "noteValueSchema")) {
+        // Old saves store the legacy ENGINE index; the param now stores the DIAL
+        // SLOT — map legacy engine → current engine → slot (the same musical value,
+        // at the dial position that reads identically).
         const float legacyV = m->params[MonsoonIds::NOTE_VALUE_PARAM].getValue();
-        m->params[MonsoonIds::NOTE_VALUE_PARAM].setValue(
-            (float)legacyNoteValueIndex((int)std::round(legacyV)));
+        const int engineIdx = legacyNoteValueIndex((int)std::round(legacyV));
+        m->params[MonsoonIds::NOTE_VALUE_PARAM].setValue((float)DIAL_SLOT_OF[engineIdx]);
     }
     if (auto j = json_object_get(root, "ppqnSetting")) {
         int v = (int)json_integer_value(j);
