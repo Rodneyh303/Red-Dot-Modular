@@ -9,8 +9,8 @@
 // VARIATION/LEGATO) is a physically attachable extension that docks RIGHT of the
 // Straits Base. ONE generic LaneExpander class, parameterised by a LaneDescriptor.
 // The lane expander carries 16 per-voice knobs (voice 0 = mono mirror, 1..15 = poly).
-// The knobs bind to the lane expander's OWN params (same IDs as MonsoonIds); the
-// base's step() syncs them into the base's params so the engine reads them via the
+// The knobs bind the lane's OWN SMALL local namespace (StraitsLaneIds below); the
+// base's step() syncs lane-local → base-MonsoonIds so the engine reads them via the
 // cached poly-voice-expander pointer (which points to the base).
 //
 // See docs/design/STRAITS_CAUSEWAY_LANE_EXTENSIONS.md REFINED MODEL + METHOD:REFACTOR.
@@ -18,42 +18,77 @@
 // overlay, dim/lock logic, and theme following are all COPIED from MonsoonStraitsExpander,
 // not reimplemented.
 
+// ── The lane expander's OWN small param namespace (CC_PROMPT_LANE_EXPANDER_RIGHTSIZE) ──
+// The lane expander used to be sized to MonsoonIds::NUM_PARAMS (~1128) purely so
+// the poly param IDs were valid slots on its params[] — exporting ~1128 to the DAW
+// (the NUM_PARAMS_MIGRATION overflow class). It USES 16: the mono mirror + 15
+// per-voice. The knobs bind THESE local ids (kept real params — DAW-automatable,
+// the fixed-addressing keep-param category); the BASE's step() sync remaps
+// lane-local → base-MonsoonIds (via LaneDescriptor's ids), and the engine reads
+// the BASE — no MonsoonIds reach-in survives on the lane module itself.
+namespace StraitsLaneIds {
+    enum ParamIds {
+        MONO_MIRROR_PARAM = 0,   // voice-1 mono mirror (display-only, locked)
+        POLY_PARAM_1,            // per-voice knobs, voices 2..16
+        POLY_PARAM_2,
+        POLY_PARAM_3,
+        POLY_PARAM_4,
+        POLY_PARAM_5,
+        POLY_PARAM_6,
+        POLY_PARAM_7,
+        POLY_PARAM_8,
+        POLY_PARAM_9,
+        POLY_PARAM_10,
+        POLY_PARAM_11,
+        POLY_PARAM_12,
+        POLY_PARAM_13,
+        POLY_PARAM_14,
+        POLY_PARAM_15,
+        NUM_PARAMS = 16,
+    };
+}
+
 // ── Lane Descriptor — the ONLY thing that differs between lanes ───────────────
 // Read off the existing Straits bank differences (see plans/lane_expander_phase0_recon.md).
 struct LaneDescriptor {
     const char* slug;           // e.g. "StraitsLaneQMIX"
     const char* anchorPrefix;   // e.g. "param_qmix_"
     const char* label;          // e.g. "Q-MIX"
-    int monoParamId;            // e.g. MonsoonIds::QMIX_LEVEL_PARAM
-    int polyParamIdBase;        // e.g. MonsoonIds::POLY_QMIX_PARAM_1
+    // The BASE-side slots the base's step() sync WRITES (the engine reads the base
+    // via cachedPolyVoiceExpander) — NOT the lane's own param ids (those are the
+    // StraitsLaneIds locals now).
+    int monoParamId;            // e.g. MonsoonIds::QMIX_LEVEL_PARAM (a BASE slot)
+    int polyParamIdBase;        // e.g. MonsoonIds::POLY_QMIX_PARAM_1 (BASE slots)
     int arcLane;                // 0=REST, 1=ACCENT, 2=QMIX (mod-arc lane index)
     // Colour keys in the panel theme (matched to gen_straits_lane.py)
     const char* tintKey;        // e.g. "qmix"
 };
 
 // ── Lane Expander Module ─────────────────────────────────────────────────────
-// Sized to MonsoonIds::NUM_PARAMS so the poly param IDs are valid slots. Only the
-// lane's own params are configured (the rest stay at default). process() is empty —
-// the base syncs params via step(), and the engine reads from the base.
+// Right-sized to StraitsLaneIds::NUM_PARAMS (16 — was MonsoonIds::NUM_PARAMS
+// ≈ 1128, the DAW-export overflow; the big size was only ever the interface for
+// the MonsoonIds-indexed knob binds). process() is empty — the base syncs the
+// lane's params into the base's own via step() (lane-local ids → base-MonsoonIds),
+// and the engine reads from the base (cachedPolyVoiceExpander).
 struct StraitsLaneExpander : Module {
     const LaneDescriptor* desc = nullptr;   // set by the widget constructor
     bool beingDragged = false;               // set by widget onButton (legacy, unused now)
     std::atomic<bool> needsResnap{false};    // resnap request — writers: the widget's onDragEnd (UI) + onExpanderChange's left-link check (engine); reader/clearer: the base's step (UI). Relaxed — the topologyEpoch house pattern
 
     StraitsLaneExpander() {
-        // Sized to Monsoon's full param namespace so POLY_*_PARAM IDs are valid.
-        config(MonsoonIds::NUM_PARAMS, 0, 0, 0);
+        // The lane's OWN 16-param namespace (the right-size fix).
+        config(StraitsLaneIds::NUM_PARAMS, 0, 0, 0);
     }
 
     void setDescriptor(const LaneDescriptor* d) {
         desc = d;
-        // Configure the lane's params (mono mirror + 15 poly knobs).
+        // Configure the lane's params on the LOCAL ids (mono mirror + 15 poly).
         // Voice 1 (mono): mirror the parent Monsoon's mono param (display-only, locked).
-        configParam(d->monoParamId, 0.f, 1.f, 0.f,
+        configParam(StraitsLaneIds::MONO_MIRROR_PARAM, 0.f, 1.f, 0.f,
                     std::string("Voice 1 (mono) ") + d->label + " - follows Monsoon");
         // Voices 2..16: per-poly-voice knobs.
         for (int i = 0; i < 15; i++) {
-            configParam(d->polyParamIdBase + i, 0.f, 1.f, 0.f,
+            configParam(StraitsLaneIds::POLY_PARAM_1 + i, 0.f, 1.f, 0.f,
                         "Voice " + std::to_string(i + 2) + " " + d->label);
         }
     }

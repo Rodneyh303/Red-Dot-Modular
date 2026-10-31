@@ -532,11 +532,15 @@ struct StraitsBaseWidget : ModuleWidget,
             while (right) {
                 auto* lane = dynamic_cast<StraitsLaneExpander*>(right);
                 if (!lane || !lane->desc) break;
+                // RIGHT-SIZE remap (CC_PROMPT_LANE_EXPANDER_RIGHTSIZE): READ the
+                // lane's LOCAL ids, WRITE the base's MonsoonIds slots — the engine's
+                // read target is the base (unchanged), so the values arrive
+                // bit-identically; only the lane-side addressing moved.
                 module->params[lane->desc->monoParamId].setValue(
-                    right->params[lane->desc->monoParamId].getValue());
+                    right->params[StraitsLaneIds::MONO_MIRROR_PARAM].getValue());
                 for (int i = 0; i < 15; i++) {
                     module->params[lane->desc->polyParamIdBase + i].setValue(
-                        right->params[lane->desc->polyParamIdBase + i].getValue());
+                        right->params[StraitsLaneIds::POLY_PARAM_1 + i].getValue());
                 }
                 right = right->rightExpander.module;
             }

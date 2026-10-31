@@ -197,9 +197,10 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
         // ── Voice 0 = mono: LOCKED knob that MIRRORS Monsoon's mono param ──────
-        // COPIED from MonsoonStraitsExpanderWidget — only the param ID and anchor
-        // are parameterised by desc.
-        bindParam<redDot::Themed_Compact_Cog_Dim>(std::string(desc->anchorPrefix) + "0", desc->monoParamId,
+        // COPIED from MonsoonStraitsExpanderWidget — the anchor is parameterised by
+        // desc; the param id is the lane's LOCAL mirror slot (the right-size fix).
+        // (displayValueFn below reads MONSOON's own mono param — not this slot.)
+        bindParam<redDot::Themed_Compact_Cog_Dim>(std::string(desc->anchorPrefix) + "0", StraitsLaneIds::MONO_MIRROR_PARAM,
             std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this](redDot::Themed_Compact_Cog_Dim* k){
                 k->lightWhen = [this](){ return themeLight_; };
                 k->lockWhen = [](){ return true; };
@@ -212,7 +213,8 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
 
         // ── Voices 1..15 = poly: editable per-voice knobs ──────────────────────
         // COPIED from MonsoonStraitsExpanderWidget — the loop body is identical
-        // except param IDs and anchors are parameterised by desc.
+        // except the anchor is parameterised by desc; the param ids are the lane's
+        // LOCAL slots (the right-size fix; the base's sync remaps to MonsoonIds).
         for (int i = 1; i < 16; i++) {
             std::string r = std::to_string(i);
             int polyIdx = i - 1;
@@ -221,7 +223,7 @@ struct StraitsLaneExpanderWidget : ModuleWidget,
                 return activeVoices_ >= 0 && voiceNum > activeVoices_;
             };
             bindParam<redDot::Themed_Compact_Cog_Dim>(std::string(desc->anchorPrefix) + r,
-                desc->polyParamIdBase + polyIdx,
+                StraitsLaneIds::POLY_PARAM_1 + polyIdx,
                 std::function<void(redDot::Themed_Compact_Cog_Dim*)>([this, polyIdx, dimIfInactive](redDot::Themed_Compact_Cog_Dim* k){
                     k->lightWhen = [this](){ return themeLight_; };
                     k->dimWhen   = dimIfInactive;
