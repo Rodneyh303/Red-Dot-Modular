@@ -730,7 +730,7 @@ void SequencerEngine::updateWindow(float lenParam, float lenCv, bool lenPatched,
 }
 
 int SequencerEngine::computeNoteLengthIdx(int requestedIdx, int ppqnMask) const {
-    int idx = pe_clamp(requestedIdx, 0, 7);
+    int idx = pe_clamp(requestedIdx, 0, NUM_NOTE_VALUES - 1);
     while (idx > 0 && !(NOTE_VALUES[idx].allowedPPQN & ppqnMask)) {
         idx--;
     }
@@ -738,7 +738,7 @@ int SequencerEngine::computeNoteLengthIdx(int requestedIdx, int ppqnMask) const 
 }
 
 int SequencerEngine::getNoteLenIdx(float baseNoteParam, const PatternInput& input, float r) {
-    int baseIdx = pe_clamp<int>((int)std::round(baseNoteParam), 0, 7);
+    int baseIdx = pe_clamp<int>((int)std::round(baseNoteParam), 0, NUM_NOTE_VALUES - 1);
     // PPQN is now always 24/48/96 — all of which resolve every note value to an
     // integer pulse count (24 already covers 1/32 and all triplets). So every
     // value is legal; mask = the full-resolution bit (4). (The old 1/4 PPQN
@@ -1301,7 +1301,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
         // ground-truthed via the MODEB logs: dec/gateHeld were already correct, only the LENGTH was
         // wrong). One step = the bar occupies only its own cell; the audible gate width still comes
         // from Gate 1 (generateOutputs). Variation is intentionally bypassed in Mode B.
-        int nvIdx = (modeSelect == 1) ? 6 /*1/16 = 1 step*/ : getNoteLenIdx(noteVal, input, r_vary);
+        int nvIdx = (modeSelect == 1) ? NV_GATE_NULLIFY : getNoteLenIdx(noteVal, input, r_vary);
 
         float prevHold = gs.holdRemain;
         wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);
@@ -1427,8 +1427,9 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     float r_qmix   = pe.warpRow(monoSlot, LaneId{PL_QMIX})[getQmixStep()];
 
     // Mode B nullification: the note DURATION is the main gate's width, not an internal
-    // note-length.  nvIdx = 6 (1/16 = 1 step) so the internal countdown does not govern.
-    int nvIdx = 6;
+    // note-length.  NV_GATE_NULLIFY (a 1-step value) so the internal countdown does not
+    // govern — the NAMED sentinel, immune to table reordering.
+    int nvIdx = NV_GATE_NULLIFY;
 
     float prevHold = gs.holdRemain;
     wasHeldMono = gs.gateHeld || (prevHold > 0.0001f);

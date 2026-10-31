@@ -29,21 +29,40 @@ struct NoteValue {
     float       fraction;     // fraction of a whole note (×16 ⇒ length in 1/16 steps)
     int         allowedPPQN;  // bitmask: 1=PPQN1, 2=PPQN4, 4=PPQN24
     const char* label;        // dial / menu label
+    // The noteVariationMask bit that gates this value's participation in
+    // varyNoteIndex's window (DOTTED BUILD step 1: the FLAG that replaces the old
+    // magic index tests in allowed(), so the table order can change freely).
+    // -1 = a straight value — always in the window. Today: 0=1/4T, 1=1/8T, 2=1/32.
+    int         variationBit;
 };
 
 constexpr int NUM_NOTE_VALUES = 8;
 
 // The one and only table. Keep ordered slowest → fastest.
 constexpr NoteValue NOTE_VALUES[NUM_NOTE_VALUES] = {
-    {1.0f,        1|2|4, "1/1" },
-    {0.5f,        1|2|4, "1/2" },
-    {0.25f,       1|2|4, "1/4" },
-    {1.0f/6.0f,   4,     "1/4T"},
-    {0.125f,      2|4,   "1/8" },
-    {1.0f/12.0f,  4,     "1/8T"},
-    {0.0625f,     2|4,   "1/16"},
-    {0.03125f,    4,     "1/32"},
+    {1.0f,        1|2|4, "1/1",  -1},
+    {0.5f,        1|2|4, "1/2",  -1},
+    {0.25f,       1|2|4, "1/4",  -1},
+    {1.0f/6.0f,   4,     "1/4T",  0},
+    {0.125f,      2|4,   "1/8",  -1},
+    {1.0f/12.0f,  4,     "1/8T",  1},
+    {0.0625f,     2|4,   "1/16", -1},
+    {0.03125f,    4,     "1/32",  2},
 };
+
+// GATE-MODE NULLIFICATION (DOTTED BUILD step 1, Rodney's diagnosis): Mode B's note
+// duration is Gate 1's WIDTH — the internal note-length countdown must not govern.
+// The engine passes this sentinel index there purely as "a 1-step inert countdown"
+// (SequencerEngine ~:1304 and ~:1431). It is a NAMED CONSTANT, not a musical choice,
+// so it must never be written as a bare index literal again: when the table order
+// changes, THIS line is the one place to update (pinned by the static_assert below).
+constexpr int NV_GATE_NULLIFY = 6;   // 1/16 = exactly 1 step — the inert countdown
+static_assert(NV_GATE_NULLIFY >= 0 && NV_GATE_NULLIFY < NUM_NOTE_VALUES,
+              "NV_GATE_NULLIFY must be a valid table index");
+static_assert(NOTE_VALUES[NV_GATE_NULLIFY].fraction * 16.f == 1.f,
+              "NV_GATE_NULLIFY must address a 1-step value (the inert countdown)");
+// TODO (out of scope for dotted): Mode B nullifies note length — routing it through
+// the note-length path at all is vestigial; a future change should bypass it entirely.
 
 // Convenience: a note-value index → length in 1/16 steps (no whole-step floor;
 // sub-step lengths such as 1/32 = 0.5 and triplets render via the gate-seconds

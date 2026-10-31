@@ -324,12 +324,14 @@ int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
     // At 50% variation, only the base note is played. At extremes, weight 
     // is shared uniformly across the reachable range.
 
+    // The window gate, by FLAG not magic index (DOTTED BUILD step 1 — the table order
+    // can now change freely): a straight value (-1) is always in the window; a gated
+    // value participates iff its noteVariationMask bit is set.
     auto allowed = [&](int idx) -> bool {
-        if (idx < 0 || idx >= 8) return false;
-        if (idx == 3) return (in.noteVariationMask & 0b001) != 0; // 1/4T
-        if (idx == 5) return (in.noteVariationMask & 0b010) != 0; // 1/8T
-        if (idx == 7) return (in.noteVariationMask & 0b100) != 0; // 1/32 & 1/32T
-        return true;
+        if (idx < 0 || idx >= NUM_NOTE_VALUES) return false;
+        const int bit = NOTE_VALUES[idx].variationBit;
+        if (bit < 0) return true;
+        return (in.noteVariationMask & (1 << bit)) != 0;
     };
 
     float var = in.variationAmount;
