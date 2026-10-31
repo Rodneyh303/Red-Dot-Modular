@@ -268,8 +268,10 @@ static void marchModeBS_p1(int seed, Capture& cap) {
 }
 
 // ── RULE march: plain Mode B, deterministic gates, the trajectory predicted exactly ──
-// Mirrors the engine rule per rise: seed at stepIndex==-1 (no draw); otherwise advance
-// iff r_vary(step) < p — the SAME step-addressed variation draw the engine reads.
+// Mirrors the engine rule per rise: seed at stepIndex==-1 (no draw); otherwise the
+// decision is decide(p, u) where u = the SCANNED variation draw — the engine's
+// scanOfs_ (THE FREEZE FIX: +1 on a held rise, reset on a move) walks the variation
+// window while held, so a sticky step is NOT a permanent wall.
 static void ruleMarchInto(float p, int steps, Capture& cap, int* mismatches, int* advances);
 
 // The instrumented predictor: per-rise checks that the engine's moves are exactly the rule's.
@@ -282,22 +284,22 @@ static void ruleMarch(float p, int steps) {
     const float noteVal = 3.f;
     const auto m = dotModular::VoiceResolver::slot(1);
     int mismatches = 0, heldRises = 0, advances = 0;
+    int mirrorScan = 0;   // THE SCAN MIRROR: the engine's scanOfs_ (+1 held, 0 after a move)
     for (int step = 0; step < steps; ++step) {
         // Deterministic gate: rise on even steps, high for one step, low for one.
         const bool rise = (step % 2) == 0;
         const bool high = rise;
-        // The knob SCHEDULE (the draw source is the step-addressed r_vary — a fixed p
-        // on a sticky step holds forever BY DESIGN, the per-step threshold): turn the
-        // knob through deterministic-move / stochastic / deterministic-hold phases; the
-        // mirror predicts every rise exactly whichever phase is live.
+        // The knob SCHEDULE (deterministic-move / stochastic / deterministic-hold
+        // phases; the mirror predicts every rise exactly whichever phase is live).
         const float pNow = (step < steps / 4) ? 1.0f
                         : (step < steps / 2) ? p
                         : (step < 3 * steps / 4) ? 0.0f
                         : p;
         eng.voices[m].variationProb = pNow;
         const int before = eng.stepIndex;
+        const float drawAt0Before = (eng.stepIndex != -1) ? eng.stepAdvanceDrawAt(0) : 0.f;
         const float uBefore = (rise && eng.stepIndex != -1)
-            ? eng.pe.warpRow(m, dotModular::LaneId{PatternEngine::PL_VARIATION})[eng.getVariationStep()]
+            ? eng.stepAdvanceDrawAt(mirrorScan)   // the SCANNED draw (the engine's expression)
             : 0.f;
         bool expectAdvance = false;
         if (rise && eng.stepIndex != -1)
@@ -310,17 +312,21 @@ static void ruleMarch(float p, int steps) {
             if (moved != expectAdvance) ++mismatches;
             if (!moved) {
                 ++heldRises;
+                ++mirrorScan;   // the scan accrues on a held rise (the freeze fix)
                 // ZERO NEW DRAWS (the additive-domain law): a held rise leaves the
-                // variation ring cell BIT-IDENTICAL — the decision reads r_vary and
-                // consumes nothing (the old reserved-chunk draw is deleted).
-                const float uAfter = eng.pe.warpRow(m, dotModular::LaneId{PatternEngine::PL_VARIATION})[eng.getVariationStep()];
-                check(uAfter == uBefore, "RULE: a held rise leaves the r_vary cell bit-identical (zero new draws)");
+                // variation ring BIT-IDENTICAL — the decision (and the scan) only
+                // READ existing ring values; nothing regenerates (the old
+                // reserved-chunk draw is deleted).
+                check(eng.stepAdvanceDrawAt(0) == drawAt0Before,
+                      "RULE: a held rise draws nothing new (the ring is read-only here)");
+            } else {
+                mirrorScan = 0;   // any motion re-anchors (the arrived step judged on its own value)
             }
         }
         if (moved && !seeded) ++advances;
         (void)r;
     }
-    check(mismatches == 0, "RULE: playhead trajectory == the mirrored decide rule, every rise");
+    check(mismatches == 0, "RULE: playhead trajectory == the mirrored decide rule (incl. the scan), every rise");
     check(heldRises > 0, "RULE: the march actually exercised held (repeat) rises");
     check(advances > 0, "RULE: the march actually exercised forward advances");
 }
@@ -387,6 +393,35 @@ int main() {
         ruleMarchInto(0.618034f, 96, c1, &m1, &a1);
         ruleMarchInto(0.618034f, 96, c2, &m2, &a2);
         check(c1.digest() == c2.digest() && m1 == 0, "RULE: double-run determinism (same seed, fresh engines)");
+    }
+
+    // ── NO-FREEZE (CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR): a FIXED mid-range p ──
+    //    never walls the playhead — the scan walks the variation window, so a sticky
+    //    step escapes within varLen held rises (varLen <= 16 here). Pre-fix, a step
+    //    with draw >= p was a PERMANENT wall (~half the steps at p=0.3).
+    {
+        PhiloxRng rng; rng.seed64(0xF12Eull);
+        SequencerEngine eng; eng.reset();
+        eng.numPolyVoices = 0;
+        seedEngine(eng, rng, 0.3f);
+        const PatternInput in = makeInput(0.5f);
+        int advances = 0, holdRun = 0, maxHoldRun = 0;
+        for (int step = 0; step < 96; ++step) {
+            const bool rise = (step % 2) == 0;
+            const int before = eng.stepIndex;
+            eng.executeModeB(rise, rise, 3.f, in);
+            if (!rise || before == -1) continue;
+            if (eng.stepIndex != before) {
+                ++advances;
+                holdRun = 0;
+            } else {
+                ++holdRun;
+                if (holdRun > maxHoldRun) maxHoldRun = holdRun;
+            }
+        }
+        check(advances > 0, "NO-FREEZE: a fixed p=0.3 march keeps moving (the scan escapes)");
+        check(maxHoldRun < 16,
+              "NO-FREEZE: no hold run reaches the window length (the escape within varLen rises)");
     }
 
     // ── HOLD: p=0 -> the playhead never moves; the held step re-outputs itself ──
@@ -522,11 +557,12 @@ int main() {
     // REST/LEGATO/ACCENT stay [0,1]), and the rise sites map BACKWARD ->
     // advancePlayhead(-1) — the reverse traversal, which wraps past step 0 to 15.
     {
-        // BACKWARD WALK (rack-free, plain Mode B, the RULE discipline): the draw
-        // source is r_vary (the per-step threshold), so the |p| SCHEDULE turns the
-        // knob — stochastic -0.35 first, then -1.0 (the deterministic walker that
-        // guarantees the 0 -> 15 wrap). Every decision rise moves EXACTLY -1 iff
-        // r_vary(step) < |p|, else holds (the sticky step — by design).
+        // BACKWARD WALK (rack-free, plain Mode B, the RULE discipline incl. the
+        // SCAN mirror): the |p| SCHEDULE — stochastic -0.35 first, then -1.0 (the
+        // deterministic walker that guarantees the 0 -> 15 wrap). Every decision
+        // rise moves EXACTLY -1 iff the SCANNED draw < |p|, else holds (the scan
+        // then accrues — the freeze fix works backward too: the window is scanned
+        // for u < |p| in either direction).
         PhiloxRng rng; rng.seed64(0x51E7Aull);   // the RULE march's seed
         SequencerEngine eng; eng.reset();
         eng.numPolyVoices = 0;
@@ -534,6 +570,7 @@ int main() {
         const auto m = dotModular::VoiceResolver::slot(1);
         const PatternInput in = makeInput(0.5f);
         int mismatches = 0, backwardMoves = 0, heldRises = 0;
+        int mirrorScan = 0;
         bool crossedWrap = false;
         for (int step = 0; step < 96; ++step) {
             const bool rise = (step % 2) == 0;
@@ -542,7 +579,7 @@ int main() {
             const int before = eng.stepIndex;
             bool expectBackward = false;
             if (rise && eng.stepIndex != -1)
-                expectBackward = (eng.pe.warpRow(m, dotModular::LaneId{PatternEngine::PL_VARIATION})[eng.getVariationStep()] < mag);
+                expectBackward = (eng.stepAdvanceDrawAt(mirrorScan) < mag);
             StepResult r = eng.executeModeB(rise, rise, 3.f, in);
             (void)r;
             if (!rise || before == -1) continue;   // the seed advances forward, no decision
@@ -551,7 +588,8 @@ int main() {
             if (moved != expectBackward) ++mismatches;
             if (moved && !movedBack) ++mismatches;   // backward moves are EXACTLY -1 (mod 16)
             if (movedBack) { ++backwardMoves; if (before == 0) crossedWrap = true; }
-            if (!moved) ++heldRises;
+            if (!moved) { ++heldRises; ++mirrorScan; }   // held: the scan accrues
+            else mirrorScan = 0;                          // moved: re-anchored
         }
         check(mismatches == 0, "STAGE2: p<0 walk == the mirrored BACKWARD rule, exactly -1 per move");
         check(backwardMoves > 0, "STAGE2: the march actually exercised backward moves");

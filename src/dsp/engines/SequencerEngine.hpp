@@ -397,8 +397,23 @@ struct SequencerEngine {
     int polySubLevel_ = -1;
     // (The step-advance rise counter is DELETED — CC_PROMPT_STEP_ADVANCE_FIX_DRAW_
     // SOURCE: the advance reads the VARIATION LANE's step-addressed draw, not a
-    // per-rise uniform, so there is no counter and NO new draw consumption. The
-    // held step rereading the same r_vary is the intended per-step threshold.)
+    // per-rise uniform, so there is no counter and NO new draw consumption.)
+    // THE FREEZE FIX (CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR): scanOfs_ — the
+    // local variation-window SCAN, "how far the held step has scanned the window
+    // looking for an escape value". GATE MODE ONLY (mode A never reads it — its
+    // advancePlayhead calls reset it harmlessly). +1 on each HELD rise, bounded by
+    // the variation lane's length; RESET to 0 in advancePlayhead (each arrived step
+    // is judged on its own value first, scan 0). A LOCAL scan index into the
+    // variation window — NEVER added into totalStepsElapsed or the global clock
+    // (a held-rise count is not a pattern position; DNA_LCM-agnostic by
+    // construction). To stay frozen EVERY value in the window must fail < |p|
+    // (prob ~(1-|p|)^varLen ≈ 0) — escapes within ~1/|p| held rises; p=0 = HOLD
+    // by design. Zero new draws (the scan reads existing ring values).
+    int scanOfs_ = 0;
+    void scanHold_() {
+        const int varLen = lor(dotModular::STRAND_VARIATION, LOR_LEN);
+        scanOfs_ = (scanOfs_ + 1) % (varLen > 0 ? varLen : 1);
+    }
     // F-4 (D5 — RHYTHM_DECISION_MANAGER_PLAN §3.3): each poly voice's THIS-EDGE GHOST EVENT —
     // the voice PLAYED an onset at a permission point that was a ghost cell of ITS containers
     // (rd.ghostCell). Captured by executePolyVoice at the play verdict (the polyVerdict_
@@ -997,6 +1012,13 @@ struct SequencerEngine {
     int getRhythmStep() const;
     int getVariationStep() const;
     int getLegatoStep() const;
+    // TEST-VISIBLE (the RULE mirror in test_step_advance): the variation draw the
+    // step-advance decision reads at the given tick delta — the SAME expression
+    // decideStepAdvance_ uses (0 = the current step's own value; the fall passes
+    // +1, the incoming-rest step; the rise passes the accumulated scan). Pure:
+    // reading never mutates the ring (zero new draws). getStrandIdx wraps by the
+    // variation lane's own length — the local window scan.
+    float stepAdvanceDrawAt(int drawTickDelta) const;
     int getAccentStep() const;  // NEW: accent strand DNA index
     int getMelodyStep() const;
     int getOctaveStep() const;

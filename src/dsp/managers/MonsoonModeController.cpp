@@ -155,15 +155,15 @@ void ModeController::updatePatternInput() {
         monoVoice.qmixLevel    = mainModule ? mainModule->getEffectiveMonoQmix(paramManager.getQmixLevel())
                                              : paramManager.getQmixLevel();
         // STEP-ADVANCE VALUE (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2; the rectified
-        // twin RETIRED — see the poly note above): one unclamped knob+CV2+Junction sum,
-        // ONE clamp. variationProb goes BIPOLAR [-1,+1] — the advance decision's value,
-        // the negative half being the probabilistic retrograde (CV2's normalized range
-        // is already bipolar, so a bipolar modulation source into Variation makes the
-        // sequence WANDER). With nothing bipolar patched the clamp is a no-op: default
-        // behaviour unchanged. currentPatternInput.variationAmount above stays
-        // rectified (the mode-A longer–shorter consumer + the rack-free contract
-        // read the scalar).
-        const float varSum = paramManager.getVariationUnclamped();
+        // twin RETIRED — see the poly note above; the BIPOLAR SCOPE per
+        // CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR): GATE MODE reinterprets the knob
+        // BIPOLAR — (2*knob - 1) + CV2 + Junction, ONE clamp [-1,+1]. The KNOB ALONE
+        // reaches negative ("positive step forward, negative step back": 1 -> +1,
+        // 0.5 -> 0 = the by-design stutter, 0 -> -1 = always backward). Clock/phase
+        // keep the UNIPOLAR note-length reads — currentPatternInput.variationAmount
+        // above stays rectified (the mode-A longer–shorter consumer + the rack-free
+        // contract read the scalar); the shared 0.5 default breaks nothing there.
+        const float varSum = paramManager.getVariationGateUnclamped();
         monoVoice.variationProb     = clampv(varSum, -1.f, +1.f);
         // SUBGATE TIER: V1's resolved thresholds (storageSlot 0 = the mono row of the
         // bank), the same three-way law as the poly rows. Without a mainModule the

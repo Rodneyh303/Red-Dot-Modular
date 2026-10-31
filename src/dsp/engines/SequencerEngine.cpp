@@ -190,6 +190,7 @@ void SequencerEngine::setWindow(int length, int offset) {
 bool SequencerEngine::advancePlayhead(int dir) {
     int prevStep = stepIndex;
     lastPlayDir = (dir < 0) ? -1 : +1;
+    scanOfs_ = 0;   // THE FREEZE FIX: any motion re-anchors — each arrived step is judged on its own value first
 
     // ── Per-lane direction — STATELESS ──────────────────────────────────────────
     // Only the flip QUANTIZATION keeps state now: promote the pending dir at the step edge
@@ -346,7 +347,7 @@ bool SequencerEngine::advancePlayhead(int dir) {
 // CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE) — the gate-mode advance DECISION for one rise.
 // GATE MODE ONLY (Mode B): in clock/phase mode p_advance is not used and Variation keeps
 // its existing meaning (executeModeA never calls this).
-dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLevel, int targetTickDelta) {
+dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLevel, int drawTickDelta) {
     namespace SK = dotModular::SubgateKnobs;
     const VoiceSlot m = VoiceResolver::mono();
     // THE DRAW SOURCE (the fix): u is the VARIATION LANE's step-addressed draw — the
@@ -360,16 +361,17 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLev
     // SAME current-step variation draw — the playhead is singular, mirroring how the
     // subgate rest/legato reads address their level: the THRESHOLD is level-specific,
     // the draw is the shared lane.
-    // The draw addressing, parameterized by the tick delta: 0 = the current step
-    // (the rise's read — bit-identical to getVariationStep(), which IS this
-    // expression at delta 0); +1 = the incoming-rest step (the fall-advance's
-    // read — CC_PROMPT_TIE_INTO_REST_PROBABILISTIC_ADVANCE, "the step being
-    // advanced into"). ONE mechanism, both edges.
-    const int varIdx = getStrandIdx(laneTick_[dotModular::STRAND_VARIATION] + targetTickDelta,
-                                    lor(dotModular::STRAND_VARIATION, LOR_LEN),
-                                    lor(dotModular::STRAND_VARIATION, LOR_OFF),
-                                    lor(dotModular::STRAND_VARIATION, LOR_ROT));
-    const float u = pe.warpRow(m, LaneId{PL_VARIATION})[varIdx];
+    // The draw addressing, parameterized by the tick delta (the ONE expression,
+    // also exposed as stepAdvanceDrawAt for the test mirror): 0 = the current step
+    // (bit-identical to getVariationStep()); +1 = the incoming-rest step (the
+    // fall-advance, CC_PROMPT_TIE_INTO_REST_PROBABILISTIC_ADVANCE — unscanned, the
+    // target's own value); the RISE passes the accumulated scanOfs_ — THE FREEZE
+    // FIX (CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR): a held rise scans the
+    // variation window forward, so a step whose own draw fails the compare is NOT
+    // a permanent wall (the escape comes within ~1/|p| held rises). getStrandIdx
+    // wraps by the variation lane's own length — the LOCAL window scan, never the
+    // global clock.
+    const float u = stepAdvanceDrawAt(drawTickDelta);
     // The threshold, by LEVEL (the three-level hierarchy): a MAIN gate rise resolves to
     // the VARIATION probability (the per-voice resolver path — warps/correlates/CAs like
     // every lane, NOT the raw knob; BIPOLAR since Stage 2 — the signed advance value,
@@ -970,7 +972,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
             // The seed: initialization, not a sequence-motion decision (no draw consumed).
             wrapped = advancePlayhead();
         } else {
-            const dotModular::StepAdvance::Decision d = decideStepAdvance_(-1);
+            const dotModular::StepAdvance::Decision d = decideStepAdvance_(-1, scanOfs_);
             // STAGE 1 (CC_PROMPT_GATE_STEP_ADVANCE_SPEC): the main-gate advance is
             // PROBABILISTIC — u < the resolved Variation probability in gate mode moves
             // the playhead. p=1 is the GOLDEN PIN: decide(1, u) == FORWARD for every
@@ -984,9 +986,11 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
             // same machinery the deterministic dir parameter uses. ONE PLAYHEAD: the
             // direction is whatever THIS event's threshold sign gave.
             if (d == dotModular::StepAdvance::FORWARD)
-                wrapped = advancePlayhead();
+                wrapped = advancePlayhead();               // resets the scan
             else if (d == dotModular::StepAdvance::BACKWARD)
-                wrapped = advancePlayhead(-1);
+                wrapped = advancePlayhead(-1);              // resets the scan
+            else
+                scanHold_();                                // HELD: scan the window forward (the freeze fix)
         }
         // else REPEAT (the corrected semantics, Rodney 91b100c): the playhead does not
         // move — the current step is unchanged, so every downstream read hits the SAME
@@ -1118,7 +1122,7 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
         const int advLevel = mainGateRise ? -1
                            : (subGateRise ? dotModular::SubgateKnobs::RATCHET
                                           : dotModular::SubgateKnobs::GHOST);
-        const dotModular::StepAdvance::Decision adv = decideStepAdvance_(advLevel);
+        const dotModular::StepAdvance::Decision adv = decideStepAdvance_(advLevel, scanOfs_);
         // FORWARD advances; BACKWARD (Stage 2 bipolar — a negative threshold at ANY
         // level: the bipolar main through follow-main, or a bipolar mod delta into
         // the level's ADVANCE jack) walks the SHARED playhead backward with wrap
@@ -1126,9 +1130,11 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
         // the last event that advanced); REPEAT moves nothing (the held semantics —
         // the step-addressed data re-outputs itself, no re-draw branch).
         if (adv == dotModular::StepAdvance::FORWARD)
-            wrapped = advancePlayhead();
+            wrapped = advancePlayhead();               // resets the scan
         else if (adv == dotModular::StepAdvance::BACKWARD)
-            wrapped = advancePlayhead(-1);
+            wrapped = advancePlayhead(-1);              // resets the scan
+        else
+            scanHold_();                                // HELD: scan the window forward (the freeze fix)
     }
 
     // Boundary interrupt (same as executeModeA/B): clear held gate at wrap so every lap
@@ -1821,6 +1827,17 @@ int SequencerEngine::nvIdxForVoice(VoiceSlot bank, const PatternInput& input) co
 
 int SequencerEngine::getRhythmStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_RHYTHM],    lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT)); }
 int SequencerEngine::getVariationStep() const { return getStrandIdx(laneTick_[dotModular::STRAND_VARIATION], lor(dotModular::STRAND_VARIATION,LOR_LEN), lor(dotModular::STRAND_VARIATION,LOR_OFF), lor(dotModular::STRAND_VARIATION,LOR_ROT)); }
+float SequencerEngine::stepAdvanceDrawAt(int drawTickDelta) const {
+    // THE ONE advance-draw expression (decideStepAdvance_ delegates here; the test
+    // mirror reads the same): the variation draw at the strand tick + delta,
+    // wrapped by the variation lane's own length (the LOCAL window scan).
+    const VoiceSlot m = VoiceResolver::mono();
+    const int varIdx = getStrandIdx(laneTick_[dotModular::STRAND_VARIATION] + drawTickDelta,
+                                    lor(dotModular::STRAND_VARIATION, LOR_LEN),
+                                    lor(dotModular::STRAND_VARIATION, LOR_OFF),
+                                    lor(dotModular::STRAND_VARIATION, LOR_ROT));
+    return pe.warpRow(m, LaneId{PL_VARIATION})[varIdx];
+}
 int SequencerEngine::getLegatoStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_LEGATO],    lor(dotModular::STRAND_LEGATO,LOR_LEN), lor(dotModular::STRAND_LEGATO,LOR_OFF), lor(dotModular::STRAND_LEGATO,LOR_ROT)); }
 int SequencerEngine::getAccentStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_ACCENT],    lor(dotModular::STRAND_ACCENT,LOR_LEN), lor(dotModular::STRAND_ACCENT,LOR_OFF), lor(dotModular::STRAND_ACCENT,LOR_ROT)); }
 int SequencerEngine::getMelodyStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_MELODY],    lor(dotModular::STRAND_MELODY,LOR_LEN), lor(dotModular::STRAND_MELODY,LOR_OFF), lor(dotModular::STRAND_MELODY,LOR_ROT)); }

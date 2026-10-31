@@ -83,14 +83,20 @@ struct StraitsSubgatePanelWidget : ModuleWidget,
         // lane's locked Monsoon mirror); v1..15 dim + lock beyond the active
         // poly count, exactly like REST/LEGATO.
         auto resolveMon = [this]() -> Monsoon* { return redDot::lookupMonsoon(module); };
+        // BIPOLAR SCOPE (the update): the ADVANCE column is ALWAYS bipolar — single-use
+        // (step-advance only; no clock/phase meaning to protect): [-1,+1] centered at 0
+        // (hold; + = forward advance prob, - = backward). REST/LEGATO/ACCENT stay [0,1].
+        const bool isAdv = (dec == SKns::ADVANCE);
         for (int v = 0; v < SKns::VOICES; ++v) {
             const std::string cap = std::string("V") + std::to_string(v + 1) + " "
-                                  + SKns::LEVEL_CAPTIONS[level] + " " + SKns::DEC_CAPTIONS[dec];
+                                  + SKns::LEVEL_CAPTIONS[level] + " " + SKns::DEC_CAPTIONS[dec]
+                                  + (isAdv ? " (bipolar)" : "");
             auto* k = redDot::bindStoreThemedKnob<Monsoon,
                                                   redDot::Tag_OffWhite_Compact_Cog,
                                                   redDot::Tag_Dark_Compact_Cog>(
                 this, "param_sgv_" + std::to_string(v),
-                resolveMon, 0.f, 1.f, SKns::kDefaultThreshold, cap,
+                resolveMon, isAdv ? -1.f : 0.f, isAdv ? +1.f : 1.f,
+                isAdv ? 0.f : SKns::kDefaultThreshold, cap,
                 [level, dec, v](Monsoon& m) { return m.subgateDisplayThreshold(v, level, dec); },
                 [level, dec, v](Monsoon& m, float x) { m.setSubgateOwn(v, level, dec, x); });
             k->lightWhen = [this]() { return themeLight_; };

@@ -228,17 +228,23 @@ struct StraitsBaseWidget : ModuleWidget,
             }));
 
         // ── SUBGATE MERGE: the 8 GLOBAL store knobs + their mod jacks ──────────
-        // (the retired StraitsSubgateBaseWidget's binds, verbatim — the Causeway
-        // mod coverage law: each knob ships with its jack, born together).
+        // (the retired StraitsSubgateBaseWidget's binds — the Causeway mod coverage
+        // law: each knob ships with its jack, born together). BIPOLAR SCOPE (the
+        // CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR update): the ADVANCE columns are
+        // ALWAYS bipolar — single-use (step-advance only; no clock/phase meaning to
+        // protect): [-1,+1] centered at 0 (hold; + = forward advance prob, -
+        // = backward). REST/LEGATO/ACCENT stay [0,1].
         {
             auto resolveMon = [this]() -> Monsoon* { return redDot::lookupMonsoon(module); };
             for (int l = 0; l < SKns::LEVELS; ++l)
                 for (int d = 0; d < SKns::DECS; ++d) {
+                    const bool isAdv = (d == SKns::ADVANCE);
                     const std::string cap = std::string(SKns::LEVEL_CAPTIONS[l]) + " " + SKns::DEC_CAPTIONS[d];
                     redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(
                         this, "param_sbg_" + std::to_string(l) + "_" + std::to_string(d),
-                        resolveMon, 0.f, 1.f, SKns::kDefaultThreshold,
-                        "Subgate " + cap + " (global)",
+                        resolveMon, isAdv ? -1.f : 0.f, isAdv ? +1.f : 1.f,
+                        isAdv ? 0.f : SKns::kDefaultThreshold,
+                        "Subgate " + cap + (isAdv ? " (global, bipolar)" : " (global)"),
                         [l, d](Monsoon& m) { return m.getSubgateGlobal(l, d); },
                         [l, d](Monsoon& m, float x) { m.setSubgateGlobal(l, d, x); });
                     bindInput<PJ301MPort>("mod_sbg_" + std::to_string(l) + "_" + std::to_string(d),

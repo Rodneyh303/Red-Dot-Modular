@@ -54,6 +54,11 @@ float ParameterManager::getVariation() const {
 float ParameterManager::getVariationUnclamped() const {
     return readParam_(VARIATION_PARAM, 0.f, 1.f) + cv2Offsets[1] + junctionOffsets[1];
 }
+// GATE MODE ONLY (the BIPOLAR SCOPE): the knob remapped bipolar — (2*knob - 1) +
+// CV2 + Junction. The knob ALONE reaches negative; clock/phase never call this.
+float ParameterManager::getVariationGateUnclamped() const {
+    return (2.f * readParam_(VARIATION_PARAM, 0.f, 1.f) - 1.f) + cv2Offsets[1] + junctionOffsets[1];
+}
 
 float ParameterManager::getLegato() const {
     float v = readParam_(LEGATO_PARAM, 0.f, 1.f);
