@@ -8,6 +8,7 @@
 //#include "MonsoonStraitsSands.hpp"
 #include "StraitsSandsMacroVisual.hpp"
 #include "dsp/SandsTopology.hpp"           // step 4b: Macro lock predicate via the resolver
+#include <algorithm>
 #include <cassert>
 #include <cstring>   // memcmp — the prob-CV out write-elimination bit-compare (perf fix)
 #include "MonsoonSandsVisualExpander.hpp"  // complete mono type + SandsMonoVisualIds for the tab-1 mono mirror
@@ -73,6 +74,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     SandsVisualEditorV4*       visualEditor = nullptr;
     SandsParameterManager*     paramMgr     = nullptr;
+    // Stage 3: the voice-range strip's caption buffer (setRangeState stores the
+    // pointer — it must outlive the call, so it lives here, not on the stack).
+    char rangeLabel_[16] = "GLOBAL";
     TabButtonGroup*            tabGroup     = nullptr;
     int viewVoice = 0;   // which voice's resulting probabilities to DISPLAY (read-only)
     // (lastSendVoice removed: the per-voice send sync dance is gone -- StoreKnobs read/write
@@ -164,6 +168,47 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         visualEditor->layout.topPadding = 0.f;
         visualEditor->layout.botPadding = 0.f;
         visualEditor->showControlBar    = false;
+        // ── UNIFIED ADDRESSING Stage 3: the voice-range strip (top of the grid) ──
+        // On Macro the strip IS the Macro tier's authoring surface: it shows + drags
+        // the GLOBAL voice range row (editor.voiceLorMacro — the row every follow-
+        // Macro voice reads through). East's strip shows this row blocked when a
+        // voice follows Macro; the per-voice rows are authored on East's strip.
+        visualEditor->layout.rangeLaneH = mm2px(Vec(0.f, dotModular::SandsGrid::RANGE_LANE_H)).y;
+        visualEditor->onRangeEdit = [this](int L, int O, int R) {
+            if (auto* m = getMonsoon()) {
+                m->setVoiceLorMacro(0, (float)L);
+                m->setVoiceLorMacro(1, (float)O);
+                m->setVoiceLorMacro(2, (float)R);
+            }
+        };
+        visualEditor->onRangeCommit = [this](const int before[3], const int after[3]) {
+            auto* m = getMonsoon(); if (!m) return;
+            const int b0=before[0],b1=before[1],b2=before[2];
+            const int a0=after[0], a1=after[1], a2=after[2];
+            redDot::applyAndPushStoreEdit<Monsoon>(m, "Global voice range edit",
+                [b0,b1,b2, a0,a1,a2](Monsoon& mm, bool redo) {
+                    const int L = redo?a0:b0, O = redo?a1:b1, R = redo?a2:b2;
+                    mm.setVoiceLorMacro(0, (float)L);
+                    mm.setVoiceLorMacro(1, (float)O);
+                    mm.setVoiceLorMacro(2, (float)R);
+                },
+                false, true);
+        };
+        visualEditor->onRangeRightClick = [this](rack::math::Vec) -> bool {
+            return openVoiceRangeMenu();
+        };
+        // Stage 4: the OUTPUT-MASK paint on the MACRO tier (the GLOBAL mask every
+        // follow-Macro voice reads through) — the same click-toggle + history idiom.
+        visualEditor->onMaskToggle = [this](int cell, bool play) {
+            auto* m = getMonsoon(); if (!m) return;
+            if ((int)std::lround(m->getMaskMacroKind()) != 2) return;   // painted only
+            const bool oldPlay = m->getMaskMacroCell(cell);
+            if (oldPlay == play) return;
+            m->setMaskMacroCell(cell, play);                            // apply, then record
+            redDot::applyAndPushStoreEdit<Monsoon>(m, "Global mask paint",
+                [cell](Monsoon& mm, bool p) { mm.setMaskMacroCell(cell, p); },
+                oldPlay, play);
+        };
         addChild(visualEditor);
 
         // DRIVES the lane downstream (Mono or East). Ownership governs what reaches the ENGINE, not what
@@ -430,6 +475,114 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         menu->addChild(createCheckMenuItem("DISTRIBUTION", "",
             [this]() { return hasSubpanel(modelSandsDistributionExpander); },
             [this]() { toggleSubpanel(modelSandsDistributionExpander); }));
+        // ── UNIFIED ADDRESSING Stage 2b: the MACRO (global) voice range ──────────
+        // Macro's GLOBAL voice-range row (the L/O/R+dir every FOLLOWING voice reads —
+        // the Macro tier of the global->voice map) is authored on the range surface
+        // (Stage 3); the reset lives here today. The Monsoon EDITOR store is the
+        // single authority; the engine picks it up next control block via
+        // pushVoiceLorEditor. Resetting to identity (16/0/0/Forward) restores the
+        // pass-through law by VALUE — the Stage-1/2a goldens' precondition.
+        if (auto* mm = getMonsoon()) {
+            menu->addChild(new MenuSeparator);
+            menu->addChild(createMenuLabel("Voice range (global, unified addressing)"));
+            menu->addChild(createMenuItem("Reset global range to identity (16/0/0, fwd)", "",
+                [mm]() { mm->resetVoiceLorMacro(); }));
+        }
+    }
+
+    // ── UNIFIED ADDRESSING Stage 3: the voice-range strip's context menu ────────
+    // Right-click on the strip (top of the grid): the MACRO tier's DIRECTION (the
+    // LaneDir order) + the identity reset. No delegation items here — this IS the
+    // Macro tier; the per-voice follow/independent switch lives on East's strip.
+    bool openVoiceRangeMenu() {
+        auto* m = getMonsoon();
+        if (!m) return false;
+        struct RangeDirItem : MenuItem {
+            StraitsSandsMacroVisualWidget* widget;
+            int dir;
+            void onAction(const event::Action& e) override {
+                if (auto* mm = widget->getMonsoon()) mm->setVoiceLorMacroDir((float)dir);
+            }
+        };
+        Menu* menu = createMenu();
+        menu->addChild(createMenuLabel("Voice range (global, unified addressing)"));
+        menu->addChild(new MenuSeparator);
+        static const char* const dirNames[4] =
+            { "Forward", "Reverse", "Pendulum", "PingPong" };
+        const int curDir = (int)std::lround(m->getVoiceLorMacroDir()) & 3;
+        for (int d = 0; d < 4; ++d) {
+            auto* it = new RangeDirItem;
+            it->text = dirNames[d];
+            it->rightText = (curDir == d) ? "✓" : "";
+            it->widget = this; it->dir = d;
+            menu->addChild(it);
+        }
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuItem("Reset global range to identity (16/0/0, fwd)", "",
+            [m]() { m->resetVoiceLorMacro(); }));
+        // ── Stage 4: the OUTPUT MASK (the MACRO tier — the GLOBAL mask every follow-
+        // Macro voice reads through). The per-voice masks live on East's strip menu.
+        {
+            struct MaskKindItem : MenuItem {
+                StraitsSandsMacroVisualWidget* widget;
+                int kind;
+                void onAction(const event::Action& e) override {
+                    if (auto* mm = widget->getMonsoon()) {
+                        const float oldK = mm->getMaskMacroKind();
+                        mm->setMaskMacroKind((float)kind);
+                        redDot::applyAndPushStoreEdit<Monsoon>(mm, "Global mask kind",
+                            [](Monsoon& m2, float k) { m2.setMaskMacroKind(k); }, oldK, (float)kind);
+                    }
+                }
+            };
+            struct MaskBitsItem : MenuItem {
+                StraitsSandsMacroVisualWidget* widget;
+                float bits;
+                void onAction(const event::Action& e) override {
+                    if (auto* mm = widget->getMonsoon()) {
+                        const float oldB = mm->getMaskMacroPatternBits();
+                        mm->setMaskMacroPatternBits(bits);
+                        redDot::applyAndPushStoreEdit<Monsoon>(mm, "Global mask pattern",
+                            [](Monsoon& m2, float b) { m2.setMaskMacroPatternBits(b); }, oldB, bits);
+                    }
+                }
+            };
+            menu->addChild(new MenuSeparator);
+            menu->addChild(createMenuLabel("Output mask (global)"));
+            static const char* const kindNames[3] =
+                { "Cycle (no mask)", "Range (the window plays)", "Painted (click the strip)" };
+            for (int k = 0; k < 3; ++k) {
+                auto* it = new MaskKindItem;
+                it->text = kindNames[k];
+                it->rightText = (((int)std::lround(m->getMaskMacroKind())) == k) ? "✓" : "";
+                it->widget = this; it->kind = k;
+                menu->addChild(it);
+            }
+            menu->addChild(createCheckMenuItem("Mask follows rotation (R)", "",
+                [m]() { return m->getMaskMacroFollowR() != 0.f; },
+                [m]() {
+                    const float oldF = m->getMaskMacroFollowR();
+                    const float newF = (oldF != 0.f) ? 0.f : 1.f;
+                    m->setMaskMacroFollowR(newF);
+                    redDot::applyAndPushStoreEdit<Monsoon>(m, "Global mask follow-R",
+                        [](Monsoon& m2, float f) { m2.setMaskMacroFollowR(f); }, oldF, newF);
+                }));
+            menu->addChild(new MenuSeparator);
+            auto* allOn = new MaskBitsItem;
+            allOn->text = "Set mask all on";
+            allOn->widget = this; allOn->bits = 65535.f;
+            menu->addChild(allOn);
+            auto* fromRange = new MaskBitsItem;
+            fromRange->text = "Set mask from range";
+            fromRange->widget = this;
+            fromRange->bits = (float)SequencerEngine::windowMaskBits(
+                std::max(1, (int)std::lround(m->getVoiceLorMacro(0))),
+                (int)std::lround(m->getVoiceLorMacro(1)));
+            menu->addChild(fromRange);
+            menu->addChild(createMenuItem("Reset mask to cycle (all on)", "",
+                [m]() { m->resetMaskMacro(); }));
+        }
+        return true;
     }
 
     Monsoon* getMonsoon() {
@@ -767,6 +920,28 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 int ph = (eng.stepIndex >= 0) ? eng.macroLaneTick_[l] : -1;
                 visualEditor->setLanePlayStep(l, calcPlayhead(ph, ownLen, ownOff, ownRot));
             }
+        }
+
+        // ── UNIFIED ADDRESSING Stage 3: the voice-range strip (the MACRO tier) ──
+        // The strip at the top of the grid shows + authors the GLOBAL voice range
+        // row (macroVoiceLor_ — the row every follow-Macro voice reads through).
+        // The animated read cell is the MACRO FRAME (the global window walk — the
+        // tier has no voice map, it IS the frame; the engine caches its read cell
+        // + walk sign per recompute). Never blocked: this is the tier's own panel.
+        {
+            const int mL = std::max(1, se->macroVoiceLor_[SequencerEngine::LOR_LEN]);
+            const int mO = se->macroVoiceLor_[SequencerEngine::LOR_OFF];
+            const int mR = se->macroVoiceLor_[SequencerEngine::LOR_ROT];
+            const int rp = (eng.stepIndex >= 0) ? se->macroFrameRead() : -1;
+            const int sg = se->macroFrameSign();
+            visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);
+            // Stage 4: the strip's mask surface (the MACRO tier's GLOBAL pattern).
+            const int  mkind = (int)std::lround(monsoon->getMaskMacroKind());
+            const bool painted = (mkind == 2);
+            unsigned pat = 0xFFFFu;
+            if (painted)
+                pat = (unsigned)std::lround(std::clamp(monsoon->getMaskMacroPatternBits(), 0.f, 65535.f));
+            visualEditor->setRangeMask(painted, pat);
         }
     }
 

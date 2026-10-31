@@ -76,6 +76,47 @@ long SequencerEngine::laneTickFor(LaneDir d, long t, int len) {
     }
 }
 
+// ── UNIFIED ADDRESSING Stage 1 (CC_PROMPT_UNIFIED_ADDRESSING_SPEC.md) ─────────────
+// The GLOBAL-level LOR map: read_position(voice, lane) = laneLOR(voiceLOR(globalLOR(t))).
+// Stage 1 inserts the top map; the lane machinery below it (laneTickFor + getStrandIdx)
+// is UNTOUCHED — the re-base of lane R from "global step 1" to "voice step 1" is carried
+// by the driver change itself (the lane's phase driver becomes the parent's walk).
+//
+// PASS-THROUGH at the default window (length 16, offset 0): the raw tick returns
+// unchanged, so EVERY read — any lane length (incl. the non-divisive 7/5/6 pinned in
+// test_unified_addressing), direction, poly voice — is bit-identical to the
+// pre-unification engine. That is the Stage-1 GOLDEN PIN.
+//
+// MAPPED once the window is authored (length < 16 or offset > 0 — the KNOWN ISSUE
+// config): the tick becomes the window walk — the 0-based count through
+// [offset, offset+length), returned as a 1-based tick for laneTickFor. Default lanes
+// (len 16, off 0) then read EXACTLY the global window's steps instead of the full 16;
+// a lane with its own window phases against the window walk (the polymeter beat against
+// the container length). The playhead's direction of motion is inherited automatically
+// (totalStepsElapsed moves ±1 with it — the same way lane direction composed with the
+// playhead before), and t's motion direction is the only direction input here.
+long SequencerEngine::driverTickAt(long t, int len, int off) {
+    if (len == 16 && off == 0) return t;   // the default window: PASS-THROUGH (the golden pin)
+    long w = (t - 1) % len;                // 0-based walk through the window
+    if (w < 0) w += len;
+    return w + off + 1;                    // 1-based tick: window start == tick 1
+}
+
+// The driver's musical predecessor (the value one step before tNow along the current
+// motion), for the lane-sign derivation. At a window wrap the walk JUMPS (that jump IS
+// the polymeter beat against the container), so the raw predecessor would read as a
+// direction flip; the true neighbor is one step along the motion. Pass-through keeps
+// today's exact expression (t - dir). tRawPrev is the driver evaluated at the raw-tick
+// predecessor (t - dir), precomputed by the caller.
+long SequencerEngine::driverTickBefore(long tNow, long tRawPrev, int dir, int len, int off) {
+    if (len == 16 && off == 0) {   // the pass-through config: today's exact expression
+        return tNow - dir;
+    }
+    const long dd = tNow - tRawPrev;
+    if (dd > 1 || dd < -1) return tNow - dir;   // window (or DNA_LCM) wrap: one musical step
+    return tRawPrev;
+}
+
 void SequencerEngine::reset() {
     pe.reset();
     gs.reset();
@@ -153,6 +194,26 @@ void SequencerEngine::reset() {
     windowMask = 0xFFFF;
     locked = false;
     muted = false;
+    // UNIFIED ADDRESSING Stage 2: the voice LOR rows seed to IDENTITY (pass-through).
+    for (int v = 0; v < kVoiceSlots; ++v) {
+        voiceLorStore_[v][LOR_LEN] = 16; voiceLorStore_[v][LOR_OFF] = 0; voiceLorStore_[v][LOR_ROT] = 0;
+        voiceLorDir_[v] = LaneDir::Forward;
+        voiceLorLocalEast_[v] = false;
+        voiceDriver_[v] = 0; voiceDriverPrev_[v] = 0; voiceRead_[v] = 0;
+        voiceSign_[v] = 0;   // Stage 3: the walk-sign cue re-derives on the first step
+    }
+    macroVoiceLor_[LOR_LEN] = 16; macroVoiceLor_[LOR_OFF] = 0; macroVoiceLor_[LOR_ROT] = 0;
+    macroVoiceLorDir_ = LaneDir::Forward;
+    macroFrameRead_ = 0; macroFrameSign_ = 0;   // Stage 3: the Macro frame's caches too
+    // Stage 4: the output mask seeds to CYCLE everywhere (the all-on degenerate mask,
+    // today's behaviour) — no gating at defaults, the goldens' output path untouched.
+    for (int v = 0; v < kVoiceSlots; ++v) {
+        maskKind_[v] = MASK_CYCLE; maskPainted_[v] = 0xFFFF; maskFollowR_[v] = false;
+        maskLocalEast_[v] = false; maskAnchored_[v] = 0xFFFF; maskAnchorR_[v] = 0;
+        maskLastPushed_[v] = 0xFFFF;
+    }
+    maskMacroKind_ = MASK_CYCLE; maskMacroPainted_ = 0xFFFF; maskMacroFollowR_ = false;
+    maskMacroAnchored_ = 0xFFFF; maskMacroAnchorR_ = 0; maskMacroLastPushed_ = 0xFFFF;
     runGateActive = false;
     resetArmed = false;
     prevGate1High = false;
@@ -184,6 +245,97 @@ void SequencerEngine::setWindow(int length, int offset) {
 
     if (stepIndex != -1 && !isStepInWindow(stepIndex)) {
         stepIndex = (startStep - 1 + 16) % 16;
+    }
+}
+
+// ── Stage 2b: the voice-LOR authoring push (see the hpp decl) ──────────────────
+// The EditorState float rows are the single authoring authority; this ONE copy per
+// control block is the only path they reach the map through (same discipline as the
+// lane LOR push in the Sands manager). The clamps mirror the lane LOR ranges exactly
+// (L 1..16, O/R 0..15, dir 0..3) and the rounding is std::lround — so an identity
+// row (16/0/0/0, follow) lands byte-identically on the store the reset() seeded and
+// the pass-through branch keeps the Stage-1 goldens verbatim. Pure: reads only its
+// arguments, writes only the voice-LOR store (no recompute here — the next step's
+// lane walk picks the rows up, the same one-block cadence every authored LOR uses).
+void SequencerEngine::pushVoiceLorEditor(
+    const float* macroLor, float macroDir,
+    const float* eastLor, const float* eastDir, const float* localEast) {
+    auto lorInt = [](float x, float lo, float hi) -> int {
+        return (int)std::lround(std::clamp(x, lo, hi));
+    };
+    // Row item order is the store's: LOR_LEN=0, LOR_OFF=1, LOR_ROT=2 — the editor rows
+    // are authored {L,O,R} in the same order (documented at the EditorState arrays).
+    macroVoiceLor_[LOR_LEN] = lorInt(macroLor[LOR_LEN], 1.f, 16.f);
+    macroVoiceLor_[LOR_OFF] = lorInt(macroLor[LOR_OFF], 0.f, 15.f);
+    macroVoiceLor_[LOR_ROT] = lorInt(macroLor[LOR_ROT], 0.f, 15.f);
+    macroVoiceLorDir_       = (LaneDir)lorInt(macroDir, 0.f, 3.f);
+    for (int v = 0; v < kVoiceSlots; ++v) {
+        voiceLorStore_[v][LOR_LEN] = lorInt(eastLor[v * 3 + LOR_LEN], 1.f, 16.f);
+        voiceLorStore_[v][LOR_OFF] = lorInt(eastLor[v * 3 + LOR_OFF], 0.f, 15.f);
+        voiceLorStore_[v][LOR_ROT] = lorInt(eastLor[v * 3 + LOR_ROT], 0.f, 15.f);
+        voiceLorDir_[v]            = (LaneDir)lorInt(eastDir[v], 0.f, 3.f);
+        voiceLorLocalEast_[v]      = (localEast[v] != 0.f);
+    }
+}
+
+// ── Stage 4: the output-mask authoring push (see the hpp decl) ─────────────────
+// The EditorState mask rows are the single authoring authority; this ONE copy per
+// control block is the only path they reach the output layer through (the push
+// runs AFTER pushVoiceLorEditor so the base rotation it re-pins against is the
+// current one). Clamps: kind 0..2, pattern bits 0..65535 (an exact float integer),
+// followR/local != 0. The ALL-CYCLE default (kinds 0, patterns all-on) lands
+// byte-identically on the reset() seed — no gating anywhere, the goldens' output
+// path is untouched. The ANCHOR LAW lives here (the push IS the per-block
+// "per step" check): a pushed pattern that differs from the last pushed pattern is
+// a PAINT (or a patch load) — the working copy re-anchors at the pushed base R;
+// an unchanged pattern whose base R moved is a KNOB TURN — the working copy
+// re-pins (rotates delta steps EARLIER, the content direction) so mask-step-1
+// stays pinned to the base rotation. followR-off rows (abs2) never re-pin.
+void SequencerEngine::pushMaskEditor(
+    const float* macroPatternBits, float macroKind, float macroFollowR,
+    const float* eastPatternBits, const float* eastKind,
+    const float* eastFollowR, const float* localEast) {
+    auto kindInt = [](float x) -> int {
+        return (int)std::lround(std::clamp(x, 0.f, 2.f));
+    };
+    auto bitsInt = [](float x) -> uint16_t {
+        return (uint16_t)std::lround(std::clamp(x, 0.f, 65535.f));
+    };
+    // Macro tier first (the GLOBAL mask every follower reads).
+    {
+        const uint16_t painted = bitsInt(macroPatternBits[0]);
+        const int kind         = kindInt(macroKind);
+        const bool followR     = (macroFollowR != 0.f);
+        const int  baseR       = macroVoiceLor_[LOR_ROT];
+        if (painted != maskMacroLastPushed_) {              // repaint / load: re-anchor
+            maskMacroAnchored_    = painted;
+            maskMacroAnchorR_     = baseR;
+            maskMacroLastPushed_  = painted;
+        } else if (followR && baseR != maskMacroAnchorR_) { // knob turn: re-pin
+            maskMacroAnchored_    = rotMask16(maskMacroAnchored_, baseR - maskMacroAnchorR_);
+            maskMacroAnchorR_     = baseR;
+        }
+        maskMacroKind_    = kind;
+        maskMacroPainted_ = painted;
+        maskMacroFollowR_ = followR;
+    }
+    for (int v = 0; v < kVoiceSlots; ++v) {
+        const uint16_t painted = bitsInt(eastPatternBits[v]);
+        const int      kind    = kindInt(eastKind[v]);
+        const bool     followR = (eastFollowR[v] != 0.f);
+        maskLocalEast_[v]      = (localEast[v] != 0.f);
+        const int  baseR       = voiceLorStore_[v][LOR_ROT];   // the row's base rotation
+        if (painted != maskLastPushed_[v]) {                    // repaint / load: re-anchor
+            maskAnchored_[v]    = painted;
+            maskAnchorR_[v]     = baseR;
+            maskLastPushed_[v]  = painted;
+        } else if (followR && baseR != maskAnchorR_[v]) {       // knob turn: re-pin
+            maskAnchored_[v]    = rotMask16(maskAnchored_[v], baseR - maskAnchorR_[v]);
+            maskAnchorR_[v]     = baseR;
+        }
+        maskKind_[v]    = kind;
+        maskPainted_[v] = painted;
+        maskFollowR_[v] = followR;
     }
 }
 
@@ -247,18 +399,32 @@ bool SequencerEngine::advancePlayhead(int dir) {
     //     always done so. A walker would make bouncers uniquely immune to a behaviour every
     //     other lane has — an inconsistency, not a feature.
     {
-        auto recomp = [&](LaneDir d, int len, int& tickOut, int& signOut) {
-            const long t   = (long)totalStepsElapsed;
-            const long cur = laneTickFor(d, t, len);
-            const long prv = laneTickFor(d, t - dir, len);
+        // UNIFIED ADDRESSING Stage 1: the lane walks are driven by the GLOBAL-level map
+        // (driverTickAt), not the raw DNA clock — the global window bounds the reads
+        // beneath it. Pass-through at the default window keeps every read bit-identical
+        // (the golden pin; the non-divisive lane lengths are pinned in
+        // test_unified_addressing). The sign predecessor is wrap-normalized
+        // (driverTickBefore): a window wrap is a BEAT, not a bounce, so the lane-sign
+        // cue must not flip there.
+        const int  drvLen = cachedLength;
+        const int  drvOff = cachedOffset;
+        const long tNow   = driverTickAt((long)totalStepsElapsed, drvLen, drvOff);
+        const long tPrevD = driverTickBefore(tNow,
+                                driverTickAt((long)totalStepsElapsed - dir, drvLen, drvOff),
+                                dir, drvLen, drvOff);
+        // UNIFIED ADDRESSING Stage 2: the per-voice maps, then the lane walks driven by
+        // EACH VOICE's driver (V1 = the mono lanes, V2..V16 = laneTickV_). The Macro
+        // frame keeps the global driver (it has no voice map — it IS the frame).
+        recomputeVoiceDrivers_(tNow, tPrevD, (long)totalStepsElapsed - dir, dir);
+        auto recomp = [&](LaneDir d, int len, long tN, long tP, int& tickOut, int& signOut) {
+            const long cur = laneTickFor(d, tN, len);
+            const long prv = laneTickFor(d, tP, len);
             tickOut = (int)((cur % DNA_LCM + DNA_LCM) % DNA_LCM);
             const long delta = cur - prv;
             if (delta > 0)      signOut = +1;
             else if (delta < 0) signOut = -1;
             // delta == 0 is the PingPong endpoint repeat: keep the previous sign.
         };
-        // Poly voices bounce at THEIR OWN per-voice LOR length, not mono's strandLen — the
-        // macroLOR_ fix generalised to laneTickV_. strand → this voice's LOR length:
         auto polyStrandLen = [&](int v, int strand) -> int {
             switch (strand) {
                 case dotModular::STRAND_MELODY:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_MELODY});
@@ -273,10 +439,10 @@ bool SequencerEngine::advancePlayhead(int dir) {
         };
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
             const int len = std::max(1, strandLen(l));   // mono strand length (mono tick)
-            recomp(laneDir_[l], len, laneTick_[l], laneSign_[l]);
+            recomp(laneDir_[l], len, voiceDriver_[0], voiceDriverPrev_[0], laneTick_[l], laneSign_[l]);
             for (int v = 1; v <= numPolyVoices; ++v) {
                 const int vlen = std::max(1, polyStrandLen(v, l));   // THIS voice's LOR length
-                recomp(laneDirV_[v][l], vlen, laneTickV_[v][l], laneSignV_[v][l]);
+                recomp(laneDirV_[v][l], vlen, voiceDriver_[v], voiceDriverPrev_[v], laneTickV_[v][l], laneSignV_[v][l]);
             }
         }
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
@@ -286,7 +452,7 @@ bool SequencerEngine::advancePlayhead(int dir) {
             // macroLOR had the strands not been editor-aligned — use POLY_LANE_COUNT so every poly
             // lane (incl. q-mix + accent) reads its Macro length.
             const int mlen = std::max(1, (l < dotModular::POLY_LANE_COUNT) ? macroLOR_[l] : strandLen(l));
-            recomp(macroLaneDir_[l], mlen, macroLaneTick_[l], macroLaneSign_[l]);
+            recomp(macroLaneDir_[l], mlen, tNow, tPrevD, macroLaneTick_[l], macroLaneSign_[l]);
         }
     }
 
@@ -402,15 +568,90 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLev
     return dotModular::StepAdvance::decide(p, u);
 }
 
+// ── UNIFIED ADDRESSING Stage 2: the per-voice maps (the global->voice level) ──────
+// Fills voiceDriver_ / voiceDriverPrev_ / voiceRead_ for every live voice from the
+// global driver pair. Identity rows PASS THROUGH (the parent driver + its normalization
+// verbatim — the Stage-1 goldens); mapped rows walk the voice's own window with the
+// rotation folded in anchor form (R = where the voice reads when the parent is at its
+// step 1, so the mechanical phase is (R-O) mod L), and the lanes are driven by the
+// voice's window position — the lane R re-base, the voice-length container, and the
+// voice direction all ride the chain (the sign product is inherited, not re-derived).
+// Stage 3: also fills the UI cue caches — voiceSign_ (the voice frame's instantaneous
+// walk sign) and macroFrameRead_/macroFrameSign_ (the Macro frame = the global window
+// walk). Same derivation rule as the caller's lane recomp: sign of the walk delta,
+// a wrap/jump reads as ONE musical step along the current motion (a BEAT, not a
+// bounce — the cue must not flip there), delta 0 (the PingPong endpoint repeat)
+// keeps the previous sign. Write-only caches; no read/generation path changes.
+void SequencerEngine::recomputeVoiceDrivers_(long tNow, long tPrevGlobal, long tRawPrev, int dirMotion) {
+    // The MACRO frame first (computed once, not per voice): the global window walk.
+    macroFrameRead_ = (int)(((tNow - 1) % 16 + 16) % 16);
+    {
+        const long gd = tNow - tPrevGlobal;   // wrap-normalized: -1/0/+1 (a window wrap was already folded to one step)
+        if (gd > 0)      macroFrameSign_ = +1;
+        else if (gd < 0) macroFrameSign_ = -1;   // 0 = held repeat: keep the previous cue
+    }
+    for (int v = 0; v < kVoiceSlots; ++v) {
+        const bool live = (v == 0) || (v >= 1 && v <= numPolyVoices);
+        if (!live) { voiceDriver_[v] = tNow; voiceDriverPrev_[v] = tPrevGlobal; voiceRead_[v] = 0; continue; }
+        if (voiceLorIdentity(v)) {
+            voiceDriver_[v]      = tNow;
+            voiceDriverPrev_[v]  = tPrevGlobal;
+            voiceRead_[v]        = (int)(((tNow - 1) % 16 + 16) % 16);
+            {   // identity frame = the global walk (same pair as macroFrame above)
+                const long gd = tNow - tPrevGlobal;
+                if (gd > 0)      voiceSign_[v] = +1;
+                else if (gd < 0) voiceSign_[v] = -1;
+            }
+            continue;
+        }
+        int L, O, R; LaneDir vd;
+        effectiveVoiceLor(v, L, O, R, vd);
+        if (L < 1) L = 1;
+        const long rho  = (((long)(R - O) % L) + L) % L;
+        const long wnow = ((((laneTickFor(vd, tNow, L) + rho) % L) + L) % L);
+        voiceDriver_[v] = wnow + 1;
+        voiceRead_[v]   = (int)((wnow + O) & 0x0F);
+        const long wprev = ((((laneTickFor(vd, tRawPrev, L) + rho) % L) + L) % L);
+        const long dd    = voiceDriver_[v] - (wprev + 1);
+        // A wrap (the voice's own window, or the global window beneath it) is a BEAT,
+        // not a bounce: the musical predecessor is one step along the current motion.
+        voiceDriverPrev_[v] = (dd > 1 || dd < -1) ? (voiceDriver_[v] - dirMotion) : (wprev + 1);
+        {   // Stage 3: the voice frame's walk sign. A wrap/jump (|dd| > 1) reads as ONE
+            // musical step along the FRAME'S OWN motion — dirMotion x the voice's
+            // direction sign (a Reverse frame wrapping bottom->top is still walking
+            // backward; the raw walk delta there is an alias of the closed form, not a
+            // direction flip). Otherwise the raw window-walk delta carries it, including
+            // the Pendulum/PingPong endpoint flips. delta 0 = the PingPong endpoint
+            // repeat: keep the cue. (Pendulum/PingPong projections never jump — their
+            // walks bounce inside the window — so the raw delta is always the truth
+            // there; the guard is for the Forward/Reverse wraps and a global-window
+            // jump beneath the frame.)
+            const long vdSign  = (vd == LaneDir::Reverse) ? -1 : +1;
+            const long dstep   = (dd > 1 || dd < -1) ? (long)dirMotion * vdSign : dd;
+            if (dstep > 0)      voiceSign_[v] = +1;
+            else if (dstep < 0) voiceSign_[v] = -1;
+        }
+    }
+}
+
 void SequencerEngine::recomputeLaneTicks() {
     // Recompute all laneTick_/laneTickV_/macroLaneTick_ caches from totalStepsElapsed.
     // This is the same recompute block as in advancePlayhead(), extracted so it can be
     // called after snapping totalStepsElapsed externally (e.g. Mode E phase jump snap)
     // without incrementing stepIndex/totalStepsElapsed.
-    auto recomp = [&](LaneDir d, int len, int& tickOut, int& signOut) {
-        const long t   = (long)totalStepsElapsed;
-        const long cur = laneTickFor(d, t, len);
-        const long prv = laneTickFor(d, t - lastPlayDir, len);
+    // UNIFIED ADDRESSING Stage 1: same global-level driver as advancePlayhead
+    // (lastPlayDir stands in for the edge's motion direction here — this variant
+    // runs after external snaps, where the transport did not just advance).
+    const int  drvLen = cachedLength;
+    const int  drvOff = cachedOffset;
+    const long tNow   = driverTickAt((long)totalStepsElapsed, drvLen, drvOff);
+    const long tPrevD = driverTickBefore(tNow,
+                            driverTickAt((long)totalStepsElapsed - lastPlayDir, drvLen, drvOff),
+                            lastPlayDir, drvLen, drvOff);
+    recomputeVoiceDrivers_(tNow, tPrevD, (long)totalStepsElapsed - lastPlayDir, lastPlayDir);
+    auto recomp = [&](LaneDir d, int len, long tN, long tP, int& tickOut, int& signOut) {
+        const long cur = laneTickFor(d, tN, len);
+        const long prv = laneTickFor(d, tP, len);
         tickOut = (int)((cur % DNA_LCM + DNA_LCM) % DNA_LCM);
         const long delta = cur - prv;
         if (delta > 0)      signOut = +1;
@@ -431,15 +672,15 @@ void SequencerEngine::recomputeLaneTicks() {
     };
     for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
         const int len = std::max(1, strandLen(l));
-        recomp(laneDir_[l], len, laneTick_[l], laneSign_[l]);
+        recomp(laneDir_[l], len, voiceDriver_[0], voiceDriverPrev_[0], laneTick_[l], laneSign_[l]);
         for (int v = 1; v <= numPolyVoices; ++v) {
             const int vlen = std::max(1, polyStrandLen(v, l));
-            recomp(laneDirV_[v][l], vlen, laneTickV_[v][l], laneSignV_[v][l]);
+            recomp(laneDirV_[v][l], vlen, voiceDriver_[v], voiceDriverPrev_[v], laneTickV_[v][l], laneSignV_[v][l]);
         }
     }
     for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
         const int mlen = std::max(1, (l < dotModular::POLY_LANE_COUNT) ? macroLOR_[l] : strandLen(l));
-        recomp(macroLaneDir_[l], mlen, macroLaneTick_[l], macroLaneSign_[l]);
+        recomp(macroLaneDir_[l], mlen, tNow, tPrevD, macroLaneTick_[l], macroLaneSign_[l]);
     }
 }
 
@@ -519,10 +760,12 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
         // Calculate distance from current playhead to map physical LED to drifting DNA content
         int relCurrent = (stepIndex - startStep + 16) % 16;
         int relLight = (lightIdx - startStep + 16) % 16;
-        // totalStepsElapsed is 1-based; subtract 1 to get the 0-based tick (matching laneTick_,
-        // which laneTickFor now returns as 0-based). Without this, the DNA content (which steps
+        // totalStepsElapsed is 1-based; the unified-addressing GLOBAL map turns it into the
+        // window walk (pass-through at the default window — the expression below is then
+        // today's verbatim). Subtract 1 to get the 0-based walk (matching laneTick_, which
+        // laneTickFor now returns as 0-based). Without this, the DNA content (which steps
         // show notes) would be 1 step ahead of the playhead.
-        int tickForLight = totalStepsElapsed - 1 - relCurrent + relLight;
+        int tickForLight = (int)driverTickAt((long)totalStepsElapsed, cachedLength, cachedOffset) - 1 - relCurrent + relLight;
 
         int dnaIdx = getStrandIdx(tickForLight, lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT));
         bool isNote = pe.rhythmPattern[dnaIdx];

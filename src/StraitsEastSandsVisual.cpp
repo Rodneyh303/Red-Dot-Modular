@@ -18,8 +18,10 @@
 #include "ui/StoreBound.hpp"      // bindStoreKnob (de-param)
 #include "ui/Controls.hpp"        // Tag_Grey_Trim_Bar
 #include "dsp/SandsTopology.hpp"   // step 3c: East V1 write ownership via the resolver
+#include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdio>   // snprintf — the Stage-3 range-strip caption
 #include <limits>
 #include "ui/ConnectMark.hpp"
 #include "ui/GoldPolyPort.hpp"
@@ -78,6 +80,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // (blend controls now dim/disable themselves via DimmableTrimpot/DimmableLatch
     //  predicates — no central visibility list needed.)
     int  selectedVoice = 0;
+    // Stage 3: the voice-range strip's caption buffer (setRangeState stores the
+    // pointer — it must outlive the call, so it lives here, not on the stack).
+    char rangeLabel_[16] = "V1";
     // V1 (East-alone) editor is seeded from Monsoon's eastV1Lor/Spread stores on the first
     // frame of each V1 entry, then mirrors live edits back. false = seed pending.
     bool v1Loaded_ = false;
@@ -296,6 +301,56 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     }
                 },
                 false, true);
+        };
+        // ── UNIFIED ADDRESSING Stage 3: the voice-range strip (top of the grid) ──
+        // The thin constant-block lane above lane 0 shows the SELECTED voice's
+        // effective read window (delegation-resolved) and is its drag-authoring
+        // surface: the gestures write the per-voice East row (the 2b store) live,
+        // and the release pushes a Rack history action (the onLorCommit idiom).
+        // A voice that FOLLOWS Macro shows the Macro row blocked (the delegation
+        // discipline — edit the global row on the Macro panel's own strip).
+        visualEditor->layout.rangeLaneH = mm2px(Vec(0.f, dotModular::SandsGrid::RANGE_LANE_H)).y;
+        visualEditor->onRangeEdit = [this](int L, int O, int R) {
+            auto* m = getMonsoon(); if (!m) return;
+            const int v = selectedVoice;
+            if (m->getVoiceLorLocalEast(v) == 0.f) return;   // follow-Macro: authored on Macro
+            m->setVoiceLorEast(v, 0, (float)L);
+            m->setVoiceLorEast(v, 1, (float)O);
+            m->setVoiceLorEast(v, 2, (float)R);
+        };
+        visualEditor->onRangeCommit = [this](const int before[3], const int after[3]) {
+            auto* m = getMonsoon(); if (!m) return;
+            const int v = selectedVoice;
+            if (m->getVoiceLorLocalEast(v) == 0.f) return;
+            const int b0=before[0],b1=before[1],b2=before[2];
+            const int a0=after[0], a1=after[1], a2=after[2];
+            redDot::applyAndPushStoreEdit<Monsoon>(m, "Voice range edit",
+                [v, b0,b1,b2, a0,a1,a2](Monsoon& mm, bool redo) {
+                    const int L = redo?a0:b0, O = redo?a1:b1, R = redo?a2:b2;
+                    mm.setVoiceLorEast(v, 0, (float)L);
+                    mm.setVoiceLorEast(v, 1, (float)O);
+                    mm.setVoiceLorEast(v, 2, (float)R);
+                },
+                false, true);
+        };
+        visualEditor->onRangeRightClick = [this](rack::math::Vec) -> bool {
+            return openVoiceRangeMenu();
+        };
+        // Stage 4: the OUTPUT-MASK paint — a click on a PAINTED strip toggles the cell
+        // (the store first, then one Rack history action per toggle, the click-edit
+        // idiom). Only the voice's OWN East row paints here; a follow-Macro voice's
+        // mask is the Macro tier (authored on Macro's strip).
+        visualEditor->onMaskToggle = [this](int cell, bool play) {
+            auto* m = getMonsoon(); if (!m) return;
+            const int v = selectedVoice;
+            if (m->getMaskLocalEastMask(v) == 0.f) return;              // follow-Macro: paint on Macro
+            if ((int)std::lround(m->getMaskEastKind(v)) != 2) return;   // painted only
+            const bool oldPlay = m->getMaskEastCell(v, cell);
+            if (oldPlay == play) return;
+            m->setMaskEastCell(v, cell, play);                          // apply, then record
+            redDot::applyAndPushStoreEdit<Monsoon>(m, "Mask paint",
+                [v, cell](Monsoon& mm, bool p) { mm.setMaskEastCell(v, cell, p); },
+                oldPlay, play);
         };
         addChild(visualEditor);
 
@@ -627,6 +682,118 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         return acted;
     }
 
+    // ── UNIFIED ADDRESSING Stage 3: the voice-range strip's context menu ────────
+    // Right-click on the strip (top of the grid): the SELECTED voice's range
+    // delegation switch (the 2b menu, relocated to the surface it governs), the
+    // row's DIRECTION (the LaneDir order — the same 4 states a lane's dir cell
+    // cycles), and the identity reset. The store is the single authority; the
+    // engine picks the row up on the next control block via pushVoiceLorEditor.
+    bool openVoiceRangeMenu() {
+        auto* m = getMonsoon();
+        if (!m) return false;
+        const int v = selectedVoice;
+        struct RangeDirItem : MenuItem {
+            StraitsEastSandsVisualWidget* widget;
+            int v; int dir;
+            void onAction(const event::Action& e) override {
+                if (auto* mm = widget->getMonsoon()) mm->setVoiceLorEastDir(v, (float)dir);
+            }
+        };
+        Menu* menu = createMenu();
+        menu->addChild(createMenuLabel(
+            std::string("Voice range (voice ") + std::to_string(v + 1) + ")"));
+        menu->addChild(new MenuSeparator);
+        const bool independent = (m->getVoiceLorLocalEast(v) != 0.f);
+        menu->addChild(createCheckMenuItem("Follow Macro (global range)", "",
+            [m, v]() { return m->getVoiceLorLocalEast(v) == 0.f; },
+            [m, v]() { m->setVoiceLorLocalEast(v, 0.f); }));
+        menu->addChild(createCheckMenuItem("Independent (East, this voice)", "",
+            [m, v]() { return m->getVoiceLorLocalEast(v) != 0.f; },
+            [m, v]() { m->setVoiceLorLocalEast(v, 1.f); }));
+        menu->addChild(new MenuSeparator);
+        static const char* const dirNames[4] =
+            { "Forward", "Reverse", "Pendulum", "PingPong" };
+        const int curDir = (int)std::lround(m->getVoiceLorEastDir(v)) & 3;
+        for (int d = 0; d < 4; ++d) {
+            auto* it = new RangeDirItem;
+            it->text = dirNames[d];
+            it->rightText = (independent && curDir == d) ? "✓" : "";
+            it->widget = this; it->v = v; it->dir = d;
+            menu->addChild(it);
+        }
+        // ── Stage 4: the OUTPUT MASK (the one output layer; the East row is the
+        // per-voice mask). Authored here only when the voice is INDEPENDENT — a
+        // follow-Macro voice reads the Macro tier's mask (the delegation discipline;
+        // break free with the switch above). Painting: click the strip cells when the
+        // kind is Painted (the strip renders lit=play / dim=mute).
+        if (independent) {
+            struct MaskKindItem : MenuItem {
+                StraitsEastSandsVisualWidget* widget;
+                int v; int kind;
+                void onAction(const event::Action& e) override {
+                    if (auto* mm = widget->getMonsoon()) {
+                        const int vi = v;   // the member, aliased for the setter lambda
+                        const float oldK = mm->getMaskEastKind(vi);
+                        mm->setMaskEastKind(vi, (float)kind);
+                        redDot::applyAndPushStoreEdit<Monsoon>(mm, "Mask kind",
+                            [vi](Monsoon& m2, float k) { m2.setMaskEastKind(vi, k); }, oldK, (float)kind);
+                    }
+                }
+            };
+            struct MaskBitsItem : MenuItem {
+                StraitsEastSandsVisualWidget* widget;
+                int v; float bits;
+                void onAction(const event::Action& e) override {
+                    if (auto* mm = widget->getMonsoon()) {
+                        const int vi = v;   // the member, aliased for the setter lambda
+                        const float oldB = mm->getMaskEastPatternBits(vi);
+                        mm->setMaskEastPatternBits(vi, bits);
+                        redDot::applyAndPushStoreEdit<Monsoon>(mm, "Mask pattern",
+                            [vi](Monsoon& m2, float b) { m2.setMaskEastPatternBits(vi, b); }, oldB, bits);
+                    }
+                }
+            };
+            menu->addChild(new MenuSeparator);
+            menu->addChild(createMenuLabel("Output mask"));
+            static const char* const kindNames[3] =
+                { "Cycle (no mask)", "Range (the window plays)", "Painted (click the strip)" };
+            for (int k = 0; k < 3; ++k) {
+                auto* it = new MaskKindItem;
+                it->text = kindNames[k];
+                it->rightText = (((int)std::lround(m->getMaskEastKind(v))) == k) ? "✓" : "";
+                it->widget = this; it->v = v; it->kind = k;
+                menu->addChild(it);
+            }
+            menu->addChild(createCheckMenuItem("Mask follows rotation (R)", "",
+                [m, v]() { return m->getMaskEastFollowR(v) != 0.f; },
+                [m, v]() {
+                    const float oldF = m->getMaskEastFollowR(v);
+                    const float newF = (oldF != 0.f) ? 0.f : 1.f;
+                    m->setMaskEastFollowR(v, newF);
+                    redDot::applyAndPushStoreEdit<Monsoon>(m, "Mask follow-R",
+                        [v](Monsoon& m2, float f) { m2.setMaskEastFollowR(v, f); }, oldF, newF);
+                }));
+            menu->addChild(new MenuSeparator);
+            auto* allOn = new MaskBitsItem;
+            allOn->text = "Set mask all on";
+            allOn->widget = this; allOn->v = v; allOn->bits = 65535.f;
+            menu->addChild(allOn);
+            auto* fromRange = new MaskBitsItem;
+            fromRange->text = "Set mask from range";
+            // the mask-from-range preset: the row's own O/L window as the play set
+            fromRange->widget = this;
+            fromRange->v = v;
+            fromRange->bits = (float)SequencerEngine::windowMaskBits(
+                std::max(1, (int)std::lround(m->getVoiceLorEast(v, 0))),
+                (int)std::lround(m->getVoiceLorEast(v, 1)));
+            menu->addChild(fromRange);
+        }
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuItem("Reset range to identity (16/0/0, fwd)", "",
+            [m, v]() { m->resetVoiceLorEast(v); }));
+        return true;
+    }
+
     void appendContextMenu(Menu* menu) override {
         ModuleWidget::appendContextMenu(menu);
         auto* mod = dynamic_cast<StraitsEastSandsVisual*>(module);
@@ -638,6 +805,30 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         menu->addChild(createCheckMenuItem("DISTRIBUTION", "",
             [this]() { return hasSubpanel(modelSandsDistributionExpander); },
             [this]() { toggleSubpanel(modelSandsDistributionExpander); }));
+        // ── UNIFIED ADDRESSING Stage 2b: the per-voice RANGE delegation ─────────
+        // The voice-range rows (L/O/R + direction per voice — the global->voice map)
+        // are authored on the range surface (Stage 3); the DELEGATION switch lives
+        // here today, per SELECTED voice tab: follow the Macro global range (the
+        // default, every voice in one ensemble frame) or break free with this
+        // voice's own East row (soloists/canon voices — the spread two-module
+        // model, one axis over). The Monsoon EDITOR store is the single authority
+        // (get/setVoiceLorLocalEast); the engine picks the row up on the next
+        // control block via pushVoiceLorEditor. selectedVoice is the tab index ==
+        // the voiceSlot (0 = V1 mono) — the same indexing the store uses.
+        if (auto* mm = getMonsoon()) {
+            const int v = selectedVoice;
+            menu->addChild(new MenuSeparator);
+            menu->addChild(createMenuLabel(
+                std::string("Voice range (voice ") + std::to_string(v + 1) + ")"));
+            menu->addChild(createCheckMenuItem("Follow Macro (global range)", "",
+                [mm, v]() { return mm->getVoiceLorLocalEast(v) == 0.f; },
+                [mm, v]() { mm->setVoiceLorLocalEast(v, 0.f); }));
+            menu->addChild(createCheckMenuItem("Independent (East, this voice)", "",
+                [mm, v]() { return mm->getVoiceLorLocalEast(v) != 0.f; },
+                [mm, v]() { mm->setVoiceLorLocalEast(v, 1.f); }));
+            menu->addChild(createMenuItem("Reset range to identity (16/0/0, fwd)", "",
+                [mm, v]() { mm->resetVoiceLorEast(v); }));
+        }
     }
 
     // Unified per-slot store <-> editor for LOR + spread. slot = voiceSlot (0 = V1/mono,
@@ -1554,6 +1745,40 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     visualEditor->currentState.lanes[el].probabilities[s] =
                         eng.effectiveProbability(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{el}, s, SequencerEngine::ProbLens::Owner);
             }
+        }
+
+        // ── UNIFIED ADDRESSING Stage 3: the voice-range strip (the selected voice) ──
+        // The thin lane above lane 0 shows this voice's EFFECTIVE read window (the
+        // delegation-resolved row — what the engine's map actually walks), the voice's
+        // cached read cell animating with the playhead, and the frame's walk sign as
+        // the leading-edge cue. A follow-Macro voice shows the Macro row BLOCKED
+        // (the delegation discipline — the global row is authored on Macro's strip).
+        // Data straight off the engine caches (recomputeVoiceDrivers_); the strip is
+        // display + gesture reporting, the store stays the single authority.
+        {
+            const int v = selectedVoice;   // tab index == voiceSlot (0 = V1 mono)
+            int L, O, R; SequencerEngine::LaneDir vd;
+            eng.effectiveVoiceLor(v, L, O, R, vd);
+            (void)vd;   // the direction CUE comes from the engine's walk-sign cache, not the row's setting
+            const bool independent = (monsoon->getVoiceLorLocalEast(v) != 0.f);
+            const auto vslot = dotModular::VoiceResolver::slot(v + 1);   // slot() is VOICE-NUMBER based
+            const int rp = (eng.stepIndex >= 0) ? eng.voiceReadPosition(vslot) : -1;
+            const int sg = eng.voiceReadSign(vslot);
+            snprintf(rangeLabel_, sizeof(rangeLabel_), "V%d", v + 1);
+            visualEditor->setRangeState(std::max(1, L), O, R, rp, sg, !independent, rangeLabel_);
+            // Stage 4: the strip's mask surface — the EFFECTIVE pattern (delegation-
+            // resolved). Painted rows render the presence figure (lit = play) and
+            // accept the click-paint; the window rendering steps aside while painted.
+            const bool maskLocal = (monsoon->getMaskLocalEastMask(v) != 0.f);
+            const int  mkind = (int)std::lround(maskLocal ? monsoon->getMaskEastKind(v)
+                                                           : monsoon->getMaskMacroKind());
+            const bool painted = (mkind == 2);
+            unsigned pat = 0xFFFFu;
+            if (painted)
+                pat = (unsigned)std::lround(std::clamp(
+                    maskLocal ? monsoon->getMaskEastPatternBits(v)
+                              : monsoon->getMaskMacroPatternBits(), 0.f, 65535.f));
+            visualEditor->setRangeMask(painted, pat);
         }
     }
 

@@ -63,13 +63,18 @@ namespace StraitsMacroVisualIds {
     static constexpr float ED_Y   = dotModular::SandsGrid::LANE_TOP;   // 14 (was 23)
     // Editor holds 7 poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG); 13mm each. ED_LANE_H
     // drives prob-out + send-knob vertical placement and must match the gen script's ED_H/N.
-    static constexpr float ED_H      = dotModular::SandsGrid::polyHeight();  // 91 (7×13, was 65)
+    // UNIFIED ADDRESSING Stage 3: the editor BOX grows DOWN by the voice-range strip
+    // (RANGE_LANE_H) — the lanes keep their full 13mm and start one strip lower; the
+    // painted recess + every rowY()-anchored control shift with it (the gen script's
+    // RANGE_MM/rowY in lockstep).
+    static constexpr float ED_H      = dotModular::SandsGrid::polyBoxHeight();  // 96 (5mm range strip + 7×13)
     static constexpr float ED_LANE_H = dotModular::SandsGrid::LANE_H;        // 13 (Option B)
 
     // Left-control rows align with the EDITOR lane centres (not the full panel),
     // so each lane's CV jacks + attens sit beside the visual lane they modulate.
+    // Stage 3: + RANGE_LANE_H — the lanes start below the voice-range strip.
     static inline float rowY(int r) {
-        return ED_Y + (r + 0.5f) * ED_LANE_H;
+        return ED_Y + dotModular::SandsGrid::RANGE_LANE_H + (r + 0.5f) * ED_LANE_H;
     }
 
     // ── Param IDs ─────────────────────────────────────────────────────────

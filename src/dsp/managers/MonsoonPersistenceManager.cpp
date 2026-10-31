@@ -242,6 +242,25 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     saveArr("editorGlobalDir",    m->editor.globalDir,      7);   // 7 lanes
     saveArr("editorMonoAtten",    m->editor.monoAtten,     28);   // 7 mono lanes × 4 cols
     saveArr("editorMonoOwner",    m->editor.monoOwner,      7);   // 7 lanes
+    // UNIFIED ADDRESSING voice-range rows (Stage 2b): the Macro (global) voice range
+    // + the per-voice East rows + the delegation flags. Absent keys ⟹ the ctor
+    // defaults (identity 16/0/0, dir 0, follow-Macro) — pre-2b patches byte-identical.
+    saveArr("editorVoiceLorMacro",     m->editor.voiceLorMacro,      3);   // the Macro (global) voice range L/O/R
+    saveArr("editorVoiceLorMacroDir", &m->editor.voiceLorMacroDir,  1);   // Macro tier direction (LaneDir order)
+    saveArr("editorVoiceLorEast",      m->editor.voiceLorEast,      48);   // 16 voices × {L,O,R}
+    saveArr("editorVoiceLorEastDir",   m->editor.voiceLorEastDir,   16);   // 16 voices (LaneDir order)
+    saveArr("editorVoiceLorLocalEast", m->editor.voiceLorLocalEast, 16);   // 0 = follow Macro, !=0 = own East row
+    // UNIFIED ADDRESSING output-mask rows (Stage 4): the one output layer (cycle /
+    // dynamic range-as-mask / painted fixed-rotatable + follow-R). Absent keys ⟹ the
+    // ctor defaults (CYCLE everywhere, all-on patterns) — no gating, pre-4 patches
+    // byte-identical.
+    saveArr("editorMaskMacroKind",        &m->editor.maskMacroKind,        1);
+    saveArr("editorMaskMacroPatternBits", &m->editor.maskMacroPatternBits, 1);
+    saveArr("editorMaskMacroFollowR",     &m->editor.maskMacroFollowR,     1);
+    saveArr("editorMaskEastKind",         m->editor.maskEastKind,         16);
+    saveArr("editorMaskEastPatternBits",  m->editor.maskEastPatternBits,  16);
+    saveArr("editorMaskEastFollowR",      m->editor.maskEastFollowR,      16);
+    saveArr("editorMaskLocalEastMask",    m->editor.maskLocalEastMask,    16);
 
     // Spread target modes (SPREAD_TARGET_MODES.md): per-lane target mode, per-mode defaults
     // (-1/0/+1), and the apply-on-mode-change toggle. All per-lane, 7 lanes.
@@ -531,6 +550,22 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     loadArrN("editorGlobalDir",    m->editor.globalDir,      7);   // 7 lanes
     loadArrN("editorMonoAtten",    m->editor.monoAtten,     28);   // 7 mono lanes × 4 cols
     loadArrN("editorMonoOwner",    m->editor.monoOwner,      7);   // 7 lanes
+    // UNIFIED ADDRESSING voice-range rows (Stage 2b): absent keys ⟹ ctor defaults
+    // (identity 16/0/0, dir 0, follow-Macro) — pre-2b patches byte-identical.
+    loadArrN("editorVoiceLorMacro",     m->editor.voiceLorMacro,      3);
+    loadArrN("editorVoiceLorMacroDir", &m->editor.voiceLorMacroDir,  1);
+    loadArrN("editorVoiceLorEast",      m->editor.voiceLorEast,      48);
+    loadArrN("editorVoiceLorEastDir",   m->editor.voiceLorEastDir,   16);
+    loadArrN("editorVoiceLorLocalEast", m->editor.voiceLorLocalEast, 16);
+    // UNIFIED ADDRESSING output-mask rows (Stage 4): absent keys ⟹ ctor defaults
+    // (CYCLE everywhere, all-on patterns) — pre-4 patches byte-identical.
+    loadArrN("editorMaskMacroKind",        &m->editor.maskMacroKind,        1);
+    loadArrN("editorMaskMacroPatternBits", &m->editor.maskMacroPatternBits, 1);
+    loadArrN("editorMaskMacroFollowR",     &m->editor.maskMacroFollowR,     1);
+    loadArrN("editorMaskEastKind",         m->editor.maskEastKind,         16);
+    loadArrN("editorMaskEastPatternBits",  m->editor.maskEastPatternBits,  16);
+    loadArrN("editorMaskEastFollowR",      m->editor.maskEastFollowR,      16);
+    loadArrN("editorMaskLocalEastMask",    m->editor.maskLocalEastMask,    16);
     // Spread target modes (SPREAD_TARGET_MODES.md): per-lane target mode + defaults +
     // apply-on-mode-change toggle. Missing keys → keep defaults (anchor V1, 0/+1, true).
     if (auto j = json_object_get(root, "editorSpreadTargetMode")) {

@@ -1631,6 +1631,26 @@ void Monsoon::process(const ProcessArgs& args) {
             params[PATTERN_OFFSET_PARAM].getValue(), inputs[OFFSET_INPUT].getVoltage(), inputs[OFFSET_INPUT].isConnected()
         );
 
+        // UNIFIED ADDRESSING Stage 2b: the voice-range authoring rows (editor stores,
+        // the Macro/East surfaces author them) -> the engine's voice LOR store, ONE
+        // push per control block — the same one-block cadence every authored LOR uses.
+        // Identity defaults are byte-neutral (pass-through holds; the Stage-1/2a
+        // goldens read the same store values). Runs here — the control-div block —
+        // so the authoring works with or without any expander attached.
+        engine.pushVoiceLorEditor(
+            editor.voiceLorMacro, editor.voiceLorMacroDir,
+            editor.voiceLorEast, editor.voiceLorEastDir, editor.voiceLorLocalEast);
+
+        // UNIFIED ADDRESSING Stage 4: the OUTPUT-MASK rows (the one output layer) ->
+        // the engine's mask store, the same one-block cadence. Runs AFTER the LOR push
+        // so the anchor law re-pins against the CURRENT base rotation (the mask's
+        // mask-step-1 pinned to the row's R). All-cycle defaults are byte-neutral: no
+        // gating anywhere, the output path is untouched at defaults.
+        engine.pushMaskEditor(
+            &editor.maskMacroPatternBits, editor.maskMacroKind, editor.maskMacroFollowR,
+            editor.maskEastPatternBits, editor.maskEastKind, editor.maskEastFollowR,
+            editor.maskLocalEastMask);
+
         // Update CV2 modulation offsets (Throttled)
         paramManager->clearCv2Offsets();
         // CV2 as a Big-5 modulation source (cv2Mode 0..4) in the clock/gate origins (modeSelect < 2).

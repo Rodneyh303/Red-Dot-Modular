@@ -239,7 +239,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // editor stays decoupled from the module/store -- it only reports the change.
   std::function<void(int lane, const int before[3], const int after[3])> onLorCommit;
   int lorBeforeDrag[3] = {0,0,0};   // captured at drag press (len,off,rot of dragLane)
-  
+
   VoiceState currentState;
   VoiceState clipboard;
   Colors colors;
@@ -274,6 +274,81 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     int   grabOffset   = 0;   // lane.offset at press (window slides relative to this)
     bool  isDragging     = false;
   } dragState;
+
+  // ── UNIFIED ADDRESSING Stage 3: the VOICE-RANGE strip ────────────────────────
+  // A thin CONSTANT-block lane reserved ABOVE lane 0 (the frame the probability lanes
+  // nest within). Spec (CC_PROMPT_UNIFIED_ADDRESSING_SPEC.md Stage 3): flat lit cell =
+  // in-range step, dim = out of range — deliberately NOT a probability-magnitude bar,
+  // this lane shows WHERE the voice reads. It animates with the playhead (the engine's
+  // per-voice read cell glows brighter; a leading-edge bar shows the walk direction,
+  // the lanePlayDir idiom) and it is ALSO the drag-authoring surface for the voice-LOR
+  // rows: the same START/END/MOVE/ROTATION gestures as a probability lane, reported to
+  // the host (which owns the store) via onRangeEdit (live, per move) and onRangeCommit
+  // (release, the onLorCommit idiom one level up — voice instead of lane).
+  // The host owns ALL the data: it pushes the effective row via setRangeState() each
+  // frame and reports gestures back through the callbacks. With layout.rangeLaneH == 0
+  // the strip is fully absent (geometry, draw, hit-test) — pre-Stage-3 hosts untouched.
+  struct RangeStrip {
+    bool  enabled = false;
+    int   lor[3]  = {16, 0, 0};   // DISPLAY window (the effective row, engine-resolved)
+    int   readPos = -1;           // the voice frame's read cell (0..15), -1 = idle
+    int   dir     = 1;            // the walk sign (+1/-1) for the leading-edge cue
+    bool  blocked = false;        // follow-Macro / read-only — render, no gestures
+    const char* label = "";       // host caption (drawn like the lane labels)
+    // drag state (the same zone shape as a probability lane):
+    bool  dragging = false;
+    bool  paintPress = false;     // Stage 4: a click awaiting the mask toggle (no drag)
+    DragState::Type type = DragState::NONE;
+    math::Vec dragPos  = {};      // accumulated absolute position (DragMove gives delta)
+    int   grabStep     = 0;       // step under cursor at press (relative WINDOW move)
+    int   grabOff      = 0;       // lor[1] at press
+    int   before[3]    = {16,0,0};// LOR at press (for the commit report)
+  } rangeStrip;
+  // Live authoring callbacks (host-wired; the editor stays store-decoupled).
+  std::function<void(int L, int O, int R)> onRangeEdit;                        // per move
+  std::function<void(const int before[3], const int after[3])> onRangeCommit;  // on release
+  std::function<bool(rack::math::Vec pos)> onRangeRightClick;                  // host menu; true = consumed
+  // ── UNIFIED ADDRESSING Stage 4: the OUTPUT MASK on the strip ────────────────
+  // When the row's effective mask kind is PAINTED the strip becomes the paint
+  // surface (the spec: lit = play, dim = mute) and a CLICK (press->release with no
+  // window drag) toggles the cell under the cursor through onMaskToggle — the host
+  // writes the store (one Rack history action per toggle). LOR drags still author
+  // the window (press->move = window gesture; press->release = paint). The host
+  // pushes the EFFECTIVE pattern (delegation-resolved) each frame; edits are
+  // blocked while the row follows Macro (the delegation discipline).
+  bool     maskActive  = false;
+  unsigned maskPattern = 0xFFFFu;
+  std::function<void(int cell, bool play)> onMaskToggle;
+  void setRangeMask(bool active, unsigned pattern) {
+    maskActive  = active;
+    maskPattern = pattern & 0xFFFFu;
+  }
+  bool maskCellPlays(int cell) const {
+    return (cell >= 0 && cell < STEP_COUNT) && ((maskPattern >> cell) & 1u) != 0u;
+  }
+  // Per-frame display push (host). While a drag is live the window L/O/R stays the
+  // DRAG's local values (the store push lags one control block; overwriting would
+  // fight the hand) — readPos/dir/blocked still update.
+  void setRangeState(int L, int O, int R, int readPos, int dir, bool blocked, const char* label) {
+    rangeStrip.enabled = true;
+    if (!rangeStrip.dragging) {
+      rangeStrip.lor[0] = std::max(1, std::min(L, STEP_COUNT));
+      rangeStrip.lor[1] = ((O % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+      rangeStrip.lor[2] = ((R % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+    }
+    rangeStrip.readPos = readPos;
+    rangeStrip.dir     = (dir < 0) ? -1 : 1;
+    rangeStrip.blocked = blocked;
+    if (label) rangeStrip.label = label;
+  }
+  // Strip window membership (mirrors ProbabilityLane::barInWindow on the display row).
+  bool rangeBarInWindow(int bar) const {
+    const int s = rangeStrip.lor[1];
+    const int e = (s + std::max(1, std::min(rangeStrip.lor[0], STEP_COUNT)) - 1) % STEP_COUNT;
+    bar = ((bar % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+    return (e >= s) ? (bar >= s && bar <= e) : (bar >= s || bar <= e);
+  }
+  
 
   // Hover tracking for discoverability: which lane + which window zone the cursor
   // is over (reuses DragState::Type). draw() highlights the hovered zone.
@@ -339,8 +414,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     float topPadding = 18.f;   // space above lanes (label/control row)
     float botPadding = 8.f;    // space below lanes
     float padding    = 6.f;    // left/right inset for the step grid
+    // UNIFIED ADDRESSING Stage 3: the voice-range strip reserved ABOVE lane 0
+    // (px; 0 = absent). The host grows the editor BOX by this height so the
+    // probability lanes keep their full height (no shrinking — the spec's rule):
+    // laneAreaH() subtracts the strip, and lane 0 starts at topPadding + rangeLaneH.
+    float rangeLaneH = 0.f;
 
-    float laneAreaH() const { return std::max(1.f, boxSize.y - topPadding - botPadding); }
+    float laneAreaH() const { return std::max(1.f, boxSize.y - topPadding - botPadding - rangeLaneH); }
     float laneHeightF() const { return laneAreaH() / std::max(1, laneCount); }
     float gridW() const { return std::max(1.f, boxSize.x - 2.f * padding); }
     float stepWidthF() const { return gridW() / (float)STEP_COUNT; }
@@ -351,7 +431,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     float stepWidth   = 30.f;
     float handleWidth = 12.f;
 
-    float getLaneY(int lane) const { return topPadding + lane * laneHeightF(); }
+    float getLaneY(int lane) const { return topPadding + rangeLaneH + lane * laneHeightF(); }
     float getStepX(int step) const { return padding + step * stepWidthF(); }
     float getStepCenterX(int step) const { return getStepX(step) + stepWidthF() / 2.f; }
     float getLaneCenterY(int lane) const { return getLaneY(lane) + laneHeightF() / 2.f; }
@@ -361,6 +441,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
     rack::Rect getStepRect(int lane, int step) const {
       return rack::Rect(getStepX(step), getLaneY(lane), stepWidthF(), laneHeightF());
+    }
+    // The voice-range strip (Stage 3): spans the grid width at the top of the box.
+    rack::Rect getRangeLaneRect() const {
+      return rack::Rect(padding, topPadding, gridW(), rangeLaneH);
     }
   } layout;
 
@@ -540,7 +624,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
 
     if (showControlBar) drawControlBar(args.vg);
-    
+
+    drawRangeStrip(args.vg);
+
     for (int lane = 0; lane < laneCount; ++lane) {
       drawLaneLabel(args.vg, lane);
       for (int step = 0; step < STEP_COUNT; ++step) {
@@ -575,6 +661,83 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (showUndoDebug) {
         std::string undoText = "U:" + std::to_string(undoHistory.size());
         nvgText(vg, x + 50, y, undoText.c_str(), nullptr);
+    }
+  }
+  
+  // ── UNIFIED ADDRESSING Stage 3: the voice-range strip ────────────────────────
+  // A thin constant-block lane above lane 0. EVERY cell is the same height (flat
+  // fill — the range, not a probability magnitude); lit = in the effective window,
+  // dim = out. The read cell glows brighter and carries the leading-edge bar (the
+  // walk direction, lanePlayDir idiom) — the strip animates with the voice's read
+  // walk. Start/end edge bars mark the window like drawStep's range markers.
+  void drawRangeStrip(NVGcontext* vg) {
+    if (layout.rangeLaneH <= 0.f || !rangeStrip.enabled) return;
+    const rack::Rect r = layout.getRangeLaneRect();
+
+    // Silver/white — the voice FRAME is hue-neutral (a voice spans all seven lane
+    // hues); luminance carries the state, exactly like the rotation chevrons.
+    const NVGcolor lit  = nvgRGBAf(1.f, 1.f, 1.f, 0.14f);
+    const NVGcolor dim  = nvgRGBAf(1.f, 1.f, 1.f, 0.045f);
+    const NVGcolor edge = nvgRGBAf(1.f, 1.f, 1.f, rangeStrip.blocked ? 0.45f : 0.85f);
+
+    for (int step = 0; step < STEP_COUNT; ++step) {
+      rack::Rect cell = rack::Rect(layout.getStepX(step), r.pos.y, layout.stepWidthF(), r.size.y);
+      // Stage 4: when the effective mask is PAINTED the strip shows the PRESENCE
+      // figure (lit = the mask plays this step, dim = mute — the paint surface);
+      // otherwise it shows the range window (lit = in-window).
+      const bool inWin = maskActive ? maskCellPlays(step) : rangeBarInWindow(step);
+      nvgBeginPath(vg);
+      nvgRect(vg, cell.pos.x, cell.pos.y, cell.size.x, cell.size.y);
+      nvgFillColor(vg, inWin ? lit : dim);
+      nvgFill(vg);
+      // window edge markers (the drawStep idiom, on the strip's own row)
+      const int s = rangeStrip.lor[1];
+      const int e = (s + std::max(1, std::min(rangeStrip.lor[0], STEP_COUNT)) - 1) % STEP_COUNT;
+      if (step == s) {
+        nvgBeginPath(vg); nvgRect(vg, cell.pos.x, cell.pos.y, 2.5f, cell.size.y);
+        nvgFillColor(vg, edge); nvgFill(vg);
+      }
+      if (step == e) {
+        nvgBeginPath(vg); nvgRect(vg, cell.pos.x + cell.size.x - 2.5f, cell.pos.y, 2.5f, cell.size.y);
+        nvgFillColor(vg, edge); nvgFill(vg);
+      }
+    }
+
+    // The read cell: the voice's current buffer cell, glowing + leading-edge bar.
+    if (rangeStrip.readPos >= 0 && rangeStrip.readPos < STEP_COUNT) {
+      rack::Rect cell = rack::Rect(layout.getStepX(rangeStrip.readPos), r.pos.y,
+                                   layout.stepWidthF(), r.size.y);
+      nvgBeginPath(vg);
+      nvgRect(vg, cell.pos.x, cell.pos.y, cell.size.x, cell.size.y);
+      nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.38f * activeStepAlpha));
+      nvgFill(vg);
+      // bright top-edge tick (the drawLanePlayheads idiom)
+      nvgBeginPath(vg);
+      nvgRect(vg, cell.pos.x + 1, cell.pos.y, cell.size.x - 2, 2.f);
+      nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.9f * activeStepAlpha));
+      nvgFill(vg);
+      // directional leading-edge bar on the side the walk is travelling TOWARD
+      const float ex = (rangeStrip.dir < 0) ? cell.pos.x + 0.5f
+                                            : cell.pos.x + cell.size.x - 2.5f;
+      nvgBeginPath(vg);
+      nvgRect(vg, ex, cell.pos.y, 2.f, cell.size.y);
+      nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.8f * activeStepAlpha));
+      nvgFill(vg);
+    }
+
+    // Separator under the strip (the live editor shows strip + lanes as 8 rows).
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, r.pos.y + r.size.y - 0.5f, box.size.x, 0.75f);
+    nvgFillColor(vg, colors.border);
+    nvgFill(vg);
+
+    // Caption (right-aligned like the lane labels; the host sets the text).
+    if (rangeStrip.label && rangeStrip.label[0]) {
+      nvgFontSize(vg, 8.f);
+      nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+      nvgFillColor(vg, rangeStrip.blocked ? nvgRGB(0x66, 0x66, 0x66)
+                                          : nvgRGBAf(1.f, 1.f, 1.f, 0.8f));
+      nvgText(vg, layout.padding - 8, r.pos.y + r.size.y * 0.5f, rangeStrip.label, nullptr);
     }
   }
   
@@ -749,6 +912,45 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       return DragState::ROTATION;
 
     return DragState::NONE;
+  }
+
+  // ── Stage 3: the voice-range strip hit test. Same zone shape as a probability
+  // lane (top 65% = window strip: START / END / MOVE; bottom 35% = ROTATION),
+  // over the strip's display window, restricted to the strip rect. NONE when the
+  // strip is absent (rangeLaneH == 0), disabled, or blocked (follow-Macro).
+  DragState::Type hitTestRange(float x, float y) const {
+    if (layout.rangeLaneH <= 0.f || !rangeStrip.enabled) return DragState::NONE;
+    const rack::Rect r = layout.getRangeLaneRect();
+    if (y < r.pos.y || y >= r.pos.y + r.size.y) return DragState::NONE;
+    const int startBar = rangeStrip.lor[1];
+    const int endBar   = (startBar + std::max(1, std::min(rangeStrip.lor[0], STEP_COUNT)) - 1) % STEP_COUNT;
+    float halfStep = layout.stepWidthF() * 0.5f;
+    auto inWindowX = [&](float px)->bool {
+      float sxL = layout.getStepCenterX(startBar) - halfStep;
+      float exR = layout.getStepCenterX(endBar)   + halfStep;
+      if (endBar >= startBar) return (px >= sxL && px <= exR);          // contiguous
+      float leftEdge  = layout.getStepCenterX(0) - halfStep;            // wrapped
+      float rightEdge = layout.getStepCenterX(STEP_COUNT - 1) + halfStep;
+      return (px >= sxL && px <= rightEdge) || (px >= leftEdge && px <= exR);
+    };
+    if (!inWindowX(x)) return DragState::NONE;
+    float bandBot = r.pos.y + r.size.y * 0.65f;
+    if (y <= bandBot) {
+      // Edge width capped to 1/3 of the window so a MOVE middle always remains
+      // (the hitTestHandle rule). For a 1-wide window, split left/right halves.
+      float spanPx = std::max(1, std::min(rangeStrip.lor[0], STEP_COUNT)) * layout.stepWidthF();
+      float edgeW  = std::min(std::max(layout.stepWidthF(), mm2px(4.f)), spanPx / 3.f);
+      float startZoneR = layout.getStepX(startBar) + edgeW;
+      float endZoneL   = layout.getStepX(endBar) + layout.stepWidthF() - edgeW;
+      if (startBar == endBar) {
+        float mid = layout.getStepX(startBar) + layout.stepWidthF() * 0.5f;
+        return (x <= mid) ? DragState::START : DragState::END;
+      }
+      if (x <= startZoneR) return DragState::START;
+      if (x >= endZoneL)   return DragState::END;
+      return DragState::WINDOW;
+    }
+    return DragState::ROTATION;
   }
 
   // Top "move strip": a thin band along the lane top across the in-window cells.
@@ -972,8 +1174,17 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   void onHover(const rack::event::Hover& e) override {
     Widget::onHover(e);
-    if (inert || readOnly) { hoverLane = -1; hoverZone = DragState::NONE; return; }
+    if (inert) { hoverLane = -1; hoverZone = DragState::NONE; return; }
     syncLayout();
+    // Stage 3: the strip gets the hover first (it sits above lane 0).
+    DragState::Type rz = hitTestRange(e.pos.x, e.pos.y);
+    if (rz != DragState::NONE) {
+      hoverLane = -1; hoverZone = DragState::NONE;
+      applyCursor(rangeStrip.blocked ? DragState::NONE : rz);
+      e.consume(this);
+      return;
+    }
+    if (readOnly) { hoverLane = -1; hoverZone = DragState::NONE; return; }
     int lane = getLaneAtY(e.pos.y);
     if (lane >= 0 && laneEditBlocked(lane)) { hoverLane = -1; hoverZone = DragState::NONE; return; }
     DragState::Type z = (lane >= 0 && lane < laneCount)
@@ -993,7 +1204,74 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
   void onButton(const rack::event::Button& e) override {
     syncLayout();
-    if (inert || readOnly) return;   // no edit when inert (no poly src) or readOnly (mono owns tab 1)
+    if (inert) return;   // no edit when inert (no poly src); readOnly blocks lanes, not the strip's menu
+    // ── Stage 3: the voice-range strip (above lane 0) ──
+    if (layout.rangeLaneH > 0.f && rangeStrip.enabled
+        && e.pos.y >= layout.topPadding
+        && e.pos.y < layout.topPadding + layout.rangeLaneH) {
+      if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
+        DragState::Type rz = hitTestRange(e.pos.x, e.pos.y);
+        if (rz != DragState::NONE && !rangeStrip.blocked && !readOnly) {
+          rangeStrip.dragging = true;
+          rangeStrip.type     = rz;
+          rangeStrip.dragPos  = e.pos;
+          rangeStrip.grabStep = getStepAtX(e.pos.x);
+          rangeStrip.grabOff  = rangeStrip.lor[1];
+          rangeStrip.before[0] = rangeStrip.lor[0];
+          rangeStrip.before[1] = rangeStrip.lor[1];
+          rangeStrip.before[2] = rangeStrip.lor[2];
+          e.consume(this);
+          return;
+        }
+        // Stage 4: on a PAINTED strip a click ANYWHERE (not just in the window — any
+        // subset paints) arms the mask toggle; released un-moved it toggles the cell.
+        if (maskActive && !rangeStrip.blocked && !readOnly) {
+          rangeStrip.paintPress = true;
+          rangeStrip.dragPos    = e.pos;
+          e.consume(this);
+          return;
+        }
+        e.consume(this);   // a press on the strip (blocked/out-of-window) stays the strip's
+        return;
+      }
+      if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_RIGHT) {
+        if (onRangeRightClick && onRangeRightClick(e.pos)) { e.consume(this); return; }
+        return;   // the strip consumes its own right-clicks either way
+      }
+      if (e.action == GLFW_RELEASE && rangeStrip.dragging) {
+        const bool lorChanged = (rangeStrip.before[0] != rangeStrip.lor[0]
+                              || rangeStrip.before[1] != rangeStrip.lor[1]
+                              || rangeStrip.before[2] != rangeStrip.lor[2]);
+        rangeStrip.dragging = false;
+        rangeStrip.type     = DragState::NONE;
+        if (lorChanged) {
+          if (onRangeCommit) {
+            const int after[3] = { rangeStrip.lor[0], rangeStrip.lor[1], rangeStrip.lor[2] };
+            onRangeCommit(rangeStrip.before, after);
+          }
+        }
+        // Stage 4: a CLICK (no window drag) on a PAINTED mask strip toggles the cell
+        // under the cursor — the spec's click-toggle paint action. The press position
+        // rides dragPos (unmoved on a click; armed for out-of-window presses too).
+        else if (maskActive && !rangeStrip.blocked && !readOnly && onMaskToggle) {
+          const int cell = getStepAtX(rangeStrip.dragPos.x);
+          if (cell >= 0 && cell < STEP_COUNT) onMaskToggle(cell, !maskCellPlays(cell));
+        }
+        e.consume(this);
+        return;
+      }
+      if (e.action == GLFW_RELEASE && rangeStrip.paintPress) {
+        rangeStrip.paintPress = false;
+        if (maskActive && !rangeStrip.blocked && !readOnly && onMaskToggle) {
+          const int cell = getStepAtX(rangeStrip.dragPos.x);
+          if (cell >= 0 && cell < STEP_COUNT) onMaskToggle(cell, !maskCellPlays(cell));
+        }
+        e.consume(this);
+        return;
+      }
+      return;   // any other event over the strip: not ours to bubble into the lanes
+    }
+    if (readOnly) return;   // no edit when inert (no poly src) or readOnly (mono owns tab 1)
     if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
       int lane = getLaneAtY(e.pos.y);
       //int step = getStepAtX(e.pos.x);
@@ -1058,6 +1336,44 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   void onDragMove(const rack::event::DragMove& e) override {
     syncLayout();
+    // ── Stage 3: the voice-range strip drag (the lane gestures, one level up) ──
+    if (rangeStrip.dragging) {
+      rangeStrip.dragPos = rangeStrip.dragPos.plus(e.mouseDelta);
+      int step = getStepAtX(rangeStrip.dragPos.x);
+      if (step < 0 || step >= STEP_COUNT) return;
+      int* lor = rangeStrip.lor;
+      switch (rangeStrip.type) {
+        case DragState::WINDOW: {
+          int deltaSteps = step - rangeStrip.grabStep;
+          lor[1] = ((rangeStrip.grabOff + deltaSteps) % STEP_COUNT + STEP_COUNT) % STEP_COUNT;
+          break;
+        }
+        case DragState::START: {
+          // Resize from the FRONT: the dragged step becomes the new start; the END
+          // bar stays put; length adjusts (the onDragMove START rule).
+          const int endBar = (lor[1] + std::max(1, std::min(lor[0], STEP_COUNT)) - 1) % STEP_COUNT;
+          int newLen = ((endBar - step) % STEP_COUNT + STEP_COUNT) % STEP_COUNT + 1;
+          lor[1] = ((step % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
+          lor[0] = rack::math::clamp(newLen, 1, STEP_COUNT);
+          lor[2] = rack::math::clamp(lor[2], 0, std::max(0, lor[0] - 1));
+          break;
+        }
+        case DragState::END: {
+          const int fwd = ((step - lor[1]) % STEP_COUNT + STEP_COUNT) % STEP_COUNT;
+          lor[0] = rack::math::clamp(fwd + 1, 1, STEP_COUNT);
+          lor[2] = rack::math::clamp(lor[2], 0, std::max(0, lor[0] - 1));
+          break;
+        }
+        case DragState::ROTATION: {
+          const int rel = ((step - lor[1]) % STEP_COUNT + STEP_COUNT) % STEP_COUNT;
+          lor[2] = rack::math::clamp(rel, 0, std::max(0, lor[0] - 1));
+          break;
+        }
+        default: break;
+      }
+      if (onRangeEdit) onRangeEdit(lor[0], lor[1], lor[2]);
+      return;
+    }
     if (!dragState.isDragging) return;
     // Rack 2: DragMove gives delta, not absolute pos. Accumulate.
     dragState.dragPos = dragState.dragPos.plus(e.mouseDelta);
