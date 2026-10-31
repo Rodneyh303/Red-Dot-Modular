@@ -745,8 +745,12 @@ struct SequencerEngine {
     // does NOTHING on REPEAT (the corrected held semantics — not moving the playhead IS
     // the repeat; the step-addressed data re-outputs itself by construction). SCOPE: the
     // playhead is singular — MONO-ONLY (V1's row); poly voices' ADVANCE columns stay
-    // resolved + stored (no per-voice playhead this build).
-    dotModular::StepAdvance::Decision decideStepAdvance_(int subLevel);
+    // resolved + stored (no per-voice playhead this build). targetTickDelta: the
+    // draw addressing offset — 0 = the current step (the rise's read,
+    // bit-identical to getVariationStep()); +1 = the incoming-rest step (the
+    // fall-advance's read — CC_PROMPT_TIE_INTO_REST_PROBABILISTIC_ADVANCE: "the
+    // step being advanced into"). ONE mechanism, both edges.
+    dotModular::StepAdvance::Decision decideStepAdvance_(int subLevel, int targetTickDelta = 0);
     // Recompute all laneTick_/laneTickV_/macroLaneTick_ caches from totalStepsElapsed.
     // Called after snapping totalStepsElapsed externally (e.g. Mode E phase jump snap)
     // so the lane position caches match the new transport position without a full

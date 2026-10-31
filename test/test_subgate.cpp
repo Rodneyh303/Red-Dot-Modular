@@ -387,6 +387,64 @@ int main() {
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
+    // R-SLUR — generatedRestBeatsLegato is UNIFORM across main/ghost/ratchet
+    // (CC_PROMPT_SUBGATE_REST_SLUR_CONSISTENT): the subgate cells ride the SHARED
+    // executeStep rest branch, whose slurSuppressesRest gate
+    // (!generatedRestBeatsLegato && slurReachesHere) is the ONE rest<->slur
+    // authority — same flag, same logic, every level. The tests below pin BOTH
+    // flag states at every level (the consistency proof).
+    // ─────────────────────────────────────────────────────────────────────────────
+    SUITE("R-SLUR — generatedRestBeatsLegato uniform at every level");
+    TEST("OFF: the slur WINS over a rested GHOST (plays Legato/Tie; the chain survives)", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        eng.generatedRestBeatsLegato = false;
+        stepBridge(eng, true, false, true, false, 0.f, 1.0f, 4.f);              // A commits
+        // Gap ghost whose REST roll says rest (rest=1) — but the flag is OFF and a
+        // slur reaches the cell: slurSuppressesRest SKIPS the shared rest branch,
+        // the ghost plays as Legato/Tie — the slur bridges, exactly like a rested
+        // MAIN step under OFF (one flag, one logic, every level).
+        StepResult g = stepBridge(eng, false, true, false, true, 1.f, 0.5f, 4.f);
+        EXPECT(eng.ghostActive);                                   // the ghost SOUNDED (the slur won)
+        EXPECT(g.decision == D::Tie || g.decision == D::Legato || g.decision == D::LegatoMax);
+        EXPECT(eng.gs.slurForward == true);                        // the chain survived the rested cell
+        StepResult m = stepBridge(eng, true, false, true, false, 0.f, 0.5f, 4.f);
+        EXPECT(m.decision == D::Tie || m.decision == D::Legato || m.decision == D::LegatoMax);   // still ties in
+    });
+    TEST("OFF: the slur WINS over a rested RATCHET sub-cell (in-gate, the same shared branch)", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        eng.generatedRestBeatsLegato = false;
+        step(eng, true,  false, false, true,  false, 0.f, 1.0f, 4.f);   // main onset, legato=1 -> slur commits
+        step(eng, false, false, false, true,  false, 0.f, 0.5f, 4.f);   // gate still high (held)
+        // In-gate ratchet sub-cell whose REST roll says rest (rest=1) — OFF + the
+        // slur reaching (mainHigh holds wasHeld): the rest is suppressed, the
+        // sub-cell plays Legato/Tie (uniform with main + ghost).
+        StepResult r = step(eng, false, true, false, true, false, 1.f, 0.5f, 4.f);
+        EXPECT(r.decision == D::Tie || r.decision == D::Legato || r.decision == D::LegatoMax);
+        EXPECT(eng.gs.slurForward == true);                        // the chain survived
+    });
+    TEST("OFF: a rested MAIN step bridges identically (the control row — same flag, same outcome)", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        eng.generatedRestBeatsLegato = false;
+        step(eng, true,  false, false, true,  false, 0.f, 1.0f, 4.f);   // A commits the slur
+        step(eng, false, false, false, true,  false, 0.f, 0.5f, 4.f);   // held
+        // A following MAIN rise whose rest roll says rest — OFF: the slur wins.
+        StepResult r = step(eng, true,  false, false, true,  false, 1.f, 0.5f, 4.f);
+        EXPECT(r.decision == D::Tie || r.decision == D::Legato || r.decision == D::LegatoMax);
+    });
+    TEST("ON (default): a rested GHOST cancels the slur — the flag flips the SAME shared branch", {
+        // The flip side of the same coin (the ON row is also pinned by the rested-
+        // ghost test above; this row makes the SUITE self-contained: ONE flag, both
+        // outcomes, at the ghost level).
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        eng.generatedRestBeatsLegato = true;    // default
+        stepBridge(eng, true, false, true, false, 0.f, 1.0f, 4.f);              // A commits
+        StepResult g = stepBridge(eng, false, true, false, true, 1.f, 0.5f, 4.f);   // rest=1: the rest wins
+        EXPECT(!eng.ghostActive);                                   // no ghost sounded
+        EXPECT(g.decision == D::Rest);
+        EXPECT(eng.gs.slurForward == false);                        // the chain ended (rest beats legato)
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
     // G5 — per-voice ghost placement (REWRITTEN for CC_PROMPT_STEP_ADVANCE_FIX_DRAW_
     // SOURCE): placement is the per-voice REST decision (the variation gate is
     // deleted — a voice ghosts iff its rest passes; r_vary's sole gate-mode reader

@@ -346,7 +346,7 @@ bool SequencerEngine::advancePlayhead(int dir) {
 // CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE) — the gate-mode advance DECISION for one rise.
 // GATE MODE ONLY (Mode B): in clock/phase mode p_advance is not used and Variation keeps
 // its existing meaning (executeModeA never calls this).
-dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLevel) {
+dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLevel, int targetTickDelta) {
     namespace SK = dotModular::SubgateKnobs;
     const VoiceSlot m = VoiceResolver::mono();
     // THE DRAW SOURCE (the fix): u is the VARIATION LANE's step-addressed draw — the
@@ -360,7 +360,16 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLev
     // SAME current-step variation draw — the playhead is singular, mirroring how the
     // subgate rest/legato reads address their level: the THRESHOLD is level-specific,
     // the draw is the shared lane.
-    const float u = pe.warpRow(m, LaneId{PL_VARIATION})[getVariationStep()];
+    // The draw addressing, parameterized by the tick delta: 0 = the current step
+    // (the rise's read — bit-identical to getVariationStep(), which IS this
+    // expression at delta 0); +1 = the incoming-rest step (the fall-advance's
+    // read — CC_PROMPT_TIE_INTO_REST_PROBABILISTIC_ADVANCE, "the step being
+    // advanced into"). ONE mechanism, both edges.
+    const int varIdx = getStrandIdx(laneTick_[dotModular::STRAND_VARIATION] + targetTickDelta,
+                                    lor(dotModular::STRAND_VARIATION, LOR_LEN),
+                                    lor(dotModular::STRAND_VARIATION, LOR_OFF),
+                                    lor(dotModular::STRAND_VARIATION, LOR_ROT));
+    const float u = pe.warpRow(m, LaneId{PL_VARIATION})[varIdx];
     // The threshold, by LEVEL (the three-level hierarchy): a MAIN gate rise resolves to
     // the VARIATION probability (the per-voice resolver path — warps/correlates/CAs like
     // every lane, NOT the raw knob; BIPOLAR since Stage 2 — the signed advance value,
@@ -884,15 +893,44 @@ StepResult SequencerEngine::executeModeA(const redDot::RateManager& rm, float no
 }
 
 // advanceOnTieIntoRest checkpoint (LEGATO_GATE_GAP_BUG.md §345). Called from the module layer on a
-// Gate-1 FALL while a slur is pending (tieAcrossRests && advanceOnTieIntoRest). Advances the
-// playhead ONE step into the incoming-rest position and re-evaluates the slur candidacy there: the
-// legato draw at that step decides whether the slur REMAINS a candidate (survives across the rest)
-// or ENDS. NOT a note onset — a silent rest checkpoint (the gate stays low). Sets
-// pendingCheckpointArrival so the next rise SKIPS its own advance ("one advance, one arrival" — no
-// double-advance jump). The SOLE advance-on-fall (edge-driven-playhead violation), opt-in.
+// Gate-1 FALL while a slur is pending (tieAcrossRests && advanceOnTieIntoRest).
+//
+// advanceOnTieIntoRest ON = PROBABILISTIC fall-advance (option 2,
+// CC_PROMPT_TIE_INTO_REST_PROBABILISTIC_ADVANCE): the fall into a tie-rest advances
+// the playhead with probability = the rest step's Variation draw (the SAME mechanism
+// as the rise step-advance — decideStepAdvance_ with the incoming-rest step's
+// r_vary), so the rest re-draws (and may end the slur chain) probabilistically. The
+// flag is the ENABLE; OFF = never fall-advance (the module layer never calls here).
+// OPTION 3 (future, if Rodney decides the flag isn't worth keeping): drop the flag,
+// always probabilistically fall-advance.
+//
+// BIPOLAR by necessity (the SHARED playhead): the fall takes the FULL
+// {BACKWARD, HOLD, FORWARD} decision — p>0 forward (the rest re-draws at the NEXT
+// step), p<0 backward (advancePlayhead(-1), the 0->15 wrap), near 0 HOLD (no
+// advance, the rest passive — the chain carries). A forward-only fall mid-backward
+// passage would LURCH the playhead. Re-evaluates the slur candidacy at the landed
+// step: the legato draw there decides whether the slur REMAINS a candidate
+// (survives across the rest) or ENDS. NOT a note onset — a silent rest checkpoint
+// (the gate stays low). Sets pendingCheckpointArrival so the next rise SKIPS its own
+// advance ("one advance, one arrival" — no double-advance jump; direction-agnostic).
+// HOLD sets NO arrival (nothing advanced — the next rise decides normally). The SOLE
+// advance-on-fall (edge-driven-playhead violation), opt-in.
 void SequencerEngine::legatoCheckpointOnFall() {
     if (muted) { pendingCheckpointArrival = true; return; }
-    bool wrapped = advancePlayhead();
+    // THE DECISION (one mechanism): the incoming-rest step's variation draw vs the
+    // resolved bipolar Variation — the same decideStepAdvance_ the rise uses, with
+    // the draw addressed at the step being advanced into (targetTickDelta +1).
+    const dotModular::StepAdvance::Decision d = decideStepAdvance_(-1, /*targetTickDelta=*/+1);
+    bool wrapped = false;
+    if (d == dotModular::StepAdvance::FORWARD) {
+        wrapped = advancePlayhead();
+    } else if (d == dotModular::StepAdvance::BACKWARD) {
+        wrapped = advancePlayhead(-1);
+    } else {
+        // HOLD: no advance — the rest stays passive (the chain carries,
+        // slurForward stays pending; NO arrival: the next rise decides normally).
+        return;
+    }
     if (wrapped && boundaryInterrupt) {
         gs.slurForward = false;          // phrase boundary breaks the chain
         pendingCheckpointArrival = true;  // the fall still advanced; the rise plays this step, no 2nd advance
@@ -1143,9 +1181,13 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     // rest lane against subRes[GHOST][REST] (or the main restProb un-primed) — ONE
     // rest authority per cell, no double silencing, no candidacy gate on top. This is
     // what frees r_vary (now consumed ONLY by the advance decision) — the freeing is
-    // CAUSED by this move, not incidental. A rested ghost follows the normal rest
-    // semantics (silent cell, the slur bridge + forStep preserved by executeStep's
-    // rest path — the same path a rested main note takes).
+    // CAUSED by this move, not incidental.
+    // REST<->SLUR (CC_PROMPT_SUBGATE_REST_SLUR_CONSISTENT, verified by the R-SLUR
+    // suite): a rested ghost follows the SHARED rest branch's flag law —
+    // generatedRestBeatsLegato ON (default): the rest cancels the slur (N+1 silent,
+    // the chain ends); OFF: slurSuppressesRest bridges it (the ghost plays Legato/
+    // Tie, the chain survives) — EXACTLY a rested main step. One flag, one logic,
+    // every level (nothing subgate-specific is hardcoded here).
     // A main or ratchet onset ends any sustaining ghost (the ghost only lives in the gap).
     if (mainGateRise || subGateRise) ghostActive = false;
 
@@ -1164,7 +1206,10 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     // the mode exec).
     polySubLevel_ = ghostRise ? dotModular::SubgateKnobs::GHOST
                               : (subGateRise ? dotModular::SubgateKnobs::RATCHET : -1);
-    // A ghost candidate that played (not rested) sustains; a rested ghost does not.
+    // The sustain latch, by the SHARED branch's outcome: a ghost that played
+    // (decision != Rest — including the generatedRestBeatsLegato-OFF bridged
+    // Legato/Tie) sustains; a rested one (ON) does not. One flag, one logic,
+    // every level.
     if (ghostRise) ghostActive = (result.decision != MonoDecision::Rest);
     result.stepped = true;
     result.wrapped = wrapped;
@@ -1362,8 +1407,10 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         // GHOST CANDIDACY (the companion change, poly side): the variation-strand
         // gate is DELETED — the voice's ghost cell plays iff its rest decision
         // passes (restTh below = subRes[GHOST][REST] when primed), the ONE rest
-        // authority. A rested ghost takes the normal rest path (transparent,
-        // not part of the chain — the same semantics the deleted gate produced).
+        // authority. REST<->SLUR: the SHARED branch's flag law applies here too —
+        // generatedRestBeatsLegato ON: the rested ghost is transparent (silent,
+        // not part of the chain); OFF + a slur reaching: the rest is suppressed
+        // and the voice plays Legato/Tie (uniform with main + mono).
 
         if (r_rest < restTh) {
             // Decide to Rest: Stick with it until mono gate drops. No accent while resting.
