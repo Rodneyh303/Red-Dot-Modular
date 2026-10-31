@@ -1478,7 +1478,10 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
               struct PItem : ui::MenuItem { Monsoon* module=nullptr; int value=4;
                 void onAction(const event::Action&) override { if(module) module->ppqnSetting=value; }
                 void step() override { if(module) rightText=(module->ppqnSetting==value)?"✔":""; ui::MenuItem::step(); } };
-              for (int v : {24,48,96}){auto* it=createMenuItem<PItem>(string::f("%d",v).c_str());it->module=m;it->value=v;sub->addChild(it);} }
+              // PPQN: 24 only. 48/96 are NOT safe (they double/quad-speed the sequencer - the clock assumes
+              // external rate = ppqnSetting; see PPQN_48_96_NOT_SAFE.md). All 13 note values resolve at 24,
+              // so 48/96 unlock nothing. Require 24; do not offer the double-speed footgun.
+              for (int v : {24}){auto* it=createMenuItem<PItem>(string::f("%d",v).c_str());it->module=m;it->value=v;sub->addChild(it);} }
         }));
 
         // ── Spread target modes (SPREAD_TARGET_MODES.md "Per-lane menu (Rodney)").
