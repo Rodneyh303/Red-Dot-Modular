@@ -54,3 +54,46 @@ then UAS changes them → rework or silent-wrong-wrap. Building it AFTER UAS mea
 the SETTLED final wrap model — one correct implementation, no rework. The scan is "local window scan,
 wrapping at the window boundary", and WHAT that boundary is / HOW it wraps is UAS's domain. Poly stutter
 consumes UAS's wrap model; it must not predate it.
+
+════════════════════════════════════════════════════════════════════════════════
+## THE CLEAN MODEL (Rodney) — a SECOND per-voice OFFSET on top of LOR, NOT per-voice clocks
+Supersedes the earlier "make laneTickV_ advance independently / per-voice accumulators" framing, which
+overstated the change. The single clock (totalStepsElapsed) is PRESERVED.
+
+### The structure
+A voice's read position is already LOR(totalStepsElapsed) — the user-set view (length/offset/rotation/
+direction). ADD a SECOND per-voice offset, engine-computed, for step-advance:
+    voice position = LOR( totalStepsElapsed ) + advanceOffset[voice]
+- totalStepsElapsed: the ONE clock, UNTOUCHED — still the single source of truth, still drives the LOR
+  views. NO per-voice clocks, NO breaking the "one clock, caches not accumulators" invariant.
+- advanceOffset[voice]: a per-voice integer, ENGINE-computed, accumulating that voice's step-advance
+  decisions. Advance → +1 (−1 backward); HOLD → unchanged. When voice 1 advances and voice 3 holds, their
+  offsets diverge → they read different positions. Desync emerges from the OFFSET diverging, not from
+  per-voice clocks.
+- This is the SAME shape as LOR: LOR is a user-set offset/transform of the one clock; advanceOffset is an
+  engine-computed offset on top. Two offsets (user LOR + engine advance), both relative to the one clock —
+  exactly the user-LOR-vs-engine distinction already established.
+
+### It's a small change to the existing recompute (not a rewrite)
+laneTickV_ already = "recompute from totalStepsElapsed applying LOR". Now = "… applying LOR PLUS
+advanceOffset[voice]". The recompute model STAYS; the computation gains one per-voice term. NOT "caches →
+accumulators".
+
+### WRAP (Rodney)
+advanceOffset WRAPS AT PHRASE BOUNDARIES — bounded by the phrase/pattern length (rides the same local wrap
+as all positions; mod pattern length). It accumulates but never grows unbounded. No new unbounded-counter
+problem.
+
+### GLOBAL vs PER-VOICE = offsets locked-together vs divergent (the "follow macro / per voice" switch)
+- GLOBAL (follow macro): all advanceOffset[v] move TOGETHER (one shared advance decision) → no divergence →
+  BIT-IDENTICAL to today's mono/single-playhead behaviour.
+- PER-VOICE: each voice's advanceOffset moves on its OWN step-advance decision → they diverge → independent
+  per-voice stuttering (the cross-voice sequence-position scatter the theory predicted).
+Same three-way source family as every other lane (follow-macro-global / per-voice).
+
+### STAGING (cleaner split than before)
+- STAGE 1: add advanceOffset[] + feed it into the laneTickV_ recompute, LOCKED-TOGETHER (all move as one =
+  the current single advance decision) → goldens BIT-IDENTICAL. Proves the plumbing, clock untouched.
+- STAGE 2: allow the offsets to DIVERGE (per-voice decisions, the global/per-voice switch) → per-voice
+  stuttering. Mono/global config still bit-identical (pin).
+- STAGE 3: per-voice chevron display (each voice's advance offset shown, reading the single-source position).
