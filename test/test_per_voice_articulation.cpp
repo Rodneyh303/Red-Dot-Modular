@@ -126,21 +126,17 @@ int main() {
     check(diverged > 0, "non-identity LOR actually diverges (Local East)");
     std::printf("  divergence: %d/%d voice-steps differ from mono\n", diverged, checked);
 
-    // ── 4. table contract the clamp relies on: noteShorterOf compares DURATIONS ──
-    // (DOTTED BUILD: the interleaved table is NOT index-monotone — the OPTION B order
-    // puts each dotted value after its straight base. The clamp's authority is the
-    // fraction compare; pin it on the pairs where index order and duration disagree.)
-    check(noteShorterOf(1, 2) == 1, "noteShorterOf: 1/2 (8 steps) is shorter than 1/2. (12)");
-    check(noteShorterOf(2, 1) == 1, "noteShorterOf: order-independent");
-    check(noteShorterOf(3, 4) == 3, "noteShorterOf: 1/4 (4 steps) is shorter than 1/4. (6)");
-    check(noteShorterOf(9, 10) == 9, "noteShorterOf: 1/16 (1 step) is shorter than 1/16. (1.5)");
-    check(noteShorterOf(10, 9) == 9, "noteShorterOf: the 1/16 wins from either side");
-    for (int i = 0; i + 1 < NUM_NOTE_VALUES; ++i) {
-        // The straight values keep their relative durations — the legacy subsequence
-        // is still monotone (the OPTION B order only inserts dotted between bases).
-        if (NOTE_VALUES[i].variationBit < 0 && NOTE_VALUES[i + 1].variationBit < 0)
-            check(noteValueSteps(i) > noteValueSteps(i + 1), "straight values strictly decreasing");
-    }
+    // ── 4. table contract the clamp relies on: TRUE duration order (longest→shortest) ──
+    // (DOTTED BUILD final order: the table IS index-monotone again — each dotted value
+    // sits at its duration position, BEFORE its shorter straight base. noteShorterOf
+    // remains the fraction authority; pin both.)
+    for (int i = 0; i + 1 < NUM_NOTE_VALUES; ++i)
+        check(noteValueSteps(i) > noteValueSteps(i + 1), "NOTE_VALUES strictly decreasing");
+    check(noteShorterOf(1, 2) == 2, "noteShorterOf: 1/2 (8 steps) is shorter than 1/2. (12)");
+    check(noteShorterOf(2, 1) == 2, "noteShorterOf: order-independent");
+    check(noteShorterOf(3, 4) == 4, "noteShorterOf: 1/4 (4 steps) is shorter than 1/4. (6)");
+    check(noteShorterOf(9, 10) == 10, "noteShorterOf: 1/16 (1 step) is shorter than 1/8T (1.333)");
+    check(noteShorterOf(10, 9) == 10, "noteShorterOf: the 1/16 wins from either side");
 
     std::printf("%d passed, %d failed\n", passed, failed);
     return failed ? 1 : 0;

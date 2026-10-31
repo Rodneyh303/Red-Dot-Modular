@@ -69,16 +69,16 @@ struct Capture {
 // differential's NORMALIZATION PROOF: the whole stream byte-identical with the
 // nvIdx byte mapped back; the marches' draws mapped through legacyNoteValueIndex).
 // UA_IDENTITY_* still equal the differential's GOLDEN_* (byte-faithful harness).
-static const uint64_t UA_IDENTITY_A  = 0x77b578398d7ed855ULL;
-static const uint64_t UA_IDENTITY_B  = 0x0da199b326088109ULL;   // re-pinned (dotted interleave)
-static const uint64_t UA_IDENTITY_BS = 0x7fe7d40c04ffdb31ULL;   // re-pinned (dotted interleave)
-static const uint64_t UA_NONDIV_A    = 0x116dbd55d0fe5ca9ULL;   // re-pinned (dotted interleave)
-static const uint64_t UA_NONDIV_B    = 0xa6194f740ae8b705ULL;   // re-pinned (dotted interleave)
-static const uint64_t UA_NONDIV_BS   = 0xd0d7d63241964b8fULL;   // re-pinned (dotted interleave)
+static const uint64_t UA_IDENTITY_A  = 0x6066297edd968309ULL;
+static const uint64_t UA_IDENTITY_B  = 0xeac8ea34e18fdd3bULL;   // re-pinned (duration order)
+static const uint64_t UA_IDENTITY_BS = 0x4a16e5ad727ab745ULL;   // re-pinned (duration order)
+static const uint64_t UA_NONDIV_A    = 0x3ecbc3a260d3db31ULL;   // re-pinned (duration order)
+static const uint64_t UA_NONDIV_B    = 0x4b0948debc608d83ULL;   // re-pinned (duration order)
+static const uint64_t UA_NONDIV_BS   = 0x1b02914f625cc4c3ULL;   // re-pinned (duration order)
 // The MAPPED-mode digests (new behaviour — captured on the Stage-1 engine).
-static const uint64_t UA_WIN10_A     = 0x6e535a9476c8fbc8ULL;   // re-pinned (dotted interleave)
-static const uint64_t UA_WIN10_B     = 0xabf9895225d7fb57ULL;   // re-pinned (dotted interleave)
-static const uint64_t UA_WIN10O4_A   = 0x1b0dded5d47ca5a3ULL;   // re-pinned (dotted interleave)
+static const uint64_t UA_WIN10_A     = 0xd82957bb45083e19ULL;   // re-pinned (duration order)
+static const uint64_t UA_WIN10_B     = 0x6b20a1c761809afdULL;   // re-pinned (duration order)
+static const uint64_t UA_WIN10O4_A   = 0x9148aae41190088cULL;   // re-pinned (duration order)
 
 static PatternInput makeInput(float variationAmount) {
     PatternInput in;

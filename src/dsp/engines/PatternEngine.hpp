@@ -56,7 +56,7 @@ struct PatternInput {
     // in updatePatternInput — NOT transported through PatternInput.
     // restProb and variationAmount remain here because PatternEngine reads them for
     // pattern generation (snapshotPreRemap, varyNoteIndex, etc.) — not just the step cascade.
-    float noteValue        = 3.f;   // mono note-value INDEX 0..11 (3 = 1/4 note; DOTTED BUILD: was 2 pre-interleave)
+    float noteValue        = 4.f;   // mono note-value INDEX 0..11 (4 = 1/4 note; DOTTED BUILD: was 2 pre-interleave)
     float octaveLo         = 2.f;
     float octaveHi         = 5.f;
     float transpose        = 0.f;

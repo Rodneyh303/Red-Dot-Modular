@@ -3,9 +3,9 @@
  * sub-step (1/32, dotted-16th, triplet) fractional gate close.
  *
  * Replicates (from source truth) the FIXED GateState model:
- *   NOTE_VALUES (the single source; DOTTED BUILD: 12 entries, Rodney's OPTION B
- *     order — each dotted value right after its straight base):
- *     0..11 = 1/1, 1/2, 1/2., 1/4, 1/4., 1/4T, 1/8, 1/8., 1/8T, 1/16, 1/16., 1/32
+ *   NOTE_VALUES (the single source; DOTTED BUILD: 12 entries, TRUE duration
+ *     order — each dotted value at its duration position, BEFORE its shorter base):
+ *     0..11 = 1/1, 1/2., 1/2, 1/4., 1/4, 1/8., 1/4T, 1/8, 1/16., 1/8T, 1/16, 1/32
  *   gs_noteSteps(i) = NOTE_VALUES[i].fraction*16   (no whole-step floor)
  *   setDuration(): splits dur into whole steps (holdRemain) + pendingFrac
  *   tick(): decrements holdRemain; on the last whole step arms fracGateSec =
@@ -109,41 +109,41 @@ int main(){
     std::cout<<"\033[1mNote-length gate-duration tests (sub-step close + DOTTED BUILD)\033[0m\n";
     const float BPM=120.f, STEP=15.f/BPM;
 
-    SUITE("Table matches the dial labels (12 entries, OPTION B order)");
-    float exp_frac[NUM_NOTE_VALUES]={1.f, 0.5f, 0.75f, 0.25f, 0.375f, 1.f/6.f,
-                                     0.125f, 0.1875f, 1.f/12.f, 0.0625f, 0.09375f, 0.03125f};
+    SUITE("Table matches the dial labels (12 entries, TRUE duration order)");
+    float exp_frac[NUM_NOTE_VALUES]={1.f, 0.75f, 0.5f, 0.375f, 0.25f, 0.1875f,
+                                     1.f/6.f, 0.125f, 0.09375f, 1.f/12.f, 0.0625f, 0.03125f};
     for(int i=0;i<NUM_NOTE_VALUES;++i){std::ostringstream d;d<<"NOTE_VALUES '"<<NOTE_VALUES[i].label<<"' correct";
         TEST(d.str().c_str(),{EXPECT_NEAR(NOTE_VALUES[i].fraction,exp_frac[i],1e-6f);});}
 
     SUITE("Whole-note lengths unchanged (regression guard; re-derived indices)");
     TEST("1/1 = 16 steps",{EXPECT_NEAR(gateSteps(0,STEP),16.f,0.05f);});
-    TEST("1/2 = 8 steps", {EXPECT_NEAR(gateSteps(1,STEP),8.f,0.05f);});   // index 1 unchanged
-    TEST("1/4 = 4 steps", {EXPECT_NEAR(gateSteps(3,STEP),4.f,0.05f);});  // was idx 2
-    TEST("1/8 = 2 steps", {EXPECT_NEAR(gateSteps(6,STEP),2.f,0.05f);});  // was idx 4
-    TEST("1/16 = 1 step", {EXPECT_NEAR(gateSteps(9,STEP),1.f,0.05f);});  // was idx 6 (the old sentinel value!)
+    TEST("1/2 = 8 steps", {EXPECT_NEAR(gateSteps(2,STEP),8.f,0.05f);});   // was idx 1
+    TEST("1/4 = 4 steps", {EXPECT_NEAR(gateSteps(4,STEP),4.f,0.05f);});  // was idx 2
+    TEST("1/8 = 2 steps", {EXPECT_NEAR(gateSteps(7,STEP),2.f,0.05f);});  // was idx 4
+    TEST("1/16 = 1 step", {EXPECT_NEAR(gateSteps(10,STEP),1.f,0.05f);}); // was idx 6 (the old sentinel value!)
 
     SUITE("Sub-step / triplet / dotted-16th lengths render fractionally (THE FIX)");
-    TEST("1/4T = 2.667 steps",{EXPECT_NEAR(gateSteps(5,STEP),16.f/6.f,0.06f);});   // was idx 3
-    TEST("1/8T = 1.333 steps",{EXPECT_NEAR(gateSteps(8,STEP),16.f/12.f,0.06f);});  // was idx 5
+    TEST("1/4T = 2.667 steps",{EXPECT_NEAR(gateSteps(6,STEP),16.f/6.f,0.06f);});   // was idx 3
+    TEST("1/8T = 1.333 steps",{EXPECT_NEAR(gateSteps(9,STEP),16.f/12.f,0.06f);});  // was idx 5
     TEST("1/32 = 0.5 steps (half a 1/16 step, the design aim)",{EXPECT_NEAR(gateSteps(11,STEP),0.5f,0.05f);});
-    TEST("1/16. = 1.5 steps (the dotted sixteenth, sub-step like 1/32)",{EXPECT_NEAR(gateSteps(10,STEP),1.5f,0.05f);});
+    TEST("1/16. = 1.5 steps (the dotted sixteenth, sub-step like 1/32)",{EXPECT_NEAR(gateSteps(8,STEP),1.5f,0.05f);});
 
     SUITE("DOTTED BUILD — the integer dotted durations");
-    TEST("1/2. = 12 steps",{EXPECT_NEAR(gateSteps(2,STEP),12.f,0.05f);});
-    TEST("1/4. = 6 steps", {EXPECT_NEAR(gateSteps(4,STEP),6.f,0.05f);});
-    TEST("1/8. = 3 steps", {EXPECT_NEAR(gateSteps(7,STEP),3.f,0.05f);});
+    TEST("1/2. = 12 steps",{EXPECT_NEAR(gateSteps(1,STEP),12.f,0.05f);});
+    TEST("1/4. = 6 steps", {EXPECT_NEAR(gateSteps(3,STEP),6.f,0.05f);});
+    TEST("1/8. = 3 steps", {EXPECT_NEAR(gateSteps(5,STEP),3.f,0.05f);});
 
     SUITE("User's two symptoms resolved (re-derived indices)");
-    TEST("1/4 and 1/4T now DISTINCT",{EXPECT(std::fabs(gateSteps(3,STEP)-gateSteps(5,STEP))>0.3f);});
+    TEST("1/4 and 1/4T now DISTINCT",{EXPECT(std::fabs(gateSteps(4,STEP)-gateSteps(6,STEP))>0.3f);});
     TEST("1/8, 1/8T, 1/16, 1/32 all DISTINCT",{
-        float a=gateSteps(6,STEP),b=gateSteps(8,STEP),c=gateSteps(9,STEP),d=gateSteps(11,STEP);
+        float a=gateSteps(7,STEP),b=gateSteps(9,STEP),c=gateSteps(10,STEP),d=gateSteps(11,STEP);
         EXPECT(std::fabs(a-b)>0.2f); EXPECT(std::fabs(b-c)>0.2f); EXPECT(std::fabs(c-d)>0.2f);
     });
     TEST("the dotted values are DISTINCT from their straight bases",{
-        EXPECT(std::fabs(gateSteps(2,STEP)-gateSteps(1,STEP))>1.f);   // 1/2. 12 vs 1/2 8
-        EXPECT(std::fabs(gateSteps(4,STEP)-gateSteps(3,STEP))>1.f);   // 1/4. 6 vs 1/4 4
-        EXPECT(std::fabs(gateSteps(7,STEP)-gateSteps(6,STEP))>0.5f);  // 1/8. 3 vs 1/8 2
-        EXPECT(std::fabs(gateSteps(10,STEP)-gateSteps(9,STEP))>0.3f);// 1/16. 1.5 vs 1/16 1
+        EXPECT(std::fabs(gateSteps(1,STEP)-gateSteps(2,STEP))>1.f);   // 1/2. 12 vs 1/2 8
+        EXPECT(std::fabs(gateSteps(3,STEP)-gateSteps(4,STEP))>1.f);   // 1/4. 6 vs 1/4 4
+        EXPECT(std::fabs(gateSteps(5,STEP)-gateSteps(7,STEP))>0.5f);  // 1/8. 3 vs 1/8 2
+        EXPECT(std::fabs(gateSteps(8,STEP)-gateSteps(10,STEP))>0.3f);// 1/16. 1.5 vs 1/16 1
     });
 
     SUITE("All notes still START on the 1/16 grid");
@@ -153,11 +153,11 @@ int main(){
 
     SUITE("DOTTED BUILD — legato lead (integer lengths only)");
     TEST("dotted 1/2., 1/4., 1/8. CAN lead legato (12/6/3 steps are integers)",{
-        EXPECT(noteCanLeadLegato(2)); EXPECT(noteCanLeadLegato(4)); EXPECT(noteCanLeadLegato(7));
+        EXPECT(noteCanLeadLegato(1)); EXPECT(noteCanLeadLegato(3)); EXPECT(noteCanLeadLegato(5));
     });
     TEST("dotted 1/16. (1.5 steps) can NOT lead legato — like 1/32 and the triplets",{
-        EXPECT(!noteCanLeadLegato(10)); EXPECT(!noteCanLeadLegato(11));
-        EXPECT(!noteCanLeadLegato(5)); EXPECT(!noteCanLeadLegato(8));
+        EXPECT(!noteCanLeadLegato(8)); EXPECT(!noteCanLeadLegato(11));
+        EXPECT(!noteCanLeadLegato(6)); EXPECT(!noteCanLeadLegato(9));
     });
 
     SUITE("DOTTED BUILD — the table authorities");
@@ -173,16 +173,20 @@ int main(){
         EXPECT(ok);});
     TEST("the nullification sentinel addresses a 1-step value (the inert countdown)",{
         EXPECT_NEAR(noteValueSteps(NV_GATE_NULLIFY), 1.f, 1e-6f);});
-    TEST("noteShorterOf: legacy pairs keep max-semantics; dotted compare by DURATION",{
-        EXPECT(noteShorterOf(0,3)==3);            // 1/4(4 steps) shorter than 1/1(16)
-        EXPECT(noteShorterOf(3,0)==3);
-        EXPECT(noteShorterOf(1,2)==1);            // 1/2(8) shorter than 1/2.(12)
-        EXPECT(noteShorterOf(2,1)==1);
-        EXPECT(noteShorterOf(2,3)==3);            // 1/4(4) shorter than 1/2.(12)
-        EXPECT(noteShorterOf(3,4)==3);            // 1/4(4) shorter than 1/4.(6)
-        EXPECT(noteShorterOf(9,10)==9);           // 1/16(1) shorter than 1/16.(1.5)
-        EXPECT(noteShorterOf(10,9)==9);
+    TEST("noteShorterOf: the duration authority (index order == duration order again)",{
+        EXPECT(noteShorterOf(0,4)==4);            // 1/4(4 steps) shorter than 1/1(16)
+        EXPECT(noteShorterOf(4,0)==4);
+        EXPECT(noteShorterOf(1,2)==2);            // 1/2(8) shorter than 1/2.(12)
+        EXPECT(noteShorterOf(2,1)==2);
+        EXPECT(noteShorterOf(2,3)==3);            // 1/4.(6) shorter than 1/2(8)
+        EXPECT(noteShorterOf(3,4)==4);            // 1/4(4) shorter than 1/4.(6)
+        EXPECT(noteShorterOf(9,10)==10);          // 1/16(1) shorter than 1/8T(1.333)
+        EXPECT(noteShorterOf(10,9)==10);
         EXPECT(noteShorterOf(0,0)==0);
+    });
+    TEST("the table is index-monotone (TRUE duration order: strictly decreasing)",{
+        for(int i=1;i<NUM_NOTE_VALUES;++i)
+            EXPECT(noteValueSteps(i-1) > noteValueSteps(i));
     });
 
     SUITE("DOTTED BUILD — the rank window (varyNoteIndex)");
@@ -239,7 +243,7 @@ int main(){
         }
         // (c) each dotted bit ON ⇒ its value reachable.
         {
-            const int dottedIdx[4]={2,4,7,10};    // 1/2. 1/4. 1/8. 1/16.
+            const int dottedIdx[4]={1,3,5,8};     // 1/2. 1/4. 1/8. 1/16.
             const int bitOf[4]    ={3,4,5,6};
             bool okAll=true;
             for(int d=0;d<4;++d){

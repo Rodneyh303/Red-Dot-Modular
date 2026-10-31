@@ -114,15 +114,15 @@ int main() {
     SUITE("Mode B §4 — LEGATO decision reused from Mode A; REST wins over a pending slur");
     TEST("a held predecessor + legato roll connects (Tie/Legato, not a fresh NewNote)", {
         SequencerEngine eng; eng.numPolyVoices = 0;
-        rise(eng, 0.f, /*legatoProb=*/0.5f, 6.f);        // note 1: NewNote, commits slurForward
-        StepResult r2 = rise(eng, 0.f, /*legatoProb=*/0.5f, 6.f);   // note 2: connects back
+        rise(eng, 0.f, /*legatoProb=*/0.5f, 7.f);        // note 1: NewNote, commits slurForward
+        StepResult r2 = rise(eng, 0.f, /*legatoProb=*/0.5f, 7.f);   // note 2: connects back
         EXPECT(r2.decision == D::Tie || r2.decision == D::Legato);
     });
 
     TEST("rest wins over a pending slur (§4b): slur into a rest step -> Rest, gate low", {
         SequencerEngine eng; eng.numPolyVoices = 0;
-        rise(eng, 0.f, /*legatoProb=*/0.5f, 6.f);        // note 1 commits slurForward
-        StepResult r2 = rise(eng, /*restProb=*/0.5f, /*legatoProb=*/0.5f, 6.f);  // next step rests
+        rise(eng, 0.f, /*legatoProb=*/0.5f, 7.f);        // note 1 commits slurForward
+        StepResult r2 = rise(eng, /*restProb=*/0.5f, /*legatoProb=*/0.5f, 7.f);  // next step rests
         EXPECT(r2.decision == D::Rest);
         EXPECT(!eng.gs.gateHeld);
     });
@@ -202,7 +202,7 @@ int main() {
         // Same class, the GAP case: note played (holdRemain armed), Gate 1 falls, no slur -> the
         // gate must read low in BOTH the output and the Lantern (holdRemain must not keep it alive).
         SequencerEngine eng; eng.numPolyVoices = 0;
-        rise(eng, 0.f, /*legatoProb=*/0.f, 3.f);           // note played; slurForward stays false
+        rise(eng, 0.f, /*legatoProb=*/0.f, 4.f);           // note played; slurForward stays false
         EXPECT(eng.gs.holdRemain > 0.0001f);
         driveGateB(eng, /*gate1High=*/false, /*isRest=*/false);   // Gate 1 low, non-legato gap
         EXPECT(!eng.gs.gateHeld);
