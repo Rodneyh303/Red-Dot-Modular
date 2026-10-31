@@ -393,6 +393,41 @@ int main() {
           "driver: pass-through at the default window (raw tick, unbounded)");
     check(SequencerEngine::driverTickAt(-1, 16, 0) == -1,
           "driver: pass-through keeps negative ticks raw (today's prv expression)");
+
+    // ── 3b. KILL_DNA_LCM: the unbounded/NEGATIVE counter, wrapped LOCALLY ────────
+    // The old global DNA_LCM wrap's divisibility argument is replaced by LOCAL
+    // periodicity: every position function is periodic in t with its OWN period,
+    // negative t included (a backward walk from a fresh start goes -1, -2, ...).
+    {
+        const int64_t big = (int64_t)1 << 40;   // far beyond the old DNA_LCM = 1441440
+        bool okDrive = true, okShift = true, okBounce = true;
+        for (int len = 1; len <= 16; ++len) {
+            for (int off = 0; off < 16; ++off) {
+                if (len == 16 && off == 0) continue;   // pass-through: see the shift check below
+                okDrive &= SequencerEngine::driverTickAt(big - 17, len, off)
+                        == SequencerEngine::driverTickAt(big - 17 + len, len, off);
+                okDrive &= SequencerEngine::driverTickAt(-12345, len, off)
+                        == SequencerEngine::driverTickAt(-12345 + len, len, off);
+            }
+            const int64_t t = -98765;   // a negative counter
+            // Forward/Reverse move by exactly len under t -> t - len: congruent through
+            // getStrandIdx/calcPlayhead, which mod by the same length.
+            okShift &= SequencerEngine::laneTickFor(SequencerEngine::LaneDir::Forward, t, len)
+                     - SequencerEngine::laneTickFor(SequencerEngine::LaneDir::Forward, t - len, len) == len;
+            okShift &= SequencerEngine::laneTickFor(SequencerEngine::LaneDir::Reverse, t, len)
+                     - SequencerEngine::laneTickFor(SequencerEngine::LaneDir::Reverse, t - len, len) == -len;
+            // Pendulum/PingPong return their wrapped triangle: exactly periodic.
+            const int64_t Pp = 2 * (len > 1 ? len - 1 : 1);
+            const int64_t Pg = 2 * len;
+            okBounce &= SequencerEngine::laneTickFor(SequencerEngine::LaneDir::Pendulum, t, len)
+                     == SequencerEngine::laneTickFor(SequencerEngine::LaneDir::Pendulum, t - Pp, len);
+            okBounce &= SequencerEngine::laneTickFor(SequencerEngine::LaneDir::PingPong, t, len)
+                     == SequencerEngine::laneTickFor(SequencerEngine::LaneDir::PingPong, t - Pg, len);
+        }
+        check(okDrive, "KILL_DNA_LCM: the window walk is periodic in t (negative t included)");
+        check(okShift, "KILL_DNA_LCM: Forward/Reverse shift by exactly len under t -> t-len (congruent through the local mods)");
+        check(okBounce, "KILL_DNA_LCM: Pendulum/PingPong are exactly periodic with their own periods (negative t included)");
+    }
     check(SequencerEngine::driverTickAt(1, 10, 0) == 1
           && SequencerEngine::driverTickAt(10, 10, 0) == 10
           && SequencerEngine::driverTickAt(11, 10, 0) == 1

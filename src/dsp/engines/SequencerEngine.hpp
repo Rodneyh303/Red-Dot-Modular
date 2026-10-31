@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>                  // int64_t — the unbounded net-step counter (KILL_DNA_LCM)
 #include "RhythmDecisionCore.hpp"   // RDM: MonoDecision + ParentView — the R-2 seam (plan §2)
 #include "PatternEngine.hpp"
 #include "../SpreadInterp.hpp"   // effectiveProbability's spread term (the a2ccb842 one-accessor design it subsumes was deleted by UI_TO_RESOLVER step 2)
@@ -293,8 +294,10 @@ struct SequencerEngine {
     // f(totalStepsElapsed, len, dir) — no accumulator — so lanes cannot drift out of phase with
     // the DNA clock or each other, whenever their direction was flipped. laneTick_* below are
     // now a CACHE of this, recomputed each step in advancePlayhead, kept only so existing
-    // readers (displays, prob-outs) need no change. Implemented in the .cpp.
-    static long laneTickFor(LaneDir d, long t, int len);
+    // readers (displays, prob-outs) need no change. Implemented in the .cpp. int64_t: t is
+    // the raw unbounded net-step counter (KILL_DNA_LCM) — Forward/Reverse return unbounded
+    // values whose consumers (getStrandIdx/calcPlayhead) mod by the lane length locally.
+    static int64_t laneTickFor(LaneDir d, int64_t t, int len);
 
     // ── UNIFIED ADDRESSING Stage 1 (CC_PROMPT_UNIFIED_ADDRESSING_SPEC.md) ──────────
     // The GLOBAL-level LOR map — the top of the nested global->voice->lane chain. The lane
@@ -303,8 +306,8 @@ struct SequencerEngine {
     // every read beneath it — the KNOWN ISSUE fix (Sands read/showed the full 16 while the
     // playhead wrapped). Both are pure functions of the clock (the LANE_POSITION_MODEL law);
     // implemented in the .cpp.
-    static long driverTickAt(long t, int len, int off);
-    static long driverTickBefore(long tNow, long tRawPrev, int dir, int len, int off);
+    static int64_t driverTickAt(int64_t t, int len, int off);
+    static int64_t driverTickBefore(int64_t tNow, int64_t tRawPrev, int dir, int len, int off);
 
     // Clear per-lane walk state on hard restart. Under the fully-stateless model this is
     // REDUNDANT — every lane is a pure function of totalStepsElapsed, so zeroing that at
@@ -384,7 +387,11 @@ struct SequencerEngine {
     int endStep = 15;
     int cachedLength = 16;
     int cachedOffset = 0;
-    int totalStepsElapsed = 0; // Running counter for drifting polymetric DNA alignment
+    // KILL_DNA_LCM: the UNBOUNDED int64 net-step counter — +1/-1 per advance, NEVER wrapped
+    // (negative after a backward walk from a fresh start; ~300M years to overflow at 1k
+    // steps/sec). Every lane position comes from driverTickAt/laneTickFor (the lane's OWN
+    // local mod), so no global modulus exists or is needed.
+    int64_t totalStepsElapsed = 0;
 
     bool hadMonoTail = false;
     bool wasHeldMono = false; // Capture mono state before tick() for start-detection
@@ -415,7 +422,7 @@ struct SequencerEngine {
     // the variation lane's length; RESET to 0 in advancePlayhead (each arrived step
     // is judged on its own value first, scan 0). A LOCAL scan index into the
     // variation window — NEVER added into totalStepsElapsed or the global clock
-    // (a held-rise count is not a pattern position; DNA_LCM-agnostic by
+    // (a held-rise count is not a pattern position; global-modulus-agnostic by
     // construction). To stay frozen EVERY value in the window must fail < |p|
     // (prob ~(1-|p|)^varLen ≈ 0) — escapes within ~1/|p| held rises; p=0 = HOLD
     // by design. Zero new draws (the scan reads existing ring values).
@@ -495,8 +502,8 @@ struct SequencerEngine {
     // current motion (a window wrap is a BEAT, not a bounce — it must not flip the
     // cue) and an endpoint repeat (delta 0) keeping the previous sign. UI cue only:
     // nothing reads it to decide position (the laneSign_ discipline).
-    long    voiceDriver_[kVoiceSlots]               = {};
-    long    voiceDriverPrev_[kVoiceSlots]           = {};
+    int64_t voiceDriver_[kVoiceSlots]               = {};   // KILL_DNA_LCM: pass-through carries the raw unbounded tick
+    int64_t voiceDriverPrev_[kVoiceSlots]           = {};
     int     voiceRead_[kVoiceSlots]                 = {};
     int     voiceSign_[kVoiceSlots]                 = {};
     // The MACRO frame's read cell + walk sign — the global window walk itself (the
@@ -651,7 +658,7 @@ struct SequencerEngine {
     // The recompute shared by advancePlayhead and recomputeLaneTicks (implemented .cpp):
     // fills voiceDriver_/voiceDriverPrev_/voiceRead_/voiceSign_ (per voice) and
     // macroFrameRead_/macroFrameSign_ (the Macro frame) from the global driver pair.
-    void    recomputeVoiceDrivers_(long tNow, long tPrevGlobal, long tRawPrev, int dirMotion);
+    void    recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, int64_t tRawPrev, int dirMotion);
 
     // Lane-index unification: PL_* now matches the VISUAL/EDITOR/STRAND order
     // (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6). Editor==engine==strand —

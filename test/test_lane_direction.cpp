@@ -27,7 +27,11 @@ static void check(bool ok, const char* what) {
     if (ok) ++passed; else { ++failed; std::printf("  FAIL: %s\n", what); }
 }
 
-static const long DNA_LCM = 1441440;                // matches SequencerEngine (LCM(1..16)*2)
+// The OLD engine's wrap constant (KILL_DNA_LCM deleted it from SequencerEngine) — kept
+// here ONLY as this test's input-domain driver: the sequence tables below feed wrapped
+// ticks, which remain a valid congruent input domain now that the engine's counter is
+// the unbounded net-step (the local mods make wrapped and raw reads identical).
+static const long DNA_LCM = 1441440;                // the retired wrap period (test-side only now)
 static long wrapT(long t) { return ((t % DNA_LCM) + DNA_LCM) % DNA_LCM; }
 static int  pmod(long a, int m) { return (int)(((a % m) + m) % m); }
 
@@ -305,23 +309,14 @@ int main() {
     }
 
 
-    // ── 12. DNA_LCM must be a multiple of EVERY lane period ─────────────────────
-    // The wrap is inaudible only if, at t=DNA_LCM, every lane is exactly where it was at t=0.
-    // That needs DNA_LCM % period == 0 for each mode's period — not merely % len:
-    //   Forward/Reverse  len         Pendulum  2*(len-1)        PingPong  2*len
-    // LCM(1..16)=720720 carries only 2^4 and so failed the single cell len-16 PingPong (2*16=32),
-    // by exactly half a period — that lane flipped direction once per wrap (~25 h at 120 BPM).
-    // Guard it here so adding a mode or widening the length range can't silently reopen it.
-    {
-        bool ok = true;
-        for (int L = 1; L <= 16; ++L) {
-            if (DNA_LCM % L) ok = false;                                   // Forward / Reverse
-            if (L > 1 && DNA_LCM % (2*(L-1))) ok = false;                  // Pendulum
-            if (DNA_LCM % (2*L)) ok = false;                               // PingPong
-        }
-        check(ok, "DNA_LCM is a multiple of every lane period (fwd/rev, pendulum, pingpong)");
-        check(720720 % 32 != 0, "...and LCM(1..16) alone was NOT — len-16 PingPong was the gap");
-    }
+    // ── 12. (DELETED — KILL_DNA_LCM) ────────────────────────────────────────────
+    // This section guarded the OLD global wrap's divisibility property (DNA_LCM a
+    // multiple of every lane period, incl. the 720720-not-divisible-by-32 gap that
+    // flipped a len-16 PingPong lane once per wrap). DNA_LCM no longer exists in the
+    // engine: the counter is the unbounded net-step and continuity is LOCAL — each
+    // position function is periodic with its OWN period, negative t included. The
+    // successor property is pinned on the REAL engine functions in
+    // test_unified_addressing §3b (driverTickAt/laneTickFor periodicity).
 
     std::printf("%d passed, %d failed\n", passed, failed);
     return failed ? 1 : 0;

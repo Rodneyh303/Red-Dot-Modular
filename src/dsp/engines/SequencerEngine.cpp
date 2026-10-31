@@ -19,19 +19,15 @@ using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be co
 
 
 
-// Wrap period for the master DNA tick. It must be a multiple of EVERY lane period, so that at
-// the wrap every lane is exactly where it was at t=0 and the reset is inaudible:
-//   Forward/Reverse  len         (1..16)
-//   Pendulum         2*(len-1)   (<=30; worst case 2*8 = 16 = 2^4)
-//   PingPong         2*len       (<=32 = 2^5)
-// LCM(1..16) = 2^4*3^2*5*7*11*13 = 720720 covers every case EXCEPT len-16 PingPong: 32 needs
-// 2^5 and 720720 carries only 2^4. 720720 = 32*22522 + 16, i.e. HALF a ping-pong period, so a
-// len-16 PingPong lane used to flip direction once per wrap (~25 h of continuous play at 120 BPM).
-// Doubling to LCM(1..16)*2 = 1441440 adds the missing factor of 2 and still divides every len,
-// so the DNA drift pattern is unchanged — it already repeated at 720720, and the counter now
-// simply passes through that point without resetting. This is what lets "position is a pure
-// function of the clock" hold with no asterisk.
-static const int DNA_LCM = 1441440; // LCM(1..16)*2 — covers every lane period incl. 2*16 PingPong
+// (DNA_LCM is DELETED — CC_PROMPT_KILL_DNA_LCM_UNBOUNDED_CLOCK_PARKED.) The master clock
+// totalStepsElapsed is an UNBOUNDED int64 net-step counter (+1/-1 per advance, never wrapped:
+// int64 at 1k steps/sec wraps in ~300M years). There is NO global wrap period: every lane
+// position is computed through driverTickAt/laneTickFor, which mod by the LANE'S OWN length
+// LOCALLY (negative-safe double-mods), so continuity for any length is by construction.
+// What the old DNA_LCM = LCM(1..16)*2 wrap bought (every lane exactly back at t=0 when it
+// wrapped) the local mods buy for EVERY t — including negative counters (backward-from-start)
+// and lengths beyond 16 — with no magic composite constant that balloons at 32 steps
+// (LCM(1..32) ≈ 144 billion) and no phantom 1.4M cycle on a shorter master.
 
 // Closed-form window position for a lane at global tick t — the heart of the stateless model.
 // Reproduces the accumulator's sequences exactly (verified in test_lane_direction):
@@ -42,33 +38,34 @@ static const int DNA_LCM = 1441440; // LCM(1..16)*2 — covers every lane period
 // The caller feeds the result to getStrandIdx, which applies rot/off — matching the old code,
 // where the bounce ran on the raw tick and rot was applied on read.
 //
-// KNOWN EDGE: totalStepsElapsed wraps at DNA_LCM. DNA_LCM % len == 0 for every len 1..16,
-// and % 2*(len-1) too, so Forward/Reverse/Pendulum are continuous across the wrap.
-// PingPong period is 2*len. DNA_LCM = 1441440 = 2^5 * 3^2 * 5 * 7 * 11 * 13, which IS
-// divisible by 32 (=2*16=2^5), so all PingPong periods divide DNA_LCM and all lanes are
-// continuous across the wrap. (An earlier value 720720 = LCM(1..16) = 2^4*3^2*5*7*11*13
-// was NOT divisible by 32, causing a len-16 PingPong phase flip once per wrap ~25h at
-// 120 BPM. The current value 1441440 = LCM(1..16)*2 fixes that -- fully continuous.)
-long SequencerEngine::laneTickFor(LaneDir d, long t, int len) {
+// CONTINUITY (post-DNA_LCM): t is the raw net-step counter and may be NEGATIVE (a backward
+// walk from a fresh start) or arbitrarily large. Every branch below is periodic in t with
+// the lane's OWN period and wraps negatively (the double-mods), so laneTickFor(d, t, len)
+// equals laneTickFor(d, t mod period, len) for ANY t — the local-mod replacement for the
+// old global wrap's divisibility argument. Forward/Reverse return the raw (t-1) / -t values;
+// their ONLY consumers (getStrandIdx, calcPlayhead, the recomp wrap) mod by the lane length
+// locally, so unbounded is safe by construction.
+int64_t SequencerEngine::laneTickFor(LaneDir d, int64_t t, int len) {
     const int L = std::max(1, len);
     // totalStepsElapsed is 1-based (incremented before laneTick_ is computed).
     // Convert to 0-based position so laneTick_ matches stepIndex (also 0-based).
     // Without this, the Sands visual playhead is always 1 step ahead of the
     // Monsoon ring light (which reads stepIndex directly).
-    long t0 = t - 1;
+    int64_t t0 = t - 1;
     switch (d) {
         // Reverse: -(t0+1) = -t — same formula as before (the -1 and +1 cancel),
         // so Reverse behaviour is unchanged. For t=1: returns -1, wraps to L-1.
         case LaneDir::Reverse: return -(t0 + 1);
         case LaneDir::Pendulum: {
             if (L < 2) return 0;
-            const long P = 2 * (L - 1);
-            const long u = ((t0 + (L - 1)) % P + P) % P;
-            return std::labs(u - (L - 1));
+            const int64_t P = 2 * (L - 1);
+            const int64_t u = ((t0 + (L - 1)) % P + P) % P;
+            const int64_t m = u - (L - 1);
+            return (m < 0) ? -m : m;
         }
         case LaneDir::PingPong: {
-            const long P = 2 * L;
-            const long u = ((t0 % P) + P) % P;
+            const int64_t P = 2 * L;
+            const int64_t u = ((t0 % P) + P) % P;
             return (u < L) ? u : (P - 1 - u);
         }
         case LaneDir::Forward:
@@ -95,9 +92,9 @@ long SequencerEngine::laneTickFor(LaneDir d, long t, int len) {
 // the container length). The playhead's direction of motion is inherited automatically
 // (totalStepsElapsed moves ±1 with it — the same way lane direction composed with the
 // playhead before), and t's motion direction is the only direction input here.
-long SequencerEngine::driverTickAt(long t, int len, int off) {
+int64_t SequencerEngine::driverTickAt(int64_t t, int len, int off) {
     if (len == 16 && off == 0) return t;   // the default window: PASS-THROUGH (the golden pin)
-    long w = (t - 1) % len;                // 0-based walk through the window
+    int64_t w = (t - 1) % len;             // 0-based walk through the window
     if (w < 0) w += len;
     return w + off + 1;                    // 1-based tick: window start == tick 1
 }
@@ -108,12 +105,12 @@ long SequencerEngine::driverTickAt(long t, int len, int off) {
 // direction flip; the true neighbor is one step along the motion. Pass-through keeps
 // today's exact expression (t - dir). tRawPrev is the driver evaluated at the raw-tick
 // predecessor (t - dir), precomputed by the caller.
-long SequencerEngine::driverTickBefore(long tNow, long tRawPrev, int dir, int len, int off) {
+int64_t SequencerEngine::driverTickBefore(int64_t tNow, int64_t tRawPrev, int dir, int len, int off) {
     if (len == 16 && off == 0) {   // the pass-through config: today's exact expression
         return tNow - dir;
     }
-    const long dd = tNow - tRawPrev;
-    if (dd > 1 || dd < -1) return tNow - dir;   // window (or DNA_LCM) wrap: one musical step
+    const int64_t dd = tNow - tRawPrev;
+    if (dd > 1 || dd < -1) return tNow - dir;   // window wrap: one musical step
     return tRawPrev;
 }
 
@@ -375,8 +372,12 @@ bool SequencerEngine::advancePlayhead(int dir) {
     // maps physical positions to drifting DNA content (strand indices) and the ring
     // lights; counting up in reverse desyncs it from stepIndex and both the strand
     // drift and the lights go the wrong way (ring lights up all around).
-    if (dir < 0) totalStepsElapsed = (totalStepsElapsed - 1 + DNA_LCM) % DNA_LCM;
-    else         totalStepsElapsed = (totalStepsElapsed + 1) % DNA_LCM;
+    // KILL_DNA_LCM: the counter is UNBOUNDED — the raw net-step count (negative after a
+    // backward walk from a fresh start). No global wrap: every position comes from
+    // driverTickAt/laneTickFor with the lane's own LOCAL mod, so continuity is by
+    // construction (see the laneTickFor continuity note above).
+    if (dir < 0) --totalStepsElapsed;
+    else         ++totalStepsElapsed;
 
     // ── Lane position: FULLY STATELESS ──────────────────────────────────────────
     // Every lane, every mode, is a pure function of the master clock:
@@ -406,21 +407,25 @@ bool SequencerEngine::advancePlayhead(int dir) {
         // test_unified_addressing). The sign predecessor is wrap-normalized
         // (driverTickBefore): a window wrap is a BEAT, not a bounce, so the lane-sign
         // cue must not flip there.
-        const int  drvLen = cachedLength;
-        const int  drvOff = cachedOffset;
-        const long tNow   = driverTickAt((long)totalStepsElapsed, drvLen, drvOff);
-        const long tPrevD = driverTickBefore(tNow,
-                                driverTickAt((long)totalStepsElapsed - dir, drvLen, drvOff),
+        const int    drvLen = cachedLength;
+        const int    drvOff = cachedOffset;
+        const int64_t tNow  = driverTickAt(totalStepsElapsed, drvLen, drvOff);
+        const int64_t tPrevD = driverTickBefore(tNow,
+                                driverTickAt(totalStepsElapsed - dir, drvLen, drvOff),
                                 dir, drvLen, drvOff);
         // UNIFIED ADDRESSING Stage 2: the per-voice maps, then the lane walks driven by
         // EACH VOICE's driver (V1 = the mono lanes, V2..V16 = laneTickV_). The Macro
         // frame keeps the global driver (it has no voice map — it IS the frame).
-        recomputeVoiceDrivers_(tNow, tPrevD, (long)totalStepsElapsed - dir, dir);
-        auto recomp = [&](LaneDir d, int len, long tN, long tP, int& tickOut, int& signOut) {
-            const long cur = laneTickFor(d, tN, len);
-            const long prv = laneTickFor(d, tP, len);
-            tickOut = (int)((cur % DNA_LCM + DNA_LCM) % DNA_LCM);
-            const long delta = cur - prv;
+        recomputeVoiceDrivers_(tNow, tPrevD, totalStepsElapsed - dir, dir);
+        auto recomp = [&](LaneDir d, int len, int64_t tN, int64_t tP, int& tickOut, int& signOut) {
+            const int64_t cur = laneTickFor(d, tN, len);
+            const int64_t prv = laneTickFor(d, tP, len);
+            // KILL_DNA_LCM: the LOCAL wrap — by the LANE'S OWN length (congruent for every
+            // consumer: getStrandIdx/calcPlayhead mod by the same len; pendulum/pingpong cur
+            // is already in [0, L-1], so this is identity there). The old % DNA_LCM existed
+            // only to keep Forward/Reverse's unbounded t0 inside int.
+            tickOut = (int)(((cur % len) + len) % len);
+            const int64_t delta = cur - prv;
             if (delta > 0)      signOut = +1;
             else if (delta < 0) signOut = -1;
             // delta == 0 is the PingPong endpoint repeat: keep the previous sign.
@@ -582,11 +587,11 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLev
 // a wrap/jump reads as ONE musical step along the current motion (a BEAT, not a
 // bounce — the cue must not flip there), delta 0 (the PingPong endpoint repeat)
 // keeps the previous sign. Write-only caches; no read/generation path changes.
-void SequencerEngine::recomputeVoiceDrivers_(long tNow, long tPrevGlobal, long tRawPrev, int dirMotion) {
+void SequencerEngine::recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, int64_t tRawPrev, int dirMotion) {
     // The MACRO frame first (computed once, not per voice): the global window walk.
     macroFrameRead_ = (int)(((tNow - 1) % 16 + 16) % 16);
     {
-        const long gd = tNow - tPrevGlobal;   // wrap-normalized: -1/0/+1 (a window wrap was already folded to one step)
+        const int64_t gd = tNow - tPrevGlobal;   // wrap-normalized: -1/0/+1 (a window wrap was already folded to one step)
         if (gd > 0)      macroFrameSign_ = +1;
         else if (gd < 0) macroFrameSign_ = -1;   // 0 = held repeat: keep the previous cue
     }
@@ -598,7 +603,7 @@ void SequencerEngine::recomputeVoiceDrivers_(long tNow, long tPrevGlobal, long t
             voiceDriverPrev_[v]  = tPrevGlobal;
             voiceRead_[v]        = (int)(((tNow - 1) % 16 + 16) % 16);
             {   // identity frame = the global walk (same pair as macroFrame above)
-                const long gd = tNow - tPrevGlobal;
+                const int64_t gd = tNow - tPrevGlobal;
                 if (gd > 0)      voiceSign_[v] = +1;
                 else if (gd < 0) voiceSign_[v] = -1;
             }
@@ -607,12 +612,12 @@ void SequencerEngine::recomputeVoiceDrivers_(long tNow, long tPrevGlobal, long t
         int L, O, R; LaneDir vd;
         effectiveVoiceLor(v, L, O, R, vd);
         if (L < 1) L = 1;
-        const long rho  = (((long)(R - O) % L) + L) % L;
-        const long wnow = ((((laneTickFor(vd, tNow, L) + rho) % L) + L) % L);
+        const int64_t rho  = ((((int64_t)(R - O) % L) + L) % L);
+        const int64_t wnow = ((((laneTickFor(vd, tNow, L) + rho) % L) + L) % L);
         voiceDriver_[v] = wnow + 1;
         voiceRead_[v]   = (int)((wnow + O) & 0x0F);
-        const long wprev = ((((laneTickFor(vd, tRawPrev, L) + rho) % L) + L) % L);
-        const long dd    = voiceDriver_[v] - (wprev + 1);
+        const int64_t wprev = ((((laneTickFor(vd, tRawPrev, L) + rho) % L) + L) % L);
+        const int64_t dd    = voiceDriver_[v] - (wprev + 1);
         // A wrap (the voice's own window, or the global window beneath it) is a BEAT,
         // not a bounce: the musical predecessor is one step along the current motion.
         voiceDriverPrev_[v] = (dd > 1 || dd < -1) ? (voiceDriver_[v] - dirMotion) : (wprev + 1);
@@ -626,8 +631,8 @@ void SequencerEngine::recomputeVoiceDrivers_(long tNow, long tPrevGlobal, long t
             // walks bounce inside the window — so the raw delta is always the truth
             // there; the guard is for the Forward/Reverse wraps and a global-window
             // jump beneath the frame.)
-            const long vdSign  = (vd == LaneDir::Reverse) ? -1 : +1;
-            const long dstep   = (dd > 1 || dd < -1) ? (long)dirMotion * vdSign : dd;
+            const int64_t vdSign  = (vd == LaneDir::Reverse) ? -1 : +1;
+            const int64_t dstep   = (dd > 1 || dd < -1) ? (int64_t)dirMotion * vdSign : dd;
             if (dstep > 0)      voiceSign_[v] = +1;
             else if (dstep < 0) voiceSign_[v] = -1;
         }
@@ -642,18 +647,19 @@ void SequencerEngine::recomputeLaneTicks() {
     // UNIFIED ADDRESSING Stage 1: same global-level driver as advancePlayhead
     // (lastPlayDir stands in for the edge's motion direction here — this variant
     // runs after external snaps, where the transport did not just advance).
-    const int  drvLen = cachedLength;
-    const int  drvOff = cachedOffset;
-    const long tNow   = driverTickAt((long)totalStepsElapsed, drvLen, drvOff);
-    const long tPrevD = driverTickBefore(tNow,
-                            driverTickAt((long)totalStepsElapsed - lastPlayDir, drvLen, drvOff),
+    const int    drvLen = cachedLength;
+    const int    drvOff = cachedOffset;
+    const int64_t tNow  = driverTickAt(totalStepsElapsed, drvLen, drvOff);
+    const int64_t tPrevD = driverTickBefore(tNow,
+                            driverTickAt(totalStepsElapsed - lastPlayDir, drvLen, drvOff),
                             lastPlayDir, drvLen, drvOff);
-    recomputeVoiceDrivers_(tNow, tPrevD, (long)totalStepsElapsed - lastPlayDir, lastPlayDir);
-    auto recomp = [&](LaneDir d, int len, long tN, long tP, int& tickOut, int& signOut) {
-        const long cur = laneTickFor(d, tN, len);
-        const long prv = laneTickFor(d, tP, len);
-        tickOut = (int)((cur % DNA_LCM + DNA_LCM) % DNA_LCM);
-        const long delta = cur - prv;
+    recomputeVoiceDrivers_(tNow, tPrevD, totalStepsElapsed - lastPlayDir, lastPlayDir);
+    auto recomp = [&](LaneDir d, int len, int64_t tN, int64_t tP, int& tickOut, int& signOut) {
+        const int64_t cur = laneTickFor(d, tN, len);
+        const int64_t prv = laneTickFor(d, tP, len);
+        // KILL_DNA_LCM: the LOCAL wrap by the lane's own length (see advancePlayhead's recomp).
+        tickOut = (int)(((cur % len) + len) % len);
+        const int64_t delta = cur - prv;
         if (delta > 0)      signOut = +1;
         else if (delta < 0) signOut = -1;
         // delta == 0 is the PingPong endpoint repeat: keep the previous sign.
@@ -694,7 +700,10 @@ void SequencerEngine::snapToPhaseStep(long pulsePos, int p16) {
     int phaseStep = (int)(((absStep % 16) + 16) % 16);
     // totalStepsElapsed is 1-based (incremented before laneTickFor uses it, which subtracts 1
     // internally to produce 0-based laneTick_). So convert absStep (0-based) to 1-based.
-    totalStepsElapsed = (((absStep + 1) % (long)DNA_LCM + (long)DNA_LCM) % (long)DNA_LCM);
+    // KILL_DNA_LCM: the RAW net-step the phase implies — no DNA_LCM mod. Any
+    // representative net-step works (driverTickAt/laneTickFor mod locally); the
+    // raw one is the honest one.
+    totalStepsElapsed = (int64_t)absStep + 1;
     stepIndex = phaseStep;
     // Apply window checking (match advancePlayhead's behavior)
     if (!isStepInWindow(stepIndex)) {
@@ -765,7 +774,13 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
         // today's verbatim). Subtract 1 to get the 0-based walk (matching laneTick_, which
         // laneTickFor now returns as 0-based). Without this, the DNA content (which steps
         // show notes) would be 1 step ahead of the playhead.
-        int tickForLight = (int)driverTickAt((long)totalStepsElapsed, cachedLength, cachedOffset) - 1 - relCurrent + relLight;
+        // KILL_DNA_LCM: the driver tick is int64 (pass-through carries the raw counter) —
+        // wrap LOCALLY by the rhythm lane's own length before the int narrowing.
+        // getStrandIdx mods by the same len below, so this is congruent, negative-safe,
+        // read-identical.
+        const int rLen = std::max(1, lor(dotModular::STRAND_RHYTHM, LOR_LEN));
+        const int64_t tick64 = driverTickAt(totalStepsElapsed, cachedLength, cachedOffset) - 1 - relCurrent + relLight;
+        const int tickForLight = (int)(((tick64 % rLen) + rLen) % rLen);
 
         int dnaIdx = getStrandIdx(tickForLight, lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT));
         bool isNote = pe.rhythmPattern[dnaIdx];
@@ -1776,9 +1791,9 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                              && (legTh >= 0.999f || r_polyLegato < legTh);
             v.gs.slurMember = v.gs.slurForward;   // SLEG: onset member iff it leads a slur
 #if RULE2_DEBUG
-            INFO("[R2 roll ] v=%2d step=%3d LE=%d legCell=%2d monoCell=%2d legLOR=(%2d,%2d,%2d) "
+            INFO("[R2 roll ] v=%2d step=%3lld LE=%d legCell=%2d monoCell=%2d legLOR=(%2d,%2d,%2d) "
                  "r=%.3f prob=%.3f nvV=%d canLead=%d -> slur=%d",
-                voiceIdx.v, (int)totalStepsElapsed, (int)!varlegDelegated(voiceIdx.v, 1),
+                voiceIdx.v, (long long)totalStepsElapsed, (int)!varlegDelegated(voiceIdx.v, 1),
                 getLegatoStepForVoice(voiceIdx), getLegatoStep(),
                 polyLOR(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, LOR_LEN),
                 polyLOR(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, LOR_OFF),
@@ -1833,8 +1848,8 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                 const bool stillSounding = wasHeldPoly || hadPolyTail;
                 const bool connect = prevSlur && stillSounding;
 #if RULE2_DEBUG
-                INFO("[R2 land ] v=%2d step=%3d LE=%d part=%d prevSlur=%d sound=%d isTie=%d -> %s",
-                    voiceIdx.v, (int)totalStepsElapsed, (int)!varlegDelegated(voiceIdx.v, 1),
+                INFO("[R2 land ] v=%2d step=%3lld LE=%d part=%d prevSlur=%d sound=%d isTie=%d -> %s",
+                    voiceIdx.v, (long long)totalStepsElapsed, (int)!varlegDelegated(voiceIdx.v, 1),
                         (int)v.participating, (int)prevSlur, (int)stillSounding, (int)isTie,
                     connect ? "CONNECT" : "REARTICULATE");
 #endif

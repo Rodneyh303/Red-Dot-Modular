@@ -101,7 +101,7 @@ void Intertropical::process(const ProcessArgs& args) {
 
     // ---- RESET: sync back to scene 1 repeat 1 when Monsoon resets ----
     // Read the RESET_TRIGGER_OUTPUT pulse jack directly from the host. This fires only on a
-    // genuine reset (button or gate input), NOT on phrase wraps or DNA_LCM counter wraps.
+    // genuine reset (button or gate input), NOT on phrase wraps.
     // Check every process() call (not just on step edges) so a mid-step reset isn't missed.
     if (host->outputs[MonsoonIds::RESET_TRIGGER_OUTPUT].getVoltage() >= 1.f) {
         activeScene = 0;
