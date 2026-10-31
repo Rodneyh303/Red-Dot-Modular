@@ -328,7 +328,7 @@ int main(){
         EXPECT_NEAR(gs_noteSteps(2), 8.f, 1e-5f);   // was idx 1
     });
     TEST("1/32 note = 0.5 steps (minimum)", {
-        EXPECT_NEAR(gs_noteSteps(11), 0.5f, 1e-5f); // was idx 7
+        EXPECT_NEAR(gs_noteSteps(12), 0.5f, 1e-5f); // was idx 7 (1/16T inserted at 11)
     });
     TEST("out-of-range nvIdx: returns 1.0 (safe default)", {
         EXPECT_NEAR(gs_noteSteps(-1), 1.f, 1e-5f);

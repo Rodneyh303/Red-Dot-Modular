@@ -355,9 +355,9 @@ static void marchModeBS(int seed, Capture& cap, int& c2n, int& envn) {
 // 0xa843e2ff14883ab9 / 0x30aed95ef0e65fb8 / 0xcffae9458b9257fd EXACTLY
 // (92928 checks, 0 failed). The marches' rng draws are mapped through
 // legacyNoteValueIndex — same musical values, same draw sequence.
-static const uint64_t GOLDEN_A  = 0x6066297edd968309ULL;
-static const uint64_t GOLDEN_B  = 0xeac8ea34e18fdd3bULL;   // re-pinned (duration order)
-static const uint64_t GOLDEN_BS = 0x4a16e5ad727ab745ULL;   // re-pinned (duration order)
+static const uint64_t GOLDEN_A  = 0x6a57a9766799c379ULL;
+static const uint64_t GOLDEN_B  = 0xa06a98b3941320a1ULL;   // re-pinned (1/16T insert)
+static const uint64_t GOLDEN_BS = 0x4a16e5ad727ab745ULL;   // re-pinned (1/16T insert — UNMOVED: no 1/32 bytes in this stream)
 
 int main() {
     std::printf("\033[1mrhythm decision differential — the R-1 oracle (stage R)\033[0m\n");

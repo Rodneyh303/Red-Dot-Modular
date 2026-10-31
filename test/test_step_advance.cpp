@@ -195,12 +195,12 @@ struct GateStream {
 // shifted. The normalization proof (differential, same discipline) shows the whole
 // stream byte-identical with that one byte mapped back — the gate-mode logic never
 // moved. OLD (pre-dotted): B=0x7fde9525731c67e2.
-static const uint64_t ADV_IDENTITY_B  = 0x66f88550dcb45afaULL;
+static const uint64_t ADV_IDENTITY_B  = 0x3089df448e08e957ULL;
 // RE-CAPTURED for CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE (the ghost-candidacy
 // deletion changes ghost outcomes at p=1; the plain-B digest above is the
 // ORIGINAL pre-change capture and still holds — u=r_vary < 1 crosses every
 // step, so the advance itself is byte-identical).
-static const uint64_t ADV_IDENTITY_BS = 0x7c63400e804fe03eULL;   // DOTTED re-pin (duration order; was 0x24fba00a690d125e)
+static const uint64_t ADV_IDENTITY_BS = 0x7c63400e804fe03eULL;   // re-pinned (1/16T insert — UNMOVED)
 
 static void marchModeB_p1(int seed, Capture& cap) {
     PhiloxRng rng; rng.seed64((uint64_t)seed * 747796405u + 2891336453u + 1u);

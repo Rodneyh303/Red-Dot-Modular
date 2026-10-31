@@ -95,7 +95,7 @@ int main() {
     // ── 4. A non-leading (fractional) note can never lead a slur ──
     // 1/4T (idx 3) and 1/32 (idx 7) end off-grid → noteCanLeadLegato false.
     {
-        check(!noteCanLeadLegato(6) && !noteCanLeadLegato(11), "fractional notes cannot lead (table)");
+        check(!noteCanLeadLegato(6) && !noteCanLeadLegato(12), "fractional notes cannot lead (table)");
         bool s = rollSlur(true, /*nvIdx=*/6, /*prob=*/1.0f, /*r=*/0.f);   // even with forced prob
         check(s == false, "non-leading note commits no slur even at prob=1");
     }

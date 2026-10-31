@@ -69,16 +69,16 @@ struct Capture {
 // differential's NORMALIZATION PROOF: the whole stream byte-identical with the
 // nvIdx byte mapped back; the marches' draws mapped through legacyNoteValueIndex).
 // UA_IDENTITY_* still equal the differential's GOLDEN_* (byte-faithful harness).
-static const uint64_t UA_IDENTITY_A  = 0x6066297edd968309ULL;
-static const uint64_t UA_IDENTITY_B  = 0xeac8ea34e18fdd3bULL;   // re-pinned (duration order)
+static const uint64_t UA_IDENTITY_A  = 0x6a57a9766799c379ULL;
+static const uint64_t UA_IDENTITY_B  = 0xa06a98b3941320a1ULL;   // re-pinned (1/16T insert)
 static const uint64_t UA_IDENTITY_BS = 0x4a16e5ad727ab745ULL;   // re-pinned (duration order)
-static const uint64_t UA_NONDIV_A    = 0x3ecbc3a260d3db31ULL;   // re-pinned (duration order)
-static const uint64_t UA_NONDIV_B    = 0x4b0948debc608d83ULL;   // re-pinned (duration order)
+static const uint64_t UA_NONDIV_A    = 0xe2726ae1498b2cc5ULL;   // re-pinned (1/16T insert)
+static const uint64_t UA_NONDIV_B    = 0x3469251c7e4ea919ULL;   // re-pinned (1/16T insert)
 static const uint64_t UA_NONDIV_BS   = 0x1b02914f625cc4c3ULL;   // re-pinned (duration order)
 // The MAPPED-mode digests (new behaviour — captured on the Stage-1 engine).
-static const uint64_t UA_WIN10_A     = 0xd82957bb45083e19ULL;   // re-pinned (duration order)
-static const uint64_t UA_WIN10_B     = 0x6b20a1c761809afdULL;   // re-pinned (duration order)
-static const uint64_t UA_WIN10O4_A   = 0x9148aae41190088cULL;   // re-pinned (duration order)
+static const uint64_t UA_WIN10_A     = 0xc40b7ba28a8bc0baULL;   // re-pinned (1/16T insert)
+static const uint64_t UA_WIN10_B     = 0x26bb988e046d7847ULL;   // re-pinned (1/16T insert)
+static const uint64_t UA_WIN10O4_A   = 0x7124d7417c03fa9fULL;   // re-pinned (1/16T insert)
 
 static PatternInput makeInput(float variationAmount) {
     PatternInput in;

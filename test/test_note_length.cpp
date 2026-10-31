@@ -3,9 +3,9 @@
  * sub-step (1/32, dotted-16th, triplet) fractional gate close.
  *
  * Replicates (from source truth) the FIXED GateState model:
- *   NOTE_VALUES (the single source; DOTTED BUILD: 12 entries, TRUE duration
- *     order — each dotted value at its duration position, BEFORE its shorter base):
- *     0..11 = 1/1, 1/2., 1/2, 1/4., 1/4, 1/8., 1/4T, 1/8, 1/16., 1/8T, 1/16, 1/32
+ *   NOTE_VALUES (the single source; DOTTED BUILD spec v3: 13 entries, TRUE duration
+ *     order — 1/16T at 11, 1/32 at 12; the DIAL walks DIAL_ORDER, grouped):
+ *     0..12 = 1/1, 1/2., 1/2, 1/4., 1/4, 1/8., 1/4T, 1/8, 1/16., 1/8T, 1/16, 1/16T, 1/32
  *   gs_noteSteps(i) = NOTE_VALUES[i].fraction*16   (no whole-step floor)
  *   setDuration(): splits dur into whole steps (holdRemain) + pendingFrac
  *   tick(): decrements holdRemain; on the last whole step arms fracGateSec =
@@ -109,9 +109,9 @@ int main(){
     std::cout<<"\033[1mNote-length gate-duration tests (sub-step close + DOTTED BUILD)\033[0m\n";
     const float BPM=120.f, STEP=15.f/BPM;
 
-    SUITE("Table matches the dial labels (12 entries, TRUE duration order)");
+    SUITE("Table matches the dial labels (13 entries, TRUE duration order)");
     float exp_frac[NUM_NOTE_VALUES]={1.f, 0.75f, 0.5f, 0.375f, 0.25f, 0.1875f,
-                                     1.f/6.f, 0.125f, 0.09375f, 1.f/12.f, 0.0625f, 0.03125f};
+                                     1.f/6.f, 0.125f, 0.09375f, 1.f/12.f, 0.0625f, 1.f/24.f, 0.03125f};
     for(int i=0;i<NUM_NOTE_VALUES;++i){std::ostringstream d;d<<"NOTE_VALUES '"<<NOTE_VALUES[i].label<<"' correct";
         TEST(d.str().c_str(),{EXPECT_NEAR(NOTE_VALUES[i].fraction,exp_frac[i],1e-6f);});}
 
@@ -125,8 +125,9 @@ int main(){
     SUITE("Sub-step / triplet / dotted-16th lengths render fractionally (THE FIX)");
     TEST("1/4T = 2.667 steps",{EXPECT_NEAR(gateSteps(6,STEP),16.f/6.f,0.06f);});   // was idx 3
     TEST("1/8T = 1.333 steps",{EXPECT_NEAR(gateSteps(9,STEP),16.f/12.f,0.06f);});  // was idx 5
-    TEST("1/32 = 0.5 steps (half a 1/16 step, the design aim)",{EXPECT_NEAR(gateSteps(11,STEP),0.5f,0.05f);});
+    TEST("1/32 = 0.5 steps (half a 1/16 step, the design aim)",{EXPECT_NEAR(gateSteps(12,STEP),0.5f,0.05f);});
     TEST("1/16. = 1.5 steps (the dotted sixteenth, sub-step like 1/32)",{EXPECT_NEAR(gateSteps(8,STEP),1.5f,0.05f);});
+    TEST("1/16T = 0.6667 steps (the sixteenth triplet, 4 pulses @ 24 PPQN — safe)",{EXPECT_NEAR(gateSteps(11,STEP),16.f/24.f,0.05f);});
 
     SUITE("DOTTED BUILD — the integer dotted durations");
     TEST("1/2. = 12 steps",{EXPECT_NEAR(gateSteps(1,STEP),12.f,0.05f);});
@@ -155,9 +156,9 @@ int main(){
     TEST("dotted 1/2., 1/4., 1/8. CAN lead legato (12/6/3 steps are integers)",{
         EXPECT(noteCanLeadLegato(1)); EXPECT(noteCanLeadLegato(3)); EXPECT(noteCanLeadLegato(5));
     });
-    TEST("dotted 1/16. (1.5 steps) can NOT lead legato — like 1/32 and the triplets",{
-        EXPECT(!noteCanLeadLegato(8)); EXPECT(!noteCanLeadLegato(11));
-        EXPECT(!noteCanLeadLegato(6)); EXPECT(!noteCanLeadLegato(9));
+    TEST("dotted 1/16. (1.5 steps) can NOT lead legato — like 1/32, 1/16T and the triplets",{
+        EXPECT(!noteCanLeadLegato(8)); EXPECT(!noteCanLeadLegato(12));
+        EXPECT(!noteCanLeadLegato(11)); EXPECT(!noteCanLeadLegato(6)); EXPECT(!noteCanLeadLegato(9));
     });
 
     SUITE("DOTTED BUILD — the table authorities");
@@ -187,6 +188,21 @@ int main(){
     TEST("the table is index-monotone (TRUE duration order: strictly decreasing)",{
         for(int i=1;i<NUM_NOTE_VALUES;++i)
             EXPECT(noteValueSteps(i-1) > noteValueSteps(i));
+    });
+    TEST("DIAL_ORDER is a valid permutation (every index exactly once)",{
+        bool seen[NUM_NOTE_VALUES]={};
+        for(int k=0;k<NUM_NOTE_VALUES;++k){
+            EXPECT(DIAL_ORDER[k]>=0 && DIAL_ORDER[k]<NUM_NOTE_VALUES);
+            EXPECT(!seen[DIAL_ORDER[k]]);
+            seen[DIAL_ORDER[k]]=true;
+        }
+    });
+    TEST("DIAL_ORDER reads in grouped families (base, triplet, then next family's dotted)",{
+        // The spec's dial sequence labels, verbatim:
+        const char* dial[NUM_NOTE_VALUES]={"1/1","1/2.","1/2","1/4.","1/4","1/4T","1/8.","1/8",
+                                           "1/8T","1/16.","1/16","1/16T","1/32"};
+        for(int k=0;k<NUM_NOTE_VALUES;++k)
+            EXPECT(std::string(NOTE_VALUES[DIAL_ORDER[k]].label)==dial[k]);
     });
 
     SUITE("DOTTED BUILD — the rank window (varyNoteIndex)");
@@ -243,10 +259,10 @@ int main(){
         }
         // (c) each dotted bit ON ⇒ its value reachable.
         {
-            const int dottedIdx[4]={1,3,5,8};     // 1/2. 1/4. 1/8. 1/16.
-            const int bitOf[4]    ={3,4,5,6};
+            const int dottedIdx[5]={1,3,5,8,11};  // 1/2. 1/4. 1/8. 1/16. 1/16T
+            const int bitOf[5]    ={3,4,5,6,7};
             bool okAll=true;
-            for(int d=0;d<4;++d){
+            for(int d=0;d<5;++d){
                 bool reached=false;
                 PatternInput in;
                 in.noteVariationMask=0b111|(1<<bitOf[d]);

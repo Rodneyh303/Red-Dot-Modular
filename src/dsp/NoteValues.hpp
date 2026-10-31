@@ -16,15 +16,17 @@
 // This header defines the list ONCE. Every consumer reads from NOTE_VALUES so a
 // reorder or relabel can only ever happen in one spot.
 //
-// Index → musical value (DOTTED BUILD: the 4 dotted values interleaved at their
-// TRUE DURATION positions, longest → shortest — the dial reads naturally;
-// dotted-1/32 EXCLUDED, needs 48 PPQN, unsafe — PPQN_48_96_NOT_SAFE.md):
-//    0=1/1   1=1/2.  2=1/2   3=1/4.  4=1/4   5=1/8.
-//    6=1/4T  7=1/8   8=1/16. 9=1/8T 10=1/16 11=1/32
-// (durations in 1/16 steps: 16, 12, 8, 6, 4, 3, 2.667, 2, 1.5, 1.333, 1, 0.5 —
-//  STRICTLY DECREASING: the "larger index = shorter" law holds. The "shorter"
-//  comparisons still route through noteShorterOf (the fraction authority) —
-//  robust to any future reorder.)
+// Index → musical value (DOTTED BUILD, spec v3 — 13 entries): the ENGINE table in
+// STRICT duration order (longest → shortest, verified strictly decreasing), and a
+// separate DIAL_ORDER display permutation so the knob reads in GROUPED musical
+// families (base, triplet, dotted-of-next). 1/16T joins (0.6667 steps — resolves
+// at the 24-PPQN baseline, 4 pulses, safe; a triplet → own mask bit 7):
+//    ENGINE:  0=1/1  1=1/2.  2=1/2  3=1/4.  4=1/4  5=1/8.  6=1/4T  7=1/8
+//             8=1/16. 9=1/8T 10=1/16 11=1/16T 12=1/32
+//    DIAL:    1/1, 1/2., 1/2, 1/4., 1/4, 1/4T, 1/8., 1/8, 1/8T, 1/16., 1/16, 1/16T, 1/32
+// (engine durations in 1/16 steps: 16, 12, 8, 6, 4, 3, 2.667, 2, 1.5, 1.333, 1,
+//  0.6667, 0.5 — strictly decreasing; the "shorter" comparisons route through
+//  noteShorterOf, the fraction authority, regardless of order.)
 //
 // allowedPPQN is a bitmask of the clock resolutions at which the value is
 // reachable: 1 = PPQN 1, 2 = PPQN 4, 4 = PPQN 24.
@@ -42,9 +44,9 @@ struct NoteValue {
     int         variationBit;
 };
 
-constexpr int NUM_NOTE_VALUES = 12;
+constexpr int NUM_NOTE_VALUES = 13;
 
-// The one and only table — TRUE duration order, longest → shortest.
+// The one and only table — STRICT duration order, longest → shortest.
 constexpr NoteValue NOTE_VALUES[NUM_NOTE_VALUES] = {
     {1.0f,        1|2|4, "1/1",  -1},
     {0.75f,       1|2|4, "1/2.",  3},   //  1 — dotted half,      12 steps (integer)
@@ -57,8 +59,14 @@ constexpr NoteValue NOTE_VALUES[NUM_NOTE_VALUES] = {
     {0.09375f,    4,     "1/16.", 6},   //  8 — dotted sixteenth,  1.5 steps (FRACTIONAL, PPQN24 only)
     {1.0f/12.0f,  4,     "1/8T",  1},
     {0.0625f,     2|4,   "1/16", -1},
+    {1.0f/24.0f,  4,     "1/16T", 7},   // 11 — sixteenth triplet, 0.6667 steps (4 pulses @ 24 PPQN — safe)
     {0.03125f,    4,     "1/32",  2},
 };
+
+// The DIAL display permutation (the spec's grouped reading: families together —
+// base, triplet, then the next family's dotted): the ENGINE table stays in strict
+// duration order; the knob's arc labels walk THIS order so it reads musically.
+constexpr int DIAL_ORDER[NUM_NOTE_VALUES] = { 0, 1, 2, 3, 4, 6, 5, 7, 9, 8, 10, 11, 12 };
 
 // The LEGACY index map (the pre-dotted 8-entry table): old index → the SAME musical
 // value's index in the 12-entry table. Used by (a) the test harnesses — the marches'
@@ -67,9 +75,9 @@ constexpr NoteValue NOTE_VALUES[NUM_NOTE_VALUES] = {
 // writes noteValueSchema=2 on save; its absence on load ⇒ a pre-dotted save ⇒
 // NOTE_VALUE_PARAM translates through this map (released patches keep their dials).
 inline int legacyNoteValueIndex(int oldIdx) {
-    static constexpr int MAP[8] = {0, 2, 4, 6, 7, 9, 10, 11};  // 1/1 1/2 1/4 1/4T 1/8 1/8T 1/16 1/32
+    static constexpr int MAP[8] = {0, 2, 4, 6, 7, 9, 10, 12};  // 1/1 1/2 1/4 1/4T 1/8 1/8T 1/16 1/32
     if (oldIdx < 0) return 0;
-    if (oldIdx > 7) return 11;
+    if (oldIdx > 7) return 12;
     return MAP[oldIdx];
 }
 

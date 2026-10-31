@@ -857,7 +857,10 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         };
 
         setNvgFontSize(2.5f);
-        { for(int i=0;i<NUM_NOTE_VALUES;++i) arcLabel("param_NOTE_VALUE_PARAM",16.f,22.f,13.5f,-225.f+i*(270.f/(NUM_NOTE_VALUES-1)),NOTE_VALUES[i].label,150,150,135); }
+        // DOTTED BUILD: the dial walks DIAL_ORDER (the spec's grouped reading —
+        // families together: base, triplet, then the next family's dotted); the
+        // engine table itself stays in strict duration order.
+        { for(int k=0;k<NUM_NOTE_VALUES;++k) arcLabel("param_NOTE_VALUE_PARAM",16.f,22.f,13.5f,-225.f+k*(270.f/(NUM_NOTE_VALUES-1)),NOTE_VALUES[DIAL_ORDER[k]].label,150,150,135); }
         setNvgFontSize(2.8f);
         arcLabel("param_VARIATION_PARAM",42.f,22.f,13.f,-225.f,"LONGER",130,130,120); arcLabel("param_VARIATION_PARAM",42.f,22.f,13.f,45.f,"SHORTER",130,130,120);
         arcLabel("param_LEGATO_PARAM",68.f,22.f,12.f,-225.f,"0%",130,130,120);        arcLabel("param_LEGATO_PARAM",68.f,22.f,12.f,45.f,"100%",130,130,120);
@@ -1463,12 +1466,13 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 void onAction(const event::Action&) override { if(module) module->noteVariationMask ^= (1<<bit); }
                 void step() override { rightText=(module&&(module->noteVariationMask&(1<<bit)))?"✔":""; ui::MenuItem::step(); } };
               auto add=[&](const char* t,int b){auto* it=createMenuItem<MaskItem>(t);it->module=m;it->bit=b;sub->addChild(it);};
-              // DOTTED BUILD: per-dotted toggles, bits 3..6 — individual like the
-              // triplets (NOT a group bit), all DEFAULT OFF (existing patches
-              // byte-identical until flipped). A dotted BASE note always plays
-              // (varyNoteIndex keeps the base rung regardless of its bit).
+              // DOTTED BUILD (spec v3): per-value toggles, bits 3..7 — individual
+              // like the legacy triplets, all DEFAULT OFF (existing patches
+              // byte-identical until flipped). A dotted/triplet BASE note always
+              // plays (varyNoteIndex keeps the base rung regardless of its bit).
               add("Allow 1/4T",0); add("Allow 1/8T",1); add("Allow 1/32",2);
-              add("Allow 1/2.",3); add("Allow 1/4.",4); add("Allow 1/8.",5); add("Allow 1/16.",6); }
+              add("Allow 1/2.",3); add("Allow 1/4.",4); add("Allow 1/8.",5); add("Allow 1/16.",6);
+              add("Allow 1/16T",7); }
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "PPQN"; sub->addChild(l);
               struct PItem : ui::MenuItem { Monsoon* module=nullptr; int value=4;
