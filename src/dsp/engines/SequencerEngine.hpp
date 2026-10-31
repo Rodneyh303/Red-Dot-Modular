@@ -10,6 +10,8 @@
 #include "../../ui/RateManager.hpp"   // RATE MANAGER (S3b): executeModeA gates on the Step tier (rack-free)
 #include "../NoteValues.hpp"
 #include "../LaneMapping.hpp"
+#include "../SubgateKnobs.hpp"   // SUBGATE TIER: the resolved-threshold dims + the three-way resolver (rack-free)
+#include "../StepAdvance.hpp"     // STEP-ADVANCE: the pure decideAdvance(p, u) (CC_PROMPT_GATE_STEP_ADVANCE_SPEC, rack-free)
 #include "../VoiceLaneTypes.hpp"   // VoiceSlot — the VoiceBank below (strong per-voice indexing)
 #include <cassert>
 #include <cstdio>
@@ -47,8 +49,46 @@ struct PolyVoice {
                                // draw is thresholded against. 0 = always quantised (legacy), 1 =
                                // always generated. Mirrors restProb/accentProb (per-voice decision
                                // cache written by ModeController from getEffectivePolyQmix).
-    float variationProb = 0.5f; // per-voice VARIATION probability — mirrors restProb/accentProb.
+    // STEP-ADVANCE VALUE PAIR (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2 — the
+    // bipolar sourcing). One knob+modulation sum, TWO clamps, written as a pair by
+    // ModeController (the sole writer, mirroring restProb/accentProb):
+    //   variationProb     = clamp(sum, -1, +1) — the GATE-MODE STEP-ADVANCE value:
+    //                       BIPOLAR (negative = p(step BACKWARD), the probabilistic
+    //                       retrograde; positive = p(forward); 0 = always hold). The
+    //                       advance decision (decideStepAdvance_) and the follow-main
+    //                       ADVANCE tier (subgateMainThreshold) read THIS field.
+    //                       (CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE: the former
+    //                       rectified twin variationRateProb is RETIRED — its only
+    //                       consumer was the ghost-candidacy gate, which the
+    //                       companion change deleted; candidacy is the subgate REST
+    //                       decision now. The advance value is the single field.)
+    float variationProb = 0.5f;     // bipolar gate-mode step-advance value [-1,+1]
     float legatoProb = 0.0f;    // per-voice LEGATO probability — mirrors restProb/accentProb.
+    // SUBGATE TIER (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): the RESOLVED per-voice
+    // subgate thresholds [SubgateKnobs::LEVELS][SubgateKnobs::DECS] — levels
+    // RATCHET/GHOST, decs REST/LEGATO/ADVANCE/ACCENT. Written per block by
+    // ModeController (the sole subgate writer, mirroring the main probs above)
+    // from the Straits subgate bank through SK::resolve: own-subpanel claim >
+    // {global | follow-main} by the per-decision switch, mod deltas added
+    // post-resolution. BYTE-IDENTITY DEFAULT: with nothing authored, follow-main
+    // resolves to the main values EXACTLY, so the subgate-edge reads below are
+    // bit-identical to the pre-subgate behaviour (the spec's degenerate case).
+    // The ADVANCE columns ARE consumed as of the step-advance Stage 1/3 build: the
+    // MONO playhead's advance decision (decideStepAdvance_, at the rise sites) reads
+    // THIS slot's subRes[level][ADVANCE] — V1's row is the mono subgate row. The
+    // playhead is SINGULAR (ONE PLAYHEAD, the spec's law), so the poly voices'
+    // ADVANCE columns (rows 1..15) stay resolved + stored with no per-voice consumer
+    // (documented scope line at decideStepAdvance_ — they exist for a per-voice
+    // playhead if one ever lands; graceful, never uncontrolled).
+    float subRes[dotModular::SubgateKnobs::LEVELS][dotModular::SubgateKnobs::DECS];
+    // The live gate for the reads above: subRes has no struct-level default that
+    // could equal the DYNAMIC main values, so an engine that has never been
+    // through ModeController's per-block write (the rack-free tests construct
+    // engines directly) must keep reading the main thresholds verbatim. The
+    // controller flips this once it owns the writes (first prime); from then on
+    // the subgate-edge reads use subRes. Default false ⟹ byte-identity for any
+    // engine nobody resolved.
+    bool subResLive = false;
     bool  accented = false;    // result of this voice's own accent draw this step
     // Rule 2 (EAST_EXTRA_LANES §4d): latched at the mono chain onset — true if this voice
     // PLAYED (vs rested) when mono started the gate, and held for the chain's life. It, not
@@ -349,6 +389,31 @@ struct SequencerEngine {
     MonoDecision polyVerdict_[16] = {};   // zero-init = MidNote; reset() fills Rest
     int polyNv_[16] = {};                 // the voice's drawn window this edge (the C3 ceiling
                                           // a child clamps against); 0 = no clamp contribution
+    // SUBGATE TIER: the edge level for the poly cascade this block (−1 = main, else
+    // SubgateKnobs::RATCHET/GHOST). Set by executeModeBSubdivided (which knows the
+    // edge stream), consumed + cleared by executePolyVoices at entry (the controller
+    // calls it exactly once per block, right after the mode exec — deterministic).
+    // Main paths never touch it; it stays −1.
+    int polySubLevel_ = -1;
+    // (The step-advance rise counter is DELETED — CC_PROMPT_STEP_ADVANCE_FIX_DRAW_
+    // SOURCE: the advance reads the VARIATION LANE's step-addressed draw, not a
+    // per-rise uniform, so there is no counter and NO new draw consumption.)
+    // THE FREEZE FIX (CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR): scanOfs_ — the
+    // local variation-window SCAN, "how far the held step has scanned the window
+    // looking for an escape value". GATE MODE ONLY (mode A never reads it — its
+    // advancePlayhead calls reset it harmlessly). +1 on each HELD rise, bounded by
+    // the variation lane's length; RESET to 0 in advancePlayhead (each arrived step
+    // is judged on its own value first, scan 0). A LOCAL scan index into the
+    // variation window — NEVER added into totalStepsElapsed or the global clock
+    // (a held-rise count is not a pattern position; DNA_LCM-agnostic by
+    // construction). To stay frozen EVERY value in the window must fail < |p|
+    // (prob ~(1-|p|)^varLen ≈ 0) — escapes within ~1/|p| held rises; p=0 = HOLD
+    // by design. Zero new draws (the scan reads existing ring values).
+    int scanOfs_ = 0;
+    void scanHold_() {
+        const int varLen = lor(dotModular::STRAND_VARIATION, LOR_LEN);
+        scanOfs_ = (scanOfs_ + 1) % (varLen > 0 ? varLen : 1);
+    }
     // F-4 (D5 — RHYTHM_DECISION_MANAGER_PLAN §3.3): each poly voice's THIS-EDGE GHOST EVENT —
     // the voice PLAYED an onset at a permission point that was a ghost cell of ITS containers
     // (rd.ghostCell). Captured by executePolyVoice at the play verdict (the polyVerdict_
@@ -685,6 +750,25 @@ struct SequencerEngine {
     bool isStepInWindow(int idx) const;
     void setWindow(int length, int offset);
     bool advancePlayhead(int dir = +1);   // dir<0 = reverse traversal (within-draw)
+    // STEP-ADVANCE (CC_PROMPT_GATE_STEP_ADVANCE_SPEC Stages 1-3): the gate-mode advance
+    // DECISION for one rise — consumes the step-rate uniform (per-rise fresh, the rhythm
+    // Philox stream's reserved chunk), picks the level's resolved threshold (subLevel −1 =
+    // the MAIN gate: voices[mono].variationProb, the resolved Variation path; otherwise a
+    // SubgateKnobs level: voices[mono].subRes[subLevel][ADVANCE], the three-way-resolved
+    // Straits consumer-group column — the SOLE consumer of the ADVANCE store), and returns
+    // the pure StepAdvance::decide verdict. The caller moves the playhead on FORWARD and
+    // does NOTHING on REPEAT (the corrected held semantics — not moving the playhead IS
+    // the repeat; the step-addressed data re-outputs itself by construction). SCOPE: the
+    // playhead is singular — MONO-ONLY (V1's row); poly voices' ADVANCE columns stay
+    // resolved + stored (no per-voice playhead this build). targetTickDelta: the
+    // draw addressing offset — 0 = the current step (the rise's read,
+    // bit-identical to getVariationStep()); +1 = the incoming-rest step (the
+    // fall-advance's read — CC_PROMPT_TIE_INTO_REST_PROBABILISTIC_ADVANCE: "the
+    // step being advanced into"). ONE mechanism, both edges. The delta is SIGNED
+    // INSIDE by p (p's sign = the travel direction): backward travel reads the
+    // mirror direction — the scan and the fall target both look where the playhead
+    // is going (the backward fix).
+    dotModular::StepAdvance::Decision decideStepAdvance_(int subLevel, int targetTickDelta = 0);
     // Recompute all laneTick_/laneTickV_/macroLaneTick_ caches from totalStepsElapsed.
     // Called after snapping totalStepsElapsed externally (e.g. Mode E phase jump snap)
     // so the lane position caches match the new transport position without a full
@@ -931,6 +1015,25 @@ struct SequencerEngine {
     int getRhythmStep() const;
     int getVariationStep() const;
     int getLegatoStep() const;
+    // TEST-VISIBLE (the RULE mirror in test_step_advance): the variation draw the
+    // step-advance decision reads at the given tick delta — the SAME expression
+    // decideStepAdvance_ uses (0 = the current step's own value; the fall passes
+    // +1, the incoming-rest step; the rise passes the accumulated scan). Pure:
+    // reading never mutates the ring (zero new draws). getStrandIdx wraps by the
+    // variation lane's own length — the local window scan.
+    float stepAdvanceDrawAt(int drawTickDelta) const;
+    // CC_PROMPT_VARIATION_SCAN_DISPLAY — the scanned POSITION factored out of
+    // stepAdvanceDrawAt: ONE expression, TWO readers (the draw + the display
+    // chevron), so the chevron lands on EXACTLY the index the engine read.
+    // Gate-mode holds scan the variation window; delta 0 = the current step.
+    int stepAdvanceStrandIdx(int drawTickDelta) const;
+    // The held-rise scan as a SIGNED delta — the display's read. The escape search
+    // looks in the TRAVEL direction (decideStepAdvance_ signs its draw delta by p):
+    // negative travel (variationProb < 0) scans BACKWARD. The sign is read LIVE
+    // from the mono variationProb — the same p the main-lane decision signs by, so
+    // there is no cached sign member to desync. scanOfs_ magnitude stays
+    // 0..varLen-1 (0 = not holding / non-gate modes).
+    int stepAdvanceScanDelta() const;
     int getAccentStep() const;  // NEW: accent strand DNA index
     int getMelodyStep() const;
     int getOctaveStep() const;
@@ -943,7 +1046,7 @@ struct SequencerEngine {
     // from a stale held gate. Also latches the count for this step (prevNumPolyVoices_).
     // (Definition in the .cpp — the loop MINTS VoiceSlots, which needs VoiceResolver.)
     void resetActivatedPolyVoices_();
-    StepResult executeStep(int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail);
+    StepResult executeStep(int nvIdx, float r_rest, float r_legato_tie, float r_accent, float r_qmix, const PatternInput& input, bool wasHeld, bool hadTail, int subLevel = -1);
     void handlePhraseBoundary(PatternInput input, bool isMelodyRealtime, bool isRhythmRealtime);
     // RATE MANAGER (S3b): the Step tier replaced the ClockEngine& — the dispatch feeds
     // the tier from the same sixteenth edge (clock or phase), so the engine no longer
@@ -974,7 +1077,7 @@ struct SequencerEngine {
     // Call executePolyVoices() after any stepped executeModeA/B call.
     // voices[voiceSlot].restProb must be set by the caller before invoking.
     // STRONG types (CC_PROMPT_STRONG_TYPES): voiceIdx is a MINTED VoiceSlot.
-    void executePolyVoice(VoiceSlot voiceIdx, const PatternInput& input, bool wasHeld, bool hadTail);
+    void executePolyVoice(VoiceSlot voiceIdx, const PatternInput& input, bool wasHeld, bool hadTail, int subLevel = -1);
     void executePolyVoices(const PatternInput& input);
 
     // R-2 (RHYTHM_DECISION_MANAGER_PLAN §2.3): the named parent read — the four mono scalars

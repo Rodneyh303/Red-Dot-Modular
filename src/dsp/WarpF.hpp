@@ -50,6 +50,7 @@
 // Pure module: no Rack/nanovg/UI (jansson enters only via the Distribution layer for
 // the bank's persistence round-trip, added in CC_PROMPT_02 step 4).
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -273,6 +274,102 @@ inline WarpF lowerWarp(const Distribution& d) {
     return IdentityWarp{};   // "drawn" (bank-level pool) or unknown → the safe default
 }
 
+// ── THE PER-KIND PARAM AUTHORITY (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC) ────────────────
+// Moved here from WarpCurvePopup.hpp (UI) so the DSP fold can share it: the popup's
+// editor knobs AND the SandsDistributionExpander's permanent knobs AND the mod-jack
+// delta fold all bind from THIS table (the popup delegates; one authority, three
+// consumers). { label, lo, hi, def } per param; present=false = the kind has no such
+// param — the spec's unused-param ruling ("modulation sent to a param a distribution
+// doesn't use is HARMLESS — a no-op") reads the same table, so a fold and a lock can
+// never disagree about what a kind owns.
+struct WarpParamSpec { const char* label; float lo, hi, def; bool present; };
+inline WarpParamSpec warpParamSpec(int kind, int which) {
+    static const WarpParamSpec s1[] = {
+        /* identity    */ { "",        0.f,  1.f, 0.f,   false },
+        /* triangular  */ { "mode",    0.f,  1.f, 0.5f,  true  },
+        /* power       */ { "k",       0.2f, 5.f, 2.f,   true  },
+        /* kumaraswamy */ { "mode", 0.02f, 0.98f, 0.5f,  true  },
+        /* logit-norm  */ { "mu",     -3.f,  3.f, 0.f,   true  },
+        /* logit-sig   */ { "a",      0.25f, 4.f, 1.5f,  true  },
+        /* mobius      */ { "a",      0.25f, 4.f, 1.5f,  true  },
+        /* trunc-norm  */ { "mu",    -0.5f, 1.5f, 0.5f,  true  },
+        /* rev-power   */ { "theta",  0.2f, 5.f, 2.f,   true  },
+        /* drawn       */ { "",        0.f,  1.f, 0.f,   false },
+    };
+    static const WarpParamSpec s2[] = {
+        /* identity    */ { "",        0.f,  1.f, 0.f,   false },
+        /* triangular  */ { "",        0.f,  1.f, 0.f,   false },
+        /* power       */ { "",        0.f,  1.f, 0.f,   false },
+        /* kumaraswamy */ { "conc",    1.f,  5.f, 2.f,   true  },   // CONC_MAX=5 (load-bearing)
+        /* logit-norm  */ { "sigma",  0.2f,  3.f, 1.f,   true  },
+        /* logit-sig   */ { "b",      -3.f,  3.f, 0.f,   true  },
+        /* mobius      */ { "",        0.f,  1.f, 0.f,   false },
+        /* trunc-norm  */ { "sigma", 0.05f, 1.f, 0.2f,  true  },
+        /* rev-power   */ { "",        0.f,  1.f, 0.f,   false },
+        /* drawn       */ { "",        0.f,  1.f, 0.f,   false },
+    };
+    const int k = kind < 0 ? 0 : (kind > 9 ? 9 : kind);
+    return (which == 0 ? s1 : s2)[k];
+}
+
+// The authored param value on the (mode, conc) authoring basis where the kind needs it
+// (kumaraswamy: conc:=a, mode solved closed-form — the popup's convention verbatim).
+inline double warpParamValue(const WarpF& f, int which) {
+    return std::visit([which](const auto& d) -> double {
+        using T = std::decay_t<decltype(d)>;
+        if constexpr (std::is_same_v<T, TriangularWarp>)        return which == 0 ? d.mode : 0.0;
+        else if constexpr (std::is_same_v<T, PowerWarp>)        return which == 0 ? d.k : 0.0;
+        else if constexpr (std::is_same_v<T, ReversedPowerWarp>)return which == 0 ? d.theta : 0.0;
+        else if constexpr (std::is_same_v<T, KumaraswamyWarp>) {
+            double mode = 0.5, conc = 2.0;
+            KumaraswamyDistribution::modeConcFromAb(d.a, d.b, mode, conc);
+            return which == 0 ? mode : conc;
+        }
+        else if constexpr (std::is_same_v<T, LogitNormalWarp>)  return which == 0 ? d.mu : d.sigma;
+        else if constexpr (std::is_same_v<T, LogitSigmoidWarp>) return which == 0 ? d.a : d.b;
+        else if constexpr (std::is_same_v<T, MobiusWarp>)       return which == 0 ? d.a : 0.0;
+        else if constexpr (std::is_same_v<T, TruncNormalWarp>)  return which == 0 ? d.mu : d.sigma;
+        else return 0.0;   // IdentityWarp / DrawnWarp: no parametric params
+    }, f);
+}
+
+// Re-mint the member with one param replaced — the fold's p1/p2 path. Parametrics
+// lower through lowerWarp exactly as the set-time commit does (no pool touch — drawn
+// has no params and is unreachable here); identity/drawn return f unchanged. The
+// caller window-clamps v against warpParamSpec BEFORE calling (the fold does; the
+// popup's knob path is window-bound by the same table).
+inline WarpF warpWithParam(const WarpF& f, int which, double v) {
+    return std::visit([&f, which, v](const auto& d) -> WarpF {
+        using T = std::decay_t<decltype(d)>;
+        if constexpr (std::is_same_v<T, TriangularWarp>)
+            return lowerWarp(TriangularDistribution(which == 0 ? v : d.mode));
+        else if constexpr (std::is_same_v<T, PowerWarp>)
+            return lowerWarp(PowerDistribution(which == 0 ? v : d.k));
+        else if constexpr (std::is_same_v<T, ReversedPowerWarp>)
+            return lowerWarp(ReversedPowerDistribution(which == 0 ? v : d.theta));
+        else if constexpr (std::is_same_v<T, KumaraswamyWarp>) {
+            double mode = 0.5, conc = 2.0;
+            KumaraswamyDistribution::modeConcFromAb(d.a, d.b, mode, conc);
+            if (which == 0) mode = v; else conc = v;
+            double a, b;
+            KumaraswamyDistribution::abFromModeConc(mode, conc, a, b);
+            return lowerWarp(KumaraswamyDistribution(a, b));
+        }
+        else if constexpr (std::is_same_v<T, LogitNormalWarp>)
+            return lowerWarp(LogitNormalDistribution(which == 0 ? v : d.mu,
+                                                     which == 1 ? v : d.sigma));
+        else if constexpr (std::is_same_v<T, LogitSigmoidWarp>)
+            return lowerWarp(LogitSigmoidDistribution(which == 0 ? v : d.a,
+                                                      which == 1 ? v : d.b));
+        else if constexpr (std::is_same_v<T, MobiusWarp>)
+            return lowerWarp(MobiusDistribution(which == 0 ? v : d.a));
+        else if constexpr (std::is_same_v<T, TruncNormalWarp>)
+            return lowerWarp(TruncatedNormalDistribution(which == 0 ? v : d.mu,
+                                                         which == 1 ? v : d.sigma));
+        else { (void)d; return f; }   // Identity / Drawn: no params — the no-op
+    }, f);
+}
+
 // ── Slot-level JSON codec (CC_PROMPT_02 step 4) ───────────────────────────────────────────────
 // Identity serializes as JSON null (default slots stay compact); a parametric as the
 // Distribution subclass's own .dmcurve toJson VERBATIM (one serializer per curve, the
@@ -357,6 +454,52 @@ struct WarpBank {
     float globalWarpAtomLevel[LANES] = {};     // Macro's delegated-default atom location
     float globalWarpAtomMass[LANES] = {};      // Macro's delegated-default atom mass
 
+    // ── THE DISTRIBUTION SEND-BUS PLANES (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC:
+    // "Macro distribution mods flow through per-voice sends; East blends
+    // global+per-voice") — NOT store state, NOT persisted (the JSON codec below is
+    // field-wise and never touches these): they are CV-published every block by the
+    // SandsDistributionExpander's process() (unit deltas, jack volts /10 — the CvTerm
+    // convention) and are re-published from live jacks, so nothing latches. The
+    // fold site is resolveWarpCell (SandsModifierResolver.hpp — the ONE wiring, gated
+    // on distDeltasActive so the zero-delta path stays BIT-IDENTICAL: the U2 oracle
+    // and the test_warp_f_bank S4 pins run flag-off banks).
+    //   distGlobalDelta[lane][p] — the CROSS-VOICE publisher's deltas (the Macro-side
+    //     expander): reaches EVERY voice, delegated or not (it is Macro-side
+    //     machinery — on delegated cells it modulates Macro's default; on own cells
+    //     it arrives as the Macro-sent send). The future Macro send subpanel's
+    //     per-voice amounts scale this term at the fold (identity until that
+    //     subpanel lands — the spec's "per-voice scaling lives in the receiving
+    //     side's send amounts").
+    //   distOwnDelta[v][lane][p] — the PER-VOICE publisher's rows (the East-side
+    //     expander addressing the shared-selected voice): reaches only that voice's
+    //     own (non-delegated) cells — delegated cells mirror Macro entirely, the
+    //     resolver's standing law. Param index order = the expander's
+    //     P1/P2/TILT/LEVEL/MASS/WARP (0..5).
+    //   distPublishSeq[2] — the publishers' per-block heartbeats (index 0 = the
+    //     macro-role publisher, 1 = the per-voice publisher): Monsoon::process
+    //     watches them and DROPS a publisher's plane when its heartbeat freezes
+    //     (module deleted / bypassed — a vanished expander must not leave deltas
+    //     latched; the publish overwrites, nothing latches, including death).
+    //   distDeltasActive — the fold's single gate, maintained by Monsoon's set/clear
+    //     accessors (true on any nonzero write; recomputed on every clear).
+    //   distSend[v][lane][p] — the MACRO SEND SUBPANEL's per-voice send amounts (the
+    //     spec's "per-voice scaling lives in the receiving side's send amounts"): how
+    //     much of the Macro-sent global component voice v's (lane,p) cell receives.
+    //     Authored store state (the subpanel's store-backed knobs write it; persisted
+    //     via the DistSend key below) — NOT a CV plane, no watchdog. Default 1.0 =
+    //     IDENTITY: the fold's pre-subpanel behaviour is preserved bit-exactly for
+    //     every patch that never touches the subpanel (x·1.0f is exact IEEE, and a
+    //     patch without the subpanel never writes the store). 0 = the voice receives
+    //     none of the global distribution mod. The OWN component is NOT scaled — it
+    //     is already per-voice by construction (the receiving side's own expander).
+    static constexpr int DPARS = 6;
+    static constexpr float kDistSendDefault = 1.0f;
+    float    distGlobalDelta[LANES][DPARS]          = {};
+    float    distOwnDelta[VOICES][LANES][DPARS]     = {};
+    float    distSend[VOICES][LANES][DPARS];
+    uint32_t distPublishSeq[2]                      = {};
+    bool     distDeltasActive                       = false;
+
     // The neutral-default constructor: everything zero/identity except the atom LEVEL,
     // whose authored default is INTERIOR (warpStages::kAtomLevelDefault — the prompt's
     // "interior default; 0/1 = rail atom allowed"). A user-provided default ctor does
@@ -367,6 +510,12 @@ struct WarpBank {
     WarpBank() {
         for (int i = 0; i < N; ++i)     warpAtomLevel[i]     = (float)warpStages::kAtomLevelDefault;
         for (int l = 0; l < LANES; ++l) globalWarpAtomLevel[l] = (float)warpStages::kAtomLevelDefault;
+        // the send amounts' IDENTITY default (see the distSend block above): every
+        // construction path — Monsoon's editor slice, parse's reset, the tests —
+        // starts at full send, so the fold is the pre-subpanel fold until authored.
+        for (int v = 0; v < VOICES; ++v)
+            for (int l = 0; l < LANES; ++l)
+                for (int p = 0; p < DPARS; ++p) distSend[v][l][p] = kDistSendDefault;
     }
 
     // The bank's 2-arg forwarder form: threads THIS bank's pool for drawn slots.
@@ -481,6 +630,15 @@ struct WarpBank {
         json_t* gm = json_array();
         for (int l = 0; l < LANES; ++l) json_array_append_new(gm, json_real((double)b.globalWarpAtomMass[l]));
         json_object_set_new(root, (pfx + "GlobalWarpAtomMass").c_str(), gm);
+        // THE MACRO SEND SUBPANEL's per-voice send amounts (additive, the same
+        // missing-key-⟹-defaults contract): flat VOICES×LANES×DPARS, index
+        // (v*LANES + lane)*DPARS + p — the bank's own stride convention.
+        json_t* js = json_array();
+        for (int v = 0; v < VOICES; ++v)
+            for (int l = 0; l < LANES; ++l)
+                for (int p = 0; p < DPARS; ++p)
+                    json_array_append_new(js, json_real((double)b.distSend[v][l][p]));
+        json_object_set_new(root, (pfx + "DistSend").c_str(), js);
     }
 
     // Load: RESETS the bank to defaults first (deterministic — never merges into stale
@@ -587,6 +745,22 @@ struct WarpBank {
         loadGlobalStage("GlobalWarpTilt", out.globalWarpTilt);
         loadGlobalStage("GlobalWarpAtomLevel", out.globalWarpAtomLevel);
         loadGlobalStage("GlobalWarpAtomMass", out.globalWarpAtomMass);
+        // DistSend (additive): short array keeps the identity tail; absent key leaves
+        // the ctor's 1.0 fill. Does NOT participate in `full` (the two 112-banks'
+        // contract — additive keys never change an old patch's verdict).
+        if (json_t* js = json_object_get(root, (pfx + "DistSend").c_str())) {
+            if (json_is_array(js)) {
+                const size_t n = json_array_size(js);
+                size_t i = 0;
+                for (int v = 0; v < VOICES; ++v)
+                    for (int l = 0; l < LANES; ++l)
+                        for (int p = 0; p < DPARS; ++p, ++i) {
+                            if (i >= n) break;
+                            json_t* jv = json_array_get(js, i);
+                            if (json_is_number(jv)) out.distSend[v][l][p] = (float)json_number_value(jv);
+                        }
+            }
+        }
         return full;
     }
 

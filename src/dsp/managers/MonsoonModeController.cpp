@@ -57,8 +57,29 @@ void ModeController::updatePolyVoiceRest_() {
         // VAR/LEG per-voice knobs — mirror rest/accent/q-mix. The engine reads these in
         // executePolyVoice to threshold the per-voice VAR/LEG draws (which already exist
         // as slewedPolyVariation/Legato → polyRandom(PL_VARIATION/PL_LEGATO)).
-        engine.voices[vs].variationProb = mainModule->getEffectivePolyVariation(i - 1);
+        // STEP-ADVANCE VALUE (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2; the rectified
+        // twin RETIRED by CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE — its only consumer,
+        // the ghost-candidacy gate, is deleted; candidacy is the subgate REST decision),
+        // poly rows: the poly per-voice VAR knobs are [0,1] params with no negative
+        // modulation source yet (no poly VAR CV — the mono CV2/Junction path has no
+        // poly analogue), so the clamp is a no-op today; when a poly negative source
+        // lands, the unclamped sum replaces the single read exactly as the mono write
+        // below does.
+        const float pv = mainModule->getEffectivePolyVariation(i - 1);
+        engine.voices[vs].variationProb     = pv;
         engine.voices[vs].legatoProb    = mainModule->getEffectivePolyLegato(i - 1);
+        // SUBGATE TIER (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): resolve the three-way
+        // per-voice thresholds from the Straits subgate bank — own-subpanel claim
+        // (tier 1) > {global | follow-main} by the per-decision switch, the mod
+        // deltas added post-resolution. The resolver reads the main values JUST
+        // written above (follow-main tier ⟹ subRes == the mains when nothing is
+        // authored — the byte-identity default), so this sits AFTER them in the
+        // same loop iteration. Same BigFive latch class as the main probs (the
+        // early-return above gates the whole loop).
+        for (int l = 0; l < dotModular::SubgateKnobs::LEVELS; ++l)
+            for (int d = 0; d < dotModular::SubgateKnobs::DECS; ++d)
+                engine.voices[vs].subRes[l][d] = mainModule->subgateDisplayThreshold(i, l, d);
+        engine.voices[vs].subResLive = true;   // the reads may trust subRes from here on
     }
     polyVoiceCachePrimed_ = true;
 }
@@ -133,7 +154,34 @@ void ModeController::updatePatternInput() {
                                              : paramManager.getAccent();
         monoVoice.qmixLevel    = mainModule ? mainModule->getEffectiveMonoQmix(paramManager.getQmixLevel())
                                              : paramManager.getQmixLevel();
-        monoVoice.variationProb = currentPatternInput.variationAmount;
+        // STEP-ADVANCE VALUE (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2; the rectified
+        // twin RETIRED — see the poly note above; the BIPOLAR SCOPE per
+        // CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR): GATE MODE reinterprets the knob
+        // BIPOLAR — (2*knob - 1) + CV2 + Junction, ONE clamp [-1,+1]. The KNOB ALONE
+        // reaches negative ("positive step forward, negative step back": 1 -> +1,
+        // 0.5 -> 0 = the by-design stutter, 0 -> -1 = always backward). Clock/phase
+        // keep the UNIPOLAR note-length reads — currentPatternInput.variationAmount
+        // above stays rectified (the mode-A longer–shorter consumer + the rack-free
+        // contract read the scalar); the shared 0.5 default breaks nothing there.
+        const float varSum = paramManager.getVariationGateUnclamped();
+        monoVoice.variationProb     = clampv(varSum, -1.f, +1.f);
+        // SUBGATE TIER: V1's resolved thresholds (storageSlot 0 = the mono row of the
+        // bank), the same three-way law as the poly rows. Without a mainModule the
+        // bank is unreachable — follow-main identity from the mono values just
+        // written (which is what the resolver would return with nothing authored).
+        if (mainModule) {
+            for (int l = 0; l < dotModular::SubgateKnobs::LEVELS; ++l)
+                for (int d = 0; d < dotModular::SubgateKnobs::DECS; ++d)
+                    monoVoice.subRes[l][d] = mainModule->subgateDisplayThreshold(0, l, d);
+        } else {
+            const float monoMain[dotModular::SubgateKnobs::DECS] = {
+                monoVoice.restProb, monoVoice.legatoProb,
+                monoVoice.variationProb, monoVoice.accentProb };   // SK dec order
+            for (int l = 0; l < dotModular::SubgateKnobs::LEVELS; ++l)
+                for (int d = 0; d < dotModular::SubgateKnobs::DECS; ++d)
+                    monoVoice.subRes[l][d] = monoMain[d];
+        }
+        monoVoice.subResLive = true;   // the reads may trust subRes from here on
     }
     if (octLive) {   // OctaveRange LATCH — hold OCT LO/HI under lock (see pitch-axis note above)
         currentPatternInput.octaveLo      = paramManager.getOctaveLo();
@@ -315,7 +363,17 @@ bool ModeController::executeModeB(const InputState& input,
         modeBPatternInput.noteVariationMask = 0b111; // Allow all note lengths (e.g., 1/1 to 1/32T)
         // Phase A: Mode B overrides V1's variation to neutral (no bias for longer/shorter notes).
         // Was modeBPatternInput.variationAmount = 0.5f; now writes the mono slot directly (TYPED).
-        engine.voices[dotModular::VoiceResolver::mono()].variationProb = 0.5f;
+        // STALE — REMOVED (the step-advance Stage 2 completion): that neutralization
+        // targeted NOTE-LENGTH variation, which flows through the PatternInput copy +
+        // the neutral noteVal passed below (executeModeB never reads the voice field
+        // for note length). Since the step-advance build the voice field IS the
+        // gate-mode advance threshold, so forcing 0.5 deafened the PLAIN Mode B path
+        // to the Variation knob — the advance decision read a constant where the
+        // subdivided path read the resolved value (which never had this write).
+        // Stage 1's spec clause: p_advance = the RESOLVED VARIATION probability, per
+        // voice, through the resolver path — NOT a constant. The controller's
+        // per-block write (mono variationProb above) now stands un-overridden in
+        // both Mode B paths.
 
         // Execute the mode
         StepResult result = engine.executeModeB(

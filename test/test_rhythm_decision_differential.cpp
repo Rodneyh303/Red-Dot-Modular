@@ -334,13 +334,23 @@ static void marchModeBS(int seed, Capture& cap, int& c2n, int& envn) {
     }
 }
 
-// ── Golden digests (pinned on the PRE-refactor engine — the byte-identity oracle) ──
-// Captured on lane-expander-refactor @ 257fb351 (the containment merge, pre-Stage-R) and
-// committed with R-1. Every later Stage-R commit (R-2..R-5) and every Stage-F star-graph
-// march must hold these EXACTLY.
+// ── Golden digests (the byte-identity oracle) ───────────────────────────────────
+// History: R-1 captured A/B/BS on lane-expander-refactor @ 257fb351; the feat/step-advance
+// Stages 1+3 re-pinned B/BS (the probabilistic gate-mode advance); CC_PROMPT_STEP_ADVANCE_
+// FIX_DRAW_SOURCE re-pinned them AGAIN (the fresh reserved-chunk uniform → the variation
+// lane's step-addressed r_vary, the per-step threshold + the ghost-candidacy gate's
+// deletion — candidacy is the subgate REST decision); CC_PROMPT_STEP_ADVANCE_FREEZE_AND_
+// BIPOLAR pins them a THIRD time — the freeze fix: a HELD rise now reads the variation
+// lane one step further each hold (the local scanOfs_ window), so a sticky step is
+// escapable instead of a permanent wall. The mid-range B/BS marches (variationProb
+// 0.25..0.75) legitimately moved all THREE times — each move changed WHICH draw a held
+// rise consumes. GOLDEN_A is UNTOUCHED through every re-pin (mode A has no step-advance
+// probability — the unchanged digest is the regression guard that the feature stays
+// gate-mode-only). The p=1 identity (byte-identity with the PRE-feature engine) is
+// pinned separately by test_step_advance (the spec's golden pin).
 static const uint64_t GOLDEN_A  = 0xa843e2ff14883ab9ULL;
-static const uint64_t GOLDEN_B  = 0x3169e28ca3cc206aULL;
-static const uint64_t GOLDEN_BS = 0x166132accd092fceULL;
+static const uint64_t GOLDEN_B  = 0x30aed95ef0e65fb8ULL;   // re-pinned (freeze-fix scan)
+static const uint64_t GOLDEN_BS = 0xcffae9458b9257fdULL;   // re-pinned (freeze-fix scan)
 
 int main() {
     std::printf("\033[1mrhythm decision differential — the R-1 oracle (stage R)\033[0m\n");

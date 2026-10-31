@@ -124,15 +124,20 @@ TESTS=(
   "test_scale_list|"
   "test_scale_nondestructive|"
   "test_send_tap|"   # header-only: per-voice send-tap contract (SpreadResolver + MacroTapBank seams)
+  "test_sands_snap_geom|"   # header-only: the Sands snap magnet's PURE near-miss decision (ui/SandsSnapGeom.hpp) — same-row gap window [0,2] grid units, mirroring Rack v2 updateExpanders' exact rounded-grid-box equality (the "subpanels not snapping together" fix)
   "test_spread_resolver|"
   "test_ui_to_resolver|$PE $SE $GS"   # CC_PROMPT_UI_TO_RESOLVER_SPEC: the ONE-PRODUCER contract suite — effectiveProbability is the single producer (engine draw == bars == out, modulo the latch); ownership lenses, explicit voice, subsumption of the old formula; T4 (direction) + T5 (rate) structural halves land with their commits
+  "test_step_advance|$SE $GS $PE $CE"   # CC_PROMPT_GATE_STEP_ADVANCE_SPEC Stages 1+3 + CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2: the gate-mode probabilistic step-advance — decideAdvance table (incl. the Stage-2 bipolar branch, SOURCED: p<0 reachable, backward walk + wrap pinned, the candidacy/advance pair decoupled), the p=1 GOLDEN PIN (byte-identity with the pre-feature engine, digests captured pre-change), the trajectory == the mirrored rule per rise, the p=0 held repeat (no re-draw branch — Rodney 91b100c), the three-level main/ratchet/ghost hierarchy on the resolved ADVANCE columns behind subResLive, clock/phase untouched
   "test_subgate|$SE $GS $PE"
+  "test_subgate_knobs|"   # header-only: the subgate-tier consumer-group bank + the three-way resolver (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC + STEP_ADVANCE_CONSUMPTION Stage 2) — byte-identity default, tier 1 / 2a-global / 2b-follow-main precedence, post-resolution delta clamp (per-decision range: [-1,+1] for ADVANCE, [0,1] for the rest), bank defaults, persistence round-trip (deltas session-lived), absent-keys ⟹ defaults, short/wrong-typed arrays
   "test_var_leg_rest|"
   "test_voice_channel_mapping|"   # header-only: pins poly output-channel(i+1)->V(i+2) and Lantern global-voice g->V(g+1) (the two off-by-ones: Rack showed row 2 missing / lane N drove row N+1 / V16 never output). RED on slot(i+1)/slot(pv_i+1).
   "test_voice_conventions|$SE $GS $PE"
   "test_voice_resolver|$SE $GS $PE"
   "test_warp_f_bank|"   # header-only: the per-voice warp-F variant bank (CC_PROMPT_02 — identity default, single-impl holders, branchless mix)
   "test_warp_stages|"   # header-only: FEEL-TEST MO rail-tilt + injected-atom stages (CC_PROMPT_TILT_AND_RAIL_FEELTEST) — neutral bit-exact, monotone, atom mass, tilt direction, edge continuity, persistence
+  "test_warp_dist_mod|"   # header-only: the distribution send-bus fold (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC) — flag-off/zero-plane neutrality bit-exact, global-vs-own reach, the delegated branch, the window clamp, the eval-side tilt clamp
+  "test_sands_distribution_role|"   # header-only, rack-free: the distribution sub-expander's dual-role walk (host-on-first-hop, safe defaults, hop-through, the foreign boundary, first-host-wins, the depth guard, purity)
   "test_warp_mirror|$PE $SE $GS"   # CC_PROMPT_03: the warp mirror + consumer routing (STEP 4 adds the SequencerEngine accessor)
   "test_warp_all_lanes|$PE $SE $GS"   # CC_PROMPT_05: ONE uniform source (warpRow) for every lane × voice — default no-op, warp-reaches, no-raw-leak
   "test_warp_voice_isolation|$PE $SE $GS"   # CC_PROMPT_07: per-voice warp isolation + the delegation-SOURCE contract (manager fills owner rows; no Macro→East leak; V1/V2 distinguished)

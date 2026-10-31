@@ -3,6 +3,7 @@
 #include "ui/SandsGrid.hpp"
 #include "dsp/LaneMapping.hpp"     // lane order + canonical lane names (Phase 3b-3 merge)
 #include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (onExpanderChange bump — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
+#include "ui/SandsSnap.hpp"      // the Sands subpanel snap cluster (the Straits resnap pattern, family-parameterised)
 #include "ui/RateManager.hpp"        // THE compute-rate authority (CC_PROMPT_RATE_MANAGER_START, S5): the detector + prob-out tiers
 #include "Monsoon.hpp"
 
@@ -12,7 +13,7 @@ using namespace MonsoonIds;
 namespace StraitsEastVisualIds {
 
     // ── Panel geometry (48HP + 9mm w-level column + 9mm warp-edit column — CC_PROMPT_04) ──
-    static constexpr float W_MM        = 261.84f;  // 48HP + 9mm (w-level) + 9mm (warp-edit)
+    static constexpr float W_MM        = 264.16f;  // 52HP exactly (was 261.84 = "48HP + 9mm (w-level) + 9mm (warp-edit)"; re-widened so the drawn art fills the whole-HP box Rack's setPanel rounds to — the Distribution expander seats against this edge)
     static constexpr float WLEVEL_X    = 88.f;     // w-level knob column (the OLD ED_X slot)
     static constexpr float ED_X        = 97.f;     // +9mm: w-level column sits left of the grid
     static constexpr float ED_W        = 111.f;
@@ -362,7 +363,13 @@ struct StraitsEastSandsVisual : Module {
     // divider refresh are DELETED.
     void onExpanderChange(const ExpanderChangeEvent& e) override {
         redDot::bumpTopologyEpoch();
+        snap.topologyDirty.store(true, std::memory_order_relaxed);   // the subpanel fast path
     }
+
+    // ── the Sands subpanel snap state (ui/SandsSnap.hpp): this module is a SNAP
+    // HOST — the Distribution expander chains RIGHT of it (the per-voice role's
+    // host side); the widget's step() runs the Straits resnap cluster on it.
+    redDot::SandsSnapHostState snap;
 
     // Gate edge detection state for dir_mod and deleg_mod inputs.
     // dirModPrev[lane][channel] — 7 lanes × 16 channels (ch0=mono, ch1..15=voices 2..16)

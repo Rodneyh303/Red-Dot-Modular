@@ -88,6 +88,20 @@ inline int calcPlayhead(int globalStep, int length, int offset, int rotation) {
     return (timelineIdx + offset) % 16;
 }
 
+// CC_PROMPT_VARIATION_SCAN_DISPLAY — the VARIATION lane's chevron position: the
+// ENGINE's scanned read index, never a parallel recompute. Gate-mode holds scan the
+// variation window (scanOfs_, +1 per held rise — the freeze fix's escape search,
+// IN THE TRAVEL DIRECTION: the signed delta, backward when Variation < 0), so the
+// chevron creeps the way the playhead is going during a hold and re-aligns on
+// advance — the visual confirmation of the freeze fix. Outside holds (and in
+// clock/phase — scanOfs_ stays 0 there) this equals the old calcPlayhead position:
+// calcPlayhead matches getStrandIdx exactly, and the mono feeds' LOR comes from the
+// engine's own lor() store, so the swap is bit-identical at rest. -1 when not running.
+inline int variationLanePlayhead(const SequencerEngine& eng) {
+    if (eng.stepIndex < 0) return -1;
+    return eng.stepAdvanceStrandIdx(eng.stepAdvanceScanDelta());
+}
+
 // Read an integer param (rounded) from a module, clamped to [1, 16].
 // Returns fallback if the module pointer is null.
 inline int readLenParam(rack::Module* mod, int paramId, int fallback = 16) {

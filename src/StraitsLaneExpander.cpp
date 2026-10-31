@@ -21,6 +21,9 @@
 using namespace rack;
 
 // Helper: is this module a compatible StraitsR panel (for seam detection)?
+// SUBGATE MERGE (CC_PROMPT_SUBGATE_MERGE_ONTO_STRAITS_BASE): the subgate
+// per-voice panels joined the chain family — they dock after the lane run, so
+// a lane's right neighbour can be one.
 static bool isStraitsRPanel(rack::Module* m) {
     if (!m) return false;
     return m->model == modelStraitsBase
@@ -28,7 +31,15 @@ static bool isStraitsRPanel(rack::Module* m) {
         || m->model == modelStraitsLaneREST
         || m->model == modelStraitsLaneACCENT
         || m->model == modelStraitsLaneVARIATION
-        || m->model == modelStraitsLaneLEGATO;
+        || m->model == modelStraitsLaneLEGATO
+        || m->model == modelStraitsSubgatePanelRatchetRest
+        || m->model == modelStraitsSubgatePanelRatchetLegato
+        || m->model == modelStraitsSubgatePanelRatchetAccent
+        || m->model == modelStraitsSubgatePanelRatchetAdvance
+        || m->model == modelStraitsSubgatePanelGhostRest
+        || m->model == modelStraitsSubgatePanelGhostLegato
+        || m->model == modelStraitsSubgatePanelGhostAccent
+        || m->model == modelStraitsSubgatePanelGhostAdvance;
 }
 using namespace MonsoonIds;
 

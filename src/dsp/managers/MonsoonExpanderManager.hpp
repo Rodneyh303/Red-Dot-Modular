@@ -18,6 +18,7 @@ extern rack::Model* modelStraitsLaneACCENT;
 extern rack::Model* modelStraitsLaneVARIATION;
 extern rack::Model* modelStraitsLaneLEGATO;
 extern rack::Model* modelMonsoonShophouseMicro;
+extern rack::Model* modelSandsDistributionExpander;   // the Sands subpanel (hop-through)
 
 // Forward declarations
 struct MonsoonInterchangeExpander;
@@ -53,6 +54,15 @@ extern rack::Model* modelColonnades;       // tuning+scale authoring expander (m
 extern rack::Model* modelColonnadesDuo;    // tuning+scale authoring expander, 24-tone (microtonal Phase 3)
 extern rack::Model* modelMonsoonSandsVisualExpander;
 extern rack::Model* modelMonsoonStraitsExpander;
+extern rack::Model* modelStraitsSubgatePanelRatchetRest;    // subgate per-voice panels — ONE per (level x decision)
+                                                            //   (hop-through; the global tier is on StraitsBase)
+extern rack::Model* modelStraitsSubgatePanelRatchetLegato;  //   (hop-through; option (a))
+extern rack::Model* modelStraitsSubgatePanelRatchetAccent;
+extern rack::Model* modelStraitsSubgatePanelRatchetAdvance;
+extern rack::Model* modelStraitsSubgatePanelGhostRest;
+extern rack::Model* modelStraitsSubgatePanelGhostLegato;
+extern rack::Model* modelStraitsSubgatePanelGhostAccent;
+extern rack::Model* modelStraitsSubgatePanelGhostAdvance;
 extern rack::Model* modelMonsoonCausewayPolyExpander;
 extern rack::Model* modelMonsoonChangiExpander;
 extern rack::Model* modelMonsoonChangiT2Expander;
@@ -252,12 +262,23 @@ struct MonsoonExpanderManager {
                         || curr->model == modelStraitsLaneACCENT
                         || curr->model == modelStraitsLaneVARIATION
                         || curr->model == modelStraitsLaneLEGATO
+                        || curr->model == modelStraitsSubgatePanelRatchetRest
+                        || curr->model == modelStraitsSubgatePanelRatchetLegato
+                        || curr->model == modelStraitsSubgatePanelRatchetAccent
+                        || curr->model == modelStraitsSubgatePanelRatchetAdvance
+                        || curr->model == modelStraitsSubgatePanelGhostRest
+                        || curr->model == modelStraitsSubgatePanelGhostLegato
+                        || curr->model == modelStraitsSubgatePanelGhostAccent
+                        || curr->model == modelStraitsSubgatePanelGhostAdvance
+                        || curr->model == modelSandsDistributionExpander
                         || curr->model == modelMonsoonShophouseMicro) {
                     // Hop-through modules (no cache slot): observer/follower suite modules (Lantern;
                     // Changi T3) AND lane-extension sub-modules (StraitsLaneQMIX/REST/ACCENT/
-                    // VARIATION/LEGATO) AND ShophouseMicro. These live in the chain between Monsoon
-                    // and other expanders (e.g. Monsoon → StraitsBase → StraitsLaneQMIX → EastSands),
-                    // so HOP through them instead of stopping (Rule 1). Without this, anything past a
+                    // VARIATION/LEGATO) AND the Straits subgate surfaces (SubgateBase + its two
+                    // per-voice panels — the CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC chain, which may
+                    // dock after the lane run) AND ShophouseMicro. These live in the chain between
+                    // Monsoon and other expanders, so HOP through them instead of stopping (Rule 1).
+                    // Without this, anything past a
                     // lane expander was never cached → cachedEastSandsVisual stayed null → mmOwn null →
                     // getSpread returned 0 → polySpreadEffective written 0 → spread bars flat (the
                     // spread/QMIX-arc/de-param crash cluster — one root cause). Kept in LOCKSTEP with

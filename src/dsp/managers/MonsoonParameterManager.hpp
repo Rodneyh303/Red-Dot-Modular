@@ -35,6 +35,16 @@ public:
     
     /// Variation probability (0–1) with CV2 offset
     float getVariation() const;
+    /// knob + CV2 + Junction, NO clamp — the bipolar step-advance source
+    /// (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2): the negative half is real
+    /// (CV2's normalized range is bipolar), the ADVANCE consumer clamps it [-1,+1].
+    float getVariationUnclamped() const;
+    /// GATE MODE ONLY (CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR, the BIPOLAR SCOPE):
+    /// the mode-conditional reinterpretation — the KNOB remaps to (2*knob - 1) so it
+    /// ALONE reaches negative ("positive step forward, negative step back"), CV2 +
+    /// Junction added on top; the gate-mode write clamps [-1,+1]. Clock/phase keep
+    /// the UNIPOLAR note-length reads (getVariation / variationAmount) — untouched.
+    float getVariationGateUnclamped() const;
     
     /// Legato probability (0–1) with CV2 offset
     float getLegato() const;

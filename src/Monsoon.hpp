@@ -38,6 +38,8 @@
 #include "dsp/managers/MonsoonCVRouter.hpp"
 #include "dsp/managers/MonsoonOutputGenerator.hpp"
 #include "dsp/MacroTapBank.hpp"
+#include "dsp/SubgateKnobs.hpp"
+#include "dsp/VoiceResolver.hpp"   // the SUBGATE main-threshold mapping (mono()/slot()) — VoiceResolver is minted here, complete
 #include "ui/RateManager.hpp"   // THE compute-rate authority (CC_PROMPT_RATE_MANAGER_START) — rack-free core
 #include "dsp/WarpF.hpp"
 #include "dsp/gates/GateState.hpp"
@@ -902,6 +904,18 @@ struct Monsoon : Module {
         // w=0 (no warp; old patches unchanged). NO mirror/engine wiring yet (CC_PROMPT_03).
         // Kept at struct END (ABI hygiene — see the modViz note above).
         dotModular::WarpBank warp;
+        // The SUBGATE TIER bank (SubgateKnobs — CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC
+        // on its STRAITS home per Rodney: the knobs' PANEL surface is the NEW Straits
+        // expander base + its new subpanels — never the distribution expander): the
+        // authored three-way sources per (voice, subgate level, decision) + the
+        // audio-thread mod-delta planes. NO MONSOON PANEL CHANGE — the globals live
+        // on the Straits subgate BASE's store-backed knobs (cross-voice role), the
+        // per-voice knobs on its SUBPANELS (touch = claim); Monsoon only HOLDS the
+        // store the Straits surfaces address and the engine consumes (the
+        // EditorState law: bus-addressable via the accessors below). Defaults =
+        // follow main = byte-identical (the bank ctor). Kept at struct END (the
+        // same ABI-hygiene note as warp).
+        dotModular::SubgateKnobs::SubgateBank subgate;
     } editor;
 
     // Unified LOR base accessors. slot = voiceSlot (0 = V1/mono), bank 0..6, c 0..2.
@@ -1008,6 +1022,199 @@ struct Monsoon : Module {
         } else if (warpUiScope_ != WarpUiScope::LANE_DELEGATING || warpUiLane_ != lane) {
             warpUiScope_ = WarpUiScope::ALL;
         }
+    }
+
+    // ── the distribution send-bus planes (WarpBank::distGlobalDelta/distOwnDelta):
+    // AUDIO-THREAD-ONLY writers (the SandsDistributionExpander's process(); the UI
+    // thread never touches these — the single-writer law that lets the rebuild
+    // happen inline). Setters also raise the fold gate; the clears re-scan and
+    // lower it when BOTH planes land empty (rare events — role flips, the
+    // watchdog, a voice-switch leaving nothing behind). The clears rebuild the
+    // mirror inline (audio thread — the same thread Monsoon::process rebuilds on).
+    void setDistGlobalDelta(int lane, int p, float x) {
+        if (lane < 0 || lane >= 7 || p < 0 || p >= dotModular::WarpBank::DPARS) return;
+        editor.warp.distGlobalDelta[lane][p] = x;
+        if (x != 0.f) editor.warp.distDeltasActive = true;
+    }
+    void setDistOwnDelta(int v, int lane, int p, float x) {
+        if (v < 0 || v >= 16 || lane < 0 || lane >= 7 || p < 0 || p >= dotModular::WarpBank::DPARS) return;
+        editor.warp.distOwnDelta[v][lane][p] = x;
+        if (x != 0.f) editor.warp.distDeltasActive = true;
+    }
+    void recomputeDistDeltasActive() {
+        bool any = false;
+        for (int l = 0; l < 7 && !any; ++l)
+            for (int p = 0; p < dotModular::WarpBank::DPARS && !any; ++p)
+                any = editor.warp.distGlobalDelta[l][p] != 0.f;
+        for (int v = 0; v < 16 && !any; ++v)
+            for (int l = 0; l < 7 && !any; ++l)
+                for (int p = 0; p < dotModular::WarpBank::DPARS && !any; ++p)
+                    any = editor.warp.distOwnDelta[v][l][p] != 0.f;
+        editor.warp.distDeltasActive = any;
+    }
+    void clearDistGlobalDeltas() {
+        for (int l = 0; l < 7; ++l)
+            for (int p = 0; p < dotModular::WarpBank::DPARS; ++p)
+                editor.warp.distGlobalDelta[l][p] = 0.f;
+        engine.pe.rebuildWarpMirrorAll();   // rare event (death / role flip) — the wide scope
+        recomputeDistDeltasActive();
+    }
+    void clearDistOwnDeltas() {
+        for (int v = 0; v < 16; ++v)
+            for (int l = 0; l < 7; ++l)
+                for (int p = 0; p < dotModular::WarpBank::DPARS; ++p)
+                    editor.warp.distOwnDelta[v][l][p] = 0.f;
+        engine.pe.rebuildWarpMirrorAll();
+        recomputeDistDeltasActive();
+    }
+    // The watchdog state (consumed in Monsoon::process): per-publisher heartbeat
+    // shadows + idle accumulators. The expander bumps editor.warp.distPublishSeq[role]
+    // every block; a 0.5 s freeze with deltas live ⟹ the publisher is gone (deleted /
+    // bypassed) ⟹ drop its plane — a vanished expander must not leave deltas latched
+    // (the publish-overwrites law, extended to cover death).
+    uint32_t distWatchSeq_[2]  = {0, 0};
+    float    distWatchIdle_[2] = {0.f, 0.f};
+    // The SUBGATE watchdog: identical law for the Straits subgate base's global
+    // delta plane (slot 0) and the subpanels' per-voice planes (slot 1 — shared
+    // by both subpanels; either living keeps it fresh, both gone drops them).
+    uint32_t subgateWatchSeq_[2]  = {0, 0};
+    float    subgateWatchIdle_[2] = {0.f, 0.f};
+
+    // ── the Macro send subpanel's per-voice send amounts (WarpBank::distSend):
+    // UI-THREAD writer (the subpanel's store-backed knobs — the store-trusts-its-writer
+    // split, same as every authored param); the fold reads it on the audio thread at
+    // rebuild time. A write only matters when deltas are live, and the changed output
+    // is the mirrored warp cell — so the KNOB SETTER pairs this with
+    // requestWarpRebuildVoiceLane(slot, lane) (the pending-scope mechanism, consumed
+    // by Monsoon::process on the audio thread). Default 1.0 = identity (the bank ctor).
+    float getDistSend(int v, int lane, int p) const {
+        return (v >= 0 && v < 16 && lane >= 0 && lane < 7 && p >= 0 && p < dotModular::WarpBank::DPARS)
+            ? editor.warp.distSend[v][lane][p] : dotModular::WarpBank::kDistSendDefault;
+    }
+    void  setDistSend(int v, int lane, int p, float x) {
+        if (v < 0 || v >= 16 || lane < 0 || lane >= 7 || p < 0 || p >= dotModular::WarpBank::DPARS) return;
+        editor.warp.distSend[v][lane][p] = x;
+    }
+
+    // ── the SUBGATE TIER bank (SubgateKnobs): authored-cell accessors (UI-thread
+    // writer — the Straits subgate base's + subpanels' store-backed knobs) + the
+    // mod-delta planes (AUDIO-THREAD-ONLY writer — the base's/subpanels'
+    // process(), the dist-delta single-writer law verbatim; the watchdog drops
+    // them on publisher death). A per-voice knob write CLAIMS the cell
+    // (ownActive = the touch-is-claim law — the tier-1 opt-in); "clear per-voice
+    // overrides" de-claims (the menu's un-claim path).
+    // NO mirror rebuilds here: the subgate thresholds have no warped_ mirror —
+    // ModeController copies the bank into the engine per block (voices[].subRes),
+    // so the next block sees any change (the controller is the engine's sole
+    // subgate writer).
+    float getSubgateGlobal(int level, int dec) const {
+        namespace SK = dotModular::SubgateKnobs;
+        return (level >= 0 && level < SK::LEVELS && dec >= 0 && dec < SK::DECS)
+            ? editor.subgate.globalTh[level][dec] : SK::kDefaultThreshold;
+    }
+    void setSubgateGlobal(int level, int dec, float x) {
+        namespace SK = dotModular::SubgateKnobs;
+        if (level >= 0 && level < SK::LEVELS && dec >= 0 && dec < SK::DECS)
+            editor.subgate.globalTh[level][dec] = x;
+    }
+    bool isSubgateFollowMain(int level, int dec) const {
+        namespace SK = dotModular::SubgateKnobs;
+        return (level >= 0 && level < SK::LEVELS && dec >= 0 && dec < SK::DECS)
+            ? editor.subgate.followMain[level][dec] : true;
+    }
+    void setSubgateFollowMain(int level, int dec, bool follow) {
+        namespace SK = dotModular::SubgateKnobs;
+        if (level >= 0 && level < SK::LEVELS && dec >= 0 && dec < SK::DECS)
+            editor.subgate.followMain[level][dec] = follow;
+    }
+    bool isSubgateOwnActive(int v, int level, int dec) const {
+        namespace SK = dotModular::SubgateKnobs;
+        return (v >= 0 && v < SK::VOICES && level >= 0 && level < SK::LEVELS && dec >= 0 && dec < SK::DECS)
+            && editor.subgate.ownActive[v][level][dec];
+    }
+    void setSubgateOwn(int v, int level, int dec, float x) {
+        namespace SK = dotModular::SubgateKnobs;
+        if (v < 0 || v >= SK::VOICES || level < 0 || level >= SK::LEVELS || dec < 0 || dec >= SK::DECS) return;
+        editor.subgate.ownTh[v][level][dec] = x;
+        editor.subgate.ownActive[v][level][dec] = true;   // touch = claim (tier 1)
+    }
+    void clearSubgateOwnAll() {
+        namespace SK = dotModular::SubgateKnobs;
+        for (int v = 0; v < SK::VOICES; ++v)
+            for (int l = 0; l < SK::LEVELS; ++l)
+                for (int d = 0; d < SK::DECS; ++d)
+                    editor.subgate.ownActive[v][l][d] = false;
+    }
+    void setSubgateGlobalDelta(int level, int dec, float x) {
+        namespace SK = dotModular::SubgateKnobs;
+        if (level < 0 || level >= SK::LEVELS || dec < 0 || dec >= SK::DECS) return;
+        editor.subgate.globalDelta[level][dec] = x;
+        if (x != 0.f) editor.subgate.deltasActive = true;
+    }
+    void setSubgateOwnDelta(int v, int level, int dec, float x) {
+        namespace SK = dotModular::SubgateKnobs;
+        if (v < 0 || v >= SK::VOICES || level < 0 || level >= SK::LEVELS || dec < 0 || dec >= SK::DECS) return;
+        editor.subgate.ownDelta[v][level][dec] = x;
+        if (x != 0.f) editor.subgate.deltasActive = true;
+    }
+    void recomputeSubgateDeltasActive() {
+        namespace SK = dotModular::SubgateKnobs;
+        bool any = false;
+        for (int l = 0; l < SK::LEVELS && !any; ++l)
+            for (int d = 0; d < SK::DECS && !any; ++d)
+                any = editor.subgate.globalDelta[l][d] != 0.f;
+        for (int v = 0; v < SK::VOICES && !any; ++v)
+            for (int l = 0; l < SK::LEVELS && !any; ++l)
+                for (int d = 0; d < SK::DECS && !any; ++d)
+                    any = editor.subgate.ownDelta[v][l][d] != 0.f;
+        editor.subgate.deltasActive = any;
+    }
+    void clearSubgateGlobalDeltas() {
+        namespace SK = dotModular::SubgateKnobs;
+        for (int l = 0; l < SK::LEVELS; ++l)
+            for (int d = 0; d < SK::DECS; ++d)
+                editor.subgate.globalDelta[l][d] = 0.f;
+        recomputeSubgateDeltasActive();   // no mirror rebuild — no mirror exists
+    }
+    void clearSubgateOwnDeltas() {
+        namespace SK = dotModular::SubgateKnobs;
+        for (int v = 0; v < SK::VOICES; ++v)
+            for (int l = 0; l < SK::LEVELS; ++l)
+                for (int d = 0; d < SK::DECS; ++d)
+                    editor.subgate.ownDelta[v][l][d] = 0.f;
+        recomputeSubgateDeltasActive();
+    }
+    // The voice's MAIN threshold for a subgate decision (the follow-main tier's
+    // source + the expander knob's resolved DISPLAY): the same dec→lane mapping the
+    // engine's consumer sites use — REST→restProb, LEGATO→legatoProb, ADVANCE→
+    // variationProb (Variation IS the step-advance lane in gate mode), ACCENT→
+    // accentProb. storageSlot is the 0..15 storage convention (0 = V1/mono).
+    float subgateMainThreshold(int storageSlot, int dec) const {
+        namespace SK = dotModular::SubgateKnobs;
+        const dotModular::VoiceSlot vs = (storageSlot <= 0)
+            ? dotModular::VoiceResolver::mono()
+            : dotModular::VoiceResolver::slot(storageSlot + 1);
+        switch (dec) {
+            case SK::REST:    return engine.voices[vs].restProb;
+            case SK::LEGATO:  return engine.voices[vs].legatoProb;
+            case SK::ADVANCE: return engine.voices[vs].variationProb;
+            default:          return engine.voices[vs].accentProb;
+        }
+    }
+    // The knob-display resolution: the SAME pure resolver the engine runs at the
+    // edge (one authority), fed the bank + the live mod deltas + the voice's main
+    // threshold. Per-voice role shows what the selected voice actually plays.
+    float subgateDisplayThreshold(int storageSlot, int level, int dec) const {
+        namespace SK = dotModular::SubgateKnobs;
+        if (level < 0 || level >= SK::LEVELS || dec < 0 || dec >= SK::DECS
+            || storageSlot < 0 || storageSlot >= SK::VOICES) return SK::kDefaultThreshold;
+        const float d = editor.subgate.globalDelta[level][dec]
+                      + editor.subgate.ownDelta[storageSlot][level][dec];
+        return SK::resolve(editor.subgate.ownActive[storageSlot][level][dec],
+                           editor.subgate.ownTh[storageSlot][level][dec],
+                           editor.subgate.followMain[level][dec],
+                           editor.subgate.globalTh[level][dec],
+                           subgateMainThreshold(storageSlot, dec), d, dec);
     }
 
     // Spread target mode (0=Anchor V1, 1=Follow CA) per poly lane, UNIFIED PL_* order
@@ -1334,6 +1541,15 @@ extern Model* modelStraitsLaneREST;        // REST lane expander
 extern Model* modelStraitsLaneACCENT;      // ACCENT lane expander
 extern Model* modelStraitsLaneVARIATION;   // VARIATION lane expander
 extern Model* modelStraitsLaneLEGATO;      // LEGATO lane expander
+extern Model* modelStraitsSubgatePanelRatchetRest;    // subgate per-voice panels — ONE per (level x decision)
+                                                       //   (StraitsBase-spawned, hidden; the global tier is on StraitsBase)
+extern Model* modelStraitsSubgatePanelRatchetLegato;  //   (CC_PROMPT_FIX_SUBGATE_PANELS option (a): the lane law —
+extern Model* modelStraitsSubgatePanelRatchetAccent;  //    one panel = one decision's 16 voices, 6/6/4 165-wide)
+extern Model* modelStraitsSubgatePanelRatchetAdvance;
+extern Model* modelStraitsSubgatePanelGhostRest;
+extern Model* modelStraitsSubgatePanelGhostLegato;
+extern Model* modelStraitsSubgatePanelGhostAccent;
+extern Model* modelStraitsSubgatePanelGhostAdvance;
 extern Model* modelMonsoonCausewayPolyExpander; // poly CV modulation expander
 extern Model* modelMonsoonChangiExpander; // per-voice output expander
 extern Model* modelMonsoonShophouseExpander; // scale expander (12th module)
@@ -1351,6 +1567,8 @@ extern Model* modelLantern;                    // Lantern note-output visualiser
 extern Model* modelMonsoonSandsVisualExpander;  // Mono visual DNA editor (voice 1)
 extern Model* modelStraitsEastSandsVisual;      // East visual DNA editor (voices 2-8)
 extern Model* modelStraitsSandsMacroVisual;     // Macro visual DNA editor (global)
+extern Model* modelSandsDistributionExpander;   // the distribution sub-expander (dual role by host)
+extern Model* modelSandsMacroSendSubpanel;      // the Macro send subpanel (every Macro→East send, one snapped panel)
 extern Model* modelIntertropical;               // Intertropical scene sequencer
 
 // ─── Change Alley pin matrix expander ────────────────────────────────────────

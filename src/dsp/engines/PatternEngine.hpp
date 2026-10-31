@@ -219,6 +219,12 @@ struct PatternEngine {
     //                                             DELEGATING voices only (own-slot
     //                                             voices are untouched by a Macro edit)
     //   rebuildWarpMirrorVoiceLane(v, lane)   — Sands (East) edit on (v,lane): 16 cells
+    //   rebuildWarpMirrorLane(lane)           — the distribution send-bus' Macro-sent
+    //                                             delta on that lane: ALL 16 voices x
+    //                                             lane (the cross-voice expander's
+    //                                             global delta reaches delegated AND
+    //                                             own cells — the one lane scope the
+    //                                             Macro-edit scope can't express)
     //   rebuildWarpMirrorCell(v, lane, step)  — the step-rate spread-refresh companion:
     //                                             1 cell, ~0.0006ms
     // The scopes are for CLEANLINESS (don't recompute untouched voices), NOT
@@ -226,6 +232,7 @@ struct PatternEngine {
     void rebuildWarpMirrorAll();
     void rebuildWarpMirrorVoice(int v);
     void rebuildWarpMirrorLaneDelegating(int lane);
+    void rebuildWarpMirrorLane(int lane);
     void rebuildWarpMirrorVoiceLane(int v, int lane);
     void rebuildWarpMirrorCell(int v, int lane, int step);
     // The shared cell compute (CONTRACT: warpBank_ != nullptr — every rebuild entry
@@ -582,6 +589,10 @@ struct PatternEngine {
     // display recompute to 1 voice. TYPED (CC_PROMPT_STRONG_TYPES): callers MINT via
     // VoiceResolver::slot(V); the default is the mono anchor (kMonoVoiceSlot).
     VoiceSlot displayedVoice_ = dotModular::kMonoVoiceSlot;
+    // The shared voice selection, readable (the SandsDistributionExpander honours
+    // it live — "read the selected voice from the shared state" — the spec's
+    // single-source-of-truth ruling; the East visual's tabs publish via the setter).
+    VoiceSlot displayedVoice() const { return displayedVoice_; }
     // The minting setter — the module layer's ONE entry point for the displayed voice.
     void setDisplayedVoice(VoiceSlot v) { displayedVoice_ = v; }
     // Voice-scoped recompute: blend only the given voice's 16 steps from cached z0/z1.
@@ -867,6 +878,17 @@ struct PatternEngine {
         uint64_t base = (uint64_t)(qmixDrawCtr) * DRAW_CHUNK + qmixCursor++;
         return qmixPhilox.atUniform(base);
     }
+
+    // ── THE STEP-RATE UNIFORM (CC_PROMPT_GATE_STEP_ADVANCE_SPEC Stage 1) ─────────
+    // The gate-mode step-advance decision draws u per rise from the EXISTING rhythm
+    // Philox stream — the SAME key (NOT a new stream: the additive-domain law keeps
+    // (The step-advance reserved chunk + stepRateUniform are DELETED —
+    // CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE: the advance decision reads the
+    // VARIATION LANE's step-addressed draw (the same r_vary the lane compares
+    // read), NOT a fresh per-rise uniform. An additional Philox draw was ruled a
+    // HARD NO; the "would freeze with the held step" reasoning was INVERTED —
+    // the freeze IS the intended per-step threshold. The advance consumes ZERO
+    // new draws.)
 
     inline float unitRhythm() { return philoxRhythm(); }
     inline float unitMelody() { return philoxMelody(); }

@@ -49,11 +49,23 @@ namespace dotModular {
 //    mutation so the host can request the scoped mirror rebuild — the live preview). ──
 struct WarpCurveEditor : DistributionCurveWidget {
     std::function<void()> onEdit;
+    // The right-click KIND picker (the spec's single-source discipline): the host
+    // that owns the addressing sets this — the popup keeps its own chrome-level
+    // menu; the Distribution expander's permanent home aims the SHARED builder
+    // (openWarpKindMenu, defined below) at its role-appropriate store.
+    std::function<void()> onKindMenu;
     void onDragMove(const rack::event::DragMove& e) override {
         DistributionCurveWidget::onDragMove(e);
         if (dragPoint >= 0 && onEdit) onEdit();   // interior point dragged
     }
     void onButton(const rack::event::Button& e) override {
+        // Right-click = the kind menu, when this editor has a host-owned one
+        // (consumed HERE so it never falls through to the module context menu).
+        if (onKindMenu && e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_RIGHT) {
+            onKindMenu();
+            e.consume(this);
+            return;
+        }
         const bool leftPress = (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT);
         DistributionCurveWidget::onButton(e);
         if (leftPress && editCurve && onEdit) onEdit();   // point added/removed (or a no-op press — idempotent)
@@ -189,57 +201,17 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         refresh();
     }
 
-    // ── per-kind param plumbing (all capture-free — Rack-history-safe) ──────────────
+    // ── per-kind param plumbing — DELEGATED (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC):
+    // the ONE authority moved to WarpF.hpp (dsp) so the expander's mod-jack fold can
+    // share it; these stay as the UI's thin aliases (every existing call site keeps
+    // compiling, and there is still exactly one implementation to change).
+    using WarpParamSpec = dotModular::WarpParamSpec;
     static double paramValue(const WarpF& f, int which) {
-        return std::visit([which](const auto& d) -> double {
-            using T = std::decay_t<decltype(d)>;
-            if constexpr (std::is_same_v<T, TriangularWarp>)        return which == 0 ? d.mode : 0.0;
-            else if constexpr (std::is_same_v<T, PowerWarp>)        return which == 0 ? d.k : 0.0;
-            else if constexpr (std::is_same_v<T, ReversedPowerWarp>)return which == 0 ? d.theta : 0.0;
-            else if constexpr (std::is_same_v<T, KumaraswamyWarp>) {
-                // Read on the (mode, conc) authoring basis — conc:=a, mode solved closed-form.
-                double mode = 0.5, conc = 2.0;
-                KumaraswamyDistribution::modeConcFromAb(d.a, d.b, mode, conc);
-                return which == 0 ? mode : conc;
-            }
-            else if constexpr (std::is_same_v<T, LogitNormalWarp>)  return which == 0 ? d.mu : d.sigma;
-            else if constexpr (std::is_same_v<T, LogitSigmoidWarp>) return which == 0 ? d.a : d.b;
-            else if constexpr (std::is_same_v<T, MobiusWarp>)       return which == 0 ? d.a : 0.0;
-            else if constexpr (std::is_same_v<T, TruncNormalWarp>)  return which == 0 ? d.mu : d.sigma;
-            else return 0.0;   // IdentityWarp / DrawnWarp: no parametric params
-        }, f);
+        return dotModular::warpParamValue(f, which);
     }
     static WarpF withParam(const WarpF& f, int which, double v, WarpBank& bank) {
-        return std::visit([&f, &bank, which, v](const auto& d) -> WarpF {
-            using T = std::decay_t<decltype(d)>;
-            if constexpr (std::is_same_v<T, TriangularWarp>)
-                return bank.fromDistribution(TriangularDistribution(which == 0 ? v : d.mode));
-            else if constexpr (std::is_same_v<T, PowerWarp>)
-                return bank.fromDistribution(PowerDistribution(which == 0 ? v : d.k));
-            else if constexpr (std::is_same_v<T, ReversedPowerWarp>)
-                return bank.fromDistribution(ReversedPowerDistribution(which == 0 ? v : d.theta));
-            else if constexpr (std::is_same_v<T, KumaraswamyWarp>) {
-                // Author on (mode, conc): b is SOLVED to hold the mode (exact orthogonality).
-                double mode = 0.5, conc = 2.0;
-                KumaraswamyDistribution::modeConcFromAb(d.a, d.b, mode, conc);
-                if (which == 0) mode = v; else conc = v;
-                double a, b;
-                KumaraswamyDistribution::abFromModeConc(mode, conc, a, b);
-                return bank.fromDistribution(KumaraswamyDistribution(a, b));
-            }
-            else if constexpr (std::is_same_v<T, LogitNormalWarp>)
-                return bank.fromDistribution(LogitNormalDistribution(which == 0 ? v : d.mu,
-                                                                    which == 1 ? v : d.sigma));
-            else if constexpr (std::is_same_v<T, LogitSigmoidWarp>)
-                return bank.fromDistribution(LogitSigmoidDistribution(which == 0 ? v : d.a,
-                                                                     which == 1 ? v : d.b));
-            else if constexpr (std::is_same_v<T, MobiusWarp>)
-                return bank.fromDistribution(MobiusDistribution(which == 0 ? v : d.a));
-            else if constexpr (std::is_same_v<T, TruncNormalWarp>)
-                return bank.fromDistribution(TruncatedNormalDistribution(which == 0 ? v : d.mu,
-                                                                        which == 1 ? v : d.sigma));
-            else { (void)d; (void)bank; return f; }   // Identity / Drawn: unreachable (knobs hidden)
-        }, f);
+        (void)bank;   // the dsp re-mint lowers through lowerWarp — no pool touch
+        return dotModular::warpWithParam(f, which, v);
     }
     // The authored Distribution for DISPLAY: identity shows the diagonal (a default
     // PchipDistribution IS the (0,0)-(1,1) line); parametrics re-construct via .dist().
@@ -374,34 +346,17 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         }
     }
 
+    // ── the per-kind p1/p2 spec — DELEGATED (the authority moved to WarpF.hpp) ─
+    // The table's one home is now the dsp layer (the expander's mod-jack fold
+    // window-clamps against the SAME table the knobs bind — a fold and a lock can
+    // never disagree about what a kind owns). This stays as the popup's alias.
+    static WarpParamSpec warpParamSpec(int kind, int which) {
+        return dotModular::warpParamSpec(kind, which);
+    }
+
     void refreshParams(const WarpF& f) {
         const int kind = (int)f.index();
-        // { label, lo, hi, def } per param; present=false hides the knob.
-        struct Spec { const char* label; float lo, hi, def; bool present; };
-        const Spec s1[] = {
-            /* identity    */ { "",        0.f,  1.f, 0.f,   false },
-            /* triangular  */ { "mode",    0.f,  1.f, 0.5f,  true  },
-            /* power       */ { "k",       0.2f, 5.f, 2.f,   true  },
-            /* kumaraswamy */ { "mode", 0.02f, 0.98f, 0.5f,  true  },
-            /* logit-norm  */ { "mu",     -3.f,  3.f, 0.f,   true  },
-            /* logit-sig   */ { "a",      0.25f, 4.f, 1.5f,  true  },
-            /* mobius      */ { "a",      0.25f, 4.f, 1.5f,  true  },
-            /* trunc-norm  */ { "mu",    -0.5f, 1.5f, 0.5f,  true  },
-            /* rev-power   */ { "theta",  0.2f, 5.f, 2.f,   true  },
-            /* drawn       */ { "",        0.f,  1.f, 0.f,   false },
-        };
-        const Spec s2[] = {
-            /* identity    */ { "",        0.f,  1.f, 0.f,   false },
-            /* triangular  */ { "",        0.f,  1.f, 0.f,   false },
-            /* power       */ { "",        0.f,  1.f, 0.f,   false },
-            /* kumaraswamy */ { "conc",    1.f,  5.f, 2.f,   true  },   // CONC_MAX=5 (load-bearing)
-            /* logit-norm  */ { "sigma",  0.2f,  3.f, 1.f,   true  },
-            /* logit-sig   */ { "b",      -3.f,  3.f, 0.f,   true  },
-            /* mobius      */ { "",        0.f,  1.f, 0.f,   false },
-            /* trunc-norm  */ { "sigma", 0.05f, 1.f, 0.2f,  true  },
-            /* rev-power   */ { "",        0.f,  1.f, 0.f,   false },
-            /* drawn       */ { "",        0.f,  1.f, 0.f,   false },
-        };
+        using Spec = WarpParamSpec;
         auto bind = [&](redDot::StoreKnob<Monsoon>* k, const Spec& s, int which) {
             k->visible = s.present;
             if (!s.present) return;
@@ -425,8 +380,8 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
                 else             { m.setWarpF(slot, lane, nf);  m.requestWarpRebuildVoiceLane(slot, lane); }
             };
         };
-        bind(p1, s1[kind], 0);
-        bind(p2, s2[kind], 1);
+        bind(p1, warpParamSpec(kind, 0), 0);
+        bind(p2, warpParamSpec(kind, 1), 1);
     }
 
     // External-change detector: undo / another surface editing the same target rebinds
@@ -465,37 +420,7 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         // EventContext is shared across the recursion).
         rack::widget::OpaqueWidget::onButton(e);
     }
-    void openKindMenu() {
-        using rack::ui::Menu;
-        using rack::ui::MenuItem;
-        Menu* menu = rack::createMenu();
-        menu->addChild(rack::createMenuLabel(std::string("Warp curve — ") + laneName));
-        menu->addChild(rack::createMenuLabel("click a type to author it (drawn = drag points)"));
-        const WarpF& f = cur();
-        const int curKind = (int)f.index();
-        struct KindItem : MenuItem {
-            WarpCurvePopup* pop;
-            int kind;
-            void onAction(const rack::event::Action&) override {
-                Monsoon* m = pop->mon();
-                if (!m) return;
-                if (kind == 0) { pop->commitF(IdentityWarp{}); pop->refresh(); return; }
-                std::unique_ptr<Distribution> d = pop->makeKindDefault(kind);
-                if (d) pop->commitDist(std::move(d));
-            }
-        };
-        static const char* const kNames[] = {
-            "Identity (uniform)", "Triangular", "Power", "Kumaraswamy", "Logit-normal",
-            "Logit-sigmoid", "Mobius", "Truncated normal", "Reversed power", "Drawn (freehand)",
-        };
-        for (int k = 0; k < 10; ++k) {
-            auto* it = new KindItem;
-            it->text = kNames[k];
-            it->rightText = (k == curKind) ? "✓" : "";
-            it->pop = this; it->kind = k;
-            menu->addChild(it);
-        }
-    }
+    void openKindMenu();   // defined below openWarpKindMenu — the ONE menu authority
     static std::unique_ptr<Distribution> makeKindDefault(int kind) {
         switch (kind) {
             case 1:  return std::make_unique<TriangularDistribution>(0.5);
@@ -563,5 +488,61 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         rack::widget::Widget::draw(args);   // children (curve editor + knobs) on top
     }
 };
+
+// ── THE WARP KIND MENU — ONE authority for BOTH hosts of the curve editor ─────────
+// (Rodney: "Popup panel has a context menu to select the distribution type, missing
+// from the distribution expander" — the fix is a SHARED builder, not a copy: the
+// popup and the expander's permanent home must offer the SAME 10 kinds with the
+// SAME defaults.) The target carries the addressing + the commit path — the
+// role-appropriate setter + scoped rebuild live with the OWNER (the popup's
+// macroGlobal branch; the expander's macroRoleNow() branch), the menu stays dumb.
+struct WarpKindMenuTarget {
+    std::function<Monsoon*()> resolveMon;
+    std::function<WarpF()> cur;                  // the current authored F (for the ✓)
+    std::function<void(const WarpF&)> commitF;   // store + scoped rebuild (the commitF shape)
+    std::function<void()> afterCommit;           // the owner's refresh
+    std::string laneName;
+};
+
+inline void openWarpKindMenu(const WarpKindMenuTarget& t) {
+    using rack::ui::Menu;
+    using rack::ui::MenuItem;
+    Menu* menu = rack::createMenu();
+    menu->addChild(rack::createMenuLabel(std::string("Warp curve — ") + t.laneName));
+    menu->addChild(rack::createMenuLabel("click a type to author it (drawn = drag points)"));
+    const int curKind = (int)t.cur().index();
+    struct KindItem : MenuItem {
+        WarpKindMenuTarget t;
+        int kind;
+        void onAction(const rack::event::Action&) override {
+            Monsoon* m = t.resolveMon ? t.resolveMon() : nullptr;
+            if (!m) return;
+            if (kind == 0) { t.commitF(IdentityWarp{}); if (t.afterCommit) t.afterCommit(); return; }
+            std::unique_ptr<Distribution> d = WarpCurvePopup::makeKindDefault(kind);
+            if (d) { t.commitF(m->editor.warp.fromDistribution(*d)); if (t.afterCommit) t.afterCommit(); }
+        }
+    };
+    static const char* const kNames[] = {
+        "Identity (uniform)", "Triangular", "Power", "Kumaraswamy", "Logit-normal",
+        "Logit-sigmoid", "Mobius", "Truncated normal", "Reversed power", "Drawn (freehand)",
+    };
+    for (int k = 0; k < 10; ++k) {
+        auto* it = new KindItem;
+        it->text = kNames[k];
+        it->rightText = (k == curKind) ? "✓" : "";
+        it->t = t; it->kind = k;
+        menu->addChild(it);
+    }
+}
+
+inline void WarpCurvePopup::openKindMenu() {
+    WarpKindMenuTarget t;
+    t.resolveMon  = [this]() -> Monsoon* { return mon(); };
+    t.cur         = [this]() -> WarpF { return cur(); };
+    t.commitF     = [this](const WarpF& f) { commitF(f); };
+    t.afterCommit = [this]() { refresh(); };
+    t.laneName    = laneName;
+    openWarpKindMenu(t);
+}
 
 } // namespace dotModular

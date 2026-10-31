@@ -41,6 +41,25 @@ float ParameterManager::getVariation() const {
     return v;
 }
 
+// UNCLAMPED mono variation: knob + all local modulation (CV2 + Junction), summed with
+// NO clamp — the bipolar step-advance source (CC_PROMPT_STEP_ADVANCE_CONSUMPTION
+// Stage 2; the getRestUnclamped idiom, same "sum all mods, clamp the end result"
+// law). The negative half is REAL: CV2's normalized range is bipolar -1..+1
+// (Monsoon.cpp, the cv2Mode==1 routing), so a bipolar modulation source (LFO,
+// random, envelope) into CV2 sweeps the value across zero — forward, backward,
+// stutter — which is exactly Rodney's "the sequence WANDERS" design note. The
+// ADVANCE consumer clamps THIS sum to [-1,+1]; the rectified clamp ([0,1], what
+// getVariation() returns) stays the ghost-candidacy rate. Same arithmetic as
+// getVariation() up to the final clamp — bit-identical sums.
+float ParameterManager::getVariationUnclamped() const {
+    return readParam_(VARIATION_PARAM, 0.f, 1.f) + cv2Offsets[1] + junctionOffsets[1];
+}
+// GATE MODE ONLY (the BIPOLAR SCOPE): the knob remapped bipolar — (2*knob - 1) +
+// CV2 + Junction. The knob ALONE reaches negative; clock/phase never call this.
+float ParameterManager::getVariationGateUnclamped() const {
+    return (2.f * readParam_(VARIATION_PARAM, 0.f, 1.f) - 1.f) + cv2Offsets[1] + junctionOffsets[1];
+}
+
 float ParameterManager::getLegato() const {
     float v = readParam_(LEGATO_PARAM, 0.f, 1.f);
     v = clampv(v + cv2Offsets[2] + junctionOffsets[2], 0.f, 1.f);

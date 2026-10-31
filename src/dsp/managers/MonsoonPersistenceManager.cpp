@@ -221,6 +221,12 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     // keys on load ⟹ all-IdentityWarp + w=0 (old patches unchanged).
     dotModular::WarpBank::serialize(m->editor.warp, root, "editor");
 
+    // Subgate-tier bank (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC): authored cells
+    // only (globals/followMain/own/ownActive — deltas stay session-lived). The
+    // bank owns the codec; absent keys ⟹ follow-main defaults (old patches
+    // byte-identical).
+    dotModular::SubgateKnobs::SubgateBank::serialize(m->editor.subgate, root, "editorSubgate");
+
     // GLOBAL slice (MVC step 1). Macro's globals used to be params, which gave save/restore
     // for free; now they are store fields and must be persisted explicitly.
     auto saveArr = [&](const char* key, const float* a, int n) {
@@ -509,6 +515,7 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     // Warp-F bank: absent keys keep the constructed defaults (all-identity, w=0 — the
     // CC_PROMPT_02 no-warp guarantee for pre-warp patches).
     dotModular::WarpBank::parse(root, "editor", m->editor.warp);
+    dotModular::SubgateKnobs::SubgateBank::parse(root, "editorSubgate", m->editor.subgate);
     auto loadArrN = [&](const char* key, float* a, int n) {
         if (auto j = json_object_get(root, key)) {
             if (json_is_array(j))

@@ -47,6 +47,15 @@ inline bool isSuiteChainModel(const rack::Model* m) {
         || m == modelStraitsLaneACCENT   // ACCENT lane expander
         || m == modelStraitsLaneVARIATION // VARIATION lane expander
         || m == modelStraitsLaneLEGATO   // LEGATO lane expander
+        || m == modelStraitsSubgatePanelRatchetRest    // subgate per-voice panels — ONE per (level x decision)
+                                                       //   (dock after the lane run; the global tier is on StraitsBase)
+        || m == modelStraitsSubgatePanelRatchetLegato  //   (base-spawned, hidden; option (a) — the lane law)
+        || m == modelStraitsSubgatePanelRatchetAccent
+        || m == modelStraitsSubgatePanelRatchetAdvance
+        || m == modelStraitsSubgatePanelGhostRest
+        || m == modelStraitsSubgatePanelGhostLegato
+        || m == modelStraitsSubgatePanelGhostAccent
+        || m == modelStraitsSubgatePanelGhostAdvance
         || m == modelMonsoonCausewayPolyExpander
         || m == modelMonsoonChangiExpander
         || m == modelMonsoonChangiT2Expander   // claimed expander (manager caches it) — was MISSING here,
@@ -63,6 +72,12 @@ inline bool isSuiteChainModel(const rack::Model* m) {
         || m == modelMonsoonSandsVisualExpander
         || m == modelStraitsEastSandsVisual
         || m == modelStraitsSandsMacroVisual
+        || m == modelSandsDistributionExpander  // the Sands subpanel (hop-through — a foreign
+                                                //   boundary here would un-bind everything past it;
+                                                //   the CONNECTION_UI_MODEL §4 bug class)
+        || m == modelSandsMacroSendSubpanel     // the Macro send subpanel (hop-through — the
+                                                //   Distribution expander may sit RIGHT of it:
+                                                //   [Macro][Send][Dist] must resolve CROSS-VOICE)
         || m == modelLantern       // observer — hop-only (never a boundary, never a host)
         || m == modelIntertropical;// arranger/observer (Model C: reads via findMonsoonEitherSide/
                                    //   getHost, has no claim slot). Was MISSING → a standalone

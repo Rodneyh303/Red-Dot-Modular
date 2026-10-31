@@ -1069,9 +1069,16 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
             // redraws only tying OUT; a rest arrival ends the chain). OFF = abutting-gates-only
             // (sample-accurate: overlap / <=1-sample gap ties, >=2-sample gap is fresh).
             add("Tie across rests", &m->engine.tieAcrossRests);
-            // "Advance playhead on tie-into-rest" — OFF (default). On a gate fall with a pending
-            // slur, advance one step into the incoming-rest and re-draw legato there (the sole
-            // advance-on-fall; opt-in). See docs/design/LEGATO_GATE_GAP_BUG.md (§345/§425).
+            // "Advance playhead on tie-into-rest" — OFF (default). ON = PROBABILISTIC
+            // fall-advance (option 2, CC_PROMPT_TIE_INTO_REST_PROBABILISTIC_ADVANCE):
+            // the fall into a tie-rest advances with probability = the rest step's
+            // Variation draw (the same mechanism as the rise step-advance), so the rest
+            // re-draws (and may end the slur chain) probabilistically; BIPOLAR — the
+            // fall direction follows the Variation-governed motion (backward when
+            // negative, hold near 0). OFF = never fall-advance. OPTION 3 (future, if
+            // Rodney decides the flag isn't worth keeping): drop the flag, always
+            // probabilistically fall-advance. See docs/design/LEGATO_GATE_GAP_BUG.md
+            // (§345/§425).
             add("Advance playhead on tie-into-rest", &m->engine.advanceOnTieIntoRest);
             sm->addChild(new ui::MenuSeparator);
             // OFF (default): CONTINUE — gate carries across the loop, laps can differ. ON:

@@ -764,6 +764,44 @@ void Monsoon::process(const ProcessArgs& args) {
     }
     warpUiScope_ = WarpUiScope::NONE;
 
+    // The distribution send-bus watchdog (see the state comment in Monsoon.hpp): the
+    // SandsDistributionExpander republishes its deltas + bumps its role's heartbeat
+    // every block; a frozen heartbeat with deltas live means that publisher is gone
+    // (deleted / bypassed) — drop its plane so nothing latches. Audio thread, same
+    // writer discipline as the rebuild switch above.
+    for (int pi = 0; pi < 2; ++pi) {
+        if (editor.warp.distPublishSeq[pi] != distWatchSeq_[pi]) {
+            distWatchSeq_[pi]  = editor.warp.distPublishSeq[pi];
+            distWatchIdle_[pi] = 0.f;
+        } else if (editor.warp.distDeltasActive) {
+            distWatchIdle_[pi] += args.sampleTime;
+            if (distWatchIdle_[pi] >= 0.5f) {
+                distWatchIdle_[pi] = 0.f;
+                if (pi == 0) clearDistGlobalDeltas();   // the cross-voice publisher died
+                else         clearDistOwnDeltas();      // the per-voice publisher died
+            }
+        }
+    }
+
+    // The SUBGATE watchdog (the same law, the Straits subgate publishers): the
+    // subgate BASE bumps editor.subgate.publishSeq[0] every block it lives
+    // (global deltas); the SUBPANELS share slot 1 (per-voice deltas). A frozen
+    // heartbeat with deltas live drops that plane — a deleted/unplugged surface
+    // must not leave its mod component latched.
+    for (int pi = 0; pi < 2; ++pi) {
+        if (editor.subgate.publishSeq[pi] != subgateWatchSeq_[pi]) {
+            subgateWatchSeq_[pi]  = editor.subgate.publishSeq[pi];
+            subgateWatchIdle_[pi] = 0.f;
+        } else if (editor.subgate.deltasActive) {
+            subgateWatchIdle_[pi] += args.sampleTime;
+            if (subgateWatchIdle_[pi] >= 0.5f) {
+                subgateWatchIdle_[pi] = 0.f;
+                if (pi == 0) clearSubgateGlobalDeltas();   // the base (globals) died
+                else         clearSubgateOwnDeltas();      // the subpanels (per-voice) died
+            }
+        }
+    }
+
     // --- Audio-rate Input Fetching ---
     InputState input;
     input.clk   = cachedClkConnected ? inputs[CLK_INPUT].getVoltage() : 0.f;

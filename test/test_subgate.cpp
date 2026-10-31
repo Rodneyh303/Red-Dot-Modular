@@ -217,17 +217,19 @@ int main() {
         EXPECT(!eng.gs.gateHeld);        // silent
     });
 
-    TEST("variation=0 -> NO ghost candidate (silent gap, even with rest=0 and Gate 3 high)", {
-        // The ghost candidate is variation-gated: r_vary >= variationAmount -> no ghost.  At
-        // variation=0 every r_vary (0..1) >= 0 -> no ghost ever fires, so the gaps stay empty
-        // even with Gate 3 patched high.  (Ratchet + main are NOT variation-gated — only ghost.)
+    TEST("variation no longer gates candidacy (draw-source fix): rest=0 -> the ghost FIRES even at variation=0", {
+        // CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE: the variation-strand candidacy gate is
+        // DELETED — a ghost cell's existence is its REST decision (the subgate REST when
+        // primed; the main restProb un-primed). At variation=0 (which used to silence
+        // every ghost) and rest=0 the ghost PLAYS: variation is consumed ONLY by the
+        // step-advance decision now (r_vary's sole gate-mode reader).
         SequencerEngine eng; eng.numPolyVoices = 0;
         step(eng, true, false, false, true, false, 0.f, 0.f, 4.f);    // main onset
         step(eng, false, false, false, false, false, 0.f, 0.f, 4.f);  // silent gap
         StepResult r = step(eng, false, false, true, false, true, 0.f, 0.f, 4.f, /*variation=*/0.f);
         EXPECT(r.stepped);
-        EXPECT(!eng.ghostActive);        // no ghost candidate fired
-        EXPECT(!eng.gs.gateHeld);       // gate stays low (Gate 3 high alone doesn't open it)
+        EXPECT(eng.ghostActive);         // the ghost FIRED (rest=0 passes the one rest gate)
+        EXPECT(r.decision != D::Rest);   // it sounded — the gap is not empty
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -369,31 +371,85 @@ int main() {
         // The ghost tied IN from A's slur (prevSlur reached it) -> not a fresh NewNote.
         EXPECT(g.decision == D::Tie || g.decision == D::Legato || g.decision == D::LegatoMax);
     });
-    TEST("a rested ghost (no candidate) is transparent — the slur passes through to the next onset", {
+    TEST("a rested ghost is a REST (the one authority) — the slur ends, the next main is fresh", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         stepBridge(eng, true, false, true, false, 0.f, 1.0f, 4.f);              // A commits
-        // Gap ghost that RESTS (variation=0 -> no candidate). It is NOT an onset for this voice:
-        // ghostActive stays false (no ghost sounded) and slurForward is untouched, so the slur
-        // passes THROUGH it (the bridge keeps the gate held). The returned decision is the preserved
-        // prior one (not a fresh Rest) — transparency is ghostActive==false + chain survival, not a
-        // Rest decision.
-        stepBridge(eng, false, true, false, true, 0.f, 0.5f, 4.f, /*variation=*/0.f);   // driven for state, not its return
-        EXPECT(!eng.ghostActive);                                  // no ghost sounded -> transparent
-        EXPECT(eng.gs.slurForward == true);                        // A's slur survived (not consumed/broken)
-        // The bridge still holds; a following main gate ties in (A's slur survived the transparent ghost).
+        // Gap ghost that RESTS (rest=1 — the ONE rest authority; the old variation
+        // candidacy gate with its slur-preserving transparency is DELETED, so a
+        // rested ghost follows the NORMAL rest semantics: Rule 2 — a resting cell
+        // starts no note and is NOT part of the chain, the slur ends there).
+        stepBridge(eng, false, true, false, true, 1.f, 0.5f, 4.f);   // rest=1: the ghost rests
+        EXPECT(!eng.ghostActive);                                  // no ghost sounded
+        EXPECT(eng.gs.slurForward == false);                       // A's slur ended at the rest
+        // The following main gate is a FRESH onset (the rest broke the chain).
         StepResult m = stepBridge(eng, true, false, true, false, 0.f, 0.5f, 4.f);
-        EXPECT(m.decision == D::Tie || m.decision == D::Legato || m.decision == D::LegatoMax);
+        EXPECT(m.decision == D::NewNote);
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // G5 — per-voice ghost placement (GATE_SUBDIVISION_STEP_GATE.md §398/§227):
-    // At a ghost cell (the mono ghosted), each poly voice rolls its OWN variation to decide if it
-    // ghosts. A voice whose variation does not pass is a RESTED GHOST (transparent — silent, the
-    // slur passes through it). Per the f9c4189 per-voice VAR draw model, a poly voice reads its
-    // OWN per-voice draw (polyRandom(bank, PL_VARIATION)) — NOT mono's variationRandom. Mono still
-    // reads variationRandom. So: delegated voice = mono's STEP + its own per-voice draw; Local East
-    // voice = its own STEP + its own per-voice draw. The draws are seeded directly here (the unit
-    // test does not run the Philox draw pipeline, so polyRandom persists as seeded).
+    // R-SLUR — generatedRestBeatsLegato is UNIFORM across main/ghost/ratchet
+    // (CC_PROMPT_SUBGATE_REST_SLUR_CONSISTENT): the subgate cells ride the SHARED
+    // executeStep rest branch, whose slurSuppressesRest gate
+    // (!generatedRestBeatsLegato && slurReachesHere) is the ONE rest<->slur
+    // authority — same flag, same logic, every level. The tests below pin BOTH
+    // flag states at every level (the consistency proof).
+    // ─────────────────────────────────────────────────────────────────────────────
+    SUITE("R-SLUR — generatedRestBeatsLegato uniform at every level");
+    TEST("OFF: the slur WINS over a rested GHOST (plays Legato/Tie; the chain survives)", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        eng.generatedRestBeatsLegato = false;
+        stepBridge(eng, true, false, true, false, 0.f, 1.0f, 4.f);              // A commits
+        // Gap ghost whose REST roll says rest (rest=1) — but the flag is OFF and a
+        // slur reaches the cell: slurSuppressesRest SKIPS the shared rest branch,
+        // the ghost plays as Legato/Tie — the slur bridges, exactly like a rested
+        // MAIN step under OFF (one flag, one logic, every level).
+        StepResult g = stepBridge(eng, false, true, false, true, 1.f, 0.5f, 4.f);
+        EXPECT(eng.ghostActive);                                   // the ghost SOUNDED (the slur won)
+        EXPECT(g.decision == D::Tie || g.decision == D::Legato || g.decision == D::LegatoMax);
+        EXPECT(eng.gs.slurForward == true);                        // the chain survived the rested cell
+        StepResult m = stepBridge(eng, true, false, true, false, 0.f, 0.5f, 4.f);
+        EXPECT(m.decision == D::Tie || m.decision == D::Legato || m.decision == D::LegatoMax);   // still ties in
+    });
+    TEST("OFF: the slur WINS over a rested RATCHET sub-cell (in-gate, the same shared branch)", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        eng.generatedRestBeatsLegato = false;
+        step(eng, true,  false, false, true,  false, 0.f, 1.0f, 4.f);   // main onset, legato=1 -> slur commits
+        step(eng, false, false, false, true,  false, 0.f, 0.5f, 4.f);   // gate still high (held)
+        // In-gate ratchet sub-cell whose REST roll says rest (rest=1) — OFF + the
+        // slur reaching (mainHigh holds wasHeld): the rest is suppressed, the
+        // sub-cell plays Legato/Tie (uniform with main + ghost).
+        StepResult r = step(eng, false, true, false, true, false, 1.f, 0.5f, 4.f);
+        EXPECT(r.decision == D::Tie || r.decision == D::Legato || r.decision == D::LegatoMax);
+        EXPECT(eng.gs.slurForward == true);                        // the chain survived
+    });
+    TEST("OFF: a rested MAIN step bridges identically (the control row — same flag, same outcome)", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        eng.generatedRestBeatsLegato = false;
+        step(eng, true,  false, false, true,  false, 0.f, 1.0f, 4.f);   // A commits the slur
+        step(eng, false, false, false, true,  false, 0.f, 0.5f, 4.f);   // held
+        // A following MAIN rise whose rest roll says rest — OFF: the slur wins.
+        StepResult r = step(eng, true,  false, false, true,  false, 1.f, 0.5f, 4.f);
+        EXPECT(r.decision == D::Tie || r.decision == D::Legato || r.decision == D::LegatoMax);
+    });
+    TEST("ON (default): a rested GHOST cancels the slur — the flag flips the SAME shared branch", {
+        // The flip side of the same coin (the ON row is also pinned by the rested-
+        // ghost test above; this row makes the SUITE self-contained: ONE flag, both
+        // outcomes, at the ghost level).
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        eng.generatedRestBeatsLegato = true;    // default
+        stepBridge(eng, true, false, true, false, 0.f, 1.0f, 4.f);              // A commits
+        StepResult g = stepBridge(eng, false, true, false, true, 1.f, 0.5f, 4.f);   // rest=1: the rest wins
+        EXPECT(!eng.ghostActive);                                   // no ghost sounded
+        EXPECT(g.decision == D::Rest);
+        EXPECT(eng.gs.slurForward == false);                        // the chain ended (rest beats legato)
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // G5 — per-voice ghost placement (REWRITTEN for CC_PROMPT_STEP_ADVANCE_FIX_DRAW_
+    // SOURCE): placement is the per-voice REST decision (the variation gate is
+    // deleted — a voice ghosts iff its rest passes; r_vary's sole gate-mode reader
+    // is the step-advance decision). A voice whose rest fails is a RESTED GHOST
+    // (silent, not part of the chain — the normal Rule-2 rest semantics).
     // ─────────────────────────────────────────────────────────────────────────────
     SUITE("G5 — per-voice ghost placement (variation gate per voice)");
     TEST("shared (delegated): mono ghosts -> all poly voices ghost (per-voice draws pass)", {
@@ -414,32 +470,20 @@ int main() {
         EXPECT(eng.voices[dotModular::VoiceResolver::slot(1 + 1)].gs.gateHeld);             // voice 0 ghosts (own draw 0.1 < 1.0)
         EXPECT(eng.voices[dotModular::VoiceResolver::slot(2 + 1)].gs.gateHeld);             // voice 1 ghosts (own draw 0.1 < 1.0)
     });
-    TEST("Local East: voice 0's VAR LOR points to a high-variation step -> rested ghost (transparent); voice 1 (delegated) ghosts", {
+    TEST("per-voice placement is the per-voice REST: voice 0 (rest=1) -> rested ghost; voice 1 (delegated, rest=0) ghosts", {
         SequencerEngine eng; eng.numPolyVoices = 2;
         injectLegacyStarGraph(eng);   // D2 seam (§3.1): this row pins the legacy star sound
-        eng.voices[dotModular::VoiceResolver::slot(1 + 1)].restProb = 0.f; eng.voices[dotModular::VoiceResolver::slot(2 + 1)].restProb = 0.f;
-        // Pin the LORs so the steps are deterministic (len=1 => step = off). Per-voice draws are
-        // seeded in polyRandom(bank, PL_VARIATION) (the f9c4189 per-voice model); mono reads
-        // variationRandom.
-        //   mono VAR LOR: len=1, off=0 -> step 0 -> variationRandom[0]=0.1 (< 0.5) -> mono ghosts.
-        //   voice 0: Local East VAR, len=1, off=1 -> step 1 -> polyRandom(1,PL_VAR)[1]=0.9 (>= 0.5) -> RESTED GHOST.
-        //   voice 1: delegated -> mono step 0 -> polyRandom(2,PL_VAR)[0]=0.1 (< 0.5) -> ghosts.
-        eng.pe.variationRandom[0] = 0.1f;                          // mono ghosts
-        eng.pe.polyRandom(dotModular::VoiceResolver::slot(1 + 1), dotModular::LaneId{SequencerEngine::PL_VARIATION})[1] = 0.9f;   // voice 0 Local-East step -> rested ghost
-        eng.pe.polyRandom(dotModular::VoiceResolver::slot(2 + 1), dotModular::LaneId{SequencerEngine::PL_VARIATION})[0] = 0.1f;   // voice 1 delegated, mono step -> ghosts
-        eng.strandLenRef(dotModular::STRAND_VARIATION) = 1;
-        eng.strandOffRef(dotModular::STRAND_VARIATION) = 0;
-        eng.polyLORRef(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{SequencerEngine::EDITOR_LANE_VARIATION}, SequencerEngine::LOR_LEN) = 1;
-        eng.polyLORRef(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{SequencerEngine::EDITOR_LANE_VARIATION}, SequencerEngine::LOR_OFF) = 1;
-        eng.setVarlegLocalEast(dotModular::VoiceResolver::slot(1), 0, true);   // voice 0 reads its own VAR LOR (Local East)
-        const float variation = 0.5f;
-        stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f, variation);  // main onset
-        stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f, variation); // gap
-        stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f, variation); // ghost onset (mono ghosts)
-        EXPECT(eng.ghostActive);                       // mono ghosted (variationRandom[0]=0.1 < 0.5)
-        EXPECT(!eng.voices[dotModular::VoiceResolver::slot(1 + 1)].gs.gateHeld);            // voice 0: RESTED GHOST (transparent)
-        EXPECT(!eng.voices[dotModular::VoiceResolver::slot(1 + 1)].participating);          //   not part of the chain
-        EXPECT(eng.voices[dotModular::VoiceResolver::slot(2 + 1)].gs.gateHeld);             // voice 1: delegated -> ghosts
+        // The per-voice REST decides placement (the variation gate is deleted): voice 0
+        // rests every ghost; voice 1 (delegated) plays them; mono ghosts (rest=0).
+        eng.voices[dotModular::VoiceResolver::slot(1 + 1)].restProb = 1.f;   // voice 0: every ghost rests
+        eng.voices[dotModular::VoiceResolver::slot(2 + 1)].restProb = 0.f;   // voice 1: every ghost plays
+        stepPoly(eng, true, false, false, true, false, 0.f, 0.f, 4.f, 0.5f);   // main onset
+        stepPoly(eng, false, false, false, false, false, 0.f, 0.f, 4.f, 0.5f); // gap
+        stepPoly(eng, false, false, true,  false, true,  0.f, 0.f, 4.f, 0.5f); // ghost onset (mono ghosts)
+        EXPECT(eng.ghostActive);                                    // mono ghosted
+        EXPECT(!eng.voices[dotModular::VoiceResolver::slot(1 + 1)].gs.gateHeld);   // voice 0: RESTED GHOST
+        EXPECT(!eng.voices[dotModular::VoiceResolver::slot(1 + 1)].participating); //   not part of the chain
+        EXPECT(eng.voices[dotModular::VoiceResolver::slot(2 + 1)].gs.gateHeld);    // voice 1: delegated -> ghosts
     });
 
     std::cout << "\n-----\nsubgate: " << g_pass << " passed, " << g_fail << " failed\n";

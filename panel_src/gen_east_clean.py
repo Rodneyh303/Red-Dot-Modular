@@ -5,7 +5,7 @@ red corner screws. nanosvg-safe (no masks/gradients/text-for-controls)."""
 import math, os
 S = 75.0/25.4
 def px(mm): return round(mm*S, 2)
-W_MM, H_MM = 261.84, 128.5  # 48HP + 9mm (w-level column, CC_PROMPT_04 STEP 1) + 9mm (warp-edit button column, STEP 2)
+W_MM, H_MM = 264.16, 128.5  # 52HP exactly (52 x 5.08mm = 780px) — was 261.84 ("48HP + 9mm (w-level column, CC_PROMPT_04 STEP 1) + 9mm (warp-edit button column, STEP 2)"); re-widened to whole HP: Rack's ModuleWidget::setPanel rounds the widget box to WHOLE HP (773.15px art in a 780px box left a 6.85px rack-bg sliver at the seam the Distribution expander seats against — CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC "seamless abutment")
 PW, PH = px(W_MM), px(H_MM)
 
 N = 7   # 7 editor lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG), one row each

@@ -207,16 +207,25 @@ int main() {
         }
     });
 
-    // ── advanceOnTieIntoRest checkpoint (§345) ─────────────────────────────────────────────
-    // On a fall with a pending slur, advance one step into the incoming-rest and re-draw legato
-    // there. The slur SURVIVES iff the legato draw at that step passes; else the chain ENDS. The
-    // next rise then plays that step WITHOUT a second advance (pendingCheckpointArrival).
+    // ── advanceOnTieIntoRest checkpoint (§345) — PROBABILISTIC (option 2,
+    // CC_PROMPT_TIE_INTO_REST_PROBABILISTIC_ADVANCE) ───────────────────────────
+    // On a fall with a pending slur, the fall-advance is decided by the SAME
+    // mechanism as the rise step-advance: the INCOMING-REST step's r_vary vs the
+    // resolved bipolar Variation — {BACKWARD, HOLD, FORWARD}. The flag is the
+    // ENABLE (OFF = the module layer never calls here). When advanced, the slur
+    // SURVIVES iff the legato draw at the landed step passes; else the chain ENDS.
+    // The next rise then plays that step WITHOUT a second advance
+    // (pendingCheckpointArrival, direction-agnostic). HOLD sets NO arrival.
     SUITE("advanceOnTieIntoRest checkpoint");
-    TEST("checkpoint with legato=1.0 -> slur survives the rest (slurForward stays true)", {
+    TEST("IDENTITY: at Variation=1 the fall always forward-advances; legato=1.0 -> slur survives", {
+        // The option-2 golden pin (the decideStepAdvance_ p=1 discipline): p=1
+        // crosses every r_vary -> FORWARD always -> byte-identical to the old
+        // deterministic always-advance.
         SequencerEngine eng; eng.numPolyVoices = 0;
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
         rise(eng, 0.f, 1.0f, 4.f);               // A commits slurForward (legato=1.0)
         EXPECT(eng.gs.slurForward == true);
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 1.0f;   // p=1: always advance
         eng.legatoCheckpointOnFall();   // the fall checkpoint (voices[0].legatoProb=1.0 from the rise)
         EXPECT(eng.gs.slurForward == true);      // survived (legato=1.0 forces it)
         EXPECT(eng.pendingCheckpointArrival == true);
@@ -225,12 +234,13 @@ int main() {
         EXPECT(eng.pendingCheckpointArrival == false);      // consumed
         EXPECT(b.decision == D::Tie || b.decision == D::Legato);
     });
-    TEST("checkpoint with legato=0.0 -> slur ENDS at the rest (slurForward cleared)", {
+    TEST("IDENTITY: at Variation=1 with legato=0.0 -> slur ENDS at the rest (slurForward cleared)", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
         rise(eng, 0.f, 1.0f, 4.f);               // A commits slurForward
         EXPECT(eng.gs.slurForward == true);
-        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].legatoProb = 0.0f;   // simulate legato=0 at the checkpoint step
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].legatoProb = 0.0f;    // simulate legato=0 at the checkpoint step
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 1.0f; // p=1: always advance
         eng.legatoCheckpointOnFall();   // the fall checkpoint; legato=0 -> never survives
         EXPECT(eng.gs.slurForward == false);     // chain ENDED at the rest checkpoint
         EXPECT(eng.pendingCheckpointArrival == true);
@@ -239,18 +249,66 @@ int main() {
         EXPECT(eng.pendingCheckpointArrival == false);
         EXPECT(b.decision == D::NewNote);
     });
-    TEST("checkpoint advances the playhead exactly ONE step (no double-advance on the rise)", {
+    TEST("IDENTITY: at Variation=1 the checkpoint advances the playhead exactly ONE step (no double-advance)", {
         // After the checkpoint advance, the rise must NOT advance again: the step played at the rise
         // is the one the fall advanced to. Compare stepIndex: checkpoint advances to K; rise plays K.
         SequencerEngine eng; eng.numPolyVoices = 0;
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
         rise(eng, 0.f, 1.0f, 4.f);               // plays step 0 (A); stepIndex now 0
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 1.0f;  // p=1: always advance
         int beforeFall = eng.stepIndex;
         eng.legatoCheckpointOnFall();        // fall advances one step -> stepIndex 1 (voices[0].legatoProb=1.0 from rise)
         EXPECT(eng.stepIndex == (beforeFall + 1));
         int afterCheckpoint = eng.stepIndex;
         rise(eng, 0.f, 0.5f, 4.f);               // rise: pendingCheckpointArrival -> NO advance
         EXPECT(eng.stepIndex == afterCheckpoint); // same step (no double-advance)
+    });
+    TEST("HOLD: at Variation=0 the fall NEVER advances — the rest passive, the chain carries, NO arrival", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
+        rise(eng, 0.f, 1.0f, 4.f);               // A commits slurForward
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 0.0f;  // p=0: always HOLD
+        int before = eng.stepIndex;
+        eng.legatoCheckpointOnFall();
+        EXPECT(eng.stepIndex == before);                 // nothing moved
+        EXPECT(eng.pendingCheckpointArrival == false);   // no advance -> no arrival
+        EXPECT(eng.gs.slurForward == true);              // the chain carried (the passive rest)
+        // The next rise decides its OWN advance normally (no arrival to consume).
+        rise(eng, 0.f, 0.5f, 4.f);
+        EXPECT(eng.pendingCheckpointArrival == false);
+    });
+    TEST("BACKWARD: at Variation=-1 the fall walks the playhead back exactly one (wrap 0 -> 15)", {
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
+        rise(eng, 0.f, 1.0f, 4.f);               // A commits slurForward; stepIndex 0
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = -1.0f; // p=-1: always BACKWARD
+        int before = eng.stepIndex;
+        eng.legatoCheckpointOnFall();
+        EXPECT(eng.stepIndex == ((before - 1 + 16) & 0xF));   // exactly -1 (the wrap)
+        EXPECT(eng.pendingCheckpointArrival == true);          // direction-agnostic arrival
+    });
+    TEST("MID-RANGE: the fall decides by the INCOMING step's r_vary (seeded 0.3)", {
+        // The whole variation ring seeded to 0.3 (identity warp): u_t = 0.3 at the
+        // incoming-rest step regardless of addressing — deterministic mid-range.
+        SequencerEngine eng; eng.numPolyVoices = 0;
+        eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
+        rise(eng, 0.f, 1.0f, 4.f);               // A commits slurForward
+        for (int i = 0; i < 16; ++i) eng.pe.variationRandom[i] = 0.3f;
+        int before = eng.stepIndex;
+        // p=0.5 > 0.3 -> FORWARD: the fall advances into the rest.
+        eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 0.5f;
+        eng.legatoCheckpointOnFall();
+        EXPECT(eng.stepIndex == before + 1);
+        // p=0.2 <= 0.3 -> HOLD: a fresh engine, nothing moves.
+        SequencerEngine eng2; eng2.numPolyVoices = 0;
+        eng2.tieAcrossRests = true; eng2.advanceOnTieIntoRest = true;
+        rise(eng2, 0.f, 1.0f, 4.f);
+        for (int i = 0; i < 16; ++i) eng2.pe.variationRandom[i] = 0.3f;
+        eng2.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 0.2f;
+        int before2 = eng2.stepIndex;
+        eng2.legatoCheckpointOnFall();
+        EXPECT(eng2.stepIndex == before2);               // HOLD (0.3 >= 0.2)
+        EXPECT(eng2.pendingCheckpointArrival == false);  // passive
     });
 
     // ── Reverse-safety: the gap decision is a pure function of the gate state (no direction) ─

@@ -49,7 +49,7 @@
     {
       "slug": "Straits",
       "name": "Straits",
-      "description": "Poly base expander \u2014 per-voice REST/ACCENT probability + 16ch poly-cable outs (gate/CV/accent, ch1=mono)",
+      "description": "Poly base expander — per-voice REST/ACCENT probability + 16ch poly-cable outs (gate/CV/accent, ch1=mono)",
       "tags": [
         "Expander",
         "Sequencer",
@@ -59,7 +59,7 @@
     {
       "slug": "StraitsBase",
       "name": "Straits Base",
-      "description": "Lane-extension base \u2014 frame + IO (16ch poly-cable outs, quantiser CV in) + voice count. Dock lane expanders right.",
+      "description": "Lane-extension base — frame + IO (16ch poly-cable outs, quantiser CV in) + voice count. Dock lane expanders right.",
       "tags": [
         "Expander",
         "Sequencer",
@@ -80,30 +80,46 @@
       "slug": "StraitsLaneREST",
       "name": "Straits Lane: REST",
       "description": "Per-voice REST probability lane expander (hidden — spawned by Straits Base)",
-      "tags": ["Expander", "Sequencer", "Random"]
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
     },
     {
       "slug": "StraitsLaneACCENT",
       "name": "Straits Lane: ACCENT",
       "description": "Per-voice ACCENT probability lane expander (hidden — spawned by Straits Base)",
-      "tags": ["Expander", "Sequencer", "Random"]
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
     },
     {
       "slug": "StraitsLaneVARIATION",
       "name": "Straits Lane: VARIATION",
       "description": "Per-voice VARIATION probability lane expander (hidden — spawned by Straits Base)",
-      "tags": ["Expander", "Sequencer", "Random"]
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
     },
     {
       "slug": "StraitsLaneLEGATO",
       "name": "Straits Lane: LEGATO",
       "description": "Per-voice LEGATO probability lane expander (hidden — spawned by Straits Base)",
-      "tags": ["Expander", "Sequencer", "Random"]
+      "tags": [
+        "Expander",
+        "Sequencer",
+        "Random"
+      ]
     },
     {
       "slug": "Causeway",
       "name": "Causeway",
-      "description": "Poly CV modulation \u2014 16ch REST + ACCENT modulation CV in (ch1=mono) with attenuverters",
+      "description": "Poly CV modulation — 16ch REST + ACCENT modulation CV in (ch1=mono) with attenuverters",
       "tags": [
         "Expander",
         "Sequencer",
@@ -113,7 +129,7 @@
     {
       "slug": "ChangiT1",
       "name": "Changi T1",
-      "description": "Per-voice output \u2014 all 16 voices (mono/voice 1 + poly voices 2..16) broken out to individual gate/CV/accent jacks",
+      "description": "Per-voice output — all 16 voices (mono/voice 1 + poly voices 2..16) broken out to individual gate/CV/accent jacks",
       "tags": [
         "Expander",
         "Sequencer",
@@ -123,7 +139,7 @@
     {
       "slug": "ChangiT2",
       "name": "Changi T2",
-      "description": "Per-voice articulation output \u2014 all 16 voices (mono/voice 1 + poly voices 2..16) broken out to individual step-gate and step-legato jacks",
+      "description": "Per-voice articulation output — all 16 voices (mono/voice 1 + poly voices 2..16) broken out to individual step-gate and step-legato jacks",
       "tags": [
         "Expander",
         "Sequencer",
@@ -133,7 +149,7 @@
     {
       "slug": "ChangiT3",
       "name": "Changi T3",
-      "description": "Intertropical arranged-output breakout \u2014 8 channels \u00d7 gate/CV/accent/step/step-legato (40 jacks), organized by channel; CV post-transpose. Pairs with an Intertropical.",
+      "description": "Intertropical arranged-output breakout — 8 channels × gate/CV/accent/step/step-legato (40 jacks), organized by channel; CV post-transpose. Pairs with an Intertropical.",
       "tags": [
         "Expander",
         "Sequencer",
@@ -143,7 +159,7 @@
     {
       "slug": "Shophouse",
       "name": "Shophouse",
-      "description": "Scale expander \u2014 4-front scale list, click-a-shutter root, boundary-quantised modulation, Conservation lock",
+      "description": "Scale expander — 4-front scale list, click-a-shutter root, boundary-quantised modulation, Conservation lock",
       "tags": [
         "Expander",
         "Sequencer",
@@ -153,7 +169,7 @@
     {
       "slug": "Colonnades",
       "name": "Colonnades",
-      "description": "Tuning + scale authoring expander \u2014 12 per-degree weight faders (scale mask) + cents knobs (tuning); load Scala .scl; Monsoon's note faders delegate",
+      "description": "Tuning + scale authoring expander — 12 per-degree weight faders (scale mask) + cents knobs (tuning); load Scala .scl; Monsoon's note faders delegate",
       "tags": [
         "Expander",
         "Tuning",
@@ -163,7 +179,7 @@
     {
       "slug": "ColonnadesDuo",
       "name": "Colonnades Duo",
-      "description": "24-tone tuning + scale authoring expander \u2014 24 per-degree weight faders (scale mask) + cents knobs (tuning) in one row; load Scala .scl / .dmtune; Monsoon's note faders delegate",
+      "description": "24-tone tuning + scale authoring expander — 24 per-degree weight faders (scale mask) + cents knobs (tuning) in one row; load Scala .scl / .dmtune; Monsoon's note faders delegate",
       "tags": [
         "Expander",
         "Tuning",
@@ -173,7 +189,7 @@
     {
       "slug": "Sikit",
       "name": "Sikit",
-      "description": "Tuning expander \u2014 12 per-degree cents knobs retune Monsoon's 12-TET; load 12-note Scala .scl; scale mask stays with Monsoon",
+      "description": "Tuning expander — 12 per-degree cents knobs retune Monsoon's 12-TET; load 12-note Scala .scl; scale mask stays with Monsoon",
       "tags": [
         "Expander",
         "Tuning",
@@ -183,7 +199,7 @@
     {
       "slug": "StraitsEastSandsVisual",
       "name": "Straits East Sands Visual",
-      "description": "Monsoon Polyphonic Per Channel Probability Visualisation, Manipulation, and Modulation Expander \u2014 all 15 poly voices (V2-V16)",
+      "description": "Monsoon Polyphonic Per Channel Probability Visualisation, Manipulation, and Modulation Expander — all 15 poly voices (V2-V16)",
       "tags": [
         "Expander",
         "Sequencer",
@@ -205,9 +221,29 @@
       ]
     },
     {
+      "slug": "SandsDistributionExpander",
+      "name": "Sands Distribution Expander",
+      "description": "The distribution sub-expander (dual role) — per-lane param1/param2/tilt/atom/warp with a mod jack each, the permanent distribution editor. Cross-voice on Macro, per-voice on East.",
+      "tags": [
+        "Expander",
+        "Digital",
+        "Random"
+      ]
+    },
+    {
+      "slug": "SandsMacroSendSubpanel",
+      "name": "Sands Macro Send Subpanel",
+      "description": "The Macro send subpanel — every Macro→voice send in one snapped panel: the per-voice mix-in sends and PRE/POST taps, plus the distribution-param send amounts. Snaps right of the Macro visual.",
+      "tags": [
+        "Expander",
+        "Digital",
+        "Random"
+      ]
+    },
+    {
       "slug": "Lantern",
       "name": "Lantern",
-      "description": "Read-only note-output visualiser for Monsoon \u2014 16-lane display of notes, ties, legato and accents",
+      "description": "Read-only note-output visualiser for Monsoon — 16-lane display of notes, ties, legato and accents",
       "tags": [
         "Expander",
         "Sequencer",
@@ -274,6 +310,70 @@
       "tags": [
         "Utility",
         "Random"
+      ]
+    },
+    {
+      "slug": "StraitsSubgatePanelRatchetRest",
+      "name": "Straits Subgate Ratchet Rest",
+      "description": "Subgate per-voice RATCHET REST thresholds: 16 voices, one decision (6/6/4 lane panel)",
+      "tags": [
+        "expander"
+      ]
+    },
+    {
+      "slug": "StraitsSubgatePanelRatchetLegato",
+      "name": "Straits Subgate Ratchet Legato",
+      "description": "Subgate per-voice RATCHET LEGATO thresholds: 16 voices, one decision (6/6/4 lane panel)",
+      "tags": [
+        "expander"
+      ]
+    },
+    {
+      "slug": "StraitsSubgatePanelRatchetAccent",
+      "name": "Straits Subgate Ratchet Accent",
+      "description": "Subgate per-voice RATCHET ACCENT thresholds: 16 voices, one decision (6/6/4 lane panel)",
+      "tags": [
+        "expander"
+      ]
+    },
+    {
+      "slug": "StraitsSubgatePanelRatchetAdvance",
+      "name": "Straits Subgate Ratchet Advance",
+      "description": "Subgate per-voice RATCHET ADVANCE thresholds: 16 voices, one decision (6/6/4 lane panel)",
+      "tags": [
+        "expander"
+      ]
+    },
+    {
+      "slug": "StraitsSubgatePanelGhostRest",
+      "name": "Straits Subgate Ghost Rest",
+      "description": "Subgate per-voice GHOST REST thresholds: 16 voices, one decision (6/6/4 lane panel)",
+      "tags": [
+        "expander"
+      ]
+    },
+    {
+      "slug": "StraitsSubgatePanelGhostLegato",
+      "name": "Straits Subgate Ghost Legato",
+      "description": "Subgate per-voice GHOST LEGATO thresholds: 16 voices, one decision (6/6/4 lane panel)",
+      "tags": [
+        "expander"
+      ]
+    },
+    {
+      "slug": "StraitsSubgatePanelGhostAccent",
+      "name": "Straits Subgate Ghost Accent",
+      "description": "Subgate per-voice GHOST ACCENT thresholds: 16 voices, one decision (6/6/4 lane panel)",
+      "tags": [
+        "expander"
+      ]
+    },
+    {
+      "slug": "StraitsSubgatePanelGhostAdvance",
+      "name": "Straits Subgate Ghost Advance",
+      "description": "Subgate per-voice GHOST ADVANCE thresholds: 16 voices, one decision (6/6/4 lane panel)",
+      "tags": [
+        "expander"
       ]
     }
   ]
