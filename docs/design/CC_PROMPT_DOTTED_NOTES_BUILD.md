@@ -70,3 +70,45 @@ allowed() for a DOTTED-kind value checks its own bit. Map each dotted to a bit (
   toggles; dial 12 detents natural duration order (no display-sort needed).
 - Legato free; gate mode note-length nullification robust (named, TODO for the vestigial routing).
 - Goldens byte-identical (dotted off) INCLUDING subgate; run_all + strict green.
+
+════════════════════════════════════════════════════════════════════════════════
+## THE TWO ORDERS — ENGINE (strict duration) vs DIAL (grouped). COPY VERBATIM, DO NOT SORT (Rodney)
+CC kept mis-sorting. Here are the exact arrays. DO NOT re-sort them — copy them literally.
+
+### ENGINE NOTE_VALUES[] — STRICT note-length order, longest → shortest (indices 0-11)
+The engine REQUIRES strict monotonic-decreasing duration by index (the varyNoteIndex distance/legato length
+math assumes index order == duration order). This order is STRICTLY DECREASING (verified):
+    idx 0 : 1/1    (16.0 steps)
+    idx 1 : 1/2.   (12.0)
+    idx 2 : 1/2    ( 8.0)
+    idx 3 : 1/4.   ( 6.0)
+    idx 4 : 1/4    ( 4.0)
+    idx 5 : 1/8.   ( 3.0)
+    idx 6 : 1/4T   ( 2.6667)
+    idx 7 : 1/8    ( 2.0)
+    idx 8 : 1/16.  ( 1.5)
+    idx 9 : 1/8T   ( 1.3333)
+    idx 10: 1/16   ( 1.0)
+    idx 11: 1/32   ( 0.5)
+NOTE: 1/8. (3.0) is LONGER than 1/4T (2.667), and 1/16. (1.5) LONGER than 1/8T (1.333) — that's correct by
+actual duration, so in STRICT order dotted-8th precedes quarter-triplet and dotted-16th precedes 8th-triplet.
+This is the ENGINE table. fractions: 1/1=1.0, 1/2.=0.75, 1/2=0.5, 1/4.=0.375, 1/4=0.25, 1/8.=0.1875,
+1/4T=1/6, 1/8=0.125, 1/16.=0.09375, 1/8T=1/12, 1/16=0.0625, 1/32=0.03125.
+
+### DIAL — GROUPED order (reads naturally: each base flanked by its dotted/triplet)
+The DIAL shows a DIFFERENT order via a permutation (so the engine keeps strict duration, the dial reads
+nicely). DIAL order: 1/1, 1/2., 1/2, 1/4., 1/4, 1/4T, 1/8., 1/8, 1/8T, 1/16., 1/16, 1/32.
+Implement as a fixed permutation (NOT a re-sort of the engine table):
+    constexpr int DIAL_ORDER[12] = { 0, 1, 2, 3, 4, 6, 5, 7, 9, 8, 10, 11 };  // dial slot -> engine index
+    // (inverse is the same array here: ENGINE_TO_DIAL[12] = { 0,1,2,3,4,6,5,7,9,8,10,11 })
+- Dial draw: label at slot k = NOTE_VALUES[DIAL_ORDER[k]].label (MonsoonWidget.cpp:860 loop).
+- Knob param → engine index: engineIdx = DIAL_ORDER[ round(param to slot) ].
+- Stored engine index → knob position: slot = ENGINE_TO_DIAL[engineIdx].
+Only TWO pairs swap between the orders (1/8.↔1/4T at engine 5/6, 1/16.↔1/8T at engine 8/9); everything else
+is identity. The engine NEVER sees the dial order — it only ever uses its strict-duration indices.
+
+### CC: the failure you keep making
+"Sort the table longest to shortest" is the instruction you botch. DON'T SORT. COPY the ENGINE array above
+verbatim (it's already strictly decreasing) and COPY the DIAL_ORDER permutation verbatim. Engine = strict
+duration (array above). Dial = grouped (via DIAL_ORDER). They are two separate given lists; do not conflate
+or re-derive them.
