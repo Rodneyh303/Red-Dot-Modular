@@ -44,3 +44,13 @@ the SEARCH WITHIN (per-voice scanOfs). Clean separation.
 The scan was never a clock — it is a bounded offset. Per-voice is "an array of that offset + per-voice
 advance of the existing per-voice ticks", not "N new clocks". It IS bounded; it just touches the clock↔tick
 relationship UAS is resettling, so it lands cleanly AFTER UAS.
+
+## STRONGER REASON TO SEQUENCE AFTER UAS — wrap behaviour (Rodney)
+The scanOfs (and per-voice scanOfs[v]) WRAPS at the phrase/variation-window boundary. UAS is precisely the
+thing that REDEFINES wrap: the nested maps, the global-length-wraps-the-read fix, the direction/wrap
+composition across global/voice/lane levels, and the parked DNA_LCM-kill (which changes the wrap MODULUS
+entirely). So building poly stutter BEFORE UAS would wrap scanOfs[v] against the CURRENT wrap semantics,
+then UAS changes them → rework or silent-wrong-wrap. Building it AFTER UAS means scanOfs[v] wraps against
+the SETTLED final wrap model — one correct implementation, no rework. The scan is "local window scan,
+wrapping at the window boundary", and WHAT that boundary is / HOW it wraps is UAS's domain. Poly stutter
+consumes UAS's wrap model; it must not predate it.
