@@ -52,3 +52,32 @@ The "advanceOffset[voice] on top of LOR(totalStepsElapsed)" approach is a PRAGMA
 global counter. It is a FALLBACK only — if the position-holder migration proves too big to do now. The
 TARGET is the position-holder model (no global counter), not the bolt-on. Prefer the migration since it is
 part of the UAS fix-up and makes 32 steps cheap; use the bridge only if the migration must be deferred.
+
+════════════════════════════════════════════════════════════════════════════════
+## SEQUENCING — poly advance FIRST (its tests de-risk the counter removal) (Rodney)
+Supersedes "cleanup first". The order is:
+1. POLY STEP-ADVANCE first, via the offset-on-LOR BRIDGE (advanceOffset[voice] on the current counter),
+   WITH a thorough PER-VOICE-DIVERGENCE unit-test suite (voice 1 advances while voice 3 holds → they read
+   these positions; backward; wrap at phrase; global-locked == bit-identical to mono).
+2. COUNTER REMOVAL (readers → UAS, one at a time, bit-identical) — proven by BOTH the existing goldens
+   (synchronized behaviour) AND the step-1 divergence tests (per-voice behaviour).
+3. 32 STEPS — nearly free under the clean model (length-agnostic position mapping).
+
+### WHY THIS ORDER (the testing argument — Rodney)
+The counter removal's WHOLE PURPOSE is to enable per-voice DIVERGENCE, but the existing goldens only test
+SYNCHRONIZED (mono) behaviour. Remove the counter first and you prove "synchronized unchanged" while the
+case that matters (voices at different positions) has NO coverage. Build poly advance FIRST, with divergence
+tests, and those tests become the coverage that proves the counter removal preserves DIVERGENT behaviour,
+not just synchronized. You do the scary refactor WITH coverage of the scary case.
+
+### "BUILD TWICE" is NOT a problem — the TESTS are the durable asset
+The bridge implementation (advanceOffset on the counter) gets REWORKED when the counter dies — but the
+TESTS do not. The tests pin BEHAVIOUR ("these voices read these positions"), which must hold identically
+before and after. So: feature built once (reworked onto the clean model), test suite written once and
+SURVIVES the rework, VALIDATING it. The bridge is cheap/throwaway; the divergence test suite is the valuable
+durable thing, and it only exists because poly advance was built first. The rework is SAFE precisely because
+those tests prove it.
+
+### BONUS
+Ships the cool feature (per-voice stuttering — nearly dumped) NOW, and it does double duty as the safety net
+for the counter cleanup. Musical payoff + de-risked refactor from one piece of work.
