@@ -58,3 +58,24 @@ BIPOLAR, range [-1,+1]:
 
 ## AFTER THIS
 Rack-test the full wandering, THEN merge fix/subgate-merge → trunk. (Unified-addressing rebases after.)
+
+════════════════════════════════════════════════════════════════════════════════
+## BIPOLAR SCOPE — two different cases (Rodney)
+The bipolar requirement differs by knob, because of dual-use vs single-use:
+
+### Existing VARIATION lane (main, Monsoon/lane expander) — bipolar ONLY in GATE MODE
+Dual-use: note-length VARIATION in clock/phase, STEP-ADVANCE in gate mode. So bipolar ONLY in gate mode;
+in clock/phase it keeps its existing UNIPOLAR note-length meaning (negative is meaningless there). This is
+the mode-conditional case — the knob's value reinterprets to [-1,+1] in gate mode, stays unipolar
+note-length in clock/phase. Mind the shared 0.5 knob default across modes (don't break mode A/clock/phase).
+
+### Subgate ADV knobs (RATCHET ADV / GHOST ADV on Straits — GLOBAL and PER-VOICE) — ALWAYS bipolar
+Single-use: these ONLY ever mean step-advance (ratchet/ghost advance). No clock/phase meaning to protect.
+So they are ALWAYS BIPOLAR, centered at 0, UNCONDITIONALLY — no mode gating. Simpler than the Variation
+lane: they're purpose-built bipolar advance knobs from the start (both the global subgate ADV knobs and the
+per-voice subgate ADV panel knobs). Center = 0 = hold; + = forward advance prob; - = backward.
+
+### Net
+- Variation lane: mode-conditional bipolar (gate-mode only), clock/phase unchanged.
+- ALL subgate ADV knobs (global + per-voice): always bipolar, center 0, no mode check.
+Both feed the same decide(p,u) step-advance mechanism; only WHEN they're bipolar differs.
