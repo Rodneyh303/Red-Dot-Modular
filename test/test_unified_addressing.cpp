@@ -64,16 +64,21 @@ struct Capture {
 };
 
 // ── The Stage-1 golden pins (captured PRE-CHANGE — do not touch) ────────────────
-static const uint64_t UA_IDENTITY_A  = 0xa843e2ff14883ab9ULL;
-static const uint64_t UA_IDENTITY_B  = 0x30aed95ef0e65fb8ULL;   // re-pinned (== GOLDEN_B post-merge)
-static const uint64_t UA_IDENTITY_BS = 0xcffae9458b9257fdULL;   // re-pinned (== GOLDEN_BS post-merge)
-static const uint64_t UA_NONDIV_A    = 0x73a9b8753ca0c395ULL;
-static const uint64_t UA_NONDIV_B    = 0x91c918e1e8d8b09cULL;   // re-pinned (post-merge)
-static const uint64_t UA_NONDIV_BS   = 0xd1fa2e8a6d5e2a33ULL;   // re-pinned (post-merge)
+// DOTTED BUILD re-pin: the capture records r.nvIdx, and the duration-interleave
+// renumbered indices 2..7 — the representation moved, the music did not (the
+// differential's NORMALIZATION PROOF: the whole stream byte-identical with the
+// nvIdx byte mapped back; the marches' draws mapped through legacyNoteValueIndex).
+// UA_IDENTITY_* still equal the differential's GOLDEN_* (byte-faithful harness).
+static const uint64_t UA_IDENTITY_A  = 0x77b578398d7ed855ULL;
+static const uint64_t UA_IDENTITY_B  = 0x0da199b326088109ULL;   // re-pinned (dotted interleave)
+static const uint64_t UA_IDENTITY_BS = 0x7fe7d40c04ffdb31ULL;   // re-pinned (dotted interleave)
+static const uint64_t UA_NONDIV_A    = 0x116dbd55d0fe5ca9ULL;   // re-pinned (dotted interleave)
+static const uint64_t UA_NONDIV_B    = 0xa6194f740ae8b705ULL;   // re-pinned (dotted interleave)
+static const uint64_t UA_NONDIV_BS   = 0xd0d7d63241964b8fULL;   // re-pinned (dotted interleave)
 // The MAPPED-mode digests (new behaviour — captured on the Stage-1 engine).
-static const uint64_t UA_WIN10_A     = 0x8ed5fcb47ac148a2ULL;
-static const uint64_t UA_WIN10_B     = 0x98174b5f37a3e0ceULL;   // re-pinned (post-merge)
-static const uint64_t UA_WIN10O4_A   = 0xc83f5b01041db8dbULL;
+static const uint64_t UA_WIN10_A     = 0x6e535a9476c8fbc8ULL;   // re-pinned (dotted interleave)
+static const uint64_t UA_WIN10_B     = 0xabf9895225d7fb57ULL;   // re-pinned (dotted interleave)
+static const uint64_t UA_WIN10O4_A   = 0x1b0dded5d47ca5a3ULL;   // re-pinned (dotted interleave)
 
 static PatternInput makeInput(float variationAmount) {
     PatternInput in;
@@ -308,7 +313,7 @@ static Capture runMarches(Mode mode, bool nonDiv, int lenWin, int offWin) {
         seedEngine(c.eng, c.rng);
         if (nonDiv) authorNonDivLor(c.eng);
         if (lenWin != 16 || offWin != 0) c.eng.updateWindow((float)lenWin, 0.f, false, (float)offWin, 0.f, false);
-        c.noteVal = 2.f + (float)(int)(c.rng.nextFloat() * 4.999f);
+        c.noteVal = (float)legacyNoteValueIndex(2 + (int)(c.rng.nextFloat() * 4.999f));
         const float varAmt = 0.20f + 0.70f * c.rng.nextFloat();
         c.in = makeInput(varAmt);
         if      (mode == MODE_A)  marchModeA(c, cap);

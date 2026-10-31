@@ -156,7 +156,7 @@ static void marchFree(int seed, const uint16_t words[16], Tallies& t) {
     authorGraph(eng, words);
     eng.numPolyVoices = 15;
     seedEngine(eng, rng);
-    const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+    const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
     const float varAmt  = 0.20f + 0.70f * rng.nextFloat();
     const PatternInput in = makeInput(varAmt);
     redDot::RateManager rm;
@@ -203,7 +203,7 @@ static void marchStar(int seed, Tallies& t) {
     authorStar(eng);   // D2 seam: the legacy sound as an authored graph
     eng.numPolyVoices = 15;
     seedEngine(eng, rng);
-    const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+    const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
     const float varAmt  = 0.20f + 0.70f * rng.nextFloat();
     const PatternInput in = makeInput(varAmt);
     redDot::RateManager rm;
@@ -267,7 +267,7 @@ static void marchGate(int seed, const uint16_t words[16], GateTallies& t) {
     authorGraph(eng, words);
     eng.numPolyVoices = 15;
     seedEngine(eng, rng);
-    const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+    const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
     const float varAmt  = 0.20f + 0.70f * rng.nextFloat();
     const PatternInput in = makeInput(varAmt);
     GateStream main; bool prevMainHigh = false;
@@ -399,7 +399,7 @@ static void marchGateBS(int seed, const uint16_t words[16], GhostTallies& t) {
     eng.voices[dotModular::VoiceResolver::slot(2)].restProb      = 0.02f;   // V2: the rest draw passes
     eng.voices[dotModular::VoiceResolver::slot(3)].variationProb = 0.98f;   // V3: same
     eng.voices[dotModular::VoiceResolver::slot(3)].restProb      = 0.02f;
-    const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+    const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
     const float varAmt  = 0.20f + 0.70f * rng.nextFloat();
     const PatternInput in = makeInput(varAmt);
     GateStream main, ghost; bool prevMainHigh = false;
@@ -634,7 +634,7 @@ static void marchFreeAll(int seed, const uint16_t words[16], const uint16_t anc[
     authorGraph(eng, words);
     eng.numPolyVoices = 15;
     seedEngine(eng, rng);
-    const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+    const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
     const PatternInput in = makeInput(0.20f + 0.70f * rng.nextFloat());
     redDot::RateManager rm;
     for (int step = 0; step < kSteps; ++step) {
@@ -688,7 +688,7 @@ static void marchGateAll(int seed, const uint16_t words[16], const uint16_t anc[
     authorGraph(eng, words);
     eng.numPolyVoices = 15;
     seedEngine(eng, rng);
-    const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+    const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
     const PatternInput in = makeInput(0.20f + 0.70f * rng.nextFloat());
     GateStream main; bool prevMainHigh = false;
     bool latch[17] = {};   // indexed by VOICE number 2..16 ([0..1] unused)
@@ -791,7 +791,7 @@ static void marchGateBSAll(int seed, const uint16_t words[16], PropTalliesBS& t)
         eng.voices[dotModular::VoiceResolver::slot(v)].variationProb = 0.98f;   // stats are NOT
         eng.voices[dotModular::VoiceResolver::slot(v)].restProb      = 0.02f;   // the property
     }
-    const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+    const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
     const PatternInput in = makeInput(0.20f + 0.70f * rng.nextFloat());
     GateStream main, ghost; bool prevMainHigh = false;
     bool latch[17] = {};   // indexed by VOICE number 2..16 ([0..1] unused)
@@ -929,7 +929,7 @@ int main() {
             seedEngine(eng, rng);
             eng.voices[dotModular::VoiceResolver::slot(2)].restProb = 1.0f;   // V2: always rest
             eng.voices[dotModular::VoiceResolver::slot(4)].restProb = 0.0f;   // V4: never rest
-            const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+            const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
             const float varAmt  = 0.20f + 0.70f * rng.nextFloat();
             const PatternInput in = makeInput(varAmt);
             redDot::RateManager rm;
@@ -1007,7 +1007,7 @@ int main() {
             authorGraph(eng, words);
             eng.numPolyVoices = 15;
             seedEngine(eng, rng);
-            const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+            const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
             const PatternInput in = makeInput(0.20f + 0.70f * rng.nextFloat());
             redDot::RateManager rm;
             for (int step = 0; step < kSteps; ++step) {
@@ -1057,7 +1057,7 @@ int main() {
             authorGraph(eng, words);
             eng.numPolyVoices = 15;
             seedEngine(eng, rng);
-            const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+            const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
             const PatternInput in = makeInput(0.20f + 0.70f * rng.nextFloat());
             redDot::RateManager rm;
             for (int step = 0; step < kSteps; ++step) {

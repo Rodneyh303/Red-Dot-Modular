@@ -91,18 +91,20 @@ int main() {
         });
     }
 
-    // ── C3 lengthCeiling: the shorter window (larger NOTE_VALUES index) wins ────────
-    SUITE("C3 lengthCeiling — max(own, parent) over the full 7x7 grid");
+    // ── C3 lengthCeiling: the shorter-DURATION window wins ────────
+    // (DOTTED BUILD: the table is no longer index-monotone — the authority is
+    // noteShorterOf's fraction compare; the ceiling is always one of the two sides.)
+    SUITE("C3 lengthCeiling — noteShorterOf(own, parent) over the full 7x7 grid");
     for (int own = 0; own <= 6; ++own)
         for (int p = 0; p <= 6; ++p) {
             std::ostringstream desc;
-            desc << "own=" << own << " parent=" << p << " -> ceiling=" << std::max(own, p);
+            desc << "own=" << own << " parent=" << p << " -> ceiling=" << noteShorterOf(own, p);
             TEST(desc.str(), {
                 EXPECT_EQ(lengthCeiling(own, pv(MonoDecision::MidNote, p, true, true, true)),
-                          std::max(own, p));
-                // Monotone containment: the ceiling never lengthens the voice past either side.
-                EXPECT(lengthCeiling(own, pv(MonoDecision::MidNote, p, true, true, true)) >= own);
-                EXPECT(lengthCeiling(own, pv(MonoDecision::MidNote, p, true, true, true)) >= p);
+                          noteShorterOf(own, p));
+                // Containment: the fold PICKS one of the two sides — never invents a third.
+                EXPECT(lengthCeiling(own, pv(MonoDecision::MidNote, p, true, true, true)) == own
+                    || lengthCeiling(own, pv(MonoDecision::MidNote, p, true, true, true)) == p);
             });
         }
 

@@ -108,7 +108,7 @@ int main() {
         const PatternInput in = makeInput();
         populateV0(eng, in, 0.f);
         const auto rm = stepTick();
-        StepResult r = eng.executeModeA(rm, /*noteVal=*/2.f, in);
+        StepResult r = eng.executeModeA(rm, /*noteVal=*/3.f, in);
         EXPECT(r.stepped);
         EXPECT(r.decision != D::Rest);
         EXPECT(eng.gs.gateHeld);                       // GATE_OUTPUT would emit
@@ -131,7 +131,7 @@ int main() {
         const PatternInput in = makeInput();
         populateV0(eng, in, 0.f);
         const auto rm = stepTick();
-        StepResult r = eng.executeModeA(rm, 2.f, in);
+        StepResult r = eng.executeModeA(rm, 3.f, in);
         EXPECT(r.stepped);
         EXPECT(r.decision != D::Rest);
         EXPECT(eng.gs.gateHeld);
@@ -150,7 +150,7 @@ int main() {
         const PatternInput in = makeInput();
         populateV0(eng, in, 0.5f);
         const auto rm = stepTick();
-        StepResult r = eng.executeModeA(rm, 2.f, in);
+        StepResult r = eng.executeModeA(rm, 3.f, in);
         EXPECT(r.decision == D::Rest);
         EXPECT(!eng.gs.gateHeld);
     });
@@ -169,7 +169,7 @@ int main() {
         const PatternInput in = makeInput();
         populateV0(eng, in, 0.5f);
         const auto rm = stepTick();
-        StepResult r = eng.executeModeA(rm, 2.f, in);
+        StepResult r = eng.executeModeA(rm, 3.f, in);
         EXPECT(r.decision == D::Rest);
         EXPECT(!eng.gs.gateHeld);
     });

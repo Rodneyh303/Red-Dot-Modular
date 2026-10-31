@@ -173,7 +173,7 @@ static void marchModeA(int seed, Capture& cap, int& c2n, int& envn) {
     injectLegacyStarGraph(eng);   // D2 seam: the legacy sound as an authored graph
     eng.numPolyVoices = 15;
     seedEngine(eng, rng);
-    const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);   // 1/4 .. 1/32
+    const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));   // 1/4 .. 1/32
     const float varAmt  = 0.20f + 0.70f * rng.nextFloat();
     const PatternInput in = makeInput(varAmt);
     redDot::RateManager rm;
@@ -202,7 +202,7 @@ static void marchModeB(int seed, Capture& cap, int& c2n, int& envn) {
     injectLegacyStarGraph(eng);   // D2 seam: the legacy sound as an authored graph
     eng.numPolyVoices = 15;
     seedEngine(eng, rng);
-    const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+    const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
     const float varAmt  = 0.20f + 0.70f * rng.nextFloat();
     const PatternInput in = makeInput(varAmt);
     GateStream main; bool prevMainHigh = false;
@@ -270,7 +270,7 @@ static void marchModeBS(int seed, Capture& cap, int& c2n, int& envn) {
     injectLegacyStarGraph(eng);   // D2 seam: the legacy sound as an authored graph
     eng.numPolyVoices = 15;
     seedEngine(eng, rng);
-    const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+    const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
     const float varAmt  = 0.20f + 0.70f * rng.nextFloat();
     const PatternInput in = makeInput(varAmt);
     GateStream main, ghost; bool prevMainHigh = false;
@@ -348,9 +348,16 @@ static void marchModeBS(int seed, Capture& cap, int& c2n, int& envn) {
 // probability — the unchanged digest is the regression guard that the feature stays
 // gate-mode-only). The p=1 identity (byte-identity with the PRE-feature engine) is
 // pinned separately by test_step_advance (the spec's golden pin).
-static const uint64_t GOLDEN_A  = 0xa843e2ff14883ab9ULL;
-static const uint64_t GOLDEN_B  = 0x30aed95ef0e65fb8ULL;   // re-pinned (freeze-fix scan)
-static const uint64_t GOLDEN_BS = 0xcffae9458b9257fdULL;   // re-pinned (freeze-fix scan)
+// DOTTED BUILD re-pin (the FOURTH move): the capture records r.nvIdx, and the
+// duration-interleave renumbered indices 2..7 — the REPRESENTATION moved, the
+// music did not. The NORMALIZATION PROOF: mapping the nvIdx byte back through
+// the legacy inverse reproduced the pre-dotted goldens
+// 0xa843e2ff14883ab9 / 0x30aed95ef0e65fb8 / 0xcffae9458b9257fd EXACTLY
+// (92928 checks, 0 failed). The marches' rng draws are mapped through
+// legacyNoteValueIndex — same musical values, same draw sequence.
+static const uint64_t GOLDEN_A  = 0x77b578398d7ed855ULL;
+static const uint64_t GOLDEN_B  = 0x0da199b326088109ULL;   // re-pinned (dotted interleave)
+static const uint64_t GOLDEN_BS = 0x7fe7d40c04ffdb31ULL;   // re-pinned (dotted interleave)
 
 int main() {
     std::printf("\033[1mrhythm decision differential — the R-1 oracle (stage R)\033[0m\n");

@@ -28,6 +28,7 @@
 
 #include <cstdint>
 #include <algorithm>
+#include "../NoteValues.hpp"   // noteShorterOf — the "shorter note" authority (DOTTED BUILD)
 
 // ── MonoDecision ────────────────────────────────────────────────────────────────
 // MOVED HERE from SequencerEngine.hpp (R-2): the decision vocabulary is RDM vocabulary —
@@ -97,9 +98,11 @@ inline bool restClose(const ParentView& p) {
 // C3 — length ceiling: the voice may never hold past this container's next event.
 // NOTE_VALUES is ordered slowest→fastest, so the LARGER index is the SHORTER note — the
 // result is the shorter window; folding over containers keeps the shortest ceiling (D1).
-// (SequencerEngine.cpp nvIdxForVoice clamp.)
+// (SequencerEngine.cpp nvIdxForVoice clamp.) DOTTED BUILD: the table is no longer
+// index-monotone — the "shorter" comparison routes through noteShorterOf (a direct
+// fraction compare), never a raw index compare.
 inline int lengthCeiling(int ownNv, const ParentView& p) {
-    return (ownNv > p.nvIdx) ? ownNv : p.nvIdx;
+    return noteShorterOf(ownNv, p.nvIdx);
 }
 
 // C4 — hold follow: mid-hold, the voice follows the articulation shape only while this
@@ -379,7 +382,7 @@ struct RhythmDecisionCore {
             unionMayOnset   = unionMayOnset || c.mayOnset;                        // D3 union (the OFFERS)
             d.forcedRest    = d.forcedRest || c.forcedRest;                      // D1
             d.lengthCeiling = first ? c.lengthCeiling
-                                    : std::max(d.lengthCeiling, c.lengthCeiling); // D1
+                                    : noteShorterOf(d.lengthCeiling, c.lengthCeiling); // D1 (the shorter window wins; fraction-compared — DOTTED BUILD)
             d.holdFollow    = first ? c.holdFollow    : (d.holdFollow && c.holdFollow);    // D1
             d.envelopeOpen  = first ? c.envelopeOpen  : (d.envelopeOpen && c.envelopeOpen); // D1
             if (first) d.gateType = c.gateType;                                  // D4 default

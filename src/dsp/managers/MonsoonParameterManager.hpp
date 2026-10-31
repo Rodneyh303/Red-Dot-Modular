@@ -1,4 +1,5 @@
 #pragma once
+#include "../NoteValues.hpp"   // NUM_NOTE_VALUES (getNoteValueNorm's range — DOTTED BUILD)
 
 #include <cmath>
 #include "rack.hpp"
@@ -61,12 +62,14 @@ public:
     float getQmixLevel() const;
 
     /// Big-5 effective values NORMALISED to 0..1 (for modulation visualisation).
-    /// These reuse the effective-value getters above; NOTE_VALUE is divided by 8
-    /// so all five share a 0..1 range the widgets can compare to knob position.
-    // Normalize over the param's ACTUAL range 0..7 (NUM_NOTE_VALUES-1 = 8 values,
-    // indices 0..7) so this matches paramQuantities->getScaledValue() (the mod-arc's
-    // setNorm). Dividing by 8 desynced set vs mod and left a permanent arc.
-    float getNoteValueNorm() const { return getNoteValue() / 7.f; }
+    /// These reuse the effective-value getters above; NOTE_VALUE is divided by the
+    /// dial's span so all five share a 0..1 range the widgets can compare to knob
+    /// position.
+    // Normalize over the param's ACTUAL range 0..NUM_NOTE_VALUES-1 (DOTTED BUILD:
+    // 12 values, indices 0..11 — was 8) so this matches paramQuantities->
+    // getScaledValue() (the mod-arc's setNorm). A hardcoded divisor desynced set
+    // vs mod and left a permanent arc.
+    float getNoteValueNorm() const { return getNoteValue() / (float)(NUM_NOTE_VALUES - 1); }
     float getVariationNorm() const { return getVariation(); }
     float getLegatoNorm()    const { return getLegato(); }
     float getRestNorm()      const { return getRest(); }

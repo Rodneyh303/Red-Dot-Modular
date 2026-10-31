@@ -64,9 +64,9 @@ static Out decide(bool prevSlur,             // previous note's onset commitment
 }
 
 int main(){
-    const int I16 = 6;   // 1/16 (integer step → can lead)   [NoteValues index]
-    const int I8T = 5;   // 1/8T (fractional → cannot lead)
-    const int I4  = 2;   // 1/4  (integer step → can lead)
+    const int I16 = 9;   // 1/16 (integer step → can lead)   [NoteValues index; DOTTED BUILD: was 6]
+    const int I8T = 8;   // 1/8T (fractional → cannot lead; was 5)
+    const int I4  = 3;   // 1/4  (integer step → can lead; was 2)
 
     // Sanity: lead-eligibility predicate.
     chk( noteCanLeadLegato(I16), "1/16 can lead");

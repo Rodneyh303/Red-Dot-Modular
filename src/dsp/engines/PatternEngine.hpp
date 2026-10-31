@@ -23,6 +23,7 @@
 #include <cmath>
 #include <cstdint>
 #include <algorithm>
+#include "../NoteValues.hpp"   // NUM_NOTE_VALUES + NOTE_VALUES (varyNoteIndex's index domain — DOTTED BUILD)
 #include <unordered_map>
 #include <utility>
 #include "../PhiloxRng.hpp"
@@ -55,7 +56,7 @@ struct PatternInput {
     // in updatePatternInput — NOT transported through PatternInput.
     // restProb and variationAmount remain here because PatternEngine reads them for
     // pattern generation (snapshotPreRemap, varyNoteIndex, etc.) — not just the step cascade.
-    float noteValue        = 2.f;   // mono note-value INDEX 0..7 (2 = 1/4 note)
+    float noteValue        = 3.f;   // mono note-value INDEX 0..11 (3 = 1/4 note; DOTTED BUILD: was 2 pre-interleave)
     float octaveLo         = 2.f;
     float octaveHi         = 5.f;
     float transpose        = 0.f;

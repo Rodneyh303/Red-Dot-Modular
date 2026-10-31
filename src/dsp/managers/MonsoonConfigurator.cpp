@@ -11,8 +11,10 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     std::vector<std::string> noteValueLabels;
     for (int i = 0; i < NUM_NOTE_VALUES; ++i)
         noteValueLabels.push_back(NOTE_VALUES[i].label);
-    m->configSwitch(NOTE_VALUE_PARAM, 0.f, (float)(NUM_NOTE_VALUES - 1), 4.f,
+    m->configSwitch(NOTE_VALUE_PARAM, 0.f, (float)(NUM_NOTE_VALUES - 1), 6.f,
         "Note value", noteValueLabels);
+    // (default 6 = 1/8 — the SAME value the pre-dotted default index 4 named;
+    //  the duration interleave shifted the index, not the default)
     m->configParam(VARIATION_PARAM,   0.f, 1.f, 0.5f, "Variation (longer–shorter)");
     m->configParam(LEGATO_PARAM,      0.f, 1.f, 0.00f, "Legato probability");
     m->configParam(REST_PARAM,        0.f, 1.f, 0.00f, "Rest probability");

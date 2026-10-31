@@ -711,9 +711,10 @@ struct SequencerEngine {
     int getLegatoStepForVoice(VoiceSlot bank) const;
 
     // This voice's note-length index, CLAMPED so its hold can never exceed mono's.
-    // NOTE_VALUES is documented "ordered slowest -> fastest", so a HIGHER index is a SHORTER note;
-    // std::max(nv, mono) therefore guarantees duration <= mono's. Articulation is thus SUBTRACTIVE,
-    // exactly like rest and accent: voices may release early, never hold past mono's next event.
+    // DOTTED BUILD: the table is no longer index-monotone — the clamp (lengthCeiling /
+    // noteShorterOf) compares FRACTIONS, guaranteeing duration <= mono's. Articulation
+    // is thus SUBTRACTIVE, exactly like rest and accent: voices may release early,
+    // never hold past mono's next event.
     int nvIdxForVoice(VoiceSlot bank, const PatternInput& input) const;
 
     // The single engine→editor lane conversion. The modifier stores (lorStore_, spread) are editor-

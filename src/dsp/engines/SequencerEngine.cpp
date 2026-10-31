@@ -2084,8 +2084,8 @@ int SequencerEngine::nvIdxForVoice(VoiceSlot bank, const PatternInput& input) co
     const int nv  = const_cast<SequencerEngine*>(this)->getNoteLenIdx(lastNoteVal_, input, r);
     // CLAMP to the parents' event grid (C3 lengthCeiling, F-1: the REAL fold over the staged
     // graph): a voice may release early, never hold past any container's next note.
-    // NOTE_VALUES is ordered slowest→fastest, so the SHORTER window (the larger index) wins —
-    // the fold keeps the max ceiling across containers (the named lengthCeiling per parent).
+    // DOTTED BUILD: the table is no longer index-monotone — lengthCeiling compares
+    // FRACTIONS (noteShorterOf), so the SHORTER window wins by duration, not index.
     // A FREE voice (empty mask, D2) holds its own drawn window — nothing clamps it.
     const uint16_t parents = rdm.parentsOf(bank.v);
     if (!parents) return nv;

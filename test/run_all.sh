@@ -102,7 +102,7 @@ TESTS=(
   "test_monotone_curve|"   # header-only: the .dmcurve Phase 1 math module (jansson via test/jansson.h shim)
   "test_MpeMath|"
   "test_multistep|"
-  "test_note_length|"
+  "test_note_length|$PE"   # DOTTED BUILD: the varyNoteIndex rank-window pins need PatternEngine.cpp
   "test_ownership_flip|$PE $SE $GS"   # layer-2 (ZAI_PROMPT_delegation_decision.md §4): the 16×7 owner-flip grid + warp-derivation pin — Rodney's 3-case rule fails a suite, not in ears
   "test_per_voice_articulation|$SE $GS $PE"
   "test_poly_slur_roll|"

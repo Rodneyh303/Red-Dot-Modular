@@ -319,10 +319,19 @@ float PatternEngine::genPitchLive(int& outSemitone, const PatternInput& in, floa
 
 // Apply variation bias to a note length index.
 int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
-    // Weights are evenly distributed over a window that expands from the base 
-    // index toward the shorter (var > 0.5) or longer (var < 0.5) extremes. 
-    // At 50% variation, only the base note is played. At extremes, weight 
+    // Weights are evenly distributed over a window that expands from the base
+    // toward the shorter (var > 0.5) or longer (var < 0.5) extremes.
+    // At 50% variation, only the base note is played. At extremes, weight
     // is shared uniformly across the reachable range.
+    //
+    // DOTTED BUILD step 2 — the RANK WINDOW: distances are RANKS in the ALLOWED
+    // subsequence (the base always a rung), NOT raw table indices. The 12-entry
+    // table interleaves dotted values, so raw index distances between the
+    // surviving straight/triplet values would change even with every dotted bit
+    // OFF — moving the marches. Over ranks, the default mask's rungs are exactly
+    // the legacy 8 values in the legacy relative order: rank distance == legacy
+    // index distance, identical weights, identical picks, bit-identical marches.
+    // Enabling a dotted bit simply inserts more rungs (dotted is additive).
 
     // The window gate, by FLAG not magic index (DOTTED BUILD step 1 — the table order
     // can now change freely): a straight value (-1) is always in the window; a gated
@@ -334,47 +343,59 @@ int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
         return (in.noteVariationMask & (1 << bit)) != 0;
     };
 
+    if (baseIdx < 0) baseIdx = 0;
+    if (baseIdx >= NUM_NOTE_VALUES) baseIdx = NUM_NOTE_VALUES - 1;
+
     float var = in.variationAmount;
     if (std::fabs(var - 0.5f) < 1e-4f) return baseIdx;
 
+    // The rungs: allowed entries in TABLE order, the base ALWAYS included (a
+    // dotted BASE plays even with its dotted bit off — the deterministic use case).
+    int rungs[NUM_NOTE_VALUES];
+    int nRungs = 0, baseRank = 0;
+    for (int i = 0; i < NUM_NOTE_VALUES; ++i) {
+        if (allowed(i) || i == baseIdx) {
+            if (i == baseIdx) baseRank = nRungs;
+            rungs[nRungs++] = i;
+        }
+    }
+
     float spread = 2.f * std::fabs(var - 0.5f); // 0..1
     int direction = (var < 0.5f) ? -1 : 1;
-    int targetExtreme = (direction == -1) ? 0 : 7;
-    float maxDist = (float)std::abs(targetExtreme - baseIdx);
-    
-    if (maxDist < 0.5f) return baseIdx; 
+    int targetExtremeRank = (direction == -1) ? 0 : nRungs - 1;
+    float maxDist = (float)std::abs(targetExtremeRank - baseRank);
+
+    if (maxDist < 0.5f) return baseIdx;
 
     float reach = spread * maxDist;
-    float weights[8] = {};
+    float weights[NUM_NOTE_VALUES] = {};
     float total = 0.f;
 
-    for (int i = 0; i < 8; ++i) {
-        int dist = direction * (i - baseIdx);
+    for (int rk = 0; rk < nRungs; ++rk) {
+        int dist = direction * (rk - baseRank);
         if (dist < 0) continue; // Only consider chosen direction
-        
-        if (i == baseIdx) {
-            weights[i] = 1.0f; // Base note always active
-        } else {
-            if (!allowed(i)) continue;
 
+        if (rk == baseRank) {
+            weights[rk] = 1.0f; // Base note always active
+        } else {
             float fDist = (float)dist;
             if (fDist <= reach) {
-                weights[i] = 1.0f;
+                weights[rk] = 1.0f;
             } else if (fDist < reach + 1.0f) {
-                weights[i] = reach - (fDist - 1.0f); // partial weight for the leading edge
+                weights[rk] = reach - (fDist - 1.0f); // partial weight for the leading edge
             }
         }
-        total += weights[i];
+        total += weights[rk];
     }
-    
+
     if (total <= 1e-6f) return baseIdx;
-    
+
     float acc = 0.f;
     float roll = r * total;
-    for (int i = 0; i < 8; ++i) {
-        if (weights[i] > 0.f) {
-            acc += weights[i];
-            if (roll <= acc) return i;
+    for (int rk = 0; rk < nRungs; ++rk) {
+        if (weights[rk] > 0.f) {
+            acc += weights[rk];
+            if (roll <= acc) return rungs[rk];
         }
     }
     return baseIdx;

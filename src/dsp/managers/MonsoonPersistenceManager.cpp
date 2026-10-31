@@ -1,6 +1,8 @@
 #include "MonsoonPersistenceManager.hpp"
 #include "../VoiceResolver.hpp"   // CC_PROMPT_STRONG_TYPES: VoiceSlot minting
+#include "../NoteValues.hpp"      // DOTTED BUILD: legacyNoteValueIndex (the patch remap)
 #include "../../Monsoon.hpp"
+#include <cmath>                  // std::round (the note-value remap)
 #include <cstdio>
 #include <cstdlib>
 
@@ -41,6 +43,9 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_object_set_new(root, "restartOnUnmute", json_boolean(m->restartOnUnmute));
     json_object_set_new(root, "reseedOnRestart", json_boolean(m->reseedOnRestart));
     json_object_set_new(root, "noteVariationMask", json_integer(m->noteVariationMask));
+    // DOTTED BUILD: the schema marker — its ABSENCE on load means a pre-dotted save,
+    // which triggers the NOTE_VALUE_PARAM legacy remap below.
+    json_object_set_new(root, "noteValueSchema", json_integer(2));
     json_object_set_new(root, "ppqnSetting", json_integer(m->ppqnSetting));
     json_object_set_new(root, "modeSelect", json_integer(m->modeSelect));
     json_object_set_new(root, "lightTheme", json_boolean(m->lightTheme));
@@ -319,6 +324,19 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "restartOnUnmute")) m->restartOnUnmute = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "reseedOnRestart")) m->reseedOnRestart = (bool)json_boolean_value(j);
     if (auto j = json_object_get(root, "noteVariationMask")) m->noteVariationMask = (int)json_integer_value(j);
+    // DOTTED BUILD — the note-value table grew 8 → 12 (dotted values interleaved at
+    // their duration positions), shifting dial indices 2..7. New saves carry
+    // noteValueSchema=2 (written in toJson); its ABSENCE means a pre-dotted save, so
+    // translate the stored NOTE_VALUE_PARAM through the legacy map — released
+    // patches' dials keep their exact musical values. (Rack loads params BEFORE this
+    // dataFromJson hook runs, so the raw stored value is already in m->params here.
+    // Idempotent: the remapped value is what a subsequent save persists, WITH the
+    // marker.)
+    if (!json_object_get(root, "noteValueSchema")) {
+        const float legacyV = m->params[MonsoonIds::NOTE_VALUE_PARAM].getValue();
+        m->params[MonsoonIds::NOTE_VALUE_PARAM].setValue(
+            (float)legacyNoteValueIndex((int)std::round(legacyV)));
+    }
     if (auto j = json_object_get(root, "ppqnSetting")) {
         int v = (int)json_integer_value(j);
         // Migrate legacy values (1/4/24 = old input-divider semantics) onto the

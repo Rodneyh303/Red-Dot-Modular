@@ -308,10 +308,10 @@ int main(){
     TEST("variation=0.5 (neutral): result within ±2 of base", {
         auto pe=fresh(7.f);
         PatternInput in=allActive(); in.variationAmount=0.5f;
-        for(int base=0;base<=8;++base)
+        for(int base=0;base<NUM_NOTE_VALUES;++base)
             for(int t=0;t<20;++t){
                 int r=pe.varyNoteIndex(base,in, pe.unitRhythm());
-                EXPECT(r>=std::max(0,base-2) && r<=std::min(8,base+2));
+                EXPECT(r>=std::max(0,base-2) && r<=std::min(NUM_NOTE_VALUES-1,base+2));
             }
     });
 
@@ -331,13 +331,13 @@ int main(){
         EXPECT(sum/200.f < float(base));
     });
 
-    TEST("Result always clamped 0..8", {
+    TEST("Result always clamped 0..NUM_NOTE_VALUES-1", {
         auto pe=fresh(2.f);
         PatternInput in=allActive();
-        for(float v:{0.f,0.5f,1.f}) for(int b=0;b<=8;++b){
+        for(float v:{0.f,0.5f,1.f}) for(int b=0;b<NUM_NOTE_VALUES;++b){
             in.variationAmount=v;
             int r=pe.varyNoteIndex(b,in, pe.unitRhythm());
-            EXPECT(r>=0&&r<=8);
+            EXPECT(r>=0&&r<NUM_NOTE_VALUES);
         }
     });
 

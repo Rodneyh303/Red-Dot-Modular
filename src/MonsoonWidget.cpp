@@ -1463,7 +1463,12 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 void onAction(const event::Action&) override { if(module) module->noteVariationMask ^= (1<<bit); }
                 void step() override { rightText=(module&&(module->noteVariationMask&(1<<bit)))?"✔":""; ui::MenuItem::step(); } };
               auto add=[&](const char* t,int b){auto* it=createMenuItem<MaskItem>(t);it->module=m;it->bit=b;sub->addChild(it);};
-              add("Allow 1/4T",0); add("Allow 1/8T",1); add("Allow 1/32",2); }
+              // DOTTED BUILD: per-dotted toggles, bits 3..6 — individual like the
+              // triplets (NOT a group bit), all DEFAULT OFF (existing patches
+              // byte-identical until flipped). A dotted BASE note always plays
+              // (varyNoteIndex keeps the base rung regardless of its bit).
+              add("Allow 1/4T",0); add("Allow 1/8T",1); add("Allow 1/32",2);
+              add("Allow 1/2.",3); add("Allow 1/4.",4); add("Allow 1/8.",5); add("Allow 1/16.",6); }
             sub->addChild(new ui::MenuSeparator);
             { auto* l = new ui::MenuLabel; l->text = "PPQN"; sub->addChild(l);
               struct PItem : ui::MenuItem { Monsoon* module=nullptr; int value=4;

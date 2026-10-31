@@ -190,12 +190,17 @@ struct GateStream {
 };
 
 // ── IDENTITY marches (must byte-match the PRE-CHANGE capture — do not touch) ────
-static const uint64_t ADV_IDENTITY_B  = 0x7fde9525731c67e2ULL;
+// DOTTED BUILD re-pin: the capture records r.nvIdx — in gate mode the
+// NULLIFICATION SENTINEL's index (NV_GATE_NULLIFY), which moved 6 → 9 when 1/16
+// shifted. The normalization proof (differential, same discipline) shows the whole
+// stream byte-identical with that one byte mapped back — the gate-mode logic never
+// moved. OLD (pre-dotted): B=0x7fde9525731c67e2.
+static const uint64_t ADV_IDENTITY_B  = 0xb6bff27a0c8b2ed9ULL;
 // RE-CAPTURED for CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE (the ghost-candidacy
 // deletion changes ghost outcomes at p=1; the plain-B digest above is the
 // ORIGINAL pre-change capture and still holds — u=r_vary < 1 crosses every
 // step, so the advance itself is byte-identical).
-static const uint64_t ADV_IDENTITY_BS = 0x24fba00a690d125eULL;
+static const uint64_t ADV_IDENTITY_BS = 0x1186b98762c64cb2ULL;   // DOTTED re-pin (was 0x24fba00a690d125e)
 
 static void marchModeB_p1(int seed, Capture& cap) {
     PhiloxRng rng; rng.seed64((uint64_t)seed * 747796405u + 2891336453u + 1u);
@@ -203,7 +208,7 @@ static void marchModeB_p1(int seed, Capture& cap) {
     injectLegacyStarGraph(eng);
     eng.numPolyVoices = 15;
     seedEngine(eng, rng, 1.0f);   // THE IDENTITY POINT: p_advance = 1 -> always advance
-    const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+    const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
     const float varAmt  = 0.20f + 0.70f * rng.nextFloat();
     const PatternInput in = makeInput(varAmt);
     GateStream main; bool prevMainHigh = false;
@@ -235,7 +240,7 @@ static void marchModeBS_p1(int seed, Capture& cap) {
     injectLegacyStarGraph(eng);
     eng.numPolyVoices = 15;
     seedEngine(eng, rng, 1.0f);
-    const float noteVal = 2.f + (float)(int)(rng.nextFloat() * 4.999f);
+    const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
     const float varAmt  = 0.20f + 0.70f * rng.nextFloat();
     const PatternInput in = makeInput(varAmt);
     GateStream main, ghost; bool prevMainHigh = false;
@@ -281,7 +286,7 @@ static void ruleMarch(float p, int steps) {
     eng.numPolyVoices = 0;   // the playhead rule is mono; keep the march minimal
     seedEngine(eng, rng, p);
     const PatternInput in = makeInput(0.5f);
-    const float noteVal = 3.f;
+    const float noteVal = 5.f;   // 1/4T (DOTTED BUILD: was legacy idx 3)
     const auto m = dotModular::VoiceResolver::slot(1);
     int mismatches = 0, heldRises = 0, advances = 0;
     int mirrorScan = 0;   // THE SCAN MIRROR: the engine's scanOfs_ (+1 held, 0 after a move)
@@ -349,7 +354,7 @@ static void ruleMarchInto(float p, int steps, Capture& cap, int* mismatches, int
     eng.numPolyVoices = 0;
     seedEngine(eng, rng, p);
     const PatternInput in = makeInput(0.5f);
-    const float noteVal = 3.f;
+    const float noteVal = 5.f;   // 1/4T (DOTTED BUILD: was legacy idx 3)
     *mismatches = 0; *advances = 0;
     for (int step = 0; step < steps; ++step) {
         const bool rise = (step % 2) == 0;
@@ -443,7 +448,7 @@ int main() {
         eng.numPolyVoices = 0;
         seedEngine(eng, rng, 0.0f);
         const PatternInput in = makeInput(0.5f);
-        const float noteVal = 3.f;
+        const float noteVal = 5.f;   // 1/4T (DOTTED BUILD: was legacy idx 3)
         int firstDecision = -1;
         bool heldConst = true, pitchConst = true, movedAfterSeed = false;
         float firstPitch = 0.f;
@@ -484,7 +489,7 @@ int main() {
                 eng.voices[m1].subRes[l][d] = 0.0f;          // everything follow-main-at-0
         eng.voices[m1].subRes[SK::RATCHET][SK::ADVANCE] = 1.0f;   // the authored ratchet tier
         const PatternInput in = makeInput(0.5f);
-        const float noteVal = 3.f;
+        const float noteVal = 5.f;   // 1/4T (DOTTED BUILD: was legacy idx 3)
         int advances = 0, seedAdvances = 0, wrongSite = 0;
         for (int step = 0; step < 64; ++step) {
             const int ph = step % 4;
