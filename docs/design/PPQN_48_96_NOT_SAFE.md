@@ -1,0 +1,46 @@
+# PPQN 48/96 — nominally supported, NOT actually safe (the sequencer double-speeds) (Rodney)
+
+STATUS: a real latent issue, SEPARATE from dotted notes (surfaced while scoping dotted-1/32). Documented so
+nobody builds on the false "we support 48/96" belief. Not scheduled; a genuine clock feature if pursued.
+
+## THE SYMPTOM (Rodney, Rack)
+At 48 PPQN the sequencer runs TWICE AS FAST (96 would be 4×). It does NOT resolve finer at the same tempo —
+it reinterprets the incoming clock as a higher rate, so tempo multiplies.
+
+## THE CAUSE
+ClockEngine.hpp:26-29: pulsesPer16th(ppqn) = ppqn/4 (24→6, 48→12, 96→24 internal pulses per 1/16). The
+comment states the assumption: "an external clock is ASSUMED to arrive at exactly ppqn PPQN (one incoming
+pulse = one grid pulse) — a rate mismatch just scales tempo." So at ppqnSetting=48 the engine EXPECTS the
+external clock to deliver 48 pulses/quarter; a standard 24 PPQN clock then makes every incoming pulse worth
+2× the intended time → the sequencer advances at double speed. 48/96 only behave correctly if fed a
+MATCHING faster external clock — i.e. they REQUIRE a matching clock, contradicting "allow but don't require".
+
+## THE CONTRADICTORY / STALE COMMENTS (reconcile)
+- Monsoon.cpp:724: "ppqnSetting raw values: 1, 4, 24" — the ACTUAL supported set.
+- SequencerEngine.cpp:742: "PPQN is now always 24/48/96 — all of which resolve every note value" — WRONG on
+  two counts: (a) 48/96 are never SET (ppqnSetting defaults to 24, ppqnMask hardcoded to 4=PPQN24 at :746,
+  so note-value gating always behaves as 24 regardless), and (b) if they WERE set they'd double/quad the
+  tempo (above). The :742 comment is aspirational/stale; :724 is the truth. Reconcile them (fix the :742
+  comment; the engine effectively runs at 24).
+
+## CONSEQUENCE FOR NOTE VALUES (and why dotted stops at 1/16)
+Every current note value + the 4 added dotted (1/2. 1/4. 1/8. 1/16.) resolve to integer pulses at 24 PPQN,
+so they're all legal at the real baseline. DOTTED-1/32 needs 48 PPQN (4.5 pulses at 24, fractional; 9 at
+48) — but 48 isn't actually safe, so dotted-1/32 is EXCLUDED. It is NOT a dotted-table addition; it depends
+on 48 PPQN being real.
+
+## IF 48/96 ARE EVER WANTED FOR REAL (the actual feature)
+"Finer resolution at the SAME tempo" from a standard (24 PPQN) external clock needs ONE of:
+- An INTERNAL MULTIPLIER / interpolation: generate 48 (or 96) internal grid pulses from the 24 PPQN
+  external clock (PLL-style), so the grid is finer but the tempo is unchanged. OR
+- Redefine ppqnSetting as INTERNAL resolution decoupled from the external rate (the external clock sets
+  tempo; ppqnSetting sets internal subdivision; the two are not assumed equal).
+EITHER is a real clock change + must be TESTED across the whole timing layer (step/subgate/ratchet/ghost,
+step-advance, Cantonment gate timing) — none of which has ever run at anything but 24. High blast radius;
+its own feature, not a note-value tweak.
+
+## RECOMMENDATION
+- Ship dotted at 4 values (to 1/16) — correct at 24, no clock change.
+- Leave 48/96 as-is (dormant/unsafe) but FIX the stale :742 comment so the truth is recorded.
+- Treat "real 48/96 PPQN (finer at same tempo)" as a separate, deliberately-scoped, fully-tested feature if
+  ever wanted — not something to back into via dotted-1/32 or a note-value addition.

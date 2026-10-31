@@ -56,3 +56,8 @@ NOTE VALUE dial: 4 more detents (12 total) — MonsoonWidget.cpp label mapping. 
   submenu toggles mirroring the triplet ones, all default OFF.
 - Legato free (noteCanLeadLegato unchanged); dial 12 detents.
 - Goldens bit-identical (dotted off by default); new dotted behaviours verified. run_all + strict green.
+
+## NOTE — dotted-1/32 EXCLUDED (see PPQN_48_96_NOT_SAFE.md)
+Dotted-1/32 needs 48 PPQN (4.5 pulses at 24, fractional). 48/96 are NOT safe today (the sequencer
+double-speeds — the clock assumes external rate = ppqnSetting). So dotted stops at 1/16. Real 48/96 is a
+separate clock feature; dotted-1/32 waits on it.
