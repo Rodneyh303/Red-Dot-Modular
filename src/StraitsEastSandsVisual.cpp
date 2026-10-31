@@ -693,7 +693,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     dotModular::VoiceResolver::mono(), dotModular::LaneId{el}, st,
                     SequencerEngine::ProbLens::Owner);
             int ph580 = (m->engine.stepIndex >= 0) ? m->engine.laneTick_[el] : -1;
-            visualEditor->setLanePlayStep(el, calcPlayhead(ph580, mLen, mOff, mRot));
+            // CC_PROMPT_VARIATION_SCAN_DISPLAY (mono view): the VAR chevron reads the
+            // ENGINE's scanned position — the same function the advance draw used.
+            visualEditor->setLanePlayStep(
+                el, (el == SequencerEngine::EDITOR_LANE_VARIATION)
+                        ? variationLanePlayhead(m->engine)
+                        : calcPlayhead(ph580, mLen, mOff, mRot));
         }
     }
 
@@ -1390,7 +1395,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int mRot = monsoon->engine.strandRot(l);
                 visualEditor->currentState.lanes[l].setDisplayLOR(std::max(1,mLen), mOff, mRot);
                 int ph1130 = (eng.stepIndex >= 0) ? eng.laneTick_[l] : -1;
-                visualEditor->setLanePlayStep(l, calcPlayhead(ph1130, std::max(1,mLen), mOff, mRot));
+                // CC_PROMPT_VARIATION_SCAN_DISPLAY (mono view): the VAR chevron reads
+                // the ENGINE's scanned position — the same function the advance draw used.
+                visualEditor->setLanePlayStep(
+                    l, (l == SequencerEngine::EDITOR_LANE_VARIATION)
+                           ? variationLanePlayhead(eng)
+                           : calcPlayhead(ph1130, std::max(1,mLen), mOff, mRot));
             }
             // Spread (combo 7): East's V1 spread knobs FOLLOW Mono's spread (inoperable,
             // locked). Mono's spread base is now STORE-BACKED (editor.spread[kMonoSlot,l],
@@ -1475,7 +1485,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int cvRot = eng.strandRotRef(el);
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
                 int ph1222 = (eng.stepIndex >= 0) ? eng.laneTick_[el] : -1;
-                visualEditor->setLanePlayStep(el, calcPlayhead(ph1222, cvLen, cvOff, cvRot));
+                // CC_PROMPT_VARIATION_SCAN_DISPLAY (mono view): the VAR chevron reads
+                // the ENGINE's scanned position — the same function the advance draw
+                // used. Outside holds this is bit-identical to the calcPlayhead below
+                // (same formula, same engine LOR); during a gate-mode hold it scans.
+                visualEditor->setLanePlayStep(
+                    el, (el == SequencerEngine::EDITOR_LANE_VARIATION)
+                            ? variationLanePlayhead(eng)
+                            : calcPlayhead(ph1222, cvLen, cvOff, cvRot));
             }
             // Probabilities (CC_PROMPT_UI_TO_RESOLVER_SPEC step 2): the ONE accessor,
             // Owner lens, explicit voiceSlot 0 — the manager's resolver-resolved V1

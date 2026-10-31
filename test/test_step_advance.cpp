@@ -323,12 +323,21 @@ static void ruleMarch(float p, int steps) {
                 mirrorScan = 0;   // any motion re-anchors (the arrived step judged on its own value)
             }
         }
+        // DISPLAY TRUTH (CC_PROMPT_VARIATION_SCAN_DISPLAY): the chevron's two public
+        // reads ride the SAME scan the engine's decision used — the mirror (updated
+        // just above) must equal the engine's accessor, every rise, held or moved.
+        check(eng.stepAdvanceScanOfs() == mirrorScan,
+              "RULE: the public scan accessor equals the mirror (the display's read)");
         if (moved && !seeded) ++advances;
         (void)r;
     }
     check(mismatches == 0, "RULE: playhead trajectory == the mirrored decide rule (incl. the scan), every rise");
     check(heldRises > 0, "RULE: the march actually exercised held (repeat) rises");
     check(advances > 0, "RULE: the march actually exercised forward advances");
+    // The factoring guard (CC_PROMPT_VARIATION_SCAN_DISPLAY): the scanned POSITION at
+    // delta 0 is the plain variation step — the factoring changed nothing there.
+    check(eng.stepAdvanceStrandIdx(0) == eng.getVariationStep(),
+          "RULE: the factored position at delta 0 is the variation step (pure factoring)");
 }
 // (helper so the determinism re-run can capture without recursing)
 static void ruleMarchInto(float p, int steps, Capture& cap, int* mismatches, int* advances) {

@@ -1827,16 +1827,24 @@ int SequencerEngine::nvIdxForVoice(VoiceSlot bank, const PatternInput& input) co
 
 int SequencerEngine::getRhythmStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_RHYTHM],    lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT)); }
 int SequencerEngine::getVariationStep() const { return getStrandIdx(laneTick_[dotModular::STRAND_VARIATION], lor(dotModular::STRAND_VARIATION,LOR_LEN), lor(dotModular::STRAND_VARIATION,LOR_OFF), lor(dotModular::STRAND_VARIATION,LOR_ROT)); }
+int SequencerEngine::stepAdvanceStrandIdx(int drawTickDelta) const {
+    // THE ONE scanned-position expression (CC_PROMPT_VARIATION_SCAN_DISPLAY, factored
+    // from stepAdvanceDrawAt — a PURE factoring, bit-identical): the variation strand
+    // tick + delta, wrapped by the variation lane's own LOR window. TWO readers, ONE
+    // function: the value-read (stepAdvanceDrawAt → the advance decision) and the
+    // display (the Sands VAR chevron reads this with the public scan accessor) — the
+    // chevron sits at EXACTLY the index the engine read. Display-reads-engine: no
+    // parallel tick math anywhere.
+    return getStrandIdx(laneTick_[dotModular::STRAND_VARIATION] + drawTickDelta,
+                        lor(dotModular::STRAND_VARIATION, LOR_LEN),
+                        lor(dotModular::STRAND_VARIATION, LOR_OFF),
+                        lor(dotModular::STRAND_VARIATION, LOR_ROT));
+}
 float SequencerEngine::stepAdvanceDrawAt(int drawTickDelta) const {
     // THE ONE advance-draw expression (decideStepAdvance_ delegates here; the test
-    // mirror reads the same): the variation draw at the strand tick + delta,
-    // wrapped by the variation lane's own length (the LOCAL window scan).
+    // mirror reads the same): the variation draw at the scanned position.
     const VoiceSlot m = VoiceResolver::mono();
-    const int varIdx = getStrandIdx(laneTick_[dotModular::STRAND_VARIATION] + drawTickDelta,
-                                    lor(dotModular::STRAND_VARIATION, LOR_LEN),
-                                    lor(dotModular::STRAND_VARIATION, LOR_OFF),
-                                    lor(dotModular::STRAND_VARIATION, LOR_ROT));
-    return pe.warpRow(m, LaneId{PL_VARIATION})[varIdx];
+    return pe.warpRow(m, LaneId{PL_VARIATION})[stepAdvanceStrandIdx(drawTickDelta)];
 }
 int SequencerEngine::getLegatoStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_LEGATO],    lor(dotModular::STRAND_LEGATO,LOR_LEN), lor(dotModular::STRAND_LEGATO,LOR_OFF), lor(dotModular::STRAND_LEGATO,LOR_ROT)); }
 int SequencerEngine::getAccentStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_ACCENT],    lor(dotModular::STRAND_ACCENT,LOR_LEN), lor(dotModular::STRAND_ACCENT,LOR_OFF), lor(dotModular::STRAND_ACCENT,LOR_ROT)); }

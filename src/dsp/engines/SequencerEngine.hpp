@@ -1019,6 +1019,14 @@ struct SequencerEngine {
     // reading never mutates the ring (zero new draws). getStrandIdx wraps by the
     // variation lane's own length — the local window scan.
     float stepAdvanceDrawAt(int drawTickDelta) const;
+    // CC_PROMPT_VARIATION_SCAN_DISPLAY — the scanned POSITION factored out of
+    // stepAdvanceDrawAt: ONE expression, TWO readers (the draw + the display
+    // chevron), so the chevron lands on EXACTLY the index the engine read.
+    // Gate-mode holds scan the variation window; delta 0 = the current step.
+    int stepAdvanceStrandIdx(int drawTickDelta) const;
+    // The held-rise scan offset — the display's delta for stepAdvanceStrandIdx.
+    // scanOfs_ stays private; this is the read (0 = not holding / non-gate modes).
+    int stepAdvanceScanOfs() const { return scanOfs_; }
     int getAccentStep() const;  // NEW: accent strand DNA index
     int getMelodyStep() const;
     int getOctaveStep() const;
