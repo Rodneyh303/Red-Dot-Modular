@@ -350,28 +350,6 @@ bool SequencerEngine::advancePlayhead(int dir) {
 dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLevel, int drawTickDelta) {
     namespace SK = dotModular::SubgateKnobs;
     const VoiceSlot m = VoiceResolver::mono();
-    // THE DRAW SOURCE (the fix): u is the VARIATION LANE's step-addressed draw — the
-    // same r_vary every lane-style compare reads — NOT a fresh Philox draw (the reserved
-    // chunk is DELETED; the advance consumes ZERO new draws). HELD STEP IS CORRECT, NOT
-    // A WALL: rereading a held step's r_vary gives the same comparison — to advance OFF
-    // a held step you MOVE the Variation knob/CV toward ±1 until it crosses that step's
-    // draw. The step-addressed draw is the PER-STEP THRESHOLD (different steps naturally
-    // stickier/looser) — the intended live control. At |p|=1 every step's draw is crossed
-    // → always move (the pre-feature identity); at p=0 → always hold. All levels read the
-    // SAME current-step variation draw — the playhead is singular, mirroring how the
-    // subgate rest/legato reads address their level: the THRESHOLD is level-specific,
-    // the draw is the shared lane.
-    // The draw addressing, parameterized by the tick delta (the ONE expression,
-    // also exposed as stepAdvanceDrawAt for the test mirror): 0 = the current step
-    // (bit-identical to getVariationStep()); +1 = the incoming-rest step (the
-    // fall-advance, CC_PROMPT_TIE_INTO_REST_PROBABILISTIC_ADVANCE — unscanned, the
-    // target's own value); the RISE passes the accumulated scanOfs_ — THE FREEZE
-    // FIX (CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR): a held rise scans the
-    // variation window forward, so a step whose own draw fails the compare is NOT
-    // a permanent wall (the escape comes within ~1/|p| held rises). getStrandIdx
-    // wraps by the variation lane's own length — the LOCAL window scan, never the
-    // global clock.
-    const float u = stepAdvanceDrawAt(drawTickDelta);
     // The threshold, by LEVEL (the three-level hierarchy): a MAIN gate rise resolves to
     // the VARIATION probability (the per-voice resolver path — warps/correlates/CAs like
     // every lane, NOT the raw knob; BIPOLAR since Stage 2 — the signed advance value,
@@ -383,6 +361,40 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLev
     const float p = (subLevel < 0 || !voices[m].subResLive)
                   ? voices[m].variationProb
                   : voices[m].subRes[subLevel][SK::ADVANCE];
+    // THE SCAN LOOKS WHERE THE PLAYHEAD IS GOING (the backward fix, Rodney): the draw
+    // delta is SIGNED by p — p's sign IS the travel direction — so p must be computed
+    // FIRST (the old order read u before p existed to sign it, so the scan always
+    // walked forward even while the playhead walked backward). Forward travel (p >= 0)
+    // reads +delta — byte-identical to the pre-fix engine; backward travel (p < 0)
+    // reads -delta: a held rise scans the window BACKWARD for the escape value, and
+    // the fall's +1 target becomes -1 (the incoming-rest step BEHIND — where a
+    // backward advance would land). ONE signing site covers every caller (the rise
+    // scan and the fall target both arrive here as raw deltas/magnitudes).
+    const int signedDelta = (p < 0.f) ? -drawTickDelta : drawTickDelta;
+    // THE DRAW SOURCE (the fix): u is the VARIATION LANE's step-addressed draw — the
+    // same r_vary every lane-style compare reads — NOT a fresh Philox draw (the reserved
+    // chunk is DELETED; the advance consumes ZERO new draws). HELD STEP IS CORRECT, NOT
+    // A WALL: rereading a held step's r_vary gives the same comparison — to advance OFF
+    // a held step you MOVE the Variation knob/CV toward ±1 until it crosses that step's
+    // draw. The step-addressed draw is the PER-STEP THRESHOLD (different steps naturally
+    // stickier/looser) — the intended live control. At |p|=1 every step's draw is crossed
+    // → always move (the pre-feature identity); at p=0 → always hold. All levels read the
+    // SAME current-step variation draw — the playhead is singular, mirroring how the
+    // subgate rest/legato reads address their level: the THRESHOLD is level-specific,
+    // the draw is the shared lane.
+    // The draw addressing, parameterized by the SIGNED tick delta (the ONE expression,
+    // also exposed as stepAdvanceDrawAt for the test mirror): 0 = the current step
+    // (bit-identical to getVariationStep(), sign-irrelevant); +1 = the incoming-rest
+    // step forward, -1 the one behind (the fall-advance, CC_PROMPT_TIE_INTO_REST_
+    // PROBABILISTIC_ADVANCE — unscanned, the travel-signed target's own value); the
+    // RISE passes the accumulated scanOfs_ magnitude — THE FREEZE FIX
+    // (CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR): a held rise scans the variation
+    // window IN THE TRAVEL DIRECTION (signed above), so a step whose own draw fails
+    // the compare is NOT a permanent wall (the escape comes within ~1/|p| held rises,
+    // either direction). getStrandIdx wraps by the variation lane's own length,
+    // negative ticks included (the double-mod wrap) — the LOCAL window scan, never
+    // the global clock.
+    const float u = stepAdvanceDrawAt(signedDelta);
     // SCOPE LINE (the ONE PLAYHEAD law): the playhead is singular, so the advance consumer
     // is the MONO slot alone (V1's row — the mono subgate row). Poly voices' ADVANCE
     // columns stay resolved + stored with no per-voice consumer this build (a per-voice
@@ -1839,6 +1851,15 @@ int SequencerEngine::stepAdvanceStrandIdx(int drawTickDelta) const {
                         lor(dotModular::STRAND_VARIATION, LOR_LEN),
                         lor(dotModular::STRAND_VARIATION, LOR_OFF),
                         lor(dotModular::STRAND_VARIATION, LOR_ROT));
+}
+int SequencerEngine::stepAdvanceScanDelta() const {
+    // The display's SIGNED scan (CC_PROMPT_VARIATION_SCAN_DISPLAY + the backward
+    // fix): scanOfs_ is a magnitude; the chevron must scan WHERE THE PLAYHEAD IS
+    // GOING, so the sign is read live from the mono variationProb — the SAME p
+    // decideStepAdvance_ signs its draw delta by (the main-lane travel direction).
+    // No cached sign member (nothing to desync); magnitude unchanged.
+    const VoiceSlot m = VoiceResolver::mono();
+    return (voices[m].variationProb < 0.f) ? -scanOfs_ : scanOfs_;
 }
 float SequencerEngine::stepAdvanceDrawAt(int drawTickDelta) const {
     // THE ONE advance-draw expression (decideStepAdvance_ delegates here; the test

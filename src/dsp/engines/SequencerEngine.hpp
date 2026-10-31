@@ -764,7 +764,10 @@ struct SequencerEngine {
     // draw addressing offset — 0 = the current step (the rise's read,
     // bit-identical to getVariationStep()); +1 = the incoming-rest step (the
     // fall-advance's read — CC_PROMPT_TIE_INTO_REST_PROBABILISTIC_ADVANCE: "the
-    // step being advanced into"). ONE mechanism, both edges.
+    // step being advanced into"). ONE mechanism, both edges. The delta is SIGNED
+    // INSIDE by p (p's sign = the travel direction): backward travel reads the
+    // mirror direction — the scan and the fall target both look where the playhead
+    // is going (the backward fix).
     dotModular::StepAdvance::Decision decideStepAdvance_(int subLevel, int targetTickDelta = 0);
     // Recompute all laneTick_/laneTickV_/macroLaneTick_ caches from totalStepsElapsed.
     // Called after snapping totalStepsElapsed externally (e.g. Mode E phase jump snap)
@@ -1024,9 +1027,13 @@ struct SequencerEngine {
     // chevron), so the chevron lands on EXACTLY the index the engine read.
     // Gate-mode holds scan the variation window; delta 0 = the current step.
     int stepAdvanceStrandIdx(int drawTickDelta) const;
-    // The held-rise scan offset — the display's delta for stepAdvanceStrandIdx.
-    // scanOfs_ stays private; this is the read (0 = not holding / non-gate modes).
-    int stepAdvanceScanOfs() const { return scanOfs_; }
+    // The held-rise scan as a SIGNED delta — the display's read. The escape search
+    // looks in the TRAVEL direction (decideStepAdvance_ signs its draw delta by p):
+    // negative travel (variationProb < 0) scans BACKWARD. The sign is read LIVE
+    // from the mono variationProb — the same p the main-lane decision signs by, so
+    // there is no cached sign member to desync. scanOfs_ magnitude stays
+    // 0..varLen-1 (0 = not holding / non-gate modes).
+    int stepAdvanceScanDelta() const;
     int getAccentStep() const;  // NEW: accent strand DNA index
     int getMelodyStep() const;
     int getOctaveStep() const;

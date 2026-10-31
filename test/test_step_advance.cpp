@@ -299,7 +299,9 @@ static void ruleMarch(float p, int steps) {
         const int before = eng.stepIndex;
         const float drawAt0Before = (eng.stepIndex != -1) ? eng.stepAdvanceDrawAt(0) : 0.f;
         const float uBefore = (rise && eng.stepIndex != -1)
-            ? eng.stepAdvanceDrawAt(mirrorScan)   // the SCANNED draw (the engine's expression)
+            // the SCANNED draw, SIGNED by p (the engine reads the scan in the
+            // TRAVEL direction — pNow < 0 scans BACKWARD: drawAt(-mirrorScan))
+            ? eng.stepAdvanceDrawAt((pNow < 0.f) ? -mirrorScan : mirrorScan)
             : 0.f;
         bool expectAdvance = false;
         if (rise && eng.stepIndex != -1)
@@ -325,9 +327,10 @@ static void ruleMarch(float p, int steps) {
         }
         // DISPLAY TRUTH (CC_PROMPT_VARIATION_SCAN_DISPLAY): the chevron's two public
         // reads ride the SAME scan the engine's decision used — the mirror (updated
-        // just above) must equal the engine's accessor, every rise, held or moved.
-        check(eng.stepAdvanceScanOfs() == mirrorScan,
-              "RULE: the public scan accessor equals the mirror (the display's read)");
+        // just above, magnitude) must equal the engine's SIGNED accessor, every
+        // rise, held or moved (the sign = the live travel direction, pNow's sign).
+        check(eng.stepAdvanceScanDelta() == ((pNow < 0.f) ? -mirrorScan : mirrorScan),
+              "RULE: the signed scan delta equals the mirror (the display's read, direction-signed)");
         if (moved && !seeded) ++advances;
         (void)r;
     }
@@ -571,7 +574,7 @@ int main() {
         // deterministic walker that guarantees the 0 -> 15 wrap). Every decision
         // rise moves EXACTLY -1 iff the SCANNED draw < |p|, else holds (the scan
         // then accrues — the freeze fix works backward too: the window is scanned
-        // for u < |p| in either direction).
+        // IN THE TRAVEL DIRECTION (backward travel reads drawAt(-scanOfs_)).
         PhiloxRng rng; rng.seed64(0x51E7Aull);   // the RULE march's seed
         SequencerEngine eng; eng.reset();
         eng.numPolyVoices = 0;
@@ -588,7 +591,8 @@ int main() {
             const int before = eng.stepIndex;
             bool expectBackward = false;
             if (rise && eng.stepIndex != -1)
-                expectBackward = (eng.stepAdvanceDrawAt(mirrorScan) < mag);
+                // backward travel: the engine reads the scan SIGNED (drawAt(-scanOfs_))
+                expectBackward = (eng.stepAdvanceDrawAt(-mirrorScan) < mag);
             StepResult r = eng.executeModeB(rise, rise, 3.f, in);
             (void)r;
             if (!rise || before == -1) continue;   // the seed advances forward, no decision
