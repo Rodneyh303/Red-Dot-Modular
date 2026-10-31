@@ -29,15 +29,25 @@ so they're all legal at the real baseline. DOTTED-1/32 needs 48 PPQN (4.5 pulses
 48) — but 48 isn't actually safe, so dotted-1/32 is EXCLUDED. It is NOT a dotted-table addition; it depends
 on 48 PPQN being real.
 
-## IF 48/96 ARE EVER WANTED FOR REAL (the actual feature)
-"Finer resolution at the SAME tempo" from a standard (24 PPQN) external clock needs ONE of:
-- An INTERNAL MULTIPLIER / interpolation: generate 48 (or 96) internal grid pulses from the 24 PPQN
-  external clock (PLL-style), so the grid is finer but the tempo is unchanged. OR
-- Redefine ppqnSetting as INTERNAL resolution decoupled from the external rate (the external clock sets
-  tempo; ppqnSetting sets internal subdivision; the two are not assumed equal).
-EITHER is a real clock change + must be TESTED across the whole timing layer (step/subgate/ratchet/ghost,
-step-advance, Cantonment gate timing) — none of which has ever run at anything but 24. High blast radius;
-its own feature, not a note-value tweak.
+## IF 48/96 ARE EVER WANTED FOR REAL — BOUNDED, not colossal (Rodney)
+The scope is MEDIUM, not high-blast-radius, BECAUSE the timing is already funnelled through ONE pulse
+source. Every gate/subgate/ratchet/step consumer ticks off ClockEngine::pulsesPer16th(ppqnSetting) via
+gs.tick (SequencerEngine.cpp:1144-1153) — they are DEFINED in terms of pulses, not hardcoded step counts.
+So subgates / ratchets / step-advance / Cantonment gate timing do NOT each need rework: fix the pulse rate
+and they are correct by construction. The "one authority" discipline (one pulse rate, everything downstream
+pulse-defined) is exactly what keeps this bounded.
+THE ACTUAL CHANGE (small/medium, localized):
+1. CLOCKENGINE external-clock multiplier (the real work, ONE file): pulsesPer16th assumes external =
+   ppqnSetting (:26-29). Fix = generate N internal pulses per incoming pulse (interpolate between external
+   edges / PLL), so 48/96 = finer grid at the SAME tempo from a 24 PPQN external clock. OR decouple
+   ppqnSetting (internal subdivision) from the external rate (tempo). Either is contained in ClockEngine.
+2. Un-hardcode ppqnMask (:746) to reflect the real ppqnSetting — trivial.
+3. Add 48/96 bits to allowedPPQN (table edit) — trivial.
+THE REAL COST IS TESTING, NOT CODE: the consumers don't change, but the finer regime has NEVER been
+exercised, so VERIFY the whole timing layer BEHAVES correctly at 48/96 (step/subgate/ratchet/ghost,
+step-advance, Cantonment) — testing breadth, not code breadth. Bounded, focused feature; NOT a note-value
+tweak, but NOT colossal. (Corrects an earlier 'high blast radius' overstatement — the single-pulse-source
+architecture makes it medium.)
 
 ## RECOMMENDATION
 - Ship dotted at 4 values (to 1/16) — correct at 24, no clock change.
