@@ -112,3 +112,38 @@ is identity. The engine NEVER sees the dial order — it only ever uses its stri
 verbatim (it's already strictly decreasing) and COPY the DIAL_ORDER permutation verbatim. Engine = strict
 duration (array above). Dial = grouped (via DIAL_ORDER). They are two separate given lists; do not conflate
 or re-derive them.
+
+════════════════════════════════════════════════════════════════════════════════
+## UPDATE — ADD 1/16T → 13 ENTRIES (Rodney). Supersedes the 12-entry arrays above.
+1/16T (1/16 triplet = 1/24 whole = 0.6667 steps) RESOLVES at 24 PPQN (4 pulses, integer) → safe, no clock
+dependency. Slots between 1/16 and 1/32 in strict-duration order. NUM_NOTE_VALUES = 13.
+
+### ENGINE NOTE_VALUES[] — strict duration, 13 entries (strictly decreasing, verified)
+    idx 0 : 1/1    16.0      frac 1.0
+    idx 1 : 1/2.   12.0      frac 0.75
+    idx 2 : 1/2     8.0      frac 0.5
+    idx 3 : 1/4.    6.0      frac 0.375
+    idx 4 : 1/4     4.0      frac 0.25
+    idx 5 : 1/8.    3.0      frac 0.1875
+    idx 6 : 1/4T    2.6667   frac 1/6
+    idx 7 : 1/8     2.0      frac 0.125
+    idx 8 : 1/16.   1.5      frac 0.09375
+    idx 9 : 1/8T    1.3333   frac 1/12
+    idx 10: 1/16    1.0      frac 0.0625
+    idx 11: 1/16T   0.6667   frac 1/24   <-- NEW (triplet; allowedPPQN=4; fractional→no legato-lead)
+    idx 12: 1/32    0.5      frac 0.03125
+
+### DIAL — grouped, 13 entries, via permutation
+DIAL order: 1/1, 1/2., 1/2, 1/4., 1/4, 1/4T, 1/8., 1/8, 1/8T, 1/16., 1/16, 1/16T, 1/32
+    constexpr int DIAL_ORDER[13]     = { 0, 1, 2, 3, 4, 6, 5, 7, 9, 8, 10, 11, 12 };
+    // inverse identical: ENGINE_TO_DIAL[13] = { 0,1,2,3,4,6,5,7,9,8,10,11,12 }
+(1/16T is at the same engine idx 11 and dial slot 11 — the only swaps remain 1/8.↔1/4T and 1/16.↔1/8T.)
+
+### 1/16T specifics
+- TRIPLET kind → joins the triplet gating. Add a triplet toggle "Allow 1/16T" (its own mask bit, e.g. bit 7)
+  in the "Note Division and Clock" submenu, mirroring Allow 1/4T/1/8T/1/32.
+- allowedPPQN = 4 (PPQN24) — resolves at baseline. Legato: fractional (0.6667) → no legato-lead (like all T).
+- NUM_NOTE_VALUES 12→13: dial detents 13; the max-index bounds use NUM_NOTE_VALUES-1 (so no manual bump).
+
+### CC: this supersedes the 12-entry arrays. Use the 13-entry arrays above VERBATIM. Dial STOPS at 1/32
+(no finer values — note knob is full at 13).

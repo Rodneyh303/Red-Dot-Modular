@@ -54,3 +54,21 @@ architecture makes it medium.)
 - Leave 48/96 as-is (dormant/unsafe) but FIX the stale :742 comment so the truth is recorded.
 - Treat "real 48/96 PPQN (finer at same tempo)" as a separate, deliberately-scoped, fully-tested feature if
   ever wanted — not something to back into via dotted-1/32 or a note-value addition.
+
+════════════════════════════════════════════════════════════════════════════════
+## DECISION (Rodney) — require 24 PPQN; 48/96 de-prioritized to near-zero
+Context: the note-value set is FIXED at 13 entries (1/1 … 1/32 incl all dotted + 1/16T), ALL of which
+resolve cleanly at 24 PPQN. So 48/96 is no longer needed to UNLOCK any note value — its only remaining use
+would be sub-pulse timing precision, which isn't worth the work.
+
+DECISION:
+- REQUIRE 24 PPQN. 24 is the more standard clock rate; the instrument expects a 24 PPQN clock.
+- NO clock divider (Rodney) — not adding an input divider; just expect 24.
+- 48/96 stay nominal/unsafe (they double/quad-speed — the clock assumes external rate = ppqnSetting). NOT
+  fixed; LOW PRIORITY, near-zero (nothing depends on it now the note values are capped).
+- Fix the stale SequencerEngine:742 comment ("always 24/48/96 all resolve") so the record is honest: the
+  instrument runs at 24; 48/96 are not supported.
+- If finer timing/resolution is EVER wanted it's the separate ClockEngine-multiplier feature above — but
+  there is no pressure for it; skip indefinitely unless a concrete need appears.
+NET: require 24, document it, don't build 48/96 or a divider. The capped note-value set made the whole
+48/96 thread unnecessary.
