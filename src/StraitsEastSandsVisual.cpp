@@ -1735,7 +1735,16 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
                 int pvTick = eng.laneTickV_[pv][el];
                 int ph1276 = (eng.stepIndex >= 0) ? pvTick : -1;
-                visualEditor->setLanePlayStep(el, calcPlayhead(ph1276, cvLen, cvOff, cvRot));
+                // PER-VOICE STEP-ADVANCE Stage 3: the VAR chevron reads THIS voice's
+                // scanned position — its OWN scan under Local East (the same index its
+                // advance decision used; it scans during a per-voice gate-mode hold),
+                // mono's when the lane delegates (the voice rides the mono decision).
+                // LEG keeps the plain playhead (no scan on LEG). Display-reads-engine,
+                // per voice.
+                visualEditor->setLanePlayStep(
+                    el, (el == SequencerEngine::EDITOR_LANE_VARIATION)
+                            ? variationLanePlayheadForVoice(eng, dotModular::VoiceResolver::slot(pv + 1))
+                            : calcPlayhead(ph1276, cvLen, cvOff, cvRot));
                 // CC_PROMPT_UI_TO_RESOLVER_SPEC step 2 + VOICE CONSISTENCY: the ONE
                 // accessor at THIS voice's voiceSlot (pv) — NOT finalRandomByStrand,
                 // which read the MONO row regardless of the displayed voice (the

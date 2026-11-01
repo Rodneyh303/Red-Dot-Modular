@@ -1050,6 +1050,10 @@ struct SequencerEngine {
     // the per-voice pins.
     int   stepAdvanceStrandIdxForVoice(VoiceSlot bank, int drawTickDelta) const;
     float stepAdvanceDrawAtForVoice(VoiceSlot bank, int drawTickDelta) const;
+    // The per-voice scan as a SIGNED delta — the per-voice display's read (Stage 3):
+    // the voice's OWN scan magnitude, signed live by its own variationProb (the same
+    // p its decision signs by). Mono/out-of-range reads [0] (the mono expression).
+    int   stepAdvanceScanDeltaForVoice(VoiceSlot bank) const;
     // Recompute all laneTick_/laneTickV_/macroLaneTick_ caches from totalStepsElapsed.
     // Called after snapping totalStepsElapsed externally (e.g. Mode E phase jump snap)
     // so the lane position caches match the new transport position without a full

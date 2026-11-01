@@ -2281,6 +2281,14 @@ float SequencerEngine::stepAdvanceDrawAtForVoice(VoiceSlot bank, int drawTickDel
     // scanned position. Pure — reading never mutates the ring (zero new draws).
     return pe.warpRow(bank, LaneId{PL_VARIATION})[stepAdvanceStrandIdxForVoice(bank, drawTickDelta)];
 }
+int SequencerEngine::stepAdvanceScanDeltaForVoice(VoiceSlot bank) const {
+    // The per-voice twin of stepAdvanceScanDelta (PER-VOICE STEP-ADVANCE Stage 3, the
+    // display's read): the voice's OWN scan magnitude, signed by the SAME p its own
+    // decision signs by (its live variationProb — no cached sign member to desync).
+    // The mono slot (and out-of-range) reads [0] — the mono expression.
+    if (bank.v < 1 || bank.v >= 16) return stepAdvanceScanDelta();
+    return (voices[bank].variationProb < 0.f) ? -scanOfsV_[bank.v] : scanOfsV_[bank.v];
+}
 int SequencerEngine::getLegatoStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_LEGATO],    lor(dotModular::STRAND_LEGATO,LOR_LEN), lor(dotModular::STRAND_LEGATO,LOR_OFF), lor(dotModular::STRAND_LEGATO,LOR_ROT)); }
 int SequencerEngine::getAccentStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_ACCENT],    lor(dotModular::STRAND_ACCENT,LOR_LEN), lor(dotModular::STRAND_ACCENT,LOR_OFF), lor(dotModular::STRAND_ACCENT,LOR_ROT)); }
 int SequencerEngine::getMelodyStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_MELODY],    lor(dotModular::STRAND_MELODY,LOR_LEN), lor(dotModular::STRAND_MELODY,LOR_OFF), lor(dotModular::STRAND_MELODY,LOR_ROT)); }
