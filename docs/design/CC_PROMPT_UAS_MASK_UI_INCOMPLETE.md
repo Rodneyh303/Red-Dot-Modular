@@ -62,3 +62,11 @@ this.) Verify the engine's existing abs1 path (range→mask) is what this drives
 ## NOTE
 This is UI-completion of UAS Stage 4 (the engine shipped; the interaction didn't). Not a new feature — the
 plan's paint + range-drive, now actually wired, plus the hit-test bug.
+
+────────────────────────────────────────────────────────────────────────────────
+## FRESHNESS (checked against current trunk) — re-locate by CONTENT, not line number
+This spec predates the poly-advance / dotted / clock merges, so LINE NUMBERS have shifted. The TARGETS are
+all confirmed still present and the gaps still exist: mask engine fields (maskKind_/maskPainted_/
+maskFollowR_) present; paint-strip UI still absent (0 — still unwired); the click-conflation still in the
+shared onButton path. Re-locate every referenced site BY CONTENT (the field/function names), not by the
+line numbers in this doc. The logic/decisions are unchanged.

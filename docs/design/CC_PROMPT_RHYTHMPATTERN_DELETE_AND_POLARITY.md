@@ -70,3 +70,15 @@ produce, is it INTUITIVE or INVERTED, and does ENGINE vs any remaining DISPLAY u
 - Item 1: rhythmPattern + cachedRhythmPattern fully removed; step LEDs lit from correct-polarity source;
   old-patch JSON key ignored; grep-clean; run_all green; goldens unaffected.
 - Item 2: per-lane polarity table committed; any true polarity bug flagged (code change only if a real bug).
+
+────────────────────────────────────────────────────────────────────────────────
+## FRESHNESS (checked against current trunk) — re-locate by CONTENT; the golden pin is the lights-only proof
+Line numbers have shifted (this predates poly-advance/dotted/clock merges). Current state confirmed:
+rhythmPattern present in 5 files (Monsoon.hpp, PatternEngine.cpp/.hpp, SequencerEngine.cpp,
+MonsoonPersistenceManager.cpp); the `>= restProb` fills are now at PatternEngine.cpp:444, 998, 1113 (the
+three `rhythmPattern[i] = warpRow(displayedVoice_, PL_REST)[i] >= in.restProb` sites). Re-locate ALL sites
+BY CONTENT, not the line numbers in this doc.
+GOLDEN PIN = the lights-only proof: this delete must be BIT-IDENTICAL (rhythmPattern feeds only step-LED
+brightness + persistence — no audio/gate/CV). If ANY golden MOVES during the delete, something NON-lights
+was reading rhythmPattern and the "lights-only" assumption is wrong — STOP and re-trace before proceeding.
+A bit-identical battery is the confirmation the deletion is as clean as diagnosed.
