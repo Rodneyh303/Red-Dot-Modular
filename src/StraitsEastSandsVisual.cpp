@@ -870,19 +870,6 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             [m, v]() { return m->getMaskLocalEastMask(v) != 0.f; },
             [m, v]() { m->setMaskLocalEastMask(v, 1.f); }));
         if (maskIndependent) {
-            struct MaskKindItem : MenuItem {
-                StraitsEastSandsVisualWidget* widget;
-                int v; int kind;
-                void onAction(const event::Action& e) override {
-                    if (auto* mm = widget->getMonsoon()) {
-                        const int vi = v;   // the member, aliased for the setter lambda
-                        const float oldK = mm->getMaskEastKind(vi);
-                        mm->setMaskEastKind(vi, (float)kind);
-                        redDot::applyAndPushStoreEdit<Monsoon>(mm, "Mask kind",
-                            [vi](Monsoon& m2, float k) { m2.setMaskEastKind(vi, k); }, oldK, (float)kind);
-                    }
-                }
-            };
             struct MaskBitsItem : MenuItem {
                 StraitsEastSandsVisualWidget* widget;
                 int v; float bits;
@@ -896,19 +883,35 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     }
                 }
             };
-            // THE BASE MODE (the corrected model — two composable axes, not exclusive
-            // modes): how the voice relates to its LOR. The painted overlay is NOT a
-            // mode — it engages by PAINTING (the pattern ANDs on top of the base).
-            static const char* const kindNames[2] =
-                { "Cycle (within the voice LOR — as if no mask)",
-                  "Absolute-1 (sound regions — silent outside the LOR)" };
-            for (int k = 0; k < 2; ++k) {
-                auto* it = new MaskKindItem;
-                it->text = kindNames[k];
-                it->rightText = (((int)std::lround(m->getMaskEastKind(v))) == k) ? "✓" : "";
-                it->widget = this; it->v = v; it->kind = k;
-                menu->addChild(it);
-            }
+            // THE BASE MODE — ONE choice (Rodney: "a choice, not two separate items"),
+            // a radio pair in a submenu. (A4) Absolute-1's READ runs the FULL PHRASE
+            // (the playhead marches all 16; the OUTPUT plays the LOR window only);
+            // Cycle confines the read to the LOR. The painted overlay is NOT a base —
+            // it composes on either; returning to Cycle with a pattern painted keeps
+            // the overlay (kind 2 = cycle + overlay).
+            menu->addChild(createSubmenuItem("Base mode", "",
+                [m, v](Menu* sub) {
+                    static const char* const baseNames[2] =
+                        { "Cycle — read cycles within the LOR",
+                          "Absolute-1 — full-phrase read, plays the LOR only" };
+                    for (int k = 0; k < 2; ++k) {
+                        const bool abs1 = (k == 1);
+                        sub->addChild(createCheckMenuItem(baseNames[k], "",
+                            [m, v, abs1]() {
+                                const int cur = (int)std::lround(m->getMaskEastKind(v));
+                                return abs1 ? (cur == 1) : (cur != 1);
+                            },
+                            [m, v, abs1]() {
+                                const float oldK = m->getMaskEastKind(v);
+                                const float newK = abs1 ? 1.f
+                                    : ((int)std::lround(m->getMaskEastPatternBits(v)) == 65535) ? 0.f : 2.f;
+                                if (oldK == newK) return;
+                                m->setMaskEastKind(v, newK);
+                                redDot::applyAndPushStoreEdit<Monsoon>(m, "Mask kind",
+                                    [v](Monsoon& m2, float kk) { m2.setMaskEastKind(v, kk); }, oldK, newK);
+                            }));
+                    }
+                }));
             menu->addChild(createCheckMenuItem("Painted pattern follows rotation (R)", "",
                 [m, v]() { return m->getMaskEastFollowR(v) != 0.f; },
                 [m, v]() {

@@ -624,6 +624,39 @@ struct SequencerEngine {
     void pushMaskEditor(const float* macroPatternBits, float macroKind, float macroFollowR,
                         const float* eastPatternBits, const float* eastKind,
                         const float* eastFollowR, const float* localEast);
+    // (A4) THE BASE-MODE READ LAW: ABS1's read runs the FULL PHRASE (the corrected
+    // model — "read runs full phrase, output silenced outside the LOR"): the voice
+    // frame behaves as IDENTITY for the READ (recomputeVoiceDrivers_ takes the
+    // pass-through branch — the playhead marches all 16, the lanes read as-if-no-
+    // voice-LOR), and the OUTPUT gate below does the windowing against the GLOBAL
+    // step. CYCLE (and the painted overlay, which composes on either base) keeps
+    // the confined window walk. Read-side only: the gate, the strip's window and
+    // the chevron still read effectiveVoiceLor unchanged.
+    bool voiceFrameReadsFullPhrase(int v) const {
+        if (v < 0 || v >= kVoiceSlots) return false;
+        return (maskLocalEast_[v] ? maskKind_[v] : maskMacroKind_) == MASK_DYNAMIC;
+    }
+    // (A4) THE FOLLOW-R EVALUATION HOOK (the doc's "the rotation MODULATION offsets
+    // relative to the anchor" — implemented): the anchored copy is pinned to the BASE
+    // rotation at push; at evaluation the (possibly CV-folded) EFFECTIVE R offsets it
+    // by (R − anchorR) — the SAME rotMask16(+Δ) the re-pin applies on a base change,
+    // so a modulated R slides the pattern exactly as turning the base R does, while a
+    // real base edit re-pins (Δ resets to 0 — no double rotation). Without follow-R
+    // the anchored copy stands (static, fixed to absolute phrase steps).
+    uint16_t effectiveOverlayPattern(int v) const {
+        if (v < 0 || v >= kVoiceSlots) return 0xFFFFu;
+        const bool local = maskLocalEast_[v];
+        const uint16_t anchored = local ? maskAnchored_[v] : maskMacroAnchored_;
+        if (anchored == 0xFFFFu) return 0xFFFFu;
+        if (!(local ? maskFollowR_[v] : maskMacroFollowR_)) return anchored;
+        // The rotation source is the row the OVERLAY belongs to (the MASK's own
+        // delegation — voiceLorStore_ vs macroVoiceLor_), NOT effectiveVoiceLor's
+        // LOR delegation (a separate switch); this matches the anchor capture at
+        // push exactly, so both sides of Δ read the same row.
+        const int rowR    = local ? voiceLorStore_[v][LOR_ROT] : macroVoiceLor_[LOR_ROT];
+        const int anchorR = local ? maskAnchorR_[v] : maskMacroAnchorR_;
+        return rotMask16(anchored, rowR - anchorR);
+    }
     // THE ONE GATE: does this voice's output pass at phrase step s (0..15)? The
     // OutputGenerator multiplies the voice's GATE + CV OUT by this every sample.
     // s < 0 (transport stopped) passes — the run gate already silences everything.
@@ -640,12 +673,13 @@ struct SequencerEngine {
         // IS effectiveVoiceLor). The PAINTED OVERLAY composes ON TOP — an extra mute
         // ANDed with the base (paint + cycle, or paint + abs1), active whenever the
         // pattern is not all-on; follow-R rotates it (the anchor). All output-only
-        // gating against the global step; the reads cycle within the LOR untouched.
+        // gating against the global step; the READ is the base-mode law above (abs1
+        // full phrase, cycle confined).
         if (kind == MASK_DYNAMIC) {   // abs1: the region IS the voice LOR
             int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
             if (!maskWindowContains(O, L, phraseStep)) return false;
         }
-        const uint16_t pat = local ? maskAnchored_[v] : maskMacroAnchored_;   // the overlay ANDs
+        const uint16_t pat = effectiveOverlayPattern(v);   // the overlay ANDs (follow-R evaluates the mod)
         if (pat != 0xFFFFu) return (pat >> phraseStep) & 1u;
         return true;
     }
@@ -670,7 +704,7 @@ struct SequencerEngine {
             int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
             m = windowMaskBits(L, O);
         }
-        const uint16_t pat = local ? maskAnchored_[v] : maskMacroAnchored_;   // the overlay ANDs
+        const uint16_t pat = effectiveOverlayPattern(v);   // the overlay ANDs (follow-R evaluates the mod)
         return (pat == 0xFFFFu) ? m : (uint16_t)(m & pat);
     }
     // The MACRO tier's own pattern (the global strip's read — no voice delegation).
@@ -678,7 +712,10 @@ struct SequencerEngine {
         uint16_t m = 0xFFFFu;
         if (maskMacroKind_ == MASK_DYNAMIC)
             m = windowMaskBits(macroVoiceLor_[LOR_LEN], macroVoiceLor_[LOR_OFF]);
-        return (maskMacroAnchored_ == 0xFFFFu) ? m : (uint16_t)(m & maskMacroAnchored_);
+        uint16_t pat = maskMacroAnchored_;
+        if (pat != 0xFFFFu && maskMacroFollowR_)          // the follow-R evaluation hook
+            pat = rotMask16(pat, macroVoiceLor_[LOR_ROT] - maskMacroAnchorR_);
+        return (pat == 0xFFFFu) ? m : (uint16_t)(m & pat);
     }
 
     // The EFFECTIVE voice LOR row (delegation + Macro tier) — the one resolution authority.

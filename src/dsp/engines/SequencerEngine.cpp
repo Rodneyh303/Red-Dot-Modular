@@ -667,7 +667,11 @@ void SequencerEngine::recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, 
                                     motionV, cachedLength, cachedOffset);
         const bool live = (v == 0) || (v >= 1 && v <= numPolyVoices);
         if (!live) { voiceDriver_[v] = tNowV; voiceDriverPrev_[v] = tPrevV; voiceRead_[v] = 0; continue; }
-        if (voiceLorIdentity(v)) {
+        // (A4) The base-mode read law: the pass-through branch engages on IDENTITY
+        // *or* ABS1 — abs1's read runs the full phrase (the playhead marches all 16;
+        // the OUTPUT gate does the windowing against the global step). The comment
+        // block below ("identity frame") covers both: the same shared-pair walk.
+        if (voiceLorIdentity(v) || voiceFrameReadsFullPhrase(v)) {
             voiceDriver_[v]      = tNowV;
             voiceDriverPrev_[v]  = tPrevV;
             voiceRead_[v]        = (int)(((tNowV - 1) % 16 + 16) % 16);

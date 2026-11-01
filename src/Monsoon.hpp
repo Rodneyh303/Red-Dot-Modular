@@ -956,13 +956,16 @@ struct Monsoon : Module {
         // and exactly representable. Defaults are RANGE-driven (CC_PROMPT_UAS_MASK_UI_
         // INCOMPLETE decision 1: the voice range drives the mask by default — a full
         // range is all-on, so the default is byte-neutral; a windowed range gates).
-        // CYCLE (0) is the explicit "play everywhere regardless of range" opt-out.
-        // Saved patches load their own kinds verbatim; patches saved before this
-        // store existed get the RANGE default. Kept at struct END (ABI hygiene).
-        float maskMacroKind        = 1.f;     // RANGE (the window plays)
+        // CYCLE (0) is the base default (the corrected model: "Cycle (default = as if
+        // no mask)" — the read cycles within the LOR, no output gate); ABS1 (1) is a
+        // CHOICE (the read runs the full phrase; the output plays the LOR window
+        // only); the OVERLAY engages by PAINTING (kind 2 = cycle + overlay). The old
+        // RANGE-driven default (decision 1) is superseded by the corrected model.
+        // Saved patches load their own kinds verbatim. Kept at struct END (ABI hygiene).
+        float maskMacroKind        = 0.f;     // CYCLE (the corrected model's default base)
         float maskMacroPatternBits = 65535.f;
         float maskMacroFollowR     = 0.f;     // the painted kind's rotation source
-        float maskEastKind[16]         = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};   // per-voice kind (RANGE default)
+        float maskEastKind[16]         = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};   // per-voice kind (CYCLE default)
         float maskEastPatternBits[16]  = {65535.f,65535.f,65535.f,65535.f, 65535.f,65535.f,65535.f,65535.f,
                                           65535.f,65535.f,65535.f,65535.f, 65535.f,65535.f,65535.f,65535.f};
         float maskEastFollowR[16]      = {};

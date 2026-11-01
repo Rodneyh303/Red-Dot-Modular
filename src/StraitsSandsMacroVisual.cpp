@@ -601,18 +601,6 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // ── Stage 4: the OUTPUT MASK (the MACRO tier — the GLOBAL mask every follow-
         // Macro voice reads through). The per-voice masks live on East's strip menu.
         {
-            struct MaskKindItem : MenuItem {
-                StraitsSandsMacroVisualWidget* widget;
-                int kind;
-                void onAction(const event::Action& e) override {
-                    if (auto* mm = widget->getMonsoon()) {
-                        const float oldK = mm->getMaskMacroKind();
-                        mm->setMaskMacroKind((float)kind);
-                        redDot::applyAndPushStoreEdit<Monsoon>(mm, "Global mask kind",
-                            [](Monsoon& m2, float k) { m2.setMaskMacroKind(k); }, oldK, (float)kind);
-                    }
-                }
-            };
             struct MaskBitsItem : MenuItem {
                 StraitsSandsMacroVisualWidget* widget;
                 float bits;
@@ -627,18 +615,35 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             };
             menu->addChild(new MenuSeparator);
             menu->addChild(createMenuLabel("Output mask (global)"));
-            // THE BASE MODE (the corrected model — two composable axes, not exclusive
-            // modes). The painted overlay is NOT a mode — it engages by PAINTING.
-            static const char* const kindNames[2] =
-                { "Cycle (within the voice LOR — as if no mask)",
-                  "Absolute-1 (sound regions — silent outside the LOR)" };
-            for (int k = 0; k < 2; ++k) {
-                auto* it = new MaskKindItem;
-                it->text = kindNames[k];
-                it->rightText = (((int)std::lround(m->getMaskMacroKind())) == k) ? "✓" : "";
-                it->widget = this; it->kind = k;
-                menu->addChild(it);
-            }
+            // THE BASE MODE — ONE choice (Rodney: "a choice, not two separate items"),
+            // a radio pair in a submenu (the East twin). (A4) Absolute-1's READ runs
+            // the FULL PHRASE (the playheads march all 16; the OUTPUT plays the LOR
+            // window only); Cycle confines the read. The painted overlay is NOT a
+            // base — it composes on either; returning to Cycle with a pattern painted
+            // keeps the overlay (kind 2 = cycle + overlay).
+            menu->addChild(createSubmenuItem("Base mode", "",
+                [m](Menu* sub) {
+                    static const char* const baseNames[2] =
+                        { "Cycle — read cycles within the LOR",
+                          "Absolute-1 — full-phrase read, plays the LOR only" };
+                    for (int k = 0; k < 2; ++k) {
+                        const bool abs1 = (k == 1);
+                        sub->addChild(createCheckMenuItem(baseNames[k], "",
+                            [m, abs1]() {
+                                const int cur = (int)std::lround(m->getMaskMacroKind());
+                                return abs1 ? (cur == 1) : (cur != 1);
+                            },
+                            [m, abs1]() {
+                                const float oldK = m->getMaskMacroKind();
+                                const float newK = abs1 ? 1.f
+                                    : ((int)std::lround(m->getMaskMacroPatternBits()) == 65535) ? 0.f : 2.f;
+                                if (oldK == newK) return;
+                                m->setMaskMacroKind(newK);
+                                redDot::applyAndPushStoreEdit<Monsoon>(m, "Global mask kind",
+                                    [](Monsoon& m2, float kk) { m2.setMaskMacroKind(kk); }, oldK, newK);
+                            }));
+                    }
+                }));
             menu->addChild(createCheckMenuItem("Painted pattern follows rotation (R)", "",
                 [m]() { return m->getMaskMacroFollowR() != 0.f; },
                 [m]() {

@@ -1036,13 +1036,43 @@ int main() {
         bool winOK = true;
         for (int s = 0; s < 16; ++s)
             winOK = winOK && eng.outputMaskPasses(M, s) == (s >= 5 && s < 13);
-        check(winOK, "STAGE4: abs1 — the region IS the voice LOR [5,13) (ONE range; the reads keep cycling within it)");
+        check(winOK, "STAGE4: abs1 — the region IS the voice LOR [5,13) (ONE range; the read runs the full phrase — the pin below)");
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 4;
         eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 13;
         bool wrapOK = true;
         for (int s = 0; s < 16; ++s)
             wrapOK = wrapOK && eng.outputMaskPasses(M, s) == (s >= 13 || s < 1);
         check(wrapOK, "STAGE4: the abs1 region wraps the phrase (13..4 plays 13,14,15,0) — the wrap carries, the real end cuts");
+        // (A4) THE BASE-MODE READ LAW: abs1's read runs the FULL PHRASE (the frame
+        // behaves as identity for the read — the playhead marches all 16; the OUTPUT
+        // gate does the windowing); cycle keeps the confined window walk (the Stage-2
+        // worked table). Same row, only the kind flips.
+        {
+            SequencerEngine r; r.reset();
+            const auto M = dotModular::VoiceResolver::mono();
+            r.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
+            r.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
+            r.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
+            float rb[1] = {65535.f}; float rk = 1.f, rf = 0.f;   // abs1
+            float reb[16], rek[16], ref[16], rle[16];
+            for (int v = 0; v < 16; ++v) { reb[v]=65535.f; rek[v]=0.f; ref[v]=0.f; rle[v]=0.f; }
+            r.pushMaskEditor(rb, rk, rf, reb, rek, ref, rle);
+            bool fullOK = true;
+            for (int k = 0; k < 16; ++k) {
+                r.advancePlayhead(+1);
+                fullOK = fullOK && r.voiceReadPosition(M) == k;   // the global walk — all 16
+            }
+            check(fullOK, "STAGE4: abs1's READ runs the full phrase — the playhead marches all 16 (only the output gates)");
+            rk = 0.f;   // cycle: the SAME row confines the read
+            r.pushMaskEditor(rb, rk, rf, reb, rek, ref, rle);
+            static const int kCycleReads[16] = {7,8,9,10,11,12,5,6,7,8,9,10,11,12,5,6};
+            bool confOK = true;
+            for (int k = 0; k < 16; ++k) {
+                r.advancePlayhead(+1);
+                confOK = confOK && r.voiceReadPosition(M) == kCycleReads[k];
+            }
+            check(confOK, "STAGE4: cycle's read stays confined to the LOR (the window walk — the Stage-2 worked table)");
+        }
         // THE OVERLAY COMPOSES: abs1 + a painted pattern = the AND (in-window AND bit).
         macroBits[0] = (float)0x5F5Fu;   // a non-contiguous pattern over [13,1)
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
@@ -1112,6 +1142,21 @@ int main() {
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         check(eng.outputMaskPasses(M, 9) && !eng.outputMaskPasses(M, 10),
               "STAGE4: a repaint re-anchors at the painted R (the anchor law's fresh link)");
+        // (A4) THE FOLLOW-R EVALUATION HOOK (the doc's "the rotation MODULATION offsets
+        // relative to the anchor" — implemented): a MODULATED R (the CV fold writes the
+        // store past the anchor — NO push, NO re-pin) offsets the pattern LIVE by the
+        // SAME rotMask16(+Δ) the re-pin applies on a base change. Back at the anchor,
+        // Δ=0 — the anchored copy stands. (The display reads the same function, so the
+        // strip's paint surface moves with the CV too.)
+        eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 14;   // +2 past the anchor (12) — the fold
+        bool hookOK = true;
+        for (int s = 0; s < 16; ++s)
+            hookOK = hookOK && eng.outputMaskPasses(M, s) == (s == 7);   // bit 9 moves 2 EARLIER
+        hookOK = hookOK && eng.effectiveOutputMask(M) == (uint16_t)(1u << 7);
+        check(hookOK, "STAGE4: follow-R evaluates the modulated R — +2 past the anchor plays the pattern 2 steps earlier (live, no re-pin)");
+        eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 12;   // Δ=0: the anchored copy stands
+        check(eng.outputMaskPasses(M, 9) && !eng.outputMaskPasses(M, 7),
+              "STAGE4: the evaluation offset is RELATIVE — back at the anchor, the anchored position plays (no double rotation)");
     }
     {
         // DELEGATION: the MACRO tier is the GLOBAL mask (V1 + every follower read it);
