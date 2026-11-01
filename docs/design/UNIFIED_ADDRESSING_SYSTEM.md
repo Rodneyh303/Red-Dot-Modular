@@ -536,12 +536,13 @@ probability-lane LORs (L/O/R + mod + spread + warp + direction/delegation button
   a meaningful chevron like the others (not just parity — it's what the chevron denotes).
 - PANEL CROWDING: adding voice-LOR mod jacks + attenuverters (L/O/R — NOT spread/warp, which voice LOR
   doesn't need; otherwise ALIGN to the other lanes) + direction/delegation buttons/jacks will crowd Sands.
-- POSSIBLE DIRECTION (NOT decided): move modulation jacks + attenuverters to an OPTIONAL SUBPANEL (users may
-  not want to modulate these). DECISION FRAMING (Rodney's consistency instinct): decide the PRINCIPLE, not a
-  one-off. If "second-tier modulation I/O lives on optional subpanels" becomes an INSTRUMENT-WIDE rule
-  (base = play controls + primary; subpanel = modulation depth), then voice-LOR-mod-on-a-subpanel FOLLOWS
-  the rule (consistent, progressive disclosure, scalable — could declutter other lanes too). If it's a
-  ONE-OFF for voice LOR, it's a special case (the thing we keep eliminating) and voice-LOR mod should stay
-  on the base aligned with other lanes. => Settle the principle (modulation-tier-on-subpanels: yes/no
-  instrument-wide); voice LOR then follows it. Direction/delegation BUTTONS + the L/O/R knobs stay on the
-  base either way (they're play controls, not modulation).
+- DECIDED (Rodney):
+  - FOR NOW: add the voice-LOR controls it needs TO THE BASE PANEL, NEXT TO THE LANE, same as every other
+    lane (full consistency with the existing layout). That means: voice R knob (+ its mod jack + attenuverter
+    aligned to the other lanes), direction + delegation buttons/jacks next to the lane, L/O/R all on the base.
+    NO spread/warp (voice LOR doesn't need them). No subpanel yet.
+  - LATER (parked, NOT now): a possible INSTRUMENT-WIDE direction — move ALL lanes' modulation jacks +
+    attenuverters (not just voice LOR) to an optional SUBPANEL (users may not want to modulate these;
+    declutters the base; progressive disclosure). This is an instrument-wide RULE if adopted (all lanes, so
+    consistent — not a voice-LOR special case), affecting every lane's mod I/O. Deferred — revisit after the
+    voice-LOR controls are in and the base-panel density is seen in practice.
