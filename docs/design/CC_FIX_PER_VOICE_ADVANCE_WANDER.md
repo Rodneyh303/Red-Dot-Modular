@@ -75,3 +75,29 @@ delegation pattern.
 VERIFY against rest/legato: find how rest resolves per-voice-draw + global-vs-per-voice-threshold, and make
 advance do the SAME. If rest's resolution lives in a shared helper, advance should use that helper, not a
 parallel path.
+
+════════════════════════════════════════════════════════════════════════════════
+## DRY AUDIT (Rodney asked) — the authorities are mostly respected; ONE twin to collapse
+Checked the per-voice advance path against the ODR/DRY authorities. RESPECTED:
+- Strong types: VoiceResolver::slot()/VoiceSlot throughout (no raw voice identity).
+- Draw accessor: pe.warpRow(bank, PL_VARIATION) — the SAME warped-probability accessor rest/legato use.
+- Subgate three-way: reads subRes[subLevel][SK::ADVANCE] — the resolver's OUTPUT, not re-resolved.
+- Rate manager: no raw dividers/gridPulse in the advance path.
+- Delegation: varlegDelegated is the SOLE delegation authority (no parallel check).
+
+### THE ONE DRY VIOLATION — the "*ForVoice TWIN" functions (collapse them)
+stepAdvanceStrandIdxForVoice (SequencerEngine.cpp:2266) is literally commented "the per-voice TWIN of
+stepAdvanceStrandIdx". TWIN = DUPLICATE. There are now TWO scanned-position expressions (mono +
+per-voice), contradicting the mono one's own comment ":2240 THE ONE scanned-position expression". Same for
+stepAdvanceDrawAt / stepAdvanceDrawAtForVoice, and decideStepAdvance_ / decideStepAdvanceForVoice_. Each is
+a mono fn + a parallel per-voice twin that must be kept in sync — the exact drift the "one expression"
+discipline prevents (change the wrap/scan in one, forget the other → mono/poly diverge; the position-holder
+refactor and 32 steps WILL change this logic, so the twins WILL drift).
+FIX (fold into the per-voice work): collapse each twin pair into ONE function PARAMETERIZED by VoiceSlot:
+- stepAdvanceStrandIdx(VoiceSlot, delta)  — mono = stepAdvanceStrandIdx(VoiceResolver::mono(), delta)
+- stepAdvanceDrawAt(VoiceSlot, delta)     — mono = …(mono(), delta)
+- decideStepAdvance_(VoiceSlot, subLevel, delta) — mono = …(mono(), …)
+Delete the *ForVoice twins; every caller passes a VoiceSlot (mono() for the mono path). ONE expression, N
+voices — mono is the special case, not a separate implementation. (Same shape as the display single-source
+fix: one function, many readers, never a synced twin.)
+PIN: byte-identical (it's a pure parameterization — mono(VoiceSlot=mono) == the old mono fn).
