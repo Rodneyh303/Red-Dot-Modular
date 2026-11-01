@@ -523,9 +523,8 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
 // CC_PROMPT_STEP_ADVANCE_FIX_DRAW_SOURCE) — the gate-mode advance DECISION for one rise.
 // GATE MODE ONLY (Mode B): in clock/phase mode p_advance is not used and Variation keeps
 // its existing meaning (executeModeA never calls this).
-dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLevel, int drawTickDelta) {
+dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(VoiceSlot vs, int subLevel, int drawTickDelta) {
     namespace SK = dotModular::SubgateKnobs;
-    const VoiceSlot m = VoiceResolver::mono();
     // The threshold, by LEVEL (the three-level hierarchy): a MAIN gate rise resolves to
     // the VARIATION probability (the per-voice resolver path — warps/correlates/CAs like
     // every lane, NOT the raw knob; BIPOLAR since Stage 2 — the signed advance value,
@@ -534,9 +533,9 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLev
     // {global | follow-main}). subResLive gates the subgate read exactly like the
     // rest/legato/accent reads in executeStep: an engine that has never been through
     // ModeController keeps reading the main value verbatim (rack-free byte-identity).
-    const float p = (subLevel < 0 || !voices[m].subResLive)
-                  ? voices[m].variationProb
-                  : voices[m].subRes[subLevel][SK::ADVANCE];
+    const float p = (subLevel < 0 || !voices[vs].subResLive)
+                  ? voices[vs].variationProb
+                  : voices[vs].subRes[subLevel][SK::ADVANCE];
     // THE SCAN LOOKS WHERE THE PLAYHEAD IS GOING (the backward fix, Rodney): the draw
     // delta is SIGNED by p — p's sign IS the travel direction — so p must be computed
     // FIRST (the old order read u before p existed to sign it, so the scan always
@@ -570,28 +569,12 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLev
     // either direction). getStrandIdx wraps by the variation lane's own length,
     // negative ticks included (the double-mod wrap) — the LOCAL window scan, never
     // the global clock.
-    const float u = stepAdvanceDrawAt(signedDelta);
-    // SCOPE LINE (the ONE PLAYHEAD law, Stage 2 reading): the TRANSPORT is singular —
-    // this decision moves the ONE clock (V1's row — the mono subgate row). The poly
-    // voices' ADVANCE columns' consumer is decideStepAdvanceForVoice_ below (per-voice
-    // offsets, gated on the VAR-lane delegation — the signoff); still never a second
-    // playhead.
-    return dotModular::StepAdvance::decide(p, u);
-}
-
-// PER-VOICE STEP-ADVANCE Stage 2: the per-voice mirror of decideStepAdvance_
-// (CC_PER_VOICE_ADVANCE_SIGNOFF decisions 2-4). The threshold is THIS voice's resolved
-// store; the draw is the voice's OWN variation window at the given delta (the decision
-// structure — draw production keeps its delegation, the D6 SWEEP ruling). p's sign signs
-// the travel (the backward fix, mirrored per voice). Called ONLY for Local-East VAR
-// voices — the variation-lane delegation is the per-voice/global switch. Zero new draws.
-dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvanceForVoice_(VoiceSlot vs, int subLevel, int targetTickDelta) {
-    namespace SK = dotModular::SubgateKnobs;
-    const float p = (subLevel < 0 || !voices[vs].subResLive)
-                  ? voices[vs].variationProb
-                  : voices[vs].subRes[subLevel][SK::ADVANCE];
-    const int signedDelta = (p < 0.f) ? -targetTickDelta : targetTickDelta;
-    const float u = stepAdvanceDrawAtForVoice(vs, signedDelta);
+    const float u = stepAdvanceDrawAt(vs, signedDelta);
+    // SCOPE (the ONE PLAYHEAD law, the twin-collapse reading — CC_FIX_PER_VOICE_
+    // ADVANCE_WANDER's DRY audit): ONE decision function, N voices — the transport
+    // sites pass VoiceResolver::mono() (the ONE clock), the per-voice fold passes the
+    // voice (its own threshold + its own window draw → the per-voice offsets). Mono is
+    // the special case, not a separate implementation; never a second playhead.
     return dotModular::StepAdvance::decide(p, u);
 }
 
@@ -626,7 +609,7 @@ bool SequencerEngine::foldPerVoiceAdvance_(int subLevel, bool perVoiceScan,
             pendingCheckpointArrivalV_[i] = false;
         } else {
             const int delta = perVoiceScan ? scanOfsV_[i] : 1;
-            const dotModular::StepAdvance::Decision dv = decideStepAdvanceForVoice_(vs, subLevel, delta);
+            const dotModular::StepAdvance::Decision dv = decideStepAdvance_(vs, subLevel, delta);
             dStep = (dv == dotModular::StepAdvance::FORWARD) ? +1
                   : (dv == dotModular::StepAdvance::BACKWARD) ? -1 : 0;
             if (dStep != 0) scanOfsV_[i] = 0;              // moved: re-anchor (its own value first)
@@ -1284,7 +1267,7 @@ void SequencerEngine::legatoCheckpointOnFall() {
     // decision per Local-East VAR voice at ITS OWN +1 target (its incoming-rest
     // step); delegated voices ride d (GLOBAL). An offset moves only where a voice's
     // own fall decision diverged from the mono one.
-    const dotModular::StepAdvance::Decision d = decideStepAdvance_(-1, /*targetTickDelta=*/+1);
+    const dotModular::StepAdvance::Decision d = decideStepAdvance_(VoiceResolver::mono(), -1, /*targetTickDelta=*/+1);
     int8_t motionV[16];
     const bool anyVoiceMoved = foldPerVoiceAdvance_(-1, /*perVoiceScan=*/false, d, motionV);
     // The per-voice arrival latches: every Local-East voice that moved on its OWN fall
@@ -1354,7 +1337,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
             // The seed: initialization, not a sequence-motion decision (no draw consumed).
             wrapped = advancePlayhead();
         } else {
-            const dotModular::StepAdvance::Decision d = decideStepAdvance_(-1, scanOfsV_[0]);
+            const dotModular::StepAdvance::Decision d = decideStepAdvance_(VoiceResolver::mono(), -1, scanOfsV_[0]);
             // STAGE 1 (CC_PROMPT_GATE_STEP_ADVANCE_SPEC): the main-gate advance is
             // PROBABILISTIC — u < the resolved Variation probability in gate mode moves
             // the playhead. p=1 is the GOLDEN PIN: decide(1, u) == FORWARD for every
@@ -1514,7 +1497,7 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
         const int advLevel = mainGateRise ? -1
                            : (subGateRise ? dotModular::SubgateKnobs::RATCHET
                                           : dotModular::SubgateKnobs::GHOST);
-        const dotModular::StepAdvance::Decision adv = decideStepAdvance_(advLevel, scanOfsV_[0]);
+        const dotModular::StepAdvance::Decision adv = decideStepAdvance_(VoiceResolver::mono(), advLevel, scanOfsV_[0]);
         // FORWARD advances; BACKWARD (Stage 2 bipolar — a negative threshold at ANY
         // level: the bipolar main through follow-main, or a bipolar mod delta into
         // the level's ADVANCE jack) walks the SHARED playhead backward with wrap
@@ -2235,59 +2218,40 @@ int SequencerEngine::nvIdxForVoice(VoiceSlot bank, const PatternInput& input) co
 
 int SequencerEngine::getRhythmStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_RHYTHM],    lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT)); }
 int SequencerEngine::getVariationStep() const { return getStrandIdx(laneTick_[dotModular::STRAND_VARIATION], lor(dotModular::STRAND_VARIATION,LOR_LEN), lor(dotModular::STRAND_VARIATION,LOR_OFF), lor(dotModular::STRAND_VARIATION,LOR_ROT)); }
-int SequencerEngine::stepAdvanceStrandIdx(int drawTickDelta) const {
+int SequencerEngine::stepAdvanceStrandIdx(VoiceSlot bank, int drawTickDelta) const {
     // THE ONE scanned-position expression (CC_PROMPT_VARIATION_SCAN_DISPLAY, factored
-    // from stepAdvanceDrawAt — a PURE factoring, bit-identical): the variation strand
-    // tick + delta, wrapped by the variation lane's own LOR window. TWO readers, ONE
-    // function: the value-read (stepAdvanceDrawAt → the advance decision) and the
-    // display (the Sands VAR chevron reads this with the public scan accessor) — the
-    // chevron sits at EXACTLY the index the engine read. Display-reads-engine: no
-    // parallel tick math anywhere.
-    return getStrandIdx(laneTick_[dotModular::STRAND_VARIATION] + drawTickDelta,
-                        lor(dotModular::STRAND_VARIATION, LOR_LEN),
-                        lor(dotModular::STRAND_VARIATION, LOR_OFF),
-                        lor(dotModular::STRAND_VARIATION, LOR_ROT));
-}
-int SequencerEngine::stepAdvanceScanDelta() const {
-    // The display's SIGNED scan (CC_PROMPT_VARIATION_SCAN_DISPLAY + the backward
-    // fix): scanOfs_ is a magnitude; the chevron must scan WHERE THE PLAYHEAD IS
-    // GOING, so the sign is read live from the mono variationProb — the SAME p
-    // decideStepAdvance_ signs its draw delta by (the main-lane travel direction).
-    // No cached sign member (nothing to desync); magnitude unchanged.
-    const VoiceSlot m = VoiceResolver::mono();
-    return (voices[m].variationProb < 0.f) ? -scanOfsV_[0] : scanOfsV_[0];
-}
-float SequencerEngine::stepAdvanceDrawAt(int drawTickDelta) const {
-    // THE ONE advance-draw expression (decideStepAdvance_ delegates here; the test
-    // mirror reads the same): the variation draw at the scanned position.
-    const VoiceSlot m = VoiceResolver::mono();
-    return pe.warpRow(m, LaneId{PL_VARIATION})[stepAdvanceStrandIdx(drawTickDelta)];
-}
-int SequencerEngine::stepAdvanceStrandIdxForVoice(VoiceSlot bank, int drawTickDelta) const {
-    // The per-voice twin of stepAdvanceStrandIdx (PER-VOICE STEP-ADVANCE Stage 2): the
-    // voice's OWN variation window (laneTickV_[v] + its own LOR) — the DECISION
-    // structure (the signoff's decision 3: draw production keeps its delegation, the
-    // D6 SWEEP ruling). The mono slot (and any out-of-range slot, nvIdxForVoice's
-    // guard) is the existing mono expression — ONE seam.
-    if (bank.v < 1 || bank.v >= 16) return stepAdvanceStrandIdx(drawTickDelta);
+    // from stepAdvanceDrawAt — a PURE factoring; CC_FIX_PER_VOICE_ADVANCE_WANDER's DRY
+    // audit collapsed the mono/per-voice twins): ONE function, N voices — the mono slot
+    // (and any out-of-range slot) reads the MONO window (laneTick_ + lor), a poly voice
+    // its OWN (laneTickV_[v] + its own LOR — the decision structure; draw production
+    // keeps its delegation, the D6 SWEEP ruling). TWO reader kinds, ONE function: the
+    // value-read (stepAdvanceDrawAt → the advance decision) and the display (the Sands
+    // VAR chevron) — the chevron sits at EXACTLY the index the engine read.
+    // Display-reads-engine: no parallel tick math anywhere.
+    if (bank.v < 1 || bank.v >= 16) {
+        return getStrandIdx(laneTick_[dotModular::STRAND_VARIATION] + drawTickDelta,
+                            lor(dotModular::STRAND_VARIATION, LOR_LEN),
+                            lor(dotModular::STRAND_VARIATION, LOR_OFF),
+                            lor(dotModular::STRAND_VARIATION, LOR_ROT));
+    }
     return getStrandIdx(laneTickV_[bank.v][dotModular::STRAND_VARIATION] + drawTickDelta,
                         polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_LEN),
                         polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_OFF),
                         polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_ROT));
 }
-float SequencerEngine::stepAdvanceDrawAtForVoice(VoiceSlot bank, int drawTickDelta) const {
-    // The per-voice advance draw (decideStepAdvanceForVoice_ delegates here; the
-    // per-voice pins read the same): the voice's own variation row at its own
-    // scanned position. Pure — reading never mutates the ring (zero new draws).
-    return pe.warpRow(bank, LaneId{PL_VARIATION})[stepAdvanceStrandIdxForVoice(bank, drawTickDelta)];
-}
-int SequencerEngine::stepAdvanceScanDeltaForVoice(VoiceSlot bank) const {
-    // The per-voice twin of stepAdvanceScanDelta (PER-VOICE STEP-ADVANCE Stage 3, the
-    // display's read): the voice's OWN scan magnitude, signed by the SAME p its own
-    // decision signs by (its live variationProb — no cached sign member to desync).
-    // The mono slot (and out-of-range) reads [0] — the mono expression.
-    if (bank.v < 1 || bank.v >= 16) return stepAdvanceScanDelta();
+int SequencerEngine::stepAdvanceScanDelta(VoiceSlot bank) const {
+    // The display's SIGNED scan (CC_PROMPT_VARIATION_SCAN_DISPLAY + the backward fix):
+    // the scan magnitude, signed live by the SAME p the decision signs by (the slot's
+    // variationProb — the travel direction). Mono/out-of-range reads [0]. No cached
+    // sign member (nothing to desync); magnitude unchanged.
+    if (bank.v < 1 || bank.v >= 16) bank = VoiceResolver::mono();
     return (voices[bank].variationProb < 0.f) ? -scanOfsV_[bank.v] : scanOfsV_[bank.v];
+}
+float SequencerEngine::stepAdvanceDrawAt(VoiceSlot bank, int drawTickDelta) const {
+    // THE ONE advance-draw expression (decideStepAdvance_ delegates here; the test
+    // mirror reads the same): the variation draw at the scanned position. Pure —
+    // reading never mutates the ring (zero new draws).
+    return pe.warpRow(bank, LaneId{PL_VARIATION})[stepAdvanceStrandIdx(bank, drawTickDelta)];
 }
 int SequencerEngine::getLegatoStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_LEGATO],    lor(dotModular::STRAND_LEGATO,LOR_LEN), lor(dotModular::STRAND_LEGATO,LOR_OFF), lor(dotModular::STRAND_LEGATO,LOR_ROT)); }
 int SequencerEngine::getAccentStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_ACCENT],    lor(dotModular::STRAND_ACCENT,LOR_LEN), lor(dotModular::STRAND_ACCENT,LOR_OFF), lor(dotModular::STRAND_ACCENT,LOR_ROT)); }

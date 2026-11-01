@@ -99,7 +99,8 @@ inline int calcPlayhead(int globalStep, int length, int offset, int rotation) {
 // engine's own lor() store, so the swap is bit-identical at rest. -1 when not running.
 inline int variationLanePlayhead(const SequencerEngine& eng) {
     if (eng.stepIndex < 0) return -1;
-    return eng.stepAdvanceStrandIdx(eng.stepAdvanceScanDelta());
+    const dotModular::VoiceSlot mono = dotModular::kMonoVoiceSlot;
+    return eng.stepAdvanceStrandIdx(mono, eng.stepAdvanceScanDelta(mono));
 }
 
 // PER-VOICE STEP-ADVANCE Stage 3 — the per-voice twin: THIS voice's VAR chevron.
@@ -111,7 +112,7 @@ inline int variationLanePlayhead(const SequencerEngine& eng) {
 inline int variationLanePlayheadForVoice(const SequencerEngine& eng, dotModular::VoiceSlot bank) {
     if (eng.stepIndex < 0) return -1;
     if (eng.varlegDelegated(bank, 0)) return variationLanePlayhead(eng);
-    return eng.stepAdvanceStrandIdxForVoice(bank, eng.stepAdvanceScanDeltaForVoice(bank));
+    return eng.stepAdvanceStrandIdx(bank, eng.stepAdvanceScanDelta(bank));
 }
 
 // Read an integer param (rounded) from a module, clamped to [1, 16].

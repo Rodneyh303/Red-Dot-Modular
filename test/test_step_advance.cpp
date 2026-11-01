@@ -302,11 +302,11 @@ static void ruleMarch(float p, int steps) {
                         : p;
         eng.voices[m].variationProb = pNow;
         const int before = eng.stepIndex;
-        const float drawAt0Before = (eng.stepIndex != -1) ? eng.stepAdvanceDrawAt(0) : 0.f;
+        const float drawAt0Before = (eng.stepIndex != -1) ? eng.stepAdvanceDrawAt(m, 0) : 0.f;
         const float uBefore = (rise && eng.stepIndex != -1)
             // the SCANNED draw, SIGNED by p (the engine reads the scan in the
             // TRAVEL direction — pNow < 0 scans BACKWARD: drawAt(-mirrorScan))
-            ? eng.stepAdvanceDrawAt((pNow < 0.f) ? -mirrorScan : mirrorScan)
+            ? eng.stepAdvanceDrawAt(m, (pNow < 0.f) ? -mirrorScan : mirrorScan)
             : 0.f;
         bool expectAdvance = false;
         if (rise && eng.stepIndex != -1)
@@ -324,7 +324,7 @@ static void ruleMarch(float p, int steps) {
                 // variation ring BIT-IDENTICAL — the decision (and the scan) only
                 // READ existing ring values; nothing regenerates (the old
                 // reserved-chunk draw is deleted).
-                check(eng.stepAdvanceDrawAt(0) == drawAt0Before,
+                check(eng.stepAdvanceDrawAt(m, 0) == drawAt0Before,
                       "RULE: a held rise draws nothing new (the ring is read-only here)");
             } else {
                 mirrorScan = 0;   // any motion re-anchors (the arrived step judged on its own value)
@@ -334,7 +334,7 @@ static void ruleMarch(float p, int steps) {
         // reads ride the SAME scan the engine's decision used — the mirror (updated
         // just above, magnitude) must equal the engine's SIGNED accessor, every
         // rise, held or moved (the sign = the live travel direction, pNow's sign).
-        check(eng.stepAdvanceScanDelta() == ((pNow < 0.f) ? -mirrorScan : mirrorScan),
+        check(eng.stepAdvanceScanDelta(m) == ((pNow < 0.f) ? -mirrorScan : mirrorScan),
               "RULE: the signed scan delta equals the mirror (the display's read, direction-signed)");
         if (moved && !seeded) ++advances;
         (void)r;
@@ -344,7 +344,7 @@ static void ruleMarch(float p, int steps) {
     check(advances > 0, "RULE: the march actually exercised forward advances");
     // The factoring guard (CC_PROMPT_VARIATION_SCAN_DISPLAY): the scanned POSITION at
     // delta 0 is the plain variation step — the factoring changed nothing there.
-    check(eng.stepAdvanceStrandIdx(0) == eng.getVariationStep(),
+    check(eng.stepAdvanceStrandIdx(m, 0) == eng.getVariationStep(),
           "RULE: the factored position at delta 0 is the variation step (pure factoring)");
 }
 // (helper so the determinism re-run can capture without recursing)
@@ -602,7 +602,7 @@ int main() {
             bool expectBackward = false;
             if (rise && eng.stepIndex != -1)
                 // backward travel: the engine reads the scan SIGNED (drawAt(-scanOfs_))
-                expectBackward = (eng.stepAdvanceDrawAt(-mirrorScan) < mag);
+                expectBackward = (eng.stepAdvanceDrawAt(m, -mirrorScan) < mag);
             StepResult r = eng.executeModeB(rise, rise, 3.f, in);
             (void)r;
             if (!rise || before == -1) continue;   // the seed advances forward, no decision

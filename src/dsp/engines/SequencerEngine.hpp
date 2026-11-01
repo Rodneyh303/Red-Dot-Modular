@@ -1012,9 +1012,11 @@ struct SequencerEngine {
     // the repeat; the step-addressed data re-outputs itself by construction). SCOPE: the
     // TRANSPORT is singular — the mono decision moves the ONE clock (V1's row).
     // PER-VOICE STEP-ADVANCE Stage 2 (CC_PER_VOICE_ADVANCE_SIGNOFF): the poly ADVANCE
-    // columns now have their consumer — decideStepAdvanceForVoice_ (below), gated on the
-    // voice's VAR-lane delegation; the divergence lands in advanceOffset_, never in a
-    // second playhead. targetTickDelta: the
+    // columns now have their consumer — the per-voice fold (foldPerVoiceAdvance_, below)
+    // calling THIS function at each voice's slot; the divergence lands in advanceOffset_,
+    // never in a second playhead. ONE decision function, N voices (the *ForVoice twin is
+    // DELETED — CC_FIX_PER_VOICE_ADVANCE_WANDER's DRY audit): the transport sites pass
+    // mono(), the fold passes the voice. targetTickDelta: the
     // draw addressing offset — 0 = the current step (the rise's read,
     // bit-identical to getVariationStep()); +1 = the incoming-rest step (the
     // fall-advance's read — CC_PROMPT_TIE_INTO_REST_PROBABILISTIC_ADVANCE: "the
@@ -1022,16 +1024,7 @@ struct SequencerEngine {
     // INSIDE by p (p's sign = the travel direction): backward travel reads the
     // mirror direction — the scan and the fall target both look where the playhead
     // is going (the backward fix).
-    dotModular::StepAdvance::Decision decideStepAdvance_(int subLevel, int targetTickDelta = 0);
-    // PER-VOICE STEP-ADVANCE Stage 2 (the signoff's decisions 2-4): the per-voice mirror
-    // of decideStepAdvance_ — THIS voice's resolved threshold (the main level: its own
-    // variationProb; a subgate level: its own subRes[subLevel][ADVANCE], gated on ITS
-    // subResLive) and the voice's OWN variation-window draw at the delta
-    // (stepAdvanceDrawAtForVoice — the DECISION structure; draw production keeps its
-    // delegation, the D6 SWEEP ruling). Called ONLY for Local-East VAR voices
-    // (!varlegDelegated(vs, 0)) — the variation-lane delegation IS the per-voice/global
-    // switch (decision 4: no new bool). Zero new draws.
-    dotModular::StepAdvance::Decision decideStepAdvanceForVoice_(VoiceSlot vs, int subLevel, int targetTickDelta = 0);
+    dotModular::StepAdvance::Decision decideStepAdvance_(VoiceSlot vs, int subLevel, int targetTickDelta = 0);
     // The per-voice fold of ONE advance event (both rise executors + the fall): fills
     // motionV[16] (the per-voice motion the recompute's prev pairs consume), accumulates
     // advanceOffset_ (d_v − dMain — nonzero only where a Local-East voice's own decision
@@ -1041,19 +1034,6 @@ struct SequencerEngine {
     // LOCKED default (all delegated): touches nothing — motionV fills uniform dMain.
     bool foldPerVoiceAdvance_(int subLevel, bool perVoiceScan,
                               dotModular::StepAdvance::Decision dMain, int8_t* motionV);
-    // PER-VOICE STEP-ADVANCE Stage 2 — the per-voice twins (test-visible mirrors, the
-    // *ForVoice convention). The mono slot (and any out-of-range slot) falls back to
-    // the mono expressions (stepAdvanceStrandIdx/stepAdvanceDrawAt, further below) —
-    // ONE seam. stepAdvanceStrandIdxForVoice: the voice's OWN variation window
-    // (laneTickV_[v] + its own LOR — the decision structure); stepAdvanceDrawAtForVoice:
-    // the draw the per-voice decision reads. Consumed by decideStepAdvanceForVoice_ +
-    // the per-voice pins.
-    int   stepAdvanceStrandIdxForVoice(VoiceSlot bank, int drawTickDelta) const;
-    float stepAdvanceDrawAtForVoice(VoiceSlot bank, int drawTickDelta) const;
-    // The per-voice scan as a SIGNED delta — the per-voice display's read (Stage 3):
-    // the voice's OWN scan magnitude, signed live by its own variationProb (the same
-    // p its decision signs by). Mono/out-of-range reads [0] (the mono expression).
-    int   stepAdvanceScanDeltaForVoice(VoiceSlot bank) const;
     // Recompute all laneTick_/laneTickV_/macroLaneTick_ caches from totalStepsElapsed.
     // Called after snapping totalStepsElapsed externally (e.g. Mode E phase jump snap)
     // so the lane position caches match the new transport position without a full
@@ -1307,22 +1287,23 @@ struct SequencerEngine {
     // TEST-VISIBLE (the RULE mirror in test_step_advance): the variation draw the
     // step-advance decision reads at the given tick delta — the SAME expression
     // decideStepAdvance_ uses (0 = the current step's own value; the fall passes
-    // +1, the incoming-rest step; the rise passes the accumulated scan). Pure:
-    // reading never mutates the ring (zero new draws). getStrandIdx wraps by the
-    // variation lane's own length — the local window scan.
-    float stepAdvanceDrawAt(int drawTickDelta) const;
+    // +1, the incoming-rest step; the rise passes the accumulated scan). ONE
+    // function, N voices (the *ForVoice twins are DELETED — the WANDER fix's DRY
+    // audit): the mono slot reads the mono window, a poly voice its own. Pure:
+    // reading never mutates the ring (zero new draws).
+    float stepAdvanceDrawAt(VoiceSlot bank, int drawTickDelta) const;
     // CC_PROMPT_VARIATION_SCAN_DISPLAY — the scanned POSITION factored out of
-    // stepAdvanceDrawAt: ONE expression, TWO readers (the draw + the display
+    // stepAdvanceDrawAt: ONE expression, TWO reader kinds (the draw + the display
     // chevron), so the chevron lands on EXACTLY the index the engine read.
     // Gate-mode holds scan the variation window; delta 0 = the current step.
-    int stepAdvanceStrandIdx(int drawTickDelta) const;
+    int stepAdvanceStrandIdx(VoiceSlot bank, int drawTickDelta) const;
     // The held-rise scan as a SIGNED delta — the display's read. The escape search
     // looks in the TRAVEL direction (decideStepAdvance_ signs its draw delta by p):
     // negative travel (variationProb < 0) scans BACKWARD. The sign is read LIVE
-    // from the mono variationProb — the same p the main-lane decision signs by, so
-    // there is no cached sign member to desync. scanOfsV_[0] magnitude stays
+    // from the slot's variationProb — the same p that slot's decision signs by, so
+    // there is no cached sign member to desync. The scan magnitude stays
     // 0..varLen-1 (0 = not holding / non-gate modes).
-    int stepAdvanceScanDelta() const;
+    int stepAdvanceScanDelta(VoiceSlot bank) const;
     int getAccentStep() const;  // NEW: accent strand DNA index
     int getMelodyStep() const;
     int getOctaveStep() const;
