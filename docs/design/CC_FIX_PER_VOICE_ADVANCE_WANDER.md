@@ -101,3 +101,27 @@ Delete the *ForVoice twins; every caller passes a VoiceSlot (mono() for the mono
 voices — mono is the special case, not a separate implementation. (Same shape as the display single-source
 fix: one function, many readers, never a synced twin.)
 PIN: byte-identical (it's a pure parameterization — mono(VoiceSlot=mono) == the old mono fn).
+
+════════════════════════════════════════════════════════════════════════════════
+## POLY VARIATION MUST BE BIPOLAR TOO — unipolar poly is a SPECIAL CASE (Rodney)
+Currently poly per-voice VAR is [0,1] (ModeController.cpp:60-69: "no poly VAR CV... the clamp is a no-op
+today"), while MONO VAR is BIPOLAR [-1,+1] (knob + CV2 + Junction). So a poly voice can wander FORWARD/HOLD
+but NOT BACKWARD — mono goes backward, poly can't. SAME LANE, DIFFERENT BEHAVIOUR BY VOICE = a special case,
+exactly the inconsistency we keep removing.
+
+FIX: poly VAR must be BIPOLAR too, resolved through the SAME path as mono.
+- The resolver path is already correct/ready (variationProb comes from getEffectivePolyVariation via the
+  SandsModifierResolver); the gap is the poly VAR has no NEGATIVE source, so the clamp is [0,1] in effect.
+- Poly VAR must reach negative the SAME way mono does: the per-voice knob maps bipolar ((2*knob−1), so
+  knob centre = 0 = stutter, knob down = backward), PLUS the per-voice modulation source (the poly VAR
+  CV / Causeway path — the poly analogue of mono's CV2/Junction) when it exists. Same "(2*knob−1) + mod,
+  ONE clamp [-1,+1]" formula the mono write uses (:166-167), applied per voice.
+- If the poly VAR modulation SOURCE genuinely doesn't exist yet (no poly VAR CV / Causeway lane), then at
+  MINIMUM the poly KNOB must be bipolar (knob alone reaches ±1, like mono's knob-alone does), so poly
+  voices can go backward by knob even before a poly mod source lands. The CV/mod source is a separate
+  add, but the KNOB bipolarity is required now (no mono/poly knob-behaviour split).
+- Do NOT leave poly unipolar "for now" — that bakes in the mono/poly split. Poly VAR = bipolar, same
+  formula, same resolver, same as every other per-voice control that mirrors its mono.
+
+VERIFY: a poly voice with its VAR knob below centre walks BACKWARD independently (like mono); centre =
+stutter; above = forward. Per-voice, different draws → different wander, in BOTH directions.
