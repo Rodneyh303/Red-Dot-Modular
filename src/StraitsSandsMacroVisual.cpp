@@ -74,6 +74,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                         dotModular::ShapeQuery, dotModular::Bind, dotModular::Reload> {
     SandsVisualEditorV4*       visualEditor = nullptr;
     SandsParameterManager*     paramMgr     = nullptr;
+    // UAS Stage-4 UI completion: the paint-stroke buffer (the before-state for the
+    // stroke's ONE history action — see onMaskToggle/onMaskStrokeEnd).
+    struct { bool active = false; int kind = 0; unsigned bits = 0xFFFFu; } maskStroke_;
     // Stage 3: the voice-range strip's caption buffer (setRangeState stores the
     // pointer — it must outlive the call, so it lives here, not on the stack).
     char rangeLabel_[16] = "GLOBAL";
@@ -197,17 +200,42 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         visualEditor->onRangeRightClick = [this](rack::math::Vec) -> bool {
             return openVoiceRangeMenu();
         };
-        // Stage 4: the OUTPUT-MASK paint on the MACRO tier (the GLOBAL mask every
-        // follow-Macro voice reads through) — the same click-toggle + history idiom.
+        // Stage 4 (the UI-completion fix): painting OVERRIDES the range-driven
+        // default — the first toggle of a stroke on a Range/Cycle row transitions it
+        // to Painted, the pattern seeded from the ENGINE's current effective global
+        // mask (cycle -> all-on; range -> the window bits), then the cell applies
+        // live. The whole stroke (kind + final bits) is ONE history action at the end.
+        // The MACRO tier is the GLOBAL mask every follow-Macro voice reads through.
+        maskStroke_.active = false;
         visualEditor->onMaskToggle = [this](int cell, bool play) {
             auto* m = getMonsoon(); if (!m) return;
-            if ((int)std::lround(m->getMaskMacroKind()) != 2) return;   // painted only
-            const bool oldPlay = m->getMaskMacroCell(cell);
-            if (oldPlay == play) return;
-            m->setMaskMacroCell(cell, play);                            // apply, then record
+            if (!maskStroke_.active) {                        // capture the stroke's BEFORE state
+                maskStroke_.active = true;
+                maskStroke_.kind   = (int)std::lround(m->getMaskMacroKind());
+                maskStroke_.bits   = (unsigned)std::lround(m->getMaskMacroPatternBits());
+                if (maskStroke_.kind != 2) {                  // the transition: seed from the effective mask
+                    maskStroke_.kind = 2;
+                    maskStroke_.bits = m->engine.effectiveOutputMaskMacro();
+                    m->setMaskMacroKind(2.f);
+                    m->setMaskMacroPatternBits((float)maskStroke_.bits);
+                }
+            }
+            m->setMaskMacroCell(cell, play);                  // apply live (the push lands next block)
+        };
+        visualEditor->onMaskStrokeEnd = [this]() {
+            auto* m = getMonsoon(); if (!m) return;
+            if (!maskStroke_.active) return;
+            maskStroke_.active = false;
+            const unsigned afterBits = (unsigned)std::lround(m->getMaskMacroPatternBits());
+            if ((int)std::lround(m->getMaskMacroKind()) == maskStroke_.kind && afterBits == maskStroke_.bits)
+                return;   // nothing changed
+            const int bKind = maskStroke_.kind; const unsigned bBits = maskStroke_.bits;
             redDot::applyAndPushStoreEdit<Monsoon>(m, "Global mask paint",
-                [cell](Monsoon& mm, bool p) { mm.setMaskMacroCell(cell, p); },
-                oldPlay, play);
+                [bKind, bBits, afterBits](Monsoon& mm, bool redo) {
+                    mm.setMaskMacroKind(redo ? 2.f : (float)bKind);
+                    mm.setMaskMacroPatternBits(redo ? (float)afterBits : (float)bBits);
+                },
+                false, true);
         };
         addChild(visualEditor);
 
@@ -558,7 +586,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 it->widget = this; it->kind = k;
                 menu->addChild(it);
             }
-            menu->addChild(createCheckMenuItem("Mask follows rotation (R)", "",
+            menu->addChild(createCheckMenuItem("Painted pattern follows rotation (R)", "",
                 [m]() { return m->getMaskMacroFollowR() != 0.f; },
                 [m]() {
                     const float oldF = m->getMaskMacroFollowR();
@@ -943,13 +971,11 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             const int rp = (eng.stepIndex >= 0) ? se->macroFrameRead() : -1;
             const int sg = se->macroFrameSign();
             visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);
-            // Stage 4: the strip's mask surface (the MACRO tier's GLOBAL pattern).
-            const int  mkind = (int)std::lround(monsoon->getMaskMacroKind());
-            const bool painted = (mkind == 2);
-            unsigned pat = 0xFFFFu;
-            if (painted)
-                pat = (unsigned)std::lround(std::clamp(monsoon->getMaskMacroPatternBits(), 0.f, 65535.f));
-            visualEditor->setRangeMask(painted, pat);
+            // The mask surface reads the ENGINE's effective pattern (the UI-completion
+            // unify — display-reads-engine, East's twin note): cycle = all-lit, range
+            // = the window, painted = the ANCHORED working copy (rotates with R when
+            // follow-R is on).
+            visualEditor->setRangeMask(true, eng.effectiveOutputMaskMacro());
         }
     }
 

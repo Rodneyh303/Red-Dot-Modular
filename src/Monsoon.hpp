@@ -946,13 +946,16 @@ struct Monsoon : Module {
         // absolute steps = absolute-2, !=0 = follows the row's R = absolute-3).
         // Patterns are 16-bit play masks stored as ONE float holding the exact integer
         // (bit c = phrase step c+1 plays; 65535 = all-on) — persistence/push friendly
-        // and exactly representable. Identity defaults (cycle everywhere, all-on
-        // patterns) are byte-neutral: the push lands on the reset() seed and nothing
-        // gates. Kept at struct END (the same ABI-hygiene note as warp/subgate/LOR).
-        float maskMacroKind        = 0.f;     // CYCLE
+        // and exactly representable. Defaults are RANGE-driven (CC_PROMPT_UAS_MASK_UI_
+        // INCOMPLETE decision 1: the voice range drives the mask by default — a full
+        // range is all-on, so the default is byte-neutral; a windowed range gates).
+        // CYCLE (0) is the explicit "play everywhere regardless of range" opt-out.
+        // Saved patches load their own kinds verbatim; patches saved before this
+        // store existed get the RANGE default. Kept at struct END (ABI hygiene).
+        float maskMacroKind        = 1.f;     // RANGE (the window plays)
         float maskMacroPatternBits = 65535.f;
         float maskMacroFollowR     = 0.f;     // the painted kind's rotation source
-        float maskEastKind[16]         = {};   // per-voice kind (0 cycle default)
+        float maskEastKind[16]         = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};   // per-voice kind (RANGE default)
         float maskEastPatternBits[16]  = {65535.f,65535.f,65535.f,65535.f, 65535.f,65535.f,65535.f,65535.f,
                                           65535.f,65535.f,65535.f,65535.f, 65535.f,65535.f,65535.f,65535.f};
         float maskEastFollowR[16]      = {};
@@ -1049,13 +1052,14 @@ struct Monsoon : Module {
         editor.maskEastPatternBits[v] = (float)(play ? (b | (1 << c)) : (b & ~(1 << c))); }
     float getMaskLocalEastMask(int v) const   { return vLorOk(v) ? editor.maskLocalEastMask[v] : 0.f; }
     void  setMaskLocalEastMask(int v, float x){ if (vLorOk(v)) editor.maskLocalEastMask[v] = x; }
-    // Reset a mask row to CYCLE + all-on (the identity escape hatch — no gating).
+    // Reset a mask row to the RANGE default + all-on (the range-driven escape hatch;
+    // a full range plays everywhere — see the editor defaults note above).
     void resetMaskMacro() {
-        editor.maskMacroKind = 0.f; editor.maskMacroPatternBits = 65535.f;
+        editor.maskMacroKind = 1.f; editor.maskMacroPatternBits = 65535.f;
         editor.maskMacroFollowR = 0.f; }
     void resetMaskEast(int v) {
         if (!vLorOk(v)) return;
-        editor.maskEastKind[v] = 0.f; editor.maskEastPatternBits[v] = 65535.f;
+        editor.maskEastKind[v] = 1.f; editor.maskEastPatternBits[v] = 65535.f;
         editor.maskEastFollowR[v] = 0.f; }
 
     //  MONO slice accessors (Mono Sands de-param) 

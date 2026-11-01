@@ -80,6 +80,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // (blend controls now dim/disable themselves via DimmableTrimpot/DimmableLatch
     //  predicates — no central visibility list needed.)
     int  selectedVoice = 0;
+    // UAS Stage-4 UI completion: the paint-stroke buffer (the before-state for the
+    // stroke's ONE history action — see onMaskToggle/onMaskStrokeEnd).
+    struct { bool active = false; int kind = 0; unsigned bits = 0xFFFFu; } maskStroke_;
     // Stage 3: the voice-range strip's caption buffer (setRangeState stores the
     // pointer — it must outlive the call, so it lives here, not on the stack).
     char rangeLabel_[16] = "V1";
@@ -336,21 +339,47 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         visualEditor->onRangeRightClick = [this](rack::math::Vec) -> bool {
             return openVoiceRangeMenu();
         };
-        // Stage 4: the OUTPUT-MASK paint — a click on a PAINTED strip toggles the cell
-        // (the store first, then one Rack history action per toggle, the click-edit
-        // idiom). Only the voice's OWN East row paints here; a follow-Macro voice's
-        // mask is the Macro tier (authored on Macro's strip).
+        // Stage 4 (the UI-completion fix): painting OVERRIDES the range-driven
+        // default — the first toggle of a stroke on a Range/Cycle row transitions it
+        // to Painted, the pattern seeded from the ENGINE's current effective mask
+        // (cycle -> all-on; range -> the window bits), then the cell applies live.
+        // The whole stroke (kind + final bits) is ONE history action at the end.
+        // Only the voice's OWN East row paints here; a follow-Macro voice's mask is
+        // the Macro tier (authored on Macro's strip).
+        maskStroke_.active = false;
         visualEditor->onMaskToggle = [this](int cell, bool play) {
             auto* m = getMonsoon(); if (!m) return;
             const int v = selectedVoice;
-            if (m->getMaskLocalEastMask(v) == 0.f) return;              // follow-Macro: paint on Macro
-            if ((int)std::lround(m->getMaskEastKind(v)) != 2) return;   // painted only
-            const bool oldPlay = m->getMaskEastCell(v, cell);
-            if (oldPlay == play) return;
-            m->setMaskEastCell(v, cell, play);                          // apply, then record
+            if (m->getMaskLocalEastMask(v) == 0.f) return;   // follow-Macro: paint on Macro's strip
+            if (!maskStroke_.active) {                        // capture the stroke's BEFORE state
+                maskStroke_.active = true;
+                maskStroke_.kind   = (int)std::lround(m->getMaskEastKind(v));
+                maskStroke_.bits   = (unsigned)std::lround(m->getMaskEastPatternBits(v));
+                if (maskStroke_.kind != 2) {                  // the transition: seed from the effective mask
+                    maskStroke_.kind = 2;
+                    maskStroke_.bits = m->engine.effectiveOutputMask(dotModular::VoiceResolver::slot(v + 1));
+                    m->setMaskEastKind(v, 2.f);
+                    m->setMaskEastPatternBits(v, (float)maskStroke_.bits);
+                }
+            }
+            m->setMaskEastCell(v, cell, play);                // apply live (the push lands next block)
+        };
+        visualEditor->onMaskStrokeEnd = [this]() {
+            auto* m = getMonsoon(); if (!m) return;
+            const int v = selectedVoice;
+            if (!maskStroke_.active) return;
+            maskStroke_.active = false;
+            if (m->getMaskLocalEastMask(v) == 0.f) return;
+            const unsigned afterBits = (unsigned)std::lround(m->getMaskEastPatternBits(v));
+            if ((int)std::lround(m->getMaskEastKind(v)) == maskStroke_.kind && afterBits == maskStroke_.bits)
+                return;   // nothing changed
+            const int bKind = maskStroke_.kind; const unsigned bBits = maskStroke_.bits;
             redDot::applyAndPushStoreEdit<Monsoon>(m, "Mask paint",
-                [v, cell](Monsoon& mm, bool p) { mm.setMaskEastCell(v, cell, p); },
-                oldPlay, play);
+                [v, bKind, bBits, afterBits](Monsoon& mm, bool redo) {
+                    mm.setMaskEastKind(v, redo ? 2.f : (float)bKind);
+                    mm.setMaskEastPatternBits(v, redo ? (float)afterBits : (float)bBits);
+                },
+                false, true);
         };
         addChild(visualEditor);
 
@@ -764,7 +793,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 it->widget = this; it->v = v; it->kind = k;
                 menu->addChild(it);
             }
-            menu->addChild(createCheckMenuItem("Mask follows rotation (R)", "",
+            menu->addChild(createCheckMenuItem("Painted pattern follows rotation (R)", "",
                 [m, v]() { return m->getMaskEastFollowR(v) != 0.f; },
                 [m, v]() {
                     const float oldF = m->getMaskEastFollowR(v);
@@ -1747,19 +1776,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             const int sg = eng.voiceReadSign(vslot);
             snprintf(rangeLabel_, sizeof(rangeLabel_), "V%d", v + 1);
             visualEditor->setRangeState(std::max(1, L), O, R, rp, sg, !independent, rangeLabel_);
-            // Stage 4: the strip's mask surface — the EFFECTIVE pattern (delegation-
-            // resolved). Painted rows render the presence figure (lit = play) and
-            // accept the click-paint; the window rendering steps aside while painted.
-            const bool maskLocal = (monsoon->getMaskLocalEastMask(v) != 0.f);
-            const int  mkind = (int)std::lround(maskLocal ? monsoon->getMaskEastKind(v)
-                                                           : monsoon->getMaskMacroKind());
-            const bool painted = (mkind == 2);
-            unsigned pat = 0xFFFFu;
-            if (painted)
-                pat = (unsigned)std::lround(std::clamp(
-                    maskLocal ? monsoon->getMaskEastPatternBits(v)
-                              : monsoon->getMaskMacroPatternBits(), 0.f, 65535.f));
-            visualEditor->setRangeMask(painted, pat);
+            // The mask surface reads the ENGINE's effective pattern (the UI-completion
+            // unify — display-reads-engine): cycle = all-lit (visibly different from
+            // Range), range = the window, painted = the ANCHORED working copy (which
+            // ROTATES with R when follow-R is on — the visible effect). The window
+            // edge markers (the LOR editing affordance) still draw alongside.
+            visualEditor->setRangeMask(true,
+                eng.effectiveOutputMask(dotModular::VoiceResolver::slot(v + 1)));
         }
     }
 

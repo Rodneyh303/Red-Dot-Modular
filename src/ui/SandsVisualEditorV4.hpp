@@ -297,7 +297,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     const char* label = "";       // host caption (drawn like the lane labels)
     // drag state (the same zone shape as a probability lane):
     bool  dragging = false;
-    bool  paintPress = false;     // Stage 4: a click awaiting the mask toggle (no drag)
+    bool  paintPress = false;     // Stage 4: a paint stroke is armed (a non-LOR press)
+    int   paintTarget = -1;       // the stroke's uniform target (latched by the first cell)
+    unsigned paintApplied = 0u;   // cells already toggled this stroke (no double-toggle on wiggle)
     DragState::Type type = DragState::NONE;
     math::Vec dragPos  = {};      // accumulated absolute position (DragMove gives delta)
     int   grabStep     = 0;       // step under cursor at press (relative WINDOW move)
@@ -319,6 +321,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   bool     maskActive  = false;
   unsigned maskPattern = 0xFFFFu;
   std::function<void(int cell, bool play)> onMaskToggle;
+  // The stroke's end (release) — the host pushes ONE Rack history action for the
+  // whole stroke (click or drag); onMaskToggle applied the cells live.
+  std::function<void()> onMaskStrokeEnd;
   void setRangeMask(bool active, unsigned pattern) {
     maskActive  = active;
     maskPattern = pattern & 0xFFFFu;
@@ -1223,11 +1228,17 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
           e.consume(this);
           return;
         }
-        // Stage 4: on a PAINTED strip a click ANYWHERE (not just in the window — any
-        // subset paints) arms the mask toggle; released un-moved it toggles the cell.
-        if (maskActive && !rangeStrip.blocked && !readOnly) {
-          rangeStrip.paintPress = true;
-          rangeStrip.dragPos    = e.pos;
+        // Stage 4 (the UI-completion fix, CC_PROMPT_UAS_MASK_UI_INCOMPLETE): ANY
+        // non-LOR press on the strip arms the PAINT STROKE — on a Range/Cycle row too
+        // (the host's toggle handler transitions the row to Painted, seeded from the
+        // current effective mask — painting overrides the range-driven default).
+        // Released un-moved it toggles the cell; moved, it drag-paints every cell
+        // crossed (one stroke, one undo).
+        if (!rangeStrip.blocked && !readOnly) {
+          rangeStrip.paintPress   = true;
+          rangeStrip.paintTarget  = -1;
+          rangeStrip.paintApplied = 0u;
+          rangeStrip.dragPos      = e.pos;
           e.consume(this);
           return;
         }
@@ -1250,22 +1261,23 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
             onRangeCommit(rangeStrip.before, after);
           }
         }
-        // Stage 4: a CLICK (no window drag) on a PAINTED mask strip toggles the cell
-        // under the cursor — the spec's click-toggle paint action. The press position
-        // rides dragPos (unmoved on a click; armed for out-of-window presses too).
-        else if (maskActive && !rangeStrip.blocked && !readOnly && onMaskToggle) {
-          const int cell = getStepAtX(rangeStrip.dragPos.x);
-          if (cell >= 0 && cell < STEP_COUNT) onMaskToggle(cell, !maskCellPlays(cell));
-        }
         e.consume(this);
         return;
       }
       if (e.action == GLFW_RELEASE && rangeStrip.paintPress) {
         rangeStrip.paintPress = false;
-        if (maskActive && !rangeStrip.blocked && !readOnly && onMaskToggle) {
+        // A CLICK (nothing toggled during the move) toggles the press cell; a drag
+        // already toggled every cell crossed. Either way the stroke ENDS here — the
+        // host pushes ONE history action for the whole stroke.
+        if (onMaskToggle && rangeStrip.paintApplied == 0u) {
           const int cell = getStepAtX(rangeStrip.dragPos.x);
-          if (cell >= 0 && cell < STEP_COUNT) onMaskToggle(cell, !maskCellPlays(cell));
+          if (cell >= 0 && cell < STEP_COUNT) {
+            if (rangeStrip.paintTarget < 0)
+              rangeStrip.paintTarget = maskCellPlays(cell) ? 0 : 1;
+            onMaskToggle(cell, rangeStrip.paintTarget != 0);
+          }
         }
+        if (onMaskStrokeEnd) onMaskStrokeEnd();
         e.consume(this);
         return;
       }
@@ -1336,6 +1348,22 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   void onDragMove(const rack::event::DragMove& e) override {
     syncLayout();
+    // ── Stage 4: the paint-stroke drag — every NEW cell crossed toggles (the first
+    // cell latches the stroke's uniform target, like painting a rhythm); the local
+    // paintApplied mask stops a cursor wiggle from double-toggling a cell before the
+    // host's next pattern push lands.
+    if (rangeStrip.paintPress) {
+      rangeStrip.dragPos = rangeStrip.dragPos.plus(e.mouseDelta);
+      const int step = getStepAtX(rangeStrip.dragPos.x);
+      if (step >= 0 && step < STEP_COUNT && onMaskToggle
+          && !((rangeStrip.paintApplied >> step) & 1u)) {
+        rangeStrip.paintApplied |= (1u << step);
+        if (rangeStrip.paintTarget < 0)
+          rangeStrip.paintTarget = maskCellPlays(step) ? 0 : 1;
+        onMaskToggle(step, rangeStrip.paintTarget != 0);
+      }
+      return;
+    }
     // ── Stage 3: the voice-range strip drag (the lane gestures, one level up) ──
     if (rangeStrip.dragging) {
       rangeStrip.dragPos = rangeStrip.dragPos.plus(e.mouseDelta);
