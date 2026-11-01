@@ -51,3 +51,24 @@ machinery — do NOT invent a parallel engine bool.
   pendingCheckpointArrival array-ifies. Everything else in Stage 2 stands.
 - Decisions 1 & 3, and all of Stage 1 / Stage 3, unchanged.
 - The per-voice divergence tests (Stage 2.7) stand — they're the counter-removal safety net.
+
+## VERIFICATION (not a gap — confirm the per-voice subgate ADVANCE resolution is wired)
+Rodney asked whether the subgate ADVANCE knobs (RATCHET/GHOST, global + per-voice, three-way: own-subpanel
+claim > {global | follow-main}) feed the advance thresholds per gate type. STATUS: already consumed —
+- MONO (shipped): decideStepAdvance_ (SequencerEngine.cpp:532-533) — a ratchet/ghost rise reads
+  voices[m].subRes[subLevel][SK::ADVANCE] (the subgate column, three-way resolved); the main rise reads
+  variationProb. subResLive gates it. CORRECT, complete for mono.
+- POLY (this plan, Stage 2.2): decideStepAdvanceForVoice_ reads voices[vs].subRes[subLevel][SK::ADVANCE]
+  per voice. So the plan DOES use the per-voice subgate ADVANCE thresholds. Not missing.
+
+CONFIRM (the integration seam): voices[vs].subRes[RATCHET/GHOST][ADVANCE] must be POPULATED with the FULL
+three-way resolution (own-subpanel claim > global > follow-main) PER VOICE, in ModeController
+(MonsoonModeController.cpp:68-82 where subRes is filled), BEFORE decideStepAdvanceForVoice_ reads it —
+exactly as the per-voice subgate REST/LEGATO already resolve. If subRes is only resolved for mono/global,
+the per-voice advance would read stale/wrong thresholds.
+- So: verify the per-voice subRes[v][][ADVANCE] three-way resolution is already wired (it should be — it's
+  the same consumer-group store the per-voice REST/LEGATO use). Reuse that resolution; do NOT re-resolve
+  the three-way separately in the advance path. If it's NOT populated per-voice, fix the population in
+  ModeController (one place), not a parallel resolution in the advance decision.
+This is the "reuse the existing machinery" check: the subgate ADVANCE three-way resolution already exists
+for mono/the subgate store — poly advance must INHERIT it per-voice, not reinvent it.
