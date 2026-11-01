@@ -578,23 +578,25 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(VoiceSlot 
     return dotModular::StepAdvance::decide(p, u);
 }
 
-// ── PER-VOICE STEP-ADVANCE Stage 2: the fold ────────────────────────────────────
+// ── PER-VOICE STEP-ADVANCE: the fold ────────────────────────────────────────────
 // Runs at every advance site (both rise executors + the tie-into-rest fall) AFTER the
-// mono decision dMain (the transport decision, unchanged) and BEFORE the transport call
-// (advancePlayhead/recomputeLaneTicks) so the recompute sees the new offsets. Per voice
-// v = 1..numPolyVoices:
-//   DELEGATED VAR lane (the default — varlegDelegated(v,0)): rides dMain (GLOBAL). The
-//     variation-lane delegation IS the per-voice/global switch (decision 4) — no new
-//     state: the voice's offset never moves, its scan rides scanOfsV_[0].
-//   LOCAL-EAST VAR lane: d_v = decideStepAdvanceForVoice_ — its own threshold, its
-//     own-window draw at its own scan depth (perVoiceScan) or the +1 fall target.
-//     advanceOffset_[v] += d_v − dMain, so the voice's NET position change across the
-//     event is its OWN decision. A moved voice re-anchors its scan (0); a held voice
-//     scans its own window deeper (scanHoldV_). A per-voice arrival latch (its own fall
-//     advance) clears + rides 0 — "one advance, one arrival" per voice (decision 2).
+// mono decision dMain (the transport decision) and BEFORE the transport call
+// (advancePlayhead/recomputeLaneTicks) so the recompute sees the new offsets.
+// THE EVERY-LANE PRINCIPLE (CC_FIX_PER_VOICE_ADVANCE_WANDER — the fix): advance
+// resolves EXACTLY like rest/legato/accent/qmix — every voice v = 1..numPolyVoices
+// ALWAYS decides on its OWN window draw (decideStepAdvance_(vs, …): its own resolved
+// threshold — the store the resolver already folded global-vs-per-voice into, exactly
+// restProb's pattern — and its own draw at its own scan depth (perVoiceScan) or the
+// +1 fall target). ONE threshold control, many draws, many outcomes: even on a GLOBAL
+// threshold the voices WANDER independently (different own-window draws).
+// advanceOffset_[v] += d_v − dMain, so a voice's NET position change across the event
+// is its OWN decision. A moved voice re-anchors its scan (0); a held voice scans its
+// own window deeper (scanHoldV_); a per-voice arrival latch (its own fall advance)
+// clears + rides 0 — "one advance, one arrival" per voice. Delegation NEVER gates the
+// decision — it selects only the THRESHOLD source, upstream in the resolver (no lane
+// has a "delegated → skip the decision" path, and advance no longer is the exception).
 // Reads laneTickV_ PRE-advance (the decision sees the voice's current position); zero
-// new draws. LOCKED default (all delegated): the loop skips everyone — motionV fills
-// uniform dMain and nothing else is touched (bit-identical).
+// new draws.
 bool SequencerEngine::foldPerVoiceAdvance_(int subLevel, bool perVoiceScan,
                                            dotModular::StepAdvance::Decision dMain, int8_t* motionV) {
     const int dMainStep = (dMain == dotModular::StepAdvance::FORWARD) ? +1
@@ -603,7 +605,6 @@ bool SequencerEngine::foldPerVoiceAdvance_(int subLevel, bool perVoiceScan,
     bool anyMoved = false;
     for (int i = 1; i <= numPolyVoices && i < 16; ++i) {
         const VoiceSlot vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
-        if (varlegDelegated(vs, 0)) continue;              // GLOBAL: rides dMain (offset never moves)
         int dStep = 0;                                     // a latched arrival rides 0 (moved at the fall)
         if (pendingCheckpointArrivalV_[i]) {
             pendingCheckpointArrivalV_[i] = false;
@@ -1264,19 +1265,17 @@ void SequencerEngine::legatoCheckpointOnFall() {
     // the draw addressed at the step being advanced into (targetTickDelta +1).
     // PER-VOICE (the signoff's decision 2 — the fall decision is the SAME stochastic
     // mechanism as the rise, so it goes per-voice WITH it): the fold runs the same
-    // decision per Local-East VAR voice at ITS OWN +1 target (its incoming-rest
-    // step); delegated voices ride d (GLOBAL). An offset moves only where a voice's
-    // own fall decision diverged from the mono one.
+    // decision per voice at ITS OWN +1 target (its incoming-rest step) — the
+    // every-lane principle (one threshold control, many own draws, many outcomes).
+    // An offset moves only where a voice's own fall decision diverged from the mono one.
     const dotModular::StepAdvance::Decision d = decideStepAdvance_(VoiceResolver::mono(), -1, /*targetTickDelta=*/+1);
     int8_t motionV[16];
     const bool anyVoiceMoved = foldPerVoiceAdvance_(-1, /*perVoiceScan=*/false, d, motionV);
-    // The per-voice arrival latches: every Local-East voice that moved on its OWN fall
-    // decision latches its own "one advance, one arrival" (its next rise is a
-    // no-decision arrival for IT). [0] is the mono latch (below — unchanged semantics).
-    for (int i = 1; i <= numPolyVoices && i < 16; ++i) {
-        if (varlegDelegated(VoiceResolver::slot(i + 1), 0)) continue;
+    // The per-voice arrival latches: every voice that moved on its OWN fall decision
+    // latches its own "one advance, one arrival" (its next rise is a no-decision
+    // arrival for IT). [0] is the mono latch (below — unchanged semantics).
+    for (int i = 1; i <= numPolyVoices && i < 16; ++i)
         if (motionV[i] != 0) pendingCheckpointArrivalV_[i] = true;
-    }
     bool wrapped = false;
     if (d == dotModular::StepAdvance::FORWARD) {
         wrapped = advancePlayhead(+1, motionV);
@@ -1324,10 +1323,10 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
             // (legatoCheckpointOnFall). This rise is the ARRIVAL — play the already-stepped-to step,
             // do NOT advance again ("one advance, one arrival" — no double-advance jump).
             // PER-VOICE: the [0] latch governs the TRANSPORT skip (bit-identical); the
-            // fold still runs — an unlatched Local-East voice decides at this rise, a
-            // latched one clears + rides 0 (its position already moved at the fall).
-            // Voices that move refresh via the offsets-only recompute (the clock does
-            // not move on an arrival).
+            // fold still runs — an unlatched voice decides at this rise, a latched one
+            // clears + rides 0 (its position already moved at the fall). Voices that
+            // move refresh via the offsets-only recompute (the clock does not move on
+            // an arrival).
             pendingCheckpointArrivalV_[0] = false;
             int8_t motionV[16];
             if (foldPerVoiceAdvance_(-1, /*perVoiceScan=*/true, dotModular::StepAdvance::REPEAT, motionV))
@@ -1350,11 +1349,12 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
             // ((stepIndex - 1 + 16) & 0x0F) — the spec's wrap-at-boundary law, the
             // same machinery the deterministic dir parameter uses. ONE PLAYHEAD: the
             // direction is whatever THIS event's threshold sign gave.
-            // PER-VOICE STEP-ADVANCE Stage 2 (the signoff): the fold decides per
-            // Local-East VAR voice (own threshold, own-window draw at its OWN scan
-            // depth) and accumulates the offsets BEFORE the transport call, so the
-            // recompute inside advancePlayhead sees them. Delegated voices ride d
-            // (GLOBAL — the variation-lane delegation IS the switch).
+            // PER-VOICE STEP-ADVANCE (the WANDER fix — the every-lane principle): the
+            // fold decides per voice on its OWN window draw (the threshold is the
+            // resolver-resolved store — global when delegated, the override when not,
+            // exactly restProb's pattern) and accumulates the offsets BEFORE the
+            // transport call, so the recompute inside advancePlayhead sees them. Even
+            // on a GLOBAL threshold the voices wander independently.
             int8_t motionV[16];
             const bool anyVoiceMoved = foldPerVoiceAdvance_(-1, /*perVoiceScan=*/true, d, motionV);
             if (d == dotModular::StepAdvance::FORWARD)
@@ -1504,10 +1504,11 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
         // (advancePlayhead's reverse traversal — ONE PLAYHEAD, the direction set by
         // the last event that advanced); REPEAT moves nothing (the held semantics —
         // the step-addressed data re-outputs itself, no re-draw branch).
-        // PER-VOICE STEP-ADVANCE Stage 2: the fold decides per Local-East VAR voice
-        // at THIS level's threshold (its own subRes[level][ADVANCE] — the poly
-        // ADVANCE columns' consumer) before the transport call; delegated voices
-        // ride adv (GLOBAL).
+        // PER-VOICE STEP-ADVANCE (the WANDER fix — the every-lane principle): the
+        // fold decides per voice at THIS level's threshold (its own
+        // subRes[level][ADVANCE] — the poly ADVANCE columns' consumer) on its OWN
+        // window draw, before the transport call; the threshold source is the
+        // resolver-resolved store, exactly rest/legato's pattern.
         int8_t motionV[16];
         const bool anyVoiceMoved = foldPerVoiceAdvance_(advLevel, /*perVoiceScan=*/true, adv, motionV);
         if (adv == dotModular::StepAdvance::FORWARD)

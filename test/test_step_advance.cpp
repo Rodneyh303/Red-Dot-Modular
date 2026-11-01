@@ -208,6 +208,12 @@ static void marchModeB_p1(int seed, Capture& cap) {
     injectLegacyStarGraph(eng);
     eng.numPolyVoices = 15;
     seedEngine(eng, rng, 1.0f);   // THE IDENTITY POINT: p_advance = 1 -> always advance
+    // THE IDENTITY POINT, every voice (the WANDER fix): p=+1 makes EVERY voice's own
+    // decision FORWARD (decide(1,u) is u-independent) -> all offsets stay 0 -> the
+    // march is byte-identical to the pre-feature engine (the poly cascade rides the
+    // one clock). No rng consumed — the noteVal/varAmt draws below are unchanged.
+    for (int v = 2; v <= 16; ++v)
+        eng.voices[dotModular::VoiceResolver::slot(v)].variationProb = 1.0f;
     const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
     const float varAmt  = 0.20f + 0.70f * rng.nextFloat();
     const PatternInput in = makeInput(varAmt);
@@ -240,6 +246,9 @@ static void marchModeBS_p1(int seed, Capture& cap) {
     injectLegacyStarGraph(eng);
     eng.numPolyVoices = 15;
     seedEngine(eng, rng, 1.0f);
+    // THE IDENTITY POINT, every voice (the WANDER fix — see marchModeB_p1's note).
+    for (int v = 2; v <= 16; ++v)
+        eng.voices[dotModular::VoiceResolver::slot(v)].variationProb = 1.0f;
     const float noteVal = (float)legacyNoteValueIndex(2 + (int)(rng.nextFloat() * 4.999f));
     const float varAmt  = 0.20f + 0.70f * rng.nextFloat();
     const PatternInput in = makeInput(varAmt);
@@ -871,6 +880,49 @@ int main() {
             std::printf("  (info) PV divergence digest: 0x%016llx\n", (unsigned long long)cap.digest());
             check(cap.digest() == PV_DIVERGENCE_DIGEST,
                   "PV: the mixed-delegation march digest (per-voice positions/offsets/scans)");
+        }
+
+        // WANDER (CC_FIX_PER_VOICE_ADVANCE_WANDER's test #1): DELEGATED voices wander
+        // independently on the GLOBAL threshold — the same p for every voice, but each
+        // reads its OWN window draw -> different decisions -> divergent positions and
+        // offsets (ONE control, many draws, many outcomes — the every-lane principle).
+        // And at p=0 every voice holds while scanning ITS OWN window.
+        {
+            PhiloxRng rng; rng.seed64(0x4A1DEull);
+            SequencerEngine eng; eng.reset();
+            eng.numPolyVoices = 4;                  // ALL DELEGATED (the default — no setVarlegLocalEast)
+            seedEngine(eng, rng, 0.5f);             // mono p (the transport), mid-range
+            for (int v = 2; v <= 16; ++v)           // the GLOBAL threshold for every voice
+                eng.voices[dotModular::VoiceResolver::slot(v)].variationProb = 0.5f;
+            const PatternInput in = makeInput(0.5f);
+            bool sawOffset = false, sawSplit = false;
+            for (int step = 0; step < 96; ++step) {
+                const bool rise = (step % 2) == 0;
+                eng.executeModeB(rise, rise, 3.f, in);
+                if (!rise || eng.stepIndex < 0) continue;
+                for (int v = 1; v <= 4; ++v) sawOffset = sawOffset || eng.advanceOffset_[v] != 0;
+                for (int v = 2; v <= 4; ++v)
+                    sawSplit = sawSplit || eng.laneTickV_[v][dotModular::STRAND_VARIATION]
+                                          != eng.laneTickV_[1][dotModular::STRAND_VARIATION];
+            }
+            check(sawOffset, "WANDER: a delegated voice's own decision moved its offset (the global threshold)");
+            check(sawSplit, "WANDER: delegated voices' positions DIVERGE (own draws, one threshold)");
+            // p=0: every voice holds (nothing moves anywhere) but each keeps scanning
+            // its OWN window (the chevron creeps per voice).
+            SequencerEngine eng0; eng0.reset();
+            eng0.numPolyVoices = 4;
+            seedEngine(eng0, rng, 0.0f);
+            for (int v = 2; v <= 16; ++v)
+                eng0.voices[dotModular::VoiceResolver::slot(v)].variationProb = 0.0f;
+            int maxScan = 0;
+            for (int step = 0; step < 24; ++step) {
+                const bool rise = (step % 2) == 0;
+                eng0.executeModeB(rise, rise, 3.f, in);
+                if (!rise || eng0.stepIndex < 0) continue;
+                for (int v = 1; v <= 4; ++v)
+                    if (eng0.scanOfsV_[v] > maxScan) maxScan = eng0.scanOfsV_[v];
+            }
+            check(maxScan > 0, "WANDER: at p=0 every voice holds yet scans ITS OWN window (the chevron creeps)");
         }
     }
 

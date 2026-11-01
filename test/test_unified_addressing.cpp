@@ -69,15 +69,15 @@ struct Capture {
 // differential's NORMALIZATION PROOF: the whole stream byte-identical with the
 // nvIdx byte mapped back; the marches' draws mapped through legacyNoteValueIndex).
 // UA_IDENTITY_* still equal the differential's GOLDEN_* (byte-faithful harness).
-static const uint64_t UA_IDENTITY_A  = 0x6a57a9766799c379ULL;
-static const uint64_t UA_IDENTITY_B  = 0xa06a98b3941320a1ULL;   // re-pinned (1/16T insert)
-static const uint64_t UA_IDENTITY_BS = 0x4a16e5ad727ab745ULL;   // re-pinned (duration order)
-static const uint64_t UA_NONDIV_A    = 0xe2726ae1498b2cc5ULL;   // re-pinned (1/16T insert)
-static const uint64_t UA_NONDIV_B    = 0x3469251c7e4ea919ULL;   // re-pinned (1/16T insert)
-static const uint64_t UA_NONDIV_BS   = 0x1b02914f625cc4c3ULL;   // re-pinned (duration order)
+static const uint64_t UA_IDENTITY_A  = 0x6a57a9766799c379ULL;   // UNMOVED (clock/phase — the wander fix touches gate-mode poly only)
+static const uint64_t UA_IDENTITY_B  = 0x44070ab41e9af7c1ULL;   // re-pinned (per-voice wander, CC_FIX_PER_VOICE_ADVANCE_WANDER)
+static const uint64_t UA_IDENTITY_BS = 0x88c738c30adebe96ULL;   // re-pinned (per-voice wander)
+static const uint64_t UA_NONDIV_A    = 0xe2726ae1498b2cc5ULL;   // UNMOVED (mode A)
+static const uint64_t UA_NONDIV_B    = 0x77c76debeea9f2c2ULL;   // re-pinned (per-voice wander)
+static const uint64_t UA_NONDIV_BS   = 0x861ba8588db61dffULL;   // re-pinned (per-voice wander)
 // The MAPPED-mode digests (new behaviour — captured on the Stage-1 engine).
 static const uint64_t UA_WIN10_A     = 0xc40b7ba28a8bc0baULL;   // re-pinned (1/16T insert)
-static const uint64_t UA_WIN10_B     = 0x26bb988e046d7847ULL;   // re-pinned (1/16T insert)
+static const uint64_t UA_WIN10_B     = 0x6cf4f74bfd8dea34ULL;   // re-pinned (per-voice wander)
 static const uint64_t UA_WIN10O4_A   = 0x7124d7417c03fa9fULL;   // re-pinned (1/16T insert)
 
 static PatternInput makeInput(float variationAmount) {

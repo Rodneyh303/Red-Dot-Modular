@@ -103,15 +103,14 @@ inline int variationLanePlayhead(const SequencerEngine& eng) {
     return eng.stepAdvanceStrandIdx(mono, eng.stepAdvanceScanDelta(mono));
 }
 
-// PER-VOICE STEP-ADVANCE Stage 3 — the per-voice twin: THIS voice's VAR chevron.
-// A DELEGATED VAR lane rides the mono decision, so mono's scan IS its scan (the
-// helper above); a LOCAL-EAST voice reads its OWN scanned position (its own window
-// + its own scan — the same index its advance decision used; it creeps the way the
-// voice is going during a per-voice hold and re-aligns when the voice moves).
-// Outside holds this equals the plain calcPlayhead position. -1 when not running.
+// PER-VOICE STEP-ADVANCE — THIS voice's VAR chevron (every voice decides — the WANDER
+// fix — so every voice has its own scan): the voice's OWN scanned position (its own
+// window + its own scan — the same index its advance decision used; it creeps the way
+// the voice is going during a hold and re-aligns when the voice moves). The mono
+// helper above is the mono slot's case. Outside holds this equals the plain
+// calcPlayhead position. -1 when not running.
 inline int variationLanePlayheadForVoice(const SequencerEngine& eng, dotModular::VoiceSlot bank) {
     if (eng.stepIndex < 0) return -1;
-    if (eng.varlegDelegated(bank, 0)) return variationLanePlayhead(eng);
     return eng.stepAdvanceStrandIdx(bank, eng.stepAdvanceScanDelta(bank));
 }
 

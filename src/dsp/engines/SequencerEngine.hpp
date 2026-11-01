@@ -1027,11 +1027,11 @@ struct SequencerEngine {
     dotModular::StepAdvance::Decision decideStepAdvance_(VoiceSlot vs, int subLevel, int targetTickDelta = 0);
     // The per-voice fold of ONE advance event (both rise executors + the fall): fills
     // motionV[16] (the per-voice motion the recompute's prev pairs consume), accumulates
-    // advanceOffset_ (d_v − dMain — nonzero only where a Local-East voice's own decision
-    // diverged), re-anchors/holds the per-voice scans, and clears the per-voice arrival
-    // latches (a latched voice rides 0 — its position already moved at the fall).
-    // Returns whether any offset moved (the caller's offsets-only recompute trigger).
-    // LOCKED default (all delegated): touches nothing — motionV fills uniform dMain.
+    // advanceOffset_ (d_v − dMain), re-anchors/holds the per-voice scans, and clears the
+    // per-voice arrival latches (a latched voice rides 0 — its position already moved at
+    // the fall). EVERY voice decides on its own draw (the every-lane principle —
+    // CC_FIX_PER_VOICE_ADVANCE_WANDER); returns whether any offset moved (the caller's
+    // offsets-only recompute trigger).
     bool foldPerVoiceAdvance_(int subLevel, bool perVoiceScan,
                               dotModular::StepAdvance::Decision dMain, int8_t* motionV);
     // Recompute all laneTick_/laneTickV_/macroLaneTick_ caches from totalStepsElapsed.
