@@ -266,10 +266,6 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     saveArr("editorMaskEastPatternBits",  m->editor.maskEastPatternBits,  16);
     saveArr("editorMaskEastFollowR",      m->editor.maskEastFollowR,      16);
     saveArr("editorMaskLocalEastMask",    m->editor.maskLocalEastMask,    16);
-    saveArr("editorMaskMacroRangeL",      &m->editor.maskMacroRangeL,      1);
-    saveArr("editorMaskMacroRangeO",      &m->editor.maskMacroRangeO,      1);
-    saveArr("editorMaskRangeL",           m->editor.maskRangeL,           16);
-    saveArr("editorMaskRangeO",           m->editor.maskRangeO,           16);
 
     // Spread target modes (SPREAD_TARGET_MODES.md): per-lane target mode, per-mode defaults
     // (-1/0/+1), and the apply-on-mode-change toggle. All per-lane, 7 lanes.
@@ -591,10 +587,6 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     loadArrN("editorMaskEastPatternBits",  m->editor.maskEastPatternBits,  16);
     loadArrN("editorMaskEastFollowR",      m->editor.maskEastFollowR,      16);
     loadArrN("editorMaskLocalEastMask",    m->editor.maskLocalEastMask,    16);
-    loadArrN("editorMaskMacroRangeL",      &m->editor.maskMacroRangeL,      1);
-    loadArrN("editorMaskMacroRangeO",      &m->editor.maskMacroRangeO,      1);
-    loadArrN("editorMaskRangeL",           m->editor.maskRangeL,           16);
-    loadArrN("editorMaskRangeO",           m->editor.maskRangeO,           16);
     // Spread target modes (SPREAD_TARGET_MODES.md): per-lane target mode + defaults +
     // apply-on-mode-change toggle. Missing keys → keep defaults (anchor V1, 0/+1, true).
     if (auto j = json_object_get(root, "editorSpreadTargetMode")) {

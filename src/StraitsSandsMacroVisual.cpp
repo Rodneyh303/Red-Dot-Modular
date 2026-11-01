@@ -171,27 +171,30 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         visualEditor->layout.topPadding = 0.f;
         visualEditor->layout.botPadding = 0.f;
         visualEditor->showControlBar    = false;
-        // ── THE MASK STRIP (Option A — CC_MASK_VS_VOICELOR / CC_DIRECTIVE_MASK_AND_
-        // VOICELOR): the strip is the GLOBAL output gate's authoring surface — it
-        // shows + drags the MACRO MASK's own region (the gate's O/L in global space,
-        // NOT the read's macroVoiceLor) and the effective global mask pattern. The
-        // rotation gesture is ignored (the anchor mechanism owns abs3's rotation).
+        // ── UNIFIED ADDRESSING Stage 3: the voice-range strip (top of the grid) ──
+        // ONE RANGE (the corrected model): the strip shows + drags the GLOBAL voice
+        // LOR row (editor.voiceLorMacro — the row every follow-Macro voice reads
+        // through, and the range the macro abs1 base gates against; no separate gate
+        // range exists). East's strip shows this row blocked when a voice follows
+        // Macro; the per-voice rows are authored on East's strip.
         visualEditor->layout.rangeLaneH = mm2px(Vec(0.f, dotModular::SandsGrid::RANGE_LANE_H)).y;
         visualEditor->onRangeEdit = [this](int L, int O, int R) {
-            (void)R;   // the mask has no authored rotation (the anchor mechanism owns it)
             if (auto* m = getMonsoon()) {
-                m->setMaskMacroRangeL((float)L);
-                m->setMaskMacroRangeO((float)O);
+                m->setVoiceLorMacro(0, (float)L);
+                m->setVoiceLorMacro(1, (float)O);
+                m->setVoiceLorMacro(2, (float)R);
             }
         };
         visualEditor->onRangeCommit = [this](const int before[3], const int after[3]) {
             auto* m = getMonsoon(); if (!m) return;
-            const int b0=before[0],b1=before[1];
-            const int a0=after[0], a1=after[1];
-            redDot::applyAndPushStoreEdit<Monsoon>(m, "Global mask region edit",
-                [b0,b1, a0,a1](Monsoon& mm, bool redo) {
-                    mm.setMaskMacroRangeL((float)(redo?a0:b0));
-                    mm.setMaskMacroRangeO((float)(redo?a1:b1));
+            const int b0=before[0],b1=before[1],b2=before[2];
+            const int a0=after[0], a1=after[1], a2=after[2];
+            redDot::applyAndPushStoreEdit<Monsoon>(m, "Global voice range edit",
+                [b0,b1,b2, a0,a1,a2](Monsoon& mm, bool redo) {
+                    const int L = redo?a0:b0, O = redo?a1:b1, R = redo?a2:b2;
+                    mm.setVoiceLorMacro(0, (float)L);
+                    mm.setVoiceLorMacro(1, (float)O);
+                    mm.setVoiceLorMacro(2, (float)R);
                 },
                 false, true);
         };
@@ -579,9 +582,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             };
             menu->addChild(new MenuSeparator);
             menu->addChild(createMenuLabel("Output mask (global)"));
-            static const char* const kindNames[3] =
-                { "Cycle (no mask)", "Range (the window plays)", "Painted (click the strip)" };
-            for (int k = 0; k < 3; ++k) {
+            // THE BASE MODE (the corrected model — two composable axes, not exclusive
+            // modes). The painted overlay is NOT a mode — it engages by PAINTING.
+            static const char* const kindNames[2] =
+                { "Cycle (within the voice LOR — as if no mask)",
+                  "Absolute-1 (sound regions — silent outside the LOR)" };
+            for (int k = 0; k < 2; ++k) {
                 auto* it = new MaskKindItem;
                 it->text = kindNames[k];
                 it->rightText = (((int)std::lround(m->getMaskMacroKind())) == k) ? "✓" : "";
@@ -605,10 +611,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             auto* fromRange = new MaskBitsItem;
             fromRange->text = "Set mask from range";
             fromRange->widget = this;
-            // the preset: the GATE's own region as the play set (NOT the read's voiceLOR)
+            // the preset: the GLOBAL voice LOR window as the play set (the abs1 region — ONE range)
             fromRange->bits = (float)SequencerEngine::windowMaskBits(
-                std::max(1, (int)std::lround(m->getMaskMacroRangeL())),
-                (int)std::lround(m->getMaskMacroRangeO()));
+                std::max(1, (int)std::lround(m->getVoiceLorMacro(0))),
+                (int)std::lround(m->getVoiceLorMacro(1)));
             menu->addChild(fromRange);
             menu->addChild(createMenuItem("Reset mask to cycle (all on)", "",
                 [m]() { m->resetMaskMacro(); }));
@@ -968,13 +974,16 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // tier has no voice map, it IS the frame; the engine caches its read cell
         // + walk sign per recompute). Never blocked: this is the tier's own panel.
         {
-            // THE MASK STRIP (Option A): the GLOBAL gate region (the macro MASK's own
-            // O/L — NOT the read's macroVoiceLor), animated with the GLOBAL playhead.
-            const int mL = std::max(1, se->maskMacroRangeL_);
-            const int mO = se->maskMacroRangeO_;
-            const int rp = eng.stepIndex;   // the GLOBAL playhead step (the gate's space)
-            const int sg = eng.lastPlayDir;
-            visualEditor->setRangeState(mL, mO, 0, rp, sg, false, rangeLabel_);
+            // ONE RANGE (the corrected model): the GLOBAL voice-LOR row (the row every
+            // follower reads through — the same range the macro abs1 gates against),
+            // animated with the MACRO FRAME's read cell + walk sign (the frame's OWN
+            // direction — the earlier transport-sign display was the forward-only bug).
+            const int mL = std::max(1, se->macroVoiceLor_[SequencerEngine::LOR_LEN]);
+            const int mO = se->macroVoiceLor_[SequencerEngine::LOR_OFF];
+            const int mR = se->macroVoiceLor_[SequencerEngine::LOR_ROT];
+            const int rp = (eng.stepIndex >= 0) ? se->macroFrameRead() : -1;
+            const int sg = se->macroFrameSign();
+            visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);
             // The mask surface reads the ENGINE's effective pattern (the UI-completion
             // unify — display-reads-engine, East's twin note): cycle = all-lit, range
             // = the window, painted = the ANCHORED working copy (rotates with R when

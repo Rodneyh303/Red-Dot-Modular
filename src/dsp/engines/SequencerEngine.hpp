@@ -590,15 +590,6 @@ struct SequencerEngine {
     uint16_t maskMacroAnchored_                    = 0xFFFF;
     int      maskMacroAnchorR_                     = 0;
     uint16_t maskMacroLastPushed_                  = 0xFFFF;
-    // THE GATE'S OWN REGION (abs1/Range — CC_DIRECTIVE_MASK_AND_VOICELOR + the UAS doc:
-    // the READ window (voiceLorStore_, the polymeter) and the OUTPUT GATE are ORTHOGONAL;
-    // the gate NEVER reads voiceLOR). The gate's O/L in GLOBAL-position space — abs1 is
-    // dynamically-sized from THIS (modulating it moves/resizes the sound region live);
-    // abs2/3 use the painted bits instead. Defaults 16/0 = the all-on degenerate (cycle).
-    int      maskRangeL_[kVoiceSlots]               = {16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16};
-    int      maskRangeO_[kVoiceSlots]               = {};
-    int      maskMacroRangeL_                       = 16;
-    int      maskMacroRangeO_                       = 0;
     // The played steps move delta phrase steps EARLIER (the content direction — see
     // the anchor note): new bit j = old bit (j + delta).
     static uint16_t rotMask16(uint16_t m, int delta) {
@@ -632,11 +623,7 @@ struct SequencerEngine {
     // mask. Abs2 rows (followR off) never re-pin (fixed to absolute phrase steps).
     void pushMaskEditor(const float* macroPatternBits, float macroKind, float macroFollowR,
                         const float* eastPatternBits, const float* eastKind,
-                        const float* eastFollowR, const float* localEast,
-                        // The gate's own region (defaults: keep the current store —
-                        // callers that don't author the region leave it untouched).
-                        float macroRangeL = 16.f, float macroRangeO = 0.f,
-                        const float* eastRangeL = nullptr, const float* eastRangeO = nullptr);
+                        const float* eastFollowR, const float* localEast);
     // THE ONE GATE: does this voice's output pass at phrase step s (0..15)? The
     // OutputGenerator multiplies the voice's GATE + CV OUT by this every sample.
     // s < 0 (transport stopped) passes — the run gate already silences everything.
@@ -645,14 +632,22 @@ struct SequencerEngine {
         const int v = bank.v;
         const bool local = maskLocalEast_[v];
         const int  kind  = local ? maskKind_[v] : maskMacroKind_;
-        if (kind == MASK_CYCLE) return true;                    // all-on degenerate (today)
-        if (kind == MASK_DYNAMIC) {   // abs1: the GATE's OWN region (CC_DIRECTIVE_MASK_AND_VOICELOR — NEVER voiceLOR: the read keeps its polymeter window, the gate carves the sound region in global space)
-            const int L = local ? maskRangeL_[v] : maskMacroRangeL_;
-            const int O = local ? maskRangeO_[v] : maskMacroRangeO_;
-            return maskWindowContains(O, L, phraseStep);
+        // THE COMPOSED MODEL (CC_DIRECTIVE_MASK_AND_VOICELOR, the corrected ruling):
+        // ONE range — the voice LOR. The BASE mode is how the voice relates to it:
+        // CYCLE (the default, as-if-no-mask — no base gate; the retired kind 2 behaves
+        // as cycle: the PATTERN carries the overlay) or ABS1 (the output silenced when
+        // the GLOBAL step is outside the voice LOR [O, O+L) — sound regions; the region
+        // IS effectiveVoiceLor). The PAINTED OVERLAY composes ON TOP — an extra mute
+        // ANDed with the base (paint + cycle, or paint + abs1), active whenever the
+        // pattern is not all-on; follow-R rotates it (the anchor). All output-only
+        // gating against the global step; the reads cycle within the LOR untouched.
+        if (kind == MASK_DYNAMIC) {   // abs1: the region IS the voice LOR
+            int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
+            if (!maskWindowContains(O, L, phraseStep)) return false;
         }
-        const uint16_t pat = local ? maskAnchored_[v] : maskMacroAnchored_;   // abs2/abs3
-        return (pat >> phraseStep) & 1u;
+        const uint16_t pat = local ? maskAnchored_[v] : maskMacroAnchored_;   // the overlay ANDs
+        if (pat != 0xFFFFu) return (pat >> phraseStep) & 1u;
+        return true;
     }
     // UAS Stage-4 UI completion (CC_PROMPT_UAS_MASK_UI_INCOMPLETE) — the DISPLAY's
     // pattern read: the voice's EFFECTIVE mask as a 16-bit play set, the same
@@ -663,24 +658,27 @@ struct SequencerEngine {
     // follow-R re-pin is VISIBLE: turning R rotates the returned bits, abs2 does
     // not). Display-reads-engine: the strip never re-derives the mask.
     uint16_t effectiveOutputMask(dotModular::VoiceSlot bank) const {
+        // The COMPOSED gate as a 16-bit play set (the display's read — exactly what
+        // outputMaskPasses evaluates per step): the base (cycle = all-on | abs1 = the
+        // voice LOR window) AND the painted overlay (the anchored copy).
         const int v = bank.v;
         if (v < 0 || v >= kVoiceSlots) return 0xFFFFu;
         const bool local = maskLocalEast_[v];
         const int  kind  = local ? maskKind_[v] : maskMacroKind_;
-        if (kind == MASK_CYCLE) return 0xFFFFu;
-        if (kind == MASK_DYNAMIC) {   // the GATE's own region — same law as outputMaskPasses
-            const int L = local ? maskRangeL_[v] : maskMacroRangeL_;
-            const int O = local ? maskRangeO_[v] : maskMacroRangeO_;
-            return windowMaskBits(L, O);
+        uint16_t m = 0xFFFFu;
+        if (kind == MASK_DYNAMIC) {   // abs1: the voice LOR window
+            int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
+            m = windowMaskBits(L, O);
         }
-        return local ? maskAnchored_[v] : maskMacroAnchored_;
+        const uint16_t pat = local ? maskAnchored_[v] : maskMacroAnchored_;   // the overlay ANDs
+        return (pat == 0xFFFFu) ? m : (uint16_t)(m & pat);
     }
     // The MACRO tier's own pattern (the global strip's read — no voice delegation).
     uint16_t effectiveOutputMaskMacro() const {
-        if (maskMacroKind_ == MASK_CYCLE) return 0xFFFFu;
+        uint16_t m = 0xFFFFu;
         if (maskMacroKind_ == MASK_DYNAMIC)
-            return windowMaskBits(maskMacroRangeL_, maskMacroRangeO_);
-        return maskMacroAnchored_;
+            m = windowMaskBits(macroVoiceLor_[LOR_LEN], macroVoiceLor_[LOR_OFF]);
+        return (maskMacroAnchored_ == 0xFFFFu) ? m : (uint16_t)(m & maskMacroAnchored_);
     }
 
     // The EFFECTIVE voice LOR row (delegation + Macro tier) — the one resolution authority.

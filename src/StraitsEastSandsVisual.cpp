@@ -305,34 +305,34 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 },
                 false, true);
         };
-        // ── THE MASK STRIP (Option A — CC_MASK_VS_VOICELOR / CC_DIRECTIVE_MASK_AND_
-        // VOICELOR): the thin constant-block lane above lane 0 is the OUTPUT GATE's
-        // authoring surface — it shows + drags the MASK's OWN region (the gate's O/L
-        // in global space) and the effective mask pattern. It does NOT author the
-        // read-confining voiceLOR (the polymeter — that control moves to the base
-        // panel's voice-lane controls). The rotation gesture is IGNORED (L/O only:
-        // abs3's rotation comes from the voice's R via the anchor mechanism). A voice
-        // whose MASK follows Macro shows the Macro gate region blocked (edit it on
-        // the Macro panel's own strip).
+        // ── UNIFIED ADDRESSING Stage 3: the voice-range strip (top of the grid) ──
+        // ONE RANGE (the corrected model — CC_DIRECTIVE_MASK_AND_VOICELOR): the strip
+        // shows + drags the SELECTED voice's LOR row (the read-confining polymeter
+        // window — the SAME range the abs1 base mode gates against; no separate gate
+        // range exists). The gestures write the per-voice East row live; the release
+        // pushes a Rack history action. A voice that FOLLOWS Macro shows the Macro
+        // row blocked (edit the global row on the Macro panel's own strip).
         visualEditor->layout.rangeLaneH = mm2px(Vec(0.f, dotModular::SandsGrid::RANGE_LANE_H)).y;
         visualEditor->onRangeEdit = [this](int L, int O, int R) {
-            (void)R;   // the mask has no authored rotation (the anchor mechanism owns it)
             auto* m = getMonsoon(); if (!m) return;
             const int v = selectedVoice;
-            if (m->getMaskLocalEastMask(v) == 0.f) return;   // mask follows Macro: authored on Macro's strip
-            m->setMaskRangeL(v, (float)L);
-            m->setMaskRangeO(v, (float)O);
+            if (m->getVoiceLorLocalEast(v) == 0.f) return;   // follow-Macro: authored on Macro
+            m->setVoiceLorEast(v, 0, (float)L);
+            m->setVoiceLorEast(v, 1, (float)O);
+            m->setVoiceLorEast(v, 2, (float)R);
         };
         visualEditor->onRangeCommit = [this](const int before[3], const int after[3]) {
             auto* m = getMonsoon(); if (!m) return;
             const int v = selectedVoice;
-            if (m->getMaskLocalEastMask(v) == 0.f) return;
-            const int b0=before[0],b1=before[1];
-            const int a0=after[0], a1=after[1];
-            redDot::applyAndPushStoreEdit<Monsoon>(m, "Mask region edit",
-                [v, b0,b1, a0,a1](Monsoon& mm, bool redo) {
-                    mm.setMaskRangeL(v, (float)(redo?a0:b0));
-                    mm.setMaskRangeO(v, (float)(redo?a1:b1));
+            if (m->getVoiceLorLocalEast(v) == 0.f) return;
+            const int b0=before[0],b1=before[1],b2=before[2];
+            const int a0=after[0], a1=after[1], a2=after[2];
+            redDot::applyAndPushStoreEdit<Monsoon>(m, "Voice range edit",
+                [v, b0,b1,b2, a0,a1,a2](Monsoon& mm, bool redo) {
+                    const int L = redo?a0:b0, O = redo?a1:b1, R = redo?a2:b2;
+                    mm.setVoiceLorEast(v, 0, (float)L);
+                    mm.setVoiceLorEast(v, 1, (float)O);
+                    mm.setVoiceLorEast(v, 2, (float)R);
                 },
                 false, true);
         };
@@ -797,9 +797,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     }
                 }
             };
-            static const char* const kindNames[3] =
-                { "Cycle (no mask)", "Range (the window plays)", "Painted (click the strip)" };
-            for (int k = 0; k < 3; ++k) {
+            // THE BASE MODE (the corrected model — two composable axes, not exclusive
+            // modes): how the voice relates to its LOR. The painted overlay is NOT a
+            // mode — it engages by PAINTING (the pattern ANDs on top of the base).
+            static const char* const kindNames[2] =
+                { "Cycle (within the voice LOR — as if no mask)",
+                  "Absolute-1 (sound regions — silent outside the LOR)" };
+            for (int k = 0; k < 2; ++k) {
                 auto* it = new MaskKindItem;
                 it->text = kindNames[k];
                 it->rightText = (((int)std::lround(m->getMaskEastKind(v))) == k) ? "✓" : "";
@@ -822,12 +826,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             menu->addChild(allOn);
             auto* fromRange = new MaskBitsItem;
             fromRange->text = "Set mask from range";
-            // the preset: the GATE's own region as the play set (NOT the read's voiceLOR)
+            // the preset: the voice LOR window as the play set (the abs1 region — ONE range)
             fromRange->widget = this;
             fromRange->v = v;
             fromRange->bits = (float)SequencerEngine::windowMaskBits(
-                std::max(1, (int)std::lround(m->getMaskRangeL(v))),
-                (int)std::lround(m->getMaskRangeO(v)));
+                std::max(1, (int)std::lround(m->getVoiceLorEast(v, 0))),
+                (int)std::lround(m->getVoiceLorEast(v, 1)));
             menu->addChild(fromRange);
         }
         menu->addChild(new MenuSeparator);
@@ -1780,19 +1784,22 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         // display + gesture reporting, the store stays the single authority.
         {
             const int v = selectedVoice;   // tab index == voiceSlot (0 = V1 mono)
-            // THE MASK STRIP (Option A): the GATE's own region (the delegation-resolved
-            // MASK range — NOT the read's voiceLOR), animated with the GLOBAL playhead
-            // (the gate's space: the read cell visibly crosses the muted cells); the
-            // direction cue is the transport's.
-            const bool maskLocal = (monsoon->getMaskLocalEastMask(v) != 0.f);
-            const int L = (int)std::lround(maskLocal ? monsoon->getMaskRangeL(v)
-                                                     : monsoon->getMaskMacroRangeL());
-            const int O = (int)std::lround(maskLocal ? monsoon->getMaskRangeO(v)
-                                                     : monsoon->getMaskMacroRangeO());
-            const int rp = eng.stepIndex;                 // the GLOBAL playhead step (the gate's space)
-            const int sg = eng.lastPlayDir;
+            // ONE RANGE (the corrected model): the strip shows the voice's EFFECTIVE
+            // LOR row (the polymeter window — the same range the abs1 base gates
+            // against) and animates with the voice's OWN frame read cell + walk sign
+            // (the per-voice DIRECTION — Reverse/Pendulum/PingPong show on the strip;
+            // the earlier global-step/transport-sign display was the forward-only
+            // bug). The painted overlay renders on top via setRangeMask below (the
+            // composed gate: the base AND the pattern).
+            int L, O, R; SequencerEngine::LaneDir vd;
+            eng.effectiveVoiceLor(v, L, O, R, vd);
+            (void)vd;   // the direction CUE comes from the engine's walk-sign cache, not the row's setting
+            const bool independent = (monsoon->getVoiceLorLocalEast(v) != 0.f);
+            const auto vslot = dotModular::VoiceResolver::slot(v + 1);   // slot() is VOICE-NUMBER based
+            const int rp = (eng.stepIndex >= 0) ? eng.voiceReadPosition(vslot) : -1;
+            const int sg = eng.voiceReadSign(vslot);
             snprintf(rangeLabel_, sizeof(rangeLabel_), "V%d", v + 1);
-            visualEditor->setRangeState(std::max(1, L), O, 0, rp, sg, !maskLocal, rangeLabel_);
+            visualEditor->setRangeState(std::max(1, L), O, R, rp, sg, !independent, rangeLabel_);
             // The mask surface reads the ENGINE's effective pattern (the UI-completion
             // unify — display-reads-engine): cycle = all-lit (visibly different from
             // Range), range = the window, painted = the ANCHORED working copy (which
