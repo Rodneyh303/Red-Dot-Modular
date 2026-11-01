@@ -784,6 +784,18 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             };
             menu->addChild(new MenuSeparator);
             menu->addChild(createMenuLabel("Output mask"));
+            // THE MASK DELEGATION (its own tier — separate from the range switch
+            // above): a follow-Macro-MASK voice paints on MACRO's strip (East's
+            // paint bails for it); an independent voice authors its own mask here.
+            // Without this switch the per-voice mask delegation was un-authorable
+            // (every voice follow-Macro by default — East's paint silently did
+            // nothing).
+            menu->addChild(createCheckMenuItem("Mask: follow Macro (global)", "",
+                [m, v]() { return m->getMaskLocalEastMask(v) == 0.f; },
+                [m, v]() { m->setMaskLocalEastMask(v, 0.f); }));
+            menu->addChild(createCheckMenuItem("Mask: independent (this voice)", "",
+                [m, v]() { return m->getMaskLocalEastMask(v) != 0.f; },
+                [m, v]() { m->setMaskLocalEastMask(v, 1.f); }));
             static const char* const kindNames[3] =
                 { "Cycle (no mask)", "Range (the window plays)", "Painted (click the strip)" };
             for (int k = 0; k < 3; ++k) {

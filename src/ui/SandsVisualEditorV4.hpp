@@ -297,7 +297,16 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     const char* label = "";       // host caption (drawn like the lane labels)
     // drag state (the same zone shape as a probability lane):
     bool  dragging = false;
-    bool  paintPress = false;     // Stage 4: a paint stroke is armed (a non-LOR press)
+    // THE UNIFIED GESTURE MODEL (the follow-up fix): a press is PENDING (pressArmed)
+    // until the cursor crosses into a NEW step cell — released unmoved it is a CLICK
+    // (the paint toggle of the press cell, ANY cell: full-window strips are
+    // paintable); crossed, it engages the gesture the press zone picked (an LOR
+    // window gesture in-window; the paint stroke out-of-window). The old press-time
+    // split made paint unreachable on a full window (every press was an LOR zone).
+    bool  pressArmed = false;
+    int   pressCell = -1;                       // the step cell at press (the click target / threshold)
+    DragState::Type pressZone = DragState::NONE; // hitTestRange at press (the gesture to engage)
+    bool  paintPress = false;     // a paint stroke is ENGAGED (drag-paint)
     int   paintTarget = -1;       // the stroke's uniform target (latched by the first cell)
     unsigned paintApplied = 0u;   // cells already toggled this stroke (no double-toggle on wiggle)
     DragState::Type type = DragState::NONE;
@@ -1215,39 +1224,42 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         && e.pos.y >= layout.topPadding
         && e.pos.y < layout.topPadding + layout.rangeLaneH) {
       if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
-        DragState::Type rz = hitTestRange(e.pos.x, e.pos.y);
-        if (rz != DragState::NONE && !rangeStrip.blocked && !readOnly) {
-          rangeStrip.dragging = true;
-          rangeStrip.type     = rz;
-          rangeStrip.dragPos  = e.pos;
-          rangeStrip.grabStep = getStepAtX(e.pos.x);
-          rangeStrip.grabOff  = rangeStrip.lor[1];
-          rangeStrip.before[0] = rangeStrip.lor[0];
-          rangeStrip.before[1] = rangeStrip.lor[1];
-          rangeStrip.before[2] = rangeStrip.lor[2];
-          e.consume(this);
-          return;
-        }
-        // Stage 4 (the UI-completion fix, CC_PROMPT_UAS_MASK_UI_INCOMPLETE): ANY
-        // non-LOR press on the strip arms the PAINT STROKE — on a Range/Cycle row too
-        // (the host's toggle handler transitions the row to Painted, seeded from the
-        // current effective mask — painting overrides the range-driven default).
-        // Released un-moved it toggles the cell; moved, it drag-paints every cell
-        // crossed (one stroke, one undo).
+        // THE UNIFIED GESTURE MODEL: ONE arm for every press — the press is PENDING
+        // (pressArmed) carrying its cell + zone; onDragMove engages the gesture when
+        // the cursor crosses into a new cell, and a release without a crossing is a
+        // CLICK (the paint toggle of the press cell — in-window included, so a
+        // full-window strip is paintable; the old press-time split could never arm
+        // paint there because every press hit an LOR zone).
         if (!rangeStrip.blocked && !readOnly) {
-          rangeStrip.paintPress   = true;
+          rangeStrip.pressArmed   = true;
+          rangeStrip.pressCell    = getStepAtX(e.pos.x);
+          rangeStrip.pressZone    = hitTestRange(e.pos.x, e.pos.y);
           rangeStrip.paintTarget  = -1;
           rangeStrip.paintApplied = 0u;
           rangeStrip.dragPos      = e.pos;
           e.consume(this);
           return;
         }
-        e.consume(this);   // a press on the strip (blocked/out-of-window) stays the strip's
+        e.consume(this);   // a press on a blocked strip stays the strip's
         return;
       }
       if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_RIGHT) {
         if (onRangeRightClick && onRangeRightClick(e.pos)) { e.consume(this); return; }
         return;   // the strip consumes its own right-clicks either way
+      }
+      if (e.action == GLFW_RELEASE && rangeStrip.pressArmed) {
+        // A pure CLICK (no cell crossed): toggle the press cell — ANY cell, in-window
+        // or not. The host transitions the row to Painted on the first toggle
+        // (seeded from the current effective mask); one stroke, one history action.
+        rangeStrip.pressArmed = false;
+        if (onMaskToggle && rangeStrip.pressCell >= 0 && rangeStrip.pressCell < STEP_COUNT) {
+          if (rangeStrip.paintTarget < 0)
+            rangeStrip.paintTarget = maskCellPlays(rangeStrip.pressCell) ? 0 : 1;
+          onMaskToggle(rangeStrip.pressCell, rangeStrip.paintTarget != 0);
+        }
+        if (onMaskStrokeEnd) onMaskStrokeEnd();
+        e.consume(this);
+        return;
       }
       if (e.action == GLFW_RELEASE && rangeStrip.dragging) {
         const bool lorChanged = (rangeStrip.before[0] != rangeStrip.lor[0]
@@ -1266,17 +1278,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       }
       if (e.action == GLFW_RELEASE && rangeStrip.paintPress) {
         rangeStrip.paintPress = false;
-        // A CLICK (nothing toggled during the move) toggles the press cell; a drag
-        // already toggled every cell crossed. Either way the stroke ENDS here — the
-        // host pushes ONE history action for the whole stroke.
-        if (onMaskToggle && rangeStrip.paintApplied == 0u) {
-          const int cell = getStepAtX(rangeStrip.dragPos.x);
-          if (cell >= 0 && cell < STEP_COUNT) {
-            if (rangeStrip.paintTarget < 0)
-              rangeStrip.paintTarget = maskCellPlays(cell) ? 0 : 1;
-            onMaskToggle(cell, rangeStrip.paintTarget != 0);
-          }
-        }
+        // The drag-paint stroke ends — the host pushes ONE history action for the
+        // whole stroke (the click case is handled by the pressArmed branch above).
         if (onMaskStrokeEnd) onMaskStrokeEnd();
         e.consume(this);
         return;
@@ -1348,6 +1351,29 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   void onDragMove(const rack::event::DragMove& e) override {
     syncLayout();
+    // ── THE PENDING PRESS (the unified gesture model): the cursor crossing into a
+    // NEW cell engages the gesture the press zone picked — an LOR window gesture
+    // in-window, the paint stroke out-of-window. Sub-cell jitter never engages
+    // (a sloppy click stays a click); a press outside the step cells never engages.
+    if (rangeStrip.pressArmed) {
+      rangeStrip.dragPos = rangeStrip.dragPos.plus(e.mouseDelta);
+      const int step = getStepAtX(rangeStrip.dragPos.x);
+      if (rangeStrip.pressCell < 0 || step < 0 || step >= STEP_COUNT || step == rangeStrip.pressCell)
+        return;   // still pending
+      rangeStrip.pressArmed = false;
+      if (rangeStrip.pressZone != DragState::NONE) {
+        rangeStrip.dragging   = true;
+        rangeStrip.type       = rangeStrip.pressZone;
+        rangeStrip.grabStep   = rangeStrip.pressCell;
+        rangeStrip.grabOff    = rangeStrip.lor[1];
+        rangeStrip.before[0]  = rangeStrip.lor[0];
+        rangeStrip.before[1]  = rangeStrip.lor[1];
+        rangeStrip.before[2]  = rangeStrip.lor[2];
+      } else {
+        rangeStrip.paintPress = true;   // out-of-window: the drag-paint stroke
+      }
+      // fall through — the engaged branch (dragging / paintPress) applies this move
+    }
     // ── Stage 4: the paint-stroke drag — every NEW cell crossed toggles (the first
     // cell latches the stroke's uniform target, like painting a rhythm); the local
     // paintApplied mask stops a cursor wiggle from double-toggling a cell before the
