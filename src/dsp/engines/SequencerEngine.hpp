@@ -590,6 +590,15 @@ struct SequencerEngine {
     uint16_t maskMacroAnchored_                    = 0xFFFF;
     int      maskMacroAnchorR_                     = 0;
     uint16_t maskMacroLastPushed_                  = 0xFFFF;
+    // THE GATE'S OWN REGION (abs1/Range — CC_DIRECTIVE_MASK_AND_VOICELOR + the UAS doc:
+    // the READ window (voiceLorStore_, the polymeter) and the OUTPUT GATE are ORTHOGONAL;
+    // the gate NEVER reads voiceLOR). The gate's O/L in GLOBAL-position space — abs1 is
+    // dynamically-sized from THIS (modulating it moves/resizes the sound region live);
+    // abs2/3 use the painted bits instead. Defaults 16/0 = the all-on degenerate (cycle).
+    int      maskRangeL_[kVoiceSlots]               = {16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16};
+    int      maskRangeO_[kVoiceSlots]               = {};
+    int      maskMacroRangeL_                       = 16;
+    int      maskMacroRangeO_                       = 0;
     // The played steps move delta phrase steps EARLIER (the content direction — see
     // the anchor note): new bit j = old bit (j + delta).
     static uint16_t rotMask16(uint16_t m, int delta) {
@@ -623,7 +632,11 @@ struct SequencerEngine {
     // mask. Abs2 rows (followR off) never re-pin (fixed to absolute phrase steps).
     void pushMaskEditor(const float* macroPatternBits, float macroKind, float macroFollowR,
                         const float* eastPatternBits, const float* eastKind,
-                        const float* eastFollowR, const float* localEast);
+                        const float* eastFollowR, const float* localEast,
+                        // The gate's own region (defaults: keep the current store —
+                        // callers that don't author the region leave it untouched).
+                        float macroRangeL = 16.f, float macroRangeO = 0.f,
+                        const float* eastRangeL = nullptr, const float* eastRangeO = nullptr);
     // THE ONE GATE: does this voice's output pass at phrase step s (0..15)? The
     // OutputGenerator multiplies the voice's GATE + CV OUT by this every sample.
     // s < 0 (transport stopped) passes — the run gate already silences everything.
@@ -633,8 +646,9 @@ struct SequencerEngine {
         const bool local = maskLocalEast_[v];
         const int  kind  = local ? maskKind_[v] : maskMacroKind_;
         if (kind == MASK_CYCLE) return true;                    // all-on degenerate (today)
-        if (kind == MASK_DYNAMIC) {                             // abs1: the range-as-mask
-            int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
+        if (kind == MASK_DYNAMIC) {   // abs1: the GATE's OWN region (CC_DIRECTIVE_MASK_AND_VOICELOR — NEVER voiceLOR: the read keeps its polymeter window, the gate carves the sound region in global space)
+            const int L = local ? maskRangeL_[v] : maskMacroRangeL_;
+            const int O = local ? maskRangeO_[v] : maskMacroRangeO_;
             return maskWindowContains(O, L, phraseStep);
         }
         const uint16_t pat = local ? maskAnchored_[v] : maskMacroAnchored_;   // abs2/abs3
@@ -654,8 +668,9 @@ struct SequencerEngine {
         const bool local = maskLocalEast_[v];
         const int  kind  = local ? maskKind_[v] : maskMacroKind_;
         if (kind == MASK_CYCLE) return 0xFFFFu;
-        if (kind == MASK_DYNAMIC) {
-            int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
+        if (kind == MASK_DYNAMIC) {   // the GATE's own region — same law as outputMaskPasses
+            const int L = local ? maskRangeL_[v] : maskMacroRangeL_;
+            const int O = local ? maskRangeO_[v] : maskMacroRangeO_;
             return windowMaskBits(L, O);
         }
         return local ? maskAnchored_[v] : maskMacroAnchored_;
@@ -664,7 +679,7 @@ struct SequencerEngine {
     uint16_t effectiveOutputMaskMacro() const {
         if (maskMacroKind_ == MASK_CYCLE) return 0xFFFFu;
         if (maskMacroKind_ == MASK_DYNAMIC)
-            return windowMaskBits(macroVoiceLor_[LOR_LEN], macroVoiceLor_[LOR_OFF]);
+            return windowMaskBits(maskMacroRangeL_, maskMacroRangeO_);
         return maskMacroAnchored_;
     }
 

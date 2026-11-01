@@ -1018,27 +1018,52 @@ int main() {
         check(ungated, "STAGE4: all-cycle default — every voice passes every step (the degenerate all-on mask)");
     }
     {
-        // DYNAMIC (abs1): the mask IS the effective row's [O, O+L) — the range-as-mask,
-        // including the WRAPPED window (the phrase-wrap containment: 13..4 plays
-        // 13,14,15,0 — "only cut at 16 if step 1 is outside the range" falls out).
+        // DYNAMIC (abs1) — THE GATE'S OWN REGION (CC_DIRECTIVE_MASK_AND_VOICELOR): the
+        // mask is the gate's O/L in global space, NEVER voiceLOR (the read's polymeter
+        // window is orthogonal — the conflation fix). Includes the WRAPPED region
+        // (13..4 plays 13,14,15,0), the CONFLATION pin (a different voiceLOR must not
+        // move the gate), and the per-voice gate-region delegation.
         SequencerEngine eng; eng.reset();
         const auto M = dotModular::VoiceResolver::mono();
-        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
-        eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 6;    // the READ's window — deliberately different
+        eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 2;
         float macroBits[1] = {65535.f}; float macroKind = 1.f, macroFollowR = 0.f;
         float eastBits[16], eastKind[16], eastFollowR[16], localEast[16];
         for (int v = 0; v < 16; ++v) { eastBits[v]=65535.f; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
-        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
+        float eastRangeL[16], eastRangeO[16];
+        for (int v = 0; v < 16; ++v) { eastRangeL[v]=16.f; eastRangeO[v]=0.f; }
+        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast,
+                           8.f, 5.f, eastRangeL, eastRangeO);   // the GATE's macro region [5,13)
         bool winOK = true;
         for (int s = 0; s < 16; ++s)
             winOK = winOK && eng.outputMaskPasses(M, s) == (s >= 5 && s < 13);
-        check(winOK, "STAGE4: dynamic mask (abs1) — the range-as-mask [5,13) tracks the row's O/L");
-        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 4;
-        eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 13;
+        check(winOK, "STAGE4: dynamic (abs1) — the GATE's own region [5,13), NOT the voiceLOR window [2,8)");
+        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast,
+                           4.f, 13.f, eastRangeL, eastRangeO);  // the wrapped gate region 13..4
         bool wrapOK = true;
         for (int s = 0; s < 16; ++s)
             wrapOK = wrapOK && eng.outputMaskPasses(M, s) == (s >= 13 || s < 1);
-        check(wrapOK, "STAGE4: dynamic mask wraps the phrase (13..4 plays 13,14,15,0) — the wrap carries, the real end cuts");
+        check(wrapOK, "STAGE4: the dynamic gate region wraps the phrase (13..4 plays 13,14,15,0) — the wrap carries, the real end cuts");
+        // THE CONFLATION PIN: moving the voiceLOR window (the READ) must NOT move the gate.
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 16;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 0;
+        bool conflOK = true;
+        for (int s = 0; s < 16; ++s)
+            conflOK = conflOK && eng.outputMaskPasses(M, s) == (s >= 13 || s < 1);
+        check(conflOK, "STAGE4: the gate NEVER reads voiceLOR — changing the read window leaves the gate region untouched");
+        // Per-voice gate regions + the delegation: a local voice's own region vs a follower's macro region.
+        localEast[1] = 1.f;                       // V2 claims its own mask
+        eastKind[1]  = 1.f;                       // ...and its own row must be DYNAMIC to use its region
+        eastRangeL[1] = 6.f; eastRangeO[1] = 9.f; // V2's gate region [9,15)
+        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast,
+                           4.f, 13.f, eastRangeL, eastRangeO);
+        const auto v2 = dotModular::VoiceResolver::slot(2);
+        const auto v3 = dotModular::VoiceResolver::slot(3);
+        bool delegOK = true;
+        for (int s = 0; s < 16; ++s)
+            delegOK = delegOK && eng.outputMaskPasses(v2, s) == (s >= 9 && s < 15)   // its own region
+                              && eng.outputMaskPasses(v3, s) == (s >= 13 || s < 1);  // the macro region
+        check(delegOK, "STAGE4: the gate region delegates — a local voice's own [9,15); a follower reads the macro's 13..4");
     }
     {
         // PAINTED abs2 (STATIC): fixed to absolute phrase steps — an R turn does NOT
@@ -1103,15 +1128,22 @@ int main() {
         float macroBits[1] = {-5.f}; float macroKind = 7.4f, macroFollowR = 2.f;
         float eastBits[16], eastKind[16], eastFollowR[16], localEast[16];
         for (int v = 0; v < 16; ++v) { eastBits[v]=99999.f; eastKind[v]=-1.f; eastFollowR[v]=0.f; localEast[v]=0.5f; }
-        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
+        float eastRangeL[16], eastRangeO[16];
+        for (int v = 0; v < 16; ++v) { eastRangeL[v]=0.f; eastRangeO[v]=-7.f; }
+        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast,
+                           -3.f, 99.f, eastRangeL, eastRangeO);
         const auto v2 = dotModular::VoiceResolver::slot(2);
         const bool clampsOK = eng.maskMacroKind_ == 2            // lround(7.4) clamped -> 2
                            && eng.maskMacroAnchored_ == 0        // bits -5 -> 0
                            && eng.maskMacroFollowR_ == true
                            && eng.maskKind_[v2.v] == 0           // -1 -> 0 (cycle)
                            && eng.maskPainted_[v2.v] == 0xFFFF   // 99999 -> 65535
-                           && eng.maskLocalEast_[v2.v] == true;  // 0.5 -> local
-        check(clampsOK, "STAGE4: the push clamps to the store frame (kind 0..2, bits 0..65535, flags)");
+                           && eng.maskLocalEast_[v2.v] == true   // 0.5 -> local
+                           && eng.maskMacroRangeL_ == 1          // -3 -> 1
+                           && eng.maskMacroRangeO_ == 15         // 99 -> 15
+                           && eng.maskRangeL_[v2.v] == 1         // 0 -> 1
+                           && eng.maskRangeO_[v2.v] == 0;        // -7 -> 0
+        check(clampsOK, "STAGE4: the push clamps to the store frame (kind 0..2, bits 0..65535, flags, gate region L 1..16 / O 0..15)");
         // and windowMaskBits (the "from range" preset's math) == the dynamic eval
         const uint16_t w = SequencerEngine::windowMaskBits(4, 13);
         bool wOK = true;
@@ -1137,14 +1169,13 @@ int main() {
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         check(eng.effectiveOutputMask(M) == 0xFFFFu && eng.effectiveOutputMaskMacro() == 0xFFFFu,
               "STAGE4-DISP: cycle -> the all-on play set");
-        // DYNAMIC: the accessor == windowMaskBits of the effective row (incl. the wrap).
+        // DYNAMIC: the accessor == windowMaskBits of the GATE's own region (incl. the wrap).
         macroKind = 1.f;
-        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 4;
-        eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 13;
-        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
+        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast,
+                           4.f, 13.f, nullptr, nullptr);
         check(eng.effectiveOutputMask(M) == SequencerEngine::windowMaskBits(4, 13)
            && eng.effectiveOutputMaskMacro() == SequencerEngine::windowMaskBits(4, 13),
-              "STAGE4-DISP: dynamic -> the window bits (wrapped 13..4), macro tier the same");
+              "STAGE4-DISP: dynamic -> the GATE's own region bits (wrapped 13..4), macro tier the same");
         // PAINTED: the anchored copy; abs3's re-pin ROTATES the returned bits (the
         // visible follow-R effect), abs2 stays fixed.
         macroKind = 2.f; macroBits[0] = (float)(1u << 2);

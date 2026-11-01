@@ -960,6 +960,13 @@ struct Monsoon : Module {
                                           65535.f,65535.f,65535.f,65535.f, 65535.f,65535.f,65535.f,65535.f};
         float maskEastFollowR[16]      = {};
         float maskLocalEastMask[16]    = {};   // 0 = follow the MACRO mask (default)
+        // THE GATE'S OWN REGION (abs1/Range — CC_DIRECTIVE_MASK_AND_VOICELOR): the output
+        // gate's O/L in GLOBAL-position space, SEPARATE from the read-confining voiceLOR
+        // (the polymeter). Defaults 16/0 = the all-on degenerate (cycle-equivalent).
+        float maskRangeL[16]           = {16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16};
+        float maskRangeO[16]           = {};
+        float maskMacroRangeL          = 16.f;
+        float maskMacroRangeO          = 0.f;
     } editor;
 
     // Unified LOR base accessors. slot = voiceSlot (0 = V1/mono), bank 0..6, c 0..2.
@@ -1052,15 +1059,26 @@ struct Monsoon : Module {
         editor.maskEastPatternBits[v] = (float)(play ? (b | (1 << c)) : (b & ~(1 << c))); }
     float getMaskLocalEastMask(int v) const   { return vLorOk(v) ? editor.maskLocalEastMask[v] : 0.f; }
     void  setMaskLocalEastMask(int v, float x){ if (vLorOk(v)) editor.maskLocalEastMask[v] = x; }
-    // Reset a mask row to the RANGE default + all-on (the range-driven escape hatch;
-    // a full range plays everywhere — see the editor defaults note above).
+    // The gate's own region (abs1) — the output gate's O/L, global-position space.
+    float getMaskRangeL(int v) const   { return vLorOk(v) ? editor.maskRangeL[v] : 16.f; }
+    void  setMaskRangeL(int v, float x){ if (vLorOk(v)) editor.maskRangeL[v] = std::clamp(x, 1.f, 16.f); }
+    float getMaskRangeO(int v) const   { return vLorOk(v) ? editor.maskRangeO[v] : 0.f; }
+    void  setMaskRangeO(int v, float x){ if (vLorOk(v)) editor.maskRangeO[v] = std::clamp(x, 0.f, 15.f); }
+    float getMaskMacroRangeL() const        { return editor.maskMacroRangeL; }
+    void  setMaskMacroRangeL(float x)       { editor.maskMacroRangeL = std::clamp(x, 1.f, 16.f); }
+    float getMaskMacroRangeO() const        { return editor.maskMacroRangeO; }
+    void  setMaskMacroRangeO(float x)       { editor.maskMacroRangeO = std::clamp(x, 0.f, 15.f); }
+    // Reset a mask row to the RANGE default + all-on + the full gate region (the
+    // range-driven escape hatch; a full region plays everywhere).
     void resetMaskMacro() {
         editor.maskMacroKind = 1.f; editor.maskMacroPatternBits = 65535.f;
-        editor.maskMacroFollowR = 0.f; }
+        editor.maskMacroFollowR = 0.f;
+        editor.maskMacroRangeL = 16.f; editor.maskMacroRangeO = 0.f; }
     void resetMaskEast(int v) {
         if (!vLorOk(v)) return;
         editor.maskEastKind[v] = 1.f; editor.maskEastPatternBits[v] = 65535.f;
-        editor.maskEastFollowR[v] = 0.f; }
+        editor.maskEastFollowR[v] = 0.f;
+        editor.maskRangeL[v] = 16.f; editor.maskRangeO[v] = 0.f; }
 
     //  MONO slice accessors (Mono Sands de-param) 
     // monoAtten: lane 0..5 (editor order), col 0..3 (0..2 = LOR len/off/rot, 3 = spread).

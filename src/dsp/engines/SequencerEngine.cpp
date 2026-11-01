@@ -209,13 +209,16 @@ void SequencerEngine::reset() {
     macroFrameRead_ = 0; macroFrameSign_ = 0;   // Stage 3: the Macro frame's caches too
     // Stage 4: the output mask seeds to CYCLE everywhere (the all-on degenerate mask,
     // today's behaviour) — no gating at defaults, the goldens' output path untouched.
+    // The gate's own region seeds 16/0 (all-on — the cycle-equivalent degenerate).
     for (int v = 0; v < kVoiceSlots; ++v) {
         maskKind_[v] = MASK_CYCLE; maskPainted_[v] = 0xFFFF; maskFollowR_[v] = false;
         maskLocalEast_[v] = false; maskAnchored_[v] = 0xFFFF; maskAnchorR_[v] = 0;
         maskLastPushed_[v] = 0xFFFF;
+        maskRangeL_[v] = 16; maskRangeO_[v] = 0;
     }
     maskMacroKind_ = MASK_CYCLE; maskMacroPainted_ = 0xFFFF; maskMacroFollowR_ = false;
     maskMacroAnchored_ = 0xFFFF; maskMacroAnchorR_ = 0; maskMacroLastPushed_ = 0xFFFF;
+    maskMacroRangeL_ = 16; maskMacroRangeO_ = 0;
     runGateActive = false;
     resetArmed = false;
     prevGate1High = false;
@@ -296,7 +299,9 @@ void SequencerEngine::pushVoiceLorEditor(
 void SequencerEngine::pushMaskEditor(
     const float* macroPatternBits, float macroKind, float macroFollowR,
     const float* eastPatternBits, const float* eastKind,
-    const float* eastFollowR, const float* localEast) {
+    const float* eastFollowR, const float* localEast,
+    float macroRangeL, float macroRangeO,
+    const float* eastRangeL, const float* eastRangeO) {
     auto kindInt = [](float x) -> int {
         return (int)std::lround(std::clamp(x, 0.f, 2.f));
     };
@@ -320,6 +325,9 @@ void SequencerEngine::pushMaskEditor(
         maskMacroKind_    = kind;
         maskMacroPainted_ = painted;
         maskMacroFollowR_ = followR;
+        // The gate's own region (abs1) — clamped to the store frame; nullptr = keep.
+        maskMacroRangeL_ = (int)std::lround(std::clamp(macroRangeL, 1.f, 16.f));
+        maskMacroRangeO_ = (int)std::lround(std::clamp(macroRangeO, 0.f, 15.f));
     }
     for (int v = 0; v < kVoiceSlots; ++v) {
         const uint16_t painted = bitsInt(eastPatternBits[v]);
@@ -338,6 +346,8 @@ void SequencerEngine::pushMaskEditor(
         maskKind_[v]    = kind;
         maskPainted_[v] = painted;
         maskFollowR_[v] = followR;
+        if (eastRangeL) maskRangeL_[v] = (int)std::lround(std::clamp(eastRangeL[v], 1.f, 16.f));
+        if (eastRangeO) maskRangeO_[v] = (int)std::lround(std::clamp(eastRangeO[v], 0.f, 15.f));
     }
 }
 

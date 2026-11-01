@@ -1655,7 +1655,9 @@ void Monsoon::process(const ProcessArgs& args) {
         engine.pushMaskEditor(
             &editor.maskMacroPatternBits, editor.maskMacroKind, editor.maskMacroFollowR,
             editor.maskEastPatternBits, editor.maskEastKind, editor.maskEastFollowR,
-            editor.maskLocalEastMask);
+            editor.maskLocalEastMask,
+            editor.maskMacroRangeL, editor.maskMacroRangeO,
+            editor.maskRangeL, editor.maskRangeO);
 
         // Update CV2 modulation offsets (Throttled)
         paramManager->clearCv2Offsets();
