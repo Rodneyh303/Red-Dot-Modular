@@ -90,7 +90,7 @@ inline int calcPlayhead(int globalStep, int length, int offset, int rotation) {
 
 // CC_PROMPT_VARIATION_SCAN_DISPLAY — the VARIATION lane's chevron position: the
 // ENGINE's scanned read index, never a parallel recompute. Gate-mode holds scan the
-// variation window (scanOfs_, +1 per held rise — the freeze fix's escape search,
+// variation window (scanOfsV_[0], +1 per held rise — the freeze fix's escape search,
 // IN THE TRAVEL DIRECTION: the signed delta, backward when Variation < 0), so the
 // chevron creeps the way the playhead is going during a hold and re-aligns on
 // advance — the visual confirmation of the freeze fix. Outside holds (and in

@@ -415,22 +415,45 @@ struct SequencerEngine {
     // (The step-advance rise counter is DELETED — CC_PROMPT_STEP_ADVANCE_FIX_DRAW_
     // SOURCE: the advance reads the VARIATION LANE's step-addressed draw, not a
     // per-rise uniform, so there is no counter and NO new draw consumption.)
-    // THE FREEZE FIX (CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR): scanOfs_ — the
-    // local variation-window SCAN, "how far the held step has scanned the window
-    // looking for an escape value". GATE MODE ONLY (mode A never reads it — its
-    // advancePlayhead calls reset it harmlessly). +1 on each HELD rise, bounded by
-    // the variation lane's length; RESET to 0 in advancePlayhead (each arrived step
-    // is judged on its own value first, scan 0). A LOCAL scan index into the
-    // variation window — NEVER added into totalStepsElapsed or the global clock
-    // (a held-rise count is not a pattern position; global-modulus-agnostic by
-    // construction). To stay frozen EVERY value in the window must fail < |p|
-    // (prob ~(1-|p|)^varLen ≈ 0) — escapes within ~1/|p| held rises; p=0 = HOLD
-    // by design. Zero new draws (the scan reads existing ring values).
-    int scanOfs_ = 0;
+    // THE FREEZE FIX (CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR): scanOfsV_[0] — the
+    // MONO/LOCKED scan: the local variation-window SCAN, "how far the held step has
+    // scanned the window looking for an escape value". GATE MODE ONLY (mode A never
+    // reads it — its advancePlayhead calls reset it harmlessly). +1 on each HELD
+    // rise, bounded by the variation lane's length; RESET to 0 in advancePlayhead
+    // (each arrived step is judged on its own value first, scan 0). A LOCAL scan
+    // index into the variation window — NEVER added into totalStepsElapsed or the
+    // global clock (a held-rise count is not a pattern position;
+    // global-modulus-agnostic by construction). To stay frozen EVERY value in the
+    // window must fail < |p| (prob ~(1-|p|)^varLen ≈ 0) — escapes within ~1/|p|
+    // held rises; p=0 = HOLD by design. Zero new draws (the scan reads existing
+    // ring values).
+    // PER-VOICE STEP-ADVANCE Stage 1 (plans/per_voice_step_advance_build_plan.md):
+    // array-ified — [0] is THE mono/locked scan (every pre-existing reader; the
+    // scanHold_() below is its increment). The per-voice slots [1..] stay 0/unread
+    // in the locked build; Stage 2's divergence gates them on the VAR-lane
+    // delegation (varlegDelegated) and resets them at the decision sites.
+    int scanOfsV_[16] = {};
     void scanHold_() {
         const int varLen = lor(dotModular::STRAND_VARIATION, LOR_LEN);
-        scanOfs_ = (scanOfs_ + 1) % (varLen > 0 ? varLen : 1);
+        scanOfsV_[0] = (scanOfsV_[0] + 1) % (varLen > 0 ? varLen : 1);
     }
+    // PER-VOICE STEP-ADVANCE (PER_VOICE_STEP_ADVANCE_PLAN.md §59-99, ruled by
+    // CC_PER_VOICE_ADVANCE_SIGNOFF.md): the SECOND per-voice offset on top of LOR —
+    // ENGINE-computed (never user-set), accumulating each voice's own step-advance
+    // decisions (Stage 2: += d_v − d_main at the advance sites, so a voice's net
+    // position change is its OWN decision). The ONE clock is untouched: the offset
+    // enters ONLY recomputeVoiceDrivers_ as the voice's EFFECTIVE CLOCK
+    // (totalStepsElapsed + advanceOffset_[v] through driverTickAt) — a true
+    // per-voice step shift of the voice's whole read chain (global window → voice
+    // window → every laneTickV_[v]/voiceRead_[v]). [0] ≡ 0 ALWAYS (the mono slot IS
+    // the transport — the invariant; the decision loops run v = 1..numPolyVoices).
+    // int64 UNBOUNDED net-step counts (the signoff's decision 1 — the KILL_DNA_LCM
+    // model): no offset wrap exists or is needed; every READ mods locally at its
+    // own length, so "wraps at the phrase" holds at the read level. Stage 1 ships
+    // the plumbing LOCKED (all offsets stay 0 — the goldens are the degeneration
+    // proof). Zeroed by reset() and on voice activation (a re-activated voice
+    // re-enters at the macro position).
+    int64_t advanceOffset_[16] = {};
     // F-4 (D5 — RHYTHM_DECISION_MANAGER_PLAN §3.3): each poly voice's THIS-EDGE GHOST EVENT —
     // the voice PLAYED an onset at a permission point that was a ghost cell of ITS containers
     // (rd.ghostCell). Captured by executePolyVoice at the play verdict (the polyVerdict_
@@ -658,7 +681,13 @@ struct SequencerEngine {
     // The recompute shared by advancePlayhead and recomputeLaneTicks (implemented .cpp):
     // fills voiceDriver_/voiceDriverPrev_/voiceRead_/voiceSign_ (per voice) and
     // macroFrameRead_/macroFrameSign_ (the Macro frame) from the global driver pair.
-    void    recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, int64_t tRawPrev, int dirMotion);
+    // PER-VOICE STEP-ADVANCE Stage 1: the per-voice pair is computed INSIDE, from
+    // each voice's EFFECTIVE CLOCK (totalStepsElapsed + advanceOffset_[v]) through
+    // the same driverTickAt/driverTickBefore walk — the passed pair drives only the
+    // Macro frame. Locked (offsets 0) the internal pair is expression-exactly the
+    // passed pair (the Stage-1 golden proof). (The old tRawPrev param is gone: the
+    // mapped rows' raw predecessor is now derived per voice.)
+    void    recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, int dirMotion);
 
     // Lane-index unification: PL_* now matches the VISUAL/EDITOR/STRAND order
     // (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6). Editor==engine==strand —
@@ -1234,7 +1263,7 @@ struct SequencerEngine {
     // looks in the TRAVEL direction (decideStepAdvance_ signs its draw delta by p):
     // negative travel (variationProb < 0) scans BACKWARD. The sign is read LIVE
     // from the mono variationProb — the same p the main-lane decision signs by, so
-    // there is no cached sign member to desync. scanOfs_ magnitude stays
+    // there is no cached sign member to desync. scanOfsV_[0] magnitude stays
     // 0..varLen-1 (0 = not holding / non-gate modes).
     int stepAdvanceScanDelta() const;
     int getAccentStep() const;  // NEW: accent strand DNA index

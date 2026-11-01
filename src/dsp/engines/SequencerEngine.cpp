@@ -146,6 +146,11 @@ void SequencerEngine::reset() {
     cachedLength = 16;
     cachedOffset = 0;
     totalStepsElapsed = 0;
+    // PER-VOICE STEP-ADVANCE Stage 1: the offsets + per-voice scans re-anchor with
+    // the transport (provably unobservable in the locked build — the offsets are
+    // always 0, and scanOfsV_[0] is re-zeroed by the seed advance before any
+    // decision reads it; Stage 2's divergence makes this the re-unification point).
+    for (int i = 0; i < 16; ++i) { advanceOffset_[i] = 0; scanOfsV_[i] = 0; }
     for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
         lorRef(s, LOR_LEN) = 16;   // Length defaults to full 16-step window
         lorRef(s, LOR_OFF) = 0;
@@ -339,7 +344,7 @@ void SequencerEngine::pushMaskEditor(
 bool SequencerEngine::advancePlayhead(int dir) {
     int prevStep = stepIndex;
     lastPlayDir = (dir < 0) ? -1 : +1;
-    scanOfs_ = 0;   // THE FREEZE FIX: any motion re-anchors — each arrived step is judged on its own value first
+    scanOfsV_[0] = 0;   // THE FREEZE FIX: any motion re-anchors — each arrived step is judged on its own value first
 
     // ── Per-lane direction — STATELESS ──────────────────────────────────────────
     // Only the flip QUANTIZATION keeps state now: promote the pending dir at the step edge
@@ -416,7 +421,7 @@ bool SequencerEngine::advancePlayhead(int dir) {
         // UNIFIED ADDRESSING Stage 2: the per-voice maps, then the lane walks driven by
         // EACH VOICE's driver (V1 = the mono lanes, V2..V16 = laneTickV_). The Macro
         // frame keeps the global driver (it has no voice map — it IS the frame).
-        recomputeVoiceDrivers_(tNow, tPrevD, totalStepsElapsed - dir, dir);
+        recomputeVoiceDrivers_(tNow, tPrevD, dir);
         auto recomp = [&](LaneDir d, int len, int64_t tN, int64_t tP, int& tickOut, int& signOut) {
             const int64_t cur = laneTickFor(d, tN, len);
             const int64_t prv = laneTickFor(d, tP, len);
@@ -558,7 +563,7 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLev
     // (bit-identical to getVariationStep(), sign-irrelevant); +1 = the incoming-rest
     // step forward, -1 the one behind (the fall-advance, CC_PROMPT_TIE_INTO_REST_
     // PROBABILISTIC_ADVANCE — unscanned, the travel-signed target's own value); the
-    // RISE passes the accumulated scanOfs_ magnitude — THE FREEZE FIX
+    // RISE passes the accumulated scanOfsV_[0] magnitude — THE FREEZE FIX
     // (CC_PROMPT_STEP_ADVANCE_FREEZE_AND_BIPOLAR): a held rise scans the variation
     // window IN THE TRAVEL DIRECTION (signed above), so a step whose own draw fails
     // the compare is NOT a permanent wall (the escape comes within ~1/|p| held rises,
@@ -587,7 +592,7 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLev
 // a wrap/jump reads as ONE musical step along the current motion (a BEAT, not a
 // bounce — the cue must not flip there), delta 0 (the PingPong endpoint repeat)
 // keeps the previous sign. Write-only caches; no read/generation path changes.
-void SequencerEngine::recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, int64_t tRawPrev, int dirMotion) {
+void SequencerEngine::recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, int dirMotion) {
     // The MACRO frame first (computed once, not per voice): the global window walk.
     macroFrameRead_ = (int)(((tNow - 1) % 16 + 16) % 16);
     {
@@ -596,14 +601,31 @@ void SequencerEngine::recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, 
         else if (gd < 0) macroFrameSign_ = -1;   // 0 = held repeat: keep the previous cue
     }
     for (int v = 0; v < kVoiceSlots; ++v) {
+        // PER-VOICE STEP-ADVANCE Stage 1 (plans/per_voice_step_advance_build_plan.md):
+        // the voice's EFFECTIVE CLOCK — the one clock plus its ENGINE-computed
+        // advance offset ([0] ≡ 0: the mono slot IS the transport). The pair is
+        // computed PER VOICE through the same global-window walk
+        // (driverTickAt/driverTickBefore); tRawPrevV stays RAW (the mapped rows'
+        // wprev consumes the raw predecessor, the old param's contract). LOCKED
+        // (all offsets 0 — this build) every value degenerates EXPRESSION-EXACTLY
+        // to the caller's shared pair (tNowV == tNow, tRawPrevV == the caller's
+        // tRawPrev, tPrevV == tPrevGlobal) — the Stage-1 golden proof,
+        // bit-identical; the offsets only move in Stage 2, gated on the VAR-lane
+        // delegation. int64 unbounded (KILL_DNA_LCM); every read wraps locally.
+        const int64_t tEffV     = totalStepsElapsed + advanceOffset_[v];
+        const int64_t tNowV     = driverTickAt(tEffV, cachedLength, cachedOffset);
+        const int64_t tRawPrevV = tEffV - dirMotion;
+        const int64_t tPrevV    = driverTickBefore(tNowV,
+                                    driverTickAt(tRawPrevV, cachedLength, cachedOffset),
+                                    dirMotion, cachedLength, cachedOffset);
         const bool live = (v == 0) || (v >= 1 && v <= numPolyVoices);
-        if (!live) { voiceDriver_[v] = tNow; voiceDriverPrev_[v] = tPrevGlobal; voiceRead_[v] = 0; continue; }
+        if (!live) { voiceDriver_[v] = tNowV; voiceDriverPrev_[v] = tPrevV; voiceRead_[v] = 0; continue; }
         if (voiceLorIdentity(v)) {
-            voiceDriver_[v]      = tNow;
-            voiceDriverPrev_[v]  = tPrevGlobal;
-            voiceRead_[v]        = (int)(((tNow - 1) % 16 + 16) % 16);
+            voiceDriver_[v]      = tNowV;
+            voiceDriverPrev_[v]  = tPrevV;
+            voiceRead_[v]        = (int)(((tNowV - 1) % 16 + 16) % 16);
             {   // identity frame = the global walk (same pair as macroFrame above)
-                const int64_t gd = tNow - tPrevGlobal;
+                const int64_t gd = tNowV - tPrevV;
                 if (gd > 0)      voiceSign_[v] = +1;
                 else if (gd < 0) voiceSign_[v] = -1;
             }
@@ -613,10 +635,10 @@ void SequencerEngine::recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, 
         effectiveVoiceLor(v, L, O, R, vd);
         if (L < 1) L = 1;
         const int64_t rho  = ((((int64_t)(R - O) % L) + L) % L);
-        const int64_t wnow = ((((laneTickFor(vd, tNow, L) + rho) % L) + L) % L);
+        const int64_t wnow = ((((laneTickFor(vd, tNowV, L) + rho) % L) + L) % L);
         voiceDriver_[v] = wnow + 1;
         voiceRead_[v]   = (int)((wnow + O) & 0x0F);
-        const int64_t wprev = ((((laneTickFor(vd, tRawPrev, L) + rho) % L) + L) % L);
+        const int64_t wprev = ((((laneTickFor(vd, tRawPrevV, L) + rho) % L) + L) % L);
         const int64_t dd    = voiceDriver_[v] - (wprev + 1);
         // A wrap (the voice's own window, or the global window beneath it) is a BEAT,
         // not a bounce: the musical predecessor is one step along the current motion.
@@ -653,7 +675,7 @@ void SequencerEngine::recomputeLaneTicks() {
     const int64_t tPrevD = driverTickBefore(tNow,
                             driverTickAt(totalStepsElapsed - lastPlayDir, drvLen, drvOff),
                             lastPlayDir, drvLen, drvOff);
-    recomputeVoiceDrivers_(tNow, tPrevD, totalStepsElapsed - lastPlayDir, lastPlayDir);
+    recomputeVoiceDrivers_(tNow, tPrevD, lastPlayDir);
     auto recomp = [&](LaneDir d, int len, int64_t tN, int64_t tP, int& tickOut, int& signOut) {
         const int64_t cur = laneTickFor(d, tN, len);
         const int64_t prv = laneTickFor(d, tP, len);
@@ -1242,7 +1264,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
             // The seed: initialization, not a sequence-motion decision (no draw consumed).
             wrapped = advancePlayhead();
         } else {
-            const dotModular::StepAdvance::Decision d = decideStepAdvance_(-1, scanOfs_);
+            const dotModular::StepAdvance::Decision d = decideStepAdvance_(-1, scanOfsV_[0]);
             // STAGE 1 (CC_PROMPT_GATE_STEP_ADVANCE_SPEC): the main-gate advance is
             // PROBABILISTIC — u < the resolved Variation probability in gate mode moves
             // the playhead. p=1 is the GOLDEN PIN: decide(1, u) == FORWARD for every
@@ -1392,7 +1414,7 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
         const int advLevel = mainGateRise ? -1
                            : (subGateRise ? dotModular::SubgateKnobs::RATCHET
                                           : dotModular::SubgateKnobs::GHOST);
-        const dotModular::StepAdvance::Decision adv = decideStepAdvance_(advLevel, scanOfs_);
+        const dotModular::StepAdvance::Decision adv = decideStepAdvance_(advLevel, scanOfsV_[0]);
         // FORWARD advances; BACKWARD (Stage 2 bipolar — a negative threshold at ANY
         // level: the bipolar main through follow-main, or a bipolar mod delta into
         // the level's ADVANCE jack) walks the SHARED playhead backward with wrap
@@ -1550,6 +1572,12 @@ void SequencerEngine::resetActivatedPolyVoices_() {
             voices[vs].gsStep.holdRemain = 0.f;
             voices[vs].gsStep.gatePulseRemain = -1;
             voices[vs].participating = false;
+            // PER-VOICE STEP-ADVANCE (Stage 1): a (re-)activated voice re-enters at
+            // the macro position — no stale offset/scan from a previous activation
+            // (the locked build never moves them; Stage 2's divergence makes this
+            // live). Indexed by the voice slot, like laneTickV_.
+            advanceOffset_[i] = 0;
+            scanOfsV_[i] = 0;
         }
     }
     pe.syncPolyVoiceCount();  // Voice-count opt: fill delta voices' z in cache on increase
@@ -2118,7 +2146,7 @@ int SequencerEngine::stepAdvanceScanDelta() const {
     // decideStepAdvance_ signs its draw delta by (the main-lane travel direction).
     // No cached sign member (nothing to desync); magnitude unchanged.
     const VoiceSlot m = VoiceResolver::mono();
-    return (voices[m].variationProb < 0.f) ? -scanOfs_ : scanOfs_;
+    return (voices[m].variationProb < 0.f) ? -scanOfsV_[0] : scanOfsV_[0];
 }
 float SequencerEngine::stepAdvanceDrawAt(int drawTickDelta) const {
     // THE ONE advance-draw expression (decideStepAdvance_ delegates here; the test

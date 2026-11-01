@@ -694,6 +694,57 @@ int main() {
         std::printf("  (info) rested-ghost marches: %d ghost moves (the advance is upstream)\n", ghostMoves);
     }
 
+    // ── PER-VOICE STEP-ADVANCE STAGE 1 — the plumbing pins (locked build) ────────
+    //    plans/per_voice_step_advance_build_plan.md: advanceOffset_[v] enters ONLY
+    //    recomputeVoiceDrivers_ (the voice's effective clock = the one clock + its
+    //    offset, through the same global-window walk). Locked build: the offsets
+    //    never move (all voices delegated); these pins prove the FLOW by setting an
+    //    offset directly. The mono lanes and [0] are untouched; every read wraps
+    //    locally at its own length (the KILL_DNA_LCM model).
+    {
+        // PIN A — the default window (driverTickAt pass-through): the offset voice's
+        // driver is exactly clock + offset; offset-0 voices read the clock.
+        SequencerEngine eng; eng.reset();
+        eng.numPolyVoices = 4;
+        eng.advanceOffset_[2] = 5;
+        eng.advancePlayhead();
+        check(eng.totalStepsElapsed == 1, "PLUMB: advancePlayhead moved the one clock +1");
+        check(eng.voiceDriver_[0] == 1 && eng.voiceDriver_[1] == 1,
+              "PLUMB: offset-0 voices read the clock (the degenerate shared pair)");
+        check(eng.voiceDriver_[2] == 6,
+              "PLUMB: the offset voice's driver == clock + offset (pass-through window)");
+        check(eng.advanceOffset_[0] == 0 && eng.advanceOffset_[2] == 5,
+              "PLUMB: advancePlayhead never touches the offsets (the clock is the transport)");
+
+        // PIN B — a mapped global window: the offset rides the SAME window walk
+        // (the driverTickAt fold) — still exactly k window steps.
+        SequencerEngine eng2; eng2.reset();
+        eng2.numPolyVoices = 4;
+        eng2.cachedLength = 7; eng2.cachedOffset = 3;
+        eng2.advanceOffset_[3] = 5;
+        eng2.advancePlayhead();
+        const auto fold7 = [](int64_t t) -> int64_t {
+            int64_t w = (t - 1) % 7; if (w < 0) w += 7; return w + 3 + 1;
+        };
+        check(eng2.voiceDriver_[0] == fold7(1) && eng2.voiceDriver_[3] == fold7(6),
+              "PLUMB: a mapped window folds the effective clock (offset + walk, exact)");
+
+        // PIN C — the lane ticks ride the offset, each wrapping locally at its own
+        // length: the default 16-length Forward VAR strand shifts by exactly
+        // (offset mod 16), and the mono lanes are byte-identical between engines.
+        SequencerEngine a, b; a.reset(); b.reset();
+        a.numPolyVoices = 4; b.numPolyVoices = 4;
+        b.advanceOffset_[2] = 5;
+        for (int i = 0; i < 6; ++i) { a.advancePlayhead(); b.advancePlayhead(); }
+        const int dVar = ((b.laneTickV_[2][dotModular::STRAND_VARIATION]
+                         - a.laneTickV_[2][dotModular::STRAND_VARIATION]) % 16 + 16) % 16;
+        check(dVar == 5, "PLUMB: laneTickV_ shifts by (offset mod lane len) — the local wrap");
+        bool monoSame = true;
+        for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
+            monoSame = monoSame && a.laneTick_[s] == b.laneTick_[s];
+        check(monoSame, "PLUMB: the mono lanes are untouched (the transport is the mono decision)");
+    }
+
     std::printf("  passed %d, failed %d\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;
 }
