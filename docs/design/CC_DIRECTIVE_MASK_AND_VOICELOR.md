@@ -18,22 +18,33 @@ HISTORY from a long session — do NOT build from them; some are superseded or w
 
 ## THE WORK — in order. (A) FINISH THE MASK, then (B) VOICE-LOR PARITY.
 
-### (A) FINISH THE MASK — per UNIFIED_ADDRESSING_SYSTEM.md (do first; it's in-flight/half-broken)
-Build to the updated mask design:
-1. The gate uses its OWN region (maskPainted_/maskAnchored_), NEVER effectiveVoiceLor. The READ runs
-   full-phrase (voiceLOR unchanged); the gate silences output in ABSOLUTE phrase space against the GLOBAL
-   step. (CC_FIX_MASK_OWN_REGION is the immediate change for the Range/MASK_DYNAMIC kind.)
-2. Kinds: Cycle (all-on) / abs1 dynamic-from-the-GATE's-own-range / abs2 static painted / abs3 painted
-   follows-R.
-3. PAINT ONLY in abs2 (static): paint absolute cells at the voice's current BASE rotation (what you see =
-   what you paint). You CANNOT paint in abs3.
-4. ENABLING abs3 captures the current base rotation as the ANCHOR; the figure then slides (base-knob change
-   re-anchors; CV rotation-mod offsets from the anchor — the doc's anchor mechanism). Re-edit by flipping
-   back to abs2.
-5. follows-R borrows the voice's R as a MODULATION SOURCE (figure slides with the voice's phase), NOT a
-   confinement — the gate stays in absolute space independent of the read window.
-6. Pins: Cycle default bit-identical; GOLDEN_A untouched. Verify in Rack: 4 kinds AUDIBLY differ, playhead
-   traverses full phrase (not confined), per-voice masks give different sound regions.
+### (A) FINISH THE MASK — CORRECTED composable model (Rodney re-read; supersedes earlier mask fix docs)
+THERE IS ONLY ONE RANGE: the voice LOR range. No separate "gate range". Two COMPOSABLE axes, NOT four
+exclusive modes:
+
+AXIS 1 — BASE MODE (how the voice relates to its LOR):
+- CYCLE (default = as if no mask): the voice CYCLES WITHIN its voice LOR — reads and plays within the LOR
+  window, exactly as with no gate. (BUG to fix: it currently cycles FULL-PHRASE; it must cycle within LOR.)
+- ABSOLUTE-1: the read runs FULL PHRASE (steps 1..16) but OUTPUT is SILENCED when the GLOBAL step is OUTSIDE
+  the voice LOR range [O, O+L). Audible only inside the LOR window → sound regions. The abs1 gate region IS
+  the voice LOR (effectiveVoiceLor), NOT a separate maskPainted_ region. (This corrects the deleted
+  CC_FIX_MASK_OWN_REGION, which wrongly said "never effectiveVoiceLor" — abs1 DOES use the LOR range.)
+
+AXIS 2 — PAINTED GATE OVERLAY (an EXTRA gate that COMPOSES on top of EITHER base mode; NOT a playback mode):
+- The painted pattern (maskPainted_/maskAnchored_) is an ADDITIONAL mute, ANDed with the base mode:
+  - paint + CYCLE  → cycling within LOR, additionally silenced at painted-out steps.
+  - paint + ABS1   → full-phrase read silent outside LOR, additionally silenced at painted-out steps.
+- FOLLOWS ROTATION (the old abs3) is a SEPARATE toggle on the painted overlay: enabling it establishes the
+  painted pattern's link to the voice rotation; PAINTING IS DISABLED while follows-rotation is ON (edit in
+  static, enable to make it move — the anchor is captured on enable). Painting is NOT a playback mode.
+
+So: base = {cycle-within-LOR | abs1-full-read-silent-outside-LOR}; overlay = optional painted gate
+(static or follows-rotation), composed (ANDed) on top. The painted overlay uses maskPainted_; the abs1
+region uses the voice LOR. All gating is OUTPUT-ONLY (zero gate+CV), against the GLOBAL step; the READ is
+never confined by the painted overlay (cycle reads within LOR by definition; abs1 reads full-phrase).
+PINS: cycle default (within LOR) bit-identical to no-gate; GOLDEN_A untouched. Rack-verify: cycle plays
+within LOR; abs1 silent outside LOR (full-phrase read); painted overlay composes with both; follows-rotation
+moves the painted figure and disables painting.
 
 ### (B) VOICE-LOR PARITY — per the UAS doc's voice-LOR-gaps note (after A)
 Bring voice LOR to full consistency with the probability-lane LORs. ON THE BASE PANEL, NEXT TO THE LANE,
