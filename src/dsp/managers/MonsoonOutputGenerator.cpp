@@ -42,8 +42,15 @@ void OutputGenerator::drive(SequencerEngine& engine,
     // across normally; only the mask's real end cuts; step 1 outside = cut at 16.
     // At defaults (cycle everywhere) outputMaskPasses is TRUE every step — every
     // voltage below lands bit-identically (the goldens' output path untouched).
-    const int maskStep = engine.stepIndex;   // the GLOBAL phrase step (global-position space)
-    const bool monoMaskPass = engine.outputMaskPasses(dotModular::VoiceResolver::mono(), maskStep);
+    // THE PER-VOICE PHRASE STEP (CC_FIX_MASK_PER_VOICE_STEP): the mask resolves in
+    // PER-VOICE window space, so each voice is checked at WHERE IT READS — its OWN
+    // frame cell (voiceReadPosition: the 0-15 phrase position incl. its window
+    // offset and advanceOffset_) — NOT the shared global stepIndex. The old global
+    // step made the mask per-voice-BLIND (every voice behaved identically) and
+    // degenerated the kinds to a re-check of the LOR. Mono uses its own frame cell
+    // for consistency.
+    const int monoMaskStep = engine.voiceReadPosition(dotModular::VoiceResolver::mono());
+    const bool monoMaskPass = engine.outputMaskPasses(dotModular::VoiceResolver::mono(), monoMaskStep);
     if (!monoMaskPass) {
         outputs[GATE_OUTPUT].setVoltage(0.f);
         outputs[CV_OUTPUT].setVoltage(0.f);
@@ -114,8 +121,10 @@ void OutputGenerator::drive(SequencerEngine& engine,
             polySlegV[i]   = engine.voices[vs].gs.slurMember ? vgStep : 0.f;  // SLEG: slur-masked
             // Stage 4: the voice's OUTPUT MASK — zero the whole terminal set where the
             // mask mutes the current phrase step (output-gate-only; the state machines
-            // above ran untouched — the mute is post-process, read-side only).
-            if (!engine.outputMaskPasses(vs, maskStep)) {
+            // above ran untouched — the mute is post-process, read-side only). The
+            // step is THIS voice's own frame cell (CC_FIX_MASK_PER_VOICE_STEP) — the
+            // per-voice phrase position it reads at, wander offset included.
+            if (!engine.outputMaskPasses(vs, engine.voiceReadPosition(vs))) {
                 polyGateV[i]   = 0.f;
                 polyStepV[i]   = 0.f;
                 polyCV[i]      = 0.f;
