@@ -99,7 +99,11 @@ struct MonsoonStraitsExpanderWidget : ModuleWidget,
                     case 0: return m->getEffectivePolyRest(voice);
                     case 1: return m->getEffectivePolyAccent(voice);
                     case 2: return m->getEffectivePolyQmix(voice);
-                    case 5: return m->getEffectivePolyVariation(voice);
+                    // VAR is BIPOLAR [-1,+1] (CC_FIX_PER_VOICE_ADVANCE_WANDER) — present
+                    // the resolved value in the KNOB's [0,1] scale ((v+1)/2) so the mod
+                    // arc + isActive compare against the base coherently (see the twin
+                    // note in StraitsLaneExpander.cpp).
+                    case 5: return (m->getEffectivePolyVariation(voice) + 1.f) * 0.5f;
                     case 6: return m->getEffectivePolyLegato(voice);
                     default: return 0.f;
                 }

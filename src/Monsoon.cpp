@@ -462,8 +462,14 @@ float Monsoon::getBasePolyLegato(int voiceIdx) {
     return paramManager ? paramManager->getPolyLegato(voiceIdx) : 0.0f;
 }
 float Monsoon::getEffectivePolyVariation(int voiceIdx) {
-    // No Causeway VAR CV input yet — effective = base, clamped.
-    return math::clamp(getBasePolyVariation(voiceIdx), 0.f, 1.f);
+    // BIPOLAR — CC_FIX_PER_VOICE_ADVANCE_WANDER: unipolar poly VAR was a mono/poly
+    // special case (the mono gate-mode write is (2*knob - 1) + CV2 + Junction under
+    // ONE clamp [-1,+1]; poly could only go forward). SAME formula shape per voice:
+    // the knob maps bipolar (centre = 0 = stutter, down = backward). No Causeway poly
+    // VAR CV input yet — when one lands it joins the sum here exactly as the mono
+    // write adds CV2/Junction, under the same clamp. getBasePolyLegato stays
+    // unipolar (LEGATO is a probability, not the advance value).
+    return math::clamp(2.f * getBasePolyVariation(voiceIdx) - 1.f, -1.f, +1.f);
 }
 float Monsoon::getEffectivePolyLegato(int voiceIdx) {
     // No Causeway LEG CV input yet — effective = base, clamped.

@@ -1528,8 +1528,11 @@ struct Monsoon : Module {
     // base + Causeway CV × att, clamped. Voice-1/mono q-mix level is QMIX_LEVEL_PARAM (getEffectiveMonoQmix).
     float getBasePolyQmix(int voiceIdx);
     float getEffectivePolyQmix(int voiceIdx);
-    // Per-voice VARIATION/LEGATO, mirroring rest/accent. No Causeway VAR/LEG CV inputs yet,
-    // so effective = base (clamped). Mono base = VARIATION_PARAM / LEGATO_PARAM raw knob.
+    // Per-voice VARIATION/LEGATO, mirroring rest/accent. No Causeway VAR/LEG CV inputs yet.
+    // VAR is BIPOLAR (CC_FIX_PER_VOICE_ADVANCE_WANDER — the same formula shape as the
+    // mono gate-mode write: (2*knob - 1) under ONE clamp [-1,+1]; centre = stutter,
+    // down = backward — no mono/poly knob-behaviour split); LEGATO stays a unipolar
+    // probability. Mono base = VARIATION_PARAM / LEGATO_PARAM raw knob.
     float getBasePolyVariation(int voiceIdx);
     float getBasePolyLegato(int voiceIdx);
     float getEffectivePolyVariation(int voiceIdx);
