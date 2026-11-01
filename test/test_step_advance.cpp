@@ -370,6 +370,11 @@ static void ruleMarchInto(float p, int steps, Capture& cap, int* mismatches, int
     }
 }
 
+// PER-VOICE STEP-ADVANCE Stage 2: the mixed-delegation march digest (positions +
+// offsets + scans, mono transport at a draw-dependent mid-range p). Re-pinned once —
+// this build's per-voice semantics (the counter-removal safety net).
+static const uint64_t PV_DIVERGENCE_DIGEST = 0xf7a320270f080f64;
+
 int main() {
     std::printf("test_step_advance — the gate-mode step-advance feature (Stages 1+3)\n");
 
@@ -743,6 +748,130 @@ int main() {
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s)
             monoSame = monoSame && a.laneTick_[s] == b.laneTick_[s];
         check(monoSame, "PLUMB: the mono lanes are untouched (the transport is the mono decision)");
+    }
+
+    // ── PER-VOICE STEP-ADVANCE STAGE 2 — the divergence pins (CC_PER_VOICE_ADVANCE_
+    //    SIGNOFF: the gate is the VAR-lane delegation — setVarlegLocalEast(v,0,true)
+    //    makes a voice's advance PER-VOICE; delegated voices stay GLOBAL/locked, and
+    //    the default battery already proved that locked path bit-identical) ────────
+    {
+        const auto v2 = dotModular::VoiceResolver::slot(2);   // bank.v 1 (laneTickV_[1])
+        const auto v3 = dotModular::VoiceResolver::slot(3);   // bank.v 2
+        const auto v4 = dotModular::VoiceResolver::slot(4);   // bank.v 3
+
+        // TRACK / FREEZE / BACKWARD: a Local-East p=+1 voice tracks the clock (its
+        // offset stays 0); a p=0 voice FREEZES (its own decision is always HOLD); a
+        // p=−1 voice walks backward. All three are draw-INDEPENDENT (decide(±1/0, u)
+        // is u-independent) — exact, not seed-sensitive.
+        {
+            PhiloxRng rng; rng.seed64(0x5A5C0ull);
+            SequencerEngine eng; eng.reset();
+            eng.numPolyVoices = 4;
+            seedEngine(eng, rng, 1.0f);                 // mono p=+1: the transport advances every rise
+            eng.setVarlegLocalEast(v2, 0, true);
+            eng.setVarlegLocalEast(v3, 0, true);
+            eng.setVarlegLocalEast(v4, 0, true);
+            eng.voices[v2].variationProb = +1.0f;
+            eng.voices[v3].variationProb =  0.0f;
+            eng.voices[v4].variationProb = -1.0f;
+            const PatternInput in = makeInput(0.5f);
+            int monoAdv = 0, deltaObs = 0, track = 0, freeze = 0, back = 0;
+            int p2 = -1, p3 = -1, p4 = -1;
+            for (int step = 0; step < 24; ++step) {
+                const bool rise = (step % 2) == 0;
+                const int before = eng.stepIndex;
+                eng.executeModeB(rise, rise, 3.f, in);
+                if (!rise || before == -1) continue;
+                if (eng.stepIndex != before) ++monoAdv;
+                const int t2 = eng.laneTickV_[1][dotModular::STRAND_VARIATION];
+                const int t3 = eng.laneTickV_[2][dotModular::STRAND_VARIATION];
+                const int t4 = eng.laneTickV_[3][dotModular::STRAND_VARIATION];
+                if (p2 >= 0) {   // the first decision rise has no prior position to delta against
+                    ++deltaObs;
+                    if (((t2 - p2) % 16 + 16) % 16 == 1) ++track;
+                    if (t3 == p3) ++freeze;
+                    if (((t4 - p4) % 16 + 16) % 16 == 15) ++back;   // -1 mod 16
+                }
+                p2 = t2; p3 = t3; p4 = t4;
+            }
+            check(monoAdv > 0, "PV: the mono transport advances (p=+1)");
+            check(deltaObs == monoAdv - 1, "PV: (bookkeeping) every decision rise after the first is observed");
+            check(track == deltaObs, "PV: a Local-East p=+1 voice TRACKS the clock (offset stays 0)");
+            check(freeze == deltaObs, "PV: a Local-East p=0 voice FREEZES (its own decision: always HOLD)");
+            check(back  == deltaObs, "PV: a Local-East p=-1 voice walks BACKWARD (its own decision)");
+            check(eng.advanceOffset_[1] == 0
+                  && eng.advanceOffset_[2] == -(int64_t)monoAdv
+                  && eng.advanceOffset_[3] == -2 * (int64_t)monoAdv,
+                  "PV: the offsets are the exact net divergence (d_v - d_main per rise)");
+            check(eng.scanOfsV_[2] == (monoAdv % 16),
+                  "PV: a held Local-East voice scans ITS OWN window deeper (bounded by its length)");
+        }
+
+        // THE FALL (the signoff's decision 2): the tie-into-rest fall decision is
+        // PER-VOICE — a Local-East voice advances on its OWN draw while the mono
+        // holds; its OWN arrival latch makes the next rise a no-decision arrival
+        // for IT (its position holds while the transport steps).
+        {
+            PhiloxRng rng; rng.seed64(0xFA11C0ull);
+            SequencerEngine eng; eng.reset();
+            eng.numPolyVoices = 2;
+            eng.tieAcrossRests = true;
+            seedEngine(eng, rng, 0.0f);                 // mono p=0: the fall decision HOLDS
+            eng.setVarlegLocalEast(v2, 0, true);
+            eng.voices[v2].variationProb = +1.0f;       // the voice's own fall decision: FORWARD
+            const PatternInput in = makeInput(0.5f);
+            eng.executeModeB(true, true, 3.f, in);      // the seed rise
+            eng.gs.slurForward = true;                  // the fall fires under a pending slur
+            const int64_t clockBefore = eng.totalStepsElapsed;
+            const int tickBefore = eng.laneTickV_[1][dotModular::STRAND_VARIATION];
+            eng.legatoCheckpointOnFall();
+            check(eng.totalStepsElapsed == clockBefore,
+                  "PV-FALL: mono p=0 holds the CLOCK at the fall (the transport is the mono decision)");
+            check(eng.advanceOffset_[1] == +1,
+                  "PV-FALL: the Local-East p=+1 voice advances on its OWN fall decision (offset +1)");
+            check(eng.laneTickV_[1][dotModular::STRAND_VARIATION] == ((tickBefore + 1) % 16 + 16) % 16,
+                  "PV-FALL: the voice's reads shifted +1 (the offsets-only recompute)");
+            check(eng.pendingCheckpointArrivalV_[1] && !eng.pendingCheckpointArrivalV_[0],
+                  "PV-FALL: the voice's OWN arrival latch set; the mono latch not (mono held)");
+            const int tickAtArrival = eng.laneTickV_[1][dotModular::STRAND_VARIATION];
+            eng.executeModeB(true, true, 3.f, in);      // the arrival rise
+            check(eng.laneTickV_[1][dotModular::STRAND_VARIATION] == tickAtArrival
+                  && !eng.pendingCheckpointArrivalV_[1],
+                  "PV-FALL: the latched voice's rise is a no-decision arrival (position holds, latch cleared)");
+        }
+
+        // ONE divergence digest (the counter-removal safety net): a mixed march with
+        // draw-DEPENDENT mid-range thresholds, capturing the per-voice positions +
+        // offsets + scans.
+        {
+            PhiloxRng rng; rng.seed64(0xD16E57ull);
+            SequencerEngine eng; eng.reset();
+            eng.numPolyVoices = 4;
+            seedEngine(eng, rng, 0.618034f);            // mono: draw-dependent mid-range
+            eng.setVarlegLocalEast(v2, 0, true);
+            eng.setVarlegLocalEast(v3, 0, true);
+            eng.voices[v2].variationProb = 0.381966f;
+            eng.voices[v3].variationProb = -0.5f;
+            const PatternInput in = makeInput(0.5f);
+            Capture cap;
+            for (int step = 0; step < 96; ++step) {
+                const bool rise = (step % 2) == 0;
+                eng.executeModeB(rise, rise, 3.f, in);
+                if (!rise || eng.stepIndex < 0) continue;
+                cap.i16(eng.stepIndex);
+                cap.i16(eng.laneTickV_[1][dotModular::STRAND_VARIATION]);
+                cap.i16(eng.laneTickV_[2][dotModular::STRAND_VARIATION]);
+                cap.i16(eng.laneTickV_[1][dotModular::STRAND_RHYTHM]);
+                cap.i16(eng.laneTickV_[2][dotModular::STRAND_RHYTHM]);
+                cap.i16((int)eng.advanceOffset_[1]);
+                cap.i16((int)eng.advanceOffset_[2]);
+                cap.i16(eng.scanOfsV_[1]);
+                cap.i16(eng.scanOfsV_[2]);
+            }
+            std::printf("  (info) PV divergence digest: 0x%016llx\n", (unsigned long long)cap.digest());
+            check(cap.digest() == PV_DIVERGENCE_DIGEST,
+                  "PV: the mixed-delegation march digest (per-voice positions/offsets/scans)");
+        }
     }
 
     std::printf("  passed %d, failed %d\n", g_pass, g_fail);

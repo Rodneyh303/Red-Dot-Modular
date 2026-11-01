@@ -259,7 +259,12 @@ struct SequencerEngine {
     bool advanceOnTieIntoRest = false;
     // Latch set by legatoCheckpointOnFall (the fall advanced one step); the next executeModeB rise
     // consumes it and SKIPS its own advancePlayhead (plays the already-stepped-to step). One-shot.
-    bool pendingCheckpointArrival = false;
+    // PER-VOICE STEP-ADVANCE Stage 2 (CC_PER_VOICE_ADVANCE_SIGNOFF decision 2): ARRAY-IFIED —
+    // [0] is the MONO latch (every pre-existing reader, incl. Monsoon.cpp's fall guard);
+    // [1..] are the per-voice "one advance, one arrival" latches — a Local-East voice that
+    // moved on its OWN fall decision latches, and its next rise is a no-decision arrival
+    // for IT (foldPerVoiceAdvance_ clears it and rides 0). reset() zeroes all 16.
+    bool pendingCheckpointArrivalV_[16] = {};
 
     // "Boundary interrupt" — at the phrase boundary (wrap): FALSE (default) = CONTINUE, gate/
     // state carries across the loop (lap 2 can differ from lap 1). TRUE = INTERRUPT, force a
@@ -436,6 +441,13 @@ struct SequencerEngine {
     void scanHold_() {
         const int varLen = lor(dotModular::STRAND_VARIATION, LOR_LEN);
         scanOfsV_[0] = (scanOfsV_[0] + 1) % (varLen > 0 ? varLen : 1);
+    }
+    // The per-voice scan increment (Stage 2): the voice's OWN variation-window length
+    // (polyLOR), mirroring scanHold_'s mono bound. Only Local-East VAR voices ever
+    // accumulate their own scan (foldPerVoiceAdvance_); delegated voices ride [0].
+    void scanHoldV_(dotModular::VoiceSlot bank) {   // spelled out: the VoiceSlot alias is declared further below
+        const int varLen = polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_LEN);
+        scanOfsV_[bank.v] = (scanOfsV_[bank.v] + 1) % (varLen > 0 ? varLen : 1);
     }
     // PER-VOICE STEP-ADVANCE (PER_VOICE_STEP_ADVANCE_PLAN.md §59-99, ruled by
     // CC_PER_VOICE_ADVANCE_SIGNOFF.md): the SECOND per-voice offset on top of LOR —
@@ -686,8 +698,11 @@ struct SequencerEngine {
     // the same driverTickAt/driverTickBefore walk — the passed pair drives only the
     // Macro frame. Locked (offsets 0) the internal pair is expression-exactly the
     // passed pair (the Stage-1 golden proof). (The old tRawPrev param is gone: the
-    // mapped rows' raw predecessor is now derived per voice.)
-    void    recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, int dirMotion);
+    // mapped rows' raw predecessor is now derived per voice.) voiceMotion (Stage 2,
+    // optional): the per-voice motion for the per-voice prev pairs — exact walk-sign
+    // cues when voices diverged; nullptr = uniform dirMotion.
+    void    recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, int dirMotion,
+                                   const int8_t* voiceMotion = nullptr);
 
     // Lane-index unification: PL_* now matches the VISUAL/EDITOR/STRAND order
     // (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6). Editor==engine==strand —
@@ -981,7 +996,11 @@ struct SequencerEngine {
     void reset();
     bool isStepInWindow(int idx) const;
     void setWindow(int length, int offset);
-    bool advancePlayhead(int dir = +1);   // dir<0 = reverse traversal (within-draw)
+    // voiceMotion (PER-VOICE STEP-ADVANCE Stage 2, optional): the per-voice motion for
+    // the per-voice prev pairs (exact walk-sign cues when voices diverged); nullptr =
+    // uniform dir (every pre-existing caller). Positions are pure functions of the
+    // effective clocks — the motion only sharpens the UI cues.
+    bool advancePlayhead(int dir = +1, const int8_t* voiceMotion = nullptr);   // dir<0 = reverse traversal (within-draw)
     // STEP-ADVANCE (CC_PROMPT_GATE_STEP_ADVANCE_SPEC Stages 1-3): the gate-mode advance
     // DECISION for one rise — consumes the step-rate uniform (per-rise fresh, the rhythm
     // Philox stream's reserved chunk), picks the level's resolved threshold (subLevel −1 =
@@ -991,8 +1010,11 @@ struct SequencerEngine {
     // the pure StepAdvance::decide verdict. The caller moves the playhead on FORWARD and
     // does NOTHING on REPEAT (the corrected held semantics — not moving the playhead IS
     // the repeat; the step-addressed data re-outputs itself by construction). SCOPE: the
-    // playhead is singular — MONO-ONLY (V1's row); poly voices' ADVANCE columns stay
-    // resolved + stored (no per-voice playhead this build). targetTickDelta: the
+    // TRANSPORT is singular — the mono decision moves the ONE clock (V1's row).
+    // PER-VOICE STEP-ADVANCE Stage 2 (CC_PER_VOICE_ADVANCE_SIGNOFF): the poly ADVANCE
+    // columns now have their consumer — decideStepAdvanceForVoice_ (below), gated on the
+    // voice's VAR-lane delegation; the divergence lands in advanceOffset_, never in a
+    // second playhead. targetTickDelta: the
     // draw addressing offset — 0 = the current step (the rise's read,
     // bit-identical to getVariationStep()); +1 = the incoming-rest step (the
     // fall-advance's read — CC_PROMPT_TIE_INTO_REST_PROBABILISTIC_ADVANCE: "the
@@ -1001,11 +1023,41 @@ struct SequencerEngine {
     // mirror direction — the scan and the fall target both look where the playhead
     // is going (the backward fix).
     dotModular::StepAdvance::Decision decideStepAdvance_(int subLevel, int targetTickDelta = 0);
+    // PER-VOICE STEP-ADVANCE Stage 2 (the signoff's decisions 2-4): the per-voice mirror
+    // of decideStepAdvance_ — THIS voice's resolved threshold (the main level: its own
+    // variationProb; a subgate level: its own subRes[subLevel][ADVANCE], gated on ITS
+    // subResLive) and the voice's OWN variation-window draw at the delta
+    // (stepAdvanceDrawAtForVoice — the DECISION structure; draw production keeps its
+    // delegation, the D6 SWEEP ruling). Called ONLY for Local-East VAR voices
+    // (!varlegDelegated(vs, 0)) — the variation-lane delegation IS the per-voice/global
+    // switch (decision 4: no new bool). Zero new draws.
+    dotModular::StepAdvance::Decision decideStepAdvanceForVoice_(VoiceSlot vs, int subLevel, int targetTickDelta = 0);
+    // The per-voice fold of ONE advance event (both rise executors + the fall): fills
+    // motionV[16] (the per-voice motion the recompute's prev pairs consume), accumulates
+    // advanceOffset_ (d_v − dMain — nonzero only where a Local-East voice's own decision
+    // diverged), re-anchors/holds the per-voice scans, and clears the per-voice arrival
+    // latches (a latched voice rides 0 — its position already moved at the fall).
+    // Returns whether any offset moved (the caller's offsets-only recompute trigger).
+    // LOCKED default (all delegated): touches nothing — motionV fills uniform dMain.
+    bool foldPerVoiceAdvance_(int subLevel, bool perVoiceScan,
+                              dotModular::StepAdvance::Decision dMain, int8_t* motionV);
+    // PER-VOICE STEP-ADVANCE Stage 2 — the per-voice twins (test-visible mirrors, the
+    // *ForVoice convention). The mono slot (and any out-of-range slot) falls back to
+    // the mono expressions (stepAdvanceStrandIdx/stepAdvanceDrawAt, further below) —
+    // ONE seam. stepAdvanceStrandIdxForVoice: the voice's OWN variation window
+    // (laneTickV_[v] + its own LOR — the decision structure); stepAdvanceDrawAtForVoice:
+    // the draw the per-voice decision reads. Consumed by decideStepAdvanceForVoice_ +
+    // the per-voice pins.
+    int   stepAdvanceStrandIdxForVoice(VoiceSlot bank, int drawTickDelta) const;
+    float stepAdvanceDrawAtForVoice(VoiceSlot bank, int drawTickDelta) const;
     // Recompute all laneTick_/laneTickV_/macroLaneTick_ caches from totalStepsElapsed.
     // Called after snapping totalStepsElapsed externally (e.g. Mode E phase jump snap)
     // so the lane position caches match the new transport position without a full
     // advancePlayhead (which would also increment stepIndex/totalStepsElapsed).
-    void recomputeLaneTicks();
+    // voiceMotion (Stage 2, optional): the per-voice motion for the per-voice prev
+    // pairs — the OFFSETS-ONLY path (a voice moved while the clock held) passes the
+    // fold's motion array; nullptr = uniform lastPlayDir.
+    void recomputeLaneTicks(const int8_t* voiceMotion = nullptr);
     // Snap the transport (stepIndex + totalStepsElapsed) to the phase-derived pulse
     // position, then recompute lane ticks. Used after a Mode E phase jump to eliminate
     // the rounding drift from jumpSixteenths. p16 = pulsesPer16th (ppqn/4).
@@ -1013,7 +1065,8 @@ struct SequencerEngine {
     // advanceOnTieIntoRest checkpoint (LEGATO_GATE_GAP_BUG.md §345). Called from the module layer on
     // a Gate-1 FALL while a slur is pending. Advances the playhead ONE step into the incoming-rest
     // position and re-evaluates the slur candidacy (legato draw at that step). Sets
-    // pendingCheckpointArrival so the next rise skips its own advance (one advance, one arrival).
+    // pendingCheckpointArrivalV_[0] so the next rise skips its own advance (one advance,
+    // one arrival); the per-voice latches ([1..]) ride the same fold.
     void legatoCheckpointOnFall();
     void updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched);
     int computeNoteLengthIdx(int requestedIdx, int ppqnMask) const;

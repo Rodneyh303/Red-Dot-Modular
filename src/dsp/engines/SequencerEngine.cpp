@@ -219,7 +219,7 @@ void SequencerEngine::reset() {
     runGateActive = false;
     resetArmed = false;
     prevGate1High = false;
-    pendingCheckpointArrival = false;
+    for (int i = 0; i < 16; ++i) pendingCheckpointArrivalV_[i] = false;
     modeSelect = 0;
     ppqnSetting = 24;
     noteVariationMask = 0b111;
@@ -341,7 +341,7 @@ void SequencerEngine::pushMaskEditor(
     }
 }
 
-bool SequencerEngine::advancePlayhead(int dir) {
+bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
     int prevStep = stepIndex;
     lastPlayDir = (dir < 0) ? -1 : +1;
     scanOfsV_[0] = 0;   // THE FREEZE FIX: any motion re-anchors — each arrived step is judged on its own value first
@@ -421,7 +421,7 @@ bool SequencerEngine::advancePlayhead(int dir) {
         // UNIFIED ADDRESSING Stage 2: the per-voice maps, then the lane walks driven by
         // EACH VOICE's driver (V1 = the mono lanes, V2..V16 = laneTickV_). The Macro
         // frame keeps the global driver (it has no voice map — it IS the frame).
-        recomputeVoiceDrivers_(tNow, tPrevD, dir);
+        recomputeVoiceDrivers_(tNow, tPrevD, dir, voiceMotion);
         auto recomp = [&](LaneDir d, int len, int64_t tN, int64_t tP, int& tickOut, int& signOut) {
             const int64_t cur = laneTickFor(d, tN, len);
             const int64_t prv = laneTickFor(d, tP, len);
@@ -571,11 +571,72 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLev
     // negative ticks included (the double-mod wrap) — the LOCAL window scan, never
     // the global clock.
     const float u = stepAdvanceDrawAt(signedDelta);
-    // SCOPE LINE (the ONE PLAYHEAD law): the playhead is singular, so the advance consumer
-    // is the MONO slot alone (V1's row — the mono subgate row). Poly voices' ADVANCE
-    // columns stay resolved + stored with no per-voice consumer this build (a per-voice
-    // playhead is Stage-4/atom territory; the columns exist, resolved, never uncontrolled).
+    // SCOPE LINE (the ONE PLAYHEAD law, Stage 2 reading): the TRANSPORT is singular —
+    // this decision moves the ONE clock (V1's row — the mono subgate row). The poly
+    // voices' ADVANCE columns' consumer is decideStepAdvanceForVoice_ below (per-voice
+    // offsets, gated on the VAR-lane delegation — the signoff); still never a second
+    // playhead.
     return dotModular::StepAdvance::decide(p, u);
+}
+
+// PER-VOICE STEP-ADVANCE Stage 2: the per-voice mirror of decideStepAdvance_
+// (CC_PER_VOICE_ADVANCE_SIGNOFF decisions 2-4). The threshold is THIS voice's resolved
+// store; the draw is the voice's OWN variation window at the given delta (the decision
+// structure — draw production keeps its delegation, the D6 SWEEP ruling). p's sign signs
+// the travel (the backward fix, mirrored per voice). Called ONLY for Local-East VAR
+// voices — the variation-lane delegation is the per-voice/global switch. Zero new draws.
+dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvanceForVoice_(VoiceSlot vs, int subLevel, int targetTickDelta) {
+    namespace SK = dotModular::SubgateKnobs;
+    const float p = (subLevel < 0 || !voices[vs].subResLive)
+                  ? voices[vs].variationProb
+                  : voices[vs].subRes[subLevel][SK::ADVANCE];
+    const int signedDelta = (p < 0.f) ? -targetTickDelta : targetTickDelta;
+    const float u = stepAdvanceDrawAtForVoice(vs, signedDelta);
+    return dotModular::StepAdvance::decide(p, u);
+}
+
+// ── PER-VOICE STEP-ADVANCE Stage 2: the fold ────────────────────────────────────
+// Runs at every advance site (both rise executors + the tie-into-rest fall) AFTER the
+// mono decision dMain (the transport decision, unchanged) and BEFORE the transport call
+// (advancePlayhead/recomputeLaneTicks) so the recompute sees the new offsets. Per voice
+// v = 1..numPolyVoices:
+//   DELEGATED VAR lane (the default — varlegDelegated(v,0)): rides dMain (GLOBAL). The
+//     variation-lane delegation IS the per-voice/global switch (decision 4) — no new
+//     state: the voice's offset never moves, its scan rides scanOfsV_[0].
+//   LOCAL-EAST VAR lane: d_v = decideStepAdvanceForVoice_ — its own threshold, its
+//     own-window draw at its own scan depth (perVoiceScan) or the +1 fall target.
+//     advanceOffset_[v] += d_v − dMain, so the voice's NET position change across the
+//     event is its OWN decision. A moved voice re-anchors its scan (0); a held voice
+//     scans its own window deeper (scanHoldV_). A per-voice arrival latch (its own fall
+//     advance) clears + rides 0 — "one advance, one arrival" per voice (decision 2).
+// Reads laneTickV_ PRE-advance (the decision sees the voice's current position); zero
+// new draws. LOCKED default (all delegated): the loop skips everyone — motionV fills
+// uniform dMain and nothing else is touched (bit-identical).
+bool SequencerEngine::foldPerVoiceAdvance_(int subLevel, bool perVoiceScan,
+                                           dotModular::StepAdvance::Decision dMain, int8_t* motionV) {
+    const int dMainStep = (dMain == dotModular::StepAdvance::FORWARD) ? +1
+                        : (dMain == dotModular::StepAdvance::BACKWARD) ? -1 : 0;
+    for (int i = 0; i < 16; ++i) motionV[i] = (int8_t)dMainStep;
+    bool anyMoved = false;
+    for (int i = 1; i <= numPolyVoices && i < 16; ++i) {
+        const VoiceSlot vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
+        if (varlegDelegated(vs, 0)) continue;              // GLOBAL: rides dMain (offset never moves)
+        int dStep = 0;                                     // a latched arrival rides 0 (moved at the fall)
+        if (pendingCheckpointArrivalV_[i]) {
+            pendingCheckpointArrivalV_[i] = false;
+        } else {
+            const int delta = perVoiceScan ? scanOfsV_[i] : 1;
+            const dotModular::StepAdvance::Decision dv = decideStepAdvanceForVoice_(vs, subLevel, delta);
+            dStep = (dv == dotModular::StepAdvance::FORWARD) ? +1
+                  : (dv == dotModular::StepAdvance::BACKWARD) ? -1 : 0;
+            if (dStep != 0) scanOfsV_[i] = 0;              // moved: re-anchor (its own value first)
+            else            scanHoldV_(vs);                // held: scan its own window deeper
+        }
+        advanceOffset_[i] += (int64_t)(dStep - dMainStep);
+        if (dStep != dMainStep) anyMoved = true;
+        motionV[i] = (int8_t)dStep;
+    }
+    return anyMoved;
 }
 
 // ── UNIFIED ADDRESSING Stage 2: the per-voice maps (the global->voice level) ──────
@@ -592,7 +653,8 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(int subLev
 // a wrap/jump reads as ONE musical step along the current motion (a BEAT, not a
 // bounce — the cue must not flip there), delta 0 (the PingPong endpoint repeat)
 // keeps the previous sign. Write-only caches; no read/generation path changes.
-void SequencerEngine::recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, int dirMotion) {
+void SequencerEngine::recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, int dirMotion,
+                                             const int8_t* voiceMotion) {
     // The MACRO frame first (computed once, not per voice): the global window walk.
     macroFrameRead_ = (int)(((tNow - 1) % 16 + 16) % 16);
     {
@@ -612,12 +674,13 @@ void SequencerEngine::recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, 
         // tRawPrev, tPrevV == tPrevGlobal) — the Stage-1 golden proof,
         // bit-identical; the offsets only move in Stage 2, gated on the VAR-lane
         // delegation. int64 unbounded (KILL_DNA_LCM); every read wraps locally.
+        const int motionV = voiceMotion ? (int)voiceMotion[v] : dirMotion;   // per-voice (Stage 2), uniform when locked
         const int64_t tEffV     = totalStepsElapsed + advanceOffset_[v];
         const int64_t tNowV     = driverTickAt(tEffV, cachedLength, cachedOffset);
-        const int64_t tRawPrevV = tEffV - dirMotion;
+        const int64_t tRawPrevV = tEffV - motionV;
         const int64_t tPrevV    = driverTickBefore(tNowV,
                                     driverTickAt(tRawPrevV, cachedLength, cachedOffset),
-                                    dirMotion, cachedLength, cachedOffset);
+                                    motionV, cachedLength, cachedOffset);
         const bool live = (v == 0) || (v >= 1 && v <= numPolyVoices);
         if (!live) { voiceDriver_[v] = tNowV; voiceDriverPrev_[v] = tPrevV; voiceRead_[v] = 0; continue; }
         if (voiceLorIdentity(v)) {
@@ -642,7 +705,7 @@ void SequencerEngine::recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, 
         const int64_t dd    = voiceDriver_[v] - (wprev + 1);
         // A wrap (the voice's own window, or the global window beneath it) is a BEAT,
         // not a bounce: the musical predecessor is one step along the current motion.
-        voiceDriverPrev_[v] = (dd > 1 || dd < -1) ? (voiceDriver_[v] - dirMotion) : (wprev + 1);
+        voiceDriverPrev_[v] = (dd > 1 || dd < -1) ? (voiceDriver_[v] - motionV) : (wprev + 1);
         {   // Stage 3: the voice frame's walk sign. A wrap/jump (|dd| > 1) reads as ONE
             // musical step along the FRAME'S OWN motion — dirMotion x the voice's
             // direction sign (a Reverse frame wrapping bottom->top is still walking
@@ -654,14 +717,14 @@ void SequencerEngine::recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, 
             // there; the guard is for the Forward/Reverse wraps and a global-window
             // jump beneath the frame.)
             const int64_t vdSign  = (vd == LaneDir::Reverse) ? -1 : +1;
-            const int64_t dstep   = (dd > 1 || dd < -1) ? (int64_t)dirMotion * vdSign : dd;
+            const int64_t dstep   = (dd > 1 || dd < -1) ? (int64_t)motionV * vdSign : dd;
             if (dstep > 0)      voiceSign_[v] = +1;
             else if (dstep < 0) voiceSign_[v] = -1;
         }
     }
 }
 
-void SequencerEngine::recomputeLaneTicks() {
+void SequencerEngine::recomputeLaneTicks(const int8_t* voiceMotion) {
     // Recompute all laneTick_/laneTickV_/macroLaneTick_ caches from totalStepsElapsed.
     // This is the same recompute block as in advancePlayhead(), extracted so it can be
     // called after snapping totalStepsElapsed externally (e.g. Mode E phase jump snap)
@@ -675,7 +738,7 @@ void SequencerEngine::recomputeLaneTicks() {
     const int64_t tPrevD = driverTickBefore(tNow,
                             driverTickAt(totalStepsElapsed - lastPlayDir, drvLen, drvOff),
                             lastPlayDir, drvLen, drvOff);
-    recomputeVoiceDrivers_(tNow, tPrevD, lastPlayDir);
+    recomputeVoiceDrivers_(tNow, tPrevD, lastPlayDir, voiceMotion);
     auto recomp = [&](LaneDir d, int len, int64_t tN, int64_t tP, int& tickOut, int& signOut) {
         const int64_t cur = laneTickFor(d, tN, len);
         const int64_t prv = laneTickFor(d, tP, len);
@@ -1205,29 +1268,48 @@ StepResult SequencerEngine::executeModeA(const redDot::RateManager& rm, float no
 // passage would LURCH the playhead. Re-evaluates the slur candidacy at the landed
 // step: the legato draw there decides whether the slur REMAINS a candidate
 // (survives across the rest) or ENDS. NOT a note onset — a silent rest checkpoint
-// (the gate stays low). Sets pendingCheckpointArrival so the next rise SKIPS its own
-// advance ("one advance, one arrival" — no double-advance jump; direction-agnostic).
+// (the gate stays low). Sets pendingCheckpointArrivalV_[0] so the next rise SKIPS its
+// own advance ("one advance, one arrival" — no double-advance jump; direction-
+// agnostic) + the per-voice latches for Local-East voices that moved on their own
+// fall decisions (PER-VOICE STEP-ADVANCE Stage 2, the signoff's decision 2).
 // HOLD sets NO arrival (nothing advanced — the next rise decides normally). The SOLE
 // advance-on-fall (edge-driven-playhead violation), opt-in.
 void SequencerEngine::legatoCheckpointOnFall() {
-    if (muted) { pendingCheckpointArrival = true; return; }
+    if (muted) { pendingCheckpointArrivalV_[0] = true; return; }
     // THE DECISION (one mechanism): the incoming-rest step's variation draw vs the
     // resolved bipolar Variation — the same decideStepAdvance_ the rise uses, with
     // the draw addressed at the step being advanced into (targetTickDelta +1).
+    // PER-VOICE (the signoff's decision 2 — the fall decision is the SAME stochastic
+    // mechanism as the rise, so it goes per-voice WITH it): the fold runs the same
+    // decision per Local-East VAR voice at ITS OWN +1 target (its incoming-rest
+    // step); delegated voices ride d (GLOBAL). An offset moves only where a voice's
+    // own fall decision diverged from the mono one.
     const dotModular::StepAdvance::Decision d = decideStepAdvance_(-1, /*targetTickDelta=*/+1);
+    int8_t motionV[16];
+    const bool anyVoiceMoved = foldPerVoiceAdvance_(-1, /*perVoiceScan=*/false, d, motionV);
+    // The per-voice arrival latches: every Local-East voice that moved on its OWN fall
+    // decision latches its own "one advance, one arrival" (its next rise is a
+    // no-decision arrival for IT). [0] is the mono latch (below — unchanged semantics).
+    for (int i = 1; i <= numPolyVoices && i < 16; ++i) {
+        if (varlegDelegated(VoiceResolver::slot(i + 1), 0)) continue;
+        if (motionV[i] != 0) pendingCheckpointArrivalV_[i] = true;
+    }
     bool wrapped = false;
     if (d == dotModular::StepAdvance::FORWARD) {
-        wrapped = advancePlayhead();
+        wrapped = advancePlayhead(+1, motionV);
     } else if (d == dotModular::StepAdvance::BACKWARD) {
-        wrapped = advancePlayhead(-1);
+        wrapped = advancePlayhead(-1, motionV);
     } else {
         // HOLD: no advance — the rest stays passive (the chain carries,
         // slurForward stays pending; NO arrival: the next rise decides normally).
+        // Per-voice: a voice that DID move on its own fall decision refreshes its
+        // reads (the clock held — the offsets-only recompute).
+        if (anyVoiceMoved) recomputeLaneTicks(motionV);
         return;
     }
     if (wrapped && boundaryInterrupt) {
         gs.slurForward = false;          // phrase boundary breaks the chain
-        pendingCheckpointArrival = true;  // the fall still advanced; the rise plays this step, no 2nd advance
+        pendingCheckpointArrivalV_[0] = true;  // the fall still advanced; the rise plays this step, no 2nd advance
         return;
     }
     // The legato draw at the rested step decides slur survival (generatedRestBeatsLegato is
@@ -1238,7 +1320,7 @@ void SequencerEngine::legatoCheckpointOnFall() {
     bool survives = (voices[monoSlot].legatoProb >= 0.999f) || (r_legato < voices[monoSlot].legatoProb);
     if (!survives) gs.slurForward = false;   // chain ENDS at the rest checkpoint
     // else slurForward stays pending across the rest (tieAcrossRests bridge carries it to the rise)
-    pendingCheckpointArrival = true;
+    pendingCheckpointArrivalV_[0] = true;
 }
 
 StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float noteVal, const PatternInput& input) {
@@ -1254,11 +1336,19 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
     bool triggered = false;
 
     if (gate1Rise) {
-        if (pendingCheckpointArrival) {
+        if (pendingCheckpointArrivalV_[0]) {
             // advanceOnTieIntoRest: the falling edge already advanced one step into the incoming-rest
             // (legatoCheckpointOnFall). This rise is the ARRIVAL — play the already-stepped-to step,
             // do NOT advance again ("one advance, one arrival" — no double-advance jump).
-            pendingCheckpointArrival = false;
+            // PER-VOICE: the [0] latch governs the TRANSPORT skip (bit-identical); the
+            // fold still runs — an unlatched Local-East voice decides at this rise, a
+            // latched one clears + rides 0 (its position already moved at the fall).
+            // Voices that move refresh via the offsets-only recompute (the clock does
+            // not move on an arrival).
+            pendingCheckpointArrivalV_[0] = false;
+            int8_t motionV[16];
+            if (foldPerVoiceAdvance_(-1, /*perVoiceScan=*/true, dotModular::StepAdvance::REPEAT, motionV))
+                recomputeLaneTicks(motionV);
             wrapped = false;
         } else if (stepIndex == -1) {
             // The seed: initialization, not a sequence-motion decision (no draw consumed).
@@ -1277,12 +1367,22 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
             // ((stepIndex - 1 + 16) & 0x0F) — the spec's wrap-at-boundary law, the
             // same machinery the deterministic dir parameter uses. ONE PLAYHEAD: the
             // direction is whatever THIS event's threshold sign gave.
+            // PER-VOICE STEP-ADVANCE Stage 2 (the signoff): the fold decides per
+            // Local-East VAR voice (own threshold, own-window draw at its OWN scan
+            // depth) and accumulates the offsets BEFORE the transport call, so the
+            // recompute inside advancePlayhead sees them. Delegated voices ride d
+            // (GLOBAL — the variation-lane delegation IS the switch).
+            int8_t motionV[16];
+            const bool anyVoiceMoved = foldPerVoiceAdvance_(-1, /*perVoiceScan=*/true, d, motionV);
             if (d == dotModular::StepAdvance::FORWARD)
-                wrapped = advancePlayhead();               // resets the scan
+                wrapped = advancePlayhead(+1, motionV);     // resets the scan ([0])
             else if (d == dotModular::StepAdvance::BACKWARD)
-                wrapped = advancePlayhead(-1);              // resets the scan
-            else
+                wrapped = advancePlayhead(-1, motionV);      // resets the scan ([0])
+            else {
                 scanHold_();                                // HELD: scan the window forward (the freeze fix)
+                if (anyVoiceMoved)
+                    recomputeLaneTicks(motionV);            // the clock held; diverged voices refresh
+            }
         }
         // else REPEAT (the corrected semantics, Rodney 91b100c): the playhead does not
         // move — the current step is unchanged, so every downstream read hits the SAME
@@ -1421,12 +1521,21 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
         // (advancePlayhead's reverse traversal — ONE PLAYHEAD, the direction set by
         // the last event that advanced); REPEAT moves nothing (the held semantics —
         // the step-addressed data re-outputs itself, no re-draw branch).
+        // PER-VOICE STEP-ADVANCE Stage 2: the fold decides per Local-East VAR voice
+        // at THIS level's threshold (its own subRes[level][ADVANCE] — the poly
+        // ADVANCE columns' consumer) before the transport call; delegated voices
+        // ride adv (GLOBAL).
+        int8_t motionV[16];
+        const bool anyVoiceMoved = foldPerVoiceAdvance_(advLevel, /*perVoiceScan=*/true, adv, motionV);
         if (adv == dotModular::StepAdvance::FORWARD)
-            wrapped = advancePlayhead();               // resets the scan
+            wrapped = advancePlayhead(+1, motionV);     // resets the scan
         else if (adv == dotModular::StepAdvance::BACKWARD)
-            wrapped = advancePlayhead(-1);              // resets the scan
-        else
+            wrapped = advancePlayhead(-1, motionV);      // resets the scan
+        else {
             scanHold_();                                // HELD: scan the window forward (the freeze fix)
+            if (anyVoiceMoved)
+                recomputeLaneTicks(motionV);            // the clock held; diverged voices refresh
+        }
     }
 
     // Boundary interrupt (same as executeModeA/B): clear held gate at wrap so every lap
@@ -2153,6 +2262,24 @@ float SequencerEngine::stepAdvanceDrawAt(int drawTickDelta) const {
     // mirror reads the same): the variation draw at the scanned position.
     const VoiceSlot m = VoiceResolver::mono();
     return pe.warpRow(m, LaneId{PL_VARIATION})[stepAdvanceStrandIdx(drawTickDelta)];
+}
+int SequencerEngine::stepAdvanceStrandIdxForVoice(VoiceSlot bank, int drawTickDelta) const {
+    // The per-voice twin of stepAdvanceStrandIdx (PER-VOICE STEP-ADVANCE Stage 2): the
+    // voice's OWN variation window (laneTickV_[v] + its own LOR) — the DECISION
+    // structure (the signoff's decision 3: draw production keeps its delegation, the
+    // D6 SWEEP ruling). The mono slot (and any out-of-range slot, nvIdxForVoice's
+    // guard) is the existing mono expression — ONE seam.
+    if (bank.v < 1 || bank.v >= 16) return stepAdvanceStrandIdx(drawTickDelta);
+    return getStrandIdx(laneTickV_[bank.v][dotModular::STRAND_VARIATION] + drawTickDelta,
+                        polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_LEN),
+                        polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_OFF),
+                        polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_ROT));
+}
+float SequencerEngine::stepAdvanceDrawAtForVoice(VoiceSlot bank, int drawTickDelta) const {
+    // The per-voice advance draw (decideStepAdvanceForVoice_ delegates here; the
+    // per-voice pins read the same): the voice's own variation row at its own
+    // scanned position. Pure — reading never mutates the ring (zero new draws).
+    return pe.warpRow(bank, LaneId{PL_VARIATION})[stepAdvanceStrandIdxForVoice(bank, drawTickDelta)];
 }
 int SequencerEngine::getLegatoStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_LEGATO],    lor(dotModular::STRAND_LEGATO,LOR_LEN), lor(dotModular::STRAND_LEGATO,LOR_OFF), lor(dotModular::STRAND_LEGATO,LOR_ROT)); }
 int SequencerEngine::getAccentStep() const    { return getStrandIdx(laneTick_[dotModular::STRAND_ACCENT],    lor(dotModular::STRAND_ACCENT,LOR_LEN), lor(dotModular::STRAND_ACCENT,LOR_OFF), lor(dotModular::STRAND_ACCENT,LOR_ROT)); }

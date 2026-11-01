@@ -1212,7 +1212,7 @@ void Monsoon::process(const ProcessArgs& args) {
         // next rise then plays that step without a second advance. One-shot (only on the fall
         // transition; gated by slurForward so a non-slurring note's fall does nothing).
         if (prevGate1SchmittHigh && !gate1High && engine.gs.slurForward &&
-            engine.tieAcrossRests && engine.advanceOnTieIntoRest && !engine.pendingCheckpointArrival) {
+            engine.tieAcrossRests && engine.advanceOnTieIntoRest && !engine.pendingCheckpointArrivalV_[0]) {
             engine.legatoCheckpointOnFall();
         }
         prevGate1SchmittHigh = gate1High;   // refresh per-sample (Mode B); used next sample for the 1-sample hold
