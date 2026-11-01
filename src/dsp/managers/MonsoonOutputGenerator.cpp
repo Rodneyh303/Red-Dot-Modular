@@ -42,15 +42,17 @@ void OutputGenerator::drive(SequencerEngine& engine,
     // across normally; only the mask's real end cuts; step 1 outside = cut at 16.
     // At defaults (cycle everywhere) outputMaskPasses is TRUE every step — every
     // voltage below lands bit-identically (the goldens' output path untouched).
-    // THE PER-VOICE PHRASE STEP (CC_FIX_MASK_PER_VOICE_STEP): the mask resolves in
-    // PER-VOICE window space, so each voice is checked at WHERE IT READS — its OWN
-    // frame cell (voiceReadPosition: the 0-15 phrase position incl. its window
-    // offset and advanceOffset_) — NOT the shared global stepIndex. The old global
-    // step made the mask per-voice-BLIND (every voice behaved identically) and
-    // degenerated the kinds to a re-check of the LOR. Mono uses its own frame cell
-    // for consistency.
-    const int monoMaskStep = engine.voiceReadPosition(dotModular::VoiceResolver::mono());
-    const bool monoMaskPass = engine.outputMaskPasses(dotModular::VoiceResolver::mono(), monoMaskStep);
+    // THE GLOBAL STEP (CC_FIX_MASK_GLOBAL_STEP — UNIFIED_ADDRESSING_SYSTEM.md:331):
+    // the mask is an OUTPUT GATE in GLOBAL-position space — it carves per-voice
+    // SOUND REGIONS out of the phrase (a voice with range [O, O+L) is SILENT while
+    // the global playhead is outside it; entrances/exits, voices occupying
+    // different phrase regions). It must NOT be keyed to the voice's read cell:
+    // the reads run cycle-mode everywhere and NEVER leave the window, so a
+    // read-keyed mask is inert (Range ≡ Cycle; painted cells at out-of-read steps
+    // never fire). The reads stay ungated; only the output is gated, globally —
+    // the per-voice difference lives in each voice's OWN range/pattern.
+    const int maskStep = engine.stepIndex;   // the GLOBAL playhead step (global-position space, spec:331)
+    const bool monoMaskPass = engine.outputMaskPasses(dotModular::VoiceResolver::mono(), maskStep);
     if (!monoMaskPass) {
         outputs[GATE_OUTPUT].setVoltage(0.f);
         outputs[CV_OUTPUT].setVoltage(0.f);
@@ -120,11 +122,12 @@ void OutputGenerator::drive(SequencerEngine& engine,
             polyAccentV[i] = (engine.voices[vs].accented && vg > 5.f) ? 10.f : 0.f;
             polySlegV[i]   = engine.voices[vs].gs.slurMember ? vgStep : 0.f;  // SLEG: slur-masked
             // Stage 4: the voice's OUTPUT MASK — zero the whole terminal set where the
-            // mask mutes the current phrase step (output-gate-only; the state machines
+            // mask mutes the current GLOBAL step (output-gate-only; the state machines
             // above ran untouched — the mute is post-process, read-side only). The
-            // step is THIS voice's own frame cell (CC_FIX_MASK_PER_VOICE_STEP) — the
-            // per-voice phrase position it reads at, wander offset included.
-            if (!engine.outputMaskPasses(vs, engine.voiceReadPosition(vs))) {
+            // step is the GLOBAL playhead for every voice (spec:331) — the per-voice
+            // difference comes from each voice's OWN range/pattern (its sound
+            // region), not from a per-voice step.
+            if (!engine.outputMaskPasses(vs, maskStep)) {
                 polyGateV[i]   = 0.f;
                 polyStepV[i]   = 0.f;
                 polyCV[i]      = 0.f;
