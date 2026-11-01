@@ -1119,6 +1119,53 @@ int main() {
             wOK = wOK && (((w >> s) & 1u) != 0u) == (s >= 13 || s < 1);
         check(wOK, "STAGE4: windowMaskBits(4,13) == the wrapped containment (the preset == the eval)");
     }
+    {
+        // THE DISPLAY ACCESSORS (UAS Stage-4 UI completion, CC_PROMPT_UAS_MASK_UI_
+        // INCOMPLETE): effectiveOutputMask/effectiveOutputMaskMacro return the
+        // voice's EFFECTIVE mask as a 16-bit play set — the same delegation + kind
+        // resolution outputMaskPasses applies per step, so the strip's paint surface
+        // shows exactly what the output layer gates. CYCLE -> all-on; DYNAMIC -> the
+        // window bits; PAINTED -> the ANCHORED working copy (the rotation-resolved
+        // pattern — the follow-R re-pin is VISIBLE through it).
+        SequencerEngine eng; eng.reset(); eng.numPolyVoices = 2;
+        const auto M  = dotModular::VoiceResolver::mono();
+        const auto v2 = dotModular::VoiceResolver::slot(2);
+        const auto v3 = dotModular::VoiceResolver::slot(3);
+        float macroBits[1] = {65535.f}; float macroKind = 0.f, macroFollowR = 0.f;
+        float eastBits[16], eastKind[16], eastFollowR[16], localEast[16];
+        for (int v = 0; v < 16; ++v) { eastBits[v]=65535.f; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
+        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
+        check(eng.effectiveOutputMask(M) == 0xFFFFu && eng.effectiveOutputMaskMacro() == 0xFFFFu,
+              "STAGE4-DISP: cycle -> the all-on play set");
+        // DYNAMIC: the accessor == windowMaskBits of the effective row (incl. the wrap).
+        macroKind = 1.f;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 4;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 13;
+        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
+        check(eng.effectiveOutputMask(M) == SequencerEngine::windowMaskBits(4, 13)
+           && eng.effectiveOutputMaskMacro() == SequencerEngine::windowMaskBits(4, 13),
+              "STAGE4-DISP: dynamic -> the window bits (wrapped 13..4), macro tier the same");
+        // PAINTED: the anchored copy; abs3's re-pin ROTATES the returned bits (the
+        // visible follow-R effect), abs2 stays fixed.
+        macroKind = 2.f; macroBits[0] = (float)(1u << 2);
+        eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
+        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
+        check(eng.effectiveOutputMaskMacro() == (1u << 2),
+              "STAGE4-DISP: painted -> the anchored working copy");
+        macroFollowR = 1.f;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 8;
+        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
+        check(eng.effectiveOutputMaskMacro() == (1u << 1),
+              "STAGE4-DISP: abs3 re-pin ROTATES the returned bits (the strip visibly follows R)");
+        // DELEGATION: a local-mask voice's accessor reads its own row; a follower's
+        // (and the macro accessor) read the Macro tier.
+        for (int v = 0; v < 16; ++v) { eastBits[v]=65535.f; eastKind[v]=2.f; }
+        eastBits[1] = (float)(1u << 6); localEast[1] = 1.f;
+        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
+        check(eng.effectiveOutputMask(v2) == (1u << 6)
+           && eng.effectiveOutputMask(v3) == eng.effectiveOutputMaskMacro(),
+              "STAGE4-DISP: delegation — the local voice's own row; the follower's == the macro accessor");
+    }
 
     std::printf("test_unified_addressing: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;

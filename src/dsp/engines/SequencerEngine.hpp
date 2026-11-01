@@ -640,6 +640,33 @@ struct SequencerEngine {
         const uint16_t pat = local ? maskAnchored_[v] : maskMacroAnchored_;   // abs2/abs3
         return (pat >> phraseStep) & 1u;
     }
+    // UAS Stage-4 UI completion (CC_PROMPT_UAS_MASK_UI_INCOMPLETE) — the DISPLAY's
+    // pattern read: the voice's EFFECTIVE mask as a 16-bit play set, the same
+    // delegation + kind resolution outputMaskPasses applies per step, so the range
+    // strip's paint surface shows EXACTLY what the output layer gates: CYCLE →
+    // all-on; RANGE (dynamic) → the window bits (the extent tracks the range);
+    // PAINTED → the ANCHORED working copy (the rotation-resolved pattern — the
+    // follow-R re-pin is VISIBLE: turning R rotates the returned bits, abs2 does
+    // not). Display-reads-engine: the strip never re-derives the mask.
+    uint16_t effectiveOutputMask(dotModular::VoiceSlot bank) const {
+        const int v = bank.v;
+        if (v < 0 || v >= kVoiceSlots) return 0xFFFFu;
+        const bool local = maskLocalEast_[v];
+        const int  kind  = local ? maskKind_[v] : maskMacroKind_;
+        if (kind == MASK_CYCLE) return 0xFFFFu;
+        if (kind == MASK_DYNAMIC) {
+            int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
+            return windowMaskBits(L, O);
+        }
+        return local ? maskAnchored_[v] : maskMacroAnchored_;
+    }
+    // The MACRO tier's own pattern (the global strip's read — no voice delegation).
+    uint16_t effectiveOutputMaskMacro() const {
+        if (maskMacroKind_ == MASK_CYCLE) return 0xFFFFu;
+        if (maskMacroKind_ == MASK_DYNAMIC)
+            return windowMaskBits(macroVoiceLor_[LOR_LEN], macroVoiceLor_[LOR_OFF]);
+        return maskMacroAnchored_;
+    }
 
     // The EFFECTIVE voice LOR row (delegation + Macro tier) — the one resolution authority.
     void effectiveVoiceLor(int v, int& L, int& O, int& R, LaneDir& d) const {
