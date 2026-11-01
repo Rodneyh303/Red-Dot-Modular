@@ -53,3 +53,25 @@ the voice decides at all. Global threshold + per-voice DRAWS → per-voice WANDE
 This is the "global threshold vs per-voice threshold" distinction — NOT "global position vs per-voice
 position". The draws are ALWAYS per-voice (own window); only the threshold follows delegation. The `continue`
 conflated threshold-delegation with decision-skipping.
+
+════════════════════════════════════════════════════════════════════════════════
+## THE PRINCIPLE (Rodney) — advance must work like EVERY OTHER LANE. No new behaviour.
+Every lane decision (rest, legato, accent, qmix) works the SAME way:
+- DEFAULT = global control (threshold follows Macro/mono).
+- OPT-IN = per-voice control (East/Straits per-voice override).
+- EVEN ON GLOBAL CONTROL: each voice reads its OWN window draw → voice-to-voice you see DIFFERENT
+  probability outcomes from the SAME control. (Voice 3's rest ≠ voice 7's rest on the same global rest
+  threshold, because different own-window draws.)
+NO lane has a "delegated → ride the mono decision wholesale / skip the decision" path. Rest doesn't, legato
+doesn't, none do. One control (global threshold), many draws (per-voice), many outcomes (per-voice).
+
+Line 623's `if (varlegDelegated) continue;` INVENTED a bespoke advance-only behaviour ("delegated → ride
+dMain, don't decide") that NO other lane has — and that invention IS the bug (the recurring invent-vs-reuse
+error). The fix is to make advance resolve EXACTLY like rest/legato: delete the advance-specific skip; every
+voice always decides on its own draw; delegation selects only the THRESHOLD source, identically to how
+rest/legato select their threshold source. Do NOT invent advance-specific gating — COPY the existing lane
+delegation pattern.
+
+VERIFY against rest/legato: find how rest resolves per-voice-draw + global-vs-per-voice-threshold, and make
+advance do the SAME. If rest's resolution lives in a shared helper, advance should use that helper, not a
+parallel path.
