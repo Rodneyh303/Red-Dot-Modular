@@ -1072,6 +1072,27 @@ int main() {
                 confOK = confOK && r.voiceReadPosition(M) == kCycleReads[k];
             }
             check(confOK, "STAGE4: cycle's read stays confined to the LOR (the window walk — the Stage-2 worked table)");
+            // (A6) DIRECTION composes in abs1 too — the unified branch runs the SAME
+            // window walk over the full phrase: Reverse reads (R − t) mod 16, walking
+            // BACKWARD from the anchor (Rodney: "absolute mode doesn't support voice
+            // lane direction").
+            {
+                SequencerEngine q; q.reset();
+                q.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
+                q.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
+                q.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
+                q.macroVoiceLorDirRef() = SequencerEngine::LaneDir::Reverse;
+                float qb[1] = {65535.f}; float qk = 1.f, qf = 0.f;
+                float qeb[16], qek[16], qef[16], qle[16];
+                for (int v = 0; v < 16; ++v) { qeb[v]=65535.f; qek[v]=0.f; qef[v]=0.f; qle[v]=0.f; }
+                q.pushMaskEditor(qb, qk, qf, qeb, qek, qef, qle);
+                bool revOK = true;
+                for (int k = 0; k < 16; ++k) {
+                    q.advancePlayhead(+1);
+                    revOK = revOK && q.voiceReadPosition(M) == (((7 - (k + 1)) % 16 + 16) % 16);
+                }
+                check(revOK, "STAGE4: abs1 + voice Reverse — the full-phrase read walks BACKWARD (read = (R−t) mod 16; direction composes in BOTH base modes)");
+            }
         }
         // THE OVERLAY COMPOSES: abs1 + a painted pattern = the AND (in-window AND bit).
         macroBits[0] = (float)0x5F5Fu;   // a non-contiguous pattern over [13,1)
