@@ -409,7 +409,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             Module* mod = module;
             auto themeIn = [mod](redDot::GoldPolyPort* p) {
                 p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::lookupMonsoon(mod) : nullptr;
-                                          return m && m->lightTheme; };
+                                           return m && m->lightTheme; };
             };
             for (int lane = 0; lane < dotModular::SandsGrid::EAST_LANES; ++lane) {
                 bindInput<redDot::GoldPolyPort>("input_dir_mod_" + std::to_string(lane),
@@ -417,6 +417,105 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 bindInput<redDot::GoldPolyPort>("input_deleg_mod_" + std::to_string(lane),
                     delegModId(lane), std::function<void(redDot::GoldPolyPort*)>(themeIn));
             }
+        }
+
+        // ── (B) VOICE-LOR PARITY: the voice-row control line ────────────────────
+        //    The strip's OWN row of panel hardware, next to the lane, the same
+        //    columns/widgets as every lane: 3 L/O/R CV jacks + 3 per-voice attenuverters
+        //    (the SELECTED tab's voice — currentSlot(), the spread/atten retarget law)
+        //    + the SRC owner cell (voiceLorLocalEast) + the DIR cell (voiceLorEastDir)
+        //    + the row's dir/deleg gate-mod jacks. NO spread/wlevel/CRV (the voice LOR
+        //    has neither — the directive's cut). Hue-neutral silver: the voice frame
+        //    spans all seven lane hues (the strip's palette law).
+        {
+            Module* mod = module;
+            auto themeV = [mod](redDot::GoldPolyPort* p) {
+                p->lightTheme = [mod]() { Monsoon* m = mod ? redDot::lookupMonsoon(mod) : nullptr;
+                                          return m && m->lightTheme; };
+            };
+            const NVGcolor vlorCol = nvgRGB(0xd8, 0xd8, 0xdc);   // silver — the strip's edge family
+            static const char* vlorCN[3] = {"Length", "Offset", "Rotation"};
+            for (int item = 0; item < 3; ++item) {
+                bindInput<redDot::GoldPolyPort>(
+                    "input_vlor_cv_" + std::to_string(item), vlCvId(item),
+                    std::function<void(redDot::GoldPolyPort*)>(themeV));
+                redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                    "param_vlor_atten_" + std::to_string(item),
+                    [this](){ return getMonsoon(); },
+                    -1.f, 1.f, 0.f, std::string("Voice range ") + vlorCN[item] + " depth",
+                    [this, item](Monsoon& m)          { return m.getVoiceLorAttenEast(currentSlot(), item); },
+                    [this, item](Monsoon& m, float v) { m.setVoiceLorAttenEast(currentSlot(), item, v); });
+            }
+            // The SRC cell: FILLED = follow-Macro (the global row), OUTLINE = own East
+            // row — the OwnerCell law. Locked with no Macro (nothing to delegate to;
+            // the strip menu remains the escape, the lanes' owner-cell lock).
+            bindWidget<OwnerCell>(
+                "param_vlor_owner",
+                [this, vlorCol](OwnerCell* w) {
+                    w->laneCol = vlorCol;
+                    Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
+                    const float stepW = (ED_W - 2.f*6.f) / 16.f;
+                    w->box.size = mm2px(Vec(stepW, dotModular::SandsGrid::RANGE_LANE_H * 0.9f));
+                    w->box.pos  = ctr.minus(w->box.size.div(2.f));
+                    w->getOwnsFn = [this]() {
+                        Monsoon* m = getMonsoon(); if (!m) return true;
+                        const int vi = currentSlot();
+                        return (vi >= 0 && vi < 16) ? (m->getVoiceLorLocalEast(vi) != 0.f) : true;
+                    };
+                    w->setOwnsFn = [this](bool b) {
+                        Monsoon* m = getMonsoon(); if (!m) return;
+                        const int vi = currentSlot();
+                        if (vi >= 0 && vi < 16) m->setVoiceLorLocalEast(vi, b ? 1.f : 0.f);
+                    };
+                    w->pushUndoFn = [this](bool oldB, bool newB) {
+                        Monsoon* m = getMonsoon(); if (!m) return;
+                        const int vi = currentSlot();
+                        redDot::applyAndPushStoreEdit<Monsoon>(m, "voice-range owner",
+                            [vi](Monsoon& mm, bool val) { mm.setVoiceLorLocalEast(vi, val ? 1.f : 0.f); },
+                            oldB, newB);
+                    };
+                    w->lockWhen = [this](){ return !macroAttached(); };
+                }
+            );
+            // The DIR cell: the voice's OWN row direction, locked while following Macro
+            // (the row — and its direction — is Macro's then; the strip's blocked law).
+            bindWidget<DirCell>(
+                "param_vlor_dir",
+                [this, vlorCol](DirCell* w) {
+                    w->laneCol = vlorCol;
+                    Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
+                    const float stepW = (ED_W - 2.f*6.f) / 16.f;
+                    w->box.size = mm2px(Vec(stepW, dotModular::SandsGrid::RANGE_LANE_H * 0.9f));
+                    w->box.pos  = ctr.minus(w->box.size.div(2.f));
+                    w->getStateFn = [this]() {
+                        Monsoon* m = getMonsoon(); if (!m) return 0;
+                        const int vi = currentSlot();
+                        return (vi >= 0 && vi < 16)
+                            ? (int)std::lround(m->getVoiceLorEastDir(vi)) & 3 : 0;
+                    };
+                    w->setStateFn = [this](int v) {
+                        Monsoon* m = getMonsoon(); if (!m) return;
+                        const int vi = currentSlot();
+                        if (vi >= 0 && vi < 16) m->setVoiceLorEastDir(vi, (float)(v & 3));
+                    };
+                    w->pushUndoFn = [this](int oldV, int newV) {
+                        Monsoon* m = getMonsoon(); if (!m) return;
+                        const int vi = currentSlot();
+                        redDot::applyAndPushStoreEdit<Monsoon>(m, "voice-range direction",
+                            [vi](Monsoon& mm, float val) { mm.setVoiceLorEastDir(vi, val); },
+                            (float)(oldV & 3), (float)(newV & 3));
+                    };
+                    w->lockWhen = [this]() {
+                        Monsoon* m = getMonsoon();
+                        return m && m->getVoiceLorLocalEast(currentSlot()) == 0.f;
+                    };
+                }
+            );
+            // The row's gate-mod jacks (poly, ch == voiceSlot; applyGateMods' voice section).
+            bindInput<redDot::GoldPolyPort>("input_vlor_dir_mod",
+                vlorDirModId(), std::function<void(redDot::GoldPolyPort*)>(themeV));
+            bindInput<redDot::GoldPolyPort>("input_vlor_deleg_mod",
+                vlorDelegModId(), std::function<void(redDot::GoldPolyPort*)>(themeV));
         }
 
         // ── lane-order note (mirrors Macro) ─────────────────────────────────
@@ -1263,6 +1362,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     // proxy only when its target is displayed — for that one the proxy IS the live value.
     uint8_t dirModSeen[dotModular::SandsGrid::EAST_LANES][16]   = {};
     uint8_t delegModSeen[dotModular::SandsGrid::EAST_LANES][16] = {};
+    // (B) VOICE-LOR PARITY: the voice row's own seen copies (ch == voiceSlot).
+    uint8_t vlorDirModSeen[16]   = {};
+    uint8_t vlorDelegModSeen[16] = {};
     bool    gateModSeenInit     = false;
 
     void applyGateMods() {
@@ -1278,6 +1380,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     dirModSeen[lane][ch]   = mod->dirModEdges[lane][ch];
                     delegModSeen[lane][ch] = mod->delegModEdges[lane][ch];
                 }
+            for (int ch = 0; ch < 16; ++ch) {
+                vlorDirModSeen[ch]   = mod->vlorDirModEdges[ch];
+                vlorDelegModSeen[ch] = mod->vlorDelegModEdges[ch];
+            }
             gateModSeenInit = true;
             return;
         }
@@ -1360,6 +1466,39 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         // (varlegDeleg proxy write DELETED — MVC step 1d: setVarlegDeleg above is the home.)
                     }
                 }
+            }
+        }
+
+        // ── (B) VOICE-LOR PARITY: the voice row's gate-mods ─────────────────────
+        // ch == voiceSlot (ch0 = V1 … ch15 = V16, the poly-CV convention). DIR cycles
+        // the voice's CURRENT authority — a follow-Macro voice cycles the MACRO row's
+        // direction (the whole locked ensemble moves together), a local-East voice its
+        // own row. DELEG flips the voice's voiceLorLocalEast (the OwnerCell's store).
+        // The broadcast rule: a 1-channel cable hits every voice.
+        {
+            const bool vdBcast = (mod->vlorDirModChans == 1);
+            for (int ch = 0; ch < 16; ++ch) {
+                const int src = vdBcast ? 0 : ch;
+                uint8_t n = mod->vlorDirModEdges[src];
+                uint8_t d = (uint8_t)(n - vlorDirModSeen[src]);
+                if (!d) continue;
+                if (!vdBcast || ch == 15) vlorDirModSeen[src] = n;
+                const bool localEast = (m->getVoiceLorLocalEast(ch) != 0.f);
+                const int cur = (int)std::lround(math::clamp(
+                    localEast ? m->getVoiceLorEastDir(ch) : m->getVoiceLorMacroDir(), 0.f, 3.f));
+                const int nxt = (cur + d) % 4;
+                if (localEast) m->setVoiceLorEastDir(ch, (float)nxt);
+                else           m->setVoiceLorMacroDir((float)nxt);
+            }
+            const bool vgBcast = (mod->vlorDelegModChans == 1);
+            for (int ch = 0; ch < 16; ++ch) {
+                const int src = vgBcast ? 0 : ch;
+                uint8_t n = mod->vlorDelegModEdges[src];
+                uint8_t d = (uint8_t)(n - vlorDelegModSeen[src]);
+                if (!d) continue;
+                if (!vgBcast || ch == 15) vlorDelegModSeen[src] = n;
+                if (!(d & 1)) continue;          // an even number of flips is a no-op
+                m->setVoiceLorLocalEast(ch, (m->getVoiceLorLocalEast(ch) > 0.5f) ? 0.f : 1.f);
             }
         }
     }

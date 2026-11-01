@@ -140,10 +140,19 @@ namespace StraitsMacroVisualIds {
     enum InputId {
         CV_START = 0,                    // 7 poly lanes × 4 cols (LEN/OFF/ROT/SPR) = 28 (0..27)
         DIR_MOD_START = CV_START + dotModular::SandsGrid::POLY_LANES * 4,   // = 28 — direction gate-mod (7 poly lanes)
-        NUM_INPUTS = DIR_MOD_START + dotModular::SandsGrid::POLY_LANES   // = 35
+        // (B) VOICE-LOR PARITY: the Macro tier's voice-range jacks — 3 MONO L/O/R CV
+        // (the GLOBAL row: every follow-Macro voice reads the one modulated row) + the
+        // row's direction gate-mod. NO delegation jack (Macro IS the global tier) and
+        // NO spread/warp (the directive's cut).
+        VLOR_CV_START = DIR_MOD_START + dotModular::SandsGrid::POLY_LANES,  // = 35
+        VLOR_DIR_MOD = VLOR_CV_START + 3,                                    // = 38
+        NUM_INPUTS = VLOR_DIR_MOD + 1                                        // = 39
     };
     static inline int dirModId(int lane) { return DIR_MOD_START + lane; }
     static inline int cvId(int lane, int c) { return CV_START + lane*4 + c; }
+    // The Macro voice-range row's jacks (item 0/1/2 = L/O/R; mono, the global row).
+    static inline int vlCvId(int item) { return VLOR_CV_START + item; }
+    static inline int vlorDirModId()   { return VLOR_DIR_MOD; }
 
     // ── Output IDs ────────────────────────────────────────────────────────
     // 3 poly probability CV outs (REST/MEL/OCT): ch1 reserved (future mono tab),
@@ -298,6 +307,17 @@ struct StraitsSandsMacroVisual : Module {
             // the enum does not renumber, matching the LOR/attenuverter de-param.
             configInput(dirModId(l), std::string(dirNames[l]) + " direction gate-mod");
         }
+
+        // (B) VOICE-LOR PARITY: the Macro voice-range row's jacks — the strip's control
+        // row (3 mono L/O/R CV, the GLOBAL row all follow-Macro voices read + the row's
+        // direction gate-mod). Depths: editor.voiceLorAttenMacro[3]; the fold in
+        // Monsoon::process applies them once per control block.
+        {
+            static const char* vlorCN[3] = {"Length", "Offset", "Rotation"};
+            for (int item = 0; item < 3; ++item)
+                configInput(vlCvId(item), std::string("Voice range ") + vlorCN[item] + " CV (global)");
+            configInput(vlorDirModId(), "Voice range direction gate-mod");
+        }
     }
 
     void process(const ProcessArgs&) override;   // defined in .cpp (adjacency via redDot::lookupMonsoon)
@@ -330,6 +350,9 @@ struct StraitsSandsMacroVisual : Module {
     // cross-module quantities, e.g. publishGlobal.)
     redDot::RateManager rateManager;
     bool dirModPrev[dotModular::SandsGrid::POLY_LANES] = {};
+    // (B) VOICE-LOR PARITY: the voice row's OWN direction gate-mod edge state (mono
+    // jack, the same law — cycles the GLOBAL voiceLorMacroDir, every follower moves).
+    bool vlorDirModPrev = false;
 
     /// The sweep producer halves (S5): the gate-as-fingerprint + the verbatim resolve.
     size_t sweepFingerprint_(void* dst);

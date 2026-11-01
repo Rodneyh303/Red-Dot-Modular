@@ -255,6 +255,10 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     saveArr("editorVoiceLorEast",      m->editor.voiceLorEast,      48);   // 16 voices × {L,O,R}
     saveArr("editorVoiceLorEastDir",   m->editor.voiceLorEastDir,   16);   // 16 voices (LaneDir order)
     saveArr("editorVoiceLorLocalEast", m->editor.voiceLorLocalEast, 16);   // 0 = follow Macro, !=0 = own East row
+    // (B) VOICE-LOR PARITY: the L/O/R CV-depth rows (absent keys ⟹ all-zero depths —
+    // the fold's byte-neutral default, pre-parity patches unchanged).
+    saveArr("editorVoiceLorAttenMacro", m->editor.voiceLorAttenMacro,  3); // the Macro jacks' depths
+    saveArr("editorVoiceLorAttenEast",  m->editor.voiceLorAttenEast, 48); // 16 voices × {L,O,R} depths
     // UNIFIED ADDRESSING output-mask rows (Stage 4): the one output layer (cycle /
     // dynamic range-as-mask / painted fixed-rotatable + follow-R). Absent keys ⟹ the
     // ctor defaults (CYCLE everywhere, all-on patterns) — no gating, pre-4 patches
@@ -578,6 +582,10 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     loadArrN("editorVoiceLorEast",      m->editor.voiceLorEast,      48);
     loadArrN("editorVoiceLorEastDir",   m->editor.voiceLorEastDir,   16);
     loadArrN("editorVoiceLorLocalEast", m->editor.voiceLorLocalEast, 16);
+    // (B) VOICE-LOR PARITY: the L/O/R CV-depth rows — absent keys ⟹ the all-zero
+    // defaults stand (the fold is a no-op; the pushed base plays).
+    loadArrN("editorVoiceLorAttenMacro", m->editor.voiceLorAttenMacro,  3);
+    loadArrN("editorVoiceLorAttenEast",  m->editor.voiceLorAttenEast, 48);
     // UNIFIED ADDRESSING output-mask rows (Stage 4): absent keys ⟹ ctor defaults
     // (CYCLE everywhere, all-on patterns) — pre-4 patches byte-identical.
     loadArrN("editorMaskMacroKind",        &m->editor.maskMacroKind,        1);

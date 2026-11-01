@@ -33,6 +33,8 @@ ED_H = 96.0   # OPT-B: 7 lanes x 13mm — East adds Q-MIX at index 2 (MEL/OCT/QM
               # the 7 probability lanes keep their full 13mm and start one strip lower
               # (ED_Y+RANGE_MM). Mirrors src/ui/SandsGrid.hpp RANGE_LANE_H/monoBoxHeight().
 RANGE_MM = 5.0   # the voice-range strip height — MUST equal SandsGrid::RANGE_LANE_H
+VR_Y = ED_Y + RANGE_MM*0.5   # (B) VOICE-LOR PARITY: the voice-row CONTROL line (the strip's
+                             # own row of hardware) — MUST equal SandsGrid::RANGE_ROW_Y (16.5)
 ED_LANES = 7  # OPT-B: editor lanes drawn (Q-MIX added at index 2)
 POLY_LANES = 7  # spread/poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG) — all rows now carry
                 # CV/atten/spread/prob. Mirrors dotModular::SandsGrid::POLY_LANES (=7 after the
@@ -185,10 +187,11 @@ def gen(dark):
     _ed_right = ED_X + ED_W
     _lane_ys = [ctrlY(r) for r in range(N)]   # all 7 editor lanes
     _ch = ED_LANE_H * 0.9                  # match the live OwnerCell (≈ lane step cell)
+    _vr_ch = RANGE_MM * 0.9                # (B) the voice row's cell height (the live cell's size)
     _cw = (ED_W - 2*6.0) / 16.0            # one editor step wide (padding=6, 16 steps)
     _pad = 1.6
-    _by = min(_lane_ys) - _ch*0.5 - _pad
-    _bh = (max(_lane_ys)-min(_lane_ys)) + _ch + 2*_pad
+    _by = VR_Y - _vr_ch*0.5 - _pad         # (B) the box wraps the voice row's smaller cell too
+    _bh = (ctrlY(N-1) + _ch*0.5 + _pad) - _by
     A(f'<rect x="{px(OWNER_X-_cw*0.5-_pad):.1f}" y="{px(_by):.1f}" width="{px(_cw+2*_pad):.1f}" height="{px(_bh):.1f}" rx="{px(1.0):.1f}" fill="#ffffff" fill-opacity="0.05"/>')
     A(f'<line x1="{px(_ed_right+1.4):.1f}" y1="{px(_by):.1f}" x2="{px(_ed_right+1.4):.1f}" y2="{px(_by+_bh):.1f}" stroke="{t["edborder"]}" stroke-width="1.2" opacity="0.8"/>')
     A(f'<text x="{px(OWNER_X):.1f}" y="{px(_by-1.4):.1f}" font-family="sans-serif" font-size="{px(2.0):.1f}" fill="{t["edborder"]}" text-anchor="middle">SRC</text>')
@@ -206,10 +209,13 @@ def gen(dark):
     A(mbs(W_MM-66.0, 111.0, 52.0, 14.0, t, op=0.85))
 
     # ── control group recess (left) — wraps the editor-aligned rows ──
-    # box left edge clears the leftmost jack (JACK_X[0]=6, r=3.9 → left extent 2.1mm)
-    gx,gy=1.5,ctrlY(0)-ED_LANE_H*0.5-3.0
-    # recess spans all 7 control rows (5 spread lanes + VAR/LEG rows 5,6), now wrapping the
-    # w-level column too (CC_PROMPT_04 STEP 1: the recess grew from SPREAD_X+6 to WLEVEL_X+6)
+    # box left edge clears the leftmost jack (JACK_X[0]=6, r=3.9 → left extent 2.1mm).
+    # (B) VOICE-LOR PARITY: the recess now wraps the VOICE ROW too (its 3 jacks + 3
+    # attens at VR_Y) — top = the voice row's jack (r 3.9) + 1.2mm pad, clearing the
+    # 11mm branding rule above.
+    gx,gy=1.5,VR_Y-3.9-1.2
+    # recess spans the voice row + all 7 control rows (5 spread lanes + VAR/LEG rows 5,6),
+    # wrapping the w-level column too (CC_PROMPT_04 STEP 1: SPREAD_X+6 → WLEVEL_X+6)
     gw,gh=(WLEVEL_X+6.0)-gx,(ctrlY(N-1)+ED_LANE_H*0.5+3.0)-gy
     A(f'<rect x="{px(gx):.1f}" y="{px(gy):.1f}" width="{px(gw):.1f}" height="{px(gh):.1f}" rx="{px(2):.1f}" fill="{t["group"]}" stroke="{t["groupline"]}" stroke-width="1"/>')
     sepx=0.5*(JACK_X[-1]+ATTEN_X[0])  # separator between jack cluster and atten cluster
@@ -234,6 +240,12 @@ def gen(dark):
         for x in ATTEN_X: trim(x,y,t["gold"])
         trim(SPREAD_X,y,t["teal"])
         trim(WLEVEL_X,y,t["wellring"])   # CC_PROMPT_04: w-level (warp depth) — neutral ring, distinct from teal spread / gold attens
+
+    # (B) VOICE-LOR PARITY: the voice row's control graphics — 3 L/O/R CV jacks + 3
+    # attenuverters at VR_Y (silver trims: the voice frame is hue-neutral, the strip's
+    # palette law). NO spread/wlevel/CRV (the voice LOR has neither — the directive's cut).
+    for x in JACK_X[:3]:  jack(x,VR_Y)
+    for x in ATTEN_X[:3]: trim(x,VR_Y,t["ink"])
 
     # ── Macro/East blend controls — 3 labelled groups (REST / MELODY / OCTAVE),
     #    each a demarked box stacked as: lane-name header → owner latch (OWN) →
@@ -297,6 +309,15 @@ def gen(dark):
           f'r="0.5" fill="none" stroke="none"/>')
         A(f'<circle id="input_deleg_mod_{el}" cx="{px(DELEG_MOD_X):.2f}" cy="{px(rowY(el)):.2f}" '
           f'r="0.5" fill="none" stroke="none"/>')
+    # (B) VOICE-LOR PARITY: the voice-row anchors at VR_Y — the strip's own control
+    # line, the same columns as every lane: 3 L/O/R CV jacks + 3 attens + the SRC owner
+    # cell + the DIR cell + the row's dir/deleg gate-mods. NO spread/wlevel/CRV/prob-out.
+    for c,x in enumerate(JACK_X[:3]):  named(f"input_vlor_cv_{c}",    x, VR_Y)
+    for c,x in enumerate(ATTEN_X[:3]): named(f"param_vlor_atten_{c}", x, VR_Y)
+    named("param_vlor_owner",     OWNER_X,    VR_Y)
+    named("param_vlor_dir",       DIR_X,      VR_Y)
+    named("input_vlor_deleg_mod", DELEG_MOD_X, VR_Y)
+    named("input_vlor_dir_mod",   DIR_MOD_X,   VR_Y)
     # Probability-out jacks (output_prob_<editorLane>) — 7 poly prob CV outs (incl QMIX/VAR/LEG).
     for el in range(POLY_LANES):
         A(f'<circle id="output_prob_{el}" cx="{px(PROB_OUT_X):.2f}" cy="{px(rowY(el)):.2f}" '

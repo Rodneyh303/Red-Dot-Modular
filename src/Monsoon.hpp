@@ -935,6 +935,13 @@ struct Monsoon : Module {
                                          16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f}; // 16 voices x {L,O,R}
         float voiceLorEastDir[16]     = {};                 // per-voice direction (LaneDir order)
         float voiceLorLocalEast[16]   = {};                 // 0 = follow Macro (default), !=0 = own East row
+        // (B) VOICE-LOR PARITY: the L/O/R CV-depth rows (the lanes' macroAtten law, one
+        // axis over — NO spread/warp cols: the voice LOR has neither). Macro[3] is the
+        // GLOBAL depth (the Macro panel's 3 mono jacks); East[48] is per voice (the East
+        // panel's 3 poly jacks, channel == voiceSlot). Depth 0 = the pushed base stands
+        // (byte-neutral default). Item order {L,O,R}, the same as the LOR rows.
+        float voiceLorAttenMacro[3]   = {};                 // the Macro jacks' L/O/R depths
+        float voiceLorAttenEast[48]   = {};                 // 16 voices x {L,O,R} depths
 
         // ── UNIFIED ADDRESSING Stage 4: the OUTPUT-MASK rows (the ONE output layer) ──
         // The same Macro/East delegation split as the voice-LOR rows: the MACRO tier
@@ -1021,6 +1028,17 @@ struct Monsoon : Module {
         if (!vLorOk(v)) return;
         editor.voiceLorEast[v*3 + 0] = 16.f; editor.voiceLorEast[v*3 + 1] = 0.f;
         editor.voiceLorEast[v*3 + 2] = 0.f;  editor.voiceLorEastDir[v] = 0.f; }
+    // (B) VOICE-LOR PARITY: the L/O/R CV-depth accessors (the macroAtten law, one axis
+    // over). Depths are bipolar -1..1 (the lanes' attenuverter convention); 0 = the
+    // pushed base stands. The fold (Monsoon::process, after both pushes) is the only reader.
+    float getVoiceLorAttenMacro(int c) const {
+        return (c >= 0 && c < 3) ? editor.voiceLorAttenMacro[c] : 0.f; }
+    void  setVoiceLorAttenMacro(int c, float x) {
+        if (c >= 0 && c < 3) editor.voiceLorAttenMacro[c] = x; }
+    float getVoiceLorAttenEast(int v, int c) const {
+        return (vLorOk(v) && c >= 0 && c < 3) ? editor.voiceLorAttenEast[v*3 + c] : 0.f; }
+    void  setVoiceLorAttenEast(int v, int c, float x) {
+        if (vLorOk(v) && c >= 0 && c < 3) editor.voiceLorAttenEast[v*3 + c] = x; }
 
     // ── UNIFIED ADDRESSING Stage 4: the output-mask row accessors (the vLorOk idiom:
     // bounds-guarded, a bad index reads 0 / writes nothing — audio-path reads) ──

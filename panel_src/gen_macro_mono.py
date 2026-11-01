@@ -44,6 +44,7 @@ def gen_macro(dark, W_MM=259.08):  # 51HP exactly (51 x 5.08mm = 765px) — the 
     # src/ui/SandsGrid.hpp RANGE_LANE_H/polyBoxHeight().
     RANGE_MM=5.0
     ED_X=97.; ED_W=111.; OWNER_X=214.; DIR_X=221.; DIR_MOD_X=238.; PROB_OUT_X=248.; ED_Y=14.; ED_H=96.   # +9mm (w-level col) +9mm (CRV col); 7 lanes x 13mm + 5mm range strip, editor 14->110
+    VR_Y=ED_Y+RANGE_MM*0.5   # (B) VOICE-LOR PARITY: the voice-row CONTROL line — MUST equal SandsGrid::RANGE_ROW_Y (16.5)
     ED_LANE_H=(ED_H-RANGE_MM)/N   # 13mm — the LANE area below the range strip
     # Left-control rows align with the EDITOR lane centres (must match the hpp's rowY).
     # Stage 3: lanes start below the voice-range strip — every row shifts down by RANGE_MM.
@@ -65,7 +66,9 @@ def gen_macro(dark, W_MM=259.08):  # 51HP exactly (51 x 5.08mm = 765px) — the 
     # shrinks into the remaining pocket (113.5→128) — the full mark stays visible, just flatter.
     A(D.helix_sands(4.0, 113.5, 60.0, 14.5, t, op=0.95))
     A(D.accent_rules(PW,t))
-    gx,gy=1.5,ctrlY(0)-ED_LANE_H*0.5-3.0; gw,gh=(WLEVEL_X+6.0)-gx,(ctrlY(N-1)+ED_LANE_H*0.5+3.0)-gy  # gx clears leftmost jack; recess wraps the w-level column too (CC_PROMPT_04)
+    # (B) VOICE-LOR PARITY: the recess now wraps the VOICE ROW too (its 3 jacks + 3
+    # attens at VR_Y) — top = the voice row's jack (r 3.9) + 1.2mm pad.
+    gx,gy=1.5,VR_Y-3.9-1.2; gw,gh=(WLEVEL_X+6.0)-gx,(ctrlY(N-1)+ED_LANE_H*0.5+3.0)-gy  # gx clears leftmost jack; recess wraps the w-level column too (CC_PROMPT_04)
     A(D.input_group(gx,gy,gw,gh,t,sep_mm=0.5*(JACK_X[-1]+ATTEN_X[0])))
     A(D.editor_recess(ED_X,ED_Y,ED_W,ED_H,t,lanes=7,range_h=RANGE_MM))
     A(D.owner_block(OWNER_X, [ctrlY(r) for r in range(N)], ED_X+ED_W, t, cell_w_mm=6.0))
@@ -85,6 +88,11 @@ def gen_macro(dark, W_MM=259.08):  # 51HP exactly (51 x 5.08mm = 765px) — the 
         for x in ATTEN_X: A(D.trim(x,y,t,t["gold"]))
         A(D.trim(SPREAD_X,y,t,t["wellring"]))
         A(D.trim(WLEVEL_X,y,t,t["wellring"]))   # CC_PROMPT_04: w-level (warp depth) — Macro authors the DELEGATED DEFAULT (globalWarpW)
+    # (B) VOICE-LOR PARITY: the voice row's control graphics — 3 MONO L/O/R CV jacks + 3
+    # global attenuverters at VR_Y (silver trims, the strip's hue-neutral law). NO
+    # spread/wlevel/CRV/prob-out, and NO owner/deleg (the Macro tier IS the global).
+    for x in JACK_X[:3]:  A(D.jack(x,VR_Y,t))
+    for x in ATTEN_X[:3]: A(D.trim(x,VR_Y,t,t["ink"]))
     # (the RHS mix-in send row MOVED to the SandsMacroSendSubpanel — the spec's "Macro is
     #  already big"; the knobs bind the same editor.macroSend/macroTap stores there.)
     A('</g>')
@@ -116,6 +124,13 @@ def gen_macro(dark, W_MM=259.08):  # 51HP exactly (51 x 5.08mm = 765px) — the 
     for el in range(ED_LANES):
         named(f"param_dir_{el}",     DIR_X,     rowY(el))
         named(f"input_dir_mod_{el}", DIR_MOD_X, rowY(el))
+    # (B) VOICE-LOR PARITY: the voice-row anchors at VR_Y — the GLOBAL voice range's own
+    # control line: 3 L/O/R CV jacks + 3 attens + the DIR cell + the row's direction
+    # gate-mod. NO owner/deleg (East's voice row carries those) and NO spread/warp.
+    for c,x in enumerate(JACK_X[:3]):  named(f"input_vlor_cv_{c}",    x, VR_Y)
+    for c,x in enumerate(ATTEN_X[:3]): named(f"param_vlor_atten_{c}", x, VR_Y)
+    named("param_vlor_dir",     DIR_X,     VR_Y)
+    named("input_vlor_dir_mod", DIR_MOD_X, VR_Y)
     A('</g>')
     A('</svg>')
     return "\n".join(L)

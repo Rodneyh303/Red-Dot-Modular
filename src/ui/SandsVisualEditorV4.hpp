@@ -739,6 +739,52 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       nvgFill(vg);
     }
 
+    // (B) VOICE-LOR PARITY: the ROTATION chevron — R denotes the read-start step (the
+    // same ›‹ marker the probability lanes draw via drawRotationIndicator; the voice
+    // lane never had one because nothing displayed R). Physical bar = (O + R) % 16,
+    // the lanes' law; hue-neutral silver (the strip's palette — the voice frame spans
+    // all seven lane hues). Sits over the ROTATION gesture band (the strip's lower
+    // 35%, hitTestRange's zone) so it reads as the grab target it is.
+    {
+      const int rotBar = (rangeStrip.lor[1]
+                          + (rangeStrip.lor[2] % std::max(1, rangeStrip.lor[0]))) % STEP_COUNT;
+      rack::Rect cell = rack::Rect(layout.getStepX(rotBar), r.pos.y,
+                                   layout.stepWidthF(), r.size.y);
+      const float cx = cell.pos.x + cell.size.x * 0.5f;
+      const float cyc = r.pos.y + r.size.y * 0.5f;
+      const float h = r.size.y * 0.9f;
+      const float d = 2.6f;
+      const float halfW = (cell.size.x - 2.f) * 0.42f;
+      const float on = (rangeStrip.lor[2] > 0) ? 1.f : 0.55f;
+
+      // block baseline tint — DARKEN the rotation cell (the lane marker's law)
+      nvgBeginPath(vg);
+      nvgRect(vg, cell.pos.x + 1.f, r.pos.y, cell.size.x - 2.f, r.size.y);
+      NVGcolor blockTint = nvgRGB(0x00, 0x00, 0x00);
+      blockTint.a = (rangeStrip.lor[2] > 0) ? 0.32f : 0.16f;
+      nvgFillColor(vg, blockTint);
+      nvgFill(vg);
+
+      // chevrons ›‹ — the path built once, stroked twice (dark halo under, white core over)
+      auto chevrons = [&]() {
+        nvgBeginPath(vg);
+        nvgMoveTo(vg, cx - halfW - d, cyc - h * 0.5f);
+        nvgLineTo(vg, cx - halfW + d, cyc);
+        nvgLineTo(vg, cx - halfW - d, cyc + h * 0.5f);
+        nvgMoveTo(vg, cx + halfW + d, cyc - h * 0.5f);
+        nvgLineTo(vg, cx + halfW - d, cyc);
+        nvgLineTo(vg, cx + halfW + d, cyc + h * 0.5f);
+      };
+      nvgLineCap(vg, NVG_ROUND);
+      nvgLineJoin(vg, NVG_ROUND);
+      chevrons();
+      { NVGcolor halo = nvgRGB(0x0a, 0x0c, 0x10); halo.a = 0.60f * on;
+        nvgStrokeColor(vg, halo); nvgStrokeWidth(vg, 3.0f); nvgStroke(vg); }
+      chevrons();
+      { NVGcolor core = nvgRGB(0xf2, 0xf2, 0xf6); core.a = 0.95f * on;
+        nvgStrokeColor(vg, core); nvgStrokeWidth(vg, 1.4f); nvgStroke(vg); }
+    }
+
     // Separator under the strip (the live editor shows strip + lanes as 8 rows).
     nvgBeginPath(vg);
     nvgRect(vg, 0, r.pos.y + r.size.y - 0.5f, box.size.x, 0.75f);

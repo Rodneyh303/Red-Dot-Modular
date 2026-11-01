@@ -482,6 +482,18 @@ inline int resolveDirItem(bool delegated, float ownDir, float macroGlobalDir) {
     return (int)std::lround(resolveDirValue(delegated, ownDir, macroGlobalDir));
 }
 
+// ── resolveVlorCv — (B) VOICE-LOR PARITY: the voice LOR's L/O/R CV law, ONE
+// definition (the lanes' manager-side eastLorVal inline law, lifted to the policy
+// home so the voice row can't drift from it). Deliberately NOT the full
+// resolveLorItem algebra: the voice LOR has no Macro/East ownership ternary at the
+// ITEM level (delegation picks WHICH row a voice reads — effectiveVoiceLor's job)
+// and no send/tap blend (NO spread/warp on the voice row, the directive's cut).
+// Pure: base + cvUnit·atten·(hi−lo), end-clamped — exactly the lanes' eastLorVal
+// mid-term, pinned by test_resolver_lor_bridge.
+inline float resolveVlorCv(float base, float cvUnit, float atten, float lo, float hi) {
+    return std::clamp(base + cvUnit * atten * (hi - lo), lo, hi);
+}
+
 } // namespace redDot
 
 // ── WarpBank rides the resolver (STEP 2) — the bank's mix, defined HERE ───────

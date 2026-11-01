@@ -1657,6 +1657,58 @@ void Monsoon::process(const ProcessArgs& args) {
             editor.maskEastPatternBits, editor.maskEastKind, editor.maskEastFollowR,
             editor.maskLocalEastMask);
 
+        // (B) VOICE-LOR PARITY: the L/O/R CV fold — the voice range's mod jacks, applied
+        // ON TOP of the pushed base (redDot::resolveVlorCv — the lanes' eastLorVal law,
+        // ONE definition). ORDERING LAW: this runs AFTER both pushes — the mask's anchor
+        // change-detection must re-pin against the UNMODULATED base R (the doc's rule:
+        // rotation modulation offsets relative to the anchor, it never re-pins), and the
+        // fold then lands base+cv on the store for every read (the voice map, the abs1
+        // window, the strips — all track CV live, the UAS "shows LOR modulation live").
+        // The MACRO row is GLOBAL (Macro's 3 mono jacks — every follow-Macro voice reads
+        // the one modulated row); the EAST rows are per voice (East's 3 poly jacks,
+        // channel == voiceSlot, per-voice depth — the macroAtten law, one axis over).
+        // BOTH modes: the control block is mode-independent and the voice frame is
+        // per-voice (mono = slot 0 = East's V1 tab). A tier with no jacks connected is
+        // skipped — the pushed base stands (the byte-neutral default).
+        {
+            auto* eVis = expanderManager.cachedEastSandsVisual;
+            auto* mVis = expanderManager.cachedMacroSandsVisual;
+            static const float VL_LO[3] = {1.f, 0.f, 0.f};     // L 1..16, O/R 0..15 (the push's clamps)
+            static const float VL_HI[3] = {16.f, 15.f, 15.f};
+            bool anyMacro = false, anyEast = false;
+            for (int item = 0; item < 3; ++item) {
+                if (mVis && mVis->inputs[StraitsMacroVisualIds::vlCvId(item)].isConnected()) anyMacro = true;
+                if (eVis && eVis->inputs[StraitsEastVisualIds::vlCvId(item)].isConnected())  anyEast = true;
+            }
+            if (anyMacro) {
+                for (int item = 0; item < 3; ++item) {
+                    auto& in = mVis->inputs[StraitsMacroVisualIds::vlCvId(item)];
+                    const float v = in.isConnected()
+                        ? redDot::resolveVlorCv(editor.voiceLorMacro[item],
+                                                in.getVoltage() / 10.f,
+                                                getVoiceLorAttenMacro(item),
+                                                VL_LO[item], VL_HI[item])
+                        : editor.voiceLorMacro[item];
+                    engine.macroVoiceLorRef(item) = (int)std::lround(v);
+                }
+            }
+            if (anyEast) {
+                for (const auto vs : dotModular::VoiceResolver::allSlots()) {
+                    for (int item = 0; item < 3; ++item) {
+                        auto& in = eVis->inputs[StraitsEastVisualIds::vlCvId(item)];
+                        const float base = editor.voiceLorEast[vs.v * 3 + item];
+                        const float val = in.isConnected()
+                            ? redDot::resolveVlorCv(base,
+                                                    in.getPolyVoltage(vs.v) / 10.f,
+                                                    getVoiceLorAttenEast(vs.v, item),
+                                                    VL_LO[item], VL_HI[item])
+                            : base;
+                        engine.voiceLorRef(vs, item) = (int)std::lround(val);
+                    }
+                }
+            }
+        }
+
         // Update CV2 modulation offsets (Throttled)
         paramManager->clearCv2Offsets();
         // CV2 as a Big-5 modulation source (cv2Mode 0..4) in the clock/gate origins (modeSelect < 2).

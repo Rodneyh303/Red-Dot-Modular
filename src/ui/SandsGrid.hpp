@@ -59,6 +59,13 @@ namespace SandsGrid {
     // RANGE_LANE_H and the strip occupies [LANE_TOP, LANE_TOP+RANGE_LANE_H).
     static constexpr float RANGE_LANE_H = 5.f;
 
+    // (B) VOICE-LOR PARITY: the voice-row CONTROL line — the strip's own row of panel
+    // hardware (3 L/O/R CV jacks + 3 attens + the SRC/DIR cells + the gate-mod jacks)
+    // sits at the strip's vertical centre, the same columns as every lane. The
+    // generators' VR_Y mirrors THIS (the RANGE_MM lockstep); the cells size to
+    // RANGE_LANE_H·0.9 the way a lane's cells size to LANE_H·0.9.
+    static constexpr float RANGE_ROW_Y = LANE_TOP + RANGE_LANE_H * 0.5f;   // 16.5
+
     static constexpr float monoBottom() { return LANE_TOP + MONO_LANES * LANE_H; }  // 105 (7×13)
     static constexpr float polyBottom() { return LANE_TOP + POLY_LANES * LANE_H; }  // 79  (5×13)
     static constexpr float monoHeight() { return MONO_LANES * LANE_H; }             // 91  (7×13)

@@ -428,11 +428,56 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             Module* mod_ = module;
             auto themeIn = [mod_](redDot::GoldPolyPort* p) {
                 p->lightTheme = [mod_]() { Monsoon* m = mod_ ? redDot::lookupMonsoon(mod_) : nullptr;
-                                          return m && m->lightTheme; };
+                                           return m && m->lightTheme; };
             };
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane)
                 bindInput<redDot::GoldPolyPort>("input_dir_mod_" + std::to_string(lane),
                     dirModId(lane), std::function<void(redDot::GoldPolyPort*)>(themeIn));
+
+            // ── (B) VOICE-LOR PARITY: the Macro voice-row control line ─────────
+            //    The GLOBAL voice range's own hardware, next to the lane: 3 MONO L/O/R
+            //    CV jacks + 3 global attenuverters (the fold in Monsoon::process applies
+            //    them to the one row every follow-Macro voice reads) + the DIR cell
+            //    (voiceLorMacroDir) + the row's direction gate-mod. NO owner/deleg (the
+            //    Macro tier IS the global; East's voice row carries those) and NO
+            //    spread/warp. Silver — the strip's hue-neutral law.
+            static const char* vlorCN[3] = {"Length", "Offset", "Rotation"};
+            const NVGcolor vlorCol = nvgRGB(0xd8, 0xd8, 0xdc);
+            for (int item = 0; item < 3; ++item) {
+                bindInput<PJ301MPort>(
+                    "input_vlor_cv_" + std::to_string(item), vlCvId(item));
+                redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
+                    "param_vlor_atten_" + std::to_string(item), storeResolver(),
+                    -1.f, 1.f, 0.f, std::string("Voice range ") + vlorCN[item] + " CV depth",
+                    [item](Monsoon& m)          { return m.getVoiceLorAttenMacro(item); },
+                    [item](Monsoon& m, float v) { m.setVoiceLorAttenMacro(item, v); });
+            }
+            bindWidget<DirCell>(
+                "param_vlor_dir",
+                std::function<void(DirCell*)>([this, vlorCol](DirCell* w) {
+                    w->laneCol = vlorCol;
+                    Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
+                    const float stepW = (ED_W - 2.f*6.f) / 16.f;
+                    w->box.size = mm2px(Vec(stepW, dotModular::SandsGrid::RANGE_LANE_H * 0.9f));
+                    w->box.pos  = ctr.minus(w->box.size.div(2.f));
+                    w->getStateFn = [this]() -> int {
+                        auto* mm = getMonsoon();
+                        return mm ? (int)std::lround(mm->getVoiceLorMacroDir()) & 3 : 0;
+                    };
+                    w->setStateFn = [this](int v) {
+                        if (auto* mm = getMonsoon()) mm->setVoiceLorMacroDir((float)(v & 3));
+                    };
+                    w->pushUndoFn = [this](int oldV, int newV) {
+                        auto* mm = getMonsoon(); if (!mm) return;
+                        redDot::applyAndPushStoreEdit<Monsoon>(mm, "voice-range direction (Macro)",
+                            [](Monsoon& m, float val) { m.setVoiceLorMacroDir(val); },
+                            (float)(oldV & 3), (float)(newV & 3));
+                    };
+                    w->lockWhen = [this]() { return !getMonsoon(); };
+                })
+            );
+            bindInput<redDot::GoldPolyPort>("input_vlor_dir_mod",
+                vlorDirModId(), std::function<void(redDot::GoldPolyPort*)>(themeIn));
         }
 
         paramMgr = new SandsParameterManager(nullptr, nullptr, 7, 0, true);   // monoContext: V1 interpolates from the MONO draw
@@ -1087,6 +1132,22 @@ void StraitsSandsMacroVisual::process(const ProcessArgs&) {
                 }
             }
             dirModPrev[el] = high;
+        }
+        // (B) VOICE-LOR PARITY: the voice row's direction gate-mod — the same mono-jack
+        // law, cycling the GLOBAL voiceLorMacroDir (the row every follow-Macro voice
+        // reads; the whole locked ensemble moves together).
+        {
+            auto& vin = inputs[vlorDirModId()];
+            if (vin.isConnected()) {
+                bool high = vin.getVoltage(0) > 1.f;
+                if (high && !vlorDirModPrev) {
+                    if (auto* mm = redDot::lookupMonsoon(this)) {
+                        int cur = (int)std::lround(math::clamp(mm->getVoiceLorMacroDir(), 0.f, 3.f));
+                        mm->setVoiceLorMacroDir((float)((cur + 1) % 4));
+                    }
+                }
+                vlorDirModPrev = high;
+            }
         }
     }
     MONSOON_PROF_END(lookup);

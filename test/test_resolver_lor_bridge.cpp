@@ -443,6 +443,74 @@ int main() {
         std::cout << "      fuzz cases: " << kCases << " (each pins the int AND the pre-cast float, same BITS)\n";
     });
 
+    // ── (B) VOICE-LOR PARITY: redDot::resolveVlorCv — the voice LOR's L/O/R CV law ──
+    // The lanes' eastLorVal mid-term lifted to the policy home (ONE definition so the
+    // voice row can't drift). NOT resolveLorItem's algebra: no ownership ternary
+    // (delegation picks WHICH row — effectiveVoiceLor's job) and no send/tap blend
+    // (NO spread/warp on the voice row). The FOLD (Monsoon::process, after both
+    // pushes) is the only caller; its round is the PUSH's law — (int)std::lround after
+    // the clamp — pinned here with the frozen-law duplicate below.
+    SUITE("resolveVlorCv (the voice-LOR CV law)");
+    TEST("atten 0 / cv 0 ⟹ the clamped base (the byte-neutral default)", {
+        if (redDot::resolveVlorCv(8.f, 1.f, 0.f, 1.f, 16.f) != 8.f)
+            throw std::runtime_error("atten 0 must pass the base through");
+        if (redDot::resolveVlorCv(8.f, 0.f, 1.f, 1.f, 16.f) != 8.f)
+            throw std::runtime_error("cv 0 must pass the base through");
+        if (redDot::resolveVlorCv(99.f, 0.5f, 0.f, 1.f, 16.f) != 16.f)
+            throw std::runtime_error("the clamp still applies with no CV (out-of-window base)");
+    });
+    TEST("the scaling: base + cvUnit·atten·(hi−lo), both windows", {
+        // window (0,15), cv +10V→1.0, atten 0.5 ⟹ +7.5
+        if (redDot::resolveVlorCv(4.f, 1.f, 0.5f, 0.f, 15.f) != 11.5f)
+            throw std::runtime_error("cv·atten·span must be the delta");
+        // window (1,16), cv −1.0, atten 1 ⟹ −15
+        if (redDot::resolveVlorCv(16.f, -1.f, 1.f, 1.f, 16.f) != 1.f)
+            throw std::runtime_error("bipolar cv × atten over the L span");
+    });
+    TEST("the end-clamps: ±large CV pins at the window edges", {
+        if (redDot::resolveVlorCv(8.f,  40.f, 1.f, 0.f, 15.f) != 15.f)
+            throw std::runtime_error("+large cv must clamp to hi");
+        if (redDot::resolveVlorCv(8.f, -40.f, 1.f, 0.f, 15.f) != 0.f)
+            throw std::runtime_error("-large cv must clamp to lo");
+    });
+    TEST("fuzz vs the frozen law (same BITS) + the fold's lround round-trip", {
+        // The law, duplicated VERBATIM (tests may duplicate; production may not):
+        //   clamp(base + cvUnit * atten * (hi - lo), lo, hi)
+        Rng vrng(0xB07F1CEull);   // "vlor-seed" — fixed
+        long vcases = 40000, vclamp = 0, vident = 0;
+        for (long i = 0; i < vcases; ++i) {
+            const float lo = (i & 1) ? 0.f : 1.f;
+            const float hi = (i & 1) ? 15.f : 16.f;
+            const float base  = vrng.uniformF(lo - 3.f, hi + 3.f);   // incl. out-of-window bases
+            float cv    = vrng.uniformF(-1.2f, 1.2f);                // ±12V
+            float atten = vrng.uniformF(-1.f, 1.f);                  // bipolar depth
+            // Deterministic identity buckets: the 24-bit grid never lands exactly on
+            // 0 by chance, so force cv==0 / atten==0 every 32nd case (the byte-neutral
+            // law must be exercised, not just reachable).
+            if ((i & 31) == 0)      atten = 0.f;
+            else if ((i & 31) == 1) cv = 0.f;
+            const float want  = oracle::clamp(base + cv * atten * (hi - lo), lo, hi);
+            const float got   = redDot::resolveVlorCv(base, cv, atten, lo, hi);
+            if (!sameBits(got, want)) {
+                std::ostringstream s;
+                s << "case " << i << ": got " << bits(got) << " want " << bits(want)
+                  << " (base " << base << " cv " << cv << " atten " << atten
+                  << " window [" << lo << "," << hi << "])";
+                throw std::runtime_error(s.str());
+            }
+            if (got == lo || got == hi) ++vclamp;
+            if (atten == 0.f || cv == 0.f) ++vident;
+            // the fold's round: the PUSH's lorInt law (lround AFTER the clamp)
+            const int folded = (int)std::lround(got);
+            if (folded < (int)lo || folded > (int)hi)
+                throw std::runtime_error("the fold's round left the window");
+        }
+        if (vclamp <= 0) throw std::runtime_error("clamp case never exercised");
+        if (vident <= 0) throw std::runtime_error("identity case never exercised");
+        std::cout << "      vlor fuzz: " << vcases << " cases, clamp-pin " << vclamp
+                  << ", identity " << vident << " (lround-after-clamp pinned)\n";
+    });
+
     std::cout << "\n\033[1m" << g_pass << " passed, " << g_fail << " failed\033[0m\n";
     return g_fail ? 1 : 0;
 }

@@ -70,6 +70,15 @@ MODULES = {
             "input_dir_mod_": 7,
             "input_deleg_mod_": 7,
             "output_prob_": 7,        # 7 poly prob outs (incl QMIX/VAR/LEG)
+            # (B) VOICE-LOR PARITY: the voice-row control line at RANGE_ROW_Y — 3 L/O/R
+            # CV jacks + 3 per-voice attens + the SRC owner cell + the DIR cell + the
+            # row's dir/deleg gate-mods. NO spread/wlevel/CRV (the directive's cut).
+            "input_vlor_cv_": 3,
+            "param_vlor_atten_": 3,
+            "param_vlor_dir": 1,
+            "param_vlor_owner": 1,
+            "input_vlor_dir_mod": 1,
+            "input_vlor_deleg_mod": 1,
         },
     },
     "sands_macro": {
@@ -92,6 +101,13 @@ MODULES = {
             "output_prob_": 7,
             "param_dir_": 7,
             "input_dir_mod_": 7,
+            # (B) VOICE-LOR PARITY: the GLOBAL voice range's control line at RANGE_ROW_Y —
+            # 3 MONO L/O/R CV jacks + 3 global attens + the DIR cell + the row's direction
+            # gate-mod. NO owner/deleg (the Macro tier IS the global) and NO spread/warp.
+            "input_vlor_cv_": 3,
+            "param_vlor_atten_": 3,
+            "param_vlor_dir": 1,
+            "input_vlor_dir_mod": 1,
         },
     },
     "keppel": {

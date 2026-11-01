@@ -121,11 +121,22 @@ namespace StraitsEastVisualIds {
         NUM_LANE_INPUTS = CV_START + 28,              // 7 poly lanes × 4 cols (LEN/OFF/ROT/SPR)
         DIR_MOD_START = NUM_LANE_INPUTS,              // = 28 — direction gate-mod (7 east lanes)
         DELEG_MOD_START = DIR_MOD_START + 7,          // = 35 — delegation gate-mod (7 east lanes, all lanes)
-        NUM_INPUTS = DELEG_MOD_START + 7              // = 42
+        // (B) VOICE-LOR PARITY: the voice-range row's OWN jacks — the strip's control row,
+        // the same complement as a lane minus spread/warp (the voice LOR has neither —
+        // the directive's cut). 3 L/O/R CV jacks (poly: channel == voiceSlot, the lanes'
+        // cvId law) + the row's dir/deleg gate-mods.
+        VLOR_CV_START = DELEG_MOD_START + 7,          // = 42 — the voice LOR's L/O/R CV
+        VLOR_DIR_MOD = VLOR_CV_START + 3,             // = 45 — the voice row's direction gate-mod
+        VLOR_DELEG_MOD = VLOR_DIR_MOD + 1,            // = 46 — the voice row's delegation gate-mod
+        NUM_INPUTS = VLOR_DELEG_MOD + 1               // = 47
     };
     static inline int dirModId(int lane) { return DIR_MOD_START + lane; }
     static inline int delegModId(int lane) { return DELEG_MOD_START + lane; }
     static inline int cvId(int lane, int col) { return CV_START + lane*4 + col; }
+    // The voice-range row's jacks (item 0/1/2 = L/O/R; the gate-mods are singleton ids).
+    static inline int vlCvId(int item) { return VLOR_CV_START + item; }
+    static inline int vlorDirModId()   { return VLOR_DIR_MOD; }
+    static inline int vlorDelegModId() { return VLOR_DELEG_MOD; }
     // varlegCvId RETIRED: VAR/LEG CV jacks are now cvId(5, col) (VAR) / cvId(6, col) (LEG),
     // sharing the unified input-id range and the macroAtten depth store with the 5 core lanes.
 
@@ -286,6 +297,11 @@ struct StraitsEastSandsVisual : Module {
                     float   dir[dotModular::SandsGrid::EAST_LANES][16];
                     float   deleg[dotModular::SandsGrid::EAST_LANES][16];
                     uint8_t dirCh[dotModular::SandsGrid::EAST_LANES], delegCh[dotModular::SandsGrid::EAST_LANES];
+                    // (B) VOICE-LOR PARITY: the voice row's own gate-mod image (the
+                    // same fingerprint discipline — ch == voiceSlot, 16 channels).
+                    float   vlorDir[16];
+                    float   vlorDeleg[16];
+                    uint8_t vlorDirCh, vlorDelegCh;
                 } img{};
                 for (int lane = 0; lane < dotModular::SandsGrid::EAST_LANES; ++lane) {
                     auto& din = inputs[dirModId(lane)];
@@ -294,6 +310,14 @@ struct StraitsEastSandsVisual : Module {
                     auto& gin = inputs[delegModId(lane)];
                     img.delegCh[lane] = gin.isConnected() ? (uint8_t)std::min(gin.getChannels(), 16) : 0;
                     for (int ch = 0; ch < img.delegCh[lane]; ++ch) img.deleg[lane][ch] = gin.getVoltage(ch);
+                }
+                {
+                    auto& vin = inputs[vlorDirModId()];
+                    img.vlorDirCh = vin.isConnected() ? (uint8_t)std::min(vin.getChannels(), 16) : 0;
+                    for (int ch = 0; ch < img.vlorDirCh; ++ch) img.vlorDir[ch] = vin.getVoltage(ch);
+                    auto& vgin = inputs[vlorDelegModId()];
+                    img.vlorDelegCh = vgin.isConnected() ? (uint8_t)std::min(vgin.getChannels(), 16) : 0;
+                    for (int ch = 0; ch < img.vlorDelegCh; ++ch) img.vlorDeleg[ch] = vgin.getVoltage(ch);
                 }
                 std::memcpy(dst, &img, sizeof img);
                 return sizeof img;
@@ -318,6 +342,30 @@ struct StraitsEastSandsVisual : Module {
                             bool high = gin.getVoltage(ch) > 1.f;
                             if (high && !delegModPrev[lane][ch]) ++delegModEdges[lane][ch];
                             delegModPrev[lane][ch] = high;
+                        }
+                    }
+                }
+                // (B) VOICE-LOR PARITY: the voice row's gate-mod edges — the same law,
+                // ch == voiceSlot directly (ch0 = V1 … ch15 = V16, the poly-CV convention).
+                {
+                    auto& vin = inputs[vlorDirModId()];
+                    vlorDirModChans = vin.isConnected() ? (uint8_t)vin.getChannels() : 0;
+                    if (vin.isConnected()) {
+                        int nch = std::min(vin.getChannels(), 16);
+                        for (int ch = 0; ch < nch; ++ch) {
+                            bool high = vin.getVoltage(ch) > 1.f;
+                            if (high && !vlorDirModPrev[ch]) ++vlorDirModEdges[ch];
+                            vlorDirModPrev[ch] = high;
+                        }
+                    }
+                    auto& vgin = inputs[vlorDelegModId()];
+                    vlorDelegModChans = vgin.isConnected() ? (uint8_t)vgin.getChannels() : 0;
+                    if (vgin.isConnected()) {
+                        int nch = std::min(vgin.getChannels(), 16);
+                        for (int ch = 0; ch < nch; ++ch) {
+                            bool high = vgin.getVoltage(ch) > 1.f;
+                            if (high && !vlorDelegModPrev[ch]) ++vlorDelegModEdges[ch];
+                            vlorDelegModPrev[ch] = high;
                         }
                     }
                 }
@@ -358,6 +406,19 @@ struct StraitsEastSandsVisual : Module {
             }
             for (int lane=0; lane<dotModular::SandsGrid::EAST_LANES; ++lane)
                 configInput(delegModId(lane), std::string(laneNm[lane])+" delegation gate-mod (poly)");
+            // (B) VOICE-LOR PARITY: the voice-range row's jacks — the strip's control row.
+            // CV is poly (channel == voiceSlot: ch0 = V1 … ch15 = V16) with per-voice
+            // depth (editor.voiceLorAttenEast — the macroAtten law, one axis over); the
+            // gate-mods follow the lane jacks' edge law (audio-thread counters, the
+            // widget's applyGateMods applies).
+            {
+                static const char* vlorCN[3] = {"Length", "Offset", "Rotation"};
+                for (int item = 0; item < 3; ++item)
+                    configInput(vlCvId(item), std::string("Voice range ") + vlorCN[item]
+                                + " CV (poly, per-voice depth)");
+                configInput(vlorDirModId(),   "Voice range direction gate-mod (poly)");
+                configInput(vlorDelegModId(), "Voice range delegation gate-mod (poly)");
+            }
         }
    }
 
@@ -408,6 +469,14 @@ struct StraitsEastSandsVisual : Module {
     // gate means "apply this everywhere", not "apply it to voice 1".
     uint8_t dirModChans[dotModular::SandsGrid::EAST_LANES]   = {};
     uint8_t delegModChans[dotModular::SandsGrid::EAST_LANES] = {};
+    // (B) VOICE-LOR PARITY: the voice row's OWN gate-mod state (the same split-thread
+    // law, the same broadcast rule; ch == voiceSlot directly — ch0 = V1 … ch15 = V16).
+    bool    vlorDirModPrev[16]    = {};
+    bool    vlorDelegModPrev[16]  = {};
+    uint8_t vlorDirModEdges[16]   = {};   // audio thread is the sole writer
+    uint8_t vlorDelegModEdges[16] = {};
+    uint8_t vlorDirModChans       = 0;
+    uint8_t vlorDelegModChans     = 0;
 
     json_t* dataToJson() override {
         json_t* r = json_object();
