@@ -453,23 +453,24 @@ This resolves the earlier "establish the link first, then move together" questio
 (and re-establishes on change) the anchor; the MODULATION moves the mask relative to it. No separate
 reset/phrase-boundary decision needed — base-change detection IS the re-anchor trigger.
 
-### [RESOLVED — Rodney] AUTHORING is always at ROTATION = 0 (the paint↔rotation chicken-and-egg)
-The doc never established HOW the painted pattern forms its base link to rotation. The problem: if rotation
-is being MODULATED while you paint, are you painting the absolute base or the rotated view? (Paint "what you
-see" → double-rotated at playback; paint "the base" while the display is rotated → paint-blind.)
-RESOLUTION: the BASE pattern is DEFINED at rotation = 0, and ALL authoring happens at rotation 0:
-- PAINT MODE temporarily SUSPENDS follow-rotation and shows/edits the pattern at rotation 0. What you paint
-  IS the base (rotation-0) pattern — what you see = what you store. On exit, follow-rotation resumes and the
-  display SNAPS to base + current rotation (the visual confirmation: your skeleton jumps to where rotation
-  places it).
-- "SET MASK FROM RANGE" seeds the base from the window UNROTATED (as if rotation = 0) — same base space.
-So the paint↔rotation link is by CONSTRUCTION: authoring at rotation-0 makes mask-step-1 ≡ the base
-reference, and the anchor (mask-step-1 ↔ base rotation) + CV-mod-offset mechanism above moves it from there.
-No double-rotation, no paint-blind.
-PLAYBACK: abs2 plays the base at absolute steps (rotation ignored); abs3 applies current rotation to the base
-(base + rotation-mod). The gate lives in ABSOLUTE phrase space (mask-step-1 = absolute phrase step 1 at
-rotation 0), INDEPENDENT of the voiceLOR read window — "follows R" borrows the voice's R as a MODULATION
-SOURCE (the figure slides with the voice's phase), it does NOT confine the gate to the read window.
+### [RESOLVED — Rodney] PAINT ONLY in abs2 (static); enabling abs3 captures base rotation as the anchor
+The paint↔rotation chicken-and-egg (if rotation is modulating while you paint, do you paint the base or the
+rotated view?) is removed by FORBIDDING the conflicting operation:
+- PAINTING IS ALLOWED ONLY IN abs2 (static / NOT-follows-rotation). You cannot paint while follows-rotation
+  is on. In abs2 you paint absolute cells at the voice's CURRENT BASE (unmodulated) rotation — WHAT YOU SEE
+  = WHAT YOU PAINT = where it sits at that base rotation. No moving target, no paint-blind.
+- ENABLING abs3 (follows-rotation) CAPTURES the current base rotation as the ANCHOR for the stored pattern.
+  From then on the figure SLIDES relative to that anchor: base-knob changes RE-ANCHOR (move the figure — the
+  per-step base-change detection above), CV rotation-mod OFFSETS from the anchor. The "first link" from
+  painted pattern to rotation is established ON THE MODE TRANSITION (abs2→abs3), not during painting.
+- "SET MASK FROM RANGE" seeds the abs2 base from the window (at the current base rotation) — same space.
+- TO RE-EDIT: flip back to abs2 (freezes it absolute/static for editing), paint, re-enable abs3.
+WORKFLOW: edit in static mode, turn on follows-rotation to make it move ("stop the tape to edit, play to
+hear it move"). Cleaner than suspending rotation — you paint where it looks right at the base rotation, and
+enabling abs3 is what binds it to rotation.
+PLAYBACK: abs2 plays the pattern at absolute steps (rotation-independent); abs3 = base + rotation (anchor +
+CV mod). The gate lives in ABSOLUTE phrase space, INDEPENDENT of the voiceLOR read window — "follows R"
+borrows the voice's R as a MODULATION SOURCE (the figure slides with the voice's phase), NOT a confinement.
 
 ## MUSICAL PAYOFF OF THE MASK MODES — "rhythmic in and out" = the PRESENCE / STRUCTURE axis (Rodney)
 The extra absolute modes open a distinct musical register: **rhythmic in and out** — voices rhythmically
@@ -528,3 +529,19 @@ The voice LOR was intended to match the probability-lane LORs but currently does
    Move to buttons for parity.
 These are tracked as a "voice LOR parity" fix item — bring voice LOR to full consistency with the
 probability-lane LORs (L/O/R + mod + spread + warp + direction/delegation buttons).
+
+### [Rodney] Voice-R ↔ the chevron, and the modulation-subpanel question
+- The MISSING voice R is also why the voice-LOR lane has NO CHEVRON: other lanes show the chevron at the
+  R-denoted read-start step; the voice lane can't, because there's no R. Adding voice R gives the voice lane
+  a meaningful chevron like the others (not just parity — it's what the chevron denotes).
+- PANEL CROWDING: adding voice-LOR mod jacks + attenuverters (L/O/R — NOT spread/warp, which voice LOR
+  doesn't need; otherwise ALIGN to the other lanes) + direction/delegation buttons/jacks will crowd Sands.
+- POSSIBLE DIRECTION (NOT decided): move modulation jacks + attenuverters to an OPTIONAL SUBPANEL (users may
+  not want to modulate these). DECISION FRAMING (Rodney's consistency instinct): decide the PRINCIPLE, not a
+  one-off. If "second-tier modulation I/O lives on optional subpanels" becomes an INSTRUMENT-WIDE rule
+  (base = play controls + primary; subpanel = modulation depth), then voice-LOR-mod-on-a-subpanel FOLLOWS
+  the rule (consistent, progressive disclosure, scalable — could declutter other lanes too). If it's a
+  ONE-OFF for voice LOR, it's a special case (the thing we keep eliminating) and voice-LOR mod should stay
+  on the base aligned with other lanes. => Settle the principle (modulation-tier-on-subpanels: yes/no
+  instrument-wide); voice LOR then follows it. Direction/delegation BUTTONS + the L/O/R knobs stay on the
+  base either way (they're play controls, not modulation).
