@@ -739,15 +739,15 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       nvgFill(vg);
     }
 
-    // (B) VOICE-LOR PARITY: the ROTATION chevron — R denotes the read-start step (the
-    // same ›‹ marker the probability lanes draw via drawRotationIndicator; the voice
-    // lane never had one because nothing displayed R). Physical bar = (O + R) % 16,
-    // the lanes' law; hue-neutral silver (the strip's palette — the voice frame spans
+    // (B+A5) VOICE-LOR PARITY: the ROTATION chevron — R denotes the read-start step:
+    // the ABSOLUTE phrase step the voice reads at parent-step-1 (the anchor form —
+    // the same ›‹ marker the probability lanes draw via drawRotationIndicator, but
+    // at R itself, NOT the lanes' (O+R)%16 mechanical law; the worked table's first
+    // read == R). Hue-neutral silver (the strip's palette — the voice frame spans
     // all seven lane hues). Sits over the ROTATION gesture band (the strip's lower
     // 35%, hitTestRange's zone) so it reads as the grab target it is.
     {
-      const int rotBar = (rangeStrip.lor[1]
-                          + (rangeStrip.lor[2] % std::max(1, rangeStrip.lor[0]))) % STEP_COUNT;
+      const int rotBar = rangeStrip.lor[2];
       rack::Rect cell = rack::Rect(layout.getStepX(rotBar), r.pos.y,
                                    layout.stepWidthF(), r.size.y);
       const float cx = cell.pos.x + cell.size.x * 0.5f;
@@ -1450,23 +1450,27 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         }
         case DragState::START: {
           // Resize from the FRONT: the dragged step becomes the new start; the END
-          // bar stays put; length adjusts (the onDragMove START rule).
+          // bar stays put; length adjusts (the onDragMove START rule). (A5) R is
+          // NOT clamped to the window — the voice row's R is ANCHOR-form (an
+          // absolute phrase step), not the lanes' window-relative rot.
           const int endBar = (lor[1] + std::max(1, std::min(lor[0], STEP_COUNT)) - 1) % STEP_COUNT;
           int newLen = ((endBar - step) % STEP_COUNT + STEP_COUNT) % STEP_COUNT + 1;
           lor[1] = ((step % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
           lor[0] = rack::math::clamp(newLen, 1, STEP_COUNT);
-          lor[2] = rack::math::clamp(lor[2], 0, std::max(0, lor[0] - 1));
           break;
         }
         case DragState::END: {
           const int fwd = ((step - lor[1]) % STEP_COUNT + STEP_COUNT) % STEP_COUNT;
           lor[0] = rack::math::clamp(fwd + 1, 1, STEP_COUNT);
-          lor[2] = rack::math::clamp(lor[2], 0, std::max(0, lor[0] - 1));
           break;
         }
         case DragState::ROTATION: {
-          const int rel = ((step - lor[1]) % STEP_COUNT + STEP_COUNT) % STEP_COUNT;
-          lor[2] = rack::math::clamp(rel, 0, std::max(0, lor[0] - 1));
+          // (A5) The VOICE row's R is ANCHOR-form — the ABSOLUTE phrase step the
+          // voice reads at parent-step-1 (the engine derives rho = (R−O) mod L;
+          // the worked table's first read == R). NOT the lanes' window-relative
+          // mechanical rot: drag to a step, R = that step. This is the rotation
+          // SYNC — where you drag is where the read starts.
+          lor[2] = ((step % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
           break;
         }
         default: break;

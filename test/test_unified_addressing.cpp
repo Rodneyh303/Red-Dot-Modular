@@ -1060,9 +1060,9 @@ int main() {
             bool fullOK = true;
             for (int k = 0; k < 16; ++k) {
                 r.advancePlayhead(+1);
-                fullOK = fullOK && r.voiceReadPosition(M) == k;   // the global walk — all 16
+                fullOK = fullOK && r.voiceReadPosition(M) == ((k + 7) % 16);   // (t−1+R) mod 16 — all 16, phased by R
             }
-            check(fullOK, "STAGE4: abs1's READ runs the full phrase — the playhead marches all 16 (only the output gates)");
+            check(fullOK, "STAGE4: abs1's READ runs the full phrase PHASED BY R — parent-step-1 reads R=7 (the anchor law, unified); only the output gates");
             rk = 0.f;   // cycle: the SAME row confines the read
             r.pushMaskEditor(rb, rk, rf, reb, rek, ref, rle);
             static const int kCycleReads[16] = {7,8,9,10,11,12,5,6,7,8,9,10,11,12,5,6};

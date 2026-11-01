@@ -667,15 +667,25 @@ void SequencerEngine::recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, 
                                     motionV, cachedLength, cachedOffset);
         const bool live = (v == 0) || (v >= 1 && v <= numPolyVoices);
         if (!live) { voiceDriver_[v] = tNowV; voiceDriverPrev_[v] = tPrevV; voiceRead_[v] = 0; continue; }
-        // (A4) The base-mode read law: the pass-through branch engages on IDENTITY
+        // (A4+A5) The base-mode read law: the pass-through branch engages on IDENTITY
         // *or* ABS1 — abs1's read runs the full phrase (the playhead marches all 16;
-        // the OUTPUT gate does the windowing against the global step). The comment
-        // block below ("identity frame") covers both: the same shared-pair walk.
+        // the OUTPUT gate does the windowing against the global step). (A5) THE
+        // ANCHOR LAW, unified: R is the ABSOLUTE phrase step the voice reads at
+        // parent-step-1 — cycle's rho encodes it within the window ((R−O) mod L; the
+        // Stage-2 worked table's first read == R), and abs1's full-phrase walk
+        // carries it as a CONSTANT PHASE: read = (t−1+R) mod 16. Rotation syncs in
+        // BOTH modes (Rodney: "absolute mode doesn't synch rotation either" — the
+        // choice is made: it does); L/O stay gate-only in abs1. The lanes nest in
+        // the phased frame (voiceDriver_ carries the phase). Identity rows (R=0)
+        // degenerate to the pure global walk — the Stage-1 goldens verbatim.
         if (voiceLorIdentity(v) || voiceFrameReadsFullPhrase(v)) {
-            voiceDriver_[v]      = tNowV;
-            voiceDriverPrev_[v]  = tPrevV;
-            voiceRead_[v]        = (int)(((tNowV - 1) % 16 + 16) % 16);
-            {   // identity frame = the global walk (same pair as macroFrame above)
+            int Lb, Ob, Rb; LaneDir db;
+            effectiveVoiceLor(v, Lb, Ob, Rb, db);
+            const int64_t ph = voiceLorIdentity(v) ? 0 : (int64_t)Rb;
+            voiceDriver_[v]      = tNowV + ph;
+            voiceDriverPrev_[v]  = tPrevV + ph;
+            voiceRead_[v]        = (int)((((tNowV - 1 + ph) % 16) + 16) % 16);
+            {   // the walk sign — a constant phase never changes the delta
                 const int64_t gd = tNowV - tPrevV;
                 if (gd > 0)      voiceSign_[v] = +1;
                 else if (gd < 0) voiceSign_[v] = -1;
