@@ -174,6 +174,14 @@ polymeter when levels use different styles; the instantaneous sign-product compo
 consistently forward and back (same frame rule), so scrub retraces single-vs-double endpoints exactly.
 Turnaround style is a per-level setting.
 
+### [CORRECTION — Rodney] Offset vs Rotation within the range
+NOTE: the paragraph below conflates OFFSET and ROTATION. The correct reading: L and O set the WINDOW (where
+it is + its length); ROTATION (R) sets the read's phase/start position WITHIN that window. So R — not O — is
+what slides the read start within the [range]. O is the nested parent-relative offset of the window itself.
+Treat "offset slides the read phase within the window" below as describing ROTATION's role; O positions the
+window relative to the parent. (Voice LOR currently implements L and O but NOT R — see the Voice-LOR-gaps
+note at the end — which is itself part of why this was muddled.)
+
 ### Offset (the O in LOR) — nested, relative to parent read position
 Offset is the usual LOR O (NOT the range start). Range = {where the window is, length}; OFFSET = where
 within/along that window the read starts, relative to the PARENT's read position:
@@ -445,6 +453,24 @@ This resolves the earlier "establish the link first, then move together" questio
 (and re-establishes on change) the anchor; the MODULATION moves the mask relative to it. No separate
 reset/phrase-boundary decision needed — base-change detection IS the re-anchor trigger.
 
+### [RESOLVED — Rodney] AUTHORING is always at ROTATION = 0 (the paint↔rotation chicken-and-egg)
+The doc never established HOW the painted pattern forms its base link to rotation. The problem: if rotation
+is being MODULATED while you paint, are you painting the absolute base or the rotated view? (Paint "what you
+see" → double-rotated at playback; paint "the base" while the display is rotated → paint-blind.)
+RESOLUTION: the BASE pattern is DEFINED at rotation = 0, and ALL authoring happens at rotation 0:
+- PAINT MODE temporarily SUSPENDS follow-rotation and shows/edits the pattern at rotation 0. What you paint
+  IS the base (rotation-0) pattern — what you see = what you store. On exit, follow-rotation resumes and the
+  display SNAPS to base + current rotation (the visual confirmation: your skeleton jumps to where rotation
+  places it).
+- "SET MASK FROM RANGE" seeds the base from the window UNROTATED (as if rotation = 0) — same base space.
+So the paint↔rotation link is by CONSTRUCTION: authoring at rotation-0 makes mask-step-1 ≡ the base
+reference, and the anchor (mask-step-1 ↔ base rotation) + CV-mod-offset mechanism above moves it from there.
+No double-rotation, no paint-blind.
+PLAYBACK: abs2 plays the base at absolute steps (rotation ignored); abs3 applies current rotation to the base
+(base + rotation-mod). The gate lives in ABSOLUTE phrase space (mask-step-1 = absolute phrase step 1 at
+rotation 0), INDEPENDENT of the voiceLOR read window — "follows R" borrows the voice's R as a MODULATION
+SOURCE (the figure slides with the voice's phase), it does NOT confine the gate to the read window.
+
 ## MUSICAL PAYOFF OF THE MASK MODES — "rhythmic in and out" = the PRESENCE / STRUCTURE axis (Rodney)
 The extra absolute modes open a distinct musical register: **rhythmic in and out** — voices rhythmically
 ENTERING and LEAVING on a hand-shaped pattern (not probabilistic dropout). Plain working term: "rhythmic
@@ -487,3 +513,18 @@ logic anyway, and the correct wrap falls out of implementing the nested maps pro
 Sub-question to settle then: should Sands DISPLAY the full 16 with the active window highlighted, or only
 the active window? (Ties to the adapt-to-length vs fixed display decision — see STEP_COUNT_DECISION.md /
 LIGHT_RING_32_STEPS.md.)
+
+════════════════════════════════════════════════════════════════════════════════
+## [GAPS — Rodney, on re-read] Voice LOR is INCOMPLETE vs the probability-lane LORs
+The voice LOR was intended to match the probability-lane LORs but currently does NOT:
+1. ROTATION missing: voice LOR has LENGTH and OFFSET but NO ROTATION (R) — inconsistent with every
+   probability lane LOR (which has L/O/R). R is needed (it's what sets the read phase within the window —
+   see the Offset-vs-Rotation correction above). ADD per-voice rotation.
+2. MODULATION missing (lines 211, 229-281 intended it): voice LOR has NO mod — no LOR mod, no spread, no
+   spread mod, no warp — inconsistent with other lanes. The design intended voice LOR to be modulatable.
+   ADD voice-LOR modulation (and consider spread/warp parity with the probability lanes).
+3. DIRECTION + DELEGATION as BUTTONS, not context menu: the design intended direction and delegation to be
+   buttons (like other lanes), not buried in a context menu. Currently context-menu only — inconsistent.
+   Move to buttons for parity.
+These are tracked as a "voice LOR parity" fix item — bring voice LOR to full consistency with the
+probability-lane LORs (L/O/R + mod + spread + warp + direction/delegation buttons).
