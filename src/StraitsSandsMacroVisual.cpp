@@ -918,7 +918,15 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 // MVC: hide the playhead when stopped (match Mono's started ? tick : -1), so
                 // rotation CV only moves the chevron, not the playhead, when the seq is stopped.
                 int ph = (eng.stepIndex >= 0) ? eng.macroLaneTick_[l] : -1;
-                visualEditor->setLanePlayStep(l, calcPlayhead(ph, ownLen, ownOff, ownRot));
+                // PER-VOICE STEP-ADVANCE (the WANDER build): the VAR lane's chevron reads
+                // the ENGINE's scanned position — the same index the mono advance draw
+                // used (the Macro editor shows the GLOBAL lanes; the global VAR chevron
+                // is the mono decision's scan). Outside holds this is bit-identical to
+                // the calcPlayhead below; during a gate-mode hold it scans.
+                visualEditor->setLanePlayStep(
+                    l, (l == SequencerEngine::EDITOR_LANE_VARIATION)
+                            ? variationLanePlayhead(eng)
+                            : calcPlayhead(ph, ownLen, ownOff, ownRot));
             }
         }
 

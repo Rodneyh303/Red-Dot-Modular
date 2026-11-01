@@ -1712,48 +1712,20 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 // Use the PER-VOICE tick (laneTickV_), not mono's laneTick_ — otherwise
                 // the poly playhead always follows mono's direction, ignoring the DirCell.
                 int ph1253 = (eng.stepIndex >= 0) ? eng.laneTickV_[pv][l] : -1;
-                visualEditor->setLanePlayStep(l, calcPlayhead(ph1253, cvLen, cvOff, cvRot));
-            }
-            // VARIATION (4) / LEGATO (5): show the window the ENGINE actually reads for
-            // this voice — mono's when the lane DELEGATES (default), the voice's own
-            // when Local East — plus the moving playhead. strand == editor lane
-            // (VAR 4, LEG 5). Use polyLOR (editor-order, masks &7) NOT polyLenE
-            // (engine-order, masks &3 → would alias VAR→REST); eng.lor(el) is mono's.
-            for (int el = dotModular::SandsGrid::POLY_LANES; el < dotModular::SandsGrid::EAST_LANES; ++el) {
-                const bool localEast =
-                    (getMonsoon() && getMonsoon()->getVarlegDeleg(pv, el - dotModular::SandsGrid::POLY_LANES) > 0.5f);
-                int cvLen, cvOff, cvRot;
-                if (localEast) {   // voice's own window (what the engine reads under Local East)
-                    cvLen = std::max(1, eng.polyLOR(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{el}, SequencerEngine::LOR_LEN));
-                    cvOff = eng.polyLOR(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{el}, SequencerEngine::LOR_OFF);
-                    cvRot = eng.polyLOR(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{el}, SequencerEngine::LOR_ROT);
-                } else {           // delegated → mono's window (what the engine reads under delegate)
-                    cvLen = std::max(1, eng.lor(el, SequencerEngine::LOR_LEN));
-                    cvOff = eng.lor(el, SequencerEngine::LOR_OFF);
-                    cvRot = eng.lor(el, SequencerEngine::LOR_ROT);
-                }
-                visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
-                int pvTick = eng.laneTickV_[pv][el];
-                int ph1276 = (eng.stepIndex >= 0) ? pvTick : -1;
-                // PER-VOICE STEP-ADVANCE Stage 3: the VAR chevron reads THIS voice's
-                // scanned position — its OWN scan under Local East (the same index its
-                // advance decision used; it scans during a per-voice gate-mode hold),
-                // mono's when the lane delegates (the voice rides the mono decision).
-                // LEG keeps the plain playhead (no scan on LEG). Display-reads-engine,
-                // per voice.
+                // PER-VOICE STEP-ADVANCE (the WANDER build): the VAR chevron reads THIS
+                // voice's scanned position — its OWN scan (the same index its advance
+                // decision used; it creeps during a per-voice gate-mode hold and
+                // re-aligns when the voice moves). LEG keeps the plain playhead (no
+                // scan on LEG). Display-reads-engine, per voice.
                 visualEditor->setLanePlayStep(
-                    el, (el == SequencerEngine::EDITOR_LANE_VARIATION)
+                    l, (l == SequencerEngine::EDITOR_LANE_VARIATION)
                             ? variationLanePlayheadForVoice(eng, dotModular::VoiceResolver::slot(pv + 1))
-                            : calcPlayhead(ph1276, cvLen, cvOff, cvRot));
-                // CC_PROMPT_UI_TO_RESOLVER_SPEC step 2 + VOICE CONSISTENCY: the ONE
-                // accessor at THIS voice's voiceSlot (pv) — NOT finalRandomByStrand,
-                // which read the MONO row regardless of the displayed voice (the
-                // CC_PROMPT_warp_display_scope voice-0 residue) and skipped the
-                // resolver's spread/warp composition.
-                for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
-                    visualEditor->currentState.lanes[el].probabilities[s] =
-                        eng.effectiveProbability(dotModular::VoiceResolver::slot(pv + 1), dotModular::LaneId{el}, s, SequencerEngine::ProbLens::Owner);
+                            : calcPlayhead(ph1253, cvLen, cvOff, cvRot));
             }
+            // (The pre-consolidation "VARIATION (4) / LEGATO (5)" extra loop is DELETED:
+            //  SANDS CONSOLIDATION made VAR/LEG full poly lanes — POLY_LANES == EAST_LANES
+            //  == 7 — so that loop's range was empty (dead since), and the 7-lane loop
+            //  above already covers VAR/LEG, including the per-voice VAR chevron.)
         }
 
         // ── UNIFIED ADDRESSING Stage 3: the voice-range strip (the selected voice) ──
