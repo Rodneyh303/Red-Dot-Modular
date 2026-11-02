@@ -80,7 +80,8 @@ CA source maps and containmentParents above.
 ### C. The frame literals (each classified; & 0x0F → & 0x1F for frame masks)
 
 SequencerEngine.cpp: isStepInWindow :233; setWindow :236–251 (`endStep` wrap :240, mask build :244,
-reseat :249); the backward/forward walk bounds :475–488; `macroFrameRead_` :643; `voiceRead_` :681/:697;
+reseat :249); the backward/forward walk bounds :475–488; `voiceRead_` :697 (`wnow` is own-length-bounded,
+so L+O ≤ 31 < 32 — the widening is unobservable below D3);
 the snap path :779–792 (incl. the 16-bounded window search :786); `updateWindow` offset mask :800/:806–808;
 rel-light/trail arithmetic :849/:850/:880/:898; `refreshPolyRandomCell` :1653–1660; :1769/:2175/:2213.
 PatternEngine.cpp:256 (warped_ cell write) and PatternEngine.hpp:545 (warpRow read) — `step & 0x0F`.
@@ -90,6 +91,15 @@ the phase-derived step lands in the frame to compare against `engine.stepIndex` 
 musical in the first draft of this doc; it is the frame landing of the transport phase, and both
 sides of the comparison must land in the SAME frame, so `% 16` → `% MAX_STEPS`).
 StraitsSandsMacroVisual.cpp:1280/:1306 `calcPlayhead(...) & 0x0F` — frame value → 0x1F.
+
+**THE TWO PASS-TRACKING EXCEPTIONS (D7 — NOT frame sweeps):** `macroFrameRead_ = (tNow − 1) % 16` :643
+and the identity-row `voiceRead_ = (tNowV − 1) % 16` :681 consume the RAW driver (pass-through at the
+default window), so their `% 16` is the ACTIVE PASS, not the frame — today pass == frame == 16 and the
+ring mod is accidental-correct. At (16, 0)-on-32 a naive `% 32` sweep lands cell 16 while step 0 plays:
+the macro/identity data reads desync from the playhead on pass 2. The invariant: the landing EQUALS the
+played step (both feed data reads). → mod the driver's own cycle — the pass (16) at the pass-through
+default; at mapped windows the driver is bounded so any modulus ≥ len is identity (`% MAX_STEPS` correct
+there). The only two exceptions to the frame sweep; grep-verified at P4.
 
 **The one genuine ≤16 semantic shift (D3):** the window WRAPS the frame today — offset 15 + length 16
 plays the rotated full ring [15,0,…,14] (endStep `(15+16−1) & 0x0F` = 14). At frame 32 the same config
@@ -125,9 +135,11 @@ Every wrap in the tree has TWO independent parts:
   the final landing stays `% 16` until the ring sweep.
 - **The RING — the frame the arithmetic lands on — is a CONSTANT.** Every `& 0x0F` / `% 16` landing
   between boundary checks (the playhead walk :476/:486, `voiceRead_ = (wnow + O) & 0x0F` :697 — the
-  offset rides, the landing is the frame; `macroFrameRead_` :643; identity-row reads :681; the phrase
-  helpers hpp:596–608), the window-mask build (setWindow :236–251), the A6 full-phrase constant
-  (`voiceFrameReadsFullPhrase → L = 16` :690 — a frame value, not a parameter).
+  offset rides, the landing is the frame; the phrase helpers hpp:596–608), the window-mask build
+  (setWindow :236–251), the A6 full-phrase constant (`voiceFrameReadsFullPhrase → L = 16` :690 — a
+  frame value, not a parameter). ONE EXCEPTION (D7): `macroFrameRead_` :643 and the identity-row
+  reads :681 land on the ACTIVE PASS, not the frame — they consume the RAW driver, so their modulus
+  tracks the playhead's cycle, not the ring.
 
 At 32 the boundary layer extends by its EXISTING parameters (window 1..32, LOR len 1..32 — the
 position-holder walks already take len > 16) and the ring becomes 32 in one mechanical sweep. The
@@ -194,11 +206,22 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
 - **THE EXTENSION LAW:** every per-16 musical semantic (bar phase, quarter anchors, CA voice routing,
   Philox streams) is INVARIANT; steps ≥ 16 reuse them unchanged (32-as-extension-of-16). No per-32 map
   is introduced unless a site's audit proves it needs one (none found).
-- **THE GOLDEN LAW:** every existing digest holds bit-identically at len ≤ 16 AND offset+len ≤ 16.
+- **THE GOLDEN LAW:** every existing digest holds bit-identically at len ≤ 16 AND offset+len ≤ 16 —
+  for EVERY (off, len) pair: the master window AND each lane/voice LOR (a read reproduces exactly when
+  it never crosses cell 15, making the % 16 → % 32 landing widening unobservable).
   The two documented shift classes — D1 CV formulas (if extended) and D3 window-topology at
   offset+len > 16 — are baseline re-captures, enumerated site-by-site with one-line reasons, house
   precedent: the subgate draw-source fix ("digests shift (baseline, not regression) — re-capture on
   the fixed base").
+- **THE REPRODUCTION LAW (Rodney: "this should simplify reproduction 16 step equivalent on 32 step
+  grid"):** the 16-equivalent on the 32 grid is a CONFIGURATION, not a mode — the default window
+  (16, 0) IS the 16 engine on the 32 frame. The driver pass-through (`driverTickAt` :96) keeps every
+  lane walk's raw congruence (a len-7 lane keeps its 7-cycle — no re-phase), the windowed playhead
+  fires steps 0..15 and wraps, and every read lands in cells 0..15 — the widened ring is never
+  observed. No shim, no dual path, no mode bit (the MODE LAW's strongest form). The reproduction set:
+  every (off, len) pair with off+len ≤ 16 (THE GOLDEN LAW's condition, restated positively); legacy
+  json patches fill [0..15] through the 16-bounded loaders and reproduce as-is. The non-reproducing
+  set is exactly the D3 wrap class — plus nothing.
 - **THE WARM LAW:** a mid-run 16↔32 window change is the `setWindow` re-author path — the
   position-holder re-anchor law already makes it bit-identical against f(t, newParams) (holders shadow
   `dir*64+len`). No new transport state. test_position_holders' re-anchor pins are the template.
@@ -242,6 +265,12 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   in STEP_COUNT_DECISION — whole notes fit twice); or **(b)** 1-bar-of-32nds — red every 8, no
   mid-ring bar tick (the single-bar identity; the anchors stop marking the clock's quarters). Zero
   DSP impact either way.
+- **D7 — the pass-through pin at 32 (from the reproduction audit):** `driverTickAt`'s pass-through
+  condition (`len == 16 && off == 0`, :96) stays LITERAL — it means "the 16-default window", not "the
+  frame default". Re-keying it to the frame (mapping (16,0)-on-32) re-phases EVERY non-divisible lane
+  (a len-7 lane's 7-cycle becomes a 112-beat; triangles lose their raw beat) — a reproduction break
+  far beyond the edge cases; rejected. Consequence: the two pass-tracking landings :643/:681 mod the
+  ACTIVE PASS (the C-table exceptions above) — the only sites where "sweep the frame" is wrong.
 
 ## Sequencing
 
