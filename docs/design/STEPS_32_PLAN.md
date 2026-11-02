@@ -92,6 +92,19 @@ musical in the first draft of this doc; it is the frame landing of the transport
 sides of the comparison must land in the SAME frame, so `% 16` → `% MAX_STEPS`).
 StraitsSandsMacroVisual.cpp:1280/:1306 `calcPlayhead(...) & 0x0F` — frame value → 0x1F.
 
+**The PHASE PATH (D9's audit find — PhaseEngine was NOT in the first inventory):** the SPAN
+PhaseEngine.hpp:79 `PPB = p16 * 16` (96 positions @ 24 PPQN = 16 sixteenths = one bar) →
+`p16 * MAX_STEPS` (192 = 2 bars @ 24); the TWO landings SequencerEngine.cpp:779 (the jump snap) and
+Monsoon.cpp:1148 (the drift-check) `% 16` → `% MAX_STEPS` IN LOCKSTEP — the drift-corrector
+:1145–1151 compares against the stepIndex :779 sets, so asymmetric landings snap-fight every sample;
+the window scan :790 (`s < 16 ... & 0x0F` → MAX_STEPS / 0x1F); the jump-replay within-draw cap
+Monsoon.cpp:1103 `if (steps > 16) steps = 16` → 32 (a FRAME value — "at most one boundary", :1099);
+the derived BPM PhaseEngine.hpp:105 `barsPerSec * 4.0 * 60.0` assumes 1 phase unit = 1 bar = 4 beats
+→ `* 8.0` (else the bpm readout and `sixteenthSec` :108 HALVE). STAYS MUSICAL: :165–166 the bar-local
+`step16 % 16` + `step16 % 4 == 0` quarter mark (mod-4 of the absolute step is INVARIANT under the
+%16 landing since 16 ≡ 0 mod 4) — it survives the span extension verbatim and IS D6(a)'s ring marking.
+Full reasoning in D9.
+
 **THE TWO PASS-TRACKING EXCEPTIONS (D7 — NOT frame sweeps):** `macroFrameRead_ = (tNow − 1) % 16` :643
 and the identity-row `voiceRead_ = (tNowV − 1) % 16` :681 consume the RAW driver (pass-through at the
 default window), so their `% 16` is the ACTIVE PASS, not the frame — today pass == frame == 16 and the
@@ -249,7 +262,9 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
 - **P6 — pins:** new suite test_steps_32: len-32 march vs the closed forms (all four shapes — 32 is a
   power of two, the congruence laws' easy case); warm 16↔32 mid-run transitions == f(t, config);
   D3 old-vs-new window pins (offset 15 + len 16, documented); legacy-json load (16-wide keys → [0..15],
-  play identical); mask hi/lo roundtrip; ring anchor count (32; `i % 4` → 8 red under D6(a)).
+  play identical); mask hi/lo roundtrip; ring anchor count (32; `i % 4` → 8 red under D6(a));
+  phase-span pins (0–10 V ↔ steps 0..31 identity, reconnect/reset lands on the SAME step — the D9
+  reset-safety invariant; drift-check quiescence during parked arcs).
   Digest re-capture list per THE GOLDEN LAW.
 
 ## Decision points (for Rodney)
@@ -266,15 +281,15 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   double-typed rows (json doubles hold 2³²−1 exactly, but retypes the editor plumbing).
 - **D5 — the A/B gate:** the musical listen-test (STEP_COUNT_DECISION's audit) gates the RELEASE, not
   the branch — with one length knob the A/B is a knob turn on the same build.
-- **D6 — anchor marking at 32 (from Rodney's resolution note: "32 steps is 1 bar at 32nd notes"):**
+- **D6 — anchor marking at 32 (from Rodney's resolution note: "32 steps is 1 bar at 32nd notes") —
+  DECIDED (Rodney: "red quarters every 4 + the bar tick at 16 — Agreed"):**
   the ring is resolution-agnostic — 2 bars of 16ths (the clock's native step) and 1 bar of 32nds are
   the SAME 32-step frame; no DSP site depends on the reading. The reading decides presentational
-  marking only: **(a)** honest-to-clock — steps ARE 16ths, so red quarters every 4 steps (8 red
-  anchors) + a bar tick at 16 (recommended: the anchors keep marking the clock's actual quarters;
-  the `i % 4` widget rule survives; the two-bar reading matches how the long-note gain was argued
-  in STEP_COUNT_DECISION — whole notes fit twice); or **(b)** 1-bar-of-32nds — red every 8, no
-  mid-ring bar tick (the single-bar identity; the anchors stop marking the clock's quarters). Zero
-  DSP impact either way.
+  marking only: **(a) CHOSEN** — honest-to-clock: steps ARE 16ths, red quarters every 4 steps (8 red
+  anchors) + a bar tick at 16 (the anchors keep marking the clock's actual quarters; the `i % 4`
+  widget rule survives; the two-bar reading matches how the long-note gain was argued
+  in STEP_COUNT_DECISION — whole notes fit twice). **(b) declined** — 1-bar-of-32nds: red every 8, no
+  mid-ring bar tick. Zero DSP impact either way.
 - **D7 — the pass-through pin at 32 (from the reproduction audit):** `driverTickAt`'s pass-through
   condition (`len == 16 && off == 0`, :96) stays LITERAL — it means "the 16-default window", not "the
   frame default". Re-keying it to the frame (mapping (16,0)-on-32) re-phases EVERY non-divisible lane
@@ -305,6 +320,40 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   constant angular address per master step (adapt-to-length re-spaces; step 8's lamp would move on
   every knob turn). At the default (16, 0) the far half stays dark — honest: the playhead never
   enters it (the REPRODUCTION LAW made visible on the panel).
+- **D9 — the phase-input span (Rodney: "Phase mode which is mode c. Phase 0 to 10v is quantised to 96
+  steps based on 24 ppqn for 4 quarter notes. Similar issue to light ring. Leave this and Phase 0 to 10
+  represents 1 bar. Or quantise to 192 steps and one full Phase cycle represents 2 bars at 24ppqn, or 1
+  at 48ppqn."):** QUANTISE TO 192 — the span extends to the frame (`PhaseEngine.hpp:79`
+  `PPB = p16 * 16` → `p16 * MAX_STEPS`: 0–10 V = 2 bars @ 24 PPQN = the full 32-step cycle). The "1
+  bar at 48 PPQN" reading is VOID — PPQN_48_96's DECISION requires 24 (48/96 nominal/unsafe,
+  near-zero). The deciding structure is D8's, one level deeper — **THE PHASE INPUT IS RESET-SAFE IFF
+  SPAN == FRAME.** `normPhase` wraps the voltage into [0,1) and `prevContPhase` accumulates
+  shortest-path deltas (:97–99), so `pulsePos` is the UNWRAPPED absolute pulse and
+  `absStep = pulsePos / p16` carries the revolution count k (absStep = bar-local + k·span). On
+  disconnect/reconnect or reset (`havePrev=false` :81, `reset()` :55–60) pulsePos RE-SEEDS from the
+  bar-local position (:86/:91) — k is LOST. At span == frame the landing (bar-local + k·frame) mod
+  frame = bar-local — k invisible, a reconnect lands on the SAME step (today's span-16-on-frame-16 is
+  safe the same way D7's :643/:681 are accidental-correct). At span 16 on frame 32: odd k shifts the
+  landing +16 — reconnecting the phase cable on an odd pass plays the OTHER half of the pattern. Pass
+  parity becomes LOAD-BEARING, carried by an accumulator that silently resets — D8's twice-around
+  rejection in its sharpest form (there the pass was merely invisible; here it is load-bearing AND
+  volatile). Span 32 restores the invariant (k·32 mod 32 = 0) and makes the voltage INJECTIVE:
+  voltage ↔ master step one-to-one — one sweep = one full pattern = one full ring revolution (the
+  phase input and the D8 ring AGREE). **COMPATIBILITY IS D1-CLASS, NOT FREE:** the phase span is
+  FRAME-domain, NOT window-relative — today the phase lands IDENTITY on the frame and out-of-window
+  landings PARK at the window start (:788–792; the driver map's window walk is the LANE layer, not
+  the input layer) — so at the default (16, 0) the second half of a 0–10 V sweep parks instead of
+  wrapping: every existing mode-C patch re-calibrates. The argument is D1's own ("a window CV that
+  cannot reach steps 17–32 defeats the feature"): a phase input that cannot reach steps 17–32
+  defeats the feature. Release-noted; CV pins re-capture. The window-relative alternative (0–10 V =
+  the window arc, start at off) is REJECTED per D8's own logic: the voltage loses its constant
+  address (the same V means a different step per knob turn) and entangles the input with the live
+  boundary layer — a NEW semantic, not a preservation (today is frame-absolute). WHAT IS INVARIANT:
+  the musical 16 inside the phase engine — the quarter mark (:165–166) — survives verbatim and IS
+  D6(a)'s ring marking (the phase's quarter edges = the red anchors; the bar tick at 16 = the
+  mid-ring tick). THE SITES are in the C table's phase-path find above. P6 pin added: drift-check
+  quiescence during parked arcs (the corrector :1145–1151 re-fires per sample while the landing
+  parks out-of-window — pre-existing today at mapped windows; wider arc at span 32).
 
 ## Sequencing
 

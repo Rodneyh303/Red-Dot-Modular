@@ -49,7 +49,8 @@ REPLACE with 32. Twice-around-16 rejected on five counts (full reasoning in STEP
   :681); a twice-around ring cannot distinguish pass 1 from pass 2, and the bar line is undrawable
   (lamp 0 fires both passes). At 32, pass 2 is the far half and D6(a)'s mid-ring bar tick at 16 exists.
 - **The 2-bar reading is MARKED, not lost:** the ring is resolution-agnostic (D6) — 2 bars of 16ths
-  and 1 bar of 32nds are the SAME 32-frame; the reading decides MARKING only. D6(a) (recommended):
+  and 1 bar of 32nds are the SAME 32-frame; the reading decides MARKING only. D6(a) (DECIDED —
+  Rodney: "red quarters every 4 + the bar tick at 16 — Agreed"):
   8 red quarter anchors — the `i % 4` widget rule survives VERBATIM at 32 — plus the bar tick.
   Twice-around collapses both bars' quarters onto the same 4 lamps: the 2-bar reading becomes
   invisible exactly when the pattern becomes 2 bars.
