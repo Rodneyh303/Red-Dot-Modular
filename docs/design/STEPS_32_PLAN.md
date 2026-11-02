@@ -359,6 +359,21 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   mid-ring tick). THE SITES are in the C table's phase-path find above. P6 pin added: drift-check
   quiescence during parked arcs (the corrector :1145–1151 re-fires per sample while the landing
   parks out-of-window — pre-existing today at mapped windows; wider arc at span 32).
+  **CLARIFIED (Rodney: "OK and phase mode phase represents 1 bar or 2? it's just mapping phase to
+  clock"):** TWO BARS — and "just a mapping" is exactly the right frame: 0–10 V is a POSITION MAP
+  onto the clock's own step domain (same steps, same quarter anchors, same ring — not a second
+  time domain). The span == frame rule is what MAKES it a plain mapping: at span 16 the voltage
+  would address a domain half the clock's size — two clock positions per voltage, revolution
+  parity k deciding, k volatile on reconnect (the reset hazard above); at span 192 the map is 1:1
+  — one sweep = one pattern = one ring revolution. THE CONCRETE MAP (P6 pin constants): 24 PPQN →
+  192 pulse positions per sweep → **0.3125 V per 16th (= per step), 1.25 V per quarter (the red
+  anchors), 5.000 V at the bar tick (the step-16/17 boundary — in the stepped phase modes this
+  crossing IS the BAR 1/BAR 2 swap, D10), 10 V wraps to step 1**. The two places it is MORE than a
+  mapping, both already pinned: (a) the voltage addresses the FRAME, not the window —
+  out-of-window landings PARK at the window start (:788–792; the D1-class re-calibration,
+  release-noted); (b) the module derives TIMING from the ramp — the bpm readout
+  `barsPerSec*4.0*60.0` → `*8.0` and `sixteenthSec` :108 (the C-table find): the one constant
+  that must change, because a cycle is now 2 bars.
 
 - **D10 — the ring's window map + the bar indicator (Rodney: "we could have a 1st and 2nd bar
   indicator sync with the light ring. If only a subset of the 1st 16 steps are included in the master
