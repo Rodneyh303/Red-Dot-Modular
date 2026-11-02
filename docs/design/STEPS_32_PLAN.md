@@ -109,6 +109,20 @@ Every wrap in the tree has TWO independent parts:
   lane walks at their own `strandLen`/`macroLOR_` (:451/:464). The transport clock `t` wraps at
   NOTHING (unbounded since the DNA_LCM kill). The master length/offset does NOT cascade into lane
   wraps — a voice at LOR len 5 wraps every 5 inside an 11-step master window (the nested beating).
+  What the master window DOES reach is the lane PHASE (Rodney's "does master offset offset the
+  probability reads?" — answered from fresh reads): the walks are driven by the driver map
+  (`driverTickAt` :95–100 — pass-through at the default window 16/0, otherwise the 1-based walk
+  through the window; called for the mono lanes :417 and PER VOICE :663, the advance offsets riding
+  inside), so a default lane (len 16, off 0, rot 0, Forward) reads exactly the windowed cells
+  IDENTITY-MAPPED — master step s still draws cell s (window [3..12] → the lane draws cells 3..12;
+  cells 0–2/13–15 go silent for default lanes while the window is authored), and the wrap re-lands
+  on the window start's tick each pass. Shorter lanes keep their OWN wrap (`laneTickFor` mods by
+  the lane length :48–54) — the master window re-phases their polymeter beat (against the window
+  walk, not the 16-count) but adds nothing to their offset. The master offset NEVER enters
+  `getStrandIdx` (:2168–2176): the only offset that slides the probability DATA is the LANE'S OWN
+  LOR off. Thresholds (variationProb/restProb/…) and the pairing inside the window are untouched.
+  The driver's `% len` IS the master length — at 32 it extends with the window range (D3's layer);
+  the final landing stays `% 16` until the ring sweep.
 - **The RING — the frame the arithmetic lands on — is a CONSTANT.** Every `& 0x0F` / `% 16` landing
   between boundary checks (the playhead walk :476/:486, `voiceRead_ = (wnow + O) & 0x0F` :697 — the
   offset rides, the landing is the frame; `macroFrameRead_` :643; identity-row reads :681; the phrase
