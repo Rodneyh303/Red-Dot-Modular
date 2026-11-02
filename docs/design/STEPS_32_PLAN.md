@@ -166,11 +166,19 @@ MAX_STEPS, or live-length-bound where the algorithm allows (THE LENGTH LAW). Mon
 ### F. Surfaces
 
 - **Ring:** embed_monsoon.py:32–33 — 16 `STEP_LIGHT_{i}` anchors at r=14 → 32 anchors (enlarged radius
-  per LIGHT_RING_32_STEPS: position-only, no pattern-detail role, red-quarter/green-rest kept).
-  Monsoon.hpp:500–503 `STEP_LIGHTS_END = START + 16` → `+ 32` (offset-based enum re-seats the
-  downstream ids automatically). MonsoonWidget.cpp:474–475 bind loop 16 → 32; the `i % 4` red rule
-  is MUSICAL (quarters at the clock's 16th resolution) — unchanged under D6 option (a), or → `i % 8`
-  under option (b).
+  per LIGHT_RING_32_STEPS: position-only, no pattern-detail role, red-quarter/green-rest kept;
+  FIXED master-step scale per D8 — NOT twice-around-16). Monsoon.hpp:500–503 `STEP_LIGHTS_END =
+  START + 16` → `+ 32` (offset-based enum re-seats the downstream ids automatically).
+  MonsoonWidget.cpp:474–475 bind loop 16 → 32; the `i % 4` red rule is MUSICAL (quarters at the
+  clock's 16th resolution) — unchanged under D6 option (a), or → `i % 8` under option (b).
+- **Ring feed (the audit's find — NOT in the first inventory):** Monsoon.cpp:1461
+  `float stepBrightness[16]` + :1462 the fill loop + :1492 `updateStepLights(stepBrightness, 16)`;
+  MonsoonUIManager.cpp:100 `for (int i = 0; i < 16 && i < count; ++i)` — all → MAX_STEPS. A missed
+  site here leaves lamps 16–31 permanently dark (the upper half of the D8 ring dead) while the
+  engine plays them. The playhead comparison itself (`lightIdx == stepIndex`,
+  SequencerEngine.cpp:874) is frame-generic AS WRITTEN — it extends mechanically BECAUSE the ring
+  is 32; twice-around-16 would have forced a NEW `% 16` into this path (`stepIndex % 16`), the
+  exact landing class P4 sweeps out (→ D8).
 - **Sands grid:** StraitsSandsMacroVisual.cpp:388/:460 `stepW = (ED_W − 12)/16` → `/32` (cells halve;
   the accepted HP cost). Widget-drawn = no SVG regen for the grid itself.
 - **Lantern:** Lantern.cpp:499 `N_STEPS = 16` → 32 (nvg-drawn, no assets); :1118 bar grouping
@@ -235,12 +243,14 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
 - **P3 — the plumbing:** configParam ranges, updateWindow clamps + CV per D1, LOR_LEN range (D).
 - **P4 — the literal sweep:** every & 0x0F / %16 site per the C table (frame → 0x1F; musical → stays;
   voice → untouched). Grep-verified zero unclassified literals at close.
-- **P5 — the surfaces:** ring SVGs (32 lamps, enlarged, position-only), STEP_LIGHTS enum + widget bind,
-  Sands stepW, Lantern N_STEPS (F). Anchor audit 9/9.
+- **P5 — the surfaces:** ring SVGs (32 lamps, enlarged, position-only, FIXED master-step scale per
+  D8), STEP_LIGHTS enum + widget bind + the ring feed (the F find), Sands stepW, Lantern N_STEPS
+  (F). Anchor audit 9/9.
 - **P6 — pins:** new suite test_steps_32: len-32 march vs the closed forms (all four shapes — 32 is a
   power of two, the congruence laws' easy case); warm 16↔32 mid-run transitions == f(t, config);
   D3 old-vs-new window pins (offset 15 + len 16, documented); legacy-json load (16-wide keys → [0..15],
-  play identical); mask hi/lo roundtrip; ring anchor count. Digest re-capture list per THE GOLDEN LAW.
+  play identical); mask hi/lo roundtrip; ring anchor count (32; `i % 4` → 8 red under D6(a)).
+  Digest re-capture list per THE GOLDEN LAW.
 
 ## Decision points (for Rodney)
 
@@ -271,6 +281,30 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   (a len-7 lane's 7-cycle becomes a 112-beat; triangles lose their raw beat) — a reproduction break
   far beyond the edge cases; rejected. Consequence: the two pass-tracking landings :643/:681 mod the
   ACTIVE PASS (the C-table exceptions above) — the only sites where "sweep the frame" is wrong.
+- **D8 — the ring count (Rodney: "Should we replace the 16 step circular ring with a 32 step one or
+  accept that 32 steps is 2 bars so twice around 16 steps? Probably 32 better as Master steps are
+  directly indicated in it"):** REPLACE — 32 lamps on a FIXED master-step scale; twice-around-16
+  rejected on five counts. **(1) Injectivity:** on 16 lamps lamp = step % 16 — steps s and s+16
+  share a lamp, and any walk with off+len > 16 (the D3 class) folds the window onto itself; on 32,
+  lamp s IS master step s (the direct indication Rodney wants), and the live window reads as an
+  ARC on the constant scale (start lamp `off`, span `len`; the playhead's jump back IS the
+  boundary — the boundary-vs-ring formulation made visible). **(2) No new % 16:** the playhead
+  compare is `lightIdx == stepIndex` (:874) — frame-generic as written; twice-around REQUIRES
+  `stepIndex % 16` in the display path, a new frame-16 landing exactly where P4 sweeps them out.
+  **(3) Pass-blind:** D7 made the ACTIVE PASS load-bearing (:643/:681); a twice-around ring cannot
+  distinguish pass 1 from pass 2 and the bar line is undrawable (lamp 0 fires both passes); at 32,
+  pass 2 is the far half and D6(a)'s mid-ring tick at 16 exists. **(4) The 2-bar reading is
+  MARKED, not lost:** the ring is resolution-agnostic (D6) — 2 bars of 16ths = 1 bar of 32nds =
+  the same 32-frame, the reading decides MARKING only; D6(a) gives 8 red quarter anchors (the
+  `i % 4` rule survives VERBATIM at 32) + the bar tick, while twice-around collapses both bars'
+  quarters onto the same 4 lamps. **(5) Cost is a wash:** P5 regenerates the SVGs either way
+  (anchors are generator-emitted; the legibility lever is RADIUS — circumference scales with
+  radius, not lamp count); twice-around leaves Monsoon the ONLY surface at 16 beside Sands
+  stepW/32 + Lantern N_STEPS=32 — a special case against the EXTENSION LAW. This DECIDES
+  LIGHT_RING_32_STEPS's OPEN question too: FIXED 32 — "master steps directly indicated" needs a
+  constant angular address per master step (adapt-to-length re-spaces; step 8's lamp would move on
+  every knob turn). At the default (16, 0) the far half stays dark — honest: the playhead never
+  enters it (the REPRODUCTION LAW made visible on the panel).
 
 ## Sequencing
 
