@@ -411,6 +411,46 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   pattern (2 bars); D10 is the repair in kind — instead of displays that under-report the frame,
   SHOW the frame: the ghost arc for the window, the mid-ring tick for the bar line, the exclusive
   LEDs for the live bar.
+- **D11 — the alternating lap-dim (Rodney: "what I am suggesting 1st lap around 16 (a new visual
+  indicator to tell 1 or 2) lamps 1-4 dimmed, 2nd lap 21-32 dimmed, 3rd lap 1-4 dimmed, 4th lap
+  21-32 dimmed"):** DECLINED as an alternation; D10's STANDING map + BAR LEDs stand. The reading: a
+  twice-around-16 ring whose dimmed region alternates with the lap — lap 1 ghosts the lamps carrying
+  lap-1's out-of-window masters (1–4), lap 2 ghosts lap-2's (21–32 → lamps 5–16), laps 3–4 repeat
+  (period 2 laps = one 32-step pattern); the numbers are exactly a 5–20-class window's exclusions
+  (bar-1 head + bar-2 tail), and "(a new visual indicator to tell 1 or 2)" is the lap tell. **THE
+  CREDIT, RECORDED FIRST:** ported to twice-around-16, the D10 ghost map is LAP-CONDITIONAL for free
+  (a lamp's current-lap master differs per lap — lamp 3 is master 3 = OUT on lap 1, master 19 = IN
+  on lap 2), which makes the PASS OBSERVABLE: D8's count (3) pass-blindness is repaired BY the map,
+  and with the lap indicator the lamp⇄master map is conditionally injective. This is the best
+  twice-around salvage on the table — and it still loses, on three counts extending D8's list.
+  **(6) THE TELL IS INVERSE TO WINDOW SIZE:** the lap tell IS the ghost and the ghost IS the
+  exclusion — at the full window (1, 32) there is no exclusion on either lap, no ghost anywhere,
+  the tell is GONE, and the ring is pass-blind exactly when the 32-step feature is fully used; the
+  tell decays continuously as the window grows (window 1–31 leaves ONE ghost lamp on lap 2 — master
+  identity hanging on a single lamp's brightness step). A display law that fails at the feature's
+  maximum is not a display law: the ring's address space must not depend on window shape. **(7)
+  IDENTITY BY FUSION:** every lamp read becomes (lamp, lap-indicator) — the "master steps directly
+  indicated" property (Rodney's own D8 rationale) is retracted — and the ghost level becomes
+  LOAD-BEARING for identity: ghost-vs-rest (0.07) must stay reliably readable or the lap read
+  fails, but the D10 hierarchy was calibrated as decoration, not as address bits. **(8) THE WINDOW
+  READS AS TWO DISJOINT ARCS AND THE BARS OVERLAY:** on 16 lamps the window 5–20 occupies lamps
+  5–16 plus 1–4 — a broken shape, parseable only WITH the lap bit — and the two bars' patterns
+  share the same lamps one lap at a time: the 2-bar comparison, the main question a 2-bar pattern
+  asks, is unseeable. (Cost unchanged, D8 count 5: P5 regenerates either way; radius is the
+  legibility lever.) **ON THE 32-RING the alternation would LIE:** at frame 32 out-of-window is
+  NOT lap-conditional (lamp 3's master is 3, every lap) — 1–4 AND 21–32 are excluded on every lap,
+  so D10's standing map already shows "1–4 dimmed" during lap 1 AND "21–32 dimmed" during lap 2:
+  BOTH of Rodney's observations are true of the standing map on EVERY lap. Alternating the ghost
+  would present the un-dimmed region as playable half the time — misstating the master range, the
+  one thing the map exists to state. **THE PER-BAR ASYMMETRY IS REAL AND ALREADY DISPLAYED:** it
+  lives in the WINDOW WALK, not the map (bar 1 fires 5–16, bar 2 fires 17–20, wrap jumps back to
+  the start — the walk crosses the tick by construction, SequencerEngine.cpp:486/:491); the
+  playhead's sweep relocates each bar inside the standing content arc, the BAR 1/BAR 2 LEDs swap at
+  the tick (bit 4 of stepIndex — the lap tell, D10), and laps 3/4 are the pattern's second cycle:
+  the transport is unbounded (t wraps at NOTHING since the DNA_LCM kill) and no cycle-parity state
+  exists, so the indicator only ever needs to say 1 or 2 — which is BAR 1/BAR 2. P6 pin added:
+  full-window (1, 32) — the ghost map is empty there and the BAR LEDs alone carry the bar tell
+  (the case the 16-lap scheme cannot render; pin the ring reads correctly at the maximum).
 
 ## Sequencing
 
