@@ -50,6 +50,14 @@ static PatternEngine fresh(float rseed=0.f, float mseed=0.f) {
     return pe;
 }
 
+// (ITEM 1 — CC_PROMPT_RHYTHMPATTERN_DELETE_AND_POLARITY) rhythmPattern is RETIRED:
+// the step LEDs derive note/rest LIVE from the rest-draw row (POLARITY_TABLE §3 —
+// a step is a NOTE iff draw >= restProb, the complement of the audio's `<` → rest).
+// Every pin below derives through this helper instead of the deleted array.
+static inline bool isNoteAt(const PatternEngine& pe, int i, float restProb) {
+    return pe.warpRow(pe.displayedVoice_, dotModular::LaneId{PatternEngine::PL_REST})[i] >= restProb;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 int main(){
     std::cout<<"\033[1mPatternEngine Tests\033[0m\n";
@@ -59,11 +67,11 @@ int main(){
     SUITE("Seed & RNG");
     // ─────────────────────────────────────────────────────────────────────────
 
-    TEST("Same seed → identical rhythm pattern", {
+    TEST("Same seed → identical rhythm pattern (the live note/rest derivation off the rest-draw row)", {
         auto p1=fresh(3.f,5.f), p2=fresh(3.f,5.f);
         PatternInput in=allActive();
         p1.redrawRhythm(in); p2.redrawRhythm(in);
-        for(int i=0;i<16;++i) EXPECT_EQ(p1.rhythmPattern[i], p2.rhythmPattern[i]);
+        for(int i=0;i<16;++i) EXPECT_EQ(isNoteAt(p1,i,in.restProb), isNoteAt(p2,i,in.restProb));
     });
 
     TEST("Different seeds → different patterns (very likely)", {
@@ -112,7 +120,8 @@ int main(){
         p2.seedRhythmPhilox(5.f);
         p2.seedMelodyPhilox(0.f);
         p2.redrawRhythm(allActive());
-        for(int i=0;i<16;++i) EXPECT_EQ(p1.rhythmPattern[i], p2.rhythmPattern[i]);
+        PatternInput in=allActive();
+        for(int i=0;i<16;++i) EXPECT_EQ(isNoteAt(p1,i,in.restProb), isNoteAt(p2,i,in.restProb));
     });
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -222,14 +231,14 @@ int main(){
         auto pe=fresh(1.f);
         PatternInput in=allActive(); in.restProb=0.f;
         pe.redrawRhythm(in);
-        for(int i=0;i<16;++i) EXPECT(pe.rhythmPattern[i]);
+        for(int i=0;i<16;++i) EXPECT(isNoteAt(pe,i,0.f));
     });
 
     TEST("restProb=1: all steps are rests", {
         auto pe=fresh(1.f);
         PatternInput in=allActive(); in.restProb=1.f;
         pe.redrawRhythm(in);
-        for(int i=0;i<16;++i) EXPECT(!pe.rhythmPattern[i]);
+        for(int i=0;i<16;++i) EXPECT(!isNoteAt(pe,i,1.f));
     });
 
     TEST("restProb=0.5: roughly half active over many redraws", {
@@ -238,7 +247,7 @@ int main(){
         int active=0;
         for(int r=0;r<100;++r){
             pe.redrawRhythm(in);
-            for(int i=0;i<16;++i) if(pe.rhythmPattern[i]) ++active;
+            for(int i=0;i<16;++i) if(isNoteAt(pe,i,0.5f)) ++active;
         }
         float ratio=float(active)/1600.f;
         EXPECT(ratio>0.35f && ratio<0.65f);
@@ -246,12 +255,16 @@ int main(){
 
     TEST("locked=true: rhythm NOT redrawn", {
         auto pe=fresh(3.f);
-        PatternInput in=allActive(); in.restProb=0.f;
+        PatternInput in=allActive(); in.restProb=0.5f;
         pe.redrawRhythm(in);
-        bool snap[16]; for(int i=0;i<16;++i) snap[i]=pe.rhythmPattern[i];
+        // (ITEM 1) snapshot the DRAW row itself — full fidelity, so a redraw under
+        // lock that moves any cell (not just across a threshold) trips the pin.
+        float snap[16]; for(int i=0;i<16;++i)
+            snap[i]=pe.warpRow(pe.displayedVoice_, dotModular::LaneId{PatternEngine::PL_REST})[i];
         in.locked=true; in.restProb=1.f;  // would flip everything
         pe.redrawRhythm(in);
-        for(int i=0;i<16;++i) EXPECT_EQ(pe.rhythmPattern[i],snap[i]);
+        for(int i=0;i<16;++i)
+            EXPECT_EQ(pe.warpRow(pe.displayedVoice_, dotModular::LaneId{PatternEngine::PL_REST})[i],snap[i]);
     });
 
     TEST("16 distinct steps generated per redraw", {
@@ -259,7 +272,7 @@ int main(){
         PatternInput in=allActive(); in.restProb=0.5f;
         pe.redrawRhythm(in);
         int count=0;
-        for(int i=0;i<16;++i) if(pe.rhythmPattern[i]) ++count;
+        for(int i=0;i<16;++i) if(isNoteAt(pe,i,0.5f)) ++count;
         EXPECT(count>=0 && count<=16);  // sanity
     });
 
@@ -372,16 +385,23 @@ int main(){
         for(int i=0;i<16;++i) EXPECT_NEAR(pe.melodyPitchV[i],snap[i],1e-5f);
     });
 
-    TEST("switchRhythmMode: dice→realtime caches rhythm pattern", {
+    TEST("switchRhythmMode: dice→realtime caches the seed + step indices (the pattern copy retired with rhythmPattern)", {
+        // (ITEM 1) the cachedRhythmPattern copy — the old pin's object — is RETIRED
+        // with the array (the CC doc's deletion list). What the mode-switch machinery
+        // still caches: the seed float + the step indices (the melody twin's
+        // surviving substance, mirrored here).
         auto pe=fresh(3.f,4.f);
         PatternInput in=allActive(); in.restProb=0.3f;
         pe.redrawRhythm(in);
-        bool snap[16]; for(int i=0;i<16;++i) snap[i]=pe.rhythmPattern[i];
-        int si=0,lsi=0;
-        pe.switchRhythmMode(si,lsi);
-        in.restProb=1.f; pe.redrawRhythm(in);  // all rests
-        pe.switchRhythmMode(si,lsi);
-        for(int i=0;i<16;++i) EXPECT_EQ(pe.rhythmPattern[i],snap[i]);
+        const float seedBefore = pe.rhythmSeedFloat;
+        int si=5,lsi=4;
+        pe.switchRhythmMode(si,lsi);          // dice→realtime: caches seed + indices
+        EXPECT(pe.rhythmSeedCached);
+        EXPECT_EQ(pe.cachedRhythmSeedFloat, seedBefore);
+        si=99; lsi=98;                        // move while in realtime
+        pe.switchRhythmMode(si,lsi);          // realtime→dice: restores the indices
+        EXPECT_EQ(si,5);
+        EXPECT_EQ(lsi,4);
     });
 
     TEST("switchMelodyMode: stepIndex cached and restored", {
@@ -433,7 +453,7 @@ int main(){
         p1.reset(); p2.reset();
         PatternInput in=allActive();
         p1.redrawRhythm(in); p2.redrawRhythm(in);
-        for(int i=0;i<16;++i) EXPECT_EQ(p1.rhythmPattern[i],p2.rhythmPattern[i]);
+        for(int i=0;i<16;++i) EXPECT_EQ(isNoteAt(p1,i,in.restProb), isNoteAt(p2,i,in.restProb));
     });
 
     // ─────────────────────────────────────────────────────────────────────────

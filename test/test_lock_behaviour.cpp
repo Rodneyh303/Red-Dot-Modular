@@ -55,12 +55,15 @@ static PatternEngine seeded(float rseed, float mseed) {
 
 // Snapshot of both pattern arrays for comparison
 struct PatSnap {
-    bool  rhythm[16];
+    // (ITEM 1: rhythmPattern RETIRED — the snapshot keeps FULL fidelity by pinning the
+    // rest-DRAW row itself; the step LEDs derive note/rest live from it at read time,
+    // so locking the row locks the LEDs exactly as the old bool array did.)
+    float rhythm[16];
     int   semitone[16];
     float pitch[16];
     PatSnap(const PatternEngine& pe) {
         for(int i=0;i<16;++i){
-            rhythm[i]   = pe.rhythmPattern[i];
+            rhythm[i]   = pe.warpRow(pe.displayedVoice_, dotModular::LaneId{PatternEngine::PL_REST})[i];
             semitone[i] = pe.melodySemitone[i];
             pitch[i]    = pe.melodyPitchV[i];
         }
