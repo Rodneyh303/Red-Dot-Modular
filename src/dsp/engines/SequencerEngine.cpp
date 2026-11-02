@@ -862,7 +862,16 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
         const int tickForLight = (int)(((tick64 % rLen) + rLen) % rLen);
 
         int dnaIdx = getStrandIdx(tickForLight, lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT));
-        bool isNote = pe.rhythmPattern[dnaIdx];
+        // (ITEM 1) The step LED's "is this a note" — the corrected LIVE prediction
+        // (POLARITY_TABLE §3, Rodney-confirmed): the COMPLEMENT of the audio's rest
+        // law (`r_rest < restTh` → rest), i.e. `draw >= restTh` is a note — evaluated
+        // on the LIVE warp row + the live resolved per-voice threshold, so the LEDs
+        // track REST edits, LOR moves and warp as they happen. The old precomputed
+        // rhythmPattern cache (a stale generation-time prediction, persisted
+        // pointlessly) is DELETED. The subgate's per-subLevel tier is a play-time
+        // refinement the prediction does not chase — the base threshold is shown.
+        const VoiceSlot dispV = pe.displayedVoice();
+        bool isNote = pe.warpRow(dispV, LaneId{PL_REST})[dnaIdx] >= voices[dispV].restProb;
         baseActive = isNote ? 0.35f : 0.07f;
     }
 

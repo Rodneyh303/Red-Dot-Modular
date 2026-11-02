@@ -562,7 +562,7 @@ struct MonsoonRightMessage {
     int   modeSelect       = 0;    // 0=A 1=B 2=C 3=D
 
     // Current pattern snapshot (useful for a pattern display expander)
-    bool  rhythmPattern[16]  = {};
+    // (rhythmPattern[16] RETIRED — CC_PROMPT_RHYTHMPATTERN_DELETE_AND_POLARITY ITEM 1)
     int   melodySemitone[16] = {};
     float melodyPitchV[16]   = {};
 
@@ -1469,7 +1469,7 @@ struct Monsoon : Module {
     int& cachedOffset = engine.cachedOffset;
     float bpm = 120.f;
 
-    bool (&rhythmPattern)[16] = engine.pe.rhythmPattern;
+    // (the rhythmPattern reference alias RETIRED — ITEM 1, with the member)
     float (&melodyPitchV)[16] = engine.pe.melodyPitchV;
     int (&melodySemitone)[16] = engine.pe.melodySemitone;
     float (&rhythmRandom)[16] = engine.pe.rhythmRandom;
@@ -1496,7 +1496,7 @@ struct Monsoon : Module {
     float (&cachedMelodyPitchV)[16] = engine.pe.cachedMelodyPitchV;
     int& cachedRhythmStepIndex = engine.pe.cachedRhythmStepIndex;
     int& cachedRhythmLastStepIndex = engine.pe.cachedRhythmLastStepIndex;
-    bool (&cachedRhythmPattern)[16] = engine.pe.cachedRhythmPattern;
+    // (the cachedRhythmPattern reference alias RETIRED — ITEM 1, with the member)
 
     int& activeSemiCount = engine.activeSemiCount;
     float (&faderCache)[dotModular::TuningTable::MAXN] = engine.faderCache;
