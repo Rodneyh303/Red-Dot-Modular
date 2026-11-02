@@ -25,8 +25,12 @@ Every `[16]`, `& 0x0F` and `% 16` in the tree is ONE of these. The audit classif
 
 1. **STORAGE 16 — the phrase frame** (array step dimensions, frame bitmasks, frame-mod literals).
    **Extends to 32.**
-2. **MUSICAL 16 — the bar of 16ths** (quarter-note anchors, beat phase). **INVARIANT — stays 16.** At
-   32 steps the pattern is two bars; the bar does not grow.
+2. **MUSICAL 16 — the bar of 16ths** (the clock's native step = one 16th — ClockEngine::pulsesPer16th).
+   **INVARIANT in the DSP.** The only 16s in this class are PRESENTATIONAL: the ring's red quarter
+   rule (`i % 4`, MonsoonWidget.cpp:474–475) and Lantern's bar grouping (:1118). At 32 steps the
+   pattern is two bars of 16ths — which is the SAME ring read as one bar of 32nd notes (Rodney's
+   resolution note, → D6): the reading decides only where the bar line and anchors are DRAWN, never
+   how anything wraps.
 3. **VOICE 16 — the 16 voices** (kVoiceSlots, voice routing, per-voice planes). **UNTOUCHED.**
 4. **PARAM-RANGE 16 — length 1..16, offset 0..15** (knob ranges, CV formulas, LOR_LEN values).
    **Extends to 1..32 / 0..31** (CV formulas: decision D1; defaults unchanged: D2).
@@ -81,7 +85,10 @@ the snap path :779–792 (incl. the 16-bounded window search :786); `updateWindo
 rel-light/trail arithmetic :849/:850/:880/:898; `refreshPolyRandomCell` :1653–1660; :1769/:2175/:2213.
 PatternEngine.cpp:256 (warped_ cell write) and PatternEngine.hpp:545 (warpRow read) — `step & 0x0F`.
 SequencerEngine.hpp:596/:601/:608 (phrase-delta helpers, mod-16 with +16 bias).
-Monsoon.cpp:1148 `phaseStep = (absStep % 16 + 16) % 16` — **MUSICAL 16, STAYS** (bar phase).
+Monsoon.cpp:1148 `phaseStep = (absStep % 16 + 16) % 16` — **FRAME 16, extends** (the drift-snap:
+the phase-derived step lands in the frame to compare against `engine.stepIndex` — misclassified as
+musical in the first draft of this doc; it is the frame landing of the transport phase, and both
+sides of the comparison must land in the SAME frame, so `% 16` → `% MAX_STEPS`).
 StraitsSandsMacroVisual.cpp:1280/:1306 `calcPlayhead(...) & 0x0F` — frame value → 0x1F.
 
 **The one genuine ≤16 semantic shift (D3):** the window WRAPS the frame today — offset 15 + length 16
@@ -90,6 +97,28 @@ extends instead ([15…30]) — "length 16 = the whole ring" becomes "length 32 
 inherent to growing the ring (the rotated-order semantics survive; the full-ring-at-16 identity does
 not). Preserving the 16-wrap would reintroduce frame-16 logic — a 16-mode in disguise. Accept + pin
 old-vs-new in the new suite.
+
+## The boundary vs the ring (the wrap regimes, Rodney-approved formulation)
+
+Every wrap in the tree has TWO independent parts:
+
+- **The BOUNDARY — what length triggers the wrap — is always a LIVE parameter.** The pattern
+  playhead wraps at the master window's length/offset (`wrapped = (stepIndex == startStep/endStep)`,
+  SequencerEngine.cpp:483/:491, membership via the live `windowMask`); each voice's LOR walk wraps at
+  ITS OWN length (`wnow = (laneTickFor(vd, tNowV, L) + rho) mod L`, :694–695 — NOT the master's);
+  lane walks at their own `strandLen`/`macroLOR_` (:451/:464). The transport clock `t` wraps at
+  NOTHING (unbounded since the DNA_LCM kill). The master length/offset does NOT cascade into lane
+  wraps — a voice at LOR len 5 wraps every 5 inside an 11-step master window (the nested beating).
+- **The RING — the frame the arithmetic lands on — is a CONSTANT.** Every `& 0x0F` / `% 16` landing
+  between boundary checks (the playhead walk :476/:486, `voiceRead_ = (wnow + O) & 0x0F` :697 — the
+  offset rides, the landing is the frame; `macroFrameRead_` :643; identity-row reads :681; the phrase
+  helpers hpp:596–608), the window-mask build (setWindow :236–251), the A6 full-phrase constant
+  (`voiceFrameReadsFullPhrase → L = 16` :690 — a frame value, not a parameter).
+
+At 32 the boundary layer extends by its EXISTING parameters (window 1..32, LOR len 1..32 — the
+position-holder walks already take len > 16) and the ring becomes 32 in one mechanical sweep. The
+layers never entangle except at the two documented sites: D3 (a live window that wraps the 16-ring
+today extends instead at frame 32) and the A6 constant (→ MAX_STEPS).
 
 ### D. Length/offset plumbing
 
@@ -113,12 +142,13 @@ MAX_STEPS, or live-length-bound where the algorithm allows (THE LENGTH LAW). Mon
 - **Ring:** embed_monsoon.py:32–33 — 16 `STEP_LIGHT_{i}` anchors at r=14 → 32 anchors (enlarged radius
   per LIGHT_RING_32_STEPS: position-only, no pattern-detail role, red-quarter/green-rest kept).
   Monsoon.hpp:500–503 `STEP_LIGHTS_END = START + 16` → `+ 32` (offset-based enum re-seats the
-  downstream ids automatically). MonsoonWidget.cpp:474–475 bind loop 16 → 32; the `i % 4` red rule is
-  MUSICAL (quarters) — unchanged, now 8 red anchors over two bars.
+  downstream ids automatically). MonsoonWidget.cpp:474–475 bind loop 16 → 32; the `i % 4` red rule
+  is MUSICAL (quarters at the clock's 16th resolution) — unchanged under D6 option (a), or → `i % 8`
+  under option (b).
 - **Sands grid:** StraitsSandsMacroVisual.cpp:388/:460 `stepW = (ED_W − 12)/16` → `/32` (cells halve;
   the accepted HP cost). Widget-drawn = no SVG regen for the grid itself.
-- **Lantern:** Lantern.cpp:499 `N_STEPS = 16` → 32 (nvg-drawn, no assets); :1118 bar math (barW = grid/4)
-  is MUSICAL — stays 16.
+- **Lantern:** Lantern.cpp:499 `N_STEPS = 16` → 32 (nvg-drawn, no assets); :1118 bar grouping
+  (barW = grid/4) is presentational — per D6: unchanged under (a), re-grouped under (b).
 - **Panel SVGs:** Monsoon ring regenerate (2 themes); the lane/subgate panels are per-VOICE — untouched.
 
 ### G. Persistence
@@ -189,6 +219,15 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   double-typed rows (json doubles hold 2³²−1 exactly, but retypes the editor plumbing).
 - **D5 — the A/B gate:** the musical listen-test (STEP_COUNT_DECISION's audit) gates the RELEASE, not
   the branch — with one length knob the A/B is a knob turn on the same build.
+- **D6 — anchor marking at 32 (from Rodney's resolution note: "32 steps is 1 bar at 32nd notes"):**
+  the ring is resolution-agnostic — 2 bars of 16ths (the clock's native step) and 1 bar of 32nds are
+  the SAME 32-step frame; no DSP site depends on the reading. The reading decides presentational
+  marking only: **(a)** honest-to-clock — steps ARE 16ths, so red quarters every 4 steps (8 red
+  anchors) + a bar tick at 16 (recommended: the anchors keep marking the clock's actual quarters;
+  the `i % 4` widget rule survives; the two-bar reading matches how the long-note gain was argued
+  in STEP_COUNT_DECISION — whole notes fit twice); or **(b)** 1-bar-of-32nds — red every 8, no
+  mid-ring bar tick (the single-bar identity; the anchors stop marking the clock's quarters). Zero
+  DSP impact either way.
 
 ## Sequencing
 
