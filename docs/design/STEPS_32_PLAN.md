@@ -258,13 +258,18 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   voice → untouched). Grep-verified zero unclassified literals at close.
 - **P5 — the surfaces:** ring SVGs (32 lamps, enlarged, position-only, FIXED master-step scale per
   D8), STEP_LIGHTS enum + widget bind + the ring feed (the F find), Sands stepW, Lantern N_STEPS
-  (F). Anchor audit 9/9.
+  (F). Anchor audit 9/9. PLUS D10: the window map (the ghost arc — the one else-branch in
+  getStepLightBrightness, ghost pinned below the in-window rest) + the BAR 1/BAR 2 LEDs (SVG anchors
+  both themes; LightIds appended after STEP_LIGHTS_END, re-seat automatic).
 - **P6 — pins:** new suite test_steps_32: len-32 march vs the closed forms (all four shapes — 32 is a
   power of two, the congruence laws' easy case); warm 16↔32 mid-run transitions == f(t, config);
   D3 old-vs-new window pins (offset 15 + len 16, documented); legacy-json load (16-wide keys → [0..15],
   play identical); mask hi/lo roundtrip; ring anchor count (32; `i % 4` → 8 red under D6(a));
   phase-span pins (0–10 V ↔ steps 0..31 identity, reconnect/reset lands on the SAME step — the D9
-  reset-safety invariant; drift-check quiescence during parked arcs).
+  reset-safety invariant; drift-check quiescence during parked arcs); ring-map pins (D10: ghost
+  strictly below the in-window rest at (16,0) AND at a D3 wrap window; lamps 16–31 ghost-not-dark at
+  (16,0); BAR LEDs exclusive, follow stepIndex, a window change re-renders within one UI frame;
+  both silent wherever the discrete playhead is absent — mode D).
   Digest re-capture list per THE GOLDEN LAW.
 
 ## Decision points (for Rodney)
@@ -354,6 +359,58 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   mid-ring tick). THE SITES are in the C table's phase-path find above. P6 pin added: drift-check
   quiescence during parked arcs (the corrector :1145–1151 re-fires per sample while the landing
   parks out-of-window — pre-existing today at mapped windows; wider arc at span 32).
+
+- **D10 — the ring's window map + the bar indicator (Rodney: "we could have a 1st and 2nd bar
+  indicator sync with the light ring. If only a subset of the 1st 16 steps are included in the master
+  range the others can be dimmed during bar 1 indicator and same for the 2nd 32 steps are bar 2
+  indicator so the light ring would change dynamically."):** ACCEPTED — DISPLAY-ONLY, both halves.
+  (Reading: "the 2nd 32 steps" = the 2nd 16, steps 17–32; "dimmed during bar N indicator" = a
+  STANDING map — a lamp is dim iff OUT of the master range, in either bar, not only while that bar's
+  indicator is lit.) Two additions, both DERIVED — no new engine state, no new landing, no CV, no
+  persistence key.
+  **(1) THE WINDOW MAP (the ghost arc):** out-of-window lamps light a dim ghost instead of today's
+  dead 0.0. The membership predicate is the one the engine ALREADY maintains — `isStepInWindow`
+  (SequencerEngine.cpp:232, the `windowMask` bit test the comet trail :881 already consumes), and the
+  display mods it rides are already in the C sweep (rel-light/trail :849/:850/:880 — the C table's
+  :86 line). The change is ONE `else` branch in `getStepLightBrightness` (:843): the four existing
+  levels keep their values VERBATIM — playhead 1.0 (:874) > comet trail 0.5 (:882) > in-window note
+  0.35 > in-window rest 0.07 (:866) — and the new ghost pins STRICTLY BELOW the in-window rest, so a
+  ghost can never read as a rest (the exact value is a P5 panel-calibration lever, same class as
+  D8's radius; the HIERARCHY is the law). THE GOLDEN LAW untouched: the digests never capture the
+  display path (`getStepLightBrightness` is in no test), and 0.0 → ghost changes no engine read. The
+  map is LIVE/post-CV for free: `windowMask` is rebuilt by `setWindow` (:236–251) from
+  `updateWindow`'s post-CV values (:797–809), and the ring feed re-renders every UI frame
+  (Monsoon.cpp:1461/:1492 → MonsoonUIManager.cpp:100) — "the light ring would change dynamically"
+  falls out of the existing plumbing; knob, CV and D3-wrap windows all render the same way. This
+  AMENDS D8's closing sentence: at the default (16, 0) the far half is no longer dead-dark — it is
+  the ghost arc; the honest part holds (the playhead never enters it — the REPRODUCTION LAW visible
+  as the content/ghost boundary).
+  **(2) THE BAR INDICATOR (BAR 1 / BAR 2):** two LEDs at D6(a)'s mid-ring tick (position = P5
+  calibration), lit EXCLUSIVELY — BAR 1 while the playhead is in steps 0–15 (master 1–16), BAR 2 in
+  16–31 (master 17–32). The split test is `stepIndex >= 16` — D6(a)'s own presentational bar-tick
+  domain, NOT a new % 16 landing (stepIndex is the already-landed frame value; the compare wraps
+  nothing, it READS the bar layer). The sync is LITERAL: the LEDs share the playhead's exact gate
+  and variable (:873–874 — the same stepIndex the ring's current-step lamp consumes; one gate, two
+  surfaces — if the :869–872 comment's E/F intent restores a phase-mode playhead, the bar LEDs come
+  along automatically; the sync must never fork). Where no discrete playhead exists (mode D),
+  neither LED lights. New LightIds ride P5's offset-enum re-seat (append after STEP_LIGHTS_END,
+  Monsoon.hpp:500–503; downstream ids shift automatically).
+  **WHY THIS CLOSES THE 16-RING CHALLENGE (Rodney: "intuitively I'd argue for the 16 steps ring and
+  single bar phase as they seem more natural. Are the challenges that hard? … apart from length and
+  offset not being visible on 16 step ring are the objections that strong/challenging?"):** the
+  objections were never engineering difficulty — they are ADDRESS ALIASES, and this proposal is
+  their reductio. On twice-around-16, lamp = step % 16: lamp 5 is steps 5 AND 21, so a window 1–20
+  makes lamp 5 in-window as 5 and out-of-window as 21 — "dim the steps not in the master range" is
+  UNDEFINED (one lamp, two verdicts), and a 1st/2nd bar indicator would have to read a pass parity
+  the panel cannot observe (D8's pass-blindness). The first display feature reached for past the
+  basics is unimplementable at 16 — D10 is not just compatible with D8, it is EVIDENCE for it. The
+  single-bar-phase half of the challenge is the same alias one level deeper and is a CORRECTNESS
+  hazard, not a preference (D9: span 16 on frame 32 makes revolution parity k load-bearing AND
+  volatile — an odd k after a reconnect lands +16, the other half of the pattern; span 32 kills k
+  and makes the voltage injective). "Natural" was tracking the musical bar; the frame is the
+  pattern (2 bars); D10 is the repair in kind — instead of displays that under-report the frame,
+  SHOW the frame: the ghost arc for the window, the mid-ring tick for the bar line, the exclusive
+  LEDs for the live bar.
 
 ## Sequencing
 
