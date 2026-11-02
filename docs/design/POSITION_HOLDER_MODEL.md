@@ -108,27 +108,28 @@ raw-counter reads that bypass the mapping (the DNA_LCM kill + UAS already did th
 - :1928, :1984  DEBUG/trace printf → (long long)totalStepsElapsed   (diagnostic logging only; not logic)
 No (int) casts into logic remain (the DNA_LCM-era int-cast sites are gone).
 
-## WHAT THIS MEANS — the removal is a SMALL, CLEAN rename/reframe, not a rewrite
-The counter is ALREADY just "the current global step, advanced ±1, read only through driverTickAt (the UAS
-map)". It is NOT being redundantly recomputed-from in a way that duplicates UAS — UAS IS the read path.
-So the "kill the counter" work is really:
-1. CONFIRM the above (no reader bypasses driverTickAt; the two printf sites are diagnostic). DONE by this
-   inventory — only driverTickAt reads + 2 debug prints + the 4 write sites.
-2. The counter is the irreducible "current global step" INPUT to the UAS map. It does NOT need removing as
-   REDUNDANT — the earlier "redundant duplicate driver" concern is RESOLVED: UAS already consumes it as the
-   single input, nothing recomputes a parallel position. The thing we feared (a counter driving a redundant
-   recompute alongside UAS) DID exist pre-UAS; UAS removed it. What remains (totalStepsElapsed as the one
-   current-step input, read only via driverTickAt) is NOT redundant — it's the minimal state.
-=> CONCLUSION: there is NO dumb redundant counter left to kill. UAS already reduced it to the minimal
-   "current global step" input. The position-holder migration's GOAL (reads go through the mapping, not a
-   redundant counter) is ALREADY ACHIEVED. 
+## WHAT THIS MEANS — [CORRECTED] the inventory proves the SMELL, it does NOT dissolve it
+RETRACTION: an earlier version of this section concluded "nothing to kill, UAS already fixed it". THAT WAS
+WRONG and contradicted the brainstorm at the top of this doc. The brainstorm's point is NOT "a redundant
+PARALLEL counter alongside UAS" — it is that POSITION-BEING-A-FUNCTION-OF-ONE-GLOBAL-COUNTER is itself the
+smell, however clean that function is. The inventory shows EVERY read is driverTickAt(totalStepsElapsed, …)
+— i.e. every position is f(the one global counter). That is EXACTLY the thing to kill: positions should be
+OWNED, LOCAL, per-(voice,lane) holders (pos = wrap(pos ± dir) on the holder's own advance), NOT recomputed
+from a shared global counter. A tidy f(counter) is still "everything is a function of the global counter" —
+the artificial unification of voice/lane/position the brainstorm rejects.
+So the inventory is the SITE LIST for the migration, not a reason to skip it:
+- WRITE sites (:148 reset, :384-5 advance ±1, :785 phase-snap, Monsoon:562 hard-reset) — the global counter
+  mutations; under position-holders these become the global clock EVENT that TICKS the holders (each holder
+  advances itself), not a counter everything is recomputed from.
+- READ sites (:417/419/662/731/733/861 via driverTickAt) — these are the recompute-from-counter reads to
+  REPLACE with "read the holder's own owned position".
+- :1928/1984 debug printf — diagnostic, drop or adapt.
 
-## REVISED PLAN — the counter stays as minimal state; 32 STEPS is the real next step
-- Do NOT "remove totalStepsElapsed" — it is now the minimal current-step input, not a redundant driver.
-  (Optional cosmetic: rename to currentGlobalStep_ for clarity, since "elapsed/counter" framing misleads —
-  but that is pure cosmetics, defer.)
-- The real unblocked work is 32 STEPS. Because every read is driverTickAt(counter, len, …) and wraps
-  LOCALLY by len, 32 is nearly free: extend L/O/R ranges to 32, audit the FEW remaining & 0x0F / % 16 /
-  < 16 literals (position reads already mod by len, not 16 — the & 0x0F at :675 voiceRead_ and any display
-  are the audit targets), make 32 an EXTENSION of 16 (≤16 bit-identical). See STEP_COUNT_DECISION.md +
-  LIGHT_RING_32_STEPS.md.
+## PLAN (restored) — migrate to position-holders; THEN 32 steps is free
+Per the brainstorm/staging above: migrate laneTick_/laneTickV_ from "cache recomputed from totalStepsElapsed
+via LOR" to "per-(voice,lane) holder updated locally on its advance event". STAGING: bit-identical first
+(holders reproduce the current counter-derived positions exactly — golden-proven), THEN 32 steps + further
+independence ride free. The global clock event still exists (the transport tick) — it TICKS the holders; it
+is no longer the thing positions are a FUNCTION of. Philox unchanged.
+32 STEPS comes AFTER (position-holders are length-agnostic → each wraps at its own length → no global-modulus
+/ &0x0F audit; 32 nearly free). STEP_COUNT_DECISION.md + LIGHT_RING_32_STEPS.md.
