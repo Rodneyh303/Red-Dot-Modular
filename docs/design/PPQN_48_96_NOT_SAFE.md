@@ -72,3 +72,20 @@ DECISION:
   there is no pressure for it; skip indefinitely unless a concrete need appears.
 NET: require 24, document it, don't build 48/96 or a divider. The capped note-value set made the whole
 48/96 thread unnecessary.
+
+════════════════════════════════════════════════════════════════════════════════
+## [RE-MOTIVATED by 32 steps — Rodney] 32-steps-as-1-bar NEEDS real 48 PPQN
+The "require 24, 48/96 de-prioritized, skip indefinitely" decision above was made when NO feature needed
+finer resolution (all 13 note values resolve at 24). 32 STEPS reopens it with a CONCRETE use case:
+- 32 steps can be read as 2 bars @ 1/16 (each step a sixteenth) OR 1 bar @ 1/32 (each step a thirty-second).
+- A user clocked by an EXTERNAL source (e.g. Impromptu) at 120 BPM / 24 PPQN who wants 32 steps = 1 BAR
+  will NOT re-clock the source to 240 BPM (that changes the whole patch's tempo). They will set MONSOON's
+  PPQN to 48 — finer internal resolution at the SAME tempo from the SAME 24-PPQN clock. That is the entire
+  point of a PPQN setting: decouple internal step resolution from external clock rate without changing BPM.
+So 32-steps-as-1-bar is the concrete motivation to build REAL 48 PPQN — the internal-multiplier fix (the
+"BOUNDED, not colossal" scope above): ClockEngine generates N internal grid pulses per incoming pulse so 48
+= finer-at-same-tempo from a 24 clock, NOT "assume external rate = ppqnSetting" (which double-speeds).
+=> UN-PARK: 48 PPQN (the internal multiplier) moves from "skip indefinitely" to "needed for 32-steps-as-1-
+   bar". Scope unchanged (bounded — one pulse source, consumers are pulse-defined; the real cost is TESTING
+   the finer regime). Sequence it WITH the 32-step work (they share the "what is a step's duration" question).
+   96 PPQN (1/64 or 32-steps-as-half-bar) follows the same mechanism if ever wanted; 48 is the one 32 needs.
