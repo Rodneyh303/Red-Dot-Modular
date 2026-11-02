@@ -59,7 +59,8 @@ static float sentinel(int voice, int lane, int step) {
 
 static void seedEngine(SequencerEngine& eng) {
     eng.numPolyVoices = 15;               // all poly voices active
-    eng.totalStepsElapsed = 0;            // deterministic step → strand idx
+    // (POSITION_HOLDER_MODEL: no counter to seed — reset() anchored the holders at t=0,
+    // so the deterministic step → strand idx addressing starts from the anchor.)
     // Master strand arrays (voice 1 source). Use voice index 1 for sentinels.
     for (int s = 0; s < 16; ++s) {
         eng.pe.rhythmRandom[s] = sentinel(1, E::PL_REST,   s);
@@ -74,7 +75,7 @@ static void seedEngine(SequencerEngine& eng) {
             eng.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{E::PL_MELODY})[s] = sentinel(v + 2, E::PL_MELODY, s);
             eng.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{E::PL_OCTAVE})[s] = sentinel(v + 2, E::PL_OCTAVE, s);
             eng.pe.polyRandom(dotModular::VoiceResolver::slot(v + 1 + 1), dotModular::LaneId{E::PL_ACCENT})[s] = sentinel(v + 2, E::PL_ACCENT, s);
-            // identity LOR so step index is predictable (= totalStepsElapsed & 0x0F = 0)
+            // identity LOR so step index is predictable (= the transport walk & 0x0F = 0 at the anchor)
             eng.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{s % 3}) = 16; // harmless; lanes use [v][lane]
         }
     // Macro-own base (CC_PROMPT_macro_output_east_leak): the pubSlewed* snapshots — what

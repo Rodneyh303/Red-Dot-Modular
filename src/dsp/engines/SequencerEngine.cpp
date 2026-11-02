@@ -19,17 +19,23 @@ using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be co
 
 
 
-// (DNA_LCM is DELETED — CC_PROMPT_KILL_DNA_LCM_UNBOUNDED_CLOCK_PARKED.) The master clock
-// totalStepsElapsed is an UNBOUNDED int64 net-step counter (+1/-1 per advance, never wrapped:
-// int64 at 1k steps/sec wraps in ~300M years). There is NO global wrap period: every lane
-// position is computed through driverTickAt/laneTickFor, which mod by the LANE'S OWN length
-// LOCALLY (negative-safe double-mods), so continuity for any length is by construction.
-// What the old DNA_LCM = LCM(1..16)*2 wrap bought (every lane exactly back at t=0 when it
-// wrapped) the local mods buy for EVERY t — including negative counters (backward-from-start)
-// and lengths beyond 16 — with no magic composite constant that balloons at 32 steps
-// (LCM(1..32) ≈ 144 billion) and no phantom 1.4M cycle on a shorter master.
+// (DNA_LCM is DELETED — CC_PROMPT_KILL_DNA_LCM_UNBOUNDED_CLOCK_PARKED. So is the master
+// clock itself — POSITION_HOLDER_MODEL.md.) There is NO global step counter: every walk
+// owns a bounded PHASE — a position in its OWN cycle, congruent to its driver's t0 mod
+// the walk's OWN period — advanced locally on each advance event by the driver's raw
+// tick delta. Every lane position comes from the holder phases through laneTickFor (the
+// lane's OWN local mod), so continuity for any length is by construction — including
+// negative congruences (backward walks from a fresh start) and lengths beyond 16 — with
+// no shared timeline that every read is a function of. What the old DNA_LCM wrap bought
+// (every lane exactly back at t=0 when it wrapped) the local mods buy for EVERY t; what
+// the old totalStepsElapsed bought (one synchronized timeline) the per-holder phases buy
+// WITHOUT the artificial unification — per-voice advance and per-lane LOR are the walks'
+// OWN parameters now, not lenses onto a shared clock.
 
-// Closed-form window position for a lane at global tick t — the heart of the stateless model.
+// Closed-form window position for a lane at global tick t — the walk-SHAPE function.
+// POSITION_HOLDER_MODEL: the holders evaluate this AT THEIR OWN PHASE (tick = phase+1 —
+// the phase is congruent to the walk's t0, and this function is periodic in t0 with the
+// walk's OWN period, so any congruent representative gives the identical value).
 // Reproduces the accumulator's sequences exactly (verified in test_lane_direction):
 //   Forward   t            -> 0,1,2,3,0,1,..
 //   Reverse  -t            -> 0,3,2,1,0,3,..            (opposite-to-global; composes with Mode E)
@@ -47,7 +53,7 @@ using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be co
 // locally, so unbounded is safe by construction.
 int64_t SequencerEngine::laneTickFor(LaneDir d, int64_t t, int len) {
     const int L = std::max(1, len);
-    // totalStepsElapsed is 1-based (incremented before laneTick_ is computed).
+    // The anchor is 1-based (the first advance evaluates the walks at tick 1).
     // Convert to 0-based position so laneTick_ matches stepIndex (also 0-based).
     // Without this, the Sands visual playhead is always 1 step ahead of the
     // Monsoon ring light (which reads stepIndex directly).
@@ -90,7 +96,7 @@ int64_t SequencerEngine::laneTickFor(LaneDir d, int64_t t, int len) {
 // (len 16, off 0) then read EXACTLY the global window's steps instead of the full 16;
 // a lane with its own window phases against the window walk (the polymeter beat against
 // the container length). The playhead's direction of motion is inherited automatically
-// (totalStepsElapsed moves ±1 with it — the same way lane direction composed with the
+// (the transport's motion composes with it — the same way lane direction composed with the
 // playhead before), and t's motion direction is the only direction input here.
 int64_t SequencerEngine::driverTickAt(int64_t t, int len, int off) {
     if (len == 16 && off == 0) return t;   // the default window: PASS-THROUGH (the golden pin)
@@ -145,7 +151,8 @@ void SequencerEngine::reset() {
     endStep = 15;
     cachedLength = 16;
     cachedOffset = 0;
-    totalStepsElapsed = 0;
+    // (totalStepsElapsed is GONE — the holders anchor below, after every LOR store is
+    // back at its reset value, so the phase periods match the walks that read them.)
     // PER-VOICE STEP-ADVANCE Stage 1: the offsets + per-voice scans re-anchor with
     // the transport (provably unobservable in the locked build — the offsets are
     // always 0, and scanOfsV_[0] is re-zeroed by the seed advance before any
@@ -201,7 +208,7 @@ void SequencerEngine::reset() {
         voiceLorStore_[v][LOR_LEN] = 16; voiceLorStore_[v][LOR_OFF] = 0; voiceLorStore_[v][LOR_ROT] = 0;
         voiceLorDir_[v] = LaneDir::Forward;
         voiceLorLocalEast_[v] = false;
-        voiceDriver_[v] = 0; voiceDriverPrev_[v] = 0; voiceRead_[v] = 0;
+        voiceDriver_[v] = 0; voiceRead_[v] = 0;
         voiceSign_[v] = 0;   // Stage 3: the walk-sign cue re-derives on the first step
     }
     macroVoiceLor_[LOR_LEN] = 16; macroVoiceLor_[LOR_OFF] = 0; macroVoiceLor_[LOR_ROT] = 0;
@@ -227,6 +234,11 @@ void SequencerEngine::reset() {
     for (int i = 0; i < dotModular::TuningTable::MAXN; ++i) faderCache[i] = -1.f;
     lastQuantIn = -100.f;
     lastQuantOut = 0.f;
+    // THE POSITION-HOLDER ANCHOR (the t=0 congruence — every walk at its own start;
+    // the read caches were zeroed above exactly as before, and the first
+    // advancePlayhead derives them from the phases bit-identically to the old
+    // f(counter) evaluation at t=1).
+    anchorTransport(0);
 }
 
 bool SequencerEngine::isStepInWindow(int idx) const {
@@ -248,6 +260,11 @@ void SequencerEngine::setWindow(int length, int offset) {
     if (stepIndex != -1 && !isStepInWindow(stepIndex)) {
         stepIndex = (startStep - 1 + 16) % 16;
     }
+    // THE RE-AUTHOR ANCHOR (the holder law): the global walk's read coordinate re-bounds
+    // to the NEW window — (tick−1) mod newLen, exactly the value the old f(counter)
+    // closed form evaluated from the next event on. The warm phases are untouched: they
+    // carry the RAW clock congruences, which a window re-author does not move.
+    globalWalk_ = wrapMod(transportTick_ - 1, std::max(1, length));
 }
 
 // ── Stage 2b: the voice-LOR authoring push (see the hpp decl) ──────────────────
@@ -346,11 +363,13 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
     lastPlayDir = (dir < 0) ? -1 : +1;
     scanOfsV_[0] = 0;   // THE FREEZE FIX: any motion re-anchors — each arrived step is judged on its own value first
 
-    // ── Per-lane direction — STATELESS ──────────────────────────────────────────
-    // Only the flip QUANTIZATION keeps state now: promote the pending dir at the step edge
+    // ── Per-lane direction — the HOLDER model ───────────────────────────────────
+    // Only the flip QUANTIZATION keeps pending state: promote the pending dir at the step edge
     // (Phrase promotion still happens at the wrap, below). Everything else — the position of
-    // every lane — is recomputed from totalStepsElapsed after it advances, so no lane carries
-    // an accumulator that can drift away from the DNA clock. See laneTickFor().
+    // every lane — advances LOCALLY from the lane's own phase (the holder law; the old
+    // recompute-from-the-counter is gone, and no lane carries an accumulator that can drift
+    // away from the transport — the phases are congruent to their drivers by construction).
+    // See laneTickFor().
     // Promote pending direction at the step edge -- BUT NOT while locked. Direction is LATCH
     // (LOCK_SEMANTICS §9): a direction change made under lock must freeze and take effect at
     // unlock, not commit at the next step edge. locked is this engine's live lock (aliased as
@@ -373,98 +392,29 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
         }
     }
 
-    // Step the global DNA tick WITH direction: +1 forward, -1 backward. This is what
-    // maps physical positions to drifting DNA content (strand indices) and the ring
-    // lights; counting up in reverse desyncs it from stepIndex and both the strand
-    // drift and the lights go the wrong way (ring lights up all around).
-    // KILL_DNA_LCM: the counter is UNBOUNDED — the raw net-step count (negative after a
-    // backward walk from a fresh start). No global wrap: every position comes from
-    // driverTickAt/laneTickFor with the lane's own LOCAL mod, so continuity is by
-    // construction (see the laneTickFor continuity note above).
-    if (dir < 0) --totalStepsElapsed;
-    else         ++totalStepsElapsed;
-
-    // ── Lane position: FULLY STATELESS ──────────────────────────────────────────
-    // Every lane, every mode, is a pure function of the master clock:
-    //     position = laneTickFor(dir, totalStepsElapsed, len)
-    // laneTick_ / laneTickV_ / macroLaneTick_ are a CACHE of that, not accumulators, so every
-    // existing reader keeps working unchanged. laneSign_* are derived for the UI cue only —
-    // nothing reads them to decide position.
+    // ── THE POSITION-HOLDER TICK (POSITION_HOLDER_MODEL.md) ─────────────────────
+    // There is no global counter to bump. The advance event is the transport MOTION:
+    // every holder advances ITSELF — the global walk ±1 (mod the window), each voice's
+    // frame by its effective-clock delta k_v (its OWN motion + its advanceOffset_ diff),
+    // every lane walk by its driver's raw tick delta — and all read caches re-derive
+    // from the phases. With unchanged parameters this reproduces the old
+    // f(totalStepsElapsed) closed forms bit-identically: the walks are periodic in t0
+    // and the phases carry exactly that congruence (see tickHolders in the machinery
+    // block below). laneSign_* are derived for the UI cue only — nothing reads them to
+    // decide position.
     //
-    // Why no walker (see docs/design/LANE_POSITION_MODEL.md):
-    //   * Reversible mode already declares this instrument's answer to "how do we go
-    //     backward?": Philox, a pure function of a SIGNED index. A walker is an integrator
-    //     with a time-asymmetric update, so reversing it does not retrace — it runs a
-    //     DIFFERENT system (measured: pendulum fwd 0 1 2 3 2 1 0, walked back 3 0 3 0 3 0).
-    //     Under Mode E with a reversing ramp the draws retrace exactly while a walked lane
-    //     does not, so the lane desyncs from its own random data — precisely what Reversible
-    //     exists to prevent.
-    //   * A walker cannot be scrubbed or evaluated at an arbitrary t; a closed form can.
-    //   * Teleport-on-len-modulation is NOT a cost of this model: a plain Forward lane already
-    //     jumps when len is modulated (len is part of the address, exactly like rot), and has
-    //     always done so. A walker would make bouncers uniquely immune to a behaviour every
-    //     other lane has — an inconsistency, not a feature.
-    {
-        // UNIFIED ADDRESSING Stage 1: the lane walks are driven by the GLOBAL-level map
-        // (driverTickAt), not the raw DNA clock — the global window bounds the reads
-        // beneath it. Pass-through at the default window keeps every read bit-identical
-        // (the golden pin; the non-divisive lane lengths are pinned in
-        // test_unified_addressing). The sign predecessor is wrap-normalized
-        // (driverTickBefore): a window wrap is a BEAT, not a bounce, so the lane-sign
-        // cue must not flip there.
-        const int    drvLen = cachedLength;
-        const int    drvOff = cachedOffset;
-        const int64_t tNow  = driverTickAt(totalStepsElapsed, drvLen, drvOff);
-        const int64_t tPrevD = driverTickBefore(tNow,
-                                driverTickAt(totalStepsElapsed - dir, drvLen, drvOff),
-                                dir, drvLen, drvOff);
-        // UNIFIED ADDRESSING Stage 2: the per-voice maps, then the lane walks driven by
-        // EACH VOICE's driver (V1 = the mono lanes, V2..V16 = laneTickV_). The Macro
-        // frame keeps the global driver (it has no voice map — it IS the frame).
-        recomputeVoiceDrivers_(tNow, tPrevD, dir, voiceMotion);
-        auto recomp = [&](LaneDir d, int len, int64_t tN, int64_t tP, int& tickOut, int& signOut) {
-            const int64_t cur = laneTickFor(d, tN, len);
-            const int64_t prv = laneTickFor(d, tP, len);
-            // KILL_DNA_LCM: the LOCAL wrap — by the LANE'S OWN length (congruent for every
-            // consumer: getStrandIdx/calcPlayhead mod by the same len; pendulum/pingpong cur
-            // is already in [0, L-1], so this is identity there). The old % DNA_LCM existed
-            // only to keep Forward/Reverse's unbounded t0 inside int.
-            tickOut = (int)(((cur % len) + len) % len);
-            const int64_t delta = cur - prv;
-            if (delta > 0)      signOut = +1;
-            else if (delta < 0) signOut = -1;
-            // delta == 0 is the PingPong endpoint repeat: keep the previous sign.
-        };
-        auto polyStrandLen = [&](int v, int strand) -> int {
-            switch (strand) {
-                case dotModular::STRAND_MELODY:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_MELODY});
-                case dotModular::STRAND_OCTAVE:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_OCTAVE});
-                case dotModular::STRAND_QMIX:      return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_QMIX});
-                case dotModular::STRAND_RHYTHM:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_REST});
-                case dotModular::STRAND_ACCENT:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_ACCENT});
-                case dotModular::STRAND_VARIATION: return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_VARIATION}, LOR_LEN);
-                case dotModular::STRAND_LEGATO:    return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_LEGATO}, LOR_LEN);
-            }
-            return 16;
-        };
-        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-            const int len = std::max(1, strandLen(l));   // mono strand length (mono tick)
-            recomp(laneDir_[l], len, voiceDriver_[0], voiceDriverPrev_[0], laneTick_[l], laneSign_[l]);
-            for (int v = 1; v <= numPolyVoices; ++v) {
-                const int vlen = std::max(1, polyStrandLen(v, l));   // THIS voice's LOR length
-                recomp(laneDirV_[v][l], vlen, voiceDriver_[v], voiceDriverPrev_[v], laneTickV_[v][l], laneSignV_[v][l]);
-            }
-        }
-        for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-            // macroLOR_ is EDITOR-lane indexed for the POLY lanes (0..4 = MEL/OCT/QMIX/REST/ACC);
-            // VAR/LEG (5/6) have no global LOR, so they use the mono strandLen. The bound was < 4,
-            // which both DROPPED ACCENT (strand 4, a real poly lane) and would have dropped q-mix's
-            // macroLOR had the strands not been editor-aligned — use POLY_LANE_COUNT so every poly
-            // lane (incl. q-mix + accent) reads its Macro length.
-            const int mlen = std::max(1, (l < dotModular::POLY_LANE_COUNT) ? macroLOR_[l] : strandLen(l));
-            recomp(macroLaneDir_[l], mlen, tNow, tPrevD, macroLaneTick_[l], macroLaneSign_[l]);
-        }
-    }
+    // Why holders and not the old f(counter) (docs/design/POSITION_HOLDER_MODEL.md):
+    //   * Every position being a function of ONE global counter conflated VOICE, LANE
+    //     and POSITION into one timeline — every per-voice/per-lane feature was fighting
+    //     the architecture. The holders are the natural model: independent tracks each
+    //     owning their position.
+    //   * The old "no drift / reproducible randomness" defenses do not survive scrutiny:
+    //     Philox draws are counter-addressed in their OWN space (unchanged here); local
+    //     positions are deterministic from decisions + anchor.
+    //   * A mid-run LENGTH re-author now re-bounds the wrap WITHOUT teleporting the walk
+    //     (length = the wrap point, not part of the address) — which is exactly what
+    //     makes 32 steps nearly free later: no global-modulus audit, no wrap-mask hunt.
+    tickHolders(dir, dir, voiceMotion);
 
     bool wrapped;
     if (dir < 0) {
@@ -623,166 +573,369 @@ bool SequencerEngine::foldPerVoiceAdvance_(int subLevel, bool perVoiceScan,
     return anyMoved;
 }
 
-// ── UNIFIED ADDRESSING Stage 2: the per-voice maps (the global->voice level) ──────
-// Fills voiceDriver_ / voiceDriverPrev_ / voiceRead_ for every live voice from the
-// global driver pair. Identity rows PASS THROUGH (the parent driver + its normalization
-// verbatim — the Stage-1 goldens); mapped rows walk the voice's own window with the
-// rotation folded in anchor form (R = where the voice reads when the parent is at its
-// step 1, so the mechanical phase is (R-O) mod L), and the lanes are driven by the
-// voice's window position — the lane R re-base, the voice-length container, and the
-// voice direction all ride the chain (the sign product is inherited, not re-derived).
-// Stage 3: also fills the UI cue caches — voiceSign_ (the voice frame's instantaneous
-// walk sign) and macroFrameRead_/macroFrameSign_ (the Macro frame = the global window
-// walk). Same derivation rule as the caller's lane recomp: sign of the walk delta,
-// a wrap/jump reads as ONE musical step along the current motion (a BEAT, not a
-// bounce — the cue must not flip there), delta 0 (the PingPong endpoint repeat)
-// keeps the previous sign. Write-only caches; no read/generation path changes.
-void SequencerEngine::recomputeVoiceDrivers_(int64_t tNow, int64_t tPrevGlobal, int dirMotion,
-                                             const int8_t* voiceMotion) {
-    // The MACRO frame first (computed once, not per voice): the global window walk.
-    macroFrameRead_ = (int)(((tNow - 1) % 16 + 16) % 16);
+// ── THE POSITION-HOLDER MACHINERY (POSITION_HOLDER_MODEL.md) ─────────────────────
+// The walk engine under the holder model. Every walk owns a bounded PHASE — a position
+// in its OWN cycle, congruent to its driver's t0 (the 0-based walk coordinate) modulo
+// the walk's OWN period — and the read caches derive from the phases through
+// laneTickFor evaluated AT the phase (tick = phase + 1). No walk is a function of any
+// shared counter; the only absolute-tick math left is the ANCHOR (reset / phase snap),
+// where an absolute step legitimately seeds the congruences through the closed forms.
+//
+// THE CONGRUENCE LAW (why this is bit-identical to the old f(totalStepsElapsed)):
+// each closed form is periodic in its t0 with the walk's own period P. A phase that
+// stays ≡ t0 (mod P) therefore evaluates to the identical value FOREVER, provided it
+// (a) was seeded congruent at an anchor and (b) advances by the driver's raw t0 delta
+// each event. (b) is the whole game: a window wrap or an offset seed is a JUMP in the
+// driver's tick value, and the phase absorbs the jump mod P — exactly what the closed
+// form "sees" when it evaluates the jumped tick. Transport reversals need no extra
+// state either: a backward march unwinds the same congruence (the bounce walks are
+// time-symmetric — retracing the triangle IS the bounce walk with the phase running
+// backward, verified step-for-step against laneTickFor).
+//
+// THE DRIVER CHAIN: global window walk (globalWalk_) → voice frame (the voiceLOR row
+// walk; the effective clock t + advanceOffset_[v] rides INSIDE the frame's driver
+// delta) → the lane walks (lanePhase_/lanePhaseV_/macroLanePhase_). The per-voice
+// effective-clock delta is k_v = the transport motion + the voice's advanceOffset_
+// diff vs advOffSeen_ — which reproduces the old bridge expression driverTickAt(t +
+// advanceOffset_[v]) EXACTLY, including hand-seeded offsets (the PLUMB pins) and the
+// activation zeroing (the diff absorbs the jump: the voice re-enters at the macro
+// position, as the old f(t+0) read did).
+//
+// THE SIGN LAW (the old recomp's, verbatim): the cue reads the walk value at the phase
+// minus the walk value one NORMALIZED musical step back — a driver wrap is a BEAT, not
+// a bounce (the cue must not flip there); delta 0 (the PingPong endpoint repeat) keeps
+// the previous sign. Evaluated on the phases this is bit-identical to the old
+// f(tN) − f(tP) because the normalized predecessor's t0 ≡ phase − (musical step) and
+// the walk formulas are evaluated RAW at the congruent representatives (the difference
+// of the formula values is congruence-shift-invariant).
+
+int SequencerEngine::wrapMod(int64_t v, int m) {
+    int64_t r = v % m;
+    if (r < 0) r += m;
+    return (int)r;
+}
+
+int SequencerEngine::walkPeriod(LaneDir d, int len) {
+    const int L = std::max(1, len);
+    if (d == LaneDir::Pendulum) return (L < 2) ? 1 : 2 * (L - 1);
+    if (d == LaneDir::PingPong) return 2 * L;
+    return L;   // Forward / Reverse: the lane's own length IS the period
+}
+
+// THIS voice's LOR length for a strand (the walk's wrap point) — the same table the
+// old recomp carried as a lambda in two places; one mechanism now.
+int SequencerEngine::polyStrandLenOf(int v, int strand) const {
+    switch (strand) {
+        case dotModular::STRAND_MELODY:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_MELODY});
+        case dotModular::STRAND_OCTAVE:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_OCTAVE});
+        case dotModular::STRAND_QMIX:      return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_QMIX});
+        case dotModular::STRAND_RHYTHM:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_REST});
+        case dotModular::STRAND_ACCENT:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_ACCENT});
+        case dotModular::STRAND_VARIATION: return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_VARIATION}, LOR_LEN);
+        case dotModular::STRAND_LEGATO:    return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_LEGATO}, LOR_LEN);
+    }
+    return 16;
+}
+
+// The voice-frame walk at an effective tick (the A6 row law, UNIFIED ADDRESSING
+// Stage 2/A6): identity rows pass the global-window walk through verbatim; mapped rows
+// walk the row's OWN window with the rotation folded in anchor form (R = where the
+// voice reads when the parent is at its step 1, so the mechanical phase is (R-O) mod L),
+// the full-phrase rule widening L for the abs1 read. effTick1based may be ANY value
+// congruent to the true 1-based effective clock modulo the relevant periods (the walk
+// formulas mod locally). framePhaseOut (when non-null) receives the frame phase
+// congruent to the frame walk's t0 (mod the row walk's period). Returns the 1-based
+// frame tick the voice's LANES hang under.
+int64_t SequencerEngine::voiceFrameTickAt(int v, int64_t effTick1based,
+                                          int64_t* framePhaseOut) const {
+    const int  lenG = std::max(1, cachedLength);
+    const int  offG = cachedOffset;
+    const bool passG = (lenG == 16 && offG == 0);
+    const int64_t tNowV = passG ? effTick1based
+                                : driverTickAt(effTick1based, lenG, offG);
+    if (voiceLorIdentity(v)) {
+        if (framePhaseOut) *framePhaseOut = tNowV - 1;   // (identity rows have no frame walk — the lanes hang off this tick)
+        return tNowV;
+    }
+    int L, O, R; LaneDir vd;
+    effectiveVoiceLor(v, L, O, R, vd);
+    if (L < 1) L = 1;
+    // (A6) ABS1: the window walk runs the FULL PHRASE — L→16 for the READ only.
+    if (voiceFrameReadsFullPhrase(v)) L = 16;
+    const int64_t rho  = ((((int64_t)(R - O) % L) + L) % L);
+    const int64_t wnow = ((((laneTickFor(vd, tNowV, L) + rho) % L) + L) % L);
+    if (framePhaseOut) *framePhaseOut = wrapMod(tNowV - 1, walkPeriod(vd, L));
+    return wnow + 1;
+}
+
+// THE ANCHOR LAW. Seeds every holder's congruence from the transport's own position
+// (the one absolute value the write sites maintain — see transportTick_): the phases
+// all take the RAW clock congruence (config-independent — a window or row re-author
+// never touches the raw clock, so the warm phases stay valid through any config
+// round-trip), and the global walk holder takes (tick-1) mod the CURRENT window
+// length (re-taken by setWindow on a mid-run re-author). reset() anchors at 0, the
+// Mode E phase snap at the phase-derived tick, Monsoon's Beat-1 hard reset at 0.
+void SequencerEngine::anchorTransport(int64_t tick1based) {
+    transportTick_ = tick1based;   // THE WRITE SITE: the anchor IS the transport's own position update
+    const int  lenG = std::max(1, cachedLength);
+    const int64_t t0 = tick1based - 1;
+    globalWalk_ = wrapMod(t0, lenG);
     {
-        const int64_t gd = tNow - tPrevGlobal;   // wrap-normalized: -1/0/+1 (a window wrap was already folded to one step)
+        const int rLen = std::max(1, lor(dotModular::STRAND_RHYTHM, LOR_LEN));
+        globalT0Phase_ = wrapMod(t0, rLen);
+        globalT0Key_   = rLen;
+    }
+    for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
+        const int len = std::max(1, strandLen(s));
+        lanePhase_[s] = wrapMod(t0, walkPeriod(laneDir_[s], len));
+        laneKey_[s]   = walkKeyOf(laneDir_[s], len);
+        const int mlen = std::max(1, (s < dotModular::POLY_LANE_COUNT) ? macroLOR_[s] : strandLen(s));
+        macroLanePhase_[s] = wrapMod(t0, walkPeriod(macroLaneDir_[s], mlen));
+        macroLaneKey_[s]   = walkKeyOf(macroLaneDir_[s], mlen);
+    }
+    for (int v = 0; v < kVoiceSlots; ++v) {
+        // The voice's RAW effective clock: tEffV = tick + offset (the old bridge
+        // expression — the divergence rides THROUGH the anchor exactly as the old
+        // f(t + offset) recompute did).
+        const int64_t tEffV = tick1based + advanceOffset_[v];
+        int64_t fp = 0;
+        (void)voiceFrameTickAt(v, tEffV, &fp);
+        voiceFramePhase_[v] = (int)fp;   // ≡ tEffV − 1 (mod the row walk's period)
+        {
+            int L, O, R; LaneDir vd;
+            effectiveVoiceLor(v, L, O, R, vd);
+            if (L < 1) L = 1;
+            if (voiceFrameReadsFullPhrase(v)) L = 16;
+            frameKey_[v] = walkKeyOf(vd, L);
+        }
+        for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
+            const int vlen = std::max(1, polyStrandLenOf(v, s));
+            lanePhaseV_[v][s] = wrapMod(tEffV - 1, walkPeriod(laneDirV_[v][s], vlen));
+            laneKeyV_[v][s]   = walkKeyOf(laneDirV_[v][s], vlen);
+        }
+        advOffSeen_[v] = advanceOffset_[v];   // the transport's shadow syncs at the anchor
+    }
+}
+
+// THE ADVANCE EVENT. Advances every holder LOCALLY (no walk reads the transport tick —
+// it only moved at the anchor), then derives every read cache. The phases advance by
+// their RAW clock deltas (the transport motion / the voice's effective-clock delta k_v)
+// so each phase stays congruent to its raw t0 mod its OWN period through any config;
+// the derives pick the representative per config (the warm-phase law — see the hpp).
+void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int8_t* voiceMotion) {
+    const int lenG = std::max(1, cachedLength);
+    // THE WRITE SITE (the spec's law): the transport's own position advances with the
+    // clock event — the ONE absolute value in the engine, consumed only by the anchors.
+    // The offsets-only refresh (motion 0) leaves it verbatim.
+    transportTick_ += transportMotion;
+    const int64_t t0Now = transportTick_ - 1;   // the post-event raw t0 (the re-anchor coordinate)
+    // ── the global walk holder (the mapped-config read coordinate) ──
+    globalWalk_ = wrapMod((int64_t)globalWalk_ + transportMotion, lenG);
+    // ── the raw-clock congruences (config-independent; the RE-ANCHOR LAW on a walk-key
+    //    change: a live len/dir change re-bounds the period, the old congruence is
+    //    meaningless for it, so the holder takes the closed form's exact value at the
+    //    change — f(t, newParams) — from the transport's own position and continues
+    //    locally from there, bit-identical to the old recompute in every case) ──
+    {
+        const int rLen = std::max(1, lor(dotModular::STRAND_RHYTHM, LOR_LEN));
+        globalT0Phase_ = (globalT0Key_ != rLen)
+            ? wrapMod(t0Now, rLen)
+            : wrapMod((int64_t)globalT0Phase_ + transportMotion, rLen);
+        globalT0Key_ = rLen;
+    }
+    for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
+        const int mlen = std::max(1, (s < dotModular::POLY_LANE_COUNT) ? macroLOR_[s] : strandLen(s));
+        const int key = walkKeyOf(macroLaneDir_[s], mlen);
+        macroLanePhase_[s] = (macroLaneKey_[s] != key)
+            ? wrapMod(t0Now, walkPeriod(macroLaneDir_[s], mlen))
+            : wrapMod((int64_t)macroLanePhase_[s] + transportMotion, walkPeriod(macroLaneDir_[s], mlen));
+        macroLaneKey_[s] = key;
+    }
+    // ── the voice frames + their lane phases (the RAW effective-clock deltas) ──
+    for (int v = 0; v < kVoiceSlots; ++v) {
+        // THE EFFECTIVE-CLOCK DELTA: the transport motion + this voice's offset diff.
+        // The fold accumulates advanceOffset_ BEFORE the transport call, so the diff
+        // here is exactly (d_v − dMain) and k_v = d_v — the voice's OWN decision. A
+        // hand-seeded or activation-zeroed offset jumps the diff — the same jump the
+        // old f(t + offset) read saw. [0] ≡ 0 ALWAYS: k_0 = the transport motion.
+        const int64_t kV = (int64_t)transportMotion + (advanceOffset_[v] - advOffSeen_[v]);
+        advOffSeen_[v] = advanceOffset_[v];
+        const int64_t t0EffNow = t0Now + advanceOffset_[v];   // this voice's raw walk coordinate
+        if (!voiceLorIdentity(v)) {
+            // Mapped row: the frame phase advances by the RAW delta too (its congruence
+            // is the raw effective clock's), and the mapped frame's read path derives
+            // from it under the pass-through window (in deriveHolders).
+            int L, O, R; LaneDir vd;
+            effectiveVoiceLor(v, L, O, R, vd);
+            if (L < 1) L = 1;
+            if (voiceFrameReadsFullPhrase(v)) L = 16;
+            const int key = walkKeyOf(vd, L);
+            voiceFramePhase_[v] = (frameKey_[v] != key)
+                ? wrapMod(t0EffNow, walkPeriod(vd, L))
+                : wrapMod((int64_t)voiceFramePhase_[v] + kV, walkPeriod(vd, L));
+            frameKey_[v] = key;
+        }
+        for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
+            const int vlen = std::max(1, polyStrandLenOf(v, s));
+            const int key = walkKeyOf(laneDirV_[v][s], vlen);
+            lanePhaseV_[v][s] = (laneKeyV_[v][s] != key)
+                ? wrapMod(t0EffNow, walkPeriod(laneDirV_[v][s], vlen))
+                : wrapMod((int64_t)lanePhaseV_[v][s] + kV, walkPeriod(laneDirV_[v][s], vlen));
+            laneKeyV_[v][s] = key;
+        }
+    }
+    // ── the MONO lane phases (V1's frame is their driver; k_0 = the transport motion:
+    //     the offsets never move on slot 0 — the mono slot IS the transport) ──
+    for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
+        const int len = std::max(1, strandLen(s));
+        const int key = walkKeyOf(laneDir_[s], len);
+        lanePhase_[s] = (laneKey_[s] != key)
+            ? wrapMod(t0Now, walkPeriod(laneDir_[s], len))
+            : wrapMod((int64_t)lanePhase_[s] + transportMotion, walkPeriod(laneDir_[s], len));
+        laneKey_[s] = key;
+    }
+    // ── derive every read cache from the (new) holders ──
+    deriveHolders(signMotion, voiceMotion);
+}
+
+// THE DERIVATION PASS: all read caches from the CURRENT holders, no phase advance.
+// THE REPRESENTATIVE LAW: under the PASS-THROUGH window (16/0) the walks read the raw
+// clock congruences (the phases — the only carrier of the raw congruence mod a length
+// that need not divide 16); under a MAPPED window every driver coordinate is the
+// bounded window walk (exact — globalWalk_ + the offsets), so the walks read those and
+// the warm phases wait for a pass-through round-trip. Either representative yields the
+// exact values the old f(counter) recompute produced at the same instants.
+void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
+    const int  lenG = std::max(1, cachedLength);
+    const int  offG = cachedOffset;
+    const bool passG = (lenG == 16 && offG == 0);
+    const int  wG = globalWalk_;
+    // ── the MACRO frame (the global window walk; no voice map — it IS the frame) ──
+    macroFrameRead_ = wrapMod((int64_t)wG + offG, 16);
+    {
+        const int64_t gd = signMotion;   // the normalized global walk step (the wrap is a BEAT)
         if (gd > 0)      macroFrameSign_ = +1;
         else if (gd < 0) macroFrameSign_ = -1;   // 0 = held repeat: keep the previous cue
     }
+    // ── the per-voice frames + the sign shifts their lanes read ──
+    int frameStep[16] = {};   // the frame's NORMALIZED musical step (the lane-sign shift)
+    int frameT0[16]   = {};   // the frame's t0 representative for the lane derives
     for (int v = 0; v < kVoiceSlots; ++v) {
-        // PER-VOICE STEP-ADVANCE Stage 1 (plans/per_voice_step_advance_build_plan.md):
-        // the voice's EFFECTIVE CLOCK — the one clock plus its ENGINE-computed
-        // advance offset ([0] ≡ 0: the mono slot IS the transport). The pair is
-        // computed PER VOICE through the same global-window walk
-        // (driverTickAt/driverTickBefore); tRawPrevV stays RAW (the mapped rows'
-        // wprev consumes the raw predecessor, the old param's contract). LOCKED
-        // (all offsets 0 — this build) every value degenerates EXPRESSION-EXACTLY
-        // to the caller's shared pair (tNowV == tNow, tRawPrevV == the caller's
-        // tRawPrev, tPrevV == tPrevGlobal) — the Stage-1 golden proof,
-        // bit-identical; the offsets only move in Stage 2, gated on the VAR-lane
-        // delegation. int64 unbounded (KILL_DNA_LCM); every read wraps locally.
-        const int motionV = voiceMotion ? (int)voiceMotion[v] : dirMotion;   // per-voice (Stage 2), uniform when locked
-        const int64_t tEffV     = totalStepsElapsed + advanceOffset_[v];
-        const int64_t tNowV     = driverTickAt(tEffV, cachedLength, cachedOffset);
-        const int64_t tRawPrevV = tEffV - motionV;
-        const int64_t tPrevV    = driverTickBefore(tNowV,
-                                    driverTickAt(tRawPrevV, cachedLength, cachedOffset),
-                                    motionV, cachedLength, cachedOffset);
+        const int motionV = voiceMotion ? (int)voiceMotion[v] : signMotion;
+        const int wGv = wrapMod((int64_t)wG + advanceOffset_[v], lenG);
         const bool live = (v == 0) || (v >= 1 && v <= numPolyVoices);
-        if (!live) { voiceDriver_[v] = tNowV; voiceDriverPrev_[v] = tPrevV; voiceRead_[v] = 0; continue; }
-        // (A6) The base-mode read law, ONE branch for both non-identity cases: abs1
-        // falls through to the SAME window walk as cycle, evaluated over the FULL
-        // PHRASE (L→16 below) — the DIRECTION and the R anchor compose exactly as
-        // cycle's, one level wider (Rodney: "absolute mode doesn't support voice lane
-        // direction" — it does now), and the row's real L/O only GATE the output.
-        // O cancels from the read in both (rho+O ≡ R mod Lw): the ANCHOR LAW — the
-        // read at parent-step-1 is R, always (Forward; the direction walks away from
-        // it). Identity rows keep the raw pass-through below (the Stage-1 goldens).
+        const int64_t tNowV = passG ? (int64_t)(wGv + 1) : (int64_t)(wGv + offG + 1);
+        if (!live) { voiceDriver_[v] = tNowV; voiceRead_[v] = 0; continue; }
         if (voiceLorIdentity(v)) {
-            voiceDriver_[v]      = tNowV;
-            voiceDriverPrev_[v]  = tPrevV;
-            voiceRead_[v]        = (int)(((tNowV - 1) % 16 + 16) % 16);
-            {   // identity frame = the global walk (same pair as macroFrame above)
-                const int64_t gd = tNowV - tPrevV;
-                if (gd > 0)      voiceSign_[v] = +1;
-                else if (gd < 0) voiceSign_[v] = -1;
+            voiceDriver_[v] = tNowV;
+            voiceRead_[v]   = (int)(((tNowV - 1) % 16 + 16) % 16);
+            // The identity frame's sign: the walk's musical step with the wrap folded —
+            // the driverTickBefore law on the bounded pair (the raw clock never jumps,
+            // so pass-through reduces to motionV; the mapped window's jump normalizes).
+            int64_t gd = motionV;
+            if (!passG) {
+                const int64_t tRawPrev = (int64_t)wrapMod((int64_t)wGv - motionV, lenG) + offG + 1;
+                const int64_t dd = tNowV - tRawPrev;
+                gd = (dd > 1 || dd < -1) ? (int64_t)motionV : dd;
             }
+            if (gd > 0)      voiceSign_[v] = +1;
+            else if (gd < 0) voiceSign_[v] = -1;
+            frameStep[v] = (int)gd;
+            frameT0[v]   = passG ? lanePhaseV_[v][0] : (wGv + offG);   // per-strand below; this is the default
             continue;
         }
         int L, O, R; LaneDir vd;
         effectiveVoiceLor(v, L, O, R, vd);
         if (L < 1) L = 1;
-        // (A6) ABS1: the window walk runs the FULL PHRASE — L→16 for the READ only.
         if (voiceFrameReadsFullPhrase(v)) L = 16;
         const int64_t rho  = ((((int64_t)(R - O) % L) + L) % L);
-        const int64_t wnow = ((((laneTickFor(vd, tNowV, L) + rho) % L) + L) % L);
+        // The frame walk's t0 representative: the RAW effective-clock congruence under
+        // the pass-through window (the frame phase), the bounded window walk under the
+        // mapped window — the same value laneTickFor evaluated in the old recompute.
+        const int64_t ft0   = passG ? (int64_t)voiceFramePhase_[v] : (int64_t)(wGv + offG);
+        const int64_t wnow = ((((laneTickFor(vd, ft0 + 1, L) + rho) % L) + L) % L);
         voiceDriver_[v] = wnow + 1;
         voiceRead_[v]   = (int)((wnow + O) & 0x0F);
-        const int64_t wprev = ((((laneTickFor(vd, tRawPrevV, L) + rho) % L) + L) % L);
+        // The RAW predecessor's walk value: the effective clock one motionV step back —
+        // its t0 representative is (ft0 − frameBack), where frameBack is the true t0
+        // gap (the raw clock: exactly motionV; the mapped window: the walk gap).
+        const int64_t frameBack = passG ? (int64_t)motionV
+            : (int64_t)wGv - (int64_t)wrapMod((int64_t)wGv - motionV, lenG);
+        const int64_t wprev = ((((laneTickFor(vd, wrapMod(ft0 - frameBack, walkPeriod(vd, L)) + 1, L) + rho) % L) + L) % L);
         const int64_t dd    = voiceDriver_[v] - (wprev + 1);
         // A wrap (the voice's own window, or the global window beneath it) is a BEAT,
         // not a bounce: the musical predecessor is one step along the current motion.
-        voiceDriverPrev_[v] = (dd > 1 || dd < -1) ? (voiceDriver_[v] - motionV) : (wprev + 1);
-        {   // Stage 3: the voice frame's walk sign. A wrap/jump (|dd| > 1) reads as ONE
-            // musical step along the FRAME'S OWN motion — dirMotion x the voice's
-            // direction sign (a Reverse frame wrapping bottom->top is still walking
-            // backward; the raw walk delta there is an alias of the closed form, not a
-            // direction flip). Otherwise the raw window-walk delta carries it, including
-            // the Pendulum/PingPong endpoint flips. delta 0 = the PingPong endpoint
-            // repeat: keep the cue. (Pendulum/PingPong projections never jump — their
-            // walks bounce inside the window — so the raw delta is always the truth
-            // there; the guard is for the Forward/Reverse wraps and a global-window
-            // jump beneath the frame.)
-            const int64_t vdSign  = (vd == LaneDir::Reverse) ? -1 : +1;
-            const int64_t dstep   = (dd > 1 || dd < -1) ? (int64_t)motionV * vdSign : dd;
-            if (dstep > 0)      voiceSign_[v] = +1;
-            else if (dstep < 0) voiceSign_[v] = -1;
+        const int64_t vdSign  = (vd == LaneDir::Reverse) ? -1 : +1;
+        const int64_t dstep   = (dd > 1 || dd < -1) ? (int64_t)motionV * vdSign : dd;
+        if (dstep > 0)      voiceSign_[v] = +1;
+        else if (dstep < 0) voiceSign_[v] = -1;
+        frameStep[v] = (int)dstep;
+        frameT0[v]   = (int)wnow;   // the mapped row's lanes hang off the frame VALUE
+    }
+    // ── the lane walks (the positions every reader consumes + the UI sign cues) ──
+    auto laneRecomp = [&](LaneDir d, int len, int64_t t0rep, int motionNorm, int& tickOut, int& signOut) {
+        const int P = walkPeriod(d, len);
+        // The position: the walk formula AT the driver's t0 representative, wrapped by
+        // the lane's OWN length (the old recomp's local wrap; pendulum/pingpong are
+        // already in [0, L−1]).
+        const int64_t cur = laneTickFor(d, t0rep + 1, len);
+        tickOut = (int)(((cur % len) + len) % len);
+        // The sign: the walk value one NORMALIZED musical step back (the raw formula
+        // values — the difference is congruence-shift-invariant, so this is the old
+        // f(tN) − f(tP) exactly). delta 0 = the endpoint repeat: keep the previous sign.
+        const int64_t prv = laneTickFor(d, (int64_t)wrapMod(t0rep - motionNorm, P) + 1, len);
+        const int64_t delta = cur - prv;
+        if (delta > 0)      signOut = +1;
+        else if (delta < 0) signOut = -1;
+    };
+    for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+        const int len = std::max(1, strandLen(l));   // mono strand length (mono tick)
+        // The MONO lanes hang under V1's frame: its t0 representative per strand (the
+        // identity row: the raw-clock phase under pass-through, the bounded walk under
+        // the mapped window; the mapped row: the frame VALUE).
+        const int64_t monoT0 = voiceLorIdentity(0)
+            ? (passG ? (int64_t)lanePhase_[l] : (int64_t)(wrapMod((int64_t)wG + advanceOffset_[0], lenG) + offG))
+            : (int64_t)frameT0[0];
+        laneRecomp(laneDir_[l], len, monoT0, frameStep[0], laneTick_[l], laneSign_[l]);
+        for (int v = 1; v <= numPolyVoices; ++v) {
+            const int vlen = std::max(1, polyStrandLenOf(v, l));   // THIS voice's LOR length
+            const int64_t voiceT0 = voiceLorIdentity(v)
+                ? (passG ? (int64_t)lanePhaseV_[v][l] : (int64_t)(wrapMod((int64_t)wG + advanceOffset_[v], lenG) + offG))
+                : (int64_t)frameT0[v];
+            laneRecomp(laneDirV_[v][l], vlen, voiceT0, frameStep[v], laneTickV_[v][l], laneSignV_[v][l]);
         }
+    }
+    for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
+        // macroLOR_ is EDITOR-lane indexed for the POLY lanes (0..4 = MEL/OCT/QMIX/REST/ACC);
+        // VAR/LEG (5/6) have no global LOR, so they use the mono strandLen (see
+        // advancePlayhead's old note — POLY_LANE_COUNT covers every poly lane).
+        const int mlen = std::max(1, (l < dotModular::POLY_LANE_COUNT) ? macroLOR_[l] : strandLen(l));
+        const int64_t macroT0 = passG ? (int64_t)macroLanePhase_[l] : (int64_t)(wG + offG);
+        laneRecomp(macroLaneDir_[l], mlen, macroT0, signMotion, macroLaneTick_[l], macroLaneSign_[l]);
     }
 }
 
 void SequencerEngine::recomputeLaneTicks(const int8_t* voiceMotion) {
-    // Recompute all laneTick_/laneTickV_/macroLaneTick_ caches from totalStepsElapsed.
-    // This is the same recompute block as in advancePlayhead(), extracted so it can be
-    // called after snapping totalStepsElapsed externally (e.g. Mode E phase jump snap)
-    // without incrementing stepIndex/totalStepsElapsed.
-    // UNIFIED ADDRESSING Stage 1: same global-level driver as advancePlayhead
-    // (lastPlayDir stands in for the edge's motion direction here — this variant
-    // runs after external snaps, where the transport did not just advance).
-    const int    drvLen = cachedLength;
-    const int    drvOff = cachedOffset;
-    const int64_t tNow  = driverTickAt(totalStepsElapsed, drvLen, drvOff);
-    const int64_t tPrevD = driverTickBefore(tNow,
-                            driverTickAt(totalStepsElapsed - lastPlayDir, drvLen, drvOff),
-                            lastPlayDir, drvLen, drvOff);
-    recomputeVoiceDrivers_(tNow, tPrevD, lastPlayDir, voiceMotion);
-    auto recomp = [&](LaneDir d, int len, int64_t tN, int64_t tP, int& tickOut, int& signOut) {
-        const int64_t cur = laneTickFor(d, tN, len);
-        const int64_t prv = laneTickFor(d, tP, len);
-        // KILL_DNA_LCM: the LOCAL wrap by the lane's own length (see advancePlayhead's recomp).
-        tickOut = (int)(((cur % len) + len) % len);
-        const int64_t delta = cur - prv;
-        if (delta > 0)      signOut = +1;
-        else if (delta < 0) signOut = -1;
-        // delta == 0 is the PingPong endpoint repeat: keep the previous sign.
-    };
-    auto polyStrandLen = [&](int v, int strand) -> int {
-        switch (strand) {
-            case dotModular::STRAND_MELODY:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_MELODY});
-            case dotModular::STRAND_OCTAVE:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_OCTAVE});
-            case dotModular::STRAND_QMIX:      return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_QMIX});
-            case dotModular::STRAND_RHYTHM:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_REST});
-            case dotModular::STRAND_ACCENT:    return polyLenE(VoiceResolver::slot(v + 1), LaneId{PL_ACCENT});
-            case dotModular::STRAND_VARIATION: return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_VARIATION}, LOR_LEN);
-            case dotModular::STRAND_LEGATO:    return polyLOR(VoiceResolver::slot(v + 1), LaneId{EDITOR_LANE_LEGATO}, LOR_LEN);
-        }
-        return 16;
-    };
-    for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-        const int len = std::max(1, strandLen(l));
-        recomp(laneDir_[l], len, voiceDriver_[0], voiceDriverPrev_[0], laneTick_[l], laneSign_[l]);
-        for (int v = 1; v <= numPolyVoices; ++v) {
-            const int vlen = std::max(1, polyStrandLen(v, l));
-            recomp(laneDirV_[v][l], vlen, voiceDriver_[v], voiceDriverPrev_[v], laneTickV_[v][l], laneSignV_[v][l]);
-        }
-    }
-    for (int l = 0; l < dotModular::NUM_STRANDS; ++l) {
-        const int mlen = std::max(1, (l < dotModular::POLY_LANE_COUNT) ? macroLOR_[l] : strandLen(l));
-        recomp(macroLaneDir_[l], mlen, tNow, tPrevD, macroLaneTick_[l], macroLaneSign_[l]);
-    }
+    // THE OFFSETS-ONLY REFRESH: the clock held (transportMotion 0) but diverged voices
+    // moved — the holders tick by the per-voice offset diffs alone, then everything
+    // re-derives. The sign cues read lastPlayDir (the edge's motion direction), exactly
+    // what the old recompute passed as dirMotion after external events.
+    tickHolders(0, lastPlayDir, voiceMotion);
 }
 
 void SequencerEngine::snapToPhaseStep(long pulsePos, int p16) {
-    // Snap the transport (stepIndex + totalStepsElapsed) to the phase-derived pulse
-    // position, then recompute lane ticks. Used after a Mode E phase jump to eliminate
-    // the rounding drift from jumpSixteenths: the replay advances by the ROUNDED step
-    // count, but the actual phase position is at pulsePos/p16 (which may be fractional).
-    // Without this snap, each sweep of the phase knob lands on a different step.
+    // Snap the transport (stepIndex + the holder congruences) to the phase-derived
+    // pulse position, then re-derive the lane caches from the anchor. Used after a Mode
+    // E phase jump to eliminate the rounding drift from jumpSixteenths: the replay
+    // advances by the ROUNDED step count, but the actual phase position is at
+    // pulsePos/p16 (which may be fractional). Without this snap, each sweep of the
+    // phase knob lands on a different step.
     long absStep = pulsePos / p16;               // absolute step (can be negative, 0-based)
     int phaseStep = (int)(((absStep % 16) + 16) % 16);
-    // totalStepsElapsed is 1-based (incremented before laneTickFor uses it, which subtracts 1
-    // internally to produce 0-based laneTick_). So convert absStep (0-based) to 1-based.
-    // KILL_DNA_LCM: the RAW net-step the phase implies — no DNA_LCM mod. Any
-    // representative net-step works (driverTickAt/laneTickFor mod locally); the
-    // raw one is the honest one.
-    totalStepsElapsed = (int64_t)absStep + 1;
+    // THE ANCHOR: the phase-derived tick is 1-based (the old counter was; the walks'
+    // t0 = tick − 1). The per-voice offsets ride THROUGH the snap (the anchor seeds each
+    // voice's phase at tick + offset — the divergence persists, exactly as f(t+offset) did).
+    anchorTransport((int64_t)absStep + 1);
     stepIndex = phaseStep;
     // Apply window checking (match advancePlayhead's behavior)
     if (!isStepInWindow(stepIndex)) {
@@ -790,7 +943,7 @@ void SequencerEngine::snapToPhaseStep(long pulsePos, int p16) {
         for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
             stepIndex = (stepIndex + 1) & 0x0F;
     }
-    recomputeLaneTicks();
+    deriveHolders(lastPlayDir, nullptr);
 }
 
 void SequencerEngine::updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched) {
@@ -848,17 +1001,18 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
         // Calculate distance from current playhead to map physical LED to drifting DNA content
         int relCurrent = (stepIndex - startStep + 16) % 16;
         int relLight = (lightIdx - startStep + 16) % 16;
-        // totalStepsElapsed is 1-based; the unified-addressing GLOBAL map turns it into the
-        // window walk (pass-through at the default window — the expression below is then
-        // today's verbatim). Subtract 1 to get the 0-based walk (matching laneTick_, which
-        // laneTickFor now returns as 0-based). Without this, the DNA content (which steps
-        // show notes) would be 1 step ahead of the playhead.
-        // KILL_DNA_LCM: the driver tick is int64 (pass-through carries the raw counter) —
-        // wrap LOCALLY by the rhythm lane's own length before the int narrowing.
+        // POSITION_HOLDER_MODEL: the light's DNA-content tick is the GLOBAL window
+        // walk's t0 shifted by the phrase offsets — a congruence no mod-16 walk
+        // carries (the RHYTHM lane's own length need not divide 16), so it has its
+        // OWN holder: globalT0Phase_ ≡ the offset-less global walk coordinate (mod
+        // rLen), advanced by the same deltas the global walk takes. The read adds
+        // the window offset (pass-through: 0 — the expression below is then the old
+        // f(counter) read verbatim). Subtract nothing else: the phase IS the 0-based
+        // walk coordinate (matching laneTick_, which laneTickFor returns 0-based).
         // getStrandIdx mods by the same len below, so this is congruent, negative-safe,
         // read-identical.
         const int rLen = std::max(1, lor(dotModular::STRAND_RHYTHM, LOR_LEN));
-        const int64_t tick64 = driverTickAt(totalStepsElapsed, cachedLength, cachedOffset) - 1 - relCurrent + relLight;
+        const int64_t tick64 = (int64_t)globalT0Phase_ + cachedOffset - relCurrent + relLight;
         const int tickForLight = (int)(((tick64 % rLen) + rLen) % rLen);
 
         int dnaIdx = getStrandIdx(tickForLight, lor(dotModular::STRAND_RHYTHM,LOR_LEN), lor(dotModular::STRAND_RHYTHM,LOR_OFF), lor(dotModular::STRAND_RHYTHM,LOR_ROT));
@@ -1925,7 +2079,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
 #if RULE2_DEBUG
             INFO("[R2 roll ] v=%2d step=%3lld LE=%d legCell=%2d monoCell=%2d legLOR=(%2d,%2d,%2d) "
                  "r=%.3f prob=%.3f nvV=%d canLead=%d -> slur=%d",
-                voiceIdx.v, (long long)totalStepsElapsed, (int)!varlegDelegated(voiceIdx.v, 1),
+                voiceIdx.v, (long long)globalWalk_, (int)!varlegDelegated(voiceIdx.v, 1),
                 getLegatoStepForVoice(voiceIdx), getLegatoStep(),
                 polyLOR(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, LOR_LEN),
                 polyLOR(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, LOR_OFF),
@@ -1981,7 +2135,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                 const bool connect = prevSlur && stillSounding;
 #if RULE2_DEBUG
                 INFO("[R2 land ] v=%2d step=%3lld LE=%d part=%d prevSlur=%d sound=%d isTie=%d -> %s",
-                    voiceIdx.v, (long long)totalStepsElapsed, (int)!varlegDelegated(voiceIdx.v, 1),
+                    voiceIdx.v, (long long)globalWalk_, (int)!varlegDelegated(voiceIdx.v, 1),
                         (int)v.participating, (int)prevSlur, (int)stillSounding, (int)isTie,
                     connect ? "CONNECT" : "REARTICULATE");
 #endif

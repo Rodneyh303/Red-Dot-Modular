@@ -722,7 +722,9 @@ int main() {
         eng.numPolyVoices = 4;
         eng.advanceOffset_[2] = 5;
         eng.advancePlayhead();
-        check(eng.totalStepsElapsed == 1, "PLUMB: advancePlayhead moved the one clock +1");
+        // (POSITION_HOLDER_MODEL port: the transport's +1 reads on the global walk holder
+        // — the t=0 anchor seeds it at (−1 mod 16) = 15, so one advance lands at 0.)
+        check(eng.globalWalk_ == 0, "PLUMB: advancePlayhead advanced the transport holder +1");
         check(eng.voiceDriver_[0] == 1 && eng.voiceDriver_[1] == 1,
               "PLUMB: offset-0 voices read the clock (the degenerate shared pair)");
         check(eng.voiceDriver_[2] == 6,
@@ -734,7 +736,9 @@ int main() {
         // (the driverTickAt fold) — still exactly k window steps.
         SequencerEngine eng2; eng2.reset();
         eng2.numPolyVoices = 4;
-        eng2.cachedLength = 7; eng2.cachedOffset = 3;
+        eng2.setWindow(7, 3);   // (holder port: the window is authored through setWindow —
+                                //  the re-author anchor re-bounds the global walk to (tick−1) mod 7,
+                                //  exactly what the old f(counter) closed form evaluated)
         eng2.advanceOffset_[3] = 5;
         eng2.advancePlayhead();
         const auto fold7 = [](int64_t t) -> int64_t {
@@ -831,10 +835,10 @@ int main() {
             const PatternInput in = makeInput(0.5f);
             eng.executeModeB(true, true, 3.f, in);      // the seed rise
             eng.gs.slurForward = true;                  // the fall fires under a pending slur
-            const int64_t clockBefore = eng.totalStepsElapsed;
+            const int walkBefore = eng.globalWalk_;   // (holder port: the transport state)
             const int tickBefore = eng.laneTickV_[1][dotModular::STRAND_VARIATION];
             eng.legatoCheckpointOnFall();
-            check(eng.totalStepsElapsed == clockBefore,
+            check(eng.globalWalk_ == walkBefore,
                   "PV-FALL: mono p=0 holds the CLOCK at the fall (the transport is the mono decision)");
             check(eng.advanceOffset_[1] == +1,
                   "PV-FALL: the Local-East p=+1 voice advances on its OWN fall decision (offset +1)");

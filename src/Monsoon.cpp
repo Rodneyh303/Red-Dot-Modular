@@ -559,11 +559,12 @@ float Monsoon::semitoneToVolts(int semitone) {
         // to startStep — same result as the old pre-increment, but without the visual flash
         // of step 16 (stepIndex=15) between reset and the first edge.
         stepIndex = -1;
-        engine.totalStepsElapsed = 0; // Sync polymeters to "Beat 1" on hard reset
-        // Under the stateless model the lanes follow this for free (each is a pure function
-        // of totalStepsElapsed), so Beat 1 sync is automatic. resetLaneWalk() is belt-and-braces:
-        // redundant now, but it was MISSING when lanes had their own accumulators — RESET zeroed
-        // the master clock while every lane walked on, and polymeters silently stopped syncing.
+        // POSITION_HOLDER_MODEL: there is no counter to zero. resetLaneWalk() below
+        // ANCHORS the holders to Beat 1 (the t=0 congruence — every walk back at its own
+        // start), so Beat-1 sync is automatic. The old belt-and-braces note: when the
+        // lanes had their own ACCUMULATORS, RESET zeroed the master clock while every
+        // lane walked on, and polymeters silently stopped syncing — the anchor law
+        // closes that class of bug by construction: the anchors ARE the reset.
         engine.resetLaneWalk();
         engine.gs.reset();          // clears gate, hold, pitch, pulse, semiPlayRemain
         prevExtGate = false;
@@ -1120,7 +1121,7 @@ void Monsoon::process(const ProcessArgs& args) {
                 }
             }
             // ── Snap transport to the phase-derived position ──────────────────────
-            // The replay above advanced stepIndex/totalStepsElapsed by the ROUNDED
+            // The replay above advanced stepIndex and the holder congruences by the ROUNDED
             // jumpSixteenths (nearest whole 1/16). But the actual phase position is
             // at pulsePos/p16, which is fractional. Without this snap, the rounding
             // error accumulates across jumps — each sweep of the phase knob lands on
