@@ -81,3 +81,54 @@ those tests prove it.
 ### BONUS
 Ships the cool feature (per-voice stuttering — nearly dumped) NOW, and it does double duty as the safety net
 for the counter cleanup. Musical payoff + de-risked refactor from one piece of work.
+
+════════════════════════════════════════════════════════════════════════════════
+## READER INVENTORY (refreshed post-UAS, HEAD bd8f0b1) — the counter is ALREADY mostly a pure driver
+Grepped every totalStepsElapsed site. Most of the 23 hits are COMMENTS explaining the counter. The ACTUAL
+code sites are few and cleanly classified — the removal is SMALL, because UAS already made nearly every
+read go through driverTickAt. Classification:
+
+### WRITE sites (where the counter is SET — these define "current position", the irreducible state)
+- :148   reset()           → totalStepsElapsed = 0        (zero on construct/reset)
+- :384-385 advancePlayhead → ±1 per advance              (THE increment — the only mutation in play)
+- :785   phase-jump snap   → = absStep + 1               (Mode E: snap to a phase-derived position)
+- Monsoon.cpp:562 hard reset→ = 0                          (Beat-1 sync)
+These are the "current global step" the position model needs. They STAY (as the single current-position
+value, advanced on the clock event) — they are NOT the redundancy. The redundancy is the RECOMPUTE-FROM-IT.
+
+### READ sites (consume the counter to compute positions) — ALL already go through driverTickAt
+- :417, :419  advancePlayhead recompute → driverTickAt(totalStepsElapsed [± dir], …)    [through UAS]
+- :662        per-voice effective clock → totalStepsElapsed + advanceOffset_[v]          [through UAS]
+- :731, :733  recomputeLaneTicks       → driverTickAt(totalStepsElapsed [± dir], …)      [through UAS]
+- :861        step-light brightness    → driverTickAt(totalStepsElapsed, …) - 1 - …      [through UAS]
+So EVERY position read is ALREADY driverTickAt(totalStepsElapsed, …) — the UAS mapping. There are NO direct
+raw-counter reads that bypass the mapping (the DNA_LCM kill + UAS already did that cleanup). 
+
+### DIRECT (int) reads — the only non-mapping consumers
+- :1928, :1984  DEBUG/trace printf → (long long)totalStepsElapsed   (diagnostic logging only; not logic)
+No (int) casts into logic remain (the DNA_LCM-era int-cast sites are gone).
+
+## WHAT THIS MEANS — the removal is a SMALL, CLEAN rename/reframe, not a rewrite
+The counter is ALREADY just "the current global step, advanced ±1, read only through driverTickAt (the UAS
+map)". It is NOT being redundantly recomputed-from in a way that duplicates UAS — UAS IS the read path.
+So the "kill the counter" work is really:
+1. CONFIRM the above (no reader bypasses driverTickAt; the two printf sites are diagnostic). DONE by this
+   inventory — only driverTickAt reads + 2 debug prints + the 4 write sites.
+2. The counter is the irreducible "current global step" INPUT to the UAS map. It does NOT need removing as
+   REDUNDANT — the earlier "redundant duplicate driver" concern is RESOLVED: UAS already consumes it as the
+   single input, nothing recomputes a parallel position. The thing we feared (a counter driving a redundant
+   recompute alongside UAS) DID exist pre-UAS; UAS removed it. What remains (totalStepsElapsed as the one
+   current-step input, read only via driverTickAt) is NOT redundant — it's the minimal state.
+=> CONCLUSION: there is NO dumb redundant counter left to kill. UAS already reduced it to the minimal
+   "current global step" input. The position-holder migration's GOAL (reads go through the mapping, not a
+   redundant counter) is ALREADY ACHIEVED. 
+
+## REVISED PLAN — the counter stays as minimal state; 32 STEPS is the real next step
+- Do NOT "remove totalStepsElapsed" — it is now the minimal current-step input, not a redundant driver.
+  (Optional cosmetic: rename to currentGlobalStep_ for clarity, since "elapsed/counter" framing misleads —
+  but that is pure cosmetics, defer.)
+- The real unblocked work is 32 STEPS. Because every read is driverTickAt(counter, len, …) and wraps
+  LOCALLY by len, 32 is nearly free: extend L/O/R ranges to 32, audit the FEW remaining & 0x0F / % 16 /
+  < 16 literals (position reads already mod by len, not 16 — the & 0x0F at :675 voiceRead_ and any display
+  are the audit targets), make 32 an EXTENSION of 16 (≤16 bit-identical). See STEP_COUNT_DECISION.md +
+  LIGHT_RING_32_STEPS.md.
