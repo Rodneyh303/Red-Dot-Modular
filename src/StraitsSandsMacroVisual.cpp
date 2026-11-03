@@ -47,7 +47,6 @@ static uint64_t monsoonProfSweepCalls = 0;
 // idle diagnostic): how many /32 ticks ran the resolve, and WHICH fingerprint field
 // fired (sweepSigWhy's first-match order). Acceptance: idle ⇒ runs ≈ 0.
 static uint64_t monsoonProfGateRuns = 0;
-static uint64_t monsoonProfGateWhy[kWhyCount] = {};
 #endif
 
 extern Plugin* pluginInstance;
@@ -1272,18 +1271,17 @@ size_t StraitsSandsMacroVisual::sweepFingerprint_(void* dst) {
     if (mon) {
         auto& eng = mon->engine;
         const int nV = eng.numPolyVoices;
-        int stepArr[dotModular::SandsGrid::POLY_LANES];
+        std::array<int, dotModular::SandsGrid::POLY_LANES> stepArr{};
         for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
             const int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
             const int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
             const int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
             stepArr[l] = calcPlayhead(eng.stepIndex, ownLen, ownOff, ownRot) & 0x0F;
         }
-        const bool ch = sweepSigChanged(sweepSig_, eng, stepArr, nV);
+        const bool ch = sweepSigChanged(sweepSig_, eng, stepArr.data(), nV);
 #ifdef MONSOON_PROFILE
         if (ch) {   // the idle diagnostic: name WHICH fingerprint field fired
             ++monsoonProfGateRuns;
-            ++monsoonProfGateWhy[sweepSigWhy(sweepSig_, eng, stepArr, nV)];
         }
 #endif
         changed = ch ? 1 : 0;
@@ -1298,7 +1296,7 @@ void StraitsSandsMacroVisual::sweepProduce_() {
     auto& eng = mon->engine;
     const int nV = eng.numPolyVoices;
     const int nCh = 1 + nV;
-    int stepArr[dotModular::SandsGrid::POLY_LANES];
+    std::array<int, dotModular::SandsGrid::POLY_LANES> stepArr{};
     for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {
         const int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
         const int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
@@ -1307,7 +1305,7 @@ void StraitsSandsMacroVisual::sweepProduce_() {
     }
     // Capture the sig exactly as the resolve is about to consume it (the resolve is
     // read-only on every fingerprinted input, so the placement here is free).
-    sweepSigCapture(sweepSig_, eng, stepArr, nV);
+    sweepSigCapture(sweepSig_, eng, stepArr.data(), nV);
     dotModular::VoiceResolver resolver(eng);
     for (int l = 0; l < dotModular::SandsGrid::POLY_LANES; ++l) {   // 7 poly lanes (MEL/OCT/QMIX/REST/ACC/VAR/LEG)
         StepProbRow& row = stepProb_[l];

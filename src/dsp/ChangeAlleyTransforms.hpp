@@ -9,6 +9,9 @@
 // Rows >= activeCount are LEFT UNTOUCHED (manual pins persist beyond the live pool).
 // All transforms preserve one-pin-per-row (they assign, never duplicate rows).
 #include <cstdint>
+#include "CATrajectoryBuffer.hpp"   // P-A (ARRAY_CONTAINER_AUDIT): N_VOICES — the rack-free
+                                    // Change Alley voice-count authority (the panel-side
+                                    // ChangeAlleyV2Ids::N_VOICES lives behind Monsoon.hpp)
 #include "PhiloxRng.hpp"   // the shared library RNG. Change Alley's scatter draws through
                            // PhiloxRng::at(pos) -- counter-addressable + reversible -- instead
                            // of the old inline xorshift/splitmix duplicates. PhiloxRng is
@@ -16,6 +19,12 @@
                            // dependency" reason for the inline copies never held.
 
 namespace dotModular { namespace ca {
+
+// P-A (ARRAY_CONTAINER_AUDIT Finding A): the src[] table's ONE capacity spelling — the
+// Change Alley voice count (mono + 15 poly), aliased from the rack-free CA trajectory
+// authority. Was ~40 bare `16`s (array dims, loop bounds, domain guards, modulus domains);
+// the resize (STEPS_32) and any voice-count change now stop in ONE place per file.
+constexpr int N_VOICES = redDot::CATrajectoryBuffer::N_VOICES;
 
 inline int clampBlock(int blockSize, int activeCount) {
     if (activeCount < 1) activeCount = 1;
@@ -25,7 +34,7 @@ inline int clampBlock(int blockSize, int activeCount) {
 
 // Identity: src[v] = v over the active pool. (= Collapse @ block 1.)
 inline void identity(uint8_t* src, int activeCount) {
-    for (int v = 0; v < activeCount && v < 16; ++v) src[v] = (uint8_t)v;
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) src[v] = (uint8_t)v;
 }
 
 // ── Collapse: three formulations, two of which we expose (§13a/13c) ──────────
@@ -52,9 +61,9 @@ inline int blockLeader(int v, int b, int activeCount, int leaderOffset) {
 // INHERITED (each block ends on a different source) rather than wiped.
 inline void collapseDomain(uint8_t* src, int activeCount, int blockSize, int leaderOffset = 0) {
     const int b = clampBlock(blockSize, activeCount);
-    uint8_t tmp[16];
-    for (int v = 0; v < 16; ++v) tmp[v] = src[v];
-    for (int v = 0; v < activeCount && v < 16; ++v)
+    std::array<uint8_t, N_VOICES> tmp{};
+    for (int v = 0; v < N_VOICES; ++v) tmp[v] = src[v];
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v)
         src[v] = tmp[blockLeader(v, b, activeCount, leaderOffset)];
 }
 
@@ -62,9 +71,9 @@ inline void collapseDomain(uint8_t* src, int activeCount, int blockSize, int lea
 // individuality; what shrinks is the ALPHABET of sources (16 possible -> nBlocks).
 inline void collapseCodomain(uint8_t* src, int activeCount, int blockSize, int leaderOffset = 0) {
     const int b = clampBlock(blockSize, activeCount);
-    for (int v = 0; v < activeCount && v < 16; ++v) {
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) {
         const int cur = src[v];
-        if (cur < 0 || cur >= activeCount || cur >= 16) continue;
+        if (cur < 0 || cur >= activeCount || cur >= N_VOICES) continue;
         src[v] = (uint8_t)blockLeader(cur, b, activeCount, leaderOffset);
     }
 }
@@ -72,7 +81,7 @@ inline void collapseCodomain(uint8_t* src, int activeCount, int blockSize, int l
 // Legacy name: identical to collapseDomain from an identity board (see note above).
 inline void collapse(uint8_t* src, int activeCount, int blockSize) {
     const int b = clampBlock(blockSize, activeCount);
-    for (int v = 0; v < activeCount && v < 16; ++v) src[v] = (uint8_t)((v / b) * b);
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) src[v] = (uint8_t)((v / b) * b);
 }
 
 // RotateValues: src[v] advances +1 WITHIN its block (CODOMAIN -- shifts the SOURCE) (wraps at block edge). Applied to the
@@ -92,7 +101,7 @@ inline int clampStep(int step, int span) {
 
 inline void rotateValues(uint8_t* src, int activeCount, int blockSize, int step = 1) {
     const int b = clampBlock(blockSize, activeCount);
-    for (int v = 0; v < activeCount && v < 16; ++v) {
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) {
         const int cur   = src[v];
         const int base  = (cur / b) * b;
         int blockEnd    = base + b;                       // tile edge…
@@ -135,7 +144,7 @@ inline void scatter(uint8_t* src, int activeCount, int blockSize,
     const int b = clampBlock(blockSize, activeCount);
     redDot::PhiloxRng rng = correlationStream(streamKey);   // keyed by STREAM, fixed
     const uint64_t basePos = corrBase(position);            // COUNTER = addressable position page
-    for (int v = 0; v < activeCount && v < 16; ++v) {
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) {
         const int base = (v / b) * b;
         int blockEnd   = base + b;
         if (blockEnd > activeCount) blockEnd = activeCount;
@@ -150,9 +159,9 @@ inline void scatter(uint8_t* src, int activeCount, int blockSize,
 // mirror row. Self-inverse per double trigger. Odd partial block centre self-maps.
 inline void reflectRows(uint8_t* src, int activeCount, int blockSize) {
     const int b = clampBlock(blockSize, activeCount);
-    uint8_t tmp[16];
-    for (int v = 0; v < 16; ++v) tmp[v] = src[v];
-    for (int v = 0; v < activeCount && v < 16; ++v) {
+    std::array<uint8_t, N_VOICES> tmp{};
+    for (int v = 0; v < N_VOICES; ++v) tmp[v] = src[v];
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) {
         const int base = (v / b) * b;
         int blockEnd   = base + b;
         if (blockEnd > activeCount) blockEnd = activeCount;
@@ -173,7 +182,7 @@ inline void blockOffset(uint8_t* src, int activeCount, int blockSize, int k) {
     const int nBlocks = (activeCount + b - 1) / b;          // includes a partial trailing block
     if (nBlocks <= 1) return;
     k = clampStep(k, nBlocks);                             // 1..nBlocks-1; 0/nBlocks are no-ops
-    for (int v = 0; v < activeCount && v < 16; ++v) {
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) {
         const int cur      = src[v];
         const int curBlock = cur / b;
         const int within   = cur - curBlock * b;
@@ -195,14 +204,14 @@ inline void blockOffset(uint8_t* src, int activeCount, int blockSize, int k) {
 // Rotate ROWS within each block: voices cycle their sourcing roles.
 inline void rotateRows(uint8_t* src, int activeCount, int blockSize, int step = 1) {
     const int b = clampBlock(blockSize, activeCount);
-    uint8_t tmp[16];
-    for (int v = 0; v < 16; ++v) tmp[v] = src[v];
-    for (int v = 0; v < activeCount && v < 16; ++v) {
+    std::array<uint8_t, N_VOICES> tmp{};
+    for (int v = 0; v < N_VOICES; ++v) tmp[v] = src[v];
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) {
         const int base = (v / b) * b;
         int end = base + b; if (end > activeCount) end = activeCount;
         const int span = end - base; if (span <= 0) continue;
         const int st   = clampStep(step, span);
-        const int from = base + (((v - base) - st + span * 16) % span);   // take that row's source
+        const int from = base + (((v - base) - st + span * N_VOICES) % span);   // take that row's source
         src[v] = tmp[from];
     }
 }
@@ -210,7 +219,7 @@ inline void rotateRows(uint8_t* src, int activeCount, int blockSize, int step = 
 // Reflect VALUES within each block: sources mirror, rows stay put.
 inline void reflectValues(uint8_t* src, int activeCount, int blockSize) {
     const int b = clampBlock(blockSize, activeCount);
-    for (int v = 0; v < activeCount && v < 16; ++v) {
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) {
         const int cur  = src[v];
         const int base = (cur / b) * b;
         int end = base + b; if (end > activeCount) end = activeCount;
@@ -225,15 +234,15 @@ inline void reflectValues(uint8_t* src, int activeCount, int blockSize) {
 // no pre-image keep their current source, and where several rows share a source the
 // LOWEST wins (deterministic, and it preserves that source's own mapping).
 inline void transpose(uint8_t* src, int activeCount) {
-    uint8_t inv[16];
-    for (int v = 0; v < 16; ++v) inv[v] = src[v];          // default: unchanged
-    bool seen[16] = {};
-    for (int v = 0; v < activeCount && v < 16; ++v) {
+    std::array<uint8_t, N_VOICES> inv{};
+    for (int v = 0; v < N_VOICES; ++v) inv[v] = src[v];          // default: unchanged
+    std::array<bool, N_VOICES> seen{};
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) {
         const int t = src[v];
-        if (t < 0 || t >= activeCount || t >= 16) continue;
+        if (t < 0 || t >= activeCount || t >= N_VOICES) continue;
         if (!seen[t]) { inv[t] = (uint8_t)v; seen[t] = true; }   // lowest pre-image wins
     }
-    for (int v = 0; v < activeCount && v < 16; ++v) src[v] = inv[v];
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) src[v] = inv[v];
 }
 
 // scatterRows: DOMAIN twin of scatter -- a true row PERMUTATION within each block.
@@ -249,14 +258,14 @@ inline void scatterRows(uint8_t* src, int activeCount, int blockSize,
     redDot::PhiloxRng rng = correlationStream(streamKey);
     uint64_t drawPos = corrBase(position);
     auto nextU = [&rng, &drawPos]() { return rng.at(drawPos++); };
-    uint8_t tmp[16];
-    for (int v = 0; v < 16; ++v) tmp[v] = src[v];
-    for (int base = 0; base < activeCount && base < 16; base += b) {
+    std::array<uint8_t, N_VOICES> tmp{};
+    for (int v = 0; v < N_VOICES; ++v) tmp[v] = src[v];
+    for (int base = 0; base < activeCount && base < N_VOICES; base += b) {
         int end = base + b; if (end > activeCount) end = activeCount;
         const int span = end - base;
         if (span <= 1) continue;
         // Fisher-Yates over the row indices in this block, so it is a genuine permutation.
-        int idx[16];
+        std::array<int, N_VOICES> idx{};
         for (int i = 0; i < span; ++i) idx[i] = base + i;
         for (int i = span - 1; i > 0; --i) {
             const int j = (int)(nextU() % (uint32_t)(i + 1));
@@ -279,11 +288,11 @@ inline void interCollapseDomain(uint8_t* src, int activeCount, int blockSize, in
     const int nBlk   = (activeCount + b - 1) / b;
     if (nBlk <= 1) { collapseDomain(src, activeCount, activeCount, 0); return; }
     // Re-express as collapseDomain at the block level: treat block indices as voices.
-    uint8_t bsrc[16] = {};
-    for (int v = 0; v < activeCount && v < 16; ++v) bsrc[v] = src[v] / b;  // block src
+    std::array<uint8_t, N_VOICES> bsrc{};
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) bsrc[v] = src[v] / b;  // block src
     const int leaderBlk = leader % nBlk;
     const uint8_t leaderVal = bsrc[leaderBlk * b];   // which block the leader points at
-    for (int v = 0; v < activeCount && v < 16; ++v)
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v)
         src[v] = (uint8_t)(leaderVal * b + (v % b));
 }
 
@@ -293,7 +302,7 @@ inline void interCollapseCodomain(uint8_t* src, int activeCount, int blockSize, 
     const int nBlk = (activeCount + b - 1) / b;
     if (nBlk <= 1) return;
     const int leaderBlk = leader % nBlk;
-    for (int v = 0; v < activeCount && v < 16; ++v) {
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) {
         const int srcBlk = src[v] / b;
         const int within = src[v] % b;
         // quantise the block index to the leader block; preserve position within block
@@ -313,10 +322,10 @@ inline void interRotateRows(uint8_t* src, int activeCount, int blockSize, int st
     const int nBlk = (activeCount + b - 1) / b;
     if (nBlk <= 1) return;
     const int st   = clampStep(step, nBlk);
-    uint8_t tmp[16]; for (int v = 0; v < 16; ++v) tmp[v] = src[v];
-    for (int v = 0; v < activeCount && v < 16; ++v) {
+    std::array<uint8_t, N_VOICES> tmp{}; for (int v = 0; v < N_VOICES; ++v) tmp[v] = src[v];
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) {
         const int blk    = v / b, within = v % b;
-        const int srcBlk = (blk - st + nBlk * 16) % nBlk;
+        const int srcBlk = (blk - st + nBlk * N_VOICES) % nBlk;
         src[v] = tmp[srcBlk * b + within];
     }
 }
@@ -326,7 +335,7 @@ inline void interReflectCodomain(uint8_t* src, int activeCount, int blockSize) {
     const int b    = clampBlock(blockSize, activeCount);
     const int nBlk = (activeCount + b - 1) / b;
     if (nBlk <= 1) return;
-    for (int v = 0; v < activeCount && v < 16; ++v) {
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) {
         const int srcBlk = src[v] / b, within = src[v] % b;
         const int mirBlk = nBlk - 1 - srcBlk;
         int cand = mirBlk * b + within;
@@ -340,12 +349,12 @@ inline void interReflectRows(uint8_t* src, int activeCount, int blockSize) {
     const int b    = clampBlock(blockSize, activeCount);
     const int nBlk = (activeCount + b - 1) / b;
     if (nBlk <= 1) return;
-    uint8_t tmp[16]; for (int v = 0; v < 16; ++v) tmp[v] = src[v];
-    for (int v = 0; v < activeCount && v < 16; ++v) {
+    std::array<uint8_t, N_VOICES> tmp{}; for (int v = 0; v < N_VOICES; ++v) tmp[v] = src[v];
+    for (int v = 0; v < activeCount && v < N_VOICES; ++v) {
         const int blk    = v / b, within = v % b;
         const int mirBlk = nBlk - 1 - blk;
         const int from   = mirBlk * b + within;
-        if (from < activeCount && from < 16) src[v] = tmp[from];
+        if (from < activeCount && from < N_VOICES) src[v] = tmp[from];
     }
 }
 
@@ -367,7 +376,7 @@ inline void interScatter(uint8_t* src, int activeCount, int blockSize,
         const int srcBlk = (int)(rng.at(basePos + (uint64_t)blk) % (uint32_t)nBlk);
         for (int w = 0; w < b; ++w) {
             const int v = blk * b + w;
-            if (v < activeCount && v < 16) {
+            if (v < activeCount && v < N_VOICES) {
                 int cand = srcBlk * b + w;
                 if (cand >= activeCount) cand = srcBlk * b + (w % (activeCount - srcBlk*b));
                 src[v] = (uint8_t)cand;

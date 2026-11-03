@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include <array>   // D17's PopulationSig joins the P-B std::array plane (ARRAY_CONTAINER_AUDIT)
 #include "../SandsTopology.hpp"   // for SandsTopology::Inputs (the presence authority target)
 #include "../../ui/RateManager.hpp"   // THE compute-rate authority (rack-free core — CC_PROMPT_RATE_MANAGER_START)
 
@@ -360,15 +361,15 @@ struct MonsoonExpanderManager {
         int32_t  effPolyVoices;
         uint8_t  locked;
         uint32_t scopeLiveMask;
-        float    macroBase[7][4];      // LOR items 0-2 + spread base item 3
-        float    preD3[7];             // tappedDelta's item-3 endpoints (the spread taps read these)
-        float    postD3[7];
-        float    tapPost[15][5];       // getMacroTap(v, lane, 1), v=1..15 × REST/MEL/OCT/ACC/QMIX
+        std::array<std::array<float, 4>, 7> macroBase = {};  // LOR items 0-2 + spread base item 3
+        std::array<float, 7> preD3 = {};   // tappedDelta's item-3 endpoints (the spread taps read these)
+        std::array<float, 7> postD3 = {};
+        std::array<std::array<float, 5>, 15> tapPost = {};   // getMacroTap(v, lane, 1), v=1..15 × REST/MEL/OCT/ACC/QMIX
         // ── produced cells (self-healing read-backs) ──
-        int32_t  polyLOR[15][7][3];    // polyLenE/polyOffE/polyRotE, v=1..15 × 7 lanes
-        float    cachedSpread[15][5];  // pe.cachedPolySpread, the 5 written lanes
-        float    monoFinals[5][16];    // rhythm/accent/melody/octave/qmixRandom
-        int32_t  strandLOR[7][3];      // the mono strands setStrand writes (reset foreign-writes these)
+        std::array<std::array<std::array<int32_t, 3>, 7>, 15> polyLOR = {};  // polyLenE/polyOffE/polyRotE, v=1..15 × 7 lanes
+        std::array<std::array<float, 5>, 15> cachedSpread = {};  // pe.cachedPolySpread, the 5 written lanes
+        std::array<std::array<float, 16>, 5> monoFinals = {};    // rhythm/accent/melody/octave/qmixRandom
+        std::array<std::array<int32_t, 3>, 7> strandLOR = {};  // the mono strands setStrand writes (reset foreign-writes these)
         uint8_t  liveR, liveM, liveQ, spreadInited;
     } popSig_{};
     /// The topology build sync's head uses (shared with produce_ — one place, no drift).

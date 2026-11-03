@@ -349,7 +349,7 @@ int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
 
     // The rungs: allowed entries in TABLE order, the base ALWAYS included (a
     // dotted BASE plays even with its dotted bit off — the deterministic use case).
-    int rungs[NUM_NOTE_VALUES];
+    std::array<int, NUM_NOTE_VALUES> rungs{};
     int nRungs = 0, baseRank = 0;
     for (int i = 0; i < NUM_NOTE_VALUES; ++i) {
         if (allowed(i) || i == baseIdx) {
@@ -366,7 +366,7 @@ int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
     if (maxDist < 0.5f) return baseIdx;
 
     float reach = spread * maxDist;
-    float weights[NUM_NOTE_VALUES] = {};
+    std::array<float, NUM_NOTE_VALUES> weights{};
     float total = 0.f;
 
     for (int rk = 0; rk < nRungs; ++rk) {

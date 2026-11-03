@@ -322,11 +322,11 @@ static void U4_warp_dirty_scopes() {
     pe.setWarpBank(&bank);
     pe.rebuildWarpMirrorAll();
     static float ref[16][7][16];
-    std::memcpy(ref, pe.warped_, sizeof ref);
+    std::memcpy(ref, pe.warped_.data(), sizeof ref);
 
     // Determinism: a second full rebuild is byte-identical (the oracle is stable).
     pe.rebuildWarpMirrorAll();
-    expectCell(std::memcmp(ref, pe.warped_, sizeof ref) == 0, F, -1, -1,
+    expectCell(std::memcmp(ref, pe.warped_.data(), sizeof ref) == 0, F, -1, -1,
                "rebuildWarpMirrorAll not deterministic — oracle unstable");
 
     // Voice scope: row v0 recomputed == oracle, all other rows bit-untouched.
@@ -379,7 +379,7 @@ static void U4_warp_dirty_scopes() {
     // LaneDelegating scope with NOBODY delegated: an empty scope must move NOTHING.
     {
         pe.rebuildWarpMirrorLaneDelegating(4);
-        expectCell(std::memcmp(ref, pe.warped_, sizeof ref) == 0, F, -1, 4,
+        expectCell(std::memcmp(ref, pe.warped_.data(), sizeof ref) == 0, F, -1, 4,
                    "rebuildWarpMirrorLaneDelegating moved cells with zero delegating voices");
     }
     // LaneDelegating POSITIVE case (fresh basis): delegate voices {0,3,7} on lane 2,

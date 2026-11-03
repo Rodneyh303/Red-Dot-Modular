@@ -758,7 +758,7 @@ bool MonsoonExpanderManager::macroPopulationCompare_(const SequencerEngine& engi
     { const uint8_t l = engine.locked ? 1 : 0;      if (l != sig.locked) return true; }
     if (engine.scopeLiveMask != sig.scopeLiveMask) return true;
     if (const auto* macroVis = cachedMacroSandsVisual) {
-        if (std::memcmp(macroVis->macroBase, sig.macroBase, sizeof sig.macroBase) != 0) return true;
+        if (std::memcmp(macroVis->macroBase.data(), sig.macroBase.data(), sizeof sig.macroBase) != 0) return true;
         for (int l = 0; l < 7; ++l) {
             { const float v = macroVis->macroPreDelta[l][3];  if (std::memcmp(&v, &sig.preD3[l], sizeof v) != 0) return true; }
             { const float v = macroVis->macroPostDelta[l][3]; if (std::memcmp(&v, &sig.postD3[l], sizeof v) != 0) return true; }
@@ -798,11 +798,11 @@ bool MonsoonExpanderManager::macroPopulationCompare_(const SequencerEngine& engi
     // Per-call (NOT static — a static local would freeze the first engine's array
     // addresses; the audit's Finding-C rule). 5 pointers of stack, negligible.
     const float* const monoFinalSrc[5] = {
-        engine.pe.rhythmRandom, engine.pe.accentRandom, engine.pe.melodyRandom,
-        engine.pe.octaveRandom, engine.pe.qmixRandom,
+        engine.pe.rhythmRandom.data(), engine.pe.accentRandom.data(), engine.pe.melodyRandom.data(),
+        engine.pe.octaveRandom.data(), engine.pe.qmixRandom.data(),
     };
     for (int k = 0; k < 5; ++k)
-        if (std::memcmp(monoFinalSrc[k], sig.monoFinals[k], sizeof sig.monoFinals[k]) != 0) return true;
+        if (std::memcmp(monoFinalSrc[k], sig.monoFinals[k].data(), sizeof sig.monoFinals[k]) != 0) return true;
     for (int s = 0; s < 7; ++s)
         for (int i = 0; i < 3; ++i)
             if (engine.lor(s, i) != sig.strandLOR[s][i]) return true;
@@ -828,7 +828,7 @@ void MonsoonExpanderManager::macroPopulationCapture_(const SequencerEngine& engi
     img.locked        = engine.locked ? 1 : 0;
     img.scopeLiveMask = engine.scopeLiveMask;
     if (const auto* macroVis = cachedMacroSandsVisual) {
-        std::memcpy(img.macroBase, macroVis->macroBase, sizeof img.macroBase);
+        std::memcpy(img.macroBase.data(), macroVis->macroBase.data(), sizeof img.macroBase);
         for (int l = 0; l < 7; ++l) {
             img.preD3[l]  = macroVis->macroPreDelta[l][3];
             img.postD3[l] = macroVis->macroPostDelta[l][3];
@@ -856,11 +856,11 @@ void MonsoonExpanderManager::macroPopulationCapture_(const SequencerEngine& engi
         for (int k = 0; k < 5; ++k)
             img.cachedSpread[v - 1][k] = engine.pe.cachedPolySpread[v][TAPLANE2[k]];
     }
-    std::memcpy(img.monoFinals[0], engine.pe.rhythmRandom,  16 * sizeof(float));
-    std::memcpy(img.monoFinals[1], engine.pe.accentRandom,  16 * sizeof(float));
-    std::memcpy(img.monoFinals[2], engine.pe.melodyRandom,  16 * sizeof(float));
-    std::memcpy(img.monoFinals[3], engine.pe.octaveRandom,  16 * sizeof(float));
-    std::memcpy(img.monoFinals[4], engine.pe.qmixRandom,    16 * sizeof(float));
+    std::memcpy(img.monoFinals[0].data(), engine.pe.rhythmRandom.data(),  16 * sizeof(float));
+    std::memcpy(img.monoFinals[1].data(), engine.pe.accentRandom.data(),  16 * sizeof(float));
+    std::memcpy(img.monoFinals[2].data(), engine.pe.melodyRandom.data(),  16 * sizeof(float));
+    std::memcpy(img.monoFinals[3].data(), engine.pe.octaveRandom.data(),  16 * sizeof(float));
+    std::memcpy(img.monoFinals[4].data(), engine.pe.qmixRandom.data(),    16 * sizeof(float));
     for (int s = 0; s < 7; ++s) {
         img.strandLOR[s][0] = engine.lor(s, 0);
         img.strandLOR[s][1] = engine.lor(s, 1);

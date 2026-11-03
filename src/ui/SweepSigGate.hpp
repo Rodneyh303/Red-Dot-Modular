@@ -1,4 +1,5 @@
 #pragma once
+#include <array>   // P-B: std::array mirror members (ARRAY_CONTAINER_AUDIT)
 // src/ui/SweepSigGate.hpp — the Macro prob-out sweep's input-change fingerprint gate.
 //
 // RESTORED by CC_PROMPT_restore_sweepsig_gate_START (Rodney's bisect: 70dd837 deleted
@@ -77,15 +78,15 @@ inline const float* pubSlewedLane_(const PatternEngine& pe, int lane) {
 struct SweepSig {
     bool valid = false;
     int  nV = -1;                          // eng.numPolyVoices — 1+nV channels resolved
-    int  step[7] = {};                     // per-lane masked playheads (the resolve's index)
-    float pub[7][16] = {};                 // pubSlewed cells the resolve reads: [lane][voiceSlot 0..nV]
-    float macroOwnSpread[7] = {};          // eng.macroOwnSpread — the MacroOwn lens's amount (manager-published)
+    std::array<int, 7> step = {};                     // per-lane masked playheads (the resolve's index)
+    std::array<std::array<float, 16>, 7> pub = {};                 // pubSlewed cells the resolve reads: [lane][voiceSlot 0..nV]
+    std::array<float, 7> macroOwnSpread = {};          // eng.macroOwnSpread — the MacroOwn lens's amount (manager-published)
     const void* bank = nullptr;            // pe.warpBank_ (null ⇒ warpDisplayMixMacroOwn is passthrough)
-    float globalWarpW[7] = {};             // Macro's delegated-default depth   ── the ONLY warp
-    dotModular::WarpF globalWarpF[7] = {}; // Macro's delegated-default curve   │  cells the MacroOwn
-    float globalWarpTilt[7] = {};          // Macro's delegated-default tilt    │  lens can read
-    float globalWarpAtomLevel[7] = {};     // Macro's delegated-default atom loc│  (pure selection,
-    float globalWarpAtomMass[7] = {};      // Macro's delegated-default atom mass┘  delegated=TRUE)
+    std::array<float, 7> globalWarpW = {};             // Macro's delegated-default depth   ── the ONLY warp
+    std::array<dotModular::WarpF, 7> globalWarpF{}; // Macro's delegated-default curve   │  cells the MacroOwn
+    std::array<float, 7> globalWarpTilt = {};          // Macro's delegated-default tilt    │  lens can read
+    std::array<float, 7> globalWarpAtomLevel = {};     // Macro's delegated-default atom loc│  (pure selection,
+    std::array<float, 7> globalWarpAtomMass = {};      // Macro's delegated-default atom mass┘  delegated=TRUE)
     uint16_t poolUsed = 0;                 // drawn-curve pool high-water mark (append-only pool)
 };
 static_assert(PatternEngine::PL_LANES == 7,
@@ -98,8 +99,8 @@ inline bool sweepSigChanged(const SweepSig& sig, const SequencerEngine& eng,
                             const int stepArr[7], int nV) {
     if (!sig.valid) return true;
     if (nV != sig.nV) return true;
-    if (0 != std::memcmp(stepArr, sig.step, sizeof sig.step)) return true;
-    if (0 != std::memcmp(eng.macroOwnSpread, sig.macroOwnSpread, sizeof sig.macroOwnSpread)) return true;
+    if (0 != std::memcmp(stepArr, sig.step.data(), sizeof sig.step)) return true;
+    if (0 != std::memcmp(eng.macroOwnSpread.data(), sig.macroOwnSpread.data(), sizeof sig.macroOwnSpread)) return true;
     const PatternEngine& pe = eng.pe;
     for (int l = 0; l < 7; ++l) {
         const float* p = pubSlewedLane_(pe, l);   // flat [v*16 + step]
@@ -110,11 +111,11 @@ inline bool sweepSigChanged(const SweepSig& sig, const SequencerEngine& eng,
     if ((const void*)pe.warpBank_ != sig.bank) return true;
     if (pe.warpBank_) {
         const dotModular::WarpBank& b = *pe.warpBank_;
-        if (0 != std::memcmp(b.globalWarpW, sig.globalWarpW, sizeof b.globalWarpW)) return true;
-        if (0 != std::memcmp(b.globalWarpF, sig.globalWarpF, sizeof b.globalWarpF)) return true;
-        if (0 != std::memcmp(b.globalWarpTilt, sig.globalWarpTilt, sizeof b.globalWarpTilt)) return true;
-        if (0 != std::memcmp(b.globalWarpAtomLevel, sig.globalWarpAtomLevel, sizeof b.globalWarpAtomLevel)) return true;
-        if (0 != std::memcmp(b.globalWarpAtomMass, sig.globalWarpAtomMass, sizeof b.globalWarpAtomMass)) return true;
+        if (0 != std::memcmp(b.globalWarpW, sig.globalWarpW.data(), sizeof b.globalWarpW)) return true;
+        if (0 != std::memcmp(b.globalWarpF, sig.globalWarpF.data(), sizeof b.globalWarpF)) return true;
+        if (0 != std::memcmp(b.globalWarpTilt, sig.globalWarpTilt.data(), sizeof b.globalWarpTilt)) return true;
+        if (0 != std::memcmp(b.globalWarpAtomLevel, sig.globalWarpAtomLevel.data(), sizeof b.globalWarpAtomLevel)) return true;
+        if (0 != std::memcmp(b.globalWarpAtomMass, sig.globalWarpAtomMass.data(), sizeof b.globalWarpAtomMass)) return true;
         if (b.poolUsed != sig.poolUsed) return true;
     }
     return false;
@@ -126,8 +127,8 @@ inline void sweepSigCapture(SweepSig& sig, const SequencerEngine& eng,
                             const int stepArr[7], int nV) {
     sig.valid = true;
     sig.nV = nV;
-    std::memcpy(sig.step, stepArr, sizeof sig.step);
-    std::memcpy(sig.macroOwnSpread, eng.macroOwnSpread, sizeof sig.macroOwnSpread);
+    std::memcpy(sig.step.data(), stepArr, sizeof sig.step);
+    std::memcpy(sig.macroOwnSpread.data(), eng.macroOwnSpread.data(), sizeof sig.macroOwnSpread);
     const PatternEngine& pe = eng.pe;
     for (int l = 0; l < 7; ++l) {
         const float* p = pubSlewedLane_(pe, l);
@@ -137,11 +138,11 @@ inline void sweepSigCapture(SweepSig& sig, const SequencerEngine& eng,
     sig.bank = pe.warpBank_;
     if (pe.warpBank_) {
         const dotModular::WarpBank& b = *pe.warpBank_;
-        std::memcpy(sig.globalWarpW, b.globalWarpW, sizeof sig.globalWarpW);
-        std::memcpy(sig.globalWarpF, b.globalWarpF, sizeof sig.globalWarpF);
-        std::memcpy(sig.globalWarpTilt, b.globalWarpTilt, sizeof sig.globalWarpTilt);
-        std::memcpy(sig.globalWarpAtomLevel, b.globalWarpAtomLevel, sizeof sig.globalWarpAtomLevel);
-        std::memcpy(sig.globalWarpAtomMass, b.globalWarpAtomMass, sizeof sig.globalWarpAtomMass);
+        std::memcpy(sig.globalWarpW.data(), b.globalWarpW, sizeof sig.globalWarpW);
+        std::memcpy(sig.globalWarpF.data(), b.globalWarpF, sizeof sig.globalWarpF);
+        std::memcpy(sig.globalWarpTilt.data(), b.globalWarpTilt, sizeof sig.globalWarpTilt);
+        std::memcpy(sig.globalWarpAtomLevel.data(), b.globalWarpAtomLevel, sizeof sig.globalWarpAtomLevel);
+        std::memcpy(sig.globalWarpAtomMass.data(), b.globalWarpAtomMass, sizeof sig.globalWarpAtomMass);
         sig.poolUsed = b.poolUsed;
     }
 }
@@ -165,8 +166,8 @@ inline int sweepSigWhy(const SweepSig& sig, const SequencerEngine& eng,
                        const int stepArr[7], int nV) {
     if (!sig.valid) return kWhyInit;
     if (nV != sig.nV) return kWhyNV;
-    if (0 != std::memcmp(stepArr, sig.step, sizeof sig.step)) return kWhyStep;
-    if (0 != std::memcmp(eng.macroOwnSpread, sig.macroOwnSpread, sizeof sig.macroOwnSpread)) return kWhySpread;
+    if (0 != std::memcmp(stepArr, sig.step.data(), sizeof sig.step)) return kWhyStep;
+    if (0 != std::memcmp(eng.macroOwnSpread.data(), sig.macroOwnSpread.data(), sizeof sig.macroOwnSpread)) return kWhySpread;
     const PatternEngine& pe = eng.pe;
     for (int l = 0; l < 7; ++l) {
         const float* p = pubSlewedLane_(pe, l);
@@ -177,11 +178,11 @@ inline int sweepSigWhy(const SweepSig& sig, const SequencerEngine& eng,
     if ((const void*)pe.warpBank_ != sig.bank) return kWhyBank;
     if (pe.warpBank_) {
         const dotModular::WarpBank& b = *pe.warpBank_;
-        if (0 != std::memcmp(b.globalWarpW, sig.globalWarpW, sizeof b.globalWarpW)) return kWhyWarp;
-        if (0 != std::memcmp(b.globalWarpF, sig.globalWarpF, sizeof b.globalWarpF)) return kWhyWarp;
-        if (0 != std::memcmp(b.globalWarpTilt, sig.globalWarpTilt, sizeof b.globalWarpTilt)) return kWhyWarp;
-        if (0 != std::memcmp(b.globalWarpAtomLevel, sig.globalWarpAtomLevel, sizeof b.globalWarpAtomLevel)) return kWhyWarp;
-        if (0 != std::memcmp(b.globalWarpAtomMass, sig.globalWarpAtomMass, sizeof b.globalWarpAtomMass)) return kWhyWarp;
+        if (0 != std::memcmp(b.globalWarpW, sig.globalWarpW.data(), sizeof b.globalWarpW)) return kWhyWarp;
+        if (0 != std::memcmp(b.globalWarpF, sig.globalWarpF.data(), sizeof b.globalWarpF)) return kWhyWarp;
+        if (0 != std::memcmp(b.globalWarpTilt, sig.globalWarpTilt.data(), sizeof b.globalWarpTilt)) return kWhyWarp;
+        if (0 != std::memcmp(b.globalWarpAtomLevel, sig.globalWarpAtomLevel.data(), sizeof b.globalWarpAtomLevel)) return kWhyWarp;
+        if (0 != std::memcmp(b.globalWarpAtomMass, sig.globalWarpAtomMass.data(), sizeof b.globalWarpAtomMass)) return kWhyWarp;
         if (b.poolUsed != sig.poolUsed) return kWhyWarp;
     }
     return kWhyInit;   // unreachable when sweepSigChanged just returned true
