@@ -352,6 +352,125 @@ int main() {
         EXPECTF(f96 == 89,  "%d Frame producer runs/s @96k — want 89 (÷1067 quantization)", f96);
     });
 
+    TEST("R9 COMPARE-IN-PLACE (D17): the compare is never consulted before the first capture; per-field coverage (EVERY captured field's perturbation re-runs, one-ULP byte-exact); post-run capture = one run per change; foreign writes to produced cells re-run and re-assert", {
+        // The D17 declaring-site shape: input + produced cell, the typed shadow at the
+        // site (the compare is the capture's mirror; the manager stores nothing).
+        redDot::RateManager rm;
+        struct State { float in = 0.5f; float cell[3] = {1, 2, 3}; };
+        struct Sig    { float in;       float cell[3]; };
+        State st;
+        Sig   sig{};
+        int produced = 0, compares = 0, captures = 0;
+        rm.declareProducer(
+            redDot::Rate::Control,
+            /*compare*/ [&] {
+                ++compares;
+                if (std::memcmp(&st.in, &sig.in, sizeof st.in) != 0) return true;
+                if (std::memcmp(st.cell, sig.cell, sizeof st.cell) != 0) return true;
+                return false;
+            },
+            /*capture*/ [&] {
+                ++captures;
+                sig.in = st.in;
+                std::memcpy(sig.cell, st.cell, sizeof sig.cell);
+            },
+            /*produce*/ [&] { ++produced; for (auto& c : st.cell) c = 42.f; });
+        // Tick 1: first dispatch runs WITHOUT consulting the compare (no shadow yet —
+        // the manager gates the compare on everRan; a pre-capture compare would read
+        // an invalid shadow).
+        rm.advance(redDot::Rate::Control, true);
+        rm.dispatch(redDot::Rate::Control);
+        EXPECTF(produced == 1 && compares == 0 && captures == 1,
+                "p=%d cmp=%d cap=%d — first run must capture, never compare", produced, compares, captures);
+        EXPECTF(st.cell[0] == 42.f, "%f — the produce must have written its cells", st.cell[0]);
+        // Tick 2: static → the compare is consulted once, returns false, no run.
+        rm.advance(redDot::Rate::Control, true);
+        rm.dispatch(redDot::Rate::Control);
+        EXPECTF(produced == 1 && compares == 1, "p=%d cmp=%d — a static tick must skip after one compare", produced, compares);
+        // Tick 3: one-ULP input change → re-run, byte-exact (R4 parity, per field).
+        st.in = std::nextafter(st.in, 100.f);
+        rm.advance(redDot::Rate::Control, true);
+        rm.dispatch(redDot::Rate::Control);
+        EXPECTF(produced == 2, "%d runs after a one-ULP change — the per-field compare must be byte-exact", produced);
+        // Tick 4: static again → skip (the post-run capture holds the new image).
+        rm.advance(redDot::Rate::Control, true);
+        rm.dispatch(redDot::Rate::Control);
+        EXPECTF(produced == 2, "%d runs on a static tick after the change — must settle", produced);
+        // Ticks 5-7: PER-FIELD COVERAGE — perturb each produced cell one at a time;
+        // every captured field must be able to fire the compare (a field the compare
+        // misses = stale state, the exact bug class the contract forbids).
+        for (int i = 0; i < 3; ++i) {
+            st.cell[i] += 1.f;   // a foreign write to produced cell i
+            rm.advance(redDot::Rate::Control, true);
+            rm.dispatch(redDot::Rate::Control);
+            EXPECTF(produced == 3 + i, "%d runs after perturbing cell[%d] — every captured field must be compared", produced, i);
+            EXPECTF(st.cell[i] == 42.f, "%f — the re-run must re-assert cell[%d]", st.cell[i], i);
+            rm.advance(redDot::Rate::Control, true);
+            rm.dispatch(redDot::Rate::Control);
+            EXPECTF(produced == 3 + i, "%d runs on the settle tick after cell[%d] — must skip", produced, i);
+        }
+        // ONE RUN PER CHANGE: a moving input costs exactly one run per generation —
+        // the post-run capture makes the NEXT tick's compare see the post-run image.
+        st.in += 1.f;
+        rm.advance(redDot::Rate::Control, true);
+        rm.dispatch(redDot::Rate::Control);
+        rm.dispatch(redDot::Rate::Control);   // same generation: idempotent
+        EXPECTF(produced == 6, "%d runs for a change + double dispatch — must run once", produced);
+        rm.advance(redDot::Rate::Control, true);
+        rm.dispatch(redDot::Rate::Control);
+        EXPECTF(produced == 6, "%d runs on the tick after the post-run capture — must skip", produced);
+    });
+
+    TEST("R10 COEXISTENCE + TIER DISCIPLINE (D17): a compare producer and a legacy fingerprint producer dispatch independently in one manager; each skips on ITS OWN unchanged inputs and re-runs only on its own change; the compare producer obeys the tier discipline (never a Frame run; once per generation)", {
+        redDot::RateManager rm;
+        float legacyIn = 1.f, cmpIn = 2.f;    // the two producers' separate inputs
+        int legacyRuns = 0, cmpRuns = 0;
+        float legacyShadow = 0.f, cmpShadow = 0.f;
+        // Legacy fingerprint producer over legacyIn (the byte-image path, untouched).
+        rm.declareProducer(
+            redDot::Rate::Control,
+            [&](void* dst) { std::memcpy(dst, &legacyIn, sizeof legacyIn); return sizeof legacyIn; },
+            [&] { ++legacyRuns; legacyShadow = legacyIn; });
+        // D17 compare producer over cmpIn (typed shadow at the declaring site).
+        rm.declareProducer(
+            redDot::Rate::Control,
+            [&] { return std::memcmp(&cmpIn, &cmpShadow, sizeof cmpIn) != 0; },
+            [&] { cmpShadow = cmpIn; },
+            [&] { ++cmpRuns; });
+        // Tick 1: BOTH run (first dispatch for each).
+        rm.advance(redDot::Rate::Control, true);
+        rm.dispatch(redDot::Rate::Control);
+        EXPECTF(legacyRuns == 1 && cmpRuns == 1, "legacy=%d cmp=%d — both must run on the first tick", legacyRuns, cmpRuns);
+        // Tick 2: both static → both skip.
+        rm.advance(redDot::Rate::Control, true);
+        rm.dispatch(redDot::Rate::Control);
+        EXPECTF(legacyRuns == 1 && cmpRuns == 1, "legacy=%d cmp=%d — both must skip when static", legacyRuns, cmpRuns);
+        // Tick 3: perturb ONLY the compare producer's input → only it re-runs.
+        cmpIn = 2.5f;
+        rm.advance(redDot::Rate::Control, true);
+        rm.dispatch(redDot::Rate::Control);
+        EXPECTF(legacyRuns == 1 && cmpRuns == 2, "legacy=%d cmp=%d — the legacy producer must stay skipped", legacyRuns, cmpRuns);
+        // Tick 4: perturb ONLY the legacy producer's input → only it re-runs.
+        legacyIn = 1.5f;
+        rm.advance(redDot::Rate::Control, true);
+        rm.dispatch(redDot::Rate::Control);
+        EXPECTF(legacyRuns == 2 && cmpRuns == 2, "legacy=%d cmp=%d — the compare producer must stay skipped", legacyRuns, cmpRuns);
+        // Tier discipline: Frame ticks + dispatches never touch Control producers.
+        for (int i = 0; i < 5; ++i) {
+            rm.advance(redDot::Rate::Frame, true);
+            rm.dispatch(redDot::Rate::Frame);
+        }
+        EXPECTF(legacyRuns == 2 && cmpRuns == 2, "legacy=%d cmp=%d — Frame dispatches must be inert for Control producers", legacyRuns, cmpRuns);
+        // Double dispatch in one generation: at most once per producer.
+        cmpIn = 3.f;
+        rm.advance(redDot::Rate::Control, true);
+        rm.dispatch(redDot::Rate::Control);
+        rm.dispatch(redDot::Rate::Control);
+        EXPECTF(cmpRuns == 3, "%d compare-producer runs for a change + double dispatch — must run once", cmpRuns);
+        // The legacy path's post-run shadow semantics, pinned here too.
+        EXPECTF(legacyShadow == 1.5f, "%f — the legacy shadow must hold the post-run image", legacyShadow);
+    });
+
     std::cout << std::string(74, '=') << "\n" << s_pass << " passed, " << s_fail << " failed\n";
     return s_fail == 0 ? 0 : 1;
 }

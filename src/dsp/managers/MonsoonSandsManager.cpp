@@ -1014,32 +1014,61 @@ void MonsoonSandsManager::publishGlobalProduce_(Monsoon& ownerMon) {
         publishGlobal(lane);   // unified PL_* order (0=MEL, 1=OCT, 2=QMIX, 3=REST, 4=ACC, 5=VAR, 6=LEG)
 }
 
-// The input + produced-cells image (the S0b pattern): every input the publish reads
-// (the global LOR/spread/atten stores on the owner, the Macro CV jacks, presence) plus
-// the published cells (macroBase/CVDelta/preD/postD/spreadEffective on the visual +
-// macroOwnSpread on the engine) — self-healing against foreign writers (UI store edits
-// on the visual land in the image and re-publish).
-size_t MonsoonSandsManager::publishGlobalFingerprint_(Monsoon& ownerMon, void* dst) {
+// D17 compare-in-place halves (the byte-image publishGlobalFingerprint_ is DELETED —
+// deletion is the enforcement). The compare's field walk is the capture's MIRROR: same
+// fields, same order, adjacent functions. The pointer words are compared FIRST so a
+// presence flip (macro attach/detach, cable to a different module) short-circuits the
+// walk; when a pointer is null the capture stored zeros for its region (the img{}
+// zero-init below) and the compare skips the region — the same information the byte
+// image carried, read without building it.
+bool MonsoonSandsManager::publishGlobalCompare_(Monsoon& ownerMon) {
     auto& expanderManager = ownerMon.expanderManager;
     auto* macroVis = expanderManager.cachedMacroSandsVisual;
     Monsoon* gMon = macroVis ? redDot::lookupMonsoon(macroVis) : nullptr;
     if (!gMon && macroVis && expanderManager.owner) gMon = expanderManager.owner;
-    struct __attribute__((packed)) Image {
-        uint64_t macroVis, gMon;
-        float    lor[7][3];        // getGlobalLor(lane, 0..2) — the LOR knobs
-        float    spr[7];           // getGlobalSpread(lane)
-        float    atten[7][4];      // getGlobalAtten(lane, item) — the CV depths
-        uint8_t  cvConnected[7][4];
-        float    cvVoltage[7][4];  // macroCvId(lane,item): connected + voltage
-        // produced cells (self-healing)
-        float    macroBase[7][4];
-        float    macroCVDelta[7][4];
-        float    macroPreDelta[7][4];
-        float    macroPostDelta[7][4];
-        float    spreadEffective[7];
-        float    macroOwnSpread[7];
-    };
-    Image img{};
+    if ((uint64_t)(uintptr_t)macroVis != publishSig_.macroVis) return true;
+    if ((uint64_t)(uintptr_t)gMon     != publishSig_.gMon)     return true;
+    if (gMon)
+        for (int l = 0; l < 7; ++l) {
+            for (int i = 0; i < 3; ++i) {
+                const float v = gMon->getGlobalLor(l, i);
+                if (std::memcmp(&v, &publishSig_.lor[l][i], sizeof v) != 0) return true;
+            }
+            { const float v = gMon->getGlobalSpread(l);
+              if (std::memcmp(&v, &publishSig_.spr[l], sizeof v) != 0) return true; }
+            for (int i = 0; i < 4; ++i) {
+                const float v = gMon->getGlobalAtten(l, i);
+                if (std::memcmp(&v, &publishSig_.atten[l][i], sizeof v) != 0) return true;
+            }
+        }
+    if (macroVis) {
+        for (int l = 0; l < 7; ++l)
+            for (int i = 0; i < 4; ++i) {
+                auto& in = macroVis->inputs[Macro::macroCvId(l, i)];   // Port's readers are non-const
+                const uint8_t conn = in.isConnected() ? 1 : 0;
+                if (conn != publishSig_.cvConnected[l][i]) return true;
+                const float volt = in.isConnected() ? in.getVoltage() : 0.f;
+                if (std::memcmp(&volt, &publishSig_.cvVoltage[l][i], sizeof volt) != 0) return true;
+            }
+        if (std::memcmp(macroVis->macroBase,       publishSig_.macroBase,       sizeof publishSig_.macroBase)       != 0) return true;
+        if (std::memcmp(macroVis->macroCVDelta,    publishSig_.macroCVDelta,    sizeof publishSig_.macroCVDelta)    != 0) return true;
+        if (std::memcmp(macroVis->macroPreDelta,   publishSig_.macroPreDelta,   sizeof publishSig_.macroPreDelta)   != 0) return true;
+        if (std::memcmp(macroVis->macroPostDelta,  publishSig_.macroPostDelta,  sizeof publishSig_.macroPostDelta)  != 0) return true;
+        if (std::memcmp(macroVis->spreadEffective, publishSig_.spreadEffective, sizeof publishSig_.spreadEffective) != 0) return true;
+    }
+    if (std::memcmp(engine.macroOwnSpread, publishSig_.macroOwnSpread, sizeof publishSig_.macroOwnSpread) != 0) return true;
+    return false;
+}
+
+// The capture: the old fingerprint body verbatim, landing in publishSig_ instead of
+// dst (runs only after a produce — the rare path; the img{} zero-init keeps the
+// null-presence regions at zero, exactly as the byte image had them).
+void MonsoonSandsManager::publishGlobalCapture_(Monsoon& ownerMon) {
+    auto& expanderManager = ownerMon.expanderManager;
+    auto* macroVis = expanderManager.cachedMacroSandsVisual;
+    Monsoon* gMon = macroVis ? redDot::lookupMonsoon(macroVis) : nullptr;
+    if (!gMon && macroVis && expanderManager.owner) gMon = expanderManager.owner;
+    PublishSig img{};
     img.macroVis = (uint64_t)(uintptr_t)macroVis;
     img.gMon     = (uint64_t)(uintptr_t)gMon;
     if (gMon)
@@ -1062,14 +1091,14 @@ size_t MonsoonSandsManager::publishGlobalFingerprint_(Monsoon& ownerMon, void* d
         std::memcpy(img.spreadEffective, macroVis->spreadEffective, sizeof img.spreadEffective);
     }
     std::memcpy(img.macroOwnSpread, engine.macroOwnSpread, sizeof img.macroOwnSpread);
-    std::memcpy(dst, &img, sizeof img);
-    return sizeof img;
+    publishSig_ = img;
 }
 
 void MonsoonSandsManager::declareRateProducers(redDot::RateManager& rm, Monsoon& ownerMon) {
     rm.declareProducer(
         redDot::Rate::Control,
-        [this, &ownerMon](void* dst) { return publishGlobalFingerprint_(ownerMon, dst); },
+        [this, &ownerMon]() -> bool { return publishGlobalCompare_(ownerMon); },
+        [this, &ownerMon]()           { publishGlobalCapture_(ownerMon); },
         [this, &ownerMon]()           { publishGlobalProduce_(ownerMon); });
 }
 

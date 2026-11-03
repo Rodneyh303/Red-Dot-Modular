@@ -23,6 +23,14 @@
 //      correct). The first tick always runs (nothing to compare against). A moving
 //      input re-runs — correct: the value really changed. THE FINGERPRINT MUST COVER
 //      EVERY INPUT THE PRODUCE READS; a missed input = stale state.
+//      D17 adds the COMPARE-IN-PLACE shape of the same contract: compare() walks the
+//      LIVE inputs field-by-field against the producer's OWN stored shadow (early-out
+//      on the first difference — no image build, no copy through the manager), and
+//      capture() stores the post-run image into that shadow. Same skip semantics, same
+//      "an input change costs exactly ONE run" post-run-capture law, byte-exact per
+//      field. The pair must cover the SAME field set (the compare is the capture's
+//      mirror); the shadow lives at the declaring site — a typed, per-instance member,
+//      testable — never in the manager.
 //   4. RATES ARE INDEPENDENT CLOCKS — the enum is an IDENTITY, not an ordering and
 //      not a nested subset. Freshness comes from published state (the produce's
 //      side effects), never from tick-nesting. Frame never drives another tier;
@@ -75,8 +83,10 @@ inline constexpr RateTierDecl kChainGate[] = {
 
 class RateManager {
 public:
-    // Fingerprint budget: the Stage-0 sync-population image is ≈ 2.5 KB (its inputs PLUS
-    // the produced cells it self-heals — see MonsoonExpanderManager). 4 KiB headroom.
+    // Fingerprint budget (the LEGACY path's scratch; the D17 compare producers keep
+    // their typed shadows at the declaring site and never touch it): the Stage-0
+    // sync-population image is ≈ 2.5 KB (its inputs PLUS the produced cells it
+    // self-heals — see MonsoonExpanderManager). 4 KiB headroom.
     static constexpr size_t kMaxFingerprint = 4096;
 
     // ── Tier state ─────────────────────────────────────────────────────────────
@@ -94,40 +104,78 @@ public:
     // ── Producers (manager-dispatched work) ────────────────────────────────────
     // fingerprint: write the producer's INPUT snapshot into dst (a plain byte image —
     //   memcpy-able struct or field-by-field copies; beware padding) and return the
-    //   byte count. Must cover EVERY input the produce reads.
+    //   byte count. Must cover EVERY input the produce reads. (Legacy path: the image
+    //   is built through the manager's scratch on every dispatch.)
+    // compare + capture (D17, the compare-in-place shape): compare() returns true iff
+    //   any input the produce reads differs from the producer's OWN shadow — per-field,
+    //   byte-exact (memcmp on each field), EARLY-OUT on the first difference. It is
+    //   never called before the first capture (the manager gates it on everRan), so it
+    //   may assume the shadow is valid. capture() stores the post-run image into that
+    //   same shadow — the identical field set, in the identical order (the compare is
+    //   the capture's mirror; drift between the two = stale state — the R9 coverage
+    //   test pins the property on the real manager). Keep the pair ADJACENT at the
+    //   declare site, one enumeration each.
     // produce: the work. The manager runs it only on this tier's tick, at most once
-    //   per tick, and only when the fingerprint changed since its last run (or on
+    //   per tick, and only when the inputs changed since its last run (or on
     //   its first run ever).
     using SnapshotFn = std::function<size_t(void* dst)>;
+    using CompareFn  = std::function<bool()>;
+    using CaptureFn  = std::function<void()>;
     using ProduceFn  = std::function<void()>;
     int declareProducer(Rate at, SnapshotFn fingerprint, ProduceFn produce) {
-        producers_.push_back(Producer{at, std::move(fingerprint), std::move(produce),
+        producers_.push_back(Producer{at, std::move(fingerprint), /*compare*/{}, /*capture*/{},
+                                      std::move(produce),
+                                      /*lastGen*/ 0, /*everRan*/ false, /*runs*/ 0, /*shadow*/ {}});
+        return (int)producers_.size() - 1;
+    }
+    // The D17 overload: compare/capture pair + the work. The shadow is the declaring
+    // site's own typed member (captured by reference into the pair) — the manager
+    // stores nothing for it.
+    int declareProducer(Rate at, CompareFn compare, CaptureFn capture, ProduceFn produce) {
+        producers_.push_back(Producer{at, /*fingerprint*/{}, std::move(compare), std::move(capture),
+                                      std::move(produce),
                                       /*lastGen*/ 0, /*everRan*/ false, /*runs*/ 0, /*shadow*/ {}});
         return (int)producers_.size() - 1;
     }
 
     // Dispatch one tier's due producers. The owner calls this on the tier's tick
     // (after advance()). NOT a "run now": it touches only producers DECLARED at this
-    // tier, at most once per generation, and only when their fingerprint changed.
-    // The shadow is the POST-RUN image: after a produce the fingerprint is
-    // re-snapshotted, so an input change costs exactly ONE run (the post-run state
-    // matches what the produce wrote) and any later difference is a genuine foreign
-    // change (an input moved, or — when the image includes the produced cells — an
-    // external writer touched them).
+    // tier, at most once per generation, and only when their inputs changed.
+    // The shadow is the POST-RUN image: after a produce the inputs are captured again
+    // (the compare path) or re-snapshotted (the fingerprint path), so an input change
+    // costs exactly ONE run (the post-run state matches what the produce wrote) and
+    // any later difference is a genuine foreign change (an input moved, or — when the
+    // image includes the produced cells — an external writer touched them).
     void dispatch(Rate r) {
         const uint64_t gen = generation(r);
         for (Producer& p : producers_) {
             if (p.at != r || p.lastGen == gen) continue;   // other tier / already dispatched this tick
             p.lastGen = gen;
-            const size_t n = p.fingerprint ? p.fingerprint(scratch_.data()) : 0;
-            if (!p.everRan || n != p.shadow.size() ||
-                std::memcmp(scratch_.data(), p.shadow.data(), n) != 0) {
+            if (p.compare) {
+                // D17 compare-in-place: live-vs-shadow per field, early-out. The
+                // compare is gated on everRan — never consulted before the first
+                // capture (the shadow would not exist yet).
+                if (!p.everRan || p.compare()) {
+                    p.produce();
+                    p.everRan = true;
+                    ++p.runs;
+                    p.capture();   // the POST-RUN image: one run per change
+                }
+            } else if (p.fingerprint) {
+                const size_t n = p.fingerprint(scratch_.data());
+                if (!p.everRan || n != p.shadow.size() ||
+                    std::memcmp(scratch_.data(), p.shadow.data(), n) != 0) {
+                    p.produce();
+                    p.everRan = true;
+                    ++p.runs;
+                    // Re-snapshot AFTER the produce: the shadow holds the post-run image.
+                    const size_t n2 = p.fingerprint(scratch_.data());
+                    p.shadow.assign(scratch_.data(), scratch_.data() + n2);
+                }
+            } else if (!p.everRan) {   // no inputs declared: the legacy n==0 run-once semantics
                 p.produce();
                 p.everRan = true;
                 ++p.runs;
-                // Re-snapshot AFTER the produce: the shadow holds the post-run image.
-                const size_t n2 = p.fingerprint ? p.fingerprint(scratch_.data()) : 0;
-                p.shadow.assign(scratch_.data(), scratch_.data() + n2);
             }
         }
     }
@@ -162,12 +210,14 @@ private:
     struct Tier { bool tick = false; uint64_t generation = 0; };
     struct Producer {
         Rate at = Rate::Control;
-        SnapshotFn fingerprint;
+        SnapshotFn fingerprint;               // legacy byte-image path (the 1-byte sigs stay here)
+        CompareFn  compare;                   // D17 in-place path (typed shadow at the declaring site)
+        CaptureFn  capture;
         ProduceFn produce;
         uint64_t lastGen = 0;                 // generation this producer last dispatched in
         bool everRan = false;
         uint64_t runs = 0;
-        std::vector<uint8_t> shadow;          // fingerprint image of the last RUN
+        std::vector<uint8_t> shadow;          // legacy path: fingerprint image of the last RUN
     };
     static size_t index(Rate r) { return (size_t)r; }
 
