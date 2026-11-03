@@ -1,6 +1,7 @@
 #pragma once
 
 #include <rack.hpp>
+#include <array>   // P-B: std::array mirror members (ARRAY_CONTAINER_AUDIT)
 #include <cstdint>
 #include "../engines/SequencerEngine.hpp"
 #include "../SandsTopology.hpp"   // cachedTopo_ — the topology-rebuild fingerprint gate
@@ -49,8 +50,10 @@ private:
     // The remapped result only changes when the PINS change or the underlying slewed buffers are
     // regenerated (a redraw moves the draw counters / mix / slew). So we run the pair only when this
     // signature changes; otherwise last cycle's remapped buffers are already correct.
+// P-B (ARRAY_CONTAINER_AUDIT): 2-D member alias — byte-identical to T[Rows][Cols] (Finding D).
+template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::array<T, Cols>, Rows>;
     struct RemapSig {
-        uint8_t  rSrc[16] = {0}, mSrc[16] = {0}, qSrc[16] = {0};
+        std::array<uint8_t, 16> rSrc = {0}, mSrc = {0}, qSrc = {0};
         int64_t  rCtr = 0, mCtr = 0, qCtr = 0;
         // Mix + slew intentionally excluded (phrase-boundary consumption — see remapSigChanged_ comment)
         bool wasIdentity = true;
@@ -72,7 +75,7 @@ private:
         bool eastPresent = false, macroPresent = false, polyBaseActive = false;
         bool gMonNull = true;
         int  polyVoiceCount = 0;
-        bool own[112] = {};   // raw eastOwns bytes (meaningful only when !gMonNull)
+        std::array<bool, 112> own = {};   // raw eastOwns bytes (meaningful only when !gMonNull)
     } lastTopoSig_;
     dotModular::SandsTopology cachedTopo_{};
 
@@ -85,13 +88,13 @@ private:
     struct V1SpreadSig {
         bool valid = false;
         bool axR = true, axM = true, axQ = true;
-        float sp[7] = {};          // unified PL lane order (MEL,OCT,QMIX,REST,ACC,VAR,LEG)
-        uint8_t mode[7] = {};
-        float swRhythm[16] = {}, swMelody[16] = {}, swOctave[16] = {}, swQmix[16] = {},
-              swAccent[16] = {}, swVariation[16] = {}, swLegato[16] = {};
-        float prRhythm[16] = {}, prMelody[16] = {}, prOctave[16] = {}, prQmix[16] = {},
-              prAccent[16] = {}, prVariation[16] = {}, prLegato[16] = {};
-        float row[7][16] = {};     // random_[0] as last written by the pass
+        std::array<float, 7> sp = {};          // unified PL lane order (MEL,OCT,QMIX,REST,ACC,VAR,LEG)
+        std::array<uint8_t, 7> mode = {};
+        std::array<float, 16> swRhythm{}, swMelody{}, swOctave{}, swQmix{},
+              swAccent{}, swVariation{}, swLegato{};
+        std::array<float, 16> prRhythm{}, prMelody{}, prOctave{}, prQmix{},
+              prAccent{}, prVariation{}, prLegato{};
+        std::array<std::array<float, 16>, 7> row = {};     // random_[0] as last written by the pass
     } lastV1Spread_;
     bool v1SpreadDirty_(bool axR, bool axM, bool axQ, const float sp[7]);
     void v1SpreadCapture_(bool axR, bool axM, bool axQ, const float sp[7]);
@@ -102,7 +105,7 @@ private:
     struct MirrorSig {
         bool valid = false;
         const void* bank = nullptr;
-        bool deleg[7] = {};
-        float row[7][16] = {};
+        std::array<bool, 7> deleg = {};
+        Matrix2<float, 7, 16> row{};
     } lastMirrorSig_;
 };

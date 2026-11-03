@@ -27,6 +27,7 @@
 // the free-voice and poly-container semantics are spec'd in test_forest_rhythm.
 
 #include <cstdint>
+#include <array>   // P-B: std::array member state (ARRAY_CONTAINER_AUDIT)
 #include <algorithm>
 #include "../NoteValues.hpp"   // noteShorterOf — the "shorter note" authority (DOTTED BUILD)
 
@@ -168,7 +169,7 @@ struct RhythmDecisionCore {
     // through this same seam (the differential harness + the V1-semantics suites author the
     // star INTO pe.containmentParents — the preset path — so the battery pins the GRAPH read,
     // not a legacy code path).
-    static constexpr uint16_t LEGACY_STAR_PARENTS[kVoiceSlots] = {
+    static constexpr std::array<uint16_t, kVoiceSlots> LEGACY_STAR_PARENTS = {
         0x0000,                                   // v0 = V1: the root
         0x0001, 0x0001, 0x0001, 0x0001, 0x0001,   // v1..v5  (V2..V6)   -> bit 0 = V1
         0x0001, 0x0001, 0x0001, 0x0001, 0x0001,   // v6..v10 (V7..V11)  -> bit 0 = V1
@@ -236,12 +237,12 @@ struct RhythmDecisionCore {
     // A cycle cannot occur (the pin plane rejects cycles; invariants CI-marched on 600+ seeds)
     // — but defensively, any unplaceable voice is appended in slot order so the visit is TOTAL
     // and the engine can never silently skip a voice.
-    int      topoOrder[kVoiceSlots] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+    std::array<int, kVoiceSlots> topoOrder = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
     int      topoCount     = kVoiceSlots;
-    int      parentCount[kVoiceSlots] = {};
-    uint8_t  parentSlot[kVoiceSlots][kVoiceSlots] = {};
+    std::array<int, kVoiceSlots> parentCount = {};
+    std::array<std::array<uint8_t, kVoiceSlots>, kVoiceSlots> parentSlot = {};
     uint32_t materializeGeneration = 0;
-    uint16_t materializedWords_[kVoiceSlots] = {};
+    std::array<uint16_t, kVoiceSlots> materializedWords_ = {};
     bool     materializedValid_ = false;
 
     void materializeForest() {

@@ -130,7 +130,7 @@ static void authorGraph(SequencerEngine& eng, const uint16_t words[16]) {
     for (int v = 0; v < 16; ++v) eng.pe.containmentParents[v] = words[v];
 }
 static void authorStar(SequencerEngine& eng) {
-    authorGraph(eng, RhythmDecisionCore::LEGACY_STAR_PARENTS);
+    authorGraph(eng, RhythmDecisionCore::LEGACY_STAR_PARENTS.data());
 }
 
 // ── The mode-A march (clock origin; the differential idiom) ─────────────────────

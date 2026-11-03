@@ -1472,11 +1472,11 @@ struct Monsoon : Module {
     // (the rhythmPattern reference alias RETIRED — ITEM 1, with the member)
     float (&melodyPitchV)[16] = engine.pe.melodyPitchV;
     int (&melodySemitone)[16] = engine.pe.melodySemitone;
-    float (&rhythmRandom)[16] = engine.pe.rhythmRandom;
-    float (&variationRandom)[16] = engine.pe.variationRandom;
-    float (&legatoRandom)[16] = engine.pe.legatoRandom;
-    float (&melodyRandom)[16] = engine.pe.melodyRandom;
-    float (&octaveRandom)[16] = engine.pe.octaveRandom;
+    std::array<float, 16>& rhythmRandom = engine.pe.rhythmRandom;
+    std::array<float, 16>& variationRandom = engine.pe.variationRandom;
+    std::array<float, 16>& legatoRandom = engine.pe.legatoRandom;
+    std::array<float, 16>& melodyRandom = engine.pe.melodyRandom;
+    std::array<float, 16>& octaveRandom = engine.pe.octaveRandom;
 
     dsp::PulseGenerator& gatePulse = engine.gs.gatePulse;
     bool& prevExtGate = engine.prevGate1High;

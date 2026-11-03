@@ -138,7 +138,7 @@ void SequencerEngine::reset() {
     // all-follow-V1 star is an AUTHORED graph (the Cantonment preset / the test seam), and
     // the suites that pin the legacy sound author it into pe.containmentParents explicitly.
     rdm.setParentSource(RhythmDecisionCore::ParentSource::GRAPH);
-    rdm.graphWords = pe.containmentParents;
+    rdm.graphWords = pe.containmentParents.data();
     // F-1 per-container capture state: a voice that has not executed this run is at Rest —
     // it offers no onset and closes its children (fail-closed). F-4: no ghost event either —
     // a voice that has not executed hosts no ghost cell for its children.

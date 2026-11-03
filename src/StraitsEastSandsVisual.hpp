@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include <array>   // P-B: std::array member state (ARRAY_CONTAINER_AUDIT)
 #include "ui/SandsGrid.hpp"
 #include "dsp/LaneMapping.hpp"     // lane order + canonical lane names (Phase 3b-3 merge)
 #include "ui/ModuleLookupCore.hpp"   // THE lookup authority: the topology epoch (onExpanderChange bump — CC_PROMPT_MODULE_LOOKUP_AUTHORITY_START)
@@ -25,6 +26,8 @@ namespace StraitsEastVisualIds {
     static constexpr float DELEG_MOD_X = 238.f;    // delegation gate-mod jack column (+9 for CRV)
     static constexpr float DIR_MOD_X   = 246.f;    // direction gate-mod jack column
     static constexpr float PROB_OUT_X  = 254.f;    // prob-out jack column (shifted right)
+// P-B (ARRAY_CONTAINER_AUDIT): 2-D member alias — byte-identical to T[Rows][Cols] (Finding D).
+template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::array<T, Cols>, Rows>;
     static constexpr int   N_ROWS      = dotModular::SandsGrid::POLY_LANES;  // 5 — 1 row per spread lane
     // Bound to the grid so Mono/East/Macro cannot drift. Option B: LANE_H=13.
     static constexpr float ROW_TOP = dotModular::SandsGrid::LANE_TOP;      // 14
@@ -212,14 +215,14 @@ struct StraitsEastSandsVisual : Module {
     // sync so the East spread trimpot mod-arc can show the viewed voice's value.
     // lane: 0=REST 1=MELODY 2=OCTAVE 3=ACCENT 4=QMIX. Bipolar-ish 0..1 interp domain.
     // 5 poly lanes (QMIX-widened; was [15][4]). The spread-arc getModNorm reads lane up to 4.
-    float polySpreadEffective[kVoiceSlots][dotModular::SandsGrid::POLY_LANES] = {};   // 5 lanes (REST/MEL/OCT/ACC/QMIX)
+    std::array<std::array<float, dotModular::SandsGrid::POLY_LANES>, kVoiceSlots> polySpreadEffective = {};   // 5 lanes (REST/MEL/OCT/ACC/QMIX)
 
     // Probability CV out config (persisted): scale 0=0..1V,1=0..5V,2=0..10V; S&H vs
     // continuous. probHeld/probLastStep per (lane, channel) for S&H (ch0=master, 1..15
     // = voices → index [lane][0..15]). 5 poly lanes (QMIX-widened; was [4][16] — the
     // process() prob-out S&H loop writes lane up to POLY_LANES-1=4, so [4] overflowed).
-    float probHeld[dotModular::SandsGrid::POLY_LANES][kVoiceSlots] = {};
-    int   probLastStep[dotModular::SandsGrid::POLY_LANES][kVoiceSlots];
+    std::array<std::array<float, kVoiceSlots>, dotModular::SandsGrid::POLY_LANES> probHeld = {};
+    std::array<std::array<int, kVoiceSlots>, dotModular::SandsGrid::POLY_LANES> probLastStep{};
 
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;
@@ -464,10 +467,10 @@ struct StraitsEastSandsVisual : Module {
     redDot::RateManager rateManager;
     rack::dsp::ClockDivider gateModDiv;   // the /8 DETECTOR cadence (feeds the Sample tier)
     rack::dsp::ClockDivider probOutDiv;   // prob CV outs: /32 = control rate (feeds the Control tier)
-    bool    dirModPrev[dotModular::SandsGrid::EAST_LANES][kVoiceSlots]    = {};
-    bool    delegModPrev[dotModular::SandsGrid::EAST_LANES][kVoiceSlots]  = {};
-    uint8_t dirModEdges[dotModular::SandsGrid::EAST_LANES][kVoiceSlots]   = {};   // audio thread is the sole writer
-    uint8_t delegModEdges[dotModular::SandsGrid::EAST_LANES][kVoiceSlots] = {};
+    std::array<std::array<bool, kVoiceSlots>, dotModular::SandsGrid::EAST_LANES> dirModPrev = {};
+    std::array<std::array<bool, kVoiceSlots>, dotModular::SandsGrid::EAST_LANES> delegModPrev = {};
+    std::array<std::array<uint8_t, kVoiceSlots>, dotModular::SandsGrid::EAST_LANES> dirModEdges = {};   // audio thread is the sole writer
+    std::array<std::array<uint8_t, kVoiceSlots>, dotModular::SandsGrid::EAST_LANES> delegModEdges = {};
     // Channel count of each connected mod cable. A 1-channel cable into a poly input is
     // BROADCAST to every target (the VCV norm), rather than hitting only ch0 = V1 — a mono
     // gate means "apply this everywhere", not "apply it to voice 1".
@@ -475,10 +478,10 @@ struct StraitsEastSandsVisual : Module {
     uint8_t delegModChans[dotModular::SandsGrid::EAST_LANES] = {};
     // (B) VOICE-LOR PARITY: the voice row's OWN gate-mod state (the same split-thread
     // law, the same broadcast rule; ch == voiceSlot directly — ch0 = V1 … ch15 = V16).
-    bool    vlorDirModPrev[kVoiceSlots]    = {};
-    bool    vlorDelegModPrev[kVoiceSlots]  = {};
-    uint8_t vlorDirModEdges[kVoiceSlots]   = {};   // audio thread is the sole writer
-    uint8_t vlorDelegModEdges[kVoiceSlots] = {};
+    std::array<bool, kVoiceSlots> vlorDirModPrev = {};
+    std::array<bool, kVoiceSlots> vlorDelegModPrev = {};
+    std::array<uint8_t, kVoiceSlots> vlorDirModEdges = {};   // audio thread is the sole writer
+    std::array<uint8_t, kVoiceSlots> vlorDelegModEdges = {};
     uint8_t vlorDirModChans       = 0;
     uint8_t vlorDelegModChans     = 0;
 
