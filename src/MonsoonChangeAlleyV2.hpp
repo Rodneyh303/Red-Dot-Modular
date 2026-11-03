@@ -1294,8 +1294,8 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
                     // module id and bakes (row, plane) into the setter, so undo lands on the row/plane
                     // actually edited. Equal old/new never records.
                     {
-                        uint8_t* tbl = (plane == 0) ? module->rhythmSrc
-                                     : (plane == 1) ? module->melodySrc : module->qmixSrc;
+                        uint8_t* tbl = (plane == 0) ? module->rhythmSrc.data()
+                                     : (plane == 1) ? module->melodySrc.data() : module->qmixSrc.data();
                         const char* nm = (plane == 0) ? "move rhythm pin"
                                        : (plane == 1) ? "move melody pin" : "move q-mix pin";
                         float oldV = (float)tbl[row];
@@ -1303,8 +1303,8 @@ struct MonsoonChangeAlleyV2Widget : ModuleWidget,
                             module, nm,
                             [row, plane](MonsoonChangeAlleyV2& m, float v) {
                                 uint8_t c = (uint8_t)math::clamp((int)std::lround(v), 0, CA::N_VOICES - 1);
-                                uint8_t* t = (plane == 0) ? m.rhythmSrc
-                                           : (plane == 1) ? m.melodySrc : m.qmixSrc;
+                                uint8_t* t = (plane == 0) ? m.rhythmSrc.data()
+                                           : (plane == 1) ? m.melodySrc.data() : m.qmixSrc.data();
                                 t[row] = c;
                             },
                             oldV, (float)col);

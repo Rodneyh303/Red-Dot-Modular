@@ -209,6 +209,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
 }
 
 struct StraitsEastSandsVisual : Module {
+    // P-A scope fix (ARRAY_CONTAINER_AUDIT): the ONE spelling of the voice/channel
+    // capacity must live in THIS class too — StraitsEastVisualIds's copy is a sibling
+    // scope, and the P-B std::array members below name it bare (the real-SDK g++
+    // sweep rejects the unqualified use; the mock never compiled this header).
+    static constexpr int kVoiceSlots = dotModular::VoiceResolver::kVoiceSlots;
 
     // Per-voice, per-lane EFFECTIVE spread (interp param + per-voice/lane CV·att,
     // clamped, after combineSpread) — published by MonsoonExpanderManager each
