@@ -96,7 +96,10 @@ StraitsSandsMacroVisual.cpp:1280/:1306 `calcPlayhead(...) & 0x0F` — frame valu
 PhaseEngine.hpp:79 `PPB = p16 * 16` (96 positions @ 24 PPQN = 16 sixteenths = one bar) →
 `p16 * MAX_STEPS` (192 = 2 bars @ 24); the TWO landings SequencerEngine.cpp:779 (the jump snap) and
 Monsoon.cpp:1148 (the drift-check) `% 16` → `% MAX_STEPS` IN LOCKSTEP — the drift-corrector
-:1145–1151 compares against the stepIndex :779 sets, so asymmetric landings snap-fight every sample;
+:1145–1151 compares against the stepIndex :779 sets, so asymmetric landings snap-fight every sample —
+the lockstep is SPAN-ORTHOGONAL (D12: both landings are identical readers of the same `pulsePos`; the
+fight is asymmetric EDITING, not the span — what the span decides is whether the landing's domain can
+name the walk's at all);
 the window scan :790 (`s < 16 ... & 0x0F` → MAX_STEPS / 0x1F); the jump-replay within-draw cap
 Monsoon.cpp:1103 `if (steps > 16) steps = 16` → 32 (a FRAME value — "at most one boundary", :1099);
 the derived BPM PhaseEngine.hpp:105 `barsPerSec * 4.0 * 60.0` assumes 1 phase unit = 1 bar = 4 beats
@@ -466,6 +469,70 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   exists, so the indicator only ever needs to say 1 or 2 — which is BAR 1/BAR 2. P6 pin added:
   full-window (1, 32) — the ghost map is empty there and the BAR LEDs alone carry the bar tell
   (the case the 16-lap scheme cannot render; pin the ring reads correctly at the maximum).
+- **D12 — the 1-bar phase proposal (Rodney: "Phase — 1-bar wrap: the challenge is real but NOT that
+  hard. The doc's concern is the “snap-fight every sample” — the jump-snap (:779) and the drift-check
+  (Monsoon:1148) must land in the same frame, or they fight. But that's true regardless of 1-bar or
+  2-bar — it's just “keep the two landings consistent.” The actual question is: does phase span 1 bar
+  (16 steps) or 2 bars (32 steps)?
+
+  1-bar phase (my intuition): phase quantizes over 16 steps, and 32-step patterns have phase that
+  repeats each bar. Simpler, matches the “phase = bar position” mental model. The PPB = p16 * 16 stays
+  as-is (96 = 1 bar). Minimal change — phase behaviour is bar-local, unchanged from 16-step.
+  2-bar phase (the doc): phase spans the whole 32-step pattern, PPB → p16 * 32 (192), BPM *4 → *8,
+  both landings % MAX_STEPS. More change, and the “snap-fight” risk if the landings aren't lockstep.
+
+  So 1-bar phase is actually the EASIER and more natural choice — phase stays bar-local (96,
+  unchanged), you don't touch PPB/BPM/the landings, and “phase = where in the bar” is the intuitive
+  model. The doc's 2-bar version is more work (extend the span, double BPM multiplier, lockstep the
+  landings) for the arguably-less-natural “phase spans the whole 2-bar pattern.” my intuition (1-bar
+  phase) is both more natural AND less code."):** DECLINED — the 2-bar span stands (D9 + its CLARIFIED map, unchanged); the proposal's two
+  verifiable claims are CONCEDED and pinned first, and the verdict turns on the one claim that is not
+  available to take. **THE CONCESSIONS, CODE-VERIFIED (recorded first):** (a) THE SNAP-FIGHT IS
+  SPAN-ORTHOGONAL — both landings (SequencerEngine.cpp:778–779 jump snap, Monsoon.cpp:1147–1148
+  drift-check) are textually identical readers of the SAME accumulator (`absStep = pulsePos / p16`),
+  and the corrector :1149 compares against the stepIndex :786 sets — they can fight only if EDITED
+  asymmetrically; the lockstep is a standing invariant of the PAIR under any span (the C-table clause
+  is re-worded accordingly). (b) THE CONSTANT CHURN IS REAL BUT SMALL — at span 16 `PPB = p16 * 16`
+  :79 stays 96 and `barsPerSec * 4.0 * 60.0` :105 stays ×4, exactly as proposed; the 2-bar plan's
+  PPB→192 and ×8 are its true price, already pinned. **WHY IT STILL LOSES — "YOU DON'T TOUCH THE
+  LANDINGS" IS NOT AVAILABLE UNDER ANY SPAN:** the window walk's domain is the WINDOW (up to 0..31,
+  boundary-driven :483/:491) and the untouched landing's domain is 0..15 — at the first bar-2 crossing
+  (pulse 96 → absStep 16 → `% 16` → 0) the every-sample corrector :1145–1151 re-lands the walk onto
+  bar 1 (snap :1150 → :786), after which walk and landing agree BAR-LOCALLY: the module plays the
+  FIRST BAR TWICE per 32-cycle, forever, silently, while the D10 ring displays the full window's
+  content — a display/truth split. Windows fully inside the second half are worse: the landing cannot
+  name their positions, parks at the window start every sample (:788–792), and the corrector fights
+  the walk PER SAMPLE — the snap-fight made runtime, caused by the span, not by editing.
+  "Unchanged from 16-step" holds exactly while the expansion is unused (at the default window (16, 0)
+  the untouched landing agrees by construction — the walk never leaves 0..15). And the touched landing
+  LINE IS IDENTICAL under both plans — `((absStep % 32) + 32) % 32` on `absStep = pulsePos / p16`
+  (Monsoon.cpp:1128: "In Mode E the phase IS the transport"; the user's mode C) — so the decision is
+  NOT code volume; it is **WHERE THE PARITY BIT LIVES.** At PPB 192, `absStep = 32m + c/6` and the
+  m-term VANISHES mod 32: the landing is pure voltage, and the reseed (:86–91) IS the exact landing —
+  `pulseInBar = floor(phase·192) ∈ 0..191 → /6 ∈ 0..31`; reconnect mid-bar-2 lands exactly (the
+  pinned D9 invariant, now line-verified). At PPB 96, `absStep = 16k + b/6` and the high bits ARE the
+  bar tell (`16k mod 32 = 16·(k mod 2)`) — correct only while k is right, and k lives in the unwrapped
+  accumulator, which RE-SEEDS BAR-LOCAL on every reconnect (`connected=false → havePrev=false` :81 →
+  `pulsePos = pulseInBar` :88–92) and on reset (:55–60): k = 0, bar 1. Re-plug mid-bar-2 → the module
+  plays bar-1 content and the drift-check AGREES (both read the same seeded `pulsePos` — perfectly
+  locked, silently wrong), and NOTHING in the signal can correct it: a 1-bar ramp carries ZERO bits
+  of bar identity — information-theoretic, not engineering. Wrong until reset. **THE COST TABLE THIS
+  BUYS:** the 2-bar plan's cost is the re-calibration — LOUD and ONCE (an old 1-bar ramp reads as a
+  double-speed sweep, audibly glaring, fixed by re-scaling; release-noted, D1-class); the 1-bar plan's
+  cost is a SILENT, PERMANENT wrong-half on the most routine operation in modular. Loud-once beats
+  silent-permanent — and "less code" is here the MORE-STATE plan: 1-bar saves two constants and adds
+  a load-bearing parity accumulator, its seed rule, and its failure class (a separate parity input —
+  a bar/gate jack — would be a NEW contract, strictly more change than the constants). **THE MENTAL
+  MODEL, ANSWERED ON ITS OWN TERMS:** the 2-bar bus is a SUPERSET address space, not a stranger to
+  bars — a 16-frame consumer on a 2-bar bus lands correctly for free (`32m ≡ 0 mod 16`: the old
+  `% 16` landing kills the m-term; the widening orphans nobody), while a 1-bar bus cannot address
+  steps 17–32 at all (D1's argument verbatim). The bus span is a RIG-LEVEL agreement, like PPQN — the
+  source needs the bus's span, not the consumer's pattern length: the rig's phase bus sweeps the
+  longest pattern in the rig, and at 32 that is 2 bars. "Phase = where in the bar" survives INSIDE
+  the map (0.3125 V per 16th, 1.25 V per quarter — the quarter spacing and the red anchors unchanged,
+  :165–166 mod-4 invariant); what the wider sweep buys is that the second bar EXISTS on the wire. P6
+  phase pins stand unchanged and are hereby line-verified (the reseed-at-192 IS the exact landing —
+  the invariant that makes the accumulator's volatility harmless under the standing span).
 
 ## Sequencing
 
