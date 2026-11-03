@@ -807,6 +807,49 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   the D15 acceptance coherent). **PLAN SECTIONS TOUCHED:** the D13 block (the Idea-3 status marker,
   inline), the P7 entry (the endorsement note); Sequencing untouched.
 
+- **D17 — the UI-memcopy question adjudicated: the fingerprint plane IS the gate, the display path is
+  already zero-copy, and the copied data is the mutable set BY DESIGN (Rodney: "please log it and then
+  push this and the audit document…"):** ADJUDICATED AS ASKED — the question's premise answered
+  INVERTED, and the one genuine reduction CAPTURED-DEFERRED. Asked against Finding D of the
+  array/container audit (the ~20 `sizeof`-memcpy sites of the snapshot plane), in two limbs: could the
+  UI memcopy be avoided, and is the copied data unmodified/constant/read-only. **THE FINDING, THREE
+  FAMILIES:** (1) the `memcpy(dst, &img, sizeof img)` sites (MonsoonSandsManager.cpp:1065,
+  MonsoonExpanderManager.cpp:817, StraitsEastSandsVisual.hpp:322, StraitsSandsMacroVisual.cpp:1291)
+  are RateManager PRODUCER FINGERPRINTS, not UI handoffs — the contract (RateManager.hpp:95-100)
+  serializes every input the produce reads so dispatch() can memcmp the image against the shadow of
+  the last run and SKIP the produce bit-identically (the SweepSig skip-on-unchanged pattern
+  generalized, RateManager.hpp:19-25); audio-thread, single-threaded (:38), tier cadence (Control
+  ≈1.5 kHz; the East gate-mod scan at the /8 detector cadence) — the UI never sees that buffer.
+  (2) The shadow captures (v1SpreadCapture_, sweepSigCapture, captureRemapSig_) are the same gates'
+  other half — capture-on-change behind memcmp-first dirty checks, already minimized. (3) The ACTUAL
+  display handoff has NO memcpy today: the produce writes the visual's members in place
+  (`macroVis->macroBase[lane][0] = baseLen`, MonsoonSandsManager.cpp:1002-1007) and draw() reads the
+  produced rows by reference (`StepProbRow& row = stepProb_[l]`, StraitsSandsMacroVisual.cpp:1210) —
+  Rack's own params/lights convention, tearing benign at display rate; an immutable-snapshot mailbox
+  would ADD a per-tick audio-side copy to fix a race that does not matter. **THE READ-ONLY LIMB,
+  ANSWERED INVERTED:** the fingerprint's job is to DETECT modification, so it must contain exactly
+  the mutable set — knob stores, CV jacks, engine-published cells, the produced cells read back for
+  self-healing, the module pointer identities (mutable on patch/unpatch); the constant data (lane
+  names, warp tables, config) is in NO image; anything mutable left OUT is the stale-state bug the
+  contract names ("THE FINGERPRINT MUST COVER EVERY INPUT THE PRODUCE READS; a missed input = stale
+  state", RateManager.hpp:24-25). The writer-agnostic byte-image IS the healing property — ANY
+  external writer breaks the compare and the next tick re-runs (SweepSigGate.hpp:24-26;
+  MonsoonSandsManager.cpp:1151-1154) — which dirty flags/epoch counters forfeit at the first
+  forgotten bump; the codebase's own scar is 70dd837 (the step-NUMBER-keyed cache, Macro-only CPU
+  0.4% → ~3%, restored by CC_PROMPT_restore_sweepsig_gate_START). **THE VERDICT:** no memcpy in the
+  plane is removed. The one real reduction is CAPTURED-DEFERRED — the compare-in-place dispatch
+  variant (a CompareFn beside SnapshotFn: memcmp live state against the stored shadow per field,
+  capture into it only on change — sweepSigChanged already proves the shape, SweepSigGate.hpp:101-118),
+  eliminating the scratch copy (RateManager.hpp:122-124) on the unchanged path, where it is pure
+  overhead; deferred as measured noise — worst image ≈2.5 KB (RateManager.hpp:78-80), the East scan
+  ≈1 KB, at 1.5-6 kHz L1-resident copies of ~100-200 ns gating a ~22.7 µs resolve (SweepSigGate.hpp:7)
+  — the gate pays ~100-200× on the first skipped run. **THE AUDIT TIE:** this is Finding D restated
+  as mechanics — the images must mirror the source arrays' byte layout; `std::array` keeps every
+  `sizeof`-memcpy compiling identically, vector silently degrades each to a 24-byte handle copy;
+  P-A…P-E and the Sequencing gate are unmoved. The quote truncates before the message's one-time PAT
+  clause — credentials never enter the ledger. **PLAN SECTIONS TOUCHED:** this block only; the
+  array/container audit rides the same push as its own commit (3e26aa52); Sequencing untouched.
+
 ## Sequencing
 
 Own branch off the lane tip AFTER feat/position-holders lands (never ride the same train — this touches
