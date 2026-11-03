@@ -114,3 +114,32 @@ jumps; two-tier atom-punctuated CO-JUMPING phase scanning is genuinely novel —
 (structured stochastic dependence, MO tails) extended into the TIME/POSITION dimension. Paper-worthy in its
 own right (tail-dependent temporal addressing), and pure reuse (distribution primitive + atoms + the
 existing dependence/coordination structure).
+
+════════════════════════════════════════════════════════════════════════════════
+## [Rodney] PHASE-JUMP RESOLUTION + MID-STEP ARRIVAL/DEPARTURE SEMANTICS (to revisit)
+### The resolution ALREADY exists — it's rounded away for the playhead
+Phase carries PULSE resolution: PPB = p16 * 16 = 96 positions/bar at 24 PPQN (6 pulses per 1/16, which
+covers all note-length subdivisions). BUT snapToPhaseStep (SequencerEngine.cpp:779) does
+absStep = pulsePos / p16 — COLLAPSING the 96 pulse-positions to 16 whole steps; the fractional part
+(pulsePos % p16) is DISCARDED and stepIndex is a whole 0-15. So phase can AIM off the 1/16 grid (smooth
+knob sweep) but LANDS on a step (rounded). The sub-step precision EXISTS in the input, thrown away for the
+playhead by a rounding CHOICE, not a limit.
+=> REVISIT for phase distortion / co-jumps: preserve the pulse resolution so phase/atoms can land MID-STEP
+   (playhead at pulse N of step S) — finer, more expressive. Finer still at higher PPQN (24→6, 48→12, 96→24
+   sub-positions/step) — another motivation for real 48/96. Bigger change (playhead + downstream become
+   pulse-aware), hence "revisit".
+
+### MID-STEP SEMANTICS (the tractable rule — Rodney) — NO CARRY-OVER
+A jump SEVERS history (musically correct: a teleport breaks the line). Two asymmetric cases:
+- DEPARTING mid-step (leave a note early): CHOP the current gate at the departure pulse. Trivial.
+- ARRIVING mid-step (land at pulse N of step S): RECONSTRUCT step S as a FRESH, phrase-start step — NO
+  carry-over (ignore any inbound legato / tie / long-note that would have come from S-1, because S-1 wasn't
+  played), evaluate S's own decisions (rest/legato/note-length) at the ARRIVAL-moment probability values,
+  then render from pulse N to the step end. You get the TAIL fragment of whatever the fresh step decided:
+  - fresh-S decides LEGATO, arrive with 4 pulses left → 4 pulses of a legato onset (a short fragment).
+  - fresh-S decides REST → arrive INSIDE a rest (silence to the step end).
+  - fresh-S decides a NOTE → the tail of that note from pulse N.
+WHY TRACTABLE: no-carry-over makes arrival a LOCAL calculation (step S's own decisions at arrival probs),
+NOT a history replay (no need to reconstruct legato chains / multi-step long notes). WHY CORRECT: a jump
+SHOULD break legato/long-note continuity — preserving carry-over across a teleport would give artifacts
+(a legato chain "teleporting" its continuation). Fresh-step-no-carry is both computable and musical.
