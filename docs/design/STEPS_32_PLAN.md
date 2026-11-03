@@ -850,6 +850,37 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   clause — credentials never enter the ledger. **PLAN SECTIONS TOUCHED:** this block only; the
   array/container audit rides the same push as its own commit (3e26aa52); Sequencing untouched.
 
+- **D18 — the D17 deferral lifted by user order: the compare-in-place variant IMPLEMENTED as code on a
+  branch off the lane tip, then ADOPTED on Rodney's measurement (Rodney: "can you do D17 on a branch off
+  lane_expander_refactor, it seems worthwhile for CPU saving"):** the CAPTURED-DEFERRED status of D17's
+  one genuine reduction is LIFTED — the compare-in-place dispatch is now code. Branch
+  `feat/d17-compare-in-place` off the lane-expander-refactor tip (81fc7826), one commit (d0aa7512),
+  pushed. **THE SHAPE:** a `CompareFn`+`CaptureFn` pair beside the legacy `SnapshotFn` (the legacy path
+  and its no-input run-once semantics untouched): compare() walks the LIVE inputs field-by-field against
+  the declaring site's OWN typed shadow — per-field memcmp, EARLY-OUT on the first difference, no image
+  build, no scratch copy through the manager; capture() stores the POST-RUN image after a produce (the
+  one-run-per-change law, byte-exact per field). The shadow lives at the declaring site — a typed,
+  per-instance member, never in the manager: PublishSig (MonsoonSandsManager), PopulationSig
+  (MonsoonExpanderManager, the ≈2.5 KB packed image D17-typed), DirDelegSig (StraitsEastSandsVisual —
+  the hottest fingerprint in the plane, Sample tier /8 ≈ 6 kHz, where the dropped Img build + scratch
+  copy is the largest single saving). The pointer words compare FIRST so a presence flip short-circuits
+  the walk; the compare is gated on everRan (never consulted before the first capture — the shadow
+  would not exist yet). **THE MIRROR LAW:** the pair must cover the SAME field set in the SAME order —
+  the compare is the capture's mirror, one enumeration each, adjacent functions (drift = stale state);
+  the old publishGlobalFingerprint_ / macroPopulationFingerprint_ are DELETED (deletion is the
+  enforcement); the 1-byte sweep sig (StraitsSandsMacroVisual) stays legacy BY DESIGN — the image IS
+  one byte, nothing to save. **THE CONTRACT HOLDS:** every-input coverage is structural in the pair, and
+  R9 pins the property on the real manager shape (never-compare-before-capture; one-ULP byte-exactness;
+  per-field coverage — every captured field's perturbation re-runs; foreign writes re-assert — the
+  70dd837 scar class guarded); R10 pins legacy/compare coexistence + tier discipline; the full battery
+  is green (93/93 suites + the anchor/bind audit 9/9), and the three changed plugin TUs show ZERO new
+  errors vs base on a differential syntax pass (the real-SDK smoke remains CI's gate). **THE
+  MEASUREMENT, RODNEY'S VERDICT:** "it seems to save maybe .1% or .2% of cpu so not earth shattering but
+  not nothing so worth it." — the deferral's "measured noise" estimate confirmed empirically and
+  overridden as worth keeping: ≈0.1–0.2% CPU for the removal of a pure-overhead copy on the unchanged
+  path, with the skip semantics bit-identical. The variant stands ADOPTED on the branch, pending that
+  branch's merge. **PLAN SECTIONS TOUCHED:** this block only; Sequencing untouched.
+
 ## Sequencing
 
 Own branch off the lane tip AFTER feat/position-holders lands (never ride the same train — this touches
