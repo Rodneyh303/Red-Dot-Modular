@@ -22,17 +22,23 @@ Implementation: PPB = p16 * (calibration_in_sixteenths) — a MULTIPLIER, not a 
 A-vs-B into a parameter. DEFAULT = 1 bar (preserves the 16-step musical meaning; 16-step behaviour
 bit-identical). Supersedes D9's hardcoded 192.
 
-## IDEA 2 — TWO PHASE INPUTS, HIERARCHICAL (like subgates) — the real resolution
-Don't CHOOSE 1-bar-or-2-bar: have BOTH, as two inputs forming a tier hierarchy EXACTLY like the subgate
-tier maps onto the main gate:
-- MASTER PHASE (transport phase): 0-10V → position across the WHOLE transport (all 32 / 2 bars). "Where in
-  the whole pattern." (= option A span.)
-- BAR PHASE: 0-10V → position WITHIN a bar (16 / 1 bar). "Where within the current bar." (= option B span,
-  bar-local by construction → no-jumps-between-bars preserved HERE.)
-They COMPOSE outer-selects/inner-positions, the SAME nesting as ratchet/ghost within the main gate: master
-selects the bar-region, bar-phase positions within it. So BOTH musical behaviours coexist, selected by WHICH
-input you patch — cleaner than a calibration knob (it's the subgate pattern — separate controls per tier —
-already used everywhere). Calibration (idea 1) still applies PER INPUT for finer span control.
+## IDEA 2 — TRANSPORT PHASE + SUBPHASE, quotient/remainder (like subgates) — Rodney's tightened mechanism
+TRANSPORT PHASE ALONE = the 192 model (option A): 0-10V spans the full transport (2 bars / 32). That's the
+base — just the mapping.
+ADD A SUBPHASE INPUT and transport phase becomes the SELECTOR: transport phase is QUANTISED to tell us
+WHICH SUBPHASE REGION we are in; the SUBPHASE input positions WITHIN that region. A quotient/remainder split:
+    position = quantise(transportPhase, regionSize) + subphase * regionSize   // region base + sub-position
+- SUBPHASE CALIBRATION sets regionSize (= how finely transport phase is quantised): 1 bar → 2 regions
+  (bar 1 / bar 2); 1 quarter → 8 regions (quarters across 2 bars); anything between (quarter-note → bar).
+- The QUANTISATION IS THE NESTING (the precise mechanism): the quantised transport phase = the coarse
+  address (which region); the subphase = the fine position within. Same outer-selects/inner-positions as
+  ratchet/ghost within the main gate — but the coarse level is the QUANTISED transport phase.
+- "NO JUMPS BETWEEN BARS" FALLS OUT STRUCTURALLY: with regionSize = 1 bar, the subphase only addresses
+  within the selected region → it cannot cross the region boundary. Preserved by construction, not a rule.
+- MID-STEP JUMPS: not a new problem. The 192 transport phase already lands mid-step and jumps (the existing
+  within-bar snap :779 + drift-check :1148). The subphase split REUSES that same mid-step-landing machinery,
+  applied per level (region landing + sub-region landing) — no new jump class, the existing one applied
+  twice.
 
 ## IDEA 3 — PHASE DISTORTION through the DISTRIBUTION LAYER (pure reuse)
 Phase (0-10V → 0-1) passes through a COPY of the distribution layer (warp / tilt / ATOMS), calibrated
@@ -59,3 +65,23 @@ IDEAS — not scheduled. Idea 1 (calibration) is the immediate better answer to 
 16-step meaning; the hardcoded-192 D9 answer drops no-jumps-between-bars). Ideas 2+3 are the richer future
 (a full phase tier system). Capture now; sequence after 32 steps lands. Distribution reuse (idea 3) makes it
 cheaper than it looks — the machinery exists.
+
+
+════════════════════════════════════════════════════════════════════════════════
+## [ARCHITECTURE — Rodney] The distribution transform WANTS TO BE AN EXTRACTED PRIMITIVE
+Phase distortion (idea 3) reveals a latent architecture: the distribution transform (warp / tilt / atoms)
+is currently EMBEDDED in Sands/East, coupled to lane draw-generation. But phase distortion needs the SAME
+transform on a DIFFERENT input (a phase voltage) for a DIFFERENT purpose (scanning position, not draws).
+That's the signature of a REUSABLE PRIMITIVE trapped inside a feature. It is a pure [0,1]→[0,1] transform,
+mathematically self-contained, wanted in multiple contexts.
+DIRECTION (a refactor-to-primitive, not just the phase feature):
+- EXTRACT the distribution transform into a reusable CORE primitive.
+- Consumers: (a) the embedded LANE draws (current), (b) PHASE distortion (built ON the primitive, not a
+  second embedded copy), (c) a STANDALONE "distribution shaper" MODULE — any 0-10V CV in → warp/tilt/atoms
+  → out. Atom-punctuated CV shaping as a utility: distinctive (nobody else has atoms in a CV shaper), very
+  VCV-idiomatic (composable primitive), AND it demonstrates the instrument's core thesis in isolation (good
+  for the paper/demo). Usable as an EXPANDER and as an INDEPENDENT module.
+PAYOFF: DRY (one implementation, 3+ consumers, not copies) + a sellable standalone module + phase distortion
+for free on top. SCOPE: a real refactor (extract without breaking Sands/East, golden-pinned). It affects HOW
+phase distortion is built — build it ON the extracted primitive. Capture as the architectural direction;
+sequence the extraction before/with the phase-distortion build.
