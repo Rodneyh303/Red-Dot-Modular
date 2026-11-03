@@ -182,20 +182,26 @@ MAX_STEPS, or live-length-bound where the algorithm allows (THE LENGTH LAW). Mon
 
 ### F. Surfaces
 
-- **Ring:** embed_monsoon.py:32–33 — 16 `STEP_LIGHT_{i}` anchors at r=14 → 32 anchors (enlarged radius
-  per LIGHT_RING_32_STEPS: position-only, no pattern-detail role, red-quarter/green-rest kept;
-  FIXED master-step scale per D8 — NOT twice-around-16). Monsoon.hpp:500–503 `STEP_LIGHTS_END =
-  START + 16` → `+ 32` (offset-based enum re-seats the downstream ids automatically).
-  MonsoonWidget.cpp:474–475 bind loop 16 → 32; the `i % 4` red rule is MUSICAL (quarters at the
-  clock's 16th resolution) — unchanged under D6 option (a), or → `i % 8` under option (b).
-- **Ring feed (the audit's find — NOT in the first inventory):** Monsoon.cpp:1461
+- **Ring (as amended by D15 — the 16-stay form):** embed_monsoon.py:32–33 — the 16 `STEP_LIGHT_{i}`
+  anchors at r=14 STAY (no enlargement, no 32 anchors; twice-around-16 per D15 — lamp k carries
+  masters k and k+16, the current lap from the playhead's half, D10's split test) + TWO new BAR
+  1/BAR 2 anchors INSIDE the ring's unused center (D15's position pin; position-only, no
+  pattern-detail role, red-quarter/green-rest kept). Monsoon.hpp:500–503 `STEP_LIGHTS_END =
+  START + 16` STAYS; the BAR LightIds append after it (offset-based enum re-seats the downstream
+  ids automatically). MonsoonWidget.cpp:474–475 bind loop stays 16 + the two BAR binds; the
+  `i % 4` red rule is MUSICAL (quarters at the clock's 16th resolution) — under twice-around the
+  anchors mark the CURRENT lap's quarters (D6(a) verbatim on the rendered lap; the two bars'
+  quarters coincide on the same four lamps — the D15 accepted loss).
+- **Ring feed (as amended by D15 — stays 16-wide):** Monsoon.cpp:1461
   `float stepBrightness[16]` + :1462 the fill loop + :1492 `updateStepLights(stepBrightness, 16)`;
-  MonsoonUIManager.cpp:100 `for (int i = 0; i < 16 && i < count; ++i)` — all → MAX_STEPS. A missed
-  site here leaves lamps 16–31 permanently dark (the upper half of the D8 ring dead) while the
-  engine plays them. The playhead comparison itself (`lightIdx == stepIndex`,
-  SequencerEngine.cpp:874) is frame-generic AS WRITTEN — it extends mechanically BECAUSE the ring
-  is 32; twice-around-16 would have forced a NEW `% 16` into this path (`stepIndex % 16`), the
-  exact landing class P4 sweeps out (→ D8).
+  MonsoonUIManager.cpp:100 `for (int i = 0; i < 16 && i < count; ++i)` — ALL STAY 16-WIDE (the
+  display is the twice-around ring, not a 32-lamp frame; nothing here → MAX_STEPS). The playhead
+  comparison (`lightIdx == stepIndex`, SequencerEngine.cpp:874) becomes
+  `lightIdx == stepIndex % 16` — the ONE sanctioned display-path `% 16` (the exact landing class
+  P4 sweeps out; D15 accepts it HERE and only here: display feed only, no engine read, no digest —
+  THE GOLDEN LAW holds). The window/ghost test reads the CURRENT-LAP master
+  (`isStepInWindow((stepIndex >= 16 ? 16 : 0) + lightIdx)` — the lap is D10's split test, shared
+  with the BAR LEDs; no second lap source exists). The trail's existing `% 16` (:880) is untouched.
 - **Sands grid:** StraitsSandsMacroVisual.cpp:388/:460 `stepW = (ED_W − 12)/16` → `/32` (cells halve;
   the accepted HP cost). Widget-drawn = no SVG regen for the grid itself.
 - **Lantern:** Lantern.cpp:499 `N_STEPS = 16` → 32 (nvg-drawn, no assets); :1118 bar grouping
@@ -260,20 +266,27 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
 - **P3 — the plumbing:** configParam ranges, updateWindow clamps + CV per D1, LOR_LEN range (D).
 - **P4 — the literal sweep:** every & 0x0F / %16 site per the C table (frame → 0x1F; musical → stays;
   voice → untouched). Grep-verified zero unclassified literals at close.
-- **P5 — the surfaces:** ring SVGs (32 lamps, enlarged, position-only, FIXED master-step scale per
-  D8), STEP_LIGHTS enum + widget bind + the ring feed (the F find), Sands stepW, Lantern N_STEPS
-  (F). Anchor audit 9/9. PLUS D10: the window map (the ghost arc — the one else-branch in
-  getStepLightBrightness, ghost pinned below the in-window rest) + the BAR 1/BAR 2 LEDs (SVG anchors
-  both themes; LightIds appended after STEP_LIGHTS_END, re-seat automatic).
+- **P5 — the surfaces (as amended by D15):** ring SVGs (the 16 lamps at r=14 STAY — no enlargement,
+  no 32 anchors; twice-around per D15) + the two BAR anchors INSIDE the ring center (both themes),
+  STEP_LIGHTS enum + widget bind + the ring feed (the F find, 16-wide), Sands stepW, Lantern
+  N_STEPS (F). Anchor audit 9/9 (re-based on the 16+2 anchor set). PLUS D10-as-amended-by-D15: the
+  window map (the ghost arc — the one else-branch in getStepLightBrightness, the CURRENT-LAP test
+  per the F find, ghost pinned below the in-window rest) + the BAR 1/BAR 2 LEDs (SVG anchors both
+  themes; LightIds appended after STEP_LIGHTS_END, re-seat automatic).
 - **P6 — pins:** new suite test_steps_32: len-32 march vs the closed forms (all four shapes — 32 is a
   power of two, the congruence laws' easy case); warm 16↔32 mid-run transitions == f(t, config);
   D3 old-vs-new window pins (offset 15 + len 16, documented); legacy-json load (16-wide keys → [0..15],
-  play identical); mask hi/lo roundtrip; ring anchor count (32; `i % 4` → 8 red under D6(a));
+  play identical); mask hi/lo roundtrip; ring anchor count (16 STEP_LIGHT anchors + 2 BAR anchors
+  inside the ring center, per D15; `i % 4` red on the CURRENT lap under D6(a));
   phase-span pins (0–10 V ↔ steps 0..31 identity, reconnect/reset lands on the SAME step — the D9
-  reset-safety invariant; drift-check quiescence during parked arcs); ring-map pins (D10: ghost
-  strictly below the in-window rest at (16,0) AND at a D3 wrap window; lamps 16–31 ghost-not-dark at
-  (16,0); BAR LEDs exclusive, follow stepIndex, a window change re-renders within one UI frame;
-  both silent wherever the discrete playhead is absent — mode D).
+  reset-safety invariant; drift-check quiescence during parked arcs); ring-map pins (D10 as
+  re-scoped by D15: ghost strictly below the in-window rest at (16,0) AND at a D3 wrap window; the
+  CURRENT-LAP re-scope is ATOMIC — indicator, dim set and playhead lamp move together within one
+  UI frame at the tick; one-bar windows render STABLE — no flip, the D15 claim, script-verified
+  (scripts/d15_ring_flip_table.py); straddling windows flip once per pass at the playhead's tick
+  crossing (the designed tell); the full window renders no ghosts and the BAR LEDs alone carry the
+  lap (the P6 pin transfers); BAR LEDs exclusive, follow stepIndex, a window change re-renders
+  within one UI frame; both silent wherever the discrete playhead is absent — mode D).
   Digest re-capture list per THE GOLDEN LAW.
 - **P7 — the phase tier (D13, post-32):** the composite helper (ONE function; its readers: the reseed
   :86–92 + the two landings :779/:1148), the CV2 subphase input (the mode-E takeover per the
@@ -615,7 +628,7 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   **CONFIRMED (Rodney: "Transport phase will always be mapped to 2 bars 192. It will allow jumps
   across the full 32 steps. With subphase patched , subphase will allow jumps within sibphase and
   Transport phase jumps across the Transport."):** post-ruling ratification, arriving UNPROMPTED
-  while the ruling sat unpushed (5bbf0d35, local-only) — independent convergence on the pinned
+  while the ruling sat unpushed (32ed1f80 after the rebase) — independent convergence on the pinned
   mechanism, the strongest form of ratification; every clause matches, and two of them move from
   adjudication to SPECIFICATION. **(a) THE TRANSPORT SPAN IS ALWAYS 192:** "always" closes the
   Idea-1 door by ratification — the standalone-span override (default 1 bar) is not merely
@@ -687,6 +700,76 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   pass-blindness; the marked 2-bar reading; the EXTENSION-LAW special case; tell-inverse-to-window;
   fusion; disjoint arcs). The D11 P6 pin stands: at the full window the BAR LEDs alone carry the lap
   tell — the one case clause 3 calls silent, and the one case the 16-lap scheme cannot render.
+- **D15 — the 16-stay ring restated, the in-ring bar indicator, the fourth challenge (Rodney: "I
+  dont think you get it at all. We have the light ring as it is now. We add a simple indicator bar
+  1/bar 2 perhaps inside the ring, space unused. Playing stepis 1 to 16, bar 1 indicator lights.
+  Any ring steps in 1..16 outside range are dimmed. Playing steps 17 to 32 bar 1 indicator dims
+  bar 2 indicator lights. Any ring steps in 17-32 outside range get dimmed. The whole range might
+  cross bars or just be inside 1 bar, first or 2nd. This approach is scalable if we moved to 64
+  steps."):** ACCEPTED — the 16-lamp twice-around ring with the CURRENT-LAP ghost and D10's BAR
+  1/BAR 2 LEDs REPOSITIONED inside the ring's unused center REPLACES the D8 standing 32-lamp map
+  as the display law. **THE D14 MODEL ERROR, CORRECTED FIRST — the decline's foundation falls:**
+  D14's flip table evaluated ghost(lap 1) → ghost(lap 2) at a FROZEN window — a lap transition
+  that cannot occur. The display lap follows the PLAYING step (the message's own sentences; D10's
+  split test `stepIndex >= 16`), and the playhead is CONFINED TO THE WINDOW: out-of-window
+  landings park at the window start (SequencerEngine.cpp:788–792) and advancePlayhead wraps
+  WITHIN the window (:486–488 — out-of-window advance snaps back to startStep; the walk IS the
+  playhead's sweep, D11's own reading of :486/:491). A window confined to one bar never plays the
+  other half: no crossing, no tick, no flip — Bar 1 lit, ghosts per lap 1, PERMANENTLY STABLE.
+  The corrected table (scripts/d15_ring_flip_table.py, the playhead-confined model) verifies: the
+  one-bar windows are the SILENT class — the claim as stated is TRUE, by CONFINEMENT, not by the
+  fused discipline (every confined window is silent, not only the exactly-16 pair: 3–10 and 20–27
+  in the table); the flip is real EXACTLY for tick-straddling windows, where BOTH laps render and
+  the playhead crosses ((5,20): {1..4} → {5..16}, 16 lamps; (9,24): {1..8} → {9..16}, 16; (1,20):
+  ∅ → {5..16}, 12; (16,17): {1..15} → {2..16}, 2 — D14's straddling rows stand verbatim); the
+  full window renders no ghosts on either lap and the BAR LEDs alone carry the lap (the P6 pin,
+  shared by both schemes). D14's "script-verified INVERTED" finding and its fused-discipline
+  reductio are RETRACTED as moot — the fused discipline was the only reading that made clause 3
+  hold WHILE ASSUMING the lap switch fires at a frozen one-bar window; under the current-lap
+  discipline the switch never fires there. The message's crossing sentence ("The whole range
+  might cross bars or just be inside 1 bar") is the designed swap made explicit: indicator, dim
+  set and lamp mapping move TOGETHER at the playhead's tick crossing. **THE FOURTH CHALLENGE'S
+  NEW CONTENT (why the decline does not stand):** the indicator is promoted from D10's decoration
+  to a FIRST-CLASS address component — the pair (lamp, indicator) is INJECTIVE over 1..32, the
+  answer to D8 count 1 the D14 record said stood unanswered — and the 64-step scalability
+  sentence reframes D8 count 5: at 64 steps the 32-lamp FIXED map hits the SAME alias (lamp s =
+  step mod 32) and needs an indicator anyway, while (lamp, indicator) extends verbatim (Bar 1–4,
+  the ring stays 16) — the 16-stay is not the special case; it is the scalable pattern. **THE
+  COUNTS, RE-ADJUDICATED:** D8 count 1 (injectivity) — the alias is DISAMBIGUATED, not removed;
+  the cost is the two-surface read, accepted by the message's design (Rodney retracts his own D8
+  rationale "Master steps are directly indicated in it"). Count 2 (the new % 16) — ACCEPTED as
+  the ONE display-path exception (`lightIdx == stepIndex % 16` in the lamp feed only; no engine
+  read, no digest — THE GOLDEN LAW holds; P4 must PERMIT it, pinned). Count 3 (pass-blindness) —
+  REPAIRED by the indicator, as D11's credit conceded and the message's explicit display
+  supplies. Count 4 (the marked 2-bar reading) — stands as an ACCEPTED LOSS: both bars' quarters
+  collapse onto the same four lamps. Count 5 — reframed above. D11 count 6 (tell inverse to
+  window size) — DISSOLVED: the tell no longer rides the ghost; the indicator carries it at EVERY
+  window including the full one. Count 7 (identity by fusion) — the fusion accepted; the ghost
+  level returns to DECORATION (the lap read is two discrete LEDs, not a brightness step). Count 8
+  (two disjoint arcs) — stands as an accepted cost, now PARSEABLE BY DESIGN ("parseable only WITH
+  the lap bit" — the message supplies exactly that bit). **WHAT THE STANDING MAP YIELDS (the
+  honest ledger):** the lap-INDEPENDENT arc (no re-scope flicker at the crossing) and the
+  simultaneous 2-bar comparison are LOST; the current-lap map re-scopes at every tick crossing —
+  up to 16 lamps, ATOMIC with the indicator swap and the playhead's lamp 16 → lamp 1 jump: three
+  simultaneous events, the boundary made LOUD (the design's intent: "bar 1 indicator dims bar 2
+  indicator lights"). The comet trail renders lamp-local and is unaffected. **THE PINS (the
+  display law):** the ring stays 16 lamps, twice-around (lamp k carries masters k and k+16); the
+  lap is the PLAYHEAD'S half (`stepIndex >= 16`, D10's split test — never a pass counter; D11's
+  alternation stays DECLINED); the ghost is CURRENT-LAP (lamp k ghosted iff its current-lap
+  master is out of the window), values per the D10 hierarchy verbatim (playhead 1.0 > trail 0.5 >
+  in-window 0.35 > rest 0.07 > ghost); the BAR 1/BAR 2 LEDs are D10 verbatim (lit EXCLUSIVELY,
+  the stepIndex split, both silent in mode D) REPOSITIONED inside the ring's unused center (P5
+  calibration, pinned by the message); jumps (D13's two surfaces) re-scope the display
+  ATOMICALLY at the LANDING — indicator, dim set and mapping move together; the display reads
+  the LANDING, never the tier voltages (the D13 pin); CV-swept windows (D3): a confined window
+  swept across the tick BECOMES straddling and the flip fires thereafter — the flip tracks the
+  LIVE window, the message's "changes as we move" generalized. **THE 64-STEP NOTE (pinned as
+  rationale, not commitment):** the pattern extends as ring-16 + k-way indicator (Bar 1–4 at 64);
+  the pair stays injective; no lamp growth. **THE PLAN SECTIONS AMENDED:** F/Ring and F/Ring
+  feed (the 16-stay form; the sanctioned % 16), P5 (the 16+2 anchor set), P6 (the D15 ring-map
+  pins). D8's 32-lamp FIXED map is demoted to the recorded alternative; D10's ghost arc is
+  re-scoped to the current-lap form; D14's decline is SUPERSEDED (its one-bar rows fabricated,
+  its straddling rows confirmed).
 
 ## Sequencing
 
