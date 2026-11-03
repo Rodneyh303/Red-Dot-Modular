@@ -951,3 +951,49 @@ Own branch off the lane tip AFTER feat/position-holders lands (never ride the sa
 the copula/CA/reversibility/hot-path frame the position-holder work just stabilized). P0 lands first as
 the reviewable no-op; the resize commit is P1–P4; surfaces and pins follow. The battery is the safety
 net at every gate, same discipline as the position-holder refactor.
+
+════════════════════════════════════════════════════════════════════════════════
+## SETTLED DECISIONS (Rodney — supersedes earlier back-and-forth in this doc)
+1. LIGHT RING: stays ONE BAR (16 lamps) with a BAR INDICATOR. 32 steps = two sweeps, bar indicator
+   disambiguates. This is the SCALABLE approach — extends to 64 steps without re-lamping the ring.
+   (The earlier "32 fixed lamps" option is rejected.)
+2. SCALING TARGET: 64 steps is the eventual ceiling. Real 64-step blockers are only: (a) the Sands probability
+   bar horizontal shrinkage (display), (b) possibly compute. Design for 64 extensibility; don't build it yet.
+3. PHASE, INITIAL 32-STEP WORK: phase is LEFT AS IS (the existing one-bar / 96-per-bar mapping). Do NOT
+   change phase in the 32-step build.
+4. PHASE, LATER: expand transport phase to 192 (2 bars). That becomes the transport-phase base, which the
+   subphase / distortion work then builds on. Sequenced AFTER the 32-step build, not part of it.
+5. PHASE DIRECTION (future, not the 32 build): transport phase (192, not stochastic in itself) + subphase
+   (quotient/remainder, quantised transport selects region) + distortion through the MO distribution
+   primitive (warp/tilt/atoms). Naming: this is the MO distribution layer applied to a deterministic
+   transport; NOT an "MO copula" (transport is not usually stochastic). Clock mode is the base; gate mode has
+   subgates + advance probability, phase will have subphase + distortion.
+
+## BUILD PLAN — 32 steps (the next major piece)
+PREREQUISITES (now satisfied on trunk after the merges): position-holders (no global counter; length-
+agnostic holders), UAS (per-voice addressing), rhythmPattern deleted, polarity audited, DNA_LCM dead.
+
+STAGE 1 — STRUCTURAL (bit-identical at 16; the extension-of-16 proof)
+- Pattern/step length accepts 1..32; default and all existing patches stay 16. Golden battery must be
+  bit-identical for every ≤16 configuration. This is the regression gate for the whole feature.
+- Holders already wrap at their own length, so the walk/addressing side should need little change; audit
+  the few remaining fixed-16 literals (& 0x0F, % 16, < 16, the 16-sized arrays and clamps) and make them
+  pattern-length-aware or 32-capable.
+STAGE 2 — DATA STORAGE
+- Per-step arrays (step values, mask/painted bits, Sands probability storage) extended to 32 entries.
+  Mask is 16-bit today (uint16 maskPainted_) — widen to 32-bit or a bit-pair; this is a real change, scope it
+  carefully. Keep ≤16 bit-identical.
+STAGE 3 — DISPLAY
+- Sands probability grid: 32 columns; the horizontal-shrinkage concern is real and is the first 64-step
+  blocker, so design the grid to be column-count-parameterised rather than hardcoded 16.
+- Light ring: 16 lamps, bar indicator (bar 1 / bar 2), single sweep = one bar. Settled, not reopened.
+- Step-count control: 16 / 32 selector (a pattern-length parameter). Decide menu vs knob when building.
+STAGE 4 — CONTROL + PERSISTENCE
+- Pattern-length parameter, persisted; ≤16 patches load unchanged (default 16).
+STAGE 5 — VERIFY
+- Goldens ≤16 bit-identical (the gate). New 32-step pins: a 32-step walk wraps at 32, both bars reachable,
+  the bar indicator tracks the correct bar, mask/painted bits address all 32 steps.
+
+## NOT IN THIS BUILD
+Phase change (stays as is), 64 steps, transport phase 192, subphase, phase distortion, the distribution
+primitive extraction. All sequenced after; recorded in PHASE_TIER_SYSTEM_IDEA.md.
