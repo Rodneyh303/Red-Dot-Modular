@@ -640,6 +640,53 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   confirmation ("jumps within sibphase" works at every detent; the divisor constraint stays a P7
   pin). P7's pin list gains two CONFIRMED entries: transport-span-fixed-at-192 (no span parameter on
   the transport tier) and the two-surface jump domains (region-bounded / frame-clamped).
+- **D14 — the 16-stay ring, the third challenge (Rodney: "I think the light ring should stay at 16
+  steps and just dim out the steps that are out of scope which changes as we move from first 16 to
+  last 16. If only the first 16 or last 16 are out of scope it won't flip bars"):** DECLINED — the
+  standing display stands (D8: 32 lamps, FIXED master-step scale; D10: the ghost arc + exclusive BAR
+  LEDs; D11: the lap-dim declined). The message is the most precise 16-ring proposal yet — clauses
+  1–2 name a real, coherent map — but its three clauses are JOINTLY inconsistent, and the one new
+  testable claim (the third) is script-verified FALSE under the only discipline that satisfies the
+  second. **THE CREDIT, RECORDED FIRST:** clauses 1–2 together are the CURRENT-LAP GHOST on
+  twice-around-16 — each lamp dimmed iff its current-lap master is out of the window, so the dimmed
+  set changes as the playhead crosses from the first 16 to the last 16. That is D11's credited
+  salvage verbatim ("the D10 ghost map is LAP-CONDITIONAL for free … makes the PASS OBSERVABLE"),
+  and it is the flicker D10's reductio named (window 1–20: lamp 5 in-window as 5 on lap 1,
+  out-of-window as 21 on lap 2) now embraced as the feature. Nothing in clauses 1–2 is new to the
+  log; the new content is the flip claim. **THE FLIP CLAIM, SCRIPT-VERIFIED (the case table):**
+  under the current-lap ghost — the only discipline consistent with clause 2 — the claim is
+  INVERTED: the one-bar windows are the LOUDEST flips on the ring. Window 1–16 ("only the last 16
+  out of scope"): lap 1 ghosts ∅ → lap 2 ghosts ALL 16 — the full ring extinguishes at the tick;
+  window 17–32 is the mirror (16 → 0). Spanning windows flip no less (5–20: {1,2,3,4} → {5,…,16},
+  16 lamps change state; 1–20: ∅ → {5,…,16}, 12 lamps); the only silent case IN THE TABLE is the
+  FULL window (1–32) — no ghosts on either lap (on 16 lamps silence requires BAR-SYMMETRIC scope —
+  W closed under the lamp pairing k ↔ k+16 — degenerate exceptions, not the rule) — and that case
+  is D11 count (6)'s DEFECT case (the tell vanishes at the
+  feature's maximum), not a virtue: "it won't flip bars" is true of exactly the window where the
+  display law already failed. **THE DISCIPLINE THAT WOULD MAKE THE CLAIM TRUE IS WORSE, VERIFIED:**
+  the FUSED ghost (dim iff BOTH masters k and k+16 are out of the window — the reading in which
+  one-bar windows never flip) is blind and lying precisely where the 32-step feature lives: every
+  window containing one full bar renders ZERO ghosts (1–20 lights all 16 lamps on both laps while
+  masters 21–32 are out of scope — indistinguishable from 1–32; 5–20 likewise); and for bar-1
+  windows it states the BAR-1 exclusions on BOTH laps (3–10: {1,2,11–16} on both laps), so during
+  bar 2 the lit lamps PRESENT OUT-OF-SCOPE MASTERS AS IN-SCOPE (lamp 3 lit while master 19 plays
+  out of scope) — the map shows one bar's scope and misstates the other's; identity-by-fusion (D11
+  count 7) with D8's alias returned as a lit-lamp ambiguity. **THE THREE CLAUSES CANNOT ALL HOLD:**
+  clause 2 (the dimmed set changes at the crossing) and clause 3 (no flip at one-bar windows) are
+  mutually exclusive — the discipline that makes the set change flips MAXIMALLY at one-bar windows
+  (16 of 16 lamps); the discipline that forbids the flip kills the change and the scope display with
+  it (zero ghosts for every full-bar-containing window). **WHAT THE STANDING MAP ALREADY DELIVERS —
+  and where the message's true want lives:** the out-of-scope dimming IS the D10 ghost arc verbatim;
+  and the no-flip want is ALSO granted by the standing map and by nothing else on the table — on 32
+  lamps each lamp has ONE master, so the arc is lap-INDEPENDENT (script-verified: identical every
+  lap at every window) — the scope display never flickers at the crossing; the bar dynamic lives in
+  the BAR 1/BAR 2 LEDs (swap at the tick) and the playhead's half-jump (lamp 16 → lamp 17 IS the
+  boundary, D8 count 1); and the 2-bar comparison stays visible (both bars' arcs coexist on the
+  constant scale — D11 count 8's unseeable-on-16 case). D8's five counts and D11's three stand
+  unanswered (injectivity; the new % 16 the twice-around path would force where P4 sweeps them out;
+  pass-blindness; the marked 2-bar reading; the EXTENSION-LAW special case; tell-inverse-to-window;
+  fusion; disjoint arcs). The D11 P6 pin stands: at the full window the BAR LEDs alone carry the lap
+  tell — the one case clause 3 calls silent, and the one case the 16-lap scheme cannot render.
 
 ## Sequencing
 
