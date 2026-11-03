@@ -214,7 +214,11 @@ int main() {
         return in;
     };
 
-    TEST("A4 draw twin: redrawRhythm derives rhythmPattern from warpRow(·, PL_REST), not raw slewed[0]", {
+    TEST("A4 (retargeted, ITEM 1): the warp moves cells across the rest threshold — the LED's live derivation is non-vacuous (mono)", {
+        // (ITEM 1: the rhythmPattern writers are RETIRED — the LEDs derive note/rest
+        // LIVE from warpRow vs restTh. What survives to pin: the warp-mirror
+        // substance those writers guaranteed — the warped row disagrees with the RAW
+        // row on the note/rest map, so a live derivation reads differently from raw.)
         const PatternInput in = rhythmInput();
         PatternEngine pe;
         pe.seedRhythmPhilox(0.42f);
@@ -224,24 +228,22 @@ int main() {
         bank.warpW[WarpBank::index(0, REST)] = 1.f;
         pe.setWarpBank(&bank);
         pe.redrawRhythm(in);
-        for (int i = 0; i < 16; ++i)
-            EXPECTF(pe.rhythmPattern[i] == (pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{REST})[i] >= in.restProb),
-                    "step %d: pattern %d != warpRow-fed %d (warped %.9g vs restProb %.9g)",
-                    i, (int)pe.rhythmPattern[i], (int)(pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{REST})[i] >= in.restProb),
-                    (double)pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{REST})[i], (double)in.restProb);
-        // Non-vacuous: the warp must move at least one cell across the threshold
-        // vs what the RAW row would have produced (the pre-05 expression).
         int diffs = 0;
         for (int i = 0; i < 16; ++i)
-            if (pe.rhythmPattern[i] != (pe.random_[0][REST][i] >= in.restProb)) ++diffs;
+            if ((pe.warpRow(dotModular::VoiceResolver::slot(0 + 1), dotModular::LaneId{REST})[i] >= in.restProb)
+                != (pe.random_[0][REST][i] >= in.restProb)) ++diffs;
         EXPECTF(diffs > 0, "vacuous: warp moved no cell across the rest threshold");
     });
 
-    TEST("A4 display ternary collapsed: refreshVisualCache derives rhythmPattern from warpRow(displayedVoice_, PL_REST)", {
+    TEST("A4 (retargeted, ITEM 1): the rhythmChanged path still recomputes + the warp moves cells across the threshold (poly displayed)", {
+        // (ITEM 1: the rhythmPattern display writer is RETIRED with the array. What
+        // survives: the recompute-consumption law + the warp-mirror non-vacuity for
+        // a POLY displayed voice — the live LED derivation reads a row the warp
+        // actually moved.)
         const PatternInput in = rhythmInput();
         PatternEngine pe;
         pe.numPolyVoicesHint = 5;
-        pe.displayedVoice_ = dotModular::VoiceResolver::slot(4);   // V4 = slot 3, a POLY displayed voice — the old ternary's other arm
+        pe.displayedVoice_ = dotModular::VoiceResolver::slot(4);   // V4 = slot 3, a POLY displayed voice
         pe.seedRhythmPhilox(0.42f);
         pe.seedMelodyPhilox(0.17f);
         pe.seedQmixPhilox(0.23f);
@@ -252,19 +254,14 @@ int main() {
         pe.setWarpBank(&bank);
         fillRandomGolden(pe);        // deterministic basis; the recompute re-derives REST rows
         pe.rebuildWarpMirrorAll();
-        // Force the rhythmChanged display path (counter != applied ⇒ full recompute
-        // + the :886-889 rhythmPattern derivation).
+        // Force the rhythmChanged display path (counter != applied ⇒ full recompute).
         pe.rhythmCtrApplied = pe.rhythmDrawCtr - 1;
         pe.refreshVisualCache(in);
         EXPECT(pe.rhythmDrawCtr == pe.rhythmCtrApplied);   // the recompute consumed it
-        for (int i = 0; i < 16; ++i)
-            EXPECTF(pe.rhythmPattern[i] == (pe.warpRow(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{REST})[i] >= in.restProb),
-                    "step %d: pattern %d != warpRow(3,REST)-fed %d (warped %.9g)",
-                    i, (int)pe.rhythmPattern[i], (int)(pe.warpRow(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{REST})[i] >= in.restProb),
-                    (double)pe.warpRow(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{REST})[i]);
         int diffs = 0;
         for (int i = 0; i < 16; ++i)
-            if (pe.rhythmPattern[i] != (pe.random_[3][REST][i] >= in.restProb)) ++diffs;
+            if ((pe.warpRow(dotModular::VoiceResolver::slot(3 + 1), dotModular::LaneId{REST})[i] >= in.restProb)
+                != (pe.random_[3][REST][i] >= in.restProb)) ++diffs;
         EXPECTF(diffs > 0, "vacuous: warp moved no cell across the rest threshold");
     });
 

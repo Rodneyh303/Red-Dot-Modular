@@ -312,9 +312,9 @@ int main() {
                 "StraitsSandsMacroVisual.hpp: the /32 division is not restored");
         EXPECTF(contains(macro, "probOutDiv.process()"),
                 "StraitsSandsMacroVisual.cpp: the gate has no /32 cadence");
-        EXPECTF(contains(macro, "sweepSigChanged(sweepSig_, eng, stepArr, nV)"),
+        EXPECTF(contains(macro, "sweepSigChanged(sweepSig_, eng, stepArr.data(), nV)"),
                 "StraitsSandsMacroVisual.cpp: the fingerprint gate decision is missing");
-        EXPECTF(contains(macro, "sweepSigCapture(sweepSig_, eng, stepArr, nV)"),
+        EXPECTF(contains(macro, "sweepSigCapture(sweepSig_, eng, stepArr.data(), nV)"),
                 "StraitsSandsMacroVisual.cpp: the signature capture is missing");
         EXPECTF(contains(macro, "laneProbabilityAtStep(ch + 1, l, stepArr[l])"),
                 "StraitsSandsMacroVisual.cpp: the resolve no longer reads the ONE "

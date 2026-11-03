@@ -132,8 +132,6 @@ void PatternEngine::reset() {
         melodySource[0][i] = melodyRandom[i];
         octaveSource[0][i] = octaveRandom[i];
         qmixSource[0][i]   = qmixRandom[i];
-
-        rhythmPattern[i] = true;
     }
 
     // (Step 4c: removed A/B init -- no stored A/B arrays under the scrub model.)
@@ -351,7 +349,7 @@ int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
 
     // The rungs: allowed entries in TABLE order, the base ALWAYS included (a
     // dotted BASE plays even with its dotted bit off — the deterministic use case).
-    int rungs[NUM_NOTE_VALUES];
+    std::array<int, NUM_NOTE_VALUES> rungs{};
     int nRungs = 0, baseRank = 0;
     for (int i = 0; i < NUM_NOTE_VALUES; ++i) {
         if (allowed(i) || i == baseIdx) {
@@ -368,7 +366,7 @@ int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {
     if (maxDist < 0.5f) return baseIdx;
 
     float reach = spread * maxDist;
-    float weights[NUM_NOTE_VALUES] = {};
+    std::array<float, NUM_NOTE_VALUES> weights{};
     float total = 0.f;
 
     for (int rk = 0; rk < nRungs; ++rk) {
@@ -435,13 +433,9 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
         legatoSource[0][i]=slewedLegato[0][i]; accentSource[0][i]=slewedAccent[0][i];
         for (int v=1;v<=numPolyVoicesHint;v++) rhythmSource[v][i]=slewedRhythm[v][i];
         for (int v=1;v<=numPolyVoicesHint;v++) accentSource[v][i]=slewedAccent[v][i];
-        // Warp mirror (CC_PROMPT_05 — the RHYTHM redraw twin of the melody draw site):
-        // the pattern preview derives from the SAME effective w-mixture + voice key the
-        // refreshVisualCache rhythmChanged writer uses (warpRow(displayedVoice_, PL_REST))
-        // — the two rhythmPattern writers agree by construction. warpRow(mono,·) IS the
-        // mono row, so at identity defaults this is byte-identical to the old raw
-        // slewedRhythm[0] read (the recompute's write-back just copied slewed→random_).
-        rhythmPattern[i] = (warpRow(displayedVoice_, LaneId{PL_REST})[i] >= in.restProb);
+        // (rhythmPattern preview writer RETIRED — CC_PROMPT_RHYTHMPATTERN_DELETE_AND_POLARITY
+        // ITEM 1: the step LEDs now read the LIVE warp row at getStepLightBrightness; the
+        // stale generation-time prediction cache is deleted everywhere.)
     }
 }
 
@@ -963,14 +957,12 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     // PART 3: mix changes use the FOR-VOICE recompute (displayed voice only, ~16x less
     // than all-voices). Counter change (roll/phrase boundary) uses the FULL recompute
     // (all voices — the audio needs them). Different scopes for the two consumers.
-    bool rhythmChanged = false, melodyChanged = false;
+    bool melodyChanged = false;
     {
         if (rhythmDrawCtr != rhythmCtrApplied) {
             recomputeEffectiveRhythm();           // roll: full recompute (all voices)
-            rhythmChanged = true;
         } else if (rhythmMixLatched != rhythmMixApplied) {
             recomputeEffectiveRhythmForVoice(displayedVoice_);  // mix: displayed voice only
-            rhythmChanged = true;
         }
         if (melodyDrawCtr != melodyCtrApplied) {
             recomputeEffectiveMelody();
@@ -984,20 +976,9 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
         else if (qmixMixLatched != qmixMixApplied)
             recomputeEffectiveQmixForVoice(displayedVoice_);
     }
-    // BUG FIX (rhythmmix_leaks_melody_bars): SPLIT the display derivation — rhythm-only
-    // changes don't re-derive melodyPitchV (and vice versa). AND read the DISPLAYED VOICE's
-    // array (poly for voice >= 1, mono for voice 0) — the old code always read the mono
-    // arrays, which is wrong for a poly displayed voice and caused jumpy melody bars when
-    // rhythm-mix forced the unconditional loop to re-run.
-    if (rhythmChanged) {
-        for (int i = 0; i < 16; ++i) {
-            // Warp mirror (CC_PROMPT_05): the displayedVoice_==0 mono/poly ternary
-            // COLLAPSES — warpRow(displayedVoice_, PL_REST) IS the mono row when
-            // displayedVoice_ is 0 (rhythmRandom is a view onto random_[0][REST]) and
-            // the displayed poly row otherwise. One accessor, every lane, every voice.
-            rhythmPattern[i] = (warpRow(displayedVoice_, LaneId{PL_REST})[i] >= in.restProb);
-        }
-    }
+    // (rhythmChanged + its rhythmPattern display writer RETIRED — ITEM 1: the LEDs read
+    // the live row now; the flag had no other consumer. The melody half of the
+    // rhythmmix_leaks_melody_bars split stays: read the DISPLAYED VOICE's array below.)
     if (melodyChanged) {
         for (int i = 0; i < 16; ++i) {
             // Warp mirror (CC_PROMPT_03 STEP 4b — the DISPLAY site): the bars derive
@@ -1105,12 +1086,8 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     else if (drawAllowedR && rhythmSlewApplied != -1.f
              && rack::math::clamp(rhythmSlewLatched, -1.f, 1.f) != rhythmSlewApplied) {
         recomputeEffectiveRhythm();
-        // Preview follows the audio: this recompute consumed the ctr/mix bookkeeping that
-        // refreshVisualCache's triggers key on, so derive the rest-pattern here — the SAME
-        // expression as redrawRhythm's preview writer and refreshVisualCache's rhythmChanged
-        // writer (the two writers agree by construction; warpRow IS the mono row at voice 0).
-        for (int i = 0; i < 16; ++i)
-            rhythmPattern[i] = (warpRow(displayedVoice_, LaneId{PL_REST})[i] >= in.restProb);
+        // (the rhythmPattern preview writer that lived here is RETIRED — ITEM 1; the
+        // recompute above is the substance, the LEDs read the live row now)
     }
     if (drawAllowedR) rhythmPendingLast = false;   // one-shot: consumed only if this stream drew (held otherwise)
 
@@ -1207,13 +1184,14 @@ void PatternEngine::switchRhythmMode(int& stepIndex, int& lastStepIndex) {
         cachedRhythmSeedFloat = rhythmSeedPending
             ? rhythmSeedPendingFloat : rhythmSeedFloat;
         rhythmSeedCached = true;
-        for (int i = 0; i < 16; ++i) cachedRhythmPattern[i] = rhythmPattern[i];
+        // (cachedRhythmPattern RETIRED — ITEM 1; the seed/step cache below is the
+        // mode-switch machinery's own state and stays)
         cachedRhythmStepIndex     = stepIndex;
         cachedRhythmLastStepIndex = lastStepIndex;
         // Scrub model: no A/B snapshot -- (counter, scrub, slew) is the morph position,
         // unchanged by a mode switch; returning to dice recomputes from the counter. (Step 4b.)
     } else if (prev == 1 && next == 0 && rhythmSeedCached) {
-        for (int i = 0; i < 16; ++i) rhythmPattern[i] = cachedRhythmPattern[i];
+        // (the rhythmPattern restore RETIRED with the array — ITEM 1)
         stepIndex     = cachedRhythmStepIndex;
         lastStepIndex = cachedRhythmLastStepIndex;
         // Scrub model: recompute effective from the (unchanged) counter -- exact pre-switch pattern.
