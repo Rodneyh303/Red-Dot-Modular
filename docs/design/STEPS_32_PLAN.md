@@ -297,7 +297,9 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   zero-skew region-boundary quiescence (no spurious jumps when the tiers are locked); plug/unplug
   transitions land through the jump path; the aliasing-trap release note (a 1-bar source on the
   transport jack at N = 2 aliases — bar-1-first/bar-2-second, half the pattern, silent). Digest
-  re-capture list per THE GOLDEN LAW (the composite path enters the phase-span pins).
+  re-capture list per THE GOLDEN LAW (the composite path enters the phase-span pins). Idea 3's
+  distribution transform: USER-ENDORSED at D16 — sequenced after the tier build (post-P7), the
+  Sands/East extraction refactor the prerequisite, the Golden-Law digest gate unchanged.
 
 ## Decision points (for Rodney)
 
@@ -569,8 +571,9 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   mapping"), (3) phase distortion through the distribution layer):** ACCEPTED IN PART — **Idea 2 is
   the extension path, sequenced P7 (post-32); Idea 1 is accepted ONLY as the tier calibration (the
   subphase regionSize knob) and DECLINED as a standalone-span override; Idea 3 + the
-  distribution-primitive extraction are CAPTURED-DEFERRED** (the document's own STATUS agrees:
-  "sequence after 32 steps lands"). **THE CREDIT, RECORDED FIRST:** the tier split is the third
+  distribution-primitive extraction are CAPTURED-DEFERRED, USER-ENDORSED at D16** (the document's own
+  STATUS agrees: "sequence after 32 steps lands"; the D16 endorsement — "a great idea" — weights the
+  backlog, the deferral and its gates stand). **THE CREDIT, RECORDED FIRST:** the tier split is the third
   option the D9/D12 binary missed — it satisfies D12's demand (bar identity carried by a VOLTAGE,
   never the accumulator) while restoring the existing 1-bar-ramp world through a second jack, and it
   restores the bar-bounded jump rule STRUCTURALLY at the fine tier. D12 is not overturned — its
@@ -620,7 +623,7 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   velocity, and the bpm validity gate :106 would pass its spikes); sixteenth/quarter edges and the
   mod-4 invariant (:165–166) run on the COMPOSITE walk — D6(a)'s anchors intact; the BAR 1/BAR 2
   LEDs stay stepIndex-driven (D10 untouched — the display reads the LANDING, never the tier
-  voltages). **IDEA 3 + THE EXTRACTION (captured, deferred):** "zero new DSP" is optimistic — the
+  voltages). **IDEA 3 + THE EXTRACTION (captured, deferred; USER-ENDORSED at D16 — the gates below stand):** "zero new DSP" is optimistic — the
   distribution transform is EMBEDDED in Sands/East (the document's own architecture section says
   so); the prerequisite is the extraction refactor (golden-pinned, its own scope note), and phase
   distortion CHANGES the landed position — engine reads, digest-relevant when scheduled (THE GOLDEN
@@ -770,6 +773,39 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   pins). D8's 32-lamp FIXED map is demoted to the recorded alternative; D10's ghost arc is
   re-scoped to the current-lap form; D14's decline is SUPERSEDED (its one-bar rows fabricated,
   its straddling rows confirmed).
+
+- **D16 — the convergence ratified, the arc closed (Rodney: "You argued hard against 16 lamp ring and
+  single bar phase and now we have a much better solution that includes both as well as 32 step
+  transport phase. Phase going through distribution engine is also a great idea."):** ACCEPTED AS THE
+  STANDING CHARACTERIZATION of the arc D12 → D14 → D13 → D15, and as a STATUS CHANGE for Idea 3. No
+  new mechanism, NO PIN CHANGES — the message ratifies the converged architecture and weights the
+  backlog; every P7 pin, gate and sequencing decision stands where D13/D15 left it. **THE ARC, READ
+  INTO THE LEDGER — the declines were load-bearing:** each hard decline located the defect in a
+  MECHANISM while the WANT walked through. D12 declined the 1-bar SPAN (the parity bit cannot live in
+  the bar-local accumulator — zero bits of bar identity on the wire, wrong-half-on-reconnect,
+  silent); the want — "phase = where in the bar" — now lives as the SUBPHASE tier at the
+  compatibility configuration (regionSize = 1 bar, N = 2): the existing 1-bar ramps land on the
+  subphase jack BIT-IDENTICALLY (the D13 compatibility story), bar identity carried by the transport
+  tier's 192 sweep — a VOLTAGE, D12's own demand, met in the new channel. D14 declined the 16-stay
+  CLAUSE SET as literally stated (its three clauses jointly inconsistent under the frozen-window
+  model); the want — 16 lamps, out-of-scope dimming, no flip inside a bar — now lives as the D15
+  display law (twice-around-16, the CURRENT-LAP ghost, the in-ring BAR 1/BAR 2 indicator; the one-bar
+  silence holds BY CONFINEMENT — the corrected model, not the fused discipline D14 refuted).
+  "Includes both" is therefore exact for the WANTS, with the mechanisms replaced by the forms that
+  survive the script table and the reseed math; the third limb, the 32-step transport phase, is D9's
+  192 map as the transport tier — "always" per the D13 CONFIRMED ratification. **IDEA 3 ELEVATED TO
+  USER-ENDORSED:** "Phase going through distribution engine is also a great idea" is the message's
+  new content — the D13 status moves from CAPTURED-DEFERRED to USER-ENDORSED, STILL DEFERRED; the
+  deferral logic is restated so the endorsement cannot be misread as a build order: the transform is
+  EMBEDDED in Sands/East and its extraction refactor is the prerequisite (golden-pinned, its own
+  scope note); phase distortion CHANGES the landed position, so engine reads and the digest are in
+  scope when scheduled (THE GOLDEN LAW); sequencing stays after 32 lands, post-P7 — the endorsement
+  weights the backlog, it does not move the gate. **THE PROCESS NOTE, LOGGED:** the convergence the
+  message describes is the adjudication discipline working as designed — decline the inconsistent
+  mechanism, credit the want, and the accepted form contains both proposals' wants without their
+  defects; the D14 correction was itself load-bearing (exposing the frozen-window error is what made
+  the D15 acceptance coherent). **PLAN SECTIONS TOUCHED:** the D13 block (the Idea-3 status marker,
+  inline), the P7 entry (the endorsement note); Sequencing untouched.
 
 ## Sequencing
 
