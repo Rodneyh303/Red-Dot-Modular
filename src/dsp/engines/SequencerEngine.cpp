@@ -1442,8 +1442,8 @@ void SequencerEngine::legatoCheckpointOnFall() {
     // every-lane principle (one threshold control, many own draws, many outcomes).
     // An offset moves only where a voice's own fall decision diverged from the mono one.
     const dotModular::StepAdvance::Decision d = decideStepAdvance_(VoiceResolver::mono(), -1, /*targetTickDelta=*/+1);
-    int8_t motionV[16];
-    const bool anyVoiceMoved = foldPerVoiceAdvance_(-1, /*perVoiceScan=*/false, d, motionV);
+    std::array<int8_t, kVoiceSlots> motionV{};
+    const bool anyVoiceMoved = foldPerVoiceAdvance_(-1, /*perVoiceScan=*/false, d, motionV.data());
     // The per-voice arrival latches: every voice that moved on its OWN fall decision
     // latches its own "one advance, one arrival" (its next rise is a no-decision
     // arrival for IT). [0] is the mono latch (below — unchanged semantics).
@@ -1451,15 +1451,15 @@ void SequencerEngine::legatoCheckpointOnFall() {
         if (motionV[i] != 0) pendingCheckpointArrivalV_[i] = true;
     bool wrapped = false;
     if (d == dotModular::StepAdvance::FORWARD) {
-        wrapped = advancePlayhead(+1, motionV);
+        wrapped = advancePlayhead(+1, motionV.data());
     } else if (d == dotModular::StepAdvance::BACKWARD) {
-        wrapped = advancePlayhead(-1, motionV);
+        wrapped = advancePlayhead(-1, motionV.data());
     } else {
         // HOLD: no advance — the rest stays passive (the chain carries,
         // slurForward stays pending; NO arrival: the next rise decides normally).
         // Per-voice: a voice that DID move on its own fall decision refreshes its
         // reads (the clock held — the offsets-only recompute).
-        if (anyVoiceMoved) recomputeLaneTicks(motionV);
+        if (anyVoiceMoved) recomputeLaneTicks(motionV.data());
         return;
     }
     if (wrapped && boundaryInterrupt) {
@@ -1501,9 +1501,9 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
             // move refresh via the offsets-only recompute (the clock does not move on
             // an arrival).
             pendingCheckpointArrivalV_[0] = false;
-            int8_t motionV[16];
-            if (foldPerVoiceAdvance_(-1, /*perVoiceScan=*/true, dotModular::StepAdvance::REPEAT, motionV))
-                recomputeLaneTicks(motionV);
+            std::array<int8_t, kVoiceSlots> motionV{};
+            if (foldPerVoiceAdvance_(-1, /*perVoiceScan=*/true, dotModular::StepAdvance::REPEAT, motionV.data()))
+                recomputeLaneTicks(motionV.data());
             wrapped = false;
         } else if (stepIndex == -1) {
             // The seed: initialization, not a sequence-motion decision (no draw consumed).
@@ -1528,16 +1528,16 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
             // exactly restProb's pattern) and accumulates the offsets BEFORE the
             // transport call, so the recompute inside advancePlayhead sees them. Even
             // on a GLOBAL threshold the voices wander independently.
-            int8_t motionV[16];
-            const bool anyVoiceMoved = foldPerVoiceAdvance_(-1, /*perVoiceScan=*/true, d, motionV);
+            std::array<int8_t, kVoiceSlots> motionV{};
+            const bool anyVoiceMoved = foldPerVoiceAdvance_(-1, /*perVoiceScan=*/true, d, motionV.data());
             if (d == dotModular::StepAdvance::FORWARD)
-                wrapped = advancePlayhead(+1, motionV);     // resets the scan ([0])
+                wrapped = advancePlayhead(+1, motionV.data());     // resets the scan ([0])
             else if (d == dotModular::StepAdvance::BACKWARD)
-                wrapped = advancePlayhead(-1, motionV);      // resets the scan ([0])
+                wrapped = advancePlayhead(-1, motionV.data());      // resets the scan ([0])
             else {
                 scanHold_();                                // HELD: scan the window forward (the freeze fix)
                 if (anyVoiceMoved)
-                    recomputeLaneTicks(motionV);            // the clock held; diverged voices refresh
+                    recomputeLaneTicks(motionV.data());            // the clock held; diverged voices refresh
             }
         }
         // else REPEAT (the corrected semantics, Rodney 91b100c): the playhead does not
@@ -1682,16 +1682,16 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
         // subRes[level][ADVANCE] — the poly ADVANCE columns' consumer) on its OWN
         // window draw, before the transport call; the threshold source is the
         // resolver-resolved store, exactly rest/legato's pattern.
-        int8_t motionV[16];
-        const bool anyVoiceMoved = foldPerVoiceAdvance_(advLevel, /*perVoiceScan=*/true, adv, motionV);
+        std::array<int8_t, kVoiceSlots> motionV{};
+        const bool anyVoiceMoved = foldPerVoiceAdvance_(advLevel, /*perVoiceScan=*/true, adv, motionV.data());
         if (adv == dotModular::StepAdvance::FORWARD)
-            wrapped = advancePlayhead(+1, motionV);     // resets the scan
+            wrapped = advancePlayhead(+1, motionV.data());     // resets the scan
         else if (adv == dotModular::StepAdvance::BACKWARD)
-            wrapped = advancePlayhead(-1, motionV);      // resets the scan
+            wrapped = advancePlayhead(-1, motionV.data());      // resets the scan
         else {
             scanHold_();                                // HELD: scan the window forward (the freeze fix)
             if (anyVoiceMoved)
-                recomputeLaneTicks(motionV);            // the clock held; diverged voices refresh
+                recomputeLaneTicks(motionV.data());            // the clock held; diverged voices refresh
         }
     }
 

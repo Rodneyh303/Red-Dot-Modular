@@ -327,10 +327,10 @@ struct MonsoonChangeAlleyV2 : Module {
             // returns false (STOP, don't wrap) — the consume still clears the lamp above so the
             // affordance is consistent, but the state is left unchanged.
             {
-                uint8_t restored[CA::N_VOICES];
+                std::array<uint8_t, CA::N_VOICES> restored{};
                 uint8_t* tbl = (ty == 0) ? rhythmSrc.data() : (ty == 1) ? melodySrc.data() : qmixSrc.data();
-                if (trajectory_.stepBack(ty, restored))
-                    std::memcpy(tbl, restored, CA::N_VOICES);
+                if (trajectory_.stepBack(ty, restored.data()))
+                    std::memcpy(tbl, restored.data(), CA::N_VOICES);
             }
         }
         // Any armed row this call whose AXIS is in the mask?  If none, nothing to snapshot or apply.
@@ -351,10 +351,10 @@ struct MonsoonChangeAlleyV2 : Module {
         // (today's verb-major). Includes out-of-axis rows so their stamp survives for the later
         // commit; the axis check below skips them (they stay armed). CA_DICE_COUNTER_MODEL.md
         // "Pending transform ORDER".
-        bool armedArr[CA::N_ROWS]; uint32_t stampArr[CA::N_ROWS];
+        std::array<bool, CA::N_ROWS> armedArr{}; std::array<uint32_t, CA::N_ROWS> stampArr{};
         for (int row = 0; row < CA::N_ROWS; ++row) { armedArr[row] = pendingRows[row].armed; stampArr[row] = pendingRows[row].stamp; }
-        int orderArr[CA::N_ROWS];
-        const int nOrdered = redDot::CAPendingOrder::orderRows(CA::N_ROWS, armedArr, stampArr, orderArr);
+        std::array<int, CA::N_ROWS> orderArr{};
+        const int nOrdered = redDot::CAPendingOrder::orderRows(CA::N_ROWS, armedArr.data(), stampArr.data(), orderArr.data());
         for (int oi = 0; oi < nOrdered; ++oi) {
             const int row = orderArr[oi];
             auto& p = pendingRows[row];

@@ -405,6 +405,12 @@ struct PatternEngine {
     // the poly writes can MINT VoiceSlots (the header cannot include VoiceResolver.hpp).
     // Byte-identical to the inline loops it replaces (same writes, same order).
     void promoteRemappedDraws_(bool doR, bool doM, bool doQ);
+    // P-C (ARRAY_CONTAINER_AUDIT Finding B/C): the remap's poly snapshot moved from a
+    // static thread_local to INSTANCE state — per-Monsoon, single-owner audio thread,
+    // testable per instance (the TLS form was hidden shared state across every Monsoon
+    // on the worker; ~7 KB/instance against ~90 KB resident is not an objection).
+    Matrix2<float, kVoiceSlots, 16> remapSnapR{}, remapSnapM{}, remapSnapO{}, remapSnapQ{}, remapSnapA{}, remapSnapV{}, remapSnapL{};
+
     void remapSlewedByPins(bool doR = true, bool doM = true, bool doQ = true) {
         snapshotPreRemap();   // always snapshot, even on identity skip (pre == post then)
         // Fast identity skip — only over the families we would actually remap.
@@ -417,13 +423,14 @@ struct PatternEngine {
         if (identity) return;
 
         // Snapshot mono (V1) + poly (V2..V16) for the seven strands. VoiceSlot convention: 0=V1, 1..15=V2..V16.
-        float mR[16], mM[16], mO[16], mQ[16], mA[16], mV[16], mL[16];
+        std::array<float, 16> mR{}, mM{}, mO{}, mQ{}, mA{}, mV{}, mL{};   // P-C: zero-init scratch
         for (int i = 0; i < 16; ++i) {
             mR[i]=slewedRhythm[0][i]; mM[i]=slewedMelody[0][i]; mO[i]=slewedOctave[0][i];
             mQ[i]=slewedQmix[0][i];
             mA[i]=slewedAccent[0][i]; mV[i]=slewedVariation[0][i]; mL[i]=slewedLegato[0][i];
         }
-        static thread_local float pR[kVoiceSlots][16], pM[kVoiceSlots][16], pO[kVoiceSlots][16], pQ[kVoiceSlots][16], pA[kVoiceSlots][16], pV[kVoiceSlots][16], pL[kVoiceSlots][16];
+        auto& pR = remapSnapR; auto& pM = remapSnapM; auto& pO = remapSnapO;
+        auto& pQ = remapSnapQ; auto& pA = remapSnapA; auto& pV = remapSnapV; auto& pL = remapSnapL;
         for (int v = 1; v < kVoiceSlots; ++v) for (int i = 0; i < 16; ++i) {
             pR[v][i]=slewedRhythm[v][i]; pM[v][i]=slewedMelody[v][i];
             pO[v][i]=slewedOctave[v][i]; pQ[v][i]=slewedQmix[v][i];
@@ -924,6 +931,13 @@ struct PatternEngine {
         return qmixPhilox.atUniform((uint64_t)pos * DRAW_CHUNK + cursor);
     }
     // COLLAPSE: [kVoiceSlots][16] — V1 at [0], V2..V16 at [1..15]. One array per strand.
+    // P-C (ARRAY_CONTAINER_AUDIT Finding C): the Philox fill-block scratch moved from TLS
+    // to INSTANCE state (mutable — the raw-draw fns are logically const; the buffer is
+    // scratch, never observable state). Single audio-thread owner per instance.
+    alignas(16) mutable std::array<float, 1024> rhythmDrawBuf{};   // alignas: fillBlock4xSimd _mm_store_ps (the TLS arrays had it from the ABI; members must spell it)
+    alignas(16) mutable std::array<float, 512>  melodyDrawBuf{};
+    alignas(16) mutable std::array<float, 256>  qmixDrawBuf{};
+
     struct RhythmDraw { Matrix2<float, kVoiceSlots, 16> rhythm{}, variation{}, legato{}, accent{}; };
     struct MelodyDraw { Matrix2<float, kVoiceSlots, 16> melody{}, octave{}; };
     struct QmixDraw   { Matrix2<float, kVoiceSlots, 16> qmix{}; };
@@ -932,7 +946,7 @@ struct PatternEngine {
     // per-cursor philox*At(pos, c++) calls (same Philox outputs, 4x fewer block computations).
     inline void rawDrawRhythmPatternAt(int64_t pos, RhythmDraw& d) const {
         // 4 mono + 4*15 poly = 64 per step × 16 steps = 1024 (same Philox layout, bit-identical)
-        static thread_local float buf[1024];
+        float* buf = rhythmDrawBuf.data();
         rhythmPhilox.fillBlock((uint64_t)pos * DRAW_CHUNK, buf, 1024);
         int k = 0;
         for (int i = 0; i < 16; ++i) {
@@ -945,7 +959,7 @@ struct PatternEngine {
         }
     }
     inline void rawDrawMelodyPatternAt(int64_t pos, MelodyDraw& d) const {
-        static thread_local float buf[512];
+        float* buf = melodyDrawBuf.data();
         melodyPhilox.fillBlock((uint64_t)pos * DRAW_CHUNK, buf, 512);
         int k = 0;
         for (int i = 0; i < 16; ++i) {
@@ -955,7 +969,7 @@ struct PatternEngine {
         }
     }
     inline void rawDrawQmixPatternAt(int64_t pos, QmixDraw& d) const {
-        static thread_local float buf[256];
+        float* buf = qmixDrawBuf.data();
         qmixPhilox.fillBlock((uint64_t)pos * DRAW_CHUNK, buf, 256);
         int k = 0;
         for (int i = 0; i < 16; ++i) {
