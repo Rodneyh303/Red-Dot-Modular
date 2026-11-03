@@ -42,6 +42,9 @@ namespace StraitsMacroVisualIds {
     static constexpr float ROW_TOP = dotModular::SandsGrid::LANE_TOP;      // 14
     static constexpr float ROW_BOT = dotModular::SandsGrid::polyBottom();  // 105 (7×13)
     static constexpr int   N_ROWS  = dotModular::SandsGrid::POLY_LANES;    // 7 (SANDS CONSOLIDATION Step 1)
+    // P-A (ARRAY_CONTAINER_AUDIT Finding A): the ONE spelling of the voice capacity (mono + 15
+    // poly), aliased from the VoiceResolver authority (Monsoon.hpp includes it complete).
+    static constexpr int kVoiceSlots = dotModular::VoiceResolver::kVoiceSlots;
     // Mono-style: 4 CV jacks (LEN/OFF/ROT/SPR-cv) + 4 attens + 1 spread-base trimpot per lane.
     // Column layout and ED_X=88 match SandsMonoVisual exactly.
     static constexpr float COL_J1 = 6.f;    // LEN CV in
@@ -373,7 +376,7 @@ struct StraitsSandsMacroVisual : Module {
         bool  valid = false;
         int   step = -1;        // the lane's Macro-lens masked playhead the row holds
         int   nVoices = -1;     // eng.numPolyVoices when resolved (a change refreshes)
-        float val[16] = {};     // [voiceSlot] — the ONE accessor's MacroOwn-lens values
+        float val[kVoiceSlots] = {};     // [voiceSlot] — the ONE accessor's MacroOwn-lens values
         bool  outFresh = false; // the val[] row was written to the port at outScale/outCh
         float outScale = -1.f;  // the scaleV the last out walk used
         int   outCh = -1;       // the channel count the last out walk covered
@@ -396,8 +399,8 @@ struct StraitsSandsMacroVisual : Module {
     // CV-only contribution (already scaled by Macro's own attenuverter). East's
     // sync reads these: value = base(owner) + eastCV + macroCVDelta·blendSend.
     // SANDS CONSOLIDATION Step 1: 7 poly lanes (REST/MELODY/OCTAVE/ACCENT/QMIX/VAR/LEG, engine order).
-    float macroBase[7][4]    = {};
-    float macroCVDelta[7][4] = {};
+    float macroBase[dotModular::SandsGrid::POLY_LANES][4]    = {};
+    float macroCVDelta[dotModular::SandsGrid::POLY_LANES][4] = {};
     // P9: the send PRE/POST tap applies ONLY to what the sends distribute, not to
     // Macro's own LOR/spread display (which always uses the true POST macroCVDelta).
     // (The old single globally-tapped macroSendDelta is DELETED — the P9b per-voice fix
@@ -409,8 +412,8 @@ struct StraitsSandsMacroVisual : Module {
     //   macroPostDelta = cv·att·(hi-lo)   (tap=1, POST — the old tappedDelta at tap=1)
     // A voice's delta = tappedDelta(its tap) — see the helper below. Macro's OWN display
     // always reads macroPostDelta (Macro has no receiving voice).
-    float macroPreDelta[7][4]  = {};
-    float macroPostDelta[7][4] = {};
+    float macroPreDelta[dotModular::SandsGrid::POLY_LANES][4]  = {};
+    float macroPostDelta[dotModular::SandsGrid::POLY_LANES][4] = {};
 
     // The delta a receiving voice gets: lerp between the published endpoints by the
     // voice's own tap (0..1). Pure arithmetic on this visual's published arrays; the

@@ -553,7 +553,7 @@ bool SequencerEngine::foldPerVoiceAdvance_(int subLevel, bool perVoiceScan,
                         : (dMain == dotModular::StepAdvance::BACKWARD) ? -1 : 0;
     for (int i = 0; i < 16; ++i) motionV[i] = (int8_t)dMainStep;
     bool anyMoved = false;
-    for (int i = 1; i <= numPolyVoices && i < 16; ++i) {
+    for (int i = 1; i <= numPolyVoices && i < kVoiceSlots; ++i) {
         const VoiceSlot vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
         int dStep = 0;                                     // a latched arrival rides 0 (moved at the fall)
         if (pendingCheckpointArrivalV_[i]) {
@@ -1447,7 +1447,7 @@ void SequencerEngine::legatoCheckpointOnFall() {
     // The per-voice arrival latches: every voice that moved on its OWN fall decision
     // latches its own "one advance, one arrival" (its next rise is a no-decision
     // arrival for IT). [0] is the mono latch (below — unchanged semantics).
-    for (int i = 1; i <= numPolyVoices && i < 16; ++i)
+    for (int i = 1; i <= numPolyVoices && i < kVoiceSlots; ++i)
         if (motionV[i] != 0) pendingCheckpointArrivalV_[i] = true;
     bool wrapped = false;
     if (d == dotModular::StepAdvance::FORWARD) {
@@ -1828,7 +1828,7 @@ void SequencerEngine::refreshPolyRandomCell(VoiceSlot voice, LaneId engLane, int
 // header cannot include VoiceResolver.hpp (engine include cycle).
 void SequencerEngine::resetActivatedPolyVoices_() {
     if (numPolyVoices > prevNumPolyVoices_) {
-        for (int i = prevNumPolyVoices_ + 1; i <= numPolyVoices && i < 16; ++i) {
+        for (int i = prevNumPolyVoices_ + 1; i <= numPolyVoices && i < kVoiceSlots; ++i) {
             const VoiceSlot vs = VoiceResolver::slot(i + 1);   // i = voiceSlot; slot(V) takes the VOICE number
             voices[vs].gs.gateHeld = false;
             voices[vs].gs.holdRemain = 0.f;

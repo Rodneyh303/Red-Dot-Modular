@@ -259,12 +259,19 @@ struct SequencerEngine {
     bool advanceOnTieIntoRest = false;
     // Latch set by legatoCheckpointOnFall (the fall advanced one step); the next executeModeB rise
     // consumes it and SKIPS its own advancePlayhead (plays the already-stepped-to step). One-shot.
+    // P-A (ARRAY_CONTAINER_AUDIT Finding A): the ONE spelling of the voice capacity (mono + 15
+    // poly); hoisted above the first voice-dim member it sizes. VoiceResolver's static_assert
+    // holds the equality (VoiceResolver.hpp includes this file, so the canonical constant cannot
+    // be reached from here). The LOR-DEFAULT 16 (a drawn window length) is a DIFFERENT quantity
+    // and stays literal.
+    static constexpr int kVoiceSlots = 16;
+
     // PER-VOICE STEP-ADVANCE Stage 2 (CC_PER_VOICE_ADVANCE_SIGNOFF decision 2): ARRAY-IFIED —
     // [0] is the MONO latch (every pre-existing reader, incl. Monsoon.cpp's fall guard);
     // [1..] are the per-voice "one advance, one arrival" latches — a Local-East voice that
     // moved on its OWN fall decision latches, and its next rise is a no-decision arrival
     // for IT (foldPerVoiceAdvance_ clears it and rides 0). reset() zeroes all 16.
-    bool pendingCheckpointArrivalV_[16] = {};
+    bool pendingCheckpointArrivalV_[kVoiceSlots] = {};
 
     // "Boundary interrupt" — at the phrase boundary (wrap): FALSE (default) = CONTINUE, gate/
     // state carries across the loop (lap 2 can differ from lap 1). TRUE = INTERRUPT, force a
@@ -355,7 +362,7 @@ struct SequencerEngine {
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
             laneTick_[s] = 0; laneSign_[s] = 1; lanePingPongHold_[s] = false;
             macroLaneTick_[s] = 0; macroLaneSign_[s] = 1; macroPingPongHold_[s] = false;
-            for (int v = 0; v < 16; ++v) {
+            for (int v = 0; v < kVoiceSlots; ++v) {
                 laneTickV_[v][s] = 0; laneSignV_[v][s] = 1; lanePingPongHoldV_[v][s] = false;
             }
         }
@@ -368,7 +375,7 @@ struct SequencerEngine {
     int macroLaneSign_[dotModular::NUM_STRANDS] = {1,1,1,1,1,1,1};   // NUM_STRANDS-sized (was 6-elem → LEGATO=0 pre-reset)
     LaneDir macroLaneDir_[dotModular::NUM_STRANDS] = {};
     bool macroPingPongHold_[dotModular::NUM_STRANDS] = {};
-    int macroLOR_[7] = {16,16,16,16,16,16,16};  // Macro's own LOR lengths (7 poly lanes: REST/MEL/OCT/ACC/QMIX/VAR/LEG)
+    int macroLOR_[dotModular::NUM_STRANDS] = {16,16,16,16,16,16,16};  // Macro's own LOR lengths (7 poly lanes: REST/MEL/OCT/ACC/QMIX/VAR/LEG)
     // Per-voice per-strand accumulated tick (poly analogue of laneTick_). Advanced in advancePlayhead
     // by dir * polyLaneSign(v, s) — the effective sign is the voice's OWN, i.e. ABSOLUTE, not
     // relative to mono. laneSignV_ = +1 (default) = Forward; -1 = Reverse. A voice therefore does
@@ -378,12 +385,12 @@ struct SequencerEngine {
     // mono's lane are both Forward → no-op until something is reversed.
     // laneSignVPending_ is promoted to laneSignV_ at the same boundary as mono's (laneFlipQuant),
     // so a per-voice flip also takes effect musically (no jump).
-    int laneTickV_[16][dotModular::NUM_STRANDS]        = {};
-    int laneSignV_[16][dotModular::NUM_STRANDS]        = {};   // default 0 → treated as +1 (see polyLaneSign)
-    int laneSignVPending_[16][dotModular::NUM_STRANDS] = {};
-    LaneDir laneDirV_[16][dotModular::NUM_STRANDS]        = {};   // per-voice direction (default Forward)
-    LaneDir laneDirVPending_[16][dotModular::NUM_STRANDS] = {};
-    bool lanePingPongHoldV_[16][dotModular::NUM_STRANDS] = {};   // per-voice ping-pong hold flag
+    int laneTickV_[kVoiceSlots][dotModular::NUM_STRANDS]        = {};
+    int laneSignV_[kVoiceSlots][dotModular::NUM_STRANDS]        = {};   // default 0 → treated as +1 (see polyLaneSign)
+    int laneSignVPending_[kVoiceSlots][dotModular::NUM_STRANDS] = {};
+    LaneDir laneDirV_[kVoiceSlots][dotModular::NUM_STRANDS]        = {};   // per-voice direction (default Forward)
+    LaneDir laneDirVPending_[kVoiceSlots][dotModular::NUM_STRANDS] = {};
+    bool lanePingPongHoldV_[kVoiceSlots][dotModular::NUM_STRANDS] = {};   // per-voice ping-pong hold flag
     // (voiceDriverPrev_ is DELETED — POSITION_HOLDER_MODEL: the lane walks read their own
     // phases; the normalized predecessor lives only inside the sign law's expression.)
     // Effective per-voice sign for a strand: +1 if laneSignV_ is 0 (default/unset → follow mono) or
@@ -444,11 +451,11 @@ struct SequencerEngine {
     // path; the phases advance by the RAW clock deltas every event so the congruence
     // survives any window/LOR config round-trip (the WARM-PHASE law).
     int lanePhase_[dotModular::NUM_STRANDS]        = {};
-    int lanePhaseV_[16][dotModular::NUM_STRANDS]   = {};   // per-voice: ≡ the RAW effective clock's t0 (mod the walk's period)
+    int lanePhaseV_[kVoiceSlots][dotModular::NUM_STRANDS]   = {};   // per-voice: ≡ the RAW effective clock's t0 (mod the walk's period)
     int macroLanePhase_[dotModular::NUM_STRANDS]   = {};   // macro lanes: ≡ the RAW transport t0 (mod the walk's period)
-    int voiceFramePhase_[16]                       = {};   // mapped voice rows: ≡ the RAW effective clock's t0 (mod the row walk's period)
+    int voiceFramePhase_[kVoiceSlots]                       = {};   // mapped voice rows: ≡ the RAW effective clock's t0 (mod the row walk's period)
     int globalT0Phase_                             = 0;    // ≡ the RAW transport t0 (mod the RHYTHM lane's length) — the step-light's DNA-content congruence under the pass-through window (the one read no mod-16 walk carries)
-    int64_t advOffSeen_[16]                        = {};   // the transport's last-seen advanceOffset_ — the per-event diff IS the offset's contribution to k_v
+    int64_t advOffSeen_[kVoiceSlots]                        = {};   // the transport's last-seen advanceOffset_ — the per-event diff IS the offset's contribution to k_v
     // THE WALK-KEY SHADOWS (the re-anchor law): a holder's phase is congruent to its raw
     // t0 mod the walk's period — but the period is (dir, len)-dependent and the lens/dirs
     // are LIVE parameters (knobs, CV, the DirCells). When a holder's walk key changes,
@@ -457,9 +464,9 @@ struct SequencerEngine {
     // f(t, newParams) — and continues locally from there, bit-identical to the old
     // recompute-through-a-parameter-change in every case).
     int laneKey_[dotModular::NUM_STRANDS]          = {};
-    int laneKeyV_[16][dotModular::NUM_STRANDS]     = {};
+    int laneKeyV_[kVoiceSlots][dotModular::NUM_STRANDS]     = {};
     int macroLaneKey_[dotModular::NUM_STRANDS]     = {};
-    int frameKey_[16]                              = {};
+    int frameKey_[kVoiceSlots]                              = {};
     int globalT0Key_                               = 0;
     static int walkKeyOf(LaneDir d, int len) { return (int)d * 64 + std::max(1, len); }
 
@@ -470,7 +477,7 @@ struct SequencerEngine {
 
     bool hadMonoTail = false;
     bool wasHeldMono = false; // Capture mono state before tick() for start-detection
-    bool hadPolyTail[16] = {};
+    bool hadPolyTail[kVoiceSlots] = {};
     // F-1 per-container reads (RHYTHM_DECISION_MANAGER_PLAN §3.1): each poly voice's rhythm
     // VERDICT + drawn note length, captured by executePolyVoice at its decision points and
     // read back through containerView(u) when a CHILD folds its containers — under the
@@ -478,8 +485,8 @@ struct SequencerEngine {
     // exposes through monoParentView(). Indexed by STORAGE slot (0 = V1, unused — the mono
     // verdict lives in lastStepResult). Default Rest = a voice that has not executed offers
     // no onset and closes its children (fail-closed); reset() restores it.
-    MonoDecision polyVerdict_[16] = {};   // zero-init = MidNote; reset() fills Rest
-    int polyNv_[16] = {};                 // the voice's drawn window this edge (the C3 ceiling
+    MonoDecision polyVerdict_[kVoiceSlots] = {};   // zero-init = MidNote; reset() fills Rest
+    int polyNv_[kVoiceSlots] = {};                 // the voice's drawn window this edge (the C3 ceiling
                                           // a child clamps against); 0 = no clamp contribution
     // SUBGATE TIER: the edge level for the poly cascade this block (−1 = main, else
     // SubgateKnobs::RATCHET/GHOST). Set by executeModeBSubdivided (which knows the
@@ -507,7 +514,7 @@ struct SequencerEngine {
     // scanHold_() below is its increment). The per-voice slots [1..] stay 0/unread
     // in the locked build; Stage 2's divergence gates them on the VAR-lane
     // delegation (varlegDelegated) and resets them at the decision sites.
-    int scanOfsV_[16] = {};
+    int scanOfsV_[kVoiceSlots] = {};
     void scanHold_() {
         const int varLen = lor(dotModular::STRAND_VARIATION, LOR_LEN);
         scanOfsV_[0] = (scanOfsV_[0] + 1) % (varLen > 0 ? varLen : 1);
@@ -535,7 +542,7 @@ struct SequencerEngine {
     // the plumbing LOCKED (all offsets stay 0 — the goldens are the degeneration
     // proof). Zeroed by reset() and on voice activation (a re-activated voice
     // re-enters at the macro position).
-    int64_t advanceOffset_[16] = {};
+    int64_t advanceOffset_[kVoiceSlots] = {};
     // F-4 (D5 — RHYTHM_DECISION_MANAGER_PLAN §3.3): each poly voice's THIS-EDGE GHOST EVENT —
     // the voice PLAYED an onset at a permission point that was a ghost cell of ITS containers
     // (rd.ghostCell). Captured by executePolyVoice at the play verdict (the polyVerdict_
@@ -546,13 +553,13 @@ struct SequencerEngine {
     // (0 = V1, unused — the mono's ghost event is its own stream latch, engine.ghostActive,
     // carried by monoParentView()). Default false = no ghost event (fail-closed, same as the
     // Rest verdict); reset() restores it.
-    bool polyGhostOnset_[16] = {};
+    bool polyGhostOnset_[kVoiceSlots] = {};
     // Ghost (subGate_ghost): true while a ghost note is sustaining — set when a ghost candidate
     // (variation-gated) plays, cleared when it rests/fails or a main/ratchet onset takes over.
     // The module-layer IMPL 2b reads this (&& ghostHigh) so the gate only opens for a ghost that
     // actually fired, not merely because Gate 3 is high (variation=0 -> no ghost).
     bool ghostActive = false;
-    bool wasHeldPolyPrev[16] = {}; // Capture poly state before tick()
+    bool wasHeldPolyPrev[kVoiceSlots] = {}; // Capture poly state before tick()
 
     // ── Mono (V1) strand windowing: Length (1..16), Offset (0..15), Rotation ──
     // Step 1 of the probability-modifier unification (docs/design/PROBABILITY_MODIFIER_MODEL.md):
@@ -572,7 +579,6 @@ struct SequencerEngine {
     // editor-order polyLOR() and the engine-order polyLenE() family (which now converts engine→editor
     // here, at the single storage boundary). Seeded in ctor/reset.
     enum MonoItem { LOR_LEN = 0, LOR_OFF = 1, LOR_ROT = 2, LOR_ITEMS = 3 };
-    static constexpr int kVoiceSlots = 16;
     int lorStore_[kVoiceSlots][dotModular::NUM_STRANDS][LOR_ITEMS] = {};   // [slot][editorLane][item]
 
     // Mono (V1 = slot 0): editor lane == strand index (the identity), so strand IS the lane column.
@@ -904,15 +910,15 @@ struct SequencerEngine {
     // bank 0..14 = V2..V16, lane 0 = VAR, 1 = LEG. Zero-init = all-delegate = follow mono,
     // which is also the correct fallback when East is absent (nothing sets Local East).
     // Pushed each cycle by MonsoonExpanderManager from the East delegation params.
-    bool varlegLocalEast_[16][2] = {};
+    bool varlegLocalEast_[kVoiceSlots][2] = {};
     // TIGHTEN (CC_PROMPT_STRONG_TYPES): VoiceSlot-only. (lane stays int: 0=VAR/1=LEG is
     // the 2-wide varleg axis, NOT a PL_ LaneId.)
     void setVarlegLocalEast(VoiceSlot bank, int lane, bool localEast) {
-        if (bank.v >= 0 && bank.v < 16 && lane >= 0 && lane < 2) varlegLocalEast_[bank.v][lane] = localEast;
+        if (bank.v >= 0 && bank.v < kVoiceSlots && lane >= 0 && lane < 2) varlegLocalEast_[bank.v][lane] = localEast;
     }
     // VAR = lane 0, LEG = lane 1.
     bool varlegDelegated(VoiceSlot bank, int lane) const {
-        return !(bank.v >= 0 && bank.v < 16 && lane >= 0 && lane < 2 && varlegLocalEast_[bank.v][lane]);
+        return !(bank.v >= 0 && bank.v < kVoiceSlots && lane >= 0 && lane < 2 && varlegLocalEast_[bank.v][lane]);
     }
 
     // Per-voice VARIATION step — mono's getStrandIdx transform, driven by THIS voice's LOR window.
@@ -1124,7 +1130,7 @@ struct SequencerEngine {
     // FALSE (default) → the exact legacy internal-draw path (A/B/E byte-identical). Set per-block by the
     // module layer from the mode. quantiserCV[v] = the incoming poly CV per voice (index 0 = mono/voice0).
     bool  quantiserPitchSource = false;
-    float quantiserCV[16] = {};
+    float quantiserCV[kVoiceSlots] = {};
 
     // The sounding pitch for a voice at its onset: quantised external CV in quantiser mode, else the
     // internal draw via genPitchLive. voiceIdx 0..15 (0 = mono/voice-0). outSem = the sounding degree
@@ -1281,7 +1287,7 @@ struct SequencerEngine {
     // Forward — a voice does NOT inherit mono's reversal. Out-of-range bank falls back to mono's tick.
     int polyLaneTick(VoiceSlot bank, LaneId polyLane) const {
         int strand = polyLaneStrand(polyLane.l);
-        return (bank.v >= 0 && bank.v < 16) ? laneTickV_[bank.v][strand] : laneTick_[strand];
+        return (bank.v >= 0 && bank.v < kVoiceSlots) ? laneTickV_[bank.v][strand] : laneTick_[strand];
     }
     // Per-voice effective sign for an engine poly lane — ABSOLUTE (the voice's own sign,
     // not relative to mono). +1 = forward (default); -1 = reversed. Used by the visual
@@ -1402,7 +1408,7 @@ struct SequencerEngine {
         monsoonProfile::effProbCalls.fetch_add(1, std::memory_order_relaxed);
 #endif
         const int l = (lane.l >= 0 && lane.l < PL_LANES) ? lane.l : PL_REST;
-        const int v = (voice.v >= 0 && voice.v < 16) ? voice.v : 0;   // voiceSlot (V2+=1..15)
+        const int v = (voice.v >= 0 && voice.v < kVoiceSlots) ? voice.v : 0;   // voiceSlot (V2+=1..15)
         const float sp = (lens == ProbLens::MacroOwn)
             ? macroOwnSpread[l]
             : ((v == 0) ? spreadE(0, l) : pe.cachedPolySpread[v][l]);

@@ -29,7 +29,8 @@ using namespace dotModular::ca;
 static constexpr int SIDES         = 2;
 static constexpr int SCATTER_TYPES = 3;
 static constexpr int N_SCATTER     = SIDES * SCATTER_TYPES * 2;   // 12
-static constexpr int N_VOICES      = 16;
+// N_VOICES (P-A): the replica binds to the PRODUCTION constant dotModular::ca::N_VOICES
+// (via the using-directive above) — was a local 16 duplicating it.
 
 // ci = (side*SCATTER_TYPES + type)*2 + (isDomain?0:1) — the EXACT index the transform apply uses.
 static int ci_of(int side, int type, bool isDomain) {

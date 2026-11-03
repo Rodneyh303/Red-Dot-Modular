@@ -54,6 +54,10 @@ namespace StraitsEastVisualIds {
     // RANGE_MM/rowY in lockstep).
     static constexpr float ED_H      = dotModular::SandsGrid::monoBoxHeight();  // 96 (5mm range strip + 7×13)
     static constexpr int   N_EDITOR_LANES = dotModular::SandsGrid::EAST_LANES;  // 7
+    // P-A (ARRAY_CONTAINER_AUDIT Finding A): the ONE spelling of the voice/channel capacity
+    // (mono + 15 poly — the jacks' 16-channel convention, ch0 = master), aliased from the
+    // VoiceResolver authority (Monsoon.hpp includes it complete).
+    static constexpr int kVoiceSlots = dotModular::VoiceResolver::kVoiceSlots;
     static constexpr float ED_LANE_H = dotModular::SandsGrid::LANE_H;        // 13
 
     // Left-control rows align with the EDITOR lane centres (not the full panel),
@@ -208,14 +212,14 @@ struct StraitsEastSandsVisual : Module {
     // sync so the East spread trimpot mod-arc can show the viewed voice's value.
     // lane: 0=REST 1=MELODY 2=OCTAVE 3=ACCENT 4=QMIX. Bipolar-ish 0..1 interp domain.
     // 5 poly lanes (QMIX-widened; was [15][4]). The spread-arc getModNorm reads lane up to 4.
-    float polySpreadEffective[16][dotModular::SandsGrid::POLY_LANES] = {};   // 5 lanes (REST/MEL/OCT/ACC/QMIX)
+    float polySpreadEffective[kVoiceSlots][dotModular::SandsGrid::POLY_LANES] = {};   // 5 lanes (REST/MEL/OCT/ACC/QMIX)
 
     // Probability CV out config (persisted): scale 0=0..1V,1=0..5V,2=0..10V; S&H vs
     // continuous. probHeld/probLastStep per (lane, channel) for S&H (ch0=master, 1..15
     // = voices → index [lane][0..15]). 5 poly lanes (QMIX-widened; was [4][16] — the
     // process() prob-out S&H loop writes lane up to POLY_LANES-1=4, so [4] overflowed).
-    float probHeld[dotModular::SandsGrid::POLY_LANES][16] = {};
-    int   probLastStep[dotModular::SandsGrid::POLY_LANES][16];
+    float probHeld[dotModular::SandsGrid::POLY_LANES][kVoiceSlots] = {};
+    int   probLastStep[dotModular::SandsGrid::POLY_LANES][kVoiceSlots];
 
     StraitsEastSandsVisual() {
         using namespace StraitsEastVisualIds;
@@ -294,13 +298,13 @@ struct StraitsEastSandsVisual : Module {
             redDot::Rate::Sample,
             [this](void* dst) {
                 struct __attribute__((packed)) Img {
-                    float   dir[dotModular::SandsGrid::EAST_LANES][16];
-                    float   deleg[dotModular::SandsGrid::EAST_LANES][16];
+                    float   dir[dotModular::SandsGrid::EAST_LANES][kVoiceSlots];
+                    float   deleg[dotModular::SandsGrid::EAST_LANES][kVoiceSlots];
                     uint8_t dirCh[dotModular::SandsGrid::EAST_LANES], delegCh[dotModular::SandsGrid::EAST_LANES];
                     // (B) VOICE-LOR PARITY: the voice row's own gate-mod image (the
                     // same fingerprint discipline — ch == voiceSlot, 16 channels).
-                    float   vlorDir[16];
-                    float   vlorDeleg[16];
+                    float   vlorDir[kVoiceSlots];
+                    float   vlorDeleg[kVoiceSlots];
                     uint8_t vlorDirCh, vlorDelegCh;
                 } img{};
                 for (int lane = 0; lane < dotModular::SandsGrid::EAST_LANES; ++lane) {
@@ -383,7 +387,7 @@ struct StraitsEastSandsVisual : Module {
         // (slot 0 = voice 1/mono, slot v = voice v+1), so the mono mix-in's depth no longer
         // aliases poly voice 2's. The panel's 12 attenuverters are display proxies copied to
         // the selected voice's slice on voice switch.
-        for (int v=0; v<16; ++v) {
+        for (int v=0; v<kVoiceSlots; ++v) {
             std::string vl = "V"+std::to_string(v+1)+" ";   // slot v = voice v+1
             // atten store MIGRATED to Monsoon::editor.macroAtten (getMacroAtten/setMacroAtten);
             // the per-voice depth params no longer live in params[]. The 12 visible attenuverters
@@ -460,10 +464,10 @@ struct StraitsEastSandsVisual : Module {
     redDot::RateManager rateManager;
     rack::dsp::ClockDivider gateModDiv;   // the /8 DETECTOR cadence (feeds the Sample tier)
     rack::dsp::ClockDivider probOutDiv;   // prob CV outs: /32 = control rate (feeds the Control tier)
-    bool    dirModPrev[dotModular::SandsGrid::EAST_LANES][16]    = {};
-    bool    delegModPrev[dotModular::SandsGrid::EAST_LANES][16]  = {};
-    uint8_t dirModEdges[dotModular::SandsGrid::EAST_LANES][16]   = {};   // audio thread is the sole writer
-    uint8_t delegModEdges[dotModular::SandsGrid::EAST_LANES][16] = {};
+    bool    dirModPrev[dotModular::SandsGrid::EAST_LANES][kVoiceSlots]    = {};
+    bool    delegModPrev[dotModular::SandsGrid::EAST_LANES][kVoiceSlots]  = {};
+    uint8_t dirModEdges[dotModular::SandsGrid::EAST_LANES][kVoiceSlots]   = {};   // audio thread is the sole writer
+    uint8_t delegModEdges[dotModular::SandsGrid::EAST_LANES][kVoiceSlots] = {};
     // Channel count of each connected mod cable. A 1-channel cable into a poly input is
     // BROADCAST to every target (the VCV norm), rather than hitting only ch0 = V1 — a mono
     // gate means "apply this everywhere", not "apply it to voice 1".
@@ -471,10 +475,10 @@ struct StraitsEastSandsVisual : Module {
     uint8_t delegModChans[dotModular::SandsGrid::EAST_LANES] = {};
     // (B) VOICE-LOR PARITY: the voice row's OWN gate-mod state (the same split-thread
     // law, the same broadcast rule; ch == voiceSlot directly — ch0 = V1 … ch15 = V16).
-    bool    vlorDirModPrev[16]    = {};
-    bool    vlorDelegModPrev[16]  = {};
-    uint8_t vlorDirModEdges[16]   = {};   // audio thread is the sole writer
-    uint8_t vlorDelegModEdges[16] = {};
+    bool    vlorDirModPrev[kVoiceSlots]    = {};
+    bool    vlorDelegModPrev[kVoiceSlots]  = {};
+    uint8_t vlorDirModEdges[kVoiceSlots]   = {};   // audio thread is the sole writer
+    uint8_t vlorDelegModEdges[kVoiceSlots] = {};
     uint8_t vlorDirModChans       = 0;
     uint8_t vlorDelegModChans     = 0;
 

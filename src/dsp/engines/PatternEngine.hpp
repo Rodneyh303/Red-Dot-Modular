@@ -100,6 +100,19 @@ struct PatternInput {
 // ── PatternEngine ─────────────────────────────────────────────────────────────
 struct PatternEngine {
 
+    // P-A (ARRAY_CONTAINER_AUDIT Finding A): the ONE spelling of the voice capacity (mono +
+    // 15 poly). Class-local like SequencerEngine's (VoiceResolver.hpp cannot be included here —
+    // it includes SequencerEngine.hpp, which includes this file); VoiceResolver's static_assert
+    // holds the equality. The STEP capacity is a DIFFERENT 16 (the row length) and stays
+    // literal until STEPS_32 names it.
+    static constexpr int kVoiceSlots = 16;
+
+    // Poly engine lane constants (mirror SequencerEngine::PolyLane) for polyRandom callers in this
+    // Lane-index unification: PL_* now matches the VISUAL/EDITOR/STRAND order
+    // (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6). Editor==engine==strand.
+    // (P-A: hoisted above the members that size lane dims with PL_LANES.)
+    enum PolyLane { PL_MELODY = 0, PL_OCTAVE = 1, PL_QMIX = 2, PL_REST = 3, PL_ACCENT = 4, PL_VARIATION = 5, PL_LEGATO = 6, PL_LANES = 7 };
+
     // ── Unified probability storage (item 4): ONE array for all 16 voices × 7 editor lanes × 16 steps,
     // replacing the separate mono named arrays (rhythmRandom…octaveRandom) and poly polyXRandom[15][16].
     // Indexed [voiceSlot][editorLane][step] — the SAME convention as lorStore_/spread (slot 0 = V1/mono,
@@ -107,14 +120,14 @@ struct PatternEngine {
     // The 7 mono named arrays below are REFERENCE VIEWS onto random_[0][lane] so the ~160 existing
     // rhythmRandom[step] / std::rotate / whole-array sites keep working unchanged; poly access goes via
     // polyRandom(voice,lane). (mono row lane == strand index — identity.)
-    float random_[16][dotModular::NUM_STRANDS][16] = {};
+    float random_[kVoiceSlots][dotModular::NUM_STRANDS][16] = {};
 
     // ── Stage 2a spread cache: per-voice blended spread amount (from combineSpread),
     // cached at control rate for step-rate refresh. [voice][engineLane]. The engine
     // reads polyRandom at step advance via refreshPolyRandomCell, which applies this
     // cached spread to the current step only — NOT all 16 steps at control rate.
     // cachedSpreadLiveR/M/Q mirror the lock axes: when false, refresh skips (frozen).
-    float cachedPolySpread[16][7] = {};
+    float cachedPolySpread[kVoiceSlots][PL_LANES] = {};
     bool cachedSpreadLiveR = true;   // rhythm axis (REST/ACC/VAR/LEG)
     bool cachedSpreadLiveM = true;   // melody axis (MEL/OCT)
     bool cachedSpreadLiveQ = true;   // QMIX own axis (SB_SANDS_Q)
@@ -131,10 +144,6 @@ struct PatternEngine {
     float (&variationRandom)[16] = random_[0][dotModular::STRAND_VARIATION];
     float (&legatoRandom)[16]    = random_[0][dotModular::STRAND_LEGATO];
 
-    // Poly engine lane constants (mirror SequencerEngine::PolyLane) for polyRandom callers in this
-    // Lane-index unification: PL_* now matches the VISUAL/EDITOR/STRAND order
-    // (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6). Editor==engine==strand.
-    enum PolyLane { PL_MELODY = 0, PL_OCTAVE = 1, PL_QMIX = 2, PL_REST = 3, PL_ACCENT = 4, PL_VARIATION = 5, PL_LEGATO = 6, PL_LANES = 7 };
     // q-mix ordering asserts (Task 4a): the q-mix Philox stream key MUST be STREAM_SOURCE_SELECT (=3),
     // and the PL_QMIX poly lane MUST round-trip to editor lane 2 (STRAND_QMIX). If either the RNG
     // stream order or the poly-lane order is renumbered, these fire at compile time.
@@ -158,13 +167,13 @@ struct PatternEngine {
     // (The legacy range guards are kept verbatim — minted values are always in range, but
     // the clamp is the old behaviour and costs nothing.)
     float (&polyRandom(VoiceSlot vs, LaneId lane))[16] {
-        const int v = (vs.v >= 0 && vs.v < 16) ? vs.v : 0;
-        const int l = (lane.l >= 0 && lane.l < 7) ? lane.l : 0;
+        const int v = (vs.v >= 0 && vs.v < kVoiceSlots) ? vs.v : 0;
+        const int l = (lane.l >= 0 && lane.l < PL_LANES) ? lane.l : 0;
         return random_[v][l];
     }
     const float (&polyRandom(VoiceSlot vs, LaneId lane) const)[16] {
-        const int v = (vs.v >= 0 && vs.v < 16) ? vs.v : 0;
-        const int l = (lane.l >= 0 && lane.l < 7) ? lane.l : 0;
+        const int v = (vs.v >= 0 && vs.v < kVoiceSlots) ? vs.v : 0;
+        const int l = (lane.l >= 0 && lane.l < PL_LANES) ? lane.l : 0;
         return random_[v][l];
     }
 
@@ -179,7 +188,7 @@ struct PatternEngine {
     // Every random_ writer triggers a rebuild of the cells it wrote, so the mirror is
     // consistent with random_ by construction — the single-source keystone that keeps
     // the sounding path (voice v) and the display (displayedVoice_) in agreement.
-    float warped_[16][dotModular::NUM_STRANDS][16] = {};
+    float warped_[kVoiceSlots][dotModular::NUM_STRANDS][16] = {};
 
     // The bank the mirror mixes with (Monsoon::editor.warp, wired by the module layer —
     // the TuningTable "populated by the module layer" pattern). null ⇒ no warp anywhere
@@ -189,7 +198,7 @@ struct PatternEngine {
     // per control cycle by MonsoonSandsManager — the spreadTargetMode pattern). A
     // delegating cell mixes with Macro's GLOBAL curve (WarpBank's delegated form);
     // default false = the voice's own (v*7+lane) slot.
-    bool warpDelegated_[16][7] = {};
+    bool warpDelegated_[kVoiceSlots][PL_LANES] = {};
 
     // Consumer read: the EFFECTIVE row — the mirror when a bank is wired, the raw row
     // otherwise. Same indexing/shape as polyRandom, so consumer call sites are
@@ -198,8 +207,8 @@ struct PatternEngine {
     // bare-int twin is DELETED (a bare-0 call no longer compiles; the mono role is
     // VoiceResolver::mono()). Legacy range guards kept verbatim.
     const float (&warpRow(VoiceSlot v, LaneId lane) const)[16] {
-        const int vv = (v.v >= 0 && v.v < 16) ? v.v : 0;
-        const int ll = (lane.l >= 0 && lane.l < 7) ? lane.l : 0;
+        const int vv = (v.v >= 0 && v.v < kVoiceSlots) ? v.v : 0;
+        const int ll = (lane.l >= 0 && lane.l < PL_LANES) ? lane.l : 0;
         return warpBank_ ? warped_[vv][ll] : random_[vv][ll];
     }
     // Wire the bank (module layer, per block — same-pointer is a no-op). First wire /
@@ -208,7 +217,7 @@ struct PatternEngine {
     // Delegation matrix entry (module layer; raw setter — the manager triggers the
     // rebuild when the matrix actually changes).
     void setWarpDelegated(int v, int lane, bool d) {
-        if (v >= 0 && v < 16 && lane >= 0 && lane < 7) warpDelegated_[v][lane] = d;
+        if (v >= 0 && v < kVoiceSlots && lane >= 0 && lane < PL_LANES) warpDelegated_[v][lane] = d;
     }
     // ── The dirty mask (STEP 3): scoped, IMMEDIATE rebuilds. "Display rebuilds
     // immediately on edit" (§2) — the edit paths call the narrow scope directly;
@@ -273,7 +282,7 @@ struct PatternEngine {
     // Spread target mode per lane (0=Anchor V1, 1=Follow CA). Mirrored from the Monsoon's
     // EditorState each control cycle so the spread path (which only has PatternEngine&) can
     // read it without a Monsoon pointer. SPREAD_TARGET_MODES.md.
-    uint8_t spreadTargetMode[7] = {0,0,0,0,0,0,0};   // 7 poly lanes (SANDS CONSOLIDATION Step 2)
+    uint8_t spreadTargetMode[PL_LANES] = {0,0,0,0,0,0,0};   // 7 poly lanes (SANDS CONSOLIDATION Step 2)
 
     // ── Change Alley pin-matrix (CHANGE_ALLEY_DESIGN.md §3-REVISED, PRE-SPREAD) ──
     // The pins remap the SLEWED buffers (post A/B-mix, post-slew, PRE-spread) so that a
@@ -281,13 +290,13 @@ struct PatternEngine {
     // equivalent to pinning the A/B samples (the agreed design). random_ reads stay plain
     // own-bank. Row 0 = mono, rows 1..15 = poly V2..V16. Strand→pool: MELODY/OCTAVE =
     // melody pin; RHYTHM/ACCENT/VARIATION/LEGATO = rhythm pin. Identity = no-op.
-    uint8_t caRhythmSrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
-    uint8_t caMelodySrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+    uint8_t caRhythmSrc[kVoiceSlots] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+    uint8_t caMelodySrc[kVoiceSlots] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
     // Q-mix source-select plane (QMIX_LANE_PARITY §"The blend"): the NEW green pin plane staged from
     // MonsoonChangeAlleyV2::qmixSrc. STRAND_QMIX's slewed buffer + the downstream per-voice blend
     // THRESHOLD ride THIS array (not caRhythmSrc), so a voice can consume another voice's q-mix
     // probability — CA parity for q-mix. Identity default = no-op (Straits per-voice level as before).
-    uint8_t caQmixSrc[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+    uint8_t caQmixSrc[kVoiceSlots] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
 
     // ── Containment graph (CC_PROMPT_CANTONMENT_BUILD_PLAN.md §"THE STATE") ──
     // The ENGINE-SIDE AUTHORITATIVE home of the containment DAG (the CA seam mirrored:
@@ -302,7 +311,7 @@ struct PatternEngine {
     // (MONO_SPECIAL_IN_LOGIC_AUDIT.md); this array is the contract it will read. Acyclicity is
     // enforced upstream at every edit AND every transform (CantonmentGraph/Transforms); the
     // engine-side reader may assume a DAG unconditionally.
-    uint16_t containmentParents[16] = {};
+    uint16_t containmentParents[kVoiceSlots] = {};
 
     // ── Shared tuning table (Sikit Phase 1) ─────────────────────────────────────────────────────
     // The degree->voltage map read by genPitchLive (mono + all poly voices — single source of truth).
@@ -366,16 +375,16 @@ struct PatternEngine {
     // a no-op: the remap already replaced own with leader, so spread would blend leader with itself.
     // Populated unconditionally at the start of remapSlewedByPins (even on identity skip, where
     // pre-remap == post-remap). Read by the spread path when the lane's mode is Follow CA.
-    // COLLAPSE: preRemapSlewed*[16][16] — V1 at [0], V2..V16 at [1..15]. One array per strand.
-    float preRemapSlewedRhythm[16][16]={}, preRemapSlewedVariation[16][16]={}, preRemapSlewedLegato[16][16]={}, preRemapSlewedAccent[16][16]={};
-    float preRemapSlewedMelody[16][16]={}, preRemapSlewedOctave[16][16]={}, preRemapSlewedQmix[16][16]={};
+    // COLLAPSE: preRemapSlewed*[kVoiceSlots][16] — V1 at [0], V2..V16 at [1..15]. One array per strand.
+    float preRemapSlewedRhythm[kVoiceSlots][16]={}, preRemapSlewedVariation[kVoiceSlots][16]={}, preRemapSlewedLegato[kVoiceSlots][16]={}, preRemapSlewedAccent[kVoiceSlots][16]={};
+    float preRemapSlewedMelody[kVoiceSlots][16]={}, preRemapSlewedOctave[kVoiceSlots][16]={}, preRemapSlewedQmix[kVoiceSlots][16]={};
     void snapshotPreRemap() {
         for (int i=0;i<16;++i){
             preRemapSlewedRhythm[0][i]=slewedRhythm[0][i]; preRemapSlewedVariation[0][i]=slewedVariation[0][i];
             preRemapSlewedLegato[0][i]=slewedLegato[0][i]; preRemapSlewedAccent[0][i]=slewedAccent[0][i];
             preRemapSlewedMelody[0][i]=slewedMelody[0][i]; preRemapSlewedOctave[0][i]=slewedOctave[0][i];
             preRemapSlewedQmix[0][i]=slewedQmix[0][i];
-            for(int v=1;v<16;++v){
+            for(int v=1;v<kVoiceSlots;++v){
                 preRemapSlewedRhythm[v][i]=slewedRhythm[v][i];
                 preRemapSlewedMelody[v][i]=slewedMelody[v][i];
                 preRemapSlewedOctave[v][i]=slewedOctave[v][i];
@@ -394,7 +403,7 @@ struct PatternEngine {
         snapshotPreRemap();   // always snapshot, even on identity skip (pre == post then)
         // Fast identity skip — only over the families we would actually remap.
         bool identity = true;
-        for (int v = 0; v < 16 && identity; ++v) {
+        for (int v = 0; v < kVoiceSlots && identity; ++v) {
             if (doR && caRhythmSrc[v] != v) identity = false;
             if (doM && caMelodySrc[v] != v) identity = false;
             if (doQ && caQmixSrc[v]   != v) identity = false;
@@ -408,8 +417,8 @@ struct PatternEngine {
             mQ[i]=slewedQmix[0][i];
             mA[i]=slewedAccent[0][i]; mV[i]=slewedVariation[0][i]; mL[i]=slewedLegato[0][i];
         }
-        static thread_local float pR[16][16], pM[16][16], pO[16][16], pQ[16][16], pA[16][16], pV[16][16], pL[16][16];
-        for (int v = 1; v < 16; ++v) for (int i = 0; i < 16; ++i) {
+        static thread_local float pR[kVoiceSlots][16], pM[kVoiceSlots][16], pO[kVoiceSlots][16], pQ[kVoiceSlots][16], pA[kVoiceSlots][16], pV[kVoiceSlots][16], pL[kVoiceSlots][16];
+        for (int v = 1; v < kVoiceSlots; ++v) for (int i = 0; i < 16; ++i) {
             pR[v][i]=slewedRhythm[v][i]; pM[v][i]=slewedMelody[v][i];
             pO[v][i]=slewedOctave[v][i]; pQ[v][i]=slewedQmix[v][i];
             pA[v][i]=slewedAccent[v][i];
@@ -459,7 +468,7 @@ struct PatternEngine {
             }
         }
         // Poly voices V2..V16 (voiceSlot 1..15).
-        for (int v = 1; v < 16; ++v) {
+        for (int v = 1; v < kVoiceSlots; ++v) {
             const int sR = caSrcRow(v, dotModular::STRAND_RHYTHM);
             const int sA = caSrcRow(v, dotModular::STRAND_ACCENT);
             const int sM = caSrcRow(v, dotModular::STRAND_MELODY);
@@ -574,7 +583,7 @@ struct PatternEngine {
     // roll (drawCtr advances).  Key: (drawCtr, f, r).  forceRecomputeSlewed() sets invalid.
     // Max fields: rhythm=4*16=64, melody=2*16=32, qmix=1*16=16.  Use 64 for all.
     struct ZWindowCache {
-        static constexpr int MAX_FIELDS = 4 * 16;  // 64 (rhythm max: 4 strands × 16 voices)
+        static constexpr int MAX_FIELDS = 4 * kVoiceSlots;  // 64 (rhythm max: 4 strands × 16 voices)
         double z0[16 * MAX_FIELDS];
         double z1[16 * MAX_FIELDS];
         int64_t cachedCtr = -999;
@@ -625,13 +634,13 @@ struct PatternEngine {
     //   no Sands  → final = copy of slewedDraw (done when slew re-latches).
     //   Sands     → Sands reads slewedDraw, applies spread at control rate, and
     //               writes the result into the public/final arrays itself.
-    // COLLAPSE [15]+mono → [16][16]: V1 at [0], V2..V16 at [1..15]. One array per strand.
-    float slewedRhythm[16][16]={}, slewedVariation[16][16]={}, slewedLegato[16][16]={}, slewedAccent[16][16]={};
-    float slewedMelody[16][16]={}, slewedOctave[16][16]={};
-    float slewedQmix[16][16]={};   // q-mix twin of slewedMelody
+    // COLLAPSE [15]+mono → [kVoiceSlots][16]: V1 at [0], V2..V16 at [1..15]. One array per strand.
+    float slewedRhythm[kVoiceSlots][16]={}, slewedVariation[kVoiceSlots][16]={}, slewedLegato[kVoiceSlots][16]={}, slewedAccent[kVoiceSlots][16]={};
+    float slewedMelody[kVoiceSlots][16]={}, slewedOctave[kVoiceSlots][16]={};
+    float slewedQmix[kVoiceSlots][16]={};   // q-mix twin of slewedMelody
     // DELETED: slewedPoly* (15][16] arrays — V2..V16 now at slewed*[1..15].
     // Old: slewedRhythm[16] (mono/V1) + slewedPolyRhythm[15][16] (V2..V16, poly[0]=V2).
-    // New: slewedRhythm[16][16] — V1 at [0], V2 at [1], ..., V16 at [15].
+    // New: slewedRhythm[kVoiceSlots][16] — V1 at [0], V2 at [1], ..., V16 at [15].
     // Access: mono was slewedRhythm[i] → slewedRhythm[0][i]; poly was slewedPolyRhythm[v][i] → slewedRhythm[v][i].
     // Published snapshots of the slewed buffers — coherent copies the UI thread reads. The audio
     // thread writes slewed* during recomputeEffective* (now ~116µs at r>0), then publishes a
@@ -640,20 +649,20 @@ struct PatternEngine {
     // floats), so the race window drops from ~116µs to ~1µs — practically eliminating flicker.
     // COLLAPSE: deleted 7 mono pubSlewed*[16] arrays — they were redundant twins of
     // pubSlewedPoly*[0]. Readers now use pubSlewedPoly*[0] for V1 directly.
-    float pubSlewedPolyRhythm[16][16]={}, pubSlewedPolyMelody[16][16]={}, pubSlewedPolyOctave[16][16]={};
-    float pubSlewedPolyAccent[16][16]={}, pubSlewedPolyQmix[16][16]={};
-    float pubSlewedPolyVariation[16][16]={}, pubSlewedPolyLegato[16][16]={};
+    float pubSlewedPolyRhythm[kVoiceSlots][16]={}, pubSlewedPolyMelody[kVoiceSlots][16]={}, pubSlewedPolyOctave[kVoiceSlots][16]={};
+    float pubSlewedPolyAccent[kVoiceSlots][16]={}, pubSlewedPolyQmix[kVoiceSlots][16]={};
+    float pubSlewedPolyVariation[kVoiceSlots][16]={}, pubSlewedPolyLegato[kVoiceSlots][16]={};
     void publishSlewedRhythm() {
-        for (int i=0;i<16;++i){ for(int v=0;v<16;++v){ pubSlewedPolyRhythm[v][i]=slewedRhythm[v][i];
+        for (int i=0;i<16;++i){ for(int v=0;v<kVoiceSlots;++v){ pubSlewedPolyRhythm[v][i]=slewedRhythm[v][i];
             pubSlewedPolyAccent[v][i]=slewedAccent[v][i];
             pubSlewedPolyVariation[v][i]=slewedVariation[v][i]; pubSlewedPolyLegato[v][i]=slewedLegato[v][i]; } }
     }
     void publishSlewedMelody() {
-        for (int i=0;i<16;++i){ for(int v=0;v<16;++v){ pubSlewedPolyMelody[v][i]=slewedMelody[v][i];
+        for (int i=0;i<16;++i){ for(int v=0;v<kVoiceSlots;++v){ pubSlewedPolyMelody[v][i]=slewedMelody[v][i];
             pubSlewedPolyOctave[v][i]=slewedOctave[v][i]; } }
     }
     void publishSlewedQmix() {
-        for (int i=0;i<16;++i){ for(int v=0;v<16;++v) pubSlewedPolyQmix[v][i]=slewedQmix[v][i]; }
+        for (int i=0;i<16;++i){ for(int v=0;v<kVoiceSlots;++v) pubSlewedPolyQmix[v][i]=slewedQmix[v][i]; }
     }
     // Set true when any Sands visual expander owns the spread→final stage this
     // cycle. When false, slew copies slewedDraw → final.
@@ -667,14 +676,14 @@ struct PatternEngine {
     //  but do NOT trigger recompute. See slew_phrase_boundary_cc_brief.md.)
 
     // ── Source DNA Cache (Original draws before rotation/scramble) ───────────
-    // COLLAPSE: [16][16] — V1 at [0], V2..V16 at [1..15]. One array per strand.
-    float rhythmSource[16][16]    = {};
-    float variationSource[16][16] = {};
-    float legatoSource[16][16]    = {};
-    float accentSource[16][16]    = {};
-    float melodySource[16][16]    = {};
-    float octaveSource[16][16]    = {};
-    float qmixSource[16][16]      = {};
+    // COLLAPSE: [kVoiceSlots][16] — V1 at [0], V2..V16 at [1..15]. One array per strand.
+    float rhythmSource[kVoiceSlots][16]    = {};
+    float variationSource[kVoiceSlots][16] = {};
+    float legatoSource[kVoiceSlots][16]    = {};
+    float accentSource[kVoiceSlots][16]    = {};
+    float melodySource[kVoiceSlots][16]    = {};
+    float octaveSource[kVoiceSlots][16]    = {};
+    float qmixSource[kVoiceSlots][16]      = {};
 
     // Caches for UI/Lights to reflect the current state
     // (rhythmPattern[16] RETIRED — ITEM 1: a stale generation-time note/rest prediction
@@ -908,10 +917,10 @@ struct PatternEngine {
     inline float philoxQmixAt(int64_t pos, uint64_t cursor) const {   // q-mix twin of philoxMelodyAt
         return qmixPhilox.atUniform((uint64_t)pos * DRAW_CHUNK + cursor);
     }
-    // COLLAPSE: [16][16] — V1 at [0], V2..V16 at [1..15]. One array per strand.
-    struct RhythmDraw { float rhythm[16][16], variation[16][16], legato[16][16], accent[16][16]; };
-    struct MelodyDraw { float melody[16][16], octave[16][16]; };
-    struct QmixDraw   { float qmix[16][16]; };
+    // COLLAPSE: [kVoiceSlots][16] — V1 at [0], V2..V16 at [1..15]. One array per strand.
+    struct RhythmDraw { float rhythm[kVoiceSlots][16], variation[kVoiceSlots][16], legato[kVoiceSlots][16], accent[kVoiceSlots][16]; };
+    struct MelodyDraw { float melody[kVoiceSlots][16], octave[kVoiceSlots][16]; };
+    struct QmixDraw   { float qmix[kVoiceSlots][16]; };
     // Step A: 4x batching — fillBlock computes each Philox block ONCE (4 outputs),
     // then scatter into struct fields in the same order. Bit-identical to the old
     // per-cursor philox*At(pos, c++) calls (same Philox outputs, 4x fewer block computations).
@@ -923,10 +932,10 @@ struct PatternEngine {
         for (int i = 0; i < 16; ++i) {
             d.rhythm[0][i]=buf[k++]; d.variation[0][i]=buf[k++];
             d.legato[0][i]=buf[k++]; d.accent[0][i]=buf[k++];
-            for (int v=1;v<16;++v) d.rhythm[v][i]=buf[k++];
-            for (int v=1;v<16;++v) d.accent[v][i]=buf[k++];
-            for (int v=1;v<16;++v) d.variation[v][i]=buf[k++];
-            for (int v=1;v<16;++v) d.legato[v][i]=buf[k++];
+            for (int v=1;v<kVoiceSlots;++v) d.rhythm[v][i]=buf[k++];
+            for (int v=1;v<kVoiceSlots;++v) d.accent[v][i]=buf[k++];
+            for (int v=1;v<kVoiceSlots;++v) d.variation[v][i]=buf[k++];
+            for (int v=1;v<kVoiceSlots;++v) d.legato[v][i]=buf[k++];
         }
     }
     inline void rawDrawMelodyPatternAt(int64_t pos, MelodyDraw& d) const {
@@ -935,8 +944,8 @@ struct PatternEngine {
         int k = 0;
         for (int i = 0; i < 16; ++i) {
             d.melody[0][i]=buf[k++]; d.octave[0][i]=buf[k++];
-            for (int v=1;v<16;++v) d.melody[v][i]=buf[k++];
-            for (int v=1;v<16;++v) d.octave[v][i]=buf[k++];
+            for (int v=1;v<kVoiceSlots;++v) d.melody[v][i]=buf[k++];
+            for (int v=1;v<kVoiceSlots;++v) d.octave[v][i]=buf[k++];
         }
     }
     inline void rawDrawQmixPatternAt(int64_t pos, QmixDraw& d) const {
@@ -945,7 +954,7 @@ struct PatternEngine {
         int k = 0;
         for (int i = 0; i < 16; ++i) {
             d.qmix[0][i]=buf[k++];
-            for (int v=1;v<16;++v) d.qmix[v][i]=buf[k++];
+            for (int v=1;v<kVoiceSlots;++v) d.qmix[v][i]=buf[k++];
         }
     }
     // ── Phase 1 PhiInv cache ───────────────────────────────────────────────────
@@ -956,18 +965,18 @@ struct PatternEngine {
     // once on miss; patternXAt then gathers K PhiInv windows and calls applyZ (no PhiInv in the
     // hot loop). Seed clears the map (counter → 0 invalidates every old pos). Unbounded across a
     // session's walk — accepted per the chosen design (pure-fn-of-pos, hit under scrub/reverse).
-    // COLLAPSE: z arrays [16][16] — V1 at [0], V2..V16 at [1..15].
+    // COLLAPSE: z arrays [kVoiceSlots][16] — V1 at [0], V2..V16 at [1..15].
     struct CachedRhythmDraw {
         RhythmDraw draw;
-        double zRhythm[16][16]={}, zVariation[16][16]={}, zLegato[16][16]={}, zAccent[16][16]={};
+        double zRhythm[kVoiceSlots][16]={}, zVariation[kVoiceSlots][16]={}, zLegato[kVoiceSlots][16]={}, zAccent[kVoiceSlots][16]={};
     };
     struct CachedMelodyDraw {
         MelodyDraw draw;
-        double zMelody[16][16]={}, zOctave[16][16]={};
+        double zMelody[kVoiceSlots][16]={}, zOctave[kVoiceSlots][16]={};
     };
     struct CachedQmixDraw {
         QmixDraw draw;
-        double zQmix[16][16]={};
+        double zQmix[kVoiceSlots][16]={};
     };
     // mutable: patternXAt is const (read from const engine refs in places) but the cache is a
     // pure-fn-of-pos memo (no observable state change) — so const-correctness is preserved.
@@ -1235,7 +1244,7 @@ public:
     // When no Sands is connected, leave sandsActive=false and slew copies
     // slewedDraw → final automatically.
     void setSandsActive(bool a) { sandsActive = a; }
-    // The slewedDraw buffers (slewedRhythm[16][16], slewedMelody[16][16], etc.) are
+    // The slewedDraw buffers (slewedRhythm[kVoiceSlots][16], slewedMelody[kVoiceSlots][16], etc.) are
     // public members above — the Sands stage reads them directly as its input.
     
     // ── Seed Management API ────────────────────────────────────────────────────
