@@ -612,6 +612,34 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   so); the prerequisite is the extraction refactor (golden-pinned, its own scope note), and phase
   distortion CHANGES the landed position — engine reads, digest-relevant when scheduled (THE GOLDEN
   LAW). P7 added (post-32): the tier build + its pin list.
+  **CONFIRMED (Rodney: "Transport phase will always be mapped to 2 bars 192. It will allow jumps
+  across the full 32 steps. With subphase patched , subphase will allow jumps within sibphase and
+  Transport phase jumps across the Transport."):** post-ruling ratification, arriving UNPROMPTED
+  while the ruling sat unpushed (5bbf0d35, local-only) — independent convergence on the pinned
+  mechanism, the strongest form of ratification; every clause matches, and two of them move from
+  adjudication to SPECIFICATION. **(a) THE TRANSPORT SPAN IS ALWAYS 192:** "always" closes the
+  Idea-1 door by ratification — the standalone-span override (default 1 bar) is not merely
+  declined-by-adjudication, it is excluded-by-specification: the transport tier has NO span
+  parameter; its map is D9's (192 positions, 0.3125 V per 16th — the P6 constants) in EVERY
+  configuration, subphase patched or not, and the transport jack always wants a 2-bar-period source
+  (the compatibility story stands as written). **(b) THE TWO JUMP DOMAINS, PINNED BY THE USER'S OWN
+  TWO-SURFACE SENTENCE:** "jumps within sibphase" = the subphase surface is REGION-BOUNDED — the
+  structural claim the ruling credited (it cannot cross the region boundary; the restored
+  bar-bounded rule lives here); "Transport phase jumps across the Transport" = the transport surface
+  crosses regions BY DESIGN and clamps at the FRAME; "jumps across the full 32 steps" is that frame
+  — the walk domain 0..31 fully addressable, the within-draw replay bound (PhaseEngine.hpp
+  :130–132; Monsoon.cpp:1099, cap 16 → 32 per the D9 audit) the only bound. **(c) AXIS OWNERSHIP IS
+  STRUCTURAL, NOT A DISCIPLINE:** the composite position = quantise(transportPhase, regionSize) +
+  subphase × regionSize is a pure function of the two instantaneous voltages, so a jump on one tier
+  writes only its own term — a transport jump re-slots the coarse term and the fine offset rides
+  through untouched (landing = new region, same within-region position: "across the Transport" with
+  the subphase preserved); a subphase jump moves only the fine term and the region slot stays. There
+  is no state to clobber, so no reader can observe a cross-tier fight — the confirmation's
+  two-surface sentence is realized BY the composite formula, not BY a rule about it. The pinned
+  detents (regionSize {1, 2, 4, 8, 16} sixteenths, N ∈ {32, 16, 8, 4, 2}) are untouched by the
+  confirmation ("jumps within sibphase" works at every detent; the divisor constraint stays a P7
+  pin). P7's pin list gains two CONFIRMED entries: transport-span-fixed-at-192 (no span parameter on
+  the transport tier) and the two-surface jump domains (region-bounded / frame-clamped).
 
 ## Sequencing
 
