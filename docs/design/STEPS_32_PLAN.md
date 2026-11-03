@@ -106,7 +106,8 @@ the derived BPM PhaseEngine.hpp:105 `barsPerSec * 4.0 * 60.0` assumes 1 phase un
 → `* 8.0` (else the bpm readout and `sixteenthSec` :108 HALVE). STAYS MUSICAL: :165–166 the bar-local
 `step16 % 16` + `step16 % 4 == 0` quarter mark (mod-4 of the absolute step is INVARIANT under the
 %16 landing since 16 ≡ 0 mod 4) — it survives the span extension verbatim and IS D6(a)'s ring marking.
-Full reasoning in D9.
+Full reasoning in D9. The tier extension (D13) adds the composite helper and its three readers as NEW
+phase sites — sequenced P7; the sites above are the STANDALONE map and are unchanged by it.
 
 **THE TWO PASS-TRACKING EXCEPTIONS (D7 — NOT frame sweeps):** `macroFrameRead_ = (tNow − 1) % 16` :643
 and the identity-row `voiceRead_ = (tNowV − 1) % 16` :681 consume the RAW driver (pass-through at the
@@ -274,6 +275,16 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   (16,0); BAR LEDs exclusive, follow stepIndex, a window change re-renders within one UI frame;
   both silent wherever the discrete playhead is absent — mode D).
   Digest re-capture list per THE GOLDEN LAW.
+- **P7 — the phase tier (D13, post-32):** the composite helper (ONE function; its readers: the reseed
+  :86–92 + the two landings :779/:1148), the CV2 subphase input (the mode-E takeover per the
+  :1714–1718 mode-gate precedent), the regionSize calibration knob (detents {1, 2, 4, 8, 16}
+  sixteenths, default bar), bpm-from-the-finest-ramp, jump-path reuse (cap 32, the tier-domain
+  clamp). Pins: standalone-192 bit-identical with CV2 unpatched; composite injectivity across the
+  detents; per-tier reseed exactness (reconnect mid-bar-2 lands exactly — the D9 invariant per tier);
+  zero-skew region-boundary quiescence (no spurious jumps when the tiers are locked); plug/unplug
+  transitions land through the jump path; the aliasing-trap release note (a 1-bar source on the
+  transport jack at N = 2 aliases — bar-1-first/bar-2-second, half the pattern, silent). Digest
+  re-capture list per THE GOLDEN LAW (the composite path enters the phase-span pins).
 
 ## Decision points (for Rodney)
 
@@ -533,6 +544,74 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   :165–166 mod-4 invariant); what the wider sweep buys is that the second bar EXISTS on the wire. P6
   phase pins stand unchanged and are hereby line-verified (the reseed-at-192 IS the exact landing —
   the invariant that makes the accumulator's volatility harmless under the standing span).
+- **D13 — the phase-tier counter-proposal (Rodney: "A better and richer approach is counter proposed.
+  The 192 step becomes transport phase. On its own it acts like the document. With a 2nd sub phase
+  input, the transport phase becomes more coarsely quantised and just tells us which sub phase we are
+  in. Subphase determines where precisely.
+  https://github.com/Rodneyh303/Red-Dot-Modular/blob/docs/steps-32-plan/docs/design/PHASE_TIER_SYSTEM_IDEA.md
+  Then subphase can be any integer subdivision. We can have jumps within or across sub phase."; the
+  document: docs/design/PHASE_TIER_SYSTEM_IDEA.md @ 97fa37fa — three ideas: (1) PHASE CALIBRATION
+  (span a user parameter, default 1 bar, "supersedes D9's hardcoded 192"), (2) TRANSPORT PHASE +
+  SUBPHASE quotient/remainder ("TRANSPORT PHASE ALONE = the 192 model (option A): the base — just the
+  mapping"), (3) phase distortion through the distribution layer):** ACCEPTED IN PART — **Idea 2 is
+  the extension path, sequenced P7 (post-32); Idea 1 is accepted ONLY as the tier calibration (the
+  subphase regionSize knob) and DECLINED as a standalone-span override; Idea 3 + the
+  distribution-primitive extraction are CAPTURED-DEFERRED** (the document's own STATUS agrees:
+  "sequence after 32 steps lands"). **THE CREDIT, RECORDED FIRST:** the tier split is the third
+  option the D9/D12 binary missed — it satisfies D12's demand (bar identity carried by a VOLTAGE,
+  never the accumulator) while restoring the existing 1-bar-ramp world through a second jack, and it
+  restores the bar-bounded jump rule STRUCTURALLY at the fine tier. D12 is not overturned — its
+  verdict was about the SINGLE-cable contract; the tier system adds a second cable and meets its
+  demand in the new channel. **THE READING THAT HARMONIZES THE DOCUMENT'S OWN TENSION:** Idea 2's
+  base IS D9 ("TRANSPORT PHASE ALONE = the 192 model (option A): the base — just the mapping") — the
+  standalone contract stands UNCHANGED (subphase unpatched = the 192 map, bit-identical, the D9/D12
+  pins intact); Idea 1's knob lives as the SUBPHASE calibration (regionSize); Idea 1 as a standalone
+  span-override (default 1 bar, option B) is DECLINED — the document's own option-B description ("you
+  must CLOCK THE CYCLES (count which bar), making it more like clock mode") is the D12 hazard
+  verbatim: in mode E the phase IS the transport (Monsoon.cpp:1128), so the count's only carrier is
+  the unwrapped accumulator, which RE-SEEDS BAR-LOCAL on every reconnect (:81 → :88–92) and on reset
+  (:55–60) — correct at the default window, silently the wrong half once the window enters bar 2
+  (D12's full finding). **THE COMPOSITE (the pinned mechanism):** position = quantise(transportPhase,
+  regionSize) + subphase × regionSize — a PURE FUNCTION of the two instantaneous voltages; NO
+  accumulator-carried identity at ANY tier; D9's invariant GENERALIZES: **every tier is reset-safe
+  iff its voltage span equals its own domain** — the transport tier driven at the CALIBRATED
+  TRANSPORT period, the subphase at the region period. The reseed (:86–92) and BOTH landings
+  (:779/:1148) read the composite through ONE shared helper — the D12 lockstep now spans THREE
+  readers, made structural (one function, not a discipline). **THE PER-TIER ALIASING TRAP (the
+  document's missing warning):** a 1-bar-period source on the TRANSPORT jack at regionSize = 1 bar
+  ALIASES — floor(norm × 2) flips MID-BAR (at norm 0.5), so the module plays bar-1's first half,
+  bar-2's second half, alternately: half the pattern, deterministic garbage, silent. D12's zero-bits
+  argument applies to EACH TIER verbatim: a tier's voltage must carry its own domain's identity. THE
+  COMPATIBILITY STORY therefore lands the existing 1-bar ramps on the SUBPHASE jack, with the
+  transport jack fed a 2-bar-period source — a re-scaled ramp OR a bar-parity square/LFO (the coarse
+  tier needs only the slot, not the sweep). **THE JUMP RULE, RESOLVED (the document's central
+  complaint, answered on the merits):** the user is RIGHT that option A rescales the 16-step "no
+  jumps between bars" rule — but the rule was a bar==frame ARTIFACT: the code's real rule is the
+  within-draw replay bound (PhaseEngine.hpp :130–132 "a jump that would cross the phrase boundary is
+  clamped"; Monsoon.cpp :1099/:1103, cap → 32 per the D9 audit). Under the tiers the subphase
+  STRUCTURALLY cannot cross the region boundary (the document's claim — TRUE, and it is the merit:
+  the old rule restored where it lives, within-region scrubs), while transport-tier jumps cross
+  regions BY DESIGN ("jumps within or across sub phase") and clamp at the FRAME — ":1099 at most one
+  boundary" re-reads as one boundary OF THE JUMPING TIER'S DOMAIN. **THE HARDWARE (code-verified):**
+  the subphase jack is **CV2 in mode E** — CV2's Big-5 modulation routing is already mode-gated to
+  the clock/gate origins (`modeSelect < 2`, Monsoon.cpp:1714–1718), so Mode E repurposing it is the
+  established takeover verbatim ("mirroring how Mode B repurposes gate1", :843–844); the cv2Mode==5
+  quantiser-pitch role yields in mode E (the CV2 role-clash framework, :1715); presence = the tier
+  switch (`isConnected()` — the codebase's own gating pattern); unpatched = standalone; plug/unplug
+  mid-run re-lands through the existing jump path (a pure-function transition — no accumulator
+  surgery). **THE CALIBRATION:** regionSize detents {1, 2, 4, 8, 16} sixteenths — must DIVIDE the
+  32-frame (N ∈ {32, 16, 8, 4, 2}); default N = 2 (bar regions — the compatibility configuration); a
+  mode-E knob (CV-able later); the PHASE_PARAM knob fallback (:847–859) drives the TRANSPORT tier as
+  today. **TIMING UNDER TIERS:** bpm derives from the finest CONNECTED ramp tier (subphase when
+  present — a bar-parity SQUARE on the transport jack is a legal transport source with NO meaningful
+  velocity, and the bpm validity gate :106 would pass its spikes); sixteenth/quarter edges and the
+  mod-4 invariant (:165–166) run on the COMPOSITE walk — D6(a)'s anchors intact; the BAR 1/BAR 2
+  LEDs stay stepIndex-driven (D10 untouched — the display reads the LANDING, never the tier
+  voltages). **IDEA 3 + THE EXTRACTION (captured, deferred):** "zero new DSP" is optimistic — the
+  distribution transform is EMBEDDED in Sands/East (the document's own architecture section says
+  so); the prerequisite is the extraction refactor (golden-pinned, its own scope note), and phase
+  distortion CHANGES the landed position — engine reads, digest-relevant when scheduled (THE GOLDEN
+  LAW). P7 added (post-32): the tier build + its pin list.
 
 ## Sequencing
 
