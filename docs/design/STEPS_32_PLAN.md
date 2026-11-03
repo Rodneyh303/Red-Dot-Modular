@@ -881,6 +881,70 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   path, with the skip semantics bit-identical. The variant stands ADOPTED on the branch, pending that
   branch's merge. **PLAN SECTIONS TOUCHED:** this block only; Sequencing untouched.
 
+- **D19 — the array audit EXECUTED: P-A…P-E landed as four staged commits on a branch off
+  feat/position-holders (the base corrected from the D17 line), the battery green at every gate, the
+  guardrail installed (Rodney: "on feat/d17-compare-in-place let's do P-A to P-E from the audit doc",
+  "you can do it on top of feat/position-holders instead of lane_expander_refactor", "Please push to
+  github and record ledger entry"):** the array/container audit's staged modernization plan
+  (docs/design/ARRAY_CONTAINER_AUDIT.md, logged 3e26aa52) is now CODE — the PhiloxRng.hpp exemplar rule
+  throughout: std::array, named constants, zero allocation, ZERO behavior change, the battery the gate
+  at every stage. **THE BASE, CORRECTED:** the assignment named the D17 line; Rodney's correction moved
+  it — branch `refactor/array-containers` off feat/position-holders (e9ad5fe0, the merge carrying the
+  position-holder model), NOT the lane-expander/D17 line; four commits, pushed as a NEW remote branch
+  (tip 6e4dabb6), and this entry logged on Rodney's instruction. **P-A — CONSTANTS FIRST (dffb70c7; no
+  type changes, no behavior):** the magic capacities get their ONE spelling per file, the spelling each
+  file already speaks — ChangeAlleyTransforms.hpp's ~40 bare 16s → ca::N_VOICES (kCorrPage=16 is a
+  DIFFERENT 16, the RNG page, and stays), PatternEngine's class-local kVoiceSlots + the PL_LANES enum
+  hoisted above the members it sizes, SequencerEngine's kVoiceSlots hoisted + macroLOR_ NUM_STRANDS-sized
+  + the eight [kVoiceSlots][NUM_STRANDS] lane planes, RhythmDecisionCore's kVoiceSlots for the
+  containment-graph planes, the Straits visuals aliased from VoiceResolver::kVoiceSlots, Macro's
+  StepProbRow::val + the [POLY_LANES][4] planes; the STEP-16 (the row length) stays literal until
+  STEPS_32 names it; VoiceBank::slots[16] stays literal (standalone struct, the constant unreachable);
+  the static_assert doors hold (VoiceResolver.hpp:178, PL_LANES==kLaneIdCount, POLY_LANES==
+  POLY_LANE_COUNT); test_ca_qmix_source_select's replica now binds the PRODUCTION ca::N_VOICES (its
+  local 16 deleted). **P-B — std::array FOR MEMBER STATE (8bf03aed; type-only, byte-identical):**
+  T name[N] → std::array<T,N> file by file — PatternEngine (the random_/warped_ planes nested, the 28
+  [kVoiceSlots][16] planes via the Matrix2 alias std::array<std::array<T,Cols>,Rows>, the row readers
+  re-typed std::array<float,16>&, indexing unchanged), SequencerEngine (VoiceBank::slots, the 3-D LOR
+  stores, the lane-walk planes, the per-voice scalars, the East mask planes), RhythmDecisionCore
+  (graphWords stays a POINTER — it aliases containmentParents, re-wired .data()), MonsoonChangeAlleyV2
+  (TransformUndoSnapshot AND its TransformUndoAction rack-history mirror IN LOCKSTEP — byte-coupled by
+  field-wise copy), and the MIRROR STRUCTS IN THE SAME SERIES per the audit's lockstep rule
+  (SweepSigGate's SweepSig, MonsoonSandsManager's RemapSig/TopoSig/V1SpreadSig/MirrorSig — .data() where
+  the memcmp/memcpy pairs cross; the WarpBank side stays raw C, not in the audit's named scope), the
+  Straits visuals' fingerprint planes the managers sizeof; char string buffers (rangeLabel_[16]) and the
+  label tables stay raw per the allowlist classes; sizeof(std::array<T,N>) == sizeof(T[N]) — every
+  Finding-D site compiles byte-identical, Finding D survives UNTOUCHED. **P-C — SCRATCH DISCIPLINE
+  (8a2a8802):** the Finding-B bug class deleted at the root — every function-local scratch crossing a
+  call boundary becomes std::array ZERO-INIT (motionV x4 with .data() at the 8 pointer crossings, the CA
+  transform scratch, varyNoteIndex's rungs/weights, the remap mono snapshot, the CA V2 true-reverse +
+  pending-order arrays, the Macro sweep stepArr x2); the TLS buffers (Finding C) become INSTANCE members
+  — the remap poly snapshot → remapSnapR..L (Matrix2 members, ~7 KB/instance vs ~90 KB resident, no
+  objection) and the Philox draw buffers rhythmDrawBuf/melodyDrawBuf/qmixDrawBuf (mutable, ALIGNAS(16)
+  spelled EXPLICITLY — the TLS arrays got 16-byte alignment from the ABI and fillBlock4xSimd's
+  _mm_store_ps demands it; ASan caught the first build's misaligned store as a SEGV, the battery proves
+  the fix); monsoonProfGateWhy DELETED — no reader anywhere in src/, dead mutable file-static is a
+  finding, not furniture (sweepSigWhy stays); two structural pins re-worded to the new call shape
+  (stepArr → stepArr.data(), the same gate call). **P-D — RECORDED, ZERO CHANGES:** the audit's vector
+  set verified IN PLACE and stays vector — connectedHostIds_ (the expander ring), pendingSpreadArcs x2 +
+  leftAttenuverters (the UI widget collections); zero engine-state vector candidates, the honest zero.
+  **P-E — THE GUARDRAIL (6e4dabb6):** test/lint_array_guard.py registered in run_all.sh next to the
+  anchor/bind audit — the battery now FAILS on any NEW bare C-array declaration in src/dsp/** and
+  src/ui/** outside test/lint_array_guard_allowlist.txt: statement-level matcher (parameters,
+  expressions, subscripts never match), the exempt classes never match (char string buffers, label
+  tables, NVGcolor), the allowlist keyed path:name on the DECLARED NAME so the baseline survives line
+  drift — the 137-site pre-gate residue outside the audit's named scope, 121 unique keys, each future
+  removal shrinks it, each NEW site needs an allowlist line WITH A REASON in the commit message or a
+  std::array conversion; fatal by default, ARRAY_GUARD_STRICT=0 the local hatch (the
+  MODULE_LOOKUP_STRICT precedent); proven the repo way — a planted float plantedProof[16] in
+  SpreadInterp.hpp went RED (rc=1, the site named), removed, green again. **VERIFICATION at every
+  gate:** full battery green (94/94 suites + anchor/bind audit 9/9; + array-guard 0 violations at P-E);
+  the CXX20 warning sweep 0 diagnostics; consumer-TU differentials 0 new errors vs base at P-B/P-C (the
+  plugin-TU smoke remains CI's gate); Rack feel-test not triggered — type-identical storage, nothing
+  visual moved. **THE AUDIT'S FINDINGS CLOSED:** A by P-A, B by P-C's zero-init, C by P-C's instance
+  members, D survives untouched by the sizeof guarantee + the same-commit lockstep rule. **PLAN SECTIONS
+  TOUCHED:** this block only; Sequencing untouched.
+
 ## Sequencing
 
 Own branch off the lane tip AFTER feat/position-holders lands (never ride the same train — this touches
