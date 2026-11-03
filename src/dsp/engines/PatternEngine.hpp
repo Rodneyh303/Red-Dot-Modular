@@ -5,7 +5,9 @@
  *
  * Owns:
  *   - Both RNG states (rhythm + melody)
- *   - Generated pattern arrays (rhythmPattern, melodySemitone, melodyPitchV)
+ *   - Generated pattern arrays (melodySemitone, melodyPitchV; rhythmPattern RETIRED —
+ *     CC_PROMPT_RHYTHMPATTERN_DELETE_AND_POLARITY ITEM 1, the step LEDs read the live
+ *     warp row now)
  *   - Seed management (float seeds, pending seeds, mode cache)
  *
  * Does NOT touch:
@@ -675,7 +677,9 @@ struct PatternEngine {
     float qmixSource[16][16]      = {};
 
     // Caches for UI/Lights to reflect the current state
-    bool  rhythmPattern[16]   = {};
+    // (rhythmPattern[16] RETIRED — ITEM 1: a stale generation-time note/rest prediction
+    // whose only consumer was step-LED brightness; the LEDs now evaluate the LIVE warp
+    // row vs the live resolved rest threshold in getStepLightBrightness.)
     int   melodySemitone[16]  = {};
     float melodyPitchV[16]    = {};
 
@@ -757,7 +761,7 @@ struct PatternEngine {
     bool  rhythmSeedCached       = false;
     bool  qmixSeedCached         = false;   // q-mix twin of melodySeedCached
     float cachedMelodyPitchV[16] = {};
-    bool  cachedRhythmPattern[16]= {};
+    // (cachedRhythmPattern[16] RETIRED — ITEM 1, with the array it cached)
     float cachedQmix[16]         = {};   // q-mix twin of cachedMelodyPitchV (raw q-mix draw cache)
     int   cachedMelodyStepIndex  = -1;
     int   cachedMelodyLastStepIndex = -1;

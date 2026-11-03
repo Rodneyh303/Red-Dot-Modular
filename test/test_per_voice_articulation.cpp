@@ -57,7 +57,6 @@ int main() {
 
     // ── 1. delegated (default) → voice's own draw at mono's step, clamped (NOT mono's nvIdx) ──
     for (int step = 0; step < 64; ++step) {
-        e.totalStepsElapsed = step;
         e.laneTick_[dotModular::STRAND_VARIATION] = step;   // advance mono's VAR tick so getVariationStep() matches
         int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
         e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
@@ -69,7 +68,6 @@ int main() {
     // ── 2. identity LOR (len 16, off 0, rot 0 — as reset() seeds) → still mono's step (position
     //    inert), own draw, clamped. Same expectation as case 1. ──
     for (int step = 0; step < 64; ++step) {
-        e.totalStepsElapsed = step;
         e.laneTick_[dotModular::STRAND_VARIATION] = step;
         int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
         e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
@@ -88,7 +86,6 @@ int main() {
     //     (the dialed LOR is ignored) + its own draw → same expectation as case 1. Divergence from
     //     mono's nvIdx comes from the per-voice draw, NOT the dialed LOR.
     for (int step = 0; step < 64; ++step) {
-        e.totalStepsElapsed = step;
         e.laneTick_[dotModular::STRAND_VARIATION] = step;
         int monoIdx = e.getStrandIdx(step, 16, 0, 0) & 0x0F;
         e.lastStepResult.nvIdx = e.getNoteLenIdx(e.lastNoteVal_, in, e.pe.variationRandom[monoIdx]);
@@ -104,7 +101,6 @@ int main() {
 
     int diverged = 0, checked = 0;
     for (int step = 0; step < 96; ++step) {
-        e.totalStepsElapsed = step;
         e.laneTick_[dotModular::STRAND_VARIATION] = step;
         // Local-East voices use their own per-voice tick (laneTickV_); advance it too.
         e.laneTickV_[2][dotModular::STRAND_VARIATION] = step;  // V3
