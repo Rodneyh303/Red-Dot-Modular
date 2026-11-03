@@ -909,13 +909,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         auto& pe = engine.pe;
         if (!lastMirrorSig_.valid
             || pe.warpBank_ != lastMirrorSig_.bank
-            || 0 != std::memcmp(lastMirrorSig_.row.data(), pe.random_[0].data(), sizeof lastMirrorSig_.row.data())
-            || 0 != std::memcmp(lastMirrorSig_.deleg.data(), pe.warpDelegated_[0].data(), sizeof lastMirrorSig_.deleg.data())) {
+            || 0 != std::memcmp(lastMirrorSig_.row.data(), pe.random_[0].data(), sizeof lastMirrorSig_.row)
+            || 0 != std::memcmp(lastMirrorSig_.deleg.data(), pe.warpDelegated_[0].data(), sizeof lastMirrorSig_.deleg)) {
             pe.rebuildWarpMirrorVoice(0);
             lastMirrorSig_.valid = true;
             lastMirrorSig_.bank = pe.warpBank_;
-            std::memcpy(lastMirrorSig_.row.data(), pe.random_[0].data(), sizeof lastMirrorSig_.row.data());
-            std::memcpy(lastMirrorSig_.deleg.data(), pe.warpDelegated_[0].data(), sizeof lastMirrorSig_.deleg.data());
+            std::memcpy(lastMirrorSig_.row.data(), pe.random_[0].data(), sizeof lastMirrorSig_.row);
+            std::memcpy(lastMirrorSig_.deleg.data(), pe.warpDelegated_[0].data(), sizeof lastMirrorSig_.deleg);
         }
     }
 
