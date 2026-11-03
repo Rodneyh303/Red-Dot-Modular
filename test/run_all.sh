@@ -342,9 +342,27 @@ if [ -z "$filter" ] || [[ "smoke" == *"$filter"* ]]; then
   fi
 fi
 
-if [ $fail -gt 0 ] || [ $audit_fail -ne 0 ] || [ $smoke_fail -ne 0 ]; then
+# ── array-guard lint (ARRAY_CONTAINER_AUDIT P-E) ──────────────────────────────
+# Fail the battery on any NEW bare C-array declaration in src/dsp/** and src/ui/**
+# outside test/lint_array_guard_allowlist.txt (char string buffers + label tables are
+# exempt classes; the 137-entry baseline is the pre-gate residue outside the audit's
+# named P-A/P-B/P-C scope). ARRAY_GUARD_STRICT=0 = local debug hatch (repo precedent).
+# Skipped by the name filter unless it matches "array".
+guard_fail=0
+if [ -z "$filter" ] || [[ "array" == *"$filter"* ]]; then
+  echo "array-guard (P-E):"
+  if [ -z "$PYBIN" ]; then
+    printf "  \033[33m?\033[0m  array-guard SKIPPED (no python found)\n"
+  elif ! "$PYBIN" "$here/lint_array_guard.py"; then
+    guard_fail=1
+  fi
+  echo "-----"
+fi
+
+if [ $fail -gt 0 ] || [ $audit_fail -ne 0 ] || [ $guard_fail -ne 0 ] || [ $smoke_fail -ne 0 ]; then
   [ $fail -gt 0 ] && echo "FAILED: ${failed_names[*]}"
   [ $audit_fail -ne 0 ] && echo "FAILED: anchor/bind audit"
+  [ $guard_fail -ne 0 ] && echo "FAILED: array-guard (P-E)"
   [ $smoke_fail -ne 0 ] && echo "FAILED: plugin-TU syntax smoke"
   exit 1
 fi
