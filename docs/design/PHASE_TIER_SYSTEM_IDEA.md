@@ -85,3 +85,32 @@ PAYOFF: DRY (one implementation, 3+ consumers, not copies) + a sellable standalo
 for free on top. SCOPE: a real refactor (extract without breaking Sands/East, golden-pinned). It affects HOW
 phase distortion is built — build it ON the extracted primitive. Capture as the architectural direction;
 sequence the extraction before/with the phase-distortion build.
+
+════════════════════════════════════════════════════════════════════════════════
+## [Rodney] CO-JUMPS — tail dependence in the POSITION/TIME domain (the killer-app, for phase)
+If BOTH tiers use the atom-distortion (idea 3), you get CO-JUMPS: transport phase jumps to a different
+REGION of the 2 bars WHILE subphase simultaneously jumps to a different STAGE within its bar/quarter — two
+jumps, two scales, one moment. A single modulation event → a COMPOUND multi-scale relocation ("jump to the
+other bar AND a different beat within it"; "a different quarter AND a different position within it").
+
+### This is the ATOM KILLER-APP applied to PHASE (the reachable-structures theory, position domain)
+Two atoms (transport + subphase), each a point mass. Their COORDINATION is governed by the dependence
+machinery — the SAME Marshall-Olkin tail structure as cross-voice/cross-lane tail dependence, now over
+WHERE THE PLAYHEAD LEAPS:
+- INDEPENDENT atoms → the two tiers jump at different times (scattered multi-scale relocation).
+- CO-FIRING (tail-coupled) atoms → they jump TOGETHER — the dramatic compound leap (everything relocates at
+  once). Reachable ONLY through shared/simultaneous atom modulation (exactly as cross-voice tail dependence
+  was) — not via continuous phase mod, not static atoms.
+- ANTI-CORRELATED → transport jumps while subphase HOLDS, and vice-versa — a conservation (one scale moves,
+  the other anchors).
+So phase becomes a STRUCTURED-STOCHASTIC, MULTI-SCALE, TAIL-DEPENDENT scanner. The four-quadrant richness
+(independent / co-jump / anti-jump / held) of the atom killer-app, in the TEMPORAL-SCANNING domain.
+
+### Why it matters
+A continuous space from smooth playback → warped scan → single-scale jumps → coordinated multi-scale leaps
+→ conservation patterns ("structured teleportation across the pattern"), all from one voltage pair through
+the distribution primitive, playable in real time. Most sequencers scan linearly or with simple random
+jumps; two-tier atom-punctuated CO-JUMPING phase scanning is genuinely novel — the instrument's core thesis
+(structured stochastic dependence, MO tails) extended into the TIME/POSITION dimension. Paper-worthy in its
+own right (tail-dependent temporal addressing), and pure reuse (distribution primitive + atoms + the
+existing dependence/coordination structure).
