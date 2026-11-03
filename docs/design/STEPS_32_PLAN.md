@@ -997,3 +997,15 @@ STAGE 5 — VERIFY
 ## NOT IN THIS BUILD
 Phase change (stays as is), 64 steps, transport phase 192, subphase, phase distortion, the distribution
 primitive extraction. All sequenced after; recorded in PHASE_TIER_SYSTEM_IDEA.md.
+
+════════════════════════════════════════════════════════════════════════════════
+## DECIDED — Stage 2 mask representation (Rodney)
+- Per-voice East pattern and the macro pattern become uint64_t (std::array<uint64_t, kVoiceSlots> for East).
+  uint64 covers the 64-step ceiling, so there is no second widening later.
+- Length-masked: every read and write masks with lenMask = (1ULL << L) - 1. Replaces the 65535 clamp,
+  the `c < 16` checks and the 1<<c magic.
+- Default all-on for the current length (behaviour-identical at ≤16).
+- Persistence: NO migration. Patch compatibility is not a concern for this unreleased code. Save the new
+  integer representation under a fresh key; old float-keyed saves are simply not read.
+- Stage 1 gate still applies: ≤16 BEHAVIOUR must be bit-identical (outputs and goldens), even though old
+  files are not loaded.
