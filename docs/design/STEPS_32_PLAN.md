@@ -1127,3 +1127,24 @@ OPEN
 CPU COMPARISON (before 64 is considered)
 - Compare 16 vs 32 with everything else fixed: same patch, 16 active voices, per-voice advance on, same sample
   rate and buffer size. Record the optimisation branches included so each saving is visible.
+
+════════════════════════════════════════════════════════════════════════════════
+## DIMMING RULE — probability grid (Rodney, agreed)
+Two independent display channels. Do not merge them.
+- DISC (above) = which BAR is active (engine position).
+- GRID DIMMING = which CELLS are inside the global window (the pattern's offset/length, displayed on the grid).
+
+Rules
+1. Patterns restricted to steps 1–16: the disc is hidden (always dimmed). Grid dimming is unchanged from today.
+2. 32-step pattern, bar 1 (cells 1–16): cells outside the global window are dimmed.
+3. 32-step pattern, bar 2 (cells 17–32): cells outside the global window are dimmed.
+4. The global window is defined on the 32-step phrase. Each bar shows the intersection of the window with its own
+   16 cells. A window that crosses bar 1 into bar 2 (or wraps past 32 back to 1) lights the in-window cells in both
+   bars.
+5. Dimming is display only. Playback and the engine window are unchanged. The grid reads the engine window and does
+   not recompute it.
+
+Gate (Stage 3)
+- Pin: for a set of offset/length windows over 32 steps, the displayed in-window cell set equals the engine window
+  set, per bar, including a window that crosses the bar boundary and one that wraps past 32.
+- ≤16: grid dimming pixel-identical to today.
