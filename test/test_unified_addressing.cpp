@@ -1029,7 +1029,10 @@ int main() {
         const auto M = dotModular::VoiceResolver::mono();
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
         eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
-        uint64_t macroBits[1] = {65535ULL}; float macroKind = 1.f, macroFollowR = 0.f;
+        // The overlay is the RING's all-on (the no-op sentinel — STEPS_32 2b: a 0xFFFF
+        // pattern is a PARTIAL paint at ring 32 and would mute cells 16..31, cutting the
+        // extended region; the painted-overlay composition is pinned separately below).
+        uint64_t macroBits[1] = {dotModular::kMaskLenMask}; float macroKind = 1.f, macroFollowR = 0.f;
         uint64_t eastBits[16]; float eastKind[16], eastFollowR[16], localEast[16];
         for (int v = 0; v < 16; ++v) { eastBits[v]=65535ULL; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
@@ -1039,10 +1042,19 @@ int main() {
         check(winOK, "STAGE4: abs1 — the region IS the voice LOR [5,13) (ONE range; the read runs the full phrase — the pin below)");
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 4;
         eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 13;
+        // STEPS_32 2b: (4,13) NO LONGER wraps — 13+4=17 ≤ the 32-ring, so the region
+        // EXTENDS to [13,17) (D3: "a live window that wraps the 16-ring today EXTENDS
+        // instead at frame 32"). The wrap LAW re-authors at the 32-ring below: (4,30).
         bool wrapOK = true;
-        for (int s = 0; s < 16; ++s)
-            wrapOK = wrapOK && eng.outputMaskPasses(M, s) == (s >= 13 || s < 1);
-        check(wrapOK, "STAGE4: the abs1 region wraps the phrase (13..4 plays 13,14,15,0) — the wrap carries, the real end cuts");
+        for (int s = 0; s < dotModular::kMaskRing; ++s)
+            wrapOK = wrapOK && eng.outputMaskPasses(M, s) == (s >= 13 && s < 17);
+        check(wrapOK, "STAGE4: the abs1 region at the old 16-wrap config EXTENDS (13..16) — D3's documented shift, the real end no longer cuts");
+        eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 30;   // 30+4 > 32: a TRUE wrap at the 32-ring
+        bool wrap32OK = true;
+        for (int s = 0; s < dotModular::kMaskRing; ++s)
+            wrap32OK = wrap32OK && eng.outputMaskPasses(M, s) == (s >= 30 || s < 2);
+        check(wrap32OK, "STAGE4: the abs1 region wraps the 32-ring (30,31,0,1) — the wrap carries, the real end cuts");
+        eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 13;   // restore for the delegation pin below
         // (A4) THE BASE-MODE READ LAW: abs1's read runs the FULL PHRASE (the frame
         // behaves as identity for the read — the playhead marches all 16; the OUTPUT
         // gate does the windowing); cycle keeps the confined window walk (the Stage-2
@@ -1058,9 +1070,9 @@ int main() {
             for (int v = 0; v < 16; ++v) { reb[v]=65535ULL; rek[v]=0.f; ref[v]=0.f; rle[v]=0.f; }
             r.pushMaskEditor(rb, rk, rf, reb, rek, ref, rle);
             bool fullOK = true;
-            for (int k = 0; k < 16; ++k) {
+            for (int k = 0; k < dotModular::kMaskRing; ++k) {
                 r.advancePlayhead(+1);
-                fullOK = fullOK && r.voiceReadPosition(M) == ((k + 7) % 16);   // (t−1+R) mod 16 — all 16, phased by R
+                fullOK = fullOK && r.voiceReadPosition(M) == ((k + 7) % dotModular::kMaskRing);   // (t−1+R) mod RING — all 32, phased by R
             }
             check(fullOK, "STAGE4: abs1's READ runs the full phrase PHASED BY R — parent-step-1 reads R=7 (the anchor law, unified); only the output gates");
             rk = 0.f;   // cycle: the SAME row confines the read
@@ -1073,9 +1085,9 @@ int main() {
             }
             check(confOK, "STAGE4: cycle's read stays confined to the LOR (the window walk — the Stage-2 worked table)");
             // (A6) DIRECTION composes in abs1 too — the unified branch runs the SAME
-            // window walk over the full phrase: Reverse reads (R − t) mod 16, walking
+            // window walk over the full phrase: Reverse reads (R − t) mod RING, walking
             // BACKWARD from the anchor (Rodney: "absolute mode doesn't support voice
-            // lane direction").
+            // lane direction"). STEPS_32 2b: the modulus is the ring (32).
             {
                 SequencerEngine q; q.reset();
                 q.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
@@ -1087,11 +1099,11 @@ int main() {
                 for (int v = 0; v < 16; ++v) { qeb[v]=65535ULL; qek[v]=0.f; qef[v]=0.f; qle[v]=0.f; }
                 q.pushMaskEditor(qb, qk, qf, qeb, qek, qef, qle);
                 bool revOK = true;
-                for (int k = 0; k < 16; ++k) {
+                for (int k = 0; k < dotModular::kMaskRing; ++k) {
                     q.advancePlayhead(+1);
-                    revOK = revOK && q.voiceReadPosition(M) == (((7 - (k + 1)) % 16 + 16) % 16);
+                    revOK = revOK && q.voiceReadPosition(M) == (((7 - (k + 1)) % dotModular::kMaskRing + dotModular::kMaskRing) % dotModular::kMaskRing);
                 }
-                check(revOK, "STAGE4: abs1 + voice Reverse — the full-phrase read walks BACKWARD (read = (R−t) mod 16; direction composes in BOTH base modes)");
+                check(revOK, "STAGE4: abs1 + voice Reverse — the full-phrase read walks BACKWARD (read = (R−t) mod the ring; direction composes in BOTH base modes)");
             }
         }
         // THE OVERLAY COMPOSES: abs1 + a painted pattern = the AND (in-window AND bit).
@@ -1115,7 +1127,7 @@ int main() {
         // (voiceLorLocalEast_), a SEPARATE switch from the mask's (localEast).
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 4;
         eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 13;
-        macroKind = 1.f; macroBits[0] = 65535ULL;
+        macroKind = 1.f; macroBits[0] = dotModular::kMaskLenMask;   // the no-op sentinel (see above)
         eng.voiceLorRef(dotModular::VoiceResolver::slot(2), SequencerEngine::LOR_LEN)  = 6;
         eng.voiceLorRef(dotModular::VoiceResolver::slot(2), SequencerEngine::LOR_OFF)  = 9;
         eng.voiceLorLocalEast_[1] = true;   // V2's LOR row is its own (the abs1 region follows)
@@ -1123,10 +1135,10 @@ int main() {
         const auto v2 = dotModular::VoiceResolver::slot(2);
         const auto v3 = dotModular::VoiceResolver::slot(3);
         bool delegOK = true;
-        for (int s = 0; s < 16; ++s)
+        for (int s = 0; s < dotModular::kMaskRing; ++s)
             delegOK = delegOK && eng.outputMaskPasses(v2, s) == (s >= 9 && s < 15)   // its own LOR row [9,15)
-                              && eng.outputMaskPasses(v3, s) == (s >= 13 || s < 1);  // the macro row 13..4
-        check(delegOK, "STAGE4: the abs1 region delegates — a local voice's own LOR [9,15); a follower reads the macro row");
+                              && eng.outputMaskPasses(v3, s) == (s >= 13 && s < 17);  // the macro row EXTENDS [13,17) at the 32-ring (D3)
+        check(delegOK, "STAGE4: the abs1 region delegates — a local voice's own LOR [9,15); a follower reads the macro row (13..16 at ring 32)");
     }
     {
         // PAINTED abs2 (STATIC): fixed to absolute phrase steps — an R turn does NOT
@@ -1211,19 +1223,26 @@ int main() {
         for (int v = 0; v < 16; ++v) { eastBits[v]=0x1869FULL; eastKind[v]=-1.f; eastFollowR[v]=0.f; localEast[v]=0.5f; }   // 99999: over-ring
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         const auto v2 = dotModular::VoiceResolver::slot(2);
+        // STEPS_32 2b: the ring mask law moved WITH the flip — the ring is 32, so the
+        // store's all-on is 0xFFFFFFFF (was 0xFFFF) and 99999's bit 16 is now a LIVE
+        // cell (0x1869F, was 0x869F); only the bits ≥ the ring (≥ 32) drop.
         const bool clampsOK = eng.maskMacroKind_ == 2            // lround(7.4) clamped -> 2
-                           && eng.maskMacroAnchored_ == 0xFFFF   // ~0ULL & lenMask -> the ring's all-on
+                           && eng.maskMacroAnchored_ == dotModular::kMaskLenMask   // ~0ULL & lenMask -> the ring's all-on (32 bits)
                            && eng.maskMacroFollowR_ == true
                            && eng.maskKind_[v2.v] == 0           // -1 -> 0 (cycle)
-                           && eng.maskPainted_[v2.v] == 0x869F   // 99999 & lenMask -> 0x869F (the ring mask law)
+                           && eng.maskPainted_[v2.v] == 0x1869FULL // 99999 & lenMask -> 0x1869F (the ring mask law at 32)
                            && eng.maskLocalEast_[v2.v] == true;  // 0.5 -> local
-        check(clampsOK, "STAGE4: the push clamps to the store frame (kind 0..2, bits ring-masked uint64, flags)");
-        // and windowMaskBits (the "from range" preset's math) == the dynamic eval
-        const uint64_t w = SequencerEngine::windowMaskBits(4, 13);   // the ring-wide play mask (Stage 2a)
+        check(clampsOK, "STAGE4: the push clamps to the store frame (kind 0..2, bits ring-masked uint64 — the ring's all-on 0xFFFFFFFF + bit 16 live since 2b, flags)");
+        // and windowMaskBits (the "from range" preset's math) == the dynamic eval.
+        // STEPS_32 2b: (4,13) extends [13,17); the wrap law re-authors at (4,30).
+        const uint64_t w = SequencerEngine::windowMaskBits(4, 13);   // the ring-wide play mask
         bool wOK = true;
-        for (int s = 0; s < 16; ++s)
-            wOK = wOK && (((w >> s) & 1u) != 0u) == (s >= 13 || s < 1);
-        check(wOK, "STAGE4: windowMaskBits(4,13) == the wrapped containment (the preset == the eval)");
+        for (int s = 0; s < dotModular::kMaskRing; ++s)
+            wOK = wOK && (((w >> s) & 1u) != 0u) == (s >= 13 && s < 17);
+        const uint64_t w32 = SequencerEngine::windowMaskBits(4, 30);   // a TRUE 32-ring wrap
+        for (int s = 0; s < dotModular::kMaskRing; ++s)
+            wOK = wOK && (((w32 >> s) & 1u) != 0u) == (s >= 30 || s < 2);
+        check(wOK, "STAGE4: windowMaskBits == the containment (the preset == the eval; (4,13) extends, (4,30) wraps the 32-ring)");
     }
     {
         // THE DISPLAY ACCESSORS (UAS Stage-4 UI completion, CC_PROMPT_UAS_MASK_UI_
@@ -1237,21 +1256,24 @@ int main() {
         const auto M  = dotModular::VoiceResolver::mono();
         const auto v2 = dotModular::VoiceResolver::slot(2);
         const auto v3 = dotModular::VoiceResolver::slot(3);
-        uint64_t macroBits[1] = {65535ULL}; float macroKind = 0.f, macroFollowR = 0.f;
+        uint64_t macroBits[1] = {dotModular::kMaskLenMask}; float macroKind = 0.f, macroFollowR = 0.f;   // the RING's all-on (the sentinel — 0xFFFFFFFF since 2b)
         uint64_t eastBits[16]; float eastKind[16], eastFollowR[16], localEast[16];
-        for (int v = 0; v < 16; ++v) { eastBits[v]=65535ULL; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
+        for (int v = 0; v < 16; ++v) { eastBits[v]=dotModular::kMaskLenMask; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
-        check(eng.effectiveOutputMask(M) == 0xFFFFu && eng.effectiveOutputMaskMacro() == 0xFFFFu,
-              "STAGE4-DISP: cycle -> the all-on play set");
+        check(eng.effectiveOutputMask(M) == dotModular::kMaskLenMask && eng.effectiveOutputMaskMacro() == dotModular::kMaskLenMask,
+              "STAGE4-DISP: cycle -> the all-on play set (the ring's all-on, 32 bits since 2b)");
         // DYNAMIC (abs1): the accessor == the voice LOR window bits (the composed base;
         // the overlay ANDs when the pattern is not all-on — the painted pins cover that).
+        // The overlay here is the RING's all-on (the true sentinel post-2b: a 0xFFFF
+        // pattern is a PARTIAL paint at ring 32 — its bits 16..31 would mute cells 16..31).
         macroKind = 1.f;
+        macroBits[0] = dotModular::kMaskLenMask;
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 4;
         eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 13;
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         check(eng.effectiveOutputMask(M) == SequencerEngine::windowMaskBits(4, 13)
            && eng.effectiveOutputMaskMacro() == SequencerEngine::windowMaskBits(4, 13),
-              "STAGE4-DISP: abs1 -> the voice LOR window bits (wrapped 13..4), macro tier the same");
+              "STAGE4-DISP: abs1 -> the voice LOR window bits (13..16 at ring 32 — the old 16-wrap config extends, D3), macro tier the same");
         // PAINTED: the anchored copy; abs3's re-pin ROTATES the returned bits (the
         // visible follow-R effect), abs2 stays fixed.
         macroKind = 2.f; macroBits[0] = 1ULL << 2;

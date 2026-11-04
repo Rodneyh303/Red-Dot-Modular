@@ -51,29 +51,31 @@ static inline T pe_clamp(T v, T lo, T hi){ return v<lo?lo:(v>hi?hi:v); }
 // width the mask words reserve for (STEPS_32 Stage 2a names it; 16 → 32 there, before any
 // behaviour change). Storage is the MEMORY: entries beyond the usable length stay zero-filled
 // and unplayed.
-// kPatternLengthCap: the USABLE length bound AND the frame RING the walk/masks land on. Until
-// Stage 2b flips it, the ring is 16 — every ≤16 configuration is bit-identical (the D3 shift is
-// tied to the flip, not to the widening). THE ONE STAGE-2 SWITCH: flip kPatternLengthCap to
-// kMaxPatternSteps — the ring, the mask plane (lenMask = (1<<ring)-1), the knob range (the
-// PR-#310-review close-out: the param range derives from the cap) and every length-bearing site
-// move with it; no other site changes. Every length-bearing site derives from these three (the
-// audit's class-A fixes); class-B storage keeps its step dim behind kStepStorage; class-C
-// display / class-D deprecated / class-E unrelated-16 stay untouched.
+// kPatternLengthCap: the USABLE length bound AND the frame RING the walk/masks land on.
+// STAGE 2b FLIPPED (this commit): the ring is 32 — the flip moved the ring, the mask plane
+// (lenMask = (1<<ring)-1), the knob ranges (the PR-#310-review close-out: the param ranges
+// derive from the cap) and every length-bearing site in ONE move, with the pre-gates green
+// (GATE 1's EQUIV section: zero ≤16 differences against the committed 2a-tip oracle; D3's
+// documented shift — a window that wrapped the 16-ring now EXTENDS — is part of the flip).
+// No other site changes. Every length-bearing site derives from these three (the audit's
+// class-A fixes); class-B storage keeps its step dim behind kStepStorage; class-C display /
+// class-D deprecated / class-E unrelated-16 stay untouched.
 namespace dotModular {
 static constexpr int kMaxPatternSteps  = 32;   // the ceiling: pattern/phrase length accepts 1..32
 static constexpr int kStepStorage      = 32;   // the per-step array row width (Stage 2a; uint64 masks reserve 64)
-static constexpr int kPatternLengthCap = 16;   // STAGE 2b FLIPS THIS to kMaxPatternSteps (the ring + the usable bound)
+static constexpr int kPatternLengthCap = kMaxPatternSteps;   // STAGE 2b: FLIPPED to the ceiling (the ring + the usable bound)
 static_assert(kPatternLengthCap <= kMaxPatternSteps, "the usable length cap never exceeds the ceiling");
 static_assert(kPatternLengthCap <= kStepStorage,     "the ring never exceeds the per-step storage");
 static_assert(kStepStorage <= 64,                    "the storage fits the uint64 length-masked mask words (the DECIDED block)");
 // ── STEPS_32 Stage 2a (the DECIDED block in STEPS_32_PLAN.md): the mask plane is
 // uint64_t, LENGTH-MASKED on the frame RING. One AUTHORITY here beside the length
 // domain; SequencerEngine / Monsoon / the visuals derive (no second definition).
-// The ring derives from kPatternLengthCap — 16 until Stage 2b flips it, so every
-// ≤16 configuration is bit-identical; the flip widens the ring, lenMask and the
+// The ring derives from kPatternLengthCap — 32 since the Stage 2b flip (before it every
+// ≤16 configuration was bit-identical, pinned by GATE 1's EQUIV section against the
+// committed 2a-tip oracle); the flip widened the ring, lenMask and the
 // all-on sentinel in ONE move (uint64 covers the 64-step ceiling, no second
 // widening). lenMask = (1<<ring)-1 replaces the 65535 clamp, the c<16 checks and
-// the 1<<c magic; the all-on default is the RING's all-on (0xFFFF at the 16 bound).
+// the 1<<c magic; the all-on default is the RING's all-on (0xFFFFFFFF at the 32 bound).
 static constexpr int      kMaskRing   = kPatternLengthCap;
 static constexpr uint64_t kMaskLenMask = (kMaskRing >= 64) ? ~0ULL : ((1ULL << kMaskRing) - 1ULL);
 }  // namespace dotModular
@@ -854,11 +856,16 @@ struct PatternEngine {
     // backward without stored history. 32-bit Philox: a 24-bit-mantissa float, exactly
     // float precision, which is all the probability lanes need.
     //
-    // CHUNK must exceed the max unit() calls per redraw of a stream. Worst case:
-    //   rhythm  16 * (rhythm+variation+legato+accent=4 + 15 poly) = 304  (Phase A: 16 unified voices)
-    //   melody  16 * (melody+octave=2 + 15*2 poly)               = 512
-    // 1024 leaves generous headroom and is a clean power of two.
-    static constexpr uint64_t DRAW_CHUNK = 1024;
+    // CHUNK must cover the phrase's own draw window: the FILL is ring×fields
+    // (STEPS_32 Stage 2b re-derivation — the binding constraint):
+    //   rhythm  kPatternLengthCap * 64 = 32*64 = 2048   (4 mono + 4*15 poly fields/step)
+    //   melody  kPatternLengthCap * 32 = 1024
+    //   qmix    kPatternLengthCap * 16 = 512
+    // and the unit()-cursor worst case stays under it (melody 32*(2+30)=1024, rhythm
+    // 32*19=608). 2048 = the rhythm fill exactly (the Stage-1 relationship: fill ==
+    // CHUNK at the ring bound) and a clean power of two; pos owns [pos*CHUNK,
+    // (pos+1)*CHUNK) with no aliasing into pos+1.
+    static constexpr uint64_t DRAW_CHUNK = 2048;
     // Draws are always Philox (counter-based). The legacy Xoroshiro A/B path is gone.
     // q-mix is a value lane (melody-like) with its OWN independent Philox stream keyed off
     // redDot::seed::STREAM_SOURCE_SELECT (=3) — decorrelated from rhythm/melody so "which notes"

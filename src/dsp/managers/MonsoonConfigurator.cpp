@@ -30,10 +30,12 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     // STEPS_32 Stage 1 close-out (Rodney's PR #310 review): the length control's range derives
     // from kPatternLengthCap — the USABLE bound — not the ceiling, so the knob never offers an
     // undeliverable length and Stage 2's cap flip moves the range with it (one constant).
-    // Defaults stay 16 (the MODE LAW). The offset stays 0..15 — its domain is the 16-wide frame
-    // (class B, resolved cap-derived at Stage 2).
+    // Defaults stay 16 (the MODE LAW). STEPS_32 Stage 2b: the offset param rides the cap too
+    // (0..cap-1, derived not literal — the class-B item the revised Stage 2 plan resolves here:
+    // "The offset param: 0..15 becomes 0..(cap-1), derived not literal"); the default 0 and the
+    // wrap semantics are unchanged.
     m->configParam(PATTERN_LENGTH_PARAM, 1.f, (float)dotModular::kPatternLengthCap, 16.f, "Pattern length");
-    m->configParam(PATTERN_OFFSET_PARAM, 0.f, 15.f, 0.f, "Pattern offset");
+    m->configParam(PATTERN_OFFSET_PARAM, 0.f, (float)(dotModular::kPatternLengthCap - 1), 0.f, "Pattern offset");
 
     // DNA Action Buttons (Main module only configures these if no expander)
 

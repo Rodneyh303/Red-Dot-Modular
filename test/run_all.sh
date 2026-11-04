@@ -56,7 +56,7 @@ TESTS=(
   "test_PhiloxRng|"
   "test_SandsTopology|"
   "test_SpreadInterp|"
-  "test_pattern_length_cap|$SE $GS $PE $CE"   # STEPS_32 Stage 1: the length-domain pins — the master-window wrap sweep 1..16 (visited set == [0,L), mask popcount L, period exactly L), the clamp report (requested 17..32 → effective 16, the storage-bound cap reports), the CV map pinned at the bound (round(cv/10*(cap-1))+1), the lane clamp via setStrand + the lane own-length wrap sweep
+  "test_pattern_length_cap|$SE $GS $PE $CE"   # STEPS_32: the length-domain pins — the constants (cap == 32 since the 2b flip), the master-window wrap sweep 1..cap (visited set == [0,L), mask popcount L, period exactly L), the wrap PERIOD at offsets (the Stage-1 cases + the new 32-bound cases), the clamp report (over-range requests clamp to the cap; 17..32 deliver in range now), the CV map (D1's *31: 10V -> 32, 5V -> 17), the lane clamp via setStrand + the lane own-length wrap sweep
   "test_slew_copula|src/dsp/engines/PatternEngine.cpp"
   "test_slew_latch_regression|$PE"   # CC_PROMPT_slew_latch_regression: slew latches UNCONDITIONALLY (latchSlew) — ABMix lock must not gate it; probabilities change at the roll, macro + east
   "test_sweepsig_gate|$PE $SE $GS"   # CC_PROMPT_restore_sweepsig_gate_START: the RESTORED prob-out gate — fires on every fingerprinted input, skips unchanged, bit-identical skips, the own-slot defense (MacroOwn reads Macro's global cells only)
