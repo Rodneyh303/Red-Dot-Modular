@@ -91,8 +91,16 @@ void PatternEngine::reset() {
     seedBridgeMelodyPhilox(melodySeedFloat);
     seedBridgeQmixPhilox(qmixSeedFloat);
 
-    // strands must not be all-zero or module is silent until dice/phrase
-    for (int i = 0; i < kStepStorage; ++i) {
+    // strands must not be all-zero or module is silent until dice/phrase.
+    // STEPS_32 Stage 2b GATE 2 (the beyond-ring zero-fill pin): the default pattern's
+    // length IS the cap (the factory window is full-cap), so the seed rides the RING
+    // (kPatternLengthCap) — cells ≥ the ring stay ZERO while the cap is 16 (a
+    // storage-wide fill leaked 0.5/1.0 defaults past the ring and the GATE 2 walk
+    // caught it on its maiden run: 1536 nonzero cells in random_/the Source rows).
+    // The 2b flip widens this loop with the cap (the factory default becomes the
+    // 32-step pattern); a stale-stride consumer that walks past a row boundary now
+    // reads 0.0 — audible + pinned — instead of a plausible 0.5.
+    for (int i = 0; i < kPatternLengthCap; ++i) {
         rhythmRandom[i] = 1.0f;     // Mono triggers by default
         variationRandom[i] = 0.5f;  // No variation bias
         legatoRandom[i] = 0.0f;     // No legato/ties
@@ -140,8 +148,9 @@ void PatternEngine::reset() {
     rhythmSlewApplied=melodySlewApplied=qmixSlewApplied=-1.f;   // force first recompute
     rhythmFirstDraw=melodyFirstDraw=qmixFirstDraw=true;
     sandsActive=false;
-    // Mirror defaults into slewedDraw too (final == slewed at reset)
-    for (int i=0;i<kStepStorage;i++){
+    // Mirror defaults into slewedDraw too (final == slewed at reset) — RING-bounded
+    // (GATE 2: beyond-ring cells stay zero; see the seed loop above).
+    for (int i=0;i<kPatternLengthCap;i++){
         slewedRhythm[0][i]=rhythmRandom[i]; slewedVariation[0][i]=variationRandom[i];
         slewedLegato[0][i]=legatoRandom[i]; slewedAccent[0][i]=accentRandom[i];
         slewedMelody[0][i]=melodyRandom[i]; slewedOctave[0][i]=octaveRandom[i];
