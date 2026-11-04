@@ -85,9 +85,18 @@ All closed form.
 7. An atom inside a gap sits at ℓ; an atom whose plateau covers the jump point wins.
 8. DK reading: an atom on K becomes a gap on DK, verified numerically at several parameter sets.
 
-## 9. Open items
-- **Flat-direction rule** (phase input that holds still): not decided. Needed before the phase input spec.
-- **Gap and atom parameters per lane:** location and width (and mass, level) need panel controls and a modulation story,
-  subject to the modulation-subpanel decision.
-- **ε for the p clamp:** set by test 3.
-- **Naming:** "Dual Kumaraswamy" as the menu label, unless a different name is preferred.
+## 9. Decisions and remaining items
+Decided (Rodney):
+- **Flat direction: no direction memory.** A flat carries no direction. Direction is the sign of the change that
+  moves the playhead. Direction only matters when motion resumes, so nothing needs storing during a stillness.
+  With PPQN quantisation, "flat" means the quantised position has not changed, so sub-position jitter is absorbed
+  and cannot flip direction. No dead-band is needed beyond the quantisation.
+- **Panel controls:** per lane on the distribution module, two extra knobs and jacks for gap location and width,
+  placed next to the atom controls. These are modulation-capable, so they are subject to the modulation-subpanel
+  decision (all-lane, parked).
+- **ε = 1e-6** for the p clamp.
+- **Menu label: "Dual Kumaraswamy".**
+
+Remaining:
+- The modulation-subpanel decision, which governs where the new gap jacks sit if it is adopted.
+- Test runs for tests 1–8 once the implementation exists.
