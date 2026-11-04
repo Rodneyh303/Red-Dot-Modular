@@ -999,6 +999,17 @@ Phase change (stays as is), 64 steps, transport phase 192, subphase, phase disto
 primitive extraction. All sequenced after; recorded in PHASE_TIER_SYSTEM_IDEA.md.
 
 ════════════════════════════════════════════════════════════════════════════════
+## DECIDED — Stage 2 mask representation (Rodney)
+- Per-voice East pattern and the macro pattern become uint64_t (std::array<uint64_t, kVoiceSlots> for East).
+  uint64 covers the 64-step ceiling, so there is no second widening later.
+- Length-masked: every read and write masks with lenMask = (1ULL << L) - 1. Replaces the 65535 clamp,
+  the `c < 16` checks and the 1<<c magic.
+- Default all-on for the current length (behaviour-identical at ≤16).
+- Persistence: NO migration. Patch compatibility is not a concern for this unreleased code. Save the new
+  integer representation under a fresh key; old float-keyed saves are simply not read.
+- Stage 1 gate still applies: ≤16 BEHAVIOUR must be bit-identical (outputs and goldens), even though old
+  files are not loaded.
+
 ## STAGES 2–5 — OUTLINE ONLY. Prompts deferred until Stage 1's classification table is back.
 Reason: Stage 1's (A)/(B)/(C) table sets the real size of Stage 2. Writing Stage 2 prompts now would be a guess,
 and guessed specs are where invent-vs-reuse errors come from. Outline + gates + open decisions are recorded
@@ -1015,7 +1026,7 @@ Key hazards:
   split. Decide before writing the Stage 2 prompt.
 - Persistence keys for every widened array must keep ≤16 patches loading identically (default 16).
 OPEN DECISIONS (Rodney, before Stage 2 prompt):
-  (a) mask representation: uint32 per voice, or two uint16 halves (bit-pair), or per-step byte?
+  (a) mask representation: DECIDED — uint64, length-masked (see DECIDED block below)
   (b) which per-step arrays truly need 32 entries vs can stay 16 (e.g. melody caches may be length-gated).
 Gate: ≤16 goldens bit-identical; 32-entry arrays zero-filled beyond length; persistence round-trip ≤16 exact.
 
