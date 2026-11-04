@@ -91,12 +91,15 @@ Decided (Rodney):
   moves the playhead. Direction only matters when motion resumes, so nothing needs storing during a stillness.
   With PPQN quantisation, "flat" means the quantised position has not changed, so sub-position jitter is absorbed
   and cannot flip direction. No dead-band is needed beyond the quantisation.
-- **Panel controls:** per lane on the distribution module, two extra knobs and jacks for gap location and width,
-  placed next to the atom controls. These are modulation-capable, so they are subject to the modulation-subpanel
-  decision (all-lane, parked).
+- **Panel controls (decided):** per lane on the distribution module, TWO knobs (gap location, gap size) next to
+  the atom knobs, and TWO modulation jacks next to the atom jacks. The gap uses the SAME Macro/East voice
+  delegation and opt-out as every other distribution control  no new routing. The atom block grows by two
+  knobs and two jacks per lane; the gap sits immediately beside the atom so the two read as a pair. The gap
+  jacks go on the base panel next to the atom jacks (not a subpanel); if the all-lane modulation subpanel is
+  adopted later, the gap jacks move with the atom jacks, since they are treated identically.
 - **ε = 1e-6** for the p clamp.
 - **Menu label: "Dual Kumaraswamy".**
 
 Remaining:
-- The modulation-subpanel decision, which governs where the new gap jacks sit if it is adopted.
+- The modulation-subpanel decision (all-lane, parked) would move the gap jacks with the atom jacks if adopted; it does not block the gap stage.
 - Test runs for tests 1–8 once the implementation exists.
