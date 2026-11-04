@@ -143,3 +143,17 @@ WHY TRACTABLE: no-carry-over makes arrival a LOCAL calculation (step S's own dec
 NOT a history replay (no need to reconstruct legato chains / multi-step long notes). WHY CORRECT: a jump
 SHOULD break legato/long-note continuity — preserving carry-over across a teleport would give artifacts
 (a legato chain "teleporting" its continuation). Fresh-step-no-carry is both computable and musical.
+
+════════════════════════════════════════════════════════════════════════════════
+## DECIDED DIRECTION + EDGE-CASE RESOLUTION (Rodney)
+- Subphase is capped at ≤1 bar. That bounds the subphase tier, so its jumps stay inside one bar.
+- Position is quantised to PPQN. Atom arrival and departure are jumps of ppqn steps up or down. A plateau
+  is a static ppqn position. Most edge cases fall out of this quantisation rather than needing separate rules.
+- Atoms freeze the playhead while the voltage sits on the plateau. This is the same class of problem as the
+  step-advance freeze. The escape is modulation of warp, atom position, or atom size, not a hidden rule.
+- Phase wrap at the top and bottom boundary is already handled.
+- Direction: transport phase sets the overall direction. Subphase direction multiplies it as normal, using the
+  same sign-product composition as voice and lane direction (playhead × voice × lane). A reversal in
+  subphase inside a forward transport is a backward step within the region, and vice versa.
+- Open check before build: when transport and subphase both reverse together, the product is forward. Confirm
+  that is the intended musical result, not a coincidence of the rule.
