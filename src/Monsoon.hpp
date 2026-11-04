@@ -562,7 +562,7 @@ struct MonsoonRightMessage {
     int   modeSelect       = 0;    // 0=A 1=B 2=C 3=D
 
     // Current pattern snapshot (useful for a pattern display expander)
-    bool  rhythmPattern[16]  = {};
+    // (rhythmPattern[16] RETIRED — CC_PROMPT_RHYTHMPATTERN_DELETE_AND_POLARITY ITEM 1)
     int   melodySemitone[16] = {};
     float melodyPitchV[16]   = {};
 
@@ -1469,14 +1469,14 @@ struct Monsoon : Module {
     int& cachedOffset = engine.cachedOffset;
     float bpm = 120.f;
 
-    bool (&rhythmPattern)[16] = engine.pe.rhythmPattern;
+    // (the rhythmPattern reference alias RETIRED — ITEM 1, with the member)
     float (&melodyPitchV)[16] = engine.pe.melodyPitchV;
     int (&melodySemitone)[16] = engine.pe.melodySemitone;
-    float (&rhythmRandom)[16] = engine.pe.rhythmRandom;
-    float (&variationRandom)[16] = engine.pe.variationRandom;
-    float (&legatoRandom)[16] = engine.pe.legatoRandom;
-    float (&melodyRandom)[16] = engine.pe.melodyRandom;
-    float (&octaveRandom)[16] = engine.pe.octaveRandom;
+    std::array<float, 16>& rhythmRandom = engine.pe.rhythmRandom;
+    std::array<float, 16>& variationRandom = engine.pe.variationRandom;
+    std::array<float, 16>& legatoRandom = engine.pe.legatoRandom;
+    std::array<float, 16>& melodyRandom = engine.pe.melodyRandom;
+    std::array<float, 16>& octaveRandom = engine.pe.octaveRandom;
 
     dsp::PulseGenerator& gatePulse = engine.gs.gatePulse;
     bool& prevExtGate = engine.prevGate1High;
@@ -1496,7 +1496,7 @@ struct Monsoon : Module {
     float (&cachedMelodyPitchV)[16] = engine.pe.cachedMelodyPitchV;
     int& cachedRhythmStepIndex = engine.pe.cachedRhythmStepIndex;
     int& cachedRhythmLastStepIndex = engine.pe.cachedRhythmLastStepIndex;
-    bool (&cachedRhythmPattern)[16] = engine.pe.cachedRhythmPattern;
+    // (the cachedRhythmPattern reference alias RETIRED — ITEM 1, with the member)
 
     int& activeSemiCount = engine.activeSemiCount;
     float (&faderCache)[dotModular::TuningTable::MAXN] = engine.faderCache;

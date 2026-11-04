@@ -779,7 +779,7 @@ int main() {
                 "has no cadence");
         EXPECTF(contains(macro, "probOutDiv.process()"),
                 "StraitsSandsMacroVisual.cpp: the /32 tick is not consumed");
-        EXPECTF(contains(macro, "sweepSigChanged(sweepSig_, eng, stepArr, nV)"),
+        EXPECTF(contains(macro, "sweepSigChanged(sweepSig_, eng, stepArr.data(), nV)"),
                 "StraitsSandsMacroVisual.cpp: the fingerprint gate decision is missing "
                 "— the resolve would run unconditionally again");
         EXPECTF(contains(macro, "laneProbabilityAtStep(ch + 1, l, stepArr[l])"),

@@ -1009,3 +1009,40 @@ primitive extraction. All sequenced after; recorded in PHASE_TIER_SYSTEM_IDEA.md
   integer representation under a fresh key; old float-keyed saves are simply not read.
 - Stage 1 gate still applies: ≤16 BEHAVIOUR must be bit-identical (outputs and goldens), even though old
   files are not loaded.
+
+## STAGES 2–5 — OUTLINE ONLY. Prompts deferred until Stage 1's classification table is back.
+Reason: Stage 1's (A)/(B)/(C) table sets the real size of Stage 2. Writing Stage 2 prompts now would be a guess,
+and guessed specs are where invent-vs-reuse errors come from. Outline + gates + open decisions are recorded
+here; CC-executable prompts follow once Stage 1 reports.
+
+### Stage 2 — storage (LARGEST; not a small stage)
+Grounded sizing (trunk): ~40 per-step arrays sized [16] across PatternEngine (slewed*, cached*, melody/pitch
+caches, the [kVoiceSlots][16] strand buffers) and Monsoon (per-voice editor arrays, the voice-LOR and mask
+editor arrays), plus four uint16 mask fields in SequencerEngine (maskPainted_, maskAnchored_,
+maskLastPushed_, maskMacroPainted_).
+Key hazards:
+- maskEastPatternBits / maskEastPatternBits are stored as float[16] (Monsoon.hpp ~969). A 32-bit mask does NOT
+  round-trip exactly through a float (24-bit mantissa). Widening these needs integer storage or a bit-pair
+  split. Decide before writing the Stage 2 prompt.
+- Persistence keys for every widened array must keep ≤16 patches loading identically (default 16).
+OPEN DECISIONS (Rodney, before Stage 2 prompt):
+  (a) mask representation: DECIDED — uint64, length-masked (see DECIDED block below)
+  (b) which per-step arrays truly need 32 entries vs can stay 16 (e.g. melody caches may be length-gated).
+Gate: ≤16 goldens bit-identical; 32-entry arrays zero-filled beyond length; persistence round-trip ≤16 exact.
+
+### Stage 3 — display
+Sands probability grid: 32 columns, parameterised by column count (the first 64-step blocker: horizontal
+shrinkage — design so 64 is a constant change). Ring: 16 lamps + bar indicator (settled). Length control 16/32.
+OPEN: menu vs knob for the 16/32 control.
+Gate: ≤16 display pixel-identical where testable; 32 layout reviewed in Rack (human review — no automated gate).
+
+### Stage 4 — control + persistence
+Pattern-length parameter, persisted; absent key → 16. Gate: old patches load at 16 unchanged; round-trip 32.
+
+### Stage 5 — verify
+Goldens ≤16 bit-identical (the standing gate). New 32-step pins: wrap at 32; both bars reachable; bar indicator
+tracks bar; mask bits address all 32 steps; subgate/advance/per-voice interaction at length 32 (the combined case,
+per the earlier lesson that clean merges can still have interaction bugs).
+
+### Not part of 32 (deferred, sequenced after)
+64 steps; transport phase 192; subphase; phase distortion; distribution-primitive extraction.

@@ -70,14 +70,14 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                 // last cycle's remapped buffers are already correct, so skip the churn. (The combined
                 // sig decides WHEN to recompute; pinR/pinM/pinQ decide WHICH families — a frozen axis's
                 // src can't change under lock, so the combined sig firing on a live axis is harmless.)
-                if (remapSigChanged_(v2->rhythmSrc, v2->melodySrc, v2->qmixSrc, /*identity=*/false)) {
+                if (remapSigChanged_(v2->rhythmSrc.data(), v2->melodySrc.data(), v2->qmixSrc.data(), /*identity=*/false)) {
                     engine.pe.forceRecomputeSlewed();
                     engine.pe.remapSlewedByPins(pinR, pinM, pinQ);
-                    captureRemapSig_(v2->rhythmSrc, v2->melodySrc, v2->qmixSrc, /*identity=*/false);
+                    captureRemapSig_(v2->rhythmSrc.data(), v2->melodySrc.data(), v2->qmixSrc.data(), /*identity=*/false);
                 }
             } else {
                 // Pins returned to identity: mark it so the next non-identity is treated as a change.
-                captureRemapSig_(v2->rhythmSrc, v2->melodySrc, v2->qmixSrc, /*identity=*/true);
+                captureRemapSig_(v2->rhythmSrc.data(), v2->melodySrc.data(), v2->qmixSrc.data(), /*identity=*/true);
             }
         }
     } else {
@@ -205,7 +205,7 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         && lastTopoSig_.polyVoiceCount == topoIn.polyVoiceCount
         && lastTopoSig_.gMonNull == (gMon == nullptr)
         && (gMon == nullptr
-            || 0 == std::memcmp(lastTopoSig_.own, gMon->editor.eastOwns, sizeof lastTopoSig_.own));
+            || 0 == std::memcmp(lastTopoSig_.own.data(), gMon->editor.eastOwns, sizeof lastTopoSig_.own));
     if (!topoUnchanged) {
         if (gMon) {
             topoIn.fillOwnersFromStore(gMon->editor.eastOwns,
@@ -222,8 +222,8 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         lastTopoSig_.polyBaseActive = topoIn.polyBaseActive;
         lastTopoSig_.polyVoiceCount = topoIn.polyVoiceCount;
         lastTopoSig_.gMonNull = (gMon == nullptr);
-        if (gMon) std::memcpy(lastTopoSig_.own, gMon->editor.eastOwns, sizeof lastTopoSig_.own);
-        else      std::memset(lastTopoSig_.own, 0, sizeof lastTopoSig_.own);
+        if (gMon) std::memcpy(lastTopoSig_.own.data(), gMon->editor.eastOwns, sizeof lastTopoSig_.own);
+        else      std::memset(lastTopoSig_.own.data(), 0, sizeof lastTopoSig_.own);
     }
     if (monoVis) {
         // MVC step 1d: owner is STORE-BACKED (editor.monoOwner via getMonoOwner). Was params[ownerDispId].
@@ -909,13 +909,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
         auto& pe = engine.pe;
         if (!lastMirrorSig_.valid
             || pe.warpBank_ != lastMirrorSig_.bank
-            || 0 != std::memcmp(lastMirrorSig_.row, pe.random_[0], sizeof lastMirrorSig_.row)
-            || 0 != std::memcmp(lastMirrorSig_.deleg, pe.warpDelegated_[0], sizeof lastMirrorSig_.deleg)) {
+            || 0 != std::memcmp(lastMirrorSig_.row.data(), pe.random_[0].data(), sizeof lastMirrorSig_.row)
+            || 0 != std::memcmp(lastMirrorSig_.deleg.data(), pe.warpDelegated_[0].data(), sizeof lastMirrorSig_.deleg)) {
             pe.rebuildWarpMirrorVoice(0);
             lastMirrorSig_.valid = true;
             lastMirrorSig_.bank = pe.warpBank_;
-            std::memcpy(lastMirrorSig_.row, pe.random_[0], sizeof lastMirrorSig_.row);
-            std::memcpy(lastMirrorSig_.deleg, pe.warpDelegated_[0], sizeof lastMirrorSig_.deleg);
+            std::memcpy(lastMirrorSig_.row.data(), pe.random_[0].data(), sizeof lastMirrorSig_.row);
+            std::memcpy(lastMirrorSig_.deleg.data(), pe.warpDelegated_[0].data(), sizeof lastMirrorSig_.deleg);
         }
     }
 
@@ -1014,32 +1014,61 @@ void MonsoonSandsManager::publishGlobalProduce_(Monsoon& ownerMon) {
         publishGlobal(lane);   // unified PL_* order (0=MEL, 1=OCT, 2=QMIX, 3=REST, 4=ACC, 5=VAR, 6=LEG)
 }
 
-// The input + produced-cells image (the S0b pattern): every input the publish reads
-// (the global LOR/spread/atten stores on the owner, the Macro CV jacks, presence) plus
-// the published cells (macroBase/CVDelta/preD/postD/spreadEffective on the visual +
-// macroOwnSpread on the engine) — self-healing against foreign writers (UI store edits
-// on the visual land in the image and re-publish).
-size_t MonsoonSandsManager::publishGlobalFingerprint_(Monsoon& ownerMon, void* dst) {
+// D17 compare-in-place halves (the byte-image publishGlobalFingerprint_ is DELETED —
+// deletion is the enforcement). The compare's field walk is the capture's MIRROR: same
+// fields, same order, adjacent functions. The pointer words are compared FIRST so a
+// presence flip (macro attach/detach, cable to a different module) short-circuits the
+// walk; when a pointer is null the capture stored zeros for its region (the img{}
+// zero-init below) and the compare skips the region — the same information the byte
+// image carried, read without building it.
+bool MonsoonSandsManager::publishGlobalCompare_(Monsoon& ownerMon) {
     auto& expanderManager = ownerMon.expanderManager;
     auto* macroVis = expanderManager.cachedMacroSandsVisual;
     Monsoon* gMon = macroVis ? redDot::lookupMonsoon(macroVis) : nullptr;
     if (!gMon && macroVis && expanderManager.owner) gMon = expanderManager.owner;
-    struct __attribute__((packed)) Image {
-        uint64_t macroVis, gMon;
-        float    lor[7][3];        // getGlobalLor(lane, 0..2) — the LOR knobs
-        float    spr[7];           // getGlobalSpread(lane)
-        float    atten[7][4];      // getGlobalAtten(lane, item) — the CV depths
-        uint8_t  cvConnected[7][4];
-        float    cvVoltage[7][4];  // macroCvId(lane,item): connected + voltage
-        // produced cells (self-healing)
-        float    macroBase[7][4];
-        float    macroCVDelta[7][4];
-        float    macroPreDelta[7][4];
-        float    macroPostDelta[7][4];
-        float    spreadEffective[7];
-        float    macroOwnSpread[7];
-    };
-    Image img{};
+    if ((uint64_t)(uintptr_t)macroVis != publishSig_.macroVis) return true;
+    if ((uint64_t)(uintptr_t)gMon     != publishSig_.gMon)     return true;
+    if (gMon)
+        for (int l = 0; l < 7; ++l) {
+            for (int i = 0; i < 3; ++i) {
+                const float v = gMon->getGlobalLor(l, i);
+                if (std::memcmp(&v, &publishSig_.lor[l][i], sizeof v) != 0) return true;
+            }
+            { const float v = gMon->getGlobalSpread(l);
+              if (std::memcmp(&v, &publishSig_.spr[l], sizeof v) != 0) return true; }
+            for (int i = 0; i < 4; ++i) {
+                const float v = gMon->getGlobalAtten(l, i);
+                if (std::memcmp(&v, &publishSig_.atten[l][i], sizeof v) != 0) return true;
+            }
+        }
+    if (macroVis) {
+        for (int l = 0; l < 7; ++l)
+            for (int i = 0; i < 4; ++i) {
+                auto& in = macroVis->inputs[Macro::macroCvId(l, i)];   // Port's readers are non-const
+                const uint8_t conn = in.isConnected() ? 1 : 0;
+                if (conn != publishSig_.cvConnected[l][i]) return true;
+                const float volt = in.isConnected() ? in.getVoltage() : 0.f;
+                if (std::memcmp(&volt, &publishSig_.cvVoltage[l][i], sizeof volt) != 0) return true;
+            }
+        if (std::memcmp(macroVis->macroBase.data(),       publishSig_.macroBase.data(),       sizeof publishSig_.macroBase)       != 0) return true;
+        if (std::memcmp(macroVis->macroCVDelta.data(),    publishSig_.macroCVDelta.data(),    sizeof publishSig_.macroCVDelta)    != 0) return true;
+        if (std::memcmp(macroVis->macroPreDelta.data(),   publishSig_.macroPreDelta.data(),   sizeof publishSig_.macroPreDelta)   != 0) return true;
+        if (std::memcmp(macroVis->macroPostDelta.data(),  publishSig_.macroPostDelta.data(),  sizeof publishSig_.macroPostDelta)  != 0) return true;
+        if (std::memcmp(macroVis->spreadEffective.data(), publishSig_.spreadEffective.data(), sizeof publishSig_.spreadEffective) != 0) return true;
+    }
+    if (std::memcmp(engine.macroOwnSpread.data(), publishSig_.macroOwnSpread.data(), sizeof publishSig_.macroOwnSpread) != 0) return true;
+    return false;
+}
+
+// The capture: the old fingerprint body verbatim, landing in publishSig_ instead of
+// dst (runs only after a produce — the rare path; the img{} zero-init keeps the
+// null-presence regions at zero, exactly as the byte image had them).
+void MonsoonSandsManager::publishGlobalCapture_(Monsoon& ownerMon) {
+    auto& expanderManager = ownerMon.expanderManager;
+    auto* macroVis = expanderManager.cachedMacroSandsVisual;
+    Monsoon* gMon = macroVis ? redDot::lookupMonsoon(macroVis) : nullptr;
+    if (!gMon && macroVis && expanderManager.owner) gMon = expanderManager.owner;
+    PublishSig img{};
     img.macroVis = (uint64_t)(uintptr_t)macroVis;
     img.gMon     = (uint64_t)(uintptr_t)gMon;
     if (gMon)
@@ -1055,21 +1084,21 @@ size_t MonsoonSandsManager::publishGlobalFingerprint_(Monsoon& ownerMon, void* d
                 img.cvConnected[l][i] = in.isConnected() ? 1 : 0;
                 img.cvVoltage[l][i]   = in.isConnected() ? in.getVoltage() : 0.f;
             }
-        std::memcpy(img.macroBase,      macroVis->macroBase,      sizeof img.macroBase);
-        std::memcpy(img.macroCVDelta,   macroVis->macroCVDelta,   sizeof img.macroCVDelta);
-        std::memcpy(img.macroPreDelta,  macroVis->macroPreDelta,  sizeof img.macroPreDelta);
-        std::memcpy(img.macroPostDelta, macroVis->macroPostDelta, sizeof img.macroPostDelta);
-        std::memcpy(img.spreadEffective, macroVis->spreadEffective, sizeof img.spreadEffective);
+        std::memcpy(img.macroBase.data(),      macroVis->macroBase.data(), sizeof img.macroBase);
+        std::memcpy(img.macroCVDelta.data(),   macroVis->macroCVDelta.data(), sizeof img.macroCVDelta);
+        std::memcpy(img.macroPreDelta.data(),  macroVis->macroPreDelta.data(), sizeof img.macroPreDelta);
+        std::memcpy(img.macroPostDelta.data(), macroVis->macroPostDelta.data(), sizeof img.macroPostDelta);
+        std::memcpy(img.spreadEffective.data(), macroVis->spreadEffective.data(), sizeof img.spreadEffective);
     }
-    std::memcpy(img.macroOwnSpread, engine.macroOwnSpread, sizeof img.macroOwnSpread);
-    std::memcpy(dst, &img, sizeof img);
-    return sizeof img;
+    std::memcpy(img.macroOwnSpread.data(), engine.macroOwnSpread.data(), sizeof img.macroOwnSpread);
+    publishSig_ = img;
 }
 
 void MonsoonSandsManager::declareRateProducers(redDot::RateManager& rm, Monsoon& ownerMon) {
     rm.declareProducer(
         redDot::Rate::Control,
-        [this, &ownerMon](void* dst) { return publishGlobalFingerprint_(ownerMon, dst); },
+        [this, &ownerMon]() -> bool { return publishGlobalCompare_(ownerMon); },
+        [this, &ownerMon]()           { publishGlobalCapture_(ownerMon); },
         [this, &ownerMon]()           { publishGlobalProduce_(ownerMon); });
 }
 
@@ -1128,30 +1157,30 @@ bool MonsoonSandsManager::v1SpreadDirty_(bool axR, bool axM, bool axQ, const flo
     const auto& pe = engine.pe;
     if (!s.valid) return true;
     if (s.axR != axR || s.axM != axM || s.axQ != axQ) return true;
-    if (std::memcmp(s.sp, sp, sizeof s.sp) != 0) return true;
-    if (std::memcmp(s.mode, pe.spreadTargetMode, sizeof s.mode) != 0) return true;
+    if (std::memcmp(s.sp.data(), sp, sizeof s.sp) != 0) return true;
+    if (std::memcmp(s.mode.data(), pe.spreadTargetMode.data(), sizeof s.mode) != 0) return true;
     // applyMono's pe inputs: the mono (V1) row of each strand family's slewed and
     // pre-remap buffers. (The REDDOT_SPREAD_ASSERT path also reads pe.ca*Src, but it is
     // compiled out wherever this TU ships — the macro defaults 0 and the test rig does
     // not compile MonsoonSandsManager.)
-    if (std::memcmp(s.swRhythm,    pe.slewedRhythm[0],        sizeof s.swRhythm)    != 0
-     || std::memcmp(s.swVariation, pe.slewedVariation[0],     sizeof s.swVariation) != 0
-     || std::memcmp(s.swLegato,    pe.slewedLegato[0],        sizeof s.swLegato)    != 0
-     || std::memcmp(s.swAccent,    pe.slewedAccent[0],        sizeof s.swAccent)    != 0
-     || std::memcmp(s.swMelody,    pe.slewedMelody[0],        sizeof s.swMelody)    != 0
-     || std::memcmp(s.swOctave,    pe.slewedOctave[0],        sizeof s.swOctave)    != 0
-     || std::memcmp(s.swQmix,      pe.slewedQmix[0],          sizeof s.swQmix)      != 0) return true;
-    if (std::memcmp(s.prRhythm,    pe.preRemapSlewedRhythm[0],    sizeof s.prRhythm)    != 0
-     || std::memcmp(s.prVariation, pe.preRemapSlewedVariation[0], sizeof s.prVariation) != 0
-     || std::memcmp(s.prLegato,    pe.preRemapSlewedLegato[0],    sizeof s.prLegato)    != 0
-     || std::memcmp(s.prAccent,    pe.preRemapSlewedAccent[0],    sizeof s.prAccent)    != 0
-     || std::memcmp(s.prMelody,    pe.preRemapSlewedMelody[0],    sizeof s.prMelody)    != 0
-     || std::memcmp(s.prOctave,    pe.preRemapSlewedOctave[0],    sizeof s.prOctave)    != 0
-     || std::memcmp(s.prQmix,      pe.preRemapSlewedQmix[0],      sizeof s.prQmix)      != 0) return true;
+    if (std::memcmp(s.swRhythm.data(),    pe.slewedRhythm[0].data(),        sizeof s.swRhythm)    != 0
+     || std::memcmp(s.swVariation.data(), pe.slewedVariation[0].data(),     sizeof s.swVariation) != 0
+     || std::memcmp(s.swLegato.data(),    pe.slewedLegato[0].data(),        sizeof s.swLegato)    != 0
+     || std::memcmp(s.swAccent.data(),    pe.slewedAccent[0].data(),        sizeof s.swAccent)    != 0
+     || std::memcmp(s.swMelody.data(),    pe.slewedMelody[0].data(),        sizeof s.swMelody)    != 0
+     || std::memcmp(s.swOctave.data(),    pe.slewedOctave[0].data(),        sizeof s.swOctave)    != 0
+     || std::memcmp(s.swQmix.data(),      pe.slewedQmix[0].data(),          sizeof s.swQmix)      != 0) return true;
+    if (std::memcmp(s.prRhythm.data(),    pe.preRemapSlewedRhythm[0].data(),    sizeof s.prRhythm)    != 0
+     || std::memcmp(s.prVariation.data(), pe.preRemapSlewedVariation[0].data(), sizeof s.prVariation) != 0
+     || std::memcmp(s.prLegato.data(),    pe.preRemapSlewedLegato[0].data(),    sizeof s.prLegato)    != 0
+     || std::memcmp(s.prAccent.data(),    pe.preRemapSlewedAccent[0].data(),    sizeof s.prAccent)    != 0
+     || std::memcmp(s.prMelody.data(),    pe.preRemapSlewedMelody[0].data(),    sizeof s.prMelody)    != 0
+     || std::memcmp(s.prOctave.data(),    pe.preRemapSlewedOctave[0].data(),    sizeof s.prOctave)    != 0
+     || std::memcmp(s.prQmix.data(),      pe.preRemapSlewedQmix[0].data(),      sizeof s.prQmix)      != 0) return true;
     // The row as last written: an external writer (pin-remap promote, rotate, reset)
     // breaks this and the pass re-runs — the healing property of the unconditional
     // every-tick rewrite is preserved exactly.
-    if (std::memcmp(s.row, pe.random_[0], sizeof s.row) != 0) return true;
+    if (std::memcmp(s.row.data(), pe.random_[0].data(), sizeof s.row) != 0) return true;
     return false;
 }
 
@@ -1160,21 +1189,21 @@ void MonsoonSandsManager::v1SpreadCapture_(bool axR, bool axM, bool axQ, const f
     const auto& pe = engine.pe;
     s.valid = true;
     s.axR = axR; s.axM = axM; s.axQ = axQ;
-    std::memcpy(s.sp, sp, sizeof s.sp);
-    std::memcpy(s.mode, pe.spreadTargetMode, sizeof s.mode);
-    std::memcpy(s.swRhythm,    pe.slewedRhythm[0],        sizeof s.swRhythm);
-    std::memcpy(s.swVariation, pe.slewedVariation[0],     sizeof s.swVariation);
-    std::memcpy(s.swLegato,    pe.slewedLegato[0],        sizeof s.swLegato);
-    std::memcpy(s.swAccent,    pe.slewedAccent[0],        sizeof s.swAccent);
-    std::memcpy(s.swMelody,    pe.slewedMelody[0],        sizeof s.swMelody);
-    std::memcpy(s.swOctave,    pe.slewedOctave[0],        sizeof s.swOctave);
-    std::memcpy(s.swQmix,      pe.slewedQmix[0],          sizeof s.swQmix);
-    std::memcpy(s.prRhythm,    pe.preRemapSlewedRhythm[0],    sizeof s.prRhythm);
-    std::memcpy(s.prVariation, pe.preRemapSlewedVariation[0], sizeof s.prVariation);
-    std::memcpy(s.prLegato,    pe.preRemapSlewedLegato[0],    sizeof s.prLegato);
-    std::memcpy(s.prAccent,    pe.preRemapSlewedAccent[0],    sizeof s.prAccent);
-    std::memcpy(s.prMelody,    pe.preRemapSlewedMelody[0],    sizeof s.prMelody);
-    std::memcpy(s.prOctave,    pe.preRemapSlewedOctave[0],    sizeof s.prOctave);
-    std::memcpy(s.prQmix,      pe.preRemapSlewedQmix[0],      sizeof s.prQmix);
-    std::memcpy(s.row, pe.random_[0], sizeof s.row);
+    std::memcpy(s.sp.data(), sp, sizeof s.sp);
+    std::memcpy(s.mode.data(), pe.spreadTargetMode.data(), sizeof s.mode);
+    std::memcpy(s.swRhythm.data(),    pe.slewedRhythm[0].data(),        sizeof s.swRhythm);
+    std::memcpy(s.swVariation.data(), pe.slewedVariation[0].data(),     sizeof s.swVariation);
+    std::memcpy(s.swLegato.data(),    pe.slewedLegato[0].data(),        sizeof s.swLegato);
+    std::memcpy(s.swAccent.data(),    pe.slewedAccent[0].data(),        sizeof s.swAccent);
+    std::memcpy(s.swMelody.data(),    pe.slewedMelody[0].data(),        sizeof s.swMelody);
+    std::memcpy(s.swOctave.data(),    pe.slewedOctave[0].data(),        sizeof s.swOctave);
+    std::memcpy(s.swQmix.data(),      pe.slewedQmix[0].data(),          sizeof s.swQmix);
+    std::memcpy(s.prRhythm.data(),    pe.preRemapSlewedRhythm[0].data(),    sizeof s.prRhythm);
+    std::memcpy(s.prVariation.data(), pe.preRemapSlewedVariation[0].data(), sizeof s.prVariation);
+    std::memcpy(s.prLegato.data(),    pe.preRemapSlewedLegato[0].data(),    sizeof s.prLegato);
+    std::memcpy(s.prAccent.data(),    pe.preRemapSlewedAccent[0].data(),    sizeof s.prAccent);
+    std::memcpy(s.prMelody.data(),    pe.preRemapSlewedMelody[0].data(),    sizeof s.prMelody);
+    std::memcpy(s.prOctave.data(),    pe.preRemapSlewedOctave[0].data(),    sizeof s.prOctave);
+    std::memcpy(s.prQmix.data(),      pe.preRemapSlewedQmix[0].data(),      sizeof s.prQmix);
+    std::memcpy(s.row.data(), pe.random_[0].data(), sizeof s.row);
 }

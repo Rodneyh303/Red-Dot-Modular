@@ -128,6 +128,7 @@ TESTS=(
   "test_spread_resolver|"
   "test_ui_to_resolver|$PE $SE $GS"   # CC_PROMPT_UI_TO_RESOLVER_SPEC: the ONE-PRODUCER contract suite — effectiveProbability is the single producer (engine draw == bars == out, modulo the latch); ownership lenses, explicit voice, subsumption of the old formula; T4 (direction) + T5 (rate) structural halves land with their commits
   "test_unified_addressing|$SE $GS $PE $CE"   # CC_PROMPT_UNIFIED_ADDRESSING_SPEC Stage 1: the nested global->voice->lane chain, GLOBAL map first — the PASS-THROUGH GOLDEN PIN (six FNV-1a march digests captured pre-change: default config == GOLDEN_A/B/BS, and NON-DIVISIVE lane lengths 7/5/6 with pendulum/pingpong walks bit-identical — the case a bounded driver would break), the MAPPED RULES (the KNOWN-ISSUE fix: an authored window makes the driver the window walk, so default lanes read INSIDE the global window and lanes with their own windows compose against the container length), the driverTickAt unit table, reversibility (backward retraces forward), re-authoring re-bounds the reads
+  "test_position_holders|$SE $GS $PE $CE"   # POSITION_HOLDER_MODEL.md: the counter is DEAD — every walk owns a bounded phase — the pins: march equivalence vs the f(counter) closed forms (all four shapes, non-div 7/5/6, mono + per-voice), backward retraces forward, the re-anchor law (a mid-run len/dir change == f(t, newParams) exactly), the warm-phase law (pass-through → mapped → pass-through round-trip), the anchor law (reset / phase snap / the Beat-1 hard reset), the offset diff (a hand seed / the activation zeroing absorbed exactly), the write-site law (the transport's own position: ±1 on the events, verbatim on the refresh)
   "test_step_advance|$SE $GS $PE $CE"   # CC_PROMPT_GATE_STEP_ADVANCE_SPEC Stages 1+3 + CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2: the gate-mode probabilistic step-advance — decideAdvance table (incl. the Stage-2 bipolar branch, SOURCED: p<0 reachable, backward walk + wrap pinned, the candidacy/advance pair decoupled), the p=1 GOLDEN PIN (byte-identity with the pre-feature engine, digests captured pre-change), the trajectory == the mirrored rule per rise, the p=0 held repeat (no re-draw branch — Rodney 91b100c), the three-level main/ratchet/ghost hierarchy on the resolved ADVANCE columns behind subResLive, clock/phase untouched
   "test_subgate|$SE $GS $PE"
   "test_subgate_knobs|"   # header-only: the subgate-tier consumer-group bank + the three-way resolver (CC_PROMPT_STRAITS_SUBGATE_KNOBS_SPEC + STEP_ADVANCE_CONSUMPTION Stage 2) — byte-identity default, tier 1 / 2a-global / 2b-follow-main precedence, post-resolution delta clamp (per-decision range: [-1,+1] for ADVANCE, [0,1] for the rest), bank defaults, persistence round-trip (deltas session-lived), absent-keys ⟹ defaults, short/wrong-typed arrays
@@ -341,9 +342,27 @@ if [ -z "$filter" ] || [[ "smoke" == *"$filter"* ]]; then
   fi
 fi
 
-if [ $fail -gt 0 ] || [ $audit_fail -ne 0 ] || [ $smoke_fail -ne 0 ]; then
+# ── array-guard lint (ARRAY_CONTAINER_AUDIT P-E) ──────────────────────────────
+# Fail the battery on any NEW bare C-array declaration in src/dsp/** and src/ui/**
+# outside test/lint_array_guard_allowlist.txt (char string buffers + label tables are
+# exempt classes; the 137-entry baseline is the pre-gate residue outside the audit's
+# named P-A/P-B/P-C scope). ARRAY_GUARD_STRICT=0 = local debug hatch (repo precedent).
+# Skipped by the name filter unless it matches "array".
+guard_fail=0
+if [ -z "$filter" ] || [[ "array" == *"$filter"* ]]; then
+  echo "array-guard (P-E):"
+  if [ -z "$PYBIN" ]; then
+    printf "  \033[33m?\033[0m  array-guard SKIPPED (no python found)\n"
+  elif ! "$PYBIN" "$here/lint_array_guard.py"; then
+    guard_fail=1
+  fi
+  echo "-----"
+fi
+
+if [ $fail -gt 0 ] || [ $audit_fail -ne 0 ] || [ $guard_fail -ne 0 ] || [ $smoke_fail -ne 0 ]; then
   [ $fail -gt 0 ] && echo "FAILED: ${failed_names[*]}"
   [ $audit_fail -ne 0 ] && echo "FAILED: anchor/bind audit"
+  [ $guard_fail -ne 0 ] && echo "FAILED: array-guard (P-E)"
   [ $smoke_fail -ne 0 ] && echo "FAILED: plugin-TU syntax smoke"
   exit 1
 fi

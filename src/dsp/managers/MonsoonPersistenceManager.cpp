@@ -164,14 +164,13 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
         json_object_set_new(root, "mixLatchedQ", json_real(m->engine.pe.qmixMixLatched));   // Task 4d
     }
 
-    // ── Rhythm and Pitch Arrays ──
-    json_t* rarr = json_array();
+    // ── Pitch Array ── (the rhythmPattern LED-cache save RETIRED —
+    // CC_PROMPT_RHYTHMPATTERN_DELETE_AND_POLARITY ITEM 1; old patches' key is simply
+    // absent going forward, and a stale key in an old patch is ignored on load)
     json_t* marr = json_array();
     for (int i = 0; i < 16; ++i) {
-        json_array_append_new(rarr, json_integer(m->rhythmPattern[i] ? 1 : 0));
         json_array_append_new(marr, json_real(m->melodyPitchV[i]));
     }
-    json_object_set_new(root, "rhythmPattern", rarr);
     json_object_set_new(root, "melodyPitchV", marr);
 
     // EditorState.laneDir (migrated out of params[]; params were auto-saved, fields are not).
@@ -401,7 +400,7 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "qmixSeedPendingFloat")) m->engine.pe.qmixSeedPendingFloat = (float)json_real_value(j);
 
     // ── DNA Random Buffers ──
-    auto loadArr = [&](const char* name, float* target) {
+    auto loadArr = [&](const char* name, std::array<float, 16>& target) {
         if (auto j = json_object_get(root, name)) {
             if (json_is_array(j)) {
                 for (size_t i = 0; i < 16 && i < json_array_size(j); ++i)
@@ -419,7 +418,7 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
 
     // ── Poly DNA Random Buffers ──
     // COLLAPSE: source arrays are now [16][16] — V2..V16 at [1..15]. v=0 → [v+1]=V2.
-    auto loadPolyArr = [&](const char* name, int engLane, float source[16][16]) {
+    auto loadPolyArr = [&](const char* name, int engLane, std::array<std::array<float, 16>, 16>& source) {
         if (auto j = json_object_get(root, name)) {
             if (json_is_array(j)) {
                 for (int v = 1; v < 16; v++) {
@@ -475,13 +474,8 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
         m->pendingRegenB = true;   // finalize: re-apply counter post-seed, then recomputeEffective*
     }
 
-    // ── Rhythm and Pitch Arrays ──
-    if (auto j = json_object_get(root, "rhythmPattern")) {
-        if (json_is_array(j)) {
-            for (size_t i = 0; i < 16 && i < json_array_size(j); ++i)
-                m->rhythmPattern[i] = (json_integer_value(json_array_get(j, i)) != 0);
-        }
-    }
+    // ── Pitch Array ── (the rhythmPattern read RETIRED — ITEM 1; an old patch's
+    // "rhythmPattern" key is simply never read — json ignores unknown keys, no error)
     if (auto j = json_object_get(root, "melodyPitchV")) {
         if (json_is_array(j)) {
             for (size_t i = 0; i < 16 && i < json_array_size(j); ++i)

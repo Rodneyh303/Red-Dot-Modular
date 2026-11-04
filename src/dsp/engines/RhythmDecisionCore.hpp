@@ -27,6 +27,7 @@
 // the free-voice and poly-container semantics are spec'd in test_forest_rhythm.
 
 #include <cstdint>
+#include <array>   // P-B: std::array member state (ARRAY_CONTAINER_AUDIT)
 #include <algorithm>
 #include "../NoteValues.hpp"   // noteShorterOf — the "shorter note" authority (DOTTED BUILD)
 
@@ -151,6 +152,12 @@ struct RhythmDecisionCore {
     // sole container is V1 (the D2 legacy graph, declared as DATA below). Stage F re-points
     // at ParentSource::GRAPH — the staged containmentParents, topologically ordered — and
     // D2's legacy mapping becomes a TOGGLE, not a rewrite.
+    // P-A (ARRAY_CONTAINER_AUDIT Finding A): the ONE spelling of the voice capacity (mono + 15
+    // poly) for the containment-graph plane. Class-local (VoiceResolver.hpp cannot be reached
+    // from this rack-free header — it includes SequencerEngine.hpp, which includes this file);
+    // VoiceResolver's static_assert holds the equality.
+    static constexpr int kVoiceSlots = 16;
+
     enum class ParentSource {
         LEGACY_STAR,   // word[v] = bit 0 (V1) for v >= 1, 0 for v = 0 — today's graph, as data
         GRAPH          // Stage F: the staged containment graph (containmentParents[16])
@@ -162,7 +169,7 @@ struct RhythmDecisionCore {
     // through this same seam (the differential harness + the V1-semantics suites author the
     // star INTO pe.containmentParents — the preset path — so the battery pins the GRAPH read,
     // not a legacy code path).
-    static constexpr uint16_t LEGACY_STAR_PARENTS[16] = {
+    static constexpr std::array<uint16_t, kVoiceSlots> LEGACY_STAR_PARENTS = {
         0x0000,                                   // v0 = V1: the root
         0x0001, 0x0001, 0x0001, 0x0001, 0x0001,   // v1..v5  (V2..V6)   -> bit 0 = V1
         0x0001, 0x0001, 0x0001, 0x0001, 0x0001,   // v6..v10 (V7..V11)  -> bit 0 = V1
@@ -196,8 +203,8 @@ struct RhythmDecisionCore {
     // remains as core-level test data + the preset's word definition.
     uint16_t parentsOf(int v) const {
         if (source == ParentSource::LEGACY_STAR)
-            return (v >= 0 && v < 16) ? LEGACY_STAR_PARENTS[v] : 0x0000;
-        return (graphWords && v >= 0 && v < 16) ? graphWords[v] : 0x0000;
+            return (v >= 0 && v < kVoiceSlots) ? LEGACY_STAR_PARENTS[v] : 0x0000;
+        return (graphWords && v >= 0 && v < kVoiceSlots) ? graphWords[v] : 0x0000;
     }
 
     // ── F-2: the MATERIALIZED forest (D8 RULED: "forest mod on phrase boundary, no per-sample
@@ -230,12 +237,12 @@ struct RhythmDecisionCore {
     // A cycle cannot occur (the pin plane rejects cycles; invariants CI-marched on 600+ seeds)
     // — but defensively, any unplaceable voice is appended in slot order so the visit is TOTAL
     // and the engine can never silently skip a voice.
-    int      topoOrder[16] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
-    int      topoCount     = 16;
-    int      parentCount[16] = {};
-    uint8_t  parentSlot[16][16] = {};
+    std::array<int, kVoiceSlots> topoOrder = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+    int      topoCount     = kVoiceSlots;
+    std::array<int, kVoiceSlots> parentCount = {};
+    std::array<std::array<uint8_t, kVoiceSlots>, kVoiceSlots> parentSlot = {};
     uint32_t materializeGeneration = 0;
-    uint16_t materializedWords_[16] = {};
+    std::array<uint16_t, kVoiceSlots> materializedWords_ = {};
     bool     materializedValid_ = false;
 
     void materializeForest() {
@@ -249,34 +256,34 @@ struct RhythmDecisionCore {
         // always picked FIRST (index 0, indeg 0) and the poly voices' relative order is
         // untouched — the star's order is 0,1,…,15 and the poly visit (skipping 0) is exactly
         // the pre-F-3 slot order.
-        int indeg[16] = {};
-        for (int v = 0; v < 16; ++v) {
+        int indeg[kVoiceSlots] = {};
+        for (int v = 0; v < kVoiceSlots; ++v) {
             const uint16_t pars = parentsOf(v) & uint16_t(~(1u << v));   // drop self defensively
             int n = 0;
-            for (int u = 0; u < 16; ++u) if (pars & (1u << u)) ++n;
+            for (int u = 0; u < kVoiceSlots; ++u) if (pars & (1u << u)) ++n;
             indeg[v] = n;
         }
-        bool placed[16] = {};
+        bool placed[kVoiceSlots] = {};
         topoCount = 0;
         for (;;) {
             int pick = -1;
-            for (int v = 0; v < 16; ++v)
+            for (int v = 0; v < kVoiceSlots; ++v)
                 if (!placed[v] && indeg[v] == 0) { pick = v; break; }   // smallest index first
             if (pick < 0) break;
             placed[pick] = true;
             topoOrder[topoCount++] = pick;
-            for (int c = 0; c < 16; ++c)
+            for (int c = 0; c < kVoiceSlots; ++c)
                 if (!placed[c] && (parentsOf(c) & (1u << pick))) --indeg[c];
         }
-        for (int v = 0; v < 16; ++v)                 // defensive cycle fallback: total order
+        for (int v = 0; v < kVoiceSlots; ++v)                 // defensive cycle fallback: total order
             if (!placed[v]) topoOrder[topoCount++] = v;
-        for (int v = 0; v < 16; ++v) {               // the materialized container lists
+        for (int v = 0; v < kVoiceSlots; ++v) {               // the materialized container lists
             int n = 0;
-            for (int u = 0; u < 16; ++u)
+            for (int u = 0; u < kVoiceSlots; ++u)
                 if (parentsOf(v) & (1u << u)) parentSlot[v][n++] = (uint8_t)u;
             parentCount[v] = n;
         }
-        for (int v = 0; v < 16; ++v) materializedWords_[v] = parentsOf(v);
+        for (int v = 0; v < kVoiceSlots; ++v) materializedWords_[v] = parentsOf(v);
         materializedValid_ = true;
         ++materializeGeneration;
     }
@@ -286,7 +293,7 @@ struct RhythmDecisionCore {
     void materializeIfStale() {
         if (materializedValid_) {
             bool same = true;
-            for (int v = 0; v < 16; ++v)
+            for (int v = 0; v < kVoiceSlots; ++v)
                 if (materializedWords_[v] != parentsOf(v)) { same = false; break; }
             if (same) return;
         }
@@ -376,7 +383,7 @@ struct RhythmDecisionCore {
         RhythmDecision d{};                     // no containers -> uncontained (all neutral)
         bool first = true, gateTypeNamed = false, unionMayOnset = false, offerGapHosted = false;
         bool allOnsettingGhost = true;          // F-4 (D5): every ONSETTING container is ghosting
-        for (int u = 0; u < 16; ++u) {
+        for (int u = 0; u < kVoiceSlots; ++u) {
             if (!(parents & (1u << u))) continue;
             const RhythmDecision c = decide(viewOf(u));
             unionMayOnset   = unionMayOnset || c.mayOnset;                        // D3 union (the OFFERS)
