@@ -1215,3 +1215,17 @@ Reason: legibility, and usefulness for debugging as well as for the end user und
 - Either option needs Lantern to keep both bars recorded (two 16-column buffers, or one 32-cell ring read as two bars).
   Otherwise switching to bar 1 after playing bar 2 loses bar 1's history.
 - The bar-aware write path from the previous entry still applies: steps 16–31 must be recorded, not dropped.
+
+════════════════════════════════════════════════════════════════════════════════
+## LANTERN — DECIDED (Rodney)
+- 16 columns at every pattern length.
+- FOLLOWS THE DISC automatically: the displayed bar is the engine's active bar, the same index the disc shows.
+- BOTH BARS RECORDED: steps 1–16 and 17–32 each keep their own 16-column history, so switching the view never loses
+  the other bar's data.
+- LATER (not now): a manual bar switch and/or a freeze-display option. Both are view-only and can be added without
+  touching the recording path.
+
+GATE (Stage 2b)
+- Pin: a 32-step run records steps 16–31 into the bar-2 buffer and steps 0–15 into bar-1; the displayed bar equals the
+  engine bar index on every step, including across the bar boundary.
+- ≤16: Lantern output unchanged; the bar-1 buffer is the full history at 16.
