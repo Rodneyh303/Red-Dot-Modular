@@ -1046,3 +1046,48 @@ per the earlier lesson that clean merges can still have interaction bugs).
 
 ### Not part of 32 (deferred, sequenced after)
 64 steps; transport phase 192; subphase; phase distortion; distribution-primitive extraction.
+
+════════════════════════════════════════════════════════════════════════════════
+## STAGE 1 REVIEW (PR #310) AND REVISED STAGES 2–5
+### Stage 1 as delivered (feat/steps-32-stage1)
+Delivered: kMaxPatternSteps=32 (ceiling), kPatternLengthCap=16 (usable bound, the one switch), the length CV
+mapping derived from the cap, the lane-length clamp derived from the cap, the 113-check pins test.
+Open items to close before merge:
+1. The length param range derives from kMaxPatternSteps, so the knob offers 32 and silently clamps to 16.
+   FIX: derive the param range from kPatternLengthCap. The knob then never offers an undeliverable length, and
+   Stage 2 changes one constant that moves the range with it.
+2. The ≤16 golden gate has not run. The commit claims bit-identical "by construction" and defers the goldens to
+   a follow-up battery. The full battery must pass on the PR before merge, not after.
+3. The ~381-site classification table lives only in the PR description. Commit it to docs/design (e.g.
+   STEPS_32_CLASSIFICATION.md) so the audit record survives the PR.
+
+### Stage 2 — storage (REVISED: mostly constant changes, because the array refactor is on trunk)
+Trunk now has std::array member state (PR 305). The 16-wide row dimension was deliberately left literal for
+STEPS_32 to name, so Stage 2 names it once and widens it.
+- Introduce kStepStorage (= 32 at Stage 2; the storage bound), separate from kPatternLengthCap (the usable cap).
+  Stage 2 flips the cap to 32; storage is already 32 wide, so no per-site widening.
+- Replace the 16-literal row dimension (54 sites in PatternEngine.hpp alone) with kStepStorage. Mechanical,
+  but the per-site classification still applies: row-length uses change, unrelated 16s don't.
+- Masks: uint64_t, length-masked, DECIDED (see DECIDED block). Covers 64 later with no re-widening.
+- The offset param: 0..15 becomes 0..(cap-1), derived not literal. Class B today, resolved here.
+- The CV rescale *(cap-1) lands automatically (the D1 *31), because it is already cap-derived.
+- Gate: ≤16 goldens bit-identical with cap still 16 (pre-flip), then the flip is a separate commit with its own
+  gate: the 32-entry arrays zero-filled beyond length, and persistence round-trips at 16 exactly.
+- Stage 2 is split into two commits: (2a) name kStepStorage and widen storage with cap still 16 (pure refactor,
+  goldens bit-identical); (2b) flip the cap to 32 (behaviour change, its own pins).
+
+### Stage 3 — display (unchanged in substance)
+Sands 32-column grid parameterised by column count. Ring: 16 lamps + bar indicator (settled). Length control
+follows the cap. Gate: ≤16 pixel-identical where testable; 32 layout reviewed in Rack.
+
+### Stage 4 — control and persistence (unchanged)
+Pattern-length param persisted; absent key → 16. Old patches load unchanged. Patch compatibility is not a
+concern for this unreleased code (decided); the gate is behaviour at ≤16, not file compatibility.
+
+### Stage 5 — verify (unchanged)
+≤16 goldens bit-identical; new 32-step pins: wrap at 32, both bars reachable, bar indicator tracks bar, mask
+bits address all 32 steps; combined subgate/advance/per-voice interaction at length 32.
+
+### Not part of 32 (sequenced after)
+64 steps (ceiling change + display; masks already uint64), transport phase 192, subphase, phase distortion,
+distribution-primitive extraction.
