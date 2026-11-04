@@ -1091,3 +1091,39 @@ bits address all 32 steps; combined subgate/advance/per-voice interaction at len
 ### Not part of 32 (sequenced after)
 64 steps (ceiling change + display; masks already uint64), transport phase 192, subphase, phase distortion,
 distribution-primitive extraction.
+
+════════════════════════════════════════════════════════════════════════════════
+## BAR INDICATOR — inner disc (Rodney's clock analogy) — DISPLAY SPEC
+Analogy: the light ring is the second hand (step within a bar); the inner disc is the minute hand (which bar).
+
+GEOMETRY
+- The disc sits inside the 16-lamp ring, in the currently unused centre.
+- 16-step pattern: one disc (no division). Either hidden or lit uniformly; never show a half-lit disc, since that
+  implies a second bar that does not exist.
+- 32-step pattern: cut along the horizontal centre into two hemispheres. Upper = bar 1, lower = bar 2.
+- 64-step pattern (future): quarters, one per bar.
+
+STATE
+- The active bar's segment is lit. Every other segment dims.
+- Dim level must be clearly distinct from both the lit state and the unlit ring lamps. Verify at real panel
+  brightness in Rack, not on a screenshot.
+
+INVARIANTS
+1. The disc reports the ABSOLUTE pattern bar (engine position), not the voice LOR window. Display reads engine
+   position, never recomputes it. Stating this here so the disc is never wired to the LOR later.
+2. Flip timing: the active segment changes on the same tick as lamp 0 of the new bar. A lag of even one step
+   breaks the clock reading and makes the bar boundary ambiguous.
+3. The bar is always 16 steps. Pattern length changes only how many divisions the disc has, never what a bar means.
+
+GATE (Stage 3)
+- ≤16: visual output unchanged apart from the disc, which is hidden or uniform.
+- 32: flip occurs on the lamp-0 tick, checked by a pin that samples the engine bar index against the lit segment on
+  every step across at least two full passes.
+- Rack review: dim contrast and placement at real brightness (human review, no automated gate).
+
+OPEN
+- Whether the 16-step disc is hidden or uniformly lit. Lean: hidden, to keep the 16-step panel identical to today.
+
+CPU COMPARISON (before 64 is considered)
+- Compare 16 vs 32 with everything else fixed: same patch, 16 active voices, per-voice advance on, same sample
+  rate and buffer size. Record the optimisation branches included so each saving is visible.
