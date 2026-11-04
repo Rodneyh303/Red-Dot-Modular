@@ -1188,3 +1188,18 @@ since a leak can be transient.
 1. Land GATE 1 and GATE 2 on the 2a tip, green at cap 16. Reference oracle committed.
 2. Flip the cap (2b) as its own commit. GATE 1 must show zero differences at ≤16.
 3. Add the 32-step pins.
+
+════════════════════════════════════════════════════════════════════════════════
+## LANTERN VIEW — DECIDED: one bar, follows the disc (Rodney)
+- Lantern keeps its one-bar, 16-column view. It is observability only and writes no engine state.
+- The view follows the bar indicator (the same engine bar index as the disc), with a manual cycle for inspection.
+- Phrase-crossing notes are still visible: Lantern's existing held-over carets mark notes that continue across the bar
+  boundary, so no 32-column view is needed for that.
+- 32-column Lantern is deferred. Revisit it when the 64-step display is decided, since it has the same density cost.
+
+REQUIRED BEFORE STAGE 2b (added to its gate list)
+- Lantern's write path is currently bar-blind: `if (step < 0 || step >= 16) return` (and the matching row/step guards).
+  With the cap at 32, steps 16–31 would be dropped silently. The write path must route each step to its bar slot
+  (bar = step / 16, column = step % 16) so bar 2 is recorded while bar 1 is visible, and the cycle shows the chosen bar.
+- Gate: a pin that drives a 32-step run and checks that Lantern records steps 16–31 in the bar-2 slot, and that the
+  bar-1 view is unchanged at ≤16.
