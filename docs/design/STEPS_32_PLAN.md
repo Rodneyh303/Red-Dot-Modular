@@ -1148,3 +1148,43 @@ Gate (Stage 3)
 - Pin: for a set of offset/length windows over 32 steps, the displayed in-window cell set equals the engine window
   set, per bar, including a window that crosses the bar boundary and one that wraps past 32.
 - ≤16: grid dimming pixel-identical to today.
+
+════════════════════════════════════════════════════════════════════════════════
+## STAGE 2b — cap flip (kPatternLengthCap 16 → 32): REQUIRED PRE-GATES (from the 2a review)
+Stage 2b is where 32-step behaviour turns on. It must not start until both gates below are in place and green
+on the 2a tip. Both are added to Stage 2b's gate list.
+
+### GATE 1 — non-default ≤16 equivalence pin (the mis-read detector)
+Why: 2a's flat-stride bug was caught only because a mis-read happened to hit a cell, and the ≤16 goldens still
+passed because default patterns compare equal across the mis-read. Default-valued patterns cannot detect index
+errors, so the ≤16 gate is not yet a real guarantee.
+What: a pin that runs the cap-16 build on patterns with VARIED probabilities and mask bits, and compares every
+observable output against a recorded reference. Minimum coverage:
+- per-step probability values varied across all 16 steps on every lane (rest, legato, accent, variation, qmix,
+  melody, octave), not only the defaults;
+- mask bits varied: a painted pattern with mixed on/off cells, plus an offset/length window;
+- a voice-LOR window that crosses the 16-step boundary and wraps;
+- at least one non-default subgate setting (ratchet/ghost REST, LEG, ADV, ACC).
+Compare: note, gate, CV and display-state outputs step by step, against the reference recorded from the 2a tip
+(cap 16, pre-flip). The reference is generated once, committed, and is the oracle for 2b.
+Gate: zero differences at cap 16 after the flip. If the flip changes any output at ≤16, Stage 2b is wrong.
+Note on the sweep: the flat-stride class is most likely to recur in cross-row reads, so include a case that reads
+a neighbouring voice row and check it for the wrong value, not just the right one.
+
+### GATE 2 — beyond-ring zero-fill pin
+Why: the design depends on cells 16–31 of every per-step row staying zero while the cap is 16. Nothing currently
+checks it, and a write leaking past the ring would corrupt the ≤16 output silently.
+What: after a full run at cap 16 across varied patterns, assert every per-step row's cells at index ≥ kPatternLengthCap
+are exactly zero, for every lane and every voice row, including the widened mask planes and the melody mirrors.
+Gate: all beyond-ring cells zero at every sampled step. Run it at the end of the run and at intermediate steps,
+since a leak can be transient.
+
+### Stage 2b's own pins (unchanged, now run after the two gates above)
+- wrap at 32; both bars reachable; bar indicator tracks the bar (see BAR INDICATOR);
+- mask bits address all 32 steps;
+- the draw-window cap flip widens DRAW_CHUNK and the Philox fill together, with its headroom math pinned.
+
+### Order
+1. Land GATE 1 and GATE 2 on the 2a tip, green at cap 16. Reference oracle committed.
+2. Flip the cap (2b) as its own commit. GATE 1 must show zero differences at ≤16.
+3. Add the 32-step pins.
