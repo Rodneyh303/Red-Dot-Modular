@@ -1,0 +1,93 @@
+# PHASE DISTRIBUTION SPEC — Kumaraswamy and Dual Kumaraswamy with tilt, gap and atom (Rodney-decided)
+
+Status: spec for review. Stage semantics, formulas and tests. No code yet.
+
+## 1. Scope
+Two distributions on [0,1], shown as two menu entries:
+- **Kumaraswamy (K)**, member K(α, β).
+- **Dual Kumaraswamy (DK)**, the same object read with CDF and quantile swapped.
+
+One implementation: a single class with a reading parameter fixed by the menu entry. The stage chain is shared,
+so the two entries cannot drift apart.
+
+## 2. Base functions (closed form)
+- F(x) = 1 − (1 − x^α)^β
+- F⁻¹(v) = (1 − (1 − v)^(1/β))^(1/α)
+
+## 3. Chain (stage order, fixed)
+member → tilt → gap → atom
+
+- **Tilt** (existing, WarpStages): R_p(t) = (1 − p)t / (1 − p·t), inverse R_p⁻¹(y) = y / (1 − p + p·y).
+  Tilted CDF F_t(x) = F(R_p⁻¹(x)); tilted quantile Q_t(v) = R_p(F⁻¹(v)).
+- **Gap** (new): zero-density interval (a, b) in tilted output coordinates, 0 ≤ a ≤ b ≤ 1. Defined below.
+- **Atom** (existing, WarpStages, member argument changed): mass m at level ℓ. Applied to the gapped member.
+
+Stage order is fixed: the atom is applied after the gap, so an atom inside a gap survives and is not swept to an edge.
+
+## 4. Gap (new stage)
+Let F_a = F_t(a), F_b = F_t(b), p = F_b − F_a (the gap's probability mass).
+
+**Convention: uniform rescale by 1/(1 − p).** Mass is scaled uniformly, so neither side is favoured, and the
+normalised density outside the gap is unchanged. The density is multiplied by 1/(1 − p) everywhere outside the gap.
+
+CDF G:
+- G(x) = F_t(x) / (1 − p)              for x < a
+- G(x) = F_a / (1 − p)                  for a ≤ x < b (flat: zero density)
+- G(x) = (F_t(x) − p) / (1 − p)         for x ≥ b
+
+Checks: G is continuous at a and at b, G(1) = 1, and F_a/(1 − p) ≤ 1 because F_b ≤ 1.
+
+Quantile Q_G:
+- Q_G(v) = Q_t((1 − p)·v)                 for v ≤ F_a / (1 − p)
+- Q_G(v) = Q_t((1 − p)·v + p)             for v > F_a / (1 − p)
+
+Q_G jumps from a to b at v = F_a / (1 − p). That jump is the gap.
+
+**Clamp:** p ≤ 1 − ε, with ε a spec parameter (start at 1e-6, set by test). p = 1 removes all mass and is invalid.
+The clamp is on the mass p, not on the output width b − a. The b = 1 case is therefore valid whenever F_a > 0.
+
+**Width zero is neutral:** a = b gives p = 0, G = F_t, Q_G = Q_t.
+
+## 5. Atom (existing, applied to the gapped member)
+Let G(ℓ) be the gapped CDF at the atom level:
+- G(ℓ) = F_t(ℓ) / (1 − p)              for ℓ < a
+- G(ℓ) = F_a / (1 − p)                  for a ≤ ℓ < b
+- G(ℓ) = (F_t(ℓ) − p) / (1 − p)         for ℓ ≥ b
+
+Placement quantile q0 = G(ℓ)·(1 − m). Composed quantile:
+- Q(u) = Q_G(u / (1 − m))               for u < q0
+- Q(u) = ℓ                              for q0 ≤ u ≤ q0 + m
+- Q(u) = Q_G((u − m) / (1 − m))         for u > q0 + m
+
+Atom inside a gap is allowed; the spike sits at ℓ in the zero-density interval.
+
+**Overlap rule (accepted):** if the atom plateau covers the gap's jump point, the plateau wins and the jump lands at
+the plateau edge. This is accepted as the consequence of the user using both features.
+
+## 6. Readings
+- **K reading:** CDF = G (gapped, tilted member); quantile = Q(u) as above.
+- **DK reading:** the same chain with CDF and quantile exchanged. Its CDF is the composed quantile and its quantile is
+  the composed CDF. An atom on K appears as a gap on DK, and a gap on K as an atom on DK.
+
+The DK reading uses the same stage formulas with the roles swapped, so it is not a separate implementation.
+
+## 7. Cost
+Per draw: one F or F⁻¹ evaluation, plus one R_p or R_p⁻¹ evaluation. Per parameter change: F_t(a), F_t(b), p, and G(ℓ).
+All closed form.
+
+## 8. Tests (must pass before the implementation is accepted)
+1. G is continuous, non-decreasing and G(1) = 1 across a grid of (α, β, p, a, b).
+2. Width zero reproduces the untouched distribution exactly (bit-identical).
+3. a = 0 and b = 1 give valid quantiles, with the clamp engaging only when p ≈ 1.
+4. Round trip: Q(G(x)) = x for x outside the gap, to float tolerance.
+5. The jump in Q_G is at v = F_a/(1 − p), landing at a then b.
+6. Normalised density outside the gap is unchanged by the gap (the rescale is uniform).
+7. An atom inside a gap sits at ℓ; an atom whose plateau covers the jump point wins.
+8. DK reading: an atom on K becomes a gap on DK, verified numerically at several parameter sets.
+
+## 9. Open items
+- **Flat-direction rule** (phase input that holds still): not decided. Needed before the phase input spec.
+- **Gap and atom parameters per lane:** location and width (and mass, level) need panel controls and a modulation story,
+  subject to the modulation-subpanel decision.
+- **ε for the p clamp:** set by test 3.
+- **Naming:** "Dual Kumaraswamy" as the menu label, unless a different name is preferred.
