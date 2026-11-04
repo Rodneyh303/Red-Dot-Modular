@@ -500,7 +500,16 @@ namespace MonsoonIds {
         STEP_LIGHTS_START = 0,
         STEP_LIGHTS_END   = STEP_LIGHTS_START + 16,
 
-        // STEP_LIGHTS_END consumes slot 16; RHYTHM_DICE_LIGHT auto-follows at 17
+        // BAR 1/BAR 2 — the inner-disc bar indicator (D10 (2) as amended by D15): two
+        // LEDs INSIDE the ring's unused center (upper = bar 1, lower = bar 2 — the
+        // disc's hemisphere cut). Ride P5's offset-enum re-seat (append right after
+        // STEP_LIGHTS_END; downstream ids shift automatically — every consumer uses the
+        // symbolic ids and nothing persists a light index: brightnesses are recomputed
+        // every UI frame).
+        BAR1_LIGHT,
+        BAR2_LIGHT,
+
+        // STEP_LIGHTS_END consumes slots 16..18; RHYTHM_DICE_LIGHT auto-follows at 19
         RHYTHM_DICE_LIGHT,
         MELODY_DICE_LIGHT,
         LOCK_LIGHT,

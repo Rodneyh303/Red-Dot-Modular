@@ -1252,6 +1252,14 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // custom tuning → nearest table degree. See the .cpp.
     int degreeOf(float pitchV) const;
     float getStepLightBrightness(int lightIdx) const;
+    float getBarLightBrightness(int bar) const;
+    // ── STEPS_32 Stage 3 display levels (D10 as amended by D15) ────────────────
+    // The ring's standing hierarchy: playhead 1.0 > comet trail 0.5 > in-window note
+    // 0.35 > in-window rest 0.07 (values VERBATIM, the D10 law), and the ghost arc pins
+    // STRICTLY BELOW the in-window rest so a ghost can never read as a rest. The exact
+    // ghost/dim values are P5 panel-calibration levers; the HIERARCHY is the law.
+    static constexpr float kStepGhostBrightness       = 0.04f;  // < the 0.07 rest level
+    static constexpr float kBarIndicatorDimBrightness = 0.15f;  // the inactive bar's LED (the disc's "every other segment dims")
     int getOffsetStep() const;
     int getStrandIdx(int tickCount, int len, int off, int mutation) const;
     float lastNoteVal_ = 4.f;   // mono NOTE_VALUE param of the current step (poly reads it)

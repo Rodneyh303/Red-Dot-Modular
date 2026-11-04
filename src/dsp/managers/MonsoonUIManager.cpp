@@ -102,6 +102,21 @@ void UIManager::updateStepLights(const float* stepBrightness, int count) {
     }
 }
 
+// ──── BAR 1/BAR 2 — the inner-disc bar indicator ────────────────────────────
+// D10 (2) as amended by D15: two LEDs INSIDE the ring's unused center, lit
+// exclusively from the playhead's own gate (the caller reads them from
+// SequencerEngine::getBarLightBrightness in the same block that feeds the ring —
+// the sync must never fork). Both silent wherever the discrete playhead is absent
+// (mode D / pre-start) — the engine returns 0 for both.
+
+void UIManager::updateBarLights(float bar1, float bar2) {
+    if (!mainModule) return;
+    auto& lights = mainModule->lights;
+    using namespace MonsoonIds;
+    lights[BAR1_LIGHT].setBrightness(bar1);
+    lights[BAR2_LIGHT].setBrightness(bar2);
+}
+
 // ──── Semitone LED Brightness ───────────────────────────────────────────────
 
 void UIManager::updateSemitoneFlashLights(const float* seqBrightness, const float* quantBrightness, int count) {

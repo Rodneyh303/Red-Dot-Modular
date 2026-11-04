@@ -382,6 +382,14 @@ def layout():
     for i in range(STEP_LEDS):
         a = i / STEP_LEDS * 2 * math.pi - math.pi / 2
         A.append((f"light_STEP{i}_LIGHT", fx + STEP_LED_R * math.cos(a), fy + STEP_LED_R * math.sin(a)))
+    # BAR 1/BAR 2 — the inner-disc bar indicator (STEPS_32 Stage 3, D10 (2) as amended
+    # by D15): two LEDs INSIDE the ring's unused center (the Flyer's hub is free — the
+    # spokes start at r=18.5, the lamps sit on r=14). Upper = bar 1, lower = bar 2 — the
+    # disc's hemisphere cut ("cut along the horizontal centre into two hemispheres,
+    # upper = bar 1, lower = bar 2"). Position is the P5 calibration lever (±4mm keeps
+    # both inside the lamp circle with a clear gap between them).
+    A.append(("light_BAR1_LIGHT", fx, fy - 4.0))
+    A.append(("light_BAR2_LIGHT", fx, fy + 4.0))
     A.append(("param_PHASE_PARAM", *PHASE_PARAM_XY))
     return A
 

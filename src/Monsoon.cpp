@@ -1491,6 +1491,11 @@ void Monsoon::process(const ProcessArgs& args) {
             // Update both via UIManager
             if (uiManager) {
                 uiManager->updateStepLights(stepBrightness, 16);
+                // BAR 1/BAR 2 (the inner-disc bar indicator, D10 (2) as amended by D15):
+                // read in the SAME block that feeds the ring, from the playhead's own
+                // gate and variable inside the engine — one gate, two surfaces.
+                uiManager->updateBarLights(engine.getBarLightBrightness(0),
+                                           engine.getBarLightBrightness(1));
                 uiManager->updateSemitoneFlashLights(semiLedBrightness, semiQuantLedBrightness, 12);
             }
         }

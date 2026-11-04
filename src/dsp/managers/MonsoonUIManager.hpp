@@ -61,6 +61,11 @@ public:
     
     /// Update 16-step ring indicator lights based on step brightness values
     void updateStepLights(const float* stepBrightness, int count);
+
+    /// BAR 1/BAR 2 — the inner-disc bar indicator (D10 (2) as amended by D15): the two
+    /// LEDs inside the ring center. Brightness comes from SequencerEngine::
+    /// getBarLightBrightness (the playhead's own gate — one gate, two surfaces).
+    void updateBarLights(float bar1, float bar2);
     
     // ──── Semitone LED Brightness ───────────────────────────────────────────
     

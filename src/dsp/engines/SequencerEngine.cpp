@@ -1001,13 +1001,25 @@ void SequencerEngine::rebuildScaleCache(const float weights[], int n) {
 }
 
 float SequencerEngine::getStepLightBrightness(int lightIdx) const {
-    bool inWindow = isStepInWindow(lightIdx);
+    // ── STEPS_32 Stage 3 — the twice-around-16 display lap (D10 as amended by D15) ──
+    // lightIdx is the LAMP index (0..15 — the panel's 16 ring lamps STAY, the D15
+    // 16-stay form). Lamp k carries masters k and k+16, and the rendered master is the
+    // CURRENT LAP's: the lap is D10's split test on the playhead itself (stepIndex >= 16),
+    // the SAME variable the BAR LEDs consume — one gate, two surfaces, no second lap
+    // source exists. At a ≤16 pattern the playhead never leaves bar 1, so lapBase is 0
+    // and master == lightIdx — bit-identical to the pre-twice-around read (the GOLDEN
+    // LAW's display face).
+    const int lapBase = (stepIndex >= 16) ? 16 : 0;
+    const int master  = lapBase + lightIdx;
+    bool inWindow = isStepInWindow(master);
     float baseActive = 0.0f;
-    
+
     if (inWindow) {
         // Calculate distance from current playhead to map physical LED to drifting DNA content
         int relCurrent = (stepIndex - startStep + kMaskRing) % kMaskRing;
-        int relLight = (lightIdx - startStep + kMaskRing) % kMaskRing;
+        // relLight reads the CURRENT-LAP master (was lightIdx — the D15 re-scope: the
+        // lamp shows the content of the master it carries on the lap being rendered).
+        int relLight = (master - startStep + kMaskRing) % kMaskRing;
         // POSITION_HOLDER_MODEL: the light's DNA-content tick is the GLOBAL window
         // walk's t0 shifted by the phrase offsets — a congruence no mod-16 walk
         // carries (the RHYTHM lane's own length need not divide 16), so it has its
@@ -1034,6 +1046,16 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
         const VoiceSlot dispV = pe.displayedVoice();
         bool isNote = pe.warpRow(dispV, LaneId{PL_REST})[dnaIdx] >= voices[dispV].restProb;
         baseActive = isNote ? 0.35f : 0.07f;
+    } else {
+        // THE GHOST ARC (D10 (1)): an out-of-window lamp lights a dim ghost instead of
+        // the dead 0.0. The four standing levels keep their values VERBATIM — playhead
+        // 1.0 > comet trail 0.5 > in-window note 0.35 > in-window rest 0.07 — and the
+        // ghost pins STRICTLY BELOW the in-window rest, so a ghost can never read as a
+        // rest (the hierarchy is the law; the exact value is a P5 calibration lever).
+        // Live/post-CV for free: windowMask is rebuilt by setWindow from updateWindow's
+        // post-CV values, and the ring feed re-renders every UI frame — knob, CV and
+        // D3-wrap windows all render the same way.
+        baseActive = kStepGhostBrightness;
     }
 
     // The moving playhead should always follow the global timeline index. Shown for
@@ -1041,18 +1063,46 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
     // (no discrete playhead step). Mode F (5, Q3b) is a phase-1/16 stepped quantiser, so it
     // has a discrete playhead exactly like the phase origin.
     bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2);  // clock/gate/phase (collapse)
-    float current = (steppedMode && lightIdx == stepIndex) ? 1.0f : 0.0f;
+    // Playhead lamp: lightIdx == stepIndex % 16 — the ONE sanctioned display-path % 16
+    // (the D15 ring-feed law). The stepIndex >= 0 guard keeps the pre-start park (-1)
+    // dark: the old `lightIdx == stepIndex` comparison was accidentally -1-safe, the
+    // & 15 landing is not (-1 & 15 == 15 would light lamp 15 before the first tick).
+    float current = (steppedMode && stepIndex >= 0 && lightIdx == (stepIndex % 16)) ? 1.0f : 0.0f;
 
     // Direction cue (Mode E especially): a one-LED comet trail BEHIND the playhead in
     // the travel direction, so forward vs reverse is visibly distinct. The trailing
-    // LED is the step the playhead just left: stepIndex - lastPlayDir.
-    if (steppedMode && current < 1.0f) {
-        int trailIdx = ((stepIndex - lastPlayDir) % kMaskRing + kMaskRing) % kMaskRing;
-        if (lightIdx == trailIdx && isStepInWindow(lightIdx))
+    // LED is the step the playhead just left: master (stepIndex - lastPlayDir) on the
+    // ring; its LAMP is that master & 15 (twice-around), and its window test reads the
+    // TRAIL MASTER itself — crossing the bar line backwards, the step just left belongs
+    // to the other lap, whose master is not the lamp's current-lap one. (The 2b flip
+    // widened kMaskRing to 32 and silently killed the trail on the whole second bar —
+    // `lightIdx == trailIdx` could never match a 16..31 trailIdx; the lamp landing
+    // repairs it. The stepIndex >= 0 guard makes the pre-start park deterministic.)
+    if (steppedMode && stepIndex >= 0 && current < 1.0f) {
+        int trailMaster = ((stepIndex - lastPlayDir) % kMaskRing + kMaskRing) % kMaskRing;
+        if (lightIdx == (trailMaster % 16) && isStepInWindow(trailMaster))
             baseActive = std::max(baseActive, 0.5f);
     }
 
     return std::max(baseActive, current);
+}
+
+// ── STEPS_32 Stage 3 — the BAR 1/BAR 2 LEDs (D10 (2) as amended by D15) ──────────
+// The inner-disc bar indicator's two lamps INSIDE the ring's unused center (upper =
+// bar 1, lower = bar 2 — the disc's hemisphere cut; 16-step patterns keep the disc
+// dark-except-when-playing: the playhead never leaves bar 1, so BAR 2 stays dim and
+// BAR 1 carries the light — the "hidden disc" lean's two-LED form). Lit EXCLUSIVELY
+// from the playhead's own gate and variable — the same steppedMode expression and the
+// same stepIndex the ring's current-step lamp consumes (one gate, two surfaces — the
+// sync must never fork). Where no discrete playhead exists (mode D, 3) — and before
+// the first tick (stepIndex -1) — BOTH are silent. The inactive bar's LED DIMS, never
+// dark: the disc's "every other segment dims" law, clearly distinct from both the lit
+// state and the unlit ring lamps. The exact dim is a P5 calibration lever.
+float SequencerEngine::getBarLightBrightness(int bar) const {
+    bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2);
+    if (!steppedMode || stepIndex < 0) return 0.f;
+    const bool bar2 = stepIndex >= 16;   // D10's split test — reads the bar layer, wraps nothing
+    return ((bar == 1) == bar2) ? 1.f : kBarIndicatorDimBrightness;
 }
 
 int SequencerEngine::getOffsetStep() const {

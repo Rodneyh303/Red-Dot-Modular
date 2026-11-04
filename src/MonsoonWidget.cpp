@@ -468,12 +468,28 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // Was a C++ formula (RCX/RCY/RLED at 162,30,r14). Now each LED binds to its
         // light_STEPn_LIGHT anchor emitted by monsoon_art.py, so the ring geometry
         // lives in the generator table (single source of truth). Colour pattern is
-        // preserved: every 4th step (downbeat) is red, the rest green.
+        // preserved: every 4th step (downbeat) is red, the rest green. The ring STAYS
+        // 16 lamps (the D15 16-stay form): lamp k carries masters k and k+16, the
+        // current lap from the playhead's half — the twice-around feed lives in
+        // SequencerEngine::getStepLightBrightness. The `i % 4` red rule is MUSICAL
+        // (quarters at the clock's 16th resolution); 16 ≡ 0 (mod 4), so the two bars'
+        // quarters coincide on the same four lamps (the D15 accepted loss).
         for (int i = 0; i < 16; ++i) {
             const std::string id = "light_STEP" + std::to_string(i) + "_LIGHT";
             if (i % 4 == 0) bindLight<SmallLight<RedLight>>  (id, MonsoonIds::STEP_LIGHTS_START + i);
             else            bindLight<SmallLight<GreenLight>>(id, MonsoonIds::STEP_LIGHTS_START + i);
         }
+
+        // ── BAR 1 / BAR 2 — the inner-disc bar indicator (D10 (2) as amended by D15) ──
+        // Two LEDs INSIDE the ring's unused center: upper = bar 1, lower = bar 2 (the
+        // disc's hemisphere cut). Anchors emitted by monsoon_art.py next to the STEP
+        // family (the generator table stays the single source of truth). Amber — a
+        // third colour, distinct from the ring's red-quarter/green-rest content code.
+        // Brightness from SequencerEngine::getBarLightBrightness via the UIManager
+        // (lit exclusively; the inactive bar dims; both silent with no discrete
+        // playhead — mode D — and before the first tick).
+        bindLight<SmallLight<YellowLight>>("light_BAR1_LIGHT", MonsoonIds::BAR1_LIGHT);
+        bindLight<SmallLight<YellowLight>>("light_BAR2_LIGHT", MonsoonIds::BAR2_LIGHT);
 
         // ── Mode button + lights: right strip, bound by ANCHOR ────────────────
         // MODE_COLLAPSE_6_TO_3: THREE timing origins (clock/gate/phase = lights A/B/C). Pitch origin
