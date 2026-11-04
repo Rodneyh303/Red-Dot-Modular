@@ -563,8 +563,10 @@ struct MonsoonRightMessage {
 
     // Current pattern snapshot (useful for a pattern display expander)
     // (rhythmPattern[16] RETIRED — CC_PROMPT_RHYTHMPATTERN_DELETE_AND_POLARITY ITEM 1)
-    int   melodySemitone[16] = {};
-    float melodyPitchV[16]   = {};
+    // STEPS_32 Stage 2a: the mirrors ride the engine's STORAGE width (kStepStorage) —
+    // whole-row twins of PatternEngine's arrays; reads stay ring-bounded (≤16 today).
+    int   melodySemitone[dotModular::kStepStorage] = {};
+    float melodyPitchV[dotModular::kStepStorage]   = {};
 
     // Seed voltages
     float rhythmSeedV  = 0.f;  // 0..10V
@@ -951,11 +953,12 @@ struct Monsoon : Module {
         // (the range-as-mask, derived from the row's O/L = absolute-1), 2 = PAINTED
         // (the fixed-rotatable pattern; followR picks the rotation source: 0 = static
         // absolute steps = absolute-2, !=0 = follows the row's R = absolute-3).
-        // Patterns are 16-bit play masks stored as ONE float holding the exact integer
-        // (bit c = phrase step c+1 plays; 65535 = all-on) — persistence/push friendly
-        // and exactly representable. Defaults are RANGE-driven (CC_PROMPT_UAS_MASK_UI_
-        // INCOMPLETE decision 1: the voice range drives the mask by default — a full
-        // range is all-on, so the default is byte-neutral; a windowed range gates).
+        // Patterns are the DECIDED uint64 play masks, LENGTH-MASKED on the frame RING
+        // (dotModular::kMaskLenMask — the STEPS_32 Stage 2a integer representation; bit c
+        // = phrase step c+1 plays; the ring's all-on = the default). The old float
+        // storage (a 16-bit integer in a float) is GONE — a mask above 16 bits does not
+        // round-trip a float's 24-bit mantissa (the float-precision wall the DECIDED
+        // block names); persistence moved to fresh integer keys (MonsoonPersistenceManager).
         // CYCLE (0) is the base default (the corrected model: "Cycle (default = as if
         // no mask)" — the read cycles within the LOR, no output gate); ABS1 (1) is a
         // CHOICE (the read runs the full phrase; the output plays the LOR window
@@ -963,11 +966,13 @@ struct Monsoon : Module {
         // RANGE-driven default (decision 1) is superseded by the corrected model.
         // Saved patches load their own kinds verbatim. Kept at struct END (ABI hygiene).
         float maskMacroKind        = 0.f;     // CYCLE (the corrected model's default base)
-        float maskMacroPatternBits = 65535.f;
+        uint64_t maskMacroPatternBits = dotModular::kMaskLenMask;
         float maskMacroFollowR     = 0.f;     // the painted kind's rotation source
         float maskEastKind[16]         = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};   // per-voice kind (CYCLE default)
-        float maskEastPatternBits[16]  = {65535.f,65535.f,65535.f,65535.f, 65535.f,65535.f,65535.f,65535.f,
-                                          65535.f,65535.f,65535.f,65535.f, 65535.f,65535.f,65535.f,65535.f};
+        uint64_t maskEastPatternBits[16] = {dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,
+                                            dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,
+                                            dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,
+                                            dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask,dotModular::kMaskLenMask};
         float maskEastFollowR[16]      = {};
         float maskLocalEastMask[16]    = {};   // 0 = follow the MACRO mask (default)
     } editor;
@@ -1044,43 +1049,47 @@ struct Monsoon : Module {
         if (vLorOk(v) && c >= 0 && c < 3) editor.voiceLorAttenEast[v*3 + c] = x; }
 
     // ── UNIFIED ADDRESSING Stage 4: the output-mask row accessors (the vLorOk idiom:
-    // bounds-guarded, a bad index reads 0 / writes nothing — audio-path reads) ──
+    // bounds-guarded, a bad index reads 0 / writes nothing — audio-path reads).
+    // STEPS_32 Stage 2a: the patterns ARE the DECIDED uint64 integer representation —
+    // the setters clamp on the RING (the store boundary, same law the engine push
+    // applies); the cell guards ride kMaskRing. The float getters/setters are gone
+    // (the float wall they bridged no longer exists).
     float getMaskMacroKind() const        { return editor.maskMacroKind; }
     void  setMaskMacroKind(float x)       { editor.maskMacroKind = x; }
-    float getMaskMacroPatternBits() const { return editor.maskMacroPatternBits; }
-    void  setMaskMacroPatternBits(float x){ editor.maskMacroPatternBits = std::clamp(x, 0.f, 65535.f); }
+    uint64_t getMaskMacroPatternBits() const { return editor.maskMacroPatternBits; }
+    void  setMaskMacroPatternBits(uint64_t x){ editor.maskMacroPatternBits = x & dotModular::kMaskLenMask; }
     float getMaskMacroFollowR() const     { return editor.maskMacroFollowR; }
     void  setMaskMacroFollowR(float x)    { editor.maskMacroFollowR = x; }
     // per-cell view over the bit pattern (the paint surface reads/writes cells)
     bool  getMaskMacroCell(int c) const {
-        return (c >= 0 && c < 16) && ((((int)editor.maskMacroPatternBits) >> c) & 1) != 0; }
+        return (c >= 0 && c < dotModular::kMaskRing) && (((editor.maskMacroPatternBits >> c) & 1ULL) != 0); }
     void  setMaskMacroCell(int c, bool play) {
-        if (c < 0 || c >= 16) return;
-        const int b = (int)editor.maskMacroPatternBits;
-        editor.maskMacroPatternBits = (float)(play ? (b | (1 << c)) : (b & ~(1 << c))); }
+        if (c < 0 || c >= dotModular::kMaskRing) return;
+        if (play) editor.maskMacroPatternBits |= (uint64_t(1) << c);
+        else      editor.maskMacroPatternBits &= ~(uint64_t(1) << c); }
     float getMaskEastKind(int v) const        { return vLorOk(v) ? editor.maskEastKind[v] : 0.f; }
     void  setMaskEastKind(int v, float x)     { if (vLorOk(v)) editor.maskEastKind[v] = x; }
-    float getMaskEastPatternBits(int v) const { return vLorOk(v) ? editor.maskEastPatternBits[v] : 0.f; }
-    void  setMaskEastPatternBits(int v, float x) {
-        if (vLorOk(v)) editor.maskEastPatternBits[v] = std::clamp(x, 0.f, 65535.f); }
+    uint64_t getMaskEastPatternBits(int v) const { return vLorOk(v) ? editor.maskEastPatternBits[v] : 0ULL; }
+    void  setMaskEastPatternBits(int v, uint64_t x) {
+        if (vLorOk(v)) editor.maskEastPatternBits[v] = x & dotModular::kMaskLenMask; }
     float getMaskEastFollowR(int v) const     { return vLorOk(v) ? editor.maskEastFollowR[v] : 0.f; }
     void  setMaskEastFollowR(int v, float x)  { if (vLorOk(v)) editor.maskEastFollowR[v] = x; }
     bool  getMaskEastCell(int v, int c) const {
-        return (vLorOk(v) && c >= 0 && c < 16) && ((((int)editor.maskEastPatternBits[v]) >> c) & 1) != 0; }
+        return (vLorOk(v) && c >= 0 && c < dotModular::kMaskRing) && (((editor.maskEastPatternBits[v] >> c) & 1ULL) != 0); }
     void  setMaskEastCell(int v, int c, bool play) {
-        if (!vLorOk(v) || c < 0 || c >= 16) return;
-        const int b = (int)editor.maskEastPatternBits[v];
-        editor.maskEastPatternBits[v] = (float)(play ? (b | (1 << c)) : (b & ~(1 << c))); }
+        if (!vLorOk(v) || c < 0 || c >= dotModular::kMaskRing) return;
+        if (play) editor.maskEastPatternBits[v] |= (uint64_t(1) << c);
+        else      editor.maskEastPatternBits[v] &= ~(uint64_t(1) << c); }
     float getMaskLocalEastMask(int v) const   { return vLorOk(v) ? editor.maskLocalEastMask[v] : 0.f; }
     void  setMaskLocalEastMask(int v, float x){ if (vLorOk(v)) editor.maskLocalEastMask[v] = x; }
     // Reset a mask row to the CYCLE base + all-on (the as-if-no-mask escape hatch;
     // the abs1 region is the voice LOR — no separate mask range exists).
     void resetMaskMacro() {
-        editor.maskMacroKind = 0.f; editor.maskMacroPatternBits = 65535.f;
+        editor.maskMacroKind = 0.f; editor.maskMacroPatternBits = dotModular::kMaskLenMask;
         editor.maskMacroFollowR = 0.f; }
     void resetMaskEast(int v) {
         if (!vLorOk(v)) return;
-        editor.maskEastKind[v] = 0.f; editor.maskEastPatternBits[v] = 65535.f;
+        editor.maskEastKind[v] = 0.f; editor.maskEastPatternBits[v] = dotModular::kMaskLenMask;
         editor.maskEastFollowR[v] = 0.f; }
 
     //  MONO slice accessors (Mono Sands de-param) 
@@ -1470,13 +1479,14 @@ struct Monsoon : Module {
     float bpm = 120.f;
 
     // (the rhythmPattern reference alias RETIRED — ITEM 1, with the member)
-    float (&melodyPitchV)[16] = engine.pe.melodyPitchV;
-    int (&melodySemitone)[16] = engine.pe.melodySemitone;
-    std::array<float, 16>& rhythmRandom = engine.pe.rhythmRandom;
-    std::array<float, 16>& variationRandom = engine.pe.variationRandom;
-    std::array<float, 16>& legatoRandom = engine.pe.legatoRandom;
-    std::array<float, 16>& melodyRandom = engine.pe.melodyRandom;
-    std::array<float, 16>& octaveRandom = engine.pe.octaveRandom;
+    // STEPS_32 Stage 2a: the mirrors and mono row views ride the engine's STORAGE width.
+    float (&melodyPitchV)[dotModular::kStepStorage] = engine.pe.melodyPitchV;
+    int (&melodySemitone)[dotModular::kStepStorage] = engine.pe.melodySemitone;
+    std::array<float, dotModular::kStepStorage>& rhythmRandom = engine.pe.rhythmRandom;
+    std::array<float, dotModular::kStepStorage>& variationRandom = engine.pe.variationRandom;
+    std::array<float, dotModular::kStepStorage>& legatoRandom = engine.pe.legatoRandom;
+    std::array<float, dotModular::kStepStorage>& melodyRandom = engine.pe.melodyRandom;
+    std::array<float, dotModular::kStepStorage>& octaveRandom = engine.pe.octaveRandom;
 
     dsp::PulseGenerator& gatePulse = engine.gs.gatePulse;
     bool& prevExtGate = engine.prevGate1High;
@@ -1493,7 +1503,7 @@ struct Monsoon : Module {
     bool& rhythmSeedCached = engine.pe.rhythmSeedCached;
     int& cachedMelodyStepIndex = engine.pe.cachedMelodyStepIndex;
     int& cachedMelodyLastStepIndex = engine.pe.cachedMelodyLastStepIndex;
-    float (&cachedMelodyPitchV)[16] = engine.pe.cachedMelodyPitchV;
+    float (&cachedMelodyPitchV)[dotModular::kStepStorage] = engine.pe.cachedMelodyPitchV;
     int& cachedRhythmStepIndex = engine.pe.cachedRhythmStepIndex;
     int& cachedRhythmLastStepIndex = engine.pe.cachedRhythmLastStepIndex;
     // (the cachedRhythmPattern reference alias RETIRED — ITEM 1, with the member)

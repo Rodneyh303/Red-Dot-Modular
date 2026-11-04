@@ -74,8 +74,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     SandsVisualEditorV4*       visualEditor = nullptr;
     SandsParameterManager*     paramMgr     = nullptr;
     // UAS Stage-4 UI completion: the paint-stroke buffer (the before-state for the
-    // stroke's ONE history action — see onMaskToggle/onMaskStrokeEnd).
-    struct { bool active = false; int kind = 0; unsigned bits = 0xFFFFu; } maskStroke_;
+    // stroke's ONE history action — see onMaskToggle/onMaskStrokeEnd). STEPS_32 Stage 2a:
+    // the stroke plane is the DECIDED uint64 integer representation, ring-masked.
+    struct { bool active = false; int kind = 0; uint64_t bits = dotModular::kMaskLenMask; } maskStroke_;
     // Stage 3: the voice-range strip's caption buffer (setRangeState stores the
     // pointer — it must outlive the call, so it lives here, not on the stack).
     char rangeLabel_[16] = "GLOBAL";
@@ -216,12 +217,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             if (!maskStroke_.active) {                        // capture the stroke's BEFORE state
                 maskStroke_.active = true;
                 maskStroke_.kind   = (int)std::lround(m->getMaskMacroKind());
-                maskStroke_.bits   = (unsigned)std::lround(m->getMaskMacroPatternBits());
+                maskStroke_.bits   = m->getMaskMacroPatternBits();   // the DECIDED uint64 (no float round-trip)
                 if (maskStroke_.kind != 2) {                  // the transition: seed from the effective mask
                     maskStroke_.kind = 2;
                     maskStroke_.bits = m->engine.effectiveOutputMaskMacro();
                     m->setMaskMacroKind(2.f);
-                    m->setMaskMacroPatternBits((float)maskStroke_.bits);
+                    m->setMaskMacroPatternBits(maskStroke_.bits);
                 }
             }
             m->setMaskMacroCell(cell, play);                  // apply live (the push lands next block)
@@ -230,14 +231,14 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             auto* m = getMonsoon(); if (!m) return;
             if (!maskStroke_.active) return;
             maskStroke_.active = false;
-            const unsigned afterBits = (unsigned)std::lround(m->getMaskMacroPatternBits());
+            const uint64_t afterBits = m->getMaskMacroPatternBits();   // the DECIDED uint64
             if ((int)std::lround(m->getMaskMacroKind()) == maskStroke_.kind && afterBits == maskStroke_.bits)
                 return;   // nothing changed
-            const int bKind = maskStroke_.kind; const unsigned bBits = maskStroke_.bits;
+            const int bKind = maskStroke_.kind; const uint64_t bBits = maskStroke_.bits;
             redDot::applyAndPushStoreEdit<Monsoon>(m, "Global mask paint",
                 [bKind, bBits, afterBits](Monsoon& mm, bool redo) {
                     mm.setMaskMacroKind(redo ? 2.f : (float)bKind);
-                    mm.setMaskMacroPatternBits(redo ? (float)afterBits : (float)bBits);
+                    mm.setMaskMacroPatternBits(redo ? afterBits : bBits);
                 },
                 false, true);
         };
@@ -602,13 +603,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         {
             struct MaskBitsItem : MenuItem {
                 StraitsSandsMacroVisualWidget* widget;
-                float bits;
+                uint64_t bits;   // the DECIDED uint64 (STEPS_32 Stage 2a)
                 void onAction(const event::Action& e) override {
                     if (auto* mm = widget->getMonsoon()) {
-                        const float oldB = mm->getMaskMacroPatternBits();
+                        const uint64_t oldB = mm->getMaskMacroPatternBits();
                         mm->setMaskMacroPatternBits(bits);
                         redDot::applyAndPushStoreEdit<Monsoon>(mm, "Global mask pattern",
-                            [](Monsoon& m2, float b) { m2.setMaskMacroPatternBits(b); }, oldB, bits);
+                            [](Monsoon& m2, uint64_t b) { m2.setMaskMacroPatternBits(b); }, oldB, bits);
                     }
                 }
             };
@@ -635,7 +636,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                             [m, abs1]() {
                                 const float oldK = m->getMaskMacroKind();
                                 const float newK = abs1 ? 1.f
-                                    : ((int)std::lround(m->getMaskMacroPatternBits()) == 65535) ? 0.f : 2.f;
+                                    : (m->getMaskMacroPatternBits() == dotModular::kMaskLenMask) ? 0.f : 2.f;
                                 if (oldK == newK) return;
                                 m->setMaskMacroKind(newK);
                                 redDot::applyAndPushStoreEdit<Monsoon>(m, "Global mask kind",
@@ -655,13 +656,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             menu->addChild(new MenuSeparator);
             auto* allOn = new MaskBitsItem;
             allOn->text = "Set mask all on";
-            allOn->widget = this; allOn->bits = 65535.f;
+            allOn->widget = this; allOn->bits = dotModular::kMaskLenMask;   // the RING's all-on (Stage 2a — was 65535.f)
             menu->addChild(allOn);
             auto* fromRange = new MaskBitsItem;
             fromRange->text = "Set mask from range";
             fromRange->widget = this;
             // the preset: the GLOBAL voice LOR window as the play set (the abs1 region — ONE range)
-            fromRange->bits = (float)SequencerEngine::windowMaskBits(
+            fromRange->bits = SequencerEngine::windowMaskBits(
                 std::max(1, (int)std::lround(m->getVoiceLorMacro(0))),
                 (int)std::lround(m->getVoiceLorMacro(1)));
             menu->addChild(fromRange);

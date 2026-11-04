@@ -321,7 +321,7 @@ static void U4_warp_dirty_scopes() {
     }
     pe.setWarpBank(&bank);
     pe.rebuildWarpMirrorAll();
-    static float ref[16][7][16];
+    static float ref[16][7][dotModular::kStepStorage];   // the STORAGE width (Stage 2a — the rows widened)
     std::memcpy(ref, pe.warped_.data(), sizeof ref);
 
     // Determinism: a second full rebuild is byte-identical (the oracle is stable).

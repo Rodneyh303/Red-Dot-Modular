@@ -200,7 +200,7 @@ void SequencerEngine::reset() {
             polyLORRef(vs, LaneId{el}, LOR_ROT) = 0;
         }
     }
-    windowMask = 0xFFFF;
+    windowMask = kMaskLenMask;
     locked = false;
     muted = false;
     // UNIFIED ADDRESSING Stage 2: the voice LOR rows seed to IDENTITY (pass-through).
@@ -217,12 +217,12 @@ void SequencerEngine::reset() {
     // Stage 4: the output mask seeds to CYCLE everywhere (the all-on degenerate mask,
     // today's behaviour) — no gating at defaults, the goldens' output path untouched.
     for (int v = 0; v < kVoiceSlots; ++v) {
-        maskKind_[v] = MASK_CYCLE; maskPainted_[v] = 0xFFFF; maskFollowR_[v] = false;
-        maskLocalEast_[v] = false; maskAnchored_[v] = 0xFFFF; maskAnchorR_[v] = 0;
-        maskLastPushed_[v] = 0xFFFF;
+        maskKind_[v] = MASK_CYCLE; maskPainted_[v] = kMaskLenMask; maskFollowR_[v] = false;
+        maskLocalEast_[v] = false; maskAnchored_[v] = kMaskLenMask; maskAnchorR_[v] = 0;
+        maskLastPushed_[v] = kMaskLenMask;
     }
-    maskMacroKind_ = MASK_CYCLE; maskMacroPainted_ = 0xFFFF; maskMacroFollowR_ = false;
-    maskMacroAnchored_ = 0xFFFF; maskMacroAnchorR_ = 0; maskMacroLastPushed_ = 0xFFFF;
+    maskMacroKind_ = MASK_CYCLE; maskMacroPainted_ = kMaskLenMask; maskMacroFollowR_ = false;
+    maskMacroAnchored_ = kMaskLenMask; maskMacroAnchorR_ = 0; maskMacroLastPushed_ = kMaskLenMask;
     runGateActive = false;
     resetArmed = false;
     prevGate1High = false;
@@ -242,23 +242,23 @@ void SequencerEngine::reset() {
 }
 
 bool SequencerEngine::isStepInWindow(int idx) const {
-    return (windowMask & (1 << (idx & 0x0F))) != 0;
+    return (windowMask & (uint64_t(1) << (idx & (kMaskRing - 1)))) != 0;
 }
 
 void SequencerEngine::setWindow(int length, int offset) {
     cachedLength = length;
     cachedOffset = offset;
     startStep = offset;
-    endStep = (offset + length - 1) & 0x0F;
+    endStep = (offset + length - 1) & (kMaskRing - 1);
 
-    uint16_t mask = 0;
+    uint64_t mask = 0;
     for (int i = 0; i < length; ++i) {
-        mask |= (1 << ((offset + i) & 0x0F));
+        mask |= (uint64_t(1) << ((offset + i) & (kMaskRing - 1)));
     }
     windowMask = mask;
 
     if (stepIndex != -1 && !isStepInWindow(stepIndex)) {
-        stepIndex = (startStep - 1 + 16) % 16;
+        stepIndex = (startStep - 1 + kMaskRing) % kMaskRing;
     }
     // THE RE-AUTHOR ANCHOR (the holder law): the global walk's read coordinate re-bounds
     // to the NEW window — (tick−1) mod newLen, exactly the value the old f(counter)
@@ -301,7 +301,8 @@ void SequencerEngine::pushVoiceLorEditor(
 // The EditorState mask rows are the single authoring authority; this ONE copy per
 // control block is the only path they reach the output layer through (the push
 // runs AFTER pushVoiceLorEditor so the base rotation it re-pins against is the
-// current one). Clamps: kind 0..2, pattern bits 0..65535 (an exact float integer),
+// current one). Clamps: kind 0..2; the pattern bits arrive as the DECIDED uint64
+// integer representation, ring-masked (the store boundary clamps on write).
 // followR/local != 0. The ALL-CYCLE default (kinds 0, patterns all-on) lands
 // byte-identically on the reset() seed — no gating anywhere, the goldens' output
 // path is untouched. The ANCHOR LAW lives here (the push IS the per-block
@@ -311,18 +312,18 @@ void SequencerEngine::pushVoiceLorEditor(
 // re-pins (rotates delta steps EARLIER, the content direction) so mask-step-1
 // stays pinned to the base rotation. followR-off rows (abs2) never re-pin.
 void SequencerEngine::pushMaskEditor(
-    const float* macroPatternBits, float macroKind, float macroFollowR,
-    const float* eastPatternBits, const float* eastKind,
+    const uint64_t* macroPatternBits, float macroKind, float macroFollowR,
+    const uint64_t* eastPatternBits, const float* eastKind,
     const float* eastFollowR, const float* localEast) {
     auto kindInt = [](float x) -> int {
         return (int)std::lround(std::clamp(x, 0.f, 2.f));
     };
-    auto bitsInt = [](float x) -> uint16_t {
-        return (uint16_t)std::lround(std::clamp(x, 0.f, 65535.f));
-    };
+    // STEPS_32 Stage 2a (the DECIDED block): the editor mask rows ARE the integer
+    // representation now (uint64, ring-masked at the store boundary) — the float clamp
+    // (0..65535 lround) is gone with the float wall it guarded.
     // Macro tier first (the GLOBAL mask every follower reads).
     {
-        const uint16_t painted = bitsInt(macroPatternBits[0]);
+        const uint64_t painted = macroPatternBits[0] & kMaskLenMask;
         const int kind         = kindInt(macroKind);
         const bool followR     = (macroFollowR != 0.f);
         const int  baseR       = macroVoiceLor_[LOR_ROT];
@@ -331,7 +332,7 @@ void SequencerEngine::pushMaskEditor(
             maskMacroAnchorR_     = baseR;
             maskMacroLastPushed_  = painted;
         } else if (followR && baseR != maskMacroAnchorR_) { // knob turn: re-pin
-            maskMacroAnchored_    = rotMask16(maskMacroAnchored_, baseR - maskMacroAnchorR_);
+            maskMacroAnchored_    = rotMaskRing(maskMacroAnchored_, baseR - maskMacroAnchorR_);
             maskMacroAnchorR_     = baseR;
         }
         maskMacroKind_    = kind;
@@ -339,7 +340,7 @@ void SequencerEngine::pushMaskEditor(
         maskMacroFollowR_ = followR;
     }
     for (int v = 0; v < kVoiceSlots; ++v) {
-        const uint16_t painted = bitsInt(eastPatternBits[v]);
+        const uint64_t painted = eastPatternBits[v] & kMaskLenMask;
         const int      kind    = kindInt(eastKind[v]);
         const bool     followR = (eastFollowR[v] != 0.f);
         maskLocalEast_[v]      = (localEast[v] != 0.f);
@@ -349,7 +350,7 @@ void SequencerEngine::pushMaskEditor(
             maskAnchorR_[v]     = baseR;
             maskLastPushed_[v]  = painted;
         } else if (followR && baseR != maskAnchorR_[v]) {       // knob turn: re-pin
-            maskAnchored_[v]    = rotMask16(maskAnchored_[v], baseR - maskAnchorR_[v]);
+            maskAnchored_[v]    = rotMaskRing(maskAnchored_[v], baseR - maskAnchorR_[v]);
             maskAnchorR_[v]     = baseR;
         }
         maskKind_[v]    = kind;
@@ -422,20 +423,20 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
         // From the "not started" state, seed just AFTER endStep so the first reverse
         // step lands on endStep (the symmetric counterpart of forward seeding before
         // startStep and stepping onto startStep).
-        if (stepIndex == -1) stepIndex = (endStep + 1) & 0x0F;
-        stepIndex = (stepIndex - 1 + 16) & 0x0F;
+        if (stepIndex == -1) stepIndex = (endStep + 1) & (kMaskRing - 1);
+        stepIndex = (stepIndex - 1 + kMaskRing) & (kMaskRing - 1);
         if (!isStepInWindow(stepIndex)) stepIndex = endStep;
-        for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
-            stepIndex = (stepIndex - 1 + 16) & 0x0F;
+        for (int s = 0; s < kMaskRing && !isStepInWindow(stepIndex); ++s)
+            stepIndex = (stepIndex - 1 + kMaskRing) & (kMaskRing - 1);
         // Phrase boundary (reverse): wrapped back round to endStep.
         wrapped = (prevStep != -1 && stepIndex == endStep);
     } else {
         // ── Forward traversal (unchanged) ──
-        if (stepIndex == -1) stepIndex = (startStep - 1 + 16) % 16;
-        stepIndex = (stepIndex + 1) & 0x0F;
+        if (stepIndex == -1) stepIndex = (startStep - 1 + kMaskRing) % kMaskRing;
+        stepIndex = (stepIndex + 1) & (kMaskRing - 1);
         if (!isStepInWindow(stepIndex)) stepIndex = startStep;
-        for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
-            stepIndex = (stepIndex + 1) & 0x0F;
+        for (int s = 0; s < kMaskRing && !isStepInWindow(stepIndex); ++s)
+            stepIndex = (stepIndex + 1) & (kMaskRing - 1);
         // Return true if wrapped to start (phrase boundary)
         wrapped = (prevStep != -1 && stepIndex == startStep);
     }
@@ -661,7 +662,7 @@ int64_t SequencerEngine::voiceFrameTickAt(int v, int64_t effTick1based,
     effectiveVoiceLor(v, L, O, R, vd);
     if (L < 1) L = 1;
     // (A6) ABS1: the window walk runs the FULL PHRASE — L→16 for the READ only.
-    if (voiceFrameReadsFullPhrase(v)) L = 16;
+    if (voiceFrameReadsFullPhrase(v)) L = kMaskRing;   // the FULL PHRASE = the ring
     const int64_t rho  = ((((int64_t)(R - O) % L) + L) % L);
     const int64_t wnow = ((((laneTickFor(vd, tNowV, L) + rho) % L) + L) % L);
     if (framePhaseOut) *framePhaseOut = wrapMod(tNowV - 1, walkPeriod(vd, L));
@@ -705,7 +706,7 @@ void SequencerEngine::anchorTransport(int64_t tick1based) {
             int L, O, R; LaneDir vd;
             effectiveVoiceLor(v, L, O, R, vd);
             if (L < 1) L = 1;
-            if (voiceFrameReadsFullPhrase(v)) L = 16;
+            if (voiceFrameReadsFullPhrase(v)) L = kMaskRing;   // the FULL PHRASE = the ring
             frameKey_[v] = walkKeyOf(vd, L);
         }
         for (int s = 0; s < dotModular::NUM_STRANDS; ++s) {
@@ -768,7 +769,7 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
             int L, O, R; LaneDir vd;
             effectiveVoiceLor(v, L, O, R, vd);
             if (L < 1) L = 1;
-            if (voiceFrameReadsFullPhrase(v)) L = 16;
+            if (voiceFrameReadsFullPhrase(v)) L = kMaskRing;   // the FULL PHRASE = the ring
             const int key = walkKeyOf(vd, L);
             voiceFramePhase_[v] = (frameKey_[v] != key)
                 ? wrapMod(t0EffNow, walkPeriod(vd, L))
@@ -847,7 +848,7 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         int L, O, R; LaneDir vd;
         effectiveVoiceLor(v, L, O, R, vd);
         if (L < 1) L = 1;
-        if (voiceFrameReadsFullPhrase(v)) L = 16;
+        if (voiceFrameReadsFullPhrase(v)) L = kMaskRing;   // the FULL PHRASE = the ring
         const int64_t rho  = ((((int64_t)(R - O) % L) + L) % L);
         // The frame walk's t0 representative: the RAW effective-clock congruence under
         // the pass-through window (the frame phase), the bounded window walk under the
@@ -855,7 +856,7 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         const int64_t ft0   = passG ? (int64_t)voiceFramePhase_[v] : (int64_t)(wGv + offG);
         const int64_t wnow = ((((laneTickFor(vd, ft0 + 1, L) + rho) % L) + L) % L);
         voiceDriver_[v] = wnow + 1;
-        voiceRead_[v]   = (int)((wnow + O) & 0x0F);
+        voiceRead_[v]   = (int)((wnow + O) & (kMaskRing - 1));
         // The RAW predecessor's walk value: the effective clock one motionV step back —
         // its t0 representative is (ft0 − frameBack), where frameBack is the true t0
         // gap (the raw clock: exactly motionV; the mapped window: the walk gap).
@@ -931,7 +932,7 @@ void SequencerEngine::snapToPhaseStep(long pulsePos, int p16) {
     // pulsePos/p16 (which may be fractional). Without this snap, each sweep of the
     // phase knob lands on a different step.
     long absStep = pulsePos / p16;               // absolute step (can be negative, 0-based)
-    int phaseStep = (int)(((absStep % 16) + 16) % 16);
+    int phaseStep = (int)(((absStep % kMaskRing) + kMaskRing) % kMaskRing);
     // THE ANCHOR: the phase-derived tick is 1-based (the old counter was; the walks'
     // t0 = tick − 1). The per-voice offsets ride THROUGH the snap (the anchor seeds each
     // voice's phase at tick + offset — the divergence persists, exactly as f(t+offset) did).
@@ -940,8 +941,8 @@ void SequencerEngine::snapToPhaseStep(long pulsePos, int p16) {
     // Apply window checking (match advancePlayhead's behavior)
     if (!isStepInWindow(stepIndex)) {
         stepIndex = startStep;
-        for (int s = 0; s < 16 && !isStepInWindow(stepIndex); ++s)
-            stepIndex = (stepIndex + 1) & 0x0F;
+        for (int s = 0; s < kMaskRing && !isStepInWindow(stepIndex); ++s)
+            stepIndex = (stepIndex + 1) & (kMaskRing - 1);
     }
     deriveHolders(lastPlayDir, nullptr);
 }
@@ -952,7 +953,7 @@ void SequencerEngine::updateWindow(float lenParam, float lenCv, bool lenPatched,
     // request is deliverable; the clamp stays as defence-in-depth for the CV path and any
     // future caller. Identical at cap 16.
     int length = pe_clamp<int>((int)std::round(lenParam), 1, dotModular::kPatternLengthCap);
-    int offset = (int)std::round(offParam) & 0x0F;
+    int offset = (int)std::round(offParam) & (kMaskRing - 1);   // Stage 2a: the offset domain derives from the ring (0..ring-1)
 
     if (lenPatched) {
         float cv = pe_clamp(lenCv, 0.f, 10.f);
@@ -962,7 +963,7 @@ void SequencerEngine::updateWindow(float lenParam, float lenCv, bool lenPatched,
     }
     if (offPatched) {
         float cv = pe_clamp(offCv, 0.f, 10.f);
-        offset = ((int)std::round(cv / 10.f * 15.f)) & 0x0F;
+        offset = ((int)std::round(cv / 10.f * (float)(kMaskRing - 1))) & (kMaskRing - 1);   // cap-derived (was *15)
     }
     setWindow(length, offset);
 }
@@ -1005,8 +1006,8 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
     
     if (inWindow) {
         // Calculate distance from current playhead to map physical LED to drifting DNA content
-        int relCurrent = (stepIndex - startStep + 16) % 16;
-        int relLight = (lightIdx - startStep + 16) % 16;
+        int relCurrent = (stepIndex - startStep + kMaskRing) % kMaskRing;
+        int relLight = (lightIdx - startStep + kMaskRing) % kMaskRing;
         // POSITION_HOLDER_MODEL: the light's DNA-content tick is the GLOBAL window
         // walk's t0 shifted by the phrase offsets — a congruence no mod-16 walk
         // carries (the RHYTHM lane's own length need not divide 16), so it has its
@@ -1046,7 +1047,7 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
     // the travel direction, so forward vs reverse is visibly distinct. The trailing
     // LED is the step the playhead just left: stepIndex - lastPlayDir.
     if (steppedMode && current < 1.0f) {
-        int trailIdx = ((stepIndex - lastPlayDir) % 16 + 16) % 16;
+        int trailIdx = ((stepIndex - lastPlayDir) % kMaskRing + kMaskRing) % kMaskRing;
         if (lightIdx == trailIdx && isStepInWindow(lightIdx))
             baseActive = std::max(baseActive, 0.5f);
     }
@@ -1064,7 +1065,7 @@ bool SequencerEngine::shouldTriggerStep(int ppqn) const {
     if (stepIndex == -1) return false;
     if (ppqn <= 1) {
         // Only trigger on main 4 beats relative to startStep + offset
-        int relative = (stepIndex - startStep + 16) % 16;
+        int relative = (stepIndex - startStep + kMaskRing) % kMaskRing;
         return (relative & 0x03) == 0;
     }
     return true; 
@@ -1819,14 +1820,14 @@ void SequencerEngine::refreshPolyRandomCell(VoiceSlot voice, LaneId engLane, int
         default: return;
     }
     if (!pe.cachedSpreadInitialized || !live) return;   // not yet cached or frozen — leave existing value
-    pe.polyRandom(voice, engLane)[step & 0x0F] =
-        redDot::SpreadInterp::applyPoly(pe, engLane.l, voice.v, step & 0x0F,
+    pe.polyRandom(voice, engLane)[step & (kMaskRing - 1)] =
+        redDot::SpreadInterp::applyPoly(pe, engLane.l, voice.v, step & (kMaskRing - 1),
                                         pe.cachedPolySpread[voice.v][engLane.l]);
     // Warp mirror (CC_PROMPT_03/05): this cell of random_ just moved — refresh exactly
     // that mirror cell so the next warpRow read (the same call sequence in
     // executePolyVoice) sees the effective w-mixture of the CURRENT value. One
     // warpedValue eval per step per lane; no-op without a bank.
-    pe.rebuildWarpMirrorCell(voice.v, engLane.l, step & 0x0F);
+    pe.rebuildWarpMirrorCell(voice.v, engLane.l, step & (kMaskRing - 1));
 }
 
 // Phase B (see the header): reset newly-activated voices' stale gs state. Definition
@@ -1935,7 +1936,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                                              // return early on the rested-ghost path).
     // Stage 2a: refresh VARIATION cell before nvIdxForVoice reads it (nvIdxForVoice
     // reads the uniform via pe.warpRow at the voice's variation step to pick the note length).
-    refreshPolyRandomCell(voiceIdx, LaneId{PL_VARIATION}, getVariationStepForVoice(voiceIdx) & 0x0F);
+    refreshPolyRandomCell(voiceIdx, LaneId{PL_VARIATION}, getVariationStepForVoice(voiceIdx) & (kMaskRing - 1));
     // Stage 2: this voice's note length. Identical to lastStepResult.nvIdx when the voice's VAR
     // LOR is identity (delegated → reads mono's step). Clamped so the voice can never hold past
     // mono's next event — articulation is subtractive.
@@ -2341,7 +2342,7 @@ int SequencerEngine::getStrandIdx(int tickCount, int len, int off, int mutation)
     // Wrap properly for negative ticks (used by LED distance logic)
     int timelineIdx = ((tickCount + mutation) % safeLen + safeLen) % safeLen;
     // 2. ... + off                     => Slide the entire DNA window across the source buffer
-    return (timelineIdx + off) % 16;
+    return (timelineIdx + off) % kMaskRing;
 }
 
 // ── EAST_EXTRA_LANES stage 2 ──────────────────────────────────────────────────────────────────
@@ -2379,7 +2380,7 @@ int SequencerEngine::getLegatoStepForVoice(VoiceSlot bank) const {
 int SequencerEngine::nvIdxForVoice(VoiceSlot bank, const PatternInput& input) const {
     if (bank.v < 1 || bank.v >= 16) return monoParentView().nvIdx;
     // The probability array stays MONO (one shared shape); only the reading position is per-voice.
-    const int idx = getVariationStepForVoice(bank) & 0x0F;
+    const int idx = getVariationStepForVoice(bank) & (kMaskRing - 1);
     const float r = pe.warpRow(bank, LaneId{PL_VARIATION})[idx];
     const int nv  = const_cast<SequencerEngine*>(this)->getNoteLenIdx(lastNoteVal_, input, r);
     // CLAMP to the parents' event grid (C3 lengthCeiling, F-1: the REAL fold over the staged

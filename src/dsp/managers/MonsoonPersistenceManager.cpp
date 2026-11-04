@@ -263,12 +263,26 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     // ctor defaults (CYCLE everywhere, all-on patterns) — no gating, pre-4 patches
     // byte-identical.
     saveArr("editorMaskMacroKind",        &m->editor.maskMacroKind,        1);
-    saveArr("editorMaskMacroPatternBits", &m->editor.maskMacroPatternBits, 1);
     saveArr("editorMaskMacroFollowR",     &m->editor.maskMacroFollowR,     1);
     saveArr("editorMaskEastKind",         m->editor.maskEastKind,         16);
-    saveArr("editorMaskEastPatternBits",  m->editor.maskEastPatternBits,  16);
     saveArr("editorMaskEastFollowR",      m->editor.maskEastFollowR,      16);
     saveArr("editorMaskLocalEastMask",    m->editor.maskLocalEastMask,    16);
+    // STEPS_32 Stage 2a (the DECIDED persistence law): the mask PATTERNS save under
+    // FRESH integer keys — the uint64 bit pattern cast to json_integer (Jansson's
+    // integer is int64-wide; the two's-complement cast round-trips every uint64
+    // exactly, values above 2^63 merely read negative in JSON tooling). The OLD float
+    // keys ("editorMask{Macro,East}PatternBits") are NOT written and NOT read: a mask
+    // wider than 16 bits does not round-trip a float's 24-bit mantissa (the
+    // float-precision wall), and per the DECIDED block old float-keyed saves are
+    // simply not read — a pre-2a patch loads the all-on default. Values are clamped
+    // on the RING at load (the store boundary — same law the setters/push apply).
+    auto saveMaskU64 = [&](const char* key, const uint64_t* a, int n) {
+        json_t* j = json_array();
+        for (int i = 0; i < n; ++i) json_array_append_new(j, json_integer((long long)a[i]));
+        json_object_set_new(root, key, j);
+    };
+    saveMaskU64("editorMaskMacroPatternBitsI64", &m->editor.maskMacroPatternBits, 1);
+    saveMaskU64("editorMaskEastPatternBitsI64",  m->editor.maskEastPatternBits,  16);
 
     // Spread target modes (SPREAD_TARGET_MODES.md): per-lane target mode, per-mode defaults
     // (-1/0/+1), and the apply-on-mode-change toggle. All per-lane, 7 lanes.
@@ -400,7 +414,10 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "qmixSeedPendingFloat")) m->engine.pe.qmixSeedPendingFloat = (float)json_real_value(j);
 
     // ── DNA Random Buffers ──
-    auto loadArr = [&](const char* name, std::array<float, 16>& target) {
+    // STEPS_32 Stage 2a: the references ride the engine's STORAGE width (kStepStorage);
+    // the persisted format stays 16-long (patches load identically — cells beyond the
+    // ring keep their ctor values, the ring-bounded reads never see them).
+    auto loadArr = [&](const char* name, std::array<float, dotModular::kStepStorage>& target) {
         if (auto j = json_object_get(root, name)) {
             if (json_is_array(j)) {
                 for (size_t i = 0; i < 16 && i < json_array_size(j); ++i)
@@ -418,7 +435,9 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
 
     // ── Poly DNA Random Buffers ──
     // COLLAPSE: source arrays are now [16][16] — V2..V16 at [1..15]. v=0 → [v+1]=V2.
-    auto loadPolyArr = [&](const char* name, int engLane, std::array<std::array<float, 16>, 16>& source) {
+    // STEPS_32 Stage 2a: the staging reference rides the engine's STORAGE width; the
+    // persisted format stays 16 cells per voice.
+    auto loadPolyArr = [&](const char* name, int engLane, std::array<std::array<float, dotModular::kStepStorage>, PatternEngine::kVoiceSlots>& source) {
         if (auto j = json_object_get(root, name)) {
             if (json_is_array(j)) {
                 for (int v = 1; v < 16; v++) {
@@ -583,12 +602,24 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     // UNIFIED ADDRESSING output-mask rows (Stage 4): absent keys ⟹ ctor defaults
     // (CYCLE everywhere, all-on patterns) — pre-4 patches byte-identical.
     loadArrN("editorMaskMacroKind",        &m->editor.maskMacroKind,        1);
-    loadArrN("editorMaskMacroPatternBits", &m->editor.maskMacroPatternBits, 1);
     loadArrN("editorMaskMacroFollowR",     &m->editor.maskMacroFollowR,     1);
     loadArrN("editorMaskEastKind",         m->editor.maskEastKind,         16);
-    loadArrN("editorMaskEastPatternBits",  m->editor.maskEastPatternBits,  16);
     loadArrN("editorMaskEastFollowR",      m->editor.maskEastFollowR,      16);
     loadArrN("editorMaskLocalEastMask",    m->editor.maskLocalEastMask,    16);
+    // STEPS_32 Stage 2a: the mask PATTERNS load from the FRESH integer keys (the
+    // DECIDED persistence law — the old float keys "editorMask{Macro,East}PatternBits"
+    // are NOT read; a pre-2a patch leaves the keys absent ⟹ the ctor all-on default
+    // stands). The two's-complement int64 ⟷ uint64 cast round-trips exactly; the
+    // ring clamp on load is the store boundary (the same law the setters/push apply).
+    auto loadMaskU64 = [&](const char* key, uint64_t* a, int n) {
+        if (auto j = json_object_get(root, key)) {
+            if (json_is_array(j))
+                for (size_t i = 0; i < (size_t)n && i < json_array_size(j); ++i)
+                    a[i] = (uint64_t)json_integer_value(json_array_get(j, i)) & dotModular::kMaskLenMask;
+        }
+    };
+    loadMaskU64("editorMaskMacroPatternBitsI64", &m->editor.maskMacroPatternBits, 1);
+    loadMaskU64("editorMaskEastPatternBitsI64",  m->editor.maskEastPatternBits,  16);
     // Spread target modes (SPREAD_TARGET_MODES.md): per-lane target mode + defaults +
     // apply-on-mode-change toggle. Missing keys → keep defaults (anchor V1, 0/+1, true).
     if (auto j = json_object_get(root, "editorSpreadTargetMode")) {

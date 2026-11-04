@@ -656,40 +656,50 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // one phrase step SOONER — the re-pin rotates the pattern one step EARLIER per
     // +1 R (the rhythm slides WITH the content either way).
     enum MaskKind { MASK_CYCLE = 0, MASK_DYNAMIC = 1, MASK_PAINTED = 2 };
+    // ── STEPS_32 Stage 2a (docs/design/STEPS_32_PLAN.md DECIDED block): the mask plane is
+    // uint64_t, LENGTH-MASKED on the frame RING. The constants' AUTHORITY lives in
+    // dotModular (PatternEngine.hpp, beside the length domain); these aliases keep the
+    // class body's bare names. The ring derives from kPatternLengthCap — 16 until Stage
+    // 2b flips it, so every ≤16 configuration is bit-identical; the flip widens the ring,
+    // lenMask and the all-on sentinel in ONE move (uint64 covers the 64-step ceiling, no
+    // second widening). lenMask = (1<<ring)-1 replaces the 65535 clamp, the c<16 checks
+    // and the 1<<c magic; the all-on default is the RING's all-on (0xFFFF at the 16 bound).
+    static constexpr int      kMaskRing   = dotModular::kMaskRing;
+    static constexpr uint64_t kMaskLenMask = dotModular::kMaskLenMask;
+    static constexpr std::array<uint64_t, kVoiceSlots> maskAllOnArr() {
+        std::array<uint64_t, kVoiceSlots> a{}; a.fill(kMaskLenMask); return a;
+    }
     std::array<int, kVoiceSlots> maskKind_ = {};      // per-voice (East tier) kind
-    std::array<uint16_t, kVoiceSlots> maskPainted_             = {0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,
-                                                      0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF};
+    std::array<uint64_t, kVoiceSlots> maskPainted_             = maskAllOnArr();
     std::array<bool, kVoiceSlots> maskFollowR_ = {};      // the painted kind's rotation source
     std::array<bool, kVoiceSlots> maskLocalEast_ = {};      // false = follow the MACRO mask
-    std::array<uint16_t, kVoiceSlots> maskAnchored_            = {0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,
-                                                      0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF};
+    std::array<uint64_t, kVoiceSlots> maskAnchored_            = maskAllOnArr();
     std::array<int, kVoiceSlots> maskAnchorR_ = {};      // the base R the copy is pinned to
-    std::array<uint16_t, kVoiceSlots> maskLastPushed_          = {0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,
-                                                      0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF,0xFFFF};
+    std::array<uint64_t, kVoiceSlots> maskLastPushed_          = maskAllOnArr();
     int      maskMacroKind_                        = MASK_CYCLE;
-    uint16_t maskMacroPainted_                     = 0xFFFF;
+    uint64_t maskMacroPainted_                     = kMaskLenMask;
     bool     maskMacroFollowR_                     = false;
-    uint16_t maskMacroAnchored_                    = 0xFFFF;
+    uint64_t maskMacroAnchored_                    = kMaskLenMask;
     int      maskMacroAnchorR_                     = 0;
-    uint16_t maskMacroLastPushed_                  = 0xFFFF;
+    uint64_t maskMacroLastPushed_                  = kMaskLenMask;
     // The played steps move delta phrase steps EARLIER (the content direction — see
-    // the anchor note): new bit j = old bit (j + delta).
-    static uint16_t rotMask16(uint16_t m, int delta) {
-        delta = ((delta % 16) + 16) % 16;
-        return delta ? (uint16_t)((m >> delta) | (m << (16 - delta))) : m;
+    // the anchor note): new bit j = old bit (j + delta). Rotation rides the ring.
+    static uint64_t rotMaskRing(uint64_t m, int delta) {
+        delta = ((delta % kMaskRing) + kMaskRing) % kMaskRing;
+        return delta ? (((m >> delta) | (m << (kMaskRing - delta))) & kMaskLenMask) : m;
     }
     static bool maskWindowContains(int O, int L, int phraseStep) {
-        if (L >= 16) return true;
-        const int s = ((phraseStep - O) % 16 + 16) % 16;
+        if (L >= kMaskRing) return true;
+        const int s = ((phraseStep - O) % kMaskRing + kMaskRing) % kMaskRing;
         return s < L;
     }
-    // The window as a 16-bit play mask (bit c = phrase step c+1 in [O, O+L)) — the
+    // The window as a ring-wide play mask (bit c = phrase step c+1 in [O, O+L)) — the
     // "mask from range" preset and the tests.
-    static uint16_t windowMaskBits(int L, int O) {
-        L = std::max(1, std::min(L, 16));
-        O = ((O % 16) + 16) % 16;
-        uint16_t m = 0;
-        for (int c = 0; c < 16; ++c) if (maskWindowContains(O, L, c)) m |= (uint16_t)(1u << c);
+    static uint64_t windowMaskBits(int L, int O) {
+        L = std::max(1, std::min(L, kMaskRing));
+        O = ((O % kMaskRing) + kMaskRing) % kMaskRing;
+        uint64_t m = 0;
+        for (int c = 0; c < kMaskRing; ++c) if (maskWindowContains(O, L, c)) m |= (uint64_t(1) << c);
         return m;
     }
     // The per-block authoring push (Monsoon's float mask rows -> this store), the
@@ -703,8 +713,8 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // anchor law's "the paint was made at the painted R"); an unchanged pattern with
     // a moved base R re-pins (rotates) the working copy — the base knob moves the
     // mask. Abs2 rows (followR off) never re-pin (fixed to absolute phrase steps).
-    void pushMaskEditor(const float* macroPatternBits, float macroKind, float macroFollowR,
-                        const float* eastPatternBits, const float* eastKind,
+    void pushMaskEditor(const uint64_t* macroPatternBits, float macroKind, float macroFollowR,
+                        const uint64_t* eastPatternBits, const float* eastKind,
                         const float* eastFollowR, const float* localEast);
     // (A4) THE BASE-MODE READ LAW: ABS1's read runs the FULL PHRASE (the corrected
     // model — "read runs full phrase, output silenced outside the LOR"): the voice
@@ -725,11 +735,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // so a modulated R slides the pattern exactly as turning the base R does, while a
     // real base edit re-pins (Δ resets to 0 — no double rotation). Without follow-R
     // the anchored copy stands (static, fixed to absolute phrase steps).
-    uint16_t effectiveOverlayPattern(int v) const {
-        if (v < 0 || v >= kVoiceSlots) return 0xFFFFu;
+    uint64_t effectiveOverlayPattern(int v) const {
+        if (v < 0 || v >= kVoiceSlots) return kMaskLenMask;
         const bool local = maskLocalEast_[v];
-        const uint16_t anchored = local ? maskAnchored_[v] : maskMacroAnchored_;
-        if (anchored == 0xFFFFu) return 0xFFFFu;
+        const uint64_t anchored = local ? maskAnchored_[v] : maskMacroAnchored_;
+        if (anchored == kMaskLenMask) return kMaskLenMask;
         if (!(local ? maskFollowR_[v] : maskMacroFollowR_)) return anchored;
         // The rotation source is the row the OVERLAY belongs to (the MASK's own
         // delegation — voiceLorStore_ vs macroVoiceLor_), NOT effectiveVoiceLor's
@@ -737,13 +747,13 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         // push exactly, so both sides of Δ read the same row.
         const int rowR    = local ? voiceLorStore_[v][LOR_ROT] : macroVoiceLor_[LOR_ROT];
         const int anchorR = local ? maskAnchorR_[v] : maskMacroAnchorR_;
-        return rotMask16(anchored, rowR - anchorR);
+        return rotMaskRing(anchored, rowR - anchorR);
     }
     // THE ONE GATE: does this voice's output pass at phrase step s (0..15)? The
     // OutputGenerator multiplies the voice's GATE + CV OUT by this every sample.
     // s < 0 (transport stopped) passes — the run gate already silences everything.
     bool outputMaskPasses(dotModular::VoiceSlot bank, int phraseStep) const {
-        if (phraseStep < 0 || phraseStep > 15) return true;
+        if (phraseStep < 0 || phraseStep >= kMaskRing) return true;
         const int v = bank.v;
         const bool local = maskLocalEast_[v];
         const int  kind  = local ? maskKind_[v] : maskMacroKind_;
@@ -761,8 +771,8 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
             int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
             if (!maskWindowContains(O, L, phraseStep)) return false;
         }
-        const uint16_t pat = effectiveOverlayPattern(v);   // the overlay ANDs (follow-R evaluates the mod)
-        if (pat != 0xFFFFu) return (pat >> phraseStep) & 1u;
+        const uint64_t pat = effectiveOverlayPattern(v);   // the overlay ANDs (follow-R evaluates the mod)
+        if (pat != kMaskLenMask) return (pat >> phraseStep) & 1u;
         return true;
     }
     // UAS Stage-4 UI completion (CC_PROMPT_UAS_MASK_UI_INCOMPLETE) — the DISPLAY's
@@ -773,31 +783,31 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // PAINTED → the ANCHORED working copy (the rotation-resolved pattern — the
     // follow-R re-pin is VISIBLE: turning R rotates the returned bits, abs2 does
     // not). Display-reads-engine: the strip never re-derives the mask.
-    uint16_t effectiveOutputMask(dotModular::VoiceSlot bank) const {
+    uint64_t effectiveOutputMask(dotModular::VoiceSlot bank) const {
         // The COMPOSED gate as a 16-bit play set (the display's read — exactly what
         // outputMaskPasses evaluates per step): the base (cycle = all-on | abs1 = the
         // voice LOR window) AND the painted overlay (the anchored copy).
         const int v = bank.v;
-        if (v < 0 || v >= kVoiceSlots) return 0xFFFFu;
+        if (v < 0 || v >= kVoiceSlots) return kMaskLenMask;
         const bool local = maskLocalEast_[v];
         const int  kind  = local ? maskKind_[v] : maskMacroKind_;
-        uint16_t m = 0xFFFFu;
+        uint64_t m = kMaskLenMask;
         if (kind == MASK_DYNAMIC) {   // abs1: the voice LOR window
             int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
             m = windowMaskBits(L, O);
         }
-        const uint16_t pat = effectiveOverlayPattern(v);   // the overlay ANDs (follow-R evaluates the mod)
-        return (pat == 0xFFFFu) ? m : (uint16_t)(m & pat);
+        const uint64_t pat = effectiveOverlayPattern(v);   // the overlay ANDs (follow-R evaluates the mod)
+        return (pat == kMaskLenMask) ? m : (m & pat);
     }
     // The MACRO tier's own pattern (the global strip's read — no voice delegation).
-    uint16_t effectiveOutputMaskMacro() const {
-        uint16_t m = 0xFFFFu;
+    uint64_t effectiveOutputMaskMacro() const {
+        uint64_t m = kMaskLenMask;
         if (maskMacroKind_ == MASK_DYNAMIC)
             m = windowMaskBits(macroVoiceLor_[LOR_LEN], macroVoiceLor_[LOR_OFF]);
-        uint16_t pat = maskMacroAnchored_;
-        if (pat != 0xFFFFu && maskMacroFollowR_)          // the follow-R evaluation hook
-            pat = rotMask16(pat, macroVoiceLor_[LOR_ROT] - maskMacroAnchorR_);
-        return (pat == 0xFFFFu) ? m : (uint16_t)(m & pat);
+        uint64_t pat = maskMacroAnchored_;
+        if (pat != kMaskLenMask && maskMacroFollowR_)     // the follow-R evaluation hook
+            pat = rotMaskRing(pat, macroVoiceLor_[LOR_ROT] - maskMacroAnchorR_);
+        return (pat == kMaskLenMask) ? m : (m & pat);
     }
 
     // The EFFECTIVE voice LOR row (delegation + Macro tier) — the one resolution authority.
@@ -1062,15 +1072,15 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
             // STEPS_32 Stage 1: the lane-length cap derives from kPatternLengthCap (was literal
             // 16) — identical at the storage bound; Stage 2 flips the cap and the lanes follow.
             strandLenRef(strand) = rack::math::clamp(len, 1, dotModular::kPatternLengthCap);
-            strandOffRef(strand) = ((off % 16) + 16) % 16;
-            strandRotRef(strand) = ((rot % 16) + 16) % 16;
+            strandOffRef(strand) = ((off % kMaskRing) + kMaskRing) % kMaskRing;
+            strandRotRef(strand) = ((rot % kMaskRing) + kMaskRing) % kMaskRing;
         }
     }
 
     int dnaLength = 16; // Legacy/Global fallback
     int dnaOffset = 0;
 
-    uint16_t windowMask = 0xFFFF;
+    uint64_t windowMask = kMaskLenMask;   // Stage 2a: the ring-wide play mask (was uint16 0xFFFF)
 
     bool locked = false;
     // Lock SCOPE bitmask (LOCK_SCOPE_MENU.md). Set bit = that generative group is kept LIVE under
@@ -1257,7 +1267,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         // different cell than the one being played (they silently disagreed before).
         int idx = getStrandIdx(polyLaneTick(voice, polyLane), polyLenE(voice, polyLane),
                                polyOffE(voice, polyLane), polyRotE(voice, polyLane));
-        idx &= 0x0F;
+        idx &= kMaskRing - 1;
         // Through the Change Alley remap + the ONE uniform source (CC_PROMPT_05):
         // the CV out reports what the voice will CONSUME — warpRow, every lane.
         return pe.warpRow(voice, polyLane)[idx];
@@ -1268,7 +1278,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // uses polyLaneProbability (resolved per-voice step). 0..1.
     inline float polyLaneProbabilityAtStep(LaneId polyLane, VoiceSlot voice, int step) const {
         if (voice.v < 0 || voice.v >= 16 || polyLane.l < 0 || polyLane.l >= PL_LANES) return 0.f;
-        step &= 0x0F;
+        step &= kMaskRing - 1;
         return pe.warpRow(voice, polyLane)[step];   // the ONE uniform source (warp mirror)
     }
 
@@ -1276,7 +1286,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     inline int polyLaneStep(LaneId polyLane, VoiceSlot voice) const {
         if (voice.v < 0 || voice.v >= 16 || polyLane.l < 0 || polyLane.l >= PL_LANES) return -1;
         return getStrandIdx(polyLaneTick(voice, polyLane), polyLenE(voice, polyLane),
-                            polyOffE(voice, polyLane), polyRotE(voice, polyLane)) & 0x0F;
+                            polyOffE(voice, polyLane), polyRotE(voice, polyLane)) & (kMaskRing - 1);
     }
     // Engine poly lane (PL_REST..PL_LEGATO) → strand index. Single mapping (was inlined in
     // masterLaneStep and polyLaneTick). SANDS CONSOLIDATION: VAR/LEG are now full poly lanes
@@ -1310,7 +1320,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         // Mono lane position, direction-aware (was the raw global tick, so the master
         // prob-out ignored per-lane direction while the notes followed it).
         return getStrandIdx(laneTick_[strand], strandLen(strand),
-                            strandOff(strand), strandRot(strand)) & 0x0F;
+                            strandOff(strand), strandRot(strand)) & (kMaskRing - 1);
     }
     inline float masterLaneProbability(int polyLane) const {
         // UI-to-resolver FINISH (CC_PROMPT_UI_TO_RESOLVER_FINISH_START): the MASTER
@@ -1429,13 +1439,13 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         // self-healing window; no new pub arrays). The old unconditional
         // applyAnchorV1Only was the bug: follow-CA bars anchored to V1 (not the CA
         // source) and showed the CA-remapped base as the spread-0 "own".
-        const float monoPub = redDot::SpreadInterp::monoSlewedPub(pe, l, step & 0x0F);
-        const float base = redDot::SpreadInterp::polySlewedPub(pe, l, v, step & 0x0F);
+        const float monoPub = redDot::SpreadInterp::monoSlewedPub(pe, l, step & (kMaskRing - 1));
+        const float base = redDot::SpreadInterp::polySlewedPub(pe, l, v, step & (kMaskRing - 1));
         const float disp = redDot::resolveFollowCaSpread({
             .mode = pe.spreadTargetMode[l],
             .ownAnchor = (v == 0) ? monoPub : base,
-            .ownPreRemap = (v == 0) ? redDot::SpreadInterp::monoPreRemap(pe, l, step & 0x0F)
-                                    : redDot::SpreadInterp::polyPreRemap(pe, l, v, step & 0x0F),
+            .ownPreRemap = (v == 0) ? redDot::SpreadInterp::monoPreRemap(pe, l, step & (kMaskRing - 1))
+                                    : redDot::SpreadInterp::polyPreRemap(pe, l, v, step & (kMaskRing - 1)),
             .targetV1 = monoPub,
             .targetPostRemap = (v == 0) ? monoPub : base,
             .amount = sp });

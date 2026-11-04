@@ -210,7 +210,8 @@ int main() {
     {
         PatternEngine pe;
         // Seed each mono strand array with a distinct per-(strand,step) value.
-        auto seedMono = [&](std::array<float, 16>& arr, float base) { for (int s = 0; s < 16; ++s) arr[s] = base + 0.001f * s; };
+        auto seedMono = [&](std::array<float, dotModular::kStepStorage>& arr, float base) {   // the STORAGE width (Stage 2a)
+            for (int s = 0; s < 16; ++s) arr[s] = base + 0.001f * s; };
         seedMono(pe.melodyRandom,    0.10f);
         seedMono(pe.octaveRandom,    0.20f);
         seedMono(pe.rhythmRandom,    0.30f);

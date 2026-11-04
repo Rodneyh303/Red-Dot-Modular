@@ -1007,9 +1007,9 @@ int main() {
     {
         // ALL-CYCLE DEFAULT: the identity push leaves every live voice ungated.
         SequencerEngine eng; eng.reset(); eng.numPolyVoices = 4;
-        float macroBits[1] = {65535.f}; float macroKind = 0.f, macroFollowR = 0.f;
-        float eastBits[16], eastKind[16], eastFollowR[16], localEast[16];
-        for (int v = 0; v < 16; ++v) { eastBits[v]=65535.f; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
+        uint64_t macroBits[1] = {65535ULL}; float macroKind = 0.f, macroFollowR = 0.f;
+        uint64_t eastBits[16]; float eastKind[16], eastFollowR[16], localEast[16];
+        for (int v = 0; v < 16; ++v) { eastBits[v]=65535ULL; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         bool ungated = true;
         for (int s = 0; s < 16; ++s)
@@ -1029,9 +1029,9 @@ int main() {
         const auto M = dotModular::VoiceResolver::mono();
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
         eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
-        float macroBits[1] = {65535.f}; float macroKind = 1.f, macroFollowR = 0.f;
-        float eastBits[16], eastKind[16], eastFollowR[16], localEast[16];
-        for (int v = 0; v < 16; ++v) { eastBits[v]=65535.f; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
+        uint64_t macroBits[1] = {65535ULL}; float macroKind = 1.f, macroFollowR = 0.f;
+        uint64_t eastBits[16]; float eastKind[16], eastFollowR[16], localEast[16];
+        for (int v = 0; v < 16; ++v) { eastBits[v]=65535ULL; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         bool winOK = true;
         for (int s = 0; s < 16; ++s)
@@ -1053,9 +1053,9 @@ int main() {
             r.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
             r.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
             r.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
-            float rb[1] = {65535.f}; float rk = 1.f, rf = 0.f;   // abs1
-            float reb[16], rek[16], ref[16], rle[16];
-            for (int v = 0; v < 16; ++v) { reb[v]=65535.f; rek[v]=0.f; ref[v]=0.f; rle[v]=0.f; }
+            uint64_t rb[1] = {65535ULL}; float rk = 1.f, rf = 0.f;   // abs1
+            uint64_t reb[16]; float rek[16], ref[16], rle[16];
+            for (int v = 0; v < 16; ++v) { reb[v]=65535ULL; rek[v]=0.f; ref[v]=0.f; rle[v]=0.f; }
             r.pushMaskEditor(rb, rk, rf, reb, rek, ref, rle);
             bool fullOK = true;
             for (int k = 0; k < 16; ++k) {
@@ -1082,9 +1082,9 @@ int main() {
                 q.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
                 q.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
                 q.macroVoiceLorDirRef() = SequencerEngine::LaneDir::Reverse;
-                float qb[1] = {65535.f}; float qk = 1.f, qf = 0.f;
-                float qeb[16], qek[16], qef[16], qle[16];
-                for (int v = 0; v < 16; ++v) { qeb[v]=65535.f; qek[v]=0.f; qef[v]=0.f; qle[v]=0.f; }
+                uint64_t qb[1] = {65535ULL}; float qk = 1.f, qf = 0.f;
+                uint64_t qeb[16]; float qek[16], qef[16], qle[16];
+                for (int v = 0; v < 16; ++v) { qeb[v]=65535ULL; qek[v]=0.f; qef[v]=0.f; qle[v]=0.f; }
                 q.pushMaskEditor(qb, qk, qf, qeb, qek, qef, qle);
                 bool revOK = true;
                 for (int k = 0; k < 16; ++k) {
@@ -1095,13 +1095,13 @@ int main() {
             }
         }
         // THE OVERLAY COMPOSES: abs1 + a painted pattern = the AND (in-window AND bit).
-        macroBits[0] = (float)0x5F5Fu;   // a non-contiguous pattern over [13,1)
+        macroBits[0] = 0x5F5FULL;   // a non-contiguous pattern over [13,1)
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
-        const uint16_t winPat = SequencerEngine::windowMaskBits(4, 13);
+        const uint64_t winPat = SequencerEngine::windowMaskBits(4, 13);   // the ring-wide play mask (Stage 2a)
         bool andOK = true;
         for (int s = 0; s < 16; ++s)
             andOK = andOK && eng.outputMaskPasses(M, s)
-                          == (((winPat >> s) & 1u) && ((0x5F5Fu >> s) & 1u));
+                          == ((((winPat >> s) & 1ULL)) && ((0x5F5Fu >> s) & 1u));
         check(andOK, "STAGE4: the overlay ANDs — abs1 + paint = in-window AND bit (the composed gate)");
         // CYCLE + the overlay: the base passes; the painted pattern alone gates.
         macroKind = 0.f;
@@ -1115,7 +1115,7 @@ int main() {
         // (voiceLorLocalEast_), a SEPARATE switch from the mask's (localEast).
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 4;
         eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 13;
-        macroKind = 1.f; macroBits[0] = 65535.f;
+        macroKind = 1.f; macroBits[0] = 65535ULL;
         eng.voiceLorRef(dotModular::VoiceResolver::slot(2), SequencerEngine::LOR_LEN)  = 6;
         eng.voiceLorRef(dotModular::VoiceResolver::slot(2), SequencerEngine::LOR_OFF)  = 9;
         eng.voiceLorLocalEast_[1] = true;   // V2's LOR row is its own (the abs1 region follows)
@@ -1138,9 +1138,9 @@ int main() {
         SequencerEngine eng; eng.reset();
         const auto M = dotModular::VoiceResolver::mono();
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
-        float macroBits[1] = {(float)(1u << 2)}; float macroKind = 2.f, macroFollowR = 0.f;
-        float eastBits[16], eastKind[16], eastFollowR[16], localEast[16];
-        for (int v = 0; v < 16; ++v) { eastBits[v]=65535.f; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
+        uint64_t macroBits[1] = {1ULL << 2}; float macroKind = 2.f, macroFollowR = 0.f;
+        uint64_t eastBits[16]; float eastKind[16], eastFollowR[16], localEast[16];
+        for (int v = 0; v < 16; ++v) { eastBits[v]=65535ULL; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         bool staticOK = true;
         for (int s = 0; s < 16; ++s) staticOK = staticOK && eng.outputMaskPasses(M, s) == (s == 2);
@@ -1158,7 +1158,7 @@ int main() {
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         check(eng.outputMaskPasses(M, 2) && !eng.outputMaskPasses(M, 1),
               "STAGE4: abs3 re-pin is reversible — R back restores the painted position");
-        macroBits[0] = (float)(1u << 9);   // a REPAINT: re-anchors at the current base R
+        macroBits[0] = 1ULL << 9;   // a REPAINT: re-anchors at the current base R
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 12;
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         check(eng.outputMaskPasses(M, 9) && !eng.outputMaskPasses(M, 10),
@@ -1173,7 +1173,7 @@ int main() {
         bool hookOK = true;
         for (int s = 0; s < 16; ++s)
             hookOK = hookOK && eng.outputMaskPasses(M, s) == (s == 7);   // bit 9 moves 2 EARLIER
-        hookOK = hookOK && eng.effectiveOutputMask(M) == (uint16_t)(1u << 7);
+        hookOK = hookOK && eng.effectiveOutputMask(M) == (uint64_t)(1ULL << 7);
         check(hookOK, "STAGE4: follow-R evaluates the modulated R — +2 past the anchor plays the pattern 2 steps earlier (live, no re-pin)");
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 12;   // Δ=0: the anchored copy stands
         check(eng.outputMaskPasses(M, 9) && !eng.outputMaskPasses(M, 7),
@@ -1183,10 +1183,10 @@ int main() {
         // DELEGATION: the MACRO tier is the GLOBAL mask (V1 + every follower read it);
         // a local-mask voice reads its own East row.
         SequencerEngine eng; eng.reset(); eng.numPolyVoices = 2;
-        float macroBits[1] = {(float)(1u << 4)}; float macroKind = 2.f, macroFollowR = 0.f;
-        float eastBits[16], eastKind[16], eastFollowR[16], localEast[16];
-        for (int v = 0; v < 16; ++v) { eastBits[v]=65535.f; eastKind[v]=2.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
-        eastBits[1] = (float)(1u << 6);   // V2's own row: bit 6 (phrase step 7)
+        uint64_t macroBits[1] = {1ULL << 4}; float macroKind = 2.f, macroFollowR = 0.f;
+        uint64_t eastBits[16]; float eastKind[16], eastFollowR[16], localEast[16];
+        for (int v = 0; v < 16; ++v) { eastBits[v]=65535ULL; eastKind[v]=2.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
+        eastBits[1] = 1ULL << 6;   // V2's own row: bit 6 (phrase step 7)
         localEast[1] = 1.f;               // V2 claims its own mask
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         const auto v2 = dotModular::VoiceResolver::slot(2);
@@ -1201,22 +1201,25 @@ int main() {
         check(delegOK, "STAGE4: delegation — a local-mask voice reads its own row; V1 + followers read the Macro mask");
     }
     {
-        // THE PUSH CLAMPS: kind 0..2, bits 0..65535, followR/local != 0.
+        // THE PUSH CLAMPS (STEPS_32 Stage 2a representation): kind 0..2 and the flag
+        // truthiness clamp as before; the BITS are the DECIDED uint64, and the store
+        // boundary MASKS on the ring (lenMask) — over-ring bits are outside the mask's
+        // domain and drop (the old float clamp 0..65535 is gone with the float wall).
         SequencerEngine eng; eng.reset();
-        float macroBits[1] = {-5.f}; float macroKind = 7.4f, macroFollowR = 2.f;
-        float eastBits[16], eastKind[16], eastFollowR[16], localEast[16];
-        for (int v = 0; v < 16; ++v) { eastBits[v]=99999.f; eastKind[v]=-1.f; eastFollowR[v]=0.f; localEast[v]=0.5f; }
+        uint64_t macroBits[1] = {~0ULL}; float macroKind = 7.4f, macroFollowR = 2.f;   // all-64: the over-ring bits drop
+        uint64_t eastBits[16]; float eastKind[16], eastFollowR[16], localEast[16];
+        for (int v = 0; v < 16; ++v) { eastBits[v]=0x1869FULL; eastKind[v]=-1.f; eastFollowR[v]=0.f; localEast[v]=0.5f; }   // 99999: over-ring
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         const auto v2 = dotModular::VoiceResolver::slot(2);
         const bool clampsOK = eng.maskMacroKind_ == 2            // lround(7.4) clamped -> 2
-                           && eng.maskMacroAnchored_ == 0        // bits -5 -> 0
+                           && eng.maskMacroAnchored_ == 0xFFFF   // ~0ULL & lenMask -> the ring's all-on
                            && eng.maskMacroFollowR_ == true
                            && eng.maskKind_[v2.v] == 0           // -1 -> 0 (cycle)
-                           && eng.maskPainted_[v2.v] == 0xFFFF   // 99999 -> 65535
+                           && eng.maskPainted_[v2.v] == 0x869F   // 99999 & lenMask -> 0x869F (the ring mask law)
                            && eng.maskLocalEast_[v2.v] == true;  // 0.5 -> local
-        check(clampsOK, "STAGE4: the push clamps to the store frame (kind 0..2, bits 0..65535, flags)");
+        check(clampsOK, "STAGE4: the push clamps to the store frame (kind 0..2, bits ring-masked uint64, flags)");
         // and windowMaskBits (the "from range" preset's math) == the dynamic eval
-        const uint16_t w = SequencerEngine::windowMaskBits(4, 13);
+        const uint64_t w = SequencerEngine::windowMaskBits(4, 13);   // the ring-wide play mask (Stage 2a)
         bool wOK = true;
         for (int s = 0; s < 16; ++s)
             wOK = wOK && (((w >> s) & 1u) != 0u) == (s >= 13 || s < 1);
@@ -1234,9 +1237,9 @@ int main() {
         const auto M  = dotModular::VoiceResolver::mono();
         const auto v2 = dotModular::VoiceResolver::slot(2);
         const auto v3 = dotModular::VoiceResolver::slot(3);
-        float macroBits[1] = {65535.f}; float macroKind = 0.f, macroFollowR = 0.f;
-        float eastBits[16], eastKind[16], eastFollowR[16], localEast[16];
-        for (int v = 0; v < 16; ++v) { eastBits[v]=65535.f; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
+        uint64_t macroBits[1] = {65535ULL}; float macroKind = 0.f, macroFollowR = 0.f;
+        uint64_t eastBits[16]; float eastKind[16], eastFollowR[16], localEast[16];
+        for (int v = 0; v < 16; ++v) { eastBits[v]=65535ULL; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
         check(eng.effectiveOutputMask(M) == 0xFFFFu && eng.effectiveOutputMaskMacro() == 0xFFFFu,
               "STAGE4-DISP: cycle -> the all-on play set");
@@ -1251,22 +1254,22 @@ int main() {
               "STAGE4-DISP: abs1 -> the voice LOR window bits (wrapped 13..4), macro tier the same");
         // PAINTED: the anchored copy; abs3's re-pin ROTATES the returned bits (the
         // visible follow-R effect), abs2 stays fixed.
-        macroKind = 2.f; macroBits[0] = (float)(1u << 2);
+        macroKind = 2.f; macroBits[0] = 1ULL << 2;
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
-        check(eng.effectiveOutputMaskMacro() == (1u << 2),
+        check(eng.effectiveOutputMaskMacro() == (1ULL << 2),
               "STAGE4-DISP: painted -> the anchored working copy");
         macroFollowR = 1.f;
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 8;
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
-        check(eng.effectiveOutputMaskMacro() == (1u << 1),
+        check(eng.effectiveOutputMaskMacro() == (1ULL << 1),
               "STAGE4-DISP: abs3 re-pin ROTATES the returned bits (the strip visibly follows R)");
         // DELEGATION: a local-mask voice's accessor reads its own row; a follower's
         // (and the macro accessor) read the Macro tier.
-        for (int v = 0; v < 16; ++v) { eastBits[v]=65535.f; eastKind[v]=2.f; }
-        eastBits[1] = (float)(1u << 6); localEast[1] = 1.f;
+        for (int v = 0; v < 16; ++v) { eastBits[v]=65535ULL; eastKind[v]=2.f; }
+        eastBits[1] = 1ULL << 6; localEast[1] = 1.f;
         eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
-        check(eng.effectiveOutputMask(v2) == (1u << 6)
+        check(eng.effectiveOutputMask(v2) == (1ULL << 6)
            && eng.effectiveOutputMask(v3) == eng.effectiveOutputMaskMacro(),
               "STAGE4-DISP: delegation — the local voice's own row; the follower's == the macro accessor");
     }

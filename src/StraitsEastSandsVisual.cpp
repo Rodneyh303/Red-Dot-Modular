@@ -81,8 +81,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
     //  predicates — no central visibility list needed.)
     int  selectedVoice = 0;
     // UAS Stage-4 UI completion: the paint-stroke buffer (the before-state for the
-    // stroke's ONE history action — see onMaskToggle/onMaskStrokeEnd).
-    struct { bool active = false; int kind = 0; unsigned bits = 0xFFFFu; } maskStroke_;
+    // stroke's ONE history action — see onMaskToggle/onMaskStrokeEnd). STEPS_32 Stage 2a:
+    // the stroke plane is the DECIDED uint64 integer representation, ring-masked.
+    struct { bool active = false; int kind = 0; uint64_t bits = dotModular::kMaskLenMask; } maskStroke_;
     // Stage 3: the voice-range strip's caption buffer (setRangeState stores the
     // pointer — it must outlive the call, so it lives here, not on the stack).
     char rangeLabel_[16] = "V1";
@@ -358,12 +359,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             if (!maskStroke_.active) {                        // capture the stroke's BEFORE state
                 maskStroke_.active = true;
                 maskStroke_.kind   = (int)std::lround(m->getMaskEastKind(v));
-                maskStroke_.bits   = (unsigned)std::lround(m->getMaskEastPatternBits(v));
+                maskStroke_.bits   = m->getMaskEastPatternBits(v);   // the DECIDED uint64 (no float round-trip)
                 if (maskStroke_.kind != 2) {                  // the transition: seed from the effective mask
                     maskStroke_.kind = 2;
                     maskStroke_.bits = m->engine.effectiveOutputMask(dotModular::VoiceResolver::slot(v + 1));
                     m->setMaskEastKind(v, 2.f);
-                    m->setMaskEastPatternBits(v, (float)maskStroke_.bits);
+                    m->setMaskEastPatternBits(v, maskStroke_.bits);
                 }
             }
             m->setMaskEastCell(v, cell, play);                // apply live (the push lands next block)
@@ -374,14 +375,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             if (!maskStroke_.active) return;
             maskStroke_.active = false;
             if (m->getMaskLocalEastMask(v) == 0.f) return;
-            const unsigned afterBits = (unsigned)std::lround(m->getMaskEastPatternBits(v));
+            const uint64_t afterBits = m->getMaskEastPatternBits(v);   // the DECIDED uint64
             if ((int)std::lround(m->getMaskEastKind(v)) == maskStroke_.kind && afterBits == maskStroke_.bits)
                 return;   // nothing changed
-            const int bKind = maskStroke_.kind; const unsigned bBits = maskStroke_.bits;
+            const int bKind = maskStroke_.kind; const uint64_t bBits = maskStroke_.bits;
             redDot::applyAndPushStoreEdit<Monsoon>(m, "Mask paint",
                 [v, bKind, bBits, afterBits](Monsoon& mm, bool redo) {
                     mm.setMaskEastKind(v, redo ? 2.f : (float)bKind);
-                    mm.setMaskEastPatternBits(v, redo ? (float)afterBits : (float)bBits);
+                    mm.setMaskEastPatternBits(v, redo ? afterBits : bBits);
                 },
                 false, true);
         };
@@ -872,14 +873,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
         if (maskIndependent) {
             struct MaskBitsItem : MenuItem {
                 StraitsEastSandsVisualWidget* widget;
-                int v; float bits;
+                int v; uint64_t bits;   // the DECIDED uint64 (STEPS_32 Stage 2a)
                 void onAction(const event::Action& e) override {
                     if (auto* mm = widget->getMonsoon()) {
                         const int vi = v;   // the member, aliased for the setter lambda
-                        const float oldB = mm->getMaskEastPatternBits(vi);
+                        const uint64_t oldB = mm->getMaskEastPatternBits(vi);
                         mm->setMaskEastPatternBits(vi, bits);
                         redDot::applyAndPushStoreEdit<Monsoon>(mm, "Mask pattern",
-                            [vi](Monsoon& m2, float b) { m2.setMaskEastPatternBits(vi, b); }, oldB, bits);
+                            [vi](Monsoon& m2, uint64_t b) { m2.setMaskEastPatternBits(vi, b); }, oldB, bits);
                     }
                 }
             };
@@ -904,7 +905,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                             [m, v, abs1]() {
                                 const float oldK = m->getMaskEastKind(v);
                                 const float newK = abs1 ? 1.f
-                                    : ((int)std::lround(m->getMaskEastPatternBits(v)) == 65535) ? 0.f : 2.f;
+                                    : (m->getMaskEastPatternBits(v) == dotModular::kMaskLenMask) ? 0.f : 2.f;
                                 if (oldK == newK) return;
                                 m->setMaskEastKind(v, newK);
                                 redDot::applyAndPushStoreEdit<Monsoon>(m, "Mask kind",
@@ -924,14 +925,14 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             menu->addChild(new MenuSeparator);
             auto* allOn = new MaskBitsItem;
             allOn->text = "Set mask all on";
-            allOn->widget = this; allOn->v = v; allOn->bits = 65535.f;
+            allOn->widget = this; allOn->v = v; allOn->bits = dotModular::kMaskLenMask;   // the RING's all-on (Stage 2a — was 65535.f)
             menu->addChild(allOn);
             auto* fromRange = new MaskBitsItem;
             fromRange->text = "Set mask from range";
             // the preset: the voice LOR window as the play set (the abs1 region — ONE range)
             fromRange->widget = this;
             fromRange->v = v;
-            fromRange->bits = (float)SequencerEngine::windowMaskBits(
+            fromRange->bits = SequencerEngine::windowMaskBits(
                 std::max(1, (int)std::lround(m->getVoiceLorEast(v, 0))),
                 (int)std::lround(m->getVoiceLorEast(v, 1)));
             menu->addChild(fromRange);

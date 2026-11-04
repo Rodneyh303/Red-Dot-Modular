@@ -5,6 +5,7 @@
 #include <deque>
 #include <cstring>
 #include "../dsp/LaneMapping.hpp"   // canonical editor lane order — the Lane enum below is guarded against it
+#include "../dsp/engines/PatternEngine.hpp"   // dotModular::kMaskLenMask — the STEPS_32 Stage 2a mask-constant authority
 
 namespace redDot {
 
@@ -327,18 +328,22 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // the window (press->move = window gesture; press->release = paint). The host
   // pushes the EFFECTIVE pattern (delegation-resolved) each frame; edits are
   // blocked while the row follows Macro (the delegation discipline).
+  // STEPS_32 Stage 2a: the plane is the DECIDED uint64 integer representation,
+  // ring-masked (the display cells stay STEP_COUNT = the visible 16 — class C —
+  // while the PLANE already holds the ring-wide pattern; the Stage-2b flip widens
+  // what the host pushes with no widget change beyond the constant).
   bool     maskActive  = false;
-  unsigned maskPattern = 0xFFFFu;
+  uint64_t maskPattern = dotModular::kMaskLenMask;
   std::function<void(int cell, bool play)> onMaskToggle;
   // The stroke's end (release) — the host pushes ONE Rack history action for the
   // whole stroke (click or drag); onMaskToggle applied the cells live.
   std::function<void()> onMaskStrokeEnd;
-  void setRangeMask(bool active, unsigned pattern) {
+  void setRangeMask(bool active, uint64_t pattern) {
     maskActive  = active;
-    maskPattern = pattern & 0xFFFFu;
+    maskPattern = pattern & dotModular::kMaskLenMask;
   }
   bool maskCellPlays(int cell) const {
-    return (cell >= 0 && cell < STEP_COUNT) && ((maskPattern >> cell) & 1u) != 0u;
+    return (cell >= 0 && cell < STEP_COUNT) && ((maskPattern >> cell) & 1ULL) != 0ULL;
   }
   // Per-frame display push (host). While a drag is live the window L/O/R stays the
   // DRAG's local values (the store push lags one control block; overwriting would

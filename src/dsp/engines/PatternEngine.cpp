@@ -42,7 +42,7 @@ struct OUBridgeCoeffs {
 // the poly writes can MINT VoiceSlots (the header cannot include VoiceResolver.hpp).
 // Byte-identical to the inline loops it replaces (same writes, same order).
 void PatternEngine::promoteRemappedDraws_(bool doR, bool doM, bool doQ) {
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < kStepStorage; ++i) {
         if (doR) {
             rhythmRandom[i]=slewedRhythm[0][i]; accentRandom[i]=slewedAccent[0][i];
             variationRandom[i]=slewedVariation[0][i]; legatoRandom[i]=slewedLegato[0][i];
@@ -92,7 +92,7 @@ void PatternEngine::reset() {
     seedBridgeQmixPhilox(qmixSeedFloat);
 
     // strands must not be all-zero or module is silent until dice/phrase
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < kStepStorage; ++i) {
         rhythmRandom[i] = 1.0f;     // Mono triggers by default
         variationRandom[i] = 0.5f;  // No variation bias
         legatoRandom[i] = 0.0f;     // No legato/ties
@@ -141,7 +141,7 @@ void PatternEngine::reset() {
     rhythmFirstDraw=melodyFirstDraw=qmixFirstDraw=true;
     sandsActive=false;
     // Mirror defaults into slewedDraw too (final == slewed at reset)
-    for (int i=0;i<16;i++){
+    for (int i=0;i<kStepStorage;i++){
         slewedRhythm[0][i]=rhythmRandom[i]; slewedVariation[0][i]=variationRandom[i];
         slewedLegato[0][i]=legatoRandom[i]; slewedAccent[0][i]=accentRandom[i];
         slewedMelody[0][i]=melodyRandom[i]; slewedOctave[0][i]=octaveRandom[i];
@@ -198,7 +198,7 @@ void PatternEngine::rebuildWarpMirrorAll() {
     if (!warpBank_) return;   // no bank ⇒ nothing to mix; consumers fall back to random_
     for (int v = 0; v < 16; ++v)
         for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
-            for (int s = 0; s < 16; ++s)
+            for (int s = 0; s < kStepStorage; ++s)
                 warped_[v][l][s] = warpMixCell(v, l, s);
 }
 
@@ -214,7 +214,7 @@ void PatternEngine::rebuildWarpMirrorVoice(int v) {
     if (!warpBank_) return;
     const int vv = (v >= 0 && v < 16) ? v : 0;
     for (int l = 0; l < dotModular::NUM_STRANDS; ++l)
-        for (int s = 0; s < 16; ++s)
+        for (int s = 0; s < kStepStorage; ++s)
             warped_[vv][l][s] = warpMixCell(vv, l, s);
 }
 
@@ -223,7 +223,7 @@ void PatternEngine::rebuildWarpMirrorLaneDelegating(int lane) {
     const int l = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : 0;
     for (int v = 0; v < 16; ++v) {
         if (!warpDelegated_[v][l]) continue;   // own-slot voices: a Macro edit can't move them
-        for (int s = 0; s < 16; ++s)
+        for (int s = 0; s < kStepStorage; ++s)
             warped_[v][l][s] = warpMixCell(v, l, s);
     }
 }
@@ -235,7 +235,7 @@ void PatternEngine::rebuildWarpMirrorLane(int lane) {
     if (!warpBank_) return;
     const int l = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : 0;
     for (int v = 0; v < 16; ++v)
-        for (int s = 0; s < 16; ++s)
+        for (int s = 0; s < kStepStorage; ++s)
             warped_[v][l][s] = warpMixCell(v, l, s);
 }
 
@@ -243,7 +243,7 @@ void PatternEngine::rebuildWarpMirrorVoiceLane(int v, int lane) {
     if (!warpBank_) return;
     const int vv = (v >= 0 && v < 16) ? v : 0;
     const int l = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : 0;
-    for (int s = 0; s < 16; ++s)
+    for (int s = 0; s < kStepStorage; ++s)
         warped_[vv][l][s] = warpMixCell(vv, l, s);
 }
 
@@ -251,7 +251,7 @@ void PatternEngine::rebuildWarpMirrorCell(int v, int lane, int step) {
     if (!warpBank_) return;
     const int vv = (v >= 0 && v < 16) ? v : 0;
     const int l = (lane >= 0 && lane < dotModular::NUM_STRANDS) ? lane : 0;
-    warped_[vv][l][step & 0x0F] = warpMixCell(vv, l, step & 0x0F);
+    warped_[vv][l][step & (kPatternLengthCap - 1)] = warpMixCell(vv, l, step & (kPatternLengthCap - 1));   // the frame ring (Stage 2a: cap-derived; 0x0F at the 16 bound)
 }
 
 // ── Core generation ───────────────────────────────────────────────────────
@@ -428,7 +428,7 @@ void PatternEngine::redrawRhythm(const PatternInput& in) {
     recomputeEffectiveRhythm();
     // Cache source from the SLEWED draw (canonical draw; final may be rewritten
     // by Sands later this cycle). UI pattern previews the no-Sands final.
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < kStepStorage; ++i) {
         rhythmSource[0][i]=slewedRhythm[0][i]; variationSource[0][i]=slewedVariation[0][i];
         legatoSource[0][i]=slewedLegato[0][i]; accentSource[0][i]=slewedAccent[0][i];
         for (int v=1;v<=numPolyVoicesHint;v++) rhythmSource[v][i]=slewedRhythm[v][i];
@@ -492,7 +492,7 @@ void PatternEngine::recomputeEffectiveRhythm() {
             return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1));
         };
         int fi = 0;
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             slewedRhythm[0][i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zRhythm[0][i]; }, fi++);
             slewedVariation[0][i] = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zVariation[0][i]; }, fi++);
             slewedLegato[0][i]    = blend(i, [](const CachedRhythmDraw* c, int i){ return c->zLegato[0][i]; }, fi++);
@@ -514,7 +514,7 @@ void PatternEngine::recomputeEffectiveRhythm() {
         patternRhythmAt(N - f,     slew, d0);
         patternRhythmAt(N - f - 1, slew, d1);
         auto bl = [frac](float a, float b){ return a + frac*(b-a); };
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             slewedRhythm[0][i]=bl(d0.rhythm[0][i],d1.rhythm[0][i]);
             slewedVariation[0][i]=bl(d0.variation[0][i],d1.variation[0][i]);
             slewedLegato[0][i]=bl(d0.legato[0][i],d1.legato[0][i]);
@@ -536,7 +536,7 @@ void PatternEngine::recomputeEffectiveRhythm() {
     // spread refresh for random_[0]).
     if (!sandsActive) {
         const bool applyR = cachedSpreadInitialized && cachedSpreadLiveR;
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (the spread-apply term is compute)
             rhythmRandom[i]=slewedRhythm[0][i]; variationRandom[i]=slewedVariation[0][i];
             legatoRandom[i]=slewedLegato[0][i]; accentRandom[i]=slewedAccent[0][i];
             // v = voiceSlot; slot(V) takes the VOICE number (= v+1)
@@ -601,7 +601,7 @@ void PatternEngine::recomputeEffectiveMelody() {
             return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1));
         };
         int fi = 0;
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             slewedMelody[0][i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zMelody[0][i]; }, fi++);
             slewedOctave[0][i] = blend(i, [](const CachedMelodyDraw* c, int i){ return c->zOctave[0][i]; }, fi++);
             for (int v = 1; v <= numPolyVoicesHint; v++) {
@@ -618,7 +618,7 @@ void PatternEngine::recomputeEffectiveMelody() {
         patternMelodyAt(N - f,     slew, d0);
         patternMelodyAt(N - f - 1, slew, d1);
         auto bl = [frac](float a, float b){ return a + frac*(b-a); };
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             slewedMelody[0][i]=bl(d0.melody[0][i],d1.melody[0][i]);
             slewedOctave[0][i]=bl(d0.octave[0][i],d1.octave[0][i]);
             for (int v = 1; v <= numPolyVoicesHint; v++) {
@@ -629,7 +629,7 @@ void PatternEngine::recomputeEffectiveMelody() {
     }
     if (!sandsActive) {
         const bool applyM = cachedSpreadInitialized && cachedSpreadLiveM;
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (the spread-apply term is compute)
             melodyRandom[i]=slewedMelody[0][i]; octaveRandom[i]=slewedOctave[0][i];
             // v = voiceSlot; slot(V) takes the VOICE number (= v+1)
             for (int v=1;v<=numPolyVoicesHint;v++){ const VoiceSlot vs = VoiceResolver::slot(v + 1);
@@ -687,7 +687,7 @@ void PatternEngine::recomputeEffectiveQmix() {
             return (float)redDot::copula::PhiFast(ouBC.blend(z0, z1));
         };
         int fi = 0;
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             slewedQmix[0][i] = blend(i, [](const CachedQmixDraw* c, int i){ return c->zQmix[0][i]; }, fi++);
             for (int v = 1; v <= numPolyVoicesHint; v++) {
                 slewedQmix[v][i] = blend(i, [v](const CachedQmixDraw* c, int i){ return c->zQmix[v][i]; }, fi++);
@@ -702,7 +702,7 @@ void PatternEngine::recomputeEffectiveQmix() {
         patternQmixAt(N - f,     slew, d0);
         patternQmixAt(N - f - 1, slew, d1);
         auto bl = [frac](float a, float b){ return a + frac*(b-a); };
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             slewedQmix[0][i]=bl(d0.qmix[0][i],d1.qmix[0][i]);
             for (int v = 1; v <= numPolyVoicesHint; v++) {
                 slewedQmix[v][i]=bl(d0.qmix[v][i],d1.qmix[v][i]);
@@ -711,7 +711,7 @@ void PatternEngine::recomputeEffectiveQmix() {
     }
     if (!sandsActive) {
         const bool applyQ = cachedSpreadInitialized && cachedSpreadLiveQ;
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (the spread-apply term is compute)
             qmixRandom[i]=slewedQmix[0][i];
             // v = voiceSlot; slot(V) takes the VOICE number (= v+1)
             for (int v=1;v<=numPolyVoicesHint;v++){ const VoiceSlot vs = VoiceResolver::slot(v + 1);
@@ -744,19 +744,19 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(VoiceSlot voice) {
         return (float)redDot::copula::PhiFast(ouBC.blend(rhythmZCache_.z0[fi], rhythmZCache_.z1[fi]));
     };
     if (voice == VoiceResolver::mono()) {
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             int b = i * stride;
             slewedRhythm[0][i]    = bl(b); slewedVariation[0][i] = bl(b+1);
             slewedLegato[0][i]    = bl(b+2); slewedAccent[0][i]   = bl(b+3);
         }
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kStepStorage; ++i) {
             rhythmRandom[i]=slewedRhythm[0][i]; variationRandom[i]=slewedVariation[0][i];
             legatoRandom[i]=slewedLegato[0][i]; accentRandom[i]=slewedAccent[0][i];
         }
     } else {
         if (voice.v > numPolyVoicesHint) return;
         int off = 4 + (voice.v - 1) * 4;  // z-cache field offset: V2 at field 4
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             int b = i * stride + off;
             slewedRhythm[voice.v][i]    = bl(b); slewedAccent[voice.v][i]    = bl(b+1);
             slewedVariation[voice.v][i] = bl(b+2); slewedLegato[voice.v][i]    = bl(b+3);
@@ -764,7 +764,7 @@ void PatternEngine::recomputeEffectiveRhythmForVoice(VoiceSlot voice) {
         // Always write random_[voice] — V1's path writes random_[0]; poly must too (no !sandsActive guard)
         {
             const bool applyR = cachedSpreadInitialized && cachedSpreadLiveR;
-            for (int i = 0; i < 16; ++i) {
+            for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (the spread-apply term is compute)
                 polyRandom(voice, LaneId{PL_REST})[i]=applyR?
                     redDot::SpreadInterp::applyPoly(*this,PL_REST,voice.v,i,cachedPolySpread[voice.v][PL_REST]):slewedRhythm[voice.v][i];
                 polyRandom(voice, LaneId{PL_ACCENT})[i]=applyR?
@@ -797,23 +797,23 @@ void PatternEngine::recomputeEffectiveMelodyForVoice(VoiceSlot voice) {
         return (float)redDot::copula::PhiFast(ouBC.blend(melodyZCache_.z0[fi], melodyZCache_.z1[fi]));
     };
     if (voice == VoiceResolver::mono()) {
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             int b = i * stride;
             slewedMelody[0][i] = bl(b); slewedOctave[0][i] = bl(b+1);
         }
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kStepStorage; ++i) {
             melodyRandom[i]=slewedMelody[0][i]; octaveRandom[i]=slewedOctave[0][i];
         }
     } else {
         if (voice.v > numPolyVoicesHint) return;
         int off = 2 + (voice.v - 1) * 2;
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (copula compute)
             int b = i * stride + off;
             slewedMelody[voice.v][i] = bl(b); slewedOctave[voice.v][i] = bl(b+1);
         }
         {
             const bool applyM = cachedSpreadInitialized && cachedSpreadLiveM;
-            for (int i = 0; i < 16; ++i) {
+            for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (the spread-apply term is compute)
                 polyRandom(voice, LaneId{PL_MELODY})[i]=applyM?
                     redDot::SpreadInterp::applyPoly(*this,PL_MELODY,voice.v,i,cachedPolySpread[voice.v][PL_MELODY]):slewedMelody[voice.v][i];
                 polyRandom(voice, LaneId{PL_OCTAVE})[i]=applyM?
@@ -841,14 +841,14 @@ void PatternEngine::recomputeEffectiveQmixForVoice(VoiceSlot voice) {
         return (float)redDot::copula::PhiFast(ouBC.blend(qmixZCache_.z0[fi], qmixZCache_.z1[fi]));
     };
     if (voice == VoiceResolver::mono()) {
-        for (int i = 0; i < 16; ++i) slewedQmix[0][i] = bl(i * stride);
-        for (int i = 0; i < 16; ++i) qmixRandom[i]=slewedQmix[0][i];
+        for (int i = 0; i < kPatternLengthCap; ++i) slewedQmix[0][i] = bl(i * stride);   // the ring (copula compute)
+        for (int i = 0; i < kStepStorage; ++i) qmixRandom[i]=slewedQmix[0][i];   // whole-row copy
     } else {
         if (voice.v > numPolyVoicesHint) return;
-        for (int i = 0; i < 16; ++i) slewedQmix[voice.v][i] = bl(i * stride + 1 + (voice.v - 1));
+        for (int i = 0; i < kPatternLengthCap; ++i) slewedQmix[voice.v][i] = bl(i * stride + 1 + (voice.v - 1));   // the ring (copula compute)
         {
             const bool applyQ = cachedSpreadInitialized && cachedSpreadLiveQ;
-            for (int i = 0; i < 16; ++i) polyRandom(voice, LaneId{PL_QMIX})[i]=applyQ?
+            for (int i = 0; i < kPatternLengthCap; ++i) polyRandom(voice, LaneId{PL_QMIX})[i]=applyQ?   // the ring (the spread-apply term is compute)
                 redDot::SpreadInterp::applyPoly(*this,PL_QMIX,voice.v,i,cachedPolySpread[voice.v][PL_QMIX]):slewedQmix[voice.v][i];
         }
     }
@@ -873,7 +873,7 @@ void PatternEngine::redrawMelody(const PatternInput& in) {
     (void)first;
     melodySlewApplied = -1.f;
     recomputeEffectiveMelody();
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (the pitch-compute term; the source copy is same-index — beyond-ring cells stay zero)
         melodySource[0][i]=slewedMelody[0][i]; octaveSource[0][i]=slewedOctave[0][i];
         for (int v=1;v<=numPolyVoicesHint;v++){ melodySource[v][i]=slewedMelody[v][i];
                                 octaveSource[v][i]=slewedOctave[v][i]; }
@@ -909,7 +909,7 @@ void PatternEngine::redrawQmix(const PatternInput& in) {
     (void)first;
     qmixSlewApplied = -1.f;
     recomputeEffectiveQmix();
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < kStepStorage; ++i) {
         qmixSource[0][i]=slewedQmix[0][i];
         for (int v=1;v<=numPolyVoicesHint;v++){ qmixSource[v][i]=slewedQmix[v][i]; }
     }
@@ -980,7 +980,7 @@ void PatternEngine::refreshVisualCache(const PatternInput& in) {
     // the live row now; the flag had no other consumer. The melody half of the
     // rhythmmix_leaks_melody_bars split stays: read the DISPLAYED VOICE's array below.)
     if (melodyChanged) {
-        for (int i = 0; i < 16; ++i) {
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (pitch compute)
             // Warp mirror (CC_PROMPT_03 STEP 4b — the DISPLAY site): the bars derive
             // from the SAME effective w-mixture the sounding path consumes, keyed to
             // displayedVoice_ (warpRow(mono,·) degenerates to the mono row — the ternary
@@ -1107,7 +1107,7 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
     else if (drawAllowedM && melodySlewApplied != -1.f
              && rack::math::clamp(melodySlewLatched, -1.f, 1.f) != melodySlewApplied) {
         recomputeEffectiveMelody();   // slew-boundary consumption (see rhythm block above)
-        for (int i = 0; i < 16; ++i) {   // preview follows (refreshVisualCache's melodyChanged writer)
+        for (int i = 0; i < kPatternLengthCap; ++i) {   // the ring (pitch compute) — preview follows (refreshVisualCache's melodyChanged writer)
             float mVal = warpRow(displayedVoice_, LaneId{PL_MELODY})[i];
             float oVal = warpRow(displayedVoice_, LaneId{PL_OCTAVE})[i];
             int sem = 0;
@@ -1160,7 +1160,7 @@ void PatternEngine::switchMelodyMode(int& stepIndex, int& lastStepIndex) {
         cachedMelodySeedFloat = melodySeedPending
             ? melodySeedPendingFloat : melodySeedFloat;
         melodySeedCached = true;
-        for (int i = 0; i < 16; ++i) cachedMelodyPitchV[i] = melodyPitchV[i];
+        for (int i = 0; i < kStepStorage; ++i) cachedMelodyPitchV[i] = melodyPitchV[i];
         cachedMelodyStepIndex     = stepIndex;
         cachedMelodyLastStepIndex = lastStepIndex;
         // Scrub model: no A/B snapshot -- (counter, scrub, slew) is the morph position,
@@ -1168,7 +1168,7 @@ void PatternEngine::switchMelodyMode(int& stepIndex, int& lastStepIndex) {
     } else if (prev == 1 && next == 0 && melodySeedCached) {
         // Returning to dice: restore the exact A/B buffers (lossless — preserves
         // the slew morph position), NOT a reseed-to-A=B approximation.
-        for (int i = 0; i < 16; ++i) melodyPitchV[i] = cachedMelodyPitchV[i];
+        for (int i = 0; i < kStepStorage; ++i) melodyPitchV[i] = cachedMelodyPitchV[i];
         stepIndex     = cachedMelodyStepIndex;
         lastStepIndex = cachedMelodyLastStepIndex;
         // Scrub model: recompute effective from the (unchanged) counter -- exact pre-switch pattern.
