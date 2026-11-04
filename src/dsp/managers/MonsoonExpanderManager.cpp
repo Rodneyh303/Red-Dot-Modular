@@ -737,32 +737,88 @@ bool MonsoonExpanderManager::macroPopulationActive_(const SequencerEngine& engin
     return cachedMacroSandsVisual != nullptr && polyBaseActive && !(eastVisual && straits);
 }
 
-// The input + produced-cells image (packed; ≈2.5 KB, within RateManager::kMaxFingerprint).
-// EVERY input the population reads is here — a missed input = stale cells. The produced
-// cells are here TOO (self-healing, the SweepSig live-store compare generalized): the
-// runtime engine reset (SequencerEngine::reset) foreign-writes the LOR store + strands;
-// the image detects ANY foreign write and the producer re-asserts, exactly as the old
-// unconditional per-tick code did. Cost ≈ a 2.5 KB memcmp per control tick — tens of ns.
-size_t MonsoonExpanderManager::macroPopulationFingerprint_(const SequencerEngine& engine, void* dst) const {
+// D17 compare-in-place halves (the byte-image macroPopulationFingerprint_ is DELETED —
+// deletion is the enforcement). The compare's field walk is the capture's MIRROR: same
+// fields, same order, adjacent functions. The pointer words are compared FIRST so a
+// presence flip short-circuits the walk; when a pointer is null the capture stored
+// zeros for its region (the img{} zero-init below) and the compare skips the region —
+// the same information the byte image carried, read without building it. The compare
+// is what runs EVERY control tick now (previously: the full image build + copy +
+// compare); the early-out matters most here — 315 polyLOR reads + 75 tap reads sit
+// behind the first fields.
+bool MonsoonExpanderManager::macroPopulationCompare_(const SequencerEngine& engine) const {
     using PL = SequencerEngine;
-    struct __attribute__((packed)) Image {
-        // ── inputs ──
-        uint64_t macroVis, eastVisual, straits, monoVis;   // presence/identity
-        int32_t  effPolyVoices;
-        uint8_t  locked;
-        uint32_t scopeLiveMask;
-        float    macroBase[7][4];      // LOR items 0-2 + spread base item 3
-        float    preD3[7];             // tappedDelta's item-3 endpoints (the spread taps read these)
-        float    postD3[7];
-        float    tapPost[15][5];       // getMacroTap(v, lane, 1), v=1..15 × REST/MEL/OCT/ACC/QMIX
-        // ── produced cells (self-healing read-backs) ──
-        int32_t  polyLOR[15][7][3];    // polyLenE/polyOffE/polyRotE, v=1..15 × 7 lanes
-        float    cachedSpread[15][5];  // pe.cachedPolySpread, the 5 written lanes
-        float    monoFinals[5][16];    // rhythm/accent/melody/octave/qmixRandom
-        int32_t  strandLOR[7][3];      // the mono strands setStrand writes (reset foreign-writes these)
-        uint8_t  liveR, liveM, liveQ, spreadInited;
+    const PopulationSig& sig = popSig_;
+    if ((uint64_t)(uintptr_t)cachedMacroSandsVisual    != sig.macroVis)    return true;
+    if ((uint64_t)(uintptr_t)cachedEastSandsVisual     != sig.eastVisual)  return true;
+    if ((uint64_t)(uintptr_t)cachedPolyVoiceExpander   != sig.straits)     return true;
+    if ((uint64_t)(uintptr_t)cachedSandsVisualExpander != sig.monoVis)     return true;
+    const bool polyBaseActive = (cachedPolyVoiceExpander != nullptr) && (engine.numPolyVoices >= 1);
+    if ((int32_t)(polyBaseActive ? math::clamp(engine.numPolyVoices, 0, 15) : 0) != sig.effPolyVoices) return true;
+    { const uint8_t l = engine.locked ? 1 : 0;      if (l != sig.locked) return true; }
+    if (engine.scopeLiveMask != sig.scopeLiveMask) return true;
+    if (const auto* macroVis = cachedMacroSandsVisual) {
+        if (std::memcmp(macroVis->macroBase.data(), sig.macroBase.data(), sizeof sig.macroBase) != 0) return true;
+        for (int l = 0; l < 7; ++l) {
+            { const float v = macroVis->macroPreDelta[l][3];  if (std::memcmp(&v, &sig.preD3[l], sizeof v) != 0) return true; }
+            { const float v = macroVis->macroPostDelta[l][3]; if (std::memcmp(&v, &sig.postD3[l], sizeof v) != 0) return true; }
+        }
+        static const int TAPLANE[5] = { PL::PL_REST, PL::PL_MELODY, PL::PL_OCTAVE, PL::PL_ACCENT, PL::PL_QMIX };
+        // const_cast: the memo's signature takes Module* (a read-only resolve here;
+        // the compare must not mutate anything — memcmp inputs only).
+        if (const Monsoon* mmV = redDot::lookupMonsoon(const_cast<StraitsSandsMacroVisual*>(macroVis))) {
+            for (int v = 1; v <= 15; ++v)
+                for (int k = 0; k < 5; ++k) {
+                    const float t = mmV->getMacroTap(v, TAPLANE[k], 1);
+                    if (std::memcmp(&t, &sig.tapPost[v - 1][k], sizeof t) != 0) return true;
+                }
+        } else {
+            // The null-host default the capture stores (the 1.f fill).
+            for (int v = 1; v <= 15; ++v)
+                for (int k = 0; k < 5; ++k) {
+                    const float t = 1.f;
+                    if (std::memcmp(&t, &sig.tapPost[v - 1][k], sizeof t) != 0) return true;
+                }
+        }
+    }
+    static const int TAPLANE2[5] = { PL::PL_REST, PL::PL_ACCENT, PL::PL_MELODY, PL::PL_OCTAVE, PL::PL_QMIX };
+    for (int v = 1; v <= 15; ++v) {
+        const auto vs = dotModular::VoiceResolver::slot(v + 1);
+        for (int lane = 0; lane < 7; ++lane) {
+            const auto lid = dotModular::LaneId{lane};
+            if (engine.polyLenE(vs, lid) != sig.polyLOR[v - 1][lane][0]) return true;
+            if (engine.polyOffE(vs, lid) != sig.polyLOR[v - 1][lane][1]) return true;
+            if (engine.polyRotE(vs, lid) != sig.polyLOR[v - 1][lane][2]) return true;
+        }
+        for (int k = 0; k < 5; ++k) {
+            const float s = engine.pe.cachedPolySpread[v][TAPLANE2[k]];
+            if (std::memcmp(&s, &sig.cachedSpread[v - 1][k], sizeof s) != 0) return true;
+        }
+    }
+    // Per-call (NOT static — a static local would freeze the first engine's array
+    // addresses; the audit's Finding-C rule). 5 pointers of stack, negligible.
+    const float* const monoFinalSrc[5] = {
+        engine.pe.rhythmRandom.data(), engine.pe.accentRandom.data(), engine.pe.melodyRandom.data(),
+        engine.pe.octaveRandom.data(), engine.pe.qmixRandom.data(),
     };
-    Image img{};
+    for (int k = 0; k < 5; ++k)
+        if (std::memcmp(monoFinalSrc[k], sig.monoFinals[k].data(), sizeof sig.monoFinals[k]) != 0) return true;
+    for (int s = 0; s < 7; ++s)
+        for (int i = 0; i < 3; ++i)
+            if (engine.lor(s, i) != sig.strandLOR[s][i]) return true;
+    if ((uint8_t)(engine.pe.cachedSpreadLiveR ? 1 : 0)        != sig.liveR)        return true;
+    if ((uint8_t)(engine.pe.cachedSpreadLiveM ? 1 : 0)        != sig.liveM)        return true;
+    if ((uint8_t)(engine.pe.cachedSpreadLiveQ ? 1 : 0)        != sig.liveQ)        return true;
+    if ((uint8_t)(engine.pe.cachedSpreadInitialized ? 1 : 0)  != sig.spreadInited) return true;
+    return false;
+}
+
+// The capture: the old fingerprint body verbatim, landing in popSig_ instead of dst
+// (runs only after a produce — the rare path; the img{} zero-init keeps the
+// null-presence regions at zero, exactly as the byte image had them).
+void MonsoonExpanderManager::macroPopulationCapture_(const SequencerEngine& engine) {
+    using PL = SequencerEngine;
+    PopulationSig img{};
     img.macroVis   = (uint64_t)(uintptr_t)cachedMacroSandsVisual;
     img.eastVisual = (uint64_t)(uintptr_t)cachedEastSandsVisual;
     img.straits    = (uint64_t)(uintptr_t)cachedPolyVoiceExpander;
@@ -772,7 +828,7 @@ size_t MonsoonExpanderManager::macroPopulationFingerprint_(const SequencerEngine
     img.locked        = engine.locked ? 1 : 0;
     img.scopeLiveMask = engine.scopeLiveMask;
     if (const auto* macroVis = cachedMacroSandsVisual) {
-        std::memcpy(img.macroBase, macroVis->macroBase.data(), sizeof img.macroBase);
+        std::memcpy(img.macroBase.data(), macroVis->macroBase.data(), sizeof img.macroBase);
         for (int l = 0; l < 7; ++l) {
             img.preD3[l]  = macroVis->macroPreDelta[l][3];
             img.postD3[l] = macroVis->macroPostDelta[l][3];
@@ -782,7 +838,7 @@ size_t MonsoonExpanderManager::macroPopulationFingerprint_(const SequencerEngine
             for (int k = 0; k < 5; ++k)
                 img.tapPost[v - 1][k] = 1.f;   // the null-host default the produce uses
         // const_cast: the memo's signature takes Module* (a read-only resolve here;
-        // the fingerprint must not mutate anything — memcmp inputs only).
+        // the capture must not mutate anything — memcmp inputs only).
         if (const Monsoon* mmV = redDot::lookupMonsoon(const_cast<StraitsSandsMacroVisual*>(macroVis)))
             for (int v = 1; v <= 15; ++v)
                 for (int k = 0; k < 5; ++k)
@@ -800,11 +856,11 @@ size_t MonsoonExpanderManager::macroPopulationFingerprint_(const SequencerEngine
         for (int k = 0; k < 5; ++k)
             img.cachedSpread[v - 1][k] = engine.pe.cachedPolySpread[v][TAPLANE2[k]];
     }
-    std::memcpy(img.monoFinals[0], engine.pe.rhythmRandom.data(),  16 * sizeof(float));
-    std::memcpy(img.monoFinals[1], engine.pe.accentRandom.data(),  16 * sizeof(float));
-    std::memcpy(img.monoFinals[2], engine.pe.melodyRandom.data(),  16 * sizeof(float));
-    std::memcpy(img.monoFinals[3], engine.pe.octaveRandom.data(),  16 * sizeof(float));
-    std::memcpy(img.monoFinals[4], engine.pe.qmixRandom.data(),    16 * sizeof(float));
+    std::memcpy(img.monoFinals[0].data(), engine.pe.rhythmRandom.data(),  16 * sizeof(float));
+    std::memcpy(img.monoFinals[1].data(), engine.pe.accentRandom.data(),  16 * sizeof(float));
+    std::memcpy(img.monoFinals[2].data(), engine.pe.melodyRandom.data(),  16 * sizeof(float));
+    std::memcpy(img.monoFinals[3].data(), engine.pe.octaveRandom.data(),  16 * sizeof(float));
+    std::memcpy(img.monoFinals[4].data(), engine.pe.qmixRandom.data(),    16 * sizeof(float));
     for (int s = 0; s < 7; ++s) {
         img.strandLOR[s][0] = engine.lor(s, 0);
         img.strandLOR[s][1] = engine.lor(s, 1);
@@ -814,8 +870,7 @@ size_t MonsoonExpanderManager::macroPopulationFingerprint_(const SequencerEngine
     img.liveM       = engine.pe.cachedSpreadLiveM ? 1 : 0;
     img.liveQ       = engine.pe.cachedSpreadLiveQ ? 1 : 0;
     img.spreadInited = engine.pe.cachedSpreadInitialized ? 1 : 0;
-    std::memcpy(dst, &img, sizeof img);
-    return sizeof img;
+    popSig_ = img;
 }
 
 // The extracted MACRO-ONLY population — VERBATIM (same writes, same order, same
@@ -962,6 +1017,7 @@ void MonsoonExpanderManager::macroPopulationProduce_(SequencerEngine& engine) {
 void MonsoonExpanderManager::declareRateProducers(redDot::RateManager& rm, Monsoon& ownerMon) {
     rm.declareProducer(
         redDot::Rate::Control,
-        [this, &ownerMon](void* dst) { return macroPopulationFingerprint_(ownerMon.engine, dst); },
+        [this, &ownerMon]() -> bool { return macroPopulationCompare_(ownerMon.engine); },
+        [this, &ownerMon]()           { macroPopulationCapture_(ownerMon.engine); },
         [this, &ownerMon]()           { macroPopulationProduce_(ownerMon.engine); });
 }

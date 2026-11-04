@@ -237,6 +237,10 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
 }
 
 struct StraitsSandsMacroVisual : Module {
+    // P-A scope fix (ARRAY_CONTAINER_AUDIT): same law as the East visual — the Ids
+    // struct's alias is a sibling scope; StepProbRow's P-B std::array member needs
+    // the name in THIS class (the real-SDK g++ sweep rejects the unqualified use).
+    static constexpr int kVoiceSlots = dotModular::VoiceResolver::kVoiceSlots;
 
     StraitsSandsMacroVisual() {
         using namespace StraitsMacroVisualIds;

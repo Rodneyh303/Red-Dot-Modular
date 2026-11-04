@@ -400,7 +400,7 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     if (auto j = json_object_get(root, "qmixSeedPendingFloat")) m->engine.pe.qmixSeedPendingFloat = (float)json_real_value(j);
 
     // ── DNA Random Buffers ──
-    auto loadArr = [&](const char* name, float* target) {
+    auto loadArr = [&](const char* name, std::array<float, 16>& target) {
         if (auto j = json_object_get(root, name)) {
             if (json_is_array(j)) {
                 for (size_t i = 0; i < 16 && i < json_array_size(j); ++i)
@@ -418,7 +418,7 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
 
     // ── Poly DNA Random Buffers ──
     // COLLAPSE: source arrays are now [16][16] — V2..V16 at [1..15]. v=0 → [v+1]=V2.
-    auto loadPolyArr = [&](const char* name, int engLane, float source[16][16]) {
+    auto loadPolyArr = [&](const char* name, int engLane, std::array<std::array<float, 16>, 16>& source) {
         if (auto j = json_object_get(root, name)) {
             if (json_is_array(j)) {
                 for (int v = 1; v < 16; v++) {

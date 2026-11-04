@@ -1,5 +1,6 @@
 #pragma once
 #include <rack.hpp>
+#include <array>   // D17's PopulationSig joins the P-B std::array plane (ARRAY_CONTAINER_AUDIT)
 #include "../SandsTopology.hpp"   // for SandsTopology::Inputs (the presence authority target)
 #include "../../ui/RateManager.hpp"   // THE compute-rate authority (rack-free core — CC_PROMPT_RATE_MANAGER_START)
 
@@ -334,10 +335,43 @@ struct MonsoonExpanderManager {
     /// when sync's chain would NOT have reached the MACRO-ONLY branch (the East branch
     /// owns the cells then). The guard's inputs are fingerprint fields too.
     bool macroPopulationActive_(const SequencerEngine& engine) const;
-    /// The input + produced-cells image (packed, ≈2.5 KB — see the .cpp).
-    size_t macroPopulationFingerprint_(const SequencerEngine& engine, void* dst) const;
+    /// D17 compare-in-place halves (the byte-image macroPopulationFingerprint_ is
+    /// DELETED — deletion is the enforcement): compare_ walks the LIVE inputs
+    /// field-by-field against popSig_ (the typed shadow below) with early-out — no
+    /// image build, no copy through the manager; capture_ stores the post-run image
+    /// into popSig_ after a run. The compare is the capture's MIRROR — same fields,
+    /// same order, adjacent functions, one enumeration each (drift = stale state; the
+    /// RateManager R9 coverage test pins the property).
+    bool macroPopulationCompare_(const SequencerEngine& engine) const;
+    void macroPopulationCapture_(const SequencerEngine& engine);
     /// The extracted population — VERBATIM (same writes, same order, same liveness gates).
     void macroPopulationProduce_(SequencerEngine& engine);
+
+    // The input + produced-cells shadow (packed struct, ≈2.5 KB — the old byte-image
+    // layout, D17-typed; the compare never builds it, the capture zero-inits it).
+    // EVERY input the population reads is here — a missed input = stale cells. The
+    // produced cells are here TOO (self-healing, the SweepSig live-store compare
+    // generalized): the runtime engine reset (SequencerEngine::reset) foreign-writes
+    // the LOR store + strands; the shadow detects ANY foreign write and the producer
+    // re-asserts, exactly as the old unconditional per-tick code did. The pointer
+    // words stay FIRST so a presence flip short-circuits the walk.
+    struct PopulationSig {
+        // ── inputs ──
+        uint64_t macroVis, eastVisual, straits, monoVis;   // presence/identity
+        int32_t  effPolyVoices;
+        uint8_t  locked;
+        uint32_t scopeLiveMask;
+        std::array<std::array<float, 4>, 7> macroBase = {};  // LOR items 0-2 + spread base item 3
+        std::array<float, 7> preD3 = {};   // tappedDelta's item-3 endpoints (the spread taps read these)
+        std::array<float, 7> postD3 = {};
+        std::array<std::array<float, 5>, 15> tapPost = {};   // getMacroTap(v, lane, 1), v=1..15 × REST/MEL/OCT/ACC/QMIX
+        // ── produced cells (self-healing read-backs) ──
+        std::array<std::array<std::array<int32_t, 3>, 7>, 15> polyLOR = {};  // polyLenE/polyOffE/polyRotE, v=1..15 × 7 lanes
+        std::array<std::array<float, 5>, 15> cachedSpread = {};  // pe.cachedPolySpread, the 5 written lanes
+        std::array<std::array<float, 16>, 5> monoFinals = {};    // rhythm/accent/melody/octave/qmixRandom
+        std::array<std::array<int32_t, 3>, 7> strandLOR = {};  // the mono strands setStrand writes (reset foreign-writes these)
+        uint8_t  liveR, liveM, liveQ, spreadInited;
+    } popSig_{};
     /// The topology build sync's head uses (shared with produce_ — one place, no drift).
     dotModular::SandsTopology buildTopology_(const SequencerEngine& engine) const;
 

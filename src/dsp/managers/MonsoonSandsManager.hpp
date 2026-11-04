@@ -39,9 +39,42 @@ private:
     SequencerEngine& engine;
     PatternEngine& patternEngine;
 
-    // RATE MANAGER (S4): publishGlobal's producer halves.
-    size_t publishGlobalFingerprint_(Monsoon& ownerMon, void* dst);
+    // RATE MANAGER (S4): publishGlobal's producer halves — D17 compare-in-place form.
+    // compare_ walks the LIVE inputs field-by-field against publishSig_ (the typed
+    // shadow below) and early-outs on the first difference — no image build, no copy
+    // through the manager; capture_ stores the post-run image into publishSig_ after a
+    // run. The compare is the capture's MIRROR — same fields, same order, adjacent
+    // functions, one enumeration each (drift between the pair = stale state; the
+    // RateManager R9 coverage test pins the property). The old byte-image
+    // publishGlobalFingerprint_ is DELETED (deletion is the enforcement).
+    bool publishGlobalCompare_(Monsoon& ownerMon);
+    void publishGlobalCapture_(Monsoon& ownerMon);
     void   publishGlobalProduce_(Monsoon& ownerMon);
+
+    // The input + produced-cells shadow (the S0b pattern, D17-typed): every input the
+    // publish reads (the global LOR/spread/atten stores on the owner, the Macro CV
+    // jacks, presence) plus the published cells (macroBase/CVDelta/preD/postD/
+    // spreadEffective on the visual + macroOwnSpread on the engine) — self-healing
+    // against foreign writers (UI store edits on the visual land in the shadow and
+    // re-publish). The pointer words stay FIRST so a presence flip short-circuits the
+    // walk; the null-presence case zero-fills the rest (capture), and the compare
+    // skips the blocked regions — gated by the same pointer words, exactly as the
+    // byte image was.
+    struct PublishSig {
+        uint64_t macroVis, gMon;
+        std::array<std::array<float, 3>, 7>   lor = {};        // getGlobalLor(lane, 0..2) — the LOR knobs
+        std::array<float, 7>                  spr = {};        // getGlobalSpread(lane)
+        std::array<std::array<float, 4>, 7>   atten = {};      // getGlobalAtten(lane, item) — the CV depths
+        std::array<std::array<uint8_t, 4>, 7> cvConnected = {};
+        std::array<std::array<float, 4>, 7>   cvVoltage = {};  // macroCvId(lane,item): connected + voltage
+        // produced cells (self-healing)
+        std::array<std::array<float, 4>, 7>   macroBase = {};
+        std::array<std::array<float, 4>, 7>   macroCVDelta = {};
+        std::array<std::array<float, 4>, 7>   macroPreDelta = {};
+        std::array<std::array<float, 4>, 7>   macroPostDelta = {};
+        std::array<float, 7>                  spreadEffective = {};
+        std::array<float, 7>                  macroOwnSpread = {};
+    } publishSig_{};
 
     // Guard for the CA pin remap (forceRecomputeSlewed + remapSlewedByPins). That pair used to run
     // EVERY control block while the pins were non-identity, rewriting the slewed buffers in place --

@@ -209,6 +209,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
 }
 
 struct StraitsEastSandsVisual : Module {
+    // P-A scope fix (ARRAY_CONTAINER_AUDIT): the ONE spelling of the voice/channel
+    // capacity must live in THIS class too — StraitsEastVisualIds's copy is a sibling
+    // scope, and the P-B std::array members below name it bare (the real-SDK g++
+    // sweep rejects the unqualified use; the mock never compiled this header).
+    static constexpr int kVoiceSlots = dotModular::VoiceResolver::kVoiceSlots;
 
     // Per-voice, per-lane EFFECTIVE spread (interp param + per-voice/lane CV·att,
     // clamped, after combineSpread) — published by MonsoonExpanderManager each
@@ -293,41 +298,74 @@ struct StraitsEastSandsVisual : Module {
         probOutDiv.setDivision(32);             // prob CV outs = CONTROL rate (~1.5 kHz @48k, matches controlDivider)
         // RATE MANAGER (CC_PROMPT_RATE_MANAGER_START, S5): the dir/deleg CV-edge scan is
         // a DETECTOR-PRODUCER on the Sample tier (fed by the /8 gateModDiv edge — the
-        // detector cadence; /8 preserved EXACTLY). Its fingerprint is the raw CV image
+        // detector cadence; /8 preserved EXACTLY). Its input image is the raw CV state
         // (all dir/deleg jack voltages + channel counts): bit-identical voltages ⇒ no
         // edge is possible ⇒ the skip is semantically exact. The edge counters/prev
         // states are the produce's own I/O, so a skip is a no-op by construction.
+        // D17 compare-in-place: the compare walks the LIVE jacks field-by-field against
+        // dirDelegSig_ (early-out — the channel count of a jack gates its voltage walk),
+        // no image build, no copy; the capture stores the post-run image only after a
+        // run. This is the hottest fingerprint in the plane (Sample tier, /8 ≈ 6 kHz) —
+        // the scratch copy + Img build it drops is the largest single saving of D17.
         rateManager.declareProducer(
             redDot::Rate::Sample,
-            [this](void* dst) {
-                struct __attribute__((packed)) Img {
-                    float   dir[dotModular::SandsGrid::EAST_LANES][kVoiceSlots];
-                    float   deleg[dotModular::SandsGrid::EAST_LANES][kVoiceSlots];
-                    uint8_t dirCh[dotModular::SandsGrid::EAST_LANES], delegCh[dotModular::SandsGrid::EAST_LANES];
-                    // (B) VOICE-LOR PARITY: the voice row's own gate-mod image (the
-                    // same fingerprint discipline — ch == voiceSlot, 16 channels).
-                    float   vlorDir[kVoiceSlots];
-                    float   vlorDeleg[kVoiceSlots];
-                    uint8_t vlorDirCh, vlorDelegCh;
-                } img{};
+            [this]() -> bool {
                 for (int lane = 0; lane < dotModular::SandsGrid::EAST_LANES; ++lane) {
                     auto& din = inputs[dirModId(lane)];
-                    img.dirCh[lane] = din.isConnected() ? (uint8_t)std::min(din.getChannels(), 16) : 0;
-                    for (int ch = 0; ch < img.dirCh[lane]; ++ch) img.dir[lane][ch] = din.getVoltage(ch);
+                    const uint8_t ch = din.isConnected() ? (uint8_t)std::min(din.getChannels(), 16) : 0;
+                    if (ch != dirDelegSig_.dirCh[lane]) return true;
+                    for (int c = 0; c < ch; ++c) {
+                        const float v = din.getVoltage(c);
+                        if (std::memcmp(&v, &dirDelegSig_.dir[lane][c], sizeof v) != 0) return true;
+                    }
                     auto& gin = inputs[delegModId(lane)];
-                    img.delegCh[lane] = gin.isConnected() ? (uint8_t)std::min(gin.getChannels(), 16) : 0;
-                    for (int ch = 0; ch < img.delegCh[lane]; ++ch) img.deleg[lane][ch] = gin.getVoltage(ch);
+                    const uint8_t gch = gin.isConnected() ? (uint8_t)std::min(gin.getChannels(), 16) : 0;
+                    if (gch != dirDelegSig_.delegCh[lane]) return true;
+                    for (int c = 0; c < gch; ++c) {
+                        const float v = gin.getVoltage(c);
+                        if (std::memcmp(&v, &dirDelegSig_.deleg[lane][c], sizeof v) != 0) return true;
+                    }
                 }
                 {
                     auto& vin = inputs[vlorDirModId()];
-                    img.vlorDirCh = vin.isConnected() ? (uint8_t)std::min(vin.getChannels(), 16) : 0;
-                    for (int ch = 0; ch < img.vlorDirCh; ++ch) img.vlorDir[ch] = vin.getVoltage(ch);
+                    const uint8_t ch = vin.isConnected() ? (uint8_t)std::min(vin.getChannels(), 16) : 0;
+                    if (ch != dirDelegSig_.vlorDirCh) return true;
+                    for (int c = 0; c < ch; ++c) {
+                        const float v = vin.getVoltage(c);
+                        if (std::memcmp(&v, &dirDelegSig_.vlorDir[c], sizeof v) != 0) return true;
+                    }
                     auto& vgin = inputs[vlorDelegModId()];
-                    img.vlorDelegCh = vgin.isConnected() ? (uint8_t)std::min(vgin.getChannels(), 16) : 0;
-                    for (int ch = 0; ch < img.vlorDelegCh; ++ch) img.vlorDeleg[ch] = vgin.getVoltage(ch);
+                    const uint8_t gch = vgin.isConnected() ? (uint8_t)std::min(vgin.getChannels(), 16) : 0;
+                    if (gch != dirDelegSig_.vlorDelegCh) return true;
+                    for (int c = 0; c < gch; ++c) {
+                        const float v = vgin.getVoltage(c);
+                        if (std::memcmp(&v, &dirDelegSig_.vlorDeleg[c], sizeof v) != 0) return true;
+                    }
                 }
-                std::memcpy(dst, &img, sizeof img);
-                return sizeof img;
+                return false;
+            },
+            // The capture: the old fingerprint body verbatim, landing in dirDelegSig_
+            // (the value-assign re-zero keeps the byte-image semantics — voltages
+            // beyond a dropped channel count read as ZERO, exactly as the old img{}
+            // zero-init had them).
+            [this] {
+                dirDelegSig_ = DirDelegSig{};
+                for (int lane = 0; lane < dotModular::SandsGrid::EAST_LANES; ++lane) {
+                    auto& din = inputs[dirModId(lane)];
+                    dirDelegSig_.dirCh[lane] = din.isConnected() ? (uint8_t)std::min(din.getChannels(), 16) : 0;
+                    for (int ch = 0; ch < dirDelegSig_.dirCh[lane]; ++ch) dirDelegSig_.dir[lane][ch] = din.getVoltage(ch);
+                    auto& gin = inputs[delegModId(lane)];
+                    dirDelegSig_.delegCh[lane] = gin.isConnected() ? (uint8_t)std::min(gin.getChannels(), 16) : 0;
+                    for (int ch = 0; ch < dirDelegSig_.delegCh[lane]; ++ch) dirDelegSig_.deleg[lane][ch] = gin.getVoltage(ch);
+                }
+                {
+                    auto& vin = inputs[vlorDirModId()];
+                    dirDelegSig_.vlorDirCh = vin.isConnected() ? (uint8_t)std::min(vin.getChannels(), 16) : 0;
+                    for (int ch = 0; ch < dirDelegSig_.vlorDirCh; ++ch) dirDelegSig_.vlorDir[ch] = vin.getVoltage(ch);
+                    auto& vgin = inputs[vlorDelegModId()];
+                    dirDelegSig_.vlorDelegCh = vgin.isConnected() ? (uint8_t)std::min(vgin.getChannels(), 16) : 0;
+                    for (int ch = 0; ch < dirDelegSig_.vlorDelegCh; ++ch) dirDelegSig_.vlorDeleg[ch] = vgin.getVoltage(ch);
+                }
             },
             [this] {
                 for (int lane = 0; lane < dotModular::SandsGrid::EAST_LANES; ++lane) {
@@ -484,6 +522,18 @@ struct StraitsEastSandsVisual : Module {
     std::array<uint8_t, kVoiceSlots> vlorDelegModEdges = {};
     uint8_t vlorDirModChans       = 0;
     uint8_t vlorDelegModChans     = 0;
+    // D17: the gate-mod scan's typed shadow (the old fingerprint's byte image, per-
+    // instance and testable at the declaring site — never in the manager). The compare
+    // walks the LIVE jacks against it field-by-field (early-out); the capture
+    // value-assigns it after a run (the zero-init semantics preserved).
+    struct DirDelegSig {
+        std::array<std::array<float, kVoiceSlots>, dotModular::SandsGrid::EAST_LANES> dir, deleg;
+        std::array<uint8_t, dotModular::SandsGrid::EAST_LANES> dirCh, delegCh;
+        // (B) VOICE-LOR PARITY: the voice row's own gate-mod image (the
+        // same fingerprint discipline — ch == voiceSlot, 16 channels).
+        std::array<float, kVoiceSlots> vlorDir, vlorDeleg;
+        uint8_t vlorDirCh, vlorDelegCh;
+    } dirDelegSig_{};
 
     json_t* dataToJson() override {
         json_t* r = json_object();
