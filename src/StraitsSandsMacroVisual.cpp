@@ -385,7 +385,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 "param_dir_" + std::to_string(el),
                 std::function<void(DirCell*)>([this, el](DirCell* w) {
                     w->laneCol = editorDirCol[el];
-                    const float stepW = (ED_W - 2.f*6.f) / 16.f;
+                    const float stepW = (ED_W - 2.f*6.f) / (float)SandsVisualEditorV4::STEP_COUNT;   // STEPS_32 Stage 3: the cell width derives from the grid's column count (the parameterisation — 64 later is a constant change)
                     w->box.size = mm2px(Vec(stepW, ED_LANE_H * 0.9f));
                     w->getStateFn = [this, el]() -> int {
                         auto* mm = getMonsoon();
@@ -457,7 +457,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 std::function<void(DirCell*)>([this, vlorCol](DirCell* w) {
                     w->laneCol = vlorCol;
                     Vec ctr = w->box.pos.plus(w->box.size.div(2.f));
-                    const float stepW = (ED_W - 2.f*6.f) / 16.f;
+                    const float stepW = (ED_W - 2.f*6.f) / (float)SandsVisualEditorV4::STEP_COUNT;   // STEPS_32 Stage 3: the cell width derives from the grid's column count (the parameterisation — 64 later is a constant change)
                     w->box.size = mm2px(Vec(stepW, dotModular::SandsGrid::RANGE_LANE_H * 0.9f));
                     w->box.pos  = ctr.minus(w->box.size.div(2.f));
                     w->getStateFn = [this]() -> int {

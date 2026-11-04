@@ -827,41 +827,47 @@ int main() {
         check(v3OK, "STAGE2b: the follower's read walks the pushed Macro row (the doc's table)");
     }
     {
-        // THE CLAMPS mirror the lane LOR ranges exactly: L 1..16, O/R 0..15, dir
-        // 0..3, localEast != 0 -> local. Out-of-range floats land on the nearest
+        // THE CLAMPS mirror the authoring surfaces' domains: L 1..cap, O/R 0..ring-1,
+        // dir 0..3, localEast != 0 -> local. Out-of-range floats land on the nearest
         // legal value (std::lround of the clamp), never past the store's frame.
+        // (STEPS_32 Stage 3 re-pinned the domains — see the note below.)
         SequencerEngine eng; eng.reset();
+        // STEPS_32 Stage 3 baseline re-capture: the push's clamp domains were re-pinned to
+        // mirror the authoring surfaces (LEN 1..kPatternLengthCap — the plan's D-table "LOR_LEN
+        // value range ... range -> 1..32"; OFF/ROT 0..kMaskRing-1 — the 32-column grid's drag
+        // domain, so a bar-2 window start survives the push instead of silently dropping to 15,
+        // the Lantern bar-blind class). The out-of-domain probes now assert the NEW frame.
         float macroLor[3] = {0.f, -3.f, 99.f}; float macroDir = 7.4f;
         float eastLor[48], eastDir[16], localEast[16];
         for (int v = 0; v < 16; ++v) {
             eastLor[v*3+0] = 0.4f; eastLor[v*3+1] = -1.f; eastLor[v*3+2] = 200.f;
             eastDir[v] = -2.f; localEast[v] = 0.5f;
         }
-        eastLor[15*3+0] = 31.f; eastLor[15*3+1] = 15.49f; eastLor[15*3+2] = -0.2f;
+        eastLor[15*3+0] = 99.f; eastLor[15*3+1] = 15.49f; eastLor[15*3+2] = -0.2f;
         eastDir[15] = 2.6f; localEast[15] = 0.f;
         eng.pushVoiceLorEditor(macroLor, macroDir, eastLor, eastDir, localEast);
         bool clamps = true;
         clamps = clamps && eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) == 1;
         clamps = clamps && eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) == 0;
-        clamps = clamps && eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) == 15;
+        clamps = clamps && eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) == 31;
         clamps = clamps && eng.macroVoiceLorDirRef() == SequencerEngine::LaneDir::PingPong;
         for (int v = 0; v < 15; ++v) {
             const auto vs = dotModular::VoiceResolver::slot(v + 1);
             clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_LEN) == 1;
             clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_OFF) == 0;
-            clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_ROT) == 15;
+            clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_ROT) == 31;
             clamps = clamps && eng.voiceLorDirRef(vs) == SequencerEngine::LaneDir::Forward;
             clamps = clamps && !eng.voiceLorFollowsMacro(vs);   // 0.5 != 0 -> local
         }
         {
             const auto vs = dotModular::VoiceResolver::slot(16);   // the last voice (bank.v 15)
-            clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_LEN) == 16;
+            clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_LEN) == 32;
             clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_OFF) == 15;
             clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_ROT) == 0;
             clamps = clamps && eng.voiceLorDirRef(vs) == SequencerEngine::LaneDir::PingPong;   // lround(2.6) = 3
             clamps = clamps && eng.voiceLorFollowsMacro(vs);    // exactly 0 -> follow
         }
-        check(clamps, "STAGE2b: the push clamps to the store frame (L 1..16, O/R 0..15, dir 0..3, flag)");
+        check(clamps, "STAGE2b: the push clamps to the store frame (L 1..cap==32, O/R 0..ring-1==31, dir 0..3, flag — the STEPS_32 Stage 3 re-pin: the editor-push domains mirror the authoring surfaces)");
     }
 
     // ── STAGE 3: the voice-range strip's ENGINE data (the UI reads these caches) ──

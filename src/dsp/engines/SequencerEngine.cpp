@@ -279,19 +279,32 @@ void SequencerEngine::setWindow(int length, int offset) {
 void SequencerEngine::pushVoiceLorEditor(
     const float* macroLor, float macroDir,
     const float* eastLor, const float* eastDir, const float* localEast) {
+    // STEPS_32 Stage 3 — the clamp domains mirror the AUTHORING SURFACES they serve:
+    //   LEN  1..kPatternLengthCap — the plan's D-table row ("LOR_LEN value range | lane
+    //        lengths 1..16 authored via the editor pushes | range -> 1..32"): the Sands
+    //        grid draws the whole phrase, so a lane window may now span/land in bar 2.
+    //   OFF/ROT 0..kMaskRing-1 — the grid's drag domain is the phrase (the strip wraps
+    //        within STEP_COUNT == the cap); the old 0..15 clamp would SILENTLY DROP the
+    //        bar-2 offsets/rotations the 32-column grid authors (the Lantern bar-blind
+    //        write-path class — a display widening whose authoring path still truncated
+    //        at 16). The classification's "off/rot spans stay 0..15" decision governs the
+    //        KNOB/CV spans (applyMonoCV/applyMacroCV/eastDelta arguments) — a calibration
+    //        choice — not this push: the push is the editor's own path and must not
+    //        truncate what the editor's own surface can author. At <=16 windows the drags
+    //        produce 0..15 and every clamp here is a no-op (the GOLDEN LAW domain).
     auto lorInt = [](float x, float lo, float hi) -> int {
         return (int)std::lround(std::clamp(x, lo, hi));
     };
     // Row item order is the store's: LOR_LEN=0, LOR_OFF=1, LOR_ROT=2 — the editor rows
     // are authored {L,O,R} in the same order (documented at the EditorState arrays).
-    macroVoiceLor_[LOR_LEN] = lorInt(macroLor[LOR_LEN], 1.f, 16.f);
-    macroVoiceLor_[LOR_OFF] = lorInt(macroLor[LOR_OFF], 0.f, 15.f);
-    macroVoiceLor_[LOR_ROT] = lorInt(macroLor[LOR_ROT], 0.f, 15.f);
+    macroVoiceLor_[LOR_LEN] = lorInt(macroLor[LOR_LEN], 1.f, (float)dotModular::kPatternLengthCap);
+    macroVoiceLor_[LOR_OFF] = lorInt(macroLor[LOR_OFF], 0.f, (float)(dotModular::kMaskRing - 1));
+    macroVoiceLor_[LOR_ROT] = lorInt(macroLor[LOR_ROT], 0.f, (float)(dotModular::kMaskRing - 1));
     macroVoiceLorDir_       = (LaneDir)lorInt(macroDir, 0.f, 3.f);
     for (int v = 0; v < kVoiceSlots; ++v) {
-        voiceLorStore_[v][LOR_LEN] = lorInt(eastLor[v * 3 + LOR_LEN], 1.f, 16.f);
-        voiceLorStore_[v][LOR_OFF] = lorInt(eastLor[v * 3 + LOR_OFF], 0.f, 15.f);
-        voiceLorStore_[v][LOR_ROT] = lorInt(eastLor[v * 3 + LOR_ROT], 0.f, 15.f);
+        voiceLorStore_[v][LOR_LEN] = lorInt(eastLor[v * 3 + LOR_LEN], 1.f, (float)dotModular::kPatternLengthCap);
+        voiceLorStore_[v][LOR_OFF] = lorInt(eastLor[v * 3 + LOR_OFF], 0.f, (float)(dotModular::kMaskRing - 1));
+        voiceLorStore_[v][LOR_ROT] = lorInt(eastLor[v * 3 + LOR_ROT], 0.f, (float)(dotModular::kMaskRing - 1));
         voiceLorDir_[v]            = (LaneDir)lorInt(eastDir[v], 0.f, 3.f);
         voiceLorLocalEast_[v]      = (localEast[v] != 0.f);
     }
