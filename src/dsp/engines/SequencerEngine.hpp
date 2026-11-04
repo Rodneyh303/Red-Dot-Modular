@@ -1024,7 +1024,8 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
 
     // The ONLY sanctioned way to write a mono strand's LOR. Records the writer role,
     // asserts single-writer-per-block in debug, then assigns via the ref accessors.
-    // (len clamped 1..16; off/rot wrapped 0..15 — same normalisation the call sites did.)
+    // (len clamped 1..kPatternLengthCap — STEPS_32 Stage 1: was literal 16, the storage-bound
+    // cap; off/rot wrapped 0..15 — same normalisation the call sites did, class-B frame domain.)
     void setStrand(StrandWriter role, int strand, int len, int off, int rot) {
 #ifndef NDEBUG
         if (strand >= 0 && strand < dotModular::NUM_STRANDS) {
@@ -1058,7 +1059,9 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         }
 #endif
         if (strand >= 0 && strand < dotModular::NUM_STRANDS) {
-            strandLenRef(strand) = rack::math::clamp(len, 1, 16);
+            // STEPS_32 Stage 1: the lane-length cap derives from kPatternLengthCap (was literal
+            // 16) — identical at the storage bound; Stage 2 flips the cap and the lanes follow.
+            strandLenRef(strand) = rack::math::clamp(len, 1, dotModular::kPatternLengthCap);
             strandOffRef(strand) = ((off % 16) + 16) % 16;
             strandRotRef(strand) = ((rot % 16) + 16) % 16;
         }

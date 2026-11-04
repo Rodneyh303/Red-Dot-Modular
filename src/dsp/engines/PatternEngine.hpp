@@ -43,6 +43,22 @@ namespace dotModular { struct WarpBank; }
 template<typename T>
 static inline T pe_clamp(T v, T lo, T hi){ return v<lo?lo:(v>hi?hi:v); }
 
+// ── STEPS_32 Stage 1 (docs/design/STEPS_32_PLAN.md BUILD PLAN; CC_PROMPT_32_STEPS_STAGE1_STRUCTURAL) ──
+// kMaxPatternSteps: the pattern-length CEILING the 32-step build targets (one mode, no switch —
+// the MODE LAW). The length control's range derives from it (MonsoonConfigurator
+// PATTERN_LENGTH_PARAM); do NOT scatter 32.
+// kPatternLengthCap: the USABLE length bound. The per-step storage is still 16-wide ([16] step
+// arrays, uint16 mask planes — the audit's class-B sites), so a requested length above 16 clamps
+// HERE until Stage 2 widens the storage. THE ONE STAGE-2 SWITCH: flip kPatternLengthCap to
+// kMaxPatternSteps when the storage widens — no other site changes. Every length-bearing site
+// derives from these two (the audit's class-A fixes); class-B storage keeps its literal 16 behind
+// this cap; class-C display / class-D deprecated / class-E unrelated-16 stay untouched.
+namespace dotModular {
+static constexpr int kMaxPatternSteps  = 32;   // the ceiling: pattern/phrase length accepts 1..32
+static constexpr int kPatternLengthCap = 16;   // STAGE 2 FLIPS THIS to kMaxPatternSteps (storage-bound until then)
+static_assert(kPatternLengthCap <= kMaxPatternSteps, "the usable length cap never exceeds the ceiling");
+}  // namespace dotModular
+
 // ── Input snapshot — filled by MeloDicer::process() each block ────────────────
 // All knob/CV values are pre-read so PatternEngine is Rack-port-free.
 struct PatternInput {
@@ -109,8 +125,9 @@ struct PatternEngine {
     // P-A (ARRAY_CONTAINER_AUDIT Finding A): the ONE spelling of the voice capacity (mono +
     // 15 poly). Class-local like SequencerEngine's (VoiceResolver.hpp cannot be included here —
     // it includes SequencerEngine.hpp, which includes this file); VoiceResolver's static_assert
-    // holds the equality. The STEP capacity is a DIFFERENT 16 (the row length) and stays
-    // literal until STEPS_32 names it.
+    // holds the equality. The STEP capacity is a DIFFERENT 16 (the row length — audit class B,
+    // storage): it stays literal until Stage 2 widens it; the length CEILING/USABLE-CAP pair
+    // kMaxPatternSteps / kPatternLengthCap above is STEPS_32 Stage 1's naming of the length domain.
     static constexpr int kVoiceSlots = 16;
 
     // Poly engine lane constants (mirror SequencerEngine::PolyLane) for polyRandom callers in this

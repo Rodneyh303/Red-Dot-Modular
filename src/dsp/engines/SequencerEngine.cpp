@@ -947,12 +947,18 @@ void SequencerEngine::snapToPhaseStep(long pulsePos, int p16) {
 }
 
 void SequencerEngine::updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched) {
-    int length = pe_clamp<int>((int)std::round(lenParam), 1, 16);
+    // STEPS_32 Stage 1: the knob requests 1..kMaxPatternSteps (the param range derives from the
+    // ceiling); the USABLE length clamps at kPatternLengthCap — the per-step storage is still
+    // 16-wide (audit class B), so an over-range request reports as the cap until Stage 2 flips
+    // kPatternLengthCap (the one switch) to kMaxPatternSteps. Identical at cap 16.
+    int length = pe_clamp<int>((int)std::round(lenParam), 1, dotModular::kPatternLengthCap);
     int offset = (int)std::round(offParam) & 0x0F;
 
     if (lenPatched) {
         float cv = pe_clamp(lenCv, 0.f, 10.f);
-        length = pe_clamp<int>((int)std::round(cv / 10.f * 15.f) + 1, 1, 16);
+        // STEPS_32 Stage 1: cap-derived — *15 at the storage bound 16 (bit-identical mapping);
+        // D1's *31 rescale lands automatically when Stage 2 flips kPatternLengthCap.
+        length = pe_clamp<int>((int)std::round(cv / 10.f * (dotModular::kPatternLengthCap - 1)) + 1, 1, dotModular::kPatternLengthCap);
     }
     if (offPatched) {
         float cv = pe_clamp(offCv, 0.f, 10.f);

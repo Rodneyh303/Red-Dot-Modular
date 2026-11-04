@@ -385,7 +385,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // killed in Step 6 — monoVis is always nullptr), but the guard stays for future East CV.
             const bool v1OwnsLane = (topo.owner(0, l) == dotModular::SandsTopology::Role::EAST);
             if (v1OwnsLane) {
-                baseLen = applyMonoCV(baseLen, l, 0, 1.f, 16.f);
+                // STEPS_32 Stage 1: the length domain derives from kPatternLengthCap (was literal
+                // 16.f — identical at the storage bound; Stage 2 flips the cap). The off/rot
+                // domains stay 0..15 — class-B frame landings, Stage 2.
+                baseLen = applyMonoCV(baseLen, l, 0, 1.f, (float)dotModular::kPatternLengthCap);
                 baseOff = applyMonoCV(baseOff, l, 1, 0.f, 15.f);
                 baseRot = applyMonoCV(baseRot, l, 2, 0.f, 15.f);
             }
@@ -440,7 +443,10 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // modulation, already in the delegated base). Only OWNED lanes receive these.
             if (l < dotModular::SandsGrid::POLY_LANES && v1OwnsLane) {
                 // Sum ALL mods (East CV + Macro send) onto the base, then clamp the END RESULT once.
-                baseLen = math::clamp(baseLen + eastDelta(l, 0, 1.f, 16.f) + macroDelta(l, 0),  1.f, 16.f);
+                // STEPS_32 Stage 1: the length domain derives from kPatternLengthCap (was literal
+                // 16.f — identical at the storage bound; Stage 2 flips the cap). The off/rot
+                // domains stay 0..15 — class-B frame landings, Stage 2.
+                baseLen = math::clamp(baseLen + eastDelta(l, 0, 1.f, (float)dotModular::kPatternLengthCap) + macroDelta(l, 0),  1.f, (float)dotModular::kPatternLengthCap);
                 baseOff = math::clamp(baseOff + eastDelta(l, 1, 0.f, 15.f) + macroDelta(l, 1),  0.f, 15.f);
                 baseRot = math::clamp(baseRot + eastDelta(l, 2, 0.f, 15.f) + macroDelta(l, 2),  0.f, 15.f);
             }
