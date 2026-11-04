@@ -1203,3 +1203,15 @@ REQUIRED BEFORE STAGE 2b (added to its gate list)
   (bar = step / 16, column = step % 16) so bar 2 is recorded while bar 1 is visible, and the cycle shows the chosen bar.
 - Gate: a pin that drives a 32-step run and checks that Lantern records steps 16–31 in the bar-2 slot, and that the
   bar-1 view is unchanged at ≤16.
+
+════════════════════════════════════════════════════════════════════════════════
+## LANTERN — REVISED: always 16 columns (Rodney, tentative: "might always keep it at 16")
+Reason: legibility, and usefulness for debugging as well as for the end user understanding the patch.
+- Lantern stays a 16-column view at every pattern length. No 32-column mode.
+- Open sub-question (decide before 2b): which 16 columns it shows on a 32-step pattern.
+  Option A (lean): follow the disc. The view shows the active bar, and the existing held-over carets still mark notes
+  that cross the bar boundary.
+  Option B: a manual bar select only, with no auto-follow.
+- Either option needs Lantern to keep both bars recorded (two 16-column buffers, or one 32-cell ring read as two bars).
+  Otherwise switching to bar 1 after playing bar 2 loses bar 1's history.
+- The bar-aware write path from the previous entry still applies: steps 16–31 must be recorded, not dropped.
