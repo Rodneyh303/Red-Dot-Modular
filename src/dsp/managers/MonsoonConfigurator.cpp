@@ -27,11 +27,12 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     m->configParam(TRANSPOSE_PARAM,  -12.f, 12.f, 0.f, "Transpose (semitones)");
     
     // Main window controls (Always present)
-    // STEPS_32 Stage 1: the length control's range derives from the ceiling kMaxPatternSteps
-    // (1..32; the MODE LAW — one control, defaults stay 16). The engine clamps the usable
-    // length to kPatternLengthCap (the storage bound, still 16) until Stage 2 flips the cap.
-    // The offset stays 0..15 in Stage 1 — its domain is the 16-wide frame (class B).
-    m->configParam(PATTERN_LENGTH_PARAM, 1.f, (float)dotModular::kMaxPatternSteps, 16.f, "Pattern length");
+    // STEPS_32 Stage 1 close-out (Rodney's PR #310 review): the length control's range derives
+    // from kPatternLengthCap — the USABLE bound — not the ceiling, so the knob never offers an
+    // undeliverable length and Stage 2's cap flip moves the range with it (one constant).
+    // Defaults stay 16 (the MODE LAW). The offset stays 0..15 — its domain is the 16-wide frame
+    // (class B, resolved cap-derived at Stage 2).
+    m->configParam(PATTERN_LENGTH_PARAM, 1.f, (float)dotModular::kPatternLengthCap, 16.f, "Pattern length");
     m->configParam(PATTERN_OFFSET_PARAM, 0.f, 15.f, 0.f, "Pattern offset");
 
     // DNA Action Buttons (Main module only configures these if no expander)

@@ -7,9 +7,10 @@
 //      wraps at L; windowMask carries exactly those L bits; the lane walks wrap at THEIR OWN
 //      length (the holders' own-length regime, unchanged).
 //   2. THE CLAMP REPORT — a requested length above the storage bound (16) is CLAMPED to the cap
-//      and the engine's effective length reports it (cachedLength == 16): the knob may REQUEST
-//      up to kMaxPatternSteps, the engine DELIVERS kPatternLengthCap until Stage 2 widens the
-//      per-step storage (audit class B).
+//      and the engine's effective length reports it (cachedLength == 16). Stage-1 close-out
+//      (Rodney's PR #310 review): the length KNOB's range derives from kPatternLengthCap, so the
+//      panel never offers an undeliverable length; the clamp remains the defence-in-depth for the
+//      CV path (and any future caller) until Stage 2 widens the per-step storage (audit class B).
 //   3. THE CV MAP AT THE BOUND — the length CV mapping round(cv/10*(cap-1))+1 is pinned at
 //      cap 16 so Stage 2's rescale (D1's *31) is a conscious re-pin, never an accident.
 //   4. THE LANE CLAMP — setStrand clamps the lane length to the cap (was literal 16): the
