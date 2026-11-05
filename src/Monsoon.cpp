@@ -821,6 +821,10 @@ void Monsoon::process(const ProcessArgs& args) {
     // q-mix axis: CV2 is the quantise pitch source for ANY mode (collapse: pitch origin is no
     // longer a mode). Read it whenever patched; beginQuantiserSource_ consumes it per step.
     input.cv2   = cachedCv2Connected ? inputs[CV2_INPUT].getVoltage() : 0.f;
+    // PHASE TIER Stage 2: CV3 at audio rate — the SUBPHASE input in the phase origin
+    // (modeSelect == 2; Rodney: "Lets use cv3 in for subphase"). Outside Mode E the
+    // assignable path below reads CV3 on its own throttled cadence and this fetch is inert.
+    input.cv3   = cachedCv3Connected ? inputs[CV3_MOD_INPUT].getVoltage() : 0.f;
 
     // Logic References (Eliminate pointer indirection in hot path)
     TimingController& tc = *timingController;
@@ -865,10 +869,37 @@ void Monsoon::process(const ProcessArgs& args) {
         // behind updateWindow (the throttled control block) — the same cadence every
         // other length-change consumer rides, absorbed by the snap/drift machinery.
         phase.patternLength = engine.cachedLength;
-        phase.process(phaseVolt, phaseDriven, args.sampleTime, ppqnSetting);
+
+        // ── PHASE TIER Stage 2: the SUBPHASE TIER via CV3 ──────────────────────────
+        // In Mode E, CV3 is EXCLUSIVELY the subphase input (the exact mirror of Mode E
+        // taking over CV1; Rodney: "Lets use cv3 in for subphase. Cv2 in is currently
+        // used for quantiser"). UNPATCHED = Stage 1 exactly (the bit-identical gate).
+        // PATCHED: the quotient/remainder — the transport phase is QUANTISED to select
+        // the region (regionSize = the SUBPHASE CALIBRATION knob, quarter .. bar), the
+        // subphase positions WITHIN it. Inside PhaseEngine::processTiers; the same jump/
+        // replay/snap/drift machinery consumes the composed position.
+        bool effReverse;
+        if (cachedCv3Connected) {
+            double regionSixteenths = 4.0 + 12.0 * (double)params[SUBPHASE_CAL_PARAM].getValue();
+            phase.processTiers(phaseVolt, input.cv3, true, regionSixteenths,
+                               args.sampleTime, ppqnSetting);
+            // THE SIGN PRODUCT (the semantic direction, decided — "the same sign-product
+            // composition as voice and lane direction (playhead × voice × lane)"):
+            // dirT · dirS, and a FLAT tier carries NO direction ("no memory; decided") —
+            // a neutral factor contributes no flip, the product degenerates to the other
+            // tier's sign. Neutral maps forward, matching the stalled-ramp reading the
+            // transport-only path has always had (reverse = (step < 0)). Unpatched, this
+            // expression IS phase.reverse — the bit-identical bridge.
+            int tDir = (phase.dirT == 0) ? 1 : phase.dirT;
+            int sDir = (phase.dirS == 0) ? 1 : phase.dirS;
+            effReverse = (tDir * sDir) < 0;
+        } else {
+            phase.process(phaseVolt, phaseDriven, args.sampleTime, ppqnSetting);
+            effReverse = phase.reverse;
+        }
         if (phaseDriven) bpm = phase.bpm;   // tempo follows the ramp's velocity (knob or CV)
-        modeController->setPhaseReverse(phase.reverse);
-        engine.pe.setReverseActive(phase.reverse);
+        modeController->setPhaseReverse(effReverse);
+        engine.pe.setReverseActive(effReverse);
     } else {
         engine.pe.setReverseActive(false);
     }
@@ -1760,7 +1791,10 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // 1. Main Panel CV3 (bipolar offset to selected target; was unipolar 0..5
         //    which rectified the negative half — an attenuverter implies bipolar).
-        if (cachedCv3Connected) {
+        //    PHASE TIER Stage 2: NOT in the phase origin — there CV3 is EXCLUSIVELY the
+        //    subphase input (the mirror of Mode E owning CV1); its assignable role is
+        //    suppressed for the whole mode, unpatched CV3 = no subphase (Stage 1).
+        if (cachedCv3Connected && modeSelect != 2) {
             float v = inputs[CV3_MOD_INPUT].getVoltage();
             cv3Mods[cv3Target] = clampv<float>(v, -5.f, 5.f) / 5.f;
         }

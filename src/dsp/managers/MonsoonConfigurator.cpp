@@ -74,6 +74,11 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     // Mode E manual phase (full range = one upward ramp = one bar). Fallback when CV1
     // is unpatched; automatable by a host to drive Mode E from a DAW phase modulator.
     m->configParam(PHASE_PARAM, 0.f, 1.f, 0.f, "Mode E phase (when CV1 unpatched)", "%", 0.f, 100.f);
+    // PHASE TIER Stage 2: the SUBPHASE CALIBRATION — the regionSize the transport phase is
+    // quantised to when CV3 (the subphase input) is patched. Quarter .. bar, CONTINUOUS
+    // (the design doc: "anything between (quarter-note → bar)"). Knob 0..1 →
+    // regionSixteenths = 4 + 12·v; default 1.0 = one bar. Unpatched CV3 ignores it (Stage 1).
+    m->configParam(SUBPHASE_CAL_PARAM, 0.f, 1.f, 1.f, "Subphase calibration (region: quarter .. bar)", "%", 0.f, 100.f);
     m->configButton(LOCK_PARAM,   "Lock");
     m->configButton(MUTE_PARAM,   "Mute");
     m->configButton(MODE_PARAM,   "Mode (Cycle Clock-Gate-Phase)");

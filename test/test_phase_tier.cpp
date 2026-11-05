@@ -22,6 +22,34 @@
 //      and equals (startStep + absStep % length) % ring everywhere; at the default window
 //      it equals absStep % 16 exactly (the old drift expression, bit-identical).
 //
+// STAGE 2 pins (sections 7..14 — the subphase tier, CC_PROMPT_PHASE_TIER.md Stage 2):
+//   7. UNPATCHED = STAGE 1 — processTiers(..., false, ...) IS process() (the delegate:
+//      identical pulsePos/edges/jump outputs across a sweep incl. a jump; the tier dirs
+//      neutral, the tier state dropped so a later cable reseeds).
+//   8. QUOTIENT/REMAINDER at regionSize = 1 BAR (patternLength 32): the seed lands
+//      floor((floor(t/rF)·rF + s·rF) · PPB) — hand-computed probes incl. the wrapped
+//      transport input (17 V reads as 0.7) and the exact-boundary coarse (t = 0.5 ->
+//      region 1); the snap lands the bar-2 musical step (134 -> cell 22 = bar 2, 6.4).
+//   9. QUOTIENT/REMAINDER at regionSize = 1 QUARTER: rF = 0.125, 8 regions across the
+//      two bars (the doc's own numbers); probes land bar-2 quarter-1 mid (108 -> 18),
+//      the last quarter's 3/4 (186 -> 31), quarter-1 sub 0.25 (30 -> 5).
+//  10. THE TRANSPORT'S FINE MOTION IS QUANTISED AWAY — within a region, moving the
+//      transport does NOT move the position (the coarse term frozen, dirT +1, dirS 0,
+//      no edges, no jump).
+//  11. THE SUBPHASE POSITIONS WITHIN THE REGION — a small continuous s move advances
+//      the composed position continuously (no jump), dirS +1, dirT neutral.
+//  12. THE SIGN-PRODUCT MATRIX — fwd·fwd = forward, fwd·rev = backward, rev·rev =
+//      FORWARD (the both-reverse pin — the design doc's open check, adjudicated
+//      INTENDED), flat sub = the transport's sign alone, flat transport = the
+//      subphase's sign alone.
+//  13. THE REGION LANDING — a transport crossing into the next region fires the EXISTING
+//      jump contract (jumped, jumpSixteenths = regionSixteenths, forward), lands at the
+//      same sub-position in the new region (pulse 134 -> cell 22), and the snap + drift
+//      rule accept it (no strobe).
+//  14. NO-CROSS + THE SUBPHASE WRAP — a full subphase sweep through its ramp wrap never
+//      leaves the region's pulses ([0, 95] STRICT, the floor mapping); the wrap itself is
+//      a backward jump that stays inside the region ("its jumps stay inside one bar").
+//
 // Build (run_all.sh): test_phase_tier|$SE $GS $PE
 #include <cstdio>
 #include <cstdint>
@@ -209,6 +237,189 @@ int main() {
             okDefault = okDefault && (e.phaseStepFor(abs) == (int)((((abs % 16) + 16) % 16)));
         check(okAll, "RULE: phaseStepFor == (startStep + absStep %% length) %% ring, ALWAYS in-window (1..32 x 5 offsets, absStep -70..70)");
         check(okDefault, "RULE: at the default window phaseStepFor == absStep %% 16 exactly (the old drift expression, bit-identical)");
+    }
+
+    // ── 7. UNPATCHED = STAGE 1 — the delegate is the plain path ──────────────────────
+    {
+        PhaseEngine pa, pb;
+        pa.patternLength = pb.patternLength = 32;
+        bool ok = true;
+        // A sweep with one continuous climb, one JUMP (a >1/16 scrub) and one reversal —
+        // every output field must match sample for sample.
+        for (int k = 0; k < 40; ++k) {
+            float v = (k < 20) ? k * 10.0f / 32.f                      // continuous climb
+                    : (k < 30) ? 19.0f                                  // the jump hold
+                               : (40 - k) * 10.0f / 32.f;               // the reversal
+            pa.process     (v,      true, ST, 24);
+            pb.processTiers(v, 0.f, false, 16.0, ST, 24);
+            ok = ok && pa.pulsePos == pb.pulsePos && pa.jumped == pb.jumped
+                 && pa.jumpSixteenths == pb.jumpSixteenths && pa.reverse == pb.reverse
+                 && pa.sixteenthEdge == pb.sixteenthEdge && pa.quarterEdge == pb.quarterEdge;
+            ok = ok && pb.dirT == 0 && pb.dirS == 0;                   // neutral, always
+        }
+        check(ok, "UNPATCHED: processTiers(false) IS process() (pulsePos/edges/jump identical, dirs neutral)");
+        // The tier state is dropped: a fresh cable reseeds from the CURRENT voltages.
+        pb.processTiers(3.0f, 4.0f, true, 16.0, ST, 24);
+        check(pb.pulsePos == 38, "UNPATCHED->PATCHED: the reseed lands the composition of the current pair (38)");
+    }
+
+    // ── 8. QUOTIENT/REMAINDER at regionSize = 1 BAR (the spec's pin) ─────────────────
+    {
+        // patternLength 32, regionSixteenths 16 -> rF = 0.5, PPB = 192. The SEED call IS
+        // the composition probe: pulsePos = floor((floor(t/rF)·rF + s·rF) · PPB).
+        struct P { float tV, sV; long want; int step; const char* what; };
+        const P probes[] = {
+            {  3.0f,  4.0f,   38,  6, "t=0.3 s=0.4: region 0, sub 0.4 -> pulse 38, cell 6" },
+            {  7.0f,  4.0f,  134, 22, "t=0.7 s=0.4: region 1, sub 0.4 -> pulse 134, cell 22 (bar 2)" },
+            {  9.9f,  9.8f,  190, 31, "t=0.99 s=0.98: region 1, sub 0.98 -> pulse 190, cell 31" },
+            { 17.0f,  4.0f,  134, 22, "t=1.7 (input wraps to 0.7) s=0.4 -> pulse 134, cell 22" },
+            {  5.0f,  5.0f,  144, 24, "t=0.5 EXACT (coarse = region 1) s=0.5 -> pulse 144, cell 24" },
+        };
+        bool ok = true;
+        for (const P& p : probes) {
+            ph.reset(); ph.patternLength = 32;
+            ph.processTiers(p.tV, p.sV, true, 16.0, ST, 24);
+            E e; e.reset(); e.setWindow(32, 0);
+            e.snapToPhaseStep(ph.pulsePos, P16);
+            ok = ok && (ph.pulsePos == p.want) && (e.stepIndex == p.step);
+            if (ph.pulsePos != p.want || e.stepIndex != p.step)
+                std::printf("    %s: pulsePos=%ld stepIndex=%d\n", p.what, ph.pulsePos, e.stepIndex);
+        }
+        check(ok, "Q/R@1bar: the seed lands the quotient/remainder decomposition exactly (5 probes + snap)");
+    }
+
+    // ── 9. QUOTIENT/REMAINDER at regionSize = 1 QUARTER (the spec's pin) ─────────────
+    {
+        // rF = 4/32 = 0.125 — 8 regions across the two bars (the design doc's numbers).
+        struct P { float tV, sV; long want; int step; };
+        const P probes[] = {
+            { 5.0f, 5.0f,  108, 18 },   // t=0.5 (region 4 = bar 2 quarter 1) s=0.5 -> pulse 108, cell 18
+            { 9.0f, 7.5f,  186, 31 },   // t=0.9 (region 7 = the last quarter) s=0.75 -> pulse 186, cell 31
+            { 2.0f, 2.5f,   30,  5 },   // t=0.2 (region 1) s=0.25 -> pulse 30, cell 5
+        };
+        bool ok = true;
+        for (const P& p : probes) {
+            ph.reset(); ph.patternLength = 32;
+            ph.processTiers(p.tV, p.sV, true, 4.0, ST, 24);
+            E e; e.reset(); e.setWindow(32, 0);
+            e.snapToPhaseStep(ph.pulsePos, P16);
+            ok = ok && (ph.pulsePos == p.want) && (e.stepIndex == p.step);
+            if (ph.pulsePos != p.want || e.stepIndex != p.step)
+                std::printf("    pulsePos=%ld want=%ld stepIndex=%d\n", ph.pulsePos, p.want, e.stepIndex);
+        }
+        // The 8 regions: sweeping the transport covers every coarse address 0..7.
+        std::set<int> regions;
+        for (int k = 1; k <= 32; ++k) {
+            ph.reset(); ph.patternLength = 32;
+            ph.processTiers(k * 10.0f / 32.f, 0.f, true, 4.0, ST, 24);
+            double t = (double)(k * 10.0f / 32.f) / 10.0; t -= std::floor(t);
+            regions.insert((int)std::floor(t / 0.125));
+        }
+        bool eight = (regions.size() == 8);
+        for (int r = 0; r < 8; ++r) eight = eight && (regions.count(r) == 1);
+        check(ok && eight, "Q/R@1quarter: the probes land exactly and the sweep covers ALL 8 regions");
+    }
+
+    // ── 10. THE TRANSPORT'S FINE MOTION IS QUANTISED AWAY ───────────────────────────
+    {
+        ph.reset(); ph.patternLength = 32;
+        ph.processTiers(3.0f, 4.0f, true, 16.0, ST, 24);      // seed: region 0, sub 0.4 -> 38
+        ph.processTiers(4.0f, 4.0f, true, 16.0, ST, 24);      // t +0.1, still region 0, s flat
+        check(ph.pulsePos == 38 && !ph.jumped && !ph.pulseEdge && !ph.sixteenthEdge,
+              "QUANTISED: the transport's within-region motion does NOT move the position (no edges, no jump)");
+        check(ph.dirT == 1 && ph.dirS == 0,
+              "QUANTISED: dirT reads the transport motion (+1), dirS neutral (flat)");
+    }
+
+    // ── 11. THE SUBPHASE POSITIONS WITHIN THE REGION (continuous) ────────────────────
+    {
+        ph.reset(); ph.patternLength = 32;
+        ph.processTiers(3.0f, 4.0f, true, 16.0, ST, 24);      // seed -> 38
+        ph.processTiers(3.0f, 4.2f, true, 16.0, ST, 24);      // s +0.02, t flat
+        check(ph.pulsePos == 40 && !ph.jumped,
+              "SUBPOS: a small continuous subphase move advances the position (38 -> 40, no jump)");
+        check(ph.dirS == 1 && ph.dirT == 0, "SUBPOS: dirS +1, dirT neutral");
+    }
+
+    // ── 12. THE SIGN-PRODUCT MATRIX (the semantic direction) ────────────────────────
+    {
+        // effReverse = (tDir · sDir) < 0 with neutral = +1 — the exact expression Monsoon
+        // applies. Each scenario drives a REAL ramp pair and asserts a literal answer.
+        auto effOf = [](const PhaseEngine& p) {
+            int t = (p.dirT == 0) ? 1 : p.dirT;
+            int s = (p.dirS == 0) ? 1 : p.dirS;
+            return (t * s) < 0;
+        };
+        bool fwdFwd = true, fwdRev = true, bothRev = true, subFlat = true, tFlat = true;
+        {   // forward · forward -> FORWARD
+            ph.reset(); ph.patternLength = 32;
+            ph.processTiers(3.0f, 4.0f, true, 16.0, ST, 24);
+            ph.processTiers(3.5f, 4.5f, true, 16.0, ST, 24);
+            fwdFwd = (ph.dirT == 1 && ph.dirS == 1 && !effOf(ph));
+        }
+        {   // forward · reverse -> BACKWARD ("a backward step within the region")
+            ph.reset(); ph.patternLength = 32;
+            ph.processTiers(3.0f, 4.5f, true, 16.0, ST, 24);
+            ph.processTiers(3.5f, 4.0f, true, 16.0, ST, 24);
+            fwdRev = (ph.dirT == 1 && ph.dirS == -1 && effOf(ph));
+        }
+        {   // BOTH reverse -> FORWARD — the design doc's open check, adjudicated INTENDED
+            // (the same composition the voice/lane directions produce everywhere else).
+            ph.reset(); ph.patternLength = 32;
+            ph.processTiers(3.5f, 4.5f, true, 16.0, ST, 24);
+            ph.processTiers(3.0f, 4.0f, true, 16.0, ST, 24);
+            bothRev = (ph.dirT == -1 && ph.dirS == -1 && !effOf(ph));
+        }
+        {   // flat subphase: the transport's sign alone ("flat input carries no direction")
+            ph.reset(); ph.patternLength = 32;
+            ph.processTiers(3.5f, 4.0f, true, 16.0, ST, 24);
+            ph.processTiers(3.0f, 4.0f, true, 16.0, ST, 24);   // t reverses, s flat
+            subFlat = (ph.dirS == 0 && effOf(ph));             // backward, the transport's own
+        }
+        {   // flat transport: the subphase's sign alone
+            ph.reset(); ph.patternLength = 32;
+            ph.processTiers(3.0f, 4.5f, true, 16.0, ST, 24);
+            ph.processTiers(3.0f, 4.0f, true, 16.0, ST, 24);   // t flat, s reverses
+            tFlat = (ph.dirT == 0 && effOf(ph));
+        }
+        check(fwdFwd, "SIGN-PRODUCT: forward x forward = forward");
+        check(fwdRev, "SIGN-PRODUCT: forward x reverse = backward (the backward step within the region)");
+        check(bothRev, "SIGN-PRODUCT: BOTH reverse = FORWARD (the open check, adjudicated intended)");
+        check(subFlat, "SIGN-PRODUCT: a flat subphase carries no direction (the transport's sign governs)");
+        check(tFlat,  "SIGN-PRODUCT: a flat transport carries no direction (the subphase's sign governs)");
+    }
+
+    // ── 13. THE REGION LANDING — the existing jump contract at a crossing ───────────
+    {
+        ph.reset(); ph.patternLength = 32;
+        ph.processTiers(4.0f, 4.0f, true, 16.0, ST, 24);      // t=0.4 s=0.4: region 0 -> 38
+        ph.processTiers(5.2f, 4.0f, true, 16.0, ST, 24);      // t crosses 0.5 -> region 1, s held
+        check(ph.jumped && ph.jumpSixteenths == 16 && !ph.reverse,
+              "REGION LANDING: the crossing fires the jump contract (forward, jumpSixteenths = 16 = regionSixteenths)");
+        check(ph.pulsePos == 134,
+              "REGION LANDING: lands at the SAME sub-position in the new region (pulse 134 = cell 22.4)");
+        E e; e.reset(); e.setWindow(32, 0);
+        e.snapToPhaseStep(ph.pulsePos, P16);
+        check(e.stepIndex == 22 && e.phaseStepFor(ph.pulsePos / P16) == e.stepIndex,
+              "REGION LANDING: the snap lands cell 22 and satisfies the drift rule (no strobe)");
+    }
+
+    // ── 14. NO-CROSS + THE SUBPHASE WRAP — inside the region, always ─────────────────
+    {
+        ph.reset(); ph.patternLength = 32;
+        ph.processTiers(3.0f, 4.0f, true, 16.0, ST, 24);      // seed: region 0 -> 38
+        bool inRegion = true, wrapJump = false, landedInRegion = false;
+        for (int j = 1; j <= 35; ++j) {                        // s climbs 0.4 -> 1.10 (wraps at 1.0)
+            ph.processTiers(3.0f, 4.0f + 2.0f * (float)j, true, 16.0, ST, 24);
+            inRegion = inRegion && (ph.pulsePos >= 0) && (ph.pulsePos <= 95);   // STRICT (floor)
+            if (ph.jumped && ph.jumpSixteenths < 0) {
+                wrapJump = true;
+                landedInRegion = (ph.pulsePos >= 0 && ph.pulsePos <= 95);
+            }
+        }
+        check(inRegion, "NO-CROSS: a full subphase sweep (through its ramp wrap) never leaves the region's pulses [0,95]");
+        check(wrapJump && landedInRegion,
+              "NO-CROSS: the subphase ramp wrap is a BACKWARD jump that stays inside the region");
     }
 
     std::printf("test_phase_tier: %d passed, %d failed\n", passed, failed);

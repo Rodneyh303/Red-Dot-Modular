@@ -82,26 +82,37 @@ for phase. Lets use cv3 in for subphase. Cv2 in is currently used for quantiser.
   quarter, 16 = one bar). Default = 1 bar (v = 1.0) — the showcase value (2 regions at 32;
   "no jumps between bars" preserved by construction).
 - **The composition lives INSIDE PhaseEngine** (new `processTiers` path), NOT at the voltage
-  level. Reason (adjudication): composing the two wrapped phases into a composed *voltage*
-  aliases at the transport cycle wrap — the composed position's mod-1 delta is ambiguous
-  (0.99 → 0.49 reads as −0.5 where the true motion is +0.5 ring-forward), and the shortest-path
-  rescue only works for deltas strictly beyond ±0.5. The engine instead tracks the transport
-  UNWRAPPED (it already does — `prevContPhase`) and composes in the unwrapped domain:
-  ```
-  rF      = regionSixteenths / patternLength          // region fraction of the full span
-  coarse  = floor(contT / rF)                         // unwrapped region address
-  composed = coarse·rF + s·rF                         // s = subphase, wrapped [0,1)
-  ```
+  level, and is RECOMPUTED FROM THE FORMULA every sample — no composed accumulator. Two
+  adjudications recorded here (both found while implementing):
+  - (a) why not the voltage level: composing the two wrapped phases into a composed *voltage*
+    aliases at the transport cycle wrap — the composed position's mod-1 delta is ambiguous
+    (0.99 → 0.49 reads as −0.5 where the true motion is +0.5 ring-forward), and the
+    shortest-path rescue only works for deltas strictly beyond ±0.5. The engine instead tracks
+    the transport UNWRAPPED (it already does — `prevContPhase`) and composes in the unwrapped
+    domain: coarse = floor(contT / rF) — the region address monotone with the transport, so a
+    transport cycle wrap is a REGION CROSSING into the next cycle's region and the composed
+    motion continues ring-forward (pinned in test).
+  - (b) why no composed accumulator either: an accumulator driven by shortest-path deltas
+    diverges from the formula at every SUBPHASE ramp wrap (the wrap reads forward +ε through
+    the shortest-path convention while the formula value drops back into the region) — after
+    enough wraps the composed position wanders anywhere and the within-region guarantee dies.
+    The value is the formula, fresh each sample: `composed = coarse·rF + s·rF`; jump
+    detection and `reverse` read the VALUE delta (targetPulse − pulsePos). Consequences, both
+    pinned: a transport cycle wrap = a forward region landing (the coarse term stepped, the
+    replay executes the crossed region's steps, the arrival rule); a subphase ramp wrap (s:
+    0.99 → 0.01) = a BACKWARD JUMP THAT STAYS INSIDE THE REGION — the decided text's own
+    words ("its jumps stay inside one bar"), the same replay + snap handling. The sign
+    product's dirS still reads the ramp's shortest-path sign (the same wrap convention the
+    transport ramp has always had) — the wrap-relocation and the direction flag are separate
+    roles, exactly as the jump path already separates them.
   `s` is used WRAPPED — the subphase only ever addresses WITHIN the selected region (the cap:
   "Subphase is capped at ≤1 bar … its jumps stay inside one bar" — preserved by construction,
-  the spec's own "falls out" language). `contT` is UNWRAPPED, so the transport cycle wrap is a
-  region crossing into the next cycle's region — the composed motion continues ring-forward
-  (pinned in test). The composed value maps to pulses with the Stage-1 PPB; everything
-  downstream (jump detection, the replay, `snapToPhaseStep`, the drift check) is the EXISTING
-  machinery applied to the composed position — "not a new jump class, the existing one applied
-  twice" (design doc). Region landings ARE the arrival rule: the replay executes the crossed
-  steps fresh (frozen modulation = arrival probabilities) and `snapToPhaseStep` parks the
-  transport exactly — no new code.
+  the spec's own "falls out" language). The composed value maps to pulses with the Stage-1
+  PPB; everything downstream (jump detection, the replay, `snapToPhaseStep`, the drift check)
+  is the EXISTING machinery applied to the composed position — "not a new jump class, the
+  existing one applied twice" (design doc). Region landings ARE the arrival rule: the replay
+  executes the crossed steps fresh (frozen modulation = arrival probabilities) and
+  `snapToPhaseStep` parks the transport exactly — no new code.
 - **Direction: the sign product** (`dirT · dirS`), replacing the raw composed-motion sign at
   the per-block application point (Monsoon.cpp:864-865). The engine exposes each tier's own
   per-sample motion sign (shortest-path deltas, exactly how the transport's `reverse` is
