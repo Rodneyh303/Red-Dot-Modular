@@ -51,6 +51,23 @@ struct PolyVoice {
                                // draw is thresholded against. 0 = always quantised (legacy), 1 =
                                // always generated. Mirrors restProb/accentProb (per-voice decision
                                // cache written by ModeController from getEffectivePolyQmix).
+    // QMIX_OCTAVE (CC_PROMPT_QMIX_OCTAVE + QMIX_OCTAVE_PLAN.md Stage 1): the octave axis's own
+    // threshold — the SECOND read of the SAME r_qmix draw (the subgate pattern: multiple reads
+    // of one stream, different thresholds). r_qmix >= qmixOctResolved() → the OCTAVE is
+    // generated (the r_oct roll); else external (the quantised CV's whole-volt position). The
+    // degree axis keeps qmixLevel exactly as before.
+    //   qmixOctLive = the subResLive-shaped gate (adjudication 3): false ⟹ the engine has never
+    //   been through ModeController's per-block resolution, and the octave threshold IS the
+    //   degree threshold — the two decisions are the same comparison on the same draw, so any
+    //   rack-free engine (every existing test, hand-set qmixLevel marches included) stays
+    //   bit-identical. A mirrored-float default (0.0) instead would create silent MIXED cases
+    //   in every test that sets qmixLevel != 0 under a quantiser mode. ModeController is the
+    //   sole writer that flips it (Stage 2), from the Straits qmix-octave bank through
+    //   QmixOctave::resolve: own-subpanel claim > {global | follow-degree}, the follow tier
+    //   reading the voice's own qmixLevel — the default follow reproduces today's behaviour.
+    float qmixOctLevel = 0.0f;
+    bool  qmixOctLive  = false;
+    float qmixOctResolved() const { return qmixOctLive ? qmixOctLevel : qmixLevel; }
     // STEP-ADVANCE VALUE PAIR (CC_PROMPT_STEP_ADVANCE_CONSUMPTION Stage 2 — the
     // bipolar sourcing). One knob+modulation sum, TWO clamps, written as a pair by
     // ModeController (the sole writer, mirroring restProb/accentProb):
@@ -1163,9 +1180,36 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // and always for poly voices) behaviour is byte-identical to the legacy path. The generated
     // branch flows through genPitchLive, which writes outSem the same way mode A does, so
     // lastSemitone/LED/degree naming stay correct for generated notes.
+    //
+    // QMIX_OCTAVE Stage 1 (CC_PROMPT_QMIX_OCTAVE + QMIX_OCTAVE_PLAN.md): the split into TWO
+    // independent reads of the SAME r_qmix draw — forceGenerated is the DEGREE axis's decision,
+    // octForceGenerated the OCTAVE axis's (r_qmix >= qmixOctResolved(), computed at the callers
+    // from the same draw — the subgate pattern: multiple reads of one stream, different
+    // thresholds). NO DEFAULTS: both callers pass both, so a future caller cannot silently get
+    // one axis's default wrong. Truth table (quantiserPitchSource gates ALL of it — outside a
+    // quantiser mode every path falls through to genPitchLive unchanged):
+    //   deg ext + oct ext (neither set)  — today's external branch VERBATIM (bit-identical);
+    //   deg gen + oct gen (both set)     — today's generated branch VERBATIM (genPitchLive);
+    //   MIXED                            — the composition, each source's contribution computed
+    //       by ITS OWN formula's grouping (adjudication 2): the generated split comes from
+    //       pe.genPitchSplit (12-TET: transpose rides the DEGREE term; Micro: the octaves-only
+    //       transpose rides the OCTAVE term), the external operand is the SAME CA-routed
+    //       quantised voltage the both-external row uses:
+    //         deg gen, oct ext: v = floor(vExt) + DEG_GEN   (the generated degree, seated in the
+    //                           external CV's octave) — a failed degree pick returns 0.f (the
+    //                           genPitchLive failed-pick result, mirrored);
+    //         deg ext, oct gen: v = OCT_GEN + frac(vExt)    (THE MUSICAL CASE: the external
+    //                           theme's degree rides the voice's OWN generated octave — bass
+    //                           pinned low, lead high, pad mid, all tracking the one melody);
+    //       outSem names the DEGREE source (the markSemi law: what we picked and what CA/Lantern
+    //       see never drift) — gen: split.sem; ext: the both-external row's expression;
+    //       MIXED rows clamp [-5,+5] (new paths; the both-equal rows keep their exact returns).
+    //   Stage 1 reaches the MIXED rows only through qmixOctLive=true engines (tests); with the
+    //   qmixOctLive gate closed (every existing caller/engine) octForceGenerated == the degree
+    //   decision and only the verbatim rows fire — bit-identical, the split itself is the proof.
     float voicePitch(VoiceSlot voiceIdx, int& outSem, const PatternInput& input, float r_semi, float r_oct,
-                     bool forceGenerated = false) {
-        if (quantiserPitchSource && !forceGenerated) {
+                     bool forceGenerated, bool octForceGenerated) {
+        if (quantiserPitchSource && !forceGenerated && !octForceGenerated) {
             const int vi = (voiceIdx.v < 0) ? 0 : (voiceIdx.v > 15 ? 15 : voiceIdx.v);
             // CA-routed input CV (QMIX_LANE_PARITY §"The blend" step 2): the external input CV rides
             // CA's MELODY source plane, so a voice can quantise ANOTHER voice's input line. voiceIdx is
@@ -1183,6 +1227,29 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
             outSem = pe.tuning.isDefault12TET ? (int(std::round(frac * 12.f)) % 12)
                                               : pe.tuning.nearestDegree(frac);
             return v;
+        }
+        if (quantiserPitchSource && (forceGenerated != octForceGenerated)) {
+            // THE QMIX_OCTAVE MIXED ROWS — one axis generated, one external (see the truth
+            // table above). The external operand: the SAME CA-routed voltage the both-external
+            // row quantises; the generated components: genPitchSplit's formula-grouped terms.
+            const int vi = (voiceIdx.v < 0) ? 0 : (voiceIdx.v > 15 ? 15 : voiceIdx.v);
+            const int srcVi = pe.caInputCvSrcRow(vi);
+            const int rvi = (srcVi < 0) ? 0 : (srcVi > 15 ? 15 : srcVi);
+            const float vExt = quantize(quantiserCV[rvi]);
+            const PatternEngine::PitchSplit split = pe.genPitchSplit(input, r_semi, r_oct);
+            if (forceGenerated) {
+                // Generated DEGREE rides the external CV's octave (floor = the whole-volt
+                // position the external pitch sits in). Failed pick -> genPitchLive's 0.f.
+                if (!split.picked) { outSem = 0; return 0.f; }
+                outSem = split.sem;
+                return pe_clamp(std::floor(vExt) + split.degTerm, -5.f, 5.f);
+            }
+            // External DEGREE rides the generated OCTAVE — the musical case. outSem from the
+            // external fraction (the both-external row's expression verbatim).
+            const float frac = vExt - std::floor(vExt);
+            outSem = pe.tuning.isDefault12TET ? (int(std::round(frac * 12.f)) % 12)
+                                              : pe.tuning.nearestDegree(frac);
+            return pe_clamp((split.octTerm + split.shiftTerm) + frac, -5.f, 5.f);
         }
         return pe.genPitchLive(outSem, input, r_semi, r_oct);
     }

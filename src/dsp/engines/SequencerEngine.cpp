@@ -1254,6 +1254,13 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     // (r >= level → use generated), so level 0 forces generated, level 1 forces quantised. (Pre-collapse
     // this was r < level, i.e. high q-mix = generated — the opposite.)
     const bool qmixUseGenerated = quantiserPitchSource && (r_qmix >= voices[monoSlot].qmixLevel);
+    // QMIX_OCTAVE Stage 1 (CC_PROMPT_QMIX_OCTAVE): the SECOND read of the SAME r_qmix draw —
+    // the octave axis's own threshold (the subgate pattern: multiple reads of one stream,
+    // different thresholds). qmixOctResolved() == qmixLevel while the qmixOctLive gate is
+    // closed (default, and Monsoon-alone), so this comparison IS the one above — bit-identical.
+    // With the Straits qmix-octave bank live (Stage 2) the resolved level diverges and the
+    // mixed rows (one axis generated, one external) become reachable per voice.
+    const bool qmixOctUseGenerated = quantiserPitchSource && (r_qmix >= voices[monoSlot].qmixOctResolved());
     // QUANTISER (Q1): mono/voice-0 pitch = quantised external CV when in a quantiser mode, else the
     // internal melody+octave draw. voicePitch bypasses genPitchLive (no RNG/lane perturbation) when
     // quantiserPitchSource is set; off = byte-identical legacy path. qmixUseGenerated forces the
@@ -1268,7 +1275,8 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
                               // row when no warp is authored — byte-identical legacy).
                               pe.warpRow(monoSlot, LaneId{PL_MELODY})[getMelodyStep()],
                               pe.warpRow(monoSlot, LaneId{PL_OCTAVE})[getOctaveStep()],
-                              /*forceGenerated=*/qmixUseGenerated);
+                              /*forceGenerated(degree)=*/qmixUseGenerated,
+                              /*octForceGenerated=*/qmixOctUseGenerated);
 
     // ── Leading-edge legato (STEP 2, the only legato model) ──
     // The PREVIOUS starting note recorded, at its own onset, whether it intends to hold
@@ -2121,6 +2129,13 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         refreshPolyRandomCell(voiceIdx, LaneId{PL_QMIX}, qmixIdx);
         float r_qmix_voice = pe.warpRow(voiceIdx, LaneId{PL_QMIX})[qmixIdx];
         bool qmixUseGenerated = quantiserPitchSource && (r_qmix_voice >= v.qmixLevel);
+        // QMIX_OCTAVE Stage 1 (CC_PROMPT_QMIX_OCTAVE): the SECOND read of the SAME r_qmix_voice
+        // draw — the octave axis's own threshold (the subgate pattern: multiple reads of one
+        // stream, different thresholds). qmixOctResolved() == qmixLevel while the qmixOctLive
+        // gate is closed (default, and Monsoon-alone) — bit-identical; with the Straits
+        // qmix-octave bank live (Stage 2) the resolved level diverges per voice and the mixed
+        // rows (one axis generated, one external) become reachable per voice.
+        const bool qmixOctUseGenerated = quantiserPitchSource && (r_qmix_voice >= v.qmixOctResolved());
         const bool isQuant = quantiserPitchSource && !qmixUseGenerated;   // FADER_SEQ_QUANT_COLOURS (green flash)
         // QUANTISER (Q1): this voice's pitch = quantised external CV (its own channel) in quantiser
         // mode, else the internal melody+octave draw. voiceIdx is the voiceSlot (1..15 = V2..V16;
@@ -2131,7 +2146,8 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
         float pitchV = voicePitch(voiceIdx, sem, input,
                                   (refreshPolyRandomCell(voiceIdx, LaneId{PL_MELODY}, melIdx), pe.warpRow(voiceIdx, LaneId{PL_MELODY})[melIdx]),
                                   (refreshPolyRandomCell(voiceIdx, LaneId{PL_OCTAVE}, octIdx), pe.warpRow(voiceIdx, LaneId{PL_OCTAVE})[octIdx]),
-                                  qmixUseGenerated);
+                                  /*forceGenerated(degree)=*/qmixUseGenerated,
+                                  /*octForceGenerated=*/qmixOctUseGenerated);
         // Accent as a poly lane (modelled after rest): this voice draws its OWN accent at
         // its own accent LOR and compares to its own accentProb — not shared from mono.
         int accIdx = getStrandIdx(polyLaneTick(voiceIdx, LaneId{PL_ACCENT}), polyLenE(voiceIdx, LaneId{PL_ACCENT}), polyOffE(voiceIdx, LaneId{PL_ACCENT}), polyRotE(voiceIdx, LaneId{PL_ACCENT}));

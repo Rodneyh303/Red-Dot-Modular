@@ -114,6 +114,7 @@ TESTS=(
   "test_poly_slur_roll|"
   "test_poly_voices|"
   "test_probmod_roundtrip|"
+  "test_qmix_octave|$SE $GS $PE"   # QMIX_OCTAVE Stage 1 (docs/design/CC_PROMPT_QMIX_OCTAVE.md + QMIX_OCTAVE_PLAN.md): the single Qmix crossfade split into TWO independent reads of the SAME r_qmix stream (degree + octave — the subgate pattern), the octave threshold following the degree threshold by default (the bit-identity gate — the split with no new control is the proof): genPitchLive re-expressed on genPitchSplit is BIT-EXACT to the frozen legacy formulas across the swept 12-TET + Micro grids (raw-float compare, association-exact reassembly incl. the clamp; the transpose's formula-grouped placement pinned — 12-TET rides the DEGREE term, Micro's octaves-only shift rides the OCTAVE term), the voicePitch truth table (both-equal rows VERBATIM: the external branch + genPitchLive; the MIXED rows compose each source's contribution by its own grouping — gen-deg/ext-oct = floor(vExt)+DEG_GEN with the transpose included, ext-deg/gen-oct = OCT_GEN+frac(vExt) THE MUSICAL CASE, outSem names the DEGREE source, mixed rows clamp [-5,+5], failed-pick mirrors, quantiser gating falls all four rows through to genPitchLive, the external operand CA-routed in both rows), and the ENGINE DEFAULT LAW (qmixOctResolved() == qmixLevel bit-exact while the qmixOctLive gate is closed — the subResLive precedent: every rack-free engine nobody resolved keeps the two decisions EQUAL, a stale stored level cannot leak)
   "test_qmix_poly|"
   "test_qmix_rng|"
   "test_quantize_engine|$SE $GS $PE"

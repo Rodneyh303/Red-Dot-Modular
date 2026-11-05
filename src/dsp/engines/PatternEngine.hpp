@@ -1260,6 +1260,21 @@ public:
     // Generate a pitch voltage using provided random floats for semitone and octave selection.
     float genPitchLive(int& outSemitone, const PatternInput& in, float r_semi, float r_oct);
 
+    // QMIX_OCTAVE (CC_PROMPT_QMIX_OCTAVE + QMIX_OCTAVE_PLAN.md): genPitchLive's own pitch
+    // split into its FORMULA-GROUPED components — the same rolls, the same float-op
+    // association, so genPitchLive re-expressed on it is bit-identical. The axes the
+    // two-read q-mix split composes from:
+    //   sem       — the picked DEGREE (pickSemitone(r_semi)); 0 when the pick failed
+    //   picked    — false = the pick failed (sem<0): genPitchLive's 0.f early-out, outSemitone 0
+    //   octTerm   — float(oct) - 4 (the octave term, whole volts, BOTH formulas)
+    //   degTerm   — 12-TET: (sem + transpose)/12 (the transpose rides the DEGREE term — the
+    //               formula's own placement); Micro: tuning.degreeVolts(sem)
+    //   shiftTerm — Micro only: round(transpose/12) (transpose is OCTAVES-ONLY — it rides
+    //               the OCTAVE term); 12-TET: 0
+    // v == (octTerm + degTerm) + shiftTerm == genPitchLive's v exactly (association-exact).
+    struct PitchSplit { bool picked = false; int sem = 0; float octTerm = 0.f; float degTerm = 0.f; float shiftTerm = 0.f; };
+    PitchSplit genPitchSplit(const PatternInput& in, float r_semi, float r_oct);
+
     // Apply variation bias to a note length index.
     int varyNoteIndex(int baseIdx, const PatternInput& in, float r);
 
