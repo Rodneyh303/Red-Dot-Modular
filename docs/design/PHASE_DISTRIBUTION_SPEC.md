@@ -170,8 +170,11 @@ redraws on warp-depth or parameter change (not per sample).
    sign of the change that moves the playhead. Gate: a held input followed by a move takes the sign of the move.
 
 ### Still open (do not build until decided)
-- **Morph shape:** the warp currently morphs member -> uniform -> dual (uniform-centred). A direct member-to-dual
-  crossfade is a different formula and would need a monotonicity check. Decide before any change.
+- **Morph shape: DECIDED, uniform-centred (member -> uniform -> dual).** At w = 0 the warp is the identity, so the
+  marginals are exactly uniform and the Gaussian copula shows in its canonical form, with no marginal distortion. The
+  two sides are then distortions of those canonical marginals in opposite directions (member vs dual). A direct
+  member-to-dual crossfade never passes through that point, so it would remove the only setting that isolates the
+  copula. Do not change to a direct crossfade.
 - **Modulation-subpanel (all-lane):** parked; does not block items 1-4.
 
 ### Gates (all items)
