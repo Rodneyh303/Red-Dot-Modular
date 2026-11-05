@@ -4,9 +4,13 @@
  * position instead of a clock generating it. CV1 carries the phase in Mode E,
  * analogous to gate1in carrying gates in Mode B.
  *
- * Phase 0→1 maps to one bar = 16 sixteenths = 16 * pulsesPer16th pulses
- * (24 PPQN → 96 positions, 48 → 192, 96 → 384) — the same pulse grid the gate
- * engine uses, so all timing is integer pulses with no continuous-time component.
+ * Phase 0→1 maps to the ACTIVE PATTERN = patternLength sixteenths =
+ * patternLength * pulsesPer16th pulses (PHASE_TIER Stage 1: the span is the pattern
+ * length, not a hardcoded 16 — one bar at length 16, two bars at 32; at 24 PPQN
+ * length 16 → 96 positions, length 32 → 192). The BAR itself stays 16 steps — the
+ * sixteenth-edge feed below still mods by 16 (a bar is always 16 steps; the pattern
+ * can be 16 or 32). The same pulse grid the gate engine uses, so all timing is
+ * integer pulses with no continuous-time component.
  *
  * Mirrors ClockEngine's OUTPUT CONTRACT (pulseEdge / sixteenthEdge / quarterEdge +
  * bpm + sixteenthSec) so the existing execute path is reused unchanged. ADDS a
@@ -30,7 +34,11 @@ namespace redDot {
 struct PhaseEngine {
     // ── Config ────────────────────────────────────────────────────────────────
     int   ppqn          = 24;       // master grid (24/48/96); pulsesPer16th = ppqn/4
-    float phaseInMax    = 10.f;     // input voltage that maps to phase = 1.0 (one bar)
+    float phaseInMax    = 10.f;     // input voltage that maps to phase = 1.0 (one full pattern span)
+    int   patternLength = 16;       // PHASE TIER Stage 1: the ACTIVE pattern length (1..kPatternLengthCap)
+                                    // — phase 0→1 spans patternLength steps. Default 16 = today's
+                                    // bar exactly (bit-identical); Monsoon feeds engine.cachedLength
+                                    // per block so a 32-step pattern gets the full 32-step sweep.
 
     // ── State ─────────────────────────────────────────────────────────────────
     bool   havePrev     = false;    // false until first sample seen
@@ -76,7 +84,12 @@ struct PhaseEngine {
         pulseEdge = sixteenthEdge = quarterEdge = reverse = jumped = false; jumpSixteenths = 0;
         ppqn = (ppqnSetting > 0 ? ppqnSetting : 24);
         const int p16   = pulsesPer16th(ppqn);
-        const long PPB  = (long)p16 * 16;          // pulses per bar (phase 0→1)
+        // PHASE TIER Stage 1: pulses per FULL SPAN (phase 0→1) = the ACTIVE pattern length.
+        // Was p16 * 16 (one hardcoded 16-step bar). At patternLength 16 this is the same
+        // number — bit-identical; at 32 the phase sweep covers both bars (the D9 answer:
+        // option A, the full-span mapping). The BAR modulo stays 16 (see step16 below).
+        const long plen = (long)(patternLength > 0 ? patternLength : 16);
+        const long PPB  = (long)p16 * plen;        // pulses per full span (phase 0→1)
 
         if (!connected) { havePrev = false; return; }
 
@@ -162,6 +175,9 @@ struct PhaseEngine {
             long mod = ((pulsePos % p16) + p16) % p16;
             if (mod == 0) {
                 sixteenthEdge = true;
+                // THE BAR MODULO STAYS 16 (PHASE TIER Stage 1): a bar is always 16 steps;
+                // the pattern can be 16 or 32. step16 = the step WITHIN the current bar —
+                // the quarter feed and any bar-local consumer keep their meaning at 32.
                 long step16 = ((pulsePos / p16) % 16 + 16) % 16;
                 if (step16 % 4 == 0) quarterEdge = true;
             }

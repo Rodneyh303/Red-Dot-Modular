@@ -937,6 +937,33 @@ void SequencerEngine::recomputeLaneTicks(const int8_t* voiceMotion) {
     tickHolders(0, lastPlayDir, voiceMotion);
 }
 
+// PHASE TIER Stage 1 — THE PHASE-STEP RULE (one rule, both sites).
+// The phase addresses the pattern by its MUSICAL CYCLE position: the unwrapped absStep
+// (pulsePos/p16 — grows across span wraps) is reduced mod the ACTIVE length, then seated
+// in the window at startStep. This is the generalisation of the spec's hardcoded
+// `phaseStep = absStep % 16` (on the old 16-ring, ring == length == cycle and all three
+// reductions coincided; on the 32-ring they are three different numbers and the cycle
+// reduction is the one that closes the loop with the transport walk, which cycles the
+// window). Consequences, both pinned in test_phase_tier:
+//   - at the default window (16 / offset 0) this == absStep % 16 EXACTLY — bar-1
+//     landings bit-identical, and the drift check stays consistent with the walk
+//     advance in every bar (no per-sample re-snap);
+//   - at 32 the cycle runs 0..31 — the full-span sweep covers all 32 steps, period 32;
+//   - a bar-2+ jump lands on the MUSICAL step (cycle k -> window cell k) instead of
+//     parking at startStep — the pre-Stage-1 behaviour here was a steps-32 regression:
+//     the kMaskRing flip left snapToPhaseStep reducing mod 32, so a bar-2 landing fell
+//     outside a 16-window, the walk parked it at startStep, and the drift check (still
+//     mod 16) disagreed with the parked step every sample — an endless per-sample
+//     re-snap strobe. The cycle rule repairs it.
+// startStep + cycle is always in-window by construction (the window IS
+// [startStep, startStep+length) ring-wrapped); the caller's window walk below stays as
+// defence-in-depth and never fires.
+int SequencerEngine::phaseStepFor(long absStep) const {
+    const int len = cachedLength > 0 ? cachedLength : 1;
+    int cycle = (int)(((absStep % len) + len) % len);      // the musical cycle position
+    return (startStep + cycle) & (kMaskRing - 1);          // seated in the window (ring is a power of two)
+}
+
 void SequencerEngine::snapToPhaseStep(long pulsePos, int p16) {
     // Snap the transport (stepIndex + the holder congruences) to the phase-derived
     // pulse position, then re-derive the lane caches from the anchor. Used after a Mode
@@ -944,14 +971,19 @@ void SequencerEngine::snapToPhaseStep(long pulsePos, int p16) {
     // advances by the ROUNDED step count, but the actual phase position is at
     // pulsePos/p16 (which may be fractional). Without this snap, each sweep of the
     // phase knob lands on a different step.
-    long absStep = pulsePos / p16;               // absolute step (can be negative, 0-based)
-    int phaseStep = (int)(((absStep % kMaskRing) + kMaskRing) % kMaskRing);
+    long absStep = pulsePos / p16;               // absolute step (unwrapped, 0-based; grows across span wraps)
+    // PHASE TIER Stage 1: the landing step resolves through THE PHASE-STEP RULE (above)
+    // — the musical cycle position seated in the window. Was absStep % kMaskRing + the
+    // window walk (which parked any out-of-window landing at startStep — the bar-2
+    // strobe regression the cycle rule repairs).
+    int phaseStep = phaseStepFor(absStep);
     // THE ANCHOR: the phase-derived tick is 1-based (the old counter was; the walks'
     // t0 = tick − 1). The per-voice offsets ride THROUGH the snap (the anchor seeds each
     // voice's phase at tick + offset — the divergence persists, exactly as f(t+offset) did).
     anchorTransport((int64_t)absStep + 1);
     stepIndex = phaseStep;
-    // Apply window checking (match advancePlayhead's behavior)
+    // Apply window checking (match advancePlayhead's behavior) — defence-in-depth;
+    // phaseStepFor is in-window by construction, so this never fires.
     if (!isStepInWindow(stepIndex)) {
         stepIndex = startStep;
         for (int s = 0; s < kMaskRing && !isStepInWindow(stepIndex); ++s)

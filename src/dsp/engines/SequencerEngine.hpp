@@ -1238,6 +1238,15 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // position, then re-derive the lane caches from the anchor. Used after a Mode E
     // phase jump to eliminate the rounding drift from jumpSixteenths. p16 = pulsesPer16th (ppqn/4).
     void snapToPhaseStep(long pulsePos, int p16);
+    // PHASE TIER Stage 1 — THE PHASE-STEP RULE (one rule, both sites): the phase-derived
+    // landing step for an UNWRAPPED absolute step (pulsePos/p16). Reduces mod the ACTIVE
+    // length (the musical cycle the transport walk itself cycles) and seats it in the
+    // window at startStep — always in-window by construction. snapToPhaseStep lands
+    // through this; Monsoon's Mode E drift check compares stepIndex against it, so the
+    // two sites can never disagree (the pre-Stage-1 pair — snap mod kMaskRing, drift
+    // mod 16 — strobe-re-snapped every sample after a bar-2+ jump). See
+    // SequencerEngine.cpp above phaseStepFor for the full derivation.
+    int phaseStepFor(long absStep) const;
     // advanceOnTieIntoRest checkpoint (LEGATO_GATE_GAP_BUG.md §345). Called from the module layer on
     // a Gate-1 FALL while a slur is pending. Advances the playhead ONE step into the incoming-rest
     // position and re-evaluates the slur candidacy (legato draw at that step). Sets

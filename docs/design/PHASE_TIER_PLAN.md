@@ -37,15 +37,29 @@ Generalise the span from the hardcoded 16-step bar to the active pattern length.
   (the active length; the throttled control block's `updateWindow` result applies from the next
   block — one block of latency on length changes, absorbed by the snap/drift machinery, same
   as every other length-change consumer).
-- Drift check (Monsoon.cpp:1149): `% 16` → `% kMaskRing` — the same modulo `snapToPhaseStep`
-  uses, one rule, both sites. Kills the latent per-sample snap above; bit-identical at
-  length 16 within the first bar (where all existing goldens live: absStep < 16 → the two
-  modulos agree).
+- Drift check + snap landing (Monsoon.cpp:1149 / SequencerEngine.cpp snapToPhaseStep):
+  **THE PHASE-STEP RULE** (adjudication, refined while implementing — the plan's first
+  sketch said "one shared kMaskRing modulo" and that sketch was WRONG): the drift check
+  must not ask "absStep mod what?" but "which WINDOW CELL does the phase land on?" — the
+  same resolution the snap lands through. The rule, one helper (`phaseStepFor`) both
+  sites call: reduce the UNWRAPPED absStep mod the ACTIVE LENGTH (the musical cycle the
+  transport walk itself cycles), seat it in the window at startStep. Why not a raw
+  kMaskRing modulo: pulsePos is UNWRAPPED (`prevContPhase` grows across span wraps), so
+  at bar 2+ a raw ring reduction disagrees with the walk advance (which cycles the
+  window) — at the default 16-window that disagreement would have INTRODUCED a per-sample
+  re-snap strobe (the bit-identical gate's exact violation). The cycle rule reproduces
+  the old `% 16` check exactly at the default window (bit-identical), cycles 0..31 with
+  the full-span sweep at 32, and REPAIRS a latent steps-32 regression this planning found:
+  since the kMaskRing flip, `snapToPhaseStep` reduced mod 32 while the drift check
+  reduced mod 16 — a bar-2+ jump landed outside a 16-window, the walk parked it at
+  startStep, and the drift check then re-snapped EVERY sample (the strobe). At 16 the
+  rule == `absStep % 16` where every existing golden lives; the bar-2+ jump landing
+  changes from park-at-0 (broken) to the musical step (correct) — flagged for review.
 - Jump replay cap (Monsoon.cpp:1104): `if (steps > 16) steps = 16` → the active length
   (`engine.cachedLength`) — the "within-draw" bound the PhaseEngine comment already promises
   ("the replay is bounded to the current phrase"). At 16: identical.
-- `snapToPhaseStep` itself: NO code change (already kMaskRing-general on this tree); comments
-  updated. The bar modulo inside PhaseEngine (`step16`, the sixteenth/quarter edge feed) STAYS
+- `snapToPhaseStep` lands through the PHASE-STEP RULE (above); the bar modulo inside
+  PhaseEngine (`step16`, the sixteenth/quarter edge feed) STAYS
   16 — a bar is always 16 steps; the pattern can be 16 or 32 (the spec's own words).
 - Gate: the whole battery bit-identical (no re-pins) + new pins: a 32-step phase sweep covers
   all 32 steps; two consecutive sweeps digest equal (period 32); the ≤16 span formula pinned

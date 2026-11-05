@@ -859,6 +859,12 @@ void Monsoon::process(const ProcessArgs& args) {
             phaseVolt   = params[PHASE_PARAM].getValue() * phase.phaseInMax;
             phaseDriven = true;
         }
+        // PHASE TIER Stage 1: the phase span follows the ACTIVE pattern length (phase
+        // 0→1 = patternLength steps — one bar at 16, two bars at 32). Default in the
+        // engine is 16; this feed is what makes the span live. One block of latency
+        // behind updateWindow (the throttled control block) — the same cadence every
+        // other length-change consumer rides, absorbed by the snap/drift machinery.
+        phase.patternLength = engine.cachedLength;
         phase.process(phaseVolt, phaseDriven, args.sampleTime, ppqnSetting);
         if (phaseDriven) bpm = phase.bpm;   // tempo follows the ramp's velocity (knob or CV)
         modeController->setPhaseReverse(phase.reverse);
@@ -1097,11 +1103,16 @@ void Monsoon::process(const ProcessArgs& args) {
             // for a reversible stream steps the index +1/-1 per reverseActive. Set it
             // from the jump sign for the replay, restore after. Live mode always rolls
             // at the crossing; armed dice rolls once; unarmed = reuse — all handled by
-            // the existing boundary path. (Cap = 16 steps = at most one boundary.)
+            // the existing boundary path. (Cap = the active phrase — at most one boundary,
+            // PHASE TIER Stage 1.)
             bool savedReverse = engine.pe.reverseActive;
             engine.pe.setReverseActive(jumpReverse);
             int steps = jumpReverse ? -phase.jumpSixteenths : phase.jumpSixteenths;
-            if (steps > 16) steps = 16;                 // within-draw cap (one phrase)
+            // PHASE TIER Stage 1: the within-draw cap is the ACTIVE phrase (the pattern
+            // length), not a hardcoded 16 — "the replay is bounded to the current phrase".
+            // At length 16 the number is the same (bit-identical); at 32 a full-pattern
+            // scrub replays the whole 32.
+            if (steps > engine.cachedLength) steps = engine.cachedLength;   // within-draw cap (one phrase)
             int p16 = ClockEngine::pulsesPer16th(ppqnSetting);
             for (int s = 0; s < steps; ++s) {
                 mc.executeMode(modeSelect, input, tc.getGate2High());   // Mode E or F — replay this mode's phase step
@@ -1146,8 +1157,19 @@ void Monsoon::process(const ProcessArgs& args) {
         if (modeSelect == 2) {
             int p16d = ClockEngine::pulsesPer16th(ppqnSetting);
             long absStep = phase.pulsePos / p16d;
-            int phaseStep = (int)(((absStep % 16) + 16) % 16);
-            if (phaseStep != engine.stepIndex) {
+            // PHASE TIER Stage 1: the drift check asks THE PHASE-STEP RULE — the SAME
+            // resolution snapToPhaseStep lands through (the musical cycle position
+            // seated in the window), so the two sites can never disagree. The pre-Stage-1
+            // pair disagreed structurally at bar 2+: the snap reduced mod kMaskRing
+            // (the steps-32 flip) while the drift check reduced mod 16, and with
+            // pulsePos UNWRAPPED (prevContPhase grows across span wraps) any bar-2+
+            // jump parked the landing at startStep (out of a 16-window) while the
+            // drift check expected the musical step — an endless per-sample re-snap
+            // strobe (positions stayed correct; anchorTransport + deriveHolders +
+            // recomputeLaneTicks per sample were pure waste). The rule closes the loop:
+            // at the default window this == absStep % 16 (bit-identical to the old
+            // check), at 32 it cycles 0..31 with the full-span sweep.
+            if (engine.phaseStepFor(absStep) != engine.stepIndex) {
                 engine.snapToPhaseStep(phase.pulsePos, p16d);
             }
         }
