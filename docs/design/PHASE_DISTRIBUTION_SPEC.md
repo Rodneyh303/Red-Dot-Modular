@@ -103,3 +103,39 @@ Decided (Rodney):
 Remaining:
 - The modulation-subpanel decision (all-lane, parked) would move the gap jacks with the atom jacks if adopted; it does not block the gap stage.
 - Test runs for tests 1–8 once the implementation exists.
+
+
+## 10. Distribution plot  the EFFECTIVE warped curve (display-only, Rodney)
+The DISTRIBUTION plot must show the EFFECTIVE warped distribution at the current SIGNED warp depth, NOT the
+bare target. Today it draws the selected member (or its dual past zero), so the drawn curve jumps at the
+zero crossing while the engine output barely moves. The plot must track the knob continuously through zero.
+
+### The transform being plotted
+Warped quantile, k = |w|, T = Q for w >= 0 (member composed quantile) or G for w < 0 (the dual, composed CDF):
+    W(u) = (1-k)*u + k*T(u)
+
+### PDF fill  CLOSED FORM (sweep u over [0,1], no inversion)
+W'(u) = (1-k) + k*T'(u), and for a quantile T, T'(u) = 1 / f(T(u)) where f is the target density. So the
+density of the warped variable at the output point x = W(u) is:
+    f_W(x) = 1 / [ (1-k) + k / f(T(u)) ]     at the point x = W(u)
+Draw the fill by sweeping u across [0,1]: at each u, plot (W(u), f_W(u)) directly. Closed form given the
+target's f and T.
+
+### CDF trace  NUMERIC (monotone, cheap)
+The CDF trace is W^-1. A sum of the identity and a quantile has no general closed-form inverse, so solve
+W(u) = y per plotted point by BISECTION (W is monotone -> safe, fast). A few hundred points, redrawn only on
+a warp/param change -> cost is negligible. (Newton is fine too; bisection is chosen for robustness.)
+
+### Limits and the atom/gap asymmetry (state in the UI reasoning, not a bug)
+- k = 0: f_W = 1 (uniform, the flat midpoint). The curve is the diagonal; no jump at zero.
+- k = 1: f_W = f(T(u)) (the target's own density).
+- The blend is RECIPROCAL, not linear:
+  - ATOM (target density -> infinity): f_W -> 1/(1-k). The spike stays finite and grows only as k -> 1, so a
+    small warp barely raises it and it shoots up near full depth  it FADES IN gradually.
+  - GAP (target density -> 0): f_W -> 0 for ANY k > 0  the gap OPENS ABRUPTLY as soon as warp leaves zero.
+- So atoms fade in with depth and gaps open at once. This asymmetry is real (not a plot artefact); the two
+  sides of the warp knob feel different, and the plot shows it honestly.
+
+### Scope
+Display-only. The engine transform is unchanged; this is purely what the DISTRIBUTION plot draws. The plot
+redraws on warp-depth or parameter change (not per sample).
