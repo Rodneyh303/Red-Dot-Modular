@@ -277,6 +277,13 @@ struct WarpCell {
     float tilt      = 0.f;   // rail tilt p (neutral 0)
     float atomLevel = 0.5f;  // atom location ℓ (interior default; inert at mass 0)
     float atomMass  = 0.f;   // atom mass m (neutral 0)
+    // THE GAP STAGE (PHASE_DISTRIBUTION_SPEC §4/§9 — the atom's twin, resolved from the
+    // SAME source through this ONE selection): authored (location, size); NEUTRAL at
+    // size 0 (width zero IS the neutral body — the eval-side gap early-out), location
+    // inert at size 0. Eval-side clamps (clamp01 bounds + the 1−ε mass cap) live in
+    // WarpStages.hpp, exactly like the tilt/atom clamps.
+    float gapLoc    = 0.5f;  // gap location a (interior default; inert at size 0)
+    float gapSize   = 0.f;   // gap size b−a (neutral 0; eval clamps b ≤ 1)
 };
 
 struct WarpPolicy {
@@ -529,7 +536,7 @@ namespace dotModular {
 // pre-subpanel fold (the pinned banks all run identity sends).
 inline void foldDistDeltas(redDot::WarpCell& c, const WarpBank& b,
                            const float* glob, const float* own, const float* send) {
-    const int kind = (int)c.f.index();
+    const int kind = warpEffKind(c.f);   // a DUAL's params are the MEMBER's (re-mint + re-wrap)
     for (int p = 0; p < WarpBank::DPARS; ++p) {
         const float d = glob[p] * (send ? send[p] : WarpBank::kDistSendDefault)
                       + (own ? own[p] : 0.f);
@@ -546,7 +553,10 @@ inline void foldDistDeltas(redDot::WarpCell& c, const WarpBank& b,
             case 2: c.tilt      += d; break;
             case 3: c.atomLevel += d; break;
             case 4: c.atomMass  += d; break;
-            default: c.w = redDot::WarpPolicy::clamp01(c.w + d); break;   // 5 = WARP
+            case 5: c.w         = redDot::WarpPolicy::clamp01(c.w + d); break;   // WARP (kept at 5)
+            case 6: c.gapLoc    += d; break;   // PHASE_DISTRIBUTION_SPEC: the gap params APPENDED
+            case 7: c.gapSize   += d; break;   //   (indices 0..5 untouched — the patch-compat law)
+            default: c.w = redDot::WarpPolicy::clamp01(c.w + d); break;   // defensive (unreachable)
         }
     }
 }
@@ -567,10 +577,12 @@ inline redDot::WarpCell resolveWarpCell(const WarpBank& b, int v, int lane, bool
     redDot::SandsModifierResolver<redDot::WarpPolicy>::Inputs in;
     const int i = WarpBank::index(v, lane);
     in.base      = redDot::WarpCell{b.warpF[i], b.warpW[i],
-                                    b.warpTilt[i], b.warpAtomLevel[i], b.warpAtomMass[i]};
+                                    b.warpTilt[i], b.warpAtomLevel[i], b.warpAtomMass[i],
+                                    b.warpGapLoc[i], b.warpGapSize[i]};
     in.macroBase = redDot::WarpCell{b.globalWarpF[lane], b.globalWarpW[lane],
                                     b.globalWarpTilt[lane], b.globalWarpAtomLevel[lane],
-                                    b.globalWarpAtomMass[lane]};
+                                    b.globalWarpAtomMass[lane],
+                                    b.globalWarpGapLoc[lane], b.globalWarpGapSize[lane]};
     in.delegated = delegated;
     if (b.distDeltasActive)
         foldDistDeltas(delegated ? in.macroBase : in.base, b,
@@ -598,15 +610,29 @@ inline redDot::WarpCell resolveWarpCell(const WarpBank& b, int v, int lane, bool
 // early-outs' construction, never by trusting R_0 ≡ id arithmetic.
 inline double WarpBank::warpedValue(int v, int lane, double u, bool delegated) const {
     const redDot::WarpCell c = resolveWarpCell(*this, v, lane, delegated);
-    if (c.tilt == 0.f && c.atomMass == 0.f)
+    if (c.tilt == 0.f && c.atomMass == 0.f && c.gapSize == 0.f)
         return (1.0 - c.w) * u + c.w * invCDF(c.f, u);   // neutral: the pre-feel-test mix
+        // (a DUAL with no stages lands here too — the free invCDF applies the reading
+        // swap: dual.invCDF = member.cdf, the uniform's own dual being the uniform.)
     const double p    = warpStages::clampTilt((double)c.tilt);
     const double ell  = warpStages::clampLevel((double)c.atomLevel);
     const double m    = warpStages::clampMass((double)c.atomMass);
+    // THE DUAL READING (PHASE_DISTRIBUTION_SPEC §6): the SAME member → tilt → gap →
+    // atom chain with CDF and quantile exchanged — the dual's quantile IS the composed
+    // CDF. The member lambdas must address the BARE member (the swap happens AROUND
+    // the chain, not inside it), so a dual cell evaluates over dualMember(c.f).
+    const bool dual   = isDualWarp(c.f);
+    const WarpF mf    = dual ? dualMember(c.f) : c.f;   // trivially copyable (pinned)
+    if (dual) {
+        const double g = warpStages::cdf(
+            u, p, c.gapLoc, c.gapSize, ell, m,
+            [this, &mf](double x) { return cdf(mf, x); });     // the member CDF F
+        return (1.0 - c.w) * u + c.w * g;                      // the composed CDF AT u
+    }
     const double q    = warpStages::invCDF(
-        u, p, ell, m,
-        [this, &c](double uu) { return invCDF(c.f, uu); },     // the member quantile F⁻¹
-        [this, &c](double x)  { return cdf(c.f, x); });        // the member CDF F
+        u, p, c.gapLoc, c.gapSize, ell, m,
+        [this, &mf](double uu) { return invCDF(mf, uu); },     // the member quantile F⁻¹
+        [this, &mf](double x)  { return cdf(mf, x); });        // the member CDF F
     return (1.0 - c.w) * u + c.w * q;
 }
 

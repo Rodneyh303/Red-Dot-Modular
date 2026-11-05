@@ -61,6 +61,8 @@ src/dsp/WarpF.hpp:distPublishSeq
 src/dsp/WarpF.hpp:distSend
 src/dsp/WarpF.hpp:globalWarpAtomLevel
 src/dsp/WarpF.hpp:globalWarpAtomMass
+src/dsp/WarpF.hpp:globalWarpGapLoc
+src/dsp/WarpF.hpp:globalWarpGapSize
 src/dsp/WarpF.hpp:globalWarpF
 src/dsp/WarpF.hpp:globalWarpTilt
 src/dsp/WarpF.hpp:globalWarpW
@@ -69,6 +71,8 @@ src/dsp/WarpF.hpp:pool
 src/dsp/WarpF.hpp:warpAtomLevel
 src/dsp/WarpF.hpp:warpAtomMass
 src/dsp/WarpF.hpp:warpF
+src/dsp/WarpF.hpp:warpGapLoc
+src/dsp/WarpF.hpp:warpGapSize
 src/dsp/WarpF.hpp:warpTilt
 src/dsp/WarpF.hpp:warpW
 src/dsp/engines/PatternEngine.cpp:zw

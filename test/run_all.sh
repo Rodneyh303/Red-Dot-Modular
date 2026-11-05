@@ -146,6 +146,7 @@ TESTS=(
   "test_voice_resolver|$SE $GS $PE"
   "test_warp_f_bank|"   # header-only: the per-voice warp-F variant bank (CC_PROMPT_02 — identity default, single-impl holders, branchless mix)
   "test_warp_stages|"   # header-only: FEEL-TEST MO rail-tilt + injected-atom stages (CC_PROMPT_TILT_AND_RAIL_FEELTEST) — neutral bit-exact, monotone, atom mass, tilt direction, edge continuity, persistence
+  "test_phase_distribution|"   # header-only: the PHASE_DISTRIBUTION_SPEC acceptance battery — the gap stage's 8 spec tests (continuity/non-decreasing/G(1)=1 grid, width-zero BIT-identity, the a=0/b=1 clamp, the round trip, the jump at F_a/(1-p), the uniform rescale, atom-in-gap + the overlap rule) + the DUAL reading (the swap identity for EVERY member, atom<->gap exchange numeric, the bank's chained-CDF quantile, the slot-codec round-trip)
   "test_warp_dist_mod|"   # header-only: the distribution send-bus fold (CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC) — flag-off/zero-plane neutrality bit-exact, global-vs-own reach, the delegated branch, the window clamp, the eval-side tilt clamp
   "test_sands_distribution_role|"   # header-only, rack-free: the distribution sub-expander's dual-role walk (host-on-first-hop, safe defaults, hop-through, the foreign boundary, first-host-wins, the depth guard, purity)
   "test_warp_mirror|$PE $SE $GS"   # CC_PROMPT_03: the warp mirror + consumer routing (STEP 4 adds the SequencerEngine accessor)

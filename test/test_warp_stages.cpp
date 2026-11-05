@@ -93,8 +93,11 @@ int main() {
     const dotModular::MonotoneCurve* pool = bank.pool;
 
     // The composed quantile over a roster member (the same lambdas warpedValue uses).
+    // The GAP args are the NEUTRAL (0.5, 0.0) — width zero — so every pre-gap pin
+    // below keeps its exact form; the gap stage's own battery lives in
+    // test_phase_distribution.cpp (the spec's tests 1-8).
     auto composedQ = [&](const WarpF& f, double u, double p, double ell, double m) {
-        return ws::invCDF(u, p, ell, m,
+        return ws::invCDF(u, p, 0.5, 0.0, ell, m,
                           [&](double uu) { return dotModular::invCDF(f, uu, pool); },
                           [&](double x)  { return dotModular::cdf(f, x, pool); });
     };
@@ -270,7 +273,7 @@ int main() {
         const WarpF f = dotModular::KumaraswamyWarp{2.0, 3.0};
         const double p = -0.3, ell = 0.55, m = 0.2;
         auto Hcdf = [&](double x) {
-            return ws::cdf(x, p, ell, m, [&](double xx) { return memberC(f, xx); });
+            return ws::cdf(x, p, 0.5, 0.0, ell, m, [&](double xx) { return memberC(f, xx); });
         };
         // u in a CONTINUOUS branch must invert exactly (H(H⁻¹(u)) == u); u in the atom
         // lands on the riser, where H(ℓ) = q0+m ≥ u ≥ q0 = H(ℓ⁻) brackets it.
@@ -291,8 +294,12 @@ int main() {
         double integ = 0.0;
         for (int i = 0; i < N; ++i) {
             const double xa = (double)i / N, xb = (double)(i + 1) / N;
-            const double pa = ws::pdf(xa, p, m, [&](double xx) { return dotModular::pdf(f, xx, pool); });
-            const double pb = ws::pdf(xb, p, m, [&](double xx) { return dotModular::pdf(f, xx, pool); });
+            const double pa = ws::pdf(xa, p, 0.5, 0.0, m,
+                                     [&](double xx) { return dotModular::pdf(f, xx, pool); },
+                                     [&](double xx) { return memberC(f, xx); });
+            const double pb = ws::pdf(xb, p, 0.5, 0.0, m,
+                                     [&](double xx) { return dotModular::pdf(f, xx, pool); },
+                                     [&](double xx) { return memberC(f, xx); });
             integ += 0.5 * (pa + pb) * (xb - xa);
         }
         if (std::fabs(integ - (1.0 - m)) > 5e-3) pdfOK = false;
