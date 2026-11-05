@@ -422,6 +422,38 @@ int main() {
               "NO-CROSS: the subphase ramp wrap is a BACKWARD jump that stays inside the region");
     }
 
+    // ── 15. STAGE 3 — THE DISPLAY TRACKS (the ring/disc confirm) ──────────────────────
+    // The ring lamp = stepIndex % 16 (twice-around-16) and the inner-disc BAR LEDs read
+    // the lap (stepIndex >= 16 = bar 2) — the display's SOLE source is engine.stepIndex.
+    // Subphase does not change the ring; it changes WHICH step within the bar is read.
+    // The confirmation: under a subphase drive, stepIndex tracks the composed position —
+    // a full subphase sweep inside a bar-sized region walks ONLY that bar's cells (the
+    // lap never flips — "no jumps between bars" made VISIBLE in the display), and the
+    // lap flips EXACTLY at the region landing (the clock reading invariant).
+    {
+        ph.reset(); ph.patternLength = 32;
+        E e; e.reset(); e.setWindow(32, 0);
+        bool lapStable = true, tracksSub = true;
+        ph.processTiers(4.0f, 4.0f, true, 16.0, ST, 24);        // t=0.4 s=0.4: region 0 -> 38
+        e.snapToPhaseStep(ph.pulsePos, P16);
+        tracksSub = tracksSub && (e.stepIndex == 6);            // bar 1, sub 0.4 -> cell 6
+        for (int j = 1; j <= 30; ++j) {                          // s sweeps the region: 0.4 -> 1.00
+            ph.processTiers(4.0f, 4.0f + 2.0f * (float)j, true, 16.0, ST, 24);
+            e.snapToPhaseStep(ph.pulsePos, P16);
+            lapStable = lapStable && (e.stepIndex < 16);         // NEVER leaves bar 1
+        }
+        // The landing: the transport crosses into region 1 while s is held.
+        ph.processTiers(5.2f, 10.0f, true, 16.0, ST, 24);        // s wraps to 0.0 with the crossing
+        e.snapToPhaseStep(ph.pulsePos, P16);
+        bool lapFlipsAtLanding = (e.stepIndex >= 16);            // BAR 2's source flips here
+        // The twice-around lamp feed stays coherent: lamp = stepIndex & 15 for every landing.
+        bool lampFeed = ((e.stepIndex & 15) == e.stepIndex - 16);
+        check(lapStable && tracksSub,
+              "DISPLAY: a full subphase sweep inside a bar region walks ONLY that bar's cells (stepIndex 6..15, the lap never flips)");
+        check(lapFlipsAtLanding && lampFeed,
+              "DISPLAY: the BAR LEDs' lap flips exactly at the region landing and the twice-around lamp feed stays coherent");
+    }
+
     std::printf("test_phase_tier: %d passed, %d failed\n", passed, failed);
     return failed == 0 ? 0 : 1;
 }
