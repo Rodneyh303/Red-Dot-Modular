@@ -262,7 +262,9 @@ struct SandsMacroSendSubpanelWidget : ModuleWidget,
         nvgText(vg, mm2px((distX(0) + distX(NPAR - 1)) * 0.5f), mm2px(17.5f), "DIST SEND", NULL);
         for (int i = 0; i < NITEM; ++i) nvgText(vg, mm2px(sendX(i)), mm2px(21.5f), SandsMacroSendIds::SEND_CAPTIONS[i], NULL);
         for (int k = 0; k < NTAP;  ++k) nvgText(vg, mm2px(tapX(k)),  mm2px(21.5f), SandsMacroSendIds::TAP_CAPTIONS[k],  NULL);
-        for (int p = 0; p < NPAR;  ++p) nvgText(vg, mm2px(distX(p)), mm2px(21.5f), SandsMacroSendIds::DIST_CAPTIONS[p], NULL);
+        for (int col = 0; col < NPAR; ++col)
+            nvgText(vg, mm2px(distX(col)), mm2px(21.5f),
+                    SandsMacroSendIds::DIST_CAPTIONS[SandsMacroSendIds::DIST_VISUAL_ORDER[col]], NULL);
 
         // lane names, right-aligned in the gutter
         static const char* const* laneNames = dotModular::SandsLaneNames::EDITOR;

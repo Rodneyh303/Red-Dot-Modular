@@ -1151,6 +1151,20 @@ struct Monsoon : Module {
     float getGlobalWarpAtomMass(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpAtomMass[lane] : 0.f; }
     void  setGlobalWarpAtomMass(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpAtomMass[lane] = x; }
 
+    // ── THE GAP STAGE (PHASE_DISTRIBUTION_SPEC §4/§9): the atom twins — the authored
+    //    (location, size) per voice/lane + Macro's global defaults. Neutral: size 0
+    //    (width zero IS the neutral body; the location's interior default is inert at
+    //    size 0, exactly like the atom level at mass 0). Eval-side clamps live in
+    //    WarpStages.hpp, NOT here.
+    float getWarpGapLoc(int slot, int lane) const { return editor.warp.warpGapLoc[slot*7 + lane]; }
+    void  setWarpGapLoc(int slot, int lane, float x) { editor.warp.warpGapLoc[slot*7 + lane] = x; }
+    float getWarpGapSize(int slot, int lane) const { return editor.warp.warpGapSize[slot*7 + lane]; }
+    void  setWarpGapSize(int slot, int lane, float x) { editor.warp.warpGapSize[slot*7 + lane] = x; }
+    float getGlobalWarpGapLoc(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpGapLoc[lane] : 0.5f; }
+    void  setGlobalWarpGapLoc(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpGapLoc[lane] = x; }
+    float getGlobalWarpGapSize(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpGapSize[lane] : 0.f; }
+    void  setGlobalWarpGapSize(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpGapSize[lane] = x; }
+
     // ── CC_PROMPT_04 (warp UI): UI-thread warp edits → scoped mirror rebuild ─────
     // The panel StoreKnob setters / the curve popup write the warp stores above on the
     // UI thread, then bump a pending SCOPE here; Monsoon::process consumes it right

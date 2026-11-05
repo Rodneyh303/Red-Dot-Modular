@@ -8,8 +8,11 @@ Macro→East sends". 26HP. Layout:
   7 lane rows x 12 knob columns in three groups — SEND (LEN/OFF/ROT/SPR, the
   existing per-voice mix-in sends moved off the Macro visual's right strip),
   TAP (LOR/SPR, the PRE/POST taps moved with them), DIST SEND (P1/P2/TILT/
-  LEVEL/MASS/WARP, the new distribution-param send amounts — the per-voice
-  scalers of the Macro-sent global deltas at the fold). Lane names are drawn by
+  LEVEL/MASS/WARP/GAPLOC/GAPSIZE, the distribution-param send amounts — the
+  per-voice scalers of the Macro-sent global deltas at the fold; the gap pair
+  APPENDED to the param axis, drawn in VISUAL order beside the atom pair).
+  30HP (the dist block grew from 6 to 8 columns at the same 9.0mm pitch — the
+  family gauge keeps every knob at the full 4.2mm face). Lane names are drawn by
   the widget in the left gutter.
 
 Text is NOT in the SVG (nanosvg drops <text>) — the widget draws the title, the
@@ -28,8 +31,8 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from straits_art import *
 
-HP = 26
-W  = HP * 5.08          # 132.08 mm
+HP = 30
+W  = HP * 5.08          # 152.4 mm
 
 # ── grid geometry (mm) — MUST match the widget's column centres ───────────────
 LANES       = 7
@@ -41,9 +44,10 @@ N_SEND      = 4
 TAP_X0      = 58.0       # the PRE/POST tap columns (LOR/SPR)
 TAP_DX      = 9.0
 N_TAP       = 2
-DIST_X0     = 78.0       # the distribution-param send columns (P1..WARP)
+DIST_X0     = 78.0       # the distribution-param send columns (P1..WARP + the gap pair)
 DIST_DX     = 9.0
-N_DIST      = 6
+N_DIST      = 8
+VISUAL_ORDER = [0, 1, 2, 3, 4, 6, 7, 5]   # the gap pair beside the atom pair, WARP trailing
 KNOB_R      = 4.2
 TAP_R       = 3.2        # the taps read as trimpots (the Macro strip's rhythm)
 GUTTER_R    = 14.0       # the lane-name gutter's right edge (widget draws the names)
@@ -120,8 +124,8 @@ def gen(dark=True):
             A(f'<circle id="param_msend_{l}_{i}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
         for k, cx in enumerate(tap_x):
             A(f'<circle id="param_mtap_{l}_{k}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
-        for p, cx in enumerate(dist_x):
-            A(f'<circle id="param_mdist_{l}_{p}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
+        for col, cx in enumerate(dist_x):
+            A(f'<circle id="param_mdist_{l}_{VISUAL_ORDER[col]}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
     A(f'<circle id="light_connect" cx="{px(W/2)}" cy="{px(H-8)}" r="0.5" fill="none" stroke="none"/>')
     A('</g>')
 

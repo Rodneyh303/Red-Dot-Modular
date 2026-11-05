@@ -157,8 +157,8 @@ MODULES = {
         "widget": ["src/SandsDistributionExpander.cpp"],
         "panel": "res/panels/SandsDistribution_dark.svg",
         "counts": {
-            "param_dexp_": 42,      # 7 lanes x 6 distribution knobs (store-backed)
-            "input_dexpmod_": 42,   # 7 lanes x 6 mod jacks (the dynamic-MO surface)
+            "param_dexp_": 56,      # 7 lanes x 8 distribution knobs (store-backed; the gap pair appended, PHASE_DISTRIBUTION_SPEC)
+            "input_dexpmod_": 56,   # 7 lanes x 8 mod jacks (the dynamic-MO surface; ids 0..41 frozen, gap jacks 42..55 appended)
             "param_dfocus_": 7,     # the lane-focus buttons (which lane the editor shows)
             "light_connect": 1,
         },
@@ -173,7 +173,7 @@ MODULES = {
         "counts": {
             "param_msend_": 28,     # 7 lanes x 4 mix-in items (editor.macroSend)
             "param_mtap_": 14,      # 7 lanes x 2 tap kinds (editor.macroTap)
-            "param_mdist_": 42,     # 7 lanes x 6 distribution params (editor.warp.distSend)
+            "param_mdist_": 56,     # 7 lanes x 8 distribution params (editor.warp.distSend; the gap pair appended)
             "light_connect": 1,
         },
     },

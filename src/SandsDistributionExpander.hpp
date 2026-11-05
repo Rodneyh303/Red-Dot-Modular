@@ -54,7 +54,8 @@
 using namespace rack;
 
 namespace SandsDistributionIds {
-    // ── the param set per lane (spec §2: five general params + warp) ──────────
+    // ── the param set per lane (spec §2: five general params + warp; the
+    // PHASE_DISTRIBUTION_SPEC adds the GAP pair) ──────────────────────────────
     // 0 P1, 1 P2 — the per-kind distribution shape params (the popup's p1/p2;
     //   windows are per-kind — WarpCurvePopup's spec tables are the authority);
     //   kinds without the param make the control a harmless no-op (the spec's
@@ -63,18 +64,43 @@ namespace SandsDistributionIds {
     // 3 LEVEL — atom location ℓ ∈ [0,1] (interior default 0.5; inert at m=0).
     // 4 MASS — atom size m ∈ [0, kAtomMassMax] (0 = the neutral body).
     // 5 WARP — the w-mix depth ∈ [0,1] (0 = pure member curve).
+    // 6 GAPLOC — the gap location a ∈ [0,1] (interior default 0.5; inert at
+    //   width 0) — PHASE_DISTRIBUTION_SPEC §9: "TWO knobs (gap location, gap size)
+    //   next to the atom knobs", the atom pair's twins.
+    // 7 GAPSIZE — the gap size b−a ∈ [0,1] (0 = the neutral body; the eval side
+    //   clamps b ≤ 1 and the MASS at 1−ε — the spec's own clamp ruling).
+    // APPEND-ONLY LAW: the fold axis (WarpBank::DPARS) and these indices grew by
+    // APPENDING — 0..5 keep their pre-gap meaning everywhere (the delta planes,
+    // the persisted DistSend groups, every pinned fold test), so nothing pre-gap
+    // reshuffles.
     static constexpr int LANES           = 7;   // dotModular::SandsGrid::POLY_LANES
-    static constexpr int PARAMS_PER_LANE = 6;
-    static constexpr int NUM_MOD_INPUTS  = LANES * PARAMS_PER_LANE;   // 42
-    inline int warpModId(int lane, int p) { return lane * PARAMS_PER_LANE + p; }
+    static constexpr int PARAMS_PER_LANE = 8;
+    // THE MOD-JACK INPUT IDS are FROZEN at the pre-gap layout (Rack persists cables
+    // by PORT INDEX — reshuffling would rewire old patches): 0..41 =
+    // lane*6 + p (the six pre-gap params, stride 6 forever), 42..55 = the gap
+    // jacks appended (42 + lane*2 + which, loc then size). The PANEL anchors stay
+    // (lane, param-index)-named — input_dexpmod_{l}_{6,7} bind the appended ids.
+    static constexpr int NUM_MOD_INPUTS  = LANES * PARAMS_PER_LANE;   // 56
+    inline int warpModId(int lane, int p) { return lane * 6 + p; }    // FROZEN stride (pre-gap)
+    inline int gapModId(int lane, int which) { return LANES * 6 + lane * 2 + which; }  // appended
+    inline int modInputId(int lane, int p) {   // the ONE id helper the loops use
+        return p < 6 ? warpModId(lane, p) : gapModId(lane, p - 6);
+    }
     // the SVG anchor prefixes (panel_src/gen_sands_distribution.py emits them)
     static const char* const KNOB_ANCHOR = "param_dexp_";
     static const char* const MOD_ANCHOR  = "input_dexpmod_";
     static const char* const FOCUS_ANCHOR = "param_dfocus_";
-    // column captions (widget-drawn lettering — nanosvg drops <text>)
+    // column captions (widget-drawn lettering — nanosvg drops <text>); indexed by
+    // PARAM index (the visual column order is the VISUAL_ORDER map below — the gap
+    // pair sits immediately beside the atom pair, WARP trails, per the spec's
+    // "the gap sits immediately beside the atom so the two read as a pair")
     static const char* const PARAM_CAPTIONS[PARAMS_PER_LANE] = {
-        "P1", "P2", "TILT", "LEVEL", "MASS", "WARP",
+        "P1", "P2", "TILT", "LEVEL", "MASS", "WARP", "GAPLOC", "GAPSIZE",
     };
+    // visual column i shows param VISUAL_ORDER[i]: P1 P2 TILT LEVEL MASS | GAPLOC
+    // GAPSIZE | WARP — the anchors are (lane, param)-named, so the SVG places each
+    // anchor's column and the widget draws the caption under the SAME map.
+    static constexpr int VISUAL_ORDER[PARAMS_PER_LANE] = {0, 1, 2, 3, 4, 6, 7, 5};
 } // namespace SandsDistributionIds
 
 // (the role walk lives in dsp/SandsDistributionRole.hpp — rack-free and
@@ -127,11 +153,12 @@ struct SandsDistributionExpander : rack::Module, redDot::SandsSnapGuest {
     SandsDistributionExpander() {
         config(0, SandsDistributionIds::NUM_MOD_INPUTS, 0, 0);
         // configInput with the canonical lane names + the param captions — the
-        // tooltips the DAW/host sees for the 42 mod jacks.
+        // tooltips the DAW/host sees for the 56 mod jacks (the 42 pre-gap ids
+        // FROZEN; the gap jacks appended at 42..55).
         static const char* const* laneNames = dotModular::SandsLaneNames::EDITOR;
         for (int l = 0; l < SandsDistributionIds::LANES; ++l)
             for (int p = 0; p < SandsDistributionIds::PARAMS_PER_LANE; ++p)
-                configInput(SandsDistributionIds::warpModId(l, p),
+                configInput(SandsDistributionIds::modInputId(l, p),
                     std::string(laneNames[l]) + " distribution "
                     + SandsDistributionIds::PARAM_CAPTIONS[p] + " mod");
     }

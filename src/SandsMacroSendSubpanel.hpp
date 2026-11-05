@@ -49,8 +49,10 @@ namespace SandsMacroSendIds {
     static constexpr int LANES       = 7;   // dotModular::SandsGrid::POLY_LANES
     static constexpr int SEND_ITEMS  = 4;   // LEN/OFF/ROT/SPR (editor.macroSend items)
     static constexpr int TAP_KINDS   = 2;   // LOR / SPR (editor.macroTap kinds)
-    static constexpr int DIST_PARAMS = 6;   // = dotModular::WarpBank::DPARS (the fold's param axis)
-    static constexpr int NUM_KNOBS   = LANES * (SEND_ITEMS + TAP_KINDS + DIST_PARAMS);  // 84
+    // PHASE_DISTRIBUTION_SPEC: the gap pair APPENDED to the fold axis (0..5 keep
+    // their pre-gap meaning; the gap sends are 6/7) — = dotModular::WarpBank::DPARS.
+    static constexpr int DIST_PARAMS = 8;
+    static constexpr int NUM_KNOBS   = LANES * (SEND_ITEMS + TAP_KINDS + DIST_PARAMS);  // 98
     // the SVG anchor prefixes (panel_src/gen_sands_macro_send.py emits them)
     static const char* const SEND_ANCHOR = "param_msend_";   // + lane "_" item
     static const char* const TAP_ANCHOR  = "param_mtap_";    // + lane "_" kind
@@ -58,7 +60,13 @@ namespace SandsMacroSendIds {
     // column captions (widget-drawn lettering — nanosvg drops <text>)
     static const char* const SEND_CAPTIONS[SEND_ITEMS]  = {"LEN", "OFF", "ROT", "SPR"};
     static const char* const TAP_CAPTIONS[TAP_KINDS]    = {"LOR", "SPR"};
-    static const char* const DIST_CAPTIONS[DIST_PARAMS] = {"P1", "P2", "TILT", "LEVEL", "MASS", "WARP"};
+    static const char* const DIST_CAPTIONS[DIST_PARAMS] = {
+        "P1", "P2", "TILT", "LEVEL", "MASS", "WARP", "GAPLOC", "GAPSIZE",
+    };
+    // the VISUAL column order (the gap pair beside the atom pair, WARP trailing) —
+    // the anchors are (lane, param)-named, the SVG places the columns, the caption
+    // draw reads this map (kept in sync with gen_sands_macro_send.py)
+    static constexpr int DIST_VISUAL_ORDER[DIST_PARAMS] = {0, 1, 2, 3, 4, 6, 7, 5};
 } // namespace SandsMacroSendIds
 
 struct SandsMacroSendSubpanel : rack::Module, redDot::SandsSnapGuest {

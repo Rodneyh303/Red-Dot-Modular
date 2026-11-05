@@ -96,33 +96,74 @@ struct MonotoneCurveView : Distribution {
     json_t* toJson() const override        { return c.toJson(); }
 };
 
-// ── FEEL-TEST (CC_PROMPT_TILT_AND_RAIL_FEELTEST_START): the composing VIEW ──────────
+// ── FEEL-TEST (CC_PROMPT_TILT_AND_RAIL_FEELTEST_START) + the GAP/DUAL chain
+// (PHASE_DISTRIBUTION_SPEC): the composing VIEW ─────────────────────────────────
 // Wraps whatever member is current (Identity default, any parametric, the LIVE drawn
 // pool view — the wrapper composes the member, so the drawn-curve edit path keeps
-// working under it) in the two stages, member → tilt → atom, with the CLOSED FORMS from
-// WarpStages.hpp:
-//   G⁻¹ = R_p∘F⁻¹ · G = F∘R_p⁻¹ · g = f(R_p⁻¹)·(R_p⁻¹)' — then the atom CDF
-//   x<ℓ → G(x)(1-m); x≥ℓ → G(x)(1-m)+m, and the pdf's CONTINUOUS part (1-m)·g (the
-//   Dirac is NOT a density value — the widget draws it as the explicit bar).
-// The CDF's riser at ℓ renders through the widget's sampling for free; the PDF bar is
-// driven by the widget's atomLevel/atomMass, which refresh() sets beside this view.
-// p/ℓ/m pass through RAW (the store's floats) — the eval-side clamps live in
-// WarpStages, exactly like the engine path.
+// working under it) in the chain member → tilt → gap → atom, with the CLOSED FORMS
+// from WarpStages.hpp:
+//   G⁻¹ = R_p∘F⁻¹ · G = F∘R_p⁻¹ · g = f(R_p⁻¹)·(R_p⁻¹)' — the gap on the TILTED
+//   coordinates (the zero-density interval, the uniform 1/(1-p) rescale) — then the
+//   atom CDF x<ℓ → G(x)(1-m); x≥ℓ → G(x)(1-m)+m, and the pdf's CONTINUOUS part
+//   ((1-m)·g/(1-p) outside the gap, 0 inside; the Dirac is NOT a density value — the
+//   widget draws it as the explicit bar).
+// THE DUAL READING (spec §6, Rodney: "Atom dual is a gap and vice versa"): dual=true
+// swaps the COMPOSED PAIR — this view's cdf becomes the composed QUANTILE and its
+// invCDF becomes the composed CDF, so an atom on K reads as a gap on the display and
+// K's gap reads as the display's atom riser. The pdf for the dual is the reciprocal
+// density: 0 on the K-atom's plateau (the dual's gap — the K Dirac's u-interval,
+// excluded from the density exactly like the Dirac itself) and 1/g(Q(x)) elsewhere
+// with the house finite proxy (the dual's density diverges inside K's zero-density
+// regions — the bar/band markers carry what a density cannot).
+// p/ℓ/m/(loc,size) pass through RAW (the store's floats) — the eval-side clamps live
+// in WarpStages, exactly like the engine path.
 struct WarpStagesView : Distribution {
     const Distribution* m = nullptr;   // the member (owned by the popup's memberView_)
     double p = 0.0, ell = 0.5, mass = 0.0;
+    double gapLoc = 0.5, gapSize = 0.0;   // the gap stage (authored loc/size; inert at size 0)
+    bool dual = false;                    // the DK reading: the composed pair exchanged
     WarpStagesView(const Distribution* member, double tilt, double level, double m_)
         : m(member), p(tilt), ell(level), mass(m_) {}
     double invCDF(double u) const override {
-        return warpStages::invCDF(u, p, ell, mass,
+        if (dual)   // the dual's quantile IS the composed CDF (spec §6)
+            return warpStages::cdf(u, p, gapLoc, gapSize, ell, mass,
+                                   [this](double xx) { return m->cdf(xx); });
+        return warpStages::invCDF(u, p, gapLoc, gapSize, ell, mass,
             [this](double uu) { return m->invCDF(uu); },
             [this](double x)  { return m->cdf(x); });
     }
     double cdf(double x) const override {
-        return warpStages::cdf(x, p, ell, mass, [this](double xx) { return m->cdf(xx); });
+        if (dual)   // the dual's CDF IS the composed quantile
+            return warpStages::invCDF(x, p, gapLoc, gapSize, ell, mass,
+                                      [this](double uu) { return m->invCDF(uu); },
+                                      [this](double x2) { return m->cdf(x2); });
+        return warpStages::cdf(x, p, gapLoc, gapSize, ell, mass,
+                               [this](double xx) { return m->cdf(xx); });
     }
     double pdf(double x) const override {
-        return warpStages::pdf(x, p, mass, [this](double xx) { return m->pdf(xx); });
+        if (dual) {
+            // the reciprocal density: 0 on the K-atom's plateau [q0, q0+m] (the dual's
+            // gap — the K Dirac's u-interval), else 1/g(Q(x)) with the finite proxy
+            // (the dual's density diverges inside K's zero-density regions — the
+            // markers carry what a density cannot).
+            const double mc = warpStages::clampMass(mass);
+            if (mc > 0.0) {
+                const double G_ell = warpStages::cdf(ell, p, gapLoc, gapSize, ell, mass,
+                                                     [this](double xx) { return m->cdf(xx); });
+                // the PRE-ATOM gapped CDF at ℓ: H(ℓ) = G(ℓ)(1-m) + m ⟹ G(ℓ) = (H(ℓ)-m)/(1-m)
+                const double Gpre = (G_ell - mc) / (1.0 - mc);
+                const double q0 = Gpre * (1.0 - mc);
+                if (x >= q0 && x <= q0 + mc) return 0.0;
+            }
+            const double y = this->cdf(x);   // Q(x) — the composed quantile AT x
+            const double g = warpStages::pdf(y, p, gapLoc, gapSize, mass,
+                                             [this](double xx) { return m->pdf(xx); },
+                                             [this](double xx) { return m->cdf(xx); });
+            return 1.0 / (g < DIST_EDGE_EPS ? DIST_EDGE_EPS : g);
+        }
+        return warpStages::pdf(x, p, gapLoc, gapSize, mass,
+                               [this](double xx) { return m->pdf(xx); },
+                               [this](double xx) { return m->cdf(xx); });
     }
     const char* typeName() const override { return m->typeName(); }   // same curve, viewed composed
     json_t* toJson() const override       { return m->toJson(); }     // the member persists; stages have their own keys
@@ -152,10 +193,17 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
     redDot::StoreKnob<Monsoon>*   pTilt  = nullptr;
     redDot::StoreKnob<Monsoon>*   pLevel = nullptr;
     redDot::StoreKnob<Monsoon>*   pMass  = nullptr;
+    // THE GAP PAIR (PHASE_DISTRIBUTION_SPEC): "gap location" + "gap size", the atom
+    // knobs' twins — visible ALWAYS (the gap applies to every kind), bound in
+    // refreshStages() beside the tilt/atom triple.
+    redDot::StoreKnob<Monsoon>*   pGapLoc  = nullptr;
+    redDot::StoreKnob<Monsoon>*   pGapSize = nullptr;
     std::unique_ptr<Distribution> memberView_;   // the bare member (what refresh() used to bind)
     std::unique_ptr<Distribution> view_;         // the COMPOSING view over memberView_ (feel-test)
+    WarpStagesView* stagesView_ = nullptr;       // view_'s derived alias (the gap/dual fields)
     WarpF lastF_{};                     // external-change detector (undo): memcmp per step
     double lastTilt_ = 0.0, lastLevel_ = 0.5, lastMass_ = 0.0;   // ...and the stage triple
+    double lastGapLoc_ = 0.5, lastGapSize_ = 0.0;                // ...and the gap pair
 
     Monsoon* mon() const { return resolveMon ? resolveMon() : nullptr; }
     const WarpF& cur() const {
@@ -182,6 +230,17 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
     double curMass() const {
         Monsoon* m = mon();
         return !m ? 0.0 : (macroGlobal ? m->getGlobalWarpAtomMass(lane) : m->getWarpAtomMass(slot, lane));
+    }
+    // THE GAP PAIR (PHASE_DISTRIBUTION_SPEC) from the same source (own slot vs Macro
+    // global) — the atom knobs' twins.
+    double curGapLoc() const {
+        Monsoon* m = mon();
+        return !m ? warpStages::kGapLocDefault
+                  : (macroGlobal ? m->getGlobalWarpGapLoc(lane) : m->getWarpGapLoc(slot, lane));
+    }
+    double curGapSize() const {
+        Monsoon* m = mon();
+        return !m ? 0.0 : (macroGlobal ? m->getGlobalWarpGapSize(lane) : m->getWarpGapSize(slot, lane));
     }
 
     // Write-through: store + the scoped rebuild request (prompt-03's dirty scope, UI side).
@@ -223,6 +282,9 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
             else if constexpr (std::is_same_v<T, DrawnWarp>)
                 return std::make_unique<PchipDistribution>();   // unreachable (refresh binds the LIVE
                                                                 // pool view for drawn) — safe default
+            else if constexpr (std::is_same_v<T, DualWarp>)
+                return distFromWarp(toWarpF(d.member));   // the MEMBER's display object (the
+                                                          // composing view does the swap)
             else return std::make_unique<decltype(d.dist())>(d.dist());   // copy of the subclass value
         }, f);
     }
@@ -254,9 +316,14 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         };
         p1 = mkKnob(rack::math::Vec(20.f, 74.f));
         p2 = mkKnob(rack::math::Vec(56.f, 74.f));
-        pTilt  = mkKnob(rack::math::Vec(12.f, 85.f));   // FEEL-TEST: the stage row (always visible)
-        pLevel = mkKnob(rack::math::Vec(40.f, 85.f));
-        pMass  = mkKnob(rack::math::Vec(68.f, 85.f));
+        // FEEL-TEST + the GAP PAIR: the five stage knobs (always visible) — pitch 15mm
+        // across the 80mm bezel: tilt, level, amount | gap loc, gap size (the gap pair
+        // beside the atom pair, the panel's visual law carried onto the popup row).
+        pTilt    = mkKnob(rack::math::Vec(8.f, 85.f));
+        pLevel   = mkKnob(rack::math::Vec(24.f, 85.f));
+        pMass    = mkKnob(rack::math::Vec(40.f, 85.f));
+        pGapLoc  = mkKnob(rack::math::Vec(56.f, 85.f));
+        pGapSize = mkKnob(rack::math::Vec(72.f, 85.f));
     }
 
     // Rebind everything to the CURRENT target state (open, kind pick, undo, external edit).
@@ -266,9 +333,12 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         const WarpF& f = cur();
         lastF_ = f;
 
-        // The member + (for drawn) the live in-place edit curve.
+        // The member + (for drawn) the live in-place edit curve — of the BARE member
+        // (a dual unwraps: the swap happens in the composing view, the edit path edits
+        // the member's points/params exactly as the knobs do).
+        const WarpF member = dualMember(f);
         curve->editCurve = nullptr;
-        if (const auto* dw = std::get_if<DrawnWarp>(&f)) {
+        if (const auto* dw = std::get_if<DrawnWarp>(&member)) {
             if (dw->idx < kWarpPoolCap) {
                 // LIVE view over the pool slot (edits mutate it in place; the display tracks).
                 memberView_ = std::make_unique<MonotoneCurveView>(m->editor.warp.pool[dw->idx]);
@@ -277,19 +347,34 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
                 memberView_ = std::make_unique<PchipDistribution>();   // corrupt idx: safe default view
             }
         } else {
-            memberView_ = distFromWarp(f);
+            memberView_ = distFromWarp(member);
         }
-        // FEEL-TEST: compose member → tilt → atom for the DISPLAY (the engine's
-        // warpedValue composes the same stages over the same member — at w=1 the editor
-        // shows EXACTLY what the engine hears), and hand the widget the atom-bar params
-        // (the Dirac is drawn explicitly; the CDF riser renders through sampling).
+        // FEEL-TEST + the GAP/DUAL chain: compose member → tilt → gap → atom for the
+        // DISPLAY (the engine's warpedValue composes the same chain over the same
+        // member — at w=1 the editor shows EXACTLY what the engine hears), and hand
+        // the widget the READING's marker params (the atom bar + gap band): on the K
+        // reading the authored pair; on the DUAL reading the EXCHANGED pair (an atom
+        // on K is a gap on DK and K's gap is the display's atom riser — §6/§8.8).
         const double tp = curTilt(), al = curLevel(), am = curMass();
-        lastTilt_ = tp; lastLevel_ = al; lastMass_ = am;
+        const double gl = curGapLoc(), gs = curGapSize();
+        lastTilt_ = tp; lastLevel_ = al; lastMass_ = am; lastGapLoc_ = gl; lastGapSize_ = gs;
         view_ = std::make_unique<WarpStagesView>(memberView_.get(), tp, al, am);
+        stagesView_ = static_cast<WarpStagesView*>(view_.get());
+        stagesView_->gapLoc = gl; stagesView_->gapSize = gs; stagesView_->dual = isDualWarp(f);
         curve->dist = view_.get();
         curve->isLight = isLight;
-        curve->atomLevel = al;
-        curve->atomMass  = am;
+        double barLevel = al, barMass = am, bandLo = gl, bandHi = gl + gs;
+        if (stagesView_->dual) {
+            const double a = warpStages::clampGapLoc(gl), b = warpStages::clampGapLoc(gl + gs);
+            auto cT = [&](double x) { return memberView_->cdf(warpStages::tiltMapInv(x, warpStages::clampTilt(tp))); };
+            warpStages::dualMarkers(a, b, al, am, cT,
+                                    [&](double x) { return warpStages::gapCdf(x, a, b, cT); },
+                                    barLevel, barMass, bandLo, bandHi);
+        }
+        curve->atomLevel = barLevel;
+        curve->atomMass  = barMass;
+        curve->gapLo = warpStages::clampGapLoc(bandLo);
+        curve->gapHi = warpStages::clampGapLoc(bandHi);
 
         // Drawn edits → the scoped mirror rebuild (the pool slot itself changed; the
         // WarpF still points at the same index, so ONLY this hook can fire the rebuild).
@@ -311,13 +396,15 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
     // scoped rebuild requests the member knobs use, so the mirror + bars move live.
     void refreshStages() {
         struct StageSpec { const char* label; float lo, hi, def; };
-        const StageSpec spec[3] = {
+        const StageSpec spec[5] = {
             { "rail tilt",  -(float)warpStages::kTiltMax, (float)warpStages::kTiltMax, 0.f },
             { "atom level", 0.f, 1.f, (float)warpStages::kAtomLevelDefault },
             { "atom amount", 0.f, (float)warpStages::kAtomMassMax, 0.f },
+            { "gap location", 0.f, 1.f, (float)warpStages::kGapLocDefault },
+            { "gap size", 0.f, 1.f, (float)warpStages::kGapSizeDefault },
         };
-        redDot::StoreKnob<Monsoon>* knobs[3] = { pTilt, pLevel, pMass };
-        for (int which = 0; which < 3; ++which) {
+        redDot::StoreKnob<Monsoon>* knobs[5] = { pTilt, pLevel, pMass, pGapLoc, pGapSize };
+        for (int which = 0; which < 5; ++which) {
             auto* k = knobs[which];
             if (!k) continue;
             const StageSpec& s = spec[which];
@@ -328,18 +415,24 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
             k->getValue = [this, which]() {
                 return which == 0 ? (float)curTilt()
                      : which == 1 ? (float)curLevel()
-                                  : (float)curMass();
+                     : which == 2 ? (float)curMass()
+                     : which == 3 ? (float)curGapLoc()
+                                  : (float)curGapSize();
             };
             k->setter = [slot = slot, lane = lane, macroGlobal = macroGlobal, which](Monsoon& m, float v) {
                 if (macroGlobal) {
                     if (which == 0)      m.setGlobalWarpTilt(lane, v);
                     else if (which == 1) m.setGlobalWarpAtomLevel(lane, v);
-                    else                 m.setGlobalWarpAtomMass(lane, v);
+                    else if (which == 2) m.setGlobalWarpAtomMass(lane, v);
+                    else if (which == 3) m.setGlobalWarpGapLoc(lane, v);
+                    else                 m.setGlobalWarpGapSize(lane, v);
                     m.requestWarpRebuildLaneDelegating(lane);
                 } else {
                     if (which == 0)      m.setWarpTilt(slot, lane, v);
                     else if (which == 1) m.setWarpAtomLevel(slot, lane, v);
-                    else                 m.setWarpAtomMass(slot, lane, v);
+                    else if (which == 2) m.setWarpAtomMass(slot, lane, v);
+                    else if (which == 3) m.setWarpGapLoc(slot, lane, v);
+                    else                 m.setWarpGapSize(slot, lane, v);
                     m.requestWarpRebuildVoiceLane(slot, lane);
                 }
             };
@@ -355,7 +448,7 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
     }
 
     void refreshParams(const WarpF& f) {
-        const int kind = (int)f.index();
+        const int kind = warpEffKind(f);   // a dual's params are the MEMBER's
         using Spec = WarpParamSpec;
         auto bind = [&](redDot::StoreKnob<Monsoon>* k, const Spec& s, int which) {
             k->visible = s.present;
@@ -395,7 +488,8 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         if (!m || !curve) return;
         const WarpF& f = cur();
         if (std::memcmp(&f, &lastF_, sizeof(WarpF)) != 0
-            || curTilt() != lastTilt_ || curLevel() != lastLevel_ || curMass() != lastMass_)
+            || curTilt() != lastTilt_ || curLevel() != lastLevel_ || curMass() != lastMass_
+            || curGapLoc() != lastGapLoc_ || curGapSize() != lastGapSize_)
             refresh();
     }
 
@@ -460,23 +554,28 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
             nvgFontFaceId(vg, font->handle);
             nvgFillColor(vg, textCol);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-            // The readout now carries the FEEL-TEST stages (p/ℓ/m) beside w — 7.5px keeps
-            // the longer line inside the 80mm bezel.
-            char buf[128];
-            std::snprintf(buf, sizeof buf, "%s %s  —  %s  ·  w %.2f  ·  p %+.2f  ·  ℓ %.2f  ·  m %.2f",
+            // The readout carries the chain (w · p · ℓ · m · gap) — 7px keeps the longer
+            // line inside the 80mm bezel; a dual reads as dual-<member> (the reading is
+            // part of the curve's identity, the header must not lie about it).
+            const WarpF& fNow = cur();
+            char nameBuf[48];
+            char buf[160];
+            std::snprintf(buf, sizeof buf, "%s %s  —  %s  ·  w %.2f  ·  p %+.2f  ·  ℓ %.2f  ·  m %.2f  ·  gap %.2f+%.2f",
                           voiceName.c_str(), laneName.c_str(),
-                          warpTypeName(cur()), (double)curW(),
-                          curTilt(), curLevel(), curMass());
-            nvgFontSize(vg, 7.5f);
+                          warpDisplayName(fNow, nameBuf, sizeof nameBuf), (double)curW(),
+                          curTilt(), curLevel(), curMass(), curGapLoc(), curGapSize());
+            nvgFontSize(vg, 7.f);
             nvgText(vg, w * 0.5f, rack::mm2px(4.0f), buf, nullptr);
-            // Tiny labels under the FEEL-TEST stage-knob row (tooltips carry the full
-            // "rail tilt"/"atom level"/"atom amount" names; these make the row readable
-            // at a glance during the feel-test).
+            // Tiny labels under the stage-knob row (tooltips carry the full names; these
+            // make the five-knob row readable at a glance).
             nvgFontSize(vg, 6.5f);
-            nvgText(vg, rack::mm2px(12.f), rack::mm2px(90.5f), "tilt", nullptr);
-            nvgText(vg, rack::mm2px(40.f), rack::mm2px(90.5f), "level", nullptr);
-            nvgText(vg, rack::mm2px(68.f), rack::mm2px(90.5f), "amount", nullptr);
-            const int kind = (int)cur().index();
+            nvgText(vg, rack::mm2px(8.f),  rack::mm2px(90.5f), "tilt", nullptr);
+            nvgText(vg, rack::mm2px(24.f), rack::mm2px(90.5f), "level", nullptr);
+            nvgText(vg, rack::mm2px(40.f), rack::mm2px(90.5f), "amount", nullptr);
+            nvgText(vg, rack::mm2px(56.f), rack::mm2px(90.5f), "gap loc", nullptr);
+            nvgText(vg, rack::mm2px(72.f), rack::mm2px(90.5f), "gap size", nullptr);
+            const WarpF& fHint = cur();
+            const int kind = (int)fHint.index();
             if (kind == 0 || kind == 9) {   // identity/drawn: point at the picker
                 nvgFontSize(vg, 7.f);
                 nvgText(vg, w * 0.5f, rack::mm2px(93.5f),
@@ -510,27 +609,49 @@ inline void openWarpKindMenu(const WarpKindMenuTarget& t) {
     Menu* menu = rack::createMenu();
     menu->addChild(rack::createMenuLabel(std::string("Warp curve — ") + t.laneName));
     menu->addChild(rack::createMenuLabel("click a type to author it (drawn = drag points)"));
-    const int curKind = (int)t.cur().index();
+    const WarpF curF = t.cur();
+    const int curKind = (int)curF.index();
+    const int curMemberKind = warpEffKind(curF);   // a DUAL's ✓ checks its MEMBER's kind
+    const bool curIsDual = isDualWarp(curF);
     struct KindItem : MenuItem {
         WarpKindMenuTarget t;
         int kind;
+        bool dual = false;   // the DUAL reading of kind's default (PHASE_DISTRIBUTION_SPEC)
         void onAction(const rack::event::Action&) override {
             Monsoon* m = t.resolveMon ? t.resolveMon() : nullptr;
             if (!m) return;
-            if (kind == 0) { t.commitF(IdentityWarp{}); if (t.afterCommit) t.afterCommit(); return; }
+            if (kind == 0 && !dual) { t.commitF(IdentityWarp{}); if (t.afterCommit) t.afterCommit(); return; }
             std::unique_ptr<Distribution> d = WarpCurvePopup::makeKindDefault(kind);
-            if (d) { t.commitF(m->editor.warp.fromDistribution(*d)); if (t.afterCommit) t.afterCommit(); }
+            if (!d) return;
+            WarpF f = m->editor.warp.fromDistribution(*d);
+            if (dual) f = dualWrap(f);   // the reading swap rides the curve value (one impl)
+            t.commitF(f);
+            if (t.afterCommit) t.afterCommit();
         }
     };
     static const char* const kNames[] = {
         "Identity (uniform)", "Triangular", "Power", "Kumaraswamy", "Logit-normal",
         "Logit-sigmoid", "Mobius", "Truncated normal", "Reversed power", "Drawn (freehand)",
     };
+    // The BASE palette (10 entries)…
     for (int k = 0; k < 10; ++k) {
         auto* it = new KindItem;
         it->text = kNames[k];
-        it->rightText = (k == curKind) ? "✓" : "";
+        it->rightText = (!curIsDual && k == curKind) ? "✓" : "";
         it->t = t; it->kind = k;
+        menu->addChild(it);
+    }
+    // …then THE DUALS (Rodney: "For each of our distributions ... add the dual ...
+    // So we double the number of distribution choices"): every parametric + drawn
+    // kind gains its dual as a second entry — the SAME curve read with CDF and
+    // quantile exchanged (one implementation; the reading flag rides the value).
+    // Identity takes none: the uniform IS its own dual (F(x) = x swaps to itself).
+    menu->addChild(rack::createMenuLabel("— duals (CDF and quantile exchanged) —"));
+    for (int k = 1; k < 10; ++k) {
+        auto* it = new KindItem;
+        it->text = (std::string("Dual ") + kNames[k]);
+        it->rightText = (curIsDual && k == curMemberKind) ? "✓" : "";
+        it->t = t; it->kind = k; it->dual = true;
         menu->addChild(it);
     }
 }
