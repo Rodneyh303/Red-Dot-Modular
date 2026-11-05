@@ -41,11 +41,13 @@
 // Rodney-tuned in Rack via the DmcurveDevHost; this widget is the functional baseline.
 
 #include <rack.hpp>
+#include <array>
 #include <cstdio>
 #include <functional>
 
 #include "../dsp/Distribution.hpp"
 #include "../dsp/MonotoneCurve.hpp"
+#include "../dsp/WarpStages.hpp"   // §10's guarded f_W (the effective warp plot)
 
 namespace dotModular {
 
@@ -68,6 +70,26 @@ struct DistributionCurveWidget : rack::widget::Widget {
     // first x≥ℓ sample).
     double atomLevel = 0.0;   // ℓ — where the bar sits (only drawn when atomMass > 0)
     double atomMass  = 0.0;   // m — the bar's height ∝ this; 0 = no atom = no bar
+
+    // ── THE EFFECTIVE WARP PLOT (PHASE_DISTRIBUTION_SPEC §10, display-only) ──────────
+    // When warpDepth >= 0 the plot draws the EFFECTIVE warped curve at the current
+    // SIGNED depth instead of the bare target:
+    //     W(u) = (1−k)·u + k·T(u),  k = |w|,  T = the composed READING's quantile
+    // (the hosts' composing view — its invCDF IS the reading's quantile, the dual
+    // branch the exchange). ONE sweep of u over [0,1] gives both drawn curves exactly:
+    //   · CDF trace: the PARAMETRIC point (W(u), u) — exact, no bisection, no
+    //     integration (P(W(U) ≤ W(u)) = u);
+    //   · PDF fill:  the closed form f_W = 1/[(1−k) + k/f_T(T(u))] at x = W(u), the
+    //     division guarded in warpStages::warpEffectivePdf (gaps open at once for any
+    //     k > 0, atoms fade in as 1/(1−k), k = 0 the uniform f_W = 1 — the zero
+    //     crossing is continuous, the drawn curve never jumps at w = 0).
+    // warpDepth < 0 (the default) draws the bare target exactly as before — the hosts
+    // without a warp depth (the .dmcurve dev host) are untouched. Display-only: the
+    // engine path never changes; the sweep recomputes on warp-depth/parameter change
+    // (the hosts' refresh detectors), never per sample.
+    float warpDepth = -1.f;                   // < 0: the bare-target draw (legacy)
+    std::function<double(double)> warpT;      // T(u): the composed reading's quantile
+    std::function<double(double)> warpTpdf;   // f_T at the target point x = T(u)
 
     // ── THE GAP BAND (PHASE_DISTRIBUTION_SPEC — the atom bar's twin): the
     // zero-density interval [gapLo, gapHi] shaded as a RECESS (a cool slate hatching
@@ -161,15 +183,31 @@ struct DistributionCurveWidget : rack::widget::Widget {
             return;
         }
 
-        // Sample the density once. AUTO-MAX over the OPEN interval (endpoints excluded —
-        // the finite edge-proxy of a divergent density must not define the scale); floor
-        // keeps a zero-density degenerate from producing a 0/0 scale.
-        const int N = 200;
-        double pdfs[N + 1];
+        // Sample ONCE: the bare target's density (legacy) or — §10 — one sweep of the
+        // effective warp mix, giving the output points xs[] and the warped densities
+        // pdfs[] together. AUTO-MAX over the OPEN interval (endpoints excluded — the
+        // finite edge-proxy of a divergent density must not define the scale); floor
+        // keeps a zero-density degenerate from producing a 0/0 scale. (The scratch
+        // buffers are std::array — the array-guard's P-B form, draw-local.)
+        constexpr int kPlotN = 200;
+        std::array<double, kPlotN + 1> pdfs;
+        std::array<double, kPlotN + 1> xs;       // effective mode: the output point x = W(u_i)
         double maxD = 1e-6;
-        for (int i = 0; i <= N; ++i) {
-            pdfs[i] = dist->pdf((double)i / (double)N);
-            if (i > 0 && i < N && pdfs[i] > maxD) maxD = pdfs[i];
+        const bool effective = (warpDepth >= 0.f) && bool(warpT);
+        if (effective) {
+            const double k = warpStages::warpEffectiveK(warpDepth);
+            for (int i = 0; i <= kPlotN; ++i) {
+                const double u = (double)i / (double)kPlotN;
+                const double t = warpT(u);       // the target point T(u)
+                xs[(size_t)i] = (1.0 - k) * u + k * t;   // W(u) — monotone: T is
+                pdfs[(size_t)i] = warpStages::warpEffectivePdf(k, warpTpdf(t));   // f_W, guarded
+                if (i > 0 && i < kPlotN && pdfs[(size_t)i] > maxD) maxD = pdfs[(size_t)i];
+            }
+        } else {
+            for (int i = 0; i <= kPlotN; ++i) {
+                pdfs[(size_t)i] = dist->pdf((double)i / (double)kPlotN);
+                if (i > 0 && i < kPlotN && pdfs[(size_t)i] > maxD) maxD = pdfs[(size_t)i];
+            }
         }
 
         nvgSave(vg);
@@ -197,12 +235,14 @@ struct DistributionCurveWidget : rack::widget::Widget {
         // PDF overlay — the density, filled under the curve, auto-normalized to maxD: the
         // tallest sampled density reaches exactly the top of the well, NOTHING clips, and
         // the scale follows the curve live as it is edited. (Endpoint samples are clamped
-        // to the well so a divergent edge reads as the full-height spike it is.)
+        // to the well so a divergent edge reads as the full-height spike it is.) The x
+        // coordinate is the SAMPLE's output point: i/kPlotN bare, W(u_i) effective — monotone
+        // either way, so the fill polygon never folds.
         nvgBeginPath(vg);
         nvgMoveTo(vg, px, py + ph);
-        for (int i = 0; i <= N; ++i) {
-            const double x = (double)i / (double)N;
-            double d = pdfs[i] / maxD;
+        for (int i = 0; i <= kPlotN; ++i) {
+            const double x = effective ? xs[(size_t)i] : (double)i / (double)kPlotN;
+            double d = pdfs[(size_t)i] / maxD;
             if (d < 0.0) d = 0.0;
             if (d > 1.0) d = 1.0;
             nvgLineTo(vg, px + (float)x * pw, py + ph - (float)d * ph);
@@ -272,11 +312,13 @@ struct DistributionCurveWidget : rack::widget::Widget {
             nvgStroke(vg);
         }
 
-        // The CDF — the main (and, when drawn, EDITED) curve
+        // The CDF — the main (and, when drawn, EDITED) curve. Effective mode draws the
+        // §10 PARAMETRIC trace (W(u_i), u_i) — the exact warped CDF, no inversion.
         nvgBeginPath(vg);
-        for (int i = 0; i <= N; ++i) {
-            const double x = (double)i / (double)N;
-            const rack::math::Vec c = toPx(x, dist->cdf(x));
+        for (int i = 0; i <= kPlotN; ++i) {
+            const double x = effective ? xs[(size_t)i] : (double)i / (double)kPlotN;
+            const double y = effective ? (double)i / (double)kPlotN : dist->cdf(x);
+            const rack::math::Vec c = toPx(x, y);
             if (i == 0) nvgMoveTo(vg, c.x, c.y);
             else        nvgLineTo(vg, c.x, c.y);
         }

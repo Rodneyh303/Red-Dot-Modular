@@ -135,7 +135,6 @@ src/dsp/managers/MonsoonScaleManager.cpp:originalWeights
 src/dsp/managers/MonsoonUIManager.cpp:zeroQuant
 src/dsp/managers/SpreadManager.hpp:avgCache_
 src/dsp/managers/SpreadManager.hpp:spread
-src/ui/DistributionCurveWidget.hpp:pdfs
 src/ui/IntertropicalPairing.hpp:P
 src/ui/RateManager.hpp:tiers_
 src/ui/SandsVisualEditorV4.hpp:after

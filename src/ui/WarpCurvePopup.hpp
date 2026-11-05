@@ -381,6 +381,15 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         curve->atomMass  = barMass;
         curve->gapLo = warpStages::clampGapLoc(bandLo);
         curve->gapHi = warpStages::clampGapLoc(bandHi);
+        // THE EFFECTIVE PLOT (PHASE_DISTRIBUTION_SPEC §10, display-only): the drawn
+        // curve is the warp mix at the CURRENT signed depth — W(u) = (1−k)u + k·T(u),
+        // T = the READING's quantile (this view's invCDF; its dual branch IS the
+        // exchange) and f_T the view's pdf AT T(u) — so the plot tracks the knob
+        // continuously through zero (at w = 0 the drawn curve IS the diagonal). The
+        // step() detector refreshes on depth/stage/param change, never per sample.
+        curve->warpDepth = lastW_;
+        curve->warpT     = [this](double u) { return view_ ? view_->invCDF(u) : u; };
+        curve->warpTpdf  = [this](double x) { return view_ ? view_->pdf(x) : 1.0; };
 
         // Drawn edits → the scoped mirror rebuild (the pool slot itself changed; the
         // WarpF still points at the same index, so ONLY this hook can fire the rebuild).

@@ -22,6 +22,13 @@
 //       (dual.cdf == member.invCDF, dual.invCDF == member.cdf), the bank reaches the
 //       dual by the SIGN of w over a BARE member (the dual's quantile IS the composed
 //       CDF at w = −1), and the dual envelope persists.
+//   §10 The EFFECTIVE warped curve — the DISTRIBUTION plot's law (display-only):
+//       W(u) = (1−k)u + k·T(u), k = |w|, T the composed READING's quantile; the CDF
+//       trace the PARAMETRIC point (W(u), u), the fill the guarded closed form
+//       f_W = 1/[(1−k) + k/f_T(T(u))]. Gates: k=0 the diagonal with f_W = 1;
+//       continuous through w = 0 (both readings O(k) off the diagonal); W monotone;
+//       no inf/NaN over the (member, k, reading, feature) grid; the guarded faces
+//       (gap → 0 for any k > 0, atom → 1/(1−k), the uniform never divides).
 //
 // Header-only, Rack-free (jansson via the test/jansson.h shim); registered in
 // test/run_all.sh.
@@ -457,6 +464,146 @@ int main() {
             }
             ok(pdfFin, "T8: the dual's reciprocal density is finite across [0,1] (the edge proxy)");
         }
+        // (6) THE EXCHANGE AT THE BANK LEVEL (spec test 8's parenthetical — "reached at
+        //     the bank level by w = −1 over the bare member"): a BARE-member cell with a
+        //     LIVE ATOM, gap neutral — at w=−1 the bank's reading (the dual's quantile =
+        //     the composed CDF H) JUMPS the gap [q0, q0+m] at u = ℓ (the atom IS the
+        //     dual's gap — the jump spans exactly dualMarkers' [q0, q0+m]); at w=+1 the
+        //     SAME cell reads the atom plateau AT ℓ (bit-exact). One store, one sign
+        //     apart — nothing re-authored.
+        {
+            WarpBank b;
+            const int i0 = WarpBank::index(3, 1);
+            b.warpF[i0] = dotModular::TriangularWarp{0.5};   // BARE member — the sign does the reading
+            b.warpTilt[i0] = 0.f;                            // clean q0 arithmetic
+            b.warpAtomLevel[i0] = 0.5f; b.warpAtomMass[i0] = 0.3f;
+            const WarpF member = dotModular::TriangularWarp{0.5};
+            // THE CELL'S OWN ARITHMETIC: the store is FLOAT — the reference mass is the
+            // float-roundtripped value the engine reads, never the literal 0.3
+            const double mCell = (double)b.warpAtomMass[i0];
+            const double q0 = mC(member, 0.5) * (1.0 - mCell);   // G(ℓ)(1−m), the gap neutral
+            bool jumps = true, plateau = true;
+            b.warpW[i0] = -1.f;
+            // just below ℓ the dual's quantile lands AT the gap's LEFT edge q0; just
+            // above ℓ it lands AT the RIGHT edge q0+m — the gap [q0, q0+m] is the
+            // K-atom, seen through the bank
+            const double lo = b.warpedValue(3, 1, 0.5 - 1e-12, false);
+            const double hi = b.warpedValue(3, 1, 0.5 + 1e-12, false);
+            if (std::fabs(lo - q0) > 1e-9) jumps = false;
+            if (std::fabs(hi - (q0 + mCell)) > 1e-9) jumps = false;
+            // the edges ARE dualMarkers' pair for this cell
+            double lv, mv, glo, ghi;
+            auto cT = [&](double x) { return mC(member, x); };
+            ws::dualMarkers(0.5, 0.5, 0.5, mCell, cT,
+                            [&](double x) { return ws::gapCdf(x, 0.5, 0.5, cT); }, lv, mv, glo, ghi);
+            if (!(std::fabs(glo - lo) < 1e-9 && std::fabs(ghi - hi) < 1e-9)) jumps = false;
+            ok(jumps, "T8: the bank at w=-1 with a live atom JUMPS the dual's gap [q0,q0+m] at u=ell (the exchange, bank level)");
+            b.warpW[i0] = 1.f;
+            for (int k = 0; k <= 100; ++k) {
+                const double u = q0 + (0.3 * (double)k / 100.0);   // across [q0, q0+m]
+                if (b.warpedValue(3, 1, u, false) != 0.5) plateau = false;   // flat AT ell
+            }
+            ok(plateau, "T8: the SAME cell at w=+1 reads the atom plateau AT ell BIT-EXACT (one sign apart)");
+        }
+    }
+
+    // ── §10: the EFFECTIVE warped curve — the DISTRIBUTION plot's law (display-only) ──
+    // One sweep of u: W(u) = (1−k)u + k·T(u), k = |w|, T the composed READING's
+    // quantile (K: the composed quantile; DK: the composed CDF); the CDF trace the
+    // PARAMETRIC point (W(u), u) — no bisection, no integration — and the fill the
+    // guarded closed form f_W = 1/[(1−k) + k/f_T(T(u))]. The CC prompt's gates:
+    // continuous through w = 0 (no jump at the zero crossing); k = 0 the diagonal and
+    // f_W = 1; W monotone; no inf/NaN over the (member, k, reading, feature) grid.
+    {
+        const double ks[] = {0.0, 0.25, 0.5, 0.75, 1.0};
+        // The composed READING pair over a member with tilt, gap AND atom LIVE (the
+        // grid's features): K reading T = the composed quantile with f_T = the composed
+        // pdf AT the target point; DK reading T = the composed CDF with f_T the
+        // reciprocal density (the view's dual-branch form, the DIST_EDGE_EPS floor).
+        auto K_T   = [&](const WarpF& f, double u) { return Kq(f, u, 0.3, 0.4, 0.15, 0.5, 0.2); };
+        auto K_fT  = [&](const WarpF& f, double t) { return Kp(f, t, 0.3, 0.4, 0.15, 0.2); };
+        auto DK_T  = [&](const WarpF& f, double u) { return Kc(f, u, 0.3, 0.4, 0.15, 0.5, 0.2); };
+        auto DK_fT = [&](const WarpF& f, double t) {
+            const double y = Kq(f, t, 0.3, 0.4, 0.15, 0.5, 0.2);   // Q_K(t) — the dual's CDF at t
+            const double g = Kp(f, y, 0.3, 0.4, 0.15, 0.2);
+            return 1.0 / (g < 1e-9 ? 1e-9 : g);
+        };
+        bool diag = true, fw1 = true, mono = true, fin = true, k1face = true, cross = true;
+        bool gapFace = true, atomFace = true, uniformFace = true;
+        for (int r = 0; r < R; ++r) {
+            const WarpF& f = roster[r].f;
+            for (int reading = 0; reading < 2; ++reading) {
+                auto T  = [&](double u) { return reading == 0 ? K_T(f, u)  : DK_T(f, u); };
+                auto fT = [&](double t) { return reading == 0 ? K_fT(f, t) : DK_fT(f, t); };
+                for (double k : ks) {
+                    double prev = -1e18;
+                    for (int i = 0; i <= 500; ++i) {
+                        const double u = (double)i / 500.0;
+                        const double t = T(u);
+                        const double x = (1.0 - k) * u + k * t;
+                        if (k == 0.0 && !sameBits(x, u)) diag = false;   // the diagonal, BIT-EXACT
+                        if (k == 0.0 && !sameBits(ws::warpEffectivePdf(k, fT(t)), 1.0)) fw1 = false;
+                        if (x < prev - 1e-12) mono = false;              // W monotone (T is)
+                        prev = x;
+                        const double fw = ws::warpEffectivePdf(k, fT(t));
+                        if (!(std::isfinite(fw) && fw >= 0.0)) fin = false;   // no inf/NaN, ever
+                    }
+                    // the chain fixes 0 and 1: W(0) = 0 and W(1) = 1 (the Sklar edges)
+                    if (std::fabs(k * T(0.0)) > 1e-12) fin = false;
+                    if (std::fabs((1.0 - k) * 1.0 + k * T(1.0) - 1.0) > 1e-12) fin = false;
+                }
+            }
+        }
+        // the k = 1 face: f_W == f_T (the target's own density) wherever the floor
+        // isn't riding (inside the live gap the closed form hands over to the guard)
+        {
+            const WarpF f = dotModular::KumaraswamyWarp{2.0, 3.0};
+            for (int i = 1; i < 500; ++i) {
+                const double t = K_T(f, (double)i / 500.0);
+                const double fTv = K_fT(f, t);
+                if (fTv < 1e-9) continue;
+                if (std::fabs(ws::warpEffectivePdf(1.0, fTv) - fTv) > 1e-15 * fTv) k1face = false;
+            }
+        }
+        // the ZERO CROSSING is continuous: both readings converge to the diagonal as
+        // k → 0 — |W_±k(u) − u| ≤ k (T, u ∈ [0,1]) and the two SIDES differ by at most
+        // 2k — O(k), never a jump, so the drawn curve tracks the knob through zero
+        {
+            const WarpF f = dotModular::KumaraswamyWarp{2.0, 3.0};
+            for (double eps : {1e-2, 1e-3, 1e-4}) {
+                for (int i = 0; i <= 200; ++i) {
+                    const double u = (double)i / 200.0;
+                    const double wPos = (1.0 - eps) * u + eps * K_T(f, u);
+                    const double wNeg = (1.0 - eps) * u + eps * DK_T(f, u);
+                    if (std::fabs(wPos - u) > eps + 1e-12 || std::fabs(wNeg - u) > eps + 1e-12) cross = false;
+                    if (std::fabs(wPos - wNeg) > 2.0 * eps + 1e-12) cross = false;
+                }
+            }
+        }
+        // the GUARDED faces (the helper's contract, direct — the widget divides through
+        // it): the gap opens AT ONCE (f_W == 0 EXACTLY for any k > 0, the floor
+        // included), the atom fades in (→ 1/(1−k), finite even at f_T = ∞), and the
+        // k = 0 uniform NEVER divides (f_W = 1 for ANY f_T — the 0/0 is never reached)
+        for (double k : {0.25, 0.5, 0.75}) {
+            if (ws::warpEffectivePdf(k, 0.0) != 0.0) gapFace = false;
+            if (ws::warpEffectivePdf(k, 1e-12) != 0.0) gapFace = false;   // under the floor
+            if (!(std::fabs(ws::warpEffectivePdf(k, 1e12) - 1.0 / (1.0 - k)) < 1e-6)) atomFace = false;
+            if (ws::warpEffectivePdf(k, (double)INFINITY) != 1.0 / (1.0 - k)) atomFace = false;
+        }
+        // k = 1 rides the k1face pin (f_W == f_T there — the 1/(1−k) limit is k < 1's
+        // law); the inf CALL at k = 1 must still not NaN (the atom branch reads first)
+        if (!std::isinf(ws::warpEffectivePdf(1.0, (double)INFINITY))) atomFace = false;
+        for (double fT : {0.0, 1e-12, 1.0, 1e12, (double)INFINITY, (double)NAN})
+            if (ws::warpEffectivePdf(0.0, fT) != 1.0) uniformFace = false;
+        ok(diag,        "§10: k=0 draws the diagonal — W(u) == u BIT-EXACT (whole roster, both readings)");
+        ok(fw1,         "§10: k=0 draws f_W == 1 — the uniform, the 0/0 never evaluated (BIT-EXACT)");
+        ok(mono,        "§10: W(u) is MONOTONE over the sweep (roster x k x reading, features live)");
+        ok(fin,         "§10: f_W finite and >= 0 over the whole grid; W(0)=0, W(1)=1 (no inf/NaN)");
+        ok(k1face,      "§10: k=1 gives f_W == f_T (the target's own density, off the floor)");
+        ok(cross,       "§10: the zero crossing is continuous — both readings O(k) off the diagonal, <= 2k apart");
+        ok(gapFace,     "§10: the gap face — f_W == 0 EXACTLY for any k > 0 (the gap opens at once)");
+        ok(atomFace,    "§10: the atom face — f_W -> 1/(1-k), finite even at f_T = inf (the spike fades in)");
+        ok(uniformFace, "§10: the uniform face — k=0 returns 1 for ANY f_T incl. 0, inf, NaN");
     }
 
     if (g_fail == 0) { std::printf("ALL PASS (%d checks)\n", g_pass); return 0; }

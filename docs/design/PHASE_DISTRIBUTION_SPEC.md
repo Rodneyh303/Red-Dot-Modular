@@ -148,4 +148,79 @@ Decided (Rodney):
 
 Remaining:
 - The modulation-subpanel decision (all-lane, parked) would move the gap jacks with the atom jacks if adopted; it does not block the gap stage.
-- Test runs for tests 1–8 once the implementation exists.
+- Test runs for tests 1–8: DONE — each maps to a pinned check in test/test_phase_distribution.cpp (the 8-to-check
+  table is recorded in the CC catch-up commit; test 8's bank-level atom→gap face gained its own pin), all passing.
+
+## 10. Distribution plot  the EFFECTIVE warped curve (display-only, Rodney)
+The DISTRIBUTION plot must show the EFFECTIVE warped distribution at the current SIGNED warp depth, NOT the
+bare target. Today it draws the selected member (or its dual past zero), so the drawn curve jumps at the
+zero crossing while the engine output barely moves. The plot must track the knob continuously through zero.
+
+### The transform being plotted
+Warped quantile, k = |w|, T = Q for w >= 0 (member composed quantile) or G for w < 0 (the dual, composed CDF):
+    W(u) = (1-k)*u + k*T(u)
+
+### PDF fill  CLOSED FORM (sweep u over [0,1], no inversion; one sweep also gives the CDF trace)
+W'(u) = (1-k) + k*T'(u), and for a quantile T, T'(u) = 1 / f(T(u)) where f is the target density. So the
+density of the warped variable at the output point x = W(u) is:
+    f_W(x) = 1 / [ (1-k) + k / f(T(u)) ]     at the point x = W(u)
+Draw the fill by sweeping u across [0,1]: at each u, plot (W(u), f_W(u)) directly. Closed form given the
+target's f and T.
+
+### CDF trace  CLOSED FORM, PARAMETRIC (no bisection, no integration)
+For W monotone with U uniform, P(W(U) <= W(u)) = P(U <= u) = u. So the warped CDF at output x = W(u) is exactly u.
+The CDF trace is the parametric curve (W(u), u): plot W(u) on the output axis and u on the probability axis.
+Consistency with the PDF: f_W(W(u)) * W'(u) = 1, so integrating f_W from 0 to W(u) returns u. Integrating
+numerically would only add error. Sweep u across [0,1] once; the PDF fill and the CDF trace come from the same points.
+(Supersedes an earlier note that proposed bisection. Bisection solves W(u) = y, which is the inverse problem
+that the parametric sweep avoids.)
+
+### Limits and the atom/gap asymmetry (state in the UI reasoning, not a bug)
+- k = 0: f_W = 1 (uniform, the flat midpoint). The curve is the diagonal; no jump at zero.
+- k = 1: f_W = f(T(u)) (the target's own density).
+- The blend is RECIPROCAL, not linear:
+  - ATOM (target density -> infinity): f_W -> 1/(1-k). The spike stays finite and grows only as k -> 1, so a
+    small warp barely raises it and it shoots up near full depth  it FADES IN gradually.
+  - GAP (target density -> 0): f_W -> 0 for ANY k > 0  the gap OPENS ABRUPTLY as soon as warp leaves zero.
+- So atoms fade in with depth and gaps open at once. This asymmetry is real (not a plot artefact); the two
+  sides of the warp knob feel different, and the plot shows it honestly.
+
+### Scope
+Display-only. The engine transform is unchanged; this is purely what the DISTRIBUTION plot draws. The plot
+redraws on warp-depth or parameter change (not per sample).
+
+════════════════════════════════════════════════════════════════════════════════
+## 11. CC CATCH-UP  status and remaining work (for CC; build on feat/phase-duals-gaps)
+
+### Status (verified against the branch)
+| Item | State | Evidence |
+|---|---|---|
+| Gap stage, 1/(1-p) uniform rescale | LANDED | WarpStages.hpp: gapQuantile, kGapEps = 1e-6 (the clamp), branch at v* = F_a/(1-p) |
+| Atom after gap (composed) | LANDED | WarpStages.hpp: Q(u) = Q_G(u/(1-m)) / ell / Q_G((u-m)/(1-m)) |
+| Dual reading by SIGN of warp depth | LANDED | warp w<0 blends uniform with the composed CDF (the dual) |
+| Warp mix in quantile space | LANDED | WarpF.hpp: warped(u) = (1-w)u + w F.invCDF(u) |
+| Acceptance test file | PRESENT, CI green | test/test_phase_distribution.cpp (ok() harness); the 8-to-check mapping is DONE (the CC catch-up commit's table — every test covered, test 8's bank-level face pinned) |
+| Flat-direction, no memory | DECIDED | sign of the moving change; flat carries no direction |
+| Gap panel: 2 knobs + 2 jacks per lane, next to atom, same delegation | LANDED | user-confirmed (controls added, CI green); knobs = cell slots gapLoc (6) and gapSize (7) in SandsModifierResolver, written by SandsDistributionExpander |
+| Distribution plot = EFFECTIVE warped curve (section 10) | LANDED | DistributionCurveWidget's warpDepth/warpT/warpTpdf binding: ONE u-sweep draws the parametric CDF (W(u), u) and the guarded closed-form fill f_W = 1/[(1−k)+k/f_T(T(u))] (warpStages::warpEffectivePdf); both hosts bind the composed reading's quantile at the live signed depth; §10 pins in test_phase_distribution (k=0 bit-diagonal, monotone, zero-crossing continuity, the guarded faces) |
+
+### CC work, in order
+1. **Verify the 8 acceptance tests (section 8) against test_phase_distribution.cpp.** Map each test to an existing
+   check; add the missing ones. Do not change the landed convention or the clamp. Gate: all 8 pass.
+2. **Effective-curve plot (section 10).** Sweep u over [0,1] once; per point plot (W(u), f_W(u)) for the PDF fill
+   and (W(u), u) for the CDF trace (PARAMETRIC, no bisection, no integration). W = (1-k)u + k*T(u), k = |w|,
+   T = Q for w >= 0, G for w < 0. Display-only; redraw on warp-depth or parameter change, not per sample.
+   Gate: the plotted curve is continuous through w = 0; at k = 0 the trace is the diagonal and f_W = 1.
+3. **Gap panel controls: LANDED** (user-confirmed, CI green). Nothing further, except a Rack check that the two jacks sit beside the atom jacks.
+4. **Confirm the flat-direction rule** in the phase input path: a flat carries no direction and direction is the
+   sign of the change that moves the playhead. Gate: a held input followed by a move takes the sign of the move.
+
+### Still open (do not build until decided)
+- **Morph shape:** the warp currently morphs member -> uniform -> dual (uniform-centred). A direct member-to-dual
+  crossfade is a different formula and would need a monotonicity check. Decide before any change.
+- **Modulation-subpanel (all-lane):** parked; does not block items 1-4.
+
+### Gates (all items)
+- run_all green on both SDK legs.
+- No change to landed gap convention, clamp, or dual sign rule.
+- ≤16 bit-identical behaviour where the feature is inactive (warp at 0, no gap set).

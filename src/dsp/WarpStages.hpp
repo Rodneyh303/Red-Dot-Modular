@@ -264,4 +264,39 @@ inline void dualMarkers(double a, double b, double ell, double m, C cdfT, G gapC
     outGapHi = q0 + clampMass(m);
 }
 
+// ── THE EFFECTIVE WARPED CURVE (PHASE_DISTRIBUTION_SPEC §10, display-only) ──────────
+// The DISTRIBUTION plot's law: the plot shows the EFFECTIVE warped distribution at the
+// current SIGNED warp depth w — NOT the bare target — so it tracks the knob continuously
+// through zero (the reading flips at the sign, but k = |w| → 0 kills the difference: no
+// jump). With k = |w| ∈ [0,1] and T = the composed READING's quantile (K reading: the
+// composed quantile; DK reading: the composed CDF — the SIGN picked it), the warp mix
+//     W(u) = (1−k)·u + k·T(u)
+// is a monotone [0,1]→[0,1] self-map, and ONE sweep of u over [0,1] gives both drawn
+// curves EXACTLY, closed form, no bisection and no integration:
+//   · CDF trace — the PARAMETRIC point (W(u), u): P(W(U) ≤ W(u)) = P(U ≤ u) = u.
+//   · PDF fill  — the output density at x = W(u), from W'(u) = (1−k) + k·T'(u) and
+//                 T'(u) = 1/f_T(T(u)):
+//         f_W = 1 / [ (1−k) + k / f_T(T(u)) ]
+//     with the division GUARDED on the spec's two edges: f_T → 0 (a gap) gives
+//     f_W → 0 for ANY k > 0 (the gap opens at once); f_T → ∞ (an atom) gives
+//     f_W → 1/(1−k) (the spike fades in). The asymmetry is real, not a plot artefact.
+// k = 0 is the uniform: W = u (the diagonal) and f_W = 1 EXACTLY — the 0/0 at k=0 is
+// never evaluated. DISPLAY-only: the engine's warp mix never calls these; the plot
+// recomputes on warp-depth or parameter change (the hosts' refresh), never per sample.
+inline double warpEffectiveK(float w) {
+    const double k = std::fabs((double)w);
+    if (!(k == k)) return 0.0;              // NaN depth: the neutral diagonal
+    return k > 1.0 ? 1.0 : k;               // the axis is [−1,+1]; overshoot clamps
+}
+// f_T evaluated AT the target point T(u) → the warped density f_W. The floor keeps the
+// division finite for every input — the display density's own "this small is a hole"
+// reading (Distribution.hpp's DIST_EDGE_EPS = 1e-9, mirrored here so this module keeps
+// its no-Rack/no-deps purity; the two must move together). NaN rides the gap face to 0.
+inline double warpEffectivePdf(double k, double fT) {
+    if (k <= 0.0) return 1.0;                        // k = 0: the uniform, exactly
+    if (std::isinf(fT)) return 1.0 / (1.0 - k);      // the atom face: the spike, finite
+    if (!(fT >= 1e-9)) return 0.0;                   // the gap face (NaN too): f_W = 0
+    return 1.0 / ((1.0 - k) + k / fT);               // the closed form; k < 1 ⇒ denom > 0
+}
+
 } // namespace dotModular::warpStages

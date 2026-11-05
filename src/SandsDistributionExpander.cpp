@@ -405,6 +405,16 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         curve->atomMass  = barMass;
         curve->gapLo = ws::clampGapLoc(bandLo);
         curve->gapHi = ws::clampGapLoc(bandHi);
+        // THE EFFECTIVE PLOT (PHASE_DISTRIBUTION_SPEC §10, display-only): the drawn
+        // curve is the warp mix at the FOLDED signed depth (lastW_ — the same
+        // clampW'd w the cells resolve, CV deltas included), T = the READING's
+        // quantile (this view's invCDF; the dual branch the exchange), f_T the
+        // view's pdf AT T(u) — the editor shows what the CELLS hear, continuously
+        // through zero (w = 0 draws the diagonal). The step() detector refreshes on
+        // depth/stage/param change, never per sample.
+        curve->warpDepth = lastW_;
+        curve->warpT     = [this](double u) { return view_ ? view_->invCDF(u) : u; };
+        curve->warpTpdf  = [this](double x) { return view_ ? view_->pdf(x) : 1.0; };
         // Drawn edits → the scoped mirror rebuild (the popup's onEdit hook; the
         // pool slot changed in place, ONLY this hook can fire the rebuild).
         curve->onEdit = [this, lane]() {
