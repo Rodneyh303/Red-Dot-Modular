@@ -228,6 +228,8 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
     WarpF lastF_{};
     double lastTilt_ = -1e9, lastLevel_ = -1e9, lastMass_ = -1e9;
     double lastGapLoc_ = -1e9, lastGapSize_ = -1e9;   // the gap pair joins the detector
+    float lastW_ = -1e9f;                              // ...and the DEPTH (the sign flips
+                                                       // the READING the editor displays)
     bool lastRole_ = false;
     int  lastSlot_ = -1, lastLane_ = -1;
 
@@ -332,14 +334,35 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         }
     }
 
+    // The EFFECTIVE depth the cells actually take — the authored w folded through the
+    // SAME glob*send+own algebra + the SAME clampW the engine's fold runs (the display
+    // law: the editor shows the cells' live state; the SIGN of this is the reading the
+    // curve editor composes).
+    float curW(int lane) const {
+        Monsoon* m = redDot::lookupMonsoon(module);
+        if (!m) return 0.f;
+        const bool role = macroRoleNow();
+        const int slot = slotLive();
+        float w = role ? m->getGlobalWarpW(lane) : m->getWarpW(slot, lane);
+        if (m->editor.warp.distDeltasActive) {
+            const float* glob = m->editor.warp.distGlobalDelta[lane];
+            const float* own  = distOwnRow_(m, role, lane);
+            const float* sendRow = role ? nullptr : m->editor.warp.distSend[slot][lane];
+            const float d = glob[5] * (sendRow ? sendRow[5] : 1.f) + (own ? own[5] : 0.f);
+            w = redDot::WarpPolicy::clampW(w + d);   // the fold's own clamp, verbatim
+        }
+        return w;
+    }
+
     void refreshEditor(int lane) {
         Monsoon* m = redDot::lookupMonsoon(module);
         if (!m || !curve) return;
         const WarpF f = curF(lane);
         // (re)build the member view + the live drawn-edit binding — the popup's
-        // refresh() shape, permanent-home edition.
+        // refresh() shape, permanent-home edition. The AUTHORED curve itself (the
+        // reading lives in the SIGN of w now, never in f — nothing to unwrap).
         curve->editCurve = nullptr;
-        const WarpF member = dotModular::dualMember(f);   // the BARE member (a dual unwraps)
+        const WarpF& member = f;
         if (const auto* dw = std::get_if<DrawnWarp>(&member)) {
             if (dw->idx < kWarpPoolCap) {
                 memberView_ = std::make_unique<MonotoneCurveView>(m->editor.warp.pool[dw->idx]);
@@ -354,10 +377,15 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         curStages(lane, tp, al, am, gl, gs);
         lastF_ = f; lastTilt_ = tp; lastLevel_ = al; lastMass_ = am;
         lastGapLoc_ = gl; lastGapSize_ = gs;
+        lastW_ = curW(lane);
         lastRole_ = macroRoleNow(); lastSlot_ = slotLive(); lastLane_ = lane;
         view_ = std::make_unique<WarpStagesView>(memberView_.get(), tp, al, am);
         stagesView_ = static_cast<WarpStagesView*>(view_.get());
-        stagesView_->gapLoc = gl; stagesView_->gapSize = gs; stagesView_->dual = dotModular::isDualWarp(f);
+        // THE READING FOLLOWS THE SIGN (the bidirectional warp): the editor composes
+        // what the CELLS hear — the folded w's sign picks the reading, negative side
+        // the DUAL (the composed pair exchanged; the markers below read the READING's
+        // atom bar / gap band).
+        stagesView_->gapLoc = gl; stagesView_->gapSize = gs; stagesView_->dual = (curW(lane) < 0.f);
         curve->dist = view_.get();
         curve->isLight = [this]() { return themeLight_; };
         // The atom bar / gap band read the READING's markers (the atom<->gap
@@ -442,6 +470,12 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
                 if (p == 2) { lo = -(float)warpStages::kTiltMax; hi = (float)warpStages::kTiltMax; def = 0.f; }
                 if (p == 3) { lo = 0.f; hi = 1.f; def = (float)warpStages::kAtomLevelDefault; }
                 if (p == 4) { lo = 0.f; hi = (float)warpStages::kAtomMassMax; def = 0.f; }
+                // 5 WARP — THE BIDIRECTIONAL DEPTH (as amended — Rodney: "we make the warp
+                // knob bidirectional instead of unidirectional. Positive blends uniform and
+                // selected distribution - as now. Negative blends uniform and the dual
+                // distribution."): a SIGNED axis [−1,+1], 0 = no warp, the sign IS the
+                // reading (+ the member's quantile, − the dual's), the depth is |w|.
+                if (p == 5) { lo = -1.f; hi = 1.f; def = 0.f; }
                 if (p == 6) { lo = 0.f; hi = 1.f; def = (float)warpStages::kGapLocDefault; }   // GAPLOC
                 if (p == 7) { lo = 0.f; hi = 1.f; def = (float)warpStages::kGapSizeDefault; }  // GAPSIZE
                 auto* k = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(
@@ -645,6 +679,7 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         if (std::memcmp(&f, &lastF_, sizeof(WarpF)) != 0
                 || tp != lastTilt_ || al != lastLevel_ || am != lastMass_
                 || gl != lastGapLoc_ || gs != lastGapSize_
+                || curW(editorLane_) != lastW_
                 || role != lastRole_ || slot != lastSlot_ || editorLane_ != lastLane_) {
             refreshEditor(editorLane_);
         }

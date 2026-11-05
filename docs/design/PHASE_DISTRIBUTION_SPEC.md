@@ -1,14 +1,20 @@
 # PHASE DISTRIBUTION SPEC — Kumaraswamy and Dual Kumaraswamy with tilt, gap and atom (Rodney-decided)
 
-Status: spec for review. Stage semantics, formulas and tests. No code yet.
+Status: spec for review, as amended by the bidirectional warp (see §9). Stage semantics,
+formulas and tests.
 
 ## 1. Scope
-Two distributions on [0,1], shown as two menu entries:
-- **Kumaraswamy (K)**, member K(α, β).
-- **Dual Kumaraswamy (DK)**, the same object read with CDF and quantile swapped.
+The menu choice is the ORIGINAL distribution only (as amended — Rodney: "we go back to
+making only the original a menu choice"). The dual is not a menu entry and not a stored
+state: it is one of TWO READINGS of the selected curve, selected per cell by the SIGN of
+the warp depth:
+- **Kumaraswamy (K)** (and every palette member likewise), member K(α, β) — the menu
+  entry.
+- **Dual Kumaraswamy (DK)**, the same object read with CDF and quantile swapped — the
+  warp depth's NEGATIVE side (§6a).
 
-One implementation: a single class with a reading parameter fixed by the menu entry. The stage chain is shared,
-so the two entries cannot drift apart.
+One implementation: a single class; the reading is a property of the sign, not of the
+stored value. The stage chain is shared, so the two readings cannot drift apart.
 
 ## 2. Base functions (closed form)
 - F(x) = 1 − (1 − x^α)^β
@@ -71,6 +77,19 @@ the plateau edge. This is accepted as the consequence of the user using both fea
 
 The DK reading uses the same stage formulas with the roles swapped, so it is not a separate implementation.
 
+## 6a. The bidirectional warp (as amended)
+The warp depth w is SIGNED, [−1, +1], 0 = no warp. The mix stays in quantile space with
+the uniform as the reference (Rodney: "Blending in quantile space, (1−|w|)·u + |w|·Q(u),
+keeps the uniform as the reference and is the one I'd choose same as current"):
+- **w ≥ 0:** out = (1−w)·u + w·Q(u) — uniform blended with the selected distribution's
+  composed QUANTILE, exactly as the unidirectional warp always did (bit-identical).
+- **w < 0:** out = (1−|w|)·u + |w|·G(u) — uniform blended with the composed CDF, the DUAL
+  reading (Rodney: "Negative blends uniform and the dual distribution.").
+
+The knob axes are [−1,+1] everywhere the depth is authored (the distribution expander's
+WARP column, the East/Macro warp-level knobs); modulation folds through the same signed
+clamp, so CV can cross zero freely — the crossing is audible, not a clamp.
+
 ## 7. Cost
 Per draw: one F or F⁻¹ evaluation, plus one R_p or R_p⁻¹ evaluation. Per parameter change: F_t(a), F_t(b), p, and G(ℓ).
 All closed form.
@@ -83,7 +102,8 @@ All closed form.
 5. The jump in Q_G is at v = F_a/(1 − p), landing at a then b.
 6. Normalised density outside the gap is unchanged by the gap (the rescale is uniform).
 7. An atom inside a gap sits at ℓ; an atom whose plateau covers the jump point wins.
-8. DK reading: an atom on K becomes a gap on DK, verified numerically at several parameter sets.
+8. DK reading: an atom on K becomes a gap on DK, verified numerically at several parameter sets
+   (reached at the bank level by w = −1 over the bare member, per the amendment).
 
 ## 9. Decisions and remaining items
 Decided (Rodney):
@@ -98,14 +118,25 @@ Decided (Rodney):
   jacks go on the base panel next to the atom jacks (not a subpanel); if the all-lane modulation subpanel is
   adopted later, the gap jacks move with the atom jacks, since they are treated identically.
 - **ε = 1e-6** for the p clamp.
-- **Menu label: "Dual Kumaraswamy".**
-- **Duals for EVERY distribution (decided, Rodney: "For each of our distributions on distribution module add the
-  dual. Example is for kumaraswamy but we can apply to each. So we double the number of distribution choices."):**
-  §1's two-entry scope widens to the whole menu — every distribution on the distribution module gains its dual as
-  a second menu entry, so the palette's choices double. Identity (the uniform) is its own dual (F(x) = x swaps to
-  itself), so it takes no extra entry; the drawn (freehand) curve's dual reads the SAME points with CDF and
-  quantile exchanged. One implementation: the dual is a reading flag riding the curve value, never a second copy
-  of any formula.
+- **Menu label: "Dual Kumaraswamy"** (SUPERSEDED — the dual left the menu; see the
+  amendment below).
+- **Duals for EVERY distribution** (Rodney: "For each of our distributions on distribution module add the
+  dual. Example is for kumaraswamy but we can apply to each. So we double the number of distribution choices.") —
+  the duals exist for every member still, but SUPERSEDED IN FORM by the amendment below: they are no longer
+  second menu entries. Identity (the uniform) is its own dual (F(x) = x swaps to itself) on either path; the
+  drawn (freehand) curve's dual reads the SAME points with CDF and quantile exchanged. One implementation: the
+  dual is the reading selected by the warp depth's sign — never a second copy of any formula.
+- **THE BIDIRECTIONAL WARP (amendment, Rodney: "I want to change this slightly. Instead of
+  having the dual of each distribution separately selectable we go back to making only the
+  original a menu choice. But we make the warp knob bidirectional instead of
+  unidirectional. Positive blends uniform and selected distribution - as now. Negative
+  blends uniform and the dual distribution." and, on the blend space: "Blend space.
+  Blending in quantile space, (1−|w|)·u + |w|·Q(u), keeps the uniform as the reference and
+  is the one I'd choose same as current."):** the menu returns to the bare palette; the
+  warp depth becomes a SIGNED axis [−1,+1]; the SIGN selects the reading (§6a) — positive
+  the member's composed quantile as always, negative the composed CDF (the dual). The
+  blend space is unchanged. Legacy patches that persisted a dual as a stored state load
+  as the member at depth −w — the same sound bit-exactly, so no patch re-authors.
 - **Atom↔gap exchange is the dual reading's property for every member (decided, Rodney: "We also add zero density
   gaps with controls and modulation similar to atoms. Atom dual is a gap and vice versa."):** an atom on a
   distribution reads as a gap on its dual and vice versa (§6, test 8) — now a first-class promise for every menu

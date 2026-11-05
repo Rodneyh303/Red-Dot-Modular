@@ -348,7 +348,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         for (int el = 0; el < dotModular::SandsGrid::POLY_LANES; ++el) {
             redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_wlevel_" + std::to_string(el), storeResolver(),
-                0.f, 1.f, 0.f, std::string(EDN[el]) + " warp level (delegated default)",
+                // THE BIDIRECTIONAL WARP (as amended): a SIGNED axis [−1,+1], 0 = no
+                // warp — positive blends uniform↔the selected distribution (as always),
+                // negative blends uniform↔its DUAL (the sign picks the reading).
+                -1.f, 1.f, 0.f, std::string(EDN[el]) + " warp level (delegated default)",
                 [el](Monsoon& m)          { return m.getGlobalWarpW(el); },
                 [el](Monsoon& m, float v) {
                     m.setGlobalWarpW(el, v);

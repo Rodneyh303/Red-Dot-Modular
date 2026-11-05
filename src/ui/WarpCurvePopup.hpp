@@ -204,6 +204,8 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
     WarpF lastF_{};                     // external-change detector (undo): memcmp per step
     double lastTilt_ = 0.0, lastLevel_ = 0.5, lastMass_ = 0.0;   // ...and the stage triple
     double lastGapLoc_ = 0.5, lastGapSize_ = 0.0;                // ...and the gap pair
+    float lastW_ = 0.f;                 // ...and the DEPTH (the sign flips the READING —
+                                        // the display must follow it live)
 
     Monsoon* mon() const { return resolveMon ? resolveMon() : nullptr; }
     const WarpF& cur() const {
@@ -333,10 +335,10 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         const WarpF& f = cur();
         lastF_ = f;
 
-        // The member + (for drawn) the live in-place edit curve — of the BARE member
-        // (a dual unwraps: the swap happens in the composing view, the edit path edits
-        // the member's points/params exactly as the knobs do).
-        const WarpF member = dualMember(f);
+        // The member + (for drawn) the live in-place edit curve — the AUTHORED curve
+        // itself (the reading lives in the SIGN of w now, never in f: the bank holds
+        // bare members only, so there is nothing to unwrap).
+        const WarpF member = f;
         curve->editCurve = nullptr;
         if (const auto* dw = std::get_if<DrawnWarp>(&member)) {
             if (dw->idx < kWarpPoolCap) {
@@ -358,9 +360,13 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         const double tp = curTilt(), al = curLevel(), am = curMass();
         const double gl = curGapLoc(), gs = curGapSize();
         lastTilt_ = tp; lastLevel_ = al; lastMass_ = am; lastGapLoc_ = gl; lastGapSize_ = gs;
+        lastW_ = curW();
         view_ = std::make_unique<WarpStagesView>(memberView_.get(), tp, al, am);
         stagesView_ = static_cast<WarpStagesView*>(view_.get());
-        stagesView_->gapLoc = gl; stagesView_->gapSize = gs; stagesView_->dual = isDualWarp(f);
+        // THE READING FOLLOWS THE SIGN (the bidirectional warp): negative w IS the dual
+        // reading — the display shows exactly what the engine composes on that side (the
+        // composed pair exchanged; the atom bar / gap band read the READING's markers).
+        stagesView_->gapLoc = gl; stagesView_->gapSize = gs; stagesView_->dual = (curW() < 0.f);
         curve->dist = view_.get();
         curve->isLight = isLight;
         double barLevel = al, barMass = am, bandLo = gl, bandHi = gl + gs;
@@ -489,7 +495,8 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         const WarpF& f = cur();
         if (std::memcmp(&f, &lastF_, sizeof(WarpF)) != 0
             || curTilt() != lastTilt_ || curLevel() != lastLevel_ || curMass() != lastMass_
-            || curGapLoc() != lastGapLoc_ || curGapSize() != lastGapSize_)
+            || curGapLoc() != lastGapLoc_ || curGapSize() != lastGapSize_
+            || curW() != lastW_)
             refresh();
     }
 
@@ -555,14 +562,15 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
             nvgFillColor(vg, textCol);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
             // The readout carries the chain (w · p · ℓ · m · gap) — 7px keeps the longer
-            // line inside the 80mm bezel; a dual reads as dual-<member> (the reading is
-            // part of the curve's identity, the header must not lie about it).
+            // line inside the 80mm bezel; the READING follows the warp sign — negative w
+            // reads dual-<kind> (warpReadingName; the header must not lie about what the
+            // engine composes on the side the knob is parked on).
             const WarpF& fNow = cur();
             char nameBuf[48];
             char buf[160];
-            std::snprintf(buf, sizeof buf, "%s %s  —  %s  ·  w %.2f  ·  p %+.2f  ·  ℓ %.2f  ·  m %.2f  ·  gap %.2f+%.2f",
+            std::snprintf(buf, sizeof buf, "%s %s  —  %s  ·  w %+.2f  ·  p %+.2f  ·  ℓ %.2f  ·  m %.2f  ·  gap %.2f+%.2f",
                           voiceName.c_str(), laneName.c_str(),
-                          warpDisplayName(fNow, nameBuf, sizeof nameBuf), (double)curW(),
+                          warpReadingName(fNow, curW(), nameBuf, sizeof nameBuf), (double)curW(),
                           curTilt(), curLevel(), curMass(), curGapLoc(), curGapSize());
             nvgFontSize(vg, 7.f);
             nvgText(vg, w * 0.5f, rack::mm2px(4.0f), buf, nullptr);
@@ -595,6 +603,10 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
 // SAME defaults.) The target carries the addressing + the commit path — the
 // role-appropriate setter + scoped rebuild live with the OWNER (the popup's
 // macroGlobal branch; the expander's macroRoleNow() branch), the menu stays dumb.
+// THE BARE PALETTE (as amended — Rodney: "we go back to making only the original a
+// menu choice"): the duals LEFT the menu — the DUAL READING rides the warp depth's
+// NEGATIVE side now (the bidirectional warp), so a stored dual state would be a
+// second copy of a decision the sign already makes. Ten entries, one reading rule.
 struct WarpKindMenuTarget {
     std::function<Monsoon*()> resolveMon;
     std::function<WarpF()> cur;                  // the current authored F (for the ✓)
@@ -610,22 +622,18 @@ inline void openWarpKindMenu(const WarpKindMenuTarget& t) {
     menu->addChild(rack::createMenuLabel(std::string("Warp curve — ") + t.laneName));
     menu->addChild(rack::createMenuLabel("click a type to author it (drawn = drag points)"));
     const WarpF curF = t.cur();
-    const int curKind = (int)curF.index();
-    const int curMemberKind = warpEffKind(curF);   // a DUAL's ✓ checks its MEMBER's kind
-    const bool curIsDual = isDualWarp(curF);
+    const int curKind = (int)curF.index();   // the bare palette's own kind (the ✓)
     struct KindItem : MenuItem {
         WarpKindMenuTarget t;
         int kind;
-        bool dual = false;   // the DUAL reading of kind's default (PHASE_DISTRIBUTION_SPEC)
         void onAction(const rack::event::Action&) override {
             Monsoon* m = t.resolveMon ? t.resolveMon() : nullptr;
             if (!m) return;
-            if (kind == 0 && !dual) { t.commitF(IdentityWarp{}); if (t.afterCommit) t.afterCommit(); return; }
+            if (kind == 0) { t.commitF(IdentityWarp{}); if (t.afterCommit) t.afterCommit(); return; }
             std::unique_ptr<Distribution> d = WarpCurvePopup::makeKindDefault(kind);
             if (!d) return;
-            WarpF f = m->editor.warp.fromDistribution(*d);
-            if (dual) f = dualWrap(f);   // the reading swap rides the curve value (one impl)
-            t.commitF(f);
+            t.commitF(m->editor.warp.fromDistribution(*d));   // the bare member — the menu
+                                                              // no longer wraps a reading
             if (t.afterCommit) t.afterCommit();
         }
     };
@@ -633,27 +641,19 @@ inline void openWarpKindMenu(const WarpKindMenuTarget& t) {
         "Identity (uniform)", "Triangular", "Power", "Kumaraswamy", "Logit-normal",
         "Logit-sigmoid", "Mobius", "Truncated normal", "Reversed power", "Drawn (freehand)",
     };
-    // The BASE palette (10 entries)…
+    // THE BARE PALETTE — ten entries, no dual section: every parametric + drawn kind
+    // as its ORIGINAL self only. The dual reading did not disappear — it moved onto
+    // the warp depth's NEGATIVE side (the bidirectional warp), where the sign picks
+    // it per cell; a menu entry would freeze as a stored state what the knob now
+    // decides live. Identity takes none anywhere: the uniform IS its own dual.
     for (int k = 0; k < 10; ++k) {
         auto* it = new KindItem;
         it->text = kNames[k];
-        it->rightText = (!curIsDual && k == curKind) ? "✓" : "";
+        it->rightText = (k == curKind) ? "✓" : "";
         it->t = t; it->kind = k;
         menu->addChild(it);
     }
-    // …then THE DUALS (Rodney: "For each of our distributions ... add the dual ...
-    // So we double the number of distribution choices"): every parametric + drawn
-    // kind gains its dual as a second entry — the SAME curve read with CDF and
-    // quantile exchanged (one implementation; the reading flag rides the value).
-    // Identity takes none: the uniform IS its own dual (F(x) = x swaps to itself).
-    menu->addChild(rack::createMenuLabel("— duals (CDF and quantile exchanged) —"));
-    for (int k = 1; k < 10; ++k) {
-        auto* it = new KindItem;
-        it->text = (std::string("Dual ") + kNames[k]);
-        it->rightText = (curIsDual && k == curMemberKind) ? "✓" : "";
-        it->t = t; it->kind = k; it->dual = true;
-        menu->addChild(it);
-    }
+    menu->addChild(rack::createMenuLabel("negative WARP = the dual reading (CDF/quantile exchanged)"));
 }
 
 inline void WarpCurvePopup::openKindMenu() {

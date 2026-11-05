@@ -14,10 +14,14 @@
 //   T6  The rescale is uniform: the density outside the gap is f_t/(1−p), 0 inside.
 //   T7  An atom inside a gap sits at ℓ (splitting the gap); a plateau covering the
 //       jump point wins (the §5 overlap rule).
-//   T8  The DUAL reading: an atom on K is a gap on DK and a gap on K is an atom on DK,
-//       numerically, at several parameter sets; the swap identity holds for EVERY
-//       palette member (dual.cdf == member.invCDF, dual.invCDF == member.cdf), the
-//       bank composes the dual as the chained-CDF quantile, and the dual persists.
+//   T8  The DUAL reading — reached by the warp depth's NEGATIVE side (as amended:
+//       "we go back to making only the original a menu choice. But we make the warp
+//       knob bidirectional ... Negative blends uniform and the dual distribution"):
+//       an atom on K is a gap on DK and a gap on K is an atom on DK, numerically, at
+//       several parameter sets; the swap identity holds for EVERY palette member
+//       (dual.cdf == member.invCDF, dual.invCDF == member.cdf), the bank reaches the
+//       dual by the SIGN of w over a BARE member (the dual's quantile IS the composed
+//       CDF at w = −1), and the dual envelope persists.
 //
 // Header-only, Rack-free (jansson via the test/jansson.h shim); registered in
 // test/run_all.sh.
@@ -397,17 +401,19 @@ int main() {
         }
         ok(g2a,     "T8: a gap on K reads as an ATOM on DK — the DK cdf jumps by (b-a) at v*");
         ok(markers, "T8: dualMarkers report the dual's atom (level v*, mass b-a) exactly");
-        // (4) the BANK composes the dual as the chained-CDF quantile: a dual cell at
-        // w=1 == warpStages::cdf(u) over the BARE member — bit-exact — and with the
-        // gap live, the SAME gap params drive both readings (one store, two readings).
+        // (4) the BANK reaches the dual by the SIGN: a BARE member cell at w=−1 ==
+        //     warpStages::cdf(u) over that member — bit-exact — and with the gap live,
+        //     the SAME gap params drive both readings (one store, two readings, one
+        //     sign apart); w=+1 stays the composed QUANTILE (the reading the menu
+        //     authors).
         {
             WarpBank b;
             const int i0 = WarpBank::index(1, 4);
-            b.warpF[i0] = dotModular::dualWrap(dotModular::PowerWarp{2.0});
-            b.warpW[i0] = 1.f;
+            b.warpF[i0] = dotModular::PowerWarp{2.0};   // BARE member — the sign does the reading
             b.warpTilt[i0] = 0.2f; b.warpGapLoc[i0] = 0.35f; b.warpGapSize[i0] = 0.2f;
             const WarpF member = dotModular::PowerWarp{2.0};
-            bool bankDual = true;
+            bool bankDual = true, bankPlain = true;
+            b.warpW[i0] = -1.f;
             for (int k = 0; k <= 400; ++k) {
                 const double u = (double)k / 400.0;
                 const double pc = (double)b.warpTilt[i0], lc = (double)b.warpGapLoc[i0],
@@ -416,9 +422,21 @@ int main() {
                                             [&](double xx) { return mC(member, xx); });
                 if (!sameBits(b.warpedValue(1, 4, u, false), want)) bankDual = false;
             }
-            ok(bankDual, "T8: the bank's dual cell at w=1 == the composed CDF AT u BIT-EXACT (gap live)");
+            ok(bankDual, "T8: the bank's cell at w=-1 == the composed CDF AT u BIT-EXACT (gap live)");
+            b.warpW[i0] = 1.f;
+            for (int k = 0; k <= 400; ++k) {
+                const double u = (double)k / 400.0;
+                const double pc = (double)b.warpTilt[i0], lc = (double)b.warpGapLoc[i0],
+                             sc = (double)b.warpGapSize[i0];
+                const double want = ws::invCDF(u, pc, lc, sc, 0.5, 0.0,
+                                               [&](double uu) { return mQ(member, uu); },
+                                               [&](double xx) { return mC(member, xx); });
+                if (!sameBits(b.warpedValue(1, 4, u, false), want)) bankPlain = false;
+            }
+            ok(bankPlain, "T8: the same cell at w=+1 == the composed QUANTILE BIT-EXACT (one sign apart)");
         }
-        // (5) the dual PERSISTS: the envelope round-trips through the slot codec.
+        // (5) the dual envelope PERSISTS at the codec level (the legacy writer's form —
+        //     the bank's parse migrates it, pinned in test_warp_f_bank S8c).
         {
             WarpF dk = dotModular::dualWrap(dotModular::KumaraswamyWarp{2.0, 3.0});
             json_t* j = dotModular::warpToJson(dk);
