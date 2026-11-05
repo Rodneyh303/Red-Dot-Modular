@@ -613,6 +613,13 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // no theme swap (fine for this control). Placement lives in the generator table.
         bindParam<redDot::Dark_Small_Cog>("param_PHASE_PARAM", MonsoonIds::PHASE_PARAM);
 
+        // ── PHASE TIER Stage 2 — the SUBPHASE CALIBRATION knob, one step left of PHASE ──
+        // The pair reads as a pair (the transport's PHASE, then the tier's SUBPH). Same
+        // plain small cog, no theme swap. The anchor lives in the generator table
+        // (monsoon_art.py SUBPHASE_CAL_XY), so the SVG, this bind and the caption draw
+        // share the one position source.
+        bindParam<redDot::Dark_Small_Cog>("param_SUBPHASE_CAL_PARAM", MonsoonIds::SUBPHASE_CAL_PARAM);
+
         // ── Host-identity badge (CONNECTION_MODEL_SPEC §2/§4) ────────────────────────────────────
         // The Monsoon shows its OWN pairId colour+number so a bound expander's matching badge can be
         // verified by eye. Suppressed automatically when <2 Monsoons (HostBadge::draw), so the common
@@ -890,6 +897,8 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         labelAt("param_BPM_PARAM", 12.f, "BPM"); labelAt("param_PATTERN_LENGTH_PARAM", 12.f, "LEN"); labelAt("param_PATTERN_OFFSET_PARAM", 12.f, "OFFSET");
         // Mode E phase knob — now one step left of BPM on the phase row; label matches the others.
         labelAt("param_PHASE_PARAM", 12.f, "PHASE");
+        // PHASE TIER Stage 2 — the subphase tier's calibration, labelled beside its partner.
+        labelAt("param_SUBPHASE_CAL_PARAM", 12.f, "SUBPH");
 
         // ── Control-row labels — ONE per control, centred ABOVE it (y≈81), anchor-relative ──
         // The row was consolidated into a single y=87 row (panel_src/monsoon_art.py ROW). Every
