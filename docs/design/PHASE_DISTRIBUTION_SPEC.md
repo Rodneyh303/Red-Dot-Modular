@@ -114,17 +114,20 @@ zero crossing while the engine output barely moves. The plot must track the knob
 Warped quantile, k = |w|, T = Q for w >= 0 (member composed quantile) or G for w < 0 (the dual, composed CDF):
     W(u) = (1-k)*u + k*T(u)
 
-### PDF fill  CLOSED FORM (sweep u over [0,1], no inversion)
+### PDF fill  CLOSED FORM (sweep u over [0,1], no inversion; one sweep also gives the CDF trace)
 W'(u) = (1-k) + k*T'(u), and for a quantile T, T'(u) = 1 / f(T(u)) where f is the target density. So the
 density of the warped variable at the output point x = W(u) is:
     f_W(x) = 1 / [ (1-k) + k / f(T(u)) ]     at the point x = W(u)
 Draw the fill by sweeping u across [0,1]: at each u, plot (W(u), f_W(u)) directly. Closed form given the
 target's f and T.
 
-### CDF trace  NUMERIC (monotone, cheap)
-The CDF trace is W^-1. A sum of the identity and a quantile has no general closed-form inverse, so solve
-W(u) = y per plotted point by BISECTION (W is monotone -> safe, fast). A few hundred points, redrawn only on
-a warp/param change -> cost is negligible. (Newton is fine too; bisection is chosen for robustness.)
+### CDF trace  CLOSED FORM, PARAMETRIC (no bisection, no integration)
+For W monotone with U uniform, P(W(U) <= W(u)) = P(U <= u) = u. So the warped CDF at output x = W(u) is exactly u.
+The CDF trace is the parametric curve (W(u), u): plot W(u) on the output axis and u on the probability axis.
+Consistency with the PDF: f_W(W(u)) * W'(u) = 1, so integrating f_W from 0 to W(u) returns u. Integrating
+numerically would only add error. Sweep u across [0,1] once; the PDF fill and the CDF trace come from the same points.
+(Supersedes an earlier note that proposed bisection. Bisection solves W(u) = y, which is the inverse problem
+that the parametric sweep avoids.)
 
 ### Limits and the atom/gap asymmetry (state in the UI reasoning, not a bug)
 - k = 0: f_W = 1 (uniform, the flat midpoint). The curve is the diagonal; no jump at zero.
