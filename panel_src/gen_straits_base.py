@@ -43,6 +43,15 @@ SG_KNOB_Y    = [30.0, 48.0]   # RATCHET row, GHOST row
 SG_MOD_Y     = [63.0, 77.0]   # the matching mod rows
 VOICE_Y      = 91.0           # the voice-count knob — the freed band below the grid
 
+# ── QMIX_OCTAVE Stage 2 (CC_PROMPT_QMIX_OCTAVE + QMIX_OCTAVE_PLAN.md): the GLOBAL
+# Qmix-octave knob — the freed LEFT half of the VOICES band, aligned with the subgate
+# grid's first column, the qmix violet tint (it IS a qmix read). Store-backed (the
+# de-param law); the source switch lives in the base's context menu (the subgate
+# per-decision switch idiom), not on the panel.
+QOCT_TINT    = "#8060c0"      # the qmix lane's violet (gen_straits_lane.py TINTS["qmix"])
+QOCT_X       = MARGIN_L + SG_COL_PITCH * 0.5
+QOCT_Y       = VOICE_Y
+
 # Row tints — the RATCHET/GHOST identity (widget lettering reuses these).
 TINTS = {
     "ratchet": "#c05850",
@@ -98,6 +107,16 @@ def gen(dark=True):
     A(f'<line x1="{px(vcx)}" y1="{px(vcy)}" x2="{px(vcx)}" y2="{px(vcy-KNOB_R*0.8)}" '
       f'stroke="#c0c8d0" stroke-width="{px(0.5)}"/>')
     K(f'<circle id="param_voicecount" cx="{px(vcx)}" cy="{px(vcy)}" r="0.5" fill="none" stroke="none"/>')
+
+    # ── QMIX-OCTAVE global knob (the freed LEFT half of the VOICES band — the subgate
+    # knob idiom: seat ring in the qmix violet + pointer line + identifying dot; the
+    # widget draws the StoreKnob face over the seat and the caption below) ──
+    A(f'<circle cx="{px(QOCT_X)}" cy="{px(QOCT_Y)}" r="{px(KNOB_R)}" fill="{knobface}" '
+      f'stroke="{QOCT_TINT}" stroke-width="{px(0.5)}"/>')
+    A(f'<line x1="{px(QOCT_X)}" y1="{px(QOCT_Y)}" x2="{px(QOCT_X)}" y2="{px(QOCT_Y-KNOB_R*0.8)}" '
+      f'stroke="#c0c8d0" stroke-width="{px(0.5)}"/>')
+    A(f'<circle cx="{px(QOCT_X-7.0)}" cy="{px(QOCT_Y)}" r="{px(1.3)}" fill="{QOCT_TINT}"/>')
+    K(f'<circle id="param_qoct_g" cx="{px(QOCT_X)}" cy="{px(QOCT_Y)}" r="0.5" fill="none" stroke="none"/>')
 
     # ── The IO row: 5 poly-cable outputs + the quantiser CV in ──
     jack_ids = ["output_polygate", "output_polystepgate", "output_polyslegato",

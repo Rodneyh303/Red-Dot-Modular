@@ -39,6 +39,7 @@
 #include "dsp/managers/MonsoonOutputGenerator.hpp"
 #include "dsp/MacroTapBank.hpp"
 #include "dsp/SubgateKnobs.hpp"
+#include "dsp/QmixOctave.hpp"
 #include "dsp/VoiceResolver.hpp"   // the SUBGATE main-threshold mapping (mono()/slot()) — VoiceResolver is minted here, complete
 #include "ui/RateManager.hpp"   // THE compute-rate authority (CC_PROMPT_RATE_MANAGER_START) — rack-free core
 #include "dsp/WarpF.hpp"
@@ -939,6 +940,23 @@ struct Monsoon : Module {
         // follow main = byte-identical (the bank ctor). Kept at struct END (the
         // same ABI-hygiene note as warp).
         dotModular::SubgateKnobs::SubgateBank subgate;
+        // The QMIX-OCTAVE tier bank (QmixOctave — CC_PROMPT_QMIX_OCTAVE +
+        // QMIX_OCTAVE_PLAN.md Stages 2-3, the SubgateKnobs pattern minus the axes the
+        // octave decision lacks): the authored octave-threshold sources per voice —
+        // the GLOBAL knob (the Straits base's store-backed Qmix-octave knob), the
+        // FOLLOW-DEGREE switch (default: the octave threshold IS the voice's degree
+        // qmix level — "follow main qmix poly voice subpanel for both pitch and
+        // octave", today's behaviour), the OWN per-voice cells (the qmix-octave
+        // SUBPANEL's knobs, touch = claim — the most-flexible end state: per voice
+        // separate qmix probability for pitch-within-octave AND octave). NO MONSOON
+        // PANEL CHANGE — Monsoon only HOLDS the store the Straits surfaces address
+        // and the ModeController consumes into voices[].qmixOctLevel (the same
+        // EditorState law as subgate). NO delta planes (the spec asks a knob; the
+        // subgate panels carry none post-merge — modulation is Causeway, not in
+        // scope), hence no watchdog/heartbeat machinery. Defaults = follow-degree =
+        // byte-identical (the bank ctor). Kept at struct END (the same ABI-hygiene
+        // note as warp/subgate).
+        dotModular::QmixOctave::Bank qmixOctave;
         // The UNIFIED ADDRESSING voice-range authoring rows (Stage 2b —
         // CC_PROMPT_UNIFIED_ADDRESSING_SPEC on feat/unified-addressing): the Macro
         // (GLOBAL) voice range + the per-voice East rows, the SAME float-store
@@ -1399,6 +1417,66 @@ struct Monsoon : Module {
                            editor.subgate.followMain[level][dec],
                            editor.subgate.globalTh[level][dec],
                            subgateMainThreshold(storageSlot, dec), d, dec);
+    }
+
+    // ── the QMIX-OCTAVE tier bank (QmixOctave): authored-cell accessors (UI-thread
+    // writer — the Straits base's global store knob + source switch, the subpanel's
+    // per-voice knobs) — the subgate accessor block's shape minus the delta planes
+    // (this bank has none: no mod jack in scope, nothing publishes audio-side, no
+    // watchdog). A per-voice knob write CLAIMS the cell (ownActive = the touch-is-claim
+    // law — the tier-1 opt-in); "clear per-voice overrides" de-claims (the menu's
+    // un-claim path, BOTH banks — the item's semantic is all per-voice claims on this
+    // base's family). NO mirror rebuilds: ModeController copies the bank into the
+    // engine per block (voices[].qmixOctLevel + the qmixOctLive gate), so the next
+    // block sees any change (the controller is the engine's sole qmix-octave writer).
+    float getQmixOctGlobal() const { return editor.qmixOctave.globalTh; }
+    void  setQmixOctGlobal(float x) { editor.qmixOctave.globalTh = x; }
+    bool  isQmixOctFollowDegree() const { return editor.qmixOctave.followDegree; }
+    void  setQmixOctFollowDegree(bool follow) { editor.qmixOctave.followDegree = follow; }
+    bool  isQmixOctOwnActive(int v) const {
+        namespace QO = dotModular::QmixOctave;
+        return (v >= 0 && v < QO::VOICES) && editor.qmixOctave.ownActive[v];
+    }
+    void  setQmixOctOwn(int v, float x) {
+        namespace QO = dotModular::QmixOctave;
+        if (v < 0 || v >= QO::VOICES) return;
+        editor.qmixOctave.ownTh[v] = x;
+        editor.qmixOctave.ownActive[v] = true;   // touch = claim (tier 1)
+    }
+    void  clearQmixOctOwnAll() {
+        namespace QO = dotModular::QmixOctave;
+        for (int v = 0; v < QO::VOICES; ++v) editor.qmixOctave.ownActive[v] = false;
+    }
+    // The voice's DEGREE threshold for the octave decision (the follow-degree tier's
+    // source — the resolver reads the voice's qmixLevel, which ModeController writes
+    // JUST BEFORE the qmix-octave resolution in the same pass: the subgate resolver's
+    // order-dependency note applies verbatim). storageSlot is the 0..15 storage
+    // convention (0 = V1/mono).
+    float qmixOctDegreeValue(int storageSlot) const {
+        const dotModular::VoiceSlot vs = (storageSlot <= 0)
+            ? dotModular::VoiceResolver::mono()
+            : dotModular::VoiceResolver::slot(storageSlot + 1);
+        return engine.voices[vs].qmixLevel;
+    }
+    // The per-voice RESOLUTION the ModeController pushes (the one authority the engine
+    // consumes): own claim > { follow-degree (default) | global } by the switch, clamped
+    // [0,1]. BYTE-IDENTITY DEFAULT: with nothing authored this returns the voice's
+    // qmixLevel EXACTLY — the octave decision IS the degree decision (the Stage 1 split's
+    // default, today's behaviour).
+    float qmixOctaveThreshold(int storageSlot) const {
+        namespace QO = dotModular::QmixOctave;
+        if (storageSlot < 0 || storageSlot >= QO::VOICES)
+            return QO::resolve(false, 0.f, true, 0.f, 0.f);
+        return QO::resolve(editor.qmixOctave.ownActive[storageSlot],
+                           editor.qmixOctave.ownTh[storageSlot],
+                           editor.qmixOctave.followDegree,
+                           editor.qmixOctave.globalTh,
+                           qmixOctDegreeValue(storageSlot));
+    }
+    // The knob-display resolution: the SAME pure resolver the ModeController runs at the
+    // edge (one authority). Per-voice role shows what the selected voice actually plays.
+    float qmixOctaveDisplayThreshold(int storageSlot) const {
+        return qmixOctaveThreshold(storageSlot);
     }
 
     // Spread target mode (0=Anchor V1, 1=Follow CA) per poly lane, UNIFIED PL_* order

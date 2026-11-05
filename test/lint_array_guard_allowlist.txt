@@ -45,6 +45,8 @@ src/dsp/NoteValues.hpp:MAP
 src/dsp/NoteValues.hpp:MAP
 src/dsp/SandsTopology.hpp:eastPolyOwner
 src/dsp/SandsTopology.hpp:eastV1Owner
+src/dsp/QmixOctave.hpp:ownActive
+src/dsp/QmixOctave.hpp:ownTh
 src/dsp/SubgateKnobs.hpp:followMain
 src/dsp/SubgateKnobs.hpp:globalDelta
 src/dsp/SubgateKnobs.hpp:globalTh

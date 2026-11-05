@@ -231,6 +231,12 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     // byte-identical).
     dotModular::SubgateKnobs::SubgateBank::serialize(m->editor.subgate, root, "editorSubgate");
 
+    // QMIX-OCTAVE tier bank (CC_PROMPT_QMIX_OCTAVE Stages 2-3): authored cells only
+    // (global/followDegree/own/ownActive — no delta planes exist for this bank). The
+    // bank owns the codec; absent keys ⟹ follow-degree defaults (old patches
+    // byte-identical — the octave threshold keeps following the degree qmix level).
+    dotModular::QmixOctave::Bank::serialize(m->editor.qmixOctave, root, "editorQmixOct");
+
     // GLOBAL slice (MVC step 1). Macro's globals used to be params, which gave save/restore
     // for free; now they are store fields and must be persisted explicitly.
     auto saveArr = [&](const char* key, const float* a, int n) {
@@ -573,6 +579,9 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     // CC_PROMPT_02 no-warp guarantee for pre-warp patches).
     dotModular::WarpBank::parse(root, "editor", m->editor.warp);
     dotModular::SubgateKnobs::SubgateBank::parse(root, "editorSubgate", m->editor.subgate);
+    // QMIX-OCTAVE tier bank: absent keys keep the constructed defaults (follow-degree —
+    // the CC_PROMPT_QMIX_OCTAVE no-new-surface guarantee for pre-qmix-octave patches).
+    dotModular::QmixOctave::Bank::parse(root, "editorQmixOct", m->editor.qmixOctave);
     auto loadArrN = [&](const char* key, float* a, int n) {
         if (auto j = json_object_get(root, key)) {
             if (json_is_array(j))

@@ -35,6 +35,7 @@
 #include "test_stubs.hpp"
 #include "PatternEngine.hpp"
 #include "SequencerEngine.hpp"
+#include "QmixOctave.hpp"                 // Stage 2: the bank + the three-way resolver (rack-free)
 #include "../src/dsp/VoiceResolver.hpp"   // the VoiceSlot minter (mint-only enforcement)
 #include <iostream>
 #include <sstream>
@@ -395,6 +396,104 @@ int main() {
     }
 
     eng.quantiserPitchSource = false;
+
+    // ══ 5. THE QMIX-OCTAVE BANK (Stage 2 — the SubgateKnobs battery mirrored) ═════════════════
+    SUITE("5. the bank + the three-way resolver (rack-free, the SubgateKnobs discipline)");
+    {
+        using dotModular::QmixOctave::Bank;
+        using dotModular::QmixOctave::resolve;
+        const float deg = 0.37f;
+        // BYTE-IDENTITY DEFAULT: follow-degree with nothing authored resolves to the degree
+        // value EXACTLY (bit-exact — the produced-inside-[0,1] contract).
+        {
+            const float r = resolve(/*ownActive=*/false, /*ownTh=*/0.9f, /*followDegree=*/true,
+                                    /*globalTh=*/0.7f, deg);
+            EXPECT_BITEQ(r, deg);
+            Bank b;
+            bool allIdentity = true;
+            for (int v = 0; v < dotModular::QmixOctave::VOICES; ++v)
+                allIdentity &= (resolve(b.ownActive[v], b.ownTh[v], b.followDegree,
+                                        b.globalTh, deg) == deg);
+            TEST("default resolve == degree bit-exact; fresh bank resolves identity for every voice",
+                 EXPECT(allIdentity));
+        }
+        // THE TIERS.
+        TEST("tier 1: an own claim wins outright",
+             EXPECT_BITEQ(resolve(true, 0.9f, true, 0.7f, deg), 0.9f));
+        TEST("tier 2a: the switch flipped — the global knob drives",
+             EXPECT_BITEQ(resolve(false, 0.9f, false, 0.7f, deg), 0.7f));
+        TEST("tier 2b: follow-degree (default) — the degree value drives",
+             EXPECT_BITEQ(resolve(false, 0.9f, true, 0.7f, deg), deg));
+        // THE CLAMP: [0,1] (a threshold is a probability — the qmixLevel class).
+        TEST("clamp: out-of-range cells land in [0,1]",
+             EXPECT(resolve(true, 1.4f, true, 0.f, deg) == 1.f
+                 && resolve(true, -0.3f, true, 0.f, deg) == 0.f
+                 && resolve(false, 0.f, false, 2.f, deg) == 1.f
+                 && resolve(false, 0.f, false, -1.f, deg) == 0.f));
+        // BANK DEFAULTS: globalTh 0.5, followDegree true, ownActive false — the
+        // no-new-surface patch state (the follow tier ignores the knob until the switch
+        // flips; the knob's stored value is inert).
+        {
+            Bank b;
+            EXPECT(b.globalTh == dotModular::QmixOctave::kDefaultThreshold);
+            EXPECT(dotModular::QmixOctave::kDefaultThreshold == 0.5f);
+            EXPECT(b.followDegree == true);
+            bool noneActive = true;
+            for (int v = 0; v < dotModular::QmixOctave::VOICES; ++v) noneActive &= !b.ownActive[v];
+            TEST("fresh bank: global 0.5 (inert under follow-degree), followDegree true, no claims",
+                 EXPECT(noneActive));
+        }
+        // PERSISTENCE: authored cells round-trip deep-equal.
+        {
+            Bank b;
+            b.globalTh = 0.8f; b.followDegree = false;
+            for (int v = 0; v < dotModular::QmixOctave::VOICES; ++v) {
+                b.ownTh[v] = 0.05f + 0.06f * v;
+                b.ownActive[v] = (v % 3) == 0;
+            }
+            json_t* root = json_object();
+            Bank::serialize(b, root, "pfx");
+            Bank out;
+            Bank::parse(root, "pfx", out);
+            json_decref(root);
+            bool same = (out.globalTh == b.globalTh) && (out.followDegree == b.followDegree);
+            for (int v = 0; v < dotModular::QmixOctave::VOICES; ++v)
+                same &= (out.ownTh[v] == b.ownTh[v]) && (out.ownActive[v] == b.ownActive[v]);
+            TEST("persistence round-trip: authored cells deep-equal", EXPECT(same));
+        }
+        // MISSING KEYS ⟹ DEFAULTS (old patches unchanged).
+        {
+            json_t* root = json_object();
+            Bank out;
+            Bank::parse(root, "pfx", out);
+            json_decref(root);
+            bool def = (out.globalTh == dotModular::QmixOctave::kDefaultThreshold)
+                    && out.followDegree;
+            for (int v = 0; v < dotModular::QmixOctave::VOICES; ++v)
+                def &= !out.ownActive[v] && out.ownTh[v] == dotModular::QmixOctave::kDefaultThreshold;
+            TEST("absent keys -> the constructed defaults (follow-degree)", EXPECT(def));
+        }
+        // SHORT ARRAYS keep the default tail; wrong-typed entries keep the default cell.
+        {
+            json_t* root = json_object();
+            json_t* jo = json_array();
+            for (int v = 0; v < 5; ++v) json_array_append_new(jo, json_real(0.1 * v));
+            json_object_set_new(root, "pfxOwn", jo);
+            json_t* ja = json_array();
+            for (int v = 0; v < 5; ++v) json_array_append_new(ja, json_string("x"));
+            json_object_set_new(root, "pfxOwnActive", ja);
+            json_object_set_new(root, "pfxFollowDegree", json_string("not-a-bool"));
+            Bank out;
+            Bank::parse(root, "pfx", out);
+            json_decref(root);
+            bool ok = out.followDegree   // wrong-typed bool keeps the default true
+                   && out.ownTh[0] == 0.f && out.ownTh[4] == 0.4f
+                   && out.ownTh[5] == dotModular::QmixOctave::kDefaultThreshold;
+            for (int v = 0; v < dotModular::QmixOctave::VOICES; ++v) ok &= !out.ownActive[v];
+            TEST("short arrays keep the default tail; wrong-typed entries keep the default cell",
+                 EXPECT(ok));
+        }
+    }
 
     std::cout << "\n" << s_pass << " passed, " << s_fail << " failed\n";
     return s_fail ? 1 : 0;

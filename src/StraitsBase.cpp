@@ -227,6 +227,25 @@ struct StraitsBaseWidget : ModuleWidget,
                 k->lightWhen = [this](){ return themeLight_; };
             }));
 
+        // ── QMIX_OCTAVE Stage 2 (CC_PROMPT_QMIX_OCTAVE): the GLOBAL Qmix-octave knob ──
+        // Store-backed (the de-param law — no Rack param; the bank lives in Monsoon's
+        // editor.qmixOctave). The octave axis's cross-voice threshold: with the
+        // follow-degree source switch at its default this knob is INERT (the octave
+        // threshold IS the voice's degree qmix level — today's behaviour); flipping the
+        // switch (the context menu) hands the octave axis to THIS knob. Default 0.5
+        // (mid — the crossfade midpoint; inert until the switch flips). No mod jack
+        // (adjudication 4: the spec asks a knob; modulation is Causeway and not in
+        // scope). Caption drawn below, the qmix violet (it IS a qmix read).
+        {
+            auto resolveMon = [this]() -> Monsoon* { return redDot::lookupMonsoon(module); };
+            redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(
+                this, "param_qoct_g",
+                resolveMon, 0.f, 1.f, dotModular::QmixOctave::kDefaultThreshold,
+                "Q-MIX OCT (global octave threshold)",
+                [](Monsoon& m) { return m.getQmixOctGlobal(); },
+                [](Monsoon& m, float x) { m.setQmixOctGlobal(x); });
+        }
+
         // ── SUBGATE MERGE: the 8 GLOBAL store knobs + their mod jacks ──────────
         // (the retired StraitsSubgateBaseWidget's binds — the Causeway mod coverage
         // law: each knob ships with its jack, born together). BIPOLAR SCOPE (the
@@ -273,6 +292,11 @@ struct StraitsBaseWidget : ModuleWidget,
                                   [l]() { return redDot::subgateTint(l); });
             redDot::addSubgateCaption(this, "MOD", 8.8f, 70.f, 6.f, ink);
             redDot::addSubgateCaption(this, "VOICES", Wmm * 0.5f, 101.f, 6.f, ink);
+            // QMIX_OCTAVE Stage 2: the global knob's caption (the qmix violet — it IS a
+            // qmix read), under the knob, the VOICES caption's row.
+            constexpr float QOCT_X_MM = 17.0f + (59.28f / 4.f) * 0.5f;   // gen_straits_base.py QOCT_X
+            redDot::addSubgateCaption(this, "Q-MIX OCT (global)", QOCT_X_MM, 101.f, 5.5f,
+                              []() { return nvgRGB(0x80, 0x60, 0xc0); });
         }
     }
 
@@ -362,6 +386,28 @@ struct StraitsBaseWidget : ModuleWidget,
         } else {
             menu->addChild(createMenuLabel("(no Monsoon attached)"));
         }
+
+        // ── QMIX_OCTAVE Stage 2 (CC_PROMPT_QMIX_OCTAVE): the octave axis's source
+        // switch (the subgate per-decision switch idiom — the routing choice is a menu
+        // check item, not a panel control). Rodney's option list, verbatim mapping:
+        // "follow main qmix poly voice subpanel for both pitch and octave" = FOLLOW
+        // DEGREE (default — the octave threshold IS the voice's degree qmix level, so
+        // the two decisions are the same comparison: today's behaviour, bit-identical);
+        // "global knob on straits for octave" = the GLOBAL tier (the Q-MIX OCT knob on
+        // this panel). "own sub panel" is tier 1 — the Stage 3 subpanel, which wins
+        // outright when attached (no switch needed).
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuLabel("Q-MIX OCT source (when no own subpanel)"));
+        if (mm) {
+            menu->addChild(createCheckMenuItem("follow degree q-mix", "",
+                [this]() { Monsoon* m2 = mon(); return m2 ? m2->isQmixOctFollowDegree() : true; },
+                [this]() { if (auto* m2 = mon()) m2->setQmixOctFollowDegree(true); }));
+            menu->addChild(createCheckMenuItem("global knob (Q-MIX OCT)", "",
+                [this]() { Monsoon* m2 = mon(); return m2 ? !m2->isQmixOctFollowDegree() : false; },
+                [this]() { if (auto* m2 = mon()) m2->setQmixOctFollowDegree(false); }));
+        } else {
+            menu->addChild(createMenuLabel("(no Monsoon attached)"));
+        }
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuLabel("Subgate per-voice panels"));
         for (int l = 0; l < SKns::LEVELS; ++l) {
@@ -374,9 +420,12 @@ struct StraitsBaseWidget : ModuleWidget,
             }
         }
         menu->addChild(new MenuSeparator);
-        // The menu's un-claim path (the touch-is-claim law's complement).
+        // The menu's un-claim path (the touch-is-claim law's complement). QMIX_OCTAVE
+        // Stage 3: ALL per-voice claims on this base's family — the subgate cells AND
+        // the qmix-octave cells (the item's semantic is "clear per-voice overrides",
+        // not "clear subgate overrides").
         menu->addChild(createMenuItem("Clear per-voice overrides", "",
-            [this]() { if (auto* m2 = mon()) m2->clearSubgateOwnAll(); }));
+            [this]() { if (auto* m2 = mon()) { m2->clearSubgateOwnAll(); m2->clearQmixOctOwnAll(); } }));
     }
 
     // ── Spawn a lane expander module and dock it right ───────────────────────
