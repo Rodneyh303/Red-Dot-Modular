@@ -153,9 +153,9 @@ redraws on warp-depth or parameter change (not per sample).
 | Atom after gap (composed) | LANDED | WarpStages.hpp: Q(u) = Q_G(u/(1-m)) / ell / Q_G((u-m)/(1-m)) |
 | Dual reading by SIGN of warp depth | LANDED | warp w<0 blends uniform with the composed CDF (the dual) |
 | Warp mix in quantile space | LANDED | WarpF.hpp: warped(u) = (1-w)u + w F.invCDF(u) |
-| Acceptance test file | PRESENT | test/test_phase_distribution.cpp (ok() harness) |
+| Acceptance test file | PRESENT, CI green | test/test_phase_distribution.cpp (ok() harness); the 8-to-check mapping is still to do |
 | Flat-direction, no memory | DECIDED | sign of the moving change; flat carries no direction |
-| Gap panel: 2 knobs + 2 jacks per lane, next to atom, same delegation | DECIDED | not verified on the branch  CC to confirm |
+| Gap panel: 2 knobs + 2 jacks per lane, next to atom, same delegation | LANDED | user-confirmed (controls added, CI green); knobs = cell slots gapLoc (6) and gapSize (7) in SandsModifierResolver, written by SandsDistributionExpander |
 | Distribution plot = EFFECTIVE warped curve (section 10) | NOT FOUND | no W(u) sweep in the plot code on the branch  REMAINING |
 
 ### CC work, in order
@@ -165,9 +165,7 @@ redraws on warp-depth or parameter change (not per sample).
    and (W(u), u) for the CDF trace (PARAMETRIC, no bisection, no integration). W = (1-k)u + k*T(u), k = |w|,
    T = Q for w >= 0, G for w < 0. Display-only; redraw on warp-depth or parameter change, not per sample.
    Gate: the plotted curve is continuous through w = 0; at k = 0 the trace is the diagonal and f_W = 1.
-3. **Gap panel controls (decided).** Two knobs (location, size) and two modulation jacks per lane, placed next to the
-   atom knobs and jacks on the distribution module, using the existing Macro/East delegation and opt-out. Reuse the
-   atom control widgets; no new routing. Gate: panel visible per lane; delegation identical to the atom controls.
+3. **Gap panel controls: LANDED** (user-confirmed, CI green). Nothing further, except a Rack check that the two jacks sit beside the atom jacks.
 4. **Confirm the flat-direction rule** in the phase input path: a flat carries no direction and direction is the
    sign of the change that moves the playhead. Gate: a held input followed by a move takes the sign of the move.
 
