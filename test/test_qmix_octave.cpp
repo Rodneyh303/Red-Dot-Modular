@@ -495,6 +495,83 @@ int main() {
         }
     }
 
+    // ══ 6. THE PANEL VIEW (Stage 3 — what the per-voice subpanel's 16 knobs show) ═══════════
+    // StraitsQmixOctPanel binds each knob's display to the SAME pure resolver the
+    // ModeController pushes (Monsoon::qmixOctaveDisplayThreshold == qmixOctaveThreshold
+    // == QmixOctave::resolve — one authority); the claim write is the touch-is-claim
+    // pair (ownTh[v] = x; ownActive[v] = true). The rack-free fragment of the panel is
+    // exactly this call shape, swept over all 16 voices (the structural wheel itself —
+    // spawn/adopt/restore/dock-order — is guarded by the anchor/bind audit entry
+    // straits_qmix_oct_panel + the compile, the subgate panels' precedent).
+    SUITE("6. the panel view (the 16 knobs' display resolution, the widget's exact call shape)");
+    {
+        using dotModular::QmixOctave::Bank;
+        using dotModular::QmixOctave::resolve;
+        Bank b;
+        const float deg[dotModular::QmixOctave::VOICES] = {
+            0.00f, 0.07f, 0.13f, 0.21f, 0.29f, 0.34f, 0.42f, 0.50f,
+            0.55f, 0.63f, 0.71f, 0.79f, 0.83f, 0.91f, 0.97f, 1.00f,
+        };
+        // UNCLAIMED + FOLLOW-DEGREE (the default): every knob shows its voice's
+        // degree qmix level EXACTLY (the display IS what the engine consumes).
+        {
+            bool all = true;
+            for (int v = 0; v < dotModular::QmixOctave::VOICES; ++v)
+                all &= (resolve(b.ownActive[v], b.ownTh[v], b.followDegree,
+                                b.globalTh, deg[v]) == deg[v]);
+            TEST("panel view, nothing authored: all 16 knobs show the voice's degree level bit-exact",
+                 EXPECT(all));
+        }
+        // THE SWITCH FLIPPED (global tier): every UNCLAIMED knob shows the global
+        // knob; claimed cells keep showing their own value (tier 1 wins).
+        {
+            b.followDegree = false;
+            b.globalTh = 0.68f;
+            bool all = true;
+            for (int v = 0; v < dotModular::QmixOctave::VOICES; ++v)
+                all &= (resolve(b.ownActive[v], b.ownTh[v], b.followDegree,
+                                b.globalTh, deg[v]) == 0.68f);
+            TEST("panel view, switch flipped: all 16 unclaimed knobs show the global knob",
+                 EXPECT(all));
+        }
+        // THE CLAIM (touch = claim, the widget's write pair): the touched knob
+        // shows its own value; every other cell stays on the tier below.
+        {
+            const int vClaim = 5;
+            b.ownTh[vClaim] = 0.12f;
+            b.ownActive[vClaim] = true;   // the setQmixOctOwn pair
+            bool ok = resolve(b.ownActive[vClaim], b.ownTh[vClaim], b.followDegree,
+                              b.globalTh, deg[vClaim]) == 0.12f;
+            for (int v = 0; v < dotModular::QmixOctave::VOICES; ++v) {
+                if (v == vClaim) continue;
+                ok &= (resolve(b.ownActive[v], b.ownTh[v], b.followDegree,
+                               b.globalTh, deg[v]) == 0.68f);
+            }
+            TEST("panel view, one claim: V6 shows its own 0.12, the other 15 stay global",
+                 EXPECT(ok));
+        }
+        // MIXED-TIER SWEEP: a scattered claim pattern resolves each cell to ITS
+        // tier (own > global here) — the four-case reachability per voice, the
+        // most-flexible end state's display law.
+        {
+            Bank c;
+            c.followDegree = false;
+            c.globalTh = 0.4f;
+            for (int v = 0; v < dotModular::QmixOctave::VOICES; ++v) {
+                c.ownTh[v] = 0.05f + 0.06f * v;
+                c.ownActive[v] = (v % 3) == 0;
+            }
+            bool all = true;
+            for (int v = 0; v < dotModular::QmixOctave::VOICES; ++v) {
+                const float want = c.ownActive[v] ? c.ownTh[v] : c.globalTh;
+                all &= (resolve(c.ownActive[v], c.ownTh[v], c.followDegree,
+                                c.globalTh, deg[v]) == want);
+            }
+            TEST("panel view, mixed claims: each cell resolves to ITS tier (own > global)",
+                 EXPECT(all));
+        }
+    }
+
     std::cout << "\n" << s_pass << " passed, " << s_fail << " failed\n";
     return s_fail ? 1 : 0;
 }

@@ -1816,6 +1816,9 @@ extern Model* modelStraitsSubgatePanelGhostRest;
 extern Model* modelStraitsSubgatePanelGhostLegato;
 extern Model* modelStraitsSubgatePanelGhostAccent;
 extern Model* modelStraitsSubgatePanelGhostAdvance;
+extern Model* modelStraitsQmixOctPanel;   // qmix-octave per-voice panel — ONE panel, 16 voices x ONE octave
+                                          //   threshold (CC_PROMPT_QMIX_OCTAVE Stage 3; StraitsBase-spawned, hidden;
+                                          //   docked AFTER the subgate panels — the run's last tier)
 extern Model* modelMonsoonCausewayPolyExpander; // poly CV modulation expander
 extern Model* modelMonsoonChangiExpander; // per-voice output expander
 extern Model* modelMonsoonShophouseExpander; // scale expander (12th module)

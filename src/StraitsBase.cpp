@@ -20,6 +20,7 @@
 #include <cmath>       // std::fabs — the subgate global-delta publish
 #include "StraitsLaneExpander.hpp"
 #include "StraitsSubgatePanel.hpp"  // SUBGATE MERGE: the subgate panel module + ids (the base module is retired)
+#include "StraitsQmixOctPanel.hpp"  // QMIX_OCTAVE Stage 3: the qmix-octave per-voice panel + ids
 #include "ui/StraitsSeamFiller.hpp"
 #include "ui/StoreBound.hpp"        // bindStoreKnob — the de-param law (the subgate globals)
 #include "ui/StraitsSubgateArt.hpp" // addSubgateCaption + subgateTint — the merged panel's lettering
@@ -65,6 +66,12 @@ struct StraitsBaseModule : MonsoonStraitsExpander {
     // panel list (the straitLanes shape) + the global-delta publish shadow.
     std::vector<std::string> pendingSubgates_;   // panel slugs to spawn on the widget's first step (restore)
     std::vector<int64_t> orderedSubgateIds_;     // owned subgate panel IDs, in dock order
+    // QMIX_OCTAVE Stage 3 (CC_PROMPT_QMIX_OCTAVE): the qmix-octave per-voice
+    // panel — the SAME shape, docked AFTER the subgate panels (the run's last
+    // tier: lanes → subgate panels → qmix-oct panel). ONE panel type; the list
+    // shape keeps the subgate wheel's restore/adopt order guarantees verbatim.
+    std::vector<std::string> pendingQmixOct_;    // panel slugs to spawn on the widget's first step (restore)
+    std::vector<int64_t> orderedQmixOctIds_;     // owned qmix-oct panel IDs, in dock order
     float lastGlob_[SKns::LEVELS][SKns::DECS] = {};   // change-gated publishing; audio thread only
     // RESNAP FAST PATH (CC_PROMPT_STRAITS_RESNAP_HARDENING): set by onExpanderChange —
     // Rack's own adjacency-change signal (the head-adjacent insertion event no drag-end
@@ -137,6 +144,18 @@ struct StraitsBaseModule : MonsoonStraitsExpander {
             }
         }
         json_object_set_new(rootJ, "subgatePanels", sgJ);
+        // QMIX_OCTAVE Stage 3: the owned qmix-oct panel list (the same shape;
+        // the "subgatePanels" key's sibling).
+        json_t* qoJ = json_array();
+        for (int64_t id : orderedQmixOctIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (m) {
+                auto* panel = dynamic_cast<StraitsQmixOctPanelModule*>(m);
+                if (panel)
+                    json_array_append_new(qoJ, json_string(StraitsQmixOctIds::panelSlug()));
+            }
+        }
+        json_object_set_new(rootJ, "qmixOctPanels", qoJ);
         return rootJ;
     }
 
@@ -158,6 +177,16 @@ struct StraitsBaseModule : MonsoonStraitsExpander {
             json_array_foreach(sgJ, i, v) {
                 const char* s = json_string_value(v);
                 if (s) pendingSubgates_.push_back(s);
+            }
+        }
+        // QMIX_OCTAVE Stage 3: the qmix-oct panel slugs (spawned on the
+        // widget's first step, after the subgate pendings — the dock order).
+        json_t* qoJ = json_object_get(rootJ, "qmixOctPanels");
+        if (qoJ) {
+            size_t i; json_t* v;
+            json_array_foreach(qoJ, i, v) {
+                const char* s = json_string_value(v);
+                if (s) pendingQmixOct_.push_back(s);
             }
         }
     }
@@ -419,6 +448,13 @@ struct StraitsBaseWidget : ModuleWidget,
                     [this, l, d]() { toggleSubgatePanel(l, d); }));
             }
         }
+        // QMIX_OCTAVE Stage 3 (CC_PROMPT_QMIX_OCTAVE): the per-voice tier for
+        // the octave axis — "an optional per voice subpanel, qmix octave"
+        // (Rodney). Check item = spawn/remove (the subgate panels' toggle
+        // idiom); ONE panel of 16 knobs, docked after the subgate panels.
+        menu->addChild(createCheckMenuItem("Q-MIX OCTAVE per-voice panel", "",
+            [this]() { return hasQmixOctPanel(); },
+            [this]() { toggleQmixOctPanel(); }));
         menu->addChild(new MenuSeparator);
         // The menu's un-claim path (the touch-is-claim law's complement). QMIX_OCTAVE
         // Stage 3: ALL per-voice claims on this base's family — the subgate cells AND
@@ -509,7 +545,9 @@ struct StraitsBaseWidget : ModuleWidget,
             baseMod->orderedSubgateIds_.push_back(panelMod->id);
         ModuleWidget* panelW = model->createModuleWidget(panelMod);
         // Position: the END of the whole run — right of the rightmost owned lane
-        // OR panel (the dock order: lanes first, then subgate panels).
+        // OR panel (the dock order: lanes first, then subgate panels; a later
+        // resnapRun restores lanes → subgate → qmix-oct order, so targeting the
+        // run's end keeps the spawned panel inside the contiguous run).
         float rightX = box.getTopRight().x;
         if (auto* baseMod = dynamic_cast<StraitsBaseModule*>(module)) {
             for (int64_t id : baseMod->orderedLaneIds_) {
@@ -518,6 +556,10 @@ struct StraitsBaseWidget : ModuleWidget,
             }
             for (int64_t id : baseMod->orderedSubgateIds_) {
                 if (id == panelMod->id) continue;   // skip self (just added)
+                ModuleWidget* w = APP->scene->rack->getModule(id);
+                if (w) rightX = std::max(rightX, w->box.getTopRight().x);
+            }
+            for (int64_t id : baseMod->orderedQmixOctIds_) {
                 ModuleWidget* w = APP->scene->rack->getModule(id);
                 if (w) rightX = std::max(rightX, w->box.getTopRight().x);
             }
@@ -547,6 +589,72 @@ struct StraitsBaseWidget : ModuleWidget,
     void toggleSubgatePanel(int level, int dec) {
         if (hasSubgatePanel(level, dec)) removeSubgatePanel(level, dec);
         else spawnSubgatePanel(level, dec);
+    }
+
+    // ── QMIX_OCTAVE Stage 3 (CC_PROMPT_QMIX_OCTAVE): the qmix-oct panel's
+    // wheel — the subgate wheel's shape verbatim for ONE panel type. Dock
+    // order: lanes → subgate panels → THIS (the run's last tier): its spawn
+    // positions right of EVERYTHING (lanes + subgate panels + prior qmix-oct
+    // panels), the resnap + chain checks walk its list after the subgate list.
+    bool hasQmixOctPanel() {
+        auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
+        if (!baseMod) return false;
+        for (int64_t id : baseMod->orderedQmixOctIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (m && dynamic_cast<StraitsQmixOctPanelModule*>(m)) return true;
+        }
+        return false;
+    }
+    void spawnQmixOctPanel() {
+        if (!module) return;
+        // spawnLane's verbatim order: engine module FIRST, ID pushed, widget
+        // created, box.pos set BEFORE the rack addModule → addModule preserves
+        // pos + runs updateExpanders → LINKED FROM BIRTH.
+        engine::Module* panelMod = modelStraitsQmixOctPanel->createModule();
+        APP->engine->addModule(panelMod);
+        if (auto* baseMod = dynamic_cast<StraitsBaseModule*>(module))
+            baseMod->orderedQmixOctIds_.push_back(panelMod->id);
+        ModuleWidget* panelW = modelStraitsQmixOctPanel->createModuleWidget(panelMod);
+        // Position: the END of the whole run — right of the rightmost owned
+        // lane OR subgate panel OR qmix-oct panel (the dock order law).
+        float rightX = box.getTopRight().x;
+        if (auto* baseMod = dynamic_cast<StraitsBaseModule*>(module)) {
+            for (int64_t id : baseMod->orderedLaneIds_) {
+                ModuleWidget* w = APP->scene->rack->getModule(id);
+                if (w) rightX = std::max(rightX, w->box.getTopRight().x);
+            }
+            for (int64_t id : baseMod->orderedSubgateIds_) {
+                ModuleWidget* w = APP->scene->rack->getModule(id);
+                if (w) rightX = std::max(rightX, w->box.getTopRight().x);
+            }
+            for (int64_t id : baseMod->orderedQmixOctIds_) {
+                if (id == panelMod->id) continue;   // skip self (just added)
+                ModuleWidget* w = APP->scene->rack->getModule(id);
+                if (w) rightX = std::max(rightX, w->box.getTopRight().x);
+            }
+        }
+        panelW->box.pos = Vec(rightX, box.pos.y);
+        APP->scene->rack->addModule(panelW);
+    }
+    void removeQmixOctPanel() {
+        auto* baseMod = dynamic_cast<StraitsBaseModule*>(module);
+        if (!baseMod) return;
+        for (size_t i = 0; i < baseMod->orderedQmixOctIds_.size(); ++i) {
+            int64_t id = baseMod->orderedQmixOctIds_[i];
+            rack::Module* m = APP->engine->getModule(id);
+            if (m && dynamic_cast<StraitsQmixOctPanelModule*>(m)) {
+                ModuleWidget* pw = APP->scene->rack->getModule(id);
+                if (pw) APP->scene->rack->removeModule(pw);
+                APP->engine->removeModule(m);
+                baseMod->orderedQmixOctIds_.erase(baseMod->orderedQmixOctIds_.begin() + i);
+                resnapRun();   // close the gap
+                return;
+            }
+        }
+    }
+    void toggleQmixOctPanel() {
+        if (hasQmixOctPanel()) removeQmixOctPanel();
+        else spawnQmixOctPanel();
     }
 
     void step() override {
@@ -628,6 +736,21 @@ struct StraitsBaseWidget : ModuleWidget,
                         if (!hasSubgatePanel(l, d)) spawnSubgatePanel(l, d);
                     }
                     baseMod->pendingSubgates_.clear();
+                    // QMIX_OCTAVE Stage 3: adopt the qmix-oct panel(s) — the
+                    // cursor CONTINUES from where the subgate walk stopped (the
+                    // dock order: lanes → subgate panels → qmix-oct panel),
+                    // then spawn any pending restore slugs.
+                    while (right) {
+                        auto* qoPanel = dynamic_cast<StraitsQmixOctPanelModule*>(right);
+                        if (!qoPanel) break;
+                        baseMod->orderedQmixOctIds_.push_back(right->id);
+                        right = right->rightExpander.module;
+                    }
+                    for (const std::string& slug : baseMod->pendingQmixOct_) {
+                        if (!StraitsQmixOctIds::parsePanelSlug(slug)) continue;
+                        if (!hasQmixOctPanel()) spawnQmixOctPanel();
+                    }
+                    baseMod->pendingQmixOct_.clear();
                 }
                 lanesSpawned_ = true;
             }
@@ -665,6 +788,15 @@ struct StraitsBaseWidget : ModuleWidget,
                                 rack::Module* pm = APP->engine->getModule(pid);
                                 if (pm) {
                                     auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(pm);
+                                    if (panel && panel->needsResnap.load(std::memory_order_relaxed)) { broken = true; break; }
+                                }
+                            }
+                        }
+                        if (!broken) {
+                            for (int64_t pid : trigBase->orderedQmixOctIds_) {
+                                rack::Module* pm = APP->engine->getModule(pid);
+                                if (pm) {
+                                    auto* panel = dynamic_cast<StraitsQmixOctPanelModule*>(pm);
                                     if (panel && panel->needsResnap.load(std::memory_order_relaxed)) { broken = true; break; }
                                 }
                             }
@@ -709,6 +841,13 @@ struct StraitsBaseWidget : ModuleWidget,
                         rack::Module* pm = APP->engine->getModule(pid);
                         if (pm) {
                             auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(pm);
+                            if (panel) panel->needsResnap.store(false, std::memory_order_relaxed);
+                        }
+                    }
+                    for (int64_t pid : baseMod->orderedQmixOctIds_) {
+                        rack::Module* pm = APP->engine->getModule(pid);
+                        if (pm) {
+                            auto* panel = dynamic_cast<StraitsQmixOctPanelModule*>(pm);
                             if (panel) panel->needsResnap.store(false, std::memory_order_relaxed);
                         }
                     }
@@ -771,6 +910,14 @@ struct StraitsBaseWidget : ModuleWidget,
             APP->scene->rack->setModulePosForce(pw, Vec(expectedX, box.pos.y));
             expectedX = pw->box.getTopRight().x;
         }
+        // QMIX_OCTAVE Stage 3: the qmix-oct panels dock AFTER the subgate
+        // panels (the dock order: base → lanes → subgate panels → qmix-oct).
+        for (int64_t panelId : baseMod->orderedQmixOctIds_) {
+            ModuleWidget* pw = APP->scene->rack->getModule(panelId);
+            if (!pw) continue;
+            APP->scene->rack->setModulePosForce(pw, Vec(expectedX, box.pos.y));
+            expectedX = pw->box.getTopRight().x;
+        }
     }
 
     // ── Periodic-poll predicate: is the lane chain intact? ────────────────────
@@ -797,7 +944,18 @@ struct StraitsBaseWidget : ModuleWidget,
             auto* panel = dynamic_cast<StraitsSubgatePanelModule*>(m);
             if (panel) panels.push_back(panel);
         }
-        if (lanes.empty() && panels.empty()) return true;
+        // QMIX_OCTAVE Stage 3: the qmix-oct panels walk after the subgate
+        // panels (the dock order — the chain's contiguity check must cover
+        // the whole run).
+        std::vector<StraitsQmixOctPanelModule*> qoPanels;
+        qoPanels.reserve(baseMod->orderedQmixOctIds_.size());
+        for (int64_t id : baseMod->orderedQmixOctIds_) {
+            rack::Module* m = APP->engine->getModule(id);
+            if (!m) continue;
+            auto* panel = dynamic_cast<StraitsQmixOctPanelModule*>(m);
+            if (panel) qoPanels.push_back(panel);
+        }
+        if (lanes.empty() && panels.empty() && qoPanels.empty()) return true;
         std::sort(lanes.begin(), lanes.end(),
             [](const StraitsLaneExpander* a, const StraitsLaneExpander* b) {
                 int oa = (a->desc) ? a->desc->arcLane : 99;
@@ -814,6 +972,10 @@ struct StraitsBaseWidget : ModuleWidget,
             prev = lane;
         }
         for (StraitsSubgatePanelModule* panel : panels) {
+            if (panel->leftExpander.module != prev) return false;
+            prev = panel;
+        }
+        for (StraitsQmixOctPanelModule* panel : qoPanels) {
             if (panel->leftExpander.module != prev) return false;
             prev = panel;
         }

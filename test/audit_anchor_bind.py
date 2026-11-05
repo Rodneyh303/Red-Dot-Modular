@@ -215,6 +215,20 @@ MODULES = {
             "light_connect": 1,
         },
     },
+    "straits_qmix_oct_panel": {
+        # StraitsQmixOctPanel (QMIX_OCTAVE Stage 3, CC_PROMPT_QMIX_OCTAVE): the
+        # qmix-octave per-voice panel — the subgate build reused (ONE panel; the
+        # qmix violet family hue, no lightness stepping; the SAME tint-neutral
+        # param_sgv_ anchor family, one binding idiom). 17 anchors = 16 per-voice
+        # knobs (param_sgv_0..15, col-major v0=mono) + the connect mark. NO mod
+        # jack (modulation is Causeway — the subgate panels' law carried over).
+        "widget": ["src/StraitsQmixOctPanel.cpp"],
+        "panel": "res/panels/StraitsQmixOctPanel_dark.svg",
+        "counts": {
+            "param_sgv_": 16,       # 16 voices x ONE threshold (the octave axis)
+            "light_connect": 1,
+        },
+    },
     # NOTE: intertropical is bind-by-name (param_%d / output_%d via rack::string::f, light_connect via
     # findNamed) and its panel markers exist, but the audit's bind-regex classifies the "%d"-format
     # binds as PREFIX binds and only matches output_5.., not output_0.. — a pre-existing audit-tooling

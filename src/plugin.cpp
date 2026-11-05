@@ -71,6 +71,13 @@ void init(rack::Plugin* p) {
         modelStraitsSubgatePanelGhostAccent->hidden = true;
         p->addModel(modelStraitsSubgatePanelGhostAdvance);
         modelStraitsSubgatePanelGhostAdvance->hidden = true;
+        // QMIX_OCTAVE Stage 3 (CC_PROMPT_QMIX_OCTAVE): the qmix-octave
+        // per-voice panel — registered + HIDDEN, the lane law (StraitsBase-
+        // spawned only via its context menu; Rack still restores it natively
+        // and the base adopts the run). Docked AFTER the subgate panels — the
+        // run's last tier.
+        p->addModel(modelStraitsQmixOctPanel);
+        modelStraitsQmixOctPanel->hidden = true;
         // Warm the Phi + PhiInv LUTs on the load thread (~1 ms total, once) so their one-time
         // builds never land mid-block on the audio thread at first spread/slew use. NOT in a
         // module constructor — multiple modules (Sands visuals, CA correlation) consume Phi.
