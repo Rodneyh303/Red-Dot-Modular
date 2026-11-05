@@ -142,3 +142,41 @@ that the parametric sweep avoids.)
 ### Scope
 Display-only. The engine transform is unchanged; this is purely what the DISTRIBUTION plot draws. The plot
 redraws on warp-depth or parameter change (not per sample).
+
+════════════════════════════════════════════════════════════════════════════════
+## 11. CC CATCH-UP  status and remaining work (for CC; build on feat/phase-duals-gaps)
+
+### Status (verified against the branch)
+| Item | State | Evidence |
+|---|---|---|
+| Gap stage, 1/(1-p) uniform rescale | LANDED | WarpStages.hpp: gapQuantile, kGapEps = 1e-6 (the clamp), branch at v* = F_a/(1-p) |
+| Atom after gap (composed) | LANDED | WarpStages.hpp: Q(u) = Q_G(u/(1-m)) / ell / Q_G((u-m)/(1-m)) |
+| Dual reading by SIGN of warp depth | LANDED | warp w<0 blends uniform with the composed CDF (the dual) |
+| Warp mix in quantile space | LANDED | WarpF.hpp: warped(u) = (1-w)u + w F.invCDF(u) |
+| Acceptance test file | PRESENT | test/test_phase_distribution.cpp (ok() harness) |
+| Flat-direction, no memory | DECIDED | sign of the moving change; flat carries no direction |
+| Gap panel: 2 knobs + 2 jacks per lane, next to atom, same delegation | DECIDED | not verified on the branch  CC to confirm |
+| Distribution plot = EFFECTIVE warped curve (section 10) | NOT FOUND | no W(u) sweep in the plot code on the branch  REMAINING |
+
+### CC work, in order
+1. **Verify the 8 acceptance tests (section 8) against test_phase_distribution.cpp.** Map each test to an existing
+   check; add the missing ones. Do not change the landed convention or the clamp. Gate: all 8 pass.
+2. **Effective-curve plot (section 10).** Sweep u over [0,1] once; per point plot (W(u), f_W(u)) for the PDF fill
+   and (W(u), u) for the CDF trace (PARAMETRIC, no bisection, no integration). W = (1-k)u + k*T(u), k = |w|,
+   T = Q for w >= 0, G for w < 0. Display-only; redraw on warp-depth or parameter change, not per sample.
+   Gate: the plotted curve is continuous through w = 0; at k = 0 the trace is the diagonal and f_W = 1.
+3. **Gap panel controls (decided).** Two knobs (location, size) and two modulation jacks per lane, placed next to the
+   atom knobs and jacks on the distribution module, using the existing Macro/East delegation and opt-out. Reuse the
+   atom control widgets; no new routing. Gate: panel visible per lane; delegation identical to the atom controls.
+4. **Confirm the flat-direction rule** in the phase input path: a flat carries no direction and direction is the
+   sign of the change that moves the playhead. Gate: a held input followed by a move takes the sign of the move.
+
+### Still open (do not build until decided)
+- **Morph shape:** the warp currently morphs member -> uniform -> dual (uniform-centred). A direct member-to-dual
+  crossfade is a different formula and would need a monotonicity check. Decide before any change.
+- **Modulation-subpanel (all-lane):** parked; does not block items 1-4.
+
+### Gates (all items)
+- run_all green on both SDK legs.
+- No change to landed gap convention, clamp, or dual sign rule.
+- ≤16 bit-identical behaviour where the feature is inactive (warp at 0, no gap set).
