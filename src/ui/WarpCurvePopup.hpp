@@ -201,6 +201,8 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
     std::unique_ptr<Distribution> memberView_;   // the bare member (what refresh() used to bind)
     std::unique_ptr<Distribution> view_;         // the COMPOSING view over memberView_ (feel-test)
     WarpStagesView* stagesView_ = nullptr;       // view_'s derived alias (the gap/dual fields)
+    std::unique_ptr<WarpStagesView> kView_;      // the ALWAYS-K density view (the §10 fill's
+                                                 // factor — see refresh(); CC_FIX_PHASE_PLOT_NEGATIVE_WARP)
     WarpF lastF_{};                     // external-change detector (undo): memcmp per step
     double lastTilt_ = 0.0, lastLevel_ = 0.5, lastMass_ = 0.0;   // ...and the stage triple
     double lastGapLoc_ = 0.5, lastGapSize_ = 0.0;                // ...and the gap pair
@@ -363,6 +365,14 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         lastW_ = curW();
         view_ = std::make_unique<WarpStagesView>(memberView_.get(), tp, al, am);
         stagesView_ = static_cast<WarpStagesView*>(view_.get());
+        // THE ALWAYS-K DENSITY VIEW (CC_FIX_PHASE_PLOT_NEGATIVE_WARP): the effective
+        // fill's derivative factor composes over the K chain for BOTH readings — the
+        // K reading needs f(Q(u)) and the dual needs g'(u), both plain reads off ONE
+        // non-dual view (stagesView_'s own dual branch is the reciprocal DISPLAY
+        // density, not the factor the chain rule wants). Same member pointer — the
+        // live drawn-edit binding rides it, same as view_.
+        kView_ = std::make_unique<WarpStagesView>(memberView_.get(), tp, al, am);
+        kView_->gapLoc = gl; kView_->gapSize = gs; kView_->dual = false;
         // THE READING FOLLOWS THE SIGN (the bidirectional warp): negative w IS the dual
         // reading — the display shows exactly what the engine composes on that side (the
         // composed pair exchanged; the atom bar / gap band read the READING's markers).
@@ -383,13 +393,24 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
         curve->gapHi = warpStages::clampGapLoc(bandHi);
         // THE EFFECTIVE PLOT (PHASE_DISTRIBUTION_SPEC §10, display-only): the drawn
         // curve is the warp mix at the CURRENT signed depth — W(u) = (1−k)u + k·T(u),
-        // T = the READING's quantile (this view's invCDF; its dual branch IS the
-        // exchange) and f_T the view's pdf AT T(u) — so the plot tracks the knob
-        // continuously through zero (at w = 0 the drawn curve IS the diagonal). The
-        // step() detector refreshes on depth/stage/param change, never per sample.
+        // T the READING's target (the SIGN picked it: w ≥ 0 the composed quantile via
+        // this view's invCDF, w < 0 the dual — its dual branch IS the exchange) and
+        // the fill factor the READING's, composed off the always-K view — so the plot
+        // tracks the knob continuously through zero (at w = 0 the drawn curve IS the
+        // diagonal, either side). The widget never inspects the sign: it gets the two
+        // callables + the signed depth + the fill form (CC_FIX_PHASE_PLOT_NEGATIVE_WARP).
+        // The step() detector refreshes on depth/stage/param change, never per sample.
         curve->warpDepth = lastW_;
+        const bool dualReading = (lastW_ < 0.f);
+        curve->warpTDual = dualReading;
         curve->warpT     = [this](double u) { return view_ ? view_->invCDF(u) : u; };
-        curve->warpTpdf  = [this](double x) { return view_ ? view_->pdf(x) : 1.0; };
+        curve->warpTpdf  = [this, dualReading](double u) {
+            if (!kView_) return 1.0;
+            // K reading: T = Q, T'(u) = 1/f(T(u))  → the factor is f(Q(u));
+            // dual:      T = g, T'(u) = g'(u)      → the factor is g'(u) — the chain
+            // pdf AT u (NOT the reciprocal — that was the fill's spec gap).
+            return dualReading ? kView_->pdf(u) : kView_->pdf(kView_->invCDF(u));
+        };
 
         // Drawn edits → the scoped mirror rebuild (the pool slot itself changed; the
         // WarpF still points at the same index, so ONLY this hook can fire the rebuild).

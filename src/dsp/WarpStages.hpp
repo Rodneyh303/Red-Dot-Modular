@@ -298,5 +298,33 @@ inline double warpEffectivePdf(double k, double fT) {
     if (!(fT >= 1e-9)) return 0.0;                   // the gap face (NaN too): f_W = 0
     return 1.0 / ((1.0 - k) + k / fT);               // the closed form; k < 1 ⇒ denom > 0
 }
+// THE DUAL READING's fill (CC_FIX_PHASE_PLOT_NEGATIVE_WARP): on the warp's negative
+// side the reading is the DUAL, so the mix's T is the composed CDF g — a CDF, not a
+// quantile — and T'(u) = g'(u), the composed member density AT u (NOT the reciprocal
+// the quantile form divides by; feeding that in was the spec gap this helper retires).
+// Same chain rule, the OTHER sign of the T' term:
+//     f_W = 1 / [ (1−k) + k · g'(u) ]
+// with the two faces FLIPPED against the quantile form, because the features exchange:
+// g' → 0 over the K-reading's gap IS the dual's ATOM — a plateau at 1/(1−k) for
+// k < 1 (the delta itself rides the ATOM BAR marker exactly like the quantile side's
+// atom; at k = 1 exactly that limit IS the delta, so the fill opens the hole — 0, the
+// marker's job — never inf, an inf sample would poison the fill's auto-max scale);
+// g' → ∞ at the K-atom IS the dual's GAP — f_W → 0, the band marker's job. k = 0 is
+// still the uniform f_W = 1, never dividing. DISPLAY FLOOR 1e-6 (the quantile form's
+// 1e-9 does NOT carry over, and that is load-bearing): the member pdf's own edge
+// proxy rides at O(coefficient·1e-9) (Kuma(2,3) returns 6e-9 at x = 0) — above the
+// quantile form's floor it would slip into the closed form and at k = 1 the 1/g'
+// reads 1.67e8 — an edge spike that eats the fill's auto-max whole (the doc's "not
+// a spike that overflows the axis"). A density below 1e-6 is a hole at this plot's
+// resolution anyway (200 samples over [0,1]); the DISPLAY-only floor reads it so.
+// DISPLAY-only: the engine's dual mix never calls this.
+inline double warpEffectivePdfDual(double k, double gPrime) {
+    if (k <= 0.0) return 1.0;                        // k = 0: the uniform, exactly
+    if (!(gPrime >= 1e-6))                           // the gap face (NaN too): the
+        return k < 1.0 ? 1.0 / (1.0 - k)             //   dual's atom — the plateau,
+                       : 0.0;                        //   the marker's delta at k = 1
+    if (std::isinf(gPrime)) return 0.0;              // the atom face: the dual's gap
+    return 1.0 / ((1.0 - k) + k * gPrime);           // the closed form; denom >= 1−k > 0
+}
 
 } // namespace dotModular::warpStages

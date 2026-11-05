@@ -72,24 +72,34 @@ struct DistributionCurveWidget : rack::widget::Widget {
     double atomMass  = 0.0;   // m — the bar's height ∝ this; 0 = no atom = no bar
 
     // ── THE EFFECTIVE WARP PLOT (PHASE_DISTRIBUTION_SPEC §10, display-only) ──────────
-    // When warpDepth >= 0 the plot draws the EFFECTIVE warped curve at the current
-    // SIGNED depth instead of the bare target:
-    //     W(u) = (1−k)·u + k·T(u),  k = |w|,  T = the composed READING's quantile
-    // (the hosts' composing view — its invCDF IS the reading's quantile, the dual
-    // branch the exchange). ONE sweep of u over [0,1] gives both drawn curves exactly:
+    // When a target callable is BOUND (warpT) the plot draws the EFFECTIVE warped
+    // curve at the current SIGNED depth instead of the bare target:
+    //     W(u) = (1−k)·u + k·T(u),  k = |w| (warpEffectiveK — sign-agnostic)
+    // The SIGN picks the READING and the host binds T ACCORDINGLY before handing it
+    // over (CC_FIX_PHASE_PLOT_NEGATIVE_WARP — this widget never inspects the sign;
+    // it receives the two callables + the signed depth + the fill form):
+    //   w ≥ 0 (the quantile reading): T = the composed quantile Q — the fill factor
+    //         warpTpdf(u) = f(Q(u)), the composed density AT the target point;
+    //   w < 0 (the dual reading):     T = the composed CDF g — the fill factor
+    //         warpTpdf(u) = g'(u), the composed density AT u.
+    // ONE sweep of u over [0,1] gives both drawn curves exactly:
     //   · CDF trace: the PARAMETRIC point (W(u), u) — exact, no bisection, no
     //     integration (P(W(U) ≤ W(u)) = u);
-    //   · PDF fill:  the closed form f_W = 1/[(1−k) + k/f_T(T(u))] at x = W(u), the
-    //     division guarded in warpStages::warpEffectivePdf (gaps open at once for any
-    //     k > 0, atoms fade in as 1/(1−k), k = 0 the uniform f_W = 1 — the zero
-    //     crossing is continuous, the drawn curve never jumps at w = 0).
-    // warpDepth < 0 (the default) draws the bare target exactly as before — the hosts
-    // without a warp depth (the .dmcurve dev host) are untouched. Display-only: the
-    // engine path never changes; the sweep recomputes on warp-depth/parameter change
-    // (the hosts' refresh detectors), never per sample.
-    float warpDepth = -1.f;                   // < 0: the bare-target draw (legacy)
-    std::function<double(double)> warpT;      // T(u): the composed reading's quantile
-    std::function<double(double)> warpTpdf;   // f_T at the target point x = T(u)
+    //   · PDF fill:  the READING's guarded closed form at x = W(u) —
+    //     quantile (warpTDual = false): f_W = 1/[(1−k) + k/f_T(T(u))]  (warpEffectivePdf)
+    //     CDF      (warpTDual = true):  f_W = 1/[(1−k) + k·g'(u)]      (warpEffectivePdfDual)
+    //     both divisions guarded (gaps open at once for any k > 0, atoms fade in as
+    //     1/(1−k) — the dual's faces flipped with the exchange — k = 0 the uniform
+    //     f_W = 1: the zero crossing is continuous, the drawn curve never jumps at
+    //     w = 0, either sign).
+    // warpT unbound draws the bare target exactly as before — the hosts without a
+    // warp target (the .dmcurve dev host) are untouched. Display-only: the engine
+    // path never changes; the sweep recomputes on warp-depth/parameter change (the
+    // hosts' refresh detectors), never per sample.
+    float warpDepth = 0.f;                    // the SIGNED depth — the sign IS the reading, k = |w|
+    std::function<double(double)> warpT;      // T(u): the composed READING's target — unbound = the bare draw
+    std::function<double(double)> warpTpdf;   // the READING's derivative factor AT u (host-composed)
+    bool warpTDual = false;                   // true: T is a CDF (the dual) — the fill takes the dual form
 
     // ── THE GAP BAND (PHASE_DISTRIBUTION_SPEC — the atom bar's twin): the
     // zero-density interval [gapLo, gapHi] shaded as a RECESS (a cool slate hatching
@@ -193,14 +203,24 @@ struct DistributionCurveWidget : rack::widget::Widget {
         std::array<double, kPlotN + 1> pdfs;
         std::array<double, kPlotN + 1> xs;       // effective mode: the output point x = W(u_i)
         double maxD = 1e-6;
-        const bool effective = (warpDepth >= 0.f) && bool(warpT);
+        // THE GATE IS THE BINDING (CC_FIX_PHASE_PLOT_NEGATIVE_WARP): a bound target
+        // draws the effective mix at the signed depth — EITHER sign (the old
+        // warpDepth >= 0 gate threw the whole negative side to the bare target, so
+        // w = −0.01 snapped to the full dual while the engine barely moved). An
+        // unbound target is the legacy bare draw, regardless of depth.
+        const bool effective = bool(warpT);
         if (effective) {
             const double k = warpStages::warpEffectiveK(warpDepth);
             for (int i = 0; i <= kPlotN; ++i) {
                 const double u = (double)i / (double)kPlotN;
                 const double t = warpT(u);       // the target point T(u)
                 xs[(size_t)i] = (1.0 - k) * u + k * t;   // W(u) — monotone: T is
-                pdfs[(size_t)i] = warpStages::warpEffectivePdf(k, warpTpdf(t));   // f_W, guarded
+                // the fill factor is the READING's, already composed by the host AT
+                // u (f(T(u)) for the quantile, g'(u) for the dual — see the binding
+                // note), and the closed form follows the reading with it
+                const double fac = warpTpdf(u);
+                pdfs[(size_t)i] = warpTDual ? warpStages::warpEffectivePdfDual(k, fac)
+                                            : warpStages::warpEffectivePdf(k, fac);   // f_W, guarded
                 if (i > 0 && i < kPlotN && pdfs[(size_t)i] > maxD) maxD = pdfs[(size_t)i];
             }
         } else {

@@ -225,6 +225,8 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
     WarpCurveEditor* curve = nullptr;   // the popup's editor subclass (the onEdit hook)
     std::unique_ptr<Distribution> memberView_, view_;
     WarpStagesView* stagesView_ = nullptr;   // view_'s derived alias (the gap/dual fields)
+    std::unique_ptr<WarpStagesView> kView_;  // the ALWAYS-K density view (the §10 fill's
+                                             // factor — see refreshEditor(); the fix)
     WarpF lastF_{};
     double lastTilt_ = -1e9, lastLevel_ = -1e9, lastMass_ = -1e9;
     double lastGapLoc_ = -1e9, lastGapSize_ = -1e9;   // the gap pair joins the detector
@@ -381,11 +383,19 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         lastRole_ = macroRoleNow(); lastSlot_ = slotLive(); lastLane_ = lane;
         view_ = std::make_unique<WarpStagesView>(memberView_.get(), tp, al, am);
         stagesView_ = static_cast<WarpStagesView*>(view_.get());
+        // THE ALWAYS-K DENSITY VIEW (CC_FIX_PHASE_PLOT_NEGATIVE_WARP): the effective
+        // fill's derivative factor composes over the K chain for BOTH readings — the
+        // K reading needs f(Q(u)) and the dual needs g'(u), both plain reads off ONE
+        // non-dual view (stagesView_'s own dual branch is the reciprocal DISPLAY
+        // density, not the factor the chain rule wants). Same member pointer — the
+        // live drawn-edit binding rides it, same as view_.
         // THE READING FOLLOWS THE SIGN (the bidirectional warp): the editor composes
         // what the CELLS hear — the folded w's sign picks the reading, negative side
         // the DUAL (the composed pair exchanged; the markers below read the READING's
         // atom bar / gap band).
         stagesView_->gapLoc = gl; stagesView_->gapSize = gs; stagesView_->dual = (curW(lane) < 0.f);
+        kView_ = std::make_unique<WarpStagesView>(memberView_.get(), tp, al, am);
+        kView_->gapLoc = gl; kView_->gapSize = gs; kView_->dual = false;
         curve->dist = view_.get();
         curve->isLight = [this]() { return themeLight_; };
         // The atom bar / gap band read the READING's markers (the atom<->gap
@@ -407,14 +417,25 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         curve->gapHi = ws::clampGapLoc(bandHi);
         // THE EFFECTIVE PLOT (PHASE_DISTRIBUTION_SPEC §10, display-only): the drawn
         // curve is the warp mix at the FOLDED signed depth (lastW_ — the same
-        // clampW'd w the cells resolve, CV deltas included), T = the READING's
-        // quantile (this view's invCDF; the dual branch the exchange), f_T the
-        // view's pdf AT T(u) — the editor shows what the CELLS hear, continuously
-        // through zero (w = 0 draws the diagonal). The step() detector refreshes on
-        // depth/stage/param change, never per sample.
+        // clampW'd w the cells resolve, CV deltas included), T the READING's target
+        // (the SIGN picked it: w ≥ 0 the composed quantile via this view's invCDF,
+        // w < 0 the dual — its dual branch IS the exchange) and the fill factor the
+        // READING's, composed off the always-K view — the editor shows what the
+        // CELLS hear, continuously through zero (w = 0 draws the diagonal, either
+        // side). The widget never inspects the sign: it gets the two callables + the
+        // signed depth + the fill form (CC_FIX_PHASE_PLOT_NEGATIVE_WARP). The step()
+        // detector refreshes on depth/stage/param change, never per sample.
         curve->warpDepth = lastW_;
+        const bool dualReading = (lastW_ < 0.f);
+        curve->warpTDual = dualReading;
         curve->warpT     = [this](double u) { return view_ ? view_->invCDF(u) : u; };
-        curve->warpTpdf  = [this](double x) { return view_ ? view_->pdf(x) : 1.0; };
+        curve->warpTpdf  = [this, dualReading](double u) {
+            if (!kView_) return 1.0;
+            // K reading: T = Q, T'(u) = 1/f(T(u))  → the factor is f(Q(u));
+            // dual:      T = g, T'(u) = g'(u)      → the factor is g'(u) — the chain
+            // pdf AT u (NOT the reciprocal — that was the fill's spec gap).
+            return dualReading ? kView_->pdf(u) : kView_->pdf(kView_->invCDF(u));
+        };
         // Drawn edits → the scoped mirror rebuild (the popup's onEdit hook; the
         // pool slot changed in place, ONLY this hook can fire the rebuild).
         curve->onEdit = [this, lane]() {

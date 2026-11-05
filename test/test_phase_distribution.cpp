@@ -23,12 +23,17 @@
 //       dual by the SIGN of w over a BARE member (the dual's quantile IS the composed
 //       CDF at w = −1), and the dual envelope persists.
 //   §10 The EFFECTIVE warped curve — the DISTRIBUTION plot's law (display-only):
-//       W(u) = (1−k)u + k·T(u), k = |w|, T the composed READING's quantile; the CDF
-//       trace the PARAMETRIC point (W(u), u), the fill the guarded closed form
-//       f_W = 1/[(1−k) + k/f_T(T(u))]. Gates: k=0 the diagonal with f_W = 1;
-//       continuous through w = 0 (both readings O(k) off the diagonal); W monotone;
-//       no inf/NaN over the (member, k, reading, feature) grid; the guarded faces
-//       (gap → 0 for any k > 0, atom → 1/(1−k), the uniform never divides).
+//       W(u) = (1−k)u + k·T(u), k = |w|, T the composed READING's target (K: the
+//       composed quantile; DK: the composed CDF — the SIGN picked it); the CDF
+//       trace the PARAMETRIC point (W(u), u), the fill the READING's guarded
+//       closed form — K: f_W = 1/[(1−k) + k/f_T(T(u))], DK: f_W = 1/[(1−k) + k·g'(u)]
+//       (CC_FIX_PHASE_PLOT_NEGATIVE_WARP: the dual's T is a CDF, so T' = g'(u),
+//       the composed member density AT u — NOT the reciprocal). Gates: k=0 the
+//       diagonal with f_W = 1; continuous through w = 0 (both readings O(k) off
+//       the diagonal); W monotone; no inf/NaN over the (member, k, reading,
+//       feature) grid; the guarded faces (K: gap → 0 for any k > 0, atom →
+//       1/(1−k); DK: the exchange flipped — g' → 0 the 1/(1−k) plateau, g' → ∞
+//       the hole; the uniform never divides).
 //
 // Header-only, Rack-free (jansson via the test/jansson.h shim); registered in
 // test/run_all.sh.
@@ -509,32 +514,32 @@ int main() {
 
     // ── §10: the EFFECTIVE warped curve — the DISTRIBUTION plot's law (display-only) ──
     // One sweep of u: W(u) = (1−k)u + k·T(u), k = |w|, T the composed READING's
-    // quantile (K: the composed quantile; DK: the composed CDF); the CDF trace the
+    // target (K: the composed quantile; DK: the composed CDF); the CDF trace the
     // PARAMETRIC point (W(u), u) — no bisection, no integration — and the fill the
-    // guarded closed form f_W = 1/[(1−k) + k/f_T(T(u))]. The CC prompt's gates:
-    // continuous through w = 0 (no jump at the zero crossing); k = 0 the diagonal and
-    // f_W = 1; W monotone; no inf/NaN over the (member, k, reading, feature) grid.
+    // READING's guarded closed form: K 1/[(1−k) + k/f_T(T(u))], DK
+    // 1/[(1−k) + k·g'(u)] (CC_FIX_PHASE_PLOT_NEGATIVE_WARP). The CC prompt's gates:
+    // continuous through w = 0 (no jump at the zero crossing, EITHER sign); k = 0
+    // the diagonal and f_W = 1; W monotone; no inf/NaN over the (member, k,
+    // reading, feature) grid.
     {
         const double ks[] = {0.0, 0.25, 0.5, 0.75, 1.0};
         // The composed READING pair over a member with tilt, gap AND atom LIVE (the
-        // grid's features): K reading T = the composed quantile with f_T = the composed
-        // pdf AT the target point; DK reading T = the composed CDF with f_T the
-        // reciprocal density (the view's dual-branch form, the DIST_EDGE_EPS floor).
+        // grid's features): K reading T = the composed quantile with the fill factor
+        // f(T(u)) — the composed pdf AT the target point (the quantile form's
+        // T' = 1/f); DK reading T = the composed CDF with the fill factor g'(u) —
+        // the composed pdf AT u (the CDF form's T' = g'; the reciprocal density the
+        // old plot fed the quantile form was exactly the spec gap this fix retires).
         auto K_T   = [&](const WarpF& f, double u) { return Kq(f, u, 0.3, 0.4, 0.15, 0.5, 0.2); };
         auto K_fT  = [&](const WarpF& f, double t) { return Kp(f, t, 0.3, 0.4, 0.15, 0.2); };
         auto DK_T  = [&](const WarpF& f, double u) { return Kc(f, u, 0.3, 0.4, 0.15, 0.5, 0.2); };
-        auto DK_fT = [&](const WarpF& f, double t) {
-            const double y = Kq(f, t, 0.3, 0.4, 0.15, 0.5, 0.2);   // Q_K(t) — the dual's CDF at t
-            const double g = Kp(f, y, 0.3, 0.4, 0.15, 0.2);
-            return 1.0 / (g < 1e-9 ? 1e-9 : g);
-        };
+        auto DK_gp = [&](const WarpF& f, double u) { return Kp(f, u, 0.3, 0.4, 0.15, 0.2); };
         bool diag = true, fw1 = true, mono = true, fin = true, k1face = true, cross = true;
         bool gapFace = true, atomFace = true, uniformFace = true;
         for (int r = 0; r < R; ++r) {
             const WarpF& f = roster[r].f;
             for (int reading = 0; reading < 2; ++reading) {
-                auto T  = [&](double u) { return reading == 0 ? K_T(f, u)  : DK_T(f, u); };
-                auto fT = [&](double t) { return reading == 0 ? K_fT(f, t) : DK_fT(f, t); };
+                auto T   = [&](double u) { return reading == 0 ? K_T(f, u)  : DK_T(f, u); };
+                auto fac = [&](double u) { return reading == 0 ? K_fT(f, K_T(f, u)) : DK_gp(f, u); };
                 for (double k : ks) {
                     double prev = -1e18;
                     for (int i = 0; i <= 500; ++i) {
@@ -542,10 +547,13 @@ int main() {
                         const double t = T(u);
                         const double x = (1.0 - k) * u + k * t;
                         if (k == 0.0 && !sameBits(x, u)) diag = false;   // the diagonal, BIT-EXACT
-                        if (k == 0.0 && !sameBits(ws::warpEffectivePdf(k, fT(t)), 1.0)) fw1 = false;
+                        const double fw0 = reading == 0 ? ws::warpEffectivePdf(0.0, fac(u))
+                                                        : ws::warpEffectivePdfDual(0.0, fac(u));
+                        if (k == 0.0 && !sameBits(fw0, 1.0)) fw1 = false;   // the uniform, BIT-EXACT
                         if (x < prev - 1e-12) mono = false;              // W monotone (T is)
                         prev = x;
-                        const double fw = ws::warpEffectivePdf(k, fT(t));
+                        const double fw = reading == 0 ? ws::warpEffectivePdf(k, fac(u))
+                                                       : ws::warpEffectivePdfDual(k, fac(u));
                         if (!(std::isfinite(fw) && fw >= 0.0)) fin = false;   // no inf/NaN, ever
                     }
                     // the chain fixes 0 and 1: W(0) = 0 and W(1) = 1 (the Sklar edges)
@@ -563,6 +571,15 @@ int main() {
                 const double fTv = K_fT(f, t);
                 if (fTv < 1e-9) continue;
                 if (std::fabs(ws::warpEffectivePdf(1.0, fTv) - fTv) > 1e-15 * fTv) k1face = false;
+            }
+            // the DUAL's own k = 1 face (the fix): the CDF form's closed form at k = 1
+            // is 1/g' — the composed density's reciprocal, the SAME division the helper
+            // writes (bit-exact modulo the guard; the 1e-6 display floor skips what the
+            // helper itself would face)
+            for (int i = 1; i < 500; ++i) {
+                const double gp = DK_gp(f, (double)i / 500.0);
+                if (gp < 1e-6) continue;   // under the display floor the guard hands over
+                if (std::fabs(ws::warpEffectivePdfDual(1.0, gp) - 1.0 / gp) > 1e-15 * (1.0 / gp)) k1face = false;
             }
         }
         // the ZERO CROSSING is continuous: both readings converge to the diagonal as
@@ -595,15 +612,171 @@ int main() {
         if (!std::isinf(ws::warpEffectivePdf(1.0, (double)INFINITY))) atomFace = false;
         for (double fT : {0.0, 1e-12, 1.0, 1e12, (double)INFINITY, (double)NAN})
             if (ws::warpEffectivePdf(0.0, fT) != 1.0) uniformFace = false;
+        // the DUAL form's guarded faces (the fix — FLIPPED with the exchange):
+        // g' = 0 is the dual's ATOM — the 1/(1−k) plateau for k < 1 (EXACT,
+        // under-floor included), the marker's delta at k = 1 exactly (0 — never inf,
+        // an inf sample would poison the fill's auto-max); g' = inf is the dual's
+        // GAP — the hole, 0 EXACTLY; NaN rides the gap face; the uniform never divides
+        bool dualGapFace = true, dualAtomFace = true, dualUniformFace = true;
+        for (double k : {0.25, 0.5, 0.75}) {
+            if (ws::warpEffectivePdfDual(k, 0.0) != 1.0 / (1.0 - k)) dualGapFace = false;
+            if (ws::warpEffectivePdfDual(k, 1e-12) != 1.0 / (1.0 - k)) dualGapFace = false;   // under the floor
+            if (ws::warpEffectivePdfDual(k, (double)NAN) != 1.0 / (1.0 - k)) dualGapFace = false;
+            if (ws::warpEffectivePdfDual(k, (double)INFINITY) != 0.0) dualAtomFace = false;
+        }
+        if (ws::warpEffectivePdfDual(1.0, 0.0) != 0.0) dualGapFace = false;          // the delta → the marker
+        if (ws::warpEffectivePdfDual(1.0, 1e-12) != 0.0) dualGapFace = false;
+        // the EDGE-PROXY regression (the floor's own bug): the member pdf's edge proxy
+        // rides at O(1e-9)·coeff — BELOW the 1e-6 display floor — so at k = 1 it must
+        // face to the hole (0), not 1/6e-9 = 1.67e8 (the spike that ate the fill's
+        // auto-max); at k < 1 it faces to the plateau like any under-floor g'
+        if (ws::warpEffectivePdfDual(1.0, 6e-9) != 0.0) dualGapFace = false;
+        if (ws::warpEffectivePdfDual(0.5, 6e-9) != 2.0) dualGapFace = false;
+        for (double gp : {0.0, 1e-12, 1.0, 1e12, (double)INFINITY, (double)NAN})
+            if (ws::warpEffectivePdfDual(0.0, gp) != 1.0) dualUniformFace = false;
         ok(diag,        "§10: k=0 draws the diagonal — W(u) == u BIT-EXACT (whole roster, both readings)");
         ok(fw1,         "§10: k=0 draws f_W == 1 — the uniform, the 0/0 never evaluated (BIT-EXACT)");
         ok(mono,        "§10: W(u) is MONOTONE over the sweep (roster x k x reading, features live)");
         ok(fin,         "§10: f_W finite and >= 0 over the whole grid; W(0)=0, W(1)=1 (no inf/NaN)");
-        ok(k1face,      "§10: k=1 gives f_W == f_T (the target's own density, off the floor)");
+        ok(k1face,      "§10: k=1 gives f_W == f_T (K) and 1/g' (DK) — each reading its own density, off the floor");
         ok(cross,       "§10: the zero crossing is continuous — both readings O(k) off the diagonal, <= 2k apart");
         ok(gapFace,     "§10: the gap face — f_W == 0 EXACTLY for any k > 0 (the gap opens at once)");
         ok(atomFace,    "§10: the atom face — f_W -> 1/(1-k), finite even at f_T = inf (the spike fades in)");
         ok(uniformFace, "§10: the uniform face — k=0 returns 1 for ANY f_T incl. 0, inf, NaN");
+        ok(dualGapFace, "§10: the DUAL gap face — g'=0 the dual's ATOM: the 1/(1-k) plateau (k<1), the marker's delta at k=1 (never inf)");
+        ok(dualAtomFace,"§10: the DUAL atom face — g'=inf the dual's GAP: f_W == 0 EXACTLY for any k > 0");
+        ok(dualUniformFace, "§10: the DUAL uniform face — k=0 returns 1 for ANY g' incl. 0, inf, NaN");
+    }
+
+    // ── §10b: the NEGATIVE-WARP fix's gates (CC_FIX_PHASE_PLOT_NEGATIVE_WARP) ──────
+    // The plot's negative side must BLEND, not switch: (1) the plotted curve changes
+    // continuously with the SIGNED w and w = −0.01 is near the diagonal, not the full
+    // dual (the symptom — the old gate failed the sign and drew the bare target);
+    // (2) the trace IS the engine's blend at the same (w, u), both signs; (3) the
+    // fill is a density — integrates to ~1 over the trace for the loadouts whose
+    // sampled law has no jump connectors (the trapezoid bridges a sampled x-JUMP
+    // with a sliver the true law doesn't carry — the features ride the markers).
+    {
+        const WarpF f = dotModular::KumaraswamyWarp{2.0, 3.0};   // a strong S — the full dual is far off the diagonal
+        const double wSweep[] = {-1.0, -0.5, -0.2, -0.05, -0.01, 0.0, 0.01, 0.05, 0.2, 0.5, 1.0};
+        // the §10 READING pair at this member (the grid's feature loadout, tilt+gap+atom live)
+        auto K_T   = [&](double u) { return Kq(f, u, 0.3, 0.4, 0.15, 0.5, 0.2); };
+        auto K_fac = [&](double u) { return Kp(f, K_T(u), 0.3, 0.4, 0.15, 0.2); };
+        auto DK_T  = [&](double u) { return Kc(f, u, 0.3, 0.4, 0.15, 0.5, 0.2); };
+        auto DK_gp = [&](double u) { return Kp(f, u, 0.3, 0.4, 0.15, 0.2); };
+        // THE SIGN SWEEP: max_u|W(u)−u| = |w|·D_reading (T is depth-independent — only
+        // the SIGN picks it), so within one side it is exactly Lipschitz-1 in w, and
+        // across zero |a·D−b·E| ≤ a+b = |w_a−w_b| — continuous through the crossing.
+        // The fill rides along, finite and >= 0 at every sampled w (both helpers).
+        bool cont = true, fillFin = true, nearDiag = true, dualFar = true;
+        double prevMax = -1.0, prevW = 0.0;
+        for (double w : wSweep) {
+            const double k = ws::warpEffectiveK((float)w);
+            const bool dual = (w < 0.0);
+            auto T   = [&](double u) { return dual ? DK_T(u) : K_T(u); };
+            auto fac = [&](double u) { return dual ? DK_gp(u) : K_fac(u); };
+            double maxDev = 0.0;
+            for (int i = 0; i <= 400; ++i) {
+                const double u = (double)i / 400.0;
+                const double dev = std::fabs((1.0 - k) * u + k * T(u) - u);
+                if (dev > maxDev) maxDev = dev;
+                const double fw = dual ? ws::warpEffectivePdfDual(k, fac(u))
+                                       : ws::warpEffectivePdf(k, fac(u));
+                if (!(std::isfinite(fw) && fw >= 0.0)) fillFin = false;
+            }
+            if (prevMax >= 0.0 && std::fabs(maxDev - prevMax) > std::fabs(w - prevW) + 1e-12) cont = false;
+            prevMax = maxDev; prevW = w;
+        }
+        // w = −0.01 is NEAR THE DIAGONAL — ≤ k off it — while the FULL dual (what the
+        // old draw snapped to) really is far off at this loadout, so the pin means
+        // something
+        {
+            const double k = ws::warpEffectiveK(-0.01f);
+            double maxDev = 0.0, dualDev = 0.0;
+            for (int i = 0; i <= 400; ++i) {
+                const double u = (double)i / 400.0;
+                if (std::fabs((1.0 - k) * u + k * DK_T(u) - u) > maxDev) maxDev = std::fabs((1.0 - k) * u + k * DK_T(u) - u);
+                if (std::fabs(DK_T(u) - u) > dualDev) dualDev = std::fabs(DK_T(u) - u);
+            }
+            if (maxDev > 0.01 + 1e-12) nearDiag = false;
+            if (dualDev < 0.05) dualFar = false;
+        }
+        ok(cont,     "§10b: the sign sweep is CONTINUOUS — max|W−u| is Lipschitz in w across {−1…+1}, both readings");
+        ok(fillFin,  "§10b: the fill is finite and >= 0 at every sampled w of the sign sweep (both helpers, features live)");
+        ok(nearDiag, "§10b: w = −0.01 plots NEAR THE DIAGONAL (≤ k off it) — the negative side blends, it does not switch");
+        ok(dualFar,  "§10b: the full dual at this loadout is far off the diagonal (> 0.05) — the −0.01 pin means something");
+
+        // THE TRACE IS THE ENGINE'S OWN BLEND: the widget's xs at each sampled w equals
+        // WarpBank::warpedValue at the same (w, u) — both signs, the cell's stage
+        // features LIVE, the composition on the cell's FLOAT-roundtripped values (the
+        // store's own arithmetic, not the literals)
+        {
+            WarpBank b;
+            const int i0 = WarpBank::index(4, 2);
+            b.warpF[i0] = f;
+            b.warpTilt[i0] = 0.3f; b.warpGapLoc[i0] = 0.4f; b.warpGapSize[i0] = 0.15f;
+            b.warpAtomLevel[i0] = 0.5f; b.warpAtomMass[i0] = 0.2f;
+            const double pc = (double)b.warpTilt[i0], lc = (double)b.warpGapLoc[i0],
+                         sc = (double)b.warpGapSize[i0], al = (double)b.warpAtomLevel[i0],
+                         mc = (double)b.warpAtomMass[i0];
+            bool traceEng = true;
+            for (double w : {-1.0, -0.5, -0.2, -0.05, 0.0, 0.05, 0.2, 0.5, 1.0}) {
+                b.warpW[i0] = (float)w;
+                const double k = ws::warpEffectiveK((float)w);
+                auto T = [&](double u) { return w < 0.0 ? Kc(b.warpF[i0], u, pc, lc, sc, al, mc)
+                                                        : Kq(b.warpF[i0], u, pc, lc, sc, al, mc); };
+                for (int i = 0; i <= 200; ++i) {
+                    const double u = (double)i / 200.0;
+                    if (std::fabs((1.0 - k) * u + k * T(u) - b.warpedValue(4, 2, u)) > 1e-12) traceEng = false;
+                }
+            }
+            ok(traceEng, "§10b: the trace equals the ENGINE blend — xs == warpedValue at the same (w, u), both signs, features live");
+        }
+
+        // THE FILL IS A DENSITY (trapezoid over the trace, both readings) — the
+        // parametric sweep's own law ∫f_W(W(u))·W'(u) du = 1. Pinned on the loadouts
+        // whose SAMPLED law is clean: bare member and tilt-only (the tilt window is a
+        // bijection — no jumps, no flats), and the DUAL with the gap live for k < 1
+        // (the composed CDF is continuous, its flat spread at 1/(1−k) — the fill is
+        // the exact pushforward). The jump-carrying loadouts (K+gap's quantile jump,
+        // the atom's delta/plateau) pin finiteness only — the trapezoid bridges a
+        // sampled x-jump with a sliver the true law doesn't carry, and the features
+        // themselves ride the bar/band markers.
+        {
+            const int N = 2000;
+            auto integral = [&](auto Tfn, auto facFn, bool dualForm, double k) {
+                double acc = 0.0, px = 0.0, pf = -1.0;
+                for (int i = 0; i <= N; ++i) {
+                    const double u = (double)i / (double)N;
+                    const double x = (1.0 - k) * u + k * Tfn(u);
+                    const double fw = dualForm ? ws::warpEffectivePdfDual(k, facFn(u))
+                                               : ws::warpEffectivePdf(k, facFn(u));
+                    if (i > 0) acc += 0.5 * (pf + fw) * (x - px);
+                    px = x; pf = fw;
+                }
+                return acc;
+            };
+            bool integ1 = true, integTilt = true, integGapDual = true;
+            for (double k : {0.25, 0.5, 0.75, 1.0}) {
+                // BARE member: K factor f(Q(u)), DK factor g'(u) = f(u) — both smooth
+                if (std::fabs(integral([&](double u){ return mQ(f, u); },
+                                       [&](double u){ return mP(f, mQ(f, u)); }, false, k) - 1.0) > 0.01) integ1 = false;
+                if (std::fabs(integral([&](double u){ return mC(f, u); },
+                                       [&](double u){ return mP(f, u); }, true, k) - 1.0) > 0.01) integ1 = false;
+                // TILT only (0.3): the window is a monotone bijection — still clean
+                if (std::fabs(integral([&](double u){ return Kq(f, u, 0.3, 0.5, 0.0, 0.5, 0.0); },
+                                       [&](double u){ return Kp(f, Kq(f, u, 0.3, 0.5, 0.0, 0.5, 0.0), 0.3, 0.5, 0.0, 0.0); }, false, k) - 1.0) > 0.01) integTilt = false;
+                if (std::fabs(integral([&](double u){ return Kc(f, u, 0.3, 0.5, 0.0, 0.5, 0.0); },
+                                       [&](double u){ return Kp(f, u, 0.3, 0.5, 0.0, 0.0); }, true, k) - 1.0) > 0.01) integTilt = false;
+                // DUAL with the GAP live (loc 0.4, size 0.15, no atom), k < 1: the fill
+                // is the exact pushforward — integrates to 1
+                if (k < 1.0 && std::fabs(integral([&](double u){ return Kc(f, u, 0.0, 0.4, 0.15, 0.5, 0.0); },
+                                                  [&](double u){ return Kp(f, u, 0.0, 0.4, 0.15, 0.0); }, true, k) - 1.0) > 0.02) integGapDual = false;
+            }
+            ok(integ1,        "§10b: the fill integrates to ~1 — bare member, both readings (trapezoid over the trace, tight)");
+            ok(integTilt,     "§10b: the fill integrates to ~1 — tilt-only loadout, both readings (the window is a bijection)");
+            ok(integGapDual,  "§10b: the fill integrates to ~1 — the DUAL with the gap live, k < 1 (the exact pushforward)");
+        }
     }
 
     if (g_fail == 0) { std::printf("ALL PASS (%d checks)\n", g_pass); return 0; }

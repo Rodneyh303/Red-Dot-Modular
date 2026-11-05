@@ -185,6 +185,26 @@ that the parametric sweep avoids.)
 - So atoms fade in with depth and gaps open at once. This asymmetry is real (not a plot artefact); the two
   sides of the warp knob feel different, and the plot shows it honestly.
 
+### The DUAL reading's fill (CC_FIX_PHASE_PLOT_NEGATIVE_WARP — the form §10's closed form assumed)
+The closed form above assumes T is a QUANTILE, so T'(u) = 1/f(T(u)). On the warp's negative side the
+reading is the DUAL: T = G, the composed CDF, so T'(u) = g'(u) — the composed member density AT u — and
+the fill is the OTHER sign of the T' term:
+    f_W(x) = 1 / [ (1-k) + k * g'(u) ]     at the point x = W(u)
+The asymmetry FLIPS with the exchange: g' = 0 over the K-reading's gap is the DUAL'S ATOM (f_W = 1/(1-k)
+for k < 1 — the delta itself rides the atom-bar marker; at k = 1 exactly the fill opens the hole, never
+inf — an inf sample would poison the fill's auto-max scale), and g' -> inf at the K-atom is the DUAL'S
+GAP (f_W -> 0, the band marker's job). The fill's g' floor is 1e-6 (DISPLAY-only, deliberately NOT the
+quantile form's 1e-9): the member pdf's own edge proxy rides at O(1e-9)*coeff and would otherwise slip
+into the closed form at k = 1 as a 1e8 edge spike. At k = 1 the dual's law is 1/g' — it diverges wherever
+the composed density vanishes (integrably; the faces read it as the markers' business).
+### The gate is the BINDING (the negative-side symptom, fixed)
+The plot must BLEND on the negative side, not switch: the effective draw engages whenever a target
+callable is bound (warpT), for EITHER sign — the host binds T BY SIGN (w >= 0 the composed quantile Q
+with the factor f(Q(u)); w < 0 the composed CDF g with the factor g'(u)), the widget never inspects the
+sign, and the depth stays SIGNED (k = |w|). The old gate (warpDepth >= 0) threw the whole negative side
+to the bare-target draw: w = -0.01 snapped to the full dual while the engine barely moved — the switch
+this section's law exists to prevent. warpT unbound is still the legacy bare draw (the .dmcurve dev host).
+
 ### Scope
 Display-only. The engine transform is unchanged; this is purely what the DISTRIBUTION plot draws. The plot
 redraws on warp-depth or parameter change (not per sample).
@@ -202,7 +222,7 @@ redraws on warp-depth or parameter change (not per sample).
 | Acceptance test file | PRESENT, CI green | test/test_phase_distribution.cpp (ok() harness); the 8-to-check mapping is DONE (the CC catch-up commit's table — every test covered, test 8's bank-level face pinned) |
 | Flat-direction, no memory | DECIDED | sign of the moving change; flat carries no direction |
 | Gap panel: 2 knobs + 2 jacks per lane, next to atom, same delegation | LANDED | user-confirmed (controls added, CI green); knobs = cell slots gapLoc (6) and gapSize (7) in SandsModifierResolver, written by SandsDistributionExpander |
-| Distribution plot = EFFECTIVE warped curve (section 10) | LANDED | DistributionCurveWidget's warpDepth/warpT/warpTpdf binding: ONE u-sweep draws the parametric CDF (W(u), u) and the guarded closed-form fill f_W = 1/[(1−k)+k/f_T(T(u))] (warpStages::warpEffectivePdf); both hosts bind the composed reading's quantile at the live signed depth; §10 pins in test_phase_distribution (k=0 bit-diagonal, monotone, zero-crossing continuity, the guarded faces) |
+| Distribution plot = EFFECTIVE warped curve (section 10) | LANDED | DistributionCurveWidget's warpDepth/warpT/warpTpdf binding: ONE u-sweep draws the parametric CDF (W(u), u) and the guarded closed-form fill — the READING's form: f_W = 1/[(1−k)+k/f_T(T(u))] on the quantile side, f_W = 1/[(1−k)+k·g'(u)] on the dual side (warpStages::warpEffectivePdf / warpEffectivePdfDual, the CC fix); the gate is the BINDING (either sign; w = −0.01 blends near the diagonal — the plot does not switch); both hosts bind the composed reading's target by sign at the live signed depth; §10/§10b pins in test_phase_distribution (k=0 bit-diagonal, monotone, zero-crossing continuity, the sign-sweep Lipschitz, the trace == warpedValue both signs, the fill integrates to ~1, the guarded faces) |
 
 ### CC work, in order
 1. **Verify the 8 acceptance tests (section 8) against test_phase_distribution.cpp.** Map each test to an existing
