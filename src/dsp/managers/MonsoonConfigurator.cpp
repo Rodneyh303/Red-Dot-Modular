@@ -85,9 +85,14 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     // (2N−1 / 2N for Monsoon N = the pairId) are applied DYNAMICALLY on a fresh
     // module at the pairId latch (updateExpanderPointers) — the static config default
     // below is the N=1 case (sets 1 and 2, "a single Monsoon uses channels 1 and 2
-    // with no setup"). Integer picks: the read site rounds+clamps.
-    m->configParam(PHASE_SET_PARAM,    1.f, 8.f, 1.f, "Phase set (which distribution set distorts the phase tier)");
-    m->configParam(SUBPHASE_SET_PARAM, 1.f, 8.f, 2.f, "Subphase set (which distribution set distorts the subphase tier)");
+    // with no setup"). Integer picks: the read site rounds+clamps. NO PANEL KNOBS
+    // (Rodney: "No new knobs on monsoon. Context menu choice for index only.") —
+    // the params are INVISIBLE (no widget binds): the pick lives in MonsoonWidget's
+    // context menu, which sets the param directly; Rack auto-persists params, so
+    // the picks save with the patch. snapEnabled keeps menu-written values integer
+    // too (harmless, and any future quantity-driven writer stays on the 1..8 grid).
+    m->configParam(PHASE_SET_PARAM,    1.f, 8.f, 1.f, "Phase set (which distribution set distorts the phase tier)")   ->snapEnabled = true;
+    m->configParam(SUBPHASE_SET_PARAM, 1.f, 8.f, 2.f, "Subphase set (which distribution set distorts the subphase tier)")->snapEnabled = true;
     m->configButton(LOCK_PARAM,   "Lock");
     m->configButton(MUTE_PARAM,   "Mute");
     m->configButton(MODE_PARAM,   "Mode (Cycle Clock-Gate-Phase)");

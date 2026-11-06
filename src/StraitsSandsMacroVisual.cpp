@@ -515,9 +515,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     }
     // Macro's seating family — the step() cluster's fam, verbatim (BOTH right-
     // side subpanels, the spec's "any order": the right chain is the order).
+    // The PHASE DIST subpanel joins (CC_PROMPT_PHASE_DISTORTION_PANEL TASK 1:
+    // the §14 store's authoring panel seats beside its family).
     static bool macroSeatingFamily(rack::Module* x) {
         return x && (x->model == modelSandsDistributionExpander
-                  || x->model == modelSandsMacroSendSubpanel);
+                  || x->model == modelSandsMacroSendSubpanel
+                  || x->model == modelSandsPhaseDistSubpanel);
     }
     // The adopt-eligibility test: the candidate's LEFT neighbour must be loose —
     // null, or neither a Sands host visual nor a Sands subpanel (never steal
@@ -528,7 +531,8 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         return !l || (l->model != modelStraitsEastSandsVisual
                    && l->model != modelStraitsSandsMacroVisual
                    && l->model != modelSandsDistributionExpander
-                   && l->model != modelSandsMacroSendSubpanel);
+                   && l->model != modelSandsMacroSendSubpanel
+                   && l->model != modelSandsPhaseDistSubpanel);
     }
     bool hasSubpanel(Model* model) {
         auto* st = snapState();
@@ -556,6 +560,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         menu->addChild(createCheckMenuItem("DISTRIBUTION", "",
             [this]() { return hasSubpanel(modelSandsDistributionExpander); },
             [this]() { toggleSubpanel(modelSandsDistributionExpander); }));
+        menu->addChild(createCheckMenuItem("PHASE DIST", "",
+            [this]() { return hasSubpanel(modelSandsPhaseDistSubpanel); },
+            [this]() { toggleSubpanel(modelSandsPhaseDistSubpanel); }));
         // ── UNIFIED ADDRESSING Stage 2b: the MACRO (global) voice range ──────────
         // Macro's GLOBAL voice-range row (the L/O/R+dir every FOLLOWING voice reads —
         // the Macro tier of the global->voice map) is authored on the range surface

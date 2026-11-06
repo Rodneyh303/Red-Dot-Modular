@@ -24,10 +24,13 @@ bool SandsDistributionExpander::isFamilyModel(const rack::Model* m) {
     // check; the Macro send subpanel JOINS as promised — a Distribution expander
     // seated right of the send subpanel ([Macro][Send][Dist]) walks LEFT through
     // it to find the Macro visual, and the seams/marks read the whole run).
+    // The PHASE DIST subpanel joins the same way (CC_PROMPT_PHASE_DISTORTION_PANEL
+    // TASK 1 — it seats beside the family and edits this expander's store).
     return m == modelStraitsSandsMacroVisual
         || m == modelStraitsEastSandsVisual
         || m == modelSandsDistributionExpander
-        || m == modelSandsMacroSendSubpanel;
+        || m == modelSandsMacroSendSubpanel
+        || m == modelSandsPhaseDistSubpanel;
 }
 
 bool SandsDistributionExpander::resolveMacroRole() {

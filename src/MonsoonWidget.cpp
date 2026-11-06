@@ -620,6 +620,12 @@ MonsoonWidget::MonsoonWidget(Monsoon* module) {
         // share the one position source.
         bindParam<redDot::Dark_Small_Cog>("param_SUBPHASE_CAL_PARAM", MonsoonIds::SUBPHASE_CAL_PARAM);
 
+        // ── §14 SET INDICES — NO KNOBS (Rodney: "No new knobs on monsoon. Context
+        // menu choice for index only.") — PHASE_SET_PARAM / SUBPHASE_SET_PARAM stay
+        // ENGINE params (the landed routing reads them; Rack auto-persists them with
+        // the patch), but they carry NO panel widget: the pick lives in
+        // appendContextMenu (below), the only UI for the index.
+
         // ── Host-identity badge (CONNECTION_MODEL_SPEC §2/§4) ────────────────────────────────────
         // The Monsoon shows its OWN pairId colour+number so a bound expander's matching badge can be
         // verified by eye. Suppressed automatically when <2 Monsoons (HostBadge::draw), so the common
@@ -899,6 +905,10 @@ void MonsoonWidget::draw(const DrawArgs& args) {
         labelAt("param_PHASE_PARAM", 12.f, "PHASE");
         // PHASE TIER Stage 2 — the subphase tier's calibration, labelled beside its partner.
         labelAt("param_SUBPHASE_CAL_PARAM", 12.f, "SUBPH");
+
+        // (The §14 set indices draw NOTHING here — no knobs on Monsoon (Rodney);
+        // the index pick lives in appendContextMenu, the store's sets on the
+        // Sands phase-dist subpanel.)
 
         // ── Control-row labels — ONE per control, centred ABOVE it (y≈81), anchor-relative ──
         // The row was consolidated into a single y=87 row (panel_src/monsoon_art.py ROW). Every
@@ -1586,6 +1596,40 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
                 // ── Module-level: apply each lane's own current-mode default ──
                 sub->addChild(createMenuItem("Apply defaults to all lanes", "",
                     [=]() { for (int l = 0; l < 5; ++l) m->applySpreadDefault(l); }));
+            }));
+        }
+
+        // ── §14 SET INDICES — the context menu is the ONLY index UI (Rodney: "No
+        // new knobs on monsoon. Context menu choice for index only."). The two
+        // ENGINE params (PHASE_SET_PARAM / SUBPHASE_SET_PARAM — the landed routing
+        // reads them at the Control-tier tick, round+clamp, so a pick lands at a
+        // block boundary like every set change) carry NO panel widget; Rack
+        // auto-persists the params, so the picks save with the patch. INDEX ONLY:
+        // the sets themselves are authored on the Sands PHASE DIST subpanel (the
+        // store's owner), never here.
+        {
+            menu->addChild(createSubmenuItem("Phase-distortion sets", "", [=](ui::Menu* sub) {
+                sub->addChild(createMenuLabel("Which store set distorts each tier"));
+                // ── the phase tier's set index, 1..8 (radio) ──
+                sub->addChild(createSubmenuItem("Phase set", "", [=](ui::Menu* sm) {
+                    for (int i = 1; i <= 8; ++i) {
+                        sm->addChild(createCheckMenuItem(rack::string::f("Set %d", i).c_str(), "",
+                            [=]() { return (int)std::lround(m->params[MonsoonIds::PHASE_SET_PARAM].getValue()) == i; },
+                            [=]() { m->params[MonsoonIds::PHASE_SET_PARAM].setValue((float)i); }));
+                    }
+                }));
+                // ── the subphase tier's set index, 1..8 (radio) ──
+                sub->addChild(createSubmenuItem("Subphase set", "", [=](ui::Menu* sm) {
+                    for (int i = 1; i <= 8; ++i) {
+                        sm->addChild(createCheckMenuItem(rack::string::f("Set %d", i).c_str(), "",
+                            [=]() { return (int)std::lround(m->params[MonsoonIds::SUBPHASE_SET_PARAM].getValue()) == i; },
+                            [=]() { m->params[MonsoonIds::SUBPHASE_SET_PARAM].setValue((float)i); }));
+                    }
+                }));
+                sub->addChild(new ui::MenuSeparator);
+                // The advisory cue (greyed label, the Spread-target idiom): where the
+                // sets are authored — INDEX ONLY here, per Rodney.
+                sub->addChild(createMenuLabel("Author the sets on the PHASE DIST subpanel"));
             }));
         }
     }

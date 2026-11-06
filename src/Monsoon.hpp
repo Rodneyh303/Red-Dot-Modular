@@ -1803,6 +1803,8 @@ extern Model* modelStraitsSandsMacroVisual;     // Macro visual DNA editor (glob
 extern Model* modelSandsDistributionExpander;   // the distribution sub-expander (dual role by host)
 extern Model* modelSandsMacroSendSubpanel;      // the Macro send subpanel (every Macro→East send, one snapped panel)
 extern Model* modelIntertropical;               // Intertropical scene sequencer
+extern Model* modelPhaseDistortion;             // the standalone phase-distortion module (PHASE_DISTRIBUTION_SPEC §13 — the B comparison build; 8 phase in/out, per-channel sets, the ONE shared primitive; the expander model A stays)
+extern Model* modelSandsPhaseDistSubpanel;      // the phase-distortion sets authoring subpanel (CC_PROMPT_PHASE_DISTORTION_PANEL TASK 1 — the §14 store's UI; edits the rack-wide-lowest-id expander's store, the SAME instance the Monsoons read)
 
 // ─── Change Alley pin matrix expander ────────────────────────────────────────
 namespace ChangeAlleyIds {

@@ -25,7 +25,8 @@ bool SandsMacroSendSubpanel::isFamilyModel(const rack::Model* m) {
     return m == modelStraitsSandsMacroVisual
         || m == modelStraitsEastSandsVisual
         || m == modelSandsDistributionExpander
-        || m == modelSandsMacroSendSubpanel;
+        || m == modelSandsMacroSendSubpanel
+        || m == modelSandsPhaseDistSubpanel;   // the phase-dist sets panel joins the seam family (CC_PROMPT_PHASE_DISTORTION_PANEL TASK 1)
 }
 
 bool SandsMacroSendSubpanel::resolveMacroHost() {

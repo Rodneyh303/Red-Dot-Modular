@@ -163,6 +163,35 @@ MODULES = {
             "light_connect": 1,
         },
     },
+    "phase_distortion": {
+        # PhaseDistortion (PHASE_DISTRIBUTION_SPEC §13 — the STANDALONE module-only
+        # comparison build, B, alongside the expander model A). 88 anchors = 8
+        # channels x (8 distribution knobs p1/p2/tilt/level/mass/warp/gaploc/gapsize
+        # — the expander's param axis verbatim, store-backed) + 8 phase-in jacks +
+        # 8 phase-out jacks (the channel IS the jack) + 8 channel-focus buttons.
+        "widget": ["src/PhaseDistortion.cpp"],
+        "panel": "res/panels/PhaseDistortion_dark.svg",
+        "counts": {
+            "param_pd_": 64,        # 8 channels x 8 distribution knobs (store-backed)
+            "input_pdin_": 8,       # 8 phase inputs (the channel IS the jack)
+            "output_pdout_": 8,     # 8 phase outputs (Monsoons patch from here)
+            "param_pdfocus_": 8,    # the channel-focus buttons (which set the plot shows)
+        },
+    },
+    "sands_phase_dist": {
+        # SandsPhaseDistSubpanel (CC_PROMPT_PHASE_DISTORTION_PANEL.md TASK 1 — the
+        # §14 store's authoring panel). 80 anchors = 8 set rows x (8 distribution
+        # knobs — the expander's param axis verbatim, store-backed) + 8 row-focus
+        # buttons + the connect mark. No MOD jacks: no phase-set parameter is
+        # modulated in the landed engine (flagged in the commit).
+        "widget": ["src/SandsPhaseDistSubpanel.cpp"],
+        "panel": "res/panels/SandsPhaseDist_dark.svg",
+        "counts": {
+            "param_pds_": 64,       # 8 sets x 8 distribution knobs (store-backed)
+            "param_pdsfocus_": 8,   # the row-focus buttons (which set the plot shows)
+            "light_pd_connect": 1,
+        },
+    },
     "sands_macro_send": {
         # SandsMacroSendSubpanel (the spec's §"MACRO PER-VOICE SENDS → their own
         # subpanel" — the module opts in). 85 anchors = 7 lanes x (4 mix-in send
