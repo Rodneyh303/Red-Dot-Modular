@@ -3,45 +3,48 @@
 // TASK 1). Built alongside the standalone module (§13 build B) — neither replaces the
 // other; the expander build A stays untouched (the prompt's DO-NOT).
 //
-// ONE snapped subpanel authors the EIGHT PARAMETER SETS the expander's PhaseDistStore
-// holds — the sets every Monsoon in the network pulls by its two indices. The panel is
-// modelled on the Sands Distribution module's own grid: EIGHT ROWS (one per set)
-// instead of seven lanes, the SAME param axis (P1 P2 TILT LEVEL MASS | GAPLOC GAPSIZE
-// | WARP — the gap pair beside the atom pair, WARP trailing), the same StoreKnob art,
-// a focus button per row, and ONE permanent DistributionCurveWidget showing the
-// SELECTED row's effective curve (spec §10 — the reading follows the sign of w).
-// Header/footer lettering: "PHASE DISTORTION" + the selected set number.
+// ONE snapped subpanel AUTHORS the EIGHT PARAMETER SETS — and OWNS them
+// (CC_FIX_PHASE_STORE_ON_SUBPANEL): the PhaseDistStore is THIS module's own member,
+// the subpanel is self-contained like the standalone PhaseDistortion module already
+// is. No Distribution expander is required to author or use phase sets — the old
+// arrangement (the store a member of the lowest-id SandsDistributionExpander, the
+// panel resolving it rack-wide) was a surprise dependency between two modules that
+// share only the distribution MATHS, not a reason to share a MODULE: Distribution
+// modifies probabilities; phase distortion modifies transport. Monsoon's rack-wide
+// scan resolves THIS panel model as the source (the phase AUTHORING surface, so
+// requiring IT is not a surprise); several subpanels ⟹ the lowest module id wins
+// (one store, one reading — the same determinism rule as before).
 //
-// THE STORE RESOLUTION: the panel edits the store the Monsoons ACTUALLY read — the
-// SAME rack-wide first-found scan Monsoon's updateExpanderPointers runs (the LOWEST
-// module id among the SandsDistributionExpanders — deterministic under any module
-// order; one store, one reading). A left-walk would risk editing a store instance no
-// Monsoon pulls when two expanders exist. Memoized by the topology epoch (the lookup
-// authority's law: the scan runs on a topology event, never per frame). No owner
-// reachable ⟹ the knobs are inert (StoreKnob's null-store path) — the panel is a
-// working UI wherever the family expander exists.
+// The panel is modelled on the Sands Distribution module's own grid: EIGHT ROWS
+// (one per set) instead of seven lanes, the SAME param axis (P1 P2 TILT LEVEL MASS |
+// GAPLOC GAPSIZE | WARP — the gap pair beside the atom pair, WARP trailing), the
+// same StoreKnob art, a focus button per row, and ONE permanent
+// DistributionCurveWidget showing the SELECTED row's effective curve (spec §10 —
+// the reading follows the sign of w). Header/footer lettering: "PHASE DISTORTION"
+// + the selected set number.
 //
 // DE-PARAM LAW: the module exposes NOTHING — config(0, 0, 0, 0); every control is a
-// store-backed StoreKnob onto the owner's PhaseDistStore (the family's convention).
+// store-backed StoreKnob onto THIS module's own PhaseDistStore (the family's
+// convention).
 // DELEGATION: OMITTED from the rows (the panel prompt's DECISION TO CONFIRM #1,
 // Rodney's own proposal — a phase set has no Macro/East to delegate to; the store's
 // `delegated` field stays, engine-inert, persisted by the store codec).
 //
 // SNAPPING: the SandsSnap cluster (the Macro visual seats this panel beside its
 // subpanel run — the context-menu dock toggle + the adopt path, the send subpanel's
-// idiom). NO AUDIO-THREAD WORK: the knobs write the owner's store directly
+// idiom). NO AUDIO-THREAD WORK: the knobs write THIS module's store directly
 // (writeSet — atomic per set); the Monsoons' per-block snapshots pick changes up at
-// their next boundary (the landed §14 mechanism, untouched).
+// their next boundary (the landed §14 mechanism, untouched — it moved here WITH the
+// store: mutex-guarded writes, per-block snapshot reads, the same codec).
 #pragma once
 #include <rack.hpp>
 #include "Monsoon.hpp"   // the family model externs (modelSandsDistributionExpander...)
 #include "dsp/PhaseDistStore.hpp"   // the set shape (shared with A and B — untouched)
 #include "ui/SandsSnap.hpp"              // the guest mixin (the host's harvest reads it)
-#include "ui/ModuleLookupCore.hpp"       // the topology epoch + lookupMemoizedT
+#include "ui/ModuleLookupCore.hpp"       // the topology epoch (the epoch bump stays:
+                                         // Monsoon's owner scan is epoch-memoized)
 
 using namespace rack;
-
-struct SandsDistributionExpander;   // the store's owner (full type in its header, included by the cpp)
 
 namespace SandsPhaseDistIds {
     static constexpr int SETS     = redDot::PhaseDistStore::kSets;   // 8 rows
@@ -59,22 +62,40 @@ namespace SandsPhaseDistIds {
 
 struct SandsPhaseDistSubpanel : rack::Module, redDot::SandsSnapGuest {
 
-    // ── store-owner badge (UI-only): whether a store owner is reachable. Plain
-    // bool: the widget's step() is the only writer and the only reader's thread.
-    bool storeOwnerLive = false;
+    // ── THE PHASE-DISTORTION STORE — THIS module's own state
+    // (CC_FIX_PHASE_STORE_ON_SUBPANEL): EIGHT parameter sets — (warp, tilt, gap,
+    // atom, delegation) each — that ANY Monsoon in the network pulls by its two
+    // indices (phaseSet 1..8 / subphaseSet 1..8, Monsoon-side params). The store is
+    // rack-free (dsp/PhaseDistStore.hpp) and unit-tested directly — the TYPE is
+    // untouched; only its OWNER moved (off the SandsDistributionExpander, which
+    // keeps its distribution role: probabilities). The consistency mechanism rides
+    // with it unchanged: the UI writes under the store mutex (writeSet — atomic per
+    // set), each Monsoon copies its set ONCE per audio block under the same mutex
+    // (snapshotSet) and reads its private copy for the whole block. Nothing is
+    // pushed — the subpanel produces no signal.
+    redDot::PhaseDistStore phaseDistStore;
 
     SandsPhaseDistSubpanel() {
         // the de-param law: no params, no jacks — the whole panel is store-backed
-        // knobs onto the OWNER's store (the family's convention).
+        // knobs onto THIS module's own store (the family's convention).
         config(0, 0, 0, 0);
     }
 
-    // ── the store owner: the rack-wide LOWEST-ID SandsDistributionExpander — the
-    // SAME scan Monsoon's updateExpanderPointers runs, so this panel and the
-    // Monsoon network always address the SAME store instance. Memoized by the
-    // topology epoch (the scan runs once per topology event, never per frame —
-    // the L5 law; the resolveFollowedT precedent is a getModuleIds walk too).
-    SandsDistributionExpander* resolveStoreOwner();
+    // ── persistence: the sets ride THIS module's patch state under the SAME
+    // additive key ("phaseDistSets" — the key moves with the store; missing or
+    // malformed ⟹ the eight identity defaults, the house contract). Patches saved
+    // before the store moved carried the key on the Distribution expander's JSON,
+    // where nothing reads it anymore — those sets need re-authoring here (flagged).
+    json_t* dataToJson() override {
+        json_t* root = json_object();
+        json_object_set_new(root, "phaseDistSets", phaseDistStore.toJson());
+        return root;
+    }
+    void dataFromJson(json_t* root) override {
+        if (!root) return;
+        json_t* j = json_object_get(root, "phaseDistSets");
+        if (j) phaseDistStore.fromJson(j);   // absent/malformed ⟹ the identity defaults survive
+    }
 
     // ── the Sands subpanel family (seam continuity + the left-link check): the
     // two host visuals + the distribution expander + both subpanels. Seating is

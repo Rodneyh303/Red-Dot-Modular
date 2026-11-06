@@ -423,6 +423,10 @@ struct WarpCurvePopup : rack::widget::OpaqueWidget {
 
         refreshParams(f);
         refreshStages();
+        // THE CHANGE-GATE'S HOST PIN (CC_FIX_CURVE_WIDGET_CPU): this refresh re-binds
+        // the plot's callables — bump the host generation (one rebuild per refresh,
+        // even if the new bindings probe-identically at the fingerprint's 9 points).
+        curve->hostGeneration++;
     }
 
     // ── FEEL-TEST: the three stage knobs (bound ONCE per refresh; always visible) ────

@@ -35,7 +35,8 @@ using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be co
 //#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
 #include "StraitsEastSandsVisual.hpp"         // Visual DNA editor (East)
 #include "StraitsSandsMacroVisual.hpp"        // Visual DNA editor (Macro)
-#include "SandsDistributionExpander.hpp"      // THE §14 STORE's owner (full type: the snapshot reads it)
+#include "SandsPhaseDistSubpanel.hpp"         // THE §14 STORE's owner (CC_FIX_PHASE_STORE_ON_SUBPANEL:
+                                              // full type: the snapshot reads it)
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
 #include "ui/IntertropicalPairing.hpp"   // assignPairIdT / resolveFollowedT — host identity + shared-CA (template forms; the calls below carry the gate marker)
@@ -159,25 +160,28 @@ void Monsoon::updateExpanderPointers() {
         if (pairId > 0) pairChecked = true;   // latch only on success; a capped-out Monsoon keeps retrying
     }
 
-    // ── THE PHASE-DISTORTION EXPANDER MODEL (PHASE_DISTRIBUTION_SPEC §14 — the store's
-    // owner, resolved at control rate, epoch-memoized) ──────────────────────────────
+    // ── THE PHASE-DISTORTION SOURCE (PHASE_DISTRIBUTION_SPEC §14, amended by
+    // CC_FIX_PHASE_STORE_ON_SUBPANEL — the store's owner resolved at control rate,
+    // epoch-memoized) ───────────────────────────────────────────────────────────────
     // RACK-WIDE first-found (the LOWEST module id — deterministic under any module
     // order, the same determinism resolveFollowedT's scan gives pairId matches): the
-    // adopted model serves the WHOLE Monsoon network from ONE expander's store, so a
-    // Monsoon in another segment must still find it — the segment walk (the
-    // expanderManager's adjacency caches) is the wrong tool here. If several
-    // distribution expanders exist, the lowest id wins (documented; one store, one
-    // reading). nullptr = no expander: both tiers run the raw path (bit-identical).
-    // Runs inside updateExpanderPointers → the epoch guard fires it ONLY on a
-    // topology event (the lookup authority's law: event-driven, never polled).
-    phaseDistExpander_ = nullptr;
+    // model serves the WHOLE Monsoon network from ONE subpanel's store, so a Monsoon
+    // in another segment must still find it — the segment walk (the
+    // expanderManager's adjacency caches) is the wrong tool here. The scan is keyed
+    // to the SUBPANEL model (the phase authoring surface — the Distribution
+    // expander is no longer involved at all). If several phase subpanels exist, the
+    // lowest id wins (documented; one store, one reading). nullptr = no subpanel:
+    // both tiers run the raw path (bit-identical). Runs inside
+    // updateExpanderPointers → the epoch guard fires it ONLY on a topology event
+    // (the lookup authority's law: event-driven, never polled).
+    phaseDistPanel_ = nullptr;
     if (APP && APP->engine) {
         int64_t bestId = INT64_MAX;
         for (int64_t mid : APP->engine->getModuleIds()) {
             rack::Module* om = APP->engine->getModule(mid);
             if (!om || om == this) continue;
-            if (auto* e = dynamic_cast<SandsDistributionExpander*>(om)) {
-                if (mid < bestId) { phaseDistExpander_ = e; bestId = mid; }
+            if (auto* e = dynamic_cast<SandsPhaseDistSubpanel*>(om)) {
+                if (mid < bestId) { phaseDistPanel_ = e; bestId = mid; }
             }
         }
     }
@@ -1692,11 +1696,11 @@ void Monsoon::process(const ProcessArgs& args) {
         // BLOCK-CONSISTENT with the values it guards). No expander → both flags
         // identity → the raw path. The index params round+clamp here too: an index
         // change lands at a block boundary like every set change.
-        if (phaseDistExpander_) {
+        if (phaseDistPanel_) {
             const int phIdx = std::clamp((int)std::lround(params[PHASE_SET_PARAM].getValue()), 1, 8) - 1;
             const int sbIdx = std::clamp((int)std::lround(params[SUBPHASE_SET_PARAM].getValue()), 1, 8) - 1;
-            phaseDistExpander_->phaseDistStore.snapshotSet(phIdx, phaseDistSnap_[0]);
-            phaseDistExpander_->phaseDistStore.snapshotSet(sbIdx, phaseDistSnap_[1]);
+            phaseDistPanel_->phaseDistStore.snapshotSet(phIdx, phaseDistSnap_[0]);
+            phaseDistPanel_->phaseDistStore.snapshotSet(sbIdx, phaseDistSnap_[1]);
             phaseDistIdentity_[0] = phaseDistSnap_[0].isIdentity();
             phaseDistIdentity_[1] = phaseDistSnap_[1].isIdentity();
         } else {

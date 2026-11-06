@@ -637,21 +637,25 @@ struct MonsoonLeftMessage {
 };
 
 // ------------------------------- Module --------------------------------------
-struct SandsDistributionExpander;   // the §14 store's owner — a pointer member below;
-                                    // Monsoon.cpp includes the full header (the expander
-                                    // header includes THIS one — no cycle)
+struct SandsPhaseDistSubpanel;      // the §14 store's owner (CC_FIX_PHASE_STORE_ON_SUBPANEL:
+                                    // the phase AUTHORING subpanel, self-contained) — a
+                                    // pointer member below; Monsoon.cpp includes the full
+                                    // header (that header includes THIS one — no cycle)
 struct Monsoon : Module {
     ClockEngine clock;
     redDot::PhaseEngine phase;   // Mode E: CV1 phase ramp → pulse grid (forward+reverse)
 
-    // ── THE PHASE-DISTORTION EXPANDER MODEL (PHASE_DISTRIBUTION_SPEC §14) ──────
-    // The store's owner, resolved at the Control tier by a rack-wide first-found
-    // (lowest module id — deterministic under any module order) scan, epoch-memoized
-    // (the lookup authority's law: event-driven re-resolution, never polled). The
-    // adopted model serves the WHOLE Monsoon network from ONE expander's store
+    // ── THE PHASE-DISTORTION SOURCE (PHASE_DISTRIBUTION_SPEC §14, amended by
+    // CC_FIX_PHASE_STORE_ON_SUBPANEL) ─────────────────────────────────────────────
+    // The PhaseDistStore's owner is now the SandsPhaseDistSubpanel (the phase
+    // AUTHORING surface — requiring IT is not a surprise; requiring the unrelated
+    // Distribution expander was). Resolved at the Control tier by a rack-wide
+    // first-found (lowest module id — deterministic under any module order) scan,
+    // epoch-memoized (the lookup authority's law: event-driven re-resolution, never
+    // polled). The model serves the WHOLE Monsoon network from ONE subpanel's store
     // ("several Monsoons may read the same parameter set"), so the segment walk is
     // the wrong tool here — a Monsoon in another segment must still find it.
-    SandsDistributionExpander* phaseDistExpander_ = nullptr;
+    SandsPhaseDistSubpanel* phaseDistPanel_ = nullptr;
     // THE READER'S PER-BLOCK SNAPSHOT (the Task-1 mechanism's reader half): copied
     // ONCE per Control-tier tick from the store under its mutex, then read PER SAMPLE
     // by the Mode E path — engine-thread-private state, no lock on the hot path.

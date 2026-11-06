@@ -447,6 +447,11 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
             if (macroRoleNow()) mm->requestWarpRebuildLaneDelegating(lane);
             else                mm->requestWarpRebuildVoiceLane(slotLive(), lane);
         };
+        // THE CHANGE-GATE'S HOST PIN (CC_FIX_CURVE_WIDGET_CPU): this refresh re-binds
+        // the plot's callables/markers — bump the host generation so the widget's
+        // fingerprint differs THIS frame even if the new bindings probe-identically
+        // (a selection change to a value-identical set still rebuilds exactly once).
+        curve->hostGeneration++;
     }
 
     // The permanent editor's kind picker (Rodney: "Popup panel has a context menu

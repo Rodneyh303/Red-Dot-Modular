@@ -43,6 +43,8 @@
 #include <rack.hpp>
 #include <array>
 #include <cstdio>
+#include <cstring>
+#include <cstdint>
 #include <functional>
 
 #include "../dsp/Distribution.hpp"
@@ -50,6 +52,83 @@
 #include "../dsp/WarpStages.hpp"   // §10's guarded f_W (the effective warp plot)
 
 namespace dotModular {
+
+// ── THE CHANGE-GATE (CC_FIX_CURVE_WIDGET_CPU): the 200-point sample sweep is
+// CACHED, rebuilt ONLY when an input to the curve moved. The old draw() sampled
+// every frame — a static curve cost the same as a moving one, and disconnect was
+// irrelevant because the plot is UI — ~5–6% idle CPU on the phase panels, ~1.7%
+// on the Sands distribution plot.
+//
+// THE FINGERPRINT = EXACTLY the current rebuild's reads (the SweepSig pattern —
+// ui/SweepSigGate.hpp is the shape; the skip-on-unchanged law, NOT a new scheme).
+// The sweep's reads are the CALLABLES' OUTPUTS and the bound scalars, so the sig
+// PROBES them at kCurveSigN = 9 fixed u's and bit-compares the doubles:
+//   · effective branch (warpT bound): warpT(u_k), warpTpdf(u_k) — the hosts
+//     compose the live store/set values INTO these (the widget-lambdas read the
+//     views each call), so any value drift shows in the probe bits;
+//   · bare branch: dist->pdf(u_k), dist->cdf(u_k) + the dist pointer (the CDF
+//     stroke reads the cdf per point in the bare draw — cached now too);
+//   · the scalars the sweep + stroke read: warpDepth (signed — the sign IS the
+//     reading), warpTDual, gapLo/gapHi, atomLevel/atomMass (the overlays);
+//   · hostGeneration — the HOSTS' rebind counter: every refreshEditor()/refresh()
+//     that re-binds warpT/warpTpdf/dist bumps it, so a deliberate host rebind
+//     (a selection change, a kind menu, a channel flip) ALWAYS rebuilds exactly
+//     once, even if the new callables probe-identically at the 9 points;
+//   · box size — a resize changes nothing in the unit-space cache but is
+//     conservative-complete (the fix doc lists geometry; one rebuild on resize).
+// DELIBERATELY NOT FINGERPRINTED (the SweepSig law — an input the sweep cannot
+// read only causes spurious rebuilds, zero correctness): editCurve's points
+// (drawn live, never cached), isLight (colours only), the dist pointer in the
+// EFFECTIVE branch (the sweep never touches dist there). Mode flips are caught
+// by the effective flag itself, so a mode change can never hide a stale branch.
+// Bit-compares throughout (memcmp) — the SweepSig conservatism: the gate can
+// only re-run spuriously (±0, padding), never miss a change.
+static constexpr int kCurveSigN = 9;   // probe points u_k = k/(kCurveSigN−1)
+
+struct CurveSig {
+    bool valid = false;                       // false ⟹ first draw, rebuild once
+    bool effective = false;                   // bool(warpT) — the mode flag
+    bool warpTDual = false;                   // the reading (dual/quantile)
+    float warpDepth = 0.f;                    // the signed depth, k = |w|
+    double gapLo = 0.0, gapHi = 0.0;
+    double atomLevel = 0.0, atomMass = 0.0;
+    uint32_t hostGeneration = 0;              // the hosts' rebind counter
+    float boxW = 0.f, boxH = 0.f;             // geometry (conservative-complete)
+    const void* dist = nullptr;               // read only in the BARE branch
+    std::array<double, kCurveSigN> probeT = {};      // warpT(u_k)        — effective
+    std::array<double, kCurveSigN> probePdf = {};    // warpTpdf(u_k)     — effective
+    std::array<double, kCurveSigN> probeDistPdf = {};  // dist->pdf(u_k)  — bare
+    std::array<double, kCurveSigN> probeDistCdf = {};  // dist->cdf(u_k)  — bare
+};
+
+// Capture the signature exactly as a rebuild is about to consume it (read-only
+// on every fingerprinted input — the SweepSigGate placement law).
+inline CurveSig captureCurveSig(const struct DistributionCurveWidget& w);
+
+// The gate decision: true ⟹ the cache MUST rebuild; false ⟹ the cached arrays
+// already hold the exact bits a rebuild would produce (pure function of the
+// fingerprinted inputs, bit-unchanged).
+inline bool curveSigChanged(const CurveSig& a, const CurveSig& b) {
+    if (!a.valid || !b.valid) return true;
+    if (a.effective != b.effective || a.warpTDual != b.warpTDual) return true;
+    if (0 != std::memcmp(&a.warpDepth, &b.warpDepth, sizeof(float))) return true;
+    if (0 != std::memcmp(&a.gapLo, &b.gapLo, sizeof(double))) return true;
+    if (0 != std::memcmp(&a.gapHi, &b.gapHi, sizeof(double))) return true;
+    if (0 != std::memcmp(&a.atomLevel, &b.atomLevel, sizeof(double))) return true;
+    if (0 != std::memcmp(&a.atomMass, &b.atomMass, sizeof(double))) return true;
+    if (a.hostGeneration != b.hostGeneration) return true;
+    if (0 != std::memcmp(&a.boxW, &b.boxW, sizeof(float))) return true;
+    if (0 != std::memcmp(&a.boxH, &b.boxH, sizeof(float))) return true;
+    if (a.effective) {
+        if (0 != std::memcmp(a.probeT.data(), b.probeT.data(), sizeof(a.probeT))) return true;
+        if (0 != std::memcmp(a.probePdf.data(), b.probePdf.data(), sizeof(a.probePdf))) return true;
+    } else {
+        if (a.dist != b.dist) return true;
+        if (0 != std::memcmp(a.probeDistPdf.data(), b.probeDistPdf.data(), sizeof(a.probeDistPdf))) return true;
+        if (0 != std::memcmp(a.probeDistCdf.data(), b.probeDistCdf.data(), sizeof(a.probeDistCdf))) return true;
+    }
+    return false;
+}
 
 struct DistributionCurveWidget : rack::widget::Widget {
     // ── data bindings ────────────────────────────────────────────────────────────────────
@@ -100,6 +179,23 @@ struct DistributionCurveWidget : rack::widget::Widget {
     std::function<double(double)> warpT;      // T(u): the composed READING's target — unbound = the bare draw
     std::function<double(double)> warpTpdf;   // the READING's derivative factor AT u (host-composed)
     bool warpTDual = false;                   // true: T is a CDF (the dual) — the fill takes the dual form
+
+    // ── THE CACHE (CC_FIX_CURVE_WIDGET_CPU): the sample sweep's output lives HERE,
+    // not on draw()'s stack. draw() strokes these; rebuildCurve() fills them.
+    // (std::array members — the array-guard's P-B form.)
+    static constexpr int kPlotN = 200;                       // the sweep's resolution (unchanged)
+    std::array<double, kPlotN + 1> xs_{};    // effective: x = W(u_i); bare: u_i
+    std::array<double, kPlotN + 1> pdfs_{};  // the drawn densities (the fill's samples)
+    std::array<double, kPlotN + 1> cdfY_{};  // the CDF trace's y: effective u_i, bare cdf(u_i)
+    double maxD_ = 1e-6;                     // the fill's auto-max (open interval, unchanged)
+    bool   effective_ = false;               // bool(warpT) AT the last rebuild
+    CurveSig sig_{};                         // the fingerprint the cache was built under
+    // The hosts' rebind counter: bump on EVERY refreshEditor()/refresh() that
+    // re-binds warpT/warpTpdf/dist (see CurveSig). Public — the hosts bump it.
+    uint32_t hostGeneration = 0;
+    // The gate's test pin: how many rebuilds actually ran. A static state holds it
+    // still; each parameter/depth/selection/resize change steps it by exactly one.
+    uint32_t rebuildCount = 0;
 
     // ── THE GAP BAND (PHASE_DISTRIBUTION_SPEC — the atom bar's twin): the
     // zero-density interval [gapLo, gapHi] shaded as a RECESS (a cool slate hatching
@@ -161,6 +257,48 @@ struct DistributionCurveWidget : rack::widget::Widget {
         return best;
     }
 
+    // ── THE REBUILD (CC_FIX_CURVE_WIDGET_CPU): the sample sweep moved OUT of draw()
+    // — same loop, same evals, same order, same math (the fix doc's DO-NOT: only
+    // WHEN it is evaluated changed, never WHAT). Fills xs_/pdfs_/cdfY_/maxD_ and
+    // captures the fingerprint the cache was built under. One evaluation of the
+    // curve per genuine change; a static state never reaches here.
+    void rebuildCurve() {
+        effective_ = bool(warpT);
+        double maxD = 1e-6;   // the floor keeps a zero-density degenerate off 0/0 (unchanged)
+        // THE GATE IS THE BINDING (CC_FIX_PHASE_PLOT_NEGATIVE_WARP): a bound target
+        // draws the effective mix at the signed depth — EITHER sign (the old
+        // warpDepth >= 0 gate threw the whole negative side to the bare target, so
+        // w = −0.01 snapped to the full dual while the engine barely moved). An
+        // unbound target is the legacy bare draw, regardless of depth.
+        if (effective_) {
+            const double k = warpStages::warpEffectiveK(warpDepth);
+            for (int i = 0; i <= kPlotN; ++i) {
+                const double u = (double)i / (double)kPlotN;
+                const double t = warpT(u);       // the target point T(u)
+                xs_[(size_t)i] = (1.0 - k) * u + k * t;   // W(u) — monotone: T is
+                // the fill factor is the READING's, already composed by the host AT
+                // u (f(T(u)) for the quantile, g'(u) for the dual — see the binding
+                // note), and the closed form follows the reading with it
+                const double fac = warpTpdf(u);
+                pdfs_[(size_t)i] = warpTDual ? warpStages::warpEffectivePdfDual(k, fac)
+                                             : warpStages::warpEffectivePdf(k, fac);   // f_W, guarded
+                if (i > 0 && i < kPlotN && pdfs_[(size_t)i] > maxD) maxD = pdfs_[(size_t)i];
+                cdfY_[(size_t)i] = u;            // the §10 PARAMETRIC trace's y
+            }
+        } else {
+            for (int i = 0; i <= kPlotN; ++i) {
+                const double u = (double)i / (double)kPlotN;
+                xs_[(size_t)i] = u;
+                pdfs_[(size_t)i] = dist->pdf(u);
+                if (i > 0 && i < kPlotN && pdfs_[(size_t)i] > maxD) maxD = pdfs_[(size_t)i];
+                cdfY_[(size_t)i] = dist->cdf(u);   // the bare CDF trace (was per-frame, now cached)
+            }
+        }
+        maxD_ = maxD;
+        sig_ = captureCurveSig(*this);
+        ++rebuildCount;
+    }
+
     // ── drawing ──────────────────────────────────────────────────────────────────────────
     void draw(const rack::widget::Widget::DrawArgs& args) override {
         NVGcontext* vg = args.vg;
@@ -193,42 +331,20 @@ struct DistributionCurveWidget : rack::widget::Widget {
             return;
         }
 
-        // Sample ONCE: the bare target's density (legacy) or — §10 — one sweep of the
-        // effective warp mix, giving the output points xs[] and the warped densities
-        // pdfs[] together. AUTO-MAX over the OPEN interval (endpoints excluded — the
-        // finite edge-proxy of a divergent density must not define the scale); floor
-        // keeps a zero-density degenerate from producing a 0/0 scale. (The scratch
-        // buffers are std::array — the array-guard's P-B form, draw-local.)
-        constexpr int kPlotN = 200;
-        std::array<double, kPlotN + 1> pdfs;
-        std::array<double, kPlotN + 1> xs;       // effective mode: the output point x = W(u_i)
-        double maxD = 1e-6;
-        // THE GATE IS THE BINDING (CC_FIX_PHASE_PLOT_NEGATIVE_WARP): a bound target
-        // draws the effective mix at the signed depth — EITHER sign (the old
-        // warpDepth >= 0 gate threw the whole negative side to the bare target, so
-        // w = −0.01 snapped to the full dual while the engine barely moved). An
-        // unbound target is the legacy bare draw, regardless of depth.
-        const bool effective = bool(warpT);
-        if (effective) {
-            const double k = warpStages::warpEffectiveK(warpDepth);
-            for (int i = 0; i <= kPlotN; ++i) {
-                const double u = (double)i / (double)kPlotN;
-                const double t = warpT(u);       // the target point T(u)
-                xs[(size_t)i] = (1.0 - k) * u + k * t;   // W(u) — monotone: T is
-                // the fill factor is the READING's, already composed by the host AT
-                // u (f(T(u)) for the quantile, g'(u) for the dual — see the binding
-                // note), and the closed form follows the reading with it
-                const double fac = warpTpdf(u);
-                pdfs[(size_t)i] = warpTDual ? warpStages::warpEffectivePdfDual(k, fac)
-                                            : warpStages::warpEffectivePdf(k, fac);   // f_W, guarded
-                if (i > 0 && i < kPlotN && pdfs[(size_t)i] > maxD) maxD = pdfs[(size_t)i];
-            }
-        } else {
-            for (int i = 0; i <= kPlotN; ++i) {
-                pdfs[(size_t)i] = dist->pdf((double)i / (double)kPlotN);
-                if (i > 0 && i < kPlotN && pdfs[(size_t)i] > maxD) maxD = pdfs[(size_t)i];
-            }
-        }
+        // Sample ONCE per CHANGE: the bare target's density (legacy) or — §10 — one
+        // sweep of the effective warp mix, giving the output points xs_[] and the
+        // warped densities pdfs_[] together (plus the CDF trace's ys — cached in the
+        // bare mode too, where the stroke used to evaluate cdf per point per frame).
+        // The CHANGE-GATE fingerprints the sweep's exact reads (CurveSig — the
+        // SweepSig pattern) and rebuilds ONLY on a move; a static curve —
+        // disconnected, idle, any static params — strokes the cache and evaluates
+        // NOTHING (the fix doc: pixel-identical output, the ~5–6% idle cost falls
+        // to the stroke-only path). First draw (no cache yet) rebuilds once.
+        // AUTO-MAX over the OPEN interval (endpoints excluded — the finite
+        // edge-proxy of a divergent density must not define the scale).
+        CurveSig now = captureCurveSig(*this);
+        if (curveSigChanged(sig_, now)) rebuildCurve();
+        const bool effective = effective_;
 
         nvgSave(vg);
         nvgScissor(vg, px, py, pw, ph);
@@ -261,8 +377,8 @@ struct DistributionCurveWidget : rack::widget::Widget {
         nvgBeginPath(vg);
         nvgMoveTo(vg, px, py + ph);
         for (int i = 0; i <= kPlotN; ++i) {
-            const double x = effective ? xs[(size_t)i] : (double)i / (double)kPlotN;
-            double d = pdfs[(size_t)i] / maxD;
+            const double x = effective ? xs_[(size_t)i] : (double)i / (double)kPlotN;
+            double d = pdfs_[(size_t)i] / maxD_;
             if (d < 0.0) d = 0.0;
             if (d > 1.0) d = 1.0;
             nvgLineTo(vg, px + (float)x * pw, py + ph - (float)d * ph);
@@ -336,8 +452,8 @@ struct DistributionCurveWidget : rack::widget::Widget {
         // §10 PARAMETRIC trace (W(u_i), u_i) — the exact warped CDF, no inversion.
         nvgBeginPath(vg);
         for (int i = 0; i <= kPlotN; ++i) {
-            const double x = effective ? xs[(size_t)i] : (double)i / (double)kPlotN;
-            const double y = effective ? (double)i / (double)kPlotN : dist->cdf(x);
+            const double x = effective ? xs_[(size_t)i] : (double)i / (double)kPlotN;
+            const double y = effective ? cdfY_[(size_t)i] : dist->cdf(x);
             const rack::math::Vec c = toPx(x, y);
             if (i == 0) nvgMoveTo(vg, c.x, c.y);
             else        nvgLineTo(vg, c.x, c.y);
@@ -404,21 +520,22 @@ struct DistributionCurveWidget : rack::widget::Widget {
             nvgText(vg, px - 3.5f, y, buf, nullptr);
         }
         // RHS: the PDF density scale, 0→auto-max (the fill's normalization), colour-matched
+        // (the cached maxD_ — the SAME bits the fill normalizes against, CC_FIX_CURVE_WIDGET_CPU)
         nvgStrokeColor(vg, pdfCol);
         nvgFillColor(vg, pdfCol);
         nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
         for (int i = 0; i <= 4; ++i) {
             const double f = (double)i / 4.0;
-            const double v = maxD * f;
+            const double v = maxD_ * f;
             const float y = (float)(py + (1.0 - f) * (double)ph);
             nvgBeginPath(vg);
             nvgMoveTo(vg, px + pw, y);
             nvgLineTo(vg, px + pw + 2.f, y);
             nvgStroke(vg);
             char buf[16];
-            if (maxD >= 100.0)      std::snprintf(buf, sizeof buf, "%.0f", v);
-            else if (maxD >= 10.0)  std::snprintf(buf, sizeof buf, "%.1f", v);
-            else if (maxD >= 0.01)  std::snprintf(buf, sizeof buf, "%.2f", v);
+            if (maxD_ >= 100.0)      std::snprintf(buf, sizeof buf, "%.0f", v);
+            else if (maxD_ >= 10.0)  std::snprintf(buf, sizeof buf, "%.1f", v);
+            else if (maxD_ >= 0.01)  std::snprintf(buf, sizeof buf, "%.2f", v);
             else                    std::snprintf(buf, sizeof buf, "%.2g", v);
             nvgText(vg, px + pw + 3.5f, y, buf, nullptr);
         }
@@ -514,5 +631,33 @@ struct DistributionCurveWidget : rack::widget::Widget {
         rack::widget::Widget::onHover(e);   // not consumed — tooltips / cursor still work
     }
 };
+
+// The signature capture (defined AFTER the widget — it reads its bindings).
+inline CurveSig captureCurveSig(const struct DistributionCurveWidget& w) {
+    CurveSig s;
+    s.valid = true;
+    s.effective = bool(w.warpT);
+    s.warpTDual = w.warpTDual;
+    s.warpDepth = w.warpDepth;
+    s.gapLo = w.gapLo;   s.gapHi = w.gapHi;
+    s.atomLevel = w.atomLevel; s.atomMass = w.atomMass;
+    s.hostGeneration = w.hostGeneration;
+    s.boxW = w.box.size.x; s.boxH = w.box.size.y;
+    if (s.effective) {
+        for (int i = 0; i < kCurveSigN; ++i) {
+            const double u = (double)i / (double)(kCurveSigN - 1);
+            s.probeT[i]   = w.warpT(u);
+            s.probePdf[i] = w.warpTpdf(u);
+        }
+    } else if (w.dist) {
+        s.dist = w.dist;
+        for (int i = 0; i < kCurveSigN; ++i) {
+            const double u = (double)i / (double)(kCurveSigN - 1);
+            s.probeDistPdf[i] = w.dist->pdf(u);
+            s.probeDistCdf[i] = w.dist->cdf(u);
+        }
+    }
+    return s;
+}
 
 } // namespace dotModular

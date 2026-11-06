@@ -271,6 +271,11 @@ struct PhaseDistortionWidget : ModuleWidget,
             // g'(u) — the chain pdf AT u (the CC_FIX_PHASE_PLOT_NEGATIVE_WARP law).
             return dualReading ? kView_->pdf(u) : kView_->pdf(kView_->invCDF(u));
         };
+        // THE CHANGE-GATE'S HOST PIN (CC_FIX_CURVE_WIDGET_CPU): this refresh re-binds
+        // the plot's callables/markers — bump the host generation so the widget's
+        // fingerprint differs THIS frame even if the new bindings probe-identically
+        // (a selection change to a value-identical set still rebuilds exactly once).
+        curve->hostGeneration++;
     }
 
     PhaseDistortionWidget(PhaseDistortion* mod) {

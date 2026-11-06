@@ -1,6 +1,8 @@
 // SandsPhaseDistSubpanel.cpp — the phase-distortion sets panel's process glue +
-// widget (docs/design/CC_PROMPT_PHASE_DISTORTION_PANEL.md TASK 1; the store, the
-// snapshot and the primitive are the LANDED engine — untouched, the prompt's DO-NOT).
+// widget (docs/design/CC_PROMPT_PHASE_DISTORTION_PANEL.md TASK 1; the snapshot and
+// the primitive are the LANDED engine — untouched, the prompt's DO-NOT; the store's
+// OWNER moved onto this module — CC_FIX_PHASE_STORE_ON_SUBPANEL, the type itself
+// untouched).
 //
 // THE WIDGET mirrors the standalone module's panel (build B) minus the jacks: the
 // 8×8 store-backed grid, the focus buttons, ONE permanent DistributionCurveWidget
@@ -8,7 +10,8 @@
 // markers exchange on the dual side, the always-K density view fills the mix), and
 // the kind menu (the bare palette minus Drawn — the phase store has no drawn pool;
 // the menu mints members through makeKindDefault + lowerWarp, the shared value
-// authorities). The source here is the RESOLVED store owner's PhaseDistStore.
+// authorities). The source here is THIS module's own PhaseDistStore (the owner IS
+// the subpanel — no rack-wide scan anymore).
 //
 // THE ROW GRID: the distribution expander's param axis verbatim (P1 P2 TILT LEVEL
 // MASS | GAPLOC GAPSIZE | WARP). Row k edits store set k ONLY (the gate: write on
@@ -20,7 +23,6 @@
 
 #include "SandsPhaseDistSubpanel.hpp"
 
-#include "SandsDistributionExpander.hpp"   // the store's owner (the resolved type)
 #include <cmath>
 #include <cstring>
 
@@ -37,28 +39,6 @@
 
 using namespace dotModular;
 namespace ws = dotModular::warpStages;   // the gap/dual display helpers (WarpStages.hpp)
-
-// ── the store owner: the rack-wide LOWEST-ID distribution expander (the SAME scan
-// Monsoon.cpp's updateExpanderPointers runs — one store, one reading), memoized by
-// the topology epoch. The send subpanel's resolveMacroHost is the memo shape.
-SandsDistributionExpander* SandsPhaseDistSubpanel::resolveStoreOwner() {
-    return redDot::lookupMemoizedT(this, 0,
-        [](SandsPhaseDistSubpanel* self, int) -> SandsDistributionExpander* {
-            (void)self;
-            SandsDistributionExpander* best = nullptr;
-            if (APP && APP->engine) {
-                int64_t bestId = INT64_MAX;
-                for (int64_t mid : APP->engine->getModuleIds()) {
-                    rack::Module* om = APP->engine->getModule(mid);
-                    if (!om) continue;
-                    if (auto* e = dynamic_cast<SandsDistributionExpander*>(om)) {
-                        if (mid < bestId) { best = e; bestId = mid; }
-                    }
-                }
-            }
-            return best;
-        });
-}
 
 bool SandsPhaseDistSubpanel::isFamilyModel(const rack::Model* m) {
     // The Sands subpanel family (seam continuity + the left-link check): the two
@@ -174,7 +154,7 @@ struct SandsPhaseDistSubpanelWidget : ModuleWidget,
 
     // row focus (UI-only) + the knob registry for the per-kind windows
     int editorSet_ = 0;
-    redDot::StoreKnob<SandsDistributionExpander>* knobs_[KSETS][NPAR] = {};
+    redDot::StoreKnob<SandsPhaseDistSubpanel>* knobs_[KSETS][NPAR] = {};
     int lastKind_[KSETS] = {-1, -1, -1, -1, -1, -1, -1, -1};
 
     SandsPhaseDistSubpanel* mod() const {
@@ -186,8 +166,7 @@ struct SandsPhaseDistSubpanelWidget : ModuleWidget,
     void openPdsKindMenu() {
         SandsPhaseDistSubpanel* sp = mod();
         if (!sp) return;
-        auto* owner = sp->resolveStoreOwner();
-        if (!owner) return;
+        SandsPhaseDistSubpanel* owner = sp;   // THE OWNER IS THIS MODULE (CC_FIX_PHASE_STORE_ON_SUBPANEL)
         Menu* menu = createMenu();
         menu->addChild(createMenuLabel(std::string("Warp curve — set ")
                                        + std::to_string(editorSet_ + 1)));
@@ -195,7 +174,7 @@ struct SandsPhaseDistSubpanelWidget : ModuleWidget,
         const WarpF curF = owner->phaseDistStore.sets_[editorSet_].f;
         const int curKind = (int)curF.index();
         struct KindItem : MenuItem {
-            SandsDistributionExpander* owner = nullptr;
+            SandsPhaseDistSubpanel* owner = nullptr;
             int set = 0;
             int kind = 0;
             SandsPhaseDistSubpanelWidget* w = nullptr;
@@ -232,8 +211,7 @@ struct SandsPhaseDistSubpanelWidget : ModuleWidget,
     void refreshEditor(int set) {
         SandsPhaseDistSubpanel* sp = mod();
         if (!sp || !curve) return;
-        auto* owner = sp->resolveStoreOwner();
-        if (!owner) return;   // no store in reach: the last view stays (the badge reports)
+        SandsPhaseDistSubpanel* owner = sp;   // THE OWNER IS THIS MODULE (CC_FIX_PHASE_STORE_ON_SUBPANEL)
         const redDot::PhaseDistSet& s = owner->phaseDistStore.sets_[set];   // UI thread: its own writes
         memberView_ = WarpCurvePopup::distFromWarp(s.f);
         curve->editCurve = nullptr;   // DISPLAY-ONLY: the phase tier has no drawn pool
@@ -275,6 +253,11 @@ struct SandsPhaseDistSubpanelWidget : ModuleWidget,
             // chain pdf AT u (the CC_FIX_PHASE_PLOT_NEGATIVE_WARP law).
             return dualReading ? kView_->pdf(u) : kView_->pdf(kView_->invCDF(u));
         };
+        // THE CHANGE-GATE'S HOST PIN (CC_FIX_CURVE_WIDGET_CPU): this refresh re-binds
+        // the plot's callables/markers — bump the host generation so the widget's
+        // fingerprint differs THIS frame even if the new bindings probe-identically
+        // (a row-focus change to a value-identical set still rebuilds exactly once).
+        curve->hostGeneration++;
     }
 
     SandsPhaseDistSubpanelWidget(SandsPhaseDistSubpanel* mod) {
@@ -295,11 +278,11 @@ struct SandsPhaseDistSubpanelWidget : ModuleWidget,
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        // the store owner resolves at USE time (attach/detach-safe — the StoreKnob
-        // resolver law; the rack-wide scan runs on the topology epoch)
-        auto resolveOwner = [this]() -> SandsDistributionExpander* {
-            auto* sp = dynamic_cast<SandsPhaseDistSubpanel*>(module);
-            return sp ? sp->resolveStoreOwner() : nullptr;
+        // the store owner is THIS module (CC_FIX_PHASE_STORE_ON_SUBPANEL — the
+        // StoreKnob resolver law's shape kept: resolve at USE time, dynamic_cast to
+        // the subpanel, null only in the browser preview)
+        auto resolveOwner = [this]() -> SandsPhaseDistSubpanel* {
+            return dynamic_cast<SandsPhaseDistSubpanel*>(module);
         };
 
         // ── the 64 store-backed phase-distortion controls (8 sets x 8 params) ──
@@ -317,13 +300,13 @@ struct SandsPhaseDistSubpanelWidget : ModuleWidget,
                 if (p == 5) { lo = -1.f; hi = 1.f; def = 0.f; }
                 if (p == 6) { lo = 0.f; hi = 1.f; def = (float)warpStages::kGapLocDefault; }
                 if (p == 7) { lo = 0.f; hi = 1.f; def = (float)warpStages::kGapSizeDefault; }
-                auto* k = redDot::bindStoreKnob<SandsDistributionExpander, redDot::Tag_Grey_Trim_Bar>(
+                auto* k = redDot::bindStoreKnob<SandsPhaseDistSubpanel, redDot::Tag_Grey_Trim_Bar>(
                     // the anchor name is a LITERAL (the audit's bind matcher reads
                     // the widget source's string tokens)
                     this, "param_pds_" + std::to_string(set) + "_" + std::to_string(p),
                     resolveOwner, lo, hi, def,
                     "Set " + std::to_string(set + 1) + " " + SandsPhaseDistIds::PARAM_CAPTIONS[p],
-                    [set, p](SandsDistributionExpander& o) -> float {
+                    [set, p](SandsPhaseDistSubpanel& o) -> float {
                         const redDot::PhaseDistSet& s = o.phaseDistStore.sets_[set];
                         switch (p) {
                             case 0: case 1: return (float)warpParamValue(s.f, p);
@@ -335,7 +318,7 @@ struct SandsPhaseDistSubpanelWidget : ModuleWidget,
                             default: return s.gapSize;
                         }
                     },
-                    [set, p](SandsDistributionExpander& o, float v) {
+                    [set, p](SandsPhaseDistSubpanel& o, float v) {
                         redDot::PhaseDistSet s = o.phaseDistStore.sets_[set];
                         switch (p) {
                             case 0: case 1: s.f = warpWithParam(s.f, p, (double)v); break;
@@ -352,10 +335,8 @@ struct SandsPhaseDistSubpanelWidget : ModuleWidget,
                 // P1/P2: the kind window + the absent-param lock refresh in step()
                 if (p <= 1) {
                     k->lockWhen = [mod, set, p]() -> bool {
-                        if (!mod) return true;
-                        auto* o = mod->resolveStoreOwner();
-                        if (!o) return true;
-                        const WarpF& f = o->phaseDistStore.sets_[set].f;
+                        if (!mod) return true;   // THE OWNER IS THIS MODULE — mod's own store
+                        const WarpF& f = mod->phaseDistStore.sets_[set].f;
                         return !warpParamSpec(warpEffKind(f), p).present;
                     };
                 }
@@ -417,7 +398,6 @@ struct SandsPhaseDistSubpanelWidget : ModuleWidget,
         if (!sp) return;
         Monsoon* mon = redDot::lookupMonsoon(module);
         themeLight_ = mon && mon->lightTheme;
-        sp->storeOwnerLive = (sp->resolveStoreOwner() != nullptr);
 
         int wantLight = themeLight_ ? 1 : 0;
         if (wantLight != lastThemeLight) {
@@ -439,7 +419,9 @@ struct SandsPhaseDistSubpanelWidget : ModuleWidget,
         if (rightFiller) { rightFiller->active = familyModel(module->rightExpander.module); rightFiller->bgColour = bg; }
 
         // per-kind windows for P1/P2 (+label) — only on a kind flip per set
-        if (auto* owner = sp->resolveStoreOwner()) {
+        // (the owner IS this module — the old resolveStoreOwner branch is gone)
+        {
+            SandsPhaseDistSubpanel* owner = sp;
             for (int set = 0; set < KSETS; ++set) {
                 const int kind = warpEffKind(owner->phaseDistStore.sets_[set].f);
                 if (kind == lastKind_[set]) continue;
@@ -514,14 +496,13 @@ struct SandsPhaseDistSubpanelWidget : ModuleWidget,
             nvgFontSize(vg, mm2px(2.2f));
             nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
             nvgText(vg, mm2px(EDITOR_X0), mm2px(114.5f), buf, NULL);
-            auto* sp = mod();
             nvgFillColor(vg, dim);
             nvgFontSize(vg, mm2px(1.8f));
             nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
+            // THE STORE IS THIS PANEL'S OWN (CC_FIX_PHASE_STORE_ON_SUBPANEL) — the
+            // "NO STORE IN REACH" badge branch is gone: it can no longer happen.
             nvgText(vg, mm2px(box.size.x * (1.f / mm2px(1.f)) - 4.f), mm2px(114.5f),
-                    (sp && sp->storeOwnerLive)
-                        ? "EDITS THE NETWORK'S PHASE-DISTORTION STORE"
-                        : "NO STORE IN REACH (ADD THE DISTRIBUTION EXPANDER)", NULL);
+                    "EDITS THE NETWORK'S PHASE-DISTORTION STORE", NULL);
             nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
         }
     }
