@@ -273,3 +273,38 @@ Monsoon fed directly from the source is a one-hop path and would desync from the
 - Gates: (a) with all channels at identity, each Monsoon's output is bit-identical to today's, plus the module's fixed one-
   sample hop; (b) two Monsoons on the same output produce identical outputs sample for sample; (c) a Monsoon on output k and
   one on output j differ only by the parameter sets k and j.
+
+════════════════════════════════════════════════════════════════════════════════
+## 14. ADOPTED CONNECTION MODEL  expander, Monsoon-internal transform (Rodney-decided; SUPERSEDES section 13 for now)
+
+Section 13 (module-only) is parked. The module-only form stays a documented alternative, de-prioritised.
+
+### Model
+- Each Monsoon takes its PHASE and SUBPHASE directly from the phase source, one cable hop, the same as the direct path.
+  This is the sync guarantee: every path has the same hop count, so no module sits between source and Monsoon.
+- The TRANSFORM (tilt, gap, atom, warp, the quantise-to-pulses step) runs INSIDE each Monsoon, as ONE shared primitive.
+  It is compiled into Monsoon and used by every Monsoon; it is not duplicated per Monsoon or per module.
+- The EIGHT PARAMETER SETS (warp, tilt, gap, atom, delegation) live in the expander's store.
+- Each Monsoon holds TWO INDICES: which parameter set its phase uses, and which its subphase uses. Those are the only
+  routing choices. No matrix, no software channel routing beyond the two indices.
+- Monsoon reads its parameter set from the store with zero delay.
+
+### Conditions (required)
+1. BLOCK CONSISTENCY. Several Monsoons may read the same parameter set. Within one audio block every reader must see the
+   same values. Implement either a per-block snapshot of each set taken at block start, or a double-buffered store whose
+   writes become visible only at a block boundary. Verify the mechanism in StoreBound.hpp before building; relaxed atomics
+   alone do not guarantee it.
+2. SYNC BY CONSTRUCTION. Each Monsoon's phase arrives by one cable from the source, so all Monsoons, distorted or not,
+   share the same hop count. No Monsoon may take its phase through another module.
+
+### Gates
+- Identity sets: each Monsoon's output is bit-identical to today's (the Stage 1 gate).
+- Two Monsoons with the same index: identical outputs, sample for sample.
+- Two Monsoons with different indices: differ only by the parameter sets they read.
+- Block consistency: a parameter change mid-block is seen by all readers at the same block boundary (test with two readers
+  and a write between blocks).
+- The transform is one implementation: Monsoon calls the shared primitive; there is no second copy.
+
+### Deprioritised
+- Module-only model (section 13): kept as a documented alternative. Revisit if the store's consistency rule proves hard,
+  or if a standalone phase tool is wanted for use outside the Monsoon network.
