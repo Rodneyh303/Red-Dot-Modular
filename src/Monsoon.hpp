@@ -70,6 +70,10 @@ static inline T clampv(T v, T lo, T hi) {
 struct InputState {
     float clk, gate1, gate2, gate3;
     float run, reset, cv1, cv2;
+    // PHASE TIER Stage 2: CV3 read at audio rate in the phase origin (modeSelect == 2),
+    // where it is the SUBPHASE input (Rodney: "Lets use cv3 in for subphase"). Outside
+    // Mode E CV3 keeps its assignable-modulation role and stays on its throttled read.
+    float cv3;
     bool  gate1Rise, gate2Rise;
     // subGate (ratchet) = Gate 2 (GATE mode B) / Gate 3 (Mode D).  The fine-grid clock INSIDE main
     // gates (ratchet/tie/rest/legato within gates).  Accepts a trigger OR gate (onset-only).
@@ -289,6 +293,14 @@ namespace MonsoonIds {
         // Mode E manual phase knob. Full range = one upward ramp cycle (phase 0->1 = one bar).
         // Only used when CV1 (the phase input) is UNPATCHED -- the DAW-automatable fallback.
         PHASE_PARAM,
+
+        // PHASE TIER Stage 2: the SUBPHASE CALIBRATION knob — regionSize, quarter .. bar,
+        // CONTINUOUS (the design doc: "anything between (quarter-note → bar)"). Knob 0..1
+        // maps to regionSixteenths = 4 + 12·v (4 = one quarter, 16 = one bar). Default 1.0
+        // = one bar (the showcase value: 2 regions at a 32-step pattern; "no jumps between
+        // bars" preserved by construction). Only read in the phase origin while CV3 (the
+        // subphase input) is PATCHED — unpatched CV3 is Stage 1 exactly.
+        SUBPHASE_CAL_PARAM,
 
         NUM_PARAMS
     };
