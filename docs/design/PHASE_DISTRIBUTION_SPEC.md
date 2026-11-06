@@ -181,3 +181,49 @@ redraws on warp-depth or parameter change (not per sample).
 - run_all green on both SDK legs.
 - No change to landed gap convention, clamp, or dual sign rule.
 - ≤16 bit-identical behaviour where the feature is inactive (warp at 0, no gap set).
+
+════════════════════════════════════════════════════════════════════════════════
+## 12. CONNECTION MODEL — expander channels, per-Monsoon picks (Rodney-decided)
+
+### Shape
+- The phase distortion is an EXPANDER with EIGHT CHANNELS. A channel is a PARAMETER SET (warp, tilt, gap, atom,
+  delegation), not a signal output. The expander produces no per-sample signal.
+- Each channel is named "channel", not "output", so the spec does not imply a signal path.
+- A connected Monsoon holds TWO PICKS, stored as its own parameters and persisted with that Monsoon:
+    phaseChannel    (1..8)  — the channel distorting its transport phase
+    subphaseChannel (1..8)  — the channel distorting its subphase
+- DEFAULT PAIRING: Monsoon N defaults to channels 2N-1 (phase) and 2N (subphase). A single Monsoon uses channels 1
+  and 2 with no setup.
+- Picks are PER MONSOON, not in the expander. The expander stays a pure set of eight parameter sets, so no Monsoon
+  can change another's routing.
+
+### Read model: PULL, not push
+- Each Monsoon reads its channel's parameter set from the store and applies the transform to ITS OWN phase input.
+- Fan-out is many Monsoons holding the same channel index. Each reads the same parameters and applies the same
+  pure transform. No write, no push, no ordering dependency.
+- Zero delay: the read is a parameter read (store, control rate), and the transform runs in the reader per sample.
+- No feedback: the transform depends only on parameters and the phase input. The expander never reads Monsoon state,
+  so there is no cycle between Monsoons or between a Monsoon and the expander.
+
+### Unpatched and quantisation
+- Subphase unpatched: the subphase path is identity, and the Monsoon behaves exactly as today (bit-identical gate).
+- Each reader QUANTISES its distorted phase to its OWN 24-PPQN pulse grid. Monsoons at different PPQN land on
+  different grids but agree on position within the bar. The expander does not know either setting.
+
+### Consistency rule (required)
+Within one audio block, every reader must see the same value of each channel parameter. The store must either:
+- snapshot each channel's parameter set once per block (the reader copies it at block start), or
+- double-buffer the store so a write becomes visible at a block boundary.
+Without this, two Monsoons can disagree on the same sample when a knob moves. The chosen rule is to be verified in
+StoreBound.hpp before this is built. Relaxed atomics alone do not guarantee it.
+
+### Gates
+- Unpatched subphase: bit-identical to the Stage 1 Monsoon output (no change).
+- Two Monsoons on the same channel with identical phase input produce identical outputs, sample for sample.
+- Two Monsoons on different channels with the same phase input differ only by the channel parameters.
+- A Monsoon's picks persist with that Monsoon's patch state, and default to 2N-1 / 2N when absent.
+- No cycle: the phase graph is acyclic (phase input -> transform -> reader), checked by construction.
+
+### Open
+- Panel placement of the picks (a per-Monsoon control, or a Straits-style subpanel). Decide with the modulation
+  subpanel question, since the picks are routing, not modulation.
