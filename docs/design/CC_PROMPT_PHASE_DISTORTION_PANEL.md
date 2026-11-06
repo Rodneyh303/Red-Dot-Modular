@@ -16,7 +16,11 @@ Build a panel modelled on the Sands Distribution module (SandsDistributionExpand
   the row's focus button, the same way the distribution panel follows its selected row.
 - Header and footer text: "PHASE DISTORTION", and the selected set number.
 
-## TASK 2  Monsoon index knobs
+## TASK 2  Monsoon index knobs  DEFERRED (not in this build)
+No phase-input knobs on Monsoon for now. The phase and subphase index stays a MENU choice (MonsoonWidget menu items
+setting PHASE_SET_PARAM / SUBPHASE_SET_PARAM). Revisit when the routing panel is decided. Do not add Monsoon knobs.
+
+(Former task, kept for reference only:)
 - Place PHASE_SET_PARAM and SUBPHASE_SET_PARAM on the Monsoon panel, next to the existing phase and subphase inputs.
 - Knob range 1..8, snapped to integers (the clamp in Monsoon.cpp:1696-1697 already enforces it).
 - Label each knob with its input (PHASE SET, SUB SET). Show the set number on the knob face.
@@ -33,8 +37,7 @@ Build a panel modelled on the Sands Distribution module (SandsDistributionExpand
 - The expander panel renders 8 rows, each bound to its PhaseDistStore set index. Changing row k's knob changes set k only
   (test with the store: write a value on the panel, read back set k, other sets unchanged).
 - The plot follows the selected row.
-- Monsoon's two index knobs are placed beside the phase and subphase inputs and bound to PHASE_SET_PARAM /
-  SUBPHASE_SET_PARAM. Changing a knob changes the routed set, and the value persists with the patch.
+- Monsoon index: menu-only for now. Setting the index via the menu changes the routed set, and the value persists with the patch.
 - Audio: no change. With all sets at identity, output is unchanged from the landed engine build (the expander gate
   already in place). run_all green on both SDK legs.
 - Layout: the 8-row panel fits the module's width; check at real brightness in Rack (human review, no automated gate).
