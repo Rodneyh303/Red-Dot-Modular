@@ -194,8 +194,12 @@ redraws on warp-depth or parameter change (not per sample).
     subphaseChannel (1..8)  — the channel distorting its subphase
 - DEFAULT PAIRING: Monsoon N defaults to channels 2N-1 (phase) and 2N (subphase). A single Monsoon uses channels 1
   and 2 with no setup.
-- Picks are PER MONSOON, not in the expander. The expander stays a pure set of eight parameter sets, so no Monsoon
-  can change another's routing.
+- ROUTING TABLE ON THE EXPANDER PANEL (revised, user decision). The picks are set on the expander panel, with a
+  slot-to-channel visual like Intertropical's routing view. The expander holds a small table: one row per connected
+  Monsoon slot, giving that slot's phaseChannel and subphaseChannel. This REPLACES the earlier "picks stored per
+  Monsoon" rule. The table is still data the readers pull from; the expander still produces no signal and nothing
+  is pushed. Monsoons read their own row from the store, so the read model below is unchanged.
+- Persistence follows the table: the routing persists with the expander, default rows are 2N-1 / 2N.
 
 ### Read model: PULL, not push
 - Each Monsoon reads its channel's parameter set from the store and applies the transform to ITS OWN phase input.
@@ -225,5 +229,11 @@ StoreBound.hpp before this is built. Relaxed atomics alone do not guarantee it.
 - No cycle: the phase graph is acyclic (phase input -> transform -> reader), checked by construction.
 
 ### Open
-- Panel placement of the picks (a per-Monsoon control, or a Straits-style subpanel). Decide with the modulation
-  subpanel question, since the picks are routing, not modulation.
+- The slot-to-channel visual on the expander panel: layout and how an unconnected slot is shown. Routing is not
+  modulation, so it does not depend on the modulation-subpanel decision.
+
+### Latency decision (recorded)
+A one-sample delay was considered and rejected. It would be simpler (push, no block-consistency rule), but phase is
+position, and sync across modules is the requirement. A one-sample skew between a delayed path and a direct path would
+move a grid-boundary crossing by a sample, which breaks sync even though it is inaudible. The pull model keeps zero
+delay, and its only extra rule is block consistency.
