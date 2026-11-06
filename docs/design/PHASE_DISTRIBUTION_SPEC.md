@@ -237,3 +237,39 @@ A one-sample delay was considered and rejected. It would be simpler (push, no bl
 position, and sync across modules is the requirement. A one-sample skew between a delayed path and a direct path would
 move a grid-boundary crossing by a sample, which breaks sync even though it is inaudible. The pull model keeps zero
 delay, and its only extra rule is block consistency.
+
+════════════════════════════════════════════════════════════════════════════════
+## 13. SYNC-CRITICAL CONNECTION MODEL  module-only (Rodney-decided; SUPERSEDES section 12)
+
+Section 12 (expander channels, store-held parameter sets, per-Monsoon picks, the 8x8 matrix) is SUPERSEDED. Do not build it.
+
+### Why
+VCV Rack's manual (Voltage Standards, Timing) states that each cable adds a 1-sample delay. A phase signal that passes
+through a distortion module and a direct phase signal therefore differ by one sample, which breaks sync across modules.
+Sync is the requirement, so no path may carry a different number of hops.
+
+### Model
+- The PHASE DISTORTION MODULE has EIGHT phase inputs and EIGHT phase outputs. Channel k in -> channel k out.
+- Each channel has its own parameter set (warp, tilt, gap, atom, delegation) and its own plot in the module.
+- IDENTITY BY DEFAULT: an unpatched or zeroed channel passes phase straight through.
+- EVERY Monsoon takes its phase and subphase from the module's OUTPUTS, never from the phase source. Source -> module
+  -> Monsoon is two hops for every Monsoon, distorted or not, so all Monsoons stay in sync.
+- The channel is the jack. A Monsoon patched to output k uses parameter set k. There are no picks, no matrix, no defaults.
+- Several Monsoons may read the same output and so share its parameter set.
+
+### Rule (patching convention, not enforced by code)
+Every Monsoon's phase and subphase come from the phase distortion module. The panel or manual must state this, because a
+Monsoon fed directly from the source is a one-hop path and would desync from the rest.
+
+### Removed
+- The expander routing and its store-held channel parameters (section 12).
+- The 8x8 slot-to-output matrix.
+- Eight phase inputs on the Monsoon.
+- Any per-Monsoon channel selection in software.
+
+### Consequences
+- Expander: not needed for phase distortion. Revisit only if another use needs shared parameter state.
+- Block-consistency rule: not needed, since parameters are local to the module.
+- Gates: (a) with all channels at identity, each Monsoon's output is bit-identical to today's, plus the module's fixed one-
+  sample hop; (b) two Monsoons on the same output produce identical outputs sample for sample; (c) a Monsoon on output k and
+  one on output j differ only by the parameter sets k and j.
