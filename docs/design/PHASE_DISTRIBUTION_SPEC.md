@@ -244,3 +244,99 @@ redraws on warp-depth or parameter change (not per sample).
 - run_all green on both SDK legs.
 - No change to landed gap convention, clamp, or dual sign rule.
 - ≤16 bit-identical behaviour where the feature is inactive (warp at 0, no gap set).
+
+════════════════════════════════════════════════════════════════════════════════
+## 15. IMPLEMENTATION RECORD — the adopted model as built (CC_PROMPT_PHASE_DISTORTION_EXPANDER)
+
+Section 14 is the design authority; this records HOW it landed on feat/phase-duals-gaps
+(the branch joined with feat/phase-tier-subphase first — the tier's CV3 subphase input,
+quotient/remainder and sign-product machinery is what the distortion wires into).
+
+### Task 1 — the store and its consistency mechanism
+- The EIGHT PARAMETER SETS live in a rack-free store, `redDot::PhaseDistStore`
+  (src/dsp/PhaseDistStore.hpp), embedded in the SandsDistributionExpander (the
+  expander is the §14 owner). One set = a PhaseDistSet: the BARE warp member
+  (never a DualWarp — the reading is the sign of w), the SIGNED depth w ∈ [−1,+1],
+  tilt, atom (ℓ, m), gap (a, b−a), and `delegated` — carried, engine-inert.
+- MECHANISM CHOSEN: option (a), the PER-BLOCK SNAPSHOT. The inspection finding: the
+  store the expander's knobs write (StoreBound.hpp's StoreKnob setters, UI thread) is
+  plain fields with NO synchronisation — a reader could see a torn set and two readers
+  could disagree arbitrarily within one block. The fix: every write takes the store
+  mutex (writes are rare — drags and JSON loads), and each READER copies the set it
+  needs ONCE per its own audio block (Monsoon's Control-tier tick), under the same
+  mutex, into a private working copy used for the whole block. No per-sample locking;
+  the mutex makes each multi-field write atomic per set (never a torn gapLoc/gapSize
+  pair); a write between blocks is picked up by every reader at its same-indexed next
+  boundary. Option (b) (double-buffering) was considered and dropped: the reader-side
+  snapshot is what actually delivers "both readers see the new value at the SAME block
+  boundary" — the double buffer would be plumbing around it (and its swap can straddle
+  two readers inside one engine frame, module order).
+- The gate is pinned by test_phase_distortion (G4): two readers, a write between
+  blocks (both flip at the same boundary), a mid-block write (invisible until the
+  boundary), the atomicity of a multi-field commit, and the store's JSON round trip.
+- Persistence: the sets ride the EXPANDER's patch state under the additive key
+  "phaseDistSets" (missing/malformed ⟹ eight identity sets — the house contract).
+  The authoring UI for the eight sets is a later piece; the store is programmatically
+  writable and every default is the identity.
+
+### Task 2 — the ONE primitive
+- The distortion chain over one resolved cell — tilt → gap → atom, with the warp mix
+  and the reading picked by the SIGN of w — was extracted VERBATIM from
+  WarpBank::warpedValue's body into `dotModular::evalWarpCellDistortion(u, cell, pool)`
+  (src/dsp/SandsModifierResolver.hpp). The lane draws (warpedValue) and the phase tier
+  (`dotModular::phaseDistort(u, set)`) BOTH call it — one copy, §14's gate 6. The
+  extraction moves the same expressions in the same order: the pinned bit-identity
+  bridges cannot move (G6 pins the bridge itself: the primitive ==
+  WarpBank::warpedValue bit-exact over the roster × signed-w grid).
+- The quantise-to-pulses step is deliberately NOT in the primitive: it stays the
+  EXISTING machinery (PhaseEngine's pulse-grid mapping, snapToPhaseStep, the drift
+  check) that consumes the primitive's output — "as the existing snap does"; a second
+  copy would break the single-implementation gate. An ATOM freezes the playhead
+  naturally (the distorted ramp sits still on the plateau; the escape is modulating
+  warp/atom position/size, the decided edge case); a GAP crossing is a single-sample
+  jump over the grid — the EXISTING jump contract (jumpSixteenths replay + snap)
+  handles it, no new jump class.
+
+### Task 3 — the Monsoon wiring
+- The picks: TWO params on Monsoon, PHASE_SET_PARAM / SUBPHASE_SET_PARAM (1..8),
+  appended (append-only). DEFAULT 2N−1 / 2N for Monsoon N — N is the pairId (the
+  lowest-free 1..8 identity the host-identity block self-assigns), applied ONCE on a
+  fresh module at the pairId latch; a loaded patch keeps its authored picks (cleared
+  by dataFromJson), and a later pairId re-assignment never re-defaults. A single
+  Monsoon (N=1) defaults to sets 1 and 2 with no setup. 2N−1 / 2N exceeds the eight
+  sets for N ≥ 5 — the range clamps.
+- The store's owner is resolved at control rate by a RACK-WIDE first-found scan
+  (lowest module id — deterministic under any module order), epoch-memoized inside
+  updateExpanderPointers (event-driven, never polled; a suite-adjacent expander always
+  fires the topology epoch via its own onExpanderChange). The segment walk is the
+  wrong tool here: the adopted model serves the whole Monsoon network from ONE store,
+  so a Monsoon in another segment must still find it. Several expanders ⟹ lowest id.
+- The read: at the Control-tier tick (the block start) each Monsoon snapshots BOTH of
+  its sets (the phase tier's index, the subphase tier's) under the store mutex and
+  computes their identity flags. The per-sample Mode E path reads only the private
+  copies — no lock on the hot path.
+- The apply: in Mode E only, per tier — an identity set (or no expander) runs the RAW
+  path VERBATIM (the Stage-1 bit-identity gate; the voltage never round-trips through
+  the normalised domain), a non-identity set distorts in the normalised domain and
+  hands the engine the distorted voltage. The subphase path distorts only when CV3 is
+  patched (the unpatched branch IS the identity — "the Monsoon behaves exactly as
+  today"). Each tier is quantised by the EXISTING grid machinery (Task 2 above).
+
+### The riding fix — the calibration snaps to pulses
+The subphase calibration knob is a DETENT picker over the straight 24-PPQN list —
+bar / half / quarter / eighth / 16th = {96, 48, 24, 12, 6} pulses = {16, 8, 4, 2, 1}
+sixteenths — so region boundaries always fall on pulse positions and the list tiles
+the 96-pulse bar exactly. Knob 1.0 = bar (the shipped default unchanged); a persisted
+continuous value lands on the nearest detent. (Rodney: "The calibration snap-to-pulses
+fix above is small and can ride with it.")
+
+### Gates (the CC prompt's 1–8)
+1 IDENTITY — pinned (G1: eight identity sets, the primitive bit-exact, the bypass
+  takes the raw path). 2 SAME INDEX — pinned (G2). 3 DIFFERENT INDEX — pinned (G3).
+  4 BLOCK CONSISTENCY — pinned (G4). 5 SYNC — structural: both tiers take phase
+  DIRECTLY from the source cable (CV1 / CV3 in the phase origin), one hop, no module
+  between source and Monsoon; the wiring adds no module. 6 SINGLE IMPLEMENTATION —
+  pinned (G6, the bridge). 7 semantics unchanged — the landed batteries stay green
+  (test_phase_distribution, test_warp_f_bank, test_warp_dist_mod, test_phase_tier all
+  pass unchanged) + the reading law re-proven through the set shape (G7). 8 run_all
+  green on both SDK legs.

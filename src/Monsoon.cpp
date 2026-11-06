@@ -35,6 +35,7 @@ using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be co
 //#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
 #include "StraitsEastSandsVisual.hpp"         // Visual DNA editor (East)
 #include "StraitsSandsMacroVisual.hpp"        // Visual DNA editor (Macro)
+#include "SandsDistributionExpander.hpp"      // THE §14 STORE's owner (full type: the snapshot reads it)
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
 #include "ui/IntertropicalPairing.hpp"   // assignPairIdT / resolveFollowedT — host identity + shared-CA (template forms; the calls below carry the gate marker)
@@ -157,6 +158,46 @@ void Monsoon::updateExpanderPointers() {
         }
         if (pairId > 0) pairChecked = true;   // latch only on success; a capped-out Monsoon keeps retrying
     }
+
+    // ── THE PHASE-DISTORTION EXPANDER MODEL (PHASE_DISTRIBUTION_SPEC §14 — the store's
+    // owner, resolved at control rate, epoch-memoized) ──────────────────────────────
+    // RACK-WIDE first-found (the LOWEST module id — deterministic under any module
+    // order, the same determinism resolveFollowedT's scan gives pairId matches): the
+    // adopted model serves the WHOLE Monsoon network from ONE expander's store, so a
+    // Monsoon in another segment must still find it — the segment walk (the
+    // expanderManager's adjacency caches) is the wrong tool here. If several
+    // distribution expanders exist, the lowest id wins (documented; one store, one
+    // reading). nullptr = no expander: both tiers run the raw path (bit-identical).
+    // Runs inside updateExpanderPointers → the epoch guard fires it ONLY on a
+    // topology event (the lookup authority's law: event-driven, never polled).
+    phaseDistExpander_ = nullptr;
+    if (APP && APP->engine) {
+        int64_t bestId = INT64_MAX;
+        for (int64_t mid : APP->engine->getModuleIds()) {
+            rack::Module* om = APP->engine->getModule(mid);
+            if (!om || om == this) continue;
+            if (auto* e = dynamic_cast<SandsDistributionExpander*>(om)) {
+                if (mid < bestId) { phaseDistExpander_ = e; bestId = mid; }
+            }
+        }
+    }
+
+    // THE DYNAMIC DEFAULT PAIRING (Task 3: "DEFAULT 2N-1 and 2N for Monsoon N"): N is
+    // the pairId (the lowest-free 1..8 identity latched above). Applied ONCE per
+    // module LIFETIME, at the latch, and ONLY on a fresh module (phaseSetsFresh_ —
+    // dataFromJson cleared it): a loaded patch keeps its authored picks ("the picks
+    // persist with that Monsoon"), and a later pairId re-assignment (an earlier
+    // Monsoon removed) never re-defaults. A capped-out Monsoon (pairId 0) reads as
+    // N=1 for the formula — the defaults are only defaults. 2N−1 / 2N can exceed the
+    // eight sets for N ≥ 5: the range clamps (the param quantity is [1,8] anyway).
+    if (phaseSetsFresh_ && pairChecked && pairId > 0) {
+        const int n = pairId;
+        const int phDef = std::min(2 * n - 1, 8);
+        const int sbDef = std::min(2 * n,     8);
+        params[PHASE_SET_PARAM].setValue((float)std::max(1, phDef));
+        params[SUBPHASE_SET_PARAM].setValue((float)std::max(1, sbDef));
+        phaseSetsFresh_ = false;
+    }
     // Shared Change Alley (CA_SHARED_EXPANDER_BUILD §Step4): followCA>0 OVERRIDES the adjacency-cached
     // CA with the rack-wide pairId match, so a second (reader) Monsoon can bind a CA on another row.
     // followCA==0 keeps the adjacency result (today's behaviour). Runs at control rate (this is called
@@ -222,6 +263,9 @@ void Monsoon::updateExpanderPointers() {
   
     void Monsoon::dataFromJson(json_t* root) {
         PersistenceManager::fromJson(this, root);
+        // THE §14 PICKS: a loaded patch carries its own authored values — the dynamic
+        // 2N−1/2N default (a FRESH module's pairing) must never overwrite them.
+        phaseSetsFresh_ = false;
     // Finalize state. Seeding re-keys Philox and ZEROES the draw counter — so snapshot
     // the counter the persistence layer restored, seed, then put it back, then regenerate
     // candidate B at that exact stream position (Option 3: A restored, B regenerated).
@@ -870,18 +914,62 @@ void Monsoon::process(const ProcessArgs& args) {
         // other length-change consumer rides, absorbed by the snap/drift machinery.
         phase.patternLength = engine.cachedLength;
 
+        // ── §14 TASK 3: THE PHASE TIER THROUGH ITS SET (the shared primitive) ──────
+        // CC_PROMPT_PHASE_DISTORTION_EXPANDER: "Apply the shared primitive to the
+        // phase and to the subphase with the selected sets." The snapshot's identity
+        // flag (computed at the Control-tier snapshot) is the Stage-1 gate's bypass:
+        // an identity set — or no expander at all — runs the RAW path VERBATIM (the
+        // bit-identity gate holds because the voltage never round-trips through the
+        // normalised domain: the original variable is handed to the engine as-is).
+        // Non-identity: distort in the normalised domain [0,1) — the primitive is the
+        // ONE implementation (dotModular::phaseDistort, the same composed chain + mix
+        // the lane draws run) — and hand the engine the distorted voltage. The
+        // quantise-to-pulses step is NOT repeated here: the existing machinery below
+        // (PhaseEngine's pulse-grid mapping, snapToPhaseStep, the drift check) IS the
+        // quantise ("as the existing snap does" — a second copy would break the §14
+        // single-implementation gate). An ATOM on the path freezes the playhead
+        // naturally: the distorted ramp sits still on the plateau, the engine sees no
+        // motion, the escape is modulating warp/atom position/size (the decided edge
+        // case); a GAP crossing is a single-sample jump over the grid — the EXISTING
+        // jump contract (jumpSixteenths replay + snap) handles it, no new jump class.
+        if (!phaseDistIdentity_[0]) {
+            const double uT = phase.normPhase(phaseVolt);
+            phaseVolt = (float)dotModular::phaseDistort(uT, phaseDistSnap_[0].cell()) * phase.phaseInMax;
+        }
+
         // ── PHASE TIER Stage 2: the SUBPHASE TIER via CV3 ──────────────────────────
         // In Mode E, CV3 is EXCLUSIVELY the subphase input (the exact mirror of Mode E
-        // taking over CV1; Rodney: "Lets use cv3 in for subphase. Cv2 in is currently
-        // used for quantiser"). UNPATCHED = Stage 1 exactly (the bit-identical gate).
+        // taking over CV1; Rodney: "Lets use cv3 in for subphase"). UNPATCHED = Stage 1 exactly (the bit-identical gate).
         // PATCHED: the quotient/remainder — the transport phase is QUANTISED to select
         // the region (regionSize = the SUBPHASE CALIBRATION knob, quarter .. bar), the
         // subphase positions WITHIN it. Inside PhaseEngine::processTiers; the same jump/
         // replay/snap/drift machinery consumes the composed position.
         bool effReverse;
         if (cachedCv3Connected) {
-            double regionSixteenths = 4.0 + 12.0 * (double)params[SUBPHASE_CAL_PARAM].getValue();
-            phase.processTiers(phaseVolt, input.cv3, true, regionSixteenths,
+            // THE CALIBRATION SNAPS TO PULSES (Rodney, decided — the tier branch's
+            // CC_PROMPT_PHASE_TIER CALIBRATION section: "The calibration snap-to-pulses
+            // fix above is small and can ride with it"). The knob is a DETENT picker
+            // over the straight 24-PPQN pulse list — bar/half/quarter/eighth/16th =
+            // {96,48,24,12,6} pulses = {16,8,4,2,1} sixteenths — so the region index
+            // and the within-region position always come from an INTEGER pulse count
+            // (no fractional regions can return), region boundaries always fall on
+            // pulse positions, and the list tiles the 96-pulse bar exactly. Knob 1.0
+            // = bar (the shipped default unchanged); a persisted continuous value
+            // lands on the NEAREST detent.
+            static constexpr int kCalSixteenths[5] = {16, 8, 4, 2, 1};   // bar, half, quarter, eighth, 16th
+            const float calV = params[SUBPHASE_CAL_PARAM].getValue();
+            const int det = std::clamp((int)std::lround((1.0 - (double)calV) * 4.0), 0, 4);
+            const double regionSixteenths = (double)kCalSixteenths[det];
+
+            // ── §14 TASK 3: the SUBPHASE through ITS set (the same primitive; the
+            // unpatched case never reaches here — the unpatched branch IS the
+            // identity, "the Monsoon behaves exactly as today") ─────────────────────
+            float subVolt = input.cv3;
+            if (!phaseDistIdentity_[1]) {
+                const double uS = phase.normPhase(subVolt);
+                subVolt = (float)dotModular::phaseDistort(uS, phaseDistSnap_[1].cell()) * phase.phaseInMax;
+            }
+            phase.processTiers(phaseVolt, subVolt, true, regionSixteenths,
                                args.sampleTime, ppqnSetting);
             // THE SIGN PRODUCT (the semantic direction, decided — "the same sign-product
             // composition as voice and lane direction (playhead × voice × lane)"):
@@ -1590,6 +1678,31 @@ void Monsoon::process(const ProcessArgs& args) {
         // every tick even on a static rack.
         if (redDot::lookupEpochStale(lookupEpoch_))
             updateExpanderPointers();
+
+        // ── §14 TASK 1: THE READER'S PER-BLOCK SNAPSHOT (the consistency mechanism's
+        // reader half) ──────────────────────────────────────────────────────────────
+        // ONCE per Control-tier tick (the block start), under the store's mutex: copy
+        // THIS Monsoon's two sets (the phase tier's index, the subphase tier's) into
+        // the private working copies the per-sample Mode E path reads. The mechanism
+        // (dsp/PhaseDistStore.hpp): a write between blocks is picked up by every
+        // reader at its same-indexed next boundary — never one before the other; a
+        // mid-block write becomes visible at the boundary, never mid-block; the mutex
+        // makes each set's multi-field write atomic (no torn set is ever copyable).
+        // The identity flags ride the snapshot (the Stage-1 bypass's condition is
+        // BLOCK-CONSISTENT with the values it guards). No expander → both flags
+        // identity → the raw path. The index params round+clamp here too: an index
+        // change lands at a block boundary like every set change.
+        if (phaseDistExpander_) {
+            const int phIdx = std::clamp((int)std::lround(params[PHASE_SET_PARAM].getValue()), 1, 8) - 1;
+            const int sbIdx = std::clamp((int)std::lround(params[SUBPHASE_SET_PARAM].getValue()), 1, 8) - 1;
+            phaseDistExpander_->phaseDistStore.snapshotSet(phIdx, phaseDistSnap_[0]);
+            phaseDistExpander_->phaseDistStore.snapshotSet(sbIdx, phaseDistSnap_[1]);
+            phaseDistIdentity_[0] = phaseDistSnap_[0].isIdentity();
+            phaseDistIdentity_[1] = phaseDistSnap_[1].isIdentity();
+        } else {
+            phaseDistIdentity_[0] = true;
+            phaseDistIdentity_[1] = true;
+        }
 
         if (expanderManager.cachedRafflesExpander) {
             rack::Module* cw = expanderManager.cachedRafflesExpander;

@@ -50,6 +50,7 @@
 #include "ui/ModuleLookupCore.hpp"  // the topology epoch + lookupMemoizedT
 #include "dsp/SandsDistributionRole.hpp"  // the dual-role walk (rack-free, unit-tested)
 #include "ui/SandsSnap.hpp"      // the guest mixin (the host's snap harvest reads it)
+#include "dsp/PhaseDistStore.hpp"  // THE EIGHT PARAMETER SETS (PHASE_DISTRIBUTION_SPEC §14)
 
 using namespace rack;
 
@@ -107,8 +108,35 @@ namespace SandsDistributionIds {
 // unit-tested there; the module feeds it the production predicates below.)
 struct SandsDistributionExpander : rack::Module, redDot::SandsSnapGuest {
 
-    // ── the role (host detection, memoized by the topology epoch) ────────────
+    // ── THE ROLE (host detection, memoized by the topology epoch) ────────────
     std::atomic<bool> macroRole{false};   // CROSS-VOICE (Macro host) vs PER-VOICE
+
+    // ── THE PHASE-DISTORTION STORE (PHASE_DISTRIBUTION_SPEC §14 — the ADOPTED model,
+    // CC_PROMPT_PHASE_DISTORTION_EXPANDER) ────────────────────────────────────────
+    // THIS expander is the store's owner: EIGHT parameter sets — (warp, tilt, gap,
+    // atom, delegation) each — that ANY Monsoon in the network pulls by its two
+    // indices (phaseSet 1..8 / subphaseSet 1..8, Monsoon-side params). The store is
+    // rack-free (dsp/PhaseDistStore.hpp) and unit-tested directly; the consistency
+    // mechanism (the prompt's Task 1) is the PER-BLOCK SNAPSHOT: the UI writes under
+    // the store mutex, each Monsoon copies its set ONCE per audio block under the
+    // same mutex and reads its private copy for the whole block. Nothing is pushed —
+    // the expander produces no signal (§12's read model, carried into §14).
+    // The authoring UI (knobs/menus on this panel for the eight sets) is a LATER
+    // piece — the store is programmatically writable (writeSet) and persists below.
+    redDot::PhaseDistStore phaseDistStore;
+
+    // ── persistence: the sets ride the expander's patch state (additive key,
+    // missing = eight identity sets — the house missing-key-⟹-defaults contract).
+    json_t* dataToJson() override {
+        json_t* root = json_object();
+        json_object_set_new(root, "phaseDistSets", phaseDistStore.toJson());
+        return root;
+    }
+    void dataFromJson(json_t* root) override {
+        if (!root) return;
+        json_t* j = json_object_get(root, "phaseDistSets");
+        if (j) phaseDistStore.fromJson(j);   // absent/malformed ⟹ the identity defaults survive
+    }
 
     // ── snapping (the StraitsLane idiom: the subpanel FLAGS, the host decides) ─
     // The flag lives in SandsSnapGuest (needsResnap): set by the widget's

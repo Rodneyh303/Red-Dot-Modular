@@ -26,6 +26,7 @@
 #include "dsp/engines/PhaseEngine.hpp"
 #include "dsp/engines/PatternEngine.hpp"
 #include "dsp/engines/SequencerEngine.hpp"
+#include "dsp/PhaseDistStore.hpp"   // the §14 parameter-set store (the snapshot members below)
 #include "dsp/managers/MonsoonSandsManager.hpp"
 #include "dsp/managers/MonsoonParameterManager.hpp"
 #include "dsp/managers/MonsoonPersistenceManager.hpp"
@@ -300,7 +301,27 @@ namespace MonsoonIds {
         // = one bar (the showcase value: 2 regions at a 32-step pattern; "no jumps between
         // bars" preserved by construction). Only read in the phase origin while CV3 (the
         // subphase input) is PATCHED — unpatched CV3 is Stage 1 exactly.
+        // (PHASE-DISTORTION NOTE — the decided snap fix RODES HERE: the knob is now a
+        // DETENT picker over the straight 24-PPQN pulse list {bar, half, quarter, eighth,
+        // 16th} = {96,48,24,12,6} pulses = {16,8,4,2,1} sixteenths — see the
+        // Monsoon.cpp read site. Rodney: "The calibration snap-to-pulses fix above is
+        // small and can ride with it".)
         SUBPHASE_CAL_PARAM,
+
+        // ── THE PHASE-DISTORTION EXPANDER MODEL (PHASE_DISTRIBUTION_SPEC §14,
+        // CC_PROMPT_PHASE_DISTORTION_EXPANDER Task 3) — the TWO INDICES ────────────
+        // Each Monsoon holds TWO INDICES into the distribution expander's EIGHT
+        // PARAMETER SETS: which set distorts its phase tier, which its subphase tier.
+        // These are the only routing choices (no matrix, no software channel routing
+        // beyond the two indices). 1..8; DEFAULT 2N−1 / 2N for Monsoon N (the pairId —
+        // the lowest-free 1..8 identity the host-identity block self-assigns), applied
+        // ONCE on a fresh module at the pairId latch; a loaded patch keeps its authored
+        // values (the picks "persist with that Monsoon", §14). A single Monsoon (N=1)
+        // defaults to sets 1 and 2 with no setup — the static config defaults below.
+        // The index values are read at the CONTROL block (the snapshot's cadence), so
+        // an index change lands at a block boundary like every set change.
+        PHASE_SET_PARAM,
+        SUBPHASE_SET_PARAM,
 
         NUM_PARAMS
     };
@@ -616,9 +637,33 @@ struct MonsoonLeftMessage {
 };
 
 // ------------------------------- Module --------------------------------------
+struct SandsDistributionExpander;   // the §14 store's owner — a pointer member below;
+                                    // Monsoon.cpp includes the full header (the expander
+                                    // header includes THIS one — no cycle)
 struct Monsoon : Module {
     ClockEngine clock;
     redDot::PhaseEngine phase;   // Mode E: CV1 phase ramp → pulse grid (forward+reverse)
+
+    // ── THE PHASE-DISTORTION EXPANDER MODEL (PHASE_DISTRIBUTION_SPEC §14) ──────
+    // The store's owner, resolved at the Control tier by a rack-wide first-found
+    // (lowest module id — deterministic under any module order) scan, epoch-memoized
+    // (the lookup authority's law: event-driven re-resolution, never polled). The
+    // adopted model serves the WHOLE Monsoon network from ONE expander's store
+    // ("several Monsoons may read the same parameter set"), so the segment walk is
+    // the wrong tool here — a Monsoon in another segment must still find it.
+    SandsDistributionExpander* phaseDistExpander_ = nullptr;
+    // THE READER'S PER-BLOCK SNAPSHOT (the Task-1 mechanism's reader half): copied
+    // ONCE per Control-tier tick from the store under its mutex, then read PER SAMPLE
+    // by the Mode E path — engine-thread-private state, no lock on the hot path.
+    // [0] = the phase tier's set, [1] = the subphase tier's. Defaults = identity.
+    // (std::array — the array-guard's P-B form.)
+    std::array<redDot::PhaseDistSet, 2> phaseDistSnap_ = {};
+    // The identity flags, computed AT the snapshot (the Stage-1 gate's bypass: an
+    // identity set — or no expander — takes the RAW path verbatim, bit-identical).
+    std::array<bool, 2> phaseDistIdentity_ = {true, true};
+    // The dynamic-default latch (2N−1 / 2N applied ONCE on a fresh module): true in
+    // the ctor, cleared by dataFromJson so a loaded patch keeps its authored picks.
+    bool phaseSetsFresh_ = true;
 
     int cv1Mode = 0;
     // Global probability-CV-out config (read by the Sands visual expanders; they have

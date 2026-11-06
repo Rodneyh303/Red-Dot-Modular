@@ -79,6 +79,15 @@ void MonsoonConfigurator::setup(Monsoon* m) {
     // (the design doc: "anything between (quarter-note → bar)"). Knob 0..1 →
     // regionSixteenths = 4 + 12·v; default 1.0 = one bar. Unpatched CV3 ignores it (Stage 1).
     m->configParam(SUBPHASE_CAL_PARAM, 0.f, 1.f, 1.f, "Subphase calibration (region: quarter .. bar)", "%", 0.f, 100.f);
+    // ── THE PHASE-DISTORTION EXPANDER MODEL (PHASE_DISTRIBUTION_SPEC §14, Task 3) —
+    // the TWO INDICES: which of the distribution expander's EIGHT parameter sets this
+    // Monsoon's phase tier reads, which its subphase tier reads. 1..8, the DEFAULTS
+    // (2N−1 / 2N for Monsoon N = the pairId) are applied DYNAMICALLY on a fresh
+    // module at the pairId latch (updateExpanderPointers) — the static config default
+    // below is the N=1 case (sets 1 and 2, "a single Monsoon uses channels 1 and 2
+    // with no setup"). Integer picks: the read site rounds+clamps.
+    m->configParam(PHASE_SET_PARAM,    1.f, 8.f, 1.f, "Phase set (which distribution set distorts the phase tier)");
+    m->configParam(SUBPHASE_SET_PARAM, 1.f, 8.f, 2.f, "Subphase set (which distribution set distorts the subphase tier)");
     m->configButton(LOCK_PARAM,   "Lock");
     m->configButton(MUTE_PARAM,   "Mute");
     m->configButton(MODE_PARAM,   "Mode (Cycle Clock-Gate-Phase)");

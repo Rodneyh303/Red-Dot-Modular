@@ -520,6 +520,67 @@ inline float resolveVlorCv(float base, float cvUnit, float atten, float lo, floa
 
 } // namespace redDot
 
+namespace dotModular {
+
+// ── THE ONE PRIMITIVE (CC_PROMPT_PHASE_DISTORTION_EXPANDER Task 2) ──────────────
+// The distortion chain over ONE resolved cell — tilt → gap → atom, with the warp
+// mix and the reading picked by the SIGN of the cell's w — extracted VERBATIM from
+// WarpBank::warpedValue's body (the exact same expressions, in the exact same
+// order, on the exact same types — the pinned bit-identity bridges cannot move).
+// TWO call sites, ONE copy (the §14 gate "the transform exists once"):
+//   · WarpBank::warpedValue (the lane draws) — resolves the bank slot to a cell,
+//     then calls this with the bank's drawn-curve pool;
+//   · dotModular::phaseDistort (the phase tier) — the expander-model phase sets
+//     call this directly with a null pool (their members are parametric-only).
+inline double evalWarpCellDistortion(double u, const redDot::WarpCell& c,
+                                     const MonotoneCurve* pool) {
+    const double w   = (double)c.w;
+    const double aw  = std::abs(w);            // the DEPTH; the sign is the READING
+    const bool dualSide = w < 0.0;
+    if (c.tilt == 0.f && c.atomMass == 0.f && c.gapSize == 0.f) {
+        if (!dualSide)
+            return (1.0 - aw) * u + aw * invCDF(c.f, u, pool);   // neutral: the pre-feel-test mix
+        return (1.0 - aw) * u + aw * cdf(c.f, u, pool);          // neutral, DUAL side: the member CDF
+    }
+    const double p    = warpStages::clampTilt((double)c.tilt);
+    const double ell  = warpStages::clampLevel((double)c.atomLevel);
+    const double m    = warpStages::clampMass((double)c.atomMass);
+    if (dualSide) {
+        // THE DUAL READING (PHASE_DISTRIBUTION_SPEC §6): the member → tilt → gap →
+        // atom chain with CDF and quantile exchanged — the dual's quantile IS the
+        // composed CDF evaluated AT u, over the bare member.
+        const double g = warpStages::cdf(
+            u, p, c.gapLoc, c.gapSize, ell, m,
+            [pool, &c](double x) { return cdf(c.f, x, pool); }); // the member CDF F
+        return (1.0 - aw) * u + aw * g;                          // the composed CDF AT u
+    }
+    const double q    = warpStages::invCDF(
+        u, p, c.gapLoc, c.gapSize, ell, m,
+        [pool, &c](double uu) { return invCDF(c.f, uu, pool); }, // the member quantile F⁻¹
+        [pool, &c](double x)  { return cdf(c.f, x, pool); });    // the member CDF F
+    return (1.0 - aw) * u + aw * q;
+}
+
+// THE PHASE-DISTORTION PRIMITIVE proper — the Task-2 signature: phase in [0,1) +
+// a parameter set + the reading (the SIGN of the set's w) → the distorted phase.
+// The quantise-to-pulses step is deliberately NOT here: it stays the EXISTING
+// machinery (PhaseEngine's pulse-grid mapping + snapToPhaseStep) that consumes this
+// output — Task 3's "as the existing snap does"; copying it here would be exactly
+// the second implementation §14's gate 6 forbids. The pool is null: the phase
+// store's members are parametric-only (its commit path lowers through lowerWarp,
+// which maps "drawn"/unknown to IdentityWarp — the phase tier has no drawn-curve
+// pool), and the guard below makes that unreachable case the identity anyway.
+// IDENTITY (the Stage-1 gate's law, pinned by test): an identity set — identity
+// member, w == 0, tilt 0, mass 0, gap width 0 — returns u BIT-EXACTLY (the mix
+// line degenerates to 1·u + 0·(...) with the neutral early-outs; u ≥ +0.0 in the
+// phase path, so no −0.0 sign flip is reachable).
+inline double phaseDistort(double u, const redDot::WarpCell& set) {
+    if (std::holds_alternative<DrawnWarp>(set.f)) return u;   // unreachable: the store lowers drawn → identity
+    return evalWarpCellDistortion(u, set, nullptr);
+}
+
+} // namespace dotModular
+
 // ── WarpBank rides the resolver (STEP 2) — the bank's mix, defined HERE ───────
 // WarpF.hpp DECLARES warpedValue/effectiveF/effectiveW and includes THIS header
 // as its LAST line; the definitions live here because this is the only place
@@ -643,31 +704,12 @@ inline redDot::WarpCell resolveWarpCell(const WarpBank& b, int v, int lane, bool
 // composed CDF), and the dual's composed CDF IS the member's.
 inline double WarpBank::warpedValue(int v, int lane, double u, bool delegated) const {
     const redDot::WarpCell c = resolveWarpCell(*this, v, lane, delegated);
-    const double w   = (double)c.w;
-    const double aw  = std::abs(w);            // the DEPTH; the sign is the READING
-    const bool dualSide = w < 0.0;
-    if (c.tilt == 0.f && c.atomMass == 0.f && c.gapSize == 0.f) {
-        if (!dualSide)
-            return (1.0 - aw) * u + aw * invCDF(c.f, u);   // neutral: the pre-feel-test mix
-        return (1.0 - aw) * u + aw * cdf(c.f, u);          // neutral, DUAL side: the member CDF
-    }
-    const double p    = warpStages::clampTilt((double)c.tilt);
-    const double ell  = warpStages::clampLevel((double)c.atomLevel);
-    const double m    = warpStages::clampMass((double)c.atomMass);
-    if (dualSide) {
-        // THE DUAL READING (PHASE_DISTRIBUTION_SPEC §6): the member → tilt → gap →
-        // atom chain with CDF and quantile exchanged — the dual's quantile IS the
-        // composed CDF evaluated AT u, over the bare member.
-        const double g = warpStages::cdf(
-            u, p, c.gapLoc, c.gapSize, ell, m,
-            [this, &c](double x) { return cdf(c.f, x); });     // the member CDF F
-        return (1.0 - aw) * u + aw * g;                        // the composed CDF AT u
-    }
-    const double q    = warpStages::invCDF(
-        u, p, c.gapLoc, c.gapSize, ell, m,
-        [this, &c](double uu) { return invCDF(c.f, uu); },     // the member quantile F⁻¹
-        [this, &c](double x)  { return cdf(c.f, x); });        // the member CDF F
-    return (1.0 - aw) * u + aw * q;
+    // THE ONE PRIMITIVE (CC_PROMPT_PHASE_DISTORTION_EXPANDER Task 2): the mix + the
+    // composed reading moved VERBATIM into dotModular::evalWarpCellDistortion (above),
+    // which the phase tier's dotModular::phaseDistort also calls — the transform
+    // exists ONCE (the §14 gate). Same expressions, same order, same pool threading:
+    // bit-identical to the inlined body this replaces.
+    return evalWarpCellDistortion(u, c, pool);
 }
 
 inline double WarpBank::warpedValue(int v, int lane, double u) const {
