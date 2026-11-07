@@ -16,27 +16,22 @@ PhaseEngine.hpp:131) changes only at PPQN boundaries  far less than once per sam
 output, edge flags, jump detection, snapToPhaseStep and the drift check all key off pulseInBar. So the expensive
 tail must run ONLY when pulseInBar changes, matching the rate the rest of the instrument already runs at.
 
-## THE FIX  gate the quantised tail on pulse change; keep continuous bookkeeping per-sample
-In PhaseEngine::processTiers (and the Mode-E block in Monsoon.cpp:899-985):
-1. EVERY SAMPLE (cheap, keep): compute phase = normPhase(v); pulseInBar = floor(phase * PPB); and UPDATE the
-   continuous bookkeeping the within-region guarantee needs  prevContPhase / the recomputed-from-formula contT
-   (PhaseEngine.hpp:54-57 warns this MUST update every sample or the within-region guarantee dies). Do NOT gate this.
-2. GATE ON CHANGE: only when pulseInBar != prevPulse, run the EXPENSIVE tail:
-   - the tier composition (composedPulse / region quotient-remainder),
-   - phaseDistort (already identity-gated; leave that),
-   - snapToPhaseStep,
-   - the drift check and edge-flag emission.
-   When pulseInBar == prevPulse, SKIP all of it and reuse the last quantised result (hold pulseEdge/sixteenthEdge low,
-   stepIndex unchanged). Set prevPulse = pulseInBar after running.
-3. Monsoon's Mode-E block mirrors the gate: snapToPhaseStep (1265/1296) and the drift path run only on the pulse-change
-   signal processTiers reports (reuse phase.pulseEdge or a new "pulseAdvanced" flag), not every sample.
-
-## CARE
-- The continuous-phase recompute (prevContPhase) stays per-sample. Only the QUANTISED tail is gated. Verify the
-  within-region guarantee test still holds (subphase strictly inside its region at every s < 1).
-- Jump/scrub detection must still fire: a large discontinuity changes pulseInBar, so it falls inside the gated path
-  naturally  confirm a jump still sets jumped / jumpSixteenths.
-- Reverse motion: pulseInBar decreasing is still a change, so the gate runs. Confirm backward phase still steps.
+## THE FIX  nothing is continuous: run the phase path at pulse rate
+Rodney: modulation is shown at video rate and SAMPLED AT STEP RATE. Nothing in the phase path is continuous.
+The header confirms it (PhaseEngine.hpp:13 "integer pulses with no continuous-time component"). prevContPhase is
+NOT a continuous output  it is an unwrapped pulse ACCUMULATOR used only to compute the next pulse target
+(llround(prevContPhase*PPB), tierPulseFor). Nothing downstream reads a continuous phase between pulses; Monsoon reads
+the quantised step.
+So gate the WHOLE quantised path on pulse change:
+1. EVERY SAMPLE (cheap): phase = normPhase(v); pulseInBar = floor(phase * PPB); and ACCUMULATE the phase delta into
+   prevContPhase (prevContPhase += shortest-path d)  this is a running sum, not a recompute, so the unwrapped
+   position is correct whenever the next pulse computation runs.
+2. ONLY WHEN pulseInBar != prevPulse: run the tier composition, phaseDistort (already identity-gated), snapToPhaseStep,
+   the drift check and edge-flag emission. Otherwise hold edges low, stepIndex unchanged, and return. Set prevPulse.
+3. Monsoon's Mode-E block runs snapToPhaseStep (1265/1296) and the drift path only on that pulse-change signal, not
+   every sample.
+There is no per-sample continuous consumer to preserve  the earlier "keep continuous bookkeeping per-sample" caveat
+is dropped. prevContPhase is maintained as an accumulator across skipped samples (step 1), which is all it needs.
 
 ## GATES
 - Phase mode CPU returns toward clock/gate levels (expect ~0.5-0.7%, not 1.5-2.0%), identity sets, expander or not.
@@ -46,6 +41,6 @@ In PhaseEngine::processTiers (and the Mode-E block in Monsoon.cpp:899-985):
 - run_all green on both SDK legs.
 
 ## DO NOT
-- Gate the continuous-phase bookkeeping (prevContPhase) off  it must run every sample.
+- Reset prevContPhase instead of accumulating it  the accumulator must carry across skipped samples.
 - Change PPB, the region formula, the distortion maths, or snapToPhaseStep's body.
 - Introduce a timer; the gate is pulseInBar change, nothing else.
