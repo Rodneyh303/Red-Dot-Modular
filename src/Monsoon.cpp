@@ -1266,7 +1266,7 @@ void Monsoon::process(const ProcessArgs& args) {
             engine.pe.setReverseActive(savedReverse);
         }
 
-        // ── Continuous drift correction (every sample in Mode E) ───────────────
+        // ── Continuous drift correction (on PULSE CHANGES in Mode E) ───────────────
         // The jump snap above only fires on discontinuities. But the phase knob
         // updates at frame rate (60Hz), and per-frame phase deltas can cross
         // 1/16 boundaries via the continuous-motion path (not jumps). Over many
@@ -1274,10 +1274,18 @@ void Monsoon::process(const ProcessArgs& args) {
         // and the transport drifts (e.g., 0% knob lands on step 16 instead of 1).
         // This lightweight check snaps only when stepIndex != pulsePos/p16,
         // so the expensive recomputeLaneTicks() runs ONLY on actual drift.
+        // CC_FIX_PHASE_RUN_AT_PPQN (step 3, docs tip 4cb1a749): the check now runs
+        // ONLY on the engine's pulse-change signal (phase.pulseChanged). Nothing
+        // moves between pulses — the engine holds pulsePos and the edges low, the
+        // accumulator is the only thing living — so a per-sample re-check could
+        // only re-read an unchanged (absStep, stepIndex) pair; at the pulse rate
+        // the correction still lands the sample the position actually moves, and
+        // the jump snap above rides the same signal (jumped ⟹ pulseChanged).
         // CRITICAL: gated by modeSelect == 2 — in clock/gate modes, phase.pulsePos
         // is stale (PhaseEngine not processing), so phaseStep=0 would snap stepIndex
-        // to 0 every sample, freezing the sequencer.
-        if (modeSelect == 2) {
+        // to 0 every sample, freezing the sequencer. (pulseChanged is likewise
+        // stale there — the conjunction keeps the old guard load-bearing.)
+        if (modeSelect == 2 && phase.pulseChanged) {
             int p16d = ClockEngine::pulsesPer16th(ppqnSetting);
             long absStep = phase.pulsePos / p16d;
             // PHASE TIER Stage 1: the drift check asks THE PHASE-STEP RULE — the SAME

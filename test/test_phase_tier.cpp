@@ -254,7 +254,8 @@ int main() {
             pb.processTiers(v, 0.f, false, 16.0, ST, 24);
             ok = ok && pa.pulsePos == pb.pulsePos && pa.jumped == pb.jumped
                  && pa.jumpSixteenths == pb.jumpSixteenths && pa.reverse == pb.reverse
-                 && pa.sixteenthEdge == pb.sixteenthEdge && pa.quarterEdge == pb.quarterEdge;
+                 && pa.sixteenthEdge == pb.sixteenthEdge && pa.quarterEdge == pb.quarterEdge
+                 && pa.pulseChanged == pb.pulseChanged;
             ok = ok && pb.dirT == 0 && pb.dirS == 0;                   // neutral, always
         }
         check(ok, "UNPATCHED: processTiers(false) IS process() (pulsePos/edges/jump identical, dirs neutral)");
@@ -452,6 +453,150 @@ int main() {
               "DISPLAY: a full subphase sweep inside a bar region walks ONLY that bar's cells (stepIndex 6..15, the lap never flips)");
         check(lapFlipsAtLanding && lampFeed,
               "DISPLAY: the BAR LEDs' lap flips exactly at the region landing and the twice-around lamp feed stays coherent");
+    }
+
+    // ── 16. THE PULSE-CHANGE GATE — cheap path vs tail, bit-identical firing ─────────
+    // CC_FIX_PHASE_RUN_AT_PPQN (docs tip 4cb1a749): the engine runs a CHEAP path every
+    // sample (the trackers + the prevContPhase accumulator, a running sum carried across
+    // skipped samples) and the expensive tail (velocity, jump detection, the walk) ONLY
+    // when the quantised pulse position moved. The ORACLE below is the OLD per-sample
+    // body, recomputed independently — a dense sub-pulse sweep with a reversal, a jump
+    // and a span wrap must land the IDENTICAL pulsePos/edge/jump sequence, and
+    // pulseChanged must be true EXACTLY on the samples where the position moved.
+    {
+        struct Oracle {
+            bool have = false;
+            double prevPhase = 0.0, cont = 0.0;
+            long pos = 0;
+            // The old body verbatim: accumulate shortest-path, llround target, jump
+            // contract, parity walk.
+            void feed(double phase, int p16, long ppb,
+                      bool& pe, bool& se, bool& qe, bool& rev, bool& jum, int& js, long& posOut) {
+                pe = se = qe = rev = jum = false; js = 0;
+                if (!have) { have = true; prevPhase = phase; cont = phase;
+                             pos = (long)std::floor(phase * (double)ppb); posOut = pos; return; }
+                double d = phase - prevPhase;
+                if (d >  0.5) d -= 1.0;
+                if (d < -0.5) d += 1.0;
+                prevPhase = phase;
+                cont += d;
+                long tp = (long)std::llround(cont * (double)ppb);
+                long step = tp - pos;
+                long mag = step < 0 ? -step : step;
+                if (mag > p16) {
+                    jum = true; rev = (step < 0);
+                    long six = (mag + p16/2) / p16;
+                    js = (int)((step < 0) ? -(long)six : (long)six);
+                    pos = tp; posOut = pos; return;
+                }
+                if (step == 0) { posOut = pos; return; }
+                rev = (step < 0);
+                long dir = rev ? -1 : +1;
+                for (long i = 0; i < mag; ++i) {
+                    pos += dir; pe = true;
+                    long mod = ((pos % p16) + p16) % p16;
+                    if (mod == 0) { se = true; long s16 = ((pos / p16) % 16 + 16) % 16;
+                                    if (s16 % 4 == 0) qe = true; }
+                }
+                posOut = pos;
+            }
+        };
+        PhaseEngine ph; ph.reset(); ph.patternLength = 16;
+        Oracle orc;
+        const long PPB = 6 * 16;                       // 96 pulses per span
+        bool okSeq = true, okGate = true;
+        long lastPos = -1;
+        // ~0.31 pulse/sample forward (a pulse every ~3.2 samples — dense fire/still
+        // mixing), a mid-sweep REVERSAL, an abrupt JUMP, then forward through the span
+        // wrap — 2400 samples.
+        for (int k = 0; k < 2400; ++k) {
+            double x;
+            if      (k < 900)  x = 0.31 * (double)k / 96.0;
+            else if (k < 1500) x = 0.31 * 900.0 / 96.0 - 0.17 * (double)(k - 900) / 96.0;
+            else if (k < 1501) x = 5.0;                    // the jump (huge discontinuity)
+            else               x = 5.0 + 0.31 * (double)(k - 1501) / 96.0;
+            float v = (float)(x * 10.0);
+            ph.process(v, true, ST, 24);
+            double p = (double)v / 10.0; p -= std::floor(p);
+            bool pe, se, qe, rev, jum; int js; long op;
+            orc.feed(p, 6, PPB, pe, se, qe, rev, jum, js, op);
+            okSeq = okSeq && ph.pulsePos == op && ph.pulseEdge == pe && ph.sixteenthEdge == se
+                    && ph.quarterEdge == qe && ph.reverse == rev && ph.jumped == jum
+                    && ph.jumpSixteenths == js;
+            // THE GATE PIN: pulseChanged ⟺ the position moved (pulseEdge or a jump);
+            // from the second sample on it also ⟺ pulsePos moved. On a still sample
+            // NOTHING moved and every flag is low (the entry reset).
+            okGate = okGate && (ph.pulseChanged == (pe || jum));
+            if (k > 0) okGate = okGate && (ph.pulseChanged == (ph.pulsePos != lastPos));
+            lastPos = ph.pulsePos;
+        }
+        check(okSeq, "GATE: a dense sub-pulse sweep (fwd + reverse + jump + wrap) lands the OLD per-sample sequence bit-exactly (oracle)");
+        check(okGate, "GATE: pulseChanged is true EXACTLY on the samples where the quantised position moved");
+    }
+
+    // ── 17. THE ACCUMULATOR CARRIES ACROSS SKIPPED SAMPLES (the DO-NOT pin) ─────────
+    // Hold the voltage STILL for 100 samples (100 skipped samples — pulseChanged low,
+    // pulsePos frozen), then move EXACTLY two pulses in one sample: ONE fire lands BOTH
+    // pulses (the accumulator carried the motion across the hold — never reset), no
+    // jump (2 ≤ p16). The same move split across two 1-pulse fires lands the SAME
+    // address — a running sum, not a recompute.
+    {
+        PhaseEngine ph; ph.reset(); ph.patternLength = 16;
+        const float v0 = 3.0f;                         // phase 0.3
+        ph.process(v0, true, ST, 24);                  // the floored seed (floor 28.8 = 28)
+        ph.process(v0, true, ST, 24);                  // settle onto llround (29)
+        const long held = ph.pulsePos;
+        bool still = true;
+        for (int k = 0; k < 100; ++k) {
+            ph.process(v0, true, ST, 24);
+            still = still && !ph.pulseChanged && !ph.pulseEdge && !ph.sixteenthEdge
+                    && ph.pulsePos == held;
+        }
+        check(still, "CARRY: 100 still samples hold the position with pulseChanged low (the cheap path only)");
+        float v1 = v0 + 10.0f * 2.0f / 96.0f;          // exactly +2 pulses of phase
+        ph.process(v1, true, ST, 24);
+        check(ph.pulseChanged && ph.pulsePos == held + 2 && ph.pulseEdge && !ph.jumped
+              && ph.jumpSixteenths == 0,
+              "CARRY: a 2-pulse move after the hold lands BOTH pulses in ONE fire (the accumulator carried), no jump");
+        {   // the split-drive control: two 1-pulse fires reach the same address
+            PhaseEngine pb; pb.reset(); pb.patternLength = 16;
+            pb.process(v0, true, ST, 24);
+            pb.process(v0, true, ST, 24);
+            float half = v0 + 10.0f * 1.0f / 96.0f;
+            pb.process(half, true, ST, 24);            // +1 pulse
+            pb.process(v1,   true, ST, 24);            // +1 more
+            check(pb.pulsePos == held + 2,
+                  "CARRY: the same 2-pulse move split across two fires lands the SAME address (running sum, no reset)");
+        }
+    }
+
+    // ── 18. THE TIERED GATE — the probe is the COMPOSITION (the subphase moves it) ──
+    // With the transport STALLED (a flat ramp — the coarse term frozen), a dense
+    // subphase sweep must STILL advance the position: the gate probe is tierPulseFor
+    // (the composed target), not a transport-only pulseInBar. pulseChanged fires
+    // exactly on the composed crossings, every landing equals the quotient/remainder
+    // formula, and the ramp wrap stays a backward jump inside the region (§14's law,
+    // now at gate rate).
+    {
+        PhaseEngine ph; ph.reset(); ph.patternLength = 32;
+        const double rF = 16.0 / 32.0;                 // regionSixteenths 16, plen 32
+        const long PPB = 6 * 32;                       // 192 pulses per span
+        ph.processTiers(4.0f, 4.0f, true, 16.0, ST, 24);   // the composed seed (region 0, s 0.4)
+        bool ok = true, fired = false;
+        long lastPos = ph.pulsePos;
+        for (int k = 1; k <= 300; ++k) {               // s climbs 0.4 → 1.9 (wraps mid-sweep)
+            float sV = 4.0f + 0.05f * (float)k;        // +0.005 phase per sample ≈ 0.48 pulse
+            ph.processTiers(4.0f, sV, true, 16.0, ST, 24);
+            double cont = ph.prevContPhase;            // the transport is flat — this holds 0.4
+            double s = (double)sV / 10.0; s -= std::floor(s);
+            long want = (long)std::floor((std::floor(cont / rF) * rF + s * rF) * (double)PPB);
+            ok = ok && (ph.pulsePos == want)
+                     && (ph.pulseChanged == (ph.pulsePos != lastPos));
+            fired = fired || ph.pulseChanged;
+            lastPos = ph.pulsePos;
+        }
+        check(ok && fired,
+              "TIER GATE: a subphase sweep with a STALLED transport advances the composed position (the probe is tierPulseFor), pulseChanged ⟺ moved");
     }
 
     std::printf("test_phase_tier: %d passed, %d failed\n", passed, failed);

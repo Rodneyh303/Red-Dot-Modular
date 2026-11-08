@@ -65,6 +65,17 @@ struct PhaseEngine {
     bool  jumped        = false;    // true if a discontinuity (jump/scrub) was seen
     int   jumpSixteenths= 0;        // signed # of 1/16 steps to replay on a jump (±)
     long  pulsePos      = 0;        // current absolute pulse index
+    bool  pulseChanged  = false;    // THE PULSE-CHANGE GATE signal (CC_FIX_PHASE_RUN_AT_PPQN,
+                                    // docs tip 4cb1a749): true ONLY on the samples where the
+                                    // quantised pulse position moved (targetPulse != prevPulse).
+                                    // The expensive tail — velocity, jump detection, the pulse
+                                    // walk — runs on those samples; between them the cheap path
+                                    // just warms the trackers and ACCUMULATES prevContPhase (a
+                                    // running sum across skipped samples — never reset, the
+                                    // doc's DO-NOT). Monsoon gates its Mode-E snap/drift path to
+                                    // this flag. The probe is the tail's OWN target expression
+                                    // (llround(prevContPhase·PPB) / tierPulseFor), so firing is
+                                    // bit-identical to the old per-sample step != 0.
     float bpm           = 120.f;    // derived from measured phase velocity (for display/fallback)
     float sixteenthSec  = 0.125f;   // derived 1/16 length in seconds (for any seconds consumer)
     // Stage 2 outputs: each tier's OWN per-sample motion sign (+1 / -1 / 0 flat) — the
@@ -83,6 +94,7 @@ struct PhaseEngine {
         pulsePos = 0; bpm = 120.f; sixteenthSec = 0.125f;
         haveTier = false; prevSub = 0.0;
         dirT = dirS = 0;
+        pulseChanged = false;
     }
 
     // Map a raw phase voltage to normalised phase [0,1). Wrapping is expected: the
@@ -114,6 +126,7 @@ struct PhaseEngine {
     //    without emitting an edge burst.
     void process(float phaseVolt, bool connected, float sampleTime, int ppqnSetting) {
         pulseEdge = sixteenthEdge = quarterEdge = reverse = jumped = false; jumpSixteenths = 0;
+        pulseChanged = false;
         ppqn = (ppqnSetting > 0 ? ppqnSetting : 24);
         const int p16   = pulsesPer16th(ppqn);
         // PHASE TIER Stage 1: pulses per FULL SPAN (phase 0→1) = the ACTIVE pattern length.
@@ -137,13 +150,41 @@ struct PhaseEngine {
             return;                                  // no edge on first sample
         }
 
+        // ── THE CHEAP PATH (every sample — CC_FIX_PHASE_RUN_AT_PPQN step 1) ────────
         // Shortest-path phase delta in [-0.5, 0.5] so a wrap (…0.98 → 0.02) reads as
         // a small forward step, not a huge backward jump.
         double d = phase - prevPhase;
         if (d >  0.5) d -= 1.0;
         if (d < -0.5) d += 1.0;
+        prevPhase = phase;      // the tracker warms EVERY sample (the accumulator's input)
 
-        // Velocity (for bpm/warp): phase units per sample → bars/sec → bpm.
+        // Advance the continuous (unwrapped) phase by the shortest-path delta, and
+        // derive the absolute target pulse from it. Deriving from the absolute phase
+        // (not from accumulated rounded deltas) is what lets sub-pulse per-sample
+        // motion accumulate correctly until a pulse boundary is actually crossed.
+        // The accumulator is a RUNNING SUM carried across skipped samples — never
+        // reset, never recomputed (the fix doc's DO-NOT) — so the unwrapped position
+        // is correct whenever the next pulse computation runs.
+        prevContPhase += d;
+
+        // ── THE PULSE-CHANGE GATE (step 2) ──────────────────────────────────────
+        // Rodney: phase only needs to run at PPQN. The quantised PULSE POSITION —
+        // here the continuous path's own target llround(prevContPhase·PPB) — moves
+        // only at pulse boundaries, and nothing downstream reads an in-between value
+        // (Monsoon reads the quantised step). The probe is the SAME expression the
+        // tail lands on, compared against prevPulse (the last absolute pulse index —
+        // the doc's "pulseInBar != prevPulse" against the engine's own tracker), so
+        // the gate fires EXACTLY when the old per-sample body's step != 0 would
+        // have: bit-identical firing samples, and the settle call after the floored
+        // seed (the resting llround landing the span probes pin) still fires.
+        long targetPulse = (long)std::llround(prevContPhase * (double)PPB);
+        pulseChanged = (targetPulse != prevPulse);
+        if (!pulseChanged) return;   // edges held low (reset at entry), position unchanged
+
+        // ── THE TAIL (runs ONLY when the quantised pulse position moved) ─────────
+        // Velocity (for bpm/warp): phase units per sample → bars/sec → bpm. Sampled
+        // at pulse rate now — a derived display/fallback value consumed at the
+        // edges; nothing reads it between pulses (nothing continuous to preserve).
         if (sampleTime > 0.f) {
             phaseVel = d / (double)sampleTime;       // bars per second (signed)
             double barsPerSec = std::fabs(phaseVel);
@@ -153,13 +194,6 @@ struct PhaseEngine {
                 sixteenthSec = 15.f / bpm;
             }
         }
-
-        // Advance the continuous (unwrapped) phase by the shortest-path delta, and
-        // derive the absolute target pulse from it. Deriving from the absolute phase
-        // (not from accumulated rounded deltas) is what lets sub-pulse per-sample
-        // motion accumulate correctly until a pulse boundary is actually crossed.
-        prevContPhase += d;
-        long targetPulse = (long)std::llround(prevContPhase * (double)PPB);
 
         long step = targetPulse - pulsePos;
         long mag  = step < 0 ? -step : step;
@@ -184,12 +218,15 @@ struct PhaseEngine {
             long sixteenthsMoved = (mag + p16/2) / p16;
             jumpSixteenths = (int)((step < 0) ? -sixteenthsMoved : sixteenthsMoved);
             pulsePos = targetPulse;
-            prevPhase = phase;
             prevPulse = targetPulse;
             return;
         }
 
-        if (step == 0) { prevPhase = phase; return; }
+        // (The old step == 0 early-out is unreachable past the gate: prevPulse ==
+        // pulsePos between tails — the seed sets both, every tail ends with
+        // prevPulse = pulsePos — so targetPulse != prevPulse ⟹ step != 0. The gate
+        // IS the old no-motion return, and the tracker update lives in the cheap
+        // path now.)
 
         reverse = (step < 0);
 
@@ -215,7 +252,6 @@ struct PhaseEngine {
             }
         }
 
-        prevPhase = phase;
         prevPulse = pulsePos;
     }
 
@@ -275,6 +311,7 @@ struct PhaseEngine {
         }
         pulseEdge = sixteenthEdge = quarterEdge = reverse = jumped = false; jumpSixteenths = 0;
         dirT = dirS = 0;
+        pulseChanged = false;
         ppqn = (ppqnSetting > 0 ? ppqnSetting : 24);
         const int p16   = pulsesPer16th(ppqn);
         const long plen = (long)(patternLength > 0 ? patternLength : 16);
@@ -296,6 +333,7 @@ struct PhaseEngine {
             return;
         }
 
+        // ── THE CHEAP PATH (every sample — CC_FIX_PHASE_RUN_AT_PPQN step 1) ────────
         // The transport delta (shortest-path — the ramp wrap reads forward, the same
         // convention process() uses) advances the UNWRAPPED transport.
         double dT = t - prevPhase;
@@ -307,12 +345,15 @@ struct PhaseEngine {
 
         // The subphase delta (shortest-path) — the SIGN-PRODUCT material only. The
         // POSITION never integrates these deltas (see the state-block note above).
+        // Both dirs stay PER-SAMPLE (cheap, and the sign product reads them on still
+        // samples too — test_phase_tier §10/§12) — only the EXPENSIVE tail is gated.
         double dS = s - prevSub;
         if (dS >  0.5) dS -= 1.0;
         if (dS < -0.5) dS += 1.0;
         dirS = (dS > 0.0) ? 1 : (dS < 0.0 ? -1 : 0);
         prevSub = s;
 
+        // ── THE PULSE-CHANGE GATE (step 2) ──────────────────────────────────────
         // THE COMPOSITION — the quotient/remainder, recomputed from the formula EVERY
         // sample (never accumulated): the coarse term from the UNWRAPPED transport (so a
         // transport cycle wrap is a region crossing into the next cycle's region — the
@@ -324,7 +365,22 @@ struct PhaseEngine {
         // handled by the same replay + snap as any other jump (the arrival rule).
         // Adjudication recorded in PHASE_TIER_PLAN.md §Stage 2. The composed value and
         // its pulse mapping live in tierPulseFor (above) — evaluated fresh, floored.
-        // BPM follows the TRANSPORT ramp's velocity (the tempo carrier).
+        //
+        // THE PROBE IS THE COMPOSITION ITSELF (the same tierPulseFor the tail lands
+        // on, compared against prevPulse): the composed position moves with the
+        // SUBPHASE between transport pulses (the coarse term is frozen within a
+        // region — that IS the model), so a transport-only probe would freeze a
+        // subphase sweep with a stalled transport and the within-region model dies
+        // (test_phase_tier §11/§14 are exactly that sweep). The gate fires when the
+        // composed target moved — EXACTLY when the old per-sample body's step != 0
+        // would have (bit-identical firing samples).
+        long targetPulse = tierPulseFor(prevContPhase, s, rF, PPB);
+        pulseChanged = (targetPulse != prevPulse);
+        if (!pulseChanged) return;   // edges held low (reset at entry), position unchanged
+
+        // ── THE TAIL (runs ONLY when the quantised pulse position moved) ─────────
+        // BPM follows the TRANSPORT ramp's velocity (the tempo carrier) — sampled at
+        // pulse rate now; consumed at the edges, never between pulses.
         if (sampleTime > 0.f) {
             phaseVel = dT / (double)sampleTime;
             double barsPerSec = std::fabs(phaseVel);
@@ -335,7 +391,6 @@ struct PhaseEngine {
             }
         }
 
-        long targetPulse = tierPulseFor(prevContPhase, s, rF, PPB);
         long step = targetPulse - pulsePos;
         long mag  = step < 0 ? -step : step;
 
@@ -354,7 +409,9 @@ struct PhaseEngine {
             return;
         }
 
-        if (step == 0) return;
+        // (The old step == 0 early-out is unreachable past the gate — the same
+        // prevPulse == pulsePos invariant as process(): targetPulse != prevPulse
+        // ⟹ step != 0.)
 
         reverse = (step < 0);
 
