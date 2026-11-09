@@ -36,3 +36,12 @@ In StraitsSandsMacroVisual, mirror East's logic for the displayed voice:
 ## DO NOT
 - Change voiceFrameTickAt, effectiveVoiceLor, the clamps, or the store.
 - Change East's playhead logic.
+
+## MACRO VOICE RANGE = ONE RANGE FOR ALL FOLLOW-MACRO VOICES (Rodney)
+- The Macro strip's voice range (L, O, R, direction) is the SAME for every follow-Macro voice. It is the macro
+  controls' global range (macroVoiceLor_), exactly like the other Macro controls.
+- A voice that is East-local keeps its own range (voiceLorStore_), as today. The Macro strip shows the macro range.
+- Gate: on the Macro strip, the playhead of ANY follow-Macro voice (V1..V16) runs in the same window, and changing the
+  Macro L/O/R moves every follow-Macro voice's playhead together.
+- Sends: Rodney's note reads "apart from sends being global across voices". Earlier direction was that sends are PER
+  VOICE (send voice selected on Macro). This prompt keeps sends per voice. CONFIRM the sends wording before any change.
