@@ -66,3 +66,20 @@ add it. Report which.
 ## DO NOT
 - Change the abs1 full-phrase branch, the mask, or the composition of the mask with cycle/abs1.
 - Change the lane rotation convention to suit the voice; the voice matches the lanes.
+
+## PAINTED PATTERN FOLLOWS ROTATION (Rodney: keep it, rotation stays restricted to the range)
+Current behaviour (verified, SequencerEngine.hpp:743-750 and SequencerEngine.cpp:366): the painted pattern shifts by the
+DELTA of the voice rotation from its anchor, shift = rowR - anchorR (rotMaskRing), and re-pins on a base change by
+baseR - anchorR. So the figure follows any change in voice R. Restricting R to 0..L-1 does not break this; it bounds how
+far the figure can travel to +/-(L-1) from its anchor.
+
+Requirements for the fix:
+1. The follow input is the RESTRICTED voice R (the clamped baseR and rowR), never the unclamped stored value.
+2. A window-length change that CLAMPS R (L shrinks below the current R) changes baseR, so the anchor re-pins and the
+   figure shifts by the clamp delta. This is the intended consequence of "follow rotation"; declare it, do not hide it.
+3. rotMaskRing rotates modulo the ACTIVE pattern length (16 or 32 with the 32-step work), not a fixed 16. Check the
+   modulus used there and make it the active length.
+Gates (added):
+- With L=8, sweeping R over 0..7 moves the painted figure by R minus its anchor; R cannot reach 8..15.
+- Shrinking L below the current R re-pins, and the figure moves by the clamp delta; the anchor then tracks the clamped R.
+- Abs2 (followR off) rows never re-pin (unchanged).
