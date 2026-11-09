@@ -814,6 +814,12 @@ struct Monsoon : Module {
 
     int lastModeSelect = -1;
     int lightTheme = 0; // 0 = Dark, 1 = Light. Using int to match PeranakanLatticePanel expectations.
+    // SEND VOICE persistence (CC_FIX_SEND_VOICE_FROM_MACRO): the MACRO strip's voice-tab
+    // selection, stored as a VOICE NUMBER 1..16 (1 = V1 mono). The Macro visual WRITES it
+    // on tab change and READS it on init (re-selects the tab + publishes
+    // PatternEngine::setSendVoice so the send subpanel reopens on the same voice).
+    // Saved/loaded under the key "macroViewVoice"; absent key ⟹ V1 (the default here).
+    int macroViewVoice = 1;
     // Single source of truth for the spread interpolation target mode (context
     // menu lives on Monsoon). false = Average Poly (mono + active poly average);
     // true = Mono Draw (target the raw mono draw; mono strand becomes a fixed

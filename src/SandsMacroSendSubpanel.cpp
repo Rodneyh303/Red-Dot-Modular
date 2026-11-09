@@ -83,11 +83,14 @@ struct SandsMacroSendSubpanelWidget : ModuleWidget,
         return dynamic_cast<SandsMacroSendSubpanel*>(module);
     }
 
-    // The shared voice selection — READ, never owned (the spec's subpanel law).
-    // PatternEngine::displayedVoice is THE shared state; the knobs author the
-    // selected voice's row, resolved LIVE per read (no sync dance — the Macro
-    // strip's own convention, moved here; the view re-binds on a voice switch).
-    static int slotLiveFrom(Monsoon* m) { return m ? m->engine.pe.displayedVoice().v : 0; }
+    // The SEND VOICE — read, never owned here (CC_FIX_SEND_VOICE_FROM_MACRO): the
+    // MACRO strip's voice tab publishes PatternEngine::sendVoice (via setSendVoice,
+    // persisted on Monsoon::macroViewVoice); this panel authors THAT voice's row.
+    // (It used to read displayedVoice — East's own selection — so Macro's tab changes
+    // never reached the sends; that was the migration artefact this fixes.) Resolved
+    // LIVE per read (no sync dance — the Macro strip's own convention, moved here;
+    // the view re-binds on a voice switch).
+    static int slotLiveFrom(Monsoon* m) { return m ? m->engine.pe.sendVoice().v : 0; }
     int slotLive() const { return slotLiveFrom(redDot::lookupMonsoon(module)); }
 
     // column centres (mm) — MUST match panel_src/gen_sands_macro_send.py
@@ -137,7 +140,7 @@ struct SandsMacroSendSubpanelWidget : ModuleWidget,
                     "param_msend_" + std::to_string(l) + "_" + std::to_string(item),
                     resolveMon, -1.f, 1.f, 0.f,
                     std::string(laneNames[l]) + " mix-in "
-                        + SandsMacroSendIds::SEND_CAPTIONS[item] + " (viewed voice)",
+                        + SandsMacroSendIds::SEND_CAPTIONS[item] + " (send voice)",
                     [l, item](Monsoon& m) { return m.getMacroSend(slotLiveFrom(&m), l, item); },
                     [l, item](Monsoon& m, float v) { m.setMacroSend(slotLiveFrom(&m), l, item, v); });
 
@@ -149,7 +152,7 @@ struct SandsMacroSendSubpanelWidget : ModuleWidget,
                     "param_mtap_" + std::to_string(l) + "_" + std::to_string(k),
                     resolveMon, 0.f, 1.f, 1.f,
                     std::string(laneNames[l]) + " "
-                        + SandsMacroSendIds::TAP_CAPTIONS[k] + " send tap (PRE-POST, viewed voice)",
+                        + SandsMacroSendIds::TAP_CAPTIONS[k] + " send tap (PRE-POST, send voice)",
                     [l, k](Monsoon& m) { return m.getMacroTap(slotLiveFrom(&m), l, k); },
                     [l, k](Monsoon& m, float v) { m.setMacroTap(slotLiveFrom(&m), l, k, v); });
 
@@ -164,7 +167,7 @@ struct SandsMacroSendSubpanelWidget : ModuleWidget,
                     "param_mdist_" + std::to_string(l) + "_" + std::to_string(p),
                     resolveMon, 0.f, 1.f, dotModular::WarpBank::kDistSendDefault,
                     std::string(laneNames[l]) + " dist-send "
-                        + SandsMacroSendIds::DIST_CAPTIONS[p] + " (viewed voice)",
+                        + SandsMacroSendIds::DIST_CAPTIONS[p] + " (send voice)",
                     [l, p](Monsoon& m) { return m.getDistSend(slotLiveFrom(&m), l, p); },
                     [l, p](Monsoon& m, float v) {
                         const int slot = slotLiveFrom(&m);
@@ -282,7 +285,7 @@ struct SandsMacroSendSubpanelWidget : ModuleWidget,
             nvgFillColor(vg, ink);
             nvgFontSize(vg, mm2px(2.2f));
             char buf[48];
-            std::snprintf(buf, sizeof(buf), "VIEWED VOICE: V%d", slotLive() + 1);
+            std::snprintf(buf, sizeof(buf), "SEND VOICE: V%d", slotLive() + 1);
             nvgText(vg, mm2px(6.f), mm2px(115.5f), buf, NULL);
             nvgTextAlign(vg, NVG_ALIGN_RIGHT | NVG_ALIGN_MIDDLE);
             nvgFillColor(vg, dim);

@@ -82,6 +82,15 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
     char rangeLabel_[16] = "GLOBAL";
     TabButtonGroup*            tabGroup     = nullptr;
     int viewVoice = 0;   // which voice's resulting probabilities to DISPLAY (read-only)
+    // SEND VOICE publish guard (CC_FIX_SEND_VOICE_FROM_MACRO): the tab index whose voice
+    // was last published to the engine (setSendVoice) + Monsoon (macroViewVoice), and the
+    // Monsoon it was published TO. -1/null = nothing published yet (the init block
+    // publishes once, then step() publishes on every change — and on a HOST SWAP, where
+    // the surviving strip must re-publish to the new host or its sends sit at the V1
+    // default while the strip shows another tab). Macro owns the SENDS' voice — it NEVER
+    // touches displayedVoice.
+    int sentVoiceTab_ = -1;
+    Monsoon* publishedMon_ = nullptr;
     // (lastSendVoice removed: the per-voice send sync dance is gone -- StoreKnobs read/write
     //  the live view voice directly, so there is no proxy to re-sync on voice change.)
     bool                       initialized  = false;
@@ -902,6 +911,20 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // clobber the loaded direction with 0. (This is exactly the "widget must NOT
             // overwrite FROM the engine" rule noted below -- the old seed was safe only
             // because it wrote a re-derivable display proxy, not the authoritative store.)
+            // SEND VOICE reopen (CC_FIX_SEND_VOICE_FROM_MACRO): on construction/load the
+            // strip re-selects the STORED Macro voice (Monsoon::macroViewVoice, voice
+            // number 1..16) and publishes it as the sends' voice — one publish here, then
+            // step()'s diff below keeps it true. Tabs are pristine on this first frame
+            // (setActiveCount runs later in step), so selectTab cannot be refused; if the
+            // stored voice exceeds the active poly count, setActiveCount falls back below
+            // and the diff republishes the fallen-back tab.
+            const int storedVoice = std::max(1, std::min(monsoon->macroViewVoice, 16));
+            if (tabGroup) tabGroup->selectTab(storedVoice - 1);
+            viewVoice     = storedVoice - 1;
+            sentVoiceTab_ = viewVoice;
+            publishedMon_ = monsoon;
+            monsoon->macroViewVoice = storedVoice;
+            monsoon->engine.pe.setSendVoice(dotModular::VoiceResolver::slot(storedVoice));
             initialized = true;
         }
 
@@ -927,6 +950,18 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             tabGroup->setActiveCount(dotModular::VoiceResolver(monsoon->engine).activeVoiceCount());
             viewVoice = std::min(tabGroup->getSelectedTab(),
                                  monsoon->engine.numPolyVoices);   // 0..numPolyVoices
+        }
+        // SEND VOICE publish (CC_FIX_SEND_VOICE_FROM_MACRO): the MACRO strip owns the
+        // sends' voice. On every tab change (and via the init block once on load) write
+        // BOTH homes — the persisted Monsoon field (voice number 1..16, saved with the
+        // patch) and the engine's sendVoice_ (what the send subpanel resolves live, the
+        // same slot(V) mint East uses for displayedVoice). Macro NEVER writes
+        // displayedVoice — that stays East's own selection.
+        if (monsoon && (viewVoice != sentVoiceTab_ || monsoon != publishedMon_)) {
+            sentVoiceTab_ = viewVoice;
+            publishedMon_ = monsoon;
+            monsoon->macroViewVoice = viewVoice + 1;
+            monsoon->engine.pe.setSendVoice(dotModular::VoiceResolver::slot(viewVoice + 1));
         }
         // Voice NUMBER (1..16) for the displayed tab: tab 0 = V1 (mono), tab v = V(v+1).
         // Mono/poly identity + bank mapping via VoiceResolver — one source of truth, not

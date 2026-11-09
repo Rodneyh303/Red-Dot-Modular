@@ -670,6 +670,15 @@ struct PatternEngine {
     VoiceSlot displayedVoice() const { return displayedVoice_; }
     // The minting setter — the module layer's ONE entry point for the displayed voice.
     void setDisplayedVoice(VoiceSlot v) { displayedVoice_ = v; }
+    // SEND VOICE (CC_FIX_SEND_VOICE_FROM_MACRO): which voice the Macro SEND subpanel
+    // authors. Owned by the MACRO strip — its voice tab publishes here on change and
+    // on load (Monsoon::macroViewVoice is the persisted home of that selection);
+    // East's displayedVoice_ above is UNRELATED and untouched by the Macro strip.
+    // Same slot convention as displayedVoice_: 0 = mono/V1, 1..15 = poly V2..V16;
+    // callers MINT via VoiceResolver::slot(V), the default is the mono anchor.
+    VoiceSlot sendVoice_ = dotModular::kMonoVoiceSlot;
+    VoiceSlot sendVoice() const { return sendVoice_; }
+    void setSendVoice(VoiceSlot v) { sendVoice_ = v; }
     // Voice-scoped recompute: blend only the given voice's 16 steps from cached z0/z1.
     // Called by refreshVisualCache for the displayed voice (not all 15 poly voices).
     void recomputeEffectiveRhythmForVoice(VoiceSlot voice);

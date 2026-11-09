@@ -201,6 +201,10 @@ json_t* PersistenceManager::toJson(Monsoon* m) {
     json_t* ms = json_array();
     for (int i = 0; i < 448; ++i) json_array_append_new(ms, json_real(m->editor.macroSend[i]));  // 16 × 7 × 4
     json_object_set_new(root, "editorMacroSend", ms);
+    // SEND VOICE (CC_FIX_SEND_VOICE_FROM_MACRO): the MACRO strip's voice-tab selection
+    // (voice number 1..16) — the sends' addressing reopens on it after a reload. Missing
+    // key on load ⟹ V1 (old patches byte-identical on load; nothing else reads it).
+    json_object_set_new(root, "macroViewVoice", json_integer(m->macroViewVoice));
     // P9b: the per-voice send-tap bank (missing key on load ⟹ all voices 1.0 = POST,
     // so pre-fix patches sound identical).
     dotModular::MacroTapBank::serialize(m->editor.macroTap, root, "editorMacroTap");
@@ -367,6 +371,13 @@ void PersistenceManager::fromJson(Monsoon* m, json_t* root) {
     }
     if (auto j = json_object_get(root, "modeSelect")) m->modeSelect = (int)json_integer_value(j);
     if (auto j = json_object_get(root, "lightTheme")) m->lightTheme = (bool)json_boolean_value(j);
+    // SEND VOICE (CC_FIX_SEND_VOICE_FROM_MACRO): absent key ⟹ V1 (the construction
+    // default stands). Out-of-range values clamp to the nearest valid voice rather than
+    // trusting the file — the Macro visual's tab re-selection guards again anyway.
+    if (auto j = json_object_get(root, "macroViewVoice")) {
+        const int v = (int)json_integer_value(j);
+        m->macroViewVoice = (v >= 1 && v <= 16) ? v : 1;
+    }
     if (m->scaleManager) {
         if (auto j = json_object_get(root, "scaleRoot")) m->scaleManager->scaleRoot = (int)json_integer_value(j);
         if (auto j = json_object_get(root, "lastSelectedScale")) m->scaleManager->lastSelectedScale = (int)json_integer_value(j);
