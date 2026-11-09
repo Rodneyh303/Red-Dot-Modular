@@ -49,9 +49,10 @@
 //
 // THE DISPLAY PATH (step 4) IS NOT HERE: the DistributionCurveWidget and the phase
 // markers keep their own continuous video-rate evaluation; neither reads this held
-// value, and the engine never reads the display. The standalone module's per-sample
-// transform (PhaseDistChannel) is likewise untouched — the doc's scope is the
-// Monsoon engine sites; the module's continuous output IS its function.
+// value, and the engine never reads the display. The standalone module
+// (PhaseDistChannel) now runs THIS hold too — one per channel, its own default grid
+// (CC_FIX_STANDALONE_PHASE_CELL_HOLD, docs tip f1ee29ba: the PPQN rule reaches the
+// standalone; one hold implementation, called never copied).
 //
 // PURE HEADER: no Rack — plain C++ over SandsModifierResolver.hpp (the ONE
 // primitive, dotModular::phaseDistort — the §14 single-implementation gate; the

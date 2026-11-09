@@ -33,6 +33,22 @@
 // either: it stays the EXISTING machinery inside the Monsoons that consume the
 // module's output voltages.
 //
+// THE PPQN CELL RULE (CC_FIX_STANDALONE_PHASE_CELL_HOLD, docs tip f1ee29ba): the
+// TRANSFORM's evaluation is no longer per-sample — the core routes it through the
+// SAME cell-held core the Monsoon tier sites run (dotModular::PhaseDistCellHold,
+// ONE implementation, called never copied — the doc's DO-NOT), one hold per
+// channel. The transform fires ONCE PER PPQN CELL of the input at the cell's OWN
+// grid point (bit-identical to a per-sample evaluation there) and holds between
+// cells; an identity set keeps the raw path AND resets the hold (no stale set's
+// value rides an identity episode — Monsoon's law, verbatim). The standalone's OWN
+// grid is the plugin's default PPQN (24 → 6 pulses/16th) over the ramp's own
+// pattern cycle (16 sixteenths — ONE full 0..10 V ramp, the jack convention):
+// 96 cells per span — the same grid a default-configured Monsoon tier runs
+// (pulsesPer16th(24)·patternLength 16), so the two consumers agree bit-for-bit on
+// the same input and set. The module has NO ppqn/length knowledge (§13: no index
+// parameters, no cross-module reads) — a consumer running a different grid
+// quantises its own tier as its own machinery always has.
+//
 // THE VOLTAGE CONVENTION is Monsoon's Mode E convention, verbatim: in volts,
 // normalised by PhaseEngine::normPhase (volt / phaseInMax, floored into [0,1) — the
 // ramp wraps; 17 V reads 0.7), distorted in [0,1), re-scaled by phaseInMax. The
@@ -57,11 +73,13 @@
 #include <array>
 
 #include "PhaseDistStore.hpp"        // the set shape + the store (shared with A)
+#include "PhaseDistCellHold.hpp"     // the PPQN cell hold — the ONE hold implementation
 #include "engines/PhaseEngine.hpp"   // normPhase + phaseInMax — the ONE normalisation
 
 namespace redDot {
 
-// ONE channel's signal path: a one-sample delay line + the shared transform.
+// ONE channel's signal path: a one-sample delay line + the shared transform,
+// evaluated through the shared PPQN cell hold (one hold per channel).
 struct PhaseDistChannel {
     // The delayed sample. Reset to 0 (the pre-patch source level): out(0) = 0 =
     // in(−1), so the identity stream equals the source shifted one sample from the
@@ -74,18 +92,35 @@ struct PhaseDistChannel {
     // nothing in the plugin writes phaseInMax away from its 10 V default.
     PhaseEngine pe_{};
 
+    // THE CELL HOLD (CC_FIX_STANDALONE_PHASE_CELL_HOLD): the SAME type the Monsoon
+    // tier sites run — the fire-once-per-cell + hold lives THERE, not here (the
+    // doc's DO-NOT: no second cell or hold path). Public: the unit rig reads the
+    // hold's cell state for the fire-count pins.
+    dotModular::PhaseDistCellHold hold_{};
+
+    // The standalone's OWN grid (the module's evaluation rate, not the consumer's
+    // pulse walk): pulsesPer16th(24)·16 — the plugin's default PPQN over ONE full
+    // 0..10 V ramp (the pattern cycle the jack convention defines). 96 cells.
+    static constexpr long kSpanPulses =
+        (long)PhaseEngine::pulsesPer16th(24) * 16;
+
     // ONE sample. `inVolt` is THIS sample's input; the output is the PREVIOUS
     // sample's input through the channel's set. Identity set ⟹ the delayed sample
-    // returned RAW (bit-exact — the fixed hop, nothing else). Order matters: read
-    // the delay line first, latch second (a one-line pipeline, not a feedback loop).
+    // returned RAW (bit-exact — the fixed hop, nothing else) and the hold RESET
+    // (Monsoon's step-3 law: the re-entry re-seeds — the first cell IS a new
+    // cell). Non-identity ⟹ the held-cell core evaluates the transform ONCE PER
+    // CELL of the delayed input at the cell's own grid point and holds between
+    // cells. Order matters: read the delay line first, latch second (a one-line
+    // pipeline, not a feedback loop).
     float process(float inVolt, const PhaseDistSet& s) {
         const float delayed = prev_;
         prev_ = inVolt;
-        if (s.isIdentity()) return delayed;   // the raw path — the §13 identity gate
-        return (float)dotModular::phaseDistort(pe_.normPhase(delayed), s.cell()) * pe_.phaseInMax;
+        if (s.isIdentity()) { hold_.reset(); return delayed; }   // the raw path — the §13 identity gate
+        return hold_.processTransport(pe_.normPhase(delayed), kSpanPulses,
+                                      s.cell(), pe_.phaseInMax);
     }
 
-    void reset() { prev_ = 0.f; }
+    void reset() { prev_ = 0.f; hold_.reset(); }
 };
 
 // The per-block snapshot reader: ONE reader (this module), all eight sets, once per

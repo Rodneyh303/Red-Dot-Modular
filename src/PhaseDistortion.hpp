@@ -12,7 +12,11 @@
 //   · IDENTITY BY DEFAULT: an unpatched or zeroed channel passes phase through
 //     unchanged PLUS the module's fixed hop.
 //   · The transform is the ONE shared primitive (dotModular::phaseDistort — Task 2
-//     of the expander prompt, already landed). Called, never copied.
+//     of the expander prompt, already landed). Called, never copied. It evaluates
+//     ONCE PER PPQN CELL of the input and holds between cells, through the SAME
+//     cell-held core the Monsoon tier sites run (PhaseDistCellHold, one per
+//     channel — CC_FIX_STANDALONE_PHASE_CELL_HOLD; the §13 per-sample model is
+//     superseded, the gate now being the held contract "as for Monsoon").
 //   · EVERY Monsoon's phase and subphase come from the module's OUTPUTS (the
 //     channel IS the jack: a Monsoon patched to output k uses parameter set k;
 //     several Monsoons may share an output). The patch rule is a PATCHING
@@ -68,6 +72,11 @@ struct PhaseDistortion : rack::Module {
     redDot::PhaseDistStore store;
 
     // ── the signal cores + the per-block working copies (rack-free, unit-tested) ─
+    // Each channel core carries its OWN dotModular::PhaseDistCellHold (the SAME
+    // type Monsoon's tier sites run — CC_FIX_STANDALONE_PHASE_CELL_HOLD): ch_ IS
+    // the held-cell core, one hold per channel, and the process() call site keeps
+    // its §13 shape verbatim. The fixed one-sample hop and the identity raw path
+    // remain the channel's own (the §13 model's function).
     std::array<redDot::PhaseDistChannel, PhaseDistortionIds::kChannels> ch_{};
     redDot::PhaseDistBlockReader reader_;
 

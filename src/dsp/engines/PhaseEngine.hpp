@@ -85,7 +85,7 @@ struct PhaseEngine {
     int8_t dirT = 0;                // transport tier motion sign this sample
     int8_t dirS = 0;                // subphase tier motion sign this sample
 
-    static int pulsesPer16th(int p) { return (p > 0 ? p : 24) / 4; }
+    static constexpr int pulsesPer16th(int p) { return (p > 0 ? p : 24) / 4; }
 
     void reset() {
         havePrev = false;

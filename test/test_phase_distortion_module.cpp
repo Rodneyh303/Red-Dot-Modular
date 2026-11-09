@@ -11,22 +11,31 @@
 //       output of channel k (every other channel stays the bit-exact delayed raw).
 //   G3  SAME OUTPUT, SAME RESULT — two consumers of output k produce identical
 //       outputs, sample for sample (two cores, same set, same input stream).
-//   G4  SHARED PRIMITIVE — the transform exists once: the module's channel output
-//       IS dotModular::phaseDistort(normPhase(delayed), cell) × phaseInMax computed
-//       externally, BIT-EXACT over the roster × signed-w grid (the core calls the
-//       primitive; it cannot drift from it). The "grep confirms no second copy in
-//       the module" half of the gate runs in the battery shell (run_all's smoke
-//       covers the TU; the review grep is recorded in the commit).
+//   G4  SHARED PRIMITIVE + THE HELD CONTRACT — the transform exists once and
+//       evaluates ONCE PER PPQN CELL of the input at the cell's OWN grid point,
+//       held between cells (CC_FIX_STANDALONE_PHASE_CELL_HOLD — the SAME
+//       PhaseDistCellHold type the Monsoon tier sites run, at the module's own
+//       default grid 96 = pulsesPer16th(24)·16): at each cell evaluation point
+//       the held output equals phaseDistort per-sample at that point BIT FOR BIT;
+//       an unchanged cell returns the held bits verbatim; the fire count == the
+//       cell-transition count (no other per-sample call exists); on exact grid
+//       points the output IS the primitive's value there. The "grep confirms no
+//       second copy in the module" half of the gate runs in the battery shell
+//       (run_all's smoke covers the TU; the review grep is recorded in the
+//       commit).
 //   G5  GAP/ATOM/DUAL semantics unchanged — the existing phase distribution
 //       batteries (test_phase_distribution, test_phase_distortion, test_warp_*)
 //       stay green in run_all; the bridge above pins the module onto the SAME
 //       primitive those batteries pin.
 //   G6  A/B READY — with matching parameters, the module's output equals the
 //       EXPANDER build's output for the same input, delayed by one sample. The A
-//       side here is Monsoon's Mode E apply lines VERBATIM (identity set ⟹ the raw
-//       voltage through; non-identity ⟹ normPhase → phaseDistort → × phaseInMax),
-//       and the comparison is B[n] == A[n−1] bit-exact — through the SAME
-//       PhaseEngine::normPhase and phaseInMax both sides share.
+//       side here is Monsoon's Mode E apply lines AS THE ENGINE RUNS THEM NOW
+//       (identity set ⟹ the raw voltage through + the hold reset; non-identity
+//       ⟹ normPhase → the PPQN cell hold at the tier's own default grid —
+//       ppqnSetting 24 × patternLength 16 = the same 96-cell grid the module
+//       runs, so the two consumers AGREE bit-for-bit), and the comparison is
+//       B[n] == A_held[n−1] bit-exact — through the SAME PhaseEngine::normPhase,
+//       phaseInMax and the SAME PhaseDistCellHold type both sides share.
 //   G7  run_all green — both SDK legs (the battery itself; not a local pin).
 //
 // Plus the §13 model's own cadence pin: the module's per-block snapshot (the
@@ -111,15 +120,35 @@ struct ModuleRig {
     }
 };
 
-// THE A-SIDE ORACLE — Monsoon's Mode E apply lines VERBATIM (src/Monsoon.cpp, the
-// §14 TASK 3 block): an identity set (or no expander) hands the RAW voltage to the
-// engine; a non-identity set distorts in the normalised domain and hands the engine
-// the distorted voltage. `pe` is a default PhaseEngine — the SAME normPhase /
-// phaseInMax the module's core holds (one normalisation, not two).
-static float applyA(const redDot::PhaseEngine& pe, float phaseVolt, const PhaseDistSet& s, bool identityFlag) {
-    if (identityFlag) return phaseVolt;   // the RAW path verbatim
+// THE A-SIDE ORACLE — Monsoon's Mode E apply lines AS THE ENGINE RUNS THEM NOW
+// (src/Monsoon.cpp, the §14 TASK 3 block + the CC_FIX_PHASE_DISTORT_AT_PPQN cell
+// hold the engine's tier sites carry): an identity set (or no expander) hands the
+// RAW voltage to the engine and RESETS the hold (the raw path needs no held value);
+// a non-identity set distorts through a dotModular::PhaseDistCellHold at the tier's
+// own default grid (ppqnSetting 24 × patternLength 16 = 96 — the module's grid too,
+// so the two consumers agree). `pe` is a default PhaseEngine — the SAME normPhase /
+// phaseInMax the module's core holds (one normalisation, not two); `hold` is the
+// SAME PhaseDistCellHold type the module's channel runs (one implementation).
+static constexpr long kSpanPulsesA =
+    (long)redDot::PhaseEngine::pulsesPer16th(24) * 16;   // 96 — both consumers' default grid
+static float applyA(dotModular::PhaseDistCellHold& hold, const redDot::PhaseEngine& pe,
+                    float phaseVolt, const PhaseDistSet& s, bool identityFlag) {
+    if (identityFlag) { hold.reset(); return phaseVolt; }   // the RAW path verbatim + the hold reset
     const double uT = pe.normPhase(phaseVolt);
-    return (float)dotModular::phaseDistort(uT, s.cell()) * pe.phaseInMax;
+    return hold.processTransport(uT, kSpanPulsesA, s.cell(), pe.phaseInMax);
+}
+
+// THE HELD REFERENCE, computed EXTERNALLY (the gate's "equals phaseDistort
+// per-sample at that point, bit for bit"): the value the hold must be returning at
+// THIS sample — the primitive at the CURRENT cell's own grid point (the input's
+// pulse index on the 96-cell span grid, llround + the span-ring wrap — the same
+// quantisation law the hold runs).
+static float heldRef(const redDot::PhaseEngine& pe, float delayedVolt, const PhaseDistSet& s) {
+    const double u = pe.normPhase(delayedVolt);
+    long c = (long)std::llround(u * (double)kSpanPulsesA);
+    if (c >= kSpanPulsesA) c -= kSpanPulsesA;   // the span ring's edge leak IS the wrap
+    return (float)dotModular::phaseDistort((double)c / (double)kSpanPulsesA, s.cell())
+           * pe.phaseInMax;
 }
 
 // A non-identity set with every feature LIVE (tilt + gap + atom), the signed depth
@@ -218,14 +247,14 @@ int main() {
                     if (k == K) continue;
                     if (!sameBitsF(rig.out_[k], prevIn[k])) othersRaw = false;   // the identity raw path
                 }
-                if (!sameBitsF(rig.out_[K], applyA(rig.ch_[K].pe_, prevIn[K], s, false))) inRange = false;
+                if (!sameBitsF(rig.out_[K], heldRef(rig.ch_[K].pe_, prevIn[K], s))) inRange = false;
                 if (!sameBitsF(rig.out_[K], prevIn[K])) changed = true;          // its own set decides
             }
             for (int k = 0; k < ModuleRig::kN; ++k) prevIn[k] = rig.in_[k];
         }
         ok(othersRaw, "G2: every OTHER channel stays the bit-exact delayed raw");
         ok(changed,   "G2: channel 3's output follows ITS set (differs from the delayed raw)");
-        ok(inRange,   "G2: channel 3's output == the primitive on its own set (bit-exact)");
+        ok(inRange,   "G2: channel 3's output == the primitive at the CURRENT cell's grid point, every sample (the held contract, bit-exact)");
     }
 
     // ── G3 SAME OUTPUT, SAME RESULT ─────────────────────────────────────────────
@@ -251,9 +280,15 @@ int main() {
 
     // ── G4 SHARED PRIMITIVE (the bridge) ────────────────────────────────────────
     {
-        std::printf("G4 SHARED PRIMITIVE — the channel output IS the primitive's output (no second copy)\n");
+        std::printf("G4 SHARED PRIMITIVE — the held output IS the primitive at the cell's grid point (no second copy, one fire per cell)\n");
         redDot::PhaseEngine pe;   // the shared normalisation authority
-        bool bridge = true;
+        // (a) THE HELD BRIDGE — a dense, grid-UNALIGNED sweep: every sample's
+        //     output equals the primitive at the CURRENT cell's own grid point
+        //     (bit for bit — the doc's sample-point equivalence), an unchanged
+        //     cell returns the held bits verbatim, and the fire count == the
+        //     cell-transition count (ONE transform call per cell — no other
+        //     per-sample evaluation exists).
+        bool bridge = true, holdBits = true, fireCount = true;
         const char* badName = "";
         float badW = 0.f;
         for (const auto& e : g_roster) {
@@ -261,20 +296,68 @@ int main() {
                 PhaseDistSet s = liveSet(e.f, w);
                 redDot::PhaseDistChannel core;
                 core.process(0.f, s);   // warm the delay line (its payload becomes 0 — compared below)
-                float prev = 0.f;
+                float prev = 0.f, prevGot = core.hold_.heldVolt;
+                long prevCell = -1, prevGrid = -1, actualFires = 0, expectedFires = 0;
+                long prevExpCell = -1;
                 for (int i = 0; i <= 50; ++i) {
                     const float v = 10.0f * (float)i / 50.0f * 0.98f;
-                    const float got = core.process(v, s);      // transform(norm(delayed)) — the core's ONE call
-                    const float want = applyA(pe, prev, s, false);  // the primitive, evaluated EXTERNALLY
+                    const float got = core.process(v, s);            // the held core's ONE path
+                    const float want = heldRef(core.pe_, prev, s);   // the primitive, evaluated EXTERNALLY at the cell's grid point
                     if (!sameBitsF(got, want)) { bridge = false; badName = e.name; badW = w; break; }
-                    prev = v;
+                    // the fire bookkeeping — the hold's own cell state, read directly
+                    if (core.hold_.lastCell != prevCell || core.hold_.lastGrid != prevGrid) {
+                        ++actualFires; prevCell = core.hold_.lastCell; prevGrid = core.hold_.lastGrid;
+                    }
+                    long expCell = (long)std::llround(core.pe_.normPhase(prev) * (double)core.kSpanPulses);
+                    if (expCell >= core.kSpanPulses) expCell -= core.kSpanPulses;   // the span-ring wrap
+                    if (expCell != prevExpCell) ++expectedFires;
+                    else if (i > 0 && !sameBitsF(got, prevGot)) holdBits = false;   // unchanged cell ⟹ the held bits, verbatim
+                    prevExpCell = expCell; prevGot = got; prev = v;
                 }
+                if (actualFires != expectedFires) fireCount = false;
                 if (!bridge) break;
             }
             if (!bridge) break;
         }
-        ok(bridge, "G4: core out == phaseDistort(normPhase(delayed), cell) * phaseInMax BIT-EXACT over the roster x signed-w x u-grid");
+        ok(bridge,    "G4: core out == phaseDistort at the CURRENT cell's grid point * phaseInMax, BIT-EXACT every sample over the roster x signed-w x u-grid");
+        ok(holdBits,  "G4: an unchanged cell returns the held bits verbatim (no recompute, no drift)");
+        ok(fireCount, "G4: exactly ONE transform evaluation per cell transition — fires == cell transitions, the seed included");
         if (!bridge) std::printf("       (first mismatch: %s w=%+.2f)\n", badName, badW);
+        // (b) THE GRID-POINT EQUIVALENCE — inputs stepping cell to cell across the
+        //     whole 96-cell span: each output is the primitive's value AT that
+        //     evaluation point, bit for bit.
+        {
+            bool gridOK = true;
+            for (const auto& e : g_roster) {
+                PhaseDistSet s = liveSet(e.f, 0.6f);
+                redDot::PhaseDistChannel core;
+                core.process(0.f, s);
+                float prev = 0.f;
+                for (int c = 0; c <= (int)redDot::PhaseDistChannel::kSpanPulses; ++c) {
+                    const float v = 10.0f * (float)c / (float)redDot::PhaseDistChannel::kSpanPulses;
+                    const float got = core.process(v, s);
+                    if (!sameBitsF(got, heldRef(core.pe_, prev, s))) { gridOK = false; break; }
+                    prev = v;
+                }
+                if (!gridOK) break;
+            }
+            ok(gridOK, "G4: on the cell grid the held output IS phaseDistort at each evaluation point, bit for bit (the full-span sweep)");
+        }
+        // (c) THE STALL — the same voltage sample after sample sits in ONE cell:
+        //     the first arrival fires, the rest return the held bits verbatim.
+        {
+            PhaseDistSet s = liveSet(g_roster[0].f, 0.7f);
+            redDot::PhaseDistChannel core;
+            core.process(0.f, s);
+            bool stallOK = true;
+            float first = 0.f;
+            for (int i = 0; i < 10; ++i) {
+                const float got = core.process(3.7f, s);   // the SAME voltage, ten samples
+                if (i == 1) first = got;                   // i=0 still consumes the warm-up's delayed 0 V
+                else if (i > 1 && !sameBitsF(got, first)) stallOK = false;
+            }
+            ok(stallOK, "G4: a stalled input holds ONE cell — the first sample fires, the rest return the held bits verbatim");
+        }
         // The identity set's bridge is the RAW delayed sample (the adjusted gate's law).
         {
             PhaseDistSet ident{};
@@ -303,14 +386,15 @@ int main() {
                 rig.store.writeSet(0, s);
                 rig.reader_.beginBlock(rig.store);
                 const bool ident = s.isIdentity();
+                dotModular::PhaseDistCellHold aHold;   // the A side's own hold — the SAME type, fresh per case
                 std::array<float, ModuleRig::kN> prevIn{};
                 for (int n = 0; n < 400; ++n) {
                     const float v = srcAt(n);
                     for (int k = 0; k < ModuleRig::kN; ++k) rig.in_[k] = v;
                     rig.step();
                     if (n > 0) {
-                        const float aPrev = applyA(pe, prevIn[0], s, ident);
-                        if (!sameBitsF(rig.out_[0], aPrev)) {      // B[n] == A[n-1]
+                        const float aPrev = applyA(aHold, pe, prevIn[0], s, ident);
+                        if (!sameBitsF(rig.out_[0], aPrev)) {      // B[n] == A_held[n-1]
                             ab = false; badName = e.name; badW = w; break;
                         }
                     }
@@ -320,7 +404,7 @@ int main() {
             }
             if (!ab) break;
         }
-        ok(ab, "G6: module B out == expander build A out DELAYED ONE SAMPLE, bit-exact (roster x signed-w incl. 0)");
+        ok(ab, "G6: module B out == the expander build's HELD output DELAYED ONE SAMPLE, bit-exact (roster x signed-w incl. 0 — the two consumers agree)");
         if (!ab) std::printf("       (first mismatch: %s w=%+.2f)\n", badName, badW);
     }
 
@@ -349,10 +433,14 @@ int main() {
            "cadence: frame 32's boundary picks the write up (the new set is live)");
         {
             redDot::PhaseEngine pe;
-            const float prev = srcAt(31);
-            const float want = applyA(pe, prev, s, false);
+            const float prev = srcAt(31);   // the delayed sample at the boundary frame
+            // The hold was RESET by the identity episode (frame 31 still ran the raw
+            // path), so the boundary frame's non-identity call SEED-fires the CURRENT
+            // cell with the NEW set: the output follows the new snapshot at the SAME
+            // boundary frame, at the current cell's grid point (the held contract).
+            const float want = heldRef(pe, prev, s);
             ok(sameBitsF(rig.out_[K], want) && !sameBitsF(rig.out_[K], prev),
-               "cadence: the output follows the new snapshot at the SAME boundary frame");
+               "cadence: the output follows the new snapshot at the SAME boundary frame (the seed fire — the current cell's grid point)");
         }
     }
 
