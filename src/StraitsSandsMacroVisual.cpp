@@ -1051,13 +1051,18 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 // rotation CV only moves the chevron, not the playhead, when the seq is stopped.
                 int ph = (eng.stepIndex >= 0) ? eng.macroLaneTick_[l] : -1;
                 // PER-VOICE STEP-ADVANCE (the WANDER build): the VAR lane's chevron reads
-                // the ENGINE's scanned position — the same index the mono advance draw
-                // used (the Macro editor shows the GLOBAL lanes; the global VAR chevron
-                // is the mono decision's scan). Outside holds this is bit-identical to
-                // the calcPlayhead below; during a gate-mode hold it scans.
+                // the ENGINE's scanned position. CC_FIX_MACRO_STRIP_VOICE_PLAYHEAD: on a
+                // POLY tab that is the DISPLAYED VOICE's own scan — the SAME accessor East
+                // uses for the same purpose (variationLanePlayheadForVoice, East 1914) —
+                // not the mono/global walk, which ran over the global 16 steps regardless
+                // of the voice's L. The mono tab keeps variationLanePlayhead (the mono
+                // decision's scan), as now. Outside holds this is bit-identical to the
+                // calcPlayhead below; during a gate-mode hold it scans.
                 visualEditor->setLanePlayStep(
                     l, (l == SequencerEngine::EDITOR_LANE_VARIATION)
-                            ? variationLanePlayhead(eng)
+                            ? (onMonoTab ? variationLanePlayhead(eng)
+                                         : variationLanePlayheadForVoice(
+                                               eng, dotModular::VoiceResolver::slot(viewVoice + 1)))
                             : calcPlayhead(ph, ownLen, ownOff, ownRot));
             }
         }
@@ -1065,19 +1070,37 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // ── UNIFIED ADDRESSING Stage 3: the voice-range strip (the MACRO tier) ──
         // The strip at the top of the grid shows + authors the GLOBAL voice range
         // row (macroVoiceLor_ — the row every follow-Macro voice reads through).
-        // The animated read cell is the MACRO FRAME (the global window walk — the
-        // tier has no voice map, it IS the frame; the engine caches its read cell
-        // + walk sign per recompute). Never blocked: this is the tier's own panel.
+        // The animated read cell is the MACRO FRAME's on the mono tab (the global
+        // window walk); on a POLY tab it is the displayed voice's OWN read cell
+        // (East's voice playhead — see the ONE RANGE block below). The engine
+        // caches each read cell + walk sign per recompute. Never blocked: this is
+        // the tier's own panel.
         {
             // ONE RANGE (the corrected model): the GLOBAL voice-LOR row (the row every
-            // follower reads through — the same range the macro abs1 gates against),
-            // animated with the MACRO FRAME's read cell + walk sign (the frame's OWN
-            // direction — the earlier transport-sign display was the forward-only bug).
+            // follower reads through — the same range the macro abs1 gates against).
+            // CC_FIX_MACRO_STRIP_VOICE_PLAYHEAD amendment: the Macro strip shows the
+            // macro range on EVERY tab — ONE range for all follow-Macro voices (L, O, R,
+            // direction = macroVoiceLor_, exactly like the other Macro controls); an
+            // East-local voice keeps its own range (voiceLorStore_) on EAST's strip.
             const int mL = std::max(1, se->macroVoiceLor_[SequencerEngine::LOR_LEN]);
             const int mO = se->macroVoiceLor_[SequencerEngine::LOR_OFF];
             const int mR = se->macroVoiceLor_[SequencerEngine::LOR_ROT];
-            const int rp = (eng.stepIndex >= 0) ? se->macroFrameRead() : -1;
-            const int sg = se->macroFrameSign();
+            // The read cell: the MONO tab keeps the MACRO FRAME's read cell + walk sign
+            // (the frame's OWN direction — the earlier transport-sign display was the
+            // forward-only bug), as now; a POLY tab mirrors East's VOICE playhead for the
+            // displayed voice — eng.voiceReadPosition/voiceReadSign of the voice's slot
+            // (the SAME accessors East's strip uses, East 1945), so the cell runs INSIDE
+            // the voice's own window (L=8 under a 16-step global repeats every 8, matching
+            // the audio — the engine's cycle fold feeds both) and the two strips agree.
+            int rp, sg;
+            if (onMonoTab) {
+                rp = (eng.stepIndex >= 0) ? se->macroFrameRead() : -1;
+                sg = se->macroFrameSign();
+            } else {
+                const auto vslot = dotModular::VoiceResolver::slot(viewVoice + 1);
+                rp = (eng.stepIndex >= 0) ? eng.voiceReadPosition(vslot) : -1;
+                sg = eng.voiceReadSign(vslot);
+            }
             visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);
             // The mask surface reads the ENGINE's effective pattern (the UI-completion
             // unify — display-reads-engine, East's twin note): cycle = all-lit, range
