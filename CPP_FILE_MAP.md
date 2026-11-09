@@ -4,7 +4,7 @@ One-line-per-file summary of every C++ source file in the repository.
 
 - **Repo:** `Red-Dot-Modular` (VCV Rack plugin), branch `feat/phase-duals-gaps` at commit `fd37bcd9`
 - **Generated:** 2026-11-06
-- **Scope:** all **167 `.cpp`** + **141 `.h`/`.hpp`** = **308 files** (including `src/deprecated/`, excluded from the build)
+- **Scope:** all **167 `.cpp`** + **142 `.h`/`.hpp`** = **309 files** (including `src/deprecated/`, excluded from the build)
 - **Method:** every summary is grounded in the file's own text — header comment blocks, class/struct names, and code structure. Where a purpose is not fully evident from the file itself it is marked *(inferred)*.
 
 ## Orientation
@@ -19,7 +19,7 @@ House rules visible throughout the tree: the de-param law (store-backed `StoreKn
 | --- | --- | --- |
 | `/plugin.cpp` + `src/plugin.cpp` | 2 | Plugin entry point and model registration |
 | `src/` (modules) | 63 | Monsoon host, expander ring, Sands visuals/subpanels, standalone + tuning modules |
-| `src/dsp/*.hpp` | 33 | Pure rack-free DSP cores (copulas, RNG, resolvers, stores, transforms) |
+| `src/dsp/*.hpp` | 34 | Pure rack-free DSP cores (copulas, RNG, resolvers, stores, transforms) |
 | `src/dsp/engines/` | 8 | Clock / pattern / sequencer / phase / rhythm-decision engine cores |
 | `src/dsp/gates/` | 2 | Per-voice gate state machine |
 | `src/dsp/managers/` | 25 | Monsoon's manager decomposition (CV, parameters, timing, output, persistence…) |
@@ -30,7 +30,7 @@ House rules visible throughout the tree: the de-param law (store-backed `StoreKn
 | `panel_src/tools/` | 2 | Vendored NanoSVG parser/rasterizer |
 | `test/` | 113 | Standalone unit-test battery + harness shims |
 | `src/deprecated/` | 23 | Retired code kept out of the build |
-| **Total** | **308** | |
+| **Total** | **309** | |
 
 ---
 
@@ -135,6 +135,7 @@ House rules visible throughout the tree: the de-param law (store-backed `StoreKn
 - `src/dsp/MpeMath.hpp` — Pure CV→MPE conversion math for Keppel's CV→MPE-out utility: nearest-12-TET note + centred 14-bit bend split (0V=C4), held-note bend tracking, round-trip reconstruction, X/Y/Z expression mappers and two-layer sumAroundRest; shared verbatim by tests and module.
 - `src/dsp/NoteValues.hpp` — Single source of truth for the 13-entry note-length dial (dotted build): NOTE_VALUES in strict duration order, DIAL_ORDER display permutation, legacy-index remap for old patches, and the noteShorterOf fraction authority. Consumed by SequencerEngine, GateState, configurator/widget/persistence.
 - `src/dsp/PhaseDistCore.hpp` — Standalone phase-distortion module's rack-free signal core: eight PhaseDistChannel one-sample-hop paths (out = transform(in(n−1))), identity sets passing raw voltage, normalisation via PhaseEngine::normPhase; PhaseDistBlockReader snapshots all eight sets once per control block.
+- `src/dsp/PhaseDistCellHold.hpp` — dotModular::PhaseDistCellHold, the ENGINE-side PPQN-cell hold for the phase-distortion transform (CC_FIX_PHASE_DISTORT_AT_PPQN): the transform evaluated once per PPQN cell of the tier's input — transport via the plain probe's llround on the span grid (ring-wrapped), subphase via the fine term's floor on the region-relative grid — fired at the cell's own grid point (bit-identical), held between cells, reset on the raw path; Monsoon's two tier sites consume it, the display path never does.
 - `src/dsp/PhaseDistStore.hpp` — The expander model's eight phase-distortion parameter sets (warp, signed depth, tilt, atom, gap, engine-inert delegation) with mutex-guarded per-block snapshot reads, guaranteeing atomic multi-field writes and cross-reader block consistency for the Monsoon network.
 - `src/dsp/PhiloxRng.hpp` — Philox4x32-10 counter-based PRNG (Random123-vector-verified, SIMD-vectorised, bit-identical lanes): stateless/addressable draws, SplitMix key conditioning, per-stream key derivation (rhythm/melody/CA/q-mix), block drawing. Shared RNG for PatternEngine, Change Alley scatter, Cantonment RANDOM.
 - `src/dsp/SandsDistributionRole.hpp` — Rack-free pure template resolving the distribution sub-expander's dual role (MACRO vs EAST) by walking left through the family chain: first host wins, foreign/bare links resolve per-voice NONE; production variant parameterised on Rack models via callables.

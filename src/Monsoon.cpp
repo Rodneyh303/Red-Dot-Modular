@@ -771,6 +771,8 @@ void Monsoon::onReset() {
     Module::onReset();
     initialize();   // resets all module state to defaults
     clock.reset();  // resets ClockEngine timing
+    phaseDistHold_[0].reset();   // the PPQN-cell holds re-seed on the next Mode-E sample (CC_FIX_PHASE_DISTORT_AT_PPQN)
+    phaseDistHold_[1].reset();
 }
 
 
@@ -938,7 +940,26 @@ void Monsoon::process(const ProcessArgs& args) {
         // jump contract (jumpSixteenths replay + snap) handles it, no new jump class.
         if (!phaseDistIdentity_[0]) {
             const double uT = phase.normPhase(phaseVolt);
-            phaseVolt = (float)dotModular::phaseDistort(uT, phaseDistSnap_[0].cell()) * phase.phaseInMax;
+            // CC_FIX_PHASE_DISTORT_AT_PPQN steps 1-2 (docs tip 9b900695): the transform
+            // is evaluated ONCE PER PPQN CELL of the input and held until the next cell —
+            // the input cell from the EXISTING quantisation (the plain path's own probe,
+            // llround, the CC_FIX_PHASE_RUN_AT_PPQN adjudication), the fire at the cell's
+            // OWN grid point (bit-identical to a per-sample evaluation there), the held
+            // value reused between cells — no other per-sample transform call. The grid
+            // mirrors the engine's own PPB (p16·plen — the same expression
+            // PhaseEngine::process derives from the same two feeds). Steep stretches and
+            // atom/gap edges narrower than a cell land on the next evaluation point —
+            // the spec's PPQN-landing rule applied to the transform (the doc's WHAT
+            // CHANGES). Identity keeps the raw path verbatim (step 3; the hold resets so
+            // no stale set's value rides an identity episode). The DISPLAY path (the
+            // curve widget + the phase markers) keeps its own video-rate evaluation —
+            // step 4 — the two never cross.
+            const int  p16  = redDot::PhaseEngine::pulsesPer16th(ppqnSetting);
+            const long plen = (long)(phase.patternLength > 0 ? phase.patternLength : 16);
+            phaseVolt = phaseDistHold_[0].processTransport(uT, (long)p16 * plen,
+                                                           phaseDistSnap_[0].cell(), phase.phaseInMax);
+        } else {
+            phaseDistHold_[0].reset();   // step 3: the raw path needs no held value
         }
 
         // ── PHASE TIER Stage 2: the SUBPHASE TIER via CV3 ──────────────────────────
@@ -971,7 +992,19 @@ void Monsoon::process(const ProcessArgs& args) {
             float subVolt = input.cv3;
             if (!phaseDistIdentity_[1]) {
                 const double uS = phase.normPhase(subVolt);
-                subVolt = (float)dotModular::phaseDistort(uS, phaseDistSnap_[1].cell()) * phase.phaseInMax;
+                // CC_FIX_PHASE_DISTORT_AT_PPQN step 5: the subphase follows the same
+                // rule with its OWN cell, on the REGION-RELATIVE grid — the fine term's
+                // own quantisation (floor of s·regionPulses inside tierPulseFor; the
+                // engine's within-region law — llround would leak one pulse across the
+                // region boundary at s → 1⁻). regionPulses = rF·PPB =
+                // regionSixteenths·pulsesPer16th — exactly the engine's fine-term scale
+                // (the same detent list the calibration snaps to, times the pulse grid).
+                const long regionPulses =
+                    (long)kCalSixteenths[det] * (long)redDot::PhaseEngine::pulsesPer16th(ppqnSetting);
+                subVolt = phaseDistHold_[1].processSubphase(uS, regionPulses,
+                                                            phaseDistSnap_[1].cell(), phase.phaseInMax);
+            } else {
+                phaseDistHold_[1].reset();   // step 3: the raw path needs no held value
             }
             phase.processTiers(phaseVolt, subVolt, true, regionSixteenths,
                                args.sampleTime, ppqnSetting);
@@ -986,6 +1019,7 @@ void Monsoon::process(const ProcessArgs& args) {
             int sDir = (phase.dirS == 0) ? 1 : phase.dirS;
             effReverse = (tDir * sDir) < 0;
         } else {
+            phaseDistHold_[1].reset();   // CV3 unpatched IS the identity — no held value rides an unpatched gap
             phase.process(phaseVolt, phaseDriven, args.sampleTime, ppqnSetting);
             effReverse = phase.reverse;
         }

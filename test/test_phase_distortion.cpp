@@ -46,6 +46,7 @@
 
 #include "PhaseDistStore.hpp"           // the store + the mechanism (the Task-1 unit)
 #include "SandsModifierResolver.hpp"    // the primitive + the bank (the Task-2 unit)
+#include "PhaseDistCellHold.hpp"        // the PPQN-cell hold (CC_FIX_PHASE_DISTORT_AT_PPQN unit)
 
 using dotModular::WarpBank;
 using dotModular::WarpF;
@@ -387,6 +388,224 @@ static int mainCal() {
     return 0;
 }
 
+// ── CC_FIX_PHASE_DISTORT_AT_PPQN (docs tip 9b900695) — the PPQN-CELL HOLD ───────
+// The doc's GATES, mapped 1:1:
+//   SAMPLE-POINT EQUIVALENCE — at each PPQN evaluation point the held value equals
+//     phaseDistort evaluated per-sample at that same point (the cell's grid point),
+//     bit-identical — "the correct grid value, not an approximation".
+//   CPU — structural here (the helper calls the primitive only inside the fire;
+//     the per-sample CPU return is Rodney's Rack measurement, the standing workflow).
+//   Identity — unchanged (the raw path is Monsoon's bypass, upstream of the hold;
+//     G1 pins the predicate, the Monsoon else-branch resets the hold — nothing to
+//     re-pin at this layer).
+//   Forward and reverse sweeps step through the SAME cells; jumps still land on
+//     the NEW cell's grid value (the engine's replay contract consumes it).
+//   The subphase's own cell on the REGION-RELATIVE grid — floor, the fine term's
+//     own quantisation — stays STRICTLY inside the region (no llround leak).
+//   DO-NOT: no change-tolerance heuristic — a cell change (index OR grid) is the
+//     ONLY re-fire; the unchanged-cell path returns the held bits untouched.
+static int mainHold() {
+    std::printf("HOLD PPQN-CELL — the transform once per PPQN cell, held between (CC_FIX_PHASE_DISTORT_AT_PPQN)\n");
+    constexpr long  kPPB = 96;    // pulsesPer16th(24)=6 × patternLength 16 — the engine's own PPB
+    constexpr float kMax = 10.f;  // PhaseEngine::phaseInMax's shipped default
+
+    // A fully-armed non-identity set off the roster (steep stretches + atom + gap:
+    // the features narrower than one cell the doc's WHAT-CHANGES names).
+    auto armed = [](const RosterEntry& r) {
+        PhaseDistSet s{}; s.f = r.f;
+        s.w = 0.6f; s.tilt = 0.25f; s.atomLevel = 0.4f; s.atomMass = 0.2f;
+        s.gapLoc = 0.7f; s.gapSize = 0.08f;
+        return s;
+    };
+
+    // THE ORACLE (transport tier) — a dense, grid-UNALIGNED forward sweep over three
+    // spans: cell tracking matches the existing quantisation, every fire evaluates
+    // the grid point BIT-IDENTICALLY, every unchanged-cell sample returns the held
+    // bits untouched, and the fire count == the cell-transition count (ONE transform
+    // call per cell — no other evaluation exists).
+    bool trackOK = true, fireValueOK = true, holdBitsOK = true, fireCountOK = true;
+    for (const auto& r : g_roster) {
+        const PhaseDistSet s = armed(r);
+        const redDot::WarpCell cell = s.cell();
+        dotModular::PhaseDistCellHold hold;
+        const double step = 1.0 / 1237.0;   // coprime with 96 — the grid is never sampled on-boundary
+        double u = 0.0;
+        long prevExpCell = -1, actualFires = 0, expectedFires = 0;
+        long prevLC = -1, prevLG = -1;
+        float prevHeld = 0.f; bool haveHeld = false;
+        for (long n = 0; n < 3 * 1237; ++n) {
+            const double uu = u - std::floor(u);            // the wrapped input (normPhase's law)
+            const float held = hold.processTransport(uu, kPPB, cell, kMax);
+            long expCell = (long)std::llround(uu * (double)kPPB);
+            if (expCell >= kPPB) expCell -= kPPB;           // the span ring's edge leak IS the wrap
+            if (hold.lastCell != expCell || hold.lastGrid != kPPB) trackOK = false;
+            if (hold.lastCell != prevLC || hold.lastGrid != prevLG) {
+                ++actualFires;
+                prevLC = hold.lastCell; prevLG = hold.lastGrid;
+                const double uGrid = (double)expCell / (double)kPPB;
+                const float ref  = (float)dotModular::phaseDistort(uGrid, cell) * kMax;
+                if (!sameBits((double)held, (double)ref)) fireValueOK = false;
+            }
+            if (expCell != prevExpCell) ++expectedFires;
+            if (expCell == prevExpCell && haveHeld && !sameBits((double)held, (double)prevHeld))
+                holdBitsOK = false;                          // unchanged cell ⟹ the held bits, verbatim
+            prevExpCell = expCell; prevHeld = held; haveHeld = true;
+            u += step;
+        }
+        if (actualFires != expectedFires) fireCountOK = false;
+    }
+    ok(trackOK,    "HOLD: cell tracking == the existing quantisation (llround, the span-ring wrap) on every sample");
+    ok(fireValueOK,"HOLD: every fire's held value == phaseDistort at the cell's OWN grid point, bit-identical (the correct grid value, not an approximation)");
+    ok(holdBitsOK, "HOLD: unchanged cell ⟹ the held bits return verbatim (no recompute, no drift)");
+    ok(fireCountOK,"HOLD: exactly ONE transform evaluation per cell transition (no other per-sample call exists)");
+
+    // THE SPAN WRAP — one fire for cell 0 spanning the boundary: the pre-wrap entry
+    // (u ≥ (PPB−0.5)/PPB llrounds to PPB ≡ 0) fires cell 0 ONCE, the input's actual
+    // wrap (u → [0,1) roll) does NOT re-fire, and the held value is the grid point
+    // 0.0's value throughout.
+    {
+        const PhaseDistSet s = armed(g_roster[1]);
+        const redDot::WarpCell cell = s.cell();
+        dotModular::PhaseDistCellHold hold;
+        const double step = 1.0 / 4096.0;
+        double u = 95.2 / 96.0;                          // inside cell 95
+        long fires = 0, fire0Idx = -1, rollIdx = -1; long prevLC = -1, prevLG = -1;
+        float heldAtWrap = 0.f;
+        for (long n = 0; n < 40; ++n) {                  // the window covers the 95→0 crossing AND the input's own roll, but not the 0→1 crossing
+            if (u >= 1.0 && rollIdx < 0) rollIdx = n;    // the input's wrap crossing
+            const double uu = u - std::floor(u);
+            const float held = hold.processTransport(uu, kPPB, cell, kMax);
+            if (hold.lastCell != prevLC || hold.lastGrid != prevLG) {
+                ++fires; prevLC = hold.lastCell; prevLG = hold.lastGrid;
+                if (hold.lastCell == 0) { fire0Idx = n; heldAtWrap = held; }
+            }
+            u += step;
+        }
+        ok(fires == 2 && prevLC == 0 && rollIdx >= 0 && fire0Idx >= 0 && fire0Idx < rollIdx,
+           "HOLD: the span wrap fires cell 0 exactly ONCE, BEFORE the input's own roll (the pre-wrap entry llrounds to PPB ≡ 0; the roll stays cell 0 — no re-fire)");
+        const float ref0 = (float)dotModular::phaseDistort(0.0, cell) * kMax;
+        ok(sameBits((double)heldAtWrap, (double)ref0),
+           "HOLD: the wrap's held value is the grid point 0.0's transform value (bit-identical, inside [0,1) — u=1.0 never evaluated)");
+    }
+
+    // FORWARD/REVERSE — the same cells, the same grid values: walking u DOWN visits
+    // each cell's grid point with the same bits the forward walk held there, and
+    // the reverse walk covers the same cell set (all 96).
+    {
+        const PhaseDistSet s = armed(g_roster[2]);
+        const redDot::WarpCell cell = s.cell();
+        const double step = 1.0 / 2000.0;
+        // forward reference: cell → held bits
+        double fwdBits[96] = {}; bool seenFwd[96] = {};
+        dotModular::PhaseDistCellHold fwd;
+        double u = 0.0;
+        for (long n = 0; n < 2000; ++n) {
+            const double uu = u - std::floor(u);
+            fwd.processTransport(uu, kPPB, cell, kMax);
+            long c = (long)std::llround(uu * (double)kPPB); if (c >= kPPB) c -= kPPB;
+            fwdBits[c] = (double)fwd.heldVolt; seenFwd[c] = true;
+            u += step;
+        }
+        bool allSeen = true;
+        for (int c = 0; c < 96; ++c) if (!seenFwd[c]) allSeen = false;
+        ok(allSeen, "HOLD: a forward span sweep fires every cell 0..95 exactly (the full grid)");
+        bool sameCells = true, sameBitsRev = true;
+        dotModular::PhaseDistCellHold rev;
+        u = 0.999;
+        for (long n = 0; n < 2000; ++n) {
+            const double uu = u - std::floor(u);
+            rev.processTransport(uu, kPPB, cell, kMax);
+            long c = (long)std::llround(uu * (double)kPPB); if (c >= kPPB) c -= kPPB;
+            if (!seenFwd[c]) sameCells = false;
+            else {
+                const double uGrid = (double)c / 96.0;
+                const float ref = (float)dotModular::phaseDistort(uGrid, cell) * kMax;
+                if (!sameBits((double)rev.heldVolt, (double)ref) || !sameBits(fwdBits[c], (double)ref))
+                    sameBitsRev = false;
+            }
+            u -= step;
+        }
+        ok(sameCells && sameBitsRev,
+           "HOLD: the reverse sweep steps through the SAME cells with the SAME grid values (bit-identical both directions)");
+    }
+
+    // THE JUMP — a single-sample discontinuity lands on the NEW cell's grid value
+    // in one fire (the engine's replay contract consumes exactly that value).
+    {
+        const PhaseDistSet s = armed(g_roster[3]);
+        const redDot::WarpCell cell = s.cell();
+        dotModular::PhaseDistCellHold hold;
+        hold.processTransport(0.2, kPPB, cell, kMax);                 // seed at cell 19
+        ok(hold.lastCell == (long)std::llround(0.2 * 96.0), "HOLD: the seed fires the input's own cell");
+        const float after = hold.processTransport(0.8, kPPB, cell, kMax);   // the jump
+        const long jc = (long)std::llround(0.8 * 96.0) % kPPB;
+        const float ref = (float)dotModular::phaseDistort((double)jc / 96.0, cell) * kMax;
+        ok(hold.lastCell == jc && sameBits((double)after, (double)ref),
+           "HOLD: a jump replays on the NEW cell — one fire, the new grid point's value (bit-identical)");
+    }
+
+    // THE SUBPHASE'S OWN CELL — the REGION-RELATIVE grid, the fine term's floor:
+    // a [0,1) sweep of s visits cells 0..rp−1 EXACTLY (never rp — strictly inside
+    // the region, the engine's own within-region law), one fire each, every held
+    // value the grid point's bits; a REGION RECALIBRATION (grid change) re-fires
+    // immediately even at an unchanged s — the cell identity is (grid, index).
+    {
+        const PhaseDistSet s = armed(g_roster[4]);
+        const redDot::WarpCell cell = s.cell();
+        const long rp = 4 * 6;    // the quarter-note detent (kCalSixteenths[2]=4) × pulsesPer16th(24)=6
+        dotModular::PhaseDistCellHold hold;
+        const double step = 1.0 / 1600.0;
+        double sv = 0.0;
+        bool insideOK = true, subValueOK = true; long fires = 0;
+        long prevLC = -1, prevLG = -1;
+        for (long n = 0; n < 1600; ++n) {
+            const float held = hold.processSubphase(sv, rp, cell, kMax);
+            if (hold.lastCell < 0 || hold.lastCell >= rp) insideOK = false;   // strictly inside, every sample
+            if (hold.lastCell != prevLC || hold.lastGrid != prevLG) {
+                ++fires; prevLC = hold.lastCell; prevLG = hold.lastGrid;
+                const double uGrid = (double)hold.lastCell / (double)rp;
+                const float ref = (float)dotModular::phaseDistort(uGrid, cell) * kMax;
+                if (!sameBits((double)held, (double)ref)) subValueOK = false;
+            }
+            sv += step;
+        }
+        ok(insideOK, "HOLD: the subphase cell stays STRICTLY inside the region (0..rp−1 — floor, no llround leak at s → 1⁻)");
+        ok(prevLC == rp - 1 && fires == rp,
+           "HOLD: the subphase sweep fires each region-relative cell exactly once (rp fires over the full region, the last cell holds to the wrap)");
+        ok(subValueOK, "HOLD: every subphase held value is its own grid point's transform value (bit-identical)");
+
+        // the recalibration: same s, NEW grid ⟹ an immediate re-fire on the new grid
+        const float before = hold.processSubphase(sv - step, rp, cell, kMax);   // settle back on rp=24
+        const float after  = hold.processSubphase(sv - step, 2 * 6, cell, kMax); // eighth-note region (rp=12)
+        const long ec = (long)std::floor((sv - step) * 12.0);
+        const float ref = (float)dotModular::phaseDistort((double)ec / 12.0, cell) * kMax;
+        ok(hold.lastGrid == 12 && hold.lastCell == ec && sameBits((double)after, (double)ref),
+           "HOLD: a region recalibration re-fires immediately (the cell identity is (grid, index) — the value is the NEW grid's)");
+        (void)before;
+    }
+
+    // SEED + RESET — a fresh hold fires on the first call; reset() forces the next
+    // call to re-seed even at an unchanged u (no stale value survives a reset).
+    {
+        const PhaseDistSet s = armed(g_roster[5]);
+        const redDot::WarpCell cell = s.cell();
+        dotModular::PhaseDistCellHold hold;
+        ok(hold.lastCell == -1 && hold.lastGrid == -1, "HOLD: a fresh hold has no cell (the sentinel)");
+        const float seeded = hold.processTransport(0.317, kPPB, cell, kMax);
+        const long sc = (long)std::llround(0.317 * 96.0) % kPPB;
+        const float ref = (float)dotModular::phaseDistort((double)sc / 96.0, cell) * kMax;
+        ok(hold.lastCell == sc && sameBits((double)seeded, (double)ref),
+           "HOLD: the first call IS a new cell — the seed fire evaluates the grid point (bit-identical)");
+        hold.reset();
+        ok(hold.lastCell == -1 && hold.lastGrid == -1 && hold.heldVolt == 0.f, "HOLD: reset() clears the sentinel and the held value");
+        const float reseeded = hold.processTransport(0.317, kPPB, cell, kMax);
+        ok(hold.lastCell == sc && sameBits((double)reseeded, (double)ref),
+           "HOLD: after reset() the same u re-seeds (re-fires) — the value is rebuilt, not carried");
+    }
+
+    return 0;
+}
+
 int main() {
     mainG1();
     mainG2G3();
@@ -394,6 +613,7 @@ int main() {
     mainG6();
     mainG7();
     mainCal();
+    mainHold();
     if (g_fail == 0) { std::printf("ALL PASS (%d checks)\n", g_pass); return 0; }
     std::printf("%d FAILURE(S) of %d checks\n", g_fail, g_fail + g_pass);
     return 1;

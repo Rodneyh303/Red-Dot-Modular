@@ -27,6 +27,7 @@
 #include "dsp/engines/PatternEngine.hpp"
 #include "dsp/engines/SequencerEngine.hpp"
 #include "dsp/PhaseDistStore.hpp"   // the §14 parameter-set store (the snapshot members below)
+#include "dsp/PhaseDistCellHold.hpp"   // the §14 PPQN-cell hold (the transform's engine-side evaluation state, below)
 #include "dsp/managers/MonsoonSandsManager.hpp"
 #include "dsp/managers/MonsoonParameterManager.hpp"
 #include "dsp/managers/MonsoonPersistenceManager.hpp"
@@ -665,6 +666,14 @@ struct Monsoon : Module {
     // The identity flags, computed AT the snapshot (the Stage-1 gate's bypass: an
     // identity set — or no expander — takes the RAW path verbatim, bit-identical).
     std::array<bool, 2> phaseDistIdentity_ = {true, true};
+    // THE PPQN-CELL HOLD (CC_FIX_PHASE_DISTORT_AT_PPQN, docs tip 9b900695): the
+    // transform is evaluated ONCE PER PPQN CELL of the tier's input and held until
+    // the next cell — [0] = the transport tier (the plain probe's llround on the
+    // span grid), [1] = the subphase tier (the fine term's floor on the
+    // region-relative grid). Between cells the engine reads the held value; the
+    // display keeps its own video-rate evaluation and the two never cross. Reset on
+    // the raw path (identity / CV3 unpatched) so a re-entry re-seeds.
+    std::array<dotModular::PhaseDistCellHold, 2> phaseDistHold_ = {};
     // The dynamic-default latch (2N−1 / 2N applied ONCE on a fresh module): true in
     // the ctor, cleared by dataFromJson so a loaded patch keeps its authored picks.
     bool phaseSetsFresh_ = true;
