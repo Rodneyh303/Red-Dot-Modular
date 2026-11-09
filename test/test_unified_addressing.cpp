@@ -542,14 +542,19 @@ int main() {
 
     // ── 8. STAGE 2 — the VOICE map (the global->voice level) ─────────────────────
     {
-        // THE DESIGN DOC'S WORKED TWO-LANE TABLE, pinned verbatim (the composition's
-        // correctness anchor). Voice: L=8 O=5 R=7 (window 5..12). Lane A = the mono REST
-        // lane: L=4 O=1 R=3. Lane B = the mono MELODY lane: L=6 O=3 R=6. The voice reads
-        // 7 at global 1; the lanes hit THEIR rotations exactly when the VOICE is at its
-        // window start (global 7) — the lane R re-base to voice-step-1.
-        static const int kVoiceReads[16] = {7,8,9,10,11,12,5,6,7,8,9,10,11,12,5,6};
-        static const int kLaneA[16]      = {1,2,3,4,1,2,3,4,1,2,3,4,1,2,3,4};
-        static const int kLaneB[16]      = {8,3,4,5,6,7,6,7,8,3,4,5,6,7,6,7};
+        // THE WORKED TABLE, re-pinned by CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION (the
+        // doc's declared behaviour change: rotation is now WINDOW-RELATIVE, rho = R —
+        // the phase into the window at global step 1 — not the old (R-O) absolute
+        // fold; voices with R != 0 or O != 0 read differently by design). Voice: L=8
+        // O=5 R=7 (window 5..12): at global 1 the voice reads WINDOW-STEP 7 = phrase
+        // 12, wrapping within 5..12 — reads 12,5,6,...,11,12,5,... Lane A = the mono
+        // REST lane: L=4 O=1 R=3. Lane B = the mono MELODY lane: L=6 O=3 R=6. The
+        // lanes hit THEIR rotations exactly when the VOICE is at its window start
+        // (read 5) — the lane R re-base to voice-step-1, now reached one step after
+        // the wrap (the R=7 phase consumes the window's tail first).
+        static const int kVoiceReads[16] = {12,5,6,7,8,9,10,11,12,5,6,7,8,9,10,11};
+        static const int kLaneA[16]      = {2,3,4,1,2,3,4,1,2,3,4,1,2,3,4,1};
+        static const int kLaneB[16]      = {7,6,7,8,3,4,5,6,7,6,7,8,3,4,5,6};
         SequencerEngine eng; eng.reset();
         const auto M = dotModular::VoiceResolver::mono();
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;   // the Macro row: all voices follow
@@ -557,8 +562,8 @@ int main() {
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
         // The LANES' stored rot is MECHANICAL (getStrandIdx applies it directly); the doc's
         // lane R values are ANCHOR-form (the read at voice-step-1): rot = (R_anchor - O) mod L
-        // -> lane A: (3-1) mod 4 = 2; lane B: (6-3) mod 6 = 3. The VOICE row's R is stored in
-        // ANCHOR form (the engine derives (R-O) mod L itself).
+        // -> lane A: (3-1) mod 4 = 2; lane B: (6-3) mod 6 = 3. The VOICE row's R is stored
+        // WINDOW-RELATIVE (rho = R — the CC fix; the engine folds it directly).
         eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_LEN) = 4;
         eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_OFF) = 1;
         eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_ROT) = 2;
@@ -576,8 +581,9 @@ int main() {
         check(laneAOK, "STAGE2: the worked table — lane A (win 1..4, R=3) matches every row");
         check(laneBOK, "STAGE2: the worked table — lane B (win 3..8, R=6) matches every row");
         // THE ANCHOR LAW: the lanes read their R when the VOICE is at its window start —
-        // wherever in the phrase that falls. Change the voice R to 6: voice-step-1 moves
-        // to global 8, and the lanes' rotations move WITH it (voice R propagates).
+        // wherever in the phrase that falls. Change the voice R to 6: the voice's phase
+        // shifts (rho = R), voice-step-1 moves (now global 3/11), and the lanes'
+        // rotations move WITH it (voice R propagates).
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 6;
         bool anchorOK = true; int atVoiceStart = 0;
         for (int k = 0; k < 16; ++k) {
@@ -617,6 +623,8 @@ int main() {
     {
         // TURNAROUND STYLES: a Pendulum voice reads its window END once per turn
         // (pre-direction); a PingPong voice reads it TWICE (the double-tap). L=8 O=5 R=5.
+        // CC_FIX re-pin: rho = R shifts the phase — the walk's SHAPE (and the turnaround
+        // timing) is unchanged, the reads start at window-step 5 = phrase 10.
         SequencerEngine pend; pend.reset();
         pend.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
         pend.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
@@ -630,18 +638,18 @@ int main() {
         bool pendOK = true, pongOK = true;
         for (int k = 0; k < 17; ++k) {
             pend.advancePlayhead(+1); pong.advancePlayhead(+1);
-            // Pendulum: 5,6,...,12,11,...,5,6 (single endpoint read)
+            // Pendulum: walk 0,1,...,7,6,...,1 phase-shifted by R=5: reads 10,11,12,5,...
             const int p = pend.voiceReadPosition(dotModular::VoiceResolver::mono());
             const int tri = (k % 14 < 8) ? (k % 14) : (14 - (k % 14));   // 0..7..1 triangle
-            pendOK = pendOK && p == tri + 5;
-            // PingPong: 5,...,12,12,11,... (the endpoint repeats)
+            pendOK = pendOK && p == ((tri + 5) % 8) + 5;
+            // PingPong: walk 0,...,7,7,6,... (the endpoint repeats), phase-shifted by R=5
             const int g = pong.voiceReadPosition(dotModular::VoiceResolver::mono());
             const int per = k % 16;
             const int walk = (per < 8) ? per : (15 - per);               // 0..7,7..0
-            pongOK = pongOK && g == walk + 5;
+            pongOK = pongOK && g == ((walk + 5) % 8) + 5;
         }
-        check(pendOK, "STAGE2: Pendulum voice — the window end read ONCE per turn (no double-tap)");
-        check(pongOK, "STAGE2: PingPong voice — the window end read TWICE (the double-tap)");
+        check(pendOK, "STAGE2: Pendulum voice — the window end read ONCE per turn (no double-tap) [rho=R re-pin]");
+        check(pongOK, "STAGE2: PingPong voice — the window end read TWICE (the double-tap) [rho=R re-pin]");
     }
     {
         // ROUND-TRIP under a mapped voice: the voice map is a pure function of the clock.
@@ -675,10 +683,10 @@ int main() {
             eng.advancePlayhead(+1);
             const long T = (long)k + 1;
             v2OK = v2OK && eng.voiceReadPosition(v2) == (int)((T - 1) % 4);
-            v3OK = v3OK && eng.voiceReadPosition(v3) == (((T + 1) % 8 + 5) & 0x0F);
+            v3OK = v3OK && eng.voiceReadPosition(v3) == (((T + 6) % 8 + 5) & 0x0F);   // rho=R re-pin: (T-1+R) mod 8 + O
         }
         check(v2OK, "STAGE2: a local-East voice reads ITS OWN window (L=4)");
-        check(v3OK, "STAGE2: a following voice reads the Macro window (L=8 O=5 R=7)");
+        check(v3OK, "STAGE2: a following voice reads the Macro window (L=8 O=5 R=7) [rho=R re-pin]");
         // V2's lanes are driven by V2's driver: a default REST lane reads (driver-1).
         bool laneOK = true;
         SequencerEngine e2; e2.reset(); e2.numPolyVoices = 2;
@@ -822,15 +830,17 @@ int main() {
         for (int k = 0; k < 32; ++k) {
             pushed.advancePlayhead(+1);
             const long T = (long)k + 1;
-            v3OK = v3OK && pushed.voiceReadPosition(v3) == (((T + 1) % 8 + 5) & 0x0F);
+            v3OK = v3OK && pushed.voiceReadPosition(v3) == (((T + 6) % 8 + 5) & 0x0F);   // rho=R re-pin
         }
-        check(v3OK, "STAGE2b: the follower's read walks the pushed Macro row (the doc's table)");
+        check(v3OK, "STAGE2b: the follower's read walks the pushed Macro row (the doc's table) [rho=R re-pin]");
     }
     {
-        // THE CLAMPS mirror the authoring surfaces' domains: L 1..cap, O/R 0..ring-1,
+        // THE CLAMPS mirror the authoring surfaces' domains: L 1..cap, O 0..ring-1,
+        // R 0..L-1 (CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION — the lanes' convention
+        // clamp(R, 0, max(0, L-1)); re-pinned from the old 0..ring-1, the doc's declared
+        // change: with L=1 the only legal R is 0, so the 99/200 probes land on 0, not 31),
         // dir 0..3, localEast != 0 -> local. Out-of-range floats land on the nearest
         // legal value (std::lround of the clamp), never past the store's frame.
-        // (STEPS_32 Stage 3 re-pinned the domains — see the note below.)
         SequencerEngine eng; eng.reset();
         // STEPS_32 Stage 3 baseline re-capture: the push's clamp domains were re-pinned to
         // mirror the authoring surfaces (LEN 1..kPatternLengthCap — the plan's D-table "LOR_LEN
@@ -849,13 +859,13 @@ int main() {
         bool clamps = true;
         clamps = clamps && eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) == 1;
         clamps = clamps && eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) == 0;
-        clamps = clamps && eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) == 31;
+        clamps = clamps && eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) == 0;   // R 0..L-1: L=1 -> 0 (was 31 at the old ring clamp)
         clamps = clamps && eng.macroVoiceLorDirRef() == SequencerEngine::LaneDir::PingPong;
         for (int v = 0; v < 15; ++v) {
             const auto vs = dotModular::VoiceResolver::slot(v + 1);
             clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_LEN) == 1;
             clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_OFF) == 0;
-            clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_ROT) == 31;
+            clamps = clamps && eng.voiceLor(vs, SequencerEngine::LOR_ROT) == 0;   // R follows L (the CC fix)
             clamps = clamps && eng.voiceLorDirRef(vs) == SequencerEngine::LaneDir::Forward;
             clamps = clamps && !eng.voiceLorFollowsMacro(vs);   // 0.5 != 0 -> local
         }
@@ -867,7 +877,7 @@ int main() {
             clamps = clamps && eng.voiceLorDirRef(vs) == SequencerEngine::LaneDir::PingPong;   // lround(2.6) = 3
             clamps = clamps && eng.voiceLorFollowsMacro(vs);    // exactly 0 -> follow
         }
-        check(clamps, "STAGE2b: the push clamps to the store frame (L 1..cap==32, O/R 0..ring-1==31, dir 0..3, flag — the STEPS_32 Stage 3 re-pin: the editor-push domains mirror the authoring surfaces)");
+        check(clamps, "STAGE2b: the push clamps to the store frame (L 1..cap==32, O 0..ring-1==31, R 0..L-1 — the CC_FIX window-relative clamp, L=1 lands R on 0; dir 0..3, flag)");
     }
 
     // ── STAGE 3: the voice-range strip's ENGINE data (the UI reads these caches) ──
@@ -930,7 +940,7 @@ int main() {
         eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
         const auto M = dotModular::VoiceResolver::mono();
-        static const int kVoiceReads[16] = {7,8,9,10,11,12,5,6,7,8,9,10,11,12,5,6};
+        static const int kVoiceReads[16] = {12,5,6,7,8,9,10,11,12,5,6,7,8,9,10,11};   // rho=R re-pin (the CC fix)
         bool wrapOK = true; bool sawWrap = false;
         int prevSign = 0;
         for (int k = 0; k < 16; ++k) {
@@ -977,12 +987,12 @@ int main() {
             const int rp = pong.voiceReadPosition(dotModular::VoiceResolver::mono());
             const int sg = pong.voiceReadSign(dotModular::VoiceResolver::mono());
             if (k == 0)      pongOK = pongOK;               // the anchor landing — the closed form's phase
-            else if (k < 7)  pongOK = pongOK && sg == +1;   // the ascent 6..11
-            else if (k == 7) pongOK = pongOK && rp == 12 && sg == +1;   // the FIRST end read
-            else if (k == 8) pongOK = pongOK && rp == 12 && sg == +1;   // the REPEAT (delta 0 keeps the cue)
-            else             pongOK = pongOK && rp == 12 - (k - 8) && sg == -1;   // the descent flips
+            else if (k < 7)  pongOK = pongOK && sg == +1;   // the ascent (phase-shifted by R: reads 11..)
+            else if (k == 7) pongOK = pongOK && rp == 9 && sg == +1;   // the FIRST end read (window-step 4 = 4+5)
+            else if (k == 8) pongOK = pongOK && rp == 9 && sg == +1;   // the REPEAT (delta 0 keeps the cue)
+            else             pongOK = pongOK && rp == 9 - (k - 8) && sg == -1;   // the descent flips
         }
-        check(pongOK, "STAGE3: PingPong — the double-tap keeps the cue through the repeat, flips on the descent");
+        check(pongOK, "STAGE3: PingPong — the double-tap keeps the cue through the repeat, flips on the descent [rho=R re-pin: the same cue law, reads phase-shifted by R=5]");
     }
     {
         // THE MACRO FRAME under a MAPPED GLOBAL WINDOW: macroFrameRead_ walks the
@@ -1083,7 +1093,8 @@ int main() {
             check(fullOK, "STAGE4: abs1's READ runs the full phrase PHASED BY R — parent-step-1 reads R=7 (the anchor law, unified); only the output gates");
             rk = 0.f;   // cycle: the SAME row confines the read
             r.pushMaskEditor(rb, rk, rf, reb, rek, ref, rle);
-            static const int kCycleReads[16] = {7,8,9,10,11,12,5,6,7,8,9,10,11,12,5,6};
+            // rho=R re-pin (the CC fix): the confined walk starts at WINDOW-STEP 7 = phrase 12.
+            static const int kCycleReads[16] = {12,5,6,7,8,9,10,11,12,5,6,7,8,9,10,11};
             bool confOK = true;
             for (int k = 0; k < 16; ++k) {
                 r.advancePlayhead(+1);
@@ -1300,6 +1311,160 @@ int main() {
         check(eng.effectiveOutputMask(v2) == (1ULL << 6)
            && eng.effectiveOutputMask(v3) == eng.effectiveOutputMaskMacro(),
               "STAGE4-DISP: delegation — the local voice's own row; the follower's == the macro accessor");
+    }
+
+    // ── CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION — the doc's NEW gates ─────────────
+    // (Bug 1 the period = L; the OPEN the global offset routes as PLACEMENT; Bug 2 the
+    // rotation clamp 0..L-1 + rho = R; the painted-pattern follow requirements.)
+    {
+        // PERIOD: a cycling voice with L=12 under a MAPPED 16-step global (off 5)
+        // repeats every 12 steps ACROSS the global wrap — the global window's wrap is a
+        // non-event for the voice's fold (the old bounded representative jumped at the
+        // wrap and made the period the global length — the bug this fix removes).
+        // O=0 R=0: read(k) = ((k mod 12) + offG) & ring — advancing +1 every step,
+        // wrapping at the voice's own 12, never at 16.
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(16.f, 0.f, false, 5.f, false, false);   // lenG=16 offG=5: MAPPED
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 12;
+        bool periodOK = true;
+        for (int k = 0; k < 48; ++k) {   // 4 voice cycles spanning 3 global wraps (48 > 3*16)
+            eng.advancePlayhead(+1);
+            // The full column pin: +1 every step, wrapping ONLY at the voice's own 12
+            // (k=16/32 are mid-cycle ordinary steps — the global wrap is a non-event).
+            periodOK = periodOK && eng.voiceReadPosition(dotModular::VoiceResolver::mono()) == ((k % 12) + 5);
+        }
+        check(periodOK,
+              "CCFIX PERIOD: L=12 under a mapped 16@5 global — the read walks +1 with period 12 straight across every global wrap (no jump at 16)");
+    }
+    {
+        // OFFSET (the OPEN, implemented): the window starts at the GLOBAL-FRAME
+        // position plus O — the voice O is relative to the parent frame, which carries
+        // the global offset (UAS 64/186-187). L=8 O=3 R=0 under the mapped 16@5
+        // global: at global 1 the voice reads window-step 0 at phrase 5+3=8, and the
+        // window spans phrase 8..15 (read = wnow + offG + O).
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(16.f, 0.f, false, 5.f, false, false);
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 3;
+        bool offOK = true;
+        for (int k = 0; k < 24; ++k) {
+            eng.advancePlayhead(+1);
+            offOK = offOK && eng.voiceReadPosition(dotModular::VoiceResolver::mono()) == ((k % 8) + 5 + 3);
+        }
+        check(offOK,
+              "CCFIX OFFSET: the cycling window is placed at the global frame + O (reads 8..15, phase anchored to global step 1)");
+    }
+    {
+        // ROTATION (Bug 2): the authoring clamp follows L (0..L-1, the lanes' convention),
+        // and rho = R — a voice with L=8, R=7 starts at window position 7; R cannot
+        // reach 8..15 (an authored 15 lands on 7, at BOTH tiers).
+        SequencerEngine eng; eng.reset(); eng.numPolyVoices = 2;
+        float macroLor[3] = {8.f, 0.f, 15.f}; float macroDir = 0.f;
+        float eastLor[48], eastDir[16], localEast[16];
+        for (int v = 0; v < 16; ++v) {
+            eastLor[v*3+0] = 16.f; eastLor[v*3+1] = 0.f; eastLor[v*3+2] = 0.f;
+            eastDir[v] = 0.f; localEast[v] = 0.f;
+        }
+        eastLor[1*3+0] = 8.f; eastLor[1*3+1] = 0.f; eastLor[1*3+2] = 20.f;   // V2 local: authored R=20, L=8
+        localEast[1] = 1.f;
+        eng.pushVoiceLorEditor(macroLor, macroDir, eastLor, eastDir, localEast);
+        bool clampOK = eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) == 7
+                    && eng.voiceLor(dotModular::VoiceResolver::slot(2), SequencerEngine::LOR_ROT) == 7;
+        eng.advancePlayhead(+1);   // global step 1
+        clampOK = clampOK && eng.voiceReadPosition(dotModular::VoiceResolver::mono()) == 7
+               && eng.voiceReadPosition(dotModular::VoiceResolver::slot(2)) == 7;   // window position 7, O=0
+        check(clampOK,
+              "CCFIX ROTATION: R clamps to 0..L-1 (authored 15/20 at L=8 land on 7) and reads as window position 7 at global 1");
+    }
+    {
+        // LANE ANCHOR (the doc's check): a lane with R=k reads k when the VOICE is at
+        // its window start — NOT when the GLOBAL is at step 1. The corrected-spec row
+        // L=8 O=5 R=2 under the mapped 16@5 global: at global 1 the voice reads
+        // window-step 2 (phrase 12) and the lane is NOT at its R; the voice hits its
+        // window start (phrase 10 = offG+O) at global 7/15 — the lane reads its R=3
+        // THERE. (The code check: the lanes hang off the frame VALUE — already the
+        // voice-anchored chain; this pin holds the law under the new fold too.)
+        SequencerEngine eng; eng.reset();
+        eng.updateWindow(16.f, 0.f, false, 5.f, false, false);
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 2;
+        eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_LEN) = 4;
+        eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_OFF) = 1;
+        eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_ROT) = 2;   // anchor-form (3-1) mod 4
+        bool anchorOK = true; int atVoiceStart = 0;
+        for (int k = 0; k < 16; ++k) {
+            eng.advancePlayhead(+1);
+            const int rp = eng.voiceReadPosition(dotModular::VoiceResolver::mono());
+            if (rp == 10) {   // the voice at its window start (phrase offG+O)
+                ++atVoiceStart;
+                anchorOK = anchorOK && eng.getRhythmStep() == 3;   // the lane's R
+            }
+            if (k == 0) anchorOK = anchorOK && rp == 12 && eng.getRhythmStep() != 3;   // global 1: NOT the lane anchor
+        }
+        check(anchorOK && atVoiceStart == 2,
+              "CCFIX LANE ANCHOR: the lane reads its R at voice-step-1 (global 7/15 here), not at global step 1");
+    }
+    {
+        // PAINTED FOLLOWS ROTATION, gate 1 (the sweep): with L=8 the painted figure
+        // moves by R minus its anchor as R sweeps 0..7 — and an authored R past the
+        // window clamps to L-1, so the figure can NEVER travel to where R 8..15 would
+        // have put it (the follow input is the RESTRICTED R).
+        SequencerEngine eng; eng.reset();
+        uint64_t macroBits[1] = {1ULL << 2}; float macroKind = 2.f, macroFollowR = 1.f;
+        uint64_t eastBits[16]; float eastKind[16], eastFollowR[16], localEast[16];
+        for (int v = 0; v < 16; ++v) { eastBits[v]=65535ULL; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
+        float eastLor[48], eastDir[16], localEastFlag[16];
+        for (int v = 0; v < 16; ++v) {
+            eastLor[v*3+0] = 16.f; eastLor[v*3+1] = 0.f; eastLor[v*3+2] = 0.f;
+            eastDir[v] = 0.f; localEastFlag[v] = 0.f;
+        }
+        const auto M = dotModular::VoiceResolver::mono();
+        bool sweepOK = true;
+        for (int R = 0; R <= 7; ++R) {
+            float lor[3] = {8.f, 0.f, (float)R};
+            eng.pushVoiceLorEditor(lor, 0.f, eastLor, eastDir, localEastFlag);
+            eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
+            const int bit = ((2 - R) % 32 + 32) % 32;   // the figure moves R-earlier (the content direction)
+            sweepOK = sweepOK && eng.outputMaskPasses(M, bit);
+            if (R > 0) sweepOK = sweepOK && !eng.outputMaskPasses(M, 2);   // the figure MOVED off the painted cell
+        }
+        // R=15 authored -> clamped to 7 == the current anchor: NO further movement —
+        // the figure can never reach where R 8..15 would have put it (bit 19 unreachable).
+        float lor15[3] = {8.f, 0.f, 15.f};
+        eng.pushVoiceLorEditor(lor15, 0.f, eastLor, eastDir, localEastFlag);
+        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
+        sweepOK = sweepOK && eng.outputMaskPasses(M, 27) && !eng.outputMaskPasses(M, 19) && !eng.outputMaskPasses(M, 2);
+        check(sweepOK,
+              "CCFIX PAINTED SWEEP: L=8 sweeps the figure by R-anchor over 0..7; authored R=15 clamps to 7 (the figure never reaches the R>=8 positions)");
+    }
+    {
+        // PAINTED FOLLOWS ROTATION, gate 2 (the shrink re-pin): shrinking L below the
+        // current R clamps R at the authoring push, the mask's base R moves, and the
+        // anchor RE-PINS by the clamp delta (the declared consequence — declared, not
+        // hidden). L=16 R=12 paints bit 2 at phrase 2; shrinking to L=8 clamps R to 7
+        // (delta -5) and the figure moves 5 steps LATER (bit 7).
+        SequencerEngine eng; eng.reset();
+        const auto M = dotModular::VoiceResolver::mono();
+        uint64_t macroBits[1] = {1ULL << 2}; float macroKind = 2.f, macroFollowR = 1.f;
+        uint64_t eastBits[16]; float eastKind[16], eastFollowR[16], localEast[16];
+        for (int v = 0; v < 16; ++v) { eastBits[v]=65535ULL; eastKind[v]=0.f; eastFollowR[v]=0.f; localEast[v]=0.f; }
+        float eastLor[48], eastDir[16], localEastFlag[16];
+        for (int v = 0; v < 16; ++v) {
+            eastLor[v*3+0] = 16.f; eastLor[v*3+1] = 0.f; eastLor[v*3+2] = 0.f;
+            eastDir[v] = 0.f; localEastFlag[v] = 0.f;
+        }
+        float lor16[3] = {16.f, 0.f, 12.f};
+        eng.pushVoiceLorEditor(lor16, 0.f, eastLor, eastDir, localEastFlag);
+        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
+        bool shrinkOK = eng.outputMaskPasses(M, 2);   // painted at R=12: bit 2 plays at phrase 2
+        float lor8[3] = {8.f, 0.f, 12.f};            // the SAME authored R — L shrinks under it
+        eng.pushVoiceLorEditor(lor8, 0.f, eastLor, eastDir, localEastFlag);
+        eng.pushMaskEditor(macroBits, macroKind, macroFollowR, eastBits, eastKind, eastFollowR, localEast);
+        shrinkOK = shrinkOK && eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) == 7   // the clamp
+                && eng.outputMaskPasses(M, 7) && !eng.outputMaskPasses(M, 2);        // the clamp-delta re-pin
+        check(shrinkOK,
+              "CCFIX PAINTED SHRINK: L 16->8 below R=12 clamps R to 7 and the figure re-pins by the clamp delta (2 -> 7); the anchor then tracks the clamped R");
     }
 
     std::printf("test_unified_addressing: %d passed, %d failed\n", g_pass, g_fail);

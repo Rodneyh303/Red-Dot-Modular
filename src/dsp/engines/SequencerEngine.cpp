@@ -283,15 +283,26 @@ void SequencerEngine::pushVoiceLorEditor(
     //   LEN  1..kPatternLengthCap — the plan's D-table row ("LOR_LEN value range | lane
     //        lengths 1..16 authored via the editor pushes | range -> 1..32"): the Sands
     //        grid draws the whole phrase, so a lane window may now span/land in bar 2.
-    //   OFF/ROT 0..kMaskRing-1 — the grid's drag domain is the phrase (the strip wraps
+    //   OFF 0..kMaskRing-1 — the grid's drag domain is the phrase (the strip wraps
     //        within STEP_COUNT == the cap); the old 0..15 clamp would SILENTLY DROP the
-    //        bar-2 offsets/rotations the 32-column grid authors (the Lantern bar-blind
+    //        bar-2 window starts the 32-column grid authors (the Lantern bar-blind
     //        write-path class — a display widening whose authoring path still truncated
     //        at 16). The classification's "off/rot spans stay 0..15" decision governs the
     //        KNOB/CV spans (applyMonoCV/applyMacroCV/eastDelta arguments) — a calibration
     //        choice — not this push: the push is the editor's own path and must not
     //        truncate what the editor's own surface can author. At <=16 windows the drags
     //        produce 0..15 and every clamp here is a no-op (the GOLDEN LAW domain).
+    //   ROT 0..L-1 (CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION, Bug 2) — the voice rows
+    //        now clamp R the same as EVERY OTHER LANE's rotation: the lane editor's
+    //        convention clamp(R, 0, max(0, L-1)) (SandsVisualEditorV4's START/END resize
+    //        and ROTATION drag all apply exactly that), window-RELATIVE — R is the phase
+    //        into the window at global step 1 (UAS lines 13-20/22-37), so an R past the
+    //        window's end has no meaning and is clamped HERE, at the authoring path —
+    //        not silently folded at the read. LEN is clamped FIRST in the same push, so
+    //        a window that shrinks below the authored R re-clamps R in the SAME block
+    //        (the painted-mask follow then re-pins by the clamp delta — the declared
+    //        consequence). At L=16 the clamp domain is 0..15 — byte-identical to the old
+    //        ring clamp (the identity/abs1 goldens' precondition).
     auto lorInt = [](float x, float lo, float hi) -> int {
         return (int)std::lround(std::clamp(x, lo, hi));
     };
@@ -299,12 +310,15 @@ void SequencerEngine::pushVoiceLorEditor(
     // are authored {L,O,R} in the same order (documented at the EditorState arrays).
     macroVoiceLor_[LOR_LEN] = lorInt(macroLor[LOR_LEN], 1.f, (float)dotModular::kPatternLengthCap);
     macroVoiceLor_[LOR_OFF] = lorInt(macroLor[LOR_OFF], 0.f, (float)(dotModular::kMaskRing - 1));
-    macroVoiceLor_[LOR_ROT] = lorInt(macroLor[LOR_ROT], 0.f, (float)(dotModular::kMaskRing - 1));
+    // R follows the LEN just clamped above (the lanes' convention: hi = max(0, L-1)) —
+    // a shrink-below-R re-clamps R in the same push, the store never holds an
+    // out-of-window R (the CC_FIX invariant; the CV-fold write path clamps too).
+    macroVoiceLor_[LOR_ROT] = lorInt(macroLor[LOR_ROT], 0.f, (float)std::max(0, macroVoiceLor_[LOR_LEN] - 1));
     macroVoiceLorDir_       = (LaneDir)lorInt(macroDir, 0.f, 3.f);
     for (int v = 0; v < kVoiceSlots; ++v) {
         voiceLorStore_[v][LOR_LEN] = lorInt(eastLor[v * 3 + LOR_LEN], 1.f, (float)dotModular::kPatternLengthCap);
         voiceLorStore_[v][LOR_OFF] = lorInt(eastLor[v * 3 + LOR_OFF], 0.f, (float)(dotModular::kMaskRing - 1));
-        voiceLorStore_[v][LOR_ROT] = lorInt(eastLor[v * 3 + LOR_ROT], 0.f, (float)(dotModular::kMaskRing - 1));
+        voiceLorStore_[v][LOR_ROT] = lorInt(eastLor[v * 3 + LOR_ROT], 0.f, (float)std::max(0, voiceLorStore_[v][LOR_LEN] - 1));
         voiceLorDir_[v]            = (LaneDir)lorInt(eastDir[v], 0.f, 3.f);
         voiceLorLocalEast_[v]      = (localEast[v] != 0.f);
     }
@@ -652,14 +666,26 @@ int SequencerEngine::polyStrandLenOf(int v, int strand) const {
 }
 
 // The voice-frame walk at an effective tick (the A6 row law, UNIFIED ADDRESSING
-// Stage 2/A6): identity rows pass the global-window walk through verbatim; mapped rows
-// walk the row's OWN window with the rotation folded in anchor form (R = where the
-// voice reads when the parent is at its step 1, so the mechanical phase is (R-O) mod L),
-// the full-phrase rule widening L for the abs1 read. effTick1based may be ANY value
-// congruent to the true 1-based effective clock modulo the relevant periods (the walk
-// formulas mod locally). framePhaseOut (when non-null) receives the frame phase
-// congruent to the frame walk's t0 (mod the row walk's period). Returns the 1-based
-// frame tick the voice's LANES hang under.
+// Stage 2/A6 + CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION): identity rows pass the
+// global-window walk through verbatim. Mapped rows split by base mode:
+//   ABS1 (voiceFrameReadsFullPhrase) — UNCHANGED: the walk runs the FULL PHRASE
+//   (L→ring) over the GLOBALLY-WRAPPED driver tick, the rotation folded in the old
+//   anchor form rho = (R-O) mod L — the one mode that cycles the global pattern
+//   length (the doc's keep-exactly law).
+//   CYCLE — the window walk folds the UNWRAPPED transport tick through the voice's
+//   OWN L (Bug 1: the period is exactly L — the global window's wrap does not touch
+//   it; a 12-step voice under a 16-step global no longer resets at the global wrap),
+//   and R IS the window-relative phase at global step 1: rho = R (Bug 2, the anchor
+//   law — independent of O; R is clamped to 0..L-1 at the authoring paths, so the
+//   fold never sees an out-of-window R). The window's PLACEMENT rides the parent
+//   frame (voiceRead_ = wnow + offG + O in the derive — the global offset is
+//   placement, UAS lines 64/186-187).
+// effTick1based may be ANY value congruent to the true 1-based effective clock modulo
+// the relevant periods (the walk formulas mod locally). framePhaseOut (when non-null)
+// receives the frame phase congruent to the frame walk's t0 (mod the row walk's
+// period) — for the cycling fold that is the RAW effective clock's congruence (the
+// holder advance and the derive's fold both key off it). Returns the 1-based frame
+// tick the voice's LANES hang under.
 int64_t SequencerEngine::voiceFrameTickAt(int v, int64_t effTick1based,
                                           int64_t* framePhaseOut) const {
     const int  lenG = std::max(1, cachedLength);
@@ -675,10 +701,19 @@ int64_t SequencerEngine::voiceFrameTickAt(int v, int64_t effTick1based,
     effectiveVoiceLor(v, L, O, R, vd);
     if (L < 1) L = 1;
     // (A6) ABS1: the window walk runs the FULL PHRASE — L→16 for the READ only.
-    if (voiceFrameReadsFullPhrase(v)) L = kMaskRing;   // the FULL PHRASE = the ring
-    const int64_t rho  = ((((int64_t)(R - O) % L) + L) % L);
-    const int64_t wnow = ((((laneTickFor(vd, tNowV, L) + rho) % L) + L) % L);
-    if (framePhaseOut) *framePhaseOut = wrapMod(tNowV - 1, walkPeriod(vd, L));
+    if (voiceFrameReadsFullPhrase(v)) {
+        L = kMaskRing;   // the FULL PHRASE = the ring
+        const int64_t rho  = ((((int64_t)(R - O) % L) + L) % L);
+        const int64_t wnow = ((((laneTickFor(vd, tNowV, L) + rho) % L) + L) % L);
+        if (framePhaseOut) *framePhaseOut = wrapMod(tNowV - 1, walkPeriod(vd, L));
+        return wnow + 1;
+    }
+    // CYCLE: the UNWRAPPED tick through the voice's own L; rho = R window-relative
+    // (the store's R is already 0..L-1 — the authoring clamp — the fold adds no
+    // silent re-interpretation).
+    const int64_t rho  = (int64_t)R;
+    const int64_t wnow = ((((laneTickFor(vd, effTick1based, L) + rho) % L) + L) % L);
+    if (framePhaseOut) *framePhaseOut = wrapMod(effTick1based - 1, walkPeriod(vd, L));
     return wnow + 1;
 }
 
@@ -861,20 +896,41 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         int L, O, R; LaneDir vd;
         effectiveVoiceLor(v, L, O, R, vd);
         if (L < 1) L = 1;
-        if (voiceFrameReadsFullPhrase(v)) L = kMaskRing;   // the FULL PHRASE = the ring
-        const int64_t rho  = ((((int64_t)(R - O) % L) + L) % L);
-        // The frame walk's t0 representative: the RAW effective-clock congruence under
-        // the pass-through window (the frame phase), the bounded window walk under the
-        // mapped window — the same value laneTickFor evaluated in the old recompute.
-        const int64_t ft0   = passG ? (int64_t)voiceFramePhase_[v] : (int64_t)(wGv + offG);
+        // CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION — the base-mode split. ABS1 keeps the
+        // landed fold EXACTLY (the globally-wrapped driver representative + rho=(R-O),
+        // the one mode that cycles the global length). CYCLE folds the voice's OWN L
+        // over the RAW effective-clock congruence (voiceFramePhase_[v] — maintained by
+        // the raw kV advance for every mapped row, seeded raw by voiceFrameTickAt), so
+        // the period is exactly L and the GLOBAL WINDOW'S WRAP IS A NON-EVENT (Bug 1 —
+        // the old bounded representative wGv+offG jumped at the global wrap, making the
+        // period the global length); rho = R (Bug 2 — the window-relative phase at
+        // global step 1, independent of O; R arrives 0..L-1 from the authoring clamp);
+        // and the window's PLACEMENT rides the parent frame — read = wnow + offG + O
+        // (the OPEN: the global offset is placement, UAS 64/186-187; the old code
+        // routed it into the PHASE through the same wrapped tick Bug 1 removes, so the
+        // routing is re-added where the nesting puts it).
+        const bool abs1Read = voiceFrameReadsFullPhrase(v);
+        int64_t rho, ft0, frameBack;
+        if (abs1Read) {
+            L = kMaskRing;   // the FULL PHRASE = the ring
+            rho = ((((int64_t)(R - O) % L) + L) % L);
+            // The frame walk's t0 representative: the RAW effective-clock congruence under
+            // the pass-through window (the frame phase), the bounded window walk under the
+            // mapped window — the same value laneTickFor evaluated in the old recompute.
+            ft0 = passG ? (int64_t)voiceFramePhase_[v] : (int64_t)(wGv + offG);
+            // The RAW predecessor's walk value: the effective clock one motionV step back —
+            // its t0 representative is (ft0 − frameBack), where frameBack is the true t0
+            // gap (the raw clock: exactly motionV; the mapped window: the walk gap).
+            frameBack = passG ? (int64_t)motionV
+                : (int64_t)wGv - (int64_t)wrapMod((int64_t)wGv - motionV, lenG);
+        } else {
+            rho       = (int64_t)R;              // window-relative; clamped 0..L-1 at the authoring paths
+            ft0       = (int64_t)voiceFramePhase_[v];   // the raw congruence — valid under BOTH windows
+            frameBack = (int64_t)motionV;        // the raw clock's step gap (the pass-through law, any window)
+        }
         const int64_t wnow = ((((laneTickFor(vd, ft0 + 1, L) + rho) % L) + L) % L);
         voiceDriver_[v] = wnow + 1;
-        voiceRead_[v]   = (int)((wnow + O) & (kMaskRing - 1));
-        // The RAW predecessor's walk value: the effective clock one motionV step back —
-        // its t0 representative is (ft0 − frameBack), where frameBack is the true t0
-        // gap (the raw clock: exactly motionV; the mapped window: the walk gap).
-        const int64_t frameBack = passG ? (int64_t)motionV
-            : (int64_t)wGv - (int64_t)wrapMod((int64_t)wGv - motionV, lenG);
+        voiceRead_[v]   = (int)((wnow + (int64_t)(abs1Read ? (int64_t)O : ((int64_t)offG + O))) & (kMaskRing - 1));
         const int64_t wprev = ((((laneTickFor(vd, wrapMod(ft0 - frameBack, walkPeriod(vd, L)) + 1, L) + rho) % L) + L) % L);
         const int64_t dd    = voiceDriver_[v] - (wprev + 1);
         // A wrap (the voice's own window, or the global window beneath it) is a BEAT,

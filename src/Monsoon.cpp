@@ -1893,6 +1893,13 @@ void Monsoon::process(const ProcessArgs& args) {
             auto* mVis = expanderManager.cachedMacroSandsVisual;
             static const float VL_LO[3] = {1.f, 0.f, 0.f};     // L 1..16, O/R 0..15 (the push's clamps)
             static const float VL_HI[3] = {16.f, 15.f, 15.f};
+            // CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION (Bug 2 fix 3): the CV fold is an
+            // AUTHORING path — the R it writes clamps to 0..L-1 exactly like the push
+            // (the lanes' convention hi = max(0, L-1)), against the LEN this same fold
+            // wrote one item earlier (item order L,O,R — LEN lands first), so a CV-
+            // modulated window shrink re-clamps R in the same block and the store's
+            // invariant (no voice R outside its window) holds on EVERY write path.
+            auto rotHiOf = [&](int len) { return std::max(0, len - 1); };
             bool anyMacro = false, anyEast = false;
             for (int item = 0; item < 3; ++item) {
                 if (mVis && mVis->inputs[StraitsMacroVisualIds::vlCvId(item)].isConnected()) anyMacro = true;
@@ -1907,7 +1914,9 @@ void Monsoon::process(const ProcessArgs& args) {
                                                 getVoiceLorAttenMacro(item),
                                                 VL_LO[item], VL_HI[item])
                         : editor.voiceLorMacro[item];
-                    engine.macroVoiceLorRef(item) = (int)std::lround(v);
+                    int row = (int)std::lround(v);
+                    if (item == SequencerEngine::LOR_ROT) row = std::clamp(row, 0, rotHiOf(engine.macroVoiceLorRef(SequencerEngine::LOR_LEN)));
+                    engine.macroVoiceLorRef(item) = row;
                 }
             }
             if (anyEast) {
@@ -1921,7 +1930,9 @@ void Monsoon::process(const ProcessArgs& args) {
                                                     getVoiceLorAttenEast(vs.v, item),
                                                     VL_LO[item], VL_HI[item])
                             : base;
-                        engine.voiceLorRef(vs, item) = (int)std::lround(val);
+                        int row = (int)std::lround(val);
+                        if (item == SequencerEngine::LOR_ROT) row = std::clamp(row, 0, rotHiOf(engine.voiceLorRef(vs, SequencerEngine::LOR_LEN)));
+                        engine.voiceLorRef(vs, item) = row;
                     }
                 }
             }

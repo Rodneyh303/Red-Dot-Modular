@@ -596,7 +596,12 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // The VOICE-level LOR — the global->voice map, "lane is the probability half of voice".
     // The voice's L/O/R+direction is its READ FRAME (not a probability lane): the frame its
     // LANES nest within. R is the ANCHOR form (where the voice reads when the parent is at
-    // step 1); the mechanical phase is (R - O) mod L, derived. Indexed [bank.v] — slot 0 =
+    // step 1). CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION: for CYCLE rows the mechanical phase
+    // is rho = R — the WINDOW-RELATIVE phase into the window at global step 1 (UAS lines
+    // 13-20/22-37), clamped to 0..L-1 at every authoring path (the lanes' own convention
+    // clamp(R, 0, max(0, L-1))); the window's PLACEMENT is offG + O (the parent frame
+    // carries the global offset). ABS1 rows keep the landed (R-O) anchor fold over the
+    // global ring. Indexed [bank.v] — slot 0 =
     // V1 (mono, drives laneTick_), 1..15 = V2..V16 (drive laneTickV_) — the same indexing
     // as lorStore_/laneTickV_. Macro tier = the GLOBAL voice range (all voices); the
     // per-voice rows are the East tier; delegation per voice: follow-Macro (default) or
@@ -613,7 +618,9 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // the BOUNDED window-walk representative now (pass-through config: ((t+offset−1) mod
     // 16) + 1; the raw unbounded tick died with the counter, and nothing but the deleted
     // lane recompute ever consumed its unbounded congruence), voiceRead_ = the buffer
-    // cell the voice's frame reads (the Stage-3 range lane + tests). voiceSign_ = the
+    // cell the voice's frame reads (the Stage-3 range lane + tests; CYCLE rows place the
+    // window at offG + O — the parent frame's position plus the row's offset — while
+    // ABS1 keeps wnow + O). voiceSign_ = the
     // voice FRAME's instantaneous walk sign (+1/-1, 0 = not yet moved) — the Stage-3
     // range strip's direction cue, derived by the SAME rule as the lane signs: the sign
     // of the window-walk delta, with a wrap/jump substituted by ONE musical step along
