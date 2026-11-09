@@ -21,6 +21,13 @@ length does not set the cycle period for cycling voices.
 Keep the abs1 branch (voiceFrameReadsFullPhrase -> L = kMaskRing, the global ring) EXACTLY as it is: it is the one mode
 that cycles the global pattern length.
 
+## THE ANCHOR RULE (Rodney, per UAS spec lines 22-37)
+- VOICE R = where the voice reads when GLOBAL step 1 arrives, as a WINDOW-STEP index 0..L-1 (spec example: voice L=8,
+  R=7 at global 1 reads window-step 7). So rho = R, anchored to GLOBAL step 1, independent of O.
+- LANE R = the lane's position when the VOICE is at its first (lowest-numbered) step, i.e. the window start. Lane R is
+  anchored to VOICE step 1, NOT global step 1 (the spec calls the global anchor the OLD behaviour).
+- O only places the window (where it starts in the phrase). R only sets the phase at the anchor.
+
 ## BUG 2  rotation is not kept within the window
 Today: the voice rotation clamp is 0 .. kMaskRing-1 (= 15) (SequencerEngine.cpp:307-308), NOT 0 .. L-1. And the fold is
 rho = ((R - O) mod L) (lines 679 and 865), which treats R as an absolute position depending on O, so the same R gives a
@@ -51,7 +58,9 @@ add it. Report which.
 - ABS1: the full-phrase read still cycles the global length (unchanged; its goldens unchanged).
 - ROTATION: R is clamped to 0..L-1; rho = R; a voice with L=8, R=7 starts at window position 7, and R cannot reach 8..15.
 - OFFSET: the window starts at the global frame position plus O (or the existing routing, reported).
-- Other lanes (melody, octave, variation ...) unchanged: their rotation convention is the reference.
+- LANE ANCHOR: a lane with R=k is at window-step k when the VOICE is at step 1 (voice window start), not when GLOBAL is
+  at step 1. Check the code: if lanes still anchor to global step 1, that is a third bug and is fixed here too.
+- Other lanes (melody, octave, variation ...) unchanged except for the anchor above.
 - run_all green on both SDK legs.
 
 ## DO NOT
