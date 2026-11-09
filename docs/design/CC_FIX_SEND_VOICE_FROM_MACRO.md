@@ -27,13 +27,23 @@ Build on feat/phase-duals-gaps. Supersedes CC_DIAG_SEND_SUBPANEL_PER_VOICE.md (t
    "SEND VOICE: V%d" and "(send voice)", so the user can see which voice the sends are on.
 5. East is UNCHANGED. Its tabs keep writing displayedVoice, its recompute keeps reading it.
 
-## PERSISTENCE (decision, default stated)
-The send voice is a UI selection. Default: NOT persisted; on load the Macro strip re-derives it from its own tab state
-(step 2, on load). If the Macro tab selection is itself persisted, the send voice follows it automatically. Confirm.
+## PERSISTENCE (decided: Macro reopens on the same voice)
+The Macro strip's tab selection is NOT saved today (verified: no save/load of viewVoice or the tab in
+Monsoon.cpp / MonsoonPersistenceManager.cpp; a widget's state is not persisted, only the module's). Add it:
+1. The selection lives in the MODULE, not the widget: a Monsoon field (macroViewVoice, stored as a voice number 1..16).
+   The Macro strip WRITES it on tab change and READS it on init (StraitsSandsMacroVisual init block ~line 896).
+2. SAVE it in Monsoon's dataToJson under a new key (e.g. "macroViewVoice"). LOAD it in dataFromJson, defaulting to V1
+   when the key is absent.
+3. On init the Macro strip sets its tabGroup to the stored voice AND calls engine.pe.setSendVoice(slot(stored)), so the
+   sends open on the same voice the strip was left on.
+4. The send store itself already persists per voice (MonsoonPersistenceManager.cpp:202, 553; MacroTapBank; WarpBank), so
+   no change to the send data is needed.
+Gate: save a patch with Macro on V5, reload: Macro opens on V5, the send subpanel shows V5's sends, and East is unaffected.
 
 ## GATES
 - Switching the MACRO strip's voice tab changes the subpanel's SEND VOICE label AND the values shown (per voice).
 - Switching the EAST strip's voice tab does NOT change the send voice or the subpanel.
+- Save/reload: Macro reopens on the saved voice; a patch with no saved key opens on V1.
 - Round-trip per voice: write a send on voice A (Macro tab A), switch Macro to voice B, the send reads the B value
   (default or as written); switch back to A and the A value returns. Test with the Macro selection, not displayedVoice.
 - East's probability display and recompute behaviour unchanged (no re-pins; East goldens untouched).
