@@ -1013,6 +1013,80 @@ int main() {
               && r.macroFrameRead() == 0 && r.macroFrameSign() == 0,
               "STAGE3: reset() seeds the sign/frame cues to 0 (re-derived on the first step)");
     }
+    {
+        // CC_FIX_MACRO_NO_VOICE1_SPECIAL — the ENGINE CONSEQUENCE (the doc's verify-only
+        // step): with the Macro strip's V1 arm gone, every viewed voice V1..V16 reads its
+        // OWN voice cell, and V1's cell (the mono slot) must follow the SHARED Macro
+        // window the same way V2..V16 do. The ONE resolution authority has no mono branch
+        // — effectiveVoiceLor(mono()) resolves macroVoiceLor_ for a follow-Macro voice
+        // exactly as for poly voices — and the same derive law walks slot 0 (tickHolders'
+        // loop covers slot 0; advanceOffset_[0] ≡ 0 keeps k_0 = the transport motion).
+        // Pinned here at engine level: (1) the resolution agreement on V1/V2/V16, at the
+        // defaults and on the authored row; (2) the walk agreement — the three slots'
+        // read cells AND walk signs equal the worked-table column every step (the
+        // bare-advancePlayhead march gives every slot the same motion: voiceMotion is
+        // nullptr, so each slot takes signMotion; every advanceOffset_ stays 0); and
+        // (3) a mid-walk Macro L move re-pins all three identically — changing Macro
+        // L/O/R moves V1 exactly as it moves V2 (the doc's gate, engine side).
+        SequencerEngine eng; eng.reset(); eng.numPolyVoices = 15;
+        const auto v1  = dotModular::VoiceResolver::slot(1);    // V1 — the mono slot
+        const auto v2  = dotModular::VoiceResolver::slot(2);    // V2
+        const auto v16 = dotModular::VoiceResolver::slot(16);   // V16
+        bool resOK = true;
+        for (int v : {1, 2, 16}) {
+            const auto b = dotModular::VoiceResolver::slot(v);
+            int L, O, R; SequencerEngine::LaneDir d;
+            eng.effectiveVoiceLor(b.v, L, O, R, d);
+            resOK = resOK && eng.voiceLorFollowsMacro(b)
+                  && L == 16 && O == 0 && R == 0 && d == SequencerEngine::LaneDir::Forward;
+        }
+        check(resOK, "STAGE3: V1/V2/V16 follow the shared Macro row at defaults (no mono branch in the ONE LOR authority)");
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) = 5;
+        eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 7;
+        resOK = true;
+        for (int v : {1, 2, 16}) {
+            const auto b = dotModular::VoiceResolver::slot(v);
+            int L, O, R; SequencerEngine::LaneDir d;
+            eng.effectiveVoiceLor(b.v, L, O, R, d);
+            resOK = resOK && eng.voiceLorFollowsMacro(b)
+                  && L == 8 && O == 5 && R == 7 && d == SequencerEngine::LaneDir::Forward;
+        }
+        check(resOK, "STAGE3: the authored Macro row resolves identically for V1/V2/V16 (the shared window)");
+        // THE WALK: the worked-table column (rho = R — the CC fix re-pin) on all three
+        // slots, cells and signs, every step — ONE shared window, ONE playhead rule.
+        static const int kSharedReads[16] = {12,5,6,7,8,9,10,11,12,5,6,7,8,9,10,11};
+        bool walkOK = true;
+        for (int k = 0; k < 16; ++k) {
+            eng.advancePlayhead(+1);
+            const int r1 = eng.voiceReadPosition(v1);
+            walkOK = walkOK
+                   && r1 == kSharedReads[k]
+                   && r1 == eng.voiceReadPosition(v2)
+                   && r1 == eng.voiceReadPosition(v16)
+                   && eng.voiceReadSign(v1) == eng.voiceReadSign(v2)
+                   && eng.voiceReadSign(v1) == eng.voiceReadSign(v16);
+        }
+        check(walkOK, "STAGE3: V1/V2/V16 read cells + walk signs agree every step on the worked column (one shared window, one playhead rule)");
+        // THE MOVE: Macro LEN 8 -> 12 mid-walk — all three cells re-pin identically (the
+        // LAW is the agreement: no separate golden, the mono slot's column is already
+        // pinned by the gates above).
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 12;
+        bool moveOK = true;
+        for (int k = 0; k < 16; ++k) {
+            eng.advancePlayhead(+1);
+            const int r1 = eng.voiceReadPosition(v1);
+            moveOK = moveOK && r1 == eng.voiceReadPosition(v2)
+                   && r1 == eng.voiceReadPosition(v16)
+                   && eng.voiceReadSign(v1) == eng.voiceReadSign(v2)
+                   && eng.voiceReadSign(v1) == eng.voiceReadSign(v16);
+        }
+        check(moveOK, "STAGE3: a Macro L/O/R move re-pins V1 exactly as V2/V16 (the doc's gate, engine level)");
+        eng.reset();
+        check(eng.voiceReadPosition(v1) == 0 && eng.voiceReadPosition(v2) == 0
+              && eng.voiceReadPosition(v16) == 0,
+              "STAGE3: reset() re-seeds every voice cell (V1 with the poly slots)");
+    }
 
     // ── STAGE 4: the OUTPUT MASK (the one output layer; the doc's containment
     // hierarchy — cycle ⊂ abs1 ⊂ abs2 ⊂ abs3 as CONFIGURATIONS of one per-step

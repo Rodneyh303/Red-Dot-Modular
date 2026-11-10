@@ -964,12 +964,13 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             monsoon->engine.pe.setSendVoice(dotModular::VoiceResolver::slot(viewVoice + 1));
         }
         // Voice NUMBER (1..16) for the displayed tab: tab 0 = V1 (mono), tab v = V(v+1).
-        // Mono/poly identity + bank mapping via VoiceResolver — one source of truth, not
-        // local viewVoice arithmetic (static/constexpr, no engine ref).
-        const int  viewVoiceNum = viewVoice + 1;
-        const bool onMonoTab = dotModular::VoiceResolver::isMono(viewVoiceNum);
-        // (v1Editable removed — its only use, hiding Macro attens on V1, was dropped in P1.)
-        const int  pv = dotModular::VoiceResolver::polyVoiceSlot(viewVoiceNum);  // voiceSlot for poly, -1 on mono
+        // CC_FIX_MACRO_NO_VOICE1_SPECIAL: the tab-kind flag and the poly-slot remap that
+        // used to fork the three display paths below are GONE — every viewed voice
+        // V1..V16 takes the ONE slot expression VoiceResolver::slot(viewVoice + 1);
+        // slot(1) mints the mono slot (the compile-time-pinned equality), so the single
+        // expression IS the poly expression applied to every voice. No V1 special case
+        // may creep back in — that is the anti-pattern the doc names. (v1Editable
+        // removed earlier — its only use, hiding Macro attens on V1, was dropped in P1.)
 
         // Mix-in sends: STORE-BACKED via the StoreKnobs above (they read/write
         // getMacroSend/setMacroSend for the live view voice directly). The old per-voice
@@ -981,13 +982,15 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         //  lanes from the ONE accessor — and its SpreadManager::getInterpolatedValue path
         //  was the last SpreadInterp-in-UI bar composition outside the accessor.)
         // ── The bars read the ONE accessor (CC_PROMPT_UI_TO_RESOLVER_SPEC step 2) ──
-        // Every lane, every step, the DISPLAYED voice (pv on poly tabs, voiceSlot 0 on
-        // the mono/V1 tab) — the SAME call the prob CV OUT makes through
+        // Every lane, every step, the DISPLAYED voice's slot — ONE expression for
+        // V1..V16 (CC_FIX_MACRO_NO_VOICE1_SPECIAL: slot(viewVoice + 1), no mono arm;
+        // on the V1 tab it mints the mono slot 0, bit-identical to the old branch) —
+        // the SAME call the prob CV OUT makes through
         // VoiceResolver::laneProbabilityAtStep (MacroOwn lens: the published base draw +
         // Macro's OWN spread + the ONE warp composition; Macro never borrows East). One
         // producer, both consumers — bars and out can no longer diverge.
         {
-            const auto barVoice = onMonoTab ? dotModular::VoiceResolver::mono() : dotModular::VoiceResolver::slot(pv + 1);
+            const auto barVoice = dotModular::VoiceResolver::slot(viewVoice + 1);
             for (int lane = 0; lane < dotModular::SandsGrid::POLY_LANES; ++lane) {
                 for (int s = 0; s < SandsVisualEditorV4::STEP_COUNT; ++s)
                     visualEditor->currentState.lanes[lane].probabilities[s] =
@@ -1051,18 +1054,18 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 // rotation CV only moves the chevron, not the playhead, when the seq is stopped.
                 int ph = (eng.stepIndex >= 0) ? eng.macroLaneTick_[l] : -1;
                 // PER-VOICE STEP-ADVANCE (the WANDER build): the VAR lane's chevron reads
-                // the ENGINE's scanned position. CC_FIX_MACRO_STRIP_VOICE_PLAYHEAD: on a
-                // POLY tab that is the DISPLAYED VOICE's own scan — the SAME accessor East
-                // uses for the same purpose (variationLanePlayheadForVoice, East 1914) —
-                // not the mono/global walk, which ran over the global 16 steps regardless
-                // of the voice's L. The mono tab keeps variationLanePlayhead (the mono
-                // decision's scan), as now. Outside holds this is bit-identical to the
+                // the ENGINE's scanned position. CC_FIX_MACRO_STRIP_VOICE_PLAYHEAD: that
+                // is the DISPLAYED VOICE's own scan — the SAME accessor East uses for the
+                // same purpose (variationLanePlayheadForVoice, East 1914) — not the
+                // mono/global walk, which ran over the global 16 steps regardless of the
+                // voice's L. CC_FIX_MACRO_NO_VOICE1_SPECIAL: EVERY tab takes the
+                // per-voice accessor — on the V1 tab it IS the old mono helper
+                // bit-for-bit (slot(1) mints the mono slot; the helper was exactly these
+                // two engine calls). Outside holds this is bit-identical to the
                 // calcPlayhead below; during a gate-mode hold it scans.
                 visualEditor->setLanePlayStep(
                     l, (l == SequencerEngine::EDITOR_LANE_VARIATION)
-                            ? (onMonoTab ? variationLanePlayhead(eng)
-                                         : variationLanePlayheadForVoice(
-                                               eng, dotModular::VoiceResolver::slot(viewVoice + 1)))
+                            ? variationLanePlayheadForVoice(eng, dotModular::VoiceResolver::slot(viewVoice + 1))
                             : calcPlayhead(ph, ownLen, ownOff, ownRot));
             }
         }
@@ -1070,11 +1073,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         // ── UNIFIED ADDRESSING Stage 3: the voice-range strip (the MACRO tier) ──
         // The strip at the top of the grid shows + authors the GLOBAL voice range
         // row (macroVoiceLor_ — the row every follow-Macro voice reads through).
-        // The animated read cell is the MACRO FRAME's on the mono tab (the global
-        // window walk); on a POLY tab it is the displayed voice's OWN read cell
-        // (East's voice playhead — see the ONE RANGE block below). The engine
-        // caches each read cell + walk sign per recompute. Never blocked: this is
-        // the tier's own panel.
+        // The animated read cell is the DISPLAYED VOICE's OWN read cell on EVERY
+        // tab (CC_FIX_MACRO_NO_VOICE1_SPECIAL — V1 included: its cell is the same
+        // slot-0 walk the engine runs for every follow-Macro voice, resolved
+        // through the same ONE LOR authority; no mono arm). The engine caches each
+        // read cell + walk sign per recompute. Never blocked: this is the tier's
+        // own panel.
         {
             // ONE RANGE (the corrected model): the GLOBAL voice-LOR row (the row every
             // follower reads through — the same range the macro abs1 gates against).
@@ -1085,22 +1089,21 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             const int mL = std::max(1, se->macroVoiceLor_[SequencerEngine::LOR_LEN]);
             const int mO = se->macroVoiceLor_[SequencerEngine::LOR_OFF];
             const int mR = se->macroVoiceLor_[SequencerEngine::LOR_ROT];
-            // The read cell: the MONO tab keeps the MACRO FRAME's read cell + walk sign
-            // (the frame's OWN direction — the earlier transport-sign display was the
-            // forward-only bug), as now; a POLY tab mirrors East's VOICE playhead for the
-            // displayed voice — eng.voiceReadPosition/voiceReadSign of the voice's slot
-            // (the SAME accessors East's strip uses, East 1945), so the cell runs INSIDE
-            // the voice's own window (L=8 under a 16-step global repeats every 8, matching
+            // The read cell: the DISPLAYED VOICE's own read cell + walk sign on every
+            // tab — eng.voiceReadPosition/voiceReadSign of the voice's slot (the SAME
+            // accessors East's strip uses, East 1945), so the cell runs INSIDE the
+            // voice's own window (L=8 under a 16-step global repeats every 8, matching
             // the audio — the engine's cycle fold feeds both) and the two strips agree.
-            int rp, sg;
-            if (onMonoTab) {
-                rp = (eng.stepIndex >= 0) ? se->macroFrameRead() : -1;
-                sg = se->macroFrameSign();
-            } else {
-                const auto vslot = dotModular::VoiceResolver::slot(viewVoice + 1);
-                rp = (eng.stepIndex >= 0) ? eng.voiceReadPosition(vslot) : -1;
-                sg = eng.voiceReadSign(vslot);
-            }
+            // CC_FIX_MACRO_NO_VOICE1_SPECIAL: the V1 arm that read the mono-frame caches
+            // is gone — V1's slot-0 cell follows the shared Macro window the same way
+            // V2..V16 do (the ONE LOR authority has no mono arm; the same derive law
+            // walks slot 0 — verified, the unified-addressing gates pin it), and at the
+            // defaults the slot-0 cell equals the mono-frame cache bit-for-bit (the same
+            // wrapMod of the same walk). The mono-frame caches stay engine-side (their
+            // own gates pin them); the Macro strip no longer reads them.
+            const auto vslot = dotModular::VoiceResolver::slot(viewVoice + 1);
+            int rp = (eng.stepIndex >= 0) ? eng.voiceReadPosition(vslot) : -1;
+            int sg = eng.voiceReadSign(vslot);
             visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);
             // The mask surface reads the ENGINE's effective pattern (the UI-completion
             // unify — display-reads-engine, East's twin note): cycle = all-lit, range

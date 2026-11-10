@@ -343,6 +343,18 @@ int main() {
                 "Macro's V2 tab bars display V3's row");
     });
 
+    TEST("B3-NOV1SPECIAL (CC_FIX_MACRO_NO_VOICE1_SPECIAL): no V1/mono branch remains in the Macro strip's bar, playhead or read path — no tab-kind mono flag, no VoiceResolver::isMono, no mono-frame cache reads in StraitsSandsMacroVisual.cpp (every viewed voice V1..V16 takes the ONE slot expression slot(viewVoice + 1); slot(1) mints the mono slot)", {
+        const std::string src = slurp(repoRoot() + "/src/StraitsSandsMacroVisual.cpp");
+        EXPECTF(!contains(src, "onMonoTab"),
+                "StraitsSandsMacroVisual.cpp still branches on onMonoTab — a V1 special case in the Macro strip "
+                "(all voices should follow the global per-voice range; nothing special about voice 1)");
+        EXPECTF(!contains(src, "VoiceResolver::isMono"),
+                "StraitsSandsMacroVisual.cpp still branches on VoiceResolver::isMono — a V1 special case in the Macro strip");
+        EXPECTF(!contains(src, "macroFrameRead") && !contains(src, "macroFrameSign"),
+                "StraitsSandsMacroVisual.cpp still reads the mono-frame caches — the strip must show the displayed "
+                "voice's OWN read cell on every tab (the caches stay engine-side, pinned by the unified-addressing gates)");
+    });
+
     TEST("B3 East lock-topo off-by-one gone: no `eastPolyOwner[cv - 1]` in StraitsEastSandsVisual.cpp (cv is already the voiceSlot; -1 wrote the PREVIOUS voice's owner row)", {
         const std::string src = slurp(repoRoot() + "/src/StraitsEastSandsVisual.cpp");
         EXPECTF(!contains(src, "eastPolyOwner[cv - 1]"),
