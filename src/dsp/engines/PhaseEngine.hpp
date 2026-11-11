@@ -14,10 +14,15 @@
  * for the quarter feed stays 16 sixteenths. The same pulse grid the gate engine
  * uses, so all timing is integer pulses with no continuous-time component.
  *
- * Mirrors ClockEngine's OUTPUT CONTRACT (pulseEdge / sixteenthEdge / quarterEdge +
- * bpm + sixteenthSec) so the existing execute path is reused unchanged. ADDS a
- * reverse flag: when the phase ramp moves backward, edges fire in reverse and the
- * sequencer steps its playhead backward (handled in SequencerEngine).
+ * Mirrors ClockEngine's EDGE OUTPUT CONTRACT (pulseEdge / stepEdge / sixteenthEdge /
+ * quarterEdge) so the existing execute path is reused unchanged. The phase path is
+ * PULSE-QUANTISED and TEMPO-INDEPENDENT (CC_FIX_PHASE_DERIVED_BPM): it reads positions
+ * from the ramp, not time — the velocity-to-tempo derivation this file carried (the
+ * derived BPM / sixteenth-seconds / velocity) had no reader and is gone; the internal
+ * clock keeps its own BPM readout, and the distribution warp composes per step from
+ * the step content, never from a tempo. ADDS a reverse flag: when the phase ramp
+ * moves backward, edges fire in reverse and the sequencer steps its playhead
+ * backward (handled in SequencerEngine).
  *
  * STEP 1 SCOPE (this file): forward + within-phrase reverse. No PRNG, no jumps, no
  * draw-counter. A jump/scrub (large discontinuity) is detected and, for now, simply
@@ -47,8 +52,8 @@ struct PhaseEngine {
     bool   havePrev     = false;    // false until first sample seen
     double prevPhase    = 0.0;      // last normalised phase in [0,1) (unwrapped frac)
     long   prevPulse    = 0;        // last absolute pulse index (can be negative)
-    double prevContPhase= 0.0;      // last *continuous* (unwrapped) phase, for velocity
-    double phaseVel     = 0.0;      // measured d(phase)/d(sample), for bpm + warp
+    double prevContPhase= 0.0;      // last *continuous* (unwrapped) phase — THE transport
+                                    // accumulator (position truth; not a tempo quantity)
 
     // ── Stage 2 state (the subphase tier — PHASE_TIER, PHASE_TIER_SYSTEM_IDEA.md IDEA 2) ──
     bool   haveTier     = false;    // false until the tier path's first sample (a fresh CV3 cable reseeds)
@@ -77,16 +82,14 @@ struct PhaseEngine {
     bool  pulseChanged  = false;    // THE PULSE-CHANGE GATE signal (CC_FIX_PHASE_RUN_AT_PPQN,
                                     // docs tip 4cb1a749): true ONLY on the samples where the
                                     // quantised pulse position moved (targetPulse != prevPulse).
-                                    // The expensive tail — velocity, jump detection, the pulse
-                                    // walk — runs on those samples; between them the cheap path
+                                    // The expensive tail — jump detection and the pulse walk —
+                                    // runs on those samples; between them the cheap path
                                     // just warms the trackers and ACCUMULATES prevContPhase (a
                                     // running sum across skipped samples — never reset, the
                                     // doc's DO-NOT). Monsoon gates its Mode-E snap/drift path to
                                     // this flag. The probe is the tail's OWN target expression
                                     // (llround(prevContPhase·PPB) / tierPulseFor), so firing is
                                     // bit-identical to the old per-sample step != 0.
-    float bpm           = 120.f;    // derived from measured phase velocity (for display/fallback)
-    float sixteenthSec  = 0.125f;   // derived 1/16 length in seconds (for any seconds consumer)
     // Stage 2 outputs: each tier's OWN per-sample motion sign (+1 / -1 / 0 flat) — the
     // raw material for the SIGN-PRODUCT direction rule (dirT · dirS, neutral = no flip).
     // `reverse` stays the COMPOSED motion sign (the position machinery's truth); the
@@ -98,9 +101,9 @@ struct PhaseEngine {
 
     void reset() {
         havePrev = false;
-        prevPhase = prevContPhase = 0.0; prevPulse = 0; phaseVel = 0.0;
+        prevPhase = prevContPhase = 0.0; prevPulse = 0;
         pulseEdge = stepEdge = sixteenthEdge = quarterEdge = reverse = jumped = false; jumpSteps = 0;
-        pulsePos = 0; bpm = 120.f; sixteenthSec = 0.125f;
+        pulsePos = 0;
         haveTier = false; prevSub = 0.0;
         dirT = dirS = 0;
         pulseChanged = false;
@@ -193,20 +196,11 @@ struct PhaseEngine {
         if (!pulseChanged) return;   // edges held low (reset at entry), position unchanged
 
         // ── THE TAIL (runs ONLY when the quantised pulse position moved) ─────────
-        // Velocity (for bpm/warp): phase units per sample → spans/sec → bpm. The SPAN
-        // is PPB pulses = PPB/ppqn quarters — at 24 PPQN/plen 16 that is exactly 4
-        // (the old bars·4·60 form, bit-identical); at 48 the 96-pulse span is 2
-        // quarters, so the readout stays true at the doubled grid.
-        if (sampleTime > 0.f) {
-            phaseVel = d / (double)sampleTime;       // spans per second (signed)
-            double spansPerSec = std::fabs(phaseVel);
-            double spanQuarters = (double)PPB / (double)ppqn;
-            float newBpm = (float)(spansPerSec * spanQuarters * 60.0);
-            if (newBpm > 1.f && newBpm < 1000.f) {
-                bpm = newBpm;
-                sixteenthSec = 15.f / bpm;
-            }
-        }
+        // PULSE-QUANTISED, TEMPO-INDEPENDENT (CC_FIX_PHASE_DERIVED_BPM): the ramp's
+        // speed is not a position quantity — the velocity-to-tempo derivation that
+        // lived here had no reader (the dead Monsoon sync removed with it). The
+        // sampleTime parameter stays for call-compat: the Mirrors-ClockEngine output
+        // contract and every caller are untouched.
 
         long step = targetPulse - pulsePos;
         long mag  = step < 0 ? -step : step;
@@ -319,8 +313,9 @@ struct PhaseEngine {
     // this sample's per-tier shortest-path motion signs, derived exactly how `reverse`
     // itself is derived for the transport-only path.
     //
-    // BPM follows the TRANSPORT ramp's velocity (the tempo carrier), not the composed
-    // motion — the subphase is a position dial, not a clock.
+    // TEMPO-INDEPENDENT (CC_FIX_PHASE_DERIVED_BPM): neither tier is a clock — the
+    // composed position is read from the ramp VALUES alone, never from their speed
+    // (the subphase is a position dial, not a clock).
     void processTiers(float tVolt, float sVolt, bool subPatched, double regionSixteenths,
                       float sampleTime, int ppqnSetting) {
         if (!subPatched) {
@@ -408,20 +403,8 @@ struct PhaseEngine {
         if (!pulseChanged) return;   // edges held low (reset at entry), position unchanged
 
         // ── THE TAIL (runs ONLY when the quantised pulse position moved) ─────────
-        // BPM follows the TRANSPORT ramp's velocity (the tempo carrier) — sampled at
-        // pulse rate now; consumed at the edges, never between pulses. SPAN-AWARE:
-        // the span is PPB pulses = PPB/ppqn quarters (4 at 24/plen 16 — the old
-        // bars·4·60 form bit-identical; 2 at 48).
-        if (sampleTime > 0.f) {
-            phaseVel = dT / (double)sampleTime;
-            double spansPerSec = std::fabs(phaseVel);
-            double spanQuarters = (double)PPB / (double)ppqn;
-            float newBpm = (float)(spansPerSec * spanQuarters * 60.0);
-            if (newBpm > 1.f && newBpm < 1000.f) {
-                bpm = newBpm;
-                sixteenthSec = 15.f / bpm;
-            }
-        }
+        // PULSE-QUANTISED, TEMPO-INDEPENDENT (CC_FIX_PHASE_DERIVED_BPM): no velocity,
+        // no derived tempo — the composed position follows the ramp values alone.
 
         long step = targetPulse - pulsePos;
         long mag  = step < 0 ? -step : step;

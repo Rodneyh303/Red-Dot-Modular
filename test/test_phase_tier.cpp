@@ -50,6 +50,18 @@
 //      leaves the region's pulses ([0, 95] STRICT, the floor mapping); the wrap itself is
 //      a backward jump that stays inside the region ("its jumps stay inside one bar").
 //
+// CC_FIX_PHASE_DERIVED_BPM pins (after the PPQN48 block — the derived tempo is GONE):
+//  15. THE WARP TEMPO GATE — the same phase input at two different tempos (2× the
+//      sample rate) walks the SAME bit-identical step sequence and lands the SAME warp
+//      output bits at every step (the warp composes per step from the step's uniform,
+//      never from a tempo).
+//  16. THE STEP-SEQUENCE SWEEP — the full per-sample edge stream (position / step /
+//      sixteenth / quarter / reverse / jump) against the pulse-grid truth, forward then
+//      reverse, at 24 AND 48 — the derivation's removal changes no audio path.
+//  17. THE STRUCTURAL PINS — no derived-tempo identifier (velocity / sixteenth-seconds
+//      / bpm) anywhere in PhaseEngine.hpp, no phase.bpm sync in Monsoon.cpp: a
+//      reintroduction fails the battery, not just review.
+//
 // Build (run_all.sh): test_phase_tier|$SE $GS $PE
 #include <cstdio>
 #include <cstdint>
@@ -57,9 +69,14 @@
 #include <vector>
 #include <set>
 #include <algorithm>
+#include <cstring>
+#include <fstream>
+#include <string>
+#include <stdexcept>
 
 #include "SequencerEngine.hpp"
 #include "PhaseEngine.hpp"
+#include "WarpF.hpp"                    // the warp output primitive (invCDF) — the warp gate
 
 static int passed = 0, failed = 0;
 static void check(bool ok, const char* what) {
@@ -71,7 +88,8 @@ using redDot::PhaseEngine;
 namespace dm = dotModular;
 
 static constexpr int P16 = 6;          // pulsesPer16th at 24 PPQN
-static constexpr float ST = 1e-3f;     // sampleTime (bpm plumbing only; positions never read it)
+static constexpr float ST = 1e-3f;     // sampleTime (call-compat only — the phase path is
+                                       // pulse-quantised, TEMPO never reads it: CC_FIX_PHASE_DERIVED_BPM)
 
 // FNV-1a over a byte range — the house digest.
 static uint64_t fnv1a(const std::vector<uint8_t>& bytes) {
@@ -83,6 +101,35 @@ static std::vector<uint8_t> toBytes(const std::vector<int>& v) {
     std::vector<uint8_t> out; out.reserve(v.size());
     for (int x : v) out.push_back((uint8_t)x);
     return out;
+}
+
+// Bit-exact double compare (the warp output bits — the same helper test_phase_distribution pins with).
+static bool sameBits(double a, double b) {
+    uint64_t ra, rb;
+    std::memcpy(&ra, &a, sizeof ra);
+    std::memcpy(&rb, &b, sizeof rb);
+    return ra == rb;
+}
+
+// Source-file read helpers (the B3 grep-in-test precedent — a structural regression
+// fails the battery, not just review).
+static std::string repoRoot() {
+    static const char* candidates[] = { ".", "..", "../.." };
+    for (const char* m : candidates) {
+        std::ifstream f(std::string(m) + "/src/dsp/engines/SequencerEngine.cpp", std::ios::binary);
+        if (f) return m;
+    }
+    throw std::runtime_error("repo root not found — run via test/run_all.sh from the repo");
+}
+static std::string slurp(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) throw std::runtime_error("cannot read " + path);
+    std::string s, line;
+    while (std::getline(f, line)) { s += line; s += '\n'; }
+    return s;
+}
+static bool contains(const std::string& hay, const std::string& needle) {
+    return hay.find(needle) != std::string::npos;
 }
 
 // Feed the phase ramp so each process() call advances EXACTLY one 1/16 (P16 pulses):
@@ -635,19 +682,115 @@ int main() {
               "PPQN48 PHASE: the same 0..1 ramp walks the SAME pulse positions and the SAME step sequence at 24 and at 48 (the span is the 96-pulse step grid at any PPQN)");
         check(steps24 == 16 && steps48 == 16 && sixt48 == 8 && edgeOK,
               "PPQN48 PHASE: 16 step edges per span at BOTH settings (the same pattern); the musical sixteenth edge fires 8 times at 48 (96/12 — 192 positions per bar, the doc's number) vs 16 at 24");
-        // (2) THE BPM READOUT stays span-aware (the span = PPB/ppqn quarters: 4 at
-        //     24, 2 at 48) — the same ramp velocity reads the same bpm at both.
-        {
-            PhaseEngine a, b;
-            a.reset(); a.patternLength = plen16;
-            b.reset(); b.patternLength = plen16;
-            for (int k = 0; k < 48; ++k) {
-                const float v = k * 10.0f / 96.0f;
-                a.process(v, true, ST, 24);
-                b.process(v, true, ST, 48);
+    }
+
+    // ── CC_FIX_PHASE_DERIVED_BPM — the derived tempo is GONE from the phase path ────
+    // The velocity-to-tempo derivation (derived BPM / sixteenth-seconds / velocity) had
+    // no reader: its only consumer was a dead sync into the module-level bpm mirror,
+    // which itself has no readers (the doc's step-1 gate fired on exactly that sync —
+    // the chain was verified dead and both removed; the internal clock's own BPM is
+    // untouched). The phase path is PULSE-QUANTISED and TEMPO-INDEPENDENT — pinned:
+    {
+        // (15) THE WARP GATE — the same phase input at two different tempos, the warp
+        //      output bit-identical. The phase path is the only tempo-sensitive channel
+        //      feeding the warp: the warp composes PER STEP from the step's settled
+        //      uniform (WarpBank::warpedValue → the member's invCDF — pure in (v, lane,
+        //      u), pinned in test_phase_distribution). Drive the same 0→1 sweep at two
+        //      sample rates (2× tempo — the SAME voltage sequence), take each stream's
+        //      per-step uniforms (a fixed scatter over the walked pulses), and evaluate
+        //      the warp primitive per step: the two streams must land the SAME bits at
+        //      every step.
+        dotModular::WarpBank bank;   // owns the drawn-curve pool the primitive references
+        const dotModular::MonotoneCurve cK =
+            dotModular::MonotoneCurve::fromDistribution(dotModular::KumaraswamyDistribution(2, 3), 9);
+        (void)bank.putCurve(cK);
+        const dotModular::MonotoneCurve* pool = bank.pool;
+        const dotModular::KumaraswamyWarp member{5.0, 25.8};
+        const float ST2 = 2e-3f;     // the second tempo: the SAME voltage samples, 2× the rate
+        std::vector<long> posA, posB;
+        std::vector<uint8_t> flagsA, flagsB;   // step | sixteenth | quarter | reverse | jumped, packed
+        std::vector<double> warpA, warpB;
+        auto tempoRun = [&](float st, std::vector<long>& pos, std::vector<uint8_t>& flags,
+                            std::vector<double>& warp) {
+            PhaseEngine ph; ph.reset(); ph.patternLength = 16;
+            for (int k = 1; k <= 96; ++k) {          // one span, one pulse per sample
+                const float v = k * 10.0f / 96.0f;   // binary-exact-ish drive (the PPQN48 sweep's own)
+                ph.process(v, true, st, 24);
+                pos.push_back(ph.pulsePos);
+                flags.push_back((uint8_t)((ph.stepEdge ? 1 : 0) | (ph.sixteenthEdge ? 2 : 0)
+                                        | (ph.quarterEdge ? 4 : 0) | (ph.reverse ? 8 : 0)
+                                        | (ph.jumped ? 16 : 0)));
+                if (ph.stepEdge) {
+                    const double u = std::fmod(0.618033988749895 * (double)ph.pulsePos, 1.0);
+                    warp.push_back(dotModular::invCDF(member, u, pool));
+                }
             }
-            check(std::fabs(a.bpm - b.bpm) < 0.5f && a.bpm > 1.f,
-                  "PPQN48 PHASE: the velocity bpm is span-aware — the same ramp reads the same bpm at 24 and at 48 (4 vs 2 span quarters, compensated)");
+        };
+        tempoRun(ST,  posA, flagsA, warpA);
+        tempoRun(ST2, posB, flagsB, warpB);
+        bool warpOK = (posA == posB) && (flagsA == flagsB) && (warpA.size() == warpB.size());
+        for (size_t i = 0; warpOK && i < warpA.size(); ++i) warpOK = sameBits(warpA[i], warpB[i]);
+        check(warpOK && warpA.size() == 16 && !warpA.empty(),
+              "WARP TEMPO: the same phase input at two different tempos (2x rate) walks the SAME step sequence and lands the SAME warp output bits at every step (the warp composes per step, never from a tempo)");
+
+        // (16) THE STEP-SEQUENCE SWEEP — the full per-sample edge stream against the
+        //      pulse-grid truth, forward THEN reverse, at 24 AND 48 (the doc's "phase
+        //      step sequence bit-identical before and after": this truth table IS the
+        //      pre-removal behaviour, the removal must not move it). pulsePos walks k
+        //      exactly; a STEP edge fires iff the position is a multiple of
+        //      PULSES_PER_STEP; the MUSICAL sixteenth/quarter edges iff the musical
+        //      moduli hit; reverse is the motion sign; nothing jumps.
+        for (int pp : {24, 48}) {
+            const int p16 = pp / 4;
+            PhaseEngine ph; ph.reset(); ph.patternLength = 16;
+            bool ok = true;
+            int fwd = 0, rev = 0;
+            auto consume = [&](int dir, long wantPos) {
+                const bool wantStep  = (wantPos % 6 == 0);
+                const bool wantSixt  = (wantPos % p16 == 0);
+                const bool wantQuart = wantSixt && (((wantPos / p16) % 16) % 4 == 0);
+                ok = ok && ph.pulsePos == wantPos
+                        && !ph.jumped && ph.jumpSteps == 0
+                        && ph.reverse == (dir < 0)
+                        && ph.stepEdge == wantStep
+                        && ph.sixteenthEdge == wantSixt
+                        && ph.quarterEdge == wantQuart;
+                ++(dir > 0 ? fwd : rev);
+            };
+            for (int kk = 1; kk <= 96; ++kk) {       // the forward walk: pulse k lands k
+                ph.process(kk * 10.0f / 96.0f, true, ST, pp);
+                if (kk == 1) {
+                    // THE SEED (the engine's documented first-sample convention): the
+                    // first call floors the seed and returns (no walk), the settle call
+                    // at the SAME voltage lands the continuous path's resting llround —
+                    // the probed convention (probeResting, at most one pulse apart).
+                    // Both land checked on the pulse-grid truth at 1.
+                    ph.process(kk * 10.0f / 96.0f, true, ST, pp);   // the settle
+                    consume(+1, 1);
+                    continue;
+                }
+                consume(+1, kk);
+            }
+            for (int kk = 95; kk >= 0; --kk) {       // the reverse walk: back down the same grid
+                ph.process(kk * 10.0f / 96.0f, true, ST, pp);
+                consume(-1, kk);
+            }
+            check(ok && fwd == 96 && rev == 96,
+                  ("STEP SEQUENCE: the full per-sample edge stream (position/step/sixteenth/quarter/reverse/jump) matches the pulse-grid truth forward AND reverse at " + std::to_string(pp) + " PPQN — the removal changes no audio path").c_str());
+        }
+
+        // (17) THE STRUCTURAL PINS (the B3 grep-in-test precedent) — a reintroduced
+        //      derivation fails the battery, not just review: no derived-tempo
+        //      identifier anywhere in PhaseEngine.hpp (comments included), and no
+        //      phase.bpm sync in Monsoon.cpp.
+        {
+            const std::string root = repoRoot();
+            const std::string hpp = slurp(root + "/src/dsp/engines/PhaseEngine.hpp");
+            const std::string cpp = slurp(root + "/src/Monsoon.cpp");
+            check(!contains(hpp, "phaseVel") && !contains(hpp, "sixteenthSec") && !contains(hpp, "bpm"),
+                  "STRUCTURE: PhaseEngine.hpp carries no derived-tempo identifier (velocity / sixteenth-seconds / bpm), comments included");
+            check(!contains(cpp, "phase.bpm"),
+                  "STRUCTURE: no phase.bpm sync in Monsoon.cpp (the dead chain removed; the clock's own bpm = clock.bpm sync untouched)");
         }
     }
     std::printf("test_phase_tier: %d passed, %d failed\n", passed, failed);

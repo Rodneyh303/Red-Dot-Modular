@@ -1029,7 +1029,10 @@ void Monsoon::process(const ProcessArgs& args) {
             phase.process(phaseVolt, phaseDriven, args.sampleTime, ppqnSetting);
             effReverse = phase.reverse;
         }
-        if (phaseDriven) bpm = phase.bpm;   // tempo follows the ramp's velocity (knob or CV)
+        // (CC_FIX_PHASE_DERIVED_BPM: the sync that read the phase engine's derived bpm
+        // into the module-level mirror is GONE — it was the ONLY reader of that
+        // derivation, and the mirror itself has no readers of its own: a dead chain.
+        // The internal clock's own mirror sync (bpm = clock.bpm, above) is untouched.)
         modeController->setPhaseReverse(effReverse);
         engine.pe.setReverseActive(effReverse);
     } else {
