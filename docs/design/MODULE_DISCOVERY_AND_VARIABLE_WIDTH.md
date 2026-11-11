@@ -16,17 +16,20 @@ not copy code.
 - CHANGE ALLEY: wide module, variable HP fits.
 - STRAITS: subpanels can pop out and find their host by ID; variable HP fits its grids.
 
-## CAVEATS (must hold for us)
-1. AUDIO-RATE DATA STILL NEEDS THE EXPANDER LINK. Rack expander messages need adjacency. ID discovery is for control and
-   UI, and for store reads.
-2. NEVER LOOK UP MODULES ON THE AUDIO THREAD. Resolve by ID in the UI step, cache the pointer, and let process() read the
-   cached pointer or the store only. (Tessera resolves in the UI and uses parameter handles on the audio side.)
-3. THE TOPOLOGY EPOCH MUST BUMP ON ANY MODULE ADD OR REMOVE, not only on an adjacency change. A pop-out subpanel can appear
-   anywhere, so an adjacency-only epoch leaves a stale null. This is the memo bug found earlier.
-4. VARIABLE WIDTH BREAKS SVG PANEL ART. Our panels are SVG. A procedural width needs a drawn background, with knobs fixed
-   to the grid and the grid scaled to the width.
-5. IDS CHANGE ON PASTE AND DUPLICATE. Re-resolve when the ID changes; keep names unambiguous (Tessera renames duplicates).
+## NOTES ON OUR CONSTRAINTS (Rodney)
+- All our cross-module data is ZERO-LATENCY POINTER WORK. We never use expander messages, so there is no adjacency
+  requirement for data. ID discovery is only a lookup for which module to point at.
+- We do NOT look up modules on the audio thread. Lookups happen in the UI step and the audio path reads the cached
+  pointer or the store. This constraint is already met; keep it.
+- THE TOPOLOGY EPOCH MUST BUMP ON ANY MODULE ADD OR REMOVE, not only on an adjacency change. A popped-out subpanel can
+  appear anywhere, so an adjacency-only epoch leaves a stale null. This is the memo bug found earlier, and it still
+  applies to ID discovery.
+- IDS CHANGE ON PASTE AND DUPLICATE. Re-resolve when an ID changes.
+
+## DEFERRED
+- VARIABLE WIDTH is significant work: the SVG panel art would need a procedural background, with the grid scaled to
+  the width. Not scheduled. Revisit only after the discovery change is proven.
 
 ## OPEN
 - Whether to pop out the Sands subpanels (distribution, sends, modulation) as separate modules, or keep them as expanders.
-- Whether the probability visual gets a width setting, and its SVG-to-procedural approach.
+- Whether the probability visual gets a width setting (deferred, see above).
