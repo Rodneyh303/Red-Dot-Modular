@@ -26,9 +26,14 @@ back into our modules, so no voice index is written.
 - Clock mode only (gate mode excluded: no time base). Phase mode exports CONTENT only, in the order of the steps, with
   each step's start taken from the pulse of its phrase position (no trajectory; see PHASE below).
 
-## PHASE (content only)
-- The phase playhead can reverse, stall or jump, so its path is not a valid sequence. Phase export writes each step's
-  content in step order, timed by the phrase position, not by the path taken. The path is excluded on purpose.
+## PHASE (content only, no transport)
+- The standard has no transport: nothing represents direction, reversal, stall or jump. Phase mode can move forward and
+  back, so no timing of its path yields a faithful sequence. Timing the phrase by pulses does not change this.
+- Phase export therefore writes each step's CONTENT in step order (pitch, length), with start times from the step's
+  position in the phrase. The movement of the playhead is excluded, deliberately.
+- The menu item in phase mode should say so, e.g. "Portable sequence: copy content (phase moves are not exported)".
+- Clock mode: the same rule applies if clock mode can step backwards. Confirm that clock mode only moves forward; if it
+  can reverse, it exports content in step order as phase does.
 
 ## WHAT GETS EXPORTED
 1. MONSOON, mono by voice: one voice, selected by the user (menu), as a standard mono clip. Default: the voice the
