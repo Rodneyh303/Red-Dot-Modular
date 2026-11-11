@@ -99,7 +99,7 @@ Build on this branch.
 - run_all green on both SDK legs.
 
 ## DO NOT
-- Write any prefixed property. Extra per-note fields are not allowed, EXCEPT the optional playProbability below.
+- Write any prefixed property or extra per-note field. Standard note fields only (type, start, pitch, length).
 - Change playback, the engine's step logic, or the audio.
 - Export gate mode.
 
@@ -107,6 +107,5 @@ Build on this branch.
 ## IMPROMPTU EXAMPLE (reference)
 Impromptu PhraseSeq16 writes length 16.0 with integer starts, so its steps are quarter notes (beats). Each note also
 carries an optional playProbability. Pitch is volts, in 1/12 V steps (0.5833 = 7 semitones; -1.5 = -18).
-- playProbability: OPTIONAL per-note field. Our steps have probabilities, so it is a natural fit for a generative
-  sequencer. Readers that do not know it ignore it, so it is safe. Export it from the step's play probability.
+- playProbability: NOT EXPORTED (decided). Standard note fields only.
 - Our starts are fractional under swing and tempo change; the standard allows any decimal start, so that is fine.
