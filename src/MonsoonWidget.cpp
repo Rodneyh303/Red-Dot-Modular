@@ -1513,10 +1513,14 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
               struct PItem : ui::MenuItem { Monsoon* module=nullptr; int value=4;
                 void onAction(const event::Action&) override { if(module) module->ppqnSetting=value; }
                 void step() override { if(module) rightText=(module->ppqnSetting==value)?"✔":""; ui::MenuItem::step(); } };
-              // PPQN: 24 only. 48/96 are NOT safe (they double/quad-speed the sequencer - the clock assumes
-              // external rate = ppqnSetting; see PPQN_48_96_NOT_SAFE.md). All 13 note values resolve at 24,
-              // so 48/96 unlock nothing. Require 24; do not offer the double-speed footgun.
-              for (int v : {24}){auto* it=createMenuItem<PItem>(string::f("%d",v).c_str());it->module=m;it->value=v;sub->addChild(it);} }
+              // PPQN: 24 / 48 (CC_PROMPT_PPQN_48 — re-arms the decision the PPQN_48_96_NOT_SAFE
+              // doc parked). A STEP is PULSES_PER_STEP (6) pulses, FIXED: at 24 a step is a
+              // 1/16, at 48 it is a 1/32 — the step rate doubles at the same BPM, nothing
+              // double-speeds (the external clock multiplies ×ppqn/24, the internal clock
+              // subdivides the 1/16 into ppqn/4 pulses). All 13 note values resolve at both
+              // settings (integer pulse counts); 96 is out of scope. PPQN is SAVED in the
+              // patch (ppqnSetting round-trips raw) and restored on load.
+              for (int v : {24, 48}){auto* it=createMenuItem<PItem>(string::f("%d",v).c_str());it->module=m;it->value=v;sub->addChild(it);} }
         }));
 
         // ── Spread target modes (SPREAD_TARGET_MODES.md "Per-lane menu (Rodney)").

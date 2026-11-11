@@ -10,82 +10,111 @@ float gs_noteSteps(int nvIdx) {
 
 // Arm the gate-close countdown from a duration in 1/16-steps, converted to PPQN
 // grid pulses. ALL note lengths use this one mechanism — whole steps, triplets,
-// and 1/32 alike are integer pulse counts (every value × pulsesPer16th is exact
-// at 24/48/96 PPQN), so there is no whole-vs-fractional special case and no
-// seconds timer racing the clock edge. holdRemain (the engine's step-unit
-// DECISION counter) is untouched.
+// and 1/32 alike are integer pulse counts (every value resolves to an exact
+// integer pulse count at 24 and at 48 — noteValuePulses), so there is no
+// whole-vs-fractional special case and no seconds timer racing the clock edge.
+// The step-unit hold (holdRemain) is armed from the SAME pulse count / 6.
 void GateState::armGate(float durSteps) {
     int p16 = (pulsesPer16th > 0) ? pulsesPer16th : 6;
     gatePulseRemain = (int)std::lround(durSteps * (float)p16);
     if (gatePulseRemain < 1) gatePulseRemain = 1;   // a sounding note is ≥1 pulse
 }
 
-// ── Core operations ───────────────────────────────────────────────────────────
+// Arm from the note table's own exact pulse count (CC_PROMPT_PPQN_48): no
+// rounding at all — the MUSICAL duration in grid pulses (a 1/16 is 6 pulses at
+// 24 and 12 at 48, the same TIME either way).
+void GateState::armGatePulses(int pulses) {
+    gatePulseRemain = (pulses < 1) ? 1 : pulses;   // a sounding note is ≥1 pulse
+}
+
+// ── Core operations ──────────────────────────────────────────────────────
+// The note→hold conversion, ONE place: the note's MUSICAL pulse count drives the
+// gate width, and the SAME count / PULSES_PER_STEP drives the step-unit hold +
+// LED marks (a step is 6 pulses, FIXED — at 24 the division reproduces the old
+// 1/16-unit floats bit-for-bit; at 48 the holds read the doubled step rate).
+static inline float noteHoldSteps(int nvIdx, int ppqn) {
+    return (float)noteValuePulses(nvIdx, ppqn) / (float)PULSES_PER_STEP;
+}
+static inline int noteHoldPulses(int nvIdx, int ppqn) {
+    return noteValuePulses(nvIdx, ppqn);
+}
 
 void GateState::triggerNote(float pitchV, int semitone, int nvIdx, bool isQuant) {
-    float dur = gs_noteSteps(nvIdx);
+    const int   pp  = (ppqn > 0) ? ppqn : 24;
+    const int   p   = noteHoldPulses(nvIdx, pp);
+    const float dur = noteHoldSteps(nvIdx, pp);   // STEP units
     currentPitchV = pitchV;
     lastSemitone  = semitone;
     gatePulse.trigger(1e-3f);
     gateHeld   = true;
     holdRemain = dur;
-    armGate(dur);
+    armGatePulses(p);
     markSemi(semitone, dur, isQuant);
     lastNoteType = NoteType::Single;        // a fresh attack (incl. an opt-out re-strike)
 }
 
 void GateState::slideNote(float pitchV, int semitone, int nvIdx, bool wasHeld, bool isQuant) {
-    float dur = gs_noteSteps(nvIdx);
+    const int   pp  = (ppqn > 0) ? ppqn : 24;
+    const int   p   = noteHoldPulses(nvIdx, pp);
+    const float dur = noteHoldSteps(nvIdx, pp);   // STEP units
     currentPitchV = pitchV;
     lastSemitone  = semitone;
     if (wasHeld) {
         holdRemain += dur;
         gateHeld = true;            // stays open if tick() just zeroed holdRemain
-        armGate(holdRemain);        // re-arm gate to the summed length (in pulses)
+        armGatePulses((int)std::lround(holdRemain * (float)PULSES_PER_STEP));
+                                    // re-arm gate to the summed length (exact pulses)
         lastNoteType = NoteType::Legato;    // slid to a new pitch, no retrigger
     } else {
         gatePulse.trigger(1e-3f);   // first note of legato run opens the gate
         holdRemain = dur;
         gateHeld   = true;
-        armGate(dur);
+        armGatePulses(p);
         lastNoteType = NoteType::Single;    // this note retriggers → a fresh attack
     }
     markSemi(semitone, dur, isQuant);
 }
 
 void GateState::slideMax(float pitchV, int semitone, int nvIdx, bool isQuant) {
-    float dur = gs_noteSteps(nvIdx);
+    const int   pp  = (ppqn > 0) ? ppqn : 24;
+    const int   p   = noteHoldPulses(nvIdx, pp);
+    const float dur = noteHoldSteps(nvIdx, pp);   // STEP units
     currentPitchV = pitchV;
     lastSemitone  = semitone;
     gateHeld   = true;
     holdRemain = dur;
-    armGate(dur);
+    armGatePulses(p);
     markSemi(semitone, dur, isQuant);
     lastNoteType = NoteType::Legato;        // LegatoMax = forced slide, no retrigger
 }
 
 void GateState::extendHold(int semitone, int nvIdx, bool isQuant) {
-    float add = gs_noteSteps(nvIdx);
+    const int   pp  = (ppqn > 0) ? ppqn : 24;
+    const float add = noteHoldSteps(nvIdx, pp);   // STEP units
     holdRemain += add;
     gateHeld = true;
-    armGate(holdRemain);            // re-arm to the summed length
+    armGatePulses((int)std::lround(holdRemain * (float)PULSES_PER_STEP));
+                                    // re-arm to the summed length (exact pulses)
     markSemi(semitone, holdRemain, isQuant);
     lastNoteType = NoteType::Tie;           // held same pitch, no retrigger
 }
 
 void GateState::rest(bool tieExtend, int nvIdx) {
     if (tieExtend && gateHeld) {
-        holdRemain += gs_noteSteps(nvIdx);
-        armGate(holdRemain);
+        const int pp = (ppqn > 0) ? ppqn : 24;
+        holdRemain += noteHoldSteps(nvIdx, pp);       // STEP units
+        armGatePulses((int)std::lround(holdRemain * (float)PULSES_PER_STEP));
     }
     // Otherwise: no-op — the gate's pulse countdown closes it cleanly.
 }
 
-// Tick: once per 1/16 step edge. Decrements the whole-step DECISION counter and
-// the semi LED timers. Does NOT close the gate (tickPulse does, on the finer
-// grid). p16 keeps the pulse resolution current for arming.
+// Tick: once per STEP edge (a step = PULSES_PER_STEP grid pulses, fixed — at 24
+// that is the 1/16 edge, at 48 the 1/32). Decrements the step-unit DECISION
+// counter and the semi LED timers. Does NOT close the gate (tickPulse does, on
+// the finer grid). p16 keeps the MUSICAL pulse resolution + the derived ppqn
+// current for arming.
 void GateState::tick(int p16) {
-    if (p16 > 0) pulsesPer16th = p16;
+    if (p16 > 0) { pulsesPer16th = p16; ppqn = p16 * 4; }
     if (holdRemain > 0.f) {
         holdRemain -= 1.f;
         if (holdRemain <= 0.f) holdRemain = 0.f;

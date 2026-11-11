@@ -1541,6 +1541,65 @@ int main() {
               "CCFIX PAINTED SHRINK: L 16->8 below R=12 clamps R to 7 and the figure re-pins by the clamp delta (2 -> 7); the anchor then tracks the clamped R");
     }
 
+
+    // ── CC_PROMPT_PPQN_48 — the CLOCK at 24/48 (stages 3 + 4) ──────────────────
+    {
+        // (1) THE STEP EDGE AT 24 == sixteenthEdge bit-for-bit: both counters wrap at
+        //     6 from the same origin (p16 = PULSES_PER_STEP there). One bar of
+        //     internal clock at 120 BPM: 96 grid pulses = 16 steps = 16 sixteenths.
+        {
+            ClockEngine ck; ck.reset();
+            const float st = 0.125f / 6.f;   // exactly one pulse per process() at 24
+            bool ok = true; int steps = 0, sixteenths = 0, pulses = 0;
+            for (int k = 0; k < 96; ++k) {
+                ck.process(0.f, false, 120.f, 24, st);
+                ok = ok && (ck.stepEdge == ck.sixteenthEdge);   // lockstep at 24
+                steps += ck.stepEdge ? 1 : 0; sixteenths += ck.sixteenthEdge ? 1 : 0; pulses += ck.pulseEdge ? 1 : 0;
+            }
+            ok = ok && pulses == 96 && steps == 16 && sixteenths == 16;
+            check(ok, "PPQN48 CLOCK: at 24 the step edge IS the sixteenth edge (96 pulses/bar = 16 steps = 16 sixteenths, lockstep)");
+        }
+        // (2) THE INTERNAL CLOCK AT 48 (stage 4): exactly 2x the pulses per bar of 24;
+        //     the STEP rate doubles (32 steps per bar), the MUSICAL 1/16 count does not
+        //     (16 sixteenths per bar); the BPM readout keeps its meaning (the knob).
+        {
+            ClockEngine ck; ck.reset();
+            const float st = 0.125f / 12.f;  // exactly one pulse per process() at 48
+            int steps = 0, sixteenths = 0, pulses = 0;
+            for (int k = 0; k < 192; ++k) {
+                ck.process(0.f, false, 120.f, 48, st);
+                steps += ck.stepEdge ? 1 : 0; sixteenths += ck.sixteenthEdge ? 1 : 0; pulses += ck.pulseEdge ? 1 : 0;
+            }
+            check(pulses == 192 && steps == 32 && sixteenths == 16
+                  && ck.bpm == 120.f,
+                  "PPQN48 CLOCK: internal at 48 = 192 pulses/bar (2x of 24), 32 steps (2x rate), 16 sixteenths (musical), bpm unchanged in meaning");
+        }
+        // (3) THE EXTERNAL MULTIPLIER (stage 3): the incoming stream is assumed 24
+        //     PPQN; at ppqn 48 each incoming pulse emits 2 grid pulses — the SAME
+        //     incoming clock yields DOUBLE the step rate at 48 vs 24 (the doc's
+        //     "the step rate at the same BPM is 2x"; the NOT_SAFE double-speed bug
+        //     is the inverse and is gone).
+        {
+            auto drive = [&](int ppqn, int nIncoming) {
+                ClockEngine ck; ck.reset();
+                int steps = 0, sixteenths = 0;
+                int lastCount = 0; long pulses = 0;   // pulses via the grid counter's own advance
+                const int p16 = ClockEngine::pulsesPer16th(ppqn);
+                for (int k = 0; k < nIncoming; ++k) {
+                    ck.process(5.f, true, 120.f, ppqn, 1e-3f);   // the rising sample
+                    steps += ck.stepEdge ? 1 : 0; sixteenths += ck.sixteenthEdge ? 1 : 0;
+                    pulses += (ck.ppqnCount - lastCount + p16) % p16; lastCount = ck.ppqnCount;
+                    ck.process(0.f, true, 120.f, ppqn, 1e-3f);   // the low sample (re-arm)
+                }
+                return std::make_pair(steps, std::make_pair(sixteenths, pulses));
+            };
+            auto a = drive(24, 96);
+            auto b = drive(48, 96);
+            check(a.first == 16 && a.second.first == 16 && a.second.second == 96
+                  && b.first == 32 && b.second.first == 16 && b.second.second == 192,
+                  "PPQN48 CLOCK: the same 96 incoming pulses -> 96 grid pulses/16 steps at 24, 192 grid pulses/32 steps at 48 (x2 each: the stage-3 multiplier; 16 sixteenths — the same musical bar)");
+        }
+    }
     std::printf("test_unified_addressing: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

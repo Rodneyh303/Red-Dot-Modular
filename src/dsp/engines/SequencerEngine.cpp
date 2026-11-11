@@ -1020,14 +1020,16 @@ int SequencerEngine::phaseStepFor(long absStep) const {
     return (startStep + cycle) & (kMaskRing - 1);          // seated in the window (ring is a power of two)
 }
 
-void SequencerEngine::snapToPhaseStep(long pulsePos, int p16) {
+void SequencerEngine::snapToPhaseStep(long pulsePos, int pps) {
     // Snap the transport (stepIndex + the holder congruences) to the phase-derived
     // pulse position, then re-derive the lane caches from the anchor. Used after a Mode
-    // E phase jump to eliminate the rounding drift from jumpSixteenths: the replay
+    // E phase jump to eliminate the rounding drift from jumpSteps: the replay
     // advances by the ROUNDED step count, but the actual phase position is at
-    // pulsePos/p16 (which may be fractional). Without this snap, each sweep of the
+    // pulsePos/pps (which may be fractional). Without this snap, each sweep of the
     // phase knob lands on a different step.
-    long absStep = pulsePos / p16;               // absolute step (unwrapped, 0-based; grows across span wraps)
+    // CC_PROMPT_PPQN_48: the divider is PULSES_PER_STEP (6, fixed) — the STEP-indexed
+    // division at any PPQN (at 24 the old p16, bit-identical).
+    long absStep = pulsePos / pps;               // absolute step (unwrapped, 0-based; grows across span wraps)
     // PHASE TIER Stage 1: the landing step resolves through THE PHASE-STEP RULE (above)
     // — the musical cycle position seated in the window. Was absStep % kMaskRing + the
     // window walk (which parked any out-of-window landing at startStep — the bar-2
@@ -1079,11 +1081,14 @@ int SequencerEngine::computeNoteLengthIdx(int requestedIdx, int ppqnMask) const 
 
 int SequencerEngine::getNoteLenIdx(float baseNoteParam, const PatternInput& input, float r) {
     int baseIdx = pe_clamp<int>((int)std::round(baseNoteParam), 0, NUM_NOTE_VALUES - 1);
-    // PPQN is now always 24/48/96 — all of which resolve every note value to an
-    // integer pulse count (24 already covers 1/32 and all triplets). So every
-    // value is legal; mask = the full-resolution bit (4). (The old 1/4 PPQN
-    // settings, which gated out sub-step values, are gone.)
-    int ppqnMask = 4;
+    // CC_PROMPT_PPQN_48: the availability mask reflects the REAL ppqnSetting (the
+    // old note hardcoded 4 = PPQN24 while the stale comment claimed 24/48/96 — the
+    // PPQN_48_96_NOT_SAFE reconciliation). At 48 every one of the 13 values
+    // resolves to an integer pulse count (bit 8), so the mask unlocks nothing new
+    // there; at 24 it is the same bit-4 set as today. (The legacy 1/4 PPQN
+    // settings map to their own bits; they are unreachable — the menu offers
+    // 24/48 and persistence migrates anything below 24.)
+    int ppqnMask = ppqnBitOf(ppqnSetting);
     baseIdx = computeNoteLengthIdx(baseIdx, ppqnMask);
     return pe.varyNoteIndex(baseIdx, input, r);
 }
@@ -1471,7 +1476,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
                    || (result.decision == MonoDecision::LegatoMax)
                    || (result.decision == MonoDecision::Tie);
     bool leadsSlur = leStarting
-                  && noteCanLeadLegato(nvIdx)
+                  && noteCanLeadLegato(nvIdx, ppqnSetting)
                   && (legTh >= 0.999f || r_legato_tie < legTh);
     gs.slurForward = leadsSlur;
     gs.slurMember  = prevSlur || leadsSlur;   // SLEG mask: this note leads OR continues a slur

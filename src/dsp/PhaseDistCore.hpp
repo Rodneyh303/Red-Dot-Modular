@@ -41,13 +41,15 @@
 // grid point (bit-identical to a per-sample evaluation there) and holds between
 // cells; an identity set keeps the raw path AND resets the hold (no stale set's
 // value rides an identity episode — Monsoon's law, verbatim). The standalone's OWN
-// grid is the plugin's default PPQN (24 → 6 pulses/16th) over the ramp's own
-// pattern cycle (16 sixteenths — ONE full 0..10 V ramp, the jack convention):
-// 96 cells per span — the same grid a default-configured Monsoon tier runs
-// (pulsesPer16th(24)·patternLength 16), so the two consumers agree bit-for-bit on
-// the same input and set. The module has NO ppqn/length knowledge (§13: no index
-// parameters, no cross-module reads) — a consumer running a different grid
-// quantises its own tier as its own machinery always has.
+// grid is the STEP grid over the ramp's own pattern cycle (16 STEPS — ONE full
+// 0..10 V ramp, the jack convention): PULSES_PER_STEP·16 = 96 cells per span (a
+// step is 6 pulses, FIXED — the same number at any PPQN; CC_PROMPT_PPQN_48) —
+// the same grid a default-configured Monsoon tier runs
+// (PULSES_PER_STEP·patternLength 16), so the two consumers agree bit-for-bit on
+// the same input and set AT EVERY PPQN (the doc's stage-5 held-cell gate). The
+// module has NO ppqn/length knowledge (§13: no index parameters, no cross-module
+// reads) — a consumer running a different grid quantises its own tier as its own
+// machinery always has.
 //
 // THE VOLTAGE CONVENTION is Monsoon's Mode E convention, verbatim: in volts,
 // normalised by PhaseEngine::normPhase (volt / phaseInMax, floored into [0,1) — the
@@ -99,10 +101,11 @@ struct PhaseDistChannel {
     dotModular::PhaseDistCellHold hold_{};
 
     // The standalone's OWN grid (the module's evaluation rate, not the consumer's
-    // pulse walk): pulsesPer16th(24)·16 — the plugin's default PPQN over ONE full
-    // 0..10 V ramp (the pattern cycle the jack convention defines). 96 cells.
+    // pulse walk): PULSES_PER_STEP·16 — the STEP grid over ONE full 0..10 V ramp
+    // (the pattern cycle the jack convention defines; a step is 6 pulses, FIXED —
+    // the same 96 cells at any PPQN, CC_PROMPT_PPQN_48).
     static constexpr long kSpanPulses =
-        (long)PhaseEngine::pulsesPer16th(24) * 16;
+        (long)PULSES_PER_STEP * 16;
 
     // ONE sample. `inVolt` is THIS sample's input; the output is the PREVIOUS
     // sample's input through the channel's set. Identity set ⟹ the delayed sample

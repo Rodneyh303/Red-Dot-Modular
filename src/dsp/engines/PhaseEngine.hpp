@@ -4,13 +4,15 @@
  * position instead of a clock generating it. CV1 carries the phase in Mode E,
  * analogous to gate1in carrying gates in Mode B.
  *
- * Phase 0→1 maps to the ACTIVE PATTERN = patternLength sixteenths =
- * patternLength * pulsesPer16th pulses (PHASE_TIER Stage 1: the span is the pattern
- * length, not a hardcoded 16 — one bar at length 16, two bars at 32; at 24 PPQN
- * length 16 → 96 positions, length 32 → 192). The BAR itself stays 16 steps — the
- * sixteenth-edge feed below still mods by 16 (a bar is always 16 steps; the pattern
- * can be 16 or 32). The same pulse grid the gate engine uses, so all timing is
- * integer pulses with no continuous-time component.
+ * Phase 0→1 maps to the ACTIVE PATTERN = patternLength STEPS =
+ * patternLength * PULSES_PER_STEP pulses (CC_PROMPT_PPQN_48: a STEP is 6 pulses,
+ * FIXED — the span is step-indexed at ANY PPQN; PHASE_TIER Stage 1: the span is
+ * the pattern length, not a hardcoded 16 — one bar at length 16/24 PPQN, two bars
+ * at 32; at 48 PPQN length 16 → 96 pulses = HALF a bar — the ring twice around is
+ * one bar at 48, two bars at 24). The MUSICAL 1/16 edges (sixteenthEdge, every
+ * PPQN/4 pulses) and the quarter feed keep their musical meaning; the BAR modulo
+ * for the quarter feed stays 16 sixteenths. The same pulse grid the gate engine
+ * uses, so all timing is integer pulses with no continuous-time component.
  *
  * Mirrors ClockEngine's OUTPUT CONTRACT (pulseEdge / sixteenthEdge / quarterEdge +
  * bpm + sixteenthSec) so the existing execute path is reused unchanged. ADDS a
@@ -28,6 +30,7 @@
 
 #include <cstdint>
 #include <cmath>
+#include "../NoteValues.hpp"   // PULSES_PER_STEP — the step grid (CC_PROMPT_PPQN_48)
 
 namespace redDot {
 
@@ -59,11 +62,17 @@ struct PhaseEngine {
 
     // ── Outputs (valid after each process()) ────────────────────────────────────
     bool  pulseEdge     = false;    // one grid pulse elapsed (either direction)
-    bool  sixteenthEdge = false;    // one 1/16 elapsed
+    bool  stepEdge      = false;    // ONE STEP elapsed (PULSES_PER_STEP grid pulses — the
+                                    // pattern's advance edge at any PPQN; at 24 it coincides
+                                    // with sixteenthEdge bit-for-bit)
+    bool  sixteenthEdge = false;    // one 1/16 elapsed (MUSICAL — every PPQN/4 pulses)
     bool  quarterEdge   = false;    // one quarter elapsed
     bool  reverse       = false;    // true if motion this sample was backward
     bool  jumped        = false;    // true if a discontinuity (jump/scrub) was seen
-    int   jumpSixteenths= 0;        // signed # of 1/16 steps to replay on a jump (±)
+    int   jumpSteps     = 0;        // signed # of STEPS to replay on a jump (±) — was
+                                    // jumpSixteenths (the same number at 24 PPQN, where a
+                                    // step IS a 1/16; CC_PROMPT_PPQN_48 renamed it: the
+                                    // replay unit is the STEP, 6 pulses at any PPQN)
     long  pulsePos      = 0;        // current absolute pulse index
     bool  pulseChanged  = false;    // THE PULSE-CHANGE GATE signal (CC_FIX_PHASE_RUN_AT_PPQN,
                                     // docs tip 4cb1a749): true ONLY on the samples where the
@@ -90,7 +99,7 @@ struct PhaseEngine {
     void reset() {
         havePrev = false;
         prevPhase = prevContPhase = 0.0; prevPulse = 0; phaseVel = 0.0;
-        pulseEdge = sixteenthEdge = quarterEdge = reverse = jumped = false; jumpSixteenths = 0;
+        pulseEdge = stepEdge = sixteenthEdge = quarterEdge = reverse = jumped = false; jumpSteps = 0;
         pulsePos = 0; bpm = 120.f; sixteenthSec = 0.125f;
         haveTier = false; prevSub = 0.0;
         dirT = dirS = 0;
@@ -125,16 +134,18 @@ struct PhaseEngine {
     //    as a discontinuity (jump/scrub), not continuous motion. Step 1 resyncs
     //    without emitting an edge burst.
     void process(float phaseVolt, bool connected, float sampleTime, int ppqnSetting) {
-        pulseEdge = sixteenthEdge = quarterEdge = reverse = jumped = false; jumpSixteenths = 0;
+        pulseEdge = stepEdge = sixteenthEdge = quarterEdge = reverse = jumped = false; jumpSteps = 0;
         pulseChanged = false;
         ppqn = (ppqnSetting > 0 ? ppqnSetting : 24);
         const int p16   = pulsesPer16th(ppqn);
-        // PHASE TIER Stage 1: pulses per FULL SPAN (phase 0→1) = the ACTIVE pattern length.
-        // Was p16 * 16 (one hardcoded 16-step bar). At patternLength 16 this is the same
-        // number — bit-identical; at 32 the phase sweep covers both bars (the D9 answer:
-        // option A, the full-span mapping). The BAR modulo stays 16 (see step16 below).
+        // PHASE TIER Stage 1 + CC_PROMPT_PPQN_48: pulses per FULL SPAN (phase 0→1) =
+        // the ACTIVE pattern length in STEPS — patternLength × PULSES_PER_STEP (a step
+        // is 6 pulses, FIXED, at any PPQN). Was p16 * plen (the span in sixteenths) —
+        // the same number at 24 PPQN (6·plen, bit-identical); at 48 the span is 96
+        // pulses for a 16-step pattern (HALF a bar — the ring twice around is one bar
+        // at 48, two bars at 24). The MUSICAL sixteenth edge keeps its own p16 cadence.
         const long plen = (long)(patternLength > 0 ? patternLength : 16);
-        const long PPB  = (long)p16 * plen;        // pulses per full span (phase 0→1)
+        const long PPB  = (long)PULSES_PER_STEP * plen;   // pulses per full span (phase 0→1)
 
         if (!connected) { havePrev = false; return; }
 
@@ -182,13 +193,15 @@ struct PhaseEngine {
         if (!pulseChanged) return;   // edges held low (reset at entry), position unchanged
 
         // ── THE TAIL (runs ONLY when the quantised pulse position moved) ─────────
-        // Velocity (for bpm/warp): phase units per sample → bars/sec → bpm. Sampled
-        // at pulse rate now — a derived display/fallback value consumed at the
-        // edges; nothing reads it between pulses (nothing continuous to preserve).
+        // Velocity (for bpm/warp): phase units per sample → spans/sec → bpm. The SPAN
+        // is PPB pulses = PPB/ppqn quarters — at 24 PPQN/plen 16 that is exactly 4
+        // (the old bars·4·60 form, bit-identical); at 48 the 96-pulse span is 2
+        // quarters, so the readout stays true at the doubled grid.
         if (sampleTime > 0.f) {
-            phaseVel = d / (double)sampleTime;       // bars per second (signed)
-            double barsPerSec = std::fabs(phaseVel);
-            float newBpm = (float)(barsPerSec * 4.0 * 60.0);
+            phaseVel = d / (double)sampleTime;       // spans per second (signed)
+            double spansPerSec = std::fabs(phaseVel);
+            double spanQuarters = (double)PPB / (double)ppqn;
+            float newBpm = (float)(spansPerSec * spanQuarters * 60.0);
             if (newBpm > 1.f && newBpm < 1000.f) {
                 bpm = newBpm;
                 sixteenthSec = 15.f / bpm;
@@ -198,25 +211,27 @@ struct PhaseEngine {
         long step = targetPulse - pulsePos;
         long mag  = step < 0 ? -step : step;
 
-        // Discontinuity (jump/scrub): a single-sample move of more than one 1/16 is
-        // not continuous play. Per the spec we REPLAY the event chain over the crossed
-        // 1/16 steps with frozen modulation — and because the whole replay happens
-        // inside ONE process() call, modulation is already frozen (re-sampled only
-        // next block), so the freeze is automatic (§8b time-scale separation).
+        // Discontinuity (jump/scrub): a single-sample move of more than one STEP is
+        // not continuous play (the replay unit is the STEP — 6 pulses at any PPQN;
+        // at 24 this is the old >one-1/16 threshold, bit-identical). Per the spec we
+        // REPLAY the event chain over the crossed steps with frozen modulation — and
+        // because the whole replay happens inside ONE process() call, modulation is
+        // already frozen (re-sampled only next block), so the freeze is automatic
+        // (§8b time-scale separation).
         //
-        // We DON'T emit the pulse-by-pulse burst here; instead we report jumpSixteenths
-        // (signed count of 1/16 steps to replay) and let the dispatch run the verified
+        // We DON'T emit the pulse-by-pulse burst here; instead we report jumpSteps
+        // (signed count of STEPS to replay) and let the dispatch run the verified
         // executeModeE path that many times. WITHIN-DRAW SCOPE: the replay is bounded
         // to the current phrase; a jump that would cross the phrase boundary is clamped
         // to the boundary (cross-draw regeneration is a later refinement).
-        const long JUMP_PULSES = p16;                // > one 1/16 in a sample = jump
+        const long JUMP_PULSES = PULSES_PER_STEP;    // > one STEP in a sample = jump
         if (mag > JUMP_PULSES) {
             jumped  = true;
             reverse = (step < 0);
-            // How many *whole 1/16 steps* the jump spans (the unit the sequencer
-            // replays). Round to nearest 1/16 so we land on a step grid.
-            long sixteenthsMoved = (mag + p16/2) / p16;
-            jumpSixteenths = (int)((step < 0) ? -sixteenthsMoved : sixteenthsMoved);
+            // How many *whole STEPS* the jump spans (the unit the sequencer
+            // replays). Round to nearest step so we land on the step grid.
+            long stepsMoved = (mag + PULSES_PER_STEP/2) / PULSES_PER_STEP;
+            jumpSteps = (int)((step < 0) ? -stepsMoved : stepsMoved);
             pulsePos = targetPulse;
             prevPulse = targetPulse;
             return;
@@ -231,22 +246,30 @@ struct PhaseEngine {
         reverse = (step < 0);
 
         // Emit one pulseEdge per crossed pulse. For continuous motion mag is small
-        // (usually 0 or 1), so this loop is short. sixteenth/quarter edges are
-        // derived from the absolute pulse index parity so they stay phase-aligned
-        // regardless of direction.
+        // (usually 0 or 1), so this loop is short. The STEP edge fires every
+        // PULSES_PER_STEP-th pulse (the pattern's advance at any PPQN); the MUSICAL
+        // sixteenth/quarter edges are derived from the absolute pulse index parity
+        // (every p16 = PPQN/4 pulses) so they stay phase-aligned regardless of
+        // direction.
         long dir = reverse ? -1 : +1;
         for (long i = 0; i < mag; ++i) {
             pulsePos += dir;
             pulseEdge = true;
-            // A 1/16 boundary is crossed when pulsePos is a multiple of p16. Going
-            // forward the edge belongs to the pulse we just ENTERED; going back, to
-            // the pulse we just LEFT — both reduce to "pulsePos % p16 == 0".
+            // A STEP boundary is crossed when pulsePos is a multiple of
+            // PULSES_PER_STEP. Going forward the edge belongs to the pulse we just
+            // ENTERED; going back, to the pulse we just LEFT — both reduce to
+            // "pulsePos % PULSES_PER_STEP == 0".
+            if (((pulsePos % PULSES_PER_STEP) + PULSES_PER_STEP) % PULSES_PER_STEP == 0)
+                stepEdge = true;
+            // A 1/16 boundary is crossed when pulsePos is a multiple of p16 (the
+            // MUSICAL sixteenth — PPQN/4 pulses).
             long mod = ((pulsePos % p16) + p16) % p16;
             if (mod == 0) {
                 sixteenthEdge = true;
-                // THE BAR MODULO STAYS 16 (PHASE TIER Stage 1): a bar is always 16 steps;
-                // the pattern can be 16 or 32. step16 = the step WITHIN the current bar —
-                // the quarter feed and any bar-local consumer keep their meaning at 32.
+                // THE BAR MODULO STAYS 16 (PHASE TIER Stage 1): a bar is always 16
+                // MUSICAL sixteenths; the pattern can be 16 or 32 steps. step16 = the
+                // sixteenth WITHIN the current bar — the quarter feed and any
+                // bar-local consumer keep their meaning at 32.
                 long step16 = ((pulsePos / p16) % 16 + 16) % 16;
                 if (step16 % 4 == 0) quarterEdge = true;
             }
@@ -309,14 +332,20 @@ struct PhaseEngine {
             process(tVolt, true, sampleTime, ppqnSetting);
             return;
         }
-        pulseEdge = sixteenthEdge = quarterEdge = reverse = jumped = false; jumpSixteenths = 0;
+        pulseEdge = stepEdge = sixteenthEdge = quarterEdge = reverse = jumped = false; jumpSteps = 0;
         dirT = dirS = 0;
         pulseChanged = false;
         ppqn = (ppqnSetting > 0 ? ppqnSetting : 24);
         const int p16   = pulsesPer16th(ppqn);
         const long plen = (long)(patternLength > 0 ? patternLength : 16);
-        const long PPB  = (long)p16 * plen;
-        const double rF = regionSixteenths / (double)plen;   // the region as a span fraction
+        const long PPB  = (long)PULSES_PER_STEP * plen;   // pulses per full span (the STEP grid — CC_PROMPT_PPQN_48)
+        // The region as a SPAN fraction: the region is MUSICAL (regionSixteenths ·
+        // p16 grid pulses — the calibration's bar/half/quarter/eighth/16th), the span
+        // is STEP-based (PPB = PPS·plen). At 24 this reduces to regionSixteenths/plen
+        // (the old form, bit-identical: exact-integer operands, one correctly-rounded
+        // division of the same real quotient); at 48 a quarter region covers twice
+        // the span fraction — its musical width is preserved.
+        const double rF = regionSixteenths * (double)p16 / (double)PPB;
 
         double t = normPhase(tVolt);
         double s = normPhase(sVolt);
@@ -380,11 +409,14 @@ struct PhaseEngine {
 
         // ── THE TAIL (runs ONLY when the quantised pulse position moved) ─────────
         // BPM follows the TRANSPORT ramp's velocity (the tempo carrier) — sampled at
-        // pulse rate now; consumed at the edges, never between pulses.
+        // pulse rate now; consumed at the edges, never between pulses. SPAN-AWARE:
+        // the span is PPB pulses = PPB/ppqn quarters (4 at 24/plen 16 — the old
+        // bars·4·60 form bit-identical; 2 at 48).
         if (sampleTime > 0.f) {
             phaseVel = dT / (double)sampleTime;
-            double barsPerSec = std::fabs(phaseVel);
-            float newBpm = (float)(barsPerSec * 4.0 * 60.0);
+            double spansPerSec = std::fabs(phaseVel);
+            double spanQuarters = (double)PPB / (double)ppqn;
+            float newBpm = (float)(spansPerSec * spanQuarters * 60.0);
             if (newBpm > 1.f && newBpm < 1000.f) {
                 bpm = newBpm;
                 sixteenthSec = 15.f / bpm;
@@ -394,16 +426,17 @@ struct PhaseEngine {
         long step = targetPulse - pulsePos;
         long mag  = step < 0 ? -step : step;
 
-        // The SAME jump contract as process(): a single-sample move over one 1/16 is a
-        // discontinuity — report jumpSixteenths, let the dispatch replay the crossed
+        // The SAME jump contract as process(): a single-sample move over one STEP is a
+        // discontinuity — report jumpSteps, let the dispatch replay the crossed
         // steps (the arrival rule at region landings) and snap. A region crossing moves
-        // exactly regionSixteenths·p16 pulses ≥ 4·p16 > p16 — always detected.
-        const long JUMP_PULSES = p16;
+        // exactly regionSixteenths·p16 pulses ≥ 4·p16 > PULSES_PER_STEP — always detected
+        // (at 24 p16 = PULSES_PER_STEP — the old threshold, bit-identical).
+        const long JUMP_PULSES = PULSES_PER_STEP;
         if (mag > JUMP_PULSES) {
             jumped  = true;
             reverse = (step < 0);
-            long sixteenthsMoved = (mag + p16/2) / p16;
-            jumpSixteenths = (int)((step < 0) ? -sixteenthsMoved : sixteenthsMoved);
+            long stepsMoved = (mag + PULSES_PER_STEP/2) / PULSES_PER_STEP;
+            jumpSteps = (int)((step < 0) ? -stepsMoved : stepsMoved);
             pulsePos = targetPulse;
             prevPulse = targetPulse;
             return;
@@ -415,12 +448,15 @@ struct PhaseEngine {
 
         reverse = (step < 0);
 
-        // The continuous walk — one pulseEdge per crossed pulse, sixteenth/quarter edges
-        // from the absolute index parity, THE BAR MODULO STAYS 16 (Stage 1).
+        // The continuous walk — one pulseEdge per crossed pulse, the STEP edge every
+        // PULSES_PER_STEP pulses, the MUSICAL sixteenth/quarter edges from the absolute
+        // index parity, THE BAR MODULO STAYS 16 (Stage 1).
         long dir = reverse ? -1 : +1;
         for (long i = 0; i < mag; ++i) {
             pulsePos += dir;
             pulseEdge = true;
+            if (((pulsePos % PULSES_PER_STEP) + PULSES_PER_STEP) % PULSES_PER_STEP == 0)
+                stepEdge = true;
             long mod = ((pulsePos % p16) + p16) % p16;
             if (mod == 0) {
                 sixteenthEdge = true;

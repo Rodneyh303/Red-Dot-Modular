@@ -1243,8 +1243,8 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     void recomputeLaneTicks(const int8_t* voiceMotion = nullptr);
     // Snap the transport (stepIndex + the holder congruences) to the phase-derived pulse
     // position, then re-derive the lane caches from the anchor. Used after a Mode E
-    // phase jump to eliminate the rounding drift from jumpSixteenths. p16 = pulsesPer16th (ppqn/4).
-    void snapToPhaseStep(long pulsePos, int p16);
+    // phase jump to eliminate the rounding drift from jumpSteps. pps = PULSES_PER_STEP.
+    void snapToPhaseStep(long pulsePos, int pps);   // pps = PULSES_PER_STEP (the step grid, CC_PROMPT_PPQN_48)
     // PHASE TIER Stage 1 — THE PHASE-STEP RULE (one rule, both sites): the phase-derived
     // landing step for an UNWRAPPED absolute step (pulsePos/p16). Reduces mod the ACTIVE
     // length (the musical cycle the transport walk itself cycles) and seats it in the

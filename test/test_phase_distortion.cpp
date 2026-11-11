@@ -46,7 +46,7 @@
 
 #include "PhaseDistStore.hpp"           // the store + the mechanism (the Task-1 unit)
 #include "SandsModifierResolver.hpp"    // the primitive + the bank (the Task-2 unit)
-#include "PhaseDistCellHold.hpp"        // the PPQN-cell hold (CC_FIX_PHASE_DISTORT_AT_PPQN unit)
+#include "PhaseDistCore.hpp"             // PhaseDistChannel::kSpanPulses — the standalone's STEP grid (CC_PROMPT_PPQN_48)
 
 using dotModular::WarpBank;
 using dotModular::WarpF;
@@ -601,6 +601,34 @@ static int mainHold() {
         const float reseeded = hold.processTransport(0.317, kPPB, cell, kMax);
         ok(hold.lastCell == sc && sameBits((double)reseeded, (double)ref),
            "HOLD: after reset() the same u re-seeds (re-fires) — the value is rebuilt, not carried");
+    }
+
+
+    // ── CC_PROMPT_PPQN_48 stage 5 — the HELD-CELL core at 48: the cell grid is the
+    // STEP grid (PULSES_PER_STEP·plen = 96 at ANY PPQN — a step is 6 pulses, FIXED),
+    // the SAME constant the standalone module runs (PhaseDistChannel::kSpanPulses) —
+    // so the two consumers agree bit-for-bit at 48 exactly as they do at 24, and the
+    // held sequence driven at the 48 grid constant equals the pinned 24 sequence.
+    {
+        ok((long)PULSES_PER_STEP * 16 == kPPB
+              && redDot::PhaseDistChannel::kSpanPulses == (long)PULSES_PER_STEP * 16,
+              "PPQN48 HELD CELL: the standalone's grid IS the step grid — kSpanPulses == PULSES_PER_STEP·16 == the Monsoon tier expression (96 cells at any PPQN)");
+        bool same = true;
+        for (const auto& r : g_roster) {
+            const PhaseDistSet s = armed(r);
+            const redDot::WarpCell cell = s.cell();
+            dotModular::PhaseDistCellHold h24, h48;
+            const double stepd = 1.0 / 1237.0;   // coprime with 96 — never on-boundary
+            double u = 0.0;
+            for (long n = 0; n < 1237; ++n) {
+                const double uu = u - std::floor(u);
+                const float a = h24.processTransport(uu, kPPB, cell, kMax);
+                const float b = h48.processTransport(uu, (long)PULSES_PER_STEP * 16, cell, kMax);
+                same = same && (a == b);
+                u += stepd;
+            }
+        }
+        ok(same, "PPQN48 HELD CELL: the held sequence at the 48 grid constant == the 24 sequence bit-for-bit across the roster (the grid is the 96-cell STEP grid at any PPQN — the stage-5 equivalence)");
     }
 
     return 0;

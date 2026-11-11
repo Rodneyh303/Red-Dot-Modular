@@ -937,7 +937,7 @@ void Monsoon::process(const ProcessArgs& args) {
         // naturally: the distorted ramp sits still on the plateau, the engine sees no
         // motion, the escape is modulating warp/atom position/size (the decided edge
         // case); a GAP crossing is a single-sample jump over the grid — the EXISTING
-        // jump contract (jumpSixteenths replay + snap) handles it, no new jump class.
+        // jump contract (jumpSteps replay + snap) handles it, no new jump class.
         if (!phaseDistIdentity_[0]) {
             const double uT = phase.normPhase(phaseVolt);
             // CC_FIX_PHASE_DISTORT_AT_PPQN steps 1-2 (docs tip 9b900695): the transform
@@ -946,17 +946,23 @@ void Monsoon::process(const ProcessArgs& args) {
             // llround, the CC_FIX_PHASE_RUN_AT_PPQN adjudication), the fire at the cell's
             // OWN grid point (bit-identical to a per-sample evaluation there), the held
             // value reused between cells — no other per-sample transform call. The grid
-            // mirrors the engine's own PPB (p16·plen — the same expression
-            // PhaseEngine::process derives from the same two feeds). Steep stretches and
+            // mirrors the engine's own PPB (PULSES_PER_STEP·plen — the same expression
+            // PhaseEngine::process derives from the same two feeds; CC_PROMPT_PPQN_48:
+            // the STEP grid, 96 cells at any PPQN for a 16-step pattern). Steep stretches and
             // atom/gap edges narrower than a cell land on the next evaluation point —
             // the spec's PPQN-landing rule applied to the transform (the doc's WHAT
             // CHANGES). Identity keeps the raw path verbatim (step 3; the hold resets so
             // no stale set's value rides an identity episode). The DISPLAY path (the
             // curve widget + the phase markers) keeps its own video-rate evaluation —
             // step 4 — the two never cross.
-            const int  p16  = redDot::PhaseEngine::pulsesPer16th(ppqnSetting);
             const long plen = (long)(phase.patternLength > 0 ? phase.patternLength : 16);
-            phaseVolt = phaseDistHold_[0].processTransport(uT, (long)p16 * plen,
+            // CC_PROMPT_PPQN_48: the held-cell grid is the SPAN's STEP grid —
+            // PULSES_PER_STEP·plen (a step is 6 pulses, FIXED) — the same 96-cell
+            // grid at 24 and at 48, and the SAME grid the standalone PhaseDistortion
+            // runs (PhaseDistCore's kSpan) — the two consumers agree at every PPQN
+            // (the doc's stage-5 held-cell gate). At 24 this is the old p16·plen
+            // bit-for-bit (6 = PULSES_PER_STEP there).
+            phaseVolt = phaseDistHold_[0].processTransport(uT, (long)PULSES_PER_STEP * plen,
                                                            phaseDistSnap_[0].cell(), phase.phaseInMax);
         } else {
             phaseDistHold_[0].reset();   // step 3: the raw path needs no held value
@@ -1188,8 +1194,12 @@ void Monsoon::process(const ProcessArgs& args) {
                     || (inGate && input.subGateRise)                                     // ratchet in-gate (Gate 2)
                     || (!inGate && input.ghostRise);                                     // ghost in-gap (Gate 3)
             }
-            if (modeSelect == 0) return clock.sixteenthEdge;       // clock origin (was A/C)
-            return phase.sixteenthEdge;                            // phase origin (was E/F)
+            // CC_PROMPT_PPQN_48: the STEP source is the 6-pulse step edge (a step is
+            // PULSES_PER_STEP pulses, FIXED — decision 1), not the musical 1/16 edge.
+            // At 24 the two coincide bit-for-bit (p16 = 6 there); at 48 the step rate
+            // doubles at the same BPM (a step is a 1/32 of the 48 grid).
+            if (modeSelect == 0) return clock.stepEdge;            // clock origin (was A/C)
+            return phase.stepEdge;                                 // phase origin (was E/F)
         }();
         rateManager.advance(redDot::Rate::PPQN,
                             (modeSelect == 2) ? phase.pulseEdge : clock.pulseEdge);   // phase origin vs clock
@@ -1245,15 +1255,17 @@ void Monsoon::process(const ProcessArgs& args) {
             }
         }
 
-        // ── Mode E jump/scrub: replay the event chain over the jumped 1/16 steps ──
+        // ── Mode E jump/scrub: replay the event chain over the jumped STEPS ──
         // A jump moved the phase by >1 step in one sample. We replay executeModeE for
-        // each crossed 1/16 in the jump direction, reusing the verified real-time path.
-        // Modulation is frozen automatically (whole replay is one process() call).
-        // WITHIN-DRAW: bounded to the current phrase (cap at 16 steps); a jump that
-        // would cross the phrase boundary is clamped — cross-draw regeneration is a
+        // each crossed STEP in the jump direction, reusing the verified real-time path
+        // (the replay unit is the STEP — PULSES_PER_STEP pulses at any PPQN; at 24 the
+        // old 1/16 replay, the same numbers). Modulation is frozen automatically (whole
+        // replay is one process() call).
+        // WITHIN-DRAW: bounded to the current phrase (cap at the active length); a jump
+        // that would cross the phrase boundary is clamped — cross-draw regeneration is a
         // later refinement.
-        if (modeSelect == 2 && phase.jumped && phase.jumpSixteenths != 0) {
-            bool jumpReverse = (phase.jumpSixteenths < 0);
+        if (modeSelect == 2 && phase.jumped && phase.jumpSteps != 0) {
+            bool jumpReverse = (phase.jumpSteps < 0);
             mc.setPhaseReverse(jumpReverse);
             // Bridge the jump DIRECTION to the draw-index direction: a boundary crossed
             // mid-jump fires onPhraseBoundary_ (inside executeModeE→postExecute_), which
@@ -1264,21 +1276,21 @@ void Monsoon::process(const ProcessArgs& args) {
             // PHASE TIER Stage 1.)
             bool savedReverse = engine.pe.reverseActive;
             engine.pe.setReverseActive(jumpReverse);
-            int steps = jumpReverse ? -phase.jumpSixteenths : phase.jumpSixteenths;
+            int steps = jumpReverse ? -phase.jumpSteps : phase.jumpSteps;
             // PHASE TIER Stage 1: the within-draw cap is the ACTIVE phrase (the pattern
             // length), not a hardcoded 16 — "the replay is bounded to the current phrase".
             // At length 16 the number is the same (bit-identical); at 32 a full-pattern
             // scrub replays the whole 32.
             if (steps > engine.cachedLength) steps = engine.cachedLength;   // within-draw cap (one phrase)
-            int p16 = ClockEngine::pulsesPer16th(ppqnSetting);
             for (int s = 0; s < steps; ++s) {
                 mc.executeMode(modeSelect, input, tc.getGate2High());   // Mode E or F — replay this mode's phase step
                 // executeModeA advances holdRemain (step decisions) internally, but the
                 // gate-CLOSE counter (gatePulseRemain) is normally driven by the pulse
-                // burst we skip on a jump. Tick it p16 times per replayed 1/16 so a gate
+                // burst we skip on a jump. Tick it PULSES_PER_STEP times per replayed
+                // STEP (the grid pulses the jump skipped — 6 at any PPQN) so a gate
                 // that should have closed during the jumped region does so, keeping the
                 // post-jump gate state aligned with the landing position.
-                for (int pu = 0; pu < p16; ++pu) {
+                for (int pu = 0; pu < PULSES_PER_STEP; ++pu) {
                     engine.gs.tickPulse();
                     engine.gsStep.tickPulse();
                     for (int i = 1; i <= engine.numPolyVoices; ++i) {
@@ -1290,13 +1302,13 @@ void Monsoon::process(const ProcessArgs& args) {
             }
             // ── Snap transport to the phase-derived position ──────────────────────
             // The replay above advanced stepIndex and the holder congruences by the ROUNDED
-            // jumpSixteenths (nearest whole 1/16). But the actual phase position is
-            // at pulsePos/p16, which is fractional. Without this snap, the rounding
+            // step count. But the actual phase position is at pulsePos/PULSES_PER_STEP,
+            // which is fractional. Without this snap, the rounding
             // error accumulates across jumps — each sweep of the phase knob lands on
             // a different step (non-deterministic, because frame-rate timing varies).
             // In Mode E the phase IS the transport, so we override with the exact
             // phase-derived position and recompute lane ticks from it.
-            engine.snapToPhaseStep(phase.pulsePos, p16);
+            engine.snapToPhaseStep(phase.pulsePos, PULSES_PER_STEP);
             engine.pe.setReverseActive(savedReverse);
         }
 
@@ -1320,8 +1332,10 @@ void Monsoon::process(const ProcessArgs& args) {
         // to 0 every sample, freezing the sequencer. (pulseChanged is likewise
         // stale there — the conjunction keeps the old guard load-bearing.)
         if (modeSelect == 2 && phase.pulseChanged) {
-            int p16d = ClockEngine::pulsesPer16th(ppqnSetting);
-            long absStep = phase.pulsePos / p16d;
+            // CC_PROMPT_PPQN_48: the STEP-indexed division is PULSES_PER_STEP (6,
+            // fixed) — the drift check asks the phase-STEP rule at the step grid, at
+            // any PPQN (at 24 the old p16d, bit-identical).
+            long absStep = phase.pulsePos / PULSES_PER_STEP;
             // PHASE TIER Stage 1: the drift check asks THE PHASE-STEP RULE — the SAME
             // resolution snapToPhaseStep lands through (the musical cycle position
             // seated in the window), so the two sites can never disagree. The pre-Stage-1
@@ -1335,7 +1349,7 @@ void Monsoon::process(const ProcessArgs& args) {
             // at the default window this == absStep % 16 (bit-identical to the old
             // check), at 32 it cycles 0..31 with the full-span sweep.
             if (engine.phaseStepFor(absStep) != engine.stepIndex) {
-                engine.snapToPhaseStep(phase.pulsePos, p16d);
+                engine.snapToPhaseStep(phase.pulsePos, PULSES_PER_STEP);
             }
         }
 

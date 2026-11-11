@@ -43,7 +43,7 @@
 //      INTENDED), flat sub = the transport's sign alone, flat transport = the
 //      subphase's sign alone.
 //  13. THE REGION LANDING — a transport crossing into the next region fires the EXISTING
-//      jump contract (jumped, jumpSixteenths = regionSixteenths, forward), lands at the
+//      jump contract (jumped, jumpSteps = regionSixteenths, forward), lands at the
 //      same sub-position in the new region (pulse 134 -> cell 22), and the snap + drift
 //      rule accept it (no strobe).
 //  14. NO-CROSS + THE SUBPHASE WRAP — a full subphase sweep through its ramp wrap never
@@ -253,7 +253,7 @@ int main() {
             pa.process     (v,      true, ST, 24);
             pb.processTiers(v, 0.f, false, 16.0, ST, 24);
             ok = ok && pa.pulsePos == pb.pulsePos && pa.jumped == pb.jumped
-                 && pa.jumpSixteenths == pb.jumpSixteenths && pa.reverse == pb.reverse
+                 && pa.jumpSteps == pb.jumpSteps && pa.reverse == pb.reverse
                  && pa.sixteenthEdge == pb.sixteenthEdge && pa.quarterEdge == pb.quarterEdge
                  && pa.pulseChanged == pb.pulseChanged;
             ok = ok && pb.dirT == 0 && pb.dirS == 0;                   // neutral, always
@@ -395,8 +395,8 @@ int main() {
         ph.reset(); ph.patternLength = 32;
         ph.processTiers(4.0f, 4.0f, true, 16.0, ST, 24);      // t=0.4 s=0.4: region 0 -> 38
         ph.processTiers(5.2f, 4.0f, true, 16.0, ST, 24);      // t crosses 0.5 -> region 1, s held
-        check(ph.jumped && ph.jumpSixteenths == 16 && !ph.reverse,
-              "REGION LANDING: the crossing fires the jump contract (forward, jumpSixteenths = 16 = regionSixteenths)");
+        check(ph.jumped && ph.jumpSteps == 16 && !ph.reverse,
+              "REGION LANDING: the crossing fires the jump contract (forward, jumpSteps = 16 = regionSixteenths)");
         check(ph.pulsePos == 134,
               "REGION LANDING: lands at the SAME sub-position in the new region (pulse 134 = cell 22.4)");
         E e; e.reset(); e.setWindow(32, 0);
@@ -413,7 +413,7 @@ int main() {
         for (int j = 1; j <= 35; ++j) {                        // s climbs 0.4 -> 1.10 (wraps at 1.0)
             ph.processTiers(3.0f, 4.0f + 2.0f * (float)j, true, 16.0, ST, 24);
             inRegion = inRegion && (ph.pulsePos >= 0) && (ph.pulsePos <= 95);   // STRICT (floor)
-            if (ph.jumped && ph.jumpSixteenths < 0) {
+            if (ph.jumped && ph.jumpSteps < 0) {
                 wrapJump = true;
                 landedInRegion = (ph.pulsePos >= 0 && ph.pulsePos <= 95);
             }
@@ -522,7 +522,7 @@ int main() {
             orc.feed(p, 6, PPB, pe, se, qe, rev, jum, js, op);
             okSeq = okSeq && ph.pulsePos == op && ph.pulseEdge == pe && ph.sixteenthEdge == se
                     && ph.quarterEdge == qe && ph.reverse == rev && ph.jumped == jum
-                    && ph.jumpSixteenths == js;
+                    && ph.jumpSteps == js;
             // THE GATE PIN: pulseChanged ⟺ the position moved (pulseEdge or a jump);
             // from the second sample on it also ⟺ pulsePos moved. On a still sample
             // NOTHING moved and every flag is low (the entry reset).
@@ -556,7 +556,7 @@ int main() {
         float v1 = v0 + 10.0f * 2.0f / 96.0f;          // exactly +2 pulses of phase
         ph.process(v1, true, ST, 24);
         check(ph.pulseChanged && ph.pulsePos == held + 2 && ph.pulseEdge && !ph.jumped
-              && ph.jumpSixteenths == 0,
+              && ph.jumpSteps == 0,
               "CARRY: a 2-pulse move after the hold lands BOTH pulses in ONE fire (the accumulator carried), no jump");
         {   // the split-drive control: two 1-pulse fires reach the same address
             PhaseEngine pb; pb.reset(); pb.patternLength = 16;
@@ -599,6 +599,57 @@ int main() {
               "TIER GATE: a subphase sweep with a STALLED transport advances the composed position (the probe is tierPulseFor), pulseChanged ⟺ moved");
     }
 
+
+    // ── CC_PROMPT_PPQN_48 stage 5 — the PHASE at 48: the same ramp, the same STEP
+    // sequence (a step is 6 pulses, FIXED — the span is PULSES_PER_STEP·plen = 96 at
+    // ANY PPQN), the STEP edge every 6 pulses, the MUSICAL sixteenth edge at 12
+    // (192 grid positions per bar at 48 — the doc's number). These are REAL 48 runs:
+    // the suite's earlier gates were only ever driven at 24.
+    {
+        const int plen16 = 16;
+        // (1) THE SPAN + THE STEP SEQUENCE: one full 0→1 sweep at 48 lands the SAME
+        //     pulse positions (96 per span) and the SAME step sequence (pulsePos/6)
+        //     as the 24 run — the doc's "the phase step sequence equals the 24
+        //     sequence for the same phase input (per bar, scaled)".
+        PhaseEngine p24, p48;
+        p24.reset(); p24.patternLength = plen16;
+        p48.reset(); p48.patternLength = plen16;
+        bool spanOK = true, stepOK = true, edgeOK = true;
+        int steps24 = 0, steps48 = 0, sixt48 = 0;
+        const int N = 96;   // one span of pulses, one process() per pulse
+        for (int k = 0; k <= N; ++k) {
+            const float v = k * 10.0f / 96.0f;   // k/96 of the span, binary-exact
+            p24.process(v, true, ST, 24);
+            p48.process(v, true, ST, 48);
+            if (k > 0) {
+                spanOK = spanOK && p24.pulsePos == p48.pulsePos;
+                const int s24 = (int)(p24.pulsePos / 6), s48 = (int)(p48.pulsePos / 6);
+                stepOK = stepOK && s24 == s48;
+                steps24 += p24.stepEdge ? 1 : 0;
+                steps48 += p48.stepEdge ? 1 : 0;
+                sixt48  += p48.sixteenthEdge ? 1 : 0;
+                edgeOK = edgeOK && (p24.stepEdge == p24.sixteenthEdge);   // lockstep at 24
+            }
+        }
+        check(spanOK && stepOK,
+              "PPQN48 PHASE: the same 0..1 ramp walks the SAME pulse positions and the SAME step sequence at 24 and at 48 (the span is the 96-pulse step grid at any PPQN)");
+        check(steps24 == 16 && steps48 == 16 && sixt48 == 8 && edgeOK,
+              "PPQN48 PHASE: 16 step edges per span at BOTH settings (the same pattern); the musical sixteenth edge fires 8 times at 48 (96/12 — 192 positions per bar, the doc's number) vs 16 at 24");
+        // (2) THE BPM READOUT stays span-aware (the span = PPB/ppqn quarters: 4 at
+        //     24, 2 at 48) — the same ramp velocity reads the same bpm at both.
+        {
+            PhaseEngine a, b;
+            a.reset(); a.patternLength = plen16;
+            b.reset(); b.patternLength = plen16;
+            for (int k = 0; k < 48; ++k) {
+                const float v = k * 10.0f / 96.0f;
+                a.process(v, true, ST, 24);
+                b.process(v, true, ST, 48);
+            }
+            check(std::fabs(a.bpm - b.bpm) < 0.5f && a.bpm > 1.f,
+                  "PPQN48 PHASE: the velocity bpm is span-aware — the same ramp reads the same bpm at 24 and at 48 (4 vs 2 span quarters, compensated)");
+        }
+    }
     std::printf("test_phase_tier: %d passed, %d failed\n", passed, failed);
     return failed == 0 ? 0 : 1;
 }
