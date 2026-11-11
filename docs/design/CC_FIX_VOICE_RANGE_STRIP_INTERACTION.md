@@ -79,3 +79,46 @@ Gates:
 - Press and drag in the voice-range band: the voice window changes; no lane changes.
 - A press on the boundary between the band and the first lane goes to the band (documented, tested).
 - East and Macro behave identically (one editor).
+
+### F. LANE OFFSET AND ROTATION CLAMPED TO 15 IN THE ENGINE PATH (root cause of the midpoint snap)
+Verified (Rodney's picture: the lane range snaps when dragged past 16). MonsoonSandsManager clamps the lane OFFSET and
+ROTATION to 0..15, while the editor works in 0..31:
+- lines 392-393 (applyMonoCV, offset and rotation to 0.f..15.f)
+- lines 450-451 (math::clamp of baseOff and baseRot to 0..15)
+- lines 703-704 (round(addCV(off/rot)) to 0..15)
+- lines 965-966 (applyMacroCV off and rot to 0..15)
+- lines 1001-1002 (endpointDeltas for offset and rotation to 0..15)
+Result: an offset past 15 is pinned to 15, so the range jumps back when the drag crosses the midpoint.
+Fix:
+1. OFFSET: replace 15.f with (kPatternLengthCap - 1) = 31 at every site above (base, CV, Macro, endpoint).
+2. ROTATION: the lane rotation rule (window-relative): clamp to [0, L-1] where L is the lane's length, not a fixed 15.
+   Replace the fixed bounds with the lane's length-1 at each site (apply the clamp after the length is known).
+3. Check PatternEngine.hpp:1088 (`newCount = std::min(newCount, 15)`). If it bounds a lane length or offset, it must
+   also follow kPatternLengthCap; if it bounds something else (a count of voices or lanes), leave it and say so.
+4. The CV paths (addCV, applyMacroCV, applyMonoCV) keep their behaviour; only the range changes.
+Gates:
+- Dragging a lane's window past 16 keeps the range continuous (no snap at 16 or at any other step).
+- Offsets 16..31 apply and display correctly for every lane; the lane's transparent range matches the engine window.
+- Rotation in each lane is in [0, L-1] for every L, from drag, CV and restore.
+- ≤16 patches are unchanged where their values are already below 16.
+- run_all green on both SDK legs.
+
+### G. NAMED CONSTANTS, NOT MAGIC NUMBERS (Rodney: "we should be using named constants")
+The clamp bugs in F came from literal 15, 16 and 32 in the window path. Fix F must introduce named constants and
+use them everywhere the window, offset, length or rotation is bounded.
+1. Define the bounds once, in the shared header that already owns the pattern length (PatternEngine.hpp, next to
+   kPatternLengthCap, or the window core if that is where the window lives):
+   - kLaneOffsetMax    = kPatternLengthCap - 1      (the largest step index, 31)
+   - kLaneLengthMax    = kPatternLengthCap          (the largest window length, 32)
+   - kLaneRotationMax  is NOT a constant: rotation is clamped to (the lane's length - 1) at each use.
+   Use these names at every site in F (lines 392-393, 450-451, 703-704, 965-966, 1001-1002) and in every helper.
+2. Replace every bounding literal in the window path with these names, including 15, 16, 31, 32 used as a bound,
+   and the `min(newCount, 15)` at PatternEngine.hpp:1088 once it has been checked (F3).
+3. A literal is allowed only where it is not a bound: a loop of voices (kVoiceSlots), an array index that is already
+   a named size, a bit shift, or a documented ratio (e.g. "/ 2" for a centre). Name it anyway if it is a step count.
+4. The audit is repo-wide for the window path: grep the Sands visuals, SandsVisualEditorV4, SandsRangeGestureCore,
+   MonsoonSandsManager, PatternEngine and SequencerEngine for literals 15, 16, 31 and 32 used as bounds. Each hit is
+   either converted to a named constant or recorded as allowed (with the reason) in the PR description.
+5. Comments that quote a number (e.g. "% 16", "the visible 16") are rewritten to name the constant, so the comment cannot
+   go stale again.
+Gate: no bounding literal remains in the window path; the audit table is in the PR; behaviour unchanged for values below 16.
