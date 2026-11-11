@@ -32,8 +32,8 @@ back into our modules, so no voice index is written.
 - Phase export therefore writes each step's CONTENT in step order (pitch, length), with start times from the step's
   position in the phrase. The movement of the playhead is excluded, deliberately.
 - The menu item in phase mode should say so, e.g. "Portable sequence: copy content (phase moves are not exported)".
-- Clock mode: the same rule applies if clock mode can step backwards. Confirm that clock mode only moves forward; if it
-  can reverse, it exports content in step order as phase does.
+- Clock mode: CONFIRMED forward only. Clock mode exports a true sequence (timed by pulses, see TIMING). The content-only
+  rule applies to phase mode alone.
 
 ## WHAT GETS EXPORTED
 1. MONSOON, mono by voice: one voice, selected by the user (menu), as a standard mono clip. Default: the voice the
