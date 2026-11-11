@@ -31,6 +31,12 @@ back into our modules, so no voice index is written.
   back, so no timing of its path yields a faithful sequence. Timing the phrase by pulses does not change this.
 - Phase export therefore writes each step's CONTENT in step order (pitch, length), with start times from the step's
   position in the phrase. The movement of the playhead is excluded, deliberately.
+- SNAPSHOT BY STEP INDEX. The phase snapshot is one slot per step. Each visit writes that step's content into its slot,
+  so a repeat visit overwrites rather than appends. A path such as steps 1-5, back to 2, then forward exports steps 1-5
+  once each. Timing never comes from visit order or count.
+- NO PHRASE BOUNDARY IN PHASE. There is no completed-phrase event in phase mode, so "the previous phrase" means the
+  most recent content of each step as last visited. The copy reads the slots as they stand at the moment of copy.
+- A step never visited yet has no content and is exported as a rest (or omitted, to be decided at Stage 2).
 - The menu item in phase mode should say so, e.g. "Portable sequence: copy content (phase moves are not exported)".
 - Clock mode: CONFIRMED forward only. Clock mode exports a true sequence (timed by pulses, see TIMING). The content-only
   rule applies to phase mode alone.
