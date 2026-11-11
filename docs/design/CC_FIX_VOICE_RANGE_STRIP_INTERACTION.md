@@ -44,3 +44,20 @@ Build on feat/phase-duals-gaps. UI-only. No engine change.
 ## DO NOT
 - Change the engine, the store, the rotation semantics (voice R stays window-relative), or the lanes' rotation convention.
 - Change the clamp or the anchor rule decided in the UAS spec.
+
+
+## UPDATE (verified after Rodney's report: the data is drawn across all 32 columns)
+- Geometry is consistent: stepWidthF() = gridW()/32 and getStepX / getStepAtX / hit tests all use it. Do NOT change it.
+- The rangeStrip press seeds dragPos from the press position (SandsVisualEditorV4.hpp:1255). That is correct.
+- The remaining faults:
+  A. ENGAGEMENT JUMP. The drag engages when the cursor crosses into a new cell (~1375-1384), and grabStep = pressCell is
+     the press cell, not the engagement cell. An edge drag then writes the absolute step under the cursor at engagement, so
+     the edge jumps by the cells crossed before engagement. Fix: capture the edge's own anchor at press (the edge's step,
+     the other edge, the length) and compute every edge move as deltaSteps from the press cell, with no absolute assignment.
+  B. EDGE TARGET TOO SMALL. handleWidthF() = min(0.8 cell, laneHeight*0.5) (line 411), so an edge is grabbed within about
+     0.8 of one cell; most presses on an edge fall into the WINDOW body and move the whole window instead. Fix: a fixed edge
+     hit zone of at least 1 cell on each side of the edge column, with the body zone taking the remainder, and the body
+     zone never capturing a press within 1 cell of an edge.
+  C. ROTATION ABSOLUTE. The rangeStrip ROTATION sets lor[2] to an absolute step (~1437-1441) with no window clamp. Fix as
+     in the original section 1.
+- The 32-column prompt above is superseded; these three fixes are the work.

@@ -1,3 +1,7 @@
+# SUPERSEDED  the 32-column data IS drawn for every lane (Rodney, Rack). The geometry is already 32:
+# stepWidthF() = gridW() / STEP_COUNT (32), and getStepX / getStepAtX / hit tests use the same width.
+# The remaining faults are in the interactions. See CC_FIX_VOICE_RANGE_STRIP_INTERACTION.md.
+
 # CC PROMPT  Sands display: draw 32 columns for ALL lanes (PREREQUISITE for the voice-range strip fix)
 
 Build on feat/phase-duals-gaps. Display only. Engine arithmetic is already 32 (STEP_COUNT = kPatternLengthCap = 32,
