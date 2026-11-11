@@ -37,8 +37,7 @@ back into our modules, so no voice index is written.
 - PHRASE BOUNDARY IN PHASE = THE WRAP. Phase mode wraps at the phrase boundary, and a phrase completes when it wraps.
   At each wrap, the step slots are copied into the PREVIOUS-PHRASE snapshot and the slots are cleared for the new
   phrase. "Copy the previous phrase" reads that snapshot, the same as clock mode.
-- OPEN: does a BACKWARD crossing of the boundary complete a phrase? Recommended: yes, any crossing completes a phrase,
-  since the wrap event is direction-agnostic and the snapshot is what the user last heard as a whole phrase. Confirm.
+- DECIDED: EITHER END WRAPS. A crossing of the boundary in either direction completes a phrase and takes the snapshot.
 - A step never visited in a phrase has no content in that phrase and is exported as a rest (or omitted, to be decided at Stage 2).
 - The menu item in phase mode should say so, e.g. "Portable sequence: copy content (phase moves are not exported)".
 - Clock mode: CONFIRMED forward only. Clock mode exports a true sequence (timed by pulses, see TIMING). The content-only
