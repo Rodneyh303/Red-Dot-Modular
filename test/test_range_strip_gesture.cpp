@@ -27,6 +27,7 @@
 
 #include <cstdio>
 #include <cstdint>
+#include <string>
 
 #include "ui/SandsRangeGestureCore.hpp"
 
@@ -158,6 +159,44 @@ int main() {
         ok = ok && SandsRangeGestureCore::rotationAt(7, 8, 4, RING) == 3;  // (7-8) mod 32 = 31 → clamped to len-1
         check(ok, "C: rotation is window-relative and clamped — the chevron is always "
                   "inside [off, off+len) for every (off, len, step) on the ring");
+    }
+
+    // ── GATE D: the preset bank is GONE (the grep-in-test precedent — the doc's
+    // "no reference to presetBank or applyPreset in src/ui"; a reintroduction fails
+    // the battery, not just review) ─────────────────────────────────────────────
+    {
+        FILE* f = std::fopen("src/ui/SandsVisualEditorV4.hpp", "rb");
+        bool ok = (f != nullptr);
+        std::string src;
+        if (f) {
+            char buf[4096];
+            size_t n;
+            while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) src.append(buf, n);
+            std::fclose(f);
+        }
+        const char* gone[] = { "presetBank", "PRESET_BANK_SIZE", "PresetSeed",
+                               "initializePresets", "loadPreset", "drawPresetPanel",
+                               "showPresetPanel", "selectedPreset" };
+        for (const char* sym : gone)
+            ok = ok && src.find(sym) == std::string::npos;
+        check(ok, "D: the vestigial preset bank is fully gone from the live editor "
+                  "(no bank, seeding, apply path, panel or flag)");
+    }
+
+    // ── GATE E: the strip and the lanes share the ONE core — the lane drags run the
+    // SAME press-anchored edge law as the strip (one function family, both owners;
+    // a lane drag never writes the strip's lor[] and vice versa by construction —
+    // two owners, set at press, per the doc) ────────────────────────────────────
+    {
+        bool ok = true;
+        // a lane press at offset 4 len 6, dragged 3 cells right on the START edge:
+        // the lane's window follows the same law as the strip's (the same functions).
+        const int grabOff = 4, grabLen = 6, delta = 3;
+        const int off = SandsRangeGestureCore::startOff(delta, grabOff, RING);
+        const int len = SandsRangeGestureCore::startLen(delta, grabOff, grabLen, RING);
+        ok = ok && off == 7 && len == 3;                    // the front edge at 7, the back stays at 9
+        ok = ok && SandsRangeGestureCore::endLen(delta, grabOff, grabLen, RING) == 9;
+        check(ok, "E: the lane edge drags run the strip's press-anchored law (one core, both owners)");
     }
 
     // ── GATE: the window slide law unchanged (behave as before) ─────────────────

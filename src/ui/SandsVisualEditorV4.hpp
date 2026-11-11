@@ -223,14 +223,12 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   bool showControlBar = true;
   std::deque<VoiceState> redoHistory;
   static constexpr int UNDO_HISTORY_SIZE = 50;
-  
-  struct PresetSeed {
-    char name[32];
-    VoiceState state;
-  };
-  static constexpr int PRESET_BANK_SIZE = 8;
-  std::array<PresetSeed, PRESET_BANK_SIZE> presetBank;
-  int selectedPreset = 0;
+  // (ADDITION D — CC_FIX_VOICE_RANGE_STRIP_INTERACTION) the vestigial PRESET BANK is
+  // RETIRED — the seed struct, the bank array + its size constant, the selected
+  // index, the seeding, the load path, the panel draw and the never-set flag that
+  // guarded it are all deleted: nothing in the live editor, the East/Macro visuals
+  // or the plugin registration ever called the apply path (the deprecated copy
+  // stays out of the build).
   
   struct DragState {
     enum Type { NONE, START, END, ROTATION, WINDOW };
@@ -239,8 +237,14 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     math::Vec dragPos  = {};  // accumulated absolute position (Rack2: DragMove has delta not pos)
     int   grabStep     = 0;   // step under cursor at press (for relative WINDOW move)
     int   grabOffset   = 0;   // lane.offset at press (window slides relative to this)
+    int   grabLen      = 16;  // lane.length at press (the edge drags' delta base — ADDITION E)
     bool  isDragging     = false;
   } dragState;
+  // (ADDITION E — CC_FIX_VOICE_RANGE_STRIP_INTERACTION) dragState is THE LANE DRAG
+  // OWNER, rangeStrip.* THE STRIP OWNER: a drag has exactly ONE owner, set at press
+  // (the strip band is hit-tested FIRST — a press there starts a STRIP drag and
+  // returns; anything below starts a LANE drag). A LANE drag never calls onRangeEdit
+  // and never writes rangeStrip.lor; a STRIP drag never writes lanes[l].
 
   // ── UNIFIED ADDRESSING Stage 3: the VOICE-RANGE strip ────────────────────────
   // A thin CONSTANT-block lane reserved ABOVE lane 0 (the frame the probability lanes
@@ -359,7 +363,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   struct KeyboardState {
     int selectedLane = 0;
-    bool showPresetPanel = false;
+    // (the preset-panel flag RETIRED — ADDITION D; it was never set true, the panel was dead)
   } kbState;
   
   // Per-lane playhead — each lane can be at a different step
@@ -446,7 +450,6 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     setMode(m);
     box.size = rack::Vec(550, 250);
     resetState();
-    initializePresets();
   }
 
   ~SandsVisualEditorV4() {
@@ -539,50 +542,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     currentState.lanes[lane] = clipboard.lanes[lane];
   }
   
-  void initializePresets() {
-    snprintf(presetBank[0].name, sizeof(presetBank[0].name), "Flat");
-    for (int l = 0; l < laneCount; ++l) {
-      for (int s = 0; s < STEP_COUNT; ++s) {
-        presetBank[0].state.lanes[l].probabilities[s] = 0.5f;
-      }
-    }
-    
-    snprintf(presetBank[1].name, sizeof(presetBank[1].name), "Peak");
-    for (int l = 0; l < laneCount; ++l) {
-      for (int s = 0; s < STEP_COUNT; ++s) {
-        float center = STEP_COUNT / 2.f;
-        float dist = fabsf(s - center) / center;
-        presetBank[1].state.lanes[l].probabilities[s] = 1.f - dist;
-      }
-    }
-    
-    snprintf(presetBank[2].name, sizeof(presetBank[2].name), "Ramp");
-    for (int l = 0; l < laneCount; ++l) {
-      for (int s = 0; s < STEP_COUNT; ++s) {
-        presetBank[2].state.lanes[l].probabilities[s] = s / (float)STEP_COUNT;
-      }
-    }
-    
-    snprintf(presetBank[3].name, sizeof(presetBank[3].name), "Random");
-    for (int l = 0; l < laneCount; ++l) {
-      for (int s = 0; s < STEP_COUNT; ++s) {
-        presetBank[3].state.lanes[l].probabilities[s] = rack::random::uniform();
-      }
-    }
-    
-    for (int p = 4; p < PRESET_BANK_SIZE; ++p) {
-      snprintf(presetBank[p].name, sizeof(presetBank[p].name), "Custom%d", p - 3);
-      presetBank[p].state = currentState;
-    }
-  }
-  
-  void loadPreset(int idx) {
-    if (idx >= 0 && idx < PRESET_BANK_SIZE) {
-      saveToHistory();
-      currentState = presetBank[idx].state;
-      selectedPreset = idx;
-    }
-  }
+  // (the preset seeding + the preset load path RETIRED — ADDITION D, with the bank)
   
   void draw(const widget::Widget::DrawArgs& args) override {
     syncLayout();
@@ -623,7 +583,6 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       drawRotationIndicator(args.vg, lane);
     }
     
-    if (kbState.showPresetPanel) drawPresetPanel(args.vg);
     drawLanePlayheads(args.vg);
     
     nvgBeginPath(args.vg);
@@ -966,7 +925,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   DragState::Type hitTestRange(float x, float y) const {
     if (layout.rangeLaneH <= 0.f || !rangeStrip.enabled) return DragState::NONE;
     const rack::Rect r = layout.getRangeLaneRect();
-    if (y < r.pos.y || y >= r.pos.y + r.size.y) return DragState::NONE;
+    // (E) the boundary row (y == the band's bottom) belongs to the BAND — the same
+    // seam rule as the press branch's y-gate (<=), so a seam press classifies a zone
+    // instead of arming paint.
+    if (y < r.pos.y || y > r.pos.y + r.size.y) return DragState::NONE;
     const int startBar = rangeStrip.lor[1];
     const int endBar   = (startBar + std::max(1, std::min(rangeStrip.lor[0], STEP_COUNT)) - 1) % STEP_COUNT;
     // (B) THE EDGE TARGET FIX (the doc's fault B): the START/END zones extend
@@ -1175,43 +1137,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
   }
   
-  void drawPresetPanel(NVGcontext* vg) {
-    float panelX = layout.padding;
-    float panelY = 70.f;
-    float panelW = 300.f;
-    float panelH = 140.f;
-    
-    nvgBeginPath(vg);
-    nvgRect(vg, panelX, panelY, panelW, panelH);
-    nvgFillColor(vg, nvgRGB(0x1a, 0x1a, 0x1a));
-    nvgFill(vg);
-    
-    nvgFontSize(vg, 11.f);
-    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
-    nvgFillColor(vg, nvgRGB(0xd4, 0xaf, 0x37));
-    nvgText(vg, panelX + panelW / 2.f, panelY + 5, "PRESET SEEDS", nullptr);
-    
-    float btnW = 70.f;
-    float btnH = 20.f;
-    
-    for (int p = 0; p < PRESET_BANK_SIZE; ++p) {
-      int row = p / 4;
-      int col = p % 4;
-      float bx = panelX + 8.f + col * 78.f;
-      float by = panelY + 22.f + row * 28.f;
-      
-      bool isSelected = (p == selectedPreset);
-      nvgBeginPath(vg);
-      nvgRect(vg, bx, by, btnW, btnH);
-      nvgFillColor(vg, isSelected ? nvgRGB(0x26, 0xa6, 0x9a) : nvgRGB(0x33, 0x33, 0x33));
-      nvgFill(vg);
-      
-      nvgFontSize(vg, 8.f);
-      nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-      nvgFillColor(vg, nvgRGB(0x88, 0x88, 0x88));
-      nvgText(vg, bx + btnW / 2.f, by + btnH / 2.f, presetBank[p].name, nullptr);
-    }
-  }
+  // (the preset panel's draw RETIRED — ADDITION D, with the bank; it was guarded by
+  // a flag that was never set true — dead draw code)
   
   void onHover(const rack::event::Hover& e) override {
     Widget::onHover(e);
@@ -1249,7 +1176,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // ── Stage 3: the voice-range strip (above lane 0) ──
     if (layout.rangeLaneH > 0.f && rangeStrip.enabled
         && e.pos.y >= layout.topPadding
-        && e.pos.y < layout.topPadding + layout.rangeLaneH) {
+        && e.pos.y <= layout.topPadding + layout.rangeLaneH) {
+      // (E) the BAND owns its bottom boundary: a press exactly on the strip/lane
+      // seam goes to the STRIP (the doc's rule — the band is hit-tested first).
       if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
         // THE UNIFIED GESTURE MODEL: ONE arm for every press — the press is PENDING
         // (pressArmed) carrying its cell + zone; onDragMove engages the gesture when
@@ -1332,6 +1261,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
           // follows) rather than snapping its start to the pointer.
           dragState.grabStep   = getStepAtX(e.pos.x);
           dragState.grabOffset = currentState.lanes[lane].offset;
+          dragState.grabLen    = currentState.lanes[lane].length;   // (E) the edge drags' press base
           // Capture the LOR triple BEFORE the drag mutates it, so the release can report a
           // before/after pair to the host for Rack-history undo.
           lorBeforeDrag[0] = currentState.lanes[lane].length;
@@ -1489,24 +1419,25 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       }
 
       case DragState::START: {
-        // Resize from the FRONT: the dragged step becomes the new start, the END
-        // bar stays put, length adjusts. Keeps the back edge anchored (intuitive
-        // when you grab the front edge). Wrap-safe via mod arithmetic.
-        int endBar = L.editEndBar();
-        int newLen = ((endBar - step) % STEP_COUNT + STEP_COUNT) % STEP_COUNT + 1; // 1..16
-        L.offset  = ((step % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
-        L.length  = rack::math::clamp(newLen, 1, STEP_COUNT);
-        L.rotation = rack::math::clamp(L.rotation, 0, std::max(0, L.length - 1));
+        // (E + fix A) Resize from the FRONT, PRESS-ANCHORED: the front edge moves by
+        // deltaSteps = (the cell under the cursor) − the press cell, applied to the
+        // PRESS window (grabOffset/grabLen) — the edge no longer snaps to the cursor's
+        // absolute cell. The END edge stays at its press position; rotation clamps
+        // into the resized window. The SAME core math the strip uses.
+        int deltaSteps = step - dragState.grabStep;
+        L.offset = redDot::SandsRangeGestureCore::startOff(deltaSteps, dragState.grabOffset, STEP_COUNT);
+        L.length = redDot::SandsRangeGestureCore::startLen(deltaSteps, dragState.grabOffset, dragState.grabLen, STEP_COUNT);
+        L.rotation = redDot::SandsRangeGestureCore::clampRot(L.rotation, L.length);
         break;
       }
 
       case DragState::END: {
-        // Resize from the BACK: the dragged step becomes the new end, START stays
-        // put, length = inclusive forward distance start→step. Dragging back past
-        // the start clamps to 1 (no surprise full-wrap to 16).
-        int fwd = ((step - L.editStartBar()) % STEP_COUNT + STEP_COUNT) % STEP_COUNT; // 0..15
-        L.length = rack::math::clamp(fwd + 1, 1, STEP_COUNT);
-        L.rotation = rack::math::clamp(L.rotation, 0, std::max(0, L.length - 1));
+        // (E + fix A) Resize from the BACK, PRESS-ANCHORED: the back edge moves by
+        // deltaSteps from its press position; the START stays at grabOffset; rotation
+        // clamps into the resized window. The same core math.
+        int deltaSteps = step - dragState.grabStep;
+        L.length = redDot::SandsRangeGestureCore::endLen(deltaSteps, dragState.grabOffset, dragState.grabLen, STEP_COUNT);
+        L.rotation = redDot::SandsRangeGestureCore::clampRot(L.rotation, L.length);
         break;
       }
 

@@ -51,3 +51,31 @@ C. ROTATION NOT IN THE WINDOW. The strip's ROTATION drag (~1437-1441) writes lor
 - Change stepWidthF, getStepX, getStepAtX or the 32-column draw.
 - Change the Peak preset (line 550).
 - Change the engine, the store, the window arithmetic, or the rotation convention.
+
+## ADDITIONS (Rodney: yes)
+
+### D. REMOVE THE PRESET BANK (vestigial)
+- Delete presetBank, PRESET_BANK_SIZE, PresetSeed and the applyPreset path from src/ui/SandsVisualEditorV4.hpp
+  (bank at ~230-231; the Flat/Peak/Ramp/Random seeding at ~550-575; the index apply at ~577-579; the Custom fill at ~570).
+- Nothing in the live editor, the East or Macro visuals, or the plugin registration calls it. The copy in
+  src/deprecated/ is already out of the build; leave it.
+- Gate: the editor builds with no reference to presetBank or applyPreset in src/ui or src/*Sands*; run_all green.
+
+### E. SEPARATE THE VOICE-STRIP DRAG FROM THE LANE DRAGS
+Verified: the editor keeps one drag state. The voice-range strip writes its own lor[3] through that state and fires
+onRangeEdit (~1428-1448). The probability lanes have their own window fields (lanes[l].offset/length/rotation). Nothing
+gives the lane drags a separate owner, so a press in a lane's window can fall into the strip branch.
+Fix:
+1. Two owners. Keep the voice-strip drag state (rangeStrip.drag, lor[3], onRangeEdit) and a separate lane drag state
+   (laneDrag: the lane index, its press values, and its own grab). A drag has exactly one owner, set at press.
+2. Hit-test order at press: (a) the voice-strip band (rangeLaneH at the top of the grid) is tested first and, if hit,
+   starts a STRIP drag; (b) otherwise the press is in a probability lane and starts a LANE drag for that lane.
+   A LANE drag never calls onRangeEdit and never writes lor[]. A STRIP drag never writes lanes[l].
+3. The lane drags keep their existing semantics (window, rotation, per lane, lane-relative and clamped) and get the same
+   press-anchored deltas as in fix A.
+Gates:
+- Press and drag in a probability lane: that lane's window (offset/length/rotation) changes; the voice window (lor[]) and
+  onRangeEdit do not change; no other lane changes.
+- Press and drag in the voice-range band: the voice window changes; no lane changes.
+- A press on the boundary between the band and the first lane goes to the band (documented, tested).
+- East and Macro behave identically (one editor).
