@@ -31,7 +31,7 @@ jobs:
       fail-fast: false      # one platform failing shouldn't cancel the others
       matrix:
         include:
-          - { os: ubuntu-latest,  name: lin, sdk: "lin-x64" }
+          - { os: ubuntu-22.04, name: lin, sdk: "lin-x64" }
           - { os: windows-latest, name: win, sdk: "win-x64" }
           - { os: macos-latest,   name: mac, sdk: "mac-x64+arm64" }
     runs-on: ${{ matrix.os }}
@@ -55,11 +55,15 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install make
 
-      - name: Set up tools (Linux)
+      # Linux needs no apt packages: build-essential, unzip and curl are preinstalled on the
+      # runner, and the only GL header (GLFW/glfw3.h) comes from the Rack SDK's dep/include.
+      # Removing apt avoids the runner's package mirror, which failed DNS resolution.
+      - name: Check tools (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libgl-dev libglu-dev unzip curl
+          g++ --version | head -1
+          unzip -v | head -1
+          curl --version | head -1
 
       # --- Rack SDK -------------------------------------------------------
       - name: Download Rack SDK
