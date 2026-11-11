@@ -66,7 +66,8 @@ back into our modules, so no voice index is written.
 - STAGE 4  Intertropical poly export per loop, reusing the snapshot pattern at the loop boundary.
 
 ## OPEN (confirm before the stage that needs it)
-- Pitch reference: is 0 V = C4 in the standard, and does our voltage match? (Stage 1, check the example: 0.1666 = 2 semitones.)
+- Pitch reference: the Impromptu example (1/12 V steps: 0.5833 = 7 semitones, -1.5 = -18) is consistent with 0 V = C4.
+  Confirm once with a known note before Stage 1 ships.
 - Intertropical output-to-pitch mapping and gate mapping onto the grid (Stage 4).
 - The clipboard API: which Rack call writes the clipboard string (Stage 1).
 
@@ -98,6 +99,14 @@ Build on this branch.
 - run_all green on both SDK legs.
 
 ## DO NOT
-- Write any prefixed property or extra note field (one-way export, standard format only).
+- Write any prefixed property. Extra per-note fields are not allowed, EXCEPT the optional playProbability below.
 - Change playback, the engine's step logic, or the audio.
 - Export gate mode.
+
+
+## IMPROMPTU EXAMPLE (reference)
+Impromptu PhraseSeq16 writes length 16.0 with integer starts, so its steps are quarter notes (beats). Each note also
+carries an optional playProbability. Pitch is volts, in 1/12 V steps (0.5833 = 7 semitones; -1.5 = -18).
+- playProbability: OPTIONAL per-note field. Our steps have probabilities, so it is a natural fit for a generative
+  sequencer. Readers that do not know it ignore it, so it is safe. Export it from the step's play probability.
+- Our starts are fractional under swing and tempo change; the standard allows any decimal start, so that is fine.
