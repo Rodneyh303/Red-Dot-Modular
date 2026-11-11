@@ -1,63 +1,53 @@
-# CC FIX  voice-range strip interaction (East and Macro share SandsVisualEditorV4)
+# CC FIX  voice-range strip interaction (East and Macro share SandsVisualEditorV4). UI only, no engine change.
 
-Build on feat/phase-duals-gaps. UI-only. No engine change.
+Build on feat/phase-duals-gaps.
 
-## SYMPTOMS (Rodney, Rack, pictures 1-4)
-- Dragging the left (offset) marker one step past a point makes the range JUMP to the left (picture 3).
-- The range markers are hard to grab: the edge target is one cell wide and the zones overlap.
-- The voice rotation chevron is hard to move and does not snap to the range (picture 4).
+## VERIFIED FACTS (code and Rack)
+- The pattern is 32 steps. STEP_COUNT = kPatternLengthCap = 32 (SandsVisualEditorV4.hpp:38-39, static_assert).
+- The data is drawn across all 32 columns for every lane (Rack confirmed).
+- Geometry is consistent: stepWidthF() = gridW() / STEP_COUNT (line 410). getStepX, getStepCenterX, getStepRect, the
+  draw cells, and getStepAtX (line 1536) all use the same width. DO NOT change the geometry.
+- The range-strip press seeds dragPos from the press position (line 1255). That is correct.
+- Stale comment: line 297 says "the display cells stay STEP_COUNT = the visible 16". It is wrong: the display is 32.
+  Fix the comment (see task 0). Line 550 (the Peak preset centred at STEP_COUNT / 2) is CORRECT (the centre of 32 is 16);
+  it is a shape parameter, not a display bound. Do not change it.
 
-## CAUSES (verified in code)
-1. ROTATION CONVENTION SPLIT (SandsVisualEditorV4.hpp rangeStrip ROTATION, ~1437-1441 vs lane ROTATION ~1493-1496).
-   - Lane drag: rotation = window-relative (step - offset) mod 16, clamped to [0, L-1].
-   - Voice-range-strip drag: lor[2] = the ABSOLUTE step, NOT clamped to the window (comment: "A5 R is NOT clamped").
-   - The chevron draws at (offset + rotation) mod 16 (drawRotationIndicator, ~1077), i.e. the window-relative convention.
-   Result: a voice R can sit outside [offset, offset+L-1]. This violates the decided rule (voice R is window-relative, 0..L-1,
-   anchored at global step 1; see UAS spec lines 22-37 and CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION.md).
-2. EDGE DRAG NOT GRAB-ANCHORED (rangeStrip START, ~1421-1425). START sets offset = the step under the cursor, absolute. The
-   WINDOW drag instead preserves grabOff + deltaSteps. A mismatch between the cursor's step and the handle's hit zone makes
-   the first move snap the edge to another step (the picture-3 jump). The strip's dragPos origin at press must be checked.
-3. HIT ZONES TOO SMALL AND OVERLAPPING. hitTestRange (~951-983) uses a band of 65% lane height for the body; hitTestHandle
-   (~895-942) uses the top 45% for the edge handles and the bottom 35% for rotation; each edge handle is one cell wide.
+## THE THREE FAULTS (what Rodney sees)
+A. ENGAGEMENT JUMP. A range drag engages only when the cursor crosses into a new cell (~lines 1375-1384). grabStep is the
+   PRESS cell, but the first applied move uses the cell at engagement. For the START and END edges the code assigns the
+   ABSOLUTE step under the cursor (START: offset = step, ~1421-1425 in the lane path; the strip path ~1398-1411). So an edge
+   jumps by the cells crossed before engagement. Picture 3 is this.
+B. EDGE TARGET TOO SMALL. handleWidthF() = min(0.8 * cell, 0.5 * laneHeight) (line 411), and the START/END zones use it
+   (~973-976). An edge is grabbed only within ~0.8 cell, so most presses on an edge fall into the WINDOW body and move the
+   whole window. This is why the markers are hard to grab.
+C. ROTATION NOT IN THE WINDOW. The strip's ROTATION drag (~1437-1441) writes lor[2] = the ABSOLUTE step with no clamp.
+   The chevron (drawRotationIndicator) is placed at offset + rotation. So the chevron can leave the window (picture 4).
+   The lanes' ROTATION drag (~1493-1496) is already window-relative and clamped; match it.
 
 ## FIX
-1. ROTATION: the voice-range-strip rotation drag uses the SAME rule as the lanes: rel = ((step - offset) mod 16),
-   clamped to [0, L-1]. The chevron then sits at offset + R inside the window and cannot leave it. REMOVE the absolute
-   assignment and the "A5 not clamped" comment. Apply the same clamp on EVERY write of voice R (drag, CV, restore).
-2. EDGE DRAG: anchor the START and END drags to the grab exactly as WINDOW does. Record the grabbed edge's step at press
-   (grabStep) and the offset/length at press (grabOff, grabLen). On move: deltaSteps = step - grabStep, then compute the new
-   edge from the press values. Do NOT assign the cursor's absolute step to the offset. Verify the strip's dragPos is seeded
-   from the press position in the SAME coordinate space as getStepAtX; fix the seeding if not.
-3. HIT ZONES: make them disjoint and wider. Priority at press: edge handle (a fixed hit radius of about 0.5 cell or 8 px on
-   either side of the edge column, whichever is larger), then the rotation strip (bottom band), then the window body (the
-   rest of the top band). The edge handle zone must not be one cell wide. Draw the handles and grab zones from the same
-   constants (the existing rule).
+0. Comment: rewrite line 297 to say the display cells are STEP_COUNT (32) wide and the mask plane holds the full pattern.
+1. ENGAGEMENT / EDGE DRAGS (A). Capture at press: the edge being dragged (START or END), the other edge's step, offset and
+   length (grabOff, grabLen, grabEdge). Every edge move is computed as deltaSteps = (step under cursor) - pressCell, applied
+   to the press values. Remove the absolute assignment (offset = step). The first move after engagement must produce the
+   same edge as a move with deltaSteps = 0 at the press cell (no jump at engagement).
+2. EDGE TARGET (B). Make the START and END zones at least one cell wide on each side of the edge column (a fixed minimum,
+   e.g. max(1 cell, 8 px) each side). The WINDOW body zone takes the rest of the strip and never captures a press within one
+   cell of an edge. Draw the handles and grab zones from the same constants.
+3. ROTATION (C). The strip's ROTATION drag uses the lanes' rule: rel = (step - offset) mod 32, clamped to [0, length-1].
+   Apply the same clamp on every write of voice R (drag, CV, restore). The chevron is then always inside the window.
 
 ## GATES
-- Dragging the start edge one step at a time moves the edge one step at a time, in the direction of the drag, with no jump
-  (test with a synthetic press at the edge and a sequence of moves).
-- A voice's rotation, set by drag, CV or restore, is always in [0, L-1]; the chevron stays inside the window for every L and R.
-- The window drag, the end drag, and the lane drags behave as before.
-- The same behaviour in the East and Macro strips (one editor).
-- Engine and audio unchanged (no store or maths change). run_all green on both SDK legs.
+- Edge drag: pressing the start edge and moving one cell at a time moves the edge one cell at a time, in the drag direction,
+  with no jump at engagement (synthetic press and a sequence of moves, asserting the edge after each move).
+- Target: a press within one cell of an edge grabs that edge, not the window body; a press in the middle of the window moves
+  the window.
+- Rotation: for every offset, length and drag position, the voice's rotation is in [0, length-1] and the chevron is drawn
+  inside [offset, offset+length-1].
+- Window body drag and the lane drags behave as before.
+- East and Macro strips behave identically (one editor).
+- No change to geometry, the engine, the store, the audio or the rotation convention. run_all green on both SDK legs.
 
 ## DO NOT
-- Change the engine, the store, the rotation semantics (voice R stays window-relative), or the lanes' rotation convention.
-- Change the clamp or the anchor rule decided in the UAS spec.
-
-
-## UPDATE (verified after Rodney's report: the data is drawn across all 32 columns)
-- Geometry is consistent: stepWidthF() = gridW()/32 and getStepX / getStepAtX / hit tests all use it. Do NOT change it.
-- The rangeStrip press seeds dragPos from the press position (SandsVisualEditorV4.hpp:1255). That is correct.
-- The remaining faults:
-  A. ENGAGEMENT JUMP. The drag engages when the cursor crosses into a new cell (~1375-1384), and grabStep = pressCell is
-     the press cell, not the engagement cell. An edge drag then writes the absolute step under the cursor at engagement, so
-     the edge jumps by the cells crossed before engagement. Fix: capture the edge's own anchor at press (the edge's step,
-     the other edge, the length) and compute every edge move as deltaSteps from the press cell, with no absolute assignment.
-  B. EDGE TARGET TOO SMALL. handleWidthF() = min(0.8 cell, laneHeight*0.5) (line 411), so an edge is grabbed within about
-     0.8 of one cell; most presses on an edge fall into the WINDOW body and move the whole window instead. Fix: a fixed edge
-     hit zone of at least 1 cell on each side of the edge column, with the body zone taking the remainder, and the body
-     zone never capturing a press within 1 cell of an edge.
-  C. ROTATION ABSOLUTE. The rangeStrip ROTATION sets lor[2] to an absolute step (~1437-1441) with no window clamp. Fix as
-     in the original section 1.
-- The 32-column prompt above is superseded; these three fixes are the work.
+- Change stepWidthF, getStepX, getStepAtX or the 32-column draw.
+- Change the Peak preset (line 550).
+- Change the engine, the store, the window arithmetic, or the rotation convention.
