@@ -102,3 +102,23 @@ Gates:
 - Rotation in each lane is in [0, L-1] for every L, from drag, CV and restore.
 - ≤16 patches are unchanged where their values are already below 16.
 - run_all green on both SDK legs.
+
+### G. NAMED CONSTANTS, NOT MAGIC NUMBERS (Rodney: "we should be using named constants")
+The clamp bugs in F came from literal 15, 16 and 32 in the window path. Fix F must introduce named constants and
+use them everywhere the window, offset, length or rotation is bounded.
+1. Define the bounds once, in the shared header that already owns the pattern length (PatternEngine.hpp, next to
+   kPatternLengthCap, or the window core if that is where the window lives):
+   - kLaneOffsetMax    = kPatternLengthCap - 1      (the largest step index, 31)
+   - kLaneLengthMax    = kPatternLengthCap          (the largest window length, 32)
+   - kLaneRotationMax  is NOT a constant: rotation is clamped to (the lane's length - 1) at each use.
+   Use these names at every site in F (lines 392-393, 450-451, 703-704, 965-966, 1001-1002) and in every helper.
+2. Replace every bounding literal in the window path with these names, including 15, 16, 31, 32 used as a bound,
+   and the `min(newCount, 15)` at PatternEngine.hpp:1088 once it has been checked (F3).
+3. A literal is allowed only where it is not a bound: a loop of voices (kVoiceSlots), an array index that is already
+   a named size, a bit shift, or a documented ratio (e.g. "/ 2" for a centre). Name it anyway if it is a step count.
+4. The audit is repo-wide for the window path: grep the Sands visuals, SandsVisualEditorV4, SandsRangeGestureCore,
+   MonsoonSandsManager, PatternEngine and SequencerEngine for literals 15, 16, 31 and 32 used as bounds. Each hit is
+   either converted to a named constant or recorded as allowed (with the reason) in the PR description.
+5. Comments that quote a number (e.g. "% 16", "the visible 16") are rewritten to name the constant, so the comment cannot
+   go stale again.
+Gate: no bounding literal remains in the window path; the audit table is in the PR; behaviour unchanged for values below 16.
