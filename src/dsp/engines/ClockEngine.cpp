@@ -19,13 +19,15 @@ void ClockEngine::reset() {
 // Gate lengths downstream are counted in grid pulses, so triplets and 1/32 are
 // ordinary integer pulse counts — no seconds timer, no special case.
 //
-// External clock: ASSUMED to arrive at the standard 24 PPQN — one incoming pulse
-// = one 24-grid pulse. At ppqn 48 each incoming pulse is MULTIPLIED ×2 (ppqn/24)
-// into grid pulses (CC_PROMPT_PPQN_48 stage 3): a standard 24 PPQN external clock
-// at ppqn 48 drives the same STEP rate it would at 24 (the multiplier restores
-// the tempo the old assume-matching contract lost — the PPQN_48_96_NOT_SAFE
-// double-speed bug), on the finer grid. A rate mismatch still just scales tempo;
-// that's the user's contract. We still derive bpm by measuring the 1/16 interval
+// External clock: ASSUMED to arrive at the standard 24 PPQN, so one incoming pulse
+// = one 24-grid pulse. At ppqn 48 each incoming pulse is MULTIPLIED by 2 (ppqn/24)
+// into grid pulses (CC_PROMPT_PPQN_48 stage 3). The MUSICAL 1/16 rate is preserved:
+// a sixteenth still spans the same time as at 24, so sixteenthEdge fires at the same
+// rate. The STEP rate DOUBLES: a step is PULSES_PER_STEP (6) grid pulses, which is a
+// 1/32 at 48, so steps fire twice per sixteenth. That is intended (32 steps = one bar
+// at 1/32, at the same tempo). The multiplier fixes the double-speed bug of the old
+// assume-matching contract (PPQN_48_96_NOT_SAFE). A rate mismatch still just scales
+// tempo; that's the user's contract. We still derive bpm by measuring the 1/16 interval
 // for display + internal-fallback continuity.
 void ClockEngine::process(float clockVoltage, bool clkConnected, float internalBpm, int ppqn, float sampleTime) {
     pulseEdge     = false;
