@@ -54,7 +54,6 @@ back into our modules, so no voice index is written.
 
 ## OPEN (confirm before the stage that needs it)
 - Pitch reference: is 0 V = C4 in the standard, and does our voltage match? (Stage 1, check the example: 0.1666 = 2 semitones.)
-- Swing: confirm how the engine represents swing (pulse offset per step) so the snapshot records the real pulse.
 - Intertropical output-to-pitch mapping and gate mapping onto the grid (Stage 4).
 - The clipboard API: which Rack call writes the clipboard string (Stage 1).
 
@@ -75,8 +74,8 @@ Build on this branch.
 ## GATES
 - Snapshot: a phrase boundary captures exactly one phrase; playback is bit-identical with or without the snapshot.
 - Serialiser, straight: a 16-step phrase at 24 PPQN with no swing gives starts 0, 0.25, ... 3.75 beats, length 4.0.
-- Serialiser, swing: with a swing offset on the odd steps, the odd starts move by the swing amount in pulses, and the
-  beat values equal (pulse / 24).
+- Serialiser, swing: swing is uneven pulse spacing at the input. Feed a clock with uneven pulse intervals; each step's
+  recorded firing pulse follows it, and the beat values equal (pulse / PPQN). No swing parameter exists or is needed.
 - Serialiser, tempo: the same phrase at a different BPM gives identical beat values (tempo-independent).
 - Serialiser, 48 PPQN: the same phrase gives the same beats as at 24 (the pulse count doubles, PPQN doubles).
 - Chord: two voices with the same step produce two notes with the same start.
