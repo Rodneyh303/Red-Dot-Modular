@@ -34,9 +34,12 @@ back into our modules, so no voice index is written.
 - SNAPSHOT BY STEP INDEX. The phase snapshot is one slot per step. Each visit writes that step's content into its slot,
   so a repeat visit overwrites rather than appends. A path such as steps 1-5, back to 2, then forward exports steps 1-5
   once each. Timing never comes from visit order or count.
-- NO PHRASE BOUNDARY IN PHASE. There is no completed-phrase event in phase mode, so "the previous phrase" means the
-  most recent content of each step as last visited. The copy reads the slots as they stand at the moment of copy.
-- A step never visited yet has no content and is exported as a rest (or omitted, to be decided at Stage 2).
+- PHRASE BOUNDARY IN PHASE = THE WRAP. Phase mode wraps at the phrase boundary, and a phrase completes when it wraps.
+  At each wrap, the step slots are copied into the PREVIOUS-PHRASE snapshot and the slots are cleared for the new
+  phrase. "Copy the previous phrase" reads that snapshot, the same as clock mode.
+- OPEN: does a BACKWARD crossing of the boundary complete a phrase? Recommended: yes, any crossing completes a phrase,
+  since the wrap event is direction-agnostic and the snapshot is what the user last heard as a whole phrase. Confirm.
+- A step never visited in a phrase has no content in that phrase and is exported as a rest (or omitted, to be decided at Stage 2).
 - The menu item in phase mode should say so, e.g. "Portable sequence: copy content (phase moves are not exported)".
 - Clock mode: CONFIRMED forward only. Clock mode exports a true sequence (timed by pulses, see TIMING). The content-only
   rule applies to phase mode alone.
