@@ -26,6 +26,7 @@
 // DO-NOT list — stepWidthF/getStepX/getStepAtX/the 32-column draw/the Peak preset
 // are untouched).
 #include <algorithm>
+#include <array>
 
 namespace redDot {
 struct SandsRangeGestureCore {
@@ -60,7 +61,9 @@ struct SandsRangeGestureCore {
 
     // ── (B) the edge zones: >= max(1 cell, 8 px) EACH side of the edge boundary ───
     static float edgeZoneW(float stepW) { return std::max(stepW, 8.f); }
-    enum Zone { Z_NONE = 0, Z_START, Z_END, Z_WINDOW };
+    // Z_ROTATION: the bottom band's zone — classifyBand never returns it (it
+    // classifies the top band); the DRAG REDUCER's zone domain includes it.
+    enum Zone { Z_NONE = 0, Z_START, Z_END, Z_WINDOW, Z_ROTATION };
     // The window's BODY extent (px): between the bounds (contiguous) or the two outer
     // arcs (a window wrapped past the grid's right edge). gridL/gridR = the step
     // grid's x extents. Mirrors the old inWindowX cell extents exactly.
@@ -81,6 +84,91 @@ struct SandsRangeGestureCore {
         if (sHit) return Z_START;
         if (eHit) return Z_END;
         return inBody(x, startBoundX, endBoundX, gridL, gridR) ? Z_WINDOW : Z_NONE;
+    }
+
+    // ── THE DRAG REDUCER (LOR_EDITING_BUG_LIST.md §PLAN 1 — the ROOT ISSUE) ──────
+    // The press/move/release SEQUENCING extracted from the widget's GLFW handlers so
+    // the LOR drag law is testable headless (the doc: "It can only be exercised in
+    // Rack, which is why each fix has been checked by eye"). The widget ONLY
+    // translates GLFW events into these calls — press(step, zone) at the ENGAGED
+    // press (the strip arms first and engages on the first cell crossing; a lane
+    // engages at the GLFW press), move(step) per crossed cell, release() — and
+    // copies the window back out. Every law the reducer applies is one of the pure
+    // functions above (A: the press-anchored edge deltas; C: the rotation clamp;
+    // the slide law). The paint/arm machinery (pressArmed/paintPress/mask) is NOT
+    // LOR state — it stays widget-side.
+    struct LorDragState {
+        enum Owner { O_NONE = 0, O_STRIP, O_LANE };
+        Owner  owner     = O_NONE;
+        Zone   zone      = Z_NONE;
+        int    laneIdx   = 0;              // the LANE owner's lane (else unused)
+        int    pressStep = 0;              // the engaged press cell (the deltas' origin)
+        int    grabOff   = 0;              // the window's offset at press
+        int    grabLen   = 1;              // the window's length at press
+        std::array<int, 3> window = {1, 0, 0};   // the CURRENT LOR {len, off, rot} (P-B)
+        std::array<int, 3> before = {1, 0, 0};   // the LOR at press (the commit report)
+        bool   active    = false;          // a drag is engaged
+        bool   changed() const {
+            return window[0] != before[0] || window[1] != before[1] || window[2] != before[2];
+        }
+    };
+    struct LorDragEvent {
+        enum Type { PRESS, MOVE, RELEASE };
+        Type  type    = RELEASE;
+        Zone  zone    = Z_NONE;            // PRESS only: the press classification
+        LorDragState::Owner owner = LorDragState::O_NONE;   // PRESS only: which surface owns the drag
+        int   laneIdx = 0;                 // PRESS only: the LANE owner's lane
+        int   step    = 0;                 // PRESS/MOVE: the cell under the cursor
+        std::array<int, 3> win = {1, 0, 0};      // PRESS only: the window the press grabbed (P-B)
+    };
+    // Pure: (state, event, ring) -> state. MOVE on an inactive drag and PRESS with
+    // Z_NONE are no-ops (the translation layer only arms what it classified).
+    // RELEASE clears the engagement but KEEPS window/before — the host reads the
+    // before/after pair for its commit callback after the reduce.
+    static LorDragState lorDragReduce(LorDragState s, const LorDragEvent& e, int ring) {
+        switch (e.type) {
+        case LorDragEvent::PRESS:
+            if (e.zone == Z_NONE) { s.active = false; s.owner = LorDragState::O_NONE; s.zone = Z_NONE; return s; }
+            s.owner = e.owner; s.zone = e.zone; s.laneIdx = e.laneIdx;
+            s.pressStep = e.step;
+            s.grabOff = e.win[1];
+            s.grabLen = std::max(1, e.win[0]);
+            for (int i = 0; i < 3; ++i) { s.window[i] = e.win[i]; s.before[i] = e.win[i]; }
+            s.active = true;
+            return s;
+        case LorDragEvent::MOVE:
+            if (!s.active) return s;
+            switch (s.zone) {
+            case Z_WINDOW:
+                // the unchanged slide law: the window follows the cells crossed
+                // since the press; length and rotation preserved.
+                s.window[1] = windowOff(e.step - s.pressStep, s.grabOff, ring);
+                break;
+            case Z_START:
+                // (A) the front edge moves by the press-anchored delta; the END
+                // edge stays at its press position; (C) R clamps into the resize.
+                s.window[1] = startOff(e.step - s.pressStep, s.grabOff, ring);
+                s.window[0] = startLen(e.step - s.pressStep, s.grabOff, s.grabLen, ring);
+                s.window[2] = clampRot(s.window[2], s.window[0]);
+                break;
+            case Z_END:
+                // (A) the back edge moves by the press-anchored delta; the START
+                // stays at grabOff; (C) R clamps into the resize.
+                s.window[0] = endLen(e.step - s.pressStep, s.grabOff, s.grabLen, ring);
+                s.window[2] = clampRot(s.window[2], s.window[0]);
+                break;
+            case Z_ROTATION:
+                // (C) the lanes' rule: window-relative, clamped in-window.
+                s.window[2] = rotationAt(e.step, s.window[1], s.window[0], ring);
+                break;
+            default: break;
+            }
+            return s;
+        case LorDragEvent::RELEASE:
+            s.active = false; s.owner = LorDragState::O_NONE; s.zone = Z_NONE;
+            return s;
+        }
+        return s;
     }
 };
 } // namespace redDot
