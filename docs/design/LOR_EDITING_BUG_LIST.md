@@ -42,3 +42,21 @@ each with its test failing first. This is the only way to be sure the bugs are g
 ## DO NOT
 - Change the engine arithmetic, the store, or the 32-column geometry.
 - Change the audio path.
+
+## NEW BUGS (Rodney's Rack report, after the lane-editing fix)
+| # | Bug | Symptom | Likely cause (located) | Status |
+|---|---|---|---|---|
+| 9 | Range dragged past step 1 or 32 cannot be picked up after release | The window is stuck; it can't be grabbed to move again | A wrapped window (start after end) is not handled by the body hit test (SandsRangeGestureCore inBody / classifyBand with startBoundX > endBoundX). Wrap at the release point is not normalised. | OPEN (located, not reproduced in code) |
+| 10 | Body hit area is the interior bars only | A window of length 1 has no body to grab; accent (length 1) cannot be moved | edgeZoneW (START and END zones, one cell each side) takes the whole cell for length 1; inBody returns false. | OPEN (located) |
+| 11 | Voice lane has no faint range highlight | The voice strip does not show the window the probability lanes show | drawRangeStrip (SandsVisualEditorV4.hpp:619) draws no body fill for the window; the lanes draw ribbons and a body fill. | OPEN (located) |
+| 12 | Rotation chevrons wider than the probability bars at 32 steps | Chevrons do not match the 32-column grid | drawRotationIndicator (line 1027) uses a fixed chevron size, not stepWidthF(). | OPEN (located) |
+
+Which lanes can be selected: the voice lane, rest, variation and legato work; melody, octave and qmix fail after they wrap
+(bug 9); accent fails because it is length 1 (bug 10).
+
+## TESTS TO ADD (test/test_LorDrag.cpp, headless, with the reducer)
+- Drag the window past step 32 and release; then press in the body and move: the window moves (bug 9).
+- Length 1 window: press on the bar, move one step: the window moves by one step (bug 10).
+- Length 1 window: press on the edge, move: the edge moves, not the body (bug 10).
+- Voice-lane band draws the same window highlight as a lane, for the same offset and length (bug 11, a render-state test).
+- Rotation chevron x-extent equals one step width at 32 steps (bug 12, a geometry test).
