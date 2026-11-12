@@ -422,7 +422,7 @@ int main() {
         ok = ok && got;
         ok = ok && ed.find("SandsRangeGestureCore::windowContains") != std::string::npos;
         ok = ok && lane.find("SandsRangeGestureCore::windowContains") != std::string::npos;
-        ok = ok && ed.find("nvgRGBAf(1.f, 1.f, 1.f, 0.05f)") != std::string::npos;   // the lane-style tint on the strip
+        ok = ok && ed.find("kStripTintA") != std::string::npos;   // the strip's window tint (the contrast-checked constant)
         check(ok, "9 (bug 11): the strip's window tint draws from the ONE contains "
                   "law (the same set as the lanes, always, layered under the mask)");
     }
@@ -451,6 +451,124 @@ int main() {
         ok = ok && ed.find("chevronGeom") != std::string::npos;
         check(ok, "10 (bug 12): the rotation chevron's x-extent is exactly one "
                   "step width (sized to the grid, not a fixed arm)");
+    }
+
+    // ── GATE 11 (bug 13): the raw index — dragging TOWARD the grid edge works ──
+    {
+        // stepIndexAt is UNBOUNDED (floor): a cursor past the grid's left edge
+        // reads −1 (== the LAST step, one to the left on the ring), past the
+        // right edge reads ring/ring+1... The drag laws wrap mod the ring, so
+        // the RAW index gives continuous dragging across both edges — the old
+        // off-grid rejection stalled the drag ("only drags away from the edge").
+        const float w = 10.f, gridL = 0.f;
+        bool ok = Core::stepIndexAt(-0.5f * w, gridL, w) == -1;    // half a cell out
+        ok = ok && Core::stepIndexAt(-1.9f * w, gridL, w) == -2;   // nearly two cells out
+        ok = ok && Core::stepIndexAt(0.5f * w, gridL, w) == 0;     // in-grid unchanged
+        ok = ok && Core::stepIndexAt(31.5f * w, gridL, w) == 31;
+        ok = ok && Core::stepIndexAt(32.5f * w, gridL, w) == 32;   // past the right edge
+        // the doc's case: a wrapped window with ONE step on one side (31,0,1);
+        // press the edge-step body (step 0) and move TOWARD the edge (raw −1):
+        // the window moves toward the edge (the start slides 31 -> 30).
+        WidgetModel m;
+        m.lanes[1][0] = 3; m.lanes[1][1] = 31; m.lanes[1][2] = 0;
+        m.dispatch(evPress(Core::Z_WINDOW, S::O_LANE, 1, 0));
+        m.dispatch(evMove(-1));
+        ok = ok && m.lanes[1][1] == 30 && m.lanes[1][0] == 3;      // dragged BACK across the seam
+        m.dispatch(evMove(-2));
+        ok = ok && m.lanes[1][1] == 29;
+        // past the right edge: raw 32 ≡ 0 (mod the ring) — no snap, no jump.
+        WidgetModel m2;
+        m2.strip[0] = 4; m2.strip[1] = 5; m2.strip[2] = 0;
+        m2.dispatch(evPress(Core::Z_WINDOW, S::O_STRIP, 0, 6));
+        m2.dispatch(evMove(32));
+        ok = ok && m2.strip[1] == 31;                              // (5 + (32−6)) mod 32
+        m2.dispatch(evMove(33));
+        ok = ok && m2.strip[1] == 0;                               // wraps cleanly
+        check(ok, "11 (bug 13): the raw cell index — a drag toward the grid edge "
+                  "crosses the seam continuously; the wrapped one-step-side window "
+                  "drags back");
+    }
+
+    // ── GATE 12 (bug 14): the 1-wide outside bands stay inside the grid ─────────
+    {
+        // The 32-cell grid, cell w = 10 px, grid [0, 320). A 1-wide window at
+        // step 0: the START band would draw at [−10, 0) — past the grid; the
+        // clamp collapses it to nothing inside. At the last step: the END band
+        // clamps. Mid-grid: unchanged. The clamped bands are ALWAYS inside
+        // [gridL, gridR] and never negative-width.
+        const float gridL = 0.f, gridR = 320.f, edgeW = 10.f;
+        bool ok = true;
+        auto clamp = [&](float x, float w2, float& ox, float& ow2) {
+            ox = x; ow2 = w2;
+            Core::clampBand(ox, ow2, gridL, gridR);
+        };
+        auto inside = [&](float x, float w2)->bool {
+            return x >= gridL - 1e-4f && x + w2 <= gridR + 1e-4f && w2 >= 0.f;
+        };
+        // step 0's START band [−10, 0): fully outside — collapses to zero width.
+        float x, w2;
+        clamp(-edgeW, edgeW, x, w2);
+        ok = ok && inside(x, w2) && w2 == 0.f && x == gridL;
+        // step 0's END band [10, 20): inside — unchanged.
+        clamp(10.f, edgeW, x, w2);
+        ok = ok && inside(x, w2) && x == 10.f && w2 == edgeW;
+        // the last step's END band [320, 330): fully outside — collapses.
+        clamp(320.f, edgeW, x, w2);
+        ok = ok && inside(x, w2) && w2 == 0.f && x == gridR;
+        // the last step's START band [300, 310): inside — unchanged.
+        clamp(300.f, edgeW, x, w2);
+        ok = ok && inside(x, w2) && x == 300.f && w2 == edgeW;
+        // a HALF-outside band keeps its inside part: [−5, 5) -> [0, 5).
+        clamp(-5.f, edgeW, x, w2);
+        ok = ok && inside(x, w2) && x == 0.f && w2 == 5.f;
+        // every band on the ring clamps inside (the exhaustive guard).
+        for (float bx = -2.f * edgeW; bx <= gridR + 2.f * edgeW; bx += 3.f) {
+            clamp(bx, edgeW, x, w2);
+            ok = ok && inside(x, w2);
+        }
+        check(ok, "12 (bug 14): the 1-wide outside handle bands clamp into the "
+                  "grid rect (step 1 and step 32 never overdraw the panel)");
+    }
+
+    // ── GATE 13 (bug 15): the strip's window figure meets the contrast minimum ──
+    {
+        // The strip's background is the editor's recess, #101216 (display dark
+        // always — pinned to setTheme's value). The window figure (the tint
+        // layered under the lit fill) must READ: the WCAG relative-luminance
+        // ratio of the blended figure vs the background clears the pinned
+        // minimum; the tint alone (the painted-mask mode's figure) clears its
+        // own lower bar. The old values (lit 0.14 / tint 0.05) measured ~1.7:1
+        // — grey on grey, "the grab range is invisible".
+        const float bg[3] = { 0x10 / 255.f, 0x12 / 255.f, 0x16 / 255.f };
+        const float tint = Core::kStripTintA, lit = Core::kStripLitA;
+        const float eff = 1.f - (1.f - tint) * (1.f - lit);   // the stacked figure
+        float fig[3];
+        for (int c = 0; c < 3; ++c)
+            fig[c] = Core::blendChannel(bg[c], 1.f, eff);
+        const float ratioFig = Core::contrastRatio(fig[0], fig[1], fig[2], bg[0], bg[1], bg[2]);
+        float tinted[3];
+        for (int c = 0; c < 3; ++c)
+            tinted[c] = Core::blendChannel(bg[c], 1.f, tint);
+        const float ratioTint = Core::contrastRatio(tinted[0], tinted[1], tinted[2], bg[0], bg[1], bg[2]);
+        bool ok = ratioFig >= Core::kStripMinContrast;
+        ok = ok && ratioTint >= Core::kStripMinTintContrast;
+        // the regression record: the OLD figure (lit 0.14 + tint 0.05) FAILED.
+        const float oldEff = 1.f - (1.f - 0.05f) * (1.f - 0.14f);
+        float oldFig[3];
+        for (int c = 0; c < 3; ++c)
+            oldFig[c] = Core::blendChannel(bg[c], 1.f, oldEff);
+        const float oldRatio = Core::contrastRatio(oldFig[0], oldFig[1], oldFig[2], bg[0], bg[1], bg[2]);
+        ok = ok && oldRatio < Core::kStripMinContrast;   // the bug, for the record
+        // the constants are the ones the strip draws with (the delegation pin).
+        std::string ed;
+        ok = ok && slurpFile("src/ui/SandsVisualEditorV4.hpp", ed);
+        ok = ok && ed.find("kStripLitA") != std::string::npos
+                 && ed.find("kStripTintA") != std::string::npos
+                 && ed.find("kStripDimA") != std::string::npos;
+        std::printf("    [bug 15] figure %.2f:1 (min %.1f), tint %.2f:1 (min %.1f), old %.2f:1\n",
+                    ratioFig, Core::kStripMinContrast, ratioTint, Core::kStripMinTintContrast, oldRatio);
+        check(ok, "13 (bug 15): the voice strip's window figure meets the minimum "
+                  "contrast ratio against the recess (the constants are pinned)");
     }
 
     std::printf("\n%d passed, %d failed\n", g_pass, g_fail);

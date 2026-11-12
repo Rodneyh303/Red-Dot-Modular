@@ -638,8 +638,12 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
     // Silver/white — the voice FRAME is hue-neutral (a voice spans all seven lane
     // hues); luminance carries the state, exactly like the rotation chevrons.
-    const NVGcolor lit  = nvgRGBAf(1.f, 1.f, 1.f, 0.14f);
-    const NVGcolor dim  = nvgRGBAf(1.f, 1.f, 1.f, 0.045f);
+    // (bug 15, LOR_EDITING_BUG_LIST) the CONTRAST-CHECKED constants — the old
+    // 0.14/0.045 white fills over the #101216 recess measured ~1.7:1 (grey on
+    // grey, "the grab range is invisible"); these clear the pinned minimum
+    // (kStripMinContrast, the headless contrast gate).
+    const NVGcolor lit  = nvgRGBAf(1.f, 1.f, 1.f, redDot::SandsRangeGestureCore::kStripLitA);
+    const NVGcolor dim  = nvgRGBAf(1.f, 1.f, 1.f, redDot::SandsRangeGestureCore::kStripDimA);
     const NVGcolor edge = nvgRGBAf(1.f, 1.f, 1.f, rangeStrip.blocked ? 0.45f : 0.85f);
 
     for (int step = 0; step < STEP_COUNT; ++step) {
@@ -661,7 +665,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       if (rangeBarInWindow(step)) {
         nvgBeginPath(vg);
         nvgRect(vg, cell.pos.x, cell.pos.y, cell.size.x, cell.size.y);
-        nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.05f));
+        nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, redDot::SandsRangeGestureCore::kStripTintA));
         nvgFill(vg);
       }
       // window edge markers (the drawStep idiom, on the strip's own row). (B) The
@@ -677,15 +681,26 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       // stay ON the cell's own edges either way (the drawStep idiom: both edges
       // show on the same cell unambiguously).
       const bool oneWide = (s == e);
+      // (bug 14) the 1-wide window's OUTSIDE ribbons are CLAMPED into the grid
+      // rect: at step 0 / the last step they never overdraw the panel past the
+      // grid (a fully outside band collapses to zero width).
+      const float gridL = layout.padding;
+      const float gridR = layout.padding + layout.gridW();
+      float sBandX = oneWide ? cell.pos.x - edgeW : cell.pos.x;
+      float sBandW = edgeW;
+      if (oneWide) redDot::SandsRangeGestureCore::clampBand(sBandX, sBandW, gridL, gridR);
+      float eBandX = oneWide ? cell.pos.x + cell.size.x : cell.pos.x + cell.size.x - edgeW;
+      float eBandW = edgeW;
+      if (oneWide) redDot::SandsRangeGestureCore::clampBand(eBandX, eBandW, gridL, gridR);
       if (step == s) {
-        nvgBeginPath(vg); nvgRect(vg, oneWide ? cell.pos.x - edgeW : cell.pos.x, cell.pos.y, edgeW, cell.size.y);
+        nvgBeginPath(vg); nvgRect(vg, sBandX, cell.pos.y, sBandW, cell.size.y);
         NVGcolor ribbon = edge; ribbon.a *= 0.28f;
         nvgFillColor(vg, ribbon); nvgFill(vg);
         nvgBeginPath(vg); nvgRect(vg, cell.pos.x, cell.pos.y, 2.5f, cell.size.y);
         nvgFillColor(vg, edge); nvgFill(vg);
       }
       if (step == e) {
-        nvgBeginPath(vg); nvgRect(vg, oneWide ? cell.pos.x + cell.size.x : cell.pos.x + cell.size.x - edgeW, cell.pos.y, edgeW, cell.size.y);
+        nvgBeginPath(vg); nvgRect(vg, eBandX, cell.pos.y, eBandW, cell.size.y);
         NVGcolor ribbon = edge; ribbon.a *= 0.28f;
         nvgFillColor(vg, ribbon); nvgFill(vg);
         nvgBeginPath(vg); nvgRect(vg, cell.pos.x + cell.size.x - 2.5f, cell.pos.y, 2.5f, cell.size.y);
@@ -1042,8 +1057,16 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (oneWide) {
       // (bug 10, Rodney's ruling) a 1-wide window's cell IS the body (MOVE); the
       // edge ribbons are the OUTSIDE bands — matching the hit zones exactly.
-      fillRect(cs.pos.x - edgeW, edgeW, edge);        // START = the left outside band
-      fillRect(cs.pos.x + cs.size.x, edgeW, edge);    // END   = the right outside band
+      // (bug 14) the bands are CLAMPED into the grid rect: at the grid's edges
+      // they never overdraw the panel (a fully outside band collapses).
+      const float gridL = layout.padding;
+      const float gridR = layout.padding + layout.gridW();
+      float sx = cs.pos.x - edgeW, sw = edgeW;
+      redDot::SandsRangeGestureCore::clampBand(sx, sw, gridL, gridR);
+      float ex = cs.pos.x + cs.size.x, ew2 = edgeW;
+      redDot::SandsRangeGestureCore::clampBand(ex, ew2, gridL, gridR);
+      fillRect(sx, sw, edge);                        // START = the left outside band
+      fillRect(ex, ew2, edge);                       // END   = the right outside band
     } else {
       fillRect(cs.pos.x, edgeW, edge);                            // START ribbon
       fillRect(ce.pos.x + ce.size.x - edgeW, edgeW, edge);        // END ribbon
@@ -1363,8 +1386,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // (a sloppy click stays a click); a press outside the step cells never engages.
     if (rangeStrip.pressArmed) {
       rangeStrip.dragPos = rangeStrip.dragPos.plus(e.mouseDelta);
-      const int step = getStepAtX(rangeStrip.dragPos.x);
-      if (rangeStrip.pressCell < 0 || step < 0 || step >= STEP_COUNT || step == rangeStrip.pressCell)
+      // (bug 13) the RAW cell index: a crossing OFF the grid (past either edge)
+      // engages too — dragging toward the edge is a real crossing on the ring
+      // (cell −1 IS the last step, one to the left). The pre-fix in-grid test
+      // left the press pending forever when the cursor ran off the grid, so a
+      // wrapped range with one step left on one side could not be dragged back.
+      const int step = rawStepIndexAt(rangeStrip.dragPos.x);
+      if (rangeStrip.pressCell < 0 || step == rangeStrip.pressCell)
         return;   // still pending
       rangeStrip.pressArmed = false;
       if (rangeStrip.pressZone != DragState::NONE) {
@@ -1405,8 +1433,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // ── Stage 3: the voice-range strip drag (the lane gestures, one level up) ──
     if (stripDragLive()) {
       rangeStrip.dragPos = rangeStrip.dragPos.plus(e.mouseDelta);
-      int step = getStepAtX(rangeStrip.dragPos.x);
-      if (step < 0 || step >= STEP_COUNT) return;
+      // (bug 13) the RAW index — the drag stays LIVE past both grid edges (the
+      // laws wrap mod the ring); the old off-grid rejection stalled the drag.
+      const int step = rawStepIndexAt(rangeStrip.dragPos.x);
       // (§PLAN 1) the translation: MOVE through the reducer, then copy the window
       // back — the reducer applies the A/C laws (the press-anchored edge deltas,
       // the slide law, the rotation clamp; the laws live in the core, pinned by
@@ -1426,8 +1455,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // Rack 2: DragMove gives delta, not absolute pos. Accumulate.
     dragState.dragPos = dragState.dragPos.plus(e.mouseDelta);
     const int lane = lorDrag.laneIdx;
-    int step = getStepAtX(dragState.dragPos.x);
-    if (step < 0 || step >= STEP_COUNT) return;
+    // (bug 13) the RAW index — dragging toward the grid's edge keeps working
+    // (the laws wrap); the old off-grid rejection stalled the edge-ward drag.
+    const int step = rawStepIndexAt(dragState.dragPos.x);
     if (lane < 0 || lane >= laneCount) return;
 
     // (§PLAN 1) the translation: MOVE through the reducer, then copy the window
@@ -1479,6 +1509,16 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (x < layout.padding) return -1;
     int step = (int)((x - layout.padding) / layout.stepWidthF());
     return (step >= 0 && step < STEP_COUNT) ? step : -1;
+  }
+  // (bug 13, LOR_EDITING_BUG_LIST) the RAW cell index under the cursor —
+  // UNBOUNDED (floor): a drag that runs past the grid's edge keeps counting
+  // cells (−1 = one left of step 0 == the LAST step on the ring). The drag laws
+  // wrap mod STEP_COUNT internally, so the raw index gives CONTINUOUS dragging
+  // across both edges; the pre-fix off-grid rejection stalled the drag toward
+  // the edge ("only drags away from the edge"). Presses/paint keep getStepAtX
+  // (a press must be ON a real cell; paint toggles real cells only).
+  int rawStepIndexAt(float x) const {
+    return redDot::SandsRangeGestureCore::stepIndexAt(x, layout.padding, layout.stepWidthF());
   }
   
   void step() override {

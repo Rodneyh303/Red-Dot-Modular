@@ -27,6 +27,7 @@
 // are untouched).
 #include <algorithm>
 #include <array>
+#include <cmath>
 
 namespace redDot {
 struct SandsRangeGestureCore {
@@ -144,6 +145,56 @@ struct SandsRangeGestureCore {
         const float arm = stepW * 0.20f;
         const float halfW = stepW * 0.5f - arm;
         return ChevronGeom{ halfW, arm };
+    }
+
+    // ── (bug 13, LOR_EDITING_BUG_LIST) THE RAW CELL INDEX ───────────────────────
+    // The drag's cell extraction, UNBOUNDED: a cursor past the grid's edge keeps
+    // counting cells (−1, −2 … left of step 0; ring, ring+1 … right of the last
+    // step). Every drag law wraps mod the ring internally, so feeding the RAW
+    // index gives CONTINUOUS dragging across both edges — the pre-fix extraction
+    // returned −1 off-grid and the drag STALLED ("grabbing from the step at the
+    // edge only drags away from the edge": a wrapped range with one step left on
+    // one side could not be dragged back). Presses/paint still use the bounded
+    // in-grid cell (a press must be ON a real cell).
+    static int stepIndexAt(float x, float gridL, float stepW) {
+        return (int)std::floor((x - gridL) / stepW);
+    }
+
+    // ── (bug 14, LOR_EDITING_BUG_LIST) THE GRID-CLAMPED BAND ────────────────────
+    // An edge/handle band clamped INTO the grid rect: a 1-wide window's OUTSIDE
+    // bands (and any edge ribbon) never overdraw the panel past the grid — the
+    // band that would draw past the edge is clipped to the grid (a fully outside
+    // band collapses to zero width).
+    static void clampBand(float& x, float& w, float gridL, float gridR) {
+        const float x2 = std::clamp(x + w, gridL, gridR);
+        x = std::clamp(x, gridL, gridR);
+        w = x2 - x;
+    }
+
+    // ── (bug 15, LOR_EDITING_BUG_LIST) THE STRIP'S CONTRAST-CHECKED FIGURE ──────
+    // The voice strip's window fills, raised until the figure READS: the old
+    // values (lit 0.14 / tint 0.05 white over the #101216 recess ≈ 1.7:1) were
+    // grey on grey ("the grab range is invisible"). The constants clear the
+    // pinned minimum (kStripMinContrast) against the strip's background —
+    // computed with the WCAG relative-luminance ratio below. Hue-NEUTRAL by
+    // design (the voice frame spans all lane hues; the lanes keep their own
+    // 0.05 tint — their windows read via the coloured bars and the dimming).
+    static constexpr float kStripTintA = 0.14f;   // the window tint (the mask-mode figure)
+    static constexpr float kStripLitA  = 0.24f;   // the in-window presence fill
+    static constexpr float kStripDimA  = 0.045f;  // the out-of-window recess
+    static constexpr float kStripMinContrast      = 2.5f;   // the window figure vs the background
+    static constexpr float kStripMinTintContrast  = 1.4f;   // the tint alone (over a muted mask cell)
+    // the sRGB relative luminance + the WCAG contrast ratio, and the alpha blend
+    static float srgbLuminance(float r, float g, float b) {
+        auto lin = [](float c) { return (c <= 0.04045f) ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f); };
+        return 0.2126f * lin(r) + 0.7152f * lin(g) + 0.0722f * lin(b);
+    }
+    static float contrastRatio(float r1, float g1, float b1, float r2, float g2, float b2) {
+        const float L1 = srgbLuminance(r1, g1, b1), L2 = srgbLuminance(r2, g2, b2);
+        return (std::max(L1, L2) + 0.05f) / (std::min(L1, L2) + 0.05f);
+    }
+    static float blendChannel(float under, float over, float alpha) {
+        return under + alpha * (over - under);
     }
 
     // ── THE DRAG REDUCER (LOR_EDITING_BUG_LIST.md §PLAN 1 — the ROOT ISSUE) ──────
