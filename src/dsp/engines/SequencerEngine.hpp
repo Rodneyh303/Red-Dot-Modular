@@ -567,7 +567,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     bool ghostActive = false;
     std::array<bool, kVoiceSlots> wasHeldPolyPrev = {}; // Capture poly state before tick()
 
-    // ── Mono (V1) strand windowing: Length (1..16), Offset (0..15), Rotation ──
+    // ── Mono (V1) strand windowing: Length (1..kLaneLengthMax), Offset (0..kLaneOffsetMax), Rotation (0..L-1) ──
     // Step 1 of the probability-modifier unification (docs/design/PROBABILITY_MODIFIER_MODEL.md):
     // the 18 named fields (rhythmLen…octaveRot) + their 6 hand-written switch(strand) accessors are
     // now ONE array indexed by strand (== editor lane, already the identity) × item {LEN,OFF,ROT}.
@@ -848,8 +848,9 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // EditorState rows (editor.voiceLorMacro / voiceLorEast[16x3] / ·Dir / ·LocalEast)
     // are the single authoring authority; ONE push per control block copies them in as
     // the int rows the map walks (the same discipline as the lane LOR push). Pure and
-    // rack-free (plain floats) so the unit tests author it directly. Clamps: L 1..16,
-    // O/R 0..15, dir 0..3 (the LaneDir order), localEast != 0 -> the voice's own East
+    // rack-free (plain floats) so the unit tests author it directly. Clamps: L 1..kLaneLengthMax,
+    // O 0..kLaneOffsetMax, R 0..L-1 (the LEN clamped just above), dir 0..3 (the LaneDir
+    // order), localEast != 0 -> the voice's own East
     // row. Identity floats (16/0/0, dir 0, follow) land byte-identically on the store —
     // the pass-through branch reads the same values the Stage-1 goldens pinned, so the
     // push is byte-neutral at defaults.
@@ -1041,8 +1042,10 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
 
     // The ONLY sanctioned way to write a mono strand's LOR. Records the writer role,
     // asserts single-writer-per-block in debug, then assigns via the ref accessors.
-    // (len clamped 1..kPatternLengthCap — STEPS_32 Stage 1: was literal 16, the storage-bound
-    // cap; off/rot wrapped 0..15 — same normalisation the call sites did, class-B frame domain.)
+    // (len clamped 1..kLaneLengthMax — STEPS_32 Stage 1: was literal 16, the storage-bound
+    // cap; off/rot wrapped to the RING (kMaskRing) — the widest lane domain, the same
+    // normalisation the manager base wraps use; the call sites clamp R to its lane's
+    // length-1 before it arrives, so the store never holds an out-of-window R.)
     void setStrand(StrandWriter role, int strand, int len, int off, int rot) {
 #ifndef NDEBUG
         if (strand >= 0 && strand < dotModular::NUM_STRANDS) {

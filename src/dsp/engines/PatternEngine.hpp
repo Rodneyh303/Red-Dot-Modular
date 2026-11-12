@@ -64,6 +64,15 @@ namespace dotModular {
 static constexpr int kMaxPatternSteps  = 32;   // the ceiling: pattern/phrase length accepts 1..32
 static constexpr int kStepStorage      = 32;   // the per-step array row width (Stage 2a; uint64 masks reserve 64)
 static constexpr int kPatternLengthCap = kMaxPatternSteps;   // STAGE 2b: FLIPPED to the ceiling (the ring + the usable bound)
+// ── ADDITION G (CC_FIX_VOICE_RANGE_STRIP_INTERACTION §F+G): the LANE-WINDOW bound
+// names — the semantic spellings every lane LOR clamp/authoring site uses, so the
+// literal 15/16 bounds that caused the midpoint snap cannot regress. kLaneOffsetMax
+// is the largest step INDEX (a window may start on any ring cell); kLaneLengthMax
+// is the largest window LENGTH. ROTATION has NO constant: the lane rule clamps R to
+// (the lane's length − 1) at each authoring site, AFTER the length is known — a
+// per-L bound, never a fixed number.
+static constexpr int kLaneOffsetMax = kPatternLengthCap - 1;   // 31: the largest step index
+static constexpr int kLaneLengthMax = kPatternLengthCap;       // 32: the largest window length
 static_assert(kPatternLengthCap <= kMaxPatternSteps, "the usable length cap never exceeds the ceiling");
 static_assert(kPatternLengthCap <= kStepStorage,     "the ring never exceeds the per-step storage");
 static_assert(kStepStorage <= 64,                    "the storage fits the uint64 length-masked mask words (the DECIDED block)");
@@ -86,6 +95,8 @@ static constexpr uint64_t kMaskLenMask = (kMaskRing >= 64) ? ~0ULL : ((1ULL << k
 using dotModular::kMaxPatternSteps;
 using dotModular::kStepStorage;
 using dotModular::kPatternLengthCap;
+using dotModular::kLaneOffsetMax;
+using dotModular::kLaneLengthMax;
 using dotModular::kMaskRing;
 using dotModular::kMaskLenMask;
 
@@ -1085,7 +1096,12 @@ struct PatternEngine {
     mutable int prevNumPolyVoicesHint_ = 0;
     void fillDeltaZ_(int oldCount, int newCount) {
         if (newCount <= oldCount) return;
-        newCount = std::min(newCount, 15);
+        // F3 CHECKED (CC_FIX_VOICE_RANGE_STRIP_INTERACTION §F): this bounds the
+        // poly-VOICE rows of the z caches (zRhythm[v] & co. are [kVoiceSlots]-row
+        // arrays) — a VOICE count, NOT a lane length/offset/rotation, so it does
+        // NOT follow kPatternLengthCap. Left at the voice-slot domain; G2 names it
+        // (was the literal 15).
+        newCount = std::min(newCount, kVoiceSlots - 1);
         for (auto& kv : rhythmDrawCache_) {
             auto& e = kv.second;
             for (int v = oldCount + 1; v <= newCount; ++v)

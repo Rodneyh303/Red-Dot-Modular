@@ -1908,7 +1908,12 @@ void Monsoon::process(const ProcessArgs& args) {
         {
             auto* eVis = expanderManager.cachedEastSandsVisual;
             auto* mVis = expanderManager.cachedMacroSandsVisual;
-            static const float VL_LO[3] = {1.f, 0.f, 0.f};     // L 1..16, O/R 0..15 (the push's clamps)
+            // The fold's CALIBRATION spans — the recorded knob/CV decision (L 1..16,
+            // O/R 0..15), deliberately NOT the push's authoring clamps (L 1..kLaneLengthMax,
+            // O 0..kLaneOffsetMax, R 0..L-1; the R row is re-clamped to L-1 right below
+            // either way). Recorded in the §F audit as the one window-path literal kept
+            // BY DECISION — the VOICE-LOR CV fold, outside the doc's lane-path site list.
+            static const float VL_LO[3] = {1.f, 0.f, 0.f};
             static const float VL_HI[3] = {16.f, 15.f, 15.f};
             // CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION (Bug 2 fix 3): the CV fold is an
             // AUTHORING path — the R it writes clamps to 0..L-1 exactly like the push

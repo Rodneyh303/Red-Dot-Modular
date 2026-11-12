@@ -75,7 +75,7 @@ inline bool isConnectedAndClaimed(rack::Module* self) {
 }
 
 // ── Per-lane playhead ─────────────────────────────────────────────────────────
-// Returns the PHYSICAL bar (0..15) the sequencer actually reads after LOR, to
+// Returns the PHYSICAL bar (0..kMaskRing-1) the sequencer actually reads after LOR, to
 // match SequencerEngine::getStrandIdx exactly:
 //     timelineIdx = (globalStep + rotation) mod length
 //     physicalBar = (timelineIdx + offset) mod ring
@@ -116,11 +116,12 @@ inline int variationLanePlayheadForVoice(const SequencerEngine& eng, dotModular:
     return eng.stepAdvanceStrandIdx(bank, eng.stepAdvanceScanDelta(bank));
 }
 
-// Read an integer param (rounded) from a module, clamped to [1, 16].
+// Read an integer param (rounded) from a module, clamped to [1, kLaneLengthMax]
+// (G2: the lane-length bound by name — was the literal 16, the same D1-class miss).
 // Returns fallback if the module pointer is null.
 inline int readLenParam(rack::Module* mod, int paramId, int fallback = 16) {
     if (!mod) return fallback;
-    return std::max(1, std::min(16, (int)std::round(mod->params[paramId].getValue())));
+    return std::max(1, std::min(dotModular::kLaneLengthMax, (int)std::round(mod->params[paramId].getValue())));
 }
 inline int readOffRotParam(rack::Module* mod, int paramId, int fallback = 0) {
     if (!mod) return fallback;

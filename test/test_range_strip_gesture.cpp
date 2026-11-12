@@ -1,5 +1,7 @@
 // test_range_strip_gesture.cpp — CC_FIX_VOICE_RANGE_STRIP_INTERACTION: the
-// voice-range strip's THREE interaction faults, fixed and pinned.
+// voice-range strip's THREE interaction faults, fixed and pinned — plus the
+// ADDITIONS: D the preset bank deleted, E the strip/lane drag owners separated,
+// F the engine-path lane clamps (the midpoint snap) and G the named constants.
 //
 // THE TESTABLE SURFACE: the strip's gesture math lives in SandsRangeGestureCore
 // (rack-free — the SandsLaneWindowCore precedent; the widget header cannot compile
@@ -18,6 +20,10 @@
 //      the chevron bar (off + rot) mod 32 lands INSIDE the window.
 //   + the WINDOW slide law unchanged (the "behave as before" gate), and the strip's
 //     rotation rule IS the lanes' rule (one core function, both consumers).
+//   F/G. the lane-window BOUNDS are named constants at the cap (kLaneOffsetMax 31 /
+//       kLaneLengthMax 32, defined beside kPatternLengthCap), and NO bounding literal
+//       (the 0..15/1..16 float pairs, the % 16 wraps) remains in the two managers'
+//       live lane-window code — the class that caused the midpoint snap.
 //
 // East and Macro share ONE editor (SandsVisualEditorV4) — one code path, no
 // per-host divergence to pin. No engine, store, geometry or rotation-convention
@@ -30,12 +36,61 @@
 #include <string>
 
 #include "ui/SandsRangeGestureCore.hpp"
+#include "dsp/engines/PatternEngine.hpp"   // the lane-window constants (§G) — <rack.hpp> resolves to test/rack.hpp
 
 using redDot::SandsRangeGestureCore;
+
+// §G: the named bounds ARE the cap-derived lane domains (compile-time — a drifted
+// definition fails the build, not just the runtime gate below).
+static_assert(dotModular::kLaneOffsetMax == dotModular::kPatternLengthCap - 1,
+              "kLaneOffsetMax is the largest step INDEX (the cap minus one)");
+static_assert(dotModular::kLaneLengthMax == dotModular::kPatternLengthCap,
+              "kLaneLengthMax is the largest window LENGTH (the cap)");
+
 static int g_pass = 0, g_fail = 0;
 static void check(bool ok, const char* what) {
     if (ok) { ++g_pass; }
     else    { ++g_fail; std::printf("  FAIL: %s\n", what); }
+}
+
+// slurp a text file (the D/G gates read the live sources; run_all runs from repo root)
+static bool slurpFile(const char* path, std::string& out) {
+    FILE* f = std::fopen(path, "rb");
+    if (!f) return false;
+    char buf[4096];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) out.append(buf, n);
+    std::fclose(f);
+    return true;
+}
+
+// strip // and /* */ comments (string literals kept intact) — the §G audit checks
+// LIVE code only; the recorded-allowed hits (default-value 16s, the retired debug
+// blocks) live in comments, and the doc's gate is "no bounding literal in the
+// window path", not "no number anywhere".
+static std::string stripComments(const std::string& src) {
+    std::string out;
+    out.reserve(src.size());
+    bool inLine = false, inBlock = false, inStr = false;
+    for (size_t i = 0; i < src.size(); ++i) {
+        const char c = src[i];
+        const char n = (i + 1 < src.size()) ? src[i + 1] : '\0';
+        if (inLine) {
+            if (c == '\n') { inLine = false; out += c; }
+        } else if (inBlock) {
+            if (c == '*' && n == '/') { inBlock = false; ++i; out += ' '; }
+        } else if (inStr) {
+            out += c;
+            if (c == '\\' && n) { out += n; ++i; }   // keep escaped chars verbatim
+            else if (c == '"') inStr = false;
+        } else {
+            if (c == '/' && n == '/')      { inLine = true;  ++i; }
+            else if (c == '/' && n == '*') { inBlock = true; ++i; }
+            else if (c == '"')             { inStr = true;  out += c; }
+            else out += c;
+        }
+    }
+    return out;
 }
 
 int main() {
@@ -207,6 +262,44 @@ int main() {
                 ok = ok && SandsRangeGestureCore::windowOff(delta, off, RING)
                             == ((off + delta) % RING + RING) % RING;   // the old inline expression
         check(ok, "the WINDOW slide law is the old expression verbatim (behave as before)");
+    }
+
+    // ── GATE F/G: the lane-window constants — the named bounds exist, derive from
+    // the cap, and mean what §G says: OFFSET is the largest step INDEX, LENGTH the
+    // largest window; ROTATION deliberately has NO constant (per-L, clamped to the
+    // lane's length−1 at each site — the law gates A/C above pin at the gesture
+    // level). The gesture core's ring IS the lane length max (one domain). ──────
+    {
+        bool ok = true;
+        ok = ok && dotModular::kLaneLengthMax  == dotModular::kPatternLengthCap;
+        ok = ok && dotModular::kLaneOffsetMax  == dotModular::kPatternLengthCap - 1;
+        ok = ok && dotModular::kLaneLengthMax  == 32;
+        ok = ok && dotModular::kLaneOffsetMax  == 31;
+        ok = ok && dotModular::kLaneOffsetMax  <  dotModular::kLaneLengthMax;   // an offset can address the last cell
+        ok = ok && RING == dotModular::kLaneLengthMax;   // the editor/gesture ring == the lane length max
+        check(ok, "F/G: kLaneOffsetMax/kLaneLengthMax defined beside kPatternLengthCap at 31/32");
+    }
+
+    // ── GATE G (§F+G): no bounding literal remains in the lane-window path — the
+    // two managers' LIVE code (comments stripped). The pinned forms are exactly the
+    // F bug class: the 0..15/1..16 float bound pairs (applyMonoCV/applyMacroCV/
+    // addCV/eastDelta/endpointDeltas/combineLOR/eastLorVal lo-hi args) and the
+    // % 16 wraps. The recorded-allowed literals (the default-value 16s, the
+    // voice-count clamps, the retired debug blocks) are either comments or the
+    // voice domain — none is a window bound. ────────────────────────────────────
+    {
+        const char* files[] = { "src/dsp/managers/MonsoonSandsManager.cpp",
+                                "src/dsp/managers/MonsoonExpanderManager.cpp" };
+        const char* bounds[] = { "0.f, 15.f", "1.f, 16.f", "% 16", "%16", "% 15", "%15" };
+        bool ok = true;
+        for (const char* file : files) {
+            std::string src;
+            ok = ok && slurpFile(file, src);
+            const std::string code = stripComments(src);
+            for (const char* b : bounds)
+                ok = ok && code.find(b) == std::string::npos;
+        }
+        check(ok, "G: no bounding literal in the managers' lane-window path (the named constants own the bounds)");
     }
 
     std::printf("\n%d passed, %d failed\n", g_pass, g_fail);

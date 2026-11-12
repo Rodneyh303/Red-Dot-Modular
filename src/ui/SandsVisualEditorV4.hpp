@@ -1045,7 +1045,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
 
     // Rotation marker sits WITHIN the start-end window: physical bar =
-    // (dispOffset + dispRotation) % 16. Uses DISPLAY values so the chevron moves
+    // (dispOffset + dispRotation) % STEP_COUNT. Uses DISPLAY values so the chevron moves
     // with the modulated window.
     int rotBar = (L.dispOffset + (L.dispRotation % std::max(1, L.dispLength))) % STEP_COUNT;
     rack::Rect cell = layout.getStepRect(lane, rotBar);
@@ -1386,7 +1386,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         }
         case DragState::ROTATION: {
           // (C) THE LANES' RULE, matched: rel = (the cell under the cursor − offset)
-          // mod 32, clamped to [0, length−1] — the chevron (drawn at offset+rotation)
+          // mod STEP_COUNT, clamped to [0, length−1] — the chevron (drawn at offset+rotation)
           // is always inside the window. The old absolute-step write let R leave the
           // window and the chevron with it (picture 4). The same clamp already
           // guards the CV fold and the push (the engine's authoring invariant).
@@ -1443,7 +1443,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
       case DragState::ROTATION: {
         // Rotation strip drag: the marker lives WITHIN the window at physical
-        // bar (offset + rotation) % 16. Convert the physical step under the
+        // bar (offset + rotation) % STEP_COUNT. Convert the physical step under the
         // cursor back to a window-relative rotation in [0, length-1].
         int rel = ((step - L.offset) % STEP_COUNT + STEP_COUNT) % STEP_COUNT;
         L.rotation = rack::math::clamp(rel, 0, std::max(0, L.length - 1));

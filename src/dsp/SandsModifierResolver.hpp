@@ -349,7 +349,7 @@ static_assert(SandsModifierPolicy<WarpPolicy>);
 // file (same as SpreadPolicy/WarpPolicy; NOT std::clamp).
 struct LorPolicy {
     using Value = float;         // ONE item's window value (pre-cast)
-    struct Extra {               // the per-item window: LEN {1,16}, OFF/ROT {0,15}
+    struct Extra {               // the per-item window the CALLER supplies: the lane sites pass LEN {1,kLaneLengthMax}, OFF {0,kLaneOffsetMax}, ROT {0, len-1} (CC_FIX §F); the voice-LOR CV fold keeps the recorded {1,16}/{0,15} calibration
         float lo = 0.f;
         float hi = 0.f;
     };

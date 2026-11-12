@@ -889,7 +889,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             };
             // THE BASE MODE — ONE choice (Rodney: "a choice, not two separate items"),
             // a radio pair in a submenu. (A4) Absolute-1's READ runs the FULL PHRASE
-            // (the playhead marches all 16; the OUTPUT plays the LOR window only);
+            // (the playhead marches the whole phrase; the OUTPUT plays the LOR window only);
             // Cycle confines the read to the LOR. The painted overlay is NOT a base —
             // it composes on either; returning to Cycle with a pattern painted keeps
             // the overlay (kind 2 = cycle + overlay).

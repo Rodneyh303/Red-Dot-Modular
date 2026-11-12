@@ -271,7 +271,7 @@ void SequencerEngine::setWindow(int length, int offset) {
 // The EditorState float rows are the single authoring authority; this ONE copy per
 // control block is the only path they reach the map through (same discipline as the
 // lane LOR push in the Sands manager). The clamps mirror the lane LOR ranges exactly
-// (L 1..16, O/R 0..15, dir 0..3) and the rounding is std::lround — so an identity
+// (L 1..kLaneLengthMax, O 0..kLaneOffsetMax, R 0..L-1, dir 0..3) and the rounding is std::lround — so an identity
 // row (16/0/0/0, follow) lands byte-identically on the store the reset() seeded and
 // the pass-through branch keeps the Stage-1 goldens verbatim. Pure: reads only its
 // arguments, writes only the voice-LOR store (no recompute here — the next step's
@@ -287,9 +287,13 @@ void SequencerEngine::pushVoiceLorEditor(
     //        within STEP_COUNT == the cap); the old 0..15 clamp would SILENTLY DROP the
     //        bar-2 window starts the 32-column grid authors (the Lantern bar-blind
     //        write-path class — a display widening whose authoring path still truncated
-    //        at 16). The classification's "off/rot spans stay 0..15" decision governs the
-    //        KNOB/CV spans (applyMonoCV/applyMacroCV/eastDelta arguments) — a calibration
-    //        choice — not this push: the push is the editor's own path and must not
+    //        at 16). The classification's old "off/rot spans stay 0..15" calibration
+    //        decision governed the KNOB/CV spans (applyMonoCV/applyMacroCV/eastDelta)
+    //        until CC_FIX_VOICE_RANGE_STRIP_INTERACTION §F overturned it for the LANE
+    //        CV paths (the midpoint snap — those spans now follow the named bounds,
+    //        OFF 0..kLaneOffsetMax / ROT 0..L-1); the VOICE-LOR CV fold (Monsoon.cpp
+    //        VL_HI) keeps the recorded calibration by decision. Either way, not this
+    //        push: the push is the editor's own path and must not
     //        truncate what the editor's own surface can author. At <=16 windows the drags
     //        produce 0..15 and every clamp here is a no-op (the GOLDEN LAW domain).
     //   ROT 0..L-1 (CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION, Bug 2) — the voice rows

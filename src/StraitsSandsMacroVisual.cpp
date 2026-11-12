@@ -636,7 +636,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             menu->addChild(createMenuLabel("Output mask (global)"));
             // THE BASE MODE — ONE choice (Rodney: "a choice, not two separate items"),
             // a radio pair in a submenu (the East twin). (A4) Absolute-1's READ runs
-            // the FULL PHRASE (the playheads march all 16; the OUTPUT plays the LOR
+            // the FULL PHRASE (the playheads march the whole phrase; the OUTPUT plays the LOR
             // window only); Cycle confines the read. The painted overlay is NOT a
             // base — it composes on either; returning to Cycle with a pattern painted
             // keeps the overlay (kind 2 = cycle + overlay).
