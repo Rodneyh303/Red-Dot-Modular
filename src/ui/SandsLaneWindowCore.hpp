@@ -18,6 +18,7 @@
 #include <algorithm>
 
 #include "../dsp/engines/PatternEngine.hpp"   // dotModular::kPatternLengthCap — the phrase domain (the STEPS_32 constant authority)
+#include "SandsRangeGestureCore.hpp"          // (bug 11) windowContains — the ONE window-membership law (the strip's tint shares it)
 
 namespace redDot {
 
@@ -60,10 +61,11 @@ struct SandsLaneWindowCore {
     int startBar() const { return ((dispOffset % dotModular::kPatternLengthCap) + dotModular::kPatternLengthCap) % dotModular::kPatternLengthCap; }
     int endBar()   const { return (startBar() + std::max(1, std::min(dispLength, dotModular::kPatternLengthCap)) - 1) % dotModular::kPatternLengthCap; }
     bool barInWindow(int bar) const {
-      int s = startBar(), e = endBar();
-      bar = ((bar % dotModular::kPatternLengthCap) + dotModular::kPatternLengthCap) % dotModular::kPatternLengthCap;
-      return (e >= s) ? (bar >= s && bar <= e)        // contiguous
-                      : (bar >= s || bar <= e);       // wrapped
+      // (bug 11) the ONE window-contains law — the same set the voice strip's
+      // tint draws from (SandsRangeGestureCore::windowContains); bit-identical
+      // to the previous inline form (the same s/e/b arithmetic).
+      return SandsRangeGestureCore::windowContains(dispOffset, dispLength, bar,
+                                                   dotModular::kPatternLengthCap);
     }
     // window-relative index of a physical bar (0 = start cell), or -1 if outside
     int windowIndexOf(int bar) const {

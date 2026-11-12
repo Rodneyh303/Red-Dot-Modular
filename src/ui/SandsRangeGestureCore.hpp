@@ -118,6 +118,34 @@ struct SandsRangeGestureCore {
         return Z_WINDOW;
     }
 
+    // ── (bug 11, LOR_EDITING_BUG_LIST) THE ONE WINDOW-CONTAINS LAW ──────────────
+    // Whether a physical bar is inside the (off, len) window on the ring — the
+    // ONE set both the probability lanes' faint range tint and the voice strip's
+    // window highlight draw from ("the voice strip shows the window the
+    // probability lanes show", the same offset and length). Contiguous, wrapped
+    // or full-ring. SandsLaneWindowCore::barInWindow and the editor's
+    // rangeBarInWindow both delegate here — no parallel copy can drift.
+    static bool windowContains(int off, int len, int bar, int ring) {
+        const int s = wrapMod(off, ring);
+        const int l = std::clamp(len, 1, ring);
+        const int e = (s + l - 1) % ring;
+        const int b = wrapMod(bar, ring);
+        return (e >= s) ? (b >= s && b <= e) : (b >= s || b <= e);
+    }
+
+    // ── (bug 12, LOR_EDITING_BUG_LIST) THE CHEVRON GEOMETRY ────────────────────
+    // The rotation marker's chevron pair, sized to the GRID: the pair's total
+    // x-extent is EXACTLY one step width (the old fixed 3 px arm overran the
+    // cell at 32 columns — "chevrons wider than the probability bars"). The
+    // chevrons ›‹ point inward around the cell's centre; arm = the arm depth.
+    struct ChevronGeom { float halfW, arm; };
+    static ChevronGeom chevronGeom(float stepW) {
+        // the pair spans [cx − halfW − arm, cx + halfW + arm] → 2*(halfW+arm) == stepW
+        const float arm = stepW * 0.20f;
+        const float halfW = stepW * 0.5f - arm;
+        return ChevronGeom{ halfW, arm };
+    }
+
     // ── THE DRAG REDUCER (LOR_EDITING_BUG_LIST.md §PLAN 1 — the ROOT ISSUE) ──────
     // The press/move/release SEQUENCING extracted from the widget's GLFW handlers so
     // the LOR drag law is testable headless (the doc: "It can only be exercised in

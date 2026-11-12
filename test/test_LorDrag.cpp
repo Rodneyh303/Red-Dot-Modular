@@ -34,6 +34,7 @@
 // Build (run_all.sh): test_LorDrag|
 
 #include <cstdio>
+#include <string>
 
 #include "ui/SandsRangeGestureCore.hpp"
 
@@ -55,6 +56,18 @@ static E evPress(Core::Zone z, S::Owner owner, int laneIdx, int step) {
 }
 static E evMove(int step)  { E e; e.type = E::MOVE;   e.step = step; return e; }
 static E evRelease()       { E e; e.type = E::RELEASE; return e; }
+
+// slurp a text file (the delegation pins read the live sources; run_all runs
+// from the repo root — the D grep-in-test precedent in test_range_strip_gesture)
+static bool slurpFile(const char* path, std::string& out) {
+    FILE* f = std::fopen(path, "rb");
+    if (!f) return false;
+    char buf[4096];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) out.append(buf, n);
+    std::fclose(f);
+    return true;
+}
 
 // ── the widget model: the two stores + the translation's copy-back ────────────
 // Mirrors SandsVisualEditorV4's translation layer: the strip's lor[] and the
@@ -380,6 +393,64 @@ int main() {
         ok = ok && m2.lanes[3][0] != 1;                           // a resize, not a slide
         check(ok, "8 (bug 10): a length-1 window's bar moves it (the cell is the "
                   "body); the outside bands grab the edges (Rodney's ruling)");
+    }
+
+    // ── GATE 9 (bug 11): the strip's window highlight — the ONE contains law ────
+    {
+        // The voice strip and the probability lanes draw their window tint from
+        // the SAME set (windowContains); pinned against an independent oracle
+        // (wrapMod(bar − off) < len) for EVERY (off, len, bar) on the ring —
+        // contiguous, crossing, wrapping, full-ring and length-1.
+        bool ok = true;
+        for (int off = 0; off < 32; ++off)
+            for (int len = 1; len <= 32; ++len)
+                for (int bar = 0; bar < 32; ++bar)
+                    ok = ok && Core::windowContains(off, len, bar, 32)
+                                   == (Core::wrapMod(bar - off, 32) < len);
+        // the named cases: a wrapped window lights its two arcs; a 1-wide lights
+        // its single cell; the full ring lights everything.
+        ok = ok &&  Core::windowContains(30, 4, 31, 32) && Core::windowContains(30, 4, 1, 32)
+                 && !Core::windowContains(30, 4, 5, 32);
+        ok = ok &&  Core::windowContains(8, 1, 8, 32) && !Core::windowContains(8, 1, 9, 32);
+        ok = ok &&  Core::windowContains(7, 32, 0, 32) && Core::windowContains(7, 32, 31, 32);
+        // the DELEGATION pin (the D grep-in-test precedent): both consumers call
+        // the ONE law — the editor's rangeBarInWindow and the lane core's
+        // barInWindow have no parallel copy to drift.
+        std::string ed, lane;
+        bool got = slurpFile("src/ui/SandsVisualEditorV4.hpp", ed)
+                && slurpFile("src/ui/SandsLaneWindowCore.hpp", lane);
+        ok = ok && got;
+        ok = ok && ed.find("SandsRangeGestureCore::windowContains") != std::string::npos;
+        ok = ok && lane.find("SandsRangeGestureCore::windowContains") != std::string::npos;
+        ok = ok && ed.find("nvgRGBAf(1.f, 1.f, 1.f, 0.05f)") != std::string::npos;   // the lane-style tint on the strip
+        check(ok, "9 (bug 11): the strip's window tint draws from the ONE contains "
+                  "law (the same set as the lanes, always, layered under the mask)");
+    }
+
+    // ── GATE 10 (bug 12): the rotation chevron's extent is one step width ──────
+    {
+        // chevronGeom: the pair spans [cx − halfW − arm, cx + halfW + arm], so
+        // 2*(halfW + arm) == stepW EXACTLY — the old fixed 3 px arm overran the
+        // cell at 32 columns (extent 2*(0.42*(stepW−2)+3) > stepW). Pinned at
+        // the 32-column width and the neighbouring grid widths.
+        bool ok = true;
+        const float widths[] = { 10.625f, 21.25f, 5.3125f, 42.5f, 8.f, 20.f };
+        for (float w : widths) {
+            const auto g = Core::chevronGeom(w);
+            ok = ok && g.arm > 0.f && g.halfW > 0.f;
+            ok = ok && (2.f * (g.halfW + g.arm) - w) < 1e-4f && (w - 2.f * (g.halfW + g.arm)) < 1e-4f;
+        }
+        // the old form OVERSHOT the cell at 32 columns — the regression guard.
+        const float w32 = 10.625f;
+        const float oldExtent = 2.f * ((w32 - 2.f) * 0.42f + 3.f);
+        ok = ok && oldExtent > w32;                       // the bug, for the record
+        ok = ok && 2.f * (Core::chevronGeom(w32).halfW + Core::chevronGeom(w32).arm) <= w32;
+        // the DELEGATION pin: drawRotationIndicator uses the core's geometry.
+        std::string ed;
+        ok = ok && slurpFile("src/ui/SandsVisualEditorV4.hpp", ed);
+        ok = ok && ed.find("chevronGeom") != std::string::npos;
+        check(ok, "10 (bug 12): the rotation chevron's x-extent is exactly one "
+                  "step width (sized to the grid, not a fixed arm)");
     }
 
     std::printf("\n%d passed, %d failed\n", g_pass, g_fail);

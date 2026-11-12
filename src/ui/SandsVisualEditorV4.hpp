@@ -347,12 +347,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     rangeStrip.blocked = blocked;
     if (label) rangeStrip.label = label;
   }
-  // Strip window membership (mirrors ProbabilityLane::barInWindow on the display row).
+  // Strip window membership — (bug 11) the ONE window-contains law, shared with
+  // ProbabilityLane::barInWindow (SandsRangeGestureCore::windowContains): the
+  // strip's tint and the lanes' tint draw from the SAME set for the same
+  // (off, len), so the voice strip shows the window the probability lanes show.
   bool rangeBarInWindow(int bar) const {
-    const int s = rangeStrip.lor[1];
-    const int e = (s + std::max(1, std::min(rangeStrip.lor[0], STEP_COUNT)) - 1) % STEP_COUNT;
-    bar = ((bar % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
-    return (e >= s) ? (bar >= s && bar <= e) : (bar >= s || bar <= e);
+    return redDot::SandsRangeGestureCore::windowContains(
+        rangeStrip.lor[1], rangeStrip.lor[0], bar, STEP_COUNT);
   }
   
 
@@ -651,6 +652,18 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       nvgRect(vg, cell.pos.x, cell.pos.y, cell.size.x, cell.size.y);
       nvgFillColor(vg, inWin ? lit : dim);
       nvgFill(vg);
+      // (bug 11, Rodney's ruling — asked and answered) the LANE-STYLE faint
+      // window tint, ALWAYS drawn (both modes): the 0.05 white body fill the
+      // probability lanes draw (drawStep), layered UNDER the presence figure —
+      // so even when the output mask is PAINTED (the strip's bright layer shows
+      // play/mute) the RANGE still reads underneath. The set is the ONE law
+      // (rangeBarInWindow == windowContains == the lanes' barInWindow).
+      if (rangeBarInWindow(step)) {
+        nvgBeginPath(vg);
+        nvgRect(vg, cell.pos.x, cell.pos.y, cell.size.x, cell.size.y);
+        nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, 0.05f));
+        nvgFill(vg);
+      }
       // window edge markers (the drawStep idiom, on the strip's own row). (B) The
       // grab ribbons are drawn at the SAME width as the hit zones (edgeZoneW — the
       // doc's "draw the handles and grab zones from the same constants"), so what
@@ -1083,8 +1096,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     float cx = cell.pos.x + cell.size.x * 0.5f;
     float cyc = stripTop + stripH * 0.5f;
     float h = stripH * 0.9f;          // chevron height (~0.27 of lane height, up from ~0.21)
-    float d = 3.f;                    // chevron arm depth (horizontal), up from 2
-    float halfW = (cell.size.x - 2.f) * 0.42f;
+    // (bug 12, LOR_EDITING_BUG_LIST) the chevron geometry is sized to the GRID:
+    // the pair's x-extent is EXACTLY one step width (the old fixed 3 px arm
+    // overran the cell at 32 columns — "chevrons wider than the probability
+    // bars"). The law lives in the core (chevronGeom), pinned headless.
+    const auto cg = redDot::SandsRangeGestureCore::chevronGeom(cell.size.x);
+    float d = cg.arm;                 // chevron arm depth (horizontal)
+    float halfW = cg.halfW;
 
     // Phase marker, hue-INDEPENDENT so it reads on every lane — including legato, whose hue
     // IS colors.rotation (teal), where the old fixed-teal marker vanished. Any single hue
