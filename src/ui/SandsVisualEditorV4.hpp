@@ -659,15 +659,20 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       const int s = rangeStrip.lor[1];
       const int e = (s + std::max(1, std::min(rangeStrip.lor[0], STEP_COUNT)) - 1) % STEP_COUNT;
       const float edgeW = redDot::SandsRangeGestureCore::edgeZoneW(layout.stepWidthF());
+      // (bug 10) a 1-WIDE window's cell IS the body; its edge RIBBONS are the
+      // OUTSIDE bands (matching the hit zones). The crisp 2.5px boundary bars
+      // stay ON the cell's own edges either way (the drawStep idiom: both edges
+      // show on the same cell unambiguously).
+      const bool oneWide = (s == e);
       if (step == s) {
-        nvgBeginPath(vg); nvgRect(vg, cell.pos.x, cell.pos.y, edgeW, cell.size.y);
+        nvgBeginPath(vg); nvgRect(vg, oneWide ? cell.pos.x - edgeW : cell.pos.x, cell.pos.y, edgeW, cell.size.y);
         NVGcolor ribbon = edge; ribbon.a *= 0.28f;
         nvgFillColor(vg, ribbon); nvgFill(vg);
         nvgBeginPath(vg); nvgRect(vg, cell.pos.x, cell.pos.y, 2.5f, cell.size.y);
         nvgFillColor(vg, edge); nvgFill(vg);
       }
       if (step == e) {
-        nvgBeginPath(vg); nvgRect(vg, cell.pos.x + cell.size.x - edgeW, cell.pos.y, edgeW, cell.size.y);
+        nvgBeginPath(vg); nvgRect(vg, oneWide ? cell.pos.x + cell.size.x : cell.pos.x + cell.size.x - edgeW, cell.pos.y, edgeW, cell.size.y);
         NVGcolor ribbon = edge; ribbon.a *= 0.28f;
         nvgFillColor(vg, ribbon); nvgFill(vg);
         nvgBeginPath(vg); nvgRect(vg, cell.pos.x + cell.size.x - 2.5f, cell.pos.y, 2.5f, cell.size.y);
@@ -875,9 +880,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // cell, min ~4mm) so it's grabbable, but capped at 1/3 of the window span so a
   // middle-third MOVE zone ALWAYS exists — even for a 2-cell window. Used by both
   // hitTestHandle and drawHandles so the drawn ribbons match the grab zones.
+  // (bug 10) a 1-WIDE window has no in-window middle to preserve — its edges are
+  // the OUTSIDE bands (Rodney's ruling), so the cap does not apply at length 1.
   float windowEdgeW(const ProbabilityLane& L) const {
-    float spanPx = std::max(1, std::min(L.length, STEP_COUNT)) * layout.stepWidthF();
-    float want = std::max(layout.stepWidthF(), mm2px(4.f));
+    const int lenC = std::max(1, std::min(L.length, STEP_COUNT));
+    const float want = std::max(layout.stepWidthF(), mm2px(4.f));
+    if (lenC <= 1) return want;
+    const float spanPx = lenC * layout.stepWidthF();
     return std::min(want, spanPx / 3.f);
   }
 
@@ -885,10 +894,12 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (lane < 0 || lane >= laneCount) return DragState::NONE;
     const ProbabilityLane& L = currentState.lanes[lane];
     rack::Rect laneR = layout.getLaneRect(lane);
-    int startBar = L.offset % STEP_COUNT;
-    int endBar   = (L.offset + L.length - 1) % STEP_COUNT;
+    const int startBar = L.editStartBar();
+    const int endBar   = L.editEndBar();
     float halfStep = layout.stepWidthF() * 0.5f;
 
+    // The ROTATION band's extent (the window's INCLUSIVE cell run — unchanged
+    // from the old test: the whole start–end span, wrapped or contiguous).
     auto inWindowX = [&](float px)->bool {
       float sxL = layout.getStepCenterX(startBar) - halfStep;
       float exR = layout.getStepCenterX(endBar)   + halfStep;
@@ -898,37 +909,36 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       return (px >= sxL && px <= rightEdge) || (px >= leftEdge && px <= exR);
     };
 
-    // With per-cell editing removed, the whole lane is free for window control,
-    // so the grab zones are generous (the old scheme crammed everything into the
-    // top 16% with 30%-cell edges, which was nearly impossible to hit).
-    //   TOP ~65% of the lane = window strip:
-    //     • START zone: a full-cell-wide (min ~4mm) band at the window's front
-    //     • END   zone: same at the window's back
-    //     • MOVE:  everything between them
-    //   BOTTOM ~35% = ROTATION (within the window span).
-    // For a 1-wide window START/END share the cell, split left-half/right-half.
-    float bandBot = laneR.pos.y + laneR.size.y * 0.65f;
-    if (y >= laneR.pos.y && y <= bandBot && inWindowX(x)) {
-      rack::Rect cs = layout.getStepRect(lane, L.editStartBar());
-      rack::Rect ce = layout.getStepRect(lane, L.editEndBar());
-      // Edge width capped to 1/3 of the window so a MOVE middle always remains.
-      float edgeW = windowEdgeW(L);
-      float startZoneR = cs.pos.x + edgeW;                 // START spans [cell start .. +edgeW]
-      float endZoneL   = ce.pos.x + ce.size.x - edgeW;     // END spans [cell end -edgeW .. cell end]
-      // 1-wide window (same cell): split the cell in half instead of overlapping.
-      if (L.editStartBar() == L.editEndBar()) {
-        float mid = cs.pos.x + cs.size.x * 0.5f;
-        return (x <= mid) ? DragState::START : DragState::END;
+    // (bugs 9+10, LOR_EDITING_BUG_LIST) the ONE window-relative classifier — the
+    // same law the strip band uses (classifyWindow): bounded edge bands on EACH
+    // side of each boundary, wrap-correct, the body ALWAYS non-empty (edgeW
+    // capped at span/3), and a LENGTH-1 window's cell IS the body with the edges
+    // one cell OUTSIDE it (Rodney's ruling — accent, length 1, is movable).
+    // The old inline test was open-ended (`x >= endZoneL`): a WRAPPED window's
+    // END zone swallowed its whole front arc — the "dragged past step 32, cannot
+    // be picked up to move again" report (bug 9); and the old 1-wide half-split
+    // left a length-1 window with no body at all (bug 10).
+    //   TOP ~65% of the lane = the window band: START / END / MOVE;
+    //   BOTTOM ~35% = ROTATION (the inclusive window span, unchanged).
+    if (y >= laneR.pos.y && y <= laneR.pos.y + laneR.size.y) {
+      const bool topBand = (y <= laneR.pos.y + laneR.size.y * 0.65f);
+      if (!topBand)
+        return inWindowX(x) ? DragState::ROTATION : DragState::NONE;
+      const float startBoundX = layout.getStepX(startBar);
+      const float endBoundX   = layout.getStepX(endBar) + layout.stepWidthF();
+      const float gridL = layout.padding;
+      const float gridR = layout.padding + layout.gridW();
+      const float stepW = layout.stepWidthF();
+      const int   lenC  = std::max(1, std::min(L.length, STEP_COUNT));
+      switch (redDot::SandsRangeGestureCore::classifyWindow(
+                 x, startBoundX, endBoundX, windowEdgeW(L), gridL, gridR,
+                 lenC * stepW, stepW)) {
+        case redDot::SandsRangeGestureCore::Z_START:  return DragState::START;
+        case redDot::SandsRangeGestureCore::Z_END:    return DragState::END;
+        case redDot::SandsRangeGestureCore::Z_WINDOW: return DragState::WINDOW;
+        default:                                      return DragState::NONE;
       }
-      if (x <= startZoneR) return DragState::START; // front → set OFFSET
-      if (x >= endZoneL)   return DragState::END;   // back  → set LENGTH
-      return DragState::WINDOW;                     // body  → MOVE whole window
     }
-
-    // BOTTOM ~35%: ROTATION strip, within the start–end window.
-    float rotTop = laneR.pos.y + laneR.size.y * 0.65f;
-    if (y >= rotTop && y <= laneR.pos.y + laneR.size.y && inWindowX(x))
-      return DragState::ROTATION;
 
     return DragState::NONE;
   }
@@ -946,20 +956,25 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (y < r.pos.y || y > r.pos.y + r.size.y) return DragState::NONE;
     const int startBar = rangeStrip.lor[1];
     const int endBar   = (startBar + std::max(1, std::min(rangeStrip.lor[0], STEP_COUNT)) - 1) % STEP_COUNT;
-    // (B) THE EDGE TARGET FIX (the doc's fault B): the START/END zones extend
-    // edgeZoneW (>= max(1 cell, 8 px)) on EACH side of the edge boundary — one cell
-    // outside the window AND one cell in — so a press within one cell of an edge
-    // grabs the EDGE, never the window body; the body takes the rest. The math
-    // lives in SandsRangeGestureCore (rack-free, the testable surface); the drawn
-    // ribbons use the same constant (drawRangeStrip).
+    // (B + bugs 9/10) THE WINDOW-RELATIVE CLASSIFIER (classifyWindow): the
+    // START/END zones are bounded bands edgeZoneW (>= max(1 cell, 8 px)) on EACH
+    // side of the edge boundary — one cell outside the window AND one cell in —
+    // so a press within one cell of an edge grabs the EDGE, never the window
+    // body; the body takes the rest and is ALWAYS non-empty (span/3 cap; a
+    // length-1 window's cell IS the body, its edges one cell OUTSIDE — Rodney's
+    // ruling). The math lives in SandsRangeGestureCore (rack-free, the testable
+    // surface); the drawn ribbons use the same constant (drawRangeStrip).
     const float startBoundX = layout.getStepX(startBar);
     const float endBoundX   = layout.getStepX(endBar) + layout.stepWidthF();
     const float edgeW = redDot::SandsRangeGestureCore::edgeZoneW(layout.stepWidthF());
     const float gridL = layout.padding;
     const float gridR = layout.padding + layout.gridW();
+    const float stepW = layout.stepWidthF();
+    const float spanPx = std::max(1, std::min(rangeStrip.lor[0], STEP_COUNT)) * stepW;
     float bandBot = r.pos.y + r.size.y * 0.65f;
     if (y <= bandBot) {
-      switch (redDot::SandsRangeGestureCore::classifyBand(x, startBoundX, endBoundX, edgeW, gridL, gridR)) {
+      switch (redDot::SandsRangeGestureCore::classifyWindow(
+                  x, startBoundX, endBoundX, edgeW, gridL, gridR, spanPx, stepW)) {
         case redDot::SandsRangeGestureCore::Z_START:  return DragState::START;
         case redDot::SandsRangeGestureCore::Z_END:    return DragState::END;
         case redDot::SandsRangeGestureCore::Z_WINDOW: return DragState::WINDOW;
@@ -1012,9 +1027,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       nvgFillColor(vg, col); nvgFill(vg);
     };
     if (oneWide) {
-      float half = cs.size.x * 0.5f;
-      fillRect(cs.pos.x, half, edge);                 // START = left half
-      fillRect(cs.pos.x + half, half, edge);          // END   = right half
+      // (bug 10, Rodney's ruling) a 1-wide window's cell IS the body (MOVE); the
+      // edge ribbons are the OUTSIDE bands — matching the hit zones exactly.
+      fillRect(cs.pos.x - edgeW, edgeW, edge);        // START = the left outside band
+      fillRect(cs.pos.x + cs.size.x, edgeW, edge);    // END   = the right outside band
     } else {
       fillRect(cs.pos.x, edgeW, edge);                            // START ribbon
       fillRect(ce.pos.x + ce.size.x - edgeW, edgeW, edge);        // END ribbon
@@ -1024,9 +1040,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (hoverLane == lane && hoverZone != DragState::NONE) {
       NVGcolor hi = getLaneColor(lane); hi.a = 0.32f;
       if (hoverZone == DragState::START) {
-        fillRect(cs.pos.x, oneWide ? cs.size.x*0.5f : edgeW, hi);
+        fillRect(oneWide ? cs.pos.x - edgeW : cs.pos.x, edgeW, hi);
       } else if (hoverZone == DragState::END) {
-        if (oneWide) fillRect(cs.pos.x + cs.size.x*0.5f, cs.size.x*0.5f, hi);
+        if (oneWide) fillRect(cs.pos.x + cs.size.x, edgeW, hi);
         else         fillRect(ce.pos.x + ce.size.x - edgeW, edgeW, hi);
       } else if (hoverZone == DragState::WINDOW) {
         for (int k = 0; k < lenC; ++k) {

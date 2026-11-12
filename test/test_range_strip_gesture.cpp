@@ -142,6 +142,9 @@ int main() {
     {
         // A 4-wide window at offset 8 on a 32-cell grid: cell w = 10 px, grid
         // [0, 320). startBound = x(8) = 80; endBound = x(11) + 10 = 120.
+        // (bugs 9/10) the classifier is the WINDOW-RELATIVE classifyWindow —
+        // bounded bands, the body guaranteed non-empty, a 1-wide window's cell
+        // IS the body (Rodney's LOR_EDITING_BUG_LIST ruling).
         const float w = 10.f, gridL = 0.f, gridR = 320.f;
         const float sb = 80.f, eb = 120.f;
         const float edgeW = SandsRangeGestureCore::edgeZoneW(w);
@@ -149,42 +152,55 @@ int main() {
         bool ok = true;
         // within one cell of an edge (either side): the EDGE, never the body.
         for (float d = -edgeW * 0.99f; d <= edgeW * 0.99f; d += edgeW / 8.f) {
-            ok = ok && SandsRangeGestureCore::classifyBand(sb + d, sb, eb, edgeW, gridL, gridR)
+            ok = ok && SandsRangeGestureCore::classifyWindow(sb + d, sb, eb, edgeW, gridL, gridR, 40.f, w)
                            == SandsRangeGestureCore::Z_START;
-            ok = ok && SandsRangeGestureCore::classifyBand(eb + d, sb, eb, edgeW, gridL, gridR)
+            ok = ok && SandsRangeGestureCore::classifyWindow(eb + d, sb, eb, edgeW, gridL, gridR, 40.f, w)
                            == SandsRangeGestureCore::Z_END;
         }
         // the middle of the window moves the window.
-        ok = ok && SandsRangeGestureCore::classifyBand(100.f, sb, eb, edgeW, gridL, gridR)
+        ok = ok && SandsRangeGestureCore::classifyWindow(100.f, sb, eb, edgeW, gridL, gridR, 40.f, w)
                        == SandsRangeGestureCore::Z_WINDOW;
         // beyond the zones (out-of-window) is NONE — the paint arm keeps its presses.
-        ok = ok && SandsRangeGestureCore::classifyBand(0.f,  sb, eb, edgeW, gridL, gridR) == SandsRangeGestureCore::Z_NONE;
-        ok = ok && SandsRangeGestureCore::classifyBand(65.f, sb, eb, edgeW, gridL, gridR) == SandsRangeGestureCore::Z_NONE;
-        ok = ok && SandsRangeGestureCore::classifyBand(200.f, sb, eb, edgeW, gridL, gridR) == SandsRangeGestureCore::Z_NONE;
-        // a tiny (1-wide) window: the zones overlap — split at the midpoint, no body.
+        ok = ok && SandsRangeGestureCore::classifyWindow(0.f,  sb, eb, edgeW, gridL, gridR, 40.f, w) == SandsRangeGestureCore::Z_NONE;
+        ok = ok && SandsRangeGestureCore::classifyWindow(65.f, sb, eb, edgeW, gridL, gridR, 40.f, w) == SandsRangeGestureCore::Z_NONE;
+        ok = ok && SandsRangeGestureCore::classifyWindow(200.f, sb, eb, edgeW, gridL, gridR, 40.f, w) == SandsRangeGestureCore::Z_NONE;
+        // a tiny (1-wide) window (bug 10, Rodney's ruling): the CELL is the body
+        // (MOVE); the edges are the bands one cell OUTSIDE the cell.
         const float sb1 = 80.f, eb1 = 90.f;   // window [80, 90), one cell
-        ok = ok && SandsRangeGestureCore::classifyBand(75.f, sb1, eb1, edgeW, gridL, gridR)
+        ok = ok && SandsRangeGestureCore::classifyWindow(85.f, sb1, eb1, edgeW, gridL, gridR, 10.f, w)
+                       == SandsRangeGestureCore::Z_WINDOW;  // the bar MOVES the window
+        ok = ok && SandsRangeGestureCore::classifyWindow(75.f, sb1, eb1, edgeW, gridL, gridR, 10.f, w)
                        == SandsRangeGestureCore::Z_START;
-        ok = ok && SandsRangeGestureCore::classifyBand(95.f, sb1, eb1, edgeW, gridL, gridR)
+        ok = ok && SandsRangeGestureCore::classifyWindow(95.f, sb1, eb1, edgeW, gridL, gridR, 10.f, w)
                        == SandsRangeGestureCore::Z_END;
         // a WRAPPED window (offset 30, len 4 → cells 30,31,0,1): the body is the two
         // outer arcs; the edge zones sit at x(30)=300 and x(1)+10=20.
         const float sbw = 300.f, ebw = 20.f;
-        ok = ok && SandsRangeGestureCore::classifyBand(305.f, sbw, ebw, edgeW, gridL, gridR)
+        ok = ok && SandsRangeGestureCore::classifyWindow(305.f, sbw, ebw, edgeW, gridL, gridR, 40.f, w)
                        == SandsRangeGestureCore::Z_START;   // the start boundary zone
-        ok = ok && SandsRangeGestureCore::classifyBand(15.f,  sbw, ebw, edgeW, gridL, gridR)
+        ok = ok && SandsRangeGestureCore::classifyWindow(15.f,  sbw, ebw, edgeW, gridL, gridR, 40.f, w)
                        == SandsRangeGestureCore::Z_END;     // the end boundary zone
-        ok = ok && SandsRangeGestureCore::classifyBand(318.f, sbw, ebw, edgeW, gridL, gridR)
+        ok = ok && SandsRangeGestureCore::classifyWindow(318.f, sbw, ebw, edgeW, gridL, gridR, 40.f, w)
                        == SandsRangeGestureCore::Z_WINDOW;  // the right arc
-        ok = ok && SandsRangeGestureCore::classifyBand(5.f,   sbw, ebw, edgeW, gridL, gridR)
+        ok = ok && SandsRangeGestureCore::classifyWindow(5.f,   sbw, ebw, edgeW, gridL, gridR, 40.f, w)
                        == SandsRangeGestureCore::Z_WINDOW;  // the left arc
-        ok = ok && SandsRangeGestureCore::classifyBand(150.f, sbw, ebw, edgeW, gridL, gridR)
+        ok = ok && SandsRangeGestureCore::classifyWindow(150.f, sbw, ebw, edgeW, gridL, gridR, 40.f, w)
                        == SandsRangeGestureCore::Z_NONE;    // the gap between the arcs
+        // (bug 9) a SHORT wrapped window (offset 30, len 3 → cells 30,31,0): the
+        // front arc's middle (step 31) is the body — the old lane test's
+        // open-ended END zone swallowed it (the stuck-past-32 report).
+        ok = ok && SandsRangeGestureCore::classifyWindow(315.f, 300.f, 10.f, edgeW, gridL, gridR, 30.f, w)
+                       == SandsRangeGestureCore::Z_WINDOW;
+        ok = ok && SandsRangeGestureCore::classifyWindow(305.f, 300.f, 10.f, edgeW, gridL, gridR, 30.f, w)
+                       == SandsRangeGestureCore::Z_START;
+        ok = ok && SandsRangeGestureCore::classifyWindow(3.f,   300.f, 10.f, edgeW, gridL, gridR, 30.f, w)
+                       == SandsRangeGestureCore::Z_END;
         // the ROTATION band's body test (inBody) is the same extent set.
         ok = ok &&  SandsRangeGestureCore::inBody(318.f, sbw, ebw, gridL, gridR)
                  && !SandsRangeGestureCore::inBody(150.f, sbw, ebw, gridL, gridR);
         check(ok, "B: a press within one cell of an edge grabs the edge; the middle "
-                  "moves the window; beyond is NONE (paint); tiny + wrapped windows");
+                  "moves the window; beyond is NONE (paint); a 1-wide cell is the "
+                  "body with outside edges; short + wrapped windows keep a body");
     }
 
     // ── GATE C: rotation — the lanes' rule, always in the window ────────────────

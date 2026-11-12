@@ -316,6 +316,72 @@ int main() {
                   "length and rotation preserved, wrapping both directions");
     }
 
+    // ── GATE 7 (bug 9): a wrapped window is pickable — press in the body, move ──
+    {
+        // The 32-cell grid, cell w = 10 px, grid [0, 320). A window dragged past
+        // step 32: offset 30, len 3 → cells 30, 31, 0 (the front arc 300..320,
+        // the back arc 0..10). The front arc's MIDDLE (step 31) is the body —
+        // the old lane test's open-ended END zone (`x >= endZoneL`, with the
+        // zone's left edge at 10 − edgeW = 0) swallowed it: every press in the
+        // window classified END and the window could never be MOVED again.
+        const float w = 10.f, gridL = 0.f, gridR = 320.f;
+        const float edgeW = Core::edgeZoneW(w);
+        bool ok = Core::classifyWindow(315.f, 300.f, 10.f, edgeW, gridL, gridR, 30.f, w) == Core::Z_WINDOW;
+        ok = ok && Core::classifyWindow(305.f, 300.f, 10.f, edgeW, gridL, gridR, 30.f, w) == Core::Z_START;
+        ok = ok && Core::classifyWindow(3.f,   300.f, 10.f, edgeW, gridL, gridR, 30.f, w) == Core::Z_END;
+        // the doc's full sequence: drag past 32, release, press in the body, move.
+        WidgetModel m;
+        m.lanes[1][0] = 4; m.lanes[1][1] = 28; m.lanes[1][2] = 1;
+        m.dispatch(evPress(Core::Z_WINDOW, S::O_LANE, 1, 30));   // grab the body
+        m.dispatch(evMove(2));                                    // slide across the seam (+4)
+        ok = ok && m.lanes[1][1] == 0 && m.lanes[1][0] == 4;      // (28+4) mod 32
+        m.dispatch(evRelease());
+        m.dispatch(evPress(Core::Z_WINDOW, S::O_LANE, 1, 2));     // pick it up again
+        m.dispatch(evMove(5));
+        ok = ok && m.lanes[1][1] == 3;
+        // the wrapped STATE itself: author (30,3), press at the front arc's
+        // middle (step 31, classified Z_WINDOW above), move — it moves.
+        WidgetModel m2;
+        m2.lanes[1][0] = 3; m2.lanes[1][1] = 30; m2.lanes[1][2] = 0;
+        m2.dispatch(evPress(Core::Z_WINDOW, S::O_LANE, 1, 31));
+        m2.dispatch(evMove(0));                                   // one cell left
+        ok = ok && m2.lanes[1][1] == 31 && m2.lanes[1][0] == 3;
+        m2.dispatch(evRelease());
+        ok = ok && m2.lorCommitLane == 1;
+        check(ok, "7 (bug 9): a wrapped window's body is grabbable — drag past 32, "
+                  "release, press in the body and move; the window moves (no stuck pickup)");
+    }
+
+    // ── GATE 8 (bug 10): a length-1 window — the bar moves, the edges resize ────
+    {
+        const float w = 10.f, gridL = 0.f, gridR = 320.f;
+        const float edgeW = Core::edgeZoneW(w);
+        // the classifier (Rodney's ruling): the CELL is the body (MOVE); the
+        // edges are the bands one cell OUTSIDE the cell.
+        bool ok = Core::classifyWindow(85.f, 80.f, 90.f, edgeW, gridL, gridR, 10.f, w) == Core::Z_WINDOW;
+        ok = ok && Core::classifyWindow(75.f, 80.f, 90.f, edgeW, gridL, gridR, 10.f, w) == Core::Z_START;
+        ok = ok && Core::classifyWindow(95.f, 80.f, 90.f, edgeW, gridL, gridR, 10.f, w) == Core::Z_END;
+        ok = ok && Core::classifyWindow(60.f, 80.f, 90.f, edgeW, gridL, gridR, 10.f, w) == Core::Z_NONE;
+        // press on the BAR: the window MOVES, the length stays 1 (accent movable).
+        WidgetModel m;
+        m.lanes[3][0] = 1; m.lanes[3][1] = 8; m.lanes[3][2] = 0;
+        m.dispatch(evPress(Core::Z_WINDOW, S::O_LANE, 3, 8));
+        m.dispatch(evMove(10));
+        ok = ok && m.lanes[3][1] == 10 && m.lanes[3][0] == 1;     // moved, still 1 wide
+        m.dispatch(evRelease());
+        ok = ok && m.lorCommitLane == 3;
+        // press on the EDGE (the outside band): the EDGE moves (a resize), not
+        // the body — the offset moves and the length is no longer 1.
+        WidgetModel m2;
+        m2.lanes[3][0] = 1; m2.lanes[3][1] = 8; m2.lanes[3][2] = 0;
+        m2.dispatch(evPress(Core::Z_START, S::O_LANE, 3, 8));
+        m2.dispatch(evMove(9));                                   // the front edge +1
+        ok = ok && m2.lanes[3][1] == 9;                           // the edge moved
+        ok = ok && m2.lanes[3][0] != 1;                           // a resize, not a slide
+        check(ok, "8 (bug 10): a length-1 window's bar moves it (the cell is the "
+                  "body); the outside bands grab the edges (Rodney's ruling)");
+    }
+
     std::printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

@@ -71,19 +71,51 @@ struct SandsRangeGestureCore {
         if (endBoundX > startBoundX) return (x > startBoundX && x < endBoundX);
         return (x > startBoundX && x <= gridR) || (x >= gridL && x < endBoundX);   // wrapped
     }
-    // The top band's classification. The edge zones extend edgeZoneW on EACH side of
-    // the edge boundary (one cell outside + one cell inside the window); a press
-    // there grabs the EDGE, never the body. Tiny windows whose zones overlap split
-    // at the window midpoint (the 1-wide half-split rule, generalized).
-    static Zone classifyBand(float x, float startBoundX, float endBoundX,
-                             float edgeW, float gridL, float gridR) {
-        const bool sHit = (x >= startBoundX - edgeW && x <= startBoundX + edgeW);
-        const bool eHit = (x >= endBoundX   - edgeW && x <= endBoundX   + edgeW);
-        if (sHit && eHit)
-            return (x <= (startBoundX + endBoundX) * 0.5f) ? Z_START : Z_END;
-        if (sHit) return Z_START;
-        if (eHit) return Z_END;
-        return inBody(x, startBoundX, endBoundX, gridL, gridR) ? Z_WINDOW : Z_NONE;
+    // ── (B + bugs 9/10, LOR_EDITING_BUG_LIST) THE WINDOW-RELATIVE CLASSIFIER ────
+    // ONE press-classification law for the strip band AND the probability lanes.
+    // The press maps to its WINDOW-RELATIVE clock distance from the start boundary
+    // (through the wrap), then classifies:
+    //   START:  [startBound − edgeW, startBound + edgeW] — a BOUNDED band on EACH
+    //           side of the boundary (one cell out + one cell in — the B law);
+    //   END:    [endBound − edgeW,   endBound + edgeW]   — the same at the back;
+    //   WINDOW: the rest of the window                    — the body (MOVE);
+    //   NONE:   beyond both bands                          — the paint arm / no grab.
+    // THE BODY GUARANTEE (bug 9): edgeW is capped at span/3, so the middle third of
+    // the window ALWAYS remains a body — the old lane test's open-ended
+    // `x >= endZoneL` let a WRAPPED window's END zone swallow its whole front arc
+    // (the "dragged past step 32, cannot be picked up to move again" report).
+    // THE LENGTH-1 RULE (bug 10, Rodney): a 1-wide window's cell IS the body; its
+    // edges are the bands one cell OUTSIDE the cell — so a length-1 window
+    // (accent) can always be picked up and moved.
+    static Zone classifyWindow(float x, float startBoundX, float endBoundX,
+                               float edgeW, float gridL, float gridR,
+                               float spanPx, float stepW) {
+        if (spanPx <= stepW + 1e-3f) {
+            // LENGTH 1: the cell is the body; the edges live OUTSIDE it.
+            if (x >= startBoundX - edgeW && x <  startBoundX) return Z_START;
+            if (x >  endBoundX   && x <= endBoundX + edgeW)   return Z_END;
+            if (x >= startBoundX && x <= endBoundX)           return Z_WINDOW;
+            return Z_NONE;
+        }
+        const float ew = std::min(edgeW, spanPx / 3.f);
+        // the clock distance from the start boundary, through the wrap
+        float dist = -1.f;
+        if (endBoundX > startBoundX) {
+            if (x >= startBoundX && x <= endBoundX) dist = x - startBoundX;
+        } else if (x >= startBoundX && x <= gridR) {
+            dist = x - startBoundX;                            // the front arc
+        } else if (x >= gridL && x <= endBoundX) {
+            dist = (gridR - startBoundX) + (x - gridL);        // the wrapped-back arc
+        }
+        if (dist < 0.f) {
+            // outside the window: only the OUTWARD halves of the bands grab
+            if (x >= startBoundX - ew && x <  startBoundX) return Z_START;
+            if (x >  endBoundX   && x <= endBoundX + ew)   return Z_END;
+            return Z_NONE;
+        }
+        if (dist <= ew)          return Z_START;
+        if (dist >= spanPx - ew) return Z_END;
+        return Z_WINDOW;
     }
 
     // ── THE DRAG REDUCER (LOR_EDITING_BUG_LIST.md §PLAN 1 — the ROOT ISSUE) ──────
