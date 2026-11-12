@@ -60,3 +60,15 @@ Which lanes can be selected: the voice lane, rest, variation and legato work; me
 - Length 1 window: press on the edge, move: the edge moves, not the body (bug 10).
 - Voice-lane band draws the same window highlight as a lane, for the same offset and length (bug 11, a render-state test).
 - Rotation chevron x-extent equals one step width at 32 steps (bug 12, a geometry test).
+
+## NEW BUGS (Rodney's Rack report, after the wrap and length-1 work)
+| # | Bug | Symptom | Likely cause (located) | Status |
+|---|---|---|---|---|
+| 13 | A wrapped range with one step left on one side cannot be dragged back | Grabbing from the step at the edge only drags away from the edge | The edge zone and span maths (SandsVisualEditorV4.hpp ~899-986) use the start and end cells and a wrapped length; the drag does not handle a remainder on the other side of the wrap. | OPEN (located; needs the headless test to confirm) |
+| 14 | Length-1 handle markers overlap the panel at the grid edge | When the single step is at step 1 or 32, the outside handle bands are drawn past the grid | drawHandles (~1042-1046) draws the outside bands at cell.pos.x - edgeW and cell.pos.x + cell.size.x with no clamp to the grid rect. | OPEN (located) |
+| 15 | Voice-lane range highlight is invisible | The grab range is grey on the grey background | drawRangeStrip (~619-640) uses a low-contrast fill; it needs a lane colour or a contrast check. | OPEN (located) |
+
+## TESTS TO ADD
+- Wrapped window with one step on one side: press on the edge step and move toward the edge; the window moves toward the edge (bug 13).
+- Length 1 at step 1 and at step 32: the outside handle bands are inside the grid rect (bug 14, a geometry test).
+- Voice-lane fill contrast against the strip background meets a minimum ratio (bug 15, a colour test).
