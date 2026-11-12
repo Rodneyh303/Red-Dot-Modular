@@ -37,3 +37,17 @@ not copy code.
 ## OPEN
 - Whether to pop out the Sands subpanels (distribution, sends, modulation) as separate modules, or keep them as expanders.
 - Whether the probability visual gets a width setting via its generator (feasible; decide the HP options).
+
+## SUBPANEL LAYOUT (Rodney)
+- METHOD: RESIZE. Each module keeps one saved width. Its subpanels are views of one parent state, so no docking or
+  adjacency discovery is needed. Applies to Sands (distribution, sends), Monsoon (Sikit, Colonnades, Colonnades Duo, and
+  possibly phase distortion) and Straits.
+- SCALE: Straits can have up to about 18 subpanels. Visible width (the resize choice) is separate from subpanel count
+  (which exists in the parent's state).
+- DIRECTION: HORIZONTAL (decided).
+- NAVIGATION: SNAPPED SCROLL (carousel). The view always rests on a subpanel boundary, and the saved state is the index of
+  the first visible subpanel. Each subpanel's hit zones stay fixed to its own origin.
+- SCROLL INPUT: TBD. Options are the mouse wheel over the strip only, or a dedicated scroll strip or arrows. The wheel must
+  not scroll the view while a knob is being adjusted.
+- Per-voice subpanels also take the voice selection; global subpanels do not. The page or scroll position is saved with the
+  module, like the Macro tab.
