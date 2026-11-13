@@ -147,3 +147,25 @@ Required new coverage (test_output_mask_gate.cpp and the voice-frame tests):
 Write tests 1-4 FIRST (they must FAIL on this branch, reproducing V1/V2). Then fix the mono/low-index path so slot 0 and
 all followers read the shared Macro window and mask. Then bug 22 (Lantern). Do NOT special-case any voice index on the
 Macro module  one window, one mask, all voices.
+
+## CORRECTION (Rodney: voice indexing is fixed via a resolver with C++ constraints)
+VoiceResolver (src/dsp/VoiceResolver.hpp) is well-formed: strong indices (VoiceSlot), kMonoVoice=1, isMono/isPoly,
+voiceSlot/slotToVoice, constexpr. Most of the engine routes through it. The Macro bug is NOT the resolver permitting
+divergence  it is a LOOP THAT BYPASSES IT.
+
+LOCATED: SequencerEngine.cpp:876-890, the voice-frame loop, uses a RAW int v and a LITERAL branch:
+  const bool live = (v == 0) || (v >= 1 && v <= numPolyVoices);
+This is the one place not going through VoiceResolver::isMono / isPoly. Slot 0 and the low-index voices therefore do not
+resolve the shared Macro window and mask the way V3 does. (The identity ring-fold here is already the bug-17 fix and is
+correct; the problem is the raw indexing around it.)
+
+REVISED FIX (supersedes "fix the mono special case"):
+1. Route this loop through VoiceResolver: replace the raw v==0 / v>=1 test with isMono/isPoly, and resolve each voice's
+   window and mask through effectiveVoiceLor / outputMaskPasses exactly as the working voices do. No voice index is
+   special; the resolver is the single interface, as everywhere else in the engine.
+2. The fix is to REMOVE the bypass, not to add a mono branch. If a mono-specific value is needed, it comes from
+   VoiceResolver::mono()/kMonoSlot, not a literal 0.
+3. TEST that fails on this branch: drive Macro followers THROUGH THE RESOLVER for all v in [kMonoVoice..kLastVoice];
+   assert V1..V16 share the Macro window and mask. V1/V2 fail today precisely because this loop bypasses the resolver.
+4. Audit: grep the engine for raw per-voice indexing (v==0, %16 on a voice, bare int v loops over voices) and route each
+   through VoiceResolver or justify it. The array-guard / anchor-audit style, applied to voice indexing.
