@@ -635,12 +635,6 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // animates this; the expression is the identity-voice branch's, computed once.
     int     macroFrameRead_                         = 0;
     int     macroFrameSign_                         = 0;
-public:
-    // The SHARED Macro frame read/sign (global; computed once per block, NOT per voice).
-    // The Macro voice-lane (GLOBAL row) playhead reads THIS, not a per-voice voiceReadPosition.
-    int     macroFrameRead() const { return macroFrameRead_; }
-    int     macroFrameSign() const { return macroFrameSign_; }
-private:
 
     // ── UNIFIED ADDRESSING Stage 4: the OUTPUT MASK (the ONE output layer) ─────────
     // A per-step play/mute mask per voice + a rotation-source flag for the painted
