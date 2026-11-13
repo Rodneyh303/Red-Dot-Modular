@@ -915,6 +915,13 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
             // The ring fold keeps the read where the walk put it; for every ≤16
             // configuration the value is < 16 either way (bit-identical, goldens).
             voiceRead_[v]   = (int)(((tNowV - 1) % kMaskRing + kMaskRing) % kMaskRing);
+#ifdef DOTM_DIAG
+            if (std::getenv("DOTM_DIAG") && v < 3) {
+                int _L,_O,_R; LaneDir _d; effectiveVoiceLor(v,_L,_O,_R,_d);
+                fprintf(stderr, "[DIAG eng] v=%d IDENTITY L=%d O=%d R=%d voiceRead=%d macroFrameRead=%d passG=%d lenG=%d\n",
+                        v,_L,_O,_R,voiceRead_[v],macroFrameRead_,(int)passG,lenG);
+            }
+#endif
             // The identity frame's sign: the walk's musical step with the wrap folded —
             // the driverTickBefore law on the bounded pair (the raw clock never jumps,
             // so pass-through reduces to motionV; the mapped window's jump normalizes).
@@ -932,6 +939,10 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         }
         int L, O, R; LaneDir vd;
         effectiveVoiceLor(v, L, O, R, vd);
+#ifdef DOTM_DIAG
+        if (std::getenv("DOTM_DIAG") && v < 3)
+            fprintf(stderr, "[DIAG eng] v=%d MAPPED L=%d O=%d R=%d dir=%d passG=%d lenG=%d\n", v,L,O,R,(int)vd,(int)passG,lenG);
+#endif
         if (L < 1) L = 1;
         // CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION — the base-mode split. ABS1 keeps the
         // landed fold EXACTLY (the globally-wrapped driver representative + rho=(R-O),
