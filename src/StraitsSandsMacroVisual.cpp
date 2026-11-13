@@ -1,3 +1,5 @@
+#include <cstdio>
+#include <cstdlib>
 #include <rack.hpp>
 #include "Monsoon.hpp"
 #include "ui/RedScrew.hpp"
@@ -1101,6 +1103,9 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // own gates pin them); the Macro strip no longer reads them.
             const auto vslot = dotModular::VoiceResolver::slot(viewVoice + 1);
             int rp = (eng.stepIndex >= 0) ? eng.voiceReadPosition(vslot) : -1;
+#ifdef DOTM_DIAG
+            if (std::getenv("DOTM_DIAG")) fprintf(stderr, "[DIAG drw] VOICEREAD viewVoice=%d vslot=%d voiceReadPosition=%d stepIndex=%d\n", viewVoice, (int)vslot, rp, eng.stepIndex);
+#endif
             int sg = eng.voiceReadSign(vslot);
             visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);
             // The mask surface reads the ENGINE's effective pattern (the UI-completion
@@ -1346,7 +1351,11 @@ size_t StraitsSandsMacroVisual::sweepFingerprint_(void* dst) {
             const int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
             const int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
             const int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
-            stepArr[l] = calcPlayhead(eng.stepIndex, ownLen, ownOff, ownRot) & 0x0F;
+            { int _ph = calcPlayhead(eng.stepIndex, ownLen, ownOff, ownRot);
+#ifdef DOTM_DIAG
+          if (std::getenv("DOTM_DIAG") && l==0) fprintf(stderr, "[DIAG drw] LANE0 calcPlayhead=%d masked=%d ownLen=%d ownOff=%d ownRot=%d\n", _ph, _ph & 0x0F, ownLen, ownOff, ownRot);
+#endif
+          stepArr[l] = _ph & 0x0F; }
         }
         const bool ch = sweepSigChanged(sweepSig_, eng, stepArr.data(), nV);
 #ifdef MONSOON_PROFILE
@@ -1371,7 +1380,11 @@ void StraitsSandsMacroVisual::sweepProduce_() {
         const int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
         const int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
         const int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
-        stepArr[l] = calcPlayhead(eng.stepIndex, ownLen, ownOff, ownRot) & 0x0F;
+        { int _ph = calcPlayhead(eng.stepIndex, ownLen, ownOff, ownRot);
+#ifdef DOTM_DIAG
+          if (std::getenv("DOTM_DIAG") && l==0) fprintf(stderr, "[DIAG drw] LANE0 calcPlayhead=%d masked=%d ownLen=%d ownOff=%d ownRot=%d\n", _ph, _ph & 0x0F, ownLen, ownOff, ownRot);
+#endif
+          stepArr[l] = _ph & 0x0F; }
     }
     // Capture the sig exactly as the resolve is about to consume it (the resolve is
     // read-only on every fingerprinted input, so the placement here is free).
