@@ -677,14 +677,12 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         std::array<uint64_t, kVoiceSlots> a{}; a.fill(kMaskLenMask); return a;
     }
     std::array<int, kVoiceSlots> maskKind_ = {};      // per-voice (East tier) kind
-    std::array<uint64_t, kVoiceSlots> maskPainted_             = maskAllOnArr();
     std::array<bool, kVoiceSlots> maskFollowR_ = {};      // the painted kind's rotation source
     std::array<bool, kVoiceSlots> maskLocalEast_ = {};      // false = follow the MACRO mask
     std::array<uint64_t, kVoiceSlots> maskAnchored_            = maskAllOnArr();
     std::array<int, kVoiceSlots> maskAnchorR_ = {};      // the base R the copy is pinned to
     std::array<uint64_t, kVoiceSlots> maskLastPushed_          = maskAllOnArr();
     int      maskMacroKind_                        = MASK_CYCLE;
-    uint64_t maskMacroPainted_                     = kMaskLenMask;
     bool     maskMacroFollowR_                     = false;
     uint64_t maskMacroAnchored_                    = kMaskLenMask;
     int      maskMacroAnchorR_                     = 0;

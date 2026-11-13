@@ -217,11 +217,11 @@ void SequencerEngine::reset() {
     // Stage 4: the output mask seeds to CYCLE everywhere (the all-on degenerate mask,
     // today's behaviour) — no gating at defaults, the goldens' output path untouched.
     for (int v = 0; v < kVoiceSlots; ++v) {
-        maskKind_[v] = MASK_CYCLE; maskPainted_[v] = kMaskLenMask; maskFollowR_[v] = false;
+        maskKind_[v] = MASK_CYCLE; maskFollowR_[v] = false;
         maskLocalEast_[v] = false; maskAnchored_[v] = kMaskLenMask; maskAnchorR_[v] = 0;
         maskLastPushed_[v] = kMaskLenMask;
     }
-    maskMacroKind_ = MASK_CYCLE; maskMacroPainted_ = kMaskLenMask; maskMacroFollowR_ = false;
+    maskMacroKind_ = MASK_CYCLE; maskMacroFollowR_ = false;
     maskMacroAnchored_ = kMaskLenMask; maskMacroAnchorR_ = 0; maskMacroLastPushed_ = kMaskLenMask;
     runGateActive = false;
     resetArmed = false;
@@ -367,7 +367,6 @@ void SequencerEngine::pushMaskEditor(
             maskMacroAnchorR_     = baseR;
         }
         maskMacroKind_    = kind;
-        maskMacroPainted_ = painted;
         maskMacroFollowR_ = followR;
     }
     for (int v = 0; v < kVoiceSlots; ++v) {
@@ -385,7 +384,6 @@ void SequencerEngine::pushMaskEditor(
             maskAnchorR_[v]     = baseR;
         }
         maskKind_[v]    = kind;
-        maskPainted_[v] = painted;
         maskFollowR_[v] = followR;
     }
 }
@@ -881,7 +879,12 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         if (!live) { voiceDriver_[v] = tNowV; voiceRead_[v] = 0; continue; }
         if (voiceLorIdentity(v)) {
             voiceDriver_[v] = tNowV;
-            voiceRead_[v]   = (int)(((tNowV - 1) % 16 + 16) % 16);
+            // (bug 17, LOR_EDITING_BUG_LIST) the RING fold — was % 16 (the 16-era
+            // leftover): an identity voice's read cell FOLDED to bar 1, so with the
+            // global window placed in bar 2 the strip's playhead left the window.
+            // The ring fold keeps the read where the walk put it; for every ≤16
+            // configuration the value is < 16 either way (bit-identical, goldens).
+            voiceRead_[v]   = (int)(((tNowV - 1) % kMaskRing + kMaskRing) % kMaskRing);
             // The identity frame's sign: the walk's musical step with the wrap folded —
             // the driverTickBefore law on the bounded pair (the raw clock never jumps,
             // so pass-through reduces to motionV; the mapped window's jump normalizes).

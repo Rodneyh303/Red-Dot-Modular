@@ -1321,7 +1321,7 @@ int main() {
                            && eng.maskMacroAnchored_ == dotModular::kMaskLenMask   // ~0ULL & lenMask -> the ring's all-on (32 bits)
                            && eng.maskMacroFollowR_ == true
                            && eng.maskKind_[v2.v] == 0           // -1 -> 0 (cycle)
-                           && eng.maskPainted_[v2.v] == 0x1869FULL // 99999 & lenMask -> 0x1869F (the ring mask law at 32)
+                           && eng.maskAnchored_[v2.v] == 0x1869FULL // 99999 & lenMask -> 0x1869F (the ring mask law at 32 — the ANCHORED copy; the write-only maskPainted_ echo is retired)
                            && eng.maskLocalEast_[v2.v] == true;  // 0.5 -> local
         check(clampsOK, "STAGE4: the push clamps to the store frame (kind 0..2, bits ring-masked uint64 — the ring's all-on 0xFFFFFFFF + bit 16 live since 2b, flags)");
         // and windowMaskBits (the "from range" preset's math) == the dynamic eval.

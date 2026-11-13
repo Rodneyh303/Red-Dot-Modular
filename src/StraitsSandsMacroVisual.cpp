@@ -1053,20 +1053,10 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 // MVC: hide the playhead when stopped (match Mono's started ? tick : -1), so
                 // rotation CV only moves the chevron, not the playhead, when the seq is stopped.
                 int ph = (eng.stepIndex >= 0) ? eng.macroLaneTick_[l] : -1;
-                // PER-VOICE STEP-ADVANCE (the WANDER build): the VAR lane's chevron reads
-                // the ENGINE's scanned position. CC_FIX_MACRO_STRIP_VOICE_PLAYHEAD: that
-                // is the DISPLAYED VOICE's own scan — the SAME accessor East uses for the
-                // same purpose (variationLanePlayheadForVoice, East 1914) — not the
-                // mono/global walk, which ran over the global 16 steps regardless of the
-                // voice's L. CC_FIX_MACRO_NO_VOICE1_SPECIAL: EVERY tab takes the
-                // per-voice accessor — on the V1 tab it IS the old mono helper
-                // bit-for-bit (slot(1) mints the mono slot; the helper was exactly these
-                // two engine calls). Outside holds this is bit-identical to the
-                // calcPlayhead below; during a gate-mode hold it scans.
-                visualEditor->setLanePlayStep(
-                    l, (l == SequencerEngine::EDITOR_LANE_VARIATION)
-                            ? variationLanePlayheadForVoice(eng, dotModular::VoiceResolver::slot(viewVoice + 1))
-                            : calcPlayhead(ph, ownLen, ownOff, ownRot));
+                // (bug 18, LOR_EDITING_BUG_LIST) the SHARED window playhead for
+                // every lane — the VAR scan exception is gone (it left the lane's
+                // window); the per-voice tick + LOR feed the ONE law.
+                visualEditor->setLanePlayStep(l, calcPlayhead(ph, ownLen, ownOff, ownRot));
             }
         }
 

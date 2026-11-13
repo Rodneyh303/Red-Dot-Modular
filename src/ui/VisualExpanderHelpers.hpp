@@ -81,40 +81,20 @@ inline bool isConnectedAndClaimed(rack::Module* self) {
 //     physicalBar = (timelineIdx + offset) mod ring
 // so the highlight lands on the real active block, not a window-relative index.
 // Returns -1 if globalStep < 0 (sequencer not running).
-// STEPS_32 Stage 2a: the ring landing derives from kMaskRing (was literal 16) —
-// identical at the 16 bound; the Stage-2b flip moves it with the ring.
+// (bugs 17+18, LOR_EDITING_BUG_LIST) the law lives in the core (lanePlayheadBar —
+// ONE law, every lane INCLUDING the VAR lane; the old VAR special-case drew the
+// engine's global scan and left the lane's window); this delegates.
 inline int calcPlayhead(int globalStep, int length, int offset, int rotation) {
     if (globalStep < 0) return -1;
-    length = std::max(1, std::min(length, dotModular::kMaskRing));
-    int timelineIdx = ((globalStep + rotation) % length + length) % length;
-    return (timelineIdx + offset) % dotModular::kMaskRing;
+    return redDot::SandsRangeGestureCore::lanePlayheadBar(
+        globalStep, length, offset, rotation, dotModular::kMaskRing);
 }
 
-// CC_PROMPT_VARIATION_SCAN_DISPLAY — the VARIATION lane's chevron position: the
-// ENGINE's scanned read index, never a parallel recompute. Gate-mode holds scan the
-// variation window (scanOfsV_[0], +1 per held rise — the freeze fix's escape search,
-// IN THE TRAVEL DIRECTION: the signed delta, backward when Variation < 0), so the
-// chevron creeps the way the playhead is going during a hold and re-aligns on
-// advance — the visual confirmation of the freeze fix. Outside holds (and in
-// clock/phase — scanOfs_ stays 0 there) this equals the old calcPlayhead position:
-// calcPlayhead matches getStrandIdx exactly, and the mono feeds' LOR comes from the
-// engine's own lor() store, so the swap is bit-identical at rest. -1 when not running.
-inline int variationLanePlayhead(const SequencerEngine& eng) {
-    if (eng.stepIndex < 0) return -1;
-    const dotModular::VoiceSlot mono = dotModular::kMonoVoiceSlot;
-    return eng.stepAdvanceStrandIdx(mono, eng.stepAdvanceScanDelta(mono));
-}
-
-// PER-VOICE STEP-ADVANCE — THIS voice's VAR chevron (every voice decides — the WANDER
-// fix — so every voice has its own scan): the voice's OWN scanned position (its own
-// window + its own scan — the same index its advance decision used; it creeps the way
-// the voice is going during a hold and re-aligns when the voice moves). The mono
-// helper above is the mono slot's case. Outside holds this equals the plain
-// calcPlayhead position. -1 when not running.
-inline int variationLanePlayheadForVoice(const SequencerEngine& eng, dotModular::VoiceSlot bank) {
-    if (eng.stepIndex < 0) return -1;
-    return eng.stepAdvanceStrandIdx(bank, eng.stepAdvanceScanDelta(bank));
-}
+// (bugs 17+18, LOR_EDITING_BUG_LIST) the VAR-scan playhead helpers are RETIRED:
+// every lane — the VAR lane included — draws the SHARED window playhead
+// (calcPlayhead → SandsRangeGestureCore::lanePlayheadBar, in-window by
+// construction). The scan (the freeze-fix escape search) could leave the lane's
+// window; the doc's ruling: "No lane draws the global scan when it has a window."
 
 // Read an integer param (rounded) from a module, clamped to [1, kLaneLengthMax]
 // (G2: the lane-length bound by name — was the literal 16, the same D1-class miss).

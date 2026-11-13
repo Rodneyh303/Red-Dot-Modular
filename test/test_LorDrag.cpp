@@ -37,6 +37,8 @@
 #include <string>
 
 #include "ui/SandsRangeGestureCore.hpp"
+#include "engines/SequencerEngine.hpp"   // (bug 17) the voiceRead_ ring-fold pin
+#include "VoiceResolver.hpp"
 
 using Core = redDot::SandsRangeGestureCore;
 using S    = redDot::SandsRangeGestureCore::LorDragState;
@@ -569,6 +571,68 @@ int main() {
                     ratioFig, Core::kStripMinContrast, ratioTint, Core::kStripMinTintContrast, oldRatio);
         check(ok, "13 (bug 15): the voice strip's window figure meets the minimum "
                   "contrast ratio against the recess (the constants are pinned)");
+    }
+
+    // ── GATE 14 (bugs 17+18): the SHARED lane playhead — in-window, always ──────
+    {
+        // lanePlayheadBar (the ONE law; calcPlayhead delegates): for EVERY
+        // (off, len, rot, tick) the drawn playhead is INSIDE [off, off+len) —
+        // the doc's test. The VAR scan exception is retired (no caller anywhere).
+        bool ok = true;
+        for (int off = 0; off < 32; ++off)
+            for (int len = 1; len <= 32; ++len)
+                for (int rot = 0; rot < 32; ++rot)
+                    for (int tick = -3; tick < 35; ++tick) {
+                        const int bar = Core::lanePlayheadBar(tick, len, off, rot, 32);
+                        ok = ok && bar >= 0 && bar < 32;
+                        ok = ok && Core::windowContains(off, len, bar, 32);   // in-window
+                    }
+        // the law's formula: off + ((tick + rot) mod len), wrapped on the ring.
+        ok = ok && Core::lanePlayheadBar(7, 8, 20, 3, 32) == ((20 + ((7 + 3) % 8)) % 32);
+        ok = ok && Core::lanePlayheadBar(7, 4, 30, 1, 32) == ((30 + ((7 + 1) % 4)) % 32);   // a wrapped window
+        // the delegation + the retirement pins (the D grep-in-test precedent):
+        // calcPlayhead delegates to the core law; NO caller draws the scan.
+        std::string veh, east, macro;
+        ok = ok && slurpFile("src/ui/VisualExpanderHelpers.hpp", veh)
+               && slurpFile("src/StraitsEastSandsVisual.cpp", east)
+               && slurpFile("src/StraitsSandsMacroVisual.cpp", macro);
+        ok = ok && veh.find("lanePlayheadBar") != std::string::npos;          // the delegation
+        ok = ok && veh.find("variationLanePlayhead") == std::string::npos;    // the helpers retired
+        ok = ok && east.find("variationLanePlayhead") == std::string::npos;   // no scan callers
+        ok = ok && macro.find("variationLanePlayhead") == std::string::npos;
+        check(ok, "14 (bugs 17+18): the shared lane playhead is in-window for every "
+                  "(off, len, rot, tick); the VAR scan exception is retired everywhere");
+    }
+
+    // ── GATE 15 (bug 17): the voice strip's read cell — the RING fold ───────────
+    {
+        // The engine's voiceRead_ (the strip's rp) must land where the walk put
+        // it — including the IDENTITY voice under a bar-2 GLOBAL window. The old
+        // % 16 fold (the 16-era leftover) put every read in bar 1, so the strip's
+        // playhead left the window ("Voice (GLOBAL) lane playhead outside its
+        // range"). The ring fold keeps it; for every ≤16 configuration the value
+        // is < 16 either way (the goldens' bit-identity).
+        SequencerEngine eng;
+        eng.reset();
+        // the GLOBAL window placed in bar 2: length 16, offset 16. V1 (slot 1 —
+        // the always-live mono voice; inactive poly slots park at 0 by design).
+        eng.updateWindow(16.f, 0.f, false, 16.f, 0.f, false);
+        bool ok = true;
+        for (int i = 0; i < 24; ++i) {
+            eng.advancePlayhead(1, nullptr);
+            const int rp = eng.voiceReadPosition(dotModular::VoiceResolver::slot(1));   // V1 (an identity voice)
+            ok = ok && rp >= 16 && rp < 32;                          // in bar 2 — no bar-1 fold
+        }
+        // the default global window (16/0): the identity read stays in [0, 16).
+        eng.reset();
+        eng.updateWindow(16.f, 0.f, false, 0.f, 0.f, false);
+        for (int i = 0; i < 24; ++i) {
+            eng.advancePlayhead(1, nullptr);
+            const int rp = eng.voiceReadPosition(dotModular::VoiceResolver::slot(1));
+            ok = ok && rp >= 0 && rp < 16;
+        }
+        check(ok, "15 (bug 17): the identity voice's read cell folds on the RING — "
+                  "bar 2 stays bar 2 (the strip's playhead inside its range)");
     }
 
     std::printf("\n%d passed, %d failed\n", g_pass, g_fail);

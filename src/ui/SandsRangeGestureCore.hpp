@@ -134,6 +134,20 @@ struct SandsRangeGestureCore {
         return (e >= s) ? (b >= s && b <= e) : (b >= s || b <= e);
     }
 
+    // ── (bugs 17+18, LOR_EDITING_BUG_LIST) THE SHARED LANE-PLAYHEAD LAW ─────────
+    // ONE law for EVERY lane's drawn playhead (the VAR lane included — the doc's
+    // ruling: "No lane draws the global scan when it has a window"): the window
+    // walk's read position, physical bar = off + ((tick + rot) mod len), wrapped
+    // on the ring — BY CONSTRUCTION inside [off, off+len). VisualExpanderHelpers'
+    // calcPlayhead delegates here (the windowContains precedent: ONE law, every
+    // consumer; the old VAR special-case drew the engine's SCAN instead).
+    static int lanePlayheadBar(int tick, int len, int off, int rot, int ring) {
+        const int l = std::clamp(len, 1, ring);
+        const int o = wrapMod(off, ring);
+        const int r = wrapMod(rot, ring);
+        return wrapMod(o + wrapMod(tick + r, l), ring);
+    }
+
     // ── (bug 12, LOR_EDITING_BUG_LIST) THE CHEVRON GEOMETRY ────────────────────
     // The rotation marker's chevron pair, sized to the GRID: the pair's total
     // x-extent is EXACTLY one step width (the old fixed 3 px arm overran the
