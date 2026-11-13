@@ -80,15 +80,29 @@ Which lanes can be selected: the voice lane, rest, variation and legato work; me
 | 17 | Voice (GLOBAL) lane playhead outside its range in cycle mode | The voice-lane playhead leaves the window | The voice-lane playhead draws from the global walk, not the voice window's read position (voiceReadPosition / the cycle fold). | DISPLAY |
 | 18 | VARIATION lane playhead outside its range | The VAR playhead leaves the window | The editor draws variationLanePlayhead(eng) for the VAR lane (StraitsEastSandsVisual.cpp:1043), which is the engine's GLOBAL variation scan, not the lane window. | DISPLAY |
 
-## BUG 16 IS THE PRIORITY (audio regression)
-The mask composition into the output gate was lost. Per UNIFIED_ADDRESSING_SYSTEM.md the painted mask composes as an
-AND gate on the base read (cycle or abs1), using the GLOBAL step for the output gate. Restore that:
-1. Find where the output gate was ANDed with the composed mask before the 32-step / editor work (git log -S maskPainted_
-   and the pre-regression gate site). Restore the read: the output gate for voice v at global step s is
-   base_gate AND bit(maskComposed_[v], s), where maskComposed is the painted mask composed with the base-mode window.
-2. Pin it: a painted mask with some bits off silences exactly those global steps; all-on is today's behaviour
-   (bit-identical). This is the GATE 1 case from the 32-step plan  check it did not regress.
-3. maskPainted_ written-but-never-read is the smell; a test must assert the output changes when the mask changes.
+## BUG 16 IS THE PRIORITY (audio regression)  THE WHOLE OUTPUT-GATE COMPOSITION IS LOST
+Confirmed: the mask worked before. The last commit to READ maskPainted_ is b134490 ("unified ADDRESSING Stage 4  the
+OUTPUT-MASK hierarchy, ONE mechanism (the containment concept)"). Since then the composition at the output gate was
+dropped: maskPainted_ is written (SequencerEngine.cpp:220, 388) and never read, AND the abs1 silent-outside-LOR gate is
+also gone (the abs1 read at :916-937 computes voiceRead_ over the full ring but nothing silences steps outside the LOR).
+
+THE MODEL (Rodney + UNIFIED_ADDRESSING_SYSTEM.md). ONE AND gate at the OUTPUT, keyed on the GLOBAL step:
+- BASE READ: cycle reads WITHIN the LOR; abs1 reads the FULL main-transport length.
+- AND the LOR WINDOW at the global step: in abs1 this SILENCES output when the global step is OUTSIDE the LOR (the missing
+  behaviour); in cycle the read is already inside, so it is a no-op.
+- AND the PAINTED MASK at the global step.
+All three compose at the output, on the global step. This is exactly what b134490 added and what regressed.
+
+FIX
+1. Restore the output-gate composition from b134490: gate(v, s_global) = base_gate AND inLor(v, s_global) AND
+   maskBit(maskComposed_[v], s_global). Find what b134490 added at the gate site and why it stopped being called (git show
+   b134490; diff the gate path to HEAD).
+2. maskComposed_ = the painted mask composed with the base-mode window (the Stage 4 composition), read at the global step.
+3. PINS (restore the Stage 4 / GATE-1 tests that regressed):
+   - abs1 + a non-full LOR: output is SILENT at global steps outside the LOR, sounds inside it. (The missing abs1 gate.)
+   - cycle + painted mask bits off: exactly those steps silenced; all-on is bit-identical to today.
+   - painted mask changed -> output changes (the written-but-never-read smell becomes a test).
+4. ≤16 identity/abs1 goldens stay bit-identical.
 
 ## PLAYHEAD FIX (bugs 17, 18 together)
 One shared playhead function: given the lane/voice window (offset, length, rotation, direction) and the engine tick,
