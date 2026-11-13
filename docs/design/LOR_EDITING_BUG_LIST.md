@@ -111,3 +111,39 @@ use it. No lane draws the global scan when it has a window. Test: for every (off
 playhead is within [offset, offset+length) and equals the engine read position.
 
 ## DO NOT regress the editing improvements while fixing these.
+
+## MACRO REGRESSIONS (Rodney, Rack)  the tests do not exercise MACRO shared state
+East is mostly correct. Macro is broken, and the 109-suite battery is green, so the suites are NOT distinguishing Macro
+from East. The model: on the MACRO module everything is GLOBAL  ONE shared window and ONE output mask, common to ALL
+voices. The engine has the shared state (macroVoiceLor_, maskMacro*), followers read it via effectiveVoiceLor and
+outputMaskPasses. The breakage is per-voice, which a shared-state-only test misses.
+
+| # | Bug | Symptom (Rack) | Suspected cause | Status |
+|---|---|---|---|---|
+| 19 | Macro voice 1 ignores the window AND emits no gates | V1 cycles ALL steps (cycle and abs), no gates out | The mono slot 0 path (SequencerEngine.cpp:881-884) folds %16 and does not read the Macro window or the Macro mask; the output gate for slot 0 is off. | OPEN |
+| 20 | Macro voice 2 cycles a small unrelated range | V2's window is not the shared Macro window | A low-index voice reads stale/per-voice LOR instead of macroVoiceLor_; effectiveVoiceLor is not returning the Macro window for this voice. | OPEN |
+| 21 | Macro output mask does not gate at all | Mask on everywhere, no gates out (picture 3) | The follower output gate (outputMaskPasses) is not reaching the voices that play, or the mono/low-index voices bypass it. | OPEN (AUDIO) |
+| 22 | Lantern not true to the output mask | Fully masked-out pattern: scope shows silence, Lantern still shows steps (picture 1) | Lantern's write path does not apply outputMaskPasses; it records the read, not the gated output. | OPEN (display) |
+| V3 | Voice 3 is CORRECT | cycles its range in cycle, all steps in abs | reference behaviour | OK |
+
+ROOT PATTERN: the behaviour differs BY VOICE INDEX (V3 right, V1/V2 wrong). This is the mono-slot (slot 0) and
+low-index special-case path, not the shared Macro mechanism. The mono/early-voice special cases (flagged earlier as a
+separate design question) now cause real divergence under Macro.
+
+## THE TEST GAP (fix the tests first, or the fix will regress again)
+The suites assert the shared mechanism but never drive MACRO followers across ALL 16 voices including the mono slot.
+Required new coverage (test_output_mask_gate.cpp and the voice-frame tests):
+1. MACRO SHARED WINDOW: set a Macro window (e.g. O=16, L=8); assert EVERY follower voice v in 0..15 (slot 0 included)
+   reads the SAME window  voiceRead_ in [O, O+L), identical period, for V1..V16. Today V1/V2 would fail.
+2. MACRO SHARED MASK: paint a Macro mask with bits off; assert outputMaskPasses is identical for every follower voice at
+   every global step, and that masked steps are silent for ALL voices including slot 0.
+3. MONO SLOT NOT SPECIAL: slot 0 under Macro reads the Macro window and mask exactly as slots 1..15. A direct pin on the
+   :881-884 mono path.
+4. GATE OUTPUT PER VOICE: with the mask all-on, every follower emits gates; with it all-off, none do  checked per voice,
+   not just on the aggregate.
+5. LANTERN REFLECTS THE GATE: Lantern's recorded cell for a masked-out step is OFF (bug 22).
+
+## FIX ORDER
+Write tests 1-4 FIRST (they must FAIL on this branch, reproducing V1/V2). Then fix the mono/low-index path so slot 0 and
+all followers read the shared Macro window and mask. Then bug 22 (Lantern). Do NOT special-case any voice index on the
+Macro module  one window, one mask, all voices.
