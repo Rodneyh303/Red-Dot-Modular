@@ -111,3 +111,88 @@ use it. No lane draws the global scan when it has a window. Test: for every (off
 playhead is within [offset, offset+length) and equals the engine read position.
 
 ## DO NOT regress the editing improvements while fixing these.
+
+## MACRO REGRESSIONS (Rodney, Rack)  the tests do not exercise MACRO shared state
+East is mostly correct. Macro is broken, and the 109-suite battery is green, so the suites are NOT distinguishing Macro
+from East. The model: on the MACRO module everything is GLOBAL  ONE shared window and ONE output mask, common to ALL
+voices. The engine has the shared state (macroVoiceLor_, maskMacro*), followers read it via effectiveVoiceLor and
+outputMaskPasses. The breakage is per-voice, which a shared-state-only test misses.
+
+| # | Bug | Symptom (Rack) | Suspected cause | Status |
+|---|---|---|---|---|
+| 19 | Macro voice 1 ignores the window AND emits no gates | V1 cycles ALL steps (cycle and abs), no gates out | The mono slot 0 path (SequencerEngine.cpp:881-884) folds %16 and does not read the Macro window or the Macro mask; the output gate for slot 0 is off. | OPEN |
+| 20 | Macro voice 2 cycles a small unrelated range | V2's window is not the shared Macro window | A low-index voice reads stale/per-voice LOR instead of macroVoiceLor_; effectiveVoiceLor is not returning the Macro window for this voice. | OPEN |
+| 21 | Macro output mask does not gate at all | Mask on everywhere, no gates out (picture 3) | The follower output gate (outputMaskPasses) is not reaching the voices that play, or the mono/low-index voices bypass it. | OPEN (AUDIO) |
+| 22 | Lantern not true to the output mask | Fully masked-out pattern: scope shows silence, Lantern still shows steps (picture 1) | Lantern's write path does not apply outputMaskPasses; it records the read, not the gated output. | OPEN (display) |
+| V3 | Voice 3 is CORRECT | cycles its range in cycle, all steps in abs | reference behaviour | OK |
+
+ROOT PATTERN: the behaviour differs BY VOICE INDEX (V3 right, V1/V2 wrong). This is the mono-slot (slot 0) and
+low-index special-case path, not the shared Macro mechanism. The mono/early-voice special cases (flagged earlier as a
+separate design question) now cause real divergence under Macro.
+
+## THE TEST GAP (fix the tests first, or the fix will regress again)
+The suites assert the shared mechanism but never drive MACRO followers across ALL 16 voices including the mono slot.
+Required new coverage (test_output_mask_gate.cpp and the voice-frame tests):
+1. MACRO SHARED WINDOW: set a Macro window (e.g. O=16, L=8); assert EVERY follower voice v in 0..15 (slot 0 included)
+   reads the SAME window  voiceRead_ in [O, O+L), identical period, for V1..V16. Today V1/V2 would fail.
+2. MACRO SHARED MASK: paint a Macro mask with bits off; assert outputMaskPasses is identical for every follower voice at
+   every global step, and that masked steps are silent for ALL voices including slot 0.
+3. MONO SLOT NOT SPECIAL: slot 0 under Macro reads the Macro window and mask exactly as slots 1..15. A direct pin on the
+   :881-884 mono path.
+4. GATE OUTPUT PER VOICE: with the mask all-on, every follower emits gates; with it all-off, none do  checked per voice,
+   not just on the aggregate.
+5. LANTERN REFLECTS THE GATE: Lantern's recorded cell for a masked-out step is OFF (bug 22).
+
+## FIX ORDER
+Write tests 1-4 FIRST (they must FAIL on this branch, reproducing V1/V2). Then fix the mono/low-index path so slot 0 and
+all followers read the shared Macro window and mask. Then bug 22 (Lantern). Do NOT special-case any voice index on the
+Macro module  one window, one mask, all voices.
+
+## CORRECTION (Rodney: voice indexing is fixed via a resolver with C++ constraints)
+VoiceResolver (src/dsp/VoiceResolver.hpp) is well-formed: strong indices (VoiceSlot), kMonoVoice=1, isMono/isPoly,
+voiceSlot/slotToVoice, constexpr. Most of the engine routes through it. The Macro bug is NOT the resolver permitting
+divergence  it is a LOOP THAT BYPASSES IT.
+
+LOCATED: SequencerEngine.cpp:876-890, the voice-frame loop, uses a RAW int v and a LITERAL branch:
+  const bool live = (v == 0) || (v >= 1 && v <= numPolyVoices);
+This is the one place not going through VoiceResolver::isMono / isPoly. Slot 0 and the low-index voices therefore do not
+resolve the shared Macro window and mask the way V3 does. (The identity ring-fold here is already the bug-17 fix and is
+correct; the problem is the raw indexing around it.)
+
+REVISED FIX (supersedes "fix the mono special case"):
+1. Route this loop through VoiceResolver: replace the raw v==0 / v>=1 test with isMono/isPoly, and resolve each voice's
+   window and mask through effectiveVoiceLor / outputMaskPasses exactly as the working voices do. No voice index is
+   special; the resolver is the single interface, as everywhere else in the engine.
+2. The fix is to REMOVE the bypass, not to add a mono branch. If a mono-specific value is needed, it comes from
+   VoiceResolver::mono()/kMonoSlot, not a literal 0.
+3. TEST that fails on this branch: drive Macro followers THROUGH THE RESOLVER for all v in [kMonoVoice..kLastVoice];
+   assert V1..V16 share the Macro window and mask. V1/V2 fail today precisely because this loop bypasses the resolver.
+4. Audit: grep the engine for raw per-voice indexing (v==0, %16 on a voice, bare int v loops over voices) and route each
+   through VoiceResolver or justify it. The array-guard / anchor-audit style, applied to voice indexing.
+
+## BUG 23  identity window sentinel is the literal 16 (vestigial from the 16->32 migration)
+Decided (Rodney): the voice range is its own window, independent of the global pattern length. Identity = the FULL voice
+window = kPatternLengthCap (32). Longer than the global pattern: the pattern phases within the window. Shorter: the voice
+cycles more than once. Correct for UAS cycle mode. Patch compatibility is NOT a concern yet (no migration needed).
+
+LOCATED  the literal 16 is the identity sentinel in three load-bearing places:
+- voiceLorIdentity: returns L==16 && O==0 && R==0 && Forward (SequencerEngine.hpp:834).
+- window pass-through: len==16 && off==0 (SequencerEngine.cpp:102 and :115).
+- the reset menu items: "Reset range to identity (16/0/0, fwd)" (StraitsEastSandsVisual.cpp:944, :981) and
+  "Reset global range to identity (16/0/0, fwd)" (StraitsSandsMacroVisual.cpp:585); engine defaults len=16
+  (Monsoon.cpp:92, Monsoon.hpp:1013, :1115).
+
+FIX (no migration):
+1. Replace the literal 16 identity length with kPatternLengthCap at ALL sites: voiceLorIdentity, the two pass-through
+   checks, the engine defaults, and the three menu items. Use the named constant, not 32.
+2. Reset sets 32/0/0/Forward. The menu text reads the cap ("Reset ... to identity (32/0/0, fwd)").
+3. Keep the pass-through behaviour: at any length the identity window spans the whole voice ring (kPatternLengthCap), so
+   it imposes no restriction.
+
+GATES:
+- A reset gives a full 32-step voice window; the voice imposes no range restriction.
+- <=16 goldens bit-identical: at pattern length 16 a 32-wide identity window reads the same cells as the old 16-wide
+  pass-through (verify the pass-through fires for L==kPatternLengthCap).
+- No literal 16 remains as an identity/length sentinel in the voice-window path (grep; part of the magic-number audit, G).
+- Global pattern length changing during playback leaves an identity voice reading the full window (the window does not
+  depend on the global length).
