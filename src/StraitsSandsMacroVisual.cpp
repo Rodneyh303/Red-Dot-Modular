@@ -1099,9 +1099,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // defaults the slot-0 cell equals the mono-frame cache bit-for-bit (the same
             // wrapMod of the same walk). The mono-frame caches stay engine-side (their
             // own gates pin them); the Macro strip no longer reads them.
-            const auto vslot = dotModular::VoiceResolver::slot(viewVoice + 1);
-            int rp = (eng.stepIndex >= 0) ? eng.voiceReadPosition(vslot) : -1;
-            int sg = eng.voiceReadSign(vslot);
+            // MACRO IS GLOBAL: the voice-lane (GLOBAL row) playhead is the SHARED Macro
+            // frame, NOT a per-voice voiceReadPosition. Reading voiceReadPosition(vslot)
+            // made the row track whichever voice tab was selected (V1/V2/V3 diverged); the
+            // Macro frame is one value for all voices, so the row is voice-independent.
+            int rp = (eng.stepIndex >= 0) ? eng.macroFrameRead() : -1;
+            int sg = eng.macroFrameSign();
             visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);
             // The mask surface reads the ENGINE's effective pattern (the UI-completion
             // unify — display-reads-engine, East's twin note): cycle = all-lit, range
