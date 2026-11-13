@@ -72,3 +72,28 @@ Which lanes can be selected: the voice lane, rest, variation and legato work; me
 - Wrapped window with one step on one side: press on the edge step and move toward the edge; the window moves toward the edge (bug 13).
 - Length 1 at step 1 and at step 32: the outside handle bands are inside the grid rect (bug 14, a geometry test).
 - Voice-lane fill contrast against the strip background meets a minimum ratio (bug 15, a colour test).
+
+## REGRESSIONS (Rodney, after the editor improvements)  AUDIO BUG FIRST
+| # | Bug | Symptom | Cause (located) | Priority |
+|---|---|---|---|---|
+| 16 | Output mask has NO effect | Painting the mask does not gate the output | maskPainted_ is WRITTEN (SequencerEngine.cpp:220, 388) but never READ. The output path (voiceRead_ at :916-937) does not AND the painted mask into the gate. The composition step is gone. | AUDIO  FIX FIRST |
+| 17 | Voice (GLOBAL) lane playhead outside its range in cycle mode | The voice-lane playhead leaves the window | The voice-lane playhead draws from the global walk, not the voice window's read position (voiceReadPosition / the cycle fold). | DISPLAY |
+| 18 | VARIATION lane playhead outside its range | The VAR playhead leaves the window | The editor draws variationLanePlayhead(eng) for the VAR lane (StraitsEastSandsVisual.cpp:1043), which is the engine's GLOBAL variation scan, not the lane window. | DISPLAY |
+
+## BUG 16 IS THE PRIORITY (audio regression)
+The mask composition into the output gate was lost. Per UNIFIED_ADDRESSING_SYSTEM.md the painted mask composes as an
+AND gate on the base read (cycle or abs1), using the GLOBAL step for the output gate. Restore that:
+1. Find where the output gate was ANDed with the composed mask before the 32-step / editor work (git log -S maskPainted_
+   and the pre-regression gate site). Restore the read: the output gate for voice v at global step s is
+   base_gate AND bit(maskComposed_[v], s), where maskComposed is the painted mask composed with the base-mode window.
+2. Pin it: a painted mask with some bits off silences exactly those global steps; all-on is today's behaviour
+   (bit-identical). This is the GATE 1 case from the 32-step plan  check it did not regress.
+3. maskPainted_ written-but-never-read is the smell; a test must assert the output changes when the mask changes.
+
+## PLAYHEAD FIX (bugs 17, 18 together)
+One shared playhead function: given the lane/voice window (offset, length, rotation, direction) and the engine tick,
+return the absolute step INSIDE the window, equal to the engine's read position. The VAR lane and the voice lane both
+use it. No lane draws the global scan when it has a window. Test: for every (offset, length, rotation, tick) the drawn
+playhead is within [offset, offset+length) and equals the engine read position.
+
+## DO NOT regress the editing improvements while fixing these.
