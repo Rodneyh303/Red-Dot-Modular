@@ -169,3 +169,30 @@ REVISED FIX (supersedes "fix the mono special case"):
    assert V1..V16 share the Macro window and mask. V1/V2 fail today precisely because this loop bypasses the resolver.
 4. Audit: grep the engine for raw per-voice indexing (v==0, %16 on a voice, bare int v loops over voices) and route each
    through VoiceResolver or justify it. The array-guard / anchor-audit style, applied to voice indexing.
+
+## BUG 23  identity window sentinel is the literal 16 (vestigial from the 16->32 migration)
+Decided (Rodney): the voice range is its own window, independent of the global pattern length. Identity = the FULL voice
+window = kPatternLengthCap (32). Longer than the global pattern: the pattern phases within the window. Shorter: the voice
+cycles more than once. Correct for UAS cycle mode. Patch compatibility is NOT a concern yet (no migration needed).
+
+LOCATED  the literal 16 is the identity sentinel in three load-bearing places:
+- voiceLorIdentity: returns L==16 && O==0 && R==0 && Forward (SequencerEngine.hpp:834).
+- window pass-through: len==16 && off==0 (SequencerEngine.cpp:102 and :115).
+- the reset menu items: "Reset range to identity (16/0/0, fwd)" (StraitsEastSandsVisual.cpp:944, :981) and
+  "Reset global range to identity (16/0/0, fwd)" (StraitsSandsMacroVisual.cpp:585); engine defaults len=16
+  (Monsoon.cpp:92, Monsoon.hpp:1013, :1115).
+
+FIX (no migration):
+1. Replace the literal 16 identity length with kPatternLengthCap at ALL sites: voiceLorIdentity, the two pass-through
+   checks, the engine defaults, and the three menu items. Use the named constant, not 32.
+2. Reset sets 32/0/0/Forward. The menu text reads the cap ("Reset ... to identity (32/0/0, fwd)").
+3. Keep the pass-through behaviour: at any length the identity window spans the whole voice ring (kPatternLengthCap), so
+   it imposes no restriction.
+
+GATES:
+- A reset gives a full 32-step voice window; the voice imposes no range restriction.
+- <=16 goldens bit-identical: at pattern length 16 a 32-wide identity window reads the same cells as the old 16-wide
+  pass-through (verify the pass-through fires for L==kPatternLengthCap).
+- No literal 16 remains as an identity/length sentinel in the voice-window path (grep; part of the magic-number audit, G).
+- Global pattern length changing during playback leaves an identity voice reading the full window (the window does not
+  depend on the global length).
