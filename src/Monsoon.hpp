@@ -1014,12 +1014,12 @@ struct Monsoon : Module {
         // lands on the store reset() seeded and the pass-through branch holds — old
         // patches (no persisted keys) play exactly as before. Kept at struct END
         // (the same ABI-hygiene note as warp/subgate).
-        float voiceLorMacro[3]        = {16.f, 0.f, 0.f};  // the GLOBAL voice range L/O/R (Macro tier)
+        float voiceLorMacro[3]        = {(float)dotModular::kPatternLengthCap, 0.f, 0.f};  // the GLOBAL voice range L/O/R (Macro tier) — (bug 23) identity = the FULL voice window (the cap)
         float voiceLorMacroDir        = 0.f;                // Macro tier direction (LaneDir order)
-        float voiceLorEast[48]        = {16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f,
-                                         16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f,
-                                         16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f,
-                                         16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f}; // 16 voices x {L,O,R}
+        float voiceLorEast[48]        = {(float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f,
+                                         (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f,
+                                         (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f,
+                                         (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f}; // 16 voices x {L,O,R} — (bug 23) identity rows seed the FULL window (the cap)
         float voiceLorEastDir[16]     = {};                 // per-voice direction (LaneDir order)
         float voiceLorLocalEast[16]   = {};                 // 0 = follow Macro (default), !=0 = own East row
         // (B) VOICE-LOR PARITY: the L/O/R CV-depth rows (the lanes' macroAtten law, one
@@ -1115,11 +1115,11 @@ struct Monsoon : Module {
     // Reset a row to the identity window (16/0/0/Forward) — the context menus' reset
     // action and the identity law's escape hatch (identity = pass-through by value).
     void resetVoiceLorMacro() {
-        editor.voiceLorMacro[0] = 16.f; editor.voiceLorMacro[1] = 0.f; editor.voiceLorMacro[2] = 0.f;
+        editor.voiceLorMacro[0] = (float)dotModular::kPatternLengthCap; editor.voiceLorMacro[1] = 0.f; editor.voiceLorMacro[2] = 0.f;
         editor.voiceLorMacroDir = 0.f; }
     void resetVoiceLorEast(int v) {
         if (!vLorOk(v)) return;
-        editor.voiceLorEast[v*3 + 0] = 16.f; editor.voiceLorEast[v*3 + 1] = 0.f;
+        editor.voiceLorEast[v*3 + 0] = (float)dotModular::kPatternLengthCap; editor.voiceLorEast[v*3 + 1] = 0.f;
         editor.voiceLorEast[v*3 + 2] = 0.f;  editor.voiceLorEastDir[v] = 0.f; }
     // (B) VOICE-LOR PARITY: the L/O/R CV-depth accessors (the macroAtten law, one axis
     // over). Depths are bipolar -1..1 (the lanes' attenuverter convention); 0 = the

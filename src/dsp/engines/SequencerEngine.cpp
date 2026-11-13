@@ -99,7 +99,17 @@ int64_t SequencerEngine::laneTickFor(LaneDir d, int64_t t, int len) {
 // (the transport's motion composes with it — the same way lane direction composed with the
 // playhead before), and t's motion direction is the only direction input here.
 int64_t SequencerEngine::driverTickAt(int64_t t, int len, int off) {
-    if (len == 16 && off == 0) return t;   // the default window: PASS-THROUGH (the golden pin)
+    // (Rodney's correction of the prompt, CC_PROMPT_MACRO_RESOLVER_AND_IDENTITY):
+    // this 16 is NOT the bug-23 identity sentinel — it is the RAW-TICK POLYMETER
+    // LAW. A len-7 lane under a 16-step pattern free-runs (t−1)%7, DRIFTING
+    // against the 16 and realigning only after 112 steps — the drift IS the
+    // feature; folding it into a 16-walk ((t−1)%16)%7 realigns every 16 and
+    // destroys the polymeter. The pass-through therefore keeps its
+    // default-pattern arm AND gains the cap arm (the full-ring window imposes
+    // no restriction; congruent for every reader either way). The identity
+    // sentinel (voiceLorIdentity, the row seeds, the menus) is the OTHER 16 —
+    // that one takes the cap.
+    if (len == 16 && off == 0) return t;   // the default-pattern window: the RAW-TICK POLYMETER LAW (unchanged, Rodney's correction)
     int64_t w = (t - 1) % len;             // 0-based walk through the window
     if (w < 0) w += len;
     return w + off + 1;                    // 1-based tick: window start == tick 1
@@ -112,7 +122,7 @@ int64_t SequencerEngine::driverTickAt(int64_t t, int len, int off) {
 // today's exact expression (t - dir). tRawPrev is the driver evaluated at the raw-tick
 // predecessor (t - dir), precomputed by the caller.
 int64_t SequencerEngine::driverTickBefore(int64_t tNow, int64_t tRawPrev, int dir, int len, int off) {
-    if (len == 16 && off == 0) {   // the pass-through config: today's exact expression
+    if (len == 16 && off == 0) {   // the default-pattern pass-through (the polymeter law): today's exact expression
         return tNow - dir;
     }
     const int64_t dd = tNow - tRawPrev;
@@ -204,14 +214,15 @@ void SequencerEngine::reset() {
     locked = false;
     muted = false;
     // UNIFIED ADDRESSING Stage 2: the voice LOR rows seed to IDENTITY (pass-through).
+    // (bug 23) identity = the FULL voice window = the cap (was the literal 16).
     for (int v = 0; v < kVoiceSlots; ++v) {
-        voiceLorStore_[v][LOR_LEN] = 16; voiceLorStore_[v][LOR_OFF] = 0; voiceLorStore_[v][LOR_ROT] = 0;
+        voiceLorStore_[v][LOR_LEN] = kPatternLengthCap; voiceLorStore_[v][LOR_OFF] = 0; voiceLorStore_[v][LOR_ROT] = 0;
         voiceLorDir_[v] = LaneDir::Forward;
         voiceLorLocalEast_[v] = false;
         voiceDriver_[v] = 0; voiceRead_[v] = 0;
         voiceSign_[v] = 0;   // Stage 3: the walk-sign cue re-derives on the first step
     }
-    macroVoiceLor_[LOR_LEN] = 16; macroVoiceLor_[LOR_OFF] = 0; macroVoiceLor_[LOR_ROT] = 0;
+    macroVoiceLor_[LOR_LEN] = kPatternLengthCap; macroVoiceLor_[LOR_OFF] = 0; macroVoiceLor_[LOR_ROT] = 0;
     macroVoiceLorDir_ = LaneDir::Forward;
     macroFrameRead_ = 0; macroFrameSign_ = 0;   // Stage 3: the Macro frame's caches too
     // Stage 4: the output mask seeds to CYCLE everywhere (the all-on degenerate mask,
@@ -692,6 +703,11 @@ int64_t SequencerEngine::voiceFrameTickAt(int v, int64_t effTick1based,
                                           int64_t* framePhaseOut) const {
     const int  lenG = std::max(1, cachedLength);
     const int  offG = cachedOffset;
+    // (Rodney's correction) the default-pattern pass-through is the POLYMETER LAW (a
+    // non-divisive lane free-runs against the pattern) — NOT the identity sentinel
+    // (the other 16, which takes the cap in voiceLorIdentity). The cap-wide identity
+    // WINDOW passes through the identity BRANCH, not here; an authored 32-pattern maps
+    // (bar 2 is new content, the D3 extension law).
     const bool passG = (lenG == 16 && offG == 0);
     const int64_t tNowV = passG ? effTick1based
                                 : driverTickAt(effTick1based, lenG, offG);
@@ -859,6 +875,8 @@ void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int
 void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
     const int  lenG = std::max(1, cachedLength);
     const int  offG = cachedOffset;
+    // (Rodney's correction) the default-pattern pass-through is the POLYMETER LAW —
+    // NOT the identity sentinel (the other 16).
     const bool passG = (lenG == 16 && offG == 0);
     const int  wG = globalWalk_;
     // ── the MACRO frame (the global window walk; no voice map — it IS the frame) ──
@@ -869,12 +887,24 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         else if (gd < 0) macroFrameSign_ = -1;   // 0 = held repeat: keep the previous cue
     }
     // ── the per-voice frames + the sign shifts their lanes read ──
+    // (PART A, CC_PROMPT_MACRO_RESOLVER_AND_IDENTITY — bugs 19-21's mandate) the
+    // loop goes through VoiceResolver: the VOICE NUMBER is the iteration domain
+    // (kMonoVoice..kLastVoice), the storage slot is MINTED via voiceSlot(vn),
+    // and the liveness is the resolver's isMono/isPoly — no raw v==0, no literal
+    // slot 0 (a mono-specific value comes from the resolver, never a literal).
+    // BEHAVIOUR-IDENTICAL: the body already resolved every live slot through
+    // effectiveVoiceLor/voiceLorIdentity (the EFFECTIVE row), so all followers
+    // share the Macro window (test_macro_shared_state gates 1-3 pin it — they
+    // PASS on the pre-refactor branch); this is the mandated hygiene so the
+    // loop can never diverge from the one addressing convention.
     int frameStep[16] = {};   // the frame's NORMALIZED musical step (the lane-sign shift)
     int frameT0[16]   = {};   // the frame's t0 representative for the lane derives
-    for (int v = 0; v < kVoiceSlots; ++v) {
+    for (int vn = dotModular::VoiceResolver::kMonoVoice; vn <= dotModular::VoiceResolver::kLastVoice; ++vn) {
+        const int v = dotModular::VoiceResolver::voiceSlot(vn);   // the storage slot (V1→0 … V16→15)
         const int motionV = voiceMotion ? (int)voiceMotion[v] : signMotion;
         const int wGv = wrapMod((int64_t)wG + advanceOffset_[v], lenG);
-        const bool live = (v == 0) || (v >= 1 && v <= numPolyVoices);
+        const bool live = dotModular::VoiceResolver::isMono(vn)
+                       || (dotModular::VoiceResolver::isPoly(vn) && v <= numPolyVoices);
         const int64_t tNowV = passG ? (int64_t)(wGv + 1) : (int64_t)(wGv + offG + 1);
         if (!live) { voiceDriver_[v] = tNowV; voiceRead_[v] = 0; continue; }
         if (voiceLorIdentity(v)) {

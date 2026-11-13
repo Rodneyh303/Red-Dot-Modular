@@ -93,7 +93,7 @@ Monsoon::Monsoon() {
         // slot and bank, matching the old per-voice configParam defaults.
         for (int slot = 0; slot < 16; ++slot)
             for (int bank = 0; bank < dotModular::SandsGrid::MONO_LANES; ++bank)
-                editor.lorBase[slot*21 + bank*3 + 0] = 16.f;  // stride 21 = 7 banks × 3
+                editor.lorBase[slot*21 + bank*3 + 0] = (float)dotModular::kPatternLengthCap;  // stride 21 = 7 banks × 3 — (bug 23) the identity length is the FULL window (the cap; was the literal 16)
 
         // Per-voice send-tap bank: default 1.0 (POST) for every voice/lane/kind — the old
         // single-tap behaviour at its default, so un-touched patches sound identical

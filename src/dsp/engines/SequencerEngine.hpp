@@ -826,12 +826,15 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
             R = macroVoiceLor_[LOR_ROT]; d = macroVoiceLorDir_;
         }
     }
-    // Identity VALUES (16/0/0/Forward) mean PASS-THROUGH — deliberately NOT the mapped
-    // (L=16) form, whose mod-16 bounding would move non-divisive lane lengths (the
-    // UA_NONDIV goldens pin the distinction).
+    // Identity VALUES (cap/0/0/Forward) mean PASS-THROUGH — deliberately NOT the
+    // mapped (L=cap) form, whose mod-cap bounding would move non-divisive lane
+    // lengths (the UA_NONDIV goldens pin the distinction). (bug 23,
+    // CC_PROMPT_MACRO_RESOLVER_AND_IDENTITY): the identity sentinel is
+    // kPatternLengthCap — the FULL voice window, independent of the global
+    // pattern length (was the literal 16, the 16→32 migration leftover).
     bool voiceLorIdentity(int v) const {
         int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
-        return L == 16 && O == 0 && R == 0 && d == LaneDir::Forward;
+        return L == kPatternLengthCap && O == 0 && R == 0 && d == LaneDir::Forward;
     }
     // Store accessors (the manager/UI author these; tests author them rack-free).
     // dotModular::VoiceSlot spelled out: the VoiceSlot alias is declared further below.

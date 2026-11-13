@@ -702,11 +702,13 @@ int main() {
         check(laneOK, "STAGE2: the claimed voice's LANES are driven by its own voice walk");
     }
     {
-        // IDENTITY VALUES = PASS-THROUGH (not the mapped L=16 form): a voice authored at
-        // exactly {16,0,0,Forward} keeps the raw-tick driver, so a non-divisive lane
-        // length free-runs exactly as the pre-unification engine.
+        // IDENTITY VALUES = PASS-THROUGH (not the mapped form): a voice authored at
+        // exactly {cap,0,0,Forward} keeps the raw-tick driver, so a non-divisive lane
+        // length free-runs exactly as the pre-unification engine. (bug 23: the identity
+        // sentinel is the CAP — the full voice window; {16,0,0} is now a genuine
+        // 16-window, the mapped walk.)
         SequencerEngine eng; eng.reset();
-        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 16;   // authored, but identity values
+        eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = dotModular::kPatternLengthCap;   // authored, but identity values (the cap)
         eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_LEN) = 7;
         eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_ROT) = 3;
         bool isPassthrough = true;
@@ -1038,7 +1040,7 @@ int main() {
             int L, O, R; SequencerEngine::LaneDir d;
             eng.effectiveVoiceLor(b.v, L, O, R, d);
             resOK = resOK && eng.voiceLorFollowsMacro(b)
-                  && L == 16 && O == 0 && R == 0 && d == SequencerEngine::LaneDir::Forward;
+                  && L == dotModular::kPatternLengthCap && O == 0 && R == 0 && d == SequencerEngine::LaneDir::Forward;   // (bug 23) the reset seeds the cap-wide identity row
         }
         check(resOK, "STAGE3: V1/V2/V16 follow the shared Macro row at defaults (no mono branch in the ONE LOR authority)");
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;

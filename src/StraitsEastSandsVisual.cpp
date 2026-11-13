@@ -941,8 +941,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             menu->addChild(fromRange);
         }
         menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuItem("Reset range to identity (16/0/0, fwd)", "",
-            [m, v]() { m->resetVoiceLorEast(v); }));
+        {   // (bug 23) the menu text READS THE CAP (the identity sentinel is kPatternLengthCap)
+            static char idLbl[64];
+            std::snprintf(idLbl, sizeof idLbl, "Reset range to identity (%d/0/0, fwd)", (int)dotModular::kPatternLengthCap);
+            menu->addChild(createMenuItem(idLbl, "",
+                [m, v]() { m->resetVoiceLorEast(v); }));
+        }
         return true;
     }
 
@@ -978,8 +982,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             menu->addChild(createCheckMenuItem("Independent (East, this voice)", "",
                 [mm, v]() { return mm->getVoiceLorLocalEast(v) != 0.f; },
                 [mm, v]() { mm->setVoiceLorLocalEast(v, 1.f); }));
-            menu->addChild(createMenuItem("Reset range to identity (16/0/0, fwd)", "",
-                [mm, v]() { mm->resetVoiceLorEast(v); }));
+            {   // (bug 23) the menu text READS THE CAP
+                static char idLbl2[64];
+                std::snprintf(idLbl2, sizeof idLbl2, "Reset range to identity (%d/0/0, fwd)", (int)dotModular::kPatternLengthCap);
+                menu->addChild(createMenuItem(idLbl2, "",
+                    [mm, v]() { mm->resetVoiceLorEast(v); }));
+            }
         }
     }
 

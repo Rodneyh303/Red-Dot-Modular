@@ -582,8 +582,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
         if (auto* mm = getMonsoon()) {
             menu->addChild(new MenuSeparator);
             menu->addChild(createMenuLabel("Voice range (global, unified addressing)"));
-            menu->addChild(createMenuItem("Reset global range to identity (16/0/0, fwd)", "",
-                [mm]() { mm->resetVoiceLorMacro(); }));
+            {   // (bug 23) the menu text READS THE CAP (the identity sentinel is kPatternLengthCap)
+                static char idLbl[64];
+                std::snprintf(idLbl, sizeof idLbl, "Reset global range to identity (%d/0/0, fwd)", (int)dotModular::kPatternLengthCap);
+                menu->addChild(createMenuItem(idLbl, "",
+                    [mm]() { mm->resetVoiceLorMacro(); }));
+            }
         }
     }
 
@@ -615,8 +619,12 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             menu->addChild(it);
         }
         menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuItem("Reset global range to identity (16/0/0, fwd)", "",
-            [m]() { m->resetVoiceLorMacro(); }));
+        {   // (bug 23) the menu text READS THE CAP
+            static char idLbl2[64];
+            std::snprintf(idLbl2, sizeof idLbl2, "Reset global range to identity (%d/0/0, fwd)", (int)dotModular::kPatternLengthCap);
+            menu->addChild(createMenuItem(idLbl2, "",
+                [m]() { m->resetVoiceLorMacro(); }));
+        }
         // ── Stage 4: the OUTPUT MASK (the MACRO tier — the GLOBAL mask every follow-
         // Macro voice reads through). The per-voice masks live on East's strip menu.
         {
