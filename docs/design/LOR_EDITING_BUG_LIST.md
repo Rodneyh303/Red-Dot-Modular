@@ -196,3 +196,22 @@ GATES:
 - No literal 16 remains as an identity/length sentinel in the voice-window path (grep; part of the magic-number audit, G).
 - Global pattern length changing during playback leaves an identity voice reading the full window (the window does not
   depend on the global length).
+
+## BUG 22 (resolved design)  Lantern shows the gated output; masked-out steps DIMMED
+Decided (Rodney): Lantern is the final view of the voice pattern generation, so it reflects the OUTPUT MASK. A masked-out
+step does NOT show as a lit gate (picture 1's bug: scope silent, Lantern still lit).
+Rule:
+- The GATE is OFF for a masked-out step: no lit gate, so Lantern agrees with the scope and the audio.
+- The step's CONTENT is shown DIMMED, not blank: Lantern is observability/debugging, and the useful signal is "nothing
+  plays here, and this is what it would have been". Matches the Sands grid's language (full = live, dim = present-not-
+  sounding).
+- The mask dim MUST be visually distinct from the window-dim Lantern already uses (out-of-window), or a masked step and an
+  out-of-window step look identical. Give the mask dim its own level or cue.
+Fix:
+1. Lantern's write/record path applies outputMaskPasses: a masked-out step records gate OFF and a dimmed-content flag.
+2. The draw distinguishes three states: live (full), out-of-window (existing dim), masked-out (a distinct dim).
+Gate:
+- A fully masked-out pattern: scope silent, Lantern shows no lit gates (dimmed content only).
+- A masked step and an out-of-window step are visually distinguishable.
+- Unmasked output unchanged.
+Fallback: if the two dim levels are not readable apart, a masked step goes fully blank; but start with dimmed.

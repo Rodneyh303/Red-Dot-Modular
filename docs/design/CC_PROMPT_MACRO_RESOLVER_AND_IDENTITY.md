@@ -18,18 +18,25 @@ Fix:
 3. Audit the engine for other raw per-voice indexing in the read/gate path (v==0, a bare int v loop over voices, %16 on a
    voice index) and route each through VoiceResolver or justify it in the PR.
 
-## PART B  identity window sentinel 16 -> kPatternLengthCap (bug 23)
-The literal 16 is the identity sentinel in three load-bearing places:
-- voiceLorIdentity: L==16 && O==0 && R==0 && Forward (SequencerEngine.hpp:834).
-- window pass-through: len==16 && off==0 (SequencerEngine.cpp:102 and :115).
-- reset menu items + engine defaults (StraitsEastSandsVisual.cpp:944,:981; StraitsSandsMacroVisual.cpp:585;
-  Monsoon.cpp:92; Monsoon.hpp:1013,:1115).
-Decision: the voice range is its own window, independent of the global pattern length. Identity = the full voice window =
-kPatternLengthCap (32). Longer than the global pattern: the pattern phases within. Shorter: the voice cycles more than once.
-Fix:
-1. Replace the literal 16 identity length with kPatternLengthCap at ALL sites (identity check, both pass-through checks,
-   engine defaults, the three menu items). Named constant, not 32.
-2. Reset sets kPatternLengthCap/0/0/Forward; the menu text reads the cap ("... identity (32/0/0, fwd)").
+## PART B  identity window sentinel 16 -> kPatternLengthCap (bug 23)  TWO DIFFERENT 16s, DO NOT CONFLATE
+The adjudication (Zoo) found that "16" means two different laws. Keep them separate:
+
+(i) IDENTITY-WINDOW SENTINEL (the bug-23 change). The full VOICE WINDOW. Change these to kPatternLengthCap:
+    - voiceLorIdentity: L==16 -> L==kPatternLengthCap (SequencerEngine.hpp:834).
+    - reset menu items + the voice-row/engine identity defaults (StraitsEastSandsVisual.cpp:944,:981;
+      StraitsSandsMacroVisual.cpp:585; Monsoon.cpp:92; Monsoon.hpp:1013,:1115).
+    Reset sets kPatternLengthCap/0/0/Forward; menu text reads the cap ("... identity (32/0/0, fwd)").
+
+(ii) RAW-TICK PASS-THROUGH (the POLYMETER law)  DO NOT CHANGE. SequencerEngine.cpp:102 and :115 (len==16 && off==0) is
+    NOT the identity sentinel: it is the pre-unification pass-through that lets a NON-DIVISIVE lane FREE-RUN against the
+    pattern  a len-7 lane under a 16-step pattern reads (t-1)%7 (polymeter drift, realigns after 112 steps), NOT
+    ((t-1)%16)%7 (the 16-walk fold, which realigns every 16 and DESTROYS the polymeter). The pass-through must fire for
+    BOTH the default pattern length (the 16-arm, kept as the raw-tick golden law) AND the cap. Keeping the 16-arm is the
+    whole point: it preserves every default 16-step patch's polymeter phase for 7/5/6 lanes.
+    => Leave the two pass-through checks firing for the default pattern length. Add the cap arm if needed, but do NOT
+       remove the default-length arm, and do NOT fold non-divisive lanes into a 16-walk.
+
+RESULT: the UA_NONDIV golden digest is PRESERVED (not re-captured); the 11 pins stay on the raw-tick law.
 
 ## GATES (both parts)
 - MACRO SHARED WINDOW: set a Macro window (O=16, L=8); every follower voice v in [kMonoVoice..kLastVoice] reads the SAME
@@ -39,8 +46,10 @@ Fix:
   step; masked steps silent for ALL voices incl. slot 0; mask all-on -> every follower emits gates; all-off -> none.
 - MONO SLOT NOT SPECIAL: slot 0 under Macro reads the Macro window and mask exactly as slots 1..15 (direct pin on the
   former :876-890 path).
-- IDENTITY: a reset gives a full 32-step voice window; <=16 goldens bit-identical (a 32-wide identity window reads the same
-  cells as the old 16-wide pass-through at length 16  verify the pass-through fires for L==kPatternLengthCap).
+- IDENTITY (window sentinel): a reset gives a full 32-step voice window; the identity check fires at L==kPatternLengthCap.
+- POLYMETER PRESERVED (the adjudication): a len-7 lane under a 16-step pattern reads (t-1)%7, NOT ((t-1)%16)%7. The
+  UA_NONDIV golden digest is UNCHANGED and the 11 raw-tick pins stay. <=16 goldens bit-identical  the pass-through keeps
+  its default-length arm.
 - No literal 16 remains as an identity/length sentinel in the voice-window path (grep).
 - The tests must DRIVE MACRO FOLLOWERS THROUGH THE RESOLVER across all voices  the gap that let this regress.
 - run_all green on both SDK legs; array-guard and anchor-audit clean.
