@@ -1100,7 +1100,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // frame value the Macro lanes' seed hangs under — one law, one walk).
             int rp = (eng.stepIndex >= 0) ? eng.macroFrameRead() : -1;
             int sg = eng.macroFrameSign();
-            visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_, eng.cachedOffset);
+            visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);
             // The mask surface reads the ENGINE's effective pattern (the UI-completion
             // unify — display-reads-engine, East's twin note): cycle = all-lit, range
             // = the window, painted = the ANCHORED working copy (rotates with R when
