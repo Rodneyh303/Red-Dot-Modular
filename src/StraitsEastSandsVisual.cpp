@@ -1940,7 +1940,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             const int rp = (eng.stepIndex >= 0) ? eng.voiceReadPosition(vslot) : -1;
             const int sg = eng.voiceReadSign(vslot);
             snprintf(rangeLabel_, sizeof(rangeLabel_), "V%d", v + 1);
-            visualEditor->setRangeState(std::max(1, L), O, R, rp, sg, !independent, rangeLabel_);
+            visualEditor->setRangeState(std::max(1, L), O, R, rp, sg, !independent, rangeLabel_, eng.cachedOffset);
             // The mask surface reads the ENGINE's effective pattern (the UI-completion
             // unify — display-reads-engine): cycle = all-lit (visibly different from
             // Range), range = the window, painted = the ANCHORED working copy (which
