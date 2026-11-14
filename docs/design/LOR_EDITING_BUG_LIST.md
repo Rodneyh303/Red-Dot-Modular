@@ -2,16 +2,38 @@
 
 Focus (Rodney): shake all bugs out of the Sands probability-bar LOR editing. It has never been seamless.
 
-## BUG LIST (status verified on feat/phase-duals-gaps)
+## STATUS RECONCILIATION (2026-11-14)
+This ledger had drifted: every regression below was marked OPEN, but the fixes had landed and the doc was
+never updated  the inverse of the usual "fixed" lie (it read as broken while the code was fixed). Statuses
+below reconciled against the ACTUAL CODE on feat/phase-duals-gaps @ dea7d708 (and, where noted, the
+laneSeed fold fix still only on fix/macro-voicelane-shared-frame, pending merge).
+
+HOW VERIFIED  and its limits (so the next reader trusts the right amount):
+- Each "FIXED" was confirmed by READING the named code site AND by the headless battery passing. The full
+  run_all battery is GREEN  but on ONE leg here (g++ + SIMDe), not Rodney's two-leg + real-SDK re-run.
+- "FIXED (code)" on the audio/Macro items (16, 19-21) means the mechanism is in the code and the headless
+  pins pass. It is NOT a Rack feel-test. Rodney feel-tests; those stay the human gate, as always.
+- Bug 22 is the one partial: the gate-OFF half is in (Lantern records the gated jack), the "distinct dimmed
+  cue" half is NOT confirmed (records Inactive = the doc's own fallback). Flagged, not claimed.
+
+ONE-LINE LEDGER (detail in the sections below, which are kept as the record of HOW each was fixed):
+  1-6 FIXED (gesture core + named constants) | 7 FIXED | 8 VERIFIED (no bug) | 9-15 FIXED (drag reducer +
+  gate suite) | 16 FIXED (code; output-gate composition restored in MonsoonOutputGenerator) | 17-18 FIXED
+  (shared lane playhead) | 19-21 FIXED (code; resolver bypass removed) | 22 PARTIAL (gate-off in; dim cue
+  unconfirmed) | 23 FIXED (identity sentinel -> kPatternLengthCap).
+  SEPARATE, PENDING MERGE: the Macro-lanes-fold-over-global-length SEED bug  FIXED on
+  fix/macro-voicelane-shared-frame (one laneSeed helper, test_macro_lane_seed 9/9), NOT yet on trunk.
+
+## BUG LIST (status reconciled against feat/phase-duals-gaps @ dea7d708, 2026-11-14)
 | # | Bug | Symptom | Cause (code) | Status |
 |---|---|---|---|---|
-| 1 | Engine clamps lane offset/rotation to 15 | Range snaps at the midpoint (past 16) | MonsoonSandsManager.cpp:392-393 (and the other sites: 450-451, 703-704, 965-966, 1001-1002), literal 15.f | OPEN |
-| 2 | Lane drags share the voice-strip drag state | Lane drags can write the voice window / fire onRangeEdit | SandsVisualEditorV4.hpp: rangeStrip is the only drag state (lines 325, 1195, 1220, 1316) | OPEN |
-| 3 | Edge handles too small | Presses on an edge fall into the window body | handleWidthF() = min(0.8 cell, 0.5 lane) (line 418) | OPEN |
-| 4 | Absolute edge assignment | Edge jumps by the cells crossed before engagement | getStepAtX sets the edge from the cursor step (line 1317) | OPEN |
-| 5 | Voice rotation absolute on the strip | Chevron can leave the window | strip ROTATION writes an absolute step, no clamp | OPEN |
-| 6 | Literal bounds and stale comments | Future regressions (the "visible 16" comment at line 297) | magic numbers 15/16 in window code | OPEN (named constants per G) |
-| 7 | Preset bank (vestigial) | Dead code | presetBank / applyPreset | FIXED (removed) |
+| 1 | Engine clamps lane offset/rotation to 15 | Range snaps at the midpoint (past 16) | MonsoonSandsManager.cpp:392-393 (and the other sites: 450-451, 703-704, 965-966, 1001-1002), literal 15.f | FIXED  named kLaneLengthMax/kLaneOffsetMax at every clamp site (MonsoonSandsManager.cpp:394-395, 453-454, 712-715); test_range_strip_gesture F/G |
+| 2 | Lane drags share the voice-strip drag state | Lane drags can write the voice window / fire onRangeEdit | SandsVisualEditorV4.hpp: rangeStrip is the only drag state (lines 325, 1195, 1220, 1316) | FIXED  one owner per drag in SandsRangeGestureCore; test_LorDrag case 3, test_range_strip_gesture E |
+| 3 | Edge handles too small | Presses on an edge fall into the window body | handleWidthF() = min(0.8 cell, 0.5 lane) (line 418) | FIXED  edge zone >= max(1 cell, 8px) each side; test_range_strip_gesture B |
+| 4 | Absolute edge assignment | Edge jumps by the cells crossed before engagement | getStepAtX sets the edge from the cursor step (line 1317) | FIXED  delta-from-press edges (delta 0 = no engagement jump); test_range_strip_gesture A, test_LorDrag case 1 |
+| 5 | Voice rotation absolute on the strip | Chevron can leave the window | strip ROTATION writes an absolute step, no clamp | FIXED  rotation window-relative, clamped [0, len-1]; test_range_strip_gesture C, test_LorDrag case 5 |
+| 6 | Literal bounds and stale comments | Future regressions (the "visible 16" comment at line 297) | magic numbers 15/16 in window code | FIXED  named constants (F/G), bounding literals stripped from the two managers' live window code (test asserts none remain) |
+| 7 | Preset bank (vestigial) | Dead code | presetBank / applyPreset | FIXED (removed); test_range_strip_gesture D (grep-in-test) |
 | 8 | 32-column display | Data drawn for all 32 columns; interactions buggy | geometry verified consistent | VERIFIED (no display bug) |
 
 ## ROOT ISSUE: THE DRAG LOGIC IS NOT TESTABLE
@@ -46,10 +68,10 @@ each with its test failing first. This is the only way to be sure the bugs are g
 ## NEW BUGS (Rodney's Rack report, after the lane-editing fix)
 | # | Bug | Symptom | Likely cause (located) | Status |
 |---|---|---|---|---|
-| 9 | Range dragged past step 1 or 32 cannot be picked up after release | The window is stuck; it can't be grabbed to move again | A wrapped window (start after end) is not handled by the body hit test (SandsRangeGestureCore inBody / classifyBand with startBoundX > endBoundX). Wrap at the release point is not normalised. | OPEN (located, not reproduced in code) |
-| 10 | Body hit area is the interior bars only | A window of length 1 has no body to grab; accent (length 1) cannot be moved | edgeZoneW (START and END zones, one cell each side) takes the whole cell for length 1; inBody returns false. | OPEN (located) |
-| 11 | Voice lane has no faint range highlight | The voice strip does not show the window the probability lanes show | drawRangeStrip (SandsVisualEditorV4.hpp:619) draws no body fill for the window; the lanes draw ribbons and a body fill. | OPEN (located) |
-| 12 | Rotation chevrons wider than the probability bars at 32 steps | Chevrons do not match the 32-column grid | drawRotationIndicator (line 1027) uses a fixed chevron size, not stepWidthF(). | OPEN (located) |
+| 9 | Range dragged past step 1 or 32 cannot be picked up after release | The window is stuck; it can't be grabbed to move again | A wrapped window (start after end) is not handled by the body hit test (SandsRangeGestureCore inBody / classifyBand with startBoundX > endBoundX). Wrap at the release point is not normalised. | FIXED  window-relative classifier handles the wrap; test_LorDrag case 7 |
+| 10 | Body hit area is the interior bars only | A window of length 1 has no body to grab; accent (length 1) cannot be moved | edgeZoneW (START and END zones, one cell each side) takes the whole cell for length 1; inBody returns false. | FIXED  length-1 bar moves the window, outside bands resize; test_LorDrag case 8 |
+| 11 | Voice lane has no faint range highlight | The voice strip does not show the window the probability lanes show | drawRangeStrip (SandsVisualEditorV4.hpp:619) draws no body fill for the window; the lanes draw ribbons and a body fill. | FIXED  strip tint from the one windowContains law; test_LorDrag case 9 |
+| 12 | Rotation chevrons wider than the probability bars at 32 steps | Chevrons do not match the 32-column grid | drawRotationIndicator (line 1027) uses a fixed chevron size, not stepWidthF(). | FIXED  chevron x-extent = one step width; test_LorDrag case 10 |
 
 Which lanes can be selected: the voice lane, rest, variation and legato work; melody, octave and qmix fail after they wrap
 (bug 9); accent fails because it is length 1 (bug 10).
@@ -64,9 +86,9 @@ Which lanes can be selected: the voice lane, rest, variation and legato work; me
 ## NEW BUGS (Rodney's Rack report, after the wrap and length-1 work)
 | # | Bug | Symptom | Likely cause (located) | Status |
 |---|---|---|---|---|
-| 13 | A wrapped range with one step left on one side cannot be dragged back | Grabbing from the step at the edge only drags away from the edge | The edge zone and span maths (SandsVisualEditorV4.hpp ~899-986) use the start and end cells and a wrapped length; the drag does not handle a remainder on the other side of the wrap. | OPEN (located; needs the headless test to confirm) |
-| 14 | Length-1 handle markers overlap the panel at the grid edge | When the single step is at step 1 or 32, the outside handle bands are drawn past the grid | drawHandles (~1042-1046) draws the outside bands at cell.pos.x - edgeW and cell.pos.x + cell.size.x with no clamp to the grid rect. | OPEN (located) |
-| 15 | Voice-lane range highlight is invisible | The grab range is grey on the grey background | drawRangeStrip (~619-640) uses a low-contrast fill; it needs a lane colour or a contrast check. | OPEN (located) |
+| 13 | A wrapped range with one step left on one side cannot be dragged back | Grabbing from the step at the edge only drags away from the edge | The edge zone and span maths (SandsVisualEditorV4.hpp ~899-986) use the start and end cells and a wrapped length; the drag does not handle a remainder on the other side of the wrap. | FIXED  raw cell index crosses the seam continuously; test_LorDrag case 11 |
+| 14 | Length-1 handle markers overlap the panel at the grid edge | When the single step is at step 1 or 32, the outside handle bands are drawn past the grid | drawHandles (~1042-1046) draws the outside bands at cell.pos.x - edgeW and cell.pos.x + cell.size.x with no clamp to the grid rect. | FIXED  outside bands clamp into the grid rect; test_LorDrag case 12 |
+| 15 | Voice-lane range highlight is invisible | The grab range is grey on the grey background | drawRangeStrip (~619-640) uses a low-contrast fill; it needs a lane colour or a contrast check. | FIXED  strip figure meets the minimum contrast ratio; test_LorDrag case 13 |
 
 ## TESTS TO ADD
 - Wrapped window with one step on one side: press on the edge step and move toward the edge; the window moves toward the edge (bug 13).
@@ -76,11 +98,16 @@ Which lanes can be selected: the voice lane, rest, variation and legato work; me
 ## REGRESSIONS (Rodney, after the editor improvements)  AUDIO BUG FIRST
 | # | Bug | Symptom | Cause (located) | Priority |
 |---|---|---|---|---|
-| 16 | Output mask has NO effect | Painting the mask does not gate the output | maskPainted_ is WRITTEN (SequencerEngine.cpp:220, 388) but never READ. The output path (voiceRead_ at :916-937) does not AND the painted mask into the gate. The composition step is gone. | AUDIO  FIX FIRST |
-| 17 | Voice (GLOBAL) lane playhead outside its range in cycle mode | The voice-lane playhead leaves the window | The voice-lane playhead draws from the global walk, not the voice window's read position (voiceReadPosition / the cycle fold). | DISPLAY |
-| 18 | VARIATION lane playhead outside its range | The VAR playhead leaves the window | The editor draws variationLanePlayhead(eng) for the VAR lane (StraitsEastSandsVisual.cpp:1043), which is the engine's GLOBAL variation scan, not the lane window. | DISPLAY |
+| 16 | Output mask has NO effect | Painting the mask does not gate the output | maskPainted_ is WRITTEN (SequencerEngine.cpp:220, 388) but never READ. The output path (voiceRead_ at :916-937) does not AND the painted mask into the gate. The composition step is gone. | FIXED (code)  output-gate composition restored; the gate now ANDs outputMaskPasses in MonsoonOutputGenerator.cpp (mono :55, per-voice :130). The write-only echo cause was disproven on-branch and deleted (commit 84229f7e). Rack feel-test pending. |
+| 17 | Voice (GLOBAL) lane playhead outside its range in cycle mode | The voice-lane playhead leaves the window | The voice-lane playhead draws from the global walk, not the voice window's read position (voiceReadPosition / the cycle fold). | FIXED  shared lanePlayheadBar, ring fold; test_LorDrag cases 14-15 |
+| 18 | VARIATION lane playhead outside its range | The VAR playhead leaves the window | The editor draws variationLanePlayhead(eng) for the VAR lane (StraitsEastSandsVisual.cpp:1043), which is the engine's GLOBAL variation scan, not the lane window. | FIXED  the VAR global-scan exception retired; every lane draws the shared window playhead; test_LorDrag case 14 |
 
-## BUG 16 IS THE PRIORITY (audio regression)  THE WHOLE OUTPUT-GATE COMPOSITION IS LOST
+## BUG 16  ✓ FIXED IN CODE (was the audio priority)  THE OUTPUT-GATE COMPOSITION, RESTORED
+(2026-11-14: the output-gate composition now lives in MonsoonOutputGenerator.cpp and reads outputMaskPasses;
+the located "written-but-never-read" cause was disproven on-branch and the dead echo deleted, commit 84229f7e.
+The original diagnosis is kept below as the record. Rack feel-test still Rodney's.)
+
+### (original report)  THE WHOLE OUTPUT-GATE COMPOSITION WAS LOST
 Confirmed: the mask worked before. The last commit to READ maskPainted_ is b134490 ("unified ADDRESSING Stage 4  the
 OUTPUT-MASK hierarchy, ONE mechanism (the containment concept)"). Since then the composition at the output gate was
 dropped: maskPainted_ is written (SequencerEngine.cpp:220, 388) and never read, AND the abs1 silent-outside-LOR gate is
@@ -104,7 +131,7 @@ FIX
    - painted mask changed -> output changes (the written-but-never-read smell becomes a test).
 4. ≤16 identity/abs1 goldens stay bit-identical.
 
-## PLAYHEAD FIX (bugs 17, 18 together)
+## PLAYHEAD FIX (bugs 17, 18 together)  ✓ FIXED (shared lanePlayheadBar; the VAR global-scan exception retired; test_LorDrag 14-15)
 One shared playhead function: given the lane/voice window (offset, length, rotation, direction) and the engine tick,
 return the absolute step INSIDE the window, equal to the engine's read position. The VAR lane and the voice lane both
 use it. No lane draws the global scan when it has a window. Test: for every (offset, length, rotation, tick) the drawn
@@ -112,7 +139,13 @@ playhead is within [offset, offset+length) and equals the engine read position.
 
 ## DO NOT regress the editing improvements while fixing these.
 
-## MACRO REGRESSIONS (Rodney, Rack)  the tests do not exercise MACRO shared state
+## MACRO REGRESSIONS (Rodney, Rack)  ✓ RESOLVER BYPASS REMOVED (bugs 19-21 FIXED in code; Rack feel-test pending)
+(2026-11-14: the located bypass  the raw v==0 loop at SequencerEngine.cpp:876-890  is gone; the loop now
+routes through VoiceResolver::isMono/isPoly (:906) and the demanded Macro-follower coverage was added to the
+battery. SEPARATE but related: the Macro-lanes-fold-over-global-length SEED bug is FIXED on
+fix/macro-voicelane-shared-frame via one shared laneSeed helper (East mono/poly + Macro), test_macro_lane_seed
+9/9  NOT yet merged to trunk. See CC_FIX_MACRO_LANE_SEED_AND_CONSOLIDATION.md. The report below is the record.)
+
 East is mostly correct. Macro is broken, and the 109-suite battery is green, so the suites are NOT distinguishing Macro
 from East. The model: on the MACRO module everything is GLOBAL  ONE shared window and ONE output mask, common to ALL
 voices. The engine has the shared state (macroVoiceLor_, maskMacro*), followers read it via effectiveVoiceLor and
@@ -120,11 +153,11 @@ outputMaskPasses. The breakage is per-voice, which a shared-state-only test miss
 
 | # | Bug | Symptom (Rack) | Suspected cause | Status |
 |---|---|---|---|---|
-| 19 | Macro voice 1 ignores the window AND emits no gates | V1 cycles ALL steps (cycle and abs), no gates out | The mono slot 0 path (SequencerEngine.cpp:881-884) folds %16 and does not read the Macro window or the Macro mask; the output gate for slot 0 is off. | OPEN |
-| 20 | Macro voice 2 cycles a small unrelated range | V2's window is not the shared Macro window | A low-index voice reads stale/per-voice LOR instead of macroVoiceLor_; effectiveVoiceLor is not returning the Macro window for this voice. | OPEN |
-| 21 | Macro output mask does not gate at all | Mask on everywhere, no gates out (picture 3) | The follower output gate (outputMaskPasses) is not reaching the voices that play, or the mono/low-index voices bypass it. | OPEN (AUDIO) |
-| 22 | Lantern not true to the output mask | Fully masked-out pattern: scope shows silence, Lantern still shows steps (picture 1) | Lantern's write path does not apply outputMaskPasses; it records the read, not the gated output. | OPEN (display) |
-| V3 | Voice 3 is CORRECT | cycles its range in cycle, all steps in abs | reference behaviour | OK |
+| 19 | Macro voice 1 ignores the window AND emits no gates | V1 cycles ALL steps (cycle and abs), no gates out | The mono slot 0 path (SequencerEngine.cpp:881-884) folds %16 and does not read the Macro window or the Macro mask; the output gate for slot 0 is off. | FIXED (code)  the voice-frame loop routes through VoiceResolver::isMono/isPoly (SequencerEngine.cpp:906, no raw v==0); every voice resolves the shared Macro window + mask. Rack feel-test pending. |
+| 20 | Macro voice 2 cycles a small unrelated range | V2's window is not the shared Macro window | A low-index voice reads stale/per-voice LOR instead of macroVoiceLor_; effectiveVoiceLor is not returning the Macro window for this voice. | FIXED (code)  same resolver routing; effectiveVoiceLor returns the Macro window for every follower. Rack feel-test pending. |
+| 21 | Macro output mask does not gate at all | Mask on everywhere, no gates out (picture 3) | The follower output gate (outputMaskPasses) is not reaching the voices that play, or the mono/low-index voices bypass it. | FIXED (code)  outputMaskPasses applied per voice incl. the mono slot in MonsoonOutputGenerator (no bypass). Rack feel-test pending. |
+| 22 | Lantern not true to the output mask | Fully masked-out pattern: scope shows silence, Lantern still shows steps (picture 1) | Lantern's write path does not apply outputMaskPasses; it records the read, not the gated output. | PARTIAL  GATE-OFF in: Lantern records the gated jack (jackGate < 1 => Inactive, Lantern.cpp:260), so a masked-out step records OFF. The "distinct dimmed-content cue" (resolved-design section below) is NOT confirmed landed  current write records Inactive (= the doc's fallback). Rack confirm pending. |
+| V3 | Voice 3 is CORRECT | cycles its range in cycle, all steps in abs | reference behaviour | OK (reference) |
 
 ROOT PATTERN: the behaviour differs BY VOICE INDEX (V3 right, V1/V2 wrong). This is the mono-slot (slot 0) and
 low-index special-case path, not the shared Macro mechanism. The mono/early-voice special cases (flagged earlier as a
@@ -170,7 +203,9 @@ REVISED FIX (supersedes "fix the mono special case"):
 4. Audit: grep the engine for raw per-voice indexing (v==0, %16 on a voice, bare int v loops over voices) and route each
    through VoiceResolver or justify it. The array-guard / anchor-audit style, applied to voice indexing.
 
-## BUG 23  identity window sentinel is the literal 16 (vestigial from the 16->32 migration)
+## BUG 23  ✓ FIXED IN CODE  identity window sentinel is the literal 16 (vestigial from the 16->32 migration)
+(2026-11-14: voiceLorIdentity now returns L == kPatternLengthCap && O==0 && R==0 && Forward, SequencerEngine.hpp:837;
+the raw-tick polymeter pass-through 16 is DELIBERATELY preserved and commented distinct, SequencerEngine.cpp. Spec below kept as the record.)
 Decided (Rodney): the voice range is its own window, independent of the global pattern length. Identity = the FULL voice
 window = kPatternLengthCap (32). Longer than the global pattern: the pattern phases within the window. Shorter: the voice
 cycles more than once. Correct for UAS cycle mode. Patch compatibility is NOT a concern yet (no migration needed).
@@ -197,7 +232,10 @@ GATES:
 - Global pattern length changing during playback leaves an identity voice reading the full window (the window does not
   depend on the global length).
 
-## BUG 22 (resolved design)  Lantern shows the gated output; masked-out steps DIMMED
+## BUG 22  ~ PARTIAL (resolved design; gate-off landed, dim cue unconfirmed)  Lantern shows the gated output; masked-out steps DIMMED
+(2026-11-14: the GATE-OFF half is in  Lantern records the gated jack, so a masked-out step records OFF, Lantern.cpp:260.
+The "distinct dimmed-content cue" half is NOT confirmed in code  the write currently records Inactive, which is this
+section's own stated FALLBACK. Needs a Rack look to decide if the dim cue is wanted. Design below unchanged.)
 Decided (Rodney): Lantern is the final view of the voice pattern generation, so it reflects the OUTPUT MASK. A masked-out
 step does NOT show as a lit gate (picture 1's bug: scope silent, Lantern still lit).
 Rule:
