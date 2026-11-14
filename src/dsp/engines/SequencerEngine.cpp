@@ -964,6 +964,20 @@ SequencerEngine::LaneSeed SequencerEngine::laneSeed(LaneWin win, int l, int v, b
     return s;
 }
 
+// THE FRAME READ CELL — the ONE law for the strip playhead cell (voiceRead_ /
+// macroFrameRead_): the frame VALUE folded into the window, read = frameValue + O.
+// It derives from the SAME frame value the lanes seed off (frameT0 / macroFrameT0 =
+// wnow), so the strip read can NEVER drift from the lanes again. The global offset
+// is NOT added here: a windowed voice's rotation is window-relative — it lands on
+// O + R%L at global step 1 for ANY offset (Rodney, Rack). offG rides the GLOBAL /
+// identity-follower read, and for abs1 it is already inside wnow (the phrase walk).
+// (CC_FIX_VOICE_FRAME_READ_OFFSET — this retires the "read = wnow + offG + O"
+// second representation that the OPEN in CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION
+// speculatively routed into the CYCLE read; abs1 already used wnow + O.)
+static inline int frameReadCell(int64_t frameValue, int windowOffset, int ring) {
+    return (int)((frameValue + (int64_t)windowOffset) & (int64_t)(ring - 1));   // ring is a power of two
+}
+
 // THE DERIVATION PASS: all read caches from the CURRENT holders, no phase advance.
 // THE REPRESENTATIVE LAW: under the PASS-THROUGH window (16/0) the walks read the raw
 // clock congruences (the phases — the only carrier of the raw congruence mod a length
@@ -1026,7 +1040,7 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         }
         const int64_t wnow = ((((laneTickFor(md, ft0 + 1, L) + rho) % L) + L) % L);
         macroFrameT0    = wnow;   // the frame VALUE — every Macro lane's mapped seed
-        macroFrameRead_ = (int)((wnow + (int64_t)(abs1Read ? (int64_t)O : ((int64_t)offG + O))) & (kMaskRing - 1));
+        macroFrameRead_ = frameReadCell(wnow, O, kMaskRing);   // ONE law: the frame value folded into the window (no offG — see frameReadCell)
         // The mapped frame's sign: the walk's musical step, the wrap-is-a-beat law (the
         // voice rows' twin — the raw motion only when the walk jumped).
         const int64_t wprev  = ((((laneTickFor(md, wrapMod(ft0 - frameBack, walkPeriod(md, L)) + 1, L) + rho) % L) + L) % L);
@@ -1091,11 +1105,12 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         // the period is exactly L and the GLOBAL WINDOW'S WRAP IS A NON-EVENT (Bug 1 —
         // the old bounded representative wGv+offG jumped at the global wrap, making the
         // period the global length); rho = R (Bug 2 — the window-relative phase at
-        // global step 1, independent of O; R arrives 0..L-1 from the authoring clamp);
-        // and the window's PLACEMENT rides the parent frame — read = wnow + offG + O
-        // (the OPEN: the global offset is placement, UAS 64/186-187; the old code
-        // routed it into the PHASE through the same wrapped tick Bug 1 removes, so the
-        // routing is re-added where the nesting puts it).
+        // global step 1, independent of O; R arrives 0..L-1 from the authoring clamp).
+        // The READ cell is the frame value folded into the window (frameReadCell: wnow
+        // + O, NO offG) — the OPEN above ("the global offset is placement") is RESOLVED:
+        // Rack showed offG in the cycle read slid the rotation by the offset, so a
+        // windowed voice's rotation is window-relative and the read derives from the
+        // same frame value the lanes use (CC_FIX_VOICE_FRAME_READ_OFFSET).
         const bool abs1Read = voiceFrameReadsFullPhrase(v);
         int64_t rho, ft0, frameBack;
         if (abs1Read) {
@@ -1126,7 +1141,7 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
         }
         const int64_t wnow = ((((laneTickFor(vd, ft0 + 1, L) + rho) % L) + L) % L);
         voiceDriver_[v] = wnow + 1;
-        voiceRead_[v]   = (int)((wnow + (int64_t)(abs1Read ? (int64_t)O : ((int64_t)offG + O))) & (kMaskRing - 1));
+        voiceRead_[v]   = frameReadCell(wnow, O, kMaskRing);   // ONE law: the frame value folded into the window (no offG — see frameReadCell)
         const int64_t wprev = ((((laneTickFor(vd, wrapMod(ft0 - frameBack, walkPeriod(vd, L)) + 1, L) + rho) % L) + L) % L);
         const int64_t dd    = voiceDriver_[v] - (wprev + 1);
         // A wrap (the voice's own window, or the global window beneath it) is a BEAT,

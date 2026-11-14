@@ -1407,16 +1407,15 @@ int main() {
     // (Bug 1 the period = L; the OPEN the global offset routes as PLACEMENT; Bug 2 the
     // rotation clamp 0..L-1 + rho = R; the painted-pattern follow requirements.)
     {
-        // PERIOD (Prompt 2 re-aim — the PHRASE ANCHOR): a cycling voice with L=12
-        // under a MAPPED 16-step global (off 5) RESTARTS ITS CYCLE at every global
-        // step 1 — the read is the phrase-position fold (((k mod 16) mod 12) + offG):
-        // R is the voice's position when the transport hits step 1 (the UAS nesting
-        // reference). Was Bug 1's free-run (period 12 straight across the wrap —
-        // superseded for the frame walk by the phrase-anchor ruling; within the FIRST
-        // phrase the two laws agree exactly, so the old pin's first-16 values hold).
-        // NOTE (the audit): this pin ran a non-dividing row at R=0 — it changes despite
-        // the "R=0 unchanged" expectation, because the law ("the read resets to R at
-        // every global step 1") covers R=0 too.
+        // PERIOD (the PHRASE ANCHOR): a cycling voice with L=12 under a MAPPED 16-step
+        // global (off 5) RESTARTS ITS CYCLE at every global step 1 — the read is the
+        // phrase-position fold ((k mod 16) mod 12) + O (here O=0). R is the voice's
+        // position when the transport hits step 1 (the UAS nesting reference).
+        // RE-AIM (CC_FIX_VOICE_FRAME_READ_OFFSET): the read NO LONGER adds offG — the
+        // read cell is the frame value folded into the window (wnow + O), the same
+        // offG-free value the lanes use. Rack showed offG in the read slid the rotation
+        // by the offset ("the offset gets added to the rotation"); a windowed voice's
+        // rotation is window-relative. (Was ((k%16)%12)+offG; offG=5 dropped.)
         SequencerEngine eng; eng.reset();
         eng.updateWindow(16.f, 0.f, false, 5.f, false, false);   // lenG=16 offG=5: MAPPED
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 12;
@@ -1424,18 +1423,20 @@ int main() {
         for (int k = 0; k < 48; ++k) {   // 3 global phrases
             eng.advancePlayhead(+1);
             // The phrase-anchored column: the fold of the phrase position (k mod 16)
-            // through the voice's own 12, placed at offG — restarting at every step 1.
-            periodOK = periodOK && eng.voiceReadPosition(dotModular::VoiceResolver::mono()) == (((k % 16) % 12) + 5);
+            // through the voice's own 12, at window offset O (0 here) — NO offG.
+            periodOK = periodOK && eng.voiceReadPosition(dotModular::VoiceResolver::mono()) == ((k % 16) % 12);
         }
         check(periodOK,
-              "CCFIX PERIOD (Prompt 2 re-aim): L=12 under a mapped 16@5 global — the read restarts its cycle at every global step 1 (the phrase anchor: ((k%16)%12)+offG)");
+              "CCFIX PERIOD: L=12 under a mapped 16@5 global — the read restarts its cycle at every global step 1, window-relative (the phrase anchor: (k%16)%12, NO offG)");
     }
     {
-        // OFFSET (the OPEN, implemented): the window starts at the GLOBAL-FRAME
-        // position plus O — the voice O is relative to the parent frame, which carries
-        // the global offset (UAS 64/186-187). L=8 O=3 R=0 under the mapped 16@5
-        // global: at global 1 the voice reads window-step 0 at phrase 5+3=8, and the
-        // window spans phrase 8..15 (read = wnow + offG + O).
+        // OFFSET (the OPEN, RESOLVED by Rack — CC_FIX_VOICE_FRAME_READ_OFFSET): the
+        // OPEN asked whether a windowed voice's read carries the global offset ("offset
+        // is placement", UAS 64/186-187). Rack answered NO: offG in the read slid the
+        // rotation by the offset. The window is window-relative — read = wnow + O (no
+        // offG). L=8 O=3 R=0 under the mapped 16@5 global: at global 1 the voice reads
+        // window-step 0 at window position 3, the window spans 3..10. (Was (k%8)+5+3
+        // "reads 8..15"; offG=5 dropped.)
         SequencerEngine eng; eng.reset();
         eng.updateWindow(16.f, 0.f, false, 5.f, false, false);
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
@@ -1443,10 +1444,10 @@ int main() {
         bool offOK = true;
         for (int k = 0; k < 24; ++k) {
             eng.advancePlayhead(+1);
-            offOK = offOK && eng.voiceReadPosition(dotModular::VoiceResolver::mono()) == ((k % 8) + 5 + 3);
+            offOK = offOK && eng.voiceReadPosition(dotModular::VoiceResolver::mono()) == ((k % 8) + 3);
         }
         check(offOK,
-              "CCFIX OFFSET: the cycling window is placed at the global frame + O (reads 8..15, phase anchored to global step 1)");
+              "CCFIX OFFSET: the cycling window is window-relative, read = wnow + O (reads 3..10, phase anchored to global step 1, NO offG)");
     }
     {
         // ROTATION (Bug 2): the authoring clamp follows L (0..L-1, the lanes' convention),
@@ -1474,10 +1475,11 @@ int main() {
         // LANE ANCHOR (the doc's check): a lane with R=k reads k when the VOICE is at
         // its window start — NOT when the GLOBAL is at step 1. The corrected-spec row
         // L=8 O=5 R=2 under the mapped 16@5 global: at global 1 the voice reads
-        // window-step 2 (phrase 12) and the lane is NOT at its R; the voice hits its
-        // window start (phrase 10 = offG+O) at global 7/15 — the lane reads its R=3
-        // THERE. (The code check: the lanes hang off the frame VALUE — already the
-        // voice-anchored chain; this pin holds the law under the new fold too.)
+        // window-step 2 (read 7 = O+2) and the lane is NOT at its R; the voice hits its
+        // window start (read 5 = O) — the lane reads its R=3 THERE. The lanes hang off
+        // the offG-free frame VALUE, so the LANE law is unchanged; only the voice read
+        // positions used to DETECT the voice step dropped offG (RE-AIM,
+        // CC_FIX_VOICE_FRAME_READ_OFFSET: window-step 2 was 12, window start was 10).
         SequencerEngine eng; eng.reset();
         eng.updateWindow(16.f, 0.f, false, 5.f, false, false);
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 8;
@@ -1490,11 +1492,11 @@ int main() {
         for (int k = 0; k < 16; ++k) {
             eng.advancePlayhead(+1);
             const int rp = eng.voiceReadPosition(dotModular::VoiceResolver::mono());
-            if (rp == 10) {   // the voice at its window start (phrase offG+O)
+            if (rp == 5) {   // the voice at its window start (read = O, no offG)
                 ++atVoiceStart;
                 anchorOK = anchorOK && eng.getRhythmStep() == 3;   // the lane's R
             }
-            if (k == 0) anchorOK = anchorOK && rp == 12 && eng.getRhythmStep() != 3;   // global 1: NOT the lane anchor
+            if (k == 0) anchorOK = anchorOK && rp == 7 && eng.getRhythmStep() != 3;   // global 1: NOT the lane anchor
         }
         check(anchorOK && atVoiceStart == 2,
               "CCFIX LANE ANCHOR: the lane reads its R at voice-step-1 (global 7/15 here), not at global step 1");
