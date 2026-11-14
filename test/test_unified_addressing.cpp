@@ -928,8 +928,15 @@ int main() {
         for (int k = 0; k < 16; ++k) {
             eng.advancePlayhead(+1);
             if (k == 0) continue;
+            // (CC_FIX_MACRO_LANE_SEED Part 2 re-aim) the MACRO frame is the MACRO ROW's
+            // walk (bounded by macroVoiceLor_ — the container the Macro lanes and the
+            // Macro strip hang under), not the raw global walk: under an authored
+            // Reverse row the frame's own cue reads -1 with its voices. Was +1 — the
+            // old law's "the frame above stays forward" pinned the raw transport sign
+            // on the tier the strip displays; the row's walk is the law now (the same
+            // cue discipline the voice frames follow, one tier up).
             revOK = revOK && eng.voiceReadSign(dotModular::VoiceResolver::mono()) == -1
-                  && eng.macroFrameSign() == +1;   // the frame above stays forward
+                  && eng.macroFrameSign() == -1;   // the macro ROW's frame walks backward with its voices
         }
         check(revOK, "STAGE3: Reverse voice signs -1 under a forward playhead, through its own wrap (per-level cue)");
     }

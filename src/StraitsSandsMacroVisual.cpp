@@ -1087,22 +1087,17 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             const int mL = std::max(1, se->macroVoiceLor_[SequencerEngine::LOR_LEN]);
             const int mO = se->macroVoiceLor_[SequencerEngine::LOR_OFF];
             const int mR = se->macroVoiceLor_[SequencerEngine::LOR_ROT];
-            // The read cell: the DISPLAYED VOICE's own read cell + walk sign on every
-            // tab — eng.voiceReadPosition/voiceReadSign of the voice's slot (the SAME
-            // accessors East's strip uses, East 1945), so the cell runs INSIDE the
-            // voice's own window (L=8 under a 16-step global repeats every 8, matching
-            // the audio — the engine's cycle fold feeds both) and the two strips agree.
-            // CC_FIX_MACRO_NO_VOICE1_SPECIAL: the V1 arm that read the mono-frame caches
-            // is gone — V1's slot-0 cell follows the shared Macro window the same way
-            // V2..V16 do (the ONE LOR authority has no mono arm; the same derive law
-            // walks slot 0 — verified, the unified-addressing gates pin it), and at the
-            // defaults the slot-0 cell equals the mono-frame cache bit-for-bit (the same
-            // wrapMod of the same walk). The mono-frame caches stay engine-side (their
-            // own gates pin them); the Macro strip no longer reads them.
-            // MACRO IS GLOBAL: the voice-lane (GLOBAL row) playhead is the SHARED Macro
-            // frame, NOT a per-voice voiceReadPosition. Reading voiceReadPosition(vslot)
-            // made the row track whichever voice tab was selected (V1/V2/V3 diverged); the
-            // Macro frame is one value for all voices, so the row is voice-independent.
+            // The read cell: the SHARED Macro frame's read cell + walk sign
+            // (eng.macroFrameRead/macroFrameSign — the strip IS the Macro tier's
+            // surface, one value for every tab). CC_FIX_MACRO_NO_VOICE1_SPECIAL removed
+            // the V1 arm (no mono branch anywhere in the strip); the
+            // CC_FIX_MACRO_STRIP_VOICE_PLAYHEAD amendment then moved the row playhead
+            // off the displayed voice's OWN cell — reading it made the row track
+            // whichever tab was selected (V1/V2/V3 diverged; global means
+            // voice-independent). CC_FIX_MACRO_LANE_SEED Part 2 completes the law: the
+            // frame is the MACRO ROW's walk (bounded by this mL/mO/mR), so the cell
+            // runs INSIDE the authored window (L=8 @ O=16 walks [16,24), the same
+            // frame value the Macro lanes' seed hangs under — one law, one walk).
             int rp = (eng.stepIndex >= 0) ? eng.macroFrameRead() : -1;
             int sg = eng.macroFrameSign();
             visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);

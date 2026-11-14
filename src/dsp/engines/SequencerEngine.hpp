@@ -460,6 +460,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> lanePhaseV_ = {};   // per-voice: ≡ the RAW effective clock's t0 (mod the walk's period)
     std::array<int, dotModular::NUM_STRANDS> macroLanePhase_ = {};   // macro lanes: ≡ the RAW transport t0 (mod the walk's period)
     std::array<int, kVoiceSlots> voiceFramePhase_ = {};   // mapped voice rows: ≡ the RAW effective clock's t0 (mod the row walk's period)
+    // (CC_FIX_MACRO_LANE_SEED Part 2) the MACRO ROW's frame phase — the mapped macro
+    // row's walk congruence, the container the Macro lanes hang under. Mirrors
+    // voiceFramePhase_ for the one shared row (the follower voices' rows resolve to
+    // it; the Macro lanes' seed needs it independently of any voice being live).
+    int macroFramePhase_ = 0;
     int globalT0Phase_                             = 0;    // ≡ the RAW transport t0 (mod the RHYTHM lane's length) — the step-light's DNA-content congruence under the pass-through window (the one read no mod-16 walk carries)
     std::array<int64_t, kVoiceSlots> advOffSeen_ = {};   // the transport's last-seen advanceOffset_ — the per-event diff IS the offset's contribution to k_v
     // THE WALK-KEY SHADOWS (the re-anchor law): a holder's phase is congruent to its raw
@@ -473,6 +478,7 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     std::array<std::array<int, dotModular::NUM_STRANDS>, kVoiceSlots> laneKeyV_ = {};
     std::array<int, dotModular::NUM_STRANDS> macroLaneKey_ = {};
     std::array<int, kVoiceSlots> frameKey_ = {};
+    int macroFrameKey_ = 0;   // (CC_FIX_MACRO_LANE_SEED) the macro row's walk key
     int globalT0Key_                               = 0;
     static int walkKeyOf(LaneDir d, int len) { return (int)d * 64 + std::max(1, len); }
 
@@ -836,6 +842,14 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
         int L, O, R; LaneDir d; effectiveVoiceLor(v, L, O, R, d);
         return L == kPatternLengthCap && O == 0 && R == 0 && d == LaneDir::Forward;
     }
+    // (CC_FIX_MACRO_LANE_SEED Part 2) the MACRO ROW's own identity test —
+    // voiceLorIdentity's twin reading the shared row DIRECTLY (the Macro lanes and
+    // the macro frame hang under the ROW itself, not under any voice's delegation
+    // switch, so a localEast voice's row must not leak into the Macro tier's branch).
+    bool macroRowIdentity() const {
+        return macroVoiceLor_[LOR_LEN] == kPatternLengthCap && macroVoiceLor_[LOR_OFF] == 0
+            && macroVoiceLor_[LOR_ROT] == 0 && macroVoiceLorDir_ == LaneDir::Forward;
+    }
     // Store accessors (the manager/UI author these; tests author them rack-free).
     // dotModular::VoiceSlot spelled out: the VoiceSlot alias is declared further below.
     int&    voiceLorRef(dotModular::VoiceSlot bank, int item)    { return voiceLorStore_[bank.v][item]; }
@@ -903,6 +917,22 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // THIS voice's LOR length for a strand (the walk's wrap point) — the shared table
     // (was a lambda duplicated in the two old recompute blocks).
     int     polyStrandLenOf(int v, int strand) const;
+    // (CC_FIX_MACRO_LANE_SEED Part 1) THE ONE SEED LAW — the single place the
+    // window→seed map lives for all three lane loops (East mono, East poly, Macro),
+    // so the three can never drift again (the doc's located cause: Macro's inline t0
+    // was the raw global walk in BOTH branches, folding the lane over the global
+    // pattern). Returns the lane's OWN length + the driver's t0 representative for
+    // laneRecomp; the identity/mapped branch is INSIDE and identical for all three:
+    // an identity driver row passes through (the lane's raw congruence under the
+    // pass-through global, the bounded GLOBAL window walk + the driver's advance
+    // offset under a mapped global); a mapped driver row hangs the lane off the row's
+    // FRAME VALUE (frameT0[v] — the bounded walk under the voice's own window; the
+    // macro row's frame value for Macro). East's two loops are BIT-IDENTICAL through
+    // here (the same expressions the inline seeds computed); laneRecomp is unchanged.
+    struct LaneSeed { int len = 1; int64_t t0 = 0; };
+    enum class LaneWin { Mono, Poly, Macro };   // the three seed sites
+    LaneSeed laneSeed(LaneWin win, int l, int v, bool passG, int wG, int offG, int lenG,
+                      const int* frameT0, int64_t macroFrameT0) const;
 
     // Lane-index unification: PL_* now matches the VISUAL/EDITOR/STRAND order
     // (MEL=0,OCT=1,QMIX=2,REST=3,ACC=4,VAR=5,LEG=6). Editor==engine==strand —
