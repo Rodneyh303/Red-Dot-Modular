@@ -161,6 +161,7 @@ void SequencerEngine::reset() {
     lastStepResult = StepResult{};
     stepIndex = -1;
     lastStepIndex = -1;
+    pos_.reset();   // (slice 1) the mirror parks with the same pre-start state + the default window
     startStep = 0;
     // (CC_PROMPT_16_TRIAGE bucket 2, option C's DO-NOW group) the transport default IS
     // the full ring: endStep/cachedLength derive from the cap (was the literal 15/16 —
@@ -277,6 +278,7 @@ void SequencerEngine::setWindow(int length, int offset) {
         mask |= (uint64_t(1) << ((offset + i) & (kMaskRing - 1)));
     }
     windowMask = mask;
+    pos_.setWindow(length, offset);   // (slice 1) the mirror's own bounds + the same re-anchor law
 
     if (stepIndex != -1 && !isStepInWindow(stepIndex)) {
         stepIndex = (startStep - 1 + kMaskRing) % kMaskRing;
@@ -490,6 +492,7 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
         // Return true if wrapped to start (phrase boundary)
         wrapped = (prevStep != -1 && stepIndex == startStep);
     }
+    pos_.advance(dir);   // (slice 1) the mirror advances with the same motion — the SAME traversal law, its ONE copy (consumed by nothing yet)
 
     writeLedger.noteWrite(WriteRole::ENGINE, WriteField::Wrapped); // STEP1 WriteLedger: wrapped (W1/W2) — confirms single ENGINE writer
 
@@ -1256,6 +1259,7 @@ void SequencerEngine::snapToPhaseStep(long pulsePos, int pps) {
         for (int s = 0; s < kMaskRing && !isStepInWindow(stepIndex); ++s)
             stepIndex = (stepIndex + 1) & (kMaskRing - 1);
     }
+    pos_.snapTo(stepIndex);   // (slice 1) the mirror takes the snapped column (post-defence)
     deriveHolders(lastPlayDir, nullptr);
 }
 

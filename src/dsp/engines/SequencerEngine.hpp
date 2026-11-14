@@ -15,6 +15,7 @@
 #include "../SubgateKnobs.hpp"   // SUBGATE TIER: the resolved-threshold dims + the three-way resolver (rack-free)
 #include "../StepAdvance.hpp"     // STEP-ADVANCE: the pure decideAdvance(p, u) (CC_PROMPT_GATE_STEP_ADVANCE_SPEC, rack-free)
 #include "../VoiceLaneTypes.hpp"   // VoiceSlot — the VoiceBank below (strong per-voice indexing)
+#include "Fullerton.hpp"   // POSITION_UNIFICATION slice 1: the ONE position authority (a pure mirror)
 #include <cassert>
 #include <cstdio>
 
@@ -294,6 +295,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
 
     int stepIndex = -1;
     int lastPlayDir = +1;   // +1 forward, -1 reverse (Mode E); for UI direction cues
+    // (DESIGN_POSITION_UNIFICATION slice 1) the ONE position authority — a PURE MIRROR
+    // this slice: advanced alongside stepIndex/globalWalk_, consumed by NOTHING; the
+    // golden-identity harness (test_position_resolver_identity) proves the mirror.
+    // Slice 2 migrates the derive to its phrasePos; slices 3-4 the stepIndex consumers.
+    Fullerton pos_;
 
     // ── Per-lane direction (reverse a lane's read independently) ──────────────────
     // 4-state direction per strand: Forward, Reverse, Pendulum (bounce, no endpoint repeat),
