@@ -1,5 +1,5 @@
 // test/test_position_resolver_identity.cpp — DESIGN_POSITION_UNIFICATION SLICE 1:
-// the GOLDEN-IDENTITY HARNESS. The Fullerton resolver is a PURE MIRROR — advanced
+// the GOLDEN-IDENTITY HARNESS. The PositionResolver resolver is a PURE MIRROR — advanced
 // alongside the live systems (stepIndex + globalWalk_), consumed by NOTHING. This
 // proves it reproduces both bit-identically across the sweep, so slice 2's migration
 // (the derive reads phrasePos; test_reverse_rotation_anchor goes green) starts from a
@@ -95,8 +95,8 @@ static void march(const WinCfg& w, const Prog& p, bool clockMode) {
             // the definition, computed from the ENGINE's own bounds (the resolver's
             // copies cannot drift from the engine's)
             const int want = (eng.pos_.direction() > 0)
-                ? Fullerton::wrapRing(col - eng.startStep)
-                : Fullerton::wrapRing(eng.endStep - col);
+                ? PositionResolver::wrapRing(col - eng.startStep)
+                : PositionResolver::wrapRing(eng.endStep - col);
             if (pp != want) defOK = false;
             // the entry law: pp == 0 exactly at the direction's entry column
             const int entryCol = (eng.pos_.direction() > 0) ? eng.startStep : eng.endStep;
