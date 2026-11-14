@@ -227,7 +227,8 @@ int main() {
     e.advanceOffset_[1] += 3;
     e.recomputeLaneTicks();     // the offsets-only refresh: the clock held
     check(e.transportTick_ == before, "WRITE SITE: the offsets-only refresh leaves the transport verbatim");
-    check(e.globalWalk_ == (int)(((before - 1) % 16 + 16) % 16),
+    // (CC_PROMPT_16_TRIAGE option C re-aim) the transport default len is the cap.
+    check(e.globalWalk_ == (int)(((before - 1) % dm::kPatternLengthCap + dm::kPatternLengthCap) % dm::kPatternLengthCap),
           "WRITE SITE: the global walk holder reads (tick−1) mod len — nothing else consumes the tick");
 }
 

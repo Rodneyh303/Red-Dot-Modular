@@ -461,12 +461,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->getOwnsFn = [this]() {
                         Monsoon* m = getMonsoon(); if (!m) return true;
                         const int vi = currentSlot();
-                        return (vi >= 0 && vi < kVoiceSlots) ? (m->getVoiceLorLocalEast(vi) != 0.f) : true;
+                        // (CC_PROMPT_16_TRIAGE bucket 3) qualified: the new namespace-scope
+                        // kVoiceSlots (SequencerEngine.hpp) is ambiguous with this class's own
+                        // alias inside the lambda — the resolver's constant is the authority.
+                        return (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) ? (m->getVoiceLorLocalEast(vi) != 0.f) : true;
                     };
                     w->setOwnsFn = [this](bool b) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         const int vi = currentSlot();
-                        if (vi >= 0 && vi < kVoiceSlots) m->setVoiceLorLocalEast(vi, b ? 1.f : 0.f);
+                        if (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) m->setVoiceLorLocalEast(vi, b ? 1.f : 0.f);
                     };
                     w->pushUndoFn = [this](bool oldB, bool newB) {
                         Monsoon* m = getMonsoon(); if (!m) return;
@@ -491,13 +494,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->getStateFn = [this]() {
                         Monsoon* m = getMonsoon(); if (!m) return 0;
                         const int vi = currentSlot();
-                        return (vi >= 0 && vi < kVoiceSlots)
+                        return (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots)
                             ? (int)std::lround(m->getVoiceLorEastDir(vi)) & 3 : 0;
                     };
                     w->setStateFn = [this](int v) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         const int vi = currentSlot();
-                        if (vi >= 0 && vi < kVoiceSlots) m->setVoiceLorEastDir(vi, (float)(v & 3));
+                        if (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) m->setVoiceLorEastDir(vi, (float)(v & 3));
                     };
                     w->pushUndoFn = [this](int oldV, int newV) {
                         Monsoon* m = getMonsoon(); if (!m) return;
@@ -646,12 +649,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         Monsoon* m = getMonsoon(); if (!m) return true;
                         // (tab1MonoMirror removed — Mono killed Step 6)
                         int vi = currentSlot();   // Phase A: V1=0, V2+=1..15 (unified index)
-                        return (vi >= 0 && vi < kVoiceSlots) ? m->ownerIsEast(vi, lane) : true;
+                        return (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) ? m->ownerIsEast(vi, lane) : true;
                     };
                     w->setOwnsFn = [this, lane](bool b) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
-                        if (vi >= 0 && vi < kVoiceSlots) m->setOwnerEast(vi, lane, b);
+                        if (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) m->setOwnerEast(vi, lane, b);
                     };
                     w->pushUndoFn = [this, lane](bool oldB, bool newB) {
                         Monsoon* m = getMonsoon(); if (!m) return;
@@ -711,12 +714,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->getStateFn = [this, lane]() {
                         Monsoon* m = getMonsoon(); if (!m) return 0;
                         int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
-                        return (vi >= 0 && vi < kVoiceSlots) ? (int)std::lround(m->getLaneDir(vi, lane)) : 0;
+                        return (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) ? (int)std::lround(m->getLaneDir(vi, lane)) : 0;
                     };
                     w->setStateFn = [this, lane](int v) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
-                        if (vi >= 0 && vi < kVoiceSlots) m->setLaneDir(vi, lane, (float)v);
+                        if (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) m->setLaneDir(vi, lane, (float)v);
                     };
                     // Undo hook: route a direction cycle through Rack history (Ctrl+Z). Captures
                     // the resolved store target at click time (mono vs poly, which voice/lane).
@@ -1260,7 +1263,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             return m->ownerIsEast(Monsoon::kMonoMacroOwnRow, engLane);
         }
         int vi = currentSlot();   // voiceSlot: V2..V16 = 1..15 (== polyVoice() on poly tabs)
-        return (vi >= 0 && vi < kVoiceSlots) ? m->ownerIsEast(vi, engLane) : true;
+        return (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) ? m->ownerIsEast(vi, engLane) : true;
     }
     // The voice NUMBER (1..16) for the selected tab: tab 0 = V1 (mono), tab v = V(v+1).
     // All mono/poly identity + bank mapping flows through VoiceResolver so there's one

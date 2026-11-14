@@ -732,10 +732,14 @@ int main() {
     {
         // IDENTITY PUSH = RESET BYTES: every row reads exactly what reset() seeded.
         SequencerEngine eng; eng.reset();
-        float macroLor[3] = {16.f, 0.f, 0.f}; float macroDir = 0.f;
+        // (CC_PROMPT_16_TRIAGE option C re-aim) the EDITOR's identity floats are the
+        // CAP (Monsoon.hpp's EditorState, the bug-23 round) — the 16.f literals here
+        // were the 16-era leftovers, pushing a NON-identity 16-row against the
+        // cap-seeded store (the march below then diverged at bar 2).
+        float macroLor[3] = {(float)dotModular::kPatternLengthCap, 0.f, 0.f}; float macroDir = 0.f;
         float eastLor[48], eastDir[16], localEast[16];
         for (int v = 0; v < 16; ++v) {
-            eastLor[v*3+0] = 16.f; eastLor[v*3+1] = 0.f; eastLor[v*3+2] = 0.f;
+            eastLor[v*3+0] = (float)dotModular::kPatternLengthCap; eastLor[v*3+1] = 0.f; eastLor[v*3+2] = 0.f;
             eastDir[v] = 0.f; localEast[v] = 0.f;
         }
         eng.pushVoiceLorEditor(macroLor, macroDir, eastLor, eastDir, localEast);
@@ -743,13 +747,13 @@ int main() {
         // slot(v+1): the resolver is VOICE-NUMBER based (V1..V16 -> bank.v 0..15).
         for (int v = 0; v < 16; ++v) {
             const auto vs = dotModular::VoiceResolver::slot(v + 1);
-            ident = ident && eng.voiceLor(vs, SequencerEngine::LOR_LEN) == 16;
+            ident = ident && eng.voiceLor(vs, SequencerEngine::LOR_LEN) == dotModular::kPatternLengthCap;
             ident = ident && eng.voiceLor(vs, SequencerEngine::LOR_OFF) == 0;
             ident = ident && eng.voiceLor(vs, SequencerEngine::LOR_ROT) == 0;
             ident = ident && eng.voiceLorDirRef(vs) == SequencerEngine::LaneDir::Forward;
             ident = ident && eng.voiceLorFollowsMacro(vs);
         }
-        ident = ident && eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) == 16;
+        ident = ident && eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) == dotModular::kPatternLengthCap;
         ident = ident && eng.macroVoiceLorRef(SequencerEngine::LOR_OFF) == 0;
         ident = ident && eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) == 0;
         ident = ident && eng.macroVoiceLorDirRef() == SequencerEngine::LaneDir::Forward;
@@ -761,10 +765,10 @@ int main() {
         // defaults cannot move anything the Stage-1/2a goldens pinned.
         SequencerEngine a; a.reset(); a.numPolyVoices = 4;
         SequencerEngine b; b.reset(); b.numPolyVoices = 4;
-        float macroLor[3] = {16.f, 0.f, 0.f}; float macroDir = 0.f;
+        float macroLor[3] = {(float)dotModular::kPatternLengthCap, 0.f, 0.f}; float macroDir = 0.f;   // (option C re-aim) the editor's identity floats = the cap
         float eastLor[48], eastDir[16], localEast[16];
         for (int v = 0; v < 16; ++v) {
-            eastLor[v*3+0] = 16.f; eastLor[v*3+1] = 0.f; eastLor[v*3+2] = 0.f;
+            eastLor[v*3+0] = (float)dotModular::kPatternLengthCap; eastLor[v*3+1] = 0.f; eastLor[v*3+2] = 0.f;
             eastDir[v] = 0.f; localEast[v] = 0.f;
         }
         b.pushVoiceLorEditor(macroLor, macroDir, eastLor, eastDir, localEast);
@@ -901,7 +905,10 @@ int main() {
             eng.advancePlayhead(+1);
             const long T = (long)k + 1;
             fwdOK   = fwdOK && eng.voiceReadSign(dotModular::VoiceResolver::mono()) == +1;
-            frameOK = frameOK && eng.macroFrameRead()  == (int)(((T - 1) % 16 + 16) % 16)
+            // (CC_PROMPT_16_TRIAGE option C re-aim) the default transport is the cap, so
+            // the identity Macro frame's read cell walks the full ring at the default.
+            frameOK = frameOK && eng.macroFrameRead()  == (int)(((T - 1) % dotModular::kPatternLengthCap
+                                                                 + dotModular::kPatternLengthCap) % dotModular::kPatternLengthCap)
                     && eng.macroFrameSign() == +1;
         }
         check(fwdOK,   "STAGE3: identity voice — forward march signs +1 every step");
@@ -1400,24 +1407,28 @@ int main() {
     // (Bug 1 the period = L; the OPEN the global offset routes as PLACEMENT; Bug 2 the
     // rotation clamp 0..L-1 + rho = R; the painted-pattern follow requirements.)
     {
-        // PERIOD: a cycling voice with L=12 under a MAPPED 16-step global (off 5)
-        // repeats every 12 steps ACROSS the global wrap — the global window's wrap is a
-        // non-event for the voice's fold (the old bounded representative jumped at the
-        // wrap and made the period the global length — the bug this fix removes).
-        // O=0 R=0: read(k) = ((k mod 12) + offG) & ring — advancing +1 every step,
-        // wrapping at the voice's own 12, never at 16.
+        // PERIOD (Prompt 2 re-aim — the PHRASE ANCHOR): a cycling voice with L=12
+        // under a MAPPED 16-step global (off 5) RESTARTS ITS CYCLE at every global
+        // step 1 — the read is the phrase-position fold (((k mod 16) mod 12) + offG):
+        // R is the voice's position when the transport hits step 1 (the UAS nesting
+        // reference). Was Bug 1's free-run (period 12 straight across the wrap —
+        // superseded for the frame walk by the phrase-anchor ruling; within the FIRST
+        // phrase the two laws agree exactly, so the old pin's first-16 values hold).
+        // NOTE (the audit): this pin ran a non-dividing row at R=0 — it changes despite
+        // the "R=0 unchanged" expectation, because the law ("the read resets to R at
+        // every global step 1") covers R=0 too.
         SequencerEngine eng; eng.reset();
         eng.updateWindow(16.f, 0.f, false, 5.f, false, false);   // lenG=16 offG=5: MAPPED
         eng.macroVoiceLorRef(SequencerEngine::LOR_LEN) = 12;
         bool periodOK = true;
-        for (int k = 0; k < 48; ++k) {   // 4 voice cycles spanning 3 global wraps (48 > 3*16)
+        for (int k = 0; k < 48; ++k) {   // 3 global phrases
             eng.advancePlayhead(+1);
-            // The full column pin: +1 every step, wrapping ONLY at the voice's own 12
-            // (k=16/32 are mid-cycle ordinary steps — the global wrap is a non-event).
-            periodOK = periodOK && eng.voiceReadPosition(dotModular::VoiceResolver::mono()) == ((k % 12) + 5);
+            // The phrase-anchored column: the fold of the phrase position (k mod 16)
+            // through the voice's own 12, placed at offG — restarting at every step 1.
+            periodOK = periodOK && eng.voiceReadPosition(dotModular::VoiceResolver::mono()) == (((k % 16) % 12) + 5);
         }
         check(periodOK,
-              "CCFIX PERIOD: L=12 under a mapped 16@5 global — the read walks +1 with period 12 straight across every global wrap (no jump at 16)");
+              "CCFIX PERIOD (Prompt 2 re-aim): L=12 under a mapped 16@5 global — the read restarts its cycle at every global step 1 (the phrase anchor: ((k%16)%12)+offG)");
     }
     {
         // OFFSET (the OPEN, implemented): the window starts at the GLOBAL-FRAME

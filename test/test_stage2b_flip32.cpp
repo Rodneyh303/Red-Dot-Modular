@@ -75,8 +75,11 @@ int main() {
         // the module's first updateWindow push resolves the live window to (16,0)).
         check(eng.windowMask == dm::kMaskLenMask,
               "the factory window mask is the ring's all-on (the full-cap default — 2b widened it)");
-        check(eng.cachedLength == 16,
-              "cachedLength reports the knob default 16 (the MODE LAW; the module push resolves the live window)");
+        // (CC_PROMPT_16_TRIAGE option C re-aim) the ENGINE's transport default IS the cap
+        // (the do-now group); the MODULE's knob default stays 16 — its first updateWindow
+        // push resolves the live window (moving the knob is the deferred round).
+        check(eng.cachedLength == dm::kPatternLengthCap,
+              "cachedLength reports the transport default = the cap (option C's do-now group; the module push resolves the live window)");
         // 40 advances: the walk covers ALL 32 cells and wraps at 32 — period exactly 32.
         std::set<int> first32, all;
         bool seedOK = true;
