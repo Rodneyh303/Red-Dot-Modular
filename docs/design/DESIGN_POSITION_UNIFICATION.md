@@ -1,8 +1,22 @@
 # DESIGN — unify the TWO position systems into one robust authority (DRY/ODR)
 
-STATUS: design proposal for Rodney's review. NOT a CC prompt yet — it has open questions
-(below) that set the scope. Once resolved, this becomes the CC implementation prompt.
-Branch: off fix/macro-voicelane-shared-frame @ 76387742.
+STATUS: scope LOCKED (decisions below). Ready to become the CC implementation prompt /
+slice 1. Branch: off fix/macro-voicelane-shared-frame.
+
+## DECISIONS (Rodney, locked)
+1. SCOPE: ALL modes. NUANCE — in CLOCK mode the GLOBAL playhead is forward-only
+   (signMotion >= 0), but the per-level voice/lane direction modes are as flexible as in
+   GATE/PHASE. So: the reverse GLOBAL traversal (first-played == endStep) occurs only in
+   GATE/PHASE; the MULTIPLICATIVE per-level direction composition (voice/lane Reverse/
+   Pendulum/PingPong) is active in ALL modes. The resolver takes the global direction
+   from the mode and composes the per-level LaneDirs always.
+2. The resolver OWNS the window traversal: the start/end bounds, the windowMask
+   membership (isStepInWindow) and the seeding/skip. (windowMask is the global transport
+   window — NOT the output mask; confirmed, no entanglement.)
+3. STATELESS derivation: one transport-position state in the resolver; playedColumn,
+   phrasePos and the composed direction are PURE views of it; deriveHolders re-derives
+   from those (no second accumulator). (POSITION_HOLDER_MODEL style.)
+4. INCREMENTAL slices, goldens bit-identical at each.
 
 ## THE PROBLEM (why this exists)
 Two independent computations of "where are we in the phrase" that must agree but DRIFT:
@@ -94,15 +108,12 @@ each bit-identical on the existing (forward / offset-0 / ≤16) configs:
 - The multiplicative-direction matrix: a lane Reverse under a voice Forward under a
   global Reverse (and permutations) read the composed position — pin a few by hand.
 
-## OPEN QUESTIONS (Rodney — these set the scope before this becomes a CC prompt)
-1. SCOPE: does the reverse rotation-anchor rule (and this unification) apply to CLOCK
-   mode too, or only GATE/PHASE? (It's an engine-level position, so I'd expect all
-   modes — confirm.)
-2. Should the resolver OWN the window-skip (isStepInWindow) + seeding, making it the
-   single place that logic lives? (I think yes — it's the other half of the DRY win.)
-3. Class home + name (Singapore geography per CLAUDE.md), and should it be a stateless
-   re-derivation (POSITION_HOLDER_MODEL style — phrasePos as f(transport, window, dir))
-   or a holder that re-anchors on the wrap? The stateless form keeps the current model;
-   the wrap-reanchored form is simpler but adds state. Your call.
-4. Appetite: land as the incremental slices above (goldens green each step), or design
-   the resolver fully first then cut over? I recommend incremental.
+## REMAINING QUESTION (minor — can be settled in slice 1)
+- Class home + name (Singapore geography per CLAUDE.md). Candidate: a new
+  src/dsp/engines file. Proposed phrasePos semantics: UNSIGNED "steps since the
+  current-direction phrase entry" (0 at the first-played step BOTH directions, counting
+  up), so the rotation anchor is phrasePos==0 everywhere and playedColumn is the
+  direction-aware placement (fwd: startStep+phrasePos; rev: endStep-phrasePos, mod ring).
+  Note: phrasePos "since entry" must survive a mid-run direction flip — the resolver
+  holds the one transport state that makes this a pure view (the current globalWalk_
+  already holds equivalent state; we keep ONE, not two).
