@@ -281,8 +281,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   struct RangeStrip {
     bool  enabled = false;
     int   lor[3]  = {16, 0, 0};   // DISPLAY window (the effective row, engine-resolved)
-    int   readPos = -1;           // the voice frame's read cell (ABSOLUTE global step, carries offG), -1 = idle
-    int   globalOffset = 0;       // the global pattern offset (offG) — folded out of readPos for the window-mode playhead
+    int   readPos = -1;           // the voice frame's read cell (0..15), -1 = idle
     int   dir     = 1;            // the walk sign (+1/-1) for the leading-edge cue
     bool  blocked = false;        // follow-Macro / read-only — render, no gestures
     const char* label = "";       // host caption (drawn like the lane labels)
@@ -336,8 +335,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // Per-frame display push (host). While a drag is live the window L/O/R stays the
   // DRAG's local values (the store push lags one control block; overwriting would
   // fight the hand) — readPos/dir/blocked still update.
-  void setRangeState(int L, int O, int R, int readPos, int dir, bool blocked, const char* label,
-                     int globalOffset = 0) {
+  void setRangeState(int L, int O, int R, int readPos, int dir, bool blocked, const char* label) {
     rangeStrip.enabled = true;
     if (!stripDragLive()) {   // (§PLAN 1) the reducer's engagement guards the window push
       rangeStrip.lor[0] = std::max(1, std::min(L, STEP_COUNT));
@@ -345,7 +343,6 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       rangeStrip.lor[2] = ((R % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
     }
     rangeStrip.readPos = readPos;
-    rangeStrip.globalOffset = globalOffset;
     rangeStrip.dir     = (dir < 0) ? -1 : 1;
     rangeStrip.blocked = blocked;
     if (label) rangeStrip.label = label;
@@ -712,14 +709,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
 
     // The read cell: the voice's current buffer cell, glowing + leading-edge bar.
-    // The engine read is ABSOLUTE (carries offG); in window mode fold it into the
-    // voice-local frame the window tint + rotation chevron + lanes draw in, so it
-    // sits inside the drawn window (CC_FIX_VOICE_STRIP_GLOBAL_OFFSET_PLACEMENT).
-    // Under the mask the tint is absolute, so the read stays absolute.
-    const int rpCell = redDot::SandsRangeGestureCore::stripPlayheadCell(
-        rangeStrip.readPos, rangeStrip.globalOffset, maskActive, STEP_COUNT);
-    if (rpCell >= 0 && rpCell < STEP_COUNT) {
-      rack::Rect cell = rack::Rect(layout.getStepX(rpCell), r.pos.y,
+    if (rangeStrip.readPos >= 0 && rangeStrip.readPos < STEP_COUNT) {
+      rack::Rect cell = rack::Rect(layout.getStepX(rangeStrip.readPos), r.pos.y,
                                    layout.stepWidthF(), r.size.y);
       nvgBeginPath(vg);
       nvgRect(vg, cell.pos.x, cell.pos.y, cell.size.x, cell.size.y);

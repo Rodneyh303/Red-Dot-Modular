@@ -134,23 +134,6 @@ struct SandsRangeGestureCore {
         return (e >= s) ? (b >= s && b <= e) : (b >= s || b <= e);
     }
 
-    // ── (CC_FIX_VOICE_STRIP_GLOBAL_OFFSET_PLACEMENT) THE STRIP PLAYHEAD CELL ─────
-    // The engine read (voiceReadPosition / macroFrameRead) is the ABSOLUTE global
-    // step the voice reads — it carries the global offset (offG): the probe shows
-    // it sits in [offG+O, offG+O+L). But the strip's window tint (rangeBarInWindow
-    // == windowContains, VOICE-LOCAL [O,O+L)) and its rotation chevron (O + R%L) are
-    // drawn in the SAME voice-local frame the probability lanes use (calcPlayhead ==
-    // lanePlayheadBar, off + phase, offG folded out). So in WINDOW mode the playhead
-    // must fold offG out to share that frame — otherwise it renders offG steps
-    // outside the drawn window (the reported bug). Under the OUTPUT MASK the tint is
-    // the absolute global-column mask (maskCellPlays), so the read stays absolute.
-    // ONE law, both strips (East + Macro); negatives (idle sentinel) pass through.
-    static int stripPlayheadCell(int engineRead, int globalOffset, bool maskActive, int ring) {
-        if (engineRead < 0) return engineRead;          // -1 idle sentinel
-        if (maskActive)      return engineRead;         // absolute: matches the absolute mask tint
-        return wrapMod(engineRead - globalOffset, ring); // voice-local: matches [O,O+L) + the lanes
-    }
-
     // ── (bugs 17+18, LOR_EDITING_BUG_LIST) THE SHARED LANE-PLAYHEAD LAW ─────────
     // ONE law for EVERY lane's drawn playhead (the VAR lane included — the doc's
     // ruling: "No lane draws the global scan when it has a window"): the window
