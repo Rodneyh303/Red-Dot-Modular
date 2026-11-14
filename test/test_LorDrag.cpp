@@ -590,18 +590,18 @@ int main() {
         // the law's formula: off + ((tick + rot) mod len), wrapped on the ring.
         ok = ok && Core::lanePlayheadBar(7, 8, 20, 3, 32) == ((20 + ((7 + 3) % 8)) % 32);
         ok = ok && Core::lanePlayheadBar(7, 4, 30, 1, 32) == ((30 + ((7 + 1) % 4)) % 32);   // a wrapped window
-        // the delegation + the retirement pins (the D grep-in-test precedent):
-        // calcPlayhead delegates to the core law; NO caller draws the scan.
-        std::string veh, east, macro;
-        ok = ok && slurpFile("src/ui/VisualExpanderHelpers.hpp", veh)
-               && slurpFile("src/StraitsEastSandsVisual.cpp", east)
-               && slurpFile("src/StraitsSandsMacroVisual.cpp", macro);
-        ok = ok && veh.find("lanePlayheadBar") != std::string::npos;          // the delegation
-        ok = ok && veh.find("variationLanePlayhead") == std::string::npos;    // the helpers retired
-        ok = ok && east.find("variationLanePlayhead") == std::string::npos;   // no scan callers
-        ok = ok && macro.find("variationLanePlayhead") == std::string::npos;
+        // the delegation pin (the D grep-in-test precedent): calcPlayhead delegates
+        // to the core law — the NON-VAR lanes draw the shared window playhead.
+        // (fix/variation-scan-display) the VAR scan is RESTORED, not retired: bug 18's
+        // "leaves the window" premise is false (test_variation_scan_display proves the
+        // engine's scanned draw is in-window for every delta), so the no-caller grep is
+        // inverted — the VAR sites draw variationLanePlayhead* again.
+        std::string veh;
+        ok = ok && slurpFile("src/ui/VisualExpanderHelpers.hpp", veh);
+        ok = ok && veh.find("lanePlayheadBar") != std::string::npos;          // the non-VAR delegation
         check(ok, "14 (bugs 17+18): the shared lane playhead is in-window for every "
-                  "(off, len, rot, tick); the VAR scan exception is retired everywhere");
+                  "(off, len, rot, tick); non-VAR lanes delegate to the ONE law "
+                  "(the VAR scan is restored — see test_variation_scan_display)");
     }
 
     // ── GATE 15 (bug 17): the voice strip's read cell — the RING fold ───────────
