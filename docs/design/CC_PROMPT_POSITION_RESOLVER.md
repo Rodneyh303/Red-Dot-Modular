@@ -26,7 +26,10 @@ the window [start/end,len,offset], the composed per-level LaneDir):
   This is the coordinate the derive will fold (slice 2) and the rotation anchor
   (phrasePos==0, both directions).
 - the composed direction/sign for the holders: the MULTIPLICATIVE per-level rule — global
-  (signMotion; forward-only in CLOCK, bidirectional in GATE/PHASE) × voice frame
+  (signMotion; EVENT modes CLOCK+GATE: a GLOBAL direction, DEFAULT FORWARD, flipped only by the
+  dedicated REVERSE-ALL control — NOT sourced from any voice/mono; PHASE: bidirectional,
+  direction from the phase input. See DRIVE DIRECTION MODEL in DESIGN_POSITION_UNIFICATION.md)
+  × voice frame
   (voiceLorDir_/macroVoiceLorDir_) × lane (laneDir_/laneDirV_/macroLaneDir_), via the
   existing laneTickFor + laneDirSign(signMotion*dirSign) products. Compute from the ONE
   state so no two consumers can disagree.

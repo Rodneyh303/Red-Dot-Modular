@@ -29,6 +29,17 @@ This is how most stochastic sequencers work (independent tracks/voices each owni
 global-counter design is the unusual choice — synchronized-by-default — now the wrong shape for an
 independence-first instrument.
 
+### GATE DIRECTION IS GLOBAL, NOT MONO-SOURCED (2026-11-15 — DRIVE DIRECTION MODEL)
+A corollary of killing the global counter: today the GLOBAL gate-mode direction is taken from
+decideStepAdvance_(mono())'s signed variationProb (SequencerEngine.cpp ~:1818) — mono's Variation
+steering the whole transport, the same mono-is-special leak. Under the drive-direction model
+(DESIGN_POSITION_UNIFICATION.md): an EVENT drive carries no direction, so the event-mode
+(clock + gate) global direction is a GLOBAL state — default forward, flipped only by a dedicated
+REVERSE-ALL control, sourced from NO voice. Mono's Variation then drives ONLY its own voice
+(per-voice direction, tier 2), and HOLD is per-voice (the frame advances every rise; a voice
+freezes itself). Phase keeps its direction from the input. Rides THIS migration — the counter
+removal is what lets the global direction stop being a voice's property.
+
 ## WHY BEFORE 32 STEPS (Rodney — sequencing)
 - 32 steps on the CURRENT model = audit every `& 0x0F` wrap + every "function of the global counter" site,
   extending a construct we're about to replace = WASTED effort.

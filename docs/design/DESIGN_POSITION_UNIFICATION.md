@@ -5,8 +5,13 @@ slice 1. Branch: off fix/macro-voicelane-shared-frame.
 
 ADDENDUM (2026-11-15, OPEN): see "INPUT CADENCE / ACCEPTANCE MODEL" below — the RATE at
 which position's inputs (global range, LOR, direction, modulation) are recognised/accepted,
-and how that composes with the existing effect-timing ladder. Decisions C1–C3 are OPEN
-(Rodney to settle). Design-ahead: this lands as its OWN slice AFTER S2, NOT slice 1.
+and how that composes with the existing effect-timing ladder. C1 (rungs), C2 (keep-counting),
+C4 (display cadence) and C3 (per-level direction, GATED on the position-holder migration) all
+DECIDED 2026-11-15. Design-ahead: C1/C2/C4 land as their OWN slice AFTER S2; C3 rides the
+counter-removal migration, not that slice. NOT slice 1.
+See also DRIVE DIRECTION MODEL below (2026-11-15) — gate direction is GLOBAL, not voice-1/mono-
+sourced; event modes default forward with a REVERSE-ALL control; HOLD per-voice; and the
+VARIATION-centre fix (knob 0.5 = repeat-in-place, no forward creep).
 
 ## DECISIONS (Rodney, locked)
 1. SCOPE: ALL modes. NUANCE — in CLOCK mode the GLOBAL playhead is forward-only
@@ -87,8 +92,11 @@ that owns the transport position and is the ONE source every consumer reads:
 
 ## INPUT CADENCE / ACCEPTANCE MODEL — the resolver as the single owner of position-input acceptance
 
-STATUS: DRAFT addendum (2026-11-15). Decisions C1–C3 are OPEN — Rodney to settle. This is
-design-ahead; it is NOT slice 1 (slice 1 keeps today's cadence to stay golden-identical).
+STATUS: addendum (2026-11-15). C1 (rungs) + C2 (keep-counting) + C4 (display cadence) + C3
+(per-level direction) DECIDED by Rodney 2026-11-15 (recorded below; revisitable). C3 is
+per-level but GATED on the position-holder migration (POSITION_HOLDER_MODEL.md) — it rides the
+counter removal, not the cadence slice. Design-ahead; still NOT slice 1 (slice 1 keeps today's
+cadence to stay golden-identical).
 
 ### Why this belongs in the resolver
 THE PROPOSAL computes position "once per advance, from the transport motion + the window +
@@ -130,37 +138,93 @@ working copy and cannot disagree.
 
 ### The acceptance ladder, mapped to position's inputs
 Per EFFECT_TIMING_HIERARCHY's rungs (control / 1-16-step / phrase / unlock):
-- Sands LOR off/rot → 1/16-step.
-- Sands LOR len → the same question as C1, one level down.
-- global off → 1/16-step (TODAY control-rate — fix).
-- global len → see C1.
-- per-level direction → StepEdge or Phrase via laneFlipQuant (already correct); the resolver
-  reads the PROMOTED dir, never the pending one.
+- Sands LOR len/off/rot → PHRASE (C1 — a perceptible-relationship control; the phasing must
+  hold still to be heard). TODAY step — this COARSENS it, deliberately.
+- global len + off → STEP, together (C1 — the MeloDicer-native "reposition/resize the whole
+  pattern now" class). TODAY control-rate — this is a (small) coarsening/fix.
+- per-level direction → each level at its OWN edge (C3). TODAY laneFlipQuant is a SINGLE enum
+  (one edge for the whole engine, lock-scope picks which strands) — per-level EDGES are the
+  extension, coherent only on the holder model (see C3). The resolver reads each level's
+  PROMOTED dir, never the pending one.
 - modulation (CV) → NOT a rung of its own; it RIDES the target's rung (CV→LOR latches at the
   LOR rung, CV→direction at the direction rung). Nothing new to decide for modulation once
   the target rungs are set.
 
-### OPEN DECISIONS (Rodney)
-C1. GLOBAL LEN rung — STEP vs PHRASE. off/rot and global-off sit at 1/16-step. But changing
-    the PHRASE LENGTH mid-phrase is arguably the "scene advance" class the ladder already
-    puts at the phrase boundary. Decide: global len latches at the step edge (consistent with
-    LOR) OR at the phrase boundary (structural). [Lane len is the same question — C1 governs
-    both unless you split them.]
+### DECISIONS (Rodney, 2026-11-15 — recorded; revisitable)
 
-C2. phrasePos CONTINUITY across a mid-phrase window/LOR change — the subtle one for a
-    POSITION authority. When len/off change, does phrasePos KEEP COUNTING (the window resizes
-    UNDER a continuous counter) or RE-SEED to 0 (treat the change as a phrase re-entry)?
-    Re-seeding re-fires the rotation anchor (phrasePos==0) on EVERY range change — which may
-    be the wanted "re-sync rotation on resize" feel, or an unwanted retrigger. Directly
-    couples to the acceptance bug THIS doc already fixes. Decide the semantics in BOTH
-    directions and on wrap.
+THE ORGANIZING PRINCIPLE (replaces "consistency"): RUNG = WHAT THE CONTROL IS FOR, not
+uniformity across inputs.
+  - A control whose value is a PERCEPTIBLE RELATIONSHIP over time (lane LOR — the lanes phasing
+    against each other and against the global anchor) → PHRASE. The relationship is only HEARD
+    if it holds still long enough to register; per-step it is hash, not phasing, and in UAS it
+    makes everything jump. LOR is the reason the instrument exists (the observation that small
+    probability-offset changes between lanes make a random pattern sound better), so its
+    legibility is primary.
+  - A control whose value is an IMMEDIATE REPOSITION / RESIZE of the whole pattern (global
+    length + offset) → STEP. No inter-element relationship to hold still for: offset slides the
+    whole window against the clock (a translation — it preserves every relationship), length
+    just moves the loop end. This is the MeloDicer-native class.
 
-C3. COMPOSITION across levels with DIFFERENT promote edges — voice flips at StepEdge, lane at
-    Phrase: the multiplicative sign is coherent only at a COMMON latch. Decide: one promote
-    edge for the WHOLE composition (simpler, less flexible) OR per-level promoted values each
-    latched at its own edge (flexible, but risks a one-step HALF-PROMOTED product). Direction
-    today derives SIGN from position each step (sidesteps this for sign), but the DIR enum
-    promotes per-level — so the question is real for the composed TRAVERSAL.
+C1 (DECIDED). Sands LOR (len/off/rot) → PHRASE. Global length + offset → STEP, TOGETHER.
+    "Together" because MeloDicer has global length AND offset in real time but has NO
+    per-voice/lane LOR — direct evidence that global L+O are one class (real-time) and LOR is a
+    class MeloDicer never had. The MeloDicer premise "patterns react instantly to the controls"
+    is honoured for the class it was coined for (global L+O); it does not oblige LOR, which was
+    never in that class. LOCK MODE stays ORTHOGONAL — the deliberate defer-to-cue (DJ cueing)
+    that overrides every base rung wholesale; it SUSPENDS a rung, it doesn't set one.
+
+C2 (DECIDED — and SELECTED BY C1, not independent). phrasePos KEEPS COUNTING across a
+    mid-phrase global change; it does NOT re-seed. Why it is forced by C1: LOR is phrase-
+    latched and anchored to global step 1 (= phrasePos==0). RE-SEED would re-fire phrasePos==0
+    on EVERY global length/offset tweak → the lanes you phased RE-ANCHOR and snap mid-flow,
+    destroying the exact phase-stability C1 bought. KEEP-COUNTING leaves this phrase's anchor
+    alone: the global change bites the WRAP immediately (MeloDicer-instant), but the lane
+    anchoring set at this phrase's start holds until the next REAL phrase boundary. It is also
+    the MeloDicer feel — turning length plays THROUGH with a moved loop-end, it does not
+    restart. col = (phrasePos + rot) mod len + off, evaluated against the step-latched len/off
+    and the free-running phrasePos.
+    COST (accepted; small + deterministic): shrinking length BELOW the current phrasePos folds
+    `phrasePos mod newLen` → lands a step or two into the new short window rather than at its
+    start, until the next wrap tidies it. Re-seed's only virtue (always-clean-from-anchor) is
+    precisely the anchor-re-fire we do NOT want, so the cost is worth paying.
+
+C3 (DECIDED — PER-LEVEL; GATED on the position-holder migration). Each level's direction
+    promotes at its OWN edge (voice StepEdge, lane Phrase, …); there is NO single common latch.
+    The "half-promoted product" worry is an ARTIFACT of the global-counter model
+    (dstep = signMotion × mdSign — a STORED product that can be half-updated). POSITION_HOLDER_
+    MODEL.md removes it: each (voice,lane) holder OWNS its position and updates LOCALLY
+    pos = wrap(pos ± dir), dir applied FRESH each advance — no shared composed sign exists to
+    half-promote, so every holder is always self-consistent with its own promoted dir.
+    COMPOSITION survives as NESTING, not multiplication: a child walk's phase driver IS its
+    parent's walk, so a parent flip drags its whole SUBTREE immediately (the driver reversed),
+    while each level's OWN flip lands at its OWN edge.
+    WORKED: voice (StepEdge) flips mid-phrase → lane's DRIVER reverses NOW → lane nets backward
+    (parent-back × own-forward) until the phrase → lane's own dir promotes at the phrase → nets
+    forward again (back × back). Coherent at EVERY step; it is the correct meaning of per-level
+    — a parent reversal is immediate and applies to everything under it; each level's own
+    reversal is its own choice at its own edge.
+    CONDITION (why GATED): this coherence DEPENDS on the holder model. On the CURRENT global
+    counter, per-level edges force the stored product and the half-promoted state is REAL —
+    there you would need the common latch as a stopgap. So C3 RIDES the counter-removal
+    migration (POSITION_HOLDER_MODEL.md sequencing: poly advance + divergence tests → counter
+    removal → 32 steps), NOT the C1/C2/C4 cadence slice. Gated on that migration, not on S2.
+    VERIFY (don't assume — the holder model is partly TARGET, not fully built): when a PARENT
+    flips mid-phrase the child must re-anchor to the LIVE parent wrap, not a stored stale one
+    (consistent with C2 keep-counting). Reproduce-first, a DIRECTION-divergence case of the
+    holder doc's per-voice divergence suite: voice reverses at a step edge while lane holds →
+    assert the lane reads the parent-dragged positions, then re-nets at the phrase. This is what
+    proves per-level composition is wired to the LIVE reference and not a cached product
+    creeping back in.
+
+C4 (DECIDED). DISPLAY cadence follows the INPUT rung — the Sands range IS the LOR mod display.
+    There are NO knobs on the LOR, hence NO mod arcs (mod arcs belong on knobs, not on
+    modulators); LOR modulation is shown ONLY by the Sands lane range MOVING. So phrase-
+    latching LOR in the engine (C1) OBLIGES the Sands range to update at the PHRASE boundary
+    too — it must NOT keep sliding every step while the engine holds still, or the display and
+    the engine disagree (the exact two-representations-drift this whole doc exists to kill).
+    The display PULLS the SAME latched LOR the engine reads (one authority), so it moves when
+    the engine's value moves — at the phrase. No mod-arc work; the range movement IS the
+    modulation display, and it quantizes with the rung.
 
 ### Slice placement
 NOT slice 1 (pure mirror, keeps control-rate cadence, golden-identical). Lands as its OWN
@@ -168,7 +232,90 @@ slice AFTER S2 (derive migration + reverse fix): step-latching the global range 
 behaviour change — golden-safe only where a test HOLDS the window constant (GOLDEN_A/B/BS,
 UA_NONDIV likely do; the mid-phrase MOVE is exactly what wants a NEW pin). Reproduce-first: a
 test that moves len/off mid-phrase and asserts the playhead + holders accept the change on
-the CHOSEN edge (not control-rate), per C1/C2.
+the CHOSEN edge (not control-rate), per C1/C2. Engine-side is headless-testable; the Sands
+range quantization (C4) ships in the SAME slice but is WIDGET — Rodney's Rack leg verifies the
+range steps at the phrase boundary, not every step, and never disagrees with the engine.
+The engine↔display agreement is pinned structurally (both read the one latched LOR) the way
+test_variation_scan_display pins the VAR chevron.
+
+C3 (per-level direction) is NOT in this slice. It is coherent only on the position-holder
+model, so it rides the COUNTER-REMOVAL migration (POSITION_HOLDER_MODEL.md: poly advance +
+divergence tests → counter removal → 32 steps), with its own direction-divergence test (parent
+flips mid-phrase, child tracks the live parent wrap). Gated on that migration, not on S2.
+
+## DRIVE DIRECTION MODEL — direction comes from the drive, not from a voice (Rodney, 2026-11-15)
+
+STATUS: DECIDED 2026-11-15. Companion to the cadence addendum. Amends the mode-direction rule
+in CC_PROMPT_POSITION_RESOLVER.md (the "signMotion" line).
+
+### The bug being removed (verified in code)
+In gate mode the GLOBAL advancePlayhead direction is taken from decideStepAdvance_(mono()) —
+the MONO slot's signed variationProb (SequencerEngine.cpp ~:1818) — and the per-voice motions
+layer on top via foldPerVoiceAdvance_. So mono's Variation does DOUBLE DUTY: voice-1's own
+motion AND the whole transport's direction. "Voice 1 steers the ship" was never decided — it is
+the single-decision-era incumbent (before per-voice advance there was ONE decision driving ONE
+timeline; per-voice motion was layered on later, the global kept using mono's). The only thing
+actually decided at mode level was "gate/phase bidirectional" (CC_PROMPT_POSITION_RESOLVER:29).
+This is the mono-is-special leak — same root as POSITION_HOLDER_MODEL.md.
+
+### The principle — direction comes from the DRIVE's own nature
+An EVENT drive (clock tick, gate rise) carries NO direction — a tick says "advance", not which
+way. A POSITION drive (phase/position input) carries direction — it can run backward on its
+own. Therefore:
+- CLOCK (event) → a GLOBAL direction, default forward.
+- GATE (event) → a GLOBAL direction, default forward. Borrowing a voice's sign to fake one is
+  the arbitrary part; removed.
+- PHASE (position) → bidirectional, direction taken from the phase signal itself.
+This is why gate ≠ phase is NOT arbitrary: phase HAS a direction to read; gate does not, so a
+gate global sourced from voice 1 was the one true inconsistency of the three.
+
+### Forward is itself a convention — so it is globally flippable (the "reverse all" gesture)
+Once mono is de-specialized, "forward" is an arbitrary default for BOTH event modes. So the
+event-mode global direction is DEFAULT forward, flipped by a single dedicated REVERSE-ALL
+control that applies to CLOCK and GATE identically — a GLOBAL control, not sourced from any
+voice. PHASE has no reverse-all (reversing the phase input IS the gesture). This recovers the
+one-gesture "reverse everything" properly, instead of smuggling it through voice 1's Variation.
+
+### The three tiers (one owner each)
+1. GLOBAL DRIVE DIRECTION — event modes: default-forward, flipped by reverse-all (clock + gate
+   uniform); phase: from the input. Mono plays no part.
+2. PER-(VOICE,LANE) DIRECTION — LaneDir / voiceLorDir_ (deterministic) AND Variation
+   (stochastic, bipolar — below), each per holder; composes on top of tier 1 per the
+   MULTIPLICATIVE/nesting rule (C3).
+No tier is sourced from another's incidental state.
+
+### HOLD is per-voice too — the (2) decision
+The global frame advances on EVERY event rise (forward, or flipped by reverse-all); HOLD is
+PURELY per-voice — a voice freezes ITSELF (falls behind the moving frame); the frame never
+freezes because one voice (mono) chose to. This fully de-specializes mono: its Variation drives
+ONLY its own voice, like every other voice. (The smaller alternative — frame holds when mono's
+p≈0 — was rejected: it keeps mono special for hold.)
+
+### VARIATION — keep it coupled to direction; fix the CENTRE (Rodney)
+Variation is NOT decoupled from direction — it stays a per-voice stochastic advance+direction
+control (tier 2). Only the CENTRE semantics change:
+- knob 0.5 → the variation lane HOLDS: repeats the current step. NO advance, NO scan, NO
+  direction. TODAY p=0 is lumped with forward (decideStepAdvance_: `signedDelta = (p<0) ?
+  -delta : +delta`), and since |p|=0 the freeze-fix escape never comes, scanOfsV_ grows and the
+  lane/chevron CREEPS FORWARD indefinitely — the arbitrary forward at the centre.
+- knob >0.5 → FORWARD; advance probability = (knob−0.5) scaled; scan forward.
+- knob <0.5 → BACKWARD; advance probability = (0.5−knob) scaled; scan backward.
+- It STILL drives voice direction (the side of 0.5 is that voice's advance direction) — intent
+  unchanged; only the centre is fixed.
+FIX: make the sign a THREE-WAY — p>0 forward, p<0 backward, p==0 repeat-in-place with NO scan
+(scanOfsV_ stays 0, no chevron creep). This also makes the restored VAR scan chevron
+(fix/variation-scan-display) sit STILL at the centre instead of creeping — the two are
+consistent — and it is the correct meaning of the "by-design stutter" (knob 0.5 → p=0,
+MonsoonModeController.cpp:160).
+
+### Slice / where it lands
+The DRIVE layer, separate from the C1/C2/C4 cadence slice and from C3. The VARIATION-CENTRE fix
+is a small, self-contained engine change (three-way p sign at the scan site + scanOfsV_ gated
+on |p|>0), reproduce-first: at p=0 assert NO advance AND scanOfsV_==0 over many held rises; at
+p>0 forward scan, p<0 backward scan (the existing freeze-fix behaviour, now excluding the
+centre). REVERSE-ALL + per-voice HOLD are bigger (gate-mode advance plumbing + a new global
+control) and ride the counter-removal migration alongside C3 (POSITION_HOLDER_MODEL.md). The
+mono de-specialization (gate direction global, not mono-sourced) is noted there.
 
 ## MIGRATION PLAN (incremental; goldens green at EVERY step — this is the whole risk)
 This touches transport timing; the goldens are the contract. Do it in landable slices,
