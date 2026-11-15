@@ -627,7 +627,7 @@ bool SequencerEngine::foldPerVoiceAdvance_(int subLevel, bool perVoiceScan,
             dStep = (dv == dotModular::StepAdvance::FORWARD) ? +1
                   : (dv == dotModular::StepAdvance::BACKWARD) ? -1 : 0;
             if (dStep != 0) scanOfsV_[i] = 0;              // moved: re-anchor (its own value first)
-            else            scanHoldV_(vs);                // held: scan its own window deeper
+            else            scanHoldFor_(vs);              // held: scan its own window deeper
         }
         advanceOffset_[i] += (int64_t)(dStep - dMainStep);
         if (dStep != dMainStep) anyMoved = true;
@@ -1970,8 +1970,8 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
                 wrapped = advancePlayhead(-1, motionV.data());      // resets the scan ([0])
             else {
                 // (CC_PROMPT_VARIATION_CENTRE) the resolved mono p threads in: at the
-                // centre (|p| <= eps) scanHold_ self-gates — HOLD with NO scan.
-                scanHold_(voices[VoiceResolver::mono()].variationProb);   // HELD: scan the window forward (the freeze fix)
+                // centre (|p| <= eps) scanHoldFor_ self-gates — HOLD with NO scan.
+                scanHoldFor_(VoiceResolver::mono());   // HELD: scan the window forward (the freeze fix)
                 if (anyVoiceMoved)
                     recomputeLaneTicks(motionV.data());            // the clock held; diverged voices refresh
             }
@@ -2126,8 +2126,8 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
             wrapped = advancePlayhead(-1, motionV.data());      // resets the scan
         else {
             // (CC_PROMPT_VARIATION_CENTRE) the resolved mono p threads in: at the
-            // centre (|p| <= eps) scanHold_ self-gates — HOLD with NO scan.
-            scanHold_(voices[VoiceResolver::mono()].variationProb);   // HELD: scan the window forward (the freeze fix)
+            // centre (|p| <= eps) scanHoldFor_ self-gates — HOLD with NO scan.
+            scanHoldFor_(VoiceResolver::mono());   // HELD: scan the window forward (the freeze fix)
             if (anyVoiceMoved)
                 recomputeLaneTicks(motionV.data());            // the clock held; diverged voices refresh
         }
