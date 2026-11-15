@@ -549,7 +549,10 @@ dotModular::StepAdvance::Decision SequencerEngine::decideStepAdvance_(VoiceSlot 
     // the fall's +1 target becomes -1 (the incoming-rest step BEHIND — where a
     // backward advance would land). ONE signing site covers every caller (the rise
     // scan and the fall target both arrive here as raw deltas/magnitudes).
-    const int signedDelta = (p < 0.f) ? -drawTickDelta : drawTickDelta;
+    // (CC_PROMPT_VARIATION_CENTRE) the three-way sign: p == 0 yields 0 — the centre is
+    // a clean repeat, not a forward creep. Moot once the scan is gated off at the
+    // centre (the centre never scans), but it documents the intent at the sign site.
+    const int signedDelta = (p < 0.f) ? -drawTickDelta : (p > 0.f) ? drawTickDelta : 0;
     // THE DRAW SOURCE (the fix): u is the VARIATION LANE's step-addressed draw — the
     // same r_vary every lane-style compare reads — NOT a fresh Philox draw (the reserved
     // chunk is DELETED; the advance consumes ZERO new draws). HELD STEP IS CORRECT, NOT
@@ -1919,7 +1922,9 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
             else if (d == dotModular::StepAdvance::BACKWARD)
                 wrapped = advancePlayhead(-1, motionV.data());      // resets the scan ([0])
             else {
-                scanHold_();                                // HELD: scan the window forward (the freeze fix)
+                // (CC_PROMPT_VARIATION_CENTRE) the resolved mono p threads in: at the
+                // centre (|p| <= eps) scanHold_ self-gates — HOLD with NO scan.
+                scanHold_(voices[VoiceResolver::mono()].variationProb);   // HELD: scan the window forward (the freeze fix)
                 if (anyVoiceMoved)
                     recomputeLaneTicks(motionV.data());            // the clock held; diverged voices refresh
             }
@@ -2073,7 +2078,9 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
         else if (adv == dotModular::StepAdvance::BACKWARD)
             wrapped = advancePlayhead(-1, motionV.data());      // resets the scan
         else {
-            scanHold_();                                // HELD: scan the window forward (the freeze fix)
+            // (CC_PROMPT_VARIATION_CENTRE) the resolved mono p threads in: at the
+            // centre (|p| <= eps) scanHold_ self-gates — HOLD with NO scan.
+            scanHold_(voices[VoiceResolver::mono()].variationProb);   // HELD: scan the window forward (the freeze fix)
             if (anyVoiceMoved)
                 recomputeLaneTicks(motionV.data());            // the clock held; diverged voices refresh
         }

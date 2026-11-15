@@ -348,7 +348,14 @@ static void ruleMarch(float p, int steps) {
             if (moved != expectAdvance) ++mismatches;
             if (!moved) {
                 ++heldRises;
-                ++mirrorScan;   // the scan accrues on a held rise (the freeze fix)
+                // (CC_PROMPT_VARIATION_CENTRE re-aim) the mirror takes the centre law:
+                // at |pNow| <= kVariationCentreEps the scan does NOT grow — the neutral
+                // centre is a clean repeat (the phase-3 creep this mirror used to model
+                // was the bug the fix removes; the engine's scanHold_ now self-gates on
+                // the same constant).
+                if (pNow >= SequencerEngine::kVariationCentreEps
+                    || pNow <= -SequencerEngine::kVariationCentreEps)
+                    ++mirrorScan;   // the scan accrues on a held rise (the freeze fix)
                 // ZERO NEW DRAWS (the additive-domain law): a held rise leaves the
                 // variation ring BIT-IDENTICAL — the decision (and the scan) only
                 // READ existing ring values; nothing regenerates (the old

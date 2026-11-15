@@ -564,7 +564,18 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // in the locked build; Stage 2's divergence gates them on the VAR-lane
     // delegation (varlegDelegated) and resets them at the decision sites.
     std::array<int, kVoiceSlots> scanOfsV_ = {};
-    void scanHold_() {
+    // (CC_PROMPT_VARIATION_CENTRE) THE CENTRE GATE: at the neutral centre (|p| <= eps)
+    // there is no escape to scan toward (the horizon ~1/|p| is infinite), so the scan
+    // must not run — the lane repeats the current step in place and the chevron sits
+    // still (was: the unconditional increment, the arbitrary-forward creep). eps =
+    // 1e-3f: knob 0.5 maps to EXACTLY 0 (the clean case); CV2/Junction noise up to
+    // ~10mV (1e-3 in p units, 10V <-> +/-1) holds cleanly instead of creeping over a
+    // ~1000-rise horizon; an intentional small p (1% knob = 0.01, escape ~100 rises)
+    // still scans. p is the RESOLVED mono variationProb, threaded in by the callers
+    // (the same value decideStepAdvance_ reads).
+    static constexpr float kVariationCentreEps = 1e-3f;
+    void scanHold_(float p) {
+        if (p < kVariationCentreEps && p > -kVariationCentreEps) return;   // the centre: HOLD with NO scan
         const int varLen = lor(dotModular::STRAND_VARIATION, LOR_LEN);
         scanOfsV_[0] = (scanOfsV_[0] + 1) % (varLen > 0 ? varLen : 1);
     }
