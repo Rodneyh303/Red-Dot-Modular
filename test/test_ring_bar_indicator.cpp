@@ -80,9 +80,9 @@ static std::set<int> ghostsForLap(const std::set<int>& win, int lap) {
 // playhead 1.0 > trail 0.5 (the TRAIL MASTER's own membership — across the bar line the
 // step just left belongs to the other lap) > in-window note 0.35 > ghost.
 static float expectedLevel(const SequencerEngine& eng, int k, const std::set<int>& win) {
-    const int lap         = (eng.stepIndex >= 16) ? 1 : 0;                       // D10's split test
-    const int lamp        = ((eng.stepIndex % 16) + 16) % 16;                    // the sanctioned display landing
-    const int trailMaster = ((eng.stepIndex - eng.lastPlayDir) % dm::kMaskRing + dm::kMaskRing) % dm::kMaskRing;
+    const int lap         = (eng.playedColumn() >= 16) ? 1 : 0;                       // D10's split test
+    const int lamp        = ((eng.playedColumn() % 16) + 16) % 16;                    // the sanctioned display landing
+    const int trailMaster = ((eng.playedColumn() - eng.lastPlayDir) % dm::kMaskRing + dm::kMaskRing) % dm::kMaskRing;
     const int trailLamp   = trailMaster % 16;                                    // the twice-around lamp landing
     if (k == lamp) return 1.0f;
     if (k == trailLamp && win.count(trailMaster)) return 0.5f;
@@ -119,7 +119,7 @@ int main() {
         bool inBar1 = true, ringOK = true, noGhost = true, barStable = true, barExcl = true;
         for (int i = 0; i < 32; ++i) {
             eng.advancePlayhead(+1);
-            inBar1 &= (eng.stepIndex >= 0 && eng.stepIndex < 16);
+            inBar1 &= (eng.playedColumn() >= 0 && eng.playedColumn() < 16);
             ringOK &= ringMatchesModel(eng, win);
             for (int k = 0; k < 16; ++k)
                 noGhost &= (eng.getStepLightBrightness(k) != SequencerEngine::kStepGhostBrightness);
@@ -150,15 +150,15 @@ int main() {
                 noGhost &= (eng.getStepLightBrightness(k) != SequencerEngine::kStepGhostBrightness);
             // the trail REPAIR: at the ring wrap (31 -> 0) the step just left is master 31,
             // whose LAMP is 15 — the cross-lap trail the 2b flip killed.
-            if (eng.stepIndex == 0 && i > 0) { ++wrapLandings; trailAtWrap &= (eng.getStepLightBrightness(15) == 0.5f); }
+            if (eng.playedColumn() == 0 && i > 0) { ++wrapLandings; trailAtWrap &= (eng.getStepLightBrightness(15) == 0.5f); }
             const float b1 = eng.getBarLightBrightness(0), b2 = eng.getBarLightBrightness(1);
             const int lit = (b1 == 1.f) ? 0 : 1;
             exclOK &= (b1 != b2);
-            exclOK &= (b1 == 1.f) == (eng.stepIndex < 16);
-            exclOK &= (b2 == 1.f) == (eng.stepIndex >= 16);
+            exclOK &= (b1 == 1.f) == (eng.playedColumn() < 16);
+            exclOK &= (b2 == 1.f) == (eng.playedColumn() >= 16);
             // BAR INDICATOR invariant 2: at every lamp-0 landing the NEW bar's LED is lit.
-            if (eng.stepIndex % 16 == 0)
-                tellOK &= ((eng.stepIndex < 16 && b1 == 1.f) || (eng.stepIndex >= 16 && b2 == 1.f));
+            if (eng.playedColumn() % 16 == 0)
+                tellOK &= ((eng.playedColumn() < 16 && b1 == 1.f) || (eng.playedColumn() >= 16 && b2 == 1.f));
             if (!firstSample && lit != prevLit) ++barFlips;
             prevLit = lit; firstSample = false;
         }
@@ -184,17 +184,17 @@ int main() {
             ringOK &= ringMatchesModel(eng, win);
             // the ghost SET equals the flip-table model's CURRENT-LAP set, outside the
             // playhead/trail lamps those levels override
-            const int lap = (eng.stepIndex >= 16) ? 1 : 0;
+            const int lap = (eng.playedColumn() >= 16) ? 1 : 0;
             const std::set<int> ghosts = ghostsForLap(win, lap);
-            const int lamp        = ((eng.stepIndex % 16) + 16) % 16;
-            const int trailMaster = ((eng.stepIndex - eng.lastPlayDir) % dm::kMaskRing + dm::kMaskRing) % dm::kMaskRing;
+            const int lamp        = ((eng.playedColumn() % 16) + 16) % 16;
+            const int trailMaster = ((eng.playedColumn() - eng.lastPlayDir) % dm::kMaskRing + dm::kMaskRing) % dm::kMaskRing;
             for (int k = 0; k < 16; ++k) {
                 if (k == lamp || (k == trailMaster % 16 && win.count(trailMaster))) continue;
                 ghostSetOK &= ((eng.getStepLightBrightness(k) == SequencerEngine::kStepGhostBrightness)
                                == (ghosts.count(k) > 0));
             }
             const float b1 = eng.getBarLightBrightness(0), b2 = eng.getBarLightBrightness(1);
-            barOK &= ((b1 == 1.f) == (eng.stepIndex < 16)) && ((b2 == 1.f) == (eng.stepIndex >= 16));
+            barOK &= ((b1 == 1.f) == (eng.playedColumn() < 16)) && ((b2 == 1.f) == (eng.playedColumn() >= 16));
         }
         check(ringOK,    "(24,16): every lamp equals the model on every frame (ghosts on the out-of-window current-lap masters)");
         check(ghostSetOK, "(24,16): the ghost set == the flip-table model's CURRENT-LAP set at every frame");
@@ -212,10 +212,10 @@ int main() {
         for (int i = 0; i < 16; ++i) {   // one pass: 9..15 (bar 1), 16..24 (bar 2)
             eng.advancePlayhead(+1);
             ringOK &= ringMatchesModel(eng, win);
-            const int lap = (eng.stepIndex >= 16) ? 1 : 0;
+            const int lap = (eng.playedColumn() >= 16) ? 1 : 0;
             const std::set<int> ghosts = ghostsForLap(win, lap);
-            const int lamp        = ((eng.stepIndex % 16) + 16) % 16;
-            const int trailMaster = ((eng.stepIndex - eng.lastPlayDir) % dm::kMaskRing + dm::kMaskRing) % dm::kMaskRing;
+            const int lamp        = ((eng.playedColumn() % 16) + 16) % 16;
+            const int trailMaster = ((eng.playedColumn() - eng.lastPlayDir) % dm::kMaskRing + dm::kMaskRing) % dm::kMaskRing;
             for (int k = 0; k < 16; ++k) {
                 if (k == lamp || (k == trailMaster % 16 && win.count(trailMaster))) continue;
                 ghostSetOK &= ((eng.getStepLightBrightness(k) == SequencerEngine::kStepGhostBrightness)
@@ -226,7 +226,7 @@ int main() {
             if (!first && lit != prevLit) {
                 ++flips;
                 // BAR INDICATOR invariant 2: the flip lands on a lamp-0 frame of the new bar
-                tellOK &= (eng.stepIndex % 16 == 0);
+                tellOK &= (eng.playedColumn() % 16 == 0);
             }
             prevLit = lit; first = false;
         }
@@ -235,7 +235,7 @@ int main() {
         check(flips == 1, "(9,16): ONE BAR flip per pass at the playhead's tick crossing (the designed tell)");
         check(tellOK,     "(9,16): the flip lands on a lamp-0 frame of the new bar (invariant 2 — the clock reading)");
         eng.advancePlayhead(+1);   // the pass boundary: the window wrap 24 -> 9
-        check(eng.stepIndex == 9 && eng.getBarLightBrightness(0) == 1.f,
+        check(eng.playedColumn() == 9 && eng.getBarLightBrightness(0) == 1.f,
               "(9,16): the window-wrap landing restores lap 0 (two flips per full cycle; the pass starts where it started)");
     }
 
@@ -264,7 +264,7 @@ int main() {
     // ── 6. PRE-START: the -1 park keeps every lamp and both BAR LEDs dark ──
     {
         SequencerEngine eng; eng.reset();   // stepIndex == -1 before the first advance
-        check(eng.stepIndex == -1, "a fresh engine parks the playhead at -1");
+        check(eng.playedColumn() == -1, "a fresh engine parks the playhead at -1");
         bool noPh = true;
         for (int k = 0; k < 16; ++k) noPh &= (eng.getStepLightBrightness(k) != 1.0f);
         check(noPh, "pre-start: no lamp reads the playhead level (the % 16 landing is guarded — -1 % 16 would light lamp 15)");
@@ -278,11 +278,11 @@ int main() {
         eng.updateWindow(16.f, 0.f, false, 12.f, 0.f, false);   // cells 12..27 — crosses the bar line
         authorDeterministic(eng);
         for (int i = 0; i < 4; ++i) eng.advancePlayhead(+1);      // 12, 13, 14, 15
-        check(eng.stepIndex == 15, "the walk sits on cell 15 (bar 1's last cell)");
+        check(eng.playedColumn() == 15, "the walk sits on cell 15 (bar 1's last cell)");
         const float b1_before = eng.getBarLightBrightness(0);
         const float ph_before = eng.getStepLightBrightness(15);
         eng.advancePlayhead(+1);
-        check(eng.stepIndex == 16, "the next landing is cell 16 — the bar line");
+        check(eng.playedColumn() == 16, "the next landing is cell 16 — the bar line");
         const float b1_after  = eng.getBarLightBrightness(0);
         const float b2_after  = eng.getBarLightBrightness(1);
         const float ph_after  = eng.getStepLightBrightness(0);
@@ -296,7 +296,7 @@ int main() {
         // OVER the map at this landing: the step just left is master 15 (in-window), so
         // the trail's 0.5 overrides what would have been its ghost.
         bool swapOK = true;
-        const int trailMaster = ((eng.stepIndex - eng.lastPlayDir) % dm::kMaskRing + dm::kMaskRing) % dm::kMaskRing;
+        const int trailMaster = ((eng.playedColumn() - eng.lastPlayDir) % dm::kMaskRing + dm::kMaskRing) % dm::kMaskRing;
         for (int k = 0; k < 16; ++k) {
             const bool ghost = (eng.getStepLightBrightness(k) == SequencerEngine::kStepGhostBrightness);
             if (k <= 11) swapOK &= !ghost;          // masters 16..27: ALL in-window on lap 1

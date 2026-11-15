@@ -405,7 +405,7 @@ int main() {
         std::vector<int> visited;
         for (int i = 0; i < 40; ++i) {
             eng.advancePlayhead(+1);
-            visited.push_back(eng.stepIndex);
+            visited.push_back(eng.playedColumn());
         }
         bool inWindow = true;
         for (int s : visited) inWindow = inWindow && (s >= 0 && s < 16);
@@ -454,9 +454,9 @@ int main() {
             bool bar1 = false, bar2 = false, inside = true;
             for (int i = 0; i < 32; ++i) {
                 eng.advancePlayhead(+1);
-                inside = inside && eng.stepIndex >= 0 && eng.stepIndex < 32;
-                seen.insert(eng.stepIndex);
-                if (eng.stepIndex < 16) bar1 = true; else bar2 = true;
+                inside = inside && eng.playedColumn() >= 0 && eng.playedColumn() < 32;
+                seen.insert(eng.playedColumn());
+                if (eng.playedColumn() < 16) bar1 = true; else bar2 = true;
             }
             check(inside, "the restored 32-window walk stays inside the 32-ring");
             check((int)seen.size() == 32, "the restored 32-window visitation is ALL 32 cells (wraps at 32, not 16)");

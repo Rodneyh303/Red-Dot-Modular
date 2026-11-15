@@ -863,12 +863,9 @@ struct PatternEngine {
     float cachedMelodyPitchV[kStepStorage] = {};
     // (cachedRhythmPattern[16] RETIRED — ITEM 1, with the array it cached)
     float cachedQmix[kStepStorage]         = {};   // q-mix twin of cachedMelodyPitchV (raw q-mix draw cache)
-    int   cachedMelodyStepIndex  = -1;
-    int   cachedMelodyLastStepIndex = -1;
-    int   cachedRhythmStepIndex  = -1;
-    int   cachedRhythmLastStepIndex = -1;
-    int   cachedQmixStepIndex    = -1;   // q-mix twin of cachedMelodyStepIndex
-    int   cachedQmixLastStepIndex = -1;   // q-mix twin of cachedMelodyLastStepIndex
+    // (STEP 4-final) the cached*StepIndex/LastStepIndex position twins are DELETED —
+    // the vestigial mode-switch position cache (see switchMelodyMode). The planned
+    // switchQmixMode work is PATTERN-ONLY and must NOT reinstate them.
     // Full A/B buffer snapshot for a LOSSLESS realtime round-trip: entering
     // realtime caches A and B, returning restores them exactly (preserving the
     // slew morph position), rather than reseeding to an A=B approximation.
@@ -1450,10 +1447,11 @@ public:
     }
 
     // ── Mode switching (dice ↔ realtime) ──────────────────────────────────────
-    // stepIndex / lastStepIndex passed in+out so the engine can cache/restore them.
+    // PATTERN-ONLY (STEP 4-final): the position cache is gone; the seed + buffer
+    // preservation is the feature.
 
-    void switchMelodyMode(int& stepIndex, int& lastStepIndex);
-    void switchRhythmMode(int& stepIndex, int& lastStepIndex);
+    void switchMelodyMode();
+    void switchRhythmMode();
 
     // Circularly shifts the internal random buffers
     

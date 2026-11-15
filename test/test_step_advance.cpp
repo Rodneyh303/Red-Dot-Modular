@@ -146,7 +146,7 @@ static void captureStep(const SequencerEngine& eng, const StepResult& r, Capture
     cap.u8(eng.gs.gateHeld ? 1u : 0u);
     cap.u8(eng.gsStep.gateHeld ? 1u : 0u);
     cap.i16(q12(eng.gs.currentPitchV));
-    cap.u8((unsigned)eng.stepIndex & 0xFFu);
+    cap.u8((unsigned)eng.playedColumn() & 0xFFu);
     for (int v = 2; v <= 16; ++v) {
         const auto& pv = eng.voices[dotModular::VoiceResolver::slot(v)];
         cap.u8(pv.gs.gateHeld ? 1u : 0u);
@@ -330,20 +330,20 @@ static void ruleMarch(float p, int steps) {
                         : (step < 3 * steps / 4) ? 0.0f
                         : p;
         eng.voices[m].variationProb = pNow;
-        const int before = eng.stepIndex;
-        const float drawAt0Before = (eng.stepIndex != -1) ? eng.stepAdvanceDrawAt(m, 0) : 0.f;
-        const float uBefore = (rise && eng.stepIndex != -1)
+        const int before = eng.playedColumn();
+        const float drawAt0Before = (eng.playedColumn() != -1) ? eng.stepAdvanceDrawAt(m, 0) : 0.f;
+        const float uBefore = (rise && eng.playedColumn() != -1)
             // the SCANNED draw, SIGNED by p (the engine reads the scan in the
             // TRAVEL direction — pNow < 0 scans BACKWARD: drawAt(-mirrorScan))
             ? eng.stepAdvanceDrawAt(m, (pNow < 0.f) ? -mirrorScan : mirrorScan)
             : 0.f;
         bool expectAdvance = false;
-        if (rise && eng.stepIndex != -1)
+        if (rise && eng.playedColumn() != -1)
             expectAdvance = (uBefore < pNow);
         StepResult r = eng.executeModeB(rise, high, noteVal, in);
         if (!rise) continue;
         const bool seeded = (before == -1);
-        const bool moved  = (eng.stepIndex != before);
+        const bool moved  = (eng.playedColumn() != before);
         if (!seeded) {
             if (moved != expectAdvance) ++mismatches;
             if (!moved) {
@@ -395,13 +395,13 @@ static void ruleMarchInto(float p, int steps, Capture& cap, int* mismatches, int
     for (int step = 0; step < steps; ++step) {
         const bool rise = (step % 2) == 0;
         const bool high = rise;
-        const int before = eng.stepIndex;
+        const int before = eng.playedColumn();
         StepResult r = eng.executeModeB(rise, high, noteVal, in);
         const bool seeded = (before == -1);
-        const bool moved  = (eng.stepIndex != before);
+        const bool moved  = (eng.playedColumn() != before);
         if (moved && !seeded) ++(*advances);
         cap.u8(rise ? 1u : 0u);
-        cap.u8((unsigned)eng.stepIndex & 0xFFu);
+        cap.u8((unsigned)eng.playedColumn() & 0xFFu);
         cap.u8((unsigned)r.decision);
     }
 }
@@ -468,10 +468,10 @@ int main() {
         int advances = 0, holdRun = 0, maxHoldRun = 0;
         for (int step = 0; step < 96; ++step) {
             const bool rise = (step % 2) == 0;
-            const int before = eng.stepIndex;
+            const int before = eng.playedColumn();
             eng.executeModeB(rise, rise, 3.f, in);
             if (!rise || before == -1) continue;
-            if (eng.stepIndex != before) {
+            if (eng.playedColumn() != before) {
                 ++advances;
                 holdRun = 0;
             } else {
@@ -507,8 +507,8 @@ int main() {
                 heldConst = heldConst && ((int)r.decision == firstDecision);
                 pitchConst = pitchConst && (eng.gs.currentPitchV == firstPitch);
             }
-            if (parkedIdx < 0) parkedIdx = eng.stepIndex;
-            else movedAfterSeed = movedAfterSeed || (eng.stepIndex != parkedIdx);
+            if (parkedIdx < 0) parkedIdx = eng.playedColumn();
+            else movedAfterSeed = movedAfterSeed || (eng.playedColumn() != parkedIdx);
         }
         check(heldConst, "HOLD: the held step re-outputs the SAME decision every repeat rise");
         check(pitchConst, "HOLD: the held step re-outputs the SAME pitch (same step-addressed data)");
@@ -540,11 +540,11 @@ int main() {
             const bool mainHigh  = (ph == 0 || ph == 1);
             const bool ratchRise = (ph == 1);           // in-gate, non-coincident
             const bool ghostRise = (ph == 3);           // in-gap (prev low, main low)
-            const int before = eng.stepIndex;
+            const int before = eng.playedColumn();
             StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, ratchRise, noteVal, in,
                                                       ghostRise, ghostRise);
             (void)r;
-            if (eng.stepIndex != before) {
+            if (eng.playedColumn() != before) {
                 if (before == -1) ++seedAdvances;
                 else { ++advances; if (ph != 1) ++wrongSite; }   // only ratchet sites may move it
             }
@@ -574,11 +574,11 @@ int main() {
             int adv = 0;
             for (int step = 0; step < 64; ++step) {
                 const bool rise = (step % 3) == 0;
-                const int before = eng.stepIndex;
+                const int before = eng.playedColumn();
                 StepResult r = eng.executeModeB(rise, rise, 3.f, in);
-                if (rise && before != -1 && eng.stepIndex != before) ++adv;
+                if (rise && before != -1 && eng.playedColumn() != before) ++adv;
                 cap.u8(rise ? 1u : 0u);
-                cap.u8((unsigned)eng.stepIndex & 0xFFu);
+                cap.u8((unsigned)eng.playedColumn() & 0xFFu);
                 cap.u8((unsigned)r.decision);
             }
             struct R { uint64_t d; int a; };
@@ -601,10 +601,10 @@ int main() {
         redDot::RateManager rm;
         bool alwaysMoved = true;   // the ring wraps (32 since 2b) — assert MOVEMENT, not monotonicity
         for (int step = 0; step < 20; ++step) {
-            const int before = eng.stepIndex;
+            const int before = eng.playedColumn();
             rm.advance(redDot::Rate::Step, true);
             eng.executeModeA(rm, 3.f, in, +1);
-            if (eng.stepIndex == before) alwaysMoved = false;
+            if (eng.playedColumn() == before) alwaysMoved = false;
         }
         check(alwaysMoved, "SCOPE: clock/phase advances unconditionally (Variation meaning unchanged there)");
     }
@@ -637,18 +637,18 @@ int main() {
             const bool rise = (step % 2) == 0;
             const float mag = (step < 48) ? 0.35f : 1.0f;
             eng.voices[m].variationProb = -mag;
-            const int before = eng.stepIndex;
+            const int before = eng.playedColumn();
             bool expectBackward = false;
-            if (rise && eng.stepIndex != -1)
+            if (rise && eng.playedColumn() != -1)
                 // backward travel: the engine reads the scan SIGNED (drawAt(-scanOfs_))
                 expectBackward = (eng.stepAdvanceDrawAt(m, -mirrorScan) < mag);
             StepResult r = eng.executeModeB(rise, rise, 3.f, in);
             (void)r;
             if (!rise || before == -1) continue;   // the seed advances forward, no decision
-            const bool moved     = (eng.stepIndex != before);
+            const bool moved     = (eng.playedColumn() != before);
             // STEPS_32 2b: the wrap rides the RING (kMaskRing, cap-derived — was a
             // literal 16; the backward wrap from cell 0 lands on 31 post-flip).
-            const bool movedBack = moved && (eng.stepIndex
+            const bool movedBack = moved && (eng.playedColumn()
                                    == ((before - 1 + dotModular::kMaskRing) & (dotModular::kMaskRing - 1)));
             if (moved != expectBackward) ++mismatches;
             if (moved && !movedBack) ++mismatches;   // backward moves are EXACTLY -1 (mod the ring)
@@ -688,12 +688,12 @@ int main() {
             const bool mainRise  = (ph == 0);
             const bool mainHigh  = (ph == 0 || ph == 1);
             const bool ghostRise = (ph == 3);           // in-gap (main low)
-            const int before = eng.stepIndex;
+            const int before = eng.playedColumn();
             StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, false, 3.f, in,
                                                       ghostRise, ghostRise);
             if (ghostRise && !mainRise && r.decision != MonoDecision::Rest) ++ghostPlays;
             if (before == -1 || !(mainRise || ghostRise)) continue;
-            if (eng.stepIndex == ((before - 1 + dotModular::kMaskRing) & (dotModular::kMaskRing - 1))) {   // STEPS_32 2b: the ring wrap
+            if (eng.playedColumn() == ((before - 1 + dotModular::kMaskRing) & (dotModular::kMaskRing - 1))) {   // STEPS_32 2b: the ring wrap
                 ++backward;
                 if (ghostRise && !mainRise) ghostMoved = true;
             }
@@ -726,12 +726,12 @@ int main() {
             const bool mainRise  = (ph == 0);
             const bool mainHigh  = (ph == 0 || ph == 1);
             const bool ghostRise = (ph == 3);
-            const int before = eng.stepIndex;
+            const int before = eng.playedColumn();
             StepResult r = eng.executeModeBSubdivided(mainRise, mainHigh, false, 3.f, in,
                                                       ghostRise, ghostRise);
             if (ghostRise && !mainRise) {
                 if (r.decision == MonoDecision::Rest) ++ghostRests;
-                if (eng.stepIndex != before) ++ghostMoves;
+                if (eng.playedColumn() != before) ++ghostMoves;
             }
         }
         check(ghostRests > 0, "STAGE2: subRes[GHOST][REST]=1 -> every ghost rests (the gap stays empty)");
@@ -825,10 +825,10 @@ int main() {
             int p2 = -1, p3 = -1, p4 = -1;
             for (int step = 0; step < 24; ++step) {
                 const bool rise = (step % 2) == 0;
-                const int before = eng.stepIndex;
+                const int before = eng.playedColumn();
                 eng.executeModeB(rise, rise, 3.f, in);
                 if (!rise || before == -1) continue;
-                if (eng.stepIndex != before) ++monoAdv;
+                if (eng.playedColumn() != before) ++monoAdv;
                 const int t2 = eng.laneTickV_[1][dotModular::STRAND_VARIATION];
                 const int t3 = eng.laneTickV_[2][dotModular::STRAND_VARIATION];
                 const int t4 = eng.laneTickV_[3][dotModular::STRAND_VARIATION];
@@ -906,8 +906,8 @@ int main() {
             for (int step = 0; step < 96; ++step) {
                 const bool rise = (step % 2) == 0;
                 eng.executeModeB(rise, rise, 3.f, in);
-                if (!rise || eng.stepIndex < 0) continue;
-                cap.i16(eng.stepIndex);
+                if (!rise || eng.playedColumn() < 0) continue;
+                cap.i16(eng.playedColumn());
                 cap.i16(eng.laneTickV_[1][dotModular::STRAND_VARIATION]);
                 cap.i16(eng.laneTickV_[2][dotModular::STRAND_VARIATION]);
                 cap.i16(eng.laneTickV_[1][dotModular::STRAND_RHYTHM]);
@@ -939,7 +939,7 @@ int main() {
             for (int step = 0; step < 96; ++step) {
                 const bool rise = (step % 2) == 0;
                 eng.executeModeB(rise, rise, 3.f, in);
-                if (!rise || eng.stepIndex < 0) continue;
+                if (!rise || eng.playedColumn() < 0) continue;
                 for (int v = 1; v <= 4; ++v) sawOffset = sawOffset || eng.advanceOffset_[v] != 0;
                 for (int v = 2; v <= 4; ++v)
                     sawSplit = sawSplit || eng.laneTickV_[v][dotModular::STRAND_VARIATION]
@@ -961,7 +961,7 @@ int main() {
             for (int step = 0; step < 24; ++step) {
                 const bool rise = (step % 2) == 0;
                 eng0.executeModeB(rise, rise, 3.f, in);
-                if (!rise || eng0.stepIndex < 0) continue;
+                if (!rise || eng0.playedColumn() < 0) continue;
                 for (int v = 1; v <= 4; ++v)
                     if (eng0.scanOfsV_[v] > maxScan) maxScan = eng0.scanOfsV_[v];
             }

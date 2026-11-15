@@ -85,10 +85,10 @@ int main() {
         bool seedOK = true;
         for (int i = 0; i < 32; ++i) {
             eng.advancePlayhead(+1);
-            seedOK = seedOK && eng.stepIndex >= 0 && eng.stepIndex < 32;
-            if (i < 32) first32.insert(eng.stepIndex);
+            seedOK = seedOK && eng.playedColumn() >= 0 && eng.playedColumn() < 32;
+            if (i < 32) first32.insert(eng.playedColumn());
         }
-        for (int i = 32; i < 40; ++i) { eng.advancePlayhead(+1); all.insert(eng.stepIndex); }
+        for (int i = 32; i < 40; ++i) { eng.advancePlayhead(+1); all.insert(eng.playedColumn()); }
         bool periodOK = true;
         for (int s : all) periodOK = periodOK && first32.count(s) > 0;
         check(seedOK, "every landed frame stays inside the 32-ring");
@@ -100,20 +100,20 @@ int main() {
         SequencerEngine w; w.reset();
         for (int i = 0; i < 32; ++i) {
             w.advancePlayhead(+1);
-            if (w.stepIndex < 16) bar1 = true; else bar2 = true;
+            if (w.playedColumn() < 16) bar1 = true; else bar2 = true;
         }
         check(bar1 && bar2, "both bars reachable on the default ride (cells 0..15 AND 16..31)");
         // the BOUNDARY: the cell after 15 is 16 (bar 2 begins — NOT the 16-ring's wrap to 0),
         // and the cell after 31 is 0 (the ring wrap).
         SequencerEngine b; b.reset();
         for (int i = 0; i <= 15; ++i) b.advancePlayhead(+1);
-        check(b.stepIndex == 15, "the 16th landed frame is cell 15 (bar 1's end)");
+        check(b.playedColumn() == 15, "the 16th landed frame is cell 15 (bar 1's end)");
         b.advancePlayhead(+1);
-        check(b.stepIndex == 16, "the cell AFTER 15 is 16 — the walk crosses the bar boundary (the 2b shift; the 16-ring wrapped to 0)");
+        check(b.playedColumn() == 16, "the cell AFTER 15 is 16 — the walk crosses the bar boundary (the 2b shift; the 16-ring wrapped to 0)");
         for (int i = 16; i <= 30; ++i) b.advancePlayhead(+1);
-        check(b.stepIndex == 31, "the walk reaches cell 31 (bar 2's end)");
+        check(b.playedColumn() == 31, "the walk reaches cell 31 (bar 2's end)");
         b.advancePlayhead(+1);
-        check(b.stepIndex == 0, "the cell AFTER 31 is 0 — the ring wrap at 32");
+        check(b.playedColumn() == 0, "the cell AFTER 31 is 0 — the ring wrap at 32");
     }
 
     // ── 2. the MODULE default resolves to the (16,0) window — the live ≤16 world ───
@@ -123,7 +123,7 @@ int main() {
         check(eng.windowMask == SequencerEngine::windowMaskBits(16, 0),
               "the module-default push lands the (16,0) window mask (cells 0..15)");
         std::set<int> seen;
-        for (int i = 0; i < 40; ++i) { eng.advancePlayhead(+1); seen.insert(eng.stepIndex); }
+        for (int i = 0; i < 40; ++i) { eng.advancePlayhead(+1); seen.insert(eng.playedColumn()); }
         bool inWindow = true;
         for (int s : seen) inWindow = inWindow && (s >= 0 && s < 16);
         check(inWindow && (int)seen.size() == 16,

@@ -528,28 +528,28 @@ static void marchCombined(MarchCtx& c, Mode mode, MarchOut& out, Probe probe) {
         }
 
         // ── logs ──
-        out.landings.push_back(c.eng.stepIndex);
+        out.landings.push_back(c.eng.playedColumn());
         out.walks.push_back(c.eng.pos_.phaseClock(c.eng.transportTick_));   // (slice 5) the retired globalWalk_
         std::array<int, 7> tk;
         for (int s = 0; s < 7; ++s) tk[s] = c.eng.laneTick_[s];
         out.ticks.push_back(tk);
         out.decisions.push_back((unsigned char)r.decision);
         if (r.decision != MonoDecision::Rest) {
-            if (c.eng.stepIndex < 16) ++out.bar1Dec; else ++out.bar2Dec;
+            if (c.eng.playedColumn() < 16) ++out.bar1Dec; else ++out.bar2Dec;
         }
 
         // ── V2's walk laws (mode A: the deterministic +1 walk; the SEED is phase-
         // dependent — flip32 pinned the visited SET, not a start cell — so the law here
         // is the ring BOUND; the period + the distinctness are asserted from the log) ──
-        if (mode == MODE_A && c.eng.stepIndex >= 0) {
-            if (DBG && out.landingLaw && !(c.eng.stepIndex >= 0 && c.eng.stepIndex < 32))
-                std::printf("  [dbg] landing out of ring t=%d step=%d\n", t, c.eng.stepIndex);
-            out.landingLaw &= (c.eng.stepIndex >= 0 && c.eng.stepIndex < 32);
-            out.walkTracks &= (c.eng.pos_.phaseClock(c.eng.transportTick_) == c.eng.stepIndex);
+        if (mode == MODE_A && c.eng.playedColumn() >= 0) {
+            if (DBG && out.landingLaw && !(c.eng.playedColumn() >= 0 && c.eng.playedColumn() < 32))
+                std::printf("  [dbg] landing out of ring t=%d step=%d\n", t, c.eng.playedColumn());
+            out.landingLaw &= (c.eng.playedColumn() >= 0 && c.eng.playedColumn() < 32);
+            out.walkTracks &= (c.eng.pos_.phaseClock(c.eng.transportTick_) == c.eng.playedColumn());
             if (t > 0) {
                 const int prev = out.landings[t - 1];
-                out.crossBar  |= (prev == 15 && c.eng.stepIndex == 16);
-                out.crossRing |= (prev == 31 && c.eng.stepIndex == 0);
+                out.crossBar  |= (prev == 15 && c.eng.playedColumn() == 16);
+                out.crossRing |= (prev == 31 && c.eng.playedColumn() == 0);
                 const int prevR = out.ticks[t - 1][dm::STRAND_RHYTHM];
                 const int curR  = c.eng.laneTick_[dm::STRAND_RHYTHM];
                 out.laneCrossBar |= (prevR == 15 && curR == 16);   // the L=20 lane crosses the bar line
@@ -562,17 +562,17 @@ static void marchCombined(MarchCtx& c, Mode mode, MarchOut& out, Probe probe) {
             out.octaveTickBounded = false;   // the L=7 lane's own small ring
 
         // ── V3's display laws (live reads, never digested) ──
-        if (probe != PROBE_NONE && c.eng.stepIndex >= 0) {
+        if (probe != PROBE_NONE && c.eng.playedColumn() >= 0) {
             const float b1 = c.eng.getBarLightBrightness(0), b2 = c.eng.getBarLightBrightness(1);
-            out.barFollow &= ((b1 == 1.f) == (c.eng.stepIndex < 16)) &&
-                             ((b2 == 1.f) == (c.eng.stepIndex >= 16));
+            out.barFollow &= ((b1 == 1.f) == (c.eng.playedColumn() < 16)) &&
+                             ((b2 == 1.f) == (c.eng.playedColumn() >= 16));
             out.barExcl   &= (b1 != b2);
-            if (c.eng.stepIndex % 16 == 0)
-                out.tellOK &= ((c.eng.stepIndex < 16 && b1 == 1.f) || (c.eng.stepIndex >= 16 && b2 == 1.f));
-            const int lamp = ((c.eng.stepIndex % 16) + 16) % 16;
-            const int trailMaster = ((c.eng.stepIndex - c.eng.lastPlayDir) % dm::kMaskRing + dm::kMaskRing) % dm::kMaskRing;
+            if (c.eng.playedColumn() % 16 == 0)
+                out.tellOK &= ((c.eng.playedColumn() < 16 && b1 == 1.f) || (c.eng.playedColumn() >= 16 && b2 == 1.f));
+            const int lamp = ((c.eng.playedColumn() % 16) + 16) % 16;
+            const int trailMaster = ((c.eng.playedColumn() - c.eng.lastPlayDir) % dm::kMaskRing + dm::kMaskRing) % dm::kMaskRing;
             const int trailLamp  = trailMaster % 16;
-            const int lapBase = (c.eng.stepIndex >= 16) ? 16 : 0;
+            const int lapBase = (c.eng.playedColumn() >= 16) ? 16 : 0;
             auto winHas = [&](int master) {
                 if (probe == PROBE_FULL32) return true;
                 if (probe == PROBE_BAR1)   return master < 16;
@@ -582,42 +582,42 @@ static void marchCombined(MarchCtx& c, Mode mode, MarchOut& out, Probe probe) {
             for (int k = 0; k < 16; ++k) {
                 const float br = c.eng.getStepLightBrightness(k);
                 if (DBG && !(out.playUnique & ((br == 1.0f) == (k == lamp))))
-                    std::printf("  [dbg] playUnique t=%d step=%d k=%d br=%.6f\n", t, c.eng.stepIndex, k, br);
+                    std::printf("  [dbg] playUnique t=%d step=%d k=%d br=%.6f\n", t, c.eng.playedColumn(), k, br);
                 out.playUnique &= ((br == 1.0f) == (k == lamp));
                 if (k == trailLamp && trailInWin && k != lamp) {
                     // the COMET TRAIL: the step just left — its level reads the TRAIL MASTER's
                     // own membership (across the bar line the master belongs to the other lap,
                     // so an out-of-window CURRENT-LAP master at 0.5 is the trail, not a bug)
                     if (DBG && out.levelsLegal && br != 0.5f)
-                        std::printf("  [dbg] trail t=%d step=%d k=%d br=%.6f trailM=%d\n", t, c.eng.stepIndex, k, br, trailMaster);
+                        std::printf("  [dbg] trail t=%d step=%d k=%d br=%.6f trailM=%d\n", t, c.eng.playedColumn(), k, br, trailMaster);
                     out.levelsLegal &= (br == 0.5f);
                 } else if (winHas(lapBase + k)) {
                     if (DBG && out.levelsLegal && !(br == 1.0f || br == 0.35f || br == 0.07f))
-                        std::printf("  [dbg] levels t=%d step=%d k=%d br=%.6f master=%d\n", t, c.eng.stepIndex, k, br, lapBase + k);
+                        std::printf("  [dbg] levels t=%d step=%d k=%d br=%.6f master=%d\n", t, c.eng.playedColumn(), k, br, lapBase + k);
                     out.levelsLegal &= (br == 1.0f || br == 0.35f || br == 0.07f);
                 } else {
                     if (k != lamp) {   // the playhead lands in-window, but guard anyway
                         if (DBG && out.ghostSetOK && br != SequencerEngine::kStepGhostBrightness)
                             std::printf("  [dbg] ghost t=%d step=%d k=%d br=%.6f master=%d trailM=%d\n",
-                                        t, c.eng.stepIndex, k, br, lapBase + k, trailMaster);
+                                        t, c.eng.playedColumn(), k, br, lapBase + k, trailMaster);
                         out.ghostSetOK &= (br == SequencerEngine::kStepGhostBrightness);   // the CURRENT-LAP ghost law
                     }
                     if (DBG && out.levelsLegal && !(br == SequencerEngine::kStepGhostBrightness || br == 1.0f))
-                        std::printf("  [dbg] levels-out t=%d step=%d k=%d br=%.6f master=%d\n", t, c.eng.stepIndex, k, br, lapBase + k);
+                        std::printf("  [dbg] levels-out t=%d step=%d k=%d br=%.6f master=%d\n", t, c.eng.playedColumn(), k, br, lapBase + k);
                     out.levelsLegal &= (br == SequencerEngine::kStepGhostBrightness || br == 1.0f);
                 }
                 if (probe != PROBE_WRAP24)
                     out.noGhost &= (br != SequencerEngine::kStepGhostBrightness);
             }
-            if (c.eng.stepIndex == 0 && t > 0) {
+            if (c.eng.playedColumn() == 0 && t > 0) {
                 ++out.wrapLandings;
                 out.trailAtWrap &= (c.eng.getStepLightBrightness(15) == 0.5f);
             }
         }
 
         // ── V4's mask law, live on the landed frames ──
-        if (probe == PROBE_FULL32 && c.eng.stepIndex >= 0) {
-            const int s = c.eng.stepIndex;
+        if (probe == PROBE_FULL32 && c.eng.playedColumn() >= 0) {
+            const int s = c.eng.playedColumn();
             const auto M  = dm::VoiceResolver::mono();
             const auto v3 = dm::VoiceResolver::slot(kEastA);
             const auto v7 = dm::VoiceResolver::slot(kEastB);
@@ -753,21 +753,21 @@ int main() {
 
         bool seqOK = true; StepResult r{};
         r = eng.executeModeBSubdivided(true, true, false, 2.f, in);   // the seed edge
-        seqOK &= (eng.stepIndex == 0);
+        seqOK &= (eng.playedColumn() == 0);
         for (int i = 1; i <= 14; ++i) {   // main rises walk 1..14
             r = eng.executeModeBSubdivided(true, true, false, 2.f, in);
-            seqOK &= (eng.stepIndex == i);
+            seqOK &= (eng.playedColumn() == i);
         }
         r = eng.executeModeBSubdivided(false, true, true, 2.f, in);   // a RATCHET edge
-        seqOK &= (eng.stepIndex == 15);
+        seqOK &= (eng.playedColumn() == 15);
         r = eng.executeModeBSubdivided(false, true, true, 2.f, in);
-        const int ratchetCross = (eng.stepIndex == 16);   // THE BAR CROSSING ON A RATCHET EDGE
+        const int ratchetCross = (eng.playedColumn() == 16);   // THE BAR CROSSING ON A RATCHET EDGE
         for (int i = 17; i <= 31; ++i) {  // ratchet edges walk to the ring's end
             r = eng.executeModeBSubdivided(false, true, true, 2.f, in);
-            seqOK &= (eng.stepIndex == i);
+            seqOK &= (eng.playedColumn() == i);
         }
         r = eng.executeModeBSubdivided(false, false, false, 2.f, in, /*ghostRise=*/true, /*ghostHigh=*/true);
-        const bool ghostWrap = (eng.stepIndex == 0) && (r.decision != MonoDecision::Rest);   // THE RING WRAP ON A GHOST EDGE
+        const bool ghostWrap = (eng.playedColumn() == 0) && (r.decision != MonoDecision::Rest);   // THE RING WRAP ON A GHOST EDGE
         check(seqOK,         "V2b: with every ADVANCE column at +1 the edges walk the shared playhead exactly +1 per edge, 0..31");
         check(ratchetCross,  "V2b: the 15->16 bar crossing lands ON a RATCHET edge (the subgate tier drives the shared playhead across the bar line)");
         check(ghostWrap,     "V2b: the 31->0 ring wrap lands ON a GHOST edge and the ghost PLAYS (the gap tier crosses the ring wrap)");

@@ -339,7 +339,7 @@ static void marchReadsA(SequencerEngine& eng, int steps, std::vector<int>& reads
         StepResult r = eng.executeModeA(rm, 2.f, in, +1);
         (void)r;
         reads.push_back(eng.getRhythmStep());
-        stepsIdx.push_back(eng.stepIndex);
+        stepsIdx.push_back(eng.playedColumn());
     }
 }
 
@@ -673,7 +673,7 @@ int main() {
         bool sawEntry = false, anchorOK = false;
         for (int k = 0; k < 24; ++k) {
             eng.advancePlayhead(-1);
-            if (eng.stepIndex == eng.endStep) { sawEntry = true; anchorOK = (eng.getRhythmStep() == fwd[0]); }
+            if (eng.playedColumn() == eng.endStep) { sawEntry = true; anchorOK = (eng.getRhythmStep() == fwd[0]); }
         }
         check(sawEntry, "STAGE2: the 24-step backward march reaches the reverse entry (endStep)");
         check(anchorOK, "STAGE2: REVERSIBILITY (re-aimed, slice 2) — the reverse ENTRY reads the same composed "

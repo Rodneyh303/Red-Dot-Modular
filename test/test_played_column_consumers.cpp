@@ -160,9 +160,8 @@ int main() {
     check(countOccurrences(cpp, "result.forStep = pos_.playedColumn();") == 2,
           "executeStep: result.forStep = pos_.playedColumn() at BOTH sites (MidNote + tail)");
 
-    // ── GATE 3: the AUTHORITY sites keep their stepIndex tokens (SLICE 4: the
-    // derived-mirror writes + the prevStep capture — pos_ is the walk, stepIndex its
-    // mirror) ──────────────────────────────────────────────────────────────────────
+    // ── GATE 3 (STEP 4-final): the AUTHORITY bodies carry NO stepIndex token at all —
+    // the field is RETIRED; pos_ is the sole position authority ────────────────────
     const Cons auth[] = {
         { "SequencerEngine::setWindow(",       "setWindow (the window re-anchor)" },
         { "SequencerEngine::advancePlayhead(", "advancePlayhead (the traversal)" },
@@ -171,8 +170,8 @@ int main() {
     for (const Cons& c : auth) {
         std::string body;
         const bool got = extractFn(cpp, c.sig, body);
-        check(got && countToken(body, "stepIndex") >= 1,
-              std::string(c.name) + ": keeps its stepIndex tokens (the derived mirror + the capture)");
+        check(got && countToken(body, "stepIndex") == 0,
+              std::string(c.name) + ": ZERO stepIndex tokens (the field retired — pos_ is the position)");
     }
 
     // ── GATE 4: the manager feeds read the resolver (the two Rodney rulings) ─────────
@@ -189,9 +188,9 @@ int main() {
     check(lock.find("void tick(int playedColumn)") != std::string::npos,
           "MonsoonLockManager::tick's parameter IS the played column (fed by the caller)");
 
-    // ── GATE 5 (SLICE 4 — the unified advance): stepIndex is DERIVED from pos_ at the
-    // three authority sites — the hand walk/re-bound is gone, `wrapped` reads the
-    // resolver's phrase coordinate, the snap's landing is a local ────────────────────
+    // ── GATE 5 (STEP 4-final — the retirement): the ENGINE sources carry NO stepIndex
+    // token at all — the field, the mirror writes and the prevStep capture are gone;
+    // wrapped reads wasStarted && pos_.phrasePos() == 0; the snap's landing is a local ──
     {
         std::string ap, sw, sp;
         const bool got = extractFn(cpp, "SequencerEngine::advancePlayhead(", ap)
@@ -199,28 +198,14 @@ int main() {
                       && extractFn(cpp, "SequencerEngine::snapToPhaseStep(", sp);
         check(got, "the three authority bodies extract");
         if (got) {
-            // advancePlayhead: the derive + the phrase-boundary + the prevStep capture.
-            check(ap.find("stepIndex = pos_.playedColumn();") != std::string::npos
-                   && ap.find("pos_.phrasePos() == 0") != std::string::npos
-                   && ap.find("prevStep = stepIndex") != std::string::npos,
-                  "advancePlayhead: stepIndex = pos_.playedColumn() + wrapped from pos_.phrasePos() == 0 + prevStep captured");
-            // ...and NO hand-walk idiom (the seed/step/skip/scan writes).
-            check(ap.find("stepIndex = (stepIndex + 1)") == std::string::npos
-                   && ap.find("stepIndex = (stepIndex - 1") == std::string::npos
-                   && ap.find("stepIndex = (startStep - 1") == std::string::npos
-                   && ap.find("stepIndex = (endStep + 1)") == std::string::npos,
-                  "advancePlayhead: the hand walk idiom is GONE (no seed/step/skip writes to stepIndex)");
-            // setWindow: the derive; NO hand park.
-            check(sw.find("if (stepIndex != -1) stepIndex = pos_.playedColumn();") != std::string::npos,
-                  "setWindow: the derive from pos_.playedColumn() (the -1 park preserved)");
-            check(sw.find("stepIndex = (startStep - 1") == std::string::npos,
-                  "setWindow: the hand re-bound is GONE");
-            // snapToPhaseStep: the derive after the snap; the landing is a LOCAL.
-            check(sp.find("stepIndex = pos_.playedColumn();") != std::string::npos
-                   && sp.find("stepIndex = phaseStep") == std::string::npos,
-                  "snapToPhaseStep: stepIndex derives from pos_ after the snap (no = phaseStep write)");
+            check(ap.find("const bool wasStarted = (pos_.playedColumn() != -1);") != std::string::npos
+                   && ap.find("const bool wrapped = (wasStarted && pos_.phrasePos() == 0);") != std::string::npos,
+                  "advancePlayhead: wasStarted captured before the advance + wrapped from wasStarted && pos_.phrasePos() == 0");
+            check(countToken(ap, "stepIndex") == 0 && countToken(sw, "stepIndex") == 0
+                   && countToken(sp, "stepIndex") == 0,
+                  "the three authority bodies: ZERO stepIndex tokens (the field retired)");
             check(sp.find("int snapCol = phaseStep;") != std::string::npos,
-                  "snapToPhaseStep: the window defence computes the LOCAL snapCol (no stale stepIndex test)");
+                  "snapToPhaseStep: the window defence computes the LOCAL snapCol");
         }
     }
 

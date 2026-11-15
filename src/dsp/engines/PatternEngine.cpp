@@ -1187,9 +1187,13 @@ void PatternEngine::applyPendingSeedsAndRedraw(const PatternInput& in) {
 }
 
 // ── Mode switching (dice ↔ realtime) ──────────────────────────────────────
-// stepIndex / lastStepIndex passed in+out so the engine can cache/restore them.
+// (STEP 4-final) the position cache (cached*StepIndex/LastStepIndex, passed in+out)
+// is DELETED — it was VESTIGIAL: recomputeEffective* reads neither quantity (the
+// pattern restores from the draw counter), and post-slice-4 the restored stepIndex
+// was a mirror the next advance overwrote from pos_. The PATTERN cache (the seed +
+// the pitchV buffers) is the real feature and stays.
 
-void PatternEngine::switchMelodyMode(int& stepIndex, int& lastStepIndex) {
+void PatternEngine::switchMelodyMode() {
     int prev = melodyMode;
     int next = 1 - prev;
     if (prev == 0 && next == 1) {
@@ -1198,39 +1202,30 @@ void PatternEngine::switchMelodyMode(int& stepIndex, int& lastStepIndex) {
             ? melodySeedPendingFloat : melodySeedFloat;
         melodySeedCached = true;
         for (int i = 0; i < kStepStorage; ++i) cachedMelodyPitchV[i] = melodyPitchV[i];
-        cachedMelodyStepIndex     = stepIndex;
-        cachedMelodyLastStepIndex = lastStepIndex;
         // Scrub model: no A/B snapshot -- (counter, scrub, slew) is the morph position,
         // unchanged by a mode switch; returning to dice recomputes from the counter. (Step 4b.)
     } else if (prev == 1 && next == 0 && melodySeedCached) {
         // Returning to dice: restore the exact A/B buffers (lossless — preserves
         // the slew morph position), NOT a reseed-to-A=B approximation.
         for (int i = 0; i < kStepStorage; ++i) melodyPitchV[i] = cachedMelodyPitchV[i];
-        stepIndex     = cachedMelodyStepIndex;
-        lastStepIndex = cachedMelodyLastStepIndex;
         // Scrub model: recompute effective from the (unchanged) counter -- exact pre-switch pattern.
         recomputeEffectiveMelody();
     }
     melodyMode = next;
 }
 
-void PatternEngine::switchRhythmMode(int& stepIndex, int& lastStepIndex) {
+void PatternEngine::switchRhythmMode() {
     int prev = rhythmMode;
     int next = 1 - prev;
     if (prev == 0 && next == 1) {
         cachedRhythmSeedFloat = rhythmSeedPending
             ? rhythmSeedPendingFloat : rhythmSeedFloat;
         rhythmSeedCached = true;
-        // (cachedRhythmPattern RETIRED — ITEM 1; the seed/step cache below is the
-        // mode-switch machinery's own state and stays)
-        cachedRhythmStepIndex     = stepIndex;
-        cachedRhythmLastStepIndex = lastStepIndex;
+        // (cachedRhythmPattern RETIRED — ITEM 1)
         // Scrub model: no A/B snapshot -- (counter, scrub, slew) is the morph position,
         // unchanged by a mode switch; returning to dice recomputes from the counter. (Step 4b.)
     } else if (prev == 1 && next == 0 && rhythmSeedCached) {
         // (the rhythmPattern restore RETIRED with the array — ITEM 1)
-        stepIndex     = cachedRhythmStepIndex;
-        lastStepIndex = cachedRhythmLastStepIndex;
         // Scrub model: recompute effective from the (unchanged) counter -- exact pre-switch pattern.
         recomputeEffectiveRhythm();
     }

@@ -133,9 +133,9 @@ static MarchReport marchModeA(SequencerEngine& eng, LanternRecordCore& rec,
         rep.absAtEdge.push_back(absW);
 
         // ── the follow-disc law: the displayed bar is the ENGINE's absolute bar
-        check(rec.displayBar == eng.stepIndex / LanternRecordCore::BAR_STEPS,
+        check(rec.displayBar == eng.playedColumn() / LanternRecordCore::BAR_STEPS,
               "displayBar == the engine bar index (stepIndex / 16) on every step");
-        check(rec.displayCol == eng.stepIndex % LanternRecordCore::BAR_STEPS,
+        check(rec.displayCol == eng.playedColumn() % LanternRecordCore::BAR_STEPS,
               "displayCol == the playhead column in the followed bar");
 
         // ── the content routing: rows 0..3 record their voice's LIVE state into
@@ -330,7 +330,7 @@ int main() {
         LanternRecordCore rec;
         // walk forward to the bar-2 interior, then reverse across the bar line
         for (int i = 0; i < 20; ++i) eng.advancePlayhead(+1);
-        check(eng.stepIndex == 19, "the pre-march walk stands at abs 19");
+        check(eng.playedColumn() == 19, "the pre-march walk stands at abs 19");
         // reverse steps: the executor with dir -1 (the executor owns the walk)
         redDot::RateManager rm;
         int sawBarCrossArrival = 0, sawRingArrival = 0;

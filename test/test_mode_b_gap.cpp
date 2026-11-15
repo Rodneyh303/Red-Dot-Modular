@@ -256,21 +256,21 @@ int main() {
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
         rise(eng, 0.f, 1.0f, 7.f);               // plays step 0 (A); stepIndex now 0
         eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 1.0f;  // p=1: always advance
-        int beforeFall = eng.stepIndex;
+        int beforeFall = eng.playedColumn();
         eng.legatoCheckpointOnFall();        // fall advances one step -> stepIndex 1 (voices[0].legatoProb=1.0 from rise)
-        EXPECT(eng.stepIndex == (beforeFall + 1));
-        int afterCheckpoint = eng.stepIndex;
+        EXPECT(eng.playedColumn() == (beforeFall + 1));
+        int afterCheckpoint = eng.playedColumn();
         rise(eng, 0.f, 0.5f, 7.f);               // rise: pendingCheckpointArrival -> NO advance
-        EXPECT(eng.stepIndex == afterCheckpoint); // same step (no double-advance)
+        EXPECT(eng.playedColumn() == afterCheckpoint); // same step (no double-advance)
     });
     TEST("HOLD: at Variation=0 the fall NEVER advances — the rest passive, the chain carries, NO arrival", {
         SequencerEngine eng; eng.numPolyVoices = 0;
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
         rise(eng, 0.f, 1.0f, 7.f);               // A commits slurForward
         eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 0.0f;  // p=0: always HOLD
-        int before = eng.stepIndex;
+        int before = eng.playedColumn();
         eng.legatoCheckpointOnFall();
-        EXPECT(eng.stepIndex == before);                 // nothing moved
+        EXPECT(eng.playedColumn() == before);                 // nothing moved
         EXPECT(eng.pendingCheckpointArrivalV_[0] == false);   // no advance -> no arrival
         EXPECT(eng.gs.slurForward == true);              // the chain carried (the passive rest)
         // The next rise decides its OWN advance normally (no arrival to consume).
@@ -282,12 +282,12 @@ int main() {
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
         rise(eng, 0.f, 1.0f, 7.f);               // A commits slurForward; stepIndex 0
         eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = -1.0f; // p=-1: always BACKWARD
-        int before = eng.stepIndex;
+        int before = eng.playedColumn();
         eng.legatoCheckpointOnFall();
         // STEPS_32 Stage 2b: the wrap rides the RING (kMaskRing, cap-derived — was a
         // literal & 0xF; the flip moved the ring 16 -> 32 so the backward wrap from
         // cell 0 lands on 31, exactly advancePlayhead's reverse traversal).
-        EXPECT(eng.stepIndex == ((before - 1 + dotModular::kMaskRing) & (dotModular::kMaskRing - 1)));   // exactly -1 (the ring wrap)
+        EXPECT(eng.playedColumn() == ((before - 1 + dotModular::kMaskRing) & (dotModular::kMaskRing - 1)));   // exactly -1 (the ring wrap)
         EXPECT(eng.pendingCheckpointArrivalV_[0] == true);          // direction-agnostic arrival
     });
     TEST("MID-RANGE: the fall decides by the INCOMING step's r_vary (seeded 0.3)", {
@@ -298,20 +298,20 @@ int main() {
         eng.tieAcrossRests = true; eng.advanceOnTieIntoRest = true;
         rise(eng, 0.f, 1.0f, 7.f);               // A commits slurForward
         for (int i = 0; i < dotModular::kMaskRing; ++i) eng.pe.variationRandom[i] = 0.3f;
-        int before = eng.stepIndex;
+        int before = eng.playedColumn();
         // p=0.5 > 0.3 -> FORWARD: the fall advances into the rest.
         eng.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 0.5f;
         eng.legatoCheckpointOnFall();
-        EXPECT(eng.stepIndex == before + 1);
+        EXPECT(eng.playedColumn() == before + 1);
         // p=0.2 <= 0.3 -> HOLD: a fresh engine, nothing moves.
         SequencerEngine eng2; eng2.numPolyVoices = 0;
         eng2.tieAcrossRests = true; eng2.advanceOnTieIntoRest = true;
         rise(eng2, 0.f, 1.0f, 7.f);
         for (int i = 0; i < 16; ++i) eng2.pe.variationRandom[i] = 0.3f;
         eng2.voices[dotModular::VoiceResolver::slot(0 + 1)].variationProb = 0.2f;
-        int before2 = eng2.stepIndex;
+        int before2 = eng2.playedColumn();
         eng2.legatoCheckpointOnFall();
-        EXPECT(eng2.stepIndex == before2);               // HOLD (0.3 >= 0.2)
+        EXPECT(eng2.playedColumn() == before2);               // HOLD (0.3 >= 0.2)
         EXPECT(eng2.pendingCheckpointArrivalV_[0] == false);  // passive
     });
 

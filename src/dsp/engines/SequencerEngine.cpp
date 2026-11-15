@@ -159,9 +159,7 @@ void SequencerEngine::reset() {
     for (int i = 0; i < kVoiceSlots; i++) { polyVerdict_[i] = MonoDecision::Rest; polyNv_[i] = 0; }
     for (int i = 0; i < kVoiceSlots; i++) polyGhostOnset_[i] = false;
     lastStepResult = StepResult{};
-    stepIndex = -1;
-    lastStepIndex = -1;
-    pos_.reset();   // (slice 1) the mirror parks with the same pre-start state + the default window
+    pos_.reset();   // (STEP 4-final) THE park: the played column starts at -1 (the pre-start state) + the default window
     prevPhaseAbsStep_ = 0;    // (slice 2b) the phase-sweep history starts fresh
     hasPhaseAbsStep_  = false;
     startStep = 0;
@@ -280,12 +278,7 @@ void SequencerEngine::setWindow(int length, int offset) {
         mask |= (uint64_t(1) << ((offset + i) & (kMaskRing - 1)));
     }
     windowMask = mask;
-    pos_.setWindow(length, offset);   // (slice 1) the mirror's own bounds + the same re-anchor law
-    // (SLICE 4) the hand re-bound that used to live here (park stepIndex at
-    // startStep-1 when outside the new window) was pos_.setWindow's own re-anchor
-    // applied to col_ — DELETED. stepIndex derives from the resolver; the -1 park is
-    // preserved (playedColumn() returns -1 when col_ == -1).
-    if (stepIndex != -1) stepIndex = pos_.playedColumn();
+    pos_.setWindow(length, offset);   // the resolver's own bounds + the re-anchor law (slices 1+4: the ONE copy)
     // (SLICE 5) the global walk's re-bind line is DELETED — pos_.phaseClock(transportTick_)
     // IS the re-bound value ((tick−1) mod the NEW len_, the resolver's own length, re-taken
     // on every read). The warm phases are untouched: they carry the RAW clock congruences,
@@ -414,7 +407,9 @@ void SequencerEngine::pushMaskEditor(
 }
 
 bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
-    int prevStep = stepIndex;
+    // (STEP 4-final) wasStarted replaces the prevStep capture — the only thing the
+    // phrase-boundary test needs (was the transport playing before this advance).
+    const bool wasStarted = (pos_.playedColumn() != -1);
     lastPlayDir = (dir < 0) ? -1 : +1;
     scanOfsV_[0] = 0;   // THE FREEZE FIX: any motion re-anchors — each arrived step is judged on its own value first
 
@@ -472,21 +467,16 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
     // (SLICE 2) the resolver advances FIRST — the derive (inside tickHolders, below)
     // reads pos_.phrasePos() as the event's position, the SAME timing the transport clock
     // has (advanced at the head of tickHolders).
-    // (SLICE 4 — CC_PROMPT_POSITION_RESOLVER_SLICE4_UNIFY_ADVANCE) THE ONE WALK: the
-    // hand stepIndex traversal that used to live here (seed at endStep+1/startStep-1
-    // from the -1 park, step ±1, skip to the bound, scan to the next in-window cell)
-    // was pos_.advance's line-for-line duplicate — DELETED. stepIndex is now the
-    // DERIVED mirror, written only from pos_.playedColumn() (reset()'s -1 park write
-    // aside — step 4-final folds that). The phrase boundary reads the resolver's
-    // phrase coordinate: phrasePos() == 0 is EXACTLY col == startStep (forward) /
-    // col == endStep (reverse) by the resolver's own definition — direction-agnostic,
-    // equal to the two per-arm tests it replaces (the identity harness sweeps the
-    // direction programs; the reverse + phase oracles pin the boundary).
+    // (SLICE 4 + 4-final) THE ONE WALK: pos_.advance is the traversal (the hand
+    // stepIndex walk was its line-for-line duplicate — deleted in slice 4; the mirror
+    // write deleted in 4-final with the field). The phrase boundary reads the
+    // resolver's phrase coordinate: phrasePos() == 0 is EXACTLY col == startStep
+    // (forward) / col == endStep (reverse) by the resolver's own definition —
+    // direction-agnostic (the reverse + phase oracles pin the boundary).
     pos_.advance(dir);
     tickHolders(dir, dir, voiceMotion);
 
-    stepIndex = pos_.playedColumn();   // (SLICE 4) the derived mirror — ONE walk, pos_'s
-    const bool wrapped = (prevStep != -1 && pos_.phrasePos() == 0);
+    const bool wrapped = (wasStarted && pos_.phrasePos() == 0);
 
     writeLedger.noteWrite(WriteRole::ENGINE, WriteField::Wrapped); // STEP1 WriteLedger: wrapped (W1/W2) — confirms single ENGINE writer
 
@@ -1300,8 +1290,7 @@ void SequencerEngine::snapToPhaseStep(long pulsePos, int pps) {
         prevPhaseAbsStep_ = absStep;
         hasPhaseAbsStep_  = true;
     }
-    stepIndex = pos_.playedColumn();   // (SLICE 4) the derived mirror — one write class, from pos_ alone
-    deriveHolders(lastPlayDir, nullptr);
+    deriveHolders(lastPlayDir, nullptr);   // (STEP 4-final) the mirror write deleted with the field — pos_ IS the position
 }
 
 void SequencerEngine::updateWindow(float lenParam, float lenCv, bool lenPatched, float offParam, float offCv, bool offPatched) {
@@ -1932,7 +1921,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
             if (foldPerVoiceAdvance_(-1, /*perVoiceScan=*/true, dotModular::StepAdvance::REPEAT, motionV.data()))
                 recomputeLaneTicks(motionV.data());
             wrapped = false;
-        } else if (stepIndex == -1) {
+        } else if (!started()) {
             // The seed: initialization, not a sequence-motion decision (no draw consumed).
             wrapped = advancePlayhead();
         } else {
@@ -1974,7 +1963,7 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
         // step-addressed draw it would anyway. No re-draw branch exists; the held step
         // re-outputs itself identically for as long as the rises keep repeating.
         triggered = true;
-    } else if (gate1High && !prevGate1High && stepIndex == -1) {
+    } else if (gate1High && !prevGate1High && !started()) {
         advancePlayhead();
         triggered = true;
     }
@@ -2093,7 +2082,7 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
     // (the corrected held semantics — the step-addressed data re-outputs itself, no
     // re-draw branch exists).
     bool wrapped = false;
-    if (stepIndex == -1) {
+    if (!started()) {
         wrapped = advancePlayhead();   // the seed: initialization, not a motion decision (no draw)
     } else {
         const int advLevel = mainGateRise ? -1

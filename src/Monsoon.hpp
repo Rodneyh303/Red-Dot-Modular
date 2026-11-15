@@ -1646,8 +1646,8 @@ struct Monsoon : Module {
     int& qmixMode   = engine.pe.qmixMode;   // Task 4 (QMIX)
     int& startStep = engine.startStep;
     int& endStep = engine.endStep;
-    int& stepIndex = engine.stepIndex;
-    int& lastStepIndex = engine.lastStepIndex;
+    // (STEP 4-final) the stepIndex/lastStepIndex reference aliases are DELETED with
+    // the engine fields — the position reads go through playedColumn()/started().
     int& modeSelect = engine.modeSelect;
     int& ppqnSetting = engine.ppqnSetting;
     int& noteVariationMask = engine.noteVariationMask;
@@ -1678,11 +1678,9 @@ struct Monsoon : Module {
     float& cachedRhythmSeedFloat = engine.pe.cachedRhythmSeedFloat;
     bool& melodySeedCached = engine.pe.melodySeedCached;
     bool& rhythmSeedCached = engine.pe.rhythmSeedCached;
-    int& cachedMelodyStepIndex = engine.pe.cachedMelodyStepIndex;
-    int& cachedMelodyLastStepIndex = engine.pe.cachedMelodyLastStepIndex;
     float (&cachedMelodyPitchV)[dotModular::kStepStorage] = engine.pe.cachedMelodyPitchV;
-    int& cachedRhythmStepIndex = engine.pe.cachedRhythmStepIndex;
-    int& cachedRhythmLastStepIndex = engine.pe.cachedRhythmLastStepIndex;
+    // (STEP 4-final) the cached*StepIndex/LastStepIndex aliases are DELETED with the
+    // vestigial position cache (the pattern buffer above STAYS — the real feature).
     // (the cachedRhythmPattern reference alias RETIRED — ITEM 1, with the member)
 
     int& activeSemiCount = engine.activeSemiCount;
