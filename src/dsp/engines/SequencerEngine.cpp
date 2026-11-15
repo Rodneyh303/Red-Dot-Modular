@@ -281,10 +281,11 @@ void SequencerEngine::setWindow(int length, int offset) {
     }
     windowMask = mask;
     pos_.setWindow(length, offset);   // (slice 1) the mirror's own bounds + the same re-anchor law
-
-    if (stepIndex != -1 && !isStepInWindow(stepIndex)) {
-        stepIndex = (startStep - 1 + kMaskRing) % kMaskRing;
-    }
+    // (SLICE 4) the hand re-bound that used to live here (park stepIndex at
+    // startStep-1 when outside the new window) was pos_.setWindow's own re-anchor
+    // applied to col_ — DELETED. stepIndex derives from the resolver; the -1 park is
+    // preserved (playedColumn() returns -1 when col_ == -1).
+    if (stepIndex != -1) stepIndex = pos_.playedColumn();
     // THE RE-AUTHOR ANCHOR (the holder law): the global walk's read coordinate re-bounds
     // to the NEW window — (tick−1) mod newLen, exactly the value the old f(counter)
     // closed form evaluated from the next event on. The warm phases are untouched: they
@@ -471,34 +472,22 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
     //     makes 32 steps nearly free later: no global-modulus audit, no wrap-mask hunt.
     // (SLICE 2) the resolver advances FIRST — the derive (inside tickHolders, below)
     // reads pos_.phrasePos() as the event's position, the SAME timing globalWalk_ has
-    // (advanced at the head of tickHolders). The played column is computed below from
-    // the SAME traversal law, so the mirror still holds (the identity harness).
+    // (advanced at the head of tickHolders).
+    // (SLICE 4 — CC_PROMPT_POSITION_RESOLVER_SLICE4_UNIFY_ADVANCE) THE ONE WALK: the
+    // hand stepIndex traversal that used to live here (seed at endStep+1/startStep-1
+    // from the -1 park, step ±1, skip to the bound, scan to the next in-window cell)
+    // was pos_.advance's line-for-line duplicate — DELETED. stepIndex is now the
+    // DERIVED mirror, written only from pos_.playedColumn() (reset()'s -1 park write
+    // aside — step 4-final folds that). The phrase boundary reads the resolver's
+    // phrase coordinate: phrasePos() == 0 is EXACTLY col == startStep (forward) /
+    // col == endStep (reverse) by the resolver's own definition — direction-agnostic,
+    // equal to the two per-arm tests it replaces (the identity harness sweeps the
+    // direction programs; the reverse + phase oracles pin the boundary).
     pos_.advance(dir);
     tickHolders(dir, dir, voiceMotion);
 
-    bool wrapped;
-    if (dir < 0) {
-        // ── Reverse traversal: mirror of forward, leftward through the window. ──
-        // From the "not started" state, seed just AFTER endStep so the first reverse
-        // step lands on endStep (the symmetric counterpart of forward seeding before
-        // startStep and stepping onto startStep).
-        if (stepIndex == -1) stepIndex = (endStep + 1) & (kMaskRing - 1);
-        stepIndex = (stepIndex - 1 + kMaskRing) & (kMaskRing - 1);
-        if (!isStepInWindow(stepIndex)) stepIndex = endStep;
-        for (int s = 0; s < kMaskRing && !isStepInWindow(stepIndex); ++s)
-            stepIndex = (stepIndex - 1 + kMaskRing) & (kMaskRing - 1);
-        // Phrase boundary (reverse): wrapped back round to endStep.
-        wrapped = (prevStep != -1 && stepIndex == endStep);
-    } else {
-        // ── Forward traversal (unchanged) ──
-        if (stepIndex == -1) stepIndex = (startStep - 1 + kMaskRing) % kMaskRing;
-        stepIndex = (stepIndex + 1) & (kMaskRing - 1);
-        if (!isStepInWindow(stepIndex)) stepIndex = startStep;
-        for (int s = 0; s < kMaskRing && !isStepInWindow(stepIndex); ++s)
-            stepIndex = (stepIndex + 1) & (kMaskRing - 1);
-        // Return true if wrapped to start (phrase boundary)
-        wrapped = (prevStep != -1 && stepIndex == startStep);
-    }
+    stepIndex = pos_.playedColumn();   // (SLICE 4) the derived mirror — ONE walk, pos_'s
+    const bool wrapped = (prevStep != -1 && pos_.phrasePos() == 0);
 
     writeLedger.noteWrite(WriteRole::ENGINE, WriteField::Wrapped); // STEP1 WriteLedger: wrapped (W1/W2) — confirms single ENGINE writer
 
@@ -1273,13 +1262,18 @@ void SequencerEngine::snapToPhaseStep(long pulsePos, int pps) {
     // t0 = tick − 1). The per-voice offsets ride THROUGH the snap (the anchor seeds each
     // voice's phase at tick + offset — the divergence persists, exactly as f(t+offset) did).
     anchorTransport((int64_t)absStep + 1);
-    stepIndex = phaseStep;
+    // (SLICE 4) the landing computes into a LOCAL: the window defence below never
+    // fires (phaseStepFor is in-window by construction) but must test the LANDING,
+    // not a stale stepIndex — and no site writes stepIndex from anything but
+    // pos_.playedColumn() anymore. pos_ snaps to the post-defence column; stepIndex
+    // derives from the resolver after the snap (same value — pos_ was just snapped).
+    int snapCol = phaseStep;
     // Apply window checking (match advancePlayhead's behavior) — defence-in-depth;
     // phaseStepFor is in-window by construction, so this never fires.
-    if (!isStepInWindow(stepIndex)) {
-        stepIndex = startStep;
-        for (int s = 0; s < kMaskRing && !isStepInWindow(stepIndex); ++s)
-            stepIndex = (stepIndex + 1) & (kMaskRing - 1);
+    if (!isStepInWindow(snapCol)) {
+        snapCol = startStep;
+        for (int s = 0; s < kMaskRing && !isStepInWindow(snapCol); ++s)
+            snapCol = (snapCol + 1) & (kMaskRing - 1);
     }
     // (SLICE 2b — the PHASE inputs, CC_PROMPT_POSITION_RESOLVER_SLICE2B_PHASE) pos_
     // stays the ONE authority in every mode: the phase snap feeds it the sweep
@@ -1304,10 +1298,11 @@ void SequencerEngine::snapToPhaseStep(long pulsePos, int pps) {
         const int snapPhrase = (snapDir > 0)
             ? (int)wrapMod(absStep, lenG)
             : (int)wrapMod(-absStep, lenG);
-        pos_.snapTo(stepIndex, snapDir, snapPhrase);   // the column (post-defence) + the sweep direction + the raw phrase
+        pos_.snapTo(snapCol, snapDir, snapPhrase);   // the column (post-defence) + the sweep direction + the raw phrase
         prevPhaseAbsStep_ = absStep;
         hasPhaseAbsStep_  = true;
     }
+    stepIndex = pos_.playedColumn();   // (SLICE 4) the derived mirror — one write class, from pos_ alone
     deriveHolders(lastPlayDir, nullptr);
 }
 

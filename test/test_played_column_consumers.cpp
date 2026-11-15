@@ -21,8 +21,13 @@
 // (Intertropical, Lantern, the Sands visuals, VisualExpanderHelpers, LanternRecordCore,
 // Monsoon's remaining transport-internal reads, the Monsoon.hpp reference alias).
 //
+// SLICE 4 (CC_PROMPT_POSITION_RESOLVER_SLICE4_UNIFY_ADVANCE): the ADVANCE unification —
+// GATE 5 pins stepIndex DERIVED from pos_ at the three authority sites (the hand walk
+// and re-bound deleted, wrapped from pos_.phrasePos() == 0, the snap's landing a local).
+//
 // Reproduce-first: every MIGRATED gate FAILS on the pre-slice engine (the bodies read
-// stepIndex); the AUTHORITY gates pass before and after.
+// stepIndex); the AUTHORITY gates pass before and after. GATE 5 FAILS on the pre-slice-4
+// engine (the hand walk is still there, the derives are not).
 #include <cstdio>
 #include <cctype>
 #include <string>
@@ -155,8 +160,9 @@ int main() {
     check(countOccurrences(cpp, "result.forStep = pos_.playedColumn();") == 2,
           "executeStep: result.forStep = pos_.playedColumn() at BOTH sites (MidNote + tail)");
 
-    // ── GATE 3: the AUTHORITY sites keep the working variable (swapping these would be
-    // circular — pos_ advances ALONGSIDE stepIndex inside them) ──────────────────────
+    // ── GATE 3: the AUTHORITY sites keep their stepIndex tokens (SLICE 4: the
+    // derived-mirror writes + the prevStep capture — pos_ is the walk, stepIndex its
+    // mirror) ──────────────────────────────────────────────────────────────────────
     const Cons auth[] = {
         { "SequencerEngine::setWindow(",       "setWindow (the window re-anchor)" },
         { "SequencerEngine::advancePlayhead(", "advancePlayhead (the traversal)" },
@@ -166,7 +172,7 @@ int main() {
         std::string body;
         const bool got = extractFn(cpp, c.sig, body);
         check(got && countToken(body, "stepIndex") >= 1,
-              std::string(c.name) + ": still reads stepIndex (the advance's working variable)");
+              std::string(c.name) + ": keeps its stepIndex tokens (the derived mirror + the capture)");
     }
 
     // ── GATE 4: the manager feeds read the resolver (the two Rodney rulings) ─────────
@@ -182,6 +188,41 @@ int main() {
           "MonsoonOutputGenerator no longer reads the bare stepIndex for the mask");
     check(lock.find("void tick(int playedColumn)") != std::string::npos,
           "MonsoonLockManager::tick's parameter IS the played column (fed by the caller)");
+
+    // ── GATE 5 (SLICE 4 — the unified advance): stepIndex is DERIVED from pos_ at the
+    // three authority sites — the hand walk/re-bound is gone, `wrapped` reads the
+    // resolver's phrase coordinate, the snap's landing is a local ────────────────────
+    {
+        std::string ap, sw, sp;
+        const bool got = extractFn(cpp, "SequencerEngine::advancePlayhead(", ap)
+                      && extractFn(cpp, "SequencerEngine::setWindow(", sw)
+                      && extractFn(cpp, "SequencerEngine::snapToPhaseStep(", sp);
+        check(got, "the three authority bodies extract");
+        if (got) {
+            // advancePlayhead: the derive + the phrase-boundary + the prevStep capture.
+            check(ap.find("stepIndex = pos_.playedColumn();") != std::string::npos
+                   && ap.find("pos_.phrasePos() == 0") != std::string::npos
+                   && ap.find("prevStep = stepIndex") != std::string::npos,
+                  "advancePlayhead: stepIndex = pos_.playedColumn() + wrapped from pos_.phrasePos() == 0 + prevStep captured");
+            // ...and NO hand-walk idiom (the seed/step/skip/scan writes).
+            check(ap.find("stepIndex = (stepIndex + 1)") == std::string::npos
+                   && ap.find("stepIndex = (stepIndex - 1") == std::string::npos
+                   && ap.find("stepIndex = (startStep - 1") == std::string::npos
+                   && ap.find("stepIndex = (endStep + 1)") == std::string::npos,
+                  "advancePlayhead: the hand walk idiom is GONE (no seed/step/skip writes to stepIndex)");
+            // setWindow: the derive; NO hand park.
+            check(sw.find("if (stepIndex != -1) stepIndex = pos_.playedColumn();") != std::string::npos,
+                  "setWindow: the derive from pos_.playedColumn() (the -1 park preserved)");
+            check(sw.find("stepIndex = (startStep - 1") == std::string::npos,
+                  "setWindow: the hand re-bound is GONE");
+            // snapToPhaseStep: the derive after the snap; the landing is a LOCAL.
+            check(sp.find("stepIndex = pos_.playedColumn();") != std::string::npos
+                   && sp.find("stepIndex = phaseStep") == std::string::npos,
+                  "snapToPhaseStep: stepIndex derives from pos_ after the snap (no = phaseStep write)");
+            check(sp.find("int snapCol = phaseStep;") != std::string::npos,
+                  "snapToPhaseStep: the window defence computes the LOCAL snapCol (no stale stepIndex test)");
+        }
+    }
 
     std::printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
