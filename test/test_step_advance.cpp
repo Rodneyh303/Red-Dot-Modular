@@ -849,8 +849,11 @@ int main() {
                   && eng.advanceOffset_[2] == -(int64_t)monoAdv
                   && eng.advanceOffset_[3] == -2 * (int64_t)monoAdv,
                   "PV: the offsets are the exact net divergence (d_v - d_main per rise)");
-            check(eng.scanOfsV_[2] == (monoAdv % 16),
-                  "PV: a held Local-East voice scans ITS OWN window deeper (bounded by its length)");
+            check(eng.scanOfsV_[2] == 0,
+                  "PV: a Local-East p=0 voice REPEATS IN PLACE — no scan at the centre "
+                  "(CC_PROMPT_VARIATION_CENTRE: zero prob never advances, so wandering is "
+                  "meaningless; the held-rise scan-deeper law for p!=0 is pinned in "
+                  "test_variation_centre_hold GATE 5).");
         }
 
         // THE FALL (the signoff's decision 2): the tie-into-rest fall decision is
@@ -944,8 +947,10 @@ int main() {
             }
             check(sawOffset, "WANDER: a delegated voice's own decision moved its offset (the global threshold)");
             check(sawSplit, "WANDER: delegated voices' positions DIVERGE (own draws, one threshold)");
-            // p=0: every voice holds (nothing moves anywhere) but each keeps scanning
-            // its OWN window (the chevron creeps per voice).
+            // p=0: every voice holds (nothing moves anywhere) AND does NOT scan — the
+            // chevron repeats in place. (CC_PROMPT_VARIATION_CENTRE: wandering at the
+            // centre is meaningless — zero advance probability NEVER escapes, so the old
+            // per-voice scan just crept forever. scanHoldV_ now self-gates at |p|<=eps.)
             SequencerEngine eng0; eng0.reset();
             eng0.numPolyVoices = 4;
             seedEngine(eng0, rng, 0.0f);
@@ -959,7 +964,7 @@ int main() {
                 for (int v = 1; v <= 4; ++v)
                     if (eng0.scanOfsV_[v] > maxScan) maxScan = eng0.scanOfsV_[v];
             }
-            check(maxScan > 0, "WANDER: at p=0 every voice holds yet scans ITS OWN window (the chevron creeps)");
+            check(maxScan == 0, "CENTRE: at p=0 every voice holds AND does NOT scan — repeat-in-place, no creep (zero prob never advances, so wandering is meaningless)");
         }
     }
 
