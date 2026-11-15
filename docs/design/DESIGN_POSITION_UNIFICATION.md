@@ -21,12 +21,22 @@ sourced; event modes default forward with a REVERSE-ALL control; HOLD per-voice;
 VARIATION-centre fix (knob 0.5 = repeat-in-place, no forward creep).
 
 ## DECISIONS (Rodney, locked)
-1. SCOPE: ALL modes. NUANCE — in CLOCK mode the GLOBAL playhead is forward-only
-   (signMotion >= 0), but the per-level voice/lane direction modes are as flexible as in
-   GATE/PHASE. So: the reverse GLOBAL traversal (first-played == endStep) occurs only in
-   GATE/PHASE; the MULTIPLICATIVE per-level direction composition (voice/lane Reverse/
-   Pendulum/PingPong) is active in ALL modes. The resolver takes the global direction
-   from the mode and composes the per-level LaneDirs always.
+1. SCOPE: ALL modes. GLOBAL direction: event modes (CLOCK + GATE) are default-forward,
+   flipped by the REVERSE-ALL control — IDENTICAL for both (DRIVE DIRECTION MODEL); PHASE
+   takes its direction from the input. So the reverse GLOBAL traversal (first-played ==
+   endStep) is reachable in ALL drive modes. The MULTIPLICATIVE per-level direction
+   composition (voice/lane Reverse/Pendulum/PingPong) is active in ALL modes. The resolver
+   takes the global direction from the mode (+ reverse-all) and composes the per-level
+   LaneDirs always.
+   UPDATED 2026-11-16 (Rodney — SUPERSEDES the original "CLOCK global is forward-only
+   (signMotion >= 0)" nuance): that held when direction was an inferred behaviour and
+   reversing a clock seemed odd; now direction is an EXPLICIT control (reverse-all, default
+   OFF → clock is still forward by default), so clock gets global-reverse PARITY with gate —
+   capability parity, mechanism matched to the drive (switch for event modes, input for
+   phase). Rationale: times changed since that was written; and in mono (1-channel) gate
+   mode a global reverse is already reachable via Variation anyway, so this just makes the
+   capability explicit and uniform. "One more switch" — cheap, since per-voice/lane
+   directions already diverge under the composition.
 2. The resolver OWNS the window traversal: the start/end bounds, the windowMask
    membership (isStepInWindow) and the seeding/skip. (windowMask is the global transport
    window — NOT the output mask; confirmed, no entanglement.)
