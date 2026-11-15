@@ -355,6 +355,10 @@ STEP_LEDS, STEP_LED_R = 16, 14.0                          # on the Flyer, centre
 # Mode E phase knob: one 15mm step LEFT of BPM on the phase row (was jammed under the BPM label).
 # Defined relative to the phase row so it tracks it. No base-art ring (it's the smaller cog).
 PHASE_PARAM_XY = (PHASE_X0 - PHASE_PITCH, PHASE_KNOB_Y)   # = (158.4, 60.0)
+# PHASE TIER Stage 2: the SUBPHASE CALIBRATION knob — one 15mm step LEFT of PHASE on the same
+# row, so the pair reads as a pair (the transport's PHASE, then the tier's SUBPH). Same cog
+# style (no base-art ring). The anchor/bind audit reads the pair from this one table.
+SUBPHASE_CAL_XY = (PHASE_PARAM_XY[0] - PHASE_PITCH, PHASE_KNOB_Y)   # = (143.4, 60.0)
 
 ANCHOR_R_PX = 3.0                                         # anchors are invisible; radius is nominal
 
@@ -391,11 +395,13 @@ def layout():
     A.append(("light_BAR1_LIGHT", fx, fy - 4.0))
     A.append(("light_BAR2_LIGHT", fx, fy + 4.0))
     A.append(("param_PHASE_PARAM", *PHASE_PARAM_XY))
+    A.append(("param_SUBPHASE_CAL_PARAM", *SUBPHASE_CAL_XY))
     return A
 
 
 NEW_ANCHOR_PREFIXES = ("light_RHYTHM_DICE", "light_MELODY_DICE", "light_QMIX_DICE", "light_LOCK",
-                       "light_MUTE", "light_RESET", "light_RUN_GATE", "light_STEP", "param_PHASE_PARAM")
+                       "light_MUTE", "light_RESET", "light_RUN_GATE", "light_STEP", "param_PHASE_PARAM",
+                       "param_SUBPHASE_CAL_PARAM")
 
 
 def components(S=S75):

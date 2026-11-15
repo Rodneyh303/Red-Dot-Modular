@@ -79,12 +79,14 @@ inline bool isSuiteChainModel(const rack::Model* m) {
                                                 //   Distribution expander may sit RIGHT of it:
                                                 //   [Macro][Send][Dist] must resolve CROSS-VOICE)
         || m == modelLantern       // observer — hop-only (never a boundary, never a host)
-        || m == modelIntertropical;// arranger/observer (Model C: reads via findMonsoonEitherSide/
+        || m == modelIntertropical// arranger/observer (Model C: reads via findMonsoonEitherSide/
                                    //   getHost, has no claim slot). Was MISSING → a standalone
                                    //   Intertropical mid-chain acted as a foreign boundary and
                                    //   un-bound everything past it (e.g. M-Lantern-IT-Straits
                                    //   dimmed Straits; M-Lantern-IT-IT dimmed the 2nd IT). Hop-only.
+        || m == modelSandsPhaseDistSubpanel;  // hop-only (never a boundary, never a host)                          
 }
+
 
 // ── Templated one-direction segment walk ────────────────────────────────────────────────────────
 // Walk from start following NextFn (left or right expander) up to maxDepth hops. Return the first

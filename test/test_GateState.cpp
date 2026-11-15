@@ -378,6 +378,41 @@ int main(){
         EXPECT(g.lastNoteType == GateState::NoteType::Single);
     });
 
+
+    // ─────────────────────────────────────────────────────────────────────────
+    SUITE("CC_PROMPT_PPQN_48 - the step-unit hold + the musical gate width at 48");
+    // ─────────────────────────────────────────────────────────────────────────
+    TEST("tick(12) derives ppqn 48; a 1/16 hold reads 2 STEPS (12 pulses / 6)", {
+        auto g=fresh(); g.tick(12);
+        EXPECT_EQ(g.ppqn, 48);
+        g.triggerNote(1.f, 0, 10);   // 1/16 (nvIdx 10)
+        EXPECT_NEAR(g.holdRemain, 2.f, 1e-6f);
+        EXPECT_EQ(g.gatePulseRemain, 12);   // the MUSICAL width: 12 grid pulses
+    });
+    TEST("a 1/16 gate at 48 closes after 12 tickPulse() - the same TIME as 6 at 24", {
+        auto g=fresh(); g.tick(12); g.triggerNote(1.f, 0, 10);
+        for(int i=0;i<11;++i){ g.tickPulse(); EXPECT(g.gateHeld); }
+        g.tickPulse();
+        EXPECT(!g.gateHeld);
+    });
+    TEST("a 1/32 at 48 = exactly ONE step hold, 6 pulses (the doc's stage-6 step note)", {
+        auto g=fresh(); g.tick(12); g.triggerNote(1.f, 0, 12);
+        EXPECT_NEAR(g.holdRemain, 1.f, 1e-6f);
+        EXPECT_EQ(g.gatePulseRemain, 6);
+    });
+    TEST("at 24 the arming is bit-identical to today: 1/16 = 1 step, 6 pulses", {
+        auto g=fresh(); g.tick(6); g.triggerNote(1.f, 0, 10);
+        EXPECT_NEAR(g.holdRemain, 1.f, 1e-6f);
+        EXPECT_EQ(g.gatePulseRemain, 6);
+    });
+    TEST("a 1/4T at 48 arms 32 pulses / 5.333 steps; at 24 16 pulses / 2.667 steps (both exact)", {
+        auto g=fresh(); g.tick(12); g.triggerNote(1.f, 0, 6);
+        EXPECT_EQ(g.gatePulseRemain, 32);
+        EXPECT_NEAR(g.holdRemain, 32.f/6.f, 1e-6f);
+        auto h=fresh(); h.tick(6); h.triggerNote(1.f, 0, 6);
+        EXPECT_EQ(h.gatePulseRemain, 16);
+        EXPECT_NEAR(h.holdRemain, 16.f/6.f, 1e-6f);
+    });
     std::cout<<"\n"<<std::string(50,'=')<<"\n";
     std::cout<<"\033[32m"<<s_pass<<" passed\033[0m  ";
     if(s_fail>0)std::cout<<"\033[31m"<<s_fail<<" failed\033[0m";

@@ -4,9 +4,13 @@
 Spec: docs/design/CC_PROMPT_SANDS_DISTRIBUTION_EXPANDER_SPEC.md.
 52HP (the Macro visual's width — the family's subpanel gauge). Layout:
 
-  7 lane rows x 6 distribution params (p1, p2, tilt, level, mass, warp) as knob
-  columns + one MOD jack column per param (42 jacks — the spec's "each with its
-  own MOD JACK": the dynamic-MO routes need patchable modulation), a lane focus
+  7 lane rows x 8 distribution params (p1, p2, tilt, level, mass, warp, gaploc,
+  gapsize — the PHASE_DISTRIBUTION_SPEC's gap pair, APPENDED to the param axis
+  and drawn in VISUAL order: P1 P2 TILT LEVEL MASS | GAPLOC GAPSIZE | WARP, the
+  gap pair immediately beside the atom pair) as knob columns + one MOD jack
+  column per param (56 jacks — the spec's "each with its own MOD JACK": the
+  dynamic-MO routes need patchable modulation; the gap jacks ride APPENDED input
+  ids 42..55 so no pre-gap cable reshuffles), a lane focus
   button per row (which lane the permanent editor shows), and the permanent
   DistributionCurveWidget region on the right (the enlarged popup editor given a
   permanent home; the widget draws its own bezel/gutters, the SVG reserves the
@@ -32,18 +36,21 @@ W  = HP * 5.08          # 264.16 mm
 
 # ── grid geometry (mm) ────────────────────────────────────────────────────────
 LANES       = 7
-N_PARAMS    = 6          # p1, p2, tilt, level(ℓ), mass(m), warp(w)
+N_PARAMS    = 8          # p1, p2, tilt, level(ℓ), mass(m), warp(w), gaploc(a), gapsize(b-a)
+                         # (the param AXIS is append-ordered: warp stays index 5, the gap
+                         # pair is 6/7; the VISUAL order below draws the gap beside the atom)
+VISUAL_ORDER = [0, 1, 2, 3, 4, 6, 7, 5]
 ROW_TOP     = 27.0       # centre y of lane row 0
 ROW_PITCH   = 12.6
-KNOB_X0     = 20.0       # knob column cx = KNOB_X0 + p * KNOB_DX
-KNOB_DX     = 10.5
+KNOB_X0     = 20.0       # knob column cx = KNOB_X0 + col * KNOB_DX (col = the VISUAL column)
+KNOB_DX     = 10.0
 KNOB_R      = 4.2
-JACK_X0     = 86.0       # mod-jack column cx = JACK_X0 + p * JACK_DX
-JACK_DX     = 9.0
+JACK_X0     = 100.0      # mod-jack column cx = JACK_X0 + col * JACK_DX
+JACK_DX     = 8.4
 JACK_R      = 3.2
 FOCUS_X     = 12.5       # lane focus button cx
 FOCUS_R     = 2.4
-EDITOR_X0   = 141.0      # permanent curve-editor region (the widget hosts itself)
+EDITOR_X0   = 164.0      # permanent curve-editor region (the widget hosts itself)
 EDITOR_Y0   = 20.0
 EDITOR_X1   = W - 4.0
 EDITOR_Y1   = 110.0
@@ -79,19 +86,20 @@ def gen(dark=True):
       f'height="{px(grid_h + 1.2)}" rx="{px(1.5)}" fill="{band}" fill-opacity="0.08" '
       f'stroke="{band}" stroke-width="0.3" stroke-opacity="0.45"/>')
 
-    # knob + jack faces per row/col (the anchors ride the same centres)
+    # knob + jack faces per row/col (the anchors ride the same centres; the ANCHOR
+    # id carries the PARAM index, the POSITION carries the visual column)
     for l in range(LANES):
         cy = ROW_TOP + l * ROW_PITCH
         # knob faces
-        for p in range(N_PARAMS):
-            cx = KNOB_X0 + p * KNOB_DX
+        for col in range(N_PARAMS):
+            cx = KNOB_X0 + col * KNOB_DX
             A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(KNOB_R)}" fill="{face}" '
               f'stroke="{spine}" stroke-width="{px(0.5)}" stroke-opacity="0.7"/>')
             A(f'<line x1="{px(cx)}" y1="{px(cy)}" x2="{px(cx)}" y2="{px(cy - KNOB_R*0.8)}" '
               f'stroke="#c0c8d0" stroke-width="{px(0.5)}" stroke-opacity="0.8"/>')
         # mod jack sockets
-        for p in range(N_PARAMS):
-            cx = JACK_X0 + p * JACK_DX
+        for col in range(N_PARAMS):
+            cx = JACK_X0 + col * JACK_DX
             A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(JACK_R + 0.9)}" fill="#0c0f12" '
               f'stroke="{spine}" stroke-width="{px(0.5)}" stroke-opacity="0.55"/>')
             A(f'<circle cx="{px(cx)}" cy="{px(cy)}" r="{px(JACK_R)}" fill="#14181d" '
@@ -115,12 +123,12 @@ def gen(dark=True):
     A(f'<g inkscape:label="components">')
     for l in range(LANES):
         cy = ROW_TOP + l * ROW_PITCH
-        for p in range(N_PARAMS):
-            cx = KNOB_X0 + p * KNOB_DX
-            A(f'<circle id="param_dexp_{l}_{p}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
-        for p in range(N_PARAMS):
-            cx = JACK_X0 + p * JACK_DX
-            A(f'<circle id="input_dexpmod_{l}_{p}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
+        for col in range(N_PARAMS):
+            cx = KNOB_X0 + col * KNOB_DX
+            A(f'<circle id="param_dexp_{l}_{VISUAL_ORDER[col]}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
+        for col in range(N_PARAMS):
+            cx = JACK_X0 + col * JACK_DX
+            A(f'<circle id="input_dexpmod_{l}_{VISUAL_ORDER[col]}" cx="{px(cx)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
         A(f'<circle id="param_dfocus_{l}" cx="{px(FOCUS_X)}" cy="{px(cy)}" r="0.5" fill="none" stroke="none"/>')
     A(f'<circle id="light_connect" cx="{px(W/2)}" cy="{px(H-8)}" r="0.5" fill="none" stroke="none"/>')
     A('</g>')

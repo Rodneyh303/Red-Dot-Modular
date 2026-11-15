@@ -452,5 +452,6 @@
 <circle id="light_BAR1_LIGHT" cx="553.35" cy="76.77" r="3" fill="none" stroke="none"/>
 <circle id="light_BAR2_LIGHT" cx="553.35" cy="100.39" r="3" fill="none" stroke="none"/>
 <circle id="param_PHASE_PARAM" cx="467.72" cy="177.17" r="3" fill="none" stroke="none"/>
+<circle id="param_SUBPHASE_CAL_PARAM" cx="423.43" cy="177.17" r="3" fill="none" stroke="none"/>
 </g>
 </svg>

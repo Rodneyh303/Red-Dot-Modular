@@ -24,10 +24,13 @@ bool SandsDistributionExpander::isFamilyModel(const rack::Model* m) {
     // check; the Macro send subpanel JOINS as promised — a Distribution expander
     // seated right of the send subpanel ([Macro][Send][Dist]) walks LEFT through
     // it to find the Macro visual, and the seams/marks read the whole run).
+    // The PHASE DIST subpanel joins the same way (CC_PROMPT_PHASE_DISTORTION_PANEL
+    // TASK 1 — it seats beside the family and edits this expander's store).
     return m == modelStraitsSandsMacroVisual
         || m == modelStraitsEastSandsVisual
         || m == modelSandsDistributionExpander
-        || m == modelSandsMacroSendSubpanel;
+        || m == modelSandsMacroSendSubpanel
+        || m == modelSandsPhaseDistSubpanel;
 }
 
 bool SandsDistributionExpander::resolveMacroRole() {
@@ -95,7 +98,7 @@ void SandsDistributionExpander::publishMacroSends(Monsoon* m) {
     for (int l = 0; l < ID::LANES; ++l) {
         bool laneDirty = false;
         for (int p = 0; p < ID::PARAMS_PER_LANE; ++p) {
-            const int   id = ID::warpModId(l, p);
+            const int   id = ID::modInputId(l, p);   // frozen ids 0..41 + appended 42..55
             const float d  = inputs[id].isConnected() ? inputs[id].getVoltage() * 0.1f : 0.f;
             if (std::fabs(d - lastGlob_[l][p]) > kPubEps) {
                 m->setDistGlobalDelta(l, p, d);
@@ -134,7 +137,7 @@ void SandsDistributionExpander::publishOwnMods(Monsoon* m) {
     for (int l = 0; l < ID::LANES; ++l) {
         bool laneDirty = false;
         for (int p = 0; p < ID::PARAMS_PER_LANE; ++p) {
-            const int   id = ID::warpModId(l, p);
+            const int   id = ID::modInputId(l, p);   // frozen ids 0..41 + appended 42..55
             const float d  = inputs[id].isConnected() ? inputs[id].getVoltage() * 0.1f : 0.f;
             if (std::fabs(d - lastOwn_[l][p]) > kPubEps) {
                 m->setDistOwnDelta(slot, l, p, d);
@@ -151,6 +154,7 @@ void SandsDistributionExpander::publishOwnMods(Monsoon* m) {
 namespace {
 
 using namespace dotModular;
+namespace ws = dotModular::warpStages;   // the gap/dual display helpers (WarpStages.hpp)
 
 // The lane-focus button (which lane the permanent editor shows — spec §"LANE/VOICE
 // FOCUS BUTTONS"). UI-only state, deliberately NOT a store/param: a VIEW choice,
@@ -223,8 +227,14 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
     // the permanent editor + its view holders (the popup's refresh shape)
     WarpCurveEditor* curve = nullptr;   // the popup's editor subclass (the onEdit hook)
     std::unique_ptr<Distribution> memberView_, view_;
+    WarpStagesView* stagesView_ = nullptr;   // view_'s derived alias (the gap/dual fields)
+    std::unique_ptr<WarpStagesView> kView_;  // the ALWAYS-K density view (the §10 fill's
+                                             // factor — see refreshEditor(); the fix)
     WarpF lastF_{};
     double lastTilt_ = -1e9, lastLevel_ = -1e9, lastMass_ = -1e9;
+    double lastGapLoc_ = -1e9, lastGapSize_ = -1e9;   // the gap pair joins the detector
+    float lastW_ = -1e9f;                              // ...and the DEPTH (the sign flips
+                                                       // the READING the editor displays)
     bool lastRole_ = false;
     int  lastSlot_ = -1, lastLane_ = -1;
 
@@ -267,7 +277,7 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
             // published structure (pre-send) — there is no single receiving voice;
             // the per-voice amounts are the send subpanel's knobs' business.
             const float* sendRow = role ? nullptr : m->editor.warp.distSend[slotLive()][lane];
-            const int kind = (int)f.index();
+            const int kind = dotModular::warpEffKind(f);   // a dual's params are the MEMBER's
             for (int p = 0; p <= 1; ++p) {
                 const float d = glob[p] * (sendRow ? sendRow[p] : 1.f) + (own ? own[p] : 0.f);
                 if (d == 0.f) continue;
@@ -294,8 +304,10 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
 
     // The curve editor's composing-view inputs (the popup's cur* twins) — the
     // stage deltas ride the same way (the eval-side clamps in WarpStages catch
-    // overshoot in both the engine path and this display path).
-    void curStages(int lane, double& tp, double& al, double& am) const {
+    // overshoot in both the engine path and this display path). The GAP pair
+    // (PHASE_DISTRIBUTION_SPEC) rides the appended fold indices 6/7 — the atom
+    // pair's twins, the same glob*send+own algebra.
+    void curStages(int lane, double& tp, double& al, double& am, double& gl, double& gs) const {
         Monsoon* m = redDot::lookupMonsoon(module);
         const int slot = slotLive();
         const bool role = macroRoleNow();
@@ -305,6 +317,10 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
                   : (m ? m->getWarpAtomLevel(slot, lane) : 0.5f);
         am = role ? (m ? m->getGlobalWarpAtomMass(lane) : 0.f)
                   : (m ? m->getWarpAtomMass(slot, lane) : 0.f);
+        gl = role ? (m ? m->getGlobalWarpGapLoc(lane) : (float)warpStages::kGapLocDefault)
+                  : (m ? m->getWarpGapLoc(slot, lane) : (float)warpStages::kGapLocDefault);
+        gs = role ? (m ? m->getGlobalWarpGapSize(lane) : 0.f)
+                  : (m ? m->getWarpGapSize(slot, lane) : 0.f);
         if (m && m->editor.warp.distDeltasActive) {
             const float* glob = m->editor.warp.distGlobalDelta[lane];
             const float* own  = distOwnRow_(m, role, lane);
@@ -313,10 +329,34 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
             const float g2 = glob[2] * (sendRow ? sendRow[2] : 1.f);
             const float g3 = glob[3] * (sendRow ? sendRow[3] : 1.f);
             const float g4 = glob[4] * (sendRow ? sendRow[4] : 1.f);
+            const float g6 = glob[6] * (sendRow ? sendRow[6] : 1.f);
+            const float g7 = glob[7] * (sendRow ? sendRow[7] : 1.f);
             tp += g2 + (own ? own[2] : 0.f);
             al += g3 + (own ? own[3] : 0.f);
             am += g4 + (own ? own[4] : 0.f);
+            gl += g6 + (own ? own[6] : 0.f);
+            gs += g7 + (own ? own[7] : 0.f);
         }
+    }
+
+    // The EFFECTIVE depth the cells actually take — the authored w folded through the
+    // SAME glob*send+own algebra + the SAME clampW the engine's fold runs (the display
+    // law: the editor shows the cells' live state; the SIGN of this is the reading the
+    // curve editor composes).
+    float curW(int lane) const {
+        Monsoon* m = redDot::lookupMonsoon(module);
+        if (!m) return 0.f;
+        const bool role = macroRoleNow();
+        const int slot = slotLive();
+        float w = role ? m->getGlobalWarpW(lane) : m->getWarpW(slot, lane);
+        if (m->editor.warp.distDeltasActive) {
+            const float* glob = m->editor.warp.distGlobalDelta[lane];
+            const float* own  = distOwnRow_(m, role, lane);
+            const float* sendRow = role ? nullptr : m->editor.warp.distSend[slot][lane];
+            const float d = glob[5] * (sendRow ? sendRow[5] : 1.f) + (own ? own[5] : 0.f);
+            w = redDot::WarpPolicy::clampW(w + d);   // the fold's own clamp, verbatim
+        }
+        return w;
     }
 
     void refreshEditor(int lane) {
@@ -324,9 +364,11 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         if (!m || !curve) return;
         const WarpF f = curF(lane);
         // (re)build the member view + the live drawn-edit binding — the popup's
-        // refresh() shape, permanent-home edition.
+        // refresh() shape, permanent-home edition. The AUTHORED curve itself (the
+        // reading lives in the SIGN of w now, never in f — nothing to unwrap).
         curve->editCurve = nullptr;
-        if (const auto* dw = std::get_if<DrawnWarp>(&f)) {
+        const WarpF& member = f;
+        if (const auto* dw = std::get_if<DrawnWarp>(&member)) {
             if (dw->idx < kWarpPoolCap) {
                 memberView_ = std::make_unique<MonotoneCurveView>(m->editor.warp.pool[dw->idx]);
                 curve->editCurve = &m->editor.warp.pool[dw->idx];
@@ -334,17 +376,69 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
                 memberView_ = std::make_unique<PchipDistribution>();
             }
         } else {
-            memberView_ = WarpCurvePopup::distFromWarp(f);
+            memberView_ = WarpCurvePopup::distFromWarp(member);
         }
-        double tp = 0, al = 0.5, am = 0;
-        curStages(lane, tp, al, am);
+        double tp = 0, al = 0.5, am = 0, gl = 0.5, gs = 0;
+        curStages(lane, tp, al, am, gl, gs);
         lastF_ = f; lastTilt_ = tp; lastLevel_ = al; lastMass_ = am;
+        lastGapLoc_ = gl; lastGapSize_ = gs;
+        lastW_ = curW(lane);
         lastRole_ = macroRoleNow(); lastSlot_ = slotLive(); lastLane_ = lane;
         view_ = std::make_unique<WarpStagesView>(memberView_.get(), tp, al, am);
+        stagesView_ = static_cast<WarpStagesView*>(view_.get());
+        // THE ALWAYS-K DENSITY VIEW (CC_FIX_PHASE_PLOT_NEGATIVE_WARP): the effective
+        // fill's derivative factor composes over the K chain for BOTH readings — the
+        // K reading needs f(Q(u)) and the dual needs g'(u), both plain reads off ONE
+        // non-dual view (stagesView_'s own dual branch is the reciprocal DISPLAY
+        // density, not the factor the chain rule wants). Same member pointer — the
+        // live drawn-edit binding rides it, same as view_.
+        // THE READING FOLLOWS THE SIGN (the bidirectional warp): the editor composes
+        // what the CELLS hear — the folded w's sign picks the reading, negative side
+        // the DUAL (the composed pair exchanged; the markers below read the READING's
+        // atom bar / gap band).
+        stagesView_->gapLoc = gl; stagesView_->gapSize = gs; stagesView_->dual = (curW(lane) < 0.f);
+        kView_ = std::make_unique<WarpStagesView>(memberView_.get(), tp, al, am);
+        kView_->gapLoc = gl; kView_->gapSize = gs; kView_->dual = false;
         curve->dist = view_.get();
         curve->isLight = [this]() { return themeLight_; };
-        curve->atomLevel = al;
-        curve->atomMass  = am;
+        // The atom bar / gap band read the READING's markers (the atom<->gap
+        // exchange, spec §6/§8.8): on the K reading they are the authored pair;
+        // on the DUAL reading they are the EXCHANGED pair (K's gap -> the dual's
+        // atom at v* of mass (b-a); K's atom -> the dual's gap [q0, q0+m]).
+        double barLevel = al, barMass = am, bandLo = gl, bandHi = gl + gs;
+        if (stagesView_->dual) {
+            const double a = ws::clampGapLoc(gl), b = ws::clampGapLoc(gl + gs);
+            ws::dualMarkers(a, b, al, am,
+                            [&](double x) { return memberView_->cdf(ws::tiltMapInv(x, ws::clampTilt(tp))); },
+                            [&](double x) { return ws::gapCdf(x, a, b,
+                                [&](double xx) { return memberView_->cdf(ws::tiltMapInv(xx, ws::clampTilt(tp))); }); },
+                            barLevel, barMass, bandLo, bandHi);
+        }
+        curve->atomLevel = barLevel;
+        curve->atomMass  = barMass;
+        curve->gapLo = ws::clampGapLoc(bandLo);
+        curve->gapHi = ws::clampGapLoc(bandHi);
+        // THE EFFECTIVE PLOT (PHASE_DISTRIBUTION_SPEC §10, display-only): the drawn
+        // curve is the warp mix at the FOLDED signed depth (lastW_ — the same
+        // clampW'd w the cells resolve, CV deltas included), T the READING's target
+        // (the SIGN picked it: w ≥ 0 the composed quantile via this view's invCDF,
+        // w < 0 the dual — its dual branch IS the exchange) and the fill factor the
+        // READING's, composed off the always-K view — the editor shows what the
+        // CELLS hear, continuously through zero (w = 0 draws the diagonal, either
+        // side). The widget never inspects the sign: it gets the two callables + the
+        // signed depth + the fill form (CC_FIX_PHASE_PLOT_NEGATIVE_WARP). The step()
+        // detector refreshes on depth/stage/param change, never per sample.
+        curve->warpDepth = lastW_;
+        const bool dualReading = (lastW_ < 0.f);
+        curve->warpTDual = dualReading;
+        curve->warpT     = [this](double u) { return view_ ? view_->invCDF(u) : u; };
+        curve->warpTpdf  = [this, dualReading](double u) {
+            if (!kView_) return 1.0;
+            // K reading: T = Q, T'(u) = 1/f(T(u))  → the factor is f(Q(u));
+            // dual:      T = g, T'(u) = g'(u)      → the factor is g'(u) — the chain
+            // pdf AT u (NOT the reciprocal — that was the fill's spec gap).
+            return dualReading ? kView_->pdf(u) : kView_->pdf(kView_->invCDF(u));
+        };
         // Drawn edits → the scoped mirror rebuild (the popup's onEdit hook; the
         // pool slot changed in place, ONLY this hook can fire the rebuild).
         curve->onEdit = [this, lane]() {
@@ -353,6 +447,11 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
             if (macroRoleNow()) mm->requestWarpRebuildLaneDelegating(lane);
             else                mm->requestWarpRebuildVoiceLane(slotLive(), lane);
         };
+        // THE CHANGE-GATE'S HOST PIN (CC_FIX_CURVE_WIDGET_CPU): this refresh re-binds
+        // the plot's callables/markers — bump the host generation so the widget's
+        // fingerprint differs THIS frame even if the new bindings probe-identically
+        // (a selection change to a value-identical set still rebuilds exactly once).
+        curve->hostGeneration++;
     }
 
     // The permanent editor's kind picker (Rodney: "Popup panel has a context menu
@@ -398,7 +497,7 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         auto resolveMon = [this]() -> Monsoon* { return redDot::lookupMonsoon(module); };
         static const char* const* laneNames = dotModular::SandsLaneNames::EDITOR;
 
-        // ── the 42 store-backed distribution controls (7 lanes x 6 params) ────
+        // ── the 56 store-backed distribution controls (7 lanes x 8 params) ────
         // SETTER LIFETIME LAW: setters may be replayed by Rack history, so they
         // capture ONLY the module pointer (the anchor Rack validates — the same
         // class of capture Rack's own history entries hold) + by-value indices;
@@ -410,6 +509,14 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
                 if (p == 2) { lo = -(float)warpStages::kTiltMax; hi = (float)warpStages::kTiltMax; def = 0.f; }
                 if (p == 3) { lo = 0.f; hi = 1.f; def = (float)warpStages::kAtomLevelDefault; }
                 if (p == 4) { lo = 0.f; hi = (float)warpStages::kAtomMassMax; def = 0.f; }
+                // 5 WARP — THE BIDIRECTIONAL DEPTH (as amended — Rodney: "we make the warp
+                // knob bidirectional instead of unidirectional. Positive blends uniform and
+                // selected distribution - as now. Negative blends uniform and the dual
+                // distribution."): a SIGNED axis [−1,+1], 0 = no warp, the sign IS the
+                // reading (+ the member's quantile, − the dual's), the depth is |w|.
+                if (p == 5) { lo = -1.f; hi = 1.f; def = 0.f; }
+                if (p == 6) { lo = 0.f; hi = 1.f; def = (float)warpStages::kGapLocDefault; }   // GAPLOC
+                if (p == 7) { lo = 0.f; hi = 1.f; def = (float)warpStages::kGapSizeDefault; }  // GAPSIZE
                 auto* k = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(
                     this, "param_dexp_" + std::to_string(l) + "_" + std::to_string(p),
                     resolveMon, lo, hi, def,
@@ -428,6 +535,9 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
                             case 2: return role ? m.getGlobalWarpTilt(l)      : m.getWarpTilt(slot, l);
                             case 3: return role ? m.getGlobalWarpAtomLevel(l) : m.getWarpAtomLevel(slot, l);
                             case 4: return role ? m.getGlobalWarpAtomMass(l)  : m.getWarpAtomMass(slot, l);
+                            case 5: return role ? m.getGlobalWarpW(l)         : m.getWarpW(slot, l);
+                            case 6: return role ? m.getGlobalWarpGapLoc(l)    : m.getWarpGapLoc(slot, l);
+                            case 7: return role ? m.getGlobalWarpGapSize(l)   : m.getWarpGapSize(slot, l);
                             default: return role ? m.getGlobalWarpW(l)        : m.getWarpW(slot, l);
                         }
                     },
@@ -455,6 +565,18 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
                                 if (role) { m.setGlobalWarpAtomMass(l, v);  m.requestWarpRebuildLaneDelegating(l); }
                                 else      { m.setWarpAtomMass(slot, l, v);  m.requestWarpRebuildVoiceLane(slot, l); }
                                 break;
+                            case 5:
+                                if (role) { m.setGlobalWarpW(l, v);         m.requestWarpRebuildLaneDelegating(l); }
+                                else      { m.setWarpW(slot, l, v);         m.requestWarpRebuildVoiceLane(slot, l); }
+                                break;
+                            case 6:
+                                if (role) { m.setGlobalWarpGapLoc(l, v);    m.requestWarpRebuildLaneDelegating(l); }
+                                else      { m.setWarpGapLoc(slot, l, v);    m.requestWarpRebuildVoiceLane(slot, l); }
+                                break;
+                            case 7:
+                                if (role) { m.setGlobalWarpGapSize(l, v);   m.requestWarpRebuildLaneDelegating(l); }
+                                else      { m.setWarpGapSize(slot, l, v);   m.requestWarpRebuildVoiceLane(slot, l); }
+                                break;
                             default:
                                 if (role) { m.setGlobalWarpW(l, v);         m.requestWarpRebuildLaneDelegating(l); }
                                 else      { m.setWarpW(slot, l, v);         m.requestWarpRebuildVoiceLane(slot, l); }
@@ -471,19 +593,20 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
                         if (!m) return true;
                         const bool role = mod->macroRole.load(std::memory_order_relaxed);
                         const WarpF& f = role ? m->getGlobalWarpF(l) : m->getWarpF(slotLiveFrom(m), l);
-                        return !WarpCurvePopup::warpParamSpec((int)f.index(), p).present;
+                        return !WarpCurvePopup::warpParamSpec(dotModular::warpEffKind(f), p).present;
                     };
                 }
             }
         }
 
-        // ── the 42 mod jacks (one per param per lane — the spec's patchable
-        // dynamic-MO surface; inert until the send-bus commit) ─────────────────
+        // ── the 56 mod jacks (one per param per lane — the spec's patchable
+        // dynamic-MO surface; inert until the send-bus commit; the gap jacks are
+        // APPENDED at input ids 42..55, the pre-gap 42 keep their ids) ──────────
         for (int l = 0; l < LANES; ++l)
             for (int p = 0; p < NPAR; ++p)
                 bindInput<PJ301MPort>(
                     "input_dexpmod_" + std::to_string(l) + "_" + std::to_string(p),
-                    SandsDistributionIds::warpModId(l, p));
+                    SandsDistributionIds::modInputId(l, p));
 
         // ── the 7 lane-focus buttons (which lane the editor shows) ────────────
         for (int l = 0; l < LANES; ++l) {
@@ -500,8 +623,8 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         // ── the permanent DistributionCurveWidget (spec: "the ENLARGED popup
         // editor ... gets a PERMANENT HOME on the Distribution expander") ─────
         curve = new WarpCurveEditor();
-        curve->box.pos = mm2px(Vec(141.0f, 20.0f));
-        curve->box.size = mm2px(Vec(119.16f, 90.0f));
+        curve->box.pos = mm2px(Vec(164.0f, 20.0f));
+        curve->box.size = mm2px(Vec(96.16f, 90.0f));
         addChild(curve);
         // Right-click on the editor = the warp KIND menu (the popup's 10 kinds —
         // the ONE authority; Rodney's "missing from the distribution expander").
@@ -569,8 +692,9 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         if (rightFiller) { rightFiller->active = familyModel(module->rightExpander.module); rightFiller->bgColour = bg; }
 
         // per-kind windows for P1/P2 (+label) — only on a kind flip per lane
+        // (the DUAL-aware kind: a dual's windows are its MEMBER's windows)
         for (int l = 0; l < LANES; ++l) {
-            const int kind = (int)curF(l).index();
+            const int kind = dotModular::warpEffKind(curF(l));
             if (kind == lastKind_[l]) continue;
             lastKind_[l] = kind;
             for (int p = 0; p <= 1; ++p) {
@@ -587,12 +711,14 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         // step-detector: memcmp over the trivially-copyable variant + the stage
         // triple + the role/slot/lane addressing)
         const WarpF f = curF(editorLane_);
-        double tp = 0, al = 0.5, am = 0;
-        curStages(editorLane_, tp, al, am);
+        double tp = 0, al = 0.5, am = 0, gl = 0.5, gs = 0;
+        curStages(editorLane_, tp, al, am, gl, gs);
         const bool role = macroRoleNow();
         const int slot = slotLive();
         if (std::memcmp(&f, &lastF_, sizeof(WarpF)) != 0
                 || tp != lastTilt_ || al != lastLevel_ || am != lastMass_
+                || gl != lastGapLoc_ || gs != lastGapSize_
+                || curW(editorLane_) != lastW_
                 || role != lastRole_ || slot != lastSlot_ || editorLane_ != lastLane_) {
             refreshEditor(editorLane_);
         }
@@ -617,13 +743,17 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
         nvgText(vg, box.size.x * 0.5f, mm2px(8.f), "DISTRIBUTION", NULL);
         nvgTextLetterSpacing(vg, 0.f);
 
-        // column captions over the knob block + the mod block
+        // column captions over the knob block + the mod block — the VISUAL order
+        // (P1 P2 TILT LEVEL MASS | GAPLOC GAPSIZE | WARP) is the generator's column
+        // order; the anchors are (lane, param)-named, so the map lives HERE and in
+        // gen_sands_distribution.py (one geometry, two files, kept in sync).
         nvgFillColor(vg, dim);
         nvgFontSize(vg, mm2px(1.8f));
-        for (int p = 0; p < NPAR; ++p) {
-            const float knobXmm = (20.0f + p * 10.5f);
+        for (int col = 0; col < NPAR; ++col) {
+            const int p = SandsDistributionIds::VISUAL_ORDER[col];
+            const float knobXmm = (20.0f + col * 10.0f);
             nvgText(vg, mm2px(knobXmm), mm2px(21.5f), SandsDistributionIds::PARAM_CAPTIONS[p], NULL);
-            const float jackXmm = (86.0f + p * 9.0f);
+            const float jackXmm = (100.0f + col * 8.4f);
             nvgText(vg, mm2px(jackXmm), mm2px(21.5f), "MOD", NULL);
         }
 
@@ -644,7 +774,7 @@ struct SandsDistributionExpanderWidget : ModuleWidget,
             nvgFillColor(vg, ink);
             nvgFontSize(vg, mm2px(2.2f));
             nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-            nvgText(vg, mm2px(141.f), mm2px(115.5f), buf, NULL);
+            nvgText(vg, mm2px(164.f), mm2px(115.5f), buf, NULL);
             const bool role = macroRoleNow();
             nvgFillColor(vg, dim);
             nvgFontSize(vg, mm2px(1.8f));

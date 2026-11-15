@@ -117,6 +117,8 @@ void init(rack::Plugin* p) {
         p->addModel(modelStraitsSandsMacroVisual);      // Macro visual DNA editor
         p->addModel(modelSandsDistributionExpander);    // the distribution sub-expander (dual role: cross-voice on Macro / per-voice on East)
         p->addModel(modelSandsMacroSendSubpanel);       // the Macro send subpanel (every Macro→East send: mix-ins + taps + dist-param amounts)
+        p->addModel(modelSandsPhaseDistSubpanel);       // the phase-distortion sets subpanel (CC_PROMPT_PHASE_DISTORTION_PANEL TASK 1: 8 store rows + the effective plot; edits the expander's store)
+        p->addModel(modelPhaseDistortion);              // the standalone phase-distortion module (§13 B comparison build: 8 phase in/out, per-channel sets, the ONE shared primitive; the one-sample hop is the design)
         p->addModel(modelIntertropical);                // Intertropical scene sequencer
         // DEV-ONLY: the .dmcurve editor widget host (Phase 2 scaffolding — browser-visible so
         // Rodney can drag it in isolation; no engine wiring, no integration).

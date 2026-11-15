@@ -26,6 +26,8 @@
 #include "dsp/engines/PhaseEngine.hpp"
 #include "dsp/engines/PatternEngine.hpp"
 #include "dsp/engines/SequencerEngine.hpp"
+#include "dsp/PhaseDistStore.hpp"   // the §14 parameter-set store (the snapshot members below)
+#include "dsp/PhaseDistCellHold.hpp"   // the §14 PPQN-cell hold (the transform's engine-side evaluation state, below)
 #include "dsp/managers/MonsoonSandsManager.hpp"
 #include "dsp/managers/MonsoonParameterManager.hpp"
 #include "dsp/managers/MonsoonPersistenceManager.hpp"
@@ -70,6 +72,10 @@ static inline T clampv(T v, T lo, T hi) {
 struct InputState {
     float clk, gate1, gate2, gate3;
     float run, reset, cv1, cv2;
+    // PHASE TIER Stage 2: CV3 read at audio rate in the phase origin (modeSelect == 2),
+    // where it is the SUBPHASE input (Rodney: "Lets use cv3 in for subphase"). Outside
+    // Mode E CV3 keeps its assignable-modulation role and stays on its throttled read.
+    float cv3;
     bool  gate1Rise, gate2Rise;
     // subGate (ratchet) = Gate 2 (GATE mode B) / Gate 3 (Mode D).  The fine-grid clock INSIDE main
     // gates (ratchet/tie/rest/legato within gates).  Accepts a trigger OR gate (onset-only).
@@ -289,6 +295,34 @@ namespace MonsoonIds {
         // Mode E manual phase knob. Full range = one upward ramp cycle (phase 0->1 = one bar).
         // Only used when CV1 (the phase input) is UNPATCHED -- the DAW-automatable fallback.
         PHASE_PARAM,
+
+        // PHASE TIER Stage 2: the SUBPHASE CALIBRATION knob — regionSize, quarter .. bar,
+        // CONTINUOUS (the design doc: "anything between (quarter-note → bar)"). Knob 0..1
+        // maps to regionSixteenths = 4 + 12·v (4 = one quarter, 16 = one bar). Default 1.0
+        // = one bar (the showcase value: 2 regions at a 32-step pattern; "no jumps between
+        // bars" preserved by construction). Only read in the phase origin while CV3 (the
+        // subphase input) is PATCHED — unpatched CV3 is Stage 1 exactly.
+        // (PHASE-DISTORTION NOTE — the decided snap fix RODES HERE: the knob is now a
+        // DETENT picker over the straight 24-PPQN pulse list {bar, half, quarter, eighth,
+        // 16th} = {96,48,24,12,6} pulses = {16,8,4,2,1} sixteenths — see the
+        // Monsoon.cpp read site. Rodney: "The calibration snap-to-pulses fix above is
+        // small and can ride with it".)
+        SUBPHASE_CAL_PARAM,
+
+        // ── THE PHASE-DISTORTION EXPANDER MODEL (PHASE_DISTRIBUTION_SPEC §14,
+        // CC_PROMPT_PHASE_DISTORTION_EXPANDER Task 3) — the TWO INDICES ────────────
+        // Each Monsoon holds TWO INDICES into the distribution expander's EIGHT
+        // PARAMETER SETS: which set distorts its phase tier, which its subphase tier.
+        // These are the only routing choices (no matrix, no software channel routing
+        // beyond the two indices). 1..8; DEFAULT 2N−1 / 2N for Monsoon N (the pairId —
+        // the lowest-free 1..8 identity the host-identity block self-assigns), applied
+        // ONCE on a fresh module at the pairId latch; a loaded patch keeps its authored
+        // values (the picks "persist with that Monsoon", §14). A single Monsoon (N=1)
+        // defaults to sets 1 and 2 with no setup — the static config defaults below.
+        // The index values are read at the CONTROL block (the snapshot's cadence), so
+        // an index change lands at a block boundary like every set change.
+        PHASE_SET_PARAM,
+        SUBPHASE_SET_PARAM,
 
         NUM_PARAMS
     };
@@ -604,9 +638,45 @@ struct MonsoonLeftMessage {
 };
 
 // ------------------------------- Module --------------------------------------
+struct SandsPhaseDistSubpanel;      // the §14 store's owner (CC_FIX_PHASE_STORE_ON_SUBPANEL:
+                                    // the phase AUTHORING subpanel, self-contained) — a
+                                    // pointer member below; Monsoon.cpp includes the full
+                                    // header (that header includes THIS one — no cycle)
 struct Monsoon : Module {
     ClockEngine clock;
     redDot::PhaseEngine phase;   // Mode E: CV1 phase ramp → pulse grid (forward+reverse)
+
+    // ── THE PHASE-DISTORTION SOURCE (PHASE_DISTRIBUTION_SPEC §14, amended by
+    // CC_FIX_PHASE_STORE_ON_SUBPANEL) ─────────────────────────────────────────────
+    // The PhaseDistStore's owner is now the SandsPhaseDistSubpanel (the phase
+    // AUTHORING surface — requiring IT is not a surprise; requiring the unrelated
+    // Distribution expander was). Resolved at the Control tier by a rack-wide
+    // first-found (lowest module id — deterministic under any module order) scan,
+    // epoch-memoized (the lookup authority's law: event-driven re-resolution, never
+    // polled). The model serves the WHOLE Monsoon network from ONE subpanel's store
+    // ("several Monsoons may read the same parameter set"), so the segment walk is
+    // the wrong tool here — a Monsoon in another segment must still find it.
+    SandsPhaseDistSubpanel* phaseDistPanel_ = nullptr;
+    // THE READER'S PER-BLOCK SNAPSHOT (the Task-1 mechanism's reader half): copied
+    // ONCE per Control-tier tick from the store under its mutex, then read PER SAMPLE
+    // by the Mode E path — engine-thread-private state, no lock on the hot path.
+    // [0] = the phase tier's set, [1] = the subphase tier's. Defaults = identity.
+    // (std::array — the array-guard's P-B form.)
+    std::array<redDot::PhaseDistSet, 2> phaseDistSnap_ = {};
+    // The identity flags, computed AT the snapshot (the Stage-1 gate's bypass: an
+    // identity set — or no expander — takes the RAW path verbatim, bit-identical).
+    std::array<bool, 2> phaseDistIdentity_ = {true, true};
+    // THE PPQN-CELL HOLD (CC_FIX_PHASE_DISTORT_AT_PPQN, docs tip 9b900695): the
+    // transform is evaluated ONCE PER PPQN CELL of the tier's input and held until
+    // the next cell — [0] = the transport tier (the plain probe's llround on the
+    // span grid), [1] = the subphase tier (the fine term's floor on the
+    // region-relative grid). Between cells the engine reads the held value; the
+    // display keeps its own video-rate evaluation and the two never cross. Reset on
+    // the raw path (identity / CV3 unpatched) so a re-entry re-seeds.
+    std::array<dotModular::PhaseDistCellHold, 2> phaseDistHold_ = {};
+    // The dynamic-default latch (2N−1 / 2N applied ONCE on a fresh module): true in
+    // the ctor, cleared by dataFromJson so a loaded patch keeps its authored picks.
+    bool phaseSetsFresh_ = true;
 
     int cv1Mode = 0;
     // Global probability-CV-out config (read by the Sands visual expanders; they have
@@ -744,6 +814,12 @@ struct Monsoon : Module {
 
     int lastModeSelect = -1;
     int lightTheme = 0; // 0 = Dark, 1 = Light. Using int to match PeranakanLatticePanel expectations.
+    // SEND VOICE persistence (CC_FIX_SEND_VOICE_FROM_MACRO): the MACRO strip's voice-tab
+    // selection, stored as a VOICE NUMBER 1..16 (1 = V1 mono). The Macro visual WRITES it
+    // on tab change and READS it on init (re-selects the tab + publishes
+    // PatternEngine::setSendVoice so the send subpanel reopens on the same voice).
+    // Saved/loaded under the key "macroViewVoice"; absent key ⟹ V1 (the default here).
+    int macroViewVoice = 1;
     // Single source of truth for the spread interpolation target mode (context
     // menu lives on Monsoon). false = Average Poly (mono + active poly average);
     // true = Mono Draw (target the raw mono draw; mono strand becomes a fixed
@@ -938,12 +1014,12 @@ struct Monsoon : Module {
         // lands on the store reset() seeded and the pass-through branch holds — old
         // patches (no persisted keys) play exactly as before. Kept at struct END
         // (the same ABI-hygiene note as warp/subgate).
-        float voiceLorMacro[3]        = {16.f, 0.f, 0.f};  // the GLOBAL voice range L/O/R (Macro tier)
+        float voiceLorMacro[3]        = {(float)dotModular::kPatternLengthCap, 0.f, 0.f};  // the GLOBAL voice range L/O/R (Macro tier) — (bug 23) identity = the FULL voice window (the cap)
         float voiceLorMacroDir        = 0.f;                // Macro tier direction (LaneDir order)
-        float voiceLorEast[48]        = {16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f,
-                                         16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f,
-                                         16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f,
-                                         16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f, 16.f,0.f,0.f}; // 16 voices x {L,O,R}
+        float voiceLorEast[48]        = {(float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f,
+                                         (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f,
+                                         (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f,
+                                         (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f, (float)dotModular::kPatternLengthCap,0.f,0.f}; // 16 voices x {L,O,R} — (bug 23) identity rows seed the FULL window (the cap)
         float voiceLorEastDir[16]     = {};                 // per-voice direction (LaneDir order)
         float voiceLorLocalEast[16]   = {};                 // 0 = follow Macro (default), !=0 = own East row
         // (B) VOICE-LOR PARITY: the L/O/R CV-depth rows (the lanes' macroAtten law, one
@@ -1039,11 +1115,11 @@ struct Monsoon : Module {
     // Reset a row to the identity window (16/0/0/Forward) — the context menus' reset
     // action and the identity law's escape hatch (identity = pass-through by value).
     void resetVoiceLorMacro() {
-        editor.voiceLorMacro[0] = 16.f; editor.voiceLorMacro[1] = 0.f; editor.voiceLorMacro[2] = 0.f;
+        editor.voiceLorMacro[0] = (float)dotModular::kPatternLengthCap; editor.voiceLorMacro[1] = 0.f; editor.voiceLorMacro[2] = 0.f;
         editor.voiceLorMacroDir = 0.f; }
     void resetVoiceLorEast(int v) {
         if (!vLorOk(v)) return;
-        editor.voiceLorEast[v*3 + 0] = 16.f; editor.voiceLorEast[v*3 + 1] = 0.f;
+        editor.voiceLorEast[v*3 + 0] = (float)dotModular::kPatternLengthCap; editor.voiceLorEast[v*3 + 1] = 0.f;
         editor.voiceLorEast[v*3 + 2] = 0.f;  editor.voiceLorEastDir[v] = 0.f; }
     // (B) VOICE-LOR PARITY: the L/O/R CV-depth accessors (the macroAtten law, one axis
     // over). Depths are bipolar -1..1 (the lanes' attenuverter convention); 0 = the
@@ -1150,6 +1226,20 @@ struct Monsoon : Module {
     void  setGlobalWarpAtomLevel(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpAtomLevel[lane] = x; }
     float getGlobalWarpAtomMass(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpAtomMass[lane] : 0.f; }
     void  setGlobalWarpAtomMass(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpAtomMass[lane] = x; }
+
+    // ── THE GAP STAGE (PHASE_DISTRIBUTION_SPEC §4/§9): the atom twins — the authored
+    //    (location, size) per voice/lane + Macro's global defaults. Neutral: size 0
+    //    (width zero IS the neutral body; the location's interior default is inert at
+    //    size 0, exactly like the atom level at mass 0). Eval-side clamps live in
+    //    WarpStages.hpp, NOT here.
+    float getWarpGapLoc(int slot, int lane) const { return editor.warp.warpGapLoc[slot*7 + lane]; }
+    void  setWarpGapLoc(int slot, int lane, float x) { editor.warp.warpGapLoc[slot*7 + lane] = x; }
+    float getWarpGapSize(int slot, int lane) const { return editor.warp.warpGapSize[slot*7 + lane]; }
+    void  setWarpGapSize(int slot, int lane, float x) { editor.warp.warpGapSize[slot*7 + lane] = x; }
+    float getGlobalWarpGapLoc(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpGapLoc[lane] : 0.5f; }
+    void  setGlobalWarpGapLoc(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpGapLoc[lane] = x; }
+    float getGlobalWarpGapSize(int lane) const { return gLaneOk(lane) ? editor.warp.globalWarpGapSize[lane] : 0.f; }
+    void  setGlobalWarpGapSize(int lane, float x) { if (gLaneOk(lane)) editor.warp.globalWarpGapSize[lane] = x; }
 
     // ── CC_PROMPT_04 (warp UI): UI-thread warp edits → scoped mirror rebuild ─────
     // The panel StoreKnob setters / the curve popup write the warp stores above on the
@@ -1732,6 +1822,8 @@ extern Model* modelStraitsSandsMacroVisual;     // Macro visual DNA editor (glob
 extern Model* modelSandsDistributionExpander;   // the distribution sub-expander (dual role by host)
 extern Model* modelSandsMacroSendSubpanel;      // the Macro send subpanel (every Macro→East send, one snapped panel)
 extern Model* modelIntertropical;               // Intertropical scene sequencer
+extern Model* modelPhaseDistortion;             // the standalone phase-distortion module (PHASE_DISTRIBUTION_SPEC §13 — the B comparison build; 8 phase in/out, per-channel sets, the ONE shared primitive; the expander model A stays)
+extern Model* modelSandsPhaseDistSubpanel;      // the phase-distortion sets authoring subpanel (CC_PROMPT_PHASE_DISTORTION_PANEL TASK 1 — the §14 store's UI; edits the rack-wide-lowest-id expander's store, the SAME instance the Monsoons read)
 
 // ─── Change Alley pin matrix expander ────────────────────────────────────────
 namespace ChangeAlleyIds {

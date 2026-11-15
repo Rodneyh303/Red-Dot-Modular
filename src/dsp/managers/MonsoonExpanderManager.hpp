@@ -76,7 +76,7 @@ extern rack::Model* modelStraitsEastSandsVisual;
 extern rack::Model* modelStraitsSandsMacroVisual;
 extern rack::Model* modelLantern;   // note-output visualiser — suite member, hop-only (see scan)
 extern rack::Model* modelIntertropical;   // arranger/observer — suite member, hop-only (see scan)
-
+extern rack::Model* modelSandsPhaseDistSubpanel;   // the expander phase-distortion subpanel (PHASE_DISTRIBUTION_SPEC §13 — the B comparison build; 8 phase in/out, per-channel sets, the ONE shared primitive; the expander model A stays)
 /**
  * ExpanderManager handles the discovery and caching of Monsoon expander modules.
  * It walks the left and right expansion chains to identify connected modules.
@@ -272,7 +272,9 @@ struct MonsoonExpanderManager {
                         || curr->model == modelStraitsSubgatePanelGhostAccent
                         || curr->model == modelStraitsSubgatePanelGhostAdvance
                         || curr->model == modelSandsDistributionExpander
-                        || curr->model == modelMonsoonShophouseMicro) {
+                        || curr->model == modelMonsoonShophouseMicro
+                        || curr->model == modelSandsPhaseDistSubpanel
+                    ) {
                     // Hop-through modules (no cache slot): observer/follower suite modules (Lantern;
                     // Changi T3) AND lane-extension sub-modules (StraitsLaneQMIX/REST/ACCENT/
                     // VARIATION/LEGATO) AND the Straits subgate surfaces (SubgateBase + its two

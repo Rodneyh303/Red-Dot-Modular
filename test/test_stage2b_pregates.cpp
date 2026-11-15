@@ -594,11 +594,11 @@ static const char* walkBeyondRing(const SequencerEngine& eng, char* msg) {
     // length-masked law; post-flip this is the 64-headroom bite).
     const uint64_t beyond = ~dotModular::kMaskLenMask;
     for (int v = 0; v < SequencerEngine::kVoiceSlots; ++v) {
-        if (eng.maskPainted_[v]    & beyond) { std::snprintf(msg, 256, "maskPainted_[%d] bits beyond ring", v); return msg; }
+        if (eng.maskAnchored_[v]    & beyond) { std::snprintf(msg, 256, "maskAnchored_[%d] bits beyond ring", v); return msg; }
         if (eng.maskAnchored_[v]   & beyond) { std::snprintf(msg, 256, "maskAnchored_[%d] bits beyond ring", v); return msg; }
         if (eng.maskLastPushed_[v] & beyond) { std::snprintf(msg, 256, "maskLastPushed_[%d] bits beyond ring", v); return msg; }
     }
-    if (eng.maskMacroPainted_    & beyond) { std::snprintf(msg, 256, "maskMacroPainted_ bits beyond ring");    return msg; }
+    if (eng.maskMacroAnchored_    & beyond) { std::snprintf(msg, 256, "maskMacroAnchored_ bits beyond ring");    return msg; }
     if (eng.maskMacroAnchored_   & beyond) { std::snprintf(msg, 256, "maskMacroAnchored_ bits beyond ring");   return msg; }
     if (eng.maskMacroLastPushed_ & beyond) { std::snprintf(msg, 256, "maskMacroLastPushed_ bits beyond ring"); return msg; }
     if (eng.windowMask           & beyond) { std::snprintf(msg, 256, "windowMask bits beyond ring");           return msg; }
