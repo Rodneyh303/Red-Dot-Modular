@@ -29,27 +29,35 @@ Best done AFTER step 4-final (so it mirrors the CLEAN, pattern-only mode switch 
    checkmarks `qmixMode==value`, with "Dice (static)" (value 0) + "Realtime" (value 1) items under a
    "Q-Mix Mode" label + separator. This is the piece Rodney flagged as missing.
 
-## UNIFY THE TOGGLE PATH — DRY/ODR (DECIDED, Rodney 2026-11-15)
-Today the two toggle SOURCES diverge, for ALL THREE streams: the CONTEXT MENU calls `switch*Mode()`
-(LOSSLESS cache/restore), while `fireDieAction` (Gate 3 assignable + Raffles gates) flips the flag
-DIRECTLY (`xMode = 1 - xMode`, BYPASSING `switch*Mode()` → reseed-on-return). That is the ODR/DRY
-defect. FIX: every LIVE/STATIC TOGGLE routes through the ONE main path `switch*Mode()`:
-- `fireDieAction` `DA_LIVESTATIC_R` → `switchRhythmMode()` (was `rhythmMode = 1 - rhythmMode`).
-- `fireDieAction` `DA_LIVESTATIC_M` → `switchMelodyMode()` (was `melodyMode = 1 - melodyMode`).
-- `fireDieAction` `DA_LIVESTATIC_Q` → `switchQmixMode()` (new).
-  (`switch*Mode()` already flips the mode internally — `next = 1 - prev` — so this is a direct
-  substitution, now WITH the lossless cache/restore on both arms.)
+## UNIFY THE LIVE/STATIC SWITCH PATH — DRY/ODR (DECIDED, Rodney 2026-11-15)
+There are THREE routes that switch live↔static mode, and they diverge: the CONTEXT MENU calls
+`switch*Mode()` (the LOSSLESS cache/restore), while the two gate routes flip the flag DIRECTLY in
+`fireDieAction` (`xMode = 1 - xMode`, BYPASSING `switch*Mode()` → NO lossless restore on return). That
+is the ODR/DRY defect. FIX: route EVERY live/static switch through the ONE main path `switch*Mode()`
+— all three routes, nothing excluded:
+- CONTEXT MENU (`RMI`/`MMI`/new `QMI`) → `switch*Mode()` — already correct, keep.
+- GATE 3 assignable + RAFFLES gate, via `fireDieAction`:
+  - `DA_LIVESTATIC_R` → `switchRhythmMode()` (was `rhythmMode = 1 - rhythmMode`).
+  - `DA_LIVESTATIC_M` → `switchMelodyMode()` (was `melodyMode = 1 - melodyMode`).
+  - `DA_LIVESTATIC_Q` → `switchQmixMode()` (new).
+  (`switch*Mode()` already flips internally — `next = 1 - prev` — so this is a direct substitution,
+  now WITH the lossless cache/restore on both arms. Both gate routes share `fireDieAction`, so this
+  is one edit per stream, covering Gate 3 AND Raffles.)
 
-CARVE-OUT — do NOT route these through `switch*Mode()` (different intent, NOT a toggle):
-- `DA_LASTDICE_*` (`xMode = 0; setPending*LastRoll()`) — go to dice and re-apply the LAST roll.
-- `DA_REDICE_*` / `dice*()` (`xMode = 0; setPending*Roll()`) — go to dice with a FRESH roll.
-These SET to dice with a reseed; the `switch*Mode()` return-arm would restore the cached pattern and
-fight the pending roll. Leave them exactly as they are.
+NOT MODE SWITCHES — out of scope, leave UNCHANGED (these are DICE ROLLS, not live/static switches):
+- `DA_REDICE_*` / `dice*()` (`xMode = 0; setPending*Roll()`) — a FRESH roll (advance the RNG stream,
+  no reseed).
+- `DA_LASTDICE_*` (`xMode = 0; setPending*LastRoll()`) — replay the LAST roll.
+- the UI dice / last-dice buttons (`processLastDiceButtons`).
+These are DRAWS on the current seed (PatternEngine.cpp:1065 — "ROLL pending = advance RNG, no
+reseed"), NOT reseeds and NOT mode switches, so they were never candidates for this unification —
+they just go to dice and roll. (A true RESEED = a new Philox seed, the separate seed-pending /
+reseed-on-restart path — also unrelated here.) Do not touch them.
 
 THREAD NOTE (be aware, not a blocker): `fireDieAction` runs on the AUDIO thread (process() — Gate 3
 `Monsoon.cpp:1113`, Raffles `:1781`); the menu runs on the UI thread. After this change the gate
-toggle does the buffer copy + `recomputeEffective*` on the audio thread — bounded and rare (a mode
-toggle), and arguably SAFER for that source (no cross-thread write of the buffers process() reads).
+switch does the buffer copy + `recomputeEffective*` on the audio thread — bounded and rare (a mode
+switch), and arguably SAFER for that source (no cross-thread write of the buffers process() reads).
 The menu path is unchanged. No new locking needed; just know the work moved threads for the gate
 source.
 
