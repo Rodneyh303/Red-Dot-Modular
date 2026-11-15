@@ -317,6 +317,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // golden-identity harness (test_position_resolver_identity) proves the mirror.
     // Slice 2 migrates the derive to its phrasePos; slices 3-4 the stepIndex consumers.
     PositionResolver pos_;
+    // (SLICE 2b — the phase-sweep history) the previous snap's UNWRAPPED absStep: the
+    // phase direction is known only between two consecutive PPQN quantisations (per
+    // snap, as the sign of the change). Cleared in reset(); NOT touched by gate/clock.
+    long prevPhaseAbsStep_ = 0;
+    bool hasPhaseAbsStep_  = false;
 
     // ── Per-lane direction (reverse a lane's read independently) ──────────────────
     // 4-state direction per strand: Forward, Reverse, Pendulum (bounce, no endpoint repeat),

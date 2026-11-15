@@ -162,6 +162,8 @@ void SequencerEngine::reset() {
     stepIndex = -1;
     lastStepIndex = -1;
     pos_.reset();   // (slice 1) the mirror parks with the same pre-start state + the default window
+    prevPhaseAbsStep_ = 0;    // (slice 2b) the phase-sweep history starts fresh
+    hasPhaseAbsStep_  = false;
     startStep = 0;
     // (CC_PROMPT_16_TRIAGE bucket 2, option C's DO-NOW group) the transport default IS
     // the full ring: endStep/cachedLength derive from the cap (was the literal 15/16 —
@@ -1279,7 +1281,33 @@ void SequencerEngine::snapToPhaseStep(long pulsePos, int pps) {
         for (int s = 0; s < kMaskRing && !isStepInWindow(stepIndex); ++s)
             stepIndex = (stepIndex + 1) & (kMaskRing - 1);
     }
-    pos_.snapTo(stepIndex);   // (slice 1) the mirror takes the snapped column (post-defence)
+    // (SLICE 2b — the PHASE inputs, CC_PROMPT_POSITION_RESOLVER_SLICE2B_PHASE) pos_
+    // stays the ONE authority in every mode: the phase snap feeds it the sweep
+    // DIRECTION and the RAW PHRASE POSITION. The direction is known only between two
+    // consecutive PPQN quantisations — per snap, as the sign of the absStep change
+    // (hold the LAST direction when the delta is 0; the first snap after a mode switch
+    // holds whatever the gate/clock traversal left — one possibly-off snap, corrected
+    // at the next). The phrase entries in phase are the CYCLE-0 CROSSINGS (phase 0%
+    // AND 100% both land on cycle 0), not the gate traversal's boundary crossings:
+    //   forward  phrasePos = wrapMod(absStep, lenG)  == wG (bit-identical, gate 4);
+    //   backward phrasePos = wrapMod(-absStep, lenG) — the steps back to the cycle-0
+    //   entry: the walk R, R-1, ... with the jump back to R LAST.
+    // deriveHolders' sPos = dir * phrasePos law is UNCHANGED (slice 2's).
+    {
+        int snapDir = pos_.direction();
+        if (hasPhaseAbsStep_) {
+            const long d = absStep - prevPhaseAbsStep_;
+            if (d > 0)      snapDir = +1;
+            else if (d < 0) snapDir = -1;   // d == 0: no PPQN crossing — hold the last
+        }
+        const int lenG = std::max(1, cachedLength);
+        const int snapPhrase = (snapDir > 0)
+            ? (int)wrapMod(absStep, lenG)
+            : (int)wrapMod(-absStep, lenG);
+        pos_.snapTo(stepIndex, snapDir, snapPhrase);   // the column (post-defence) + the sweep direction + the raw phrase
+        prevPhaseAbsStep_ = absStep;
+        hasPhaseAbsStep_  = true;
+    }
     deriveHolders(lastPlayDir, nullptr);
 }
 
