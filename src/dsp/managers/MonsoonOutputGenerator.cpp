@@ -51,7 +51,7 @@ void OutputGenerator::drive(SequencerEngine& engine,
     // read-keyed mask is inert (Range ≡ Cycle; painted cells at out-of-read steps
     // never fire). The reads stay ungated; only the output is gated, globally —
     // the per-voice difference lives in each voice's OWN range/pattern.
-    const int maskStep = engine.stepIndex;   // the GLOBAL playhead step (global-position space, spec:331)
+    const int maskStep = engine.pos_.playedColumn();   // the GLOBAL playhead step (global-position space, spec:331) — the resolver's played column (== stepIndex, the identity harness; SLICE 3)
     const bool monoMaskPass = engine.outputMaskPasses(dotModular::VoiceResolver::mono(), maskStep);
     if (!monoMaskPass) {
         outputs[GATE_OUTPUT].setVoltage(0.f);

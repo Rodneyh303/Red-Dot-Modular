@@ -15,8 +15,9 @@
 //   5. THE MACRO TIER'S PAINT gates the followers (the global mask).
 //   6. THE OUTPUT STAGE READS THE GATE (the structural pin, the D grep-in-test
 //      precedent): MonsoonOutputGenerator applies outputMaskPasses at the GLOBAL
-//      step (engine.stepIndex) on BOTH the mono and the poly paths — the
-//      composition is LIVE at the output, not merely defined on the engine.
+//      step (engine.pos_.playedColumn() — SLICE 3's consumer migration) on BOTH
+//      the mono and the poly paths — the composition is LIVE at the output, not
+//      merely defined on the engine.
 //   7. THE WRITE-ONLY ECHO IS GONE: maskPainted_/maskMacroPainted_ (the raw
 //      store echo the bug report flagged as "written but never read") are
 //      deleted — the working read is the ANCHORED copy (effectiveOverlayPattern),
@@ -185,10 +186,11 @@ int main() {
     {
         std::string og;
         bool ok = slurpFile("src/dsp/managers/MonsoonOutputGenerator.cpp", og);
-        // BOTH paths apply the gate, keyed on the GLOBAL step (engine.stepIndex):
-        // the mono block and the poly block — the composition is LIVE at the output.
+        // BOTH paths apply the gate, keyed on the GLOBAL step (the resolver's played
+        // column — engine.pos_.playedColumn(), SLICE 3's consumer migration): the mono
+        // block and the poly block — the composition is LIVE at the output.
         ok = ok && countOccurrences(og, "engine.outputMaskPasses(") >= 2;
-        ok = ok && og.find("const int maskStep = engine.stepIndex") != std::string::npos;
+        ok = ok && og.find("const int maskStep = engine.pos_.playedColumn()") != std::string::npos;
         check(ok, "6: the output stage applies outputMaskPasses at the GLOBAL step "
                   "on both the mono and the poly paths (the composition is live)");
     }

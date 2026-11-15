@@ -627,7 +627,7 @@ bool SequencerEngine::foldPerVoiceAdvance_(int subLevel, bool perVoiceScan,
             dStep = (dv == dotModular::StepAdvance::FORWARD) ? +1
                   : (dv == dotModular::StepAdvance::BACKWARD) ? -1 : 0;
             if (dStep != 0) scanOfsV_[i] = 0;              // moved: re-anchor (its own value first)
-            else            scanHoldV_(vs);                // held: scan its own window deeper
+            else            scanHoldFor_(vs);              // held: scan its own window deeper
         }
         advanceOffset_[i] += (int64_t)(dStep - dMainStep);
         if (dStep != dMainStep) anyMoved = true;
@@ -1371,19 +1371,20 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
     // ── STEPS_32 Stage 3 — the twice-around-16 display lap (D10 as amended by D15) ──
     // lightIdx is the LAMP index (0..15 — the panel's 16 ring lamps STAY, the D15
     // 16-stay form). Lamp k carries masters k and k+16, and the rendered master is the
-    // CURRENT LAP's: the lap is D10's split test on the playhead itself (stepIndex >= 16),
-    // the SAME variable the BAR LEDs consume — one gate, two surfaces, no second lap
-    // source exists. At a ≤16 pattern the playhead never leaves bar 1, so lapBase is 0
-    // and master == lightIdx — bit-identical to the pre-twice-around read (the GOLDEN
-    // LAW's display face).
-    const int lapBase = (stepIndex >= kRingLamps) ? kRingLamps : 0;
+    // CURRENT LAP's: the lap is D10's split test on the playhead itself (the played
+    // column >= 16), the SAME variable the BAR LEDs consume — one gate, two surfaces,
+    // no second lap source exists. At a ≤16 pattern the playhead never leaves bar 1,
+    // so lapBase is 0 and master == lightIdx — bit-identical to the pre-twice-around
+    // read (the GOLDEN LAW's display face). (SLICE 3: the display reads the resolver's
+    // played column — pos_.playedColumn() == stepIndex, the identity harness.)
+    const int lapBase = (pos_.playedColumn() >= kRingLamps) ? kRingLamps : 0;
     const int master  = lapBase + lightIdx;
     bool inWindow = isStepInWindow(master);
     float baseActive = 0.0f;
 
     if (inWindow) {
         // Calculate distance from current playhead to map physical LED to drifting DNA content
-        int relCurrent = (stepIndex - startStep + kMaskRing) % kMaskRing;
+        int relCurrent = (pos_.playedColumn() - startStep + kMaskRing) % kMaskRing;
         // relLight reads the CURRENT-LAP master (was lightIdx — the D15 re-scope: the
         // lamp shows the content of the master it carries on the lap being rendered).
         int relLight = (master - startStep + kMaskRing) % kMaskRing;
@@ -1430,23 +1431,23 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
     // (no discrete playhead step). Mode F (5, Q3b) is a phase-1/16 stepped quantiser, so it
     // has a discrete playhead exactly like the phase origin.
     bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2);  // clock/gate/phase (collapse)
-    // Playhead lamp: lightIdx == stepIndex % 16 — the ONE sanctioned display-path % 16
-    // (the D15 ring-feed law). The stepIndex >= 0 guard keeps the pre-start park (-1)
+    // Playhead lamp: lightIdx == playedColumn % 16 — the ONE sanctioned display-path % 16
+    // (the D15 ring-feed law). The playedColumn >= 0 guard keeps the pre-start park (-1)
     // dark: the old `lightIdx == stepIndex` comparison was accidentally -1-safe, the
     // & 15 landing is not (-1 & 15 == 15 would light lamp 15 before the first tick).
-    float current = (steppedMode && stepIndex >= 0 && lightIdx == (stepIndex % kRingLamps)) ? 1.0f : 0.0f;
+    float current = (steppedMode && pos_.playedColumn() >= 0 && lightIdx == (pos_.playedColumn() % kRingLamps)) ? 1.0f : 0.0f;
 
     // Direction cue (Mode E especially): a one-LED comet trail BEHIND the playhead in
     // the travel direction, so forward vs reverse is visibly distinct. The trailing
-    // LED is the step the playhead just left: master (stepIndex - lastPlayDir) on the
+    // LED is the step the playhead just left: master (playedColumn - lastPlayDir) on the
     // ring; its LAMP is that master & 15 (twice-around), and its window test reads the
     // TRAIL MASTER itself — crossing the bar line backwards, the step just left belongs
     // to the other lap, whose master is not the lamp's current-lap one. (The 2b flip
     // widened kMaskRing to 32 and silently killed the trail on the whole second bar —
     // `lightIdx == trailIdx` could never match a 16..31 trailIdx; the lamp landing
-    // repairs it. The stepIndex >= 0 guard makes the pre-start park deterministic.)
-    if (steppedMode && stepIndex >= 0 && current < 1.0f) {
-        int trailMaster = ((stepIndex - lastPlayDir) % kMaskRing + kMaskRing) % kMaskRing;
+    // repairs it. The playedColumn >= 0 guard makes the pre-start park deterministic.)
+    if (steppedMode && pos_.playedColumn() >= 0 && current < 1.0f) {
+        int trailMaster = ((pos_.playedColumn() - lastPlayDir) % kMaskRing + kMaskRing) % kMaskRing;
         if (lightIdx == (trailMaster % kRingLamps) && isStepInWindow(trailMaster))
             baseActive = std::max(baseActive, 0.5f);
     }
@@ -1459,16 +1460,17 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
 // bar 1, lower = bar 2 — the disc's hemisphere cut; 16-step patterns keep the disc
 // dark-except-when-playing: the playhead never leaves bar 1, so BAR 2 stays dim and
 // BAR 1 carries the light — the "hidden disc" lean's two-LED form). Lit EXCLUSIVELY
-// from the playhead's own gate and variable — the same steppedMode expression and the
-// same stepIndex the ring's current-step lamp consumes (one gate, two surfaces — the
-// sync must never fork). Where no discrete playhead exists (mode D, 3) — and before
-// the first tick (stepIndex -1) — BOTH are silent. The inactive bar's LED DIMS, never
+// from the playhead's own gate and variable — the same steppedMode expression and
+// the same played column (pos_.playedColumn()) the ring's current-step lamp consumes
+// (one gate, two surfaces — the sync must never fork). Where no discrete playhead
+// exists (mode D, 3) — and before the first tick (the pre-start park, -1) — BOTH
+// are silent. The inactive bar's LED DIMS, never
 // dark: the disc's "every other segment dims" law, clearly distinct from both the lit
 // state and the unlit ring lamps. The exact dim is a P5 calibration lever.
 float SequencerEngine::getBarLightBrightness(int bar) const {
     bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2);
-    if (!steppedMode || stepIndex < 0) return 0.f;
-    const bool bar2 = stepIndex >= kRingLamps;   // D10's split test — reads the bar layer, wraps nothing (the second lamp lap == bar 2)
+    if (!steppedMode || pos_.playedColumn() < 0) return 0.f;
+    const bool bar2 = pos_.playedColumn() >= kRingLamps;   // D10's split test — reads the bar layer, wraps nothing (the second lamp lap == bar 2)
     return ((bar == 1) == bar2) ? 1.f : kBarIndicatorDimBrightness;
 }
 
@@ -1479,10 +1481,10 @@ int SequencerEngine::getOffsetStep() const {
 }
 
 bool SequencerEngine::shouldTriggerStep(int ppqn) const {
-    if (stepIndex == -1) return false;
+    if (pos_.playedColumn() == -1) return false;
     if (ppqn <= 1) {
         // Only trigger on main 4 beats relative to startStep + offset
-        int relative = (stepIndex - startStep + kMaskRing) % kMaskRing;
+        int relative = (pos_.playedColumn() - startStep + kMaskRing) % kMaskRing;
         return (relative & 0x03) == 0;
     }
     return true; 
@@ -1552,7 +1554,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     if (gs.holdRemain >= 1.f || gs.gatePulseRemain > 0) {
         result.decision = MonoDecision::MidNote;
         result.accented = lastStepResult.accented;
-        result.forStep = stepIndex; lastStepResult = result;
+        result.forStep = pos_.playedColumn(); lastStepResult = result;
         return result;
     }
 
@@ -1750,7 +1752,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     gs.slurForward = leadsSlur;
     gs.slurMember  = prevSlur || leadsSlur;   // SLEG mask: this note leads OR continues a slur
 
-    result.forStep = stepIndex; lastStepResult = result;
+    result.forStep = pos_.playedColumn(); lastStepResult = result;
     return result;
 }
 
@@ -1968,8 +1970,8 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
                 wrapped = advancePlayhead(-1, motionV.data());      // resets the scan ([0])
             else {
                 // (CC_PROMPT_VARIATION_CENTRE) the resolved mono p threads in: at the
-                // centre (|p| <= eps) scanHold_ self-gates — HOLD with NO scan.
-                scanHold_(voices[VoiceResolver::mono()].variationProb);   // HELD: scan the window forward (the freeze fix)
+                // centre (|p| <= eps) scanHoldFor_ self-gates — HOLD with NO scan.
+                scanHoldFor_(VoiceResolver::mono());   // HELD: scan the window forward (the freeze fix)
                 if (anyVoiceMoved)
                     recomputeLaneTicks(motionV.data());            // the clock held; diverged voices refresh
             }
@@ -2124,8 +2126,8 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
             wrapped = advancePlayhead(-1, motionV.data());      // resets the scan
         else {
             // (CC_PROMPT_VARIATION_CENTRE) the resolved mono p threads in: at the
-            // centre (|p| <= eps) scanHold_ self-gates — HOLD with NO scan.
-            scanHold_(voices[VoiceResolver::mono()].variationProb);   // HELD: scan the window forward (the freeze fix)
+            // centre (|p| <= eps) scanHoldFor_ self-gates — HOLD with NO scan.
+            scanHoldFor_(VoiceResolver::mono());   // HELD: scan the window forward (the freeze fix)
             if (anyVoiceMoved)
                 recomputeLaneTicks(motionV.data());            // the clock held; diverged voices refresh
         }
