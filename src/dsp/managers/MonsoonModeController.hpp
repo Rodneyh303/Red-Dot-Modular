@@ -91,8 +91,9 @@ public:
     /// Get the last step index (used for change detection)
     int getLastStepIndex() const { return lastStepIndex; }
     
-    /// Update last step index (call after mode execution)
-    void updateLastStepIndex() { lastStepIndex = engine.stepIndex; }
+    /// Update last step index (call after mode execution) — the resolver's played
+    /// column (== stepIndex by the identity harness; SLICE 3's consumer migration)
+    void updateLastStepIndex() { lastStepIndex = engine.pos_.playedColumn(); }
     
 private:
     Monsoon* mainModule;

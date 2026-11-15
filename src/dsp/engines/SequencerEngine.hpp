@@ -38,7 +38,7 @@ struct StepResult {
     bool wrapped = false;   // true if the phrase boundary wrapped
     bool accented = false;  // true if this step is accented (NEW)
     bool qmixHit  = false;  // Task 4: true if the mono q-mix draw crossed QMIX_LEVEL this step
-    int  forStep = -1;      // the stepIndex this result was computed for (Lantern pairs decision→column)
+    int  forStep = -1;      // the PLAYED COLUMN this result was computed for (pos_.playedColumn(); Lantern pairs decision→column)
 };
 
 // One additional voice beyond mono.  Owns its own GateState and rest
