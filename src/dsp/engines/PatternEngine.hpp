@@ -1452,6 +1452,7 @@ public:
 
     void switchMelodyMode();
     void switchRhythmMode();
+    void switchQmixMode();   // (switch-qmix-mode) the PATTERN-ONLY q-mix twin — no position cache (4-final's law)
 
     // Circularly shifts the internal random buffers
     

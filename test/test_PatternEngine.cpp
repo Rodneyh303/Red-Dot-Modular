@@ -384,6 +384,28 @@ int main(){
         for(int i=0;i<16;++i) EXPECT_NEAR(pe.melodyPitchV[i],snap[i],1e-5f);
     });
 
+    TEST("switchQmixMode: dice→realtime caches the seed + the q-mix row (the lossless twin)", {
+        // (CC_PROMPT_SWITCH_QMIX_MODE_COMPLETE) the melody twin's mirror, PATTERN-ONLY.
+        // sandsActive=true: the config where recomputeEffectiveQmix's publish arm is
+        // skipped, so the restored qmixRandom SURVIVES the return the way melodyPitchV
+        // survives the melody twin (the melody recompute never writes it). In the
+        // default config the recompute re-derives the row from the draw counter — the
+        // real restore either way; this test pins the cached-row round-trip.
+        auto pe=fresh(5.f,6.f);
+        pe.sandsActive = true;
+        for(int i=0;i<16;++i) pe.qmixRandom[i]=0.05f*(float)(i+1);   // a recognizable row
+        const float seedBefore = pe.qmixSeedFloat;
+        pe.switchQmixMode();                    // dice→realtime: caches the seed + the row
+        EXPECT_EQ(pe.qmixMode,1);
+        EXPECT(pe.qmixSeedCached);
+        EXPECT_EQ(pe.cachedQmixSeedFloat, seedBefore);
+        for(int i=0;i<16;++i) EXPECT_NEAR(pe.cachedQmix[i], 0.05f*(float)(i+1), 1e-6f);
+        for(int i=0;i<16;++i) pe.qmixRandom[i]=0.9f;                 // mutate in realtime
+        pe.switchQmixMode();                    // realtime→dice: restores the row
+        EXPECT_EQ(pe.qmixMode,0);
+        for(int i=0;i<16;++i) EXPECT_NEAR(pe.qmixRandom[i], 0.05f*(float)(i+1), 1e-6f);
+    });
+
     TEST("switchRhythmMode: dice→realtime caches the seed (the position cache retired — 4-final)", {
         // (ITEM 1) the cachedRhythmPattern copy — the old pin's object — is RETIRED
         // with the array. (STEP 4-final) the step-index cache twins are RETIRED too —

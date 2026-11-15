@@ -1276,7 +1276,16 @@ void MonsoonWidget::appendContextMenu(ui::Menu* menu) {
 
             sub->addChild(new ui::MenuSeparator);
 
-            { 
+            struct QMI : ui::MenuItem { Monsoon* module=nullptr; int value=0;
+              void onAction(const event::Action&) override { if(module) module->switchQmixMode(); }
+              void step() override { if(module) rightText=(module->qmixMode==value)?"✔":""; ui::MenuItem::step(); } };
+            { auto* l = new ui::MenuLabel; l->text = "Q-Mix Mode"; sub->addChild(l);
+              auto* it4=createMenuItem<QMI>("Dice (static)"); it4->module=m; it4->value=0; sub->addChild(it4);
+              auto* it5=createMenuItem<QMI>("Realtime");      it5->module=m; it5->value=1; sub->addChild(it5); }
+
+            sub->addChild(new ui::MenuSeparator);
+
+            {
                 auto* l = new ui::MenuLabel; l->text = "Mute Behavior"; sub->addChild(l);
                 sub->addChild(createBoolPtrMenuItem("Restart on unmute", "", &m->restartOnUnmute));
                 sub->addChild(createBoolPtrMenuItem("Inverted Mute logic (GATE 2)", "", &m->invertMuteLogic));

@@ -1755,6 +1755,7 @@ struct Monsoon : Module {
 
     void switchMelodyMode();
     void switchRhythmMode();
+    void switchQmixMode();
     int pickSemitoneWeighted();
     //inline float unitRandomStochastic() { return engine.pe.unitStochastic(); }
     float genPitchV(int& outSemitone);
