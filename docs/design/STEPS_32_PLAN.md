@@ -945,6 +945,24 @@ CA routing (voice-domain). Intertropical, scales, q-mix, subgate panels (voice-d
   members, D survives untouched by the sizeof guarantee + the same-commit lockstep rule. **PLAN SECTIONS
   TOUCHED:** this block only; Sequencing untouched.
 
+- **D20 — STAGE 2B CONFIRMED GREEN ON CI; STAGE 3 (display) ORDERED TO START, LANTERN FIRST (Rodney:
+  "2b is green on continuous integration github actions. Please go on with stage 3 starting with lantern
+  module"):** the cap flip's full gate chain — the pre-gates (6d0257c6), the flip (b8588806) and the
+  32-step pins (c86b3444) — is confirmed green on GitHub Actions continuous integration (both SDK legs),
+  on top of the local two-leg batteries + the 46-TU warning sweep already logged per commit; Stage 2b is
+  CLOSED. Stage 3 begins, and Rodney sets the order WITHIN the stage: the Lantern module first. The spec
+  is already DECIDED in this doc (the three Lantern blocks below): 16 columns at every pattern length;
+  the displayed bar FOLLOWS THE DISC (the engine's absolute bar index — BAR INDICATOR invariant 1, the
+  display reads engine position and never recomputes it); BOTH BARS RECORDED (the bar-aware write path —
+  bar = step / 16, column = step % 16 — so steps 16–31 land in the bar-2 buffer instead of being dropped
+  by the bar-blind `step >= 16` guard); the manual bar switch / freeze-display options stay LATER. The
+  gate is the Lantern GATE block's pin: a 32-step run records steps 0–15 into the bar-1 buffer and 16–31
+  into bar-2, the displayed bar equals the engine bar index on every step including across the boundary,
+  and ≤16 output is unchanged with the bar-1 buffer holding the full history. The rest of Stage 3 (the
+  Sands 32-column grid parameterised by column count, the inner-disc bar indicator on the Monsoon ring,
+  the probability-grid dimming per the DIMMING RULE) follows Lantern in subsequent work. **PLAN SECTIONS
+  TOUCHED:** this block only; Sequencing untouched.
+
 ## Sequencing
 
 Own branch off the lane tip AFTER feat/position-holders lands (never ride the same train — this touches
