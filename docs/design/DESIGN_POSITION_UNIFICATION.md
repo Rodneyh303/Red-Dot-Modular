@@ -209,6 +209,28 @@ C1 REFINEMENT (Rodney, 2026-11-15 eve) — THE RUNG IS THE ADDRESSED-AGAINST FRA
     style) — key the promote boundary PER LEVEL by addressing mode: parent's phrasePos==0 (cycle)
     or global phrasePos==0 (abs). The engine already knows every level's cycle boundary and mode.
 
+    THE BOUNDARY IS EVALUATED LIVE (not a precomputed period). The promote check is "is my parent
+    at phrasePos==0 THIS step?", tested each step against the parent's CURRENT length — never a
+    fixed period or a countdown. Consequences, which fall out for free:
+      - the parent's length is itself a STEP-rate control (C1), so the acceptance boundary MOVES
+        when the parent length changes mid-run: global 8→4 at step 8 → the voice LOR accepts at
+        12 AND 16 (two global-4 phrases), not at 16 only;
+      - a parent length change MID-parent-phrase routes through C2 (keep-counting) to decide where
+        the next parent phrasePos==0 — and thus the acceptance — lands (the "shrink below the
+        current pos" case).
+    One rule covers every combination (parent shrinks, grows, longer/shorter child, once or
+    repeatedly); a CC implementation that precomputes a period WILL get the step-12 case wrong.
+
+    ROTATION DOES THE ALIGNING (Rodney). In cycle mode rotation re-anchors the voice to the global
+    START (forward) / END (reverse) at EVERY global re-entry — that IS the cycle semantic, applied
+    each global phrase whether or not R is being changed. So the LOR acceptance boundary COINCIDES
+    with the rotation re-anchor: a ROTATION change lands exactly where rotation already re-aligns
+    the voice, at the next global step 1. The voice-16/global-8 picture is therefore really about
+    a ROTATION change — the voice re-aligns to the global start each global phrase regardless; a
+    change to L or O re-parameterises the voice's OWN window rather than this global alignment.
+    (Same one level down: a probability lane's rotation re-aligns it to the VOICE's first step
+    each voice cycle, and its acceptance boundary coincides with that re-anchor.)
+
 C2 (DECIDED — and SELECTED BY C1, not independent). phrasePos KEEPS COUNTING across a
     mid-phrase global change; it does NOT re-seed. Why it is forced by C1: LOR is phrase-
     latched and anchored to global step 1 (= phrasePos==0). RE-SEED would re-fire phrasePos==0
