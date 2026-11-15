@@ -37,6 +37,12 @@
 // 7. The DEFAULT config (post-reset, no updateWindow — the cap window): the mirror
 //    holds.
 //
+// SLICE 5 (CC_PROMPT_POSITION_RESOLVER_SLICE5_PHASECLOCK) PHASE 1: phaseClock(transportTick_)
+// == globalWalk_ asserted at every step of every block above (the marches, DEFAULT, the
+// REAUTHOR re-binds — the third-desync case, the closed form re-taking the new modulus —
+// the SNAP anchor, the LaneDir matrix) — the closed form PROVEN equal to the accumulator
+// BEFORE the field's deletion (option (a); (b) PARKED on C3).
+//
 // FINDING (documented, not pinned): a mid-run setWindow re-author re-bounds
 // globalWalk_ unilaterally ((tick-1) mod newLen) while the played column keeps its
 // place (or parks) — a THIRD desync class beyond the reverse one (which the oracle
@@ -54,6 +60,15 @@ static int g_pass = 0, g_fail = 0;
 static void check(bool ok, const char* what) {
     if (ok) { ++g_pass; }
     else    { ++g_fail; std::printf("  FAIL: %s\n", what); }
+}
+
+// (SLICE 5) the closed form the retired globalWalk_ held: (tick−1) mod len, computed
+// from the ENGINE's own clock + length — the PARKED guard (phaseClock must stay the
+// TICK phase that survives a re-author, never the column / the window top).
+static int tickPhase(const SequencerEngine& e) {
+    const int64_t t = e.transportTick_ - 1;
+    const int m = e.cachedLength > 0 ? e.cachedLength : 1;
+    return (int)((t % m + m) % m);
 }
 
 struct WinCfg { int len, off; };
@@ -76,7 +91,7 @@ static void march(const WinCfg& w, const Prog& p, bool clockMode) {
     if (clockMode) eng.modeSelect = 0;
     eng.updateWindow((float)w.len, 0.f, false, (float)w.off, 0.f, false);
     char msg[200];
-    bool colOK = true, fwdOK = true, defOK = true, entryOK = true, rangeOK = true;
+    bool colOK = true, fwdOK = true, defOK = true, entryOK = true, rangeOK = true, pcOK = true;
     bool reverseHistory = false;
     for (int s = 0; s < 3 && p.segs[s].n > 0; ++s) {
         const int dir = p.segs[s].dir;
@@ -87,9 +102,11 @@ static void march(const WinCfg& w, const Prog& p, bool clockMode) {
             const int col = eng.pos_.playedColumn();
             const int pp  = eng.pos_.phrasePos();
             if (col != eng.stepIndex) colOK = false;
+            if (eng.pos_.phaseClock(eng.transportTick_) != tickPhase(eng)) pcOK = false;   // (slice 5) the closed form, guarded
             if (dir > 0) {
-                const int diff = ((pp - eng.globalWalk_) % w.len + w.len) % w.len;
-                if (!reverseHistory) { if (pp != eng.globalWalk_) fwdOK = false; }
+                const int wG = eng.pos_.phaseClock(eng.transportTick_);   // (slice 5) the retired globalWalk_
+                const int diff = ((pp - wG) % w.len + w.len) % w.len;
+                if (!reverseHistory) { if (pp != wG) fwdOK = false; }
                 else                 { if (diff != 1) fwdOK = false; }   // the measured +1 (mod len), constant
             }
             // the definition, computed from the ENGINE's own bounds (the resolver's
@@ -107,6 +124,9 @@ static void march(const WinCfg& w, const Prog& p, bool clockMode) {
     std::snprintf(msg, sizeof msg, "%s%s len=%d off=%d: playedColumn() == stepIndex at every step",
                   clockMode ? "clock " : "", p.tag, w.len, w.off);
     check(colOK, msg);
+    std::snprintf(msg, sizeof msg, "%s%s len=%d off=%d: phaseClock(transportTick_) == the engine-computed (tick-1) mod len (the PARKED guard)",
+                  clockMode ? "clock " : "", p.tag, w.len, w.off);
+    check(pcOK, msg);
     std::snprintf(msg, sizeof msg, "%s%s len=%d off=%d: phrasePos()==globalWalk_ forward (exact pre-reverse; +1 mod len after reverse history — the measured seed offset)",
                   clockMode ? "clock " : "", p.tag, w.len, w.off);
     check(fwdOK, msg);
@@ -140,12 +160,13 @@ static void matrixMarch() {
         eng.laneDir_[0] = m.lane; eng.laneDirPending_[0] = m.lane;         // the mono lane level
         eng.macroLaneDir_[0] = m.lane;                                     // the macro lane level
         char msg[120];
-        bool colOK = true;
+        bool colOK = true, pcOK = true;
         int  firstDelta = 0; bool deltaSignConsistent = true;
         int  prev = 0;
         for (int k = 0; k < 30; ++k) {
             eng.advancePlayhead(+1, nullptr);
             colOK = colOK && eng.pos_.playedColumn() == eng.stepIndex;
+            pcOK   = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);   // (slice 5) the closed form
             if (k == 8) prev = eng.macroLaneTick_[0];
             if (k > 8 && k <= 14) {
                 const int d = eng.macroLaneTick_[0] - prev;
@@ -157,11 +178,14 @@ static void matrixMarch() {
         for (int k = 0; k < 20; ++k) {
             eng.advancePlayhead(-1, nullptr);
             colOK = colOK && eng.pos_.playedColumn() == eng.stepIndex;
+            pcOK   = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);
         }
         std::snprintf(msg, sizeof msg, "MATRIX %s: the dirs do not disturb the mirror (col == stepIndex)", m.tag);
         check(colOK, msg);
         std::snprintf(msg, sizeof msg, "MATRIX %s: the composed lane direction is a consistent sign (+1/-1 per step)", m.tag);
         check(deltaSignConsistent, msg);
+        std::snprintf(msg, sizeof msg, "MATRIX %s: phaseClock(transportTick_) == the closed form (the dirs do not touch the tick phase)", m.tag);
+        check(pcOK, msg);
         if      (m.tag[0] == 'F' && m.tag[4] == 'F') ff = firstDelta;
         else if (m.tag[0] == 'F' && m.tag[4] == 'R') fr = firstDelta;
         else if (m.tag[0] == 'R' && m.tag[4] == 'F') rf = firstDelta;
@@ -187,14 +211,16 @@ int main() {
     // GATE 7: the DEFAULT config (post-reset, no updateWindow — the cap window)
     {
         SequencerEngine eng; eng.reset();
-        bool colOK = true, fwdOK = true;
+        bool colOK = true, fwdOK = true, pcOK = true;
         for (int k = 0; k < 40; ++k) {
             eng.advancePlayhead(+1, nullptr);
             colOK  = colOK && eng.pos_.playedColumn() == eng.stepIndex;
-            fwdOK  = fwdOK && eng.pos_.phrasePos() == eng.globalWalk_;
+            fwdOK  = fwdOK && eng.pos_.phrasePos() == eng.pos_.phaseClock(eng.transportTick_);   // (slice 5) the retired globalWalk_
+            pcOK   = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);   // (slice 5) the closed form
         }
         check(colOK, "DEFAULT (the cap window, no re-author): playedColumn() == stepIndex");
-        check(fwdOK, "DEFAULT: phrasePos() == globalWalk_ forward");
+        check(fwdOK, "DEFAULT: phrasePos() == the phase clock forward");
+        check(pcOK, "DEFAULT: phaseClock(transportTick_) == the closed form (the cap window)");
     }
     // The mid-run setWindow RE-AUTHOR: the col mirror holds through the park/re-anchor
     // (the globalWalk_ equivalence does NOT — the documented third desync class; slice
@@ -202,22 +228,28 @@ int main() {
     {
         SequencerEngine eng; eng.reset();
         eng.updateWindow(16.f, 0.f, false, 0.f, 0.f, false);
-        bool colOK = true;
+        bool colOK = true, pcOK = true;
         for (int k = 0; k < 10; ++k) {
             eng.advancePlayhead(+1, nullptr);
             colOK = colOK && eng.pos_.playedColumn() == eng.stepIndex;
+            pcOK  = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);
         }
         eng.updateWindow(8.f, 0.f, false, 5.f, 0.f, false);   // 16@0 -> 8@5 mid-run
+        pcOK = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);   // the re-bind, immediately
         for (int k = 0; k < 14; ++k) {
             eng.advancePlayhead(+1, nullptr);
             colOK = colOK && eng.pos_.playedColumn() == eng.stepIndex;
+            pcOK  = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);
         }
         eng.updateWindow(12.f, 0.f, false, 3.f, 0.f, false);  // then 12@3, and reverse
+        pcOK = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);   // the re-bind, immediately
         for (int k = 0; k < 14; ++k) {
             eng.advancePlayhead(-1, nullptr);
             colOK = colOK && eng.pos_.playedColumn() == eng.stepIndex;
+            pcOK  = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);
         }
         check(colOK, "REAUTHOR: the mirror holds across mid-run setWindow re-authors (the park + re-anchor)");
+        check(pcOK, "REAUTHOR: phaseClock(transportTick_) == the closed form through the re-binds (the tick phase re-takes the new modulus — the PARKED guard)");
     }
     // The phase snap (snapToPhaseStep): the mirror follows the directly-set column
     {
@@ -226,11 +258,13 @@ int main() {
         for (int k = 0; k < 10; ++k) eng.advancePlayhead(+1, nullptr);
         eng.snapToPhaseStep(48, 24);
         bool ok = eng.pos_.playedColumn() == eng.stepIndex;
+        ok = ok && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);   // the anchor seeds the clock (slice 5)
         for (int k = 0; k < 6; ++k) {
             eng.advancePlayhead(+1, nullptr);
             ok = ok && eng.pos_.playedColumn() == eng.stepIndex;
+            ok = ok && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);
         }
-        check(ok, "SNAP: the mirror follows the phase snap (and continues after it)");
+        check(ok, "SNAP: the mirror follows the phase snap (and continues after it; phaseClock == the closed form through the anchor)");
     }
     // GATE 5: the LaneDir matrix
     matrixMarch();

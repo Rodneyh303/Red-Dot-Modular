@@ -281,7 +281,7 @@ static void captureStep(const SequencerEngine& eng, const StepResult& r, Capture
     }
     // Display state: the walks + the window + the mask projections (the ≤16 cells).
     for (int s = 0; s < 7; ++s) cap.i16(eng.laneTick_[s]);
-    cap.i16(eng.globalWalk_);
+    cap.i16(eng.pos_.phaseClock(eng.transportTick_));   // (slice 5) the retired globalWalk_ — the same value, the digest unchanged
     cap.i16(eng.cachedLength);
     cap.u32(low16(eng.windowMask));
     cap.u32(low16(eng.effectiveOutputMaskMacro()));

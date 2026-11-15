@@ -57,6 +57,13 @@ struct PositionResolver {
     bool phraseOverridden_  = false;
 
     static int wrapRing(int v) { return ((v % kMaskRing) + kMaskRing) % kMaskRing; }
+    // Negative-safe mod (mirrors SequencerEngine::wrapMod's body verbatim — unreachable
+    // from here by include order; the identity harness pins the equality).
+    static int wrapModTick_(int64_t v, int m) {
+        int64_t r = v % m;
+        if (r < 0) r += m;
+        return (int)r;
+    }
     // The contiguous-window containment — == isStepInWindow's mask test for the windows
     // setWindow builds. NOTE: the PARKED column (startStep-1, after setWindow re-anchors
     // a played column out of the new window) is deliberately OUT — it mirrors the engine.
@@ -125,4 +132,15 @@ struct PositionResolver {
         if (col_ < 0) return 0;   // the pre-start park: no phrase yet
         return (dir_ > 0) ? wrapRing(col_ - startStep_) : wrapRing(endStep_ - col_);
     }
+    // (SLICE 5 — CC_PROMPT_POSITION_RESOLVER_SLICE5_PHASECLOCK, option (a)) The abs-mode
+    // read coordinate: the transport's absolute phase in the window, ≡ the retired
+    // globalWalk_ (wrapMod(tick − 1, len)). A VIEW (no stored state) — len_ is the
+    // resolver's own, transportTick the engine's ONE clock. The invariant was proven
+    // BEFORE the deletion (the identity harness, phase 1): the accumulator's three write
+    // sites (the setWindow re-bind, the anchorTransport seed, the tickHolders increment)
+    // all leave it ≡ this closed form, so it carries no state the clock lacks.
+    // (b) PARKED: this is the TICK phase, which SURVIVES a window re-author (re-bound
+    // from the tick, not reset to the window top); it is NOT the column — redefining
+    // abs on playedColumn() is a behaviour change gated on the C3 holder model.
+    int phaseClock(int64_t transportTick) const { return wrapModTick_(transportTick - 1, len_); }
 };

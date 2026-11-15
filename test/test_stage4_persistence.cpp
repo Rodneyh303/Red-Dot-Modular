@@ -153,7 +153,7 @@ static void captureStep(const SequencerEngine& eng, const StepResult& r, Capture
     // The window state IS the persistence subject: the restored push must land it
     // identically to the authored call, and everything that reads it must follow.
     for (int s = 0; s < 7; ++s) cap.i16(eng.laneTick_[s]);
-    cap.i16(eng.globalWalk_);
+    cap.i16(eng.pos_.phaseClock(eng.transportTick_));   // (slice 5) the retired globalWalk_ — the same value, the digest unchanged
     cap.i16(eng.cachedLength);
     cap.i16(eng.cachedOffset);
     cap.i16(eng.startStep);

@@ -9,7 +9,7 @@
 //              reader (a non-divisive lane free-runs against the 32 exactly as it did
 //              against the 16).
 //   bucket 2 — the IDENTITY/TRANSPORT defaults: the out-of-range fallbacks and the
-//              TRANSPORT default (cachedLength/endStep/globalWalk_) take the cap
+//              TRANSPORT default (cachedLength/endStep/the phase clock at t=0) take the cap
 //              (read-identical under the cap arm); the LANE-WINDOW LOR seeds stay 16,
 //              NAMED as kDefaultPatternLen (a distinct constant) so the default-config
 //              goldens hold — moving them to the cap is the DEFERRED round.
@@ -148,9 +148,9 @@ int main() {
         SequencerEngine eng; eng.reset();
         const auto M = VoiceResolver::mono();
         check(eng.cachedLength == CAP && eng.endStep == CAP - 1
-           && eng.globalWalk_ == dotModular::kMaskRing - 1
+           && eng.pos_.phaseClock(eng.transportTick_) == dotModular::kMaskRing - 1
            && eng.dnaLength == CAP,
-              "GATE 3a: the TRANSPORT default = the cap (cachedLength/endStep/globalWalk_/dnaLength)");
+               "GATE 3a: the TRANSPORT default = the cap (cachedLength/endStep/the phase clock at t=0/dnaLength)");
         check(eng.strandLen(0) == 16 && eng.macroLOR_[0] == 16,
               "GATE 3b: the LANE-WINDOW seeds = kDefaultPatternLen (16 — the stay-16 group)");
         check(eng.voiceLor(M, 0) == CAP && eng.macroVoiceLor_[0] == CAP

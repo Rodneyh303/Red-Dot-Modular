@@ -228,8 +228,9 @@ int main() {
     e.recomputeLaneTicks();     // the offsets-only refresh: the clock held
     check(e.transportTick_ == before, "WRITE SITE: the offsets-only refresh leaves the transport verbatim");
     // (CC_PROMPT_16_TRIAGE option C re-aim) the transport default len is the cap.
-    check(e.globalWalk_ == (int)(((before - 1) % dm::kPatternLengthCap + dm::kPatternLengthCap) % dm::kPatternLengthCap),
-          "WRITE SITE: the global walk holder reads (tick−1) mod len — nothing else consumes the tick");
+    // (SLICE 5) the retired globalWalk_ reads through the resolver's phaseClock view.
+    check(e.pos_.phaseClock(e.transportTick_) == (int)(((before - 1) % dm::kPatternLengthCap + dm::kPatternLengthCap) % dm::kPatternLengthCap),
+          "WRITE SITE: the phase clock reads (tick−1) mod len — nothing else consumes the tick");
 }
 
 std::printf("%d passed, %d failed\n", passed, failed);
