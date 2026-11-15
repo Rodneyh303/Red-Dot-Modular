@@ -192,6 +192,12 @@ C1 REFINEMENT (Rodney, 2026-11-15 eve) — THE RUNG IS THE ADDRESSED-AGAINST FRA
         global is its frame);
       - global length + offset stay at STEP — the drive-level reposition, not a nested LOR.
     So the addressing MODE is the frame, and the acceptance cadence follows it.
+    EXAMPLE (the parent frame can be SHORTER than the level's OWN length): a voice lane of
+    length 16 under a GLOBAL pattern of 8 accepts its LOR change after step 8 — the global
+    phrase, its parent frame — NOT after its own 16. This is intended: the voice re-anchors to
+    global step 1 every global phrase (every 8), so the change lands exactly at that re-anchor,
+    mid-way through the voice's own 16-step traversal. The acceptance rate is the RELATIONSHIP's
+    (voice-against-global = the global phrase), not the level's internal length.
     WHY better, not just looser: (1) SELF-CALIBRATING — the latch holds exactly one relationship
     period (one parent cycle); a short cycle is a short relationship, so one full instance still
     plays before it can change. (2) LANDS AT THE NATURAL RE-ENTRY — the parent boundary is where
