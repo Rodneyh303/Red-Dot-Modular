@@ -100,7 +100,13 @@ inline bool isStraitsSubgateChainModel(rack::Model* m) {
         || m == modelStraitsSubgatePanelGhostRest
         || m == modelStraitsSubgatePanelGhostLegato
         || m == modelStraitsSubgatePanelGhostAccent
-        || m == modelStraitsSubgatePanelGhostAdvance;
+        || m == modelStraitsSubgatePanelGhostAdvance
+        // QMIX_OCTAVE Stage 3 (CC_PROMPT_QMIX_OCTAVE): the qmix-octave
+        // per-voice panel joins the family — it docks into the SAME Straits
+        // chain (after the subgate panels), so the seam detection + the
+        // resnap chain checks must accept it (the extern lives in Monsoon.hpp,
+        // included above).
+        || m == modelStraitsQmixOctPanel;
 }
 
 // ── the SUBPANEL module — the per-voice tier for ONE (level × decision) ─────

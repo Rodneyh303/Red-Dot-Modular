@@ -56,6 +56,9 @@ inline bool isSuiteChainModel(const rack::Model* m) {
         || m == modelStraitsSubgatePanelGhostLegato
         || m == modelStraitsSubgatePanelGhostAccent
         || m == modelStraitsSubgatePanelGhostAdvance
+        || m == modelStraitsQmixOctPanel   // QMIX_OCTAVE Stage 3: the qmix-octave per-voice panel
+                                           //   (docks after the subgate panels — hop-through, LOCKSTEP with
+                                           //   MonsoonExpanderManager's scan recognised-model set)
         || m == modelMonsoonCausewayPolyExpander
         || m == modelMonsoonChangiExpander
         || m == modelMonsoonChangiT2Expander   // claimed expander (manager caches it) — was MISSING here,

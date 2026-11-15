@@ -45,6 +45,9 @@
 <circle cx="203.36" cy="227.36" r="11.81" fill="#e2ddd2" stroke="#5878b8" stroke-width="1.77" stroke-opacity="0.8"/>
 <circle cx="120.0" cy="268.7" r="13.29" fill="#e8e2d6" stroke="#b0a898" stroke-width="1.48"/>
 <line x1="120.0" y1="268.7" x2="120.0" y2="258.07" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle cx="72.08" cy="268.7" r="13.29" fill="#e8e2d6" stroke="#8060c0" stroke-width="1.48"/>
+<line x1="72.08" y1="268.7" x2="72.08" y2="258.07" stroke="#c0c8d0" stroke-width="1.48"/>
+<circle cx="51.41" cy="268.7" r="3.84" fill="#8060c0"/>
 <circle cx="32.3" cy="328.05" r="11.81" fill="#e2ddd2" stroke="#b0a898" stroke-width="1.48"/>
 <circle cx="67.38" cy="328.05" r="11.81" fill="#e2ddd2" stroke="#b0a898" stroke-width="1.48"/>
 <circle cx="102.46" cy="328.05" r="11.81" fill="#e2ddd2" stroke="#b0a898" stroke-width="1.48"/>
@@ -90,6 +93,7 @@
 <circle id="param_sbg_1_3" cx="203.36" cy="141.73" r="0.5" fill="none" stroke="none"/>
 <circle id="mod_sbg_1_3" cx="203.36" cy="227.36" r="0.5" fill="none" stroke="none"/>
 <circle id="param_voicecount" cx="120.0" cy="268.7" r="0.5" fill="none" stroke="none"/>
+<circle id="param_qoct_g" cx="72.08" cy="268.7" r="0.5" fill="none" stroke="none"/>
 <circle id="output_polygate" cx="32.3" cy="328.05" r="0.5" fill="none" stroke="none"/>
 <circle id="output_polystepgate" cx="67.38" cy="328.05" r="0.5" fill="none" stroke="none"/>
 <circle id="output_polyslegato" cx="102.46" cy="328.05" r="0.5" fill="none" stroke="none"/>

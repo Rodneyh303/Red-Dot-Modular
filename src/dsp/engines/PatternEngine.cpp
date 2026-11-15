@@ -288,14 +288,23 @@ float PatternEngine::genPitch(int& outSemitone, const PatternInput& in) {
     return genPitchLive(outSemitone, in, unitMelody(), unitMelody());
 }
 
-// Generate a pitch voltage using provided random floats for semitone and octave selection.
-float PatternEngine::genPitchLive(int& outSemitone, const PatternInput& in, float r_semi, float r_oct) {
+// QMIX_OCTAVE Stage 1 (CC_PROMPT_QMIX_OCTAVE + QMIX_OCTAVE_PLAN.md): genPitchLive's roll
+// prologue + its formula-grouped components, in ONE place. genPitchLive re-expressed on this
+// is BIT-IDENTICAL: same pickSemitone, same octave roll, and the sum keeps genPitchLive's own
+// left-to-right float-op association (see genPitchLive below). The QMIX_OCTAVE mixed rows
+// consume the components (OCT from one source, DEG from the other) at
+// SequencerEngine::voicePitch. picked=false = the failed pick (genPitchLive's 0.f early-out).
+PatternEngine::PitchSplit PatternEngine::genPitchSplit(const PatternInput& in, float r_semi, float r_oct) {
+    PitchSplit s;
     // Degree count from the shared tuning table (12 default; up to 24 for a Micro-24). pickSemitone is
     // N-bounded so the weighted walk only considers active degrees.
+    // A FAILED pick (sem<0) still rolls the octave: the QMIX_OCTAVE deg=ext mixed row composes
+    // the generated OCTAVE regardless of the degree axis's pick (the axes are independent reads).
+    // genPitchLive keeps the failed-pick RESULT unchanged (0.f, outSemitone 0) via its !picked
+    // early-out — the unused terms are never consumed there.
     int sem = pickSemitone(in.semiWeights, tuning.N, r_semi);
-    outSemitone = (sem < 0) ? 0 : sem;
-    if (sem < 0) return 0.f;
-
+    s.picked = (sem >= 0);
+    s.sem = (sem < 0) ? 0 : sem;
     float lo = in.octaveLo, hi = in.octaveHi;
     if (hi < lo) std::swap(lo, hi);
     int oL = (int)std::floor(lo);
@@ -303,26 +312,45 @@ float PatternEngine::genPitchLive(int& outSemitone, const PatternInput& in, floa
     // Ensure r_oct roll isn't exactly 1.0 to prevent oOB indexing
     float roll = pe_clamp(r_oct, 0.f, 0.9999f);
     int oct = oL + (int)std::floor(roll * float(oH - oL + 1));
+    s.octTerm = float(oct) - 4.f;
 
     // Degree -> voltage via the shared TuningTable (Sikit Phase 1). The octave integer and the
     // 12-TET transpose stay unchanged (Rodney's Phase-1 ruling: transpose remains 12-TET semitones);
     // only the WITHIN-OCTAVE degree term is table-driven. While the table is the equal-division
     // 12-TET default, take the EXACT legacy expression so this refactor is bit-identical; the cents
     // path activates only when a Sikit publishes non-default cents.
-    float v;
+    // The two formulas' own groupings:
+    //   12-TET: v = (oct-4) + (sem+transpose)/12   -> degTerm = (sem+transpose)/12, shiftTerm 0
+    //           (the transpose rides the DEGREE term — the formula's own placement);
+    //   Micro:  v = (oct-4) + degreeVolts(sem) + octShift -> degTerm = degreeVolts(sem),
+    //           shiftTerm = round(transpose/12) (TRANSPOSE IS OCTAVES-ONLY, Rodney — it rides
+    //           the OCTAVE term; a 12-TET semitone shift (/12) lands OFF the tuning grid, an
+    //           octave is +1V in ANY tuning; Monsoon's transpose knob is +-12 semitones -> snap
+    //           to the nearest whole octave and apply as whole volts, +-1 octave from this knob;
+    //           Intertropical's own per-output knobs cover +-2).
     if (tuning.isDefault12TET) {
-        v = float(oct) - 4.f + (sem + in.transpose) / 12.f;   // legacy path — byte-identical
+        s.degTerm   = (sem + in.transpose) / 12.f;   // legacy path — byte-identical
+        s.shiftTerm = 0.f;
     } else {
-        // Custom tuning (Micro): TRANSPOSE IS OCTAVES-ONLY (Rodney). A 12-TET semitone shift (/12)
-        // lands OFF the tuning grid; an octave is +1V in ANY tuning, so it's always tuning-native.
-        // Monsoon's transpose knob is ±12 semitones → snap to the nearest whole octave and apply as
-        // whole volts (±1 octave from this knob; Intertropical's own per-output knobs cover ±2).
-        const float octShift = std::round(in.transpose / 12.f);   // -1 / 0 / +1
-        v = float(oct) - 4.f + tuning.degreeVolts(sem) + octShift;
+        s.degTerm   = tuning.degreeVolts(sem);
+        s.shiftTerm = std::round(in.transpose / 12.f);   // -1 / 0 / +1
     }
-    // Allow full bipolar range for 1V/oct standard; clamping to 0V clips octaves 0-3
-    return pe_clamp(v, -5.f, 5.f);
+    return s;
 }
+
+// Generate a pitch voltage using provided random floats for semitone and octave selection.
+float PatternEngine::genPitchLive(int& outSemitone, const PatternInput& in, float r_semi, float r_oct) {
+    const PitchSplit s = genPitchSplit(in, r_semi, r_oct);
+    outSemitone = s.sem;
+    if (!s.picked) return 0.f;
+    // Allow full bipolar range for 1V/oct standard; clamping to 0V clips octaves 0-3.
+    // The sum keeps the two formulas' own left-to-right association: 12-TET
+    // (float(oct)-4) + ((sem+transpose)/12), with shiftTerm 0 — x + 0.f is an exact identity
+    // and the range admits no -0 (octTerm is a whole number; degTerm 0 only at +0); Micro is
+    // exactly ((float(oct)-4) + degreeVolts(sem)) + octShift == (octTerm + degTerm) + shiftTerm.
+    return pe_clamp((s.octTerm + s.degTerm) + s.shiftTerm, -5.f, 5.f);
+}
+
 
 // Apply variation bias to a note length index.
 int PatternEngine::varyNoteIndex(int baseIdx, const PatternInput& in, float r) {

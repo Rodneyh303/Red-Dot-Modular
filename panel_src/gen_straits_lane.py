@@ -39,6 +39,12 @@ TINTS = {
     "ghost_legato":    dict(tint="#5070ac", wave="#304364", knob="#141d35", tinttext="#5070ac"),
     "ghost_advance":   dict(tint="#4868a0", wave="#2b3e5a", knob="#121a30", tinttext="#4868a0"),
     "ghost_accent":    dict(tint="#406094", wave="#273850", knob="#10172b", tinttext="#406094"),
+    # QMIX_OCTAVE Stage 3 (CC_PROMPT_QMIX_OCTAVE + QMIX_OCTAVE_PLAN.md): the
+    # qmix-octave per-voice panel — ONE panel, so the qmix violet FAMILY HUE
+    # itself (no lightness stepping needed — the stepping exists to tell the
+    # eight subgate panels apart within their level families); the widget's
+    # "Q-MIX" over "OCTAVE" lettering + the left-gutter dot identify it.
+    "qoct":            dict(tint="#8060c0", wave="#4e3a78", knob="#241a3a", tinttext="#8060c0"),
 }
 
 MARGIN   = 5.0
@@ -154,6 +160,17 @@ if __name__ == "__main__":
             with open(path, 'w') as f:
                 f.write(gen(key, dark, subgate=True))
             print(f"Generated {path}")
+    # QMIX_OCTAVE Stage 3 (CC_PROMPT_QMIX_OCTAVE): the qmix-octave per-voice
+    # panel — ONE 6/6/4 165-wide panel, the subgate build EXACTLY (the
+    # tint-neutral param_sgv_ anchors — the widget class binds by that family;
+    # the left-gutter dot; NO mod jack — modulation is Causeway). The qmix
+    # violet family hue itself (the "qoct" key above).
+    for dark in [True, False]:
+        suffix = "dark" if dark else "light"
+        path = os.path.join(outdir, f"StraitsQmixOctPanel_{suffix}.svg")
+        with open(path, 'w') as f:
+            f.write(gen("qoct", dark, subgate=True))
+        print(f"Generated {path}")
     # The lane panels (the original behaviour, unchanged)
     tintkey = sys.argv[1] if len(sys.argv) > 1 else "qmix"
     for dark in [True, False]:
