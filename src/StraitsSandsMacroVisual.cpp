@@ -1060,7 +1060,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 // Pendulum/PingPong. Same pattern as East's laneTickV_.
                 // MVC: hide the playhead when stopped (match Mono's started ? tick : -1), so
                 // rotation CV only moves the chevron, not the playhead, when the seq is stopped.
-                int ph = (eng.stepIndex >= 0) ? eng.macroLaneTick_[l] : -1;
+                int ph = eng.started() ? eng.macroLaneTick_[l] : -1;
                 // (fix/variation-scan-display) non-VAR lanes draw the SHARED window
                 // playhead (per-voice tick + LOR → the ONE law). The VAR lane draws
                 // THIS view-voice's SCANNED read index (engine stepAdvanceStrandIdx +
@@ -1104,7 +1104,7 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
             // frame is the MACRO ROW's walk (bounded by this mL/mO/mR), so the cell
             // runs INSIDE the authored window (L=8 @ O=16 walks [16,24), the same
             // frame value the Macro lanes' seed hangs under — one law, one walk).
-            int rp = (eng.stepIndex >= 0) ? eng.macroFrameRead() : -1;
+            int rp = eng.started() ? eng.macroFrameRead() : -1;
             int sg = eng.macroFrameSign();
             visualEditor->setRangeState(mL, mO, mR, rp, sg, false, rangeLabel_);
             // The mask surface reads the ENGINE's effective pattern (the UI-completion
@@ -1350,7 +1350,7 @@ size_t StraitsSandsMacroVisual::sweepFingerprint_(void* dst) {
             const int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
             const int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
             const int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
-            stepArr[l] = calcPlayhead(eng.stepIndex, ownLen, ownOff, ownRot) & 0x0F;
+            stepArr[l] = calcPlayhead(eng.playedColumn(), ownLen, ownOff, ownRot) & 0x0F;
         }
         const bool ch = sweepSigChanged(sweepSig_, eng, stepArr.data(), nV);
 #ifdef MONSOON_PROFILE
@@ -1375,7 +1375,7 @@ void StraitsSandsMacroVisual::sweepProduce_() {
         const int ownLen = std::max(1, (int)std::lround(macroBase[l][0] + macroCVDelta[l][0]));
         const int ownOff = (int)std::lround(macroBase[l][1] + macroCVDelta[l][1]);
         const int ownRot = (int)std::lround(macroBase[l][2] + macroCVDelta[l][2]);
-        stepArr[l] = calcPlayhead(eng.stepIndex, ownLen, ownOff, ownRot) & 0x0F;
+        stepArr[l] = calcPlayhead(eng.playedColumn(), ownLen, ownOff, ownRot) & 0x0F;
     }
     // Capture the sig exactly as the resolve is about to consume it (the resolve is
     // read-only on every fingerprinted input, so the placement here is free).
