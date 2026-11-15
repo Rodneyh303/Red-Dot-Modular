@@ -1,14 +1,21 @@
 # DESIGN — unify the TWO position systems into one robust authority (DRY/ODR)
 
-STATUS: scope LOCKED (decisions below). Ready to become the CC implementation prompt /
-slice 1. Branch: off fix/macro-voicelane-shared-frame.
+STATUS: IMPLEMENTED (2026-11-16). The resolver unification shipped — slices 1-5 + step 3b + step
+4-final all merged to `lane-expander-refactor`. `pos_` (PositionResolver) is the single position
+authority: `stepIndex` is retired (now `pos_.playedColumn()`, field deleted in step 4-final) and
+`globalWalk_` is retired (now `pos_.phaseClock(transportTick_)`, a view, deleted in slice 5). The
+underlying global counter `totalStepsElapsed` is also dead (POSITION_HOLDER_MODEL.md — per-holder
+phases). See the MIGRATION PLAN section for the per-step status. The sections below are kept as the
+design record + the still-OPEN cadence/direction threads.
 
 ADDENDUM (2026-11-15, OPEN): see "INPUT CADENCE / ACCEPTANCE MODEL" below — the RATE at
 which position's inputs (global range, LOR, direction, modulation) are recognised/accepted,
 and how that composes with the existing effect-timing ladder. C1 (rungs), C2 (keep-counting),
-C4 (display cadence) and C3 (per-level direction, GATED on the position-holder migration) all
-DECIDED 2026-11-15. Design-ahead: C1/C2/C4 land as their OWN slice AFTER S2; C3 rides the
-counter-removal migration, not that slice. NOT slice 1.
+C4 (display cadence) and C3 (per-level direction) all DECIDED 2026-11-15. Design-ahead: C1/C2/C4
+land as their OWN slice. C3 was GATED on the position-holder migration — that migration is now DONE
+(POSITION_HOLDER_MODEL.md, the counter is killed and `test_position_holders` is green), so C3's gate
+is LIFTED; the per-level-direction BEHAVIOUR is now buildable (not yet built). These are the OPEN
+work left on this doc; the resolver unification itself is shipped (see top STATUS).
 See also DRIVE DIRECTION MODEL below (2026-11-15) — gate direction is GLOBAL, not voice-1/mono-
 sourced; event modes default forward with a REVERSE-ALL control; HOLD per-voice; and the
 VARIATION-centre fix (knob 0.5 = repeat-in-place, no forward creep).
@@ -409,23 +416,28 @@ mono de-specialization (gate direction global, not mono-sourced) is noted there.
 
 ## MIGRATION PLAN (incremental; goldens green at EVERY step — this is the whole risk)
 This touches transport timing; the goldens are the contract. Do it in landable slices,
-each bit-identical on the existing (forward / offset-0 / ≤16) configs:
+each bit-identical on the existing (forward / offset-0 / ≤16) configs.
+STATUS (2026-11-16): steps 1-5 DONE (the resolver unification shipped); step 6 (the cadence
+behaviour slice) is the OPEN work.
 
-1. **Introduce the resolver as a PURE MIRROR.** Compute playedColumn + phrasePos inside
-   it, assert they reproduce the CURRENT stepIndex and globalWalk_ bit-identically for a
-   broad config sweep (a golden-identity harness: forward, reverse, every LaneDir, the
-   non-divisive lengths, offsets). Nothing consumes it yet. GOLDEN-IDENTICAL by
-   construction.
-2. **Migrate the DERIVE** to read phrasePos from the resolver instead of globalWalk_.
-   The forward phrasePos == globalWalk_ (bit-identical); reverse now has a correct,
-   stable entry. test_reverse_rotation_anchor goes green here; run_all + goldens stay
-   green (only reverse+mapped reads change, which no golden pins — confirm).
-3. **Migrate the consumers** of stepIndex (output, sync, UI, Lantern) to playedColumn,
-   one site at a time, each verified no-change.
-4. **Delete** the redundant field once it has no readers.
-5. The rotation-anchor fix is now `phrasePos == 0`, direction-agnostic — delete the
-   fragile globalWalk_-offset attempts entirely.
-6. **(CADENCE slice — after S2, gated on C1–C3)** latch the resolver's inputs at their
+1. **[DONE — slice 1]** Introduce the resolver as a PURE MIRROR. Compute playedColumn + phrasePos
+   inside it, assert they reproduce the CURRENT stepIndex and globalWalk_ bit-identically for a
+   broad config sweep (the `test_position_resolver_identity` harness: forward, reverse, every
+   LaneDir, the non-divisive lengths, offsets). GOLDEN-IDENTICAL by construction.
+2. **[DONE — slice 2 + 2b]** Migrate the DERIVE to read phrasePos from the resolver instead of
+   globalWalk_; the reverse/phase entry is now correct and stable. `test_reverse_rotation_anchor` +
+   `test_phase_rotation_anchor` green.
+3. **[DONE — slice 3 + step 3b]** Migrate the consumers of stepIndex (output, sync, UI, Lantern) to
+   playedColumn — slice 3 did the headless managers, step 3b the widget/visual readers via the
+   public `playedColumn()`/`started()` accessors.
+4. **[DONE — slice 4 + step 4-final]** Slice 4 unified the advance (stepIndex a derived mirror of
+   `pos_`); step 4-final DELETED the `stepIndex`/`lastStepIndex` fields and the vestigial mode-switch
+   position cache. ALSO (slice 5): `globalWalk_` retired as `pos_.phaseClock(transportTick_)`, a
+   resolver view, field deleted — see the globalWalk_ resolution section (option (a) shipped).
+5. **[DONE — slice 4]** The rotation-anchor fix is `phrasePos == 0`, direction-agnostic; the fragile
+   globalWalk_-offset attempts are gone.
+6. **[OPEN — the cadence slice] (after S2, gated on C1–C3; C3's holder-model gate is now LIFTED)**
+   latch the resolver's inputs at their
    chosen rungs (see INPUT CADENCE / ACCEPTANCE MODEL): generalize the direction
    pending→promote machinery to the global range (and LOR, if not already step-latched).
    This is the one slice that INTENTIONALLY moves behaviour for a mid-phrase window move —
@@ -453,10 +465,14 @@ each bit-identical on the existing (forward / offset-0 / ≤16) configs:
 
 ## globalWalk_ — WHY TWO QUANTITIES, AND HOW TO RETIRE THE FIELD (Rodney + CC, 2026-11-15)
 
-STATUS: PARKED. Direction (a) — resolver coordinates both coherently — is DECIDED as the
-migration move (behaviour-preserving, safe before C3). Direction (b) — collapse abs onto the
-column — is PARKED on the C3 holder-model decision (the "unit of absoluteness"). Do NOT pick
-(b) until C3 settles.
+STATUS (2026-11-16): direction (a) is DONE — shipped as SLICE 5. `globalWalk_` the field is
+DELETED; `pos_.phaseClock(transportTick_)` is its closed-form view (`≡ (t−1) mod cachedLength`),
+behaviour-preserving, with the identity harness's `tickPhase` guard pinning it stays the TICK phase
+(not the column). Direction (b) — collapse abs onto the column (reset abs to the window top at a
+re-author) — remains PARKED: it is a behaviour change on the "unit of absoluteness" (transport vs
+phrase). Its gate, the holder model, is now BUILT (POSITION_HOLDER_MODEL.md), so (b) is decidable
+with C3 — but until that decision, (a) stands and (b) must NOT be picked. The analysis below is the
+record of why (a) was the safe, correct move.
 
 ### The two quantities (one per addressing MODE)
 Both feed the SAME read law `wnow = (laneTickFor(md, ft0+1, L) + rho) % L`, with a different
@@ -527,7 +543,9 @@ each phrase BY DESIGN, then col and tick-phase coincide at every re-author by co
 is the correct reading, and the phaseClock_ becomes redundant.
 
 ### Decision tree
-1. NOW: do (a). One re-author law in the resolver, both quantities coherent, globalWalk_ the
-   field retired, no behaviour change. Right under BOTH branches of C3 → safe to do first.
-2. LATER (with C3): decide the unit of absoluteness. TRANSPORT → (a) is the end state, (b) is
-   wrong. PHRASE → (b) falls out for free, retire phaseClock_ as a second simplification.
+1. **[DONE]** (a) shipped (SLICE 5): `globalWalk_` the field retired to `pos_.phaseClock`, one
+   coherent re-author law, no behaviour change — right under BOTH branches of C3.
+2. **[OPEN — now decidable]** with C3, decide the unit of absoluteness. TRANSPORT → (a) is the end
+   state, (b) is wrong, nothing more to do. PHRASE → (b) (redefine abs on the column) is the correct
+   reading and `phaseClock` becomes redundant — a second simplification. The holder model (b)'s gate
+   is built, so this is a live decision whenever C3 is taken.

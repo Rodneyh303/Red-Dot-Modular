@@ -1,5 +1,40 @@
 # POSITION-HOLDER MODEL — kill the global step counter (part of the UAS fix-up, BEFORE 32 steps) (Rodney)
 
+## STATUS — IMPLEMENTED (2026-11-16)
+DONE. The bit-identical refactor this doc specifies landed as commit `30ac9f56` ("the
+POSITION-HOLDER MODEL — the global step counter KILLED"), now on `lane-expander-refactor`. What
+shipped, verified:
+- `totalStepsElapsed` is DELETED — NO walk, read, cache or sign derives from a global counter any
+  more. Every walk owns a bounded PHASE (a position in its OWN cycle, ≡ its raw walk coordinate mod
+  the walk's own period), advanced LOCALLY on each advance event: `lanePhase_` / `lanePhaseV_` /
+  `macroLanePhase_` / `voiceFramePhase_` / `macroFramePhase_` / `globalT0Phase_`. The RE-ANCHOR,
+  WARM-PHASE and SIGN laws live in `SequencerEngine.hpp`'s holder block (~:469-506).
+- `transportTick_` survives ONLY as the anchor seed the irreducible write sites maintain (reset→0,
+  the advance ±1, the Mode E snap, the Beat-1 reset) and that `anchorTransport` consumes transiently
+  to seed the holder congruences. It is NOT the master timeline — nothing is a function of it.
+- The poly-advance bridge (`advanceOffset_`) shipped FIRST (sequencing step 1) and stays live.
+- The TOP holder (the global window walk, the old `globalWalk_`) is now `pos_.phaseClock(transportTick_)`
+  — a resolver VIEW, `≡ (t−1) mod cachedLength` (SLICE 5). `stepIndex` is `pos_.playedColumn()` (step
+  4-final, field deleted). The dual position system is collapsed to ONE authority, `pos_`.
+- Proof: `test_position_holders` (16 pins — march equivalence vs the f(counter) closed forms at EVERY
+  step, backward retrace, the re-anchor / warm-phase / anchor / write-site laws, the offset diff) +
+  the full golden battery, byte-identical.
+
+NOW UNBLOCKED (the holder model was the gate):
+- **32 STEPS** — the ring is ALREADY 32 (`kMaskRing = kPatternLengthCap = kMaxPatternSteps = 32`,
+  STAGE 2b); the length-agnostic holders made it nearly free, as predicted. (Any remaining 32-step
+  work is UI / light-ring, not the engine timeline.)
+- **C3 per-level direction** and the DRIVE DIRECTION MODEL's **reverse-all + per-voice hold** (see
+  DESIGN_POSITION_UNIFICATION.md) — these rode the counter removal; the gate is lifted, the
+  BEHAVIOUR itself is the remaining build.
+- The **globalWalk_ (b) decision** (the "unit of absoluteness" — transport vs phrase) can now be
+  taken on the holder model.
+
+The sections below are the ORIGINAL spec + rationale (the diagnosis, the natural model, the
+sequencing argument) and the migration SITE-LIST — kept for the reasoning. NOTE: the inventory's
+line numbers are PRE-migration; every site it lists was ported (the commit enumerates them). Read
+them as the record of WHY and WHAT moved, not as a live map.
+
 ## THE DIAGNOSIS (Rodney) — the global step counter is a dumb construct/dependency
 Currently every read position is a function of ONE global counter (totalStepsElapsed): laneTick_/laneTickV_
 are CACHES recomputed from it via LOR. This was defended on reasons that DO NOT survive scrutiny:
@@ -94,7 +129,7 @@ Ships the cool feature (per-voice stuttering — nearly dumped) NOW, and it does
 for the counter cleanup. Musical payoff + de-risked refactor from one piece of work.
 
 ════════════════════════════════════════════════════════════════════════════════
-## READER INVENTORY (refreshed post-UAS, HEAD bd8f0b1) — the counter is ALREADY mostly a pure driver
+## READER INVENTORY (refreshed post-UAS, HEAD bd8f0b1) — [PORTED — see STATUS; line numbers are PRE-migration] the counter is ALREADY mostly a pure driver
 Grepped every totalStepsElapsed site. Most of the 23 hits are COMMENTS explaining the counter. The ACTUAL
 code sites are few and cleanly classified — the removal is SMALL, because UAS already made nearly every
 read go through driverTickAt. Classification:
@@ -136,7 +171,7 @@ So the inventory is the SITE LIST for the migration, not a reason to skip it:
   REPLACE with "read the holder's own owned position".
 - :1928/1984 debug printf — diagnostic, drop or adapt.
 
-## PLAN (restored) — migrate to position-holders; THEN 32 steps is free
+## PLAN (restored) — [DONE — see STATUS; shipped as 30ac9f56] migrate to position-holders; THEN 32 steps is free
 Per the brainstorm/staging above: migrate laneTick_/laneTickV_ from "cache recomputed from totalStepsElapsed
 via LOR" to "per-(voice,lane) holder updated locally on its advance event". STAGING: bit-identical first
 (holders reproduce the current counter-derived positions exactly — golden-proven), THEN 32 steps + further
