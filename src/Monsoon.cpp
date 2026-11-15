@@ -1193,7 +1193,7 @@ void Monsoon::process(const ProcessArgs& args) {
         const bool stepEdge = [&]{
             if (modeSelect == 1) {   // gate origin: event-driven (was B/D)
                 const bool inGate = gate1High;
-                return input.gate1Rise || (gate1High && engine.stepIndex == -1)          // main onset / held-at-start
+                return input.gate1Rise || (gate1High && !engine.started())               // main onset / held-at-start
                     || (inGate && input.subGateRise)                                     // ratchet in-gate (Gate 2)
                     || (!inGate && input.ghostRise);                                     // ghost in-gap (Gate 3)
             }
@@ -1351,7 +1351,7 @@ void Monsoon::process(const ProcessArgs& args) {
             // recomputeLaneTicks per sample were pure waste). The rule closes the loop:
             // at the default window this == absStep % 16 (bit-identical to the old
             // check), at 32 it cycles 0..31 with the full-span sweep.
-            if (engine.phaseStepFor(absStep) != engine.stepIndex) {
+            if (engine.phaseStepFor(absStep) != engine.playedColumn()) {
                 engine.snapToPhaseStep(phase.pulsePos, PULSES_PER_STEP);
             }
         }

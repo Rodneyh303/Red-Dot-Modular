@@ -114,7 +114,7 @@ void Intertropical::process(const ProcessArgs& args) {
     // step where the pattern wraps (accounts for modulated start/endStep correctly).
     // We track the stepIndex to detect when a new step result is available.
     // ---- boundary-crossing advance (phrase-boundary, direction-agnostic) ----
-    const int si = eng.stepIndex;
+    const int si = eng.playedColumn();   // (step 3b) the resolver's played column
     if (lastStepIndex >= 0 && si != lastStepIndex) {
         // A new step was processed. Check if the engine reported a phrase boundary wrap.
         if (eng.lastStepResult.wrapped) {

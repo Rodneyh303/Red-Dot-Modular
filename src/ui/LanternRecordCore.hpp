@@ -148,7 +148,7 @@ struct LanternRecordCore {
     // invariant 2's flip timing, from the display side).
     StepEdge beginSample(const SequencerEngine& eng) {
         StepEdge e;
-        const int step = eng.stepIndex;
+        const int step = eng.playedColumn();   // (step 3b) the resolver's played column
         if (step == lastObservedStep) return e;   // only sample on step edges
         lastObservedStep = step;
         const bool inRing = (step >= 0 && step < dotModular::kMaskRing);

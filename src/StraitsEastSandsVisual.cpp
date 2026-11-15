@@ -1046,7 +1046,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 lane.probabilities[st] = m->engine.effectiveProbability(
                     dotModular::VoiceResolver::mono(), dotModular::LaneId{el}, st,
                     SequencerEngine::ProbLens::Owner);
-            int ph580 = (m->engine.stepIndex >= 0) ? m->engine.laneTick_[el] : -1;
+            int ph580 = m->engine.started() ? m->engine.laneTick_[el] : -1;
             // (fix/variation-scan-display) non-VAR lanes draw the SHARED window
             // playhead (calcPlayhead — the ONE law, in-window by construction).
             // The VAR lane draws the engine's SCANNED read index (stepAdvanceStrandIdx
@@ -1791,7 +1791,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int mOff = monsoon->engine.strandOff(l);
                 int mRot = monsoon->engine.strandRot(l);
                 visualEditor->currentState.lanes[l].setDisplayLOR(std::max(1,mLen), mOff, mRot);
-                int ph1130 = (eng.stepIndex >= 0) ? eng.laneTick_[l] : -1;
+                int ph1130 = eng.started() ? eng.laneTick_[l] : -1;
                 // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead;
                 // the VAR lane draws the engine SCANNED read index (stepAdvanceStrandIdx +
                 // scan delta) — the gate-mode scan-ahead chevron, in-window by construction.
@@ -1882,7 +1882,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int cvOff = eng.strandOffRef(el);
                 int cvRot = eng.strandRotRef(el);
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
-                int ph1222 = (eng.stepIndex >= 0) ? eng.laneTick_[el] : -1;
+                int ph1222 = eng.started() ? eng.laneTick_[el] : -1;
                 // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead;
                 // the VAR lane draws the engine SCANNED read index (stepAdvanceStrandIdx +
                 // scan delta) — the gate-mode scan-ahead chevron, in-window by construction.
@@ -1917,7 +1917,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 visualEditor->currentState.lanes[l].setDisplayLOR(cvLen, cvOff, cvRot);
                 // Use the PER-VOICE tick (laneTickV_), not mono's laneTick_ — otherwise
                 // the poly playhead always follows mono's direction, ignoring the DirCell.
-                int ph1253 = (eng.stepIndex >= 0) ? eng.laneTickV_[pv][l] : -1;
+                int ph1253 = eng.started() ? eng.laneTickV_[pv][l] : -1;
                 // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead,
                 // per voice; the VAR lane draws THIS voice.s SCANNED read index
                 // (stepAdvanceStrandIdx + scan delta) — scan-ahead, in-window by construction.
@@ -1954,7 +1954,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             (void)vd;   // the direction CUE comes from the engine's walk-sign cache, not the row's setting
             const bool independent = (monsoon->getVoiceLorLocalEast(v) != 0.f);
             const auto vslot = dotModular::VoiceResolver::slot(v + 1);   // slot() is VOICE-NUMBER based
-            const int rp = (eng.stepIndex >= 0) ? eng.voiceReadPosition(vslot) : -1;
+            const int rp = eng.started() ? eng.voiceReadPosition(vslot) : -1;
             const int sg = eng.voiceReadSign(vslot);
             snprintf(rangeLabel_, sizeof(rangeLabel_), "V%d", v + 1);
             visualEditor->setRangeState(std::max(1, L), O, R, rp, sg, !independent, rangeLabel_);

@@ -317,6 +317,12 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // golden-identity harness (test_position_resolver_identity) proves the mirror.
     // Slice 2 migrates the derive to its phrasePos; slices 3-4 the stepIndex consumers.
     PositionResolver pos_;
+    // (STEP 3b — CC_PROMPT_POSITION_RESOLVER_STEP3B_UI_PLAYEDCOLUMN) the PUBLIC position
+    // accessors: every widget/module read goes through these, not the field.
+    // Value-identical to stepIndex by the identity harness (playedColumn() == stepIndex
+    // at every step). The FIELD stays until step 4-final (the mode-switch write path).
+    int  playedColumn() const { return pos_.playedColumn(); }   // the played column (-1 = not started)
+    bool started()      const { return pos_.playedColumn() >= 0; }
     // (SLICE 2b — the phase-sweep history) the previous snap's UNWRAPPED absStep: the
     // phase direction is known only between two consecutive PPQN quantisations (per
     // snap, as the sign of the change). Cleared in reset(); NOT touched by gate/clock.

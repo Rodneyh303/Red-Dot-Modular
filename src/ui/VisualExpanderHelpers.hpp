@@ -111,7 +111,7 @@ inline int calcPlayhead(int globalStep, int length, int offset, int rotation) {
 // Rack it is a DISPLAY-row-len vs ENGINE-var-strand-len mismatch, not the scan —
 // a separate, isolatable cause.
 inline int variationLanePlayhead(const SequencerEngine& eng) {
-    if (eng.stepIndex < 0) return -1;
+    if (!eng.started()) return -1;
     const dotModular::VoiceSlot mono = dotModular::kMonoVoiceSlot;
     return eng.stepAdvanceStrandIdx(mono, eng.stepAdvanceScanDelta(mono));
 }
@@ -123,7 +123,7 @@ inline int variationLanePlayhead(const SequencerEngine& eng) {
 // helper above is the mono slot's case. Outside holds this equals the plain
 // calcPlayhead position. -1 when not running.
 inline int variationLanePlayheadForVoice(const SequencerEngine& eng, dotModular::VoiceSlot bank) {
-    if (eng.stepIndex < 0) return -1;
+    if (!eng.started()) return -1;
     return eng.stepAdvanceStrandIdx(bank, eng.stepAdvanceScanDelta(bank));
 }
 

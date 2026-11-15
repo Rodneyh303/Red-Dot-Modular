@@ -376,7 +376,7 @@ bool ModeController::executeModeB(const InputState& input,
         updateLastStepIndex();
         return result.stepped;
     }
-    if (gate1Rise || (gate1High && engine.stepIndex == -1)) {
+    if (gate1Rise || (gate1High && !engine.started())) {
         // In Mode B, variation and note length should have no impact on the gate.
         // Only legato, rest, and accent apply.
         // Create a local copy of PatternInput and override relevant values for Mode B.
