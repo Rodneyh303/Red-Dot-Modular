@@ -93,7 +93,9 @@ that owns the transport position and is the ONE source every consumer reads:
 ## INPUT CADENCE / ACCEPTANCE MODEL — the resolver as the single owner of position-input acceptance
 
 STATUS: addendum (2026-11-15). C1 (rungs) + C2 (keep-counting) + C4 (display cadence) + C3
-(per-level direction) DECIDED by Rodney 2026-11-15 (recorded below; revisitable). C3 is
+(per-level direction) DECIDED by Rodney 2026-11-15 (recorded below; revisitable). C1 REFINED
+(2026-11-15 eve): nested LOR latches at the ADDRESSED-AGAINST FRAME, uniform across voice AND
+probability lanes — cycle → parent cycle (lanes at the voice boundary), abs → global phrase. C3 is
 per-level but GATED on the position-holder migration (POSITION_HOLDER_MODEL.md) — it rides the
 counter removal, not the cadence slice. Design-ahead; still NOT slice 1 (slice 1 keeps today's
 cadence to stay golden-identical).
@@ -138,8 +140,10 @@ working copy and cannot disagree.
 
 ### The acceptance ladder, mapped to position's inputs
 Per EFFECT_TIMING_HIERARCHY's rungs (control / 1-16-step / phrase / unlock):
-- Sands LOR len/off/rot → PHRASE (C1 — a perceptible-relationship control; the phasing must
-  hold still to be heard). TODAY step — this COARSENS it, deliberately.
+- nested LOR len/off/rot (voice AND probability lanes) → the ADDRESSED-AGAINST FRAME boundary
+  (C1 + its refinement): CYCLE mode → the PARENT level's cycle (lanes at the VOICE boundary,
+  voice at the GLOBAL phrase); ABSOLUTE mode → the GLOBAL phrase. TODAY step — this COARSENS it
+  to the relationship's OWN frame, deliberately (not to the global phrase, which was too coarse).
 - global len + off → STEP, together (C1 — the MeloDicer-native "reposition/resize the whole
   pattern now" class). TODAY control-rate — this is a (small) coarsening/fix.
 - per-level direction → each level at its OWN edge (C3). TODAY laneFlipQuant is a SINGLE enum
@@ -154,12 +158,13 @@ Per EFFECT_TIMING_HIERARCHY's rungs (control / 1-16-step / phrase / unlock):
 
 THE ORGANIZING PRINCIPLE (replaces "consistency"): RUNG = WHAT THE CONTROL IS FOR, not
 uniformity across inputs.
-  - A control whose value is a PERCEPTIBLE RELATIONSHIP over time (lane LOR — the lanes phasing
-    against each other and against the global anchor) → PHRASE. The relationship is only HEARD
-    if it holds still long enough to register; per-step it is hash, not phasing, and in UAS it
-    makes everything jump. LOR is the reason the instrument exists (the observation that small
-    probability-offset changes between lanes make a random pattern sound better), so its
-    legibility is primary.
+  - A control whose value is a PERCEPTIBLE RELATIONSHIP over time (nested LOR — each level
+    phasing against the frame it is ADDRESSED AGAINST: the lanes against the VOICE, the voice
+    against the GLOBAL) → that FRAME's boundary (see the C1 refinement for the per-level/per-mode
+    mapping). The relationship is only HEARD if it holds still for its own frame; per-step it is
+    hash, not phasing, and in UAS it makes everything jump. LOR is the reason the instrument
+    exists (the observation that small probability-offset changes between lanes make a random
+    pattern sound better), so its legibility is primary.
   - A control whose value is an IMMEDIATE REPOSITION / RESIZE of the whole pattern (global
     length + offset) → STEP. No inter-element relationship to hold still for: offset slides the
     whole window against the clock (a translation — it preserves every relationship), length
@@ -172,6 +177,31 @@ C1 (DECIDED). Sands LOR (len/off/rot) → PHRASE. Global length + offset → STE
     is honoured for the class it was coined for (global L+O); it does not oblige LOR, which was
     never in that class. LOCK MODE stays ORTHOGONAL — the deliberate defer-to-cue (DJ cueing)
     that overrides every base rung wholesale; it SUSPENDS a rung, it doesn't set one.
+
+C1 REFINEMENT (Rodney, 2026-11-15 eve) — THE RUNG IS THE ADDRESSED-AGAINST FRAME, uniform across
+    EVERY nested LOR level (voice LOR and probability-lane LOR alike). "LOR → the GLOBAL phrase"
+    was too restrictive: the probability lanes do not phase against the global phrase — they
+    phase against the VOICE (lane rotation = where the lanes land when the VOICE hits its first
+    step). Their relationship's frame is the voice CYCLE, not the global phrase; latching them
+    at the global phrase lets them re-phase only once per global phrase even when the voice
+    cycle — their real period — is far shorter. So, applied to every nested LOR level uniformly:
+      - a level's LOR change promotes at the boundary of the FRAME IT IS ADDRESSED AGAINST;
+      - CYCLE mode → the PARENT level's cycle boundary (its phrasePos==0): probability lanes at
+        the VOICE-cycle (LO) boundary; the voice at the GLOBAL phrase (its parent is the global);
+      - ABSOLUTE mode → the GLOBAL phrase (abs addresses the level against global step 1, so the
+        global is its frame);
+      - global length + offset stay at STEP — the drive-level reposition, not a nested LOR.
+    So the addressing MODE is the frame, and the acceptance cadence follows it.
+    WHY better, not just looser: (1) SELF-CALIBRATING — the latch holds exactly one relationship
+    period (one parent cycle); a short cycle is a short relationship, so one full instance still
+    plays before it can change. (2) LANDS AT THE NATURAL RE-ENTRY — the parent boundary is where
+    the level re-anchors anyway, so a pending LOR promotes at the level's OWN frame boundary,
+    cleaner against C2 (no re-seed mid-cycle). (3) ONLY BITES UNDER ACTIVE MODULATION — the rung
+    quantises WHEN a change lands, not how often you change it; hold the knob and the phasing
+    holds indefinitely.
+    IMPLEMENTATION: a natural extension of the direction pending→promote machinery (laneFlipQuant-
+    style) — key the promote boundary PER LEVEL by addressing mode: parent's phrasePos==0 (cycle)
+    or global phrasePos==0 (abs). The engine already knows every level's cycle boundary and mode.
 
 C2 (DECIDED — and SELECTED BY C1, not independent). phrasePos KEEPS COUNTING across a
     mid-phrase global change; it does NOT re-seed. Why it is forced by C1: LOR is phrase-
