@@ -315,8 +315,19 @@ INFER a flip one quantised crossing late. Propagation is immediate in both; dete
 > FOOTNOTE — the phase-mode detection lag is a FLOOR, not a cadence choice. It sits BELOW the
 > whole C1–C4 ladder: the rungs decide when to ACCEPT a change that is already known; this lag
 > is about when a direction change becomes KNOWABLE at all. Direction is the derivative of
-> position, and you cannot differentiate a single sample — so the only lever on this floor is
-> PPQN resolution (finer quantisation = shorter floor), never the acceptance rungs. It is
+> position, and you cannot differentiate a single sample — so within the PPQN grid the only lever
+> is PPQN resolution (finer quantisation = shorter floor), never the acceptance rungs.
+>
+> IDEA TO EXPLORE (Rodney, 2026-11-16) — DECOUPLE direction sensing from the PPQN grid. The floor
+> only exists because direction is read AT the PPQN crossings. Keep note DECISIONS quantised to
+> PPQN (the musical grid is unchanged), but sense the direction SIGN at SAMPLE rate — `sign(Δphase)`
+> per sample — so a reversal is caught within a sample, not a whole quantised step. This collapses
+> the detection lag without touching note timing. CAVEAT: audio-rate phase can jitter, so a raw
+> per-sample sign would flicker — needs a small hysteresis / delta threshold (or an N-sample
+> confirm) rather than a bare sign test. Weigh against the current bounded-and-self-correcting
+> behaviour: the sample-level check is worth it only if the one-step boundary blip feel-tests as
+> audibly wrong.
+> It is
 > BOUNDED and SELF-CORRECTING: at most one quantised step reads the stale direction (a genuine
 > reversal, or the first snap after a mode switch), corrected at the very next crossing; `d==0`
 > holds the last direction rather than guessing. It is not a desync that accumulates. The only
