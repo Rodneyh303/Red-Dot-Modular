@@ -1,5 +1,17 @@
 # PORTABLE SEQUENCE EXPORT  design + first CC prompt (Rodney-decided)
 
+## STATUS (Rodney, pivot): MIDI/MPE IS THE PRIMARY CAPTURE PATH
+- Keppel already streams the instrument as MPE: one member channel per voice, least-recently-used reassignment, per-note
+  pitch bend for microtonal pitch, channel pressure, and a configured lower zone. A DAW records that stream as a clip.
+- MIDI carries what the standard form struggled with: voice identity (channels), chords (simultaneous notes), microtonal
+  pitch (bend), and timing in ticks, so swing and tempo change come through without a time model.
+- CONSTRAINT: an MPE lower zone has 15 member channels (2 to 16). Keppel's member count is 15. A 16-voice source needs one
+  voice dropped or a second zone. Decide the policy before the capture work.
+- The portable standard form is KEPT for non-MIDI receivers (for example Impromptu sequencers), but it is secondary.
+- The "copy the previous phrase while playing" requirement is met by recording the MIDI stream into a loop buffer (a DAW
+  clip, or a later Keppel-side capture of the previous-phrase snapshot), not by a new format.
+
+
 ## PURPOSE
 Copy a phrase out of a generative sequencer to the clipboard, to paste into any sequencer that supports the
 portable sequence standard (Impromptu PhraseSeq16/32 and Foundry, and others). ONE-WAY: export only. No round trip
