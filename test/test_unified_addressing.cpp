@@ -659,12 +659,25 @@ int main() {
         eng.macroVoiceLorRef(SequencerEngine::LOR_ROT) = 6;
         eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_LEN) = 6;
         eng.lorRef(dotModular::STRAND_RHYTHM, SequencerEngine::LOR_ROT) = 2;
-        std::vector<int> fwd, back;
+        std::vector<int> fwd;
         for (int k = 0; k < 24; ++k) { eng.advancePlayhead(+1); fwd.push_back(eng.getRhythmStep()); }
-        for (int k = 0; k < 24; ++k) { eng.advancePlayhead(-1); back.push_back(eng.getRhythmStep()); }
-        bool retraces = true;
-        for (int j = 0; j < 23; ++j) retraces = retraces && back[j] == fwd[22 - j];
-        check(retraces, "STAGE2: REVERSIBILITY — a mapped voice + authored lane retraces bit-exactly");
+        // (SLICE 2 re-aim — CC_PROMPT_POSITION_RESOLVER_SLICE2_DERIVE) The reverse law
+        // replaces the RETRACE model: the voice map anchors at the phrase ENTRY in the
+        // travel direction (forward enters at R and counts up; REVERSE ENTERS AT R AND
+        // COUNTS DOWN — the oracle's rule), so the backward march no longer replays the
+        // forward reads (the old pure-function-of-the-column fold the wG law produced).
+        // Pinned instead, on the composed chain (the mapped voice x the authored lane):
+        // the 24-step backward march REACHES the reverse entry (stepIndex == endStep —
+        // the direction-stable truth), and the read there equals the FORWARD entry's
+        // read (fwd[0]) — the composed rotation is direction-agnostic at the anchor.
+        bool sawEntry = false, anchorOK = false;
+        for (int k = 0; k < 24; ++k) {
+            eng.advancePlayhead(-1);
+            if (eng.stepIndex == eng.endStep) { sawEntry = true; anchorOK = (eng.getRhythmStep() == fwd[0]); }
+        }
+        check(sawEntry, "STAGE2: the 24-step backward march reaches the reverse entry (endStep)");
+        check(anchorOK, "STAGE2: REVERSIBILITY (re-aimed, slice 2) — the reverse ENTRY reads the same composed "
+                        "rotation as the forward entry (the direction-agnostic anchor; the retrace model is superseded)");
     }
     {
         // DELEGATION: the Macro row is the default for every voice; a local-East claim

@@ -467,6 +467,11 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
     //   * A mid-run LENGTH re-author now re-bounds the wrap WITHOUT teleporting the walk
     //     (length = the wrap point, not part of the address) — which is exactly what
     //     makes 32 steps nearly free later: no global-modulus audit, no wrap-mask hunt.
+    // (SLICE 2) the resolver advances FIRST — the derive (inside tickHolders, below)
+    // reads pos_.phrasePos() as the event's position, the SAME timing globalWalk_ has
+    // (advanced at the head of tickHolders). The played column is computed below from
+    // the SAME traversal law, so the mirror still holds (the identity harness).
+    pos_.advance(dir);
     tickHolders(dir, dir, voiceMotion);
 
     bool wrapped;
@@ -492,7 +497,6 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
         // Return true if wrapped to start (phrase boundary)
         wrapped = (prevStep != -1 && stepIndex == startStep);
     }
-    pos_.advance(dir);   // (slice 1) the mirror advances with the same motion — the SAME traversal law, its ONE copy (consumed by nothing yet)
 
     writeLedger.noteWrite(WriteRole::ENGINE, WriteField::Wrapped); // STEP1 WriteLedger: wrapped (W1/W2) — confirms single ENGINE writer
 
@@ -1036,13 +1040,19 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
             frameBack = passG ? (int64_t)signMotion
                 : (int64_t)wG - (int64_t)wrapMod((int64_t)wG - signMotion, lenG);
         } else {
-            // (Prompt 2 — the phrase anchor, the macro row's twin — "East and Macro
-            // share this path; one fix") ft0 = the transport's phrase position (wG —
-            // 0 at global step 1; the macro frame IS the transport, no advance
-            // offset): R re-anchors at every global step 1. Dividing-L congruent.
+            // (SLICE 2 — the resolver's phrase coordinate, the macro row's twin — "East
+            // and Macro share this path; one fix") ft0 = the TRANSPORT-SIGNED steps
+            // since the phrase entry (+phrasePos forward, -phrasePos reverse; the
+            // macro frame IS the transport, no advance offset): R anchors at the ENTRY
+            // in whichever direction it is played (phrasePos == 0 — forward
+            // startStep / reverse endStep), counting in the travel direction.
+            // Forward it equals wG BIT-IDENTICALLY; reverse it replaces the drifting
+            // wG with the traversal-tied coordinate — the reverse-rotation fix.
+            const int64_t sPos = (pos_.direction() > 0)
+                ? (int64_t)pos_.phrasePos() : -(int64_t)pos_.phrasePos();
             rho       = (int64_t)R;                    // window-relative; clamped 0..L-1 at the authoring paths
-            ft0       = (int64_t)wG;                   // the phrase position (globalWalk_ — the ONE phrase-start notion)
-            frameBack = (int64_t)wG - (int64_t)wrapMod((int64_t)wG - signMotion, lenG);
+            ft0       = sPos;                           // the transport-signed phrase coordinate (the resolver's)
+            frameBack = sPos - (int64_t)wrapMod(sPos - signMotion, lenG);
         }
         const int64_t wnow = ((((laneTickFor(md, ft0 + 1, L) + rho) % L) + L) % L);
         macroFrameT0    = wnow;   // the frame VALUE — every Macro lane's mapped seed
@@ -1132,18 +1142,25 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
             frameBack = passG ? (int64_t)motionV
                 : (int64_t)wGv - (int64_t)wrapMod((int64_t)wGv - motionV, lenG);
         } else {
-            // (Prompt 2 — the PHRASE ANCHOR) CYCLE folds the voice's own L over the
-            // PHRASE-RELATIVE position (wGv — the transport's position within the
-            // pattern, 0 at global step 1; the voice's effective-clock copy), so R
-            // re-anchors at EVERY global step 1: a non-dividing L restarts its cycle
-            // from R each phrase instead of drifting across the boundary (was the raw
-            // congruence's free-run — Bug 1's law, superseded for the frame walk by
-            // the UAS nesting reference: R is the voice's position AT GLOBAL STEP 1).
-            // Dividing-L is congruent either way (the goldens hold); frameBack is the
-            // true gap in the phrase coordinate (the wrap jumps lenG — a BEAT).
+            // (SLICE 2 — the resolver's phrase coordinate, CC_PROMPT_POSITION_RESOLVER_
+            // SLICE2_DERIVE) CYCLE folds the voice's own L over the TRANSPORT-SIGNED
+            // steps since the phrase entry: +phrasePos forward, -phrasePos reverse —
+            // the travel-signed coordinate (the multiplicative composition's transport
+            // factor: the row's walk moves WITH the transport, entering at R and
+            // counting in the travel direction — forward enters at R and counts up,
+            // reverse enters at R and counts down). The voice's offset folds mod lenG
+            // exactly as the wGv shape did. Forward this equals wGv BIT-IDENTICALLY
+            // (the slice-1 identity: phrasePos == globalWalk_ with no reverse history);
+            // reverse it anchors at the ENTRY (phrasePos == 0, the first-played step —
+            // stepIndex == endStep) instead of the drifting wGv — the reverse-rotation
+            // fix (test_reverse_rotation_anchor). frameBack stays the true gap in the
+            // phrase coordinate (the wrap jumps lenG — a BEAT).
+            const int64_t sPosV = (pos_.direction() > 0)
+                ? (int64_t)pos_.phrasePos() : -(int64_t)pos_.phrasePos();
+            const int64_t vCoord = wrapMod(sPosV + advanceOffset_[v], lenG);
             rho       = (int64_t)R;              // window-relative; clamped 0..L-1 at the authoring paths
-            ft0       = (int64_t)wGv;            // the phrase position — the ONE phrase-start notion (globalWalk_-derived)
-            frameBack = (int64_t)wGv - (int64_t)wrapMod((int64_t)wGv - motionV, lenG);
+            ft0       = vCoord;                  // the transport-signed phrase coordinate (the resolver's, + the voice's offset)
+            frameBack = vCoord - (int64_t)wrapMod(vCoord - motionV, lenG);
         }
         const int64_t wnow = ((((laneTickFor(vd, ft0 + 1, L) + rho) % L) + L) % L);
         voiceDriver_[v] = wnow + 1;
