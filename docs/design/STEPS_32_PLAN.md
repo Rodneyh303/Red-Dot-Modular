@@ -1064,3 +1064,186 @@ per the earlier lesson that clean merges can still have interaction bugs).
 
 ### Not part of 32 (deferred, sequenced after)
 64 steps; transport phase 192; subphase; phase distortion; distribution-primitive extraction.
+
+════════════════════════════════════════════════════════════════════════════════
+## STAGE 1 REVIEW (PR #310) AND REVISED STAGES 2–5
+### Stage 1 as delivered (feat/steps-32-stage1)
+Delivered: kMaxPatternSteps=32 (ceiling), kPatternLengthCap=16 (usable bound, the one switch), the length CV
+mapping derived from the cap, the lane-length clamp derived from the cap, the 113-check pins test.
+Open items to close before merge:
+1. The length param range derives from kMaxPatternSteps, so the knob offers 32 and silently clamps to 16.
+   FIX: derive the param range from kPatternLengthCap. The knob then never offers an undeliverable length, and
+   Stage 2 changes one constant that moves the range with it.
+2. The ≤16 golden gate has not run. The commit claims bit-identical "by construction" and defers the goldens to
+   a follow-up battery. The full battery must pass on the PR before merge, not after.
+3. The ~381-site classification table lives only in the PR description. Commit it to docs/design (e.g.
+   STEPS_32_CLASSIFICATION.md) so the audit record survives the PR.
+
+### Stage 2 — storage (REVISED: mostly constant changes, because the array refactor is on trunk)
+Trunk now has std::array member state (PR 305). The 16-wide row dimension was deliberately left literal for
+STEPS_32 to name, so Stage 2 names it once and widens it.
+- Introduce kStepStorage (= 32 at Stage 2; the storage bound), separate from kPatternLengthCap (the usable cap).
+  Stage 2 flips the cap to 32; storage is already 32 wide, so no per-site widening.
+- Replace the 16-literal row dimension (54 sites in PatternEngine.hpp alone) with kStepStorage. Mechanical,
+  but the per-site classification still applies: row-length uses change, unrelated 16s don't.
+- Masks: uint64_t, length-masked, DECIDED (see DECIDED block). Covers 64 later with no re-widening.
+- The offset param: 0..15 becomes 0..(cap-1), derived not literal. Class B today, resolved here.
+- The CV rescale *(cap-1) lands automatically (the D1 *31), because it is already cap-derived.
+- Gate: ≤16 goldens bit-identical with cap still 16 (pre-flip), then the flip is a separate commit with its own
+  gate: the 32-entry arrays zero-filled beyond length, and persistence round-trips at 16 exactly.
+- Stage 2 is split into two commits: (2a) name kStepStorage and widen storage with cap still 16 (pure refactor,
+  goldens bit-identical); (2b) flip the cap to 32 (behaviour change, its own pins).
+
+### Stage 3 — display (unchanged in substance)
+Sands 32-column grid parameterised by column count. Ring: 16 lamps + bar indicator (settled). Length control
+follows the cap. Gate: ≤16 pixel-identical where testable; 32 layout reviewed in Rack.
+
+### Stage 4 — control and persistence (unchanged)
+Pattern-length param persisted; absent key → 16. Old patches load unchanged. Patch compatibility is not a
+concern for this unreleased code (decided); the gate is behaviour at ≤16, not file compatibility.
+
+### Stage 5 — verify (unchanged)
+≤16 goldens bit-identical; new 32-step pins: wrap at 32, both bars reachable, bar indicator tracks bar, mask
+bits address all 32 steps; combined subgate/advance/per-voice interaction at length 32.
+
+### Not part of 32 (sequenced after)
+64 steps (ceiling change + display; masks already uint64), transport phase 192, subphase, phase distortion,
+distribution-primitive extraction.
+
+════════════════════════════════════════════════════════════════════════════════
+## BAR INDICATOR — inner disc (Rodney's clock analogy) — DISPLAY SPEC
+Analogy: the light ring is the second hand (step within a bar); the inner disc is the minute hand (which bar).
+
+GEOMETRY
+- The disc sits inside the 16-lamp ring, in the currently unused centre.
+- 16-step pattern: one disc (no division). Either hidden or lit uniformly; never show a half-lit disc, since that
+  implies a second bar that does not exist.
+- 32-step pattern: cut along the horizontal centre into two hemispheres. Upper = bar 1, lower = bar 2.
+- 64-step pattern (future): quarters, one per bar.
+
+STATE
+- The active bar's segment is lit. Every other segment dims.
+- Dim level must be clearly distinct from both the lit state and the unlit ring lamps. Verify at real panel
+  brightness in Rack, not on a screenshot.
+
+INVARIANTS
+1. The disc reports the ABSOLUTE pattern bar (engine position), not the voice LOR window. Display reads engine
+   position, never recomputes it. Stating this here so the disc is never wired to the LOR later.
+2. Flip timing: the active segment changes on the same tick as lamp 0 of the new bar. A lag of even one step
+   breaks the clock reading and makes the bar boundary ambiguous.
+3. The bar is always 16 steps. Pattern length changes only how many divisions the disc has, never what a bar means.
+
+GATE (Stage 3)
+- ≤16: visual output unchanged apart from the disc, which is hidden or uniform.
+- 32: flip occurs on the lamp-0 tick, checked by a pin that samples the engine bar index against the lit segment on
+  every step across at least two full passes.
+- Rack review: dim contrast and placement at real brightness (human review, no automated gate).
+
+OPEN
+- Whether the 16-step disc is hidden or uniformly lit. Lean: hidden, to keep the 16-step panel identical to today.
+
+CPU COMPARISON (before 64 is considered)
+- Compare 16 vs 32 with everything else fixed: same patch, 16 active voices, per-voice advance on, same sample
+  rate and buffer size. Record the optimisation branches included so each saving is visible.
+
+════════════════════════════════════════════════════════════════════════════════
+## DIMMING RULE — probability grid (Rodney, agreed)
+Two independent display channels. Do not merge them.
+- DISC (above) = which BAR is active (engine position).
+- GRID DIMMING = which CELLS are inside the global window (the pattern's offset/length, displayed on the grid).
+
+Rules
+1. Patterns restricted to steps 1–16: the disc is hidden (always dimmed). Grid dimming is unchanged from today.
+2. 32-step pattern, bar 1 (cells 1–16): cells outside the global window are dimmed.
+3. 32-step pattern, bar 2 (cells 17–32): cells outside the global window are dimmed.
+4. The global window is defined on the 32-step phrase. Each bar shows the intersection of the window with its own
+   16 cells. A window that crosses bar 1 into bar 2 (or wraps past 32 back to 1) lights the in-window cells in both
+   bars.
+5. Dimming is display only. Playback and the engine window are unchanged. The grid reads the engine window and does
+   not recompute it.
+
+Gate (Stage 3)
+- Pin: for a set of offset/length windows over 32 steps, the displayed in-window cell set equals the engine window
+  set, per bar, including a window that crosses the bar boundary and one that wraps past 32.
+- ≤16: grid dimming pixel-identical to today.
+
+════════════════════════════════════════════════════════════════════════════════
+## STAGE 2b — cap flip (kPatternLengthCap 16 → 32): REQUIRED PRE-GATES (from the 2a review)
+Stage 2b is where 32-step behaviour turns on. It must not start until both gates below are in place and green
+on the 2a tip. Both are added to Stage 2b's gate list.
+
+### GATE 1 — non-default ≤16 equivalence pin (the mis-read detector)
+Why: 2a's flat-stride bug was caught only because a mis-read happened to hit a cell, and the ≤16 goldens still
+passed because default patterns compare equal across the mis-read. Default-valued patterns cannot detect index
+errors, so the ≤16 gate is not yet a real guarantee.
+What: a pin that runs the cap-16 build on patterns with VARIED probabilities and mask bits, and compares every
+observable output against a recorded reference. Minimum coverage:
+- per-step probability values varied across all 16 steps on every lane (rest, legato, accent, variation, qmix,
+  melody, octave), not only the defaults;
+- mask bits varied: a painted pattern with mixed on/off cells, plus an offset/length window;
+- a voice-LOR window that crosses the 16-step boundary and wraps;
+- at least one non-default subgate setting (ratchet/ghost REST, LEG, ADV, ACC).
+Compare: note, gate, CV and display-state outputs step by step, against the reference recorded from the 2a tip
+(cap 16, pre-flip). The reference is generated once, committed, and is the oracle for 2b.
+Gate: zero differences at cap 16 after the flip. If the flip changes any output at ≤16, Stage 2b is wrong.
+Note on the sweep: the flat-stride class is most likely to recur in cross-row reads, so include a case that reads
+a neighbouring voice row and check it for the wrong value, not just the right one.
+
+### GATE 2 — beyond-ring zero-fill pin
+Why: the design depends on cells 16–31 of every per-step row staying zero while the cap is 16. Nothing currently
+checks it, and a write leaking past the ring would corrupt the ≤16 output silently.
+What: after a full run at cap 16 across varied patterns, assert every per-step row's cells at index ≥ kPatternLengthCap
+are exactly zero, for every lane and every voice row, including the widened mask planes and the melody mirrors.
+Gate: all beyond-ring cells zero at every sampled step. Run it at the end of the run and at intermediate steps,
+since a leak can be transient.
+
+### Stage 2b's own pins (unchanged, now run after the two gates above)
+- wrap at 32; both bars reachable; bar indicator tracks the bar (see BAR INDICATOR);
+- mask bits address all 32 steps;
+- the draw-window cap flip widens DRAW_CHUNK and the Philox fill together, with its headroom math pinned.
+
+### Order
+1. Land GATE 1 and GATE 2 on the 2a tip, green at cap 16. Reference oracle committed.
+2. Flip the cap (2b) as its own commit. GATE 1 must show zero differences at ≤16.
+3. Add the 32-step pins.
+
+════════════════════════════════════════════════════════════════════════════════
+## LANTERN VIEW — DECIDED: one bar, follows the disc (Rodney)
+- Lantern keeps its one-bar, 16-column view. It is observability only and writes no engine state.
+- The view follows the bar indicator (the same engine bar index as the disc), with a manual cycle for inspection.
+- Phrase-crossing notes are still visible: Lantern's existing held-over carets mark notes that continue across the bar
+  boundary, so no 32-column view is needed for that.
+- 32-column Lantern is deferred. Revisit it when the 64-step display is decided, since it has the same density cost.
+
+REQUIRED BEFORE STAGE 2b (added to its gate list)
+- Lantern's write path is currently bar-blind: `if (step < 0 || step >= 16) return` (and the matching row/step guards).
+  With the cap at 32, steps 16–31 would be dropped silently. The write path must route each step to its bar slot
+  (bar = step / 16, column = step % 16) so bar 2 is recorded while bar 1 is visible, and the cycle shows the chosen bar.
+- Gate: a pin that drives a 32-step run and checks that Lantern records steps 16–31 in the bar-2 slot, and that the
+  bar-1 view is unchanged at ≤16.
+
+════════════════════════════════════════════════════════════════════════════════
+## LANTERN — REVISED: always 16 columns (Rodney, tentative: "might always keep it at 16")
+Reason: legibility, and usefulness for debugging as well as for the end user understanding the patch.
+- Lantern stays a 16-column view at every pattern length. No 32-column mode.
+- Open sub-question (decide before 2b): which 16 columns it shows on a 32-step pattern.
+  Option A (lean): follow the disc. The view shows the active bar, and the existing held-over carets still mark notes
+  that cross the bar boundary.
+  Option B: a manual bar select only, with no auto-follow.
+- Either option needs Lantern to keep both bars recorded (two 16-column buffers, or one 32-cell ring read as two bars).
+  Otherwise switching to bar 1 after playing bar 2 loses bar 1's history.
+- The bar-aware write path from the previous entry still applies: steps 16–31 must be recorded, not dropped.
+
+════════════════════════════════════════════════════════════════════════════════
+## LANTERN — DECIDED (Rodney)
+- 16 columns at every pattern length.
+- FOLLOWS THE DISC automatically: the displayed bar is the engine's active bar, the same index the disc shows.
+- BOTH BARS RECORDED: steps 1–16 and 17–32 each keep their own 16-column history, so switching the view never loses
+  the other bar's data.
+- LATER (not now): a manual bar switch and/or a freeze-display option. Both are view-only and can be added without
+  touching the recording path.
+
+GATE (Stage 2b)
+- Pin: a 32-step run records steps 16–31 into the bar-2 buffer and steps 0–15 into bar-1; the displayed bar equals the
+  engine bar index on every step, including across the bar boundary.
+- ≤16: Lantern output unchanged; the bar-1 buffer is the full history at 16.
