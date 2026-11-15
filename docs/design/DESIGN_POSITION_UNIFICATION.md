@@ -285,6 +285,26 @@ C4 (DECIDED). DISPLAY cadence follows the INPUT rung — the Sands range IS the 
     the engine's value moves — at the phrase. No mod-arc work; the range movement IS the
     modulation display, and it quantizes with the rung.
 
+### WHAT REACTS WHEN — from the voice lane's view (summary of C1/C2/C3; detection ≠ propagation)
+Pulls C1/C2/C3 into one place. KEY DISTINCTION (Rodney, 2026-11-15): "immediate" = PROPAGATION
+latency (once the change is KNOWN, how fast the nested subtree follows). It is NOT the same as
+DETECTION latency (how soon the engine can KNOW the change happened). Phase-mode direction has
+a detection latency the event modes do not.
+
+| change (source)                     | voice reacts        | why |
+|-------------------------------------|---------------------|-----|
+| GLOBAL length / offset              | next STEP           | C1: global L+O are STEP-rate (MeloDicer-native). "Instant" in a step sequencer == the next step edge; nothing finer. |
+| ...its effect on voice ANCHORING    | next PHRASE         | C2 keep-counting: the step-change bites the WRAP at the step, but the voice does NOT re-seed — its LOR anchoring holds to the next real phrase boundary. (Two-tier: window moves now, anchor holds.) |
+| voice's OWN nested LOR (L/O/R)      | next PHRASE         | C1 refinement: a level's LOR latches at its ADDRESSED-AGAINST frame; the voice's parent is the global, so its frame is the global phrase. |
+| GLOBAL direction — reverse-all (CLOCK/GATE) | immediate   | Discrete control; KNOWN at the toggle. Nesting drags the voice's driver on that same event (C3). No detection latency. |
+| GLOBAL direction — PHASE input      | next QUANTISED STEP, THEN immediate | DETECTION latency: phase direction is the sign of `absStep − prevPhaseAbsStep_` across two consecutive PPQN snaps (snapToPhaseStep ~:1299; `d==0` holds the last dir; first snap after a mode switch holds the prior traversal's dir — "one possibly-off snap, corrected at the next"). So a phase reversal is UNKNOWABLE until the next quantised crossing shows `d<0`; ONCE known, nesting drags the subtree immediately. Net: up to one quantised step to SEE it, then immediate. |
+| voice's OWN direction flip          | voice StepEdge      | C3: each level's own reversal lands at its own edge; the voice's edge is the StepEdge. |
+
+The two "global direction" rows are why "immediate" needs the qualifier: under the DRIVE
+DIRECTION MODEL the event modes (clock/gate) are default-forward + reverse-all (a discrete
+control, zero detection latency), whereas PHASE reads direction from the input and can only
+INFER a flip one quantised crossing late. Propagation is immediate in both; detection is not.
+
 ### Slice placement
 NOT slice 1 (pure mirror, keeps control-rate cadence, golden-identical). Lands as its OWN
 slice AFTER S2 (derive migration + reverse fix): step-latching the global range is a GENUINE
