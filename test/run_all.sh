@@ -52,6 +52,7 @@ TESTS=(
   "test_12tet_identity|$SE $GS $PE"
   "test_GateState|$GS"
   "test_GaussianCopula|"
+  "test_LegatoLeadTable|"
   "test_PatternEngine|$PE"
   "test_PhiloxRng|"
   "test_SandsTopology|"
