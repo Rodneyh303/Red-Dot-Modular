@@ -9,7 +9,8 @@
 //      garbage in the planes (the U2-oracle/bridge-pin contract); flag-on with
 //      all-zero planes is bit-identical too (the per-param guards skip).
 //   2. GLOBAL (Macro-sent) deltas reach the voice's own cell — stage params add
-//      with the fold's association, w clamps to [0,1] at the cell.
+//      with the fold's association, w clamps to [−1,+1] at the cell (the SIGNED
+//      depth — the bidirectional warp; the sign is the reading):
 //   3. OWN (East-local) deltas reach ONLY the addressed voice's cell.
 //   4. THE DELEGATED BRANCH: own ignored (bit-identical to no-own), global folded
 //      into Macro's default — the resolver's standing law, mod edition.
@@ -107,13 +108,27 @@ int main() {
         WarpBank b = ref;
         b.distDeltasActive = true;
         b.distGlobalDelta[L][2] = 0.2f;               // TILT +0.2
-        b.distGlobalDelta[L][5] = 0.4f;               // WARP +0.4 (w 0.6 → 1.0)
+        b.distGlobalDelta[L][5] = 0.4f;               // WARP +0.4 (w 0.6 → +1.0)
         const auto cell = dotModular::resolveWarpCell(b, V0, L, false);
         checkBits(cell.tilt, 0.1f + (0.2f + 0.f), "global tilt delta adds (fold association)");
-        checkBits(cell.w, 1.0f, "global warp delta clamps to 1 at the cell");
+        checkBits(cell.w, 1.0f, "global warp delta clamps to +1 at the cell");
         const WarpBank& cb = b;
         check(cb.warpedValue(V0, L, 0.5, false) != ref.warpedValue(V0, L, 0.5, false),
               "the modded cell audibly differs from the unmodded one");
+        // THE NEGATIVE RAIL (the bidirectional warp): a large negative delta drives the
+        // cell THROUGH zero to the −1 clamp — the SIGNED depth's lower rail, the dual
+        // reading at full depth. CV crosses zero freely (the sign IS the reading — the
+        // crossing is audible, never a clamp at 0), and the two rails read DIFFERENTLY
+        // (+1 the member's composed quantile, −1 its composed CDF).
+        WarpBank n = ref;
+        n.distDeltasActive = true;
+        n.distGlobalDelta[L][5] = -10.f;              // WARP −10 (w 0.6 → −1.0)
+        const auto ncell = dotModular::resolveWarpCell(n, V0, L, false);
+        checkBits(ncell.w, -1.0f, "a negative warp delta clamps to -1 at the cell (the dual rail)");
+        check(n.warpedValue(V0, L, 0.5, false) != ref.warpedValue(V0, L, 0.5, false),
+              "the negative-rail cell differs from the unmodded one");
+        check(n.warpedValue(V0, L, 0.5, false) != b.warpedValue(V0, L, 0.5, false),
+              "the two rails read DIFFERENTLY (+1 the quantile, -1 the dual's CDF)");
     }
 
     // 3. OWN reaches ONLY the addressed voice ──────────────────────────────────

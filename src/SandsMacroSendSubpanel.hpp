@@ -18,11 +18,12 @@
 //
 // DE-PARAM LAW: the module exposes NOTHING — config(0, 0, 0, 0); every control
 // is a store-backed StoreKnob onto Monsoon's editor stores (the Macro strip's
-// own convention, moved verbatim). The sends' addressing is the SHARED voice
-// selection (PatternEngine::displayedVoice — VoiceResolver is the single source
-// of truth; the spec's "ALL subpanels must HONOUR that shared voice selection"):
-// the knobs author the selected voice's row, resolved LIVE per read — switching
-// the selection re-binds the view, every voice keeps its own persisted row.
+// own convention, moved verbatim). The sends' addressing is the SEND VOICE
+// (PatternEngine::sendVoice — CC_FIX_SEND_VOICE_FROM_MACRO; the MACRO strip's
+// tab publishes it, Monsoon::macroViewVoice persists it; East's displayedVoice
+// is unrelated): the knobs author the send voice's row, resolved LIVE per read
+// — switching the Macro tab re-binds the view, every voice keeps its own
+// persisted row.
 //
 // SNAPPING (the hard requirement): the SandsSnap cluster (ui/SandsSnap.hpp — the
 // StraitsBase resnap family, shared with the Distribution expander). The Macro

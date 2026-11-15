@@ -64,6 +64,15 @@ namespace dotModular {
 static constexpr int kMaxPatternSteps  = 32;   // the ceiling: pattern/phrase length accepts 1..32
 static constexpr int kStepStorage      = 32;   // the per-step array row width (Stage 2a; uint64 masks reserve 64)
 static constexpr int kPatternLengthCap = kMaxPatternSteps;   // STAGE 2b: FLIPPED to the ceiling (the ring + the usable bound)
+// ── ADDITION G (CC_FIX_VOICE_RANGE_STRIP_INTERACTION §F+G): the LANE-WINDOW bound
+// names — the semantic spellings every lane LOR clamp/authoring site uses, so the
+// literal 15/16 bounds that caused the midpoint snap cannot regress. kLaneOffsetMax
+// is the largest step INDEX (a window may start on any ring cell); kLaneLengthMax
+// is the largest window LENGTH. ROTATION has NO constant: the lane rule clamps R to
+// (the lane's length − 1) at each authoring site, AFTER the length is known — a
+// per-L bound, never a fixed number.
+static constexpr int kLaneOffsetMax = kPatternLengthCap - 1;   // 31: the largest step index
+static constexpr int kLaneLengthMax = kPatternLengthCap;       // 32: the largest window length
 static_assert(kPatternLengthCap <= kMaxPatternSteps, "the usable length cap never exceeds the ceiling");
 static_assert(kPatternLengthCap <= kStepStorage,     "the ring never exceeds the per-step storage");
 static_assert(kStepStorage <= 64,                    "the storage fits the uint64 length-masked mask words (the DECIDED block)");
@@ -78,6 +87,13 @@ static_assert(kStepStorage <= 64,                    "the storage fits the uint6
 // the 1<<c magic; the all-on default is the RING's all-on (0xFFFFFFFF at the 32 bound).
 static constexpr int      kMaskRing   = kPatternLengthCap;
 static constexpr uint64_t kMaskLenMask = (kMaskRing >= 64) ? ~0ULL : ((1ULL << kMaskRing) - 1ULL);
+// (CC_PROMPT_16_TRIAGE bucket 2, option C's STAY-16 group) the DEFAULT PATTERN LENGTH —
+// the lane-window LOR seeds' 16 (the classic 16-step pattern a fresh patch's lanes read).
+// DISTINCT from kPatternLengthCap (the full 32 ring — the transport default and the
+// out-of-range fallbacks take THAT): the lane seeds stay 16 so the default-config march
+// goldens hold; moving them to the cap is the DEFERRED round (done alone, the digest
+// change as the only change).
+static constexpr int kDefaultPatternLen = 16;
 }  // namespace dotModular
 
 // The length/storage/mask domain, visible UNQUALIFIED to the engine layer (the audit's
@@ -86,8 +102,11 @@ static constexpr uint64_t kMaskLenMask = (kMaskRing >= 64) ? ~0ULL : ((1ULL << k
 using dotModular::kMaxPatternSteps;
 using dotModular::kStepStorage;
 using dotModular::kPatternLengthCap;
+using dotModular::kLaneOffsetMax;
+using dotModular::kLaneLengthMax;
 using dotModular::kMaskRing;
 using dotModular::kMaskLenMask;
+using dotModular::kDefaultPatternLen;
 
 // ── Input snapshot — filled by MeloDicer::process() each block ────────────────
 // All knob/CV values are pre-read so PatternEngine is Rack-port-free.
@@ -110,7 +129,7 @@ struct PatternInput {
     float octaveHi         = 5.f;
     float transpose        = 0.f;
     int   noteVariationMask= 0b111;
-    int   dnaLength        = 16;
+    int   dnaLength        = kDefaultPatternLen;   // (bucket 2, the stay-16 group) the write-only legacy default — the classic pattern length, NAMED
     int   dnaOffset        = 0;
     bool  locked           = false;
     // LOCK_SCOPE_MENU dice-scope: when locked, a stream whose dice bit is opted live may still redraw
@@ -670,6 +689,15 @@ struct PatternEngine {
     VoiceSlot displayedVoice() const { return displayedVoice_; }
     // The minting setter — the module layer's ONE entry point for the displayed voice.
     void setDisplayedVoice(VoiceSlot v) { displayedVoice_ = v; }
+    // SEND VOICE (CC_FIX_SEND_VOICE_FROM_MACRO): which voice the Macro SEND subpanel
+    // authors. Owned by the MACRO strip — its voice tab publishes here on change and
+    // on load (Monsoon::macroViewVoice is the persisted home of that selection);
+    // East's displayedVoice_ above is UNRELATED and untouched by the Macro strip.
+    // Same slot convention as displayedVoice_: 0 = mono/V1, 1..15 = poly V2..V16;
+    // callers MINT via VoiceResolver::slot(V), the default is the mono anchor.
+    VoiceSlot sendVoice_ = dotModular::kMonoVoiceSlot;
+    VoiceSlot sendVoice() const { return sendVoice_; }
+    void setSendVoice(VoiceSlot v) { sendVoice_ = v; }
     // Voice-scoped recompute: blend only the given voice's 16 steps from cached z0/z1.
     // Called by refreshVisualCache for the displayed voice (not all 15 poly voices).
     void recomputeEffectiveRhythmForVoice(VoiceSlot voice);
@@ -1076,7 +1104,12 @@ struct PatternEngine {
     mutable int prevNumPolyVoicesHint_ = 0;
     void fillDeltaZ_(int oldCount, int newCount) {
         if (newCount <= oldCount) return;
-        newCount = std::min(newCount, 15);
+        // F3 CHECKED (CC_FIX_VOICE_RANGE_STRIP_INTERACTION §F): this bounds the
+        // poly-VOICE rows of the z caches (zRhythm[v] & co. are [kVoiceSlots]-row
+        // arrays) — a VOICE count, NOT a lane length/offset/rotation, so it does
+        // NOT follow kPatternLengthCap. Left at the voice-slot domain; G2 names it
+        // (was the literal 15).
+        newCount = std::min(newCount, kVoiceSlots - 1);
         for (auto& kv : rhythmDrawCache_) {
             auto& e = kv.second;
             for (int v = oldCount + 1; v <= newCount; ++v)

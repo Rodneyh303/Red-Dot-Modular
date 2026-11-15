@@ -42,17 +42,24 @@ extern float gs_noteSteps(int nvIdx);
 struct GateState {
 
     // ── State ─────────────────────────────────────────────────────────────────
-    float  holdRemain      = 0.f;   // whole-step hold counter (engine DECISIONS:
-                                    // MidNote/canRest/hadTail). Unchanged: step units.
+    // holdRemain: the STEP-UNIT hold counter (engine DECISIONS: MidNote/canRest/
+    // hadTail). 1.0 = ONE STEP = PULSES_PER_STEP (6) grid pulses — FIXED at any
+    // PPQN (CC_PROMPT_PPQN_48 decision 1): at 24 a step is a 1/16, at 48 a 1/32.
+    // Armed from the note's PULSE count (noteValuePulses/6 — bit-identical to the
+    // old 1/16-unit values at 24), decremented once per step edge in tick().
+    float  holdRemain      = 0.f;
     bool   gateHeld        = false;
     // Gate-open length counted in PPQN GRID PULSES — the single mechanism that
     // closes the gate for ALL note lengths (whole, triplet, 1/32 alike: each is
-    // just an integer pulse count = noteSteps * pulsesPer16th). Replaces the old
-    // seconds timer (gateSecRemain) + its whole-vs-fractional special-casing.
+    // just an integer pulse count = the note's MUSICAL duration, noteValuePulses —
+    // a 1/16 is 6 pulses at 24 and 12 at 48, the same TIME either way). Replaces
+    // the old seconds timer (gateSecRemain) + its whole-vs-fractional special-casing.
     // >=0 while governing the gate; decremented once per grid pulse in tickPulse().
     int    gatePulseRemain = -1;
-    int    pulsesPer16th   = 6;     // grid resolution (24/48/96 PPQN → 6/12/24);
+    int    pulsesPer16th   = 6;     // grid resolution (24/48 PPQN → 6/12) — MUSICAL;
                                     // set by the engine each tick from the clock.
+    int    ppqn            = 24;    // the master grid, derived each tick (p16·4) — the
+                                    // note→pulse conversion's PPQN (noteValuePulses).
     float  currentPitchV   = 0.f;   // 1V/oct output
     int    lastSemitone    = -1;    // for tie detection
     // Per-DEGREE flash timers (steps). Sized MAXN (24) for Micro-24; only the active degrees are ever
@@ -94,8 +101,13 @@ struct GateState {
     rack::dsp::PulseGenerator gatePulse;  // 1ms retrigger for envelopes
 
     // ── Core operations ───────────────────────────────────────────────────────
-    // Arm the gate-close pulse countdown from a duration in 1/16-steps.
-    void armGate(float durSteps);   // gatePulseRemain = round(durSteps * pulsesPer16th)
+    // Arm the gate-close pulse countdown from a duration in 1/16-steps (the
+    // MUSICAL unit — unchanged contract, the tests' authority):
+    // gatePulseRemain = round(durSteps * pulsesPer16th).
+    void armGate(float durSteps);
+    // Arm it from an exact PULSE count (CC_PROMPT_PPQN_48: the note table's own
+    // pulse counts — no rounding at all). Clamped to ≥1 (a sounding note is ≥1 pulse).
+    void armGatePulses(int pulses);
     // FADER_SEQ_QUANT_COLOURS: isQuant routes the flash to the quant timer (green) instead of the
     // seq timer (red). Default false = seq (byte-identical to pre-collapse callers that omit it).
     void triggerNote(float pitchV, int semitone, int nvIdx, bool isQuant = false);

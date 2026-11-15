@@ -241,6 +241,26 @@
       ]
     },
     {
+      "slug": "SandsPhaseDistSubpanel",
+      "name": "Sands Phase Dist Subpanel",
+      "description": "Authoring panel for the phase-distortion expander's eight parameter sets (warp/tilt/gap/atom per set) with the effective-curve plot. Snaps to the Sands family; edits the store the Monsoons read.",
+      "tags": [
+        "Expander",
+        "Digital",
+        "Utility"
+      ]
+    },
+    {
+      "slug": "PhaseDistortion",
+      "name": "Phase Distortion",
+      "description": "Standalone phase distortion: 8 phase channels, per-channel warp/tilt/gap/atom sets, the shared transform. EVERY Monsoon's phase and subphase patch from its outputs (one-sample hop by design; a direct source path desyncs by one sample).",
+      "tags": [
+        "Utility",
+        "Waveshaper",
+        "Digital"
+      ]
+    },
+    {
       "slug": "Lantern",
       "name": "Lantern",
       "description": "Read-only note-output visualiser for Monsoon — 16-lane display of notes, ties, legato and accents",

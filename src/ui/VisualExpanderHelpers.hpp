@@ -75,19 +75,19 @@ inline bool isConnectedAndClaimed(rack::Module* self) {
 }
 
 // ── Per-lane playhead ─────────────────────────────────────────────────────────
-// Returns the PHYSICAL bar (0..15) the sequencer actually reads after LOR, to
+// Returns the PHYSICAL bar (0..kMaskRing-1) the sequencer actually reads after LOR, to
 // match SequencerEngine::getStrandIdx exactly:
 //     timelineIdx = (globalStep + rotation) mod length
 //     physicalBar = (timelineIdx + offset) mod ring
 // so the highlight lands on the real active block, not a window-relative index.
 // Returns -1 if globalStep < 0 (sequencer not running).
-// STEPS_32 Stage 2a: the ring landing derives from kMaskRing (was literal 16) —
-// identical at the 16 bound; the Stage-2b flip moves it with the ring.
+// (bugs 17+18, LOR_EDITING_BUG_LIST) the law lives in the core (lanePlayheadBar —
+// ONE law, every lane INCLUDING the VAR lane; the old VAR special-case drew the
+// engine's global scan and left the lane's window); this delegates.
 inline int calcPlayhead(int globalStep, int length, int offset, int rotation) {
     if (globalStep < 0) return -1;
-    length = std::max(1, std::min(length, dotModular::kMaskRing));
-    int timelineIdx = ((globalStep + rotation) % length + length) % length;
-    return (timelineIdx + offset) % dotModular::kMaskRing;
+    return redDot::SandsRangeGestureCore::lanePlayheadBar(
+        globalStep, length, offset, rotation, dotModular::kMaskRing);
 }
 
 // CC_PROMPT_VARIATION_SCAN_DISPLAY — the VARIATION lane's chevron position: the
@@ -99,6 +99,17 @@ inline int calcPlayhead(int globalStep, int length, int offset, int rotation) {
 // clock/phase — scanOfs_ stays 0 there) this equals the old calcPlayhead position:
 // calcPlayhead matches getStrandIdx exactly, and the mono feeds' LOR comes from the
 // engine's own lor() store, so the swap is bit-identical at rest. -1 when not running.
+//
+// RESTORED (fix/variation-scan-display): bug 18 retired these on the premise that the
+// scan "could leave the lane's window". That premise is FALSE on the engine side —
+// stepAdvanceStrandIdx delegates to getStrandIdx, whose result is
+// (((tick+delta) mod len + len) mod len + off) mod ring, i.e. ALWAYS in [off, off+len)
+// for ANY delta. The scan jumps to a DIFFERENT IN-WINDOW cell (ahead of the shared
+// playhead), then rejoins on advance — that IS the feature, and it never leaves the
+// lane's own window. Pinned headless: test_variation_scan_display (in-window across
+// scan deltas + bit-identical to calcPlayhead at delta 0). If a symptom persists in
+// Rack it is a DISPLAY-row-len vs ENGINE-var-strand-len mismatch, not the scan —
+// a separate, isolatable cause.
 inline int variationLanePlayhead(const SequencerEngine& eng) {
     if (eng.stepIndex < 0) return -1;
     const dotModular::VoiceSlot mono = dotModular::kMonoVoiceSlot;
@@ -116,11 +127,12 @@ inline int variationLanePlayheadForVoice(const SequencerEngine& eng, dotModular:
     return eng.stepAdvanceStrandIdx(bank, eng.stepAdvanceScanDelta(bank));
 }
 
-// Read an integer param (rounded) from a module, clamped to [1, 16].
+// Read an integer param (rounded) from a module, clamped to [1, kLaneLengthMax]
+// (G2: the lane-length bound by name — was the literal 16, the same D1-class miss).
 // Returns fallback if the module pointer is null.
 inline int readLenParam(rack::Module* mod, int paramId, int fallback = 16) {
     if (!mod) return fallback;
-    return std::max(1, std::min(16, (int)std::round(mod->params[paramId].getValue())));
+    return std::max(1, std::min(dotModular::kLaneLengthMax, (int)std::round(mod->params[paramId].getValue())));
 }
 inline int readOffRotParam(rack::Module* mod, int paramId, int fallback = 0) {
     if (!mod) return fallback;

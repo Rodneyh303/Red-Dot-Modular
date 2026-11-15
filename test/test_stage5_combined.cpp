@@ -367,11 +367,11 @@ static void captureVoiceSub(const SequencerEngine& eng, int voiceNo, Capture& ca
 static const char* leakMaskPlanes(const SequencerEngine& eng, char* msg) {
     const uint64_t beyond = ~dm::kMaskLenMask;
     for (int v = 0; v < SequencerEngine::kVoiceSlots; ++v) {
-        if (eng.maskPainted_[v]    & beyond) { std::snprintf(msg, 256, "maskPainted_[%d] bits beyond ring", v); return msg; }
+        if (eng.maskAnchored_[v]    & beyond) { std::snprintf(msg, 256, "maskAnchored_[%d] bits beyond ring", v); return msg; }
         if (eng.maskAnchored_[v]   & beyond) { std::snprintf(msg, 256, "maskAnchored_[%d] bits beyond ring", v); return msg; }
         if (eng.maskLastPushed_[v] & beyond) { std::snprintf(msg, 256, "maskLastPushed_[%d] bits beyond ring", v); return msg; }
     }
-    if (eng.maskMacroPainted_    & beyond) { std::snprintf(msg, 256, "maskMacroPainted_ bits beyond ring");    return msg; }
+    if (eng.maskMacroAnchored_    & beyond) { std::snprintf(msg, 256, "maskMacroAnchored_ bits beyond ring");    return msg; }
     if (eng.maskMacroAnchored_   & beyond) { std::snprintf(msg, 256, "maskMacroAnchored_ bits beyond ring");   return msg; }
     if (eng.maskMacroLastPushed_ & beyond) { std::snprintf(msg, 256, "maskMacroLastPushed_ bits beyond ring"); return msg; }
     if (eng.windowMask           & beyond) { std::snprintf(msg, 256, "windowMask bits beyond ring");           return msg; }
@@ -862,8 +862,14 @@ int main() {
         check(firstBar,      "V5: the (32,0) march's first bar is BIT-IDENTICAL to the (16,0) march's whole walk (content, frames 0..15 — D3's extension, not alteration)");
         check(firstBarMono,  "V5: the mono substream matches too (frames 0..15)");
         check(firstBarVoices,"V5: all 15 per-voice substreams match (frames 0..15)");
-        check(w32.content.full.digest() != w16.content.full.digest(),
-              "V5: the marches then DIVERGE (bar 2 is new content, not a re-wrap — the sensitivity face)");
+        // (CC_PROMPT_16_TRIAGE option C re-aim) the cap arm: a full-ring window PASSES
+        // THROUGH — the reads are the pass-through reads either way (window-length
+        // independent), so the (32,0) march's whole read stream == the (16,0) march's.
+        // Was != (the old mapped-32 fold vs the 16 free-run — the non-dividing lanes
+        // diverged); the bar-2 surface now lives in the MASK phrase steps (V4's painted
+        // cell 16) and authored 32-length reads, not the default lane folds.
+        check(w32.content.full.digest() == w16.content.full.digest(),
+              "V5 (option C): the full-ring window passes through IDENTICALLY — the (32,0) march's read stream == the (16,0) march's (the cap arm's congruence)");
         if (DBG && (!firstBar || !firstBarMono || w32.content.full.digest() == w16.content.full.digest())) {
             std::printf("  [dbg] V5 landings32:");
             for (int t = 0; t < 48; ++t) std::printf(" %d", w32.landings[t]);

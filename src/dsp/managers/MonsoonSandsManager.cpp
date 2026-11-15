@@ -385,12 +385,15 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // killed in Step 6 — monoVis is always nullptr), but the guard stays for future East CV.
             const bool v1OwnsLane = (topo.owner(0, l) == dotModular::SandsTopology::Role::EAST);
             if (v1OwnsLane) {
-                // STEPS_32 Stage 1: the length domain derives from kPatternLengthCap (was literal
-                // 16.f — identical at the storage bound; Stage 2 flips the cap). The off/rot
-                // domains stay 0..15 — class-B frame landings, Stage 2.
-                baseLen = applyMonoCV(baseLen, l, 0, 1.f, (float)dotModular::kPatternLengthCap);
-                baseOff = applyMonoCV(baseOff, l, 1, 0.f, 15.f);
-                baseRot = applyMonoCV(baseRot, l, 2, 0.f, 15.f);
+                // F (CC_FIX_VOICE_RANGE_STRIP_INTERACTION): the lane-window bounds are the
+                // NAMED constants — LEN 1..kLaneLengthMax, OFF 0..kLaneOffsetMax (was the
+                // literal 1..16/0..15 spans — the midpoint snap: an offset past the old 15
+                // pinned here while the editor authors 0..31). ROT follows the LANES' RULE:
+                // hi = the lane's length − 1 (the length landed on the line above), never a
+                // fixed 15.
+                baseLen = applyMonoCV(baseLen, l, 0, 1.f, (float)dotModular::kLaneLengthMax);
+                baseOff = applyMonoCV(baseOff, l, 1, 0.f, (float)dotModular::kLaneOffsetMax);
+                baseRot = applyMonoCV(baseRot, l, 2, 0.f, baseLen - 1.f);
             }
 
             // INTERPRETATION Y — voice-1 mix-in. The mono master strand is voice 1 of
@@ -443,12 +446,13 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
             // modulation, already in the delegated base). Only OWNED lanes receive these.
             if (l < dotModular::SandsGrid::POLY_LANES && v1OwnsLane) {
                 // Sum ALL mods (East CV + Macro send) onto the base, then clamp the END RESULT once.
-                // STEPS_32 Stage 1: the length domain derives from kPatternLengthCap (was literal
-                // 16.f — identical at the storage bound; Stage 2 flips the cap). The off/rot
-                // domains stay 0..15 — class-B frame landings, Stage 2.
-                baseLen = math::clamp(baseLen + eastDelta(l, 0, 1.f, (float)dotModular::kPatternLengthCap) + macroDelta(l, 0),  1.f, (float)dotModular::kPatternLengthCap);
-                baseOff = math::clamp(baseOff + eastDelta(l, 1, 0.f, 15.f) + macroDelta(l, 1),  0.f, 15.f);
-                baseRot = math::clamp(baseRot + eastDelta(l, 2, 0.f, 15.f) + macroDelta(l, 2),  0.f, 15.f);
+                // F: the named lane-window bounds (was the literal 1..16/0..15 spans — the
+                // midpoint snap). ROT's hi is the FINAL length − 1 — the length's clamp landed
+                // on the line above, so the rotation domain is the lane's own window (the
+                // lanes' rule).
+                baseLen = math::clamp(baseLen + eastDelta(l, 0, 1.f, (float)dotModular::kLaneLengthMax) + macroDelta(l, 0),  1.f, (float)dotModular::kLaneLengthMax);
+                baseOff = math::clamp(baseOff + eastDelta(l, 1, 0.f, (float)dotModular::kLaneOffsetMax) + macroDelta(l, 1),  0.f, (float)dotModular::kLaneOffsetMax);
+                baseRot = math::clamp(baseRot + eastDelta(l, 2, 0.f, baseLen - 1.f) + macroDelta(l, 2),  0.f, baseLen - 1.f);
             }
 
             // LOR is LATCH (LOCK_SEMANTICS §9): under lock, do NOT re-push the strand window --
@@ -680,8 +684,11 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                     const int b1 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, el, 1)) : 0;
                     const int b2 = mmV1 ? (int)std::round(mmV1->getLorBase(kMono, el, 2)) : 0;
                     const float len = (float)std::max(1, b0);
-                    const float off = (float)(((b1 % 16) + 16) % 16);
-                    const float rot = (float)(((b2 % 16) + 16) % 16);
+                    // F: the base normalisation wraps to the RING (setStrand's own law) —
+                    // was % 16, which folded the editor's 16..31 starts back to 0..15 (the
+                    // same midpoint-snap class on this East-V1 path).
+                    const float off = (float)(((b1 % dotModular::kMaskRing) + dotModular::kMaskRing) % dotModular::kMaskRing);
+                    const float rot = (float)(((b2 % dotModular::kMaskRing) + dotModular::kMaskRing) % dotModular::kMaskRing);
                     auto sendBlend = [&](int item)->float {
                         if (!macroVis) return 0.f;   // match the widget's guard exactly
                         float send = mmV1 ? mmV1->getMacroSend(kMono, el, item) : 0.f;
@@ -697,11 +704,17 @@ void MonsoonSandsManager::processDNA(const MonsoonExpanderManager& expanderManag
                         }
                         return rack::math::clamp(base + sendBlend(item), lo, hi);
                     };
-                    if (lorLive)   // LOR LATCH: skip re-push under lock (q-mix on SB_SANDS_Q)
-                    engine.setStrand(StrandWriter::EAST, el,
-                        (int)std::round(addCV(len, 0, 1.f, (float)dotModular::kPatternLengthCap)),   // STEPS_32: the LEN span tracks the cap (the close-out re-pointed :388/:449; this East-V1 path was missed — the same D1 class)
-                        (int)std::round(addCV(off, 1, 0.f, 15.f)),
-                        (int)std::round(addCV(rot, 2, 0.f, 15.f)));
+                    if (lorLive) {  // LOR LATCH: skip re-push under lock (q-mix on SB_SANDS_Q)
+                        // F: the LEN lands FIRST (hoisted) so ROT's clamp hi is the lane's
+                        // own length − 1 — the lanes' rule; OFF spans 0..kLaneOffsetMax (was
+                        // the literal 1..16/0..15 spans on this East-V1 path — the missed D1
+                        // class and the midpoint snap).
+                        const float lenV = addCV(len, 0, 1.f, (float)dotModular::kLaneLengthMax);
+                        engine.setStrand(StrandWriter::EAST, el,
+                            (int)std::round(lenV),
+                            (int)std::round(addCV(off, 1, 0.f, (float)dotModular::kLaneOffsetMax)),
+                            (int)std::round(addCV(rot, 2, 0.f, std::max(0.f, lenV - 1.f))));
+                    }
                 }
                 // VAR/LEG (editor 5/6) now flow through the SAME core loop above (POLY_LANES=7),
                 // via cvId(5/6,item) + getMacroAtten(kMono, 5/6*4+item) + getLorBase(kMono, 5/6,·).
@@ -957,13 +970,15 @@ void MonsoonSandsManager::publishGlobalProduce_(Monsoon& ownerMon) {
         float baseRot = gMon ? gMon->getGlobalLor(lane,2) : 0.f;
         float baseSpr = gMon ? gMon->getGlobalSpread(lane) : 0.f;
         // CV-applied (Macro's OWN value — true POST, drives Macro's own display).
-        // STEPS_32: the LEN span tracks the cap (the close-out re-pointed the mono :388 /
-        // East-poly :449 spans; this Macro-global publish was missed — the same D1 class,
-        // patched-CV recalibration release-noted); OFF/ROT spans stay 0..15 (the
-        // classification's recorded decision — the knob/CV calibration domain).
-        float cvLen = applyMacroCV(baseLen, lane, 0, 1.f, (float)dotModular::kPatternLengthCap);
-        float cvOff = applyMacroCV(baseOff, lane, 1, 0.f, 15.f);
-        float cvRot = applyMacroCV(baseRot, lane, 2, 0.f, 15.f);
+        // F: the named lane-window bounds — LEN 1..kLaneLengthMax, OFF 0..kLaneOffsetMax
+        // (was the literal 1..16/0..15 spans — the missed D1 class and the midpoint snap);
+        // ROT's hi is the lane's length − 1 (cvLen landed on the line above — the lanes'
+        // rule). This OVERTURNS the old "off/rot spans stay 0..15" calibration decision for
+        // the LANE path (the doc's F4: the CV paths keep their behaviour, only the range
+        // changes); the VOICE-LOR CV fold keeps that recorded decision.
+        float cvLen = applyMacroCV(baseLen, lane, 0, 1.f, (float)dotModular::kLaneLengthMax);
+        float cvOff = applyMacroCV(baseOff, lane, 1, 0.f, (float)dotModular::kLaneOffsetMax);
+        float cvRot = applyMacroCV(baseRot, lane, 2, 0.f, cvLen - 1.f);
         // Effective macro global spread via the single authority. Macro publishing its own global
         // has only its own CV (no East, no delegation, no macro-send-to-self), so only ownCv is
         // set — SpreadResolver then yields clamp(base + ownCv·2), identical to applyMacroSprCV.
@@ -997,9 +1012,12 @@ void MonsoonSandsManager::publishGlobalProduce_(Monsoon& ownerMon) {
             post = cv * att * (hi - lo);
         };
         float preD[4], postD[4];
-        endpointDeltas(0, 1.f, (float)dotModular::kPatternLengthCap, preD[0], postD[0]);   // STEPS_32: the LEN span tracks the cap (the missed D1-class tail)
-        endpointDeltas(1, 0.f, 15.f, preD[1], postD[1]);
-        endpointDeltas(2, 0.f, 15.f, preD[2], postD[2]);
+        // F: the endpoints' spans MATCH the end-clamps the poly readers combine through
+        // (the pre/post lerps land inside the same domain) — the named bounds, ROT at the
+        // lane's length − 1 (cvLen, computed above).
+        endpointDeltas(0, 1.f, (float)dotModular::kLaneLengthMax, preD[0], postD[0]);
+        endpointDeltas(1, 0.f, (float)dotModular::kLaneOffsetMax, preD[1], postD[1]);
+        endpointDeltas(2, 0.f, cvLen - 1.f, preD[2], postD[2]);
         endpointDeltas(3, -1.f, 1.f,  preD[3], postD[3]);
         for (int item = 0; item < 4; ++item) {
             macroVis->macroPreDelta[lane][item]  = preD[item];

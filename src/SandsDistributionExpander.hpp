@@ -107,8 +107,21 @@ namespace SandsDistributionIds {
 // unit-tested there; the module feeds it the production predicates below.)
 struct SandsDistributionExpander : rack::Module, redDot::SandsSnapGuest {
 
-    // ── the role (host detection, memoized by the topology epoch) ────────────
+    // ── THE ROLE (host detection, memoized by the topology epoch) ────────────
     std::atomic<bool> macroRole{false};   // CROSS-VOICE (Macro host) vs PER-VOICE
+
+    // ── THE PHASE-DISTORTION STORE MOVED (CC_FIX_PHASE_STORE_ON_SUBPANEL): the
+    // eight-set PhaseDistStore lived HERE (§14's adopted model made this expander
+    // its owner) and now lives on SandsPhaseDistSubpanel — the phase AUTHORING
+    // surface, self-contained like the standalone PhaseDistortion module. This
+    // expander only ever shared the distribution MATHS with the phase tier, not a
+    // reason to share a MODULE: Distribution modifies probabilities; phase
+    // distortion modifies transport — the surprise dependency (the subpanel inert
+    // until a Distribution expander existed) is GONE. The persistence block moved
+    // with the store (the same additive key "phaseDistSets" on the subpanel's JSON;
+    // a stale key left by pre-move patches is simply unread here). This expander
+    // keeps its distribution role unchanged (probabilities — the deltas, the role
+    // walk, the seating below).
 
     // ── snapping (the StraitsLane idiom: the subpanel FLAGS, the host decides) ─
     // The flag lives in SandsSnapGuest (needsResnap): set by the widget's

@@ -7,6 +7,7 @@
 #include "../dsp/LaneMapping.hpp"   // canonical editor lane order — the Lane enum below is guarded against it
 #include "../dsp/engines/PatternEngine.hpp"   // dotModular::kMaskLenMask — the STEPS_32 Stage 2a mask-constant authority
 #include "SandsLaneWindowCore.hpp"   // STEPS_32 Stage 3: the lane window's display math (rack-free, verbatim) — ProbabilityLane's base
+#include "SandsRangeGestureCore.hpp" // CC_FIX_VOICE_RANGE_STRIP_INTERACTION: the strip's gesture math (rack-free — the same precedent)
 
 namespace redDot {
 
@@ -204,7 +205,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // action against the STORE (getLorBase/setLorBase) so the drag is Ctrl+Z-undoable. The
   // editor stays decoupled from the module/store -- it only reports the change.
   std::function<void(int lane, const int before[3], const int after[3])> onLorCommit;
-  int lorBeforeDrag[3] = {0,0,0};   // captured at drag press (len,off,rot of dragLane)
+  // (the drag's before/after pair lives in lorDrag — the reducer keeps it for the commit)
 
   VoiceState currentState;
   VoiceState clipboard;
@@ -222,24 +223,47 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   bool showControlBar = true;
   std::deque<VoiceState> redoHistory;
   static constexpr int UNDO_HISTORY_SIZE = 50;
-  
-  struct PresetSeed {
-    char name[32];
-    VoiceState state;
-  };
-  static constexpr int PRESET_BANK_SIZE = 8;
-  std::array<PresetSeed, PRESET_BANK_SIZE> presetBank;
-  int selectedPreset = 0;
+  // (ADDITION D — CC_FIX_VOICE_RANGE_STRIP_INTERACTION) the vestigial PRESET BANK is
+  // RETIRED — the seed struct, the bank array + its size constant, the selected
+  // index, the seeding, the load path, the panel draw and the never-set flag that
+  // guarded it are all deleted: nothing in the live editor, the East/Macro visuals
+  // or the plugin registration ever called the apply path (the deprecated copy
+  // stays out of the build).
   
   struct DragState {
     enum Type { NONE, START, END, ROTATION, WINDOW };
-    Type  type         = NONE;
-    int   dragLane     = 0;
+    // (LOR_EDITING_BUG_LIST §PLAN 1 — the drag reducer) the LOR drag STATE lives in
+    // the reducer (lorDrag below); this keeps the Type enum (the zone vocabulary
+    // the hit tests, hover and cursor cues share) and the LANE drag's pointer
+    // accumulator.
     math::Vec dragPos  = {};  // accumulated absolute position (Rack2: DragMove has delta not pos)
-    int   grabStep     = 0;   // step under cursor at press (for relative WINDOW move)
-    int   grabOffset   = 0;   // lane.offset at press (window slides relative to this)
-    bool  isDragging     = false;
   } dragState;
+  // THE DRAG REDUCER's state — the ONE LOR drag state machine (LOR_EDITING_BUG_LIST
+  // §PLAN 1, the ROOT ISSUE fix). The owner is set at the ENGAGED press (the strip
+  // band is hit-tested FIRST — a press there starts a STRIP drag and returns;
+  // anything below starts a LANE drag — ADDITION E's law). A LANE drag never calls
+  // onRangeEdit and never writes rangeStrip.lor; a STRIP drag never writes lanes[l].
+  // The widget is the TRANSLATION layer: GLFW press/move/release ->
+  // SandsRangeGestureCore::lorDragReduce calls + the window copy-back (the laws are
+  // the core's pure functions; the paint/arm machinery stays here — it is the paint
+  // feature, not the LOR drag).
+  redDot::SandsRangeGestureCore::LorDragState lorDrag;
+  // DragState::Type -> the reducer's Zone (the translation vocabulary).
+  static redDot::SandsRangeGestureCore::Zone coreZoneOf(DragState::Type t) {
+    switch (t) {
+      case DragState::START:    return redDot::SandsRangeGestureCore::Z_START;
+      case DragState::END:      return redDot::SandsRangeGestureCore::Z_END;
+      case DragState::ROTATION: return redDot::SandsRangeGestureCore::Z_ROTATION;
+      case DragState::WINDOW:   return redDot::SandsRangeGestureCore::Z_WINDOW;
+      default:                  return redDot::SandsRangeGestureCore::Z_NONE;
+    }
+  }
+  bool stripDragLive() const {
+    return lorDrag.active && lorDrag.owner == redDot::SandsRangeGestureCore::LorDragState::O_STRIP;
+  }
+  bool laneDragLive() const {
+    return lorDrag.active && lorDrag.owner == redDot::SandsRangeGestureCore::LorDragState::O_LANE;
+  }
 
   // ── UNIFIED ADDRESSING Stage 3: the VOICE-RANGE strip ────────────────────────
   // A thin CONSTANT-block lane reserved ABOVE lane 0 (the frame the probability lanes
@@ -261,8 +285,6 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     int   dir     = 1;            // the walk sign (+1/-1) for the leading-edge cue
     bool  blocked = false;        // follow-Macro / read-only — render, no gestures
     const char* label = "";       // host caption (drawn like the lane labels)
-    // drag state (the same zone shape as a probability lane):
-    bool  dragging = false;
     // THE UNIFIED GESTURE MODEL (the follow-up fix): a press is PENDING (pressArmed)
     // until the cursor crosses into a NEW step cell — released unmoved it is a CLICK
     // (the paint toggle of the press cell, ANY cell: full-window strips are
@@ -275,11 +297,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     bool  paintPress = false;     // a paint stroke is ENGAGED (drag-paint)
     int   paintTarget = -1;       // the stroke's uniform target (latched by the first cell)
     unsigned paintApplied = 0u;   // cells already toggled this stroke (no double-toggle on wiggle)
-    DragState::Type type = DragState::NONE;
+    // (§PLAN 1) the LOR drag state (the zone, the grab values, the before/after
+    // pair) lives in lorDrag — the reducer; this keeps the strip's POINTER
+    // accumulator (the arm, the paint stroke and the drag all accumulate here).
     math::Vec dragPos  = {};      // accumulated absolute position (DragMove gives delta)
-    int   grabStep     = 0;       // step under cursor at press (relative WINDOW move)
-    int   grabOff      = 0;       // lor[1] at press
-    int   before[3]    = {16,0,0};// LOR at press (for the commit report)
   } rangeStrip;
   // Live authoring callbacks (host-wired; the editor stays store-decoupled).
   std::function<void(int L, int O, int R)> onRangeEdit;                        // per move
@@ -294,9 +315,10 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // pushes the EFFECTIVE pattern (delegation-resolved) each frame; edits are
   // blocked while the row follows Macro (the delegation discipline).
   // STEPS_32 Stage 2a: the plane is the DECIDED uint64 integer representation,
-  // ring-masked (the display cells stay STEP_COUNT = the visible 16 — class C —
-  // while the PLANE already holds the ring-wide pattern; the Stage-2b flip widens
-  // what the host pushes with no widget change beyond the constant).
+  // ring-masked. The display cells are STEP_COUNT (32) wide — the FULL phrase
+  // grid — and the mask plane holds the ring-wide pattern with the same domain
+  // (the old "visible 16" note was stale; the Stage-2b flip widened the host push,
+  // and the grid draws every column).
   bool     maskActive  = false;
   uint64_t maskPattern = dotModular::kMaskLenMask;
   std::function<void(int cell, bool play)> onMaskToggle;
@@ -315,7 +337,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // fight the hand) — readPos/dir/blocked still update.
   void setRangeState(int L, int O, int R, int readPos, int dir, bool blocked, const char* label) {
     rangeStrip.enabled = true;
-    if (!rangeStrip.dragging) {
+    if (!stripDragLive()) {   // (§PLAN 1) the reducer's engagement guards the window push
       rangeStrip.lor[0] = std::max(1, std::min(L, STEP_COUNT));
       rangeStrip.lor[1] = ((O % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
       rangeStrip.lor[2] = ((R % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
@@ -325,12 +347,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     rangeStrip.blocked = blocked;
     if (label) rangeStrip.label = label;
   }
-  // Strip window membership (mirrors ProbabilityLane::barInWindow on the display row).
+  // Strip window membership — (bug 11) the ONE window-contains law, shared with
+  // ProbabilityLane::barInWindow (SandsRangeGestureCore::windowContains): the
+  // strip's tint and the lanes' tint draw from the SAME set for the same
+  // (off, len), so the voice strip shows the window the probability lanes show.
   bool rangeBarInWindow(int bar) const {
-    const int s = rangeStrip.lor[1];
-    const int e = (s + std::max(1, std::min(rangeStrip.lor[0], STEP_COUNT)) - 1) % STEP_COUNT;
-    bar = ((bar % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
-    return (e >= s) ? (bar >= s && bar <= e) : (bar >= s || bar <= e);
+    return redDot::SandsRangeGestureCore::windowContains(
+        rangeStrip.lor[1], rangeStrip.lor[0], bar, STEP_COUNT);
   }
   
 
@@ -356,7 +379,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   
   struct KeyboardState {
     int selectedLane = 0;
-    bool showPresetPanel = false;
+    // (the preset-panel flag RETIRED — ADDITION D; it was never set true, the panel was dead)
   } kbState;
   
   // Per-lane playhead — each lane can be at a different step
@@ -443,7 +466,6 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     setMode(m);
     box.size = rack::Vec(550, 250);
     resetState();
-    initializePresets();
   }
 
   ~SandsVisualEditorV4() {
@@ -536,50 +558,7 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     currentState.lanes[lane] = clipboard.lanes[lane];
   }
   
-  void initializePresets() {
-    snprintf(presetBank[0].name, sizeof(presetBank[0].name), "Flat");
-    for (int l = 0; l < laneCount; ++l) {
-      for (int s = 0; s < STEP_COUNT; ++s) {
-        presetBank[0].state.lanes[l].probabilities[s] = 0.5f;
-      }
-    }
-    
-    snprintf(presetBank[1].name, sizeof(presetBank[1].name), "Peak");
-    for (int l = 0; l < laneCount; ++l) {
-      for (int s = 0; s < STEP_COUNT; ++s) {
-        float center = STEP_COUNT / 2.f;
-        float dist = fabsf(s - center) / center;
-        presetBank[1].state.lanes[l].probabilities[s] = 1.f - dist;
-      }
-    }
-    
-    snprintf(presetBank[2].name, sizeof(presetBank[2].name), "Ramp");
-    for (int l = 0; l < laneCount; ++l) {
-      for (int s = 0; s < STEP_COUNT; ++s) {
-        presetBank[2].state.lanes[l].probabilities[s] = s / (float)STEP_COUNT;
-      }
-    }
-    
-    snprintf(presetBank[3].name, sizeof(presetBank[3].name), "Random");
-    for (int l = 0; l < laneCount; ++l) {
-      for (int s = 0; s < STEP_COUNT; ++s) {
-        presetBank[3].state.lanes[l].probabilities[s] = rack::random::uniform();
-      }
-    }
-    
-    for (int p = 4; p < PRESET_BANK_SIZE; ++p) {
-      snprintf(presetBank[p].name, sizeof(presetBank[p].name), "Custom%d", p - 3);
-      presetBank[p].state = currentState;
-    }
-  }
-  
-  void loadPreset(int idx) {
-    if (idx >= 0 && idx < PRESET_BANK_SIZE) {
-      saveToHistory();
-      currentState = presetBank[idx].state;
-      selectedPreset = idx;
-    }
-  }
+  // (the preset seeding + the preset load path RETIRED — ADDITION D, with the bank)
   
   void draw(const widget::Widget::DrawArgs& args) override {
     syncLayout();
@@ -620,7 +599,6 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       drawRotationIndicator(args.vg, lane);
     }
     
-    if (kbState.showPresetPanel) drawPresetPanel(args.vg);
     drawLanePlayheads(args.vg);
     
     nvgBeginPath(args.vg);
@@ -660,8 +638,12 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
 
     // Silver/white — the voice FRAME is hue-neutral (a voice spans all seven lane
     // hues); luminance carries the state, exactly like the rotation chevrons.
-    const NVGcolor lit  = nvgRGBAf(1.f, 1.f, 1.f, 0.14f);
-    const NVGcolor dim  = nvgRGBAf(1.f, 1.f, 1.f, 0.045f);
+    // (bug 15, LOR_EDITING_BUG_LIST) the CONTRAST-CHECKED constants — the old
+    // 0.14/0.045 white fills over the #101216 recess measured ~1.7:1 (grey on
+    // grey, "the grab range is invisible"); these clear the pinned minimum
+    // (kStripMinContrast, the headless contrast gate).
+    const NVGcolor lit  = nvgRGBAf(1.f, 1.f, 1.f, redDot::SandsRangeGestureCore::kStripLitA);
+    const NVGcolor dim  = nvgRGBAf(1.f, 1.f, 1.f, redDot::SandsRangeGestureCore::kStripDimA);
     const NVGcolor edge = nvgRGBAf(1.f, 1.f, 1.f, rangeStrip.blocked ? 0.45f : 0.85f);
 
     for (int step = 0; step < STEP_COUNT; ++step) {
@@ -674,14 +656,53 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       nvgRect(vg, cell.pos.x, cell.pos.y, cell.size.x, cell.size.y);
       nvgFillColor(vg, inWin ? lit : dim);
       nvgFill(vg);
-      // window edge markers (the drawStep idiom, on the strip's own row)
+      // (bug 11, Rodney's ruling — asked and answered) the LANE-STYLE faint
+      // window tint, ALWAYS drawn (both modes): the 0.05 white body fill the
+      // probability lanes draw (drawStep), layered UNDER the presence figure —
+      // so even when the output mask is PAINTED (the strip's bright layer shows
+      // play/mute) the RANGE still reads underneath. The set is the ONE law
+      // (rangeBarInWindow == windowContains == the lanes' barInWindow).
+      if (rangeBarInWindow(step)) {
+        nvgBeginPath(vg);
+        nvgRect(vg, cell.pos.x, cell.pos.y, cell.size.x, cell.size.y);
+        nvgFillColor(vg, nvgRGBAf(1.f, 1.f, 1.f, redDot::SandsRangeGestureCore::kStripTintA));
+        nvgFill(vg);
+      }
+      // window edge markers (the drawStep idiom, on the strip's own row). (B) The
+      // grab ribbons are drawn at the SAME width as the hit zones (edgeZoneW — the
+      // doc's "draw the handles and grab zones from the same constants"), so what
+      // reads grabbable IS grabbable: a crisp bar at the boundary + a faint ribbon
+      // one cell in (and the zone extends one cell OUT too — hitTestRange).
       const int s = rangeStrip.lor[1];
       const int e = (s + std::max(1, std::min(rangeStrip.lor[0], STEP_COUNT)) - 1) % STEP_COUNT;
+      const float edgeW = redDot::SandsRangeGestureCore::edgeZoneW(layout.stepWidthF());
+      // (bug 10) a 1-WIDE window's cell IS the body; its edge RIBBONS are the
+      // OUTSIDE bands (matching the hit zones). The crisp 2.5px boundary bars
+      // stay ON the cell's own edges either way (the drawStep idiom: both edges
+      // show on the same cell unambiguously).
+      const bool oneWide = (s == e);
+      // (bug 14) the 1-wide window's OUTSIDE ribbons are CLAMPED into the grid
+      // rect: at step 0 / the last step they never overdraw the panel past the
+      // grid (a fully outside band collapses to zero width).
+      const float gridL = layout.padding;
+      const float gridR = layout.padding + layout.gridW();
+      float sBandX = oneWide ? cell.pos.x - edgeW : cell.pos.x;
+      float sBandW = edgeW;
+      if (oneWide) redDot::SandsRangeGestureCore::clampBand(sBandX, sBandW, gridL, gridR);
+      float eBandX = oneWide ? cell.pos.x + cell.size.x : cell.pos.x + cell.size.x - edgeW;
+      float eBandW = edgeW;
+      if (oneWide) redDot::SandsRangeGestureCore::clampBand(eBandX, eBandW, gridL, gridR);
       if (step == s) {
+        nvgBeginPath(vg); nvgRect(vg, sBandX, cell.pos.y, sBandW, cell.size.y);
+        NVGcolor ribbon = edge; ribbon.a *= 0.28f;
+        nvgFillColor(vg, ribbon); nvgFill(vg);
         nvgBeginPath(vg); nvgRect(vg, cell.pos.x, cell.pos.y, 2.5f, cell.size.y);
         nvgFillColor(vg, edge); nvgFill(vg);
       }
       if (step == e) {
+        nvgBeginPath(vg); nvgRect(vg, eBandX, cell.pos.y, eBandW, cell.size.y);
+        NVGcolor ribbon = edge; ribbon.a *= 0.28f;
+        nvgFillColor(vg, ribbon); nvgFill(vg);
         nvgBeginPath(vg); nvgRect(vg, cell.pos.x + cell.size.x - 2.5f, cell.pos.y, 2.5f, cell.size.y);
         nvgFillColor(vg, edge); nvgFill(vg);
       }
@@ -709,15 +730,16 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       nvgFill(vg);
     }
 
-    // (B+A5) VOICE-LOR PARITY: the ROTATION chevron — R denotes the read-start step:
-    // the ABSOLUTE phrase step the voice reads at parent-step-1 (the anchor form —
-    // the same ›‹ marker the probability lanes draw via drawRotationIndicator, but
-    // at R itself, NOT the lanes' (O+R)%16 mechanical law; the worked table's first
-    // read == R). Hue-neutral silver (the strip's palette — the voice frame spans
-    // all seven lane hues). Sits over the ROTATION gesture band (the strip's lower
+    // (C) VOICE-LOR PARITY: the ROTATION chevron at the LANES' placement — physical
+    // bar = (offset + rotation) % STEP_COUNT, exactly drawRotationIndicator's law
+    // (R is window-relative and clamped to [0, len−1] by the drag, so the chevron
+    // is ALWAYS inside the window; the old absolute-R write let it leave — picture
+    // 4). Hue-neutral silver (the strip's palette — the voice frame spans all
+    // seven lane hues). Sits over the ROTATION gesture band (the strip's lower
     // 35%, hitTestRange's zone) so it reads as the grab target it is.
     {
-      const int rotBar = rangeStrip.lor[2];
+      const int rotBar = (rangeStrip.lor[1]
+                          + (rangeStrip.lor[2] % std::max(1, rangeStrip.lor[0]))) % STEP_COUNT;
       rack::Rect cell = rack::Rect(layout.getStepX(rotBar), r.pos.y,
                                    layout.stepWidthF(), r.size.y);
       const float cx = cell.pos.x + cell.size.x * 0.5f;
@@ -886,9 +908,13 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   // cell, min ~4mm) so it's grabbable, but capped at 1/3 of the window span so a
   // middle-third MOVE zone ALWAYS exists — even for a 2-cell window. Used by both
   // hitTestHandle and drawHandles so the drawn ribbons match the grab zones.
+  // (bug 10) a 1-WIDE window has no in-window middle to preserve — its edges are
+  // the OUTSIDE bands (Rodney's ruling), so the cap does not apply at length 1.
   float windowEdgeW(const ProbabilityLane& L) const {
-    float spanPx = std::max(1, std::min(L.length, STEP_COUNT)) * layout.stepWidthF();
-    float want = std::max(layout.stepWidthF(), mm2px(4.f));
+    const int lenC = std::max(1, std::min(L.length, STEP_COUNT));
+    const float want = std::max(layout.stepWidthF(), mm2px(4.f));
+    if (lenC <= 1) return want;
+    const float spanPx = lenC * layout.stepWidthF();
     return std::min(want, spanPx / 3.f);
   }
 
@@ -896,10 +922,12 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (lane < 0 || lane >= laneCount) return DragState::NONE;
     const ProbabilityLane& L = currentState.lanes[lane];
     rack::Rect laneR = layout.getLaneRect(lane);
-    int startBar = L.offset % STEP_COUNT;
-    int endBar   = (L.offset + L.length - 1) % STEP_COUNT;
+    const int startBar = L.editStartBar();
+    const int endBar   = L.editEndBar();
     float halfStep = layout.stepWidthF() * 0.5f;
 
+    // The ROTATION band's extent (the window's INCLUSIVE cell run — unchanged
+    // from the old test: the whole start–end span, wrapped or contiguous).
     auto inWindowX = [&](float px)->bool {
       float sxL = layout.getStepCenterX(startBar) - halfStep;
       float exR = layout.getStepCenterX(endBar)   + halfStep;
@@ -909,37 +937,36 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       return (px >= sxL && px <= rightEdge) || (px >= leftEdge && px <= exR);
     };
 
-    // With per-cell editing removed, the whole lane is free for window control,
-    // so the grab zones are generous (the old scheme crammed everything into the
-    // top 16% with 30%-cell edges, which was nearly impossible to hit).
-    //   TOP ~65% of the lane = window strip:
-    //     • START zone: a full-cell-wide (min ~4mm) band at the window's front
-    //     • END   zone: same at the window's back
-    //     • MOVE:  everything between them
-    //   BOTTOM ~35% = ROTATION (within the window span).
-    // For a 1-wide window START/END share the cell, split left-half/right-half.
-    float bandBot = laneR.pos.y + laneR.size.y * 0.65f;
-    if (y >= laneR.pos.y && y <= bandBot && inWindowX(x)) {
-      rack::Rect cs = layout.getStepRect(lane, L.editStartBar());
-      rack::Rect ce = layout.getStepRect(lane, L.editEndBar());
-      // Edge width capped to 1/3 of the window so a MOVE middle always remains.
-      float edgeW = windowEdgeW(L);
-      float startZoneR = cs.pos.x + edgeW;                 // START spans [cell start .. +edgeW]
-      float endZoneL   = ce.pos.x + ce.size.x - edgeW;     // END spans [cell end -edgeW .. cell end]
-      // 1-wide window (same cell): split the cell in half instead of overlapping.
-      if (L.editStartBar() == L.editEndBar()) {
-        float mid = cs.pos.x + cs.size.x * 0.5f;
-        return (x <= mid) ? DragState::START : DragState::END;
+    // (bugs 9+10, LOR_EDITING_BUG_LIST) the ONE window-relative classifier — the
+    // same law the strip band uses (classifyWindow): bounded edge bands on EACH
+    // side of each boundary, wrap-correct, the body ALWAYS non-empty (edgeW
+    // capped at span/3), and a LENGTH-1 window's cell IS the body with the edges
+    // one cell OUTSIDE it (Rodney's ruling — accent, length 1, is movable).
+    // The old inline test was open-ended (`x >= endZoneL`): a WRAPPED window's
+    // END zone swallowed its whole front arc — the "dragged past step 32, cannot
+    // be picked up to move again" report (bug 9); and the old 1-wide half-split
+    // left a length-1 window with no body at all (bug 10).
+    //   TOP ~65% of the lane = the window band: START / END / MOVE;
+    //   BOTTOM ~35% = ROTATION (the inclusive window span, unchanged).
+    if (y >= laneR.pos.y && y <= laneR.pos.y + laneR.size.y) {
+      const bool topBand = (y <= laneR.pos.y + laneR.size.y * 0.65f);
+      if (!topBand)
+        return inWindowX(x) ? DragState::ROTATION : DragState::NONE;
+      const float startBoundX = layout.getStepX(startBar);
+      const float endBoundX   = layout.getStepX(endBar) + layout.stepWidthF();
+      const float gridL = layout.padding;
+      const float gridR = layout.padding + layout.gridW();
+      const float stepW = layout.stepWidthF();
+      const int   lenC  = std::max(1, std::min(L.length, STEP_COUNT));
+      switch (redDot::SandsRangeGestureCore::classifyWindow(
+                 x, startBoundX, endBoundX, windowEdgeW(L), gridL, gridR,
+                 lenC * stepW, stepW)) {
+        case redDot::SandsRangeGestureCore::Z_START:  return DragState::START;
+        case redDot::SandsRangeGestureCore::Z_END:    return DragState::END;
+        case redDot::SandsRangeGestureCore::Z_WINDOW: return DragState::WINDOW;
+        default:                                      return DragState::NONE;
       }
-      if (x <= startZoneR) return DragState::START; // front → set OFFSET
-      if (x >= endZoneL)   return DragState::END;   // back  → set LENGTH
-      return DragState::WINDOW;                     // body  → MOVE whole window
     }
-
-    // BOTTOM ~35%: ROTATION strip, within the start–end window.
-    float rotTop = laneR.pos.y + laneR.size.y * 0.65f;
-    if (y >= rotTop && y <= laneR.pos.y + laneR.size.y && inWindowX(x))
-      return DragState::ROTATION;
 
     return DragState::NONE;
   }
@@ -951,36 +978,40 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
   DragState::Type hitTestRange(float x, float y) const {
     if (layout.rangeLaneH <= 0.f || !rangeStrip.enabled) return DragState::NONE;
     const rack::Rect r = layout.getRangeLaneRect();
-    if (y < r.pos.y || y >= r.pos.y + r.size.y) return DragState::NONE;
+    // (E) the boundary row (y == the band's bottom) belongs to the BAND — the same
+    // seam rule as the press branch's y-gate (<=), so a seam press classifies a zone
+    // instead of arming paint.
+    if (y < r.pos.y || y > r.pos.y + r.size.y) return DragState::NONE;
     const int startBar = rangeStrip.lor[1];
     const int endBar   = (startBar + std::max(1, std::min(rangeStrip.lor[0], STEP_COUNT)) - 1) % STEP_COUNT;
-    float halfStep = layout.stepWidthF() * 0.5f;
-    auto inWindowX = [&](float px)->bool {
-      float sxL = layout.getStepCenterX(startBar) - halfStep;
-      float exR = layout.getStepCenterX(endBar)   + halfStep;
-      if (endBar >= startBar) return (px >= sxL && px <= exR);          // contiguous
-      float leftEdge  = layout.getStepCenterX(0) - halfStep;            // wrapped
-      float rightEdge = layout.getStepCenterX(STEP_COUNT - 1) + halfStep;
-      return (px >= sxL && px <= rightEdge) || (px >= leftEdge && px <= exR);
-    };
-    if (!inWindowX(x)) return DragState::NONE;
+    // (B + bugs 9/10) THE WINDOW-RELATIVE CLASSIFIER (classifyWindow): the
+    // START/END zones are bounded bands edgeZoneW (>= max(1 cell, 8 px)) on EACH
+    // side of the edge boundary — one cell outside the window AND one cell in —
+    // so a press within one cell of an edge grabs the EDGE, never the window
+    // body; the body takes the rest and is ALWAYS non-empty (span/3 cap; a
+    // length-1 window's cell IS the body, its edges one cell OUTSIDE — Rodney's
+    // ruling). The math lives in SandsRangeGestureCore (rack-free, the testable
+    // surface); the drawn ribbons use the same constant (drawRangeStrip).
+    const float startBoundX = layout.getStepX(startBar);
+    const float endBoundX   = layout.getStepX(endBar) + layout.stepWidthF();
+    const float edgeW = redDot::SandsRangeGestureCore::edgeZoneW(layout.stepWidthF());
+    const float gridL = layout.padding;
+    const float gridR = layout.padding + layout.gridW();
+    const float stepW = layout.stepWidthF();
+    const float spanPx = std::max(1, std::min(rangeStrip.lor[0], STEP_COUNT)) * stepW;
     float bandBot = r.pos.y + r.size.y * 0.65f;
     if (y <= bandBot) {
-      // Edge width capped to 1/3 of the window so a MOVE middle always remains
-      // (the hitTestHandle rule). For a 1-wide window, split left/right halves.
-      float spanPx = std::max(1, std::min(rangeStrip.lor[0], STEP_COUNT)) * layout.stepWidthF();
-      float edgeW  = std::min(std::max(layout.stepWidthF(), mm2px(4.f)), spanPx / 3.f);
-      float startZoneR = layout.getStepX(startBar) + edgeW;
-      float endZoneL   = layout.getStepX(endBar) + layout.stepWidthF() - edgeW;
-      if (startBar == endBar) {
-        float mid = layout.getStepX(startBar) + layout.stepWidthF() * 0.5f;
-        return (x <= mid) ? DragState::START : DragState::END;
+      switch (redDot::SandsRangeGestureCore::classifyWindow(
+                  x, startBoundX, endBoundX, edgeW, gridL, gridR, spanPx, stepW)) {
+        case redDot::SandsRangeGestureCore::Z_START:  return DragState::START;
+        case redDot::SandsRangeGestureCore::Z_END:    return DragState::END;
+        case redDot::SandsRangeGestureCore::Z_WINDOW: return DragState::WINDOW;
+        default: return DragState::NONE;
       }
-      if (x <= startZoneR) return DragState::START;
-      if (x >= endZoneL)   return DragState::END;
-      return DragState::WINDOW;
     }
-    return DragState::ROTATION;
+    // The ROTATION band stays strictly in-window (R is window-relative).
+    return redDot::SandsRangeGestureCore::inBody(x, startBoundX, endBoundX, gridL, gridR)
+               ? DragState::ROTATION : DragState::NONE;
   }
 
   // Top "move strip": a thin band along the lane top across the in-window cells.
@@ -1024,9 +1055,18 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       nvgFillColor(vg, col); nvgFill(vg);
     };
     if (oneWide) {
-      float half = cs.size.x * 0.5f;
-      fillRect(cs.pos.x, half, edge);                 // START = left half
-      fillRect(cs.pos.x + half, half, edge);          // END   = right half
+      // (bug 10, Rodney's ruling) a 1-wide window's cell IS the body (MOVE); the
+      // edge ribbons are the OUTSIDE bands — matching the hit zones exactly.
+      // (bug 14) the bands are CLAMPED into the grid rect: at the grid's edges
+      // they never overdraw the panel (a fully outside band collapses).
+      const float gridL = layout.padding;
+      const float gridR = layout.padding + layout.gridW();
+      float sx = cs.pos.x - edgeW, sw = edgeW;
+      redDot::SandsRangeGestureCore::clampBand(sx, sw, gridL, gridR);
+      float ex = cs.pos.x + cs.size.x, ew2 = edgeW;
+      redDot::SandsRangeGestureCore::clampBand(ex, ew2, gridL, gridR);
+      fillRect(sx, sw, edge);                        // START = the left outside band
+      fillRect(ex, ew2, edge);                       // END   = the right outside band
     } else {
       fillRect(cs.pos.x, edgeW, edge);                            // START ribbon
       fillRect(ce.pos.x + ce.size.x - edgeW, edgeW, edge);        // END ribbon
@@ -1036,9 +1076,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (hoverLane == lane && hoverZone != DragState::NONE) {
       NVGcolor hi = getLaneColor(lane); hi.a = 0.32f;
       if (hoverZone == DragState::START) {
-        fillRect(cs.pos.x, oneWide ? cs.size.x*0.5f : edgeW, hi);
+        fillRect(oneWide ? cs.pos.x - edgeW : cs.pos.x, edgeW, hi);
       } else if (hoverZone == DragState::END) {
-        if (oneWide) fillRect(cs.pos.x + cs.size.x*0.5f, cs.size.x*0.5f, hi);
+        if (oneWide) fillRect(cs.pos.x + cs.size.x, edgeW, hi);
         else         fillRect(ce.pos.x + ce.size.x - edgeW, edgeW, hi);
       } else if (hoverZone == DragState::WINDOW) {
         for (int k = 0; k < lenC; ++k) {
@@ -1072,15 +1112,20 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
 
     // Rotation marker sits WITHIN the start-end window: physical bar =
-    // (dispOffset + dispRotation) % 16. Uses DISPLAY values so the chevron moves
+    // (dispOffset + dispRotation) % STEP_COUNT. Uses DISPLAY values so the chevron moves
     // with the modulated window.
     int rotBar = (L.dispOffset + (L.dispRotation % std::max(1, L.dispLength))) % STEP_COUNT;
     rack::Rect cell = layout.getStepRect(lane, rotBar);
     float cx = cell.pos.x + cell.size.x * 0.5f;
     float cyc = stripTop + stripH * 0.5f;
     float h = stripH * 0.9f;          // chevron height (~0.27 of lane height, up from ~0.21)
-    float d = 3.f;                    // chevron arm depth (horizontal), up from 2
-    float halfW = (cell.size.x - 2.f) * 0.42f;
+    // (bug 12, LOR_EDITING_BUG_LIST) the chevron geometry is sized to the GRID:
+    // the pair's x-extent is EXACTLY one step width (the old fixed 3 px arm
+    // overran the cell at 32 columns — "chevrons wider than the probability
+    // bars"). The law lives in the core (chevronGeom), pinned headless.
+    const auto cg = redDot::SandsRangeGestureCore::chevronGeom(cell.size.x);
+    float d = cg.arm;                 // chevron arm depth (horizontal)
+    float halfW = cg.halfW;
 
     // Phase marker, hue-INDEPENDENT so it reads on every lane — including legato, whose hue
     // IS colors.rotation (teal), where the old fixed-teal marker vanished. Any single hue
@@ -1164,43 +1209,8 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     }
   }
   
-  void drawPresetPanel(NVGcontext* vg) {
-    float panelX = layout.padding;
-    float panelY = 70.f;
-    float panelW = 300.f;
-    float panelH = 140.f;
-    
-    nvgBeginPath(vg);
-    nvgRect(vg, panelX, panelY, panelW, panelH);
-    nvgFillColor(vg, nvgRGB(0x1a, 0x1a, 0x1a));
-    nvgFill(vg);
-    
-    nvgFontSize(vg, 11.f);
-    nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_TOP);
-    nvgFillColor(vg, nvgRGB(0xd4, 0xaf, 0x37));
-    nvgText(vg, panelX + panelW / 2.f, panelY + 5, "PRESET SEEDS", nullptr);
-    
-    float btnW = 70.f;
-    float btnH = 20.f;
-    
-    for (int p = 0; p < PRESET_BANK_SIZE; ++p) {
-      int row = p / 4;
-      int col = p % 4;
-      float bx = panelX + 8.f + col * 78.f;
-      float by = panelY + 22.f + row * 28.f;
-      
-      bool isSelected = (p == selectedPreset);
-      nvgBeginPath(vg);
-      nvgRect(vg, bx, by, btnW, btnH);
-      nvgFillColor(vg, isSelected ? nvgRGB(0x26, 0xa6, 0x9a) : nvgRGB(0x33, 0x33, 0x33));
-      nvgFill(vg);
-      
-      nvgFontSize(vg, 8.f);
-      nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-      nvgFillColor(vg, nvgRGB(0x88, 0x88, 0x88));
-      nvgText(vg, bx + btnW / 2.f, by + btnH / 2.f, presetBank[p].name, nullptr);
-    }
-  }
+  // (the preset panel's draw RETIRED — ADDITION D, with the bank; it was guarded by
+  // a flag that was never set true — dead draw code)
   
   void onHover(const rack::event::Hover& e) override {
     Widget::onHover(e);
@@ -1238,7 +1248,9 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // ── Stage 3: the voice-range strip (above lane 0) ──
     if (layout.rangeLaneH > 0.f && rangeStrip.enabled
         && e.pos.y >= layout.topPadding
-        && e.pos.y < layout.topPadding + layout.rangeLaneH) {
+        && e.pos.y <= layout.topPadding + layout.rangeLaneH) {
+      // (E) the BAND owns its bottom boundary: a press exactly on the strip/lane
+      // seam goes to the STRIP (the doc's rule — the band is hit-tested first).
       if (e.action == GLFW_PRESS && e.button == GLFW_MOUSE_BUTTON_LEFT) {
         // THE UNIFIED GESTURE MODEL: ONE arm for every press — the press is PENDING
         // (pressArmed) carrying its cell + zone; onDragMove engages the gesture when
@@ -1277,18 +1289,18 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         e.consume(this);
         return;
       }
-      if (e.action == GLFW_RELEASE && rangeStrip.dragging) {
-        const bool lorChanged = (rangeStrip.before[0] != rangeStrip.lor[0]
-                              || rangeStrip.before[1] != rangeStrip.lor[1]
-                              || rangeStrip.before[2] != rangeStrip.lor[2]);
-        rangeStrip.dragging = false;
-        rangeStrip.type     = DragState::NONE;
-        if (lorChanged) {
-          if (onRangeCommit) {
-            const int after[3] = { rangeStrip.lor[0], rangeStrip.lor[1], rangeStrip.lor[2] };
-            onRangeCommit(rangeStrip.before, after);
-          }
-        }
+      if (e.action == GLFW_RELEASE && stripDragLive()) {
+        // (§PLAN 1) the translation: RELEASE through the reducer, then report the
+        // before/after pair it kept for exactly this (the host's Rack-history
+        // commit; window == the strip's lor, kept in sync by the moves).
+        const int before[3] = { lorDrag.before[0], lorDrag.before[1], lorDrag.before[2] };
+        const int after[3]  = { lorDrag.window[0], lorDrag.window[1], lorDrag.window[2] };
+        const bool lorChanged = (after[0] != before[0] || after[1] != before[1] || after[2] != before[2]);
+        redDot::SandsRangeGestureCore::LorDragEvent rel;
+        rel.type = redDot::SandsRangeGestureCore::LorDragEvent::RELEASE;
+        lorDrag  = redDot::SandsRangeGestureCore::lorDragReduce(lorDrag, rel, STEP_COUNT);
+        if (lorChanged && onRangeCommit)
+          onRangeCommit(before, after);
         e.consume(this);
         return;
       }
@@ -1312,20 +1324,21 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         // Hit-test handles first — they have priority over bar dragging
         DragState::Type handleHit = hitTestHandle(lane, e.pos.x, e.pos.y);
         if (handleHit != DragState::NONE) {
-          dragState.type       = handleHit;
-          dragState.dragLane   = lane;
-          dragState.isDragging = true;
-          dragState.dragPos    = e.pos;   // capture start pos
-          // For a WINDOW move, remember where the grab started so the window
-          // slides relative to the cursor (grab the middle, the whole range
-          // follows) rather than snapping its start to the pointer.
-          dragState.grabStep   = getStepAtX(e.pos.x);
-          dragState.grabOffset = currentState.lanes[lane].offset;
-          // Capture the LOR triple BEFORE the drag mutates it, so the release can report a
-          // before/after pair to the host for Rack-history undo.
-          lorBeforeDrag[0] = currentState.lanes[lane].length;
-          lorBeforeDrag[1] = currentState.lanes[lane].offset;
-          lorBeforeDrag[2] = currentState.lanes[lane].rotation;
+          dragState.dragPos = e.pos;   // the pointer accumulator (the reducer owns the LOR state)
+          // (§PLAN 1) the translation: the ENGAGED press through the reducer — it
+          // captures the press cell, the press window (the WINDOW slide's anchor
+          // and the edge drags' delta base, ADDITION E's law) and the before/
+          // after pair for the release's commit report.
+          redDot::SandsRangeGestureCore::LorDragEvent prs;
+          prs.type = redDot::SandsRangeGestureCore::LorDragEvent::PRESS;
+          prs.zone = coreZoneOf(handleHit);
+          prs.owner = redDot::SandsRangeGestureCore::LorDragState::O_LANE;
+          prs.laneIdx = lane;
+          prs.step = getStepAtX(e.pos.x);
+          prs.win[0] = currentState.lanes[lane].length;
+          prs.win[1] = currentState.lanes[lane].offset;
+          prs.win[2] = currentState.lanes[lane].rotation;
+          lorDrag = redDot::SandsRangeGestureCore::lorDragReduce(lorDrag, prs, STEP_COUNT);
           e.consume(this);
           return;
         }
@@ -1346,22 +1359,22 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
         }
       }
     } else if (e.action == GLFW_RELEASE) {
-      if (dragState.isDragging) {
+      if (laneDragLive()) {
         saveToHistory();
-        // Report the LOR change to the host for Rack-history undo (before vs after).
-        const int lane = dragState.dragLane;
+        // Report the LOR change to the host for Rack-history undo — the reducer's
+        // before/after pair (§PLAN 1: the release keeps them for exactly this).
+        const int lane = lorDrag.laneIdx;
         if (onLorCommit && lane >= 0 && lane < laneCount) {
-          const int after[3] = { currentState.lanes[lane].length,
-                                 currentState.lanes[lane].offset,
-                                 currentState.lanes[lane].rotation };
-          if (after[0] != lorBeforeDrag[0] || after[1] != lorBeforeDrag[1]
-              || after[2] != lorBeforeDrag[2]) {
-            onLorCommit(lane, lorBeforeDrag, after);
+          const int after[3] = { lorDrag.window[0], lorDrag.window[1], lorDrag.window[2] };
+          if (after[0] != lorDrag.before[0] || after[1] != lorDrag.before[1]
+              || after[2] != lorDrag.before[2]) {
+            onLorCommit(lane, lorDrag.before.data(), after);
           }
         }
       }
-      dragState.isDragging    = false;
-      dragState.type          = DragState::NONE;
+      redDot::SandsRangeGestureCore::LorDragEvent rel;
+      rel.type = redDot::SandsRangeGestureCore::LorDragEvent::RELEASE;
+      lorDrag  = redDot::SandsRangeGestureCore::lorDragReduce(lorDrag, rel, STEP_COUNT);
     }
   }
   
@@ -1373,18 +1386,29 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     // (a sloppy click stays a click); a press outside the step cells never engages.
     if (rangeStrip.pressArmed) {
       rangeStrip.dragPos = rangeStrip.dragPos.plus(e.mouseDelta);
-      const int step = getStepAtX(rangeStrip.dragPos.x);
-      if (rangeStrip.pressCell < 0 || step < 0 || step >= STEP_COUNT || step == rangeStrip.pressCell)
+      // (bug 13) the RAW cell index: a crossing OFF the grid (past either edge)
+      // engages too — dragging toward the edge is a real crossing on the ring
+      // (cell −1 IS the last step, one to the left). The pre-fix in-grid test
+      // left the press pending forever when the cursor ran off the grid, so a
+      // wrapped range with one step left on one side could not be dragged back.
+      const int step = rawStepIndexAt(rangeStrip.dragPos.x);
+      if (rangeStrip.pressCell < 0 || step == rangeStrip.pressCell)
         return;   // still pending
       rangeStrip.pressArmed = false;
       if (rangeStrip.pressZone != DragState::NONE) {
-        rangeStrip.dragging   = true;
-        rangeStrip.type       = rangeStrip.pressZone;
-        rangeStrip.grabStep   = rangeStrip.pressCell;
-        rangeStrip.grabOff    = rangeStrip.lor[1];
-        rangeStrip.before[0]  = rangeStrip.lor[0];
-        rangeStrip.before[1]  = rangeStrip.lor[1];
-        rangeStrip.before[2]  = rangeStrip.lor[2];
+        // (§PLAN 1) the translation: the crossing ENGAGES the gesture the press
+        // zone picked — the reducer's PRESS at the PRESS cell with the press
+        // window (A: the edge drags' delta base; the commit's before/after pair).
+        redDot::SandsRangeGestureCore::LorDragEvent prs;
+        prs.type = redDot::SandsRangeGestureCore::LorDragEvent::PRESS;
+        prs.zone = coreZoneOf(rangeStrip.pressZone);
+        prs.owner = redDot::SandsRangeGestureCore::LorDragState::O_STRIP;
+        prs.laneIdx = 0;
+        prs.step = rangeStrip.pressCell;
+        prs.win[0] = rangeStrip.lor[0];
+        prs.win[1] = rangeStrip.lor[1];
+        prs.win[2] = rangeStrip.lor[2];
+        lorDrag = redDot::SandsRangeGestureCore::lorDragReduce(lorDrag, prs, STEP_COUNT);
       } else {
         rangeStrip.paintPress = true;   // out-of-window: the drag-paint stroke
       }
@@ -1407,108 +1431,56 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
       return;
     }
     // ── Stage 3: the voice-range strip drag (the lane gestures, one level up) ──
-    if (rangeStrip.dragging) {
+    if (stripDragLive()) {
       rangeStrip.dragPos = rangeStrip.dragPos.plus(e.mouseDelta);
-      int step = getStepAtX(rangeStrip.dragPos.x);
-      if (step < 0 || step >= STEP_COUNT) return;
+      // (bug 13) the RAW index — the drag stays LIVE past both grid edges (the
+      // laws wrap mod the ring); the old off-grid rejection stalled the drag.
+      const int step = rawStepIndexAt(rangeStrip.dragPos.x);
+      // (§PLAN 1) the translation: MOVE through the reducer, then copy the window
+      // back — the reducer applies the A/C laws (the press-anchored edge deltas,
+      // the slide law, the rotation clamp; the laws live in the core, pinned by
+      // the headless suite); the widget only reports.
+      redDot::SandsRangeGestureCore::LorDragEvent mv;
+      mv.type = redDot::SandsRangeGestureCore::LorDragEvent::MOVE;
+      mv.step = step;
+      lorDrag = redDot::SandsRangeGestureCore::lorDragReduce(lorDrag, mv, STEP_COUNT);
       int* lor = rangeStrip.lor;
-      switch (rangeStrip.type) {
-        case DragState::WINDOW: {
-          int deltaSteps = step - rangeStrip.grabStep;
-          lor[1] = ((rangeStrip.grabOff + deltaSteps) % STEP_COUNT + STEP_COUNT) % STEP_COUNT;
-          break;
-        }
-        case DragState::START: {
-          // Resize from the FRONT: the dragged step becomes the new start; the END
-          // bar stays put; length adjusts (the onDragMove START rule). (A5) R is
-          // NOT clamped to the window — the voice row's R is ANCHOR-form (an
-          // absolute phrase step), not the lanes' window-relative rot.
-          const int endBar = (lor[1] + std::max(1, std::min(lor[0], STEP_COUNT)) - 1) % STEP_COUNT;
-          int newLen = ((endBar - step) % STEP_COUNT + STEP_COUNT) % STEP_COUNT + 1;
-          lor[1] = ((step % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
-          lor[0] = rack::math::clamp(newLen, 1, STEP_COUNT);
-          break;
-        }
-        case DragState::END: {
-          const int fwd = ((step - lor[1]) % STEP_COUNT + STEP_COUNT) % STEP_COUNT;
-          lor[0] = rack::math::clamp(fwd + 1, 1, STEP_COUNT);
-          break;
-        }
-        case DragState::ROTATION: {
-          // (A5) The VOICE row's R is ANCHOR-form — the ABSOLUTE phrase step the
-          // voice reads at parent-step-1 (the engine derives rho = (R−O) mod L;
-          // the worked table's first read == R). NOT the lanes' window-relative
-          // mechanical rot: drag to a step, R = that step. This is the rotation
-          // SYNC — where you drag is where the read starts.
-          lor[2] = ((step % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
-          break;
-        }
-        default: break;
-      }
+      lor[0] = lorDrag.window[0];
+      lor[1] = lorDrag.window[1];
+      lor[2] = lorDrag.window[2];
       if (onRangeEdit) onRangeEdit(lor[0], lor[1], lor[2]);
       return;
     }
-    if (!dragState.isDragging) return;
+    if (!laneDragLive()) return;
     // Rack 2: DragMove gives delta, not absolute pos. Accumulate.
     dragState.dragPos = dragState.dragPos.plus(e.mouseDelta);
-    int lane = dragState.dragLane;
-    int step = getStepAtX(dragState.dragPos.x);
-    if (step < 0 || step >= STEP_COUNT) return;
+    const int lane = lorDrag.laneIdx;
+    // (bug 13) the RAW index — dragging toward the grid's edge keeps working
+    // (the laws wrap); the old off-grid rejection stalled the edge-ward drag.
+    const int step = rawStepIndexAt(dragState.dragPos.x);
+    if (lane < 0 || lane >= laneCount) return;
 
+    // (§PLAN 1) the translation: MOVE through the reducer, then copy the window
+    // back to the lane. The reducer applies the SAME laws the strip uses (one
+    // state machine, both owners — ADDITION E's separation holds by construction:
+    // the owner was set at press and a LANE drag's window never reaches the strip
+    // or onRangeEdit). The old lane branch's ROTATION case inlined the same
+    // expression the strip's used; the reducer spells each law once.
+    redDot::SandsRangeGestureCore::LorDragEvent mv;
+    mv.type = redDot::SandsRangeGestureCore::LorDragEvent::MOVE;
+    mv.step = step;
+    lorDrag = redDot::SandsRangeGestureCore::lorDragReduce(lorDrag, mv, STEP_COUNT);
     ProbabilityLane& L = currentState.lanes[lane];
-
-    switch (dragState.type) {
-      case DragState::WINDOW: {
-        // Move the whole window: slide offset by how far the cursor has moved in
-        // steps since the grab. Length and rotation are preserved. Offset wraps
-        // around the 16-step grid (mod), so the window can cross the boundary.
-        int deltaSteps = step - dragState.grabStep;
-        int newOff = ((dragState.grabOffset + deltaSteps) % STEP_COUNT + STEP_COUNT) % STEP_COUNT;
-        L.offset = newOff;
-        break;
-      }
-
-      case DragState::START: {
-        // Resize from the FRONT: the dragged step becomes the new start, the END
-        // bar stays put, length adjusts. Keeps the back edge anchored (intuitive
-        // when you grab the front edge). Wrap-safe via mod arithmetic.
-        int endBar = L.editEndBar();
-        int newLen = ((endBar - step) % STEP_COUNT + STEP_COUNT) % STEP_COUNT + 1; // 1..16
-        L.offset  = ((step % STEP_COUNT) + STEP_COUNT) % STEP_COUNT;
-        L.length  = rack::math::clamp(newLen, 1, STEP_COUNT);
-        L.rotation = rack::math::clamp(L.rotation, 0, std::max(0, L.length - 1));
-        break;
-      }
-
-      case DragState::END: {
-        // Resize from the BACK: the dragged step becomes the new end, START stays
-        // put, length = inclusive forward distance start→step. Dragging back past
-        // the start clamps to 1 (no surprise full-wrap to 16).
-        int fwd = ((step - L.editStartBar()) % STEP_COUNT + STEP_COUNT) % STEP_COUNT; // 0..15
-        L.length = rack::math::clamp(fwd + 1, 1, STEP_COUNT);
-        L.rotation = rack::math::clamp(L.rotation, 0, std::max(0, L.length - 1));
-        break;
-      }
-
-      case DragState::ROTATION: {
-        // Rotation strip drag: the marker lives WITHIN the window at physical
-        // bar (offset + rotation) % 16. Convert the physical step under the
-        // cursor back to a window-relative rotation in [0, length-1].
-        int rel = ((step - L.offset) % STEP_COUNT + STEP_COUNT) % STEP_COUNT;
-        L.rotation = rack::math::clamp(rel, 0, std::max(0, L.length - 1));
-        break;
-      }
-
-      default: break;
-    }
+    L.length   = lorDrag.window[0];
+    L.offset   = lorDrag.window[1];
+    L.rotation = lorDrag.window[2];
     // Reflect the dragged edit values in the display immediately so the window
     // follows the hand; next process frame re-applies any CV on top.
     // BUT under lock, do NOT sync: the display must stay frozen at the committed (pre-lock)
     // position while the edit tracks the hand -- that divergence is what drives the ghost echo
     // (live=solid, committed=ghost). Syncing here would collapse the divergence and hide the ghost.
-    if (dragState.isDragging && dragState.dragLane >= 0 && dragState.dragLane < laneCount
-        && !lockActive())
-      currentState.lanes[dragState.dragLane].syncDisplayToEdit();
+    if (!lockActive())
+      L.syncDisplayToEdit();
   }
   
   
@@ -1537,6 +1509,16 @@ struct SandsVisualEditorV4 : rack::TransparentWidget {
     if (x < layout.padding) return -1;
     int step = (int)((x - layout.padding) / layout.stepWidthF());
     return (step >= 0 && step < STEP_COUNT) ? step : -1;
+  }
+  // (bug 13, LOR_EDITING_BUG_LIST) the RAW cell index under the cursor —
+  // UNBOUNDED (floor): a drag that runs past the grid's edge keeps counting
+  // cells (−1 = one left of step 0 == the LAST step on the ring). The drag laws
+  // wrap mod STEP_COUNT internally, so the raw index gives CONTINUOUS dragging
+  // across both edges; the pre-fix off-grid rejection stalled the drag toward
+  // the edge ("only drags away from the edge"). Presses/paint keep getStepAtX
+  // (a press must be ON a real cell; paint toggles real cells only).
+  int rawStepIndexAt(float x) const {
+    return redDot::SandsRangeGestureCore::stepIndexAt(x, layout.padding, layout.stepWidthF());
   }
   
   void step() override {

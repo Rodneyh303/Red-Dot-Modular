@@ -367,9 +367,15 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             };
 
             // REST lane (0): owner+blend equation. r/c are East CV jack coords.
-            engine.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_REST}) = combineLOR(PL::PL_REST, 0, PL::PL_REST, 0, 1.f, 16.f);
-            engine.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_REST}) = combineLOR(PL::PL_REST, 1, PL::PL_REST, 1, 0.f, 15.f);
-            engine.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_REST}) = combineLOR(PL::PL_REST, 2, PL::PL_REST, 2, 0.f, 15.f);
+            // F+G (CC_FIX_VOICE_RANGE_STRIP_INTERACTION): the poly lane windows take the
+            // NAMED bounds — LEN 1..kLaneLengthMax, OFF 0..kLaneOffsetMax (was the literal
+            // 1..16/0..15 spans — the same midpoint-snap class on the poly path). The LEN
+            // lands FIRST (hoisted) so ROT's hi is the lane's own length − 1 (the lanes'
+            // rule, the same clamp the editor and pushVoiceLorEditor apply).
+            const int restLen = combineLOR(PL::PL_REST, 0, PL::PL_REST, 0, 1.f, (float)dotModular::kLaneLengthMax);
+            engine.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_REST}) = restLen;
+            engine.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_REST}) = combineLOR(PL::PL_REST, 1, PL::PL_REST, 1, 0.f, (float)dotModular::kLaneOffsetMax);
+            engine.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_REST}) = combineLOR(PL::PL_REST, 2, PL::PL_REST, 2, 0.f, (float)std::max(0, restLen - 1));
 
             // ── EAST_EXTRA_LANES: per-voice VARIATION / LEGATO LOR ────────────────────────────
             // These are mono STRANDS, not PolyLanes, so they must use the EDITOR-order accessor
@@ -392,12 +398,17 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                 // the engine lane (5/6) — same identity the old varlegStoreBank(vl) returned.
                 // mmOwn (hoisted before the loop) is the Monsoon for eastLOR — reuse it
                 // instead of re-walking the chain per voice.
-                engine.polyLORRef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SE::EDITOR_LANE_VARIATION}, SE::LOR_LEN) = (int)std::lround(eastLorVal(PL::PL_VARIATION, 0, PL::PL_VARIATION, 0, 1.f, 16.f));
-                engine.polyLORRef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SE::EDITOR_LANE_VARIATION}, SE::LOR_OFF) = (int)std::lround(eastLorVal(PL::PL_VARIATION, 1, PL::PL_VARIATION, 1, 0.f, 15.f));
-                engine.polyLORRef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SE::EDITOR_LANE_VARIATION}, SE::LOR_ROT) = (int)std::lround(eastLorVal(PL::PL_VARIATION, 2, PL::PL_VARIATION, 2, 0.f, 15.f));
-                engine.polyLORRef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SE::EDITOR_LANE_LEGATO},    SE::LOR_LEN) = (int)std::lround(eastLorVal(PL::PL_LEGATO,    0, PL::PL_LEGATO,    0, 1.f, 16.f));
-                engine.polyLORRef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SE::EDITOR_LANE_LEGATO},    SE::LOR_OFF) = (int)std::lround(eastLorVal(PL::PL_LEGATO,    1, PL::PL_LEGATO,    1, 0.f, 15.f));
-                engine.polyLORRef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SE::EDITOR_LANE_LEGATO},    SE::LOR_ROT) = (int)std::lround(eastLorVal(PL::PL_LEGATO,    2, PL::PL_LEGATO,    2, 0.f, 15.f));
+                // F+G: the named bounds; each lane's LEN lands first (hoisted) so its
+                // ROT hi is that lane's length − 1 (the lanes' rule; eastLorVal returns
+                // the base UNCLAMPED when the CV jack is unpatched, hence max(0,·)).
+                const float varLen = eastLorVal(PL::PL_VARIATION, 0, PL::PL_VARIATION, 0, 1.f, (float)dotModular::kLaneLengthMax);
+                engine.polyLORRef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SE::EDITOR_LANE_VARIATION}, SE::LOR_LEN) = (int)std::lround(varLen);
+                engine.polyLORRef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SE::EDITOR_LANE_VARIATION}, SE::LOR_OFF) = (int)std::lround(eastLorVal(PL::PL_VARIATION, 1, PL::PL_VARIATION, 1, 0.f, (float)dotModular::kLaneOffsetMax));
+                engine.polyLORRef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SE::EDITOR_LANE_VARIATION}, SE::LOR_ROT) = (int)std::lround(eastLorVal(PL::PL_VARIATION, 2, PL::PL_VARIATION, 2, 0.f, std::max(0.f, varLen - 1.f)));
+                const float legLen = eastLorVal(PL::PL_LEGATO, 0, PL::PL_LEGATO, 0, 1.f, (float)dotModular::kLaneLengthMax);
+                engine.polyLORRef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SE::EDITOR_LANE_LEGATO},    SE::LOR_LEN) = (int)std::lround(legLen);
+                engine.polyLORRef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SE::EDITOR_LANE_LEGATO},    SE::LOR_OFF) = (int)std::lround(eastLorVal(PL::PL_LEGATO,    1, PL::PL_LEGATO,    1, 0.f, (float)dotModular::kLaneOffsetMax));
+                engine.polyLORRef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{SE::EDITOR_LANE_LEGATO},    SE::LOR_ROT) = (int)std::lround(eastLorVal(PL::PL_LEGATO,    2, PL::PL_LEGATO,    2, 0.f, std::max(0.f, legLen - 1.f)));
 
                 // Delegation toggles (§4d): 0 = follow mono (default, silent), 1 = Local East.
                 // When Local East, the LOR pushed above is read; when delegating, the engine
@@ -455,9 +466,9 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
                             v,
                             (mmOwn ? mmOwn->getVarlegDeleg(v, 0) : 0.f),
                             (mmOwn ? mmOwn->getVarlegDeleg(v, 1) : 0.f),
-                            (int)std::lround(math::clamp(mmOwn ? mmOwn->getLorBase(slot, legBank, 0) : 16.f, 1.f, 16.f)),
-                            (int)std::lround(math::clamp(mmOwn ? mmOwn->getLorBase(slot, legBank, 1) : 0.f, 0.f, 15.f)),
-                            (int)std::lround(math::clamp(mmOwn ? mmOwn->getLorBase(slot, legBank, 2) : 0.f, 0.f, 15.f)));
+                            (int)std::lround(math::clamp(mmOwn ? mmOwn->getLorBase(slot, legBank, 0) : 16.f, 1.f, (float)dotModular::kLaneLengthMax)),
+                            (int)std::lround(math::clamp(mmOwn ? mmOwn->getLorBase(slot, legBank, 1) : 0.f, 0.f, (float)dotModular::kLaneOffsetMax)),
+                            (int)std::lround(math::clamp(mmOwn ? mmOwn->getLorBase(slot, legBank, 2) : 0.f, 0.f, (float)dotModular::kLaneOffsetMax)));
                 }
 #endif
             }
@@ -492,9 +503,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // Stage 2a: removed full-field applyPoly loop — engine refreshes at step advance
             
             float melodyInterp = mmOwn ? mmOwn->getSpread(slot, PL::PL_MELODY) : 0.f;
-            engine.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_MELODY}) = combineLOR(PL::PL_MELODY, 0, PL::PL_MELODY, 0, 1.f, 16.f);
-            engine.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_MELODY}) = combineLOR(PL::PL_MELODY, 1, PL::PL_MELODY, 1, 0.f, 15.f);
-            engine.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_MELODY}) = combineLOR(PL::PL_MELODY, 2, PL::PL_MELODY, 2, 0.f, 15.f);
+            const int melLen = combineLOR(PL::PL_MELODY, 0, PL::PL_MELODY, 0, 1.f, (float)dotModular::kLaneLengthMax);
+            engine.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_MELODY}) = melLen;
+            engine.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_MELODY}) = combineLOR(PL::PL_MELODY, 1, PL::PL_MELODY, 1, 0.f, (float)dotModular::kLaneOffsetMax);
+            engine.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_MELODY}) = combineLOR(PL::PL_MELODY, 2, PL::PL_MELODY, 2, 0.f, (float)std::max(0, melLen - 1));
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_MELODY,3)].isConnected()) {
                 float att = mmOwn ? mmOwn->getMacroAtten(slot, PL::PL_MELODY*4 + 3) : 0.f;   // PER-VOICE depth
                 float cv  = eastVisual->inputs[cvId(PL::PL_MELODY,3)].getPolyVoltage(v) / 10.f;
@@ -514,9 +526,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             //     engine.polyRotERef(v, 1) = (int)deepEast->params[melodyBase + 2].getValue();
             // }
             
-            engine.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_OCTAVE}) = combineLOR(PL::PL_OCTAVE, 0, PL::PL_OCTAVE, 0, 1.f, 16.f);
-            engine.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_OCTAVE}) = combineLOR(PL::PL_OCTAVE, 1, PL::PL_OCTAVE, 1, 0.f, 15.f);
-            engine.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_OCTAVE}) = combineLOR(PL::PL_OCTAVE, 2, PL::PL_OCTAVE, 2, 0.f, 15.f);
+            const int octLen = combineLOR(PL::PL_OCTAVE, 0, PL::PL_OCTAVE, 0, 1.f, (float)dotModular::kLaneLengthMax);
+            engine.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_OCTAVE}) = octLen;
+            engine.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_OCTAVE}) = combineLOR(PL::PL_OCTAVE, 1, PL::PL_OCTAVE, 1, 0.f, (float)dotModular::kLaneOffsetMax);
+            engine.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_OCTAVE}) = combineLOR(PL::PL_OCTAVE, 2, PL::PL_OCTAVE, 2, 0.f, (float)std::max(0, octLen - 1));
 
             float octaveInterp = mmOwn ? mmOwn->getSpread(slot, PL::PL_OCTAVE) : 0.f;
             if (eastVisual && eastVisual->inputs[cvId(PL::PL_OCTAVE,3)].isConnected()) {
@@ -538,9 +551,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // directly and bypassed combineLOR, so the accent send did nothing while the other
             // three lanes worked).
             {
-                engine.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_ACCENT}) = combineLOR(PL::PL_ACCENT, 0, PL::PL_ACCENT, 0, 1.f, 16.f);
-                engine.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_ACCENT}) = combineLOR(PL::PL_ACCENT, 1, PL::PL_ACCENT, 1, 0.f, 15.f);
-                engine.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_ACCENT}) = combineLOR(PL::PL_ACCENT, 2, PL::PL_ACCENT, 2, 0.f, 15.f);
+                const int accLen = combineLOR(PL::PL_ACCENT, 0, PL::PL_ACCENT, 0, 1.f, (float)dotModular::kLaneLengthMax);
+                engine.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_ACCENT}) = accLen;
+                engine.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_ACCENT}) = combineLOR(PL::PL_ACCENT, 1, PL::PL_ACCENT, 1, 0.f, (float)dotModular::kLaneOffsetMax);
+                engine.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_ACCENT}) = combineLOR(PL::PL_ACCENT, 2, PL::PL_ACCENT, 2, 0.f, (float)std::max(0, accLen - 1));
                 float accentInterp = math::clamp(mmOwn ? mmOwn->getSpread(slot, PL::PL_ACCENT) : 0.f, -1.f, 1.f);
                 // Accent spread CV (cvId(PL_ACCENT,3)) — was missing, so accent spread
                 // only responded to the manual knob, never to modulation. Mirror the
@@ -565,9 +579,10 @@ void MonsoonExpanderManager::sync(SequencerEngine& engine, bool caQueueFires) {
             // editing QMIX LOR on poly voices had no effect (the comment claimed a "main
             // POLY_LANES combineLOR loop above" that never existed; each lane was individual).
             {
-                engine.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_QMIX}) = combineLOR(PL::PL_QMIX, 0, PL::PL_QMIX, 0, 1.f, 16.f);
-                engine.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_QMIX}) = combineLOR(PL::PL_QMIX, 1, PL::PL_QMIX, 1, 0.f, 15.f);
-                engine.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_QMIX}) = combineLOR(PL::PL_QMIX, 2, PL::PL_QMIX, 2, 0.f, 15.f);
+                const int qmxLen = combineLOR(PL::PL_QMIX, 0, PL::PL_QMIX, 0, 1.f, (float)dotModular::kLaneLengthMax);
+                engine.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_QMIX}) = qmxLen;
+                engine.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_QMIX}) = combineLOR(PL::PL_QMIX, 1, PL::PL_QMIX, 1, 0.f, (float)dotModular::kLaneOffsetMax);
+                engine.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{PL::PL_QMIX}) = combineLOR(PL::PL_QMIX, 2, PL::PL_QMIX, 2, 0.f, (float)std::max(0, qmxLen - 1));
                 float qmixInterp = math::clamp(mmOwn ? mmOwn->getSpread(slot, PL::PL_QMIX) : 0.f, -1.f, 1.f);
                 if (eastVisual && eastVisual->inputs[cvId(PL::PL_QMIX,3)].isConnected()) {
                     float att = mmOwn ? mmOwn->getMacroAtten(slot, PL::PL_QMIX*4 + 3) : 0.f;   // PER-VOICE depth
@@ -983,9 +998,13 @@ void MonsoonExpanderManager::macroPopulationProduce_(SequencerEngine& engine) {
             // Global LOR per lane (Macro owns → no per-voice/ownership branch).
             // macroBase[lane][item]: item 0=LEN 1=OFF 2=ROT, engine-lane indexed.
             for (int lane = 0; lane < PL::PL_LANES; ++lane) {
-                engine.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane}) = (int)math::clamp(std::round(macroVis->macroBase[lane][0]), 1.f, 16.f);
-                engine.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane}) = ((int)std::round(macroVis->macroBase[lane][1]) % 16 + 16) % 16;
-                engine.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane}) = ((int)std::round(macroVis->macroBase[lane][2]) % 16 + 16) % 16;
+                // F+G: the delegated-poly push takes the named bounds — LEN clamped to
+                // the lane length max, OFF/ROT normalised on the RING (setStrand's own
+                // law; was the literal 16 — the same fold-to-0..15 snap for Macro-authored
+                // 16..31 starts).
+                engine.polyLenERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane}) = (int)math::clamp(std::round(macroVis->macroBase[lane][0]), 1.f, (float)dotModular::kLaneLengthMax);
+                engine.polyOffERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane}) = ((int)std::round(macroVis->macroBase[lane][1]) % dotModular::kMaskRing + dotModular::kMaskRing) % dotModular::kMaskRing;
+                engine.polyRotERef(dotModular::VoiceResolver::slot(v + 1), dotModular::LaneId{lane}) = ((int)std::round(macroVis->macroBase[lane][2]) % dotModular::kMaskRing + dotModular::kMaskRing) % dotModular::kMaskRing;
             }
             // Global spread per lane → spread-applied final arrays for this voice.
             // P9b: each voice v selects its OWN tap between the published endpoints

@@ -356,14 +356,28 @@ inline double pdf(const WarpF& f, double x, const MonotoneCurve* pool) {
 inline const char* warpTypeName(const WarpF& f) {
     return std::visit([](const auto& d) { return d.typeName(); }, f);
 }
-// The display name: a dual reads as "dual-<member>" (the popup header's "%s" slot —
-// a static-string return cannot compose, so the caller's buffer is threaded; a null
-// buf or a non-dual falls back to warpTypeName).
+// The display name: a stored dual reads as "dual-<member>" (the popup header's
+// "%s" slot — a static-string return cannot compose, so the caller's buffer is
+// threaded; a null buf or a non-dual falls back to warpTypeName).
 inline const char* warpDisplayName(const WarpF& f, char* buf, size_t cap) {
     if (buf && std::get_if<DualWarp>(&f)) {
         std::snprintf(buf, cap, "dual-%s",
                       std::visit([](const auto& m) { return m.typeName(); },
                                  std::get<DualWarp>(f).member));
+        return buf;
+    }
+    return warpTypeName(f);
+}
+// THE ACTIVE READING's display name (the bidirectional warp — the amended spec's
+// sign law): production state is always a BARE member, and the SIGN of the depth
+// picks the reading, so the readout names what the engine hears — negative w reads
+// "dual-<kind>" (the same curve with CDF and quantile exchanged), non-negative w
+// reads the kind itself. The identity takes no dual name on the negative side (the
+// uniform IS its own dual — F(x) = x swaps to itself; naming it would manufacture
+// a second uniform entry, exactly what the menu refuses).
+inline const char* warpReadingName(const WarpF& f, float w, char* buf, size_t cap) {
+    if (w < 0.f && buf && !std::holds_alternative<IdentityWarp>(f)) {
+        std::snprintf(buf, cap, "dual-%s", warpTypeName(f));
         return buf;
     }
     return warpTypeName(f);
@@ -599,10 +613,18 @@ struct WarpBank {
     // (v*7 + lane) — the spread[112] stride.
     static int index(int v, int lane) { return v * LANES + lane; }
 
-    float warpW[N]          = {};   // per-voice-per-lane depth 0..1 (0 = no warp)
+    float warpW[N]          = {};   // per-voice-per-lane SIGNED depth [−1,+1]
+                                    // (0 = no warp; the sign selects the reading —
+                                    // + the member's quantile, − the DUAL's, the
+                                    // bidirectional warp's amplitude law: the depth
+                                    // is |w|, the blend (1−|w|)·u + |w|·Q(u))
     WarpF warpF[N];                 // default-constructed = all IdentityWarp = uniform
-    float globalWarpW[LANES] = {};  // Macro's default depth (the delegation source)
-    WarpF globalWarpF[LANES];       // Macro's default curve (default = identity)
+                                    // (BARE members only — the reading lives in the
+                                    // sign of warpW; a legacy persisted dual envelope
+                                    // is migrated at parse, see the migration pass
+                                    // at the bottom of parse())
+    float globalWarpW[LANES] = {};  // Macro's default depth (the delegation source; signed, same law)
+    WarpF globalWarpF[LANES];       // Macro's default curve (default = identity; bare members)
     MonotoneCurve pool[kWarpPoolCap];   // set-time drawn-curve pool (DrawnWarp.idx indexes it)
 
     // ── FEEL-TEST STAGES (CC_PROMPT_TILT_AND_RAIL_FEELTEST_START): rail tilt + injected
@@ -1002,6 +1024,23 @@ struct WarpBank {
                 }
             }
         }
+        // ── THE BIDIRECTIONAL MIGRATION (the sign owns the reading now): a pre-sign
+        // patch persisted the dual as a STORED state — the {"type":"dual"} envelope
+        // riding warpF/globalWarpF with its depth w ≥ 0 in warpW/globalWarpW. The
+        // SAME sound under the amended law is the BARE member at depth −w: the old
+        // mix (1−w)·u + w·(dual quantile) IS (1−|−w|)·u + |−w|·(member CDF) — the
+        // dual's quantile IS the member's CDF, |−w| == w, both bit-exact — so the
+        // peel below cannot shift a loaded patch by even one bit. Every persisted
+        // dual (the 112 per-voice slots AND Macro's 7 global defaults) is peeled
+        // here, so eval sees bare members and ONE reading rule; the envelope codec
+        // itself stays (the legacy writer's form, and the codec round-trip pins).
+        auto peelDual = [](WarpF& f, float& w) {
+            if (!isDualWarp(f)) return;
+            f = dualMember(f);
+            if (w != 0.f) w = -w;   // a depth-zero dual IS the bare member; −0 is never written
+        };
+        for (int i = 0; i < N; ++i) peelDual(out.warpF[i], out.warpW[i]);
+        for (int l = 0; l < LANES; ++l) peelDual(out.globalWarpF[l], out.globalWarpW[l]);
         return full;
     }
 

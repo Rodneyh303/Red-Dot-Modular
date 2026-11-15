@@ -280,6 +280,46 @@ int main(){
         }
     }
 
+
+    SUITE("CC_PROMPT_PPQN_48 - the pulse table (stage 2) + the 48 legato-lead set (stage 6)");
+    TEST("the pulse table at 24: every value an exact integer; 1/16 = 6, 1/32 = 3, 1/16T = 4",{
+        const int expect24[NUM_NOTE_VALUES] = {96,72,48,36,24,18,16,12,9,8,6,4,3};
+        for(int i=0;i<NUM_NOTE_VALUES;++i) EXPECT(noteValuePulses(i,24) == expect24[i]);
+    });
+    TEST("the pulse table at 48: every value an exact integer; 1/16 = 12, 1/32 = 6, 1/16T = 8",{
+        const int expect48[NUM_NOTE_VALUES] = {192,144,96,72,48,36,32,24,18,16,12,8,6};
+        for(int i=0;i<NUM_NOTE_VALUES;++i) EXPECT(noteValuePulses(i,48) == expect48[i]);
+    });
+    TEST("noteValueStepUnits at 24 == noteValueSteps (the 24 no-re-pin law)",{
+        for(int i=0;i<NUM_NOTE_VALUES;++i)
+            EXPECT(noteValueStepUnits(i,24) == noteValueSteps(i));
+    });
+    TEST("step units at 48 read the doubled step rate: a 1/16 = 2 steps, a 1/32 = 1",{
+        EXPECT_NEAR(noteValueStepUnits(10,48), 2.f, 1e-6f);      // 1/16: 12 pulses / 6
+        EXPECT_NEAR(noteValueStepUnits(12,48), 1.f, 1e-6f);      // 1/32:  6 pulses / 6
+        EXPECT_NEAR(noteValueStepUnits(11,48), 8.f/6.f, 1e-6f);  // 1/16T: 8/6
+    });
+    TEST("the 24 legato-lead set is UNCHANGED (1/32 = 3 pulses, not a step boundary - non-lead)",{
+        EXPECT( noteCanLeadLegato(1,24)); EXPECT( noteCanLeadLegato(3,24));
+        EXPECT( noteCanLeadLegato(5,24)); EXPECT( noteCanLeadLegato(0,24));
+        EXPECT(!noteCanLeadLegato(8,24)); EXPECT(!noteCanLeadLegato(12,24));
+        EXPECT(!noteCanLeadLegato(11,24)); EXPECT(!noteCanLeadLegato(6,24)); EXPECT(!noteCanLeadLegato(9,24));
+    });
+    TEST("the 48 legato-lead set: 1/32 (6 pulses) and 1/16. (18) CAN lead; 1/16T (8), 1/8T (16), 1/4T (32) cannot",{
+        EXPECT( noteCanLeadLegato(12,48));   // 1/32 - ends exactly on a step (the doc's stage 6)
+        EXPECT( noteCanLeadLegato(8,48));    // 1/16. - 18 = 3*6, a step boundary
+        EXPECT(!noteCanLeadLegato(11,48));   // 1/16T - 8, not a multiple of 6
+        EXPECT(!noteCanLeadLegato(9,48));    // 1/8T  - 16, not a multiple of 6
+        EXPECT(!noteCanLeadLegato(6,48));    // 1/4T  - 32, not a multiple of 6
+    });
+    TEST("all 13 values allowed at 48 (bit 8 - every one resolves to an integer pulse count)",{
+        bool ok=true;
+        for(int i=0;i<NUM_NOTE_VALUES;++i) if(!(NOTE_VALUES[i].allowedPPQN&8)) ok=false;
+        EXPECT(ok);});
+    TEST("ppqnBitOf maps the settings (24->4, 48->8; the legacy 1/4 keep their bits)",{
+        EXPECT(ppqnBitOf(24) == 4); EXPECT(ppqnBitOf(48) == 8);
+        EXPECT(ppqnBitOf(4) == 2);  EXPECT(ppqnBitOf(1) == 1);
+    });
     std::cout<<"\n\033[1mResults: \033[32m"<<s_pass<<" passed\033[0m, "
              <<(s_fail?"\033[31m":"")<<s_fail<<" failed\033[0m\n";
     return s_fail?1:0;

@@ -61,3 +61,32 @@ case (confirm that is intended, per the design doc's open check).
 - Stage 2: subphase unpatched bit-identical; quotient/remainder at 1 bar and 1 quarter; sign-product
   direction; both-reverse case.
 - GOLDEN_A untouched throughout. run_all green (both SDK legs).
+
+════════════════════════════════════════════════════════════════════════════════
+## CALIBRATION  QUANTISE TO 24 PPQN PULSES, STRAIGHT LIST ONLY (Rodney, decided)
+The subphase calibration currently maps continuously (Monsoon.cpp:883: regionSixteenths = 4 + 12*knob),
+which allows fractional-step regions (e.g. 6.3 sixteenths). That breaks the quotient/remainder tiling. Fix:
+
+- Calibration is a DISCRETE list of region sizes, in 24-PPQN PULSES (6 pulses per 16th; a bar = 96 pulses).
+- STRAIGHT LIST (ship this first; nothing else yet):
+    bar     = 16 steps = 96 pulses   (1 region/bar)
+    half    =  8 steps = 48 pulses   (2)
+    quarter =  4 steps = 24 pulses   (4)
+    eighth  =  2 steps = 12 pulses   (8)
+    16th    =  1 step  =  6 pulses   (16)
+- The knob SNAPS to these detents; no continuous sweep.
+- Transport phase QUANTISES TO PULSES. The region index and the within-region position both come from a
+  PULSE count, not a continuous step value. This keeps subphase on the same 24-PPQN grid as everything else
+  and prevents fractional regions returning.
+- Region boundaries therefore always fall on pulse positions, and the straight list always tiles the 96-pulse
+  bar exactly.
+
+## DEFERRED (not this work)
+- Non-straight groupings (e.g. 6/6/4) and Euclidean partitions (E(3,16)=6,5,5; E(5,16)=3,3,4,3,3;
+  E(7,16)=2,2,3,2,2,3,2). These are other INTEGER-PULSE partitions of the 96-pulse bar  the same calibration
+  table, generated differently. Add after phase-through-distributions (freeze + jump) has landed. Rotation on
+  the Euclidean ones is a later question.
+
+## PRIORITY
+Land PHASE THROUGH DISTRIBUTIONS (freeze + jump) FIRST. The calibration snap-to-pulses fix above is small and
+can ride with it. The groupings/Euclidean come after.

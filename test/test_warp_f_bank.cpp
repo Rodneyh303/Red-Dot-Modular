@@ -3,8 +3,11 @@
 //
 // The warp bank (docs/design/CC_PROMPT_02_lanedist_START.md — the authority): a
 // value-type std::variant "WarpF" with an IDENTITY default, so the warp mix
-//     warped(u) = (1-w)*u + w*F.invCDF(u)
-// is BRANCHLESS and a default-constructed bank is all-uniform (no warp). One
+//     warped(u) = (1−|w|)·u + |w|·Q(u)
+// is BRANCHLESS and a default-constructed bank is all-uniform (no warp). w is the
+// SIGNED depth [−1,+1] (PHASE_DISTRIBUTION_SPEC as amended — the bidirectional
+// warp): the SIGN picks the reading Q (+ the member's quantile F⁻¹, − its CDF F,
+// the DUAL), the magnitude is the blend depth. One
 // implementation per curve (the existing Distribution subclass / MonotoneCurve —
 // the wrappers only forward), a flat 112-bank like spread[112], trivially
 // copyable, JSON-persistable with identity+w=0 defaults (old patches unchanged).
@@ -537,71 +540,122 @@ int main() {
         }
     }
 
-    std::printf("[S8] THE DUAL READING (PHASE_DISTRIBUTION_SPEC): trivial copyability, the\n"
-                "      swap through the bank, slot persistence, and the Sklar-safety of the\n"
-                "      dual mix (the composed CDF is a CDF — monotone by construction)\n");
+    std::printf("[S8] THE BIDIRECTIONAL WARP (PHASE_DISTRIBUTION_SPEC as amended): the dual\n"
+                "      reading rides the warp depth's NEGATIVE side — the menu is the bare\n"
+                "      palette and the sign of w IS the reading; the TYPE-level DualWarp\n"
+                "      survives only as the legacy envelope's carrier (parse peels it).\n"
+                "      Pins: trivial copyability, the sign-selected reading through the bank\n"
+                "      (own + delegated), the (1−|w|)·u + |w|·Q(u) blend at a mid depth, the\n"
+                "      legacy-dual parse migration (member at −w, the sound bit-exact), and\n"
+                "      the Sklar-safety of BOTH sides (each side's composed reading is\n"
+                "      monotone by construction — the composed CDF is a CDF).\n");
     {
         using Idx = dotModular::WarpBank;
         // (a) the DUAL ALTERNATIVE keeps the flat-bank contract (the file-top
         //     static_asserts now cover DualWarp too; these pin the member plumbing).
+        //     Nothing mints a dual anymore — the menu commits bare members and parse
+        //     migrates the persisted envelopes — but the type stays: it is the legacy
+        //     patch's envelope carrier, and warpFromJson must keep reading old patches.
         static_assert(std::is_trivially_copyable_v<dotModular::DualWarp>,
                       "DualWarp must be trivially copyable (a flat ParamF value inside)");
         static_assert(std::is_trivially_copyable_v<dotModular::ParamF>,
                       "ParamF must be trivially copyable");
         check((int)dotModular::WarpF{dotModular::DualWarp{}}.index() == 10,
               "DualWarp is alternative 10 (indices 0..9 untouched)");
-        // (b) the BANK composes the dual's swap: at w=1 a dual cell's warpedValue ==
-        //     member.cdf(u) BIT-EXACTLY (the reading swap through the ONE mix).
+        // (b) THE SIGN SELECTS THE READING: a BARE member cell (no dualWrap anywhere —
+        //     the menu's law) at w=−1 evaluates the member's CDF BIT-EXACTLY (the dual
+        //     reading), at w=+1 its quantile (as always), and at w=−0.5 the mix is
+        //     exactly (1−|w|)·u + |w|·cdf — Rodney: "(1−|w|)·u + |w|·Q(u), keeps the
+        //     uniform as the reference ... same as current".
         {
             dotModular::WarpBank b;
             const int i = Idx::index(3, 1);
-            b.warpF[i] = dotModular::dualWrap(dotModular::PowerWarp{2.0});
-            b.warpW[i] = 1.f;
+            b.warpF[i] = dotModular::PowerWarp{2.0};          // BARE member
             const dotModular::PowerWarp member{2.0};
-            bool swapOK = true;
+            bool negOK = true, midOK = true;
+            b.warpW[i] = -1.f;
             for (int k = 0; k <= 1000; ++k) {
                 const double u = (double)k / 1000.0;
-                if (b.warpedValue(3, 1, u) != member.dist().cdf(u)) swapOK = false;
+                if (b.warpedValue(3, 1, u) != member.dist().cdf(u)) negOK = false;
             }
-            check(swapOK, "bank dual at w=1 == member.cdf BIT-EXACT (the reading swap)");
-            // the DELEGATED branch resolves the dual from Macro's default the same way
+            check(negOK, "bank at w=-1 (bare member) == member.cdf BIT-EXACT (the sign picks the dual)");
+            b.warpW[i] = -0.5f;
+            for (int k = 0; k <= 1000; ++k) {
+                const double u = (double)k / 1000.0;
+                const double aw = std::abs((double)b.warpW[i]);   // the depth; the sign is the reading
+                const double want = (1.0 - aw) * u + aw * member.dist().cdf(u);
+                if (b.warpedValue(3, 1, u) != want) midOK = false;
+            }
+            check(midOK, "bank at w=-0.5 == (1-|w|)u + |w|*member.cdf BIT-EXACT (the amended blend)");
+            // the DELEGATED branch resolves the negative side from Macro's default the same way
             dotModular::WarpBank g;
-            g.globalWarpF[1] = dotModular::dualWrap(dotModular::TriangularWarp{0.4});
-            g.globalWarpW[1] = 1.f;
+            g.globalWarpF[1] = dotModular::TriangularWarp{0.4};
+            g.globalWarpW[1] = -1.f;
             const dotModular::TriangularWarp tm{0.4};
             bool delOK = true;
             for (int k = 0; k <= 1000; ++k) {
                 const double u = (double)k / 1000.0;
                 if (g.warpedValue(3, 1, u, /*delegated=*/true) != tm.dist().cdf(u)) delOK = false;
             }
-            check(delOK, "delegated dual cell (Macro's default) swaps the same way");
+            check(delOK, "delegated cell at w=-1 (Macro's default) reads the dual the same way");
         }
-        // (c) a dual slot round-trips the bank codec (the "dual" envelope).
+        // (c) THE LEGACY MIGRATION: a pre-sign patch persisted the dual as a STORED
+        //     state (the "dual" envelope + depth w ≥ 0); parse peels it to the bare
+        //     member at −w — the SAME sound bit-exactly ((1−w)·u + w·(dual quantile)
+        //     IS (1−|−w|)·u + |−w|·(member cdf), the dual's quantile IS the member's
+        //     cdf). Bare slots pass through untouched (w never negated).
         {
-            dotModular::WarpBank src;
+            dotModular::WarpBank src;   // the OLD writer's state, reconstructed verbatim
             src.warpF[Idx::index(2, 2)] = dotModular::dualWrap(dotModular::KumaraswamyWarp{2.0, 3.0});
             src.warpW[Idx::index(2, 2)] = 0.7f;
+            src.globalWarpF[4] = dotModular::dualWrap(dotModular::PowerWarp{2.0});
+            src.globalWarpW[4] = 0.6f;
             json_t* root = json_object();
             dotModular::WarpBank::serialize(src, root, "editor");
             dotModular::WarpBank dst;
             dotModular::WarpBank::parse(root, "editor", dst);
             json_decref(root);
-            const dotModular::WarpF want =
-                dotModular::dualWrap(dotModular::KumaraswamyWarp{2.0, 3.0});
-            check(dst.warpF[Idx::index(2, 2)] == want && dst.warpW[Idx::index(2, 2)] == 0.7f,
-                  "a dual slot round-trips (envelope + member + depth exact)");
+            check(dst.warpF[Idx::index(2, 2)] == dotModular::WarpF{dotModular::KumaraswamyWarp{2.0, 3.0}}
+                  && dst.warpW[Idx::index(2, 2)] == -0.7f,
+                  "a persisted dual slot loads as the member at -w (the sign carries the reading)");
+            check(dst.globalWarpF[4] == dotModular::WarpF{dotModular::PowerWarp{2.0}}
+                  && dst.globalWarpW[4] == -0.6f,
+                  "a persisted dual GLOBAL default migrates the same way");
+            // ...and the migrated cell's SOUND is the old dual's bit-exactly.
+            const dotModular::KumaraswamyWarp km{2.0, 3.0};
+            bool sound = true;
+            for (int k = 0; k <= 400; ++k) {
+                const double u = (double)k / 400.0;
+                const double aw = std::abs((double)dst.warpW[Idx::index(2, 2)]);
+                const double want = (1.0 - aw) * u + aw * km.dist().cdf(u);
+                if (dst.warpedValue(2, 2, u) != want) sound = false;
+            }
+            check(sound, "the migrated cell's mix == (1-|w|)u + |w|*member.cdf BIT-EXACT (the old dual's sound)");
+            // a BARE slot needs no migration — the round trip is the identity.
+            dotModular::WarpBank plain;
+            plain.warpF[Idx::index(0, 0)] = dotModular::TriangularWarp{0.3};
+            plain.warpW[Idx::index(0, 0)] = 0.4f;
+            json_t* r2 = json_object();
+            dotModular::WarpBank::serialize(plain, r2, "editor");
+            dotModular::WarpBank back;
+            dotModular::WarpBank::parse(r2, "editor", back);
+            json_decref(r2);
+            check(back.warpF[Idx::index(0, 0)] == plain.warpF[Idx::index(0, 0)]
+                  && back.warpW[Idx::index(0, 0)] == 0.4f,
+                  "a bare slot round-trips untouched (no migration, w not negated)");
         }
-        // (d) SKLAR-SAFETY of the dual mix: the composed CDF is a CDF — the dual mix
-        //     (1-w)u + w·G(u) is monotone in u for the whole w range (the GAPPED dual
-        //     included — the gap's flat is a legal non-strict stretch... on the STEEP
-        //     member with an interior gap the mix stays STRICT; the flat lives in x,
-        //     not in G(u)).
+        // (d) SKLAR-SAFETY of BOTH sides: each side's composed reading is monotone —
+        //     the positive side's quantile H⁻¹ and the negative side's composed CDF —
+        //     so the (1−|w|)·u + |w|·Q(u) mix is monotone in u for the WHOLE signed
+        //     range (the GAPPED negative side included — the gap's flat is a legal
+        //     non-strict stretch... on the STEEP member with an interior gap the mix
+        //     stays STRICT; the flat lives in x, not in G(u)).
         {
-            const float ws2[3] = {0.f, 0.5f, 1.f};
+            const float ws2[5] = {-1.f, -0.5f, 0.f, 0.5f, 1.f};
             for (float w : ws2) {
                 dotModular::WarpBank b;
                 const int i = Idx::index(8, 3);
-                b.warpF[i] = dotModular::dualWrap(dotModular::PowerWarp{5.0});
+                b.warpF[i] = dotModular::PowerWarp{5.0};   // BARE member — the sign does the reading
                 b.warpW[i] = w;
                 b.warpGapLoc[i] = 0.4f; b.warpGapSize[i] = 0.25f;   // a live gap
                 bool monoD = true;
@@ -609,11 +663,11 @@ int main() {
                 for (int k = 1; k < 8000; ++k) {
                     const double u = (double)k / 7999.0;
                     const double d = b.warpedValue(8, 3, u);
-                    if (!(prevD <= d)) monoD = false;   // non-decreasing (G is a CDF)
+                    if (!(prevD <= d)) monoD = false;   // non-decreasing (either reading is)
                     prevD = d;
                 }
                 char buf[128];
-                std::snprintf(buf, sizeof buf, "gapped dual (Power 5) at w=%g: non-decreasing in u", (double)w);
+                std::snprintf(buf, sizeof buf, "gapped Power 5 at w=%+g: non-decreasing in u", (double)w);
                 check(monoD, buf);
             }
         }

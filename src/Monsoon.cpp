@@ -35,6 +35,8 @@ using dotModular::VoiceResolver;   // the mint authority (VoiceSlot cannot be co
 //#include "MonsoonDeepStraitsSands.hpp"        // NEW (Deep): per-voice DNA controls
 #include "StraitsEastSandsVisual.hpp"         // Visual DNA editor (East)
 #include "StraitsSandsMacroVisual.hpp"        // Visual DNA editor (Macro)
+#include "SandsPhaseDistSubpanel.hpp"         // THE §14 STORE's owner (CC_FIX_PHASE_STORE_ON_SUBPANEL:
+                                              // full type: the snapshot reads it)
 #include "MonsoonWidget.hpp"
 #include "Monsoon.hpp"
 #include "ui/IntertropicalPairing.hpp"   // assignPairIdT / resolveFollowedT — host identity + shared-CA (template forms; the calls below carry the gate marker)
@@ -91,7 +93,7 @@ Monsoon::Monsoon() {
         // slot and bank, matching the old per-voice configParam defaults.
         for (int slot = 0; slot < 16; ++slot)
             for (int bank = 0; bank < dotModular::SandsGrid::MONO_LANES; ++bank)
-                editor.lorBase[slot*21 + bank*3 + 0] = 16.f;  // stride 21 = 7 banks × 3
+                editor.lorBase[slot*21 + bank*3 + 0] = (float)dotModular::kPatternLengthCap;  // stride 21 = 7 banks × 3 — (bug 23) the identity length is the FULL window (the cap; was the literal 16)
 
         // Per-voice send-tap bank: default 1.0 (POST) for every voice/lane/kind — the old
         // single-tap behaviour at its default, so un-touched patches sound identical
@@ -156,6 +158,49 @@ void Monsoon::updateExpanderPointers() {
             pairId = (cand <= kMaxParticipatingMonsoons) ? cand : 0;   // >8 → unparticipating (no colour)
         }
         if (pairId > 0) pairChecked = true;   // latch only on success; a capped-out Monsoon keeps retrying
+    }
+
+    // ── THE PHASE-DISTORTION SOURCE (PHASE_DISTRIBUTION_SPEC §14, amended by
+    // CC_FIX_PHASE_STORE_ON_SUBPANEL — the store's owner resolved at control rate,
+    // epoch-memoized) ───────────────────────────────────────────────────────────────
+    // RACK-WIDE first-found (the LOWEST module id — deterministic under any module
+    // order, the same determinism resolveFollowedT's scan gives pairId matches): the
+    // model serves the WHOLE Monsoon network from ONE subpanel's store, so a Monsoon
+    // in another segment must still find it — the segment walk (the
+    // expanderManager's adjacency caches) is the wrong tool here. The scan is keyed
+    // to the SUBPANEL model (the phase authoring surface — the Distribution
+    // expander is no longer involved at all). If several phase subpanels exist, the
+    // lowest id wins (documented; one store, one reading). nullptr = no subpanel:
+    // both tiers run the raw path (bit-identical). Runs inside
+    // updateExpanderPointers → the epoch guard fires it ONLY on a topology event
+    // (the lookup authority's law: event-driven, never polled).
+    phaseDistPanel_ = nullptr;
+    if (APP && APP->engine) {
+        int64_t bestId = INT64_MAX;
+        for (int64_t mid : APP->engine->getModuleIds()) {
+            rack::Module* om = APP->engine->getModule(mid);
+            if (!om || om == this) continue;
+            if (auto* e = dynamic_cast<SandsPhaseDistSubpanel*>(om)) {
+                if (mid < bestId) { phaseDistPanel_ = e; bestId = mid; }
+            }
+        }
+    }
+
+    // THE DYNAMIC DEFAULT PAIRING (Task 3: "DEFAULT 2N-1 and 2N for Monsoon N"): N is
+    // the pairId (the lowest-free 1..8 identity latched above). Applied ONCE per
+    // module LIFETIME, at the latch, and ONLY on a fresh module (phaseSetsFresh_ —
+    // dataFromJson cleared it): a loaded patch keeps its authored picks ("the picks
+    // persist with that Monsoon"), and a later pairId re-assignment (an earlier
+    // Monsoon removed) never re-defaults. A capped-out Monsoon (pairId 0) reads as
+    // N=1 for the formula — the defaults are only defaults. 2N−1 / 2N can exceed the
+    // eight sets for N ≥ 5: the range clamps (the param quantity is [1,8] anyway).
+    if (phaseSetsFresh_ && pairChecked && pairId > 0) {
+        const int n = pairId;
+        const int phDef = std::min(2 * n - 1, 8);
+        const int sbDef = std::min(2 * n,     8);
+        params[PHASE_SET_PARAM].setValue((float)std::max(1, phDef));
+        params[SUBPHASE_SET_PARAM].setValue((float)std::max(1, sbDef));
+        phaseSetsFresh_ = false;
     }
     // Shared Change Alley (CA_SHARED_EXPANDER_BUILD §Step4): followCA>0 OVERRIDES the adjacency-cached
     // CA with the rack-wide pairId match, so a second (reader) Monsoon can bind a CA on another row.
@@ -222,6 +267,9 @@ void Monsoon::updateExpanderPointers() {
   
     void Monsoon::dataFromJson(json_t* root) {
         PersistenceManager::fromJson(this, root);
+        // THE §14 PICKS: a loaded patch carries its own authored values — the dynamic
+        // 2N−1/2N default (a FRESH module's pairing) must never overwrite them.
+        phaseSetsFresh_ = false;
     // Finalize state. Seeding re-keys Philox and ZEROES the draw counter — so snapshot
     // the counter the persistence layer restored, seed, then put it back, then regenerate
     // candidate B at that exact stream position (Option 3: A restored, B regenerated).
@@ -723,6 +771,8 @@ void Monsoon::onReset() {
     Module::onReset();
     initialize();   // resets all module state to defaults
     clock.reset();  // resets ClockEngine timing
+    phaseDistHold_[0].reset();   // the PPQN-cell holds re-seed on the next Mode-E sample (CC_FIX_PHASE_DISTORT_AT_PPQN)
+    phaseDistHold_[1].reset();
 }
 
 
@@ -870,18 +920,99 @@ void Monsoon::process(const ProcessArgs& args) {
         // other length-change consumer rides, absorbed by the snap/drift machinery.
         phase.patternLength = engine.cachedLength;
 
+        // ── §14 TASK 3: THE PHASE TIER THROUGH ITS SET (the shared primitive) ──────
+        // CC_PROMPT_PHASE_DISTORTION_EXPANDER: "Apply the shared primitive to the
+        // phase and to the subphase with the selected sets." The snapshot's identity
+        // flag (computed at the Control-tier snapshot) is the Stage-1 gate's bypass:
+        // an identity set — or no expander at all — runs the RAW path VERBATIM (the
+        // bit-identity gate holds because the voltage never round-trips through the
+        // normalised domain: the original variable is handed to the engine as-is).
+        // Non-identity: distort in the normalised domain [0,1) — the primitive is the
+        // ONE implementation (dotModular::phaseDistort, the same composed chain + mix
+        // the lane draws run) — and hand the engine the distorted voltage. The
+        // quantise-to-pulses step is NOT repeated here: the existing machinery below
+        // (PhaseEngine's pulse-grid mapping, snapToPhaseStep, the drift check) IS the
+        // quantise ("as the existing snap does" — a second copy would break the §14
+        // single-implementation gate). An ATOM on the path freezes the playhead
+        // naturally: the distorted ramp sits still on the plateau, the engine sees no
+        // motion, the escape is modulating warp/atom position/size (the decided edge
+        // case); a GAP crossing is a single-sample jump over the grid — the EXISTING
+        // jump contract (jumpSteps replay + snap) handles it, no new jump class.
+        if (!phaseDistIdentity_[0]) {
+            const double uT = phase.normPhase(phaseVolt);
+            // CC_FIX_PHASE_DISTORT_AT_PPQN steps 1-2 (docs tip 9b900695): the transform
+            // is evaluated ONCE PER PPQN CELL of the input and held until the next cell —
+            // the input cell from the EXISTING quantisation (the plain path's own probe,
+            // llround, the CC_FIX_PHASE_RUN_AT_PPQN adjudication), the fire at the cell's
+            // OWN grid point (bit-identical to a per-sample evaluation there), the held
+            // value reused between cells — no other per-sample transform call. The grid
+            // mirrors the engine's own PPB (PULSES_PER_STEP·plen — the same expression
+            // PhaseEngine::process derives from the same two feeds; CC_PROMPT_PPQN_48:
+            // the STEP grid, 96 cells at any PPQN for a 16-step pattern). Steep stretches and
+            // atom/gap edges narrower than a cell land on the next evaluation point —
+            // the spec's PPQN-landing rule applied to the transform (the doc's WHAT
+            // CHANGES). Identity keeps the raw path verbatim (step 3; the hold resets so
+            // no stale set's value rides an identity episode). The DISPLAY path (the
+            // curve widget + the phase markers) keeps its own video-rate evaluation —
+            // step 4 — the two never cross.
+            const long plen = (long)(phase.patternLength > 0 ? phase.patternLength : 16);
+            // CC_PROMPT_PPQN_48: the held-cell grid is the SPAN's STEP grid —
+            // PULSES_PER_STEP·plen (a step is 6 pulses, FIXED) — the same 96-cell
+            // grid at 24 and at 48, and the SAME grid the standalone PhaseDistortion
+            // runs (PhaseDistCore's kSpan) — the two consumers agree at every PPQN
+            // (the doc's stage-5 held-cell gate). At 24 this is the old p16·plen
+            // bit-for-bit (6 = PULSES_PER_STEP there).
+            phaseVolt = phaseDistHold_[0].processTransport(uT, (long)PULSES_PER_STEP * plen,
+                                                           phaseDistSnap_[0].cell(), phase.phaseInMax);
+        } else {
+            phaseDistHold_[0].reset();   // step 3: the raw path needs no held value
+        }
+
         // ── PHASE TIER Stage 2: the SUBPHASE TIER via CV3 ──────────────────────────
         // In Mode E, CV3 is EXCLUSIVELY the subphase input (the exact mirror of Mode E
-        // taking over CV1; Rodney: "Lets use cv3 in for subphase. Cv2 in is currently
-        // used for quantiser"). UNPATCHED = Stage 1 exactly (the bit-identical gate).
+        // taking over CV1; Rodney: "Lets use cv3 in for subphase"). UNPATCHED = Stage 1 exactly (the bit-identical gate).
         // PATCHED: the quotient/remainder — the transport phase is QUANTISED to select
         // the region (regionSize = the SUBPHASE CALIBRATION knob, quarter .. bar), the
         // subphase positions WITHIN it. Inside PhaseEngine::processTiers; the same jump/
         // replay/snap/drift machinery consumes the composed position.
         bool effReverse;
         if (cachedCv3Connected) {
-            double regionSixteenths = 4.0 + 12.0 * (double)params[SUBPHASE_CAL_PARAM].getValue();
-            phase.processTiers(phaseVolt, input.cv3, true, regionSixteenths,
+            // THE CALIBRATION SNAPS TO PULSES (Rodney, decided — the tier branch's
+            // CC_PROMPT_PHASE_TIER CALIBRATION section: "The calibration snap-to-pulses
+            // fix above is small and can ride with it"). The knob is a DETENT picker
+            // over the straight 24-PPQN pulse list — bar/half/quarter/eighth/16th =
+            // {96,48,24,12,6} pulses = {16,8,4,2,1} sixteenths — so the region index
+            // and the within-region position always come from an INTEGER pulse count
+            // (no fractional regions can return), region boundaries always fall on
+            // pulse positions, and the list tiles the 96-pulse bar exactly. Knob 1.0
+            // = bar (the shipped default unchanged); a persisted continuous value
+            // lands on the NEAREST detent.
+            static constexpr int kCalSixteenths[5] = {16, 8, 4, 2, 1};   // bar, half, quarter, eighth, 16th
+            const float calV = params[SUBPHASE_CAL_PARAM].getValue();
+            const int det = std::clamp((int)std::lround((1.0 - (double)calV) * 4.0), 0, 4);
+            const double regionSixteenths = (double)kCalSixteenths[det];
+
+            // ── §14 TASK 3: the SUBPHASE through ITS set (the same primitive; the
+            // unpatched case never reaches here — the unpatched branch IS the
+            // identity, "the Monsoon behaves exactly as today") ─────────────────────
+            float subVolt = input.cv3;
+            if (!phaseDistIdentity_[1]) {
+                const double uS = phase.normPhase(subVolt);
+                // CC_FIX_PHASE_DISTORT_AT_PPQN step 5: the subphase follows the same
+                // rule with its OWN cell, on the REGION-RELATIVE grid — the fine term's
+                // own quantisation (floor of s·regionPulses inside tierPulseFor; the
+                // engine's within-region law — llround would leak one pulse across the
+                // region boundary at s → 1⁻). regionPulses = rF·PPB =
+                // regionSixteenths·pulsesPer16th — exactly the engine's fine-term scale
+                // (the same detent list the calibration snaps to, times the pulse grid).
+                const long regionPulses =
+                    (long)kCalSixteenths[det] * (long)redDot::PhaseEngine::pulsesPer16th(ppqnSetting);
+                subVolt = phaseDistHold_[1].processSubphase(uS, regionPulses,
+                                                            phaseDistSnap_[1].cell(), phase.phaseInMax);
+            } else {
+                phaseDistHold_[1].reset();   // step 3: the raw path needs no held value
+            }
+            phase.processTiers(phaseVolt, subVolt, true, regionSixteenths,
                                args.sampleTime, ppqnSetting);
             // THE SIGN PRODUCT (the semantic direction, decided — "the same sign-product
             // composition as voice and lane direction (playhead × voice × lane)"):
@@ -894,10 +1025,14 @@ void Monsoon::process(const ProcessArgs& args) {
             int sDir = (phase.dirS == 0) ? 1 : phase.dirS;
             effReverse = (tDir * sDir) < 0;
         } else {
+            phaseDistHold_[1].reset();   // CV3 unpatched IS the identity — no held value rides an unpatched gap
             phase.process(phaseVolt, phaseDriven, args.sampleTime, ppqnSetting);
             effReverse = phase.reverse;
         }
-        if (phaseDriven) bpm = phase.bpm;   // tempo follows the ramp's velocity (knob or CV)
+        // (CC_FIX_PHASE_DERIVED_BPM: the sync that read the phase engine's derived bpm
+        // into the module-level mirror is GONE — it was the ONLY reader of that
+        // derivation, and the mirror itself has no readers of its own: a dead chain.
+        // The internal clock's own mirror sync (bpm = clock.bpm, above) is untouched.)
         modeController->setPhaseReverse(effReverse);
         engine.pe.setReverseActive(effReverse);
     } else {
@@ -1062,8 +1197,12 @@ void Monsoon::process(const ProcessArgs& args) {
                     || (inGate && input.subGateRise)                                     // ratchet in-gate (Gate 2)
                     || (!inGate && input.ghostRise);                                     // ghost in-gap (Gate 3)
             }
-            if (modeSelect == 0) return clock.sixteenthEdge;       // clock origin (was A/C)
-            return phase.sixteenthEdge;                            // phase origin (was E/F)
+            // CC_PROMPT_PPQN_48: the STEP source is the 6-pulse step edge (a step is
+            // PULSES_PER_STEP pulses, FIXED — decision 1), not the musical 1/16 edge.
+            // At 24 the two coincide bit-for-bit (p16 = 6 there); at 48 the step rate
+            // doubles at the same BPM (a step is a 1/32 of the 48 grid).
+            if (modeSelect == 0) return clock.stepEdge;            // clock origin (was A/C)
+            return phase.stepEdge;                                 // phase origin (was E/F)
         }();
         rateManager.advance(redDot::Rate::PPQN,
                             (modeSelect == 2) ? phase.pulseEdge : clock.pulseEdge);   // phase origin vs clock
@@ -1119,15 +1258,17 @@ void Monsoon::process(const ProcessArgs& args) {
             }
         }
 
-        // ── Mode E jump/scrub: replay the event chain over the jumped 1/16 steps ──
+        // ── Mode E jump/scrub: replay the event chain over the jumped STEPS ──
         // A jump moved the phase by >1 step in one sample. We replay executeModeE for
-        // each crossed 1/16 in the jump direction, reusing the verified real-time path.
-        // Modulation is frozen automatically (whole replay is one process() call).
-        // WITHIN-DRAW: bounded to the current phrase (cap at 16 steps); a jump that
-        // would cross the phrase boundary is clamped — cross-draw regeneration is a
+        // each crossed STEP in the jump direction, reusing the verified real-time path
+        // (the replay unit is the STEP — PULSES_PER_STEP pulses at any PPQN; at 24 the
+        // old 1/16 replay, the same numbers). Modulation is frozen automatically (whole
+        // replay is one process() call).
+        // WITHIN-DRAW: bounded to the current phrase (cap at the active length); a jump
+        // that would cross the phrase boundary is clamped — cross-draw regeneration is a
         // later refinement.
-        if (modeSelect == 2 && phase.jumped && phase.jumpSixteenths != 0) {
-            bool jumpReverse = (phase.jumpSixteenths < 0);
+        if (modeSelect == 2 && phase.jumped && phase.jumpSteps != 0) {
+            bool jumpReverse = (phase.jumpSteps < 0);
             mc.setPhaseReverse(jumpReverse);
             // Bridge the jump DIRECTION to the draw-index direction: a boundary crossed
             // mid-jump fires onPhraseBoundary_ (inside executeModeE→postExecute_), which
@@ -1138,21 +1279,21 @@ void Monsoon::process(const ProcessArgs& args) {
             // PHASE TIER Stage 1.)
             bool savedReverse = engine.pe.reverseActive;
             engine.pe.setReverseActive(jumpReverse);
-            int steps = jumpReverse ? -phase.jumpSixteenths : phase.jumpSixteenths;
+            int steps = jumpReverse ? -phase.jumpSteps : phase.jumpSteps;
             // PHASE TIER Stage 1: the within-draw cap is the ACTIVE phrase (the pattern
             // length), not a hardcoded 16 — "the replay is bounded to the current phrase".
             // At length 16 the number is the same (bit-identical); at 32 a full-pattern
             // scrub replays the whole 32.
             if (steps > engine.cachedLength) steps = engine.cachedLength;   // within-draw cap (one phrase)
-            int p16 = ClockEngine::pulsesPer16th(ppqnSetting);
             for (int s = 0; s < steps; ++s) {
                 mc.executeMode(modeSelect, input, tc.getGate2High());   // Mode E or F — replay this mode's phase step
                 // executeModeA advances holdRemain (step decisions) internally, but the
                 // gate-CLOSE counter (gatePulseRemain) is normally driven by the pulse
-                // burst we skip on a jump. Tick it p16 times per replayed 1/16 so a gate
+                // burst we skip on a jump. Tick it PULSES_PER_STEP times per replayed
+                // STEP (the grid pulses the jump skipped — 6 at any PPQN) so a gate
                 // that should have closed during the jumped region does so, keeping the
                 // post-jump gate state aligned with the landing position.
-                for (int pu = 0; pu < p16; ++pu) {
+                for (int pu = 0; pu < PULSES_PER_STEP; ++pu) {
                     engine.gs.tickPulse();
                     engine.gsStep.tickPulse();
                     for (int i = 1; i <= engine.numPolyVoices; ++i) {
@@ -1164,17 +1305,17 @@ void Monsoon::process(const ProcessArgs& args) {
             }
             // ── Snap transport to the phase-derived position ──────────────────────
             // The replay above advanced stepIndex and the holder congruences by the ROUNDED
-            // jumpSixteenths (nearest whole 1/16). But the actual phase position is
-            // at pulsePos/p16, which is fractional. Without this snap, the rounding
+            // step count. But the actual phase position is at pulsePos/PULSES_PER_STEP,
+            // which is fractional. Without this snap, the rounding
             // error accumulates across jumps — each sweep of the phase knob lands on
             // a different step (non-deterministic, because frame-rate timing varies).
             // In Mode E the phase IS the transport, so we override with the exact
             // phase-derived position and recompute lane ticks from it.
-            engine.snapToPhaseStep(phase.pulsePos, p16);
+            engine.snapToPhaseStep(phase.pulsePos, PULSES_PER_STEP);
             engine.pe.setReverseActive(savedReverse);
         }
 
-        // ── Continuous drift correction (every sample in Mode E) ───────────────
+        // ── Continuous drift correction (on PULSE CHANGES in Mode E) ───────────────
         // The jump snap above only fires on discontinuities. But the phase knob
         // updates at frame rate (60Hz), and per-frame phase deltas can cross
         // 1/16 boundaries via the continuous-motion path (not jumps). Over many
@@ -1182,12 +1323,22 @@ void Monsoon::process(const ProcessArgs& args) {
         // and the transport drifts (e.g., 0% knob lands on step 16 instead of 1).
         // This lightweight check snaps only when stepIndex != pulsePos/p16,
         // so the expensive recomputeLaneTicks() runs ONLY on actual drift.
+        // CC_FIX_PHASE_RUN_AT_PPQN (step 3, docs tip 4cb1a749): the check now runs
+        // ONLY on the engine's pulse-change signal (phase.pulseChanged). Nothing
+        // moves between pulses — the engine holds pulsePos and the edges low, the
+        // accumulator is the only thing living — so a per-sample re-check could
+        // only re-read an unchanged (absStep, stepIndex) pair; at the pulse rate
+        // the correction still lands the sample the position actually moves, and
+        // the jump snap above rides the same signal (jumped ⟹ pulseChanged).
         // CRITICAL: gated by modeSelect == 2 — in clock/gate modes, phase.pulsePos
         // is stale (PhaseEngine not processing), so phaseStep=0 would snap stepIndex
-        // to 0 every sample, freezing the sequencer.
-        if (modeSelect == 2) {
-            int p16d = ClockEngine::pulsesPer16th(ppqnSetting);
-            long absStep = phase.pulsePos / p16d;
+        // to 0 every sample, freezing the sequencer. (pulseChanged is likewise
+        // stale there — the conjunction keeps the old guard load-bearing.)
+        if (modeSelect == 2 && phase.pulseChanged) {
+            // CC_PROMPT_PPQN_48: the STEP-indexed division is PULSES_PER_STEP (6,
+            // fixed) — the drift check asks the phase-STEP rule at the step grid, at
+            // any PPQN (at 24 the old p16d, bit-identical).
+            long absStep = phase.pulsePos / PULSES_PER_STEP;
             // PHASE TIER Stage 1: the drift check asks THE PHASE-STEP RULE — the SAME
             // resolution snapToPhaseStep lands through (the musical cycle position
             // seated in the window), so the two sites can never disagree. The pre-Stage-1
@@ -1201,7 +1352,7 @@ void Monsoon::process(const ProcessArgs& args) {
             // at the default window this == absStep % 16 (bit-identical to the old
             // check), at 32 it cycles 0..31 with the full-span sweep.
             if (engine.phaseStepFor(absStep) != engine.stepIndex) {
-                engine.snapToPhaseStep(phase.pulsePos, p16d);
+                engine.snapToPhaseStep(phase.pulsePos, PULSES_PER_STEP);
             }
         }
 
@@ -1591,6 +1742,31 @@ void Monsoon::process(const ProcessArgs& args) {
         if (redDot::lookupEpochStale(lookupEpoch_))
             updateExpanderPointers();
 
+        // ── §14 TASK 1: THE READER'S PER-BLOCK SNAPSHOT (the consistency mechanism's
+        // reader half) ──────────────────────────────────────────────────────────────
+        // ONCE per Control-tier tick (the block start), under the store's mutex: copy
+        // THIS Monsoon's two sets (the phase tier's index, the subphase tier's) into
+        // the private working copies the per-sample Mode E path reads. The mechanism
+        // (dsp/PhaseDistStore.hpp): a write between blocks is picked up by every
+        // reader at its same-indexed next boundary — never one before the other; a
+        // mid-block write becomes visible at the boundary, never mid-block; the mutex
+        // makes each set's multi-field write atomic (no torn set is ever copyable).
+        // The identity flags ride the snapshot (the Stage-1 bypass's condition is
+        // BLOCK-CONSISTENT with the values it guards). No expander → both flags
+        // identity → the raw path. The index params round+clamp here too: an index
+        // change lands at a block boundary like every set change.
+        if (phaseDistPanel_) {
+            const int phIdx = std::clamp((int)std::lround(params[PHASE_SET_PARAM].getValue()), 1, 8) - 1;
+            const int sbIdx = std::clamp((int)std::lround(params[SUBPHASE_SET_PARAM].getValue()), 1, 8) - 1;
+            phaseDistPanel_->phaseDistStore.snapshotSet(phIdx, phaseDistSnap_[0]);
+            phaseDistPanel_->phaseDistStore.snapshotSet(sbIdx, phaseDistSnap_[1]);
+            phaseDistIdentity_[0] = phaseDistSnap_[0].isIdentity();
+            phaseDistIdentity_[1] = phaseDistSnap_[1].isIdentity();
+        } else {
+            phaseDistIdentity_[0] = true;
+            phaseDistIdentity_[1] = true;
+        }
+
         if (expanderManager.cachedRafflesExpander) {
             rack::Module* cw = expanderManager.cachedRafflesExpander;
             // Each Raffles gate routes to a DieAction via the co-located SoT map (kRafflesGateAction,
@@ -1732,8 +1908,20 @@ void Monsoon::process(const ProcessArgs& args) {
         {
             auto* eVis = expanderManager.cachedEastSandsVisual;
             auto* mVis = expanderManager.cachedMacroSandsVisual;
-            static const float VL_LO[3] = {1.f, 0.f, 0.f};     // L 1..16, O/R 0..15 (the push's clamps)
+            // The fold's CALIBRATION spans — the recorded knob/CV decision (L 1..16,
+            // O/R 0..15), deliberately NOT the push's authoring clamps (L 1..kLaneLengthMax,
+            // O 0..kLaneOffsetMax, R 0..L-1; the R row is re-clamped to L-1 right below
+            // either way). Recorded in the §F audit as the one window-path literal kept
+            // BY DECISION — the VOICE-LOR CV fold, outside the doc's lane-path site list.
+            static const float VL_LO[3] = {1.f, 0.f, 0.f};
             static const float VL_HI[3] = {16.f, 15.f, 15.f};
+            // CC_FIX_VOICE_WINDOW_CYCLE_AND_ROTATION (Bug 2 fix 3): the CV fold is an
+            // AUTHORING path — the R it writes clamps to 0..L-1 exactly like the push
+            // (the lanes' convention hi = max(0, L-1)), against the LEN this same fold
+            // wrote one item earlier (item order L,O,R — LEN lands first), so a CV-
+            // modulated window shrink re-clamps R in the same block and the store's
+            // invariant (no voice R outside its window) holds on EVERY write path.
+            auto rotHiOf = [&](int len) { return std::max(0, len - 1); };
             bool anyMacro = false, anyEast = false;
             for (int item = 0; item < 3; ++item) {
                 if (mVis && mVis->inputs[StraitsMacroVisualIds::vlCvId(item)].isConnected()) anyMacro = true;
@@ -1748,7 +1936,9 @@ void Monsoon::process(const ProcessArgs& args) {
                                                 getVoiceLorAttenMacro(item),
                                                 VL_LO[item], VL_HI[item])
                         : editor.voiceLorMacro[item];
-                    engine.macroVoiceLorRef(item) = (int)std::lround(v);
+                    int row = (int)std::lround(v);
+                    if (item == SequencerEngine::LOR_ROT) row = std::clamp(row, 0, rotHiOf(engine.macroVoiceLorRef(SequencerEngine::LOR_LEN)));
+                    engine.macroVoiceLorRef(item) = row;
                 }
             }
             if (anyEast) {
@@ -1762,7 +1952,9 @@ void Monsoon::process(const ProcessArgs& args) {
                                                     getVoiceLorAttenEast(vs.v, item),
                                                     VL_LO[item], VL_HI[item])
                             : base;
-                        engine.voiceLorRef(vs, item) = (int)std::lround(val);
+                        int row = (int)std::lround(val);
+                        if (item == SequencerEngine::LOR_ROT) row = std::clamp(row, 0, rotHiOf(engine.voiceLorRef(vs, SequencerEngine::LOR_LEN)));
+                        engine.voiceLorRef(vs, item) = row;
                     }
                 }
             }

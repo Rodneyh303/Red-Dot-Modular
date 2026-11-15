@@ -243,9 +243,21 @@ inline float resolveFollowCaSpread(const FollowCaSpread& in) {
     return spreadMixEndpoints(own, tgt, in.amount);
 }
 
-// ── WARP, the second policy — the (curve, depth) pair the bank mixes ──────────
-// Value is WarpCell{f, w}: the resolved curve + depth whose branchless mix
-// (1-w)·u + w·F⁻¹(u) shapes a lane's probability. WarpF is a trivially
+// ── WARP, the second policy — the (curve, signed depth) pair the bank mixes ───
+// Value is WarpCell{f, w}: the resolved curve + SIGNED depth whose mix
+// (1−|w|)·u + |w|·Q(u) shapes a lane's probability — the blend stays in
+// quantile space with the uniform as the reference, and the SIGN of w picks
+// the reading Q (PHASE_DISTRIBUTION_SPEC as amended — Rodney: "we make the
+// warp knob bidirectional instead of unidirectional. Positive blends uniform
+// and selected distribution - as now. Negative blends uniform and the dual
+// distribution."): w ≥ 0 reads the member's composed quantile (as always),
+// w < 0 reads the composed CDF — the DUAL reading, the same chain with CDF
+// and quantile exchanged. The reading is a property of the SIGN, never a
+// stored state: the menu stays the bare palette and the bank holds bare
+// members only (WarpBank::parse migrates a legacy persisted dual envelope to
+// member + −w — the same sound bit-exactly).
+//
+// WarpF is a trivially
 // copyable std::variant (pinned by test_warp_f_bank's static_assert); BY VALUE
 // is correct — resolution runs on the mirror rebuild path, never per sample.
 //
@@ -254,20 +266,23 @@ inline float resolveFollowCaSpread(const FollowCaSpread& in) {
 // apply-time, never fused here). Every op below touches v.w and leaves v.f
 // untouched.
 //
-// applyDelegated's general form {mb.f, clamp01(mb.w + td)} is DORMANT today:
+// applyDelegated's general form {mb.f, clampW(mb.w + td)} is DORMANT today:
 // no warp send/tap plumbing exists, so the bank wires no pre/post deltas and
 // tappedDelta ≡ 0 — the resolved cell is bit-identical to the OLD pure
 // selection (own slot vs Macro's global default; pinned same-BITS by
 // test_resolver_warp_bridge). When warp grows the spread send/tap shape, this
 // policy already implements it; only the Inputs wiring changes.
 //
-// constrain clamps the RESOLVED w to [0,1] — a different layer from the mix's
+// constrain clamps the RESOLVED w to [−1,+1] — a different layer from the mix's
 // documented no-clamp (WarpF.hpp: the MIX trusts its inputs; the RESOLVER
-// clamps its output). Identity on valid inputs (authored w lives in [0,1]).
+// clamps its output). Identity on valid inputs (authored w lives in [−1,1]).
 struct WarpCell {
-    dotModular::WarpF f;   // the curve (set-time; never modulated here)
-    float w = 0.f;         // the depth in [0,1] (0 = no warp; NSDMI so a
-                           // default-constructed cell is the no-warp state)
+    dotModular::WarpF f;   // the BARE curve (set-time; never modulated here —
+                           // the reading lives in the sign of w, not in f)
+    float w = 0.f;         // the SIGNED depth in [−1,+1] (0 = no warp; the sign
+                           // selects the reading — + the member's quantile, − the
+                           // dual's; NSDMI so a default-constructed cell is the
+                           // no-warp state)
     // FEEL-TEST STAGES (CC_PROMPT_TILT_AND_RAIL_FEELTEST_START): rail tilt + injected
     // atom ride the cell so they resolve from the SAME source as (f, w) — own slot vs
     // Macro's global default — through this resolver's ONE selection (no re-derived
@@ -290,18 +305,20 @@ struct WarpPolicy {
     using Value = WarpCell;
     struct Extra {};        // warp needs no extra inputs (yet)
 
-    // [0,1] clamp in SpreadPolicy's max/min form (NOT std::clamp — they differ
-    // on NaN; one convention for the whole resolver file).
-    static float clamp01(float x) { return std::max(0.f, std::min(1.f, x)); }
+    // [−1,+1] clamp in SpreadPolicy's max/min form (NOT std::clamp — they differ
+    // on NaN; one convention for the whole resolver file). The bidirectional
+    // axis: the depth is |w|, the reading is the sign — both sides clamp at
+    // their full-strength rails ±1.
+    static float clampW(float x) { return std::max(-1.f, std::min(1.f, x)); }
 
     static float scaleCv(float raw) { return raw; }   // depth CV is already unit-scaled
-    static WarpCell addCv  (WarpCell v, float c) { v.w = clamp01(v.w + c); return v; }
-    static WarpCell addSend(WarpCell v, float s) { v.w = clamp01(v.w + s); return v; }
+    static WarpCell addCv  (WarpCell v, float c) { v.w = clampW(v.w + c); return v; }
+    static WarpCell addSend(WarpCell v, float s) { v.w = clampW(v.w + s); return v; }
     static WarpCell applyDelegated(WarpCell mb, float td, const Extra&) {
-        mb.w = clamp01(mb.w + td);   // DORMANT general form — td ≡ 0 today (section note)
+        mb.w = clampW(mb.w + td);   // DORMANT general form — td ≡ 0 today (section note)
         return mb;
     }
-    static WarpCell constrain(WarpCell v, const Extra&) { v.w = clamp01(v.w); return v; }
+    static WarpCell constrain(WarpCell v, const Extra&) { v.w = clampW(v.w); return v; }
 };
 
 // The concept must BITE here too (the located-error enforcement, same as spread).
@@ -332,7 +349,7 @@ static_assert(SandsModifierPolicy<WarpPolicy>);
 // file (same as SpreadPolicy/WarpPolicy; NOT std::clamp).
 struct LorPolicy {
     using Value = float;         // ONE item's window value (pre-cast)
-    struct Extra {               // the per-item window: LEN {1,16}, OFF/ROT {0,15}
+    struct Extra {               // the per-item window the CALLER supplies: the lane sites pass LEN {1,kLaneLengthMax}, OFF {0,kLaneOffsetMax}, ROT {0, len-1} (CC_FIX §F); the voice-LOR CV fold keeps the recorded {1,16}/{0,15} calibration
         float lo = 0.f;
         float hi = 0.f;
     };
@@ -503,6 +520,67 @@ inline float resolveVlorCv(float base, float cvUnit, float atten, float lo, floa
 
 } // namespace redDot
 
+namespace dotModular {
+
+// ── THE ONE PRIMITIVE (CC_PROMPT_PHASE_DISTORTION_EXPANDER Task 2) ──────────────
+// The distortion chain over ONE resolved cell — tilt → gap → atom, with the warp
+// mix and the reading picked by the SIGN of the cell's w — extracted VERBATIM from
+// WarpBank::warpedValue's body (the exact same expressions, in the exact same
+// order, on the exact same types — the pinned bit-identity bridges cannot move).
+// TWO call sites, ONE copy (the §14 gate "the transform exists once"):
+//   · WarpBank::warpedValue (the lane draws) — resolves the bank slot to a cell,
+//     then calls this with the bank's drawn-curve pool;
+//   · dotModular::phaseDistort (the phase tier) — the expander-model phase sets
+//     call this directly with a null pool (their members are parametric-only).
+inline double evalWarpCellDistortion(double u, const redDot::WarpCell& c,
+                                     const MonotoneCurve* pool) {
+    const double w   = (double)c.w;
+    const double aw  = std::abs(w);            // the DEPTH; the sign is the READING
+    const bool dualSide = w < 0.0;
+    if (c.tilt == 0.f && c.atomMass == 0.f && c.gapSize == 0.f) {
+        if (!dualSide)
+            return (1.0 - aw) * u + aw * invCDF(c.f, u, pool);   // neutral: the pre-feel-test mix
+        return (1.0 - aw) * u + aw * cdf(c.f, u, pool);          // neutral, DUAL side: the member CDF
+    }
+    const double p    = warpStages::clampTilt((double)c.tilt);
+    const double ell  = warpStages::clampLevel((double)c.atomLevel);
+    const double m    = warpStages::clampMass((double)c.atomMass);
+    if (dualSide) {
+        // THE DUAL READING (PHASE_DISTRIBUTION_SPEC §6): the member → tilt → gap →
+        // atom chain with CDF and quantile exchanged — the dual's quantile IS the
+        // composed CDF evaluated AT u, over the bare member.
+        const double g = warpStages::cdf(
+            u, p, c.gapLoc, c.gapSize, ell, m,
+            [pool, &c](double x) { return cdf(c.f, x, pool); }); // the member CDF F
+        return (1.0 - aw) * u + aw * g;                          // the composed CDF AT u
+    }
+    const double q    = warpStages::invCDF(
+        u, p, c.gapLoc, c.gapSize, ell, m,
+        [pool, &c](double uu) { return invCDF(c.f, uu, pool); }, // the member quantile F⁻¹
+        [pool, &c](double x)  { return cdf(c.f, x, pool); });    // the member CDF F
+    return (1.0 - aw) * u + aw * q;
+}
+
+// THE PHASE-DISTORTION PRIMITIVE proper — the Task-2 signature: phase in [0,1) +
+// a parameter set + the reading (the SIGN of the set's w) → the distorted phase.
+// The quantise-to-pulses step is deliberately NOT here: it stays the EXISTING
+// machinery (PhaseEngine's pulse-grid mapping + snapToPhaseStep) that consumes this
+// output — Task 3's "as the existing snap does"; copying it here would be exactly
+// the second implementation §14's gate 6 forbids. The pool is null: the phase
+// store's members are parametric-only (its commit path lowers through lowerWarp,
+// which maps "drawn"/unknown to IdentityWarp — the phase tier has no drawn-curve
+// pool), and the guard below makes that unreachable case the identity anyway.
+// IDENTITY (the Stage-1 gate's law, pinned by test): an identity set — identity
+// member, w == 0, tilt 0, mass 0, gap width 0 — returns u BIT-EXACTLY (the mix
+// line degenerates to 1·u + 0·(...) with the neutral early-outs; u ≥ +0.0 in the
+// phase path, so no −0.0 sign flip is reachable).
+inline double phaseDistort(double u, const redDot::WarpCell& set) {
+    if (std::holds_alternative<DrawnWarp>(set.f)) return u;   // unreachable: the store lowers drawn → identity
+    return evalWarpCellDistortion(u, set, nullptr);
+}
+
+} // namespace dotModular
+
 // ── WarpBank rides the resolver (STEP 2) — the bank's mix, defined HERE ───────
 // WarpF.hpp DECLARES warpedValue/effectiveF/effectiveW and includes THIS header
 // as its LAST line; the definitions live here because this is the only place
@@ -526,7 +604,7 @@ namespace dotModular {
 // and a lock can never disagree; kinds without the param are a no-op, the spec's
 // unused-param ruling), tilt/ℓ/m ADD (the eval-side clamps in WarpStages catch
 // overshoot — the same "the STORE trusts its writer" split the authored params use),
-// w adds through the policy's clamp01. glob = the Macro-sent component (the
+// w adds through the policy's clampW (the signed [−1,+1] axis). glob = the Macro-sent component (the
 // cross-voice expander); own = the East-local component (the per-voice expander's
 // row for THIS voice, nullptr on delegated cells — delegated cells mirror Macro
 // entirely, the resolver's standing law). send = the MACRO SEND SUBPANEL's per-voice
@@ -553,10 +631,12 @@ inline void foldDistDeltas(redDot::WarpCell& c, const WarpBank& b,
             case 2: c.tilt      += d; break;
             case 3: c.atomLevel += d; break;
             case 4: c.atomMass  += d; break;
-            case 5: c.w         = redDot::WarpPolicy::clamp01(c.w + d); break;   // WARP (kept at 5)
+            case 5: c.w         = redDot::WarpPolicy::clampW(c.w + d); break;   // WARP (kept at 5) —
+                // the SIGNED depth clamps to [−1,+1] (the bidirectional axis; a CV can
+                // drive the cell through zero from either side — the sign IS the reading)
             case 6: c.gapLoc    += d; break;   // PHASE_DISTRIBUTION_SPEC: the gap params APPENDED
             case 7: c.gapSize   += d; break;   //   (indices 0..5 untouched — the patch-compat law)
-            default: c.w = redDot::WarpPolicy::clamp01(c.w + d); break;   // defensive (unreachable)
+            default: c.w = redDot::WarpPolicy::clampW(c.w + d); break;   // defensive (unreachable)
         }
     }
 }
@@ -601,39 +681,35 @@ inline redDot::WarpCell resolveWarpCell(const WarpBank& b, int v, int lane, bool
 // then the atom over the TILTED member's CDF G; both stages' closed forms + the verified
 // algebra live in WarpStages.hpp), and the existing branchless mix runs over the
 // COMPOSED quantile:
-//     out = (1-w)·u + w·H⁻¹(u),    H⁻¹ = atom ∘ R_p ∘ F⁻¹
+//     out = (1−|w|)·u + |w|·Q(u),   Q = atom ∘ R_p ∘ [gap] ∘ F⁻¹   (w ≥ 0, as always)
+//     Q = atom ∘ R_p ∘ [gap] ∘ F    (w < 0 — the DUAL reading: the SAME chain with
+//                                    CDF and quantile exchanged, PHASE_DISTRIBUTION
+//                                    _SPEC §6 as amended by the bidirectional warp)
 // so the stages are the member-level feature the design notes specify (the palette's
 // shared tilt stage; the atom's "branch in invCDF, one compare + a rescale"), heard
-// through the SAME depth blend as every curve — at w=1 the engine evaluates exactly the
-// popup's displayed composition. The NEUTRAL early-out (tilt==0 AND mass==0 — every
-// pinned bridge's state) runs the ORIGINAL mix line verbatim: BIT-IDENTICAL, by the
-// early-outs' construction, never by trusting R_0 ≡ id arithmetic.
+// through the SAME depth blend as every curve — at w=±1 the engine evaluates exactly
+// the popup's displayed composition (the sign picks WHICH composition). The NEUTRAL
+// early-out (tilt==0 AND mass==0 AND gapSize==0 — every pinned bridge's state) keeps
+// the ORIGINAL mix line for w ≥ 0 VERBATIM (|w| == w there — BIT-IDENTICAL by
+// construction, never by trusting arithmetic); the negative side swaps the ONE
+// evaluation it reads, the member's CDF for its quantile (the uniform's own dual
+// being the uniform, an identity cell sounds the same on both sides — the mix line
+// says so).
+//
+// THE READING IS THE SIGN, NOT A STORED STATE (the amended spec — the menu is the
+// bare palette): c.f is always a BARE member here. The legacy stored dual cannot
+// reach this line — WarpBank::parse migrates a persisted "dual" envelope to
+// (member, −w) before any eval, which is the SAME sound bit-exactly: the old
+// (1−w)·u + w·(dual's composed CDF) is today's (1−|−w|)·u + |−w|·(member's
+// composed CDF), and the dual's composed CDF IS the member's.
 inline double WarpBank::warpedValue(int v, int lane, double u, bool delegated) const {
     const redDot::WarpCell c = resolveWarpCell(*this, v, lane, delegated);
-    if (c.tilt == 0.f && c.atomMass == 0.f && c.gapSize == 0.f)
-        return (1.0 - c.w) * u + c.w * invCDF(c.f, u);   // neutral: the pre-feel-test mix
-        // (a DUAL with no stages lands here too — the free invCDF applies the reading
-        // swap: dual.invCDF = member.cdf, the uniform's own dual being the uniform.)
-    const double p    = warpStages::clampTilt((double)c.tilt);
-    const double ell  = warpStages::clampLevel((double)c.atomLevel);
-    const double m    = warpStages::clampMass((double)c.atomMass);
-    // THE DUAL READING (PHASE_DISTRIBUTION_SPEC §6): the SAME member → tilt → gap →
-    // atom chain with CDF and quantile exchanged — the dual's quantile IS the composed
-    // CDF. The member lambdas must address the BARE member (the swap happens AROUND
-    // the chain, not inside it), so a dual cell evaluates over dualMember(c.f).
-    const bool dual   = isDualWarp(c.f);
-    const WarpF mf    = dual ? dualMember(c.f) : c.f;   // trivially copyable (pinned)
-    if (dual) {
-        const double g = warpStages::cdf(
-            u, p, c.gapLoc, c.gapSize, ell, m,
-            [this, &mf](double x) { return cdf(mf, x); });     // the member CDF F
-        return (1.0 - c.w) * u + c.w * g;                      // the composed CDF AT u
-    }
-    const double q    = warpStages::invCDF(
-        u, p, c.gapLoc, c.gapSize, ell, m,
-        [this, &mf](double uu) { return invCDF(mf, uu); },     // the member quantile F⁻¹
-        [this, &mf](double x)  { return cdf(mf, x); });        // the member CDF F
-    return (1.0 - c.w) * u + c.w * q;
+    // THE ONE PRIMITIVE (CC_PROMPT_PHASE_DISTORTION_EXPANDER Task 2): the mix + the
+    // composed reading moved VERBATIM into dotModular::evalWarpCellDistortion (above),
+    // which the phase tier's dotModular::phaseDistort also calls — the transform
+    // exists ONCE (the §14 gate). Same expressions, same order, same pool threading:
+    // bit-identical to the inlined body this replaces.
+    return evalWarpCellDistortion(u, c, pool);
 }
 
 inline double WarpBank::warpedValue(int v, int lane, double u) const {

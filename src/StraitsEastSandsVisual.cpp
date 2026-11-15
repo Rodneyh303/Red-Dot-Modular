@@ -461,12 +461,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->getOwnsFn = [this]() {
                         Monsoon* m = getMonsoon(); if (!m) return true;
                         const int vi = currentSlot();
-                        return (vi >= 0 && vi < kVoiceSlots) ? (m->getVoiceLorLocalEast(vi) != 0.f) : true;
+                        // (CC_PROMPT_16_TRIAGE bucket 3) qualified: the new namespace-scope
+                        // kVoiceSlots (SequencerEngine.hpp) is ambiguous with this class's own
+                        // alias inside the lambda — the resolver's constant is the authority.
+                        return (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) ? (m->getVoiceLorLocalEast(vi) != 0.f) : true;
                     };
                     w->setOwnsFn = [this](bool b) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         const int vi = currentSlot();
-                        if (vi >= 0 && vi < kVoiceSlots) m->setVoiceLorLocalEast(vi, b ? 1.f : 0.f);
+                        if (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) m->setVoiceLorLocalEast(vi, b ? 1.f : 0.f);
                     };
                     w->pushUndoFn = [this](bool oldB, bool newB) {
                         Monsoon* m = getMonsoon(); if (!m) return;
@@ -491,13 +494,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->getStateFn = [this]() {
                         Monsoon* m = getMonsoon(); if (!m) return 0;
                         const int vi = currentSlot();
-                        return (vi >= 0 && vi < kVoiceSlots)
+                        return (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots)
                             ? (int)std::lround(m->getVoiceLorEastDir(vi)) & 3 : 0;
                     };
                     w->setStateFn = [this](int v) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         const int vi = currentSlot();
-                        if (vi >= 0 && vi < kVoiceSlots) m->setVoiceLorEastDir(vi, (float)(v & 3));
+                        if (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) m->setVoiceLorEastDir(vi, (float)(v & 3));
                     };
                     w->pushUndoFn = [this](int oldV, int newV) {
                         Monsoon* m = getMonsoon(); if (!m) return;
@@ -591,7 +594,10 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             auto* wk = redDot::bindStoreKnob<Monsoon, redDot::Tag_Grey_Trim_Bar>(this,
                 "param_wlevel_" + std::to_string(el),
                 [this](){ return getMonsoon(); },
-                0.f, 1.f, 0.f, std::string(EDN[el]) + " warp level",
+                // THE BIDIRECTIONAL WARP (as amended): a SIGNED axis [−1,+1], 0 = no
+                // warp — positive blends uniform↔the selected distribution (as always),
+                // negative blends uniform↔its DUAL (the sign picks the reading).
+                -1.f, 1.f, 0.f, std::string(EDN[el]) + " warp level",
                 [this, el](Monsoon& m)          { return m.getWarpW(currentSlot(), el); },
                 [this, el](Monsoon& m, float v) {
                     m.setWarpW(currentSlot(), el, v);
@@ -643,12 +649,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                         Monsoon* m = getMonsoon(); if (!m) return true;
                         // (tab1MonoMirror removed — Mono killed Step 6)
                         int vi = currentSlot();   // Phase A: V1=0, V2+=1..15 (unified index)
-                        return (vi >= 0 && vi < kVoiceSlots) ? m->ownerIsEast(vi, lane) : true;
+                        return (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) ? m->ownerIsEast(vi, lane) : true;
                     };
                     w->setOwnsFn = [this, lane](bool b) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
-                        if (vi >= 0 && vi < kVoiceSlots) m->setOwnerEast(vi, lane, b);
+                        if (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) m->setOwnerEast(vi, lane, b);
                     };
                     w->pushUndoFn = [this, lane](bool oldB, bool newB) {
                         Monsoon* m = getMonsoon(); if (!m) return;
@@ -708,12 +714,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     w->getStateFn = [this, lane]() {
                         Monsoon* m = getMonsoon(); if (!m) return 0;
                         int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
-                        return (vi >= 0 && vi < kVoiceSlots) ? (int)std::lround(m->getLaneDir(vi, lane)) : 0;
+                        return (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) ? (int)std::lround(m->getLaneDir(vi, lane)) : 0;
                     };
                     w->setStateFn = [this, lane](int v) {
                         Monsoon* m = getMonsoon(); if (!m) return;
                         int vi = currentSlot();   // Phase A: V1=0, V2+=1..15
-                        if (vi >= 0 && vi < kVoiceSlots) m->setLaneDir(vi, lane, (float)v);
+                        if (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) m->setLaneDir(vi, lane, (float)v);
                     };
                     // Undo hook: route a direction cycle through Rack history (Ctrl+Z). Captures
                     // the resolved store target at click time (mono vs poly, which voice/lane).
@@ -886,7 +892,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             };
             // THE BASE MODE — ONE choice (Rodney: "a choice, not two separate items"),
             // a radio pair in a submenu. (A4) Absolute-1's READ runs the FULL PHRASE
-            // (the playhead marches all 16; the OUTPUT plays the LOR window only);
+            // (the playhead marches the whole phrase; the OUTPUT plays the LOR window only);
             // Cycle confines the read to the LOR. The painted overlay is NOT a base —
             // it composes on either; returning to Cycle with a pattern painted keeps
             // the overlay (kind 2 = cycle + overlay).
@@ -938,8 +944,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             menu->addChild(fromRange);
         }
         menu->addChild(new MenuSeparator);
-        menu->addChild(createMenuItem("Reset range to identity (16/0/0, fwd)", "",
-            [m, v]() { m->resetVoiceLorEast(v); }));
+        {   // (bug 23) the menu text READS THE CAP (the identity sentinel is kPatternLengthCap)
+            static char idLbl[64];
+            std::snprintf(idLbl, sizeof idLbl, "Reset range to identity (%d/0/0, fwd)", (int)dotModular::kPatternLengthCap);
+            menu->addChild(createMenuItem(idLbl, "",
+                [m, v]() { m->resetVoiceLorEast(v); }));
+        }
         return true;
     }
 
@@ -975,8 +985,12 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             menu->addChild(createCheckMenuItem("Independent (East, this voice)", "",
                 [mm, v]() { return mm->getVoiceLorLocalEast(v) != 0.f; },
                 [mm, v]() { mm->setVoiceLorLocalEast(v, 1.f); }));
-            menu->addChild(createMenuItem("Reset range to identity (16/0/0, fwd)", "",
-                [mm, v]() { mm->resetVoiceLorEast(v); }));
+            {   // (bug 23) the menu text READS THE CAP
+                static char idLbl2[64];
+                std::snprintf(idLbl2, sizeof idLbl2, "Reset range to identity (%d/0/0, fwd)", (int)dotModular::kPatternLengthCap);
+                menu->addChild(createMenuItem(idLbl2, "",
+                    [mm, v]() { mm->resetVoiceLorEast(v); }));
+            }
         }
     }
 
@@ -1033,8 +1047,11 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     dotModular::VoiceResolver::mono(), dotModular::LaneId{el}, st,
                     SequencerEngine::ProbLens::Owner);
             int ph580 = (m->engine.stepIndex >= 0) ? m->engine.laneTick_[el] : -1;
-            // CC_PROMPT_VARIATION_SCAN_DISPLAY (mono view): the VAR chevron reads the
-            // ENGINE's scanned position — the same function the advance draw used.
+            // (fix/variation-scan-display) non-VAR lanes draw the SHARED window
+            // playhead (calcPlayhead — the ONE law, in-window by construction).
+            // The VAR lane draws the engine's SCANNED read index (stepAdvanceStrandIdx
+            // + signed scan delta) — the gate-mode scan-ahead chevron, in-window by
+            // construction (getStrandIdx folds mod len), not the retired global scan.
             visualEditor->setLanePlayStep(
                 el, (el == SequencerEngine::EDITOR_LANE_VARIATION)
                         ? variationLanePlayhead(m->engine)
@@ -1251,7 +1268,7 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
             return m->ownerIsEast(Monsoon::kMonoMacroOwnRow, engLane);
         }
         int vi = currentSlot();   // voiceSlot: V2..V16 = 1..15 (== polyVoice() on poly tabs)
-        return (vi >= 0 && vi < kVoiceSlots) ? m->ownerIsEast(vi, engLane) : true;
+        return (vi >= 0 && vi < dotModular::VoiceResolver::kVoiceSlots) ? m->ownerIsEast(vi, engLane) : true;
     }
     // The voice NUMBER (1..16) for the selected tab: tab 0 = V1 (mono), tab v = V(v+1).
     // All mono/poly identity + bank mapping flows through VoiceResolver so there's one
@@ -1775,8 +1792,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int mRot = monsoon->engine.strandRot(l);
                 visualEditor->currentState.lanes[l].setDisplayLOR(std::max(1,mLen), mOff, mRot);
                 int ph1130 = (eng.stepIndex >= 0) ? eng.laneTick_[l] : -1;
-                // CC_PROMPT_VARIATION_SCAN_DISPLAY (mono view): the VAR chevron reads
-                // the ENGINE's scanned position — the same function the advance draw used.
+                // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead;
+                // the VAR lane draws the engine SCANNED read index (stepAdvanceStrandIdx +
+                // scan delta) — the gate-mode scan-ahead chevron, in-window by construction.
                 visualEditor->setLanePlayStep(
                     l, (l == SequencerEngine::EDITOR_LANE_VARIATION)
                            ? variationLanePlayhead(eng)
@@ -1865,10 +1883,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int cvRot = eng.strandRotRef(el);
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
                 int ph1222 = (eng.stepIndex >= 0) ? eng.laneTick_[el] : -1;
-                // CC_PROMPT_VARIATION_SCAN_DISPLAY (mono view): the VAR chevron reads
-                // the ENGINE's scanned position — the same function the advance draw
-                // used. Outside holds this is bit-identical to the calcPlayhead below
-                // (same formula, same engine LOR); during a gate-mode hold it scans.
+                // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead;
+                // the VAR lane draws the engine SCANNED read index (stepAdvanceStrandIdx +
+                // scan delta) — the gate-mode scan-ahead chevron, in-window by construction.
                 visualEditor->setLanePlayStep(
                     el, (el == SequencerEngine::EDITOR_LANE_VARIATION)
                             ? variationLanePlayhead(eng)
@@ -1901,11 +1918,9 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 // Use the PER-VOICE tick (laneTickV_), not mono's laneTick_ — otherwise
                 // the poly playhead always follows mono's direction, ignoring the DirCell.
                 int ph1253 = (eng.stepIndex >= 0) ? eng.laneTickV_[pv][l] : -1;
-                // PER-VOICE STEP-ADVANCE (the WANDER build): the VAR chevron reads THIS
-                // voice's scanned position — its OWN scan (the same index its advance
-                // decision used; it creeps during a per-voice gate-mode hold and
-                // re-aligns when the voice moves). LEG keeps the plain playhead (no
-                // scan on LEG). Display-reads-engine, per voice.
+                // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead,
+                // per voice; the VAR lane draws THIS voice.s SCANNED read index
+                // (stepAdvanceStrandIdx + scan delta) — scan-ahead, in-window by construction.
                 visualEditor->setLanePlayStep(
                     l, (l == SequencerEngine::EDITOR_LANE_VARIATION)
                             ? variationLanePlayheadForVoice(eng, dotModular::VoiceResolver::slot(pv + 1))

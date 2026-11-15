@@ -512,6 +512,28 @@ int main() {
         }
     }
 
+
+    // ── CC_PROMPT_PPQN_48 stage 3 — PPQN IS SAVED in the patch. The persistence
+    // manager writes ppqnSetting raw (toJson) and restores it verbatim (fromJson:
+    // the migration only rewrites values outside {24,48,96} — a save at 48 reloads
+    // at 48, a save at 24 reloads at 24), and the context menu offers BOTH 24 and
+    // 48. Pinned at the source layer (the JSON round-trip needs a live module —
+    // the suite's own S-layer discipline for rack-bound surfaces).
+    {
+        const std::filesystem::path root = std::filesystem::current_path();
+        const std::string mgr = slurp(root / "src/dsp/managers/MonsoonPersistenceManager.cpp");
+        check(mgr.find("json_object_set_new(root, \"ppqnSetting\", json_integer(m->ppqnSetting))") != std::string::npos,
+              "PPQN48 PERSIST: toJson writes ppqnSetting raw (the patch's PPQN home)");
+        check(mgr.find("if (v != 24 && v != 48 && v != 96) v = 24;") != std::string::npos
+              && mgr.find("m->ppqnSetting = v;") != std::string::npos,
+              "PPQN48 PERSIST: fromJson restores 48 verbatim (only out-of-set values migrate to 24) — a patch saved at 48 reloads at 48, at 24 at 24");
+        const std::string ui = slurp(root / "src/MonsoonWidget.cpp");
+        check(ui.find("for (int v : {24, 48})") != std::string::npos,
+              "PPQN48 PERSIST: the PPQN menu offers 24 and 48 (48 re-added; 96 stays out of scope)");
+        const std::string clk = slurp(root / "src/dsp/engines/ClockEngine.cpp");
+        check(clk.find("const int mult = (ppqn > 24) ? (ppqn / 24) : 1;") != std::string::npos,
+              "PPQN48 CLOCK SOURCE: the external multiplier (x ppqn/24) is in the ONE pulse source");
+    }
     std::printf("test_stage4_persistence: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

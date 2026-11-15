@@ -43,12 +43,24 @@
 //      INTENDED), flat sub = the transport's sign alone, flat transport = the
 //      subphase's sign alone.
 //  13. THE REGION LANDING — a transport crossing into the next region fires the EXISTING
-//      jump contract (jumped, jumpSixteenths = regionSixteenths, forward), lands at the
+//      jump contract (jumped, jumpSteps = regionSixteenths, forward), lands at the
 //      same sub-position in the new region (pulse 134 -> cell 22), and the snap + drift
 //      rule accept it (no strobe).
 //  14. NO-CROSS + THE SUBPHASE WRAP — a full subphase sweep through its ramp wrap never
 //      leaves the region's pulses ([0, 95] STRICT, the floor mapping); the wrap itself is
 //      a backward jump that stays inside the region ("its jumps stay inside one bar").
+//
+// CC_FIX_PHASE_DERIVED_BPM pins (after the PPQN48 block — the derived tempo is GONE):
+//  15. THE WARP TEMPO GATE — the same phase input at two different tempos (2× the
+//      sample rate) walks the SAME bit-identical step sequence and lands the SAME warp
+//      output bits at every step (the warp composes per step from the step's uniform,
+//      never from a tempo).
+//  16. THE STEP-SEQUENCE SWEEP — the full per-sample edge stream (position / step /
+//      sixteenth / quarter / reverse / jump) against the pulse-grid truth, forward then
+//      reverse, at 24 AND 48 — the derivation's removal changes no audio path.
+//  17. THE STRUCTURAL PINS — no derived-tempo identifier (velocity / sixteenth-seconds
+//      / bpm) anywhere in PhaseEngine.hpp, no phase.bpm sync in Monsoon.cpp: a
+//      reintroduction fails the battery, not just review.
 //
 // Build (run_all.sh): test_phase_tier|$SE $GS $PE
 #include <cstdio>
@@ -57,9 +69,14 @@
 #include <vector>
 #include <set>
 #include <algorithm>
+#include <cstring>
+#include <fstream>
+#include <string>
+#include <stdexcept>
 
 #include "SequencerEngine.hpp"
 #include "PhaseEngine.hpp"
+#include "WarpF.hpp"                    // the warp output primitive (invCDF) — the warp gate
 
 static int passed = 0, failed = 0;
 static void check(bool ok, const char* what) {
@@ -71,7 +88,8 @@ using redDot::PhaseEngine;
 namespace dm = dotModular;
 
 static constexpr int P16 = 6;          // pulsesPer16th at 24 PPQN
-static constexpr float ST = 1e-3f;     // sampleTime (bpm plumbing only; positions never read it)
+static constexpr float ST = 1e-3f;     // sampleTime (call-compat only — the phase path is
+                                       // pulse-quantised, TEMPO never reads it: CC_FIX_PHASE_DERIVED_BPM)
 
 // FNV-1a over a byte range — the house digest.
 static uint64_t fnv1a(const std::vector<uint8_t>& bytes) {
@@ -83,6 +101,35 @@ static std::vector<uint8_t> toBytes(const std::vector<int>& v) {
     std::vector<uint8_t> out; out.reserve(v.size());
     for (int x : v) out.push_back((uint8_t)x);
     return out;
+}
+
+// Bit-exact double compare (the warp output bits — the same helper test_phase_distribution pins with).
+static bool sameBits(double a, double b) {
+    uint64_t ra, rb;
+    std::memcpy(&ra, &a, sizeof ra);
+    std::memcpy(&rb, &b, sizeof rb);
+    return ra == rb;
+}
+
+// Source-file read helpers (the B3 grep-in-test precedent — a structural regression
+// fails the battery, not just review).
+static std::string repoRoot() {
+    static const char* candidates[] = { ".", "..", "../.." };
+    for (const char* m : candidates) {
+        std::ifstream f(std::string(m) + "/src/dsp/engines/SequencerEngine.cpp", std::ios::binary);
+        if (f) return m;
+    }
+    throw std::runtime_error("repo root not found — run via test/run_all.sh from the repo");
+}
+static std::string slurp(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) throw std::runtime_error("cannot read " + path);
+    std::string s, line;
+    while (std::getline(f, line)) { s += line; s += '\n'; }
+    return s;
+}
+static bool contains(const std::string& hay, const std::string& needle) {
+    return hay.find(needle) != std::string::npos;
 }
 
 // Feed the phase ramp so each process() call advances EXACTLY one 1/16 (P16 pulses):
@@ -253,8 +300,9 @@ int main() {
             pa.process     (v,      true, ST, 24);
             pb.processTiers(v, 0.f, false, 16.0, ST, 24);
             ok = ok && pa.pulsePos == pb.pulsePos && pa.jumped == pb.jumped
-                 && pa.jumpSixteenths == pb.jumpSixteenths && pa.reverse == pb.reverse
-                 && pa.sixteenthEdge == pb.sixteenthEdge && pa.quarterEdge == pb.quarterEdge;
+                 && pa.jumpSteps == pb.jumpSteps && pa.reverse == pb.reverse
+                 && pa.sixteenthEdge == pb.sixteenthEdge && pa.quarterEdge == pb.quarterEdge
+                 && pa.pulseChanged == pb.pulseChanged;
             ok = ok && pb.dirT == 0 && pb.dirS == 0;                   // neutral, always
         }
         check(ok, "UNPATCHED: processTiers(false) IS process() (pulsePos/edges/jump identical, dirs neutral)");
@@ -394,8 +442,8 @@ int main() {
         ph.reset(); ph.patternLength = 32;
         ph.processTiers(4.0f, 4.0f, true, 16.0, ST, 24);      // t=0.4 s=0.4: region 0 -> 38
         ph.processTiers(5.2f, 4.0f, true, 16.0, ST, 24);      // t crosses 0.5 -> region 1, s held
-        check(ph.jumped && ph.jumpSixteenths == 16 && !ph.reverse,
-              "REGION LANDING: the crossing fires the jump contract (forward, jumpSixteenths = 16 = regionSixteenths)");
+        check(ph.jumped && ph.jumpSteps == 16 && !ph.reverse,
+              "REGION LANDING: the crossing fires the jump contract (forward, jumpSteps = 16 = regionSixteenths)");
         check(ph.pulsePos == 134,
               "REGION LANDING: lands at the SAME sub-position in the new region (pulse 134 = cell 22.4)");
         E e; e.reset(); e.setWindow(32, 0);
@@ -412,7 +460,7 @@ int main() {
         for (int j = 1; j <= 35; ++j) {                        // s climbs 0.4 -> 1.10 (wraps at 1.0)
             ph.processTiers(3.0f, 4.0f + 2.0f * (float)j, true, 16.0, ST, 24);
             inRegion = inRegion && (ph.pulsePos >= 0) && (ph.pulsePos <= 95);   // STRICT (floor)
-            if (ph.jumped && ph.jumpSixteenths < 0) {
+            if (ph.jumped && ph.jumpSteps < 0) {
                 wrapJump = true;
                 landedInRegion = (ph.pulsePos >= 0 && ph.pulsePos <= 95);
             }
@@ -454,6 +502,297 @@ int main() {
               "DISPLAY: the BAR LEDs' lap flips exactly at the region landing and the twice-around lamp feed stays coherent");
     }
 
+    // ── 16. THE PULSE-CHANGE GATE — cheap path vs tail, bit-identical firing ─────────
+    // CC_FIX_PHASE_RUN_AT_PPQN (docs tip 4cb1a749): the engine runs a CHEAP path every
+    // sample (the trackers + the prevContPhase accumulator, a running sum carried across
+    // skipped samples) and the expensive tail (velocity, jump detection, the walk) ONLY
+    // when the quantised pulse position moved. The ORACLE below is the OLD per-sample
+    // body, recomputed independently — a dense sub-pulse sweep with a reversal, a jump
+    // and a span wrap must land the IDENTICAL pulsePos/edge/jump sequence, and
+    // pulseChanged must be true EXACTLY on the samples where the position moved.
+    {
+        struct Oracle {
+            bool have = false;
+            double prevPhase = 0.0, cont = 0.0;
+            long pos = 0;
+            // The old body verbatim: accumulate shortest-path, llround target, jump
+            // contract, parity walk.
+            void feed(double phase, int p16, long ppb,
+                      bool& pe, bool& se, bool& qe, bool& rev, bool& jum, int& js, long& posOut) {
+                pe = se = qe = rev = jum = false; js = 0;
+                if (!have) { have = true; prevPhase = phase; cont = phase;
+                             pos = (long)std::floor(phase * (double)ppb); posOut = pos; return; }
+                double d = phase - prevPhase;
+                if (d >  0.5) d -= 1.0;
+                if (d < -0.5) d += 1.0;
+                prevPhase = phase;
+                cont += d;
+                long tp = (long)std::llround(cont * (double)ppb);
+                long step = tp - pos;
+                long mag = step < 0 ? -step : step;
+                if (mag > p16) {
+                    jum = true; rev = (step < 0);
+                    long six = (mag + p16/2) / p16;
+                    js = (int)((step < 0) ? -(long)six : (long)six);
+                    pos = tp; posOut = pos; return;
+                }
+                if (step == 0) { posOut = pos; return; }
+                rev = (step < 0);
+                long dir = rev ? -1 : +1;
+                for (long i = 0; i < mag; ++i) {
+                    pos += dir; pe = true;
+                    long mod = ((pos % p16) + p16) % p16;
+                    if (mod == 0) { se = true; long s16 = ((pos / p16) % 16 + 16) % 16;
+                                    if (s16 % 4 == 0) qe = true; }
+                }
+                posOut = pos;
+            }
+        };
+        PhaseEngine ph; ph.reset(); ph.patternLength = 16;
+        Oracle orc;
+        const long PPB = 6 * 16;                       // 96 pulses per span
+        bool okSeq = true, okGate = true;
+        long lastPos = -1;
+        // ~0.31 pulse/sample forward (a pulse every ~3.2 samples — dense fire/still
+        // mixing), a mid-sweep REVERSAL, an abrupt JUMP, then forward through the span
+        // wrap — 2400 samples.
+        for (int k = 0; k < 2400; ++k) {
+            double x;
+            if      (k < 900)  x = 0.31 * (double)k / 96.0;
+            else if (k < 1500) x = 0.31 * 900.0 / 96.0 - 0.17 * (double)(k - 900) / 96.0;
+            else if (k < 1501) x = 5.0;                    // the jump (huge discontinuity)
+            else               x = 5.0 + 0.31 * (double)(k - 1501) / 96.0;
+            float v = (float)(x * 10.0);
+            ph.process(v, true, ST, 24);
+            double p = (double)v / 10.0; p -= std::floor(p);
+            bool pe, se, qe, rev, jum; int js; long op;
+            orc.feed(p, 6, PPB, pe, se, qe, rev, jum, js, op);
+            okSeq = okSeq && ph.pulsePos == op && ph.pulseEdge == pe && ph.sixteenthEdge == se
+                    && ph.quarterEdge == qe && ph.reverse == rev && ph.jumped == jum
+                    && ph.jumpSteps == js;
+            // THE GATE PIN: pulseChanged ⟺ the position moved (pulseEdge or a jump);
+            // from the second sample on it also ⟺ pulsePos moved. On a still sample
+            // NOTHING moved and every flag is low (the entry reset).
+            okGate = okGate && (ph.pulseChanged == (pe || jum));
+            if (k > 0) okGate = okGate && (ph.pulseChanged == (ph.pulsePos != lastPos));
+            lastPos = ph.pulsePos;
+        }
+        check(okSeq, "GATE: a dense sub-pulse sweep (fwd + reverse + jump + wrap) lands the OLD per-sample sequence bit-exactly (oracle)");
+        check(okGate, "GATE: pulseChanged is true EXACTLY on the samples where the quantised position moved");
+    }
+
+    // ── 17. THE ACCUMULATOR CARRIES ACROSS SKIPPED SAMPLES (the DO-NOT pin) ─────────
+    // Hold the voltage STILL for 100 samples (100 skipped samples — pulseChanged low,
+    // pulsePos frozen), then move EXACTLY two pulses in one sample: ONE fire lands BOTH
+    // pulses (the accumulator carried the motion across the hold — never reset), no
+    // jump (2 ≤ p16). The same move split across two 1-pulse fires lands the SAME
+    // address — a running sum, not a recompute.
+    {
+        PhaseEngine ph; ph.reset(); ph.patternLength = 16;
+        const float v0 = 3.0f;                         // phase 0.3
+        ph.process(v0, true, ST, 24);                  // the floored seed (floor 28.8 = 28)
+        ph.process(v0, true, ST, 24);                  // settle onto llround (29)
+        const long held = ph.pulsePos;
+        bool still = true;
+        for (int k = 0; k < 100; ++k) {
+            ph.process(v0, true, ST, 24);
+            still = still && !ph.pulseChanged && !ph.pulseEdge && !ph.sixteenthEdge
+                    && ph.pulsePos == held;
+        }
+        check(still, "CARRY: 100 still samples hold the position with pulseChanged low (the cheap path only)");
+        float v1 = v0 + 10.0f * 2.0f / 96.0f;          // exactly +2 pulses of phase
+        ph.process(v1, true, ST, 24);
+        check(ph.pulseChanged && ph.pulsePos == held + 2 && ph.pulseEdge && !ph.jumped
+              && ph.jumpSteps == 0,
+              "CARRY: a 2-pulse move after the hold lands BOTH pulses in ONE fire (the accumulator carried), no jump");
+        {   // the split-drive control: two 1-pulse fires reach the same address
+            PhaseEngine pb; pb.reset(); pb.patternLength = 16;
+            pb.process(v0, true, ST, 24);
+            pb.process(v0, true, ST, 24);
+            float half = v0 + 10.0f * 1.0f / 96.0f;
+            pb.process(half, true, ST, 24);            // +1 pulse
+            pb.process(v1,   true, ST, 24);            // +1 more
+            check(pb.pulsePos == held + 2,
+                  "CARRY: the same 2-pulse move split across two fires lands the SAME address (running sum, no reset)");
+        }
+    }
+
+    // ── 18. THE TIERED GATE — the probe is the COMPOSITION (the subphase moves it) ──
+    // With the transport STALLED (a flat ramp — the coarse term frozen), a dense
+    // subphase sweep must STILL advance the position: the gate probe is tierPulseFor
+    // (the composed target), not a transport-only pulseInBar. pulseChanged fires
+    // exactly on the composed crossings, every landing equals the quotient/remainder
+    // formula, and the ramp wrap stays a backward jump inside the region (§14's law,
+    // now at gate rate).
+    {
+        PhaseEngine ph; ph.reset(); ph.patternLength = 32;
+        const double rF = 16.0 / 32.0;                 // regionSixteenths 16, plen 32
+        const long PPB = 6 * 32;                       // 192 pulses per span
+        ph.processTiers(4.0f, 4.0f, true, 16.0, ST, 24);   // the composed seed (region 0, s 0.4)
+        bool ok = true, fired = false;
+        long lastPos = ph.pulsePos;
+        for (int k = 1; k <= 300; ++k) {               // s climbs 0.4 → 1.9 (wraps mid-sweep)
+            float sV = 4.0f + 0.05f * (float)k;        // +0.005 phase per sample ≈ 0.48 pulse
+            ph.processTiers(4.0f, sV, true, 16.0, ST, 24);
+            double cont = ph.prevContPhase;            // the transport is flat — this holds 0.4
+            double s = (double)sV / 10.0; s -= std::floor(s);
+            long want = (long)std::floor((std::floor(cont / rF) * rF + s * rF) * (double)PPB);
+            ok = ok && (ph.pulsePos == want)
+                     && (ph.pulseChanged == (ph.pulsePos != lastPos));
+            fired = fired || ph.pulseChanged;
+            lastPos = ph.pulsePos;
+        }
+        check(ok && fired,
+              "TIER GATE: a subphase sweep with a STALLED transport advances the composed position (the probe is tierPulseFor), pulseChanged ⟺ moved");
+    }
+
+
+    // ── CC_PROMPT_PPQN_48 stage 5 — the PHASE at 48: the same ramp, the same STEP
+    // sequence (a step is 6 pulses, FIXED — the span is PULSES_PER_STEP·plen = 96 at
+    // ANY PPQN), the STEP edge every 6 pulses, the MUSICAL sixteenth edge at 12
+    // (192 grid positions per bar at 48 — the doc's number). These are REAL 48 runs:
+    // the suite's earlier gates were only ever driven at 24.
+    {
+        const int plen16 = 16;
+        // (1) THE SPAN + THE STEP SEQUENCE: one full 0→1 sweep at 48 lands the SAME
+        //     pulse positions (96 per span) and the SAME step sequence (pulsePos/6)
+        //     as the 24 run — the doc's "the phase step sequence equals the 24
+        //     sequence for the same phase input (per bar, scaled)".
+        PhaseEngine p24, p48;
+        p24.reset(); p24.patternLength = plen16;
+        p48.reset(); p48.patternLength = plen16;
+        bool spanOK = true, stepOK = true, edgeOK = true;
+        int steps24 = 0, steps48 = 0, sixt48 = 0;
+        const int N = 96;   // one span of pulses, one process() per pulse
+        for (int k = 0; k <= N; ++k) {
+            const float v = k * 10.0f / 96.0f;   // k/96 of the span, binary-exact
+            p24.process(v, true, ST, 24);
+            p48.process(v, true, ST, 48);
+            if (k > 0) {
+                spanOK = spanOK && p24.pulsePos == p48.pulsePos;
+                const int s24 = (int)(p24.pulsePos / 6), s48 = (int)(p48.pulsePos / 6);
+                stepOK = stepOK && s24 == s48;
+                steps24 += p24.stepEdge ? 1 : 0;
+                steps48 += p48.stepEdge ? 1 : 0;
+                sixt48  += p48.sixteenthEdge ? 1 : 0;
+                edgeOK = edgeOK && (p24.stepEdge == p24.sixteenthEdge);   // lockstep at 24
+            }
+        }
+        check(spanOK && stepOK,
+              "PPQN48 PHASE: the same 0..1 ramp walks the SAME pulse positions and the SAME step sequence at 24 and at 48 (the span is the 96-pulse step grid at any PPQN)");
+        check(steps24 == 16 && steps48 == 16 && sixt48 == 8 && edgeOK,
+              "PPQN48 PHASE: 16 step edges per span at BOTH settings (the same pattern); the musical sixteenth edge fires 8 times at 48 (96/12 — 192 positions per bar, the doc's number) vs 16 at 24");
+    }
+
+    // ── CC_FIX_PHASE_DERIVED_BPM — the derived tempo is GONE from the phase path ────
+    // The velocity-to-tempo derivation (derived BPM / sixteenth-seconds / velocity) had
+    // no reader: its only consumer was a dead sync into the module-level bpm mirror,
+    // which itself has no readers (the doc's step-1 gate fired on exactly that sync —
+    // the chain was verified dead and both removed; the internal clock's own BPM is
+    // untouched). The phase path is PULSE-QUANTISED and TEMPO-INDEPENDENT — pinned:
+    {
+        // (15) THE WARP GATE — the same phase input at two different tempos, the warp
+        //      output bit-identical. The phase path is the only tempo-sensitive channel
+        //      feeding the warp: the warp composes PER STEP from the step's settled
+        //      uniform (WarpBank::warpedValue → the member's invCDF — pure in (v, lane,
+        //      u), pinned in test_phase_distribution). Drive the same 0→1 sweep at two
+        //      sample rates (2× tempo — the SAME voltage sequence), take each stream's
+        //      per-step uniforms (a fixed scatter over the walked pulses), and evaluate
+        //      the warp primitive per step: the two streams must land the SAME bits at
+        //      every step.
+        dotModular::WarpBank bank;   // owns the drawn-curve pool the primitive references
+        const dotModular::MonotoneCurve cK =
+            dotModular::MonotoneCurve::fromDistribution(dotModular::KumaraswamyDistribution(2, 3), 9);
+        (void)bank.putCurve(cK);
+        const dotModular::MonotoneCurve* pool = bank.pool;
+        const dotModular::KumaraswamyWarp member{5.0, 25.8};
+        const float ST2 = 2e-3f;     // the second tempo: the SAME voltage samples, 2× the rate
+        std::vector<long> posA, posB;
+        std::vector<uint8_t> flagsA, flagsB;   // step | sixteenth | quarter | reverse | jumped, packed
+        std::vector<double> warpA, warpB;
+        auto tempoRun = [&](float st, std::vector<long>& pos, std::vector<uint8_t>& flags,
+                            std::vector<double>& warp) {
+            PhaseEngine ph; ph.reset(); ph.patternLength = 16;
+            for (int k = 1; k <= 96; ++k) {          // one span, one pulse per sample
+                const float v = k * 10.0f / 96.0f;   // binary-exact-ish drive (the PPQN48 sweep's own)
+                ph.process(v, true, st, 24);
+                pos.push_back(ph.pulsePos);
+                flags.push_back((uint8_t)((ph.stepEdge ? 1 : 0) | (ph.sixteenthEdge ? 2 : 0)
+                                        | (ph.quarterEdge ? 4 : 0) | (ph.reverse ? 8 : 0)
+                                        | (ph.jumped ? 16 : 0)));
+                if (ph.stepEdge) {
+                    const double u = std::fmod(0.618033988749895 * (double)ph.pulsePos, 1.0);
+                    warp.push_back(dotModular::invCDF(member, u, pool));
+                }
+            }
+        };
+        tempoRun(ST,  posA, flagsA, warpA);
+        tempoRun(ST2, posB, flagsB, warpB);
+        bool warpOK = (posA == posB) && (flagsA == flagsB) && (warpA.size() == warpB.size());
+        for (size_t i = 0; warpOK && i < warpA.size(); ++i) warpOK = sameBits(warpA[i], warpB[i]);
+        check(warpOK && warpA.size() == 16 && !warpA.empty(),
+              "WARP TEMPO: the same phase input at two different tempos (2x rate) walks the SAME step sequence and lands the SAME warp output bits at every step (the warp composes per step, never from a tempo)");
+
+        // (16) THE STEP-SEQUENCE SWEEP — the full per-sample edge stream against the
+        //      pulse-grid truth, forward THEN reverse, at 24 AND 48 (the doc's "phase
+        //      step sequence bit-identical before and after": this truth table IS the
+        //      pre-removal behaviour, the removal must not move it). pulsePos walks k
+        //      exactly; a STEP edge fires iff the position is a multiple of
+        //      PULSES_PER_STEP; the MUSICAL sixteenth/quarter edges iff the musical
+        //      moduli hit; reverse is the motion sign; nothing jumps.
+        for (int pp : {24, 48}) {
+            const int p16 = pp / 4;
+            PhaseEngine ph; ph.reset(); ph.patternLength = 16;
+            bool ok = true;
+            int fwd = 0, rev = 0;
+            auto consume = [&](int dir, long wantPos) {
+                const bool wantStep  = (wantPos % 6 == 0);
+                const bool wantSixt  = (wantPos % p16 == 0);
+                const bool wantQuart = wantSixt && (((wantPos / p16) % 16) % 4 == 0);
+                ok = ok && ph.pulsePos == wantPos
+                        && !ph.jumped && ph.jumpSteps == 0
+                        && ph.reverse == (dir < 0)
+                        && ph.stepEdge == wantStep
+                        && ph.sixteenthEdge == wantSixt
+                        && ph.quarterEdge == wantQuart;
+                ++(dir > 0 ? fwd : rev);
+            };
+            for (int kk = 1; kk <= 96; ++kk) {       // the forward walk: pulse k lands k
+                ph.process(kk * 10.0f / 96.0f, true, ST, pp);
+                if (kk == 1) {
+                    // THE SEED (the engine's documented first-sample convention): the
+                    // first call floors the seed and returns (no walk), the settle call
+                    // at the SAME voltage lands the continuous path's resting llround —
+                    // the probed convention (probeResting, at most one pulse apart).
+                    // Both land checked on the pulse-grid truth at 1.
+                    ph.process(kk * 10.0f / 96.0f, true, ST, pp);   // the settle
+                    consume(+1, 1);
+                    continue;
+                }
+                consume(+1, kk);
+            }
+            for (int kk = 95; kk >= 0; --kk) {       // the reverse walk: back down the same grid
+                ph.process(kk * 10.0f / 96.0f, true, ST, pp);
+                consume(-1, kk);
+            }
+            check(ok && fwd == 96 && rev == 96,
+                  ("STEP SEQUENCE: the full per-sample edge stream (position/step/sixteenth/quarter/reverse/jump) matches the pulse-grid truth forward AND reverse at " + std::to_string(pp) + " PPQN — the removal changes no audio path").c_str());
+        }
+
+        // (17) THE STRUCTURAL PINS (the B3 grep-in-test precedent) — a reintroduced
+        //      derivation fails the battery, not just review: no derived-tempo
+        //      identifier anywhere in PhaseEngine.hpp (comments included), and no
+        //      phase.bpm sync in Monsoon.cpp.
+        {
+            const std::string root = repoRoot();
+            const std::string hpp = slurp(root + "/src/dsp/engines/PhaseEngine.hpp");
+            const std::string cpp = slurp(root + "/src/Monsoon.cpp");
+            check(!contains(hpp, "phaseVel") && !contains(hpp, "sixteenthSec") && !contains(hpp, "bpm"),
+                  "STRUCTURE: PhaseEngine.hpp carries no derived-tempo identifier (velocity / sixteenth-seconds / bpm), comments included");
+            check(!contains(cpp, "phase.bpm"),
+                  "STRUCTURE: no phase.bpm sync in Monsoon.cpp (the dead chain removed; the clock's own bpm = clock.bpm sync untouched)");
+        }
+    }
     std::printf("test_phase_tier: %d passed, %d failed\n", passed, failed);
     return failed == 0 ? 0 : 1;
 }
