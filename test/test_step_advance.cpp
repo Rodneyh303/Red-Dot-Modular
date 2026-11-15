@@ -851,9 +851,9 @@ int main() {
                   "PV: the offsets are the exact net divergence (d_v - d_main per rise)");
             check(eng.scanOfsV_[2] == 0,
                   "PV: a Local-East p=0 voice REPEATS IN PLACE — no scan at the centre "
-                  "(CC_PROMPT_VARIATION_CENTRE: zero prob never advances, so wandering is "
-                  "meaningless; the held-rise scan-deeper law for p!=0 is pinned in "
-                  "test_variation_centre_hold GATE 5).");
+                  "(CC_PROMPT_VARIATION_CENTRE: at the centre the escape probability is "
+                  "zero, so the hunt can never terminate; the held-rise scan-deeper law "
+                  "for p!=0 is pinned in test_variation_centre_hold GATE 5).");
         }
 
         // THE FALL (the signoff's decision 2): the tie-into-rest fall decision is
@@ -948,9 +948,10 @@ int main() {
             check(sawOffset, "WANDER: a delegated voice's own decision moved its offset (the global threshold)");
             check(sawSplit, "WANDER: delegated voices' positions DIVERGE (own draws, one threshold)");
             // p=0: every voice holds (nothing moves anywhere) AND does NOT scan — the
-            // chevron repeats in place. (CC_PROMPT_VARIATION_CENTRE: wandering at the
-            // centre is meaningless — zero advance probability NEVER escapes, so the old
-            // per-voice scan just crept forever. scanHoldV_ now self-gates at |p|<=eps.)
+            // chevron repeats in place. (CC_PROMPT_VARIATION_CENTRE: at the centre the
+            // ESCAPE PROBABILITY is zero — the threshold is 0, so no scanned cell is ever
+            // an escape and the hunt can never terminate, so the old per-voice scan just
+            // crept forever. scanHoldV_ now self-gates at |p|<=eps.)
             SequencerEngine eng0; eng0.reset();
             eng0.numPolyVoices = 4;
             seedEngine(eng0, rng, 0.0f);
@@ -964,7 +965,7 @@ int main() {
                 for (int v = 1; v <= 4; ++v)
                     if (eng0.scanOfsV_[v] > maxScan) maxScan = eng0.scanOfsV_[v];
             }
-            check(maxScan == 0, "CENTRE: at p=0 every voice holds AND does NOT scan — repeat-in-place, no creep (zero prob never advances, so wandering is meaningless)");
+            check(maxScan == 0, "CENTRE: at p=0 every voice holds AND does NOT scan — repeat-in-place, no creep (escape probability is zero, so the hunt can never terminate)");
         }
     }
 

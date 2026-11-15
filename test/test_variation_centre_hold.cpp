@@ -3,9 +3,10 @@
 //
 // THE BUG (verified in code): at the neutral centre the gate-mode HOLD is correct, but
 // every held rise calls scanHold_() (the freeze fix) which grows scanOfsV_[0]
-// unconditionally — and with |p| == 0 the escape never comes (~1/|p| = inf held
-// rises), so the VARIATION lane / chevron creeps forward indefinitely at the centre
-// (the arbitrary-forward Rodney observed).
+// unconditionally — and with |p| == 0 the ESCAPE PROBABILITY is zero (the threshold is
+// 0, so no scanned cell is ever an escape and the hunt can never terminate — horizon
+// 1/escape-prob = inf), so the VARIATION lane / chevron creeps forward indefinitely at
+// the centre (the arbitrary-forward Rodney observed).
 //
 // THE FIX: the scan is gated on |p| > eps (eps = 1e-3f, the choice stated in the
 // commit): knob 0.5 maps to exactly 0 (the clean case), CV2/Junction noise up to
