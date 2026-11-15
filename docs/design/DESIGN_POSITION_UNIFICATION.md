@@ -510,10 +510,33 @@ STATUS (2026-11-16): direction (a) is DONE — shipped as SLICE 5. `globalWalk_`
 DELETED; `pos_.phaseClock(transportTick_)` is its closed-form view (`≡ (t−1) mod cachedLength`),
 behaviour-preserving, with the identity harness's `tickPhase` guard pinning it stays the TICK phase
 (not the column). Direction (b) — collapse abs onto the column (reset abs to the window top at a
-re-author) — remains PARKED: it is a behaviour change on the "unit of absoluteness" (transport vs
-phrase). Its gate, the holder model, is now BUILT (POSITION_HOLDER_MODEL.md), so (b) is decidable
-with C3 — but until that decision, (a) stands and (b) must NOT be picked. The analysis below is the
-record of why (a) was the safe, correct move.
+re-author) — is now RETIRED. The "unit of absoluteness" is DECIDED: **TRANSPORT** (Rodney,
+2026-11-16). So (a) is not just the shipped move, it is the END STATE — (b) is not to be picked.
+
+WHY TRANSPORT (the decision): the span observation collapses the choice. Abs walks only
+`cachedLength` positions regardless (`ft0 = wG + offG`, `wG = (t−1) mod cachedLength`) — the FULL
+ring only when the phrase is the ring. So "absolute" is an ANCHORING semantic (not re-anchored to
+cycle/rotation), NOT a span; the span is the phrase in BOTH (a) and (b). That leaves exactly ONE
+thing distinguishing transport from phrase: the mid-phrase RE-AUTHOR. And that question is already
+answered — C2 KEEP-COUNTING: a mid-phrase length change keeps `phrasePos` counting (folds mod
+newLen), never re-seeds, because reseeding snaps a phased lane. (a)/transport applies that same rule
+to the abs read; (b)/phrase is the reseed C2 rejected, applied to abs alone. Plus HOLDER UNIFORMITY:
+every holder is `≡ raw-coord mod own-period`, transport-anchored; `phaseClock` is just the top one —
+(b) would make it the single special holder that carries window-edit history. (b) has standalone
+appeal ("abs = step N of the current pattern, re-established on edit"), but adopting it here means
+reversing keep-counting to stay consistent — a bigger move, against the "don't snap phased lanes"
+line held throughout. So transport, by consistency, not taste. (Rodney's note: the earlier pull
+toward (b) was a mental shortcut — defaulting "absolute/transport" to mean the full 16/32-step span;
+it never did, it means the phrase, transport-continuous.)
+
+SEPARATE, ORTHOGONAL axis (PARKED — "if ever wanted"): the SPAN limit (phrase, not ring) is
+independent of transport-vs-phrase — both are phrase-bounded. To make abs actually cover ALL 32
+regardless of phrase length, change the abs PERIOD from the phrase (`mod cachedLength`) to the RING
+(`mod kMaskRing`). Cost: abs then reads the parked steps beyond the active phrase (usually empty), so
+only wanted if "a lane that sweeps the whole ring while a shorter phrase loops underneath" is a
+feature. Not part of the transport decision; noted so it doesn't hide inside it.
+
+The analysis below is the record of why (a)/transport is the safe, correct move.
 
 ### The two quantities (one per addressing MODE)
 Both feed the SAME read law `wnow = (laneTickFor(md, ft0+1, L) + rho) % L`, with a different
@@ -585,8 +608,10 @@ is the correct reading, and the phaseClock_ becomes redundant.
 
 ### Decision tree
 1. **[DONE]** (a) shipped (SLICE 5): `globalWalk_` the field retired to `pos_.phaseClock`, one
-   coherent re-author law, no behaviour change — right under BOTH branches of C3.
-2. **[OPEN — now decidable]** with C3, decide the unit of absoluteness. TRANSPORT → (a) is the end
-   state, (b) is wrong, nothing more to do. PHRASE → (b) (redefine abs on the column) is the correct
-   reading and `phaseClock` becomes redundant — a second simplification. The holder model (b)'s gate
-   is built, so this is a live decision whenever C3 is taken.
+   coherent re-author law, no behaviour change.
+2. **[DECIDED — 2026-11-16: TRANSPORT]** the unit of absoluteness is the transport, so (a) is the END
+   STATE and (b) is RETIRED — settled by C2-keep-counting consistency + holder uniformity (see STATUS
+   above), with the span observation showing both options are phrase-bounded so only the re-author
+   distinguishes them. `phaseClock` stays. Nothing further on this axis.
+3. **[PARKED — orthogonal]** the SPAN axis (abs period = phrase vs ring). Independent of 1-2; pick up
+   only if a full-ring abs sweep under a shorter phrase is ever wanted (see STATUS).
