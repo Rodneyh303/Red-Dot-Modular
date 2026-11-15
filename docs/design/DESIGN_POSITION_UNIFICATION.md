@@ -419,3 +419,84 @@ each bit-identical on the existing (forward / offset-0 / ≤16) configs:
   Note: phrasePos "since entry" must survive a mid-run direction flip — the resolver
   holds the one transport state that makes this a pure view (the current globalWalk_
   already holds equivalent state; we keep ONE, not two).
+
+## globalWalk_ — WHY TWO QUANTITIES, AND HOW TO RETIRE THE FIELD (Rodney + CC, 2026-11-15)
+
+STATUS: PARKED. Direction (a) — resolver coordinates both coherently — is DECIDED as the
+migration move (behaviour-preserving, safe before C3). Direction (b) — collapse abs onto the
+column — is PARKED on the C3 holder-model decision (the "unit of absoluteness"). Do NOT pick
+(b) until C3 settles.
+
+### The two quantities (one per addressing MODE)
+Both feed the SAME read law `wnow = (laneTickFor(md, ft0+1, L) + rho) % L`, with a different
+`ft0`/`rho`/`L` per mode (SequencerEngine.cpp derive):
+- CYCLE: `ft0 = sPos` where `sPos = (dir>0) ? +phrasePos : -phrasePos`; `rho = R`. The read
+  coordinate is DISTANCE FROM THIS CYCLE'S ENTRY (pos_.phrasePos()), because cycle re-anchors
+  to rotation every cycle — the entry IS the origin (Rodney: rotation re-aligns the voice
+  against the start forward / end reverse of the global pattern).
+- ABS (MASK_DYNAMIC): `ft0 = wG + offG`; `rho = (R − O)`; `L = kMaskRing` (full ring). The read
+  coordinate is the ABSOLUTE PHRASE POSITION (globalWalk_), anchored at the fixed phrase origin
+  (global step 1), because abs does NOT re-anchor.
+
+So the two quantities are: pos_.phrasePos() (entry-relative, for cycle) and globalWalk_
+(phrase-absolute, for abs). Two modes → two origins.
+
+### Why they DIVERGE in reverse (and coincide forward)
+Forward the two origins COINCIDE (forward entry == phrase origin == step 1): phrasePos and
+globalWalk_ both run 0,1,2,3,… — identical (the identity harness relies on exactly this).
+Reverse the origins sit at OPPOSITE ends of the window: phrasePos is pinned to the reverse
+entry (endStep) and counts UP; globalWalk_ is pinned to the phrase origin and counts DOWN.
+They are reflections across the window, summing to lenG−1. The cycle branch takes the sign
+(sPos = −phrasePos) so its coordinate runs down from 0; abs keeps the absolute phase running
+down from the top. Same motion, two origins — they only collapse onto each other going forward.
+
+### Why globalWalk_ is NOT a pure function of the column (the real reason it's a 2nd field)
+In the contiguous case globalWalk_ tracks `playedColumn − offset` in BOTH directions — looks
+redundant. A mid-run setWindow re-author BREAKS that equivalence: globalWalk_ re-binds from the
+TICK (SequencerEngine.cpp:292 `globalWalk_ = wrapMod(transportTick_−1, newLen)`) while the
+column parks to the window (PositionResolver::setWindow / engine :284). globalWalk_ is tied to
+transportTick_ (the one absolute clock, :843) — it carries phase the column does not. This is
+the "third desync class" the identity harness documents.
+
+### TRACE — length 8→4 shrink mid-phrase (offset 0, forward, rot 0). The behaviour at stake.
+Walk forward to col 5 (coherent: globalWalk_ = col − offset = 5), then setWindow(4,0) fires
+(new window cols 0–3). At the re-author: column parks to 15; globalWalk_ = wrapMod(6−1,4) = 1.
+
+| event | tick | globalWalk_ | col | phrasePos | CYCLE ft0 | ABS ft0 (wG) |
+|-------|------|-------------|-----|-----------|-----------|--------------|
+| 6 pre | 6    | 5           | 5   | 5         | 5         | 5            |
+| 7     | 7    | 2           | 0   | 0         | 0         | 2            |
+| 8     | 8    | 3           | 1   | 1         | 1         | 3            |
+| 9     | 9    | 0           | 2   | 2         | 2         | 0            |
+| 10    | 10   | 1           | 3   | 3         | 3         | 1            |
+| 11    | 11   | 2           | 0   | 0         | 0         | 2            |
+
+- CYCLE runs 0,1,2,3,… — the new window plays FROM ITS TOP (re-author resets the cycle).
+- ABS runs 2,3,0,1,… — keeps counting from where the TRANSPORT clock was; constant offset
+  = (tick−1) mod newLen at the re-author instant. It preserves phase continuity with the drive.
+
+That constant offset (2 here) is the ENTIRE difference between (a) and (b).
+
+### (a) DECIDED — resolver coordinates both; behaviour-preserving
+The defect today is not two quantities, it is TWO SITES applying the re-author law from two
+inputs (engine :292 re-binds globalWalk_ from the tick; PositionResolver::setWindow parks col_
+from the window) — same event, no shared authority, free to drift. (a): the resolver owns col_
+AND a phaseClock_ (the globalWalk_ concept), and its setWindow applies the one re-author law to
+both. Reproduces the trace above EXACTLY — zero played frames change. The globalWalk_ FIELD is
+deleted; the globalWalk_ CONCEPT lives on as resolver phaseClock_. This is safe before C3.
+
+### (b) PARKED — collapse abs onto the column; a behaviour change, gated on C3
+(b) makes abs read `col − offset`, so ABS would run 0,1,2,3,… too — RESET to the window top at
+every live edit, discarding transport phase. Under the CURRENT semantics (absolute = locked to
+the global transport, survives window edits) this ERODES the abs↔cycle distinction: the two
+modes would converge in anchoring at exactly the re-authors that a live-mod sequencer spends
+its time doing. (b) is principled ONLY if C3's holder model redefines the unit of absoluteness
+from the TRANSPORT to the PHRASE: if re-authors latch at phrase boundaries (C1) and abs resets
+each phrase BY DESIGN, then col and tick-phase coincide at every re-author by construction, (b)
+is the correct reading, and the phaseClock_ becomes redundant.
+
+### Decision tree
+1. NOW: do (a). One re-author law in the resolver, both quantities coherent, globalWalk_ the
+   field retired, no behaviour change. Right under BOTH branches of C3 → safe to do first.
+2. LATER (with C3): decide the unit of absoluteness. TRANSPORT → (a) is the end state, (b) is
+   wrong. PHRASE → (b) falls out for free, retire phaseClock_ as a second simplification.
