@@ -1061,10 +1061,16 @@ struct StraitsSandsMacroVisualWidget : ModuleWidget,
                 // MVC: hide the playhead when stopped (match Mono's started ? tick : -1), so
                 // rotation CV only moves the chevron, not the playhead, when the seq is stopped.
                 int ph = (eng.stepIndex >= 0) ? eng.macroLaneTick_[l] : -1;
-                // (bug 18, LOR_EDITING_BUG_LIST) the SHARED window playhead for
-                // every lane — the VAR scan exception is gone (it left the lane's
-                // window); the per-voice tick + LOR feed the ONE law.
-                visualEditor->setLanePlayStep(l, calcPlayhead(ph, ownLen, ownOff, ownRot));
+                // (fix/variation-scan-display) non-VAR lanes draw the SHARED window
+                // playhead (per-voice tick + LOR → the ONE law). The VAR lane draws
+                // THIS view-voice's SCANNED read index (engine stepAdvanceStrandIdx +
+                // signed scan delta): the gate-mode chevron creeps ahead of the shared
+                // playhead during a hold and rejoins on advance — in-window by
+                // construction (getStrandIdx folds mod len), not the retired global scan.
+                visualEditor->setLanePlayStep(
+                    l, (l == SequencerEngine::EDITOR_LANE_VARIATION)
+                            ? variationLanePlayheadForVoice(eng, dotModular::VoiceResolver::slot(viewVoice + 1))
+                            : calcPlayhead(ph, ownLen, ownOff, ownRot));
             }
         }
 
