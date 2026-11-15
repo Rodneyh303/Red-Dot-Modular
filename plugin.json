@@ -333,6 +333,14 @@
       ]
     },
     {
+      "slug": "StraitsQmixOctPanel",
+      "name": "Straits Q-MIX / Octave Panel",
+      "description": "Subgate per-voice Q-MIX / OCTAVE thresholds panel (hidden — spawned by Straits Base)",
+      "tags": [
+        "expander"
+      ]
+    },
+    {
       "slug": "StraitsSubgatePanelRatchetRest",
       "name": "Straits Subgate Ratchet Rest",
       "description": "Subgate per-voice RATCHET REST thresholds: 16 voices, one decision (6/6/4 lane panel)",
