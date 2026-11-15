@@ -101,7 +101,7 @@ static void march(const WinCfg& w, const Prog& p, bool clockMode) {
             eng.advancePlayhead(dir, nullptr);
             const int col = eng.pos_.playedColumn();
             const int pp  = eng.pos_.phrasePos();
-            if (col != eng.stepIndex) colOK = false;
+            if (col != eng.playedColumn()) colOK = false;
             if (eng.pos_.phaseClock(eng.transportTick_) != tickPhase(eng)) pcOK = false;   // (slice 5) the closed form, guarded
             if (dir > 0) {
                 const int wG = eng.pos_.phaseClock(eng.transportTick_);   // (slice 5) the retired globalWalk_
@@ -121,7 +121,7 @@ static void march(const WinCfg& w, const Prog& p, bool clockMode) {
             if (col >= 0 && (pp < 0 || pp >= eng.cachedLength)) rangeOK = false;
         }
     }
-    std::snprintf(msg, sizeof msg, "%s%s len=%d off=%d: playedColumn() == stepIndex at every step",
+    std::snprintf(msg, sizeof msg, "%s%s len=%d off=%d: pos_.playedColumn() is THE position (the stepIndex mirror retired — 4-final)",
                   clockMode ? "clock " : "", p.tag, w.len, w.off);
     check(colOK, msg);
     std::snprintf(msg, sizeof msg, "%s%s len=%d off=%d: phaseClock(transportTick_) == the engine-computed (tick-1) mod len (the PARKED guard)",
@@ -165,7 +165,7 @@ static void matrixMarch() {
         int  prev = 0;
         for (int k = 0; k < 30; ++k) {
             eng.advancePlayhead(+1, nullptr);
-            colOK = colOK && eng.pos_.playedColumn() == eng.stepIndex;
+            colOK = colOK && eng.pos_.playedColumn() == eng.playedColumn();
             pcOK   = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);   // (slice 5) the closed form
             if (k == 8) prev = eng.macroLaneTick_[0];
             if (k > 8 && k <= 14) {
@@ -177,10 +177,10 @@ static void matrixMarch() {
         }
         for (int k = 0; k < 20; ++k) {
             eng.advancePlayhead(-1, nullptr);
-            colOK = colOK && eng.pos_.playedColumn() == eng.stepIndex;
+            colOK = colOK && eng.pos_.playedColumn() == eng.playedColumn();
             pcOK   = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);
         }
-        std::snprintf(msg, sizeof msg, "MATRIX %s: the dirs do not disturb the mirror (col == stepIndex)", m.tag);
+        std::snprintf(msg, sizeof msg, "MATRIX %s: the dirs do not disturb the position (pos_ is the authority — the mirror retired)", m.tag);
         check(colOK, msg);
         std::snprintf(msg, sizeof msg, "MATRIX %s: the composed lane direction is a consistent sign (+1/-1 per step)", m.tag);
         check(deltaSignConsistent, msg);
@@ -214,11 +214,11 @@ int main() {
         bool colOK = true, fwdOK = true, pcOK = true;
         for (int k = 0; k < 40; ++k) {
             eng.advancePlayhead(+1, nullptr);
-            colOK  = colOK && eng.pos_.playedColumn() == eng.stepIndex;
+            colOK  = colOK && eng.pos_.playedColumn() == eng.playedColumn();
             fwdOK  = fwdOK && eng.pos_.phrasePos() == eng.pos_.phaseClock(eng.transportTick_);   // (slice 5) the retired globalWalk_
             pcOK   = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);   // (slice 5) the closed form
         }
-        check(colOK, "DEFAULT (the cap window, no re-author): playedColumn() == stepIndex");
+        check(colOK, "DEFAULT (the cap window, no re-author): pos_.playedColumn() is THE position (the stepIndex mirror retired — 4-final)");
         check(fwdOK, "DEFAULT: phrasePos() == the phase clock forward");
         check(pcOK, "DEFAULT: phaseClock(transportTick_) == the closed form (the cap window)");
     }
@@ -231,21 +231,21 @@ int main() {
         bool colOK = true, pcOK = true;
         for (int k = 0; k < 10; ++k) {
             eng.advancePlayhead(+1, nullptr);
-            colOK = colOK && eng.pos_.playedColumn() == eng.stepIndex;
+            colOK = colOK && eng.pos_.playedColumn() == eng.playedColumn();
             pcOK  = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);
         }
         eng.updateWindow(8.f, 0.f, false, 5.f, 0.f, false);   // 16@0 -> 8@5 mid-run
         pcOK = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);   // the re-bind, immediately
         for (int k = 0; k < 14; ++k) {
             eng.advancePlayhead(+1, nullptr);
-            colOK = colOK && eng.pos_.playedColumn() == eng.stepIndex;
+            colOK = colOK && eng.pos_.playedColumn() == eng.playedColumn();
             pcOK  = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);
         }
         eng.updateWindow(12.f, 0.f, false, 3.f, 0.f, false);  // then 12@3, and reverse
         pcOK = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);   // the re-bind, immediately
         for (int k = 0; k < 14; ++k) {
             eng.advancePlayhead(-1, nullptr);
-            colOK = colOK && eng.pos_.playedColumn() == eng.stepIndex;
+            colOK = colOK && eng.pos_.playedColumn() == eng.playedColumn();
             pcOK  = pcOK && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);
         }
         check(colOK, "REAUTHOR: the mirror holds across mid-run setWindow re-authors (the park + re-anchor)");
@@ -257,11 +257,11 @@ int main() {
         eng.updateWindow(16.f, 0.f, false, 0.f, 0.f, false);
         for (int k = 0; k < 10; ++k) eng.advancePlayhead(+1, nullptr);
         eng.snapToPhaseStep(48, 24);
-        bool ok = eng.pos_.playedColumn() == eng.stepIndex;
+        bool ok = eng.pos_.playedColumn() == eng.playedColumn();
         ok = ok && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);   // the anchor seeds the clock (slice 5)
         for (int k = 0; k < 6; ++k) {
             eng.advancePlayhead(+1, nullptr);
-            ok = ok && eng.pos_.playedColumn() == eng.stepIndex;
+            ok = ok && eng.pos_.playedColumn() == eng.playedColumn();
             ok = ok && eng.pos_.phaseClock(eng.transportTick_) == tickPhase(eng);
         }
         check(ok, "SNAP: the mirror follows the phase snap (and continues after it; phaseClock == the closed form through the anchor)");

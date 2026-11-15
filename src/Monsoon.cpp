@@ -525,10 +525,10 @@ float Monsoon::getEffectivePolyLegato(int voiceIdx) {
 }
 
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---
-void Monsoon::switchMelodyMode() { engine.pe.switchMelodyMode(stepIndex, lastStepIndex); }
+void Monsoon::switchMelodyMode() { engine.pe.switchMelodyMode(); }
 
 // --- switch melody/rhythm mode (dice/realtime), caching/restoring state as needed ---
-void Monsoon::switchRhythmMode() { engine.pe.switchRhythmMode(stepIndex, lastStepIndex); }
+void Monsoon::switchRhythmMode() { engine.pe.switchRhythmMode(); }
 
 
 // pick a semitone (0..11) using weighted random, or -1 if no semitone is selected
@@ -602,11 +602,12 @@ float Monsoon::semitoneToVolts(int semitone) {
     // handle manual restart: place index so next increment lands on startStep, optionally redraw realtime patterns
     // If there are pending seeds and resetImmediate==true, apply them immediately (for RESET triggered reseed)
     void Monsoon::handleRestart(bool manual, bool resetImmediate) {
-        // stepIndex = -1 (stopped) so the UI shows no playhead until the first clock edge.
-        // advancePlayhead() handles -1 correctly: it seeds to (startStep-1) then increments
-        // to startStep — same result as the old pre-increment, but without the visual flash
-        // of step 16 (stepIndex=15) between reset and the first edge.
-        stepIndex = -1;
+        // (STEP 4-final) the bare-alias park write (stepIndex = -1) is DELETED with the
+        // field — the engine reset below (resetLaneWalk -> pos_.reset) parks the played
+        // column at -1, so the UI shows no playhead until the first clock edge, and
+        // advancePlayhead() seeds to (startStep-1) then increments to startStep — same
+        // result as the old pre-increment, without the visual flash of step 16 between
+        // reset and the first edge.
         // POSITION_HOLDER_MODEL: there is no counter to zero. resetLaneWalk() below
         // ANCHORS the holders to Beat 1 (the t=0 congruence — every walk back at its own
         // start), so Beat-1 sync is automatic. The old belt-and-braces note: when the

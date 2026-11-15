@@ -117,7 +117,7 @@ int main() {
         StepResult r2 = step(eng, /*mainRise=*/false, /*ratchet=*/true,  /*ghost=*/false, /*mainHigh=*/true,  /*ghostHigh=*/false, 0.f, 0.f, 4.f);
         EXPECT(r0.stepped && r1.stepped && r2.stepped);
         EXPECT(r0.decision != D::MidNote && r1.decision != D::MidNote && r2.decision != D::MidNote);
-        EXPECT_EQ(eng.stepIndex, 2);
+        EXPECT_EQ(eng.playedColumn(), 2);
     });
 
     TEST("no edge -> no step (a silent gap with nothing patched advances nothing)", {
@@ -125,7 +125,7 @@ int main() {
         step(eng, true, true, false, true, false, 0.f, 0.f, 4.f);   // onset, step 0
         StepResult r = step(eng, false, false, false, false, false, 0.f, 0.f, 4.f);  // no edge
         EXPECT(!r.stepped);
-        EXPECT_EQ(eng.stepIndex, 0);   // playhead did not advance
+        EXPECT_EQ(eng.playedColumn(), 0);   // playhead did not advance
     });
 
     // ─────────────────────────────────────────────────────────────────────────────

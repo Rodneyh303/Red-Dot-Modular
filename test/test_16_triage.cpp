@@ -168,7 +168,7 @@ int main() {
             const int T = t + 1;
             ok = ok && eng.laneTick_[0] == (T - 1) % 7                     // the free-run (the cap arm)
                  && eng.laneTick_[1] == (T - 1) % 16                       // the kDefaultPatternLen lane
-                 && eng.stepIndex == (T - 1) % CAP;                        // the playhead walks the full ring
+                 && eng.playedColumn() == (T - 1) % CAP;                        // the playhead walks the full ring
         }
         check(ok, "GATE 4: at the cap default — a len-7 lane free-runs (T-1)%7, a default lane reads (T-1)%16, the playhead wraps at the cap");
     }

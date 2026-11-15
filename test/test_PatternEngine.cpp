@@ -373,59 +373,51 @@ int main(){
         PatternInput in=allActive();
         pe.redrawMelody(in);
         float snap[16]; for(int i=0;i<16;++i) snap[i]=pe.melodyPitchV[i];
-        int si=5, lsi=4;
-        pe.switchMelodyMode(si,lsi);
+        pe.switchMelodyMode();   // (4-final) parameterless — the position cache is gone
         EXPECT_EQ(pe.melodyMode,1);
         // Overwrite pattern
         in.semiWeights[0]=1.f; for(int i=1;i<12;++i) in.semiWeights[i]=0.f;
         pe.redrawMelody(in);
         // Switch back
-        pe.switchMelodyMode(si,lsi);
+        pe.switchMelodyMode();
         EXPECT_EQ(pe.melodyMode,0);
         for(int i=0;i<16;++i) EXPECT_NEAR(pe.melodyPitchV[i],snap[i],1e-5f);
     });
 
-    TEST("switchRhythmMode: dice→realtime caches the seed + step indices (the pattern copy retired with rhythmPattern)", {
+    TEST("switchRhythmMode: dice→realtime caches the seed (the position cache retired — 4-final)", {
         // (ITEM 1) the cachedRhythmPattern copy — the old pin's object — is RETIRED
-        // with the array (the CC doc's deletion list). What the mode-switch machinery
-        // still caches: the seed float + the step indices (the melody twin's
-        // surviving substance, mirrored here).
+        // with the array. (STEP 4-final) the step-index cache twins are RETIRED too —
+        // the vestigial position cache (recomputeEffective* reads neither quantity;
+        // post-slice-4 the restored stepIndex was a mirror the next advance
+        // overwrote). What the mode-switch machinery still caches: the seed float
+        // (the melody twin's surviving substance, mirrored here).
         auto pe=fresh(3.f,4.f);
         PatternInput in=allActive(); in.restProb=0.3f;
         pe.redrawRhythm(in);
         const float seedBefore = pe.rhythmSeedFloat;
-        int si=5,lsi=4;
-        pe.switchRhythmMode(si,lsi);          // dice→realtime: caches seed + indices
+        pe.switchRhythmMode();                // dice→realtime: caches the seed
         EXPECT(pe.rhythmSeedCached);
         EXPECT_EQ(pe.cachedRhythmSeedFloat, seedBefore);
-        si=99; lsi=98;                        // move while in realtime
-        pe.switchRhythmMode(si,lsi);          // realtime→dice: restores the indices
-        EXPECT_EQ(si,5);
-        EXPECT_EQ(lsi,4);
+        pe.switchRhythmMode();                // realtime→dice: the pattern round-trip
+        EXPECT_EQ(pe.rhythmMode,0);
     });
 
-    TEST("switchMelodyMode: stepIndex cached and restored", {
-        auto pe=fresh(); int si=7, lsi=6;
-        pe.switchMelodyMode(si,lsi); si=99;  // change while in realtime
-        pe.switchMelodyMode(si,lsi);          // restore
-        EXPECT_EQ(si,7);
-    });
+    // (STEP 4-final) "stepIndex cached and restored" — RETIRED with its object: the
+    // position cache is deleted (the restore fed nothing live; post-slice-4 the
+    // restored stepIndex was a mirror the next advance overwrote from pos_).
 
     TEST("switchRhythmMode twice (dice→rt→dice): rhythmMode back to 0", {
-        auto pe=fresh(); int si=0,lsi=0;
+        auto pe=fresh();
         EXPECT_EQ(pe.rhythmMode,0);
-        pe.switchRhythmMode(si,lsi); EXPECT_EQ(pe.rhythmMode,1);
-        pe.switchRhythmMode(si,lsi); EXPECT_EQ(pe.rhythmMode,0);
+        pe.switchRhythmMode(); EXPECT_EQ(pe.rhythmMode,1);
+        pe.switchRhythmMode(); EXPECT_EQ(pe.rhythmMode,0);
     });
 
     TEST("No restore if cache not set (first switch to realtime, back)", {
-        auto pe=fresh(); int si=3,lsi=2;
-        // Switch to realtime first (sets cache), but DON'T switch back
-        // Then create new engine with no cache and switch back directly
-        PatternEngine pe2; pe2.melodySeedCached=false;
-        int si2=5,lsi2=4; pe2.melodyMode=1;
         // Switching from realtime to dice when no cache should not crash
-        pe2.switchMelodyMode(si2,lsi2);
+        PatternEngine pe2; pe2.melodySeedCached=false;
+        pe2.melodyMode=1;
+        pe2.switchMelodyMode();
         EXPECT_EQ(pe2.melodyMode,0);  // toggled
     });
 

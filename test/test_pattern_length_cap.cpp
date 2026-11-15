@@ -57,8 +57,8 @@ int main() {
         bool alwaysInWindow = true;
         for (int i = 0; i < 2 * L + 3; ++i) {
             e.advancePlayhead();
-            seen.insert(e.stepIndex);
-            alwaysInWindow = alwaysInWindow && e.isStepInWindow(e.stepIndex);
+            seen.insert(e.playedColumn());
+            alwaysInWindow = alwaysInWindow && e.isStepInWindow(e.playedColumn());
         }
         bool exactDomain = true;
         for (int s = 0; s < L; ++s)   exactDomain = exactDomain && seen.count(s) > 0;
@@ -83,8 +83,8 @@ int main() {
         for (int s = 0; s < CAP; ++s) pop += (int)((e.windowMask >> s) & 1u);
         check(pop == L, "window popcount == L at an offset");
         std::set<int> firstL, all;
-        for (int i = 0; i < L; ++i)     { e.advancePlayhead(); firstL.insert(e.stepIndex); }
-        for (int i = L; i < 2 * L + 3; ++i) { e.advancePlayhead(); all.insert(e.stepIndex); }
+        for (int i = 0; i < L; ++i)     { e.advancePlayhead(); firstL.insert(e.playedColumn()); }
+        for (int i = L; i < 2 * L + 3; ++i) { e.advancePlayhead(); all.insert(e.playedColumn()); }
         check(firstL == all, "the walk's visited set repeats with period exactly L (wraps at L, not the ring)");
         bool inside = true;
         for (int s : all) inside = inside && ((e.windowMask >> s) & 1u);

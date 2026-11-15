@@ -58,11 +58,11 @@ int main() {
         SequencerEngine eng; eng.reset();
         eng.numPolyVoices = 0;
         rise(eng, 0.f);                                  // the priming rise: the transport starts
-        const int start = eng.stepIndex;
+        const int start = eng.playedColumn();
         bool holdOK = true, scanOK = true, deltaOK = true;
         for (int k = 0; k < 48; ++k) {
             rise(eng, 0.f);
-            holdOK  = holdOK  && eng.stepIndex == start;                    // every decision HOLD
+            holdOK  = holdOK  && eng.playedColumn() == start;                    // every decision HOLD
             scanOK  = scanOK  && eng.scanOfsV_[0] == 0;                     // NO creep
             deltaOK = deltaOK && eng.stepAdvanceScanDelta(M) == 0;          // the chevron at rest
         }
@@ -80,9 +80,9 @@ int main() {
         int seenHolds = 0;
         for (int k = 0; k < 64; ++k) {
             const int scanBefore = eng.scanOfsV_[0];
-            const int colBefore  = eng.stepIndex;
+            const int colBefore  = eng.playedColumn();
             rise(eng, 0.5f);
-            if (eng.stepIndex == colBefore) {            // a HOLD: the scan must have grown +1 (mod varLen)
+            if (eng.playedColumn() == colBefore) {            // a HOLD: the scan must have grown +1 (mod varLen)
                 ++seenHolds;
                 const int varLen = eng.strandLen(dotModular::STRAND_VARIATION);
                 lawOK  = lawOK  && eng.scanOfsV_[0] == (scanBefore + 1) % (varLen > 0 ? varLen : 1);
@@ -105,9 +105,9 @@ int main() {
         int seenHolds = 0;
         for (int k = 0; k < 64; ++k) {
             const int scanBefore = eng.scanOfsV_[0];
-            const int colBefore  = eng.stepIndex;
+            const int colBefore  = eng.playedColumn();
             rise(eng, -0.5f);
-            if (eng.stepIndex == colBefore) {
+            if (eng.playedColumn() == colBefore) {
                 ++seenHolds;
                 const int varLen = eng.strandLen(dotModular::STRAND_VARIATION);
                 lawOK  = lawOK  && eng.scanOfsV_[0] == (scanBefore + 1) % (varLen > 0 ? varLen : 1);
@@ -136,10 +136,10 @@ int main() {
         bool sawHold = false, grewOnHold = true;
         const int varLen2 = eng2.strandLen(dotModular::STRAND_VARIATION);
         for (int k = 0; k < 96; ++k) {
-            const int col = eng2.stepIndex;
+            const int col = eng2.playedColumn();
             const int scanBefore = eng2.scanOfsV_[0];
             rise(eng2, 0.01f);                           // an intentional small p (1% knob)
-            if (eng2.stepIndex == col) {
+            if (eng2.playedColumn() == col) {
                 sawHold = true;
                 grewOnHold = grewOnHold
                     && eng2.scanOfsV_[0] == (scanBefore + 1) % (varLen2 > 0 ? varLen2 : 1);

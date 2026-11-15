@@ -76,7 +76,7 @@ static void driveFwdThenRev(const Cfg& c) {
     int seen = 0;
     for (int t = 0; t < 3 * c.lenG; ++t) {
         eng.advancePlayhead(-1, nullptr);
-        if (eng.stepIndex == endStep) {   // a reverse phrase entry
+        if (eng.playedColumn() == endStep) {   // a reverse phrase entry
             ++seen;
             std::snprintf(msg, sizeof(msg), "FWD->REV lenG=%d offG=%d L=%d O=%d R=%d: rotation not at endStep=%d (got %d want %d)",
                           c.lenG, c.offG, c.L, c.O, c.R, endStep, eng.macroFrameRead(), rot);

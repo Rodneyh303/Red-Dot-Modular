@@ -201,7 +201,7 @@ int main() {
             wrapForward = wrapForward && (ph.pulsePos >= prevPulse);   // never walks back
             prevPulse = ph.pulsePos;
             e.snapToPhaseStep(ph.pulsePos, P16);
-            if (k < 32) sweep1.push_back(e.stepIndex); else sweep2.push_back(e.stepIndex);
+            if (k < 32) sweep1.push_back(e.playedColumn()); else sweep2.push_back(e.playedColumn());
         }
         check(pulsesExact, "SWEEP@32: pulsePos == 6k exactly (binary-exact drive, no rounding drift)");
         check(wrapForward, "SWEEP@32: the span wrap reads CONTINUOUS FORWARD (pulsePos never walks back)");
@@ -220,7 +220,7 @@ int main() {
         for (int k = 0; k < 48; ++k) {                       // three spans
             driveStep(ph, k, 16);
             e.snapToPhaseStep(ph.pulsePos, P16);
-            if (k < 16) spanA.push_back(e.stepIndex); else if (k < 32) spanB.push_back(e.stepIndex); else spanC.push_back(e.stepIndex);
+            if (k < 16) spanA.push_back(e.playedColumn()); else if (k < 32) spanB.push_back(e.playedColumn()); else spanC.push_back(e.playedColumn());
         }
         bool cyc = true;
         for (int k = 0; k < 48; ++k) {
@@ -239,27 +239,27 @@ int main() {
         {
             E e; e.reset(); e.setWindow(16, 0);
             e.snapToPhaseStep((long)20 * P16, P16);
-            check(e.stepIndex == 4, "BAR2-JUMP@16: absStep 20 lands the musical step 4 (was park-at-0 + strobe)");
-            check(e.phaseStepFor(20) == e.stepIndex, "BAR2-JUMP@16: the landing satisfies the drift rule (no re-snap strobe)");
+            check(e.playedColumn() == 4, "BAR2-JUMP@16: absStep 20 lands the musical step 4 (was park-at-0 + strobe)");
+            check(e.phaseStepFor(20) == e.playedColumn(), "BAR2-JUMP@16: the landing satisfies the drift rule (no re-snap strobe)");
         }
         // The anchor pin coexists: the position-holders battery's probe (absStep 47 at
         // p16 24 -> tick 48) keeps its landing (47 %% 16 == 15 == 47 %% 32 here).
         {
             E e; e.reset(); e.setWindow(16, 0);
             e.snapToPhaseStep(47 * 24, 24);
-            check(e.stepIndex == 15, "BAR2-JUMP@16: the position-holders anchor probe (absStep 47 -> cell 15) unchanged");
+            check(e.playedColumn() == 15, "BAR2-JUMP@16: the position-holders anchor probe (absStep 47 -> cell 15) unchanged");
         }
         // At the 32-window the jump lands the FULL-SPAN address directly.
         {
             E e; e.reset(); e.setWindow(32, 0);
             e.snapToPhaseStep((long)20 * P16, P16);
-            check(e.stepIndex == 20, "BAR2-JUMP@32: absStep 20 lands cell 20 (the full-span address)");
+            check(e.playedColumn() == 20, "BAR2-JUMP@32: absStep 20 lands cell 20 (the full-span address)");
         }
         // Backward jumps (negative absStep) stay correct.
         {
             E e; e.reset(); e.setWindow(16, 0);
             e.snapToPhaseStep((long)-6 * P16, P16);          // absStep -6 -> cycle 10
-            check(e.stepIndex == 10, "BAR2-JUMP@16: a negative absStep (-6) lands cycle 10");
+            check(e.playedColumn() == 10, "BAR2-JUMP@16: a negative absStep (-6) lands cycle 10");
         }
     }
 
@@ -329,9 +329,9 @@ int main() {
             ph.processTiers(p.tV, p.sV, true, 16.0, ST, 24);
             E e; e.reset(); e.setWindow(32, 0);
             e.snapToPhaseStep(ph.pulsePos, P16);
-            ok = ok && (ph.pulsePos == p.want) && (e.stepIndex == p.step);
-            if (ph.pulsePos != p.want || e.stepIndex != p.step)
-                std::printf("    %s: pulsePos=%ld stepIndex=%d\n", p.what, ph.pulsePos, e.stepIndex);
+            ok = ok && (ph.pulsePos == p.want) && (e.playedColumn() == p.step);
+            if (ph.pulsePos != p.want || e.playedColumn() != p.step)
+                std::printf("    %s: pulsePos=%ld stepIndex=%d\n", p.what, ph.pulsePos, e.playedColumn());
         }
         check(ok, "Q/R@1bar: the seed lands the quotient/remainder decomposition exactly (5 probes + snap)");
     }
@@ -351,9 +351,9 @@ int main() {
             ph.processTiers(p.tV, p.sV, true, 4.0, ST, 24);
             E e; e.reset(); e.setWindow(32, 0);
             e.snapToPhaseStep(ph.pulsePos, P16);
-            ok = ok && (ph.pulsePos == p.want) && (e.stepIndex == p.step);
-            if (ph.pulsePos != p.want || e.stepIndex != p.step)
-                std::printf("    pulsePos=%ld want=%ld stepIndex=%d\n", ph.pulsePos, p.want, e.stepIndex);
+            ok = ok && (ph.pulsePos == p.want) && (e.playedColumn() == p.step);
+            if (ph.pulsePos != p.want || e.playedColumn() != p.step)
+                std::printf("    pulsePos=%ld want=%ld stepIndex=%d\n", ph.pulsePos, p.want, e.playedColumn());
         }
         // The 8 regions: sweeping the transport covers every coarse address 0..7.
         std::set<int> regions;
@@ -448,7 +448,7 @@ int main() {
               "REGION LANDING: lands at the SAME sub-position in the new region (pulse 134 = cell 22.4)");
         E e; e.reset(); e.setWindow(32, 0);
         e.snapToPhaseStep(ph.pulsePos, P16);
-        check(e.stepIndex == 22 && e.phaseStepFor(ph.pulsePos / P16) == e.stepIndex,
+        check(e.playedColumn() == 22 && e.phaseStepFor(ph.pulsePos / P16) == e.playedColumn(),
               "REGION LANDING: the snap lands cell 22 and satisfies the drift rule (no strobe)");
     }
 
@@ -484,18 +484,18 @@ int main() {
         bool lapStable = true, tracksSub = true;
         ph.processTiers(4.0f, 4.0f, true, 16.0, ST, 24);        // t=0.4 s=0.4: region 0 -> 38
         e.snapToPhaseStep(ph.pulsePos, P16);
-        tracksSub = tracksSub && (e.stepIndex == 6);            // bar 1, sub 0.4 -> cell 6
+        tracksSub = tracksSub && (e.playedColumn() == 6);            // bar 1, sub 0.4 -> cell 6
         for (int j = 1; j <= 30; ++j) {                          // s sweeps the region: 0.4 -> 1.00
             ph.processTiers(4.0f, 4.0f + 2.0f * (float)j, true, 16.0, ST, 24);
             e.snapToPhaseStep(ph.pulsePos, P16);
-            lapStable = lapStable && (e.stepIndex < 16);         // NEVER leaves bar 1
+            lapStable = lapStable && (e.playedColumn() < 16);         // NEVER leaves bar 1
         }
         // The landing: the transport crosses into region 1 while s is held.
         ph.processTiers(5.2f, 10.0f, true, 16.0, ST, 24);        // s wraps to 0.0 with the crossing
         e.snapToPhaseStep(ph.pulsePos, P16);
-        bool lapFlipsAtLanding = (e.stepIndex >= 16);            // BAR 2's source flips here
+        bool lapFlipsAtLanding = (e.playedColumn() >= 16);            // BAR 2's source flips here
         // The twice-around lamp feed stays coherent: lamp = stepIndex & 15 for every landing.
-        bool lampFeed = ((e.stepIndex & 15) == e.stepIndex - 16);
+        bool lampFeed = ((e.playedColumn() & 15) == e.playedColumn() - 16);
         check(lapStable && tracksSub,
               "DISPLAY: a full subphase sweep inside a bar region walks ONLY that bar's cells (stepIndex 6..15, the lap never flips)");
         check(lapFlipsAtLanding && lampFeed,

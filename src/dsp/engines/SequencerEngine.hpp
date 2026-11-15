@@ -310,18 +310,16 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // fresh start at the boundary (reset the held gate) so every lap is identical.
     bool boundaryInterrupt = false;
 
-    int stepIndex = -1;
     int lastPlayDir = +1;   // +1 forward, -1 reverse (Mode E); for UI direction cues
     // (DESIGN_POSITION_UNIFICATION) the ONE position authority — slices 2-5 migrated the
     // derive, the consumers, the advance and the phase clock onto it; the
     // golden-identity harness (test_position_resolver_identity) proves the mirror.
     // Slice 2 migrates the derive to its phrasePos; slices 3-4 the stepIndex consumers.
     PositionResolver pos_;
-    // (STEP 3b — CC_PROMPT_POSITION_RESOLVER_STEP3B_UI_PLAYEDCOLUMN) the PUBLIC position
-    // accessors: every widget/module read goes through these, not the field.
-    // Value-identical to stepIndex by the identity harness (playedColumn() == stepIndex
-    // at every step). The FIELD stays until step 4-final (the mode-switch write path).
-    int  playedColumn() const { return pos_.playedColumn(); }   // the played column (-1 = not started)
+    // (STEP 3b + 4-final) the PUBLIC position accessors: every read goes through
+    // these. The stepIndex FIELD is RETIRED — pos_ is the sole position authority
+    // and playedColumn() IS the played column (-1 = not started).
+    int  playedColumn() const { return pos_.playedColumn(); }
     bool started()      const { return pos_.playedColumn() >= 0; }
     // (SLICE 2b — the phase-sweep history) the previous snap's UNWRAPPED absStep: the
     // phase direction is known only between two consecutive PPQN quantisations (per
@@ -460,7 +458,8 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // Is this state an auto-flip (pendulum/ping-pong)?
     static bool laneDirAutoFlip(LaneDir d) { return d == LaneDir::Pendulum || d == LaneDir::PingPong; }
     LaneFlipQuant laneFlipQuant = LaneFlipQuant::Phrase;   // musical default; StepEdge = live turns
-    int lastStepIndex = -1;
+    // (STEP 4-final) lastStepIndex is DELETED with the field — the vestigial
+    // mode-switch cache was its only reader.
     int startStep = 0;
     // (CC_PROMPT_16_TRIAGE bucket 2, option C's DO-NOW group) the transport defaults =
     // the full ring (reset() re-seeds the same; the construction default matches it).
