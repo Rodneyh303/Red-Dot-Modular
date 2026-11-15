@@ -29,16 +29,29 @@ Best done AFTER step 4-final (so it mirrors the CLEAN, pattern-only mode switch 
    checkmarks `qmixMode==value`, with "Dice (static)" (value 0) + "Realtime" (value 1) items under a
    "Q-Mix Mode" label + separator. This is the piece Rodney flagged as missing.
 
-## OPEN BEHAVIOUR QUESTION (verify with Rodney BEFORE wiring — do not guess)
-The two toggle SOURCES currently diverge, for ALL THREE streams:
-- The CONTEXT MENU calls `switch*Mode()` → the LOSSLESS cache/restore.
-- `fireDieAction` (Gate 3 assignable + Raffles gates) flips the flag DIRECTLY
-  (`qmixMode = 1 - qmixMode`), BYPASSING `switch*Mode()` → reseed-on-return, no lossless restore.
-So today a menu toggle and a gate toggle of the SAME mode behave differently. Decide the intended
-Q-MIX behaviour: should `DA_LIVESTATIC_Q` route through `switchQmixMode()` (lossless parity across
-both sources), or is the die-action intentionally a reseed? Whatever is chosen very likely should
-align melody/rhythm too (`DA_LIVESTATIC_M`/`_R` have the identical split). Rodney's call — this is
-a musical-behaviour decision, not a mechanical one.
+## UNIFY THE TOGGLE PATH — DRY/ODR (DECIDED, Rodney 2026-11-15)
+Today the two toggle SOURCES diverge, for ALL THREE streams: the CONTEXT MENU calls `switch*Mode()`
+(LOSSLESS cache/restore), while `fireDieAction` (Gate 3 assignable + Raffles gates) flips the flag
+DIRECTLY (`xMode = 1 - xMode`, BYPASSING `switch*Mode()` → reseed-on-return). That is the ODR/DRY
+defect. FIX: every LIVE/STATIC TOGGLE routes through the ONE main path `switch*Mode()`:
+- `fireDieAction` `DA_LIVESTATIC_R` → `switchRhythmMode()` (was `rhythmMode = 1 - rhythmMode`).
+- `fireDieAction` `DA_LIVESTATIC_M` → `switchMelodyMode()` (was `melodyMode = 1 - melodyMode`).
+- `fireDieAction` `DA_LIVESTATIC_Q` → `switchQmixMode()` (new).
+  (`switch*Mode()` already flips the mode internally — `next = 1 - prev` — so this is a direct
+  substitution, now WITH the lossless cache/restore on both arms.)
+
+CARVE-OUT — do NOT route these through `switch*Mode()` (different intent, NOT a toggle):
+- `DA_LASTDICE_*` (`xMode = 0; setPending*LastRoll()`) — go to dice and re-apply the LAST roll.
+- `DA_REDICE_*` / `dice*()` (`xMode = 0; setPending*Roll()`) — go to dice with a FRESH roll.
+These SET to dice with a reseed; the `switch*Mode()` return-arm would restore the cached pattern and
+fight the pending roll. Leave them exactly as they are.
+
+THREAD NOTE (be aware, not a blocker): `fireDieAction` runs on the AUDIO thread (process() — Gate 3
+`Monsoon.cpp:1113`, Raffles `:1781`); the menu runs on the UI thread. After this change the gate
+toggle does the buffer copy + `recomputeEffective*` on the audio thread — bounded and rare (a mode
+toggle), and arguably SAFER for that source (no cross-thread write of the buffers process() reads).
+The menu path is unchanged. No new locking needed; just know the work moved threads for the gate
+source.
 
 ## ORDERING
 Do AFTER `CC_PROMPT_POSITION_RESOLVER_STEP4_FINAL_RETIRE_STEPINDEX.md`. Then `switchQmixMode` mirrors
@@ -58,4 +71,6 @@ accidentally copy. If built earlier, follow PATTERN-ONLY explicitly (the WHAT'S 
 
 ## DELIVERABLE
 On its own branch (e.g. `feat/switch-qmix-mode`), PR into `lane-expander-refactor`. Local `make` +
-headless green; Rodney feel-tests. Note the OPEN BEHAVIOUR QUESTION resolution in the PR.
+headless green; Rodney feel-tests. The PR adds `switchQmixMode` (all three parts) AND the toggle-path
+unification (the three `DA_LIVESTATIC_*` → `switch*Mode()` substitutions), so a Gate 3 / Raffles
+toggle is now lossless, identical to the menu.
