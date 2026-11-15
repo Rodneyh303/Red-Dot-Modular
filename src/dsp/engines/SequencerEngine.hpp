@@ -565,7 +565,9 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // delegation (varlegDelegated) and resets them at the decision sites.
     std::array<int, kVoiceSlots> scanOfsV_ = {};
     // (CC_PROMPT_VARIATION_CENTRE) THE CENTRE GATE: at the neutral centre (|p| <= eps)
-    // there is no escape to scan toward (the horizon ~1/|p| is infinite), so the scan
+    // the ESCAPE PROBABILITY is zero — the advance threshold is 0, so the draw can never
+    // cross it and NO scanned cell is ever an escape; the hunt can never terminate
+    // (horizon = 1/escape-prob = infinite), so the scan could only creep forever. It
     // must not run — the lane repeats the current step in place and the chevron sits
     // still (was: the unconditional increment, the arbitrary-forward creep). eps =
     // 1e-3f: knob 0.5 maps to EXACTLY 0 (the clean case); CV2/Junction noise up to
@@ -574,6 +576,13 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // still scans. p is the RESOLVED mono variationProb, threaded in by the callers
     // (the same value decideStepAdvance_ reads).
     static constexpr float kVariationCentreEps = 1e-3f;
+    // TODO(ODR/DRY — consolidate): scanHold_ (mono, scanOfsV_[0], mono LOR) and
+    // scanHoldV_ (per-voice, scanOfsV_[bank.v], polyLOR) are the SAME law written twice —
+    // another "mono is special" split. The centre-gate had to be added to BOTH (and did
+    // not reach the poly twin on the first pass — the exact bug this fixes). Collapse to
+    // ONE scanHoldFor_(VoiceSlot bank): mono is just bank == kMonoVoiceSlot (LOR and
+    // scanOfs index selected by the bank, p read from voices[bank].variationProb). One
+    // law, one gate, no second place to forget.
     void scanHold_(float p) {
         if (p < kVariationCentreEps && p > -kVariationCentreEps) return;   // the centre: HOLD with NO scan
         const int varLen = lor(dotModular::STRAND_VARIATION, LOR_LEN);
@@ -583,6 +592,18 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // (polyLOR), mirroring scanHold_'s mono bound. Only Local-East VAR voices ever
     // accumulate their own scan (foldPerVoiceAdvance_); delegated voices ride [0].
     void scanHoldV_(dotModular::VoiceSlot bank) {   // spelled out: the VoiceSlot alias is declared further below
+        // (CC_PROMPT_VARIATION_CENTRE — POLY twin of scanHold_'s gate) THE CENTRE GATE,
+        // per voice: at THIS voice's neutral centre (|p_v| <= eps) the escape probability
+        // is zero (same reason as scanHold_ — nothing to find, the hunt never terminates),
+        // so the scan must not run — the voice's VARIATION lane repeats in
+        // place and its chevron sits still. Mono's gate (scanHold_) only reads mono's p;
+        // this twin reads the VOICE's OWN variationProb — the same value decideStepAdvance_
+        // resolves for the main path (subLevel < 0 / !subResLive) — so a poly knob at 0.5
+        // (p_v == 0) no longer creeps forward. (Subgate-ADVANCE holds, where p resolves to
+        // subRes[subLevel][ADVANCE], are the narrower case this and the mono gate share and
+        // do not yet cover; the reported bug is the main-path poly centre.)
+        const float p = voices[bank].variationProb;
+        if (p < kVariationCentreEps && p > -kVariationCentreEps) return;   // the centre: HOLD with NO scan
         const int varLen = polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_LEN);
         scanOfsV_[bank.v] = (scanOfsV_[bank.v] + 1) % (varLen > 0 ? varLen : 1);
     }

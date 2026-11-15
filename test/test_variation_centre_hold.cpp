@@ -3,9 +3,10 @@
 //
 // THE BUG (verified in code): at the neutral centre the gate-mode HOLD is correct, but
 // every held rise calls scanHold_() (the freeze fix) which grows scanOfsV_[0]
-// unconditionally — and with |p| == 0 the escape never comes (~1/|p| = inf held
-// rises), so the VARIATION lane / chevron creeps forward indefinitely at the centre
-// (the arbitrary-forward Rodney observed).
+// unconditionally — and with |p| == 0 the ESCAPE PROBABILITY is zero (the threshold is
+// 0, so no scanned cell is ever an escape and the hunt can never terminate — horizon
+// 1/escape-prob = inf), so the VARIATION lane / chevron creeps forward indefinitely at
+// the centre (the arbitrary-forward Rodney observed).
 //
 // THE FIX: the scan is gated on |p| > eps (eps = 1e-3f, the choice stated in the
 // commit): knob 0.5 maps to exactly 0 (the clean case), CV2/Junction noise up to
@@ -145,6 +146,33 @@ int main() {
             }
         }
         check(sawHold && grewOnHold, "eps: an intentional p = 0.01 still scans on holds (the +1-mod growth law)");
+    }
+
+    // ── GATE 5: the POLY twin — a per-voice centre must not creep (scanHoldV_) ──
+    // The reported regression: CC gated mono's scanHold_ but NOT the per-voice scanHoldV_,
+    // so a poly voice with its OWN variationProb at the centre (poly knob 0.5 → p_v == 0)
+    // still crept. scanHoldV_ now self-gates on the VOICE's own p. Reproduce-first: on the
+    // pre-fix scanHoldV_ (no gate) the p==0 call accumulates; the gate holds it at 0.
+    {
+        SequencerEngine eng; eng.reset();
+        const auto V = VoiceResolver::slot(3);           // a poly voice (bank.v == 2)
+
+        eng.voices[V].variationProb = 0.f;               // p_v == 0 (poly knob 0.5)
+        for (int k = 0; k < 48; ++k) eng.scanHoldV_(V);
+        check(eng.scanOfsV_[V.v] == 0,
+              "poly p==0: scanHoldV_ does not accumulate (the voice repeats in place, no creep)");
+
+        eng.voices[V].variationProb = 0.5f;              // a clear intentional p
+        const int before = eng.scanOfsV_[V.v];
+        eng.scanHoldV_(V);
+        check(eng.scanOfsV_[V.v] != before,
+              "poly p>0: scanHoldV_ still accumulates (the per-voice freeze-fix scan, unchanged)");
+
+        eng.voices[V].variationProb = -5e-4f;            // below eps: holds cleanly (CV noise)
+        const int scanAtEps = eng.scanOfsV_[V.v];
+        for (int k = 0; k < 24; ++k) eng.scanHoldV_(V);
+        check(eng.scanOfsV_[V.v] == scanAtEps,
+              "poly |p|<eps: scanHoldV_ holds cleanly (no creep from CV noise, matching mono's gate)");
     }
 
     std::printf("\n%d passed, %d failed\n", g_pass, g_fail);
