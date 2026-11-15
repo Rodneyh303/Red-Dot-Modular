@@ -72,8 +72,9 @@ Direction is PER-LEVEL and composes as a SIGN PRODUCT, not a single global flag:
   composing these, from ONE source, so no two consumers disagree.
 
 ## THE PROPOSAL — one position authority
-A single resolver (a class — Singapore name TBD, e.g. **Fullerton** / **TransportPos**)
-that owns the transport position and is the ONE source every consumer reads:
+A single resolver — **PositionResolver** (the settled name: descriptive, not thematic —
+it is an internal engine class, not a user-facing module) — that owns the transport
+position and is the ONE source every consumer reads:
 
 - It computes, once per advance, from the transport motion + the window (start/end,
   len, offset) + the per-level LaneDir composition:
