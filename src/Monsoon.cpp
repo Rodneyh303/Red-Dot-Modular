@@ -1808,10 +1808,11 @@ void Monsoon::process(const ProcessArgs& args) {
 
         // ── Deep Straits Sands Expanders (Control Rate Orchestration) ──
         // Tick lock-manager boundary/unlock detection BEFORE expander sync so the CA QUEUE
-        // trigger inside sync() reads this cycle's edges. Uses engine.stepIndex (transport
-        // authority) -- replaces the old caV2PrevStep_/caV2PrevLocked_ shadow state.
+        // trigger inside sync() reads this cycle's edges. Uses engine.pos_.playedColumn()
+        // (the ONE position authority; == stepIndex by the identity harness -- SLICE 3's
+        // consumer migration) -- replaces the old caV2PrevStep_/caV2PrevLocked_ shadow state.
         MONSOON_PROF_BEGIN(ctrl_sync);  // sync: lock boundary detect + expander sync
-        lockManager.tick(engine.stepIndex);
+        lockManager.tick(engine.pos_.playedColumn());
         // RATE::PHRASE tier feed: the boundary edge (stepIndex wrap — the TickCount source per the
         // per-mode chains in ui/RateManager.hpp) advances the first-class Phrase tier. Containment's
         // pending machinery commits on THIS edge (fired from expanderManager.sync below — the CA

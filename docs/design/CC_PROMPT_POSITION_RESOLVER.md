@@ -12,8 +12,9 @@ and PROVES it reproduces both, consuming nothing — so it changes NO behaviour 
 move a golden. Do not migrate any consumer in this slice.
 
 ## WHAT TO BUILD (slice 1)
-A stateless position resolver (a class; propose a Singapore-geography name — e.g.
-Fullerton/Esplanade — for Rodney to confirm) in src/dsp/engines/. It holds the ONE
+A stateless position resolver — **PositionResolver** (the settled name: descriptive,
+not thematic — an internal engine class, not a user-facing module) in
+src/dsp/engines/PositionResolver.hpp. It holds the ONE
 transport-position state and exposes PURE views, each a function of (transport motion,
 the window [start/end,len,offset], the composed per-level LaneDir):
 

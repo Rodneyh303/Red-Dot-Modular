@@ -38,7 +38,7 @@ struct StepResult {
     bool wrapped = false;   // true if the phrase boundary wrapped
     bool accented = false;  // true if this step is accented (NEW)
     bool qmixHit  = false;  // Task 4: true if the mono q-mix draw crossed QMIX_LEVEL this step
-    int  forStep = -1;      // the stepIndex this result was computed for (Lantern pairs decision→column)
+    int  forStep = -1;      // the PLAYED COLUMN this result was computed for (pos_.playedColumn(); Lantern pairs decision→column)
 };
 
 // One additional voice beyond mono.  Owns its own GateState and rest
@@ -317,6 +317,11 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // golden-identity harness (test_position_resolver_identity) proves the mirror.
     // Slice 2 migrates the derive to its phrasePos; slices 3-4 the stepIndex consumers.
     PositionResolver pos_;
+    // (SLICE 2b — the phase-sweep history) the previous snap's UNWRAPPED absStep: the
+    // phase direction is known only between two consecutive PPQN quantisations (per
+    // snap, as the sign of the change). Cleared in reset(); NOT touched by gate/clock.
+    long prevPhaseAbsStep_ = 0;
+    bool hasPhaseAbsStep_  = false;
 
     // ── Per-lane direction (reverse a lane's read independently) ──────────────────
     // 4-state direction per strand: Forward, Reverse, Pendulum (bounce, no endpoint repeat),
@@ -576,35 +581,30 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // still scans. p is the RESOLVED mono variationProb, threaded in by the callers
     // (the same value decideStepAdvance_ reads).
     static constexpr float kVariationCentreEps = 1e-3f;
-    // TODO(ODR/DRY — consolidate): scanHold_ (mono, scanOfsV_[0], mono LOR) and
-    // scanHoldV_ (per-voice, scanOfsV_[bank.v], polyLOR) are the SAME law written twice —
-    // another "mono is special" split. The centre-gate had to be added to BOTH (and did
-    // not reach the poly twin on the first pass — the exact bug this fixes). Collapse to
-    // ONE scanHoldFor_(VoiceSlot bank): mono is just bank == kMonoVoiceSlot (LOR and
-    // scanOfs index selected by the bank, p read from voices[bank].variationProb). One
-    // law, one gate, no second place to forget.
-    void scanHold_(float p) {
-        if (p < kVariationCentreEps && p > -kVariationCentreEps) return;   // the centre: HOLD with NO scan
-        const int varLen = lor(dotModular::STRAND_VARIATION, LOR_LEN);
-        scanOfsV_[0] = (scanOfsV_[0] + 1) % (varLen > 0 ? varLen : 1);
-    }
-    // The per-voice scan increment (Stage 2): the voice's OWN variation-window length
-    // (polyLOR), mirroring scanHold_'s mono bound. Only Local-East VAR voices ever
-    // accumulate their own scan (foldPerVoiceAdvance_); delegated voices ride [0].
-    void scanHoldV_(dotModular::VoiceSlot bank) {   // spelled out: the VoiceSlot alias is declared further below
-        // (CC_PROMPT_VARIATION_CENTRE — POLY twin of scanHold_'s gate) THE CENTRE GATE,
-        // per voice: at THIS voice's neutral centre (|p_v| <= eps) the escape probability
-        // is zero (same reason as scanHold_ — nothing to find, the hunt never terminates),
-        // so the scan must not run — the voice's VARIATION lane repeats in
-        // place and its chevron sits still. Mono's gate (scanHold_) only reads mono's p;
-        // this twin reads the VOICE's OWN variationProb — the same value decideStepAdvance_
-        // resolves for the main path (subLevel < 0 / !subResLive) — so a poly knob at 0.5
-        // (p_v == 0) no longer creeps forward. (Subgate-ADVANCE holds, where p resolves to
-        // subRes[subLevel][ADVANCE], are the narrower case this and the mono gate share and
-        // do not yet cover; the reported bug is the main-path poly centre.)
+    // (SLICE X — the ODR/DRY consolidation, CC_PROMPT_POSITION_RESOLVER_SLICE3_CONSUMERS:
+    // scanHold_ (mono, scanOfsV_[0], mono LOR) and scanHoldV_ (per-voice, scanOfsV_[bank.v],
+    // polyLOR) were the SAME law written twice — the "mono is special" split that let the
+    // variation-centre POLY creep slip through the first pass (the centre-gate reached
+    // mono but not the twin). ONE law, one gate, no second place to forget.)
+    // THE LAW: a held gate-advance (the playhead does not move) scans the variation window
+    // one cell deeper — gated at the voice's OWN neutral centre (|p_v| <= eps), where the
+    // escape probability is zero (the threshold is 0, no scanned cell is ever an escape,
+    // the hunt never terminates), so the scan must not run: the VARIATION lane repeats in
+    // place and its chevron sits still. p is the voice's OWN variationProb — the same
+    // value decideStepAdvance_ resolves for the main path (subLevel < 0 / !subResLive).
+    // Only Local-East VAR voices ever accumulate their own scan (foldPerVoiceAdvance_);
+    // delegated voices ride [0]. (Subgate-ADVANCE holds, where p resolves to
+    // subRes[subLevel][ADVANCE], are the narrower case not yet covered; the reported bug
+    // is the main-path centre.)
+    void scanHoldFor_(dotModular::VoiceSlot bank) {   // spelled out: the VoiceSlot alias is declared further below
         const float p = voices[bank].variationProb;
         if (p < kVariationCentreEps && p > -kVariationCentreEps) return;   // the centre: HOLD with NO scan
-        const int varLen = polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_LEN);
+        // The window bound is selected BY BANK — the two stores are NOT interchangeable:
+        // mono reads the STRAND store (lor), a poly voice its OWN lorStore_ row (polyLOR).
+        // A swap here would silently change the mono vs poly window bound.
+        const int varLen = (bank.v == dotModular::kMonoVoiceSlot.v)
+            ? lor(dotModular::STRAND_VARIATION, LOR_LEN)
+            : polyLOR(bank, LaneId{EDITOR_LANE_VARIATION}, LOR_LEN);
         scanOfsV_[bank.v] = (scanOfsV_[bank.v] + 1) % (varLen > 0 ? varLen : 1);
     }
     // PER-VOICE STEP-ADVANCE (PER_VOICE_STEP_ADVANCE_PLAN.md §59-99, ruled by

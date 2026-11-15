@@ -45,6 +45,16 @@ struct PositionResolver {
 
     // ── THE ONE STATE: the played column (today's stepIndex; -1 = the pre-start park) ──
     int col_ = -1;
+    // (SLICE 2b — the PHASE-MODE phrase override) phase mode does not traverse, it
+    // SNAPS, and its phrase entries are the CYCLE-0 crossings (phase 0% AND 100% —
+    // both land on cycle 0), NOT the gate traversal's boundary crossings: the raw
+    // phrase position is fed BY THE SNAP (wrapMod(absStep, lenG) forward — == wG,
+    // bit-identical; wrapMod(-absStep, lenG) backward — the steps back to the cycle-0
+    // entry, the walk R, R-1, ... with the jump back to R LAST). The override is
+    // cleared by advance()/setWindow()/reset() — the traversal re-derives the phrase
+    // from the column in gate/clock mode.
+    int  phraseOverride_    = 0;
+    bool phraseOverridden_  = false;
 
     static int wrapRing(int v) { return ((v % kMaskRing) + kMaskRing) % kMaskRing; }
     // The contiguous-window containment — == isStepInWindow's mask test for the windows
@@ -58,6 +68,7 @@ struct PositionResolver {
         len_ = kPatternLengthCap;
         dir_ = +1;
         col_ = -1;   // the pre-start park (mirrors stepIndex)
+        phraseOverridden_ = false;   // the traversal owns the phrase from here
     }
     void setWindow(int length, int offset) {
         startStep_ = offset;
@@ -67,6 +78,7 @@ struct PositionResolver {
         // just before its start (the next forward step lands ON the start — the same
         // law the engine applies to stepIndex).
         if (col_ != -1 && !inWindow(col_)) col_ = (startStep_ - 1 + kMaskRing) % kMaskRing;
+        phraseOverridden_ = false;   // a window change invalidates the window-relative phrase
     }
     // THE ADVANCE — the traversal law verbatim (the seed/step/skip idiom stepIndex
     // uses; the ONE copy once the migration completes). Mirrors advancePlayhead's
@@ -74,6 +86,7 @@ struct PositionResolver {
     // ON endStep; forward seeds just before startStep; the skip scans wrap an
     // out-of-window landing back to the traversal's entry bound.
     void advance(int motion) {
+        if (motion != 0) phraseOverridden_ = false;   // the traversal re-derives the phrase (a held event keeps it)
         if (motion < 0) {
             dir_ = -1;
             if (col_ == -1) col_ = (endStep_ + 1) & (kMaskRing - 1);
@@ -93,13 +106,22 @@ struct PositionResolver {
         // only called with ±1; the guard is defence-in-depth).
     }
     // The phase-snap paths (snapToPhaseStep) set the column directly — mirror the
-    // FINAL value (after the engine's own window defence-in-depth).
-    void snapTo(int col) { col_ = col; }
+    // FINAL value (after the engine's own window defence-in-depth) — AND feed the
+    // sweep direction + the raw phrase position (SLICE 2b: phase direction is known
+    // only between two consecutive PPQN quantisations, i.e. per snap as the sign of
+    // the absStep change; the phrase entries are the cycle-0 crossings).
+    void snapTo(int col, int dir, int phrasePos) {
+        col_ = col;
+        dir_ = (dir < 0) ? -1 : +1;
+        phraseOverride_ = phrasePos;
+        phraseOverridden_ = true;
+    }
 
     // ── the PURE views ──
     int playedColumn() const { return col_; }
     int direction() const { return dir_; }
     int phrasePos() const {
+        if (phraseOverridden_) return phraseOverride_;   // the phase snap's raw phrase
         if (col_ < 0) return 0;   // the pre-start park: no phrase yet
         return (dir_ > 0) ? wrapRing(col_ - startStep_) : wrapRing(endStep_ - col_);
     }

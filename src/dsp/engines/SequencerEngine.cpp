@@ -162,6 +162,8 @@ void SequencerEngine::reset() {
     stepIndex = -1;
     lastStepIndex = -1;
     pos_.reset();   // (slice 1) the mirror parks with the same pre-start state + the default window
+    prevPhaseAbsStep_ = 0;    // (slice 2b) the phase-sweep history starts fresh
+    hasPhaseAbsStep_  = false;
     startStep = 0;
     // (CC_PROMPT_16_TRIAGE bucket 2, option C's DO-NOW group) the transport default IS
     // the full ring: endStep/cachedLength derive from the cap (was the literal 15/16 —
@@ -467,6 +469,11 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
     //   * A mid-run LENGTH re-author now re-bounds the wrap WITHOUT teleporting the walk
     //     (length = the wrap point, not part of the address) — which is exactly what
     //     makes 32 steps nearly free later: no global-modulus audit, no wrap-mask hunt.
+    // (SLICE 2) the resolver advances FIRST — the derive (inside tickHolders, below)
+    // reads pos_.phrasePos() as the event's position, the SAME timing globalWalk_ has
+    // (advanced at the head of tickHolders). The played column is computed below from
+    // the SAME traversal law, so the mirror still holds (the identity harness).
+    pos_.advance(dir);
     tickHolders(dir, dir, voiceMotion);
 
     bool wrapped;
@@ -492,7 +499,6 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
         // Return true if wrapped to start (phrase boundary)
         wrapped = (prevStep != -1 && stepIndex == startStep);
     }
-    pos_.advance(dir);   // (slice 1) the mirror advances with the same motion — the SAME traversal law, its ONE copy (consumed by nothing yet)
 
     writeLedger.noteWrite(WriteRole::ENGINE, WriteField::Wrapped); // STEP1 WriteLedger: wrapped (W1/W2) — confirms single ENGINE writer
 
@@ -621,7 +627,7 @@ bool SequencerEngine::foldPerVoiceAdvance_(int subLevel, bool perVoiceScan,
             dStep = (dv == dotModular::StepAdvance::FORWARD) ? +1
                   : (dv == dotModular::StepAdvance::BACKWARD) ? -1 : 0;
             if (dStep != 0) scanOfsV_[i] = 0;              // moved: re-anchor (its own value first)
-            else            scanHoldV_(vs);                // held: scan its own window deeper
+            else            scanHoldFor_(vs);              // held: scan its own window deeper
         }
         advanceOffset_[i] += (int64_t)(dStep - dMainStep);
         if (dStep != dMainStep) anyMoved = true;
@@ -1036,13 +1042,19 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
             frameBack = passG ? (int64_t)signMotion
                 : (int64_t)wG - (int64_t)wrapMod((int64_t)wG - signMotion, lenG);
         } else {
-            // (Prompt 2 — the phrase anchor, the macro row's twin — "East and Macro
-            // share this path; one fix") ft0 = the transport's phrase position (wG —
-            // 0 at global step 1; the macro frame IS the transport, no advance
-            // offset): R re-anchors at every global step 1. Dividing-L congruent.
+            // (SLICE 2 — the resolver's phrase coordinate, the macro row's twin — "East
+            // and Macro share this path; one fix") ft0 = the TRANSPORT-SIGNED steps
+            // since the phrase entry (+phrasePos forward, -phrasePos reverse; the
+            // macro frame IS the transport, no advance offset): R anchors at the ENTRY
+            // in whichever direction it is played (phrasePos == 0 — forward
+            // startStep / reverse endStep), counting in the travel direction.
+            // Forward it equals wG BIT-IDENTICALLY; reverse it replaces the drifting
+            // wG with the traversal-tied coordinate — the reverse-rotation fix.
+            const int64_t sPos = (pos_.direction() > 0)
+                ? (int64_t)pos_.phrasePos() : -(int64_t)pos_.phrasePos();
             rho       = (int64_t)R;                    // window-relative; clamped 0..L-1 at the authoring paths
-            ft0       = (int64_t)wG;                   // the phrase position (globalWalk_ — the ONE phrase-start notion)
-            frameBack = (int64_t)wG - (int64_t)wrapMod((int64_t)wG - signMotion, lenG);
+            ft0       = sPos;                           // the transport-signed phrase coordinate (the resolver's)
+            frameBack = sPos - (int64_t)wrapMod(sPos - signMotion, lenG);
         }
         const int64_t wnow = ((((laneTickFor(md, ft0 + 1, L) + rho) % L) + L) % L);
         macroFrameT0    = wnow;   // the frame VALUE — every Macro lane's mapped seed
@@ -1132,18 +1144,25 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
             frameBack = passG ? (int64_t)motionV
                 : (int64_t)wGv - (int64_t)wrapMod((int64_t)wGv - motionV, lenG);
         } else {
-            // (Prompt 2 — the PHRASE ANCHOR) CYCLE folds the voice's own L over the
-            // PHRASE-RELATIVE position (wGv — the transport's position within the
-            // pattern, 0 at global step 1; the voice's effective-clock copy), so R
-            // re-anchors at EVERY global step 1: a non-dividing L restarts its cycle
-            // from R each phrase instead of drifting across the boundary (was the raw
-            // congruence's free-run — Bug 1's law, superseded for the frame walk by
-            // the UAS nesting reference: R is the voice's position AT GLOBAL STEP 1).
-            // Dividing-L is congruent either way (the goldens hold); frameBack is the
-            // true gap in the phrase coordinate (the wrap jumps lenG — a BEAT).
+            // (SLICE 2 — the resolver's phrase coordinate, CC_PROMPT_POSITION_RESOLVER_
+            // SLICE2_DERIVE) CYCLE folds the voice's own L over the TRANSPORT-SIGNED
+            // steps since the phrase entry: +phrasePos forward, -phrasePos reverse —
+            // the travel-signed coordinate (the multiplicative composition's transport
+            // factor: the row's walk moves WITH the transport, entering at R and
+            // counting in the travel direction — forward enters at R and counts up,
+            // reverse enters at R and counts down). The voice's offset folds mod lenG
+            // exactly as the wGv shape did. Forward this equals wGv BIT-IDENTICALLY
+            // (the slice-1 identity: phrasePos == globalWalk_ with no reverse history);
+            // reverse it anchors at the ENTRY (phrasePos == 0, the first-played step —
+            // stepIndex == endStep) instead of the drifting wGv — the reverse-rotation
+            // fix (test_reverse_rotation_anchor). frameBack stays the true gap in the
+            // phrase coordinate (the wrap jumps lenG — a BEAT).
+            const int64_t sPosV = (pos_.direction() > 0)
+                ? (int64_t)pos_.phrasePos() : -(int64_t)pos_.phrasePos();
+            const int64_t vCoord = wrapMod(sPosV + advanceOffset_[v], lenG);
             rho       = (int64_t)R;              // window-relative; clamped 0..L-1 at the authoring paths
-            ft0       = (int64_t)wGv;            // the phrase position — the ONE phrase-start notion (globalWalk_-derived)
-            frameBack = (int64_t)wGv - (int64_t)wrapMod((int64_t)wGv - motionV, lenG);
+            ft0       = vCoord;                  // the transport-signed phrase coordinate (the resolver's, + the voice's offset)
+            frameBack = vCoord - (int64_t)wrapMod(vCoord - motionV, lenG);
         }
         const int64_t wnow = ((((laneTickFor(vd, ft0 + 1, L) + rho) % L) + L) % L);
         voiceDriver_[v] = wnow + 1;
@@ -1262,7 +1281,33 @@ void SequencerEngine::snapToPhaseStep(long pulsePos, int pps) {
         for (int s = 0; s < kMaskRing && !isStepInWindow(stepIndex); ++s)
             stepIndex = (stepIndex + 1) & (kMaskRing - 1);
     }
-    pos_.snapTo(stepIndex);   // (slice 1) the mirror takes the snapped column (post-defence)
+    // (SLICE 2b — the PHASE inputs, CC_PROMPT_POSITION_RESOLVER_SLICE2B_PHASE) pos_
+    // stays the ONE authority in every mode: the phase snap feeds it the sweep
+    // DIRECTION and the RAW PHRASE POSITION. The direction is known only between two
+    // consecutive PPQN quantisations — per snap, as the sign of the absStep change
+    // (hold the LAST direction when the delta is 0; the first snap after a mode switch
+    // holds whatever the gate/clock traversal left — one possibly-off snap, corrected
+    // at the next). The phrase entries in phase are the CYCLE-0 CROSSINGS (phase 0%
+    // AND 100% both land on cycle 0), not the gate traversal's boundary crossings:
+    //   forward  phrasePos = wrapMod(absStep, lenG)  == wG (bit-identical, gate 4);
+    //   backward phrasePos = wrapMod(-absStep, lenG) — the steps back to the cycle-0
+    //   entry: the walk R, R-1, ... with the jump back to R LAST.
+    // deriveHolders' sPos = dir * phrasePos law is UNCHANGED (slice 2's).
+    {
+        int snapDir = pos_.direction();
+        if (hasPhaseAbsStep_) {
+            const long d = absStep - prevPhaseAbsStep_;
+            if (d > 0)      snapDir = +1;
+            else if (d < 0) snapDir = -1;   // d == 0: no PPQN crossing — hold the last
+        }
+        const int lenG = std::max(1, cachedLength);
+        const int snapPhrase = (snapDir > 0)
+            ? (int)wrapMod(absStep, lenG)
+            : (int)wrapMod(-absStep, lenG);
+        pos_.snapTo(stepIndex, snapDir, snapPhrase);   // the column (post-defence) + the sweep direction + the raw phrase
+        prevPhaseAbsStep_ = absStep;
+        hasPhaseAbsStep_  = true;
+    }
     deriveHolders(lastPlayDir, nullptr);
 }
 
@@ -1326,19 +1371,20 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
     // ── STEPS_32 Stage 3 — the twice-around-16 display lap (D10 as amended by D15) ──
     // lightIdx is the LAMP index (0..15 — the panel's 16 ring lamps STAY, the D15
     // 16-stay form). Lamp k carries masters k and k+16, and the rendered master is the
-    // CURRENT LAP's: the lap is D10's split test on the playhead itself (stepIndex >= 16),
-    // the SAME variable the BAR LEDs consume — one gate, two surfaces, no second lap
-    // source exists. At a ≤16 pattern the playhead never leaves bar 1, so lapBase is 0
-    // and master == lightIdx — bit-identical to the pre-twice-around read (the GOLDEN
-    // LAW's display face).
-    const int lapBase = (stepIndex >= kRingLamps) ? kRingLamps : 0;
+    // CURRENT LAP's: the lap is D10's split test on the playhead itself (the played
+    // column >= 16), the SAME variable the BAR LEDs consume — one gate, two surfaces,
+    // no second lap source exists. At a ≤16 pattern the playhead never leaves bar 1,
+    // so lapBase is 0 and master == lightIdx — bit-identical to the pre-twice-around
+    // read (the GOLDEN LAW's display face). (SLICE 3: the display reads the resolver's
+    // played column — pos_.playedColumn() == stepIndex, the identity harness.)
+    const int lapBase = (pos_.playedColumn() >= kRingLamps) ? kRingLamps : 0;
     const int master  = lapBase + lightIdx;
     bool inWindow = isStepInWindow(master);
     float baseActive = 0.0f;
 
     if (inWindow) {
         // Calculate distance from current playhead to map physical LED to drifting DNA content
-        int relCurrent = (stepIndex - startStep + kMaskRing) % kMaskRing;
+        int relCurrent = (pos_.playedColumn() - startStep + kMaskRing) % kMaskRing;
         // relLight reads the CURRENT-LAP master (was lightIdx — the D15 re-scope: the
         // lamp shows the content of the master it carries on the lap being rendered).
         int relLight = (master - startStep + kMaskRing) % kMaskRing;
@@ -1385,23 +1431,23 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
     // (no discrete playhead step). Mode F (5, Q3b) is a phase-1/16 stepped quantiser, so it
     // has a discrete playhead exactly like the phase origin.
     bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2);  // clock/gate/phase (collapse)
-    // Playhead lamp: lightIdx == stepIndex % 16 — the ONE sanctioned display-path % 16
-    // (the D15 ring-feed law). The stepIndex >= 0 guard keeps the pre-start park (-1)
+    // Playhead lamp: lightIdx == playedColumn % 16 — the ONE sanctioned display-path % 16
+    // (the D15 ring-feed law). The playedColumn >= 0 guard keeps the pre-start park (-1)
     // dark: the old `lightIdx == stepIndex` comparison was accidentally -1-safe, the
     // & 15 landing is not (-1 & 15 == 15 would light lamp 15 before the first tick).
-    float current = (steppedMode && stepIndex >= 0 && lightIdx == (stepIndex % kRingLamps)) ? 1.0f : 0.0f;
+    float current = (steppedMode && pos_.playedColumn() >= 0 && lightIdx == (pos_.playedColumn() % kRingLamps)) ? 1.0f : 0.0f;
 
     // Direction cue (Mode E especially): a one-LED comet trail BEHIND the playhead in
     // the travel direction, so forward vs reverse is visibly distinct. The trailing
-    // LED is the step the playhead just left: master (stepIndex - lastPlayDir) on the
+    // LED is the step the playhead just left: master (playedColumn - lastPlayDir) on the
     // ring; its LAMP is that master & 15 (twice-around), and its window test reads the
     // TRAIL MASTER itself — crossing the bar line backwards, the step just left belongs
     // to the other lap, whose master is not the lamp's current-lap one. (The 2b flip
     // widened kMaskRing to 32 and silently killed the trail on the whole second bar —
     // `lightIdx == trailIdx` could never match a 16..31 trailIdx; the lamp landing
-    // repairs it. The stepIndex >= 0 guard makes the pre-start park deterministic.)
-    if (steppedMode && stepIndex >= 0 && current < 1.0f) {
-        int trailMaster = ((stepIndex - lastPlayDir) % kMaskRing + kMaskRing) % kMaskRing;
+    // repairs it. The playedColumn >= 0 guard makes the pre-start park deterministic.)
+    if (steppedMode && pos_.playedColumn() >= 0 && current < 1.0f) {
+        int trailMaster = ((pos_.playedColumn() - lastPlayDir) % kMaskRing + kMaskRing) % kMaskRing;
         if (lightIdx == (trailMaster % kRingLamps) && isStepInWindow(trailMaster))
             baseActive = std::max(baseActive, 0.5f);
     }
@@ -1414,16 +1460,17 @@ float SequencerEngine::getStepLightBrightness(int lightIdx) const {
 // bar 1, lower = bar 2 — the disc's hemisphere cut; 16-step patterns keep the disc
 // dark-except-when-playing: the playhead never leaves bar 1, so BAR 2 stays dim and
 // BAR 1 carries the light — the "hidden disc" lean's two-LED form). Lit EXCLUSIVELY
-// from the playhead's own gate and variable — the same steppedMode expression and the
-// same stepIndex the ring's current-step lamp consumes (one gate, two surfaces — the
-// sync must never fork). Where no discrete playhead exists (mode D, 3) — and before
-// the first tick (stepIndex -1) — BOTH are silent. The inactive bar's LED DIMS, never
+// from the playhead's own gate and variable — the same steppedMode expression and
+// the same played column (pos_.playedColumn()) the ring's current-step lamp consumes
+// (one gate, two surfaces — the sync must never fork). Where no discrete playhead
+// exists (mode D, 3) — and before the first tick (the pre-start park, -1) — BOTH
+// are silent. The inactive bar's LED DIMS, never
 // dark: the disc's "every other segment dims" law, clearly distinct from both the lit
 // state and the unlit ring lamps. The exact dim is a P5 calibration lever.
 float SequencerEngine::getBarLightBrightness(int bar) const {
     bool steppedMode = (modeSelect == 0 || modeSelect == 1 || modeSelect == 2);
-    if (!steppedMode || stepIndex < 0) return 0.f;
-    const bool bar2 = stepIndex >= kRingLamps;   // D10's split test — reads the bar layer, wraps nothing (the second lamp lap == bar 2)
+    if (!steppedMode || pos_.playedColumn() < 0) return 0.f;
+    const bool bar2 = pos_.playedColumn() >= kRingLamps;   // D10's split test — reads the bar layer, wraps nothing (the second lamp lap == bar 2)
     return ((bar == 1) == bar2) ? 1.f : kBarIndicatorDimBrightness;
 }
 
@@ -1434,10 +1481,10 @@ int SequencerEngine::getOffsetStep() const {
 }
 
 bool SequencerEngine::shouldTriggerStep(int ppqn) const {
-    if (stepIndex == -1) return false;
+    if (pos_.playedColumn() == -1) return false;
     if (ppqn <= 1) {
         // Only trigger on main 4 beats relative to startStep + offset
-        int relative = (stepIndex - startStep + kMaskRing) % kMaskRing;
+        int relative = (pos_.playedColumn() - startStep + kMaskRing) % kMaskRing;
         return (relative & 0x03) == 0;
     }
     return true; 
@@ -1507,7 +1554,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     if (gs.holdRemain >= 1.f || gs.gatePulseRemain > 0) {
         result.decision = MonoDecision::MidNote;
         result.accented = lastStepResult.accented;
-        result.forStep = stepIndex; lastStepResult = result;
+        result.forStep = pos_.playedColumn(); lastStepResult = result;
         return result;
     }
 
@@ -1705,7 +1752,7 @@ StepResult SequencerEngine::executeStep(int nvIdx, float r_rest, float r_legato_
     gs.slurForward = leadsSlur;
     gs.slurMember  = prevSlur || leadsSlur;   // SLEG mask: this note leads OR continues a slur
 
-    result.forStep = stepIndex; lastStepResult = result;
+    result.forStep = pos_.playedColumn(); lastStepResult = result;
     return result;
 }
 
@@ -1923,8 +1970,8 @@ StepResult SequencerEngine::executeModeB(bool gate1Rise, bool gate1High, float n
                 wrapped = advancePlayhead(-1, motionV.data());      // resets the scan ([0])
             else {
                 // (CC_PROMPT_VARIATION_CENTRE) the resolved mono p threads in: at the
-                // centre (|p| <= eps) scanHold_ self-gates — HOLD with NO scan.
-                scanHold_(voices[VoiceResolver::mono()].variationProb);   // HELD: scan the window forward (the freeze fix)
+                // centre (|p| <= eps) scanHoldFor_ self-gates — HOLD with NO scan.
+                scanHoldFor_(VoiceResolver::mono());   // HELD: scan the window forward (the freeze fix)
                 if (anyVoiceMoved)
                     recomputeLaneTicks(motionV.data());            // the clock held; diverged voices refresh
             }
@@ -2079,8 +2126,8 @@ StepResult SequencerEngine::executeModeBSubdivided(bool mainGateRise, bool mainG
             wrapped = advancePlayhead(-1, motionV.data());      // resets the scan
         else {
             // (CC_PROMPT_VARIATION_CENTRE) the resolved mono p threads in: at the
-            // centre (|p| <= eps) scanHold_ self-gates — HOLD with NO scan.
-            scanHold_(voices[VoiceResolver::mono()].variationProb);   // HELD: scan the window forward (the freeze fix)
+            // centre (|p| <= eps) scanHoldFor_ self-gates — HOLD with NO scan.
+            scanHoldFor_(VoiceResolver::mono());   // HELD: scan the window forward (the freeze fix)
             if (anyVoiceMoved)
                 recomputeLaneTicks(motionV.data());            // the clock held; diverged voices refresh
         }
