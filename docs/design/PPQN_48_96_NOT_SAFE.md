@@ -89,3 +89,18 @@ So 32-steps-as-1-bar is the concrete motivation to build REAL 48 PPQN — the in
    bar". Scope unchanged (bounded — one pulse source, consumers are pulse-defined; the real cost is TESTING
    the finer regime). Sequence it WITH the 32-step work (they share the "what is a step's duration" question).
    96 PPQN (1/64 or 32-steps-as-half-bar) follows the same mechanism if ever wanted; 48 is the one 32 needs.
+
+════════════════════════════════════════════════════════════════════════════════
+## SECOND MOTIVATION  sub-step legato (Rodney)
+Real 48 PPQN also resolves a legato limitation. Today legato connects only notes whose boundaries fall on a step
+edge, so a triplet or 1/32 that ends between steps cannot lead a legato. The sub-step fix (teaching legato to reason
+about sub-step timing) was considered and PARKED: it touches the gate/legato chain, which is the most fragile part of
+the engine, and the benefit is narrow.
+
+At 48 PPQN a 1/32 is a single step, so it ends ON a step edge and legato connects it with NO sub-step logic. The
+expressive gain is reached by changing the grid resolution rather than the legato code. So 48 PPQN is credited with
+TWO gains:
+  1. 32-steps-as-1-bar (1/32 steps at the same tempo from a 24-PPQN clock)  the original motivation.
+  2. Fine-resolution legato for triplets and 1/32s, with no change to the legato chain.
+The 48 PPQN internal-multiplier work is therefore the single route to both. It does not change the priority of the
+48 PPQN feature; it records that the feature subsumes the legato question.
