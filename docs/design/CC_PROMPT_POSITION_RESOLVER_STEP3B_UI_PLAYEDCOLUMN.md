@@ -54,14 +54,17 @@ DRIFT CHECK read (Monsoon.cpp:1354) `engine.phaseStepFor(absStep) != engine.step
 - **`src/deprecated/StraitsWestSandsVisual.cpp:179`** — deprecated; only touch if it is in the
   build.
 
-## NON-SCOPE (why the field can't die yet)
-Step 4-final (delete `stepIndex`) is BLOCKED on the mode-switch POSITION CACHE:
-`switchMelodyMode` does `stepIndex = cachedMelodyStepIndex` — it SAVES and RESTORES the played
-column (and `lastStepIndex`) across a melody/rhythm mode switch. With the field gone that
-save/restore must act on `pos_`'s state (a `pos_` snapshot/restore), which is holder-model
-surgery, not a rename. So field deletion rides the holder model (POSITION_HOLDER_MODEL.md),
-alongside C3 and the globalWalk_ (b) decision. This pass just removes the NAME dependency from the
-widgets so that later deletion is smaller.
+## NON-SCOPE (step 4-final — the next pass, NOT this one)
+Deleting the `stepIndex`/`lastStepIndex` FIELDS is step 4-final
+(`CC_PROMPT_POSITION_RESOLVER_STEP4_FINAL_RETIRE_STEPINDEX.md`). It is gated ONLY on this pass
+(the UI must read `playedColumn()` first) — NOT on the holder model. The mode-switch position
+cache (`switchMelodyMode` doing `stepIndex = cachedMelodyStepIndex`) turned out to be VESTIGIAL:
+`recomputeEffectiveMelody` restores the pattern from the draw counter, the `cached*StepIndex`
+values are read only inside the switch, the engine `lastStepIndex` field is never read elsewhere,
+and post-slice-4 the restored `stepIndex` is a mirror the next advance overwrites from `pos_`
+(which the switch never restores). So the playhead already flows with the transport across a mode
+switch — no `pos_` save/restore surgery is needed; step 4-final DELETES the dead cache. This pass
+just removes the widgets' dependency on the field NAME so that deletion is smaller.
 
 ## ACCEPTANCE
 1. `make RACK_DIR=/path/to/Rack-SDK` — the FULL plugin compiles clean (this is the point of the
