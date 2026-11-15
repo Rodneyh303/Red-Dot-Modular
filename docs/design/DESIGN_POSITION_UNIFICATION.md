@@ -5,8 +5,9 @@ slice 1. Branch: off fix/macro-voicelane-shared-frame.
 
 ADDENDUM (2026-11-15, OPEN): see "INPUT CADENCE / ACCEPTANCE MODEL" below — the RATE at
 which position's inputs (global range, LOR, direction, modulation) are recognised/accepted,
-and how that composes with the existing effect-timing ladder. Decisions C1–C3 are OPEN
-(Rodney to settle). Design-ahead: this lands as its OWN slice AFTER S2, NOT slice 1.
+and how that composes with the existing effect-timing ladder. C1 (rungs), C2 (keep-counting)
+and C4 (display cadence) DECIDED 2026-11-15; C3 (cross-level promote composition) still open.
+Design-ahead: this lands as its OWN slice AFTER S2, NOT slice 1.
 
 ## DECISIONS (Rodney, locked)
 1. SCOPE: ALL modes. NUANCE — in CLOCK mode the GLOBAL playhead is forward-only
@@ -87,8 +88,10 @@ that owns the transport position and is the ONE source every consumer reads:
 
 ## INPUT CADENCE / ACCEPTANCE MODEL — the resolver as the single owner of position-input acceptance
 
-STATUS: DRAFT addendum (2026-11-15). Decisions C1–C3 are OPEN — Rodney to settle. This is
-design-ahead; it is NOT slice 1 (slice 1 keeps today's cadence to stay golden-identical).
+STATUS: addendum (2026-11-15). C1 (rungs) + C2 (keep-counting) + C4 (display cadence) DECIDED
+by Rodney 2026-11-15 (recorded below; revisitable — the "arguably" stands). C3 (cross-level
+promote composition) still OPEN. Design-ahead; still NOT slice 1 (slice 1 keeps today's
+cadence to stay golden-identical).
 
 ### Why this belongs in the resolver
 THE PROPOSAL computes position "once per advance, from the transport motion + the window +
@@ -130,37 +133,70 @@ working copy and cannot disagree.
 
 ### The acceptance ladder, mapped to position's inputs
 Per EFFECT_TIMING_HIERARCHY's rungs (control / 1-16-step / phrase / unlock):
-- Sands LOR off/rot → 1/16-step.
-- Sands LOR len → the same question as C1, one level down.
-- global off → 1/16-step (TODAY control-rate — fix).
-- global len → see C1.
+- Sands LOR len/off/rot → PHRASE (C1 — a perceptible-relationship control; the phasing must
+  hold still to be heard). TODAY step — this COARSENS it, deliberately.
+- global len + off → STEP, together (C1 — the MeloDicer-native "reposition/resize the whole
+  pattern now" class). TODAY control-rate — this is a (small) coarsening/fix.
 - per-level direction → StepEdge or Phrase via laneFlipQuant (already correct); the resolver
   reads the PROMOTED dir, never the pending one.
 - modulation (CV) → NOT a rung of its own; it RIDES the target's rung (CV→LOR latches at the
   LOR rung, CV→direction at the direction rung). Nothing new to decide for modulation once
   the target rungs are set.
 
-### OPEN DECISIONS (Rodney)
-C1. GLOBAL LEN rung — STEP vs PHRASE. off/rot and global-off sit at 1/16-step. But changing
-    the PHRASE LENGTH mid-phrase is arguably the "scene advance" class the ladder already
-    puts at the phrase boundary. Decide: global len latches at the step edge (consistent with
-    LOR) OR at the phrase boundary (structural). [Lane len is the same question — C1 governs
-    both unless you split them.]
+### DECISIONS (Rodney, 2026-11-15 — recorded; revisitable)
 
-C2. phrasePos CONTINUITY across a mid-phrase window/LOR change — the subtle one for a
-    POSITION authority. When len/off change, does phrasePos KEEP COUNTING (the window resizes
-    UNDER a continuous counter) or RE-SEED to 0 (treat the change as a phrase re-entry)?
-    Re-seeding re-fires the rotation anchor (phrasePos==0) on EVERY range change — which may
-    be the wanted "re-sync rotation on resize" feel, or an unwanted retrigger. Directly
-    couples to the acceptance bug THIS doc already fixes. Decide the semantics in BOTH
-    directions and on wrap.
+THE ORGANIZING PRINCIPLE (replaces "consistency"): RUNG = WHAT THE CONTROL IS FOR, not
+uniformity across inputs.
+  - A control whose value is a PERCEPTIBLE RELATIONSHIP over time (lane LOR — the lanes phasing
+    against each other and against the global anchor) → PHRASE. The relationship is only HEARD
+    if it holds still long enough to register; per-step it is hash, not phasing, and in UAS it
+    makes everything jump. LOR is the reason the instrument exists (the observation that small
+    probability-offset changes between lanes make a random pattern sound better), so its
+    legibility is primary.
+  - A control whose value is an IMMEDIATE REPOSITION / RESIZE of the whole pattern (global
+    length + offset) → STEP. No inter-element relationship to hold still for: offset slides the
+    whole window against the clock (a translation — it preserves every relationship), length
+    just moves the loop end. This is the MeloDicer-native class.
 
-C3. COMPOSITION across levels with DIFFERENT promote edges — voice flips at StepEdge, lane at
-    Phrase: the multiplicative sign is coherent only at a COMMON latch. Decide: one promote
+C1 (DECIDED). Sands LOR (len/off/rot) → PHRASE. Global length + offset → STEP, TOGETHER.
+    "Together" because MeloDicer has global length AND offset in real time but has NO
+    per-voice/lane LOR — direct evidence that global L+O are one class (real-time) and LOR is a
+    class MeloDicer never had. The MeloDicer premise "patterns react instantly to the controls"
+    is honoured for the class it was coined for (global L+O); it does not oblige LOR, which was
+    never in that class. LOCK MODE stays ORTHOGONAL — the deliberate defer-to-cue (DJ cueing)
+    that overrides every base rung wholesale; it SUSPENDS a rung, it doesn't set one.
+
+C2 (DECIDED — and SELECTED BY C1, not independent). phrasePos KEEPS COUNTING across a
+    mid-phrase global change; it does NOT re-seed. Why it is forced by C1: LOR is phrase-
+    latched and anchored to global step 1 (= phrasePos==0). RE-SEED would re-fire phrasePos==0
+    on EVERY global length/offset tweak → the lanes you phased RE-ANCHOR and snap mid-flow,
+    destroying the exact phase-stability C1 bought. KEEP-COUNTING leaves this phrase's anchor
+    alone: the global change bites the WRAP immediately (MeloDicer-instant), but the lane
+    anchoring set at this phrase's start holds until the next REAL phrase boundary. It is also
+    the MeloDicer feel — turning length plays THROUGH with a moved loop-end, it does not
+    restart. col = (phrasePos + rot) mod len + off, evaluated against the step-latched len/off
+    and the free-running phrasePos.
+    COST (accepted; small + deterministic): shrinking length BELOW the current phrasePos folds
+    `phrasePos mod newLen` → lands a step or two into the new short window rather than at its
+    start, until the next wrap tidies it. Re-seed's only virtue (always-clean-from-anchor) is
+    precisely the anchor-re-fire we do NOT want, so the cost is worth paying.
+
+C3 (OPEN). COMPOSITION across levels with DIFFERENT promote edges — voice flips at StepEdge,
+    lane at Phrase: the multiplicative sign is coherent only at a COMMON latch. One promote
     edge for the WHOLE composition (simpler, less flexible) OR per-level promoted values each
-    latched at its own edge (flexible, but risks a one-step HALF-PROMOTED product). Direction
+    latched at its own edge (flexible, but risks a one-step HALF-PROMOTED product)? Direction
     today derives SIGN from position each step (sidesteps this for sign), but the DIR enum
-    promotes per-level — so the question is real for the composed TRAVERSAL.
+    promotes per-level — so the question is real for the composed TRAVERSAL. STILL TO DECIDE.
+
+C4 (DECIDED). DISPLAY cadence follows the INPUT rung — the Sands range IS the LOR mod display.
+    There are NO knobs on the LOR, hence NO mod arcs (mod arcs belong on knobs, not on
+    modulators); LOR modulation is shown ONLY by the Sands lane range MOVING. So phrase-
+    latching LOR in the engine (C1) OBLIGES the Sands range to update at the PHRASE boundary
+    too — it must NOT keep sliding every step while the engine holds still, or the display and
+    the engine disagree (the exact two-representations-drift this whole doc exists to kill).
+    The display PULLS the SAME latched LOR the engine reads (one authority), so it moves when
+    the engine's value moves — at the phrase. No mod-arc work; the range movement IS the
+    modulation display, and it quantizes with the rung.
 
 ### Slice placement
 NOT slice 1 (pure mirror, keeps control-rate cadence, golden-identical). Lands as its OWN
@@ -168,7 +204,11 @@ slice AFTER S2 (derive migration + reverse fix): step-latching the global range 
 behaviour change — golden-safe only where a test HOLDS the window constant (GOLDEN_A/B/BS,
 UA_NONDIV likely do; the mid-phrase MOVE is exactly what wants a NEW pin). Reproduce-first: a
 test that moves len/off mid-phrase and asserts the playhead + holders accept the change on
-the CHOSEN edge (not control-rate), per C1/C2.
+the CHOSEN edge (not control-rate), per C1/C2. Engine-side is headless-testable; the Sands
+range quantization (C4) ships in the SAME slice but is WIDGET — Rodney's Rack leg verifies the
+range steps at the phrase boundary, not every step, and never disagrees with the engine.
+The engine↔display agreement is pinned structurally (both read the one latched LOR) the way
+test_variation_scan_display pins the VAR chevron.
 
 ## MIGRATION PLAN (incremental; goldens green at EVERY step — this is the whole risk)
 This touches transport timing; the goldens are the contract. Do it in landable slices,
