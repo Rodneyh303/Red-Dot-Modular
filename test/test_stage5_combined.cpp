@@ -308,7 +308,7 @@ static void captureContent(const SequencerEngine& eng, const StepResult& r, Capt
         cap.i16(q12(pv.gs.currentPitchV));
     }
     for (int s = 0; s < 7; ++s) cap.i16(eng.laneTick_[s]);
-    cap.i16(eng.globalWalk_ & 15);   // the walk coordinate's <=16 PROJECTION (the GATE 1 low16
+    cap.i16(eng.pos_.phaseClock(eng.transportTick_) & 15);   // (slice 5) the retired globalWalk_'s <=16 PROJECTION (the GATE 1 low16
                                      // discipline): the raw coordinate is mod cachedLength — setWindow
                                      // re-anchors it ((tick-1) mod newLen), so the pre-first-tick state
                                      // reads 31 at (32,0) vs 15 at (16,0): the SAME transport state in
@@ -331,7 +331,7 @@ static void captureMonoSub(const SequencerEngine& eng, const StepResult& r, Capt
     cap.i16(q12(eng.gs.currentPitchV));
     cap.i16(eng.scanOfsV_[0]);
     for (int s = 0; s < 7; ++s) cap.i16(eng.laneTick_[s]);
-    cap.i16(eng.globalWalk_ & 15);   // the <=16 walk projection (see captureContent)
+    cap.i16(eng.pos_.phaseClock(eng.transportTick_) & 15);   // the <=16 walk projection (see captureContent; slice 5 — the retired globalWalk_)
     for (int i = 0; i < kCells; ++i) cap.i16(eng.pe.melodySemitone[i]);
     for (int i = 0; i < kCells; ++i) cap.f32(eng.pe.melodyPitchV[i]);
     for (int i = 0; i < kCells; ++i) cap.f32(eng.pe.cachedMelodyPitchV[i]);
@@ -529,7 +529,7 @@ static void marchCombined(MarchCtx& c, Mode mode, MarchOut& out, Probe probe) {
 
         // ── logs ──
         out.landings.push_back(c.eng.stepIndex);
-        out.walks.push_back(c.eng.globalWalk_);
+        out.walks.push_back(c.eng.pos_.phaseClock(c.eng.transportTick_));   // (slice 5) the retired globalWalk_
         std::array<int, 7> tk;
         for (int s = 0; s < 7; ++s) tk[s] = c.eng.laneTick_[s];
         out.ticks.push_back(tk);
@@ -545,7 +545,7 @@ static void marchCombined(MarchCtx& c, Mode mode, MarchOut& out, Probe probe) {
             if (DBG && out.landingLaw && !(c.eng.stepIndex >= 0 && c.eng.stepIndex < 32))
                 std::printf("  [dbg] landing out of ring t=%d step=%d\n", t, c.eng.stepIndex);
             out.landingLaw &= (c.eng.stepIndex >= 0 && c.eng.stepIndex < 32);
-            out.walkTracks &= (c.eng.globalWalk_ == c.eng.stepIndex);
+            out.walkTracks &= (c.eng.pos_.phaseClock(c.eng.transportTick_) == c.eng.stepIndex);
             if (t > 0) {
                 const int prev = out.landings[t - 1];
                 out.crossBar  |= (prev == 15 && c.eng.stepIndex == 16);
@@ -725,7 +725,7 @@ int main() {
         for (int t = 0; t < 32; ++t) seen32.insert(a.landings[t]);
         check(a.landingLaw && period32 && (int)seen32.size() == 32,
               "V2: the mode-A executor's walk covers ALL 32 cells with period EXACTLY 32 (96 frames — the wrap law through the executor)");
-        check(a.walkTracks, "V2: globalWalk_ tracks the landed cell on every frame");
+        check(a.walkTracks, "V2: the phase clock tracks the landed cell on every frame");
         check(a.crossBar,   "V2: the walk crosses 15->16 in sequence (the bar line, not the old ring wrap)");
         check(a.crossRing,  "V2: the walk wraps 31->0 in sequence (the ring wrap at 32)");
         check(a.bar1Dec > 0 && a.bar2Dec > 0,

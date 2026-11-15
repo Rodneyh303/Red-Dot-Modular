@@ -757,7 +757,7 @@ int main() {
         eng.advancePlayhead();
         // (POSITION_HOLDER_MODEL port: the transport's +1 reads on the global walk holder
         // — the t=0 anchor seeds it at (−1 mod 16) = 15, so one advance lands at 0.)
-        check(eng.globalWalk_ == 0, "PLUMB: advancePlayhead advanced the transport holder +1");
+        check(eng.pos_.phaseClock(eng.transportTick_) == 0, "PLUMB: advancePlayhead advanced the transport clock +1 (the phase clock at 0)");
         check(eng.voiceDriver_[0] == 1 && eng.voiceDriver_[1] == 1,
               "PLUMB: offset-0 voices read the clock (the degenerate shared pair)");
         check(eng.voiceDriver_[2] == 6,
@@ -871,10 +871,10 @@ int main() {
             const PatternInput in = makeInput(0.5f);
             eng.executeModeB(true, true, 3.f, in);      // the seed rise
             eng.gs.slurForward = true;                  // the fall fires under a pending slur
-            const int walkBefore = eng.globalWalk_;   // (holder port: the transport state)
+            const int walkBefore = eng.pos_.phaseClock(eng.transportTick_);   // (slice 5) the retired globalWalk_
             const int tickBefore = eng.laneTickV_[1][dotModular::STRAND_VARIATION];
             eng.legatoCheckpointOnFall();
-            check(eng.globalWalk_ == walkBefore,
+            check(eng.pos_.phaseClock(eng.transportTick_) == walkBefore,
                   "PV-FALL: mono p=0 holds the CLOCK at the fall (the transport is the mono decision)");
             check(eng.advanceOffset_[1] == +1,
                   "PV-FALL: the Local-East p=+1 voice advances on its OWN fall decision (offset +1)");

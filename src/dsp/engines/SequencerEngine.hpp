@@ -312,8 +312,8 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
 
     int stepIndex = -1;
     int lastPlayDir = +1;   // +1 forward, -1 reverse (Mode E); for UI direction cues
-    // (DESIGN_POSITION_UNIFICATION slice 1) the ONE position authority — a PURE MIRROR
-    // this slice: advanced alongside stepIndex/globalWalk_, consumed by NOTHING; the
+    // (DESIGN_POSITION_UNIFICATION) the ONE position authority — slices 2-5 migrated the
+    // derive, the consumers, the advance and the phase clock onto it; the
     // golden-identity harness (test_position_resolver_identity) proves the mirror.
     // Slice 2 migrates the derive to its phrasePos; slices 3-4 the stepIndex consumers.
     PositionResolver pos_;
@@ -470,8 +470,8 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // JUMP the phase absorbs mod the period). NO per-lane elapsed counters exist or are
     // wanted — a phase is a position in the walk's own cycle, not a step history.
     //
-    // globalWalk_ is the TOP holder: the global window walk itself, ≡ (t−1) mod
-    // cachedLength. The voice lanes hang under their voice frames (which carry the
+    // The phase clock (pos_.phaseClock — the retired globalWalk_) is the TOP holder: the
+    // global window walk itself, ≡ (t−1) mod cachedLength. The voice lanes hang under their voice frames (which carry the
     // advanceOffset_ divergence — the shipped poly-advance bridge, whose offsets stay
     // live); the mono lanes hang under V1's frame; the macro lanes under the global walk.
     // laneTick_/laneTickV_/macroLaneTick_/voiceRead_/voiceDriver_ remain the DERIVED
@@ -492,9 +492,10 @@ template <class T, size_t Rows, size_t Cols> using Matrix2 = std::array<std::arr
     // maintain (reset → 0, the advance event ±1, the Mode E phase snap, the Beat-1
     // hard reset) and that anchorTransport consumes transiently to seed the holder
     // congruences — needed because a mid-run window/LOR re-author re-bounds the
-    // global walk to (tick−1) mod newLen, a congruence no bounded phase carries.
+    // phase clock to (tick−1) mod newLen, a congruence no bounded phase carries.
+    // (SLICE 5) globalWalk_ is DELETED — pos_.phaseClock(transportTick_) is its closed
+    // form (a view; the identity harness proved the equality before the deletion).
     int64_t transportTick_ = 0;
-    int globalWalk_ = kMaskRing - 1;          // ≡ (t−1) mod cachedLength (the t=0 anchor: −1 mod the cap default)
     // ≡ the RAW transport t0 (mod the walk's period) — the pass-through-config read
     // path; the phases advance by the RAW clock deltas every event so the congruence
     // survives any window/LOR config round-trip (the WARM-PHASE law).

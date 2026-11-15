@@ -286,11 +286,10 @@ void SequencerEngine::setWindow(int length, int offset) {
     // applied to col_ — DELETED. stepIndex derives from the resolver; the -1 park is
     // preserved (playedColumn() returns -1 when col_ == -1).
     if (stepIndex != -1) stepIndex = pos_.playedColumn();
-    // THE RE-AUTHOR ANCHOR (the holder law): the global walk's read coordinate re-bounds
-    // to the NEW window — (tick−1) mod newLen, exactly the value the old f(counter)
-    // closed form evaluated from the next event on. The warm phases are untouched: they
-    // carry the RAW clock congruences, which a window re-author does not move.
-    globalWalk_ = wrapMod(transportTick_ - 1, std::max(1, length));
+    // (SLICE 5) the global walk's re-bind line is DELETED — pos_.phaseClock(transportTick_)
+    // IS the re-bound value ((tick−1) mod the NEW len_, the resolver's own length, re-taken
+    // on every read). The warm phases are untouched: they carry the RAW clock congruences,
+    // which a window re-author does not move.
 }
 
 // ── Stage 2b: the voice-LOR authoring push (see the hpp decl) ──────────────────
@@ -471,8 +470,8 @@ bool SequencerEngine::advancePlayhead(int dir, const int8_t* voiceMotion) {
     //     (length = the wrap point, not part of the address) — which is exactly what
     //     makes 32 steps nearly free later: no global-modulus audit, no wrap-mask hunt.
     // (SLICE 2) the resolver advances FIRST — the derive (inside tickHolders, below)
-    // reads pos_.phrasePos() as the event's position, the SAME timing globalWalk_ has
-    // (advanced at the head of tickHolders).
+    // reads pos_.phrasePos() as the event's position, the SAME timing the transport clock
+    // has (advanced at the head of tickHolders).
     // (SLICE 4 — CC_PROMPT_POSITION_RESOLVER_SLICE4_UNIFY_ADVANCE) THE ONE WALK: the
     // hand stepIndex traversal that used to live here (seed at endStep+1/startStep-1
     // from the -1 park, step ±1, skip to the bound, scan to the next in-window cell)
@@ -644,7 +643,7 @@ bool SequencerEngine::foldPerVoiceAdvance_(int subLevel, bool perVoiceScan,
 // time-symmetric — retracing the triangle IS the bounce walk with the phase running
 // backward, verified step-for-step against laneTickFor).
 //
-// THE DRIVER CHAIN: global window walk (globalWalk_) → voice frame (the voiceLOR row
+// THE DRIVER CHAIN: global window walk (pos_.phaseClock — the retired globalWalk_) → voice frame (the voiceLOR row
 // walk; the effective clock t + advanceOffset_[v] rides INSIDE the frame's driver
 // delta) → the lane walks (lanePhase_/lanePhaseV_/macroLanePhase_). The per-voice
 // effective-clock delta is k_v = the transport motion + the voice's advanceOffset_
@@ -766,9 +765,9 @@ int64_t SequencerEngine::voiceFrameTickAt(int v, int64_t effTick1based,
 // Mode E phase snap at the phase-derived tick, Monsoon's Beat-1 hard reset at 0.
 void SequencerEngine::anchorTransport(int64_t tick1based) {
     transportTick_ = tick1based;   // THE WRITE SITE: the anchor IS the transport's own position update
-    const int  lenG = std::max(1, cachedLength);
+    // (SLICE 5) the globalWalk_ seed line is DELETED — pos_.phaseClock(transportTick_)
+    // yields wrapMod(tick−1, len_) on every read: the same value this seeded.
     const int64_t t0 = tick1based - 1;
-    globalWalk_ = wrapMod(t0, lenG);
     {
         const int rLen = std::max(1, lor(dotModular::STRAND_RHYTHM, LOR_LEN));
         globalT0Phase_ = wrapMod(t0, rLen);
@@ -826,14 +825,13 @@ void SequencerEngine::anchorTransport(int64_t tick1based) {
 // so each phase stays congruent to its raw t0 mod its OWN period through any config;
 // the derives pick the representative per config (the warm-phase law — see the hpp).
 void SequencerEngine::tickHolders(int transportMotion, int signMotion, const int8_t* voiceMotion) {
-    const int lenG = std::max(1, cachedLength);
     // THE WRITE SITE (the spec's law): the transport's own position advances with the
     // clock event — the ONE absolute value in the engine, consumed only by the anchors.
     // The offsets-only refresh (motion 0) leaves it verbatim.
     transportTick_ += transportMotion;
     const int64_t t0Now = transportTick_ - 1;   // the post-event raw t0 (the re-anchor coordinate)
-    // ── the global walk holder (the mapped-config read coordinate) ──
-    globalWalk_ = wrapMod((int64_t)globalWalk_ + transportMotion, lenG);
+    // (SLICE 5) the globalWalk_ increment line is DELETED — the congruence it maintained
+    // (≡ (t−1) mod len) is pos_.phaseClock's closed form, read on demand.
     // ── the raw-clock congruences (config-independent; the RE-ANCHOR LAW on a walk-key
     //    change: a live len/dir change re-bounds the period, the old congruence is
     //    meaningless for it, so the holder takes the closed form's exact value at the
@@ -983,7 +981,7 @@ static inline int frameReadCell(int64_t frameValue, int windowOffset, int ring) 
 // THE REPRESENTATIVE LAW: under the PASS-THROUGH window (16/0) the walks read the raw
 // clock congruences (the phases — the only carrier of the raw congruence mod a length
 // that need not divide 16); under a MAPPED window every driver coordinate is the
-// bounded window walk (exact — globalWalk_ + the offsets), so the walks read those and
+// bounded window walk (exact — the phase clock + the offsets), so the walks read those and
 // the warm phases wait for a pass-through round-trip. Either representative yields the
 // exact values the old f(counter) recompute produced at the same instants.
 void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
@@ -996,7 +994,7 @@ void SequencerEngine::deriveHolders(int signMotion, const int8_t* voiceMotion) {
     // free-running (the representative twin of driverTickAt's law).
     const bool passG = (lenG == 16 && offG == 0)
                     || (lenG == kPatternLengthCap && offG == 0);
-    const int  wG = globalWalk_;
+    const int  wG = pos_.phaseClock(transportTick_);   // (SLICE 5) the retired globalWalk_ — the closed form, a resolver view
     // ── the MACRO frame (the MACRO ROW's walk — no voice map, it IS the frame; the
     //    container the Macro lanes + the Macro strip hang under). CC_FIX_MACRO_LANE_SEED
     //    Part 2: the row gains the identity/mapped branch its seed lacked — the MAPPED
@@ -2529,7 +2527,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
 #if RULE2_DEBUG
             INFO("[R2 roll ] v=%2d step=%3lld LE=%d legCell=%2d monoCell=%2d legLOR=(%2d,%2d,%2d) "
                  "r=%.3f prob=%.3f nvV=%d canLead=%d -> slur=%d",
-                voiceIdx.v, (long long)globalWalk_, (int)!varlegDelegated(voiceIdx.v, 1),
+                voiceIdx.v, (long long)pos_.phaseClock(transportTick_), (int)!varlegDelegated(voiceIdx.v, 1),
                 getLegatoStepForVoice(voiceIdx), getLegatoStep(),
                 polyLOR(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, LOR_LEN),
                 polyLOR(voiceIdx, LaneId{EDITOR_LANE_LEGATO}, LOR_OFF),
@@ -2585,7 +2583,7 @@ void SequencerEngine::executePolyVoice(VoiceSlot voiceIdx, const PatternInput& i
                 const bool connect = prevSlur && stillSounding;
 #if RULE2_DEBUG
                 INFO("[R2 land ] v=%2d step=%3lld LE=%d part=%d prevSlur=%d sound=%d isTie=%d -> %s",
-                    voiceIdx.v, (long long)globalWalk_, (int)!varlegDelegated(voiceIdx.v, 1),
+                    voiceIdx.v, (long long)pos_.phaseClock(transportTick_), (int)!varlegDelegated(voiceIdx.v, 1),
                         (int)v.participating, (int)prevSlur, (int)stillSounding, (int)isTie,
                     connect ? "CONNECT" : "REARTICULATE");
 #endif
