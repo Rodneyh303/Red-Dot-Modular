@@ -339,6 +339,14 @@ INFER a flip one quantised crossing late. Propagation is immediate in both; dete
 > is shipping prior art; the jitter guard that matters is the WRAP-magnitude reject (which our
 > sign law already encodes), not a turnaround hysteresis — add the latter only if our phase source
 > proves noisier than a clean CV.
+>
+> CONCLUSION (Rodney, 2026-11-16) — the detection-lag floor DISSOLVES in every mode once direction
+> is read from the drive's own nature rather than inferred from step history: PHASE via sample-rate
+> `sign(Δphase)` (instant bar the one ambiguous turnaround sample), CLOCK/GATE via the reverse-all
+> SWITCH (nothing to detect — known the instant it flips). Detection is then instant everywhere;
+> the change TAKES EFFECT at the next event/crossing (no position moves between events) — the
+> musical grid, not a lag. The switch and the sample-rate sign are the same principle: direction
+> comes from the drive, never from a counter.
 > It is
 > BOUNDED and SELF-CORRECTING: at most one quantised step reads the stale direction (a genuine
 > reversal, or the first snap after a mode switch), corrected at the very next crossing; `d==0`
