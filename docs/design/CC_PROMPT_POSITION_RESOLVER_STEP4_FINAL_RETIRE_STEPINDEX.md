@@ -63,9 +63,15 @@ So the cache is removed, NOT re-pointed at `pos_`.
    (`pos_.reset()`) covers the park. Confirm no remaining bare `stepIndex`/`lastStepIndex` use.
 
 ## KEEP (do NOT touch)
-- The PATTERN cache (seed, `melodyPitchV`/`cachedMelodyPitchV`, `recomputeEffectiveMelody`) — the
-  lossless melody/rhythm preservation is the real feature and is independent of the playhead.
+- The PATTERN cache (seed, `melodyPitchV`/`cachedMelodyPitchV`, `cachedQmixSeedFloat`, `cachedQmix[]`,
+  `recomputeEffectiveMelody`/`recomputeEffectiveQmix`) — the lossless melody/rhythm/q-mix pattern
+  preservation is the real feature and is independent of the playhead. Delete ONLY the `*StepIndex`/
+  `*LastStepIndex` position twins, NOT the pattern buffers/seed.
 - `pos_`, `playedColumn()`, `started()`, `globalWalk_`/`phaseClock` (slice 5's thread).
+
+NOTE: deleting `cachedQmixStepIndex`/`cachedQmixLastStepIndex` here is consistent with the planned
+`switchQmixMode` work (`CC_PROMPT_SWITCH_QMIX_MODE_COMPLETE.md`) — that feature is PATTERN-ONLY and
+must NOT reinstate these position twins.
 
 ## ACCEPTANCE
 1. `grep -rn "stepIndex\|lastStepIndex" src/` shows NO engine field, NO alias, NO mode-switch cache
