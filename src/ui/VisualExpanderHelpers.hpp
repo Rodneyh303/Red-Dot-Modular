@@ -90,11 +90,42 @@ inline int calcPlayhead(int globalStep, int length, int offset, int rotation) {
         globalStep, length, offset, rotation, dotModular::kMaskRing);
 }
 
-// (bugs 17+18, LOR_EDITING_BUG_LIST) the VAR-scan playhead helpers are RETIRED:
-// every lane — the VAR lane included — draws the SHARED window playhead
-// (calcPlayhead → SandsRangeGestureCore::lanePlayheadBar, in-window by
-// construction). The scan (the freeze-fix escape search) could leave the lane's
-// window; the doc's ruling: "No lane draws the global scan when it has a window."
+// CC_PROMPT_VARIATION_SCAN_DISPLAY — the VARIATION lane's chevron position: the
+// ENGINE's scanned read index, never a parallel recompute. Gate-mode holds scan the
+// variation window (scanOfsV_[0], +1 per held rise — the freeze fix's escape search,
+// IN THE TRAVEL DIRECTION: the signed delta, backward when Variation < 0), so the
+// chevron creeps the way the playhead is going during a hold and re-aligns on
+// advance — the visual confirmation of the freeze fix. Outside holds (and in
+// clock/phase — scanOfs_ stays 0 there) this equals the old calcPlayhead position:
+// calcPlayhead matches getStrandIdx exactly, and the mono feeds' LOR comes from the
+// engine's own lor() store, so the swap is bit-identical at rest. -1 when not running.
+//
+// RESTORED (fix/variation-scan-display): bug 18 retired these on the premise that the
+// scan "could leave the lane's window". That premise is FALSE on the engine side —
+// stepAdvanceStrandIdx delegates to getStrandIdx, whose result is
+// (((tick+delta) mod len + len) mod len + off) mod ring, i.e. ALWAYS in [off, off+len)
+// for ANY delta. The scan jumps to a DIFFERENT IN-WINDOW cell (ahead of the shared
+// playhead), then rejoins on advance — that IS the feature, and it never leaves the
+// lane's own window. Pinned headless: test_variation_scan_display (in-window across
+// scan deltas + bit-identical to calcPlayhead at delta 0). If a symptom persists in
+// Rack it is a DISPLAY-row-len vs ENGINE-var-strand-len mismatch, not the scan —
+// a separate, isolatable cause.
+inline int variationLanePlayhead(const SequencerEngine& eng) {
+    if (eng.stepIndex < 0) return -1;
+    const dotModular::VoiceSlot mono = dotModular::kMonoVoiceSlot;
+    return eng.stepAdvanceStrandIdx(mono, eng.stepAdvanceScanDelta(mono));
+}
+
+// PER-VOICE STEP-ADVANCE — THIS voice's VAR chevron (every voice decides — the WANDER
+// fix — so every voice has its own scan): the voice's OWN scanned position (its own
+// window + its own scan — the same index its advance decision used; it creeps the way
+// the voice is going during a hold and re-aligns when the voice moves). The mono
+// helper above is the mono slot's case. Outside holds this equals the plain
+// calcPlayhead position. -1 when not running.
+inline int variationLanePlayheadForVoice(const SequencerEngine& eng, dotModular::VoiceSlot bank) {
+    if (eng.stepIndex < 0) return -1;
+    return eng.stepAdvanceStrandIdx(bank, eng.stepAdvanceScanDelta(bank));
+}
 
 // Read an integer param (rounded) from a module, clamped to [1, kLaneLengthMax]
 // (G2: the lane-length bound by name — was the literal 16, the same D1-class miss).

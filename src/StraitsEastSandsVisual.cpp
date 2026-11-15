@@ -1047,10 +1047,15 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                     dotModular::VoiceResolver::mono(), dotModular::LaneId{el}, st,
                     SequencerEngine::ProbLens::Owner);
             int ph580 = (m->engine.stepIndex >= 0) ? m->engine.laneTick_[el] : -1;
-            // (bug 18, LOR_EDITING_BUG_LIST) EVERY lane draws the SHARED window
-            // playhead (calcPlayhead — the ONE law, in-window by construction);
-            // the VAR lane no longer draws the engine's scan (it left the window).
-            visualEditor->setLanePlayStep(el, calcPlayhead(ph580, mLen, mOff, mRot));
+            // (fix/variation-scan-display) non-VAR lanes draw the SHARED window
+            // playhead (calcPlayhead — the ONE law, in-window by construction).
+            // The VAR lane draws the engine's SCANNED read index (stepAdvanceStrandIdx
+            // + signed scan delta) — the gate-mode scan-ahead chevron, in-window by
+            // construction (getStrandIdx folds mod len), not the retired global scan.
+            visualEditor->setLanePlayStep(
+                el, (el == SequencerEngine::EDITOR_LANE_VARIATION)
+                        ? variationLanePlayhead(m->engine)
+                        : calcPlayhead(ph580, mLen, mOff, mRot));
         }
     }
 
@@ -1787,9 +1792,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int mRot = monsoon->engine.strandRot(l);
                 visualEditor->currentState.lanes[l].setDisplayLOR(std::max(1,mLen), mOff, mRot);
                 int ph1130 = (eng.stepIndex >= 0) ? eng.laneTick_[l] : -1;
-                // (bug 18) the SHARED window playhead for every lane — the VAR
-                // scan exception is gone (it left the lane's window).
-                visualEditor->setLanePlayStep(l, calcPlayhead(ph1130, std::max(1,mLen), mOff, mRot));
+                // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead;
+                // the VAR lane draws the engine SCANNED read index (stepAdvanceStrandIdx +
+                // scan delta) — the gate-mode scan-ahead chevron, in-window by construction.
+                visualEditor->setLanePlayStep(
+                    l, (l == SequencerEngine::EDITOR_LANE_VARIATION)
+                           ? variationLanePlayhead(eng)
+                           : calcPlayhead(ph1130, std::max(1,mLen), mOff, mRot));
             }
             // Spread (combo 7): East's V1 spread knobs FOLLOW Mono's spread (inoperable,
             // locked). Mono's spread base is now STORE-BACKED (editor.spread[kMonoSlot,l],
@@ -1874,9 +1883,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 int cvRot = eng.strandRotRef(el);
                 visualEditor->currentState.lanes[el].setDisplayLOR(cvLen, cvOff, cvRot);
                 int ph1222 = (eng.stepIndex >= 0) ? eng.laneTick_[el] : -1;
-                // (bug 18) the SHARED window playhead for every lane — the VAR
-                // scan exception is gone (it left the lane's window).
-                visualEditor->setLanePlayStep(el, calcPlayhead(ph1222, cvLen, cvOff, cvRot));
+                // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead;
+                // the VAR lane draws the engine SCANNED read index (stepAdvanceStrandIdx +
+                // scan delta) — the gate-mode scan-ahead chevron, in-window by construction.
+                visualEditor->setLanePlayStep(
+                    el, (el == SequencerEngine::EDITOR_LANE_VARIATION)
+                            ? variationLanePlayhead(eng)
+                            : calcPlayhead(ph1222, cvLen, cvOff, cvRot));
             }
             // Probabilities (CC_PROMPT_UI_TO_RESOLVER_SPEC step 2): the ONE accessor,
             // Owner lens, explicit voiceSlot 0 — the manager's resolver-resolved V1
@@ -1905,9 +1918,13 @@ struct StraitsEastSandsVisualWidget : ModuleWidget,
                 // Use the PER-VOICE tick (laneTickV_), not mono's laneTick_ — otherwise
                 // the poly playhead always follows mono's direction, ignoring the DirCell.
                 int ph1253 = (eng.stepIndex >= 0) ? eng.laneTickV_[pv][l] : -1;
-                // (bug 18) the SHARED window playhead for every lane, per voice —
-                // the VAR scan exception is gone (it left the lane's window).
-                visualEditor->setLanePlayStep(l, calcPlayhead(ph1253, cvLen, cvOff, cvRot));
+                // (fix/variation-scan-display) non-VAR lanes draw the SHARED window playhead,
+                // per voice; the VAR lane draws THIS voice.s SCANNED read index
+                // (stepAdvanceStrandIdx + scan delta) — scan-ahead, in-window by construction.
+                visualEditor->setLanePlayStep(
+                    l, (l == SequencerEngine::EDITOR_LANE_VARIATION)
+                            ? variationLanePlayheadForVoice(eng, dotModular::VoiceResolver::slot(pv + 1))
+                            : calcPlayhead(ph1253, cvLen, cvOff, cvRot));
             }
             // (The pre-consolidation "VARIATION (4) / LEGATO (5)" extra loop is DELETED:
             //  SANDS CONSOLIDATION made VAR/LEG full poly lanes — POLY_LANES == EAST_LANES
