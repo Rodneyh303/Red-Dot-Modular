@@ -327,6 +327,18 @@ INFER a flip one quantised crossing late. Propagation is immediate in both; dete
 > confirm) rather than a bare sign test. Weigh against the current bounded-and-self-correcting
 > behaviour: the sample-level check is worth it only if the one-step boundary blip feel-tests as
 > audibly wrong.
+>
+> PRIOR ART (ZZC Phaseque, zezic/ZZC, GPL — technique noted, no code copied): Phaseque senses
+> direction at SAMPLE rate in `processTransport()`, as `sign(phaseShifted − lastPhaseShifted)`,
+> guarded by: (1) delta != 0 → hold last direction (== our `d==0` hold); (2) `|delta| < 0.95` →
+> REJECT wrap-sized deltas (a 0.99→0.01 phrase wrap would false-read as reverse — this is our
+> "wrap is a beat, not a bounce" law applied to direction); (3) skip on reset/jump. Notably NO
+> small-signal hysteresis — raw sign each sample, tolerating a one-sample flicker at a genuine
+> turnaround. Note TRIGGERS are computed separately (the near-0/near-1 crossing), so direction and
+> note-decisions are decoupled — the same split proposed here. Takeaway: the sample-rate approach
+> is shipping prior art; the jitter guard that matters is the WRAP-magnitude reject (which our
+> sign law already encodes), not a turnaround hysteresis — add the latter only if our phase source
+> proves noisier than a clean CV.
 > It is
 > BOUNDED and SELF-CORRECTING: at most one quantised step reads the stale direction (a genuine
 > reversal, or the first snap after a mode switch), corrected at the very next crossing; `d==0`
