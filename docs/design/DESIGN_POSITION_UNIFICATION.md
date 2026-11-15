@@ -305,6 +305,17 @@ DIRECTION MODEL the event modes (clock/gate) are default-forward + reverse-all (
 control, zero detection latency), whereas PHASE reads direction from the input and can only
 INFER a flip one quantised crossing late. Propagation is immediate in both; detection is not.
 
+> FOOTNOTE — the phase-mode detection lag is a FLOOR, not a cadence choice. It sits BELOW the
+> whole C1–C4 ladder: the rungs decide when to ACCEPT a change that is already known; this lag
+> is about when a direction change becomes KNOWABLE at all. Direction is the derivative of
+> position, and you cannot differentiate a single sample — so the only lever on this floor is
+> PPQN resolution (finer quantisation = shorter floor), never the acceptance rungs. It is
+> BOUNDED and SELF-CORRECTING: at most one quantised step reads the stale direction (a genuine
+> reversal, or the first snap after a mode switch), corrected at the very next crossing; `d==0`
+> holds the last direction rather than guessing. It is not a desync that accumulates. The only
+> live risk is a single transient wrong-direction step at a reversal / mode-switch boundary —
+> a Rack feel-test item (does that one step read audibly wrong?), not a correctness bug.
+
 ### Slice placement
 NOT slice 1 (pure mirror, keeps control-rate cadence, golden-identical). Lands as its OWN
 slice AFTER S2 (derive migration + reverse fix): step-latching the global range is a GENUINE
